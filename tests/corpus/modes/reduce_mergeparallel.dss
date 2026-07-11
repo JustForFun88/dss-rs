@@ -1,0 +1,31 @@
+// Reduce coverage (PHASE8_PLAN WP8.7): the MERGEPARALLEL strategy
+// (DoMergeParallelLines, ReduceAlgs.pas:47): a zone branch flagged
+// IsParallel merges with its LoopLineObj partner (Line.MergeWith
+// PARALLEL: sym-components Z paralleled via ParallelZ, C summed, name
+// becomes "<bus1>||<bus2>", partner disabled).
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.gapsrp basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.4 x1=1.6 r0=1.2 x0=4.2
+
+new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6
+~ units=km
+
+new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km
+new line.p1 bus1=b1 bus2=b2 linecode=lc length=0.8 units=km
+new line.p2 bus1=b1 bus2=b2 linecode=lc length=1.1 units=km
+new line.l3 bus1=b2 bus2=b3 linecode=lc length=0.6 units=km
+
+new load.ld3 bus1=b3 phases=3 conn=wye model=1 kv=12.47 kw=500 pf=0.92
+
+new energymeter.em element=line.lfeed terminal=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set maxiterations=100
+solve
+
+set reduceoption=mergeparallel
+reduce
+solve

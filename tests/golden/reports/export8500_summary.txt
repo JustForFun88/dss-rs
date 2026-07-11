@@ -1,0 +1,2 @@
+DateTime, CaseName, Status, Mode, Number, LoadMult, NumDevices, NumBuses, NumNodes, Iterations, ControlMode, ControlIterations, MostIterationsDone, Year, Hour, MaxPuVoltage, MinPuVoltage, TotalMW, TotalMvar, MWLosses, pctLosses, MvarLosses, Frequency
+"03.07.2026 9:31:49", IEEE8500, SOLVED, Snap, 100,    1.000, 6103, 4876, 8531, 67, Static, 6, 16, 0, 0, 1.0503, 0.92556, 11.9837, 1.3852, 1.21034, 10.1, 2.76835, 60

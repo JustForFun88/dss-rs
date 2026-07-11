@@ -1,0 +1,35 @@
+
+New "Fault.f1"
+! ENABLED
+! NPhases = 1
+! Nconds = 1
+! Nterms = 2
+! Yorder = 2
+! NodeRef = "4 0 "
+! Terminal Status: [C C ]
+! Terminal Bus Ref: [2 2 ]
+
+! YPrim (G matrix)
+!              0 |             0 |
+!              0 |             0 |
+! YPrim (B Matrix) = 
+!              0 |             0 |
+!              0 |             0 |
+~ Bus1=b1.1
+~ Bus2=b1.0
+~ Phases=1
+~ R=20.00
+~ %StdDev=0.0
+~ OnTime=0.200
+~ Temporary= Yes
+~ MinAmps=3.0
+~ MinAmps=3
+~ NormAmps=0
+~ EmergAmps=0
+~ FaultRate=0
+~ pctPerm=100
+~ Repair=0
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+// SpecType=1

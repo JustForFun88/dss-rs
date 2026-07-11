@@ -1,0 +1,7 @@
+{
+  "report": "cim100",
+  "circuit": "cim_xfmr",
+  "deck": "cim_xfmr.dss",
+  "fixture": "cim_xfmr_fixture.csv",
+  "suffix": "CIM100x.xml"
+}

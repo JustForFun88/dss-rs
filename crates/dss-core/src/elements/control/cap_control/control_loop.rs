@@ -109,12 +109,19 @@ impl CapControl {
     /// control queue. `cap` is the controlled capacitor; `mon` the monitored
     /// element (they differ except for Time/Follow control, where `mon` is the
     /// capacitor and is not read). Ported top-to-bottom.
+    ///
+    /// Returns `true` when the sample raised the equivalent of Pascal's
+    /// `DSS.SolutionAbort := True` (the FOLLOWCONTROL-with-no-ControlSignal
+    /// path). `CtrlCtx` has no direct abort channel — like `reset_with`
+    /// returning "raise SystemYChanged", the dispatcher lifts this to
+    /// `ckt.solution.solution_abort` after the borrow of the control ends.
+    #[must_use]
     pub(crate) fn sample(
         &mut self,
         cap: &mut dyn ControlledCapacitor,
         mon: &mut dyn CktElement,
         ctx: &mut CtrlCtx,
-    ) {
+    ) -> bool {
         // ControlledElement.ActiveTerminalIdx := 1 (terminal 1 is implicit).
         self.present_state = if cap.is_closed() {
             CTRL_CLOSE
@@ -306,13 +313,41 @@ impl CapControl {
                     }
                 }
                 ctrl_type::FOLLOW => {
-                    // FOLLOWCONTROL needs ControlSignal (LoadShape), which is
-                    // NOT_PORTED (PHASE4 §WP4.7); Pascal aborts the solution when
-                    // it is unset, which is always the case here.
-                    ctx.errors.push(format!(
-                        "CapControl.{}: Type is set to \"Follow\", but no \"ControlSignal\" was provided. Aborting solution.",
-                        self.ccd.cd.obj.name()
-                    ));
+                    // Pascal `Sample`'s FOLLOWCONTROL arm (`CapControl.pas`
+                    // l.1151-1169). `ctrlSignalShape = NIL` does
+                    // `DoSimpleMsg(...,10362)`, **`DSS.SolutionAbort := TRUE`**,
+                    // then `Exit`. We reproduce all three: queue the message,
+                    // `return true` so the dispatcher sets `solution_abort` (the
+                    // solve then freezes — the daily/duty/yearly loops skip every
+                    // remaining step on `solution_abort`), and the early return
+                    // skips this control's arm/disarm block, exactly like `Exit`.
+                    let Some(shape) = self.ctrl_signal_shape.as_mut() else {
+                        ctx.errors.push(format!(
+                            "CapControl.{}: Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
+                            self.ccd.cd.obj.name()
+                        ));
+                        return true;
+                    };
+
+                    // `nextState := ctrlSignalShape.GetMultAtHour(dblHour).re`:
+                    // nonzero means the signal wants the bank CLOSED, zero
+                    // wants it OPEN.
+                    let next_state = shape.get_mult_at_hour(ctx.dbl_hour).re;
+                    // `if not ((nextState <> 0) xor (PresentState = CTRL_OPEN))`
+                    // — an XNOR: switch exactly when the bank's present state
+                    // mismatches the signal's desired state.
+                    if (next_state != 0.0) == (self.present_state == CTRL_OPEN) {
+                        if self.present_state == CTRL_OPEN {
+                            self.set_pending_change(CTRL_CLOSE);
+                        } else {
+                            self.set_pending_change(CTRL_OPEN);
+                        }
+                        self.should_switch = true;
+                    }
+                    // No `else` in Pascal: unlike every other control type here,
+                    // a non-switching sample leaves `PendingChange` untouched
+                    // (not reset to `CTRL_NONE`) — faithfully mirrored by
+                    // simply not touching `pending_change` in that case.
                 }
                 _ => {}
             }
@@ -368,6 +403,9 @@ impl CapControl {
                 );
             }
         }
+
+        // No abort raised (only the FOLLOW-without-ControlSignal path aborts).
+        false
     }
 
     /// Pascal `Sample`'s `TIMECONTROL` branch (factored out for readability):

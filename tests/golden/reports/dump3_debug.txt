@@ -1,0 +1,1381 @@
+NumBuses= 5
+NumNodes= 11
+NumDevices= 15
+BusList:
+  src          (3 Nodes) 1 2 3
+  b1           (3 Nodes) 1 2 3
+  blv          (3 Nodes) 1 2 3
+  ui           (1 Nodes) 1
+  uo           (1 Nodes) 1
+DeviceList:
+  source      
+  l1          
+  tr1         
+  rc1         
+  f1          
+  fg          
+  ldk         
+  ldx         
+  ldc         
+  mon1        
+  em1         
+  tup         
+  u1          
+  uc1         
+  ldu         
+NodeToBus Array:
+   1  1 (=src.1)
+   2  1 (=src.2)
+   3  1 (=src.3)
+   4  2 (=b1.1)
+   5  2 (=b1.2)
+   6  2 (=b1.3)
+   7  3 (=blv.1)
+   8  3 (=blv.2)
+   9  3 (=blv.3)
+  10  4 (=ui.1)
+  11  5 (=uo.1)
+
+New "Vsource.source"
+! ENABLED
+! NPhases = 3
+! Nconds = 3
+! Nterms = 2
+! Yorder = 6
+! NodeRef = "1 2 3 0 0 0 "
+! Terminal Status: [C C C C C C ]
+! Terminal Bus Ref: [1 1 1 1 1 1 ]
+
+! YPrim (G matrix)
+!   0.1190035763 | -0.02805524726 | -0.02805524726 | -0.1190035763 | 0.02805524726 | 0.02805524726 |
+!  -0.02805524726 |  0.1190035763 | -0.02805524726 | 0.02805524726 | -0.1190035763 | 0.02805524726 |
+!  -0.02805524726 | -0.02805524726 |  0.1190035763 | 0.02805524726 | 0.02805524726 | -0.1190035763 |
+!  -0.1190035763 | 0.02805524726 | 0.02805524726 |  0.1190035763 | -0.02805524726 | -0.02805524726 |
+!  0.02805524726 | -0.1190035763 | 0.02805524726 | -0.02805524726 |  0.1190035763 | -0.02805524726 |
+!  0.02805524726 | 0.02805524726 | -0.1190035763 | -0.02805524726 | -0.02805524726 |  0.1190035763 |
+! YPrim (B Matrix) = 
+!  -0.4655321248 |  0.1227031693 |  0.1227031693 |  0.4655321248 | -0.1227031693 | -0.1227031693 |
+!   0.1227031693 | -0.4655321248 |  0.1227031693 | -0.1227031693 |  0.4655321248 | -0.1227031693 |
+!   0.1227031693 |  0.1227031693 | -0.4655321248 | -0.1227031693 | -0.1227031693 |  0.4655321248 |
+!   0.4655321248 | -0.1227031693 | -0.1227031693 | -0.4655321248 |  0.1227031693 |  0.1227031693 |
+!  -0.1227031693 |  0.4655321248 | -0.1227031693 |  0.1227031693 | -0.4655321248 |  0.1227031693 |
+!  -0.1227031693 | -0.1227031693 |  0.4655321248 |  0.1227031693 |  0.1227031693 | -0.4655321248 |
+! VARIABLES
+~ Bus1=src
+~ BasekV=12.47
+~ pu=1
+~ Angle=0
+~ Frequency=60
+~ Phases=3
+~ MVASC3=94.2862699380308
+~ MVASC1=60.8573823417361
+~ X1R1=4
+~ X0R0=3
+~ Isc3=4365.37316195732
+~ Isc1=2817.64443281294
+~ R1=0.4
+~ X1=1.6
+~ R0=1.2
+~ X0=4.2
+~ ScanType=Positive
+~ Sequence=Positive
+~ Bus2=src.0.0.0
+~ Z1=[0.4, 1.6]
+~ Z0=[1.2, 4.2]
+~ Z2=[0.4, 1.6]
+~ puZ1=[0.257233237878366, 1.02893295151346]
+~ puZ0=[0.771699713635098, 2.70094899772284]
+~ puZ2=[0.257233237878366, 1.02893295151346]
+~ BaseMVA=100
+~ Yearly=
+~ Daily=
+~ Duty=
+~ Model=Thevenin
+~ puZIdeal=[1E-6, 0.001]
+~ Spectrum=defaultvsource
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+BaseFrequency=60.0
+VMag=7199.56
+Z Matrix=
+0.66666667 +j 2.4666667 
+0.26666667 +j 0.86666667 0.66666667 +j 2.4666667 
+0.26666667 +j 0.86666667 0.26666667 +j 0.86666667 0.66666667 +j 2.4666667 
+
+New "Line.l1"
+! ENABLED
+! NPhases = 3
+! Nconds = 3
+! Nterms = 2
+! Yorder = 6
+! NodeRef = "1 2 3 4 5 6 "
+! Terminal Status: [C C C C C C ]
+! Terminal Bus Ref: [1 1 1 2 2 2 ]
+
+! YPrim (G matrix)
+!   0.4342054375 | -0.1278965625 | -0.1278965625 | -0.4342054375 |  0.1278965625 |  0.1278965625 |
+!  -0.1278965625 |  0.4342054375 | -0.1278965625 |  0.1278965625 | -0.4342054375 |  0.1278965625 |
+!  -0.1278965625 | -0.1278965625 |  0.4342054375 |  0.1278965625 |  0.1278965625 | -0.4342054375 |
+!  -0.4342054375 |  0.1278965625 |  0.1278965625 |  0.4342054375 | -0.1278965625 | -0.1278965625 |
+!   0.1278965625 | -0.4342054375 |  0.1278965625 | -0.1278965625 |  0.4342054375 | -0.1278965625 |
+!   0.1278965625 |  0.1278965625 | -0.4342054375 | -0.1278965625 | -0.1278965625 |  0.4342054375 |
+! YPrim (B Matrix) = 
+!  -0.9680104441 |   0.277577068 |   0.277577068 |  0.9680109718 | -0.2775771811 | -0.2775771811 |
+!    0.277577068 | -0.9680104441 |   0.277577068 | -0.2775771811 |  0.9680109718 | -0.2775771811 |
+!    0.277577068 |   0.277577068 | -0.9680104441 | -0.2775771811 | -0.2775771811 |  0.9680109718 |
+!   0.9680109718 | -0.2775771811 | -0.2775771811 | -0.9680104441 |   0.277577068 |   0.277577068 |
+!  -0.2775771811 |  0.9680109718 | -0.2775771811 |   0.277577068 | -0.9680104441 |   0.277577068 |
+!  -0.2775771811 | -0.2775771811 |  0.9680109718 |   0.277577068 |   0.277577068 | -0.9680104441 |
+~ Bus1=src
+~ Bus2=b1
+~ LineCode=lc
+~ Length=1
+~ Phases=3
+~ R1=0.301
+~ X1=0.667
+~ R0=0.882
+~ X0=2.041
+~ C1=3.4
+~ C0=1.6
+~ RMatrix="0.494666667 0.193666667 0.193666667 |0.193666667 0.494666667 0.193666667 |0.193666667 0.193666667 0.494666667 |"
+~ XMatrix="1.125000000 0.458000000 0.458000000 |0.458000000 1.125000000 0.458000000 |0.458000000 0.458000000 1.125000000 |"
+~ CMatrix="2.800 -0.600 -0.600 |-0.600 2.800 -0.600 |-0.600 -0.600 2.800 |"
+~ Switch=No
+~ Rg=0.01805
+~ Xg=0.155081
+~ rho=100
+~ Geometry=
+~ Units=km
+~ Spacing=
+~ Wires=[]
+~ EarthModel=Deri
+~ CNCables=[]
+~ TSCables=[]
+~ B1=1.28176980266464
+~ B0=0.60318578948924
+~ Seasons=1
+~ Ratings=[ 400]
+~ LineType=oh
+~ NormAmps=400
+~ EmergAmps=600
+~ FaultRate=0.1
+~ pctPerm=20
+~ Repair=3
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+New "Transformer.tr1"
+! ENABLED
+! NPhases = 3
+! Nconds = 4
+! Nterms = 2
+! Yorder = 8
+! NodeRef = "4 5 6 0 7 8 9 0 "
+! Terminal Status: [C C C C C C C C ]
+! Terminal Bus Ref: [2 2 2 2 3 3 3 3 ]
+
+! YPrim (G matrix)
+!  0.009728942431 | -0.004864471216 | -0.004864471216 |             0 | -0.2084645355 |  0.2084645355 |             0 |             0 |
+!  -0.004864471216 | 0.009728942431 | -0.004864471216 |             0 |             0 | -0.2084645355 |  0.2084645355 |             0 |
+!  -0.004864471216 | -0.004864471216 | 0.009728942431 |             0 |  0.2084645355 |             0 | -0.2084645355 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |             0 |             0 |
+!  -0.2084645355 |             0 |  0.2084645355 |             0 |   8.933645739 |             0 |             0 |  -8.933645739 |
+!   0.2084645355 | -0.2084645355 |             0 |             0 |             0 |   8.933645739 |             0 |  -8.933645739 |
+!              0 |  0.2084645355 | -0.2084645355 |             0 |             0 |             0 |   8.933645739 |  -8.933645739 |
+!              0 |             0 |             0 |             0 |  -8.933645739 |  -8.933645739 |  -8.933645739 |   26.80093722 |
+! YPrim (B Matrix) = 
+!  -0.0405372612 | 0.02026863006 | 0.02026863006 |             0 |  0.8686022311 | -0.8686022311 |             0 |             0 |
+!  0.02026863006 | -0.0405372612 | 0.02026863006 |             0 |             0 |  0.8686022311 | -0.8686022311 |             0 |
+!  0.02026863006 | 0.02026863006 | -0.0405372612 |             0 | -0.8686022311 |             0 |  0.8686022311 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |             0 |             0 |
+!   0.8686022311 |             0 | -0.8686022311 |             0 |    -37.223525 |             0 |             0 |   37.22352391 |
+!  -0.8686022311 |  0.8686022311 |             0 |             0 |             0 |    -37.223525 |             0 |   37.22352391 |
+!              0 | -0.8686022311 |  0.8686022311 |             0 |             0 |             0 |    -37.223525 |   37.22352391 |
+!              0 |             0 |             0 |             0 |   37.22352391 |   37.22352391 |   37.22352391 |  -111.6705761 |
+~ NumWindings=2
+~ phases=3
+~ Wdg=1 bus=b1
+~ conn=delta
+~ kv=12.47
+~ kVA=500.0
+~ tap=1.000
+~ %R=0.60
+~ RdcOhms=1.586109
+~ rneut=-1.000
+~ xneut=0.000
+~ Wdg=2 bus=blv
+~ conn=wye
+~ kv=0.48
+~ kVA=500.0
+~ tap=1.050
+~ %R=0.60
+~ RdcOhms=0.00078336
+~ rneut=-1.000
+~ xneut=0.000
+~ XHL=5.000
+~ XHT=35.000
+~ XLT=30.000
+~ X12=5.000
+~ X13=35.000
+~ X23=30.000
+~ Xscmatrix= "5.00 "
+~ NormMAxHkVA=550
+~ EmergMAxHkVA=750
+~ thermal=2.0
+~ n=0.8
+~ m=0.8
+~ flrise=65
+~ hsrise=15
+~ %loadloss=1
+~ %noloadloss=0
+~ NormHkVA=550
+~ EmergHkVA=750
+~ Sub=No
+~ MaxTap=1.1
+~ MinTap=0.9
+~ NumTaps=32
+~ SubName=
+~ %IMag=0
+~ ppm_Antifloat=1
+~ %Rs=[0.6, 0.6, ]
+~ Bank=
+~ XfmrCode=
+~ XRConst=No
+~ X12=5
+~ X13=35
+~ X23=30
+~ LeadLag=Lag
+~ WdgCurrents=4.650698, (-61.736), 199.3032, (118.26), 4.668254, (178.38), 200.0555, (-1.6198), 4.650632, (58.508), 199.3003, (-121.49), 
+~ Core=shell
+~ RDCOhms=0.00078336
+~ Seasons=1
+~ Ratings=[ 1100]
+~ NormAmps=25.4645267084438
+~ EmergAmps=34.7243546024234
+~ FaultRate=0.007
+~ pctPerm=0
+~ Repair=0
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+ZB:
+7.2E-8 
+3E-7 
+
+ZB: (inverted)
+756429.6520 
+-3151790.2168 
+
+Y_OneVolt
+756429.6520 
+-756429.6520 756429.6520 
+-3151790.2168 
+3151790.2168 -3151790.2168 
+
+Y_Terminal
+0.0049 
+-0.0049 0.0049 
+-0.2085 0.2085 8.9336 
+0.2085 -0.2085 -8.9336 8.9336 
+-0.0203 
+0.0203 -0.0203 
+0.8686 -0.8686 -37.2235 
+-0.8686 0.8686 37.2235 -37.2235 
+
+TermRef= 1 3 5 8 2 1 6 8 3 2 7 8 
+
+New "RegControl.rc1"
+! ENABLED
+! NPhases = 3
+! Nconds = 3
+! Nterms = 1
+! Yorder = 3
+! NodeRef = "7 8 9 "
+! Terminal Status: [C C C ]
+! Terminal Bus Ref: [3 3 3 ]
+
+~ Transformer=tr1
+~ Winding=2
+~ VReg=115
+~ Band=3
+~ PTRatio=2.4
+~ CTPrim=300
+~ R=0
+~ X=0
+~ Bus=
+~ Delay=15
+~ Reversible=No
+~ RevVReg=120
+~ RevBand=3
+~ RevR=0
+~ RevX=0
+~ TapDelay=2
+~ DebugTrace=No
+~ MaxTapChange=16
+~ InverseTime=No
+~ TapWinding=2
+~ VLimit=0
+~ PTPhase=1
+~ RevThreshold=100
+~ RevDelay=60
+~ RevNeutral=No
+~ EventLog=No
+~ RemotePTRatio=2.4
+~ TapNum=8
+~ Reset=No
+~ LDC_Z=0
+~ Rev_Z=0
+~ Cogen=No
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+! Bus =blv
+
+
+New "Fault.f1"
+! ENABLED
+! NPhases = 1
+! Nconds = 1
+! Nterms = 2
+! Yorder = 2
+! NodeRef = "4 0 "
+! Terminal Status: [C C ]
+! Terminal Bus Ref: [2 2 ]
+
+! YPrim (G matrix)
+!              0 |             0 |
+!              0 |             0 |
+! YPrim (B Matrix) = 
+!              0 |             0 |
+!              0 |             0 |
+~ Bus1=b1.1
+~ Bus2=b1.0
+~ Phases=1
+~ R=20.00
+~ %StdDev=0.0
+~ OnTime=0.200
+~ Temporary= Yes
+~ MinAmps=3.0
+~ MinAmps=3
+~ NormAmps=0
+~ EmergAmps=0
+~ FaultRate=0
+~ pctPerm=100
+~ Repair=0
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+// SpecType=1
+
+New "Fault.fg"
+! ENABLED
+! NPhases = 3
+! Nconds = 3
+! Nterms = 2
+! Yorder = 6
+! NodeRef = "4 5 6 0 0 0 "
+! Terminal Status: [C C C C C C ]
+! Terminal Bus Ref: [2 2 2 2 2 2 ]
+
+! YPrim (G matrix)
+!           0.05 |         -0.01 |         -0.01 |         -0.05 |          0.01 |          0.01 |
+!          -0.01 |          0.05 |         -0.01 |          0.01 |         -0.05 |          0.01 |
+!          -0.01 |         -0.01 |          0.05 |          0.01 |          0.01 |         -0.05 |
+!          -0.05 |          0.01 |          0.01 |          0.05 |         -0.01 |         -0.01 |
+!           0.01 |         -0.05 |          0.01 |         -0.01 |          0.05 |         -0.01 |
+!           0.01 |          0.01 |         -0.05 |         -0.01 |         -0.01 |          0.05 |
+! YPrim (B Matrix) = 
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+!              0 |             0 |             0 |             0 |             0 |             0 |
+~ Bus1=b1
+~ Bus2=b1.0.0.0
+~ Phases=3
+~ R=0.00
+~ %StdDev=0.0
+~ GMatrix= (0.050 |-0.010 0.050 |-0.010 -0.010 0.050 )
+~ OnTime=0.000
+~ Temporary= No
+~ MinAmps=5.0
+~ MinAmps=5
+~ NormAmps=0
+~ EmergAmps=0
+~ FaultRate=0
+~ pctPerm=100
+~ Repair=0
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+// SpecType=2
+
+New "Load.ldk"
+! ENABLED
+! NPhases = 3
+! Nconds = 4
+! Nterms = 1
+! Yorder = 4
+! NodeRef = "7 8 9 0 "
+! Terminal Status: [C C C C ]
+! Terminal Bus Ref: [3 3 3 3 ]
+
+! YPrim (G matrix)
+!   0.6510416667 |             0 |             0 | -0.6510416667 |
+!              0 |  0.6510416667 |             0 | -0.6510416667 |
+!              0 |             0 |  0.6510416667 | -0.6510416667 |
+!  -0.6510416667 | -0.6510416667 | -0.6510416667 |   1.953126953 |
+! YPrim (B Matrix) = 
+!  -0.2773425886 |             0 |             0 |  0.2773425886 |
+!              0 | -0.2773425886 |             0 |  0.2773425886 |
+!              0 |             0 | -0.2773425886 |  0.2773425886 |
+!   0.2773425886 |  0.2773425886 |  0.2773425886 | -0.8320285979 |
+! VARIABLES
+~ Phases=3
+~ Bus1=blv
+~ kV=0.48
+~ kW=150
+~ PF=0.92
+~ Model=1
+~ Yearly=
+~ Daily=
+~ Duty=
+~ Growth=
+~ Conn=wye
+~ kvar=63.8997324204307
+~ RNeut=-1
+~ XNeut=0
+~ Status=Variable
+~ Class=1
+~ VMinpu=0.95
+~ VMaxpu=1.05
+~ VMinNorm=0
+~ VMinEmerg=0
+~ XfkVA=0
+~ AllocationFactor=0.5
+~ kVA=163.04347826087
+~ %Mean=50
+~ %StdDev=10
+~ CVRWatts=1
+~ CVRVars=2
+~ kWh=0
+~ kWhDays=30
+~ CFactor=4
+~ CVRCurve=
+~ NumCust=1
+~ ZIPV=[ 0 0 0 0 0 0 0]
+~ %SeriesRL=50
+~ RelWeight=1
+~ VLowpu=0.5
+~ puXHarm=0
+~ XRHarm=6
+~ Spectrum=sp5
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+
+
+New "Load.ldx"
+! ENABLED
+! NPhases = 1
+! Nconds = 2
+! Nterms = 1
+! Yorder = 2
+! NodeRef = "4 0 "
+! Terminal Status: [C C ]
+! Terminal Bus Ref: [2 2 ]
+
+! YPrim (G matrix)
+!  0.002800925926 | -0.002800925926 |
+!  -0.002800925926 | 0.002800928727 |
+! YPrim (B Matrix) = 
+!  -0.001511779664 | 0.001511779664 |
+!  0.001511779664 | -0.001511781176 |
+! VARIABLES
+~ Phases=1
+~ Bus1=b1.1
+~ kV=7.2
+~ kW=145.2
+~ PF=0.88
+~ Model=1
+~ Yearly=
+~ Daily=
+~ Duty=
+~ Growth=
+~ Conn=wye
+~ kvar=78.3706577744503
+~ RNeut=-1
+~ XNeut=0
+~ Status=Variable
+~ Class=1
+~ VMinpu=0.95
+~ VMaxpu=1.05
+~ VMinNorm=0
+~ VMinEmerg=0
+~ XfkVA=300
+~ AllocationFactor=0.55
+~ kVA=11.3636363636364
+~ %Mean=50
+~ %StdDev=10
+~ CVRWatts=1
+~ CVRVars=2
+~ kWh=0
+~ kWhDays=30
+~ CFactor=4
+~ CVRCurve=
+~ NumCust=1
+~ ZIPV=[ 0 0 0 0 0 0 0]
+~ %SeriesRL=50
+~ RelWeight=1
+~ VLowpu=0.5
+~ puXHarm=0
+~ XRHarm=6
+~ Spectrum=defaultload
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+
+
+New "Load.ldc"
+! ENABLED
+! NPhases = 1
+! Nconds = 2
+! Nterms = 1
+! Yorder = 2
+! NodeRef = "5 0 "
+! Terminal Status: [C C ]
+! Terminal Bus Ref: [2 2 ]
+
+! YPrim (G matrix)
+!  0.001125257202 | -0.001125257202 |
+!  -0.001125257202 | 0.001125258327 |
+! YPrim (B Matrix) = 
+!  -0.0006073494976 | 0.0006073494976 |
+!  0.0006073494976 | -0.000607350105 |
+! VARIABLES
+~ Phases=1
+~ Bus1=b1.2
+~ kV=7.2
+~ kW=58.3333333333333
+~ PF=0.88
+~ Model=1
+~ Yearly=
+~ Daily=
+~ Duty=
+~ Growth=
+~ Conn=wye
+~ kvar=31.4849979580551
+~ RNeut=-1
+~ XNeut=0
+~ Status=Variable
+~ Class=1
+~ VMinpu=0.95
+~ VMaxpu=1.05
+~ VMinNorm=0
+~ VMinEmerg=0
+~ XfkVA=0
+~ AllocationFactor=0.5
+~ kVA=11.3636363636364
+~ %Mean=50
+~ %StdDev=10
+~ CVRWatts=1
+~ CVRVars=2
+~ kWh=12000
+~ kWhDays=30
+~ CFactor=3.5
+~ CVRCurve=
+~ NumCust=1
+~ ZIPV=[ 0 0 0 0 0 0 0]
+~ %SeriesRL=50
+~ RelWeight=1
+~ VLowpu=0.5
+~ puXHarm=0
+~ XRHarm=6
+~ Spectrum=defaultload
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+
+
+New "Monitor.mon1"
+! ENABLED
+! NPhases = 3
+! Nconds = 3
+! Nterms = 1
+! Yorder = 3
+! NodeRef = "1 2 3 "
+! Terminal Status: [C C C ]
+! Terminal Bus Ref: [1 1 1 ]
+
+~ Element=Line.l1
+~ Terminal=1
+~ Mode=0
+~ Action=
+~ Residual=No
+~ VIPolar=Yes
+~ PPolar=Yes
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+// BufferSize=1024
+// Hour=0
+// Sec= 0.0E+000
+// BaseFrequency=60
+// Bufptr=0
+// Buffer=
+
+
+New "EnergyMeter.em1"
+! ENABLED
+! NPhases = 3
+! Nconds = 3
+! Nterms = 1
+! Yorder = 3
+! NodeRef = "1 2 3 "
+! Terminal Status: [C C C ]
+! Terminal Bus Ref: [1 1 1 ]
+
+~ Element=Line.l1
+~ Terminal=1
+~ Action=
+~ Option=[E, R, C]
+~ kVANormal=0
+~ kVAEmerg=0
+~ PeakCurrent=[ 400 400 400]
+~ ZoneList=
+~ LocalOnly=No
+~ Mask=[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1]
+~ Losses=Yes
+~ LineLosses=Yes
+~ XfmrLosses=Yes
+~ SeqLosses=Yes
+~ 3PhaseLosses=Yes
+~ VBaseLosses=Yes
+~ PhaseVoltageReport=No
+~ Int_Rate=0
+~ Int_Duration=0
+~ SAIFI=0
+~ SAIFIkW=0
+~ SAIDI=0
+~ CAIDI=0
+~ CustInterrupts=0
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+Registers
+"kWh" = 0
+"kvarh" = 0
+"Max kW" = -1E50
+"Max kVA" = -1E50
+"Zone kWh" = 0
+"Zone kvarh" = 0
+"Zone Max kW" = -1E50
+"Zone Max kVA" = -1E50
+"Overload kWh Normal" = 0
+"Overload kWh Emerg" = 0
+"Load EEN" = 0
+"Load UE" = 0
+"Zone Losses kWh" = 0
+"Zone Losses kvarh" = 0
+"Zone Max kW Losses" = -1E50
+"Zone Max kvar Losses" = -1E50
+"Load Losses kWh" = 0
+"Load Losses kvarh" = 0
+"No Load Losses kWh" = 0
+"No Load Losses kvarh" = 0
+"Max kW Load Losses" = -1E50
+"Max kW No Load Losses" = -1E50
+"Line Losses" = 0
+"Transformer Losses" = 0
+"Line Mode Line Losses" = 0
+"Zero Mode Line Losses" = 0
+"3-phase Line Losses" = 0
+"1- and 2-phase Line Losses" = 0
+"Gen kWh" = 0
+"Gen kvarh" = 0
+"Gen Max kW" = -1E50
+"Gen Max kVA" = -1E50
+"12.5 kV Losses" = 0
+"Aux1" = 0
+"Aux6" = 0
+"Aux11" = 0
+"Aux16" = 0
+"Aux21" = 0
+"Aux26" = 0
+"12.5 kV Line Loss" = 0
+"Aux2" = 0
+"Aux7" = 0
+"Aux12" = 0
+"Aux17" = 0
+"Aux22" = 0
+"Aux27" = 0
+"12.5 kV Load Loss" = 0
+"Aux3" = 0
+"Aux8" = 0
+"Aux13" = 0
+"Aux18" = 0
+"Aux23" = 0
+"Aux28" = 0
+"12.5 kV No Load Loss" = 0
+"Aux4" = 0
+"Aux9" = 0
+"Aux14" = 0
+"Aux19" = 0
+"Aux24" = 0
+"Aux29" = 0
+"12.5 kV Load Energy" = 0
+"Aux5" = 0
+"Aux10" = 0
+"Aux15" = 0
+"Aux20" = 0
+"Aux25" = 0
+"Aux30" = 0
+
+Branch List:
+Circuit Element = l1
+   Shunt Element = Load.ldx
+   Shunt Element = Load.ldc
+Circuit Element = tup
+Circuit Element = tr1
+   Shunt Element = Load.ldk
+
+New "Transformer.tup"
+! ENABLED
+! NPhases = 1
+! Nconds = 2
+! Nterms = 2
+! Yorder = 4
+! NodeRef = "4 0 10 0 "
+! Terminal Status: [C C C C ]
+! Terminal Bus Ref: [2 2 4 4 ]
+
+! YPrim (G matrix)
+!  0.009274097816 | -0.009274097816 | -0.2782229345 |  0.2782229345 |
+!  -0.009274097816 | 0.009274097816 |  0.2782229345 | -0.2782229345 |
+!  -0.2782229345 |  0.2782229345 |   8.346688034 |  -8.346688034 |
+!   0.2782229345 | -0.2782229345 |  -8.346688034 |   8.346688034 |
+! YPrim (B Matrix) = 
+!  -0.04637048908 | 0.04637048908 |   1.391114672 |  -1.391114672 |
+!  0.04637048908 | -0.04637048908 |  -1.391114672 |   1.391114672 |
+!    1.391114672 |  -1.391114672 |  -41.73344017 |   41.73344017 |
+!   -1.391114672 |   1.391114672 |   41.73344017 |  -41.73344017 |
+~ NumWindings=2
+~ phases=1
+~ Wdg=1 bus=b1.1
+~ conn=wye
+~ kv=7.20
+~ kVA=50.0
+~ tap=1.000
+~ %R=0.20
+~ RdcOhms=1.76256
+~ rneut=-1.000
+~ xneut=0.000
+~ Wdg=2 bus=ui.1
+~ conn=wye
+~ kv=0.24
+~ kVA=50.0
+~ tap=1.000
+~ %R=0.20
+~ RdcOhms=0.0019584
+~ rneut=-1.000
+~ xneut=0.000
+~ XHL=2.000
+~ XHT=35.000
+~ XLT=30.000
+~ X12=2.000
+~ X13=35.000
+~ X23=30.000
+~ Xscmatrix= "2.00 "
+~ NormMAxHkVA=55
+~ EmergMAxHkVA=75
+~ thermal=2.0
+~ n=0.8
+~ m=0.8
+~ flrise=65
+~ hsrise=15
+~ %loadloss=0
+~ %noloadloss=0
+~ NormHkVA=55
+~ EmergHkVA=75
+~ Sub=No
+~ MaxTap=1.1
+~ MinTap=0.9
+~ NumTaps=32
+~ SubName=
+~ %IMag=0
+~ ppm_Antifloat=0
+~ %Rs=[0.2, 0.2, ]
+~ Bank=
+~ XfmrCode=
+~ XRConst=No
+~ X12=2
+~ X13=35
+~ X23=30
+~ LeadLag=Lag
+~ WdgCurrents=1.52395, (-24.925), 45.7185, (155.08), 
+~ Core=shell
+~ RDCOhms=0.0019584
+~ Seasons=1
+~ Ratings=[ 1100]
+~ NormAmps=7.63888888888889
+~ EmergAmps=10.4166666666667
+~ FaultRate=0.007
+~ pctPerm=0
+~ Repair=0
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+ZB:
+8E-8 
+4E-7 
+
+ZB: (inverted)
+480769.2308 
+-2403846.1538 
+
+Y_OneVolt
+480769.2308 
+-480769.2308 480769.2308 
+-2403846.1538 
+2403846.1538 -2403846.1538 
+
+Y_Terminal
+0.0093 
+-0.0093 0.0093 
+-0.2782 0.2782 8.3467 
+0.2782 -0.2782 -8.3467 8.3467 
+-0.0464 
+0.0464 -0.0464 
+1.3911 -1.3911 -41.7334 
+-1.3911 1.3911 41.7334 -41.7334 
+
+TermRef= 1 2 3 4 
+
+New "UPFC.u1"
+! ENABLED
+! NPhases = 1
+! Nconds = 1
+! Nterms = 2
+! Yorder = 2
+! NodeRef = "10 11 "
+! Terminal Status: [C C ]
+! Terminal Bus Ref: [4 5 ]
+
+! YPrim (G matrix)
+!              0 |             0 |
+!              0 |             0 |
+! YPrim (B Matrix) = 
+!            -50 |            50 |
+!             50 |           -50 |
+! VARIABLES
+!  1: ModeUPFC = 1
+!  2: IUPFC = 0
+!  3: Re{Vbin} = 222.71
+!  4: Im{Vbin} = -31.735
+!  5: Re{Vbout} = 239.61
+!  6: Im{Vbout} = -34.105
+!  7: Losses = 1.0124
+!  8: P_UPFC = 0
+!  9: Q_UPFC = 0
+! 10: Qideal = 0
+! 11: Re{Sr0^[1]} = -79.506
+! 12: Im{Sr0^[1]} = -864.56
+! 13: Re{Sr1^[1]} = 77.038
+! 14: Im{Sr1^[1]} = 864.56
+~ Bus1=ui.1
+~ Bus2=uo.1
+~ RefkV=0.242
+~ PF=1
+~ Frequency=60
+~ Phases=1
+~ Xs=0.02
+~ Tol1=0.001
+~ Mode=1
+~ VpqMax=24
+~ LossCurve=losses
+~ VHLimit=300
+~ VLLimit=125
+~ CLimit=265
+~ refkV2=0
+~ kvarLimit=5
+~ Element=
+~ Spectrum=default
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+BaseFrequency=60.0
+Z Matrix=
+0 +j 0.02 
+
+New "UPFCControl.uc1"
+~ UPFCList=
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+! ENABLED
+! NPhases = 0
+! Nconds = 0
+! Nterms = 0
+! Yorder = 0
+! NodeRef = "nil"
+! Terminal Status: []
+! Terminal Bus Ref: []
+
+
+New "Load.ldu"
+! ENABLED
+! NPhases = 1
+! Nconds = 2
+! Nterms = 1
+! Yorder = 2
+! NodeRef = "11 0 "
+! Terminal Status: [C C ]
+! Terminal Bus Ref: [5 5 ]
+
+! YPrim (G matrix)
+!   0.1736111111 | -0.1736111111 |
+!  -0.1736111111 |  0.1736112847 |
+! YPrim (B Matrix) = 
+!  -0.0570632127 |  0.0570632127 |
+!   0.0570632127 | -0.05706326977 |
+! VARIABLES
+~ Phases=1
+~ Bus1=uo.1
+~ kV=0.24
+~ kW=10
+~ PF=0.95
+~ Model=1
+~ Yearly=
+~ Daily=
+~ Duty=
+~ Growth=
+~ Conn=wye
+~ kvar=3.28684105178863
+~ RNeut=-1
+~ XNeut=0
+~ Status=Variable
+~ Class=1
+~ VMinpu=0.95
+~ VMaxpu=1.05
+~ VMinNorm=0
+~ VMinEmerg=0
+~ XfkVA=0
+~ AllocationFactor=0.5
+~ kVA=10.5263157894737
+~ %Mean=50
+~ %StdDev=10
+~ CVRWatts=1
+~ CVRVars=2
+~ kWh=0
+~ kWhDays=30
+~ CFactor=4
+~ CVRCurve=
+~ NumCust=1
+~ ZIPV=[ 0 0 0 0 0 0 0]
+~ %SeriesRL=50
+~ RelWeight=1
+~ VLowpu=0.5
+~ puXHarm=0
+~ XRHarm=6
+~ Spectrum=defaultload
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=
+
+
+
+New "LoadShape.default"
+~ NPts=24
+~ Interval=1
+~ Mult=[ 0.677 0.6256 0.6087 0.5833 0.58028 0.6025 0.657 0.7477 0.832 0.88 0.94 0.989 0.985 0.98 0.9898 0.999 1 0.958 0.936 0.913 0.876 0.876 0.828 0.756]
+~ Hour=
+~ Mean=0.825828333333334
+~ StdDev=0.15309160814381
+~ CSVFile=
+~ SngFile=
+~ DblFile=
+~ Action=
+~ QMult=
+~ UseActual=No
+~ PMax=1
+~ QMax=0
+~ SInterval=3600
+~ MInterval=60
+~ PBase=0
+~ QBase=0
+~ PMult=[ 0.677 0.6256 0.6087 0.5833 0.58028 0.6025 0.657 0.7477 0.832 0.88 0.94 0.989 0.985 0.98 0.9898 0.999 1 0.958 0.936 0.913 0.876 0.876 0.828 0.756]
+~ PQCSVFile=
+~ MemoryMapping=No
+~ Interpolation=Avg
+~ Like=
+
+
+New "GrowthShape.default"
+~ NPts=2
+~ Year=[ 1 20]
+~ Mult=[ 1.025 1.025]
+~ CSVFile=
+~ SngFile=
+~ DblFile=
+~ Like=
+
+
+New "Spectrum.default"
+~ NumHarm=7
+~ Harmonic=[ 1 3 5 7 9 11 13]
+~ %Mag=[ 100 33 20 14 11 9 7]
+~ Angle=[ 0 0 0 0 0 0 0]
+~ CSVFile=
+~ Like=
+Multiplier Array:
+Harmonic, Mult.re, Mult.im, Mag,  Angle
+1, 1, 0, 1, 0
+3, 0.33, 0, 0.33, 0
+5, 0.2, 0, 0.2, 0
+7, 0.14, 0, 0.14, 0
+9, 0.11, 0, 0.11, 0
+11, 0.09, 0, 0.09, 0
+13, 0.07, 0, 0.07, 0
+
+New "Spectrum.defaultload"
+~ NumHarm=7
+~ Harmonic=[ 1 3 5 7 9 11 13]
+~ %Mag=[ 100 1.5 20 14 1 9 7]
+~ Angle=[ 0 180 180 180 180 180 180]
+~ CSVFile=
+~ Like=
+Multiplier Array:
+Harmonic, Mult.re, Mult.im, Mag,  Angle
+1, 1, 0, 1, 0
+3, -0.015, -2.53510362191938E-12, 0.015, -179.999999980645
+5, -0.2, -3.38013816255917E-11, 0.2, -179.999999980645
+7, -0.14, -2.36609671379142E-11, 0.14, -179.999999980645
+9, -0.01, -1.69006908127958E-12, 0.01, -179.999999980645
+11, -0.09, -1.52106217315163E-11, 0.09, -179.999999980645
+13, -0.07, -1.18304835689571E-11, 0.07, -179.999999980645
+
+New "Spectrum.defaultgen"
+~ NumHarm=7
+~ Harmonic=[ 1 3 5 7 9 11 13]
+~ %Mag=[ 100 5 3 1.5 1 0.7 0.5]
+~ Angle=[ 0 0 0 0 0 0 0]
+~ CSVFile=
+~ Like=
+Multiplier Array:
+Harmonic, Mult.re, Mult.im, Mag,  Angle
+1, 1, 0, 1, 0
+3, 0.05, 0, 0.05, 0
+5, 0.03, 0, 0.03, 0
+7, 0.015, 0, 0.015, 0
+9, 0.01, 0, 0.01, 0
+11, 0.007, 0, 0.007, 0
+13, 0.005, 0, 0.005, 0
+
+New "Spectrum.defaultvsource"
+~ NumHarm=1
+~ Harmonic=[ 1]
+~ %Mag=[ 100]
+~ Angle=[ 0]
+~ CSVFile=
+~ Like=
+Multiplier Array:
+Harmonic, Mult.re, Mult.im, Mag,  Angle
+1, 1, 0, 1, 0
+
+New "Spectrum.linear"
+~ NumHarm=1
+~ Harmonic=[ 1]
+~ %Mag=[ 100]
+~ Angle=[ 0]
+~ CSVFile=
+~ Like=
+Multiplier Array:
+Harmonic, Mult.re, Mult.im, Mag,  Angle
+1, 1, 0, 1, 0
+
+New "Spectrum.pwm6"
+~ NumHarm=13
+~ Harmonic=[ 1 3 5 7 9 11 13 15 17 19 21 23 25]
+~ %Mag=[ 100 4.4 76.5 62.7 2.9 24.8 12.7 0.5 7.1 8.4 0.9 4.4 3.3]
+~ Angle=[ -103 -5 28 -180 -33 -59 79 36 -253 -124 3 -30 86]
+~ CSVFile=
+~ Like=
+Multiplier Array:
+Harmonic, Mult.re, Mult.im, Mag,  Angle
+1, 1, 0, 1, 0
+3, 0.0246044877631248, -0.0364776531853989, 0.044, -55.9999999806332
+5, -0.763951594066837, -0.0400370069153432, 0.765, -176.999999961278
+7, -0.626904504857499, -0.0109426591546193, 0.627, -178.999999961278
+9, -0.0288411349682244, 0.00303132541055264, 0.029, 174.000000038745
+11, 0.246641430077473, -0.0259230586416629, 0.248, -5.9999999418997
+13, 0.117752349593323, -0.0475750372070455, 0.127, -21.9999999225329
+15, -0.00388572981195581, 0.00314660194948104, 0.005, 141.000000077479
+17, 0.0376242676758695, 0.0602114148800252, 0.071, 58.000000077467
+19, 0.070448327628678, 0.0457496790625076, 0.084, 33.0000000968338
+21, 0.00895069705640123, 0.000940756187612044, 0.009, 6.00000011620048
+23, -0.0439932985885677, 0.0007679057866245, 0.044, 179.000000116213
+25, -0.0256458167799675, 0.0207675728405689, 0.033, 141.000000135579
+
+New "Spectrum.dc6"
+~ NumHarm=10
+~ Harmonic=[ 1 3 5 7 9 11 13 15 17 19]
+~ %Mag=[ 100 1.2 33.6 1.6 0.4 8.7 1.2 0.3 4.5 1.3]
+~ Angle=[ -75 28 156 29 -91 49 54 148 -57 -46]
+~ CSVFile=
+~ Like=
+Multiplier Array:
+Harmonic, Mult.re, Mult.im, Mag,  Angle
+1, 1, 0, 1, 0
+3, -0.00350846045394681, -0.0114756570723899, 0.012, -106.999999980645
+5, -0.331863282466172, 0.0525619800880603, 0.336, 171.000000019379
+7, -0.0155247316184025, -0.00387075033767012, 0.016, -165.999999961278
+9, -0.00287735919983098, -0.00277863348341374, 0.004, -135.999999961278
+11, -0.0781950820593247, 0.0381382897064811, 0.087, 154.000000038745
+13, 0.0075518447016082, -0.00932575153018737, 0.012, -50.9999999418996
+15, -0.00292311019354908, -0.000674853166525461, 0.003, -166.999999922545
+17, -0.0334415171809179, 0.0301108772479044, 0.045, 138.000000058112
+19, 0.00630252507792411, -0.0113700561846518, 0.013, -60.9999999225329
+
+New "TCC_Curve.a"
+~ NPts=5
+~ C_Array=[ 1 2.5 4.5 8 14]
+~ T_Array=[ 0.15 0.07 0.05 0.045 0.045]
+~ Like=
+
+
+New "TCC_Curve.d"
+~ NPts=5
+~ C_Array=[ 1 2.5 4.5 8 14]
+~ T_Array=[ 6 0.7 0.2 0.06 0.02]
+~ Like=
+
+
+New "TCC_Curve.tlink"
+~ NPts=7
+~ C_Array=[ 2 2.1 3 4 6 22 50]
+~ T_Array=[ 300 100 10.1 4 1.4 0.1 0.02]
+~ Like=
+
+
+New "TCC_Curve.klink"
+~ NPts=6
+~ C_Array=[ 2 2.2 3 4 6 30]
+~ T_Array=[ 300 20 4 1.3 0.41 0.02]
+~ Like=
+
+
+New "TCC_Curve.uv1547"
+~ NPts=2
+~ C_Array=[ 0.5 0.9]
+~ T_Array=[ 0.166 2]
+~ Like=
+
+
+New "TCC_Curve.ov1547"
+~ NPts=2
+~ C_Array=[ 1.1 1.2]
+~ T_Array=[ 2 0.166]
+~ Like=
+
+
+New "TCC_Curve.mod_inv"
+~ NPts=15
+~ C_Array=[ 1.1 1.3 1.5 2 3 4 5 6 7 8 9 10 20 50 100]
+~ T_Array=[ 27.1053 9.9029 6.439 3.8032 2.4322 1.9458 1.6883 1.5255 1.4117 1.3267 1.2604 1.2068 0.9481 0.7468 0.6478]
+~ Like=
+
+
+New "TCC_Curve.very_inv"
+~ NPts=15
+~ C_Array=[ 1.1 1.3 1.5 2 3 4 5 6 7 8 9 10 20 50 100]
+~ T_Array=[ 93.872 28.9113 16.179 7.0277 2.9423 1.7983 1.3081 1.0513 0.8995 0.8023 0.7361 0.6891 0.5401 0.4988 0.493]
+~ Like=
+
+
+New "TCC_Curve.ext_inv"
+~ NPts=15
+~ C_Array=[ 1.1 1.3 1.5 2 3 4 5 6 7 8 9 10 20 50 100]
+~ T_Array=[ 134.4074 40.9913 22.6817 9.5217 3.6467 2.0017 1.2967 0.9274 0.7092 0.5693 0.4742 0.4065 0.1924 0.133 0.1245]
+~ Like=
+
+
+New "TCC_Curve.definite"
+~ NPts=3
+~ C_Array=[ 1 1.001 100]
+~ T_Array=[ 300 1 1]
+~ Like=
+
+
+New "LineCode.lc"
+~ NPhases=3
+~ R1=0.30100
+~ X1=0.66700
+~ R0=0.88200
+~ X0=2.04100
+~ C1=3.40000
+~ C0=1.60000
+~ Units=km
+~ RMatrix="0.49466667 0.19366667 0.19366667 |0.19366667 0.49466667 0.19366667 |0.19366667 0.19366667 0.49466667 |"
+~ XMatrix="1.12500000 0.45800000 0.45800000 |0.45800000 1.12500000 0.45800000 |0.45800000 0.45800000 1.12500000 |"
+~ CMatrix="2.80000000 -0.60000000 -0.60000000 |-0.60000000 2.80000000 -0.60000000 |-0.60000000 -0.60000000 2.80000000 |"
+~ BaseFreq=60
+~ NormAmps=400
+~ EmergAmps=600
+~ FaultRate=0.1
+~ PctPerm=20
+~ Repair=0
+~ Kron=No
+~ Rg=0.01805
+~ Xg=0.155081
+~ rho=100
+~ Neutral=3
+~ Seasons=1
+~ Ratings=[400,]
+~ LineType=oh
+
+New "Spectrum.sp5"
+~ NumHarm=3
+~ Harmonic=[ 1 5 7]
+~ %Mag=[ 100 20 12]
+~ Angle=[ 0 30 60]
+~ CSVFile=
+~ Like=
+Multiplier Array:
+Harmonic, Mult.re, Mult.im, Mag,  Angle
+1, 1, 0, 1, 0
+5, 0.173205080754071, 0.100000000004879, 0.2, 30
+7, 0.0599999999941454, 0.103923048457513, 0.12, 60
+
+New "XYcurve.losses"
+~ NPts=3
+~ Points=[ 0.9 1.0143 1 1.008 1.1 1.0143]
+~ YArray=[ 1.0143 1.008 1.0143]
+~ XArray=[ 0.9 1 1.1]
+~ CSVFile=
+~ SngFile=
+~ DblFile=
+~ X=0.9
+~ Y=1.0143
+~ XShift=0
+~ YShift=0
+~ XScale=1
+~ YScale=1
+~ Like=
+
+! OPTIONS
+! NumNodes = 11
+Set Mode=Snap
+Set ControlMode=Static
+Set Random=Gaussian
+Set hour=0
+Set sec=0
+Set year=0
+Set frequency=60
+Set stepsize=0.001
+Set number=100
+Set circuit=dmp3
+Set editor=NotePad.exe
+Set tolerance=0.0001
+Set maxiterations=100
+Set miniterations=2
+Set loadmodel=PowerFlow
+Set loadmult=1
+Set Normvminpu=0.95
+Set Normvmaxpu=1.05
+Set Emergvminpu=0.9
+Set Emergvmaxpu=1.08
+Set %mean=82.58
+Set %stddev=15.31
+Set LDCurve=
+Set %growth=2.5
+Set genkw=1000
+Set genpf=1
+Set capkvar=600
+Set addtype=generator
+Set allowduplicates=No
+Set zonelock=No
+Set ueweight=    1.00
+Set lossweight=    1.00
+Set ueregs=[10]
+Set lossregs=[13]
+Set voltagebases=(     12.47      0.48      0.24)
+Set algorithm=Normal
+Set Trapezoidal=No
+Set genmult=1
+Set Basefrequency=60
+Set harmonics=(ALL)
+Set maxcontroliter=100
+
+System Y Matrix (Lower Triangle by Columns)
+
+  Row  Col               G               B
+
+[   1,   1] =      0.55321 + j     -1.4335
+[   2,   1] =     -0.15595 + j     0.40028
+[   3,   1] =     -0.15595 + j     0.40028
+[   4,   1] =     -0.43421 + j     0.96801
+[   5,   1] =       0.1279 + j    -0.27758
+[   6,   1] =       0.1279 + j    -0.27758
+[   1,   2] =     -0.15595 + j     0.40028
+[   2,   2] =      0.55321 + j     -1.4335
+[   3,   2] =     -0.15595 + j     0.40028
+[   4,   2] =       0.1279 + j    -0.27758
+[   5,   2] =     -0.43421 + j     0.96801
+[   6,   2] =       0.1279 + j    -0.27758
+[   1,   3] =     -0.15595 + j     0.40028
+[   2,   3] =     -0.15595 + j     0.40028
+[   3,   3] =      0.55321 + j     -1.4335
+[   4,   3] =       0.1279 + j    -0.27758
+[   5,   3] =       0.1279 + j    -0.27758
+[   6,   3] =     -0.43421 + j     0.96801
+[   1,   4] =     -0.43421 + j     0.96801
+[   2,   4] =       0.1279 + j    -0.27758
+[   3,   4] =       0.1279 + j    -0.27758
+[   4,   4] =      0.50601 + j     -1.0564
+[   5,   4] =     -0.14276 + j     0.29785
+[   6,   4] =     -0.14276 + j     0.29785
+[   7,   4] =     -0.20846 + j      0.8686
+[   8,   4] =      0.20846 + j     -0.8686
+[  10,   4] =     -0.27822 + j      1.3911
+[   1,   5] =       0.1279 + j    -0.27758
+[   2,   5] =     -0.43421 + j     0.96801
+[   3,   5] =       0.1279 + j    -0.27758
+[   4,   5] =     -0.14276 + j     0.29785
+[   5,   5] =      0.49506 + j     -1.0092
+[   6,   5] =     -0.14276 + j     0.29785
+[   8,   5] =     -0.20846 + j      0.8686
+[   9,   5] =      0.20846 + j     -0.8686
+[   1,   6] =       0.1279 + j    -0.27758
+[   2,   6] =       0.1279 + j    -0.27758
+[   3,   6] =     -0.43421 + j     0.96801
+[   4,   6] =     -0.14276 + j     0.29785
+[   5,   6] =     -0.14276 + j     0.29785
+[   6,   6] =      0.49393 + j     -1.0085
+[   7,   6] =      0.20846 + j     -0.8686
+[   9,   6] =     -0.20846 + j      0.8686
+[   4,   7] =     -0.20846 + j      0.8686
+[   6,   7] =      0.20846 + j     -0.8686
+[   7,   7] =       9.5847 + j     -37.501
+[   4,   8] =      0.20846 + j     -0.8686
+[   5,   8] =     -0.20846 + j      0.8686
+[   8,   8] =       9.5847 + j     -37.501
+[   5,   9] =      0.20846 + j     -0.8686
+[   6,   9] =     -0.20846 + j      0.8686
+[   9,   9] =       9.5847 + j     -37.501
+[   4,  10] =     -0.27822 + j      1.3911
+[  10,  10] =       8.3467 + j     -91.733
+[  11,  10] =            0 + j          50
+[  10,  11] =            0 + j          50
+[  11,  11] =      0.17361 + j     -50.057

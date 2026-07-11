@@ -155,7 +155,7 @@ fn interval_units_bad_unit_logs_error_and_keeps_default() {
 // --- WP7.5 step 2b/2c: the dispatch math, pinned through a mock env ---
 //
 // The full end-to-end convergence is oracle-pinned by the
-// `tests/golden/phase7/invcontrol_{voltvar,voltwatt,vv_vw}.json` goldens (the live
+// `tests/golden/der_controls/invcontrol_{voltvar,voltwatt,vv_vw}.json` goldens (the live
 // corpus volt-var/volt-watt families migrate them too). These mock-env tests pin
 // the *per-call* arithmetic — the fleet build, the Sample triggers, `Calc_QHeadRoom`/
 // `Calc_PBase`, and the first DoPendingAction curve→clamp→delta step — independent
@@ -195,6 +195,10 @@ mod dispatch {
         panel_kw: f64,   // FDCkW
         /// The last `der_set_kw_requested` value (ideal readback for `der_present_kw`).
         requested_kw: f64,
+        // --- Storage volt-watt state (WPG.10; ignored when `!is_storage`) ---
+        storage_state: i32,       // TStorageObj.StorageState
+        vw_state_requested: bool, // TStorageObj.FVWStateRequested
+        storage_dckw: f64,        // TStorageObj.DCkW (Calc_PBase %Available base)
     }
     impl MockDer {
         fn new(name: &str, vpu: f64, present_kw: f64) -> Self {
@@ -219,6 +223,11 @@ mod dispatch {
                 eff_factor: 1.0,
                 panel_kw: present_kw,
                 requested_kw: present_kw,
+                // A discharging Storage by default (the common VW test scenario);
+                // ignored unless `is_storage` is set on the mock DER.
+                storage_state: crate::elements::pc::storage::STORE_DISCHARGING,
+                vw_state_requested: false,
+                storage_dckw: 0.0,
             }
         }
     }
@@ -307,6 +316,8 @@ mod dispatch {
                 dckw_rated: d.pmpp,
                 pct_dckw_rated: d.pu_pmpp,
                 eff_factor: d.eff_factor,
+                storage_state: d.storage_state,
+                vw_state_requested: d.vw_state_requested,
             }
         }
         fn der_is_pvsystem(&self, r: ElemRef) -> bool {
@@ -365,6 +376,9 @@ mod dispatch {
             // Ideal readback: the requested kW limit (the VW set-point).
             self.ders[Self::idx(r)].requested_kw
         }
+        fn der_storage_dckw(&mut self, r: ElemRef) -> f64 {
+            self.ders[Self::idx(r)].storage_dckw
+        }
         fn der_set_monitor_var(&mut self, _r: ElemRef, _kind: MonitorVar, _value: f64) {}
         fn push_change(&mut self, _delay: f64, code: i32) {
             self.pushes.push(code);
@@ -383,6 +397,30 @@ mod dispatch {
             0.0
         }
         fn set_loads_need_updating(&mut self) {}
+        fn der_gfm_mode(&self, _r: ElemRef) -> bool {
+            false
+        }
+        fn der_storage_state(&self, _r: ElemRef) -> i32 {
+            0
+        }
+        fn der_ilimit(&self, _r: ElemRef) -> f64 {
+            -1.0
+        }
+        fn der_reset_ibr(&self, _r: ElemRef) -> bool {
+            false
+        }
+        fn der_check_amps_limit(&mut self, _r: ElemRef) -> bool {
+            false
+        }
+        fn der_check_ol_inverter(&mut self, _r: ElemRef) -> bool {
+            false
+        }
+        fn der_set_gfm_mode(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_reset_ibr(&mut self, _r: ElemRef, _value: bool) {}
+        fn der_set_storage_state_off(&mut self, _r: ElemRef) {}
+        fn is_dynamic_model(&self) -> bool {
+            false
+        }
     }
 
     /// A VOLTVAR control over a `vvc_curve` that absorbs above 1.0 pu, named-list
@@ -490,17 +528,69 @@ mod dispatch {
     }
 
     #[test]
-    fn exponential_control_model_aborts_not_silently() {
-        // The Exponential ControlModel runs the (unported) PICtrl PI controller in
-        // CalcVoltVar_vars; Sample must reject it with an explicit error, never run
-        // the silent "stay put" branch (the deferral-is-never-a-silent-skip rule).
+    fn exponential_control_model_runs_pi_controller() {
+        // WPG.9: the Exponential ControlModel (`ControlModel=1`) runs the `TPICtrl`
+        // PI controller in `CalcVoltVar_vars` — `Sample` must NOT reject it, and it
+        // must NOT freeze the var output at the "stay put" level. Same V=1.05 absorb
+        // scenario as the Linear test: QDesireVVpu=-0.625, QHeadRoom(VARMAX)=600, so
+        // the PI setpoint DeltaQ = -0.625*600 = -375 (the *full* product — Exponential
+        // does not subtract QOldVV). `kDen`/`kNum` are recomputed from |FdeltaQ_factor|
+        // = 0.2 each call (InvControl.pas l.2706-2707). Both filter taps start at 0, so
+        // the first `SolvePI` output (den[1] = num[0]*kNum + den[0]*kDen) is exactly 0.
         let mut ic = voltvar_ic();
         ic.set_i32(prop::CONTROL_MODEL, 1); // Exponential
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
-        let err = ic.sample(&mut env).unwrap_err();
+        ic.sample(&mut env).unwrap(); // ported — must not error
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        let k_den = (-0.2_f64).exp();
         assert!(
-            err.contains("Exponential ControlModel"),
-            "expected an Exponential NOT_PORTED error, got: {err}"
+            (cv.pi_ctrl.k_den - k_den).abs() < 1e-12,
+            "kDen = {}",
+            cv.pi_ctrl.k_den
+        );
+        assert!(
+            (cv.pi_ctrl.k_num - (1.0 - k_den)).abs() < 1e-12,
+            "kNum = {}",
+            cv.pi_ctrl.k_num
+        );
+        // First PI step over the zeroed filter → exactly 0.0 (not the -1.0 stay-put
+        // value the old unreachable branch would have produced).
+        assert_eq!(
+            cv.q_desired_vv, 0.0,
+            "QDesiredVV first PI step = {}",
+            cv.q_desired_vv
+        );
+        assert_eq!(env.ders[0].requested_kvar, 0.0);
+    }
+
+    #[test]
+    fn pi_ctrl_solve_pi_two_step_sequence() {
+        // Direct pin of Pascal `TPICtrl.SolvePI` (mathutil.pas l.81) as InvControl
+        // drives it: Kp=1, kDen=exp(-|deltaQ_factor|), kNum=1-kDen recomputed each
+        // call. Feeding a constant setpoint s: step 1 → 0 (zeroed taps), step 2 →
+        // s*kNum, step 3 → s*kNum + s*kNum*kDen (the rising response).
+        let mut pi = super::PICtrl {
+            kp: 1.0,
+            ..super::PICtrl::default()
+        };
+        let k_den = (-0.4_f64).exp();
+        let k_num = 1.0 - k_den;
+        let s = -375.0;
+        pi.k_den = k_den;
+        pi.k_num = k_num;
+        let o1 = pi.solve_pi(s);
+        pi.k_den = k_den;
+        pi.k_num = k_num;
+        let o2 = pi.solve_pi(s);
+        pi.k_den = k_den;
+        pi.k_num = k_num;
+        let o3 = pi.solve_pi(s);
+        assert_eq!(o1, 0.0, "step 1 = {o1}");
+        assert!((o2 - s * k_num).abs() < 1e-9, "step 2 = {o2}");
+        assert!(
+            (o3 - (s * k_num + s * k_num * k_den)).abs() < 1e-9,
+            "step 3 = {o3}"
         );
     }
 
@@ -612,26 +702,164 @@ mod dispatch {
     }
 
     #[test]
-    fn voltwatt_storage_is_deferred_not_silent() {
-        // The Storage VOLTWATT/VV_VW dispatch is deferred with an explicit error
-        // (the YPrim-state-flip propagation gap; PVSystem volt-watt is ported).
+    fn voltwatt_storage_dispatches_kw() {
+        // WPG.10: a discharging Storage in VOLTWATT now dispatches (no NOT_PORTED).
+        // Discharging + not VWStateRequested reads the main `voltwatt_curve`, and
+        // yaxis=%Pmpp gives PBase = FDCkWRated = 600 — so the InvControl-side math
+        // equals the PVSystem case: V=1.05 → curve y=0.625, PLimitEndpu=0.625,
+        // CalcVoltWatt_watts (iter 1, requesting region) → PLimitVW=498.75. The
+        // set-point reaches the DER via `kWRequested`.
         let mut ic = voltwatt_ic();
         let mut der = MockDer::new("pv", 1.05, 600.0);
-        der.is_storage = true;
+        der.is_storage = true; // discharging by default
         let mut env = MockEnv::new(vec![der]);
-        let err = ic.sample(&mut env).unwrap_err();
+        ic.sample(&mut env).unwrap();
+        assert_eq!(env.pushes, vec![super::super::CHANGEWATTLEVEL]);
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
         assert!(
-            err.contains("Storage VOLTWATT/VV_VW"),
-            "expected a Storage VW NOT_PORTED error, got: {err}"
+            (cv.p_limit_vw_pu - 0.625).abs() < 1e-9,
+            "PLimitVWpu = {}",
+            cv.p_limit_vw_pu
+        );
+        assert!(
+            (cv.p_limit_vw - 498.75).abs() < 1e-9,
+            "PLimitVW = {} (expected 498.75)",
+            cv.p_limit_vw
+        );
+        assert!((env.ders[0].requested_kw - 498.75).abs() < 1e-9);
+    }
+
+    #[test]
+    fn voltwatt_storage_charging_selects_ch_curve() {
+        // WPG.10: the Storage-specific `CalcPVWcurve_limitpu` branch — a CHARGING
+        // Storage with a `voltwattCH_curve` (and no VWStateRequested flip) reads the
+        // CH curve, NOT the discharge `voltwatt_curve`. Distinct flat curves make the
+        // pick observable: CH y=0.5 everywhere vs the discharge curve's 0.625 at 1.05.
+        let mut ic = voltwatt_ic();
+        ic.voltwattch_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vwch",
+            &[0.5, 1.5],
+            &[0.5, 0.5],
+        ));
+        let mut der = MockDer::new("pv", 1.05, -300.0); // charging (kW < 0)
+        der.is_storage = true;
+        der.storage_state = crate::elements::pc::storage::STORE_CHARGING;
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.p_limit_vw_pu - 0.5).abs() < 1e-9,
+            "PLimitVWpu = {} (expected the CH curve's 0.5, not 0.625)",
+            cv.p_limit_vw_pu
         );
     }
 
     #[test]
-    fn vv_vw_storage_is_deferred_not_silent() {
-        // Symmetry with the VOLTWATT case: a Storage in the VV_VW combi also errors
-        // (the shared `guard_storage_vw`), never silently dispatching.
+    fn voltwatt_storage_yaxis_available_reads_live_dckw() {
+        // WPG.10 coverage: VoltWattYAxis=0 (%Available) on a Storage takes the
+        // `Calc_PBase` branch that reads the LIVE `TStorageObj.DCkW` via
+        // `der_storage_dckw` — Pascal `Calc_PBase` sets FDCkW:=0 for a Storage and
+        // reads the DCkW property instead, so PBase = DCkW * EffFactor. The
+        // storage decks all use the default yaxis=1 (%Pmpp), so this path is
+        // otherwise uncovered. Distinct DCkW (800) vs FDCkWRated (600) makes the
+        // branch observable: yaxis=0 gives 720, yaxis=1 would give 600.
+        let mut ic = voltwatt_ic();
+        ic.set_i32(prop::VOLTWATT_YAXIS, 0); // %Available (PAVAILABLEPU)
+        let mut der = MockDer::new("pv", 1.05, 600.0);
+        der.is_storage = true; // discharging by default
+        der.storage_dckw = 800.0; // live TStorageObj.DCkW (!= FDCkWRated)
+        der.eff_factor = 0.9; // FEffFactor
+        der.pmpp = 600.0; // FDCkWRated — the yaxis=1 base, for contrast
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
+        assert!(
+            (cv.f_eff_factor - 0.9).abs() < 1e-12,
+            "EffFactor = {}",
+            cv.f_eff_factor
+        );
+        // PBase = live DCkW * EffFactor = 800 * 0.9 = 720 (NOT FDCkWRated = 600).
+        assert!(
+            (cv.p_base - 720.0).abs() < 1e-9,
+            "PBase = {} (expected live DCkW*EffFactor = 720, not FDCkWRated = 600)",
+            cv.p_base
+        );
+    }
+
+    #[test]
+    fn voltwatt_storage_vw_state_requested_swaps_curves() {
+        // WPG.10 coverage: `CalcPVWcurve_limitpu`'s FVWStateRequested swap (Pascal
+        // InvControl.pas l.2960-2961 / 2969-2970). Once the VW function has
+        // requested a state flip, the curve selection SWAPS vs the normal pick: a
+        // DISCHARGING storage reads the CH curve, a CHARGING storage reads the
+        // discharge curve. Distinct flat curves make the pick observable: the
+        // discharge `vw` = 0.3 everywhere, the `vwch` = 0.7 everywhere.
+        let discharge_y = 0.3;
+        let charge_y = 0.7;
+        let vw = || {
+            crate::elements::general::xy_curve::XyCurveObj::from_points(
+                "vw",
+                &[0.5, 1.5],
+                &[discharge_y, discharge_y],
+            )
+        };
+        let vwch = || {
+            crate::elements::general::xy_curve::XyCurveObj::from_points(
+                "vwch",
+                &[0.5, 1.5],
+                &[charge_y, charge_y],
+            )
+        };
+
+        // Discharging + VWStateRequested → reads the CH curve (0.7), NOT vw (0.3).
+        let mut ic = voltwatt_ic();
+        ic.voltwatt_curve = Some(vw());
+        ic.voltwattch_curve = Some(vwch());
+        let mut der = MockDer::new("pv", 1.05, 600.0);
+        der.is_storage = true;
+        der.storage_state = crate::elements::pc::storage::STORE_DISCHARGING;
+        der.vw_state_requested = true;
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        assert!(
+            (ic.ctrl_vars[0].p_limit_vw_pu - charge_y).abs() < 1e-9,
+            "discharging+VWStateRequested PLimitVWpu = {} (expected the swapped CH curve {charge_y})",
+            ic.ctrl_vars[0].p_limit_vw_pu
+        );
+
+        // Charging + VWStateRequested → reads the discharge curve (0.3), NOT CH (0.7).
+        let mut ic = voltwatt_ic();
+        ic.voltwatt_curve = Some(vw());
+        ic.voltwattch_curve = Some(vwch());
+        let mut der = MockDer::new("pv", 1.05, -300.0); // charging (kW < 0)
+        der.is_storage = true;
+        der.storage_state = crate::elements::pc::storage::STORE_CHARGING;
+        der.vw_state_requested = true;
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        assert!(
+            (ic.ctrl_vars[0].p_limit_vw_pu - discharge_y).abs() < 1e-9,
+            "charging+VWStateRequested PLimitVWpu = {} (expected the swapped discharge curve {discharge_y})",
+            ic.ctrl_vars[0].p_limit_vw_pu
+        );
+    }
+
+    #[test]
+    fn vv_vw_storage_dispatches_both() {
+        // WPG.10: a discharging Storage in the VV_VW combi dispatches BOTH the
+        // volt-watt kW limit and the volt-var kvar in one DoPendingAction (no
+        // NOT_PORTED). Same curves/scenario as the PVSystem VV_VW test, so the
+        // set-points match: PLimitVW=498.75 (VW) and QDesiredVV=-75.8 (VV).
         let mut ic = InvControl::new("ic1");
         ic.set_i32(prop::COMBI_MODE, super::super::VV_VW);
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
+        ic.set_f64(prop::DELTA_P_FACTOR, 0.45);
         ic.voltwatt_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vw",
             &[1.0, 1.02, 1.1],
@@ -639,19 +867,29 @@ mod dispatch {
         ));
         ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vv",
-            &[0.5, 1.0, 1.5],
-            &[1.0, 0.0, -1.0],
+            &[0.5, 0.92, 1.0, 1.08, 1.5],
+            &[1.0, 1.0, 0.0, -1.0, -1.0],
         ));
         ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
         ic.side_effects(prop::DER_LIST, 0);
         let mut der = MockDer::new("pv", 1.05, 600.0);
-        der.is_storage = true;
+        der.is_storage = true; // discharging by default
         let mut env = MockEnv::new(vec![der]);
-        let err = ic.sample(&mut env).unwrap_err();
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env);
+        let cv = &ic.ctrl_vars[0];
         assert!(
-            err.contains("Storage VOLTWATT/VV_VW"),
-            "expected a Storage VV_VW NOT_PORTED error, got: {err}"
+            (cv.p_limit_vw - 498.75).abs() < 1e-9,
+            "PLimitVW = {} (expected 498.75)",
+            cv.p_limit_vw
         );
+        assert!(
+            (cv.q_desired_vv - (-75.8)).abs() < 1e-9,
+            "QDesiredVV = {} (expected -75.8)",
+            cv.q_desired_vv
+        );
+        assert!((env.ders[0].requested_kw - 498.75).abs() < 1e-9);
+        assert!((env.ders[0].requested_kvar - (-75.8)).abs() < 1e-9);
     }
 
     #[test]
@@ -758,7 +996,7 @@ mod dispatch {
     // per-step voltage *change* vs the DRC rolling-average window, so these mocks
     // seed the window directly (the window is fed only by the time-step cleanup,
     // which the mock env does not run — exactly why the end-to-end gate is the
-    // *daily* `phase7/invcontrol_drc` golden, not a snapshot).
+    // *daily* `der_controls/invcontrol_drc` golden, not a snapshot).
 
     /// A DRC control: no curve, zero-width deadband (DbVMin=DbVMax=1.0), steep
     /// slopes (ArGra=50), VARMAX, deltaQ_factor=0.2, named-list fleet `pv`.
@@ -818,6 +1056,67 @@ mod dispatch {
             ic.ctrl_vars[0].q_desire_drcpu, 0.0,
             "DRC must request 0 vars with an empty window"
         );
+    }
+
+    #[test]
+    fn drc_exponential_control_model_runs_pi_controller() {
+        // WPG.9: ControlModel=1 (Exponential) drives CalcDRC_vars's else branch (the
+        // TPICtrl PI controller over the *full* DeltaQ, InvControl.pas l.2804-2809)
+        // instead of the Linear QOldDRC-relative formula. Same absorb scenario as
+        // `drc_absorbs_on_rising_voltage` (V=1.05pu, window seeded at 1.0pu ->
+        // deltaV=+0.05 -> QDesireDRCpu=-2.5, clamped by Check_Qlimits to
+        // QDesireEndpu=-1.0), so the PI setpoint is the *unclamped-by-QOldDRC*
+        // product DeltaQ = -1.0*QHeadRoomNeg(600) = -600 every call (no dependence on
+        // QOldDRC), unlike Linear's -599. kDen/kNum are recomputed from
+        // |FdeltaQ_factor|=0.2 each call. Both filter taps start at 0 so the first
+        // `SolvePI` output is exactly 0 (a wrong q_desired_* field would coincide
+        // with this default); a second Sample+DoPendingAction call (repeat trigger:
+        // control_iter stays 1) exercises the delayed PI tap and pins the non-zero
+        // -600*kNum response — this is what catches a wrong DeltaQ or a dropped
+        // per-call kDen/kNum recompute.
+        let mut ic = drc_ic();
+        ic.set_i32(prop::CONTROL_MODEL, 1); // Exponential
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.ctrl_vars[0]
+            .f_drc_roll_avg_window
+            .add(7200.0, 3600.0, 2.0);
+        ic.do_pending_action(&mut env); // first PI step
+        let k_den = (-0.2_f64).exp();
+        let k_num = 1.0 - k_den;
+        {
+            let cv = &ic.ctrl_vars[0];
+            assert!(
+                (cv.pi_ctrl.k_den - k_den).abs() < 1e-12,
+                "kDen = {}",
+                cv.pi_ctrl.k_den
+            );
+            assert!(
+                (cv.pi_ctrl.k_num - k_num).abs() < 1e-12,
+                "kNum = {}",
+                cv.pi_ctrl.k_num
+            );
+            assert_eq!(
+                cv.q_desired_drc, 0.0,
+                "QDesiredDRC first PI step = {}",
+                cv.q_desired_drc
+            );
+            assert!(
+                (cv.q_desire_drcpu - (-2.5)).abs() < 1e-9,
+                "QDesireDRCpu = {}",
+                cv.q_desire_drcpu
+            );
+        }
+        ic.sample(&mut env).unwrap(); // control_iter==1 -> re-triggers
+        ic.do_pending_action(&mut env); // second PI step
+        let cv = &ic.ctrl_vars[0];
+        let expected = -600.0 * k_num;
+        assert!(
+            (cv.q_desired_drc - expected).abs() < 1e-6,
+            "QDesiredDRC second PI step = {} expected {expected}",
+            cv.q_desired_drc
+        );
+        assert!((env.ders[0].requested_kvar - expected).abs() < 1e-6);
     }
 
     #[test]
@@ -898,19 +1197,101 @@ mod dispatch {
     }
 
     #[test]
-    fn gfm_mode_aborts_not_silently() {
-        // GFM (mode ordinal 7) is still deferred (WP7.7); Sample must reject it
-        // loudly, never silently no-op (the deferral-is-never-a-silent-skip rule).
-        // (AVR is now ported — see `avr_*` below.)
+    fn vv_drc_exponential_control_model_runs_pi_controller() {
+        // WPG.9: ControlModel=1 (Exponential) drives CalcVVDRC_vars's else branch
+        // (the TPICtrl PI controller over the *full* DeltaQ, InvControl.pas
+        // l.2840-2845). Same combi scenario as `vv_drc_sums_curve_and_drc_q`
+        // (V=1.01pu, window seeded at 1.0pu): QDesireVVpu=-0.125,
+        // QDesireDRCpu=-0.5, q_sum=-0.625 (unclamped) -> QDesireEndpu=-0.625, so the
+        // PI setpoint DeltaQ = -0.625*QHeadRoomNeg(600) = -375 every call (the full
+        // product, not decremented by QOldVVDRC). kDen/kNum recomputed from
+        // |FdeltaQ_factor|=0.2 each call; first PI step (zeroed taps) = 0. A second
+        // Sample+DoPendingAction call (control_iter stays 1 -> repeat trigger) pins
+        // the delayed-tap response -375*kNum, catching a wrong DeltaQ / wrong
+        // q_desired_* field / a dropped per-call kDen/kNum recompute.
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::COMBI_MODE, super::super::VV_DRC);
+        ic.set_i32(prop::CONTROL_MODEL, 1); // Exponential
+        ic.dbv_min = 1.0;
+        ic.dbv_max = 1.0;
+        ic.ar_gra_low_v = 50.0;
+        ic.ar_gra_hi_v = 50.0;
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
+        ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vv",
+            &[0.5, 0.92, 1.0, 1.08, 1.5],
+            &[1.0, 1.0, 0.0, -1.0, -1.0],
+        ));
+        ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
+        ic.side_effects(prop::DER_LIST, 0);
+
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.01, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        ic.ctrl_vars[0]
+            .f_drc_roll_avg_window
+            .add(7200.0, 3600.0, 2.0);
+        ic.do_pending_action(&mut env); // first PI step
+        let k_den = (-0.2_f64).exp();
+        let k_num = 1.0 - k_den;
+        {
+            let cv = &ic.ctrl_vars[0];
+            assert!(
+                (cv.pi_ctrl.k_den - k_den).abs() < 1e-12,
+                "kDen = {}",
+                cv.pi_ctrl.k_den
+            );
+            assert!(
+                (cv.pi_ctrl.k_num - k_num).abs() < 1e-12,
+                "kNum = {}",
+                cv.pi_ctrl.k_num
+            );
+            assert_eq!(
+                cv.q_desired_vvdrc, 0.0,
+                "QDesiredVVDRC first PI step = {}",
+                cv.q_desired_vvdrc
+            );
+            assert!(
+                (cv.q_desire_vvpu - (-0.125)).abs() < 1e-9,
+                "QDesireVVpu = {}",
+                cv.q_desire_vvpu
+            );
+            assert!(
+                (cv.q_desire_drcpu - (-0.5)).abs() < 1e-9,
+                "QDesireDRCpu = {}",
+                cv.q_desire_drcpu
+            );
+        }
+        ic.sample(&mut env).unwrap(); // control_iter==1 -> re-triggers
+        ic.do_pending_action(&mut env); // second PI step
+        let cv = &ic.ctrl_vars[0];
+        let expected = -375.0 * k_num;
+        assert!(
+            (cv.q_desired_vvdrc - expected).abs() < 1e-6,
+            "QDesiredVVDRC second PI step = {} expected {expected}",
+            cv.q_desired_vvdrc
+        );
+        assert!((env.ders[0].requested_kvar - expected).abs() < 1e-6);
+    }
+
+    #[test]
+    fn gfm_mode_is_ported_and_inert_when_der_not_grid_forming() {
+        // GFM (mode ordinal 7) is ported (WPG.13): Sample no longer rejects it.
+        // The GFM arm is a no-op for a DER that is not itself in grid-forming mode
+        // (`der_gfm_mode == false` in the mock), so Sample succeeds and queues
+        // nothing. (The live amps-limiter path is gate-verified by the
+        // `gfm_invcontrol.dss` corpus deck, which drives `CheckAmpsLimit`.)
         let mut ic = InvControl::new("ic1");
         ic.set_i32(prop::MODE, 7); // GFM
         ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
         ic.side_effects(prop::DER_LIST, 0);
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
-        let err = ic.sample(&mut env).unwrap_err();
-        assert!(
-            err.contains("WP7.7 (GFM)"),
-            "expected a GFM NOT_PORTED error, got: {err}"
+        ic.sample(&mut env)
+            .expect("GFM sample is ported (no NOT_PORTED error)");
+        assert_eq!(
+            ic.ctrl_vars[0].f_pending_change,
+            super::super::CHANGE_NONE,
+            "no control action queued for a non-grid-forming DER"
         );
     }
 
@@ -1023,7 +1404,7 @@ mod dispatch {
     #[test]
     fn avr_storage_dispatches_in_kvar_mode() {
         // A Storage in AVR regulates like a PVSystem (the converged kvar is oracle-
-        // pinned by phase7/invcontrol_avr_storage). Here the mock pins the var-mode
+        // pinned by der_controls/invcontrol_avr_storage). Here the mock pins the var-mode
         // fix: iter-1 sets the DER `Varmode := VARMODEKVAR` (so `set_nominal` applies
         // the request, not its VARMODE_PF default) and pushes QHeadRoom/2 = 300 kvar.
         let mut ic = avr_ic();
@@ -1042,6 +1423,72 @@ mod dispatch {
             "Storage AVR iter-1 kvar = {}",
             env.ders[0].requested_kvar
         );
+    }
+
+    #[test]
+    fn avr_exponential_control_model_runs_pi_controller() {
+        // WPG.9: ControlModel=1 (Exponential) drives CalcAVR_vars's else branch (the
+        // TPICtrl PI controller over the *full* DeltaQ, InvControl.pas l.2746-2751),
+        // not the Linear literal-0.2-over-QOldAVR formula. Same iter1->iter2->iter3
+        // path as `avr_iter3_regulator_step_clamped_by_dqmax` (iter1 seeds
+        // QHeadRoom/2=300 kvar at v=1.009; the solve drops v to 1.0; iter2 estimates
+        // DQDV≈55.5556); iter3's regulator computes QDesireAVRpu=-0.1 (the DQmax
+        // clamp), so the PI setpoint DeltaQ = -0.1*QHeadRoomNeg(600) = -60. kDen/kNum
+        // recomputed from |FdeltaQ_factor|=0.2 each call; first PI step (zeroed taps)
+        // = 0. A second Sample+DoPendingAction call at iter3 re-triggers (the
+        // f_v_setpoint_limited/Qoutput mismatch keeps AVR firing) and exercises the
+        // delayed PI tap: the response to the *first* call's setpoint, -60*kNum —
+        // this is what catches a wrong DeltaQ / wrong q_desired_avr field / a dropped
+        // per-call kDen/kNum recompute.
+        let mut ic = avr_ic();
+        ic.set_i32(prop::CONTROL_MODEL, 1); // Exponential
+        ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.009, 200.0)]);
+        env.control_iter = 1;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 1
+        env.ders[0].vmag = 1.0 * env.ders[0].vbase;
+        env.control_iter = 2;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 2 → DQDV ≈ 55.5556
+        env.control_iter = 3;
+        ic.sample(&mut env).unwrap();
+        ic.do_pending_action(&mut env); // iter 3, call #1 → first PI step
+        let k_den = (-0.2_f64).exp();
+        let k_num = 1.0 - k_den;
+        {
+            let cv = &ic.ctrl_vars[0];
+            assert!(
+                (cv.pi_ctrl.k_den - k_den).abs() < 1e-12,
+                "kDen = {}",
+                cv.pi_ctrl.k_den
+            );
+            assert!(
+                (cv.pi_ctrl.k_num - k_num).abs() < 1e-12,
+                "kNum = {}",
+                cv.pi_ctrl.k_num
+            );
+            assert_eq!(
+                cv.q_desired_avr, 0.0,
+                "QDesiredAVR first PI step = {}",
+                cv.q_desired_avr
+            );
+            assert!(
+                (cv.q_desire_avrpu - (-0.1)).abs() < 1e-9,
+                "QDesireAVRpu = {} (expected the -DQmax clamp -0.1)",
+                cv.q_desire_avrpu
+            );
+        }
+        ic.sample(&mut env).unwrap(); // iter 3, call #2 → re-triggers
+        ic.do_pending_action(&mut env); // second PI step
+        let cv = &ic.ctrl_vars[0];
+        let expected = -60.0 * k_num;
+        assert!(
+            (cv.q_desired_avr - expected).abs() < 1e-6,
+            "QDesiredAVR second PI step = {} expected {expected}",
+            cv.q_desired_avr
+        );
+        assert!((env.ders[0].requested_kvar - expected).abs() < 1e-6);
     }
 
     /// A WATTPF control over a `wattpf_curve`, RefReactivePower=VARMAX.
@@ -1091,7 +1538,7 @@ mod dispatch {
     #[test]
     fn wattpf_storage_dispatches_in_kvar_mode() {
         // A Storage in WATTPF regulates (the converged magnitude is oracle-pinned by
-        // phase7/invcontrol_wattpf_storage). FDCkW=0 for Storage so the wattpf curve is
+        // der_controls/invcontrol_wattpf_storage). FDCkW=0 for Storage so the wattpf curve is
         // read at panel-pu 0; with a non-unity pf there (-0.95) and WattPriority the
         // watt term `p = kW_out_desired` (= present 400) is non-zero, so the Storage
         // absorbs Q = -400·tan(acos(0.95)) = -131.47 kvar. Pins the var-mode fix AND a
@@ -1174,7 +1621,7 @@ mod dispatch {
         // y(0)=-0.3 → QDesireWVpu=-0.3 → QDesiredWV = -0.3·QHeadRoom(=600) = -180. The
         // fix under test: `Varmode := VARMODE_KVAR` so the request is applied (a Storage
         // would otherwise keep VARMODE_PF and discard it). (The converged value is
-        // oracle-pinned by phase7/invcontrol_wattvar_storage.)
+        // oracle-pinned by der_controls/invcontrol_wattvar_storage.)
         let mut ic = wattvar_ic();
         // Override the curve so y(0) = -0.3 (the curve point Storage actually reads).
         ic.wattvar_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
@@ -1421,5 +1868,53 @@ mod dispatch {
             "QDesireOptionpu = {} (expected −0.3, the rate-limited ramp)",
             cv.q_desire_optionpu
         );
+    }
+}
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+
+    /// Pascal `TInvControlObj.MakePosSequence` (InvControl.pas:943): the empty
+    /// DER-list config is a NIL-deref hazard (Access violation #303, probe `1`).
+    /// The defined `FNphases := 3; Nconds := 3` still applies; the NIL-deref
+    /// `Setbus` is safe-skipped (no bus change, no panic).
+    #[test]
+    fn empty_der_list_applies_3phase_and_safe_skips_setbus() {
+        let mut ic = InvControl::new("ic1");
+        // Force a non-3 phase/cond count so the `FNphases := 3; Nconds := 3`
+        // assignment is load-bearing (not just the constructor default).
+        ic.ccd.cd.nphases = 1;
+        ic.ccd.cd.nconds = 1;
+        let bus = ic.ccd.cd.get_bus(1).to_string();
+        let plan = ic.make_pos_sequence(&PosSeqCtx::default()); // monitored None
+        assert_eq!(ic.ccd.cd.nphases, 3);
+        assert_eq!(ic.ccd.cd.nconds, 3);
+        assert_eq!(ic.ccd.cd.get_bus(1), bus); // Setbus safe-skipped
+        assert!(plan.run_base);
+    }
+
+    /// Populated path: monitored resolved to the 1st DER ⇒ adopt its Firstbus /
+    /// phase count (overriding the 3/3 default).
+    #[test]
+    fn populated_der_adopts_first_der_bus_and_phases() {
+        let mut ic = InvControl::new("ic1");
+        ic.ccd.monitored_element = Some(ElemRef { cls: 3, idx: 7 });
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                bus_names: vec!["derbus".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        ic.make_pos_sequence(&ctx);
+        assert_eq!(ic.ccd.cd.nphases, 1);
+        assert_eq!(ic.ccd.cd.nconds, 1);
+        assert_eq!(ic.ccd.cd.get_bus(1), "derbus"); // MonitoredElement.Firstbus
+        assert_eq!(ic.monitored_element_ref(), Some(ElemRef { cls: 3, idx: 7 }));
     }
 }

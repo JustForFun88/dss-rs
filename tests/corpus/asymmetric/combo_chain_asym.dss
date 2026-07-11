@@ -1,0 +1,42 @@
+// Combination deck (series chain): asymmetric source (Z2 <> Z1) -> line on a
+// FULL-asymmetric-input LineCode -> delta-wye transformer with off-nominal
+// taps -> sym-components series reactor (Z1 <> Z2) -> load bus with a delta
+// capacitor, an SLG fault, a generator, a 1-phase PVSystem, a discharging
+// Storage, and unbalanced multi-model loads. Exercises the cross-element
+// system-Y assembly of every asymmetric stamp in one chain.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.combo_chain basekv=12.47 pu=1.01 angle=0 phases=3 bus1=src
+~ Z1=[0.9 3.6] Z2=[0.55 2.1] Z0=[2.1 6.6]
+
+New linecode.lca nphases=3 units=kft
+~ rmatrix=[0.087 0.029 0.028 | 0.031 0.089 0.030 | 0.027 0.032 0.087]
+~ xmatrix=[0.203 0.085 0.072 | 0.088 0.196 0.083 | 0.070 0.086 0.202]
+~ cmatrix=[2.74 -0.70 -0.34 | -0.72 2.96 -0.71 | -0.33 -0.69 2.74]
+
+New line.la bus1=src bus2=n1 linecode=lca length=6 units=kft
+
+New transformer.tdy phases=3 windings=2 buses=(n1, n2) conns=(delta, wye)
+~ kvs=(12.47, 4.16) kvas=(8000, 8000) xhl=6 taps=[1.03 0.97]
+
+New reactor.rz phases=3 bus1=n2 bus2=n3
+~ Z1=[0.8 1.1] Z2=[0.15 0.4] Z0=[0.9 0.5]
+
+New capacitor.cd phases=3 bus1=n3 conn=delta kvar=300 kv=4.16
+
+New fault.fa phases=1 bus1=n3.1 r=0.8
+
+New generator.g1 phases=3 bus1=n3 conn=wye model=1 kv=4.16 kw=300 pf=0.95
+
+New pvsystem.pv1 phases=1 bus1=n3.2 kv=2.4 kva=120 pmpp=100 irradiance=0.95 pf=1
+
+New storage.s1 phases=3 bus1=n3 kv=4.16 kwrated=200 kwhrated=400
+~ state=discharging %discharge=80
+
+New load.la bus1=n3.1 phases=1 conn=wye model=1 kv=2.4 kw=600 pf=0.9
+New load.lb bus1=n3.2 phases=1 conn=wye model=2 kv=2.4 kw=180 pf=0.95
+New load.lc bus1=n3.3 phases=1 conn=wye model=5 kv=2.4 kw=900 pf=0.85
+
+Set voltagebases=[12.47 4.16]
+calcv

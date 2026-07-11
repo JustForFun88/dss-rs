@@ -11,6 +11,7 @@ use crate::circuit::bus::Bus;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore};
 use crate::solution::Solution;
 use crate::support::hashlist::HashList;
+use crate::support::mathutil::FpcRng;
 
 /// Pascal `TNodeBus`: global node number → (bus, user node number).
 #[derive(Debug, Clone, Copy, Default)]
@@ -22,10 +23,9 @@ pub struct NodeBus {
 
 /// Pascal `Circuit.pas` `TReductionStrategy` — the circuit-reduction mode
 /// selected by `Set ReduceOption=` and consumed by `EnergyMeter.ReduceZone`.
-/// (`rsTapEnds` was removed upstream 2018-02-28.) The reduction algorithms
-/// themselves (`ReduceAlgs.pas`) are `NOT_PORTED` — they hinge on the
-/// unported 210-line `TLineObj.MergeWith` series/parallel line merge; only the
-/// option/command surface is ported in WP6.8. Deferred to a later phase.
+/// (`rsTapEnds` was removed upstream 2018-02-28.) The option/command surface
+/// landed in WP6.8; the reduction algorithms themselves (`ReduceAlgs.pas`,
+/// incl. `TLineObj.MergeWith`) are ported in WP8.7 (`report/reduce.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ReductionStrategy {
     #[default]
@@ -46,6 +46,7 @@ pub enum ElemKind {
     Line,
     Load,
     Transformer,
+    AutoTrans,
     Capacitor,
     Reactor,
     Fault,
@@ -57,15 +58,48 @@ pub enum ElemKind {
     VsConverter,
     Vccs,
     Upfc,
+    /// GICLine (Pascal `GIC_Line | PC_ELEMENT`): a PC-element voltage source.
+    GicLine,
+    /// GICTransformer (Pascal `GIC_Transformer | PD_ELEMENT`): a shunt PD element.
+    GicTransformer,
     Meter,
     EnergyMeter,
     Sensor,
+}
+
+/// Pascal `Circuit.pas` `TBusMarker` (decl :49, `Reset` :3098): one entry of
+/// the plot bus-marker list, populated by `AddBusMarker` and emitted into the
+/// plot-callback JSON's `BusMarkers[]`. Purely a GUI-plot annotation —
+/// headless-inert (affects no solve/report).
+#[derive(Debug, Clone)]
+pub struct BusMarker {
+    pub bus_name: String,
+    pub add_marker_color: i32,
+    pub add_marker_code: i32,
+    pub add_marker_size: i32,
+}
+
+impl Default for BusMarker {
+    /// Pascal `TBusMarker.Reset` (Circuit.pas:3098): `BusName=''`,
+    /// `AddMarkerColor=clBlack`, `AddMarkerCode=4`, `AddMarkerSize=1`.
+    fn default() -> Self {
+        Self {
+            bus_name: String::new(),
+            add_marker_color: 0x000000, // clBlack
+            add_marker_code: 4,
+            add_marker_size: 1,
+        }
+    }
 }
 
 /// The circuit model (`TDSSCircuit`).
 pub struct Circuit {
     /// Lowercased circuit name.
     pub name: String,
+    /// `TNamedObject.pUuid` (`TDSSCircuit` is a named object): lazily-created
+    /// UUID slot — random v4 on first read; preloaded by the `Uuids` command
+    /// and read by `DefaultCircuitUUIDs` (WP8.6 step 6).
+    pub uuid: Option<crate::cim::Uuid>,
     pub case_name: String,
     /// Bus name list; index aligns with `buses` (0-based).
     pub bus_list: HashList,
@@ -86,6 +120,10 @@ pub struct Circuit {
     pub lines: Vec<ElemRef>,
     pub loads: Vec<ElemRef>,
     pub transformers: Vec<ElemRef>,
+    /// AutoTransformers (Pascal `AutoTransformers`): a *separate* list from
+    /// `transformers` (Pascal `AUTOTRANS_ELEMENT` → `AutoTransformers.Add`), on
+    /// `pd_elements` like any PD element.
+    pub auto_transformers: Vec<ElemRef>,
     pub shunt_capacitors: Vec<ElemRef>,
     pub reactors: Vec<ElemRef>,
     /// Fault elements (`FAULTOBJECT or NON_PCPD_ELEM`): a YPrim that stamps into
@@ -118,6 +156,14 @@ pub struct Circuit {
 
     pub solution: Solution,
 
+    /// The engine-global RNG (FPC RTL Mersenne-Twister), shared by every
+    /// MonteCarlo draw (`solve_monte1`/`solve_monte_fault`, `Load.Randomize`,
+    /// `Fault.Randomize`). Upstream lives in the `Shared/mathutil.pas` unit and
+    /// is time-seeded once by `initialization Randomize;`; reproduced by seeding
+    /// from the clock at circuit creation (documented nondeterministic like
+    /// upstream — no golden/oracle reads an RNG-carried value, GAPS_PLAN.md §2.1).
+    pub rng: FpcRng,
+
     pub fundamental: f64,
     pub is_solved: bool,
     pub bus_name_redefined: bool,
@@ -143,11 +189,68 @@ pub struct Circuit {
     pub log_events: bool,
     /// `TrapezoidalIntegration` (meter integration rule; reset by `Set mode=`).
     pub trapezoidal_integration: bool,
+    /// The `TEnergyMeter` class-level demand-interval state + the
+    /// [`crate::solution::meters::demand_interval::SystemMeter`] (WP8.3 step
+    /// 4). On the circuit so the executive (`Set` handlers / `Reset` /
+    /// `CloseDI`) and the solve loop share it (Pascal keeps it on the DSS
+    /// context / meter class).
+    pub em_di: crate::solution::meters::EmDiState,
+    /// `NodeMarkerCode` (Circuit.pas:499; `Set Markercode=`): a GUI plot-marker
+    /// style code — headless-inert except that `Export Profile` echoes it into
+    /// every row's `NodeCode` column.
+    pub node_marker_code: i32,
+    /// `NodeMarkerWidth` (Circuit.pas:500; `Set Nodewidth=`): the `NodeWidth`
+    /// column of `Export Profile`.
+    pub node_marker_width: i32,
+
+    /// The GUI plot-marker style globals (Circuit.pas:217-249, defaults :499-527)
+    /// emitted into the plot-callback JSON's `Markers` object. Headless-inert —
+    /// no solve/report reads them; only the plot payload does. Their `Set`
+    /// handlers (`SwitchMarkerCode`, `TransMarkerCode`, ...) are still
+    /// NOT_PORTED, so these hold the Circuit.pas defaults, which is what the
+    /// pinned headless oracle emits for every corpus deck (none set them).
+    pub switch_marker_code: i32,
+    pub trans_marker_code: i32,
+    pub cap_marker_code: i32,
+    pub reg_marker_code: i32,
+    pub pv_marker_code: i32,
+    pub store_marker_code: i32,
+    pub fuse_marker_code: i32,
+    pub recloser_marker_code: i32,
+    pub relay_marker_code: i32,
+    pub trans_marker_size: i32,
+    pub cap_marker_size: i32,
+    pub reg_marker_size: i32,
+    pub pv_marker_size: i32,
+    pub store_marker_size: i32,
+    pub fuse_marker_size: i32,
+    pub recloser_marker_size: i32,
+    pub relay_marker_size: i32,
+    pub mark_switches: bool,
+    pub mark_transformers: bool,
+    pub mark_capacitors: bool,
+    pub mark_regulators: bool,
+    pub mark_pv_systems: bool,
+    pub mark_storage: bool,
+    pub mark_fuses: bool,
+    pub mark_reclosers: bool,
+    /// `MarkRelays` has no explicit default in `TDSSCircuit.Create` — FPC
+    /// zero-inits the object, so it starts `false` (reproduced here).
+    pub mark_relays: bool,
+    /// `BusMarkerList` (Circuit.pas:250): the `AddBusMarker`/`ClearBusMarkers`
+    /// list emitted into the plot payload's `BusMarkers[]`.
+    pub bus_marker_list: Vec<BusMarker>,
 
     /// `DefaultHourMult`: the circuit-wide multiplier SolveDaily/Yearly derive
     /// from the default shape each step (consumed by generator dispatch, which
     /// is Phase 6+; kept faithfully nonetheless).
     pub default_hour_mult: Complex64,
+    /// `ActiveLoadShapeClass` (`Set LoadShapeClass=`, Circuit.pas:252): the one
+    /// load-shape class the GENERALTIME (`mode=Time`) and DYNAMICMODE dispatches
+    /// consult (`USENONE`=-1 / `USEDAILY`=0 / `USEYEARLY`=1 / `USEDUTY`=2).
+    /// Defaults to `USENONE` ("signify not set") — every load/gen/DER then holds
+    /// `ShapeFactor = 1+j1` in those modes until the option selects a class.
+    pub active_load_shape_class: i32,
     /// `PriceSignal` ($/MWh) and the `PriceCurveObj` that drives it in the
     /// time-series modes (`Set pricecurve=`). The shape is snapshot-cloned at
     /// `Set` time exactly like the Load/VSource shape refs (STATUS §1c WP5.3).
@@ -158,6 +261,30 @@ pub struct Circuit {
     /// `Set defaultyearly=` replace them (again by snapshot clone).
     pub default_daily_shape_obj: Option<crate::elements::general::load_shape::LoadShapeObj>,
     pub default_yearly_shape_obj: Option<crate::elements::general::load_shape::LoadShapeObj>,
+    /// `LoadDurCurveObj` (Circuit.pas): the load-duration curve `Set LDCurve=`
+    /// resolves, driving `SolveLD1`/`SolveLD2` (`SolutionAlgs.pas`). `NIL`
+    /// (`None`) until set; both solve modes then raise the exact Pascal
+    /// `_(...)` error (#470/#471) and no-op. Snapshot-cloned at `Set` time,
+    /// exactly like the other LoadShape refs above.
+    pub load_dur_curve_obj: Option<crate::elements::general::load_shape::LoadShapeObj>,
+
+    /// `DSS.SeasonalRating` (`Set SeasonRating=`; GAPS_PLAN WPG.11). Pascal
+    /// declares this on `TDSSContext` (`DSSClass.pas`), not the circuit —
+    /// carried here instead because the engine models exactly one circuit and
+    /// every live-solve consumer (`StorageController.Get_DynamicTarget`,
+    /// `Export Capacity`) already reaches state through `Circuit`/`SysCtx`,
+    /// never `Dss`; threading a second, `Dss`-level copy through the whole
+    /// solve/dispatch call chain for two rarely-used globals isn't worth the
+    /// footprint. The one observable difference from the Pascal placement is
+    /// that `Clear` resets it here (Pascal's context-level flag would survive
+    /// a `Clear`/`New circuit` in the same process) — unreached by any corpus
+    /// case (every live-oracle case runs in its own fresh engine instance).
+    pub season_rating: bool,
+    /// `DSS.SeasonSignal` (`Set SeasonSignal=`): the `XYcurve` name whose
+    /// `GetYValue(Solution.DynaVars.intHour)` truncates to the season index
+    /// `Get_DynamicTarget` looks up — resolved by name fresh on every read
+    /// (see `StorageDispatchEnv::season_rating_idx`), never cached.
+    pub season_signal: String,
 
     pub normal_min_volts: f64,
     pub normal_max_volts: f64,
@@ -178,14 +305,15 @@ pub struct Circuit {
     /// `LossRegs` — meter register indices summed as "losses".
     pub loss_regs: Vec<i32>,
     /// `AutoAddBusList` — candidate buses for the auto-add search. Pascal uses
-    /// a `TBusHashListType`; the skeleton keeps an insertion-ordered,
-    /// original-case `Vec<String>` (sufficient for the `Get` echo — the
-    /// hash-list dedup/`Find` is only needed by the unported `MakeBusList`).
+    /// a `TBusHashListType`; the port keeps an insertion-ordered,
+    /// original-case `Vec<String>` (the `Get` echo plus the WPG.5
+    /// `auto_add::make_bus_list` candidate walk, which does its own
+    /// case-insensitive resolve against the circuit bus list).
     pub auto_add_bus_list: Vec<String>,
 
     /// `ReductionStrategy`/`ReductionStrategyString` — the `Set ReduceOption=`
-    /// state. The strategy is parsed and stored; the actual zone reduction is
-    /// `NOT_PORTED` (see [`ReductionStrategy`]).
+    /// state consumed by the WP8.7 `EnergyMeter.ReduceZone` dispatch (see
+    /// [`ReductionStrategy`]).
     pub reduction_strategy: ReductionStrategy,
     pub reduction_strategy_string: String,
     /// `ReductionZmag` (ohms) — the short-line merge threshold (`Set Zmag=`).
@@ -202,6 +330,7 @@ impl Circuit {
     pub fn new(name: &str, default_base_freq: f64) -> Self {
         Self {
             name: name.to_lowercase(),
+            uuid: None,
             case_name: name.to_string(),
             bus_list: HashList::new(),
             buses: Vec::new(),
@@ -216,6 +345,7 @@ impl Circuit {
             lines: Vec::new(),
             loads: Vec::new(),
             transformers: Vec::new(),
+            auto_transformers: Vec::new(),
             shunt_capacitors: Vec::new(),
             reactors: Vec::new(),
             faults: Vec::new(),
@@ -229,6 +359,12 @@ impl Circuit {
             energy_meters: Vec::new(),
             sensors: Vec::new(),
             solution: Solution::new(default_base_freq),
+            rng: {
+                // FPC `Shared/mathutil.pas` does `initialization Randomize;`.
+                let mut r = FpcRng::new();
+                r.randomize();
+                r
+            },
             fundamental: default_base_freq,
             is_solved: false,
             // Pascal ctor: `BusNameRedefined := TRUE` — forces the first
@@ -250,13 +386,48 @@ impl Circuit {
             meter_zones_computed: false,
             log_events: false,
             trapezoidal_integration: false,
+            em_di: Default::default(),
+            node_marker_code: 16, // Circuit.pas:499
+            node_marker_width: 1, // Circuit.pas:500
+            // Circuit.pas:501-527 defaults.
+            switch_marker_code: 5,
+            trans_marker_code: 35,
+            cap_marker_code: 38,
+            reg_marker_code: 17,
+            pv_marker_code: 15,
+            store_marker_code: 9,
+            fuse_marker_code: 25,
+            recloser_marker_code: 17,
+            relay_marker_code: 17,
+            trans_marker_size: 1,
+            cap_marker_size: 3,
+            reg_marker_size: 5,
+            pv_marker_size: 1,
+            store_marker_size: 1,
+            fuse_marker_size: 1,
+            recloser_marker_size: 5,
+            relay_marker_size: 5,
+            mark_switches: false,
+            mark_transformers: false,
+            mark_capacitors: false,
+            mark_regulators: false,
+            mark_pv_systems: false,
+            mark_storage: false,
+            mark_fuses: false,
+            mark_reclosers: false,
+            mark_relays: false,
+            bus_marker_list: Vec::new(),
             // FPC zero-initializes the field; the first time-series step
             // overwrites it from the default shape.
             default_hour_mult: Complex64::ZERO,
-            price_signal: 25.0, // $25/MWH
+            active_load_shape_class: crate::solution::solution::USENONE, // "signify not set"
+            price_signal: 25.0,                                          // $25/MWH
             price_curve_obj: None,
             default_daily_shape_obj: None,
             default_yearly_shape_obj: None,
+            load_dur_curve_obj: None,
+            season_rating: false,
+            season_signal: String::new(),
             normal_min_volts: 0.95,
             normal_max_volts: 1.05,
             emerg_min_volts: 0.90,
@@ -281,6 +452,15 @@ impl Circuit {
     /// and the kind lists, and hand it its 1-based handle.
     pub fn add_ckt_element(&mut self, r: ElemRef, kind: ElemKind, elem: &mut dyn CktElement) {
         self.num_devices += 1;
+        // NOT_PORTED: Pascal `AddCktElement` calls `ReAllocDeviceList` once
+        // `NumDevices > 2 * DeviceList.InitialAllocation` (900 → >1800 devices),
+        // which — under `LogEvents` — emits a `Reallocating Device List`
+        // `LogThisEvent` marker (`Circuit.pas:2072`/`:2997`). Our `HashList` grows
+        // in place, so there is no realloc step and no marker. Inert for the event
+        // log except on a >1800-device circuit *built while `Set Log=yes` is
+        // already on* (the standard idiom sets `LogEvents` after the element
+        // definitions; no corpus deck logs a build that large). Clean fix if ever
+        // needed: emit the marker from here on the same size threshold.
         self.device_list.add(elem.cd().obj.name());
         self.ckt_elements.push(r);
 
@@ -297,6 +477,13 @@ impl Circuit {
             ElemKind::Transformer => {
                 self.pd_elements.push(r);
                 self.transformers.push(r);
+            }
+            // AutoTrans zones as a generic PD element (Pascal has no special
+            // EnergyMeter handling) and joins its own `AutoTransformers` list, NOT
+            // `transformers` (Pascal `AUTOTRANS_ELEMENT` → `AutoTransformers.Add`).
+            ElemKind::AutoTrans => {
+                self.pd_elements.push(r);
+                self.auto_transformers.push(r);
             }
             ElemKind::Capacitor => {
                 self.pd_elements.push(r);
@@ -338,6 +525,13 @@ impl Circuit {
                 self.pc_elements.push(r);
                 self.upfcs.push(r);
             }
+            // GICLine (WPG.16): a PC-element voltage source (Pascal
+            // `GIC_Line | PC_ELEMENT`, no special CLASSMASK list). In
+            // `pc_elements` only — injects via `get_pc_inj_curr`.
+            ElemKind::GicLine => self.pc_elements.push(r),
+            // GICTransformer (WPG.16): a shunt PD element (Pascal
+            // `GIC_Transformer | PD_ELEMENT`, no special CLASSMASK list).
+            ElemKind::GicTransformer => self.pd_elements.push(r),
             // Control elements join only the device list + their own list
             // (Pascal AddCktElement: not PD/PC, no Yprim).
             ElemKind::Control => self.controls.push(r),
@@ -454,7 +648,9 @@ impl Circuit {
                     .iter()
                     .map(|&n| n.max(0) as usize)
                     .collect();
-                elem.cd_mut().set_node_ref(iterm, &refs);
+                // Virtual dispatch: `TAutoTransObj.SetNodeRef` aliases the series
+                // winding's second node onto the common winding's first.
+                elem.set_node_ref(iterm, &refs);
             } else {
                 errors.push(format!(
                     "TDSSCircuit.AddBus: BusName for Object \"{}\" is null. Error in definition of object.",
@@ -463,6 +659,26 @@ impl Circuit {
             }
         }
         // The per-element call leaves BusNameRedefined handling to the caller.
+    }
+
+    /// `DSS.LogThisEvent(name)` gated on `LogEvents` (Pascal's `if LogEvents then
+    /// DSS.LogThisEvent(...)` guard), stamping the solution's current
+    /// clock/iteration fields — the circuit-build call sites `ReprocessBusDefs` /
+    /// `DoResetMeterZones` (`Circuit.pas` l.2169/2152/2156). The `Ymatrix`/
+    /// `Solution` call sites gate at the call site with their own free helpers;
+    /// this method exists for the `Circuit`-method sites.
+    pub(crate) fn log_this_event(&mut self, name: &str) {
+        if !self.log_events {
+            return;
+        }
+        let sol = &mut self.solution;
+        sol.event_log.log_this_event(
+            name,
+            sol.int_hour,
+            sol.t,
+            sol.iteration,
+            sol.control_iteration,
+        );
     }
 
     /// Pascal `ReprocessBusDefs`: rebuild the bus list and all node
@@ -475,6 +691,8 @@ impl Circuit {
         vars: &ParserVars,
         errors: &mut Vec<String>,
     ) {
+        // Pascal `ReprocessBusDefs` (Circuit.pas l.2168): log under LogEvents.
+        self.log_this_event("Reprocessing Bus Definitions");
         // > SaveBusInfo
         let saved_buses = std::mem::take(&mut self.buses);
         // < (names live inside the saved buses)

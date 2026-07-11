@@ -26,7 +26,10 @@
 //! pattern. **ExpControl controls only PVSystem** (never Storage), so the env is
 //! PVSystem-typed.
 //!
-//! **NOT_PORTED:** `MakePosSequence` (deferred everywhere since Phase 6).
+//! `MakePosSequence` is ported (WPG.21) as a NIL-deref-safe partial: the defined
+//! `FNphases := 3; Nconds := 3` resync plus the resolved-DER bus adopt, with the
+//! empty-list `MonitoredElement` deref safe-skipped (Access violation,
+//! `docs/wpg21_makeposseq_probes.md`; CLAUDE.md forbids reproducing it).
 
 mod accessors;
 mod compute;
@@ -76,28 +79,28 @@ pub fn class_props() -> ClassProps {
         // the side effects; they share no backing (distinct StringLists upstream).
         PropDef::string_list("PVSystemList"),
         // Vreg → FVregInit (IgnoreInvalid + NonNegative).
-        PropDef::double("Vreg").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
+        PropDef::double("VReg").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
         // Slope → QVSlope (IgnoreInvalid + NonNegative + NonZero).
         PropDef::double("Slope")
             .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         // VregTau (IgnoreInvalid + NonNegative; Pascal Units_s is JSON-only).
-        PropDef::double("VregTau").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
-        PropDef::double("Qbias"),
-        PropDef::double("VregMin").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
-        PropDef::double("VregMax").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
-        PropDef::double("QmaxLead")
+        PropDef::double("VRegTau").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
+        PropDef::double("QBias"),
+        PropDef::double("VRegMin").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
+        PropDef::double("VRegMax").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
+        PropDef::double("QMaxLead")
             .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("QmaxLag")
+        PropDef::double("QMaxLag")
             .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::boolean("EventLog"),
         PropDef::double("DeltaQ_Factor"),
         PropDef::boolean("PreferQ"),
-        PropDef::double("Tresponse")
+        PropDef::double("TResponse")
             .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::string_list("DERList"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("ExpControl", defs, true)
@@ -270,5 +273,33 @@ impl ExpControl {
     /// fleet-bus resolution).
     pub(crate) fn pvsystem_name_list(&self) -> &[String] {
         &self.pvsystem_name_list
+    }
+
+    // --- Read-only accessors for the CIM `TIEEE1547Controller` export (WPG.18
+    // Stage F, `ExportCIMXML.pas` `PullFromExpControl`). No behavior change. ---
+
+    /// `DERNameList` — the class-prefixed controlled-DER names.
+    pub(crate) fn der_name_list(&self) -> &[String] {
+        &self.der_name_list
+    }
+    /// `QMaxLead` — the kvar (pu) lead limit (drives the catB estimate).
+    pub(crate) fn qmax_lead(&self) -> f64 {
+        self.qmax_lead
+    }
+    /// `QMaxLag` — the kvar (pu) lag limit.
+    pub(crate) fn qmax_lag(&self) -> f64 {
+        self.qmax_lag
+    }
+    /// `VregTau` — the `Vreg` slew time constant (s).
+    pub(crate) fn vreg_tau(&self) -> f64 {
+        self.vreg_tau
+    }
+    /// `Tresponse` — the open-loop response time (s).
+    pub(crate) fn tresponse(&self) -> f64 {
+        self.tresponse
+    }
+    /// `QVSlope` (Slope) — the volt-var slope.
+    pub(crate) fn q_v_slope(&self) -> f64 {
+        self.q_v_slope
     }
 }

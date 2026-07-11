@@ -10,6 +10,7 @@ impl Monitor {
     /// the two time-column labels — see [`Self::clear_monitor_stream`]).
     pub fn reset_it(&mut self, is_harmonic: bool) {
         self.mon_buffer.clear();
+        self.bufptr = 0; // Pascal `ResetIt` (Monitor.pas:1132): `BufPtr := 0`.
         self.clear_monitor_stream(is_harmonic);
     }
 
@@ -31,10 +32,14 @@ impl Monitor {
             2 | 8 | 10 if snap.kind != MeteredKind::Transformer => {
                 Some(format!("{} is not a transformer!", snap.full_name))
             }
-            3 if snap.kind != MeteredKind::PcElement => Some(format!(
-                "{} must be a power conversion element (Load or Generator)!",
-                snap.full_name
-            )),
+            // Pascal mode 3 checks BASECLASSMASK = PC_ELEMENT, so Storage (a PC
+            // element carrying its own `MeteredKind` for the mode-7 check) passes.
+            3 if !matches!(snap.kind, MeteredKind::PcElement | MeteredKind::Storage) => {
+                Some(format!(
+                    "{} must be a power conversion element (Load or Generator)!",
+                    snap.full_name
+                ))
+            }
             6 if snap.kind != MeteredKind::Capacitor => {
                 Some(format!("{} is not a capacitor!", snap.full_name))
             }
@@ -75,9 +80,16 @@ impl Monitor {
     /// `RecordSize` + the per-mode header strings. The two leading time columns
     /// are labelled `Freq`/`Harmonic` when the solution is in harmonics mode
     /// (`IsHarmonicModel`), else `hour`/`t(sec)` (`Monitor.pas` l.709).
-    fn clear_monitor_stream(&mut self, is_harmonic: bool) {
+    pub(super) fn clear_monitor_stream(&mut self, is_harmonic: bool) {
         self.header.clear();
         self.sample_count = 0;
+        // Pascal `ClearMonitorStream` (Monitor.pas:705) / `RecalcElementData`
+        // (l.497): `IsProcessed := FALSE` — a fresh sample set reprocesses.
+        self.is_processed = false;
+        // Pascal `MonitorStream.Clear` (Monitor.pas:703): the flushed history is
+        // wiped too (`BufPtr`/`MonBuffer` — the pending scratch — is untouched by
+        // `ClearMonitorStream` itself; `ResetIt` separately clears `mon_buffer`).
+        self.flushed_records = 0;
         if is_harmonic {
             self.header.push("Freq".into());
             self.header.push("Harmonic".into());

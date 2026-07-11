@@ -59,24 +59,24 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         // `DSSObjectReferenceProperty` with `PropertyOffset2 = 0` (any class) +
         // `Required` (enforced by the recalc 666 message when nil).
-        PropDef::object_ref_any("element"),
-        PropDef::integer("terminal"),
+        PropDef::object_ref_any("Element"),
+        PropDef::integer("Terminal"),
         PropDef::double("kVBase"),
         // `BooleanActionProperty` over `DoClearSensor`: setting `yes` clears the
         // spec flags; stores nothing, so the getter is always `No`.
-        PropDef::boolean("clear"),
+        PropDef::boolean("Clear"),
         // `DoubleVArrayProperty`s over the per-phase measured arrays (Fnphases).
         PropDef::double_v_array("kVs"),
-        PropDef::double_v_array("currents"),
+        PropDef::double_v_array("Currents"),
         PropDef::double_v_array("kWs"),
         PropDef::double_v_array("kvars"),
-        PropDef::mapped_string_enum("conn", enums.connection),
+        PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::integer("DeltaDirection"),
         PropDef::double("%Error"),
         PropDef::double("Weight"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("Sensor", defs, true)

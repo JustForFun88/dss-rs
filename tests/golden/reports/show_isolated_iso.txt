@@ -1,0 +1,31 @@
+
+ISOLATED CIRCUIT ELEMENT REPORT
+
+
+***  THE FOLLOWING BUSES HAVE NO CONNECTION TO THE SOURCE ***
+
+"isoa"
+"isob"
+
+***********  THE FOLLOWING SUB NETWORKS ARE ISOLATED ************
+
+*** START SUBAREA ***
+(0) Line.iso
+[SHUNT], Load.isold
+
+
+***********  THE FOLLOWING ENABLED ELEMENTS ARE ISOLATED ************
+
+
+***  THE FOLLOWING BUSES ARE NOT CONNECTED TO ANY POWER DELIVERY ELEMENT ***
+
+
+***********  CONNECTED CIRCUIT ELEMENT TREE ************
+
+(Lexical Level) Element name
+
+(0) Vsource.source
+(1) Line.la2
+(2) Line.lb
+[SHUNT], Load.ld
+(1) Line.la

@@ -5,6 +5,7 @@ use num_complex::Complex64;
 use super::{VsConverter, prop};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
@@ -19,6 +20,21 @@ impl CktElement for VsConverter {
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
+    }
+
+    /// Pascal `TVSConverterObj.MakePosSequence` (VSConverter.pas:485-494): unless
+    /// already a 2-phase (AC + DC) converter, force `Phases := 2` and `Ndc := 1`
+    /// — TWO separate bare single edits (the upstream `//TODO: why two edits?`),
+    /// each its own `RecalcElementData` — then `inherited` (the base bus rename).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        if self.cd.nphases != 2 {
+            PosSeqPlan::with_actions(vec![
+                PosSeqAction::SetI32(prop::PHASES, 2),
+                PosSeqAction::SetI32(prop::NDC, 1),
+            ])
+        } else {
+            PosSeqPlan::base()
+        }
     }
 
     /// Pascal `TVSConverterObj.CalcYPrim` — build `YPrim_series` only: the AC
@@ -69,8 +85,13 @@ impl CktElement for VsConverter {
         self.spectrum_obj = spectrum;
     }
 
-    /// Pascal `TVSConverterObj.GetCurrents`: `Yprim·V(node) − InjCurrents`, saving
-    /// the result into `LastCurrents`.
+    /// Pascal `TVSConverterObj.GetCurrents`: `Yprim·V(node)` minus a **freshly
+    /// recomputed** injection, saving the result into `LastCurrents`. The
+    /// recompute goes into a local buffer — `cd.inj_current` (the solver's lag
+    /// state) stays untouched, like Pascal's `GetInjCurrents(ComplexBuffer)`
+    /// scratch call. (Pascal's version self-aliases `MVMult` over that scratch —
+    /// the proven upstream reporting bug we deliberately do not reproduce; see
+    /// `exec/tests/vs_converter.rs`.)
     #[allow(clippy::needless_range_loop, clippy::manual_memcpy)] // loop-for-loop port
     fn get_currents(&mut self, _sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
         let yorder = self.cd.yorder;
@@ -80,9 +101,9 @@ impl CktElement for VsConverter {
         if let Some(yprim) = &self.cd.yprim {
             yprim.mv_mult(curr, &self.cd.vterminal);
         }
-        self.get_inj_currents(node_v); // overwrites Vterminal, like the original
+        let inj = self.compute_inj_currents(node_v); // overwrites Vterminal, like the original
         for i in 0..yorder {
-            curr[i] -= self.cd.inj_current[i];
+            curr[i] -= inj[i];
             self.last_currents[i] = curr[i];
         }
     }
@@ -292,5 +313,39 @@ impl DssObject for VsConverter {
 
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod pos_seq_tests {
+    use super::*;
+    use crate::elements::pos_seq::PosSeqCtx;
+
+    /// VSConverter, nphases != 2 (default 4) → TWO bare edits `Phases := 2` and
+    /// `Ndc := 1`, then run_base (Pascal `TVSConverterObj.MakePosSequence`,
+    /// VSConverter.pas:485-494, the upstream `//TODO: why two edits?`).
+    #[test]
+    fn makeposseq_vsconverter_non2_forces_phases2_ndc1() {
+        let mut v = VsConverter::new("v");
+        assert_ne!(v.cd.nphases, 2);
+        let plan = v.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert_eq!(
+            plan.actions,
+            vec![
+                PosSeqAction::SetI32(prop::PHASES, 2),
+                PosSeqAction::SetI32(prop::NDC, 1),
+            ]
+        );
+    }
+
+    /// VSConverter, already nphases == 2 → base-only (no actions), still run_base.
+    #[test]
+    fn makeposseq_vsconverter_2phase_is_base_only() {
+        let mut v = VsConverter::new("v");
+        v.cd.nphases = 2;
+        let plan = v.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert!(plan.actions.is_empty());
     }
 }

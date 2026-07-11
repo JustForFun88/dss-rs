@@ -1,7 +1,7 @@
 """Generate the checkpointed-model goldens from the pinned oracle.
 
 The *checkpointed-model* gate (see the golden-infrastructure plan). Unlike the
-phase5/phase6 command-replay goldens — which compare only converged outputs
+timeseries_controls/metering_monitors command-replay goldens — which compare only converged outputs
 (voltages, currents, registers) — these goldens capture the **assembled
 electrical model itself** after every committed time step: the system Y matrix,
 selected element YPrim blocks, the injection vector, and discrete control state.
@@ -41,8 +41,8 @@ from math import isqrt
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_phase5 import IEEE13, IEEE13_LOADS, DAY_CURVE  # noqa: E402
-from gen_phase6 import MICRO  # noqa: E402
+from gen_timeseries_controls import IEEE13, IEEE13_LOADS, DAY_CURVE  # noqa: E402
+from gen_metering_monitors import MICRO  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT / "tests" / "golden" / "checkpoints"
@@ -66,6 +66,25 @@ def check_pin() -> dict:
     return {"dss_python": dss.__version__, "engine": DSS.Version}
 
 
+def _get_y_sparse(d):
+    """`getYSparse(False)` with a `BuildY` retry: on a step where the solve
+    rebuilt Y mid-step (e.g. a Fault applying at its ontime, a protection trip
+    opening a switch), the pinned engine's compressed export is unavailable and
+    `getYSparse(False)` returns None. The executive `BuildY` command rebuilds
+    the same assembled matrix and makes the export available again — proven
+    trajectory-neutral (identical per-step iterations/voltages/event log with
+    and without the retry over the recloser trip/reclose deck). Do NOT use
+    `getYSparse(True)` here: the factored path corrupts the solution vector
+    (YNodeVarray returns injection-scale garbage afterwards, empirically)."""
+    r = d.YMatrix.getYSparse(False)
+    if r is None:
+        d.Text.Command = "BuildY"
+        r = d.YMatrix.getYSparse(False)
+    if r is None:
+        sys.exit("YMatrix.getYSparse returned None even after a BuildY retry")
+    return r
+
+
 def capture_system_y(d) -> dict:
     """The assembled, UNFACTORED system Y as coordinate lists.
 
@@ -74,7 +93,7 @@ def capture_system_y(d) -> dict:
     scaling — so it lines up with the Rust side's unscaled assembled `y_system`.
     Row/col are 0-based; row i corresponds to YNodeOrder[i].
     """
-    data, row_idx, col_ptr = d.YMatrix.getYSparse(False)
+    data, row_idx, col_ptr = _get_y_sparse(d)
     n = len(col_ptr) - 1
     rows, cols, re, im = [], [], [], []
     for col in range(n):
@@ -105,7 +124,7 @@ def capture_fingerprint(d, floor: float = 1e-9) -> dict:
     nonzeros above `floor`, Frobenius norm, complex trace, and max |diagonal|.
     The precise stale-Y catch at scale is the selected YPrim blocks; this is the
     cheap structural+magnitude guard."""
-    data, row_idx, col_ptr = d.YMatrix.getYSparse(False)
+    data, row_idx, col_ptr = _get_y_sparse(d)
     n = len(col_ptr) - 1
     nnz = sum(1 for x in data if abs(x) > floor)
     frob = sum(abs(x) ** 2 for x in data) ** 0.5

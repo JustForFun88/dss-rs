@@ -1,0 +1,27 @@
+// InvControl volt-var symmetric scenario (the WP7.5 rolling-average daily
+// deck, promoted to the live gate): a weak line raises the PV bus voltage; the
+// VOLTVAR control with voltage_curvex_ref=avg absorbs vars against the
+// rolling-average reference over an 8-step daily irradiance ramp. Compared per
+// step: full model (the controller-driven PV kvar) + PVSystem state variables
+// + InvControl setting probes.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.vvsym basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=3 units=km
+
+New loadshape.irrad npts=8 interval=1 mult=(.3 .5 .7 .85 .95 1.0 1.0 .98)
+
+New xycurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)
+
+New pvsystem.pv bus1=b phases=3 kv=12.47 kva=600 pmpp=500 pf=1.0
+~ daily=irrad irradiance=1
+
+New invcontrol.ic mode=VOLTVAR voltage_curvex_ref=avg vvc_curve1=vv
+~ deltaq_factor=0.2 refreactivepower=VARMAX
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=2000
+Set mode=daily stepsize=1h number=1

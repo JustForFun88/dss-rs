@@ -26,6 +26,7 @@ use num_complex::Complex64;
 use crate::elements::control::control_elem::{
     CTRL_CLOSE, CTRL_NONE, CTRL_OPEN, ControlElemData, RefSnapshot,
 };
+use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::pd::capacitor::ControlledCapacitor;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -108,11 +109,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("pctMinkvar"),
         // Pascal: BooleanActionProperty (DoReset); the getter is always 0.
         PropDef::boolean("Reset"),
-        // LoadShape references arrive in Phase 5 (WP5.1); `Follow` mode needs it.
-        PropDef::object_ref("ControlSignal").flags(PropFlags::NOT_PORTED),
+        // `ctrlSignalShape` (`CapControl.pas` l.288): a LoadShape ref read by the
+        // FOLLOWCONTROL arm of `Sample`. Bound to the LoadShape class
+        // (`PropertyOffset2 := ptruint(DSS.LoadShapeClass)`); no WriteByFunction
+        // in Pascal (the commented-out `CheckForVar` flag is also inert).
+        PropDef::object_ref_class("LoadShape", "ControlSignal"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("CapControl", defs, true)
@@ -129,6 +133,13 @@ pub struct CapControl {
     /// Parse-time shape snapshots of the two references.
     ctrl_snap: Option<RefSnapshot>,
     mon_snap: Option<RefSnapshot>,
+    /// Dump name of the `ControlSignal` LoadShape (bare object name, like
+    /// `StorageController`'s `Yearly`/`Daily`/`Duty`).
+    control_signal_name: String,
+    /// `ctrlSignalShape`: a snapshot-clone of the resolved `ControlSignal`
+    /// LoadShape (the WP4.2 `FetchLineCode` pattern), read by the
+    /// FOLLOWCONTROL arm of `Sample`.
+    ctrl_signal_shape: Option<LoadShapeObj>,
 
     /// `ECapControlType` ordinal (0=Current ... 5=Follow).
     control_type: i32,
@@ -183,6 +194,8 @@ impl CapControl {
             monitored_full_name: String::new(),
             ctrl_snap: None,
             mon_snap: None,
+            control_signal_name: String::new(),
+            ctrl_signal_shape: None, // Pascal `ctrlSignalShape := NIL;`
             control_type: ctrl_type::CURRENT,
             fct_phase: 1,
             fpt_phase: 1,
@@ -210,6 +223,64 @@ impl CapControl {
             voverride_event: false,
             control_action_handle: 0,
         }
+    }
+
+    /// Pascal `TCapControlObj.CapControlType` (`Capacitor.pas`... `CapControl.pas:194`
+    /// = `ControlType`: `ECapControlType` ordinal, 0=Current … 5=Follow).
+    /// Read-only accessor for the CIM export (`RegulatingControlEnum`, GAPS_PLAN
+    /// WPG.18 Stage D).
+    pub fn control_type(&self) -> i32 {
+        self.control_type
+    }
+
+    /// Pascal `TCapControlObj.PTPhase` (property `CapControl.pas:207` =
+    /// `ControlVars.FPTPhase`; "ALL"/avg/max/min are ≤ 0). Read-only accessor for
+    /// the CIM export (`MonitoredPhaseNode`).
+    pub fn pt_phase(&self) -> i32 {
+        self.fpt_phase
+    }
+
+    /// Pascal `TCapControlObj.PTRatioVal` (property `CapControl.pas:199` =
+    /// `ControlVars.PTratio`). Read-only accessor for the CIM export.
+    pub fn pt_ratio_val(&self) -> f64 {
+        self.pt_ratio
+    }
+
+    /// Pascal `TCapControlObj.CTRatioVal` (property `CapControl.pas:200` =
+    /// `ControlVars.CTratio`). Read-only accessor for the CIM export.
+    pub fn ct_ratio_val(&self) -> f64 {
+        self.ct_ratio
+    }
+
+    /// Pascal `TCapControlObj.OnValue` (property `CapControl.pas:195` =
+    /// `ControlVars.ON_Value`). Read-only accessor for the CIM export.
+    pub fn on_value(&self) -> f64 {
+        self.on_value
+    }
+
+    /// Pascal `TCapControlObj.OffValue` (property `CapControl.pas:196` =
+    /// `ControlVars.OFF_Value`). Read-only accessor for the CIM export.
+    pub fn off_value(&self) -> f64 {
+        self.off_value
+    }
+
+    /// Pascal `TCapControlObj.PFOnValue` (property `CapControl.pas:197` =
+    /// `ControlVars.PFON_Value`). Read-only accessor for the CIM export.
+    pub fn pf_on_value(&self) -> f64 {
+        self.pfon_value
+    }
+
+    /// Pascal `TCapControlObj.PFOffValue` (property `CapControl.pas:198` =
+    /// `ControlVars.PFOFF_Value`). Read-only accessor for the CIM export.
+    pub fn pf_off_value(&self) -> f64 {
+        self.pfoff_value
+    }
+
+    /// Pascal `TCapControlObj.OnDelayVal` (property `CapControl.pas:201` =
+    /// `ControlVars.OnDelay`). Read-only accessor for the CIM export
+    /// (`ShuntCompensator.aVRDelay`).
+    pub fn on_delay_val(&self) -> f64 {
+        self.on_delay
     }
 
     /// Pascal `TCapControlObj.Reset` (the `Reset` action property). The

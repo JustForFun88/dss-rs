@@ -7,6 +7,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::solution::SolveMode;
 use crate::support::dynamics::IterationFlag;
 
@@ -34,6 +35,16 @@ pub trait ElemStore {
     /// classes) to its [`ElemRef`], or `None` if not found. Used by the
     /// EnergyMeter manual `ZoneList` zone build.
     fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef>;
+
+    /// Pascal `<SomeClass>.Find(name)` reaching a *non-circuit* ("general",
+    /// `DSS_OBJECT`) class registered via `DssClass::dss_object` — e.g.
+    /// `XYcurve`. Unlike [`ElemStore::find_ckt_element`] this is **not**
+    /// restricted to circuit-element classes. Used by
+    /// `StorageController.Get_DynamicTarget`'s live, uncached
+    /// `DSS.XYCurveClass.Find(DSS.SeasonSignal)` (the season signal is a bare
+    /// `Set`-option string, not an object-ref property, so nothing can resolve
+    /// and cache the `ElemRef` up front at edit time).
+    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemRef>;
 
     /// Single mutable object view (for `as_any_mut` downcasts when only one
     /// element is touched, e.g. the model-3 generator DQDV sweep).
@@ -80,6 +91,10 @@ pub struct SysCtx {
     /// `Solution.LoadModel`: POWERFLOW (1) or ADMITTANCE (2).
     pub load_model: i32,
     pub mode: SolveMode,
+    /// `Circuit.ActiveLoadShapeClass` (`Set LoadShapeClass=`): the class the
+    /// GENERALTIME / DYNAMICMODE nominal dispatch consults (`USENONE`=-1 /
+    /// `USEDAILY`=0 / `USEYEARLY`=1 / `USEDUTY`=2).
+    pub active_load_shape_class: i32,
     /// `Circuit.LoadMultiplier`.
     pub load_multiplier: f64,
     /// `Circuit.GenMultiplier`.
@@ -148,6 +163,16 @@ pub trait CktElement {
 
     /// `RecalcElementData` (abstract in the base class).
     fn recalc_element_data(&mut self, sys: &SysCtx);
+
+    /// Pascal `TDSSCktElement.SetNodeRef` (virtual): copy one terminal's node
+    /// refs into the flat array + terminal record. The base behavior is the
+    /// `CktElementData` method; `TAutoTransObj` overrides it to alias the series
+    /// winding's second node onto the common winding's first ("Magic happens
+    /// here", `AutoTrans.pas:875`). The circuit build path calls this (not
+    /// `cd_mut().set_node_ref`) so the override fires.
+    fn set_node_ref(&mut self, iterm: usize, node_ref_array: &[usize]) {
+        self.cd_mut().set_node_ref(iterm, node_ref_array);
+    }
 
     /// `CalcYPrim` (abstract): rebuild the primitive Y matrices.
     fn calc_yprim(&mut self, sys: &SysCtx);
@@ -281,11 +306,63 @@ pub trait CktElement {
         }
     }
 
+    /// Force a fresh `Iterminal` from the present `NodeV`, bypassing the
+    /// `SolutionCount` cache — the model of the CAPI `CktElement.Currents` read
+    /// path (`CAPI_CktElement.pas` `elem.GetCurrents`), which always recomputes
+    /// `Yprim·Vterminal (± inj)` rather than returning the solver's internal
+    /// `ComputeIterminal` cache. The two agree after every fixed-point solve
+    /// (the cache is invalid at read time, so `compute_iterminal` recomputes),
+    /// but `DoNewtonSolution`'s final `SumAllCurrents` stamps `Iterminal` at the
+    /// converged `SolutionCount` from the *pre-final* voltage guess `NodeV_{n-1}`
+    /// (the update `NodeV -= dV` follows it), so a plain `compute_iterminal`
+    /// would then return that one-step-stale current. Reporting reads use this
+    /// to match the oracle's fresh `GetCurrents`.
+    fn refresh_iterminal(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        let mut curr = vec![Complex64::ZERO; self.cd().yorder];
+        self.get_currents(sys, node_v, &mut curr);
+        let cd = self.cd_mut();
+        cd.iterminal.copy_from_slice(&curr);
+        cd.iterminal_solution_count = sys.solution_count;
+    }
+
     /// Pascal `TPDElement.IsShunt`: true for shunt-connected capacitors and
     /// reactors (`Circuit.Get_Losses` ignores shunt PD elements). The base
     /// class default is false.
     fn is_shunt(&self) -> bool {
         false
+    }
+
+    /// Pascal `(pElem is TInvBasedPCE) and TInvBasedPCE(pElem).GFM_Mode` — an
+    /// inverter-based PC element (PVSystem/Storage) currently in grid-forming
+    /// mode. The solution splits its injection pass on this flag
+    /// (`GetPCInjCurr(GFMOnly)`): a GFM PCE injects with the *sources*, not with
+    /// the ordinary PC elements. Default false.
+    fn is_gfm(&self) -> bool {
+        false
+    }
+
+    /// Pascal `TControlElem.FControlledElement` (via `Set_ControlledElement`):
+    /// the circuit element this control acts on, or `None` for a non-control
+    /// element (and for the fleet controls that act on a *list* of elements
+    /// rather than a single one). The reverse of Pascal's
+    /// `ControlledElement.ControlElementList` — the reports that need the
+    /// forward `PDElement → controls` mapping (`ShowControlledElements`,
+    /// `ShowTopology`) derive it by scanning `Circuit.controls` and matching this.
+    /// `Circuit.controls` is in creation order, so the derived per-element list
+    /// reproduces the Pascal `ControlElementList` insertion order, and a control
+    /// reassigned to a different target follows its *current* target — the same
+    /// final state as Pascal's remove-then-add `Set_ControlledElement`. **Known
+    /// narrow limitation:** when a control's element ref is *re-edited* after a
+    /// second control already registered on the same target, Pascal's remove-then-
+    /// add re-appends the re-edited control to the *end* of that target's list,
+    /// whereas the creation-order derive keeps the original order — so the two
+    /// disagree only for ≥2 controls on one element with a post-creation
+    /// element-ref edit (probe-only; no corpus deck hits it — the fully-faithful
+    /// fix would materialise the whole `ControlElementList`, disproportionate here).
+    /// Default `None`; every control overrides it to return
+    /// `self.ccd.controlled_element`.
+    fn controlled_element(&self) -> Option<ElemRef> {
+        None
     }
 
     /// Per-element reliability inputs for the EnergyMeter reliability sweep
@@ -461,5 +538,35 @@ pub trait CktElement {
     ) -> (Complex64, Complex64, Complex64) {
         let _ = (sys, node_v);
         (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO)
+    }
+
+    /// Pascal `TDSSCktElement.MakePosSequence` (virtual): convert this element
+    /// to its positive-sequence equivalent (`TExecHelper.DoMakePosSeq` calls it
+    /// on every circuit element, in creation order, after setting
+    /// `PositiveSequence := TRUE`). The element mutates its own direct fields
+    /// here and returns the ordered property-system mutations the exec applier
+    /// must replay through the typed setter helpers (see [`PosSeqPlan`]).
+    ///
+    /// The default is the base behavior: no property sets, run the base bus
+    /// rename ([`CktElementData::make_pos_sequence_base`]) — every element
+    /// without a `MakePosSequence` override in Pascal inherits exactly this.
+    ///
+    /// [`PosSeqPlan`]: crate::elements::pos_seq::PosSeqPlan
+    /// [`CktElementData::make_pos_sequence_base`]: crate::elements::ckt::CktElementData::make_pos_sequence_base
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        let _ = ctx;
+        PosSeqPlan::default()
+    }
+
+    /// Pascal `TControlElem.MonitoredElement` / `TMeterElement.MeteredElement`:
+    /// the element this control/meter senses, resolved to its [`ElemRef`]. The
+    /// exec applier reads it to build the [`PosSeqCtx::monitored`] snapshot
+    /// before calling [`Self::make_pos_sequence`]. Default `None` — a plain
+    /// circuit element monitors nothing; controls/meters override it (in the
+    /// later WTs of this round).
+    ///
+    /// [`PosSeqCtx::monitored`]: crate::elements::pos_seq::PosSeqCtx::monitored
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        None
     }
 }

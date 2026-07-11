@@ -8,10 +8,12 @@
 //! are advanced by a PI controller (`TInvDynamicVars.SolveDynamicStep`) using
 //! the trapezoidal predictor/corrector in `SolveDynamic`.
 //!
-//! Scope: the classic GFL path and the external `DynamicEqObj` / `DynamicExp`
-//! integration (WP7.7 step 3b — the user equation replaces `SolveDynamicStep`).
-//! The user-written DLL model (`UserModel`, VoltageModel=3) and the grid-forming
-//! (GFM) inverter mode are NOT_PORTED — see guards below.
+//! Scope: the classic GFL path, the grid-forming (GFM) black-start droop
+//! (WPG.17 — `it := 0` init, the `IMaxPPhase`/`ISPDelta`/`FixPhaseAngle` ramp,
+//! and the `DoDynamicMode` internal-voltage-source injection), and the external
+//! `DynamicEqObj` / `DynamicExp` integration (WP7.7 step 3b — the user equation
+//! replaces `SolveDynamicStep`). The user-written DLL model (`UserModel`,
+//! VoltageModel=3) is NOT_PORTED — see the guard below.
 
 use num_complex::Complex64;
 
@@ -113,13 +115,19 @@ impl PVSystem {
 
         // Pascal loop `for i := 0 to (NPhases-1)` — 0-based; `NodeRef[i+1]`
         // in Pascal == `self.cd.node_ref[i]` in Rust (Pascal NodeRef is 1-based).
+        let gfm_mode = self.base.gfm_mode;
         for i in 0..nphases {
             self.base.dyn_vars.dit[i] = 0.0;
             self.base.dyn_vars.vgrid[i] = c_to_polar(node_v[self.cd.node_ref[i]]);
 
-            // GFM branch is NOT_PORTED — WP7.7 GFM step. GFL only:
+            // Pascal PVsystem.pas l.2246-2249: GFM seeds `it[i] := 0` (black start
+            // from zero current); GFL seeds it to the panel-power current target.
             let vg_mag = self.base.dyn_vars.vgrid[i].mag;
-            self.base.dyn_vars.it[i] = ((panel_kw * 1000.0) / vg_mag) / nphases_f;
+            self.base.dyn_vars.it[i] = if gfm_mode {
+                0.0
+            } else {
+                ((panel_kw * 1000.0) / vg_mag) / nphases_f
+            };
 
             let mut m_i = ((rs * self.base.dyn_vars.it[i]) + vg_mag) / rated_vdc;
             if m_i > 1.0 {
@@ -163,10 +171,17 @@ impl PVSystem {
         let panel_kw = self.panel_kw;
         let min_vs = self.base.dyn_vars.min_vs;
 
-        // Update iMaxPPhase from current panel power.
+        // Update iMaxPPhase from current panel power (Pascal PVsystem.pas l.2305 —
+        // PVSystem *overwrites* `dynVars.iMaxPPhase`, unlike Storage's local var).
         let base_kv = self.base.dyn_vars.base_kv;
         self.base.dyn_vars.i_max_p_phase = (panel_kw / base_kv) / nphases_f;
         let i_max_p_phase = self.base.dyn_vars.i_max_p_phase;
+        let gfm_mode = self.base.gfm_mode;
+        let reset_ibr = self.base.dyn_vars.reset_ibr;
+        let ctrl_tol = self.base.dyn_vars.ctrl_tol;
+        let kp = self.base.dyn_vars.kp;
+        let i_limit = self.base.dyn_vars.i_limit;
+        let v_error = self.base.dyn_vars.v_error;
 
         for i in 0..nphases {
             if iteration_flag == IterationFlag::NewTimeStep {
@@ -178,14 +193,46 @@ impl PVSystem {
             self.base.dyn_vars.vgrid[i] = c_to_polar(node_v[self.cd.node_ref[i]]);
             let vg_mag = self.base.dyn_vars.vgrid[i].mag;
 
-            // NOT_PORTED: GFM_Mode branch (ISPDelta, VDelta, FixPhaseAngle) —
-            // WP7.7 GFM step. GFL only:
-            self.base.dyn_vars.isp = ((panel_kw * 1000.0) / vg_mag) / nphases_f;
-            if self.base.dyn_vars.isp > i_max_p_phase {
-                self.base.dyn_vars.isp = i_max_p_phase;
-            }
-            if vg_mag < min_vs {
-                self.base.dyn_vars.isp = 0.01; // turn off the inverter
+            if gfm_mode {
+                // Pascal `TPVsystemObj.IntegrateStates` GFM sub-branch (PVsystem.pas
+                // l.2324-2355): identical droop to Storage but the ramp/clamp uses
+                // `IMaxPPhase` (the overwritten panel-power value) instead of a local.
+                self.base.dyn_vars.v_delta[i] = if reset_ibr {
+                    (0.001 - (vg_mag / 1000.0)) / base_kv
+                } else {
+                    (base_kv - (vg_mag / 1000.0)) / base_kv
+                };
+
+                let mut gfm_update = true;
+                // ILimit>0 current-limit path (dormant unless `AmpLimit` set).
+                if i_limit > 0.0 {
+                    let mut curr = vec![Complex64::ZERO; self.cd.yorder];
+                    self.get_currents(sys, node_v, &mut curr);
+                    for c in curr.iter().take(nphases) {
+                        gfm_update = gfm_update && (c.norm() < (i_limit * v_error));
+                    }
+                }
+
+                if self.base.dyn_vars.v_delta[i].abs() > ctrl_tol && gfm_update {
+                    self.base.dyn_vars.isp_delta[i] +=
+                        (i_max_p_phase * self.base.dyn_vars.v_delta[i]) * kp * 100.0;
+                    if self.base.dyn_vars.isp_delta[i] > i_max_p_phase {
+                        self.base.dyn_vars.isp_delta[i] = i_max_p_phase;
+                    } else if self.base.dyn_vars.isp_delta[i] < 0.0 {
+                        self.base.dyn_vars.isp_delta[i] = 0.01;
+                    }
+                }
+                self.base.dyn_vars.isp = self.base.dyn_vars.isp_delta[i];
+                self.base.dyn_vars.fix_phase_angle(i);
+            } else {
+                // GFL: track the panel-power current target, off below MinVS.
+                self.base.dyn_vars.isp = ((panel_kw * 1000.0) / vg_mag) / nphases_f;
+                if self.base.dyn_vars.isp > i_max_p_phase {
+                    self.base.dyn_vars.isp = i_max_p_phase;
+                }
+                if vg_mag < min_vs {
+                    self.base.dyn_vars.isp = 0.01; // turn off the inverter
+                }
             }
 
             if self.base.dyneq.has_dynamic_eq() {
@@ -208,7 +255,6 @@ impl PVSystem {
             self.base.dyn_vars.it[i] =
                 self.base.dyn_vars.it_history[i] + 0.5 * h * self.base.dyn_vars.dit[i];
         }
-        let _ = (i_max_p_phase, min_vs); // suppress unused-variable lint
     }
 
     /// Pascal `TPVsystemObj.IntegrateStates`'s `DynamicEqObj <> NIL` body for one
@@ -291,9 +337,9 @@ impl PVSystem {
         }
     }
 
-    /// Pascal `TPVsystemObj.DoDynamicMode` (l.1838) — inject the GFL current
-    /// into the InjCurrent array. If `gfm_mode` is true, records a NOT_PORTED
-    /// error and returns immediately.
+    /// Pascal `TPVsystemObj.DoDynamicMode` (l.1838) — inject the dynamics-mode
+    /// current. GFL is a controlled current source; GFM (WPG.17) is an internal
+    /// balanced voltage source scaled by the integrated filter current `it[0]`.
     pub(super) fn do_dynamic_mode(
         &mut self,
         sys: &SysCtx,
@@ -301,12 +347,28 @@ impl PVSystem {
         errors: &mut Vec<String>,
     ) {
         if self.base.gfm_mode {
-            // NOT_PORTED: GFM path (CalcGFMVoltage / CalcGFMYprim) — WP7.7 GFM step.
-            errors.push(format!(
-                "PVSystem.{}: grid-forming inverter mode (ControlMode=GFM) dynamics \
-                 is not ported yet (Phase 7 WP7.7 GFM step).",
-                self.cd.obj.name()
-            ));
+            // Pascal `TPVsystemObj.DoDynamicMode` GFM arm (PVsystem.pas l.1870-1876):
+            // internal balanced voltage source at `BaseV` (scaled by `it[0]/IMaxPPhase`
+            // for the black-start ramp) behind `CalcGFMYprim`. `InjCurrent = YPrim ·
+            // Vterminal(internal)`, `ITerminalUpdated := FALSE` (GetCurrents override
+            // recomputes). The empty-array guard mirrors Storage (InitStateVars always
+            // runs for PVSystem, so `it` is sized whenever this is reached).
+            if self.base.dyn_vars.it.len() < self.cd.nphases {
+                return;
+            }
+            self.base.dyn_vars.base_v = self.base.dyn_vars.base_kv
+                * 1000.0
+                * (self.base.dyn_vars.it[0] / self.base.dyn_vars.i_max_p_phase);
+            let nphases = self.cd.nphases;
+            self.base
+                .dyn_vars
+                .calc_gfm_voltage(nphases, &mut self.cd.vterminal);
+            let cd = &mut self.cd;
+            if let Some(yprim) = &cd.yprim {
+                yprim.mv_mult(&mut cd.inj_current, &cd.vterminal);
+            }
+            self.cd.iterminal_updated = false;
+            let _ = errors;
             return;
         }
 

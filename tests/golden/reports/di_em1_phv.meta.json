@@ -1,0 +1,15 @@
+{
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "new energymeter.em1 element=Line.650632 terminal=1 phasevoltagereport=yes",
+    "solve",
+    "set demandinterval=yes",
+    "set diverbose=yes",
+    "set overloadreport=yes",
+    "set voltexceptionreport=yes",
+    "set mode=daily number=3 stepsize=1h",
+    "solve"
+  ],
+  "fixture": "ieee13nodeckt",
+  "relpath": "ieee13nodeckt/DI_yr_0/em1_PhaseVoltageReport_1.csv"
+}

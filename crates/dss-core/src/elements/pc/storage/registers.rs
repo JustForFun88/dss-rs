@@ -120,8 +120,10 @@ impl Storage {
         }
     }
 
-    /// `DCkW` property (recomputes `ComputeDCkW`, like the Pascal `Get_DCkW`).
-    pub(super) fn dckw(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
+    /// `DCkW` property (recomputes `ComputeDCkW`, like the Pascal `Get_DCkW`). Used
+    /// by the InvControl Storage volt-watt `Calc_PBase` `%Available` base
+    /// (`InvDispEnv::der_storage_dckw`), hence `pub(crate)`.
+    pub(crate) fn dckw(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
         self.compute_dckw(sys, node_v);
         self.f_dckw
     }
@@ -139,16 +141,27 @@ impl Storage {
 
         match self.f_state {
             STORE_DISCHARGING => {
-                // Pascal: `UpdateSt := TRUE; if GFM_Mode then UpdateSt :=
-                // CheckIfDelivering();` with an `else` recharge branch when the
-                // GFM inverter is absorbing. GFM is rejected at solve time
-                // (dispatch.rs guard), so `UpdateStorage` is never reached in
-                // GFM mode and `UpdateSt` is always TRUE here. The absorbing
-                // recharge branch (`CheckIfDelivering` false) is NOT_PORTED →
-                // WP7.7 (it lands with the GFM solve).
+                // Pascal Storage.pas l.2500-2523: `UpdateSt := TRUE; if GFM_Mode
+                // then UpdateSt := CheckIfDelivering()`. A GFM inverter that is
+                // actually *absorbing* (not delivering) recharges instead of
+                // discharging (the `else` branch, capped at `kWhRating`) — the
+                // dynamics-mode GFM black-start (WPG.17) can pass through this.
+                let update_st = if self.base.gfm_mode {
+                    self.check_if_delivering(sys, node_v)
+                } else {
+                    true
+                };
                 let dckw = self.dckw(sys, node_v);
                 let idle = self.kw_idling_losses(sys, node_v);
-                self.kwh_stored -= (dckw + idle) / self.discharge_eff * interval_hrs;
+                if update_st {
+                    self.kwh_stored -= (dckw + idle) / self.discharge_eff * interval_hrs;
+                } else {
+                    // Absorbing power → recharge, capped at the rating.
+                    self.kwh_stored += (dckw + idle) / self.discharge_eff * interval_hrs;
+                    if self.kwh_stored > self.kwh_rating {
+                        self.kwh_stored = self.kwh_rating;
+                    }
+                }
                 // Check we still have enough energy to deliver.
                 if self.kwh_stored < self.kwh_reserve {
                     self.kwh_stored = self.kwh_reserve;

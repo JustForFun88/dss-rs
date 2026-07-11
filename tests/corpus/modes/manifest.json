@@ -1,0 +1,934 @@
+{
+ "comment": "Modes family: solve modes / solution algorithms / input formats / executive verbs (Set mode=Time/LD1/LD2/M1/M2/M3/MF/AutoAdd, algorithm=Newton, binary/CSV shape-file inputs, harmonic-curve elements and harmonics-mode element decks, BatchEdit, Reduce), live-compared by modes_cases_match_oracle. Absorbed from the former gaps/ staging family (GAPS_PLAN.md section 3.1): every deck was oracle-validated at creation (two-process determinism + feature sensitivity, pinned dss-python 0.15.7); every case stays pending=true (the gate asserts the Rust engine errors loudly) until the WP named in its wp field ports the feature and flips the flag. n_steps = solve sample points observed on the oracle. Multi-file cases live in a subfolder named after the deck; the shape_binfiles binary/CSV fixtures regenerate via tools/decks/gen_shape_fixtures.py, the midi_* decks via tools/decks/gen_midi_decks.py.",
+ "cases": [
+  {
+   "path": "shape_binfiles/shape_binfiles.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Loadshape.ls_sng",
+     "props": [
+      "npts",
+      "interval",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_dbl",
+     "props": [
+      "npts",
+      "interval",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_pq",
+     "props": [
+      "npts",
+      "interval",
+      "mult",
+      "qmult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_sng0",
+     "props": [
+      "npts",
+      "interval",
+      "hour",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_sng0i",
+     "props": [
+      "npts",
+      "interval",
+      "hour",
+      "mult",
+      "mean",
+      "stddev"
+     ]
+    },
+    {
+     "element": "Tshape.t_sng",
+     "props": [
+      "npts",
+      "temp"
+     ]
+    },
+    {
+     "element": "Tshape.t_sng0",
+     "props": [
+      "npts",
+      "hour",
+      "temp"
+     ]
+    },
+    {
+     "element": "Priceshape.p_dbl",
+     "props": [
+      "npts",
+      "price"
+     ]
+    },
+    {
+     "element": "GrowthShape.g_csv",
+     "props": [
+      "npts",
+      "year",
+      "mult"
+     ]
+    },
+    {
+     "element": "GrowthShape.g_csvf",
+     "props": [
+      "npts",
+      "year",
+      "mult"
+     ]
+    },
+    {
+     "element": "GrowthShape.g_sng",
+     "props": [
+      "npts",
+      "year",
+      "mult"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.1",
+   "notes": "WPG.1 audit follow-up: ls_sng0i pins the single-precision interpolation + Mean/StdDev single stats; t_sng0 the ScalarShapeCore pair branch; g_csvf fractional CSV years (DoCSVFile ignores RoundA); g_sng the Sng-side year rounding."
+  },
+  {
+   "path": "shape_mmf/shape_mmf.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Loadshape.ls_sng",
+     "props": [
+      "npts",
+      "interval",
+      "mult",
+      "qmult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_dbl",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_mult",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_pq",
+     "props": [
+      "npts",
+      "mult",
+      "qmult",
+      "pmax",
+      "qmax"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.17",
+   "notes": "WPG.17 LoadShape MemoryMapping=Yes + Set/Get TotalTime. Self-contained (no var, no non-MM File=). sngfile/dblfile/raw mult=(sngfile=) MMF are fixed-interval = I/O-only (numerically identical to non-MM, exercising the sng/dbl/raw MMF readers); the ls_pq shape is the feature axis: its P column is exponent notation and the MMF text accept-set drops sign/exponent, so ld_pq draws 501 kW (P mult 5.01) at hour 8 under MMF vs 50 kW (0.50) without it. Under MMF the array props dump the (<directive>) round-trip. Oracle-validated (pinned dss-python 0.15.7): compiles+solves+converges; AllBusVmag fingerprint bit-identical across TWO separate oracle processes (38c28c752fa5ecae); feature-sensitive \u2014 flipping MemoryMapping off the pq shape changes the fingerprint to e363c3929e7d692f (ld_pq_P 167->16.7 W/phase). The trailing Set/Get totaltime exercises the option surface (inert for the compared fingerprint)."
+  },
+  {
+   "path": "shape_filearr/shape_filearr.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Loadshape.ls_file",
+     "props": [
+      "npts",
+      "interval",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_col",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_hdr",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_sng",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_dbl",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_short",
+     "props": [
+      "npts",
+      "mult"
+     ]
+    },
+    {
+     "element": "Loadshape.ls_norm",
+     "props": [
+      "npts",
+      "mult",
+      "pmax"
+     ]
+    },
+    {
+     "element": "Spectrum.sp",
+     "props": [
+      "NumHarm",
+      "harmonic",
+      "%mag",
+      "angle"
+     ]
+    },
+    {
+     "element": "XYcurve.xyc",
+     "props": [
+      "npts",
+      "Xarray",
+      "Yarray"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.19",
+   "notes": "WPG.19 non-memory-mapped file-backed numeric arrays (Pascal InterpretDblArray, Common/Utilities.pas:461-566) for array properties WITHOUT MemoryMapping=Yes \u2014 the last blocker of the ckt24 MemoryMappingLoadShapes family (LS_PhaseB/C use mult=(file=...) action=normalize). Covers, on a LoadShape: mult=(file=) single column, column=2 (1-based), header=yes (skip 1 line), sngfile=/dblfile= inline binary directives, a short file (5 rows, npts=8) that shrinks NumPoints to 5 (Pascal Result:=i-1), and action=normalize which runs AFTER the file read (fa_norm peak 2.0 -> mult /2 = [0.25 0.5 1 0.75 0.4 0.2 0.6 0.3]). SITE 2 (generic DSSObjectHelper double-array path): Spectrum %mag=(file=) and XYcurve Yarray=(file=). Oracle-validated (pinned dss-python 0.15.7): compiles+solves+converges (2 iters); full fingerprint (converged/iters, YNodeVarray, 7 monitor channel sets, loadshape npts+mult, Spectrum %mag/NumHarm, XYcurve Yarray) bit-identical across TWO separate oracle processes (6225f27521de809e); feature-sensitive \u2014 stripping every mult=(file=) directive leaves empty shapes and the daily solve raises an access violation on the oracle (materially different). Fixtures regenerate via tools/decks/gen_shape_filearr_fixtures.py."
+  },
+  {
+   "path": "generaltime.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Storage.batt",
+     "props": [
+      "%stored",
+      "state"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.2"
+  },
+  {
+   "path": "generaltime_yearly.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Storage.batt",
+     "props": [
+      "%stored",
+      "state"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.2"
+  },
+  {
+   "path": "generaltime_duty.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Storage.batt",
+     "props": [
+      "%stored",
+      "state"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.2"
+  },
+  {
+   "path": "ld1.dss",
+   "kind": "micro",
+   "n_steps": 16,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.3"
+  },
+  {
+   "path": "ld2.dss",
+   "kind": "micro",
+   "n_steps": 5,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.3"
+  },
+  {
+   "path": "peakday.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.3",
+   "note": "PeakDay Load daily-shape fix: the load current follows day8 exactly (|I1| = mult x 300A: 120/165/225/285/300/270/210/150) and PeakDay applies NO LoadMultiplier (peak 300A not 450A despite Set LoadMult=1.5). Feature-sensitive vs a flat shape (monitor channels + meter registers diverge); the missing-calc_daily_mult bug would sit flat at nominal. Oracle-validated (dss-python 0.15.7): bit-identical across two processes."
+  },
+  {
+   "path": "monte1.dss",
+   "kind": "micro",
+   "n_steps": 5,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.4"
+  },
+  {
+   "path": "monte2.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.4"
+  },
+  {
+   "path": "monte3.dss",
+   "kind": "micro",
+   "n_steps": 4,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.4"
+  },
+  {
+   "path": "montefault.dss",
+   "kind": "micro",
+   "n_steps": 3,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.4"
+  },
+  {
+   "path": "autoadd.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Generator.gadd1",
+     "props": [
+      "bus1",
+      "kw",
+      "pf",
+      "kv"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.5",
+   "note": "WPG.5: AutoAdd capacity search. Oracle segfaults at PROCESS EXIT after the solve (solve completes; captured before teardown by the one-shot oracle subprocess, whose post-output exit code is ignored). Winner probe-pinned Text.Result=\"b3, 0.0180069930672805\"; Generator.gadd1 probe + final voltages + AutoAddLog compared. See GAPS_PLAN.md 2.2.",
+   "compare_global_result": true,
+   "compare_autoadd_log": true
+  },
+  {
+   "path": "autoadd_cap.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Capacitor.cadd1",
+     "props": [
+      "bus1",
+      "phases",
+      "kvar",
+      "kv"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.5",
+   "note": "WPG.5 audit (Major): the CAPADD (addtype=capacitor) branch of TAutoAdd.Solve \u2014 completely ungated until now (autoadd.dss covers only GENADD). Exercises the per-candidate Ycap shunt injection, the winner emission `New Capacitor.cadd1`, GetUniqueCapName, and the <case>_AutoAddedCapacitors.txt append. Oracle-validated (dss-python 0.15.7, two separate processes bit-identical): Text.Result=\"b2\" (CAPADD GlobalResult is the winner bus NAME only, no improvement figure \u2014 AutoAdd.pas l.560); Capacitor.cadd1 = bus1 b2 / 3ph / kvar 600 / kv 12.47; AutoAddLog rows b1/b2/b3 (b2 max weighted). Same PROCESS-EXIT segfault as autoadd.dss (captured before teardown). Feature-sensitive: if the CAPADD branch no-ops, no cadd1 is added (probe fails) and GlobalResult goes empty.",
+   "compare_global_result": true,
+   "compare_autoadd_log": true
+  },
+  {
+   "path": "newton.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WPG.6",
+   "note": "Set algorithm=Newton (Pascal DoNewtonSolution): the current-injection algorithm on the light 3-bus feeder. Oracle-validated (dss-python 0.15.7): converged, 2 iterations, bit-identical across two processes. The gate pins the full model (converged flag, iteration count, voltages, I/P/L). NOTE: Newton and the normal fixed-point converge to the SAME voltages in the SAME iteration count, so the ONLY channel that distinguishes them is the post-Newton stale-Iterminal Powers/Losses split (TODO(compat) in exec/view.rs snapshot_elements) \u2014 that is what actually verifies Newton dispatch is wired."
+  },
+  {
+   "path": "newton_feeder.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WPG.6",
+   "note": "WPG.6 second Newton case: a 115/12.47 kV transformer feeder with stressed constant-power loads, re-solved under algorithm=Newton. Oracle-validated (dss-python 0.15.7): converged, 3 iterations (vs 2 for newton.dss), bit-identical across two processes. Its value over newton.dss is the distinct topology (2-winding transformer + mixed 3ph/1ph constant-power loads) under the Newton path \u2014 not the iteration count, which does not distinguish Newton from the normal algorithm (see newton.dss note)."
+  },
+  {
+   "path": "reactor_rlcurve.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Reactor.rx"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.8",
+   "note": "Harmonics case: the second Solve sweeps harmonics 1/5/7 (3 monitor samples). Feature-sensitive probe-proven: removing rcurve/lcurve shifts the harmonic monitor channels ~0.6%."
+  },
+  {
+   "path": "xycurve_files/xycurve_files.dss",
+   "kind": "micro",
+   "n_steps": 3,
+   "selected_elements": [
+    "Reactor.rx1",
+    "Reactor.rx2"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.17",
+   "note": "XYcurve CSVFile/SngFile/DblFile file-input props: rc.csv, lc.sng, rc2.dbl feed three curves into two series reactors' rcurve/lcurve; harmonics solve (1/5/7 -> 3 monitor samples). GAPS-3 oracle-validated (dss-python 0.15.7): compiles+solves+converges clean; bit-identical monitor fingerprint across two separate oracle processes (50ba0afb...); feature-sensitive (dropping rcurve/lcurve changes the fingerprint), and a same-values xarray/yarray deck reproduces the file-fed fingerprint bit-for-bit (readers parse the intended values). Fixtures from tools/decks/gen_xycurve_fixtures.py."
+  },
+  {
+   "path": "isource_harm.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "pending": false,
+   "wp": "WPG.14",
+   "note": "Harmonics case: the second Solve sweeps the collected frequencies (7 monitor samples on the oracle - scan5 harmonics 1/5/7/11 merged with the defaultload spectrum 1/3/5/7/9/11/13)."
+  },
+  {
+   "path": "batchedit.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.6",
+   "note": "TRegExpr selection semantics: pattern `LA` (case-insensitive, UNANCHORED partial match, ExecHelper.pas:319-328) edits la1/la2/xla1 but not lb1; `^lb` (anchored) edits lb1 only. Oracle-validated 2026-07-05: deterministic + feature-sensitive.",
+   "probes": [
+    {
+     "element": "Load.la1",
+     "props": [
+      "kw"
+     ]
+    },
+    {
+     "element": "Load.xla1",
+     "props": [
+      "kw"
+     ]
+    },
+    {
+     "element": "Load.lb1",
+     "props": [
+      "kw",
+      "pf"
+     ]
+    }
+   ]
+  },
+  {
+   "path": "midi_batchedit.dss",
+   "kind": "midi",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.6",
+   "note": "The same regex semantics at midi scale (94 nodes): `ld1` unanchored hits ld1+ld10..ld19 (11 loads), `^LD2$` hits ld2 only, `^l4` re-lengths the l4a/b/c run. Generated by gen_midi_decks.py.",
+   "probes": [
+    {
+     "element": "Load.ld10",
+     "props": [
+      "kw"
+     ]
+    },
+    {
+     "element": "Load.ld2",
+     "props": [
+      "pf"
+     ]
+    },
+    {
+     "element": "Line.l4b",
+     "props": [
+      "length"
+     ]
+    }
+   ]
+  },
+  {
+   "path": "reduce_default.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.7",
+   "note": "DoReduceDefault in-line series merge: oracle result = Line.l1~l2 created (child renamed Other.Name+'~'+Name, Line.MergeWith SERIES), l1 disabled, b2 eliminated (15->12 nodes); b3 survives via the MarkCapandReactorBuses keep."
+  },
+  {
+   "path": "reduce_shortlines.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.7",
+   "note": "DoReduceShortLines under Set Zmag=0.1: oracle result = Line.s1~s2, s1 disabled, one bus eliminated (15->12 nodes); the load at the eliminated bus is re-parented by the bus1= re-edit (ReduceAlgs.pas:226/:277)."
+  },
+  {
+   "path": "reduce_dangling.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.7",
+   "note": "DoReduceDangling: the dead-end line ld1 (no shunts downstream) is disabled (d1 gone, 15->12 nodes); ld2 (feeds a load) survives."
+  },
+  {
+   "path": "reduce_switches.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.7",
+   "note": "DoReduceSwitches: in-line switch sw1 merged into the downstream non-switch l2 (b2 eliminated), dangling switch sw2 disabled (15->9 nodes)."
+  },
+  {
+   "path": "reduce_laterals.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.7",
+   "note": "DoRemoveAll_1ph_Laterals with default KeepLoad=Yes: lat1/lat3 disabled, their loads re-parented onto the head buses with kV=<head kVLN>; the lat2a/lat2b pair lands on shared bus x2 (2 nodes) and is SKIPPED (ReduceAlgs.pas:474). 16->14 nodes."
+  },
+  {
+   "path": "reduce_mergeparallel.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.7",
+   "note": "DoMergeParallelLines: the p1/p2 parallel pair merges into Line.b1||b2 (PARALLEL MergeWith: ParallelZ, C summed), p1 disabled. Node count unchanged - the Z change carries the sensitivity."
+  },
+  {
+   "path": "reduce_breakloop.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.7",
+   "note": "DoBreakLoops: the loop-closing line l4 is disabled (no merge). Node count unchanged - the V change carries the sensitivity."
+  },
+  {
+   "path": "reduce_keeplist.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.7",
+   "note": "The Set KeepList=(b2) guard (DoKeeperBusList -> Bus.Keep): the l1+l2 merge at b2 is BLOCKED, the l2+l3 merge at unkept b3 proceeds (15->12 nodes)."
+  },
+  {
+   "path": "midi_reduce.dss",
+   "kind": "midi",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.7",
+   "note": "DoReduceDefault at midi scale (94->88 nodes): oracle merges l2a~l2b, l3a~l3b and the feeder-end bb14_15~l9a; loaded/branched buses survive; the loop tie and regulator bank stay. Generated by gen_midi_decks.py."
+  },
+  {
+   "path": "upgrade_pilot.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "oracle": "r4133",
+   "note": "UPGRADE_PLAN.md WP-U0 pilot: keeps the per-case target-rev oracle machinery (Oddie r4133 engine binding, ping pin check, iteration policy Rust<=oracle) exercised by every cargo test. Deliberately revision-insensitive deck; validated per the WP-U0 protocol (two-process determinism on the r4133 engine)."
+  },
+  {
+   "path": "reduce_remove.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP8.7",
+   "note": "The `Remove` command (DoRemoveBranches, ReduceAlgs.pas:374) with KeepLoad=Yes: oracle disables l2/l3/ld3/ld4 and creates the equivalent Load.eq_l2_b2 at the FROM bus (15->9 nodes).",
+   "probes": [
+    {
+     "element": "Load.eq_l2_b2",
+     "props": [
+      "kw",
+      "kvar",
+      "kv"
+     ]
+    }
+   ]
+  },
+  {
+   "path": "pstcalc_cmd.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WP-PF.1",
+   "note": "WP-PF.1: the IEC-868 `Pstcalc` executive command (ExecHelper.DoPstCalc over Shared/Pstcalc.pas). The deck solves a trivial 3-phase feeder, then runs one `Pstcalc` (700-point modulated-sine RMS array, dt=1 s, freq=60, 120 V lamp -> one 10-minute Pst value) at compile time. Live-gates that the command is ported and runs error-free on both engines (a not_ported/parse regression fails the post-compile no-error assert) plus the standard full-model compare. compare_global_result is deliberately NOT set (audit WP-PF.1): the harness captures GlobalResult only AFTER its own solve, which clears the Pstcalc result on both engines, so the flag would compare empty-vs-empty and gate nothing. The byte-exact Pst-value comparison over the full npts/shape/lamp/freq/dt matrix is the golden `golden_pstcalc.rs` (tests/golden/pstcalc/cmd_results.json)."
+  },
+  {
+   "path": "makeposseq_line.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Line.l_sym",
+     "props": [
+      "phases",
+      "r1",
+      "x1",
+      "c1",
+      "length",
+      "units",
+      "normamps",
+      "bus1",
+      "bus2"
+     ]
+    },
+    {
+     "element": "Line.l_mat",
+     "props": [
+      "phases",
+      "r1",
+      "x1"
+     ]
+    },
+    {
+     "element": "Line.l_sw",
+     "props": [
+      "phases",
+      "r1",
+      "x1",
+      "c1"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.21",
+   "note": "MakePosSequence Line coverage: symcomponents (l_sym keeps Z1: r1=0.301 x1=0.667 c1=3.4 normamps=400), rmatrix/xmatrix (l_mat Z averaged to positive seq r1=0.21 x1=0.6), geometry, spacing+wires, switch=yes (l_sw fixed switch consts r1=1 x1=1 c1=1.1), 1-phase, units=mi. All lines -> phases=1, bus dots stripped. Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 2 iters, 8 nodes); feature-sensitive vs the deck with `makeposseq` removed. Pending until WPG.21 A2 wires the dispatch."
+  },
+  {
+   "path": "makeposseq_xfmr.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Transformer.sub",
+     "props": [
+      "phases",
+      "conns",
+      "buses",
+      "kvs",
+      "kvas"
+     ]
+    },
+    {
+     "element": "Transformer.t3",
+     "props": [
+      "phases",
+      "kvs",
+      "kvas"
+     ]
+    },
+    {
+     "element": "AutoTrans.at",
+     "props": [
+      "phases",
+      "kvs"
+     ]
+    },
+    {
+     "element": "Transformer.t1_off",
+     "props": [
+      "enabled"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.21",
+   "note": "MakePosSequence Transformer/AutoTrans coverage: 2w (sub) + 3w (t3) transformers and an AutoTrans -> phases=1, per-winding kV=kVLL/SQRT3 (sub kvs=[66.3953, 7.19956]) and kVA/phases (sub kvas=[6666.67, 6666.67]), conns all wye. 1-phase xfmr on .1 (t1_ok) survives; 1-phase xfmr on .2 (t1_off) is NOT on phase 1 -> Enabled:=FALSE (the OnPhase1 disable path, Transformer.pas:1698) and keeps its dotted buses b1.2/b6.2 (base rename skipped after the early Exit). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 4 iters, 6 nodes); feature-sensitive. Pending until WPG.21 A2."
+  },
+  {
+   "path": "makeposseq_shunt.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Capacitor.cap_kvar",
+     "props": [
+      "phases",
+      "kvar",
+      "kv",
+      "bus1",
+      "bus2"
+     ]
+    },
+    {
+     "element": "Reactor.rx_kvar",
+     "props": [
+      "phases",
+      "kvar",
+      "kv"
+     ]
+    },
+    {
+     "element": "Reactor.rx_mat",
+     "props": [
+      "phases",
+      "r",
+      "x"
+     ]
+    },
+    {
+     "element": "Fault.flt",
+     "props": [
+      "phases"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.21",
+   "note": "MakePosSequence shunt coverage: Capacitor SpecType 1 (kvar 600 -> [200], kV 12.47 -> 7.19956), 2 (cuf), 3 (cmatrix); Reactor SpecType 1 (kvar 200 -> 66.667), 2 (R+jX kept), 3 (rmatrix/xmatrix averaged R=0.26667 X=3), 4 (Z1 sym); Fault; GICTransformer. All -> phases=1; cap/reactor/fault/GICxfmr default grounded bus2 gets the IsGroundBus `.0` re-append (e.g. cap_kvar bus2=b1.0). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 2 iters, 3 nodes); feature-sensitive. Pending until WPG.21 A2."
+  },
+  {
+   "path": "makeposseq_pc.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Load.ld_wye",
+     "props": [
+      "phases",
+      "kv",
+      "kw",
+      "conn"
+     ]
+    },
+    {
+     "element": "Generator.g_kva",
+     "props": [
+      "phases",
+      "kv",
+      "kw",
+      "kva"
+     ]
+    },
+    {
+     "element": "Generator.g_kvar",
+     "props": [
+      "phases",
+      "kv",
+      "kw",
+      "maxkvar",
+      "minkvar"
+     ]
+    },
+    {
+     "element": "PVSystem.pv1",
+     "props": [
+      "phases",
+      "kv"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.21",
+   "note": "MakePosSequence PC coverage: Load wye/delta+xfkVA/1ph (ld_wye kv 12.47->7.19956, kw 400->44.444), Generator x4 exercising the PrpSequence reads (g_plain kW+pf; g_kva kVA=250 kept; g_mva MVA=; g_kvar maxkvar 120->40 / minkvar -60->-20, ALL /phases), PVSystem, Storage, 2nd VSource, Isource. Ends with a SECOND makeposseq+solve (idempotency + the ÷3-again quirk). VSConverter DELIBERATELY EXCLUDED (its upstream GetCurrents state-mutating bug forbids a live full-model compare, CLAUDE.md known-bugs); its MakePosSequence override is NOT a no-op (it forces Phases:=2, Ndc:=1 when nphases!=2) and is covered by the pos_seq_tests unit test in pc/vs_converter/accessors.rs. Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 3 iters, 4 nodes); feature-sensitive. Pending until WPG.21 A2."
+  },
+  {
+   "path": "makeposseq_ctrl.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Capacitor.cap1",
+     "props": [
+      "phases",
+      "kvar",
+      "kv"
+     ]
+    },
+    {
+     "element": "Transformer.reg",
+     "props": [
+      "phases"
+     ]
+    },
+    {
+     "element": "Storage.st1",
+     "props": [
+      "phases",
+      "kv"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.21",
+   "note": "MakePosSequence control/metering coverage: EnergyMeter, Monitor (mode 0 and 1), Sensor, CapControl+cap, RegControl+xfmr, Relay/Recloser/SwtControl on lines, StorageController -- all targets resolvable, DERs/monitored elements created BEFORE their controls (DoMakePosSeq converts in creation order). InvControl/ExpControl/GenDispatcher/ESPVLControl/UPFCControl DELIBERATELY ABSENT: their overrides deref a NIL element and abort the oracle with an Access violation (docs/wpg21_makeposseq_probes.md) -> WT-D safe-skip unit tests, never decks. Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 5 iters, 6 nodes); feature-sensitive. Pending until WPG.21 A2."
+  },
+  {
+   "path": "makeposseq_report.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Transformer.sub",
+     "props": [
+      "phases",
+      "kvs"
+     ]
+    },
+    {
+     "element": "Line.l1",
+     "props": [
+      "phases",
+      "r1",
+      "x1"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.21",
+   "note": "MakePosSequence end-to-end report path: a mixed mini feeder (115/12.47 sub xfmr + 3 lines + cap + mixed loads + meter + monitor) solve -> makeposseq -> solve -> report reads (summary/losses/monitor sample) that exercise the PositiveSequence x3 power paths (Get_Power/Get_Losses/summary scale by 3). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 4 iters, 5 nodes); feature-sensitive. Pending until WPG.21 A2."
+  }
+ ]
+}

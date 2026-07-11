@@ -10,12 +10,14 @@
 //!   3. `RMatrix`/`XMatrix` ohms (optionally in parallel).
 //!   4. symmetrical components `Z1`, `Z2`, `Z0` (`Z2`/`Z0` default to `Z1`).
 //!
-//! `RCurve`/`LCurve` reference an `XYcurve` (ported in PHASE5_PLAN WP5.1) but
-//! stay flagged `NOT_PORTED`: their only consumer is the frequency-dependent
-//! `R(f)`/`L(f)` scaling in the *harmonic* `CalcYPrim`, which is Phase 7. Until
-//! then `CalcYPrim` always uses the unity-curve path, so resolving the
-//! reference would be dead state with no observable behavior — wire it together
-//! with the harmonic scaling.
+//! `RCurve`/`LCurve` reference an `XYcurve` (ported in PHASE5_PLAN WP5.1),
+//! snapshot-cloned at parse time like the PVSystem/VCCS curve refs. Their only
+//! consumer is the frequency-dependent `R(f)`/`L(f)` scaling in `CalcYPrim`'s
+//! `SpecType` 1/2 branch (Pascal `Reactor.pas` `CalcYPrim`): when assigned,
+//! `RValue := Z.re * RCurveObj.GetYValue(FYprimFreq)` and
+//! `LValue := L * LCurveObj.GetYValue(FYprimFreq)` — the curve's X axis is
+//! **Hz** (`FYprimFreq`, the solution frequency, zeroed on the sub-0.51 Hz GIC
+//! path), not the frequency multiplier.
 //!
 //! Split into submodules mirroring `capacitor/`, `line/`, `transformer/`:
 //! - this `mod.rs` — property ordinals, `class_props`, the `Reactor` struct, `new`.
@@ -29,11 +31,13 @@ mod tests;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::general::xy_curve::XyCurveObj;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::util::sqrt3;
 
 mod accessors;
+mod dump;
 mod solve;
 
 /// 1-based property ordinals (Pascal `TReactorProp` + class tails).
@@ -72,14 +76,18 @@ pub mod prop {
 /// `TReactor.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
+    // Property names carry the oracle's **display case** (Pascal `PropertyName[i]`),
+    // which `Dump`/`Save` emit verbatim; matching stays case-insensitive
+    // (`CommandList` lowercases both sides), so `bus1=`/`Bus1=` both parse. The
+    // canonical spelling is pinned by the `dump_reactor` golden (WP8.5 step 1).
     let defs = vec![
         // Pascal flags bus1 `Required` (inert here — not enforced in Phase 4).
-        PropDef::bus("bus1", 1),
-        PropDef::bus("bus2", 2),
-        PropDef::integer("phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::bus("Bus1", 1),
+        PropDef::bus("Bus2", 2),
+        PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double("kvar").flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("kv").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE),
-        PropDef::mapped_string_enum("conn", enums.connection),
+        PropDef::double("kV").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE),
+        PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double_sym_matrix("RMatrix", PHASES),
         PropDef::double_sym_matrix("XMatrix", PHASES).flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::boolean("Parallel"),
@@ -90,22 +98,22 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::complex("Z2"),
         PropDef::complex("Z0"),
         PropDef::complex("Z").flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        // RCurve/LCurve reference XYcurve (ported WP5.1) but are consumed only
-        // by the harmonic CalcYPrim (Phase 7); see the module note.
-        PropDef::object_ref("RCurve").flags(PropFlags::NOT_PORTED),
-        PropDef::object_ref("LCurve").flags(PropFlags::NOT_PORTED),
+        // RCurve/LCurve reference XYcurve (ported WP5.1); see the module note
+        // for the harmonic-CalcYPrim consumer.
+        PropDef::object_ref_class("XYcurve", "RCurve"),
+        PropDef::object_ref_class("XYcurve", "LCurve"),
         PropDef::double("LmH")
             .scale(1.0e-3)
             .flags(PropFlags::REDUNDANT | PropFlags::REQUIRED_IN_SPEC_SET),
         // TPDClass tail:
-        PropDef::double("normamps"),
-        PropDef::double("emergamps"),
-        PropDef::double("faultrate"),
-        PropDef::double("pctperm"),
-        PropDef::double("repair"),
+        PropDef::double("NormAmps"),
+        PropDef::double("EmergAmps"),
+        PropDef::double("FaultRate"),
+        PropDef::double("pctPerm"),
+        PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("Reactor", defs, true)
@@ -134,6 +142,14 @@ pub struct Reactor {
     xmatrix: Option<Vec<f64>>,
     gmatrix: Option<Vec<f64>>,
     bmatrix: Option<Vec<f64>>,
+    /// `RCurve`/`LCurve`: the referenced object's name (for Dump/Save
+    /// round-trip) and a snapshot-cloned copy of the resolved `XYcurve`
+    /// (`None` when unassigned or unresolved), consumed by `CalcYPrim`'s
+    /// frequency-dependent `R(f)`/`L(f)` scaling.
+    r_curve_name: String,
+    r_curve: Option<XyCurveObj>,
+    l_curve_name: String,
+    l_curve: Option<XyCurveObj>,
     /// 0 = wye (default), 1 = delta.
     connection: i32,
     /// 1 = kvar, 2 = R+jX, 3 = R/X matrices, 4 = symmetrical components.
@@ -185,6 +201,10 @@ impl Reactor {
             xmatrix: None,
             gmatrix: None,
             bmatrix: None,
+            r_curve_name: String::new(),
+            r_curve: None,
+            l_curve_name: String::new(),
+            l_curve: None,
             connection: 0, // wye
             spec_type: 1,  // kvar
             is_parallel: false,

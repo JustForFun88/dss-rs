@@ -1,0 +1,6 @@
+! Created with Distribute Command:
+! Distribute kW=1500 PF=0.95 How=Proportional Skip=1  file=DistGenerators.dss  what=Generators
+
+new generator.DG_1  bus1=b2 phases=3 kV=12.47 kW=1195.77492858566 PF=0.95 model=1
+new generator.DG_2  bus1=b1.1 phases=1 kV=7.2 kW=217.033149538298 PF=0.95 model=1
+new generator.DG_3  bus1=b1.2 phases=1 kV=7.2 kW=87.191921876038 PF=0.95 model=1

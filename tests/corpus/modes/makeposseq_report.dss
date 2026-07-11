@@ -1,0 +1,35 @@
+! makeposseq_report.dss — end-to-end positive-sequence report path (WPG.21).
+! A mixed mini feeder: solve -> makeposseq -> solve -> the reporting reads
+! (summary / losses / a monitor sample) exercise the PositiveSequence x3 power
+! paths (Get_Power/Get_Losses/Circuit summary scale by 3 under PositiveSequence).
+clear
+set defaultbasefrequency=60
+new circuit.psq_report basekv=115 pu=1.02 phases=3 bus1=src
+~ r1=0.2 x1=2.0 r0=0.6 x0=6.0
+
+new transformer.sub phases=3 windings=2 xhl=8
+~ wdg=1 bus=src conn=delta kv=115 kva=15000
+~ wdg=2 bus=b1 conn=wye kv=12.47 kva=15000
+
+new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6 units=km
+
+new line.l1 bus1=b1 bus2=b2 linecode=lc length=1.2 units=km
+new line.l2 bus1=b2 bus2=b3 linecode=lc length=0.9 units=km
+new line.l3 bus1=b3 bus2=b4 linecode=lc length=0.8 units=km
+
+new capacitor.cap1 bus1=b3 phases=3 kvar=600 kv=12.47
+new load.ld2 bus1=b2 phases=3 kv=12.47 kw=900 pf=0.92 model=1
+new load.ld3 bus1=b3 phases=3 kv=12.47 kw=600 pf=0.95 model=2
+new load.ld4 bus1=b4 phases=1 kv=7.2 kw=120 pf=0.90 model=1
+
+new energymeter.em element=transformer.sub terminal=1
+new monitor.mon element=line.l1 terminal=1 mode=1
+
+set voltagebases=[115, 12.47, 7.2]
+calcvoltagebases
+set maxiterations=100
+solve
+makeposseq
+solve
+! reporting reads exercised by the fingerprint: summary, losses, monitor sample
+sample

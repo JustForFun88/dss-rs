@@ -1,0 +1,32 @@
+// Reduce coverage (PHASE8_PLAN WP8.7): the DANGLING (Ends) strategy
+// (DoReduceDangling, ReduceAlgs.pas:91): a line branch that IsDangling
+// (nothing downstream: no children, no shunts) and whose to-bus is not
+// on the KeepList is disabled. ld1 (dead-end to d1, no load) is thrown
+// away; ld2 (feeds a load at d2) survives.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.gapsrn basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.4 x1=1.6 r0=1.2 x0=4.2
+
+new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6
+~ units=km
+
+new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km
+new line.l1 bus1=b1 bus2=b2 linecode=lc length=0.8 units=km
+new line.ld1 bus1=b2 bus2=d1 linecode=lc length=0.4 units=km
+new line.ld2 bus1=b2 bus2=d2 linecode=lc length=0.3 units=km
+
+new load.ld2l bus1=d2 phases=3 conn=wye model=1 kv=12.47 kw=400 pf=0.92
+new load.ldb2 bus1=b2 phases=3 conn=wye model=1 kv=12.47 kw=150 pf=0.95
+
+new energymeter.em element=line.lfeed terminal=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set maxiterations=100
+solve
+
+set reduceoption=ends
+reduce
+solve

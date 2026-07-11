@@ -15,10 +15,12 @@
 //! [`GenDispatchEnv`]; the control-loop implements it over the class registry
 //! (`solution/controls.rs`), and the unit tests against a mock.
 //!
+//! `TGenDispatcherObj.MakePosSequence` is ported as a NIL-deref-safe no-op — the
+//! upstream body dereferences the always-NIL `ControlledElement` (Access
+//! violation, `docs/wpg21_makeposseq_probes.md`), which CLAUDE.md forbids
+//! reproducing (see [`accessors`]).
+//!
 //! **Deliberately not ported** (consistent with the rest of the controls):
-//! - `TGenDispatcherObj.MakePosSequence` — positive-sequence reduction isn't
-//!   supported yet, and the upstream body dereferences the always-NIL
-//!   `ControlledElement`, so a faithful port would only reproduce a crash.
 //! - the `Element` property's Pascal `Required` flag — not enforced anywhere in
 //!   the port yet (same deferral as RegControl/CapControl/Reactor).
 //!
@@ -83,8 +85,8 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
         // element count is the generator-name-list length (see `array_size`).
         PropDef::double_v_array("Weights"),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("GenDispatcher", defs, true)

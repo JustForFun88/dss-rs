@@ -19,6 +19,7 @@ fn test_sys() -> SysCtx {
         is_dynamic_model: false,
         load_model: 1,
         mode: SolveMode::Snapshot,
+        active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
         gen_multiplier: 1.0,
         generator_dispatch_reference: 0.0,
@@ -739,4 +740,46 @@ fn line_term1_max_current(dss: &mut Dss, name: &str) -> f64 {
         m = m.max((re * re + im * im).sqrt());
     }
     m
+}
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::obj::base::DssObject;
+
+    /// Pascal `TRecloserObj.MakePosSequence` (Recloser.pas:460): phases/conds +
+    /// bus from the monitored element at ElementTerminal.
+    #[test]
+    fn resyncs_to_monitored() {
+        let mut r = Recloser::new("r1");
+        r.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 });
+        r.monitored_element_terminal = 2;
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                yorder: 2,
+                bus_names: vec!["b1".into(), "b2".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = r.make_pos_sequence(&ctx);
+        assert_eq!(r.ccd.cd.nphases, 1);
+        assert_eq!(r.ccd.cd.nconds, 1);
+        assert_eq!(r.get_bus_name(1), "b2");
+        assert!(plan.run_base && plan.actions.is_empty());
+        assert_eq!(r.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+    }
+
+    #[test]
+    fn nil_monitored_runs_base_only() {
+        let mut r = Recloser::new("r1");
+        let np = r.ccd.cd.nphases;
+        let plan = r.make_pos_sequence(&PosSeqCtx::default());
+        assert_eq!(r.ccd.cd.nphases, np);
+        assert!(plan.run_base);
+    }
 }

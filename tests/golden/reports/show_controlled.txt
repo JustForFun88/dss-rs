@@ -1,0 +1,3 @@
+Transformer.reg1, RegControl.reg1 
+Transformer.reg2, RegControl.reg2 
+Transformer.reg3, RegControl.reg3 

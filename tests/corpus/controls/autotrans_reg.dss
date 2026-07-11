@@ -1,0 +1,23 @@
+! GAPS deck: AutoTrans + RegControl daily — RegControl reaches AutoTrans through
+! the Pascal Transf_Or_AutoTrans proxy (RegControl.pas:264; the shared
+! TControlledTransformerObj base). Taps on the COMMON (wye) winding 2 — the
+! Series-winding control path raises upstream (RegControl.pas:1009) and is not
+! exercised. 8 hourly steps under a load shape; the event log pins tap moves.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.gaps_autoreg basekv=115 phases=3 bus1=src mvasc3=15000 mvasc1=12000
+New Loadshape.day8 npts=8 interval=1 mult=(0.40 0.60 0.85 1.00 0.95 0.75 0.55 0.45)
+New Line.lsrc bus1=src bus2=high phases=3 r1=0.5 x1=2.0 r0=1.5 x0=6.0 c1=0 c0=0 length=1
+New AutoTrans.at phases=3 windings=2 xhx=9
+~ wdg=1 bus=high conn=s kV=115 kVA=40000 %r=0.10 maxtap=1.10 mintap=0.90 numtaps=32
+~ wdg=2 bus=low  conn=w kV=34.5 kVA=40000 %r=0.10 maxtap=1.10 mintap=0.90 numtaps=32
+New RegControl.rat transformer=at winding=2 vreg=120 band=2 ptratio=166 eventlog=yes
+New Line.lf bus1=low bus2=fdr phases=3 r1=0.4 x1=1.1 r0=1.2 x0=3.3 c1=0 c0=0 length=1
+New Load.ld1 bus1=fdr phases=3 kv=34.5 kw=26000 pf=0.9 model=1 daily=day8
+New Monitor.m_tap element=AutoTrans.at terminal=2 mode=2
+New EnergyMeter.em element=Line.lsrc terminal=1
+Set voltagebases=[115 34.5]
+Calcvoltagebases
+Set maxcontroliter=100
+Set mode=daily stepsize=1h number=8
+Solve

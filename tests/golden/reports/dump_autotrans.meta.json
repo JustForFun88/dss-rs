@@ -1,0 +1,10 @@
+{
+  "report": "autotrans.t1",
+  "fixture": "dumpat",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumpat basekv=115 bus1=src",
+    "new autotrans.t1 phases=3 windings=2 xhx=6 buses=[h mid] conns=[s w] kvs=[115 34.5] kvas=[40000 40000] %loadloss=0.2",
+    "new autotrans.t3 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 buses=[h3 low3 tert3] conns=[s w d] kvs=[345 161 13.8] kvas=[330000 330000 72000] %imag=0.0329 %noloadloss=0.024"
+  ]
+}

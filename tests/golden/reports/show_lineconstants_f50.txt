@@ -1,0 +1,71 @@
+LINE CONSTANTS
+Frequency = 50 Hz, Earth resistivity = 100 ohm-m
+Earth Model = Deri
+
+
+--------------------------------------------------
+Geometry Code = g3
+
+R MATRIX, ohms per kft
+0.0729005, 
+0.0148144, 0.0729005, 
+0.0148144, 0.0148144, 0.0729005, 
+
+jX MATRIX, ohms per kft
+0.226512, 
+0.151127, 0.226512, 
+0.137852, 0.151127, 0.226512, 
+
+Susceptance (jB) MATRIX, S per kft
+9.94201E-7, 
+-3.9553E-7, 1.10683E-6, 
+-2.1088E-7, -3.9553E-7, 9.94201E-7, 
+
+L MATRIX, mH per kft
+0.721009, 
+0.481051, 0.721009, 
+0.438797, 0.481051, 0.721009, 
+
+C MATRIX, nF per kft
+3.16464, 
+-1.25901, 3.52314, 
+-0.671252, -1.25901, 3.16464, 
+
+-------------------------------------------------------------------
+-------------------Equiv Symmetrical Component --------------------
+-------------------------------------------------------------------
+
+
+Z1, ohms per kft = 0.0580862 + j 0.0798098 (L1 = 0.254043 mH) 
+Z0, ohms per kft = 0.102529 + j 0.519916 (L0 = 1.65494 mH) 
+
+C1, nF per kft = 4.34723
+C0, nF per kft = 1.15796
+
+Surge Impedance:
+  Positive sequence = 241.739 ohms
+  Zero sequence     = 1195.49 ohms
+  Common Mode       = 398.369 ohms
+
+Propagation Velocity (Percent of speed of light):
+  Positive sequence = 96.7464 
+  Zero sequence     = 73.444 
+
+
+--------------------------------------------------
+Geometry Code = g1
+
+R MATRIX, ohms per kft
+0.0729005, 
+
+jX MATRIX, ohms per kft
+0.226512, 
+
+Susceptance (jB) MATRIX, S per kft
+7.0739E-7, 
+
+L MATRIX, mH per kft
+0.721009, 
+
+C MATRIX, nF per kft
+2.25169, 

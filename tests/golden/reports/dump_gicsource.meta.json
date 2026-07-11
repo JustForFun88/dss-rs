@@ -1,0 +1,22 @@
+{
+  "report": "gicsource.seg",
+  "fixture": "dumpgic",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumpgic basekv=345 phases=3 bus1=b1 mvasc3=2000000 2000000",
+    "new gicline.gl1 bus1=b1 bus2=b2 R=3.5 Volts=120 Angle=0",
+    "new gicline.gl2 bus1=b2 bus2=b3 R=2.8 EN=1.0 EE=1.0 Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605",
+    "new gictransformer.tg1 busH=b1 busNH=b1.4.4.4 R1=0.12 type=GSU",
+    "new gictransformer.tg2 busH=b2 busNH=b2.4.4.4 busX=b2x busNX=b2.4.4.4 R1=0.2 R2=0.1 type=YY",
+    "new line.seg bus1=b3 bus2=b4 phases=3 r1=2.7 x1=0.1 r0=2.7 x0=0.1 c1=0 c0=0 length=1",
+    "new gicsource.seg Volts=110 Angle=0 Frequency=0.1",
+    "new reactor.g1 phases=3 bus1=b1 r=0.20 x=0",
+    "new reactor.gg1 phases=1 bus1=b1.4 r=0.20 x=0",
+    "new reactor.gg2 phases=1 bus1=b2.4 r=0.15 x=0",
+    "new reactor.g4 phases=3 bus1=b4 r=0.25 x=0",
+    "set voltagebases=[345]",
+    "calcvoltagebases",
+    "set frequency=0.1",
+    "solve"
+  ]
+}

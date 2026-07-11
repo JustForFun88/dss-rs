@@ -1,0 +1,2 @@
+Year, LDCurve, Hour, PVSystem, "kWh", "kvarh", "Max kW", "Max kVA", "Hours", "Price($)"
+0, , 3, "PV1"         ,        300,          0,        100,        100,          3,          8

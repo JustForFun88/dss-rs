@@ -5,8 +5,9 @@ use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::PropEngine;
-use crate::solution::SolveMode;
+use crate::solution::{GAUSSIAN, LOGNORMAL, SolveMode, UNIFORM, USEDUTY, USENONE, USEYEARLY};
 use crate::support::cmatrix::CMatrix;
+use crate::support::mathutil::FpcRng;
 use dss_parser::{Parser, ParserVars};
 
 /// Build a populated `LoadShapeObj` through its real property engine (same
@@ -40,6 +41,40 @@ fn mode_ctx(mode: SolveMode, dbl_hour: f64) -> SysCtx {
         dbl_hour,
         ..default_recalc_ctx()
     }
+}
+
+/// `mode=Time` (GENERALTIME) with an explicit `ActiveLoadShapeClass`
+/// (`Set LoadShapeClass=`).
+fn time_class_ctx(class: i32, dbl_hour: f64) -> SysCtx {
+    SysCtx {
+        mode: SolveMode::Time,
+        active_load_shape_class: class,
+        dbl_hour,
+        ..default_recalc_ctx()
+    }
+}
+
+/// A load carrying three DELIBERATELY-DISTINCT shapes so the GENERALTIME
+/// class-dispatch arm that fired is identifiable from `w_nominal` alone
+/// (at hr 2: daily→0.6, yearly→0.7, duty→0.5).
+fn load_with_three_shapes() -> Load {
+    let mut load = load_100kw_pf09();
+    load.daily_shape_obj = Some(build_shape(&[
+        ("npts", "4"),
+        ("interval", "1"),
+        ("mult", "0.2 0.6 1.0 0.5"),
+    ]));
+    load.yearly_shape_obj = Some(build_shape(&[
+        ("npts", "4"),
+        ("interval", "1"),
+        ("mult", "0.3 0.7 0.9 0.4"),
+    ]));
+    load.duty_shape_obj = Some(build_shape(&[
+        ("npts", "4"),
+        ("interval", "1"),
+        ("mult", "0.1 0.5 0.8 0.6"),
+    ]));
+    load
 }
 
 /// A 100 kW / pf 0.9 three-phase load (the probed oracle scenario).
@@ -124,6 +159,51 @@ fn duty_mode_falls_back_to_daily_shape() {
     assert!(
         (load.w_nominal - 16666.667).abs() < 1e-2,
         "w {}",
+        load.w_nominal
+    );
+}
+
+/// Pascal `SetNominalLoad` GENERALTIME arm (Load.pas:1066): `Set
+/// LoadShapeClass=Yearly` (USEYEARLY) drives the load from the YEARLY curve.
+/// The three distinct curves make a copy-paste swap (`USEYEARLY =>
+/// CalcDailyMult`/`CalcDutyMult`) fail: at hr 2 the yearly mult is 0.7 →
+/// w = 1000·100·0.7/3 (daily 0.6 → 20000, duty 0.5 → 16666 would mismatch).
+#[test]
+fn time_loadshapeclass_yearly_uses_yearly_curve() {
+    let mut load = load_with_three_shapes();
+    load.set_nominal_load(&time_class_ctx(USEYEARLY, 2.0));
+    assert!(
+        (load.w_nominal - 23333.333).abs() < 1e-2,
+        "w {} (expected the yearly 0.7 curve, not daily/duty)",
+        load.w_nominal
+    );
+}
+
+/// GENERALTIME arm (Load.pas:1068): `Set LoadShapeClass=Duty` (USEDUTY) drives
+/// the load from the DUTY curve (hr 2 → 0.5 → w = 1000·100·0.5/3).
+#[test]
+fn time_loadshapeclass_duty_uses_duty_curve() {
+    let mut load = load_with_three_shapes();
+    load.set_nominal_load(&time_class_ctx(USEDUTY, 2.0));
+    assert!(
+        (load.w_nominal - 16666.667).abs() < 1e-2,
+        "w {} (expected the duty 0.5 curve, not daily/yearly)",
+        load.w_nominal
+    );
+}
+
+/// GENERALTIME arm `else` (Load.pas:1071): the DEFAULT class `USENONE` leaves
+/// `ShapeFactor = 1+j1`, so even a fully-shaped load stays at nominal in
+/// `mode=Time` until `Set LoadShapeClass=` selects a class. (Re-pins the fact
+/// the original degenerate deck accidentally covered before it forced =Daily.)
+#[test]
+fn time_loadshapeclass_none_stays_at_nominal() {
+    let mut load = load_with_three_shapes();
+    load.set_nominal_load(&time_class_ctx(USENONE, 2.0));
+    // Nominal: w = 1000·100·1/3 = 33333.33 (no curve applied).
+    assert!(
+        (load.w_nominal - 33333.333).abs() < 1e-2,
+        "w {} (USENONE must ignore all three shapes)",
         load.w_nominal
     );
 }
@@ -221,4 +301,179 @@ fn use_actual_daily_sets_kw_kvar_and_seeds_yearly() {
     );
     assert_eq!(load.load_spec_type, LoadSpec::KwKvar);
     assert!(load.yearly_shape_obj.is_some(), "yearly seeded from daily");
+}
+
+// --- TLoadObj.Randomize (the MonteCarlo1 per-load RandomMult draw) ---
+//
+// Fixed-seed coverage of the RNG-driven arms the gating decks never reach
+// (every Monte deck runs `random=none`). Expected values are derived
+// externally from the seed-12345 draw sequence pinned in
+// `support::mathutil::rng` — the canonical MT19937 stream verified there
+// against `mt19937ar.out` / CPython — never captured from `randomize` itself
+// (GAPS_PLAN.md §2.1). `Gauss(0,1) = Σ12 Random − 6.0` exactly, so
+// `Gauss(m,s) = G01·s + m` and `QuasiLognormal(m) = exp(G01)·m` bit-for-bit.
+
+/// First `next_f64()` draw for seed 12345 (`rng.rs`).
+const RND_D0_BITS: u64 = 0x3fedbf6a3c400000;
+/// First `Gauss(0,1)` result for seed 12345 (`rng.rs`).
+const RND_G01_0_BITS: u64 = 0x3fc62af569800000;
+
+#[test]
+fn randomize_uniform_draws_next_f64() {
+    let mut load = Load::new("lr");
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(UNIFORM, &mut rng);
+    assert_eq!(load.random_mult.to_bits(), RND_D0_BITS);
+}
+
+#[test]
+fn randomize_gaussian_no_yearly_uses_pu_mean_std() {
+    let mut load = Load::new("lr");
+    load.yearly_shape_obj = None;
+    load.pu_mean = 0.8;
+    load.pu_std_dev = 0.3;
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(GAUSSIAN, &mut rng);
+    let expected = f64::from_bits(RND_G01_0_BITS) * 0.3 + 0.8;
+    assert_eq!(load.random_mult, expected);
+}
+
+#[test]
+fn randomize_gaussian_with_yearly_uses_shape_mean_std() {
+    // The yearly shape's mean/std-dev override pu_mean/pu_std_dev; the pu_*
+    // fields are set DIFFERENTLY so the test fails if the fallback is taken.
+    let mut load = Load::new("lr");
+    load.pu_mean = 0.8;
+    load.pu_std_dev = 0.3;
+    load.yearly_shape_obj = Some(build_shape(&[("mean", "0.75"), ("stddev", "0.20")]));
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(GAUSSIAN, &mut rng);
+    let expected = f64::from_bits(RND_G01_0_BITS) * 0.20 + 0.75;
+    assert_eq!(load.random_mult, expected);
+}
+
+#[test]
+fn randomize_lognormal_no_yearly_uses_pu_mean() {
+    let mut load = Load::new("lr");
+    load.yearly_shape_obj = None;
+    load.pu_mean = 2.0;
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(LOGNORMAL, &mut rng);
+    let expected = f64::from_bits(RND_G01_0_BITS).exp() * 2.0;
+    assert_eq!(load.random_mult, expected);
+}
+
+#[test]
+fn randomize_lognormal_with_yearly_uses_shape_mean() {
+    let mut load = Load::new("lr");
+    load.pu_mean = 2.0; // different from the shape mean below
+    load.yearly_shape_obj = Some(build_shape(&[("mean", "3.0"), ("stddev", "0.20")]));
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(LOGNORMAL, &mut rng);
+    let expected = f64::from_bits(RND_G01_0_BITS).exp() * 3.0;
+    assert_eq!(load.random_mult, expected);
+}
+
+#[test]
+fn randomize_none_sets_one_and_draws_nothing() {
+    let mut load = Load::new("lr");
+    let mut rng = FpcRng::from_seed(12345);
+    load.randomize(0, &mut rng);
+    assert_eq!(load.random_mult, 1.0);
+    assert_eq!(
+        rng.next_f64().to_bits(),
+        RND_D0_BITS,
+        "random=none must not consume a draw"
+    );
+}
+
+// --- MakePosSequence (WPG.21) --------------------------------------------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::elements::traits::CktElement;
+
+/// Wye 3-phase load: V line-neutral (kV/√3), kW/kvar ÷ 3, no xfkVA (0).
+#[test]
+fn makeposseq_wye_three_phase() {
+    let mut ld = Load::new("l");
+    ld.connection = Connection::Wye;
+    ld.cd.nphases = 3;
+    ld.kv_load_base = 12.47;
+    ld.kw_base = 400.0;
+    ld.kvar_base = 131.55;
+    ld.connected_kva = 0.0;
+
+    let plan = ld.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    let v = 12.47 / 3.0_f64.sqrt();
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+            PosSeqAction::SetF64(prop::KW, 400.0 / 3.0),
+            PosSeqAction::SetF64(prop::KVAR, 131.55 / 3.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
+    // Oracle cross-check: ld_wye kW 400 → 133.33 (and 44.44 after a 2nd pass).
+    assert!((400.0_f64 / 3.0 - 133.3333).abs() < 1e-3);
+}
+
+/// Delta load with xfkVA>0: V line-neutral (Δ ⇒ conn≠Wye), and the xfkVA
+/// (ConnectedKVA) ÷ 3 emitted as a 7th action.
+#[test]
+fn makeposseq_delta_with_xfkva() {
+    let mut ld = Load::new("l");
+    ld.connection = Connection::Delta;
+    ld.cd.nphases = 3;
+    ld.kv_load_base = 12.47;
+    ld.kw_base = 300.0;
+    ld.kvar_base = 100.0;
+    ld.connected_kva = 500.0;
+
+    let plan = ld.make_pos_sequence(&PosSeqCtx::default());
+    let v = 12.47 / 3.0_f64.sqrt();
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+            PosSeqAction::SetF64(prop::KW, 300.0 / 3.0),
+            PosSeqAction::SetF64(prop::KVAR, 100.0 / 3.0),
+            PosSeqAction::SetF64(prop::XFKVA, 500.0 / 3.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
+}
+
+/// 1-phase wye load: V stays line-line base (nphases==1 AND conn==Wye), and
+/// the ÷3 (not ÷nphases) power split still applies.
+#[test]
+fn makeposseq_single_phase_wye_keeps_base_kv() {
+    let mut ld = Load::new("l");
+    ld.connection = Connection::Wye;
+    ld.cd.nphases = 1;
+    ld.kv_load_base = 7.2;
+    ld.kw_base = 80.0;
+    ld.kvar_base = 26.3;
+    ld.connected_kva = 0.0;
+
+    let plan = ld.make_pos_sequence(&PosSeqCtx::default());
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, 7.2), // NOT /√3
+            PosSeqAction::SetF64(prop::KW, 80.0 / 3.0),
+            PosSeqAction::SetF64(prop::KVAR, 26.3 / 3.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
 }

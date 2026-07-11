@@ -17,6 +17,7 @@ fn test_sys() -> SysCtx {
         is_dynamic_model: false,
         load_model: 1,
         mode: SolveMode::Snapshot,
+        active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
         gen_multiplier: 1.0,
         generator_dispatch_reference: 0.0,
@@ -492,4 +493,44 @@ fn reset_restores_switch_to_normal_via_dispatch() {
         term1_max_current(&mut dss, "Line.l1") > 1.0,
         "reset (normal=closed) should re-close the switched line"
     );
+}
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::obj::base::DssObject;
+
+    /// Pascal `TSwtControlObj.MakePosSequence` (SwtControl.pas:306): phases/conds
+    /// + bus from the controlled (switched) element at ElementTerminal.
+    #[test]
+    fn resyncs_to_controlled() {
+        let mut sw = SwtControl::new("sw1");
+        sw.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 0 });
+        sw.ccd.element_terminal = 2;
+        let ctx = PosSeqCtx {
+            controlled: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                bus_names: vec!["b1".into(), "b2".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = sw.make_pos_sequence(&ctx);
+        assert_eq!(sw.ccd.cd.nphases, 1);
+        assert_eq!(sw.ccd.cd.nconds, 1);
+        assert_eq!(sw.get_bus_name(1), "b2");
+        assert!(plan.run_base && plan.actions.is_empty());
+    }
+
+    #[test]
+    fn nil_controlled_runs_base_only() {
+        let mut sw = SwtControl::new("sw1");
+        let np = sw.ccd.cd.nphases;
+        let plan = sw.make_pos_sequence(&PosSeqCtx::default());
+        assert_eq!(sw.ccd.cd.nphases, np);
+        assert!(plan.run_base);
+    }
 }

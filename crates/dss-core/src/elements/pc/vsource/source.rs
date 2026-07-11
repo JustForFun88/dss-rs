@@ -110,12 +110,23 @@ impl VSource {
         }
     }
 
-    /// Pascal `GetInjCurrents`: `[Iinj1; Iinj2] = [Yprim]·[Vsource; 0]`.
+    /// Pascal `GetInjCurrents`: `[Iinj1; Iinj2] = [Yprim]·[Vsource; 0]` — the
+    /// solve path: fill `self.cd.inj_current` via [`Self::compute_inj_currents`].
     pub(super) fn get_inj_currents(&mut self, sys: &SysCtx) {
+        self.cd.inj_current = self.compute_inj_currents(sys);
+    }
+
+    /// Pascal `GetInjCurrents`, **returning** the injection; `self.cd.inj_current`
+    /// is left untouched so the reporting path stays side-effect-free (Pascal
+    /// `TVsourceObj.GetCurrents` writes into the scratch `ComplexBuffer`, never
+    /// `InjCurrent`).
+    pub(super) fn compute_inj_currents(&mut self, sys: &SysCtx) -> Vec<Complex64> {
         self.get_vterminal_for_source(sys);
+        let mut inj = vec![Complex64::ZERO; self.cd.yorder];
         if let Some(yprim) = &self.cd.yprim {
-            yprim.mv_mult(&mut self.cd.inj_current, &self.cd.vterminal);
+            yprim.mv_mult(&mut inj, &self.cd.vterminal);
         }
         self.cd.iterminal_updated = false;
+        inj
     }
 }

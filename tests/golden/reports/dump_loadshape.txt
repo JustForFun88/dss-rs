@@ -1,0 +1,25 @@
+
+New "LoadShape.ls1"
+~ NPts=3
+~ Interval=1
+~ Mult=[ 1 2 3]
+~ Hour=
+~ Mean=2
+~ StdDev=1
+~ CSVFile=
+~ SngFile=
+~ DblFile=
+~ Action=
+~ QMult=
+~ UseActual=No
+~ PMax=3
+~ QMax=0
+~ SInterval=3600
+~ MInterval=60
+~ PBase=0
+~ QBase=0
+~ PMult=[ 1 2 3]
+~ PQCSVFile=
+~ MemoryMapping=No
+~ Interpolation=Avg
+~ Like=

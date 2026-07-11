@@ -1,0 +1,18 @@
+{
+  "report": "loops",
+  "fixture": "meshtest",
+  "suffix": "Loops.txt",
+  "deck": [
+    "new circuit.meshtest basekv=12.47 bus1=sourcebus phases=3",
+    "new line.feed  bus1=sourcebus bus2=b1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.la    bus1=b1 bus2=b2 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.lb    bus1=b2 bus2=b3 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.lc    bus1=b3 bus2=b1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.lpar  bus1=b1 bus2=b2 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new load.ld    bus1=b3 phases=3 kv=12.47 kw=100 pf=0.95",
+    "new energymeter.m1 element=line.feed terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+  ]
+}

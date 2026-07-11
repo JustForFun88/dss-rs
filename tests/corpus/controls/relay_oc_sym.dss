@@ -1,0 +1,23 @@
+// Relay, definite-time overcurrent on a SYMMETRIC 3-phase fault (the
+// golden_phase7_protection relay_current scenario, promoted to the live
+// gate): RESETTING at init, then OPENED + LOCKED OUT (Shots=1, ends OPEN).
+// Compared per step: full model + State/Normal + pickup-setting probes + the
+// trip event log.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.prot basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi
+new line.lat bus1=mid bus2=loadb linecode=lc length=1 units=mi
+new load.l bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
+
+new relay.rl type=current monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 phasetrip=80 groundtrip=40
+~ delay=0.1 shots=1 recloseintervals=None eventlog=yes
+
+new fault.f bus1=loadb phases=3 ontime=0.1 r=1 temporary=no
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.1 number=1 controlmode=time

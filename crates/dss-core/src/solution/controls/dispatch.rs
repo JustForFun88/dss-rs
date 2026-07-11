@@ -26,9 +26,10 @@ use crate::elements::pc::generator::Generator;
 use crate::elements::pc::pvsystem::{PVSystem, VARMODE_KVAR};
 use crate::elements::pc::storage::{STORE_EXTERNALMODE, Storage};
 use crate::elements::pc::upfc::Upfc;
+use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::fuse::Fuse;
-use crate::elements::pd::transformer::Transformer;
+use crate::elements::pd::transformer::{ControlledTransformer, Transformer};
 use crate::elements::traits::{ElemRef, ElemStore, SysCtx};
 use crate::solution::SolveMode;
 use crate::solution::control_queue::ControlQueue;
@@ -331,6 +332,8 @@ pub(super) fn dispatch_control(
                 int_hour: *int_hour,
                 t: *t,
                 control_iter: *control_iteration,
+                season_rating: ckt.season_rating,
+                season_signal: ckt.season_signal.clone(),
             };
             match op {
                 ControlOp::Sample => sc.sample(&mut env),
@@ -382,6 +385,7 @@ pub(super) fn dispatch_control(
                 int_hour,
                 t,
                 loads_need_updating,
+                system_y_changed,
                 ..
             } = &mut ckt.solution;
             let mut env = InvDispEnv {
@@ -402,6 +406,7 @@ pub(super) fn dispatch_control(
                 dyna_h: sys.dyna_h,
                 dbl_hour: sys.dbl_hour,
                 loads_need_updating,
+                system_y_changed,
             };
             match op {
                 ControlOp::Sample => ic.sample(&mut env),
@@ -595,6 +600,13 @@ pub(super) fn dispatch_control(
         control_iter: *control_iteration,
         self_ref: r,
     };
+
+    // Pascal's control `Sample` sets the global `DSS.SolutionAbort` directly;
+    // `CtrlCtx` borrows `ckt.solution`, so a control that wants to abort returns
+    // the request and we lift it to `ckt.solution.solution_abort` after the
+    // borrow ends (below). Only CapControl's FOLLOW-without-ControlSignal path
+    // does this today.
+    let mut solution_abort_requested = false;
 
     match kind {
         // Handled (and returned) above, before the CtrlCtx was built.
@@ -887,7 +899,10 @@ pub(super) fn dispatch_control(
                         let mon_elem = mon_clone
                             .as_ckt_element_mut()
                             .expect("controlled element is a circuit element");
-                        rel.sample(ctrl, mon_elem, &mut ctx);
+                        // A `TD21` relay on a coarse time step requests a
+                        // solution abort (error 388, Pascal `DoErrorMsg` →
+                        // `SolutionAbort`); lifted below like CapControl's.
+                        solution_abort_requested = rel.sample(ctrl, mon_elem, &mut ctx);
                     } else {
                         let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
                         let rel = cobj
@@ -908,7 +923,10 @@ pub(super) fn dispatch_control(
                                 "Monitored element is not a circuit element",
                             ));
                         };
-                        rel.sample(ctrl, mon_elem, &mut ctx);
+                        // A `TD21` relay on a coarse time step requests a
+                        // solution abort (error 388, Pascal `DoErrorMsg` →
+                        // `SolutionAbort`); lifted below like CapControl's.
+                        solution_abort_requested = rel.sample(ctrl, mon_elem, &mut ctx);
                     }
                 }
                 ControlOp::Action { code } => {
@@ -968,15 +986,31 @@ pub(super) fn dispatch_control(
                 .as_any_mut()
                 .downcast_mut::<RegControl>()
                 .expect("kind matched above");
-            let Some(tr) = tobj.as_any_mut().downcast_mut::<Transformer>() else {
+            // `transformer=` resolves against either class (Pascal proxy).
+            let tr: &mut dyn ControlledTransformer = if tobj.as_any().is::<Transformer>() {
+                tobj.as_any_mut()
+                    .downcast_mut::<Transformer>()
+                    .expect("is Transformer")
+            } else if tobj.as_any().is::<AutoTrans>() {
+                tobj.as_any_mut()
+                    .downcast_mut::<AutoTrans>()
+                    .expect("is AutoTrans")
+            } else {
                 return Err(abort(
                     ctx.errors,
                     &full_name,
-                    "Controlled element is not a Transformer",
+                    "Controlled element is not a Transformer or AutoTrans",
                 ));
             };
             match op {
-                ControlOp::Sample => rc.sample(tr, &mut ctx),
+                ControlOp::Sample => {
+                    // A raised Pascal exception (the Series-connection guard,
+                    // `RegControl.pas:1009`) maps to `SampleControlDevices`'
+                    // (`Solution.pas:1974`) error-484 + "Solution aborted." path.
+                    if let Err(what) = rc.sample(tr, &mut ctx) {
+                        return Err(abort(ctx.errors, &full_name, &what));
+                    }
+                }
                 ControlOp::Action { code } => rc.do_pending_action(code, tr, &mut ctx),
                 ControlOp::Reset => rc.reset(),
             }
@@ -1010,7 +1044,7 @@ pub(super) fn dispatch_control(
                             ));
                         };
                         let mut mon_clone = cap.clone();
-                        cc.sample(cap, &mut mon_clone, &mut ctx);
+                        solution_abort_requested = cc.sample(cap, &mut mon_clone, &mut ctx);
                     } else {
                         let (cobj, capobj, monobj) = store.triple_mut(r, target, mon);
                         let cc = cobj
@@ -1031,7 +1065,7 @@ pub(super) fn dispatch_control(
                                 "Monitored element is not a circuit element",
                             ));
                         };
-                        cc.sample(cap, mon_elem, &mut ctx);
+                        solution_abort_requested = cc.sample(cap, mon_elem, &mut ctx);
                     }
                 }
                 ControlOp::Action { .. } => {
@@ -1069,6 +1103,12 @@ pub(super) fn dispatch_control(
                 }
             }
         }
+    }
+
+    // Lift a control's abort request to the solution now that `ctx`'s borrow of
+    // `ckt.solution` has ended (Pascal `DSS.SolutionAbort := TRUE`).
+    if solution_abort_requested {
+        ckt.solution.solution_abort = true;
     }
 
     Ok(())
@@ -1259,6 +1299,78 @@ impl UpfcDispatchEnv for UpfcDispEnv<'_> {
     }
 }
 
+/// Pascal `TStorageControllerObj.RecalcElementData` tail (StorageController.pas
+/// l.817-828): build the fleet if it changed, then push the controller's
+/// external-dispatch flag and charge/discharge/reserve rates onto it. Pascal
+/// runs this at the end of EVERY edit line (`New`/`~`/`Edit`/`BatchEdit` all
+/// end in `RecalcElementData`), so the intermediate states are observable — a
+/// controller defined across `~` lines first scan-builds the ALL-storage fleet
+/// and pushes its DEFAULT `%reserve`/rates onto it before a later
+/// `elementList=` shrinks the fleet (SupportRun.dss pins non-fleet storages at
+/// `%Reserve = 25` from that residue). Invoked from the executive's edit tail
+/// (`exec/command.rs::edit_active`); same clone-out/copy-back borrow dance as
+/// the `Sample` dispatch above.
+pub(crate) fn storage_controller_recalc_fleet(r: ElemRef, ckt: &mut Circuit, env: &mut SolveEnv) {
+    let sys = sys_ctx(ckt);
+    let SolveEnv { store, errors, .. } = env;
+    let (monitored, element_terminal) = {
+        let obj = store.obj(r);
+        let Some(sc) = obj.as_any().downcast_ref::<StorageController>() else {
+            return;
+        };
+        (
+            sc.ccd.monitored_element,
+            sc.ccd.element_terminal.max(1) as usize,
+        )
+    };
+    let mut sc = store
+        .obj(r)
+        .as_any()
+        .downcast_ref::<StorageController>()
+        .expect("checked above")
+        .clone();
+    let storages = ckt.storages.clone();
+    let mut queue = std::mem::take(&mut ckt.solution.control_queue);
+    {
+        let Solution {
+            node_v,
+            event_log,
+            loads_need_updating,
+            system_y_changed,
+            int_hour,
+            t,
+            control_iteration,
+            ..
+        } = &mut ckt.solution;
+        let mut denv = StorageDispEnv {
+            store: &mut **store,
+            node_v: &*node_v,
+            sys: &sys,
+            monitored,
+            element_terminal,
+            storages,
+            queue: &mut queue,
+            events: event_log,
+            errors,
+            loads_need_updating,
+            system_y_changed,
+            self_ref: r,
+            int_hour: *int_hour,
+            t: *t,
+            control_iter: *control_iteration,
+            season_rating: ckt.season_rating,
+            season_signal: ckt.season_signal.clone(),
+        };
+        sc.recalc_fleet(&mut denv);
+    }
+    ckt.solution.control_queue = queue;
+    *store
+        .obj_mut(r)
+        .as_any_mut()
+        .downcast_mut::<StorageController>()
+        .expect("checked above") = sc;
+}
+
 /// [`StorageDispatchEnv`] over the store: the monitored element's terminal
 /// power/current and the dispatched Storage fleet's state, reached through the
 /// class registry. The fleet-scan list is the circuit's creation-ordered
@@ -1279,6 +1391,10 @@ struct StorageDispEnv<'a> {
     int_hour: i32,
     t: f64,
     control_iter: i32,
+    /// `DSS.SeasonalRating` (`Set SeasonRating=`).
+    season_rating: bool,
+    /// `DSS.SeasonSignal` (`Set SeasonSignal=`).
+    season_signal: String,
 }
 
 impl StorageDispEnv<'_> {
@@ -1537,6 +1653,28 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
     fn solve_mode(&self) -> SolveMode {
         self.sys.mode
     }
+    fn season_rating(&self) -> bool {
+        self.season_rating
+    }
+    fn season_rating_idx(&mut self) -> Option<i32> {
+        if self.season_signal.is_empty() {
+            return None;
+        }
+        // Pascal `RSignal := DSS.XYCurveClass.Find(DSS.SeasonSignal); if
+        // RSignal <> NIL then RatingIdx := trunc(RSignal.GetYValue(intHour))`
+        // — `RatingIdx` stays its `0` init on a miss.
+        let mut rating_idx = 0;
+        if let Some(r) = self.store.find_general("XYcurve", &self.season_signal)
+            && let Some(curve) = self
+                .store
+                .obj_mut(r)
+                .as_any_mut()
+                .downcast_mut::<crate::elements::general::xy_curve::XyCurveObj>()
+        {
+            rating_idx = curve.get_y_value(self.int_hour as f64).trunc() as i32;
+        }
+        Some(rating_idx)
+    }
 }
 
 /// Pascal `TInvControl.UpdateAll` (`SolutionAlgs.EndOfTimeStepCleanup`): feed every
@@ -1558,6 +1696,7 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
         int_hour,
         t,
         loads_need_updating,
+        system_y_changed,
         ..
     } = &mut ckt.solution;
 
@@ -1604,6 +1743,7 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
                 dyna_h: sys.dyna_h,
                 dbl_hour: sys.dbl_hour,
                 loads_need_updating: &mut *loads_need_updating,
+                system_y_changed: &mut *system_y_changed,
             };
             ic.update_inv_control(&mut env2);
         }
@@ -1640,6 +1780,7 @@ struct InvDispEnv<'a> {
     dyna_h: f64,
     dbl_hour: f64,
     loads_need_updating: &'a mut bool,
+    system_y_changed: &'a mut bool,
 }
 
 impl InvDispEnv<'_> {
@@ -1708,6 +1849,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 dckw_rated: pv.f_pmpp,        // FDCkWRated := Pmpp
                 pct_dckw_rated: pv.f_pu_pmpp, // FpctDCkWRated := puPmpp
                 eff_factor: pv.eff_factor,    // FEffFactor := PVSystemVars.EffFactor
+                storage_state: 0,             // n/a for a PVSystem
+                vw_state_requested: false,    // n/a for a PVSystem
             }
         } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
             DerSnap {
@@ -1727,14 +1870,16 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 current_kvar_limit_neg: st.base.current_kvar_limit_neg,
                 p_priority: st.p_priority,
                 pf_priority: st.pf_priority,
-                // volt-watt (Pascal UpdateDERParameters Storage branch). Used only
-                // by VOLTVAR for Storage (where they go unread); the Storage
-                // VOLTWATT/VV_VW dispatch is deferred (guarded at Sample), so the
-                // `FDCkW := 0.0` + live `TStorageObj.DCkW` split is not exercised.
-                dckw: 0.0,                       // FDCkW := 0.0 for Storage
-                dckw_rated: st.kw_rating,        // FDCkWRated := StorageVars.kWrating
+                // volt-watt (Pascal UpdateDERParameters Storage branch). `FDCkW` is
+                // 0 for Storage; `Calc_PBase`'s `%Available` base reads the live
+                // `TStorageObj.DCkW` (see `der_storage_dckw`). `StorageState` +
+                // `FVWStateRequested` drive `CalcPVWcurve_limitpu`'s curve pick.
+                dckw: 0.0,                                  // FDCkW := 0.0 for Storage
+                dckw_rated: st.kw_rating,                   // FDCkWRated := StorageVars.kWrating
                 pct_dckw_rated: st.pct_kw_rated, // FpctDCkWRated := StorageVars.pctkWrated
                 eff_factor: st.eff_factor,       // FEffFactor := Storagevars.EffFactor
+                storage_state: st.f_state,       // TStorageObj.StorageState (FState)
+                vw_state_requested: st.fvw_state_requested, // TStorageObj.FVWStateRequested
             }
         } else {
             panic!("InvControl fleet entry is not a PVSystem or Storage");
@@ -1888,6 +2033,18 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             pv.set_nominal_der_output(sys);
         } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
             st.set_nominal_der_output(sys);
+            // Pascal `SetNominalDEROutput` → `RecalcElementData` consumes a
+            // pending `StateChanged` into `YprimInvalid`, and `Set_YprimInvalid`
+            // ALSO raises `Solution.SystemYChanged` (CktElement.pas:245). When a
+            // StorageController flipped the fleet state earlier in the SAME
+            // control round, the InvControl's DER refresh is what consumes that
+            // flag on the oracle — `CheckControls` (Solution.pas:1155) then
+            // rebuilds Y before the next round's solve. Dropping the propagation
+            // leaves the next round's first solve on the stale-state YPrim (+2
+            // iterations; caught by the midi_controls live deck at hour 2).
+            if st.cd.yprim_invalid {
+                *self.system_y_changed = true;
+            }
         }
     }
     fn der_set_kw_requested(&mut self, r: ElemRef, p: f64) {
@@ -1918,6 +2075,17 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.present_kw()
         } else {
             0.0
+        }
+    }
+    fn der_storage_dckw(&mut self, r: ElemRef) -> f64 {
+        // Pascal `Get_DCkW` → `ComputeDCkW` (recomputes off the live terminal power).
+        let sys = self.sys;
+        let node_v = self.node_v;
+        let obj = self.store.obj_mut(r);
+        if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.dckw(sys, node_v)
+        } else {
+            0.0 // never reached for a PVSystem (Calc_PBase guards on the DER type)
         }
     }
     fn der_set_monitor_var(&mut self, r: ElemRef, kind: MonitorVar, value: f64) {
@@ -1974,6 +2142,96 @@ impl InvDispatchEnv for InvDispEnv<'_> {
     }
     fn set_loads_need_updating(&mut self) {
         *self.loads_need_updating = true;
+    }
+
+    // --- grid-forming (GFM) arm ---
+    fn der_gfm_mode(&self, r: ElemRef) -> bool {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            pv.base.gfm_mode
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            st.base.gfm_mode
+        } else {
+            false
+        }
+    }
+    fn der_storage_state(&self, r: ElemRef) -> i32 {
+        self.store
+            .obj(r)
+            .as_any()
+            .downcast_ref::<Storage>()
+            .map_or(0, |st| st.f_state)
+    }
+    fn der_ilimit(&self, r: ElemRef) -> f64 {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            pv.base.dyn_vars.i_limit
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            st.base.dyn_vars.i_limit
+        } else {
+            -1.0
+        }
+    }
+    fn der_reset_ibr(&self, r: ElemRef) -> bool {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            pv.base.dyn_vars.reset_ibr
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            st.base.dyn_vars.reset_ibr
+        } else {
+            false
+        }
+    }
+    fn der_check_amps_limit(&mut self, r: ElemRef) -> bool {
+        let sys = self.sys;
+        let node_v = self.node_v;
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.check_amps_limit(sys, node_v)
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.check_amps_limit(sys, node_v)
+        } else {
+            false
+        }
+    }
+    fn der_check_ol_inverter(&mut self, r: ElemRef) -> bool {
+        let sys = self.sys;
+        let node_v = self.node_v;
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.check_ol_inverter(sys, node_v)
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.check_ol_inverter(sys, node_v)
+        } else {
+            false
+        }
+    }
+    fn der_set_gfm_mode(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.gfm_mode = value;
+            pv.cd.yprim_invalid = true;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.gfm_mode = value;
+            st.cd.yprim_invalid = true;
+        }
+    }
+    fn der_set_reset_ibr(&mut self, r: ElemRef, value: bool) {
+        let obj = self.store.obj_mut(r);
+        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+            pv.base.dyn_vars.reset_ibr = value;
+        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+            st.base.dyn_vars.reset_ibr = value;
+        }
+    }
+    fn der_set_storage_state_off(&mut self, r: ElemRef) {
+        if let Some(st) = self.store.obj_mut(r).as_any_mut().downcast_mut::<Storage>() {
+            st.f_state = 0; // STORE_IDLING ("burning, turn it off")
+            st.state_changed = true;
+        }
+    }
+    fn is_dynamic_model(&self) -> bool {
+        self.sys.is_dynamic_model
     }
 }
 

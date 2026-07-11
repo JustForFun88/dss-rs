@@ -67,7 +67,10 @@ impl std::error::Error for SparseError {}
 /// optimization KLU performs.
 pub struct SparseSet {
     n: usize,
-    triplets: Vec<Triplet<usize, usize, Complex64>>,
+    /// Stamped entries in insertion order. Duplicate `(row, col)` are summed at
+    /// [`SparseSet::assemble`] time **in this order** (not faer's) to match
+    /// KLUSolve/CSparse — see the note there.
+    triplets: Vec<(usize, usize, Complex64)>,
     matrix: Option<SparseColMat<usize, Complex64>>,
     symbolic: Option<SymbolicLu<usize>>,
     factors: Option<Lu<usize, Complex64>>,
@@ -118,7 +121,7 @@ impl SparseSet {
     /// summed when the matrix is assembled (KLUSolve `AddMatrixElement`).
     pub fn add_element(&mut self, row: usize, col: usize, value: Complex64) {
         debug_assert!(row < self.n && col < self.n);
-        self.triplets.push(Triplet::new(row, col, value));
+        self.triplets.push((row, col, value));
         // Pattern may have changed; existing factorizations are stale.
         self.matrix = None;
         self.factors = None;
@@ -140,7 +143,7 @@ impl SparseSet {
                 }
                 let v = yprim[i * order + j];
                 if v != Complex64::ZERO {
-                    self.triplets.push(Triplet::new(ni - 1, nj - 1, v));
+                    self.triplets.push((ni - 1, nj - 1, v));
                 }
             }
         }
@@ -293,7 +296,35 @@ impl SparseSet {
 
     fn assemble(&mut self) -> Result<(), SparseError> {
         if self.matrix.is_none() {
-            let m = SparseColMat::try_new_from_triplets(self.n, self.n, &self.triplets)
+            // Sum duplicate (row,col) entries in INSERTION order, matching
+            // KLUSolve/CSparse (`cs_dupl`), which accumulates duplicates in the
+            // element-stamp order. faer's `try_new_from_triplets` dedups in its
+            // own order, which differs in the last ULP on cells fed by several
+            // elements (the diagonal/mutual sums). Pre-summing here keeps the
+            // assembled system Y bit-identical to the Pascal oracle — whose
+            // element YPrims we already match after `cdiv_fpc` — since the engine
+            // stamps elements in creation order, exactly like the reference.
+            let mut pos = std::collections::HashMap::<(usize, usize), usize>::with_capacity(
+                self.triplets.len(),
+            );
+            let mut keys: Vec<(usize, usize)> = Vec::with_capacity(self.triplets.len());
+            let mut vals: Vec<Complex64> = Vec::with_capacity(self.triplets.len());
+            for &(r, c, v) in &self.triplets {
+                match pos.get(&(r, c)) {
+                    Some(&i) => vals[i] += v,
+                    None => {
+                        pos.insert((r, c), keys.len());
+                        keys.push((r, c));
+                        vals.push(v);
+                    }
+                }
+            }
+            let deduped: Vec<Triplet<usize, usize, Complex64>> = keys
+                .iter()
+                .zip(&vals)
+                .map(|(&(r, c), &v)| Triplet::new(r, c, v))
+                .collect();
+            let m = SparseColMat::try_new_from_triplets(self.n, self.n, &deduped)
                 .map_err(|e| SparseError::Internal(format!("{e:?}")))?;
             self.matrix = Some(m);
         }

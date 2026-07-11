@@ -5,7 +5,8 @@
 
 use num_complex::Complex64;
 
-use crate::elements::traits::{CktElement, SysCtx};
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
+use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{ExpControl, prop};
@@ -62,6 +63,12 @@ impl CktElement for ExpControl {
         &mut self.ccd.cd
     }
 
+    /// Pascal `TControlElem.FControlledElement` - the element this control
+    /// acts on (`None` when it drives a list rather than a single element).
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+        self.ccd.controlled_element
+    }
+
     /// Pascal `TExpControlObj.RecalcElementData` (the parse-time subset): derive
     /// `FOpenTau` and attach the control's terminal to the first DER's bus. The
     /// fleet *dispatch* build (`MakePVSystemList`) needs store access, so it is
@@ -78,6 +85,40 @@ impl CktElement for ExpControl {
     /// Pascal `TControlElem.GetCurrents`: always zero.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TExpControlObj.MakePosSequence` (`Controls/ExpControl.pas:422`).
+    /// **NIL-deref hazard** (Access violation #303, probes `2`/`S2`,
+    /// `docs/wpg21_makeposseq_probes.md`): copied from InvControl — with an empty
+    /// PVSystem list Pascal's `Setbus(1, MonitoredElement.GetBus(..))`
+    /// dereferences the NIL `MonitoredElement`; dss-python 0.15.7 also faults in
+    /// the populated case. Per CLAUDE.md UB is never reproduced. We transcribe
+    /// the defined scalar resync (`FNphases := 3; Nconds := 3`) and safe-skip the
+    /// NIL-deref `Setbus` when no monitored element is resolved; when a monitored
+    /// PVSystem *is* resolved, adopt its `Firstbus` / phase count.
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        // FNphases := 3; Nconds := 3 (defined; independent of the PVSystem list).
+        self.ccd.cd.nphases = 3;
+        self.ccd.cd.set_nconds(3);
+        if let Some(m) = &ctx.monitored {
+            // Populated path: MonitoredElement := 1st PVSystem; Setbus(1,
+            // MonitoredElement.Firstbus); FNphases := MonitoredElement.NPhases;
+            // Nconds := Nphases.
+            let bus = m.bus_names.first().cloned().unwrap_or_default();
+            self.ccd.cd.set_bus(1, &bus);
+            self.ccd.cd.nphases = m.nphases;
+            self.ccd.cd.set_nconds(m.nphases);
+        }
+        // else: MonitoredElement is NIL — Pascal's Setbus derefs it and faults
+        // (#303). Safe-skip the Setbus (the 3/3 resync above still applies).
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
+    }
+
+    /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
+    /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        self.ccd.monitored_element
     }
 }
 

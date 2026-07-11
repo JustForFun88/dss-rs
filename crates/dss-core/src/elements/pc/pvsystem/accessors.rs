@@ -12,9 +12,11 @@ use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::temp_shape::TShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
+use crate::util::sqrt3;
 
 use super::{PVSystem, VARMODE_KVAR, VARMODE_PF, nconds_for_connection, prop};
 
@@ -28,6 +30,34 @@ impl CktElement for PVSystem {
 
     fn recalc_element_data(&mut self, sys: &SysCtx) {
         self.recalc(sys);
+    }
+
+    /// Pascal `TPVsystemObj.MakePosSequence` (`PVsystem.pas:2638`). Single
+    /// phase, line-neutral; a multi-phase array's `kVA` rating is divided by the
+    /// phase count and `PF` is set to the nominal PF.
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        // Make sure voltage is line-neutral.
+        let v = if self.cd.nphases > 1 || self.base.connection as i32 != 0 {
+            self.kv_pvsystem_base / sqrt3()
+        } else {
+            self.kv_pvsystem_base
+        };
+
+        let old_phases = self.cd.nphases;
+        let mut actions = vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+        ];
+        if old_phases > 1 {
+            let new_kva = self.f_kva_rating / self.cd.nphases as f64;
+            actions.push(PosSeqAction::SetF64(prop::KVA, new_kva));
+            actions.push(PosSeqAction::SetF64(prop::PF, self.base.pf_nominal));
+        }
+        actions.push(PosSeqAction::EndEdit);
+
+        PosSeqPlan::with_actions(actions)
     }
 
     /// Pascal `TPVsystemObj.CalcYPrim`.
@@ -118,6 +148,11 @@ impl CktElement for PVSystem {
         self.spectrum_obj = spectrum;
     }
 
+    /// Pascal `(pElem is TInvBasedPCE) and GFM_Mode`.
+    fn is_gfm(&self) -> bool {
+        self.base.gfm_mode
+    }
+
     /// Pascal `TPVsystemObj.InjCurrents` + `TPCElement.InjCurrents`.
     fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
         if !self.cd.enabled {
@@ -143,6 +178,24 @@ impl CktElement for PVSystem {
         {
             let mut errors = Vec::new();
             self.calc_pvsystem_model_contribution(sys, node_v, &mut errors);
+        }
+        if self.base.gfm_mode {
+            // Pascal `TInvBasedPCE.GetCurrents` (GFM override, InvBasedPCE.pas
+            // l.211): `Vterminal := NodeV`, then `Curr = YPrim·Vterminal −
+            // InjCurrent` (the model's `Vterminal` holds the internal phasors).
+            let cd = &mut self.cd;
+            for i in 0..cd.yorder {
+                cd.vterminal[i] = node_v[cd.node_ref[i]];
+            }
+            if let Some(yprim) = &cd.yprim {
+                yprim.mv_mult(curr, &cd.vterminal);
+            }
+            for (i, c) in curr.iter_mut().enumerate() {
+                *c -= cd.inj_current[i];
+            }
+            self.cd.iterminal_updated = true;
+            self.cd.iterminal_solution_count = sys.solution_count;
+            return;
         }
         if self.cd.iterminal_updated {
             curr.copy_from_slice(&self.cd.iterminal[..curr.len()]);

@@ -1,0 +1,46 @@
+// Combination: PROTECTION COORDINATION with metering. Substation backup relay
+// (slow definite-time OC) -> midline recloser (1 fast + delayed shots) ->
+// lateral fuse; a permanent SLG fault on the fused lateral runs the classic
+// fuse-save race: the recloser FAST shot clears first, on reclose the fault
+// persists and the fuse melts on the delayed cycle, the recloser recloses and
+// service is restored except the blown phase; the backup relay never trips.
+// An EnergyMeter + a mode-0 monitor meter the whole sequence. Compared per
+// step: full model + every device's State probes + the coordination event log
+// + pending reclose shots + meter registers/zone + monitor channels.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.coord basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+
+new line.sub bus1=src bus2=b1 linecode=lc length=0.5 units=mi
+new line.mid bus1=b1 bus2=b2 linecode=lc length=1 units=mi
+new line.latf bus1=b2 bus2=b3 linecode=lc length=1 units=mi
+new line.lat2 bus1=b2 bus2=b4 linecode=lc length=1 units=mi
+
+new load.l3 bus1=b3 phases=3 kv=12.47 kw=400 pf=0.95 model=1
+new load.l4 bus1=b4 phases=3 kv=12.47 kw=600 pf=0.95 model=1
+
+! Backup: slow definite-time overcurrent relay at the substation.
+new relay.backup type=current monitoredobj=line.sub monitoredterm=1
+~ switchedobj=line.sub switchedterm=1 phasetrip=400 groundtrip=200
+~ delay=1.5 shots=1 recloseintervals=None eventlog=yes
+
+! Midline recloser: one FAST shot (fuse saving), then delayed.
+new recloser.r monitoredobj=line.mid monitoredterm=1
+~ switchedobj=line.mid switchedterm=1 numfast=1 shots=3
+~ phasetrip=100 groundtrip=60 recloseintervals=(0.5, 1.0)
+
+! Lateral fuse (default tlink curve).
+new fuse.fz monitoredobj=line.latf monitoredterm=1
+~ switchedobj=line.latf switchedterm=1 ratedcurrent=40
+
+! Permanent SLG fault on the fused lateral, phase 1.
+new fault.f bus1=b3.1 phases=1 ontime=0.2 r=0.5 temporary=no
+
+new energymeter.em element=line.sub terminal=1
+new monitor.mm element=line.mid terminal=1 mode=0
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.1 number=1 controlmode=time

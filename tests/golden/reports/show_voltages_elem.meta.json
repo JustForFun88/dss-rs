@@ -1,0 +1,9 @@
+{
+  "report": "voltages LN elem",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+  "post": [
+    "solve"
+  ],
+  "fixture": "ieee13nodeckt",
+  "suffix": "VLN_elem.txt"
+}

@@ -1,0 +1,17 @@
+! GAPS deck: SolveMode=M3 (Pascal SolveMonte3), Set random=none => deterministic:
+! time held fixed (set AFTER mode= so Set_Mode's time reset does not clobber it);
+! with random=none no LoadMultiplier draw fires, so all number= cases repeat the
+! same operating point — pins the loop/sampling machinery.
+Clear
+New Circuit.gaps_m3 basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.day8 npts=8 interval=3 mult=(0.40 0.55 0.75 0.95 1.00 0.90 0.70 0.50)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1 daily=day8
+New Monitor.m_ld1 element=Load.ld1 terminal=1 mode=1 ppolar=no
+New EnergyMeter.em element=Line.l1 terminal=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set random=none
+Set mode=M3 number=4
+Set time=(10, 0)
+Solve

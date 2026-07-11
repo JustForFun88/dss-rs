@@ -7,7 +7,10 @@
 /// non-identifier spellings replaced exactly as the Pascal does (`vr`→`var`,
 /// `tilde`→`~`, `DoubleSlash`→`//`, `questionmark`→`?`, `SetOpt`→`Set`).
 /// Index `i` is ordinal `i + 1`. The `DSS_CAPI_PM`-only commands (NewActor,
-/// Wait, SolveAll) are appended because the oracle build defines that flag.
+/// Wait, SolveAll) are appended because the oracle build defines that flag;
+/// `Abort`/`Clone` close the list (125 names, oracle order, pinned byte-exact
+/// by the `dump commands` golden). Unmatched ordinals dispatch to
+/// `not_ported_command`.
 pub(crate) const EXEC_COMMANDS: &[&str] = &[
     "New",
     "Edit",
@@ -132,17 +135,36 @@ pub(crate) const EXEC_COMMANDS: &[&str] = &[
     "NewActor",
     "Wait",
     "SolveAll",
+    "Abort",
+    "Clone",
 ];
 
 /// `TExecCommand` ordinals the executive dispatches on.
 pub(crate) mod cmd {
     pub const NEW: usize = 1;
     pub const EDIT: usize = 2;
+    pub const ENABLE: usize = 10;
+    pub const DISABLE: usize = 11;
+    pub const SET_KV_BASE: usize = 30;
+    pub const LOSSES: usize = 42;
+    pub const SUMMARY: usize = 67;
+    pub const RECONDUCTOR: usize = 77;
+    pub const INIT_SNAP: usize = 78;
+    pub const SOLVE_NO_CONTROL: usize = 79;
+    pub const SAMPLE_CONTROLS: usize = 80;
+    pub const DO_CONTROL_ACTIONS: usize = 81;
+    pub const SHOW_CONTROL_QUEUE: usize = 82;
+    pub const SOLVE_DIRECT: usize = 83;
+    pub const SOLVE_PFLOW: usize = 84;
     pub const MORE: usize = 3;
     pub const M: usize = 4;
     pub const TILDE: usize = 5;
+    pub const SELECT: usize = 6;
+    pub const SAVE: usize = 7;
     pub const SHOW: usize = 8;
     pub const SOLVE: usize = 9;
+    pub const PLOT: usize = 12;
+    pub const DUMP: usize = 16;
     pub const OPEN: usize = 17;
     pub const CLOSE: usize = 18;
     pub const RESET: usize = 13;
@@ -161,21 +183,44 @@ pub(crate) mod cmd {
     pub const BUILD_Y: usize = 31;
     pub const GET: usize = 32;
     pub const INIT: usize = 33;
+    pub const EXPORT: usize = 34;
     pub const FILEEDIT: usize = 35;
     pub const ALLOCATE_LOADS: usize = 45;
     pub const CLASSES: usize = 49;
     pub const USERCLASSES: usize = 50;
     pub const BUSCOORDS: usize = 58;
+    pub const LATLONGCOORDS: usize = 94;
+    pub const MAKE_BUS_LIST: usize = 59;
+    /// `MakePosSeq` (`ExecCommands.pas`): the 60th `TExecCommand`, dispatched to
+    /// `TExecHelper.DoMakePosSeq`. (The array position is 60 — index 59 in
+    /// `EXEC_COMMANDS`, right after `MakeBusList`.)
+    pub const MAKE_POS_SEQ: usize = 60;
+    pub const INTERPOLATE: usize = 62;
     pub const ALIGN_FILE: usize = 63;
     pub const DI_PLOT: usize = 69;
     pub const COMPARE_CASES: usize = 70;
     pub const YEARLY_CURVES: usize = 71;
     pub const CD: usize = 72;
+    pub const DISTRIBUTE: usize = 68;
+    pub const UUIDS: usize = 86;
+    pub const VISUALIZE: usize = 73;
+    pub const CLOSE_DI: usize = 74;
     pub const DOSCMD: usize = 75;
     pub const CVRT_LOADSHAPES: usize = 88;
     pub const REDUCE: usize = 61;
+    pub const REMOVE: usize = 107;
+    pub const SET_BUS_XY: usize = 91;
+    pub const BATCH_EDIT: usize = 95;
+    pub const PSTCALC: usize = 96;
     pub const RELCALC: usize = 100;
     pub const VAR: usize = 101;
+    pub const ADD_BUS_MARKER: usize = 85;
+    pub const CLEAR_BUS_MARKER: usize = 99;
+    pub const GIS_COORDS: usize = 118;
+    pub const CALC_INC_MATRIX: usize = 108;
+    pub const CALC_INC_MATRIX_O: usize = 109;
+    pub const CALC_LAPLACIAN: usize = 111;
+    pub const WAIT: usize = 122;
     pub const CLEAR_ALL: usize = 119;
     pub const COMHELP: usize = 120;
 }
@@ -303,10 +348,86 @@ pub(crate) const EXEC_OPTIONS: &[&str] = &[
     "EventLogDefault",
     "LongLineCorrection",
     "ShowReports",
+    // The `DSS_CAPI_PM` parallel-machine options (the oracle build defines that
+    // flag, so its name table — and therefore `Dump commands` — includes them).
+    // Unmatched ordinals fall to the "not ported yet" arms of `Set`/`Get`.
+    "NumCPUs",
+    "NumCores",
+    "NumActors",
+    "ActiveActor",
+    "CPU",
+    "ActorProgress",
+    "Parallel",
+    "ConcatenateReports",
+    "NUMANodes",
+];
+
+/// Pascal `TPlotOption` names in ordinal order (`PlotOptions.DefineOptions`),
+/// with the `__` stripped and the two renames `typ`→`type`, `obj`→`object`.
+/// Index `i` is `ParamPointer` `i + 1` (matched abbreviation-wise by the
+/// `plot_commands` `CommandList`). See `PlotOptions.pas:19-44/152-170`.
+pub(crate) const PLOT_OPTIONS: &[&str] = &[
+    "type",
+    "quantity",
+    "max",
+    "dots",
+    "labels",
+    "object",
+    "showloops",
+    "r3",
+    "r2",
+    "c1",
+    "c2",
+    "c3",
+    "channels",
+    "bases",
+    "subs",
+    "thickness",
+    "buslist",
+    "min",
+    "3phLinestyle",
+    "1phLinestyle",
+    "phases",
+    "profilescale",
+    "PlotID",
 ];
 
 /// `TExecOption` ordinals the executive implements.
 pub(crate) mod opt {
+    /// `Set Daisysize=` (ExecOptions.pas Daisysize=76): the DSS-context
+    /// `DaisySize` written into the plot payload.
+    pub const DAISY_SIZE: usize = 76;
+
+    // The GUI plot-marker style options (ExecOptions.pas Set arms :615-682 /
+    // Get arms :978-1041): headless-inert Circuit fields emitted into the
+    // plot-callback `Markers` object (WPG.17 Plot audit settlement).
+    pub const MARK_SWITCHES: usize = 74;
+    pub const SWITCH_MARKER_CODE: usize = 75;
+    pub const MARK_TRANSFORMERS: usize = 77;
+    pub const TRANS_MARKER_CODE: usize = 78;
+    pub const TRANS_MARKER_SIZE: usize = 79;
+    pub const MARK_CAPACITORS: usize = 83;
+    pub const MARK_REGULATORS: usize = 84;
+    pub const MARK_PVSYSTEMS: usize = 85;
+    pub const MARK_STORAGE: usize = 86;
+    pub const CAP_MARKER_CODE: usize = 87;
+    pub const REG_MARKER_CODE: usize = 88;
+    pub const PV_MARKER_CODE: usize = 89;
+    pub const STORE_MARKER_CODE: usize = 90;
+    pub const CAP_MARKER_SIZE: usize = 91;
+    pub const REG_MARKER_SIZE: usize = 92;
+    pub const PV_MARKER_SIZE: usize = 93;
+    pub const STORE_MARKER_SIZE: usize = 94;
+    pub const MARK_FUSES: usize = 96;
+    pub const FUSE_MARKER_CODE: usize = 97;
+    pub const FUSE_MARKER_SIZE: usize = 98;
+    pub const MARK_RECLOSERS: usize = 99;
+    pub const RECLOSER_MARKER_CODE: usize = 100;
+    pub const RECLOSER_MARKER_SIZE: usize = 101;
+    pub const MARK_RELAYS: usize = 103;
+    pub const RELAY_MARKER_CODE: usize = 104;
+    pub const RELAY_MARKER_SIZE: usize = 105;
+
     pub const HOUR: usize = 3;
     pub const SEC: usize = 4;
     pub const YEAR: usize = 5;
@@ -326,6 +447,7 @@ pub(crate) mod opt {
     pub const NORMVMAXPU: usize = 22;
     pub const EMERGVMINPU: usize = 23;
     pub const EMERGVMAXPU: usize = 24;
+    pub const LDCURVE: usize = 27;
     pub const PCT_GROWTH: usize = 28;
     pub const GEN_KW: usize = 29;
     pub const GEN_PF: usize = 30;
@@ -351,14 +473,33 @@ pub(crate) mod opt {
     pub const HARMONICS: usize = 54;
     pub const MAX_CONTROL_ITER: usize = 55;
     pub const ALLOCATION_FACTORS: usize = 48;
+    pub const DEMAND_INTERVAL: usize = 60;
+    pub const DI_VERBOSE: usize = 62;
     pub const CASE_NAME: usize = 63;
+    pub const MARKER_CODE: usize = 64;
+    pub const NODE_WIDTH: usize = 65;
     pub const LOG: usize = 66;
+    pub const OVERLOAD_REPORT: usize = 68;
+    pub const VOLT_EXCEPTION_REPORT: usize = 69;
+    pub const SHOW_EXPORT: usize = 71;
+    /// `ProcessTime` (Get-only → `Solve_Time_Elapsed`) / `TotalTime`
+    /// (Set+Get → `Total_Time_Elapsed`) / `StepTime` (Get-only →
+    /// `Step_Time_Elapsed`), `ExecOptions.pas:106-108`.
+    pub const PROCESS_TIME: usize = 106;
+    pub const TOTAL_TIME: usize = 107;
+    pub const STEP_TIME: usize = 108;
+    pub const SAMPLE_ENERGY_METERS: usize = 109;
+    pub const LOAD_SHAPE_CLASS: usize = 80;
     pub const EARTH_MODEL: usize = 81;
     pub const NUM_ALLOC_ITERATIONS: usize = 72;
     pub const DEFAULT_BASE_FREQUENCY: usize = 73;
     pub const NEGLECT_LOAD_Y: usize = 95;
     pub const MIN_ITERATIONS: usize = 110;
+    pub const KEEP_LIST: usize = 58;
     pub const REDUCE_OPTION: usize = 59;
     pub const KEEP_LOAD: usize = 112;
     pub const ZMAG: usize = 113;
+    pub const SEASON_RATING: usize = 114;
+    pub const SEASON_SIGNAL: usize = 115;
+    pub const DATA_PATH: usize = 57;
 }

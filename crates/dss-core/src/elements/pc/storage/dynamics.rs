@@ -8,9 +8,11 @@
 //! current `it` are advanced by a PI controller using the trapezoidal
 //! predictor/corrector in `SolveDynamic`.
 //!
-//! Scope: the classic GFL path and the external `DynamicEqObj` / `DynamicExp`
-//! integration (WP7.7 step 3b — the user equation replaces `SolveDynamicStep`).
-//! NOT_PORTED defers: GFM, DynaModel/UserModel DLLs.
+//! Scope: the classic GFL path, the grid-forming (GFM) black-start droop
+//! (WPG.17 — `DoDynamicMode`/`IntegrateStates` GFM, `FixPhaseAngle`/`VDelta`/
+//! `ISPDelta`), and the external `DynamicEqObj` / `DynamicExp` integration
+//! (WP7.7 step 3b — the user equation replaces `SolveDynamicStep`). NOT_PORTED
+//! defers: DynaModel/UserModel DLLs.
 
 use num_complex::Complex64;
 
@@ -129,10 +131,10 @@ impl Storage {
         }
     }
 
-    /// Pascal `TStorageObj.IntegrateStates` (l.2840) — advance the GFL
-    /// inverter state by one trapezoidal half-step (dispatching to
-    /// `integrate_dyn_eq_phase` per phase when a `DynamicExp` is linked).
-    /// NOT_PORTED: DynaModel, GFM, DebugTrace.
+    /// Pascal `TStorageObj.IntegrateStates` (l.2840) — advance the inverter state
+    /// by one trapezoidal half-step (GFL current tracking or GFM black-start
+    /// droop, per `gfm_mode`), dispatching to `integrate_dyn_eq_phase` per phase
+    /// when a `DynamicExp` is linked. NOT_PORTED: DynaModel, DebugTrace.
     pub(super) fn integrate_states_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.compute_iterminal(sys, node_v);
 
@@ -160,12 +162,21 @@ impl Storage {
 
         let base_kv = self.base.dyn_vars.base_kv;
         let kw_out = self.base.kw_out;
+        // Storage keeps `IMaxPhase` LOCAL (Pascal Storage.pas l.2863) — it drives
+        // the GFM droop ramp/clamp only; `dynVars.iMaxPPhase` (the kVA-rating value)
+        // is left untouched for `DoDynamicMode`'s `BaseV` scale (unlike PVSystem,
+        // which overwrites `iMaxPPhase`).
         let i_max_phase = (kw_out / base_kv) / nphases_f;
         let min_vs = self.base.dyn_vars.min_vs;
         let max_vs = self.base.dyn_vars.max_vs;
         let i_max_p_phase = self.base.dyn_vars.i_max_p_phase;
         let p_idling = self.p_idling;
         let reset_ibr = self.base.dyn_vars.reset_ibr;
+        let gfm_mode = self.base.gfm_mode;
+        let ctrl_tol = self.base.dyn_vars.ctrl_tol;
+        let kp = self.base.dyn_vars.kp;
+        let i_limit = self.base.dyn_vars.i_limit;
+        let v_error = self.base.dyn_vars.v_error;
 
         for i in 0..nphases {
             if self.f_state == STORE_DISCHARGING {
@@ -177,19 +188,58 @@ impl Storage {
                 self.base.dyn_vars.vgrid[i] = c_to_polar(node_v[self.cd.node_ref[i]]);
                 let vg_mag = self.base.dyn_vars.vgrid[i].mag;
 
-                // NOT_PORTED: GFM_Mode branch — WP7.7 GFM step.
-                // GFL only:
-                if vg_mag < min_vs || vg_mag > max_vs {
-                    self.base.dyn_vars.isp = 0.01; // turn off the inverter
-                    self.f_state = STORE_IDLING;
-                    if vg_mag > max_vs {
-                        self.base.dyn_vars.vgrid[i].mag = max_vs;
+                if gfm_mode {
+                    // Pascal `TStorageObj.IntegrateStates` GFM sub-branch (Storage.pas
+                    // l.2886-2918): droop the current setpoint toward `BasekV` so the
+                    // inverter forms the terminal voltage (black start). `VDelta` is
+                    // the per-unit voltage error; when it exceeds `CtrlTol` the current
+                    // target `ISPDelta` ramps by `IMaxPhase·VDelta·kP·100`, clamped to
+                    // `[0.01, IMaxPhase]`. `FixPhaseAngle` locks the phase reference.
+                    self.base.dyn_vars.v_delta[i] = if reset_ibr {
+                        (0.001 - (vg_mag / 1000.0)) / base_kv
+                    } else {
+                        (base_kv - (vg_mag / 1000.0)) / base_kv
+                    };
+
+                    let mut gfm_update = true;
+                    // ILimit>0 current-limit path (Storage.pas l.2896-2905): dormant
+                    // unless `AmpLimit` is set (base default -1). Uses the GFM
+                    // `GetCurrents` override (`Curr = YPrim·NodeV − InjCurrent`).
+                    if i_limit > 0.0 {
+                        // Pascal `SetLength(curr, NPhases+1)`; reads curr[0..NPhases-1].
+                        let mut curr = vec![Complex64::ZERO; self.cd.yorder];
+                        self.get_currents(sys, node_v, &mut curr);
+                        for c in curr.iter().take(nphases) {
+                            gfm_update = gfm_update && (c.norm() < (i_limit * v_error));
+                        }
                     }
+
+                    if self.base.dyn_vars.v_delta[i].abs() > ctrl_tol && gfm_update {
+                        self.base.dyn_vars.isp_delta[i] +=
+                            (i_max_phase * self.base.dyn_vars.v_delta[i]) * kp * 100.0;
+                        if self.base.dyn_vars.isp_delta[i] > i_max_phase {
+                            self.base.dyn_vars.isp_delta[i] = i_max_phase;
+                        } else if self.base.dyn_vars.isp_delta[i] < 0.0 {
+                            self.base.dyn_vars.isp_delta[i] = 0.01;
+                        }
+                    }
+                    self.base.dyn_vars.isp = self.base.dyn_vars.isp_delta[i];
+                    self.base.dyn_vars.fix_phase_angle(i);
                 } else {
-                    self.base.dyn_vars.isp = ((kw_out * 1000.0) / vg_mag) / nphases_f;
-                }
-                if self.base.dyn_vars.isp > i_max_p_phase {
-                    self.base.dyn_vars.isp = i_max_p_phase;
+                    // GFL: track the discharge power, with the MinVS/MaxVS safe-mode
+                    // trip to IDLING.
+                    if vg_mag < min_vs || vg_mag > max_vs {
+                        self.base.dyn_vars.isp = 0.01; // turn off the inverter
+                        self.f_state = STORE_IDLING;
+                        if vg_mag > max_vs {
+                            self.base.dyn_vars.vgrid[i].mag = max_vs;
+                        }
+                    } else {
+                        self.base.dyn_vars.isp = ((kw_out * 1000.0) / vg_mag) / nphases_f;
+                    }
+                    if self.base.dyn_vars.isp > i_max_p_phase {
+                        self.base.dyn_vars.isp = i_max_p_phase;
+                    }
                 }
 
                 if self.base.dyneq.has_dynamic_eq() {
@@ -222,14 +272,6 @@ impl Storage {
                 self.base.dyn_vars.it[i] = off_val;
             }
         }
-        let _ = (
-            i_max_phase,
-            i_max_p_phase,
-            min_vs,
-            max_vs,
-            p_idling,
-            reset_ibr,
-        );
     }
 
     /// Pascal `TStorageObj.IntegrateStates`'s `DynamicEqObj <> NIL` body for one
@@ -310,31 +352,51 @@ impl Storage {
         }
     }
 
-    /// Pascal `TStorageObj.DoDynamicMode` (l.2119) — inject the GFL current.
-    /// NOT_PORTED: DynaModel, GFM.
+    /// Pascal `TStorageObj.DoDynamicMode` (l.2119) — inject the dynamics-mode
+    /// current. GFL is a controlled current source; GFM (WPG.17) is an internal
+    /// balanced voltage source scaled by the integrated filter current `it[0]`.
+    /// NOT_PORTED: DynaModel.
     pub(super) fn do_dynamic_mode(
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
         errors: &mut Vec<String>,
     ) {
+        let _ = errors; // Storage DoDynamicMode has no error channel (no VoltageModel=3 here)
         // NOT_PORTED: DynaModel.Exists branch — user-written dynamics DLL, never ported.
         // In this port DynaModel.Exists is always false; if somehow reached:
 
-        if self.base.gfm_mode {
-            // NOT_PORTED: GFM path (CalcGFMVoltage) — WP7.7 GFM step.
-            errors.push(format!(
-                "Storage.{}: grid-forming inverter mode (ControlMode=GFM) dynamics \
-                 is not ported yet (Phase 7 WP7.7 GFM step).",
-                self.cd.obj.name()
-            ));
+        // Non-discharging-at-entry Storage skipped `InitDynArrays` (empty per-phase
+        // arrays) — Pascal derefs nil here too; no-op rather than panic (see
+        // `integrate_states_impl`). Both the GFM and GFL arms read `it[0]`/`vgrid`.
+        if self.base.dyn_vars.it.len() < self.cd.nphases {
             return;
         }
 
-        // Non-discharging-at-entry Storage skipped `InitDynArrays` (empty per-phase
-        // arrays) — Pascal derefs nil here too; no-op rather than panic (see
-        // `integrate_states_impl`).
-        if self.base.dyn_vars.it.len() < self.cd.nphases {
+        if self.base.gfm_mode {
+            // Pascal `TStorageObj.DoDynamicMode` GFM arm (Storage.pas l.2140-2146):
+            // the inverter is an internal balanced voltage source at `BaseV`
+            // (scaled by the integrated filter current `it[0]/iMaxPPhase`, so the
+            // black-start ramp lifts the terminal voltage from 0) behind the
+            // `CalcGFMYprim` short-circuit impedance already stamped into `YPrim`.
+            // `InjCurrent = YPrim · Vterminal(internal)` — overwrites (no
+            // `CalcYPrimContribution`/`ZeroITerminal` first). Leaves
+            // `ITerminalUpdated = FALSE` (the `set_ITerminalUpdated(FALSE)` default
+            // of `CalcStorageModelContribution`, Storage.pas l.2297), *without*
+            // stamping `IterminalSolutionCount`, so a later `GetCurrents` recomputes
+            // `Curr = YPrim·NodeV − InjCurrent` (the GFM override).
+            self.base.dyn_vars.base_v = self.base.dyn_vars.base_kv
+                * 1000.0
+                * (self.base.dyn_vars.it[0] / self.base.dyn_vars.i_max_p_phase);
+            let nphases = self.cd.nphases;
+            self.base
+                .dyn_vars
+                .calc_gfm_voltage(nphases, &mut self.cd.vterminal);
+            let cd = &mut self.cd;
+            if let Some(yprim) = &cd.yprim {
+                yprim.mv_mult(&mut cd.inj_current, &cd.vterminal);
+            }
+            self.cd.iterminal_updated = false;
             return;
         }
 
@@ -507,6 +569,21 @@ impl Storage {
         .to_string()
     }
 
+    /// Pascal `TStorageObj.CheckIfDelivering` (Storage.pas l.2464): in GFM mode,
+    /// true if the storage is delivering (not absorbing) power — any phase with
+    /// `(NodeV · conj(Iterminal)).re < 0` (Pascal's per-phase, single-conductor
+    /// power sign). Refreshes the terminal current first (`ComputeIterminal`).
+    pub(super) fn check_if_delivering(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> bool {
+        self.compute_iterminal(sys, node_v);
+        for i in 0..self.cd.nphases {
+            let p = (node_v[self.cd.node_ref[i]] * self.cd.iterminal[i].conj()).re;
+            if p < 0.0 {
+                return true; // at least one phase delivering
+            }
+        }
+        false
+    }
+
     /// Pascal `TStorageObj.Get_Variable` (l.2977) (1-based).
     /// Returns -9999.99 for out-of-range `i`. UserModel/DynaModel are NOT_PORTED.
     pub(super) fn get_storage_variable(
@@ -528,17 +605,25 @@ impl Storage {
         match i {
             1 => self.kwh_stored,
             2 => {
-                // Non-GFM: report FState directly.
-                // NOT_PORTED: GFM_Mode CheckIfDelivering path — WP7.7 GFM.
-                self.f_state as f64
+                // Pascal Storage.pas l.3003-3017: non-GFM reports `FState` directly;
+                // GFM reports the *effective* state from the delivered-power sign.
+                if !self.base.gfm_mode {
+                    self.f_state as f64
+                } else if self.check_if_delivering(sys, node_v) {
+                    STORE_DISCHARGING as f64
+                } else if self.kwh_stored == self.kwh_rating {
+                    STORE_IDLING as f64
+                } else {
+                    super::STORE_CHARGING as f64
+                }
             }
             3 | 4 => {
-                // Pascal `A := GFM_mode and CheckIfDelivering(); B := (FState=DISCH) and (not GFM_mode); A:=A or B`.
-                // GFM_Mode always false in this port, so: A = B = (FState == DISCHARGING).
-                let mut a = self.f_state == STORE_DISCHARGING;
-                if i == 4 {
-                    a = !a;
-                }
+                // Pascal `A := GFM_mode and CheckIfDelivering(); B := (FState=DISCH)
+                // and (not GFM_mode); A := A or B` (Storage.pas l.3018-3028). The
+                // `&&` short-circuits `CheckIfDelivering` to the GFM path only.
+                let a0 = (self.base.gfm_mode && self.check_if_delivering(sys, node_v))
+                    || (self.f_state == STORE_DISCHARGING && !self.base.gfm_mode);
+                let a = if i == 4 { !a0 } else { a0 };
                 if a {
                     self.terminal_power(sys, node_v, 1).re.abs() * 0.001
                 } else {

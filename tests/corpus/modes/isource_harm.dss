@@ -1,0 +1,20 @@
+! GAPS deck: Isource harmonics — the harmonic-injection current source (Pascal
+! Isource.pas GetBaseCurr harmonic branch: SpectrumObj.GetMult scaled to the
+! fundamental capture, ScanType rotation). The FreqScan corpus pattern in micro
+! form: a spectrum-driven Isource swept by mode=harmonics. Deterministic.
+Clear
+New Circuit.gaps_isrch basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Spectrum.scan5 numharm=4 harmonic=(1 5 7 11) %mag=(100 20 14 9) angle=(0 0 0 0)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=700 pf=0.95 model=1
+! 3-phase pos-seq scan source (ScanType default pos: rotation kept per harmonic).
+New Isource.iscan bus1=b2 phases=3 amps=10 angle=0 spectrum=scan5
+! 1-phase zero-scan unit (scantype=zero: no rotation across harmonics).
+New Isource.iz bus1=b1.2 phases=1 amps=6 angle=-120 spectrum=scan5 scantype=zero
+New Monitor.m_scan element=Line.l2 terminal=1 mode=0
+Set voltagebases=[12.47]
+Calcvoltagebases
+Solve
+Set mode=harmonics
+Solve

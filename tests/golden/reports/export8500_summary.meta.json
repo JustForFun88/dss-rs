@@ -1,0 +1,10 @@
+{
+  "report": "summary",
+  "master": "Version8/Distrib/IEEETestCases/8500-Node/Master.dss",
+  "post": [
+    "Set Maxiterations=20",
+    "solve"
+  ],
+  "fixture": "ieee8500",
+  "suffix": "EXP_Summary.csv"
+}

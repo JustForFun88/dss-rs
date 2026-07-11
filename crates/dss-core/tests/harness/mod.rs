@@ -8,6 +8,11 @@
 //! uses only a subset, so dead-code analysis is suppressed module-wide.
 #![allow(dead_code)]
 
+/// Command-replay scenario gate shared by `golden_line_constants.rs`,
+/// `golden_der_controls.rs`, and `golden_harmonics.rs` (the split of the former
+/// Phase-7 golden bucket).
+pub mod scenario;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -154,6 +159,18 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 /// Assert two value strings match: identical skeletons, numbers within
 /// `rel`/`abs` tolerance.
 pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
+    // Byte-identical strings are always a pass — the WHOLE-string guard, so it
+    // fires only when the two sides are literally equal. This is the correct
+    // home for the machine-generated EPRI bus name `0x008e1248`, whose numeric
+    // token the skeleton scanner reads as `8e1248` = inf: identical strings
+    // must pass, but a per-number `(inf - inf)` is NaN and fails `<= allowed`.
+    // Crucially this does NOT accept two DIFFERENT strings whose tokens both
+    // overflow to inf (`…008e1248` vs `…018e1248`) — those fall through to the
+    // number compare below and correctly FAIL. Not a loosening: exactly-equal is
+    // the tightest possible match.
+    if actual == expected {
+        return;
+    }
     let (askel, anums) = numeric_skeleton(actual);
     let (eskel, enums) = numeric_skeleton(expected);
     assert_eq!(
@@ -172,6 +189,35 @@ pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64
             "{ctx}: number {i} differs: actual {a} vs expected {e} \
              (from {actual:?} vs {expected:?})"
         );
+    }
+}
+
+#[cfg(test)]
+mod comparator_tests {
+    use super::assert_value_matches_tol;
+
+    /// Byte-identical strings pass even when a token overflows to inf; two
+    /// DISTINCT strings differing only in such a token FAIL (the per-number
+    /// `a == e` shortcut removed in the audit was too loose — it let
+    /// `…008e1248` and `…018e1248` compare equal because both parse to inf).
+    #[test]
+    fn value_match_identity_vs_distinct_inf_tokens() {
+        // Identical (incl. an inf-overflowing token) → pass.
+        assert_value_matches_tol("a_0x008e1248", "a_0x008e1248", 1e-6, 1e-6, "identity");
+        // Distinct strings whose tokens both overflow to inf → must FAIL.
+        let r = std::panic::catch_unwind(|| {
+            assert_value_matches_tol("a_0x008e1248", "a_0x018e1248", 1e-6, 1e-6, "distinct-inf");
+        });
+        assert!(
+            r.is_err(),
+            "distinct inf-token strings must NOT compare equal"
+        );
+        // Ordinary numeric tolerance still works.
+        assert_value_matches_tol("v=1.0000001", "v=1.0", 1e-5, 1e-9, "tol");
+        let bad = std::panic::catch_unwind(|| {
+            assert_value_matches_tol("v=2.0", "v=1.0", 1e-9, 1e-12, "toobig");
+        });
+        assert!(bad.is_err(), "out-of-tolerance numbers must FAIL");
     }
 }
 
@@ -252,6 +298,9 @@ pub struct YFingerprint {
 }
 
 /// An element's terminal currents (A, re/im) and powers (kW/kvar).
+/// `loss_w` (W, var — the oracle `CktElement.Losses`, i.e. the engine's own
+/// `Get_Losses` path) is captured by the live gate only; committed checkpoint
+/// goldens predate it and leave it empty (skipped).
 #[derive(Debug, Deserialize)]
 pub struct ElementCap {
     pub name: String,
@@ -259,6 +308,8 @@ pub struct ElementCap {
     pub i_im: Vec<f64>,
     pub p_kw: Vec<f64>,
     pub p_kvar: Vec<f64>,
+    #[serde(default)]
+    pub loss_w: Vec<f64>,
 }
 
 /// The node injection-current vector (RHS of Y*V=I), nodes 1..n.
@@ -322,6 +373,115 @@ pub fn tol_for(kind: &str) -> Tolerances {
             y_abs: 1e-6,
             i_rel: 1e-7,
             i_abs: 1e-5,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
+        },
+        // The floating-delta zero-sequence class (currently the IEEE123 GFM
+        // snapshot deck): a bus fed by a delta transformer winding with a delta
+        // DER has no zero-sequence path to ground — its common-mode voltage is
+        // pinned only by the winding's anti-float adder (−j1.4468e-6 S = 2·Y_PPM)
+        // against a ~452 S diagonal, a κ≈3.1e8 subspace inside an otherwise
+        // well-conditioned solve. That common mode is solver-junk: on
+        // bit-identical (Y, I) KLU / scipy / faer each leave a *different* stable
+        // value (spreads 1.2e-5 … 6.6e-5 V; the engines land 9.03e-5 V apart at
+        // step 0 — 100% common mode, differential remainder ≤5.9e-8 V). `v_abs`
+        // absorbs exactly that junk: 5e-4 ≈ 5.5× the measured worst, still only
+        // ~1.8e-6 rel at the 277 V DER buses. Everything else keeps the `large`
+        // floors — in particular the DER elements' currents/powers are functions
+        // of the L-L (differential) voltages, immune to the common mode, so real
+        // model bugs at these buses stay caught. Empirical proof (CLAUDE.md: a
+        // floor changes only with proof by decomposition): tests/TOLERANCE_NOTES.md
+        // §floating-delta; fix owner RESONANCE_PLAN.md WP-R1 (iterative refinement
+        // lands the faer junk 3× under the `large` band → retighten this tier to
+        // `large` then).
+        "large_floating_delta" => Tolerances {
+            v_rel: 1e-7,
+            v_abs: 5e-4,
+            y_rel: 1e-8,
+            y_abs: 1e-6,
+            i_rel: 1e-6,
+            i_abs: 1e-4,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
+        },
+        // A-Diakoptics torn circuits stitched with deliberate ultra-switches
+        // (`Line.other_feeders` r1=1e-8 Ω → Y≈1e8 S; EPRI_Ckt7-G `Line.333`
+        // alike): the pseudo-switch current is Y·(V1−V2) where the engines'
+        // (V1−V2) agree to <2 f64-ulps of the ~2e4 V node voltage — measured
+        // dI 6.5e-4 A on a 375 A flow (ckt24) = exactly 1.8 ulp × 1e8 S, an
+        // arithmetic bit-floor, not a model gap (the f32-looking values are
+        // the coarse dyadic grid such near-cancellation differences live on).
+        // Only `i_abs` widens (2e-3 = worst 6.5e-4 ×3); voltages hold the full
+        // `large` floors and Y stays tight — a real stitching/model bug still
+        // shows at ampere scale or in Y.
+        "large_ultra_switch" => Tolerances {
+            v_rel: 1e-7,
+            v_abs: 1e-6,
+            y_rel: 1e-8,
+            y_abs: 1e-6,
+            i_rel: 1e-6,
+            i_abs: 2e-3,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
+        },
+        // The floating zero-sequence class, weak-pinning members (proof per
+        // deck in tests/TOLERANCE_NOTES.md §floating-zeroseq): a subsystem fed
+        // ONLY through delta windings has no zero-seq ground path; its common
+        // mode is pinned by the ppm anti-float adders alone, with measured
+        // amplification 1.4e10 (TestDDRegulator REGBUS2) / 4.2e11 (DG_Prot_Fdr
+        // dead-end BG) / ~1e8 across the whole delta-delta-fed 13.8 kV system
+        // of LVTestCaseNorthAmerican. The V gap is 100% common mode (per-bus
+        // differential ≤1e-5 V, within the `large` floors; DG_Prot bit-level
+        // ≤1.3e-13), Y agrees to ≤1.3e-15 rel (libm last-ulp on geometry
+        // decks; bit-identical on DDReg/DG_Prot), injections/iterations match.
+        // `v_abs` 3e-2 = worst measured common mode (1.06e-2, DG_Prot) ×2.8;
+        // at the smallest affected buses (346 V) that is still 8.7e-5 rel.
+        // Element currents/powers are functions of the DIFFERENTIAL voltages —
+        // immune to the common mode — so the tier keeps every other floor at
+        // `large` and real model bugs stay caught (same argument as
+        // `large_floating_delta`, whose GFMSnap member is more strongly pinned
+        // and keeps its tighter 5e-4 band).
+        "large_floating_zeroseq" => Tolerances {
+            v_rel: 1e-7,
+            v_abs: 3e-2,
+            y_rel: 1e-8,
+            y_abs: 1e-6,
+            i_rel: 1e-6,
+            i_abs: 1e-4,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
+        },
+        // The AutoTrans near-ideal-source family (κ≈1e12: mvasc3=2e6 source +
+        // 1e-6 Ω switches + floating delta tertiary). Its V gap is the PROVEN
+        // cross-solver junk floor — proof by decomposition, not by sweep
+        // (tests/TOLERANCE_NOTES.md §near-ideal-source): assembled Y and every
+        // element's Currents/Powers formula are bit-identical on identical
+        // inputs; the single 1-ulp RHS component measures 1.5e-11 V; residual
+        // parity ‖Y·V−I‖ KLU 7.1e-2 vs faer 1.3e-1 (the oracle is no cleaner);
+        // scipy lands 51.6 V from BOTH engines (the equivalent-solution set
+        // spans ~51 V — the engines' 3.7e-3 V gap is 4 orders tighter). The
+        // floor propagates LINEARLY into the stiff-entry small currents
+        // (dI = Y_src·dV, measured 6.2e-2…9.4e-2 A against a 0.15 A no-load
+        // current) and powers (dS = V·dI ≈ 12–19 kVA), so `i_abs` must absorb
+        // exactly that image (0.1 A, user-set — ×1.07 over the measured worst
+        // 9.375e-2 A; a future faer/pin bump tripping it is a re-triage
+        // signal, NOT a widen-the-band signal); the voltage-scaled power floor
+        // maps it to the powers channel automatically. Large currents
+        // (fault/full-load checks, hundreds of A…kA) still hold `i_rel` = the
+        // `large` floor, and `v_rel` 5e-6 covers the V junk with no `v_abs`
+        // change. What keeps real element bugs caught despite the wide
+        // `i_abs`: the family's unique surface is YPrim assembly, and the Y
+        // channel KEEPS the tight `large` floors (bit-identical today — any
+        // Y-level drift is a real regression); the report formulas are
+        // corpus-shared and pinned tight elsewhere. Retighten under WP-R1
+        // only if refinement is proven to shrink the measured junk.
+        "large_near_ideal_source" => Tolerances {
+            v_rel: 5e-6,
+            v_abs: 1e-6,
+            y_rel: 1e-8,
+            y_abs: 1e-6,
+            i_rel: 1e-6,
+            i_abs: 0.1,
             energy_rel: 1e-4,
             energy_abs: 1e-4,
         },
@@ -637,6 +797,288 @@ pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tolera
         tol.i_abs,
         &format!("{ctx} {} powers", exp.name),
     );
+    // Losses (`Get_Losses` — the engine's own losses path, distinct from the
+    // per-conductor powers above even though mathematically it is their sum).
+    // Captured by the live gate only; old checkpoint goldens leave it empty.
+    // The allowed error is the exact accumulation of the per-conductor power
+    // tolerance: losses = Σ_k S_k, so |δ(losses)| ≤ Σ_k (abs·|V_k| + rel·|S_k|)
+    // — no new tolerance class, just the conductor policy summed.
+    if exp.loss_w.len() == 2 {
+        let mut allowed_kw = 0.0;
+        for k in 0..exp.p_kw.len() {
+            let p_mag = (exp.p_kw[k].powi(2) + exp.p_kvar[k].powi(2)).sqrt();
+            let i_mag = (exp.i_re[k].powi(2) + exp.i_im[k].powi(2)).sqrt();
+            let vkv = if i_mag > 1e-12 { p_mag / i_mag } else { 1.0 };
+            allowed_kw += tol.i_abs * vkv.max(1.0) + tol.i_rel * p_mag;
+        }
+        let allowed_w = allowed_kw * 1000.0;
+        let (ar, ai) = snap.loss_w;
+        let (er, ei) = (exp.loss_w[0], exp.loss_w[1]);
+        let diff = ((ar - er).powi(2) + (ai - ei).powi(2)).sqrt();
+        assert!(
+            diff <= allowed_w,
+            "{ctx} {} losses differ: actual ({ar}, {ai}) W vs oracle ({er}, {ei}) W; \
+             |diff| = {diff:e} > allowed {allowed_w:e}",
+            exp.name
+        );
+    }
+}
+
+/// One element-specific state probe: the value string of `element`'s property
+/// `prop` — oracle `Properties(p).Val` vs the Rust `?` query (both render via
+/// the class property surface). Compared as a numeric skeleton (numbers by
+/// value at the case tolerance, text case-insensitively), so number *rendering*
+/// is not load-bearing but every digit-bearing state (taps, kWh, counters) and
+/// every enum/state word is.
+#[derive(Debug, Deserialize)]
+pub struct ProbeCap {
+    pub element: String,
+    pub prop: String,
+    pub value: String,
+}
+
+/// Compare one property probe via the Rust `?` query (`do_query_cmd`).
+pub fn compare_probe(dss: &mut Dss, exp: &ProbeCap, tol: &Tolerances, ctx: &str) {
+    dss.command(&format!("? {}.{}", exp.element, exp.prop));
+    let actual = dss.result().to_string();
+    assert!(
+        !actual.eq_ignore_ascii_case("Property Unknown"),
+        "{ctx}: probe {}.{}: property unknown to the port",
+        exp.element,
+        exp.prop
+    );
+    assert_value_matches_tol(
+        &actual.to_lowercase(),
+        &exp.value.to_lowercase(),
+        tol.i_rel,
+        tol.i_abs,
+        &format!("{ctx}: probe {}.{}", exp.element, exp.prop),
+    );
+}
+
+/// WP8.5b corpus property parity: every property of one circuit element —
+/// oracle `Properties(p).Val` over `AllPropertyNames` (read via `? name.prop`,
+/// the WPG.1-safe probe path) as ordered `(name, value)` pairs. Compared
+/// against the Rust `?`-surface (`Dss::element_properties`) property-for-property
+/// by [`compare_all_properties`]: the property-index order is the contract.
+#[derive(Debug, Deserialize)]
+pub struct PropsCap {
+    pub element: String,
+    /// `[[prop_name, value_string], ...]` in `AllPropertyNames` order.
+    pub props: Vec<(String, String)>,
+}
+
+/// `(class, prop)` pairs (matched case-insensitively) whose value is provably
+/// NOT comparable property-for-property between the Rust `?`-surface and the
+/// pinned oracle — a comparability EXCLUSION whose proof is cited in
+/// `tests/TOLERANCE_NOTES.md` (§"WP8.5b property parity"), NEVER a tolerance
+/// loosening. The property NAME is still order-checked (only the VALUE compare
+/// is skipped). Populated only after the Phase-A pilot triage proves a prop
+/// non-comparable (path echo / RNG / oracle UB); empty until then.
+const SKIP_PROPS: &[(&str, &str)] = &[
+    // (class, prop) — each row is a proven comparability exclusion cited in
+    // tests/TOLERANCE_NOTES.md §"WP8.5b property parity"; NEVER a tolerance
+    // loosening. Grouped by cause:
+    //
+    // (a) DoubleSymMatrixProperty getter reads uninitialized memory (a dss_capi
+    //     bug; TODO(compat) in obj/props/class_props/value.rs renders a
+    //     deterministic zero matrix). The oracle returns nondeterministic garbage
+    //     (denormals ~1e-310 OR huge ~1e123, process-dependent) — oracle UB, not
+    //     reproduced (CLAUDE.md).
+    ("Capacitor", "CMatrix"),
+    ("Reactor", "RMatrix"),
+    ("Reactor", "XMatrix"),
+    ("Fault", "GMatrix"),
+    // (b) Near-zero winding-current angle: WdgCurrents renders `mag, (angle)`
+    //     pairs; a ~1e-12 A (numerically-zero) winding current's angle is
+    //     faer-vs-KLU noise (a cancellation floor). The magnitudes and the
+    //     non-degenerate angles match; only the zero-magnitude angle diverges.
+    ("Transformer", "WdgCurrents"),
+    // (c) The transformer ActiveWinding cursor group is NOT unconditionally
+    //     skipped — see [`TRANSFORMER_CURSOR_PROPS`], which skips it only on
+    //     3+-winding transformers (2-winding stays fully compared).
+    //
+    // (d) Reliability inputs on shunt PD elements read uninitialized in the
+    //     oracle inside a metered deck (nondeterministic across processes —
+    //     proven UB). Rust keeps the correct defaults (FaultRate 0.0005,
+    //     pctperm 100). The same properties on Line/Transformer are clean and
+    //     stay compared, so the Double-property render path is still covered.
+    ("Capacitor", "FaultRate"),
+    ("Capacitor", "pctperm"),
+    ("Reactor", "FaultRate"),
+    ("Reactor", "pctperm"),
+];
+
+fn skip_prop(class: &str, prop: &str) -> bool {
+    SKIP_PROPS
+        .iter()
+        .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p))
+}
+
+/// Transformer per-winding SINGULAR getters that index the ActiveWinding cursor
+/// (`windings[aw()]`). Their value is `windings[ActiveWinding]`'s, so the two
+/// engines compare validly ONLY when both cursors point to the SAME winding. The
+/// oracle's own `gc.capture_discrete` `Transformers.Wdg=i` walk forces
+/// ActiveWinding to NumWindings before the sweep, while Rust keeps the deck's
+/// trailing `wdg=k` — usually also NumWindings (array-form parse), but not for a
+/// 3-winding `t3w` (ends `wdg=2`) or a 2-winding `YgD-Test.tr1` (rewired
+/// `wdg=1`). So the skip is gated on cursor DISAGREEMENT (not winding count):
+/// whenever the cursors match — the common case — every singular form is
+/// compared, including `RDCOhms`, which has NO array-form backstop (unlike
+/// `%R`→`%Rs`, bus/conn/kV/kVA/tap→array forms, RNeut/XNeut→YPrim, tap
+/// limits→the now-live-gated `TapNum`). See tests/TOLERANCE_NOTES.md.
+const TRANSFORMER_CURSOR_PROPS: &[&str] = &[
+    "Wdg", "Bus", "Conn", "kV", "kVA", "Tap", "%R", "RNeut", "XNeut", "MaxTap", "MinTap",
+    "NumTaps", "RDCOhms",
+];
+
+/// Whether property `prop` of the named transformer is cursor-contaminated and
+/// must be skipped — true only when the two engines' ActiveWinding cursors
+/// disagree (the singular forms then read different windings).
+fn skip_transformer_cursor(class: &str, prop: &str, cursors_disagree: bool) -> bool {
+    cursors_disagree
+        && class.eq_ignore_ascii_case("Transformer")
+        && TRANSFORMER_CURSOR_PROPS
+            .iter()
+            .any(|p| p.eq_ignore_ascii_case(prop))
+}
+
+/// Compare EVERY property of EVERY captured element (WP8.5b): the property-NAME
+/// lists must be equal IN ORDER (case-insensitive — pins the property-table
+/// shape), then each value through [`assert_value_matches_tol`] (the same
+/// `compare_probe` numeric-skeleton semantics). A `(class, prop)` in
+/// [`SKIP_PROPS`] is excluded from the VALUE compare only (its name is still
+/// order-checked). This catches latent property-rendering/port bugs the
+/// live-model gate (Y/V/I/P) cannot see.
+pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances, ctx: &str) {
+    for pc in exp {
+        let class = pc.element.split('.').next().unwrap_or("");
+        let actual = dss
+            .element_properties(&pc.element)
+            .unwrap_or_else(|| panic!("{ctx}: no element {} (all_properties)", pc.element));
+        assert_eq!(
+            actual.len(),
+            pc.props.len(),
+            "{ctx}: {} property count differs (rust {} vs oracle {}) — property-table shape changed",
+            pc.element,
+            actual.len(),
+            pc.props.len()
+        );
+        // Transformer cursor-skip gate (see [`skip_transformer_cursor`]): the
+        // singular per-winding forms compare only when both engines' ActiveWinding
+        // (the `Wdg` value) point to the same winding. Read Rust's from `actual`
+        // and the oracle's from the capture.
+        let cursor_of = |props: &[(String, String)]| -> Option<String> {
+            props
+                .iter()
+                .find(|(n, _)| n.eq_ignore_ascii_case("Wdg"))
+                .map(|(_, v)| v.trim().to_string())
+        };
+        let cursors_disagree =
+            class.eq_ignore_ascii_case("Transformer") && cursor_of(&actual) != cursor_of(&pc.props);
+        for (i, ((aname, aval), (ename, eval))) in actual.iter().zip(&pc.props).enumerate() {
+            assert!(
+                aname.eq_ignore_ascii_case(ename),
+                "{ctx}: {} property {i} name differs: rust {aname:?} vs oracle {ename:?} \
+                 (property-index order is the contract)",
+                pc.element
+            );
+            if skip_prop(class, ename) || skip_transformer_cursor(class, ename, cursors_disagree) {
+                continue;
+            }
+            // Case-EXACT compare (no lowercasing): every DSS enum getter renders
+            // the Pascal-faithful case — `ordinal_to_string` returns the exact
+            // registry strings (`wye`/`delta` lowercase, `Variable`/`Fixed`
+            // capitalized, booleans `Yes`/`No`) that the oracle's `Val` emits, so
+            // a case divergence is a real rendering regression this gate must
+            // catch, not a formatting artifact to smooth over.
+            assert_value_matches_tol(
+                aval,
+                eval,
+                tol.i_rel,
+                tol.i_abs,
+                &format!("{ctx}: {} property {ename}", pc.element),
+            );
+        }
+    }
+}
+
+/// A PC element's state variables (oracle `AllVariableNames`/`AllVariableValues`
+/// — the live f64 state; names travel along for diagnostics only).
+#[derive(Debug, Deserialize)]
+pub struct VariablesCap {
+    pub name: String,
+    pub var_names: Vec<String>,
+    pub values: Vec<f64>,
+}
+
+/// Compare a PC element's state variables (`Dss::element_variables`).
+pub fn compare_variables(dss: &mut Dss, exp: &VariablesCap, tol: &Tolerances, ctx: &str) {
+    let act = dss
+        .element_variables(&exp.name)
+        .unwrap_or_else(|| panic!("{ctx}: no element {} (variables)", exp.name));
+    assert_eq!(
+        act.len(),
+        exp.values.len(),
+        "{ctx}: {} variable count differs (oracle names: {:?})",
+        exp.name,
+        exp.var_names
+    );
+    for (i, (a, e)) in act.iter().zip(&exp.values).enumerate() {
+        let allowed = tol.i_abs + tol.i_rel * e.abs();
+        assert!(
+            (a - e).abs() <= allowed,
+            "{ctx}: {} variable {} ({}) differs: {a} vs {e} (|diff|={:.3e} > allowed {allowed:.3e})",
+            exp.name,
+            i + 1,
+            exp.var_names.get(i).map(String::as_str).unwrap_or("?"),
+            (a - e).abs()
+        );
+    }
+}
+
+/// Compare the event log line-for-line (normalized numeric skeleton at 1e-6
+/// rel — the exact policy `golden_protection.rs` pins trip/reclose
+/// sequences with). The log is cumulative, so a per-step compare pins *when*
+/// each control action happened, not just the final set.
+pub fn compare_eventlog(dss: &Dss, exp: &[String], ctx: &str) {
+    let log = dss.event_log();
+    assert_eq!(
+        log.len(),
+        exp.len(),
+        "{ctx}: event log length differs:\n  actual:\n    {}\n  oracle:\n    {}",
+        log.join("\n    "),
+        exp.join("\n    ")
+    );
+    for (i, (a, e)) in log.iter().zip(exp).enumerate() {
+        assert_value_matches_tol(a, e, 1e-6, 1e-9, &format!("{ctx}: event-log line {i}"));
+    }
+}
+
+/// Compare the pending control-action queue (oracle `CtrlQueue.Queue` rows vs
+/// `Dss::control_queue_rows`). Rows are trimmed and compared as numeric
+/// skeletons: Pascal's `%.9g` time rendering and its trailing space are not
+/// load-bearing, the handle/hour/sec/code/device content is. Meaningful only in
+/// time/dynamics modes where future-scheduled actions (e.g. recloser reclose
+/// shots) survive the solve; a drained queue compares as empty = empty.
+pub fn compare_ctrlqueue(dss: &Dss, exp: &[String], ctx: &str) {
+    let rows = dss.control_queue_rows();
+    assert_eq!(
+        rows.len(),
+        exp.len(),
+        "{ctx}: control queue length differs:\n  actual:\n    {}\n  oracle:\n    {}",
+        rows.join("\n    "),
+        exp.join("\n    ")
+    );
+    for (i, (a, e)) in rows.iter().zip(exp).enumerate() {
+        assert_value_matches_tol(
+            a.trim().to_lowercase().as_str(),
+            e.trim().to_lowercase().as_str(),
+            1e-6,
+            1e-9,
+            &format!("{ctx}: control-queue row {i}"),
+        );
+    }
 }
 
 /// Compare per-step discrete control state EXACTLY: transformer taps (1e-12 rel
@@ -707,7 +1149,7 @@ pub struct MonitorCap {
     pub sample_count: i32,
     pub channels: Vec<Vec<f64>>,
     /// 0-based channel indices to skip (e.g. the mode-5 wall-clock timing
-    /// channels, which the port records as 0 — see `golden_phase6.rs`). Empty
+    /// channels, which the port records as 0 — see `golden_metering_monitors.rs`). Empty
     /// for the live gate, which only captures deterministic monitor modes.
     #[serde(default)]
     pub skip_channels: Vec<usize>,
@@ -716,7 +1158,7 @@ pub struct MonitorCap {
 /// An EnergyMeter's register names/values and zone branch/end/PCE counts.
 /// `branches`/`ends`/`pce` are the zone member name lists; when non-empty (the
 /// live gate captures them) membership is compared as a case-insensitive set,
-/// strengthening the bare count check. `golden_phase6.rs`'s meter golden leaves
+/// strengthening the bare count check. `golden_metering_monitors.rs`'s meter golden leaves
 /// them empty (it pins micro-zone membership separately, ordered).
 #[derive(Debug, Deserialize)]
 pub struct MeterCap {
@@ -736,7 +1178,7 @@ pub struct MeterCap {
 
 /// Compare a monitor's header (data channels, exact), sample count (exact), and
 /// every channel's sample array (`tol.i_rel`/`i_abs` on the f32 samples — the
-/// same policy `golden_phase6.rs` uses). Channels listed in `exp.skip_channels`
+/// same policy `golden_metering_monitors.rs` uses). Channels listed in `exp.skip_channels`
 /// (the mode-5 wall-clock timings) are skipped; the live gate leaves it empty
 /// (it captures only deterministic modes, so every channel is compared).
 pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str) {
@@ -859,4 +1301,356 @@ pub fn compare_meter(dss: &Dss, exp: &MeterCap, tol: &Tolerances, ctx: &str) {
     cmp_members(&zone.all_branches_in_zone, &exp.branches, "branch");
     cmp_members(&zone.all_end_elements, &exp.ends, "end");
     cmp_members(&zone.zone_pce, &exp.pce, "PCE");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8: text/CSV report comparison (PHASE8_PLAN §2.3).
+//
+// Compares an oracle-written report file against the Rust-written one after
+// parsing numbers out (never a raw float-string diff): a fixed header block is
+// matched verbatim, then each data row is split on the report's separator and
+// compared field-by-field — numbers within tolerance, identifiers
+// case-insensitively. Element/row ordering is the report's contract (Pascal
+// iteration order is observable) unless `RustSubsetByKey` is used.
+// ---------------------------------------------------------------------------
+
+/// Row-set matching policy for [`compare_export`].
+pub enum RowPolicy {
+    /// Rust and oracle data rows are identical and in the same order (the
+    /// report's contract — Pascal iteration order is observable).
+    ExactOrdered,
+    /// The Rust file's rows must be a **subset** of the oracle's, matched by the
+    /// `key`-th field, with matching value fields. Used by `Export Counts`
+    /// during the port: the Rust class registry is a *proper subset* of the
+    /// oracle's (only a subset of classes is ported), so this pins every ported
+    /// class's count against the oracle without failing on the classes we do not
+    /// yet register. Documented in `tests/TOLERANCE_NOTES.md`.
+    ///
+    /// `require` lists lowercased key values that **must** appear in the Rust
+    /// rows — without it the subset check (which iterates only the Rust rows)
+    /// would silently pass an empty/under-reporting Rust body (a dropped class
+    /// is just absent, not a mismatch). Pass the deck-created + default-item keys
+    /// so a registry-walk regression cannot hide (audit-tests WP8.1).
+    RustSubsetByKey { key: usize, require: Vec<String> },
+}
+
+/// How a [`ColTol`] selects the columns it applies to.
+#[derive(Clone)]
+pub enum ColSel {
+    /// Columns whose (trimmed, lowercased) header name starts with this prefix.
+    /// Used where every value column is named (the full-header reports — the
+    /// `%…` ratio columns of `SeqCurrents`/`SeqVoltages`, the `Angle%d` columns of
+    /// `Voltages`).
+    Prefix(String),
+    /// Columns at index `>= start` with `(index − start) % 2 == parity`. Used for
+    /// the **truncated-header** paired magnitude/angle reports
+    /// (`Currents`/`ElemCurrents`/`ElemVoltages`, whose header names only the
+    /// first pair, e.g. `…, I_1, Ang_1, ...`): `parity = 1` selects the (mostly
+    /// unnamed) angle columns, `parity = 0` the magnitudes.
+    Parity { start: usize, parity: usize },
+    /// The single column at this exact index. Used to target a specific
+    /// non-deterministic column by position (the `Summary` `DateTime` column 0,
+    /// masked via [`GateSpec::Mask`]).
+    Index(usize),
+    /// The column **immediately following** a token equal to `glyph` in the row.
+    /// A *content-relative* selector (needs the row fields, not just the header):
+    /// used for the fixed-width `Show` angle columns, which sit right after the
+    /// `/_` angle glyph but at a **row-dependent index** — the element voltage form
+    /// splits the parenthesised `(pu)`/`(nref)` into two tokens (`(` + `n)`) so the
+    /// angle's absolute index varies, and a fixed `Index`/`Parity` cannot target it.
+    /// Selecting "the column after `/_`" pins it regardless of the leading-token
+    /// shift.
+    AfterToken(String),
+    /// The column `n` positions from the **end** of the row (`FromEnd(0)` = the
+    /// last token). Another content-relative selector, for reports whose leading
+    /// name column varies in token count between rows — `Show Mismatch`'s
+    /// `"System Ground"` splits into two tokens while a bus name is one, shifting
+    /// every column by 1, but the value columns are stable *from the end*
+    /// (`Max Current` = last, `%error` = `FromEnd(1)`, `Current Sum` = `FromEnd(2)`).
+    FromEnd(usize),
+}
+
+impl ColSel {
+    fn matches(&self, j: usize, colnames: &[String], fields: &[String]) -> bool {
+        match self {
+            ColSel::Prefix(p) => colnames
+                .get(j)
+                .is_some_and(|n| n.trim().to_lowercase().starts_with(&p.to_lowercase())),
+            ColSel::Parity { start, parity } => j >= *start && (j - start) % 2 == *parity,
+            ColSel::Index(i) => j == *i,
+            ColSel::AfterToken(glyph) => {
+                j > 0 && fields.get(j - 1).is_some_and(|f| f.trim() == glyph)
+            }
+            ColSel::FromEnd(n) => !fields.is_empty() && j == fields.len().wrapping_sub(1 + n),
+        }
+    }
+}
+
+/// A per-column tolerance override for [`compare_export`], selecting columns by
+/// [`ColSel`] (name prefix or index parity). The first matching override wins;
+/// columns with no match use the policy's default `rel`/`abs`.
+///
+/// Used for the fixed-decimal `Angle` columns of the voltage/current reports:
+/// `%.1f`/`%.2f` formatting plus two independent solves round the last printed
+/// digit independently, a purely *additive* floor far coarser than the `%g`
+/// magnitude/pu columns (so the override is `rel = 0`, `abs ≈ 0.11` / `0.011`). A
+/// *formatting* floor (documented in `tests/TOLERANCE_NOTES.md`), NOT a
+/// relaxation of the magnitude/pu checks — those stay tight. The angle is
+/// `arg(V)`/`arg(I)`, independent of the magnitude; its engine-physics
+/// correctness is gated by the live model compare (`corpus_live.rs`, which
+/// compares the complex node voltages / terminal currents directly), so here it
+/// is only a report-layout / printing-floor check.
+pub struct ColTol {
+    pub sel: ColSel,
+    pub rel: f64,
+    pub abs: f64,
+    /// Optional **denominator gate**: skip this cell only when the oracle's
+    /// denominator is a *near-zero but nonzero* cancellation residual (see
+    /// [`GateSpec`]). Used where a value is a ratio (`%I2/I1`) or the phase angle
+    /// (`AngResid`) of a near-zero quantity — a faer-vs-KLU noise form carrying no
+    /// information. The **`= 0` case is deliberately NOT gated**: an exactly-zero
+    /// denominator prints as `0` (Pascal `if I1 > 0`) / the angle of an exact zero
+    /// is `0.00`, which `0 == 0` checks perfectly — so only genuine-noise rows are
+    /// skipped, not the many exactly-zero rows. The magnitude columns stay tightly
+    /// checked on every row. A proven cancellation floor, NOT a relaxation
+    /// (tests/TOLERANCE_NOTES.md).
+    pub gate: Option<GateSpec>,
+}
+
+/// The denominator a [`ColTol::gate`] tests to decide whether to skip a cell.
+#[derive(Clone, Copy)]
+pub enum GateSpec {
+    /// Skip when the oracle's value in a **fixed** column `col` is a near-zero
+    /// residual `0 < |oracle[col]| < threshold`. For the symmetrical-component
+    /// ratio columns (`%I2/I1`, `%I0/I1`, `%NEMA`) whose denominator `I1` sits in
+    /// one fixed column.
+    Col(usize, f64),
+    /// Skip when `min(|oracle[a]|, |oracle[b]|) < threshold` (**including exact
+    /// zero**). For the **power factor** column, which is a defined-but-degenerate
+    /// value when the power is near-purely-reactive (`P ≈ 0`) or near-purely-real
+    /// (`Q ≈ 0`): the oracle's `S.re`/`S.im` is *exactly* 0 there → `PowerFactor`
+    /// returns unity `1.0000` (Pascal `Utilities.PowerFactor`'s `else` branch),
+    /// while a faer-vs-KLU cancellation residual makes the tiny part nonzero and
+    /// prints its own near-zero/sign-flipped PF. Gated on `min(|kW|, |kvar|)` — the
+    /// PF is only meaningful when **both** P and Q are substantial.
+    MinCols(usize, usize, f64),
+    /// Skip when the oracle's value in the **immediately preceding** column is a
+    /// near-zero residual `0 < |oracle[j-1]| < threshold`. For the paired
+    /// magnitude/angle exports (`I, Ang, I, Ang, …`): the angle of a near-zero
+    /// current/voltage (a residual or an open-terminal conductor) is faer-vs-KLU
+    /// noise, gated on its own magnitude in the column just before it.
+    PrevCol(f64),
+    /// **Always** skip the matched column — a non-deterministic column that
+    /// carries no comparable value (a wall-clock timestamp or an absolute path).
+    /// Not a tolerance relaxation of any *value*: the column is genuinely
+    /// unpinnable (`Summary`'s `DateTimeToStr(Now)`), documented in
+    /// `tests/TOLERANCE_NOTES.md`.
+    Mask,
+}
+
+/// Policy for [`compare_export`].
+pub struct ExportPolicy {
+    /// Field separator: `','` for CSV, `'='` for the `Counts` key=value text.
+    pub sep: char,
+    /// Leading non-blank lines compared **verbatim** (fixed headers / column
+    /// row), no number parsing.
+    pub header_lines: usize,
+    /// Row-set policy.
+    pub rows: RowPolicy,
+    /// Per-number relative / absolute tolerance for value fields (the default;
+    /// overridden per column by [`ExportPolicy::col_tol`]).
+    pub rel: f64,
+    pub abs: f64,
+    /// Per-column tolerance overrides, selected by [`ColSel`].
+    pub col_tol: Vec<ColTol>,
+}
+
+impl ExportPolicy {
+    /// The (`rel`, `abs`) tolerance for the field in column `j`: the first
+    /// [`ColTol`] whose [`ColSel`] matches, else the default. `colnames` is the
+    /// last header line split on the separator.
+    fn tol_for_col(&self, j: usize, colnames: &[String], oracle_fields: &[String]) -> (f64, f64) {
+        for ct in &self.col_tol {
+            if ct.sel.matches(j, colnames, oracle_fields) {
+                return (ct.rel, ct.abs);
+            }
+        }
+        (self.rel, self.abs)
+    }
+
+    /// Whether column `j`'s cell should be skipped for this row because its
+    /// [`ColTol::gate`] denominator (the oracle's `fields[col]`) is below the
+    /// gate threshold — a ratio/angle of near-zero cancellation residuals (see
+    /// [`ColTol::gate`]). Only the *matching* `ColTol`'s gate applies.
+    fn skip_col(&self, j: usize, colnames: &[String], oracle_fields: &[String]) -> bool {
+        for ct in &self.col_tol {
+            if ct.sel.matches(j, colnames, oracle_fields) {
+                // Band-limit: skip only a *nonzero* sub-threshold denominator
+                // (`0 < |v| < thresh`). An exactly-zero denominator prints the
+                // ratio as `0` (Pascal `if I1 > 0`) / the angle of an exact zero as
+                // `0.00`, which `0 == 0` checks — so those rows stay verified.
+                let num = |col: usize| {
+                    oracle_fields
+                        .get(col)
+                        .and_then(|f| f.trim().parse::<f64>().ok())
+                };
+                let (col, thresh) = match ct.gate {
+                    Some(GateSpec::Col(col, thresh)) => (col, thresh),
+                    Some(GateSpec::PrevCol(thresh)) => (j.wrapping_sub(1), thresh),
+                    Some(GateSpec::MinCols(a, b, thresh)) => {
+                        return match (num(a), num(b)) {
+                            (Some(x), Some(y)) => x.abs().min(y.abs()) < thresh,
+                            _ => false,
+                        };
+                    }
+                    Some(GateSpec::Mask) => return true,
+                    None => return false,
+                };
+                return num(col).is_some_and(|v| v != 0.0 && v.abs() < thresh);
+            }
+        }
+        false
+    }
+}
+
+/// Split a report line into fields for [`compare_export`].
+///
+/// * `sep == ' '` selects the **fixed-width `Show` table** mode: tokenize on any
+///   run of whitespace **or** commas, dropping empty tokens. Pascal's
+///   `ShowResults` reports are space-padded columns (`Pad`/`PadDots`) with the
+///   occasional glued trailing comma (`ExportLosses`-style `%.5f,` fields), so a
+///   single-char split cannot tokenize them — this collapses the padding and
+///   strips the comma so each numeric cell parses cleanly (PHASE8_PLAN §2.3).
+/// * any other `sep` (`','` CSV, `'='` Counts key=value) splits on exactly that
+///   char, trimming each field — the `Export`/CSV path, unchanged.
+fn split_fields(line: &str, sep: char) -> Vec<String> {
+    if sep == ' ' {
+        line.split(|c: char| c.is_whitespace() || c == ',')
+            // Drop empties **and pure dot-runs**: the `Show` reports pad name
+            // columns with `PadDots` (`SOURCEBUS ..`, `650 ........`, the powers
+            // `TERMINAL TOTAL ....`), and the pad width is `MaxBusNameLength`, a
+            // backend quirk that differs per report (ShowVoltages floors it at 12,
+            // ShowPowers at ~5 — even in isolation) and is *not* faithfully
+            // reproducible with a single value. A dot-run is pure padding
+            // punctuation carrying no data, so dropping it makes the token compare
+            // immune to the quirk (tests/TOLERANCE_NOTES.md).
+            .filter(|f| !f.is_empty() && !f.bytes().all(|b| b == b'.'))
+            .map(|f| f.to_string())
+            .collect()
+    } else {
+        line.split(sep).map(|f| f.trim().to_string()).collect()
+    }
+}
+
+/// Split a report into non-blank, `\r`-stripped lines.
+fn report_lines(s: &str) -> Vec<String> {
+    s.lines()
+        .map(|l| l.trim_end().to_string())
+        .filter(|l| !l.trim().is_empty())
+        .collect()
+}
+
+/// A field is numeric iff it parses *whole* as `f64` (so a class name like
+/// `IndMach012` stays text while a count `2` is a number).
+fn field_eq(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
+    match (actual.trim().parse::<f64>(), expected.trim().parse::<f64>()) {
+        (Ok(_), Ok(_)) => assert_value_matches_tol(actual.trim(), expected.trim(), rel, abs, ctx),
+        _ => assert!(
+            actual.trim().eq_ignore_ascii_case(expected.trim()),
+            "{ctx}: text field differs (actual {:?} vs expected {:?})",
+            actual.trim(),
+            expected.trim()
+        ),
+    }
+}
+
+/// Compare two report bodies (oracle vs Rust) per [`ExportPolicy`] (§2.3).
+pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str) {
+    let ol = report_lines(oracle);
+    let rl = report_lines(rust);
+    assert!(
+        ol.len() >= policy.header_lines && rl.len() >= policy.header_lines,
+        "{ctx}: file shorter than the {} header line(s)",
+        policy.header_lines
+    );
+    // Fixed header block: verbatim.
+    for i in 0..policy.header_lines {
+        assert_eq!(rl[i], ol[i], "{ctx}: header line {i} differs");
+    }
+    let split = |line: &str| -> Vec<String> { split_fields(line, policy.sep) };
+    // Column names = the last header line split on the separator (for the
+    // per-column tolerance lookup). Empty when the report has no header block.
+    let colnames: Vec<String> = if policy.header_lines >= 1 {
+        split(&ol[policy.header_lines - 1])
+    } else {
+        Vec::new()
+    };
+    let odata = &ol[policy.header_lines..];
+    let rdata = &rl[policy.header_lines..];
+
+    match &policy.rows {
+        RowPolicy::ExactOrdered => {
+            assert_eq!(
+                rdata.len(),
+                odata.len(),
+                "{ctx}: data row count differs (rust {} vs oracle {})",
+                rdata.len(),
+                odata.len()
+            );
+            for (i, (r, o)) in rdata.iter().zip(odata).enumerate() {
+                let (rf, of) = (split(r), split(o));
+                assert_eq!(rf.len(), of.len(), "{ctx}: row {i} field count differs");
+                for (j, (a, e)) in rf.iter().zip(&of).enumerate() {
+                    if policy.skip_col(j, &colnames, &of) {
+                        continue;
+                    }
+                    let (rel, abs) = policy.tol_for_col(j, &colnames, &of);
+                    field_eq(a, e, rel, abs, &format!("{ctx}: row {i} field {j}"));
+                }
+            }
+        }
+        RowPolicy::RustSubsetByKey { key, require } => {
+            // Oracle rows keyed by the lowercased key field.
+            let mut omap: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            for o in odata {
+                let f = split(o);
+                if let Some(k) = f.get(*key) {
+                    omap.insert(k.to_lowercase(), f);
+                }
+            }
+            let mut rust_keys: BTreeSet<String> = BTreeSet::new();
+            for (i, r) in rdata.iter().enumerate() {
+                let rf = split(r);
+                let k = rf
+                    .get(*key)
+                    .unwrap_or_else(|| panic!("{ctx}: rust row {i} has no key field"));
+                rust_keys.insert(k.to_lowercase());
+                let of = omap.get(&k.to_lowercase()).unwrap_or_else(|| {
+                    panic!("{ctx}: rust row {i} key {k:?} absent from the oracle file")
+                });
+                assert_eq!(
+                    rf.len(),
+                    of.len(),
+                    "{ctx}: row key {k:?} field count differs"
+                );
+                for (j, (a, e)) in rf.iter().zip(of).enumerate() {
+                    if policy.skip_col(j, &colnames, of) {
+                        continue;
+                    }
+                    let (rel, abs) = policy.tol_for_col(j, &colnames, of);
+                    field_eq(a, e, rel, abs, &format!("{ctx}: row {k:?} field {j}"));
+                }
+            }
+            // Presence guard: a subset compare that iterates only the Rust rows
+            // cannot see a *dropped* row, so an empty/under-reporting Rust body
+            // would pass silently. Require the must-emit keys explicitly.
+            for k in require {
+                assert!(
+                    rust_keys.contains(&k.to_lowercase()),
+                    "{ctx}: required key {k:?} missing from the Rust output \
+                     (a dropped class / empty report body)"
+                );
+            }
+        }
+    }
 }

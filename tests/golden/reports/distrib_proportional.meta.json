@@ -1,0 +1,23 @@
+{
+  "command": "distribute kw=1500 pf=0.95",
+  "fixture": "dst",
+  "file": "DistGenerators.dss",
+  "deck": [
+    "Set DefaultBaseFrequency=60",
+    "new circuit.dst basekv=12.47 pu=1.0 phases=3 bus1=src",
+    "~ r1=0.4 x1=1.6 r0=1.2 x0=4.2",
+    "new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6",
+    "~ units=km",
+    "new line.l1 bus1=src bus2=b1 linecode=lc length=1.0 units=km",
+    "new line.l2 bus1=b1 bus2=b2 linecode=lc length=0.8 units=km",
+    "new load.ld_kw bus1=b2 phases=3 conn=wye model=1 kv=12.47 kw=800 pf=0.92",
+    "new load.ld_xf bus1=b1.1 phases=1 conn=wye kv=7.2 xfkva=300",
+    "~ allocationfactor=0.55",
+    "new load.ld_ac bus1=b1.2 phases=1 conn=wye kv=7.2 kwh=12000 cfactor=3.5",
+    "new load.ld_off bus1=b2.3 phases=1 conn=wye kv=7.2 kw=120 pf=0.9 enabled=no",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "Set maxiterations=100",
+    "solve"
+  ]
+}

@@ -6,6 +6,7 @@ use num_complex::Complex64;
 use super::{VSource, get_vmag};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjCtx, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::util::{CALPHA, EPSILON, quad_solver, sqrt3};
@@ -173,6 +174,23 @@ impl CktElement for VSource {
         self.recalc();
     }
 
+    /// Pascal `TVsourceObj.MakePosSequence` (`VSource.pas:1201`). Single phase,
+    /// line-neutral base kV (`kVBase / SQRT3`), keeping the R1/X1 sequence
+    /// impedance.
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        use super::prop;
+
+        let kv_new = self.kv_base / sqrt3();
+        PosSeqPlan::with_actions(vec![
+            PosSeqAction::BeginEdit,
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetF64(prop::BASEKV, kv_new),
+            PosSeqAction::SetF64(prop::R1, self.r1),
+            PosSeqAction::SetF64(prop::X1, self.x1),
+            PosSeqAction::EndEdit,
+        ])
+    }
+
     /// Pascal `TVsourceObj.CalcYPrim`: build only YPrim_Series.
     fn calc_yprim(&mut self, sys: &SysCtx) {
         let nphases = self.cd.nphases;
@@ -257,7 +275,9 @@ impl CktElement for VSource {
         Some(self.src_frequency)
     }
 
-    /// Pascal `TVsourceObj.GetCurrents`: `Yprim·V(node) − InjCurrent`.
+    /// Pascal `TVsourceObj.GetCurrents`: `Yprim·V(node)` minus a freshly
+    /// recomputed injection (into a local, mirroring Pascal's `ComplexBuffer`
+    /// scratch — the solver's `InjCurrent` stays untouched).
     #[allow(clippy::needless_range_loop)] // loop-for-loop Pascal port
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
         let yorder = self.cd.yorder;
@@ -267,9 +287,9 @@ impl CktElement for VSource {
         if let Some(yprim) = &self.cd.yprim {
             yprim.mv_mult(curr, &self.cd.vterminal);
         }
-        self.get_inj_currents(sys); // overwrites Vterminal, like the original
+        let inj = self.compute_inj_currents(sys); // overwrites Vterminal, like the original
         for i in 0..yorder {
-            curr[i] -= self.cd.inj_current[i];
+            curr[i] -= inj[i];
         }
     }
 }

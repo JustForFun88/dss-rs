@@ -1,0 +1,4 @@
+Line.l1, Recloser.rec1 , Relay.rel1 
+Line.l2, SwtControl.sw1 , SwtControl.sw2 
+Line.l3, Fuse.fu1 
+Capacitor.cap1, CapControl.cc1 

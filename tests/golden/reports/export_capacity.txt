@@ -1,0 +1,3 @@
+Name, Imax, %normal, %emergency, kW, kvar, NumCustomers, TotalCustomers, NumPhases, kVBase
+Line.L1,    15.7836,     3.95,     2.63,    300.108,    161.633, 10, 35, 3, 7.2 
+Line.L2,    10.5246,     2.63,     1.75,    200.033,    107.783, 25, 25, 3, 7.2 

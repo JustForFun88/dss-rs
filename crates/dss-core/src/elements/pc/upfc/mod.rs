@@ -15,7 +15,6 @@
 //! 14 `NumVariables` for Monitor mode 3.
 //!
 //! NOT_PORTED:
-//! - `MakePosSequence` (empty body upstream — a no-op; nothing to port).
 //! - The `TUPFCObj.Create` block that, on creating a *second* UPFC, casts the
 //!   first UPFC object to a `TUPFCControlObj` and clears `.UPFCList`/`.ListSize`
 //!   (UPFC.pas l.396). That cast reaches the wrong class (a `TUPFCObj` has no
@@ -33,6 +32,7 @@ mod tests;
 
 mod accessors;
 mod compute;
+mod dump;
 
 use num_complex::Complex64;
 
@@ -81,9 +81,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     // established convention (cf. VSource `frequency`), only the behavioral
     // `DynamicDefault`/`NonNegative`/`NonZero` are carried.
     let defs = vec![
-        PropDef::bus("bus1", 1),
-        PropDef::bus("bus2", 2),
-        PropDef::double("refkV"),
+        PropDef::bus("Bus1", 1),
+        PropDef::bus("Bus2", 2),
+        PropDef::double("RefkV"),
         PropDef::double("PF"),
         PropDef::double("Frequency")
             .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
@@ -102,10 +102,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // full name (used only by the PF compensation modes).
         PropDef::object_ref_any("Element"),
         // PCClass tail:
-        PropDef::object_ref("spectrum"),
+        PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("UPFC", defs, true)

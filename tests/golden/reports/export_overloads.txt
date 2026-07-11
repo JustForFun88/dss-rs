@@ -1,0 +1,2 @@
+Element, Terminal,  I1, AmpsOver, kVAOver, %Normal, %Emergency, I2, %I2/I1, I0, %I0/I1
+"Line.L1"             , 1,    26.32,    16.32,     927.58,    263.2,    175.5,      0.0,      0.0,      0.0,      0.0

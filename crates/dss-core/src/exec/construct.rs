@@ -9,6 +9,9 @@ impl Dss {
         let enums = EnumRegistry::new();
         let commands = CommandList::new(EXEC_COMMANDS.iter().copied());
         let option_list = CommandList::new(EXEC_OPTIONS.iter().copied());
+        let export_commands = CommandList::new(crate::report::EXPORT_OPTIONS.iter().copied());
+        let show_commands = CommandList::new(crate::report::SHOW_OPTIONS.iter().copied());
+        let plot_commands = CommandList::new(PLOT_OPTIONS.iter().copied());
 
         // Class registry. More classes are registered here as they are ported.
         let classes = vec![
@@ -71,6 +74,17 @@ impl Dss {
             DssClass::ckt_class(
                 vsource::class_props(&enums),
                 |name| Box::new(vsource::VSource::new(name)),
+                ElemKind::Source,
+            ),
+            // Isource registers right after VSource (Pascal
+            // DSSClassDefs.pas:198, immediately below VSource:192; VCCS comes
+            // AFTER Isource upstream, :201, but is registered later in this
+            // file — WP7.8) — registration order does not affect node
+            // ordering, and the class order the oracle observes is pinned by
+            // the dump3_commands golden (Vsource → Isource → VCCS).
+            DssClass::ckt_class(
+                isource::class_props(&enums),
+                |name| Box::new(isource::Isource::new(name)),
                 ElemKind::Source,
             ),
             DssClass::ckt_class(
@@ -201,14 +215,31 @@ impl Dss {
                 |name| Box::new(espvl_control::EspvlControl::new(name)),
                 ElemKind::Control,
             ),
-            // IndMach012 registers after PVSystem, before InvControl (Pascal
-            // DSSClassDefs.pas:264 INDMACH012_ELEMENT; the GICsource/AutoTrans
-            // classes around it are unported). Registration order does not affect
-            // node ordering, which follows element creation order.
+            // IndMach012 registers after ESPVLControl, before GICsource (Pascal
+            // DSSClassDefs.pas:264 INDMACH012_ELEMENT). Registration order does
+            // not affect node ordering, which follows element creation order.
             DssClass::ckt_class(
                 ind_mach012::class_props(&enums),
                 |name| Box::new(ind_mach012::IndMach012::new(name)),
                 ElemKind::IndMach012,
+            ),
+            // GICsource registers directly after IndMach012 (Pascal
+            // DSSClassDefs.pas:267 GIC_SOURCE, before AutoTrans:270). It is
+            // `SOURCE | NON_PCPD_ELEM` like VSource/Isource, so it joins the
+            // `sources` list (ElemKind::Source). Registration order does not
+            // affect node ordering, which follows element creation order.
+            DssClass::ckt_class(
+                gic_source::class_props(),
+                |name| Box::new(gic_source::GicSource::new(name)),
+                ElemKind::Source,
+            ),
+            // AutoTrans registers after GICsource, before InvControl (Pascal
+            // DSSClassDefs.pas:270). Registration order does not affect node
+            // ordering, which follows element creation order.
+            DssClass::ckt_class(
+                auto_trans::class_props(&enums),
+                |name| Box::new(auto_trans::AutoTrans::new(name)),
+                ElemKind::AutoTrans,
             ),
             // VSConverter (Pascal DSSClassDefs.pas VS_CONVERTER) — a power-flow
             // AC/DC bridge PC element; no node-order dependence (creation order).
@@ -225,11 +256,11 @@ impl Dss {
                 |name| Box::new(vccs::Vccs::new(name)),
                 ElemKind::Vccs,
             ),
-            // InvControl registers after PVSystem (Pascal DSSClassDefs.pas:273;
-            // the UPFC/GICsource/AutoTrans classes between PVSystem and InvControl
-            // are unported, so among ported classes it follows IndMach012).
-            // Registration order does not affect node ordering, which follows
-            // element creation order.
+            // InvControl registers after AutoTrans (Pascal DSSClassDefs.pas:273;
+            // VSConverter/VCCS sit at their own Pascal slots but are registered
+            // just above — the class order the oracle observes is pinned by the
+            // dump3_commands golden). Registration order does not affect node
+            // ordering, which follows element creation order.
             DssClass::ckt_class(
                 inv_control::class_props(&enums),
                 |name| Box::new(inv_control::InvControl::new(name)),
@@ -242,6 +273,20 @@ impl Dss {
                 exp_control::class_props(),
                 |name| Box::new(exp_control::ExpControl::new(name)),
                 ElemKind::Control,
+            ),
+            // GICLine + GICTransformer register after ExpControl (Pascal
+            // DSSClassDefs.pas:279/282, before VSConverter:285). GICLine is a
+            // PC-element voltage source; GICTransformer a shunt PD element.
+            // Registration order does not affect node ordering.
+            DssClass::ckt_class(
+                gic_line::class_props(),
+                |name| Box::new(gic_line::GicLine::new(name)),
+                ElemKind::GicLine,
+            ),
+            DssClass::ckt_class(
+                gic_transformer::class_props(&enums),
+                |name| Box::new(gic_transformer::GicTransformer::new(name)),
+                ElemKind::GicTransformer,
             ),
             // Monitor is registered after Generator (Pascal DSSClassDefs.pas:288).
             DssClass::ckt_class(
@@ -272,20 +317,31 @@ impl Dss {
             class_by_name,
             commands,
             option_list,
+            export_commands,
+            show_commands,
+            plot_commands,
             parser: Parser::new(),
             aux_parser: Parser::new(),
             vars: ParserVars::new(),
             enums,
             errors: Vec::new(),
             active_class: None,
+            active_ckt_element: None,
             last_result: String::new(),
             circuit: None,
             default_base_freq: 60.0,
             default_earth_model: 3, // DERI (Pascal `DSSClass.pas:1284`)
             max_allocation_iterations: 2,
+            auto_show_export: false, // DSSClass.pas:1278
             current_dir: std::env::current_dir().unwrap_or_default(),
+            output_directory: std::env::current_dir().unwrap_or_default(),
+            last_result_file: String::new(),
             in_redirect: false,
             redirect_abort: false,
+            cim: crate::cim::CimExporter::default(),
+            dss_objs: Vec::new(),
+            daisy_size: 1.0, // DSSClass.pas:1283
+            plot_callback: None,
         };
         dss.create_default_dss_items();
         dss

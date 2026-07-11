@@ -1,0 +1,33 @@
+! WARNING: when mixing wire/cable types, "wires", "cncables" and "tscables" may not make sense in this dump
+
+New "LineGeometry.geo1"
+~ NConds=3
+~ NPhases=3
+~ Cond=1
+~ Wire=w1
+~ X=-4
+~ H=28
+~ Units=ft
+~ Cond=2
+~ Wire=w1
+~ X=-1.5
+~ H=28.5
+~ Units=ft
+~ Cond=3
+~ Wire=w1
+~ X=3
+~ H=28
+~ Units=ft
+~ NormAmps=600
+~ EmergAmps=900
+~ Reduce=No
+~ Spacing=
+~ Wires=[w1, w1, w1]
+~ CNCable=w1
+~ TSCable=w1
+~ CNCables=[w1, w1, w1]
+~ TSCables=[w1, w1, w1]
+~ Seasons=1
+~ Ratings=[ 0]
+~ LineType=oh
+~ Like=

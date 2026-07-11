@@ -1,5 +1,20 @@
 # Porting Plan: DSS C-API (Free Pascal) → Pure Idiomatic Rust
 
+## Source-integrity gate — ritual step 0 (before the model-tier check)
+
+The Pascal we port FROM — `.inputs/dss_capi` (186 `.pas` files), plus
+`.inputs/electricdss-tst` for oracle/live work — is the **specification**. Before doing
+anything, and re-checked continuously (not only at kickoff), confirm that folder exists
+and is non-empty. If it has vanished — missing or empty — at **any** point in the work,
+**STOP immediately**: make no edits, run no gate, and do **not** reconstruct, guess, or
+"port" a source you cannot read. Tell the user the vendored source is gone and must be
+re-vendored, then wait. Reply exactly:
+**«Исходник порта (`.inputs/dss_capi`) отсутствует или пуст — работа остановлена. Восстанови
+vendored-исходник (re-vendor) и повтори команду.»**
+No spec → nothing to port; fabricating one from memory is a silent, unverifiable
+divergence — far worse than stopping. This gate runs **ahead of the tier/refuse check**
+(`PLAN_SEQUENCE.md` §Model-tier protocol).
+
 ## Context
 
 The goal is a complete 1:1 behavioral port of **AltDSS/DSS C-API** — the Free Pascal
@@ -83,7 +98,7 @@ dss-core/src/
                 #   growth_shape/mod.rs...
   exec/         # Executive.pas, ExecCommands.pas, ExecHelper.pas, ExecOptions.pas
   report/       # ShowResults.pas, ExportResults.pas, Show/ExportOptions, save.rs
-  cim/          # ExportCIMXML.pas (Phase 9)
+  cim/          # ExportCIMXML.pas (GAPS_PLAN WPG.18)
 ```
 
 Dependencies: `num-complex`, `faer` (dss-sparse only), `thiserror`, `serde`/`serde_json`
@@ -267,7 +282,7 @@ when such a file exists it supersedes the summary here for execution purposes.
   RegControl/CapControl as parse-only objects (the IEEE masters create them).
   Introduce `define_properties!` macro; retrofit Phase 3 classes.
 - **Gate**: `golden_feeders.rs` — IEEE13/IEEE37/IEEE123 controls-off variant scripts vs
-  new `tests/golden/phase4.json` (oracle run the same way) — voltages/powers/losses to
+  new `tests/golden/feeders_controlsoff.json` (oracle run the same way) — voltages/powers/losses to
   1e-6 rel, iteration counts exact; property-dump tests for all new classes.
 
 ### Phase 5 — Control loop, RegControl/CapControl, time-series modes (~10%)
@@ -281,7 +296,7 @@ when such a file exists it supersedes the summary here for execution purposes.
 - **Gate**: IEEE13 full master (regulator+caps): final tap positions **exactly** equal,
   voltages 1e-6; IEEE123 with regulators: same — both vs the committed Phase-0 goldens;
   event log equality (numbers normalized); a daily-mode loadshape case matches hourly
-  voltage trajectories (`tests/golden/phase5.json`).
+  voltage trajectories (`tests/golden/timeseries_controls/`).
 
 ### Phase 6 — Meters, monitors, topology, Generator; large-feeder gate (~12%)
 - Scope: `MeterElement`, `EnergyMeter.pas` (zones, registers, SAIFI/SAIDI),
@@ -307,7 +322,19 @@ Sub-blocks, each independently gated with targeted electricdss-tst cases:
    gate: dynamics-mode monitor trajectories, 1e-5 rel.
 6. Faultstudy + AutoAdd modes, `Feeder.pas`.
 
-### Phase 8 — Reporting, exports, Save, full Executive (~12%)
+### Phase 8 — Reporting, exports, Save, full Executive (~12%) — **COMPLETE (2026-07-10)**
+
+> **Executed** (`PHASE8_PLAN.md` WP8.1–WP8.8; records in `STATUS.md` +
+> `docs/phase-records/phase-8.md`). The WP8.8 exit sweep additionally ported the
+> whole corpus-used executive tail (Enable/Disable, SetkVBase, Losses, Summary,
+> Reconductor, the `_InitSnap…_SolvePFlow` step-solution family, `var`,
+> Fileedit/Classes/Userclasses/CD/DOScmd, `Set/Get ShowExport`), the AutoTrans
+> arms of the element-form Show reports, and the dynamics/harmonics-leave
+> `InvalidateAllPCElements` rebuild trigger. `tools/cmd_coverage.py` proves the
+> only corpus-used residual is the `DSS_CAPI_PM` actor family
+> (NewActor/SolveAll/Abort/Clone + ActiveActor/CPU/Parallel/ConcatenateReports)
+> — owner: `MULTITHREADING_PLAN.md` stage M2 (actor mode).
+
 - Scope: `ShowResults.pas` (3.4k), `ExportResults.pas` (3.4k), `Show/ExportOptions`,
   remaining `ExecHelper`/`ExecCommands` long tail (batchedit, interpolate, distribute,
   reduce, …), `Circuit.Save`, `DumpProperties`, `Utilities.pas` leftovers, full ReduceAlgs.
@@ -318,11 +345,38 @@ Sub-blocks, each independently gated with targeted electricdss-tst cases:
   (`tests/save_roundtrip.rs`).
 
 ### Phase 9 — Exotics (~8%, optional — stopping before this still = complete simulator)
-- `ExportCIMXML.pas` (4.5k lines, pure output → XML diff vs oracle).
-- A-Diakoptics + parallel-machine actor mode → re-architect on `std::thread` + channels;
-  gate: numerically identical to single-actor results.
-- GIC elements (`GICLine`, `GICsource`, `GICTransformer`); `Pstcalc` flicker (if not
-  already pulled in by Monitor); plotting callbacks as a data-only `PlotSink` trait.
+
+> **GAPS_PLAN executed (2026-07-09):** WPG.1–WPG.18 + the WPG.17 exit sweep are
+> COMPLETE (see `GAPS_PLAN.md` §WPG.17 closure addendum and `STATUS.md`). The
+> closure round additionally ported the sweep-surfaced items (XYcurve file
+> props, LoadShape MemoryMapping + TotalTime, SngSave/DblSave,
+> PreserveNodeVoltages, the Monitor 1024-flush, the dynamics-mode GFM branch —
+> retiring the WPG.13 deferral — and the Plot/Visualize callback surface with
+> `Dss::register_plot_callback` for GUI hosts). Named follow-ups: WPG.19
+> (non-MM `File=` arrays), WPG.20 (MMF-shape save), `JSON_EXPORT_PLAN.md`
+> (user-deferred JSON output). The remaining Phase-9 scope below is the
+> A-Diakoptics/actor/Pstcalc residue — the actor half lives in
+> `MULTITHREADING_PLAN.md` (M2); the A-Diakoptics + Pstcalc halves now have their
+> own execution plan, **`DIAKOPTICS_PSTCALC_PLAN.md`** (2026-07-11): Part I
+> (Pstcalc command, Monitor mode-4 flicker, incidence matrix + Sparse_Math) is
+> oracle-gated and runs pre-acceptance; Part II (the A-Diakoptics engine) runs
+> last, gated rust-vs-rust because the pinned oracle build has
+> `DSS_CAPI_ADIAKOPTICS` compiled out. Ordering in `PLAN_SEQUENCE.md`.
+
+- ~~`ExportCIMXML.pas` (4.5k lines, pure output → XML diff vs oracle)~~ —
+  **moved to `GAPS_PLAN.md` WPG.18** (byte-exact golden XML gate via the
+  `uuids file=` determinism recipe) — **executed**.
+- ~~A-Diakoptics + parallel-machine actor mode → re-architect on `std::thread` + channels;
+  gate: numerically identical to single-actor results.~~ — **moved to
+  `MULTITHREADING_PLAN.md` (2026-07-06):** actor mode = stage M2 there (same
+  std::thread + channels design, gate unchanged); A-Diakoptics, deferred there,
+  is now **`DIAKOPTICS_PSTCALC_PLAN.md` Part II (2026-07-11)** — runs last in
+  `PLAN_SEQUENCE.md` (early-start after M2).
+- ~~GIC elements (`GICLine`, `GICsource`, `GICTransformer`)~~ — **moved to
+  `GAPS_PLAN.md` WPG.16**; ~~`Pstcalc` flicker (if not
+  already pulled in by Monitor)~~ — **moved to `DIAKOPTICS_PSTCALC_PLAN.md` Part I
+  (WP-PF.1 command + WP-PF.2 Monitor mode 4, oracle-gated, pre-acceptance)**;
+  plotting callbacks as a data-only `PlotSink` trait.
 
 **Cumulative**: P0–P3 ≈ 35% → working vertical slice; P0–P6 ≈ 67% → production-usable
 simulator; P7–P8 → full behavior parity; P9 → 1:1 including exotics.
@@ -358,6 +412,17 @@ simulator; P7–P8 → full behavior parity; P9 → 1:1 including exotics.
   full model — full Y, voltages, every element's currents/powers, YPrim,
   injection, discrete state — reusing the checkpoint gate's comparators and
   policy. The `solvable_now` manifest expands toward 100% as the port matures.
+- **Official-EPRI-OpenDSS oracle channel** (`tools/opendss/`, added 2026-07-07;
+  **opt-in only — the mandatory gate and the pinned dss-python oracle are
+  unchanged**): the same `oracle_server.py` protocol and captures driven over
+  vendored official EPRI `OpenDSSDirect.dll` binaries (r3723 = the 0.14.x base,
+  r4088 = the 0.15.x base, r4133 = release 11.0.0.1) through the AltDSS Oddie
+  bridge (`DSS_ORACLE_ENGINE=oddie`; separate venv, `tools/opendss/PIN_OPENDSS.txt`).
+  Two workflows: `corpus_live_opendss` (`DSS_LIVE_OPENDSS=<rev>`, divergence
+  *report* mode — the port is calibrated to dss_capi, which intentionally
+  differs from EPRI upstream) and `tools/opendss/ab_compare.py` (EPRI-vs-EPRI
+  diff = the upstream-change inventory for the future "port newer OpenDSS
+  behavior" work). See `tools/opendss/README.md`.
 - **Unit tests**: inline `#[cfg(test)]` (existing convention); golden values obtained by
   probing the Pascal behavior through dss-python (e.g. a single Line's YPrim entries).
 - **Auto-generated property tests**: every registered class gets default-dump +
@@ -392,6 +457,14 @@ Rules:
    swept in one dedicated cleanup pass: replace each quirk with the correct/precise
    implementation and regenerate the affected goldens deliberately, one quirk at a time.
 
+   > **Update (2026-07-06, supersedes rule 4's "replace" — rules 1–3 unchanged):** the
+   > sweep is now **Stage F of `DE_PASCALIZE_PLAN.md`** (Part IV.2). Compat quirks are
+   > **not deleted** — each becomes a dual kernel behind `#[cfg(feature =
+   > "oracle-parity")]`: the default build gets the correct/precise implementation, the
+   > parity build keeps the quirk so every 1:1 oracle gate stays permanently re-runnable.
+   > Only the default lane re-baselines. See `PLAN_SEQUENCE.md` for the post-acceptance
+   > order (DE_PASCALIZE → RESONANCE → MULTITHREADING).
+
 ## 5. Risk Register
 
 | Risk | L/I | Mitigation |
@@ -414,6 +487,22 @@ Final acceptance for the 1:1 port: all electricdss-tst cases covered by
 `cmd_coverage.py` run through both engines with the harness reporting zero
 out-of-tolerance values and exact discrete-state matches, plus `save_roundtrip` and
 export-diff suites green on IEEE 13/34/37/123/8500.
+
+> **Update (2026-07-06) — verification after acceptance.** Final acceptance itself is
+> unchanged (it runs on the 1:1 engine — the configuration that becomes the
+> `oracle-parity` build). From `DE_PASCALIZE_PLAN.md` Stage F onward, verification is
+> **two permanent CI lanes**: the **parity lane** (`--features oracle-parity`) keeps this
+> section's full gate — byte goldens, calibrated floors, exact discrete states and
+> iteration counts — bitwise-green forever; the **default lane** (idiomatic kernels,
+> upstream bugs fixed, parallel LU / iterative refinement allowed) keeps the same floors
+> on continuous quantities and exact discrete states but **unpins iteration counts**,
+> and is anchored to the oracle transitively via the parity↔default differential gate.
+> Drift model and lane rules: `DE_PASCALIZE_PLAN.md` Part IV.2; ordering:
+> `PLAN_SEQUENCE.md`; per-step ritual: as in `PHASE8_PLAN.md`, adopted by every
+> post-acceptance plan. Executor/auditor **model tiers** (per-stage exec+audit
+> requirements, the step-0 refuse protocol, explicit model override for spawned
+> auditors): `PLAN_SEQUENCE.md` §Model-tier protocol — adopted by `PHASE8_PLAN.md`
+> and every subsequent plan.
 
 ## 7. Immediate first actions
 

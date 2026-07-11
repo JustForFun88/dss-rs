@@ -1,0 +1,34 @@
+// Reduce coverage (PHASE8_PLAN WP8.7): the DEFAULT strategy (ReduceAlgs
+// DoReduceDefault, ReduceAlgs.pas:335) - generic in-line series merge:
+// a line whose to-bus has exactly 1 child branch, 0 shunt objects and is
+// not on the KeepList is merged into its child (Line.MergeWith SERIES,
+// merged name = "other~self"). The capacitor at b3 pins the
+// MarkCapandReactorBuses auto-keep (DoReduceCmd, ExecHelper.pas:1628):
+// b2 is eliminated (l1+l2 merge), b3 survives.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.gapsrd basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.4 x1=1.6 r0=1.2 x0=4.2
+
+new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6
+~ units=km
+
+new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km
+new line.l1 bus1=b1 bus2=b2 linecode=lc length=0.8 units=km
+new line.l2 bus1=b2 bus2=b3 linecode=lc length=0.6 units=km
+new line.l3 bus1=b3 bus2=b4 linecode=lc length=0.7 units=km
+
+new capacitor.c3 bus1=b3 phases=3 kvar=150 kv=12.47
+new load.ld4 bus1=b4 phases=3 conn=wye model=1 kv=12.47 kw=600 pf=0.92
+
+new energymeter.em element=line.lfeed terminal=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set maxiterations=100
+solve
+
+set reduceoption=default
+reduce
+solve

@@ -1,0 +1,41 @@
+// Combination: VOLT/VAR interPLAY on an unbalanced feeder — an LTC RegControl,
+// a voltage-mode CapControl bank, and a volt-var InvControl PV all regulating
+// the same daily ramp; each device's action shifts the operating point the
+// others see. Compared per step: full model + taps/cap-states (discrete) +
+// per-device probes + PVSystem state variables + the interleaved event log.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.vvcombo basekv=115 pu=1.03 phases=3 bus1=src mvasc3=15000 mvasc1=12000
+
+new transformer.tr phases=3 windings=2 buses=(src, mv) conns=(delta, wye)
+~ kvs=(115, 12.47) kvas=(10000, 10000) xhl=7
+new regcontrol.rg transformer=tr winding=2 vreg=122 band=2 ptratio=60
+~ eventlog=yes
+
+new line.feed bus1=mv bus2=b r1=0.6 x1=1.4 r0=1.4 x0=3.6 c1=0 c0=0 length=1
+
+! kvar-mode capcontrol: with the LTC holding the bus voltage a voltage-mode
+! control would never toggle (the regulator masks the excursions) — the kvar
+! ramp toggles it daily instead.
+new capacitor.cb phases=3 bus1=b conn=wye kvar=900 kv=12.47 numsteps=2
+new capcontrol.cc element=line.feed terminal=1 capacitor=cb type=kvar
+~ onsetting=2000 offsetting=900 eventlog=yes
+
+new xycurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)
+new pvsystem.pv bus1=b phases=3 kv=12.47 kva=1000 pmpp=800 pf=1.0 irradiance=0.95
+new invcontrol.ic mode=VOLTVAR voltage_curvex_ref=rated vvc_curve1=vv
+~ deltaq_factor=0.2 refreactivepower=VARMAX
+
+new loadshape.day npts=12 interval=1
+~ mult=(0.35 0.50 0.70 0.90 1.10 1.25 1.20 1.05 0.85 0.65 0.50 0.40)
+
+! Per-phase-unequal loads keep the feeder asymmetric.
+new load.la bus1=b.1 phases=1 conn=wye model=1 kv=7.2 kw=2600 pf=0.9 daily=day
+new load.lb bus1=b.2 phases=1 conn=wye model=1 kv=7.2 kw=1100 pf=0.95 daily=day
+new load.lc bus1=b.3 phases=1 conn=wye model=1 kv=7.2 kw=3200 pf=0.88 daily=day
+
+set voltagebases=[115 12.47]
+calcvoltagebases
+set maxcontroliter=2000
+set mode=daily stepsize=1h number=1

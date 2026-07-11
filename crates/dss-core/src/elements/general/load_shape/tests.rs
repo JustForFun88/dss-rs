@@ -1,5 +1,5 @@
 use super::*;
-use crate::obj::base::DssObject;
+use crate::obj::base::{DssObject, MmfKind};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
@@ -205,6 +205,47 @@ fn get_mult_at_hour_use_actual_zero_q() {
 }
 
 #[test]
+fn mult_walks_fixed_interval_curve_and_present_interval_is_fixed() {
+    // Pascal `Mult(i)` (1-based, `LoadShape.pas:1756`): dP[i-1] in range, else 0.
+    // Used by `SolveLD1`/`SolveLD2` (`ckt.LoadDurCurveObj.Mult(N)`).
+    let (_cls, mut obj, errs) = edited(&[
+        ("npts", "4"),
+        ("interval", "1"),
+        ("mult", "1.00 0.85 0.60 0.35"),
+    ]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(obj.mult(1), 1.00);
+    assert_eq!(obj.mult(2), 0.85);
+    assert_eq!(obj.mult(3), 0.60);
+    assert_eq!(obj.mult(4), 0.35);
+    // Out of range (both sides): 0.0, no panic.
+    assert_eq!(obj.mult(0), 0.0);
+    assert_eq!(obj.mult(5), 0.0);
+    // `PresentInterval` (`Get_Interval`) returns the fixed Interval
+    // unconditionally — walking Mult does not change it.
+    assert_eq!(obj.present_interval(), 1.0);
+}
+
+#[test]
+fn mult_walks_variable_interval_curve_and_present_interval_tracks_the_gap() {
+    // Pascal `Get_Interval` (`LoadShape.pas:1724`): `LastValueAccessed > 1`
+    // (0-based here) gates the `dH[lva] - dH[lva-1]` gap; `0.0` before that.
+    let (_cls, mut obj, errs) = edited(&[
+        ("npts", "3"),
+        ("interval", "0"),
+        ("hour", "1 2 4"),
+        ("mult", "10 20 40"),
+    ]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(obj.mult(1), 10.0);
+    assert_eq!(obj.present_interval(), 0.0); // LastValueAccessed = 0, not > 1
+    assert_eq!(obj.mult(2), 20.0);
+    assert_eq!(obj.present_interval(), 0.0); // LastValueAccessed = 1, still not > 1
+    assert_eq!(obj.mult(3), 40.0);
+    assert_eq!(obj.present_interval(), 2.0); // LastValueAccessed = 2 → hour[2]-hour[1]
+}
+
+#[test]
 fn make_like_copies_and_recomputes() {
     let (cls, base, errs) = edited(&[
         ("npts", "3"),
@@ -229,31 +270,93 @@ fn make_like_copies_and_recomputes() {
 }
 
 #[test]
-fn binary_file_props_are_not_ported() {
-    // CSVFile is now ported; SngFile/DblFile/PQCSVFile stay NOT_PORTED.
-    let enums = EnumRegistry::new();
-    let cls = class_props(&enums);
-    for name in ["sngfile", "dblfile", "pqcsvfile"] {
-        let mut obj = LoadShapeObj::new("d");
-        let mut parser = Parser::new();
-        let vars = ParserVars::new();
-        let mut errors = Vec::new();
-        let idx = cls.property_index(name).unwrap();
-        let mut eng = PropEngine {
-            parser: &mut parser,
-            vars: &vars,
-            enums: &enums,
-            errors: &mut errors,
-            foreign: None,
-        };
-        let err = cls
-            .edit_property(&mut obj, idx, "shape.bin", &mut eng)
-            .unwrap_err();
-        assert!(
-            err.to_string().to_lowercase().contains("not ported"),
-            "{name}: {err}"
-        );
+fn binary_and_pq_file_props_queue_a_file_load() {
+    // WPG.1: SngFile/DblFile/PQCSVFile are ported (deferred FileLoad, like
+    // CSVFile); SngFile/DblFile queue a *binary* load, PQCSVFile a text one.
+    for (name, prop, binary) in [
+        ("sngfile", prop::SNGFILE, true),
+        ("dblfile", prop::DBLFILE, true),
+        ("pqcsvfile", prop::PQCSVFILE, false),
+    ] {
+        let (_cls, mut obj, errs) = edited(&[("npts", "4"), ("interval", "1"), (name, "s.bin")]);
+        assert!(errs.is_empty(), "{name}: {errs:?}");
+        let loads = obj.take_file_loads();
+        assert_eq!(loads.len(), 1, "{name}");
+        assert_eq!(loads[0].prop, prop, "{name}");
+        assert_eq!(loads[0].filename, "s.bin", "{name}");
+        assert_eq!(loads[0].binary, binary, "{name}");
     }
+}
+
+#[test]
+fn read_sng_file_fixed_interval() {
+    // 4 x f32 P multipliers, little-endian (Pascal `ReadSngFile`). Values are
+    // exactly representable in f32 so the f32->f64 widen round-trips exactly.
+    let (cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "1")]);
+    let mut bytes = Vec::new();
+    for v in [0.25f32, 0.5, 0.75, 1.0] {
+        bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    obj.read_sng_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "NPts"), "4");
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.25 0.5 0.75 1]");
+}
+
+#[test]
+fn read_sng_file_variable_interval_pairs_and_shrinks() {
+    // (hour, mult) f32 pairs; a short final pair is dropped and NumPoints
+    // shrinks to the count actually read (Pascal `NumPoints := i`).
+    let (cls, mut obj, _) = edited(&[("npts", "5"), ("interval", "0")]);
+    let mut bytes = Vec::new();
+    for (h, m) in [(0.0f32, 0.25f32), (1.0, 0.5), (2.0, 0.75)] {
+        bytes.extend_from_slice(&h.to_le_bytes());
+        bytes.extend_from_slice(&m.to_le_bytes());
+    }
+    obj.read_sng_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "NPts"), "3");
+    assert_eq!(get(&cls, &obj, "Hour"), "[ 0 1 2]");
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.25 0.5 0.75]");
+}
+
+#[test]
+fn read_dbl_file_fixed_and_variable_interval() {
+    let (cls, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    let mut bytes = Vec::new();
+    for v in [0.3f64, 0.5, 0.9] {
+        bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    obj.read_dbl_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5 0.9]");
+
+    let (cls, mut obj, _) = edited(&[("npts", "2"), ("interval", "0")]);
+    let mut bytes = Vec::new();
+    for (h, m) in [(0.0f64, 0.4f64), (2.0, 0.8)] {
+        bytes.extend_from_slice(&h.to_le_bytes());
+        bytes.extend_from_slice(&m.to_le_bytes());
+    }
+    obj.read_dbl_file(&bytes);
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "Hour"), "[ 0 2]");
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.4 0.8]");
+}
+
+#[test]
+fn read_pq_csv_file_fixed_and_variable_interval() {
+    let (cls, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    obj.read_pq_csv_file("0.3, 0.2\n0.5, 0.4\n0.9, 0.7\n");
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5 0.9]");
+    assert_eq!(get(&cls, &obj, "QMult"), "[ 0.2 0.4 0.7]");
+
+    let (cls, mut obj, _) = edited(&[("npts", "2"), ("interval", "0")]);
+    obj.read_pq_csv_file("0, 0.3, 0.2\n1, 0.5, 0.4\n");
+    obj.end_edit();
+    assert_eq!(get(&cls, &obj, "Hour"), "[ 0 1]");
+    assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5]");
+    assert_eq!(get(&cls, &obj, "QMult"), "[ 0.2 0.4]");
 }
 
 #[test]
@@ -357,4 +460,663 @@ fn csvfile_missing_records_error() {
         "expected a 613-style error, got {:?}",
         dss.errors()
     );
+}
+
+/// Full path through the executive for the binary readers (WPG.1): a temp
+/// `.sng`/`.dbl` file resolved relative to the script's current directory,
+/// read as raw bytes and parsed (Pascal `ReadSngFile`/`ReadDblFile`). Values
+/// are transcribed from the pinned oracle (dss-python 0.15.7).
+#[test]
+fn sng_and_dbl_file_through_executive_match_oracle() {
+    use crate::exec::Dss;
+
+    let dir = std::env::temp_dir().join(format!(
+        "dss_ls_bin_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mult = [0.4f32, 0.55, 0.75, 0.95, 1.0, 0.9, 0.7, 0.5];
+    let sng8 = dir.join("ls8.sng");
+    let mut sng_bytes = Vec::new();
+    for v in mult {
+        sng_bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    std::fs::write(&sng8, &sng_bytes).unwrap();
+
+    let dbl8 = dir.join("ls8.dbl");
+    let mut dbl_bytes = Vec::new();
+    for v in mult {
+        dbl_bytes.extend_from_slice(&(v as f64).to_le_bytes());
+    }
+    std::fs::write(&dbl8, &dbl_bytes).unwrap();
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+    dss.command(&format!(
+        "New LoadShape.s npts=8 interval=1 sngfile=\"{}\"",
+        sng8.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.s.npts");
+    assert_eq!(dss.result(), "8");
+    dss.command("? LoadShape.s.mult");
+    // Oracle: [ 0.400000005960464 0.550000011920929 0.75 0.949999988079071 1
+    // 0.899999976158142 0.699999988079071 0.5] (f32->f64 widen, not the
+    // literal decimal).
+    assert_eq!(
+        dss.result(),
+        "[ 0.400000005960464 0.550000011920929 0.75 0.949999988079071 1 \
+         0.899999976158142 0.699999988079071 0.5]"
+    );
+
+    dss.command(&format!(
+        "New LoadShape.d npts=8 interval=1 dblfile=\"{}\"",
+        dbl8.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.d.mult");
+    assert_eq!(
+        dss.result(),
+        "[ 0.400000005960464 0.550000011920929 0.75 0.949999988079071 1 \
+         0.899999976158142 0.699999988079071 0.5]"
+    );
+
+    // Interval=0 variant: (hour, mult) f32 pairs, hours 0..7 (Pascal's
+    // "Interval = 0" branch of ReadSngFile).
+    let sng8v = dir.join("ls8v.sng");
+    let mut sngv_bytes = Vec::new();
+    for (h, m) in mult.iter().enumerate() {
+        sngv_bytes.extend_from_slice(&(h as f32).to_le_bytes());
+        sngv_bytes.extend_from_slice(&m.to_le_bytes());
+    }
+    std::fs::write(&sng8v, &sngv_bytes).unwrap();
+    dss.command(&format!(
+        "New LoadShape.s0 npts=8 interval=0 sngfile=\"{}\"",
+        sng8v.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.s0.hour");
+    assert_eq!(dss.result(), "[ 0 1 2 3 4 5 6 7]");
+    dss.command("? LoadShape.s0.mult");
+    assert_eq!(
+        dss.result(),
+        "[ 0.400000005960464 0.550000011920929 0.75 0.949999988079071 1 \
+         0.899999976158142 0.699999988079071 0.5]"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A missing SngFile/DblFile is Pascal error 615/617 (recorded, edit
+/// continues) — same generic executive open-error message as CSVFile.
+#[test]
+fn sng_and_dbl_file_missing_records_error() {
+    use crate::exec::Dss;
+    for prop in ["sngfile", "dblfile"] {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.p");
+        dss.command(&format!(
+            "New LoadShape.d npts=6 interval=1 {prop}=does_not_exist_42.bin"
+        ));
+        assert!(
+            dss.errors()
+                .iter()
+                .any(|e| e.contains("Error opening file")),
+            "{prop}: expected an open-error, got {:?}",
+            dss.errors()
+        );
+    }
+}
+
+/// FPC probe battery for the single-precision storage paths (Pascal
+/// `sP`/`sH`): every expected value below is the exact bit pattern produced
+/// by an FPC 3.2.2 x86_64 probe replicating the Pascal expressions
+/// (`tools/fpc/single_prec_probe.pas`, run 2026-07-07) — the same compiler/
+/// RTL the pinned oracle's dss_capi backend is built with.
+#[test]
+#[allow(clippy::approx_constant)] // 3.14159… is the probe's Hr input, not a PI use
+fn sng_single_storage_matches_fpc_bit_exact() {
+    let sh: [f32; 4] = [0.1f64 as f32, 2.3f64 as f32, 4.7f64 as f32, 8.9f64 as f32];
+    let sp: [f32; 4] = [
+        (1.0f64 / 3.0) as f32,
+        0.123456789f64 as f32,
+        0.777777777f64 as f32,
+        0.999999999f64 as f32,
+    ];
+    let mut pairs = Vec::new();
+    for (h, p) in sh.iter().zip(sp.iter()) {
+        pairs.extend_from_slice(&h.to_le_bytes());
+        pairs.extend_from_slice(&p.to_le_bytes());
+    }
+
+    // Variable interval: single storage live, interpolation + curve stats.
+    let (_, mut obj, errs) = edited(&[("npts", "4"), ("interval", "0")]);
+    assert!(errs.is_empty(), "{errs:?}");
+    obj.read_sng_file(&pairs);
+    assert!(obj.s_p.is_some() && obj.s_h.is_some(), "float32 path taken");
+    let m = obj.get_mult_at_hour(3.14159265358979);
+    assert_eq!(
+        m.re.to_bits(),
+        0x3FD695F8134B71D8,
+        "GetMultAtHourSingle mixed-precision interpolation (got {:016X})",
+        m.re.to_bits()
+    );
+    assert_eq!(
+        obj.mean().to_bits(),
+        0x3FE355E8807CF518,
+        "CurveMeanAndStdDevSingle mean"
+    );
+    assert_eq!(
+        obj.std_dev().to_bits(),
+        0x3FD60240860CE49D,
+        "CurveMeanAndStdDevSingle stddev"
+    );
+
+    // Fixed interval: RCD single stats (S is an f32 accumulator; FPC's
+    // Sqrt(Single) overload rounds the result to f32).
+    let mut bare = Vec::new();
+    for p in sp.iter() {
+        bare.extend_from_slice(&p.to_le_bytes());
+    }
+    let (_, mut obj, errs) = edited(&[("npts", "4"), ("interval", "1")]);
+    assert!(errs.is_empty(), "{errs:?}");
+    obj.read_sng_file(&bare);
+    assert!(obj.s_p.is_some() && obj.s_h.is_none());
+    assert_eq!(
+        obj.mean().to_bits(),
+        0x3FE1E06526000000,
+        "RCDMeanAndStdDevSingle mean"
+    );
+    assert_eq!(
+        obj.std_dev().to_bits(),
+        0x3FD9ADD3C0000000,
+        "RCDMeanAndStdDevSingle stddev"
+    );
+}
+
+/// Pascal `UseFloat64` call sites: a later `QMult=`/`Mult=`/`Hour=` edit (or
+/// `MemoryMapping=yes`) ends single storage; the widened f64 view keeps the
+/// f32-quantized values so property renders are unchanged.
+#[test]
+fn sng_single_storage_transitions_to_f64_on_edits() {
+    let bare: Vec<u8> = [0.25f32, 0.5, 0.75]
+        .iter()
+        .flat_map(|p| p.to_le_bytes())
+        .collect();
+
+    let (cls, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    obj.read_sng_file(&bare);
+    assert!(obj.s_p.is_some());
+    let before = get(&cls, &obj, "Mult");
+
+    // QMult= runs UseFloat64 first (LoadShape.pas:804): singles dropped, the
+    // P view unchanged.
+    obj.set_f64_array(super::prop::QMULT, vec![1.0, 1.0, 1.0]);
+    assert!(obj.s_p.is_none(), "QMult= must end single storage");
+    assert_eq!(get(&cls, &obj, "Mult"), before);
+
+    // A fresh SngFile read with QMult set takes the float64 path.
+    obj.read_sng_file(&bare);
+    assert!(obj.s_p.is_none(), "float64 path with QMult set");
+    assert_eq!(get(&cls, &obj, "Mult"), before);
+}
+
+/// Pascal runs `UseFloat64` at the head of `ReadCSVFile`/`Read2ColCSVFile`/
+/// `ReadDblFile` (LoadShape.pas:1044/:970/:1220): a later non-sng read must
+/// end single storage, or a stale `sP` from an earlier `sngfile=` would keep
+/// winning the lookup (audit follow-up regression pin).
+#[test]
+fn csv_after_sng_ends_single_storage() {
+    let bare: Vec<u8> = [0.25f32, 0.5, 0.75]
+        .iter()
+        .flat_map(|p| p.to_le_bytes())
+        .collect();
+    let (_, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    obj.read_sng_file(&bare);
+    assert!(obj.s_p.is_some());
+    obj.read_csv_file("2\n4\n8\n");
+    assert!(obj.s_p.is_none(), "CSV read must end single storage");
+    assert_eq!(
+        obj.get_mult_at_hour(1.0).re,
+        2.0,
+        "lookup must use CSV data"
+    );
+
+    let (_, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    obj.read_sng_file(&bare);
+    let dbl: Vec<u8> = [3.0f64, 5.0, 7.0]
+        .iter()
+        .flat_map(|p| p.to_le_bytes())
+        .collect();
+    obj.read_dbl_file(&dbl);
+    assert!(obj.s_p.is_none(), "DblFile read must end single storage");
+    assert_eq!(obj.get_mult_at_hour(1.0).re, 3.0);
+
+    let (_, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
+    obj.read_sng_file(&bare);
+    obj.read_pq_csv_file("1, 0.5\n2, 1\n3, 1.5\n");
+    assert!(obj.s_p.is_none(), "PQCSVFile read must end single storage");
+    assert_eq!(obj.get_mult_at_hour(1.0).re, 1.0);
+}
+
+#[test]
+fn action_sngsave_no_qmult_omits_q() {
+    // Audit settlement: a LoadShape WITHOUT `qmult` must queue no Q series
+    // (Pascal writes `_Q` only `if Assigned(dQ)`, LoadShape.pas:1908/1971) —
+    // and the P side carries the `_P` split + `mult` GlobalResult tag.
+    let (_cls, mut obj, errs) = edited(&[
+        ("npts", "3"),
+        ("interval", "1"),
+        ("mult", "0.5 1.0 0.75"),
+        ("action", "sngsave"),
+    ]);
+    assert!(errs.is_empty(), "{errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    let s = &saves[0];
+    assert!(s.sng);
+    assert!(s.p_suffix, "LoadShape uses the _P/_Q filename split");
+    assert_eq!(s.result_tag, "mult");
+    assert_eq!(s.values, vec![0.5, 1.0, 0.75]);
+    assert!(s.q_values.is_none(), "no qmult -> no _Q file");
+}
+
+#[test]
+fn action_save_p_undefined_errors() {
+    // Pascal `if not Assigned(dP)` -> `DoSimpleMsg('%s P multipliers not
+    // defined.', 622/623)`, nothing queued.
+    let (_cls, mut obj, errs) = edited(&[("action", "dblsave")]);
+    assert!(
+        errs.iter().any(|e| e.contains("P multipliers not defined")),
+        "{errs:?}"
+    );
+    assert!(obj.take_shape_saves().is_empty());
+}
+
+#[test]
+fn action_save_mmf_queues_eager_read_values() {
+    // WPG.20: an MMF-backed save is no longer refused. The eager MMF read
+    // (`read_mmf_raw`/`finish_mmf`) has already populated `p_mult` (and `q_mult`
+    // iff a `qmult=` MMF directive was given, matching Pascal `Assigned(dQ)`), so
+    // `queue_shape_save` snapshots the f32-narrowed values byte-for-byte like the
+    // oracle's `InterpretDblArrayMMF` re-read (probed 2026-07-11). The
+    // byte-exact-vs-oracle coverage lives in `golden_reports.rs`; here we pin the
+    // queue contents + Q-gating.
+
+    // Case A: MMF P + MMF qmult -> both P and Q queued.
+    let (_cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "1"), ("memorymapping", "yes")]);
+    obj.read_mmf_raw(
+        &sng_bytes(&[0.5, 0.75, 1.0, 0.8]),
+        MmfKind::Float32,
+        1,
+        false,
+    );
+    obj.read_mmf_raw(&sng_bytes(&[0.1, 0.2, 0.3, 0.4]), MmfKind::Float32, 1, true);
+    let mut errs = Vec::new();
+    obj.queue_shape_save(true, &mut errs);
+    assert!(errs.is_empty(), "MMF save must not error: {errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    let s = &saves[0];
+    assert!(s.sng);
+    assert!(s.p_suffix);
+    assert_eq!(s.result_tag, "mult");
+    // f32-narrowed then widened, exactly like the oracle's sng-source read.
+    assert_eq!(
+        s.values,
+        vec![0.5, 0.75, 1.0, f64::from(0.8f32)],
+        "P = eager f32→f64 read"
+    );
+    assert_eq!(
+        s.q_values.as_deref(),
+        Some([0.1f32, 0.2, 0.3, 0.4].map(f64::from).as_slice()),
+        "Q queued because a qmult MMF directive was given (Assigned(dQ))"
+    );
+
+    // Case B: MMF P, NO qmult -> only P queued (Assigned(dQ) false).
+    let (_cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "1"), ("memorymapping", "yes")]);
+    obj.read_mmf_raw(
+        &sng_bytes(&[0.5, 0.75, 1.0, 0.8]),
+        MmfKind::Float32,
+        1,
+        false,
+    );
+    let mut errs = Vec::new();
+    obj.queue_shape_save(false, &mut errs);
+    assert!(errs.is_empty(), "{errs:?}");
+    let saves = obj.take_shape_saves();
+    assert_eq!(saves.len(), 1);
+    assert!(!saves[0].sng, "dblsave");
+    assert!(
+        saves[0].q_values.is_none(),
+        "no qmult MMF directive -> no _Q file"
+    );
+}
+
+// -------------------------------------------------------------------------
+// MemoryMapping=Yes (WPG.17): eager MMF readers. Under MMF the array
+// properties dump the `(<directive>)` round-trip, not numbers, so value
+// correctness is checked through the `get_mult_at_hour` lookup (mirroring the
+// oracle, where the C-API array getters cannot see MMF data either).
+// -------------------------------------------------------------------------
+
+fn sng_bytes(vals: &[f32]) -> Vec<u8> {
+    vals.iter().flat_map(|v| v.to_le_bytes()).collect()
+}
+
+/// A.2 point 3: MMF `sngfile` (widened f32 → f64 lookup) is bit-identical to
+/// the non-MM `sngfile` (f32 `sP`/GetMultAtHourSingle) at every fixed hour,
+/// and MMF never shrinks `NumPoints`.
+#[test]
+fn mmf_sngfile_fixed_matches_non_mmf() {
+    let vals = [0.40f32, 0.55, 0.75, 0.95, 1.00, 0.90, 0.70, 0.50];
+    let bytes = sng_bytes(&vals);
+
+    let (_c, mut mmf, _) = edited(&[("memorymapping", "yes"), ("npts", "8"), ("interval", "1")]);
+    mmf.read_sng_file(&bytes);
+    let (_c, mut plain, _) = edited(&[("npts", "8"), ("interval", "1")]);
+    plain.read_sng_file(&bytes);
+
+    for (h, &v) in (1..=8).zip(vals.iter()) {
+        // Audit settlement: pin the exact f32→f64 widenings from the known
+        // bytes, not only Rust-vs-Rust reader agreement.
+        assert_eq!(mmf.get_mult_at_hour(h as f64).re, v as f64, "hour {h} MMF");
+        assert_eq!(
+            mmf.get_mult_at_hour(h as f64).re,
+            plain.get_mult_at_hour(h as f64).re,
+            "hour {h} MMF vs non-MM sngfile"
+        );
+    }
+    assert_eq!(mmf.num_points(), 8, "MMF must not shrink NumPoints");
+    assert!(
+        mmf.s_p.is_none(),
+        "MMF sngfile stores into dP (f64), not sP"
+    );
+}
+
+/// MMF `dblfile` equals non-MM `dblfile` at every index (both pure f64).
+#[test]
+fn mmf_dblfile_fixed_matches_non_mmf() {
+    let vals = [0.3f64, 0.5, 0.9, 1.0, 0.7, 0.4];
+    let bytes: Vec<u8> = vals.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let (_c, mut mmf, _) = edited(&[("memorymapping", "yes"), ("npts", "6"), ("interval", "1")]);
+    mmf.read_dbl_file(&bytes);
+    let (_c, mut plain, _) = edited(&[("npts", "6"), ("interval", "1")]);
+    plain.read_dbl_file(&bytes);
+
+    for (h, &v) in (1..=6).zip(vals.iter()) {
+        assert_eq!(mmf.get_mult_at_hour(h as f64).re, v, "hour {h} exact f64");
+        assert_eq!(
+            mmf.get_mult_at_hour(h as f64).re,
+            plain.get_mult_at_hour(h as f64).re
+        );
+    }
+    assert_eq!(mmf.num_points(), 6);
+}
+
+/// A.4 accept-set quirk (TODO(compat)): the MMF text reader keeps only bytes
+/// `[46,58)`, dropping sign / `+` / exponent, and defaults empty → 1.0. So
+/// `-0.5`→0.5, `1.5e-3`→1.53, blank line → 1.0. Precision note (audit
+/// settlement): only row 0 is byte-for-byte what Pascal would read — Pascal
+/// indexes records by the FIRST line's byte stride (`mmLineLen`,
+/// `LoadShape.pas:609-615`), so this non-uniform-width input is upstream UB
+/// past row 0 (misaligned reads); the port reads line-by-line (documented
+/// divergence). What this test pins is the accept-set CHAR FILTER, which
+/// matches Pascal `:1361-1400` exactly; uniform-width files (every valid MMF
+/// fixture) are oracle-gated by the `shape_mmf` deck.
+#[test]
+fn mmf_plaintext_accept_set_quirk() {
+    let (_c, mut obj, _) = edited(&[("memorymapping", "yes"), ("npts", "3"), ("interval", "1")]);
+    obj.read_csv_file("-0.5\n1.5e-3\n\n");
+    assert!((obj.get_mult_at_hour(1.0).re - 0.5).abs() < 1e-12);
+    assert!((obj.get_mult_at_hour(2.0).re - 1.53).abs() < 1e-12);
+    assert!((obj.get_mult_at_hour(3.0).re - 1.0).abs() < 1e-12);
+}
+
+/// PlainText column selection: MMF `PQCSVFile` reads P from column 1, Q from
+/// column 2 of the same content.
+#[test]
+fn mmf_pqcsv_column_selection() {
+    let (_c, mut obj, _) = edited(&[("memorymapping", "yes"), ("npts", "3"), ("interval", "1")]);
+    obj.read_pq_csv_file("0.40,0.30\n0.55,0.40\n0.75,0.55\n");
+    let m1 = obj.get_mult_at_hour(1.0);
+    let m3 = obj.get_mult_at_hour(3.0);
+    assert!((m1.re - 0.40).abs() < 1e-12 && (m1.im - 0.30).abs() < 1e-12);
+    assert!((m3.re - 0.75).abs() < 1e-12 && (m3.im - 0.55).abs() < 1e-12);
+    assert_eq!(obj.num_points(), 3);
+}
+
+/// GetPropertyValue round-trip + no-shrink through the executive: the
+/// `sngfile=` property under MemoryMapping dumps `(sngfile=<file>)` (oracle
+/// `? mult`), and `npts` stays as declared. Also the raw `mult=(sngfile=…)`
+/// directive form (Pascal `CustomSetRaw`).
+#[test]
+fn mmf_property_and_directive_roundtrip_through_executive() {
+    use crate::exec::Dss;
+    let dir = std::env::temp_dir().join(format!(
+        "dss_ls_mmf_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let sng = dir.join("m.sng");
+    std::fs::write(
+        &sng,
+        sng_bytes(&[0.4, 0.55, 0.75, 0.95, 1.0, 0.9, 0.7, 0.5]),
+    )
+    .unwrap();
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+
+    // Property form.
+    dss.command(&format!(
+        "New LoadShape.a npts=8 interval=1 MemoryMapping=Yes sngfile=\"{}\"",
+        sng.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.a.npts");
+    assert_eq!(dss.result(), "8", "MMF must not shrink npts");
+    dss.command("? LoadShape.a.mult");
+    assert_eq!(dss.result(), format!("(sngfile={})", sng.display()));
+
+    // Raw directive form (mult=(sngfile=…)), MemoryMapping before mult. The
+    // round-trip echoes the raw directive verbatim (Pascal `mmFileCmd := S`),
+    // so use an unquoted path (temp paths here have no spaces).
+    dss.command(&format!(
+        "New LoadShape.b npts=8 interval=1 MemoryMapping=Yes mult=(sngfile={})",
+        sng.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.b.mult");
+    assert_eq!(dss.result(), format!("(sngfile={})", sng.display()));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The upstream PQ display quirk (`LoadShape.pas:954-963` overwrites
+/// `mmFileCmd` to column 2 and never sets `mmFileCmdQ`): under MMF, `? mult`
+/// dumps `(file=<file> column=2)` and `? qmult` dumps `()` — even though the P
+/// lookup correctly uses column 1 (oracle-verified).
+#[test]
+fn mmf_pqcsv_dump_quirk_through_executive() {
+    use crate::exec::Dss;
+    let dir = std::env::temp_dir().join(format!(
+        "dss_ls_mmfpq_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let pq = dir.join("pq.csv");
+    std::fs::write(&pq, "0.40,0.30\n0.55,0.40\n0.75,0.55\n").unwrap();
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+    dss.command(&format!(
+        "New LoadShape.c npts=3 interval=1 MemoryMapping=Yes pqcsvfile=\"{}\"",
+        pq.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? LoadShape.c.mult");
+    assert_eq!(dss.result(), format!("(file={} column=2)", pq.display()));
+    dss.command("? LoadShape.c.qmult");
+    assert_eq!(dss.result(), "()");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// WPG.19: without MemoryMapping, `mult=(file=…)` / `(sngfile=…)` / `(dblfile=…)`
+/// read the file through the Pascal `InterpretDblArray` grammar
+/// (`Common/Utilities.pas:461-566`) — covering column select, header skip, the
+/// binary formats, the short-file `NumPoints` shrink, and `action=normalize`
+/// running AFTER the read. All values probed against the pinned oracle.
+#[test]
+fn non_mmf_file_directive_reads_the_file() {
+    use crate::exec::Dss;
+    let dir = std::env::temp_dir().join(format!("dss_wpg19_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("c.csv"), "0.4\n0.55\n0.75\n0.95\n").unwrap();
+    std::fs::write(dir.join("col.csv"), "0,0.4\n1,0.55\n2,0.75\n3,0.95\n").unwrap();
+    std::fs::write(dir.join("hdr.csv"), "header\n0.4\n0.55\n0.75\n0.95\n").unwrap();
+    std::fs::write(dir.join("short.csv"), "0.4\n0.55\n").unwrap(); // 2 of npts=4
+    std::fs::write(dir.join("norm.csv"), "0.5\n1.0\n2.0\n1.5\n").unwrap(); // peak 2.0
+    std::fs::write(
+        dir.join("v.sng"),
+        [0.4f32, 0.55, 0.75, 0.95]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect::<Vec<u8>>(),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("v.dbl"),
+        [0.4f64, 0.55, 0.75, 0.95]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect::<Vec<u8>>(),
+    )
+    .unwrap();
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+    let d = dir.to_string_lossy().replace('\\', "/");
+    dss.command(&format!(
+        "New LoadShape.a npts=4 interval=1 mult=(file=\"{d}/c.csv\")"
+    ));
+    dss.command(&format!(
+        "New LoadShape.b npts=4 interval=1 mult=(file=\"{d}/col.csv\", column=2)"
+    ));
+    dss.command(&format!(
+        "New LoadShape.c npts=4 interval=1 mult=(file=\"{d}/hdr.csv\", header=yes)"
+    ));
+    dss.command(&format!(
+        "New LoadShape.e npts=4 interval=1 mult=(sngfile=\"{d}/v.sng\")"
+    ));
+    dss.command(&format!(
+        "New LoadShape.f npts=4 interval=1 mult=(dblfile=\"{d}/v.dbl\")"
+    ));
+    dss.command(&format!(
+        "New LoadShape.g npts=4 interval=1 mult=(file=\"{d}/short.csv\")"
+    ));
+    dss.command(&format!(
+        "New LoadShape.h npts=4 interval=1 mult=(file=\"{d}/norm.csv\") action=normalize"
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let mut q = |cmd: &str| {
+        dss.command(cmd);
+        dss.result().to_string()
+    };
+    assert_eq!(
+        q("? Loadshape.a.mult"),
+        "[ 0.4 0.55 0.75 0.95]",
+        "file= single column"
+    );
+    assert_eq!(
+        q("? Loadshape.b.mult"),
+        "[ 0.4 0.55 0.75 0.95]",
+        "column=2 (1-based)"
+    );
+    assert_eq!(
+        q("? Loadshape.c.mult"),
+        "[ 0.4 0.55 0.75 0.95]",
+        "header=yes skips one line"
+    );
+    // sngfile widens f32 -> f64 (single-precision representable values).
+    assert_eq!(
+        q("? Loadshape.e.mult"),
+        "[ 0.400000005960464 0.550000011920929 0.75 0.949999988079071]",
+        "sngfile= widens f32"
+    );
+    assert_eq!(
+        q("? Loadshape.f.mult"),
+        "[ 0.4 0.55 0.75 0.95]",
+        "dblfile= raw f64"
+    );
+    // Short file (2 rows, npts=4) shrinks NumPoints to 2 (Pascal Result := i-1).
+    assert_eq!(q("? Loadshape.g.npts"), "2", "short file shrinks NumPoints");
+    assert_eq!(
+        q("? Loadshape.g.mult"),
+        "[ 0.4 0.55]",
+        "short file keeps the prefix"
+    );
+    // action=normalize runs AFTER the read: peak 2.0 -> divide by 2.0.
+    assert_eq!(q("? Loadshape.h.npts"), "4");
+    assert_eq!(
+        q("? Loadshape.h.mult"),
+        "[ 0.25 0.5 1 0.75]",
+        "normalize follows the file read"
+    );
+
+    // A plain numeric list is unaffected by the WPG.19 interception.
+    dss.command("New LoadShape.lst npts=3 interval=1 mult=(0.1 0.2 0.3)");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? Loadshape.lst.mult");
+    assert_eq!(dss.result(), "[ 0.1 0.2 0.3]");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Audit settlement (Major): Pascal `SetMaxPandQ` exits FIRST under
+/// `UseMMF or ExternalMemory` (`LoadShape.pas:2048`), leaving `MaxP`/`MaxQ`
+/// at the constructor defaults 1.0/0.0 — oracle-confirmed (`? pmax = 1`,
+/// `? qmax = 0` for every MMF shape). A dropped guard mis-scales any
+/// `useactual` load fed by an MMF shape.
+#[test]
+fn mmf_leaves_max_p_and_q_at_defaults() {
+    let dir = std::env::temp_dir().join(format!("dss_mmf_pmax_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("pk.csv");
+    std::fs::write(&f, "1, 0.40, 0.10\n2, 0.55, 0.30\n3, 0.75, 0.20\n").unwrap();
+    use crate::exec::Dss;
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+    dss.command(&format!(
+        "New LoadShape.mm npts=3 interval=1 memorymapping=yes pqcsvfile=\"{}\"",
+        f.display()
+    ));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? Loadshape.mm.pmax");
+    assert_eq!(dss.result(), "1", "MMF leaves MaxP at the 1.0 default");
+    dss.command("? Loadshape.mm.qmax");
+    assert_eq!(dss.result(), "0", "MMF leaves MaxQ at the 0.0 default");
+    std::fs::remove_dir_all(&dir).ok();
 }

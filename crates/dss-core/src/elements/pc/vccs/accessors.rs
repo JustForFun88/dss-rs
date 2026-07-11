@@ -8,6 +8,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
@@ -24,6 +25,17 @@ impl CktElement for Vccs {
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
+    }
+
+    /// Pascal `TVCCSObj.MakePosSequence` (vccs.pas:495-500): a multi-phase VCCS
+    /// collapses to `Phases := 1` (a bare single edit), then `inherited` (the
+    /// base bus rename).
+    fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
+        if self.cd.nphases > 1 {
+            PosSeqPlan::with_actions(vec![PosSeqAction::SetI32(prop::PHASES, 1)])
+        } else {
+            PosSeqPlan::base()
+        }
     }
 
     /// Pascal `TVCCSObj.CalcYPrim` — build only zero matrices (an ideal current
@@ -93,14 +105,12 @@ impl CktElement for Vccs {
     }
 
     /// Pascal `TVCCSObj.GetCurrents`: `Curr = -InjCurrent` (since `YPrim = 0`,
-    /// `YPrim·V − InjCurrent` reduces to `−InjCurrent`).
+    /// `YPrim·V − InjCurrent` reduces to `−InjCurrent`). The recompute goes into
+    /// a local (Pascal's `ComplexBuffer` scratch) — the solver's `InjCurrent`
+    /// stays untouched.
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
-        self.get_inj_currents(sys, node_v); // present value of inj currents
-        for (c, inj) in curr
-            .iter_mut()
-            .zip(&self.cd.inj_current)
-            .take(self.cd.yorder)
-        {
+        let inj = self.compute_inj_currents(sys, node_v); // present value of inj currents
+        for (c, inj) in curr.iter_mut().zip(&inj).take(self.cd.yorder) {
             *c = -*inj;
         }
     }

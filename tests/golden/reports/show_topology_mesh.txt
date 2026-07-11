@@ -1,0 +1,7 @@
+Topology analysis for switch control algorithms
+
+2 Levels Deep
+1 Loops
+2 Parallel PD elements
+1 Isolated PD components
+1 Controlled Switches

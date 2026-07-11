@@ -1,0 +1,2 @@
+Load, Bus, kW, EEN_Factor,  UE_Factor
+LD1, b1,     4000,     0.000,     2.386

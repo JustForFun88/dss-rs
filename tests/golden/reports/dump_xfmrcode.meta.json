@@ -1,0 +1,9 @@
+{
+  "report": "xfmrcode.xc1",
+  "fixture": "dumpxc",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumpxc basekv=115 bus1=src",
+    "new xfmrcode.xc1 phases=3 windings=2 xhl=6 conns=[delta wye] kvs=[115 4.16] kvas=[5000 5000]"
+  ]
+}

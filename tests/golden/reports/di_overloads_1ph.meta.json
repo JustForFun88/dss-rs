@@ -1,0 +1,20 @@
+{
+  "deck": [
+    "new circuit.ov2 basekv=12.47 bus1=src phases=3",
+    "new line.main bus1=src bus2=b1 length=1 units=mi r1=0.1 x1=0.1 c1=0",
+    "new line.lat bus1=b1.2 bus2=b2.2 phases=1 length=0.5 units=mi r1=0.3 x1=0.3 c1=0 normamps=5 emergamps=6",
+    "new load.l1 bus1=b2.2 phases=1 kv=7.2 kw=200 model=1",
+    "new energymeter.m element=line.main terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases"
+  ],
+  "post": [
+    "solve mode=snap",
+    "set demandinterval=yes",
+    "set overloadreport=yes",
+    "set mode=daily number=1 stepsize=1h",
+    "solve"
+  ],
+  "fixture": "ov2",
+  "relpath": "ov2/DI_yr_0/DI_Overloads_1.csv"
+}

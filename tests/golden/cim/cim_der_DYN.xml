@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- un-comment this line to enable validation
+-->
+<rdf:RDF xmlns:cim="http://iec.ch/TC57/CIM100#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<!--
+-->
+<cim:IEC61970CIMVersion rdf:about="urn:uuid:D5D768BC-090B-4C74-A652-F9986FC30A44">
+  <cim:IEC61970CIMVersion.version>IEC61970CIM100</cim:IEC61970CIMVersion.version>
+  <cim:IEC61970CIMVersion.date>2019-04-01</cim:IEC61970CIMVersion.date>
+</cim:IEC61970CIMVersion>
+<cim:DERIEEEType1 rdf:about="urn:uuid:345DA64B-E86D-4617-95CF-ABC2F3B6835B">
+  <cim:IdentifiedObject.mRID>345DA64B-E86D-4617-95CF-ABC2F3B6835B</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>vv</cim:IdentifiedObject.name>
+  <cim:DynamicsFunctionBlock.enabled>true</cim:DynamicsFunctionBlock.enabled>
+  <cim:DERIEEEType1.phaseToGroundApplicable>true</cim:DERIEEEType1.phaseToGroundApplicable>
+  <cim:DERIEEEType1.phaseToNeutralApplicable>false</cim:DERIEEEType1.phaseToNeutralApplicable>
+  <cim:DERIEEEType1.phaseToPhaseApplicable>false</cim:DERIEEEType1.phaseToPhaseApplicable>
+  <cim:DERDynamics.PowerElectronicsConnection rdf:resource="urn:uuid:959CB24D-44DC-49F4-811B-B38CFB19EE97"/>
+</cim:DERIEEEType1>
+<cim:DERNameplateData rdf:about="urn:uuid:9F9D922E-69F2-467E-ABCC-5EBF4D390E85">
+  <cim:IdentifiedObject.mRID>9F9D922E-69F2-467E-ABCC-5EBF4D390E85</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>vv</cim:IdentifiedObject.name>
+  <cim:DERNameplateData.DERIEEEType1 rdf:resource="urn:uuid:345DA64B-E86D-4617-95CF-ABC2F3B6835B"/>
+  <cim:DERNameplateData.normalOPcatKind rdf:resource="http://iec.ch/TC57/CIM100#NormalOPcatKind.catB"/>
+  <cim:DERNameplateData.supportsConstPFmode>true</cim:DERNameplateData.supportsConstPFmode>
+  <cim:DERNameplateData.supportsConstQmode>true</cim:DERNameplateData.supportsConstQmode>
+  <cim:DERNameplateData.supportsQVmode>true</cim:DERNameplateData.supportsQVmode>
+  <cim:DERNameplateData.supportsPVmode>true</cim:DERNameplateData.supportsPVmode>
+  <cim:DERNameplateData.supportsQPmode>true</cim:DERNameplateData.supportsQPmode>
+  <cim:DERNameplateData.supportsPFmode>false</cim:DERNameplateData.supportsPFmode>
+  <cim:DERNameplateData.acVmax>528</cim:DERNameplateData.acVmax>
+  <cim:DERNameplateData.acVmin>432</cim:DERNameplateData.acVmin>
+</cim:DERNameplateData>
+<cim:DERNameplateDataApplied rdf:about="urn:uuid:6824B77D-5986-452E-B114-59F97BF8F100">
+  <cim:IdentifiedObject.mRID>6824B77D-5986-452E-B114-59F97BF8F100</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>vv</cim:IdentifiedObject.name>
+  <cim:DERNameplateDataApplied.DERNameplateData rdf:resource="urn:uuid:9F9D922E-69F2-467E-ABCC-5EBF4D390E85"/>
+  <cim:DERNameplateDataApplied.pMax>300000</cim:DERNameplateDataApplied.pMax>
+  <cim:DERNameplateDataApplied.pMaxOverPF>290473.75</cim:DERNameplateDataApplied.pMaxOverPF>
+  <cim:DERNameplateDataApplied.overPF>0.96824584</cim:DERNameplateDataApplied.overPF>
+  <cim:DERNameplateDataApplied.pMaxUnderPF>290473.75</cim:DERNameplateDataApplied.pMaxUnderPF>
+  <cim:DERNameplateDataApplied.underPF>0.96824584</cim:DERNameplateDataApplied.underPF>
+  <cim:DERNameplateDataApplied.sMax>300000</cim:DERNameplateDataApplied.sMax>
+  <cim:DERNameplateDataApplied.qMaxInj>75000</cim:DERNameplateDataApplied.qMaxInj>
+  <cim:DERNameplateDataApplied.qMaxAbs>75000</cim:DERNameplateDataApplied.qMaxAbs>
+  <cim:DERNameplateDataApplied.pMaxCharge>0</cim:DERNameplateDataApplied.pMaxCharge>
+  <cim:DERNameplateDataApplied.apparentPowerChargeMax>0</cim:DERNameplateDataApplied.apparentPowerChargeMax>
+  <cim:DERNameplateDataApplied.acVnom>480</cim:DERNameplateDataApplied.acVnom>
+</cim:DERNameplateDataApplied>
+<cim:VoltVarSettings rdf:about="urn:uuid:CCFC6095-5EC9-4855-BDF8-7A0DA072E57A">
+  <cim:IdentifiedObject.mRID>CCFC6095-5EC9-4855-BDF8-7A0DA072E57A</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>vv</cim:IdentifiedObject.name>
+  <cim:VoltVarSettings.DERIEEEType1 rdf:resource="urn:uuid:345DA64B-E86D-4617-95CF-ABC2F3B6835B"/>
+  <cim:VoltVarSettings.enabled>true</cim:VoltVarSettings.enabled>
+  <cim:VoltVarSettings.vRefAutoModeEnabled>false</cim:VoltVarSettings.vRefAutoModeEnabled>
+  <cim:VoltVarSettings.vRef>1</cim:VoltVarSettings.vRef>
+  <cim:VoltVarSettings.vRefOlrt>300</cim:VoltVarSettings.vRefOlrt>
+  <cim:VoltVarSettings.curveV1>0.92</cim:VoltVarSettings.curveV1>
+  <cim:VoltVarSettings.curveV2>0.98</cim:VoltVarSettings.curveV2>
+  <cim:VoltVarSettings.curveV3>1.02</cim:VoltVarSettings.curveV3>
+  <cim:VoltVarSettings.curveV4>1.08</cim:VoltVarSettings.curveV4>
+  <cim:VoltVarSettings.curveQ1>0.44</cim:VoltVarSettings.curveQ1>
+  <cim:VoltVarSettings.curveQ2>0</cim:VoltVarSettings.curveQ2>
+  <cim:VoltVarSettings.curveQ3>0</cim:VoltVarSettings.curveQ3>
+  <cim:VoltVarSettings.curveQ4>-0.44</cim:VoltVarSettings.curveQ4>
+  <cim:VoltVarSettings.olrt>0.0023026</cim:VoltVarSettings.olrt>
+</cim:VoltVarSettings>
+<cim:WattVarSettings rdf:about="urn:uuid:8BDB0107-A34A-416A-8BF3-4D467190DA71">
+  <cim:IdentifiedObject.mRID>8BDB0107-A34A-416A-8BF3-4D467190DA71</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>vv</cim:IdentifiedObject.name>
+  <cim:WattVarSettings.DERIEEEType1 rdf:resource="urn:uuid:345DA64B-E86D-4617-95CF-ABC2F3B6835B"/>
+  <cim:WattVarSettings.enabled>false</cim:WattVarSettings.enabled>
+  <cim:WattVarSettings.curveP1gen>0.2</cim:WattVarSettings.curveP1gen>
+  <cim:WattVarSettings.curveP2gen>0.5</cim:WattVarSettings.curveP2gen>
+  <cim:WattVarSettings.curveP3gen>1</cim:WattVarSettings.curveP3gen>
+  <cim:WattVarSettings.curveQ1gen>0</cim:WattVarSettings.curveQ1gen>
+  <cim:WattVarSettings.curveQ2gen>0</cim:WattVarSettings.curveQ2gen>
+  <cim:WattVarSettings.curveQ3gen>0.44</cim:WattVarSettings.curveQ3gen>
+  <cim:WattVarSettings.curveP1load>0</cim:WattVarSettings.curveP1load>
+  <cim:WattVarSettings.curveP2load>0</cim:WattVarSettings.curveP2load>
+  <cim:WattVarSettings.curveP3load>0</cim:WattVarSettings.curveP3load>
+  <cim:WattVarSettings.curveQ1load>0</cim:WattVarSettings.curveQ1load>
+  <cim:WattVarSettings.curveQ2load>0</cim:WattVarSettings.curveQ2load>
+  <cim:WattVarSettings.curveQ3load>0.44</cim:WattVarSettings.curveQ3load>
+</cim:WattVarSettings>
+<cim:ConstantPowerFactorSettings rdf:about="urn:uuid:E99693EC-56C6-4743-AABC-6A1092C53475">
+  <cim:IdentifiedObject.mRID>E99693EC-56C6-4743-AABC-6A1092C53475</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>vv</cim:IdentifiedObject.name>
+  <cim:ConstantPowerFactorSettings.DERIEEEType1 rdf:resource="urn:uuid:345DA64B-E86D-4617-95CF-ABC2F3B6835B"/>
+  <cim:ConstantPowerFactorSettings.enabled>false</cim:ConstantPowerFactorSettings.enabled>
+  <cim:ConstantPowerFactorSettings.constantPowerFactorExcitationKind rdf:resource="http://iec.ch/TC57/CIM100#ConstantPowerFactorSettingKind.inj"/>
+  <cim:ConstantPowerFactorSettings.powerFactor>1</cim:ConstantPowerFactorSettings.powerFactor>
+</cim:ConstantPowerFactorSettings>
+<cim:ConstantReactivePowerSettings rdf:about="urn:uuid:C4EFA77E-FF47-45AD-8770-52039C9704F7">
+  <cim:IdentifiedObject.mRID>C4EFA77E-FF47-45AD-8770-52039C9704F7</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>vv</cim:IdentifiedObject.name>
+  <cim:ConstantReactivePowerSettings.DERIEEEType1 rdf:resource="urn:uuid:345DA64B-E86D-4617-95CF-ABC2F3B6835B"/>
+  <cim:ConstantReactivePowerSettings.enabled>false</cim:ConstantReactivePowerSettings.enabled>
+  <cim:ConstantReactivePowerSettings.reactivePower>0</cim:ConstantReactivePowerSettings.reactivePower>
+</cim:ConstantReactivePowerSettings>
+<cim:VoltWattSettings rdf:about="urn:uuid:325985CB-B2D8-4211-A820-69E3012E441D">
+  <cim:IdentifiedObject.mRID>325985CB-B2D8-4211-A820-69E3012E441D</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>vv</cim:IdentifiedObject.name>
+  <cim:VoltWattSettings.DERIEEEType1 rdf:resource="urn:uuid:345DA64B-E86D-4617-95CF-ABC2F3B6835B"/>
+  <cim:VoltWattSettings.enabled>false</cim:VoltWattSettings.enabled>
+  <cim:VoltWattSettings.curveV1>1.06</cim:VoltWattSettings.curveV1>
+  <cim:VoltWattSettings.curveV2>1.1</cim:VoltWattSettings.curveV2>
+  <cim:VoltWattSettings.curveP1>1</cim:VoltWattSettings.curveP1>
+  <cim:VoltWattSettings.curveP2gen>0.2</cim:VoltWattSettings.curveP2gen>
+  <cim:VoltWattSettings.curveP2load>0</cim:VoltWattSettings.curveP2load>
+  <cim:VoltWattSettings.olrt>0.0023026</cim:VoltWattSettings.olrt>
+</cim:VoltWattSettings>
+<cim:DERIEEEType1 rdf:about="urn:uuid:1369BB77-89CF-482E-A61B-F17B97C78B86">
+  <cim:IdentifiedObject.mRID>1369BB77-89CF-482E-A61B-F17B97C78B86</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>exp</cim:IdentifiedObject.name>
+  <cim:DynamicsFunctionBlock.enabled>true</cim:DynamicsFunctionBlock.enabled>
+  <cim:DERIEEEType1.phaseToGroundApplicable>true</cim:DERIEEEType1.phaseToGroundApplicable>
+  <cim:DERIEEEType1.phaseToNeutralApplicable>false</cim:DERIEEEType1.phaseToNeutralApplicable>
+  <cim:DERIEEEType1.phaseToPhaseApplicable>false</cim:DERIEEEType1.phaseToPhaseApplicable>
+  <cim:DERDynamics.PowerElectronicsConnection rdf:resource="urn:uuid:959CB24D-44DC-49F4-811B-B38CFB19EE97"/>
+  <cim:DERDynamics.PowerElectronicsConnection rdf:resource="urn:uuid:B29073EB-5837-470E-B8D1-A64EB90CD2E8"/>
+</cim:DERIEEEType1>
+<cim:DERNameplateData rdf:about="urn:uuid:5B007218-B72A-46FE-86F4-9D49D5213FFC">
+  <cim:IdentifiedObject.mRID>5B007218-B72A-46FE-86F4-9D49D5213FFC</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>exp</cim:IdentifiedObject.name>
+  <cim:DERNameplateData.DERIEEEType1 rdf:resource="urn:uuid:1369BB77-89CF-482E-A61B-F17B97C78B86"/>
+  <cim:DERNameplateData.normalOPcatKind rdf:resource="http://iec.ch/TC57/CIM100#NormalOPcatKind.catB"/>
+  <cim:DERNameplateData.supportsConstPFmode>true</cim:DERNameplateData.supportsConstPFmode>
+  <cim:DERNameplateData.supportsConstQmode>true</cim:DERNameplateData.supportsConstQmode>
+  <cim:DERNameplateData.supportsQVmode>true</cim:DERNameplateData.supportsQVmode>
+  <cim:DERNameplateData.supportsPVmode>true</cim:DERNameplateData.supportsPVmode>
+  <cim:DERNameplateData.supportsQPmode>true</cim:DERNameplateData.supportsQPmode>
+  <cim:DERNameplateData.supportsPFmode>false</cim:DERNameplateData.supportsPFmode>
+  <cim:DERNameplateData.acVmax>528</cim:DERNameplateData.acVmax>
+  <cim:DERNameplateData.acVmin>432</cim:DERNameplateData.acVmin>
+</cim:DERNameplateData>
+<cim:DERNameplateDataApplied rdf:about="urn:uuid:A9D7309B-2CB3-4F73-BBBF-7D5F3123A200">
+  <cim:IdentifiedObject.mRID>A9D7309B-2CB3-4F73-BBBF-7D5F3123A200</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>exp</cim:IdentifiedObject.name>
+  <cim:DERNameplateDataApplied.DERNameplateData rdf:resource="urn:uuid:5B007218-B72A-46FE-86F4-9D49D5213FFC"/>
+  <cim:DERNameplateDataApplied.pMax>300000</cim:DERNameplateDataApplied.pMax>
+  <cim:DERNameplateDataApplied.pMaxOverPF>290473.75</cim:DERNameplateDataApplied.pMaxOverPF>
+  <cim:DERNameplateDataApplied.overPF>0.96824584</cim:DERNameplateDataApplied.overPF>
+  <cim:DERNameplateDataApplied.pMaxUnderPF>290473.75</cim:DERNameplateDataApplied.pMaxUnderPF>
+  <cim:DERNameplateDataApplied.underPF>0.96824584</cim:DERNameplateDataApplied.underPF>
+  <cim:DERNameplateDataApplied.sMax>300000</cim:DERNameplateDataApplied.sMax>
+  <cim:DERNameplateDataApplied.qMaxInj>75000</cim:DERNameplateDataApplied.qMaxInj>
+  <cim:DERNameplateDataApplied.qMaxAbs>75000</cim:DERNameplateDataApplied.qMaxAbs>
+  <cim:DERNameplateDataApplied.pMaxCharge>0</cim:DERNameplateDataApplied.pMaxCharge>
+  <cim:DERNameplateDataApplied.apparentPowerChargeMax>0</cim:DERNameplateDataApplied.apparentPowerChargeMax>
+  <cim:DERNameplateDataApplied.acVnom>480</cim:DERNameplateDataApplied.acVnom>
+</cim:DERNameplateDataApplied>
+<cim:VoltVarSettings rdf:about="urn:uuid:7BBF7538-CDF0-464D-8359-284BBDFF9979">
+  <cim:IdentifiedObject.mRID>7BBF7538-CDF0-464D-8359-284BBDFF9979</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>exp</cim:IdentifiedObject.name>
+  <cim:VoltVarSettings.DERIEEEType1 rdf:resource="urn:uuid:1369BB77-89CF-482E-A61B-F17B97C78B86"/>
+  <cim:VoltVarSettings.enabled>true</cim:VoltVarSettings.enabled>
+  <cim:VoltVarSettings.vRefAutoModeEnabled>true</cim:VoltVarSettings.vRefAutoModeEnabled>
+  <cim:VoltVarSettings.vRef>1</cim:VoltVarSettings.vRef>
+  <cim:VoltVarSettings.vRefOlrt>300</cim:VoltVarSettings.vRefOlrt>
+  <cim:VoltVarSettings.curveV1>0.5</cim:VoltVarSettings.curveV1>
+  <cim:VoltVarSettings.curveV2>0.98</cim:VoltVarSettings.curveV2>
+  <cim:VoltVarSettings.curveV3>1.02</cim:VoltVarSettings.curveV3>
+  <cim:VoltVarSettings.curveV4>1.5</cim:VoltVarSettings.curveV4>
+  <cim:VoltVarSettings.curveQ1>0.44</cim:VoltVarSettings.curveQ1>
+  <cim:VoltVarSettings.curveQ2>0.44</cim:VoltVarSettings.curveQ2>
+  <cim:VoltVarSettings.curveQ3>-0.44</cim:VoltVarSettings.curveQ3>
+  <cim:VoltVarSettings.curveQ4>-0.44</cim:VoltVarSettings.curveQ4>
+  <cim:VoltVarSettings.olrt>5</cim:VoltVarSettings.olrt>
+</cim:VoltVarSettings>
+<cim:WattVarSettings rdf:about="urn:uuid:0A17B081-5451-4B6C-9D55-577E8E2DE736">
+  <cim:IdentifiedObject.mRID>0A17B081-5451-4B6C-9D55-577E8E2DE736</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>exp</cim:IdentifiedObject.name>
+  <cim:WattVarSettings.DERIEEEType1 rdf:resource="urn:uuid:1369BB77-89CF-482E-A61B-F17B97C78B86"/>
+  <cim:WattVarSettings.enabled>false</cim:WattVarSettings.enabled>
+  <cim:WattVarSettings.curveP1gen>0.2</cim:WattVarSettings.curveP1gen>
+  <cim:WattVarSettings.curveP2gen>0.5</cim:WattVarSettings.curveP2gen>
+  <cim:WattVarSettings.curveP3gen>1</cim:WattVarSettings.curveP3gen>
+  <cim:WattVarSettings.curveQ1gen>0</cim:WattVarSettings.curveQ1gen>
+  <cim:WattVarSettings.curveQ2gen>0</cim:WattVarSettings.curveQ2gen>
+  <cim:WattVarSettings.curveQ3gen>0.44</cim:WattVarSettings.curveQ3gen>
+  <cim:WattVarSettings.curveP1load>0</cim:WattVarSettings.curveP1load>
+  <cim:WattVarSettings.curveP2load>0</cim:WattVarSettings.curveP2load>
+  <cim:WattVarSettings.curveP3load>0</cim:WattVarSettings.curveP3load>
+  <cim:WattVarSettings.curveQ1load>0</cim:WattVarSettings.curveQ1load>
+  <cim:WattVarSettings.curveQ2load>0</cim:WattVarSettings.curveQ2load>
+  <cim:WattVarSettings.curveQ3load>0.44</cim:WattVarSettings.curveQ3load>
+</cim:WattVarSettings>
+<cim:ConstantPowerFactorSettings rdf:about="urn:uuid:BB5DA01D-1D06-4050-930B-C2EDCF13153C">
+  <cim:IdentifiedObject.mRID>BB5DA01D-1D06-4050-930B-C2EDCF13153C</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>exp</cim:IdentifiedObject.name>
+  <cim:ConstantPowerFactorSettings.DERIEEEType1 rdf:resource="urn:uuid:1369BB77-89CF-482E-A61B-F17B97C78B86"/>
+  <cim:ConstantPowerFactorSettings.enabled>false</cim:ConstantPowerFactorSettings.enabled>
+  <cim:ConstantPowerFactorSettings.constantPowerFactorExcitationKind rdf:resource="http://iec.ch/TC57/CIM100#ConstantPowerFactorSettingKind.inj"/>
+  <cim:ConstantPowerFactorSettings.powerFactor>1</cim:ConstantPowerFactorSettings.powerFactor>
+</cim:ConstantPowerFactorSettings>
+<cim:ConstantReactivePowerSettings rdf:about="urn:uuid:F685CD54-8D0E-4588-851F-564235B42BEE">
+  <cim:IdentifiedObject.mRID>F685CD54-8D0E-4588-851F-564235B42BEE</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>exp</cim:IdentifiedObject.name>
+  <cim:ConstantReactivePowerSettings.DERIEEEType1 rdf:resource="urn:uuid:1369BB77-89CF-482E-A61B-F17B97C78B86"/>
+  <cim:ConstantReactivePowerSettings.enabled>false</cim:ConstantReactivePowerSettings.enabled>
+  <cim:ConstantReactivePowerSettings.reactivePower>0</cim:ConstantReactivePowerSettings.reactivePower>
+</cim:ConstantReactivePowerSettings>
+<cim:VoltWattSettings rdf:about="urn:uuid:20E99DCE-2500-4B19-AFB8-883CD4C1CC8B">
+  <cim:IdentifiedObject.mRID>20E99DCE-2500-4B19-AFB8-883CD4C1CC8B</cim:IdentifiedObject.mRID>
+  <cim:IdentifiedObject.name>exp</cim:IdentifiedObject.name>
+  <cim:VoltWattSettings.DERIEEEType1 rdf:resource="urn:uuid:1369BB77-89CF-482E-A61B-F17B97C78B86"/>
+  <cim:VoltWattSettings.enabled>false</cim:VoltWattSettings.enabled>
+  <cim:VoltWattSettings.curveV1>1.06</cim:VoltWattSettings.curveV1>
+  <cim:VoltWattSettings.curveV2>1.1</cim:VoltWattSettings.curveV2>
+  <cim:VoltWattSettings.curveP1>1</cim:VoltWattSettings.curveP1>
+  <cim:VoltWattSettings.curveP2gen>0.2</cim:VoltWattSettings.curveP2gen>
+  <cim:VoltWattSettings.curveP2load>0</cim:VoltWattSettings.curveP2load>
+  <cim:VoltWattSettings.olrt>10</cim:VoltWattSettings.olrt>
+</cim:VoltWattSettings>
+</rdf:RDF>

@@ -1,0 +1,17 @@
+{
+  "report": "line.lg",
+  "fixture": "dumplgeo",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumplgeo basekv=12.47 bus1=src",
+    "new wiredata.w1 diam=0.5 gmrac=0.2 rac=0.1 runits=mi radunits=in gmrunits=ft normamps=600",
+    "new linegeometry.geo1 nconds=3 nphases=3 reduce=no",
+    "~ cond=1 wire=w1 x=-4 h=28 units=ft",
+    "~ cond=2 wire=w1 x=-1.5 h=28.5 units=ft",
+    "~ cond=3 wire=w1 x=3 h=28 units=ft",
+    "new line.lg bus1=src bus2=b2 geometry=geo1 length=2 units=km",
+    "set voltagebases=[12.47]",
+    "calcv",
+    "solve"
+  ]
+}

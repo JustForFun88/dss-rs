@@ -14,15 +14,18 @@
 //! (which falls through to the *second-to-last* point). So this is ported from
 //! TempShape/PriceShape directly, not derived from [`super::load_shape`].
 //!
-//! The data storage and the three algorithms that are byte-identical between the
-//! two classes — the hour lookup, the lazy mean/std-dev, and the `CSVFile`
-//! reader — live here on [`ScalarShapeCore`]; the per-class property tables and
-//! their differing `PropertySideEffects` live in [`super::temp_shape`] and
-//! [`super::price_shape`]. Binary file props (`SngFile`/`DblFile`) stay
-//! `NOT_PORTED`; `CSVFile` is read via the deferred [`FileLoad`] path, exactly
-//! like LoadShape (WP5.2b).
+//! The data storage and the algorithms that are byte-identical between the two
+//! classes — the hour lookup, the lazy mean/std-dev, and the `CSVFile`/
+//! `SngFile`/`DblFile` readers (Pascal's shared `Common/Utilities.pas`
+//! `DoCSVFile`/`DoSngFile`/`DoDblFile`, called with `OnlyLoadB = Interval <> 0`
+//! — i.e. a fixed interval loads only the value column, `Interval = 0` loads
+//! `(hour, value)` pairs from both) — live here on [`ScalarShapeCore`]; the
+//! per-class property tables and their differing `PropertySideEffects` live in
+//! [`super::temp_shape`] and [`super::price_shape`]. All three file props are
+//! read via the deferred [`FileLoad`] path, exactly like LoadShape (WP5.2b /
+//! WPG.1 for the binary pair).
 
-use crate::obj::base::{DssObjData, FileLoad};
+use crate::obj::base::{DssObjData, FileLoad, ShapeSave};
 use crate::support::mathutil::{curve_mean_and_std_dev, mean_and_std_dev};
 use dss_parser::{Parser, ParserVars};
 
@@ -54,6 +57,8 @@ pub struct ScalarShapeCore {
     pub dblfile: String,
     /// Deferred file reads queued by `CSVFile` (drained by the executive).
     pub pending_file_loads: Vec<FileLoad>,
+    /// Deferred binary saves queued by `Action=SngSave/DblSave`.
+    pub pending_shape_saves: Vec<ShapeSave>,
 }
 
 impl ScalarShapeCore {
@@ -73,11 +78,48 @@ impl ScalarShapeCore {
             sngfile: String::new(),
             dblfile: String::new(),
             pending_file_loads: Vec::new(),
+            pending_shape_saves: Vec::new(),
         }
     }
 
     fn n(&self) -> usize {
         self.num_points.max(0) as usize
+    }
+
+    /// Queue a `SngSave`/`DblSave` binary write (Pascal `TTShapeObj`/
+    /// `TPriceShapeObj.SaveToDblFile`/`SaveToSngFile`, `TempShape.pas:528/548`,
+    /// `PriceShape.pas:547/568`). Single value series, bare `<name>` filename (no
+    /// `_P`/`_Q` split), `GlobalResult` tag `result_tag` (`Temp`/`Price`). The
+    /// caller passes `full_name` and `noun` for the not-defined guard
+    /// (`if not Assigned(TValues/PriceValues)` → `DoSimpleMsg` 57622/57623 or
+    /// 58622/58623).
+    pub fn queue_shape_save(
+        &mut self,
+        sng: bool,
+        result_tag: &'static str,
+        full_name: &str,
+        noun: &str,
+        errors: &mut Vec<String>,
+    ) {
+        let n = self.n();
+        let Some(v) = self.values.as_ref() else {
+            errors.push(format!("{full_name} {noun} not defined."));
+            return;
+        };
+        let values: Vec<f64> = v.iter().take(n).copied().collect();
+        self.pending_shape_saves.push(ShapeSave {
+            name: self.data.name().to_string(),
+            sng,
+            values,
+            q_values: None,
+            p_suffix: false,
+            result_tag,
+        });
+    }
+
+    /// Drain the queued binary saves for the executive.
+    pub fn take_shape_saves(&mut self) -> Vec<ShapeSave> {
+        std::mem::take(&mut self.pending_shape_saves)
     }
 
     /// Pascal `GetTemperature` / `GetPrice`: the scalar value nearest the
@@ -124,8 +166,10 @@ impl ScalarShapeCore {
         };
 
         // Normalize Hr into the first cycle (wraparound). Pascal divides by
-        // Hours[FNumPoints] unguarded; we skip the degenerate last-hour==0 curve
-        // (no corpus case) to avoid a Rust divide-by-zero panic.
+        // Hours[FNumPoints] unguarded, so a degenerate curve whose LAST hour is
+        // 0 poisons Hr to NaN (masked-FPU Inf·0) — defined-garbage on a
+        // pathological input, not reproduced (CLAUDE.md known-bug policy): the
+        // port skips the wraparound and reads the curve as-is.
         let mut hr = hr;
         let last = h[npts - 1]; // Hours[FNumPoints]
         if hr > last && last != 0.0 {
@@ -156,6 +200,27 @@ impl ScalarShapeCore {
         // Fell through the loop: use the last value (legacy = TValues[FNumPoints]).
         self.last_value_accessed = npts - 1;
         t[npts - 1]
+    }
+
+    /// Pascal `TPriceShapeObj.Price(i)` (`PriceShape.pas:517`): the scalar
+    /// value at 1-based index `i`, updating `LastValueAccessed` (already
+    /// 1-based here, matching Pascal's own 1-based `PriceValues`/
+    /// `LastValueAccessed` convention — no `dec(i)` in the source) — used by
+    /// `SolveLD1`/`SolveLD2` to walk the price curve alongside the
+    /// load-duration curve (`ckt.PriceCurveObj.Price(N)`).
+    pub fn value_at(&mut self, i: i32) -> f64 {
+        if i <= 0 || i > self.num_points {
+            return 0.0;
+        }
+        let idx = (i - 1) as usize;
+        let v = self
+            .values
+            .as_ref()
+            .and_then(|t| t.get(idx))
+            .copied()
+            .unwrap_or(0.0);
+        self.last_value_accessed = i as usize;
+        v
     }
 
     /// Pascal `CalcMeanandStdDev`: even-interval (`RCDMeanAndStdDev`) or
@@ -239,6 +304,67 @@ impl ScalarShapeCore {
             self.hours = store_array(h);
         }
         self.num_points = i as i32;
+    }
+
+    /// Pascal `Common/Utilities.pas` `DoSngFile` (little-endian `f32` stream),
+    /// called with `OnlyLoadB = Interval <> 0`: a fixed interval reads a bare
+    /// value stream (`Hours` untouched); `Interval = 0` reads `(hour, value)`
+    /// pairs into both arrays. Reads at most `NumPoints` points and shrinks
+    /// `NumPoints` to the count actually read.
+    pub fn read_sng_file(&mut self, content: &[u8]) {
+        let npts = self.n();
+        if self.interval == 0.0 {
+            let mut h = Vec::with_capacity(npts);
+            let mut v = Vec::with_capacity(npts);
+            let mut off = 0usize;
+            while v.len() < npts && off + 8 <= content.len() {
+                let hr = f32::from_le_bytes(content[off..off + 4].try_into().unwrap());
+                let val = f32::from_le_bytes(content[off + 4..off + 8].try_into().unwrap());
+                h.push(hr as f64);
+                v.push(val as f64);
+                off += 8;
+            }
+            self.num_points = v.len() as i32;
+            self.hours = store_array(h);
+            self.values = store_array(v);
+        } else {
+            let n = (content.len() / 4).min(npts);
+            let v: Vec<f64> = content[..n * 4]
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes(c.try_into().unwrap()) as f64)
+                .collect();
+            self.num_points = n as i32;
+            self.values = store_array(v);
+        }
+    }
+
+    /// Pascal `Common/Utilities.pas` `DoDblFile` (little-endian `f64` stream);
+    /// same row layout as [`Self::read_sng_file`] but double precision.
+    pub fn read_dbl_file(&mut self, content: &[u8]) {
+        let npts = self.n();
+        if self.interval == 0.0 {
+            let mut h = Vec::with_capacity(npts);
+            let mut v = Vec::with_capacity(npts);
+            let mut off = 0usize;
+            while v.len() < npts && off + 16 <= content.len() {
+                let hr = f64::from_le_bytes(content[off..off + 8].try_into().unwrap());
+                let val = f64::from_le_bytes(content[off + 8..off + 16].try_into().unwrap());
+                h.push(hr);
+                v.push(val);
+                off += 16;
+            }
+            self.num_points = v.len() as i32;
+            self.hours = store_array(h);
+            self.values = store_array(v);
+        } else {
+            let n = (content.len() / 8).min(npts);
+            let v: Vec<f64> = content[..n * 8]
+                .chunks_exact(8)
+                .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+                .collect();
+            self.num_points = n as i32;
+            self.values = store_array(v);
+        }
     }
 
     /// Pascal `MakeLike` (shared body): copy points and interval; the hour array

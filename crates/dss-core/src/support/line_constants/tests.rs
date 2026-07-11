@@ -192,6 +192,78 @@ fn deri_full_3cond() {
     check_c(&lc, &C3_NF);
 }
 
+/// `cabs_fpc`/`csqrt_fpc`/`cln_fpc` reproduce the FPC `ucomplex`
+/// `cmod`/`csqrt`/`cln` bit-for-bit: the naive `sqrt(re²+im²)` modulus (not
+/// `hypot`), the Numerical-Recipes stable `csqrt` (not the polar `from_polar`
+/// form), and `ln(cmod)+j·atan2`. The Carson DERI and cable earth terms call
+/// these; `num_complex`'s `.sqrt()`/`.ln()` round the last bit differently,
+/// which surfaced as a 1-ULP gap in the earth-return resistance part — the same
+/// class of bug as the `cdiv_fpc` division mismatch. Bits captured from the
+/// x86_64 FPC `ucomplex` RTL.
+#[test]
+fn fpc_complex_primitives_match_ucomplex_not_num_complex() {
+    // General sqrt: FPC algebraic (NR) vs num_complex polar — 1 ULP apart.
+    let z = Complex64::new(1.5, -2.25);
+    let s = csqrt_fpc(z);
+    assert_eq!(s.re.to_bits(), 0x3FF7329BF464ACB7);
+    assert_eq!(s.im.to_bits(), 0xBFE8D47E8FC83CA6);
+    assert_ne!(z.sqrt().re.to_bits(), s.re.to_bits());
+
+    // Negative-real branch (the other sign split).
+    let z2 = Complex64::new(-5.5, 2.25);
+    let s2 = csqrt_fpc(z2);
+    assert_eq!(s2.re.to_bits(), 0x3FDE19FCBCC29600);
+    assert_eq!(s2.im.to_bits(), 0x4003229FCE84B2B2);
+    assert_ne!(z2.sqrt().re.to_bits(), s2.re.to_bits());
+
+    // A real DERI earth-term `Csqrt(hterm²+xterm²)` argument — bit-exact to RTL.
+    let arg = Complex64::new(
+        f64::from_bits(0x40D9C5B937764D60),
+        f64::from_bits(0xC12A8F7A43C125DD),
+    );
+    let la = csqrt_fpc(arg);
+    assert_eq!(la.re.to_bits(), 0x4084EDFB5C679BD3);
+    assert_eq!(la.im.to_bits(), 0xC0844DF9CF27F050);
+
+    // cln = ln(cabs) + j·atan2; cabs is the naive sqrt(re²+im²).
+    let l = cln_fpc(Complex64::new(3.0, 4.0));
+    assert_eq!(l.re.to_bits(), 0x3FF9C041F7ED8D33);
+    assert_eq!(l.im.to_bits(), 0x3FEDAC670561BB4F);
+    assert_eq!(
+        cabs_fpc(Complex64::new(1.5, -2.25)).to_bits(),
+        0x4005A22073490377
+    );
+}
+
+/// DERI overhead per-meter `Z` is **bit-for-bit** to the oracle wherever the
+/// remaining libm floor doesn't bite: the diagonal (Bessel skin-effect `Zint` +
+/// earth `Ze`, via `csqrt_fpc`/`cln_fpc`/`cdiv_fpc`) and the distance-2 mutual.
+/// The adjacent mutual's *real* part keeps a proven 1-ULP `arctan2` (`carg`)
+/// floor — `Fme`/`Cinv`/`hterm`/`Csqrt`/`ln(cmod)` are all bit-exact, only the
+/// final `arctan2` in `Cln`'s imag differs (the same external-libm last-bit
+/// class as faer-vs-KLU). Guards the get_ze/get_zint wiring of the FPC
+/// primitives. Bits from the x86_64 oracle (`Lines.Rmatrix`/`Xmatrix`, 1 m).
+#[test]
+fn deri_overhead_z_bit_exact_except_arctan2_floor() {
+    let mut lc = build(&COORDS3);
+    lc.calc(60.0, DERI);
+    let z = lc.z_base();
+    for i in 0..3 {
+        assert_eq!(z.get(i, i).re.to_bits(), 0x3f371b8ef966ede3, "Zdiag.re");
+        assert_eq!(z.get(i, i).im.to_bits(), 0x3f4dfc65ab19412d, "Zdiag.im");
+    }
+    assert_eq!(z.get(0, 2).re.to_bits(), 0x3f0e72a79b4186fe, "Z02.re");
+    assert_eq!(z.get(0, 2).im.to_bits(), 0x3f3e5dc215cd4128, "Z02.im");
+    // Adjacent mutual: imag bit-exact, real within the 1-ULP arctan2 floor.
+    assert_eq!(z.get(0, 1).im.to_bits(), 0x3f40e548f60d9a32, "Z01.im");
+    let want01re = 0x3f0e72ac113bb68e_i64;
+    assert!(
+        (z.get(0, 1).re.to_bits() as i64 - want01re).abs() <= 1,
+        "Z01.re within 1 ULP of oracle (arctan2 floor), got {:016x}",
+        z.get(0, 1).re.to_bits()
+    );
+}
+
 #[test]
 fn simple_carson_full_3cond() {
     let mut lc = build(&COORDS3);

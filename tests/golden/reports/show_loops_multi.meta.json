@@ -1,0 +1,22 @@
+{
+  "report": "loops",
+  "fixture": "mesh2",
+  "suffix": "Loops.txt",
+  "deck": [
+    "new circuit.mesh2 basekv=12.47 bus1=sourcebus phases=3",
+    "new line.feeda bus1=sourcebus bus2=a1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.a_la  bus1=a1 bus2=a2 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.a_lb  bus1=a2 bus2=a3 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.a_lc  bus1=a3 bus2=a1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new load.lda   bus1=a3 phases=3 kv=12.47 kw=100 pf=0.95",
+    "new energymeter.m1 element=line.feeda terminal=1",
+    "new line.feedb bus1=sourcebus bus2=b1 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.b_la   bus1=b1 bus2=b2 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new line.b_lpar bus1=b1 bus2=b2 phases=3 length=1 units=km r1=0.1 x1=0.1 c1=0",
+    "new load.ldb    bus1=b2 phases=3 kv=12.47 kw=100 pf=0.95",
+    "new energymeter.m2 element=line.feedb terminal=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve"
+  ]
+}

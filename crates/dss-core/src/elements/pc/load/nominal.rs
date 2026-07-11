@@ -7,7 +7,8 @@
 use num_complex::Complex64;
 
 use crate::elements::traits::SysCtx;
-use crate::solution::SolveMode;
+use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
+use crate::support::mathutil::{FpcRng, gauss, quasi_log_normal};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
 use super::{Connection, Load, LoadModel, LoadSpec, prop};
@@ -93,6 +94,28 @@ impl Load {
         }
     }
 
+    /// Pascal `TLoadObj.Randomize` (`Load.pas:899`): set `RandomMult` from the
+    /// solution's random type. `opt=0` (`Set random=none`) → `1.0` and draws
+    /// nothing; GAUSSIAN/UNIFORM/LOGNORMAL draw through the engine RNG (the
+    /// yearly shape's mean/std-dev when one is assigned, else `puMean`/
+    /// `puStdDev`). Called once per load per MonteCarlo1 case by `solve_monte1`.
+    pub fn randomize(&mut self, opt: i32, rng: &mut FpcRng) {
+        use crate::solution::{GAUSSIAN, LOGNORMAL, UNIFORM};
+        self.random_mult = match opt {
+            GAUSSIAN => match self.yearly_shape_obj.as_ref() {
+                Some(s) => gauss(s.mean(), s.std_dev(), || rng.next_f64()),
+                None => gauss(self.pu_mean, self.pu_std_dev, || rng.next_f64()),
+            },
+            UNIFORM => rng.next_f64(),
+            LOGNORMAL => match self.yearly_shape_obj.as_ref() {
+                Some(s) => quasi_log_normal(s.mean(), || rng.next_f64()),
+                None => quasi_log_normal(self.pu_mean, || rng.next_f64()),
+            },
+            // 0 (none) and any other value: RandomMult := 1.0.
+            _ => 1.0,
+        };
+    }
+
     /// Pascal `SetNominalLoad`.
     pub fn set_nominal_load(&mut self, sys: &SysCtx) {
         self.shape_factor = CDOUBLEONE;
@@ -139,21 +162,73 @@ impl Load {
                 }
                 SolveMode::Time | SolveMode::Dynamic => {
                     // Pascal `GENERALTIME`/`DYNAMICMODE`: growth × load-multiplier
-                    // (unless Exempt), with the ShapeFactor taken from
-                    // `ActiveLoadShapeClass`. That class is `USENONE` by default
-                    // (not yet a ported setting — same assumption as
-                    // Generator/Storage/PVSystem), so `ShapeFactor` stays 1+j1.
+                    // (unless Exempt); the ShapeFactor comes from the one class
+                    // `ActiveLoadShapeClass` selects (`Set LoadShapeClass=`).
+                    // `USENONE` (the default) falls through, leaving 1+j1.
                     let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    if self.status != 2 {
+                        f *= sys.load_multiplier;
+                    }
+                    match sys.active_load_shape_class {
+                        USEDAILY => self.calc_daily_mult(sys.dbl_hour),
+                        USEYEARLY => self.calc_yearly_mult(sys.dbl_hour),
+                        USEDUTY => self.calc_duty_mult(sys.dbl_hour),
+                        _ => {} // USENONE: ShapeFactor stays 1+j1
+                    }
+                    f
+                }
+                // Pascal groups Monte2/Monte3/LOADDURATION1/LOADDURATION2 in one
+                // case arm: growth × the load's own daily-shape lookup (via
+                // `CalcDailyMult`, exactly like `DAILYMODE`) × LoadMultiplier
+                // unless Exempt. Monte2/Monte3 are not reachable yet (WPG.4 —
+                // the solve dispatcher still errors loudly on them), but LD1/LD2
+                // are (WPG.3), so this arm is live.
+                SolveMode::Monte2 | SolveMode::Monte3 | SolveMode::LD1 | SolveMode::LD2 => {
+                    let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    self.calc_daily_mult(sys.dbl_hour);
                     if self.status != 2 {
                         f *= sys.load_multiplier;
                     }
                     f
                 }
-                // The remaining modes (MonteCarlo*/LoadDuration*/PeakDay/
-                // AutoAdd/...) are not reachable yet — the solve dispatcher only
-                // runs the modes above (plus Dynamic, handled above) — so they
-                // default to growth-only with a unit ShapeFactor, matching the
-                // Pascal trailing `else`. Wired in later phases as the modes land.
+                // Pascal `PEAKDAY` (`Load.pas:1092`): growth × the load's own
+                // daily-shape lookup, with **no** `LoadMultiplier` — the peak
+                // kW is taken as given and only shaped by the daily curve and
+                // year growth (that omission is the whole point of PeakDay vs
+                // Daily). Kept a separate arm from Monte2/Monte3/LD1/LD2 above
+                // precisely because those apply `LoadMultiplier` and this must
+                // not. Every sibling PC element already routes PeakDay through
+                // its daily-mult; Load had silently fallen through to the
+                // growth-only catch-all (flat nominal kW) — the bug this fixes.
+                SolveMode::PeakDay => {
+                    let f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    self.calc_daily_mult(sys.dbl_hour);
+                    f
+                }
+                // Pascal `MONTECARLO1` (`Load.pas:1074`): `Factor := RandomMult *
+                // GrowthFactor(Year)` × `LoadMultiplier` (unless Exempt), with a
+                // **unit** ShapeFactor (no daily lookup). Upstream calls
+                // `Randomize(RandomType)` right here to (re)draw `RandomMult`;
+                // `solve_monte1` hoists that draw to the top of each case
+                // (`randomize_all_loads`), so this arm consumes the already-drawn
+                // `random_mult` — the net effect (a fresh draw feeding each M1
+                // SolveSnap) is identical, and the RNG stream is engine-global
+                // like FPC's RTL. Under `Set random=none` the draw is a no-op
+                // (`randomize` sets `RandomMult := 1.0`), so the whole arm reduces
+                // to growth × LoadMultiplier — the deterministic gated path
+                // (GAPS_PLAN.md §2.1).
+                SolveMode::Monte1 => {
+                    let mut f =
+                        self.random_mult * self.growth_factor(sys.year, sys.default_growth_factor);
+                    if self.status != 2 {
+                        f *= sys.load_multiplier;
+                    }
+                    f
+                }
+                // AutoAdd/... are not reachable yet — the solve dispatcher still
+                // errors loudly on them — so they default to growth-only with a
+                // unit ShapeFactor, matching the Pascal trailing `else`; wired in
+                // later phases as those modes land.
                 _ => self.growth_factor(sys.year, sys.default_growth_factor),
             }
         };

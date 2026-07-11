@@ -1,0 +1,12 @@
+{
+  "report": "line.sw",
+  "fixture": "dumplsw",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumplsw basekv=12.47 bus1=src",
+    "new line.sw bus1=src bus2=b2 phases=3 switch=yes",
+    "set voltagebases=[12.47]",
+    "calcv",
+    "solve"
+  ]
+}

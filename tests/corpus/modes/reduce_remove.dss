@@ -1,0 +1,33 @@
+// Reduce coverage (PHASE8_PLAN WP8.7): the `Remove` command
+// (DoRemoveBranches, ReduceAlgs.pas:374): disable the named PD branch and
+// everything downstream of it; with KeepLoad=Yes (default) an equivalent
+// load `Eq_<elem>_<bus>` is created at the FROM bus carrying the branch's
+// metered power (Format at :405/:418). The l2 sub-tree (b3, b4 and their
+// loads) collapses into one equivalent load at b2.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.gapsrr basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.4 x1=1.6 r0=1.2 x0=4.2
+
+new linecode.lc nphases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6
+~ units=km
+
+new line.lfeed bus1=src bus2=b1 linecode=lc length=0.5 units=km
+new line.l1 bus1=b1 bus2=b2 linecode=lc length=0.8 units=km
+new line.l2 bus1=b2 bus2=b3 linecode=lc length=0.6 units=km
+new line.l3 bus1=b3 bus2=b4 linecode=lc length=0.7 units=km
+
+new load.ld2 bus1=b2 phases=3 conn=wye model=1 kv=12.47 kw=250 pf=0.95
+new load.ld3 bus1=b3 phases=3 conn=wye model=1 kv=12.47 kw=300 pf=0.9
+new load.ld4 bus1=b4 phases=3 conn=wye model=1 kv=12.47 kw=350 pf=0.92
+
+new energymeter.em element=line.lfeed terminal=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set maxiterations=100
+solve
+
+remove line.l2 keepload=yes
+solve

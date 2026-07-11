@@ -3,8 +3,29 @@
 use num_complex::Complex64;
 
 use super::Reactor;
-use crate::elements::traits::CktElement;
+use crate::elements::general::xy_curve::XyCurveObj;
+use crate::elements::traits::{CktElement, ElemRef};
 use crate::obj::base::{DssObjData, DssObject};
+
+impl Reactor {
+    /// Pascal `TReactorObj.Z` (the series impedance complex). Read-only accessor
+    /// for the CIM export (`SeriesCompensator.r`/`.x`/`.r0`/`.x0`, GAPS_PLAN
+    /// WPG.18 Stage D).
+    pub fn z(&self) -> Complex64 {
+        self.z
+    }
+
+    /// Pascal `TDSSCktElement.NormAmps`. Read-only accessor for the CIM export
+    /// (`WriteTerminals` operational limits).
+    pub fn norm_amps(&self) -> f64 {
+        self.norm_amps
+    }
+
+    /// Pascal `TDSSCktElement.EmergAmps`. Read-only accessor for the CIM export.
+    pub fn emerg_amps(&self) -> f64 {
+        self.emerg_amps
+    }
+}
 
 impl DssObject for Reactor {
     fn data(&self) -> &DssObjData {
@@ -100,9 +121,8 @@ impl DssObject for Reactor {
     fn get_string(&self, idx: usize) -> String {
         use super::prop::*;
         match idx {
-            // RCurve/LCurve are NOT_PORTED (no XYcurve until Phase 5) — never set,
-            // so the reference always renders empty, matching the oracle.
-            RCURVE | LCURVE => String::new(),
+            RCURVE => self.r_curve_name.clone(),
+            LCURVE => self.l_curve_name.clone(),
             _ => unreachable!("Reactor has no string property {idx}"),
         }
     }
@@ -152,6 +172,30 @@ impl DssObject for Reactor {
     }
     fn get_bus_name(&self, terminal: usize) -> String {
         self.cd.get_bus(terminal).to_string()
+    }
+
+    /// Resolve the `RCurve`/`LCurve` XYcurve references (snapshot-clone, like
+    /// the PVSystem/VCCS curve refs).
+    fn set_object_ref(
+        &mut self,
+        idx: usize,
+        name: String,
+        resolved: Option<(ElemRef, &dyn DssObject)>,
+    ) {
+        use super::prop::*;
+        let xy_curve =
+            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<XyCurveObj>().cloned());
+        match idx {
+            RCURVE => {
+                self.r_curve_name = name;
+                self.r_curve = xy_curve();
+            }
+            LCURVE => {
+                self.l_curve_name = name;
+                self.l_curve = xy_curve();
+            }
+            _ => unreachable!("Reactor has no resolved object-ref property {idx}"),
+        }
     }
 
     /// Pascal `TReactorObj.PropertySideEffects`.
@@ -301,6 +345,10 @@ impl DssObject for Reactor {
         self.z0_specified = other.z0_specified;
         self.rmatrix = other.rmatrix.clone();
         self.xmatrix = other.xmatrix.clone();
+        self.r_curve_name = other.r_curve_name.clone();
+        self.r_curve = other.r_curve.clone();
+        self.l_curve_name = other.l_curve_name.clone();
+        self.l_curve = other.l_curve.clone();
 
         // TPDElement.MakeLike copies the rating fields.
         self.norm_amps = other.norm_amps;

@@ -6,7 +6,7 @@
 //!       and total losses within 1e-6 rel (1e-9 absolute floor),
 //!   (d) element iteration order equal to the oracle's First/Next order
 //!       (creation order) — names compared, not just values.
-//! Goldens are produced by `tools/golden/gen_phase4.py` with the pinned
+//! Goldens are produced by `tools/golden/gen_feeders_controlsoff.py` with the pinned
 //! oracle (tools/golden/PIN.txt); regenerate only manually.
 
 mod harness;
@@ -18,7 +18,7 @@ use harness::assert_complex_close;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-struct Phase4Golden {
+struct FeedersGolden {
     schema: u32,
     scenarios: Vec<Scenario>,
 }
@@ -51,13 +51,16 @@ fn repo_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect()
 }
 
-fn load_golden() -> Phase4Golden {
-    let path = repo_root().join("tests").join("golden").join("phase4.json");
+fn load_golden() -> FeedersGolden {
+    let path = repo_root()
+        .join("tests")
+        .join("golden")
+        .join("feeders_controlsoff.json");
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-    let g: Phase4Golden = serde_json::from_str(&text)
+    let g: FeedersGolden = serde_json::from_str(&text)
         .unwrap_or_else(|e| panic!("cannot parse {}: {e}", path.display()));
-    assert_eq!(g.schema, 1, "phase4 golden schema mismatch");
+    assert_eq!(g.schema, 1, "feeders_controlsoff golden schema mismatch");
     g
 }
 

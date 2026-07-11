@@ -1,0 +1,20 @@
+# tools/golden — pinned-oracle golden generation (manual only)
+
+Generators (`gen_*.py`) and probes for the **committed** goldens under
+`tests/golden/`, plus the pinned-oracle version pin.
+
+- **`PIN.txt`** — the exact oracle: dss-python 0.15.7 / dss_capi 0.14.5 (the
+  Pascal source vendored at `.inputs/dss_capi`). Every golden is produced with
+  this and only this.
+- **`gen_*.py`** — one generator per golden family (see the table in
+  `TESTING.md`). Each runs the pinned oracle, captures the result, and writes
+  `tests/golden/<family>/…`. `generate.py` + `cases.json` drive the named-feeder
+  goldens.
+- **`report_decks/`** — fixture decks the report goldens (`gen_reports.py`)
+  replay.
+- **`probe_*.py`** — one-off empirical probes (the project's "settle it against
+  the oracle" convention), not part of any gate.
+
+**Regeneration is manual and deliberate.** Goldens pin intentional upstream
+inexactnesses (`TODO(compat)`); never regenerate to "fix" a divergence. See
+`TESTING.md` → *Regenerate a golden*.

@@ -35,6 +35,12 @@ impl CktElement for Fuse {
         &mut self.ccd.cd
     }
 
+    /// Pascal `TControlElem.FControlledElement` — the line/element this fuse
+    /// switches (`Fuse` is a `TControlElem`; `SwitchedObj` binds `FControlledElement`).
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+        self.ccd.controlled_element
+    }
+
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
     }

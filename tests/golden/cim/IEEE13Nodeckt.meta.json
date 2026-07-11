@@ -1,0 +1,7 @@
+{
+  "report": "cim100",
+  "circuit": "IEEE13Nodeckt",
+  "fixture": "IEEE13Nodeckt_fixture.csv",
+  "suffix": "CIM100x.xml",
+  "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss"
+}

@@ -3,12 +3,66 @@
 //! dQ/dV seed, `DoPFLOWsolution`, `SolveCircuit`, the live `CheckControls`,
 //! `SolveSnap` and `SolveDirect`.
 
-use crate::circuit::Circuit;
+use num_complex::Complex64;
+
+use crate::circuit::{CAPADD, Circuit, GENADD};
 use crate::elements::pc::generator::Generator;
 use crate::elements::traits::{ElemRef, InjCtx};
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
 
 use super::{ActiveY, NEWTONSOLVE, SolveEnv, SolveMode, SolveResult, sys_ctx};
+
+/// Pascal `TSolutionObj.AddInAuxCurrents` → `TAutoAdd.AddCurrents`
+/// (`Solution.pas` l.2139 / `AutoAdd.pas` l.597): during an AutoAdd candidate
+/// solve, inject the trial generator/capacitor current at the bus under test.
+/// The `AddInAuxCurrents` gate is `SolutionMode = AUTOADDFLAG`, so this no-ops
+/// in any other mode even though only AutoAdd ever sets `use_aux_currents`.
+fn add_in_aux_currents(ckt: &mut Circuit, solve_type: i32) {
+    if ckt.solution.mode != SolveMode::AutoAdd {
+        return;
+    }
+    let aa = &ckt.auto_add_obj;
+    let (add_type, phases, gen_va, ycap, bus_index) =
+        (aa.add_type, aa.phases, aa.gen_va, aa.ycap, aa.bus_index);
+    if bus_index == 0 {
+        return;
+    }
+    // Snapshot the node refs first (drops the `ckt.buses` borrow) so the
+    // `ckt.solution.currents` write below doesn't alias it. Pascal `GetRef(i)`
+    // is 1-based; the Rust accessor is 0-based, and `BusIndex` is Pascal 1-based.
+    let nrefs: Vec<usize> = (1..=phases as usize)
+        .map(|i| ckt.buses[bus_index - 1].get_ref(i - 1))
+        .collect();
+    for nref in nrefs {
+        if nref == 0 {
+            continue; // add in only non-ground currents
+        }
+        let bus_v = ckt.solution.node_v[nref];
+        if bus_v.re == 0.0 && bus_v.im == 0.0 {
+            continue;
+        }
+        // Current INTO the system network.
+        match add_type {
+            GENADD => {
+                let inj = (gen_va / bus_v).conj();
+                if solve_type == NEWTONSOLVE {
+                    ckt.solution.currents[nref] -= inj; // Terminal Current
+                } else {
+                    ckt.solution.currents[nref] += inj; // Injection Current
+                }
+            }
+            CAPADD => {
+                // Constant Y model.
+                if solve_type == NEWTONSOLVE {
+                    ckt.solution.currents[nref] += Complex64::new(0.0, ycap) * bus_v;
+                } else {
+                    ckt.solution.currents[nref] += Complex64::new(0.0, -ycap) * bus_v;
+                }
+            }
+            _ => {}
+        }
+    }
+}
 
 /// `DSS.LogThisEvent(name)` with the solution's clock/iteration fields (the
 /// callers gate on `ckt.LogEvents` themselves, like the Pascal call sites).
@@ -23,8 +77,10 @@ fn log_event(ckt: &mut Circuit, name: &str) {
     );
 }
 
-/// Pascal `GetSourceInjCurrents`: all enabled sources inject into `Currents`.
-/// (The GFM PCE pass is empty in Phase 3.)
+/// Pascal `GetSourceInjCurrents`: all enabled sources inject into `Currents`,
+/// then the grid-forming PC elements (`GetPCInjCurr(TRUE)` — a GFM inverter is
+/// a voltage source behind its `CalcGFMYprim` impedance, so it injects with the
+/// sources, not with the ordinary PC elements).
 fn get_source_inj_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let sol = &mut ckt.solution;
@@ -39,10 +95,20 @@ fn get_source_inj_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
             elem.inj_currents(&sys, &mut ctx);
         }
     }
+    // Adds GFM PCE as well.
+    get_pc_inj_curr_filtered(ckt, env, true);
 }
 
-/// Pascal `GetPCInjCurr`: all enabled PC elements inject into `Currents`.
+/// Pascal `GetPCInjCurr(GFMOnly = FALSE)`: the ordinary (non-grid-forming) PC
+/// elements inject into `Currents`.
 fn get_pc_inj_curr(ckt: &mut Circuit, env: &mut SolveEnv) {
+    get_pc_inj_curr_filtered(ckt, env, false);
+}
+
+/// Pascal `TSolutionObj.GetPCInjCurr(GFMOnly)`: inject from the enabled PC
+/// elements, selecting grid-forming vs ordinary by `onGFM` (Pascal
+/// `valid := not (GFMOnly xor onGFM) and Enabled`).
+fn get_pc_inj_curr_filtered(ckt: &mut Circuit, env: &mut SolveEnv, gfm_only: bool) {
     let sys = sys_ctx(ckt);
     let sol = &mut ckt.solution;
     let mut ctx = InjCtx {
@@ -52,7 +118,8 @@ fn get_pc_inj_curr(ckt: &mut Circuit, env: &mut SolveEnv) {
     };
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
-        if elem.cd().enabled {
+        let on_gfm = elem.is_gfm();
+        if !(gfm_only ^ on_gfm) && elem.cd().enabled {
             elem.inj_currents(&sys, &mut ctx);
         }
     }
@@ -79,12 +146,80 @@ fn do_normal_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         if ckt.solution.system_y_changed {
             build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?;
         }
-        // UseAuxCurrents/AddInAuxCurrents: AutoAdd only, not in Phase 3.
+        // Pascal `if UseAuxCurrents then AddInAuxCurrents(NORMALSOLVE)`
+        // (Solution.pas l.899): AutoAdd's per-candidate trial-device injection.
+        if ckt.solution.use_aux_currents {
+            add_in_aux_currents(ckt, super::NORMALSOLVE);
+        }
 
         if ckt.log_events {
             log_event(ckt, "Solve Sparse Set DoNormalSolution ...");
         }
         ckt.solution.solve_system()?;
+        ckt.solution.loads_need_updating = false;
+
+        let num_nodes = ckt.num_nodes;
+        let converged = ckt.solution.converged(num_nodes);
+        if (converged && ckt.solution.iteration >= ckt.solution.min_iterations)
+            || ckt.solution.iteration >= ckt.solution.max_iterations
+        {
+            return Ok(());
+        }
+    }
+}
+
+/// Pascal `TSolutionObj.SumAllCurrents`: every circuit element sums its
+/// terminal currents into the system `Currents` array (`TDSSCktElement.
+/// SumCurrents`: `ComputeIterminal`, then `Currents[NodeRef[i]] += Iterminal[i]`
+/// with `NodeRef=0` accumulating harmlessly into the ground slot). Primarily
+/// for the Newton iteration.
+fn sum_all_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
+    let sys = sys_ctx(ckt);
+    let sol = &mut ckt.solution;
+    for &r in &ckt.ckt_elements {
+        let elem = env.store.ckt_elem_mut(r);
+        if !elem.cd().enabled || elem.cd().node_ref.is_empty() {
+            continue;
+        }
+        elem.compute_iterminal(&sys, &sol.node_v);
+        let cd = elem.cd();
+        for i in 0..cd.yorder {
+            sol.currents[cd.node_ref[i]] += cd.iterminal[i];
+        }
+    }
+}
+
+/// Pascal `DoNewtonSolution`: the Newton iteration
+/// `Vn+1 = Vn - [Y]⁻¹·Termcurr`, driving the sum of terminal currents into
+/// every node to zero. `Termcurr` is `SumAllCurrents` (PD: `Yprim·V`; PC:
+/// the compensation currents). Same convergence/budget clause as
+/// `DoNormalSolution`: `(Converged and Iteration >= MinIterations) or
+/// Iteration >= MaxIterations`. The `dV` work array (`ReAllocMem(dV, NumNodes+1)`)
+/// is the per-step scratch inside `solve_system_newton_step`.
+fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    // ControlIteration == 1: update the load multipliers for this solution.
+    if ckt.solution.control_iteration == 1 {
+        get_pc_inj_curr(ckt, env);
+    }
+
+    ckt.solution.iteration = 0;
+    loop {
+        ckt.solution.iteration += 1;
+        // SumAllCurrents uses ITerminal, so force a recalc via a fresh count.
+        ckt.solution.solution_count += 1;
+
+        // Get sum of currents at all nodes for all devices.
+        ckt.solution.zero_inj_curr();
+        sum_all_currents(ckt, env);
+
+        // The current calc could change Yprim for some devices, so check.
+        if ckt.solution.system_y_changed {
+            build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?;
+        }
+        // UseAuxCurrents/AddInAuxCurrents(NEWTONSOLVE): AutoAdd only.
+
+        // Solve for the change in voltages and update the guess.
+        ckt.solution.solve_system_newton_step()?;
         ckt.solution.loads_need_updating = false;
 
         let num_nodes = ckt.num_nodes;
@@ -136,7 +271,7 @@ pub fn solve_zero_load_snapshot(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
 /// Pascal `TSolutionObj.SetGeneratorDispRef`: the global generator dispatch
 /// reference per solve mode (generator.pas LOADMODE/PRICEMODE compare their
 /// `DispValue` against it).
-fn set_generator_disp_ref(ckt: &mut Circuit) {
+pub(crate) fn set_generator_disp_ref(ckt: &mut Circuit) {
     let lm = ckt.load_multiplier;
     let gf = ckt.default_growth_factor;
     let hm = ckt.default_hour_mult.re;
@@ -208,7 +343,7 @@ fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 }
 
 /// Pascal `DoPFLOWsolution`.
-fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.solution_count += 1;
 
     if ckt.solution.voltage_base_changed {
@@ -227,7 +362,7 @@ fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
 
     match ckt.solution.algorithm {
-        NEWTONSOLVE => Err("Newton solution not ported (later phase)".to_string()),
+        NEWTONSOLVE => do_newton_solution(ckt, env),
         _ => do_normal_solution(ckt, env),
     }?;
 
@@ -277,7 +412,7 @@ fn check_controls(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 }
 
 /// Pascal `SolveSnap`.
-pub(super) fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     set_generator_disp_ref(ckt); // Pascal SnapShotInit's first action
     ckt.solution.snap_shot_init();
     let mut total_iterations = 0;
@@ -326,7 +461,7 @@ pub(super) fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 }
 
 /// Pascal `SolveDirect`.
-pub(super) fn solve_direct(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn solve_direct(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.loads_need_updating = true;
     ckt.solution.solution_count += 1;
 

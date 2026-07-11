@@ -1,13 +1,18 @@
 //! Spec-pinned unit tests for the Storage element (`TStorageObj`). The numeric
-//! oracle pinning lives in the integration goldens (`phase7/storage*`) and the
+//! oracle pinning lives in the integration goldens (`der_controls/storage*`) and the
 //! live corpus gate; these pin the ported Pascal bodies that the oracle does not
 //! expose directly (Create defaults, the state machine, `ComputePresentkW`, the
 //! inverter clamp, the `%stored` read/write).
 
+use crate::elements::general::load_shape::{self, LoadShapeObj};
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce};
 use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
+use crate::obj::dss_enum::EnumRegistry;
+use crate::obj::props::PropEngine;
+use crate::solution::{SolveMode, USEDUTY, USENONE, USEYEARLY};
 use crate::support::cmatrix::CMatrix;
+use dss_parser::{Parser, ParserVars};
 use num_complex::Complex64;
 
 use super::*;
@@ -16,12 +21,77 @@ fn ctx() -> crate::elements::traits::SysCtx {
     crate::elements::pc::generator::default_recalc_ctx()
 }
 
+/// Build a populated `LoadShapeObj` through its real property engine.
+fn build_shape(mult: &str) -> LoadShapeObj {
+    let enums = EnumRegistry::new();
+    let cls = load_shape::class_props(&enums);
+    let mut obj = LoadShapeObj::new("s");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in [("npts", "4"), ("interval", "1"), ("mult", mult)] {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+    }
+    obj.end_edit();
+    assert!(errors.is_empty(), "{errors:?}");
+    obj
+}
+
+fn time_class_ctx(class: i32, dbl_hour: f64) -> SysCtx {
+    SysCtx {
+        mode: SolveMode::Time,
+        active_load_shape_class: class,
+        dbl_hour,
+        ..ctx()
+    }
+}
+
+/// Pascal `SetNominalStorage` GENERALTIME arm (Storage.pas:1318): under the
+/// DEFAULT dispatch, `ActiveLoadShapeClass` (`Set LoadShapeClass=`) picks WHICH
+/// of the three distinct curves sets `ShapeFactor` (at hr 2: daily→0.6,
+/// yearly→0.7, duty→0.5); default `USENONE` leaves it 1+j1. Gates an arm swap.
+#[test]
+fn time_loadshapeclass_selects_matching_curve() {
+    let mut st = Storage::new("s1");
+    assert_eq!(st.dispatch_mode, STORE_DEFAULT); // the `_ =>` mode-dispatch path
+    st.base.daily_shape_obj = Some(build_shape("0.2 0.6 1.0 0.5"));
+    st.base.yearly_shape_obj = Some(build_shape("0.3 0.7 0.9 0.4"));
+    st.base.duty_shape_obj = Some(build_shape("0.1 0.5 0.8 0.6"));
+
+    st.set_nominal_der_output(&time_class_ctx(USEYEARLY, 2.0));
+    assert!(
+        (st.base.shape_factor.re - 0.7).abs() < 1e-9,
+        "yearly: {}",
+        st.base.shape_factor.re
+    );
+    st.set_nominal_der_output(&time_class_ctx(USEDUTY, 2.0));
+    assert!(
+        (st.base.shape_factor.re - 0.5).abs() < 1e-9,
+        "duty: {}",
+        st.base.shape_factor.re
+    );
+    st.set_nominal_der_output(&time_class_ctx(USENONE, 2.0));
+    assert!(
+        (st.base.shape_factor.re - 1.0).abs() < 1e-9,
+        "none: {}",
+        st.base.shape_factor.re
+    );
+}
+
 /// The harmonic-mode YPrim is the Thevenin admittance behind `%R`/`%X`
 /// (`Yeq := 1/(Rthev + j·Xthev)`, then `Y.im /= h`) that `InitHarmonics` sets —
 /// NOT the state-dependent power-flow admittance. Pins the harmonic
 /// `CalcYPrimMatrix` branch entry-by-entry and discriminates it from the
 /// power-flow stamping. Oracle-independent backstop for the
-/// `phase7/harmonics_storage_h5` golden.
+/// `harmonics/harmonics_storage_h5` golden.
 #[test]
 fn harmonic_yprim_is_thevenin_admittance_not_powerflow() {
     let mut st = Storage::new("s1");
@@ -234,4 +304,61 @@ fn control_mode_gfm_sets_flag() {
     st.set_i32(prop::CONTROL_MODE, 1);
     st.side_effects(prop::CONTROL_MODE, 0);
     assert!(st.base.gfm_mode);
+}
+
+// --- MakePosSequence (WPG.21) --------------------------------------------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::elements::traits::CktElement;
+
+/// 3-phase Storage: kWrated ÷ phases, PF set. The Pascal body has NO leading
+/// `BeginEdit` (each `Set*` auto-brackets) and a dangling trailing `EndEdit`,
+/// so the plan starts with a bare `Set*` and ends with a lone `EndEdit`.
+#[test]
+fn makeposseq_storage_three_phase_no_begin_edit() {
+    let mut st = Storage::new("s");
+    st.base.connection = Connection::Wye;
+    st.cd.nphases = 3;
+    st.kv_storage_base = 12.47;
+    st.kw_rating = 100.0;
+    st.base.pf_nominal = 1.0;
+
+    let plan = st.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    // No BeginEdit anywhere; exactly one trailing EndEdit.
+    assert!(!plan.actions.contains(&PosSeqAction::BeginEdit));
+    assert_eq!(plan.actions.last(), Some(&PosSeqAction::EndEdit));
+    let v = 12.47 / 3.0_f64.sqrt();
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+            PosSeqAction::SetF64(prop::KW_RATED, 100.0 / 3.0),
+            PosSeqAction::SetF64(prop::PF, 1.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
+}
+
+/// 1-phase Storage: base kV kept, no kW/PF split, still the dangling EndEdit.
+#[test]
+fn makeposseq_storage_single_phase() {
+    let mut st = Storage::new("s");
+    st.base.connection = Connection::Wye;
+    st.cd.nphases = 1;
+    st.kv_storage_base = 7.2;
+    st.kw_rating = 100.0;
+
+    let plan = st.make_pos_sequence(&PosSeqCtx::default());
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, 7.2),
+            PosSeqAction::EndEdit,
+        ]
+    );
 }

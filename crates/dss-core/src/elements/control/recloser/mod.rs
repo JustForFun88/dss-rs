@@ -132,8 +132,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             .flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::mapped_string_enum("State", enums.recloser_state),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("Recloser", defs, true)

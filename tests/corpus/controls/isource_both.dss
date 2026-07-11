@@ -1,0 +1,23 @@
+! GAPS deck: Isource snapshot->daily transition — a snapshot Solve followed by
+! a daily run in the SAME session. Catches cross-mode state leaks (the
+! WP7.5 FFlagVWOperates class): the snapshot must not perturb the daily
+! trajectory and vice versa. Same network as isource_daily.dss.
+Clear
+New Circuit.gaps_isrcb basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.pv8 npts=8 interval=1 mult=(0.0 0.15 0.45 0.80 1.00 0.85 0.40 0.05)
+New Loadshape.day8 npts=8 interval=1 mult=(0.40 0.55 0.70 0.90 1.00 0.95 0.80 0.60)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=900 pf=0.95 model=1 daily=day8
+New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=500 pf=0.92 model=2 daily=day8
+New Isource.ipv1 bus1=b2.1 phases=1 amps=35 angle=0 daily=pv8
+New Isource.ipv2 bus1=b2.2 phases=1 amps=35 angle=-120 daily=pv8
+New Isource.ipv3 bus1=b2.3 phases=1 amps=35 angle=120 daily=pv8
+New Monitor.m_i element=Isource.ipv1 terminal=1 mode=0
+New Monitor.m_l2 element=Line.l2 terminal=1 mode=1 ppolar=no
+New EnergyMeter.em element=Line.l1 terminal=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+Solve
+Set mode=daily stepsize=1h number=8
+Solve

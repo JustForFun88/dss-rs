@@ -158,10 +158,23 @@ impl ClassProps {
                         // `DSSObjectReferenceProperty`: resolve `cls.Find(name)`
                         // (case-insensitive). On failure DoSimpleMsg 401 and the
                         // reference is left NIL, but the edit continues.
-                        let resolved = eng.foreign.and_then(|f| f.find(class, value));
+                        let mut resolved = eng.foreign.and_then(|f| f.find(class, value));
+                        // Pascal `TProxyClass` (RegControl `transformer=`): try the
+                        // second class when the first misses.
+                        if resolved.is_none()
+                            && let Some(class2) = pd.object_class2
+                        {
+                            resolved = eng.foreign.and_then(|f| f.find(class2, value));
+                        }
                         if resolved.is_none() && !value.is_empty() {
+                            // Pascal renders `cls.Name` — a `TProxyClass` is named
+                            // `(Class1|Class2)` (`TProxyClass.Create`).
+                            let cls_label = match pd.object_class2 {
+                                Some(class2) => format!("({class}|{class2})"),
+                                None => class.to_string(),
+                            };
                             eng.errors.push(format!(
-                                "{full}.{}: {class} object \"{value}\" not found.",
+                                "{full}.{}: {cls_label} object \"{value}\" not found.",
                                 pd.name
                             ));
                         }
@@ -282,6 +295,34 @@ impl ClassProps {
                 ))
             }
             PropType::DoubleArray => {
+                // Pascal `CustomSetRaw`: a class may consume the raw value
+                // before numeric parsing (LoadShape's `mult=(sngfile=…)` MMF
+                // directives). If it does, skip `InterpretDblArray` entirely.
+                if obj.set_f64_array_raw(idx, value) {
+                    return Ok(0);
+                }
+                // WPG.19: a file-backed directive (`%mag=(file=…)`,
+                // `Yarray=(sngfile=…)`) on the generic double-array path (Pascal
+                // `DSSObjectHelper.pas:616-636` routes every double-array property
+                // through `InterpretDblArray`). The read needs the filesystem +
+                // `LastResultFile`, unreachable here, so queue it for the
+                // executive; it reads the file, applies the shrink + round/scale/
+                // non-zero, and writes the array via the typed accessors.
+                if let Some(spec) = crate::util::parse_dbl_array_file_spec(value) {
+                    obj.data_mut()
+                        .queue_dbl_array_file(crate::obj::base::GenericDblArrayFile {
+                            prop: idx,
+                            size_prop: pd.size_prop,
+                            kind: spec.kind,
+                            filename: spec.filename,
+                            column: spec.column,
+                            header: spec.header,
+                            apply_round: pd.flags.contains(PropFlags::APPLY_ROUND),
+                            scale: pd.scale,
+                            non_zero: pd.flags.contains(PropFlags::NON_ZERO),
+                        });
+                    return Ok(0);
+                }
                 let max = obj.get_i32(pd.size_prop).max(0) as usize;
                 let mut buf = vec![0.0; max];
                 interpret_dbl_array(eng.parser, eng.vars, value, max, &mut buf)?;

@@ -30,6 +30,7 @@
 mod tests;
 
 mod accessors;
+mod dump;
 mod edit;
 mod matrix;
 
@@ -46,23 +47,23 @@ const LINETYPE_OH: i32 = 1;
 
 define_properties! {
     class "LineGeometry", abbrev true, enums enums;
-    1  NCONDS    => PropDef::integer("nconds")
+    1  NCONDS    => PropDef::integer("NConds")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
-    2  NPHASES   => PropDef::integer("nphases").flags(PropFlags::NON_NEGATIVE);
-    3  COND      => PropDef::integer("cond");
-    4  WIRE      => PropDef::object_ref_class("WireData", "wire");
-    5  X         => PropDef::double("x");
-    6  H         => PropDef::double("h");
-    7  UNITS     => PropDef::mapped_string_enum("units", enums.units);
-    8  NORMAMPS  => PropDef::double("normamps");
-    9  EMERGAMPS => PropDef::double("emergamps");
+    2  NPHASES   => PropDef::integer("NPhases").flags(PropFlags::NON_NEGATIVE);
+    3  COND      => PropDef::integer("Cond");
+    4  WIRE      => PropDef::object_ref_class("WireData", "Wire");
+    5  X         => PropDef::double("X");
+    6  H         => PropDef::double("H");
+    7  UNITS     => PropDef::mapped_string_enum("Units", enums.units);
+    8  NORMAMPS  => PropDef::double("NormAmps");
+    9  EMERGAMPS => PropDef::double("EmergAmps");
     10 REDUCE    => PropDef::boolean("Reduce");
-    11 SPACING   => PropDef::object_ref_class("LineSpacing", "spacing");
-    12 WIRES     => PropDef::object_ref_array("WireData", "wires");
-    13 CNCABLE   => PropDef::object_ref_class("CNData", "cncable");
-    14 TSCABLE   => PropDef::object_ref_class("TSData", "tscable");
-    15 CNCABLES  => PropDef::object_ref_array("CNData", "cncables");
-    16 TSCABLES  => PropDef::object_ref_array("TSData", "tscables");
+    11 SPACING   => PropDef::object_ref_class("LineSpacing", "Spacing");
+    12 WIRES     => PropDef::object_ref_array("WireData", "Wires");
+    13 CNCABLE   => PropDef::object_ref_class("CNData", "CNCable");
+    14 TSCABLE   => PropDef::object_ref_class("TSData", "TSCable");
+    15 CNCABLES  => PropDef::object_ref_array("CNData", "CNCables");
+    16 TSCABLES  => PropDef::object_ref_array("TSData", "TSCables");
     17 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
     18 RATINGS   => PropDef::double_array("Ratings", SEASONS);
     19 LINETYPE  => PropDef::mapped_string_enum("LineType", enums.line_type);
@@ -234,5 +235,57 @@ impl LineGeometryObj {
     /// Pascal `LineGeometryObj.FLineType`.
     pub fn line_type(&self) -> i32 {
         self.fline_type
+    }
+
+    /// Pascal `TLineGeometryObj.NWires` (`property NWires READ FNConds`,
+    /// LineGeometry.pas:166): the conductor count the CIM `WireSpacingInfo`
+    /// export iterates over. Read-only accessor for GAPS_PLAN WPG.18 Stage C.
+    pub fn nwires(&self) -> i32 {
+        self.fnconds
+    }
+
+    /// Pascal `Xcoord[i]` (`Get_FX`, LineGeometry.pas:161): per-conductor
+    /// horizontal coordinate (in each conductor's own `Units[i]`). 0-based slot
+    /// `i` is conductor `i+1`. Read-only accessor for WPG.18 Stage C.
+    pub fn fx(&self) -> &[f64] {
+        &self.fx
+    }
+
+    /// Pascal `Ycoord[i]` (`Get_FY`, LineGeometry.pas:162): per-conductor
+    /// vertical coordinate. Read-only accessor for WPG.18 Stage C.
+    pub fn fy(&self) -> &[f64] {
+        &self.fy
+    }
+
+    /// Pascal `Units[i]` (`Get_FUnits`, LineGeometry.pas:163): per-conductor
+    /// `LineUnits` code for the `fx`/`fy` coordinate. Read-only accessor for
+    /// WPG.18 Stage C.
+    pub fn funits(&self) -> &[i32] {
+        &self.funits
+    }
+
+    /// Pascal `PhaseChoice[i] = Overhead` (`Get_PhaseChoice`,
+    /// LineGeometry.pas:167/762): the CIM `WireSpacingInfo.isCable` flag reads
+    /// `PhaseChoice[1]` (first conductor). `i` is 1-based. Read-only accessor
+    /// for WPG.18 Stage C.
+    pub fn conductor_is_overhead(&self, i_one_based: usize) -> bool {
+        matches!(
+            self.fphase_choice.get(i_one_based.wrapping_sub(1)),
+            Some(ConductorChoice::Overhead)
+        )
+    }
+
+    /// Pascal `ConductorData[i]` (`Get_ConductorData`, LineGeometry.pas:746):
+    /// the per-conductor catalog object (`WireData`/`CNData`/`TSData`), or
+    /// `None` (Pascal NIL). `i` is 1-based. Read-only accessor for the WPG.18
+    /// Stage C `ACLineSegmentPhase.WireInfo` reference.
+    pub fn conductor(&self, i_one_based: usize) -> Option<&dyn DssObject> {
+        if i_one_based >= 1 && i_one_based <= self.fnconds as usize {
+            self.fwiredata
+                .get(i_one_based - 1)
+                .and_then(|o| o.as_deref())
+        } else {
+            None
+        }
     }
 }

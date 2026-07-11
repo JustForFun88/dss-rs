@@ -1,0 +1,42 @@
+// Asymmetric Line coverage: LineCodes with FULL asymmetric rmatrix/xmatrix/
+// cmatrix inputs (3-phase and 2-phase; pins the ParseAsSymMatrix
+// lower-triangle-wins order), a 1-phase code, a sequence-spec line with
+// r0 <> r1, and a switch line — unbalanced load at the far end.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.line_asym basekv=12.47 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=2000 mvasc1=2100
+
+New linecode.lca nphases=3 units=kft
+~ rmatrix=[0.087 0.029 0.028 | 0.031 0.089 0.030 | 0.027 0.032 0.087]
+~ xmatrix=[0.203 0.085 0.072 | 0.088 0.196 0.083 | 0.070 0.086 0.202]
+~ cmatrix=[2.74 -0.70 -0.34 | -0.72 2.96 -0.71 | -0.33 -0.69 2.74]
+
+New linecode.lcb nphases=2 units=kft
+~ rmatrix=[0.091 0.030 | 0.034 0.093]
+~ xmatrix=[0.210 0.090 | 0.095 0.205]
+~ cmatrix=[2.60 -0.60 | -0.65 2.55]
+
+New linecode.lc1 nphases=1 r1=0.095 x1=0.21 c1=3.0 units=kft
+
+! 3-phase line on the asymmetric-input code.
+New line.l3 bus1=src bus2=b1 linecode=lca length=8 units=kft
+
+! 2-phase line (phases 2 & 3) + 1-phase line (phase 1) continue in parallel.
+New line.l2 phases=2 bus1=b1.2.3 bus2=b2.2.3 linecode=lcb length=6 units=kft
+New line.l1 phases=1 bus1=b1.1 bus2=b2.1 linecode=lc1 length=6 units=kft
+
+! Sequence-spec line with r0 <> r1 (asymmetric zero-sequence coupling).
+New line.lseq bus1=b2 bus2=b3 r1=0.06 x1=0.14 r0=0.17 x0=0.44 c1=3.1 c0=1.5 length=5 units=kft
+
+! Switch line (fixed small Z).
+New line.lsw bus1=b3 bus2=b4 switch=yes
+
+! Unbalanced excitation.
+New load.la bus1=b4.1 phases=1 conn=wye model=1 kv=7.2 kw=850 pf=0.9
+New load.lb bus1=b4.2 phases=1 conn=wye model=1 kv=7.2 kw=150 pf=0.95
+New load.lc bus1=b4.3 phases=1 conn=wye model=1 kv=7.2 kw=1250 pf=0.85
+
+Set voltagebases=[12.47]
+calcv

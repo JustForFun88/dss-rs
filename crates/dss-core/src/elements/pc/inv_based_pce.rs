@@ -17,8 +17,10 @@
 //! `SolveDynamicStep`/`SolveModulation`/`InitDynArrays`, the `PICtrl`
 //! PI-controller array, and (WP7.7 step 3b) the embedded [`DynEqPceData`] memory
 //! that integrates a user `DynamicExp` — landed in WP7.7. The grid-forming-mode
-//! (GFM) `CalcGFM*`/`GetCurrents` override and `CheckAmpsLimit` are still
-//! NOT_PORTED.
+//! (GFM) power-flow model — `CalcGFMYprim`/`CalcGFMVoltage`, the `GetCurrents`
+//! override, `CheckAmpsLimit` — landed in WPG.13 (snapshot/daily/direct). The
+//! **dynamics-mode** GFM branch (`DoDynamicMode`/`IntegrateStates` GFM,
+//! `FixPhaseAngle`/`VDelta`/`ISPDelta` black-start droop) landed in WPG.17.
 //!
 //! [`Generator`]: crate::elements::pc::generator::Generator
 
@@ -31,9 +33,11 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::dyneq_pce::DynEqPceData;
 use crate::elements::traits::ElemRef;
-use crate::support::complexutil::Polar;
+use crate::support::cmatrix::CMatrix;
+use crate::support::complexutil::{Polar, pdeg_to_complex};
 use crate::support::dynamics::IterationFlag;
 use crate::support::mathutil::PiCtrl;
+use crate::util::{quad_solver, sqrt3};
 
 /// Pascal `NumInvDynVars = 9` (InvDynamics.pas l.61).
 pub const NUM_INV_DYN_VARS: usize = 9;
@@ -109,9 +113,12 @@ pub struct InvDynamicVars {
     pub it_history: Vec<f64>,
     /// `m` — average duty cycle per phase.
     pub m: Vec<f64>,
-    /// `ISPDelta` — GFM current-target delta; zeroed in GFL init (GFM: WP7.7 later).
+    /// `VDelta` — GFM black-start voltage delta per phase (droop control).
+    pub v_delta: Vec<f64>,
+    /// `ISPDelta` — GFM current-target delta per phase (black-start / droop;
+    /// ramped by the dynamics-mode GFM `IntegrateStates`, WPG.17).
     pub isp_delta: Vec<f64>,
-    /// `AngDelta` — phase-angle correction (GFM); zeroed in GFL init.
+    /// `AngDelta` — phase-angle correction (GFM `FixPhaseAngle`).
     pub ang_delta: Vec<f64>,
     /// `SfModePhase` — per-phase safe-mode flag.
     pub sf_mode_phase: Vec<bool>,
@@ -149,6 +156,7 @@ impl InvDynamicVars {
             it: Vec::new(),
             it_history: Vec::new(),
             m: Vec::new(),
+            v_delta: Vec::new(),
             isp_delta: Vec::new(),
             ang_delta: Vec::new(),
             sf_mode_phase: Vec::new(),
@@ -163,11 +171,76 @@ impl InvDynamicVars {
         self.it_history = vec![0.0; nphases];
         self.vgrid = vec![Polar { mag: 0.0, ang: 0.0 }; nphases];
         self.m = vec![0.0; nphases];
+        self.v_delta = vec![0.0; nphases];
         self.isp_delta = vec![0.0; nphases];
         self.ang_delta = vec![0.0; nphases];
         self.sf_mode_phase = vec![false; nphases];
         self.safe_mode = false;
-        // VDelta is GFM-only — NOT_PORTED (WP7.7 GFM step).
+    }
+
+    /// Pascal `TInvDynamicVars.CalcGFMYprim` (InvDynamics.pas l.229) — the
+    /// equivalent short-circuit admittance for an inverter operating in
+    /// grid-forming mode. Similar to the VSource sequence-impedance build, with
+    /// the `R0`/`X0` defaults (1.9/5.7) and `R1 = X1/4` baked in. Fills the
+    /// `nphases×nphases` symmetric block of an `order×order` matrix, inverts it,
+    /// and returns the resulting admittance (`YMatrix.CopyFrom(Z⁻¹)`).
+    pub fn calc_gfm_yprim(&self, nphases: usize, order: usize) -> CMatrix {
+        let mut z = CMatrix::new(order);
+
+        // X1 = (RatedkVLL² / mKVARating) / √(1 + 0.0625).
+        let x1 = (self.rated_kv_ll.powi(2) / self.m_kva_rating) / (1.0 + 0.0625_f64).sqrt();
+        let r1 = x1 / 4.0; // uses defaults
+        // R0 := 1.9; X0 := 5.7; X0R0 := X0/R0 (before QuadSolver re-solves R0).
+        let x0r0 = 5.7 / 1.9;
+        let isc1 = (self.m_kva_rating * 1000.0 / (sqrt3() * self.rated_kv_ll)) / nphases as f64;
+        // Compute R0, X0. Pascal hardcodes `a := 10` (= 1 + X0R0² for the 5.7/1.9
+        // defaults) — reproduced as the literal so QuadSolver matches bit-for-bit.
+        let a = 10.0;
+        let b = 4.0 * (r1 + (x1 * x0r0));
+        let c = 4.0 * (r1 * r1 + x1 * x1) - ((sqrt3() * self.rated_kv_ll * 1000.0) / isc1).powi(2);
+        let r0 = quad_solver(a, b, c);
+        let x0 = r0 * x0r0;
+        // for Z matrix
+        let xs = (2.0 * x1 + x0) / 3.0;
+        let rs = (2.0 * r1 + r0) / 3.0;
+        let rm = (r0 - r1) / 3.0;
+        let xm = (x0 - x1) / 3.0;
+        let zs = num_complex::Complex64::new(rs, xs);
+        let zm = num_complex::Complex64::new(rm, xm);
+
+        for i in 0..nphases {
+            z.set(i, i, zs);
+            for j in 0..i {
+                z.set(i, j, zm);
+                z.set(j, i, zm);
+            }
+        }
+        // Pascal ignores the invert return (a delta GFM inverter is non-singular;
+        // the corpus GFM decks are all delta-connected).
+        let _ = z.invert();
+        z
+    }
+
+    /// Pascal `TInvDynamicVars.CalcGFMVoltage` (InvDynamics.pas l.293) —
+    /// balanced internal source phasors at magnitude `BaseV`, angles
+    /// `360 − (k·360)/NPhases` (degrees). Written into `x[0..nphases-1]`
+    /// (Pascal writes the 1-based `x[1..NPhases]`, leaving the ground slot).
+    pub fn calc_gfm_voltage(&self, nphases: usize, x: &mut [num_complex::Complex64]) {
+        let ref_angle = 0.0;
+        for (k, slot) in x.iter_mut().enumerate().take(nphases) {
+            *slot = pdeg_to_complex(
+                self.base_v,
+                360.0 + ref_angle - (k as f64 * 360.0) / nphases as f64,
+            );
+        }
+    }
+
+    /// Pascal `TInvDynamicVars.FixPhaseAngle` (InvDynamics.pas l.220) — corrects
+    /// the current phasor angle for phase `idx` (dynamics GFM, black-start).
+    pub fn fix_phase_angle(&mut self, idx: usize) {
+        use std::f64::consts::TAU;
+        self.ang_delta[idx] += ((idx as f64 * TAU) / -3.0) - self.vgrid[idx].ang;
+        self.vgrid[idx].ang = self.ang_delta[idx];
     }
 
     /// Pascal `TInvDynamicVars.SolveModulation` (l.178) — update the duty cycle

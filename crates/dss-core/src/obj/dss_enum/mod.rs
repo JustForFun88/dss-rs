@@ -55,10 +55,17 @@ pub struct EnumRegistry {
     pub default_load_model: EnumId,
     /// 'Circuit Model' (`DSS.CktModelEnum`).
     pub ckt_model: EnumId,
+    /// 'Load Shape Class' (`DSS.LoadShapeClassEnum`, `Set LoadShapeClass=`).
+    pub load_shape_class: EnumId,
     /// 'Core Type' (`DSS.CoreTypeEnum`).
     pub core_type: EnumId,
     /// 'Phase Sequence' reused for transformer LeadLag (`DSS.LeadLagEnum`).
     pub lead_lag: EnumId,
+    /// 'AutoTrans: Connection' (AutoTrans.pas `AutoTransConnectionEnum`; adds
+    /// `series` to wye/delta).
+    pub autotrans_connection: EnumId,
+    /// 'GICTransformer: Type' (GICTransformer.pas `TypeEnum`; GSU/Auto/YY).
+    pub gic_transformer_type: EnumId,
     /// 'RegControl: Phase Selection' (RegControl.pas `PhaseEnum`).
     pub reg_control_phase: EnumId,
     /// 'Monitored Phase' (`DSS.MonPhaseEnum`, CapControl PT/CT phase).

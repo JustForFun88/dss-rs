@@ -1,0 +1,37 @@
+// Asymmetric Load coverage: every static load model (1..5, 8/ZIPV), wye and
+// delta, 1/2/3-phase, all with per-phase-unequal powers so every model's
+// current-injection path runs unbalanced.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.load_asym basekv=12.47 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=2000 mvasc1=2100
+
+New line.t1 bus1=src bus2=b1 r1=0.08 x1=0.25 r0=0.25 x0=0.8 c1=0 c0=0 length=1
+
+! Model 1 (const PQ): 1-phase wye + 1-phase delta (L-L).
+New load.m1a phases=1 bus1=b1.1 conn=wye model=1 kv=7.2 kw=700 pf=0.92 vminpu=0.8
+New load.m1d phases=1 bus1=b1.1.2 conn=delta model=1 kv=12.47 kw=300 pf=0.88 vminpu=0.8
+
+! Model 2 (const Z): 3-phase delta.
+New load.m2 phases=3 bus1=b1 conn=delta model=2 kv=12.47 kw=500 pf=0.95
+
+! Model 3 (const P, quadratic Q — motor-like): 3-phase wye.
+New load.m3 phases=3 bus1=b1 conn=wye model=3 kv=12.47 kw=400 kvar=180
+
+! Model 4 (CVR): 1-phase on phase 2.
+New load.m4 phases=1 bus1=b1.2 conn=wye model=4 kv=7.2 kw=350 pf=0.9
+~ cvrwatts=0.9 cvrvars=2.5
+
+! Model 5 (const |I|): 1-phase on phase 3.
+New load.m5 phases=1 bus1=b1.3 conn=wye model=5 kv=7.2 kw=800 pf=0.85
+
+! Model 8 (ZIPV): 3-phase wye with a ZIP mix and a voltage cutoff.
+New load.m8 phases=3 bus1=b1 conn=wye model=8 kv=12.47 kw=450 pf=0.93
+~ zipv=[0.4 0.3 0.3 0.5 0.3 0.2 0.6]
+
+! 2-phase load across phases 2 & 3.
+New load.m1t phases=2 bus1=b1.2.3 conn=wye model=1 kv=7.2 kw=260 pf=0.9
+
+Set voltagebases=[12.47]
+calcv

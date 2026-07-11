@@ -272,17 +272,30 @@ impl Upfc {
         }
     }
 
-    /// Pascal `TUPFCObj.GetInjCurrents` — cache `Vbin`/`Vbout` from the present
-    /// terminal node voltages and fill `inj_current` with the input/output
-    /// injections (terminal 1 = InCurr, terminal 2 = OutCurr).
+    /// Pascal `TUPFCObj.GetInjCurrents` — the solve path: fill
+    /// `self.cd.inj_current` via [`Self::compute_inj_currents`].
     pub(super) fn get_inj_currents(&mut self, node_v: &[Complex64]) {
+        self.cd.inj_current = self.compute_inj_currents(node_v);
+    }
+
+    /// Pascal `TUPFCObj.GetInjCurrents` — cache `Vbin`/`Vbout` from the present
+    /// terminal node voltages and **return** the input/output injections
+    /// (terminal 1 = InCurr, terminal 2 = OutCurr — a pure read of the
+    /// control-clocked `UploadCurrents` caches). `self.cd.inj_current` is left
+    /// untouched so the reporting path stays side-effect-free (Pascal
+    /// `TUPFCObj.GetCurrents` writes into the scratch `ComplexBuffer`, never
+    /// `InjCurrent`); the `Vbin`/`Vbout` refresh is Pascal's own side effect,
+    /// present in both paths upstream.
+    pub(super) fn compute_inj_currents(&mut self, node_v: &[Complex64]) -> Vec<Complex64> {
         let nphases = self.cd.nphases;
+        let mut inj = vec![Complex64::ZERO; self.cd.yorder];
         for i in 0..nphases {
             self.vbin = node_v[self.cd.node_ref[i]];
             self.vbout = node_v[self.cd.node_ref[i + nphases]];
-            self.cd.inj_current[i + nphases] = self.out_curr[i];
-            self.cd.inj_current[i] = self.in_curr[i];
+            inj[i + nphases] = self.out_curr[i];
+            inj[i] = self.in_curr[i];
         }
+        inj
     }
 
     /// Pascal `TUPFCObj.UploadCurrents` — recompute every phase's output then input

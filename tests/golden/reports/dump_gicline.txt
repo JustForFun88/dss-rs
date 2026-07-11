@@ -1,0 +1,22 @@
+
+New "GICLine.gl2"
+! ENABLED
+~ Bus1=b2
+~ Bus2=b3
+~ Volts=113.323162579526
+~ Angle=0
+~ Frequency=0.1
+~ Phases=3
+~ R=2.8
+~ X=0
+~ C=0
+~ EN=1
+~ EE=1
+~ Lat1=33.613499
+~ Lon1=-87.373673
+~ Lat2=33.547885
+~ Lon2=-86.074605
+~ Spectrum=
+~ BaseFreq=60
+~ Enabled=Yes
+~ Like=

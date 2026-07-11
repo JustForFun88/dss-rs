@@ -1,0 +1,27 @@
+// GAPS_PLAN WPG.18 Stage B gate deck: the EnergyConsumer sweep + AttachLoadPhases
+// + AttachSecondaryPhases + the EnergyConnectionProfile (ECP) machinery. Every
+// branch of the load export is exercised:
+//   - 3-phase wye + delta loads (AttachLoadPhases early-exits: no phase objects)
+//   - a 1-phase kV>=0.25 load (the non-secondary per-phase EnergyConsumerPhase loop)
+//   - a 2-phase kV<0.25 load (the split-secondary branch: s1 + s2)
+//   - a 1-phase kV<0.25 load (the secondary branch, phase from PhaseString)
+//   - a daily LoadShape on one load (an EnergyConnectionProfile row w/ dssDaily)
+//   - load models 1..5 (the LoadResponseCharacteristic id map)
+// Note: with loads but no series branches (lines/transformers are Stage C/E), the
+// oracle's SetVoltageBases leaves every bus base at 0 (there is nothing to
+// traverse); the buses still solve (7199 V / 120 V), and the export is byte-exact
+// vs the pinned oracle either way — the base only feeds the PhaseString secondary
+// test, so here every non-3-phase load reads as a secondary. Genuine non-zero
+// bases arrive with the Stage C/E line/transformer decks.
+New Circuit.cim_load basekv=12.47 bus1=sourcebus pu=1.0 phases=3
+New LoadShape.dayshape npts=4 interval=1 mult=[1 1 1 1]
+New Load.wyeload   bus1=sourcebus     phases=3 conn=wye   kV=12.47 kW=100 kvar=30 model=1 daily=dayshape
+New Load.deltaload bus1=sourcebus     phases=3 conn=delta kV=12.47 kW=50  kvar=10 model=2
+New Load.motorload bus1=sourcebus     phases=3 conn=wye   kV=12.47 kW=20  kvar=5  model=3
+New Load.cvrload   bus1=sourcebus     phases=3 conn=wye   kV=12.47 kW=20  kvar=5  model=4 cvrwatts=0.8 cvrvars=3
+New Load.ld1ph     bus1=sourcebus.1   phases=1 conn=wye   kV=7.2   kW=10  kvar=3  model=5
+New Load.ld2sec    bus1=sourcebus.1.2 phases=2 conn=wye   kV=0.208 kW=8   kvar=2  model=1
+New Load.ld1sec    bus1=sourcebus.2   phases=1 conn=wye   kV=0.208 kW=4   kvar=1  model=1
+Solve
+SetBusXY bus=sourcebus x=1000 y=2000
+Solve

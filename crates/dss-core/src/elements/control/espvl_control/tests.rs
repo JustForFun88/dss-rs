@@ -220,3 +220,36 @@ fn make_like_copies_only_terminal_and_monitored() {
     assert_eq!(dst.f_kw_band, 100.0);
     assert_eq!(dst.f_kvar_limit, 4000.0);
 }
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+
+    /// Pascal `TESPVLControlObj.MakePosSequence` (ESPVLControl.pas:357) is the
+    /// same NIL-deref hazard as GenDispatcher (Access violation #303, probe `S4`).
+    /// Safe-skip when the always-NIL ControlledElement is unresolved.
+    #[test]
+    fn crash_config_element_set_is_safe_skip() {
+        let mut es = EspvlControl::new("es1");
+        es.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 });
+        let (np, nc) = (es.ccd.cd.nphases, es.ccd.cd.nconds);
+        let bus = es.ccd.cd.get_bus(1).to_string();
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                bus_names: vec!["b1".into()],
+                ..Default::default()
+            }),
+            controlled: None,
+            ..Default::default()
+        };
+        let plan = es.make_pos_sequence(&ctx);
+        assert_eq!((es.ccd.cd.nphases, es.ccd.cd.nconds), (np, nc));
+        assert_eq!(es.ccd.cd.get_bus(1), bus);
+        assert!(plan.run_base);
+        assert_eq!(es.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+    }
+}

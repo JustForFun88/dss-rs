@@ -29,8 +29,9 @@
 //! PVSystem/Storage fleet resolution), `RecalcElementData`'s
 //! bus/monitored-element setup, the `monBus` per-bus node parsing
 //! (`FMonBuses`/`FMonBusesNodes` — consumed only by `Sample`'s `GetMonVoltage`),
-//! and the entire `Sample`/`DoPendingAction`/`Reset` dispatch. **NOT_PORTED:**
-//! `MakePosSequence`.
+//! and the entire `Sample`/`DoPendingAction`/`Reset` dispatch. `MakePosSequence`
+//! is ported (WPG.21) as a NIL-deref-safe partial (the defined 3-phase resync +
+//! resolved-DER bus adopt, empty-list deref safe-skipped — see [`accessors`]).
 
 mod accessors;
 mod compute;
@@ -57,6 +58,9 @@ pub(crate) const WATTPF: i32 = 4;
 pub(crate) const WATTVAR: i32 = 5;
 // AVR=6 (active voltage regulation) — the 3-stage DQDV regulator, ported in step 2e-ii.
 pub(crate) const AVR: i32 = 6;
+// GFM=7 (grid-forming) — the amps-limit / overload protective arm over a
+// grid-forming DER (WPG.13).
+pub(crate) const GFM: i32 = 7;
 
 // Combi-mode ordinals (InvControl.pas `TInvControlCombiMode`).
 pub(crate) const NONE_COMBMODE: i32 = 0;
@@ -188,11 +192,54 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("VSetPoint"),
         PropDef::mapped_int_enum("ControlModel", enums.invcontrol_model),
         // TCktElementClass tail:
-        PropDef::double("basefreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::enabled("enabled"),
+        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("InvControl", defs, true)
+}
+
+/// Pascal `TPICtrl` (`Shared/mathutil.pas` l.21) — the two-tap discrete PI
+/// controller InvControl runs for the Exponential `ControlModel`. `kNum`/`kDen`
+/// are recomputed from the object-level `FdeltaQ_factor` before every `SolvePI`
+/// call (InvControl.pas l.2706-2707); `Kp` is fixed at 1 in InvControl
+/// (`RecalcElementData`, l.2400), overriding the 0.02 mathutil default. `den`/`num`
+/// are the private filter history — persisted across `Sample` calls per DER.
+#[derive(Debug, Clone)]
+pub(crate) struct PICtrl {
+    /// `den`/`num: Array[0..1] of Double` — the two-tap filter state (private).
+    den: [f64; 2],
+    num: [f64; 2],
+    pub k_num: f64,
+    pub k_den: f64,
+    pub kp: f64,
+}
+
+impl Default for PICtrl {
+    /// Pascal `TPICtrl.Create` (mathutil.pas l.67): a rising 5-step function —
+    /// `kNum=0.8647`, `kDen=0.1353`, `Kp=0.02`, `den[1]=0`, `num[1]=0`. InvControl
+    /// overrides `Kp:=1` right after `Create` (see [`InvVars::new`]).
+    fn default() -> Self {
+        Self {
+            den: [0.0, 0.0],
+            num: [0.0, 0.0],
+            k_num: 0.8647,
+            k_den: 0.1353,
+            kp: 0.02,
+        }
+    }
+}
+
+impl PICtrl {
+    /// Pascal `TPICtrl.SolvePI` (mathutil.pas l.81) — one filter step: shift the
+    /// taps, load `SetPoint·Kp`, and return the new denominator tap.
+    pub(crate) fn solve_pi(&mut self, setpoint: f64) -> f64 {
+        self.num[0] = self.num[1];
+        self.num[1] = setpoint * self.kp;
+        self.den[0] = self.den[1];
+        self.den[1] = (self.num[0] * self.k_num) + (self.den[0] * self.k_den);
+        self.den[1]
+    }
 }
 
 /// Pascal `TInvVars` — the per-controlled-DER runtime state (one record per fleet
@@ -235,6 +282,10 @@ pub(crate) struct InvVars {
     pub delta_v_old: f64,
     /// `FVVOperation` — volt-var operating flag (-1 absorb / 1 inject / 0 none).
     pub f_vv_operation: f64,
+    /// `PICtrl` — the per-DER `TPICtrl` PI controller (Exponential `ControlModel`).
+    /// Shared by the VV / AVR / DRC / VV_DRC var-calc paths; its filter history
+    /// persists across `Sample` calls. Unused on the Linear path.
+    pub pi_ctrl: PICtrl,
 
     // --- DRC / VV_DRC reactive-power state (sub-step 2d) ---
     /// `QDesiredDRC` — the DRC kvar set-point pushed to the DER.
@@ -323,11 +374,11 @@ pub(crate) struct InvVars {
     /// per step in `UpdateInvControl`).
     pub f_prior_q_desire_optionpu: f64,
     pub f_prior_p_limit_optionpu: f64,
-    /// `FDCkW` (PVSystem `PanelkW`), `FDCkWRated` (PVSystem `Pmpp`),
-    /// `FpctDCkWRated` (PVSystem `puPmpp`), `FEffFactor` — the volt-watt power-base
-    /// inputs, refreshed each Sample by `UpdateDERParameters`. PVSystem-only: the
-    /// Storage VOLTWATT/VV_VW dispatch is deferred (an explicit error, not a silent
-    /// skip), so the Storage `DCkW` path of `Calc_PBase` is not carried here.
+    /// `FDCkW` (PVSystem `PanelkW`; 0 for Storage), `FDCkWRated` (PVSystem `Pmpp` /
+    /// Storage `kWrating`), `FpctDCkWRated` (PVSystem `puPmpp` / Storage
+    /// `pctkWrated`), `FEffFactor` — the volt-watt power-base inputs, refreshed each
+    /// Sample by `UpdateDERParameters`. The Storage `%Available` base reads the live
+    /// `TStorageObj.DCkW` at `Calc_PBase` time instead of `f_dckw` (WPG.10).
     pub f_dckw: f64,
     pub f_dckw_rated: f64,
     pub f_pct_dckw_rated: f64,
@@ -383,6 +434,12 @@ impl InvVars {
             f_active_vv_curve: 1,
             f_inverter_on: true,
             f_pending_change: CHANGE_NONE,
+            // Pascal `RecalcElementData` (InvControl.pas l.2399-2400) creates each
+            // DER's `TPICtrl` then overrides `Kp := 1`.
+            pi_ctrl: PICtrl {
+                kp: 1.0,
+                ..PICtrl::default()
+            },
             ..Default::default()
         }
     }
@@ -598,5 +655,53 @@ impl InvControl {
     /// resolution).
     pub(crate) fn der_name_list(&self) -> &[String] {
         &self.der_name_list
+    }
+
+    // --- Read-only accessors for the CIM `TIEEE1547Controller` export (WPG.18
+    // Stage F, `ExportCIMXML.pas` `PullFromInvControl`). No behavior change. ---
+
+    /// `MonBusesNameList` — the raw monitored-bus strings (`FindSignalTerminals`).
+    pub(crate) fn mon_buses_name_list(&self) -> &[String] {
+        &self.mon_buses_name_list
+    }
+    /// `Fvvc_curve` — the volt-var curve snapshot (`None` if unset).
+    pub(crate) fn vvc_curve(&self) -> Option<&XyCurveObj> {
+        self.vvc_curve.as_ref()
+    }
+    /// `Fvoltwatt_curve` — the volt-watt curve snapshot.
+    pub(crate) fn voltwatt_curve(&self) -> Option<&XyCurveObj> {
+        self.voltwatt_curve.as_ref()
+    }
+    /// `FvoltwattCH_curve` — the volt-watt charging curve snapshot.
+    pub(crate) fn voltwattch_curve(&self) -> Option<&XyCurveObj> {
+        self.voltwattch_curve.as_ref()
+    }
+    /// `Fwattvar_curve` — the watt-var curve snapshot.
+    pub(crate) fn wattvar_curve(&self) -> Option<&XyCurveObj> {
+        self.wattvar_curve.as_ref()
+    }
+    /// `LPFTau` (seconds).
+    pub(crate) fn lpf_tau(&self) -> f64 {
+        self.lpf_tau
+    }
+    /// `ControlMode` ordinal (VOLTVAR=1…AVR=6).
+    pub(crate) fn control_mode(&self) -> i32 {
+        self.control_mode
+    }
+    /// `CombiMode` ordinal (VV_VW=1, VV_DRC=2).
+    pub(crate) fn combi_mode(&self) -> i32 {
+        self.combi_mode
+    }
+    /// `FDRCRollAvgWindowLength` (DynReacAvgWindowLen, seconds).
+    pub(crate) fn drc_roll_avg_window_length(&self) -> i32 {
+        self.drc_roll_avg_window_length
+    }
+    /// `FArGraLowV` — DRC low-voltage slope.
+    pub(crate) fn ar_gra_low_v(&self) -> f64 {
+        self.ar_gra_low_v
+    }
+    /// `FArGraHiV` — DRC high-voltage slope.
+    pub(crate) fn ar_gra_hi_v(&self) -> f64 {
+        self.ar_gra_hi_v
     }
 }

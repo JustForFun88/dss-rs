@@ -302,6 +302,11 @@ struct MockEnv {
     dyna_h: f64,
     dbl_hour: f64,
     mode: SolveMode,
+    /// `DSS.SeasonalRating` (default `false`, matching Pascal).
+    season_rating: bool,
+    /// The `Get_DynamicTarget` `RatingIdx` this mock hands back — `None`
+    /// models an empty `DSS.SeasonSignal`.
+    season_rating_idx: Option<i32>,
 }
 
 impl MockEnv {
@@ -319,6 +324,8 @@ impl MockEnv {
             dyna_h: 3600.0,
             dbl_hour: 0.0,
             mode: SolveMode::Daily,
+            season_rating: false,
+            season_rating_idx: None,
         }
     }
     fn idx(r: ElemRef) -> usize {
@@ -439,6 +446,12 @@ impl StorageDispatchEnv for MockEnv {
     }
     fn solve_mode(&self) -> SolveMode {
         self.mode
+    }
+    fn season_rating(&self) -> bool {
+        self.season_rating
+    }
+    fn season_rating_idx(&mut self) -> Option<i32> {
+        self.season_rating_idx
     }
 }
 
@@ -785,6 +798,82 @@ fn sample_loadshape_mode_discharges_without_shape() {
     assert!(env.pushes.contains(&0)); // PushTimeOntoControlQueue(0)
 }
 
+/// A controller with distinct seasonal targets so each `get_dynamic_target`
+/// branch (valid index / OOB index / `seasons<=1`) resolves to a different,
+/// distinguishable value from the non-seasonal `FkWTarget`/`FkWTargetLow`
+/// fallback (8000/4000, the class defaults — left untouched).
+fn seasonal_controller() -> StorageController {
+    let mut sc = StorageController::new("sc1");
+    sc.seasons = 3;
+    sc.season_targets = vec![100.0, 200.0, 300.0];
+    sc.season_targets_low = vec![10.0, 20.0, 30.0];
+    sc
+}
+
+#[test]
+fn dynamic_target_none_idx_returns_zero_not_fkwtarget() {
+    // Pascal `Result` stays its `0` init when `DSS.SeasonSignal` is empty —
+    // NOT the non-seasonal `FkWTarget`/`FkWTargetLow` fallback (8000/4000).
+    let sc = seasonal_controller();
+    let mut env = MockEnv::new(0.0, vec![]);
+    env.season_rating_idx = None;
+    assert_eq!(sc.get_dynamic_target(&mut env, true), 0.0);
+    assert_eq!(sc.get_dynamic_target(&mut env, false), 0.0);
+}
+
+#[test]
+fn dynamic_target_valid_idx_reads_season_targets() {
+    let sc = seasonal_controller();
+    let mut env = MockEnv::new(0.0, vec![]);
+
+    env.season_rating_idx = Some(0);
+    assert_eq!(sc.get_dynamic_target(&mut env, true), 100.0);
+    assert_eq!(sc.get_dynamic_target(&mut env, false), 10.0);
+
+    env.season_rating_idx = Some(1);
+    assert_eq!(sc.get_dynamic_target(&mut env, true), 200.0);
+    assert_eq!(sc.get_dynamic_target(&mut env, false), 20.0);
+}
+
+#[test]
+fn dynamic_target_idx_equal_seasons_falls_back_to_fkwtarget() {
+    // RatingIdx == Seasons (3): passes the `<=` guard (a valid one-past-end
+    // array length) but is out of bounds for the 0..Seasons-1 slots — the
+    // `arr.get(i) == None` branch, not the `rating_idx > seasons` guard.
+    let sc = seasonal_controller();
+    let mut env = MockEnv::new(0.0, vec![]);
+    env.season_rating_idx = Some(3);
+    assert_eq!(sc.get_dynamic_target(&mut env, true), sc.f_kw_target);
+    assert_eq!(sc.get_dynamic_target(&mut env, false), sc.f_kw_target_low);
+    assert_eq!(sc.f_kw_target, 8000.0);
+    assert_eq!(sc.f_kw_target_low, 4000.0);
+}
+
+#[test]
+fn dynamic_target_idx_beyond_seasons_falls_back_to_fkwtarget() {
+    // RatingIdx > Seasons: the deliberate divergence from Pascal's OOB read
+    // (CLAUDE.md UB policy) — falls back instead of indexing past the array.
+    let sc = seasonal_controller();
+    let mut env = MockEnv::new(0.0, vec![]);
+    env.season_rating_idx = Some(5);
+    assert_eq!(sc.get_dynamic_target(&mut env, true), sc.f_kw_target);
+    assert_eq!(sc.get_dynamic_target(&mut env, false), sc.f_kw_target_low);
+}
+
+#[test]
+fn dynamic_target_seasons_le_one_falls_back_even_with_valid_looking_idx() {
+    // Pascal `(RatingIdx <= Seasons) and (Seasons > 1)`: a single-season
+    // config never uses the seasonal array, even for RatingIdx=0.
+    let mut sc = seasonal_controller();
+    sc.seasons = 1;
+    sc.season_targets = vec![999.0];
+    sc.season_targets_low = vec![99.0];
+    let mut env = MockEnv::new(0.0, vec![]);
+    env.season_rating_idx = Some(0);
+    assert_eq!(sc.get_dynamic_target(&mut env, true), sc.f_kw_target);
+    assert_eq!(sc.get_dynamic_target(&mut env, false), sc.f_kw_target_low);
+}
+
 #[test]
 fn sample_logs_event_when_eventlog_enabled() {
     // With ShowEventLog on, a PeakShave discharge step appends the "Attempting to
@@ -807,4 +896,46 @@ fn sample_logs_event_when_eventlog_enabled() {
         "events: {:?}",
         env.events
     );
+}
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::obj::base::DssObject;
+
+    /// Pascal `TStorageControllerObj.MakePosSequence` (StorageController.pas:834):
+    /// phases/conds + bus from the monitored element (probe `S6`: makeposseq-safe).
+    #[test]
+    fn resyncs_to_monitored() {
+        let mut sc = StorageController::new("sc1");
+        sc.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 4 });
+        sc.ccd.element_terminal = 1;
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                yorder: 2,
+                bus_names: vec!["b1".into(), "b2".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = sc.make_pos_sequence(&ctx);
+        assert_eq!(sc.ccd.cd.nphases, 1);
+        assert_eq!(sc.ccd.cd.nconds, 1);
+        assert_eq!(sc.get_bus_name(1), "b1");
+        assert!(plan.run_base && plan.actions.is_empty());
+        assert_eq!(sc.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 4 }));
+    }
+
+    #[test]
+    fn nil_monitored_runs_base_only() {
+        let mut sc = StorageController::new("sc1");
+        let np = sc.ccd.cd.nphases;
+        let plan = sc.make_pos_sequence(&PosSeqCtx::default());
+        assert_eq!(sc.ccd.cd.nphases, np);
+        assert!(plan.run_base);
+    }
 }

@@ -1,0 +1,62 @@
+// Asymmetric Transformer coverage: delta-wye with off-nominal taps, a
+// 3-winding unit with unequal kVAs and a tapped tertiary, a bank of three
+// 1-phase units with DIFFERENT per-phase taps (per-phase-asymmetric ratios),
+// and wye-wye units with a neutral impedance / ungrounded neutral — all under
+// unbalanced load.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.xfmr_asym basekv=115 pu=1.02 angle=0 phases=3 bus1=src
+~ mvasc3=15000 mvasc1=12000
+
+! Delta-wye step-down with off-nominal taps on both windings.
+New transformer.tdy phases=3 windings=2 buses=(src, mv) conns=(delta, wye)
+~ kvs=(115, 12.47) kvas=(20000, 20000) xhl=7 taps=[1.05 0.9375]
+
+! 3-winding: wye / delta / wye, unequal kVAs, tapped winding 2.
+New transformer.t3w phases=3 windings=3 buses=(mv, lv1, lv2)
+~ conns=(wye, delta, wye) kvs=(12.47, 0.48, 4.16) kvas=(5000, 3000, 2000)
+~ xhl=6 xht=5 xlt=3 wdg=2 tap=1.04
+
+! Bank of three 1-phase units with different taps per phase.
+New transformer.bka phases=1 windings=2 buses=(mv.1, lvb.1) conns=(wye, wye)
+~ kvs=(7.2, 0.277) kvas=(500, 500) xhl=2.5 taps=[1.0 1.05]
+New transformer.bkb phases=1 windings=2 buses=(mv.2, lvb.2) conns=(wye, wye)
+~ kvs=(7.2, 0.277) kvas=(500, 500) xhl=2.5 taps=[1.0 0.95]
+New transformer.bkc phases=1 windings=2 buses=(mv.3, lvb.3) conns=(wye, wye)
+~ kvs=(7.2, 0.277) kvas=(500, 500) xhl=2.5 taps=[1.0 1.02]
+
+! Wye-wye with a neutral impedance on winding 2.
+New transformer.tn phases=3 windings=2 buses=(mv, lvn) conns=(wye, wye)
+~ kvs=(12.47, 0.48) kvas=(1500, 1500) xhl=5 wdg=2 rneut=0.02 xneut=0.08
+
+! Wye-wye with an UNGROUNDED secondary neutral (rneut=-1); loads L-L so the
+! floating neutral stays defined.
+New transformer.tu phases=3 windings=2 buses=(mv, lvu) conns=(wye, wye)
+~ kvs=(12.47, 0.48) kvas=(1000, 1000) xhl=4 wdg=2 rneut=-1
+
+! Common-mode pins: lv1 (delta tertiary) and lvu (ungrounded-wye secondary)
+! have no galvanic ground path — their zero-sequence mode is held only by the
+! ppm_antifloat (~1e-6) adder, a near-singular mode where faer-vs-KLU rounding
+! noise reaches ~1e-7 rel (proven by decomposition: phase-to-phase voltages
+! match to ~1e-12 V while ONLY the bus common mode differs). Real feeders pin
+! such buses through cable capacitance; these small wye-grounded capacitors
+! are that surrogate. NOT a tolerance dodge — with the pin both engines share
+! the fixpoint to ~6e-12 rel at identical iteration counts.
+New capacitor.cpin1 phases=3 bus1=lv1 conn=wye kvar=25 kv=0.48
+New capacitor.cpinu phases=3 bus1=lvu conn=wye kvar=15 kv=0.48
+
+! Unbalanced excitation on every secondary.
+New load.d1 bus1=lv1 phases=3 conn=delta model=1 kv=0.48 kw=900 pf=0.9
+New load.t1 bus1=lv2.1 phases=1 conn=wye model=1 kv=2.4 kw=400 pf=0.92
+New load.t2 bus1=lv2.3 phases=1 conn=wye model=1 kv=2.4 kw=250 pf=0.88
+New load.ba bus1=lvb.1 phases=1 conn=wye model=1 kv=0.277 kw=180 pf=0.95
+New load.bb bus1=lvb.2 phases=1 conn=wye model=1 kv=0.277 kw=60 pf=0.9
+New load.bc bus1=lvb.3 phases=1 conn=wye model=1 kv=0.277 kw=120 pf=0.85
+New load.n1 bus1=lvn.1 phases=1 conn=wye model=1 kv=0.277 kw=300 pf=0.9
+New load.n2 bus1=lvn.2 phases=1 conn=wye model=1 kv=0.277 kw=90 pf=0.95
+New load.u1 bus1=lvu.1.2 phases=1 conn=delta model=1 kv=0.48 kw=140 pf=0.92
+New load.u2 bus1=lvu.2.3 phases=1 conn=delta model=1 kv=0.48 kw=220 pf=0.9
+
+Set voltagebases=[115 12.47 4.16 0.48]
+calcv

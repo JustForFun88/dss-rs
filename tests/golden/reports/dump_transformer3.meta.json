@@ -1,0 +1,14 @@
+{
+  "report": "transformer.t3 debug",
+  "fixture": "dumpxf3",
+  "suffix": "PropertyDump.txt",
+  "deck": [
+    "new circuit.dumpxf3 basekv=115 bus1=src",
+    "new transformer.t3 phases=3 windings=3 xhl=6 xht=12 xlt=8 buses=[src mid low] conns=[delta wye wye] kvs=[115 12.47 4.16] kvas=[5000 3000 2000]",
+    "new load.ld2 bus1=mid kv=12.47 kw=1500 pf=0.9 conn=wye",
+    "new load.ld3 bus1=low kv=4.16 kw=1000 pf=0.95 conn=wye",
+    "set voltagebases=[115 12.47 4.16]",
+    "calcv",
+    "solve"
+  ]
+}

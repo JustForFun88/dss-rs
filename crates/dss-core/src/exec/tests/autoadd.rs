@@ -101,21 +101,51 @@ fn autoadd_bus_list_inline_round_trips() {
     assert_eq!(dss.result(), "b1, b2, b3");
 }
 
-/// The AutoAdd *solve mode* is `NOT_PORTED` (the capacity search needs
-/// aux-current injection + meter sampling). `Solve mode=autoadd` therefore
-/// still reports the unknown-mode error — the documented deferral.
+/// The AutoAdd *solve mode* (WPG.5) runs the capacity search and adds the
+/// winning generator through the normal command path. This is the structural
+/// unit test (a clean run + a winner instantiated + `GlobalResult` set); the
+/// numeric winner/log/voltages are pinned by the live `autoadd.dss` case in
+/// `corpus_live.rs` against the oracle.
 #[test]
-fn autoadd_solve_mode_still_deferred() {
+fn autoadd_solve_mode_adds_winner() {
+    // Route the AutoAddLog / AutoAddedGenerators side files into a scratch dir
+    // so the test doesn't litter the crate directory.
+    let scratch = std::env::temp_dir().join(format!("dss_autoadd_{}", std::process::id()));
+    std::fs::create_dir_all(&scratch).ok();
+
     let mut dss = Dss::new();
-    dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
+    dss.command("New circuit.c1 basekv=12.47 phases=3 bus1=sourcebus");
+    dss.command("New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.3 x1=0.9 length=2 units=km");
+    dss.command("New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 length=1.5 units=km");
+    dss.command("New Load.ld1 bus1=b2 phases=3 kv=12.47 kw=700 pf=0.95 model=1");
+    dss.command("New EnergyMeter.em element=Line.l1 terminal=1");
     dss.command("set voltagebases=[12.47]");
     dss.command("calcvoltagebases");
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("Set addtype=generator genkw=300 genpf=1.0");
+    dss.command("Set autobuslist=(b1, b2)");
     dss.command("solve mode=autoadd");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // A winner was instantiated as `Generator.Gadd1`.
+    dss.command("? generator.gadd1.kw");
+    assert_eq!(dss.result(), "300");
+
+    // GlobalResult is `<bus>, <improvement>` (GENADD form). A second AutoAdd
+    // re-searches with gadd1 already present; this is a STRUCTURAL check that the
+    // second solve's GlobalResult is well-formed (`<bus>, <numeric figure>`). The
+    // exact numeric winner / improvement / log / voltages are pinned against the
+    // pinned oracle by `autoadd.dss` in `corpus_live.rs`, not here.
+    dss.command("solve mode=autoadd");
+    let last = dss.result().to_string();
+    let (bus, figure) = last
+        .split_once(", ")
+        .unwrap_or_else(|| panic!("GlobalResult not `<bus>, <figure>`: {last:?}"));
+    assert!(!bus.is_empty(), "winner bus empty in {last:?}");
     assert!(
-        dss.errors()
-            .iter()
-            .any(|e| e.contains("Unknown solution mode")),
-        "expected AutoAdd solve to remain deferred, got {:?}",
-        dss.errors()
+        figure.parse::<f64>().is_ok(),
+        "improvement figure not numeric in {last:?}"
     );
+
+    std::fs::remove_dir_all(&scratch).ok();
 }

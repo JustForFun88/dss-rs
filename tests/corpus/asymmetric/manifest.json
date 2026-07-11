@@ -1,0 +1,426 @@
+{
+ "comment": "Synthetic asymmetric decks (see corpus_live.rs 'Asymmetric synthetic decks' section): every stamping element + combinations in deliberately asymmetric configurations, live-compared against the pinned oracle by asymmetric_cases_match_oracle. selected_elements = the elements whose YPrim blocks are compared directly (the transposed-stamp catch). kind uses the same tolerance classes as solvable_now (micro|feeder|large). Cases with pending=true cover features the port does not implement yet (absorbed from the former gaps/ staging family, GAPS_PLAN.md section 3.1): the gate asserts the Rust engine errors loudly on them; the WP in each wp field flips pending=false when it ports the feature.",
+ "cases": [
+  {
+   "path": "vsource_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Vsource.source",
+    "Vsource.vs2",
+    "Vsource.vs3"
+   ]
+  },
+  {
+   "path": "reactor_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Reactor.rz12",
+    "Reactor.rmat",
+    "Reactor.rrx",
+    "Reactor.rsh",
+    "Reactor.rdel",
+    "Reactor.rp"
+   ]
+  },
+  {
+   "path": "capacitor_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Capacitor.cmat",
+    "Capacitor.cdel",
+    "Capacitor.c1p",
+    "Capacitor.cser",
+    "Capacitor.cstep"
+   ]
+  },
+  {
+   "path": "line_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.l3",
+    "Line.l2",
+    "Line.l1",
+    "Line.lseq",
+    "Line.lsw"
+   ]
+  },
+  {
+   "path": "transformer_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Transformer.tdy",
+    "Transformer.t3w",
+    "Transformer.bka",
+    "Transformer.bkb",
+    "Transformer.bkc",
+    "Transformer.tn",
+    "Transformer.tu"
+   ]
+  },
+  {
+   "path": "fault_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Fault.fslg",
+    "Fault.fll",
+    "Fault.fmat"
+   ]
+  },
+  {
+   "path": "load_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Load.m1a",
+    "Load.m1d",
+    "Load.m2",
+    "Load.m3",
+    "Load.m4",
+    "Load.m5",
+    "Load.m8",
+    "Load.m1t"
+   ]
+  },
+  {
+   "path": "generator_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Generator.g1",
+    "Generator.g2",
+    "Generator.g3",
+    "Generator.g1a",
+    "Generator.g1c"
+   ]
+  },
+  {
+   "path": "der_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "PVSystem.pv3",
+    "PVSystem.pv1",
+    "Storage.st3",
+    "Storage.st1"
+   ]
+  },
+  {
+   "path": "indmach_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "IndMach012.m1",
+    "Transformer.tg",
+    "Capacitor.cg"
+   ]
+  },
+  {
+   "path": "vccs_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "VCCS.pv1",
+    "VCCS.pv2",
+    "VCCS.pv3"
+   ]
+  },
+  {
+   "path": "upfc_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "UPFC.test",
+    "Transformer.service50kva",
+    "Transformer.tupfcout"
+   ]
+  },
+  {
+   "path": "combo_chain_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Vsource.source",
+    "Line.la",
+    "Transformer.tdy",
+    "Reactor.rz",
+    "Capacitor.cd",
+    "Fault.fa",
+    "Generator.g1",
+    "PVSystem.pv1",
+    "Storage.s1"
+   ]
+  },
+  {
+   "path": "midi_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "combo_mesh_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lfa",
+    "Line.lfb",
+    "Line.ltie",
+    "Line.lj3",
+    "Transformer.tloop",
+    "Reactor.rsh",
+    "Capacitor.cmat",
+    "Transformer.tg",
+    "IndMach012.m1"
+   ]
+  },
+  {
+   "path": "midi_vsource_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_reactor_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_capacitor_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_line_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_transformer_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_fault_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_load_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_generator_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_der_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_indmach_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_vccs_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "midi_upfc_asym.dss",
+   "kind": "micro",
+   "n_steps": 2,
+   "selected_elements": [
+    "*"
+   ]
+  },
+  {
+   "path": "isource_snap.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WPG.14"
+  },
+  {
+   "path": "autotrans_snap.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "AutoTrans.t1",
+     "props": [
+      "wdgcurrents",
+      "buses",
+      "kVAs"
+     ]
+    },
+    {
+     "element": "AutoTrans.t2",
+     "props": [
+      "wdgcurrents"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.15",
+   "note": "The 330 MVA YNad1 unit from Test/AutoTrans/AutoAuto.dss + a 2-winding 115/69 auto. Oracle wdgcurrents (probe 2026-07-05, t2 spot value): non-zero live recompute - the READS_VTERMINAL family. WPG.15 Stage B: live-green."
+  },
+  {
+   "path": "autotrans_gic.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WPG.15",
+   "note": "Set frequency=0.1 snapshot - pins AutoTrans GICBuildYTerminal (the Solution.Frequency < 0.51 Hz resistance-only Y_Term branch) AND the Line GIC branch (ConvertZinvToPosSeqR, Line.pas:1297 - the near-ideal-source switch line is deliberate: at 0.1 Hz the deck state is zero-current, so no cancellation floor exists and every YPrim pins at micro tier). WPG.15: live-green."
+  },
+  {
+   "path": "gicline_gic.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WPG.16"
+  },
+  {
+   "path": "gictransformer_gic.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WPG.16"
+  },
+  {
+   "path": "gicsource_gic.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Line.seg12",
+     "props": [
+      "bus2"
+     ]
+    },
+    {
+     "element": "Line.seg23",
+     "props": [
+      "bus2"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.16",
+   "note": "The bus2 probes pin the GICsource edit-time splice: the oracle rewrites the named Line's Bus2 to the inserted GIC_<name> bus (proven 2026-07-05: buses gic_seg12/gic_seg23 appear; line.seg12.bus2 = gic_seg12)."
+  },
+  {
+   "path": "midi_isource_asym.dss",
+   "kind": "midi",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "WPG.14"
+  },
+  {
+   "path": "midi_autotrans_asym.dss",
+   "kind": "midi",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "AutoTrans.at",
+     "props": [
+      "wdgcurrents"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.15"
+  },
+  {
+   "path": "gic_midi.dss",
+   "kind": "midi",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Line.seg45",
+     "props": [
+      "bus2"
+     ]
+    },
+    {
+     "element": "Line.seg56",
+     "props": [
+      "bus2"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.16",
+   "note": "All three GIC classes chained on a 6-substation 345 kV ring (33 nodes); the bus2 probes pin the GICsource splices. No async/both variants: the GIC classes have no shape reference or time-varying drive upstream."
+  }
+ ]
+}

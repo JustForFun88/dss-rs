@@ -3,6 +3,7 @@
 use num_complex::Complex64;
 
 use super::{MAGNITUDEMASK, MODEMASK, Monitor, MonitorSampleCtx, POSSEQONLYMASK, SEQUENCEMASK};
+use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::SysCtx;
@@ -11,7 +12,24 @@ use crate::support::complexutil::cdang;
 use crate::support::mathutil::SymComp;
 
 impl Monitor {
-    fn add_dbl(&mut self, v: f64) {
+    /// Pascal `TMonitorObj.AddDblToBuffer` (`Meters/Monitor.pas:1591`): narrow
+    /// the value to single precision and append it, tracking the live scratch
+    /// cursor `BufPtr`. The 1024-single flush check is per single, so it can (and
+    /// does) fire mid-record. In the merged MonBuffer+MonitorStream model the
+    /// flush moves no data — the single already lives in `mon_buffer` — so only
+    /// `bufptr` resets (Pascal `Save` sets `BufPtr := 0`, Monitor.pas:1596-1599).
+    /// Accepted divergence (audit Question, 2026-07-09): Pascal's mid-solve
+    /// flush calls the full `Save`, so `MonitorStream` becomes non-empty at
+    /// that instant; here `flushed_records` stays 0 until an explicit `save()`.
+    /// Observable only by reading a monitor mid-solve after ≥1024 singles and
+    /// before the loop-end `SaveAll` — unreachable from script (every
+    /// multi-step solve loop ends with `SaveAll`); all post-solve outputs are
+    /// identical.
+    pub(super) fn add_dbl(&mut self, v: f64) {
+        if self.bufptr == super::BUFFER_SIZE {
+            self.bufptr = 0;
+        }
+        self.bufptr += 1;
         self.mon_buffer.push(v as f32);
     }
     fn add_dbls(&mut self, vs: &[f64]) {
@@ -74,11 +92,15 @@ impl Monitor {
                 }
             }
             2 => {
-                let tap = metered
-                    .as_any()
-                    .downcast_ref::<Transformer>()
-                    .map(|t| t.present_tap(self.med.metered_terminal as usize))
-                    .unwrap_or(0.0);
+                let w = self.med.metered_terminal as usize;
+                let any = metered.as_any();
+                let tap = if let Some(t) = any.downcast_ref::<Transformer>() {
+                    t.present_tap(w)
+                } else if let Some(at) = any.downcast_ref::<AutoTrans>() {
+                    at.present_tap(w)
+                } else {
+                    0.0
+                };
                 self.add_dbl(tap);
                 return;
             }
@@ -147,10 +169,53 @@ impl Monitor {
                 }
                 return;
             }
-            // Modes 4 (flicker/Pstcalc), 7 (Storage), 8/10 (transformer winding
-            // currents/voltages), 12 (LL) build their header but defer the
-            // sample body to Phase 6+/7 (no gate uses them; the metered surface
-            // they need is not yet exposed).
+            7 => {
+                // Pascal `TakeSample` mode 7 (Monitor.pas l.1298): Storage device
+                // state — PresentkW, Presentkvar, kWhStored, %stored, StorageState,
+                // guarded on the element class exactly like Pascal (a non-Storage
+                // element records the time stamp only). The header promised
+                // `record_size = 5` (header.rs), so before this arm existed a
+                // yearly run panicked in `to_csv` (buffer rows of 2 vs stride 7 —
+                // the StoCtrl_Current_PeakShave corpus deck).
+                if let Some(st) = metered
+                    .as_any()
+                    .downcast_ref::<crate::elements::pc::storage::Storage>()
+                {
+                    self.add_dbl(st.present_kw());
+                    self.add_dbl(st.present_kvar());
+                    self.add_dbl(st.kwh_stored);
+                    self.add_dbl(st.kwh_stored / st.kwh_rating * 100.0);
+                    self.add_dbl(st.f_state as f64);
+                }
+                return;
+            }
+            4 => {
+                // Pascal `TakeSample` mode 4 (Monitor.pas l.1252-1263, 1479,
+                // 1560-1562): RMS phase voltages for flicker. Fill
+                // `FlickerBuffer[i] := NodeV[NodeRef[i]]` for the metered phases,
+                // convert to polar (mag, angle_deg) exactly as
+                // `ConvertComplexArrayToPolar`, and store `2·Fnphases` doubles
+                // (mag, ang) — narrowed to f32 by `add_dbl` like every mode. The
+                // flicker/Pst post-processing happens later in `post_process`
+                // (Pascal `DoFlickerCalculations`), not here.
+                let mut flicker_buffer = vec![Complex64::ZERO; fnphases];
+                for (i, v) in flicker_buffer.iter_mut().enumerate() {
+                    // Same unguarded NodeRef read as mode 0 above (the port
+                    // resolves NodeRef at bus-def time; Pascal's l.1261 "NodeRef
+                    // is invalid / solve a snapshot first" except-guard is the
+                    // not-yet-solved safety net, handled upstream in the port).
+                    *v = node_v[self.med.cd.node_ref[i]];
+                }
+                convert_to_polar(&mut flicker_buffer, fnphases);
+                for &c in &flicker_buffer {
+                    self.add_dbl(c.re); // magnitude
+                    self.add_dbl(c.im); // angle (deg)
+                }
+                return;
+            }
+            // Modes 8/10 (transformer winding currents/voltages), 12 (LL) build
+            // their header but defer the sample body to Phase 6+/7 (no gate uses
+            // them; the metered surface they need is not yet exposed).
             _ => return,
         }
 
