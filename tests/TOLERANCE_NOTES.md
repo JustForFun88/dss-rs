@@ -90,7 +90,8 @@ voltage is pinned solely by the ppm anti-float adders — but with pinning 2–3
 orders weaker than GFMSnap's (amplification 3.1e8 there), so the junk exceeds
 the `large_floating_delta` band and gets its own `v_abs` **3e-2 V** (worst
 measured 1.06e-2 ×2.8; at the smallest affected 346 V buses that is 8.7e-5
-rel). Per-deck proof by decomposition (all 2026-07-10):
+rel). Per-deck proof by decomposition (2026-07-10, DOCTechNote family
+2026-07-11):
 
 - **TestDDRegulator** — REGBUS2 sits between TWO delta windings
   (Transformer.Reg1/Reg2 winding 2): measured pinning −j2.14e-8 S vs ~303 S
@@ -117,6 +118,31 @@ rel). Per-deck proof by decomposition (all 2026-07-10):
   these decks build lines from geometry); the observed 2.9e-7-rel common mode
   ≈ (ppm-pinning amplification ~1e8) × (ulp-level Y/solve perturbations) —
   arithmetic consistent with the floor, impossible for a model bug that small.
+- **DOCTechNote family** (`DOCTechNote/1_1`, `1_2`, `2_1`, `2_2`) — the SAME
+  circuit as LVTestCaseNorthAmerican (each `Redirect`s its `Master.dss` +
+  `network_protectors.dss` + `energy_meters.dss`) plus one perturbation:
+  1_1/1_2 add an SLG fault on an **LV** secondary bus (S21 / S203), 2_1 opens a
+  network-protector breaker (`Line.10_sw`), 2_2 adds OC relays + an **L-L**
+  (phase-to-phase) fault on MV bus p105 under `controlmode=event`. None of
+  these introduces an MV zero-seq ground path — the SLG grounds only the
+  wye-grounded LV (blocked from MV by the delta distribution primaries), the
+  L-L fault couples phases 1–2 without touching ground — so the whole 13.8 kV
+  system still floats, exactly as in the base deck. Decomposition (2026-07-11,
+  full 1170-node dump both engines): the gap is a per-bus **zero-sequence
+  common mode** of 1.81e-3…2.85e-3 V on the MV buses (well inside the 3e-2 band;
+  ~2.2e-7…3.6e-7 rel at the 8 kV buses). Proof it is 100% common mode: the
+  **L-L (differential) node voltages agree to ≤1.4e-10 rel** (max |ΔV_LL|
+  2.1e-5 V — ~1.5 f64-ulp, four orders under `large`'s 1e-7), and **removing
+  each bus's mean shift leaves 0/1170 nodes above the `large` band** (max
+  residual 1.15e-5 V, ≤1.8e-9 rel). Un-pinnable, not iteration-driven: at
+  `ConvergenceTolerance 1e-10` the gap is byte-unchanged (2.389e-3 → 2.389e-3)
+  while Rust can no longer converge (15 iters, non-converged on 1_1/2_1 — the
+  residual floors out in the near-null zero-seq direction); at the default
+  tolerance both engines converge in the identical iteration count. Y
+  bit-identical, injections match, iterations equal and element currents/powers
+  within `large` — all verified by the `run_and_compare` full compare passing
+  at `large_floating_zeroseq` (which pins Y at 1e-8, injection, iterations
+  exactly, and currents/powers at the `large` floors).
 
 Element currents/powers are functions of the differential voltages and are
 immune to the common mode, so every other floor stays at `large` and real
@@ -452,6 +478,46 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
     that never updates `@result` (`ExecCommands.pas:704` is compiled out), so it
     stays at its `'null'` init forever; our engine never writes `@result` either, so
     the single `null` line matches with zero divergence — not a masked/relaxed field.
+
+## `Save circuit` round-trip floor — IEEE-8500 (`save_roundtrip.rs`)
+
+`save_roundtrip.rs` re-solves an emitted `Save circuit` deck on our own engine and
+pins the recompiled node voltages to the pre-save solution. Four feeders (IEEE
+13/34/37/123) round-trip to **1e-6 rel**. IEEE-8500 does **not**, and this is an
+inherent property of OpenDSS `Save circuit`, not the port: `Save` re-emits derived
+quantities (the substation reactor `X`, every `%g`-rendered parameter) at 15
+significant digits; the sub-ulp re-parse perturbation is amplified by the ~thousand
+`Model=1`/`Vminpu=0.88` constant-Z service loads into a worst ~2e-4 rel shift at the
+deepest 0.208 kV secondaries. So `save_roundtrip_ieee8500` uses `IEEE8500_SAVE_VTOL
+= 3e-4` (~1.5× the observed worst) for **node voltages only**; the discrete control
+state (12 RegControl tap numbers + 10 capacitor bank states) and the warm-re-solve
+iteration count are asserted **exactly** on every deck including 8500.
+
+**Proven a floor (not a port slack) by the pinned oracle itself.** The oracle's own
+`Save → recompile → resolve` of this deck reproduces the identical worst node and
+pre/post power — the floor is a property of the writer/re-parse, not of faer vs KLU.
+Reproducible probe: `python tools/golden/probe_save_roundtrip_8500.py` (pinned
+dss-python 0.15.7 / dss_capi 0.14.5, on the vendored corpus bytes the Rust test
+round-trips). Measured 2026-07-11:
+
+| quantity | oracle Save round-trip |
+|---|---|
+| worst node | `SX3312692A.1` |
+| worst rel voltage shift | **2.022253e-4** (< the 3e-4 band) |
+| nodes over 1e-6 rel | 8354 / 8531 |
+| iterations pre/post | 2 / 2 (exact) |
+| total power pre (kW) | −11983.486783 |
+| total power post (kW) | −11983.420712 |
+| ΔP (kW) | +0.066071 |
+
+Because the whole-feeder shift is a smooth continuous-parameter re-parse artifact
+with **no discrete-state signature**, the exactly-pinned taps/banks + exact
+iteration count are what keep the gate strong: a real regulator/cap/element
+regression moves a tap, a bank, or the profile by far more than 3e-4 and fails,
+while the 3e-4 band absorbs only the proven, oracle-reproduced Save-precision floor.
+The pre-save solve is *independently* oracle-pinned by `corpus_live` (8500-Node
+`Master.dss` is in `solvable_now` at the tight `large` floors, ~300× under 3e-4), so
+the operating point itself is gated far tighter than this round-trip band.
 
 ## Live corpus gate (`corpus_live.rs`)
 

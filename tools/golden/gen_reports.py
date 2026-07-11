@@ -180,6 +180,66 @@ def gen_ieee8500_reports(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# The IEEE 34/37/123 core solution exports (PORTING_PLAN §6 literal acceptance).
+# §6 requires the export-diff suite green on IEEE 13/34/37/123/8500: 13 is pinned
+# by `gen_feeder_reports` (the full export family) and 8500 by
+# `gen_ieee8500_reports`; these three feeders complete the letter with the core
+# solution exports Voltages/Currents/Powers (mirroring the IEEE13 core set — the
+# physics is already pinned to 1e-8 by `corpus_live.rs`, so this gates the report
+# layout/scaling at scale on each canonical feeder). IEEE34's `ieee34Mod1.dss` is
+# a `not_an_entry_point` fragment (no embedded `Solve`), so all three compile +
+# `solve` uniformly. Golden stems: `export_<feeder>_<report>`.
+EXTRA_FEEDERS = [
+    ("ieee34", "Version8/Distrib/IEEETestCases/34Bus/ieee34Mod1.dss"),
+    ("ieee37", "Version8/Distrib/IEEETestCases/37Bus/ieee37.dss"),
+    ("ieee123", "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss"),
+]
+EXTRA_FEEDER_POST = ["solve"]
+EXTRA_FEEDER_REPORTS = [
+    ("voltages", "EXP_VOLTAGES.csv", "voltages"),
+    ("currents", "EXP_CURRENTS.csv", "currents"),
+    ("powers", "EXP_POWERS.csv", "powers"),
+]
+
+
+def gen_extra_feeder_reports(d) -> None:
+    """Capture the oracle's Voltages/Currents/Powers on the solved IEEE34/37/123
+    feeders (PORTING_PLAN §6 export-diff coverage)."""
+    for prefix, master in EXTRA_FEEDERS:
+        master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / master).resolve()
+        if not master_abs.is_file():
+            sys.exit(f"master not found: {master_abs}")
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
+        try:
+            d.Text.Command = "clear"
+            d.Text.Command = f'compile "{master_abs}"'
+            for c in EXTRA_FEEDER_POST:
+                d.Text.Command = c
+            case = d.ActiveCircuit.Name
+            d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+            for keyword, suffix, name in EXTRA_FEEDER_REPORTS:
+                stem = f"export_{prefix}_{name}"
+                d.Text.Command = f"export {keyword}"
+                produced = Path(d.Text.Result)  # GlobalResult = produced path
+                content = produced.read_text()  # universal newlines -> LF
+                (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+                meta = {
+                    "report": keyword,
+                    "master": master,
+                    "post": EXTRA_FEEDER_POST,
+                    "fixture": case,
+                    "suffix": suffix,
+                }
+                (OUT_DIR / f"{stem}.meta.json").write_text(
+                    json.dumps(meta, indent=2) + "\n", newline="\n"
+                )
+                print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+        finally:
+            d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 # The monitor-export fixture (PHASE8_PLAN §WP8.3 step 1): the IEEE13 feeder with
 # three monitors covering the distinct CSV shapes — mode 0 (general V/I: paired
 # magnitude/angle, unquoted header), mode 1 (power: `S (kVA)`/`Ang` header, whose
@@ -2853,6 +2913,7 @@ def main() -> None:
     gen_show_meter_edgecases(d)
     gen_log_reports(d)
     gen_ieee8500_reports(d)
+    gen_extra_feeder_reports(d)
     gen_seqz(d)
     gen_faultstudy(d)
     gen_show_faultstudy(d)
