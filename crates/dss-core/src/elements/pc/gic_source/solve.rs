@@ -193,3 +193,31 @@ impl CktElement for GicSource {
         }
     }
 }
+
+#[cfg(test)]
+mod pos_seq_tests {
+    use super::*;
+    use crate::elements::pc::gic_source::prop;
+    use crate::elements::pos_seq::PosSeqCtx;
+
+    /// GICsource, multi-phase (default 3) → bare `Phases := 1` edit + run_base
+    /// (Pascal `TGICSourceObj.MakePosSequence`, GICsource.pas:471-476).
+    #[test]
+    fn makeposseq_gicsource_multiphase_sets_phases_1() {
+        let mut g = GicSource::new("g");
+        assert!(g.cd.nphases > 1);
+        let plan = g.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert_eq!(plan.actions, vec![PosSeqAction::SetI32(prop::PHASES, 1)]);
+    }
+
+    /// GICsource, already single phase → base-only (no actions), still run_base.
+    #[test]
+    fn makeposseq_gicsource_single_phase_is_base_only() {
+        let mut g = GicSource::new("g");
+        g.cd.nphases = 1;
+        let plan = g.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert!(plan.actions.is_empty());
+    }
+}

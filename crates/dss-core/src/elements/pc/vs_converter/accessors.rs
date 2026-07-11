@@ -315,3 +315,37 @@ impl DssObject for VsConverter {
         Box::new(self.clone())
     }
 }
+
+#[cfg(test)]
+mod pos_seq_tests {
+    use super::*;
+    use crate::elements::pos_seq::PosSeqCtx;
+
+    /// VSConverter, nphases != 2 (default 4) → TWO bare edits `Phases := 2` and
+    /// `Ndc := 1`, then run_base (Pascal `TVSConverterObj.MakePosSequence`,
+    /// VSConverter.pas:485-494, the upstream `//TODO: why two edits?`).
+    #[test]
+    fn makeposseq_vsconverter_non2_forces_phases2_ndc1() {
+        let mut v = VsConverter::new("v");
+        assert_ne!(v.cd.nphases, 2);
+        let plan = v.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert_eq!(
+            plan.actions,
+            vec![
+                PosSeqAction::SetI32(prop::PHASES, 2),
+                PosSeqAction::SetI32(prop::NDC, 1),
+            ]
+        );
+    }
+
+    /// VSConverter, already nphases == 2 → base-only (no actions), still run_base.
+    #[test]
+    fn makeposseq_vsconverter_2phase_is_base_only() {
+        let mut v = VsConverter::new("v");
+        v.cd.nphases = 2;
+        let plan = v.make_pos_sequence(&PosSeqCtx::default());
+        assert!(plan.run_base);
+        assert!(plan.actions.is_empty());
+    }
+}
