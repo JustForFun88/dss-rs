@@ -980,7 +980,18 @@ impl LoadShapeObj {
         let values = match il.kind {
             MmfKind::Text => {
                 let content = String::from_utf8_lossy(bytes);
-                crate::util::read_dbl_array_text(&content, il.column, il.header, max)
+                let (vals, err_row) =
+                    crate::util::read_dbl_array_text(&content, il.column, il.header, max);
+                if let Some(row) = err_row {
+                    // Pascal `DoSimpleMsg(#705)` then stop-and-shrink
+                    // (`Utilities.pas:515-521`); `vals` already holds only `i-1`.
+                    self.data.push_error(format!(
+                        "LoadShape.{}: (#705) Error reading {row}-th numeric array \
+                         value from file.",
+                        self.data.name()
+                    ));
+                }
+                vals
             }
             MmfKind::Float32 => crate::util::read_le_f32_array(bytes, max),
             MmfKind::Float64 => crate::util::read_le_f64_array(bytes, max),

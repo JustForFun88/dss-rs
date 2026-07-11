@@ -9,6 +9,37 @@
 
 Last updated: 2026-07-11.
 
+**WPG.19/20 audit settlement (2026-07-11), gate-green.** Two auditors + the full
+gate; every finding verified against the Pascal spec and the pinned oracle, all
+real ones fixed 1:1 (no fudging):
+- **`InterpretDblArray` malformed-token silent 0.0 → stop-and-shrink + #705
+  (fixed).** `util::read_dbl_array_text` swallowed a non-numeric file token
+  (`unwrap_or(0.0)`, kept reading, no diagnostic) where Pascal raises `DoSimpleMsg`
+  #705, sets `Result := i-1` and BREAKs (`Utilities.pas:515-521`). Oracle-proven
+  (`mult=(file=…)` with row 3 = `abc` → npts shrinks to 2, mult=[0.1,0.2], #705).
+  Now returns `(Vec<f64>, Option<usize>)`; both callers (`compute::apply_interp_file`,
+  `command::apply_generic_dbl_array_file`) stop at the bad row (length = `i-1`,
+  count shrinks) and `push_error` the #705 diagnostic.
+- **Stale manifest `master_ckt24-nomm.dss` (fixed).** Was tagged
+  `unsupported_feature=file-backed-arrays` with a now-FALSE note ("not supported yet
+  (WPG.19)"); the deck compiles+converges via the CLI (7522 nodes, 2 iters, 0
+  errors). Re-tagged `skipped_unsupported → skipped_needs_investigation`
+  (`live_mismatch_regcontrol_ldc_tap`), sharing the -mm sibling's real SubXFMR
+  RegControl/LDC blocker.
+- **Trailing-newline restored** on the four manifests edited this branch
+  (`solvable_now`, `skipped_needs_investigation`, `skipped_unsupported`,
+  `modes/manifest.json`).
+- **`binsave_mmf` generator self-check added.** `gen_loadshape_binsave_mmf` now
+  rebuilds the expected `GlobalResult` from the hand-written `result_files`/
+  `result_tags` (hoisted to single-sourced constants) and `sys.exit`s if it != the
+  captured oracle string — closing the Rust-vs-handwritten gap (proven to bite on a
+  wrong tag; goldens byte-unchanged).
+- **Full gate green.** fmt + clippy clean; `cargo test --workspace` exit 0 (914 unit
+  + corpus_live all green). NOTE: `modes_cases_match_oracle` needs the opt-in EPRI
+  Oddie venv (`tools/opendss/.venv`, gitignored → absent in this worktree); run with
+  `DSS_OPENDSS_PYTHON` pointing at main's venv, or it panics environmentally (pre-
+  existing `r4133` case, unrelated to WPG.19/20).
+
 **WPG.20 port — MMF-shape binary save (`Action=SngSave/DblSave` under
 `MemoryMapping=Yes`) (2026-07-11), gate-green (golden_reports + load_shape unit).**
 The trio-era LOUD-NOT_PORTED refusal in `load_shape/compute.rs::queue_shape_save`

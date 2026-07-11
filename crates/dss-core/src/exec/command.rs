@@ -1625,7 +1625,17 @@ fn apply_generic_dbl_array_file(
     let mut vals = match gf.kind {
         MmfKind::Text => {
             let content = String::from_utf8_lossy(bytes);
-            crate::util::read_dbl_array_text(&content, gf.column, gf.header, max)
+            let (vals, err_row) =
+                crate::util::read_dbl_array_text(&content, gf.column, gf.header, max);
+            if let Some(row) = err_row {
+                // Pascal `DoSimpleMsg(#705)` then stop-and-shrink
+                // (`Utilities.pas:515-521`); `vals` already holds only `i-1`.
+                errors.push(format!(
+                    "{}: (#705) Error reading {row}-th numeric array value from file.",
+                    obj.data().name()
+                ));
+            }
+            vals
         }
         MmfKind::Float32 => crate::util::read_le_f32_array(bytes, max),
         MmfKind::Float64 => crate::util::read_le_f64_array(bytes, max),
