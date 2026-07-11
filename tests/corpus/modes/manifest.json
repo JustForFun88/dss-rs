@@ -715,7 +715,7 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.21",
    "note": "MakePosSequence Line coverage: symcomponents (l_sym keeps Z1: r1=0.301 x1=0.667 c1=3.4 normamps=400), rmatrix/xmatrix (l_mat Z averaged to positive seq r1=0.21 x1=0.6), geometry, spacing+wires, switch=yes (l_sw fixed switch consts r1=1 x1=1 c1=1.1), 1-phase, units=mi. All lines -> phases=1, bus dots stripped. Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 2 iters, 8 nodes); feature-sensitive vs the deck with `makeposseq` removed. Pending until WPG.21 A2 wires the dispatch."
   },
@@ -759,7 +759,7 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.21",
    "note": "MakePosSequence Transformer/AutoTrans coverage: 2w (sub) + 3w (t3) transformers and an AutoTrans -> phases=1, per-winding kV=kVLL/SQRT3 (sub kvs=[66.3953, 7.19956]) and kVA/phases (sub kvas=[6666.67, 6666.67]), conns all wye. 1-phase xfmr on .1 (t1_ok) survives; 1-phase xfmr on .2 (t1_off) is NOT on phase 1 -> Enabled:=FALSE (the OnPhase1 disable path, Transformer.pas:1698) and keeps its dotted buses b1.2/b6.2 (base rename skipped after the early Exit). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 4 iters, 6 nodes); feature-sensitive. Pending until WPG.21 A2."
   },
@@ -804,7 +804,7 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.21",
    "note": "MakePosSequence shunt coverage: Capacitor SpecType 1 (kvar 600 -> [200], kV 12.47 -> 7.19956), 2 (cuf), 3 (cmatrix); Reactor SpecType 1 (kvar 200 -> 66.667), 2 (R+jX kept), 3 (rmatrix/xmatrix averaged R=0.26667 X=3), 4 (Z1 sym); Fault; GICTransformer. All -> phases=1; cap/reactor/fault/GICxfmr default grounded bus2 gets the IsGroundBus `.0` re-append (e.g. cap_kvar bus2=b1.0). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 2 iters, 3 nodes); feature-sensitive. Pending until WPG.21 A2."
   },
@@ -852,7 +852,7 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.21",
    "note": "MakePosSequence PC coverage: Load wye/delta+xfkVA/1ph (ld_wye kv 12.47->7.19956, kw 400->44.444), Generator x4 exercising the PrpSequence reads (g_plain kW+pf; g_kva kVA=250 kept; g_mva MVA=; g_kvar maxkvar 120->40 / minkvar -60->-20, ALL /phases), PVSystem, Storage, 2nd VSource, Isource. Ends with a SECOND makeposseq+solve (idempotency + the ÷3-again quirk). VSConverter DELIBERATELY EXCLUDED (its upstream GetCurrents bug forbids a live full-model compare, CLAUDE.md known-bugs; its MakePosSequence is a trivial no-op override). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 3 iters, 4 nodes); feature-sensitive. Pending until WPG.21 A2."
   },
@@ -886,7 +886,7 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.21",
    "note": "MakePosSequence control/metering coverage: EnergyMeter, Monitor (mode 0 and 1), Sensor, CapControl+cap, RegControl+xfmr, Relay/Recloser/SwtControl on lines, StorageController -- all targets resolvable, DERs/monitored elements created BEFORE their controls (DoMakePosSeq converts in creation order). InvControl/ExpControl/GenDispatcher/ESPVLControl/UPFCControl DELIBERATELY ABSENT: their overrides deref a NIL element and abort the oracle with an Access violation (docs/wpg21_makeposseq_probes.md) -> WT-D safe-skip unit tests, never decks. Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 5 iters, 6 nodes); feature-sensitive. Pending until WPG.21 A2."
   },
@@ -915,7 +915,7 @@
      ]
     }
    ],
-   "pending": true,
+   "pending": false,
    "wp": "WPG.21",
    "note": "MakePosSequence end-to-end report path: a mixed mini feeder (115/12.47 sub xfmr + 3 lines + cap + mixed loads + meter + monitor) solve -> makeposseq -> solve -> report reads (summary/losses/monitor sample) that exercise the PositiveSequence x3 power paths (Get_Power/Get_Losses/summary scale by 3). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 4 iters, 5 nodes); feature-sensitive. Pending until WPG.21 A2."
   }

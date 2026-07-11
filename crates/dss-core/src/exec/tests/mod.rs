@@ -21,6 +21,7 @@ mod fault_study;
 mod harmonics;
 mod lifecycle;
 mod line_fetch;
+mod make_pos_seq;
 mod monitors;
 mod open_close;
 mod options_timing;
