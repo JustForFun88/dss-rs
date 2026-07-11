@@ -61,11 +61,18 @@ fn class_prefix(full_name: &str) -> &str {
 ///
 /// [`SparseInt::insert`]: crate::support::sparse_math::SparseInt::insert
 fn other_terminal_col(data: &[[i32; 3]], jj: usize) -> i32 {
-    let high = data.len() - 1;
+    let high = data.len().saturating_sub(1);
     if jj < high && data[jj + 1][0] == data[jj][0] {
         data[jj + 1][1]
-    } else {
+    } else if jj > 0 {
         data[jj - 1][1]
+    } else {
+        // jj == 0 with no same-row successor. Unreachable for a well-formed
+        // incidence matrix (a 2-terminal PDE's entries are stored as a
+        // consecutive pair, so entry 0 is always the first of its pair and
+        // takes the `jj+1` branch). Guarded against `data[-1]` UB (D5 philosophy:
+        // do not reproduce an out-of-bounds read) — fall back to this column.
+        data[jj][1]
     }
 }
 
