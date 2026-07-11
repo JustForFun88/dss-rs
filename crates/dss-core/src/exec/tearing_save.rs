@@ -167,6 +167,29 @@ impl Dss {
             .unwrap_or(0)
     }
 
+    /// The saved-master lines strictly between `Clear` and `New Circuit` — our
+    /// round-trip-fidelity `Set DefaultBaseFreq` (a `NOTE(subst-metis)` addition
+    /// the official `SaveMasterFile` omits, save_circuit.rs). These configure the
+    /// global DSS state that `New Circuit` reads at creation
+    /// (`TDSSCircuit.Create` sets `Fundamental := DefaultBaseFreq`,
+    /// Circuit.pas:416), so a zone master must emit them **before** its own `New
+    /// Circuit.Zone_k` — otherwise zones 2+ default to 60 Hz while zone-1 and
+    /// `Master_Interconnected.dss` (which keep the full pre-header from the
+    /// filtered file) run at the deck frequency. Empty on the official fixed
+    /// prefix (`Clear` immediately followed by `New Circuit`).
+    fn zone_pre_header(file_struc: &[String]) -> &[String] {
+        let clear = file_struc
+            .iter()
+            .position(|l| l.trim().eq_ignore_ascii_case("clear"));
+        let new_ckt = file_struc
+            .iter()
+            .position(|l| contains_ci(l, "new circuit"));
+        match (clear, new_ckt) {
+            (Some(c), Some(n)) if n > c + 1 => &file_struc[c + 1..n],
+            _ => &[],
+        }
+    }
+
     /// Copy every support file redirected *before* the first `Redirect zone` line
     /// (linecodes, `Vsource.dss`, …) into each `zone_k` directory so the zone
     /// masters resolve them (Circuit.pas:1042–1064).
@@ -204,6 +227,13 @@ impl Dss {
             let _ = std::fs::create_dir_all(&zone_dir);
             let mut out = String::new();
             out.push_str("Clear\n");
+            // Global state read at circuit creation (`Set DefaultBaseFreq`) must
+            // precede `New Circuit.Zone_k` so the zone inherits the deck
+            // frequency (see `zone_pre_header`).
+            for line in Self::zone_pre_header(file_struc) {
+                out.push_str(line);
+                out.push('\n');
+            }
             out.push_str(&format!("New Circuit.Zone_{k}\n"));
 
             // Global/support section: from just past `New Circuit` up to (not
@@ -260,6 +290,17 @@ impl Dss {
     /// Vsource.source` for phase 1 (retargeting the copied master source) plus
     /// `New Vsource.Vph_2`/`Vph_3` — each `basekv`/`angle` from
     /// `PConn_Voltages` via FPC `floattostrF(…, ffGeneral, 8, 3)` = `fmt_g(v, 8)`.
+    ///
+    /// NOTE(upstream-quirk): the boundary source is written to `VSource.dss`
+    /// (capital `S`, 1:1 with official `Format_SubCircuits`, Circuit.pas:1114)
+    /// while the copied support redirect names `Vsource.dss` (lowercase `s`, from
+    /// the saved Vsource-class file). These resolve to the *same* file — the
+    /// boundary source overwriting the copied full source — only on a
+    /// case-insensitive filesystem (Windows/NTFS, the official DSS + this project
+    /// platform, D10). On a case-sensitive FS the zone master's `Redirect
+    /// Vsource.dss` would instead pick up the copied full 3-phase source. The
+    /// case-insensitivity assumption is inherited verbatim from upstream and not
+    /// "fixed" (changing the emitted case would diverge from official).
     fn write_zone_vsources(&mut self, path: &Path, num_ckts: usize) {
         let (pconn_names, pconn_voltages) = match self.circuit.as_ref() {
             Some(c) => (c.ad.pconn_names.clone(), c.ad.pconn_voltages.clone()),
@@ -480,6 +521,24 @@ mod tests {
         // Global section starts right after the `New Circuit` line (index 4),
         // not the official fixed index 2 (our master has extra header lines).
         assert_eq!(Dss::zone_global_start(&master), 4);
+    }
+
+    #[test]
+    fn zone_pre_header_carries_default_base_freq() {
+        let master = [
+            "! Saved by dss-rs".to_string(),
+            "Clear".to_string(),
+            "Set DefaultBaseFreq=50".to_string(),
+            "New Circuit.foo".to_string(),
+            "".to_string(),
+        ];
+        // The line(s) between `Clear` and `New Circuit` — must be emitted before
+        // the zone's own `New Circuit.Zone_k` so zones inherit the base freq.
+        assert_eq!(Dss::zone_pre_header(&master), ["Set DefaultBaseFreq=50"]);
+
+        // Official fixed prefix (Clear immediately followed by New Circuit): none.
+        let official = ["Clear".to_string(), "New Circuit.foo".to_string()];
+        assert!(Dss::zone_pre_header(&official).is_empty());
     }
 
     #[test]
