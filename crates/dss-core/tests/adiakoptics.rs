@@ -818,10 +818,15 @@ use num_complex::Complex64;
 
 /// Dense row-major `n*n` copy of a (row,col,value) triple list.
 fn ad_dense(cdata: &[(i32, i32, Complex64)], n: usize) -> Vec<Complex64> {
-    let mut d = vec![Complex64::new(0.0, 0.0); n * n];
+    ad_dense_rc(cdata, n, n)
+}
+
+/// Row-major `nrows×ncols` dense copy of a sparse `(row,col,value)` list.
+fn ad_dense_rc(cdata: &[(i32, i32, Complex64)], nrows: usize, ncols: usize) -> Vec<Complex64> {
+    let mut d = vec![Complex64::new(0.0, 0.0); nrows * ncols];
     for &(r, c, v) in cdata {
-        if (r as usize) < n && (c as usize) < n {
-            d[r as usize * n + c as usize] = v;
+        if (r as usize) < nrows && (c as usize) < ncols {
+            d[r as usize * ncols + c as usize] = v;
         }
     }
     d
@@ -889,6 +894,11 @@ fn adiakoptics_init_contours_have_plus_minus_per_column() {
 
 #[test]
 fn adiakoptics_init_zll_is_link_block() {
+    // Shape of the real-init ZLL block. Its VALUES are pinned two ways: the
+    // inverted-Yprim-self-block equality on a controlled circuit
+    // (`matrices::tests::zll_block_is_inverted_link_yprim_self_block`), and the
+    // real-init ZCC re-derivation in `adiakoptics_init_y4_inverts_zcc` (ZLL is an
+    // additive summand of ZCC, so a wrong real-init ZLL fails it).
     let scratch = scratch_dir("ad3_zll");
     let dss = init_midi_ad(&scratch);
     let ckt = dss.circuit().unwrap();
@@ -911,6 +921,7 @@ fn adiakoptics_init_y4_inverts_zcc() {
     let scratch = scratch_dir("ad3_y4");
     let dss = init_midi_ad(&scratch);
     let ckt = dss.circuit().unwrap();
+    let nn = ckt.num_nodes; // Contours / ZCT rows
     let n = ckt.ad.zcc.nrows() as usize;
     assert_eq!(n, 3, "ZCC order = real-links x 3");
     assert_eq!(ckt.ad.y4.nrows() as usize, n, "Y4 same order");
@@ -918,6 +929,64 @@ fn adiakoptics_init_y4_inverts_zcc() {
     // degenerate empty), so ZCC carries the CᵀZCT coupling, not just ZLL.
     assert!(ckt.ad.zct.nzero() > 0, "ZCT populated by the torn-Y solve");
     assert_eq!(ckt.ad.zcc.nzero(), 9, "ZCC is a full 3×3");
+
+    // D1 invariant (a) on the REAL init pipeline (not just the unit fixture):
+    // ZCC re-derived INDEPENDENTLY of the builder's transpose/multiply/add as a
+    // dense `Contoursᵀ·ZCT + ZLL`. A wrong link resolution, a wrong post-close
+    // rebuild ZLL, or a bad ZCT coupling here breaks this even though the shape
+    // checks and the circular `Y4·ZCC≈I` would still pass.
+    let c_dense = ad_dense_rc(
+        &ckt.ad
+            .contours
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        nn,
+        n,
+    );
+    let zct_dense = ad_dense_rc(
+        &ckt.ad
+            .zct
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        nn,
+        n,
+    );
+    let zll_dense = ad_dense(
+        &ckt.ad
+            .zll
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        n,
+    );
+    let zcc_dense = ad_dense(
+        &ckt.ad
+            .zcc
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        n,
+    );
+    for i in 0..n {
+        for j in 0..n {
+            let mut s = Complex64::new(0.0, 0.0);
+            for k in 0..nn {
+                s += c_dense[k * n + i] * zct_dense[k * n + j];
+            }
+            s += zll_dense[i * n + j];
+            let got = zcc_dense[i * n + j];
+            assert!(
+                (got - s).norm() < 1e-7,
+                "ZCC[{i},{j}] builder={got} vs CᵀZCT+ZLL={s}"
+            );
+        }
+    }
 
     let y4 = ad_dense(
         &ckt.ad
@@ -969,9 +1038,21 @@ fn adiakoptics_get_flag_and_stats_deterministic() {
     let dss2 = init_midi_ad(&scratch2);
     let stats2 = summary_stats(&dss2);
     assert_eq!(stats1, stats2, "statistics deterministic across runs");
-    assert!(
-        stats1.contains("Circuit reduction"),
-        "stats block present: {stats1}"
+
+    // Value golden (plan gate 5): the fixed 2-zone midi partition yields fixed
+    // node counts → fixed reduction/imbalance numbers with `floattostrf(ffgeneral,
+    // 4)` (via `fmt_g`) formatting. Part II has no oracle (§0.2), so this pins the
+    // engine's own deterministic 1:1 output as a committed characterization
+    // constant — a regression in the get_Statistics computation OR the number
+    // formatting now fails here, where the run-to-run determinism check alone
+    // (both runs regress identically) would pass. Machine-independent given ≥4
+    // cores (D6): the in-process METIS partition is deterministic.
+    assert_eq!(
+        stats1,
+        "Circuit reduction    (%): 46.34\n\
+         Max imbalance       (%): 13.64\n\
+         Average imbalance(%): 6.818",
+        "get_Statistics value golden (midi, 2 zones)"
     );
 }
 
@@ -1028,24 +1109,36 @@ fn summary_stats(dss: &Dss) -> String {
 
 #[test]
 fn export_zll_matches_matrix() {
+    use dss_core::util::float_to_str;
     let scratch = scratch_dir("ad3_exp_zll");
     let mut dss = init_midi_ad(&scratch);
     dss.command("export ZLL");
-    let path = dss.last_result_file();
+    let path = dss.last_result_file().to_string();
     assert!(!path.is_empty(), "ZLL export wrote a file");
-    let text = std::fs::read_to_string(path).expect("read ZLL.csv");
+    let text = std::fs::read_to_string(&path).expect("read ZLL.csv");
     let mut lines = text.lines();
     assert_eq!(
         lines.next().unwrap(),
         "Row,Col,Value(Real), Value(Imag)",
         "ZLL header"
     );
-    // One data line per stored non-zero (9 for a single 3x3 link block).
     let data: Vec<&str> = lines.filter(|l| !l.trim().is_empty()).collect();
-    assert_eq!(data.len(), dss.circuit().unwrap().ad.zll.nzero() as usize);
-    // Each line is `row,col,re,im` (4 comma fields).
-    for l in &data {
-        assert_eq!(l.split(',').count(), 4, "ZLL line has 4 fields: {l}");
+    let ckt = dss.circuit().unwrap();
+    let cdata = &ckt.ad.zll.cdata;
+    // One data line per stored non-zero (9 for a single 3x3 link block).
+    assert_eq!(data.len(), cdata.len(), "one data line per stored non-zero");
+    // VALUE-level: each emitted line is `row,col,float_to_str(re),float_to_str(im)`
+    // of the matching matrix entry in storage order — catches a Re/Im column swap
+    // or a wrong float rendering that a field-count check silently passes.
+    for (l, cd) in data.iter().zip(cdata) {
+        let want = format!(
+            "{},{},{},{}",
+            cd.row,
+            cd.col,
+            float_to_str(cd.value.re),
+            float_to_str(cd.value.im)
+        );
+        assert_eq!(*l, want, "ZLL export line equals the matrix entry");
     }
 }
 
@@ -1073,37 +1166,82 @@ fn export_contours_is_real_only() {
 }
 
 #[test]
-fn export_zcc_and_y4_have_four_fields() {
+fn export_zcc_and_y4_match_matrix() {
+    use dss_core::util::float_to_str;
     let scratch = scratch_dir("ad3_exp_zccy4");
     let mut dss = init_midi_ad(&scratch);
-    for (kw, want_hdr) in [
-        ("ZCC", "Row,Col,Value(Real), Value(Imag)"),
-        ("Y4", "Row,Col,Value(Real), Value(Imag)"),
-    ] {
+    for kw in ["ZCC", "Y4"] {
         dss.command(&format!("export {kw}"));
         let path = dss.last_result_file().to_string();
         let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {kw}: {e}"));
-        assert_eq!(text.lines().next().unwrap(), want_hdr, "{kw} header");
-        let n = text.lines().filter(|l| !l.trim().is_empty()).count() - 1;
-        assert_eq!(n, 9, "{kw} has 9 entries (3x3)");
+        let mut lines = text.lines();
+        assert_eq!(
+            lines.next().unwrap(),
+            "Row,Col,Value(Real), Value(Imag)",
+            "{kw} header"
+        );
+        let data: Vec<&str> = lines.filter(|l| !l.trim().is_empty()).collect();
+        let ckt = dss.circuit().unwrap();
+        let cdata = if kw == "ZCC" {
+            &ckt.ad.zcc.cdata
+        } else {
+            &ckt.ad.y4.cdata
+        };
+        assert_eq!(data.len(), 9, "{kw} has 9 entries (3x3)");
+        assert_eq!(
+            data.len(),
+            cdata.len(),
+            "{kw}: one line per stored non-zero"
+        );
+        // VALUE-level (see `export_zll_matches_matrix`): pin the emitted floats
+        // against the matrix entries, not merely the 4-field shape.
+        for (l, cd) in data.iter().zip(cdata) {
+            let want = format!(
+                "{},{},{},{}",
+                cd.row,
+                cd.col,
+                float_to_str(cd.value.re),
+                float_to_str(cd.value.im)
+            );
+            assert_eq!(*l, want, "{kw} export line equals the matrix entry");
+        }
     }
 }
 
 #[test]
-fn export_ad_matrices_are_silent_noop_without_init() {
-    // Compile + solve but do NOT init A-Diakoptics → the AD exports write nothing
-    // and leave LastResultFile untouched (Pascal `if ADiakoptics` gate).
+fn export_ad_matrices_write_no_file_but_set_lastfile_without_init() {
+    // Compile + solve but do NOT init A-Diakoptics. Pascal 1:1 (ExportResults.pas
+    // :3546 body gated by `if ADiakoptics` + ExportOptions.pas:503-507 tail run
+    // UNCONDITIONALLY): the export writes NO file and leaves GlobalResult
+    // untouched, but `SetLastResultFile(FileName)` + `@lastexportfile` still point
+    // the executive at the (never-created) default path.
     let scratch = scratch_dir("ad3_exp_noop");
     let mut dss = Dss::new();
     compile_fixture(&mut dss, "midi", &scratch);
     assert!(!dss.circuit().unwrap().solution.adiakoptics);
     assert_eq!(dss.last_result_file(), "", "no report written yet");
-    for kw in ["ZLL", "ZCC", "Contours", "Y4"] {
+    for (kw, file) in [
+        ("ZLL", "ZLL.csv"),
+        ("ZCC", "ZCC.csv"),
+        ("Contours", "C.csv"),
+        ("Y4", "Y4.csv"),
+    ] {
         dss.command(&format!("export {kw}"));
+        let p = dss.last_result_file().to_string();
+        assert!(
+            p.ends_with(file),
+            "export {kw} points LastResultFile at {file} (Pascal tail): {p}"
+        );
+        assert!(
+            !std::path::Path::new(&p).exists(),
+            "export {kw} writes NO file when ADiakoptics is false: {p}"
+        );
+        // GlobalResult is cleared at command start (Pascal `GlobalResult := ''`)
+        // and the gated-off export body never sets it.
         assert_eq!(
-            dss.last_result_file(),
+            dss.result(),
             "",
-            "export {kw} is a silent no-op when ADiakoptics is false"
+            "export {kw} leaves GlobalResult empty when ADiakoptics is false"
         );
     }
 }
