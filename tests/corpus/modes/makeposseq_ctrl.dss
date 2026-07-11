@@ -1,0 +1,54 @@
+! makeposseq_ctrl.dss — control / metering MakePosSequence coverage (WPG.21).
+! EnergyMeter, Monitors (mode 0 and mode 1), Sensor, CapControl+cap,
+! RegControl+xfmr, Relay/Recloser/SwtControl on lines, StorageController — all
+! with RESOLVED targets, DERs/monitored elements created BEFORE their controls
+! (creation order matters: DoMakePosSeq converts in creation order).
+! build -> solve -> makeposseq -> solve. The meter/control overrides resync
+! their monitored/controlled phase counts and reallocate buffers.
+!
+! NOTE (see docs/wpg21_makeposseq_probes.md): InvControl / ExpControl /
+! GenDispatcher / ESPVLControl / UPFCControl are DELIBERATELY ABSENT — their
+! MakePosSequence overrides dereference a NIL element (fleet ControlledElement /
+! empty-DER MonitoredElement) and ABORT the oracle with an Access violation, so
+! they become Rust safe-skip unit tests (WT-D), never oracle decks.
+clear
+set defaultbasefrequency=60
+new circuit.psq_ctrl basekv=115 pu=1.0 phases=3 bus1=src
+~ r1=0.2 x1=2.0 r0=0.6 x0=6.0
+
+! regulated substation transformer (RegControl target, created first)
+new transformer.reg phases=3 windings=2 xhl=7 bank=b1
+~ wdg=1 bus=src conn=delta kv=115 kva=20000
+~ wdg=2 bus=b1 conn=wye kv=12.47 kva=20000
+
+new line.l1 bus1=b1 bus2=b2 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km
+new line.l2 bus1=b2 bus2=b3 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km
+new line.sw bus1=b3 bus2=b4 phases=3 switch=yes
+new line.l4 bus1=b4 bus2=b5 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km
+
+! shunt capacitor + its CapControl (target created first)
+new capacitor.cap1 bus1=b2 phases=3 kvar=600 kv=12.47
+
+new storage.st1 bus1=b3 phases=3 kv=12.47 kwrated=100 kwhrated=200 %stored=50
+
+new load.ld2 bus1=b2 phases=3 kv=12.47 kw=800 pf=0.92 model=1
+new load.ld5 bus1=b5 phases=3 kv=12.47 kw=400 pf=0.95 model=1
+
+! --- metering + controls (targets all resolvable above) ---
+new energymeter.em element=line.l1 terminal=1
+new monitor.mon_p element=line.l1 terminal=1 mode=1
+new monitor.mon_v element=transformer.reg terminal=2 mode=0
+new sensor.sen element=line.l1 terminal=1 kvbase=12.47
+new regcontrol.rc transformer=reg winding=2 vreg=122 band=2 ptratio=60
+new capcontrol.cc element=line.l1 terminal=1 capacitor=cap1 type=current on=60 off=30
+new relay.rel monitoredobj=line.l2 monitoredterm=1 type=current phasetrip=800
+new recloser.rec monitoredobj=line.l4 monitoredterm=1 phasetrip=600
+new swtcontrol.swc switchedobj=line.sw switchedterm=1 action=close
+new storagecontroller.stc element=line.l1 terminal=1 elementlist=[st1]
+
+set voltagebases=[115, 12.47]
+calcvoltagebases
+set maxiterations=100
+solve
+makeposseq
+solve

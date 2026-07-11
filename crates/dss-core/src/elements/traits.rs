@@ -7,6 +7,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::solution::SolveMode;
 use crate::support::dynamics::IterationFlag;
 
@@ -537,5 +538,35 @@ pub trait CktElement {
     ) -> (Complex64, Complex64, Complex64) {
         let _ = (sys, node_v);
         (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO)
+    }
+
+    /// Pascal `TDSSCktElement.MakePosSequence` (virtual): convert this element
+    /// to its positive-sequence equivalent (`TExecHelper.DoMakePosSeq` calls it
+    /// on every circuit element, in creation order, after setting
+    /// `PositiveSequence := TRUE`). The element mutates its own direct fields
+    /// here and returns the ordered property-system mutations the exec applier
+    /// must replay through the typed setter helpers (see [`PosSeqPlan`]).
+    ///
+    /// The default is the base behavior: no property sets, run the base bus
+    /// rename ([`CktElementData::make_pos_sequence_base`]) — every element
+    /// without a `MakePosSequence` override in Pascal inherits exactly this.
+    ///
+    /// [`PosSeqPlan`]: crate::elements::pos_seq::PosSeqPlan
+    /// [`CktElementData::make_pos_sequence_base`]: crate::elements::ckt::CktElementData::make_pos_sequence_base
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        let _ = ctx;
+        PosSeqPlan::default()
+    }
+
+    /// Pascal `TControlElem.MonitoredElement` / `TMeterElement.MeteredElement`:
+    /// the element this control/meter senses, resolved to its [`ElemRef`]. The
+    /// exec applier reads it to build the [`PosSeqCtx::monitored`] snapshot
+    /// before calling [`Self::make_pos_sequence`]. Default `None` — a plain
+    /// circuit element monitors nothing; controls/meters override it (in the
+    /// later WTs of this round).
+    ///
+    /// [`PosSeqCtx::monitored`]: crate::elements::pos_seq::PosSeqCtx::monitored
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        None
     }
 }
