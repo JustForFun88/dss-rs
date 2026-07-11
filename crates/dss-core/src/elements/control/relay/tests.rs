@@ -1241,3 +1241,54 @@ fn line_term1_max_current(dss: &mut Dss, name: &str) -> f64 {
     }
     m
 }
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::obj::base::DssObject;
+
+    /// Pascal `TRelayObj.MakePosSequence` (Relay.pas:915): monitored resync
+    /// (incl. the Distance/TD21/DOC cvBuffer path) then the Vbase/PickupVolts47
+    /// recompute. 1-phase → Vbase = kVBase·1000.
+    #[test]
+    fn resyncs_monitored_and_recomputes_vbase() {
+        let mut r = Relay::new("r1");
+        r.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 });
+        r.monitored_element_terminal = 1;
+        r.kv_base = 12.47;
+        r.pct_pickup47 = 2.0;
+        r.control_type = ctype::DISTANCE; // exercises the cvBuffer branch
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                yorder: 2,
+                bus_names: vec!["b1".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let plan = r.make_pos_sequence(&ctx);
+        assert_eq!(r.ccd.cd.nphases, 1);
+        assert_eq!(r.get_bus_name(1), "b1");
+        assert!((r.vbase - 12_470.0).abs() < 1e-9); // 1-phase: kVBase·1000
+        assert!((r.pickup_volts47 - 249.4).abs() < 1e-9);
+        assert!(plan.run_base);
+        assert_eq!(r.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+    }
+
+    /// The Vbase/PickupVolts47 recompute sits OUTSIDE the NIL guard: with no
+    /// monitored element the default 3-phase Vbase = kVBase/√3·1000 is written.
+    #[test]
+    fn vbase_recomputed_outside_nil_guard() {
+        let mut r = Relay::new("r1"); // default nphases = 3
+        r.kv_base = 12.47;
+        r.pct_pickup47 = 2.0;
+        r.make_pos_sequence(&PosSeqCtx::default());
+        let expected = 12.47 / crate::util::sqrt3() * 1000.0;
+        assert!((r.vbase - expected).abs() < 1e-9);
+        assert!((r.pickup_volts47 - expected * 2.0 * 0.01).abs() < 1e-9);
+    }
+}

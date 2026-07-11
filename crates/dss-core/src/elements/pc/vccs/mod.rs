@@ -14,9 +14,6 @@
 //!   Monitor mode-3 path consumes.
 //! - [`accessors`]: the `CktElement` / `DssObject` trait impls.
 //!
-//! NOT_PORTED: `MakePosSequence` (sets `phases := 1`) — the positive-sequence
-//! model conversion has no trait hook yet and is deferred across all PC elements
-//! (cf. the Generator/PVSystem/IndMach012 deferrals); no corpus VCCS deck uses it.
 //! `Fkv`/`Fki` are recomputed in `RecalcElementData` faithfully but are dead in
 //! the upstream source too (no proc reads them).
 

@@ -10,6 +10,7 @@
 //! (`get_value`) in [`value`].
 
 mod parse;
+mod typed;
 mod value;
 
 use crate::obj::base::DssObject;

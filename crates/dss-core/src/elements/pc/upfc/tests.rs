@@ -42,3 +42,14 @@ fn series_yprim_is_the_xs_reactance_block() {
     assert!((yprim.get(0, 1) - num_complex::Complex64::new(0.0, 50.0)).norm() < 1e-9);
     assert!((yprim.get(1, 0) - num_complex::Complex64::new(0.0, 50.0)).norm() < 1e-9);
 }
+
+/// UPFC `MakePosSequence` is an EMPTY Pascal body (UPFC.pas:1058-1060): no
+/// property edits and no `inherited` call → `PosSeqPlan::no_base()`.
+#[test]
+fn makeposseq_upfc_is_no_base_and_empty() {
+    use crate::elements::pos_seq::PosSeqCtx;
+    let mut u = Upfc::new("test");
+    let plan = u.make_pos_sequence(&PosSeqCtx::default());
+    assert!(!plan.run_base);
+    assert!(plan.actions.is_empty());
+}

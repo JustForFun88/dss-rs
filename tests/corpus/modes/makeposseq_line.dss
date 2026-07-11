@@ -1,0 +1,47 @@
+! makeposseq_line.dss — Line MakePosSequence coverage (WPG.21).
+! Every Line input form through one feeder, then build -> solve -> makeposseq
+! -> solve. The pos-seq conversion (Line.pas:1531-1629) zeroes PrpSequence,
+! keeps Z1 for the symcomponents form, and averages the solve-derived Z[]/Yc[]
+! diagonal/off-diagonal for the matrix / geometry / spacing forms; switch=yes
+! lines carry the fixed switch constants; units are re-set.
+clear
+set defaultbasefrequency=60
+new circuit.psq_line basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.4 x1=1.6 r0=1.2 x0=4.2
+
+! symcomponents form (keeps Z1)
+new line.l_sym bus1=src bus2=b1 phases=3 r1=0.301 x1=0.667 r0=0.882 x0=2.041 c1=3.4 c0=1.6 length=0.5 units=km
+
+! rmatrix/xmatrix/cmatrix form (Z/Yc averaging branch)
+new line.l_mat bus1=b1 bus2=b2 phases=3 length=0.4 units=km rmatrix=[0.3 | 0.09 0.3 | 0.09 0.09 0.3] xmatrix=[1.0 | 0.4 1.0 | 0.4 0.4 1.0] cmatrix=[3.4 | -1.1 3.4 | -1.1 -1.1 3.4]
+
+! geometry form
+new wiredata.acsr gmr=0.0244 diam=0.721 rac=0.306 runits=mi radunits=in gmrunits=ft normamps=530
+new linegeometry.geo nconds=3 nphases=3 reduce=y
+~ cond=1 wire=acsr x=-1.2909 h=13.716 units=m
+~ cond=2 wire=acsr x=0 h=13.716 units=m
+~ cond=3 wire=acsr x=1.2909 h=13.716 units=m
+new line.l_geo bus1=b2 bus2=b3 geometry=geo length=0.3 units=km
+
+! spacing + wires form
+new linespacing.sp nconds=3 nphases=3 x=[-1.29 0 1.29] h=[13.7 13.7 13.7] units=m
+new line.l_spc bus1=b3 bus2=b4 spacing=sp wires=[acsr acsr acsr] length=0.3 units=km
+
+! switch=yes form (switch constants)
+new line.l_sw bus1=b4 bus2=b5 phases=3 switch=yes
+
+! 1-phase form (on phase 1)
+new line.l_1ph bus1=b5.1 bus2=b6.1 phases=1 r1=0.3 x1=0.6 c1=3.4 length=0.2 units=km
+
+! units=mi form
+new line.l_mi bus1=b4 bus2=b7 phases=3 r1=0.12 x1=0.34 c1=3.0 length=0.5 units=mi
+
+new load.ld1 bus1=b3 phases=3 kv=12.47 kw=500 pf=0.95 model=1
+new load.ld2 bus1=b7 phases=3 kv=12.47 kw=300 pf=0.92 model=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+set maxiterations=100
+solve
+makeposseq
+solve

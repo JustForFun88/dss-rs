@@ -82,3 +82,36 @@ fn empty_fleet_yields_no_update() {
     assert!(!ctrl.sample(&mut env));
     assert_eq!(ctrl.list_size, 0);
 }
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+
+    /// Pascal `TUPFCControlObj.MakePosSequence` (UPFCControl.pas:179) is the same
+    /// NIL-deref hazard as GenDispatcher (Access violation #303). Safe-skip when
+    /// the always-NIL ControlledElement is unresolved.
+    #[test]
+    fn crash_config_element_set_is_safe_skip() {
+        let mut uc = UpfcControl::new("uc1");
+        uc.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 });
+        let (np, nc) = (uc.ccd.cd.nphases, uc.ccd.cd.nconds);
+        let bus = uc.ccd.cd.get_bus(1).to_string();
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                bus_names: vec!["b1".into()],
+                ..Default::default()
+            }),
+            controlled: None,
+            ..Default::default()
+        };
+        let plan = uc.make_pos_sequence(&ctx);
+        assert_eq!((uc.ccd.cd.nphases, uc.ccd.cd.nconds), (np, nc));
+        assert_eq!(uc.ccd.cd.get_bus(1), bus);
+        assert!(plan.run_base);
+        assert_eq!(uc.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+    }
+}

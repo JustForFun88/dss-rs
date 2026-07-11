@@ -6,6 +6,7 @@
 use num_complex::Complex64;
 
 use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -36,6 +37,51 @@ impl CktElement for CapControl {
     /// Pascal `TControlElem.GetCurrents`: always zero.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TCapControlObj.MakePosSequence` (`Controls/CapControl.pas:643`):
+    /// adopt the controlled capacitor's enabled state / phase / conductor
+    /// counts, then attach terminal 1 to the *effective* element's bus — the
+    /// monitored element when set, else the controlled element (forcing
+    /// `ElementTerminal := 1`) — and run the base bus rename (`inherited`).
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        if let Some(c) = &ctx.controlled {
+            // Enabled := ControlledElement.Enabled (default Set_Enabled).
+            self.ccd.cd.set_enabled(c.enabled);
+            // FNphases := ControlledElement.NPhases; Nconds := FNphases
+            self.ccd.cd.nphases = c.nphases;
+            self.ccd.cd.set_nconds(c.nphases);
+        }
+        // effElement := MonitoredElement if set, else ControlledElement (which
+        // forces ElementTerminal := 1).
+        let eff = match &ctx.monitored {
+            Some(m) => Some(m),
+            None => {
+                self.ccd.element_terminal = 1;
+                ctx.controlled.as_ref()
+            }
+        };
+        if let Some(e) = eff {
+            // Setbus(1, effElement.GetBus(ElementTerminal))
+            let t = self.ccd.element_terminal as usize;
+            let bus = t
+                .checked_sub(1)
+                .and_then(|k| e.bus_names.get(k))
+                .cloned()
+                .unwrap_or_default();
+            self.ccd.cd.set_bus(1, &bus);
+            // ReAllocMem(cBuffer, ..) + ControlVars.CondOffset: no persistent
+            // field here — the sampler sizes `cbuffer` and computes `cond_offset`
+            // as locals each `Sample` from the live monitored element.
+        }
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
+    }
+
+    /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
+    /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
+    fn monitored_element_ref(&self) -> Option<ElemRef> {
+        self.ccd.monitored_element
     }
 }
 

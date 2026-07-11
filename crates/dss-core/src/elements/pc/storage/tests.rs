@@ -305,3 +305,60 @@ fn control_mode_gfm_sets_flag() {
     st.side_effects(prop::CONTROL_MODE, 0);
     assert!(st.base.gfm_mode);
 }
+
+// --- MakePosSequence (WPG.21) --------------------------------------------
+
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
+use crate::elements::traits::CktElement;
+
+/// 3-phase Storage: kWrated ÷ phases, PF set. The Pascal body has NO leading
+/// `BeginEdit` (each `Set*` auto-brackets) and a dangling trailing `EndEdit`,
+/// so the plan starts with a bare `Set*` and ends with a lone `EndEdit`.
+#[test]
+fn makeposseq_storage_three_phase_no_begin_edit() {
+    let mut st = Storage::new("s");
+    st.base.connection = Connection::Wye;
+    st.cd.nphases = 3;
+    st.kv_storage_base = 12.47;
+    st.kw_rating = 100.0;
+    st.base.pf_nominal = 1.0;
+
+    let plan = st.make_pos_sequence(&PosSeqCtx::default());
+    assert!(plan.run_base);
+    // No BeginEdit anywhere; exactly one trailing EndEdit.
+    assert!(!plan.actions.contains(&PosSeqAction::BeginEdit));
+    assert_eq!(plan.actions.last(), Some(&PosSeqAction::EndEdit));
+    let v = 12.47 / 3.0_f64.sqrt();
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, v),
+            PosSeqAction::SetF64(prop::KW_RATED, 100.0 / 3.0),
+            PosSeqAction::SetF64(prop::PF, 1.0),
+            PosSeqAction::EndEdit,
+        ]
+    );
+}
+
+/// 1-phase Storage: base kV kept, no kW/PF split, still the dangling EndEdit.
+#[test]
+fn makeposseq_storage_single_phase() {
+    let mut st = Storage::new("s");
+    st.base.connection = Connection::Wye;
+    st.cd.nphases = 1;
+    st.kv_storage_base = 7.2;
+    st.kw_rating = 100.0;
+
+    let plan = st.make_pos_sequence(&PosSeqCtx::default());
+    assert_eq!(
+        plan.actions,
+        vec![
+            PosSeqAction::SetI32(prop::PHASES, 1),
+            PosSeqAction::SetI32(prop::CONN, 0),
+            PosSeqAction::SetF64(prop::KV, 7.2),
+            PosSeqAction::EndEdit,
+        ]
+    );
+}

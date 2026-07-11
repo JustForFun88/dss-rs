@@ -6,6 +6,7 @@
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_LOCK, CTRL_NONE, CTRL_UNLOCK};
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
@@ -35,6 +36,29 @@ impl CktElement for SwtControl {
     /// Pascal `TControlElem.GetCurrents`: always zero.
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
+    }
+
+    /// Pascal `TSwtControlObj.MakePosSequence` (`Controls/SwtControl.pas:306`):
+    /// adopt the controlled (switched) element's phase / conductor counts and
+    /// attach terminal 1 to its bus, then run the base bus rename (`inherited`).
+    /// Only reads `ControlledElement`, so no `monitored_element_ref` override is
+    /// needed.
+    fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
+        if let Some(c) = &ctx.controlled {
+            // FNphases := ControlledElement.NPhases; Nconds := FNphases
+            self.ccd.cd.nphases = c.nphases;
+            self.ccd.cd.set_nconds(c.nphases);
+            // Setbus(1, ControlledElement.GetBus(ElementTerminal))
+            let t = self.ccd.element_terminal as usize;
+            let bus = t
+                .checked_sub(1)
+                .and_then(|k| c.bus_names.get(k))
+                .cloned()
+                .unwrap_or_default();
+            self.ccd.cd.set_bus(1, &bus);
+        }
+        // inherited MakePosSequence -> base bus rename.
+        PosSeqPlan::base()
     }
 }
 

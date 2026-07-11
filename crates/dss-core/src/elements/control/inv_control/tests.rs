@@ -1870,3 +1870,51 @@ mod dispatch {
         );
     }
 }
+
+#[cfg(test)]
+mod make_pos_seq_tests {
+    use super::super::*;
+    use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
+    use crate::elements::traits::{CktElement, ElemRef};
+
+    /// Pascal `TInvControlObj.MakePosSequence` (InvControl.pas:943): the empty
+    /// DER-list config is a NIL-deref hazard (Access violation #303, probe `1`).
+    /// The defined `FNphases := 3; Nconds := 3` still applies; the NIL-deref
+    /// `Setbus` is safe-skipped (no bus change, no panic).
+    #[test]
+    fn empty_der_list_applies_3phase_and_safe_skips_setbus() {
+        let mut ic = InvControl::new("ic1");
+        // Force a non-3 phase/cond count so the `FNphases := 3; Nconds := 3`
+        // assignment is load-bearing (not just the constructor default).
+        ic.ccd.cd.nphases = 1;
+        ic.ccd.cd.nconds = 1;
+        let bus = ic.ccd.cd.get_bus(1).to_string();
+        let plan = ic.make_pos_sequence(&PosSeqCtx::default()); // monitored None
+        assert_eq!(ic.ccd.cd.nphases, 3);
+        assert_eq!(ic.ccd.cd.nconds, 3);
+        assert_eq!(ic.ccd.cd.get_bus(1), bus); // Setbus safe-skipped
+        assert!(plan.run_base);
+    }
+
+    /// Populated path: monitored resolved to the 1st DER ⇒ adopt its Firstbus /
+    /// phase count (overriding the 3/3 default).
+    #[test]
+    fn populated_der_adopts_first_der_bus_and_phases() {
+        let mut ic = InvControl::new("ic1");
+        ic.ccd.monitored_element = Some(ElemRef { cls: 3, idx: 7 });
+        let ctx = PosSeqCtx {
+            monitored: Some(PosSeqElemInfo {
+                nphases: 1,
+                nconds: 1,
+                bus_names: vec!["derbus".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        ic.make_pos_sequence(&ctx);
+        assert_eq!(ic.ccd.cd.nphases, 1);
+        assert_eq!(ic.ccd.cd.nconds, 1);
+        assert_eq!(ic.ccd.cd.get_bus(1), "derbus"); // MonitoredElement.Firstbus
+        assert_eq!(ic.monitored_element_ref(), Some(ElemRef { cls: 3, idx: 7 }));
+    }
+}

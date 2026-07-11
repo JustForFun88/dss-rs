@@ -1,0 +1,50 @@
+! makeposseq_shunt.dss — shunt-element MakePosSequence coverage (WPG.21).
+! Capacitor SpecType 1 (kvar), 2 (cuf), 3 (cmatrix); Reactor SpecType 1 (kvar),
+! 2 (R+jX), 3 (RMatrix/XMatrix), 4 (Z1 symmetrical components); a Fault; a
+! GICTransformer. build -> solve -> makeposseq -> solve. The cap/reactor
+! overrides (Capacitor.pas:1... / Reactor.pas:1052) divide kvar by 3, average
+! the C/R/X matrices to their positive-sequence value, and set Phases:=1.
+clear
+set defaultbasefrequency=60
+new circuit.psq_shunt basekv=12.47 pu=1.0 phases=3 bus1=src
+~ r1=0.3 x1=1.2 r0=0.9 x0=3.6
+
+new line.feed bus1=src bus2=b1 phases=3 r1=0.2 x1=0.5 c1=3 length=1 units=km
+new line.l2 bus1=b1 bus2=b2 phases=3 r1=0.2 x1=0.5 c1=3 length=1 units=km
+
+! Capacitor SpecType 1 (kvar+kV)
+new capacitor.cap_kvar bus1=b1 phases=3 kvar=600 kv=12.47
+
+! Capacitor SpecType 2 (cuf per-phase capacitance)
+new capacitor.cap_cuf bus1=b1 phases=3 cuf=[10 10 10]
+
+! Capacitor SpecType 3 (cmatrix)
+new capacitor.cap_cmat bus1=b2 phases=3 cmatrix=[10 | -2 10 | -2 -2 10]
+
+! Reactor SpecType 1 (kvar+kV)
+new reactor.rx_kvar bus1=b2 phases=3 kvar=200 kv=12.47
+
+! Reactor SpecType 2 (R + jX)
+new reactor.rx_z bus1=b2 phases=3 r=1 x=12
+
+! Reactor SpecType 3 (RMatrix/XMatrix)
+new reactor.rx_mat bus1=b1 phases=3 rmatrix=[1 | 0.2 1 | 0.2 0.2 1] xmatrix=[12 | 3 12 | 3 3 12]
+
+! Reactor SpecType 4 (Z1 symmetrical components)
+new reactor.rx_z1 bus1=b2 phases=3 Z1=[1, 12] Z0=[3, 20]
+
+! Fault to ground
+new fault.flt bus1=b2 phases=3 r=10
+
+! GICTransformer (DC/GIC resistance model, GSU type)
+new gictransformer.gt busH=b1 busNH=b1.4.4.4 R1=0.1 type=GSU
+
+new load.ld1 bus1=b1 phases=3 kv=12.47 kw=400 pf=0.95 model=1
+new load.ld2 bus1=b2 phases=3 kv=12.47 kw=300 pf=0.95 model=1
+
+set voltagebases=[12.47]
+calcvoltagebases
+set maxiterations=100
+solve
+makeposseq
+solve
