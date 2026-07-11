@@ -3103,7 +3103,28 @@ inventories, full rung attribution).**
 `DSS_ORACLE_ENGINE=capi015` on the Oddie-venv interpreter). Sweep-hygiene note:
 `newton_feeder.dss` (non-converging Newton, hits the 300 s timeout) and the
 `#58614` shape crashers poison a shared `ab_compare` engine (`#303 on clear`),
-so the modes family is swept one case per process; corpus stays pristine.
+so the modes family is swept one case per process; corpus stays pristine. The
+modes-isolation + merge recipe is now committed and turnkey:
+`tools/opendss/sweep_modes_isolated.py` + `sweep_merge.py` (merged = 338 corpus
+non-modes + 40 isolated modes = 378, verified 0-orphan on all three pairs).
+
+**Audit settle (2026-07-12):** 9 findings settled empirically, all fixed.
+(1) capi_vs_capi015 `#2024101` NormAmps read-only witness corrected — the 3 decks
+are `StoCtrl_SeasonTarget/{IEEE13NodecktMOD,Run_example}` +
+`ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss` (`StoCtrl_Current_PeakShave`
+MATCHES; verified in `merged_capi_vs_capi015.json`). (2) IM `r4133↔r4133`
+determinism probe **run** (`det_indmach_r4133.json`: both cases match, iters
+21/21 & 20/20, `v_max_rel=0`) — the "each engine deterministic" claim now holds
+on BOTH sides for BOTH surprises. (3) `pstcalc_cmd` timeout re-bucketed (crash/
+timeout, not `#303`) consistently in README. (4) delta_capi reconciliation
+completed the inventory→witness direction: 8 in-scope rows (B4-harmonics-abort,
+C8, C11, **D6 transformer-seasonal**, D11, D12, D13, E1) flagged **synthesize** —
+D6 is report-only NUMERIC and *unwitnessable by `ab_compare`* (no overload/export
+channel; `storagecontroller_seasonal` is storage+line, not transformer AmpRatings)
+→ needs a dedicated overload-report deck. (5) cross-file bucket-tag collisions
+qualified (`B4-r3723`/`A5-r3723` vs this-file's B4/A5) + legend note. (6–9)
+per-signal count-table relabels, delta_r4088_r4133 headline caveat → B5/B6,
+capi015=r4103 version-gap caveat. No engine/golden/oracle changes; docs only.
 
 ### Gate state (all green)
 ```

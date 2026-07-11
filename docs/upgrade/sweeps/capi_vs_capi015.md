@@ -6,7 +6,12 @@ diverged, 27 error** (26 capi015 strict-validation `error_b`, 1 capi `error_a`).
 
 ## Divergence classes
 
-| class | # cases | notable magnitude |
+Counts are **per-signal occurrences**, not case counts: one case can appear in
+several rows (e.g. `storagecontroller_seasonal` is both Yf-only and event-log),
+so the diverged rows below sum to more than the 17 diverged headline. The error
+rows (strict-validation / crash / `#303`) partition the 26 `error_b` exactly.
+
+| class | # (per-signal) | notable magnitude |
 |---|---|---|
 | voltage (solved-state move) | 4 | `Dynamic_KundurDynExp` V **0.87** |
 | Y-fingerprint only (V≈unchanged) | 11 | `gfm_*` Yf **3.6e-3**, `Local/Mon_voltage_*` Yf 1.8e-6 |
@@ -46,10 +51,12 @@ r4133's `DblValueNZ` **clamp** (kW=0→1e-8), not capi015's strict error.
 | `#20241011` | `Array "…" contains more items than expected` | 1 | B7 parser strict array |
 | `#65001` | `Zero frequency detected in Spectrum` | 1 | strict spectrum validation |
 
-Representative decks: `epri_dpv/M1/Master_NoPV` (kW=0), `StoCtrl_SeasonTarget/*`
-+ `StoCtrl_Current_PeakShave` (NormAmps read-only), all `StorageControllerTechNote/*`
-+ `8500-Node/P174_Run_360kW_PV` (CSV counts), `FreqScan/Run_Scan` (spectrum),
-`makeposseq_shunt` (array).
+Representative decks: `epri_dpv/M1/Master_NoPV` (kW=0); the 3 NormAmps read-only
+(`#2024101`) decks are `StoCtrl_SeasonTarget/{IEEE13NodecktMOD,Run_example}.dss`
++ `ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss` (verified in
+`merged_capi_vs_capi015.json` — `StoCtrl_Current_PeakShave` MATCHES, it is not a
+witness); all `StorageControllerTechNote/*` + `8500-Node/P174_Run_360kW_PV` (CSV
+counts), `FreqScan/Run_Scan` (spectrum), `makeposseq_shunt` (array).
 
 ## Other errors (not a Rung-1 behavior delta to port)
 
