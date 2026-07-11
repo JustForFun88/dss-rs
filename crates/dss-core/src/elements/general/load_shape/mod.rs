@@ -59,7 +59,9 @@ define_properties! {
     1  NPTS      => PropDef::integer("NPts").flags(PropFlags::SUPPRESS_JSON);
     2  INTERVAL  => PropDef::double("Interval")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED_IN_SPEC_SET);
-    3  MULT      => PropDef::double_array("Mult", NPTS).flags(PropFlags::REDUNDANT);
+    3  MULT      => PropDef::double_array("Mult", NPTS)
+        .flags(PropFlags::REDUNDANT)
+        .redundant_with(PMULT);
     4  HOUR      => PropDef::double_array("Hour", NPTS).flags(PropFlags::REQUIRED_IN_SPEC_SET);
     5  MEAN      => PropDef::double("Mean");
     6  STDDEV    => PropDef::double("StdDev");
@@ -79,10 +81,12 @@ define_properties! {
     14 QMAX      => PropDef::double("QMax");
     15 SINTERVAL => PropDef::double("SInterval")
         .scale(1.0 / 3600.0)
-        .flags(PropFlags::REDUNDANT | PropFlags::NON_NEGATIVE);
+        .flags(PropFlags::REDUNDANT | PropFlags::NON_NEGATIVE)
+        .redundant_with(INTERVAL);
     16 MINTERVAL => PropDef::double("MInterval")
         .scale(1.0 / 60.0)
-        .flags(PropFlags::REDUNDANT | PropFlags::NON_NEGATIVE);
+        .flags(PropFlags::REDUNDANT | PropFlags::NON_NEGATIVE)
+        .redundant_with(INTERVAL);
     17 PBASE     => PropDef::double("PBase");
     18 QBASE     => PropDef::double("QBase");
     19 PMULT     => PropDef::double_array("PMult", NPTS).flags(PropFlags::REQUIRED_IN_SPEC_SET);

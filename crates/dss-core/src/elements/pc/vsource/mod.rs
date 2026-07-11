@@ -23,7 +23,7 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::traits::ElemRef;
 use crate::obj::dss_enum::EnumRegistry;
-use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
 
 mod accessors;
@@ -113,6 +113,16 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
+
+    // JSON default-mode redundancy (Pascal `Vsource.pas:346-349`): R1/X1 defer
+    // to Z1, R0/X0 to Z0 (the `REDUNDANT` flags are already set above).
+    let z1 = prop_index(&defs, "Z1");
+    let z0 = prop_index(&defs, "Z0");
+    for (name, target) in [("R1", z1), ("X1", z1), ("R0", z0), ("X0", z0)] {
+        let i = prop_index(&defs, name);
+        defs[i - 1].redundant_with = target;
+    }
+
     defs.shrink_to_fit();
     ClassProps::new("Vsource", defs, true)
 }

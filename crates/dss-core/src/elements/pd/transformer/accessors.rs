@@ -434,6 +434,13 @@ impl DssObject for Transformer {
                 KVAS => w.kva,
                 TAPS => w.putap,
                 PCTRS => w.rpu,
+                // Per-winding scalars rendered as a JSON array under `ON_ARRAY`
+                // (DoubleOnStructArrayProperty; DSSObjectHelper.pas:1014).
+                RNEUT => w.rneut,
+                XNEUT => w.xneut,
+                MAXTAP => w.max_tap,
+                MINTAP => w.min_tap,
+                RDCOHMS => w.rdcohms,
                 _ => unreachable!("Transformer has no struct array {idx}"),
             })
             .collect()
@@ -456,6 +463,9 @@ impl DssObject for Transformer {
     fn get_struct_i32_array(&self, idx: usize) -> Vec<i32> {
         match idx {
             prop::CONNS => self.windings.iter().map(|w| w.connection).collect(),
+            // NumTaps rendered as a JSON per-winding array under `ON_ARRAY`
+            // (IntegerOnStructArrayProperty; DSSObjectHelper.pas:1054).
+            prop::NUMTAPS => self.windings.iter().map(|w| w.num_taps).collect(),
             _ => unreachable!("Transformer has no struct enum array {idx}"),
         }
     }

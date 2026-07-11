@@ -20,6 +20,7 @@ mod currents;
 mod elem;
 mod fault_study;
 mod inc_matrix;
+pub mod json;
 mod loads;
 mod logs;
 mod losses;
