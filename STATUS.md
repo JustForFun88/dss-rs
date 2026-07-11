@@ -9,6 +9,28 @@
 
 Last updated: 2026-07-11.
 
+**FA fix 3 (anti-shrink guard + §6 suite completion, 2026-07-11).** Two FINAL
+ACCEPTANCE gaps closed. (1) **Anti-shrink guard**: `tests/corpus/manifests/
+population.lock.json` (committed fingerprint — per-manifest case counts, the full
+sorted `solvable_now` path list, the 3 family case counts) + `population_lock.rs`
+(unconditional `cargo test`) that fails on any drift with a diff + the one-command
+regen `DSS_UPDATE_POPULATION_LOCK=1 …`, so a silent reclassification of a deck out
+of `solvable_now` can no longer stay green. Base counts: solvable_now 226, family
+36/57/40. Documented in TESTING.md §Anti-shrink population lock. (2) **PORTING_PLAN
+§6 literal suites**: `save_roundtrip.rs` now covers IEEE 34 + 8500 (were 13/37/123);
+`golden_reports.rs` adds Voltages/Currents/Powers export-diff on IEEE 34/37/123
+(were 13/8500) with 9 pinned-oracle goldens (`gen_reports.gen_extra_feeder_reports`).
+Two proven floors (not weakening, decomposition per CLAUDE.md): (a) the **8500 save
+round-trip** node-V floor is 3e-4 rel — **inherent to OpenDSS `Save circuit`**, not
+the port: the pinned oracle's own Save→recompile→resolve reproduces the identical
+worst node (`sx3312692a.1`, 2.022e-4) and pre/post total power to the digit; the
+gate stays strong via exact iteration count + exact discrete state (12 reg taps +
+10 cap banks); (b) the **Currents export** magnitude/angle floors mirror the
+always-on `corpus_live` feeder current tolerance (`i_rel=1e-7`, `i_abs=1e-5` A) —
+lightly-loaded phases carry near-cancellation mutual currents (IEEE123 L49 phase-2
+= 3.45 mA vs 9–18 A) whose angle is pinned only above `i_abs/sin(0.005°)≈0.12 A`.
+Gate: fmt + clippy clean, `cargo test --workspace` exit 0.
+
 **WPG.21 port — MakePosSequence + 6 synthesized decks (2026-07-11), gate-green
 (fmt/clippy/`cargo test --workspace` incl. `modes_cases_match_oracle`).** The last
 GAPS_PLAN §1b "on-demand" deferral closed as an ultracode round (5 opus worktree
