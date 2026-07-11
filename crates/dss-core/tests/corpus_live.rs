@@ -1766,6 +1766,14 @@ const MODES_REQUIRED: &[&str] = &[
     // against the official EPRI r4133 binary; keeps the multi-oracle plumbing
     // exercised by every cargo test).
     "upgrade_pilot.dss",
+    // WPG.21 MakePosSequence feature decks (pending until WPG.21 A2 wires the
+    // `makeposseq` dispatch; each errors loudly on the Rust engine meanwhile).
+    "makeposseq_line.dss",
+    "makeposseq_xfmr.dss",
+    "makeposseq_shunt.dss",
+    "makeposseq_pc.dss",
+    "makeposseq_ctrl.dss",
+    "makeposseq_report.dss",
 ];
 
 /// Every modes case must name selected_elements: the live compare (once the

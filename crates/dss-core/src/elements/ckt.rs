@@ -12,6 +12,7 @@ use num_complex::Complex64;
 use crate::circuit::Terminal;
 use crate::elements::traits::ElemRef;
 use crate::obj::base::DssObjData;
+use crate::report::format::strip_extension;
 use crate::support::cmatrix::{CMatrix, cdiv_fpc};
 use crate::util::EPSILON;
 
@@ -481,6 +482,40 @@ impl CktElementData {
         self.base_frequency = other.base_frequency;
         self.enabled = true;
     }
+
+    /// Pascal `TDSSCktElement.MakePosSequence` (`CktElement.pas:1120-1132`): for
+    /// each terminal, strip the bus name to its base (`StripExtension`, up to the
+    /// first `.`) and, if the ORIGINAL name was a "ground bus" (the local
+    /// `IsGroundBus`, `CktElement.pas:1101`), re-append `.0`.
+    ///
+    /// Pascal writes `FBusNames[i]` **directly** — not through `SetBus` — so this
+    /// must NOT raise `signal_bus_name_redefined` (unlike [`Self::set_bus`]). The
+    /// stored names are already lowercased, so no re-normalization is needed.
+    pub fn make_pos_sequence_base(&mut self) {
+        for i in 0..self.nterms {
+            let grnd = is_ground_bus(&self.bus_names[i]);
+            let stripped = strip_extension(&self.bus_names[i]);
+            self.bus_names[i] = if grnd {
+                format!("{stripped}.0")
+            } else {
+                stripped
+            };
+        }
+    }
+}
+
+/// Pascal local `IsGroundBus` inside `TDSSCktElement.MakePosSequence`
+/// (`CktElement.pas:1101-1118`): a bus name is a "ground bus" iff it contains a
+/// `.` but NONE of the substrings `.1`, `.2`, `.3` (searched anywhere with
+/// `pos`, not per-node). So `b.4.4` → ground (→ `b.0`), a dotless `busA` is NOT
+/// ground (kept as-is), and `b.10`/`b.21`/`b.3x` are NOT ground (the `.1`/`.2`/
+/// `.3` substring appears). Transcribed literally from the Pascal short-circuit
+/// order — the semantics are exactly "no phase-1/2/3 tag present, but dotted".
+fn is_ground_bus(s: &str) -> bool {
+    if s.contains(".1") || s.contains(".2") || s.contains(".3") {
+        return false;
+    }
+    s.contains('.')
 }
 
 #[cfg(test)]
@@ -510,5 +545,56 @@ mod tests {
         assert!(!cd.conductor_closed(1, 5));
         cd.set_conductor_closed(1, 5, false); // ignored — out of range
         assert!(!cd.conductor_closed(1, 5));
+    }
+
+    /// Pascal local `IsGroundBus` (`CktElement.pas:1101`) quirk table,
+    /// transcribed directly from the short-circuit `pos('.1'/.2/.3', S)` logic.
+    #[test]
+    fn is_ground_bus_quirk_table() {
+        // Dotless names are never ground (no `.`).
+        assert!(!is_ground_bus("busa"));
+        assert!(!is_ground_bus(""));
+        // A `.` with no phase-1/2/3 tag → ground.
+        assert!(is_ground_bus("b.0"));
+        assert!(is_ground_bus("b.4"));
+        assert!(is_ground_bus("b.4.4")); // the documented quirk
+        assert!(is_ground_bus("b.5.6.7"));
+        // A phase tag anywhere → not ground.
+        assert!(!is_ground_bus("b.1"));
+        assert!(!is_ground_bus("b.2.3"));
+        assert!(!is_ground_bus("b.4.1")); // `.1` present via the second node
+        // Substring, not per-node: `.10` contains `.1`, `.21` contains `.2`.
+        assert!(!is_ground_bus("b.10"));
+        assert!(!is_ground_bus("b.21"));
+        assert!(!is_ground_bus("b.30"));
+        // `.40` has none of `.1/.2/.3` → ground.
+        assert!(is_ground_bus("b.40"));
+    }
+
+    /// Pascal `TDSSCktElement.MakePosSequence` base bus rename
+    /// (`CktElement.pas:1120`): StripExtension + `.0` re-append for ground buses,
+    /// written directly to `bus_names` (no `BusNameRedefined` signal).
+    #[test]
+    fn make_pos_sequence_base_rename() {
+        let mut cd = CktElementData::new("e", 0);
+        cd.set_nconds(3);
+        cd.set_nterms(4);
+        cd.bus_names[0] = "b1.1.2.3".to_string(); // phased → strip to base
+        cd.bus_names[1] = "b2.4.4".to_string(); // ground quirk → b2.0
+        cd.bus_names[2] = "b3".to_string(); // dotless → unchanged
+        cd.bus_names[3] = "b4.0".to_string(); // already ground → b4.0
+        cd.signal_bus_name_redefined = false;
+
+        cd.make_pos_sequence_base();
+
+        assert_eq!(cd.bus_names[0], "b1");
+        assert_eq!(cd.bus_names[1], "b2.0");
+        assert_eq!(cd.bus_names[2], "b3");
+        assert_eq!(cd.bus_names[3], "b4.0");
+        // Direct FBusNames write: no redefine signal (Pascal never calls SetBus).
+        assert!(
+            !cd.signal_bus_name_redefined,
+            "MakePosSequence writes FBusNames directly, must not signal BusNameRedefined"
+        );
     }
 }
