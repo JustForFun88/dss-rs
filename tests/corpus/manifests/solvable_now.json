@@ -1423,6 +1423,27 @@
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
    "kind": "feeder",
    "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS",
+   "kind": "large",
+   "n_steps": 1,
+   "oracle": "r3723",
+   "note": "CF-B migration (T-A #29). The pinned oracle raises #303 on the deck's headless `Show` commands; the official EPRI r3723 engine treats them as non-fatal and solves through, matching Rust -- validated live through the harness via the Oddie bridge (full-model compare green). Rust compiles the whole deck (Show/Export/fileedit are headless no-ops) with zero errors; the gated final solve is the deck's Direct-mode SLG-fault-at-B2 (loads disabled) solve, on which Rust iterations == r3723 (Rust<=oracle policy holds with equality)."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "oracle": "r3723",
+   "note": "CF-B migration (T-A #27). Pinned oracle raises #303 on headless `Show`; r3723 solves through, matching Rust -- validated live. The gated final state is the deck's SECOND `Compile ieee34Mod1.dss` run: forced regulator taps + `Set Controlmode=OFF`, i.e. a plain power flow with no control loop. Rust iterations == r3723 there (no fewer-iteration NOTE emitted). Iteration caveat reconciled: the triage's Rust-4-vs-r3723-2 was the FIRST (controlled) run's control-iteration count, NOT the like-for-like gated final solve the harness compares -- so the Rust<=oracle policy is not actually violated."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "oracle": "r3723",
+   "note": "CF-B migration (T-A #28). Pinned oracle raises #2190 on headless `ShowCurrents`; r3723 solves through, matching Rust -- validated live. Gated final state = the deck's SECOND `Compile ieee34Mod2.dss` run (forced taps + `Set Controlmode=OFF`, maxcontroliter=300); Rust iterations == r3723 on that plain final solve. Same iteration reconciliation as Mod1: the 4-vs-2 caveat was the first controlled run, not the gated final solve."
   }
  ]
 }

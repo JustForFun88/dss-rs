@@ -130,21 +130,6 @@
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/34Bus/IEEELineCodes.DSS failed: Some(\"DSSException: (#265) You Must Create a circuit first: \\\"new circuit.yourcktname\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-"
   },
   {
-   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss",
-   "tag": "oracle_error_#303",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss failed: Some(\"DSSException: (#303) Error 303 Reported From OpenDSS Intrinsic Function: \\r\\nProcessCommand: Exception Raised While Processing DSS Command: \\r\\ns"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss",
-   "tag": "oracle_error_#2190",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss failed: Some(\"DSSException: (#2190) Exception raised in ShowCurrents: Unable to create file \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS",
-   "tag": "oracle_error_#303",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS failed: Some(\"DSSException: (#303) Error 303 Reported From OpenDSS Intrinsic Function: \\r\\nProcessCommand: Exception Raised While Processing DSS Command: \\r\\nSh"
-  },
-  {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wireIndMotor.dss",
    "tag": "oracle_error_#570",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wireIndMotor.dss failed: Some(\"DSSException: (#570) Generator User Model IndMach012a Not Loaded. DSS Directory = E:\\\\RustProject\\\\dss-rs\\\\crates\\\\dss-core\\\\\\r\\n[fi"
