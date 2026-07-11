@@ -31,6 +31,7 @@ SKIP_REDUNDANT = 2
 ENUM_AS_INT = 4
 FULL_NAMES = 8
 PRETTY = 16
+EXCLUDE_DISABLED = 32
 INCLUDE_DSS_CLASS = 64
 LOWERCASE_KEYS = 128
 
@@ -38,9 +39,17 @@ COMBOS = [
     ("default", 0),
     ("full", FULL),
     ("full_pretty", FULL | PRETTY),
+    # default-mode pretty and the bare IncludeDSSClass header (bit 6 alone),
+    # not just their Full-mode pairings, so the compact-vs-pretty layout and the
+    # header logic are each pinned in the default sweep too.
+    ("pretty", PRETTY),
+    ("include_class", INCLUDE_DSS_CLASS),
     ("enum_as_int", ENUM_AS_INT),
     ("full_names", FULL_NAMES),
     ("full_include_class", FULL | INCLUDE_DSS_CLASS),
+    # SkipRedundant only branches in the Full sweep; vsource exercises it (its
+    # R1/X1/R0/X0 defer to Z1/Z0 and drop out).
+    ("full_skip_redundant", FULL | SKIP_REDUNDANT),
     ("lowercase_keys", LOWERCASE_KEYS),
 ]
 
@@ -89,10 +98,14 @@ DECKS = [
         # Default-family combos only: Full renders the sym scalars R1/X1/… as the
         # oracle's `null` (NaN getter under !SymComponentsModel), a Line-internal
         # detail not reproduced by the pre-solve Rust dump (recorded deferral).
+        # DISTINCT diagonal entries (0.1 vs 0.11, 0.2 vs 0.22, 3 vs 3.3) so the
+        # DoubleSymMatrix row/column indexing is pinned positionally — an equal-
+        # diagonal fixture cannot catch a diagonal-index bug.
         "commands": [
             "new circuit.probe basekv=12.47",
             "new line.lm bus1=a bus2=b phases=2 "
-            "rmatrix=(0.1 | 0.05 0.1) xmatrix=(0.2 | 0.1 0.2) cmatrix=(3 | -1 3)",
+            "rmatrix=(0.1 | 0.05 0.11) xmatrix=(0.2 | 0.1 0.22) "
+            "cmatrix=(3 | -1 3.3)",
         ],
         "captures": [("obj", "line.lm"), ("batch", "Line")],
         "skip_full": True,
@@ -112,15 +125,21 @@ DECKS = [
     {
         "name": "transformer_micro",
         # The redundancy deferral (kvs->kV, conns->Conn, buses->Bus, %rs->%R)
-        # is exercised in default-family combos. Full-family combos excluded:
-        # they render the on-struct scalars as per-winding arrays plus the
-        # WdgCurrents result string, which is solve-state the pre-solve Rust
-        # dump path does not surface (recorded deferral).
+        # is exercised in default-family combos. The explicit per-winding
+        # RDCOhms/MaxTap/MinTap/NumTaps/RNeut are the `ON_ARRAY` scalars with no
+        # plural alternative: set here so the default sweep renders each as a
+        # per-winding array — this pins the DoubleOnStructArray (`RDCOhms`…) and
+        # IntegerOnStructArray (`NumTaps`) JSON arms against the oracle without
+        # needing Full mode. Full-family combos remain excluded: they add the
+        # WdgCurrents result string, which is solve-state the pre-solve Rust dump
+        # path does not surface (recorded deferral).
         "commands": [
             "new circuit.probe basekv=12.47",
             "new transformer.t1 windings=2 buses=(probe, b2) "
             "conns=(delta, wye) kvs=(12.47, 0.48) kvas=(1000, 1000) "
-            "xhl=6 %rs=(0.5, 0.5)",
+            "xhl=6 %rs=(0.5, 0.5) "
+            "wdg=1 rdcohms=0.11 maxtap=1.1 mintap=0.9 numtaps=32 rneut=0.5 "
+            "wdg=2 rdcohms=0.22 maxtap=1.2 mintap=0.8 numtaps=16 rneut=1.5",
         ],
         "captures": [("obj", "transformer.t1"), ("batch", "Transformer")],
         "skip_full": True,
@@ -143,6 +162,28 @@ DECKS = [
             ("batch", "Load"),
         ],
         "skip_full": True,
+    },
+    {
+        "name": "batch_micro",
+        # Pins two batch-only behaviors the single-object captures cannot reach:
+        #  * ExcludeDisabled — the disabled `load.b` is dropped from the batch
+        #    (Batch_ToJSON's ckt-element Enabled branch, CAPI_Obj.pas:1229-1240).
+        #  * the empty-class batch — `Capacitor` has no objects, so the batch is
+        #    `[]` (compact) / `[\r\n]` (pretty). This is the actual
+        #    `IActiveClass.ToJSON` surface; it does NOT take the `batchSize=0 ->
+        #    '[]'` literal shortcut, so pretty is genuinely `[\r\n]`.
+        "commands": [
+            "new circuit.probe basekv=12.47",
+            "new load.a bus1=probe kV=12.47 kW=1",
+            "new load.b bus1=probe kV=12.47 kW=2 enabled=no",
+        ],
+        "captures": [("batch", "Load"), ("batch", "Capacitor")],
+        "combos": [
+            ("default", 0),
+            ("pretty", PRETTY),
+            ("exclude_disabled", EXCLUDE_DISABLED),
+            ("exclude_disabled_pretty", EXCLUDE_DISABLED | PRETTY),
+        ],
     },
     {
         "name": "escape_micro",
@@ -201,9 +242,10 @@ def run_deck(d, au, lib, deck: dict) -> dict:
         d.Text.Command = cmd
 
     skip_full = deck.get("skip_full", False)
+    combos = deck.get("combos", COMBOS)
     captures = []
     for kind, target in deck["captures"]:
-        for combo_name, bits in COMBOS:
+        for combo_name, bits in combos:
             if skip_full and (bits & FULL):
                 continue
             if kind == "obj":
@@ -219,9 +261,16 @@ def run_deck(d, au, lib, deck: dict) -> dict:
                     "expected": text,
                 }
             )
+    # Declare the combos this deck actually generates, so the Rust driver can
+    # assert every (kind,target) carries the full set — a silently dropped combo
+    # (a generator regression) then fails the gate instead of shrinking coverage.
+    combo_names = [
+        name for name, bits in combos if not (skip_full and (bits & FULL))
+    ]
     out = {
         "name": deck["name"],
         "commands": deck.get("commands", []),
+        "combo_names": combo_names,
         "captures": captures,
     }
     if master is not None:

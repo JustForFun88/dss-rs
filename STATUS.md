@@ -2502,8 +2502,11 @@ whole-circuit remains deferred).
   `iPropNext2` deferral, the `Full` sweep, skip flags; `batch_to_json`
   (`Batch_ToJSON`, `ExcludeDisabled`; `IncludeDefaultObjs`/`DefaultAndUnedited` is a
   no-op — no Rust default-object flag, a Stage-B dep).
-- **`exec/view.rs`** — public `Dss::obj_to_json` + `class_batch_to_json` (pure
-  pre-solve reads, `&self`).
+- **`exec/view.rs`** — public `Dss::obj_to_json` + `class_batch_to_json` (`&self`).
+  The default sweep is a pure pre-solve read; `Full` may render `READS_VTERMINAL`
+  function strings (Transformer `WdgCurrents`) from the Vterminal cache without the
+  `refresh_vterminal_if_marked` choke point — a recorded deferral (never in default
+  output; `skip_full` in the goldens).
 - **Metadata (`PropDef`/`PropFlags`)** — new `redundant_with`/`array_alternative`/
   `json_name` fields + `json_key()` derivation (`%→pct`, `-→__`; LowercaseKeys →
   AnsiLowerCase of the modern name) + flags `ALT_INDEX`/`INTEGER_STRUCT_INDEX`/
@@ -2522,16 +2525,47 @@ whole-circuit remains deferred).
   sort after it — the oracle's order).
 - **Gate:** `tools/golden/gen_json.py` (byte goldens under `tests/golden/json/`) +
   `crates/dss-core/tests/golden_json.rs` (byte-equality, in `cargo test --workspace`).
-  **7 decks × the 7 option combos {0, Full, Full|Pretty, EnumAsInt, FullNames,
-  Full|IncludeDSSClass, LowercaseKeys}, all byte-green:** load/line/line_matrix/
-  vsource/transformer/escape micro decks + IEEE13 element samples (Line/Transformer/
-  Load/LineCode). Plus fpjson-writer/float/escape unit tests + 11 synthetic
-  per-`PropType`-arm tests.
+  **8 decks, all byte-green:** load/line/line_matrix/vsource/transformer/escape/
+  **batch** micro decks + IEEE13 element samples (Line/Transformer/Load/LineCode).
+  The 10-combo matrix {0, Full, Full|Pretty, **Pretty**, **IncludeDSSClass**,
+  EnumAsInt, FullNames, Full|IncludeDSSClass, **Full|SkipRedundant**, LowercaseKeys}
+  runs on every deck (Full-family excluded on the `skip_full` decks); `batch_micro`
+  runs a custom {default, Pretty, ExcludeDisabled, ExcludeDisabled|Pretty} set. The
+  driver asserts each capture carries the deck's full declared combo set (a
+  coverage guard against a silently dropped combo). Plus fpjson-writer/float/escape
+  unit tests + 13 synthetic per-`PropType`-arm tests.
 - **Deferrals (recorded):** transformer **Full** and matrix-model-line **Full** are
   golden-tested in default-family combos only — Full exposes the transformer
   `WdgCurrents` result string (solve state) and a matrix-model line's sym-scalar
   NaN→`null` getter, both out of the pre-solve dump path; the `DynInit` `TDynEqPCE`
   tail and whole-circuit `circuit_to_json` (Stage B) stay NOT_PORTED (§6).
+- **Audit settle (2026-07-11), gate-green.** Findings settled empirically against
+  Pascal + the pinned oracle:
+  - **[Major] ON_ARRAY per-winding arms were untested** (only reachable in the
+    `skip_full` transformer Full render). Fixed by *setting* the transformer's
+    `RDCOhms/MaxTap/MinTap/NumTaps/RNeut` in `transformer_micro` so the **default**
+    sweep renders each as a per-winding array — probed on the oracle, byte-pinned;
+    covers both the DoubleOnStructArray and IntegerOnStructArray JSON arms.
+  - **[Minor] `JsonOpts::from_bits` silently masked bits 11–13** (plan §6 requires a
+    raw-bits entry to error loudly). Now it `assert!`s no non-representable bit is
+    set (State/Debug/Edit → panic, NOT_PORTED), never silent.
+  - **[Minor] empty-batch pretty** — REFUTED: the oracle `IActiveClass.ToJSON`
+    surface returns `[\r\n]` for an empty class in pretty (it does **not** take the
+    C-API `batchSize=0 → '[]'` shortcut), which the Rust path already matches. Pinned
+    by the new `batch_micro` empty-`Capacitor` capture (default `[]`, pretty `[\r\n]`).
+  - **[Minor] ObjectRef `OnArray` sub-branch** (DSSObjectHelper.pas:1169-1194) and
+    **AllowNone→null on DoubleArray/DoublePoints** (l.1218 shared block) were ported
+    (no golden-covered class uses them; synthetic arm tests added).
+  - **[Minor] Line `fetch_line_code` seq-clear** — REFUTED as a divergence: the WP
+    change (ratings marked set) is golden-proven; probing the unusual
+    `r1=… linecode=…` order shows the oracle also drops R1/X1, matching the
+    (pre-existing) Rust clear — no oracle gap.
+  - **[Minor] SkipRedundant / ExcludeDisabled / default-Pretty / bare-IncludeDSSClass
+    untested** — added as combos/decks above (vsource `Full|SkipRedundant` drops
+    R1/X1/R0/X0; `batch_micro` ExcludeDisabled drops a disabled load).
+  - **[Minor] DoubleSymMatrix symmetric-blind fixture** — `line_matrix` now uses
+    **distinct** diagonals (0.1/0.11, 0.2/0.22, 3/3.3) so the row/column indexing is
+    pinned positionally.
 
 **WPG.18 audit (all Stages A–F) + settlement (2026-07-09), gate-green.** Full
 five-way line-for-line audit of the ~8500-line CIM exporter (writer/dispatch/UUID;
