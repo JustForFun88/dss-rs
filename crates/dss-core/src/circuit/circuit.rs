@@ -321,6 +321,10 @@ pub struct Circuit {
     /// `ReduceLateralsKeepLoad` (`Set KeepLoad=`).
     pub reduce_laterals_keep_load: bool,
 
+    /// A-Diakoptics circuit-tearing state (Circuit.pas:205–231/321; WP-AD.2
+    /// Stage B). See [`AdTearing`](crate::circuit::AdTearing).
+    pub ad: crate::circuit::AdTearing,
+
     /// Scratch for `ProcessBusDefs`/`AddBus` (`NodeBuffer`).
     node_buffer: Vec<i32>,
 }
@@ -444,6 +448,7 @@ impl Circuit {
             reduction_strategy_string: String::new(),
             reduction_zmag: 0.02,
             reduce_laterals_keep_load: true,
+            ad: crate::circuit::AdTearing::new(),
             node_buffer: vec![0; 50],
         }
     }
