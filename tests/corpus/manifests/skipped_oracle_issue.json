@@ -32,16 +32,6 @@
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss failed: Some(\"DSSException: (#250) Monitor \\\"ckt7mon_p\\\" not found. \\r\\nExport monitor ckt7mon_p  \\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricd"
   },
   {
-   "path": "Version8/Distrib/EPRITestCircuits/ckt7/Substation_ckt7.dss",
-   "tag": "oracle_error_#401",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt7/Substation_ckt7.dss failed: Some(\"DSSException: (#401) Load.25609_a.Yearly: LoadShape object \\\"25609_A\\\" not found.\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electric"
-  },
-  {
-   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Substation.dss",
-   "tag": "oracle_error_#401",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Substation.dss failed: Some(\"DSSException: (#401) Load.aggregate_load.Yearly: LoadShape object \\\"AggLoadProfile\\\" not found.\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\"
-  },
-  {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS",
    "tag": "oracle_error_#130",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Master.DSS failed: Some(\"DSSException: (#130) Unknown parameter \\\"Num_SubCircuits\\\" for Set Command\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-t"
@@ -60,11 +50,6 @@
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
    "tag": "oracle_error_#485",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss failed: Some(\"DSSException: (#485) Warning Max Control Iterations Exceeded.\\r\\nTip: Show Eventlog to debug control settings"
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS",
-   "tag": "oracle_error_#265",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Distribution/Master.DSS failed: Some(\"DSSException: (#265) You Must Create a circuit first: \\\"new circuit.yourcktname\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-r"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/master_ckt24.dss",
@@ -90,11 +75,6 @@
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss",
    "tag": "oracle_error_#24713",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss failed: Some(\"DSSException: (#24713) Error: Unknown Export command: \\\"deltaf\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-ts"
-  },
-  {
-   "path": "Version8/Distrib/Examples/Scripts/MultstepDG.DSS",
-   "tag": "oracle_error_#301",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Scripts/MultstepDG.DSS failed: Some(\"DSSException: (#301) You must create a new circuit object first: \\\"new circuit.mycktname\\\" to execute this command.\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\"
   },
   {
    "path": "Version8/Distrib/Examples/VSConverter/vsc0test.dss",
@@ -123,11 +103,6 @@
    "path": "Version8/Distrib/IEEETestCases/123Bus/WindRampRevRegTest.DSS",
    "tag": "oracle_error_#70401",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/123Bus/WindRampRevRegTest.DSS failed: Some(\"DSSException: (#70401) CSV file \\\"Windoutput.txt\\\" could not be opened\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\"
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/34Bus/IEEELineCodes.DSS",
-   "tag": "oracle_error_#265",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/34Bus/IEEELineCodes.DSS failed: Some(\"DSSException: (#265) You Must Create a circuit first: \\\"new circuit.yourcktname\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wireIndMotor.dss",

@@ -37,11 +37,6 @@
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Loadshapes/LoadShape_How_To.DSS failed: Some(\"DSSException: (#243) Redirect file not found: \\\"Loadshape5a.DSS\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-tst\\\\Version8"
   },
   {
-   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss",
-   "tag": "missing_data_file=@loadshape_script_dss",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/main_template.dss failed: Some(\"DSSException: (#242) Redirect file not found: \\\"@loadshape_script_dss\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\ele"
-  },
-  {
    "path": "Version8/Distrib/Examples/Parallel_Processing/PProcessing_scripting.dss",
    "tag": "missing_data_file=Master_ckt5.dss",
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/Parallel_Processing/PProcessing_scripting.dss failed: Some(\"DSSException: (#243) Redirect file not found: \\\"..\\\\..\\\\Distrib\\\\EPRITestCircuits\\\\ckt5\\\\Master_ckt5.dss\\\"\\r\\n[file: \\\"E:\\\\RustPr"
