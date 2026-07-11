@@ -1,0 +1,25 @@
+! WP-PF.2 family deck: Monitor mode 4 (flicker) sample path.
+! A small stiff 3-phase feeder with a duty-shaped model-2 load, so the load
+! terminal RMS phase voltages ripple. The mode-4 monitor records (|V|, angle)
+! per phase each duty step; the live gate compares that RAW buffer against the
+! pinned oracle (`check_meters_monitors`).
+!
+! NOTE: no `export monitor` here on purpose — the mode-4 flicker post-process
+! (`DoFlickerCalculations`) segfaults the pinned dss_capi oracle (Terminals OOB,
+! see support/flicker.rs); it is validated Rust-side by golden_flicker + the
+! flicker unit tests + the exec `flicker_post_process` wiring test instead.
+clear
+Set DefaultBaseFrequency=60
+new circuit.monpst basekv=12.47 pu=1.0 bus1=src phases=3 mvasc3=20000 mvasc1=21000
+
+New LoadShape.flk npts=30 interval=(1 3600 /)
+~ mult=[1.00000 1.10392 1.10392 1.00000 0.89608 0.89608 1.00000 1.10392 1.10392 1.00000 0.89608 0.89608 1.00000 1.10392 1.10392 1.00000 0.89608 0.89608 1.00000 1.10392 1.10392 1.00000 0.89608 0.89608 1.00000 1.10392 1.10392 1.00000 0.89608 0.89608]
+
+New Line.ln bus1=src bus2=b1 phases=3 r1=0.10 x1=0.30 r0=0.30 x0=0.90 c1=3.0 c0=1.5 length=1 units=km
+New Load.l bus1=b1 phases=3 kV=12.47 kW=2000 pf=0.95 model=2 duty=flk vminpu=0.85
+
+new Monitor.pst element=Load.l terminal=1 mode=4
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set mode=duty stepsize=1 number=1

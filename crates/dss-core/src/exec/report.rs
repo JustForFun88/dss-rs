@@ -55,6 +55,29 @@ fn assign_new_uuid(val: &str) -> Result<crate::cim::Uuid, String> {
 }
 
 impl Dss {
+    /// The metered-terminal bus `kVBase` for a monitor (mode-4 flicker `Vbase`),
+    /// resolved from the circuit bus list — Pascal `DoFlickerCalculations` reads
+    /// `ActiveCircuit.Buses[MeteredElement.Terminals[MeteredTerminal].BusRef].kVBase`
+    /// at close time. 0.0 for non-mode-4 monitors or an unresolved bus.
+    fn monitor_metered_kv_base(&self, r: crate::elements::traits::ElemRef) -> f64 {
+        let Some(mon) = self.classes[r.cls].objects[r.idx]
+            .as_any()
+            .downcast_ref::<crate::elements::meter::monitor::Monitor>()
+        else {
+            return 0.0;
+        };
+        let Some(bus_name) = mon.metered_bus_name() else {
+            return 0.0;
+        };
+        let Some(ckt) = self.circuit.as_ref() else {
+            return 0.0;
+        };
+        match ckt.bus_list.find(&bus_name) {
+            Some(idx) => ckt.buses[idx].kv_base,
+            None => 0.0,
+        }
+    }
+
     /// Pascal `DoExportCmd` (`ExportOptions.pas:127`): read the report keyword,
     /// resolve it against `ExportCommands`, dispatch to the matching exporter.
     ///
@@ -739,6 +762,8 @@ impl Dss {
         // path (empty if none) and apply the bookkeeping once at the end.
         let mut last_path = String::new();
         for r in targets {
+            // Resolve the mode-4 flicker Vbase before the mutable borrow.
+            let kv_base = self.monitor_metered_kv_base(r);
             let (mon_name, content) = {
                 let obj = &mut self.classes[r.cls].objects[r.idx];
                 let name = obj.data().name().to_string();
@@ -746,8 +771,9 @@ impl Dss {
                     .as_any_mut()
                     .downcast_mut::<crate::elements::meter::monitor::Monitor>()
                     .expect("ckt.monitors holds Monitor objects");
-                // `to_csv` self-flushes (Pascal `TranslateToCSV` `Save;`), hence &mut.
-                (name, mon.to_csv())
+                // `to_csv` self-flushes (Pascal `TranslateToCSV` `Save;`) and
+                // post-processes mode-4 flicker (Pascal `CloseMonitorStream`), &mut.
+                (name, mon.to_csv(kv_base))
             };
             let default_name = format!("Mon_{mon_name}_1.csv");
             let path = crate::report::output::export_path(
@@ -787,14 +813,16 @@ impl Dss {
         });
         let (mon_name, content) = match found {
             Some(r) => {
-                // `to_csv` self-flushes (Pascal `TranslateToCSV` `Save;`), hence &mut.
+                let kv_base = self.monitor_metered_kv_base(r);
+                // `to_csv` self-flushes (Pascal `TranslateToCSV` `Save;`) and
+                // post-processes mode-4 flicker (Pascal `CloseMonitorStream`), &mut.
                 let obj = &mut self.classes[r.cls].objects[r.idx];
                 let nm = obj.data().name().to_string();
                 let mon = obj
                     .as_any_mut()
                     .downcast_mut::<crate::elements::meter::monitor::Monitor>()
                     .expect("ckt.monitors holds Monitor objects");
-                (nm, mon.to_csv())
+                (nm, mon.to_csv(kv_base))
             }
             None => {
                 // Pascal #248 `'Monitor "%s" not found. %s'`.

@@ -189,10 +189,33 @@ impl Monitor {
                 }
                 return;
             }
-            // Modes 4 (flicker/Pstcalc), 8/10 (transformer winding
-            // currents/voltages), 12 (LL) build their header but defer the
-            // sample body to Phase 6+/7 (no gate uses them; the metered surface
-            // they need is not yet exposed).
+            4 => {
+                // Pascal `TakeSample` mode 4 (Monitor.pas l.1252-1263, 1479,
+                // 1560-1562): RMS phase voltages for flicker. Fill
+                // `FlickerBuffer[i] := NodeV[NodeRef[i]]` for the metered phases,
+                // convert to polar (mag, angle_deg) exactly as
+                // `ConvertComplexArrayToPolar`, and store `2·Fnphases` doubles
+                // (mag, ang) — narrowed to f32 by `add_dbl` like every mode. The
+                // flicker/Pst post-processing happens later in `post_process`
+                // (Pascal `DoFlickerCalculations`), not here.
+                let mut flicker_buffer = vec![Complex64::ZERO; fnphases];
+                for (i, v) in flicker_buffer.iter_mut().enumerate() {
+                    // Same unguarded NodeRef read as mode 0 above (the port
+                    // resolves NodeRef at bus-def time; Pascal's l.1261 "NodeRef
+                    // is invalid / solve a snapshot first" except-guard is the
+                    // not-yet-solved safety net, handled upstream in the port).
+                    *v = node_v[self.med.cd.node_ref[i]];
+                }
+                convert_to_polar(&mut flicker_buffer, fnphases);
+                for &c in &flicker_buffer {
+                    self.add_dbl(c.re); // magnitude
+                    self.add_dbl(c.im); // angle (deg)
+                }
+                return;
+            }
+            // Modes 8/10 (transformer winding currents/voltages), 12 (LL) build
+            // their header but defer the sample body to Phase 6+/7 (no gate uses
+            // them; the metered surface they need is not yet exposed).
             _ => return,
         }
 

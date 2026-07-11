@@ -1503,6 +1503,24 @@
    "compare_ctrlqueue": true,
    "pending": false,
    "wp": "WPG.15"
+  },
+  {
+   "path": "monitor_pst.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true
+  },
+  {
+   "path": "midi_monitor_pst.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true
   }
  ]
 }

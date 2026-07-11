@@ -1,0 +1,26 @@
+! WP-PF.2 family deck: Monitor mode 4 (flicker) sample path, midi variant.
+! A slightly larger 3-phase feeder (two line segments + a mid-feeder tap) with a
+! duty-shaped model-2 load and a second flat load, so the monitored terminal RMS
+! phase voltages ripple over the duty run. The mode-4 monitor records (|V|,
+! angle) per phase; the live gate compares that RAW buffer vs the pinned oracle.
+!
+! No `export monitor` here — the mode-4 flicker post-process segfaults the pinned
+! dss_capi oracle (Terminals OOB, see support/flicker.rs); post-processing is
+! validated Rust-side (golden_flicker + unit + wiring tests).
+clear
+Set DefaultBaseFrequency=60
+new circuit.midimonpst basekv=12.47 pu=1.02 bus1=src phases=3 mvasc3=20000 mvasc1=21000
+
+New LoadShape.flk npts=40 interval=(1 3600 /)
+~ mult=[1.09511 1.05878 0.94122 0.90489 1.00000 1.09511 1.05878 0.94122 0.90489 1.00000 1.09511 1.05878 0.94122 0.90489 1.00000 1.09511 1.05878 0.94122 0.90489 1.00000 1.09511 1.05878 0.94122 0.90489 1.00000 1.09511 1.05878 0.94122 0.90489 1.00000 1.09511 1.05878 0.94122 0.90489 1.00000 1.09511 1.05878 0.94122 0.90489 1.00000]
+
+New Line.l1 bus1=src bus2=b1 phases=3 r1=0.10 x1=0.30 r0=0.30 x0=0.90 c1=3.0 c0=1.5 length=1.5 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.12 x1=0.34 r0=0.35 x0=1.0 c1=3.0 c0=1.5 length=2 units=km
+New Load.lflk bus1=b2 phases=3 kV=12.47 kW=2200 pf=0.92 model=2 duty=flk vminpu=0.85
+New Load.lbase bus1=b1 phases=3 kV=12.47 kW=600 pf=0.95 model=1 vminpu=0.85
+
+new Monitor.pst element=Load.lflk terminal=1 mode=4
+
+set voltagebases=[12.47]
+calcvoltagebases
+Set mode=duty stepsize=1 number=1
