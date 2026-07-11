@@ -611,8 +611,16 @@ impl Dss {
                         }
                     }
                     opt::PROCESS_TIME | opt::STEP_TIME => {
-                        // Get-only: consume the value, no effect (Pascal no-op).
-                        let _ = get_dbl(parser, vars, errors);
+                        // Get-only. Pascal's `DoSetCmd` case has NO `108:`/`106:`
+                        // arm, so it falls to `else // Ignore excess parameters`
+                        // (ExecOptions.pas:759) — a pure no-op that never calls
+                        // `Parser.DblValue`. Must NOT evaluate the value token: a
+                        // trailing bare-quote comment (`set totaltime=0 ' timer`)
+                        // parses `' timer` as a quoted string that lands on the
+                        // incremented pointer 108; calling `get_dbl` would run it
+                        // through the RPN interpreter → spurious "Invalid inline
+                        // math entry". Leaving it unread matches OpenDSS swallowing
+                        // the comment.
                     }
                     opt::NEGLECT_LOAD_Y => ckt.neglect_load_y = interpret_yes_no(&param),
                     opt::MIN_ITERATIONS => {
