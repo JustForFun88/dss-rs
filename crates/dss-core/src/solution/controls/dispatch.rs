@@ -1024,9 +1024,16 @@ pub(super) fn dispatch_control(
             };
             match op {
                 ControlOp::Sample => {
-                    let Some(mon) = monitored else {
-                        return Err(abort(ctx.errors, &full_name, "Monitored element not set"));
-                    };
+                    // Pascal `TCapControlObj.RecalcElementData` (CapControl.pas
+                    // l.598-609): TIME and FOLLOW control leave
+                    // `MonitoredElement = NIL` and set `effElement :=
+                    // ControlledElement` — their `Sample` arms read the clock /
+                    // the ControlSignal LoadShape, never a monitored element. A
+                    // missing monitored element therefore means the capacitor
+                    // monitors itself; every other control type without a
+                    // monitored element has already raised "Element is not set,
+                    // aborting" at parse (`recalc`), so it never reaches here.
+                    let mon = monitored.unwrap_or(target);
                     if mon == target {
                         // Time/Follow control: the capacitor monitors itself.
                         // The monitored role only *reads* solved state, so a
