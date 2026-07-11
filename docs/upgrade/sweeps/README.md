@@ -37,7 +37,7 @@ manifests the mandatory gate reads.
 
 | pair | match | diverged | error* |
 |---|---|---|---|
-| capi ↔ capi015 | 334 | 17 | 27 (capi015: 16 strict-validation + 8 `#303`-intrinsic + 2 crash; 1 capi) |
+| capi ↔ capi015 | 334 | 17 | 27 (capi015: 16 strict-validation + 7 `#303`-intrinsic + 3 crash/timeout; 1 capi) |
 | r4088 ↔ r4133 | 344 | 27 | 7 |
 | capi015 ↔ r4088 | 323 | 24 | 31 (24 capi015-side strict/intrinsic/crash; 7 r4088-side) |
 
@@ -84,12 +84,17 @@ per-pair files.
 ## Mechanics & regeneration
 
 Corpus pairs (solvable_now+asymmetric+controls, 338 cases) run in one
-`ab_compare` process each. The **modes** family (40) is re-run **one case per
-process** because two decks hard-crash the shared engine (the `#58614`
-access-violation above and `newton_feeder.dss`, a non-converging Newton solve
-that hits the 300 s request timeout); a shared-engine run poisons every
-following modes case (`#303 on clear`). The per-pair JSON/MD summaries here
-merge the corpus run with the isolated-modes run.
+`ab_compare` process each → `corpus_<tag>.json`. The **modes** family (40) is
+re-run **one case per process** because two decks hard-crash the shared engine
+(the `#58614` access-violation above and `newton_feeder.dss`, a non-converging
+Newton solve that hits the 300 s request timeout); a shared-engine run poisons
+every following modes case (`#303 on clear`). The per-pair `merged_<tag>.json`
+that feeds these summaries = the corpus run's **non-modes** rows spliced with the
+isolated-modes run (`merged = 338 corpus non-modes + 40 isolated modes = 378`,
+verified 0-orphan on all three pairs). Two committed drivers make this turnkey:
+`tools/opendss/sweep_modes_isolated.py` (the one-case-per-process modes loop) and
+`tools/opendss/sweep_merge.py` (the splice); do **not** sweep modes in the shared
+3-manifest process — the crasher cascade corrupts it.
 
 Regenerate (from the worktree root, Oddie venv junctioned):
 
@@ -98,13 +103,20 @@ export DSS_OPENDSS_PYTHON="…/tools/opendss/.venv/Scripts/python.exe"
 M="--manifest tests/corpus/manifests/solvable_now.json \
    --manifest tests/corpus/asymmetric/manifest.json \
    --manifest tests/corpus/controls/manifest.json"
-# corpus pairs
-python tools/opendss/ab_compare.py --a capi        --b capi015     $M --timeout 300
-python tools/opendss/ab_compare.py --a oddie:r4088  --b oddie:r4133 $M --timeout 300
-python tools/opendss/ab_compare.py --a capi015      --b oddie:r4088 $M --timeout 300
-# modes family: one case per process (avoids the crasher cascade)
-#   see scratchpad run_modes_isolated.py — loops the 40 modes cases with
-#   --manifest tests/corpus/modes/manifest.json --case <path> --timeout 45
+SP=…/scratchpad/sweeps                       # raw dumps stay out of git
+for pair in "capi capi015 capi_vs_capi015" \
+            "oddie:r4088 oddie:r4133 r4088_vs_r4133" \
+            "capi015 oddie:r4088 capi015_vs_r4088"; do
+  set -- $pair; A=$1; B=$2; TAG=$3
+  # 1. corpus (338 cases, one process) — modes intentionally EXCLUDED here
+  python tools/opendss/ab_compare.py --a "$A" --b "$B" $M --timeout 300 \
+         --out "$SP/corpus_$TAG.json" --md "$SP/corpus_$TAG.md"
+  # 2. modes family, one case per process (avoids the crasher cascade)
+  python tools/opendss/sweep_modes_isolated.py --a "$A" --b "$B" --tag "$TAG" --out-dir "$SP"
+  # 3. splice → the 378-case merged report the summaries read
+  python tools/opendss/sweep_merge.py --corpus "$SP/corpus_$TAG.json" \
+         --modes "$SP/modes_$TAG.json" --out "$SP/merged_$TAG.json"
+done
 # dsspy broad-surface (per engine, then compare_outputs.py):
 cd tools/opendss/dsspy_validation
 ../.venv/Scripts/python save_outputs.py dss-extensions                              # capi015
