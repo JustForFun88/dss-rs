@@ -261,7 +261,7 @@ pub(crate) fn calc_inc_matrix(classes: &[DssClass], ckt: &mut Circuit) {
 /// Pascal `get_IncMatrix_Row(Col)` (`Solution.pas:1530`): the row of the first
 /// stored non-zero (scanning **from index 1**) whose column equals `col`, else
 /// `-1`.
-fn get_inc_matrix_row(inc_mat: &SparseInt, col: i32) -> i32 {
+pub(crate) fn get_inc_matrix_row(inc_mat: &SparseInt, col: i32) -> i32 {
     let nzero = inc_mat.nzero();
     for idx in 1..nzero {
         let d = inc_mat.data[idx as usize];

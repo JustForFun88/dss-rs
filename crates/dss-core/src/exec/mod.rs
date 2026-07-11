@@ -67,6 +67,7 @@ mod save_circuit;
 mod set_cmd;
 mod solve;
 mod tables;
+mod tearing;
 mod uuids_cmd;
 mod view;
 
