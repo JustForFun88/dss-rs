@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-12 (WP-U1.2 numeric long tail, row B2/D1 — SimpleCarson De 658.5→658.8530451057239; golden engine switch built; 18 Carson decks flipped to capi015; record below).
+Last updated: 2026-07-12 (WP-U1.2 numeric long tail — 5 rows landed: B2/D1 SimpleCarson De, D7 PVSystem iMaxPPhase, D6 Transformer AmpRatings, B1 Capacitor Cmatrix ×1.000001, D8 X13/X23 TrapZero no-delta; golden engine switch built; B5 GFM deferred; D3/B3 not started; record below).
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
