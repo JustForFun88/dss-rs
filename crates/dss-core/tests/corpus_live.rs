@@ -1822,6 +1822,16 @@ const MODES_REQUIRED: &[&str] = &[
     "makeposseq/makeposseq_pc.dss",
     "makeposseq/makeposseq_ctrl.dss",
     "makeposseq/makeposseq_report.dss",
+    // GEN-MODE solve-mode coverage wave (audit settlement: every feature deck
+    // joins the anti-deletion floor, per the WPG.13/WPG.17 convention above).
+    "time/daily.dss",
+    "time/daily_bigstep.dss",
+    "time/yearly.dss",
+    "time/duty.dss",
+    "time/midi_duty_ctrl.dss",
+    "harmonics/harmonic_hlist.dss",
+    "harmonics/harmonict.dss",
+    "reset/mode_reset.dss",
 ];
 
 /// Every modes case must name selected_elements: the live compare (once the

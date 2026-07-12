@@ -72,6 +72,17 @@ element currents/powers/losses + meters/monitors, `micro` tier).
   `dynamic` (dSpeed f32-cancellation floor caveat) and `faultstudy` (needs a
   bus-SC compare surface the harness lacks) — `exec/tests/dynamics.rs` /
   `fault_study.rs` still cover the numerics.
+- **Audit settle (2 Minor).** (1) Added the 8 GEN-MODE decks to the
+  `MODES_REQUIRED` anti-deletion floor (`corpus_live.rs`), per the WPG.13/WPG.17
+  convention that every feature deck joins the floor — the bijection guard only
+  catches a single-sided drop, the floor catches a coordinated file+manifest
+  removal. (2) Fixed the daily/yearly manifest-note engine citations: the
+  per-mode LOAD multiplier lives in `nominal.rs` (Daily `f *= load_multiplier`
+  :138-141; Yearly :146-148), not `set_generator_disp_ref` (`power_flow.rs`
+  :284-285, the generator dispatch reference); corrected the yearly note's
+  imprecise "loads apply no LoadMultiplier" (loads DO scale by LoadMult in every
+  mode — the deck just leaves it at 1.0; it is the generator dispatch reference
+  that omits it in YEARLY).
 
 **CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
 quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch

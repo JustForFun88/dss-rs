@@ -948,7 +948,7 @@
   ],
   "pending": false,
   "wp": "GEN-MODE",
-  "note": "SolveMode=DAILYMODE (Pascal SolveDaily, SolutionAlgs.pas:160): the 24-step daily loop that GENERALTIME (single-step) and PEAKDAY (ignores LoadMult) do not cover. `Set LoadMult=1.2` IS applied in DAILY (power_flow.rs:285), SampleTheMeters+DI open/close, EndOfTimeStepCleanup + a trailing IncrementTime per step; the 24 solves walk hours 0..23. Oracle-validated: 24 converged steps, bit-identical across two processes (d4bde52ae6197a1c); feature-sensitive vs LoadMult=1.0 (5008550ad64a3c2e \u2014 every monitor/meter channel shifts)."
+  "note": "SolveMode=DAILYMODE (Pascal SolveDaily, SolutionAlgs.pas:160): the 24-step daily loop that GENERALTIME (single-step) and PEAKDAY (ignores LoadMult) do not cover. `Set LoadMult=1.2` IS applied to the loads in DAILY (nominal.rs:138-141, `f *= load_multiplier`), SampleTheMeters+DI open/close, EndOfTimeStepCleanup + a trailing IncrementTime per step; the 24 solves walk hours 0..23. Oracle-validated: 24 converged steps, bit-identical across two processes (d4bde52ae6197a1c); feature-sensitive vs LoadMult=1.0 (5008550ad64a3c2e \u2014 every monitor/meter channel shifts)."
  },
  {
   "path": "time/daily_bigstep.dss",
@@ -972,7 +972,7 @@
   "check_meters_monitors": true,
   "pending": false,
   "wp": "GEN-MODE",
-  "note": "SolveMode=YEARLYMODE (Pascal SolveYearly, SolutionAlgs.pas:112): the DefaultYearlyShapeObj.GetMultAtHour channel (loads carry `yearly=`; yearly applies NO LoadMultiplier, power_flow.rs:284) and the `if PriceCurveObj<>NIL then PriceSignal:=GetPrice(dblHour)` arm (SolutionAlgs.pas:136). PriceSignal drives a price-dispatched Generator (dispmode=price, Generator.pas:1090): g_pk runs ALL year (curve 50..80 >= dispvalue=40) with the curve present, and stays OFF without it (PriceSignal holds its default 25 < 40). dispvalue sits above the default 25 but below every curve price so the split is steady ON vs steady OFF (a mid-run flip would cost the oracle an extra convergence iteration on the flip step). Oracle-validated: 8 converged steps (2 iters each), bit-identical across two processes (b7fca76ea63c5cd6); feature-sensitive two ways \u2014 removing PriceCurve leaves g_pk OFF every step (145fe14c895d109e), flattening yr8 removes the shape trajectory (afa7f01995a9ce01)."
+  "note": "SolveMode=YEARLYMODE (Pascal SolveYearly, SolutionAlgs.pas:112): the DefaultYearlyShapeObj.GetMultAtHour channel (loads carry `yearly=`, scaled by growth×LoadMult like every mode, nominal.rs:146-148 — the deck leaves LoadMult at its default 1.0) and the `if PriceCurveObj<>NIL then PriceSignal:=GetPrice(dblHour)` arm (SolutionAlgs.pas:136). PriceSignal drives a price-dispatched Generator (dispmode=price, Generator.pas:1090) whose YEARLY generator dispatch reference omits LoadMultiplier (gf*hm, power_flow.rs:284): g_pk runs ALL year (curve 50..80 >= dispvalue=40) with the curve present, and stays OFF without it (PriceSignal holds its default 25 < 40). dispvalue sits above the default 25 but below every curve price so the split is steady ON vs steady OFF (a mid-run flip would cost the oracle an extra convergence iteration on the flip step). Oracle-validated: 8 converged steps (2 iters each), bit-identical across two processes (b7fca76ea63c5cd6); feature-sensitive two ways \u2014 removing PriceCurve leaves g_pk OFF every step (145fe14c895d109e), flattening yr8 removes the shape trajectory (afa7f01995a9ce01)."
  },
  {
   "path": "time/duty.dss",
