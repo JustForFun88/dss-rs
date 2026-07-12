@@ -52,6 +52,18 @@ feature-sensitivity probe) and green on the live family gate at **micro** tier.
   series-injection YPrim stamp is control-mode-independent and already pinned by
   `upfc_asym` mode 1; modes 2/3 only vary the control dispatch and would perturb
   that deck's tol=1e-12 pin for negligible stamp coverage.
+- **Settle pass (audit findings, 2026-07-12).** (1) *Fixed:* the 7 new decks were
+  in `manifest.json` (bijection-guarded) but absent from the `ASYMMETRIC_REQUIRED`
+  anti-shrink floor in `corpus_live.rs`, so a joint deck+entry deletion would pass
+  undetected — and flooring combo decks but not the new `midi_geometry_cable_asym`
+  was inconsistent. Added all 7 to `ASYMMETRIC_REQUIRED` and widened the floor's
+  doc comment; gate stays green. (2) *Cleaned:* removed the untracked, out-of-scope
+  `tools/oracle/validate_deck.py` ad-hoc wave helper (never committed; leftover
+  clutter outside the family dir). (3) *No defect:* the `vsconverter_asym` discard
+  was flagged as possibly under-documented in the handoff text, but it is already
+  fully recorded above with the correct rationale (full-model current compare has
+  no per-element opt-out; the `GetCurrents` bug forbids a live compare) — nothing
+  to change.
 
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a
