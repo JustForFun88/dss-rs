@@ -415,9 +415,12 @@ fn set_get_ad_options_roundtrip() {
     dss.command("get Num_SubCircuits");
     assert_eq!(dss.result(), "4");
 
+    // Official `get Coverage` (ExecOptions.pas:1086) reports Actual_Coverage
+    // (`%-g`), NOT the requested value; it is -1 until the coverage-path
+    // algorithm has run (WP-AD.5), so a bare `set Coverage=` then `get` reads -1.
     dss.command("set Coverage=0.75");
     dss.command("get Coverage");
-    assert_eq!(dss.result(), "0.75");
+    assert_eq!(dss.result(), "-1");
 
     dss.command("set UseMyLinkBranches=True");
     dss.command("get UseMyLinkBranches");
