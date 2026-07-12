@@ -58,6 +58,75 @@ vendored `dss_capi 0.14.5` Pascal.
   committed). This settle applies the real manifest changes and the two additional
   save fixes above.
 
+**WP-AD.5 — coverage paths, Refine_BusLevels, ckt24 driver, LineGeometry save
+fix (branch `wp-ad5`, 2026-07-12).** Landed:
+
+- **Coverage-path tracing + `Refine_BusLevels`** (`circuit/coverage.rs`):
+  `get_longest_path`/`Append2PathsArray`/`Normalize_graph`/`Get_paths_4_Coverage`
+  ported 1:1 from official `Circuit.pas:778-913`; command 110 un-refused →
+  `"<n> new paths detected"` (`ExecCommands.pas:691`). Working arrays
+  (`longest_paths`/`path_idx`/`buses_covered`/`new_graph`) on `AdTearing`.
+  `get Coverage` corrected to report `Actual_Coverage` (`%-g`,
+  `ExecOptions.pas:1086`), not the requested value (was a WP-AD.2 stopgap).
+  NOTE(upstream-quirk) at the `get_longest_path` descent (potential negative-index
+  OOB read not reproduced, D5).
+- **LineGeometry `SaveWrite` fix** (`elements/general/line_geometry/save.rs`): a
+  REAL, previously-undetected `save circuit` defect. The generic serializer
+  collapsed the per-conductor array props (`wire`/`x`/`h`/`units`) to the single
+  last-set conductor, so any reloaded `LineGeometry` had undefined conductors
+  ("WireData is not correctly initialized") — every LineGeometry save round-trip
+  (incl. ckt24 AD init) failed to solve. Ported `TLineGeometryObj.SaveWrite`
+  (dss_capi 0.14.5) to emit `~ Cond=i wire=.. X=.. h=.. units=..` per conductor.
+  Semantic save round-trip (193 tests) + report goldens (6) still green.
+- **ckt24 real-corpus AD driver** (`adiakoptics.rs::ckt24_driver`): drives the
+  vendored `master_ckt24.dss` setup prefix + the deck's OWN manual 2/4-zone
+  `LinkBranches`+`UseMyLinkBranches` cases (D10). Gates the **D7 AD leg**
+  (AD solve vs saved-interconnected normal solve): CLEAN at ~7.6e-6 / 9.5e-6 for
+  both partitions. Decomposition (D7): the ~1.8e-2 total gap is entirely the save
+  round-trip leg (leg1, secondary-service nodes) — the AD engine itself is exact.
+- Tear_Circuit `help_catalog` note updated to reflect Rust-side support.
+- **NOTE marker inventory** (greppable, plan D2/D5): `NOTE(subst-metis)` × 6 in
+  `exec/tearing.rs`, `exec/tearing_save.rs`, `support/partition.rs` (the exec-vs-
+  in-process METIS + 4.0→5.2.1 version step); `NOTE(upstream-quirk)` × 20 across
+  `circuit/coverage.rs`, `exec/diakoptics/{matrices,solve}.rs`, `exec/tearing*.rs`,
+  `solution/inc_matrix.rs`, `solution/solution/power_flow.rs`,
+  `support/{flicker,partition,sparse_math}.rs`.
+
+**Open findings (WP-AD.5, filed for follow-up — NOT masked):**
+- **ckt24 yearly-24 AD time-series divergence** (~1.1e-1 @ both secondary AND
+  primary nodes, base>500 V, not a small-base artifact — decomposition-proven leg2,
+  NOT save round-trip). Snapshot AD leg is clean, so the divergence is in the
+  **multi-step time-series AD path** (WP-AD.3), likely a cross-step child load-state
+  issue. `manual_2zone_yearly_runs_and_advances` exercises the path (converges +
+  advances the clock) and PRINTS the gap ungated (§5: not tolerance-widened). Root
+  cause is a WP-AD.3 concern, outside WP-AD.5's coverage/aggregate charter.
+- **ckt24 save round-trip fidelity at secondary-service nodes** (~1.8e-2, leg1):
+  after the LineGeometry fix, a residual `save circuit` gap remains at `_SEC_`
+  nodes (triplex/service-transformer serialization). Same class as the WP-AD.4
+  `off:save-roundtrip-*` decks. A save-circuit concern (D7: "fix there, not in AD").
+- **ckt24 auto-tear does not converge** — expected: the deck header states "the
+  buses for the lines are backwards ... the automatic partitioning will not work",
+  so ckt24 mandates manual `LinkBranches`. No auto-tear gate for ckt24 (the
+  synthesized midi/macro auto-tear gates in `ad_solve_gate` cover D2).
+
+**Deferred (WP-AD.5, recorded — not silently dropped):**
+- **`AggregateProfiles` + `Aggregate` command + `Aggregated_model/` golden** — the
+  `Get_paths_4_Coverage` prerequisites, `Disable_All_DER` consumer (upstream
+  comments it out at official `Circuit.pas:1663` — no live caller), and raw
+  loadshape `p_mult_raw`/`q_mult_raw` accessors are in place, but the full port
+  (`Circuit.pas:1616-1874`: per-zone EnergyMeter placement → snapshot solve →
+  per-zone yearly-shape aggregation → `save circuit Dir=Aggregated_model`) was not
+  completed this session. `AggregateProfiles` remains a scoped NOT_PORTED
+  (`exec/command.rs`). This is the main remaining §0.1 command-surface item.
+- **D9(d) — official-r3723 AD-replay compare machinery** (the WP-AD.4 leftover):
+  the `AdSweepCase.oracle` field + `Oracle::opendss(rev)` bridge exist, but the
+  `oracle_server.py` AD mode (replay `set Num_SubCircuits`/`ADiakoptics` on r3723
+  with a `wait` after every solve, then return post-AD voltages/powers) was not
+  built, so no sweep case carries `oracle:"r3723"` yet and the 4 non-actor AD-master
+  decks (EPRI_Ckt5-G/Ckt7-G, IEEE_123_Bus-G, ckt24) stay in `skipped_oracle_issue`.
+  The rust-vs-rust AD sweep (WP-AD.4) remains the primary AD gate; D9(d) is the
+  official-reference strengthening layer.
+
 **WP-AD.4 — corpus-wide AD↔normal sweep (branch `wp-ad4`, 2026-07-12).** The
 user-mandated A-Diakoptics gate. Two parts landed:
 
