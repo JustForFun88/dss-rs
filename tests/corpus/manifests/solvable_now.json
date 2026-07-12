@@ -2,6 +2,55 @@
  "comment": "Entry points both engines solve; live-compared by corpus_live.rs. Fields: path, kind(micro|feeder|large), post[], n_steps, selected_elements[]. WP8.5b property parity (every element's every property, Rust ?-surface vs oracle Properties(p).Val): gated automatically for pinned-capi feeder/micro-kind decks; the heavy large-kind decks (8500-Node/ckt5/EPRI/IEEE123/ADiakoptics/4Bus-YYD) and target-rev cases stay OFF in the mandatory gate (too slow / different-engine property format) and are swept by the DSS_LIVE_PROPS=1 corpus_live_properties pilot, which proved the whole corpus clean. Comparability exclusions: tests/harness SKIP_PROPS + TOLERANCE_NOTES.md.",
  "cases": [
   {
+   "path": "Test/indmachtest/Master.DSS",
+   "kind": "feeder",
+   "n_steps": 1,
+   "expect_warnings": ["Not Loaded"],
+   "note": "SKIPPED-SWEEP (2026-07-12): Generator model=6 with an unvendored user-written induction-machine DLL (UserModel=Indmach012a). Both engines warn-and-solve exactly like the official Direct DLL: safe Rust falls back to Yprim-only + a non-fatal #567 each iteration (discarded, never in errors()) plus one compile-time #570 'Not Loaded' (expect_warnings); the pinned 0.14.5 oracle runs with EarlyAbort off + the user-model errnos tolerated (oracle_server warn_and_continue, driven by expect_warnings). Rust 8 iters == pinned 8 iters, node V bit-identical (SOURCEBUS.1 66329.351914, B1.1 8050.617448). Was parked user_model_oracle_raises_567 (the harness surfaced the DoSimpleMsg as fatal); the warn_and_continue harness path now produces a checkpoint."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "post": ["Set maxiterations=200"],
+   "note": "SKIPPED-SWEEP (2026-07-12): was parked oracle_nonconvergence, but only because the deck's own maxiterations is below what this stiff 5-node transmission case needs (90 iters). With post Set maxiterations=200 the pinned 0.14.5 oracle converges in 90 iters and Rust matches EXACTLY (90 iters; nodes 1.1=67722.121015, 2.1=63392.112516, 3.1=69054.287201 bit-identical). r3723 also 90; r4088/r4133 unchanged. Not a solver change — a solve-iteration cap; the sibling Run_IEEE30 deck sets maxiterations=100 itself."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "post": ["Set maxiterations=200"],
+   "note": "SKIPPED-SWEEP (2026-07-12): parked oracle_nonconvergence only for the deck's low maxiterations. This 15-node stiff transmission case needs 106 iters; with post Set maxiterations=200 the pinned 0.14.5 oracle converges in 106 and Rust matches EXACTLY (106 iters; node 1.1=67720.079361 bit-identical). r3723 also 106."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "post": ["Set maxiterations=200"],
+   "note": "SKIPPED-SWEEP (2026-07-12): parked oracle_nonconvergence only because the master sets no maxiterations (default 15) while this 90-node 132 kV transmission network needs 19. The vendored sibling Run_IEEE30.DSS itself does Set maxiterations=100 then Solve. With post Set maxiterations=200 the pinned 0.14.5 oracle converges in 19 iters and Rust matches EXACTLY (19 iters; B1.1=80782.174429, B2.1=79499.460214, B3.1=77788.946023 bit-identical). r3723 also 19."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "post": ["Set maxiterations=200"],
+   "note": "SKIPPED-SWEEP (2026-07-12): parked oracle_nonconvergence at the deck's low maxiterations (hit 23 and stopped). This 8531-node feeder needs 62 iters; with post Set maxiterations=200 the pinned 0.14.5 oracle converges in 62 and Rust matches EXACTLY (62 iters; SOURCEBUS.1=69715.035261 bit-identical). r3723 also 62; not a solver change."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "post": ["Set maxiterations=200"],
+   "note": "SKIPPED-SWEEP (2026-07-12): parked oracle_nonconvergence at the deck's low maxiterations. This 8531-node GFM-storage feeder needs 67 iters (power-flow only; maxcontroliter default suffices). With post Set maxiterations=200 the pinned 0.14.5 oracle converges in 67 and Rust matches EXACTLY (67 iters; SOURCEBUS.1=69715.035565 bit-identical). Distinct from the GFM_IEEE123 upgrade_straddle_gfm_wp decks (those are a 0.15.x YPrim delta vs capi015; this one gates against the pinned 0.14.5 with no delta)."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "post": ["Set maxiterations=200"],
+   "note": "SKIPPED-SWEEP (2026-07-12): parked oracle_nonconvergence at the deck's low maxiterations. This 8531-node unbalanced GFM-storage feeder needs 62 iters; with post Set maxiterations=200 the pinned 0.14.5 oracle converges in 62 and Rust matches EXACTLY (62 iters; SOURCEBUS.1=69715.035261 bit-identical). Gates against the pinned 0.14.5 (no 0.15.x GFM delta on this deck)."
+  },
+  {
    "path": "Test/AutoTrans/Auto1bus-step1.dss",
    "kind": "large_near_ideal_source",
    "n_steps": 1
