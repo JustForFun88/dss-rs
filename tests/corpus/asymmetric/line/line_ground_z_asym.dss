@@ -1,20 +1,32 @@
-// Asymmetric Line coverage — Rg/Xg/Kxg ground-return frequency correction
-// (Line.pas:1262-1287). SymComponentsModel lines with EXPLICIT non-default
-// Rg/Xg/rho, solved at the 7th harmonic (`Set frequency=420`, FreqMultiplier=7)
-// so the earth-return terms actually enter YPrim:
+// Asymmetric Line coverage — Rg/Xg/Kxg ground-return frequency correction.
+// The deck does NOT set LongLineCorrection (default FALSE, Circuit.pas:492), so
+// YPrim is assembled by the NON-LLC else branch (Line.pas:1281-1287), NOT the
+// sibling LongLineCorrection branch (:1262-1269). The Xgmod formula is identical
+// in both (:1282 == :1263), but the ZinvValues assembly genuinely differs: the
+// else branch scales the whole imaginary part by FreqMultiplier
+// (:1287, `(im - Xgmod)*LenMult*FreqMult`) whereas the LLC branch scales only
+// Xgmod (:1269, `(im - Xgmod*FreqMult)*LenMult`).
+// SymComponentsModel lines with EXPLICIT non-default Rg/Xg/rho, solved at the
+// 7th harmonic (`Set frequency=420`, FreqMultiplier=7) so the earth-return
+// terms actually enter YPrim:
 //   * lgx: Xg <> 0, Rg = 0 -> the `if Xg<>0` Xgmod branch fires
-//     (Xgmod = 0.5*Kxg*ln(FreqMultiplier), Line.pas:1263); Rg add is 0.
+//     (Xgmod = 0.5*Kxg*ln(FreqMultiplier), Line.pas:1282); Rg add is 0.
 //   * lgr: Rg <> 0, Xg = 0 -> Xgmod = 0; the Rg*(FreqMultiplier-1) real add
-//     fires (Line.pas:1269). Clean per-term isolation.
+//     fires (Line.pas:1287). Clean per-term isolation.
 // rho is set explicitly per line (150 / 200) to pin the
-// Kxg = Xg / ln(658.5*sqrt(rho/BaseFrequency)) dependence (Line.pas:520/713).
+// Kxg = Xg / ln(658.5*sqrt(rho/BaseFrequency)) dependence (Line.pas:520/713/967).
 //
-// TODO(compat): Kxg deliberately KEEPS the truncated 658.5 constant. U1.2 moves
-// SimpleCarson Get_Ze 658.5 -> 658.853 but leaves Kxg at 658.5 (upgrade ledger
-// rows B2/D1 — the deliberate inconsistency). This deck is the INVARIANT
-// regression: its YPrim must NOT move under U1.2 (do NOT flip to capi015). The
-// SymComponentsModel path never calls Get_Ze, so only the 658.5-in-Kxg constant
-// is observable here.
+// U1.2 INVARIANT (tracked in the upgrade ledger rows B2/D1 — this is an upgrade-
+// ledger item, NOT a compat-precision shim): Kxg deliberately KEEPS the 658.5
+// constant while SimpleCarson Get_Ze moves 658.5 -> 658.853. 658.5 is the
+// faithful 0.14.5 spec literal at every Kxg site (Line.pas:520/713/967) and the
+// newer engine keeps it there too, so it is NOT a port-introduced inexactness to
+// be wiped in the precision cleanup pass — hence the Kxg code sites carry no
+// compat tag (deliberately: the greppable compat-tag namespace stays a pure
+// index of section-6 cleanup sites). This deck is the
+// regression proving the inconsistency: its YPrim must NOT move under U1.2 (do
+// NOT flip to capi015). The SymComponentsModel path never calls Get_Ze, so only
+// the 658.5-in-Kxg constant is observable here.
 //
 // r0 <> r1 keeps the 0-sequence correction distinct. Linear per-phase-unequal
 // shunt reactors draw the unbalanced current (autotrans_gic set-frequency-

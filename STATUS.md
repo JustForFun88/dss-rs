@@ -86,7 +86,7 @@ family gate at **micro** tier; all 4 added to both `manifest.json` and the
 - `line_ground_z_asym` (gap 3): explicit `Rg/Xg/rho` at the 7th harmonic
   (`Set frequency=420`) → `Xgmod` and `Rg·(FreqMult−1)` per-term isolation.
   U1.2-INVARIANT regression — `Kxg` deliberately keeps the 658.5 constant (ledger
-  B2/D1) while Get_Ze moves to 658.853; `TODO(compat)` in the deck header.
+  B2/D1) while Get_Ze moves to 658.853.
 - `line_fullcarson_asym` (gap 4, matrix-optional): FullCarson EarthModel at
   solve level (only DERI+SimpleCarson had live decks). Also a U1.2-invariant
   control (FullCarson Get_Ze unchanged).
@@ -97,6 +97,20 @@ family gate at **micro** tier; all 4 added to both `manifest.json` and the
   excitation keeps the harmonic solves frequency-well-defined on both engines and
   makes the Line YPrim the direct comparand. `population.lock.json` regenerated
   locally only (coordinator regenerates at merge).
+- **Settle (two Minor doc/convention findings, no behavior change):**
+  (1) `line_ground_z_asym` header cited the LLC branch (`:1263`/`:1269`) but the
+  deck runs the non-LLC else branch (no `LongLineCorrection`, default FALSE,
+  Circuit.pas:492) — retargeted the citations to `:1281-1287` and spelled out that
+  the two branches share the `Xgmod` formula but differ in the `FreqMultiplier`
+  scaling of the `ZinvValues` assembly (manifest note updated too). (2) Removed the
+  misplaced `TODO(compat)` tag from the deck comment: the 658.5-in-`Kxg` constant
+  is the faithful 0.14.5 spec literal (Line.pas:520/713/967) that even the newer
+  engine keeps, so it is NOT a section-6 precision shim and gets no compat tag on
+  the three port sites (`line/accessors.rs:453`, `code.rs:60`, `mod.rs:366`); it is
+  an upgrade-ledger item (B2/D1). Reworded to plain prose that avoids the literal
+  tag string, keeping the `TODO(compat)` grep namespace a pure index of cleanup
+  code sites. Both are doc-only; the deck's boundary, oracle validation, and gate
+  are unchanged.
 
 **Corpus coverage wave — controls family (branch `cgen-ctrl`), 2026-07-12.**
 35 new live decks (34 mini + 1 midi) closing Pascal-branch gaps per
