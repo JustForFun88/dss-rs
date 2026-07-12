@@ -50,6 +50,9 @@ MULTITHREADING M2.
   `GFLDaily_DynExp` deck (re-promoted `oracle:capi015`); flipped `Dynamic_KundurDynExp`
   to capi015; re-pinned 7 `exec/tests/dynamics.rs` DynExp gates to the frozen values
   (now D14 regression guards). See DIVERGENCES.md §D14.
+- **WP-U1.8 (WindGen + WTG3 dynamics) — LANDED** on branch `wp-u18` (new PC element +
+  the general dynamics-entry Y-rebuild fix + the `micro_wtg3_dynamics` floor tier).
+  See the UPGRADE record below.
 - **WP-U1.2 (numeric long tail)** — rows B2/D1, D7, D6, B1, D8 landed; **remaining:
   D3** (report-only spacing ratings — needs an overload-report deck) and **B3-r3723**
   (Load.GrowthFactor Year=0 — needs a growthshape + multi-hour year-0 run). See the
@@ -190,6 +193,43 @@ capi015==r4133; unit + capi015 deck pinned), D5 no-delta, C8 (a)
 multi-step decks (per-step capture re-nominalizes shapes) — capi015 corpus cases
 are snapshots; follow-up logged for the oracle-infra owner. Full detail:
 **`docs/phase-records/upgrade-rung1.md`**.
+**WP-U1.8 (WindGen + WTG3 dynamics) — LANDED (branch `wp-u18`).** New PC element
+`elements/pc/windgen/` (Generator-shaped negative load): aerodynamic power-flow
+(`Pm=0.5·ρ·π·Rad²·v³·Cp`, the load shape supplies WIND SPEED not a pu multiplier;
+kWBase curtailment + cut-in/cut-out; 4 models 1/2/4/5) + the embedded GE WTG type-3
+dynamics (`wtg3.rs`, 1:1 of `WTG3_Model.pas`: PLL, seq-current PI regulators,
+LVPL/LVQL ride-through, Cp 5×5 aero, MPPT/torque/pitch/inertia, one-mass swing, the
+**odd-substep 50 µs trapezoidal sub-cycle**, all 22 state vars). Harmonics DISABLED
+upstream → reproduced as a loud abort. `windgen_model`/`windgen_qmode` enums,
+`ElemKind::WindGen`, PASCAL_CLASS_ORDER slot after Generator. 5 live `modes/windgen/`
+capi015 decks (snap wye/delta, daily single-step, dynamics, dynamics+fault) + 11
+unit tests. Two cross-cutting findings: (1) a **general dynamics-entry Y-rebuild
+fix** — `calc_initial_machine_states` now raises `system_y_changed` (Pascal
+`InitStateVars`→`SetYprimInvalid`→`SystemYChanged`, lost in the port), without which
+the WTG3 Norton injection ran the terminal voltage away; (2) the new
+`micro_wtg3_dynamics` tolerance tier (decomposition-proven: snapshot input matches
+1e-8, the PLL derivative `×60000` amplifies the near-cancellation `Vq` into a ~1e-5
+state / ~1e-6-rel terminal-V floor that DECAYS as the transient settles — a WPG.13
+amplification floor, NOT a bug). WindGen energy-meter registers not ported
+(`EnergyMeter.SampleAll` never samples WindGenClass — unreachable). Daily deck is
+single-step: dss_capi 0.15.x caches per-element `Losses` and WindGen doesn't
+invalidate it (bucket-F API quirk, out of scope).
+- **WP-U1.8 settle (audit).** (1) The `micro_wtg3_dynamics` tier is empirically
+  confirmed a genuine cancellation floor, not a masked state-leak: a per-variable +
+  per-node decomposition vs capi015 (throwaway probe, reverted) shows the gap is
+  confined to exactly the 3 PLL-derivative-fed vars (`dOmg`/`Pgen`/`Qgen`, ~1e-5
+  healthy / ~4e-5 fault) while 14 of 22 vars are bit-exact and the other 5 are ≤5e-7;
+  the worst node-V is always WBUS (the terminal bus) at 9.6e-7 rel healthy / 3.4e-6
+  fault, so the default `v_rel=1e-7` genuinely fails and `8e-6` covers it at ×2.3
+  (not over-loose). (2) Fixed a robustness defect: a 1-phase WindGen entering
+  dynamics used to **panic** (OOB in `wtg3` `instrumentation`, which reads V[1..3] —
+  the WTG3 model is 3-phase-only; upstream over-reads = heap UB, NOT reproduced). Now
+  a loud clean abort — `init_state_vars` aborts non-3φ before the model init, and
+  `do_dynamic_mode` guards the per-step path (external `solve` clears the init abort);
+  `calc_initial_machine_states` now drains+propagates element init aborts to
+  `solution_abort` (also surfaces the latent >3φ silent-garbage path for all
+  machines). New unit test `single_phase_dynamics_aborts_cleanly`. (3) The 5
+  `windgen/*` decks joined the `MODES_REQUIRED` anti-deletion floor.
 - **Resume note (WP-U1.2 remaining).** Rows **D3** (report-only spacing ratings —
   overload-report deck) and **B3-r3723** (Load.GrowthFactor Year=0) still to port;
   the golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the
@@ -222,6 +262,66 @@ tests: `gfm_calc_yprim_matches_capi015_isc1_no_1000`,
 `gfm_norton_positive_seq_admittance_is_isc1_invariant`,
 `storage_gfm_micro_op_point_isc1_invariant`. Detail: DIVERGENCES.md §B5 +
 §capi015-daily-losses.
+
+**WP-U1.7 (NCIM solver) — Stage 1 landed; Stages 2–4 handed off.** Spec = A1,
+`Common/NCIMSolutionHelper.pas` (1048, FPC). **Stage 1 (done, own commit,
+gate-green):** the `dss-sparse` **real-valued** KLU-shaped path
+(`crates/dss-sparse/src/real.rs`, `RealSparseSet`) that the NCIM Jacobian needs —
+Pascal `NewSparseSet` + `SetOptions(…MatrixFormat_DoublePrecisionReal)` +
+`SetMatrixElement`/`SolveSparseSet`. Mirrors the complex `SparseSet` (triplet
+accumulate in insertion order = CSparse `cs_dupl`; KLU `scale=2` row
+equilibration) but over `f64`. **`set_element` ACCUMULATES** (not replace): NCIM
+stamps each non-swing diagonal 2×2 block from the PDE-only `Y_ii` (`[B,G;G,−B]`)
+in `NCIM_BuildJacobian`, then adds the load/gen injection derivative onto the same
+cells in `NCIM_ApplyCurr`; the current-injection Newton diagonal is
+`Y_ii_block + g'_ii_block`, so the two stamps must sum (under replace a PQ node
+loses its network coupling → wrong Jacobian). 9 unit tests from hand Jacobians
+(2×2, a 4×4 two-block CI-shaped Jacobian, insertion-order sum, singular, bad
+scaling, zero/rebuild, dim-mismatch, **zero-stamp-dropped**). The accumulate
+semantics are proven from the NCIM algorithm AND corroborated by the vendored
+EPRI KLUSolve C++ (`VersionC/klusolve/KLUSolve/Source/KLUSystem.cpp`:
+`SetMatrixElement`→`AddElement` appends, `GetElement` sums duplicates); the
+DSS-Extensions KLUSolveX *fork* (the real `DoublePrecisionReal` format) is not
+vendored but inherits the CSparse pipeline. **Settle fix:** `set_element` now
+drops a zero value (`if value == 0.0 return`), matching `AddElement`
+(`KLUSystem.cpp:442-444`) — an earlier doc comment claimed the no-op but the code
+did not implement it, so an exact-zero cell (pure-R load `B`-diagonal, pure-R/-X
+branch off-diagonal) would have inflated `nnz`/`Export Jacobian` vs the capi015
+oracle in Stage 3; a covering test (`zero_stamp_is_dropped`) was added.
+- **Stages 2–4 remaining (integration map for the next executor):**
+  - **State** (`solution/solution/state.rs`): add `NCIMSOLVE=2` + the ~15 NCIM
+    fields (Solution.pas l.243-271). Node i (1-based, ground=0) → Jacobian
+    0-based rows `2*(i-1)`, `2*(i-1)+1`; swing = nodes 1..3 → rows 0..5 (the
+    `<6` guards).
+  - **Y build PDE_ONLY** (`solution/ymatrix.rs`): add `BuildOption::PdeOnly` —
+    stamps **ALL_YPRIM** for PD **or SOURCE** (VSource) elements into the series
+    handle; PC elements excluded (YMatrix.pas l.442-497). NCIM reads it back via
+    the triplet dump (`coo_entries`) into `ncim_y/row/col`.
+  - **NCIM helper** (new `solution/solution/ncim.rs`): port
+    `NCIMSolutionHelper.pas` loop-for-loop — `NCIM_GetPowers` (Load ConstZ→ZBus
+    else PQ; Gen model 3=PV/4=PQ/else Z), `NCIM_Do{PV,PQ,Z}Bus`,
+    `NCIM_CalcInjCurr` (`I=Y·V`, first 6 deltaF=0), `NCIM_BuildJacobian` (fresh
+    `RealSparseSet` each iter), `NCIM_GetNumGenerators`, `NCIM_UpdateGenQ`
+    (PV↔PQ switching + Q-limits), `NCIM_Init`, `DoNCIMSolution` (repeat:
+    CalcInjCurr→BuildJacobian→GetPowers→ApplyCurr→solve→`NodeV -= dV`→Converged→
+    UpdateGenQ), `NCIM_Converged` (`max|deltaF| <= ConvergenceTolerance`).
+  - **Generator** (`elements/pc/generator/`): `GenVars.delta_q_nom: Vec<f64>`,
+    `vtarget`, `ncim_idx`, `NCIM_InitPVBusJac`, a `NCIM_ExPV` flag; GenModel 3
+    (PV) / 4 (PQ) semantics + kvarMax/kvarMin. **VSource** `CalcInjCurrAtBus`.
+  - **Dispatch**: `do_pflow_solution` match gains `NCIMSOLVE => do_ncim_solution`
+    (Solution.pas l.1031-1037); `converged()` gains the NCIM branch (l.730-733);
+    `check_controls` resets `ncim_ready=false` + early-returns when
+    `system_y_changed && algorithm==NCIM` (l.1182-1186).
+  - **Options** (`exec/set_cmd.rs`): add `NCIM` to `solve_alg` at ordinal 2
+    (prefix `nc`); new `IgnoreGenQLimits`→`ncim_ignore_q_limit`,
+    `NCIMQGain`→`ncim_gen_gain` (ExecOptions.pas l.794-797) + `Get` readback.
+  - **Reports**: `Export Jacobian/deltaF/deltaZ`, `Show PV2PQ_Conversions`
+    (numeric-token gates).
+  - **Decks** (`tests/corpus/modes/ncim/`, all `oracle:"capi015"`,
+    `pending:true` until the WP flips): micro PQ-only snapshot; PV-bus generator
+    deck (Q-limit hit → PV→PQ via `Show PV2PQ_Conversions` token + iter ≤); midi
+    IEEE123-class re-solve. Cross-check one on `oddie:r4088`. Iteration policy:
+    Rust ≤ oracle (§1.3-1); first-divergence trajectory dump on any gap.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
@@ -264,7 +364,9 @@ cargo test --workspace      # dss-core lib 748, golden_feeders 1,
                             #    installed (it fails, not skips, without it);
                             #    only corpus_live_classify is opt-in, via
                             #    DSS_LIVE_CLASSIFY=1 — the growth/classify probe),
-                            # dss-parser 62+1, dss-sparse 5
+                            # dss-parser 62+1, dss-sparse 15
+                            #   (6 complex SparseSet + 9 real RealSparseSet —
+                            #    WP-U1.7 Stage 1, the NCIM Jacobian path)
 ```
 
 ### Phase 5 gate — green  *(detail → `docs/phase-records/phase-5.md`)*

@@ -1923,6 +1923,13 @@ const MODES_REQUIRED: &[&str] = &[
     "harmonics/harmonic_hlist.dss",
     "harmonics/harmonict.dss",
     "reset/mode_reset.dss",
+    // WP-U1.8 WindGen + WTG3 dynamics feature decks (audit settlement: every
+    // feature deck joins the anti-deletion floor).
+    "windgen/windgen_snap.dss",
+    "windgen/windgen_snap_delta.dss",
+    "windgen/windgen_daily.dss",
+    "windgen/windgen_dyn.dss",
+    "windgen/windgen_dyn_fault.dss",
 ];
 
 /// Every modes case must name selected_elements: the live compare (once the

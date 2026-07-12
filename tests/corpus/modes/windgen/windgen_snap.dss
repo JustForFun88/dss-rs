@@ -1,0 +1,10 @@
+! WP-U1.8 (UPGRADE_PLAN §WP-U1.8) — WindGen snapshot power flow, wye.
+! The aerodynamic steady-state model: Pm = 0.5*rho*pi*Rad^2*vwind^3*Cp; at
+! vwind=12 m/s the aero power (~2181 kW) is curtailed to kWBase=1500, so the
+! WindGen injects -1500 kW at unity PF. oracle capi015 (0.15.x WindGen class).
+Clear
+New Circuit.wtg_snap basekv=12.47 phases=3 bus1=srcbus
+New Line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.1 x1=0.5 length=1
+New WindGen.w1 bus1=wbus phases=3 kv=12.47 kW=1500 pf=1.0 conn=wye model=1 vwind=12
+Set voltagebases=[12.47]
+Calcvoltagebases

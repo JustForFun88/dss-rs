@@ -71,6 +71,8 @@ impl EnumRegistry {
             ind_mach_slip_option: pc.ind_mach_slip_option,
             vsc_mode: pc.vsc_mode,
             upfc_mode: pc.upfc_mode,
+            windgen_model: pc.windgen_model,
+            windgen_qmode: pc.windgen_qmode,
             monitor_action: general.monitor_action,
             energy_meter_action: general.energy_meter_action,
             storage_ctrl_discharge_mode: control.storage_ctrl_discharge_mode,

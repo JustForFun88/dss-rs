@@ -100,6 +100,10 @@ pub struct EnumRegistry {
     pub vsc_mode: EnumId,
     /// 'UPFC: Mode' (UPFC.pas `UPFCModeEnum`; Off..DoubleReference_Dual, 0..5).
     pub upfc_mode: EnumId,
+    /// 'WindGen: Model' (WindGen.pas `WindGenModelEnum`; values 1,2,4,5).
+    pub windgen_model: EnumId,
+    /// 'WindGen: Q Mode' (WindGen.pas `WindGenQModeEnum`; Q/PF/VoltVar).
+    pub windgen_qmode: EnumId,
     /// 'Monitor: Action' (Monitor.pas `ActionEnum`).
     pub monitor_action: EnumId,
     pub energy_meter_action: EnumId,

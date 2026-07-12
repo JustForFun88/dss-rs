@@ -1,0 +1,9 @@
+! WP-U1.8 — WindGen snapshot power flow, delta connection, PF=0.9.
+! Exercises the delta YPrim/injection path (Y/3 conversion, L-N Vmag) and the
+! QMode=0 (constant-Q via PF) reactive dispatch. oracle capi015.
+Clear
+New Circuit.wtg_delta basekv=12.47 phases=3 bus1=srcbus
+New Line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.1 x1=0.5 length=1
+New WindGen.w1 bus1=wbus phases=3 kv=12.47 kW=1500 pf=0.9 conn=delta model=1 vwind=12
+Set voltagebases=[12.47]
+Calcvoltagebases
