@@ -12,6 +12,9 @@
 #[cfg(test)]
 mod tests;
 
+mod real;
+pub use real::RealSparseSet;
+
 use faer::MatMut;
 use faer::linalg::solvers::Solve;
 use faer::prelude::Reborrow;
