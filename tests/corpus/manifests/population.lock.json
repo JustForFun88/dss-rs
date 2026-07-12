@@ -11,7 +11,7 @@
   "family_counts": {
     "asymmetric": 43,
     "controls": 92,
-    "modes": 48
+    "modes": 49
   },
   "family_paths": {
     "asymmetric": [
@@ -192,6 +192,7 @@
       "reset/mode_reset.dss",
       "time/daily.dss",
       "time/daily_bigstep.dss",
+      "time/direct.dss",
       "time/duty.dss",
       "time/generaltime.dss",
       "time/generaltime_duty.dss",
