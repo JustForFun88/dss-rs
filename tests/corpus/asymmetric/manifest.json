@@ -84,6 +84,16 @@
    ]
   },
   {
+   "path": "transformer/transformer_wyedelta_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Transformer.twd",
+    "Transformer.tdd"
+   ],
+   "note": "Boundaries: wye-delta step-up (delta-lead +30deg phase shift, opposite of transformer_asym.tdy's delta-wye lag) and delta-delta (both terminals ungrounded, common mode held by ppm_antifloat + a small wye cap pin per the family floor rule). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: twd conns wye-delta->wye-wye changes both YPrims."
+  },
+  {
    "path": "fault/fault_asym.dss",
    "kind": "micro",
    "n_steps": 1,
