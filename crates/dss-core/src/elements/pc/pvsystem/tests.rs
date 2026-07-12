@@ -139,6 +139,76 @@ fn time_loadshapeclass_selects_matching_mult_and_temperature() {
     );
 }
 
+/// Pascal `InitStateVars`/`IntegrateStates` load-shape dispatch (PVsystem.pas
+/// l.2192-2210 / l.2281-2299): **dynamics mode** honors `Set LoadShapeClass=` —
+/// the class samples the mult AND temperature curves at the dynamics hour, so a
+/// deck doing `set loadshapeclass=daily; set time=(10,0); set mode=dynamics`
+/// starts at that hour's irradiance, not full sun. Regression for the CF2-G
+/// GFL/GFM daily-deck bug (the port hardcoded `ShapeFactor := 1+j1`, injecting
+/// PanelkW 800 instead of the oracle's 594.78). Also pins the `USENONE` arm:
+/// only `ShapeFactor` resets — `TShapeValue` keeps its prior value (Pascal's
+/// `else` touches nothing else).
+#[test]
+fn dynamics_loadshapeclass_selects_mult_and_temperature() {
+    let mut pv = PVSystem::new("pv1");
+    pv.base.daily_shape_obj = Some(build_shape("0.2 0.6 1.0 0.5"));
+    pv.base.yearly_shape_obj = Some(build_shape("0.3 0.7 0.9 0.4"));
+    pv.base.duty_shape_obj = Some(build_shape("0.1 0.5 0.8 0.6"));
+    pv.daily_t_shape_obj = Some(build_tshape("10 20 30 40"));
+    pv.yearly_t_shape_obj = Some(build_tshape("11 21 31 41"));
+    pv.duty_t_shape_obj = Some(build_tshape("12 22 32 42"));
+
+    let dyn_ctx = |class: i32| SysCtx {
+        mode: SolveMode::Dynamic,
+        is_dynamic_model: true,
+        active_load_shape_class: class,
+        dbl_hour: 2.0,
+        ..default_recalc_ctx()
+    };
+
+    pv.apply_dynamics_load_shape(&dyn_ctx(crate::solution::USEDAILY));
+    let daily_temp = pv.t_shape_value;
+    assert!(
+        (pv.base.shape_factor.re - 0.6).abs() < 1e-9,
+        "daily mult: {}",
+        pv.base.shape_factor.re
+    );
+
+    pv.apply_dynamics_load_shape(&dyn_ctx(USEYEARLY));
+    assert!(
+        (pv.base.shape_factor.re - 0.7).abs() < 1e-9,
+        "yearly mult: {}",
+        pv.base.shape_factor.re
+    );
+    assert!(
+        (pv.t_shape_value - (daily_temp + 1.0)).abs() < 1e-9,
+        "yearly temp {} != daily+1",
+        pv.t_shape_value
+    );
+
+    pv.apply_dynamics_load_shape(&dyn_ctx(USEDUTY));
+    assert!(
+        (pv.base.shape_factor.re - 0.5).abs() < 1e-9,
+        "duty mult: {}",
+        pv.base.shape_factor.re
+    );
+    assert!(
+        (pv.t_shape_value - (daily_temp + 2.0)).abs() < 1e-9,
+        "duty temp {} != daily+2",
+        pv.t_shape_value
+    );
+
+    // USENONE: ShapeFactor resets to 1+j1; TShapeValue keeps the prior (duty)
+    // value — Pascal's `else` branch does NOT touch it.
+    pv.apply_dynamics_load_shape(&dyn_ctx(USENONE));
+    assert_eq!(pv.base.shape_factor, crate::util::CDOUBLEONE);
+    assert!(
+        (pv.t_shape_value - (daily_temp + 2.0)).abs() < 1e-9,
+        "USENONE must not touch TShapeValue (got {})",
+        pv.t_shape_value
+    );
+}
+
 /// The harmonic-mode YPrim is the Thevenin admittance behind `%R`/`%X`
 /// (`Yeq := 1/(Rthev + j·Xthev)`, then `Y.im /= h`) that `InitHarmonics` sets —
 /// NOT the (negated) power-flow admittance. Pins the harmonic `CalcYPrimMatrix`
