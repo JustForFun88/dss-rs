@@ -1,0 +1,53 @@
+// Asymmetric Line coverage — SPACING path (Line.pas:1183/1964,
+// FMakeZFromSpacing). Distinct from the GEOMETRY path (line_geometry_asym):
+// here the Line carries a `Spacing=` + `Wires=`/`TSCables=` list, so CalcYPrim
+// builds a THROWAWAY LineGeometry via LoadSpacingAndWires (LineGeometry.pas:984),
+// which sets OH/CN/TS from the wire types and auto-sets Reduce when
+// NWires>NPhases (LineGeometry.pas:992). Two lines:
+//  (a) overhead LineSpacing nconds=4 nphases=3 with a DISTINCT (x,h) and a
+//      DISTINCT WireData per conductor -> full-asym Carson Z/Yc from the spacing
+//      path, auto-reduced 4->3;
+//  (b) a spacing+CABLE line (nconds=2 nphases=1, TSCables=[TS] + Wires=[CU]) —
+//      the spacing-with-cables sub-branch and the `gotRatingsAfterSpacingConds`
+//      NormAmps/EmergAmps seed at FMakeZFromSpacing (Line.pas:1994).
+// EarthModel is left DEFAULT (DERI): the spacing YPrim shares Get_Ze with the
+// geometry Carson path, so keeping DERI makes this deck's YPrim U1.2-STABLE
+// (the 658.5->658.853 SimpleCarson move does NOT touch it) — see the manifest
+// note. Unbalanced 1-phase loads keep every reduced stamp exercised.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.line_spacing_asym basekv=12.47 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=2000 mvasc1=2100
+
+! Overhead conductor library (transcribed from Test/IEEELineGeometry.dss /
+! IEEE13_LineAndCableSpacing.dss). Distinct sizes per phase -> asym Z.
+new WireData.ACSR_556 NormAmps=730 DIAM=0.927 GMRac=0.37320 Rdc=0.035227273 Runits=kft Radunits=in gmrunits=in
+new WireData.ACSR_4-0 NormAmps=340 DIAM=0.563 GMRac=0.09768 Rdc=0.112121212 Runits=kft Radunits=in gmrunits=in
+new WireData.ACSR_1-0 NormAmps=230 DIAM=0.398 GMRac=0.05352 Rdc=0.212121212 Runits=kft Radunits=in gmrunits=in
+
+! Cable library (from Test/CableParameters.dss) for the spacing+cable line.
+new WireData.CU_1-0 NormAmps=100 DIAM=0.368 GMRac=0.13356 Rac=0.607 Runits=mi Radunits=in gmrunits=in
+new TSData.TS_1-0   NormAmps=165 DIAM=0.368 GMRac=0.13320 Rac=0.97 Runits=mi Radunits=in gmrunits=in
+~ EpsR=2.3 Ins=0.220 DiaIns=0.82 DiaCable=1.06 DiaShield=0.88 TapeLayer=0.005 TapeLap=20
+
+! (a) Overhead spacing: 4 conductors (3 phase + neutral) at DISTINCT (x,h),
+! DISTINCT wire per phase -> full-asym reduced (4>3 auto-reduce) Carson Z/Yc.
+new LineSpacing.sp4 nconds=4 nphases=3 units=ft x=[-4.0 -0.5 3.5 0.3] h=[29.0 27.0 30.0 24.0]
+
+! (b) Cable spacing: 1 tape-shield phase + a bare CU neutral wire (2>1 reduce).
+new LineSpacing.sp2 nconds=2 nphases=1 units=ft x=[0.0 0.25] h=[-4.0 -4.0]
+
+! 3-phase overhead line on the spacing path — the full-asym stamp we pin.
+new line.lsp bus1=src bus2=b1 spacing=sp4 wires=[ACSR_556 ACSR_4-0 ACSR_1-0 ACSR_4-0] length=6 units=kft
+
+! 1-phase tape-shield cable line on the spacing path (phase 1 spur).
+new line.lspc phases=1 bus1=b1.1 bus2=b2.1 spacing=sp2 tscables=[TS_1-0] wires=[CU_1-0] length=1.5 units=kft
+
+! Unbalanced excitation.
+New load.la bus1=b2.1 phases=1 conn=wye model=1 kv=7.2 kw=280 pf=0.9
+New load.lb bus1=b1.2 phases=1 conn=wye model=1 kv=7.2 kw=600 pf=0.95
+New load.lc bus1=b1.3 phases=1 conn=wye model=1 kv=7.2 kw=950 pf=0.85
+
+Set voltagebases=[12.47]
+calcv
