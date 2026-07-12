@@ -34,12 +34,14 @@
   {
    "path": "Test/CableParameters.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Test/Cable_constants.DSS",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Test/CapacitorConfigs.dss",
@@ -454,57 +456,68 @@
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss",
@@ -1312,12 +1325,14 @@
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-GrdYD-Bal/4Bus-GrdYD-Bal.DSS",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS",
@@ -1327,17 +1342,20 @@
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YD-Bal/4Bus-YD-Bal.DSS",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS",
    "kind": "large",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Master.dss",

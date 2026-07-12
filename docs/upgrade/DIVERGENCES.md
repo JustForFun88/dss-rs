@@ -354,6 +354,251 @@ Follow-up (separate `?`-command gap, NOT r3875): a bare `? prop` querying the
 ActiveCktElement is still unported in `do_query_cmd` — noted in STATUS, an owner
 for a later WP.
 
+## B2/D1 — SimpleCarson earth-return De constant `658.5 → 658.8530451057239` — SETTLED (WP-U1.2, adopt capi015; reproduce the upstream Line.Kxg inconsistency)
+
+**Observable.** The series impedance `Zmatrix` of any Line whose Z is built from
+a `LineGeometry`/`LineSpacing`/cable under `EarthModel=Carson` (the SimpleCarson
+earth model). `LineConstants.GetZearth`'s SimpleCarson branch computes the
+earth-return reactance from `ln(De·√(ρ/f))` with the De constant.
+
+**dss_capi 0.14.5 (default oracle).** `De = 658.5` (`LineConstants.pas`
+`Get_Ze`/SIMPLECARSON). The port matched this at r3723.
+
+**dss_capi 0.15.x (capi015) / EPRI r4088+.** `De = 658.8530451057239` — the
+precise `De ≈ 658.87·√(ρ/f)` reference constant, corrected in the r3913-era
+line/conductor rework (`LineConstants.pas:474`, `GetZearth`). r4088/r4133 carry
+the same corrected value (byte-identical LineConstants across the deltas).
+
+**Upstream INCONSISTENCY reproduced 1:1.** dss_capi 0.15.x corrected the
+constant ONLY in `LineConstants`; **`Line.pas`'s own `Kxg`** — used for the
+frequency-dependent ground-reactance adjustment `Xgmod = 0.5·Kxg·ln(FreqMult)`
+— **keeps `658.5`** (`Line.pas:531/741/1077`, unchanged across the delta). So
+within one Line the geometry-derived Z uses 658.85 while the Kxg frequency
+correction uses 658.5. This is a genuine upstream inexactness, reproduced:
+`line_constants/mod.rs::get_ze` uses `658.8530451057239`; the three `kxg` sites
+(`elements/pd/line/{accessors,code,mod}.rs`) keep `658.5` under `TODO(compat)`
+notes citing this ledger row. The §6 marker sweep unifies both to the corrected
+constant, regenerating goldens deliberately.
+
+**Probe** (`/tmp/probe_carson.py`, 2026-07-12; 3-phase overhead geometry,
+`earthmodel=carson`, `? Line.l1.Xmatrix`):
+
+| engine | `Xmatrix[0]` (ohm/km) |
+|---|---|
+| capi 0.14.5 (default) | `9.080731425743580e-01` |
+| capi015 (0.15.0b4) | `9.081135553904781e-01` |
+
+The ~4.0e-5 (rel ~3e-5) reactance shift is far above the live Y floor (1e-6) —
+this is the plan's revision-**sensitive** first flip (WP-U1.2 gate note: a
+numeric-routing regression now fails on the numbers, not only the ping).
+
+**Decision — adopt the capi015 (=r4133) 658.8530451057239 in `LineConstants`;
+reproduce the `Line.Kxg` 658.5 inconsistency.** Consistent with the plan's
+"EPRI r4133 wins" default.
+
+**Gate consequence.**
+- **18 mandatory-gate decks flipped to `oracle: "capi015"`** in this same
+  commit (§1.2): the two `Test/Cable*` cable-geometry decks, the twelve
+  `InverterModels/.../MonitoredVoltage/{Local,Mon}_voltage_*-2` volt-var decks
+  (Carson `LineGeometry.Poste`; no Cmatrix capacitor, so B1 does not touch them
+  — B2 is the sole mover, confirmed by the empirical gate), and the four
+  `IEEETestCases/4Bus-*`/`YYD-Master-step1` cable/geometry decks. Each compiles,
+  solves, and its full assembled system Y matches capi015 (the corpus_live gate
+  compares the entire Y entry-by-entry, so every Carson-geometry deck moves).
+- **New capi015 golden** `tests/golden/line_constants/line_geometry_carson.json`
+  (`oracle.engine_spec == "capi015"`), the offline revision-sensitive twin;
+  registered in `golden_line_constants.rs`. This WP builds the generator engine
+  switch (`gen_checkpoints.py::check_pin` honours `DSS_ORACLE_ENGINE=capi015`
+  and stamps `engine_spec`).
+- Three `line_constants`/`line_geometry` **Rust unit tests** re-referenced to
+  capi015 (SimpleCarson Z probed on the Oddie venv; only the earth-return
+  reactance — and, for the CN/TS-reduced cases, the coupled reduced resistance
+  — move; FullCarson/DERI references untouched).
+- `known_diffs.json`: no Rust↔EPRI entry existed (0.14.5 and the port both used
+  658.5, matching each other at r3723) — nothing to retire.
+
+## B5 — GFM `Isc1` factor-1000 removal — DEFERRED (WP-U1.2, blocked on a Rust GFM op-point gap)
+
+**Observable.** The equivalent short-circuit admittance (`CalcGFMYprim`) of any
+PVSystem/Storage operating in grid-forming (GFM) mode — its Norton YPrim.
+
+**dss_capi 0.14.5 (default).** `Isc1 = mKVArating·1000 / (√3·RatedkVLL) /
+NPhases`. **0.15.x (capi015) / EPRI r4088+.** `Isc1 = mKVArating / (√3·
+RatedkVLL) / NPhases` — the `·1000` DROPPED (`InvDynamics.pas:229`, commit
+`de6a5a42`, port of SVN r3865, "preventing oversizing the model"). `Isc1` feeds
+only `c = 4·(R1²+X1²) − (√3·RatedkVLL·1000/Isc1)²` in the R0 quadratic; the
+separate `·1000` there (kV→V of RatedkVLL) is unchanged.
+
+**Decision — DEFER (not landed in WP-U1.2).** Adopting the `Isc1` change in
+`inv_based_pce.rs::calc_gfm_yprim` moved the Rust GFM **operating point**
+(`gfm_micro` `Load.isl` 400 kW → 368 kW live vs capi015), but the U0.2 sweep and
+a direct two-engine probe (`/tmp/probe_gfm.py`, 2026-07-12) prove the Pascal
+op-point is **Isc1-INVARIANT** — `0.14.5` and `capi015` give the *bit-identical*
+`Load.isl = 127094.3908 W/φ` despite the ~3.6e-3 Yf YPrim move. The GFM
+voltage-source injection on the Pascal engines compensates the impedance change;
+the Rust GFM power-flow injection does **not** (its op-point is Isc1-sensitive),
+so the port matched 0.14.5 only because it shared the old `Isc1`. This is a
+**pre-existing Rust GFM injection-vs-YPrim consistency gap** that the B5 change
+merely unmasks — NOT a B5 problem. Per CLAUDE.md's prove-don't-rationalize rule
+it needs a dedicated investigation (the GFM injection current must track
+`YPrim·Vset` so the terminal voltage — hence load power — stays invariant to the
+Norton impedance), out of the WP-U1.2 numeric-long-tail scope. **B5 + its four
+GFM live-deck flips are reverted; the GFM decks stay on the default 0.14.5
+oracle.** Recorded as an open follow-up in STATUS. `known_diffs`: nothing changed.
+
+## D7 — IBR dynamics current-limit base `PanelkW → FkVArating` (PVSystem) — SETTLED (WP-U1.2, adopt capi015)
+
+**Observable.** `dynVars.iMaxPPhase` in `TPVsystemObj.IntegrateStates` — the
+per-phase current limit that caps the GFL `ISP` and bounds the GFM droop
+`ISPDelta`; also the `Max. Amps (phase)` mode-3 state variable (index 21).
+
+**dss_capi 0.14.5 (default).** `iMaxPPhase = PanelkW / BasekV / NumPhases`
+(`PVsystem.pas:2309`). **0.15.x (capi015) / EPRI r4088+.** `iMaxPPhase =
+FkVArating / BasekV / NumPhases` (`PVsystem.pas:2275`, commit `32db066f`, port
+of SVN r3868 — "IBR operational range": the limit tracks the inverter kVA
+rating, not the instantaneous DC panel power). **Storage did NOT change** —
+`Storage.pas` `InitStateVars` already used `FkVArating` in BOTH revs (r3582
+predates 0.14.5); reproduced as-is. PVSystem's `InitStateVars` iMaxPPhase also
+already used `FkVArating`; only `IntegrateStates` moved.
+
+**Decision — adopt for PVSystem `IntegrateStates`** (`pvsystem/dynamics.rs`
+`integrate_states_impl`, `panel_kw → self.f_kva_rating`).
+
+**Gate consequence.**
+- **`pvsystem_dynamics_mode3_matches_oracle`**: ch21 `Max. Amps` 23.149570 →
+  **27.779484** (= ×kVA/PanelkW = ×600/500), matches capi015 exactly
+  (`/tmp/probe_pvdyn.py`). The limit is non-binding (settles at 6.17 ≪ 27.78) so
+  channels 13-20 are unchanged.
+- **`pvsystem_dynexp_dynamics_mode3_matches_oracle`**: this deck's `isp ≈ 23.1457`
+  sat right at the OLD clamp boundary; the new 600-base boundary (27.78)
+  RELEASES it (isp now uncapped, matching capi015's clamp logic), shifting the
+  single deterministic startup derivative `dit@0` 1055150.8 → 1054757.2
+  (~0.035%). The BINDING settled pins (`it`=23.14571, sample 100+) are unchanged
+  and match BOTH engines. The startup *transient* is 0.14.5-shaped, NOT capi015's
+  (capi015 seeds the DynExp at the fixpoint — a separate, out-of-scope 0.15.x
+  DynExp-init change; recorded, not adopted here).
+- `pvsystem_gfm_dynamics_mode3_matches_oracle` is UNCHANGED (its GFM trajectory
+  does not reach the iMaxPPhase clamp).
+- **No live corpus deck moves under D7.** The GFM PVSystem deck `pv_gfm_dynamics.dss`
+  has `kVA = Pmpp = 800` (`irradiance=1` ⇒ `PanelkW = FkVArating = 800`), so D7 is
+  a numeric NO-OP there — probed bit-identical on 0.14.5 and capi015 (`/tmp/probe_pvgfm.py`),
+  so it stays on the default oracle. No other corpus PVSystem-dynamics deck
+  captures the current-limit under `kVA ≠ Pmpp`. D7 therefore lands as a
+  unit-test-only same-commit package (no manifest flip), decoupled from B5.
+- `known_diffs`: none matched — nothing to retire.
+
+## D8 — Transformer X13/X23 `TrapZero` — SETTLED (WP-U1.2, no code change: not an observable delta; Rust already traps)
+
+**Observable.** The 3-winding transformer reactances `X13`/`X23` (and `X12`) when
+parsed as `0`.
+
+**Spec.** The `TrapZero` FLAG on `X12`/`X13`/`X23` (commit `69fca934`,
+`Transformer.pas` DefineProperties) and the `NonZero` flag on `XSCArray` are
+BOTH already present in the 0.14.5 baseline — commit `69fca934` landed *before*
+the 0.14.5 tag, not in the 0.15.x window. Verified against the vendored sources:
+the `PropertyTrapZero` values (7/35/30 %) AND the `[TrapZero, ...]`
+`PropertyFlags` block are byte-identical between `.inputs/dss_capi` (0.14.5,
+`Transformer.pas:584-595` values+flags) and `.inputs/dss_capi_with_git` (0.15.x,
+`:586-597`), and `NonZero` on `XSCArray` is present in both (0.14.5 `:413`, 0.15.x
+`:401`). So this is **not a 0.14.5 → 0.15.x delta at all** — the source is
+identical across our baseline and target (empirically reconfirmed by the
+0.14.5 == capi015 probe below).
+
+**Probe** (`/tmp/probe_d8.py`, `/tmp/probe_d8b.py`, 2026-07-12; 3-winding
+delta/wye/wye, `XHT=0`):
+
+| observable | capi 0.14.5 | capi015 |
+|---|---|---|
+| `? Transformer.t.XHT` (XHT=0) | `3500` | `3500` |
+| `AllBusVmagPu` Vmin (XHT=0, solved) | `0.124819` | `0.124819` |
+| `AllBusVmagPu` Vmin (XHT=35, solved) | `0.928196` | `0.928196` |
+
+**Decision — no code change; NOT an observable delta for our port.** 0.14.5 and
+capi015 are **bit-identical** for the reachable scalar `X13`/`X23`=0 path (both
+reach the same trapped default via the Xsc build). The Rust port ALREADY traps
+these: the `PropertyTrapZero` 7/35/30 were ported onto `XHL`/`XHT`/`XLT`
+(`transformer/mod.rs`) and `setters.rs` applies `trap_zero` unconditionally, so
+`XHT=0 → xht=35.0`, matching both engines. The `XSCArray` `NonZero` **strict
+error** (present in both baselines, above) is the same C2/PermissiveProperties
+strict surface the plan's L2 decision deliberately does NOT adopt (dss-ext-only).
+Mirrors WP-U1.1's D5 / D8-r3723 "not a delta for us" records.
+
+**Gate consequence.** No case/golden moves (no corpus deck sets X13/X23=0). Pinned
+by the feature-sensitive unit test
+`transformer::tests::three_winding_x13_x23_trap_zero_to_default` (XHT=0 → 35,
+XLT=0 → 30). `known_diffs`: nothing to retire.
+
+## B1 — Capacitor Cmatrix YPrim diagonal ×1.000001 before inversion — SETTLED (WP-U1.2, adopt capi015)
+
+**Observable.** The YPrim of a `Cmatrix` (SpecType=3) capacitor that also carries
+a **series filter reactance** (`R`/`XL` > 0 ⇒ `has_zl`) — the only config that
+reaches `MakeYprimWork`'s SpecType-3 inversion path.
+
+**dss_capi 0.14.5 (default).** The SpecType-3 branch inverts the C-admittance
+work matrix directly. **0.15.x (capi015) / EPRI r4088+.** Each work-matrix
+diagonal is first multiplied by `1.000001` ("Add a little bit to each phase so it
+will invert", `Capacitor.pas` `MakeYprimWork`) — the same perturbation the Delta
+1|2 branch already used — so a (near-)singular C matrix still inverts.
+
+**Decision — adopt** (`capacitor/solve.rs`, the SpecType-3 `_ =>` arm gains the
+×1.000001 diagonal loop before `invert()`).
+
+**Probe** (`/tmp/probe_capfull.py`, 2026-07-12; `Capacitor.f1 conn=wye
+cmatrix=(1.5|0.2 1.5|0.2 0.2 1.5) R=0.5 XL=3`, `? Yprim`):
+
+| engine | `Y[0,0]` (phase self) |
+|---|---|
+| capi 0.14.5 (default) | `(-5.29e-23, -1.08e-19)` — **garbage** (singular invert) |
+| capi015 (0.15.0b4) | `(1.661774199e-07, 5.664824416e-04)` — **finite** |
+
+Strongly revision-**sensitive** (garbage → finite) and feature-sensitive (without
+`R`/`XL` the SpecType-3 invert path is never reached).
+
+**Gate consequence.**
+- **No corpus/live witness.** No vendored deck defines a Cmatrix capacitor with a
+  series reactance (the corpus caps are simple shunt-kvar); the only `cmatrix`
+  hits in cap-bearing decks are LineCode matrices. So no corpus_live case and no
+  golden moves.
+- **Pinned by an oracle-validated unit test**
+  (`capacitor::tests::cmatrix_with_series_reactance_yprim_matches_capi015`): the
+  Rust YPrim phase block equals the capi015 probe reference to 1e-11/1e-12; the
+  0.14.5 garbage (~1e-23) fails the `5.66e-4` diagonal assertion, so it is
+  feature-sensitive to the ×1.000001. (A live capi015 deck was prepared but the
+  modes manifest's mixed manual unicode-escaping/CRLF blocks a clean append; the
+  unit test carries the exact capi015 numbers instead — same oracle, offline.)
+- `known_diffs`: none matched — nothing to retire.
+
+## D6 — Transformer seasonal AmpRatings drop the `1.1 *` factor — SETTLED (WP-U1.2, adopt capi015; unit-pinned, no live witness yet)
+
+**Observable.** A Transformer's per-season current ratings array `AmpRatings[i]`
+(used by the seasonal overload-report override, `PDElement.NumAmpRatings>1`).
+
+**dss_capi 0.14.5 (default).** `AmpRatings[i] := 1.1 * kVARatings[i] / Fnphases /
+Vfactor`. **0.15.x (capi015) / EPRI r4088+.** `AmpRatings[i] := kVARatings[i] /
+Fnphases / Vfactor` — the spurious `1.1 *` DROPPED (`Transformer.pas:1058`,
+commit `4ed59416`, SVN r4033). The separate `NormMaxHkVA = 1.1 * Winding[1].kVA`
+(the 110% default norm rating) is a DIFFERENT quantity, unchanged upstream.
+
+**Decision — adopt** (`transformer/yterminal.rs`, `1.1 * r` → `r`).
+
+**Gate consequence.**
+- **No live/golden witness in the current port.** `amp_ratings` is consumed
+  ONLY by the seasonal overload-report override, which is `NOT_PORTED`
+  (`report/export/capacity.rs`, `solution/meters/demand_interval.rs` — WPG.11
+  deferred to WP-U1.5 E2); the non-seasonal overload reports use `norm_amps`
+  (which keeps its own 1.1 via `norm_max_hkva`), and the `Ratings` property
+  readback returns `kVARatings`, not `AmpRatings`. So no corpus_live case and no
+  report golden moves. (U0.2 audit already flagged D6 as report-only and
+  unwitnessable by `ab_compare` — needs a synthesized seasonal overload deck,
+  which WP-U1.5 owns.)
+- **Pinned by a feature-sensitive unit test**
+  (`transformer::tests::seasonal_amp_ratings_drop_the_1_1_factor`): with
+  `kVARatings=[1000 1200]` it asserts `amp_ratings[i] == kVARatings[i] ·
+  norm_amps / norm_max_hkva` (reconstructing `np·vfactor` from the unchanged
+  NormAmps relation) — pre-D6 each value was 1.1× this, so the assertion flips.
+- `known_diffs`: none matched — nothing to retire. **When WP-U1.5 ports the
+  seasonal override, its overload-report deck becomes D6's live witness.**
+
 ## L1, L3, L4 — pending later WPs
 
 - **L1** InvControl `InvControlDeltaV` buffer — WP-U1.3.

@@ -436,6 +436,13 @@ impl DssObject for Line {
                 }
             }
             XG | RHO => {
+                // TODO(compat): 658.5, NOT the 658.8530451057239 used by
+                // `LineConstants::get_ze` (SimpleCarson). dss_capi 0.15.x
+                // corrected the De constant in `LineConstants.pas` but left
+                // `Line`'s own `Kxg` at the old 658.5 (Line.pas:531/741/1077) —
+                // a genuine upstream inconsistency reproduced 1:1 (UPGRADE_PLAN
+                // WP-U1.2 B2/D1, ledger DIVERGENCES.md §B2/D1). Clean fix in the
+                // §6 sweep unifies both to 658.8530451057239.
                 self.kxg = self.xg / (658.5 * (self.rho / self.cd.base_frequency).sqrt()).ln();
             }
             SEASONS => {

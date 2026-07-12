@@ -165,6 +165,76 @@ fn yprim_3ph_cmatrix_matches_oracle() {
     }
 }
 
+/// WP-U1.2 B1: a Cmatrix (SpecType=3) capacitor WITH a series filter reactance
+/// (`R`/`XL` > 0 => `has_zl`) reaches `MakeYprimWork`'s SpecType-3 invert path.
+/// dss_capi 0.15.x multiplies each work-matrix diagonal by `1.000001` before the
+/// first `Invert()` ("add a little bit so it will invert"), the same trick the
+/// Delta 1|2 branch already used. Revision-sensitive: WITHOUT the perturbation
+/// the near-singular C-admittance inverts to ~1e-23 garbage (0.14.5); WITH it the
+/// self-admittance is finite. Reference = capi015 (dss_capi 0.15.0b4), probed
+/// 2026-07-12 on `Capacitor.f1 conn=wye cmatrix=(1.5|0.2 1.5|0.2 0.2 1.5) R=0.5
+/// XL=3` (`? ...Yprim`), ÷nothing (already the element Yprim).
+#[test]
+fn cmatrix_with_series_reactance_yprim_matches_capi015() {
+    let mut c = Capacitor::new("f1");
+    c.cd.nphases = 3;
+    c.cd.nconds = 3;
+    c.cd.set_nterms(2);
+    c.cd.yorder = 6;
+    c.connection = 0; // wye
+    c.is_shunt = true;
+    c.spec_type = 3;
+    // µF → F (parse scale 1e-6); diagonal 1.5, off-diagonal +0.2 (as the deck).
+    let m = 1.0e-6;
+    c.cmatrix = Some(vec![
+        1.5 * m,
+        0.2 * m,
+        0.2 * m,
+        0.2 * m,
+        1.5 * m,
+        0.2 * m,
+        0.2 * m,
+        0.2 * m,
+        1.5 * m,
+    ]);
+    // Series filter reactance -> has_zl, reaching the SpecType-3 x1.000001 path.
+    c.fr = vec![0.5];
+    c.fxl = vec![3.0];
+    c.fharm = vec![0.0];
+    c.fstates = vec![1];
+    c.fnumsteps = 1;
+    c.recalc();
+    c.calc_yprim(&test_sys());
+    let yp = c.cd.yprim.as_ref().unwrap();
+    // capi015 phase-block (finite; 0.14.5 gives ~1e-23 garbage without B1).
+    let diag = num_complex::Complex64::new(1.661774199e-07, 5.664824416e-04);
+    let off = num_complex::Complex64::new(4.572988395e-08, 7.567182900e-05);
+    for i in 0..3 {
+        let g = yp.get(i, i);
+        assert!(
+            (g.re - diag.re).abs() < 1e-12 && (g.im - diag.im).abs() < 1e-11,
+            "diag[{i}] = ({},{}) vs capi015 ({},{})",
+            g.re,
+            g.im,
+            diag.re,
+            diag.im
+        );
+        for j in 0..3 {
+            if i != j {
+                let o = yp.get(i, j);
+                assert!(
+                    (o.re - off.re).abs() < 1e-12 && (o.im - off.im).abs() < 1e-11,
+                    "off[{i},{j}] = ({},{}) vs capi015 ({},{})",
+                    o.re,
+                    o.im,
+                    off.re,
+                    off.im
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn numsteps_splits_kvar() {
     let mut c = Capacitor::new("c1");

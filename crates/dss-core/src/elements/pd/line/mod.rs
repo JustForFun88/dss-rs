@@ -343,6 +343,9 @@ impl Line {
             cap_specified: false,
             rg: 0.01805, // ohms per 1000 ft
             xg,
+            // TODO(compat): 658.5 (not 658.8530451057239) — upstream `Line.pas`
+            // keeps 658.5 for Kxg while `LineConstants` moved to the corrected
+            // De; see accessors.rs (UPGRADE_PLAN WP-U1.2 B2/D1).
             kxg: xg / (658.5 * (rho / base_freq).sqrt()).ln(),
             rho,
             earth_model: 3, // DSS.DefaultEarthModel = DERI

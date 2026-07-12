@@ -342,9 +342,19 @@ impl LineConstants {
         let fyj = self.fy[j].abs();
 
         match earth_model {
+            // dss_capi 0.15.x `TLineConstants.GetZearth`/`SIMPLECARSON`
+            // (LineConstants.pas:474, port of the r3913-era line/conductor work):
+            // the earth-return De constant was corrected `658.5 →
+            // 658.8530451057239` (the precise `De = 658.87·√(ρ/f)` reference
+            // value). UPGRADE_PLAN.md WP-U1.2 row B2/D1; ledger
+            // docs/upgrade/DIVERGENCES.md §B2/D1. NB — this is DELIBERATELY
+            // inconsistent with `Line`'s `Kxg`, which upstream KEEPS 658.5
+            // (Line.pas:531/741/1077); see the `TODO(compat)` at the `kxg`
+            // sites in elements/pd/line/{accessors,code,mod}.rs.
             SIMPLE_CARSON => cmplx(
                 self.fw * MU0 / 8.0,
-                (self.fw * MU0 / TWOPI) * (658.5 * (self.frho_earth / self.ffrequency).sqrt()).ln(),
+                (self.fw * MU0 / TWOPI)
+                    * (658.8530451057239 * (self.frho_earth / self.ffrequency).sqrt()).ln(),
             ),
             FULL_CARSON => {
                 // notation from Tleis, Power System Modelling and Fault Analysis
