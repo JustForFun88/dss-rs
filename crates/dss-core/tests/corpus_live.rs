@@ -1221,8 +1221,20 @@ fn corpus_live_solvable_cases_match_oracle() {
     }
     let mut pool = OraclePool::new();
     let mut props_gated = 0usize;
+    let mut aborts_gated = 0usize;
     for c in &cases {
         let abs = corpus_file(&c.path);
+        // A deck that aborts the solve on BOTH engines (e.g. #485 Max Control
+        // Iterations Exceeded: a control that never drains the queue within
+        // MaxControlIter) has no solved state to line up — the oracle *raises*
+        // at solve. Route it to the abort contract (both engines abort with the
+        // same message), mirroring the synthetic-family gate. Mutually exclusive
+        // with the per-step compare below.
+        if c.expect_solve_abort.is_some() {
+            run_and_compare_abort(pool.get(c.oracle.as_deref()), &c.path, &abs, c);
+            aborts_gated += 1;
+            continue;
+        }
         // WP8.5b: gate every element's every property value (Rust `?`-surface vs
         // oracle `Properties(p).Val`) on the vendored corpus too — the pinned-capi
         // `feeder`/`micro`-kind decks, which the `corpus_live_properties` pilot
@@ -1243,8 +1255,9 @@ fn corpus_live_solvable_cases_match_oracle() {
         run_and_compare(pool.get(cc.oracle.as_deref()), &cc.path, &abs, &cc);
     }
     eprintln!(
-        "corpus_live: {} solvable case(s) matched the oracle ({props_gated} with full property parity)",
-        cases.len()
+        "corpus_live: {} solvable case(s) matched the oracle ({props_gated} with full \
+         property parity, {aborts_gated} solve-abort case(s))",
+        cases.len() - aborts_gated
     );
 }
 
@@ -2000,7 +2013,9 @@ fn corpus_live_properties() {
     let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
     for fam in [&ASYMMETRIC, &CONTROLS, &MODES] {
         for c in load_family(fam.name) {
-            if c.pending || c.oracle.is_some() {
+            // Abort cases have no solved state to property-compare (the oracle
+            // raises at solve); their contract is `run_and_compare_abort`.
+            if c.pending || c.oracle.is_some() || c.expect_solve_abort.is_some() {
                 continue;
             }
             let abs = family_file(fam.name, &c.path);
@@ -2008,7 +2023,9 @@ fn corpus_live_properties() {
         }
     }
     for c in load_solvable() {
-        if c.oracle.is_some() {
+        // Abort cases have no solved state to property-compare (the oracle raises
+        // at solve); the abort contract is gated by `run_and_compare_abort`.
+        if c.oracle.is_some() || c.expect_solve_abort.is_some() {
             continue;
         }
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
@@ -2250,13 +2267,17 @@ fn corpus_live_opendss() {
             target_rev_excluded.push(format!("solvable_now:{}", c.path));
             continue;
         }
+        // Abort cases raise at solve on every engine — no A/B electrical state.
+        if c.expect_solve_abort.is_some() {
+            continue;
+        }
         let mut c = c;
         c.compare_all_properties = false;
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
     }
     for fam in [&ASYMMETRIC, &CONTROLS, &MODES] {
         for c in load_family(fam.name) {
-            if c.pending {
+            if c.pending || c.expect_solve_abort.is_some() {
                 continue;
             }
             if c.oracle.is_some() {
