@@ -1,0 +1,29 @@
+// ExpControl (IEEE-1547 adaptive volt-var, a SEPARATE element from the
+// InvControl Exponential ControlModel). One ExpControl over a PVSystem on a
+// weak feeder: the adaptive Vreg tracks the bus voltage with the VregTau time
+// constant, clamped to [VregMin, VregMax], and the DeltaQ_factor damps the var
+// step (ExpControl.pas: FVregs[]/FLastIterQ[] per member). A daily irradiance
+// ramp drives the bus voltage over a wide range so the adaptive Vreg both moves
+// AND hits the VregMin/VregMax clamps. Feature-sensitive: without the ExpControl
+// the PV holds fixed Q (probe-proven). Compared per step: full model
+// (controller-driven PV kvar) + PVSystem f64 state variables + kvar probe + EL.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.expc basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=4 units=km
+
+New loadshape.irrad npts=10 interval=1
+~ mult=(.10 .25 .45 .65 .82 .95 1.0 1.0 .92 .70)
+
+New pvsystem.pv bus1=b phases=3 kv=12.47 kva=700 pmpp=600 pf=1.0
+~ daily=irrad irradiance=1
+
+New expcontrol.ec pvsystemlist=[pv] vreg=1.0 slope=50
+~ vregtau=300 vregmin=0.95 vregmax=1.05 deltaq_factor=0.3 eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=2000
+Set mode=daily stepsize=1h number=1

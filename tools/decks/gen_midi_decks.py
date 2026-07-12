@@ -1003,19 +1003,32 @@ PENDING_MIDI_DECKS = {
 }
 
 
+def dest(fam: str, name: str):
+    """Resolve `{name}.dss`'s on-disk location under the family dir.
+
+    The families are organized into per-element/method subfolders
+    (corpus family reorg, Phase 1), so a deck lives at
+    `corpus/<fam>/<subdir>/<name>.dss`. Find it by basename; fall back to the
+    flat family path if it does not exist yet (first generation)."""
+    fam_dir = REPO / "tests" / "corpus" / fam
+    for p in fam_dir.rglob(f"{name}.dss"):
+        return p
+    return fam_dir / f"{name}.dss"
+
+
 def main() -> None:
     targets = {
-        REPO / "tests" / "corpus" / "asymmetric" / "midi_asym.dss": deck_midi_asym(),
-        REPO / "tests" / "corpus" / "controls" / "midi_controls.dss": deck_midi_controls(),
-        REPO / "tests" / "corpus" / "controls" / "midi_protection.dss": deck_midi_protection(),
+        dest("asymmetric", "midi_asym"): deck_midi_asym(),
+        dest("controls", "midi_controls"): deck_midi_controls(),
+        dest("controls", "midi_protection"): deck_midi_protection(),
     }
     for name, build in ASYM_DECKS.items():
-        targets[REPO / "tests" / "corpus" / "asymmetric" / f"{name}.dss"] = build()
+        targets[dest("asymmetric", name)] = build()
     for name, build in CONTROLS_DECKS.items():
-        targets[REPO / "tests" / "corpus" / "controls" / f"{name}.dss"] = build()
+        targets[dest("controls", name)] = build()
     for name, build in PENDING_MIDI_DECKS.items():
         fam = PENDING_MIDI_FAMILY[name]
-        targets[REPO / "tests" / "corpus" / fam / f"{name}.dss"] = build()
+        targets[dest(fam, name)] = build()
     for path, text in targets.items():
         path.write_text(text, encoding="utf-8", newline="\n")
         print(f"wrote {path.relative_to(REPO)} ({len(text.splitlines())} lines)")

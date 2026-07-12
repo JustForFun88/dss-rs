@@ -55,3 +55,24 @@ fn set_processtime_and_steptime_are_getonly_noops() {
     assert_eq!(get_opt(&mut dss, "processtime"), "0");
     assert_eq!(get_opt(&mut dss, "steptime"), "0");
 }
+
+/// CF-A (TA-3): a trailing bare-quote `'` comment must be swallowed, matching
+/// OpenDSS. `'` is a begin-quote char (ParserDel.pas:270), so `' Initialize
+/// total timer` parses as one quoted string that lands on the incremented
+/// pointer (StepTime, get-only). Pascal's `DoSetCmd` has no `108:` arm and falls
+/// to `else // Ignore excess parameters` (ExecOptions.pas:759) — a pure no-op
+/// that never calls `Parser.DblValue`. Feeding the quoted token to the RPN
+/// interpreter (the old `get_dbl` on the get-only arm) raised a spurious
+/// "Invalid inline math entry"; the get-only arm must not evaluate it. This is
+/// the EPRI ckt5 `Run_ckt5.dss` idiom verbatim.
+#[test]
+fn set_option_trailing_bare_quote_comment_is_swallowed() {
+    let mut dss = dss_with_circuit();
+    dss.command("set totaltime=0   ' Initialize total timer");
+    assert!(
+        dss.errors().is_empty(),
+        "trailing bare-quote comment must be swallowed, got {:?}",
+        dss.errors()
+    );
+    assert_eq!(get_opt(&mut dss, "totaltime"), "0");
+}

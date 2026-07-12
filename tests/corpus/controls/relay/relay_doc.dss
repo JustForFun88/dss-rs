@@ -1,0 +1,29 @@
+// Relay DOC (directional overcurrent) — the DirectionalOvercurrentLogic path
+// (Relay.pas: DOC_P1Blocking defaults TRUE, so the element trips only on net
+// REVERSE active power; DOC_TiltAngleLow bounds the directional region and
+// DOC_TripSettingLow is the pickup, network-protector style). A downstream
+// generator ramps up until it EXPORTS back through the monitored line, driving
+// reverse current into the directional trip region past the pickup, so the
+// relay trips to lockout. Feature-sensitive: raising DOC_TripSettingLow above
+// the reverse current stops the trip (probe-proven). Compared per step: full
+// model + State/Normal + type/delay probes + the trip event log + queue.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.rlydoc basekv=12.47 phases=3 pu=1.02 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=b linecode=lc length=1 units=mi
+new load.l bus1=b phases=3 kv=12.47 kw=800 pf=0.95 model=1
+
+// Generator ramps up mid-run to export reverse power through line.feed.
+new loadshape.gen npts=8 interval=1 mult=(0.05 0.10 0.20 0.50 1.0 1.0 1.0 1.0)
+new generator.g1 bus1=b phases=3 kv=12.47 kw=5000 pf=1.0 model=1 daily=gen
+
+new relay.rl type=doc monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 normal=close
+~ doc_tiltanglelow=95 doc_tripsettinglow=120 delay=0.1 shots=1
+~ recloseintervals=None eventlog=yes
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=daily stepsize=1h number=1 controlmode=time

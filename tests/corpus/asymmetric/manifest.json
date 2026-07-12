@@ -2,7 +2,7 @@
  "comment": "Synthetic asymmetric decks (see corpus_live.rs 'Asymmetric synthetic decks' section): every stamping element + combinations in deliberately asymmetric configurations, live-compared against the pinned oracle by asymmetric_cases_match_oracle. selected_elements = the elements whose YPrim blocks are compared directly (the transposed-stamp catch). kind uses the same tolerance classes as solvable_now (micro|feeder|large). Cases with pending=true cover features the port does not implement yet (absorbed from the former gaps/ staging family, GAPS_PLAN.md section 3.1): the gate asserts the Rust engine errors loudly on them; the WP in each wp field flips pending=false when it ports the feature.",
  "cases": [
   {
-   "path": "vsource_asym.dss",
+   "path": "vsource/vsource_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -12,7 +12,7 @@
    ]
   },
   {
-   "path": "reactor_asym.dss",
+   "path": "reactor/reactor_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -25,7 +25,7 @@
    ]
   },
   {
-   "path": "capacitor_asym.dss",
+   "path": "capacitor/capacitor_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -33,11 +33,13 @@
     "Capacitor.cdel",
     "Capacitor.c1p",
     "Capacitor.cser",
-    "Capacitor.cstep"
-   ]
+    "Capacitor.cstep",
+    "Capacitor.cfilt"
+   ],
+   "note": "Extended with cfilt: a series-tuned harmonic-filter bank (per-step R+XL) whose YPrim is a full series R+L+C branch off the pure-C diagonal at 60 Hz. Oracle-validated + feature-sensitive (dropping XL collapses it onto the pure-C stamp)."
   },
   {
-   "path": "line_asym.dss",
+   "path": "line/line_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -49,7 +51,68 @@
    ]
   },
   {
-   "path": "transformer_asym.dss",
+   "path": "line/line_geometry_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lgeo",
+    "Line.lspur",
+    "Line.llong"
+   ],
+   "note": "Boundaries: LineGeometry+WireData Carson full-asym Z/Yc (Line.pas geometry path, reduce=y Kron), 1-phase reduced spur, and the SymComponentsModel-only LongLineCorrection sinh(gamma*l)/(gamma*l) branch (Line.pas:1199/1369). Oracle: converged 5 iters; bit-identical across 2 processes. Feature-sensitive: LongLineCorrection yes->no changes Line.llong YPrim; swapping cond=1 wire changes Line.lgeo YPrim."
+  },
+  {
+   "path": "line/line_cable_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lcn",
+    "Line.lts"
+   ],
+   "note": "Boundaries: CNData concentric-neutral and TSData tape-shield reduced-Y (distinct Kron neutral elimination CN vs TS), asymmetric underground burial. Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: CN strand count k 13->7 changes Line.lcn YPrim; TS TapeLayer 0.005->0.008 changes Line.lts YPrim."
+  },
+  {
+   "path": "line/line_spacing_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lsp",
+    "Line.lspc"
+   ],
+   "note": "Boundary: FMakeZFromSpacing (Line.pas:1183/1964) — the LineSpacing state machine, DISTINCT from the geometry path. lsp = overhead Spacing nconds=4 nphases=3 + distinct wires -> full-asym Carson Z/Yc via LoadSpacingAndWires + auto-reduce (NWires>NPhases, LineGeometry.pas:992); lspc = spacing+cable (TSCables+Wires) 1-phase spur, pins the spacing-with-cables sub-branch + gotRatingsAfterSpacingConds NormAmps/EmergAmps seed (Line.pas:1994). EarthModel DEFAULT (DERI) -> YPrim U1.2-STABLE (shares Get_Ze; the 658.5->658.853 SimpleCarson move does NOT touch this deck; do NOT flip to capi015). Also the U1.4 default-path no-change anchor (LineSpacing.Detailed/EqDist* + spacing-ratings defaults preserve 0.14.5 numerics). Oracle: converged 3 iters; bit-identical across 2 processes. Feature-sensitive: swapping the phase-2 wire ACSR_4-0->ACSR_556 changes Line.lsp YPrim."
+  },
+  {
+   "path": "line/line_llc_harm_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.llh1",
+    "Line.llh2"
+   ],
+   "note": "Boundary: LongLineCorrection at f != BaseFrequency (Line.pas:1199-1287). Two SymComponentsModel long lines under Set LongLineCorrection=yes solved at the 5th harmonic (Set frequency=300, FreqMultiplier=5) -> per-frequency DoLongLine (X1_h=X1*f/base), the 0-seq DoLongLine sub-branch (FnPhases>1 and not PositiveSequence, r0<>r1), the LLC FreqMultiplier Z-assembly (:1269 vs :1287), and the LLC shunt-C branch (:1372). llh1 c1<>0; llh2 c1=0 (the G_h:=EPSILON no-skip case). Deviation from matrix P2 (mode=harmonics + monitor): a set-frequency snapshot with a DIRECT Line-YPrim compare is strictly stronger than the f32 harmonic monitor channel and needs no nonlinear-load-at-harmonic (linear shunt reactors, autotrans_gic pattern). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: LongLineCorrection yes->no changes both llh1/llh2 YPrims."
+  },
+  {
+   "path": "line/line_ground_z_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lgx",
+    "Line.lgr"
+   ],
+   "note": "Boundary: Rg/Xg/Kxg ground-return frequency correction. Deck does NOT set LongLineCorrection (default FALSE), so it runs the non-LLC else branch (Line.pas:1281-1287), not the sibling LLC branch (:1262-1269); the two share the Xgmod formula but differ in the ZinvValues FreqMultiplier scaling. Explicit non-default Rg/Xg/rho solved at the 7th harmonic (Set frequency=420, FreqMultiplier=7). lgx (Xg<>0, Rg=0) fires the Xgmod=0.5*Kxg*ln(FreqMultiplier) branch; lgr (Rg<>0, Xg=0) fires the Rg*(FreqMultiplier-1) add — clean per-term isolation. WITNESSES the U1.2 inconsistency: Kxg deliberately KEEPS the 658.5 constant (upgrade ledger B2/D1) while SimpleCarson Get_Ze moves to 658.853; the SymComponentsModel path never calls Get_Ze, so this deck's YPrim must NOT move under U1.2 (INVARIANT regression, do NOT flip to capi015 — tracked in the upgrade ledger B2/D1, see the deck header). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: zeroing Rg/Xg (keeping f=420) changes both lgx/lgr YPrims."
+  },
+  {
+   "path": "line/line_fullcarson_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lfc",
+    "Line.lfcspur"
+   ],
+   "note": "Boundary: FullCarson EarthModel at SOLVE level (FLineConstants.Calc dispatch). Overhead geometry (reduce=y Kron, full-asym) under Set EarthModel=fullcarson — the only EarthModel with no prior live-solve deck (SimpleCarson=line_geometry/cable_asym, DERI=default). U1.2-INVARIANT control: U1.2 moves SimpleCarson Get_Ze 658.5->658.853 ONLY, FullCarson Get_Ze is unchanged, so this YPrim must NOT move (do NOT flip to capi015 — the complement of the Carson decks U1.2 flips). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: EarthModel fullcarson->Carson changes both lfc/lfcspur YPrims."
+  },
+  {
+   "path": "transformer/transformer_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -63,7 +126,17 @@
    ]
   },
   {
-   "path": "fault_asym.dss",
+   "path": "transformer/transformer_wyedelta_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Transformer.twd",
+    "Transformer.tdd"
+   ],
+   "note": "Boundaries: wye-delta step-up (delta-lead +30deg phase shift, opposite of transformer_asym.tdy's delta-wye lag) and delta-delta (both terminals ungrounded, common mode held by ppm_antifloat + a small wye cap pin per the family floor rule). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: twd conns wye-delta->wye-wye changes both YPrims."
+  },
+  {
+   "path": "fault/fault_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -73,7 +146,7 @@
    ]
   },
   {
-   "path": "load_asym.dss",
+   "path": "load/load_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -88,7 +161,7 @@
    ]
   },
   {
-   "path": "generator_asym.dss",
+   "path": "generator/generator_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -100,7 +173,18 @@
    ]
   },
   {
-   "path": "der_asym.dss",
+   "path": "generator/gen_currentlimited_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Generator.g7",
+    "Generator.g4",
+    "Generator.g3"
+   ],
+   "note": "Boundaries: Model 7 current-limited PQ (DoCurrentLimitedPQ clamp fires on the two phases sagged below Vminpu), Model 4 fixed-Q, Model 3 PV latched at a tight maxkvar. Oracle: converged 5 iters; bit-identical across 2 processes. Feature-sensitive: g7 model 7->1 changes the whole model (clamp active); g3 maxkvar 100->800 changes it (limit binding)."
+  },
+  {
+   "path": "der/der_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -111,7 +195,18 @@
    ]
   },
   {
-   "path": "indmach_asym.dss",
+   "path": "der/der_state_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Storage.stidle",
+    "PVSystem.pvcut",
+    "PVSystem.pvclamp"
+   ],
+   "note": "Boundaries (all wye-3ph): Storage IDLING state (Storage.pas:1410), PVSystem below %CutOut (P=0), PVSystem at the kvar clamp (tight kvarMax + WattPriority). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: idling->discharging, irradiance 0.05->0.9 (cutout), kvarMax 50->450 (clamp) each change the whole model."
+  },
+  {
+   "path": "indmach/indmach_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -121,7 +216,7 @@
    ]
   },
   {
-   "path": "vccs_asym.dss",
+   "path": "vccs/vccs_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -131,7 +226,7 @@
    ]
   },
   {
-   "path": "upfc_asym.dss",
+   "path": "upfc/upfc_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -141,7 +236,7 @@
    ]
   },
   {
-   "path": "combo_chain_asym.dss",
+   "path": "combo/combo_chain_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -157,7 +252,7 @@
    ]
   },
   {
-   "path": "midi_asym.dss",
+   "path": "combo/midi_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -165,7 +260,16 @@
    ]
   },
   {
-   "path": "combo_mesh_asym.dss",
+   "path": "combo/midi_geometry_cable_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "note": "Cross-element (midi): overhead Carson geometry -> CN cable -> delta-wye transformer -> unbalanced loads + TS 1-phase spur. Boundary: Carson/cable mutuals meet the transformer grounded-wye zero-sequence path across the assembled system Y (neutral-return coupling). Oracle: converged 3 iters; bit-identical across 2 processes. Feature-sensitive: adding a wdg-2 rneut/xneut ground impedance changes the whole-model fingerprint."
+  },
+  {
+   "path": "combo/combo_mesh_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -181,7 +285,7 @@
    ]
   },
   {
-   "path": "midi_vsource_asym.dss",
+   "path": "vsource/midi_vsource_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -189,7 +293,7 @@
    ]
   },
   {
-   "path": "midi_reactor_asym.dss",
+   "path": "reactor/midi_reactor_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -197,7 +301,7 @@
    ]
   },
   {
-   "path": "midi_capacitor_asym.dss",
+   "path": "capacitor/midi_capacitor_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -205,7 +309,7 @@
    ]
   },
   {
-   "path": "midi_line_asym.dss",
+   "path": "line/midi_line_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -213,7 +317,7 @@
    ]
   },
   {
-   "path": "midi_transformer_asym.dss",
+   "path": "transformer/midi_transformer_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -221,7 +325,7 @@
    ]
   },
   {
-   "path": "midi_fault_asym.dss",
+   "path": "fault/midi_fault_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -229,7 +333,7 @@
    ]
   },
   {
-   "path": "midi_load_asym.dss",
+   "path": "load/midi_load_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -237,7 +341,16 @@
    ]
   },
   {
-   "path": "midi_generator_asym.dss",
+   "path": "load/midi_load_vregion_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "note": "Load voltage-region state machine (Load.pas:1373/1433/1473/1658): a weak source + high-Z radial feeder sags far loads below Vminpu (interpolate_y95_ylow) and, at b3.2, below Vlowpu (const-Z Yeq), while a cap-boosted stub pushes bs above Vmaxpu (Yeq105 clamp). Models 1/3/5 (distinct interp paths) + 6/7 (yq_fixed) all fired off-normal. Oracle: converged 3 iters; bit-identical across 2 processes. Feature-sensitive: models 6/7 (interp/clamp) -> 1 changes the whole-model fingerprint."
+  },
+  {
+   "path": "generator/midi_generator_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -245,7 +358,7 @@
    ]
   },
   {
-   "path": "midi_der_asym.dss",
+   "path": "der/midi_der_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -253,7 +366,7 @@
    ]
   },
   {
-   "path": "midi_indmach_asym.dss",
+   "path": "indmach/midi_indmach_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -261,7 +374,7 @@
    ]
   },
   {
-   "path": "midi_vccs_asym.dss",
+   "path": "vccs/midi_vccs_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -269,7 +382,7 @@
    ]
   },
   {
-   "path": "midi_upfc_asym.dss",
+   "path": "upfc/midi_upfc_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -277,7 +390,7 @@
    ]
   },
   {
-   "path": "isource_snap.dss",
+   "path": "isource/isource_snap.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -287,7 +400,7 @@
    "wp": "WPG.14"
   },
   {
-   "path": "autotrans_snap.dss",
+   "path": "autotrans/autotrans_snap.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -314,7 +427,7 @@
    "note": "The 330 MVA YNad1 unit from Test/AutoTrans/AutoAuto.dss + a 2-winding 115/69 auto. Oracle wdgcurrents (probe 2026-07-05, t2 spot value): non-zero live recompute - the READS_VTERMINAL family. WPG.15 Stage B: live-green."
   },
   {
-   "path": "autotrans_gic.dss",
+   "path": "autotrans/autotrans_gic.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -325,7 +438,7 @@
    "note": "Set frequency=0.1 snapshot - pins AutoTrans GICBuildYTerminal (the Solution.Frequency < 0.51 Hz resistance-only Y_Term branch) AND the Line GIC branch (ConvertZinvToPosSeqR, Line.pas:1297 - the near-ideal-source switch line is deliberate: at 0.1 Hz the deck state is zero-current, so no cancellation floor exists and every YPrim pins at micro tier). WPG.15: live-green."
   },
   {
-   "path": "gicline_gic.dss",
+   "path": "gic/gicline_gic.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -335,7 +448,7 @@
    "wp": "WPG.16"
   },
   {
-   "path": "gictransformer_gic.dss",
+   "path": "gic/gictransformer_gic.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -345,7 +458,7 @@
    "wp": "WPG.16"
   },
   {
-   "path": "gicsource_gic.dss",
+   "path": "gic/gicsource_gic.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -370,7 +483,7 @@
    "note": "The bus2 probes pin the GICsource edit-time splice: the oracle rewrites the named Line's Bus2 to the inserted GIC_<name> bus (proven 2026-07-05: buses gic_seg12/gic_seg23 appear; line.seg12.bus2 = gic_seg12)."
   },
   {
-   "path": "midi_isource_asym.dss",
+   "path": "isource/midi_isource_asym.dss",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [
@@ -380,7 +493,7 @@
    "wp": "WPG.14"
   },
   {
-   "path": "midi_autotrans_asym.dss",
+   "path": "autotrans/midi_autotrans_asym.dss",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [
@@ -398,7 +511,7 @@
    "wp": "WPG.15"
   },
   {
-   "path": "gic_midi.dss",
+   "path": "gic/gic_midi.dss",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [

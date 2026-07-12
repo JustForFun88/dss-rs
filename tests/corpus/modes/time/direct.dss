@@ -1,0 +1,17 @@
+! FIX-DIRECT deck: Set mode=direct (Pascal SolveDirect + the TPCElement.GetCurrents
+! LastSolutionWasDirect shortcut, PCElement.pas l.137) — deterministic.
+! Snapshot solve first (flag cleared by DoPFLOWsolution), then a direct solve:
+! reported Load currents must be the frozen shadow-admittance current
+! YPrim*Vterminal (CalcYPrimContribution), NOT the load-model conj(S/V) —
+! on this feeder the two differ by ~1 A per phase (|I1| 38.46 vs 39.54 A on ld1).
+Clear
+New Circuit.fix_direct basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1
+New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=400 pf=0.90 model=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+Solve
+Set mode=direct
+Solve

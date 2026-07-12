@@ -1,0 +1,39 @@
+// RegControl reversible operation + reverse setpoints (RegControl.pas Sample
+// l.900-990: forward/reverse power-direction switch via ACTION_REVERSE, gated
+// by kWRevPowerThreshold; DoPendingAction toggles InReverseMode; the control
+// then regulates to revVreg/revBand instead of vreg/band). A downstream
+// generator ramps from a light backfeed up to a strong reverse export so the
+// power through the LTC crosses revThreshold and the regulator flips into
+// reverse mode, tracking a DIFFERENT setpoint band. Feature-sensitive:
+// neutralizing reversible=no keeps it forward-only, so it never adopts the
+// reverse setpoints and the tap trajectory / event log differ (probe-proven).
+// Compared per step: full model + taps + TapNumber + probes + event log + CQ.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.regrev basekv=115 pu=1.03 angle=0 phases=3 bus1=src
+~ mvasc3=15000 mvasc1=12000
+
+New transformer.tr phases=3 windings=2 buses=(src, mv) conns=(delta, wye)
+~ kvs=(115, 12.47) kvas=(10000, 10000) xhl=7
+
+New regcontrol.rg transformer=tr winding=2 vreg=122 band=1.5 ptratio=60
+~ reversible=yes revvreg=115 revband=2 revThreshold=800 revDelay=5 delay=10
+~ eventlog=yes
+
+New loadshape.day npts=24 interval=1
+~ mult=(0.30 0.35 0.45 0.55 0.70 0.85 1.00 1.10 1.20 1.28 1.30 1.25 1.15 1.00 0.85 0.70 0.60 0.75 0.95 1.10 1.20 0.95 0.60 0.35)
+
+// Generator ramp: light early (net forward), heavy midday (strong reverse
+// export back through the LTC -> reverse power > revThreshold).
+New loadshape.gen npts=24 interval=1
+~ mult=(0.10 0.10 0.15 0.20 0.30 0.55 0.85 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 0.90 0.60 0.35 0.20 0.15 0.10 0.10 0.10 0.10)
+
+New load.l1 bus1=mv phases=3 conn=wye model=1 kv=12.47 kw=3000 pf=0.95
+~ daily=day
+
+New generator.g1 bus1=mv phases=3 kv=12.47 kw=9000 pf=1.0 model=1 daily=gen
+
+Set voltagebases=[115 12.47]
+calcv
+Set mode=daily stepsize=1h number=1

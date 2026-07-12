@@ -127,6 +127,27 @@ pub struct SysCtx {
     /// `Solution.DynaVars.IterationFlag` — the predictor (`NewTimeStep`) /
     /// corrector (`SameTimeStep`) selector consumed by `IntegrateStates`.
     pub iteration_flag: IterationFlag,
+    /// `Solution.LastSolutionWasDirect` — set at the end of `SolveDirect`
+    /// (`Solution.pas` l.1282), cleared at the end of `DoPFLOWsolution`
+    /// (l.1022). While set, `TPCElement.GetCurrents` reports terminal currents
+    /// via the `CalcYPrimContribution` shortcut ("the model is entirely in the
+    /// Y matrix") instead of the load-model compensation current.
+    pub last_solution_was_direct: bool,
+}
+
+impl SysCtx {
+    /// Pascal `TPCElement.GetCurrents` shortcut condition (`PCElement.pas`
+    /// l.137): `LastSolutionWasDirect and not (IsDynamicModel or
+    /// IsHarmonicModel)` — take terminal currents from `YPrim · Vterminal`
+    /// only. Applies to the PC classes that inherit the base `GetCurrents`
+    /// (Load, Generator, IndMach012) and, via `inherited` in
+    /// `TInvBasedPCE.GetCurrents` (`InvBasedPCE.pas` l.218), to non-GFM
+    /// PVSystem/Storage; the overrides that never call `inherited` (Vsource,
+    /// Isource, GICLine, GICsource, VCCS, UPFC, VSConverter, and the GFM
+    /// branch of InvBasedPCE) must NOT consult it.
+    pub fn pc_direct_shortcut(&self) -> bool {
+        self.last_solution_was_direct && !(self.is_dynamic_model || self.is_harmonic_model)
+    }
 }
 
 /// Mutable solve-state view for current injection: the node voltage vector

@@ -37,7 +37,7 @@ impl CktElement for Load {
     /// TODO(compat): the power divisor is a hard-coded `3.0`, NOT `Fnphases`
     /// (upstream "assume load is distributed equally among the 3 phases", RCD
     /// 2016). A second `makeposseq` therefore divides again (400 → 133.33 →
-    /// 44.44), pinned by `tests/corpus/modes/makeposseq_pc.dss`.
+    /// 44.44), pinned by `tests/corpus/modes/makeposseq/makeposseq_pc.dss`.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         use super::prop;
 
@@ -130,8 +130,14 @@ impl CktElement for Load {
             curr.fill(Complex64::ZERO);
             return;
         }
-        // (LastSolutionWasDirect shortcut omitted: Phase 3 always runs the
-        // power-flow path before currents are queried.)
+        // Pascal `TPCElement.GetCurrents` l.137: after a direct solve (and not
+        // in dynamics/harmonics) take the `CalcYPrimContribution` shortcut —
+        // the model is entirely in the Y matrix, so report `YPrim · Vterminal`
+        // (NOT the load-model compensation current).
+        if sys.pc_direct_shortcut() {
+            self.cd.calc_yprim_contribution(node_v, curr);
+            return;
+        }
         if self.cd.iterminal_solution_count != sys.solution_count {
             let mut errors = Vec::new();
             self.calc_load_model_contribution(sys, node_v, &mut errors);

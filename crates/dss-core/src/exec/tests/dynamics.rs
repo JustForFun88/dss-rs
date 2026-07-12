@@ -1016,7 +1016,7 @@ fn storage_dynamics_trips_to_idle_under_fault_matches_oracle() {
 /// the grid and supplies a 400 kW / 80 kvar island load; the mode-3 trajectory
 /// matches the oracle. (The Storage counterpart is
 /// `exec::tests::storage::storage_gfm_dynamics_matches_oracle` + the live-gate
-/// deck `tests/corpus/controls/gfm_dynamics.dss`.)
+/// deck `tests/corpus/controls/gfm/gfm_dynamics.dss`.)
 #[test]
 fn pvsystem_gfm_dynamics_mode3_matches_oracle() {
     let mut dss = Dss::new();

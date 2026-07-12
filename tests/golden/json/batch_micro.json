@@ -1,0 +1,77 @@
+{
+  "name": "batch_micro",
+  "commands": [
+    "new circuit.probe basekv=12.47",
+    "new load.a bus1=probe kV=12.47 kW=1",
+    "new load.b bus1=probe kV=12.47 kW=2 enabled=no"
+  ],
+  "combo_names": [
+    "default",
+    "pretty",
+    "exclude_disabled",
+    "exclude_disabled_pretty"
+  ],
+  "captures": [
+    {
+      "kind": "batch",
+      "target": "Load",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"a\",\"Bus1\":\"probe\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001},{\"Name\":\"b\",\"Bus1\":\"probe\",\"kV\":1.2470000000000001E+001,\"kW\":2.0000000000000000E+000,\"PF\":8.8000000000000000E-001,\"Enabled\":false}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Load",
+      "opts": "pretty",
+      "bits": 16,
+      "expected": "[\r\n  {\r\n    \"Name\" : \"a\",\r\n    \"Bus1\" : \"probe\",\r\n    \"kV\" : 1.2470000000000001E+001,\r\n    \"kW\" : 1.0000000000000000E+000,\r\n    \"PF\" : 8.8000000000000000E-001\r\n  },\r\n  {\r\n    \"Name\" : \"b\",\r\n    \"Bus1\" : \"probe\",\r\n    \"kV\" : 1.2470000000000001E+001,\r\n    \"kW\" : 2.0000000000000000E+000,\r\n    \"PF\" : 8.8000000000000000E-001,\r\n    \"Enabled\" : false\r\n  }\r\n]"
+    },
+    {
+      "kind": "batch",
+      "target": "Load",
+      "opts": "exclude_disabled",
+      "bits": 32,
+      "expected": "[{\"Name\":\"a\",\"Bus1\":\"probe\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+000,\"PF\":8.8000000000000000E-001}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Load",
+      "opts": "exclude_disabled_pretty",
+      "bits": 48,
+      "expected": "[\r\n  {\r\n    \"Name\" : \"a\",\r\n    \"Bus1\" : \"probe\",\r\n    \"kV\" : 1.2470000000000001E+001,\r\n    \"kW\" : 1.0000000000000000E+000,\r\n    \"PF\" : 8.8000000000000000E-001\r\n  }\r\n]"
+    },
+    {
+      "kind": "batch",
+      "target": "Capacitor",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[]"
+    },
+    {
+      "kind": "batch",
+      "target": "Capacitor",
+      "opts": "pretty",
+      "bits": 16,
+      "expected": "[\r\n]"
+    },
+    {
+      "kind": "batch",
+      "target": "Capacitor",
+      "opts": "exclude_disabled",
+      "bits": 32,
+      "expected": "[]"
+    },
+    {
+      "kind": "batch",
+      "target": "Capacitor",
+      "opts": "exclude_disabled_pretty",
+      "bits": 48,
+      "expected": "[\r\n]"
+    }
+  ],
+  "schema": 1,
+  "oracle": {
+    "dss_python": "0.15.7",
+    "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+  }
+}

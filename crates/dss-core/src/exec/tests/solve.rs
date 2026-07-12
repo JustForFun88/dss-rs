@@ -283,3 +283,60 @@ fn set_time_elapsed_options_are_silent_noops() {
         "time-option sets must not touch the solution"
     );
 }
+
+/// CF-A (TB-U3): a compiled/redirected deck whose bytes begin with a UTF-8 BOM
+/// (EF BB BF) must have it stripped before the first command, matching the
+/// oracle (Pascal loads the deck with `TStringList.LoadFromFile`, whose UTF-8
+/// reader drops the preamble). Without the strip the BOM glues onto the first
+/// token ("Unknown Command \u{feff}Clear") and the deck builds a wrong circuit.
+/// The fix lives in `do_redirect`, so every level (top-level compile AND nested
+/// redirect) is covered — this test exercises both.
+#[test]
+fn utf8_bom_is_stripped_at_the_file_boundary() {
+    let dir = std::env::temp_dir().join(format!("dss_bom_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("mkdir scratch");
+    let nested = dir.join("nested.dss");
+    let master = dir.join("master.dss");
+    // Nested file ALSO starts with a BOM (redirected, not top-level).
+    std::fs::write(
+        &nested,
+        "\u{feff}New Load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95\n",
+    )
+    .expect("write nested");
+    std::fs::write(
+        &master,
+        format!(
+            "\u{feff}Clear\n\
+             New circuit.bomtest basekv=12.47 pu=1.0 phases=3 mvasc3=2000\n\
+             New Line.l1 bus1=sourcebus bus2=loadbus length=1 units=km\n\
+             Redirect \"{}\"\n\
+             Set voltagebases=[12.47]\n\
+             CalcVoltageBases\n\
+             Solve\n",
+            nested.display().to_string().replace('\\', "/")
+        ),
+    )
+    .expect("write master");
+
+    let mut dss = Dss::new();
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.display().to_string().replace('\\', "/")
+    ));
+    assert!(
+        dss.errors().is_empty(),
+        "BOM-prefixed deck must compile cleanly, got {:?}",
+        dss.errors()
+    );
+    let ckt = dss.circuit().expect("circuit built");
+    assert_eq!(ckt.name, "bomtest", "the leading `Clear` after the BOM ran");
+    assert!(ckt.is_solved, "feeder solved");
+    // The nested (also BOM-prefixed) redirect defined the load — 6 source + 6 load nodes.
+    assert_eq!(ckt.num_nodes, 6);
+    assert!(
+        dss.circuit().unwrap().solution.node_v[1].norm() > 1.0,
+        "solved to a live voltage"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}

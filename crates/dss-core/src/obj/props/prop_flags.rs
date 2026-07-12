@@ -118,6 +118,26 @@ impl PropFlags {
     /// it is consumed only by the CAPI JSON-schema export (`getPropertyUnits`),
     /// so it is inert for the text dump and the property setters.
     pub const UNITS_OHM_PER_LENGTH: Self = Self(1 << 40);
+    /// Pascal `AltIndex`: a substructure-index property (e.g. a winding/wire
+    /// selector). The JSON `Obj_ToJSONData` sweep skips it in both modes
+    /// (`CAPI_Obj.pas:727/744`).
+    pub const ALT_INDEX: Self = Self(1 << 41);
+    /// Pascal `IntegerStructIndex`: the integer that selects the active
+    /// struct-array entry (Transformer `Wdg`). Skipped by the JSON sweep like
+    /// [`Self::ALT_INDEX`].
+    pub const INTEGER_STRUCT_INDEX: Self = Self(1 << 42);
+    /// Pascal `OnArray`: a scalar-per-struct/array property whose JSON value,
+    /// under `preferArray`, is the full array over the struct-array count
+    /// (`DSSObjectHelper.pas:1110/1123`).
+    pub const ON_ARRAY: Self = Self(1 << 43);
+    /// Pascal `FullNameAsJSONArray`: a `DSSObjectReferenceArrayProperty` whose
+    /// JSON array uses each referenced object's `FullName` regardless of the
+    /// `FullNames` option (`DSSObjectHelper.pas:1494`; Line `Wires`).
+    pub const FULL_NAME_AS_JSON_ARRAY: Self = Self(1 << 44);
+    /// Pascal `FullNameAsArray`: a `DSSObjectReferenceProperty` (scalar/on-array)
+    /// whose JSON uses `FullName` regardless of `FullNames`
+    /// (`DSSObjectHelper.pas:1175`).
+    pub const FULL_NAME_AS_ARRAY: Self = Self(1 << 45);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

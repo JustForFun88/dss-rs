@@ -351,6 +351,96 @@ fn control_mode_gfm_sets_flag() {
     assert!(st.base.gfm_mode);
 }
 
+/// Pascal `TInvBasedPCE.GetCurrents` GFM override (InvBasedPCE.pas l.211-219): in
+/// **grid-forming** mode `GetCurrents` never calls `inherited`, so the base
+/// `TPCElement.GetCurrents` `LastSolutionWasDirect` shortcut (PCElement.pas l.137)
+/// MUST NOT fire — a GFM unit in DIRECT mode still reports `YPrim·V − InjCurrent`,
+/// not the frozen `YPrim·V`. The non-GFM arm (the port's `!gfm_mode &&
+/// pc_direct_shortcut()` guard) DOES take the shortcut. Guards the class-specific
+/// `!self.base.gfm_mode` condition — the only new branch with no live-deck
+/// coverage (every vendored `mode=direct` deck has its direct Solve commented out).
+#[test]
+fn direct_shortcut_excluded_in_gfm_mode() {
+    use crate::elements::traits::CktElement;
+
+    let node_v = vec![
+        Complex64::ZERO, // ground slot
+        Complex64::new(7000.0, 0.0),
+        Complex64::new(-3500.0, -6062.0),
+        Complex64::new(-3500.0, 6062.0),
+    ];
+    let inj = Complex64::new(12.0, -5.0);
+
+    // A known diagonal YPrim + nonzero injection so the shortcut (YPrim·V) and
+    // the model current (YPrim·V − InjCurrent) differ by whole amps.
+    let build = |gfm: bool| -> Storage {
+        let mut st = Storage::new("s1");
+        st.base.gfm_mode = gfm;
+        CktElement::calc_yprim(&mut st, &ctx()); // sizes yorder + buffers
+        let n = st.cd.yorder;
+        let mut yp = CMatrix::new(n);
+        for i in 0..n {
+            yp.set(i, i, Complex64::new(0.01, -0.02));
+        }
+        st.cd.yprim = Some(yp);
+        st.cd.set_node_ref(1, &[1, 2, 3, 0]);
+        st.cd.inj_current = vec![inj; n];
+        st.cd.iterminal_solution_count = 0; // == solution_count → skip model recompute
+        st
+    };
+
+    // The shortcut result YPrim·Vterminal (computed independently).
+    let n = 4usize;
+    let mut yp = CMatrix::new(n);
+    for i in 0..n {
+        yp.set(i, i, Complex64::new(0.01, -0.02));
+    }
+    let vterm: Vec<Complex64> = [1usize, 2, 3, 0].iter().map(|&r| node_v[r]).collect();
+    let mut yprim_v = vec![Complex64::ZERO; n];
+    yp.mv_mult(&mut yprim_v, &vterm);
+
+    let sys_direct = SysCtx {
+        last_solution_was_direct: true,
+        solution_count: 0, // == default iterminal_solution_count → model skipped
+        ..ctx()
+    };
+
+    // GFM: shortcut EXCLUDED → YPrim·V − InjCurrent.
+    let mut st_gfm = build(true);
+    let mut i_gfm = vec![Complex64::ZERO; n];
+    st_gfm.get_currents(&sys_direct, &node_v, &mut i_gfm);
+    for k in 0..n {
+        let expect = yprim_v[k] - inj;
+        assert!(
+            (i_gfm[k] - expect).norm() < 1e-9,
+            "GFM direct read [{k}] {} != YPrim·V−Inj {}",
+            i_gfm[k],
+            expect
+        );
+    }
+
+    // Non-GFM: shortcut TAKEN → YPrim·V (no InjCurrent).
+    let mut st_pf = build(false);
+    let mut i_pf = vec![Complex64::ZERO; n];
+    st_pf.get_currents(&sys_direct, &node_v, &mut i_pf);
+    for k in 0..n {
+        assert!(
+            (i_pf[k] - yprim_v[k]).norm() < 1e-9,
+            "non-GFM direct read [{k}] {} != YPrim·V {}",
+            i_pf[k],
+            yprim_v[k]
+        );
+    }
+
+    // The exclusion is observable: the two differ by exactly InjCurrent.
+    assert!(
+        (i_pf[0] - i_gfm[0]).norm() > 1.0,
+        "GFM exclusion not observable: non-GFM {} vs GFM {}",
+        i_pf[0],
+        i_gfm[0]
+    );
+}
+
 // --- MakePosSequence (WPG.21) --------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
@@ -406,4 +496,61 @@ fn makeposseq_storage_single_phase() {
             PosSeqAction::EndEdit,
         ]
     );
+}
+
+// --- CF-C Port 2: DynaDLL/DynaData property surface (warn + fallback) ---
+
+/// Edit one property through the real property engine, returning any messages
+/// the side effect queued on the object.
+fn edit_storage_prop(st: &mut Storage, name: &str, value: &str) -> Vec<String> {
+    let enums = EnumRegistry::new();
+    let cls = super::class_props(&enums);
+    let idx = cls.property_index(name).expect("known Storage property");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    let mut eng = PropEngine {
+        parser: &mut parser,
+        vars: &vars,
+        enums: &enums,
+        errors: &mut errors,
+        foreign: None,
+    };
+    cls.edit_property(st, idx, value, &mut eng).unwrap();
+    let mut msgs = errors;
+    msgs.extend(st.cd.obj.take_errors());
+    msgs
+}
+
+/// `DynaDLL=<dll>` parses (no longer a hard NOT_PORTED error), stores the name
+/// for the dump, and warns the dynamics model is not loaded (safe-Rust fallback).
+#[test]
+fn dyna_dll_stores_and_warns_not_loaded() {
+    let mut st = Storage::new("s1");
+    let msgs = edit_storage_prop(&mut st, "DynaDLL", "Dess1.DLL");
+    assert_eq!(st.dyna_model_name, "Dess1.DLL");
+    assert_eq!(st.get_string(prop::DYNA_DLL), "Dess1.DLL"); // dump parity
+    assert_eq!(msgs.len(), 1, "exactly one warning: {msgs:?}");
+    assert!(msgs[0].contains("Not Loaded"));
+    assert!(msgs[0].contains("Dess1.DLL"));
+    assert!(msgs[0].contains("built-in model"));
+}
+
+/// `DynaData` stores (for the dump) and — no dynamics model exists — is a
+/// silent no-op (Pascal `if DynaModel.Exists then Edit`).
+#[test]
+fn dyna_data_stores_without_warning() {
+    let mut st = Storage::new("s1");
+    let msgs = edit_storage_prop(&mut st, "DynaData", "(file=DESSModel_Test.TxT)");
+    assert_eq!(st.dyna_model_edit, "(file=DESSModel_Test.TxT)");
+    assert_eq!(st.get_string(prop::DYNA_DATA), "(file=DESSModel_Test.TxT)");
+    assert!(msgs.is_empty(), "DynaData must not warn: {msgs:?}");
+}
+
+/// Pascal `Set_Name` bails on a blank / `none` name — no warning.
+#[test]
+fn dyna_dll_none_does_not_warn() {
+    let mut st = Storage::new("s1");
+    let msgs = edit_storage_prop(&mut st, "DynaDLL", "none");
+    assert!(msgs.is_empty(), "none must not warn: {msgs:?}");
 }

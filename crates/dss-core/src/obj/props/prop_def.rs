@@ -40,6 +40,33 @@ pub struct PropDef {
     /// resolves against both `Transformer` and `AutoTrans`. `None` for the
     /// single-class case.
     pub object_class2: Option<&'static str>,
+    /// Pascal `PropertyRedundantWith` (JSON default-mode sweep): the 1-based
+    /// index of the property this one is a redundant alias of; 0 = none. Only
+    /// meaningful together with [`PropFlags::REDUNDANT`]. Drives the
+    /// `Obj_ToJSONData` `iPropNext2` deferral (`CAPI_Obj.pas:699-722`).
+    pub redundant_with: usize,
+    /// Pascal `PropertyArrayAlternative` (JSON): the 1-based index of the
+    /// array-form alternative of this (singular) property; 0 = none. When set
+    /// and `preferArray`, `GetObjPropertyJSONValue` recurses into it
+    /// (`DSSObjectHelper.pas:988-998`).
+    pub array_alternative: usize,
+    /// Pascal `PropertyNameJSON` explicit override — the JSON key, when it is
+    /// NOT the plain `%→pct` / `-→__` derivation of [`Self::name`] (e.g. Line's
+    /// `Wires` → `Conductors`). `None` uses the derivation. `LowercaseKeys` never
+    /// consults this (it lowercases the modern name).
+    pub json_name: Option<&'static str>,
+}
+
+/// The 1-based property index of `name` within a class's `defs` vec — the index
+/// [`ClassProps`](super::ClassProps) will address it by (it prepends slot 0, so
+/// the ordinal is `position + 1`). Used to wire the JSON
+/// `redundant_with`/`array_alternative` cross-references by name at class-build
+/// time, before `ClassProps::new` appends `Like`.
+pub fn prop_index(defs: &[PropDef], name: &str) -> usize {
+    defs.iter()
+        .position(|d| d.name.eq_ignore_ascii_case(name))
+        .map(|p| p + 1)
+        .unwrap_or_else(|| panic!("no property named {name}"))
 }
 
 impl PropDef {
@@ -55,6 +82,9 @@ impl PropDef {
             size_prop: 0,
             object_class: None,
             object_class2: None,
+            redundant_with: 0,
+            array_alternative: 0,
+            json_name: None,
         }
     }
 
@@ -282,5 +312,39 @@ impl PropDef {
     pub fn value_offset(mut self, value_offset: f64) -> Self {
         self.value_offset = value_offset;
         self
+    }
+    /// Pascal `PropertyRedundantWith[this] := other` (1-based). Set together
+    /// with [`PropFlags::REDUNDANT`].
+    pub fn redundant_with(mut self, other: usize) -> Self {
+        self.redundant_with = other;
+        self
+    }
+    /// Pascal `PropertyArrayAlternative[this] := other` (1-based).
+    pub fn array_alternative(mut self, other: usize) -> Self {
+        self.array_alternative = other;
+        self
+    }
+    /// Pascal `PropertyNameJSON[this] := name` override.
+    pub fn json_name(mut self, name: &'static str) -> Self {
+        self.json_name = Some(name);
+        self
+    }
+
+    /// The JSON key for this property under option `lowercase`. Pascal
+    /// `PropertyNameJSON` (the `%→pct` / `-→__` inverse of the modern name, or an
+    /// explicit override) when not lowercase; `PropertyNameLowercase`
+    /// (`AnsiLowerCase` of the modern name) when [`crate::report::export::json::
+    /// JsonOpts::LOWERCASE_KEYS`] is set.
+    pub fn json_key(&self, lowercase: bool) -> String {
+        if lowercase {
+            // AnsiLowerCase of the MODERN name — the `%`/`-` are preserved,
+            // only the case folds (probe-pinned: `%Mean`→`%mean`, `Wires`→
+            // `wires`, ignoring the `Conductors` JSON override).
+            self.name.to_ascii_lowercase()
+        } else if let Some(j) = self.json_name {
+            j.to_string()
+        } else {
+            self.name.replace('%', "pct").replace('-', "__")
+        }
     }
 }

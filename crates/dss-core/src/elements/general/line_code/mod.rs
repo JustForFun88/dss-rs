@@ -24,7 +24,7 @@ mod dump;
 
 use crate::obj::base::DssObjData;
 use crate::obj::dss_enum::EnumRegistry;
-use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
 
 /// 1-based property ordinals (Pascal `TLineCodeProp`).
@@ -65,7 +65,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     // The sym-component scalars are only shown while the sym model is active
     // (`PropertyOffset3 = @SymComponentsModel`, `ConditionalValue`).
     let conditional = PropFlags::CONDITIONAL_VALUE;
-    let defs = vec![
+    let mut defs = vec![
         PropDef::integer("NPhases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double("R1").flags(conditional | PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("X1").flags(conditional | PropFlags::UNITS_OHM_PER_LENGTH),
@@ -100,6 +100,16 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("LineType", enums.line_type),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
+
+    // JSON default-mode redundancy (Pascal `LineCode.pas:318/323`): B1 defers to
+    // C1, B0 to C0 (the `REDUNDANT` flags are set above).
+    let c1 = prop_index(&defs, "C1");
+    let c0 = prop_index(&defs, "C0");
+    let b1 = prop_index(&defs, "B1");
+    let b0 = prop_index(&defs, "B0");
+    defs[b1 - 1].redundant_with = c1;
+    defs[b0 - 1].redundant_with = c0;
+
     ClassProps::new("LineCode", defs, true)
 }
 
@@ -193,6 +203,16 @@ impl LineCodeObj {
     // Read accessors consumed by `TLineObj.FetchLineCode` (Phase 4 WP4.2).
     pub fn base_frequency(&self) -> f64 {
         self.base_frequency
+    }
+
+    /// Seed the base frequency inherited from the circuit at creation (Pascal
+    /// `TLineCodeObj.Create`: `BaseFrequency := ActiveCircuit.Fundamental`,
+    /// LineCode.pas:493). Set before `edit`, whose `EndEdit` recomputes the
+    /// frequency-dependent shunt admittance at this frequency; a later `basefreq=`
+    /// property still overrides. Only differs from 60 Hz when the deck ran
+    /// `Set DefaultBaseFrequency=` before `New circuit`.
+    pub fn set_base_frequency(&mut self, f: f64) {
+        self.base_frequency = f;
     }
     pub fn sym_components_model(&self) -> bool {
         self.sym_components_model

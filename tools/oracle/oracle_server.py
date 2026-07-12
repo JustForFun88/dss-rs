@@ -259,10 +259,26 @@ from corpus_guard import CorpusGuard as _CorpusGuard  # noqa: E402
 # fresh-process misfire is absorbed. (WP8.2 Issue-2 root cause; STATUS.md §1f.)
 _RUN_ATTEMPTS = 3
 
+# Compile-time DoSimpleMsg error numbers the OFFICIAL OpenDSS engine treats as
+# NON-fatal warnings and solves through, but which dss-python's binding raises on
+# (because it checks `Error.Number` after every `Text.Command`). We tolerate them
+# during the deck `Compile` — clear the raised error and continue — matching the
+# official Direct DLL's "warn and continue" behavior AND the Rust engine, which
+# reports the same conditions on `GlobalResult` rather than as a hard error.
+#   250 — `Export monitor <name>` where <name> is undefined (a typo'd monitor
+#         name; the EPRI ckt5/ckt7 Run scripts export a mis-typed monitor as
+#         their LAST command, after the full solve). See report/report.rs
+#         `export_monitors` for the matching Rust side.
+# Kept minimal + greppable: add a number here only with the same 1:1-with-official
+# justification. A non-listed error still re-raises (real failures never masked).
+_TOLERATED_COMPILE_ERRNOS = {250}
+
 
 def run_case(d, req: dict) -> dict:
     """Compile one copied `.dss` case, run `n_steps` solves, return the full
     per-step model (the shape `harness::*` / corpus_live.rs deserialize)."""
+    import dss as _dss  # module already loaded by make_engine; for DSSException
+
     case_path = req["case_path"]
     post = req.get("post") or []
     n_steps = int(req.get("n_steps", 1))
@@ -295,7 +311,19 @@ def run_case(d, req: dict) -> dict:
             node_order = None
             checkpoints = []
             d.Text.Command = "clear"
-            d.Text.Command = f'Compile "{case_path}"'
+            try:
+                d.Text.Command = f'Compile "{case_path}"'
+            except _dss.DSSException as e:
+                # `e.args == (errno, message)`. Tolerate only the warning-class
+                # numbers the official engine solves through (see
+                # `_TOLERATED_COMPILE_ERRNOS`); the whole deck has already run
+                # (the typo'd export is its last command), so the circuit is
+                # intact and `Error.Number` is cleared on catch. Anything else
+                # re-raises — a real compile failure is never swallowed.
+                errno = e.args[0] if e.args else None
+                if errno not in _TOLERATED_COMPILE_ERRNOS:
+                    raise
+                log(f"oracle: tolerated non-fatal compile warning #{errno} on {case_path}")
             for c in post:
                 d.Text.Command = c
 

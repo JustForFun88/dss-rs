@@ -1,0 +1,30 @@
+// InvControl CombiMode VV_DRC (the untested combi branch): the volt-var curve
+// Q and the dynamic-reactive-current Q are summed each step
+// (CalcVVDRC_vars). A weak feeder + irradiance ramp raise the PV bus so both
+// the VV curve (absorb above 1.08) and the DRC droop (deltaV over the lagging
+// DRC window, above DbVMax) contribute. Feature-sensitive: neutralizing the
+// DRC deadband (DbVMax high) removes the DRC term, leaving only the VV Q
+// (probe-proven -> a different kvar trajectory).
+// Compared per step: full model + PVSystem f64 state variables + probes + EL.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.icvvdrc basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=4 units=km
+
+New loadshape.irrad npts=8 interval=1 mult=(.20 .40 .60 .78 .90 1.0 1.0 .95)
+
+New xycurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)
+
+New pvsystem.pv bus1=b phases=3 kv=12.47 kva=700 pmpp=600 pf=1.0
+~ daily=irrad irradiance=1
+
+New invcontrol.ic combimode=VV_DRC vvc_curve1=vv voltage_curvex_ref=rated
+~ DynReacavgwindowlen=14400 DbVMin=0.95 DbVMax=1.0 ArGraLowV=1.0 ArGraHiV=1.0
+~ deltaq_factor=0.4 refreactivepower=VARMAX eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=2000
+Set mode=daily stepsize=1h number=1

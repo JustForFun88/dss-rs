@@ -1,0 +1,31 @@
+// InvControl DRC standalone (InvControl.pas mode=DynamicReaccurr): dynamic
+// reactive current responds to V relative to a rolling-average reference over
+// the DRC window (CalcQDRC_desiredpu / CalcDRC_vars). A weak feeder + rising
+// irradiance push the PV bus above the DbVMax deadband, so the inverter
+// absorbs vars on the ArGraHiV droop. Feature-sensitive: widening the deadband
+// (DbVMax high) stops the droop engaging -> the PV holds Q~0 (probe-proven).
+// Compared per step: full model (controller-driven PV kvar) + PVSystem f64
+// state variables + InvControl setting probes + event log.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.icdrc basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=4 units=km
+
+New loadshape.irrad npts=8 interval=1 mult=(.20 .40 .60 .78 .90 1.0 1.0 .95)
+
+New pvsystem.pv bus1=b phases=3 kv=12.47 kva=700 pmpp=600 pf=1.0
+~ daily=irrad irradiance=1
+
+// A multi-hour DRC window makes the rolling average LAG the ramping bus
+// voltage, so deltaV = Vpresent - Vavg is non-zero while Vpu sits above the
+// DbVMax deadband -> the ArGraHiV droop absorbs vars each step.
+New invcontrol.ic mode=DynamicReaccurr DynReacavgwindowlen=14400
+~ DbVMin=0.95 DbVMax=1.0 ArGraLowV=1.0 ArGraHiV=1.0
+~ deltaq_factor=0.5 refreactivepower=VARMAX eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=2000
+Set mode=daily stepsize=1h number=1

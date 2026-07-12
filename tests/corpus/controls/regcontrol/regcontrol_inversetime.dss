@@ -1,0 +1,31 @@
+// RegControl inverse-time tap delay + voltage-limit override (RegControl.pas:
+// ComputeTimeDelay l.1294 scales the armed queue delay by Delay/min(10,
+// 2*|Vreg-Vavg|/Band) so a larger out-of-band deviation trips FASTER; VLimit
+// l.1086-1096 forces a tap-down whenever Vlocalbus>Vlimit, clamping BELOW the
+// vreg band). Daily 1h steps hide inverse-time (sub-second scaling collapses to
+// the same hourly tap) and a vreg-in-band target never reaches Vlimit -- so this
+// deck runs DUTY mode at 2s steps with an overvoltage source (pu=1.045) that
+// drives a multi-tap buck sequence: inverse-time then places each tap on a
+// different sub-step (WHEN), and Vlimit=119 (< the vreg=120/band=4 window)
+// bucks the endpoint two taps lower than plain regulation. Feature-sensitive
+// (probe-proven, pinned oracle, two-process bit-identical): inversetime=no
+// shifts the first tap from Sec=10 to Sec=18 (different trajectory), and
+// vlimit=0 settles at tap 0.975 instead of 0.95625 (different endpoint).
+// Compared per step: full model + tap/TapNumber + probes + event log + ctrl queue.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.reginv basekv=115 pu=1.045 angle=0 phases=3 bus1=src
+~ mvasc3=15000 mvasc1=12000
+
+New transformer.tr phases=3 windings=2 buses=(src, mv) conns=(delta, wye)
+~ kvs=(115, 12.47) kvas=(10000, 10000) xhl=7
+
+New regcontrol.rg transformer=tr winding=2 vreg=120 band=4 ptratio=60
+~ inversetime=yes vlimit=119 delay=15 eventlog=yes
+
+New load.l1 bus1=mv phases=3 conn=wye model=1 kv=12.47 kw=3000 pf=0.98
+
+Set voltagebases=[115 12.47]
+calcv
+Set mode=duty stepsize=2 number=1 controlmode=time
