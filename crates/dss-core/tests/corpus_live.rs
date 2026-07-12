@@ -443,6 +443,13 @@ impl Oracle {
             "all_properties": c.compare_all_properties,
             "global_result": c.compare_global_result,
             "autoadd_log": c.compare_autoadd_log,
+            // CF-C Port 2: a deck with declared `expect_warnings` is one whose
+            // compile/solve fires a user-model DoSimpleMsg both engines must
+            // warn-and-continue on (safe Rust cannot load the DLL; the official
+            // Direct DLL warns-and-solves). Tell the oracle to solve through it
+            // (EarlyAbort off + tolerate the user-model errnos) instead of
+            // raising — the Rust side already tolerates via `expect_warnings`.
+            "warn_and_continue": !c.expect_warnings.is_empty(),
         });
         let r = self.call(&req);
         assert!(r.ok, "oracle case {case_path} failed: {:?}", r.error);
