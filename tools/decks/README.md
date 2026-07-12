@@ -9,7 +9,7 @@ families, not the vendored corpus).
   byte-reproducible; committed artifacts). Routes each deck to its family dir,
   including the `pending: true` decks for unported features.
 - **`gen_shape_fixtures.py`** — the binary/CSV LoadShape/TShape/PriceShape/
-  GrowthShape fixtures for `tests/corpus/modes/shape_binfiles/`.
+  GrowthShape fixtures for `tests/corpus/modes/inputformat/shape_binfiles/`.
 
 Regenerate deliberately (the decks are committed and oracle-validated); see
 `GAPS_PLAN.md` §2.1 for the validation ritual and `TESTING.md` → *Add a corpus
