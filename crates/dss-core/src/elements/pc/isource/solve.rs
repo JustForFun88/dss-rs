@@ -9,7 +9,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjCtx, SysCtx};
-use crate::solution::SolveMode;
+use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::support::cmatrix::CMatrix;
 use crate::support::complexutil::{pdeg_to_complex, rotate_phasor_deg};
 use crate::util::EPSILON2;
@@ -75,15 +75,16 @@ impl Isource {
             SolveMode::Daily => self.calc_daily_mult(sys.dbl_hour),
             SolveMode::Yearly => self.calc_yearly_mult(sys.dbl_hour),
             SolveMode::DutyCycle => self.calc_duty_mult(sys.dbl_hour),
-            SolveMode::Dynamic => {
-                // Pascal dispatches on `ActiveCircuit.ActiveLoadShapeClass`
-                // (USEDAILY/USEYEARLY/USEDUTY); that class isn't tracked yet
-                // (always the `else` / USENONE case — same assumption as
-                // Load/Generator/Storage/PVSystem), so ShapeFactor is always
-                // explicitly reset to 1+j0 here (unlike Load's Dynamic arm,
-                // Isource's Pascal `else` branch runs unconditionally).
-                self.shape_factor = Complex64::new(1.0, 0.0);
-            }
+            // Pascal Isource.pas l.403-416 (`DYNAMICMODE`): dynamics honors
+            // `Set LoadShapeClass=` — the selected class (USEDAILY/USEYEARLY/
+            // USEDUTY) drives `ShapeFactor`; the default `USENONE` resets it to
+            // 1+j0 (Isource's `else` runs unconditionally, unlike Load's).
+            SolveMode::Dynamic => match sys.active_load_shape_class {
+                USEDAILY => self.calc_daily_mult(sys.dbl_hour),
+                USEYEARLY => self.calc_yearly_mult(sys.dbl_hour),
+                USEDUTY => self.calc_duty_mult(sys.dbl_hour),
+                _ => self.shape_factor = Complex64::new(1.0, 0.0),
+            },
             _ => {}
         }
 

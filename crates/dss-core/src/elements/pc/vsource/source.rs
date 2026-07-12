@@ -5,7 +5,7 @@ use num_complex::Complex64;
 
 use super::{VSource, get_vmag};
 use crate::elements::traits::SysCtx;
-use crate::solution::SolveMode;
+use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::support::complexutil::{pdeg_to_complex, rotate_phasor_deg};
 use crate::util::EPSILON2;
 
@@ -43,20 +43,31 @@ impl VSource {
 
     /// Pascal `GetVterminalForSource` (snapshot/non-harmonic path; the
     /// loadshape-driven time-series magnitude is applied in daily/yearly/duty
-    /// modes).
+    /// modes and — via `Set LoadShapeClass=` — in dynamics).
     pub(super) fn get_vterminal_for_source(&mut self, sys: &SysCtx) {
         let nphases = self.cd.nphases;
         self.shape_is_actual = false;
 
-        // Modify magnitude based on a LOADSHAPE if assigned (loadshape modes).
+        // Modify magnitude based on a LOADSHAPE if assigned (loadshape modes;
+        // Pascal VSource.pas l.1023-1026 includes DYNAMICMODE).
         let loadshape_mode = matches!(
             sys.mode,
-            SolveMode::Daily | SolveMode::Yearly | SolveMode::DutyCycle
+            SolveMode::Daily | SolveMode::Yearly | SolveMode::DutyCycle | SolveMode::Dynamic
         );
         match sys.mode {
             SolveMode::Daily => self.calc_daily_mult(sys.dbl_hour),
             SolveMode::Yearly => self.calc_yearly_mult(sys.dbl_hour),
             SolveMode::DutyCycle => self.calc_duty_mult(sys.dbl_hour),
+            // Pascal VSource.pas l.1006-1020 (`DYNAMICMODE`): dynamics honors
+            // `Set LoadShapeClass=` — the selected class drives `ShapeFactor`;
+            // the default `USENONE` leaves `ShapeFactor := PerUnit`, which
+            // reproduces the normal-case magnitude below.
+            SolveMode::Dynamic => match sys.active_load_shape_class {
+                USEDAILY => self.calc_daily_mult(sys.dbl_hour),
+                USEYEARLY => self.calc_yearly_mult(sys.dbl_hour),
+                USEDUTY => self.calc_duty_mult(sys.dbl_hour),
+                _ => self.shape_factor = Complex64::new(self.per_unit, 0.0),
+            },
             _ => {}
         }
 
