@@ -1602,6 +1602,8 @@ const ASYMMETRIC_REQUIRED: &[&str] = &[
     "line/line_geometry_asym.dss",
     "line/line_cable_asym.dss",
     "line/line_spacing_asym.dss",
+    "line/line_llc_harm_asym.dss",
+    "line/line_ground_z_asym.dss",
     "transformer/transformer_asym.dss",
     "transformer/transformer_wyedelta_asym.dss",
     "fault/fault_asym.dss",
