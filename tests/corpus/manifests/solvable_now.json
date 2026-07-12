@@ -1559,6 +1559,30 @@
    "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory (cannot-pick-up-load scenario); floating-delta common-mode floor. Validated live green vs the pinned oracle."
   },
   {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF2-G migration. Whole-IEEE123 GFL daily→dynamics trajectory (Storage+PV, InvControl GFM monitor). Was ABOVE-BAND; root cause fixed: PVSystem InitStateVars/IntegrateStates ignored 'Set LoadShapeClass=daily' in dynamics (PanelkW 800 vs oracle 594.78), diverging node V ~16 V at the PV region. Fix honors ActiveLoadShapeClass in dynamics per PVsystem.pas l.2192/l.2281. Now live green (node V to the faer floor; entry 0 exact)."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF2-G migration. GFL daily→dynamics DynamicExp/DynamicEq/DynOut variant; same PVSystem dynamics load-shape fix as its non-DynExp sibling (the shape dispatch precedes the per-phase DynamicEq integration). Now live green."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF2-G migration. GFM daily deck that opens sw5 to island the microgrid (storage GFM discharge). Was ABOVE-BAND (~0.9 V at node 230). Same root cause: the islanded PV (daily=pvshape) injected full power in dynamics; the GFM-formed island voltage responded, amplifying the error. Fixed by the PVSystem dynamics load-shape fix. Now live green."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF2-G migration. Current-limited (AmpLimit=500) islanded GFM daily deck; same PVSystem dynamics load-shape fix. Node V / currents / powers now match to the faer floor. (The storage dynamics state var it[last] is an open-loop, non-injecting integration — only it[0] drives the GFM voltage source — so it drifts on an oscillating AC waveform over the long trajectory; it is not a gated quantity and does not affect node V, which stays pinned by the it[0]↔node-V fixpoint.)"
+  },
+  {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
    "kind": "large_ultra_switch",
    "n_steps": 1

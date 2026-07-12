@@ -9,6 +9,29 @@
 
 Last updated: 2026-07-12.
 
+**CF2-G (GFL/GFM daily dynamics divergences), 2026-07-12.** One real-bug fix +
+4 deck migrations (branch `cf2-g`). The four IBRDynamics_Cases whole-IEEE123
+GFL/GFM daily decks were ABOVE-BAND (GFL source-node imag; GFM islanded node ~0.9 V).
+- **Root cause (both signatures, one bug):** `PVSystem::InitStateVars` /
+  `IntegrateStates` hardcoded `ShapeFactor = 1+j1` in dynamics mode, assuming
+  `ActiveLoadShapeClass == USENONE`. Pascal (PVsystem.pas l.2192 & l.2281)
+  dispatches on `ActiveLoadShapeClass` **even in dynamics**, so a deck that does
+  `set loadshapeclass=daily; set time=(10,0)` samples the irradiance shape at that
+  hour. The port applied full sun (`PanelkW=800` vs oracle `594.78`); the GFL PV
+  over-injected, moving node V ~16 V near the PV, and in the GFM decks the islanded
+  PV perturbed the storage-formed island voltage (amplified to ~0.9 V). Fix: honor
+  the load-shape class in the dynamics init/integrate (shared helper
+  `apply_dynamics_load_shape`); Storage needs no change (its Pascal `IntegrateStates`
+  does not re-dispatch — its ambient ShapeFactor is already 1). Empirically: node V
+  → faer floor (2.3e-6 V) on all four decks; snapshot solve was already clean, so
+  the bug was born entering dynamics.
+- **Migrated → solvable_now** (`large_floating_delta`): GFL_IEEE123 Daily + Daily_DynExp,
+  GFM_IEEE123 Daily, GFM_IEEE123_AmpLimit Daily_CurrentLimit. `solvable_now` **+4**.
+- Note (AmpLimit deck): the storage `it[last]` state var drifts on the long
+  trajectory (open-loop AC integration; in GFM only `it[0]` feeds the injection→node-V
+  fixpoint, so it stays pinned while it[1]/it[2] drift). It is not a gated quantity
+  and node V/currents/powers all match.
+
 **CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
 quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch
 `cf-a`). `solvable_now` **245 → 249**.

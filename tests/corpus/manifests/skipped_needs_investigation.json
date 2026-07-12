@@ -77,26 +77,6 @@
    "note": "ROOT-CAUSED 2026-07-10 (user-directed deck audit): the deck data itself is pathological, no engine solves it as vendored. The 480 V DER microgrid island (m2001der480-2 delta secondary of a 750 kVA xfmr) is operated at the edge of voltage collapse, and Storage.battery1 (state=charging) / battery2 (idling) tip the snapshot power flow over the fixed-point stability boundary: |V| at M2001-ESS1 grows geometrically (~x2000/iteration; 6.97e4 -> 6.35e6 -> 1.26e10 V...) until NaN. Bisected: both batteries disabled -> converges (121 iterations -- still extremely marginal vs the usual 5-15); battery1=discharging -> converges (130); charging or idling -> geometric divergence. Engine-lineage-consistent: pinned oracle, official EPRI r3723/r4088/r4133, and the Rust port all diverge identically on the vendored deck, and on the healed variant (storages disabled) Rust converges in EXACTLY the oracle's 121 iterations. Deck/scenario bug (DERs likely meant to be coordinated/disabled by a separate scenario file), nothing to fix port-side. The earlier 'no JSON response' was a secondary serialization glitch of the NaN state."
   },
   {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
-   "tag": "live_mismatch",
-   "note": "CF-B (T-B U1b, item 7). Whole-IEEE123 GFL daily trajectory; validated live vs the pinned oracle at kind large_floating_delta and ABOVE-BAND: step 0 entry 0 (2401 V source-adjacent node) Rust (2401.75955, -0.03061) vs oracle (2401.75942, -0.03344), |diff|=2.836e-3 > allowed 7.402e-4. The real part matches to ~1e-4; the imaginary (phase) part diverges. Whole-feeder GFL daily trajectory divergence (control/dynamics-settling family) -- a BUG until decomposition proves a floor, NOT forced into solvable_now. The controlled micro GFL gates stay live-green."
-  },
-  {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
-   "tag": "live_mismatch",
-   "note": "CF-B (T-B U1b, item 7). Whole-IEEE123 GFL daily trajectory (DynamicExp/DynamicEq/DynOut variant); validated live vs the pinned oracle at large_floating_delta and ABOVE-BAND: step 0 entry 0 Rust (2401.75923, -0.03052) vs oracle (2401.75914, -0.03337), |diff|=2.849e-3 > allowed 7.402e-4 (same source-node phase divergence as its non-DynExp sibling). Whole-feeder GFL daily divergence, needs investigation; not forced."
-  },
-  {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "live_mismatch",
-   "note": "CF-B (T-B U1b, item 7). Whole-IEEE123 GFM daily trajectory (IBRDynamics_Cases variant: opens switch 5 to island the microgrid, storage GFM discharge); validated live vs the pinned oracle at large_floating_delta and ABOVE-BAND: step 0 entry 230 Rust (2074.655, 1197.265) vs oracle (2074.611, 1196.357), |diff|=9.08e-1 (LARGE) > allowed 7.395e-4. A real divergence in the islanded GFM section after the switch-opening trajectory. Needs investigation; not forced. (Note: the same-named Microgrid/GridFormingInverter/GFM_IEEE123 daily deck is DIFFERENT and passes -> solvable_now.)"
-  },
-  {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
-   "tag": "live_mismatch",
-   "note": "CF-B (T-B U1b, item 7). Whole-IEEE123 GFM daily trajectory with AmpLimit/SafeVoltage current limiting; validated live vs the pinned oracle at large_floating_delta and ABOVE-BAND: step 0 entry 230 Rust (971.396, 559.110) vs oracle (971.406, 559.116), |diff|=1.235e-2 > allowed 6.121e-4. Real divergence in the current-limited islanded GFM section. Needs investigation; not forced."
-  },
-  {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
    "tag": "live_mismatch_control_settling_#485",
    "note": "CF-B (T-A #17, item 8e). #485 control-settling difference. The pinned oracle raises #485 (Max Control Iterations Exceeded) as a hard exception; r3723 hits the same #485 warning but settles to convergence in 30 control iterations, while Rust settles this A-Diakoptics IEEE_123 Torn/Interconnected model on a different control trajectory. No pinned-oracle compare is possible (it raises), and Rust vs r3723 control settling differs -- needs investigation (control-iteration/tap-settling family), not migrated."
