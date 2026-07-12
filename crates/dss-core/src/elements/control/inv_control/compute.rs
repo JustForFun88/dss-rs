@@ -55,7 +55,7 @@ use num_complex::Complex64;
 
 use crate::elements::pc::storage::{STORE_CHARGING, STORE_DISCHARGING};
 use crate::elements::traits::ElemRef;
-use crate::util::fmt_g;
+use crate::util::{EPSILON, fmt_g};
 
 use super::{
     AVR, CHANGE_NONE, CHANGEDRCVVARLEVEL, CHANGEVARLEVEL, CHANGEWATTLEVEL, CHANGEWATTVARLEVEL,
@@ -178,9 +178,14 @@ pub(crate) trait InvDispatchEnv {
     /// `DERElem.IsPVSystem()` — true for a PVSystem, false for a Storage (the
     /// WATTVAR PVSystem-only kW push in `DoPendingAction`).
     fn der_is_pvsystem(&self, r: ElemRef) -> bool;
-    /// Pascal `DERElem.ComputeVTerminal` then `Cabs(Vterminal[1..NPhases])` — the
-    /// per-phase terminal voltage magnitudes (used by `GetMonVoltage`).
-    fn der_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64>;
+    /// Pascal `DERElem.ComputeVTerminal` then `Vterminal[1..NPhases]` — the
+    /// per-phase COMPLEX terminal voltages (used by `GetMonVoltage`; the delta
+    /// line-to-line difference needs the phasors, not just magnitudes — D4).
+    fn der_vterminal(&mut self, r: ElemRef) -> Vec<Complex64>;
+    /// `DERElem.Connection = TGeneralConnection.Delta` — the controlled DER is
+    /// delta-connected, so `GetMonVoltage` monitors line-to-line voltages
+    /// (dss_capi 0.15.x D4, `InvControl.pas` l.1647-1652).
+    fn der_is_delta(&self, r: ElemRef) -> bool;
     /// `ActiveCircuit.Buses[DERElem.terminals[0].busRef].kVBase * 1000` — the L-N
     /// base volts for the `FVpuSolution` per-unit (UpdateInvControl).
     fn der_bus_vbase(&self, r: ElemRef) -> f64;
@@ -190,6 +195,14 @@ pub(crate) trait InvDispatchEnv {
     /// number, used as `TDSSBus.GetRef`'s 1-based index, returning the ground node
     /// `NodeV[0]=0` out of range). `j` indexes the control's parsed `mon_buses`.
     fn mon_bus_node_v(&self, j: usize, node: i32) -> Complex64;
+    /// The `j`-th `MonBus` name did not resolve to a real bus
+    /// (`ActiveCircuit.BusList.Find(FMonBuses[j]) = 0`) — dss_capi 0.15.x C8
+    /// (`InvControl.pas` l.1596): `GetMonVoltage` then aborts the solution
+    /// (#2024112) rather than silently reading the ground node.
+    fn mon_bus_unresolved(&self, j: usize) -> bool;
+    /// Pascal `DSS.SetSolutionAbort(true)` — stop the solve (the invalid-`MonBus`
+    /// abort path).
+    fn request_solution_abort(&mut self);
     /// `obj.FullName` (`PVSystem.<n>` / `Storage.<n>`) for the event log.
     fn der_full_name(&self, r: ElemRef) -> String;
 
@@ -471,40 +484,73 @@ impl InvControl {
     fn get_mon_voltage(&self, i: usize, basekv: f64, env: &mut dyn InvDispatchEnv) -> f64 {
         if self.f_using_mon_buses {
             // The complex per-bus monitored voltages (Pascal `cBuffer[0..len-1]`).
-            let cbuffer: Vec<Complex64> = (0..self.mon_buses.len())
-                .map(|j| {
-                    let nodes = &self.mon_buses_nodes[j];
-                    // FMonBusesVbase[j+1] (Pascal 1-based) = mon_buses_vbase[j]. Pascal
-                    // divides unconditionally (l.1633/1637, with its own
-                    // `// TODO: NIL check?`); `.get` only guards the OOB index, which
-                    // never happens (mon_buses_vbase is sized to the same MonBus count).
-                    let vbase = self.mon_buses_vbase.get(j).copied().unwrap_or(0.0);
-                    let scale = basekv * 1000.0 / vbase;
-                    if nodes.len() == 2 {
-                        let vi = env.mon_bus_node_v(j, nodes[0]);
-                        let vj = env.mon_bus_node_v(j, nodes[1]);
-                        (vi - vj) * scale
-                    } else {
-                        let node = nodes.first().copied().unwrap_or(0);
-                        env.mon_bus_node_v(j, node) * scale
-                    }
-                })
-                .collect();
+            let mut cbuffer: Vec<Complex64> = Vec::with_capacity(self.mon_buses.len());
+            for j in 0..self.mon_buses.len() {
+                // dss_capi 0.15.x C8 (l.1596-1601): a `MonBus` name that does not
+                // resolve to a real bus aborts the solve (#2024112) instead of
+                // silently reading the ground node's zero voltage.
+                if env.mon_bus_unresolved(j) {
+                    env.push_error(format!(
+                        "MonBus.InvControl.{}: Invalid bus \"{}\" found. Aborting.",
+                        self.ccd.cd.obj.name(),
+                        self.mon_buses[j]
+                    ));
+                    env.request_solution_abort();
+                    return 0.0;
+                }
+                let nodes = &self.mon_buses_nodes[j];
+                // FMonBusesVbase[j+1] (Pascal 1-based) = mon_buses_vbase[j]. Pascal
+                // divides unconditionally (l.1609/1613, with its own
+                // `// TODO: NIL check?`); `.get` only guards the OOB index, which
+                // never happens (mon_buses_vbase is sized to the same MonBus count).
+                let vbase = self.mon_buses_vbase.get(j).copied().unwrap_or(0.0);
+                let scale = basekv * 1000.0 / vbase;
+                let c = if nodes.len() == 2 {
+                    let vi = env.mon_bus_node_v(j, nodes[0]);
+                    let vj = env.mon_bus_node_v(j, nodes[1]);
+                    (vi - vj) * scale
+                } else {
+                    let node = nodes.first().copied().unwrap_or(0);
+                    env.mon_bus_node_v(j, node) * scale
+                };
+                cbuffer.push(c);
+            }
             return reduce_mon_phase(&cbuffer, self.mon_buses_phase);
         }
 
-        let mags = env.der_vterminal_mags(self.fleet[i]);
-        let n = self.ctrl_vars[i].nphases_der.min(mags.len());
+        // Pascal `GetMonVoltage`'s self-monitoring path (l.1643-1658): build the
+        // per-node complex buffer `cBuffer[1..numNodes]`, then reduce by
+        // `MonVoltageCalc`. For a WYE DER `cBuffer[j] = Vterminal[j]`; for a DELTA
+        // DER it is the line-to-line difference `Vterminal[j] -
+        // Vterminal[NextDeltaPhase(j)]` (dss_capi 0.15.x D4). `NextDeltaPhase(j)`
+        // is 1-based `j+1`, wrapping to 1 past `NCondsDER`.
+        let vterm = env.der_vterminal(self.fleet[i]);
+        let is_delta = env.der_is_delta(self.fleet[i]);
+        let nconds = self.ctrl_vars[i].nconds_der;
+        let numnodes = self.ctrl_vars[i].nphases_der.min(vterm.len());
+        let mags: Vec<f64> = (0..numnodes)
+            .map(|jj| {
+                if is_delta {
+                    // 0-based NextDeltaPhase: 1-based `j = jj+1`, next `= j+1 = jj+2`
+                    // (→ 1 if `> nconds`); back to 0-based: `jj+1`, or `0` on wrap.
+                    let next0 = if jj + 2 > nconds { 0 } else { jj + 1 };
+                    (vterm[jj] - vterm.get(next0).copied().unwrap_or(Complex64::ZERO)).norm()
+                } else {
+                    vterm[jj].norm()
+                }
+            })
+            .collect();
+        let n = mags.len();
         match self.mon_buses_phase {
             super::AVGPHASES => {
                 if n == 0 {
                     0.0
                 } else {
-                    mags[..n].iter().sum::<f64>() / n as f64
+                    mags.iter().sum::<f64>() / n as f64
                 }
             }
-            MAXPHASE => mags[..n].iter().copied().fold(0.0, f64::max),
-            MINPHASE => mags[..n].iter().copied().fold(1.0e50, f64::min),
+            MAXPHASE => mags.iter().copied().fold(0.0, f64::max),
+            MINPHASE => mags.iter().copied().fold(1.0e50, f64::min),
             // A specific (1-based) phase.
             p => {
                 let idx = (p - 1) as usize;
@@ -1849,12 +1895,18 @@ impl InvControl {
     /// flow loop (`UpdateAll`).
     pub(crate) fn update_inv_control(&mut self, env: &mut dyn InvDispatchEnv) {
         self.ensure_fleet(env); // lazy build (Pascal `if FDERPointerList.Count = 0`)
-        // Update the solution index once (Pascal gates on j=1, i=1; for a single
-        // InvControl — every gated case — `i=1`, so the bump is unconditional here.
-        // The multi-InvControl `i=1`-only quirk needs the element-list index the
-        // per-element env doesn't carry; unobservable, only the hysteresis path).
-        if self.f_vpu_solution_idx == 2 {
-            self.f_vpu_solution_idx = 1;
+        // Advance the 2-slot buffer cursor **once per `UpdateInvControl` pass**,
+        // unconditionally — the dss_capi 0.15.x `InvControlDeltaV` fix (Pascal
+        // l.2524-2531, default `CompatFlags & InvControlDeltaV == 0`). 0.14.5 gated
+        // the bump on `(j=1) and (i=1)` where `i` is the InvControl's element-list
+        // index, so ONLY the first InvControl in the circuit ever advanced its
+        // cursor (leaving every other control's `voltagechangesolution` latched at
+        // 0 → wrong volt-var hysteresis). Each InvControl object here owns its own
+        // cursor and `update_all_inv_controls` calls this once per object per time
+        // step, so the per-control fix falls out naturally. Adopted; EPRI r4133
+        // keeps the 9-year-old bug (ledger L1, docs/upgrade/DIVERGENCES.md).
+        if self.f_vpu_solution_idx == 1 {
+            self.f_vpu_solution_idx = 0;
         } else {
             self.f_vpu_solution_idx += 1;
         }
@@ -1892,12 +1944,16 @@ impl InvControl {
             self.ctrl_vars[j].f_avr_operation = 0.0;
             self.ctrl_vars[j].f_delta_p_factor = DELTAPDEFAULT;
 
-            // Pascal `BasekV := CtrlVars[i].FVBase / 1000.0` — `i` is the InvControl's
-            // element-list index (1 for the single-InvControl gated case), so this is
-            // CtrlVars[1]'s vbase = `ctrl_vars[0]` (the `//TODO: check (i, j)`
-            // upstream quirk: it does NOT use the per-DER `j`; identical for a
-            // homogeneous fleet — the only gated shape).
-            let basekv = self.ctrl_vars[0].f_vbase / 1000.0;
+            // Pascal `BasekV := FVBase / 1000.0` inside `with CtrlVars[j]` — the
+            // per-DER base voltage (dss_capi 0.15.x D2 cross-leak fix, l.2550).
+            // 0.14.5 read `CtrlVars[i].FVBase` where `i` is the InvControl's
+            // element-list index (its `//TODO: check (i, j)` bug), so DER #i's
+            // vbase leaked into every DER's monitored-bus renormalization; for a
+            // single control this collapsed to `CtrlVars[1]` = the first DER's
+            // vbase for all DERs. Now each DER uses its own `FVBase` — only
+            // observable for a heterogeneous-vbase fleet under `MonBus` (the
+            // renormalization site in `GetMonVoltage`); see ledger row D2.
+            let basekv = self.ctrl_vars[j].f_vbase / 1000.0;
             self.ctrl_vars[j].prior_roll_avg_window = self.ctrl_vars[j].f_roll_avg_window.avg_val();
             self.ctrl_vars[j].prior_drc_roll_avg_window =
                 self.ctrl_vars[j].f_drc_roll_avg_window.avg_val();
@@ -1914,7 +1970,7 @@ impl InvControl {
                 .add(solnvoltage, dyna_h, drc_len);
 
             let bus_vbase = env.der_bus_vbase(self.fleet[j]);
-            if idx < 3 {
+            if idx < 2 {
                 self.ctrl_vars[j].f_vpu_solution[idx] = if bus_vbase != 0.0 {
                     solnvoltage / bus_vbase
                 } else {
@@ -1969,11 +2025,12 @@ impl InvControl {
         // history yet).
         let mut voltage_change_solution = 0.0;
         if (env.dbl_hour() * 3600.0 / env.dyna_h()) >= 3.0 {
+            // Pascal l.2993-2997 (0.15.x): the 2-slot buffer, `idx` 0↔1.
             let fv = &self.ctrl_vars[j].f_vpu_solution;
-            if self.f_vpu_solution_idx == 1 {
-                voltage_change_solution = fv[1] - fv[2];
-            } else if self.f_vpu_solution_idx == 2 {
-                voltage_change_solution = fv[2] - fv[1];
+            if self.f_vpu_solution_idx == 0 {
+                voltage_change_solution = fv[0] - fv[1];
+            } else if self.f_vpu_solution_idx == 1 {
+                voltage_change_solution = fv[1] - fv[0];
             }
         }
 
@@ -2030,8 +2087,9 @@ impl InvControl {
     }
 
     /// Pascal `Check_Qlimits(j, Q)` — clamp Q (pu) to the current kvar limit and,
+    /// (`pub(super)` for the D3 watt-priority sqrt-guard unit test).
     /// under watt priority, the kVA-available headroom; records `FVVOperation`.
-    fn check_qlimits(&mut self, j: usize, q: f64) {
+    pub(super) fn check_qlimits(&mut self, j: usize, q: f64) {
         let cv = &mut self.ctrl_vars[j];
         // Error band (Pascal: VOLTVAR/WATTPF/WATTVAR/AVR/VV_DRC/VV_VW = 0.005,
         // DRC = 0.0005; VOLTVAR/WATTPF/AVR/VV_VW/DRC/VV_DRC reach `Check_Qlimits`.
@@ -2081,14 +2139,26 @@ impl InvControl {
         if cv.f_p_priority
             && (self.reac_power_ref == REAC_POWER_VARMAX || self.control_mode == WATTPF)
         {
+            // dss_capi 0.15.x D3 (r4056, `InvControl.pas` l.3442-3446): guard
+            // `SQR(kVArating) - SQR(presentkW)` — a near-cancellation that can go
+            // tiny-NEGATIVE in f64 — against `Sqrt(<0) = NaN` by zeroing the
+            // radicand when `|radicand| < EPSILON`. `EPSILON` is Pascal
+            // `DSSGlobals.EPSILON = 1e-12` (crate::util::EPSILON), NOT f64::EPSILON
+            // (~2.2e-16) — the same identifier also fixes the neighbouring
+            // `|Q_Ppriority| < epsilon` guard below (l.3456), which the r3723 port
+            // mis-mapped to f64::EPSILON.
+            let mut qavailable_sqr = cv.f_kva_rating.powi(2) - cv.f_present_kw.powi(2);
+            if qavailable_sqr.abs() < EPSILON {
+                qavailable_sqr = 0.0;
+            }
             let q_ppriority = if q >= 0.0 {
-                (cv.f_kva_rating.powi(2) - cv.f_present_kw.powi(2)).sqrt() / cv.q_headroom
+                qavailable_sqr.sqrt() / cv.q_headroom
             } else {
-                (cv.f_kva_rating.powi(2) - cv.f_present_kw.powi(2)).sqrt() / cv.q_headroom_neg
+                qavailable_sqr.sqrt() / cv.q_headroom_neg
             };
             if q_ppriority.abs() < cv.q_desire_limitedpu.abs() && q_ppriority.abs() < q.abs() {
                 f_operation = 0.6 * pas_sign(q);
-                if q.abs() < (0.01 / 100.0) || q_ppriority.abs() < f64::EPSILON {
+                if q.abs() < (0.01 / 100.0) || q_ppriority.abs() < EPSILON {
                     f_operation = 0.0;
                 }
                 cv.q_desire_limitedpu = q_ppriority * pas_sign(q);

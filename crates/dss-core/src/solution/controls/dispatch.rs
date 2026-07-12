@@ -23,6 +23,7 @@ use crate::elements::control::storage_controller::{
 use crate::elements::control::swt_control::SwtControl;
 use crate::elements::control::upfc_control::{UpfcControl, UpfcDispatchEnv};
 use crate::elements::pc::generator::Generator;
+use crate::elements::pc::inv_based_pce::Connection as InvConnection;
 use crate::elements::pc::pvsystem::{PVSystem, VARMODE_KVAR};
 use crate::elements::pc::storage::{STORE_EXTERNALMODE, Storage};
 use crate::elements::pc::upfc::Upfc;
@@ -386,6 +387,7 @@ pub(super) fn dispatch_control(
                 t,
                 loads_need_updating,
                 system_y_changed,
+                solution_abort,
                 ..
             } = &mut ckt.solution;
             let mut env = InvDispEnv {
@@ -407,6 +409,7 @@ pub(super) fn dispatch_control(
                 dbl_hour: sys.dbl_hour,
                 loads_need_updating,
                 system_y_changed,
+                solution_abort,
             };
             match op {
                 ControlOp::Sample => ic.sample(&mut env),
@@ -1704,6 +1707,7 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
         t,
         loads_need_updating,
         system_y_changed,
+        solution_abort,
         ..
     } = &mut ckt.solution;
 
@@ -1751,6 +1755,7 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
                 dbl_hour: sys.dbl_hour,
                 loads_need_updating: &mut *loads_need_updating,
                 system_y_changed: &mut *system_y_changed,
+                solution_abort: &mut *solution_abort,
             };
             ic.update_inv_control(&mut env2);
         }
@@ -1788,6 +1793,7 @@ struct InvDispEnv<'a> {
     dbl_hour: f64,
     loads_need_updating: &'a mut bool,
     system_y_changed: &'a mut bool,
+    solution_abort: &'a mut bool,
 }
 
 impl InvDispEnv<'_> {
@@ -1897,12 +1903,23 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         self.store.obj(r).as_any().is::<PVSystem>()
     }
 
-    fn der_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {
+    fn der_vterminal(&mut self, r: ElemRef) -> Vec<Complex64> {
         let elem = self.store.ckt_elem_mut(r);
         elem.cd_mut().compute_vterminal(self.node_v);
         let cd = elem.cd();
         let n = cd.nphases;
-        (0..n).map(|i| cd.vterminal[i].norm()).collect()
+        cd.vterminal[..n].to_vec()
+    }
+
+    fn der_is_delta(&self, r: ElemRef) -> bool {
+        let obj = self.store.obj(r);
+        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+            pv.base.connection == InvConnection::Delta
+        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+            st.base.connection == InvConnection::Delta
+        } else {
+            false
+        }
     }
 
     fn der_bus_vbase(&self, r: ElemRef) -> f64 {
@@ -1920,6 +1937,17 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             .map(|r| r[node as usize - 1])
             .unwrap_or(0);
         self.node_v.get(global).copied().unwrap_or(Complex64::ZERO)
+    }
+
+    fn mon_bus_unresolved(&self, j: usize) -> bool {
+        // `mon_bus_refs[j]` is `ckt.buses[Find(name)].ref_no` — empty exactly when
+        // `BusList.Find(FMonBuses[j]) = 0` (unknown bus). Matches Pascal's
+        // `FMonBusesIndex = 0` invalid-bus test.
+        self.mon_bus_refs.get(j).is_none_or(|r| r.is_empty())
+    }
+
+    fn request_solution_abort(&mut self) {
+        *self.solution_abort = true;
     }
 
     fn der_full_name(&self, r: ElemRef) -> String {

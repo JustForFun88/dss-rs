@@ -402,3 +402,69 @@ every fix lands in-place rather than as forward churn:
   `4Bus-DY-Bal` Q ≈ 8.5e-8 rel) sit near the f64 floor. Rust now emits the capi015
   numbers so each flip is correct; no case dropped coverage. No defect — recorded
   as-is.
+
+### WP-U1.3 (InvControl cluster) — branch `wp-u13`, 2026-07-12
+
+**Six spec rows settled** (D1/D2/D3/D4/D5 + C8) — ledger
+`docs/upgrade/DIVERGENCES.md` §L1/D2/D3/D4/D5/C8. Spec = `dss_capi_with_git`
+`InvControl.pas` diffed against 0.14.5. Oracle = capi015 (probes cross-checked
+vs oddie r4133 for the L1 arbitration).
+
+- **D1 / ledger L1 — InvControlDeltaV per-control 2-slot buffer (adopt fix;
+  r4133 keeps a 9-year bug).** `EPRI r4133` (and 0.14.5) only advance the FIRST
+  InvControl's `FVpuSolution` cursor (gated on element-list `i=1`), so a 2nd+
+  control's `voltagechangesolution` latches at 0 → its volt-var hysteresis is
+  wrong. Probe `scratch_probe_l1.py`: capi015 pv2 settles at −14.01 kvar, r4133
+  oscillates −9.2/−12.8/…; pv1 identical. The r3723 port already computed the
+  fixed value (it toggles each object's own cursor unconditionally — it never
+  had the `i=1` gating); this WP makes the **buffer form** faithful to 0.15.x
+  (`[f64;2]`, init −1, toggle 0↔1) — numerically identical, no deck/golden moves.
+  Pinned by the feature-sensitive unit test
+  `d1_buffer_2slot_tracks_last_two_pu_voltages` + a snapshot capi015 multi-DER
+  deck (`invcontrol/invcontrol_multi_vv_wye.dss`). The hysteresis divergence
+  itself is **not** live-gatable (see the capi015-multi-step note below).
+- **D2 — per-DER base-voltage cross-leak (adopt).** `UpdateInvControl` now
+  renormalizes each DER's MonBus voltage by ITS OWN `FVBase`
+  (`ctrl_vars[j].f_vbase`, was `ctrl_vars[0]`). No-op for non-MonBus /
+  homogeneous fleets (every corpus InvControl is self-monitored). Unit-pinned
+  (`d2_update_uses_per_der_basekv_not_first_der`).
+- **D3 — watt-priority `Sqrt(kVA²−kW²)` guard (adopt).** Guard the radicand
+  `|.|<EPSILON=1e-12 → 0` before `Sqrt` (was `Sqrt(<0)=NaN`); the same
+  `EPSILON` fixes the neighbouring guard the r3723 port had as `f64::EPSILON`.
+  Unit-pinned (`d3_watt_priority_sqrt_guard_zeroes_tiny_negative_radicand`).
+- **D4 — delta-DER monitored voltage is line-to-line (adopt, capi015==r4133).**
+  A delta controlled DER now monitors LL (`Vterminal[j]−Vterminal[next]`), not
+  LN. Probe `scratch_probe_d4.py`: the LL/LN gap flips the var SIGN (+520 vs −31
+  kvar). New snapshot capi015 deck `invcontrol/invcontrol_vv_delta.dss`;
+  unit-pinned by `d4_delta_der_monitors_line_to_line_voltage` (a balanced delta
+  reads √3·pu via the LL path) + its wye control `d4_wye_der_monitors_line_neutral_voltage`.
+  Two
+  default-oracle decks provably moved: `midi_controls`/`midi_invcontrol` each had
+  a delta `pv3` under an InvControl — they are multi-step + carry unported
+  U1.5/U1.6 control deltas, so they cannot flip to capi015; `pv3` is changed to
+  `conn=wye` in both (documented at the site), the delta coverage moving to the
+  dedicated deck. `gfm_invcontrol` unaffected (GFM ignores the monitored voltage).
+- **D5 — InvControl9611: not a delta for us.** The compat flag is OFF-by-default
+  in both 0.14.5 and 0.15.x; the r3723 port already reproduces the fixed branch
+  (`update_deltaq_factor`). No code change.
+- **C8 — (a) `VV_RefReactivePower` removal NOT adopted; (b) MonBus validations
+  adopted.** (a) capi015 removes the property (#110 on write, 36 props); **r4133
+  KEEPS it** (probe: 37 props, readback `varmax`) as does 0.14.5 — so per the
+  plan's "r4133 wins" default the port **keeps** it (adopting the removal would,
+  via the controls-family `compare_all_properties` count check, force the
+  combo/midi InvControl decks onto capi015 and entangle unported U1.5/U1.6
+  deltas — out of proportion; recorded as a not-adopted divergence). (b) the two
+  MonBus guards (#2024111 missing-nodes at parse, #2024112 invalid-bus solve
+  abort) ARE ported (capi015-specific messages, fire only on malformed input, 0
+  corpus MonBus uses); unit-pinned.
+
+**Oracle-infra finding (follow-up).** The **capi015 oracle cannot gate a
+multi-step deck**: `oracle_server.run_case`'s per-step capture re-nominalizes
+time-varying elements (loads/PV shapes read their step-0/nominal value while
+`dbl_hour` advances) — witnessed `scratch_probe_srv3.py` (capi015 stuck at
+nominal; default 0.14.5 steps correctly). All 18 pre-existing capi015 corpus
+cases are `n_steps=1` for this reason; both WP-U1.3 capi015 decks are snapshots.
+The D1 time-series hysteresis divergence is therefore unit-test-pinned, not
+live-gated. A dedicated fix (capture element/injection state before the
+`getYSparse`/fingerprint that re-nominalizes) would unlock multi-step capi015 for
+future WPs — logged for the oracle-infra owner, out of WP-U1.3 scope.

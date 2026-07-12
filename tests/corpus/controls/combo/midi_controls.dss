@@ -102,7 +102,13 @@ new capacitor.cdel phases=3 bus1=bb13 conn=delta kvar=300 kv=12.47
 new reactor.rsh phases=1 bus1=bb4.3 kvar=120 kv=7.2
 
 ! --- DER pocket at the feeder end ---
-new pvsystem.pv3 phases=3 bus1=l9e conn=delta kv=12.47 kva=600 pmpp=500
+! pv3 is wye: WP-U1.3 row D4 makes a DELTA controlled DER monitor line-to-line
+! voltages (a capi015/r4133 behavior); this deck stays 0.14.5-gated (its
+! CapControl/RegControl/StorageController carry unported U1.5/U1.6 deltas, so it
+! cannot flip to capi015), and the multi-step capi015 oracle cannot gate a
+! time-series deck anyway. The delta-DER-under-InvControl (D4) coverage lives in
+! the dedicated capi015 snapshot deck invcontrol/invcontrol_vv_delta.dss.
+new pvsystem.pv3 phases=3 bus1=l9e conn=wye kv=12.47 kva=600 pmpp=500
 ~ irradiance=0.9 pf=0.98
 new pvsystem.pv1 phases=1 bus1=l6m.2 kv=7.2 kva=150 pmpp=120 irradiance=0.85 pf=1
 new storage.st1 phases=3 bus1=l9e kv=12.47 kwrated=400 kva=400 kwhrated=1600

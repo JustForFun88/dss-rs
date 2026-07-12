@@ -2,6 +2,28 @@
  "comment": "Controls live gate decks (CONTROL_COVERAGE_PLAN.md): control/protection/metering elements in symmetric, asymmetric, and combination scenarios, live-compared by controls_cases_match_oracle with the full-model mandate plus element-specific state channels (probes / compare_variables / compare_eventlog / compare_ctrlqueue / check_meters_monitors). Cases with pending=true cover features the port does not implement yet (absorbed from the former gaps/ staging family, GAPS_PLAN.md section 3.1): the gate asserts the Rust engine errors loudly on them; the WP in each wp field flips pending=false when it ports the feature.",
  "cases": [
   {
+   "path": "invcontrol/invcontrol_multi_vv_wye.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "compare_eventlog": true,
+   "oracle": "capi015",
+   "note": "WP-U1.3 / ledger L1 (InvControlDeltaV per-control 2-slot buffer). TWO InvControls on separate wye PVSystems (different monitored buses), both VOLTVAR, single snapshot. This deck is revision-insensitive: pv1/pv2 kvar are byte-identical on 0.14.5 and capi015 (probed -- the D1 buffer refactor is a proven numeric no-op in a snapshot), so it does NOT witness the D1 divergence live. The D1 time-series bug (shared FVpuSolutionIdx, only bites the 2nd+ control over a multi-step hysteresis run the capi015 oracle cannot re-nominalize -- STATUS/ledger L1) is pinned by the unit test d1_buffer_2slot_tracks_last_two_pu_voltages. What this deck gates is the generic multi-InvControl fleet build + independent per-control dispatch (pv1 kvar != pv2 kvar proves each control resolves its own DER / monitored voltage / curve Q); kept on capi015 to stay aligned with the WP-U1.3 target engine. Full-model per-element compare + event log, n_steps=1."
+  },
+  {
+   "path": "invcontrol/invcontrol_vv_delta.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "compare_eventlog": true,
+   "oracle": "capi015",
+   "note": "WP-U1.3 / row D4 (delta-DER LL monitored voltage). A DELTA-connected PVSystem under VOLTVAR: 0.15.x monitors line-to-line terminal voltages (InvControl.pas l.1647-1652), 0.14.5 used line-neutral. Feature-sensitive: LL vs LN flips the curve point and the var SIGN (probe scratch_probe_d4.py: capi015/r4133 Q=+520 kvar vs 0.14.5 -31 kvar). r4133==capi015 here. Gated capi015; per-step pv1 kvar (full-model) + event log exact."
+  },
+  {
    "path": "regcontrol/regcontrol_sym.dss",
    "kind": "micro",
    "n_steps": 24,

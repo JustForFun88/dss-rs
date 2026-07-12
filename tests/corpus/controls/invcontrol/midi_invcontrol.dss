@@ -122,7 +122,11 @@ new load.ld23 bus1=bb6 phases=3 conn=wye model=3 kv=12.47 kw=280 pf=0.94 vminpu=
 new load.ld24 bus1=bb11.2 phases=1 conn=wye model=1 kv=7.2 kw=160 pf=0.93 vminpu=0.85 daily=day
 
 ! Combined volt-var + volt-watt over the two feeder-end PVs.
-new pvsystem.pv3 phases=3 bus1=l9e conn=delta kv=12.47 kva=600 pmpp=500
+! pv3 is wye: WP-U1.3 row D4 makes a DELTA controlled DER monitor line-to-line
+! voltages (capi015/r4133); this multi-step deck stays 0.14.5-gated (the capi015
+! oracle cannot gate a time-series deck -- STATUS WP-U1.3). The delta-DER-under-
+! InvControl (D4) coverage lives in invcontrol/invcontrol_vv_delta.dss.
+new pvsystem.pv3 phases=3 bus1=l9e conn=wye kv=12.47 kva=600 pmpp=500
 ~ irradiance=0.9 pf=1.0
 new pvsystem.pv1 phases=1 bus1=l6m.2 kv=7.2 kva=150 pmpp=120 irradiance=0.85 pf=1
 new xycurve.vw npts=3 yarray=(1 1 0) xarray=(1.0 1.005 1.1)
