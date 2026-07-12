@@ -796,6 +796,42 @@ collapse. `midi_d7_gap_stable_under_tighten` / `macro_d7_gap_stable_under_tighte
 (`tests/adiakoptics.rs`) assert the Rust loose/tight ratio stays in `[0.5, 2.0]`; a
 gap that *collapses* would flag a cross-step state leak, a *balloon* a port bug.
 
+**WP-AD.4 corpus sweep tier (`AD_SWEEP_TIER = 2e-3`, `corpus_ad_matches_normal_mode`).**
+The per-fixture D7 tiers above are individually calibrated for the synthesized
+midi/macro fixtures. The corpus-wide sweep compares AD↔normal (snapshot,
+name-keyed node V) across ~420 heterogeneous decks rust-vs-rust; it uses ONE
+conservative ceiling every eligible (`pf`) deck clears empirically — `2e-3`, ~15×
+the macro fixture floor, still far below any physical significance so a real port
+bug blows straight past it. A deck whose measured gap exceeds it is classified
+`off:<specific-reason>` in `ad_sweep.json` / the family manifests, **never**
+tolerance-widened (§5). The tier is the sweep's coarse net; the tight per-fixture
+D7 tiers remain the fine-grained equivalence proof.
+
+**Sweep finding — the canonical-feeder gap is the D7 round-trip (save) leg, not
+AD.** The standard feeders (IEEE13/34/37/123, 8500-Node, StoCtrl, VSConverter,
+SolarRamp, …) show 2–66 % AD-vs-normal snapshot gaps — *far* above the fixture
+floor. The `DSS_AD_DECOMPOSE` probe splits each into the two D7 legs and proves
+the gap is **entirely** leg 1 (`save circuit` fidelity: original-solved-normally
+vs saved `Master_Interconnected.dss`-solved-normally), while leg 2 (the AD stitch
+proper: interconnected-normal vs AD) is clean at the fixture floor:
+
+| deck | leg 1 (save round-trip) | leg 2 (AD proper) |
+|---|---|---|
+| IEEE13Nodeckt | 5.88e-2 | **1.63e-6** |
+| ieee37 | 1.16e-1 | **1.28e-5** |
+| 123Bus Run_YearlySim | 6.25e-2 | **7.96e-6** |
+| 8500-Node Voltage_Profile | 2.54e-1 | **7.6e-6** |
+
+So the AD engine reproduces the interconnected solve to the fixture floor on the
+real corpus too; the gap is a `save circuit` regulator/transformer-state (and
+LineGeometry/WireData/relative-file) fidelity gap — fixed in save, not AD (exactly
+D7's round-trip-leg guidance). These decks are `off:save-roundtrip-*` in the
+manifests. Genuine AD-leg exceptions are narrow and separately labelled:
+`off:ad-floor-above-tier` (IEEE34's long-radial stitch floor ≈2.1e-3, just over
+the tier — a real floor, not widened) and `off:ad-islanded-divergence` (Microgrid/
+ISource, GFM-8500 snapshot: source-free islanded topologies where the AD leg
+itself diverges — leg 2 = 2.0 / 7.4e-2).
+
 **Documented deviation** (`ad_solve_into_parent`): official freezes each child's
 own `NodeV` at its state-2 standalone solve (probe: actor-3 `NodeV` moves `0.0`
 across the AD solve; that state-2 solve is already 7.9e-5 from interconnected via

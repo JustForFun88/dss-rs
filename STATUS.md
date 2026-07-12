@@ -9,6 +9,58 @@
 
 Last updated: 2026-07-12.
 
+**WP-AD.4 — corpus-wide AD↔normal sweep (branch `wp-ad4`, 2026-07-12).** The
+user-mandated A-Diakoptics gate. Two parts landed:
+
+- **Child `DO_CTRL_ACTIONS` fan-out + `GETCTRLMODE`** (the explicit AD.3 deferral).
+  `ad_check_controls` now ports the official `CheckControls` AD branch
+  (Solution.pas:1248, ActorID=1): the coordinator fans `DO_CTRL_ACTIONS` to each
+  child (`sample_do_control_actions` + `check_fault_status` + child-Y rebuild) and
+  ANDs their `ControlActionsDone`, instead of sampling its own (controls-off)
+  controls. `set controlmode=`/`maxcontroliter=` on the AD coordinator now fans
+  `GETCTRLMODE` to the children (`exec/set_cmd.rs`). Controls-off decks unchanged.
+- **The sweep** (`corpus_ad_matches_normal_mode`, rust-vs-rust, always-on): every
+  `solvable_now` entry (`manifests/ad_sweep.json`, bijective) **and** every family
+  deck (mandatory `ad` field, loader-enforced) carries a disposition
+  `full|pf|off:<specific-reason>`. `pf`/`full` decks are solved both ways and
+  node-V compared at `AD_SWEEP_TIER=2e-3` (Torn_Circuit → per-case temp datapath,
+  never the vendored deck). Population: **37 pf** (26 corpus + 11 family), 0
+  `full`, 382 `off` (of 419); **zero `off:unclassified`**. Sweep wall-time **~22s**
+  (no cap needed). Dispositions are evidence-backed (`DSS_AD_CLASSIFY` probe +
+  `DSS_AD_DECOMPOSE` D7 leg split).
+
+**Headline finding (AD engine vindicated).** The canonical feeders (IEEE13/34/37/
+123, 8500-Node, …) show 2–66 % AD-vs-normal gaps, but the D7 decomposition proves
+the gap is **100 % the save round-trip leg** (`Master_Interconnected.dss` reload
+loses regulator/transformer/geometry/relative-file fidelity) while the AD leg
+proper is clean at the fixture floor (IEEE13 leg1=5.9e-2 vs leg2 AD=**1.6e-6**;
+ieee37 1.16e-1 vs **1.3e-5**; 8500 2.5e-1 vs **7.6e-6**). These are `off:save-
+roundtrip-*` — a save-circuit gap to fix in save, not AD (per D7). Off-class
+census (specific, categorized): non-3ph-cut-only 106+68, save-roundtrip-*
+68+10, ad-nonconvergent 28+21, already-torn-artifact 18, too-small 11+18,
+ad-singular-zone 6+1, ad-floor-above-tier 3, ad-islanded-divergence 2,
+mode-outside-AD-scope 1, plus a handful of family-only classes.
+
+**Bugs found (open items for follow-up, NOT this WP's gate):** (1) the save
+round-trip fidelity gap above (regulator/transformer state + LineGeometry/WireData
+ordering + relative data-file paths not preserved through `Master_Interconnected`
+save/reload) blocks promoting ~68 corpus feeders from `off:save-roundtrip-*` to
+`pf` — a save-circuit task. (2) Two family sensor decks (`controls/sensor/
+{sensor_map,midi_sensor}`) **panic** ("index out of bounds: len 0 index 0") inside
+the AD arm — a latent AD-with-sensors crash (classified `off:ad-probe-panic`).
+(3) ~49 corpus + 22 family decks are `off:ad-nonconvergent`/`ad-singular-zone`/
+`ad-divergent` — many likely downstream of the corrupted interconnected save, but
+un-decomposed here. **Deliberate scope decision:** no deck was promoted to `full`
+(the plan's `full` = eventlog-equality proof for zone-local controls needs child-
+eventlog plumbing not built here); all control decks are `pf` (physics-only,
+controls-off both arms) or `off`. The child fan-out is still ported + exercised on
+the controls-off path.
+
+- **AD-master migration (EPRI_Ckt5-G/7-G, IEEE_123_Bus-G, ckt24 masters) + D9(d)
+  `oracle:"r3723"` cases: NOT done** (budget). These stay in `skipped_oracle_issue`/
+  `skipped_needs_investigation`. Migrating them needs the r3723 Oddie AD-replay
+  compare (D9d) which was not reached; flagged for a follow-up.
+
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a
 pure move — **no deck content changed** (every family deck is self-contained;
@@ -642,10 +694,10 @@ SOLVE_AD2); `ad_init_actors` = `INIT_ADIAKOPTICS` (`Start_Diakoptics` for actors
 `ad_solve_into_parent` driven (were `#[allow(dead_code)]`). Newton is NOT AD-aware
 (verified: official `DoNormalSolution` only branches to `Solve_Diakoptics` on the
 fixed-point path) → an AD deck set to Newton falls through to the per-child
-fixed-point, documented. The child `DO_CTRL_ACTIONS` fan-out is WP-AD.4 — the
-WP-AD.3/D7 gates run `controlmode=off`; `ad_check_controls` currently samples the
-coordinator's controls (benign for controls-off; the faithful AD-branch child
-delegate is a WP-AD.4 item, flagged for auditors).
+fixed-point, documented. The child `DO_CTRL_ACTIONS` fan-out was deferred to
+WP-AD.4 — **now landed** (`ad_check_controls` ports the official AD branch: the
+coordinator fans `DO_CTRL_ACTIONS` to the children + ANDs their
+`ControlActionsDone`; see the WP-AD.4 record at the top of §1).
 
 **r3723 Oddie probe (re-run by the resume executor, own transcript, 2026-07-12;
 `solve mode=snap`, `controlmode=off`, `Num_SubCircuits=2`; scripts in scratchpad
