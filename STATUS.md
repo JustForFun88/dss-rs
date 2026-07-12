@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-12 (WP-U1.1 items 3-5 — AllowNoneItem, TCC_Curve.none, C11 class activation; records below).
+Last updated: 2026-07-12 (WP-U1.1 items 2-5 settle — Set Object fall-back fix, DoubleSymMatrix reject test, refutations/UB notes; records below).
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
@@ -3261,9 +3261,41 @@ r4133 each disagree in ways that can't be gated — documented per §1.4); they 
 pinned by feature-sensitive Rust unit tests, the honest gate for a behavior neither
 oracle can drive.
 
-**Next (resume point):** WP-U1.1 items 1–5 all landed. Next WP is U1.2 (numeric
-long tail) per the plan; U1.4 owns the conductor-list-with-`none` numerics that
-this item's plumbing enables.
+**Settle pass (items 2-5 audit, 2026-07-12).** Eight findings triaged empirically
+(capi015 0.16.0b2 + 0.14.5 probes; `SetObject`/`SetObjectClass` are byte-identical
+across the delta, so the Pascal at `.inputs/dss_capi` is authoritative):
+- **`Set Object=badclass.l1` fall-back — FIXED.** `set_object` aborted on an
+  unknown class qualifier; Pascal (and both oracles, probed) instead log #903, keep
+  `LastClassReferenced`, and resolve the name against the previous class (`→Line.l1`).
+  `set_object` now mirrors `do_select_cmd`; a NIL class emits #905. New test
+  `set_object_unknown_class_qualifier_falls_back`. This also witnesses item-5's
+  bare-resolution against the oracle (prior "matches oracle" claim was Pascal-only).
+- **`Set Class/Object` before a circuit — REFUTED (no fix).** `DoSetCmd_NoCircuit`
+  has an `else` arm (`ExecOptions.pas:303`) emitting #301; both oracles raise #301
+  (probed). The port's catch-all already emits #301 — not a silent no-op.
+- **DoubleSymMatrix reject arm — TEST ADDED.** New
+  `line_fetch::incomplete_double_sym_matrix_rejected_keeps_default` (Reactor RMatrix):
+  reject error logged + stored value unset (revert), asserted via `get_f64_array`
+  because the DoubleSymMatrix *readback* is an all-zeros `TODO(compat)` bug-repro
+  that can't distinguish revert from zero-fill.
+- **`fuse_curve_none` test — CLARIFIED.** Now defines a real `TCC_Curve.tlink` and
+  snapshots the error count so the `none`-clear (#401 + revert to "", probed on both
+  oracles) is isolated from the previously-undefined-curve error.
+- **`wires=(w none)` readback — no fix (UB).** `? …wires` on a NIL slot is a capi015
+  **Access Violation** (probed); no defined oracle string, so the port's `[w, ]` is
+  a deterministic non-reproduction of the crash. Documented in the test + DIVERGENCES.
+- **3 of 4 corpus micro-decks absent (Major) — confirmed justified (no fix).** A
+  solvable, non-mismatching oracle deck is genuinely unattainable for items 2/3/4
+  (capi015 zero-fills / AVs, r4133 hangs on solve-after-reject, TCC `none` is a
+  rejection); each is documented as §1.7-unattainable in DIVERGENCES and pinned by
+  feature-sensitive unit tests — the honest gate for a behavior no oracle can drive.
+- **2 of 9 tests are regression-guards (accounting) — no fix.** `complete_sym_matrix_still_accepted`
+  and `fuse_curve_none…` guard behavior not changed by this WP; honestly labelled as
+  guards in their comments/DIVERGENCES, not counted as new-code coverage.
+
+**Next (resume point):** WP-U1.1 items 1–5 all landed (settle pass closed). Next WP
+is U1.2 (numeric long tail) per the plan; U1.4 owns the conductor-list-with-`none`
+numerics that this item's plumbing enables.
 
 ### Gate state (all green)
 ```

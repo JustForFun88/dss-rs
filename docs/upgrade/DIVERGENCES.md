@@ -235,6 +235,14 @@ new `Conductors` property, EqDist spacing, CN/TS mixing) are **WP-U1.4**. A
   yields a NIL slot with no error, while a non-`none` missing name — `nope` —
   still errors "not found"), + `dss-parser`
   `is_quoted_reflects_the_last_token_quote_state`.
+- **Readback of a NIL-slot list is UB on the oracle (settle 2026-07-12,
+  `probe_wires2.py`) — not reproduced.** `? linegeometry.g.wires` on a list
+  containing a `none` slot raises a capi015 **Access Violation** (#303 "Access
+  violation": the FPC readback dereferences the NIL wire pointer). There is thus
+  no defined oracle readback STRING to pin against; per the project UB rule the
+  port does NOT reproduce the crash — it renders `[w, ]` deterministically (NIL →
+  `""`, consistent with the probed single-ref cleared-ref `""` rendering). The
+  `conductor_list_accepts_none_entry` assertion documents this.
 - known_diffs: nothing to retire (0.14.5 errored, the port errored — no prior
   Rust↔EPRI entry).
 
@@ -303,16 +311,48 @@ yet"). Per "port gaps immediately", this WP ports them:
   element the `ActiveCktElement` (Pascal `SetActive` — was missing, so a bare
   `? prop`/`~` couldn't reach it).
 
+**Probe transcript (settle 2026-07-12 — witnessing the SetObject semantics that
+were previously derived from Pascal only; `probe_setobj.py`).** capi015 (0.16.0b2)
+and 0.14.5 are IDENTICAL on every case (`SetObject`/`SetObjectClass` are
+byte-identical in `dss_capi_with_git` across the delta):
+
+| sequence | capi015 & 0.14.5 → active ckt element / error |
+|---|---|
+| `Set Class=Line; Set Object=l2` (bare resolve) | `Line.l2` selected, no error |
+| `Set Class=Line; Set Object=badclass.l1` (unknown qualifier) | logs **#903** "Object Class badclass not found" **yet still selects `Line.l1`** (fall-back to `LastClassReferenced`) |
+| `Set Object=line.l1` (valid qualifier) | `Line.l1`, no error |
+
+**Fall-back FIX (settle 2026-07-12).** The first draft of `set_object` aborted on
+an unknown class qualifier (`class_by_name.get→None→return false`), diverging from
+the transcript above. Pascal `SetObject` (`DSSGlobals.pas:303-353`) instead calls
+`SetObjectClass` (logs #903, its FALSE return **discarded**, `LastClassReferenced`
+unchanged), then resolves the name against the *previous* class. `set_object` now
+mirrors this (calls `set_object_class`, keeps `active_class`, falls back) exactly
+like the already-correct `do_select_cmd`; a NIL active class emits #905 "Active
+object type/class is not set." Pinned by the new
+`set_object_unknown_class_qualifier_falls_back` (bad qualifier → #903 logged AND
+`Line.l1` still selected).
+
 **Gate.** No corpus deck uses `Set Class=`/`Set Object=` (scanned — 0 hits), so
-zero mandatory-gate movement; the port is gate-safe. Pinned by
-`set_class_activates_and_set_object_selects` (Set Class activates the class; a
-bare `Set Object` resolves against it and sets `ActiveCktElement`; `Type`/`Element`
-aliases) + `set_class_unknown_errors_keeps_previous`. The observable is identical
-on capi015 and 0.14.5 (the r3875 `ActiveDSSClass` refresh is unobservable in any
-constructible sequence — `Set Object` bare-resolution reads `LastClassReferenced`,
-set in both revs), so no oracle flip is needed. Follow-up (separate `?`-command
-gap, NOT r3875): a bare `? prop` querying the ActiveCktElement is still unported
-in `do_query_cmd` — noted in STATUS, an owner for a later WP.
+zero mandatory-gate movement; the port is gate-safe. Also pinned by
+`set_class_activates_and_set_object_selects` + `set_class_unknown_errors_keeps_previous`.
+No oracle flip needed (capi015 == 0.14.5 on every case above; the r3875
+`ActiveDSSClass` refresh is unobservable — `Set Object` bare-resolution reads
+`LastClassReferenced`, set in both revs).
+
+**Before a circuit exists (settle 2026-07-12 — refuting the "silent no-op"
+concern).** `Set Class=`/`Set Object=` before any circuit route through
+`DoSetCmd_NoCircuit`, whose `else` arm (`ExecOptions.pas:303`) emits **#301** "You
+must create a new circuit object first" and `Result := FALSE` for any option it
+does not explicitly handle — it is NOT a silent no-op (the Pascal `case` DOES have
+an `else`). Probed 2026-07-12 (`probe_905.py`): `Clear; Set Class=Line` and
+`Clear; Set Object=l2` both raise #301 on capi015 AND 0.14.5. The port's
+`do_set_cmd_no_circuit` catch-all `_ =>` arm emits exactly this #301 message, so
+it already matches the oracle — no change needed.
+
+Follow-up (separate `?`-command gap, NOT r3875): a bare `? prop` querying the
+ActiveCktElement is still unported in `do_query_cmd` — noted in STATUS, an owner
+for a later WP.
 
 ## L1, L3, L4 — pending later WPs
 
