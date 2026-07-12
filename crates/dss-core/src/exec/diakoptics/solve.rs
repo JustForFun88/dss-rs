@@ -654,12 +654,56 @@ impl Dss {
         Ok(())
     }
 
-    /// Pascal `CheckControls` AD branch (Solution.pas:1132) on the coordinator:
-    /// when converged, sample + run the coordinator's control actions; controls-
-    /// off sets `control_actions_done` immediately. The child `DO_CTRL_ACTIONS`
-    /// fan-out (`SendCmd2Actors`) is WP-AD.4 (`full` control decks); WP-AD.3's
-    /// gates run controls-off.
+    /// Pascal `CheckControls` **AD branch** (Solution.pas:1248, the `ActorID = 1`
+    /// side): the coordinator does NOT sample its own controls — it fans
+    /// `DO_CTRL_ACTIONS` out to the child actors and then ANDs their
+    /// `ControlActionsDone` flags into its own. Each child runs its zone's
+    /// queued control actions against its own (re-seeded, boundary-corrected)
+    /// `NodeV`; a `full`-disposition deck is one whose controlled element +
+    /// controller + monitored element land in a single zone, so the child fan-out
+    /// reproduces the whole-circuit control loop. (WP-AD.3 fixtures run
+    /// controls-off, where every child's `Sample_DoControlActions` is the
+    /// immediate `CONTROLSOFF → ControlActionsDone := TRUE` no-op, so the AND is
+    /// trivially TRUE and the loop exits after one control iteration — identical
+    /// to the previous coordinator-self-sample behavior.)
+    ///
+    /// Note the AD branch has no `ConvergedFlag` gate (unlike the non-AD branch)
+    /// and no coordinator `BuildYMatrix` — the children rebuild their own `Y`
+    /// inside `DO_CTRL_ACTIONS` (the enqueued `CHECKYBUS`), and the coordinator's
+    /// AD boundary matrices stay at their tear-time linearisation. Reproduced 1:1.
     fn ad_check_controls(&mut self) -> SolveResult {
+        let (control_iteration, max_control_iterations) = {
+            let coord = self.circuit.as_ref().ok_or("no coordinator")?;
+            (
+                coord.solution.control_iteration,
+                coord.solution.max_control_iterations,
+            )
+        };
+        if control_iteration < max_control_iterations {
+            // SendCmd2Actors(DO_CTRL_ACTIONS): each child (actor 2..NumOfActors)
+            // samples + runs its own queued control actions.
+            for child in self.ad_children.iter_mut() {
+                child.child_do_ctrl_actions()?;
+            }
+            // ControlActionsDone := AND over the children (Solution.pas:1254-1256).
+            let mut done = true;
+            for child in &self.ad_children {
+                let c = child.circuit.as_ref().ok_or("A-Diakoptics child gone")?;
+                done = done && c.solution.control_actions_done;
+            }
+            let coord = self.circuit.as_mut().ok_or("no coordinator")?;
+            coord.solution.control_actions_done = done;
+        }
+        Ok(())
+    }
+
+    /// One child's `DO_CTRL_ACTIONS` handler (Solution.pas:3240, `TSolver.Execute`
+    /// message dispatch): `ControlActionsDone := FALSE; Sample_DoControlActions;`
+    /// then the enqueued `CHECK_FAULT` (`Check_Fault_Status`) and `CHECKYBUS` (a
+    /// `BuildYMatrix(WHOLEMATRIX, FALSE)` when a control action changed the zone
+    /// `Y`). Run in the child's own `(ckt, env)` context (plan D3 — a synchronous
+    /// coordinator method call over `ad_children`, not a thread message).
+    fn child_do_ctrl_actions(&mut self) -> SolveResult {
         let Dss {
             classes,
             circuit,
@@ -668,7 +712,9 @@ impl Dss {
             errors,
             ..
         } = self;
-        let ckt = circuit.as_mut().ok_or("no coordinator")?;
+        let ckt = circuit
+            .as_mut()
+            .ok_or("A-Diakoptics child has no circuit")?;
         let mut store = ClassStore { classes };
         let mut env = SolveEnv {
             store: &mut store,
@@ -676,18 +722,40 @@ impl Dss {
             vars,
             errors,
         };
-        if ckt.solution.control_iteration < ckt.solution.max_control_iterations {
-            if ckt.solution.converged_flag {
-                crate::solution::controls::sample_do_control_actions(ckt, &mut env)?;
-                crate::solution::faults::check_fault_status(ckt, &mut env)?;
-            } else {
-                ckt.solution.control_actions_done = true;
-            }
-        }
+        ckt.solution.control_actions_done = false;
+        crate::solution::controls::sample_do_control_actions(ckt, &mut env)?;
+        crate::solution::faults::check_fault_status(ckt, &mut env)?;
         if ckt.solution.system_y_changed {
             build_y_matrix(ckt, &mut env, BuildOption::WholeMatrix, false)?;
         }
         Ok(())
+    }
+
+    /// Pascal `SendCmd2Actors(GETCTRLMODE)` (Solution.pas:3258, issued from
+    /// `ExecOptions.pas:675/708` on `set controlmode=`/`set maxcontroliter=` while
+    /// `ADiakoptics and ActiveActor = 1`): copy the coordinator's control mode and
+    /// max-control-iterations into every child so the fan-out runs the deck's real
+    /// control mode. (At AD init the children were forced `controlmode=off`; this
+    /// is how a `full`-disposition sweep case re-asserts the deck mode on the
+    /// zones.)
+    pub(crate) fn ad_send_get_ctrl_mode(&mut self) {
+        let (mode, default_mode, max_iter) = {
+            let Some(coord) = self.circuit.as_ref() else {
+                return;
+            };
+            (
+                coord.solution.control_mode,
+                coord.solution.default_control_mode,
+                coord.solution.max_control_iterations,
+            )
+        };
+        for child in self.ad_children.iter_mut() {
+            if let Some(ckt) = child.circuit.as_mut() {
+                ckt.solution.control_mode = mode;
+                ckt.solution.default_control_mode = default_mode;
+                ckt.solution.max_control_iterations = max_iter;
+            }
+        }
     }
 
     /// The A-Diakoptics time-series modes (Daily/Yearly/Duty/PeakDay/Time): the

@@ -49,6 +49,10 @@ impl Dss {
             self.do_set_cmd_no_circuit();
             return;
         }
+        // Pascal `ADiakoptics and (ActiveActor = 1)` fans `GETCTRLMODE` to the
+        // children after a `set controlmode=`/`set maxcontroliter=` (ExecOptions.pas
+        // ordinals 43/55). Tracked here, executed after the destructure block.
+        let mut sync_ctrl_mode = false;
         {
             let Dss {
                 classes,
@@ -398,6 +402,8 @@ impl Dss {
                             ckt.solution.control_mode = v;
                             // always revert to last one specified in a script
                             ckt.solution.default_control_mode = v;
+                            // ADiakoptics + ActiveActor=1: sync child control mode.
+                            sync_ctrl_mode = true;
                         }
                     }
                     opt::DEFAULT_DAILY => {
@@ -445,6 +451,8 @@ impl Dss {
                     opt::MAX_CONTROL_ITER => {
                         if let Some(v) = get_int(parser, vars, errors) {
                             ckt.solution.max_control_iterations = v;
+                            // ADiakoptics + ActiveActor=1: sync child iters (GETCTRLMODE).
+                            sync_ctrl_mode = true;
                         }
                     }
                     // Pascal `DoHarmonicsList` (ExecHelper.pas l.2687): `ALL`
@@ -660,6 +668,17 @@ impl Dss {
                 param_name = parser.next_param(vars);
                 param = parser.make_string(vars);
             }
+        }
+
+        // `set controlmode=`/`set maxcontroliter=` while ADiakoptics is active on
+        // the coordinator (ActiveActor 1) syncs the child control mode/iters.
+        if sync_ctrl_mode
+            && self
+                .circuit
+                .as_ref()
+                .is_some_and(|c| c.solution.adiakoptics)
+        {
+            self.ad_send_get_ctrl_mode();
         }
 
         // `set ADiakoptics=yes` requested `ADiakopticsInit`, deferred here past
