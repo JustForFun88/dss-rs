@@ -27,24 +27,46 @@
 //! holds ONLY for wye/grounded shunts. When `Tear_Circuit` isolates a zone with
 //! **no adequate in-zone voltage reference** the child `hY` is genuinely singular
 //! or near-singular, and the boundary stitch produces solver-dependent garbage.
-//! This is an **upstream A-Diakoptics limitation, not a port bug** — proven in the
-//! WP-AD.4 closing round (ad-bugs branch) by driving OFFICIAL r3723 AD (Oddie) on
-//! the IDENTICAL manual-`LinkBranches` cut and observing the same-or-worse failure
-//! (each row: our AD vs official r3723 AD on the same cut):
+//! This is an **upstream A-Diakoptics limitation, not a dss-rs port bug** — the AD
+//! arm of the OFFICIAL r3723 engine, driven on the IDENTICAL cut, fails the same or
+//! worse. WP-AD.4 closing round (ad-bugs branch) drove **6 class representatives**
+//! on official r3723 via the Oddie bridge (`wait` after every solve; the child cut
+//! extracted from our engine's `link_branches` and forced with `set LinkBranches`
+//! `+ UseMyLinkBranches`; results below are this reference box's r3723 DLL). Each is
+//! a near-singular blow-up whose *magnitude* is ill-conditioned (a differently
+//! configured host measures a different order — the invariant is the CHARACTER: no
+//! convergence / >10× over-voltage / hang, not the exact number):
 //!
-//! - delta-only / partial-phase load bus (no ground path): `Test/ODRegTest.dss` cut
-//!   at `Line.l2` — ours ~1.5e15 @ loadbus, official ~2.9e16 @ loadbus.
+//! - delta-only load bus (no ground path) → singular child Y: `Test/ODRegTest.dss`
+//!   cut `Line.l2` — ours ~1.5e15, official 2.9e16 @ loadbus (both diverge, `conv=
+//!   False`).
+//! - floating-phase load bus (partial-phase wye load) → exactly singular child Y:
+//!   `Test/TestDDRegulator.dss` cut `Line.line2` — ours 0.88 @ regbus3.4; official
+//!   AD-init succeeds then the final AD solve **hangs** (never returns; killed) — no
+//!   meaningful answer on either engine.
 //! - meshed / open-switch topology (a single link cut cannot separate a mesh, or
 //!   open switches strand a regulator boundary): `civanlar.dss` (bus 1 wrong on
-//!   both), `IEEE123Switches.dss` cut at `Line.l58` (both → ~40 kV on a 2.4 kV bus).
-//! - ISource/GFM microgrid island driven only by PC current injections (no in-zone
-//!   VSource admittance): `Microgrid/.../GFM_IEEE123` — ours refuses init, official
-//!   → ~5e26.
+//!   both), `IEEE123Switches.dss` cut `Line.l58` (ours 19.5; official 42.6 kV on a
+//!   2.4 kV bus, `conv=False`).
+//! - GFM microgrid island driven only by PC current injection (no in-zone Y
+//!   reference): `Microgrid/.../GFM_IEEE123` — ours refuses AD init; official (its
+//!   own auto-tear, since ours has no cut to force) blows up.
+//! - `Microgrid/ISource` cut `Line.650632` is subtler and was RE-DIAGNOSED here:
+//!   the ISource microgrid island (675/692) is actually **determinate** (its wye
+//!   loads ground it) and both engines reproduce it correctly; the AD gap is at the
+//!   torn main-feeder zone (632/634/671 transformer secondaries) — ours total 0.66
+//!   @ 634.1, official **13.4** @ 634.1 (3935 V vs 273 V nominal, `conv=True` but
+//!   wrong). Ours is the MILDER of the two. So it stays off the gate, but the label
+//!   is by deck type, not an "islanded" reference-free zone.
 //!
-//! These decks are classified `off:ad-{regulator,switched,islanded,nonconvergent}`
-//! in `tests/corpus/manifests/ad_sweep.json` and stay off the sweep gate: the
-//! topology is not AD-decomposable, so there is no correct AD answer to gate against
-//! on either engine. Full transcripts: STATUS §1 (WP-AD.4 ad-bugs record).
+//! The remaining members of these classes (islanded/nonconvergent/switched — see
+//! `ad_sweep.json`) are NOT individually driven on official; they are inferred from
+//! the shared topology mechanism. Turning that inference into a per-deck running
+//! (report-only) official-AD replay is the tracked WP-AD.5 task, NOT a silent
+//! wontfix. These decks stay off the sweep gate because there is no correct AD
+//! answer to gate against on either engine (singular/near-singular torn zone), not
+//! because a fix is out of scope. Full transcripts: STATUS §1 (WP-AD.4 ad-bugs
+//! settle record).
 //!
 //! The probe also settled how the child voltage is maintained: official FREEZES
 //! each child's own `NodeV` at its state-2 standalone solve for the whole AD run

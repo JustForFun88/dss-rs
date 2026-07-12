@@ -79,15 +79,17 @@ findings settled with evidence:
     the **autotrans** Auto1bus decks (3) had leg1>>1 (save reload broken) →
     `off:save-roundtrip-autotrans`.
   - *Out of AD scope:* the 3 **harmonics** IEEE_519 decks → `off:mode-outside-AD-scope`.
-  - *AD↔normal gap classes, filed here and later PROVEN UPSTREAM (see the ad-bugs
-    root-cause record at the top of §1):* `off:ad-regulator-divergence` (ODRegTest
-    leg2=1.5e15, TestDDRegulator leg2=0.88); `off:ad-switched-divergence`
+  - *AD↔normal gap classes, filed here and later shown to be upstream A-Diakoptics
+    limitations (6 representatives driven on official r3723 — see the ad-bugs
+    root-cause + settle record below in §1):* `off:ad-regulator-divergence`
+    (ODRegTest leg2=1.5e15, TestDDRegulator leg2=0.88); `off:ad-switched-divergence`
     (IEEE123Switches leg2=19, civanlar/SecPar leg2=1.0 —
     open-switch/reconfiguration/meshed secondary); `off:ad-islanded-divergence`
-    (10 GFM/GFL/ISource grid-forming microgrids, leg2~7e5 — no firm source
-    reference); `off:ad-nonconvergent` (7 islanded GFM/GFL decks whose AD arm does
-    not even init/converge). The generic `ad-singular-zone`/`ad-divergent` corpus
-    labels are gone (the two synthesized *family* decks still use them).
+    (10 GFM/GFL/ISource grid-forming microgrids — GFM/GFL have no firm source
+    reference; the one ISource deck diverges in the torn main-feeder zone, ours
+    milder than official); `off:ad-nonconvergent` (7 islanded GFM/GFL decks whose
+    AD arm does not even init/converge). The generic `ad-singular-zone`/`ad-divergent`
+    corpus labels are gone (the two synthesized *family* decks still use them).
 - **Real AD-arm panic fixed** (was `off:ad-probe-panic`). `Sensor::update_current_
   vector`/`_for_wls` indexed `sensor_current[i]` for `i<nphases` while the buffer
   was still unsized (kW set mid-edit, before `RecalcElementData` allocates —
@@ -128,39 +130,70 @@ findings settled with evidence:
   the child control fan-out is now gated end-to-end by the `adreg` full test.
   Building the external r3723 AD-replay compare is the WP-AD.5 task.
 
-**WP-AD.4 AD-BUGS ROOT-CAUSE ROUND (branch `ad-bugs`, base `2193bd0`, 2026-07-12).**
-Root-caused the four `off:ad-*` AD-engine divergence classes WP-AD.4 filed. **Verdict:
-all four are UPSTREAM A-Diakoptics limitations, not dss-rs port bugs.** Common root
-cause: each topology makes `Tear_Circuit` isolate a zone with **no adequate in-zone
-voltage reference**, so the child `hY` is singular / near-singular and the boundary
-stitch is solver-dependent (faer picks a different null-space vector than KLU, or both
-blow up). This falsifies the over-broad premise in `diakoptics/solve.rs` that "the
-loads' `Yeq` shunts anchor every node to ground" — true only for wye/grounded loads.
+**WP-AD.4 AD-BUGS ROOT-CAUSE ROUND (branch `ad-bugs`, base `2193bd0`, 2026-07-12;
+settled 2026-07-12).** Root-caused the four `off:ad-*` AD-engine divergence classes
+WP-AD.4 filed. **Verdict: they are UPSTREAM A-Diakoptics limitations, not dss-rs port
+bugs** — the AD arm of the OFFICIAL r3723 engine, driven on the IDENTICAL cut, fails
+the same or worse on every representative driven. Common root cause: each topology
+makes `Tear_Circuit` isolate a zone with **no adequate in-zone voltage reference**, so
+the child `hY` is singular / near-singular and the boundary stitch is solver-dependent
+(faer picks a different null-space vector than KLU, or both blow up). This falsifies
+the over-broad premise in `diakoptics/solve.rs` that "the loads' `Yeq` shunts anchor
+every node to ground" — true only for wye/grounded loads.
 
 Method (CLAUDE.md don't-rationalize-conditioning discipline + plan D7/D9): cheap D7
-`DSS_AD_DECOMPOSE` repro per class (leg1=save round-trip, leg2=AD proper) confirmed
-leg2 carries the gap; then drove **OFFICIAL r3723 AD via the Oddie bridge on the
-IDENTICAL manual-`LinkBranches` cut** (`wait` after every solve) — the decisive
-ours-vs-upstream test. Evidence (all controls-off, our cut forced on official):
+`DSS_AD_DECOMPOSE` repro per class (leg1=save round-trip, leg2=AD proper); then drove
+**OFFICIAL r3723 AD via the Oddie bridge on the IDENTICAL cut** (`wait` after every
+solve; child cut extracted from our engine's `link_branches`, forced on official with
+`set LinkBranches=[…] + UseMyLinkBranches=True`) — the decisive ours-vs-upstream test.
+Evidence below is this reference box's r3723 DLL, controls-off.
 
-| Deck | Class | Our AD (leg2) | Official r3723 AD, same cut | Root cause |
+**Scope of the "upstream" proof (per-deck vs per-class).** SIX class representatives
+were driven on official r3723 across the filing + settle rounds; this settle re-drove
+**four** (ODRegTest, IEEE123Switches, TestDDRegulator, Microgrid/ISource), and civanlar
++ GFM_IEEE123 are carried from the filing round. The *magnitudes* are near-singular
+blow-ups and are ill-conditioned — reproducible on this box (ODRegTest 2.9119e16 ×3,
+IEEE123Switches 42.57 kV ×2, both matching the filing round's numbers, which validates
+the method) but environment-sensitive: an auditor on a less-faithful setup (the
+`123Bus/IEEELineCodes.DSS` `../` stub unresolved) measured ODRegTest ~2e17 /
+IEEE123Switches ~61 kV. **The load-bearing invariant is the CHARACTER (no convergence
+/ >10× over-voltage / hang), not the exact number.** The other members of these four
+classes (islanded 10, nonconvergent 7+, switched 3, …) are inferred from the shared
+topology mechanism, NOT individually driven — the per-deck official-AD replay that
+would turn that inference into a running (report-only) check, and close the standing
+coverage hole where `off:ad` decks are counted-not-solved in the sweep, is the tracked
+**WP-AD.5** task, not a silent wontfix.
+
+| Deck (cut) | Class | Our AD gap | Official r3723 AD, SAME cut | Root cause |
 |---|---|---|---|---|
-| `Test/ODRegTest.dss` | ad-regulator | ~1.5e15 @ loadbus | ~2.9e16 @ loadbus (cut `Line.l2`) | loadbus zone = **delta-only** loads, no ground path → singular child Y (both engines blow up) |
-| `Test/TestDDRegulator.dss` | ad-regulator | 0.88 @ regbus3.4 | bounded 7.2kV (cut `Line.line2`) | loadbus.2/.3 **floating** (only phase-1 wye load), anchored by ~µS line-charging → near-singular; both answers valid up to null space |
-| `civanlar.dss` | ad-switched | 1.0 @ bus1.1 | bus1 wrong on official too (3135 V vs ~13 kV) | **meshed** network (loops 5_11/10_14/7_16) — a single link cut cannot separate a mesh |
-| `IEEE123Switches.dss` | ad-switched | 19.5 @ 160r.1 | ~42 kV @ 160r/83 (cut `Line.l58`) | open switches strand a regulator boundary → both engines → 40 kV on a 2.4 kV system |
-| `Microgrid/ISource/Master.DSS` | ad-islanded | 2.0 @ 692 | island degenerate (leg1 also 2.0) | ISource-only island (open 671692), no VSource admittance reference |
-| `GFM_IEEE123/…GFMSnap.DSS` | ad-nonconvergent | AD init refuses | ~5e26 @ 83.3 (auto-tear) | GFM inverter = PC current injection, not a Y reference → island singular |
+| `ODRegTest` (`Line.l2`) | ad-regulator | leg2 1.46e15 @ loadbus | **2.9119e16** @ loadbus.1, `conv=False` (worse) | loadbus zone = **delta-only** loads, no ground path → singular child Y |
+| `TestDDRegulator` (`Line.line2`) | ad-regulator | leg2 0.88 @ regbus3.4 | AD-init OK then final solve **HANGS** (killed 90 s) | loadbus.2/.3 **floating** (phase-1-only wye load) → exactly singular; no answer on either |
+| `civanlar` (single link) | ad-switched | leg2 1.0 @ bus1.1 | bus1 wrong on official too (3135 V vs ~13 kV) | **meshed** net (loops 5_11/10_14/7_16) — a single link cut cannot separate a mesh |
+| `IEEE123Switches` (`Line.l58`) | ad-switched | leg2 19.5 @ 160r.1 | **42.57 kV** @ 79.2, `conv=False` (worse) | open switches strand a regulator boundary → 40 kV on a 2.4 kV system |
+| `Microgrid/ISource` (`Line.650632`) | ad-islanded | leg1 2.01 / leg2 2.00 / **total 0.66** @ 634.1 | `conv=True` but **13.4** @ 634.1 (3935 V vs 273 V) — worse | NOT the ISource island (675/692 determinate & correct on both); the torn **main-feeder zone** (632/634/671 xfmr secondaries) reseed diverges |
+| `GFM_IEEE123` (auto-tear) | ad-nonconvergent | AD init refuses | blows up (official auto-tear) | GFM inverter = PC current injection, no Y reference |
 
-The dispositions stay `off:` (correct: the topology is not AD-decomposable, so there is
-no correct AD answer to gate against on either engine — promoting them to `pf` is
-impossible, not deferred). Reframed the framing everywhere: `AD_OFF_REASONS` comment
-(`corpus_live.rs`), the `ad_sweep.json` overlay comment, and a `NOTE(upstream-quirk)`
-block at the AD solve site (`diakoptics/solve.rs`) with the transcripts. No behavioral
-code change — our engine already keeps these off the gate; the round replaces the
-"open port defect (fix out of charter)" framing with proven "upstream limitation." Our
-engine's failure mode (1e15 or clean init-refusal) is no worse than official's (1e16..
-1e26 or a collapsed zone). No decks promoted; no escalation needed.
+Two rows corrected by this settle vs the filing round: (a) **TestDDRegulator** —
+official does NOT give a "bounded 7.2 kV"; on this box the AD solve *hangs* (child
+zone exactly singular). Neither engine yields a meaningful AD answer — "both valid up
+to null space" becomes "neither produces a usable AD answer." (b) **Microgrid/ISource**
+— the earlier row's official column was an ours-side inference ("island degenerate")
+and mislabeled the mechanism. Driven on official at our exact cut it is a REAL
+measurement: the ISource island is determinate (wye loads ground it) and correct on
+both engines; the AD divergence lives in the torn main-feeder transformer-secondary
+zone, and **ours (0.66) is milder than official's (13.4)**. Its D7 legs are
+co-equal (leg1 2.01 ≈ leg2 2.00, total 0.66) so it is neither a clean save-roundtrip
+nor a clean AD-leg deck; it stays `off:ad-islanded-divergence` by deck type (an
+ISource microgrid whose AD arm exceeds tier), with zero gate effect either way.
+
+The dispositions stay `off:` (correct: singular/near-singular torn zone → no correct
+AD answer on either engine). Reframed everywhere: `AD_OFF_REASONS` comment
+(`corpus_live.rs`), the `ad_sweep.json` overlay comment, and the `NOTE(upstream-quirk)`
+block at the AD solve site (`diakoptics/solve.rs`). No behavioral code change — our
+engine already keeps these off the gate; and on every representative driven, our
+failure mode is no worse than official's. Reproduction recipe (any future auditor):
+`DSS_AD_DECOMPOSE=<rel-path>` for the D7 legs + our cut, then the Oddie sequence above
+against `tools/opendss/bin/r3723/OpenDSSDirect.dll` (durable per-deck replay = WP-AD.5).
 
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a

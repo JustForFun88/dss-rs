@@ -2512,25 +2512,33 @@ const AD_OFF_REASONS: &[&str] = &[
     "save-roundtrip-relay",
     "save-roundtrip-control",
     // Upstream A-Diakoptics limitations (NOT a dss-rs port bug). Root-caused in
-    // the WP-AD.4 closing round (ad-bugs branch): each of these topologies makes
-    // Tear_Circuit isolate a zone that lacks an adequate in-zone voltage
+    // the WP-AD.4 closing round + settle (ad-bugs branch): each of these topologies
+    // makes Tear_Circuit isolate a zone that lacks an adequate in-zone voltage
     // reference, so the child `hY` is singular / near-singular and the boundary
-    // stitch is solver-dependent. Proven upstream by driving OFFICIAL r3723 AD
-    // (Oddie) on the IDENTICAL manual `LinkBranches` cut: official OpenDSS AD
-    // produces the same-or-worse garbage (blow-ups 1e16..1e26 or a collapsed
-    // zone) on every one — see the STATUS §1 evidence table with the transcripts.
-    // Kept off the gate because the topology is not AD-decomposable, not because
-    // fixing our engine was out of scope.
-    "ad-regulator-divergence", // delta-only / floating-phase load bus becomes a
-    // reference-free zone: ODRegTest (delta loads, both engines -> ~1e16 @ loadbus)
+    // stitch is solver-dependent. Shown upstream by driving OFFICIAL r3723 AD
+    // (Oddie) on the IDENTICAL cut (child cut forced with `set LinkBranches` +
+    // UseMyLinkBranches): on every one of the 6 representatives driven, official
+    // OpenDSS AD fails the same or worse (no convergence / >10x over-voltage / a
+    // hang on the singular zone). The magnitudes are ill-conditioned near-singular
+    // blow-ups (reproducible on the reference box, environment-sensitive across
+    // hosts) — the invariant is the CHARACTER, not the number. See the STATUS §1
+    // evidence table. Remaining class members are inferred from the shared
+    // mechanism, not individually driven; the per-deck official-AD replay is the
+    // tracked WP-AD.5 task. Kept off the gate because there is no correct AD answer
+    // to gate against on either engine, not because fixing our engine was out of
+    // scope.
+    "ad-regulator-divergence", // delta-only / floating-phase load bus -> singular
+    // child Y: ODRegTest (delta loads, both -> ~1e16 @ loadbus); TestDDRegulator
+    // (floating phases 2,3 -> official AD solve hangs, ours 0.88)
     "ad-switched-divergence", // meshed / open-switch topology: a single link cut
     // cannot separate a mesh (civanlar), or open switches strand a regulator
-    // boundary (IEEE123Switches, both engines -> garbage)
-    "ad-islanded-divergence", // ISource/GFM microgrid island driven only by PC
-    // current injections (no in-zone VSource admittance reference)
+    // boundary (IEEE123Switches, both engines -> tens of kV on a 2.4 kV bus)
+    "ad-islanded-divergence", // GFM/GFL microgrid island driven only by PC current
+    // injection (no in-zone Y reference); the one ISource deck diverges in the torn
+    // main-feeder xfmr-secondary zone (island itself determinate), ours milder than
+    // official's same-cut AD (0.66 vs 13.4)
     "ad-nonconvergent", // GFM/GFL island whose torn zone is singular enough that
-    // AD init/solve does not converge at all (our engine refuses; official blows
-    // up to 1e26)
+    // AD init/solve does not converge at all (our engine refuses; official blows up)
     "ad-singular-zone", // synthesized family deck: an intentionally singular tear
     "ad-divergent",     // synthesized family deck: an intentionally divergent tear
     "ad-floor-above-tier", // genuine long-radial stitch floor just above the tier
