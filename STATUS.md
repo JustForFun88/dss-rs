@@ -10,8 +10,9 @@
 Last updated: 2026-07-12 (merged `upgrade-rung1` — U0.2 sweeps + WP-U1.1 + WP-U1.2
 numeric long tail — with the post-acceptance main: corpus CF/CF2/coverage rounds,
 families 47/92/49, JSON export, FIX-DIRECT, LINE-DEEP; then merged WP-U1.3
-InvControl cluster. Integration branch is now `update` (pushed to origin); main
-untouched until an explicit merge request.)
+InvControl cluster, D14 (pulled ahead), SKIPPED-SWEEP, and the GFM WP (B5 Isc1 +
+capi015 daily-Losses skip — see §UPGRADE). Integration branch is now `update`
+(pushed to origin); main untouched until an explicit merge request.)
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
@@ -53,10 +54,15 @@ MULTITHREADING M2.
   D3** (report-only spacing ratings — needs an overload-report deck) and **B3-r3723**
   (Load.GrowthFactor Year=0 — needs a growthshape + multi-hour year-0 run). See the
   resume note under §UPGRADE below.
-- **Open follow-up — B5 GFM `Isc1` ×1000 (deferred).** Adopting the r4133 `Isc1`
-  change unmasks a **pre-existing Rust GFM power-flow injection-vs-YPrim consistency
-  gap** (injection does not track `YPrim·Vset`; the Pascal op-point is Isc1-invariant,
-  the Rust one is not). Needs a dedicated GFM WP, out of numeric-long-tail scope.
+- **B5 GFM `Isc1` ×1000 — SETTLED (GFM WP, branch `gfm-wp`).** Adopted the r4133
+  `Isc1` (drop the `·1000`) in `calc_gfm_yprim`. The feared "injection-vs-YPrim
+  gap" does **not** exist at this base: the Rust GFM op-point is already
+  Isc1-invariant (proven — the positive-sequence Norton impedance `Zs−Zm = R1+jX1`
+  is `Isc1`-free; only the zero sequence moves, and delta/balanced GFM loads see
+  only the positive sequence). 8 vendored + 4 controls GFM decks flipped to
+  `oracle:capi015` (whole-model green); non-discharging-GFM decks stay 0.14.5-green.
+  Also settled the unrelated capi015 daily `CktElement.Losses` staleness quirk (not
+  reproduced; harness `loss_w` self-validating skip). See §UPGRADE + DIVERGENCES.md.
 - Part II A-Diakoptics AD.2/AD.3 progressing on a separate `part2-adiakoptics`
   branch (not in this main).
 
@@ -187,10 +193,35 @@ are snapshots; follow-up logged for the oracle-infra owner. Full detail:
 - **Resume note (WP-U1.2 remaining).** Rows **D3** (report-only spacing ratings —
   overload-report deck) and **B3-r3723** (Load.GrowthFactor Year=0) still to port;
   the golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the
-  same-commit flip/regen/retire workflow are proven. **B5**'s GFM gap is the one hard
-  blocker (a control-consistency bug, not a numeric constant) — needs a dedicated GFM
-  WP. NB the modes manifest is NOT `json.dumps`-round-trippable (mixed manual
-  `\uXXXX` escaping + CRLF) — append new cases with a surgical text edit.
+  same-commit flip/regen/retire workflow are proven. NB the modes manifest is NOT
+  `json.dumps`-round-trippable (mixed manual `\uXXXX` escaping + CRLF) — append new
+  cases with a surgical text edit.
+
+**GFM WP (branch `gfm-wp`) — B5 + injection-vs-YPrim + 0.15.x YPrim delta —
+SETTLED.** Adopted B5 (`calc_gfm_yprim` `Isc1` drops the `·1000`, dss_capi
+`de6a5a42` = SVN r3865). The deliverable-3 "0.15.x GFM Storage YPrim delta" is the
+SAME one-line change (Storage/PVSystem share `CalcGFMYprim`; the Storage
+`CalcYPrimMatrix` GFM branch is otherwise byte-identical across 0.14.5/0.15.x). The
+deliverable-1 "pre-existing injection-vs-YPrim gap" was **disproven at this base** —
+the Rust GFM op-point is already Isc1-invariant (positive-seq Norton impedance
+`Zs−Zm = R1+jX1` is Isc1-free; only the zero seq moves; delta/balanced GFM loads see
+only the positive seq). Empirically: `gfm_micro` `Load.isl`/`islbus` bit-identical
+under old vs new `Isc1`, both equal to the bit-identical 0.14.5/capi015 value; the
+storage YPrim moves to the capi015 live-probe value. **8 vendored GFM decks flipped
+to `oracle:capi015`** (2 re-promoted from `skipped_needs_investigation` +
+`CannotPickUpLoad` + 5 Microgrid GFMSnap/SwapRef/8500-GFMSnap whose gated state ends
+discharging-GFM) **+ 4 `controls/gfm` decks** — all whole-model live green vs
+capi015 (system Y + V/I/P per step). Non-discharging-GFM decks (Microgrid GFMDaily/
+Snap-A/B/WholeDaily, 8500 Daily/Unbal) stay 0.14.5-green (their YPrim never reaches
+`CalcGFMYprim`; confirmed by per-deck capi015-vs-0.14.5 assembled-Y diff). Also
+settled the **unrelated capi015 daily `CktElement.Losses` staleness** (Losses freezes
+at step 0 while Powers scale; general 0.15.x quirk, NOT reproduced — Rust matches
+0.14.5/r4133 fresh losses; `harness::compare_element` now self-validating-skips the
+redundant `loss_w` channel when the oracle's own Losses ≠ Σ its own Powers). New unit
+tests: `gfm_calc_yprim_matches_capi015_isc1_no_1000`,
+`gfm_norton_positive_seq_admittance_is_isc1_invariant`,
+`storage_gfm_micro_op_point_isc1_invariant`. Detail: DIVERGENCES.md §B5 +
+§capi015-daily-losses.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
@@ -200,7 +231,6 @@ harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `m
 — roll-up in §1e and **`docs/phase-records/phase-7.md`**.
 
 ### Standing open follow-ups (actionable)
-- **B5 GFM injection-vs-YPrim consistency gap** — dedicated GFM WP (above).
 - **WP-U1.2 rows D3 + B3-r3723** — port with their overload/growthshape decks.
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — now floored as
   ultra-switch conditioning (CF-D), watch on re-touch.

@@ -313,3 +313,66 @@ fn mode7_monitor_rejects_non_storage() {
         dss.errors()
     );
 }
+
+/// GFM op-point Isc1-invariance + injection-vs-YPrim consistency (DIVERGENCES.md
+/// §B5). The islanded `gfm_micro` deck (delta GFM storage → delta/wye step-up →
+/// balanced load) after the r3865 `Isc1` change: the Storage's GFM Norton YPrim
+/// moves to the **capi015** value (`Y[0,0]≈561.47−2245.82j`, NOT the pre-B5
+/// 0.14.5 `613.68−2402.46j`), yet the delivered load power is unchanged —
+/// `Load.isl = 400 kW`, the value 0.14.5 AND capi015 both report (probed
+/// bit-identical 2026-07-12). A balanced/delta load excites only the
+/// positive-sequence Norton impedance `Z1` (Isc1-free), so the injection
+/// `YPrim·Vset` holds the terminal voltage — hence power — invariant to the
+/// ~1000× `Z0` move. If the port's injection did not track its (moved) YPrim,
+/// the op-point would drift with `Z0`; pinning both the moved YPrim and the
+/// invariant power in one test guards that consistency.
+#[test]
+fn storage_gfm_micro_op_point_isc1_invariant() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "New Circuit.gfm_micro basekv=4.16 phases=3 bus1=sourcebus",
+        "New Loadshape.dl npts=6 interval=1 mult=[1.0 0.92 0.85 0.98 1.08 0.9]",
+        "New Line.feeder bus1=sourcebus bus2=mainbus phases=3 r1=0.3 x1=0.6 c1=0 length=1 units=km",
+        "New Line.sw1 bus1=mainbus bus2=islbus phases=3 switch=yes",
+        "New Transformer.tsto phases=3 windings=2 buses=(stobus islbus) conns=(delta wye) \
+         kvs=(0.48 4.16) kvas=(1000 1000) XHL=0.5",
+        "New Storage.batt phases=3 conn=delta bus1=stobus kV=0.48 kva=800 kWrated=800 \
+         kWhrated=6000 %stored=100 %reserve=20 %EffCharge=90 %EffDischarge=90 %IdlingkW=1 \
+         %R=50 %X=50 State=DISCHARGING kP=0.3 KVDC=0.700 PITol=0.1 ControlMode=GFM",
+        "New Load.isl phases=3 bus1=islbus kV=4.16 kW=400 kvar=80 model=1 daily=dl",
+        "Set voltagebases=[4.16 0.48]",
+        "Calcvoltagebases",
+        "open line.sw1 terminal=1",
+        "Set mode=daily stepsize=1h number=1",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(
+        dss.errors().is_empty(),
+        "gfm_micro solve: {:?}",
+        dss.errors()
+    );
+
+    // The GFM Norton YPrim is the capi015 (post-B5) value.
+    let (_n, y) = dss.element_yprim("Storage.batt").expect("storage yprim");
+    let y00 = y[0]; // column-major [0]=Y[0,0]
+    assert!(
+        (y00 - num_complex::Complex64::new(5.614657341e2, -2.245822260e3)).norm() < 1e-3,
+        "GFM Norton Y[0,0] {y00:?} must be the capi015 post-B5 value"
+    );
+
+    // The op-point is invariant: the balanced load still draws its 400 kW
+    // setpoint (the value both Pascal revs report despite the YPrim move).
+    let snap = dss.snapshot_elements();
+    let load = snap
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("Load.isl"))
+        .expect("Load.isl");
+    let p_kw: f64 = load.powers.iter().step_by(2).take(3).sum();
+    assert!(
+        (p_kw - 400.0).abs() < 1e-3,
+        "islanded load power {p_kw} kW must stay at the Isc1-invariant 400 kW op-point"
+    );
+}

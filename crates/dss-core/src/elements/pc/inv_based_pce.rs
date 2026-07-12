@@ -192,7 +192,7 @@ impl InvDynamicVars {
         let r1 = x1 / 4.0; // uses defaults
         // R0 := 1.9; X0 := 5.7; X0R0 := X0/R0 (before QuadSolver re-solves R0).
         let x0r0 = 5.7 / 1.9;
-        let isc1 = (self.m_kva_rating * 1000.0 / (sqrt3() * self.rated_kv_ll)) / nphases as f64;
+        let isc1 = (self.m_kva_rating / (sqrt3() * self.rated_kv_ll)) / nphases as f64;
         // Compute R0, X0. Pascal hardcodes `a := 10` (= 1 + X0R0² for the 5.7/1.9
         // defaults) — reproduced as the literal so QuadSolver matches bit-for-bit.
         let a = 10.0;
