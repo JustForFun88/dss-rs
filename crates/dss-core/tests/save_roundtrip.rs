@@ -308,6 +308,29 @@ fn save_roundtrip_ieee8500() {
     );
 }
 
+/// `LineGeometry` conductor-table round-trip (the WP-AD save-fidelity fix). The
+/// generic `SaveWrite` collapses `Cond`/`Wire`/`X`/`H`/`Units` — each re-set once
+/// per conductor — to a single property-sequence slot, so it used to emit only
+/// the LAST conductor; the missing per-conductor arrays made a geometry-built
+/// line reload with a wrong (or unbuildable) `Z` matrix. The
+/// [`crate::elements::general::line_geometry`] `SaveWrite` override (Pascal
+/// `TLineGeometryObj.SaveWrite`) re-emits the whole conductor table.
+///
+/// The IEEE-13 geometry deck is the witness: five geometries with mixed conductor
+/// counts (4/4/3/3/2), a `like=`-cloned geometry (`604 like=603`, which the
+/// override must serialize by its own conductor table — our port cannot
+/// round-trip a `like=` directive), and a phase/neutral wire mix. A single
+/// dropped conductor changes the reduced series `Z` by far more than the 1e-6
+/// node-V tier (measured ~1.0 before the fix — the interconnected reload failed
+/// to solve), so the round-trip node-V / discrete-tap comparison pins the whole
+/// conductor table. Regulators settle on the cold re-solve (as in
+/// `save_roundtrip_ieee13`), and a dropped conductor is a large error the tap
+/// channel cannot mask.
+#[test]
+fn save_roundtrip_ieee13_linegeometry() {
+    round_trip("ie13geom", corpus("Test/IEEE13_LineGeometry.dss"));
+}
+
 /// Collect the set of emitted files relative to `root`, using `/` separators.
 fn emitted_set(root: &std::path::Path) -> BTreeSet<String> {
     let mut set = BTreeSet::new();
