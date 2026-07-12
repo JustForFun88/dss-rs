@@ -3370,8 +3370,10 @@ manual unicode-escaping + CRLF blocks a clean append — the unit test carries t
 same capi015 numbers. Ledger §B1.
 
 **Row D8 — Transformer X13/X23 TrapZero — SETTLED, no code change (not an
-observable delta).** dss_capi 0.15.x added the `TrapZero` flag to X12/X13/X23
-(the 7/35/30 values were already set in 0.14.5). Probed: 0.14.5 and capi015 give
+observable delta).** The `TrapZero` flag on X12/X13/X23 (and `NonZero` on
+`XSCArray`) is already in the 0.14.5 baseline — commit `69fca934` predates the
+0.14.5 tag, so the flags+values (7/35/30) are byte-identical across 0.14.5 and
+0.15.x; this is not a 0.14.5→0.15.x delta at all. Probed: 0.14.5 and capi015 give
 BIT-IDENTICAL results for X13=0 (`?XHT=3500`; solved Vmin=0.124819 both) — both
 reach the same trapped default via the Xsc build. The Rust port ALREADY traps
 (`mod.rs trap_zero(7/35/30)` + unconditional `setters.rs`), so it matches both;
@@ -3391,6 +3393,36 @@ control-consistency bug, not a numeric constant) — needs a dedicated GFM WP. N
 the modes manifest is NOT json.dumps-round-trippable (mixed manual `\uXXXX`
 escaping + CRLF) — append new cases with a surgical text edit, not a full JSON
 rewrite.
+
+**Settle (audit dispositions, 2026-07-12).** Five findings settled empirically;
+the branch was rebuilt from base `58007c9` (backup `backup-wp-u12-pre-settle`) so
+every fix lands in-place rather than as forward churn:
+- **Corpus pollution (Major, ×2 — code+tests).** 15 generated Monitor-export CSVs
+  (`ExpControl/*_Mon_pv1*.csv`, ~1.296M lines) had been swept into the vendored
+  corpus by a blanket add on the docs commit. They are solve artifacts (absent
+  from pristine `.inputs`, from base `58007c9`, and from `main`; referenced only
+  by the upstream plot scripts, by no test/manifest). REMOVED — and removed by
+  rewriting the docs commit, not a forward `git rm`, so the ~1.29M-line blob never
+  enters merged history. The live gate's `CorpusGuard` RAII already deletes them
+  when `Master.dss` regenerates them each run (>2 MiB ⇒ name-tracked sweep-on-drop),
+  so `git status tests/corpus` stays clean without them committed; verified by the
+  full gate below leaving the corpus pristine.
+- **Same-commit slip on B2/D1 (Major).** The lock refresh (`3200c41`) that fixed
+  the gate-red `4d3faaf` (flipped 18 decks in `solvable_now` but not
+  `population.lock`) is now FOLDED into the single B2/D1 commit — no gate-red
+  commit remains in history; `population_lock_matches_manifests` is green at every
+  commit.
+- **D8 ledger misattribution (Minor).** DIVERGENCES §D8 + this record + the D8
+  commit message claimed 0.15.x "added" the `TrapZero`/`NonZero` flags. Refuted
+  against the vendored sources: the flags+values are byte-identical between
+  `.inputs/dss_capi` (0.14.5) and `.inputs/dss_capi_with_git` (0.15.x) — commit
+  `69fca934` predates the 0.14.5 tag. Text corrected; the no-code-change decision
+  is unchanged (and better justified).
+- **18-flip strict-necessity note (Minor, informational).** All 18 flips are
+  additive, genuinely Carson-geometry, and B2-attributable; a few (e.g.
+  `4Bus-DY-Bal` Q ≈ 8.5e-8 rel) sit near the f64 floor. Rust now emits the capi015
+  numbers so each flip is correct; no case dropped coverage. No defect — recorded
+  as-is.
 
 ### Gate state (all green)
 ```
