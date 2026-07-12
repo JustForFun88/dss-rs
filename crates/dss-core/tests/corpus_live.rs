@@ -1718,6 +1718,9 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "expcontrol/expcontrol_basic.dss",
     "monitor/monitor_modes.dss",
     "sensor/sensor_map.dss",
+    // corpus coverage wave (controls): UPFC ModeUPFC decks.
+    "upfc/upfc_pac.dss",
+    "upfc/upfc_doubleref.dss",
     "combo/combo_protection.dss",
     "combo/combo_voltvar_asym.dss",
     "combo/combo_metering.dss",
