@@ -9,6 +9,32 @@
 
 Last updated: 2026-07-12.
 
+**Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
+deck families into per-element/method subfolders (branch `corpus-reorg`); a
+pure move — **no deck content changed** (every family deck is self-contained;
+the only external fixture refs are bare same-dir names inside the multi-file
+`inputformat/*` subfolders, which move as a unit, so no depth `../` fix was
+needed). Per-family case counts unchanged (asymmetric 36, controls 57, modes 40).
+Folder map:
+- `asymmetric/<element>/`: line, transformer, capacitor, reactor, load, vsource,
+  isource, generator, der, indmach, vccs, upfc, fault, autotrans (autotrans_snap
+  / midi_autotrans_asym / autotrans_gic), gic (gicline/gictransformer/gicsource/
+  gic_midi), combo (combo_chain/combo_mesh/midi_asym).
+- `controls/<control>/`: regcontrol, capcontrol, invcontrol, storagecontroller,
+  gendispatcher, recloser, relay, fuse, swtcontrol, energymeter, monitor, sensor,
+  isource, autotrans, gfm, combo (combo_protection/combo_voltvar/combo_metering/
+  midi_controls/midi_protection).
+- `modes/<method>/`: time (generaltime{,_yearly,_duty}/ld1/ld2/peakday),
+  montecarlo, autoadd, newton, harmonics (reactor_rlcurve/isource_harm),
+  inputformat (shape_binfiles/shape_mmf/shape_filearr/xycurve_files multi-file
+  subfolders), batchedit, reduce, makeposseq, pstcalc, upgrade.
+- Remap updates: the three family `manifest.json` `path` fields; the
+  `ASYMMETRIC/CONTROLS/MODES_REQUIRED` floors + population lock `family_paths`
+  in `corpus_live.rs`/`population.lock.json`; the fixture/midi generators under
+  `tools/decks/` (subfolder-aware `dest()` resolver in `gen_midi_decks.py`);
+  and doc-comment deck paths in a few `src/` tests. Plan docs (CONTROL_COVERAGE/
+  GAPS/DIAKOPTICS/UPGRADE) keep their historical flat paths as history.
+
 **CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
 quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch
 `cf-a`). `solvable_now` **245 → 249**.
