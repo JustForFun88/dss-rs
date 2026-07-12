@@ -2627,7 +2627,7 @@ const AD_OFF_REASONS: &[&str] = &[
     "ad-singular-zone", // synthesized family deck: an intentionally singular tear
     "ad-divergent",     // synthesized family deck: an intentionally divergent tear
     "ad-floor-above-tier", // genuine long-radial stitch floor just above the tier
-                        // (NOT tolerance-widened, section 5) — IEEE34Mod1 leg2=2.1e-3
+    // (NOT tolerance-widened, section 5) — IEEE34Mod1 leg2=2.1e-3
     // Decks added AFTER the WP-AD.4 sweep (upgrade-era skipped-sweep promotions,
     // GFM/DynExp re-promotions, windgen + U1.3 invcontrol + coverage-wave family
     // decks) whose DSS_AD_CLASSIFY/DSS_AD_DECOMPOSE classification has not run
