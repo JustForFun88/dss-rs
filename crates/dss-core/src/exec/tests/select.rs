@@ -202,3 +202,69 @@ fn show_yprim_filename_has_no_circuit_prefix() {
     assert_eq!(base, "line_l1_yprim.txt", "no CircuitName_ prefix");
     std::fs::remove_dir_all(&scratch).ok();
 }
+
+#[test]
+fn set_class_activates_and_set_object_selects() {
+    // WP-U1.1 item 5 (r3875 / C11): `Set Class=`/`Set Object=` were NOT_PORTED;
+    // now `Set Class=X` activates class X (Pascal SetObjectClass — the r3875 fix
+    // sets ActiveDSSClass, unified here as `active_class`) and `Set Object=`
+    // selects an object, resolving a bare name against the active class.
+    let mut dss = Dss::new();
+    build(&mut dss);
+    dss.command("new load.ld bus1=b kv=12.47 kw=5");
+
+    // Set Class activates the Line class.
+    dss.command("Set Class=Line");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let line_ci = dss.class_by_name["line"];
+    assert_eq!(
+        dss.active_class,
+        Some(line_ci),
+        "Set Class=Line activates Line"
+    );
+
+    // A bare Set Object resolves against the active class (Line) — the r3875
+    // point: because Set Class activated Line, `Set Object=l2` (no class prefix)
+    // finds line.l2 and makes it the ActiveCktElement (matches the capi015/0.14.5
+    // oracle, which resolves `Set Class=Line; Set Object=l2`).
+    dss.command("Set Object=l2");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let l2 = (line_ci, dss.classes[line_ci].name_to_idx["l2"]);
+    assert_eq!(
+        dss.active_ckt_element,
+        Some(l2),
+        "bare Set Object=l2 selects line.l2"
+    );
+
+    // `Set Type=`/`Set Element=` are aliases (Pascal 1,12 / 2,13).
+    dss.command("Set Type=Load");
+    let load_ci = dss.class_by_name["load"];
+    assert_eq!(
+        dss.active_class,
+        Some(load_ci),
+        "Set Type= aliases Set Class="
+    );
+    dss.command("Set Element=load.ld");
+    let ld = (load_ci, dss.classes[load_ci].name_to_idx["ld"]);
+    assert_eq!(
+        dss.active_ckt_element,
+        Some(ld),
+        "Set Element= aliases Set Object="
+    );
+}
+
+#[test]
+fn set_class_unknown_errors_keeps_previous() {
+    let mut dss = Dss::new();
+    build(&mut dss);
+    dss.command("Set Class=Line");
+    let line_ci = dss.class_by_name["line"];
+    dss.command("Set Class=NoSuchClass");
+    assert!(
+        dss.errors().iter().any(|e| e.contains("not found")),
+        "expected class-not-found, got {:?}",
+        dss.errors()
+    );
+    // Unknown class leaves the previously-referenced class in place.
+    assert_eq!(dss.active_class, Some(line_ci));
+}

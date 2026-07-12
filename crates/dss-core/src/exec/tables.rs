@@ -428,6 +428,11 @@ pub(crate) mod opt {
     pub const RELAY_MARKER_CODE: usize = 104;
     pub const RELAY_MARKER_SIZE: usize = 105;
 
+    /// `Set Type=`/`Set Class=` both activate a class (Pascal `1, 12:
+    /// SetObjectClass`). `Set Element=`/`Set Object=` both select an object
+    /// (Pascal `2, 13: SetObject`). WP-U1.1 item 5.
+    pub const TYPE: usize = 1;
+    pub const ELEMENT: usize = 2;
     pub const HOUR: usize = 3;
     pub const SEC: usize = 4;
     pub const YEAR: usize = 5;
@@ -437,6 +442,8 @@ pub(crate) mod opt {
     pub const RANDOM: usize = 9;
     pub const NUMBER: usize = 10;
     pub const TIME: usize = 11;
+    pub const CLASS: usize = 12;
+    pub const OBJECT: usize = 13;
     pub const TOLERANCE: usize = 16;
     pub const MAXITERATIONS: usize = 17;
     /// `h` is an alias of `stepsize` (Pascal `7, 18:`).

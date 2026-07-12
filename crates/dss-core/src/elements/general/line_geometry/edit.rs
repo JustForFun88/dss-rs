@@ -4,8 +4,7 @@
 
 use crate::elements::general::conductor_data::{CnDataObj, TsDataObj, WireDataObj};
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::elements::traits::ElemRef;
-use crate::obj::base::DssObject;
+use crate::obj::base::{DssObject, ObjectRefArrayItem};
 use crate::support::line_constants::LineConstants;
 
 use super::{ConductorChoice, LineGeometryObj, prop};
@@ -109,7 +108,7 @@ impl LineGeometryObj {
 
     /// Pascal `SetWires` (the text path — `AllowAllConductors` is JSON-only):
     /// validate the count against the conductor span and fill `FWireData`.
-    pub(super) fn set_wires(&mut self, refs: &[(String, ElemRef, &dyn DssObject)]) {
+    pub(super) fn set_wires(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
         let mut istart = 1usize;
         let istop = self.fnconds.max(0) as usize;
         if let Some(a) = self.active_index() {
@@ -130,7 +129,8 @@ impl LineGeometryObj {
             return;
         }
         for (k, i) in (istart..=istop).enumerate() {
-            self.fwiredata[i - 1] = Some(refs[k].2.clone_box());
+            // A `none` slot (AllowNoneItem) stays NIL.
+            self.fwiredata[i - 1] = refs[k].as_ref().map(|(_, _, o)| o.clone_box());
         }
         self.factive_cond = istop as i32;
     }

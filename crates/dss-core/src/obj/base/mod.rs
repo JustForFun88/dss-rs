@@ -472,6 +472,12 @@ pub struct ShapeSave {
     pub result_tag: &'static str,
 }
 
+/// One slot of a `DSSObjectReferenceArrayProperty` write: `Some((name, ElemRef,
+/// read view))` for a resolved object, or `None` for a `none` entry
+/// (`TPropertyFlag.AllowNoneItem`). See [`DssObject::set_object_ref_array`].
+pub type ObjectRefArrayItem<'a> =
+    Option<(String, crate::elements::traits::ElemRef, &'a dyn DssObject)>;
+
 /// The typed field accessors the property engine calls, keyed by the 1-based
 /// property index. Each concrete class implements only the kinds it actually
 /// uses; the defaults panic so a wrong dispatch surfaces as an obvious bug
@@ -688,20 +694,14 @@ pub trait DssObject {
     }
 
     /// `DSSObjectReferenceArrayProperty` write (e.g. a LineGeometry `wires`):
-    /// `refs` is the parsed, resolved list — each `(name, ElemRef, read view)`
-    /// in script order. The object validates the count and stores the references
-    /// (Pascal `SetWires`), cloning each read view as needed (the snapshot-clone
-    /// pattern). The dump value is read back through
-    /// [`DssObject::get_object_ref_names`].
-    fn set_object_ref_array(
-        &mut self,
-        idx: usize,
-        refs: &[(
-            String,
-            crate::elements::traits::ElemRef,
-            &dyn crate::obj::base::DssObject,
-        )],
-    ) {
+    /// `refs` is the parsed, resolved list — each slot in script order is either
+    /// `Some((name, ElemRef, read view))` or **`None`** for a `none` entry
+    /// (Pascal `TPropertyFlag.AllowNoneItem`, `DSSObjectHelper.ValidateObjectItem`
+    /// l.6456: `none` → `otherObj := NIL`, no error). The object validates the
+    /// count and stores the references (Pascal `SetWires`), cloning each read
+    /// view; a `None` slot stays NIL. The dump reads back through
+    /// [`DssObject::get_object_ref_names`] (NIL → `""`).
+    fn set_object_ref_array(&mut self, idx: usize, refs: &[ObjectRefArrayItem<'_>]) {
         let _ = (idx, refs);
         unreachable!("set_object_ref_array not implemented for property {idx}")
     }

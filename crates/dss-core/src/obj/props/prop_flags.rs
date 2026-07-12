@@ -89,6 +89,13 @@ impl PropFlags {
     /// PVSystem `kVA`; WindGen `kW`/`kVA`/`MVA` at U1.8). Applied pre-scale, matching where
     /// `DblValueNZ`/`ReplaceZero` sit in the parse.
     pub const REPLACE_ZERO: Self = Self(1 << 17);
+    /// Pascal `AllowNoneItem` (`DSSObjectHelper.ValidateObjectItem`, l.6456): on a
+    /// `DSSObjectReferenceArrayProperty` (Line/LineGeometry `Wires`/`CNCables`/
+    /// `TSCables`), a list entry of literal `none` resolves to a **NIL slot**
+    /// instead of the "object not found" error (SVN r3902/r3913). WP-U1.1 item 3.
+    /// Distinct from [`Self::ALLOW_NONE`] (single ref / DoubleVArray). The mixed
+    /// conductor-list *numerics* that consume a NIL conductor are WP-U1.4.
+    pub const ALLOW_NONE_ITEM: Self = Self(1 << 18);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);

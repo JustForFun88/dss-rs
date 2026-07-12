@@ -336,9 +336,9 @@ fn try_ref_array(
     targets: &[&dyn DssObject],
 ) -> Vec<String> {
     let idx = cls.property_index(name).expect("known property");
-    let refs: Vec<(String, ElemRef, &dyn DssObject)> = targets
+    let refs: Vec<crate::obj::base::ObjectRefArrayItem> = targets
         .iter()
-        .map(|t| (t.data().name().to_string(), ElemRef { cls: 0, idx: 0 }, *t))
+        .map(|t| Some((t.data().name().to_string(), ElemRef { cls: 0, idx: 0 }, *t)))
         .collect();
     obj.set_object_ref_array(idx, &refs);
     obj.data_mut().set_as_next_seq(idx);
