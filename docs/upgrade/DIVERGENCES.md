@@ -417,6 +417,76 @@ reproduce the `Line.Kxg` 658.5 inconsistency.** Consistent with the plan's
 - `known_diffs.json`: no Rust↔EPRI entry existed (0.14.5 and the port both used
   658.5, matching each other at r3723) — nothing to retire.
 
+## B5 — GFM `Isc1` factor-1000 removal — DEFERRED (WP-U1.2, blocked on a Rust GFM op-point gap)
+
+**Observable.** The equivalent short-circuit admittance (`CalcGFMYprim`) of any
+PVSystem/Storage operating in grid-forming (GFM) mode — its Norton YPrim.
+
+**dss_capi 0.14.5 (default).** `Isc1 = mKVArating·1000 / (√3·RatedkVLL) /
+NPhases`. **0.15.x (capi015) / EPRI r4088+.** `Isc1 = mKVArating / (√3·
+RatedkVLL) / NPhases` — the `·1000` DROPPED (`InvDynamics.pas:229`, commit
+`de6a5a42`, port of SVN r3865, "preventing oversizing the model"). `Isc1` feeds
+only `c = 4·(R1²+X1²) − (√3·RatedkVLL·1000/Isc1)²` in the R0 quadratic; the
+separate `·1000` there (kV→V of RatedkVLL) is unchanged.
+
+**Decision — DEFER (not landed in WP-U1.2).** Adopting the `Isc1` change in
+`inv_based_pce.rs::calc_gfm_yprim` moved the Rust GFM **operating point**
+(`gfm_micro` `Load.isl` 400 kW → 368 kW live vs capi015), but the U0.2 sweep and
+a direct two-engine probe (`/tmp/probe_gfm.py`, 2026-07-12) prove the Pascal
+op-point is **Isc1-INVARIANT** — `0.14.5` and `capi015` give the *bit-identical*
+`Load.isl = 127094.3908 W/φ` despite the ~3.6e-3 Yf YPrim move. The GFM
+voltage-source injection on the Pascal engines compensates the impedance change;
+the Rust GFM power-flow injection does **not** (its op-point is Isc1-sensitive),
+so the port matched 0.14.5 only because it shared the old `Isc1`. This is a
+**pre-existing Rust GFM injection-vs-YPrim consistency gap** that the B5 change
+merely unmasks — NOT a B5 problem. Per CLAUDE.md's prove-don't-rationalize rule
+it needs a dedicated investigation (the GFM injection current must track
+`YPrim·Vset` so the terminal voltage — hence load power — stays invariant to the
+Norton impedance), out of the WP-U1.2 numeric-long-tail scope. **B5 + its four
+GFM live-deck flips are reverted; the GFM decks stay on the default 0.14.5
+oracle.** Recorded as an open follow-up in STATUS. `known_diffs`: nothing changed.
+
+## D7 — IBR dynamics current-limit base `PanelkW → FkVArating` (PVSystem) — SETTLED (WP-U1.2, adopt capi015)
+
+**Observable.** `dynVars.iMaxPPhase` in `TPVsystemObj.IntegrateStates` — the
+per-phase current limit that caps the GFL `ISP` and bounds the GFM droop
+`ISPDelta`; also the `Max. Amps (phase)` mode-3 state variable (index 21).
+
+**dss_capi 0.14.5 (default).** `iMaxPPhase = PanelkW / BasekV / NumPhases`
+(`PVsystem.pas:2309`). **0.15.x (capi015) / EPRI r4088+.** `iMaxPPhase =
+FkVArating / BasekV / NumPhases` (`PVsystem.pas:2275`, commit `32db066f`, port
+of SVN r3868 — "IBR operational range": the limit tracks the inverter kVA
+rating, not the instantaneous DC panel power). **Storage did NOT change** —
+`Storage.pas` `InitStateVars` already used `FkVArating` in BOTH revs (r3582
+predates 0.14.5); reproduced as-is. PVSystem's `InitStateVars` iMaxPPhase also
+already used `FkVArating`; only `IntegrateStates` moved.
+
+**Decision — adopt for PVSystem `IntegrateStates`** (`pvsystem/dynamics.rs`
+`integrate_states_impl`, `panel_kw → self.f_kva_rating`).
+
+**Gate consequence.**
+- **`pvsystem_dynamics_mode3_matches_oracle`**: ch21 `Max. Amps` 23.149570 →
+  **27.779484** (= ×kVA/PanelkW = ×600/500), matches capi015 exactly
+  (`/tmp/probe_pvdyn.py`). The limit is non-binding (settles at 6.17 ≪ 27.78) so
+  channels 13-20 are unchanged.
+- **`pvsystem_dynexp_dynamics_mode3_matches_oracle`**: this deck's `isp ≈ 23.1457`
+  sat right at the OLD clamp boundary; the new 600-base boundary (27.78)
+  RELEASES it (isp now uncapped, matching capi015's clamp logic), shifting the
+  single deterministic startup derivative `dit@0` 1055150.8 → 1054757.2
+  (~0.035%). The BINDING settled pins (`it`=23.14571, sample 100+) are unchanged
+  and match BOTH engines. The startup *transient* is 0.14.5-shaped, NOT capi015's
+  (capi015 seeds the DynExp at the fixpoint — a separate, out-of-scope 0.15.x
+  DynExp-init change; recorded, not adopted here).
+- `pvsystem_gfm_dynamics_mode3_matches_oracle` is UNCHANGED (its GFM trajectory
+  does not reach the iMaxPPhase clamp).
+- **No live corpus deck moves under D7.** The GFM PVSystem deck `pv_gfm_dynamics.dss`
+  has `kVA = Pmpp = 800` (`irradiance=1` ⇒ `PanelkW = FkVArating = 800`), so D7 is
+  a numeric NO-OP there — probed bit-identical on 0.14.5 and capi015 (`/tmp/probe_pvgfm.py`),
+  so it stays on the default oracle. No other corpus PVSystem-dynamics deck
+  captures the current-limit under `kVA ≠ Pmpp`. D7 therefore lands as a
+  unit-test-only same-commit package (no manifest flip), decoupled from B5.
+- `known_diffs`: none matched — nothing to retire.
+
 ## L1, L3, L4 — pending later WPs
 
 - **L1** InvControl `InvControlDeltaV` buffer — WP-U1.3.

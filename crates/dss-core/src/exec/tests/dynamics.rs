@@ -717,14 +717,18 @@ fn pvsystem_dynamics_mode3_matches_oracle() {
     // measured Rust↔oracle match ~1e-8 on every channel).
     // Classic vars 1..13 are constant over the undisturbed run (no InvControl).
     for (ch, want) in [
-        (0, 1.0),        // Irradiance
-        (1, 500.0),      // PanelkW
-        (2, 1.0),        // P_TFactor
-        (3, 1.0),        // Efficiency
-        (4, 9999.0),     // Vreg
-        (12, 500.0),     // kW_out_desired
-        (17, 8000.0),    // Rated VDC
-        (21, 23.149570), // Max. Amps (phase)
+        (0, 1.0),     // Irradiance
+        (1, 500.0),   // PanelkW
+        (2, 1.0),     // P_TFactor
+        (3, 1.0),     // Efficiency
+        (4, 9999.0),  // Vreg
+        (12, 500.0),  // kW_out_desired
+        (17, 8000.0), // Rated VDC
+        // WP-U1.2 D7: iMaxPPhase base PanelkW(500)→FkVArating(600), ×1.2 =
+        // 27.779484; matches capi015 (`? Monitor` ch, /tmp/probe_pvdyn.py). The
+        // limit is non-binding (it settles at 6.17 ≪ 27.78) so the trajectory
+        // channels 13-20 are unchanged.
+        (21, 27.779484), // Max. Amps (phase)
     ] {
         assert!(rel(at(ch, 200), want) < 1e-6, "PV ch{ch} = {}", at(ch, 200));
     }
@@ -1489,8 +1493,17 @@ fn pvsystem_dynexp_dynamics_mode3_matches_oracle() {
     // are large because the seed is far from the equation's fixpoint and the filter L
     // is tiny, `modul` is still the init duty (1.0). (Samples 1..99 ring too hard to
     // pin at f32 — the stiff start-up — but step 0 is one deterministic step.)
+    // WP-U1.2 D7: this deck's `isp = (500000/vgmag)/3 ≈ 23.1457` sat right at the
+    // OLD `iMaxPPhase` clamp boundary (PanelkW/base = 23.14571); the new base
+    // FkVArating(600)/... = 27.78 RELEASES the clamp (isp is now uncapped ~23.146,
+    // matching capi015's clamp logic), so the single-step derivative shifts a
+    // deterministic ~0.035%: `dit@0` 1055150.8 → 1054757.2. `it@0` (the predictor
+    // half-step) is unchanged. The startup transient itself is 0.14.5-shaped and
+    // NOT capi015's (capi015 seeds the DynExp at the fixpoint — a separate,
+    // out-of-scope 0.15.x init change); the BINDING pins are the settled slots
+    // (sample 100+, `it`=23.14571) which match BOTH engines.
     assert!(rel(at(0, 0), 673.266) < 1e-6, "PV it@0 = {}", at(0, 0));
-    assert!(rel(at(1, 0), 1055150.8) < 1e-6, "PV dit@0 = {}", at(1, 0));
+    assert!(rel(at(1, 0), 1054757.2) < 1e-6, "PV dit@0 = {}", at(1, 0));
     assert!(rel(at(4, 0), 1.0) < 1e-6, "PV modul@0 = {}", at(4, 0));
 
     // Settled state (sample 100 = past the stiff start-up; sample 200 = end). All

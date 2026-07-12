@@ -171,10 +171,15 @@ impl PVSystem {
         let panel_kw = self.panel_kw;
         let min_vs = self.base.dyn_vars.min_vs;
 
-        // Update iMaxPPhase from current panel power (Pascal PVsystem.pas l.2305 —
+        // Update iMaxPPhase in `IntegrateStates` (Pascal PVsystem.pas l.2275 —
         // PVSystem *overwrites* `dynVars.iMaxPPhase`, unlike Storage's local var).
+        // dss_capi 0.15.x (commit 32db066f, port of SVN r3868): the current-limit
+        // base changed `PanelkW → FkVArating` ("IBR operational range") — the
+        // limit tracks the inverter kVA rating, not the instantaneous DC panel
+        // power. UPGRADE_PLAN WP-U1.2 row D7; ledger DIVERGENCES.md §D7. (Storage
+        // already used FkVArating in both revs; InitStateVars above too.)
         let base_kv = self.base.dyn_vars.base_kv;
-        self.base.dyn_vars.i_max_p_phase = (panel_kw / base_kv) / nphases_f;
+        self.base.dyn_vars.i_max_p_phase = (self.f_kva_rating / base_kv) / nphases_f;
         let i_max_p_phase = self.base.dyn_vars.i_max_p_phase;
         let gfm_mode = self.base.gfm_mode;
         let reset_ibr = self.base.dyn_vars.reset_ibr;

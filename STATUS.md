@@ -3328,7 +3328,39 @@ references moved to capi015 (only the earth-return reactance, and CN/TS-reduced
 resistance, shift). `known_diffs`: none matched (0.14.5 and the port both used
 658.5) — nothing to retire.
 
-**Rows B1/D6/D8/D7/B5/D3/B3 — see resume note.**
+**Row D7 — PVSystem dynamics current-limit base `PanelkW → FkVArating` — LANDED.**
+`IntegrateStates` `iMaxPPhase` (`pvsystem/dynamics.rs`). Storage already used
+`FkVArating` in both revs (unchanged). Unit-test-only same-commit package (D7
+moves NO live corpus deck): `pvsystem_dynamics_mode3` ch21 `Max. Amps`
+23.149570 → 27.779484 (=×kVA/PanelkW=600/500, matches capi015 exactly);
+`pvsystem_dynexp_dynamics_mode3` `dit@0` 1055150.8 → 1054757.2 (the deck's isp
+sat at the old clamp boundary; the new 600-base boundary releases it — a
+deterministic ~0.035% single-step shift; the binding settled pins are unchanged
+and match both engines). `pv_gfm_dynamics.dss` has `kVA=Pmpp=800` so D7 is a
+NO-OP there (stays default oracle, probe-confirmed). Ledger §D7.
+
+**Row B5 — GFM `Isc1` ×1000 removal — DEFERRED (open follow-up).** Adopting the
+`Isc1` change moved the Rust GFM operating point (`gfm_micro` `Load.isl` 400→368 kW
+vs capi015), but a direct two-engine probe proves the Pascal op-point is
+**Isc1-INVARIANT** (0.14.5 == capi015 = 127094.3908 W/φ bit-identical despite the
+Yf move). Root cause = a **pre-existing Rust GFM power-flow injection-vs-YPrim
+consistency gap** (the injection does not track `YPrim·Vset`, so the op-point is
+Isc1-sensitive where the Pascal engines' is not) that B5 merely unmasks — needs a
+dedicated GFM investigation, out of the numeric-long-tail scope. B5 + its 4 GFM
+live-deck flips reverted; ledger §B5 has the full evidence. **OPEN FOLLOW-UP for a
+GFM WP.**
+
+**Rows B1/D6/D8/D3/B3 — NOT started (budget); see resume note.** B1 (Capacitor
+Cmatrix ×1.000001) triggers only for a Cmatrix cap WITH series R/XL (`has_zl`) —
+no obvious corpus witness, needs a synthesized deck/unit test. D6/D3 are
+report-only (AmpRatings/spacing ratings — overload-report decks). D8 needs a
+3-winding transformer with X13/X23=0. B3-r3723 (Load.GrowthFactor Year=0 from
+dblHour/8760) needs a growthshape + multi-hour year-0 run.
+
+**Resume note (WP-U1.2 remaining):** rows B1, D6, D8, D3, B3-r3723 still to port;
+the golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and
+the same-commit workflow are proven (B2/D1, D7). B5's GFM gap is the one hard
+blocker (a control-consistency bug, not a numeric constant).
 
 ### Gate state (all green)
 ```
