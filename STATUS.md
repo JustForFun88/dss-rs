@@ -137,10 +137,19 @@ stamps each non-swing diagonal 2×2 block from the PDE-only `Y_ii` (`[B,G;G,−B
 in `NCIM_BuildJacobian`, then adds the load/gen injection derivative onto the same
 cells in `NCIM_ApplyCurr`; the current-injection Newton diagonal is
 `Y_ii_block + g'_ii_block`, so the two stamps must sum (under replace a PQ node
-loses its network coupling → wrong Jacobian). 8 unit tests from hand Jacobians
+loses its network coupling → wrong Jacobian). 9 unit tests from hand Jacobians
 (2×2, a 4×4 two-block CI-shaped Jacobian, insertion-order sum, singular, bad
-scaling, zero/rebuild, dim-mismatch). KLUSolveX C++ not vendored; the accumulate
-semantics are proven from the algorithm and documented at the port site.
+scaling, zero/rebuild, dim-mismatch, **zero-stamp-dropped**). The accumulate
+semantics are proven from the NCIM algorithm AND corroborated by the vendored
+EPRI KLUSolve C++ (`VersionC/klusolve/KLUSolve/Source/KLUSystem.cpp`:
+`SetMatrixElement`→`AddElement` appends, `GetElement` sums duplicates); the
+DSS-Extensions KLUSolveX *fork* (the real `DoublePrecisionReal` format) is not
+vendored but inherits the CSparse pipeline. **Settle fix:** `set_element` now
+drops a zero value (`if value == 0.0 return`), matching `AddElement`
+(`KLUSystem.cpp:442-444`) — an earlier doc comment claimed the no-op but the code
+did not implement it, so an exact-zero cell (pure-R load `B`-diagonal, pure-R/-X
+branch off-diagonal) would have inflated `nnz`/`Export Jacobian` vs the capi015
+oracle in Stage 3; a covering test (`zero_stamp_is_dropped`) was added.
 - **Stages 2–4 remaining (integration map for the next executor):**
   - **State** (`solution/solution/state.rs`): add `NCIMSOLVE=2` + the ~15 NCIM
     fields (Solution.pas l.243-271). Node i (1-based, ground=0) → Jacobian
@@ -218,8 +227,8 @@ cargo test --workspace      # dss-core lib 748, golden_feeders 1,
                             #    installed (it fails, not skips, without it);
                             #    only corpus_live_classify is opt-in, via
                             #    DSS_LIVE_CLASSIFY=1 — the growth/classify probe),
-                            # dss-parser 62+1, dss-sparse 14
-                            #   (6 complex SparseSet + 8 real RealSparseSet —
+                            # dss-parser 62+1, dss-sparse 15
+                            #   (6 complex SparseSet + 9 real RealSparseSet —
                             #    WP-U1.7 Stage 1, the NCIM Jacobian path)
 ```
 

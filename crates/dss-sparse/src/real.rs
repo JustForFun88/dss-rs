@@ -9,9 +9,16 @@
 //! `NCIM_BuildJacobian`/`DoNCIMSolution`). [`RealSparseSet`] is that real path,
 //! same faer backing, same `#![forbid(unsafe_code)]`.
 //!
-//! **`set_element` accumulates.** KLUSolveX builds its matrix from a coordinate
+//! **`set_element` accumulates.** KLUSolve builds its matrix from a coordinate
 //! (triplet) list summed at compression time (CSparse `cs_dupl`), so a repeated
-//! `(i, j)` stamp adds. NCIM relies on exactly this: `NCIM_BuildJacobian` stamps
+//! `(i, j)` stamp adds. This is confirmed by the vendored EPRI KLUSolve C++
+//! (`.inputs/electricdss-code-r4088-trunk/VersionC/klusolve/KLUSolve/Source/`):
+//! `SetMatrixElement` → `AddElement` appends a triplet (`bSum` is *ignored* —
+//! `KLUSystem.cpp:431-448`), and `GetElement` sums every triplet at a cell
+//! (`KLUSystem.cpp:465-470`). The DSS-Extensions KLUSolveX *fork* (which adds the
+//! `MatrixFormat_DoublePrecisionReal` real path NCIM uses) is not vendored, but
+//! it inherits this CSparse pipeline unchanged. NCIM relies on exactly this:
+//! `NCIM_BuildJacobian` stamps
 //! each non-swing diagonal 2×2 block from the PDE-only `Y_ii`
 //! (`[B, G; G, −B]`), then `NCIM_ApplyCurr` stamps the load/gen injection
 //! derivative onto the *same* diagonal cells. For the current-injection Newton
@@ -95,10 +102,25 @@ impl RealSparseSet {
     /// Accumulate `value` at `(row, col)`, 0-based (KLUSolve `SetMatrixElement`
     /// on a real-format set). Duplicate `(row, col)` stamps are summed when the
     /// matrix is assembled — the semantics NCIM's Jacobian relies on (module
-    /// note). No-op for a zero value (avoids planting an explicit structural
-    /// zero the way KLUSolveX's coordinate list would not).
+    /// note). **A zero value is a no-op**: KLUSolve's `SetMatrixElement` routes
+    /// to `AddElement`, which drops the stamp before it reaches the coordinate
+    /// list (`if (re == 0.0 && im == 0.0) return;` —
+    /// `VersionC/klusolve/KLUSolve/Source/KLUSystem.cpp:442-444`, reached via
+    /// `KLUSolve.cpp:202`), so an exact-zero cell never becomes a structural
+    /// nonzero. NCIM stamps exact zeros in realistic decks (a pure-R load's
+    /// `B`-diagonal, a pure-R/pure-X branch's off-diagonal), so without this
+    /// guard `nnz`/`coo_entries`/`Export Jacobian` would over-count vs the
+    /// oracle. This mirrors the proven complex path, which skips zeros at stamp
+    /// time in `add_primitive_matrix` (`lib.rs`). (Cells whose *nonzero* stamps
+    /// happen to sum to 0.0 are not dropped here — KLUSolve's post-`cs_dupl`
+    /// `csz_dropzeros` would, but the complex Y path never needed it and the
+    /// NCIM diagonal `Y_ii + g'_ii` does not cancel exactly; revisit in Stage 3
+    /// if an `Export Jacobian` divergence surfaces.)
     pub fn set_element(&mut self, row: usize, col: usize, value: f64) {
         debug_assert!(row < self.n && col < self.n);
+        if value == 0.0 {
+            return;
+        }
         self.triplets.push((row, col, value));
         // Pattern may have changed; existing factorizations are stale.
         self.matrix = None;
@@ -381,6 +403,34 @@ mod tests {
             "must sum in stamp order"
         );
         assert_ne!(((a + b) + d).to_bits(), ((a + d) + b).to_bits());
+    }
+
+    /// A zero-valued stamp is dropped, exactly like KLUSolve `AddElement`
+    /// (`if (re == 0.0 && im == 0.0) return;`): it never becomes a structural
+    /// nonzero, so `nnz`/`coo_entries`/`get_element` omit it. NCIM stamps exact
+    /// zeros (a pure-R load's `B` diagonal, a pure-R branch's `G` off-diagonal),
+    /// so this keeps `Export Jacobian`/nnz matching the oracle.
+    #[test]
+    fn zero_stamp_is_dropped() {
+        let mut s = RealSparseSet::new(2);
+        s.set_element(0, 0, 4.0);
+        s.set_element(0, 1, 0.0); // structural zero — must NOT be stored
+        s.set_element(1, 1, 3.0);
+
+        assert_eq!(s.nnz().unwrap(), 2, "zero stamp must not inflate nnz");
+        let (rows, cols, vals) = s.coo_entries().unwrap();
+        assert_eq!(vals.len(), 2);
+        assert!(
+            !rows.iter().zip(&cols).any(|(&r, &c)| r == 0 && c == 1),
+            "cell (0,1) must be structurally absent, got {rows:?}/{cols:?}"
+        );
+        assert_eq!(s.get_element(0, 1).unwrap(), 0.0);
+
+        // A later nonzero stamp at the same cell is still recorded — the guard
+        // only drops the zero value, it does not blacklist the cell.
+        s.set_element(0, 1, 7.0);
+        assert_eq!(s.nnz().unwrap(), 3);
+        assert_eq!(s.get_element(0, 1).unwrap(), 7.0);
     }
 
     /// A structurally singular matrix (empty column) reports the column.
