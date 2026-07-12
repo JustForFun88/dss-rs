@@ -487,6 +487,46 @@ already used `FkVArating`; only `IntegrateStates` moved.
   unit-test-only same-commit package (no manifest flip), decoupled from B5.
 - `known_diffs`: none matched — nothing to retire.
 
+## B1 — Capacitor Cmatrix YPrim diagonal ×1.000001 before inversion — SETTLED (WP-U1.2, adopt capi015)
+
+**Observable.** The YPrim of a `Cmatrix` (SpecType=3) capacitor that also carries
+a **series filter reactance** (`R`/`XL` > 0 ⇒ `has_zl`) — the only config that
+reaches `MakeYprimWork`'s SpecType-3 inversion path.
+
+**dss_capi 0.14.5 (default).** The SpecType-3 branch inverts the C-admittance
+work matrix directly. **0.15.x (capi015) / EPRI r4088+.** Each work-matrix
+diagonal is first multiplied by `1.000001` ("Add a little bit to each phase so it
+will invert", `Capacitor.pas` `MakeYprimWork`) — the same perturbation the Delta
+1|2 branch already used — so a (near-)singular C matrix still inverts.
+
+**Decision — adopt** (`capacitor/solve.rs`, the SpecType-3 `_ =>` arm gains the
+×1.000001 diagonal loop before `invert()`).
+
+**Probe** (`/tmp/probe_capfull.py`, 2026-07-12; `Capacitor.f1 conn=wye
+cmatrix=(1.5|0.2 1.5|0.2 0.2 1.5) R=0.5 XL=3`, `? Yprim`):
+
+| engine | `Y[0,0]` (phase self) |
+|---|---|
+| capi 0.14.5 (default) | `(-5.29e-23, -1.08e-19)` — **garbage** (singular invert) |
+| capi015 (0.15.0b4) | `(1.661774199e-07, 5.664824416e-04)` — **finite** |
+
+Strongly revision-**sensitive** (garbage → finite) and feature-sensitive (without
+`R`/`XL` the SpecType-3 invert path is never reached).
+
+**Gate consequence.**
+- **No corpus/live witness.** No vendored deck defines a Cmatrix capacitor with a
+  series reactance (the corpus caps are simple shunt-kvar); the only `cmatrix`
+  hits in cap-bearing decks are LineCode matrices. So no corpus_live case and no
+  golden moves.
+- **Pinned by an oracle-validated unit test**
+  (`capacitor::tests::cmatrix_with_series_reactance_yprim_matches_capi015`): the
+  Rust YPrim phase block equals the capi015 probe reference to 1e-11/1e-12; the
+  0.14.5 garbage (~1e-23) fails the `5.66e-4` diagonal assertion, so it is
+  feature-sensitive to the ×1.000001. (A live capi015 deck was prepared but the
+  modes manifest's mixed manual unicode-escaping/CRLF blocks a clean append; the
+  unit test carries the exact capi015 numbers instead — same oracle, offline.)
+- `known_diffs`: none matched — nothing to retire.
+
 ## D6 — Transformer seasonal AmpRatings drop the `1.1 *` factor — SETTLED (WP-U1.2, adopt capi015; unit-pinned, no live witness yet)
 
 **Observable.** A Transformer's per-season current ratings array `AmpRatings[i]`
