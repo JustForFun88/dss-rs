@@ -9,6 +9,18 @@
 
 Last updated: 2026-07-12.
 
+**PARKED TEST (needs investigation, user decision 2026-07-12):**
+`circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` is
+`#[ignore]`d. The WP-AD.5 `Get_paths_4_Coverage` state machine (ported 1:1;
+sole exit at Circuit.pas:909) never terminates on the test's 6-bus radial,
+even after requesting a reachable `set coverage=0.5` — the first hypothesis
+(unreachable 0.9 default; see the NOTE(upstream-quirk) at the function) proved
+insufficient. Needs a trace of `Inc_Mat_Levels` / per-path `Buses_Covered` on
+the official r3723 engine vs ours. Surfaced at the part2 consolidation gate:
+the AD5 line's own full gate was never witnessed (killed mid-run) and its
+audits never ran (the round stopped on `gate_green=false`), so the hang
+shipped unreviewed. `Refine_BusLevels` itself stays ported/enabled.
+
 **WP-AD SAVE — save round-trip fidelity (branch `save-fidelity`, 2026-07-12;
 settle pass).** Owns the `off:save-roundtrip-*` buckets (the D7 leg1 gap WP-AD.4
 proved is a `save circuit` defect, not AD). Each of the 40 `save-roundtrip-geometry`

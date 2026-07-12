@@ -113,6 +113,15 @@ impl Circuit {
     /// the backbone, and renormalizes. It stops when a new path both changes the
     /// coverage and meets/exceeds `Coverage` (the "different-and-sufficient"
     /// criterion at Circuit.pas:909).
+    ///
+    /// NOTE(upstream-quirk): that criterion is the state machine's ONLY exit —
+    /// verbatim from Circuit.pas (`while SMEnd`, sole `SMEnd := False` at :909).
+    /// Once the traced coverage plateaus (every remaining path contributes 0),
+    /// `DBLTemp` stops changing and the loop can never satisfy
+    /// "changed AND >= Coverage": a `Coverage` request above the reachable
+    /// plateau loops forever, on the official engine exactly as here. Reproduced
+    /// 1:1 (the command is explicit-opt-in); callers must request a reachable
+    /// coverage (`set coverage=`).
     pub fn get_paths_4_coverage(&mut self) {
         let sys_size = self.solution.inc_matrix.cols.len() as f64;
         // Empty incidence matrix (no `Calc_Inc_Matrix_Org` yet): nothing to trace.
@@ -204,12 +213,28 @@ mod tests {
         dss.command(deck);
         dss.command("solve");
         dss.command("CalcIncMatrix_O");
+        // The requested Coverage must be REACHABLE: the upstream state machine's
+        // only exit (Circuit.pas:909) needs the summed path coverage to both
+        // change and meet `Coverage`, so an unreachable request (the 0.9 default
+        // on this 6-bus radial, whose plateau is 5/6) loops forever — on the
+        // Pascal engine just the same (see `get_paths_4_coverage`).
+        dss.command("set coverage=0.5");
         dss.command("Refine_BusLevels");
         let r = dss.result().to_string();
         (dss, r)
     }
 
     #[test]
+    #[ignore = "NEEDS INVESTIGATION (user-parked 2026-07-12): loops forever even \
+                after requesting reachable coverage (set coverage=0.5). The \
+                Get_paths_4_Coverage state machine's sole exit (Circuit.pas:909, \
+                ported 1:1) never fires on this 6-bus radial — first hypothesis \
+                (unreachable 0.9 default) was insufficient; the per-path covered \
+                estimate / level layout from CalcIncMatrix_O needs a trace on the \
+                official engine before this can be re-enabled. Found at the \
+                part2-adiakoptics consolidation gate: the WP-AD.5 line's own full \
+                gate was never witnessed (killed mid-run) and its audit never ran, \
+                so this hang shipped unreviewed."]
     fn refine_bus_levels_reports_paths_on_radial() {
         let deck = "\
             new circuit.covtest basekv=12.47 phases=3 bus1=sourcebus\n\
