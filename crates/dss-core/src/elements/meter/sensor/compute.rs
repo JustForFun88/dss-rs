@@ -76,11 +76,23 @@ impl Sensor {
             return;
         }
         let nph = self.med.cd.nphases;
+        // Pascal writes `SensorCurrent[1..FNphases]`; `AllocateSensorObjArrays`
+        // sizes that array to FNphases in `RecalcElementData`. When `kWs`/`kvars`
+        // are set mid-edit — before the end-of-edit recalc reallocates — the
+        // metered element's phase count can exceed the still-unsized buffer (this
+        // happens for a sensor emitted by `save circuit` with the metered element
+        // already resolved). Size it here so the write stays in bounds; recalc
+        // re-zeros it and `TakeSample` recomputes, so this value is transient.
+        if self.med.sensor_current.len() < nph {
+            self.med.sensor_current.resize(nph, 0.0);
+        }
         for i in 0..nph {
+            let kw = self.sensor_kw.get(i).copied().unwrap_or(0.0);
             let kva = if self.q_specified {
-                Complex64::new(self.sensor_kw[i], self.sensor_kvar[i]).norm()
+                let kvar = self.sensor_kvar.get(i).copied().unwrap_or(0.0);
+                Complex64::new(kw, kvar).norm()
             } else {
-                self.sensor_kw[i]
+                kw
             };
             self.med.sensor_current[i] = kva * 1000.0 / self.vbase;
         }
@@ -146,11 +158,16 @@ impl Sensor {
             return;
         }
         let nph = self.med.cd.nphases;
+        if self.med.sensor_current.len() < nph {
+            self.med.sensor_current.resize(nph, 0.0);
+        }
         for i in 0..nph {
+            let kw = self.sensor_kw.get(i).copied().unwrap_or(0.0);
             let kva = if self.q_specified {
-                Complex64::new(self.sensor_kw[i], self.sensor_kvar[i]).norm()
+                let kvar = self.sensor_kvar.get(i).copied().unwrap_or(0.0);
+                Complex64::new(kw, kvar).norm()
             } else {
-                self.sensor_kw[i]
+                kw
             };
             self.med.sensor_current[i] = kva * 1000.0 / self.vbase;
         }
