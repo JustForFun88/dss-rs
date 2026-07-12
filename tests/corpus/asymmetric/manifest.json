@@ -102,6 +102,16 @@
    "note": "Boundary: Rg/Xg/Kxg ground-return frequency correction (Line.pas:1262-1287). Explicit non-default Rg/Xg/rho solved at the 7th harmonic (Set frequency=420, FreqMultiplier=7). lgx (Xg<>0, Rg=0) fires the Xgmod=0.5*Kxg*ln(FreqMultiplier) branch; lgr (Rg<>0, Xg=0) fires the Rg*(FreqMultiplier-1) add — clean per-term isolation. WITNESSES the U1.2 inconsistency: Kxg deliberately KEEPS the 658.5 constant (upgrade ledger B2/D1) while SimpleCarson Get_Ze moves to 658.853; the SymComponentsModel path never calls Get_Ze, so this deck's YPrim must NOT move under U1.2 (INVARIANT regression, do NOT flip to capi015 — TODO(compat) in the deck header). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: zeroing Rg/Xg (keeping f=420) changes both lgx/lgr YPrims."
   },
   {
+   "path": "line/line_fullcarson_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lfc",
+    "Line.lfcspur"
+   ],
+   "note": "Boundary: FullCarson EarthModel at SOLVE level (FLineConstants.Calc dispatch). Overhead geometry (reduce=y Kron, full-asym) under Set EarthModel=fullcarson — the only EarthModel with no prior live-solve deck (SimpleCarson=line_geometry/cable_asym, DERI=default). U1.2-INVARIANT control: U1.2 moves SimpleCarson Get_Ze 658.5->658.853 ONLY, FullCarson Get_Ze is unchanged, so this YPrim must NOT move (do NOT flip to capi015 — the complement of the Carson decks U1.2 flips). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: EarthModel fullcarson->Carson changes both lfc/lfcspur YPrims."
+  },
+  {
    "path": "transformer/transformer_asym.dss",
    "kind": "micro",
    "n_steps": 1,

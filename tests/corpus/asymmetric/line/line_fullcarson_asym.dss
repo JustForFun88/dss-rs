@@ -1,0 +1,48 @@
+// Asymmetric Line coverage — FullCarson EarthModel at SOLVE level. The three
+// EarthModels (DERI / SimpleCarson / FullCarson) are all unit-tested at the
+// constants level (line_constants/tests.rs), but at the live-solve level only
+// SimpleCarson (`Set EarthModel=Carson`, line_geometry_asym/line_cable_asym) and
+// DERI (default) have decks. This is the FullCarson live anchor: an overhead
+// geometry line under `Set EarthModel=fullcarson` (FLineConstants.Calc dispatch,
+// OHLineConstants full-Carson series) -> full-asym Z/Yc, reduce=y Kron.
+//
+// It doubles as a U1.2-INVARIANT control: U1.2 moves SimpleCarson Get_Ze
+// 658.5 -> 658.853 ONLY (FullCarson Get_Ze is unchanged), so this deck's YPrim
+// must NOT move under U1.2 (do NOT flip to capi015) — the complement of the
+// line_geometry_asym/line_cable_asym Carson decks that U1.2 DOES flip.
+// Conductor library + geometry transcribed from line_geometry_asym.dss.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.line_fullcarson_asym basekv=12.47 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=2000 mvasc1=2100
+Set EarthModel=fullcarson
+
+! Conductor library (from Test/IEEELineGeometry.dss).
+new WireData.ACSR_336_4 NormAmps=530 DIAM=0.721 GMRac=0.29280 Rdc=0.057954545 Runits=kft Radunits=in gmrunits=in
+new WireData.ACSR_4-0   NormAmps=340 DIAM=0.563 GMRac=0.09768 Rdc=0.112121212 Runits=kft Radunits=in gmrunits=in
+new WireData.ACSR_1-0   NormAmps=230 DIAM=0.398 GMRac=0.05352 Rdc=0.212121212 Runits=kft Radunits=in gmrunits=in
+new WireData.ACSR_2     NormAmps=180 DIAM=0.316 GMRac=0.05016 Rdc=0.320075758 Runits=kft Radunits=in gmrunits=in
+
+! Asymmetric overhead geometry: distinct (x,h) and distinct wire per phase.
+new LineGeometry.oh3 nconds=4 nphases=3 reduce=y
+~ cond=1 wire=ACSR_336_4 x=-4.0 h=29.0 units=ft
+~ cond=2 wire=ACSR_4-0   x=-0.5 h=27.0 units=ft
+~ cond=3 wire=ACSR_1-0   x= 3.5 h=30.0 units=ft
+~ cond=4 wire=ACSR_2     x= 0.3 h=24.0 units=ft
+
+! 1-phase reduced spur geometry.
+new LineGeometry.oh1 nconds=2 nphases=1 reduce=y
+~ cond=1 wire=ACSR_1-0 x=-0.5 h=29.0 units=ft
+~ cond=2 wire=ACSR_2   x= 0.0 h=24.0 units=ft
+
+new line.lfc bus1=src bus2=b1 geometry=oh3 length=6 units=kft
+new line.lfcspur phases=1 bus1=b1.2 bus2=b2.2 geometry=oh1 length=3 units=kft
+
+! Unbalanced excitation.
+New load.la bus1=b1.1 phases=1 conn=wye model=1 kv=7.2 kw=900 pf=0.9
+New load.lb bus1=b2.2 phases=1 conn=wye model=1 kv=7.2 kw=180 pf=0.95
+New load.lc bus1=b1.3 phases=1 conn=wye model=1 kv=7.2 kw=1250 pf=0.85
+
+Set voltagebases=[12.47]
+calcv
