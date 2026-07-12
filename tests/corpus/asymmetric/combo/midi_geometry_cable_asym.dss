@@ -1,0 +1,62 @@
+// Asymmetric cross-element (midi): a short feeder chaining the two Line paths
+// the family had never coupled to a transformer ground — overhead Carson
+// geometry -> concentric-neutral cable -> delta-wye transformer -> unbalanced
+// loads, with a tape-shield 1-phase spur. The point: the full-asym Carson Z
+// (mutual coupling) and the cable reduced-Y meet the transformer's grounded-wye
+// zero-sequence path across the ASSEMBLED system Y — the neutral return current
+// couples the geometry/cable mutuals to the transformer ground, an interaction
+// invisible in the per-element mini decks. `selected_elements=["*"]`.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.midi_geometry_cable_asym basekv=12.47 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=2500 mvasc1=2200
+Set EarthModel=Carson
+
+! Conductors / cables (from Test/IEEELineGeometry.dss + Test/CableParameters.dss).
+new WireData.ACSR_336_4 NormAmps=530 DIAM=0.721 GMRac=0.29280 Rdc=0.057954545 Runits=kft Radunits=in gmrunits=in
+new WireData.ACSR_4-0   NormAmps=340 DIAM=0.563 GMRac=0.09768 Rdc=0.112121212 Runits=kft Radunits=in gmrunits=in
+new WireData.ACSR_1-0   NormAmps=230 DIAM=0.398 GMRac=0.05352 Rdc=0.212121212 Runits=kft Radunits=in gmrunits=in
+new WireData.CU_1-0     NormAmps=100 DIAM=0.368 GMRac=0.13356 Rac=0.607 Runits=mi Radunits=in gmrunits=in
+
+new CNData.CN_250 NormAmps=260 DIAM=0.567 GMRac=0.20520 Rac=0.41 Runits=mi Radunits=in gmrunits=in
+~ EpsR=2.3 Ins=0.220 DiaIns=1.06 DiaCable=1.29 k=13 DiaStrand=0.0641 GmrStrand=0.02496 Rstrand=14.8722
+
+new TSData.TS_1-0 NormAmps=165 DIAM=0.368 GMRac=0.13320 Rac=0.97 Runits=mi Radunits=in gmrunits=in
+~ EpsR=2.3 Ins=0.220 DiaIns=0.82 DiaCable=1.06 DiaShield=0.88 TapeLayer=0.005 TapeLap=20
+
+! Asymmetric overhead geometry (distinct x,h and wire per phase).
+new LineGeometry.oh3 nconds=4 nphases=3 reduce=y
+~ cond=1 wire=ACSR_336_4 x=-4.0 h=29.0 units=ft
+~ cond=2 wire=ACSR_4-0   x=-0.5 h=27.0 units=ft
+~ cond=3 wire=ACSR_1-0   x= 3.5 h=30.0 units=ft
+~ cond=4 wire=ACSR_1-0   x= 0.3 h=24.0 units=ft
+
+! CN 3-phase underground segment, asymmetric burial.
+new LineGeometry.cn3 nconds=3 nphases=3 reduce=y
+~ cond=1 cncable=CN_250 x=-0.5 h=-4.0 units=ft
+~ cond=2 cncable=CN_250 x= 0.1 h=-4.3 units=ft
+~ cond=3 cncable=CN_250 x= 0.6 h=-3.7 units=ft
+
+! TS 1-phase underground spur with a separate CU neutral.
+new LineGeometry.ts1 nconds=2 nphases=1 reduce=y
+~ cond=1 tscable=TS_1-0 x=0.0  h=-4.0 units=ft
+~ cond=2 wire=CU_1-0    x=0.25 h=-4.0 units=ft
+
+! Overhead Carson geometry -> CN cable -> transformer primary.
+new line.loh  bus1=src bus2=b1 geometry=oh3 length=5 units=kft
+new line.lcn  bus1=b1  bus2=b2 geometry=cn3 length=2 units=kft
+new line.lts  phases=1 bus1=b1.3 bus2=bs.3 geometry=ts1 length=1 units=kft
+
+! Delta-wye step-down (grounded-wye secondary = the zero-sequence ground path).
+new transformer.txf phases=3 windings=2 buses=(b2, lv) conns=(delta, wye)
+~ kvs=(12.47, 0.48) kvas=(2000, 2000) xhl=6
+
+! Unbalanced excitation on the LV wye and the TS spur.
+New load.la bus1=lv.1 phases=1 conn=wye model=1 kv=0.277 kw=280 pf=0.9
+New load.lb bus1=lv.2 phases=1 conn=wye model=1 kv=0.277 kw=90  pf=0.95
+New load.lc bus1=lv.3 phases=1 conn=wye model=1 kv=0.277 kw=420 pf=0.85
+New load.ls bus1=bs.3 phases=1 conn=wye model=1 kv=7.2   kw=150 pf=0.9
+
+Set voltagebases=[12.47 0.48]
+calcv
