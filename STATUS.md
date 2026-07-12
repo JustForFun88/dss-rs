@@ -9,6 +9,40 @@
 
 Last updated: 2026-07-12.
 
+**CF2-R (#485 control-settling family — 3 decks migrated, no bug), 2026-07-12.**
+Branch `cf2-r`. `solvable_now` **279 → 282** (+3 `expect_solve_abort` cases,
+migrated out of `skipped_needs_investigation`). **No engine change** — the port
+already reproduces #485 exactly.
+- **Decks:** `Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss`
+  (plain interconnected model, no AD commands), `IEEETestCases/8500-Node/Run_RecloserSiting.DSS`,
+  `Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS`.
+- **The "divergence" was a measurement artifact.** The park notes claimed "Rust
+  67 clean vs r3723 109-with-#485" — but that compared Rust's **first** solve
+  (the deck's own `Solve`, clean 67 total power-flow iters) against the oracle
+  harness's **second** solve. The harness `run_case` issues an extra `solve`
+  after `Compile`; that re-runs the control loop from the settled taps, a
+  regulator sits on a band edge and re-arms ±1 tap each control iteration
+  (hunting), never drains the control queue, hits `MaxControlIter=10` and
+  aborts with **#485** on **both** engines. Driven identically (Compile + one
+  extra solve), Rust and the official r3723 are **bit-for-bit equivalent**:
+  all RegControl taps + capacitor states **exact**, node V to **5.5e-11** rel
+  (8500-node) / **8.1e-9** rel (IEEE123) over every node, same 10 control iters
+  / same total iters (109 / 30), same 261 / 92 event-log lines.
+- **Accounting answer (a):** same fixpoint by the same control path. `#485` is
+  raised because `ControlActionsDone` never becomes true within
+  `MaxControlIter` (Pascal `SolveSnap`, `Solution.pas:1189-1209`) — a hunting
+  regulator, reproduced 1:1 by `solve_snap` (`solution/solution/power_flow.rs`).
+  The reported "iterations" (67/109/30) is `Solution.Iterations` = **total
+  power-flow iterations**, not control iterations (always 10 = the cap).
+- **Migration mechanism:** the pinned oracle *raises* #485 at solve (dss-python
+  surfaces `DoSimpleMsg` as an exception), so a per-step compare is impossible;
+  gated instead via `expect_solve_abort: "Max Control Iterations Exceeded"`
+  (`run_and_compare_abort`) — both engines abort the solve with the same
+  message, Rust setting `solution_abort`. `post: ["Solve"]` supplies the
+  harness's extra solve on the Rust abort path (the deck's own solve is clean).
+  Verified full-state identity against official r3723 via the Oddie bridge; the
+  gate itself uses the pinned 0.14.5 oracle (also aborts, confirmed).
+
 **CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
 quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch
 `cf-a`). `solvable_now` **245 → 249**.

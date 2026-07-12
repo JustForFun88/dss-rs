@@ -284,6 +284,13 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
+   "kind": "feeder",
+   "post": ["Solve"],
+   "expect_solve_abort": "Max Control Iterations Exceeded",
+   "note": "CF2-R: #485 control-settling. This interconnected IEEE_123 model has no Solve of its own; the harness solve exceeds MaxControlIter=10 (a regulator hunts +/-1 tap at a band edge, never draining the control queue) and aborts with #485 on BOTH engines. Proven identical to the official r3723 (Oddie): all 7 RegControl taps + 4 cap states exact, node V to 8e-9 rel over 278 nodes, same 10 control iters / 30 total iters. The pinned oracle raises #485; Rust reproduces SolutionAbort + the same message 1:1. Not a bug (the earlier 'different trajectory' note was a measurement artifact: Rust first-solve vs oracle re-solve)."
+  },
+  {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss",
    "kind": "feeder",
    "n_steps": 1
@@ -1395,6 +1402,13 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
+   "kind": "feeder",
+   "post": ["Solve"],
+   "expect_solve_abort": "Max Control Iterations Exceeded",
+   "note": "CF2-R: #485 control-settling. The deck's own Solve settles clean at 67 iters; the harness's second solve re-runs the control loop from the settled taps, a regulator re-arms at a band edge and hunts, exceeding MaxControlIter=10 -> #485 abort on BOTH engines. Proven identical to the official r3723 (Oddie): all 12 RegControl taps + 10 cap states exact, node V to 5.5e-11 rel over 8531 nodes, same 10 control iters / 109 total iters. Pinned oracle raises #485 on the re-solve; Rust reproduces SolutionAbort + the same message 1:1. The 'Rust 67 clean vs r3723 109 #485' note was a measurement artifact (Rust first-solve vs oracle re-solve)."
+  },
+  {
    "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
@@ -1622,6 +1636,13 @@
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
    "kind": "large",
    "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
+   "kind": "large",
+   "post": ["Solve"],
+   "expect_solve_abort": "Max Control Iterations Exceeded",
+   "note": "CF2-R: #485 control-settling (GFM_IEEE8500 recloser-siting). Same base 8500 model + RecloserSiting overlay as IEEETestCases/8500-Node/Run_RecloserSiting.DSS: the deck's own Solve settles clean at 67 iters; the harness re-solve hunts a band-edge regulator past MaxControlIter=10 -> #485 abort on BOTH engines. Proven identical to the official r3723 (Oddie): all 12 taps + 10 cap states exact, node V to 5.5e-11 rel over 8531 nodes, same 10 control iters / 109 total iters. Rust reproduces SolutionAbort + the message 1:1."
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",

@@ -97,21 +97,6 @@
    "note": "CF-B (T-B U1b, item 7). Whole-IEEE123 GFM daily trajectory with AmpLimit/SafeVoltage current limiting; validated live vs the pinned oracle at large_floating_delta and ABOVE-BAND: step 0 entry 230 Rust (971.396, 559.110) vs oracle (971.406, 559.116), |diff|=1.235e-2 > allowed 6.121e-4. Real divergence in the current-limited islanded GFM section. Needs investigation; not forced."
   },
   {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "live_mismatch_control_settling_#485",
-   "note": "CF-B (T-A #17, item 8e). #485 control-settling difference. The pinned oracle raises #485 (Max Control Iterations Exceeded) as a hard exception; r3723 hits the same #485 warning but settles to convergence in 30 control iterations, while Rust settles this A-Diakoptics IEEE_123 Torn/Interconnected model on a different control trajectory. No pinned-oracle compare is possible (it raises), and Rust vs r3723 control settling differs -- needs investigation (control-iteration/tap-settling family), not migrated."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
-   "tag": "live_mismatch_control_settling_#485",
-   "note": "CF-B (T-A #45, item 8e). #485 control-settling difference. Pinned oracle raises #485 (hard); r3723 hits the #485 warning then converges in 109 iterations; Rust solves cleanly in 67 iterations with NO #485 -- i.e. Rust settles the recloser-siting controls on a different trajectory than the official engine. No pinned-oracle compare (it raises). Needs investigation (control-settling), not migrated."
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
-   "tag": "live_mismatch_control_settling_#485",
-   "note": "CF-B (T-A #44, item 8e). #485 control-settling difference. Pinned oracle raises #485 (hard); r3723 hits the #485 warning then converges in 109 iterations; Rust solves cleanly in 67 iterations with NO #485. Rust settles the recloser-siting controls differently than the official engine. No pinned-oracle compare. Needs investigation (control-settling), not migrated."
-  },
-  {
    "path": "Test/indmachtest/Master.DSS",
    "tag": "user_model_oracle_raises_567",
    "note": "CF-C Port 2 (2026-07-12): Generator model=6 with UserModel (a user-written induction-machine DLL that is NOT vendored). The property surface is now ported (UserModel/UserData parse+store+dump); setting UserModel emits a non-fatal #570-class 'Not Loaded' warning and the generator falls back to the built-in model. For model=6 without a loaded user model the Rust engine reproduces Pascal DoUserModel 1:1 \u2014 Yprim-only contribution + DoSimpleMsg #567 each iteration (generator.solve.rs), matching the raw Direct DLL. BLOCKED on the oracle: the pinned dss-python raises #570 and the r3723/r4133 Oddie harness (dss-python) raises #567 ('model designated to use user-written model, but user-written model is not defined') AT SOLVE, so no oracle channel produces a checkpoint. T-A's 'r3723 YES' rows were raw-DLL/AltDSS probes (DoSimpleMsg is non-fatal in the DLL); the dss-python test harness surfaces it as fatal. Needs an oracle harness that tolerates the #567/#570 DoSimpleMsg to migrate. indmachtest/Master: Rust converges 8 iters with the fallback (T-A #21 rel ~1e-6 real-bus vs the raw r3723)."
