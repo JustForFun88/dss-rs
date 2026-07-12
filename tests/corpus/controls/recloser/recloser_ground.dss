@@ -1,0 +1,28 @@
+// Recloser GROUND-curve path (Recloser.pas: GroundFast/GroundDelayed/
+// GroundInst drive the shot sequence on residual/ground current, distinct from
+// the phase-curve path). A single-line-to-ground fault produces the residual
+// current the ground curves respond to; the phase pickup is set high so ONLY
+// the ground path can trip. The recloser trips fast, the temporary fault self-
+// clears, and it recloses (ends CLOSED). Feature-sensitive: raising groundtrip
+// above the SLG current stops the trip (probe-proven). Compared per step: full
+// model + State/Normal probes + the trip/reclose event log + the pending
+// reclose shots in the control queue.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.prot basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi
+new line.lat bus1=mid bus2=loadb linecode=lc length=1 units=mi
+new load.l bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
+
+// Phase pickup deliberately high -> only the ground curve can trip on the SLG.
+new recloser.r monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 numfast=1 shots=2
+~ phasetrip=2000 groundtrip=30 recloseintervals=(0.5, 1.0)
+
+new fault.f bus1=loadb.1 phases=1 ontime=0.1 r=1 temporary=yes
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.1 number=1 controlmode=time

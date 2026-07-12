@@ -1693,6 +1693,11 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "gendispatcher/gendispatcher.dss",
     "recloser/recloser_temp.dss",
     "recloser/recloser_perm.dss",
+    // corpus coverage wave (controls): singleton branch decks.
+    "recloser/recloser_ground.dss",
+    "fuse/fuse_blow_3ph.dss",
+    "swtcontrol/swtcontrol_lock.dss",
+    "gendispatcher/gendispatcher_kvarlimit.dss",
     "relay/relay_oc_sym.dss",
     "relay/relay_4647_asym.dss",
     // corpus coverage wave (controls): Relay ControlType decks.

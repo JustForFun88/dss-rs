@@ -2182,6 +2182,112 @@
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
    "note": "DOC (directional overcurrent): DOC_P1Blocking=TRUE (default) trips only on net reverse power; a downstream generator export drives reverse current into the trip region past DOC_TripSettingLow. Feature-sensitive: raising the pickup stops the trip (probe-proven)."
+  },
+  {
+   "path": "recloser/recloser_ground.dss",
+   "kind": "micro",
+   "n_steps": 16,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal",
+      "shots",
+      "numfast"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Ground-curve path: phasetrip=2000 (too high for the phase) so only GroundFast/GroundDelayed drive the shots on an SLG fault; temporary fault self-clears and recloses. Feature-sensitive: groundtrip=3000 stops the trip (probe-proven)."
+  },
+  {
+   "path": "fuse/fuse_blow_3ph.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Fuse.fz",
+     "props": [
+      "state",
+      "normal"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "note": "3-phase simultaneous blow: a balanced 3ph fault melts all three per-phase links in the same round -> State=[open,open,open] (vs the one-phase asym deck). Feature-sensitive: ratedcurrent=5000 keeps them closed (probe-proven)."
+  },
+  {
+   "path": "swtcontrol/swtcontrol_lock.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "post": [
+    "edit swtcontrol.sw action=open"
+   ],
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "SwtControl.sw",
+     "props": [
+      "state",
+      "normal",
+      "lock"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Lock=yes makes the control IGNORE the post action=open, so the switch stays closed. Feature-sensitive: with lock=no the same action opens it after the delay (probe-proven)."
+  },
+  {
+   "path": "gendispatcher/gendispatcher_kvarlimit.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "GenDispatcher.gd1",
+     "props": [
+      "kwlimit",
+      "kvarlimit",
+      "weights"
+     ]
+    },
+    {
+     "element": "Generator.g1",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    },
+    {
+     "element": "Generator.g2",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    },
+    {
+     "element": "Generator.g3",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "note": "kvarLimit clamp + unequal weights [4,2,1] over 3 gens: the load swing drives the reactive share past kvarLimit=400 so the clamp bites. Feature-sensitive: kvarlimit=99999 removes the clamp and the kvar split differs (probe-proven)."
   }
  ]
 }
