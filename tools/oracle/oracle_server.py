@@ -70,18 +70,37 @@ def reply(obj: dict) -> None:
     sys.stdout.flush()
 
 
-def capture_all_elements(ckt) -> list:
+def capture_all_elements(ckt, tolerate_user_model: bool = False) -> list:
     """Every circuit element's terminal currents (A), powers (kW/kvar), and
     losses (W/var — `CktElement.Losses`, the engine's own Get_Losses path).
 
     The plan mandates comparing *all* element currents/powers/losses (not just
     the selected set), so the live gate captures the whole element list here.
+
+    `tolerate_user_model` (CF-C Port 2): a Generator model=6 whose user-written
+    model is not loaded fires DoSimpleMsg #567 the FIRST time its terminal
+    currents are recomputed after a solve; the recompute still produces the
+    correct (Yprim-only) currents and clears the error, so a second read returns
+    them cleanly (verified: read 1 raises #567 + zeroes Error.Number, read 2 OK).
+    We absorb that single priming raise (retry once) exactly as the official
+    Direct DLL warns-and-continues; any other errno re-raises.
     """
+    import dss as _dss
+
+    def _read(fn):
+        try:
+            return fn()
+        except _dss.DSSException as e:
+            errno = e.args[0] if e.args else None
+            if not (tolerate_user_model and errno in _USER_MODEL_ERRNOS):
+                raise
+            return fn()  # priming read fired the warning + cleared it; retry is cached
+
     out = []
     for name in ckt.AllElementNames:
-        cap = gc.capture_element(ckt, name)
+        cap = _read(lambda: gc.capture_element(ckt, name))
         # capture_element leaves the element active; Losses reads it.
-        loss = ckt.ActiveCktElement.Losses
+        loss = _read(lambda: ckt.ActiveCktElement.Losses)
         cap["loss_w"] = [float(loss[0]), float(loss[1])]
         out.append(cap)
     return out
@@ -273,6 +292,41 @@ _RUN_ATTEMPTS = 3
 # justification. A non-listed error still re-raises (real failures never masked).
 _TOLERATED_COMPILE_ERRNOS = {250}
 
+# User-written-model DoSimpleMsg numbers the official Direct DLL treats as
+# NON-fatal (warn and continue) but dss-python raises on. Tolerated at BOTH
+# compile and every solve ONLY for a case that opts in via `warn_and_continue`
+# (the Rust harness sets it for a deck carrying `expect_warnings` — CF-C Port 2:
+# a Generator model=6 / Storage user-dynamics DLL that safe Rust cannot load, so
+# both engines must warn-and-solve, exactly the official Direct DLL).
+#   567  — Generator model designated to use a user-written model that is not
+#          defined (fired every solve iteration by the model=6 Yprim-only path);
+#   570  — Generator user-written model <name> Not Loaded (fired at compile);
+#   1570 — Storage user-written dynamics model Not Loaded.
+# These also require DSS.Error.EarlyAbort=False so the compile is not aborted
+# mid-redirect (else the circuit truncates — the user-model line sits inside a
+# Redirect chain); EarlyAbort is toggled per request in main() and restored.
+_USER_MODEL_ERRNOS = {567, 570, 1570}
+
+
+def _set_early_abort(d, val) -> bool:
+    """Best-effort `DSS.Error.EarlyAbort = val`. Returns True on success. The
+    Oddie bridge does not implement `Error_Set_EarlyAbort` (raises #2), but the
+    raw Direct DLL already warns-and-continues, so a failure here is harmless."""
+    try:
+        d.Error.EarlyAbort = val
+        return True
+    except Exception:
+        return False
+
+
+def _get_early_abort(d):
+    """Current `DSS.Error.EarlyAbort`, or None if the engine does not expose it
+    (Oddie) — in which case there is nothing to save/restore."""
+    try:
+        return bool(d.Error.EarlyAbort)
+    except Exception:
+        return None
+
 
 def run_case(d, req: dict) -> dict:
     """Compile one copied `.dss` case, run `n_steps` solves, return the full
@@ -305,6 +359,12 @@ def run_case(d, req: dict) -> dict:
     # incidental monitors would surface ill-defined snapshot-sampling edge cases
     # (e.g. a monitor defined after the master's only Solve) unrelated to the gate.
     check_mm = bool(req.get("check_meters_monitors", False))
+    # CF-C Port 2 user-model decks: tolerate the `_USER_MODEL_ERRNOS` at compile
+    # AND at every solve (EarlyAbort is turned off around this call in main()).
+    warn_and_continue = bool(req.get("warn_and_continue", False))
+    tolerated_compile = _TOLERATED_COMPILE_ERRNOS | (
+        _USER_MODEL_ERRNOS if warn_and_continue else set()
+    )
 
     with _CorpusGuard(case_path):
         for attempt in range(1, _RUN_ATTEMPTS + 1):
@@ -316,12 +376,12 @@ def run_case(d, req: dict) -> dict:
             except _dss.DSSException as e:
                 # `e.args == (errno, message)`. Tolerate only the warning-class
                 # numbers the official engine solves through (see
-                # `_TOLERATED_COMPILE_ERRNOS`); the whole deck has already run
-                # (the typo'd export is its last command), so the circuit is
-                # intact and `Error.Number` is cleared on catch. Anything else
-                # re-raises — a real compile failure is never swallowed.
+                # `_TOLERATED_COMPILE_ERRNOS` / `_USER_MODEL_ERRNOS`); the whole
+                # deck has already run, so the circuit is intact and `Error.Number`
+                # is cleared on catch. Anything else re-raises — a real compile
+                # failure is never swallowed.
                 errno = e.args[0] if e.args else None
-                if errno not in _TOLERATED_COMPILE_ERRNOS:
+                if errno not in tolerated_compile:
                     raise
                 log(f"oracle: tolerated non-fatal compile warning #{errno} on {case_path}")
             for c in post:
@@ -329,7 +389,18 @@ def run_case(d, req: dict) -> dict:
 
             ckt = d.ActiveCircuit
             for _ in range(n_steps):
-                d.Text.Command = "solve"
+                try:
+                    d.Text.Command = "solve"
+                except _dss.DSSException as e:
+                    # A user-model deck (`warn_and_continue`) fires its non-fatal
+                    # DoSimpleMsg EACH solve; with EarlyAbort off the solve
+                    # completes, but dss-python still raises at the command
+                    # boundary — clear it and read the finished solution. Any
+                    # other errno re-raises.
+                    errno = e.args[0] if e.args else None
+                    if not (warn_and_continue and errno in _USER_MODEL_ERRNOS):
+                        raise
+                    log(f"oracle: tolerated non-fatal solve warning #{errno} on {case_path}")
                 # WPG.5: read GlobalResult right after the solve, before any
                 # `?`-query capture below overwrites `Text.Result`.
                 global_result = str(d.Text.Result) if want_global_result else ""
@@ -366,7 +437,7 @@ def run_case(d, req: dict) -> dict:
                         "y": gc.capture_system_y(d) if full_csc else None,
                         "y_fingerprint": gc.capture_fingerprint(d),
                         "yprims": [gc.capture_yprim(ckt, nm) for nm in sel],
-                        "elements": capture_all_elements(ckt),
+                        "elements": capture_all_elements(ckt, warn_and_continue),
                         "injection": gc.capture_injection(d),
                         "transformers": disc["transformers"],
                         "regcontrols": disc["regcontrols"],
@@ -581,11 +652,22 @@ def main() -> None:
         if cmd != "run":
             reply({"ok": False, "error": f"unknown cmd {cmd!r}"})
             continue
+        # CF-C Port 2: a `warn_and_continue` deck needs EarlyAbort off for the
+        # WHOLE run (compile + solves) so a mid-redirect user-model warning does
+        # not truncate the circuit. Toggle it per request and always restore, so
+        # the setting never leaks into the next (persistent-server) case.
+        warn = bool(req.get("warn_and_continue", False))
+        prev_ea = _get_early_abort(d) if warn else None
+        if warn:
+            _set_early_abort(d, False)
         try:
             reply({"ok": True, "result": run_case(d, req)})
         except Exception as e:  # one bad case must not kill the server
             log("case failed:\n" + traceback.format_exc())
             reply({"ok": False, "error": f"{type(e).__name__}: {e}"})
+        finally:
+            if warn and prev_ea is not None:
+                _set_early_abort(d, prev_ea)
 
 
 if __name__ == "__main__":
