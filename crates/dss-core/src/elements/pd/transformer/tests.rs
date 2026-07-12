@@ -273,3 +273,41 @@ fn make_pos_sequence_1ph_off_phase1_disables() {
     assert_eq!(plan.actions, vec![PosSeqAction::Disable]);
     assert!(!plan.run_base, "disable path skips `inherited`");
 }
+
+/// WP-U1.2 D6: dss_capi 0.15.x (`Transformer.pas:1058`, SVN r4033) dropped the
+/// spurious `1.1 *` factor from the seasonal AmpRatings —
+/// `AmpRatings[i] = kVARatings[i] / Fnphases / Vfactor`. The separate
+/// `NormMaxHkVA = 1.1 * Winding[1].kVA` (the 110% default norm rating) is
+/// UNCHANGED upstream. This is not yet reachable via the overload report (the
+/// seasonal-rating override is NOT_PORTED — WP-U1.5 E2), so it is pinned on the
+/// computed `amp_ratings` field. Feature-sensitive: with `kVARatings[0]` equal
+/// to winding-1 kVA, `norm_amps == norm_max_hkva/np/vfactor == 1.1 * (kva/np/
+/// vfactor)`, so post-D6 `amp_ratings[0] == norm_amps / 1.1` — pre-D6 it was
+/// `== norm_amps` (both carried the 1.1), so the `/1.1` assertion flips.
+#[test]
+fn seasonal_amp_ratings_drop_the_1_1_factor() {
+    let t = edited(&[
+        ("phases", "3"),
+        ("windings", "2"),
+        ("kvs", "115, 4.16"),
+        ("conns", "wye, wye"),
+        ("kvas", "1000, 1000"),
+        ("Seasons", "2"),
+        ("Ratings", "[1000 1200]"),
+    ]);
+    assert_eq!(t.amp_ratings.len(), 2, "two seasonal ratings");
+    // Reconstruct `np/vfactor` from the (unchanged) NormAmps relation
+    // `norm_amps = norm_max_hkva / np / vfactor`, so
+    // `amp_ratings[i] == kVARatings[i] * norm_amps / norm_max_hkva` post-D6.
+    // Pre-D6 (with the `1.1 *`) each amp_ratings[i] was 1.1× this — so the
+    // assertion is feature-sensitive to the dropped factor.
+    for (i, &kva) in t.kva_ratings.iter().enumerate() {
+        let want = kva * t.norm_amps / t.norm_max_hkva;
+        assert!(
+            (t.amp_ratings[i] - want).abs() < 1e-9,
+            "amp_ratings[{i}] = {} (no-1.1 want {want}); 1.1× would be {}",
+            t.amp_ratings[i],
+            want * 1.1
+        );
+    }
+}

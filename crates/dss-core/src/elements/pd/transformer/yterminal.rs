@@ -106,10 +106,17 @@ impl Transformer {
         };
         self.norm_amps = self.norm_max_hkva / np as f64 / vfactor;
         self.emerg_amps = self.emerg_max_hkva / np as f64 / vfactor;
+        // dss_capi 0.15.x (`Transformer.pas:1058`, commit 4ed59416 / SVN r4033):
+        // the spurious `1.1 *` factor was DROPPED from the seasonal AmpRatings —
+        // `AmpRatings[i] := kVARatings[i] / Fnphases / Vfactor` (the seasonal
+        // ratings now equal the plain per-phase current at each seasonal kVA,
+        // NOT 110% of it). `NormMaxHkVA`'s own 1.1 (the 110% default norm rating,
+        // above) is a DIFFERENT quantity and is unchanged upstream. UPGRADE_PLAN
+        // WP-U1.2 row D6; ledger DIVERGENCES.md §D6.
         self.amp_ratings = self
             .kva_ratings
             .iter()
-            .map(|r| 1.1 * r / np as f64 / vfactor)
+            .map(|r| r / np as f64 / vfactor)
             .collect();
 
         self.calc_y_terminal(1.0);

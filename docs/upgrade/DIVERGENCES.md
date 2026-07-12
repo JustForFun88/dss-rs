@@ -487,6 +487,37 @@ already used `FkVArating`; only `IntegrateStates` moved.
   unit-test-only same-commit package (no manifest flip), decoupled from B5.
 - `known_diffs`: none matched — nothing to retire.
 
+## D6 — Transformer seasonal AmpRatings drop the `1.1 *` factor — SETTLED (WP-U1.2, adopt capi015; unit-pinned, no live witness yet)
+
+**Observable.** A Transformer's per-season current ratings array `AmpRatings[i]`
+(used by the seasonal overload-report override, `PDElement.NumAmpRatings>1`).
+
+**dss_capi 0.14.5 (default).** `AmpRatings[i] := 1.1 * kVARatings[i] / Fnphases /
+Vfactor`. **0.15.x (capi015) / EPRI r4088+.** `AmpRatings[i] := kVARatings[i] /
+Fnphases / Vfactor` — the spurious `1.1 *` DROPPED (`Transformer.pas:1058`,
+commit `4ed59416`, SVN r4033). The separate `NormMaxHkVA = 1.1 * Winding[1].kVA`
+(the 110% default norm rating) is a DIFFERENT quantity, unchanged upstream.
+
+**Decision — adopt** (`transformer/yterminal.rs`, `1.1 * r` → `r`).
+
+**Gate consequence.**
+- **No live/golden witness in the current port.** `amp_ratings` is consumed
+  ONLY by the seasonal overload-report override, which is `NOT_PORTED`
+  (`report/export/capacity.rs`, `solution/meters/demand_interval.rs` — WPG.11
+  deferred to WP-U1.5 E2); the non-seasonal overload reports use `norm_amps`
+  (which keeps its own 1.1 via `norm_max_hkva`), and the `Ratings` property
+  readback returns `kVARatings`, not `AmpRatings`. So no corpus_live case and no
+  report golden moves. (U0.2 audit already flagged D6 as report-only and
+  unwitnessable by `ab_compare` — needs a synthesized seasonal overload deck,
+  which WP-U1.5 owns.)
+- **Pinned by a feature-sensitive unit test**
+  (`transformer::tests::seasonal_amp_ratings_drop_the_1_1_factor`): with
+  `kVARatings=[1000 1200]` it asserts `amp_ratings[i] == kVARatings[i] ·
+  norm_amps / norm_max_hkva` (reconstructing `np·vfactor` from the unchanged
+  NormAmps relation) — pre-D6 each value was 1.1× this, so the assertion flips.
+- `known_diffs`: none matched — nothing to retire. **When WP-U1.5 ports the
+  seasonal override, its overload-report deck becomes D6's live witness.**
+
 ## L1, L3, L4 — pending later WPs
 
 - **L1** InvControl `InvControlDeltaV` buffer — WP-U1.3.

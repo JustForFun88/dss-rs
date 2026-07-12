@@ -3350,17 +3350,26 @@ dedicated GFM investigation, out of the numeric-long-tail scope. B5 + its 4 GFM
 live-deck flips reverted; ledger §B5 has the full evidence. **OPEN FOLLOW-UP for a
 GFM WP.**
 
-**Rows B1/D6/D8/D3/B3 — NOT started (budget); see resume note.** B1 (Capacitor
-Cmatrix ×1.000001) triggers only for a Cmatrix cap WITH series R/XL (`has_zl`) —
-no obvious corpus witness, needs a synthesized deck/unit test. D6/D3 are
-report-only (AmpRatings/spacing ratings — overload-report decks). D8 needs a
-3-winding transformer with X13/X23=0. B3-r3723 (Load.GrowthFactor Year=0 from
-dblHour/8760) needs a growthshape + multi-hour year-0 run.
+**Row D6 — Transformer seasonal AmpRatings drop `1.1 *` — LANDED.**
+`transformer/yterminal.rs` (`1.1 * r → r`, `Transformer.pas:1058`/SVN r4033).
+`NormMaxHkVA`'s own 1.1 (110% norm rating) is a different quantity, unchanged.
+No live/golden witness (the seasonal override is NOT_PORTED — WP-U1.5 E2 owns it;
+non-seasonal reports use `norm_amps`; `Ratings` readback = kVARatings), so pinned
+by a feature-sensitive unit test (`seasonal_amp_ratings_drop_the_1_1_factor`).
+Ledger §D6.
 
-**Resume note (WP-U1.2 remaining):** rows B1, D6, D8, D3, B3-r3723 still to port;
+**Rows B1/D8/D3/B3 — NOT started (budget); see resume note.** B1 (Capacitor
+Cmatrix ×1.000001) triggers only for a Cmatrix cap WITH series R/XL (`has_zl`) —
+no obvious corpus witness, needs a synthesized deck/unit test. D3 is report-only
+(spacing ratings — overload-report deck). D8 needs a 3-winding transformer with
+X13/X23=0. B3-r3723 (Load.GrowthFactor Year=0 from dblHour/8760) needs a
+growthshape + multi-hour year-0 run.
+
+**Resume note (WP-U1.2 remaining):** rows B1, D8, D3, B3-r3723 still to port;
 the golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and
-the same-commit workflow are proven (B2/D1, D7). B5's GFM gap is the one hard
-blocker (a control-consistency bug, not a numeric constant).
+the same-commit workflow are proven (B2/D1, D7, D6). B5's GFM gap is the one hard
+blocker (a control-consistency bug, not a numeric constant) — needs a dedicated
+GFM WP.
 
 ### Gate state (all green)
 ```
