@@ -1,0 +1,9 @@
+engine: Version 9.8.0.1 (64-bit build); License Status: Open 
+DSS-Python version: 0.16.0b2
+rev: r3723
+deck: C:\Users\Admin\.claude\worktrees\wp-ad3\tests\corpus\electricdss-tst\Version8\Distrib\Examples\ADiakoptics\IEEE_13_Bus
+link: Line.670671
+harvested by tools/opendss/gen_ad_reference.py
+zll.csv sha256[:16]=f01b525421c3b686
+zcc.csv sha256[:16]=ccfac7f7daa0dd36
+y4.csv sha256[:16]=4ca1d11d965b1de4

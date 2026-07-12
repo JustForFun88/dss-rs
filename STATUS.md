@@ -191,8 +191,18 @@ freeze (no re-seed) passes midi (3.80e-5) but diverges macro to 3.46e-3 @ M180 (
 floor). Open item for auditors/WP-AD.4: root-cause the reference-free-zone faer↔KLU gap
 so the re-seed can be dropped.
 
-**D9(b) EPRI-IEEE-13 + D9(c) r3723 IEEE-123 references** are Stage 4 (below), still
-open at this record.
+**Stage 4 official-reference gate (D9 b/c) — IEEE-13 ✅.** `tests/ad_reference.rs`
+replays the EPRI IEEE-13 AD example with the identical **manual** cut
+(`set LinkBranches=[Line.670671] UseMyLinkBranches=True`) and compares the built
+`ZLL`/`ZCC`/`Y4` against **fresh r3723 references** harvested by the new
+`tools/opendss/gen_ad_reference.py` (committed at `tests/data/adiakoptics/r3723_ref/
+ieee13/` with `PROVENANCE.txt`). Result: Rust **bit-matches live r3723** — ZLL
+3.8e-15 (f64 ulp), ZCC 6.2e-8, Y4 2.7e-8 (faer↔KLU last-ulp). Finding: the trunk's
+own `References/SolveDirect/ADiakoptics_matrixes/*.csv` are **STALE** (older deck
+revision, ~20% reactance drift; live r3723 on the current deck agrees with Rust
+bit-for-bit), so the gate pins fresh harvests, never the committed trunk CSVs.
+**D9(c) IEEE_123_Bus-G** (explicit-LinkBranches harvest via the same script) remains
+open — the harvester is parameterized for it; resume point.
 
 **WP-AD.3 audit settle (opus-xhigh).** Findings settled empirically against official
 r3723:
