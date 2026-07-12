@@ -1,4 +1,4 @@
-"""Regenerate the CSV/binary XYcurve fixtures for tests/corpus/modes/xycurve_files/.
+"""Regenerate the CSV/binary XYcurve fixtures for tests/corpus/modes/inputformat/xycurve_files/.
 
 The fixtures are committed (deterministic inputs, not goldens); this script only
 exists so they can be rebuilt from source if ever needed. Layouts follow the
@@ -17,7 +17,7 @@ import struct
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.normpath(
-    os.path.join(HERE, "..", "..", "tests", "corpus", "modes", "xycurve_files")
+    os.path.join(HERE, "..", "..", "tests", "corpus", "modes", "inputformat", "xycurve_files")
 )
 
 # R-vs-frequency (csv) — same values reactor_rlcurve validated for rvsf.

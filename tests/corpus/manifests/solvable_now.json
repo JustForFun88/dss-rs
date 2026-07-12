@@ -42,6 +42,31 @@
    "n_steps": 1
   },
   {
+   "path": "Test/CapControlFollow.dss",
+   "kind": "feeder",
+   "post": ["set stepsize=1h number=1"],
+   "n_steps": 24,
+   "selected_elements": ["capacitor.cap1", "capacitor.cap2"],
+   "check_meters_monitors": true,
+   "note": "CF-C Port 1: CapControl Type=follow ControlSignal=LoadShape. Daily walk over the 24-pt Cap1Shape/Cap2Shape; the two banks switch on the loadshape schedule (cap1 hour 9 ON / hour 24 OFF; cap2 hour 14 ON). check_meters_monitors compares the Cap1Mon/Cap2Mon power channels per step (0 when the bank is open, nonzero when closed), which pins the FOLLOW switching schedule against the oracle. compare_eventlog is intentionally NOT used: the deck runs its own full-day `Solve` at compile (eventlog off), so a post-compile eventlog starts mid-trajectory and the arm/fire step boundary is logged asymmetrically vs the from-scratch oracle run — the switching itself is validated by the monitor power channels and the full per-step voltage compare. Pinned oracle supports FOLLOWCONTROL (not a target-rev feature)."
+  },
+  {
+   "path": "Test/SimpleStorageTest.dss",
+   "kind": "feeder",
+   "oracle": "r3723",
+   "expect_warnings": ["Storage User-written Dynamics Model", "Not Loaded"],
+   "n_steps": 1,
+   "note": "CF-C Port 2: Storage.Store1 sets DynaDLL/DynaData for a user-written dynamics model DLL that is NOT vendored. Safe Rust never loads DLLs (loader out of scope), so the port warns (non-fatal, #1570-class) and falls back to the built-in model — exactly the official Direct DLL. The pinned oracle raises #1570 (fatal), so this gates vs r3723, which warns and solves. Rust iter 2 == r3723 iter 2 (T-A #19)."
+  },
+  {
+   "path": "Test/SimpleStorageTest-1ph.dss",
+   "kind": "feeder",
+   "oracle": "r3723",
+   "expect_warnings": ["Storage User-written Dynamics Model", "Not Loaded"],
+   "n_steps": 1,
+   "note": "CF-C Port 2: 1-phase twin of SimpleStorageTest — same DynaDLL/DynaData warn+fallback surface, gated vs r3723 (pinned raises #1570). Rust iter 2 == r3723 iter 2 (T-A #20)."
+  },
+  {
    "path": "Test/CapacitorConfigs.dss",
    "kind": "feeder",
    "n_steps": 1
@@ -259,6 +284,13 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
+   "kind": "feeder",
+   "post": ["Solve"],
+   "expect_solve_abort": "Max Control Iterations Exceeded",
+   "note": "CF2-R: #485 control-settling. This interconnected IEEE_123 model has no Solve of its own; the harness solve exceeds MaxControlIter=10 (a regulator hunts +/-1 tap at a band edge, never draining the control queue) and aborts with #485 on BOTH engines. Proven identical to the official r3723 (Oddie): all 7 RegControl taps + 4 cap states exact, node V to 8e-9 rel over 278 nodes, same 10 control iters / 30 total iters. The pinned oracle raises #485; Rust reproduces SolutionAbort + the same message 1:1. Not a bug (the earlier 'different trajectory' note was a measurement artifact: Rust first-solve vs oracle re-solve)."
+  },
+  {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss",
    "kind": "feeder",
    "n_steps": 1
@@ -346,6 +378,41 @@
    "compare_eventlog": true
   },
   {
+   "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
+   "kind": "large_floating_zeroseq",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/ExpControl/Master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/FreqScan/Run_Scan.dss",
    "kind": "feeder",
    "n_steps": 1
@@ -362,6 +429,16 @@
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InductionMachine/Master.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/InductionMachine/Run.dss",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -821,7 +898,17 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Matlab/pst.dss",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -889,6 +976,16 @@
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
    "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
+   "kind": "feeder",
    "n_steps": 1
   },
   {
@@ -962,6 +1059,11 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss",
    "kind": "feeder",
    "n_steps": 1
@@ -1002,6 +1104,11 @@
   },
   {
    "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/civinlar model/regulator.dss",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1121,6 +1228,11 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_VoltageProfile.DSS",
    "kind": "feeder",
    "n_steps": 1
@@ -1132,6 +1244,16 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/Run_IEEE123Bus.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp.DSS",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1260,6 +1382,11 @@
    ]
   },
   {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_Voltage_Profile.DSS",
    "kind": "feeder",
    "n_steps": 1
@@ -1273,6 +1400,13 @@
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node_Unbal.dss",
    "kind": "feeder",
    "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
+   "kind": "feeder",
+   "post": ["Solve"],
+   "expect_solve_abort": "Max Control Iterations Exceeded",
+   "note": "CF2-R: #485 control-settling. The deck's own Solve settles clean at 67 iters; the harness's second solve re-runs the control loop from the settled taps, a regulator re-arms at a band edge and hunts, exceeding MaxControlIter=10 -> #485 abort on BOTH engines. Proven identical to the official r3723 (Oddie): all 12 RegControl taps + 10 cap states exact, node V to 5.5e-11 rel over 8531 nodes, same 10 control iters / 109 total iters. Pinned oracle raises #485 on the re-solve; Rust reproduces SolutionAbort + the same message 1:1. The 'Rust 67 clean vs r3723 109 #485' note was a measurement artifact (Rust first-solve vs oracle re-solve)."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
@@ -1327,6 +1461,216 @@
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
    "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Test/Source012Test.dss",
+   "kind": "feeder",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss",
+   "kind": "large",
+   "post": [
+    "set mode=snapshot"
+   ],
+   "n_steps": 1,
+   "oracle": "r3723"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
+   "kind": "large",
+   "post": [
+    "set mode=snapshot"
+   ],
+   "n_steps": 1,
+   "oracle": "r3723"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS",
+   "kind": "large",
+   "n_steps": 1,
+   "oracle": "r3723",
+   "note": "CF-B migration (T-A #29). The pinned oracle raises #303 on the deck's headless `Show` commands; the official EPRI r3723 engine treats them as non-fatal and solves through, matching Rust -- validated live through the harness via the Oddie bridge (full-model compare green). Rust compiles the whole deck (Show/Export/fileedit are headless no-ops) with zero errors; the gated final solve is the deck's Direct-mode SLG-fault-at-B2 (loads disabled) solve, on which Rust iterations == r3723 (Rust<=oracle policy holds with equality)."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "oracle": "r3723",
+   "note": "CF-B migration (T-A #27). Pinned oracle raises #303 on headless `Show`; r3723 solves through, matching Rust -- validated live. The gated final state is the deck's SECOND `Compile ieee34Mod1.dss` run: forced regulator taps + `Set Controlmode=OFF`, i.e. a plain power flow with no control loop. Rust iterations == r3723 there (no fewer-iteration NOTE emitted). Iteration caveat reconciled: the triage's Rust-4-vs-r3723-2 was the FIRST (controlled) run's control-iteration count, NOT the like-for-like gated final solve the harness compares -- so the Rust<=oracle policy is not actually violated."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "oracle": "r3723",
+   "note": "CF-B migration (T-A #28). Pinned oracle raises #2190 on headless `ShowCurrents`; r3723 solves through, matching Rust -- validated live. Gated final state = the deck's SECOND `Compile ieee34Mod2.dss` run (forced taps + `Set Controlmode=OFF`, maxcontroliter=300); Rust iterations == r3723 on that plain final solve. Same iteration reconciliation as Mod1: the 4-vs-2 caveat was the first controlled run, not the gated final solve."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot; floating-delta common-mode floor (precedent GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS, TOLERANCE_NOTES section floating-delta). Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory (7 RegControls at maxtapchange=1 + Storage/PV GFM, AmpLimit); floating-delta common-mode floor. Validated live green vs the pinned oracle -- `compile` runs the full scripted daily trajectory, the gated solve captures the final converged state."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap (AmpLimit); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory (7 RegControls at maxtapchange=1 + Storage/PV GFM); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap; floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM whole-day trajectory; floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory (cannot-pick-up-load scenario); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF2-G migration. Whole-IEEE123 GFL daily→dynamics trajectory (Storage+PV, InvControl GFM monitor). Was ABOVE-BAND; root cause fixed: PVSystem InitStateVars/IntegrateStates ignored 'Set LoadShapeClass=daily' in dynamics (PanelkW 800 vs oracle 594.78), diverging node V ~16 V at the PV region. Fix honors ActiveLoadShapeClass in dynamics per PVsystem.pas l.2192/l.2281. Now live green (node V to the faer floor; entry 0 exact)."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF2-G migration. GFL daily→dynamics DynamicExp/DynamicEq/DynOut variant; same PVSystem dynamics load-shape fix as its non-DynExp sibling (the shape dispatch precedes the per-phase DynamicEq integration). Now live green."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF2-G migration. GFM daily deck that opens sw5 to island the microgrid (storage GFM discharge). Was ABOVE-BAND (~0.9 V at node 230). Same root cause: the islanded PV (daily=pvshape) injected full power in dynamics; the GFM-formed island voltage responded, amplifying the error. Fixed by the PVSystem dynamics load-shape fix. Now live green."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "note": "CF2-G migration. Current-limited (AmpLimit=500) islanded GFM daily deck; same PVSystem dynamics load-shape fix. Node V / currents / powers now match to the faer floor. (The storage dynamics state var it[last] is an open-loop, non-injecting integration — only it[0] drives the GFM voltage source — so it drifts on an oscillating AC waveform over the long trajectory; it is not a gated quantity and does not affect node V, which stays pinned by the it[0]↔node-V fixpoint.)"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
+   "kind": "large_ultra_switch",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
+   "kind": "large",
+   "n_steps": 1
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
+   "kind": "large",
+   "post": ["Solve"],
+   "expect_solve_abort": "Max Control Iterations Exceeded",
+   "note": "CF2-R: #485 control-settling (GFM_IEEE8500 recloser-siting). Same base 8500 model + RecloserSiting overlay as IEEETestCases/8500-Node/Run_RecloserSiting.DSS: the deck's own Solve settles clean at 67 iters; the harness re-solve hunts a band-edge regulator past MaxControlIter=10 -> #485 abort on BOTH engines. Proven identical to the official r3723 (Oddie): all 12 taps + 10 cap states exact, node V to 5.5e-11 rel over 8531 nodes, same 10 control iters / 109 total iters. Rust reproduces SolutionAbort + the message 1:1."
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",
+   "kind": "large",
    "n_steps": 1
   }
  ]

@@ -209,10 +209,17 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("ChargeTrigger"),
         PropDef::double("TimeChargeTrig"),
         PropDef::integer("Class"),
-        // User-written model DLLs are never ported (safe-Rust); stored + dumped
-        // but setting one is a hard error.
-        PropDef::string("DynaDLL").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
-        PropDef::string("DynaData").flags(PropFlags::NOT_PORTED),
+        // User-written model DLLs are never *loaded* in safe Rust (the loader is
+        // permanently out of scope — forbid(unsafe_code)). CF-C Port 2 ports the
+        // `DynaDLL`/`DynaData` property SURFACE (parse, store, dump); the
+        // `DynaDLL` side effect emits a non-fatal "Not Loaded" diagnostic and
+        // falls back to the built-in model — matching the official Direct DLL
+        // (Storage.pas l.866, StoreUserModel Set_Name l.329, DoSimpleMsg 1570),
+        // not the pinned oracle (which raises #1570).
+        PropDef::string("DynaDLL").flags(PropFlags::IS_FILENAME),
+        PropDef::string("DynaData"),
+        // Storage UserModel/UserData: no owned deck exercises them; the DLL
+        // loader is still out of scope, so they remain a hard error for now.
         PropDef::string("UserModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
         PropDef::string("UserData").flags(PropFlags::NOT_PORTED),
         PropDef::boolean("DebugTrace"),

@@ -1,5 +1,5 @@
 """Regenerate the non-memory-mapped file-backed array fixtures for
-tests/corpus/modes/shape_filearr/ (WPG.19).
+tests/corpus/modes/inputformat/shape_filearr/ (WPG.19).
 
 Committed deterministic inputs (not goldens). These exercise the Pascal
 `InterpretDblArray` file grammar (`Common/Utilities.pas:461-566`) for array
@@ -28,7 +28,7 @@ import struct
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.normpath(
-    os.path.join(HERE, "..", "..", "tests", "corpus", "modes", "shape_filearr")
+    os.path.join(HERE, "..", "..", "tests", "corpus", "modes", "inputformat", "shape_filearr")
 )
 
 MULT = [0.40, 0.55, 0.75, 0.95, 1.00, 0.90, 0.70, 0.50]

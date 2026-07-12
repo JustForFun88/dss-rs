@@ -70,12 +70,14 @@ impl Line {
         // FaultRate/PctPerm/HrsToRepair deliberately NOT copied (Pascal
         // commented out 2014 — they vary section to section).
 
-        // Zero the set-order marks of everything the code now supplies, so
-        // `Save`/`?` reflect the linecode (non-NoPropertyTracking branch).
-        for p in [
-            GEOMETRY, SPACING, R1, X1, R0, X0, C1, C0, B1, B0, SEASONS, RATINGS, NORMAMPS,
-            EMERGAMPS,
-        ] {
+        // Zero the set-order marks of the sym-component sources the linecode
+        // supersedes (`Save`/`?` then reflect the linecode, not stale scalars).
+        // The ratings the code supplies are (re)marked *set* by the `LINECODE`
+        // side effect — which runs AFTER the linecode's own set-order mark, so
+        // they sort after it (the pinned oracle's Save/JSON order); doing it here
+        // (during the parse-time ref resolve, before the edit loop's
+        // `SetAsNextSeq(linecode)`) would sort them before it.
+        for p in [GEOMETRY, SPACING, R1, X1, R0, X0, C1, C0, B1, B0] {
             self.cd.obj.clear_seq(p);
         }
 

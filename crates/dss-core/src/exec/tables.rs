@@ -502,4 +502,8 @@ pub(crate) mod opt {
     pub const SEASON_RATING: usize = 114;
     pub const SEASON_SIGNAL: usize = 115;
     pub const DATA_PATH: usize = 57;
+    /// `Set/Get LongLineCorrection=` (`ExecOptions.pas:138`, ordinal 118): the
+    /// circuit's long-line (Kron) impedance correction flag. In the oracle's
+    /// `DSS_CAPI_PM` build (`ExecOptions.pas:737/1095`).
+    pub const LONG_LINE_CORRECTION: usize = 118;
 }

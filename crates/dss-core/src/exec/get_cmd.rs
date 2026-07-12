@@ -119,6 +119,10 @@ impl Dss {
                     },
                 ),
                 opt::ALLOW_DUPLICATES => append_result(&mut result, yes_no(ckt.duplicates_allowed)),
+                // Pascal `ExecOptions.pas:1096` (`AppendGlobalResult(boolean)`).
+                opt::LONG_LINE_CORRECTION => {
+                    append_result(&mut result, yes_no(ckt.long_line_correction))
+                }
                 opt::ZONE_LOCK => append_result(&mut result, yes_no(ckt.zones_locked)),
                 opt::UE_WEIGHT => append_result(&mut result, &float_to_str(ckt.ue_weight)),
                 opt::LOSS_WEIGHT => append_result(&mut result, &float_to_str(ckt.loss_weight)),

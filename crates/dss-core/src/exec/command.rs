@@ -915,6 +915,19 @@ impl Dss {
                 cls.name_to_idx.insert(obj.data().name().to_string(), idx);
                 cls.objects.push(obj);
                 cls.active = Some(idx);
+                // Pascal `TLineCodeObj.Create`: `BaseFrequency :=
+                // ActiveCircuit.Fundamental` (LineCode.pas:493). The LineCode is
+                // the one DSS_OBJECT carrying a base frequency; it inherits the
+                // circuit fundamental so a 50 Hz feeder's charging admittance is
+                // computed at 50 Hz (propagated to lines via `FetchLineCode`).
+                // `edit_active`'s `EndEdit` recomputes the matrices at this freq.
+                if let Some(fund) = self.circuit.as_ref().map(|c| c.fundamental)
+                    && let Some(lc) = self.classes[ci].objects[idx]
+                        .as_any_mut()
+                        .downcast_mut::<line_code::LineCodeObj>()
+                {
+                    lc.set_base_frequency(fund);
+                }
                 // Pascal `DSS.DSSObjs.Add(Obj)` (`ExecHelper.pas:1899`): the
                 // global creation-order list the whole-circuit Dump walks.
                 self.dss_objs.push(ElemRef { cls: ci, idx });
@@ -941,6 +954,47 @@ impl Dss {
         cls.name_to_idx.insert(obj.data().name().to_string(), idx);
         cls.objects.push(obj);
         cls.active = Some(idx);
+
+        // Pascal `TDSSCktElement.Create`: `BaseFrequency := ActiveCircuit.Fundamental`
+        // (CktElement.pas:203). Every circuit element inherits the circuit's base
+        // frequency at creation, so `Set DefaultBaseFrequency=50` (before `New
+        // circuit`) makes a European feeder run at 50 Hz. `edit_active` (below) can
+        // still override via `basefreq=`.
+        //
+        // EXCEPTION — Monitor: `TMonitorObj.Create` re-hardcodes `Basefrequency :=
+        // 60.0` AFTER the inherited `Create` (Monitor.pas:472), so a Monitor's base
+        // frequency is ALWAYS 60 Hz, never the fundamental (oracle-verified: under
+        // `Set DefaultBaseFrequency=50` every element reports basefreq=50 but the
+        // monitor reports 60). Reproduce that override here. (EnergyMeter/Sensor do
+        // NOT override — they inherit the fundamental like everything else.)
+        let fundamental = self.circuit.as_ref().expect("checked above").fundamental;
+        let is_monitor = self.classes[ci].objects[idx]
+            .as_any_mut()
+            .downcast_mut::<monitor::Monitor>()
+            .is_some();
+        self.classes[ci].objects[idx]
+            .as_ckt_element_mut()
+            .expect("circuit element class builds circuit elements")
+            .cd_mut()
+            .base_frequency = if is_monitor { 60.0 } else { fundamental };
+
+        // Pascal `TVsourceObj.Create`/`TIsourceObj.Create`: `SrcFrequency :=
+        // BaseFrequency` (VSource.pas:644, Isource.pas:319) — the source frequency
+        // defaults to the inherited base frequency, not a hardcoded 60 Hz. Without
+        // this a 50 Hz feeder's VSource keeps SrcFrequency=60, so the frequency
+        // mismatch check (`VSource.pas:1071`) zeroes Vmag and the whole feeder dies.
+        // A later `frequency=` edit still wins (applied in `edit_active`).
+        if let Some(vs) = self.classes[ci].objects[idx]
+            .as_any_mut()
+            .downcast_mut::<vsource::VSource>()
+        {
+            vs.src_frequency = fundamental;
+        } else if let Some(is) = self.classes[ci].objects[idx]
+            .as_any_mut()
+            .downcast_mut::<isource::Isource>()
+        {
+            is.src_frequency = fundamental;
+        }
 
         // Pascal `TLineObj.Create` copies the context default earth model into
         // `FEarthModel` (Line.pas:998); a later `EarthModel=` edit can override
@@ -1194,6 +1248,12 @@ impl Dss {
             errors.push("There is no active element to edit.".to_string());
             return;
         };
+
+        // Pascal `TDSSClass.BeginEdit` (`DSSClass.pas:1598`): any edit clears the
+        // `DefaultAndUnedited` flag, so an edited default object rejoins the
+        // whole-circuit JSON dump. Harmless on the initial `New` of the default
+        // items themselves (the flag is set afterwards by `CreateDefaultDSSItems`).
+        objects[oi].data_mut().set_default_and_unedited(false);
 
         let mut param_pointer: i64 = 0;
         let mut param_name = parser.next_param(vars);

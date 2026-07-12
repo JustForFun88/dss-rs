@@ -2,7 +2,7 @@
  "comment": "Synthetic asymmetric decks (see corpus_live.rs 'Asymmetric synthetic decks' section): every stamping element + combinations in deliberately asymmetric configurations, live-compared against the pinned oracle by asymmetric_cases_match_oracle. selected_elements = the elements whose YPrim blocks are compared directly (the transposed-stamp catch). kind uses the same tolerance classes as solvable_now (micro|feeder|large). Cases with pending=true cover features the port does not implement yet (absorbed from the former gaps/ staging family, GAPS_PLAN.md section 3.1): the gate asserts the Rust engine errors loudly on them; the WP in each wp field flips pending=false when it ports the feature.",
  "cases": [
   {
-   "path": "vsource_asym.dss",
+   "path": "vsource/vsource_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -12,7 +12,7 @@
    ]
   },
   {
-   "path": "reactor_asym.dss",
+   "path": "reactor/reactor_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -25,7 +25,7 @@
    ]
   },
   {
-   "path": "capacitor_asym.dss",
+   "path": "capacitor/capacitor_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -37,7 +37,7 @@
    ]
   },
   {
-   "path": "line_asym.dss",
+   "path": "line/line_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -49,7 +49,7 @@
    ]
   },
   {
-   "path": "transformer_asym.dss",
+   "path": "transformer/transformer_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -63,7 +63,7 @@
    ]
   },
   {
-   "path": "fault_asym.dss",
+   "path": "fault/fault_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -73,7 +73,7 @@
    ]
   },
   {
-   "path": "load_asym.dss",
+   "path": "load/load_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -88,7 +88,7 @@
    ]
   },
   {
-   "path": "generator_asym.dss",
+   "path": "generator/generator_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -100,7 +100,7 @@
    ]
   },
   {
-   "path": "der_asym.dss",
+   "path": "der/der_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -111,7 +111,7 @@
    ]
   },
   {
-   "path": "indmach_asym.dss",
+   "path": "indmach/indmach_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -121,7 +121,7 @@
    ]
   },
   {
-   "path": "vccs_asym.dss",
+   "path": "vccs/vccs_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -131,7 +131,7 @@
    ]
   },
   {
-   "path": "upfc_asym.dss",
+   "path": "upfc/upfc_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -141,7 +141,7 @@
    ]
   },
   {
-   "path": "combo_chain_asym.dss",
+   "path": "combo/combo_chain_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -157,7 +157,7 @@
    ]
   },
   {
-   "path": "midi_asym.dss",
+   "path": "combo/midi_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -165,7 +165,7 @@
    ]
   },
   {
-   "path": "combo_mesh_asym.dss",
+   "path": "combo/combo_mesh_asym.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -181,7 +181,7 @@
    ]
   },
   {
-   "path": "midi_vsource_asym.dss",
+   "path": "vsource/midi_vsource_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -189,7 +189,7 @@
    ]
   },
   {
-   "path": "midi_reactor_asym.dss",
+   "path": "reactor/midi_reactor_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -197,7 +197,7 @@
    ]
   },
   {
-   "path": "midi_capacitor_asym.dss",
+   "path": "capacitor/midi_capacitor_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -205,7 +205,7 @@
    ]
   },
   {
-   "path": "midi_line_asym.dss",
+   "path": "line/midi_line_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -213,7 +213,7 @@
    ]
   },
   {
-   "path": "midi_transformer_asym.dss",
+   "path": "transformer/midi_transformer_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -221,7 +221,7 @@
    ]
   },
   {
-   "path": "midi_fault_asym.dss",
+   "path": "fault/midi_fault_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -229,7 +229,7 @@
    ]
   },
   {
-   "path": "midi_load_asym.dss",
+   "path": "load/midi_load_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -237,7 +237,7 @@
    ]
   },
   {
-   "path": "midi_generator_asym.dss",
+   "path": "generator/midi_generator_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -245,7 +245,7 @@
    ]
   },
   {
-   "path": "midi_der_asym.dss",
+   "path": "der/midi_der_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -253,7 +253,7 @@
    ]
   },
   {
-   "path": "midi_indmach_asym.dss",
+   "path": "indmach/midi_indmach_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -261,7 +261,7 @@
    ]
   },
   {
-   "path": "midi_vccs_asym.dss",
+   "path": "vccs/midi_vccs_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -269,7 +269,7 @@
    ]
   },
   {
-   "path": "midi_upfc_asym.dss",
+   "path": "upfc/midi_upfc_asym.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -277,7 +277,7 @@
    ]
   },
   {
-   "path": "isource_snap.dss",
+   "path": "isource/isource_snap.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -287,7 +287,7 @@
    "wp": "WPG.14"
   },
   {
-   "path": "autotrans_snap.dss",
+   "path": "autotrans/autotrans_snap.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -314,7 +314,7 @@
    "note": "The 330 MVA YNad1 unit from Test/AutoTrans/AutoAuto.dss + a 2-winding 115/69 auto. Oracle wdgcurrents (probe 2026-07-05, t2 spot value): non-zero live recompute - the READS_VTERMINAL family. WPG.15 Stage B: live-green."
   },
   {
-   "path": "autotrans_gic.dss",
+   "path": "autotrans/autotrans_gic.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -325,7 +325,7 @@
    "note": "Set frequency=0.1 snapshot - pins AutoTrans GICBuildYTerminal (the Solution.Frequency < 0.51 Hz resistance-only Y_Term branch) AND the Line GIC branch (ConvertZinvToPosSeqR, Line.pas:1297 - the near-ideal-source switch line is deliberate: at 0.1 Hz the deck state is zero-current, so no cancellation floor exists and every YPrim pins at micro tier). WPG.15: live-green."
   },
   {
-   "path": "gicline_gic.dss",
+   "path": "gic/gicline_gic.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -335,7 +335,7 @@
    "wp": "WPG.16"
   },
   {
-   "path": "gictransformer_gic.dss",
+   "path": "gic/gictransformer_gic.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -345,7 +345,7 @@
    "wp": "WPG.16"
   },
   {
-   "path": "gicsource_gic.dss",
+   "path": "gic/gicsource_gic.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -370,7 +370,7 @@
    "note": "The bus2 probes pin the GICsource edit-time splice: the oracle rewrites the named Line's Bus2 to the inserted GIC_<name> bus (proven 2026-07-05: buses gic_seg12/gic_seg23 appear; line.seg12.bus2 = gic_seg12)."
   },
   {
-   "path": "midi_isource_asym.dss",
+   "path": "isource/midi_isource_asym.dss",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [
@@ -380,7 +380,7 @@
    "wp": "WPG.14"
   },
   {
-   "path": "midi_autotrans_asym.dss",
+   "path": "autotrans/midi_autotrans_asym.dss",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [
@@ -398,7 +398,7 @@
    "wp": "WPG.15"
   },
   {
-   "path": "gic_midi.dss",
+   "path": "gic/gic_midi.dss",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [

@@ -26,7 +26,7 @@ fn sign(x: f64) -> f64 {
 
 impl PVSystem {
     /// Pascal `CalcDailyMult` (irradiance shape).
-    fn calc_daily_mult(&mut self, hr: f64) {
+    pub(super) fn calc_daily_mult(&mut self, hr: f64) {
         if let Some(s) = self.base.daily_shape_obj.as_mut() {
             self.base.shape_factor = s.get_mult_at_hour(hr);
         } else {
@@ -36,7 +36,7 @@ impl PVSystem {
 
     /// Pascal `CalcDutyMult` (includes the `DutyStart` offset; falls back to
     /// daily).
-    fn calc_duty_mult(&mut self, hr: f64) {
+    pub(super) fn calc_duty_mult(&mut self, hr: f64) {
         if let Some(s) = self.base.duty_shape_obj.as_mut() {
             self.base.shape_factor = s.get_mult_at_hour(hr + self.duty_start);
         } else {
@@ -46,7 +46,7 @@ impl PVSystem {
 
     /// Pascal `CalcYearlyMult` (includes the `DutyStart` offset; falls back to
     /// daily).
-    fn calc_yearly_mult(&mut self, hr: f64) {
+    pub(super) fn calc_yearly_mult(&mut self, hr: f64) {
         if let Some(s) = self.base.yearly_shape_obj.as_mut() {
             self.base.shape_factor = s.get_mult_at_hour(hr + self.duty_start);
         } else {
@@ -55,7 +55,7 @@ impl PVSystem {
     }
 
     /// Pascal `CalcDailyTemperature`.
-    fn calc_daily_temperature(&mut self, hr: f64) {
+    pub(super) fn calc_daily_temperature(&mut self, hr: f64) {
         if let Some(s) = self.daily_t_shape_obj.as_mut() {
             self.t_shape_value = s.get_temperature(hr);
         } else {
@@ -64,7 +64,7 @@ impl PVSystem {
     }
 
     /// Pascal `CalcDutyTemperature` (falls back to daily).
-    fn calc_duty_temperature(&mut self, hr: f64) {
+    pub(super) fn calc_duty_temperature(&mut self, hr: f64) {
         if let Some(s) = self.duty_t_shape_obj.as_mut() {
             self.t_shape_value = s.get_temperature(hr);
         } else {
@@ -73,7 +73,7 @@ impl PVSystem {
     }
 
     /// Pascal `CalcYearlyTemperature` (falls back to daily).
-    fn calc_yearly_temperature(&mut self, hr: f64) {
+    pub(super) fn calc_yearly_temperature(&mut self, hr: f64) {
         if let Some(s) = self.yearly_t_shape_obj.as_mut() {
             self.t_shape_value = s.get_temperature(hr);
         } else {

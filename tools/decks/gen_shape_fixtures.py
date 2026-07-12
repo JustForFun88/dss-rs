@@ -1,4 +1,4 @@
-"""Regenerate the binary/CSV shape fixtures for tests/corpus/modes/shape_binfiles/.
+"""Regenerate the binary/CSV shape fixtures for tests/corpus/modes/inputformat/shape_binfiles/.
 
 The fixtures are committed (they are deterministic inputs, not goldens); this
 script only exists so they can be rebuilt from source if ever needed. Layouts
@@ -39,7 +39,7 @@ import struct
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.normpath(
-    os.path.join(HERE, "..", "..", "tests", "corpus", "modes", "shape_binfiles")
+    os.path.join(HERE, "..", "..", "tests", "corpus", "modes", "inputformat", "shape_binfiles")
 )
 
 MULT = [0.40, 0.55, 0.75, 0.95, 1.00, 0.90, 0.70, 0.50]

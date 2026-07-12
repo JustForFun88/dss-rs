@@ -362,3 +362,60 @@ fn makeposseq_storage_single_phase() {
         ]
     );
 }
+
+// --- CF-C Port 2: DynaDLL/DynaData property surface (warn + fallback) ---
+
+/// Edit one property through the real property engine, returning any messages
+/// the side effect queued on the object.
+fn edit_storage_prop(st: &mut Storage, name: &str, value: &str) -> Vec<String> {
+    let enums = EnumRegistry::new();
+    let cls = super::class_props(&enums);
+    let idx = cls.property_index(name).expect("known Storage property");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    let mut eng = PropEngine {
+        parser: &mut parser,
+        vars: &vars,
+        enums: &enums,
+        errors: &mut errors,
+        foreign: None,
+    };
+    cls.edit_property(st, idx, value, &mut eng).unwrap();
+    let mut msgs = errors;
+    msgs.extend(st.cd.obj.take_errors());
+    msgs
+}
+
+/// `DynaDLL=<dll>` parses (no longer a hard NOT_PORTED error), stores the name
+/// for the dump, and warns the dynamics model is not loaded (safe-Rust fallback).
+#[test]
+fn dyna_dll_stores_and_warns_not_loaded() {
+    let mut st = Storage::new("s1");
+    let msgs = edit_storage_prop(&mut st, "DynaDLL", "Dess1.DLL");
+    assert_eq!(st.dyna_model_name, "Dess1.DLL");
+    assert_eq!(st.get_string(prop::DYNA_DLL), "Dess1.DLL"); // dump parity
+    assert_eq!(msgs.len(), 1, "exactly one warning: {msgs:?}");
+    assert!(msgs[0].contains("Not Loaded"));
+    assert!(msgs[0].contains("Dess1.DLL"));
+    assert!(msgs[0].contains("built-in model"));
+}
+
+/// `DynaData` stores (for the dump) and — no dynamics model exists — is a
+/// silent no-op (Pascal `if DynaModel.Exists then Edit`).
+#[test]
+fn dyna_data_stores_without_warning() {
+    let mut st = Storage::new("s1");
+    let msgs = edit_storage_prop(&mut st, "DynaData", "(file=DESSModel_Test.TxT)");
+    assert_eq!(st.dyna_model_edit, "(file=DESSModel_Test.TxT)");
+    assert_eq!(st.get_string(prop::DYNA_DATA), "(file=DESSModel_Test.TxT)");
+    assert!(msgs.is_empty(), "DynaData must not warn: {msgs:?}");
+}
+
+/// Pascal `Set_Name` bails on a blank / `none` name — no warning.
+#[test]
+fn dyna_dll_none_does_not_warn() {
+    let mut st = Storage::new("s1");
+    let msgs = edit_storage_prop(&mut st, "DynaDLL", "none");
+    assert!(msgs.is_empty(), "none must not warn: {msgs:?}");
+}

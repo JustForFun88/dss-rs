@@ -1,8 +1,12 @@
 use super::*;
+use crate::elements::general::load_shape::{self, LoadShapeObj};
 use crate::elements::pc::load::default_recalc_ctx;
 use crate::elements::traits::{CktElement, InjCtx, SysCtx};
 use crate::obj::base::DssObject;
+use crate::obj::dss_enum::EnumRegistry;
+use crate::obj::props::PropEngine;
 use crate::solution::SolveMode;
+use dss_parser::{Parser, ParserVars};
 
 fn mode_ctx(mode: SolveMode, frequency: f64) -> SysCtx {
     SysCtx {
@@ -10,6 +14,30 @@ fn mode_ctx(mode: SolveMode, frequency: f64) -> SysCtx {
         frequency,
         ..default_recalc_ctx()
     }
+}
+
+/// Build a populated `LoadShapeObj` through its real property engine.
+fn build_shape(edits: &[(&str, &str)]) -> LoadShapeObj {
+    let enums = EnumRegistry::new();
+    let cls = load_shape::class_props(&enums);
+    let mut obj = LoadShapeObj::new("d");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in edits {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+    }
+    obj.end_edit();
+    assert!(errors.is_empty(), "{errors:?}");
+    obj
 }
 
 #[test]
@@ -105,6 +133,64 @@ fn snapshot_injection_matches_pdeg_and_opposes_on_terminal2() {
     for i in 0..3 {
         assert!((isrc.cd.inj_current[i + 3] + isrc.cd.inj_current[i]).norm() < 1e-9);
     }
+}
+
+/// Pascal `GetBaseCurr` DYNAMICMODE arm (Isource.pas:403-416): dynamics honors
+/// `Set LoadShapeClass=` — `USEDAILY` scales the injection by the daily-shape
+/// mult (0.5 → 5 A from 10 A); the default `USENONE` resets `ShapeFactor` to
+/// 1+j0 (full amps). Same family as the CF2-G PVSystem dynamics load-shape fix.
+#[test]
+fn dynamics_loadshapeclass_scales_injection() {
+    let mut isrc = Isource::new("i1");
+    isrc.amps = 10.0;
+    isrc.angle = 0.0;
+    isrc.daily_shape_obj = Some(build_shape(&[
+        ("npts", "2"),
+        ("interval", "1"),
+        ("mult", "0.5 1.0"),
+    ]));
+    isrc.cd.node_ref = vec![1, 2, 3, 0, 0, 0];
+
+    let dyn_ctx = |class: i32| SysCtx {
+        mode: SolveMode::Dynamic,
+        is_dynamic_model: true,
+        active_load_shape_class: class,
+        dbl_hour: 1.0,
+        frequency: 60.0,
+        ..default_recalc_ctx()
+    };
+
+    let sys = dyn_ctx(crate::solution::USEDAILY);
+    isrc.calc_yprim(&sys);
+    let mut currents = vec![Complex64::ZERO; 7];
+    let mut sys_y_changed = false;
+    let mut ctx = InjCtx {
+        node_v: &[],
+        currents: &mut currents,
+        system_y_changed: &mut sys_y_changed,
+    };
+    isrc.inj_currents(&sys, &mut ctx);
+    assert!(
+        (isrc.cd.inj_current[0] - Complex64::new(5.0, 0.0)).norm() < 1e-9,
+        "USEDAILY mult 0.5 must halve the injection: {}",
+        isrc.cd.inj_current[0]
+    );
+
+    // Default USENONE: ShapeFactor := 1+j0 → the full 10 A.
+    let sys = dyn_ctx(crate::solution::USENONE);
+    let mut currents = vec![Complex64::ZERO; 7];
+    let mut sys_y_changed = false;
+    let mut ctx = InjCtx {
+        node_v: &[],
+        currents: &mut currents,
+        system_y_changed: &mut sys_y_changed,
+    };
+    isrc.inj_currents(&sys, &mut ctx);
+    assert!(
+        (isrc.cd.inj_current[0] - Complex64::new(10.0, 0.0)).norm() < 1e-9,
+        "USENONE must inject the full amps: {}",
+        isrc.cd.inj_current[0]
+    );
 }
 
 #[test]
