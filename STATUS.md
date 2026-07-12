@@ -38,6 +38,46 @@ Folder map:
   `modes/upgrade/upgrade_pilot.dss`). Plan docs (CONTROL_COVERAGE/
   GAPS/DIAKOPTICS/UPGRADE) keep their historical flat paths as history.
 
+**CF2-G (GFL/GFM daily dynamics divergences), 2026-07-12.** One real-bug fix +
+4 deck migrations (branch `cf2-g`). The four IBRDynamics_Cases whole-IEEE123
+GFL/GFM daily decks were ABOVE-BAND (GFL source-node imag; GFM islanded node ~0.9 V).
+- **Root cause (both signatures, one bug):** `PVSystem::InitStateVars` /
+  `IntegrateStates` hardcoded `ShapeFactor = 1+j1` in dynamics mode, assuming
+  `ActiveLoadShapeClass == USENONE`. Pascal (PVsystem.pas l.2192 & l.2281)
+  dispatches on `ActiveLoadShapeClass` **even in dynamics**, so a deck that does
+  `set loadshapeclass=daily; set time=(10,0)` samples the irradiance shape at that
+  hour. The port applied full sun (`PanelkW=800` vs oracle `594.78`); the GFL PV
+  over-injected, moving node V ~16 V near the PV, and in the GFM decks the islanded
+  PV perturbed the storage-formed island voltage (amplified to ~0.9 V). Fix: honor
+  the load-shape class in the dynamics init/integrate (shared helper
+  `apply_dynamics_load_shape`); Storage needs no change (its Pascal `IntegrateStates`
+  does not re-dispatch — its ambient ShapeFactor is already 1). Empirically: node V
+  → faer floor (2.3e-6 V) on all four decks; snapshot solve was already clean, so
+  the bug was born entering dynamics.
+- **Migrated → solvable_now** (`large_floating_delta`): GFL_IEEE123 Daily + Daily_DynExp,
+  GFM_IEEE123 Daily, GFM_IEEE123_AmpLimit Daily_CurrentLimit. `solvable_now` **+4**.
+- Note (AmpLimit deck): the storage `it[last]` state var drifts on the long
+  trajectory (open-loop AC integration; in GFM only `it[0]` feeds the injection→node-V
+  fixpoint, so it stays pinned while it[1]/it[2] drift). It is not a gated quantity
+  and node V/currents/powers all match.
+- **Escalation pass (fable), 2026-07-12.** Verified the fix 1:1 vs PVsystem.pas
+  l.2192-2210/l.2281-2299 (mult+temperature per class at `DynaVars.dblHour`, else
+  `ShapeFactor := 1+j1` with `TShapeValue` untouched), the Storage counter-claim
+  (Storage.pas `InitStateVars`/`IntegrateStates` never dispatch on the class),
+  and the deck-4 drift claim (Storage.pas:2142 — only `it[0]` scales `BaseV`;
+  the per-phase integrate loop is 1:1, so the closed loop pins phase 0 while
+  phases 1+ feed nothing gated; `compare_variables` is not enabled for these
+  decks). No tolerance/band/manifest gaming vs base `97b186c`. Added the missing
+  regression test (`pvsystem::tests::dynamics_loadshapeclass_selects_mult_and_temperature`,
+  incl. the USENONE keeps-TShapeValue pin) and ported the three remaining
+  same-family gaps found by sweeping every Pascal `case ActiveLoadShapeClass`
+  site: **VSource** (`GetVterminalForSource` DYNAMICMODE arm + DYNAMICMODE in the
+  loadshape-Vmag branch, VSource.pas:1006-1026), **Isource** (`GetBaseCurr`
+  DYNAMICMODE arm, Isource.pas:403-416), **IndMach012** (`SetNominalPower`
+  GENERALTIME/DYNAMICMODE arm, IndMach012.pas:1091-1105) — each with a unit test.
+  With `USENONE` (every existing green deck) all three reduce to the previous
+  behavior; Load/Generator already dispatched correctly.
+
 **CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
 quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch
 `cf-a`). `solvable_now` **245 → 249**.

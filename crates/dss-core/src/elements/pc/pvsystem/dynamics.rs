@@ -20,6 +20,7 @@ use num_complex::Complex64;
 use crate::elements::pc::dyneq_pce::DynEqPceData;
 use crate::elements::pc::inv_based_pce::{InvDynamicVars, NUM_INV_DYN_VARS};
 use crate::elements::traits::{CktElement, SysCtx};
+use crate::solution::{USEDAILY, USEDUTY, USEYEARLY};
 use crate::support::complexutil::{c_to_polar, pclx, to_polar};
 use crate::support::dynamics::IterationFlag;
 use crate::support::mathutil::PiCtrl;
@@ -33,6 +34,29 @@ pub(super) const NUM_BASE_PV_VARS: usize = 13;
 pub(super) const NUM_PV_VARS: usize = NUM_BASE_PV_VARS + NUM_INV_DYN_VARS; // = 22
 
 impl PVSystem {
+    /// Pascal `case ActiveCircuit.ActiveLoadShapeClass of ...` shared by the
+    /// dynamics `InitStateVars` (PVsystem.pas l.2192) and `IntegrateStates`
+    /// (l.2281): sample the mult + temperature the active load-shape class selects
+    /// (`Set LoadShapeClass=`) at the dynamics hour, or leave `ShapeFactor := 1+j1`
+    /// when unset (`USENONE`). The subsequent `compute_panel_power` reads the result.
+    pub(super) fn apply_dynamics_load_shape(&mut self, sys: &SysCtx) {
+        match sys.active_load_shape_class {
+            USEDAILY => {
+                self.calc_daily_mult(sys.dbl_hour);
+                self.calc_daily_temperature(sys.dbl_hour);
+            }
+            USEYEARLY => {
+                self.calc_yearly_mult(sys.dbl_hour);
+                self.calc_yearly_temperature(sys.dbl_hour);
+            }
+            USEDUTY => {
+                self.calc_duty_mult(sys.dbl_hour);
+                self.calc_duty_temperature(sys.dbl_hour);
+            }
+            _ => self.base.shape_factor = CDOUBLEONE, // USENONE: default 1+j1
+        }
+    }
+
     /// Pascal `TPVsystemObj.InitStateVars` (l.2170) — seed the GFL inverter
     /// state from the present power-flow operating point (+ the `DynamicEqObj <> NIL`
     /// derivative zero-out at the tail). `UserModel.Exists` is NOT_PORTED.
@@ -54,15 +78,14 @@ impl PVSystem {
 
         self.base.dyn_vars.safe_mode = false;
 
-        // In dynamics mode `ActiveLoadShapeClass` is always `USENONE`, so the
-        // Pascal `else ShapeFactor := CDOUBLEONE` branch always fires. The
-        // USEDAILY/USEYEARLY/USEDUTY cases are UNREACHABLE here (SolveMode
-        // is Dynamic → no load-shape dispatch). Mirrors the `SolveMode::Dynamic
-        // => {}` no-op in `nominal.rs::set_nominal_der_output`.
-        // Pascal's USENONE branch sets only `ShapeFactor := CDOUBLEONE`; it does
-        // NOT touch `TShapeValue` (`ComputePanelPower` reuses the prior value,
-        // which on a normal snapshot→dynamics entry already equals `FTemperature`).
-        self.base.shape_factor = CDOUBLEONE;
+        // Pascal PVsystem.pas l.2192-2210: even entering dynamics mode the panel
+        // power honors `Set LoadShapeClass=` — the `case ActiveLoadShapeClass`
+        // samples the daily/yearly/duty mult+temperature at the current dynamics
+        // hour (`DynaVars.dblHour`); only `USENONE` (the default, no
+        // `LoadShapeClass` set) leaves `ShapeFactor := CDOUBLEONE`. A whole-feeder
+        // dynamics deck that does `set loadshapeclass=daily; set time=(10,0)`
+        // therefore starts dynamics at that hour's irradiance, not full sun.
+        self.apply_dynamics_load_shape(sys);
 
         self.compute_panel_power();
 
@@ -158,8 +181,10 @@ impl PVSystem {
 
         // NOT_PORTED: UserModel.Exists branch — user-written DLL never ported.
 
-        // In dynamics mode ActiveLoadShapeClass == USENONE → ShapeFactor := CDOUBLEONE.
-        self.base.shape_factor = CDOUBLEONE;
+        // Pascal PVsystem.pas l.2281-2299: recompute the panel power each dynamics
+        // step, honoring `Set LoadShapeClass=` (the same `case ActiveLoadShapeClass`
+        // as `InitStateVars`). USENONE (default) → `ShapeFactor := CDOUBLEONE`.
+        self.apply_dynamics_load_shape(sys);
 
         self.compute_panel_power();
 

@@ -69,6 +69,44 @@ fn duty_mode_falls_back_to_daily_shape() {
     assert!((vs.vmag - 0.5 * vmag_snap).abs() < 1e-6);
 }
 
+/// Pascal `GetVterminalForSource` DYNAMICMODE arm (VSource.pas:1006-1026):
+/// dynamics is a loadshape mode under `Set LoadShapeClass=` — `USEDAILY`
+/// samples the daily shape at the dynamics hour (mult 0.5 halves Vmag); the
+/// default `USENONE` sets `ShapeFactor := PerUnit`, reproducing the snapshot
+/// magnitude. Same family as the CF2-G PVSystem dynamics load-shape fix.
+#[test]
+fn dynamics_loadshapeclass_scales_source_magnitude() {
+    let shape = build_shape(&[("npts", "2"), ("interval", "1"), ("mult", "0.5 1.0")]);
+    let mut vs = VSource::new("v");
+    vs.daily_shape_obj = Some(shape);
+
+    vs.get_vterminal_for_source(&mode_ctx(SolveMode::Snapshot, 1.0));
+    let vmag_snap = vs.vmag;
+
+    let dyn_ctx = |class: i32| SysCtx {
+        mode: SolveMode::Dynamic,
+        is_dynamic_model: true,
+        active_load_shape_class: class,
+        dbl_hour: 1.0,
+        ..default_recalc_ctx()
+    };
+    vs.get_vterminal_for_source(&dyn_ctx(crate::solution::USEDAILY));
+    assert!(
+        (vs.vmag - 0.5 * vmag_snap).abs() < 1e-6,
+        "dynamics+USEDAILY {} vs half-snapshot {}",
+        vs.vmag,
+        0.5 * vmag_snap
+    );
+
+    vs.get_vterminal_for_source(&dyn_ctx(crate::solution::USENONE));
+    assert!(
+        (vs.vmag - vmag_snap).abs() < 1e-9,
+        "dynamics+USENONE {} must equal snapshot {}",
+        vs.vmag,
+        vmag_snap
+    );
+}
+
 // --- MakePosSequence (WPG.21) --------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
