@@ -28,12 +28,18 @@ already reproduces #485 exactly.
   all RegControl taps + capacitor states **exact**, node V to **5.5e-11** rel
   (8500-node) / **8.1e-9** rel (IEEE123) over every node, same 10 control iters
   / same total iters (109 / 30), same 261 / 92 event-log lines.
-- **Accounting answer (a):** same fixpoint by the same control path. `#485` is
-  raised because `ControlActionsDone` never becomes true within
-  `MaxControlIter` (Pascal `SolveSnap`, `Solution.pas:1189-1209`) — a hunting
-  regulator, reproduced 1:1 by `solve_snap` (`solution/solution/power_flow.rs`).
-  The reported "iterations" (67/109/30) is `Solution.Iterations` = **total
-  power-flow iterations**, not control iterations (always 10 = the cap).
+- **Accounting answer (a):** both engines reach the SAME control-limited state
+  by the SAME control path — a *truncation*, NOT a settled fixpoint. `#485` is
+  raised because `ControlActionsDone` never becomes true within `MaxControlIter`
+  (Pascal `SolveSnap`, `Solution.pas:1189-1209`): a regulator fires a tap change
+  every control iteration (the event log rebuilds Y at each of the 10 control
+  iters on all three decks — verified against r3723), so the loop is truncated
+  at `ControlIter=10` mid-adjustment. The captured taps/caps/V are that
+  identical truncation point, reproduced 1:1 by `solve_snap`
+  (`solution/solution/power_flow.rs`); the per-deck manifest notes give each
+  deck's exact hunting/re-arm sub-mechanism. The reported "iterations"
+  (67/109/30) is `Solution.Iterations` = **total power-flow iterations**, not
+  control iterations (always 10 = the cap).
 - **Migration mechanism:** the pinned oracle *raises* #485 at solve (dss-python
   surfaces `DoSimpleMsg` as an exception), so a per-step compare is impossible;
   gated instead via `expect_solve_abort: "Max Control Iterations Exceeded"`
@@ -42,6 +48,35 @@ already reproduces #485 exactly.
   harness's extra solve on the Rust abort path (the deck's own solve is clean).
   Verified full-state identity against official r3723 via the Oddie bridge; the
   gate itself uses the pinned 0.14.5 oracle (also aborts, confirmed).
+- **Audit settle (2 auditors, all findings Minor, no code change).**
+  - *r3723 is not warn-only (refuted).* An auditor claimed r3723 via Oddie emits
+    #485 as a non-fatal warning with no raise. Empirically it RAISES the same
+    #485 at solve, exactly like the pinned oracle (dss-python's error check
+    elevates the Direct DLL `DoSimpleMsg` to a `DSSException` — probed on all 3
+    decks). So the `corpus_live_opendss` exclusion premise stands; its comment
+    and the `expect_solve_abort` doc are corrected to say BOTH channels raise.
+  - *Why the numerical identity is not a bespoke committed state-compare.* BOTH
+    oracle channels raise #485 at solve, so `run_and_compare`'s checkpoint
+    capture cannot line up a solved state on either — the full Rust==oracle
+    settled state (taps/caps exact, V 5.5e-11 / 8.1e-9) is only reachable via an
+    exception-tolerant capture (the offline probe). The mandatory gate instead
+    pins the #485 *mechanism* via the message, which on the Rust side already
+    implies `converged_flag` + `control_iteration==MaxControlIter` (see
+    `solve_snap`). The 8500-node / IEEE123 regulator machinery these decks
+    exercise is also heavily gated by many CONVERGING sibling decks
+    (`8500-Node/Master.dss`, `Run_8500Node*`, `123Bus/IEEE123Master.dss`, the
+    torn `Master.DSS`, GFM variants) that DO full pinned-oracle numeric compares,
+    so the only residual unguarded surface is a regression that shifts the
+    *hunting-truncation* state while leaving every converging solution
+    bit-identical — a narrow class both auditors rated LOW. Closing it fully is
+    feasible future work (verified: both oracles leave a readable converged state
+    post-catch, and a compare would pass): an opt-in `tolerate_solve_abort` flag
+    in `oracle_server.py` + a state-compare in the abort gate; deferred as
+    disproportionate for this narrow LOW risk.
+  - *population.lock is regenerated in the worktree, NOT committed (per brief).*
+    The gate is green with the regenerated lock; the coordinator must run
+    `DSS_UPDATE_POPULATION_LOCK=1` and commit the lock at merge, else merged main
+    is red (manifests 282 solvable / 23 skipped vs the committed lock's 279/26).
 
 **CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
 quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch

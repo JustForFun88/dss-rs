@@ -1099,14 +1099,24 @@ struct SolvableCase {
     /// feature.
     #[serde(default)]
     pending: bool,
-    /// This deck aborts the solve on BOTH engines — a malformed input the port
-    /// reproduces as Pascal `DSS.SolutionAbort` (e.g. CapControl `type=Follow`
-    /// with no `ControlSignal`). It is not a per-step live compare (the oracle
-    /// *raises* at solve, so `run_and_compare`'s checkpoint capture cannot run):
-    /// the value is the error substring BOTH engines must produce — the oracle
-    /// raising it at solve, the Rust engine setting `solution_abort` and
-    /// surfacing it. Mutually exclusive with `pending` and the normal compare;
-    /// gated by [`run_and_compare_abort`].
+    /// This deck aborts the solve on BOTH engines; the value is the error
+    /// substring both must produce. Two distinct classes share this contract.
+    /// **Malformed input** the port reproduces as Pascal `DSS.SolutionAbort`
+    /// (e.g. CapControl `type=Follow` with no `ControlSignal`). **Control
+    /// non-settling** — a *valid* model whose controls legitimately never drain
+    /// the control queue within `MaxControlIter` (a regulator hunting/re-arming
+    /// at a band edge, changing its tap every control iteration), which Pascal
+    /// `SolveSnap` reports as `#485 Max Control Iterations Exceeded` (CF2-R: the
+    /// three 8500/IEEE123 recloser-siting decks); its captured state is a
+    /// mid-adjustment truncation, not a settled fixpoint — identical on both
+    /// engines.
+    ///
+    /// Either way it is not a per-step live compare: the pinned oracle *raises*
+    /// at solve (and r3723 via Oddie raises the same #485), so
+    /// `run_and_compare`'s checkpoint capture cannot run. The contract is that
+    /// BOTH engines abort with this message — the oracle raising it at solve, the
+    /// Rust engine setting `solution_abort` and surfacing it. Mutually exclusive
+    /// with `pending` and the normal compare; gated by [`run_and_compare_abort`].
     #[serde(default)]
     expect_solve_abort: Option<String>,
     /// Work package that ports this case's feature (`WPG.*` → GAPS_PLAN.md,
@@ -2267,7 +2277,14 @@ fn corpus_live_opendss() {
             target_rev_excluded.push(format!("solvable_now:{}", c.path));
             continue;
         }
-        // Abort cases raise at solve on every engine — no A/B electrical state.
+        // Abort cases raise #485 at solve on BOTH the pinned oracle AND r3723 via
+        // Oddie (dss-python's error check elevates the Direct DLL's `DoSimpleMsg`
+        // to a `DSSException` — verified), so `run_and_compare`'s checkpoint
+        // capture cannot run through the raised solve on this channel either. (The
+        // settled state IS readable if the exception is caught — that is how CF2-R
+        // measured the offline Rust==r3723 full-state identity — but this
+        // report-only channel does not implement exception-tolerant capture; the
+        // mandatory abort contract lives in `run_and_compare_abort`.)
         if c.expect_solve_abort.is_some() {
             continue;
         }
