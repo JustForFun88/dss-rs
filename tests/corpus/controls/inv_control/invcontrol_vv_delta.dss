@@ -1,0 +1,39 @@
+// WP-U1.3 / row D4 (docs/upgrade/DIVERGENCES.md) -- delta-connected DER
+// monitored voltage is line-to-line, oracle capi015. SNAPSHOT.
+//
+// A single DELTA-connected PVSystem under VOLTVAR. dss_capi 0.15.x (D4,
+// InvControl.pas l.1647-1652, r3822) monitors the DER's LINE-TO-LINE terminal
+// voltages for a delta connection (cBuffer[j] = Vterminal[j] -
+// Vterminal[NextDeltaPhase(j)]); 0.14.5 wrongly used the line-neutral
+// magnitudes. The two give a completely different per-unit curve point -> the
+// var output has the OPPOSITE SIGN (probe scratch_probe_d4.py: capi015/r4133
+// Q=+520 kvar vs 0.14.5 Q=-31 kvar). r4133 agrees with capi015 here (both use
+// LL), a clean adoption aligned with the plan's end-target.
+//
+// The divergence is inherent to the delta connection (not time-dependent), so
+// a single snapshot solve is a decisive, feature-sensitive gate: a Rust
+// regression that reverted to the wye (LN) monitored voltage would flip pv1's
+// kvar sign and diverge from capi015 immediately.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.c basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b1 phases=3 r1=0.3 x1=0.6 c1=0 length=2 units=km
+
+New load.ld1 bus1=b1 phases=3 kv=12.47 kw=1500 pf=0.95
+
+New pvsystem.pv1 phases=3 bus1=b1 conn=delta kv=12.47 kva=800 pmpp=600
+~ irradiance=1
+
+New xycurve.vv npts=6 xarray=(0.5 0.92 0.98 1.02 1.08 1.5)
+~ yarray=(1 1 0.2 -0.2 -1 -1)
+
+New invcontrol.ic1 mode=VOLTVAR voltage_curvex_ref=rated vvc_curve1=vv
+~ deltaq_factor=0.4 derlist=(pvsystem.pv1)
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=100
+Set controlmode=static
+solve

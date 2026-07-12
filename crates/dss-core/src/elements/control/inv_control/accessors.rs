@@ -463,14 +463,27 @@ impl DssObject for InvControl {
                 // simple `bus[.node...]` tokens — no vars / auto-increment).
                 let mut parser = dss_parser::Parser::new();
                 let vars = dss_parser::ParserVars::new();
+                let entries = self.mon_buses_name_list.clone();
+                let full = format!("InvControl.{}", self.ccd.cd.obj.name());
                 self.mon_buses.clear();
                 self.mon_buses_nodes.clear();
-                for entry in &self.mon_buses_name_list {
+                for entry in &entries {
                     let (bus, nodes) = match parser.parse_as_bus_name(entry, &vars) {
                         Ok(v) => v,
                         Err(_) => (entry.clone(), Vec::new()),
                     };
                     self.mon_buses.push(bus);
+                    // dss_capi 0.15.x C8 (`e6607efd`, `InvControl.pas` l.694-698):
+                    // a `MonBus` entry with NO node numbers is a hard error #2024111
+                    // that aborts the side-effect (Pascal `Exit`) — the monitored
+                    // per-phase voltage is undefined without an explicit node list.
+                    if nodes.is_empty() {
+                        self.ccd.cd.obj.push_error(format!(
+                            "MonBus.{full}: Bus nodes are missing in \"{entry}\"."
+                        ));
+                        self.mon_buses_nodes.push(nodes);
+                        break;
+                    }
                     self.mon_buses_nodes.push(nodes);
                 }
             }

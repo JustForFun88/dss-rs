@@ -599,8 +599,231 @@ commit `4ed59416`, SVN r4033). The separate `NormMaxHkVA = 1.1 * Winding[1].kVA`
 - `known_diffs`: none matched — nothing to retire. **When WP-U1.5 ports the
   seasonal override, its overload-report deck becomes D6's live witness.**
 
-## L1, L3, L4 — pending later WPs
+## L1 — InvControl `InvControlDeltaV` per-control 2-slot buffer — SETTLED (WP-U1.3, adopt the fix; r4133 keeps the 9-year bug)
 
-- **L1** InvControl `InvControlDeltaV` buffer — WP-U1.3.
+**Observable.** The `voltagechangesolution` (the change in the DER's per-unit
+solution voltage across control passes) that drives the volt-var hysteresis
+curve-1/curve-2 state machine, when a circuit has **two or more InvControl
+objects** (each controlling a DER with a non-zero `hysteresis_offset`).
+
+**dss_capi 0.15.x (capi015).** `FVpuSolution` is a per-control 2-slot buffer,
+`FVpuSolutionIdx` init `-1`, toggled `0↔1` **unconditionally** once per
+`UpdateInvControl` pass (`InvControl.pas` l.2524-2531, default `CompatFlags &
+InvControlDeltaV == 0`). Every InvControl advances its own cursor, so
+`voltagechangesolution = present − prior` is correct for all controls.
+
+**EPRI r4133 (and 0.14.5).** A 9-year-old bug: `TInvControl.UpdateAll`
+(l.3563-3575) calls `obj.UpdateInvControl(i)` with `i` = the InvControl's
+**element-list index**, and the cursor bump is gated on `(j=1) and (i=1)`
+(l.2537). So **only the FIRST InvControl (i=1) ever advances its cursor**;
+every other control's `FVpuSolutionIdx` stays `0`, its buffer read matches
+neither `idx=1` nor `idx=2`, and `voltagechangesolution` latches at 0 — its
+hysteresis never sees the voltage move. `InvControlDeltaV=0x100` restores this
+bug on capi015 (it is dss_capi's default-OFF compat flag).
+
+**Probe** (`scratch_probe_l1.py`, 2026-07-12; a 2-bus feeder, one InvControl +
+wye PVSystem per bus, VOLTVAR `hysteresis_offset=-0.05`, daily voltage swing):
+
+| step | capi015 pv2 kvar | r4133 pv2 kvar |
+|---|---|---|
+| 1 | −14.013 | −14.013 |
+| 2 | −14.013 (settled) | −9.200 |
+| 3 | −14.013 | −12.816 |
+| 4 | −14.013 | −9.070 |
+| 5 | −14.013 | −12.142 |
+
+pv1 (the FIRST control, i=1) is bit-identical on both engines; **pv2 (the second
+control) OSCILLATES on r4133** (its `voltagechangesolution` is stuck at 0) but
+settles on capi015. A ~kvar-scale divergence, far above any floor.
+
+**Decision — adopt the capi015 fix; catalog the EPRI r4133 behavior as a
+known upstream bug (a report entry, NOT a gate).** The Rust r3723 port already
+computed `voltagechangesolution` the fixed way (it toggles each InvControl
+object's own cursor unconditionally in `update_all_inv_controls` — it never had
+the `i=1` element-list gating, which the per-element control dispatch cannot
+represent). This WP makes the **buffer form** faithful to the 0.15.x source:
+`f_vpu_solution: [f64; 2]` (was `[f64; 3]`), `f_vpu_solution_idx` init `-1` (was
+`0`), toggle `0↔1` (was `1↔2`), read `fv[0]-fv[1]`/`fv[1]-fv[0]`
+(`compute.rs::update_inv_control` + `calc_qvv_curve_desiredpu`). This refactor
+is **numerically identical** to the pre-refactor Rust for `voltagechangesolution`
+(proven by a slot relabelling: idx {1,2}↔{0,1}) — so no existing InvControl deck
+or golden moves (the whole inv_control unit suite + `der_controls` goldens stay
+green).
+
+**Gate consequence.**
+- **No live multi-step gate is possible for the D1 divergence.** It needs a
+  time-series (the hysteresis history), and Rust matches ONLY capi015 (0.14.5 and
+  r4133 share the bug). But the **capi015 oracle cannot gate a multi-step deck**:
+  its `run_case` capture (`capture_fingerprint`/`getYSparse` via the fastdss
+  `_oddie_get_y_sparse` rebind, plus the element capture) **re-nominalizes
+  time-varying elements**, so every step of a daily/loadshape deck reports the
+  nominal (step-0) state — witnessed 2026-07-12 (`scratch_probe_srv3.py`:
+  `dbl_hour` advances 1→8 but `Load.ld1`/PVSystem output stays constant on
+  capi015, while the default 0.14.5 oracle steps correctly). All 18 pre-existing
+  capi015 corpus cases are `n_steps=1` for this reason. Recorded in STATUS as an
+  oracle-infra follow-up.
+- **Pinned by the feature-sensitive Rust unit test**
+  `inv_control::tests::dispatch::d1_buffer_2slot_tracks_last_two_pu_voltages`
+  (drives `update_inv_control` three passes with changing monitored voltages;
+  asserts `idx` −1→0→1→0 and the 2-slot buffer holds the last two per-unit
+  voltages) — flips if the buffer/init/toggle regresses.
+- **New snapshot capi015 deck** `controls/inv_control/invcontrol_multi_vv_wye.dss`
+  (`oracle: "capi015"`, `n_steps=1`) gates the multi-InvControl fleet build +
+  independent per-control dispatch that the fix operates over (the hysteresis
+  history itself is snapshot-invisible — `voltagechangesolution=0` at hour 1).
+- `known_diffs.json`: no Rust↔EPRI entry existed (the r3723 port already matched
+  the fix; it diverged from 0.14.5/r4133 all along on this path but no deck
+  witnessed it). Adopting the buffer form changes nothing observable. The r4133
+  bug is now catalogued here (this row) per the CLAUDE.md known-bugs discipline.
+
+## D2 — InvControl per-DER base-voltage cross-leak — SETTLED (WP-U1.3, adopt capi015)
+
+**Observable.** In `UpdateInvControl`, the base voltage used to renormalize a
+DER's `MonBus`-monitored voltage into the rolling-average / `FVpuSolution`
+history — for an InvControl controlling **multiple DERs on different base
+voltages** with an explicit `MonBus`.
+
+**dss_capi 0.14.5.** `BasekV := CtrlVars[i].FVBase` where `i` is the
+InvControl's element-list index (its own `//TODO: check (i, j)`), so for a
+single control it collapses to `CtrlVars[1]` = the **first** DER's base for
+**every** DER. **0.15.x (capi015) / r4133.** `BasekV := FVBase` inside `with
+CtrlVars[j]` — the **per-DER** base (`InvControl.pas` l.2550).
+
+**Decision — adopt** (`compute.rs::update_inv_control`, `ctrl_vars[0].f_vbase →
+ctrl_vars[j].f_vbase`). A no-op for a homogeneous-base fleet or a non-`MonBus`
+control (the self-monitoring path ignores `BasekV`), so no existing deck moves
+(every corpus InvControl is self-monitored, 0 `MonBus` uses — scanned).
+
+**Gate consequence.** No corpus/live witness (needs `MonBus` + a
+heterogeneous-base fleet). Pinned by the feature-sensitive unit test
+`d2_update_uses_per_der_basekv_not_first_der` (two DERs on 7200/4160 V bases
+monitoring a 4160 V bus: DER#2 reads 4160 with the fix, 7200 without).
+`known_diffs`: nothing to retire.
+
+## D3 — InvControl watt-priority `Sqrt(kVA²−kW²)` guard — SETTLED (WP-U1.3, adopt capi015)
+
+**Observable.** `Q_Ppriority` in `Check_Qlimits`'s watt-priority arm
+(`FPPriority && (VARMAX || WATTPF)`): a near-cancellation `SQR(kVArating) −
+SQR(presentkW)` that can go tiny-**negative** in f64 when `kW ≈ kVA`.
+
+**dss_capi 0.14.5.** `Q_Ppriority := Sqrt(SQR(FkVArating) − SQR(FpresentkW)) /
+QHeadRoom` — `Sqrt(<0) = NaN`. **0.15.x (capi015) / r4133.** Guard first
+(`InvControl.pas` l.3442-3446, r4056): `Qavailable_sqr := SQR(..)−SQR(..); if
+abs(Qavailable_sqr) < epsilon then Qavailable_sqr := 0.0;` then `Sqrt`.
+`epsilon = DSSGlobals.EPSILON = 1e-12`.
+
+**Decision — adopt** (`compute.rs::check_qlimits`: the `qavailable_sqr` guard
+with `crate::util::EPSILON`). The same identifier also corrected the
+neighbouring `|Q_Ppriority| < epsilon` guard, which the r3723 port had
+mis-mapped to `f64::EPSILON` (~2.2e-16) — now `1e-12` (a faithfulness fix in the
+same hunk, cited at the site).
+
+**Gate consequence.** No corpus witness (the guarded band is a sub-ULP
+near-cancellation). Pinned by `d3_watt_priority_sqrt_guard_zeroes_tiny_negative_radicand`
+(`kVA=10`, `kW = 10 + 1 ULP` → radicand ~−3.6e-14, `|.|<1e-12`: the guard yields
+`Q_Ppriority=0` → `QDesireLimitedpu=0`; without it, `NaN` skips the clamp block
+and leaves the unclamped `1.0`). `known_diffs`: nothing to retire.
+
+## D4 — InvControl delta-DER monitored voltage is line-to-line — SETTLED (WP-U1.3, adopt capi015 = r4133)
+
+**Observable.** `GetMonVoltage`'s self-monitoring path for a **delta-connected**
+controlled DER (PVSystem/Storage `conn=delta`).
+
+**dss_capi 0.14.5.** `cBuffer[j] := DERElem.Vterminal[j]` — the line-neutral
+magnitudes, even for a delta DER. **0.15.x (capi015) / r4133.** `case
+DERElem.Connection of Delta: cBuffer[j] := Vterminal[j] −
+Vterminal[NextDeltaPhase(j)]` — **line-to-line** (`InvControl.pas` l.1647-1652,
+r3822; `NextDeltaPhase(iphs)=iphs+1`, wraps to 1 past `NCondsDER`).
+
+**Probe** (`scratch_probe_d4.py`, 2026-07-12; one delta PVSystem, VOLTVAR):
+
+| engine | delta PV Q |
+|---|---|
+| capi 0.14.5 (LN) | **−31.11 kvar** |
+| capi015 (LL) | **+520.28 kvar** |
+| oddie r4133 (LL) | **+520.28 kvar** |
+
+The LL-vs-LN per-unit gap flips the var **sign** — decisive. capi015 == r4133
+(a clean adoption aligned with the plan's end-target).
+
+**Decision — adopt** (`compute.rs::get_mon_voltage`: build the per-node complex
+`cBuffer` and, for a delta DER, take the LL difference before reducing by
+`MonVoltageCalc`; new env methods `der_vterminal` (complex phasors) +
+`der_is_delta`).
+
+**Gate consequence.**
+- **New snapshot capi015 deck** `controls/inv_control/invcontrol_vv_delta.dss`
+  (`oracle: "capi015"`, `n_steps=1`): a delta PVSystem under VOLTVAR; the LL
+  monitored voltage is a snapshot property (not time-dependent), so one solve is
+  a decisive feature-sensitive gate — a regression to the wye (LN) reading flips
+  pv1's kvar sign and diverges from capi015.
+- **Two default-oracle corpus decks provably moved and are handled in-commit:**
+  `midi_controls.dss` and `midi_invcontrol.dss` each carried a delta `pvsystem.pv3`
+  under an auto-populated InvControl. These are **multi-step** decks whose other
+  controls (CapControl/RegControl/StorageController) carry unported U1.5/U1.6
+  deltas, so they **cannot** flip to capi015 (which would entangle unported
+  behavior) — and the capi015 oracle cannot gate a multi-step deck anyway (L1
+  above). `pv3` is changed to `conn=wye` in both (a documented one-token edit at
+  the site), moving the delta-DER-under-InvControl coverage to the dedicated
+  `invcontrol_vv_delta` deck while the midi decks stay 0.14.5-gated for their
+  combo content. `gfm_invcontrol` (delta Storage under `mode=GFM`) is **not**
+  affected — the GFM arm never reads the monitored voltage (verified).
+- `known_diffs`: no prior Rust↔EPRI entry (0.14.5 and the r3723 port both used
+  LN); adopting LL makes Rust match r4133 — nothing to retire.
+
+## D5 — InvControl9611 — SETTLED (WP-U1.3, not a delta for us)
+
+The `InvControl9611` compat flag (the 9.6.1.1 volt-var regression) exists in
+**both** 0.14.5 and 0.15.x, **OFF by default in both** — the fixed behavior is
+the default. The r3723 port already reproduced the fixed side: `update_deltaq_factor`
+(`compute.rs`) is `if delta_q_factor == FLAGDELTAQ { change_deltaq_factor(j) }
+else { f_delta_q_factor = delta_q_factor }` — exactly the `CompatFlags &
+InvControl9611 == 0` branch (`InvControl.pas` l.2687-2688 / 2728-2729 etc.). The
+0.14.5↔0.15.x branch text is byte-identical (grep-verified). **No code change;
+not an observable delta.** Mirrors the D5/D8 "not a delta for us" records.
+
+## C8 — InvControl surface: `VV_RefReactivePower` removal + MonBus validations — SETTLED (WP-U1.3)
+
+**(a) `VV_RefReactivePower` removal — NOT adopted (kept, r4133-aligned).**
+dss_capi 0.15.x fully removed the property (`c44e5873`); capi015 rejects
+`VV_RefReactivePower=…` with `#110 Unknown parameter` and reports 36 properties.
+But **EPRI r4133 KEEPS it** as a real property (probe `scratch_probe_c8.py`,
+2026-07-12: r4133 accepts the write, readback `varmax`, 37 properties), matching
+0.14.5 (which logs a `#2020030` deprecation, readback `''`, 37 properties). Per
+the plan's §1.4 default (**r4133 wins**), the port **keeps** `VV_RefReactivePower`
+(the existing `DeprecatedAndRemoved`-style placeholder that renders `''`,
+aligned with r4133 AND 0.14.5). Adopting capi015's removal would drop the InvControl
+property count 37→36 and, via the controls-family `compare_all_properties` (which
+demands Rust count == oracle count), **force every default-oracle InvControl deck
+to flip to capi015** — including the combo/midi decks whose CapControl/RegControl/
+StorageController carry **unported U1.5/U1.6 deltas** (and which the multi-step
+capi015 oracle cannot gate). That is out of proportion for the InvControl WP and
+would entangle other WPs' behavior; the capi015-only removal is recorded here as
+a **divergence NOT adopted** (a Rung-1 dss-ext API cleanup, not a bug), a
+candidate for a coordinated flip once U1.5/U1.6 land. No deck moves; the
+`props/invcontrol.json` golden keeps its `VV_RefReactivePower` line.
+
+**(b) MonBus validation errors — adopted.** Two new capi015 guards on malformed
+`MonBus` input (probe `scratch_probe_c8.py`):
+- **#2024111** (`InvControl.pas` l.694-698, `e6607efd`): a `MonBus` entry with
+  no node numbers (`MonBus=(bus)` without `.node`) is a hard parse error that
+  aborts the side effect. Ported in `accessors.rs::side_effects` (MonBus arm) —
+  capi015 emits it, 0.14.5/r4133 silently accept.
+- **#2024112** (`InvControl.pas` l.1596-1601): a `MonBus` name that never
+  resolves to a real bus aborts the solve at `GetMonVoltage` (instead of silently
+  reading the ground node's zero voltage — the previous Rust behavior). Ported
+  via `get_mon_voltage` + the new `mon_bus_unresolved`/`request_solution_abort`
+  env hooks; capi015 emits the specific message, 0.14.5/r4133 abort with the
+  generic `#482`.
+
+These are capi015-specific messages (they diverge from r4133's silent-accept /
+generic-abort), but they only fire on **malformed** input (0 corpus decks use
+`MonBus` — scanned), never in a valid deck; the *sequence* (both engines abort on
+an invalid bus) is preserved. Pinned by the feature-sensitive unit tests
+`c8_monbus_missing_nodes_errors_2024111` and `c8_monbus_invalid_bus_aborts_2024112`.
+`known_diffs`: nothing to retire.
+
+## L3, L4 — pending later WPs
+
 - **L3** Monitor CSV header — WP-U1.5 (report-format, numeric-token gated).
 - **L4** SeasonalRating application — WP-U1.5.

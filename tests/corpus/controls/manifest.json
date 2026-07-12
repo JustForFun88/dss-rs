@@ -2,6 +2,28 @@
  "comment": "Controls live gate decks (CONTROL_COVERAGE_PLAN.md): control/protection/metering elements in symmetric, asymmetric, and combination scenarios, live-compared by controls_cases_match_oracle with the full-model mandate plus element-specific state channels (probes / compare_variables / compare_eventlog / compare_ctrlqueue / check_meters_monitors). Cases with pending=true cover features the port does not implement yet (absorbed from the former gaps/ staging family, GAPS_PLAN.md section 3.1): the gate asserts the Rust engine errors loudly on them; the WP in each wp field flips pending=false when it ports the feature.",
  "cases": [
   {
+   "path": "inv_control/invcontrol_multi_vv_wye.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "compare_eventlog": true,
+   "oracle": "capi015",
+   "note": "WP-U1.3 / ledger L1 (InvControlDeltaV per-control 2-slot buffer). TWO InvControls on separate wye PVSystems, VOLTVAR with hysteresis_offset=-0.05 -> voltagechangesolution drives the curve-1/2 hysteresis state machine. Feature-sensitive: on the 0.15.x fix (capi015==Rust) both controls advance their own FVpuSolutionIdx and settle; the 9-year EPRI bug (r4133) leaves the 2nd control's index stuck so pv2 kvar oscillates (probe scratch_probe_l1.py). Gated capi015; per-step pv1/pv2 kvar (full-model) + event log exact."
+  },
+  {
+   "path": "inv_control/invcontrol_vv_delta.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "compare_eventlog": true,
+   "oracle": "capi015",
+   "note": "WP-U1.3 / row D4 (delta-DER LL monitored voltage). A DELTA-connected PVSystem under VOLTVAR: 0.15.x monitors line-to-line terminal voltages (InvControl.pas l.1647-1652), 0.14.5 used line-neutral. Feature-sensitive: LL vs LN flips the curve point and the var SIGN (probe scratch_probe_d4.py: capi015/r4133 Q=+520 kvar vs 0.14.5 -31 kvar). r4133==capi015 here. Gated capi015; per-step pv1 kvar (full-model) + event log exact."
+  },
+  {
    "path": "regcontrol_sym.dss",
    "kind": "micro",
    "n_steps": 24,
