@@ -17,11 +17,6 @@
    "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master.DSS step 0: oracle did not converge (persisted across the oracle's in-process retries)"
   },
   {
-   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "oracle_nonconvergence",
-   "note": "live probe (WP8.6 step7 re-probe): Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/Master_Interconnected.dss step 0: oracle did not converge (persisted across the oracle's in-process retries)"
-  },
-  {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_Assets.dss",
    "tag": "conditioning_floor",
    "note": "CF-D root-cause (2026-07-12): NOT the RegControl/LDC family (mislabeled). The CIM deck differs from the byte-similar Test/IEEE13_Assets.dss (solvable_now, feeder) ONLY by `set earthmodel=carson` + a trailing `uuids/export cim100`. So the step-0 entry-6 node-V divergence (|diff|=1.008e-3, rel ~4.18e-7 at the 2.4 kV feeder-end nodes) is the Carson earth-model line-constant libm floor (real ln/arctan2 last-bit, MEMORY line-impedance-1ulp note) accumulated through the feeder, PLUS a short connector line (Length=0.0568) adding conditioning. Above the `large` v_rel (1e-7) by ~4x but below `large_near_ideal_source` v_rel (5e-6); no existing band fits and a bespoke ~5e-7 band is not yet justified, so it stays documented here (floating_zeroseq_bus precedent). The regulators land identical taps and RG60/650 match ~4e-6 (RegControl exonerated)."
@@ -75,21 +70,6 @@
    "path": "Version8/Distrib/IEEETestCases/ieee9500dss/ieee9500_base.dss",
    "tag": "deck_unsolvable_all_engines",
    "note": "ROOT-CAUSED 2026-07-10 (user-directed deck audit): the deck data itself is pathological, no engine solves it as vendored. The 480 V DER microgrid island (m2001der480-2 delta secondary of a 750 kVA xfmr) is operated at the edge of voltage collapse, and Storage.battery1 (state=charging) / battery2 (idling) tip the snapshot power flow over the fixed-point stability boundary: |V| at M2001-ESS1 grows geometrically (~x2000/iteration; 6.97e4 -> 6.35e6 -> 1.26e10 V...) until NaN. Bisected: both batteries disabled -> converges (121 iterations -- still extremely marginal vs the usual 5-15); battery1=discharging -> converges (130); charging or idling -> geometric divergence. Engine-lineage-consistent: pinned oracle, official EPRI r3723/r4088/r4133, and the Rust port all diverge identically on the vendored deck, and on the healed variant (storages disabled) Rust converges in EXACTLY the oracle's 121 iterations. Deck/scenario bug (DERs likely meant to be coordinated/disabled by a separate scenario file), nothing to fix port-side. The earlier 'no JSON response' was a secondary serialization glitch of the NaN state."
-  },
-  {
-   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
-   "tag": "live_mismatch_control_settling_#485",
-   "note": "CF-B (T-A #17, item 8e). #485 control-settling difference. The pinned oracle raises #485 (Max Control Iterations Exceeded) as a hard exception; r3723 hits the same #485 warning but settles to convergence in 30 control iterations, while Rust settles this A-Diakoptics IEEE_123 Torn/Interconnected model on a different control trajectory. No pinned-oracle compare is possible (it raises), and Rust vs r3723 control settling differs -- needs investigation (control-iteration/tap-settling family), not migrated."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
-   "tag": "live_mismatch_control_settling_#485",
-   "note": "CF-B (T-A #45, item 8e). #485 control-settling difference. Pinned oracle raises #485 (hard); r3723 hits the #485 warning then converges in 109 iterations; Rust solves cleanly in 67 iterations with NO #485 -- i.e. Rust settles the recloser-siting controls on a different trajectory than the official engine. No pinned-oracle compare (it raises). Needs investigation (control-settling), not migrated."
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
-   "tag": "live_mismatch_control_settling_#485",
-   "note": "CF-B (T-A #44, item 8e). #485 control-settling difference. Pinned oracle raises #485 (hard); r3723 hits the #485 warning then converges in 109 iterations; Rust solves cleanly in 67 iterations with NO #485. Rust settles the recloser-siting controls differently than the official engine. No pinned-oracle compare. Needs investigation (control-settling), not migrated."
   },
   {
    "path": "Test/indmachtest/Master.DSS",
