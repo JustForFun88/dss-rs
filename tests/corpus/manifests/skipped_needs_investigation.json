@@ -49,19 +49,9 @@
    "note": "SKIPPED-SWEEP re-verified (2026-07-12): GENUINE non-convergence on ALL engines (r3723/r4088/r4133 NO at maxiterations=1000; Rust NO/100, max error ~3.3e-3). Not a maxiterations cap. The VSConverter deck also carries the known upstream GetCurrents self-aliased-MVMult bug (CLAUDE.md); VSConverter behavior is covered by exec/tests/vs_converter.rs via oracle source currents + KCL, not the live corpus gate. No oracle checkpoint possible; stays parked."
   },
   {
-   "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Lagging.dss",
-   "tag": "user_model_oracle_raises_567",
-   "note": "SKIPPED-SWEEP re-verified (2026-07-12): the oracle warn_and_continue path now exists (its sibling Test/indmachtest was promoted with it), but this deck is blocked by a GENUINE iteration-count difference the promotion path cannot fudge. Generator model=6 with unvendored UserModel=IndMach012a: with EarlyAbort off the pinned 0.14.5 oracle converges in 2 iters while Rust needs 3 — the converged node V matches BIT-FOR-BIT (SOURCEBUS.1 7200.002150) but Rust's model=6 Yprim-only fallback trajectory takes one extra step. Exact iteration equality (pinned) fails 3!=2; the Rust<=oracle relaxation also fails 3>2. A real fallback-vs-DLL trajectory difference, not a tolerance issue (no band-fudge). T-A #23 rel 4.9e-6."
-  },
-  {
-   "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss",
-   "tag": "user_model_oracle_raises_567",
-   "note": "SKIPPED-SWEEP re-verified (2026-07-12): same class as Kersting4wire_Lagging — the warn_and_continue oracle path exists, but Rust converges in 3 iters vs the pinned 0.14.5 oracle's 2 (converged node V bit-identical, SOURCEBUS.1 7199.557591). Exact iteration equality fails 3!=2 and Rust<=oracle fails 3>2; a genuine model=6 fallback-vs-DLL trajectory difference, not fudgeable. T-A #24 rel 3.6e-6."
-  },
-  {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wireIndMotor.dss",
    "tag": "user_model_oracle_raises_567",
-   "note": "SKIPPED-SWEEP re-verified (2026-07-12): warn_and_continue oracle path exists, but Rust converges in 3 iters vs the pinned 0.14.5 oracle's 2 (blocked by exact-iteration and Rust<=oracle both, 3 vs 2). Additionally Rust shows rel 2.9e-4 on the machine internal node vs the raw r3723 (T-A #22) — a fallback-model-vs-DLL difference to characterise if it ever becomes gate-able. Stays parked."
+   "note": "SKIPPED-SWEEP settle (2026-07-12): NOT an iteration-count block — the earlier '3 vs 2' was Rust COLD (3) vs oracle WARM (2); measured symmetrically both engines are cold 3 / warm 2 (its Lagging/Leading siblings were promoted this settle on exactly that basis). This deck stays parked for a GENUINE node-V divergence Rust cannot match: LineCode.556MCM declares nphases=4 but supplies only a 3x3 (6-entry) cmatrix `(2.849 | -0.922454 3.00287 | -0.353318 -0.587272 2.70828)`. Safe Rust REJECTS the malformed 4-phase Cmatrix ('does not match with the expected order') while the pinned oracle tolerates it, so the line-charging admittance differs and the 4th-wire/neutral nodes diverge: PRIMARY.4 Rust 13.363452 vs oracle 13.363170 (|diff| 2.82e-4), SOURCEBUS.4 13.354755 vs 13.354526, SECONDARY.4/LOADBUS.4 ~2e-5 — above the feeder floor. The Lagging/Leading siblings carry a well-formed 4x4 cmatrix and match bit-for-bit; only this deck's malformed cmatrix triggers the divergence. Fixing = porting OpenDSS's lenient partial-cmatrix acceptance, a separate item."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",

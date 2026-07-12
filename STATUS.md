@@ -54,7 +54,8 @@ in `skipped_needs_investigation.json` a real disposition (19 entries; the 2
 `upgrade_straddle_gfm_wp` + 1 `upgrade_straddle_u16_dynexp` decks were left to their
 dedicated WPs). Probed each on the official EPRI engines (r3723/r4088/r4133 via the
 Oddie bridge) and the pinned 0.14.5 oracle; verified Rust behaviour first-hand.
-**7 promoted to `solvable_now`, 12 kept parked with refreshed evidence.**
+**9 promoted to `solvable_now`, 10 kept parked with refreshed evidence** (settle
+2026-07-12 promoted 2 more 4wire-Delta decks — see the settle note below).
 
 - **Root cause found for 6 "oracle_nonconvergence" decks: the deck's `maxiterations`
   cap was simply below what the (convergent) circuit needs** — not a solver defect.
@@ -69,9 +70,7 @@ Oddie bridge) and the pinned 0.14.5 oracle; verified Rust behaviour first-hand.
   `DSS.Error.EarlyAbort=False` + tolerate the user-model DoSimpleMsg (#567/#570/#1570)
   at compile, every solve, and the priming currents read — 1:1 with the official
   Direct DLL's warn-and-solve. Rust 8 iters == pinned 8, node V bit-identical.
-- **Kept parked (refreshed):** the 3 `4wire-Delta` user-model decks (converged state
-  bit-identical but Rust needs 3 iters vs the oracle's 2 — a genuine model=6
-  fallback-vs-DLL trajectory difference, NOT fudgeable); `vsctest` + `Torn_Circuit`
+- **Kept parked (refreshed):** `vsctest` + `Torn_Circuit`
   Master/Interconnected (GENUINE non-convergence on r3723/r4088/r4133 even at
   maxiterations=1000); `IEEE118Bus` (convergence is an r4088/r4133-only solver change,
   Rust mirrors r3723=NO → BLOCKED_PENDING UPGRADE); the 2 `oracle_timeout` TnD decks
@@ -84,6 +83,23 @@ Oddie bridge) and the pinned 0.14.5 oracle; verified Rust behaviour first-hand.
   `capture_all_elements`) + `corpus_live.rs` (send `warn_and_continue` when
   `expect_warnings` is set). `solvable_now` 283→290, `skipped_needs_investigation`
   22→15; `population.lock` regenerated in-commit.
+
+**SKIPPED-SWEEP settle (2026-07-12).** Audit found the two 4wire-Delta `Kersting4wire_Lagging`
+/ `Kersting4wire_Leading` decks were parked on a false premise. The "Rust 3 iters vs oracle 2"
+claim compared Rust COLD (the deck's internal compile-time Solve, 3) against the oracle WARM
+re-solve (2). Measured symmetrically on both engines: **cold 3 / warm 2 on BOTH**, and the live
+harness (compile + explicit solve) compares the WARM re-solve → 2 == 2. Warm node V is
+bit-identical (Lagging SOURCEBUS.1 7200.002150, Leading 7199.557591; all 12 nodes agree to 6+
+figures on both engines). Promoted both via the same `warn_and_continue` path as `indmachtest`
+(`kind=feeder`, `expect_warnings=["Not Loaded"]`). `Kersting4wireIndMotor` stays parked, note
+corrected: its real blocker is NOT iterations (also cold 3 / warm 2) but a genuine 4th-wire/
+neutral-node divergence — its `LineCode.556MCM` declares `nphases=4` yet supplies only a 3×3
+(6-entry) cmatrix; safe Rust rejects the malformed 4-phase Cmatrix while the oracle tolerates
+it, so PRIMARY.4 diverges 13.363452 vs 13.363170 (|diff| 2.82e-4), above the feeder floor. The
+`warn_and_continue`→`expect_warnings` coupling remains non-masking (all 5 opted-in decks are
+genuine user-model DoSimpleMsg cases; Rust independently enforces convergence + exact iterations
++ bit-identical V). `solvable_now` 290→292, `skipped_needs_investigation` 15→13; `population.lock`
+regenerated in-commit.
 
 > Working cadence and the standing toolchain note are just below; the full
 > per-step ritual is `PLAN_SEQUENCE.md` / the active plan's §0.
