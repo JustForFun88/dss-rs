@@ -1,0 +1,23 @@
+! WP-U1.8 — WindGen DAILY mode: the load shape supplies the WIND SPEED (m/s), not
+! a per-unit multiplier (CalcDailyMult). At hour 1 the shape reads 10 m/s, so the
+! aerodynamic curve delivers ~1263 kW (uncapped below kWBase=3000). This exercises
+! the daily-mode dispatch + shape-as-wind-speed path (distinct from the snapshot
+! deck, which uses the default vwind directly).
+!
+! SINGLE-STEP (n_steps=1) by necessity: dss_capi 0.15.x caches per-element
+! `Losses` and the WindGen does NOT invalidate that cache across daily steps (an
+! API-level quirk, delta bucket F "cached total losses" — Currents/Powers ARE
+! fresh, only el.Losses freezes at the first step). The corpus_live full-model
+! compare includes the oracle's cached (frozen) losses, so a multi-step deck
+! would diverge on that channel alone. The port computes losses correctly (fresh);
+! the bucket-F caching quirk is out of scope, not reproduced. The full 6-point
+! wind sweep + cut-in/cut-out is pinned offline by the unit test
+! aerodynamic_wind_speed_sweep. oracle capi015.
+Clear
+New Circuit.wtg_daily basekv=12.47 phases=3 bus1=srcbus
+New Loadshape.wind npts=3 interval=1 mult=(10 15 20)
+New Line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.1 x1=0.5 length=1
+New WindGen.w1 bus1=wbus phases=3 kv=12.47 kW=3000 pf=0.95 conn=wye model=1 daily=wind vwind=12
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set mode=daily stepsize=1h number=1

@@ -133,6 +133,14 @@ impl Dss {
                 |name| Box::new(generator::Generator::new(name)),
                 ElemKind::Generator,
             ),
+            // WindGen registers right after Generator, before GenDispatcher
+            // (Pascal DSSClassDefs.pas:187). Registration order does not affect
+            // node ordering, which follows element creation order.
+            DssClass::ckt_class(
+                windgen::class_props(&enums),
+                |name| Box::new(windgen::WindGen::new(name)),
+                ElemKind::WindGen,
+            ),
             // GenDispatcher is registered right after Generator
             // (Pascal DSSClassDefs.pas:231).
             DssClass::ckt_class(

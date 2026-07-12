@@ -11,7 +11,7 @@
   "family_counts": {
     "asymmetric": 47,
     "controls": 94,
-    "modes": 50
+    "modes": 55
   },
   "family_paths": {
     "asymmetric": [
@@ -209,7 +209,12 @@
       "time/peakday.dss",
       "time/yearly.dss",
       "upgrade/upgrade_parser_zerokw.dss",
-      "upgrade/upgrade_pilot.dss"
+      "upgrade/upgrade_pilot.dss",
+      "windgen/windgen_daily.dss",
+      "windgen/windgen_dyn.dss",
+      "windgen/windgen_dyn_fault.dss",
+      "windgen/windgen_snap.dss",
+      "windgen/windgen_snap_delta.dss"
     ]
   },
   "solvable_now": {

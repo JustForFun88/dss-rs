@@ -37,7 +37,7 @@ pub(crate) use crate::elements::meter::monitor;
 pub(crate) use crate::elements::meter::sensor;
 pub(crate) use crate::elements::pc::{
     generator, gic_line, gic_source, ind_mach012, isource, load, pvsystem, storage, upfc, vccs,
-    vs_converter, vsource,
+    vs_converter, vsource, windgen,
 };
 pub(crate) use crate::elements::pd::{
     auto_trans, capacitor, fault, fuse, gic_transformer, line, reactor, transformer,

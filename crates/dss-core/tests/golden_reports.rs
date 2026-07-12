@@ -168,6 +168,9 @@ fn export_counts_matches_oracle() {
             .iter()
             .map(|s| s.to_string())
             .collect(),
+            // WindGen (WP-U1.8) is a 0.15.x class absent from the pinned 0.14.5
+            // oracle; skip its count row (gated against capi015 live instead).
+            allow_extra: vec!["windgen".to_string()],
         },
         rel: 0.0,
         abs: 0.0, // integer counts — exact
@@ -502,6 +505,55 @@ fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {
         .map(|ln| format!("{ln}\n"))
         .collect();
     assert_show_bytes_eq(&oracle, &masked, stem);
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Like [`run_deck_dump_exact`], but drops whole `[Header]…` blocks from the Rust
+/// dump before the byte compare — a `Dump commands` section is `[Class]` then its
+/// numbered property lines (indistinguishable by prefix from any other class), so
+/// a class the pinned 0.14.5 oracle lacks (WP-U1.8 `[WindGen]`, a 0.15.x class)
+/// is removed as a contiguous `[WindGen]`→next-`[` block. WindGen's command
+/// surface is gated against `capi015` live + the props round-trip, not this
+/// 0.14.5 golden.
+fn run_deck_dump_exact_block_masked(stem: &str, block_headers: &[&str]) {
+    let dir = reports_dir();
+    let meta: DeckMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join(format!("{stem}.txt"));
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir(stem);
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("dump {}", meta.report));
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let produced = dss.last_result_file();
+    let rust = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("{stem}: read produced {produced}: {e}"));
+
+    let mut out = String::new();
+    let mut dropping = false;
+    for ln in rust.lines() {
+        if ln.starts_with('[') {
+            dropping = block_headers.contains(&ln.trim());
+        }
+        if !dropping {
+            out.push_str(ln);
+            out.push('\n');
+        }
+    }
+    assert_show_bytes_eq(&oracle, &out, stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -2890,6 +2942,9 @@ fn export8500_reports_match_oracle() {
             .iter()
             .map(|s| s.to_string())
             .collect(),
+            // WindGen (WP-U1.8): a 0.15.x class absent from the pinned 0.14.5
+            // oracle; skip its (zero-instance) count row here.
+            allow_extra: vec!["windgen".to_string()],
         },
         rel: 0.0,
         abs: 0.0, // integer counts — exact
@@ -4995,7 +5050,9 @@ fn dump3_devicelist_matches_oracle() {
 /// report is byte-exact, pinning command/option/property names and help text.
 #[test]
 fn dump3_commands_matches_oracle() {
-    run_deck_dump_exact("dump3_commands");
+    // `[WindGen]` (WP-U1.8) is a 0.15.x class the pinned 0.14.5 oracle lacks; drop
+    // its block before the exact compare (gated live vs capi015 + props instead).
+    run_deck_dump_exact_block_masked("dump3_commands", &["[WindGen]"]);
 }
 
 /// `Dump alloc` — `DumpAllocationFactors`: `ConnectedkVA`-spec loads render

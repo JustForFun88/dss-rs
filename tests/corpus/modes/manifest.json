@@ -1088,6 +1088,72 @@
    "pending": false,
    "wp": "GEN-MODE",
    "note": "The Set_Mode RESET tail (Pascal Set_Mode, Solution.pas; port set_mode.rs): a daily solve (number=24) accumulates ~50 MWh in the meter and toggles the CapControl, then `Set mode=snapshot` fires the reset tail (ResetAll Monitors/EnergyMeters, DoResetFaults/Controls, intHour<-0, SolutionInitialized<-FALSE). The harness's snapshot solve then leaves the meter registers at their reset state (energy 0, Max sentinels -1e50; snapshot does not SampleTheMeters). Oracle-validated: converged, bit-identical across two processes (64f80ad6cb20dc09); feature-sensitive vs removing the mode change (34968c04b7e72ab3 \u2014 the harness solve continues the daily accumulation, meter kWh ~50600)."
-  }
+  },
+ {
+  "path": "windgen/windgen_snap.dss",
+  "kind": "micro",
+  "n_steps": 1,
+  "selected_elements": [
+   "*"
+  ],
+  "pending": false,
+  "wp": "WP-U1.8",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.8 (A2): WindGen snapshot power flow, wye. The aerodynamic steady-state Pm=0.5*rho*pi*Rad^2*vwind^3*Cp; at vwind=12 m/s the aero power (~2181 kW) curtails to kWBase=1500, so the WindGen injects -1500 kW at unity PF. Probed on capi015 (0.15.0b4): converged, w1 total P=-1500 kW; deterministic (pure power flow, no RNG). Feature-sensitive: the aero P(v^3) drives the whole injection, so any error in SetNominalGeneration moves the -1500 kW live compare far above the i_abs floor."
+ },
+ {
+  "path": "windgen/windgen_snap_delta.dss",
+  "kind": "micro",
+  "n_steps": 1,
+  "selected_elements": [
+   "*"
+  ],
+  "pending": false,
+  "wp": "WP-U1.8",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.8 (A2): WindGen snapshot, DELTA connection, PF=0.9. Exercises the delta YPrim (Y/3) + delta model current (L-N Vmag) + the QMode=0 PF reactive dispatch. Probed on capi015: converged, w1 total S=-1500 kW, -0 kvar (PF at unity here because the aero cap makes kvarCalc saturate). Deterministic. Feature-sensitive vs the wye deck (delta stamping path)."
+ },
+ {
+  "path": "windgen/windgen_daily.dss",
+  "kind": "micro",
+  "n_steps": 1,
+  "selected_elements": [
+   "*"
+  ],
+  "pending": false,
+  "wp": "WP-U1.8",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.8 (A2): WindGen DAILY mode -- the load shape supplies the WIND SPEED (m/s), not a per-unit multiplier (CalcDailyMult). At hour 1 the shape reads 10 m/s -> aero ~1263 kW (uncapped below kWBase=3000); exercises the daily-mode dispatch + shape-as-wind-speed path (distinct from the snapshot deck's default vwind). SINGLE-STEP (n_steps=1) by necessity: dss_capi 0.15.x caches per-element el.Losses and WindGen does not invalidate it across daily steps (delta bucket F 'cached total losses' -- Currents/Powers ARE fresh, only Losses freezes at step 0), so the corpus_live full-model losses channel would diverge on a multi-step deck. The port computes losses correctly; the bucket-F caching quirk is out of scope (not reproduced). The full 6-point wind sweep + cut-in/cut-out is pinned offline by the unit test aerodynamic_wind_speed_sweep. Probed on capi015: converged, hour-1 w1 total P matches."
+ },
+ {
+  "path": "windgen/windgen_dyn.dss",
+  "kind": "micro_wtg3_dynamics",
+  "n_steps": 1,
+  "selected_elements": [
+   "*"
+  ],
+  "compare_variables": [
+   "WindGen.w1"
+  ],
+  "pending": false,
+  "wp": "WP-U1.8",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.8 (A2/\u00a71.7): WindGen WTG3 dynamics (the 50 us trapezoidal sub-cycle). At 0.69 kV so the WTG3 per-unit measurement (ratedKVll) is not saturated. One dynamics solve = 20x1ms outer steps; each corrector runs the full controller stack (PLL, seq-current PI regs, LVPL/LVQL, MPPT/torque/pitch/inertia, swing) over ~21 x 50 us sub-steps. Gated with compare_variables on ALL 22 state vars. Probed on capi015: converged; Pgen 1.0022, Qgen -0.0063, Vmag 1.0152, WtAct 1.19999, thetaPitch 4.377, Pg 1584 (kWBase re-derived kVA*PF), s -0.1388. Deterministic (no RNG; pure f64 sub-cycle)."
+ },
+ {
+  "path": "windgen/windgen_dyn_fault.dss",
+  "kind": "micro_wtg3_dynamics",
+  "n_steps": 1,
+  "selected_elements": [
+   "*"
+  ],
+  "compare_variables": [
+   "WindGen.w1"
+  ],
+  "pending": false,
+  "wp": "WP-U1.8",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.8 (A2/\u00a71.7): WindGen WTG3 dynamics FAULT RIDE-THROUGH (LVPL/LVQL-sensitive). A sustained 3ph fault (Fault.f1 R=0.05) on the terminal depresses Vmag to ~0.90 pu through the run, engaging the low-voltage power-logic (LVPL curtailment) and reactive-logic (LVQL Iq limit). Probe-proven feature-sensitive on capi015: Vmag 0.898 (vs 1.015 healthy), Qgen +0.0712 (vs -0.0063 healthy -> reactive support), dOmg -0.081 (vs +0.010). 30x1ms steps; compare_variables all 22. Deterministic."
+ }
  ]
 }

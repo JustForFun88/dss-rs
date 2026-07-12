@@ -25,12 +25,40 @@ use super::{SolveEnv, SolveResult, sys_ctx};
 pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let node_v = ckt.solution.node_v.clone();
+    // Pascal `TWindGenObj.InitStateVars` (and the classic machines) can
+    // `DoSimpleMsg` + `SetSolutionAbort(TRUE)` from inside init (e.g. a
+    // non-3-phase WindGen — the WTG3 model is 3-phase-only). Drain each
+    // element's error/abort here and lift the abort onto the solution, so the
+    // subsequent `solve_dynamic` skips its steps instead of running the model
+    // on a malformed terminal (which would over-read the terminal array).
+    let mut aborted = false;
+    let mut errs: Vec<String> = Vec::new();
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
         if elem.cd().enabled {
             elem.init_state_vars(&sys, &node_v);
+            errs.extend(elem.cd_mut().obj.take_errors());
+            if elem.cd_mut().obj.take_abort() {
+                aborted = true;
+            }
         }
     }
+    env.errors.extend(errs);
+    if aborted {
+        ckt.solution.solution_abort = true;
+    }
+    // Pascal `TPCElement.InitStateVars` calls `SetYprimInvalid(TRUE)` on the
+    // machines that present a *dynamics* YPrim (the Norton `Yeq`/`Zthev`
+    // admittance a Generator/IndMach012/WindGen switches to, the Storage/PVSystem
+    // GFM short-circuit YPrim), and `SetYprimInvalid` raises `SystemYChanged`
+    // (`CktElement.pas:245`) — so the first dynamics solve rebuilds the system Y
+    // with those dynamics YPrims stamped in. The port sets each element's
+    // `yprim_invalid` inside `init_state_vars` but loses that `SystemYChanged`
+    // side effect (no solution channel there); raise it here so the next
+    // `solve_snap` rebuilds Y. Without it the machine's power-flow YPrim survives
+    // into dynamics and its (large) Norton injection current is left uncancelled
+    // (the WindGen runs the terminal voltage away — WP-U1.8).
+    ckt.solution.system_y_changed = true;
 }
 
 /// Pascal `TSolutionAlgs.IntegratePCStates` (`SolutionAlgs.pas` l.321):

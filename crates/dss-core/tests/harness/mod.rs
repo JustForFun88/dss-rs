@@ -497,6 +497,49 @@ pub fn tol_for(kind: &str) -> Tolerances {
         // ~1.3e-6; a PVSystem `Vsource` current ~1.2e-4 A; high-voltage near-zero
         // through-currents ×20 kV). The abs floors absorb dead-end / cancellation
         // quantities (µA branch currents, kW that sum to ~0). Also the safe default
+        // WP-U1.8 — the WindGen WTG3 dynamics sub-cycle floor. PROVEN by
+        // decomposition (CLAUDE.md: a floor changes only with proof, never a
+        // sweep), not a widen-the-band: the snapshot operating point that seeds
+        // dynamics matches the oracle to the solver floor (node V ≤3.7e-9 abs on
+        // the 398 V L-N buses, feeder-tight), and every WTG3 state variable that
+        // is NOT touched by the phase-locked loop matches to ≤2e-7 (Pcmd 4.8e-8,
+        // Vref 1.2e-7, Vmag 4.6e-7, WtAct 1.9e-8, thetaPitch 1.5e-7; Pg/Ps/Pr/s
+        // bit-exact). Only the three PLL-fed quantities are loose — `dOmg`
+        // (9.1e-6), `Pgen` (9.7e-6), `Qgen` (3.4e-6) — because `PllLogic`'s
+        // derivative term `KpPLL·(Vq−VqOld)/deltSim = 60·Δ/0.001 = 60000·Δ`
+        // amplifies the last-ulp difference in `Vq` (itself the small imaginary
+        // residual ~3.5e-3 of a voltage the PLL rotates onto the real axis — a
+        // near-cancellation) by 6e4×; the amplified `dOmg` then feeds the whole
+        // trajectory (this is the WPG.13/dSpeed cancellation-floor class). The
+        // gap DECAYS as the startup transient settles (node V |Δ| 8e-5 @ 1 step
+        // → 4.4e-6 @ 20 → 1.6e-6 @ 100), so it is not a divergent state-leak.
+        // The amplified injection current (≈1e-5 rel) reaches the WindGen
+        // TERMINAL bus voltage through the small series line (`V_term = V_src −
+        // I·Z_line`); the far SOURCE bus stays feeder-tight (3.5e-8 rel) because
+        // the ideal source buffers it. Two members, calibrated to the binding
+        // (fault) case × ~2:
+        //   • `windgen_dyn` (healthy): wbus |Δ|3.9e-4 V (9.6e-7 rel), dOmg/Pgen/
+        //     Qgen |Δ| 9.1e-6/9.7e-6/3.4e-6.
+        //   • `windgen_dyn_fault` (sustained 3φ fault → LVPL/LVQL ride-through,
+        //     the high-gain low-voltage logic on top of the PLL): wbus |Δ|1.23e-3
+        //     V (3.4e-6 rel), dOmg/Pgen/Qgen |Δ| 4.2e-5/3.4e-5/1.8e-5. srcbus
+        //     stays 3.5e-8 rel.
+        // `v_rel` 8e-6 covers the fault wbus 3.4e-6 rel (×2.3); `i_abs` 1e-4
+        // covers the per-unit small-variable amplification (`dOmg` 0.08, |Δ|
+        // 4.2e-5); `i_rel` 2e-5 covers the ~1e-5-rel amplified per-unit/ampere
+        // currents. `y_rel`/`y_abs` stay tight (the dynamic Norton YPrim is a
+        // deterministic closed-form). A real WTG3 model bug moves the non-PLL
+        // variables (all ≤2e-6 here) or the assembled Y far past these floors.
+        "micro_wtg3_dynamics" => Tolerances {
+            v_rel: 8e-6,
+            v_abs: 1e-6,
+            y_rel: 1e-9,
+            y_abs: 1e-6,
+            i_rel: 2e-5,
+            i_abs: 1e-4,
+            energy_rel: 1e-4,
+            energy_abs: 1e-4,
+        },
         // for an unrecognized kind.
         _ => Tolerances {
             v_rel: 1e-7,
@@ -1359,7 +1402,18 @@ pub enum RowPolicy {
     /// would silently pass an empty/under-reporting Rust body (a dropped class
     /// is just absent, not a mismatch). Pass the deck-created + default-item keys
     /// so a registry-walk regression cannot hide (audit-tests WP8.1).
-    RustSubsetByKey { key: usize, require: Vec<String> },
+    ///
+    /// `allow_extra` lists lowercased keys the Rust engine emits that the PINNED
+    /// 0.14.5 oracle CANNOT have — the upgrade-era 0.15.x-only classes the port
+    /// now registers (e.g. `windgen`, WP-U1.8). A Rust key in this set that is
+    /// absent from the oracle is skipped instead of failing the subset check;
+    /// its surface is gated against the `capi015` oracle (the live corpus decks)
+    /// + the class's props round-trip, not the 0.14.5 report golden.
+    RustSubsetByKey {
+        key: usize,
+        require: Vec<String>,
+        allow_extra: Vec<String>,
+    },
 }
 
 /// How a [`ColTol`] selects the columns it applies to.
@@ -1637,7 +1691,11 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
                 }
             }
         }
-        RowPolicy::RustSubsetByKey { key, require } => {
+        RowPolicy::RustSubsetByKey {
+            key,
+            require,
+            allow_extra,
+        } => {
             // Oracle rows keyed by the lowercased key field.
             let mut omap: BTreeMap<String, Vec<String>> = BTreeMap::new();
             for o in odata {
@@ -1653,6 +1711,12 @@ pub fn compare_export(oracle: &str, rust: &str, policy: &ExportPolicy, ctx: &str
                     .get(*key)
                     .unwrap_or_else(|| panic!("{ctx}: rust row {i} has no key field"));
                 rust_keys.insert(k.to_lowercase());
+                // A 0.15.x-only class the pinned 0.14.5 oracle cannot have
+                // (WP-U1.8 WindGen): skip it here — gated against capi015 instead.
+                if allow_extra.contains(&k.to_lowercase()) && !omap.contains_key(&k.to_lowercase())
+                {
+                    continue;
+                }
                 let of = omap.get(&k.to_lowercase()).unwrap_or_else(|| {
                     panic!("{ctx}: rust row {i} key {k:?} absent from the oracle file")
                 });
