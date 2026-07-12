@@ -1245,3 +1245,144 @@ fn export_ad_matrices_write_no_file_but_set_lastfile_without_init() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// WP-AD.3 Stage 2b/Stage 4 — the A-Diakoptics solve + D7 equivalence gate.
+// ---------------------------------------------------------------------------
+mod ad_solve_gate {
+    use super::*;
+    use num_complex::Complex64;
+    use std::collections::HashMap;
+
+    /// Node-name → complex voltage for the (possibly reordered) coordinator.
+    fn node_voltages(dss: &Dss) -> HashMap<String, Complex64> {
+        let ckt = dss.circuit().expect("circuit");
+        (1..=ckt.num_nodes)
+            .map(|i| (ckt.node_name(i), ckt.solution.node_v[i]))
+            .collect()
+    }
+
+    fn solve_normal(fixture_name: &str, tol: f64) -> HashMap<String, Complex64> {
+        let scratch = scratch_dir("d7norm");
+        let mut dss = Dss::new();
+        compile_fixture(&mut dss, fixture_name, &scratch);
+        dss.command("set controlmode=off");
+        dss.command(&format!("set tolerance={tol}"));
+        dss.command("solve mode=snap");
+        assert!(dss.errors().is_empty(), "normal errors: {:?}", dss.errors());
+        node_voltages(&dss)
+    }
+
+    fn solve_ad(fixture_name: &str, num_sub: i32, tol: f64) -> HashMap<String, Complex64> {
+        let scratch = scratch_dir("d7ad");
+        let mut dss = Dss::new();
+        compile_fixture(&mut dss, fixture_name, &scratch);
+        dss.command("set controlmode=off");
+        dss.command(&format!("set tolerance={tol}"));
+        dss.command("solve mode=snap");
+        dss.command(&format!("set Num_SubCircuits={num_sub}"));
+        dss.command("set ADiakoptics=True");
+        assert!(
+            dss.circuit().unwrap().solution.adiakoptics,
+            "AD init failed: {}",
+            dss.result()
+        );
+        dss.command(&format!("set tolerance={tol}"));
+        dss.command("solve mode=snap");
+        assert!(
+            dss.errors().is_empty(),
+            "AD solve errors: {:?}",
+            dss.errors()
+        );
+        node_voltages(&dss)
+    }
+
+    fn max_rel_gap(
+        a: &HashMap<String, Complex64>,
+        b: &HashMap<String, Complex64>,
+    ) -> (f64, String) {
+        let mut worst = 0.0;
+        let mut wn = String::new();
+        for (name, va) in a {
+            if let Some(vb) = b.get(name) {
+                let dv = (va - vb).norm();
+                let base = va.norm();
+                let rel = if base > 1e-6 { dv / base } else { dv };
+                if rel > worst {
+                    worst = rel;
+                    wn = name.clone();
+                }
+            }
+        }
+        (worst, wn)
+    }
+
+    #[test]
+    fn midi_snapshot_matches_normal() {
+        // Method floor 3.21e-5 (r3723 oracle: 3.25e-5); D7 tier = 4× ≈ 1.3e-4.
+        let vn = solve_normal("midi", 1e-4);
+        let va = solve_ad("midi", 2, 1e-4);
+        let (gap, node) = max_rel_gap(&vn, &va);
+        println!("midi AD-vs-normal gap = {gap:.4e} @ {node}");
+        assert!(
+            gap < 1.3e-4,
+            "midi AD-vs-normal gap {gap:.3e} @ {node} exceeds the D7 tier"
+        );
+        assert!(
+            gap > 1.0e-6,
+            "gap {gap:.3e} suspiciously small — the AD solve may be a normal-solve passthrough"
+        );
+    }
+
+    #[test]
+    fn midi_d7_gap_stable_under_tighten() {
+        let g_loose = max_rel_gap(&solve_normal("midi", 1e-4), &solve_ad("midi", 2, 1e-4)).0;
+        let g_tight = max_rel_gap(&solve_normal("midi", 1e-10), &solve_ad("midi", 2, 1e-10)).0;
+        println!("midi D7 tighten: loose={g_loose:.4e} tight={g_tight:.4e}");
+        let ratio = g_tight / g_loose;
+        assert!(
+            (0.5..2.0).contains(&ratio),
+            "midi AD-vs-normal gap not stable under tighten (oracle: bit-stable): \
+             loose={g_loose:.3e} tight={g_tight:.3e} ratio={ratio:.3}"
+        );
+    }
+
+    #[test]
+    fn midi_three_zones_snapshot_matches_normal() {
+        // Two reference-free zones (actors 3 & 4): exercises multi-link Contours.
+        let vn = solve_normal("midi", 1e-4);
+        let va = solve_ad("midi", 3, 1e-4);
+        let (gap, node) = max_rel_gap(&vn, &va);
+        println!("midi 3-zone AD-vs-normal gap = {gap:.4e} @ {node}");
+        // Floor 3.21e-5; D7 tier = 4× ≈ 1.3e-4.
+        assert!(gap < 1.3e-4, "midi 3-zone gap {gap:.3e} @ {node}");
+        assert!(gap > 1.0e-7, "3-zone gap {gap:.3e} suspiciously small");
+    }
+
+    #[test]
+    fn macro_snapshot_matches_normal() {
+        // ~200-bus feeder; method floor 1.319e-4 (r3723 oracle, same main92 cut:
+        // 1.318e-4); D7 tier = 4× ≈ 5.3e-4.
+        let vn = solve_normal("macro", 1e-4);
+        let va = solve_ad("macro", 2, 1e-4);
+        let (gap, node) = max_rel_gap(&vn, &va);
+        println!("macro AD-vs-normal gap = {gap:.4e} @ {node}");
+        assert!(gap < 5.3e-4, "macro AD-vs-normal gap {gap:.3e} @ {node}");
+        assert!(gap > 1.0e-7, "macro gap {gap:.3e} suspiciously small");
+    }
+
+    #[test]
+    fn macro_d7_gap_stable_under_tighten() {
+        // The bug that inflated the deep-zone gap 26× lived here (long
+        // reference-free zone): pin the tolerance-stability on macro too.
+        let g_loose = max_rel_gap(&solve_normal("macro", 1e-4), &solve_ad("macro", 2, 1e-4)).0;
+        let g_tight = max_rel_gap(&solve_normal("macro", 1e-10), &solve_ad("macro", 2, 1e-10)).0;
+        println!("macro D7 tighten: loose={g_loose:.4e} tight={g_tight:.4e}");
+        let ratio = g_tight / g_loose;
+        assert!(
+            (0.5..2.0).contains(&ratio),
+            "macro AD-vs-normal gap not stable under tighten: \
+             loose={g_loose:.3e} tight={g_tight:.3e} ratio={ratio:.3}"
+        );
+    }
+}

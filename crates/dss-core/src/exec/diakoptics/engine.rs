@@ -81,7 +81,7 @@ impl Dss {
     /// NOT a bus redefinition (Diakoptics.pas:666–670 sets `BusNameRedefined :=
     /// False`). The Pascal state-2 child disable uses the executive command form
     /// `X.enabled=False`; the effect (Enabled + SystemYChanged) is identical.
-    fn ad_set_element_enabled(&mut self, full_name: &str, enabled: bool) {
+    pub(super) fn ad_set_element_enabled(&mut self, full_name: &str, enabled: bool) {
         let lower = full_name.to_lowercase();
         let (cls, name) = match lower.split_once('.') {
             Some((c, n)) => (Some(c), n),
@@ -316,11 +316,12 @@ impl Dss {
                         ckt.set_bus_name_redefined(false);
                     }
                     self.ad_build_y();
-                    // INIT_ADIAKOPTICS (IndexBuses / Start_Diakoptics) + the
-                    // per-iteration solve are WP-AD.3 Stage 2b.
+                    // INIT_ADIAKOPTICS (Diakoptics.pas:747 → Solution.pas:3230):
+                    // Start_Diakoptics (actors > 2) + IndexBuses on every child.
                     if let Some(ckt) = self.circuit.as_mut() {
                         ckt.solution.adiak_init = true;
                     }
+                    self.ad_init_actors();
                 }
                 _ => {}
             }
