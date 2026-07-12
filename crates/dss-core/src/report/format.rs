@@ -37,8 +37,119 @@ pub fn fixed(v: f64, decimals: usize) -> String {
 /// fixed-width tables, so — unlike the CSV exports — the width matters: it keeps a
 /// numeric field from gluing to a neighbour when a value doesn't fill it (the
 /// text/CSV comparator collapses the padding, but the separation must exist).
+///
+/// This uses Rust's native `{:.N}` (round-half-to-even on the true `f64`), which
+/// is *faithful* for the value-parsed Show tables but **not** byte-exact to FPC.
+/// The byte-exact whole-circuit JSON PostCommands use [`fixed_w_fpc`] instead.
 pub fn fixed_w(v: f64, width: usize, decimals: usize) -> String {
     format!("{v:>width$.decimals$}")
+}
+
+/// FPC `Format('%W.Df', [v])` — **byte-exact** to the FPC RTL `FloatToStrF(ffFixed)`
+/// path used by the AltDSS whole-circuit PostCommands (`Set ueweight=%8.2f`,
+/// `Set lossweight=%8.2f`, `CAPI_Obj.pas:2593-2594`). Distinct from [`fixed_w`]:
+/// FPC first renders the value at **15 significant digits** (its `FloatToDecimal`
+/// precision for a `Double`), then rounds that decimal to `decimals` fractional
+/// digits with **ties-away-from-zero**. Rust's native `{:.N}` differs on both
+/// counts, so at a rounding boundary they diverge — e.g. `0.125 -> 0.13` (not the
+/// ties-to-even `0.12`), `2.675 -> 2.68` (the 15-sig intermediate is
+/// `2.67500000000000`, not the true `2.6749999…` that rounds to `2.67`),
+/// `99999.995 -> 100000.00`. Empirically pinned against the pinned oracle
+/// (`tools/golden/gen_json.py` `circuit_positive_seq`).
+///
+/// TODO(compat): reproduces FPC's two-stage decimal rounding (15-sig then
+/// away-from-zero); the clean fix is a single correctly-rounded fixed format.
+pub fn fixed_w_fpc(v: f64, width: usize, decimals: usize) -> String {
+    let s = fpc_fixed(v, decimals);
+    format!("{s:>width$}")
+}
+
+/// Core of [`fixed_w_fpc`] without the width padding: the FPC `ffFixed` string.
+fn fpc_fixed(v: f64, decimals: usize) -> String {
+    if !v.is_finite() {
+        // Inf/NaN — unreachable for the circuit weights; defer to Rust.
+        return format!("{v:.decimals$}");
+    }
+    let negative = v.is_sign_negative();
+    // FPC's `FloatToDecimal` renders a `Double` at 15 significant digits; obtain
+    // that intermediate via Rust's correctly-rounded scientific format
+    // (1 leading + 14 fraction digits = 15 significant).
+    let sci = format!("{:.14e}", v.abs()); // "d.ddddddddddddddeE"
+    let (mant, exp_s) = sci.split_once('e').expect("scientific has exponent");
+    let exp: i32 = exp_s.parse().expect("valid exponent");
+    let digits: Vec<u8> = mant
+        .bytes()
+        .filter(u8::is_ascii_digit)
+        .map(|b| b - b'0')
+        .collect(); // 15 digits, MSB first; digits[0] sits at place 10^exp.
+
+    // Split the 15-digit string at the decimal point (`point` integer digits).
+    let point = exp + 1;
+    let mut int_digits: Vec<u8> = Vec::new();
+    let mut frac_digits: Vec<u8> = Vec::new();
+    if point <= 0 {
+        // 0.00…d1d2…: |point| leading fractional zeros, then all 15 digits.
+        frac_digits.extend(std::iter::repeat_n(0u8, (-point) as usize));
+        frac_digits.extend_from_slice(&digits);
+    } else if point as usize >= digits.len() {
+        int_digits.extend_from_slice(&digits);
+        int_digits.extend(std::iter::repeat_n(0u8, point as usize - digits.len()));
+    } else {
+        int_digits.extend_from_slice(&digits[..point as usize]);
+        frac_digits.extend_from_slice(&digits[point as usize..]);
+    }
+
+    // Round the fractional part to `decimals` places, ties-away-from-zero: the
+    // magnitude is non-negative here, so "away from zero" == round the first
+    // dropped digit `>= 5` up.
+    let round_up = frac_digits.len() > decimals && frac_digits[decimals] >= 5;
+    frac_digits.truncate(decimals);
+    while frac_digits.len() < decimals {
+        frac_digits.push(0);
+    }
+    if round_up {
+        let mut carry = 1u8;
+        for d in frac_digits.iter_mut().rev() {
+            let x = *d + carry;
+            *d = x % 10;
+            carry = x / 10;
+            if carry == 0 {
+                break;
+            }
+        }
+        if carry != 0 {
+            for d in int_digits.iter_mut().rev() {
+                let x = *d + carry;
+                *d = x % 10;
+                carry = x / 10;
+                if carry == 0 {
+                    break;
+                }
+            }
+            if carry != 0 {
+                int_digits.insert(0, carry);
+            }
+        }
+    }
+    if int_digits.is_empty() {
+        int_digits.push(0);
+    }
+
+    let all_zero = int_digits.iter().all(|&d| d == 0) && frac_digits.iter().all(|&d| d == 0);
+    let mut out = String::new();
+    if negative && !all_zero {
+        out.push('-');
+    }
+    for &d in &int_digits {
+        out.push((b'0' + d) as char);
+    }
+    if decimals > 0 {
+        out.push('.');
+        for &d in &frac_digits {
+            out.push((b'0' + d) as char);
+        }
+    }
+    out
 }
 
 /// Pascal `Format('%Wd', [v])`: integer, right-justified (space-padded) in field
@@ -139,5 +250,61 @@ pub fn upper_elem_name(full_name: &str) -> String {
     match full_name.split_once('.') {
         Some((cls, name)) => format!("{cls}.{}", name.to_uppercase()),
         None => full_name.to_uppercase(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// [`fixed_w_fpc`] must reproduce FPC `Format('%8.2f')` byte-for-byte. Every
+    /// pair below is a value fed to the pinned oracle's circuit `ueweight`
+    /// PostCommand and the exact width-8 string it emitted — the divergence from
+    /// Rust's native `{:>8.2}` (ties-to-even on the true f64) is real and reachable
+    /// (a fractional weight at a rounding boundary).
+    #[test]
+    fn fixed_w_fpc_matches_oracle_percent_8_2f() {
+        // (input weight, oracle `Set ueweight=` value with its width-8 padding)
+        let cases: &[(f64, &str)] = &[
+            (1.0, "    1.00"),
+            (0.125, "    0.13"),
+            (0.135, "    0.14"),
+            (0.145, "    0.15"),
+            (0.155, "    0.16"),
+            (2.675, "    2.68"),
+            (2.665, "    2.67"),
+            (0.005, "    0.01"),
+            (0.015, "    0.02"),
+            (0.025, "    0.03"),
+            (0.045, "    0.05"),
+            (0.055, "    0.06"),
+            (1.005, "    1.01"),
+            (1.015, "    1.02"),
+            (123.455, "  123.46"),
+            (123.465, "  123.47"),
+            (0.001, "    0.00"),
+            (0.994999, "    0.99"),
+            (0.995, "    1.00"),
+            (0.9999, "    1.00"),
+            (10.005, "   10.01"),
+            (0.375, "    0.38"),
+            (0.625, "    0.63"),
+            (0.875, "    0.88"),
+            (1234.565, " 1234.57"),
+            (0.0049999, "    0.00"),
+            (99999.995, "100000.00"),
+            (0.105, "    0.11"),
+            (0.115, "    0.12"),
+        ];
+        for &(v, want) in cases {
+            assert_eq!(fixed_w_fpc(v, 8, 2), want, "fixed_w_fpc({v})");
+        }
+    }
+
+    #[test]
+    fn fixed_w_fpc_zero_and_sign() {
+        assert_eq!(fixed_w_fpc(0.0, 8, 2), "    0.00");
+        assert_eq!(fixed_w_fpc(-0.0, 8, 2), "    0.00"); // no `-0.00`
+        assert_eq!(fixed_w_fpc(-0.005, 8, 2), "   -0.01"); // ties-away, sign kept
     }
 }

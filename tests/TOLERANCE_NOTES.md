@@ -24,8 +24,13 @@ tiers tolerances by **conditioning**, not size:
   A-Diakoptics torn zones / inverter cases / IEEE123 / 4Bus-YYD). Also the safe
   default for an unrecognized `kind`.
 - **large_floating_delta** — `large` plus one documented exception: `v_abs`
-  5e-4 V (see §floating-delta below). Currently one deck
-  (`GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS`).
+  5e-4 V (see §floating-delta below). The whole-IEEE123 grid-forming-inverter
+  (GFM) family (11 decks): the original decomposition-proven
+  `GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS` plus the CF-B-migrated GFM IEEE123
+  snapshots (`GFMSnap`, `GFMSnap-A/-B/-C`) and daily/whole-day trajectories
+  (`GFMDaily`, `GFMDailySwapRef`, `GFMWholeDaily`, the AmpsLimit variants, the
+  IBRDynamics `CannotPickUpLoad`). All share the identical floating-delta
+  topology — the proof and the coverage argument are in §floating-delta below.
 - **large_near_ideal_source** — `large` plus two documented exceptions:
   `v_rel` 5e-6 and `i_abs` 0.1 A (see §near-ideal-source below). The 9-deck
   AutoTrans validation family + the 2 `PV_currentkvarLimit_*` decks (Thevenin
@@ -82,6 +87,32 @@ the `large` floors, as do Y/YPrim/injection. Fix owner: `RESONANCE_PLAN.md`
 WP-R1 (one iterative-refinement step measures 9.4e-6 V vs KLU — 3× under the
 `large`-band); when it lands, retighten this tier back to `large`.
 
+**Family admission (CF-B, 2026-07-12).** The tier now also gates the rest of
+the whole-IEEE123 GFM family — the `GFM_IEEE123` / `GFM_AmpsLimit_123` /
+`IBRDynamics_Cases/GFM_IEEE123` snapshots (`GFMSnap-A/-B/-C`) and the
+daily/whole-day trajectories (`GFMDaily`, `GFMDailySwapRef`, `GFMWholeDaily`,
+the AmpsLimit variants, `CannotPickUpLoad`). **What is proven vs what is
+inherited:** the decomposition above (bitwise Y/RHS/residual audit, 100%
+common mode) was performed on `GFMSnap.DSS`; the other decks are the *same
+physical circuit* (the whole IEEE123 feeder with delta-connected Storage/PV
+GFM inverters and no zero-sequence ground path) driven to a different operating
+point — snapshot vs a scripted daily trajectory whose gated compare is the
+final converged step. They are admitted under that precedent, **not** an
+independent per-deck decomposition of each trajectory. This is honest and safe
+because the floor is widened on **exactly one channel** (`v_abs`) and every
+channel that could expose a real model/tap/control divergence is held at its
+tight floor and is *immune to the common mode*: the assembled Y at `y_rel`
+1e-8 (deterministic stamps, today bit-identical), the injection, the **exact**
+iteration count, and the DER currents/powers (differential-voltage functions)
+at the `large` floors. A daily deck whose regulators or GFM controllers landed
+a different state, or whose model drifted, would move a tap / an iteration
+count / a differential current far above these floors and fail loudly — the
+5e-4 V common-mode band absorbs only the proven un-pinnable zero-sequence
+junk, which the topology guarantees is present in every family member. Each
+deck was additionally validated live-green against the pinned oracle before
+migration (see the per-deck notes in `solvable_now.json`). If WP-R1 ever
+retightens this tier, the whole family retightens with it.
+
 ### floating-zeroseq (`large_floating_zeroseq`): weakly-pinned common modes
 
 The same physical class as §floating-delta — a subsystem reachable only
@@ -90,7 +121,8 @@ voltage is pinned solely by the ppm anti-float adders — but with pinning 2–3
 orders weaker than GFMSnap's (amplification 3.1e8 there), so the junk exceeds
 the `large_floating_delta` band and gets its own `v_abs` **3e-2 V** (worst
 measured 1.06e-2 ×2.8; at the smallest affected 346 V buses that is 8.7e-5
-rel). Per-deck proof by decomposition (all 2026-07-10):
+rel). Per-deck proof by decomposition (2026-07-10, DOCTechNote family
+2026-07-11):
 
 - **TestDDRegulator** — REGBUS2 sits between TWO delta windings
   (Transformer.Reg1/Reg2 winding 2): measured pinning −j2.14e-8 S vs ~303 S
@@ -117,6 +149,31 @@ rel). Per-deck proof by decomposition (all 2026-07-10):
   these decks build lines from geometry); the observed 2.9e-7-rel common mode
   ≈ (ppm-pinning amplification ~1e8) × (ulp-level Y/solve perturbations) —
   arithmetic consistent with the floor, impossible for a model bug that small.
+- **DOCTechNote family** (`DOCTechNote/1_1`, `1_2`, `2_1`, `2_2`) — the SAME
+  circuit as LVTestCaseNorthAmerican (each `Redirect`s its `Master.dss` +
+  `network_protectors.dss` + `energy_meters.dss`) plus one perturbation:
+  1_1/1_2 add an SLG fault on an **LV** secondary bus (S21 / S203), 2_1 opens a
+  network-protector breaker (`Line.10_sw`), 2_2 adds OC relays + an **L-L**
+  (phase-to-phase) fault on MV bus p105 under `controlmode=event`. None of
+  these introduces an MV zero-seq ground path — the SLG grounds only the
+  wye-grounded LV (blocked from MV by the delta distribution primaries), the
+  L-L fault couples phases 1–2 without touching ground — so the whole 13.8 kV
+  system still floats, exactly as in the base deck. Decomposition (2026-07-11,
+  full 1170-node dump both engines): the gap is a per-bus **zero-sequence
+  common mode** of 1.81e-3…2.85e-3 V on the MV buses (well inside the 3e-2 band;
+  ~2.2e-7…3.6e-7 rel at the 8 kV buses). Proof it is 100% common mode: the
+  **L-L (differential) node voltages agree to ≤1.4e-10 rel** (max |ΔV_LL|
+  2.1e-5 V — ~1.5 f64-ulp, four orders under `large`'s 1e-7), and **removing
+  each bus's mean shift leaves 0/1170 nodes above the `large` band** (max
+  residual 1.15e-5 V, ≤1.8e-9 rel). Un-pinnable, not iteration-driven: at
+  `ConvergenceTolerance 1e-10` the gap is byte-unchanged (2.389e-3 → 2.389e-3)
+  while Rust can no longer converge (15 iters, non-converged on 1_1/2_1 — the
+  residual floors out in the near-null zero-seq direction); at the default
+  tolerance both engines converge in the identical iteration count. Y
+  bit-identical, injections match, iterations equal and element currents/powers
+  within `large` — all verified by the `run_and_compare` full compare passing
+  at `large_floating_zeroseq` (which pins Y at 1e-8, injection, iterations
+  exactly, and currents/powers at the `large` floors).
 
 Element currents/powers are functions of the differential voltages and are
 immune to the common mode, so every other floor stays at `large` and real
@@ -136,6 +193,124 @@ produce them). `i_abs` **2e-3** = worst 6.5e-4 ×3; voltages hold the full
 ampere scale or in Y. (The EPRI_Ckt5-G torn pair clears the plain `large`
 floors — its worst pseudo-switch current diff is 1.03e-5 A — and stays kind
 `large`.)
+
+**The full (un-torn) ckt24 substation family (CF-D, 2026-07-12).** The whole
+EPRI ckt24 family — `EPRITestCircuits/ckt24/Run_Ckt24` + `master_ckt24`, and the
+seven `MemoryMappingLoadShapes/ckt24/master_ckt24{,-mm-csv-pq,-mm-dbl-p,-mm-sng-p,
+-mm-txt-p,-mm-txt-pq,-nomm}` file-array variants — carries the **same**
+`Line.Other_Feeders` (`r1=1e-8 x1=1e-9 Ω` at the default `length=1` → `|Z|≈1e-8 Ω`
+→ **Y≈1e8 S**) that stitches the substation transformer low side (`SubXfmr_LSB`)
+to `Feeders`. It was long mislabeled a "RegControl/LDC SubXFMR tap-current
+divergence" (STATUS open follow-up). CF-D root-cause proved that wrong: the node V
+is at the faer-vs-KLU floor (rel 1.8e-8 – 4.7e-8), the regulator lands the
+**identical** tap, and the "SubXFMR current" gate (|diff| 7.2e-4 A, ~4.7e-5 rel)
+is exactly the ultra-switch `Y·(V1−V2)` near-cancellation image through
+`Line.Other_Feeders` — the same class as the torn ckt24 already banded here:
+`1.8 ulp × 1e8 S = 6.5e-4 A` on the ~2e4 V nodes (the identical arithmetic the
+`large_ultra_switch` band note carries in `harness/mod.rs`), of which the measured
+7.2e-4 A SubXFMR terminal diff is one instance, all < the `i_abs` 2e-3 band. The
+regulator and the delta-wye substation transformer are exonerated. So the family
+migrates to `large_ultra_switch` with the existing band (V + Y stay tight; only
+the pseudo-switch current image is absorbed).
+
+*Per-element current decomposition* (CF-D settle, `DSS_DUMP_IDIFF` live probe over
+the whole family — not by analogy): the two dominant per-element terminal-current
+diffs on every member are `Line.other_feeders` (the ultra-switch, **7.1e-4 –
+7.7e-4 A**) and `Transformer.subxfmr` (**5.1e-4 – 7.2e-4 A** — the substation
+transformer whose LSB terminal feeds that switch, i.e. the *same* `Y·(V1−V2)`
+image; this is the "SubXFMR current" the label pointed at). Both are 2.6–4× under
+the `i_abs` 2e-3 band. The third tier drops an order of magnitude to ≤7.4e-5 A (a
+downstream transformer/load, ~27× under the band); nothing else is close. So the
+dominant current diff *is* the pseudo-switch image on the switch and its
+transformer, shown sub-band; `v_rel` 1e-7 / `y_rel` 1e-8 stay tight, so a real
+transformer/YPrim regression would still trip the gate.
+**(NB: `Y≈1e8 S`, not the `1e10 S`
+the CF-D commit 6200fe0 message and the first draft of this note stated — a 100×
+typo cross-contaminated from SecondaryTest's genuine 1e10 busbar below; the band
+value, gate, and floor verdict are unaffected — the arithmetic closes only at 1e8,
+`1.8·ulp(2e4 V)≈6.5e-12 V × 1e8 S = 6.5e-4 A`, corrected CF-D settle 2026-07-12.)**
+
+**TC-3 near-floor family — per-element current decomposition (CF-D settle,
+2026-07-12).** The five decks migrated to plain `large` (GFM_IEEE8500
+Snap/Daily/DailySmallerPV, Storage `Run_Demo1`, CIM `IEEE13_CDPSM`) tripped only
+the `large`-tier *absolute* voltage band at their first-failing node (V rel
+1.5e-8 – 7.7e-8, i.e. the faer-vs-KLU floor made an abs V diff at 7–20 kV nodes).
+Node-V floor alone does NOT clear a case (CLAUDE.md) — the deciding diagnostic is
+the per-element current/power decomposition, which the T-C triage flagged as not
+yet done. Run here via the `DSS_DUMP_IDIFF` live probe (worst per-element terminal
+`|dI|` vs the pinned oracle); all are comfortably inside the `large` floors
+(`i_rel` 1e-6, `i_abs` 1e-4):
+
+| deck | worst per-element `|dI|` | element | vs `large` `i_abs` 1e-4 |
+|---|---|---|---|
+| GFM Snap | 2.46e-7 A (rel 5.3e-10) | `Line.hvmv_sub_connector` | ~400× under |
+| GFM DailySmallerPV | 2.39e-7 A (rel 7.3e-10) | `Line.hvmv_sub_connector` | ~400× under |
+| GFM Daily | 4.00e-7 A (rel 1.3e-9) | `Line.hvmv_sub_connector` | ~250× under |
+| Storage `Run_Demo1` | 9.11e-5 A (rel 2.0e-6) | `Line.mdv201_c_1_266_abc8079` | 0.91× (tightest) |
+| CIM `IEEE13_CDPSM` | 4.26e-6 A (rel 1.1e-7) | `Line.fuse1` | ~23× under |
+
+The GFM result is the tell: the islanded-GFM node-V offset is common-mode-like —
+the *absolute* node V shifts at the faer-vs-KLU floor (rel ~2e-8) but every
+element current (driven by V *differences* across it) stays sub-microamp (≤4e-7 A,
+≥250× under the current floor), the same shape as `large_near_ideal_source`.
+`Run_Demo1` is the only tight one (9.1e-5 A = 91 % of the 1e-4 floor, still a
+genuine faer-vs-KLU current-floor instance, no element above it). No element on
+any of the five exceeds its floor → all decompose to the floor, migration honest;
+`i_rel`/`i_abs` were NOT touched. (CIM `IEEE13_CDPSM`'s largest *raw* `|dI|` is a
+1.38e-5 A near-zero winding current on `Transformer.sub3` — a small abs on a
+~0-magnitude terminal, absorbed by `i_abs`; the largest *meaningful*-magnitude
+diff is the `Line.fuse1` row above.)
+
+(`DSS_DUMP_IDIFF` was a throwaway settle-time probe — a per-element `|dI|` dump in
+`harness::compare_element`, reverted after capture; it is not in the tree. The
+figures above are the recorded artifact. What is *permanent* is stronger than the
+probe: the live gate's `compare_element` asserts every element's currents/powers
+against these `large`/`large_ultra_switch` floors on every run, so a future
+transformer/YPrim/switch regression that pushed any of these above the floor would
+fail the gate — the decomposition is continuously enforced, not a one-time claim.)
+
+### conditioning_floor (documented, NOT banded): SecondaryTestCircuit_modified
+
+`IEEETestCases/SecondaryTestCircuit_modified/Master.DSS` was also mislabeled the
+"RegControl/LDC SubXFMR" family. CF-D root-cause (2026-07-12) proved it is a
+**cross-solver conditioning floor**, not a RegControl/transformer bug, and — unlike
+the ckt24 family — its junk lands in the *voltage* (not just a switch current), too
+large for any existing band, so it stays documented in
+`skipped_needs_investigation.json` (the `floating_zeroseq_bus` precedent: a
+root-caused floor that cannot yet be banded honestly).
+
+- **Structure.** Two `Linecode.BUSBAR` lines (`r1=x1=r0=x0=1e-4 Ω/km`, `c=0`,
+  `units=km`) in series with the 46 kV `Vsource`: `Line.MDV_SUB_1_HSB`
+  (source→SubXfmr-HV) at `length=0.001 units=m` = 1e-6 km → ~1e-10 Ω → **Y ≈ 1e10
+  S**, and `Line.SSswitch` (feederhead→BusPrim1) at `length=1 units=m` = 1e-3 km →
+  ~1e-7 Ω → Y ≈ 1e7 S. The κ dominance comes from `MDV_SUB_1_HSB`; assembled-Y
+  condition number **9.79e11**.
+- **Symptom.** Step-0 entry-0 node V at BUSSOURCE/MDV_SUB_1_HSB |diff| = **0.553 V**
+  (rel 2.08e-5), with a uniform ~8e-4° angle offset; the regulated 12.47 kV bus
+  matches ~1e-6.
+- **Proof it is a floor, by decomposition (not a tolerance sweep):**
+  1. The **assembled system Y is BIT-IDENTICAL** between engines — all 570 CSC
+     entries, max |ΔY| = 0 (so the linear operator is not the difference).
+  2. The **Vsource injection** `Yprim·E` (backed out as `Yprim·[V,0] − Iterm`) is
+     **BIT-IDENTICAL** (max 2.3e-13 A, matrix-multiply noise) — the source EMF
+     matches; the `duty=SubVoltage` shape is applied identically.
+  3. Load base kW/kvar (derived from the `UseActual` duty shapes) match to 7 sig
+     figs; the constant-PQ branch is `conj(S/V)` on both.
+  4. **Cross-solver spread on the equivalent linear system** (the sanctioned
+     floor-proof, cf. §near-ideal-source): faer (Rust) vs KLU (oracle) = 0.758 V,
+     faer vs scipy(equilibrated) = 0.555 V, KLU vs scipy = 0.776 V — a tight
+     ~0.5–0.8 V triangle; the Rust↔oracle gap sits *inside* the cross-solver span.
+  5. **Residual parity:** ‖Y·V_rust − inj‖∞ = 4.40e-2 vs ‖Y·V_oracle − inj‖∞ =
+     4.56e-2 — neither engine's answer is cleaner; both sit at the same κ≈1e12 junk
+     floor, so even a perfectly refined Rust V would still miss the oracle's V by
+     the oracle's own junk.
+  6. The regulator lands the identical tap; disabling it and fixing the tap leaves
+     the 0.55 V gap **unchanged** (RegControl exonerated), and tightening
+     `tolerance` to 1e-10 leaves it byte-unchanged (not a convergence artifact).
+- **Why not banded:** admitting it needs `v_abs ≈ 1 V` (~4e-5 rel at the 46 kV
+  buses) — 33× the `large_floating_zeroseq` 3e-2 V and wide enough to mask a real
+  substation-transformer bug. The deck's 1 mm busbar lines are a modeling choice
+  that manufactures κ≈1e12; documented as a floor, not forced into `solvable_now`.
 
 ### near-ideal-source (`large_near_ideal_source`): cross-solver junk at κ≈1e12
 
@@ -452,6 +627,46 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
     that never updates `@result` (`ExecCommands.pas:704` is compiled out), so it
     stays at its `'null'` init forever; our engine never writes `@result` either, so
     the single `null` line matches with zero divergence — not a masked/relaxed field.
+
+## `Save circuit` round-trip floor — IEEE-8500 (`save_roundtrip.rs`)
+
+`save_roundtrip.rs` re-solves an emitted `Save circuit` deck on our own engine and
+pins the recompiled node voltages to the pre-save solution. Four feeders (IEEE
+13/34/37/123) round-trip to **1e-6 rel**. IEEE-8500 does **not**, and this is an
+inherent property of OpenDSS `Save circuit`, not the port: `Save` re-emits derived
+quantities (the substation reactor `X`, every `%g`-rendered parameter) at 15
+significant digits; the sub-ulp re-parse perturbation is amplified by the ~thousand
+`Model=1`/`Vminpu=0.88` constant-Z service loads into a worst ~2e-4 rel shift at the
+deepest 0.208 kV secondaries. So `save_roundtrip_ieee8500` uses `IEEE8500_SAVE_VTOL
+= 3e-4` (~1.5× the observed worst) for **node voltages only**; the discrete control
+state (12 RegControl tap numbers + 10 capacitor bank states) and the warm-re-solve
+iteration count are asserted **exactly** on every deck including 8500.
+
+**Proven a floor (not a port slack) by the pinned oracle itself.** The oracle's own
+`Save → recompile → resolve` of this deck reproduces the identical worst node and
+pre/post power — the floor is a property of the writer/re-parse, not of faer vs KLU.
+Reproducible probe: `python tools/golden/probe_save_roundtrip_8500.py` (pinned
+dss-python 0.15.7 / dss_capi 0.14.5, on the vendored corpus bytes the Rust test
+round-trips). Measured 2026-07-11:
+
+| quantity | oracle Save round-trip |
+|---|---|
+| worst node | `SX3312692A.1` |
+| worst rel voltage shift | **2.022253e-4** (< the 3e-4 band) |
+| nodes over 1e-6 rel | 8354 / 8531 |
+| iterations pre/post | 2 / 2 (exact) |
+| total power pre (kW) | −11983.486783 |
+| total power post (kW) | −11983.420712 |
+| ΔP (kW) | +0.066071 |
+
+Because the whole-feeder shift is a smooth continuous-parameter re-parse artifact
+with **no discrete-state signature**, the exactly-pinned taps/banks + exact
+iteration count are what keep the gate strong: a real regulator/cap/element
+regression moves a tap, a bank, or the profile by far more than 3e-4 and fails,
+while the 3e-4 band absorbs only the proven, oracle-reproduced Save-precision floor.
+The pre-save solve is *independently* oracle-pinned by `corpus_live` (8500-Node
+`Master.dss` is in `solvable_now` at the tight `large` floors, ~300× under 3e-4), so
+the operating point itself is gated far tighter than this round-trip band.
 
 ## Live corpus gate (`corpus_live.rs`)
 

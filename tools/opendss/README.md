@@ -122,7 +122,7 @@ never weakened). `capi015` is the dss_capi **0.15.x-line** oracle — dss-python
 r4103) — the scriptable r4088-line oracle. An upgrade WP flips a case's
 `oracle` in the same commit that ports the newer upstream behavior; the case
 is then automatically excluded from the `corpus_live_opendss` inventory sweep
-(its gating moved to the mandatory gate). `modes/upgrade_pilot.dss` keeps the
+(its gating moved to the mandatory gate). `modes/upgrade/upgrade_pilot.dss` keeps the
 machinery exercised, making this venv + `bin/` a mandatory `cargo test`
 prerequisite.
 

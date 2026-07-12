@@ -3,6 +3,9 @@
 //! Split out of `exec/mod.rs`.
 
 use super::*;
+use crate::report::export::json::{
+    JsonOpts, build as json_build, circuit as json_circuit, serialize as json_serialize,
+};
 
 /// A monitor's recorded buffer for the golden/test harness (dss-python
 /// `Monitors.Header` / `SampleCount` / `Channel(i)` / `dblHour`).
@@ -299,6 +302,73 @@ impl Dss {
             out.push((pname, value));
         }
         Some(out)
+    }
+
+    /// AltDSS single-object JSON dump — Pascal `Obj_ToJSON_`
+    /// (`CAPI_Obj.pas:762-784`). `full_name` is a `Class.name` (case-insensitive,
+    /// `@var`-aware like [`Dss::element_properties`]); `None` if no such object
+    /// exists. `opts` selects the sweep (default filled-only vs `Full`), the key
+    /// naming, and the compact/pretty layout.
+    ///
+    /// The default sweep dumps only *set* properties, which are all pure reads of
+    /// the parsed model — safe before any solve. `Full` additionally renders
+    /// read-only function properties; the handful flagged `READS_VTERMINAL`
+    /// (Transformer/AutoTrans `WdgCurrents`) read the element's `Vterminal`
+    /// cache, so under `Full` after a solve they reflect whatever that cache last
+    /// held. Unlike [`Dss::element_properties`] this `&self` method cannot run the
+    /// `refresh_vterminal_if_marked` choke point; reproducing those solve-state
+    /// strings byte-exactly is deferred (the "Full transformer WdgCurrents JSON"
+    /// follow-up — the Stage-A goldens never render them, `skip_full`). No
+    /// default-mode output is affected.
+    pub fn obj_to_json(&self, full_name: &str, opts: JsonOpts) -> Option<String> {
+        let (class_name, name) = {
+            let mut p = Parser::new();
+            parse_object_class_and_name(&mut p, &self.vars, full_name)
+        };
+        let &ci = self.class_by_name.get(&class_name.to_lowercase())?;
+        let &oi = self.classes[ci].name_to_idx.get(&name.to_lowercase())?;
+        let json = json_build::obj_to_json_data(
+            &self.classes[ci].props,
+            self.classes[ci].objects[oi].as_ref(),
+            &self.enums,
+            opts,
+        );
+        Some(json_serialize(&json, opts))
+    }
+
+    /// AltDSS class-batch JSON dump — Pascal `Batch_ToJSON` over every object of
+    /// a class (the `IActiveClass.ToJSON` oracle surface, `CAPI_Obj.pas:1201-
+    /// 1254`). `class` is the class name (case-insensitive); `None` if unknown.
+    /// An empty class serializes to `[]`.
+    pub fn class_batch_to_json(&self, class: &str, opts: JsonOpts) -> Option<String> {
+        let &ci = self.class_by_name.get(&class.to_lowercase())?;
+        let json = json_build::batch_to_json(
+            &self.classes[ci].props,
+            &self.classes[ci].objects,
+            &self.enums,
+            opts,
+        );
+        Some(json_serialize(&json, opts))
+    }
+
+    /// AltDSS whole-circuit JSON dump — Pascal `Obj_Circuit_ToJSON_`
+    /// (`CAPI_Obj.pas:2513-2672`). Returns `None` when no circuit exists
+    /// (`New circuit.` has not run). The circuit is **always** serialized pretty
+    /// (`FormatJSON()`, indent 2), regardless of `opts.PRETTY`; `opts` selects the
+    /// timestamp/bus/default-object filtering and the per-object sweep (default
+    /// vs `Full`). Every embedded object is rendered by the same
+    /// `obj_to_json_data` as [`Dss::obj_to_json`].
+    pub fn circuit_to_json(&self, opts: JsonOpts) -> Option<String> {
+        let ckt = self.circuit.as_ref()?;
+        Some(json_circuit::circuit_to_json(
+            ckt,
+            &self.classes,
+            &self.class_by_name,
+            &self.enums,
+            self.default_base_freq,
+            self.default_earth_model,
+            opts,
+        ))
     }
 
     /// Read a bus's short-circuit results after a FaultStudy solve — the

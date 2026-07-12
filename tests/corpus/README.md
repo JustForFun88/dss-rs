@@ -51,4 +51,4 @@ A case with `pending: true` covers a feature the port does not implement yet
 (GAPS_PLAN.md §3.1): the gate asserts the Rust engine errors **loudly** on it;
 the WP named in its `wp` field flips the flag when it ports the feature. A
 case needing more than one file lives in a subfolder named after the deck
-(e.g. `modes/shape_binfiles/`).
+(e.g. `modes/inputformat/shape_binfiles/`).

@@ -1,4 +1,4 @@
-"""Regenerate the memory-mapped shape fixtures for tests/corpus/modes/shape_mmf/.
+"""Regenerate the memory-mapped shape fixtures for tests/corpus/modes/inputformat/shape_mmf/.
 
 Committed deterministic inputs (not goldens). The LoadShapes read them under
 `MemoryMapping=Yes` (WPG.17): the engine maps the file and reads records lazily
@@ -26,7 +26,7 @@ import struct
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.normpath(
-    os.path.join(HERE, "..", "..", "tests", "corpus", "modes", "shape_mmf")
+    os.path.join(HERE, "..", "..", "tests", "corpus", "modes", "inputformat", "shape_mmf")
 )
 
 MULT = [0.40, 0.55, 0.75, 0.95, 1.00, 0.90, 0.70, 0.50]

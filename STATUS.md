@@ -7,7 +7,501 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-11.
+Last updated: 2026-07-12.
+
+**Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
+deck families into per-element/method subfolders (branch `corpus-reorg`); a
+pure move — **no deck content changed** (every family deck is self-contained;
+the only external fixture refs are bare same-dir names inside the multi-file
+`inputformat/*` subfolders, which move as a unit, so no depth `../` fix was
+needed). Per-family case counts unchanged (asymmetric 36, controls 57, modes 40).
+Folder map:
+- `asymmetric/<element>/`: line, transformer, capacitor, reactor, load, vsource,
+  isource, generator, der, indmach, vccs, upfc, fault, autotrans (autotrans_snap
+  / midi_autotrans_asym / autotrans_gic), gic (gicline/gictransformer/gicsource/
+  gic_midi), combo (combo_chain/combo_mesh/midi_asym).
+- `controls/<control>/`: regcontrol, capcontrol, invcontrol, storagecontroller,
+  gendispatcher, recloser, relay, fuse, swtcontrol, energymeter, monitor, sensor,
+  isource, autotrans, gfm, combo (combo_protection/combo_voltvar/combo_metering/
+  midi_controls/midi_protection).
+- `modes/<method>/`: time (generaltime{,_yearly,_duty}/ld1/ld2/peakday),
+  montecarlo, autoadd, newton, harmonics (reactor_rlcurve/isource_harm),
+  inputformat (shape_binfiles/shape_mmf/shape_filearr/xycurve_files multi-file
+  subfolders), batchedit, reduce, makeposseq, pstcalc, upgrade.
+- Remap updates: the three family `manifest.json` `path` fields; the
+  `ASYMMETRIC/CONTROLS/MODES_REQUIRED` floors + population lock `family_paths`
+  in `corpus_live.rs`/`population.lock.json`; the fixture/midi generators under
+  `tools/decks/` (subfolder-aware `dest()` resolver in `gen_midi_decks.py`);
+  doc-comment deck paths in a few `src/` tests; and the current-layout deck
+  paths in the operational docs (TESTING.md, tests/corpus/README.md,
+  tools/opendss/README.md → `modes/inputformat/shape_binfiles/`,
+  `modes/upgrade/upgrade_pilot.dss`). Plan docs (CONTROL_COVERAGE/
+  GAPS/DIAKOPTICS/UPGRADE) keep their historical flat paths as history.
+
+**CF2-G (GFL/GFM daily dynamics divergences), 2026-07-12.** One real-bug fix +
+4 deck migrations (branch `cf2-g`). The four IBRDynamics_Cases whole-IEEE123
+GFL/GFM daily decks were ABOVE-BAND (GFL source-node imag; GFM islanded node ~0.9 V).
+- **Root cause (both signatures, one bug):** `PVSystem::InitStateVars` /
+  `IntegrateStates` hardcoded `ShapeFactor = 1+j1` in dynamics mode, assuming
+  `ActiveLoadShapeClass == USENONE`. Pascal (PVsystem.pas l.2192 & l.2281)
+  dispatches on `ActiveLoadShapeClass` **even in dynamics**, so a deck that does
+  `set loadshapeclass=daily; set time=(10,0)` samples the irradiance shape at that
+  hour. The port applied full sun (`PanelkW=800` vs oracle `594.78`); the GFL PV
+  over-injected, moving node V ~16 V near the PV, and in the GFM decks the islanded
+  PV perturbed the storage-formed island voltage (amplified to ~0.9 V). Fix: honor
+  the load-shape class in the dynamics init/integrate (shared helper
+  `apply_dynamics_load_shape`); Storage needs no change (its Pascal `IntegrateStates`
+  does not re-dispatch — its ambient ShapeFactor is already 1). Empirically: node V
+  → faer floor (2.3e-6 V) on all four decks; snapshot solve was already clean, so
+  the bug was born entering dynamics.
+- **Migrated → solvable_now** (`large_floating_delta`): GFL_IEEE123 Daily + Daily_DynExp,
+  GFM_IEEE123 Daily, GFM_IEEE123_AmpLimit Daily_CurrentLimit. `solvable_now` **+4**.
+- Note (AmpLimit deck): the storage `it[last]` state var drifts on the long
+  trajectory (open-loop AC integration; in GFM only `it[0]` feeds the injection→node-V
+  fixpoint, so it stays pinned while it[1]/it[2] drift). It is not a gated quantity
+  and node V/currents/powers all match.
+- **Escalation pass (fable), 2026-07-12.** Verified the fix 1:1 vs PVsystem.pas
+  l.2192-2210/l.2281-2299 (mult+temperature per class at `DynaVars.dblHour`, else
+  `ShapeFactor := 1+j1` with `TShapeValue` untouched), the Storage counter-claim
+  (Storage.pas `InitStateVars`/`IntegrateStates` never dispatch on the class),
+  and the deck-4 drift claim (Storage.pas:2142 — only `it[0]` scales `BaseV`;
+  the per-phase integrate loop is 1:1, so the closed loop pins phase 0 while
+  phases 1+ feed nothing gated; `compare_variables` is not enabled for these
+  decks). No tolerance/band/manifest gaming vs base `97b186c`. Added the missing
+  regression test (`pvsystem::tests::dynamics_loadshapeclass_selects_mult_and_temperature`,
+  incl. the USENONE keeps-TShapeValue pin) and ported the three remaining
+  same-family gaps found by sweeping every Pascal `case ActiveLoadShapeClass`
+  site: **VSource** (`GetVterminalForSource` DYNAMICMODE arm + DYNAMICMODE in the
+  loadshape-Vmag branch, VSource.pas:1006-1026), **Isource** (`GetBaseCurr`
+  DYNAMICMODE arm, Isource.pas:403-416), **IndMach012** (`SetNominalPower`
+  GENERALTIME/DYNAMICMODE arm, IndMach012.pas:1091-1105) — each with a unit test.
+  With `USENONE` (every existing green deck) all three reduce to the previous
+  behavior; Load/Generator already dispatched correctly.
+
+**CF2-R (#485 control-settling family — 3 decks migrated, no bug), 2026-07-12.**
+Branch `cf2-r`. `solvable_now` **279 → 282** (+3 `expect_solve_abort` cases,
+migrated out of `skipped_needs_investigation`). **No engine change** — the port
+already reproduces #485 exactly.
+- **Decks:** `Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss`
+  (plain interconnected model, no AD commands), `IEEETestCases/8500-Node/Run_RecloserSiting.DSS`,
+  `Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS`.
+- **The "divergence" was a measurement artifact.** The park notes claimed "Rust
+  67 clean vs r3723 109-with-#485" — but that compared Rust's **first** solve
+  (the deck's own `Solve`, clean 67 total power-flow iters) against the oracle
+  harness's **second** solve. The harness `run_case` issues an extra `solve`
+  after `Compile`; that re-runs the control loop from the settled taps, a
+  regulator sits on a band edge and re-arms ±1 tap each control iteration
+  (hunting), never drains the control queue, hits `MaxControlIter=10` and
+  aborts with **#485** on **both** engines. Driven identically (Compile + one
+  extra solve), Rust and the official r3723 are **bit-for-bit equivalent**:
+  all RegControl taps + capacitor states **exact**, node V to **5.5e-11** rel
+  (8500-node) / **8.1e-9** rel (IEEE123) over every node, same 10 control iters
+  / same total iters (109 / 30), same 261 / 92 event-log lines.
+- **Accounting answer (a):** both engines reach the SAME control-limited state
+  by the SAME control path — a *truncation*, NOT a settled fixpoint. `#485` is
+  raised because `ControlActionsDone` never becomes true within `MaxControlIter`
+  (Pascal `SolveSnap`, `Solution.pas:1189-1209`): a regulator fires a tap change
+  every control iteration (the event log rebuilds Y at each of the 10 control
+  iters on all three decks — verified against r3723), so the loop is truncated
+  at `ControlIter=10` mid-adjustment. The captured taps/caps/V are that
+  identical truncation point, reproduced 1:1 by `solve_snap`
+  (`solution/solution/power_flow.rs`); the per-deck manifest notes give each
+  deck's exact hunting/re-arm sub-mechanism. The reported "iterations"
+  (67/109/30) is `Solution.Iterations` = **total power-flow iterations**, not
+  control iterations (always 10 = the cap).
+- **Migration mechanism:** the pinned oracle *raises* #485 at solve (dss-python
+  surfaces `DoSimpleMsg` as an exception), so a per-step compare is impossible;
+  gated instead via `expect_solve_abort: "Max Control Iterations Exceeded"`
+  (`run_and_compare_abort`) — both engines abort the solve with the same
+  message, Rust setting `solution_abort`. `post: ["Solve"]` supplies the
+  harness's extra solve on the Rust abort path (the deck's own solve is clean).
+  Verified full-state identity against official r3723 via the Oddie bridge; the
+  gate itself uses the pinned 0.14.5 oracle (also aborts, confirmed).
+- **Audit settle (2 auditors, all findings Minor, no code change).**
+  - *r3723 is not warn-only (refuted).* An auditor claimed r3723 via Oddie emits
+    #485 as a non-fatal warning with no raise. Empirically it RAISES the same
+    #485 at solve, exactly like the pinned oracle (dss-python's error check
+    elevates the Direct DLL `DoSimpleMsg` to a `DSSException` — probed on all 3
+    decks). So the `corpus_live_opendss` exclusion premise stands; its comment
+    and the `expect_solve_abort` doc are corrected to say BOTH channels raise.
+  - *Why the numerical identity is not a bespoke committed state-compare.* BOTH
+    oracle channels raise #485 at solve, so `run_and_compare`'s checkpoint
+    capture cannot line up a solved state on either — the full Rust==oracle
+    settled state (taps/caps exact, V 5.5e-11 / 8.1e-9) is only reachable via an
+    exception-tolerant capture (the offline probe). The mandatory gate instead
+    pins the #485 *mechanism* via the message, which on the Rust side already
+    implies `converged_flag` + `control_iteration==MaxControlIter` (see
+    `solve_snap`). The 8500-node / IEEE123 regulator machinery these decks
+    exercise is also heavily gated by many CONVERGING sibling decks
+    (`8500-Node/Master.dss`, `Run_8500Node*`, `123Bus/IEEE123Master.dss`, the
+    torn `Master.DSS`, GFM variants) that DO full pinned-oracle numeric compares,
+    so the only residual unguarded surface is a regression that shifts the
+    *hunting-truncation* state while leaving every converging solution
+    bit-identical — a narrow class both auditors rated LOW. Closing it fully is
+    feasible future work (verified: both oracles leave a readable converged state
+    post-catch, and a compare would pass): an opt-in `tolerate_solve_abort` flag
+    in `oracle_server.py` + a state-compare in the abort gate; deferred as
+    disproportionate for this narrow LOW risk.
+  - *population.lock is regenerated in the worktree, NOT committed (per brief).*
+    The gate is green with the regenerated lock; the coordinator must run
+    `DSS_UPDATE_POPULATION_LOCK=1` and commit the lock at merge, else merged main
+    is red (manifests 282 solvable / 23 skipped vs the committed lock's 279/26).
+
+**CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
+quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch
+`cf-a`). `solvable_now` **245 → 249**.
+- **Base-frequency inheritance (TC-1).** `add_object` now seeds every circuit
+  element's `base_frequency` from the circuit fundamental at creation (Pascal
+  `TDSSCktElement.Create` `BaseFrequency := ActiveCircuit.Fundamental`,
+  CktElement.pas:203) instead of the hardcoded 60; VSource/Isource `src_frequency`
+  follows (`SrcFrequency := BaseFrequency`, VSource.pas:644 / Isource.pas:319); a
+  LineCode inherits it too (LineCode.pas:493). Monitor is the lone exception —
+  hard-pinned to 60 (Monitor.pas:472, oracle-verified). Fixes the European LV
+  feeder that had its source Vmag zeroed by a 60-vs-50 freq mismatch (the
+  previously-named LVTestCase residual is now resolved and migrated).
+- **UTF-8 BOM strip (TB-U3).** `do_redirect` strips a leading U+FEFF from every
+  compiled/redirected file (Pascal loads via `TStringList.LoadFromFile`); nested
+  redirects covered.
+- **Undefined-monitor export → warn (TA-3).** `export_monitors` reports a missing
+  named monitor on `GlobalResult` and continues (official Direct DLL
+  DoSimpleMsg-2-arg is non-fatal, r3723 DSSGlobals.pas:600) instead of a hard
+  error; dss_capi's #250-raise is the divergence. The oracle server tolerates the
+  same #250 during the deck `Compile` (`_TOLERATED_COMPILE_ERRNOS`).
+- **Bare-quote inline comment (TA-3).** `set …` get-only arms (ProcessTime/StepTime)
+  no longer evaluate their value token, matching Pascal's `else`-ignore no-op; a
+  trailing `' comment` (a begin-quote string, ParserDel.pas:270) landing on the
+  incremented pointer no longer triggers a spurious "Invalid inline math entry".
+- **Migrated** (live-compared, green): `LVTestCase/Master` + `Test/Source012Test`
+  (pinned oracle, full property parity); `EPRITestCircuits/ckt5/Run_ckt5` +
+  `ckt7/RunDSS_ckt7` (`oracle: r3723`, `post: set mode=snapshot`).
+- **Audit settle (3 Minor findings).** (1) *Fixed:* the undefined-monitor Export
+  warning now carries the `CRLF + Parser.CmdString` suffix, matching the full
+  Pascal `#250 'Monitor "%s" not found. %s'` (`ExportOptions.pas:497`, official
+  r3723 `:441`) — the port had dropped the `%s`; verified the other not-found
+  messages (Bus #219, EnergyMeter #220, Object #256) genuinely carry no suffix,
+  so only the two Monitor sites did, and the port already reproduces `CmdString`
+  suffixes at command.rs #240/#267. Written to `last_result` only (not
+  gate-compared on this path; overwritten by later `?`-probes). (2) *No-fix,
+  proven:* EARLY_ABORT `Redirect_Abort` is not set on this warning — verified
+  vendored dss_capi sets it unconditionally (`DSSGlobals.pas:291`, default True
+  `:781`) but official r3723 only sets it inside `IF Not NoFormsAllowed` on a
+  dialog abort (`:606-611`), so headless it never fires; the port matches r3723,
+  which is also identical for ckt5/ckt7 since Export is the deck's last command,
+  and it is not a regression (pre-PR code did not set `redirect_abort` either).
+  (3) *No-fix, proven:* `post=[set mode=snapshot]` on ckt5/ckt7 is a symmetric
+  migration idiom — the harness applies `post` to BOTH engines
+  (`corpus_live.rs:712`, `oracle.run_case`) before its forced solve, converting
+  the post-yearly extra solve to a single well-defined snapshot instead of a
+  redundant second 8760-step run; the yearly trajectory is not deep-compared
+  (records not flagged `check_meters_monitors`), a bounded coverage note, not a
+  criterion weakening.
+
+**CF-B (corpus disposition: official-oracle migrations + reclassifications)
+2026-07-11, gate-green.** A corpus-completeness round: migrate decks the pinned
+0.14.5 oracle can't gate (it *raises* on headless `Show`/`ShowCurrents`) to the
+official EPRI **r3723** oracle via the Oddie bridge, promote the floor-proven
+whole-IEEE123 GFM decks, and fix misfiled classifications. Every migration was
+validated live through the real harness (`corpus_live_solvable_cases_match_oracle`),
+not the triage ballpark. What landed:
+- **+3 r3723-gated** (T-A #29/#27/#28): `4Bus-YYD/YYD-Master`, `34Bus/Run_IEEE34Mod1`,
+  `Run_IEEE34Mod2` — r3723 treats the decks' headless `Show`/`ShowCurrents` as
+  non-fatal and solves through, matching Rust (full-model compare green). Iteration
+  caveat reconciled: the harness compares the deck's *final* forced-tap
+  `Controlmode=OFF` solve, where Rust iterations **== r3723** (the triage's 4-vs-2 was
+  the first controlled run's control-loop count, not the gated solve → the Rust≤oracle
+  policy is not violated).
+- **+10 large_floating_delta** (T-B U1a/U1b, pinned oracle): 4 GFM snapshots + 6 GFM
+  daily/whole-day trajectories on IEEE123 — all live-green at the floating-delta
+  common-mode floor. 4 of the 14 GFM/GFL trajectory decks are **above-band** and went
+  to `needs_investigation` with per-deck first-divergence facts (2 GFL-daily source-node
+  phase gaps ~2.8e-3; 2 GFM-daily islanded-section gaps 9.1e-1 / 1.2e-2) — NOT forced.
+- **Reclassify → not_an_entry_point (+6)**: 5 fragments/stubs (T-A #30/#31/#32/#33/#18:
+  34Bus/IEEELineCodes stub, MultstepDG how-to, ckt7+epri_dpv Substation fragments, TnD
+  Distribution sub-model) + ckt24 `main_template.dss` (T-B D5 template via unset
+  `@loadshape_script_dss`) — each verified by grepping its including master.
+- **Note refreshes only** (no migration): 7 D1–D4 `missing_dependency` (hardcoded
+  foreign abs-path / genuinely-absent file / off-by-one vendored stub / wrong filename,
+  BOTH engines fail); the blocked families (6 AD masters → WP-AD.3; ckt5+actor family →
+  M2, r3723 segfaults multi-actor; WindGen ×2 + NCIM → UPGRADE, solve on r4133;
+  IEEE118 → r4133-only convergence). The 3 #485 recloser/Torn decks moved to
+  `needs_investigation` (control-settling: Rust settles without #485 where the official
+  engine hits it).
+
+Population (before → after; total 915 conserved):
+
+| manifest | before | after |
+|---|---|---|
+| solvable_now | 245 | **258** |
+| skipped_oracle_issue | 33 | 22 |
+| skipped_unsupported | 17 | 3 |
+| missing_dependency | 10 | 9 |
+| skipped_needs_investigation | 30 | 37 |
+| not_an_entry_point | 580 | 586 |
+
+Coverage: **245/335 (73.1%) → 258/329 (78.4%)** of entry-point decks. Full gate green
+(`corpus_live` all 258 solvable cases match, incl. the 3 new r3723-gated). The
+`population.lock.json` is regenerated locally to run the gate but left uncommitted (the
+coordinator regenerates at merge).
+
+**CF-B settle (audit findings, 2026-07-12).** Six findings triaged empirically; no
+engine code changed (this is a manifest/doc-only branch).
+- **`large_floating_delta` doc was stale (Minor, fixed).** `TOLERANCE_NOTES.md` still
+  said "Currently one deck" while CF-B grew the tier to 11 (the whole-IEEE123 GFM
+  family). Updated the tier-list entry + §floating-delta to list the family and state
+  honestly *what is proven vs inherited*: the bitwise decomposition proof stands for the
+  original `GFMSnap` deck; the CF-B daily/snapshot members are the SAME floating-delta
+  circuit admitted under that precedent (not a per-deck decomposition), safe because
+  `v_abs` alone is widened and every common-mode-immune channel (Y at 1e-8, exact
+  iterations, differential currents/powers at `large`) stays the sentinel.
+- **corpus_live "258/258 green" reproducible (Major → refuted).** Re-ran the mandatory
+  `corpus_live_solvable_cases_match_oracle` clean here: **1 passed; 0 failed, 216.83s,
+  258 cases matched** — the run reached and validated the CF-B tail migrations. The
+  auditor's one-off failure was on the pre-existing (base-3cca7d3) `StoCtrl_Current_PeakShave/master.dss`
+  DIVerbose *yearly* deck erroring on its `ckt7/DI_yr_0/` output dir — a Windows
+  file-handle/AV race in the oracle→Rust corpus-dir handoff on that deck's DI output,
+  NOT a CF-B change (CF-B touched zero code and zero StoCtrl entries) and not
+  deterministic here. Recorded as a pre-existing gate-infra transient for coordinator
+  awareness; deliberately NOT "fixed" by touching engine code on a manifest-only branch
+  (would mask nothing here and needs its own audit).
+- **Committed lock stale vs manifests (Minor ×2, expected).** The committed
+  `population.lock.json` still carries base counts (solvable_now 245); the regenerated
+  258-lock is left uncommitted per the brief. The branch as-committed therefore trips
+  `population_lock_matches_manifests` until the lock is regenerated — a **hard merge-time
+  dependency**: the coordinator MUST run `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p
+  dss-core --test population_lock` before/at merge. The settle gate was witnessed with
+  the regenerated lock in the working tree.
+- **Full-gate witnessed (Minor, done).** `cargo fmt --all --check` + `cargo clippy
+  --workspace --all-targets -D warnings` + `cargo test --workspace` all exit 0 (pinned
+  dss-python 0.15.7; regenerated lock in working tree, not committed).
+- **Manifest edits coverage-neutral-or-positive (positive, confirmed).** Population
+  conserved at 915 with a clean bijection (0 dups); 13 decks ADDED to the live-compared
+  `solvable_now`; the GFM promotions reuse the existing tier keeping i/y at the tight
+  `large` floors. No looser-band-in-place, no probe/step/meter cut.
+
+**FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
+request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
+3-branch fix round + FA settle) returned `criteria_met=true`, `blocking_items=[]`.
+Verdict (quoted): *"ACCEPT — PORTING_PLAN section-6 criteria are met; all three
+prior blocking items (B1/B2/B3) are resolved with evidence I independently
+re-verified and re-ran in `…/worktrees/final-acceptance` (range de9630b..27d73e1)."*
+The §6 criteria map to evidence as:
+
+| §6 criterion | evidence (this branch, re-witnessed at settle) |
+|---|---|
+| all `cmd_coverage.py`-covered electricdss-tst cases through both engines, **zero out-of-tolerance**, **exact discrete state** | `corpus_live` 14/14 pass, 0 failed (~174 s): `corpus_live_solvable_cases_match_oracle` live-compares all **245 solvable_now** decks (full Y/V/I/P + injection + discrete state per step) at the calibrated floors; the 3 family suites (asymmetric/controls/modes) pass; `corpus_manifest` bijection PASS — **every** corpus `.dss` is in exactly one manifest, so nothing hides |
+| `save_roundtrip` green on IEEE 13/34/37/123/8500 | `save_roundtrip` **6/6** (13/34/37/123/8500 + structural file-set): discrete reg taps + cap banks and warm-re-solve iteration count **exact** on every deck incl. 8500; 8500 node-V band 3e-4 is an oracle-proven `Save circuit` floor (probe below), not a slack |
+| export-diff suites green on IEEE 13/34/37/123/8500 | `golden_reports` **193/0** — pinned-oracle goldens for IEEE 13 (V/I/P + seq + per-element) and 34/37/123/8500 |
+| gate | `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D warnings` clean; `cargo test --workspace` exit 0 (pinned dss-python oracle 0.15.7 / dss_capi 0.14.5) |
+
+Gated population: **245/335 solvable_now (73.1%)**. cmd_coverage's unported tail is
+exclusively Phase-9 actor/parallel mode (SolveAll/NewActor/Clone/Abort +
+ActiveActor/CPU/Parallel options) + `CapControl.ControlSignal` — explicitly outside
+1:1 acceptance (PORTING_PLAN §"stopping before Phase 9 = complete simulator").
+
+### CF-C — CapControl FOLLOWCONTROL + user-model property surface (2026-07-12)
+
+Corpus-completeness fix round. **solvable_now 245 → 248.**
+
+- **Port 1 (CapControl `Type=follow` / `ControlSignal`).** The FOLLOWCONTROL
+  machinery was present but a control-dispatch bug (`solution/controls/dispatch.rs`)
+  aborted the sample with "Monitored element not set" whenever a CapControl had no
+  monitored element — but Pascal `RecalcElementData` (CapControl.pas l.598-609)
+  leaves `MonitoredElement = NIL` for TIME/FOLLOW and uses `effElement :=
+  ControlledElement`. Fix: `monitored.unwrap_or(target)` (self-monitor), since every
+  other control type without a monitored element already errors at parse. Migrated
+  `Test/CapControlFollow.dss` skipped_unsupported → solvable_now (24-step daily walk,
+  Cap1Mon/Cap2Mon power channels + full V compare pin the FOLLOW switching schedule
+  vs the pinned oracle; `compare_eventlog` deliberately not used — the deck solves
+  the whole day at compile with eventlog off, so a post-compile eventlog is logged
+  asymmetrically at the arm/fire boundary). +4 FOLLOW sample-arm unit tests.
+- **Port 2 (Generator UserModel/UserData + Storage DynaDLL/DynaData surface).**
+  Removed `NOT_PORTED` from these four props; they now parse, store, and dump. The
+  `UserModel`/`DynaDLL` side effects emit a non-fatal "Not Loaded" diagnostic and
+  fall back to the built-in model — matching the official Direct DLL's warn-and-solve
+  (Pascal `TGenUserModel`/`TStoreDynaModel.Set_Name`, DoSimpleMsg 570/1570), never
+  loading a DLL (loader permanently out of scope, `forbid(unsafe_code)`). The DLL
+  loader remains out of scope; ShaftModel/ShaftData + Storage UserModel/UserData stay
+  NOT_PORTED (no owned deck exercises them). +6 surface unit tests.
+  - Harness: new `expect_warnings` field on `SolvableCase` (corpus_live) tolerates a
+    deck's declared non-fatal diagnostics (asserts each fires and nothing else errors),
+    mirroring `expect_solve_abort`.
+  - **Migrated** (vs `oracle: "r3723"`, since the pinned oracle raises #1570):
+    `SimpleStorageTest.dss`, `SimpleStorageTest-1ph.dss` (Rust iter 2 == r3723 iter 2).
+  - **Parked** in skipped_needs_investigation (4 Generator model=6 UserModel decks:
+    `indmachtest/Master`, Kersting4wire ×3): the dss-python-over-Oddie r3723/r4133
+    harness **raises #567** ("model designated to use user-written model, but
+    user-written model is not defined") at solve — the DoSimpleMsg is non-fatal in the
+    raw DLL (hence T-A's "r3723 YES" raw probes) but fatal through dss-python, so no
+    oracle channel yields a checkpoint. Rust reproduces Pascal `DoUserModel` 1:1
+    (Yprim-only + #567/iter) and converges via the built-in fallback. Also Kersting
+    iter 3 > raw-r3723 2 and Kersting4wireIndMotor rel 2.9e-4 stay open. Unblocking
+    needs an oracle harness that tolerates the #567/#570 DoSimpleMsg.
+
+**Named non-blocking residuals** (all documented, bounded, correctly classified,
+**outside** solvable_now — the acceptance names them):
+- **RegControl/LDC `SubXFMR` family** (port-side, tagged `live_mismatch` "BUG until
+  a floor is proven"): ckt24 `Run_Ckt24`/`master` + 5 MemoryMapping siblings +
+  `IEEE13_Assets` (~1.0e-3) + Version8-CIM `IEEE13_CDPSM` (4.6e-6). Owner: root-cause
+  post-acceptance (UPGRADE/DE_PASCALIZE era).
+- **LVTestCase/Master** — real gap: Rust leaves node entry 0 unenergized. Owner: same.
+- **SecondaryTestCircuit_modified** (5.5e-1); **Storage-Quasi Run_Demo1** (1.1e-4);
+  **GFM_IEEE8500** daily/snap ×3 (1.4e-4…2.7e-4 above band) + 1 oracle-nonconvergence.
+- **Unported optionals** (skipped_unsupported): actor+parallel mode,
+  `CapControl.ControlSignal`, UTF-8-BOM strip, 14 deferred IEEE123-GFM-trajectory
+  decks. Owners: MULTITHREADING_PLAN M2+ (actor); GAPS follow-up (ControlSignal/BOM).
+- **Oracle-side blocks** (oracle_timeout/nonconvergence ×~40) and the known
+  **VSConverter GetCurrents self-alias** upstream bug (gated via
+  `exec/tests/vs_converter.rs`) — nothing to fix port-side.
+- **A-Diakoptics Part II** — deliberately outside final acceptance; early-start was
+  user-ordered (2026-07-11), owner DIAKOPTICS_PSTCALC_PLAN Part II.
+
+**CF-D (substation-transformer current root-cause, 2026-07-12).** Root-caused the
+"RegControl/LDC SubXFMR" family — the label was **wrong** (RegControl + delta-wye
+transformer exonerated on every member). The real cause is **ultra-switch
+conditioning** at the substation-transformer bus (a 1e-8 Ω "switch" line, Y≈1e8 S)
+and, for the CIM decks, the **Carson earth-model line-constant libm floor**. Per-deck
+verdict (proofs: TOLERANCE_NOTES.md §ultra-switch / §conditioning_floor). The
+ckt24 switch (`Line.Other_Feeders`, r1=1e-8 Ω at default length 1) has Y≈**1e8** S,
+not the 1e10 S the CF-D commit 6200fe0 message stated (a 100× typo, corrected on
+settle; only SecondaryTest's 1 mm `MDV_SUB_1_HSB` busbar genuinely reaches Y≈1e10):
+
+| deck(s) | verdict | evidence |
+|---|---|---|
+| ckt24 `Run_Ckt24` + `master_ckt24` + 7 MM `ckt24` variants | **floor → solvable_now `large_ultra_switch`** | `Line.Other_Feeders` r1=1e-8 at default length 1 (Y≈1e8 S) → SubXFMR current 7.2e-4 A = ultra-switch `Y·(V1−V2)` image = `1.8·ulp(2e4 V)·1e8 S` = 6.5e-4-class (< i_abs 2e-3); node V + Y at floor; regulator lands identical tap; per-element decomposition (`DSS_DUMP_IDIFF`, CF-D settle): two dominant diffs family-wide — `Line.other_feeders` 7.1e-4–7.7e-4 A + `Transformer.subxfmr` 5.1e-4–7.2e-4 A (same switch image), both <2e-3; third tier ≤7.4e-5 A |
+| CIM `IEEE13_CDPSM` | **floor → solvable_now `large`** | differs from passing `Test/IEEE13_CDPSM` only by `set earthmodel=carson`; V rel 7.7e-8 < `large` 1e-7 (Carson line-constant floor); worst meaningful per-element current diff 4.3e-6 A / rel 1.1e-7 @ `Line.fuse1` (~23× under `i_abs`) |
+| `SecondaryTestCircuit_modified` | **proven floor, documented (not banded)** | cond(Y)=9.79e11 (the 1 mm `MDV_SUB_1_HSB` BUSBAR line Y≈1e10 dominates; `SSswitch` is 1 m, Y≈1e7); Y **bit-identical**, Vsource inj `Yprim·E` **bit-identical**, load base = 7 figs; 3-solver spread faer/KLU/scipy 0.5–0.8 V (gap 0.758 V inside it); residual parity 4.40e-2 vs 4.56e-2. 0.55 V (2e-5) too wide to band; stays `needs_investigation` (conditioning_floor) |
+| CIM `IEEE13_Assets` | **floor, documented (no band fits)** | Carson floor + short line (Length=0.0568); V rel 4.18e-7 — above `large` (1e-7), below `large_near_ideal_source` (5e-6); stays `needs_investigation` (conditioning_floor) |
+| GFM_IEEE8500 Snap/Daily/DailySmallerPV, Storage `Run_Demo1` (TC-3) | **near-floor → solvable_now `large`** | first-failing node V rel 1.5e-8–3.7e-8 < `large` 1e-7; **per-element current decomposition** (`DSS_DUMP_IDIFF`, CF-D settle): worst `|dI|` GFM ≤4.0e-7 A @ `Line.hvmv_sub_connector` (~250× under `i_abs` 1e-4 — islanded-node V offset is common-mode, currents stay sub-µA), Storage 9.1e-5 A (0.91× floor, tightest); all decompose to faer-vs-KLU floor, no element above band (TOLERANCE_NOTES §TC-3) |
+
+Net: `solvable_now` **245 → 259** (14 migrated); `needs_investigation` retains the
+2 documented conditioning floors + the LVTestCase real gap + oracle-side blocks.
+
+**CF-D settle — audit findings settled (2026-07-12).** Six Minor findings (code +
+tests audits); none overturned a verdict — all documentation-rigor. Two fixed, two
+strengthened with committed empirical evidence, one recorded no-fix, one hand-off
+caveat:
+- **#1/#4 (ckt24 floor-proof stated `Y≈1e10 S`, a 100× error) — FIXED.** The
+  ckt24 `Line.Other_Feeders` (r1=1e-8 Ω at default length 1) has **Y≈1e8 S**, not
+  the `1e10 S` the note/commit-6200fe0 message stated (cross-contaminated from
+  SecondaryTest's genuine 1e10 busbar). The arithmetic closes only at 1e8
+  (`1.8·ulp(2e4 V)·1e8 S = 6.5e-4 A`, matching the pre-existing `harness/mod.rs`
+  band note and the measured 7.2e-4 A); at 1e10 it would be 6.5e-2 A. Corrected in
+  TOLERANCE_NOTES §ultra-switch, STATUS, and the manifest. Band/gate/verdict
+  unaffected.
+- **#3 (SecondaryTest "each busbar length=0.001 m → Y≈1e10 S" imprecise) — FIXED.**
+  Only `Line.MDV_SUB_1_HSB` is length=0.001 m (→ Y≈1e10 S, drives κ); `Line.SSswitch`
+  is length=1 m (→ Y≈1e7 S). Corrected in TOLERANCE_NOTES §conditioning_floor,
+  STATUS, and the manifest note (verified against `Substation.DSS`).
+- **#2/#5 (per-element current decomposition not recorded for the TC-3 near-floor
+  + ckt24 families) — STRENGTHENED with committed evidence.** Ran the deciding
+  diagnostic (`DSS_DUMP_IDIFF` live probe, worst per-element `|dI|` vs the pinned
+  oracle) the triage had flagged as not-yet-done: ckt24 family worst 7.2e-4–7.7e-4
+  A all on `Line.other_feeders`/`Transformer.subxfmr` (< `i_abs` 2e-3); GFM ≤4.0e-7
+  A (~250× under floor, currents sub-µA while node V shifts at floor = common-mode);
+  Storage 9.1e-5 A (0.91× floor); CDPSM 4.3e-6 A. Every element decomposes to the
+  floor → migrations shown honest, not asserted. Recorded in TOLERANCE_NOTES §TC-3
+  and the per-deck table above.
+- **#3-b (SecondaryTest/IEEE13_Assets floor proofs rest on scratchpad probes) —
+  NO-FIX (rationale recorded).** Both decks stay SKIPPED (`conditioning_floor`), so
+  no gate depends on them; their cross-solver-spread proof follows the accepted
+  `large_near_ideal_source` in-tree-prose convention. Not reproduced into a
+  committed probe (matches project precedent); the floor verdict is unchanged.
+- **#6 (committed tree not gate-green until the lock is regenerated) — hand-off
+  caveat, by design.** `population.lock.json` is deliberately NOT committed (brief);
+  after merging all CF branches the coordinator must run
+  `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock`. The
+  settle gate below was witnessed with a locally-regenerated lock (solvable_now 259,
+  skipped 16), reverted before commit.
+
+**FA settle — audit findings settled (2026-07-11).** Six Minor findings from the
+code/tests audits; none contradicted a §6 criterion. Three fixed, two recorded as
+deliberate no-fix, and #6 folded into the #3 fix:
+- **#1 (8500 save-floor proof prose-only, dangling citation) — FIXED.** Committed a
+  reproducible oracle-side probe `tools/golden/probe_save_roundtrip_8500.py` (pinned
+  dss-python) that reproduces the floor from the repo bytes: worst node `SX3312692A.1`
+  **2.022253e-4** (< the 3e-4 band), total power −11983.486783 → −11983.420712 kW,
+  iterations 2/2 exact, 8354/8531 nodes over 1e-6. Recorded the numbers in a new
+  `tests/TOLERANCE_NOTES.md` §"`Save circuit` round-trip floor — IEEE-8500" and fixed
+  the `save_roundtrip.rs` doc citation to point at it + the probe.
+- **#3/#6 (population_lock fingerprinted membership+counts only) — FIXED.** Extended
+  `population_lock.rs` to fingerprint **per-case rigor** for every solvable_now deck
+  (kind/tolerance-tier, oracle target, n_steps, and every compare-depth flag —
+  selected_elements/meters-monitors/probes/variables/eventlog/ctrlqueue/all-properties/
+  global-result/autoadd-log/pending/solve-abort) **and** the three families' **path
+  lists** (not just counts). Regenerated `population.lock.json`; verified the guard
+  now trips with a precise per-field diff on an in-place kind flip (feeder →
+  large_near_ideal_source), closing the "retained deck weakened in place" gap.
+- **#5 (CIM Breaker check was a weak substring) — FIXED.** The B1 regression now
+  asserts **exactly one** `<cim:Breaker>` element and **no** Fuse/Recloser
+  misclassification (was `xml.contains("cim:Breaker")`).
+- **#2 (fix1 commit-message over-generalized the +16 parks) — NO-FIX (recorded).**
+  Cosmetic; rewriting a merged commit message is not warranted. The per-deck manifest
+  tags/notes are individually honest and correctly differentiated (referee-confirmed).
+- **#4 (DSS_UPDATE_POPULATION_LOCK regen arm) — NO-FIX (recorded).** Confirmed the var
+  is **not** set in `.github/workflows/ci.yml` (only CARGO_TERM_COLOR +
+  DSS_ORACLE_TIMEOUT_SECS); this is the documented deliberate-regen path. Keep it out
+  of any future automated env block.
+
+Post-acceptance the `TODO(compat)` sweep + goldens regen run in one dedicated pass
+(PORTING_PLAN §4.1/§6); the named residuals are root-caused in the upgrade/refactor
+eras (PLAN_SEQUENCE stages 4–8).
+
+**FA fix 2 — divergence root-cause: DOCTechNote ×4 + GFMSnap (2026-07-11),
+gate-green.** Root-caused the five above-`large` Rust↔oracle divergences the
+WP8.8 classify left `needs_investigation` (per CLAUDE.md §"conditioning" +
+§"cancellation floor" — decomposition, no tolerance fudging). Per-case verdict:
+
+| case | verdict | evidence |
+|---|---|---|
+| `DOCTechNote/1_1` | **floor** → solvable_now `large_floating_zeroseq` | common mode 2.39e-3 V; L-L rel 1.36e-10; 0/1170 nodes fail `large` after per-bus shift removal |
+| `DOCTechNote/1_2` | **floor** → same | common mode 2.39e-3 V; L-L rel 1.29e-10; 0/1170 fail |
+| `DOCTechNote/2_1` | **floor** → same | common mode 1.81e-3 V; L-L rel 1.30e-10; 0/1170 fail |
+| `DOCTechNote/2_2` | **floor** → same | common mode 2.85e-3 V; L-L rel 1.54e-10; 0/1170 fail |
+| `GFMSnap` | **already floor-proven, gate-green; re-verified** | L-L rel 2.27e-10 confirms §floating-delta's 2.3e-10; 0/284 fail; gap 9.03e-5 V; no manifest change |
+
+Root cause (DOCTechNote ×4): the decks `Redirect` LVTestCaseNorthAmerican
+`Master.dss` (delta-delta substation + delta-primary distribution
+transformers → the whole 13.8 kV MV system floats in zero-seq, already a proven
+`large_floating_zeroseq` member) and add one perturbation each — an LV SLG fault
+(1_1/1_2), a network-protector breaker open (2_1), or OC relays + an MV L-L
+fault under `controlmode=event` (2_2). None adds an MV zero-seq ground path, so
+the MV common mode stays un-pinnable solver junk. Decomposition (full 1170-node
+dump both engines): the gap is 100% per-bus zero-sequence common mode
+(1.8e-3…2.85e-3 V, well inside the 3e-2 band; ~2.2e-7…3.6e-7 rel at 8 kV) — the
+L-L (differential) voltages agree to ≤1.4e-10 rel and removing each bus's mean
+shift leaves **0/1170** nodes above `large`. Un-pinnable, not iteration-driven:
+at `ConvergenceTolerance 1e-10` the gap is byte-unchanged while Rust can no
+longer converge (residual floors out in the near-null direction); at the default
+tolerance both engines converge in the identical iteration count. Y
+bit-identical, injections match, iterations equal, element currents/powers
+within `large` — verified by the `run_and_compare` full compare passing at
+`large_floating_zeroseq`. Recorded: tests/TOLERANCE_NOTES.md §floating-zeroseq
+(new DOCTechNote bullet), harness `tol_for` comment. No tolerance/tier value
+changed (reused the existing `large_floating_zeroseq` band); no `TODO(compat)`
+(floors are not compat quirks). solvable_now 226 → **230**;
+needs_investigation 18 → 14.
+
+**FA fix 3 (anti-shrink guard + §6 suite completion, 2026-07-11).** Two FINAL
+ACCEPTANCE gaps closed. (1) **Anti-shrink guard**: `tests/corpus/manifests/
+population.lock.json` (committed fingerprint — per-manifest case counts, the full
+sorted `solvable_now` path list, the 3 family case counts) + `population_lock.rs`
+(unconditional `cargo test`) that fails on any drift with a diff + the one-command
+regen `DSS_UPDATE_POPULATION_LOCK=1 …`, so a silent reclassification of a deck out
+of `solvable_now` can no longer stay green. Base counts: solvable_now 226, family
+36/57/40. Documented in TESTING.md §Anti-shrink population lock. (2) **PORTING_PLAN
+§6 literal suites**: `save_roundtrip.rs` now covers IEEE 34 + 8500 (were 13/37/123);
+`golden_reports.rs` adds Voltages/Currents/Powers export-diff on IEEE 34/37/123
+(were 13/8500) with 9 pinned-oracle goldens (`gen_reports.gen_extra_feeder_reports`).
+Two proven floors (not weakening, decomposition per CLAUDE.md): (a) the **8500 save
+round-trip** node-V floor is 3e-4 rel — **inherent to OpenDSS `Save circuit`**, not
+the port: the pinned oracle's own Save→recompile→resolve reproduces the identical
+worst node (`sx3312692a.1`, 2.022e-4) and pre/post total power to the digit; the
+gate stays strong via exact iteration count + exact discrete state (12 reg taps +
+10 cap banks); (b) the **Currents export** magnitude/angle floors mirror the
+always-on `corpus_live` feeder current tolerance (`i_rel=1e-7`, `i_abs=1e-5` A) —
+lightly-loaded phases carry near-cancellation mutual currents (IEEE123 L49 phase-2
+= 3.45 mA vs 9–18 A) whose angle is pinned only above `i_abs/sin(0.005°)≈0.12 A`.
+Gate: fmt + clippy clean, `cargo test --workspace` exit 0.
 
 **WPG.21 port — MakePosSequence + 6 synthesized decks (2026-07-11), gate-green
 (fmt/clippy/`cargo test --workspace` incl. `modes_cases_match_oracle`).** The last
@@ -663,8 +1157,10 @@ exotics — optional; stopping here is a complete usable simulator**
 (PORTING_PLAN cumulative note). Remaining named work: actor mode
 (`MULTITHREADING_PLAN.md` M2), A-Diakoptics, Pstcalc, WPG.19 (file-backed
 `File=` arrays — now the proven sole blocker of the whole ckt24/SolarRamp
-family), WPG.20 (MMF save), `JSON_EXPORT_PLAN.md`, `RESONANCE_PLAN.md` WP-R1.
-Details:
+family), WPG.20 (MMF save), `RESONANCE_PLAN.md` WP-R1. **`JSON_EXPORT_PLAN.md`
+Stage A + Stage B DONE (2026-07-12, branch `wp-json-a`)** — the full AltDSS JSON
+export (single object / class batch / whole circuit); only JSON **import** +
+`CAPI_Schema` remain (named §6 follow-ups). Details:
 
 - **Step 1 (marker sweep).** Every stale marker settled: **(a)** `show powers
   e` now emits the three exact Pascal whitespace layouts (Sources `%s %4d`, PC
@@ -757,7 +1253,8 @@ Details:
   CorpusGuard self-test (`corpus_guard_restores_case_dir_recursively` —
   vendored preserved, overwrite restored, subdir/DI-tree pollution swept).
   Owed follow-up (recorded): root-cause the DOCTechNote×4 live_mismatch
-  (~2.4e-7 rel) per the no-rationalizing rule.
+  (~2.4e-7 rel) per the no-rationalizing rule. **→ DONE (FA fix 2, 2026-07-11):
+  proven zero-seq common-mode floor, migrated to `large_floating_zeroseq`.**
 
 **needs_investigation burn-down, round 2 — AutoTrans family (2026-07-10,
 user-directed "проверь автотрансформатор построчно").** Element EXONERATED
@@ -2924,6 +3421,223 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 ---
 
 ## 1. Where we are
+
+**FA fix 1 (Relay/CDPSM panic + manifest re-sweep) — 2026-07-11, branch `fa-fix1`.**
+FINAL ACCEPTANCE referee items.
+
+- **The bug:** exporting CIM100 for any deck with a **Relay**-controlled switch
+  (e.g. `Examples/CIM/IEEE13_CDPSM.dss`) panicked
+  `unreachable!("Relay has no double property 6")`. Root cause is caller-side, not
+  a Relay accessor gap: `cim/export.rs::parse_switch_class` refactored Pascal's
+  per-class `ParseSwitchClass` (`ExportCIMXML.pas:451`) into one closure that read
+  `get_f64(6)` for **every** matched control class. Fuse prop 6 is `RatedCurrent`
+  (a double — correct), but Relay prop 6 is `PhaseCurve` (a curve reference), so the
+  read hit the accessor's `unreachable!`. Pascal reads `RatedCurrent` **only** inside
+  the Fuse branch; Relay→`Breaker`/Recloser→`Recloser` are pure class-match checks.
+  Fixed 1:1 (the closure now returns the matched `ElemRef`; only the Fuse branch reads
+  prop 6). Regression: `cim::tests::parse_switch_class_relay_does_not_read_relay_double`
+  drives `export cim100` on a minimal Relay-guarded switch.
+- **Why WP8.5b's property-parity sweep missed it:** that sweep checks each class's
+  accessor covers its *own* property list — the Relay table is correct (Relay genuinely
+  has no double at prop 6). The panic is a **cross-class** caller reading a Fuse property
+  index on a Relay object, which a per-class parity sweep cannot catch.
+- **Manifest re-sweep:** ran the `DSS_LIVE_CLASSIFY=1` classifier over the 33 stale-tagged
+  `skipped_unsupported` candidates (excluded the 14 `deferred=ieee123-gfm-trajectory-scope`
+  scope-deferrals + the actor `SolveAll` deck; hands-off decks untouched). **15 converge
+  clean + full-model compare green → `solvable_now`** (Dynamic_KundurDynExp ×2, ExpControl,
+  InductionMachine ×2, InverterTechNote kWRated, Matlab/pst, StoCtrl_SeasonTarget ×2,
+  UPFC_test_3, civinlar regulator, 123Bus SolarRamp ×3, 8500 P174_360kW_PV). **16 above-band
+  / real-divergence → `skipped_needs_investigation`** with honest notes (ckt24 + 5
+  memory-mapping = the known RegControl/LDC SubXFMR family; IEEE13_Assets + IEEE13_CDPSM =
+  RegControl/LDC; GFM_IEEE8500 ×4; Storage-Quasi Demo1; LVTestCase Master = Rust entry-0
+  unenergized, a real gap; SecondaryTestCircuit_modified). **2 stay `skipped_unsupported`**
+  with refreshed tags (CapControlFollow = `CapControl.ControlSignal` unported;
+  Source012Test = UTF-8 BOM not stripped, a parser gap, flagged for follow-up).
+  - **IEEE13_CDPSM did NOT go to `solvable_now`**: the task-1 fix removes the panic and the
+    deck now compiles/solves/exports CIM100, but the live compare is above-band (step 0
+    entry 6 node V |diff|=4.60e-6 > allowed 1.599e-6). Per the no-fudging rule it is a
+    divergence-to-investigate, not a green case.
+  - `solvable_now` 226→**241 (71.9% of entry points)**; `COVERAGE.md` regenerated.
+
+**JSON export Stage A (`Obj_ToJSON` / `Batch_ToJSON`) — 2026-07-11, branch
+`wp-json-a`.** Ported the AltDSS single-object + class-batch JSON model dump per
+`JSON_EXPORT_PLAN.md` §4 Stage A (the GUI-facing machine-readable surface; Stage B
+whole-circuit remains deferred).
+
+- **New `report/export/json/`** — an ordered `Json` tree + `JsonOpts` (bits 0–10
+  only; State/Debug/Edit not representable, §6); `fpjson_float` (FPC `Str(Double)`
+  17-sig-digit scientific `1.2470000000000001E+001`, `TODO(compat)`); `write_compact`
+  (`foSingleLine*+foSkipWhiteSpace`) + `write_pretty` (`FormatJSON([],2)`); fpjson
+  `StringToJSON` escaping (`"`→\", `\`→\\, `/` NOT escaped — probed). Two Windows
+  fpjson quirks pinned: pretty uses the RTL **CRLF** line break (`TODO(compat)`), and
+  an **empty container in pretty is `[`+CRLF+indent+`]`**, not inline `[]`.
+- **`obj/props/class_props/json.rs`** — `get_json_value`, a loop-for-loop port of
+  `GetObjPropertyJSONValue` (`DSSObjectHelper.pas:968-1518`): full `PropType` matrix,
+  the `preferArray`/`array_alternative` recursion, the `PropertyOffset=-1` guard
+  (NOT_PORTED/SILENT_READ_ONLY→omit), NaN/Inf→null, on-struct scalars→per-winding
+  array under `ON_ARRAY`.
+- **`report/export/json/build.rs`** — `obj_to_json_data` (`Obj_ToJSONData`): the
+  Name/DSSClass header, the default set-order sweep with the redundant/array-alt
+  `iPropNext2` deferral, the `Full` sweep, skip flags; `batch_to_json`
+  (`Batch_ToJSON`, `ExcludeDisabled`; `IncludeDefaultObjs`/`DefaultAndUnedited` is a
+  no-op — no Rust default-object flag, a Stage-B dep).
+- **`exec/view.rs`** — public `Dss::obj_to_json` + `class_batch_to_json` (`&self`).
+  The default sweep is a pure pre-solve read; `Full` may render `READS_VTERMINAL`
+  function strings (Transformer `WdgCurrents`) from the Vterminal cache without the
+  `refresh_vterminal_if_marked` choke point — a recorded deferral (never in default
+  output; `skip_full` in the goldens).
+- **Metadata (`PropDef`/`PropFlags`)** — new `redundant_with`/`array_alternative`/
+  `json_name` fields + `json_key()` derivation (`%→pct`, `-→__`; LowercaseKeys →
+  AnsiLowerCase of the modern name) + flags `ALT_INDEX`/`INTEGER_STRUCT_INDEX`/
+  `ON_ARRAY`/`FULL_NAME_AS_JSON_ARRAY`/`FULL_NAME_AS_ARRAY`. Populated for the
+  golden-covered classes only (staged): **Transformer** (kV/kVA/Tap/%R/Bus/Conn
+  array-alternatives + kVs/…/Conns/XHL/XHT/XLT redundancy + Wdg IntegerStructIndex +
+  Rneut/Xneut/Max/MinTap/RdcOhms/NumTaps ON_ARRAY), **Line** (Wires→`Conductors`
+  json_name + FullNameAsJSONArray, cncables/tscables + B1/B0 redundancy, Seasons
+  SuppressJSON), **LineCode** (B1/B0→C1/C0), **Vsource** (R1/X1→Z1, R0/X0→Z0). Load
+  needs none.
+- **Line set-order fix (found + fixed here):** the pinned oracle marks
+  `Seasons/Ratings/NormAmps/EmergAmps` **set** after a `linecode=` fetch (confirmed
+  via its Save + JSON output); the Rust `fetch_line_code` cleared them (wrong branch,
+  inconsistent with the already-correct `fetch_line_spacing`). Now it re-marks them in
+  the `LINECODE` side effect (runs after the linecode's own `SetAsNextSeq`, so they
+  sort after it — the oracle's order).
+- **Gate:** `tools/golden/gen_json.py` (byte goldens under `tests/golden/json/`) +
+  `crates/dss-core/tests/golden_json.rs` (byte-equality, in `cargo test --workspace`).
+  **8 decks, all byte-green:** load/line/line_matrix/vsource/transformer/escape/
+  **batch** micro decks + IEEE13 element samples (Line/Transformer/Load/LineCode).
+  The 10-combo matrix {0, Full, Full|Pretty, **Pretty**, **IncludeDSSClass**,
+  EnumAsInt, FullNames, Full|IncludeDSSClass, **Full|SkipRedundant**, LowercaseKeys}
+  runs on every deck (Full-family excluded on the `skip_full` decks); `batch_micro`
+  runs a custom {default, Pretty, ExcludeDisabled, ExcludeDisabled|Pretty} set. The
+  driver asserts each capture carries the deck's full declared combo set (a
+  coverage guard against a silently dropped combo). Plus fpjson-writer/float/escape
+  unit tests + 13 synthetic per-`PropType`-arm tests.
+- **Deferrals (recorded):** transformer **Full** and matrix-model-line **Full** are
+  golden-tested in default-family combos only — Full exposes the transformer
+  `WdgCurrents` result string (solve state) and a matrix-model line's sym-scalar
+  NaN→`null` getter, both out of the pre-solve dump path; the `DynInit` `TDynEqPCE`
+  tail and whole-circuit `circuit_to_json` (Stage B) stay NOT_PORTED (§6).
+- **Audit settle (2026-07-11), gate-green.** Findings settled empirically against
+  Pascal + the pinned oracle:
+  - **[Major] ON_ARRAY per-winding arms were untested** (only reachable in the
+    `skip_full` transformer Full render). Fixed by *setting* the transformer's
+    `RDCOhms/MaxTap/MinTap/NumTaps/RNeut` in `transformer_micro` so the **default**
+    sweep renders each as a per-winding array — probed on the oracle, byte-pinned;
+    covers both the DoubleOnStructArray and IntegerOnStructArray JSON arms.
+  - **[Minor] `JsonOpts::from_bits` silently masked bits 11–13** (plan §6 requires a
+    raw-bits entry to error loudly). Now it `assert!`s no non-representable bit is
+    set (State/Debug/Edit → panic, NOT_PORTED), never silent.
+  - **[Minor] empty-batch pretty** — REFUTED: the oracle `IActiveClass.ToJSON`
+    surface returns `[\r\n]` for an empty class in pretty (it does **not** take the
+    C-API `batchSize=0 → '[]'` shortcut), which the Rust path already matches. Pinned
+    by the new `batch_micro` empty-`Capacitor` capture (default `[]`, pretty `[\r\n]`).
+  - **[Minor] ObjectRef `OnArray` sub-branch** (DSSObjectHelper.pas:1169-1194) and
+    **AllowNone→null on DoubleArray/DoublePoints** (l.1218 shared block) were ported
+    (no golden-covered class uses them; synthetic arm tests added).
+  - **[Minor] Line `fetch_line_code` seq-clear** — REFUTED as a divergence: the WP
+    change (ratings marked set) is golden-proven; probing the unusual
+    `r1=… linecode=…` order shows the oracle also drops R1/X1, matching the
+    (pre-existing) Rust clear — no oracle gap.
+  - **[Minor] SkipRedundant / ExcludeDisabled / default-Pretty / bare-IncludeDSSClass
+    untested** — added as combos/decks above (vsource `Full|SkipRedundant` drops
+    R1/X1/R0/X0; `batch_micro` ExcludeDisabled drops a disabled load).
+  - **[Minor] DoubleSymMatrix symmetric-blind fixture** — `line_matrix` now uses
+    **distinct** diagonals (0.1/0.11, 0.2/0.22, 3/3.3) so the row/column indexing is
+    pinned positionally.
+
+**JSON export Stage B (`Obj_Circuit_ToJSON_`) — 2026-07-12, branch `wp-json-a`.**
+Ported the whole-circuit AltDSS JSON dump per `JSON_EXPORT_PLAN.md` §4 Stage B
+(`CAPI_Obj.pas:2513-2672` + `saveOpenTerminalsJSON` `:2470-2511` + the bus renderer
+`alt_Bus_ToJSON_` `CAPI_Alt.pas:2820-2832`). JSON export is now complete for the
+single-object / class-batch / whole-circuit surfaces.
+
+- **New `report/export/json/circuit.rs`** — `circuit_to_json`: `$schema`, `Name`,
+  `DefaultBaseFreq` (float), `PreCommands`, `Bus[]`, `PostCommands`, then one key per
+  DSS class → array of `obj_to_json_data`, in **`PASCAL_CLASS_ORDER`** (the DSSClassList
+  order; the Rust registry groups DSS_OBJECT classes first internally). **Always
+  pretty** (`FormatJSON()`), regardless of `opts.PRETTY`. `Dss::circuit_to_json(&self,
+  opts) -> Option<String>` in `exec/view.rs` (None when no circuit).
+- **PreCommands** — optional save stamp (SkipTimestamp gates it; the port emits a fixed
+  deterministic comment, never a non-deterministic timestamp — never gated),
+  CktModel/AllowDuplicates/LongLineCorrection conditionals, EarthModel, VoltageBases
+  (`GetDSSArray`). **`Set CktModel=` is always empty when positive-sequence is on**
+  (`TODO(compat)`: `PositiveSequence` is a Pascal `LongBool`, `Integer(True) = -1`,
+  out of the enum's [0,1] range → `OrdinalToString` returns `''`; reproduced via
+  `ordinal_to_string(-1)`).
+- **PostCommands** — the 33 solution/options `Set …` strings with their exact FPC
+  formats + the `saveOpenTerminalsJSON` `Open …` lines. **6 `TODO(compat)` format
+  tags:** `%-g` (default-15-sig general), `%-.4g` (4-sig), `%8.2f` (width-8 fixed
+  2-decimal), `GetDSSArray` (` %g` per element), plus the CktModel LongBool quirk and
+  the module-level format note. Reuses the ported `report::format::{g, fixed_w}` and
+  `util::check_for_blanks`.
+- **`DefaultAndUnedited` flag** — new on `DssObjData` (`default_and_unedited`), set on
+  every LoadShape/GrowthShape/Spectrum/TCC_Curve object at the tail of
+  `create_default_dss_items` (Pascal `Executive.pas:207-217`), cleared on any edit
+  (Pascal `BeginEdit`, `DSSClass.pas:1598`) at the top of `edit_active_inner`. The
+  circuit dump omits these unless `IncludeDefaultObjs`. Byte-pinned both ways
+  (`circuit_edited_default`: editing `spectrum.defaultload` makes it — and only it —
+  rejoin the default dump; `include_default` brings all defaults back).
+- **Metadata (staged, this stage's classes):** **LoadShape** `Mult→PMult`,
+  `SInterval/MInterval→Interval` `redundant_with` (the default sweep was rendering
+  `Mult` where the oracle renders the deferred `PMult`). GrowthShape/Spectrum/TCC_Curve/
+  Capacitor/RegControl needed none beyond the already-present count-prop `SuppressJSON`.
+- **Gate:** 3 new circuit decks in `gen_json.py` / `golden_json.rs`, byte-green:
+  `circuit_micro` (bus X/Y + Keep + kVLN, open terminals — whole-terminal `Open Line.ln1
+  2` + single-conductor `Open Line.ln2 1 2`, LineCode/Line/Vsource/Load class order; the
+  full `{default, Full, Full|Pretty, SkipBuses, IncludeDefaultObjs, EnumAsInt}` combo
+  matrix, all Full-safe classes), `circuit_edited_default` (DefaultAndUnedited both
+  ways), `circuit_ieee13` (real feeder incl. Transformer/RegControl/Capacitor +
+  defaults; `{default, SkipBuses, IncludeDefaultObjs, EnumAsInt}`, Full excluded).
+- **Deferrals (recorded):** **Capacitor `CMatrix` under Full** renders the computed
+  sym-matrix on the oracle vs `null` in the pre-solve Rust dump — the same class as the
+  Stage-A transformer-WdgCurrents / matrix-line-sym-scalar Full deferrals; `circuit_micro`
+  therefore keeps its Full combos on Full-safe classes and covers Capacitor's default-mode
+  dump via `circuit_ieee13`. The WdgCurrents Full refresh, JSON **import**
+  (`Obj_Circuit_FromJSON_`), and `CAPI_Schema` stay NOT_PORTED (§6) — named follow-ups.
+
+**JSON export Stage B settle (2026-07-12, branch `wp-json-a`), gate-green.** Audit
+of the Stage-B commits (code + tests) surfaced 8 findings; settled empirically
+against the pinned oracle. **Two real fixes + one gap ported + one faithful 1:1
+tweak; four refuted/recorded no-fix.**
+- **[Major, FIXED] The `CktModel=`/`AllowDuplicates`/`LongLineCorrection` PreCommands
+  branches were pinned by no golden** — the `Set CktModel=` empty-value TODO(compat)
+  quirk (positive-sequence) fired in zero decks, so a refactor emitting `Positive`
+  would pass silently (CLAUDE.md: every TODO(compat) is golden-pinned). New deck
+  `circuit_positive_seq` (`set cktmodel=positive`/`allowduplicates=yes`/
+  `longlinecorrection=yes`) byte-pins all three (oracle: `Set CktModel=`,
+  `Set AllowDuplicates=True`, `Set LongLineCorrection=True`).
+- **[gap ported] `Set/Get LongLineCorrection` was unwired** — the field existed but no
+  `Set` handler, so the port could never emit that PreCommands line (would have failed
+  the new golden). Added `opt::LONG_LINE_CORRECTION = 118` + Set/Get arms
+  (`ExecOptions.pas:738/1096`, the oracle's `DSS_CAPI_PM` band). Now settable, so the
+  positive-seq golden reproduces.
+- **[Minor, FIXED] `%8.2f` (ueweight/lossweight) used Rust-native `{:.2}`, not byte-exact
+  to FPC** — oracle-probed 28 fractional weights: FPC renders the value at **15
+  significant digits** then rounds **ties-away-from-zero**, so `0.125→0.13` (Rust's
+  ties-to-even gives `0.12`), `2.675→2.68` (15-sig intermediate `2.675…`, not the true
+  `2.6749…` Rust rounds to `2.67`), `99999.995→100000.00`. A real, reachable, unpinned
+  byte gap (weights are settable to fractions). New `report::format::fixed_w_fpc` (+ 29-pair
+  unit test vs the oracle) replaces `fixed_w` on the two JSON PostCommands; pinned by
+  `circuit_positive_seq` (`ueweight=0.125→"    0.13"`, `lossweight=2.675→"    2.68"`).
+  `fixed_w` is unchanged (its faithful-not-exact native rounding is correct for the
+  value-parsed Show tables).
+- **[Minor, faithful 1:1] `get_dss_array([])` rendered `[]` where Pascal returns `''`**
+  (nil/empty `ArrayOfDouble`). Made faithful (empty slice → `""`). Confirmed UNREACHABLE:
+  `set voltagebases=()` is an oracle no-op (LegalVoltageBases keeps its defaults) and
+  `set harmonics=()` still yields `do_all_harmonics` → `Set harmonics=ALL`; not
+  golden-pinnable, faithful only.
+- **[Minor, refuted] `DefaultAndUnedited` cleared only in `edit_active_inner`, narrower
+  than Pascal `BeginEdit`** — verified the only property-mutation paths in the port are
+  the Edit command (→ `edit_active_inner`, clears the flag) and the WPG.21 typed setters,
+  which are called **exclusively** from `make_pos_seq.rs` over circuit elements — never the
+  four DSS_OBJECT default-shape classes. No bypass exists → no defect.
+- **[Minor ×3, recorded no-fix]** the non-SkipTimestamp save-stamp comment is a deliberate
+  deterministic substitution for the oracle's wall-clock line (inherently un-goldenable,
+  documented at the site, JSON import NOT_PORTED so it is an inert `!` comment); the
+  synthetic-class Full circuit deferral (transformer WdgCurrents / matrix-line sym→null /
+  capacitor CMatrix under Full) is the tracked Stage-A deferral; the `enum_as_int` combo on
+  `circuit_micro` is redundant (real discrimination is on `circuit_ieee13`) — harmless.
 
 **WPG.18 audit (all Stages A–F) + settlement (2026-07-09), gate-green.** Full
 five-way line-for-line audit of the ~8500-line CIM exporter (writer/dispatch/UUID;

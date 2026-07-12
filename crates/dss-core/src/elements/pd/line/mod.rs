@@ -27,7 +27,7 @@ use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::traits::ElemRef;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
-use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::LineUnits;
 
@@ -95,7 +95,7 @@ pub mod prop {
 /// `TLine.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
-    let defs = vec![
+    let mut defs = vec![
         PropDef::bus("Bus1", 1),
         PropDef::bus("Bus2", 2),
         PropDef::object_ref_class("LineCode", "LineCode"),
@@ -147,7 +147,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("B0").flags(
             PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | PropFlags::CONDITIONAL_VALUE,
         ),
-        PropDef::integer("Seasons"),
+        PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double_array("Ratings", SEASONS),
         PropDef::mapped_string_enum("LineType", enums.line_type),
         // TPDClass tail:
@@ -161,6 +161,28 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
+
+    // JSON metadata (Pascal `Line.pas:328-342,443-449`): `Wires` renders under
+    // the key `Conductors` with each conductor's FullName; `CNCables`/`TSCables`
+    // are redundant aliases of `Wires` (SuppressJSON, already set below via the
+    // flag mutation); `B1`/`B0` defer to `C1`/`C0` (REDUNDANT flags set above).
+    {
+        let wires = prop_index(&defs, "Wires");
+        let c1 = prop_index(&defs, "C1");
+        let c0 = prop_index(&defs, "C0");
+        let cncables = prop_index(&defs, "CNCables");
+        let tscables = prop_index(&defs, "TSCables");
+        let b1 = prop_index(&defs, "B1");
+        let b0 = prop_index(&defs, "B0");
+        defs[wires - 1].json_name = Some("Conductors");
+        defs[wires - 1].flags |= PropFlags::FULL_NAME_AS_JSON_ARRAY;
+        for alias in [cncables, tscables] {
+            defs[alias - 1].flags |= PropFlags::REDUNDANT | PropFlags::SUPPRESS_JSON;
+            defs[alias - 1].redundant_with = wires;
+        }
+        defs[b1 - 1].redundant_with = c1;
+        defs[b0 - 1].redundant_with = c0;
+    }
     ClassProps::new("Line", defs, true)
 }
 

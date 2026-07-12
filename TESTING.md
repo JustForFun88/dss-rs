@@ -38,7 +38,7 @@ instead of `--release` (which sets overflow-checks=false).
 | **unit tests** | per-module algorithms, Pascal-cited numerics | `crates/*/src/**` (`#[cfg(test)]`, `exec/tests/`) | pins inline in code |
 | **golden gate** | committed input→output pins, replayed offline | `tests/golden/` + `crates/dss-core/tests/golden_*.rs` + `tests/harness/` | pinned dss-python, **manual** regen only |
 | **live oracle gate** | full assembled model (Y / V / currents / powers / discrete state), per step, live | `corpus_live.rs` + `tools/oracle/oracle_server.py` | pinned dss-python, at test time |
-| **corpus hygiene** | no silent omission: every `.dss` classified, every family a dir↔manifest bijection | `corpus_manifest.rs`, `*_manifest_is_complete` | none (structural) |
+| **corpus hygiene** | no silent omission: every `.dss` classified, every family a dir↔manifest bijection; no silent **shrink** of the gated population | `corpus_manifest.rs`, `population_lock.rs`, `*_manifest_is_complete` | none (structural) |
 | **EPRI channel** (opt-in) | inventory upstream deltas vs official EPRI binaries | `corpus_live_opendss`, `tools/opendss/` | Oddie-bridged EPRI DLLs |
 
 ### Golden families (`tests/golden/` ↔ `tools/golden/gen_*.py` ↔ `golden_*.rs`)
@@ -78,7 +78,7 @@ A case marked **`pending: true`** covers a feature the port does not implement
 yet: the gate asserts the Rust engine **errors loudly** on it (never a silent
 fallback), and the WP named in its `wp` field flips the flag when it ports the
 feature (GAPS_PLAN.md §3.1). Multi-file cases live in a subfolder named after
-the deck (e.g. `modes/shape_binfiles/`).
+the deck (e.g. `modes/inputformat/shape_binfiles/`).
 
 A case with an **`oracle`** field (UPGRADE_PLAN.md target-rev gating) is
 live-compared against **that** engine instead of the pinned capi oracle:
@@ -90,10 +90,41 @@ against the pinned 0.14.5 oracle); everything else (voltages, Y,
 currents/powers, discrete state, tolerances) uses the same shared comparators,
 never weakened. An upgrade WP flips a case's `oracle` in the **same commit**
 that ports the newer upstream behavior the case covers. The
-`modes/upgrade_pilot.dss` case keeps this machinery permanently exercised,
+`modes/upgrade/upgrade_pilot.dss` case keeps this machinery permanently exercised,
 which makes the Oddie venv + `tools/opendss/bin/` binaries a **mandatory**
 `cargo test` prerequisite (like the pinned oracle itself; setup in
 `tools/opendss/README.md`).
+
+### Anti-shrink population lock (`population_lock.rs`)
+
+The mandatory gate defines its own population — `solvable_now.json` is the set of
+decks `corpus_live.rs` compiles + live-compares, and the other manifests bucket
+the rest. Because that classification is *self-defined*, a port regression could
+be silently neutralized by moving a deck out of `solvable_now` into a skip bucket:
+`cargo test` stays green while real coverage shrinks in a one-line manifest edit.
+
+`tests/corpus/manifests/population.lock.json` is a committed fingerprint of the
+population — per-manifest case counts; for every `solvable_now` case its path **and
+a per-case rigor fingerprint** (kind/tolerance-tier, oracle target, `n_steps`, and
+every compare-depth flag — selected_elements/meters-monitors/probes/variables/
+eventlog/ctrlqueue/all-properties/global-result/autoadd-log/pending/solve-abort);
+and the three synthetic families' case counts **and path lists**. `population_lock.rs`
+(unconditional, plain `cargo test`) rebuilds that fingerprint from the current
+manifests and asserts it equals the lock; any drift — a path leaving `solvable_now`,
+a **retained deck weakened in place** (kind flipped to a looser band, steps/probes/
+meters cut — a value-fingerprint change), a family deck swapped at equal count, or
+any count change — fails with a precise diff and the one-command regeneration path,
+so a shrink lands as a **reviewable diff in the lock file**, never unnoticed.
+
+**Regenerate the population lock** (deliberate — after intentionally re-classifying
+decks, never to silence an unreviewed failure):
+
+```
+DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock
+```
+
+writes the lock from the current manifests. Commit the `population.lock.json`
+diff **together with** the manifest change that caused it.
 
 ## Environment variables
 
@@ -106,6 +137,7 @@ which makes the Oddie venv + `tools/opendss/bin/` binaries a **mandatory**
 | `DSS_LIVE_OPENDSS_ASSERT` | corpus_live | `1` → fail on **new** (uncataloged) EPRI divergences |
 | `DSS_ORACLE_ENGINE`, `DSS_OPENDSS_REV`, `DSS_OPENDSS_DLL`, `DSS_OPENDSS_EXPECT` | oracle_server | select/point the EPRI engine (see `tools/opendss/README.md`) |
 | `DSS_OPENDSS_PYTHON` | corpus_live / ab_compare | the separate Oddie venv interpreter |
+| `DSS_UPDATE_POPULATION_LOCK` | population_lock | `1` → rewrite `population.lock.json` from the current manifests (deliberate regen) |
 
 ## Procedures
 

@@ -16,7 +16,10 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               53–57; ultracode round, merged `be2cfc7`/`e96caaa`,
                               records in STATUS.md. The porting era's plans are
                               now all executed ⇒ next = FINAL ACCEPTANCE below.
- ═ FINAL ACCEPTANCE (PORTING_PLAN §6) ═
+ ═ FINAL ACCEPTANCE (PORTING_PLAN §6) — EXECUTED 2026-07-11 (branch final-acceptance,
+   explicit user request; referee criteria_met=true / blocking_items=[]; record in
+   STATUS.md §1 + PORTING_PLAN §6). DIAKOPTICS Part II early-start (stage 8) was
+   user-ordered and ran in parallel — deliberately outside this acceptance. ═
 ── POST-ACCEPTANCE (upgrade, then refactor & improvement era) ──────────────────────
  4. UPGRADE_PLAN.md           Rung 1 (WP-U1.*: dss_capi 0.15.x / r4088-line parity,
                               spec = .inputs/dss_capi_with_git@0.15.x, oracle capi015)

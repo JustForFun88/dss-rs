@@ -1,6 +1,6 @@
 # Corpus coverage
 
-_Generated 2026-07-11 04:28:53 UTC by
+_Generated 2026-07-12 04:13:37 UTC by
 `tools/corpus/coverage_report.py`. Do not edit by hand._
 
 Live oracle-comparison coverage of the vendored `electricdss-tst` corpus
@@ -9,16 +9,17 @@ one manifest (enforced by `corpus_manifest.rs`).
 
 | manifest | `.dss` files |
 |---|---|
-| `missing_dependency` | 10 |
-| `not_an_entry_point` | 580 |
-| `skipped_needs_investigation` | 17 |
-| `skipped_oracle_issue` | 33 |
-| `skipped_unsupported` | 49 |
-| `solvable_now` | 226 |
+| `missing_dependency` | 9 |
+| `not_an_entry_point` | 586 |
+| `population.lock` | 0 |
+| `skipped_needs_investigation` | 19 |
+| `skipped_oracle_issue` | 14 |
+| `skipped_unsupported` | 1 |
+| `solvable_now` | 286 |
 | **total** | **915** |
 
-- **Runnable entry points:** 335 (everything except `not_an_entry_point`).
-- **Live-compared now (`solvable_now`):** 226 — **67.5%** of entry points.
+- **Runnable entry points:** 329 (everything except `not_an_entry_point`).
+- **Live-compared now (`solvable_now`):** 286 — **86.9%** of entry points.
 - **Remaining queue:** `skipped_needs_investigation` drains as the port grows;
   `skipped_unsupported` drains as classes/commands/modes land;
   `skipped_oracle_issue` is the documented oracle residue.

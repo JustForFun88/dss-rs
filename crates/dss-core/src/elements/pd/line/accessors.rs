@@ -393,6 +393,20 @@ impl DssObject for Line {
                     }
                 }
             }
+            LINECODE => {
+                // Mark the ratings the code supplied as set, *after* the
+                // linecode's own set-order mark (this runs post-`SetAsNextSeq`),
+                // so `Save`/JSON-default emit them in the oracle's order
+                // (`… LineCode=lc1 Ratings=[…] NormAmps=… EmergAmps=…`). Pascal
+                // `TLineObj.FetchLineCode` (`Line.pas:544-547`); the sibling
+                // `fetch_line_spacing` already does this inline. Only fires when
+                // the linecode actually resolved.
+                if self.line_code_ref.is_some() {
+                    for p in [SEASONS, RATINGS, NORMAMPS, EMERGAMPS] {
+                        self.cd.obj.set_as_next_seq(p);
+                    }
+                }
+            }
             R1 | X1 | R0 | X0 | C1 | C0 | B1 | B0 => {
                 self.kill_line_code_specified();
                 self.kill_geometry_specified();

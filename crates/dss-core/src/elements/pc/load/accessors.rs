@@ -37,7 +37,7 @@ impl CktElement for Load {
     /// TODO(compat): the power divisor is a hard-coded `3.0`, NOT `Fnphases`
     /// (upstream "assume load is distributed equally among the 3 phases", RCD
     /// 2016). A second `makeposseq` therefore divides again (400 → 133.33 →
-    /// 44.44), pinned by `tests/corpus/modes/makeposseq_pc.dss`.
+    /// 44.44), pinned by `tests/corpus/modes/makeposseq/makeposseq_pc.dss`.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         use super::prop;
 
