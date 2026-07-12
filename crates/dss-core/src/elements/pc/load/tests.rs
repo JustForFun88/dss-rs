@@ -545,14 +545,25 @@ fn direct_shortcut_selects_yprim_currents() {
     );
 
     // Dynamics/harmonics exclude the shortcut even with the flag set
-    // (PCElement.pas l.137's `not (IsDynamicModel or IsHarmonicModel)`).
+    // (PCElement.pas l.137's `not (IsDynamicModel or IsHarmonicModel)`) — assert
+    // BOTH arms of the OR so a regression dropping either term is caught.
     assert!(
         !SysCtx {
             last_solution_was_direct: true,
             is_harmonic_model: true,
             ..default_recalc_ctx()
         }
-        .pc_direct_shortcut()
+        .pc_direct_shortcut(),
+        "harmonic model must exclude the direct shortcut"
+    );
+    assert!(
+        !SysCtx {
+            last_solution_was_direct: true,
+            is_dynamic_model: true,
+            ..default_recalc_ctx()
+        }
+        .pc_direct_shortcut(),
+        "dynamic model must exclude the direct shortcut"
     );
 
     // Snapshot after direct: flag cleared (DoPFLOWsolution l.1022), new

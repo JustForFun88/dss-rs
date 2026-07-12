@@ -125,6 +125,94 @@ fn dynamics_loadshapeclass_selects_matching_curve() {
     assert_eq!(m.shape_factor, CDOUBLEONE, "USENONE must leave 1+j1");
 }
 
+/// Pascal `TPCElement.GetCurrents` `LastSolutionWasDirect` shortcut (PCElement.pas
+/// l.137) wired into `IndMach012::get_currents`: after a direct solve the reported
+/// terminal current is `YPrim·Vterminal` (frozen shadow-admittance); without the
+/// flag it is the model current `YPrim·V − InjCurrent`. Guards the per-class
+/// shortcut branch — IndMach012 inherits the base `GetCurrents`. (Delta default:
+/// 3 conductors, no neutral.)
+#[test]
+fn direct_shortcut_selects_yprim_currents() {
+    use crate::elements::pc::generator::default_recalc_ctx;
+    use crate::elements::traits::{CktElement, SysCtx};
+    use crate::support::cmatrix::CMatrix;
+    use num_complex::Complex64;
+
+    let node_v = vec![
+        Complex64::ZERO, // ground slot (unused by a delta machine)
+        Complex64::new(7200.0, 0.0),
+        Complex64::new(-3600.0, -6235.0),
+        Complex64::new(-3600.0, 6235.0),
+    ];
+    let inj = Complex64::new(11.0, -4.0);
+
+    let build = || -> IndMach012 {
+        let mut m = IndMach012::new("m1");
+        CktElement::calc_yprim(&mut m, &default_recalc_ctx()); // sizes yorder + buffers
+        let n = m.cd.yorder;
+        let mut yp = CMatrix::new(n);
+        for i in 0..n {
+            yp.set(i, i, Complex64::new(0.01, -0.02));
+        }
+        m.cd.yprim = Some(yp);
+        m.cd.set_node_ref(1, &[1, 2, 3]); // delta: 3 conductors
+        m.cd.inj_current = vec![inj; n];
+        m.cd.iterminal_solution_count = 0; // == solution_count → skip model recompute
+        m
+    };
+
+    // Independent YPrim·Vterminal.
+    let n = 3usize;
+    let mut yp = CMatrix::new(n);
+    for i in 0..n {
+        yp.set(i, i, Complex64::new(0.01, -0.02));
+    }
+    let vterm: Vec<Complex64> = [1usize, 2, 3].iter().map(|&r| node_v[r]).collect();
+    let mut yprim_v = vec![Complex64::ZERO; n];
+    yp.mv_mult(&mut yprim_v, &vterm);
+
+    // Direct read (flag set) → the shortcut YPrim·V.
+    let mut m_d = build();
+    let sys_direct = SysCtx {
+        last_solution_was_direct: true,
+        solution_count: 0,
+        ..default_recalc_ctx()
+    };
+    let mut i_d = vec![Complex64::ZERO; n];
+    m_d.get_currents(&sys_direct, &node_v, &mut i_d);
+
+    // Normal read (flag clear, model skipped, Vterminal preset) → YPrim·V − Inj.
+    let mut m_n = build();
+    m_n.cd.compute_vterminal(&node_v);
+    let sys_normal = SysCtx {
+        solution_count: 0,
+        ..default_recalc_ctx()
+    };
+    let mut i_n = vec![Complex64::ZERO; n];
+    m_n.get_currents(&sys_normal, &node_v, &mut i_n);
+
+    for k in 0..n {
+        assert!(
+            (i_d[k] - yprim_v[k]).norm() < 1e-9,
+            "direct read [{k}] {} != YPrim·V {}",
+            i_d[k],
+            yprim_v[k]
+        );
+        assert!(
+            (i_d[k] - i_n[k] - inj).norm() < 1e-9,
+            "shortcut − model [{k}] {} != InjCurrent {}",
+            i_d[k] - i_n[k],
+            inj
+        );
+    }
+    assert!(
+        (i_d[0] - i_n[0]).norm() > 1.0,
+        "shortcut indistinguishable from model current: {} vs {}",
+        i_d[0],
+        i_n[0]
+    );
+}
+
 /// IndMach012 `MakePosSequence` is an EMPTY Pascal body (IndMach012.pas:1424-1426):
 /// no property edits and no `inherited` call → `PosSeqPlan::no_base()`.
 #[test]
