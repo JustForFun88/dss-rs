@@ -53,6 +53,78 @@ fn recalc_sets_impedances() {
     assert_eq!(m.yeq.re, 0.0);
 }
 
+/// Pascal `SetNominalPower` GENERALTIME/DYNAMICMODE arm (IndMach012.pas:
+/// 1091-1105): the `ActiveLoadShapeClass` (`Set LoadShapeClass=`) picks WHICH
+/// of the three curves drives `ShapeFactor` in dynamics (at hr 2: daily→0.6,
+/// yearly→0.7, duty→0.5); default `USENONE` leaves it 1+j1. Same family as the
+/// CF2-G PVSystem dynamics load-shape fix.
+#[test]
+fn dynamics_loadshapeclass_selects_matching_curve() {
+    use crate::elements::general::load_shape::{self, LoadShapeObj};
+    use crate::obj::base::DssObject;
+    use crate::obj::props::PropEngine;
+    use crate::solution::{SolveMode, USEDAILY, USEDUTY, USENONE, USEYEARLY};
+    use dss_parser::{Parser, ParserVars};
+
+    /// Build a populated `LoadShapeObj` through its real property engine.
+    fn build_shape(mult: &str) -> LoadShapeObj {
+        let enums = EnumRegistry::new();
+        let cls = load_shape::class_props(&enums);
+        let mut obj = LoadShapeObj::new("s");
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        let mut errors = Vec::new();
+        for (name, value) in [("npts", "4"), ("interval", "1"), ("mult", mult)] {
+            let idx = cls.property_index(name).expect("known property");
+            let mut eng = PropEngine {
+                parser: &mut parser,
+                vars: &vars,
+                enums: &enums,
+                errors: &mut errors,
+                foreign: None,
+            };
+            cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+        }
+        obj.end_edit();
+        assert!(errors.is_empty(), "{errors:?}");
+        obj
+    }
+
+    let mut m = IndMach012::new("m1");
+    m.daily_shape_obj = Some(build_shape("0.2 0.6 1.0 0.5"));
+    m.yearly_shape_obj = Some(build_shape("0.3 0.7 0.9 0.4"));
+    m.duty_shape_obj = Some(build_shape("0.1 0.5 0.8 0.6"));
+
+    let dyn_ctx = |class: i32| SysCtx {
+        mode: SolveMode::Dynamic,
+        is_dynamic_model: true,
+        active_load_shape_class: class,
+        dbl_hour: 2.0,
+        ..default_recalc_ctx()
+    };
+
+    m.set_nominal_power(&dyn_ctx(USEDAILY));
+    assert!(
+        (m.shape_factor.re - 0.6).abs() < 1e-9,
+        "daily: {}",
+        m.shape_factor.re
+    );
+    m.set_nominal_power(&dyn_ctx(USEYEARLY));
+    assert!(
+        (m.shape_factor.re - 0.7).abs() < 1e-9,
+        "yearly: {}",
+        m.shape_factor.re
+    );
+    m.set_nominal_power(&dyn_ctx(USEDUTY));
+    assert!(
+        (m.shape_factor.re - 0.5).abs() < 1e-9,
+        "duty: {}",
+        m.shape_factor.re
+    );
+    m.set_nominal_power(&dyn_ctx(USENONE));
+    assert_eq!(m.shape_factor, CDOUBLEONE, "USENONE must leave 1+j1");
+}
+
 /// IndMach012 `MakePosSequence` is an EMPTY Pascal body (IndMach012.pas:1424-1426):
 /// no property edits and no `inherited` call → `PosSeqPlan::no_base()`.
 #[test]
