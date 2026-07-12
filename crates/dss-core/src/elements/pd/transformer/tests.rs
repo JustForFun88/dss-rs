@@ -311,3 +311,41 @@ fn seasonal_amp_ratings_drop_the_1_1_factor() {
         );
     }
 }
+
+/// WP-U1.2 D8: dss_capi 0.15.x added the `TrapZero` FLAG to the 3-winding
+/// reactances `X12`/`X13`/`X23` (`Transformer.pas` DefineProperties, commit
+/// 69fca934), so a parsed `0` is replaced by the property default (7/35/30 %).
+/// The Rust port ALREADY traps these (the `PropertyTrapZero` values 7/35/30 were
+/// ported onto `XHL`/`XHT`/`XLT` and `setters.rs` applies `trap_zero`
+/// unconditionally), so it matches the 0.15.x side. Settle 2026-07-12: probing
+/// `X13=0` on a 3-winding transformer gives the **bit-identical** solve on
+/// 0.14.5 AND capi015 (`? XHT == "3500"`; `AllBusVmagPu` Vmin=0.124819 both) —
+/// i.e. **D8 is not an observable delta for our port** in the reachable scalar
+/// path; both engines reach the same trapped default. (The `XSCArray` `NonZero`
+/// STRICT-error flag added alongside is the C2/L2 strict surface we deliberately
+/// do NOT adopt.) This test pins that the trap fires (feature-sensitive: without
+/// it `xht` would be 0, a degenerate transformer).
+#[test]
+fn three_winding_x13_x23_trap_zero_to_default() {
+    let t = edited(&[
+        ("phases", "3"),
+        ("windings", "3"),
+        ("buses", "src, b1, b2"),
+        ("conns", "delta, wye, wye"),
+        ("kvs", "115, 12.47, 4.16"),
+        ("kvas", "1000, 1000, 1000"),
+        ("XHL", "7"),
+        ("XHT", "0"), // -> trapped to the 35% default (stored 35.0)
+        ("XLT", "0"), // -> trapped to the 30% default (stored 30.0)
+    ]);
+    assert!(
+        (t.xht - 35.0).abs() < 1e-9,
+        "XHT=0 should trap to the 35 default, got {}",
+        t.xht
+    );
+    assert!(
+        (t.xlt - 30.0).abs() < 1e-9,
+        "XLT=0 should trap to the 30 default, got {}",
+        t.xlt
+    );
+}

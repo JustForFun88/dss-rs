@@ -3369,18 +3369,28 @@ pinned to 1e-11/1e-12). A live modes deck was prepped but the manifest's mixed
 manual unicode-escaping + CRLF blocks a clean append — the unit test carries the
 same capi015 numbers. Ledger §B1.
 
-**Rows D8/D3/B3 — NOT started (budget); see resume note.** D3 is report-only
-(spacing ratings — overload-report deck). D8 needs a 3-winding transformer with
-X13/X23=0. B3-r3723 (Load.GrowthFactor Year=0 from dblHour/8760) needs a
-growthshape + multi-hour year-0 run.
+**Row D8 — Transformer X13/X23 TrapZero — SETTLED, no code change (not an
+observable delta).** dss_capi 0.15.x added the `TrapZero` flag to X12/X13/X23
+(the 7/35/30 values were already set in 0.14.5). Probed: 0.14.5 and capi015 give
+BIT-IDENTICAL results for X13=0 (`?XHT=3500`; solved Vmin=0.124819 both) — both
+reach the same trapped default via the Xsc build. The Rust port ALREADY traps
+(`mod.rs trap_zero(7/35/30)` + unconditional `setters.rs`), so it matches both;
+the `XSCArray` NonZero STRICT error is the C2/L2 strict surface not adopted.
+Pinned by `three_winding_x13_x23_trap_zero_to_default`. Ledger §D8 (mirrors
+WP-U1.1's D5/D8-r3723 "not a delta for us").
 
-**Resume note (WP-U1.2 remaining):** rows D8, D3, B3-r3723 still to port; the
-golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the
-same-commit workflow are proven (B2/D1, D7, D6, B1). B5's GFM gap is the one hard
-blocker (a control-consistency bug, not a numeric constant) — needs a dedicated
-GFM WP. NB the modes manifest is NOT json.dumps-round-trippable (mixed manual
-`\uXXXX` escaping + CRLF) — append new cases with a surgical text edit, not a
-full JSON rewrite.
+**Rows D3/B3 — NOT started (budget); see resume note.** D3 is report-only
+(spacing ratings — overload-report deck). B3-r3723 (Load.GrowthFactor Year=0 from
+dblHour/8760) needs a growthshape + multi-hour year-0 run.
+
+**Resume note (WP-U1.2 remaining):** rows D3 (report-only spacing ratings) and
+B3-r3723 (Load.GrowthFactor Year=0) still to port; the golden engine switch
+(`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the same-commit workflow
+are proven (B2/D1, D7, D6, B1, D8). B5's GFM gap is the one hard blocker (a
+control-consistency bug, not a numeric constant) — needs a dedicated GFM WP. NB
+the modes manifest is NOT json.dumps-round-trippable (mixed manual `\uXXXX`
+escaping + CRLF) — append new cases with a surgical text edit, not a full JSON
+rewrite.
 
 ### Gate state (all green)
 ```
