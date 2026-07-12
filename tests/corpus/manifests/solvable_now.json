@@ -408,7 +408,9 @@
   {
    "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015",
+   "note": "Flipped to oracle:capi015 by the DYNEXP WP (D14, upstream 2a8bdb78). This deck runs a full dynamics swing (fault at HT, cleared by opening a line, 5 s undamped swing) driven by a DynamicExp shaft model. D14 makes SolveEq a no-op evaluator, so the rotor stays frozen at its seed angle (theta 0.72907156 rad, speed 0) instead of swinging -- matching capi015 exactly, diverging from the 0.14.5 oracle (which swings). See DIVERGENCES.md §D14 and the generator_dynexp_dynamics_* unit gates. The steady-state-only sibling stays on the default oracle (never enters dynamics, so SolveEq is never called)."
   },
   {
    "path": "Version8/Distrib/Examples/ExpControl/Master.dss",
@@ -1597,6 +1599,13 @@
    "n_steps": 1,
    "oracle": "capi015",
    "note": "CF2-G migration. Whole-IEEE123 GFL daily→dynamics trajectory (Storage+PV, InvControl GFM monitor). Was ABOVE-BAND; root cause fixed: PVSystem InitStateVars/IntegrateStates ignored 'Set LoadShapeClass=daily' in dynamics (PanelkW 800 vs oracle 594.78), diverging node V ~16 V at the PV region. Fix honors ActiveLoadShapeClass in dynamics per PVsystem.pas l.2192/l.2281. Flipped oracle:capi015 at the upgrade-rung1 sync merge: WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, DIVERGENCES.md #d7) moves this deck -- the daily shape puts PanelkW (irradiance-scaled, ~594.78 kW) below FkVArating (800), so the dynamics current limit differs between the engines (U1.2's kVA=Pmpp snapshot no-op probe does not apply mid-shape); vs 0.14.5 the trajectory diverged 7.61e-4 > 7.44e-4 floor (witnessed at merge), vs capi015 it is within floors."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "oracle": "capi015",
+   "note": "CF2-G migration; re-promoted from skipped_needs_investigation by the DYNEXP WP (D14 pulled ahead of WP-U1.6). GFL daily->dynamics DynamicExp/DynamicEq/DynOut variant of the GFL sibling. Double attribution off both mid-rung engines: (1) WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, DIVERGENCES.md #d7) moved it off the 0.14.5 oracle (witnessed 7.62e-4 > 7.41e-4 floor at entry 118); (2) the 0.15.x DynamicExp delta D14 (upstream 2a8bdb78) kept it off capi015 (witnessed 8.31e-3 > 7.40e-4 at entry 0). D14 ported: SolveEq now exits before evaluating the RHS (no-op evaluator; state-var derivative frozen at InitStateVars), so the DynExp path matches capi015 -- witnessed live: Generator dspeed=0/speed frozen vs 0.14.5 dspeed=-1.6e-6 (DIVERGENCES.md §D14). With D7 (landed) + D14 (this WP) both porting, the deck is capi015-green."
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",

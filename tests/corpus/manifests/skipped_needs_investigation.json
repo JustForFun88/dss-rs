@@ -14,11 +14,6 @@
    "kind": "large_floating_delta"
   },
   {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
-   "tag": "upgrade_straddle_u16_dynexp",
-   "note": "TEMPORARILY parked at the upgrade-rung1 sync merge (2026-07-12); was solvable_now (CF2-G migration, GFL daily->dynamics DynamicExp/DynamicEq/DynOut variant). The deck now straddles two upgrade rows: WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, LANDED) moves it off the 0.14.5 oracle (witnessed 7.62e-4 > 7.41e-4 floor at entry 118), while an unported 0.15.x DynamicExp delta (suspected D13/D14 RPN-index/LoadShape MM rows, WP-U1.6 in flight) keeps it off capi015 too (witnessed 8.31e-3 > 7.40e-4 at entry 0; its non-DynExp sibling IS capi015-green, isolating the delta to the DynExp path). No engine matches mid-rung. WP-U1.6 MUST re-promote this deck to solvable_now with oracle:capi015 as its D13/D14 gate witness; if it still diverges after D13/D14, that is a port bug to root-cause, not a floor."
-  },
-  {
    "path": "Test/indmachtest/Master.DSS",
    "tag": "user_model_oracle_raises_567",
    "note": "CF-C Port 2 (2026-07-12): Generator model=6 with UserModel (a user-written induction-machine DLL that is NOT vendored). The property surface is now ported (UserModel/UserData parse+store+dump); setting UserModel emits a non-fatal #570-class 'Not Loaded' warning and the generator falls back to the built-in model. For model=6 without a loaded user model the Rust engine reproduces Pascal DoUserModel 1:1 \u2014 Yprim-only contribution + DoSimpleMsg #567 each iteration (generator.solve.rs), matching the raw Direct DLL. BLOCKED on the oracle: the pinned dss-python raises #570 and the r3723/r4133 Oddie harness (dss-python) raises #567 ('model designated to use user-written model, but user-written model is not defined') AT SOLVE, so no oracle channel produces a checkpoint. T-A's 'r3723 YES' rows were raw-DLL/AltDSS probes (DoSimpleMsg is non-fatal in the DLL); the dss-python test harness surfaces it as fatal. Needs an oracle harness that tolerates the #567/#570 DoSimpleMsg to migrate. indmachtest/Master: Rust converges 8 iters with the fallback (T-A #21 rel ~1e-6 real-bus vs the raw r3723)."

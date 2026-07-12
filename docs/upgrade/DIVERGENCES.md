@@ -828,6 +828,73 @@ an invalid bus) is preserved. Pinned by the feature-sensitive unit tests
 `c8_monbus_missing_nodes_errors_2024111` and `c8_monbus_invalid_bus_aborts_2024112`.
 `known_diffs`: nothing to retire.
 
+## D14 — DynamicExp RPN evaluator "index-bug fix" (a no-op evaluator) — SETTLED (DYNEXP WP, pulled ahead of WP-U1.6; adopt capi015)
+
+**Observable.** `TDynamicExpObj.SolveEq` — the per-step evaluator that a
+`DynEqPCE` (Generator / PVSystem / Storage / WindGen with `DynamicEq=`) calls
+each dynamics substep to compute the state-variable derivatives. The result is
+visible in the mode-3 monitor DynamicExp slots and, downstream, in the whole
+dynamics trajectory (rotor swing, inverter current ramp) and the solved node
+voltages a DynExp-driven element injects.
+
+**dss_capi 0.14.5 (default).** `SolveEq` walks the compiled `Cmds` automation
+array (`for idx := 0 to High(Cmds)`), evaluating the RPN right-hand side and
+writing each output's derivative into `MemSpace[OutIdx][1]`. (It reads
+`Cmds[idx+1]` one past the end at the final index — a benign OOB read that
+happens not to alias `-50`.) **0.15.x (capi015) / upstream `2a8bdb78`
+("DynamicExp: reuse RPN, fix index bug").** Two coupled edits: the loop bound
+becomes `High(Cmds) - 1`, **and an `Exit` is added right after the first
+equation's output index is latched**. A well-formed compiled stream always
+starts `[outIdx, -50, ...]`, so the loop hits that marker at idx 0 and returns
+immediately — **the RHS is never evaluated**. `SolveEq` is now a no-op: every
+derivative slot is left exactly as the host set it, so the state variable stays
+frozen at its `InitStateVars` seed value. (The RPN calculator also becomes a
+reused member field; with the `Exit` it is never stepped, so that part is
+form-only.) This is an upstream regression introduced by the "fix", but it is
+deterministic and defined — capi015 is the port target for the DynExp path.
+
+**Probe (Oddie/capi015 vs pinned capi 0.14.5, `probe_fault.py`/`probe_repin.py`).**
+`probe_fault.py` runs a reduced `SimpleDemo` Kundur DynExp generator (1000
+pre-fault substeps, an 86-step bolted fault at HT, then a 500-step post-clear
+window):
+- **0.14.5** — rotor swings: `speed` → 0.487, `theta` → 2.054 rad, `dspeed`
+  → -4.10 (real dynamics). NOTE: these are the endpoint of an *undamped*
+  (non-decaying) swing, so the exact values are scenario-dependent — a different
+  step count or the vendored `Dynamic_KundurDynExp.dss` deck lands elsewhere on
+  the same oscillation (e.g. that deck → speed 0.626, theta 2.036, dspeed -4.58).
+  The load-bearing fact is qualitative: 0.14.5 **swings**.
+- **capi015** — fully frozen on every scenario: `speed` = 0, `dspeed` = 0,
+  `theta` = 0.72907156 (the seed angle), `dtheta` = 0 — no swing at all.
+The Rust port with D14 reproduces capi015 to the f32 monitor floor on every
+channel (verified live via `probe_repin.py` on both engines: generator
+`speed`/`theta` frozen; PV `it` held at its seed fixpoint 23.14571 with `dit`=0;
+Storage `it` held at its 0 seed, `modul` still host-evolved 0.9000948→0.9463813).
+
+**Decision — adopt for the DynExp path** (`dynamic_exp.rs::solve_eq`: loop bound
+`0..cmds.len()-1` + early `return` at the first output marker; `get_out_idx`
+inner loop bound shortened, form-only). Cited to the 0.15.x Pascal + commit
+`2a8bdb78` in the doc comment.
+
+**Gate consequence.**
+- **`Run_IEEE123Bus_GFLDaily_DynExp.DSS`** re-promoted from
+  `skipped_needs_investigation` to `solvable_now` under `oracle:capi015`
+  (`large_floating_delta`): D7 (landed) + D14 (this WP) together take it off both
+  mid-rung engines and onto capi015 (was 8.31e-3 > 7.40e-4 at entry 0 vs capi015
+  pre-D14).
+- **`Dynamic_KundurDynExp.dss`** flipped to `oracle:capi015` (runs a full DynExp
+  swing; the frozen trajectory matches capi015, not 0.14.5). Its
+  `-steady-state-only` sibling stays on the default oracle (never enters
+  dynamics, so `SolveEq` is never called).
+- **7 `exec/tests/dynamics.rs` DynExp unit gates** re-pinned from the 0.14.5
+  swing values to the capi015 frozen values (generator mode3/fault/swing = 3;
+  PVSystem mode3/safe-fault = 2; Storage mode3/trip-fault = 2). They are now D14
+  regression guards: un-doing the no-op makes the state ring again and diverges
+  from capi015. The `dynamic_exp` unit tests keep the InterpretDiffEq `cmds`
+  compilation pins (unchanged) and pin the `SolveEq` no-op (derivative slot left
+  untouched), with an index-bug witness (Kundur multi-eq) and a single-output
+  no-op witness.
+- `known_diffs`: none matched — nothing to retire.
+
 ## L3, L4 — pending later WPs
 
 - **L3** Monitor CSV header — WP-U1.5 (report-format, numeric-token gated).
