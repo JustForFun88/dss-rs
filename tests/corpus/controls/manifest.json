@@ -1887,6 +1887,168 @@
    ],
    "compare_eventlog": true,
    "note": "Midi: mixed 3ph+1ph DER fleet under one DRC control so the per-member FNphases recalc runs across differing phase counts in the multi-control round (the last-member FNphases-bug trait). Feature-sensitive: DbVMax=1.5 collapses the fleet response (probe-proven)."
+  },
+  {
+   "path": "storagecontroller/storagectrl_follow.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "kwtarget",
+      "kwthreshold",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
+   "compare_eventlog": true,
+   "note": "Follow discharge (MODE_FOLLOW): TimeDischargeTrigger latches kWTarget=max(kWThreshold,load) then holds; RELEASE_INHIBIT differs. Feature-sensitive: modedis=peakshave changes dispatch (probe-proven)."
+  },
+  {
+   "path": "storagecontroller/storagectrl_support.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "kwtarget",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
+   "compare_eventlog": true,
+   "note": "Support discharge (MODE_SUPPORT): Pdiff=Pmon+kWTarget, opposite sign to PeakShave; a generator backfeed reverses the monitored power. Feature-sensitive: modedis=peakshave dispatches differently (probe-proven)."
+  },
+  {
+   "path": "storagecontroller/storagectrl_ipeakshave.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "kwtarget",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
+   "compare_eventlog": true,
+   "note": "I-PeakShave discharge (CURRENT_PEAKSHAVE): target in AMPS (kWTarget=0.24=240A), distinct amps->kW conversion via the terminal voltage. Feature-sensitive: modedis=peakshave (kW target) dispatches on a different quantity (probe-proven)."
+  },
+  {
+   "path": "storagecontroller/storagectrl_loadshape.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "ModeCharge",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
+   "compare_eventlog": true,
+   "note": "Loadshape dispatch (DoLoadShapeMode): the controller's own Daily shape commands charge(mult<0)/idle(0)/discharge(mult>0) directly - both loadshape branches at once. Feature-sensitive: zeroing the dispatch shape freezes the fleet (probe-proven)."
+  },
+  {
+   "path": "storagecontroller/storagectrl_chargelow.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "ModeCharge",
+      "kwtargetlow",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
+   "compare_eventlog": true,
+   "note": "Charge PeakShaveLow (DoPeakShaveModeLow): charges the fleet when the monitored power falls below kWTargetLow (valley fill), untouched by the Time-charge decks. Feature-sensitive: modecharge=time charges on a clock trigger instead (probe-proven)."
   }
  ]
 }

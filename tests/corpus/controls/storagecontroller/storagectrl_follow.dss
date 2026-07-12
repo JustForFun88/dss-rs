@@ -1,0 +1,31 @@
+// StorageController Follow discharge mode (DoLoadFollowMode MODE_FOLLOW): at
+// the TimeDischargeTrigger the controller latches kWTarget := max(kWThreshold,
+// present load) and then holds the monitored power at that target; the
+// RELEASE_INHIBIT path (skipped only for Follow, l.319/352) differs from the
+// other modes. A daily load ramp drives the fleet after the 14:00 trigger.
+// Feature-sensitive: switching the same deck to modedis=peakshave (a fixed
+// target, no time-latched follow) changes the dispatch (probe-proven).
+// Compared per step: full model + Storage State/kW/kWhstored probes + Storage
+// f64 state variables + the controller's event log.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.scfollow basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km
+
+New loadshape.day npts=24 interval=1
+~ mult=(0.50 0.48 0.45 0.45 0.50 0.60 0.72 0.85 0.95 1.00 1.05 1.10 1.15 1.18 1.15 1.10 1.05 1.00 0.92 0.82 0.72 0.62 0.55 0.50)
+
+New load.ld bus1=b phases=3 kv=12.47 kw=5000 pf=0.98 model=1 daily=day
+
+New storage.sa bus1=b phases=3 kv=12.47 kwrated=1200 kva=1200 kwhrated=5000
+~ %stored=80 %idlingkw=0 pf=1.0
+
+New storagecontroller.sc element=line.l1 terminal=1 modedis=follow
+~ timedischargetrigger=14 kwthreshold=4600 %ratekw=100 %reserve=20 eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=50
+Set mode=daily stepsize=1h number=1

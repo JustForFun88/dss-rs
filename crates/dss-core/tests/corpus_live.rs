@@ -1684,6 +1684,12 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "invcontrol/midi_invcontrol_drc.dss",
     "storagecontroller/storagectrl_peakshave.dss",
     "storagecontroller/storagectrl_time.dss",
+    // corpus coverage wave (controls): StorageController dispatch-mode decks.
+    "storagecontroller/storagectrl_follow.dss",
+    "storagecontroller/storagectrl_support.dss",
+    "storagecontroller/storagectrl_ipeakshave.dss",
+    "storagecontroller/storagectrl_loadshape.dss",
+    "storagecontroller/storagectrl_chargelow.dss",
     "gendispatcher/gendispatcher.dss",
     "recloser/recloser_temp.dss",
     "recloser/recloser_perm.dss",
