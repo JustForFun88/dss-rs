@@ -2,18 +2,6 @@
  "comment": "Entry points excluded from the live gate pending (or after) investigation. Fields: path, tag, note. Tags: root-caused floors that cannot yet be banded honestly (floating_zeroseq_bus, conditioning_floor) stay here with their proof notes; oracle-side blocks (oracle_*) have nothing to fix port-side; the rest are open triage items. Root-caused floors WITH an honest calibrated band migrate to solvable_now under a dedicated kind (near-ideal-source AutoTrans family -> large_near_ideal_source, 2026-07-10; the ckt24 substation ultra-switch family -> large_ultra_switch, CF-D 2026-07-12). Full procedures: TESTING.md; floor proofs: tests/TOLERANCE_NOTES.md.",
  "cases": [
   {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "upgrade_straddle_gfm_wp",
-   "note": "TEMPORARILY parked at the upgrade-rung1 sync merge (2026-07-12); was solvable_now (CF2-G migration, islanded GFM daily, sw5 open, storage GFM discharge). Straddles the rung mid-state on TWO axes: (1) WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, LANDED) moves the islanded PV's dynamics current limit off the 0.14.5 oracle (witnessed 5.56e-3 > 7.39e-4 at entry 230); (2) vs capi015 the assembled SYSTEM Y mismatches at the Storage bus mutuals (witnessed Y[STOBUS.1,STOBUS.2] rel 1.209e-1, 9 entries) — dss_capi 0.15.x changed the GFM Storage YPrim stamp, unported; this is the B5/GFM cluster WP-U1.2 explicitly deferred to a dedicated GFM WP (DIVERGENCES.md #b5: adopting Isc1x1000 also unmasks a pre-existing Rust GFM injection-vs-YPrim consistency gap). The dedicated GFM WP MUST re-promote this deck to solvable_now with oracle:capi015 as its YPrim witness; if Y still mismatches after the GFM port, that is a port bug to root-cause. Sibling evidence: GFMDaily_CannotPickUpLoad stays 0.14.5-green (limit path never exercised); AmpLimit/CurrentLimit is parked with the same tag (same class, witnessed 1.24e-2).",
-   "kind": "large_floating_delta"
-  },
-  {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
-   "tag": "upgrade_straddle_gfm_wp",
-   "note": "TEMPORARILY parked at the upgrade-rung1 sync merge (2026-07-12); was solvable_now (CF2-G migration, current-limited AmpLimit=500 islanded GFM daily). Same class as its GFM_IEEE123/GFMDaily sibling: WP-U1.2 D7 + the unported 0.15.x GFM Storage YPrim delta (B5 cluster, DIVERGENCES.md #b5). vs 0.14.5 witnessed 1.235e-2 > 6.12e-4 at entry 230 (an earlier coordinator inference that AmpLimit binds before iMaxPPhase was WRONG — the runner had simply never reached this deck before its sibling failed first). The dedicated GFM WP MUST re-promote it to solvable_now with oracle:capi015; preserve the original note's it[last] open-loop-drift caveat when restoring.",
-   "kind": "large_floating_delta"
-  },
-  {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Master.dss",
    "tag": "oracle_timeout",
    "note": "SKIPPED-SWEEP re-verified (2026-07-12): A-Diakoptics + actor + yearly T&D master (base=IEEE30). A-Diakoptics is NOT ported in Rust (DIAKOPTICS_PSTCALC_PLAN Part II), so this deck cannot be promoted regardless of the oracle. The pinned oracle times out (>120s) running the multi-case AD script (the deck header warns 'DON'T run the script all at once'). A full official-engine AD probe was deliberately deferred: set ADiakoptics=True writes Torn_Circuit/ + .graph/.part.* beside the model (corpus-pollution hazard) and the Oddie AD bridge is fragile. Blocked on WP-AD.3 + actor mode (CF-B item 8a, T-A #1)."

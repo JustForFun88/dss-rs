@@ -162,3 +162,95 @@ fn trait_defaults_and_override() {
     m.inv_based_mut().kw_out = 5.0;
     assert_eq!(m.inv_based().kw_out, 5.0);
 }
+
+// --- GFM Norton `CalcGFMYprim` (B5: `Isc1` factor-1000 removal, DIVERGENCES.md
+// §B5; dss_capi de6a5a42 = SVN r3865) ---------------------------------------
+
+/// The `gfm_micro` storage's GFM Norton admittance (kv=0.48 L-L, kVA=800, delta,
+/// 3-phase). Pinned to the **capi015** live `ActiveCktElement.Yprim` probe
+/// (2026-07-12): with the r3865 `Isc1` change (drop the `*1000`), the assembled
+/// short-circuit admittance is `Y[0,0]=561.4657341-2245.822260j`,
+/// `Y[0,1]=-280.6718528+1122.728087j`. The pre-B5 0.14.5 value
+/// (`Y[0,0]=613.6771792-...`) is far outside the band, so the test is
+/// feature-sensitive to the adopted formula.
+#[test]
+fn gfm_calc_yprim_matches_capi015_isc1_no_1000() {
+    let mut dv = InvDynamicVars::new();
+    dv.rated_kv_ll = 0.48;
+    dv.m_kva_rating = 800.0;
+    let y = dv.calc_gfm_yprim(3, 3);
+    let y00 = y.get(0, 0);
+    let y01 = y.get(0, 1);
+    // capi015 (0.15.0b4) live probe values.
+    let want00 = Complex64::new(5.614657341e2, -2.245822260e3);
+    let want01 = Complex64::new(-2.806718528e2, 1.122728087e3);
+    assert!(
+        (y00 - want00).norm() / want00.norm() < 1e-8,
+        "GFM Y[0,0] {y00:?} != capi015 {want00:?}"
+    );
+    assert!(
+        (y01 - want01).norm() / want01.norm() < 1e-8,
+        "GFM Y[0,1] {y01:?} != capi015 {want01:?}"
+    );
+    // Feature-sensitivity: the pre-B5 (0.14.5, Isc1*1000) diagonal is 613.68 —
+    // a ~9% move — so a reverted formula fails the capi015 pin above.
+    let pre_b5_00 = Complex64::new(6.136771792e2, -2.402456595e3);
+    assert!(
+        (y00 - pre_b5_00).norm() / pre_b5_00.norm() > 1e-2,
+        "GFM Y[0,0] must NOT match the pre-B5 0.14.5 value"
+    );
+}
+
+/// The op-point invariance mechanism (DIVERGENCES.md §B5): `Isc1` feeds ONLY the
+/// R0-quadratic (the ZERO-sequence impedance `Z0 = Zs + 2·Zm`); the
+/// POSITIVE-sequence impedance `Zs − Zm` collapses algebraically to
+/// `R1 + jX1 = Z1` (a function of `X1` alone, `Isc1`-free). A balanced /
+/// delta-fed GFM load excites only the positive sequence, so its terminal
+/// voltage — hence delivered power — is invariant to the `Isc1` virtual-impedance
+/// scale, which is why 0.14.5 and capi015 give the bit-identical GFM op-point
+/// despite the ~1000× `Z0` move. This pins that decomposition directly: the
+/// balanced eigenvalue of the Norton equals `1/Z1` exactly, while the
+/// zero-sequence eigenvalue does not.
+#[test]
+fn gfm_norton_positive_seq_admittance_is_isc1_invariant() {
+    use std::f64::consts::PI;
+    let mut dv = InvDynamicVars::new();
+    dv.rated_kv_ll = 0.48;
+    dv.m_kva_rating = 800.0;
+    let y = dv.calc_gfm_yprim(3, 3);
+
+    // Z1 = R1 + jX1, X1 = (RatedkVLL²/mKVArating)/√1.0625, R1 = X1/4 — depends on
+    // NO `Isc1` term. (Pascal `CalcGFMYprim`: X1 l.255, Zs/Zm l.271-276.)
+    let x1 = (dv.rated_kv_ll.powi(2) / dv.m_kva_rating) / 1.0625_f64.sqrt();
+    let z1 = Complex64::new(x1 / 4.0, x1);
+    let inv_z1 = z1.inv();
+
+    // Positive-sequence eigenvector at the `CalcGFMVoltage` angles
+    // (360 − k·120°): Y·v_pos must equal v_pos/Z1 (eigenvalue 1/Z1).
+    let vpos: Vec<Complex64> = (0..3)
+        .map(|k| {
+            let ang = (360.0 - (k as f64) * 120.0) * PI / 180.0;
+            Complex64::from_polar(1.0, ang)
+        })
+        .collect();
+    for (row, &vrow) in vpos.iter().enumerate() {
+        let acc: Complex64 = vpos
+            .iter()
+            .enumerate()
+            .map(|(col, &v)| y.get(row, col) * v)
+            .sum();
+        let eig = acc / vrow;
+        assert!(
+            (eig - inv_z1).norm() / inv_z1.norm() < 1e-9,
+            "positive-seq eigenvalue {eig:?} != 1/Z1 {inv_z1:?} (row {row})"
+        );
+    }
+
+    // The zero-sequence eigenvalue (Y·[1,1,1]) is Isc1-dependent — it must NOT
+    // equal 1/Z1 (else Isc1 would not enter the model at all).
+    let acc0: Complex64 = (0..3).map(|col| y.get(0, col)).sum();
+    assert!(
+        (acc0 - inv_z1).norm() / inv_z1.norm() > 1e-2,
+        "zero-seq eigenvalue must differ from 1/Z1 (Isc1 lives in Z0)"
+    );
+}
