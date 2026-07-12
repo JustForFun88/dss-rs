@@ -72,6 +72,46 @@
    "note": "Boundaries: CNData concentric-neutral and TSData tape-shield reduced-Y (distinct Kron neutral elimination CN vs TS), asymmetric underground burial. Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: CN strand count k 13->7 changes Line.lcn YPrim; TS TapeLayer 0.005->0.008 changes Line.lts YPrim."
   },
   {
+   "path": "line/line_spacing_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lsp",
+    "Line.lspc"
+   ],
+   "note": "Boundary: FMakeZFromSpacing (Line.pas:1183/1964) — the LineSpacing state machine, DISTINCT from the geometry path. lsp = overhead Spacing nconds=4 nphases=3 + distinct wires -> full-asym Carson Z/Yc via LoadSpacingAndWires + auto-reduce (NWires>NPhases, LineGeometry.pas:992); lspc = spacing+cable (TSCables+Wires) 1-phase spur, pins the spacing-with-cables sub-branch + gotRatingsAfterSpacingConds NormAmps/EmergAmps seed (Line.pas:1994). EarthModel DEFAULT (DERI) -> YPrim U1.2-STABLE (shares Get_Ze; the 658.5->658.853 SimpleCarson move does NOT touch this deck; do NOT flip to capi015). Also the U1.4 default-path no-change anchor (LineSpacing.Detailed/EqDist* + spacing-ratings defaults preserve 0.14.5 numerics). Oracle: converged 3 iters; bit-identical across 2 processes. Feature-sensitive: swapping the phase-2 wire ACSR_4-0->ACSR_556 changes Line.lsp YPrim."
+  },
+  {
+   "path": "line/line_llc_harm_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.llh1",
+    "Line.llh2"
+   ],
+   "note": "Boundary: LongLineCorrection at f != BaseFrequency (Line.pas:1199-1287). Two SymComponentsModel long lines under Set LongLineCorrection=yes solved at the 5th harmonic (Set frequency=300, FreqMultiplier=5) -> per-frequency DoLongLine (X1_h=X1*f/base), the 0-seq DoLongLine sub-branch (FnPhases>1 and not PositiveSequence, r0<>r1), the LLC FreqMultiplier Z-assembly (:1269 vs :1287), and the LLC shunt-C branch (:1372). llh1 c1<>0; llh2 c1=0 (the G_h:=EPSILON no-skip case). Deviation from matrix P2 (mode=harmonics + monitor): a set-frequency snapshot with a DIRECT Line-YPrim compare is strictly stronger than the f32 harmonic monitor channel and needs no nonlinear-load-at-harmonic (linear shunt reactors, autotrans_gic pattern). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: LongLineCorrection yes->no changes both llh1/llh2 YPrims."
+  },
+  {
+   "path": "line/line_ground_z_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lgx",
+    "Line.lgr"
+   ],
+   "note": "Boundary: Rg/Xg/Kxg ground-return frequency correction. Deck does NOT set LongLineCorrection (default FALSE), so it runs the non-LLC else branch (Line.pas:1281-1287), not the sibling LLC branch (:1262-1269); the two share the Xgmod formula but differ in the ZinvValues FreqMultiplier scaling. Explicit non-default Rg/Xg/rho solved at the 7th harmonic (Set frequency=420, FreqMultiplier=7). lgx (Xg<>0, Rg=0) fires the Xgmod=0.5*Kxg*ln(FreqMultiplier) branch; lgr (Rg<>0, Xg=0) fires the Rg*(FreqMultiplier-1) add — clean per-term isolation. WITNESSES the U1.2 inconsistency: Kxg deliberately KEEPS the 658.5 constant (upgrade ledger B2/D1) while SimpleCarson Get_Ze moves to 658.853; the SymComponentsModel path never calls Get_Ze, so this deck's YPrim must NOT move under U1.2 (INVARIANT regression, do NOT flip to capi015 — tracked in the upgrade ledger B2/D1, see the deck header). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: zeroing Rg/Xg (keeping f=420) changes both lgx/lgr YPrims."
+  },
+  {
+   "path": "line/line_fullcarson_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lfc",
+    "Line.lfcspur"
+   ],
+   "note": "Boundary: FullCarson EarthModel at SOLVE level (FLineConstants.Calc dispatch). Overhead geometry (reduce=y Kron, full-asym) under Set EarthModel=fullcarson — the only EarthModel with no prior live-solve deck (SimpleCarson=line_geometry/cable_asym, DERI=default). U1.2-INVARIANT control: U1.2 moves SimpleCarson Get_Ze 658.5->658.853 ONLY, FullCarson Get_Ze is unchanged, so this YPrim must NOT move (do NOT flip to capi015 — the complement of the Carson decks U1.2 flips). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: EarthModel fullcarson->Carson changes both lfc/lfcspur YPrims."
+  },
+  {
    "path": "transformer/transformer_asym.dss",
    "kind": "micro",
    "n_steps": 1,

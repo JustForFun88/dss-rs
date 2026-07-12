@@ -1,0 +1,45 @@
+// Asymmetric Line coverage — LongLineCorrection at f != BaseFrequency.
+// line_geometry_asym.llong fires DoLongLine only at the base frequency; here two
+// SymComponentsModel long lines under `Set LongLineCorrection=yes` are solved at
+// the 5th harmonic (`Set frequency=300`, FreqMultiplier=5), pinning the
+// per-frequency branches of TLineObj.CalcYPrim (Line.pas:1199-1287):
+//   * the per-frequency DoLongLine (Line.pas:1046) — X1_h = X1*f/base folded in;
+//   * its 0-sequence sub-branch (FnPhases>1 and not PositiveSequence,
+//     Line.pas:1219-1222) — needs a 3-phase line with r0 <> r1 in a non-
+//     positive-sequence (snapshot) solve;
+//   * the LLC Z-assembly under FreqMultiplier (Line.pas:1269 vs :1287 — the
+//     long_line branch scales ONLY the Xgmod term by FreqMultiplier);
+//   * the LLC shunt-C branch (Line.pas:1372) at f != base.
+// llh1 has c1 <> 0; llh2 has c1 = 0 -> the G_h := EPSILON no-skip conductance
+// case (Line.pas:1053/do_long_line g_h). r0 <> r1 on both keeps the 0-seq
+// correction distinct from the pos-seq. Linear shunt reactors (per-phase
+// unequal) draw the unbalanced current — no nonlinear loads, so the snapshot
+// at 300 Hz is fully frequency-well-defined on both engines (the autotrans_gic
+// set-frequency-snapshot pattern). The Line YPrims are compared directly, a
+// strictly stronger check of the frequency-dependent Z-assembly than an f32
+// harmonic monitor channel.
+Clear
+Set DefaultBaseFrequency=60
+
+New Circuit.line_llc_harm_asym basekv=115 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=20000 mvasc1=21000
+
+Set LongLineCorrection=yes
+
+! Long line with shunt capacitance (c1 <> 0) -> LLC shunt-C branch active.
+New Line.llh1 bus1=src bus2=b1 r1=0.06 x1=0.55 r0=0.20 x0=1.60 c1=3.4 c0=1.6 length=130 units=mi
+
+! Long line with c1 = c0 = 0 -> DoLongLine G_h := EPSILON no-skip case.
+New Line.llh2 bus1=b1 bus2=b2 r1=0.08 x1=0.60 r0=0.24 x0=1.75 c1=0 c0=0 length=90 units=mi
+
+! Per-phase-unequal shunt reactors -> unbalanced current at the harmonic.
+New Reactor.rb1a phases=1 bus1=b1.1 r=2.0 x=140
+New Reactor.rb1b phases=1 bus1=b1.2 r=2.0 x=210
+New Reactor.rb1c phases=1 bus1=b1.3 r=2.0 x=175
+New Reactor.rb2a phases=1 bus1=b2.1 r=2.0 x=160
+New Reactor.rb2c phases=1 bus1=b2.3 r=2.0 x=195
+
+Set voltagebases=[115]
+calcv
+Set frequency=300
+Solve
