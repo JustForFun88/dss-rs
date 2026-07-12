@@ -197,7 +197,7 @@ fn sum_all_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
 /// `DoNormalSolution`: `(Converged and Iteration >= MinIterations) or
 /// Iteration >= MaxIterations`. The `dV` work array (`ReAllocMem(dV, NumNodes+1)`)
 /// is the per-step scratch inside `solve_system_newton_step`.
-fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     // ControlIteration == 1: update the load multipliers for this solution.
     if ckt.solution.control_iteration == 1 {
         get_pc_inj_curr(ckt, env);
@@ -552,24 +552,43 @@ fn update_isrc(ckt: &mut Circuit, parent_ic: &SparseComplex) {
 /// `PConn_Voltages`). Official therefore FREEZES the child, and its floor is
 /// `1.318e-4` (worst near the real source).
 ///
+/// **The re-seed is provably correct** (WP-AD.3 audit finding #2, settled by
+/// decomposition — not a tolerance sweep). A-Diakoptics is an EXACT decomposition,
+/// so the fixed-point stitch must land on the interconnected-coordinator solution.
+/// That interconnected solution is available independently: a `Set algorithm=Newton`
+/// AD deck runs a full-system Newton on the closed coordinator (Solution.pas:1018,
+/// no ADiakoptics branch) and never touches the children or this re-seed. With the
+/// re-seed in place, the fixed-point stitch matches that pure-coordinator Newton
+/// solve to **f64 ulp** (midi `7e-13`, macro `1.3e-12`;
+/// `adiakoptics.rs::{midi,macro}_newton_ad_matches_fixedpoint_ad`) — i.e. the
+/// re-seed recovers the exact interconnected answer. The AD-vs-**normal** "floor"
+/// (midi `3.25e-5`, macro `1.32e-4`) is therefore NOT a stitch approximation: it is
+/// the interconnected-coordinator-deck-vs-original-deck difference, shared by the
+/// fixed-point AND Newton AD paths and matched to the r3723 oracle
+/// (`tests/TOLERANCE_NOTES.md` §AD); it stays tolerance-**stable** because it is a
+/// deck-structure difference, not an iteration residual.
+///
 /// A byte-faithful freeze does NOT hold in this port: with the child frozen, the
-/// deep interior of the **reference-free** zone diverges to `3.46e-3` @ M180
-/// (26× the oracle floor). That zone's `Start_Diakoptics` disables its artificial
-/// sources, so its `hY` is anchored only by the loads' weak `Yeq` shunts (near
-/// singular, cond ≫ 1e9) — exactly the regime where faer's factorization differs
-/// from KLU, and a frozen linearization lets that difference accumulate down the
-/// long radial. Re-seeding the child `NodeV` with the just-solved column each
-/// iteration keeps the reference-free solve tracking the true voltage and
-/// recovers the oracle floor: macro `1.319e-4` (oracle `1.318e-4`), midi
-/// `3.21e-5` (oracle `3.25e-5`). This is an explicit, documented compensation —
-/// NOT a silent Y regularization (§ forbidden) — for a faer↔KLU conditioning
-/// gap on the near-singular reference-free child Y. The residual stays a
-/// tolerance-**stable** method floor (the `Y4`/`Ic` boundary model is a
-/// first-order approximation of the coupling, so the AD fixpoint sits a fixed
-/// distance from the interconnected one and does **not** collapse under a tighter
-/// `ConvergenceTolerance` — oracle-proven, `tests/TOLERANCE_NOTES.md` §AD).
-/// Open item (auditors / WP-AD.4): make the reference-free zone solve match KLU
-/// so a faithful freeze suffices and the re-seed can be dropped.
+/// deep interior of the **reference-free** zone diverges to `3.46e-3` @ M180 from
+/// that same interconnected ground truth (26× the floor). The characterised
+/// mechanism: `Start_Diakoptics` disables the reference-free zone's artificial
+/// sources, so its `hY` is anchored only by the loads' weak `Yeq` shunts and is
+/// ill-conditioned; the frozen child `NodeV` (its state-2 standalone solve, ~`7.9e-5`
+/// off) makes `GetPCInjCurr` evaluate the constant-power loads at a slightly wrong
+/// voltage, and that small current error is amplified down the long radial. Pascal
+/// (KLU) tolerates the same freeze (converges to the floor); this port (faer) does
+/// not — the leading, but not yet bit-level-proven, hypothesis is a faer-vs-KLU
+/// difference in factoring the near-singular reference-free child `hY`. Re-seeding
+/// the child `NodeV` with the just-solved column each iteration removes the frozen
+/// linearisation error at its source (the loads see the boundary-corrected voltage),
+/// so the reference-free solve tracks the true voltage and recovers the exact answer
+/// above. This is an explicit, documented compensation — NOT a silent Y
+/// regularization (§ forbidden).
+///
+/// Open item (auditors / WP-AD.4): bit-level confirm the freeze-divergence cause by
+/// running the exact frozen reference-free child system through both faer and KLU
+/// (and measuring its condition number); if it is faer-vs-KLU as hypothesised, make
+/// that solve match KLU so a faithful freeze suffices and the re-seed can be dropped.
 ///
 /// The parent write itself: Pascal uses the **contiguous** address form
 /// `@V[LocalBusIdx[0]]` (the zone's interconnected nodes are a contiguous run);

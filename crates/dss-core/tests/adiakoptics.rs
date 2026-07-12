@@ -1262,18 +1262,33 @@ mod ad_solve_gate {
             .collect()
     }
 
-    fn solve_normal(fixture_name: &str, tol: f64) -> HashMap<String, Complex64> {
+    /// Compile + base-solve a fixture, apply `pre` setup commands, then run
+    /// `solve_cmd` on the plain (non-AD) engine. Returns the driven `Dss` (so
+    /// callers can read the post-solve clock as well as the voltages).
+    fn solve_normal_dss(fixture_name: &str, tol: f64, pre: &[&str], solve_cmd: &str) -> Dss {
         let scratch = scratch_dir("d7norm");
         let mut dss = Dss::new();
         compile_fixture(&mut dss, fixture_name, &scratch);
         dss.command("set controlmode=off");
         dss.command(&format!("set tolerance={tol}"));
-        dss.command("solve mode=snap");
+        for p in pre {
+            dss.command(p);
+        }
+        dss.command(solve_cmd);
         assert!(dss.errors().is_empty(), "normal errors: {:?}", dss.errors());
-        node_voltages(&dss)
+        dss
     }
 
-    fn solve_ad(fixture_name: &str, num_sub: i32, tol: f64) -> HashMap<String, Complex64> {
+    /// As [`solve_normal_dss`] but with the A-Diakoptics preamble (`set
+    /// Num_SubCircuits=…; set ADiakoptics=True`) applied after the mandatory init
+    /// snap solve; `pre` commands run after init, before `solve_cmd`.
+    fn solve_ad_dss(
+        fixture_name: &str,
+        num_sub: i32,
+        tol: f64,
+        pre: &[&str],
+        solve_cmd: &str,
+    ) -> Dss {
         let scratch = scratch_dir("d7ad");
         let mut dss = Dss::new();
         compile_fixture(&mut dss, fixture_name, &scratch);
@@ -1288,13 +1303,30 @@ mod ad_solve_gate {
             dss.result()
         );
         dss.command(&format!("set tolerance={tol}"));
-        dss.command("solve mode=snap");
+        for p in pre {
+            dss.command(p);
+        }
+        dss.command(solve_cmd);
         assert!(
             dss.errors().is_empty(),
             "AD solve errors: {:?}",
             dss.errors()
         );
-        node_voltages(&dss)
+        dss
+    }
+
+    fn solve_normal(fixture_name: &str, tol: f64) -> HashMap<String, Complex64> {
+        node_voltages(&solve_normal_dss(fixture_name, tol, &[], "solve mode=snap"))
+    }
+
+    fn solve_ad(fixture_name: &str, num_sub: i32, tol: f64) -> HashMap<String, Complex64> {
+        node_voltages(&solve_ad_dss(
+            fixture_name,
+            num_sub,
+            tol,
+            &[],
+            "solve mode=snap",
+        ))
     }
 
     fn max_rel_gap(
@@ -1383,6 +1415,136 @@ mod ad_solve_gate {
             (0.5..2.0).contains(&ratio),
             "macro AD-vs-normal gap not stable under tighten: \
              loose={g_loose:.3e} tight={g_tight:.3e} ratio={ratio:.3}"
+        );
+    }
+
+    // --- Newton + A-Diakoptics dispatch (Solution.pas:1125 CASE Algorithm) -----
+    //
+    // Official `DoNewtonSolution` (Solution.pas:1018) has NO `if ADiakoptics`
+    // branch and its `SolveSystem(dV,1)` uses the full `@V[1]` form — so a Newton
+    // AD deck solves the *closed interconnected coordinator* directly, bypassing
+    // the child stitch entirely. A-Diakoptics is an EXACT decomposition, so both
+    // the fixed-point AD stitch and this pure-coordinator Newton solve land on the
+    // same interconnected fixpoint. This is the independent ground-truth check:
+    // the Newton path (which never touches the children or the re-seed) must agree
+    // with the fixed-point AD path (which does) to f64 ulp. It proves (a) the
+    // Newton dispatch is wired and produces a valid full-system solve, and (b) the
+    // child re-seed recovers the exact interconnected answer (WP-AD.3 audit finding
+    // #2 — the re-seed's correctness rests on this decomposition, not a tol sweep).
+    //
+    // NB the AD-vs-normal "floor" (3.25e-5 midi / 1.32e-4 macro) is the
+    // interconnected-coordinator-vs-original-deck difference — SHARED by the
+    // fixed-point AND Newton AD paths (both reproduce the coordinator solve) — not
+    // a child-solve approximation, so a Newton-vs-normal comparison would sit at
+    // that same floor; the discriminating comparison is Newton-AD vs fixed-point-AD.
+
+    fn solve_alg(dss: &Dss) -> i32 {
+        dss.circuit().unwrap().solution.algorithm
+    }
+
+    #[test]
+    fn midi_newton_ad_matches_fixedpoint_ad() {
+        let vfp = solve_ad("midi", 2, 1e-10);
+        let dnewt = solve_ad_dss(
+            "midi",
+            2,
+            1e-10,
+            &["set algorithm=newton"],
+            "solve mode=snap",
+        );
+        assert_eq!(
+            solve_alg(&dnewt),
+            1,
+            "algorithm did not stick at NEWTONSOLVE"
+        );
+        let (gap, node) = max_rel_gap(&vfp, &node_voltages(&dnewt));
+        println!("midi Newton-AD vs fixed-point-AD gap = {gap:.4e} @ {node}");
+        // Two faer solves of the same interconnected system → f64-ulp agreement.
+        assert!(
+            gap < 1.0e-9,
+            "Newton-AD must land on the same interconnected fixpoint as the AD \
+             stitch (exact decomposition); gap {gap:.3e} @ {node}"
+        );
+    }
+
+    #[test]
+    fn macro_newton_ad_matches_fixedpoint_ad() {
+        let vfp = solve_ad("macro", 2, 1e-10);
+        let dnewt = solve_ad_dss(
+            "macro",
+            2,
+            1e-10,
+            &["set algorithm=newton"],
+            "solve mode=snap",
+        );
+        assert_eq!(
+            solve_alg(&dnewt),
+            1,
+            "algorithm did not stick at NEWTONSOLVE"
+        );
+        let (gap, node) = max_rel_gap(&vfp, &node_voltages(&dnewt));
+        println!("macro Newton-AD vs fixed-point-AD gap = {gap:.4e} @ {node}");
+        assert!(
+            gap < 1.0e-9,
+            "Newton-AD must land on the same interconnected fixpoint as the AD \
+             stitch (exact decomposition); gap {gap:.3e} @ {node}"
+        );
+    }
+
+    // --- Time-series D7 equivalence (plan §WP-AD.3 tests: midi daily-24, macro
+    // yearly-168) --------------------------------------------------------------
+    //
+    // These exercise `ad_solve_time_series` (the coordinator clock-step loop +
+    // per-step monitor/meter sampling + end-of-step cleanup) which the snapshot
+    // gates never reach. The fixtures carry no load shapes (constant loads), so
+    // every step is a snapshot and the AD-vs-normal gap stays at the snapshot
+    // method floor. We assert BOTH that the final voltages match at the D7 tier
+    // AND that the clock actually advanced the full horizon (proving the step
+    // loop ran, not a single-solve short-circuit).
+
+    fn int_hour(dss: &Dss) -> i32 {
+        dss.circuit().unwrap().solution.int_hour
+    }
+
+    #[test]
+    fn midi_daily24_matches_normal() {
+        let dn = solve_normal_dss("midi", 1e-4, &[], "solve mode=daily number=24");
+        let da = solve_ad_dss("midi", 2, 1e-4, &[], "solve mode=daily number=24");
+        assert_eq!(
+            int_hour(&dn),
+            24,
+            "normal daily-24 did not advance 24 hours"
+        );
+        assert_eq!(int_hour(&da), 24, "AD daily-24 did not advance 24 hours");
+        let (gap, node) = max_rel_gap(&node_voltages(&dn), &node_voltages(&da));
+        println!("midi daily-24 AD-vs-normal gap = {gap:.4e} @ {node}");
+        assert!(gap < 1.3e-4, "midi daily-24 gap {gap:.3e} @ {node}");
+        assert!(
+            gap > 1.0e-6,
+            "gap {gap:.3e} suspiciously small — AD may be a passthrough"
+        );
+    }
+
+    #[test]
+    fn macro_yearly168_matches_normal() {
+        let dn = solve_normal_dss("macro", 1e-4, &[], "solve mode=yearly number=168");
+        let da = solve_ad_dss("macro", 2, 1e-4, &[], "solve mode=yearly number=168");
+        assert_eq!(
+            int_hour(&dn),
+            168,
+            "normal yearly-168 did not advance 168 hours"
+        );
+        assert_eq!(
+            int_hour(&da),
+            168,
+            "AD yearly-168 did not advance 168 hours"
+        );
+        let (gap, node) = max_rel_gap(&node_voltages(&dn), &node_voltages(&da));
+        println!("macro yearly-168 AD-vs-normal gap = {gap:.4e} @ {node}");
+        assert!(gap < 5.3e-4, "macro yearly-168 gap {gap:.3e} @ {node}");
+        assert!(
+            gap > 1.0e-7,
+            "gap {gap:.3e} suspiciously small — AD may be a passthrough"
         );
     }
 }

@@ -27,19 +27,22 @@
 //! each child's own `NodeV` at its state-2 standalone solve for the whole AD run
 //! (`SolveSystem` writes only into the coordinator array — proven: actor 3's
 //! `NodeV` moves `0.0` across the AD solve). The port re-seeds the child `NodeV`
-//! each iteration as a documented faer↔KLU compensation on the near-singular
-//! reference-free zone — see [`crate::solution::solution`]'s `ad_solve_into_parent`
-//! for the full derivation, the per-fixture floors, and the open item.
+//! each iteration; this is proven to recover the exact interconnected solution
+//! (it matches an independent full-system Newton solve of the closed coordinator
+//! to f64 ulp) and compensates a frozen-linearisation divergence on the
+//! near-singular reference-free zone — see [`crate::solution::solution`]'s
+//! `ad_solve_into_parent` for the decomposition proof, the per-fixture floors, and
+//! the open item.
 
 use num_complex::Complex64;
 
 use super::super::registry::ClassStore;
 use crate::exec::Dss;
 use crate::solution::solution::{
-    end_of_time_step_cleanup, sample_all_monitors_and_meters, set_generator_disp_ref,
-    set_generator_dqdv, solve_ad,
+    NEWTONSOLVE, do_newton_solution, end_of_time_step_cleanup, sample_all_monitors_and_meters,
+    set_generator_disp_ref, set_generator_dqdv, solve_ad,
 };
-use crate::solution::ymatrix::{BuildOption, build_y_matrix};
+use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
 use crate::solution::{SolveEnv, SolveMode, SolveResult};
 use crate::support::sparse_math::SparseComplex;
 
@@ -213,10 +216,15 @@ impl Dss {
         };
         let lcl_bus: Vec<String> = (1..=ckt.num_nodes).map(|i| ckt.node_name(i)).collect();
 
-        // LocalBusIdx[i] = 1-based parent index of child node i+1 (past-the-end on
-        // a miss, matching Pascal's `j` after the completed search — unreachable
-        // for a well-formed tear).
-        let past_end = src_bus.len() + 1;
+        // LocalBusIdx[i] = 1-based parent index of child node i+1. On a miss,
+        // Pascal's inner `for j := 0 to High(SrcBus)` completes with
+        // `j = High(SrcBus)+1` and stores `LocalBusIdx := j+1` (Solution.pas:2978).
+        // `SrcBus` carries a trailing empty slot (`setlength` runs once past
+        // `NumNodes`), so `High(SrcBus) = NumNodes = src_bus.len()`, giving the
+        // past-the-end value `src_bus.len()+2`. Unreachable for a well-formed tear;
+        // this index and the parent-NodeV write are both bounds-checked, so the
+        // exact miss value is cosmetic fidelity only (NOTE(upstream-quirk)).
+        let past_end = src_bus.len() + 2;
         let local_bus_idx: Vec<usize> = lcl_bus
             .iter()
             .map(|name| {
@@ -397,9 +405,16 @@ impl Dss {
     /// `DoNormalSolution`). Daily/Yearly/Duty step the coordinator clock and
     /// re-enter the snapshot solve per step ([`Self::ad_solve_time_series`]).
     ///
-    /// Newton is NOT AD-aware (official `DoNormalSolution` only branches to
-    /// `Solve_Diakoptics` on the fixed-point path); an AD deck set to Newton
-    /// falls through to the normal per-child fixed-point solve, matching upstream.
+    /// Algorithm dispatch is faithful to official `DoPFLOWsolution`
+    /// (Solution.pas:1125): `CASE Algorithm of NEWTONSOLVE: DoNewtonSolution;
+    /// else: DoNormalSolution`. Only `DoNormalSolution` carries the `if
+    /// ADiakoptics and (ActorID=1)` boundary that runs the AD child stitch
+    /// (`Solve_Diakoptics`); `DoNewtonSolution` has **no** ADiakoptics branch and
+    /// its `SolveSystem(dV,1)` uses the full `@V[1]` form (Solution.pas:2655), so
+    /// a Newton AD deck solves the *closed interconnected coordinator* directly
+    /// (the exact answer), bypassing the child stitch. Reproduced in
+    /// [`Self::ad_solve_snap`] — Newton runs the coordinator's full-system
+    /// [`do_newton_solution`], the default runs the `Solve_Diakoptics` fixed point.
     pub(crate) fn ad_solve(&mut self) {
         // Pascal `Solve` resets `AD_Init`.
         let mode = {
@@ -467,13 +482,9 @@ impl Dss {
             set_generator_disp_ref(coord);
             coord.solution.snap_shot_init();
         }
-        let (min_iter, max_iter, max_ctrl) = {
+        let max_ctrl = {
             let c = self.circuit.as_ref().ok_or("no coordinator")?;
-            (
-                c.solution.min_iterations,
-                c.solution.max_iterations,
-                c.solution.max_control_iterations,
-            )
+            c.solution.max_control_iterations
         };
         let mut total_iterations = 0i32;
         loop {
@@ -481,43 +492,8 @@ impl Dss {
                 let coord = self.circuit.as_mut().ok_or("no coordinator")?;
                 coord.solution.control_iteration += 1;
             }
-            // DoPFLOWsolution init: the coordinator was already initialized by the
-            // init state-machine solve (state 2), so `solution_initialized` is
-            // TRUE and this block is skipped — matching Pascal. If a deck ever
-            // reaches here uninitialized, seed the generator dQ/dV (a no-op
-            // without model-3 generators).
-            {
-                let need_init = {
-                    let c = self.circuit.as_ref().ok_or("no coordinator")?;
-                    !c.solution.solution_initialized
-                };
-                if need_init {
-                    self.ad_coord_init()?;
-                }
-            }
-            // AD DoNormalSolution fixed-point loop.
-            {
-                let coord = self.circuit.as_mut().ok_or("no coordinator")?;
-                coord.solution.iteration = 0;
-            }
-            loop {
-                {
-                    let coord = self.circuit.as_mut().ok_or("no coordinator")?;
-                    coord.solution.iteration += 1;
-                    coord.solution.adiak_pcinj = true;
-                }
-                self.solve_diakoptics(true)?;
-                let done = {
-                    let n = self.circuit.as_ref().ok_or("no coordinator")?.num_nodes;
-                    let coord = self.circuit.as_mut().ok_or("no coordinator")?;
-                    let converged = coord.solution.converged(n);
-                    let it = coord.solution.iteration;
-                    (converged && it >= min_iter) || it >= max_iter
-                };
-                if done {
-                    break;
-                }
-            }
+            // SolveCircuit → DoPFLOWsolution(1) on the coordinator.
+            self.ad_do_pflow_solution()?;
             // CheckControls (AD branch): controls-off → control_actions_done.
             self.ad_check_controls()?;
             let (ctrl_it, done) = {
@@ -540,6 +516,116 @@ impl Dss {
         coord.is_solved = coord.solution.converged_flag;
         coord.solution.last_solution_was_direct = false;
         Ok(())
+    }
+
+    /// The coordinator's `DoPFLOWsolution(1)` (Solution.pas:1087) — one control
+    /// iteration's power-flow solve. Mirrors the non-AD `do_pflow_solution` body:
+    /// `Inc(SolutionCount)`, the `VoltageBaseChanged → InitializeNodeVbase` guard,
+    /// the one-time `SolveYDirect + SetGeneratordQdV` init, then the `CASE
+    /// Algorithm` dispatch. `NEWTONSOLVE` → the coordinator's full-system Newton
+    /// (`DoNewtonSolution` has no ADiakoptics branch — bypasses the child stitch);
+    /// the default → the AD `DoNormalSolution` fixed point (`Solve_Diakoptics`).
+    fn ad_do_pflow_solution(&mut self) -> SolveResult {
+        {
+            // DoPFLOWsolution head (Solution.pas:1092-1094), run every control
+            // iteration.
+            let coord = self.circuit.as_mut().ok_or("no coordinator")?;
+            coord.solution.solution_count += 1;
+            if coord.solution.voltage_base_changed {
+                initialize_node_vbase(coord);
+            }
+        }
+        // DoPFLOWsolution init (Solution.pas:1096-1122): the coordinator was
+        // already initialized by the init state-machine solve (state 2), so
+        // `solution_initialized` is TRUE and this block is skipped — matching
+        // Pascal. If a deck ever reaches here uninitialized, seed the generator
+        // dQ/dV (a no-op without model-3 generators).
+        {
+            let need_init = {
+                let c = self.circuit.as_ref().ok_or("no coordinator")?;
+                !c.solution.solution_initialized
+            };
+            if need_init {
+                self.ad_coord_init()?;
+            }
+        }
+        // CASE Algorithm of NEWTONSOLVE: DoNewtonSolution; else DoNormalSolution.
+        let algorithm = self
+            .circuit
+            .as_ref()
+            .ok_or("no coordinator")?
+            .solution
+            .algorithm;
+        if algorithm == NEWTONSOLVE {
+            self.ad_coord_newton()?;
+        } else {
+            self.ad_do_normal_solution()?;
+        }
+        // DoPFLOWsolution tail (Solution.pas:1130-1131).
+        let coord = self.circuit.as_mut().ok_or("no coordinator")?;
+        coord.is_solved = coord.solution.converged_flag;
+        coord.solution.last_solution_was_direct = false;
+        Ok(())
+    }
+
+    /// The AD `DoNormalSolution` (Solution.pas:958, `ActorID = 1` branch): the
+    /// fixed-point loop whose per-iteration body is `ADiak_PCInj := True;
+    /// Solve_Diakoptics()`, converging over the interconnected coordinator NodeV.
+    fn ad_do_normal_solution(&mut self) -> SolveResult {
+        let (min_iter, max_iter) = {
+            let c = self.circuit.as_ref().ok_or("no coordinator")?;
+            (c.solution.min_iterations, c.solution.max_iterations)
+        };
+        {
+            let coord = self.circuit.as_mut().ok_or("no coordinator")?;
+            coord.solution.iteration = 0;
+        }
+        loop {
+            {
+                let coord = self.circuit.as_mut().ok_or("no coordinator")?;
+                coord.solution.iteration += 1;
+                coord.solution.adiak_pcinj = true;
+            }
+            self.solve_diakoptics(true)?;
+            let done = {
+                let n = self.circuit.as_ref().ok_or("no coordinator")?.num_nodes;
+                let coord = self.circuit.as_mut().ok_or("no coordinator")?;
+                let converged = coord.solution.converged(n);
+                let it = coord.solution.iteration;
+                (converged && it >= min_iter) || it >= max_iter
+            };
+            if done {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// The AD `DoNewtonSolution(1)` (Solution.pas:1018): a full-system Newton on
+    /// the **closed interconnected coordinator**. Official `DoNewtonSolution` has
+    /// no `if ADiakoptics` branch and uses the full `SolveSystem(dV,1)` (`@V[1]`,
+    /// Solution.pas:2655), so it never touches the child zones — it solves the
+    /// interconnected circuit exactly, the same as a non-AD Newton solve. The
+    /// coordinator here IS that closed interconnected circuit (init state 9), so
+    /// the port simply runs the normal [`do_newton_solution`] on it.
+    fn ad_coord_newton(&mut self) -> SolveResult {
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let ckt = circuit.as_mut().ok_or("no coordinator")?;
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        do_newton_solution(ckt, &mut env)
     }
 
     /// The coordinator's `DoPFLOWsolution` one-time init (generator dQ/dV seed).

@@ -56,7 +56,11 @@ pub(crate) use power_flow::solve_circuit;
 pub(crate) use power_flow::{do_pflow_solution, set_generator_disp_ref, solve_direct};
 // The A-Diakoptics child-side solve stage + the coordinator generator-dQ/dV seed,
 // driven by the executive coordinator loop (`exec/diakoptics/solve.rs`, WP-AD.3).
-pub(crate) use power_flow::{set_generator_dqdv, solve_ad};
+// `do_newton_solution` is the coordinator's full-system Newton (the AD `Newton`
+// dispatch: official `DoNewtonSolution` has no ADiakoptics branch — Solution.pas
+// :1018 — so a Newton AD deck bypasses the child stitch and solves the closed
+// interconnected coordinator directly).
+pub(crate) use power_flow::{do_newton_solution, set_generator_dqdv, solve_ad};
 // The per-step sampling/cleanup tail shared by the time-series modes, reused by
 // the A-Diakoptics time-series coordinator loop.
 pub(crate) use time_series::{end_of_time_step_cleanup, sample_all_monitors_and_meters};
