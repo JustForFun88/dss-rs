@@ -49,6 +49,42 @@ MULTITHREADING M2.
 - Part II A-Diakoptics AD.2/AD.3 progressing on a separate `part2-adiakoptics`
   branch (not in this main).
 
+**SKIPPED-SWEEP (branch `skipped-sweep`, 2026-07-12).** Gave every in-scope entry
+in `skipped_needs_investigation.json` a real disposition (19 entries; the 2
+`upgrade_straddle_gfm_wp` + 1 `upgrade_straddle_u16_dynexp` decks were left to their
+dedicated WPs). Probed each on the official EPRI engines (r3723/r4088/r4133 via the
+Oddie bridge) and the pinned 0.14.5 oracle; verified Rust behaviour first-hand.
+**7 promoted to `solvable_now`, 12 kept parked with refreshed evidence.**
+
+- **Root cause found for 6 "oracle_nonconvergence" decks: the deck's `maxiterations`
+  cap was simply below what the (convergent) circuit needs** — not a solver defect.
+  With `post: ["Set maxiterations=200"]` the pinned 0.14.5 oracle AND Rust converge
+  at the **exact same** iteration count with bit-identical node voltages:
+  StevensonPflow (90), StevensonPflow-3ph (106), IEEE 30 Bus/Master (19; its own
+  sibling `Run_IEEE30.DSS` sets maxiterations=100), 8500-Node/Master-unbal (62),
+  GFM_IEEE8500/Master (67), GFM_IEEE8500/Master-unbal (62). Promoted `kind=large`.
+- **1 "user_model" deck promoted via a harness change:** `Test/indmachtest/Master.DSS`
+  (Generator model=6 with an unvendored user-model DLL). The oracle server learned a
+  `warn_and_continue` mode (driven by the case's existing `expect_warnings`): set
+  `DSS.Error.EarlyAbort=False` + tolerate the user-model DoSimpleMsg (#567/#570/#1570)
+  at compile, every solve, and the priming currents read — 1:1 with the official
+  Direct DLL's warn-and-solve. Rust 8 iters == pinned 8, node V bit-identical.
+- **Kept parked (refreshed):** the 3 `4wire-Delta` user-model decks (converged state
+  bit-identical but Rust needs 3 iters vs the oracle's 2 — a genuine model=6
+  fallback-vs-DLL trajectory difference, NOT fudgeable); `vsctest` + `Torn_Circuit`
+  Master/Interconnected (GENUINE non-convergence on r3723/r4088/r4133 even at
+  maxiterations=1000); `IEEE118Bus` (convergence is an r4088/r4133-only solver change,
+  Rust mirrors r3723=NO → BLOCKED_PENDING UPGRADE); the 2 `oracle_timeout` TnD decks
+  (A-Diakoptics not ported → not promotable regardless); `ieee9500_base` (pathological
+  voltage-collapse deck, NO on r3723/r4088/r4133); the 2 `conditioning_floor` decks
+  (`CIM/IEEE13_Assets`, `SecondaryTestCircuit_modified` — proven cross-solver floors
+  re-affirmed by decomposition, no honest band fits).
+- Harness change: `tools/oracle/oracle_server.py` (`warn_and_continue`,
+  `_USER_MODEL_ERRNOS`, EarlyAbort toggle in `main`, priming retry in
+  `capture_all_elements`) + `corpus_live.rs` (send `warn_and_continue` when
+  `expect_warnings` is set). `solvable_now` 283→290, `skipped_needs_investigation`
+  22→15; `population.lock` regenerated in-commit.
+
 > Working cadence and the standing toolchain note are just below; the full
 > per-step ritual is `PLAN_SEQUENCE.md` / the active plan's §0.
 
