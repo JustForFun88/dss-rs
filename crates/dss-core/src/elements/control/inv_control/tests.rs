@@ -174,6 +174,10 @@ mod dispatch {
         is_storage: bool, // der_snap reports is_pvsystem = !is_storage
         vmag: f64,        // per-phase terminal voltage magnitude (balanced)
         vbase: f64,
+        /// Delta connection: `der_is_delta` reports it and `der_vterminal` returns
+        /// a balanced 120°-spaced phasor set (so the D4 line-to-line path yields
+        /// √3·vmag, not the flat wye magnitude). nconds drops the neutral (3, not 4).
+        is_delta: bool,
         present_kw: f64,
         kva_rating: f64,
         kvar_limit: f64,
@@ -209,6 +213,7 @@ mod dispatch {
                 is_storage: false,
                 vmag: vpu * vbase,
                 vbase,
+                is_delta: false,
                 present_kw,
                 kva_rating: 600.0,
                 kvar_limit: 600.0,
@@ -295,7 +300,9 @@ mod dispatch {
                 is_pvsystem: !d.is_storage,
                 nphases: 3,
                 nterms: 1,
-                nconds: 4,
+                // A delta DER carries no neutral (nconds == nphases); a wye DER
+                // has the neutral conductor. NextDeltaPhase wraps on nconds.
+                nconds: if d.is_delta { 3 } else { 4 },
                 vbase: d.vbase,
                 var_follow_inverter: false,
                 inverter_on: true,
@@ -324,13 +331,24 @@ mod dispatch {
             !self.ders[Self::idx(r)].is_storage
         }
         fn der_vterminal(&mut self, r: ElemRef) -> Vec<num_complex::Complex64> {
-            // Mock DERs monitor a flat per-phase magnitude (wye); the delta LL
-            // path (D4) is gated live by the delta corpus deck, not this mock.
-            let v = self.ders[Self::idx(r)].vmag;
-            vec![num_complex::Complex64::new(v, 0.0); 3]
+            let d = &self.ders[Self::idx(r)];
+            if d.is_delta {
+                // Balanced 120°-spaced phasor set at magnitude vmag: the D4
+                // line-to-line path (Vterminal[j] − Vterminal[NextDeltaPhase(j)])
+                // then yields |Vab| = √3·vmag for every pair.
+                (0..3)
+                    .map(|p| {
+                        let ang = -2.0 * std::f64::consts::PI / 3.0 * p as f64;
+                        num_complex::Complex64::from_polar(d.vmag, ang)
+                    })
+                    .collect()
+            } else {
+                // Wye: a flat per-phase magnitude.
+                vec![num_complex::Complex64::new(d.vmag, 0.0); 3]
+            }
         }
-        fn der_is_delta(&self, _r: ElemRef) -> bool {
-            false
+        fn der_is_delta(&self, r: ElemRef) -> bool {
+            self.ders[Self::idx(r)].is_delta
         }
         fn der_bus_vbase(&self, r: ElemRef) -> f64 {
             self.ders[Self::idx(r)].vbase
@@ -1985,6 +2003,44 @@ mod dispatch {
             q.abs() < 1e-12,
             "QDesireLimitedpu = {q} (expected 0 from the zeroed radicand, not the \
              unclamped 1.0 the missing guard would leave)"
+        );
+    }
+
+    #[test]
+    fn d4_delta_der_monitors_line_to_line_voltage() {
+        // Row D4 -- a DELTA-connected DER monitors LINE-TO-LINE terminal voltages
+        // (Pascal GetMonVoltage l.1647-1652, r3822: `cBuffer[j] = Vterminal[j] -
+        // Vterminal[NextDeltaPhase(j)]`), NOT the line-neutral magnitude the pre-fix
+        // 0.14.5 used. With a balanced set at |V|=vbase (vpu 1.0) the LL magnitude is
+        // √3·vbase, so FPresentDRCVpu (raw pu on the L-N base) reads √3, not 1.0.
+        // A regression that reverted to the wye (LN) path would land at 1.0 -- the
+        // exact sign-flipping divergence the live delta deck gates against capi015
+        // (probe: capi015 +524 kvar vs 0.14.5 −34 kvar).
+        let mut ic = voltvar_ic();
+        let mut der = MockDer::new("pv", 1.0, 300.0);
+        der.is_delta = true;
+        let mut env = MockEnv::new(vec![der]);
+        ic.sample(&mut env).unwrap();
+        let drc_vpu = ic.ctrl_vars[0].f_present_drc_vpu;
+        assert!(
+            (drc_vpu - 3.0_f64.sqrt()).abs() < 1e-12,
+            "delta DER monitored pu = {drc_vpu} (expected √3 ≈ 1.732 from the \
+             line-to-line path, not the 1.0 a line-neutral regression gives)"
+        );
+    }
+
+    #[test]
+    fn d4_wye_der_monitors_line_neutral_voltage() {
+        // Row D4 control: the SAME setup with a wye DER stays on the line-neutral
+        // magnitude -- FPresentDRCVpu = 1.0 (the delta branch is a strict no-op for
+        // wye), confirming the √3 above is the delta path, not a mock artifact.
+        let mut ic = voltvar_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.0, 300.0)]);
+        ic.sample(&mut env).unwrap();
+        let drc_vpu = ic.ctrl_vars[0].f_present_drc_vpu;
+        assert!(
+            (drc_vpu - 1.0).abs() < 1e-12,
+            "wye DER monitored pu = {drc_vpu} (expected 1.0 line-neutral)"
         );
     }
 

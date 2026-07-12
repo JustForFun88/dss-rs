@@ -757,6 +757,11 @@ The LL-vs-LN per-unit gap flips the var **sign** — decisive. capi015 == r4133
   monitored voltage is a snapshot property (not time-dependent), so one solve is
   a decisive feature-sensitive gate — a regression to the wye (LN) reading flips
   pv1's kvar sign and diverges from capi015.
+- **Also unit-pinned** by `d4_delta_der_monitors_line_to_line_voltage` (a
+  MockEnv delta DER returns a balanced 120°-spaced phasor set → the LL path
+  yields √3·pu; a regression to LN lands at 1.0 pu) and its wye control
+  `d4_wye_der_monitors_line_neutral_voltage` (offline coverage of the branch, so
+  D4 does not rest solely on Oddie-venv availability at gate time).
 - **Two default-oracle corpus decks provably moved and are handled in-commit:**
   `midi_controls.dss` and `midi_invcontrol.dss` each carried a delta `pvsystem.pv3`
   under an auto-populated InvControl. These are **multi-step** decks whose other

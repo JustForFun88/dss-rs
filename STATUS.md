@@ -3479,7 +3479,10 @@ vs oddie r4133 for the L1 arbitration).
 - **D4 — delta-DER monitored voltage is line-to-line (adopt, capi015==r4133).**
   A delta controlled DER now monitors LL (`Vterminal[j]−Vterminal[next]`), not
   LN. Probe `scratch_probe_d4.py`: the LL/LN gap flips the var SIGN (+520 vs −31
-  kvar). New snapshot capi015 deck `inv_control/invcontrol_vv_delta.dss`. Two
+  kvar). New snapshot capi015 deck `inv_control/invcontrol_vv_delta.dss`;
+  unit-pinned by `d4_delta_der_monitors_line_to_line_voltage` (a balanced delta
+  reads √3·pu via the LL path) + its wye control `d4_wye_der_monitors_line_neutral_voltage`.
+  Two
   default-oracle decks provably moved: `midi_controls`/`midi_invcontrol` each had
   a delta `pv3` under an InvControl — they are multi-step + carry unported
   U1.5/U1.6 control deltas, so they cannot flip to capi015; `pv3` is changed to
