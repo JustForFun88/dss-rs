@@ -1,0 +1,1149 @@
+{
+ "comment": "WP-AD.4 A-Diakoptics disposition overlay: one disposition per solvable_now.json entry point (bijective; corpus_ad_matches_normal_mode enforces it rust-vs-rust). ad = full|pf|off:<specific-reason>. Every disposition is evidence-backed by the empirical AD-init + AD-vs-normal snapshot-gap probe (DSS_AD_CLASSIFY=1), and the ad-gap decks were further split into the D7 two legs (DSS_AD_DECOMPOSE) to attribute the gap. off reason classes: non-3ph-cut-only (D5 ZLL: the only cut candidates are non-3-phase lines/transformers); too-small (Tear_Circuit cannot form two connected >=2-bus zones); already-torn-artifact (a pre-torn Torn_Circuit/zone master, not a top-level entry); mode-outside-AD-scope (deck runs dynamics/harmonics/faultstudy/monte/LD - AD is a snapshot/direct/time-series power-flow accelerator); save-roundtrip-geometry / save-roundtrip-relpath / save-roundtrip-userdll / save-roundtrip-regxfmr (the AD lifecycle's save+reload of Master_Interconnected.dss loses fidelity - LineGeometry/WireData ordering, relative data-file paths, user-DLL models, or regulator/transformer state. This is the D7 ROUND-TRIP leg, a save-circuit gap to fix in save, NOT in AD: the decomposition proves the AD leg proper (inter-normal vs AD) is clean (<=1e-4) while leg1 (orig-normal vs inter-normal) carries the whole gap - e.g. IEEE13 leg1=5.9e-2, leg2=1.6e-6); ad-nonconvergent (tear ok, the AD snapshot did not converge - usually downstream of the corrupted interconnected save); ad-floor-above-tier (the AD leg's genuine long-radial stitch floor exceeds AD_SWEEP_TIER, e.g. IEEE34Mod1 leg2=2.1e-3 - NOT tolerance-widened per section 5); ad-islanded-divergence (pathological islanded/ISource-driven microgrid with no firm source reference - AD leg genuinely diverges: Microgrid/ISource leg2=2.0, GFM_8500 Snap leg2=7.4e-2); ad-singular-zone (a torn zone Y is singular). oracle names an EPRI rev for the D9(d) named cases.",
+ "cases": [
+  {
+   "path": "Test/AutoTrans/Auto1bus-step1.dss",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Test/AutoTrans/Auto1bus.dss",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Test/AutoTrans/Auto3bus.dss",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Test/AutoTrans/AutoAuto.dss",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Test/AutoTrans/AutoHLT.dss",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Test/BundleDemo.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Test/CableParameters.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Test/Cable_constants.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Test/CapControlFollow.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Test/SimpleStorageTest.dss",
+   "ad": "off:save-roundtrip-userdll"
+  },
+  {
+   "path": "Test/SimpleStorageTest-1ph.dss",
+   "ad": "off:save-roundtrip-userdll"
+  },
+  {
+   "path": "Test/CapacitorConfigs.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Test/DistanceRelayTest.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Test/Dynamic_Kundur.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/IEEE13_Assets.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Test/IEEE13_CDPSM.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Test/IEEE13_LineAndCableSpacing.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Test/IEEE13_LineGeometry.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Test/IEEE13_LineSpacing.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Test/IEEE13_SpacingGeometry.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Test/IEEELineGeometry.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/LoadTest.DSS",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/Master_TestCapInterface.DSS",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/MultiCircuitTest.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Test/ODRegTest.dss",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Test/PVSystemTest-Duty.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/PVSystemTest.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/PVSystemTestHarm.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/REACTORTest.DSS",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/ReactorConfigs.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Test/ReverseDistanceRelayTest.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Test/ReverseTD21RelayTest.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Test/Stevenson.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/TD21RelayTest.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Test/TestAuto.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/TestDDRegulator.dss",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Test/TextTsCable750MCM.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Test/TriplexLineCodeCalc.DSS",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/XYCurvetest.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Test/YgD-Test.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss",
+   "ad": "off:already-torn-artifact"
+  },
+  {
+   "path": "Version8/Distrib/Examples/AutoTrans/Auto1bus.dss",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/AutoTrans/Auto3bus.dss",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Version8/Distrib/Examples/AutoTrans/AutoAuto.dss",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Version8/Distrib/Examples/AutoTrans/AutoHLT.dss",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Version8/Distrib/Examples/DistanceRelays/DistanceRelayTest.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/DistanceRelays/ReverseDistanceRelayTest.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/DistanceRelays/ReverseTD21RelayTest.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/DistanceRelays/TD21RelayTest.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/ExpControl/Master.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/FreqScan/Run_Scan.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/GICExample/GIC_Example.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InductionMachine/Master.DSS",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InductionMachine/Run.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvar.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvarNEG.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_avg-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_P-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_Q-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kvarlimitation-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_avg-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_P-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_Q-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kvarlimitation-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_ravg-2.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_VWnooperation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_voltvar_pctPmpp60-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_VWnooperation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_avg-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_ppriority-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_qpriority-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_kvarlimit-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_pctPmpp60-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_ravg-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval_kvarlimitation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_ppriority-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_qpriority-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_pctPmpp60-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PCTPMPPPU-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PF-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_KVARATINGPU-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_PF-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU_PF-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PF-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pmpp_greater_kva-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_varP_kVAlimitation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation_PF-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_pf-2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattpf.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattvar.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_Standard-PV2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kVAlimitation-PV2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kvarlimitation-PV2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_pctPmpplimitation-PV2.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvar.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvarNEG.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterTechNote/kVA/11_1_kVAViolation.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Matlab/pst.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS",
+   "ad": "off:ad-singular-zone"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/ISource/Master.DSS",
+   "ad": "off:ad-islanded-divergence"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/subestacao.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/59NRelayDemo.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large.dss",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large_1phase.dss",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small_1phase.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_1_Default/Storage_default.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_2_Follow/Storage_follow.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_4_External/Storage_external.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/ConstantPF_9_5_2/Storage_follow_PF.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/Constantkvar_9_5_1/Storage_follow_kvar.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss",
+   "ad": "off:mode-outside-AD-scope"
+  },
+  {
+   "path": "Version8/Distrib/Examples/VCCS/HWDyn.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/VCCS/HWPLL.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/VCCS/HWPLL3.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/VCCS/HWtest.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/VSConverter/SG2012.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/Examples/WampServer/testcommandline.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/civinlar model/regulator.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Switches.dss",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_VoltageProfile.DSS",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/RevRegTest.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/Run_IEEE123Bus.DSS",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp.DSS",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/37Bus/ieee37.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-GrdYD-Bal/4Bus-GrdYD-Bal.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-YD-Bal/4Bus-YD-Bal.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/Master.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_Voltage_Profile.DSS",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node_Unbal.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Run_IEEE30.DSS",
+   "ad": "off:too-small"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Source/LineConstants.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LineCodes/IEEELineGeometry.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Run_NEV.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee34Mod2_SC_Case_II.dss",
+   "ad": "off:ad-floor-above-tier"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Test/Source012Test.dss",
+   "ad": "off:non-3ph-cut-only"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss",
+   "ad": "off:ad-floor-above-tier"
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss",
+   "ad": "off:ad-floor-above-tier"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
+   "ad": "off:ad-singular-zone"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
+   "ad": "off:ad-singular-zone"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
+   "ad": "off:ad-singular-zone"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
+   "ad": "off:ad-singular-zone"
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
+   "ad": "off:ad-singular-zone"
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
+   "ad": "off:ad-nonconvergent"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
+   "ad": "off:save-roundtrip-relpath"
+  },
+  {
+   "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
+   "ad": "off:save-roundtrip-geometry"
+  },
+  {
+   "path": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
+   "ad": "off:ad-islanded-divergence"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
+   "ad": "off:save-roundtrip-regxfmr"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
+   "ad": "pf"
+  },
+  {
+   "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",
+   "ad": "off:save-roundtrip-geometry"
+  }
+ ]
+}

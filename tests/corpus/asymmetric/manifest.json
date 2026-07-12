@@ -9,7 +9,8 @@
     "Vsource.source",
     "Vsource.vs2",
     "Vsource.vs3"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "reactor/reactor_asym.dss",
@@ -22,7 +23,8 @@
     "Reactor.rsh",
     "Reactor.rdel",
     "Reactor.rp"
-   ]
+   ],
+   "ad": "off:too-small"
   },
   {
    "path": "capacitor/capacitor_asym.dss",
@@ -34,7 +36,8 @@
     "Capacitor.c1p",
     "Capacitor.cser",
     "Capacitor.cstep"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "line/line_asym.dss",
@@ -46,7 +49,8 @@
     "Line.l1",
     "Line.lseq",
     "Line.lsw"
-   ]
+   ],
+   "ad": "pf"
   },
   {
    "path": "transformer/transformer_asym.dss",
@@ -60,7 +64,8 @@
     "Transformer.bkc",
     "Transformer.tn",
     "Transformer.tu"
-   ]
+   ],
+   "ad": "off:too-small"
   },
   {
    "path": "fault/fault_asym.dss",
@@ -70,7 +75,8 @@
     "Fault.fslg",
     "Fault.fll",
     "Fault.fmat"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "load/load_asym.dss",
@@ -85,7 +91,8 @@
     "Load.m5",
     "Load.m8",
     "Load.m1t"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "generator/generator_asym.dss",
@@ -97,7 +104,8 @@
     "Generator.g3",
     "Generator.g1a",
     "Generator.g1c"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "der/der_asym.dss",
@@ -108,7 +116,8 @@
     "PVSystem.pv1",
     "Storage.st3",
     "Storage.st1"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "indmach/indmach_asym.dss",
@@ -118,7 +127,8 @@
     "IndMach012.m1",
     "Transformer.tg",
     "Capacitor.cg"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "vccs/vccs_asym.dss",
@@ -128,7 +138,8 @@
     "VCCS.pv1",
     "VCCS.pv2",
     "VCCS.pv3"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "upfc/upfc_asym.dss",
@@ -138,7 +149,8 @@
     "UPFC.test",
     "Transformer.service50kva",
     "Transformer.tupfcout"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "combo/combo_chain_asym.dss",
@@ -154,7 +166,8 @@
     "Generator.g1",
     "PVSystem.pv1",
     "Storage.s1"
-   ]
+   ],
+   "ad": "off:too-small"
   },
   {
    "path": "combo/midi_asym.dss",
@@ -162,7 +175,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "combo/combo_mesh_asym.dss",
@@ -178,7 +192,8 @@
     "Capacitor.cmat",
     "Transformer.tg",
     "IndMach012.m1"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "vsource/midi_vsource_asym.dss",
@@ -186,7 +201,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "reactor/midi_reactor_asym.dss",
@@ -194,7 +210,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-divergent"
   },
   {
    "path": "capacitor/midi_capacitor_asym.dss",
@@ -202,7 +219,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "line/midi_line_asym.dss",
@@ -210,7 +228,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "transformer/midi_transformer_asym.dss",
@@ -218,7 +237,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "fault/midi_fault_asym.dss",
@@ -226,7 +246,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:too-small"
   },
   {
    "path": "load/midi_load_asym.dss",
@@ -234,7 +255,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "generator/midi_generator_asym.dss",
@@ -242,7 +264,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "der/midi_der_asym.dss",
@@ -250,7 +273,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "indmach/midi_indmach_asym.dss",
@@ -258,7 +282,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "vccs/midi_vccs_asym.dss",
@@ -266,7 +291,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:too-small"
   },
   {
    "path": "upfc/midi_upfc_asym.dss",
@@ -274,7 +300,8 @@
    "n_steps": 2,
    "selected_elements": [
     "*"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "isource/isource_snap.dss",
@@ -284,7 +311,8 @@
     "*"
    ],
    "pending": false,
-   "wp": "WPG.14"
+   "wp": "WPG.14",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "autotrans/autotrans_snap.dss",
@@ -311,7 +339,8 @@
    ],
    "pending": false,
    "wp": "WPG.15",
-   "note": "The 330 MVA YNad1 unit from Test/AutoTrans/AutoAuto.dss + a 2-winding 115/69 auto. Oracle wdgcurrents (probe 2026-07-05, t2 spot value): non-zero live recompute - the READS_VTERMINAL family. WPG.15 Stage B: live-green."
+   "note": "The 330 MVA YNad1 unit from Test/AutoTrans/AutoAuto.dss + a 2-winding 115/69 auto. Oracle wdgcurrents (probe 2026-07-05, t2 spot value): non-zero live recompute - the READS_VTERMINAL family. WPG.15 Stage B: live-green.",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "autotrans/autotrans_gic.dss",
@@ -322,7 +351,8 @@
    ],
    "pending": false,
    "wp": "WPG.15",
-   "note": "Set frequency=0.1 snapshot - pins AutoTrans GICBuildYTerminal (the Solution.Frequency < 0.51 Hz resistance-only Y_Term branch) AND the Line GIC branch (ConvertZinvToPosSeqR, Line.pas:1297 - the near-ideal-source switch line is deliberate: at 0.1 Hz the deck state is zero-current, so no cancellation floor exists and every YPrim pins at micro tier). WPG.15: live-green."
+   "note": "Set frequency=0.1 snapshot - pins AutoTrans GICBuildYTerminal (the Solution.Frequency < 0.51 Hz resistance-only Y_Term branch) AND the Line GIC branch (ConvertZinvToPosSeqR, Line.pas:1297 - the near-ideal-source switch line is deliberate: at 0.1 Hz the deck state is zero-current, so no cancellation floor exists and every YPrim pins at micro tier). WPG.15: live-green.",
+   "ad": "off:too-small"
   },
   {
    "path": "gic/gicline_gic.dss",
@@ -332,7 +362,8 @@
     "*"
    ],
    "pending": false,
-   "wp": "WPG.16"
+   "wp": "WPG.16",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "gic/gictransformer_gic.dss",
@@ -342,7 +373,8 @@
     "*"
    ],
    "pending": false,
-   "wp": "WPG.16"
+   "wp": "WPG.16",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "gic/gicsource_gic.dss",
@@ -367,7 +399,8 @@
    ],
    "pending": false,
    "wp": "WPG.16",
-   "note": "The bus2 probes pin the GICsource edit-time splice: the oracle rewrites the named Line's Bus2 to the inserted GIC_<name> bus (proven 2026-07-05: buses gic_seg12/gic_seg23 appear; line.seg12.bus2 = gic_seg12)."
+   "note": "The bus2 probes pin the GICsource edit-time splice: the oracle rewrites the named Line's Bus2 to the inserted GIC_<name> bus (proven 2026-07-05: buses gic_seg12/gic_seg23 appear; line.seg12.bus2 = gic_seg12).",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "isource/midi_isource_asym.dss",
@@ -377,7 +410,8 @@
     "*"
    ],
    "pending": false,
-   "wp": "WPG.14"
+   "wp": "WPG.14",
+   "ad": "off:too-small"
   },
   {
    "path": "autotrans/midi_autotrans_asym.dss",
@@ -395,7 +429,8 @@
     }
    ],
    "pending": false,
-   "wp": "WPG.15"
+   "wp": "WPG.15",
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "gic/gic_midi.dss",
@@ -420,7 +455,8 @@
    ],
    "pending": false,
    "wp": "WPG.16",
-   "note": "All three GIC classes chained on a 6-substation 345 kV ring (33 nodes); the bus2 probes pin the GICsource splices. No async/both variants: the GIC classes have no shape reference or time-varying drive upstream."
+   "note": "All three GIC classes chained on a 6-substation 345 kV ring (33 nodes); the bus2 probes pin the GICsource splices. No async/both variants: the GIC classes have no shape reference or time-varying drive upstream.",
+   "ad": "off:non-3ph-cut-only"
   }
  ]
 }
