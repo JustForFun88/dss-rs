@@ -38,6 +38,11 @@ MULTITHREADING M0–M4. Part II A-Diakoptics (WP-AD.2–AD.6) is sequenced after
 MULTITHREADING M2.
 
 **In flight / next.**
+- **WP-U1.7 (NCIM solver)** — **Stage 1 landed** (branch `wp-u17`): the
+  `dss-sparse` real-valued `RealSparseSet` Jacobian path. Stages 2–4 (the solver
+  port itself, generator PV participation, options/dispatch, reports, decks) are
+  a large remaining body of work with a full integration map in the §UPGRADE
+  WP-U1.7 record below.
 - **WP-U1.2 (numeric long tail)** — rows B2/D1, D7, D6, B1, D8 landed; **remaining:
   D3** (report-only spacing ratings — needs an overload-report deck) and **B3-r3723**
   (Load.GrowthFactor Year=0 — needs a growthshape + multi-hour year-0 run). See the
@@ -120,6 +125,57 @@ zero-`kW`/`kVA` clamp, `ParseAsSymMatrix` incomplete-matrix reject, `AllowNoneIt
   WP. NB the modes manifest is NOT `json.dumps`-round-trippable (mixed manual
   `\uXXXX` escaping + CRLF) — append new cases with a surgical text edit.
 
+**WP-U1.7 (NCIM solver) — Stage 1 landed; Stages 2–4 handed off.** Spec = A1,
+`Common/NCIMSolutionHelper.pas` (1048, FPC). **Stage 1 (done, own commit,
+gate-green):** the `dss-sparse` **real-valued** KLU-shaped path
+(`crates/dss-sparse/src/real.rs`, `RealSparseSet`) that the NCIM Jacobian needs —
+Pascal `NewSparseSet` + `SetOptions(…MatrixFormat_DoublePrecisionReal)` +
+`SetMatrixElement`/`SolveSparseSet`. Mirrors the complex `SparseSet` (triplet
+accumulate in insertion order = CSparse `cs_dupl`; KLU `scale=2` row
+equilibration) but over `f64`. **`set_element` ACCUMULATES** (not replace): NCIM
+stamps each non-swing diagonal 2×2 block from the PDE-only `Y_ii` (`[B,G;G,−B]`)
+in `NCIM_BuildJacobian`, then adds the load/gen injection derivative onto the same
+cells in `NCIM_ApplyCurr`; the current-injection Newton diagonal is
+`Y_ii_block + g'_ii_block`, so the two stamps must sum (under replace a PQ node
+loses its network coupling → wrong Jacobian). 8 unit tests from hand Jacobians
+(2×2, a 4×4 two-block CI-shaped Jacobian, insertion-order sum, singular, bad
+scaling, zero/rebuild, dim-mismatch). KLUSolveX C++ not vendored; the accumulate
+semantics are proven from the algorithm and documented at the port site.
+- **Stages 2–4 remaining (integration map for the next executor):**
+  - **State** (`solution/solution/state.rs`): add `NCIMSOLVE=2` + the ~15 NCIM
+    fields (Solution.pas l.243-271). Node i (1-based, ground=0) → Jacobian
+    0-based rows `2*(i-1)`, `2*(i-1)+1`; swing = nodes 1..3 → rows 0..5 (the
+    `<6` guards).
+  - **Y build PDE_ONLY** (`solution/ymatrix.rs`): add `BuildOption::PdeOnly` —
+    stamps **ALL_YPRIM** for PD **or SOURCE** (VSource) elements into the series
+    handle; PC elements excluded (YMatrix.pas l.442-497). NCIM reads it back via
+    the triplet dump (`coo_entries`) into `ncim_y/row/col`.
+  - **NCIM helper** (new `solution/solution/ncim.rs`): port
+    `NCIMSolutionHelper.pas` loop-for-loop — `NCIM_GetPowers` (Load ConstZ→ZBus
+    else PQ; Gen model 3=PV/4=PQ/else Z), `NCIM_Do{PV,PQ,Z}Bus`,
+    `NCIM_CalcInjCurr` (`I=Y·V`, first 6 deltaF=0), `NCIM_BuildJacobian` (fresh
+    `RealSparseSet` each iter), `NCIM_GetNumGenerators`, `NCIM_UpdateGenQ`
+    (PV↔PQ switching + Q-limits), `NCIM_Init`, `DoNCIMSolution` (repeat:
+    CalcInjCurr→BuildJacobian→GetPowers→ApplyCurr→solve→`NodeV -= dV`→Converged→
+    UpdateGenQ), `NCIM_Converged` (`max|deltaF| <= ConvergenceTolerance`).
+  - **Generator** (`elements/pc/generator/`): `GenVars.delta_q_nom: Vec<f64>`,
+    `vtarget`, `ncim_idx`, `NCIM_InitPVBusJac`, a `NCIM_ExPV` flag; GenModel 3
+    (PV) / 4 (PQ) semantics + kvarMax/kvarMin. **VSource** `CalcInjCurrAtBus`.
+  - **Dispatch**: `do_pflow_solution` match gains `NCIMSOLVE => do_ncim_solution`
+    (Solution.pas l.1031-1037); `converged()` gains the NCIM branch (l.730-733);
+    `check_controls` resets `ncim_ready=false` + early-returns when
+    `system_y_changed && algorithm==NCIM` (l.1182-1186).
+  - **Options** (`exec/set_cmd.rs`): add `NCIM` to `solve_alg` at ordinal 2
+    (prefix `nc`); new `IgnoreGenQLimits`→`ncim_ignore_q_limit`,
+    `NCIMQGain`→`ncim_gen_gain` (ExecOptions.pas l.794-797) + `Get` readback.
+  - **Reports**: `Export Jacobian/deltaF/deltaZ`, `Show PV2PQ_Conversions`
+    (numeric-token gates).
+  - **Decks** (`tests/corpus/modes/ncim/`, all `oracle:"capi015"`,
+    `pending:true` until the WP flips): micro PQ-only snapshot; PV-bus generator
+    deck (Q-limit hit → PV→PQ via `Show PV2PQ_Conversions` token + iter ≤); midi
+    IEEE123-class re-solve. Cross-check one on `oddie:r4088`. Iteration policy:
+    Rust ≤ oracle (§1.3-1); first-divergence trajectory dump on any gap.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
@@ -162,7 +218,9 @@ cargo test --workspace      # dss-core lib 748, golden_feeders 1,
                             #    installed (it fails, not skips, without it);
                             #    only corpus_live_classify is opt-in, via
                             #    DSS_LIVE_CLASSIFY=1 — the growth/classify probe),
-                            # dss-parser 62+1, dss-sparse 5
+                            # dss-parser 62+1, dss-sparse 14
+                            #   (6 complex SparseSet + 8 real RealSparseSet —
+                            #    WP-U1.7 Stage 1, the NCIM Jacobian path)
 ```
 
 ### Phase 5 gate — green  *(detail → `docs/phase-records/phase-5.md`)*
