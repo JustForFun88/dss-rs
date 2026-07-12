@@ -10,7 +10,7 @@
   },
   "family_counts": {
     "asymmetric": 36,
-    "controls": 57,
+    "controls": 59,
     "modes": 41
   },
   "family_paths": {
@@ -69,6 +69,8 @@
       "gfm_dynamics.dss",
       "gfm_invcontrol.dss",
       "gfm_micro.dss",
+      "inv_control/invcontrol_multi_vv_wye.dss",
+      "inv_control/invcontrol_vv_delta.dss",
       "invcontrol_expmodel.dss",
       "invcontrol_storage_vv_vw.dss",
       "invcontrol_storage_vw.dss",

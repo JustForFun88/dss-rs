@@ -323,9 +323,14 @@ mod dispatch {
         fn der_is_pvsystem(&self, r: ElemRef) -> bool {
             !self.ders[Self::idx(r)].is_storage
         }
-        fn der_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {
+        fn der_vterminal(&mut self, r: ElemRef) -> Vec<num_complex::Complex64> {
+            // Mock DERs monitor a flat per-phase magnitude (wye); the delta LL
+            // path (D4) is gated live by the delta corpus deck, not this mock.
             let v = self.ders[Self::idx(r)].vmag;
-            vec![v, v, v]
+            vec![num_complex::Complex64::new(v, 0.0); 3]
+        }
+        fn der_is_delta(&self, _r: ElemRef) -> bool {
+            false
         }
         fn der_bus_vbase(&self, r: ElemRef) -> f64 {
             self.ders[Self::idx(r)].vbase
@@ -338,6 +343,12 @@ mod dispatch {
                 .copied()
                 .unwrap_or(num_complex::Complex64::ZERO)
         }
+        fn mon_bus_unresolved(&self, j: usize) -> bool {
+            // The mock supplies every MonBus's node voltages directly, so a bus is
+            // "resolved" iff it has an entry (the invalid-bus abort is gated live).
+            self.mon_bus_v.get(j).is_none()
+        }
+        fn request_solution_abort(&mut self) {}
         fn der_full_name(&self, r: ElemRef) -> String {
             format!("PVSystem.{}", self.ders[Self::idx(r)].name)
         }
@@ -1867,6 +1878,148 @@ mod dispatch {
             (cv.q_desire_optionpu - (-0.3)).abs() < 1e-9,
             "QDesireOptionpu = {} (expected −0.3, the rate-limited ramp)",
             cv.q_desire_optionpu
+        );
+    }
+
+    // --- WP-U1.3 rows ---
+
+    #[test]
+    fn d1_buffer_2slot_tracks_last_two_pu_voltages() {
+        // Row D1 / ledger L1 -- the InvControlDeltaV per-control 2-slot buffer.
+        // `FVpuSolutionIdx` starts at -1 and toggles 0<->1 unconditionally each
+        // `UpdateInvControl` pass; each pass writes the current per-unit solution
+        // voltage into the cursor slot. Feature-sensitive to the 0.15.x refactor:
+        // the pre-fix 3-slot / init-0 / toggle-1<->2 form would give idx {1,2,1}
+        // and a shifted buffer layout, failing every assertion below.
+        let mut ic = voltvar_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.00, 300.0)]);
+        let vb = env.ders[0].vbase;
+        assert_eq!(ic.f_vpu_solution_idx, -1, "init -1 (Pascal l.816)");
+        // Pass 1: -1 -> 0, slot 0 = 1.00 pu.
+        ic.update_inv_control(&mut env);
+        assert_eq!(ic.f_vpu_solution_idx, 0);
+        assert!((ic.ctrl_vars[0].f_vpu_solution[0] - 1.00).abs() < 1e-12);
+        // Pass 2: 0 -> 1, slot 1 = 1.05 pu (slot 0 retained).
+        env.ders[0].vmag = 1.05 * vb;
+        ic.update_inv_control(&mut env);
+        assert_eq!(ic.f_vpu_solution_idx, 1);
+        assert!((ic.ctrl_vars[0].f_vpu_solution[1] - 1.05).abs() < 1e-12);
+        assert!((ic.ctrl_vars[0].f_vpu_solution[0] - 1.00).abs() < 1e-12);
+        // Pass 3: 1 -> 0 (wrap), overwrites slot 0 = 0.98 pu (slot 1 retained).
+        env.ders[0].vmag = 0.98 * vb;
+        ic.update_inv_control(&mut env);
+        assert_eq!(ic.f_vpu_solution_idx, 0);
+        assert!((ic.ctrl_vars[0].f_vpu_solution[0] - 0.98).abs() < 1e-12);
+        assert!((ic.ctrl_vars[0].f_vpu_solution[1] - 1.05).abs() < 1e-12);
+    }
+
+    #[test]
+    fn d2_update_uses_per_der_basekv_not_first_der() {
+        // Row D2 -- the per-DER base-voltage cross-leak fix: UpdateInvControl's
+        // MonBus renormalization must scale each DER's monitored voltage by ITS
+        // OWN FVBase, not the first DER's (Pascal l.2550, `with CtrlVars[j]`).
+        // Two DERs on different bases (7200 / 4160) monitor the SAME bus at 4160 V
+        // (its own vbase). DER #2 must read 4160 V (its base cancels the scale);
+        // the pre-fix code used DER #1's 7200 base -> 4160*7200/4160 = 7200.
+        let mut ic = InvControl::new("ic1");
+        ic.set_i32(prop::MODE, super::super::VOLTVAR);
+        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
+            "vv",
+            &[0.5, 0.92, 1.0, 1.08, 1.5],
+            &[1.0, 1.0, 0.0, -1.0, -1.0],
+        ));
+        ic.set_string_list(
+            prop::DER_LIST,
+            vec!["PVSystem.pv1".into(), "PVSystem.pv2".into()],
+        );
+        ic.side_effects(prop::DER_LIST, 0);
+        ic.set_string_list(prop::MON_BUS, vec!["m.1".into()]);
+        ic.side_effects(prop::MON_BUS, 0);
+        ic.set_f64_array(prop::MON_BUSES_VBASE, vec![4160.0]);
+        let mut env = MockEnv::new(vec![
+            MockDer::new("pv1", 1.0, 300.0),
+            MockDer::new("pv2", 1.0, 300.0),
+        ]);
+        env.ders[1].vbase = 4160.0; // DER #2 on the low-voltage base
+        env.mon_bus_v = vec![vec![num_complex::Complex64::new(4160.0, 0.0)]];
+        // Sample builds the fleet + copies each DER's FVBase into CtrlVars (it does
+        // NOT feed the rolling-average window); UpdateInvControl then feeds it.
+        ic.sample(&mut env).unwrap();
+        ic.update_inv_control(&mut env);
+        assert!(
+            (ic.ctrl_vars[1].f_roll_avg_window.avg_val() - 4160.0).abs() < 1e-6,
+            "DER#2 monitored voltage = {} (expected 4160 from its own base, not \
+             7200 from DER#1)",
+            ic.ctrl_vars[1].f_roll_avg_window.avg_val()
+        );
+    }
+
+    #[test]
+    fn d3_watt_priority_sqrt_guard_zeroes_tiny_negative_radicand() {
+        // Row D3 -- guard `SQR(kVArating) - SQR(presentkW)` against a tiny f64
+        // negative before `Sqrt` (Pascal l.3442-3446, r4056). kVA=10 with kW one
+        // ULP above it makes the radicand ~-3.6e-14 (|.| < EPSILON=1e-12), which
+        // the guard zeroes -> Q_Ppriority = 0 -> the watt-priority clamp drives
+        // QDesireLimitedpu to 0. WITHOUT the guard, Sqrt(<0) = NaN, every NaN
+        // comparison is false, the clamp block is skipped and QDesireLimitedpu
+        // keeps its unclamped 1.0 -- so this asserts 0, not 1.0.
+        let mut ic = voltvar_ic();
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.0, 300.0)]);
+        ic.sample(&mut env).unwrap(); // build the fleet + CtrlVars[0]
+        let cv = &mut ic.ctrl_vars[0];
+        cv.f_p_priority = true;
+        cv.f_kva_rating = 10.0;
+        cv.f_present_kw = f64::from_bits(10.0_f64.to_bits() + 1); // 10 + 1 ULP
+        cv.q_headroom = 600.0;
+        cv.q_headroom_neg = 600.0;
+        cv.f_current_kvar_limit = 600.0; // current_kvar_limit_pu = 1.0 (no clamp for q<1)
+        cv.f_current_kvar_limit_neg = 600.0;
+        ic.check_qlimits(0, 0.5); // q = 0.5 pu, positive, below the kvar limit
+        let q = ic.ctrl_vars[0].q_desire_limitedpu;
+        assert!(
+            q.is_finite(),
+            "QDesireLimitedpu is NaN (sqrt guard missing)"
+        );
+        assert!(
+            q.abs() < 1e-12,
+            "QDesireLimitedpu = {q} (expected 0 from the zeroed radicand, not the \
+             unclamped 1.0 the missing guard would leave)"
+        );
+    }
+
+    #[test]
+    fn c8_monbus_missing_nodes_errors_2024111() {
+        // Row C8 -- a MonBus entry with no node numbers is a hard parse error
+        // (dss_capi 0.15.x #2024111, InvControl.pas l.694-698). "m" (no `.node`)
+        // parses to an empty node list -> the side effect logs the error.
+        let mut ic = InvControl::new("ic1");
+        ic.set_string_list(prop::MON_BUS, vec!["m".into()]);
+        ic.side_effects(prop::MON_BUS, 0);
+        let errs = ic.ccd.cd.obj.take_errors();
+        assert!(
+            errs.iter().any(|e| e.contains("Bus nodes are missing")
+                && e.contains("MonBus.InvControl.ic1")),
+            "expected #2024111 'Bus nodes are missing', got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn c8_monbus_invalid_bus_aborts_2024112() {
+        // Row C8 -- a MonBus name that never resolves to a real bus aborts the
+        // solve at GetMonVoltage (dss_capi 0.15.x #2024112, InvControl.pas
+        // l.1596-1601) instead of silently reading the ground node. The mock
+        // reports the bus unresolved (no `mon_bus_v` entry) -> push_error + abort.
+        let mut ic = monbus_voltvar(vec!["nobus.1".into()], vec![7200.0]);
+        let mut env = MockEnv::new(vec![MockDer::new("pv", 1.0, 300.0)]);
+        // env.mon_bus_v left EMPTY -> mon_bus_unresolved(0) == true.
+        ic.sample(&mut env).unwrap();
+        assert!(
+            env.errors
+                .iter()
+                .any(|e| e.contains("Invalid bus") && e.contains("Aborting")),
+            "expected #2024112 'Invalid bus ... Aborting', got {:?}",
+            env.errors
         );
     }
 }
