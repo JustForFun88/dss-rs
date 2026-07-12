@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-12 (WP-U1.1 items 2-5 settle — Set Object fall-back fix, DoubleSymMatrix reject test, refutations/UB notes; records below).
+Last updated: 2026-07-12 (WP-U1.2 numeric long tail, row B2/D1 — SimpleCarson De 658.5→658.8530451057239; golden engine switch built; 18 Carson decks flipped to capi015; record below).
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
@@ -3296,6 +3296,39 @@ across the delta, so the Pascal at `.inputs/dss_capi` is authoritative):
 **Next (resume point):** WP-U1.1 items 1–5 all landed (settle pass closed). Next WP
 is U1.2 (numeric long tail) per the plan; U1.4 owns the conductor-list-with-`none`
 numerics that this item's plumbing enables.
+
+### WP-U1.2 (numeric long tail) — branch `wp-u12`, 2026-07-12
+
+Rung 1, exec sonnet-high. Each spec row = one same-commit package (port the
+cited hunk → flip the live cases whose observables move to `oracle: "capi015"`
+→ regenerate only affected goldens with the capi015 engine → retire matching
+`known_diffs` entries). Rows: B1, B2/D1, D6, D8, D7, B5, D3, B3-r3723.
+
+**Infrastructure — golden-generator engine switch (§1.5).** `gen_checkpoints.py::
+check_pin` now honours `DSS_ORACLE_ENGINE` (`capi` default = pinned 0.15.7/
+backend 0.14.5; `capi015` = Oddie-venv dss-python 0.16.0b2/backend 0.15.0b4,
+`PIN_OPENDSS.txt`, rebinds `_get_y_sparse` to the no-`factor` fastdss form) and
+stamps the golden's top-level `oracle.engine_spec` provenance — so a mixed golden
+tree is self-describing. Both golden generators (`gen_checkpoints`,
+`gen_der_lines_harmonics`) share it. Unknown engine → loud exit.
+
+**Row B2/D1 — SimpleCarson De `658.5 → 658.8530451057239` — LANDED.** The first
+revision-SENSITIVE flip (closes the WP-U0 note that the pilot proves engine
+identity but not numeric routing). `LineConstants::get_ze` (SimpleCarson) adopts
+the corrected De; the upstream INCONSISTENCY is reproduced 1:1 — `Line`'s own
+`Kxg` keeps `658.5` under `TODO(compat)` at the three `elements/pd/line/*` sites
+(ledger `DIVERGENCES.md §B2/D1`). Probe proof (`/tmp/probe_carson.py`): `Xmatrix[0]`
+`9.0807e-1` (0.14.5) vs `9.0811e-1` (capi015), rel ~3e-5 » the 1e-6 Y floor.
+Same-commit package: **18 Carson-geometry decks flipped to `oracle: "capi015"`**
+(2 `Test/Cable*`, 12 `MonitoredVoltage/{Local,Mon}_voltage_*-2`, 4
+`4Bus-*`/`YYD-Master-step1`) — corpus_live green (204 s, B2 is the sole mover:
+no Cmatrix caps → B1 untouched); new capi015 golden
+`line_constants/line_geometry_carson.json`; three Carson Rust unit-test
+references moved to capi015 (only the earth-return reactance, and CN/TS-reduced
+resistance, shift). `known_diffs`: none matched (0.14.5 and the port both used
+658.5) — nothing to retire.
+
+**Rows B1/D6/D8/D7/B5/D3/B3 — see resume note.**
 
 ### Gate state (all green)
 ```
