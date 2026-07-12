@@ -1,7 +1,7 @@
 //! `MakePosSeq` (Pascal `TExecHelper.DoMakePosSeq`) end-to-end gates: build a
 //! circuit through the Text interface, `solve`, `makeposseq`, `solve` again, and
 //! read back the converted properties. The full-model live compare lives in the
-//! `modes` family (`tests/corpus/modes/makeposseq_*.dss`,
+//! `modes` family (`tests/corpus/modes/makeposseq/makeposseq_*.dss`,
 //! `modes_cases_match_oracle`); these pin the applier's structural behaviors and
 //! the per-class conversion arithmetic against the oracle-validated deck-header
 //! values (dss-python 0.15.7; see `docs/wpg21_makeposseq_probes.md`).
