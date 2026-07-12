@@ -1,9 +1,12 @@
 //! Unit tests for the `DynamicExp` interpreter/evaluator (`InterpretDiffEq` →
 //! `cmds`, `SolveEq`). The property dump is pinned against the oracle by the
 //! `props_roundtrip` golden (`tests/golden/props/dynamicexp.json`); these tests
-//! exercise the compilation + evaluation that the dump cannot reach (the oracle
-//! does not expose `cmds`/`SolveEq` outside a dynamics solve — that arrives,
-//! oracle-pinned, with WP7.7). Values are hand-derived from the Pascal algorithm.
+//! exercise the compilation the dump cannot reach (the oracle does not expose
+//! `cmds` outside a dynamics solve). Values are hand-derived from the Pascal
+//! algorithm. Since the D14 upgrade (upstream `2a8bdb78`) `SolveEq` is a no-op
+//! evaluator — it exits before touching any derivative slot — so the SolveEq
+//! tests pin that no-op (leaving the caller's derivative untouched), witnessed
+//! live against the capi015 oracle; see `dynamic_exp.rs::solve_eq`.
 
 use super::*;
 
@@ -53,104 +56,84 @@ fn kundur_expression_compiles_to_expected_cmds() {
     );
 }
 
+// --- D14 (upstream `2a8bdb78`): SolveEq is a no-op evaluator ------------------
+//
+// The 0.15.x `Exit` returns from SolveEq as soon as the first equation's output
+// index is latched — idx 0 of every well-formed `[out, EQ_MARK, ...]` stream —
+// so no RHS is ever evaluated and every derivative slot is left exactly as the
+// caller set it. The `cmds` -> RPN op-dispatch is therefore dynamically dead
+// (retained 1:1 with the Pascal `case`, but unreachable for InterpretDiffEq
+// output). The tests below still pin the InterpretDiffEq `cmds` layout
+// (compilation is unchanged from 0.14.5), and assert the no-op leaves the
+// derivative column untouched. `SENTINEL` in a derivative slot would be
+// overwritten by any stray evaluation, so it catches a regression to the old
+// behavior. Each expression's pre-D14 computed value is kept in a comment as the
+// 0.14.5 contrast.
+
+const SENTINEL: f64 = 1.2345e9;
+
 #[test]
-fn kundur_expression_evaluates() {
+fn solve_eq_d14_freezes_derivative_index_bug_witness() {
+    // The vendored Kundur two-equation expression. The 0.14.5 evaluator wrote
+    // d(speed) = -1/mass*(pterm+damp*speed-pshaft) and d(theta) = speed; the
+    // 0.15.x form (D14) exits at the first marker and touches nothing, so both
+    // derivative slots stay at the caller's SENTINEL. Pinned against the capi015
+    // oracle: a Generator with this DynamicEq reports dspeed = 0 / speed frozen,
+    // where the 0.14.5 engine integrated dspeed = -1.6e-6 (DIVERGENCES.md §D14).
     let o = compile(
         &["speed", "mass", "pshaft", "pterm", "damp", "theta"],
         "Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *; theta dt = Speed",
     );
-    // mem rows: [value, derivative]; only value (col 0) is read.
     let mut mem = [
-        [0.01, 0.0],   // speed
-        [1000.0, 0.0], // mass
-        [0.9, 0.0],    // pshaft
-        [0.85, 0.0],   // pterm
-        [2.0, 0.0],    // damp
-        [0.5, 0.0],    // theta (unused on the RHS)
+        [0.01, SENTINEL],   // speed  (pre-D14 -> d(speed) = -3e-5)
+        [1000.0, SENTINEL], // mass
+        [0.9, SENTINEL],    // pshaft
+        [0.85, SENTINEL],   // pterm
+        [2.0, SENTINEL],    // damp
+        [0.5, SENTINEL],    // theta  (pre-D14 -> d(theta) = 0.01)
     ];
     o.solve_eq(&mut mem);
-    // d(speed) = -1/mass * (pterm + damp*speed - pshaft)
-    let d_speed = -1.0 / 1000.0 * (0.85 + 2.0 * 0.01 - 0.9);
-    assert!(
-        (mem[0][1] - d_speed).abs() < 1e-15,
-        "{} vs {}",
-        mem[0][1],
-        d_speed
-    );
-    // d(theta) = speed
-    assert!((mem[5][1] - 0.01).abs() < 1e-15);
+    // No-op: every derivative slot is exactly as passed in.
+    for (row, m) in mem.iter().enumerate() {
+        assert_eq!(m[1], SENTINEL, "row {row} derivative was mutated");
+    }
 }
 
 #[test]
-fn trivial_expression_compiles_and_evaluates() {
+fn solve_eq_d14_noop_single_output_witness() {
+    // Simple single-output expression `w dt = th`. Compilation is unchanged; the
+    // 0.14.5 evaluator wrote d(w) = th = 7.0. Under D14 SolveEq is a no-op, so the
+    // derivative slot keeps whatever the caller set.
     let o = compile(&["w", "th"], "w dt = th");
     assert_eq!(o.cmds, vec![0, -50, 1]);
     assert!(o.var_consts.is_empty());
-    let mut mem = [[5.0, 0.0], [7.0, 0.0]];
+    let mut mem = [[5.0, SENTINEL], [7.0, 0.0]];
     o.solve_eq(&mut mem);
-    assert_eq!(mem[0][1], 7.0); // d(w) = th
+    assert_eq!(mem[0][1], SENTINEL); // untouched (pre-D14: 7.0)
 }
 
 #[test]
-fn pi_and_constant_operators() {
-    // `pi` is the nullary operator (full-precision π via EnterPi), `2` a constant.
-    let o = compile(&["w"], "w dt = pi 2 * w *");
+fn interpret_diff_eq_compiles_operators_to_cmds() {
+    // InterpretDiffEq (compilation) is unchanged by D14 — only SolveEq changed.
+    // Pin the opcode -> cmds mapping for a spread of operators; the pre-D14
+    // SolveEq value each would have produced is noted for reference. `pi` is the
+    // nullary EnterPi operator, numeric literals are harvested into var_consts.
+    let o = compile(&["w"], "w dt = pi 2 * w *"); // pre-D14: π·2·w
     assert_eq!(o.cmds, vec![0, -50, -27, 50000, -4, 0, -4]);
     assert_eq!(o.var_consts, vec![2.0]);
-    let mut mem = [[3.0, 0.0]];
-    o.solve_eq(&mut mem);
-    let expected = std::f64::consts::PI * 2.0 * 3.0;
-    assert!(
-        (mem[0][1] - expected).abs() < 1e-12,
-        "{} vs {}",
-        mem[0][1],
-        expected
-    );
-}
-
-#[test]
-fn operator_dispatch_reachable_ops() {
-    // Exercise the InterpretDiffEq opcode→cmds mapping *and* the SolveEq cmds→RPN
-    // dispatch end-to-end for a spread of operators the Kundur expression doesn't
-    // reach (unary + binary + stack ops). Expected values are exact (no tolerance).
-    // sqr (-11): w² ; w=4 → 16
-    let o = compile(&["w"], "w dt = w sqr");
+    let o = compile(&["w"], "w dt = w sqr"); // pre-D14: w²
     assert_eq!(o.cmds, vec![0, -50, 0, -11]);
-    let mut m = [[4.0, 0.0]];
-    o.solve_eq(&mut m);
-    assert_eq!(m[0][1], 16.0);
-    // inv (-13): 1/w ; w=4 → 0.25
-    let o = compile(&["w"], "w dt = w inv");
+    let o = compile(&["w"], "w dt = w inv"); // pre-D14: 1/w
     assert_eq!(o.cmds, vec![0, -50, 0, -13]);
-    let mut m = [[4.0, 0.0]];
-    o.solve_eq(&mut m);
-    assert_eq!(m[0][1], 0.25);
-    // ln (-14): ln(w) ; w=1 → 0
-    let o = compile(&["w"], "w dt = w ln");
+    let o = compile(&["w"], "w dt = w ln"); // pre-D14: ln(w)
     assert_eq!(o.cmds, vec![0, -50, 0, -14]);
-    let mut m = [[1.0, 0.0]];
-    o.solve_eq(&mut m);
-    assert_eq!(m[0][1], 0.0);
-    // exp (-15): e^w ; w=0 → 1
-    let o = compile(&["w"], "w dt = w exp");
+    let o = compile(&["w"], "w dt = w exp"); // pre-D14: e^w
     assert_eq!(o.cmds, vec![0, -50, 0, -15]);
-    let mut m = [[0.0, 0.0]];
-    o.solve_eq(&mut m);
-    assert_eq!(m[0][1], 1.0);
-    // ^ (-28): w^3 ; w=2 → 8 (the `3` is harvested as a constant)
-    let o = compile(&["w"], "w dt = w 3 ^");
+    let o = compile(&["w"], "w dt = w 3 ^"); // pre-D14: w³ (3 = const)
     assert_eq!(o.cmds, vec![0, -50, 0, 50000, -28]);
     assert_eq!(o.var_consts, vec![3.0]);
-    let mut m = [[2.0, 0.0]];
-    o.solve_eq(&mut m);
-    assert_eq!(m[0][1], 8.0);
-    // swap (-26) then / (-5): swap flips the operands → b/a (without swap it is a/b);
-    // vars w/a/b, a=2 b=8 → 4
-    let o = compile(&["w", "a", "b"], "w dt = a b swap /");
+    let o = compile(&["w", "a", "b"], "w dt = a b swap /"); // pre-D14: b/a
     assert_eq!(o.cmds, vec![0, -50, 1, 2, -26, -5]);
-    let mut m = [[0.0, 0.0], [2.0, 0.0], [8.0, 0.0]];
-    o.solve_eq(&mut m);
-    assert_eq!(m[0][1], 4.0);
 }
 
 #[test]
@@ -163,9 +146,6 @@ fn substring_tiebreak_makes_sqrt_and_atan2_unreachable() {
     // the multi-char advance.
     let o = compile(&["w"], "w dt = w sqrt");
     assert_eq!(o.cmds, vec![0, -50, 0, -11]); // sqr, never -12 (sqrt)
-    let mut m = [[3.0, 0.0]];
-    o.solve_eq(&mut m);
-    assert_eq!(m[0][1], 9.0); // w² — confirms it ran sqr, not sqrt
     // `a atan2` → `atan` (-22), never -23.
     let o = compile(&["w", "a"], "w dt = a atan2");
     assert_eq!(o.cmds, vec![0, -50, 1, -22]); // atan, never -23 (atan2)

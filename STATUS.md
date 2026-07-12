@@ -38,6 +38,15 @@ MULTITHREADING M0–M4. Part II A-Diakoptics (WP-AD.2–AD.6) is sequenced after
 MULTITHREADING M2.
 
 **In flight / next.**
+- **D14 (DynamicExp RPN "index-bug fix") — landed, pulled ahead of WP-U1.6** (branch
+  `dynexp-d14`). Upstream `2a8bdb78` adds an `Exit` to `SolveEq` that returns before
+  evaluating the RHS, making it a no-op evaluator: DynExp state variables freeze at
+  their `InitStateVars` seed (no rotor swing / inverter ramp). Ported 1:1
+  (`dynamic_exp.rs::solve_eq`), matching capi015 to the f32 floor (probed: generator
+  `speed`/`theta` frozen vs 0.14.5 swing). Unstraddled the parked
+  `GFLDaily_DynExp` deck (re-promoted `oracle:capi015`); flipped `Dynamic_KundurDynExp`
+  to capi015; re-pinned 7 `exec/tests/dynamics.rs` DynExp gates to the frozen values
+  (now D14 regression guards). See DIVERGENCES.md §D14.
 - **WP-U1.2 (numeric long tail)** — rows B2/D1, D7, D6, B1, D8 landed; **remaining:
   D3** (report-only spacing ratings — needs an overload-report deck) and **B3-r3723**
   (Load.GrowthFactor Year=0 — needs a growthshape + multi-hour year-0 run). See the
