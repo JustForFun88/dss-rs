@@ -36,6 +36,7 @@ Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from math import isqrt
 from pathlib import Path
@@ -49,21 +50,89 @@ OUT_DIR = REPO_ROOT / "tests" / "golden" / "checkpoints"
 SCHEMA = 2
 
 
+def _read_pin_opendss() -> dict:
+    """Parse the Oddie-venv pin set (`tools/opendss/PIN_OPENDSS.txt`) — the pin
+    for the capi015 (0.15.0b4) golden-generation engine, exactly as
+    `tools/oracle/oracle_server.py::_read_pin_opendss`."""
+    pins = {}
+    pin_path = REPO_ROOT / "tools" / "opendss" / "PIN_OPENDSS.txt"
+    for line in pin_path.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if "==" in line:
+            k, v = line.split("==", 1)
+            pins[k.strip()] = v.strip()
+    return pins
+
+
+def _capi015_get_y_sparse(d):
+    """`getYSparse()` for the fastdss (dss-python 0.16.0b2) engine, which drops
+    the `factor` argument the pinned 0.15.7 build takes — same BuildY retry as
+    `_get_y_sparse` and `oracle_server._oddie_get_y_sparse`."""
+    r = d.YMatrix.getYSparse()
+    if r is None:
+        d.Text.Command = "BuildY"
+        r = d.YMatrix.getYSparse()
+    if r is None:
+        sys.exit("YMatrix.getYSparse returned None even after a BuildY retry")
+    return r
+
+
 def check_pin() -> dict:
+    """Assert the golden-generation engine matches its pin and return the
+    provenance dict stamped into every regenerated golden's top-level `oracle`
+    field (UPGRADE_PLAN §1.5 — a mixed golden tree is self-describing via the
+    `engine_spec` key).
+
+    Engine selected by `DSS_ORACLE_ENGINE` (default `capi`):
+      - `capi` — the pinned dss-python 0.15.7 / dss_capi backend **0.14.5**
+        (`tools/golden/PIN.txt`), the default 0.14.5 oracle for every observable
+        NOT yet upgraded; unchanged from before.
+      - `capi015` — dss-python 0.16.0b2 (the Oddie venv, run its `python`) /
+        dss_capi backend **0.15.0b4** (`tools/opendss/PIN_OPENDSS.txt`), the
+        Rung-1 target-rev oracle. `getYSparse()` drops the `factor` arg
+        (fastdss), so `_get_y_sparse` is rebound to the no-arg form — matches
+        `oracle_server.make_engine`.
+    Any other value fails loudly (a lost env var must never silently pick the
+    wrong engine and change the numbers).
+    """
     import dss
 
-    if dss.__version__ != "0.15.7":
-        sys.exit(f"dss-python {dss.__version__} != pinned 0.15.7 (tools/golden/PIN.txt)")
-    from dss import DSS
+    engine = os.environ.get("DSS_ORACLE_ENGINE", "capi")
+    if engine == "capi":
+        if dss.__version__ != "0.15.7":
+            sys.exit(f"dss-python {dss.__version__} != pinned 0.15.7 (tools/golden/PIN.txt)")
+        from dss import DSS
 
-    # Also hard-assert the engine/backend (dss-python-backend 0.14.5 == the
-    # vendored Pascal at .inputs/dss_capi). DSS.Version is e.g. "DSS C-API
-    # Library version 0.14.5 revision ...". A backend mismatch is a different
-    # oracle and must fail loudly, not silently change the numbers.
-    if "0.14.5" not in DSS.Version:
-        sys.exit(f"engine {DSS.Version!r} != pinned backend 0.14.5 (tools/golden/PIN.txt)")
+        # Hard-assert the engine/backend (dss-python-backend 0.14.5 == the
+        # vendored Pascal at .inputs/dss_capi). DSS.Version is e.g. "DSS C-API
+        # Library version 0.14.5 revision ...". A backend mismatch is a
+        # different oracle and must fail loudly, not silently change the numbers.
+        if "0.14.5" not in DSS.Version:
+            sys.exit(f"engine {DSS.Version!r} != pinned backend 0.14.5 (tools/golden/PIN.txt)")
+        return {"engine_spec": "capi", "dss_python": dss.__version__, "engine": DSS.Version}
 
-    return {"dss_python": dss.__version__, "engine": DSS.Version}
+    if engine == "capi015":
+        pin = _read_pin_opendss()
+        want_py = pin["dss-python"]
+        if dss.__version__ != want_py:
+            sys.exit(
+                f"dss-python {dss.__version__} != pinned {want_py} (tools/opendss/PIN_OPENDSS.txt "
+                "— is this the Oddie venv python?)"
+            )
+        from dss import DSS
+
+        ver = str(DSS.Version)
+        backend = pin.get("dss-python-backend", "")
+        if not backend:
+            sys.exit("PIN_OPENDSS.txt has no dss-python-backend pin (no silent pass)")
+        if backend not in ver:
+            sys.exit(f"engine {ver!r} does not contain pinned backend {backend!r}")
+        # fastdss getYSparse() drops the `factor` argument.
+        global _get_y_sparse
+        _get_y_sparse = _capi015_get_y_sparse
+        return {"engine_spec": "capi015", "dss_python": dss.__version__, "engine": ver}
+
+    sys.exit(f"unknown DSS_ORACLE_ENGINE={engine!r} (expected 'capi' or 'capi015')")
 
 
 def _get_y_sparse(d):

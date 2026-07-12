@@ -354,6 +354,69 @@ Follow-up (separate `?`-command gap, NOT r3875): a bare `? prop` querying the
 ActiveCktElement is still unported in `do_query_cmd` — noted in STATUS, an owner
 for a later WP.
 
+## B2/D1 — SimpleCarson earth-return De constant `658.5 → 658.8530451057239` — SETTLED (WP-U1.2, adopt capi015; reproduce the upstream Line.Kxg inconsistency)
+
+**Observable.** The series impedance `Zmatrix` of any Line whose Z is built from
+a `LineGeometry`/`LineSpacing`/cable under `EarthModel=Carson` (the SimpleCarson
+earth model). `LineConstants.GetZearth`'s SimpleCarson branch computes the
+earth-return reactance from `ln(De·√(ρ/f))` with the De constant.
+
+**dss_capi 0.14.5 (default oracle).** `De = 658.5` (`LineConstants.pas`
+`Get_Ze`/SIMPLECARSON). The port matched this at r3723.
+
+**dss_capi 0.15.x (capi015) / EPRI r4088+.** `De = 658.8530451057239` — the
+precise `De ≈ 658.87·√(ρ/f)` reference constant, corrected in the r3913-era
+line/conductor rework (`LineConstants.pas:474`, `GetZearth`). r4088/r4133 carry
+the same corrected value (byte-identical LineConstants across the deltas).
+
+**Upstream INCONSISTENCY reproduced 1:1.** dss_capi 0.15.x corrected the
+constant ONLY in `LineConstants`; **`Line.pas`'s own `Kxg`** — used for the
+frequency-dependent ground-reactance adjustment `Xgmod = 0.5·Kxg·ln(FreqMult)`
+— **keeps `658.5`** (`Line.pas:531/741/1077`, unchanged across the delta). So
+within one Line the geometry-derived Z uses 658.85 while the Kxg frequency
+correction uses 658.5. This is a genuine upstream inexactness, reproduced:
+`line_constants/mod.rs::get_ze` uses `658.8530451057239`; the three `kxg` sites
+(`elements/pd/line/{accessors,code,mod}.rs`) keep `658.5` under `TODO(compat)`
+notes citing this ledger row. The §6 marker sweep unifies both to the corrected
+constant, regenerating goldens deliberately.
+
+**Probe** (`/tmp/probe_carson.py`, 2026-07-12; 3-phase overhead geometry,
+`earthmodel=carson`, `? Line.l1.Xmatrix`):
+
+| engine | `Xmatrix[0]` (ohm/km) |
+|---|---|
+| capi 0.14.5 (default) | `9.080731425743580e-01` |
+| capi015 (0.15.0b4) | `9.081135553904781e-01` |
+
+The ~4.0e-5 (rel ~3e-5) reactance shift is far above the live Y floor (1e-6) —
+this is the plan's revision-**sensitive** first flip (WP-U1.2 gate note: a
+numeric-routing regression now fails on the numbers, not only the ping).
+
+**Decision — adopt the capi015 (=r4133) 658.8530451057239 in `LineConstants`;
+reproduce the `Line.Kxg` 658.5 inconsistency.** Consistent with the plan's
+"EPRI r4133 wins" default.
+
+**Gate consequence.**
+- **18 mandatory-gate decks flipped to `oracle: "capi015"`** in this same
+  commit (§1.2): the two `Test/Cable*` cable-geometry decks, the twelve
+  `InverterModels/.../MonitoredVoltage/{Local,Mon}_voltage_*-2` volt-var decks
+  (Carson `LineGeometry.Poste`; no Cmatrix capacitor, so B1 does not touch them
+  — B2 is the sole mover, confirmed by the empirical gate), and the four
+  `IEEETestCases/4Bus-*`/`YYD-Master-step1` cable/geometry decks. Each compiles,
+  solves, and its full assembled system Y matches capi015 (the corpus_live gate
+  compares the entire Y entry-by-entry, so every Carson-geometry deck moves).
+- **New capi015 golden** `tests/golden/line_constants/line_geometry_carson.json`
+  (`oracle.engine_spec == "capi015"`), the offline revision-sensitive twin;
+  registered in `golden_line_constants.rs`. This WP builds the generator engine
+  switch (`gen_checkpoints.py::check_pin` honours `DSS_ORACLE_ENGINE=capi015`
+  and stamps `engine_spec`).
+- Three `line_constants`/`line_geometry` **Rust unit tests** re-referenced to
+  capi015 (SimpleCarson Z probed on the Oddie venv; only the earth-return
+  reactance — and, for the CN/TS-reduced cases, the coupled reduced resistance
+  — move; FullCarson/DERI references untouched).
+- `known_diffs.json`: no Rust↔EPRI entry existed (0.14.5 and the port both used
+  658.5, matching each other at r3723) — nothing to retire.
+
 ## L1, L3, L4 — pending later WPs
 
 - **L1** InvControl `InvControlDeltaV` buffer — WP-U1.3.

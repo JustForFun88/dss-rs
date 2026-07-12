@@ -28,6 +28,10 @@ fn line_constants_scenarios_match_oracle() {
         "line_constants",
         &[
             "line_geometry",
+            // UPGRADE_PLAN WP-U1.2 B2/D1: SimpleCarson De 658.5 →
+            // 658.8530451057239; this golden is capi015-generated (its
+            // `oracle.engine_spec == "capi015"`) and pins the upgraded Carson Z.
+            "line_geometry_carson",
             "line_geometry_reduce",
             "line_spacing",
             "cable_cn",
