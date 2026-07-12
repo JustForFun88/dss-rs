@@ -59,6 +59,7 @@ SCHEMA = 1
 # The five line-constants scenarios; everything else routes by prefix.
 LINE_CONSTANTS = {
     "line_geometry",
+    "line_geometry_carson",
     "line_geometry_reduce",
     "line_spacing",
     "cable_cn",
@@ -106,6 +107,31 @@ TAIL = ["set voltagebases=[12.47]", "calcvoltagebases"]
 def deck_line_geometry() -> list[str]:
     return [
         *HEAD,
+        WIRE,
+        "new LineGeometry.g nconds=3 nphases=3 reduce=no",
+        "~ cond=1 wire=w x=0 h=10 units=m",
+        "~ cond=2 wire=w x=1 h=10 units=m",
+        "~ cond=3 wire=w x=2 h=10 units=m",
+        "new Line.l1 bus1=src bus2=b geometry=g length=1 units=km phases=3",
+        LOAD,
+        *TAIL,
+    ]
+
+
+# UPGRADE_PLAN WP-U1.2 (B2/D1): the SimpleCarson earth-return De constant moved
+# 658.5 → 658.8530451057239 in dss_capi 0.15.x `LineConstants.GetZearth`. This
+# scenario is generated against the **capi015** engine
+# (`DSS_ORACLE_ENGINE=capi015 tools/opendss/.venv/Scripts/python.exe
+# tools/golden/gen_der_lines_harmonics.py line_geometry_carson`) so its Line
+# YPrim pins the upgraded Carson Z — the offline, revision-sensitive twin of the
+# `Cable_constants`/overhead live cases now on `oracle: "capi015"`. Same overhead
+# geometry as `line_geometry`, only `set earthmodel=carson` differs, so a routing
+# regression (wrong De, or the earth_model arg not reaching the engine) fails on
+# the numbers. Provenance is stamped in the golden's `oracle.engine_spec`.
+def deck_line_geometry_carson() -> list[str]:
+    return [
+        "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
+        "set earthmodel=carson",
         WIRE,
         "new LineGeometry.g nconds=3 nphases=3 reduce=no",
         "~ cond=1 wire=w x=0 h=10 units=m",
@@ -1326,6 +1352,7 @@ def deck_harmonics_generator_delta_h5() -> list[str]:
 # truth for what scenarios exist.
 SCENARIOS = {
     "line_geometry": deck_line_geometry,
+    "line_geometry_carson": deck_line_geometry_carson,
     "line_geometry_reduce": deck_line_geometry_reduce,
     "line_spacing": deck_line_spacing,
     "cable_cn": deck_cable_cn,

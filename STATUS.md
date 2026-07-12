@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-12 (WP-U1.1 items 2-5 settle — Set Object fall-back fix, DoubleSymMatrix reject test, refutations/UB notes; records below).
+Last updated: 2026-07-12 (WP-U1.2 numeric long tail — 5 rows landed: B2/D1 SimpleCarson De, D7 PVSystem iMaxPPhase, D6 Transformer AmpRatings, B1 Capacitor Cmatrix ×1.000001, D8 X13/X23 TrapZero no-delta; golden engine switch built; B5 GFM deferred; D3/B3 not started; record below).
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
@@ -3296,6 +3296,133 @@ across the delta, so the Pascal at `.inputs/dss_capi` is authoritative):
 **Next (resume point):** WP-U1.1 items 1–5 all landed (settle pass closed). Next WP
 is U1.2 (numeric long tail) per the plan; U1.4 owns the conductor-list-with-`none`
 numerics that this item's plumbing enables.
+
+### WP-U1.2 (numeric long tail) — branch `wp-u12`, 2026-07-12
+
+Rung 1, exec sonnet-high. Each spec row = one same-commit package (port the
+cited hunk → flip the live cases whose observables move to `oracle: "capi015"`
+→ regenerate only affected goldens with the capi015 engine → retire matching
+`known_diffs` entries). Rows: B1, B2/D1, D6, D8, D7, B5, D3, B3-r3723.
+
+**Infrastructure — golden-generator engine switch (§1.5).** `gen_checkpoints.py::
+check_pin` now honours `DSS_ORACLE_ENGINE` (`capi` default = pinned 0.15.7/
+backend 0.14.5; `capi015` = Oddie-venv dss-python 0.16.0b2/backend 0.15.0b4,
+`PIN_OPENDSS.txt`, rebinds `_get_y_sparse` to the no-`factor` fastdss form) and
+stamps the golden's top-level `oracle.engine_spec` provenance — so a mixed golden
+tree is self-describing. Both golden generators (`gen_checkpoints`,
+`gen_der_lines_harmonics`) share it. Unknown engine → loud exit.
+
+**Row B2/D1 — SimpleCarson De `658.5 → 658.8530451057239` — LANDED.** The first
+revision-SENSITIVE flip (closes the WP-U0 note that the pilot proves engine
+identity but not numeric routing). `LineConstants::get_ze` (SimpleCarson) adopts
+the corrected De; the upstream INCONSISTENCY is reproduced 1:1 — `Line`'s own
+`Kxg` keeps `658.5` under `TODO(compat)` at the three `elements/pd/line/*` sites
+(ledger `DIVERGENCES.md §B2/D1`). Probe proof (`/tmp/probe_carson.py`): `Xmatrix[0]`
+`9.0807e-1` (0.14.5) vs `9.0811e-1` (capi015), rel ~3e-5 » the 1e-6 Y floor.
+Same-commit package: **18 Carson-geometry decks flipped to `oracle: "capi015"`**
+(2 `Test/Cable*`, 12 `MonitoredVoltage/{Local,Mon}_voltage_*-2`, 4
+`4Bus-*`/`YYD-Master-step1`) — corpus_live green (204 s, B2 is the sole mover:
+no Cmatrix caps → B1 untouched); new capi015 golden
+`line_constants/line_geometry_carson.json`; three Carson Rust unit-test
+references moved to capi015 (only the earth-return reactance, and CN/TS-reduced
+resistance, shift). `known_diffs`: none matched (0.14.5 and the port both used
+658.5) — nothing to retire.
+
+**Row D7 — PVSystem dynamics current-limit base `PanelkW → FkVArating` — LANDED.**
+`IntegrateStates` `iMaxPPhase` (`pvsystem/dynamics.rs`). Storage already used
+`FkVArating` in both revs (unchanged). Unit-test-only same-commit package (D7
+moves NO live corpus deck): `pvsystem_dynamics_mode3` ch21 `Max. Amps`
+23.149570 → 27.779484 (=×kVA/PanelkW=600/500, matches capi015 exactly);
+`pvsystem_dynexp_dynamics_mode3` `dit@0` 1055150.8 → 1054757.2 (the deck's isp
+sat at the old clamp boundary; the new 600-base boundary releases it — a
+deterministic ~0.035% single-step shift; the binding settled pins are unchanged
+and match both engines). `pv_gfm_dynamics.dss` has `kVA=Pmpp=800` so D7 is a
+NO-OP there (stays default oracle, probe-confirmed). Ledger §D7.
+
+**Row B5 — GFM `Isc1` ×1000 removal — DEFERRED (open follow-up).** Adopting the
+`Isc1` change moved the Rust GFM operating point (`gfm_micro` `Load.isl` 400→368 kW
+vs capi015), but a direct two-engine probe proves the Pascal op-point is
+**Isc1-INVARIANT** (0.14.5 == capi015 = 127094.3908 W/φ bit-identical despite the
+Yf move). Root cause = a **pre-existing Rust GFM power-flow injection-vs-YPrim
+consistency gap** (the injection does not track `YPrim·Vset`, so the op-point is
+Isc1-sensitive where the Pascal engines' is not) that B5 merely unmasks — needs a
+dedicated GFM investigation, out of the numeric-long-tail scope. B5 + its 4 GFM
+live-deck flips reverted; ledger §B5 has the full evidence. **OPEN FOLLOW-UP for a
+GFM WP.**
+
+**Row D6 — Transformer seasonal AmpRatings drop `1.1 *` — LANDED.**
+`transformer/yterminal.rs` (`1.1 * r → r`, `Transformer.pas:1058`/SVN r4033).
+`NormMaxHkVA`'s own 1.1 (110% norm rating) is a different quantity, unchanged.
+No live/golden witness (the seasonal override is NOT_PORTED — WP-U1.5 E2 owns it;
+non-seasonal reports use `norm_amps`; `Ratings` readback = kVARatings), so pinned
+by a feature-sensitive unit test (`seasonal_amp_ratings_drop_the_1_1_factor`).
+Ledger §D6.
+
+**Row B1 — Capacitor Cmatrix YPrim diagonal ×1.000001 — LANDED.**
+`capacitor/solve.rs` SpecType-3 `_ =>` arm gains the ×1.000001 diagonal loop
+before `invert()` (`Capacitor.pas MakeYprimWork`). Only reached for a Cmatrix cap
+WITH series R/XL (`has_zl`); revision-sensitive garbage(1e-23 @0.14.5)→finite
+(@capi015). No corpus witness (corpus caps are shunt-kvar, cmatrix hits are
+LineCodes), so oracle-validated unit test
+(`cmatrix_with_series_reactance_yprim_matches_capi015`, capi015 probe values
+pinned to 1e-11/1e-12). A live modes deck was prepped but the manifest's mixed
+manual unicode-escaping + CRLF blocks a clean append — the unit test carries the
+same capi015 numbers. Ledger §B1.
+
+**Row D8 — Transformer X13/X23 TrapZero — SETTLED, no code change (not an
+observable delta).** The `TrapZero` flag on X12/X13/X23 (and `NonZero` on
+`XSCArray`) is already in the 0.14.5 baseline — commit `69fca934` predates the
+0.14.5 tag, so the flags+values (7/35/30) are byte-identical across 0.14.5 and
+0.15.x; this is not a 0.14.5→0.15.x delta at all. Probed: 0.14.5 and capi015 give
+BIT-IDENTICAL results for X13=0 (`?XHT=3500`; solved Vmin=0.124819 both) — both
+reach the same trapped default via the Xsc build. The Rust port ALREADY traps
+(`mod.rs trap_zero(7/35/30)` + unconditional `setters.rs`), so it matches both;
+the `XSCArray` NonZero STRICT error is the C2/L2 strict surface not adopted.
+Pinned by `three_winding_x13_x23_trap_zero_to_default`. Ledger §D8 (mirrors
+WP-U1.1's D5/D8-r3723 "not a delta for us").
+
+**Rows D3/B3 — NOT started (budget); see resume note.** D3 is report-only
+(spacing ratings — overload-report deck). B3-r3723 (Load.GrowthFactor Year=0 from
+dblHour/8760) needs a growthshape + multi-hour year-0 run.
+
+**Resume note (WP-U1.2 remaining):** rows D3 (report-only spacing ratings) and
+B3-r3723 (Load.GrowthFactor Year=0) still to port; the golden engine switch
+(`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the same-commit workflow
+are proven (B2/D1, D7, D6, B1, D8). B5's GFM gap is the one hard blocker (a
+control-consistency bug, not a numeric constant) — needs a dedicated GFM WP. NB
+the modes manifest is NOT json.dumps-round-trippable (mixed manual `\uXXXX`
+escaping + CRLF) — append new cases with a surgical text edit, not a full JSON
+rewrite.
+
+**Settle (audit dispositions, 2026-07-12).** Five findings settled empirically;
+the branch was rebuilt from base `58007c9` (backup `backup-wp-u12-pre-settle`) so
+every fix lands in-place rather than as forward churn:
+- **Corpus pollution (Major, ×2 — code+tests).** 15 generated Monitor-export CSVs
+  (`ExpControl/*_Mon_pv1*.csv`, ~1.296M lines) had been swept into the vendored
+  corpus by a blanket add on the docs commit. They are solve artifacts (absent
+  from pristine `.inputs`, from base `58007c9`, and from `main`; referenced only
+  by the upstream plot scripts, by no test/manifest). REMOVED — and removed by
+  rewriting the docs commit, not a forward `git rm`, so the ~1.29M-line blob never
+  enters merged history. The live gate's `CorpusGuard` RAII already deletes them
+  when `Master.dss` regenerates them each run (>2 MiB ⇒ name-tracked sweep-on-drop),
+  so `git status tests/corpus` stays clean without them committed; verified by the
+  full gate below leaving the corpus pristine.
+- **Same-commit slip on B2/D1 (Major).** The lock refresh (`3200c41`) that fixed
+  the gate-red `4d3faaf` (flipped 18 decks in `solvable_now` but not
+  `population.lock`) is now FOLDED into the single B2/D1 commit — no gate-red
+  commit remains in history; `population_lock_matches_manifests` is green at every
+  commit.
+- **D8 ledger misattribution (Minor).** DIVERGENCES §D8 + this record + the D8
+  commit message claimed 0.15.x "added" the `TrapZero`/`NonZero` flags. Refuted
+  against the vendored sources: the flags+values are byte-identical between
+  `.inputs/dss_capi` (0.14.5) and `.inputs/dss_capi_with_git` (0.15.x) — commit
+  `69fca934` predates the 0.14.5 tag. Text corrected; the no-code-change decision
+  is unchanged (and better justified).
+- **18-flip strict-necessity note (Minor, informational).** All 18 flips are
+  additive, genuinely Carson-geometry, and B2-attributable; a few (e.g.
+  `4Bus-DY-Bal` Q ≈ 8.5e-8 rel) sit near the f64 floor. Rust now emits the capi015
+  numbers so each flip is correct; no case dropped coverage. No defect — recorded
+  as-is.
 
 ### Gate state (all green)
 ```

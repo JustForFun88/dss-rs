@@ -163,6 +163,17 @@ impl Capacitor {
                 // Wye: ZL already folded into `value` above.
             }
             _ => {
+                // dss_capi 0.15.x (`Capacitor.pas` `MakeYprimWork`, SpecType=3):
+                // "Add a little bit to each phase so it will invert" — the same
+                // ×1.000001 diagonal perturbation the Delta 1|2 branch already
+                // used, added to the Cmatrix branch so a singular C matrix still
+                // inverts. Only reached when the Cmatrix capacitor has a series
+                // filter reactance (`has_zl`). UPGRADE_PLAN WP-U1.2 row B1; ledger
+                // DIVERGENCES.md §B1.
+                for i in 1..=nphases {
+                    let d = ywork.get(i - 1, i - 1) * 1.000001;
+                    ywork.set(i - 1, i - 1, d);
+                }
                 let _ = ywork.invert();
                 for i in 1..=nphases {
                     let v = zl + ywork.get(i - 1, i - 1);
