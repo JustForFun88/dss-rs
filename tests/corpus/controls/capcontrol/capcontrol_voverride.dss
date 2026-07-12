@@ -1,0 +1,38 @@
+// CapControl voltage override (CapControl.pas Sample l.881: the Voverride
+// branch runs AHEAD of the kvar/current/time logic for every non-VOLTAGE
+// control type). A kvar-mode bank is latched ON by its kvar settings, but a
+// high-voltage window (elevated source + light load) drives the monitored
+// terminal past Vmax, so the High-Voltage Override sheds the bank regardless of
+// the kvar demand. Feature-sensitive: with VoltOverride=no the override never
+// fires and the bank stays ON through the overvoltage (probe-proven).
+// NOTE: VoverrideBus reverts at parse in the pinned engine (the bus list is
+// unbuilt when the property is set), so the override senses the control's own
+// monitored terminal - a remote VoverrideBus is a documented no-op upstream.
+// Compared per step: full model + step states, override/setting probes,
+// switching event log + control queue.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.capvo basekv=12.47 pu=1.055 angle=0 phases=3 bus1=src
+~ mvasc3=3000 mvasc1=3200
+
+New line.lf bus1=src bus2=b r1=0.25 x1=0.6 r0=0.6 x0=1.6 c1=0 c0=0 length=2
+
+New capacitor.cb phases=3 bus1=b conn=wye kvar=600 kv=12.47 numsteps=1
+
+// kvar mode, latched ON (onsetting low, offsetting far negative so the kvar
+// logic never sheds it) + high-voltage override at Vmax on the PT-60 base.
+New capcontrol.cc element=line.lf terminal=2 capacitor=cb type=kvar
+~ ptratio=60 onsetting=50 offsetting=-5000 voltoverride=yes vmax=126 vmin=116
+~ eventlog=yes
+
+// Deep light-load trough midday -> terminal voltage swells over Vmax.
+New loadshape.day npts=24 interval=1
+~ mult=(0.60 0.58 0.55 0.52 0.50 0.55 0.70 0.85 0.95 0.60 0.30 0.15 0.12 0.15 0.30 0.55 0.75 0.88 0.95 0.90 0.80 0.70 0.65 0.60)
+
+New load.l1 bus1=b phases=3 conn=wye model=1 kv=12.47 kw=3500 pf=0.92
+~ daily=day
+
+Set voltagebases=[12.47]
+calcv
+Set mode=daily stepsize=1h number=1
