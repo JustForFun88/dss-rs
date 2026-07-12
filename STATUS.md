@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-12 (WP-U1.1 item 1 — ledger L2 zero-kW clamp; record below).
+Last updated: 2026-07-12 (WP-U1.1 item 2 — ParseAsSymMatrix incomplete-matrix reject; record below).
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
@@ -3194,9 +3194,36 @@ coverage were closed:
   reason it can't run on capi015 is the `Generator.kVA=0` `NonZero` rejection) and
   refreshed the manifest note to match.
 
-**Next (resume point):** items 2–5 of `UPGRADE_PLAN §WP-U1.1` are NOT started.
-Item 1 is a self-contained committed green package; a follow-up session continues
-at item 2 (`ParseAsSymMatrix` incomplete-matrix validation).
+**Item 2 landed (`ParseAsSymMatrix` incomplete-matrix reject — adopt EPRI r4133).**
+`Parser::parse_as_sym_matrix` now returns `OrderFound` (rows that supplied ≥1
+value) instead of always `ExpectedOrder`; `ClassProps::parse_into` rejects a
+matrix with `OrderFound < order` (both the `SymMatrix*` and `DoubleSymMatrix`
+arms): it logs the r4133 message ("The matrix entered does not match with the
+expected order…") and keeps the property's prior value — the DoSimpleMsg-and-
+continue semantics of `ParserDel.pas:741`. The FPC line (0.14.5/0.15.x) silently
+zero-filled the missing rows; capi015 does too. This is a **deliberate ledger
+exception** (DIVERGENCES.md §ParseAsSymMatrix): we favor the r4133 end-target over
+the capi015 Rung-1 oracle.
+- **No live oracle is possible.** capi015 zero-fills (comparing against it = a
+  forbidden §1.2 mismatch); oddie r4133 **hangs** the moment an incomplete rmatrix
+  leaves a linecode's series Zmatrix inconsistent (probed: `rmatrix=(0.4|0.1 0.4)`
+  never returns under Oddie; any solve after such a reject times out). So r4133 can
+  neither compile nor solve the feature — §1.7's "solves on target oracle" is
+  unattainable. Gated instead by **feature-sensitive Rust unit tests**: `dss-parser`
+  `sym_matrix_returns_order_found_for_incomplete_input`; `dss-core` line_code
+  `incomplete_sym_matrix_rejected_keeps_default` (asserts the reject message AND the
+  default-symmetric revert, not the zero-fill) + `complete_sym_matrix_still_accepted`.
+- **Gate-safe.** A full corpus scan (`scan_incomplete_matrix.py`) finds the one
+  incomplete-matrix witness (`4wire-Delta/Kersting4wireIndMotor.dss`, 556MCM
+  linecode 3-row cmatrix) already in `skipped_oracle_issue.json` (IndMach012a
+  user-model, unrelated), so no mandatory-gate case supplies an incomplete matrix —
+  the full `cargo test --workspace` is green with the default change.
+- known_diffs: nothing to retire (0.14.5 and the port both zero-filled at r3723).
+
+**Next (resume point):** items 3–5 of `UPGRADE_PLAN §WP-U1.1` remain (item 3
+`AllowNoneItem` conductor-list plumbing; item 4 `TCC_Curve.none`; item 5 C11
+class-command activation). Items 1 and 2 are self-contained committed green
+packages.
 
 ### Gate state (all green)
 ```
