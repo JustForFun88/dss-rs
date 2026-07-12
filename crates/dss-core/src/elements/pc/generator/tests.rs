@@ -393,3 +393,88 @@ fn makeposseq_generator_single_phase() {
         ]
     );
 }
+
+/// Pascal `TPCElement.GetCurrents` `LastSolutionWasDirect` shortcut (PCElement.pas
+/// l.137) wired into `Generator::get_currents`: after a direct solve the reported
+/// terminal current is `YPrim·Vterminal` (the frozen shadow-admittance current);
+/// without the flag it is the model current `YPrim·V − InjCurrent`. Guards the
+/// per-class shortcut branch — Generator inherits the base `GetCurrents`.
+#[test]
+fn direct_shortcut_selects_yprim_currents() {
+    use crate::elements::traits::CktElement;
+
+    let node_v = vec![
+        Complex64::ZERO, // ground slot
+        Complex64::new(7200.0, 0.0),
+        Complex64::new(-3600.0, -6235.0),
+        Complex64::new(-3600.0, 6235.0),
+    ];
+    let inj = Complex64::new(15.0, -6.0);
+
+    let build = || -> Generator {
+        let mut g = Generator::new("g1");
+        CktElement::calc_yprim(&mut g, &snap_ctx()); // sizes yorder + buffers
+        let n = g.cd.yorder;
+        let mut yp = CMatrix::new(n);
+        for i in 0..n {
+            yp.set(i, i, Complex64::new(0.01, -0.02));
+        }
+        g.cd.yprim = Some(yp);
+        g.cd.set_node_ref(1, &[1, 2, 3, 0]);
+        g.cd.inj_current = vec![inj; n];
+        g.cd.iterminal_solution_count = 0; // == solution_count → skip model recompute
+        g
+    };
+
+    // Independent YPrim·Vterminal.
+    let n = 4usize;
+    let mut yp = CMatrix::new(n);
+    for i in 0..n {
+        yp.set(i, i, Complex64::new(0.01, -0.02));
+    }
+    let vterm: Vec<Complex64> = [1usize, 2, 3, 0].iter().map(|&r| node_v[r]).collect();
+    let mut yprim_v = vec![Complex64::ZERO; n];
+    yp.mv_mult(&mut yprim_v, &vterm);
+
+    // Direct read (flag set) → the shortcut YPrim·V.
+    let mut g_d = build();
+    let sys_direct = SysCtx {
+        last_solution_was_direct: true,
+        solution_count: 0,
+        ..snap_ctx()
+    };
+    let mut i_d = vec![Complex64::ZERO; n];
+    g_d.get_currents(&sys_direct, &node_v, &mut i_d);
+
+    // Normal read (flag clear, model skipped via matching SolutionCount, Vterminal
+    // preset) → the model current YPrim·V − InjCurrent.
+    let mut g_n = build();
+    g_n.cd.compute_vterminal(&node_v);
+    let sys_normal = SysCtx {
+        solution_count: 0,
+        ..snap_ctx()
+    };
+    let mut i_n = vec![Complex64::ZERO; n];
+    g_n.get_currents(&sys_normal, &node_v, &mut i_n);
+
+    for k in 0..n {
+        assert!(
+            (i_d[k] - yprim_v[k]).norm() < 1e-9,
+            "direct read [{k}] {} != YPrim·V {}",
+            i_d[k],
+            yprim_v[k]
+        );
+        assert!(
+            (i_d[k] - i_n[k] - inj).norm() < 1e-9,
+            "shortcut − model [{k}] {} != InjCurrent {}",
+            i_d[k] - i_n[k],
+            inj
+        );
+    }
+    assert!(
+        (i_d[0] - i_n[0]).norm() > 1.0,
+        "shortcut indistinguishable from model current: {} vs {}",
+        i_d[0],
+        i_n[0]
+    );
+}

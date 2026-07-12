@@ -306,6 +306,96 @@ fn control_mode_gfm_sets_flag() {
     assert!(st.base.gfm_mode);
 }
 
+/// Pascal `TInvBasedPCE.GetCurrents` GFM override (InvBasedPCE.pas l.211-219): in
+/// **grid-forming** mode `GetCurrents` never calls `inherited`, so the base
+/// `TPCElement.GetCurrents` `LastSolutionWasDirect` shortcut (PCElement.pas l.137)
+/// MUST NOT fire — a GFM unit in DIRECT mode still reports `YPrim·V − InjCurrent`,
+/// not the frozen `YPrim·V`. The non-GFM arm (the port's `!gfm_mode &&
+/// pc_direct_shortcut()` guard) DOES take the shortcut. Guards the class-specific
+/// `!self.base.gfm_mode` condition — the only new branch with no live-deck
+/// coverage (every vendored `mode=direct` deck has its direct Solve commented out).
+#[test]
+fn direct_shortcut_excluded_in_gfm_mode() {
+    use crate::elements::traits::CktElement;
+
+    let node_v = vec![
+        Complex64::ZERO, // ground slot
+        Complex64::new(7000.0, 0.0),
+        Complex64::new(-3500.0, -6062.0),
+        Complex64::new(-3500.0, 6062.0),
+    ];
+    let inj = Complex64::new(12.0, -5.0);
+
+    // A known diagonal YPrim + nonzero injection so the shortcut (YPrim·V) and
+    // the model current (YPrim·V − InjCurrent) differ by whole amps.
+    let build = |gfm: bool| -> Storage {
+        let mut st = Storage::new("s1");
+        st.base.gfm_mode = gfm;
+        CktElement::calc_yprim(&mut st, &ctx()); // sizes yorder + buffers
+        let n = st.cd.yorder;
+        let mut yp = CMatrix::new(n);
+        for i in 0..n {
+            yp.set(i, i, Complex64::new(0.01, -0.02));
+        }
+        st.cd.yprim = Some(yp);
+        st.cd.set_node_ref(1, &[1, 2, 3, 0]);
+        st.cd.inj_current = vec![inj; n];
+        st.cd.iterminal_solution_count = 0; // == solution_count → skip model recompute
+        st
+    };
+
+    // The shortcut result YPrim·Vterminal (computed independently).
+    let n = 4usize;
+    let mut yp = CMatrix::new(n);
+    for i in 0..n {
+        yp.set(i, i, Complex64::new(0.01, -0.02));
+    }
+    let vterm: Vec<Complex64> = [1usize, 2, 3, 0].iter().map(|&r| node_v[r]).collect();
+    let mut yprim_v = vec![Complex64::ZERO; n];
+    yp.mv_mult(&mut yprim_v, &vterm);
+
+    let sys_direct = SysCtx {
+        last_solution_was_direct: true,
+        solution_count: 0, // == default iterminal_solution_count → model skipped
+        ..ctx()
+    };
+
+    // GFM: shortcut EXCLUDED → YPrim·V − InjCurrent.
+    let mut st_gfm = build(true);
+    let mut i_gfm = vec![Complex64::ZERO; n];
+    st_gfm.get_currents(&sys_direct, &node_v, &mut i_gfm);
+    for k in 0..n {
+        let expect = yprim_v[k] - inj;
+        assert!(
+            (i_gfm[k] - expect).norm() < 1e-9,
+            "GFM direct read [{k}] {} != YPrim·V−Inj {}",
+            i_gfm[k],
+            expect
+        );
+    }
+
+    // Non-GFM: shortcut TAKEN → YPrim·V (no InjCurrent).
+    let mut st_pf = build(false);
+    let mut i_pf = vec![Complex64::ZERO; n];
+    st_pf.get_currents(&sys_direct, &node_v, &mut i_pf);
+    for k in 0..n {
+        assert!(
+            (i_pf[k] - yprim_v[k]).norm() < 1e-9,
+            "non-GFM direct read [{k}] {} != YPrim·V {}",
+            i_pf[k],
+            yprim_v[k]
+        );
+    }
+
+    // The exclusion is observable: the two differ by exactly InjCurrent.
+    assert!(
+        (i_pf[0] - i_gfm[0]).norm() > 1.0,
+        "GFM exclusion not observable: non-GFM {} vs GFM {}",
+        i_pf[0],
+        i_gfm[0]
+    );
+}
+
 // --- MakePosSequence (WPG.21) --------------------------------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};

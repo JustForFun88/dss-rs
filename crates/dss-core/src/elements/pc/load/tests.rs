@@ -477,3 +477,109 @@ fn makeposseq_single_phase_wye_keeps_base_kv() {
         ]
     );
 }
+
+/// Pascal `TPCElement.GetCurrents` `LastSolutionWasDirect` shortcut
+/// (PCElement.pas l.137): after a direct solve the reported terminal current
+/// is `CalcYPrimContribution` = `YPrim · Vterminal` (the frozen
+/// shadow-admittance current), NOT the model compensation current
+/// `YPrim·V − InjCurrent`; a snapshot solve after the direct one (flag
+/// cleared, `SolutionCount` bumped) reverts to the model current.
+#[test]
+fn direct_shortcut_selects_yprim_currents() {
+    use crate::elements::traits::CktElement;
+    use num_complex::Complex64;
+
+    let mut load = load_100kw_pf09();
+    load.kv_load_base = 12.47;
+    let snap = SysCtx {
+        solution_count: 1,
+        ..default_recalc_ctx()
+    };
+    load.set_nominal_load(&snap);
+    CktElement::calc_yprim(&mut load, &snap);
+
+    // 3-phase wye: yorder 4, node refs A/B/C + grounded neutral.
+    load.cd.set_node_ref(1, &[1, 2, 3, 0]);
+    let vmag = 12.47e3 / 3.0_f64.sqrt();
+    let a = Complex64::from_polar(1.0, -2.0 * std::f64::consts::PI / 3.0);
+    let node_v = vec![
+        Complex64::ZERO, // ground slot
+        Complex64::new(vmag, 0.0) * 0.98,
+        Complex64::new(vmag, 0.0) * a * 0.98,
+        Complex64::new(vmag, 0.0) * a * a * 0.98,
+    ];
+
+    // Model (compensation) current — the normal snapshot read.
+    let mut i_model = vec![Complex64::ZERO; 4];
+    load.get_currents(&snap, &node_v, &mut i_model);
+
+    // Direct read: expect exactly YPrim · Vterminal.
+    let direct = SysCtx {
+        solution_count: 2,
+        last_solution_was_direct: true,
+        ..default_recalc_ctx()
+    };
+    let mut i_direct = vec![Complex64::ZERO; 4];
+    load.get_currents(&direct, &node_v, &mut i_direct);
+    let mut expected = vec![Complex64::ZERO; 4];
+    load.cd
+        .yprim
+        .as_ref()
+        .unwrap()
+        .mv_mult(&mut expected, &load.cd.vterminal);
+    for k in 0..4 {
+        assert!(
+            (i_direct[k] - expected[k]).norm() < 1e-12,
+            "direct read [{k}] {} != YPrim·V {}",
+            i_direct[k],
+            expected[k]
+        );
+    }
+    // Feature sensitivity: the shortcut differs from the model current by
+    // whole amps on phase A (the escalated DIRECT-mode divergence).
+    assert!(
+        (i_direct[0] - i_model[0]).norm() > 0.1,
+        "shortcut indistinguishable from model current: {} vs {}",
+        i_direct[0],
+        i_model[0]
+    );
+
+    // Dynamics/harmonics exclude the shortcut even with the flag set
+    // (PCElement.pas l.137's `not (IsDynamicModel or IsHarmonicModel)`) — assert
+    // BOTH arms of the OR so a regression dropping either term is caught.
+    assert!(
+        !SysCtx {
+            last_solution_was_direct: true,
+            is_harmonic_model: true,
+            ..default_recalc_ctx()
+        }
+        .pc_direct_shortcut(),
+        "harmonic model must exclude the direct shortcut"
+    );
+    assert!(
+        !SysCtx {
+            last_solution_was_direct: true,
+            is_dynamic_model: true,
+            ..default_recalc_ctx()
+        }
+        .pc_direct_shortcut(),
+        "dynamic model must exclude the direct shortcut"
+    );
+
+    // Snapshot after direct: flag cleared (DoPFLOWsolution l.1022), new
+    // SolutionCount → model current again.
+    let snap2 = SysCtx {
+        solution_count: 3,
+        ..default_recalc_ctx()
+    };
+    let mut i_after = vec![Complex64::ZERO; 4];
+    load.get_currents(&snap2, &node_v, &mut i_after);
+    for k in 0..4 {
+        assert!(
+            (i_after[k] - i_model[k]).norm() < 1e-9,
+            "post-direct snapshot read [{k}] {} != model {}",
+            i_after[k],
+            i_model[k]
+        );
+    }
+}

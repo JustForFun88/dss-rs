@@ -174,6 +174,15 @@ impl CktElement for PVSystem {
             curr.fill(Complex64::ZERO);
             return;
         }
+        // Pascal `TInvBasedPCE.GetCurrents` (InvBasedPCE.pas l.216): non-GFM
+        // falls through to `inherited` `TPCElement.GetCurrents`, whose l.137
+        // `LastSolutionWasDirect` shortcut reports `YPrim · Vterminal` after a
+        // direct solve. The GFM branch below never calls `inherited`, so it
+        // must NOT take the shortcut.
+        if !self.base.gfm_mode && sys.pc_direct_shortcut() {
+            self.cd.calc_yprim_contribution(node_v, curr);
+            return;
+        }
         if self.cd.iterminal_solution_count != sys.solution_count && !self.pv_system_obj_switch_open
         {
             let mut errors = Vec::new();

@@ -189,6 +189,12 @@ impl CktElement for Generator {
             curr.fill(Complex64::ZERO);
             return;
         }
+        // Pascal `TPCElement.GetCurrents` l.137 (`LastSolutionWasDirect`
+        // shortcut): report `YPrim · Vterminal` after a direct solve.
+        if sys.pc_direct_shortcut() {
+            self.cd.calc_yprim_contribution(node_v, curr);
+            return;
+        }
         if self.cd.iterminal_solution_count != sys.solution_count && !self.gen_switch_open {
             let mut errors = Vec::new();
             self.calc_gen_model_contribution(sys, node_v, &mut errors);
