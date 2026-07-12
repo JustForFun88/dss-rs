@@ -198,6 +198,7 @@ dependencies = [
 name = "dss-core"
 version = "0.1.0"
 dependencies = [
+ "dss-metis",
  "dss-parser",
  "dss-sparse",
  "num-complex",
@@ -207,6 +208,10 @@ dependencies = [
  "thiserror 2.0.18",
  "uuid",
 ]
+
+[[package]]
+name = "dss-metis"
+version = "0.1.0"
 
 [[package]]
 name = "dss-parser"

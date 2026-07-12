@@ -222,6 +222,21 @@ impl LoadShapeObj {
         self.num_points
     }
 
+    /// Pascal `PMultipliers^` — the raw active-power multiplier array (1-indexed
+    /// in Pascal; 0-indexed here). `AggregateProfiles` (WP-AD.5) reads it directly
+    /// rather than through the interpolating `mult(i)` getter. Empty when the
+    /// shape carries no P data (a freed NIL pointer upstream).
+    pub fn p_mult_raw(&self) -> &[f64] {
+        self.p_mult.as_deref().unwrap_or(&[])
+    }
+
+    /// Pascal `QMultipliers^` — the raw reactive-power multiplier array, or `None`
+    /// when `QMultipliers = nil` (the `AggregateProfiles` PF-fallback path keys off
+    /// exactly this NIL check, Circuit.pas:1763).
+    pub fn q_mult_raw(&self) -> Option<&[f64]> {
+        self.q_mult.as_deref()
+    }
+
     /// Pascal `MaxP` / `MaxQ`: the peak active power and its coincident reactive
     /// power, set by `SetMaxPandQ` (used by the `UseActual` `SetkWkvar` path).
     pub fn max_p(&self) -> f64 {

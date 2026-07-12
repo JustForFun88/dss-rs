@@ -57,6 +57,10 @@ impl Dss {
         // — Pascal `SetObjectClass`); `false` = object (select — `SetObject`).
         // WP-U1.1 item 5.
         let mut pending_set_active: Vec<(bool, String)> = Vec::new();
+        // Pascal `ADiakoptics and (ActiveActor = 1)` fans `GETCTRLMODE` to the
+        // children after a `set controlmode=`/`set maxcontroliter=` (ExecOptions.pas
+        // ordinals 43/55). Tracked here, executed after the destructure block.
+        let mut sync_ctrl_mode = false;
         {
             let Dss {
                 classes,
@@ -92,9 +96,23 @@ impl Dss {
                 }
 
                 match pointer {
-                    0 => errors.push(format!(
-                        "Unknown parameter \"{param_name}\" for Set Command"
-                    )),
+                    0 => {
+                        // A-Diakoptics options (`Num_SubCircuits`, `Coverage`,
+                        // `LinkBranches`, `UseMyLinkBranches`, `ADiakoptics`) are
+                        // compiled out of the vendored/oracle build (§0.2) so they
+                        // are absent from the oracle-pinned `EXEC_OPTIONS`; handled
+                        // here as a recorded departure (WP-AD.2/AD.3).
+                        if !crate::exec::tearing::try_set_ad_option(
+                            ckt,
+                            &param_name,
+                            &param,
+                            errors,
+                        ) {
+                            errors.push(format!(
+                                "Unknown parameter \"{param_name}\" for Set Command"
+                            ));
+                        }
+                    }
                     opt::HOUR => {
                         if let Some(v) = get_int(parser, vars, errors) {
                             ckt.solution.int_hour = v;
@@ -392,6 +410,8 @@ impl Dss {
                             ckt.solution.control_mode = v;
                             // always revert to last one specified in a script
                             ckt.solution.default_control_mode = v;
+                            // ADiakoptics + ActiveActor=1: sync child control mode.
+                            sync_ctrl_mode = true;
                         }
                     }
                     opt::DEFAULT_DAILY => {
@@ -439,6 +459,8 @@ impl Dss {
                     opt::MAX_CONTROL_ITER => {
                         if let Some(v) = get_int(parser, vars, errors) {
                             ckt.solution.max_control_iterations = v;
+                            // ADiakoptics + ActiveActor=1: sync child iters (GETCTRLMODE).
+                            sync_ctrl_mode = true;
                         }
                     }
                     // Pascal `DoHarmonicsList` (ExecHelper.pas l.2687): `ALL`
@@ -665,6 +687,26 @@ impl Dss {
             } else {
                 self.set_object(&param);
             }
+        }
+
+        // `set controlmode=`/`set maxcontroliter=` while ADiakoptics is active on
+        // the coordinator (ActiveActor 1) syncs the child control mode/iters.
+        if sync_ctrl_mode
+            && self
+                .circuit
+                .as_ref()
+                .is_some_and(|c| c.solution.adiakoptics)
+        {
+            self.ad_send_get_ctrl_mode();
+        }
+
+        // `set ADiakoptics=yes` requested `ADiakopticsInit`, deferred here past
+        // the option-loop borrow (it needs `&mut Dss`, not just the circuit).
+        if self.circuit.as_ref().is_some_and(|c| c.ad.pending_ad_init) {
+            if let Some(ckt) = self.circuit.as_mut() {
+                ckt.ad.pending_ad_init = false;
+            }
+            self.adiakoptics_init();
         }
 
         if solve_option == 1 {

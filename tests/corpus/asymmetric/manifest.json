@@ -3,6 +3,7 @@
  "cases": [
   {
    "path": "vsource/vsource_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -13,6 +14,7 @@
   },
   {
    "path": "reactor/reactor_asym.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -26,6 +28,7 @@
   },
   {
    "path": "capacitor/capacitor_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -40,6 +43,7 @@
   },
   {
    "path": "line/line_asym.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -52,6 +56,7 @@
   },
   {
    "path": "line/line_geometry_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -64,6 +69,7 @@
   },
   {
    "path": "line/line_cable_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -75,6 +81,7 @@
   },
   {
    "path": "line/line_spacing_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -85,6 +92,7 @@
   },
   {
    "path": "line/line_llc_harm_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -95,6 +103,7 @@
   },
   {
    "path": "line/line_ground_z_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -105,6 +114,7 @@
   },
   {
    "path": "line/line_fullcarson_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -115,6 +125,7 @@
   },
   {
    "path": "transformer/transformer_asym.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -129,6 +140,7 @@
   },
   {
    "path": "transformer/transformer_wyedelta_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -139,6 +151,7 @@
   },
   {
    "path": "fault/fault_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -149,6 +162,7 @@
   },
   {
    "path": "load/load_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -164,6 +178,7 @@
   },
   {
    "path": "generator/generator_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -176,6 +191,7 @@
   },
   {
    "path": "generator/gen_currentlimited_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -187,6 +203,7 @@
   },
   {
    "path": "der/der_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -198,6 +215,7 @@
   },
   {
    "path": "der/der_state_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -209,6 +227,7 @@
   },
   {
    "path": "indmach/indmach_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -219,6 +238,7 @@
   },
   {
    "path": "vccs/vccs_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -229,6 +249,7 @@
   },
   {
    "path": "upfc/upfc_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -239,6 +260,7 @@
   },
   {
    "path": "combo/combo_chain_asym.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -255,6 +277,7 @@
   },
   {
    "path": "combo/midi_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -263,6 +286,7 @@
   },
   {
    "path": "combo/midi_geometry_cable_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -273,6 +297,7 @@
   },
   {
    "path": "combo/combo_mesh_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -289,6 +314,7 @@
   },
   {
    "path": "vsource/midi_vsource_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -297,6 +323,7 @@
   },
   {
    "path": "reactor/midi_reactor_asym.dss",
+   "ad": "off:ad-divergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -305,6 +332,7 @@
   },
   {
    "path": "capacitor/midi_capacitor_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -313,6 +341,7 @@
   },
   {
    "path": "line/midi_line_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -321,6 +350,7 @@
   },
   {
    "path": "transformer/midi_transformer_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -329,6 +359,7 @@
   },
   {
    "path": "fault/midi_fault_asym.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -337,6 +368,7 @@
   },
   {
    "path": "load/midi_load_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -345,6 +377,7 @@
   },
   {
    "path": "load/midi_load_vregion_asym.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -354,6 +387,7 @@
   },
   {
    "path": "generator/midi_generator_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -362,6 +396,7 @@
   },
   {
    "path": "der/midi_der_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -370,6 +405,7 @@
   },
   {
    "path": "indmach/midi_indmach_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -378,6 +414,7 @@
   },
   {
    "path": "vccs/midi_vccs_asym.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -386,6 +423,7 @@
   },
   {
    "path": "upfc/midi_upfc_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -394,6 +432,7 @@
   },
   {
    "path": "isource/isource_snap.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -404,6 +443,7 @@
   },
   {
    "path": "autotrans/autotrans_snap.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -431,6 +471,7 @@
   },
   {
    "path": "autotrans/autotrans_gic.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -442,6 +483,7 @@
   },
   {
    "path": "gic/gicline_gic.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -452,6 +494,7 @@
   },
   {
    "path": "gic/gictransformer_gic.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -462,6 +505,7 @@
   },
   {
    "path": "gic/gicsource_gic.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -487,6 +531,7 @@
   },
   {
    "path": "isource/midi_isource_asym.dss",
+   "ad": "off:too-small",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [
@@ -497,6 +542,7 @@
   },
   {
    "path": "autotrans/midi_autotrans_asym.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [
@@ -515,6 +561,7 @@
   },
   {
    "path": "gic/gic_midi.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [

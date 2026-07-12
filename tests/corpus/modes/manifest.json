@@ -3,6 +3,7 @@
  "cases": [
   {
    "path": "inputformat/shape_binfiles/shape_binfiles.dss",
+   "ad": "off:save-roundtrip-relpath",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -108,6 +109,7 @@
   },
   {
    "path": "inputformat/shape_mmf/shape_mmf.dss",
+   "ad": "off:save-roundtrip-relpath",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -155,6 +157,7 @@
   },
   {
    "path": "inputformat/shape_filearr/shape_filearr.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -237,6 +240,7 @@
   },
   {
    "path": "time/generaltime.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -257,6 +261,7 @@
   },
   {
    "path": "time/generaltime_yearly.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -277,6 +282,7 @@
   },
   {
    "path": "time/generaltime_duty.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -297,6 +303,7 @@
   },
   {
    "path": "time/ld1.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 16,
    "selected_elements": [
@@ -308,6 +315,7 @@
   },
   {
    "path": "time/ld2.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 5,
    "selected_elements": [
@@ -319,6 +327,7 @@
   },
   {
    "path": "time/peakday.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -331,6 +340,7 @@
   },
   {
    "path": "time/direct.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -342,6 +352,7 @@
   },
   {
    "path": "montecarlo/monte1.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 5,
    "selected_elements": [
@@ -353,6 +364,7 @@
   },
   {
    "path": "montecarlo/monte2.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -364,6 +376,7 @@
   },
   {
    "path": "montecarlo/monte3.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 4,
    "selected_elements": [
@@ -375,6 +388,7 @@
   },
   {
    "path": "montecarlo/montefault.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 3,
    "selected_elements": [
@@ -386,6 +400,7 @@
   },
   {
    "path": "autoadd/autoadd.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -411,6 +426,7 @@
   },
   {
    "path": "autoadd/autoadd_cap.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -436,6 +452,7 @@
   },
   {
    "path": "newton/newton.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -447,6 +464,7 @@
   },
   {
    "path": "newton/newton_feeder.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -458,6 +476,7 @@
   },
   {
    "path": "harmonics/reactor_rlcurve.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -470,6 +489,7 @@
   },
   {
    "path": "inputformat/xycurve_files/xycurve_files.dss",
+   "ad": "off:save-roundtrip-relpath",
    "kind": "micro",
    "n_steps": 3,
    "selected_elements": [
@@ -483,6 +503,7 @@
   },
   {
    "path": "harmonics/isource_harm.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -495,6 +516,7 @@
   },
   {
    "path": "batchedit/batchedit.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -527,6 +549,7 @@
   },
   {
    "path": "batchedit/midi_batchedit.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [
@@ -558,6 +581,7 @@
   },
   {
    "path": "reduce/reduce_default.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -569,6 +593,7 @@
   },
   {
    "path": "reduce/reduce_shortlines.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -580,6 +605,7 @@
   },
   {
    "path": "reduce/reduce_dangling.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -591,6 +617,7 @@
   },
   {
    "path": "reduce/reduce_switches.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -602,6 +629,7 @@
   },
   {
    "path": "reduce/reduce_laterals.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -613,6 +641,7 @@
   },
   {
    "path": "reduce/reduce_mergeparallel.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -624,6 +653,7 @@
   },
   {
    "path": "reduce/reduce_breakloop.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -635,6 +665,7 @@
   },
   {
    "path": "reduce/reduce_keeplist.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -646,6 +677,7 @@
   },
   {
    "path": "reduce/midi_reduce.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "midi",
    "n_steps": 1,
    "selected_elements": [
@@ -657,6 +689,7 @@
   },
   {
    "path": "upgrade/upgrade_pilot.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -667,6 +700,7 @@
   },
   {
    "path": "upgrade/upgrade_parser_zerokw.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -700,6 +734,7 @@
   },
   {
    "path": "reduce/reduce_remove.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -721,6 +756,7 @@
   },
   {
    "path": "pstcalc/pstcalc_cmd.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -732,6 +768,7 @@
   },
   {
    "path": "makeposseq/makeposseq_line.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -776,6 +813,7 @@
   },
   {
    "path": "makeposseq/makeposseq_xfmr.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -820,6 +858,7 @@
   },
   {
    "path": "makeposseq/makeposseq_shunt.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -865,6 +904,7 @@
   },
   {
    "path": "makeposseq/makeposseq_pc.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -913,6 +953,7 @@
   },
   {
    "path": "makeposseq/makeposseq_ctrl.dss",
+   "ad": "off:save-roundtrip-control",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -947,6 +988,7 @@
   },
   {
    "path": "makeposseq/makeposseq_report.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -976,6 +1018,7 @@
   },
   {
    "path": "time/daily.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -996,6 +1039,7 @@
   },
   {
    "path": "time/daily_bigstep.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -1008,6 +1052,7 @@
   },
   {
    "path": "time/yearly.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1020,6 +1065,7 @@
   },
   {
    "path": "time/duty.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1041,6 +1087,7 @@
   },
   {
    "path": "time/midi_duty_ctrl.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 20,
    "selected_elements": [
@@ -1055,6 +1102,7 @@
   },
   {
    "path": "harmonics/harmonic_hlist.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -1067,6 +1115,7 @@
   },
   {
    "path": "harmonics/harmonict.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -1079,6 +1128,7 @@
   },
   {
    "path": "reset/mode_reset.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -1091,6 +1141,7 @@
   },
  {
   "path": "windgen/windgen_snap.dss",
+  "ad": "off:unclassified-new-deck",
   "kind": "micro",
   "n_steps": 1,
   "selected_elements": [
@@ -1103,6 +1154,7 @@
  },
  {
   "path": "windgen/windgen_snap_delta.dss",
+  "ad": "off:unclassified-new-deck",
   "kind": "micro",
   "n_steps": 1,
   "selected_elements": [
@@ -1115,6 +1167,7 @@
  },
  {
   "path": "windgen/windgen_daily.dss",
+  "ad": "off:unclassified-new-deck",
   "kind": "micro",
   "n_steps": 1,
   "selected_elements": [
@@ -1127,6 +1180,7 @@
  },
  {
   "path": "windgen/windgen_dyn.dss",
+  "ad": "off:unclassified-new-deck",
   "kind": "micro_wtg3_dynamics",
   "n_steps": 1,
   "selected_elements": [
@@ -1142,6 +1196,7 @@
  },
  {
   "path": "windgen/windgen_dyn_fault.dss",
+  "ad": "off:unclassified-new-deck",
   "kind": "micro_wtg3_dynamics",
   "n_steps": 1,
   "selected_elements": [

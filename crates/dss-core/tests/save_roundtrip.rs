@@ -308,6 +308,50 @@ fn save_roundtrip_ieee8500() {
     );
 }
 
+/// `LineGeometry` conductor-table round-trip (the WP-AD save-fidelity fix). The
+/// generic `SaveWrite` collapses `Cond`/`Wire`/`X`/`H`/`Units` — each re-set once
+/// per conductor — to a single property-sequence slot, so it used to emit only
+/// the LAST conductor; the missing per-conductor arrays made a geometry-built
+/// line reload with a wrong (or unbuildable) `Z` matrix. The
+/// [`crate::elements::general::line_geometry`] `SaveWrite` override (Pascal
+/// `TLineGeometryObj.SaveWrite`) re-emits the whole conductor table.
+///
+/// The IEEE-13 geometry deck is the witness: five geometries with mixed conductor
+/// counts (4/4/3/3/2), a `like=`-cloned geometry (`604 like=603`, which the
+/// override must serialize by its own conductor table — our port cannot
+/// round-trip a `like=` directive), and a phase/neutral wire mix. A single
+/// dropped conductor changes the reduced series `Z` by far more than the 1e-6
+/// node-V tier (measured ~1.0 before the fix — the interconnected reload failed
+/// to solve), so the round-trip node-V / discrete-tap comparison pins the whole
+/// conductor table. Regulators settle on the cold re-solve (as in
+/// `save_roundtrip_ieee13`), and a dropped conductor is a large error the tap
+/// channel cannot mask.
+#[test]
+fn save_roundtrip_ieee13_linegeometry() {
+    round_trip("ie13geom", corpus("Test/IEEE13_LineGeometry.dss"));
+}
+
+/// `Line` inline-spacing conductor-array round-trip (the WP-AD save-fidelity
+/// fix, second bug). `Line.Wires`/`CNCables`/`TSCables` alias the one
+/// `LineWireData` array, so the generic `SaveWrite` re-emits the *whole* array
+/// under *every* kind that was set: a line built `TSCables=[TS_1/0]
+/// Wires=[CU_1/0]` used to save as `TSCables=[ts_1/0, cu_1/0] Wires=[ts_1/0,
+/// cu_1/0]`, and reload aborted looking up the `cu_1/0` **wire** in the TSData
+/// catalog. The [`crate::elements::pd::line`] `SaveWrite` override (Pascal
+/// `TLineObj.SaveWrite`) emits contiguous same-catalog runs under the correct
+/// kind.
+///
+/// The IEEE-13 line/cable-spacing deck is the witness: overhead `Wires=` lines,
+/// a 3-phase `CNCables=` cable run (`Line.692675`), and the mixed
+/// `TSCables=[TS_1/0] Wires=[CU_1/0]` line (`Line.684652`) that reproduced the
+/// reload abort before the fix (proven: the pre-fix serializer errors
+/// `TSData "cu_1/0" not found`, which `errors().is_empty()` catches). The
+/// round-trip node-V / discrete-tap comparison pins the partitioned emission.
+#[test]
+fn save_roundtrip_ieee13_lineandcablespacing() {
+    round_trip("ie13lcs", corpus("Test/IEEE13_LineAndCableSpacing.dss"));
+}
+
 /// Collect the set of emitted files relative to `root`, using `/` separators.
 fn emitted_set(root: &std::path::Path) -> BTreeSet<String> {
     let mut set = BTreeSet::new();

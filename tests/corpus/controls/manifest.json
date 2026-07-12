@@ -3,6 +3,7 @@
  "cases": [
   {
    "path": "invcontrol/invcontrol_multi_vv_wye.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -14,6 +15,7 @@
   },
   {
    "path": "invcontrol/invcontrol_vv_delta.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -25,6 +27,7 @@
   },
   {
    "path": "regcontrol/regcontrol_sym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -55,6 +58,7 @@
   },
   {
    "path": "regcontrol/regcontrol_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -87,6 +91,7 @@
   },
   {
    "path": "capcontrol/capcontrol_sym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -114,6 +119,7 @@
   },
   {
    "path": "capcontrol/capcontrol_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -156,6 +162,7 @@
   },
   {
    "path": "invcontrol/invcontrol_vv_sym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -177,6 +184,7 @@
   },
   {
    "path": "invcontrol/invcontrol_vvvw_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -201,6 +209,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_peakshave.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -242,6 +251,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_time.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -274,6 +284,7 @@
   },
   {
    "path": "combo/midi_controls.dss",
+   "ad": "off:save-roundtrip-control",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -362,6 +373,7 @@
   },
   {
    "path": "combo/midi_protection.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -400,6 +412,7 @@
   },
   {
    "path": "combo/combo_protection.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 20,
    "selected_elements": [
@@ -434,6 +447,7 @@
   },
   {
    "path": "combo/combo_voltvar_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -469,6 +483,7 @@
   },
   {
    "path": "combo/combo_metering.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -497,6 +512,7 @@
   },
   {
    "path": "energymeter/energymeter_sym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -515,6 +531,7 @@
   },
   {
    "path": "energymeter/energymeter_asym.dss",
+   "ad": "pf",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -533,6 +550,7 @@
   },
   {
    "path": "monitor/monitor_modes.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -572,6 +590,7 @@
   },
   {
    "path": "sensor/sensor_map.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -616,6 +635,7 @@
   },
   {
    "path": "recloser/recloser_temp.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -639,6 +659,7 @@
   },
   {
    "path": "recloser/recloser_perm.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -662,6 +683,7 @@
   },
   {
    "path": "relay/relay_oc_sym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -686,6 +708,7 @@
   },
   {
    "path": "relay/relay_4647_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 10,
    "selected_elements": [
@@ -717,6 +740,7 @@
   },
   {
    "path": "fuse/fuse_blow_asym.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -738,6 +762,7 @@
   },
   {
    "path": "swtcontrol/swtcontrol_time.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 12,
    "post": [
@@ -762,6 +787,7 @@
   },
   {
    "path": "gendispatcher/gendispatcher.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -796,6 +822,7 @@
   },
   {
    "path": "regcontrol/midi_regcontrol.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -832,6 +859,7 @@
   },
   {
    "path": "capcontrol/midi_capcontrol.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -872,6 +900,7 @@
   },
   {
    "path": "invcontrol/midi_invcontrol.dss",
+   "ad": "off:ad-singular-zone",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -894,6 +923,7 @@
   },
   {
    "path": "storagecontroller/midi_storagectrl.dss",
+   "ad": "off:save-roundtrip-control",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -925,6 +955,7 @@
   },
   {
    "path": "gendispatcher/midi_gendispatcher.dss",
+   "ad": "off:save-roundtrip-control",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -958,6 +989,7 @@
   },
   {
    "path": "recloser/midi_recloser_temp.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 16,
    "selected_elements": [
@@ -979,6 +1011,7 @@
   },
   {
    "path": "recloser/midi_recloser_perm.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1000,6 +1033,7 @@
   },
   {
    "path": "relay/midi_relay_4647.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 10,
    "selected_elements": [
@@ -1028,6 +1062,7 @@
   },
   {
    "path": "fuse/midi_fuse.dss",
+   "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1048,6 +1083,7 @@
   },
   {
    "path": "swtcontrol/midi_swtcontrol.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 12,
    "post": [
@@ -1071,6 +1107,7 @@
   },
   {
    "path": "energymeter/midi_energymeter.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1096,6 +1133,7 @@
   },
   {
    "path": "monitor/midi_monitor.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -1126,6 +1164,7 @@
   },
   {
    "path": "sensor/midi_sensor.dss",
+   "ad": "off:save-roundtrip-control",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -1170,6 +1209,7 @@
   },
   {
    "path": "capcontrol/capcontrol_follow.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1190,6 +1230,7 @@
   },
   {
    "path": "capcontrol/capcontrol_follow_noshape.dss",
+   "ad": "off:deck-aborts-by-design",
    "kind": "micro",
    "pending": false,
    "expect_solve_abort": "Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
@@ -1198,6 +1239,7 @@
   },
   {
    "path": "invcontrol/invcontrol_expmodel.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1218,6 +1260,7 @@
   },
   {
    "path": "invcontrol/invcontrol_storage_vw.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -1240,6 +1283,7 @@
   },
   {
    "path": "invcontrol/invcontrol_storage_vv_vw.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -1263,6 +1307,7 @@
   },
   {
    "path": "gfm/gfm_micro.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "oracle": "capi015",
    "n_steps": 6,
@@ -1287,6 +1332,7 @@
   },
   {
    "path": "gfm/gfm_invcontrol.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "oracle": "capi015",
    "n_steps": 6,
@@ -1310,6 +1356,7 @@
   },
   {
    "path": "gfm/gfm_dynamics.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "oracle": "capi015",
    "n_steps": 1,
@@ -1334,6 +1381,7 @@
   },
   {
    "path": "gfm/pv_gfm_dynamics.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "oracle": "capi015",
    "n_steps": 1,
@@ -1357,6 +1405,7 @@
   },
   {
    "path": "storagecontroller/storagecontroller_seasonal.dss",
+   "ad": "off:save-roundtrip-control",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1379,6 +1428,7 @@
   },
   {
    "path": "isource/isource_daily.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1390,6 +1440,7 @@
   },
   {
    "path": "autotrans/autotrans_reg.dss",
+   "ad": "off:save-roundtrip-control",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1419,6 +1470,7 @@
   },
   {
    "path": "isource/isource_both.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 9,
    "selected_elements": [
@@ -1431,6 +1483,7 @@
   },
   {
    "path": "isource/midi_isource.dss",
+   "ad": "off:too-small",
    "kind": "midi",
    "n_steps": 8,
    "selected_elements": [
@@ -1442,6 +1495,7 @@
   },
   {
    "path": "isource/midi_isource_both.dss",
+   "ad": "off:too-small",
    "kind": "midi",
    "n_steps": 9,
    "selected_elements": [
@@ -1453,6 +1507,7 @@
   },
   {
    "path": "autotrans/autotrans_both.dss",
+   "ad": "off:save-roundtrip-control",
    "kind": "micro",
    "n_steps": 9,
    "selected_elements": [
@@ -1482,6 +1537,7 @@
   },
   {
    "path": "autotrans/midi_autotrans.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "midi",
    "n_steps": 8,
    "selected_elements": [
@@ -1511,6 +1567,7 @@
   },
   {
    "path": "autotrans/midi_autotrans_both.dss",
+   "ad": "off:ad-nonconvergent",
    "kind": "midi",
    "n_steps": 9,
    "selected_elements": [
@@ -1532,6 +1589,7 @@
   },
   {
    "path": "monitor/monitor_pst.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1541,6 +1599,7 @@
   },
   {
    "path": "monitor/midi_monitor_pst.dss",
+   "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1550,6 +1609,7 @@
   },
   {
    "path": "regcontrol/regcontrol_ldc.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1579,6 +1639,7 @@
   },
   {
    "path": "regcontrol/regcontrol_reverse.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1609,6 +1670,7 @@
   },
   {
    "path": "regcontrol/regcontrol_remotebus.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1637,6 +1699,7 @@
   },
   {
    "path": "regcontrol/regcontrol_inversetime.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 40,
    "selected_elements": [
@@ -1666,6 +1729,7 @@
   },
   {
    "path": "capcontrol/capcontrol_pf.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1694,6 +1758,7 @@
   },
   {
    "path": "capcontrol/capcontrol_time.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1734,6 +1799,7 @@
   },
   {
    "path": "capcontrol/capcontrol_voverride.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1761,6 +1827,7 @@
   },
   {
    "path": "invcontrol/invcontrol_drc.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1783,6 +1850,7 @@
   },
   {
    "path": "invcontrol/invcontrol_vv_drc.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1805,6 +1873,7 @@
   },
   {
    "path": "invcontrol/invcontrol_wattpf.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1826,6 +1895,7 @@
   },
   {
    "path": "invcontrol/invcontrol_wattvar.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1847,6 +1917,7 @@
   },
   {
    "path": "invcontrol/invcontrol_avr.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1869,6 +1940,7 @@
   },
   {
    "path": "invcontrol/invcontrol_monbus.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1891,6 +1963,7 @@
   },
   {
    "path": "invcontrol/midi_invcontrol_drc.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1916,6 +1989,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_follow.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1949,6 +2023,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_support.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1981,6 +2056,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_ipeakshave.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -2013,6 +2089,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_loadshape.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -2045,6 +2122,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_chargelow.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -2078,6 +2156,7 @@
   },
   {
    "path": "relay/relay_voltage.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -2101,6 +2180,7 @@
   },
   {
    "path": "relay/relay_revpower.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -2123,6 +2203,7 @@
   },
   {
    "path": "relay/relay_generic.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -2145,6 +2226,7 @@
   },
   {
    "path": "relay/relay_distance.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -2167,6 +2249,7 @@
   },
   {
    "path": "relay/relay_td21.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 30,
    "selected_elements": [
@@ -2189,6 +2272,7 @@
   },
   {
    "path": "relay/relay_doc.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -2211,6 +2295,7 @@
   },
   {
    "path": "recloser/recloser_ground.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 16,
    "selected_elements": [
@@ -2233,6 +2318,7 @@
   },
   {
    "path": "fuse/fuse_blow_3ph.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -2252,6 +2338,7 @@
   },
   {
    "path": "swtcontrol/swtcontrol_lock.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 12,
    "post": [
@@ -2276,6 +2363,7 @@
   },
   {
    "path": "gendispatcher/gendispatcher_kvarlimit.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -2317,6 +2405,7 @@
   },
   {
    "path": "energymeter/energymeter_options.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -2336,6 +2425,7 @@
   },
   {
    "path": "monitor/monitor_modes_hi.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -2369,6 +2459,7 @@
   },
   {
    "path": "monitor/monitor_seqmag.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -2402,6 +2493,7 @@
   },
   {
    "path": "expcontrol/expcontrol_basic.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 10,
    "selected_elements": [
@@ -2423,6 +2515,7 @@
   },
   {
    "path": "upfc/upfc_vreg.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -2441,6 +2534,7 @@
   },
   {
    "path": "upfc/upfc_doubleref.dss",
+   "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [

@@ -13,7 +13,7 @@ use super::{SolveEnv, SolveResult, sys_ctx};
 /// (`InvControlClass.UpdateAll`, l.91) and the ExpControl `Vreg` slew
 /// (`ExpControlClass.UpdateAll`, l.92), plus the mode-5 monitor sampling
 /// (`MonitorClass.SampleAllMode5`, l.96 — captures the per-step timings).
-pub(super) fn end_of_time_step_cleanup(ckt: &mut Circuit, env: &mut SolveEnv) {
+pub(crate) fn end_of_time_step_cleanup(ckt: &mut Circuit, env: &mut SolveEnv) {
     update_all_storage(ckt, env);
     crate::solution::controls::update_all_inv_controls(ckt, env);
     crate::solution::controls::update_all_exp_controls(ckt, env);
@@ -53,7 +53,7 @@ fn update_all_storage(ckt: &mut Circuit, env: &mut SolveEnv) {
 /// `EnergyMeterClass.SampleAll` (`SolutionAlgs.pas` l.78): the monitor sweep
 /// (mode ≠ 5) always runs; the EnergyMeter register sweep runs when the solve
 /// mode requests it.
-pub(super) fn sample_all_monitors_and_meters(
+pub(crate) fn sample_all_monitors_and_meters(
     ckt: &mut Circuit,
     env: &mut SolveEnv,
     sample_meters: bool,

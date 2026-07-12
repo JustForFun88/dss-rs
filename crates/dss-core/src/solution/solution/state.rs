@@ -215,6 +215,32 @@ pub struct Solution {
     /// `Inc_Mat_Rows`/`Inc_Mat_Cols`/`Inc_Mat_levels`), built by the
     /// `CalcIncMatrix`/`CalcIncMatrix_O`/`CalcLaplacian` commands (WP-AD.1).
     pub inc_matrix: crate::solution::inc_matrix::IncMatrixState,
+
+    // --- A-Diakoptics (WP-AD.3, `Solution.pas:233–255`). All false/empty until
+    // `set ADiakoptics=yes` runs `ADiakopticsInit`. On the coordinator these
+    // steer the solve-path AD branches; on a child, the index maps route its
+    // local solve into the coordinator's NodeV.
+    /// `Solution.ADiakoptics` — the AD-active flag (coordinator).
+    pub adiakoptics: bool,
+    /// `Solution.ADiak_Init` — set TRUE at the tail of `ADiakopticsInit` state 9,
+    /// then cleared on success ("force the subzones to remove VSource.Source")
+    /// and reset by every `Solve` (Diakoptics.pas:748/770, ExecCommands `Solve`).
+    pub adiak_init: bool,
+    /// `Solution.ADiak_PCInj` — TRUE inside `DoNormalSolution`'s coordinator hook
+    /// (children pick up PC injections), FALSE from `SolveDirect`/`SolveYDirect`.
+    pub adiak_pcinj: bool,
+    /// `Parallel_enabled` (a Pascal global; sequential here). TRUE once
+    /// `ADiakopticsInit` succeeds.
+    pub parallel_enabled: bool,
+    /// `LocalBusIdx` (child): the coordinator node index of each of this child's
+    /// nodes; `LocalBusIdx[0]` is the child's offset into the parent NodeV.
+    pub local_bus_idx: Vec<usize>,
+    /// `AD_IBus` (child): local node indices (1-based) carrying an AD current
+    /// injection (a boundary bus present in this child's `Contours` rows).
+    pub ad_ibus: Vec<usize>,
+    /// `AD_ISrcIdx` (child): the coordinator `Contours` row each `AD_IBus` entry
+    /// maps to (the `Ic` row read in `UpdateISrc`).
+    pub ad_isrc_idx: Vec<i32>,
 }
 
 impl Solution {
@@ -280,6 +306,13 @@ impl Solution {
             control_queue: ControlQueue::new(),
             event_log: EventLog::new(),
             inc_matrix: crate::solution::inc_matrix::IncMatrixState::default(),
+            adiakoptics: false,
+            adiak_init: false,
+            adiak_pcinj: false,
+            parallel_enabled: false,
+            local_bus_idx: Vec::new(),
+            ad_ibus: Vec::new(),
+            ad_isrc_idx: Vec::new(),
         }
     }
 
@@ -348,7 +381,7 @@ impl Solution {
     /// the caller buffer `out` (length `NumNodes`, 0-based; `out[k]` is global
     /// node `k+1`). `DoNormalSolution` passes `NodeV`; `DoNewtonSolution` passes
     /// the delta-V work array `dV`.
-    fn solve_system_into(&mut self, out: &mut [Complex64]) -> SolveResult {
+    pub(crate) fn solve_system_into(&mut self, out: &mut [Complex64]) -> SolveResult {
         let b: Vec<Complex64> = self.currents[1..].to_vec();
         let sparse = self.active_sparse()?;
         sparse.factor().map_err(|e| {
@@ -398,7 +431,7 @@ impl Solution {
 
     /// Pascal `Converged`: per-node voltage-magnitude error against
     /// `NodeVbase` (or relative change when no base), exact NaN/Inf checks.
-    pub(super) fn converged(&mut self, num_nodes: usize) -> bool {
+    pub(crate) fn converged(&mut self, num_nodes: usize) -> bool {
         self.max_error = 0.0;
         for i in 1..=num_nodes {
             let vmag = self.node_v[i].norm();
