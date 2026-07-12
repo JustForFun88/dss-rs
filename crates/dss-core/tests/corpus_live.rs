@@ -1099,14 +1099,24 @@ struct SolvableCase {
     /// feature.
     #[serde(default)]
     pending: bool,
-    /// This deck aborts the solve on BOTH engines — a malformed input the port
-    /// reproduces as Pascal `DSS.SolutionAbort` (e.g. CapControl `type=Follow`
-    /// with no `ControlSignal`). It is not a per-step live compare (the oracle
-    /// *raises* at solve, so `run_and_compare`'s checkpoint capture cannot run):
-    /// the value is the error substring BOTH engines must produce — the oracle
-    /// raising it at solve, the Rust engine setting `solution_abort` and
-    /// surfacing it. Mutually exclusive with `pending` and the normal compare;
-    /// gated by [`run_and_compare_abort`].
+    /// This deck aborts the solve on BOTH engines; the value is the error
+    /// substring both must produce. Two distinct classes share this contract.
+    /// **Malformed input** the port reproduces as Pascal `DSS.SolutionAbort`
+    /// (e.g. CapControl `type=Follow` with no `ControlSignal`). **Control
+    /// non-settling** — a *valid* model whose controls legitimately never drain
+    /// the control queue within `MaxControlIter` (a regulator hunting/re-arming
+    /// at a band edge, changing its tap every control iteration), which Pascal
+    /// `SolveSnap` reports as `#485 Max Control Iterations Exceeded` (CF2-R: the
+    /// three 8500/IEEE123 recloser-siting decks); its captured state is a
+    /// mid-adjustment truncation, not a settled fixpoint — identical on both
+    /// engines.
+    ///
+    /// Either way it is not a per-step live compare: the pinned oracle *raises*
+    /// at solve (and r3723 via Oddie raises the same #485), so
+    /// `run_and_compare`'s checkpoint capture cannot run. The contract is that
+    /// BOTH engines abort with this message — the oracle raising it at solve, the
+    /// Rust engine setting `solution_abort` and surfacing it. Mutually exclusive
+    /// with `pending` and the normal compare; gated by [`run_and_compare_abort`].
     #[serde(default)]
     expect_solve_abort: Option<String>,
     /// Work package that ports this case's feature (`WPG.*` → GAPS_PLAN.md,
@@ -1221,8 +1231,20 @@ fn corpus_live_solvable_cases_match_oracle() {
     }
     let mut pool = OraclePool::new();
     let mut props_gated = 0usize;
+    let mut aborts_gated = 0usize;
     for c in &cases {
         let abs = corpus_file(&c.path);
+        // A deck that aborts the solve on BOTH engines (e.g. #485 Max Control
+        // Iterations Exceeded: a control that never drains the queue within
+        // MaxControlIter) has no solved state to line up — the oracle *raises*
+        // at solve. Route it to the abort contract (both engines abort with the
+        // same message), mirroring the synthetic-family gate. Mutually exclusive
+        // with the per-step compare below.
+        if c.expect_solve_abort.is_some() {
+            run_and_compare_abort(pool.get(c.oracle.as_deref()), &c.path, &abs, c);
+            aborts_gated += 1;
+            continue;
+        }
         // WP8.5b: gate every element's every property value (Rust `?`-surface vs
         // oracle `Properties(p).Val`) on the vendored corpus too — the pinned-capi
         // `feeder`/`micro`-kind decks, which the `corpus_live_properties` pilot
@@ -1243,8 +1265,9 @@ fn corpus_live_solvable_cases_match_oracle() {
         run_and_compare(pool.get(cc.oracle.as_deref()), &cc.path, &abs, &cc);
     }
     eprintln!(
-        "corpus_live: {} solvable case(s) matched the oracle ({props_gated} with full property parity)",
-        cases.len()
+        "corpus_live: {} solvable case(s) matched the oracle ({props_gated} with full \
+         property parity, {aborts_gated} solve-abort case(s))",
+        cases.len() - aborts_gated
     );
 }
 
@@ -2000,7 +2023,9 @@ fn corpus_live_properties() {
     let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
     for fam in [&ASYMMETRIC, &CONTROLS, &MODES] {
         for c in load_family(fam.name) {
-            if c.pending || c.oracle.is_some() {
+            // Abort cases have no solved state to property-compare (the oracle
+            // raises at solve); their contract is `run_and_compare_abort`.
+            if c.pending || c.oracle.is_some() || c.expect_solve_abort.is_some() {
                 continue;
             }
             let abs = family_file(fam.name, &c.path);
@@ -2008,7 +2033,9 @@ fn corpus_live_properties() {
         }
     }
     for c in load_solvable() {
-        if c.oracle.is_some() {
+        // Abort cases have no solved state to property-compare (the oracle raises
+        // at solve); the abort contract is gated by `run_and_compare_abort`.
+        if c.oracle.is_some() || c.expect_solve_abort.is_some() {
             continue;
         }
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
@@ -2250,13 +2277,24 @@ fn corpus_live_opendss() {
             target_rev_excluded.push(format!("solvable_now:{}", c.path));
             continue;
         }
+        // Abort cases raise #485 at solve on BOTH the pinned oracle AND r3723 via
+        // Oddie (dss-python's error check elevates the Direct DLL's `DoSimpleMsg`
+        // to a `DSSException` — verified), so `run_and_compare`'s checkpoint
+        // capture cannot run through the raised solve on this channel either. (The
+        // settled state IS readable if the exception is caught — that is how CF2-R
+        // measured the offline Rust==r3723 full-state identity — but this
+        // report-only channel does not implement exception-tolerant capture; the
+        // mandatory abort contract lives in `run_and_compare_abort`.)
+        if c.expect_solve_abort.is_some() {
+            continue;
+        }
         let mut c = c;
         c.compare_all_properties = false;
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
     }
     for fam in [&ASYMMETRIC, &CONTROLS, &MODES] {
         for c in load_family(fam.name) {
-            if c.pending {
+            if c.pending || c.expect_solve_abort.is_some() {
                 continue;
             }
             if c.oracle.is_some() {
