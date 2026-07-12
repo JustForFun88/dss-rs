@@ -9,7 +9,7 @@
     "solvable_now.json": 286
   },
   "family_counts": {
-    "asymmetric": 43,
+    "asymmetric": 47,
     "controls": 92,
     "modes": 49
   },
@@ -42,7 +42,11 @@
       "isource/midi_isource_asym.dss",
       "line/line_asym.dss",
       "line/line_cable_asym.dss",
+      "line/line_fullcarson_asym.dss",
       "line/line_geometry_asym.dss",
+      "line/line_ground_z_asym.dss",
+      "line/line_llc_harm_asym.dss",
+      "line/line_spacing_asym.dss",
       "line/midi_line_asym.dss",
       "load/load_asym.dss",
       "load/midi_load_asym.dss",
