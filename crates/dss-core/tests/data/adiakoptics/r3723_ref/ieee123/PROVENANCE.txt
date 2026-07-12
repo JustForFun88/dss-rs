@@ -1,0 +1,10 @@
+engine: Version 9.8.0.1 (64-bit build); License Status: Open 
+DSS-Python version: 0.16.0b2
+rev: r3723
+deck: C:\Users\Admin\.claude\worktrees\wp-ad3\tests\corpus\electricdss-tst\Version8\Distrib\Examples\ADiakoptics\IEEE_123_Bus-G
+link: Line.l10, Line.l73
+harvested by tools/opendss/gen_ad_reference.py
+zll.csv sha256[:16]=27be472d0d415da8
+zcc.csv sha256[:16]=be4334af073451e8
+y4.csv sha256[:16]=74a09a72cbccffd1
+voltages.csv nodes=278 sha256[:16]=7e0eadc5c1d11a8d

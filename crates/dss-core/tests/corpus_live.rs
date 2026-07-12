@@ -1146,6 +1146,14 @@ struct SolvableCase {
     /// the case covers; the iteration policy relaxes to `Rust <= oracle`.
     #[serde(default)]
     oracle: Option<String>,
+    /// WP-AD.4 A-Diakoptics disposition (mandatory on every family-manifest case;
+    /// enforced by `family_manifest_is_complete`). `"full"` = compare node V +
+    /// currents/powers + monitors/eventlog under the deck's control mode; `"pf"` =
+    /// same but both arms force `controlmode=off` (physics-only); `"off:<reason>"`
+    /// = not AD-swept, reason mandatory and specific. The vendored corpus carries
+    /// this in the orthogonal `manifests/ad_sweep.json` overlay instead.
+    #[serde(default)]
+    ad: Option<String>,
 }
 
 fn default_kind() -> String {
@@ -1418,6 +1426,21 @@ fn family_manifest_is_complete(fam: &Family) {
                 c.path
             );
         }
+        // WP-AD.4: every family-manifest case MUST carry a valid `ad` disposition
+        // (loader errors on a missing/garbage field — same spirit as `pending`/`wp`).
+        let ad = c.ad.as_deref().unwrap_or_else(|| {
+            panic!(
+                "{}:{}: missing mandatory `ad` disposition (WP-AD.4 — one of \
+                 full|pf|off:<reason>)",
+                fam.name, c.path
+            )
+        });
+        assert!(
+            ad_disposition_is_valid(ad),
+            "{}:{}: invalid `ad` disposition {ad:?} — expected full|pf|off:<reason>",
+            fam.name,
+            c.path
+        );
         (fam.check_case)(c);
     }
 }
@@ -2533,4 +2556,605 @@ fn corpus_live_opendss() {
             rp.display()
         );
     }
+}
+
+// ===========================================================================
+// WP-AD.4 — the corpus-wide A-Diakoptics <-> normal sweep.
+//
+// Rust-vs-rust (the oracle is not involved), so `corpus_ad_matches_normal_mode`
+// runs everywhere `cargo test` runs. Every `solvable_now` entry point carries an
+// explicit A-Diakoptics disposition in `manifests/ad_sweep.json`; eligible decks
+// (`pf`/`full`) are solved both normally and with the ckt24 AD preamble
+// (`set Num_SubCircuits=2` + snapshot base solve + `set ADiakoptics=yes`), then
+// their coordinator node voltages are compared name-keyed at the AD tier. A
+// `pf`/`full` deck whose AD init FAILS at runtime is a test failure (the
+// disposition is a promise). Torn_Circuit lands in a per-case temp datapath,
+// never next to the vendored deck.
+// ===========================================================================
+
+use num_complex::Complex64;
+
+/// The closed set of `off:` reasons a disposition may carry. Keeping this an
+/// allowlist (rather than "any non-empty string") is what makes a real AD-engine
+/// bucket distinguishable from a legitimate exclusion at the manifest level: a
+/// new deck cannot invent an unreviewed `off:reason` to dodge the sweep, and the
+/// `ad-*` classes stay a bounded, greppable, STATUS-documented list. Extend this
+/// ONLY with a reason that is itself evidence-backed (DSS_AD_CLASSIFY +
+/// DSS_AD_DECOMPOSE) and recorded.
+const AD_OFF_REASONS: &[&str] = &[
+    // Eligibility / topology (deck cannot be AD-swept by construction).
+    "non-3ph-cut-only", // D5 ZLL: only cut candidates are non-3-phase lines/xfmrs
+    "too-small",        // Tear_Circuit cannot form two connected >=2-bus zones
+    "already-torn-artifact", // a pre-torn Torn_Circuit/zone master, not a top entry
+    "mode-outside-AD-scope", // dynamics/harmonics/faultstudy/monte/LD - not power-flow
+    "deck-aborts-by-design", // the deck's own solve aborts (e.g. #485 control-limit)
+    // Save round-trip (D7 leg1): AD leg proper is CLEAN, the gap is the reload.
+    "save-roundtrip-geometry",
+    "save-roundtrip-relpath",
+    "save-roundtrip-userdll",
+    "save-roundtrip-regxfmr",
+    "save-roundtrip-autotrans",
+    "save-roundtrip-relay",
+    "save-roundtrip-control",
+    // Upstream A-Diakoptics limitations (NOT a dss-rs port bug). Root-caused in
+    // the WP-AD.4 closing round + settle (ad-bugs branch): each of these topologies
+    // makes Tear_Circuit isolate a zone that lacks an adequate in-zone voltage
+    // reference, so the child `hY` is singular / near-singular and the boundary
+    // stitch is solver-dependent. Shown upstream by driving OFFICIAL r3723 AD
+    // (Oddie) on the IDENTICAL cut (child cut forced with `set LinkBranches` +
+    // UseMyLinkBranches): on every one of the 6 representatives driven, official
+    // OpenDSS AD fails the same or worse (no convergence / >10x over-voltage / a
+    // hang on the singular zone). The magnitudes are ill-conditioned near-singular
+    // blow-ups (reproducible on the reference box, environment-sensitive across
+    // hosts) — the invariant is the CHARACTER, not the number. See the STATUS §1
+    // evidence table. Remaining class members are inferred from the shared
+    // mechanism, not individually driven; the per-deck official-AD replay is the
+    // tracked WP-AD.5 task. Kept off the gate because there is no correct AD answer
+    // to gate against on either engine, not because fixing our engine was out of
+    // scope.
+    "ad-regulator-divergence", // delta-only / floating-phase load bus -> singular
+    // child Y: ODRegTest (delta loads, both -> ~1e16 @ loadbus); TestDDRegulator
+    // (floating phases 2,3 -> official AD solve hangs, ours 0.88)
+    "ad-switched-divergence", // meshed / open-switch topology: a single link cut
+    // cannot separate a mesh (civanlar), or open switches strand a regulator
+    // boundary (IEEE123Switches, both engines -> tens of kV on a 2.4 kV bus)
+    "ad-islanded-divergence", // GFM/GFL microgrid island driven only by PC current
+    // injection (no in-zone Y reference); the one ISource deck diverges in the torn
+    // main-feeder xfmr-secondary zone (island itself determinate), ours milder than
+    // official's same-cut AD (0.66 vs 13.4)
+    "ad-nonconvergent", // GFM/GFL island whose torn zone is singular enough that
+    // AD init/solve does not converge at all (our engine refuses; official blows up)
+    "ad-singular-zone", // synthesized family deck: an intentionally singular tear
+    "ad-divergent",     // synthesized family deck: an intentionally divergent tear
+    "ad-floor-above-tier", // genuine long-radial stitch floor just above the tier
+                        // (NOT tolerance-widened, section 5) — IEEE34Mod1 leg2=2.1e-3
+    // Decks added AFTER the WP-AD.4 sweep (upgrade-era skipped-sweep promotions,
+    // GFM/DynExp re-promotions, windgen + U1.3 invcontrol + coverage-wave family
+    // decks) whose DSS_AD_CLASSIFY/DSS_AD_DECOMPOSE classification has not run
+    // yet. An explicit "pending" bucket recorded at the part2->update integration
+    // merge (2026-07-12, STATUS note) — NOT a measured verdict; the follow-up
+    // classification round re-classifies these and retires the reason.
+    "unclassified-new-deck",
+];
+
+/// A valid `ad` disposition is `full`, `pf`, or `off:<reason>` where `reason` is
+/// one of the reviewed [`AD_OFF_REASONS`] (not merely any non-empty string).
+fn ad_disposition_is_valid(s: &str) -> bool {
+    s == "full"
+        || s == "pf"
+        || s.strip_prefix("off:")
+            .is_some_and(|r| AD_OFF_REASONS.contains(&r))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct AdSweepCase {
+    path: String,
+    ad: String,
+    #[serde(default)]
+    oracle: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdSweepManifest {
+    #[serde(default)]
+    cases: Vec<AdSweepCase>,
+}
+
+fn load_ad_sweep() -> Vec<AdSweepCase> {
+    let p = manifests_dir().join("ad_sweep.json");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let m: AdSweepManifest =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
+    m.cases
+}
+
+/// The AD-sweep node-voltage comparison ceiling (WP-AD.4; recorded in
+/// `tests/TOLERANCE_NOTES.md` section AD). A single conservative rust-vs-rust tier
+/// that every eligible corpus deck's AD-vs-normal snapshot gap clears empirically
+/// -- far below any physical significance, so a real port bug blows past it. A
+/// deck whose measured gap exceeds this is classified `off:` with a specific
+/// reason, NEVER tolerance-widened (section 5 no-fudging). The synthesized-fixture
+/// D7 tiers (`adiakoptics.rs`) stay their own tighter, individually-calibrated
+/// values.
+const AD_SWEEP_TIER: f64 = 2.0e-3;
+
+/// Coordinator node-name -> complex voltage (the AD coordinator may reorder buses;
+/// names are stable, so the compare is name-keyed like `adiakoptics.rs`).
+fn ad_node_voltages(dss: &Dss) -> BTreeMap<String, Complex64> {
+    let ckt = dss.circuit().expect("circuit");
+    (1..=ckt.num_nodes)
+        .map(|i| (ckt.node_name(i), ckt.solution.node_v[i]))
+        .collect()
+}
+
+/// Worst relative node-voltage gap between two name->V maps, and the count of
+/// nodes actually compared (a near-zero count would mean the two runs share no
+/// node names -- a mapping bug, guarded by the caller).
+fn ad_max_rel_gap(
+    a: &BTreeMap<String, Complex64>,
+    b: &BTreeMap<String, Complex64>,
+) -> (f64, String, usize) {
+    let mut worst = 0.0;
+    let mut wn = String::new();
+    let mut matched = 0usize;
+    for (name, va) in a {
+        if let Some(vb) = b.get(name) {
+            matched += 1;
+            let dv = (va - vb).norm();
+            let base = va.norm();
+            let rel = if base > 1e-6 { dv / base } else { dv };
+            if rel > worst {
+                worst = rel;
+                wn = name.clone();
+            }
+        }
+    }
+    (worst, wn, matched)
+}
+
+/// Per-case temp datapath (Torn_Circuit + any export lands here, never next to
+/// the vendored deck). Distinct per process + thread + tag.
+fn ad_scratch(tag: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!(
+        "dss_adsweep_{tag}_{}_{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap_or_else(|e| panic!("mkdir {}: {e}", d.display()));
+    d
+}
+
+/// Compile + snapshot-solve a corpus deck on the plain (non-AD) engine. `pf`
+/// forces `controlmode=off`; `full` keeps the deck's control mode.
+fn ad_solve_normal(abs: &str, controls_off: bool) -> Result<Dss, String> {
+    let scratch = ad_scratch("norm");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("compile \"{abs}\""));
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    if controls_off {
+        dss.command("set controlmode=off");
+    }
+    dss.command("solve mode=snap");
+    let ckt = dss.circuit().ok_or_else(|| "no circuit".to_string())?;
+    if !ckt.is_solved {
+        return Err(format!(
+            "normal snapshot did not converge: {}",
+            dss.result()
+        ));
+    }
+    Ok(dss)
+}
+
+/// Compile + apply the A-Diakoptics preamble to a corpus deck. Returns the driven
+/// coordinator `Dss` on success, or an `Err(reason)` categorizing an AD-init
+/// failure (the tear/partition/matrix stage that refused). `pf` forces
+/// `controlmode=off` (children inherit it at init); `full` re-asserts the deck's
+/// control mode after init so `GETCTRLMODE` propagates it to the children.
+fn ad_solve_ad(abs: &str, controls_off: bool) -> Result<Dss, String> {
+    let scratch = ad_scratch("ad");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("compile \"{abs}\""));
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    if controls_off {
+        dss.command("set controlmode=off");
+    }
+    // Base snapshot solve (Tear_Circuit reads NodeV at each point of connection).
+    dss.command("solve mode=snap");
+    if !dss.circuit().is_some_and(|c| c.is_solved) {
+        return Err(format!("base snapshot did not converge: {}", dss.result()));
+    }
+    dss.command("set Num_SubCircuits=2");
+    let base_errs = dss.errors().len();
+    dss.command("set ADiakoptics=True");
+    if !dss.circuit().is_some_and(|c| c.solution.adiakoptics) {
+        // Categorize the tear/AD-init refusal from the emitted message.
+        let msg = dss
+            .errors()
+            .get(base_errs)
+            .cloned()
+            .unwrap_or_else(|| dss.result().to_string());
+        return Err(format!("ad-init: {msg}"));
+    }
+    if !controls_off {
+        // GETCTRLMODE: re-assert the deck's OWN declared control mode (not a
+        // hardcoded `static`) so the children run the same loop the normal arm
+        // does. The normal `full` arm keeps the deck's mode; forcing `static`
+        // here would compare a non-static deck under two different modes.
+        let mode = dss
+            .circuit()
+            .map(|c| c.solution.default_control_mode)
+            .unwrap_or(0);
+        let mode_cmd = match mode {
+            -1 => "off",
+            1 => "event",
+            2 => "time",
+            _ => "static",
+        };
+        dss.command(&format!("set controlmode={mode_cmd}"));
+    }
+    dss.command("solve mode=snap");
+    if !dss.circuit().is_some_and(|c| c.is_solved) {
+        return Err(format!("AD snapshot did not converge: {}", dss.result()));
+    }
+    Ok(dss)
+}
+
+/// Compare one `pf`/`full` case's AD solve against its normal solve at the AD
+/// tier (rust-vs-rust). An AD-init failure is a hard test failure (the
+/// disposition is a promise). `abs` is the resolved deck path (corpus or family);
+/// `label`/`ad` are for the message.
+///
+/// The compared quantity is node voltages by name. Node-V equality is the
+/// *sufficient* physics check on the shared interconnected network: every element
+/// shared between the two arms carries the same primitive `Yprim`, so its
+/// terminal currents `I = Yprim·Vterminal` and powers `S = V·conj(I)` are fixed
+/// once the node voltages agree — a stitch error that left every voltage right
+/// but a flow wrong is not physically realizable for a shared element. (Verified
+/// empirically: an element-power cross-check over every `pf` deck tracked the
+/// node-V gap and revealed no independent divergence; its only residuals above
+/// the node-V floor were transformer/line **loss** channels on the short-circuit
+/// decks — a small difference of large terminal flows, worst 2.2e-2 on
+/// `ieee37_SC_Currents` `line.l6` — i.e. the documented cancellation-floor class,
+/// not a stitch error. The AD arm's only element-set difference is the extra
+/// link-cut boundary `VSource`/`ISource`, which have no normal-arm counterpart.
+/// The active-control / eventlog channel is gated separately by
+/// `adiakoptics.rs::full_zone_local_regcontrol_matches_normal`.)
+fn ad_run_case_abs(abs: &str, label: &str, ad: &str, full: bool) {
+    let controls_off = !full;
+    let _guard = CorpusGuard::new(abs);
+    let vn = ad_node_voltages(
+        &ad_solve_normal(abs, controls_off)
+            .unwrap_or_else(|e| panic!("AD sweep {label}: normal arm failed: {e}")),
+    );
+    let va = ad_node_voltages(&ad_solve_ad(abs, controls_off).unwrap_or_else(|e| {
+        panic!("AD sweep {label}: `{ad}` disposition but AD init/solve failed: {e}")
+    }));
+    let (gap, node, matched) = ad_max_rel_gap(&vn, &va);
+    assert!(
+        matched >= vn.len().saturating_sub(vn.len() / 20).max(1),
+        "AD sweep {label}: only {matched}/{} nodes matched by name (mapping bug)",
+        vn.len()
+    );
+    assert!(
+        gap < AD_SWEEP_TIER,
+        "AD sweep {label} ({ad}): AD-vs-normal node-V gap {gap:.3e} @ {node} exceeds \
+         the AD tier {AD_SWEEP_TIER:.1e} -- classify off with a specific reason, \
+         do not widen (section 5)"
+    );
+}
+
+fn ad_classify_enabled() -> bool {
+    std::env::var("DSS_AD_CLASSIFY")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
+/// `DSS_AD_DECOMPOSE=<rel-path>` throwaway probe: split the AD-vs-normal gap into
+/// the D7 two legs — (1) `save circuit` fidelity: saved
+/// `Master_Interconnected.dss` solved normally vs the ORIGINAL solved normally;
+/// (2) the AD leg proper: AD solve vs the saved-interconnected normal solve. Not
+/// a gate — a diagnostic to attribute an `off:ad-gap` deck's gap.
+#[test]
+fn ad_decompose_probe() {
+    let Ok(rel) = std::env::var("DSS_AD_DECOMPOSE") else {
+        eprintln!("SKIPPED ad_decompose: set DSS_AD_DECOMPOSE=<corpus-rel-path>");
+        return;
+    };
+    let abs = corpus_file(&rel);
+    // Keep the vendored corpus pristine (the compile-time solve writes reports).
+    let _guard = CorpusGuard::new(&abs);
+    // Original normal.
+    let vn = ad_node_voltages(&ad_solve_normal(&abs, true).expect("orig normal"));
+    // AD arm — but keep the scratch dir so we can compile the interconnected save.
+    let scratch = ad_scratch("decomp");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("compile \"{abs}\""));
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("set controlmode=off");
+    dss.command("solve mode=snap");
+    dss.command("set Num_SubCircuits=2");
+    dss.command("set ADiakoptics=True");
+    let inited = dss.circuit().is_some_and(|c| c.solution.adiakoptics);
+    if inited {
+        dss.command("solve mode=snap");
+    }
+    let va = ad_node_voltages(&dss);
+    // Interconnected save solved normally.
+    let inter = scratch
+        .join("Torn_Circuit")
+        .join("Master_Interconnected.dss");
+    let mut di = Dss::new();
+    di.command("clear");
+    di.command(&format!(
+        "compile \"{}\"",
+        inter.display().to_string().replace('\\', "/")
+    ));
+    di.command("set controlmode=off");
+    di.command("solve mode=snap");
+    let solved_inter = di.circuit().is_some_and(|c| c.is_solved);
+    let vi = ad_node_voltages(&di);
+    let (leg1, n1, m1) = ad_max_rel_gap(&vn, &vi);
+    let (leg2, n2, m2) = ad_max_rel_gap(&vi, &va);
+    let (tot, nt, _) = ad_max_rel_gap(&vn, &va);
+    eprintln!(
+        "AD DECOMPOSE {rel}\n  inited={inited} inter_solved={solved_inter}\n  \
+         leg1 save-roundtrip (orig-normal vs inter-normal) = {leg1:.3e} @ {n1} (matched {m1})\n  \
+         leg2 AD (inter-normal vs AD)                       = {leg2:.3e} @ {n2} (matched {m2})\n  \
+         total (orig-normal vs AD)                          = {tot:.3e} @ {nt}"
+    );
+}
+
+/// The user-mandated sweep gate: every `pf`/`full` case is solved both ways and
+/// compared; `off:` cases are counted only. Population counts + wall-time are
+/// printed (STATUS records them). Under `DSS_AD_CLASSIFY=1` it instead PROBES
+/// every case's pf-eligibility and prints a proposed disposition per deck.
+#[test]
+fn corpus_ad_matches_normal_mode() {
+    let cases = load_ad_sweep();
+    assert!(!cases.is_empty(), "ad_sweep.json must not be empty");
+    for c in &cases {
+        assert!(
+            ad_disposition_is_valid(&c.ad),
+            "{}: invalid ad disposition {:?}",
+            c.path,
+            c.ad
+        );
+    }
+    if ad_classify_enabled() {
+        ad_classify(&cases);
+        return;
+    }
+    let start = Instant::now();
+    // The sweep covers BOTH the vendored corpus (ad_sweep.json) and the three
+    // synthesized family manifests (their mandatory `ad` field), per plan §WP-AD.4.
+    let mut entries: Vec<(String, String, String)> = cases
+        .iter()
+        .map(|c| (corpus_file(&c.path), c.path.clone(), c.ad.clone()))
+        .collect();
+    for fam in ["asymmetric", "controls", "modes"] {
+        for c in load_family(fam) {
+            let ad = c
+                .ad
+                .clone()
+                .unwrap_or_else(|| panic!("{fam}:{}: missing mandatory `ad` disposition", c.path));
+            assert!(
+                ad_disposition_is_valid(&ad),
+                "{fam}:{}: invalid ad disposition {ad:?} (not in AD_OFF_REASONS)",
+                c.path
+            );
+            entries.push((family_file(fam, &c.path), format!("{fam}/{}", c.path), ad));
+        }
+    }
+    let total = entries.len();
+    let (mut full, mut pf, mut off) = (0usize, 0usize, 0usize);
+    for (abs, path, ad) in &entries {
+        match ad.as_str() {
+            "full" => {
+                ad_run_case_abs(abs, path, ad, true);
+                full += 1;
+            }
+            "pf" => {
+                ad_run_case_abs(abs, path, ad, false);
+                pf += 1;
+            }
+            _ => off += 1,
+        }
+    }
+    eprintln!(
+        "AD sweep: full={full} pf={pf} off={off} (of {total}: {} corpus + {} family) in {:.1}s",
+        cases.len(),
+        total - cases.len(),
+        start.elapsed().as_secs_f64()
+    );
+}
+
+/// Probe the three family manifests' decks the same way (via `DSS_AD_CLASSIFY=1`
+/// on `family_manifest_is_complete`-adjacent path resolution). Prints the same
+/// `ADCLASSIFY` lines with a `<family>/` path prefix.
+#[test]
+fn ad_classify_families() {
+    if !ad_classify_enabled() {
+        eprintln!("SKIPPED ad_classify_families: set DSS_AD_CLASSIFY=1");
+        return;
+    }
+    let start = Instant::now();
+    for fam in ["asymmetric", "controls", "modes"] {
+        for c in load_family(fam) {
+            // pending / abort decks can't be AD-swept — report them so.
+            if c.pending {
+                println!(
+                    "ADCLASSIFY\t{fam}/{}\toff:pending-feature\tNaN\tpending",
+                    c.path
+                );
+                continue;
+            }
+            if c.expect_solve_abort.is_some() {
+                println!(
+                    "ADCLASSIFY\t{fam}/{}\toff:expect-solve-abort\tNaN\tabort",
+                    c.path
+                );
+                continue;
+            }
+            let abs = family_file(fam, &c.path);
+            let path = format!("{fam}/{}", c.path);
+            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _guard = CorpusGuard::new(&abs);
+                let vn = ad_solve_normal(&abs, true).map(|d| ad_node_voltages(&d));
+                let va = ad_solve_ad(&abs, true).map(|d| ad_node_voltages(&d));
+                (vn, va)
+            }));
+            let (proposal, gap, detail) = ad_classify_outcome(res);
+            println!("ADCLASSIFY\t{path}\t{proposal}\t{gap:.3e}\t{detail}");
+        }
+    }
+    eprintln!(
+        "AD classify families in {:.1}s",
+        start.elapsed().as_secs_f64()
+    );
+}
+
+/// Shared outcome categorizer for the classify probes.
+#[allow(clippy::type_complexity)]
+fn ad_classify_outcome(
+    res: std::thread::Result<(
+        Result<BTreeMap<String, Complex64>, String>,
+        Result<BTreeMap<String, Complex64>, String>,
+    )>,
+) -> (String, f64, String) {
+    match res {
+        Err(e) => ("off:probe-panic".to_string(), f64::NAN, panic_msg(e)),
+        Ok((Err(e), _)) => ("off:normal-fail".to_string(), f64::NAN, e),
+        Ok((_, Err(e))) => {
+            let cls = if e.contains("not lines") || e.contains("not a line") {
+                "off:non-3ph-cut-only"
+            } else if e.contains("error when tearing")
+                || e.contains("cannot be compiled")
+                || e.contains("Sub-Circuits")
+                || e.contains("zone")
+            {
+                "off:too-small"
+            } else {
+                "off:ad-init-fail"
+            };
+            (cls.to_string(), f64::NAN, e)
+        }
+        Ok((Ok(vn), Ok(va))) => {
+            let (gap, node, _matched) = ad_max_rel_gap(&vn, &va);
+            let prop = if gap < AD_SWEEP_TIER {
+                "pf"
+            } else {
+                "off:ad-gap"
+            };
+            (prop.to_string(), gap, node)
+        }
+    }
+}
+
+/// `DSS_AD_CLASSIFY=1` probe: attempt the pf AD preamble on every case and print
+/// `ADCLASSIFY<TAB>path<TAB>PROPOSAL<TAB>gap<TAB>detail`, so a disposition can be
+/// assigned from evidence.
+fn ad_classify(cases: &[AdSweepCase]) {
+    let start = Instant::now();
+    for c in cases {
+        let path = c.path.clone();
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let abs = corpus_file(&path);
+            let _guard = CorpusGuard::new(&abs);
+            let vn = ad_solve_normal(&abs, true).map(|d| ad_node_voltages(&d));
+            let va = ad_solve_ad(&abs, true).map(|d| ad_node_voltages(&d));
+            (vn, va)
+        }));
+        let (proposal, gap, detail) = match res {
+            Err(e) => ("off:probe-panic".to_string(), f64::NAN, panic_msg(e)),
+            Ok((Err(e), _)) => ("off:normal-fail".to_string(), f64::NAN, e),
+            Ok((_, Err(e))) => {
+                let cls = if e.contains("not lines") || e.contains("not a line") {
+                    "off:non-3ph-cut-only"
+                } else if e.contains("error when tearing")
+                    || e.contains("cannot be compiled")
+                    || e.contains("Sub-Circuits")
+                    || e.contains("zone")
+                {
+                    "off:too-small"
+                } else {
+                    "off:ad-init-fail"
+                };
+                (cls.to_string(), f64::NAN, e)
+            }
+            Ok((Ok(vn), Ok(va))) => {
+                let (gap, node, _matched) = ad_max_rel_gap(&vn, &va);
+                let prop = if gap < AD_SWEEP_TIER {
+                    "pf"
+                } else {
+                    "off:ad-gap"
+                };
+                (prop.to_string(), gap, node)
+            }
+        };
+        println!("ADCLASSIFY\t{path}\t{proposal}\t{gap:.3e}\t{detail}");
+    }
+    eprintln!(
+        "AD classify: {} cases probed in {:.1}s",
+        cases.len(),
+        start.elapsed().as_secs_f64()
+    );
+}
+
+/// WP-AD.4 bijection: `ad_sweep.json` must carry a disposition for EXACTLY the
+/// `solvable_now.json` entry-point set -- no missing case (a new solvable deck
+/// cannot skip classification), no extra path. Oracle-free, always-on.
+#[test]
+fn ad_sweep_covers_solvable_now() {
+    let solvable: BTreeSet<String> = load_solvable()
+        .into_iter()
+        .map(|c| c.path.replace('\\', "/"))
+        .collect();
+    let sweep = load_ad_sweep();
+    let swept: BTreeSet<String> = sweep.iter().map(|c| c.path.replace('\\', "/")).collect();
+    assert_eq!(swept.len(), sweep.len(), "duplicate paths in ad_sweep.json");
+    let missing: Vec<&String> = solvable.difference(&swept).collect();
+    assert!(
+        missing.is_empty(),
+        "{} solvable_now path(s) missing an AD disposition in ad_sweep.json:\n  {}",
+        missing.len(),
+        missing
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
+    );
+    let extra: Vec<&String> = swept.difference(&solvable).collect();
+    assert!(
+        extra.is_empty(),
+        "{} ad_sweep.json path(s) are not solvable_now entry points:\n  {}",
+        extra.len(),
+        extra
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
+    );
+    for c in &sweep {
+        assert!(
+            ad_disposition_is_valid(&c.ad),
+            "{}: invalid ad disposition {:?} (full|pf|off:<reason>)",
+            c.path,
+            c.ad
+        );
+        if let Some(spec) = &c.oracle {
+            assert!(
+                ORACLE_SPECS.contains(&spec.as_str()),
+                "{}: unknown oracle spec {spec:?}",
+                c.path
+            );
+        }
+    }
+    eprintln!(
+        "ad_sweep.json: {} dispositions cover solvable_now exactly",
+        sweep.len()
+    );
 }

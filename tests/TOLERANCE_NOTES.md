@@ -747,6 +747,107 @@ the controlled transformer's **live** `PresentTap[TapWinding]`; the `&self` gett
 now resyncs the snapshot from the live transformer at the read choke point
 (`Dss::refresh_vterminal_if_marked`).
 
+## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
+
+A-Diakoptics is an **EXACT** domain decomposition: at convergence the AD stitch
+reproduces the interconnected-coordinator solution, not an approximation of it.
+Proven by decomposition (WP-AD.3 audit finding #2, not a tolerance sweep): a
+`Set algorithm=Newton` AD deck runs a full-system Newton on the *closed*
+interconnected coordinator (Solution.pas:1018 — `DoNewtonSolution` has no
+ADiakoptics branch, `SolveSystem(dV,1)` uses `@V[1]`) that never touches the
+children or the re-seed, and its solved NodeV matches the fixed-point AD stitch to
+**f64 ulp** (midi `7e-13`, macro `1.3e-12`;
+`{midi,macro}_newton_ad_matches_fixedpoint_ad`).
+
+The AD↔**normal** "floor" below is therefore *not* a boundary-model approximation:
+it is the difference between the reconstructed interconnected-coordinator deck and
+the original deck — **shared** by the fixed-point and Newton AD paths (both
+reproduce the coordinator solve) and matched to the r3723 oracle. It is a genuine
+floor of OpenDSS's own AD (reproduced 1:1), and it does not collapse under tighter
+tolerance because it is a deck-structure difference, not an iteration residual. Per
+plan D7 the tier is calibrated once, here, and never loosened.
+
+Calibration (r3723 Oddie probe, 2026-07-12; `solve mode=snap`, `controlmode=off`,
+worst node by max rel `|V_ad − V_normal|`):
+
+| fixture | oracle floor (r3723) | Rust floor | D7 tier (×4) |
+|---|---|---|---|
+| midi (2 zones) | 3.25e-5 | 3.21e-5 | 1.3e-4 |
+| midi (3 zones) | — | 3.21e-5 | 1.3e-4 |
+| macro (2 zones) | 1.318e-4 | 1.319e-4 | 5.3e-4 |
+
+Time-series legs (`midi_daily24_matches_normal`, `macro_yearly168_matches_normal`)
+run the same comparison over a daily-24 / yearly-168 horizon (constant-load
+fixtures → each step is a snapshot); they exercise `ad_solve_time_series` and pin
+the same floors plus a clock-advance assertion.
+
+**Oracle-anchored AD SOLVE voltages** (`tests/ad_reference.rs`, D9 b/c — the AD
+solve output vs a trusted external baseline, not just AD↔normal self-consistency):
+
+| deck (manual cut) | ZLL | ZCC | Y4 | solved NodeV | node tier |
+|---|---|---|---|---|---|
+| IEEE-13 (`Line.670671`, 2 zones) | 3.8e-15 | 6.2e-8 | 2.7e-8 | **1.2e-6** | 1e-5 |
+| IEEE-123 (`Line.l10,l73`, 3 zones, 2 ref-free) | 3.0e-15 | 7.4e-10 | 4.9e-10 | **4.85e-6** | 2e-5 |
+
+**Tolerance stability (the permanent tighten-proof).** On the oracle the floor is
+bit-stable as `ConvergenceTolerance` tightens 1e-4 → 1e-10 (midi 3.265e-5 →
+3.254e-5; macro 1.318e-4 flat; iteration counts `itN == itA`), i.e. it does **not**
+collapse. `midi_d7_gap_stable_under_tighten` / `macro_d7_gap_stable_under_tighten`
+(`tests/adiakoptics.rs`) assert the Rust loose/tight ratio stays in `[0.5, 2.0]`; a
+gap that *collapses* would flag a cross-step state leak, a *balloon* a port bug.
+
+**WP-AD.4 corpus sweep tier (`AD_SWEEP_TIER = 2e-3`, `corpus_ad_matches_normal_mode`).**
+The per-fixture D7 tiers above are individually calibrated for the synthesized
+midi/macro fixtures. The corpus-wide sweep compares AD↔normal (snapshot,
+name-keyed node V) across ~420 heterogeneous decks rust-vs-rust; it uses ONE
+conservative ceiling every eligible (`pf`) deck clears empirically — `2e-3`, ~15×
+the macro fixture floor, still far below any physical significance so a real port
+bug blows straight past it. A deck whose measured gap exceeds it is classified
+`off:<specific-reason>` in `ad_sweep.json` / the family manifests, **never**
+tolerance-widened (§5). The tier is the sweep's coarse net; the tight per-fixture
+D7 tiers remain the fine-grained equivalence proof.
+
+**Sweep finding — the canonical-feeder gap is the D7 round-trip (save) leg, not
+AD.** The standard feeders (IEEE13/34/37/123, 8500-Node, StoCtrl, VSConverter,
+SolarRamp, …) show 2–66 % AD-vs-normal snapshot gaps — *far* above the fixture
+floor. The `DSS_AD_DECOMPOSE` probe splits each into the two D7 legs and proves
+the gap is **entirely** leg 1 (`save circuit` fidelity: original-solved-normally
+vs saved `Master_Interconnected.dss`-solved-normally), while leg 2 (the AD stitch
+proper: interconnected-normal vs AD) is clean at the fixture floor:
+
+| deck | leg 1 (save round-trip) | leg 2 (AD proper) |
+|---|---|---|
+| IEEE13Nodeckt | 5.88e-2 | **1.63e-6** |
+| ieee37 | 1.16e-1 | **1.28e-5** |
+| 123Bus Run_YearlySim | 6.25e-2 | **7.96e-6** |
+| 8500-Node Voltage_Profile | 2.54e-1 | **7.6e-6** |
+
+So the AD engine reproduces the interconnected solve to the fixture floor on the
+real corpus too; the gap is a `save circuit` regulator/transformer-state (and
+LineGeometry/WireData/relative-file) fidelity gap — fixed in save, not AD (exactly
+D7's round-trip-leg guidance). These decks are `off:save-roundtrip-*` in the
+manifests. Genuine AD-leg exceptions are narrow and separately labelled:
+`off:ad-floor-above-tier` (IEEE34's long-radial stitch floor ≈2.1e-3, just over
+the tier — a real floor, not widened) and `off:ad-islanded-divergence` (Microgrid/
+ISource, GFM-8500 snapshot: source-free islanded topologies where the AD leg
+itself diverges — leg 2 = 2.0 / 7.4e-2).
+
+**Documented deviation** (`ad_solve_into_parent`): official freezes each child's
+own `NodeV` at its state-2 standalone solve (probe: actor-3 `NodeV` moves `0.0`
+across the AD solve; that state-2 solve is already 7.9e-5 from interconnected via
+`PConn_Voltages`). A byte-faithful freeze diverges in this port to 3.46e-3 at the
+deep node of a **reference-free** zone: `Start_Diakoptics` disables its sources so
+`GetPCInjCurr` linearises the constant-power loads at the frozen (7.9e-5-off)
+voltage, and that current error is amplified down the long radial through the
+ill-conditioned (source-free) child `hY`. Pascal (KLU) tolerates the same freeze;
+this port (faer) does not — the leading, **not-yet-bit-proven** hypothesis is a
+faer-vs-KLU difference on the near-singular child factorization. Re-seeding the
+child `NodeV` with the solved column each iteration removes the frozen-linearisation
+error at its source and is *proven* to recover the exact interconnected answer (the
+f64-ulp Newton match above) — an explicit, documented compensation (never a silent
+Y regularization, §5). Open item (WP-AD.4): bit-level confirm the freeze cause
+(run the frozen reference-free child through faer AND KLU) so the re-seed can drop.
+
 ## `TODO(compat)`
 
 Tolerances absorb f64/ULP differences only. Deliberately-reproduced upstream

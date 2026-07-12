@@ -219,6 +219,10 @@ pub(crate) mod cmd {
     pub const GIS_COORDS: usize = 118;
     pub const CALC_INC_MATRIX: usize = 108;
     pub const CALC_INC_MATRIX_O: usize = 109;
+    /// `Refine_BusLevels` (position 110 in `EXEC_COMMANDS`, between
+    /// `CalcIncMatrix_O` and `CalcLaplacian`): official `ExecCommands.pas` cmd 114
+    /// → `Get_paths_4_Coverage` (WP-AD.5).
+    pub const REFINE_BUSLEVELS: usize = 110;
     pub const CALC_LAPLACIAN: usize = 111;
     pub const WAIT: usize = 122;
     pub const CLEAR_ALL: usize = 119;

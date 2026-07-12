@@ -868,7 +868,7 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ),
     (
         "Command.tear_circuit",
-        "Estimates the buses for tearing the system in many parts as CPUs - 1 are in the local computer, is used for tearing the interconnected circuit into a balanced (same number of nodes) collection of subsystems for the A-Diakoptics algorithm. **Currently not supported on DSS-Extensions, tracked in https://github.com/dss-extensions/dss_capi/issues/46**",
+        "Estimates the buses for tearing the system in many parts as CPUs - 1 are in the local computer, is used for tearing the interconnected circuit into a balanced (same number of nodes) collection of subsystems for the A-Diakoptics algorithm. **Supported in dss-rs (A-Diakoptics ported per the official r3723 Delphi spec; the pinned dss_capi/dss-python oracle compiles this out).**",
     ),
     (
         "Command.top",

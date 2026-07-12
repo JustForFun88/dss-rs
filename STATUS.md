@@ -10,9 +10,32 @@
 Last updated: 2026-07-12 (merged `upgrade-rung1` — U0.2 sweeps + WP-U1.1 + WP-U1.2
 numeric long tail — with the post-acceptance main: corpus CF/CF2/coverage rounds,
 families 47/92/49, JSON export, FIX-DIRECT, LINE-DEEP; then merged WP-U1.3
-InvControl cluster, D14 (pulled ahead), SKIPPED-SWEEP, and the GFM WP (B5 Isc1 +
-capi015 daily-Losses skip — see §UPGRADE). Integration branch is now `update`
+InvControl cluster, D14 (pulled ahead), SKIPPED-SWEEP, the GFM WP (B5 Isc1 +
+capi015 daily-Losses skip — see §UPGRADE), WP-U1.7 Stage 1, WP-U1.8 WindGen, and
+**Part II A-Diakoptics** (AD.2–AD.5 consolidated: dss-metis, tearing, AD engine,
+419-deck sweep, save-fidelity fixes, ad-bugs proven upstream — records in
+`docs/phase-records/part2-adiakoptics.md`). Integration branch is `update`
 (pushed to origin); main untouched until an explicit merge request.)
+
+**PARKED TEST (needs investigation, user decision 2026-07-12):**
+`circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` is
+`#[ignore]`d. The WP-AD.5 `Get_paths_4_Coverage` state machine (ported 1:1;
+sole exit at Circuit.pas:909) never terminates on the test's 6-bus radial,
+even after requesting a reachable `set coverage=0.5` — the first hypothesis
+(unreachable 0.9 default; see the NOTE(upstream-quirk) at the function) proved
+insufficient. Needs a trace of `Inc_Mat_Levels` / per-path `Buses_Covered` on
+the official r3723 engine vs ours. Surfaced at the part2 consolidation gate
+(the AD5 line's own full gate was never witnessed and its audits never ran).
+`Refine_BusLevels` itself stays ported/enabled.
+
+**AD dispositions — `off:unclassified-new-deck` bucket (2026-07-12):** at the
+part2→update integration merge, every deck added after the WP-AD.4 sweep
+(9 skipped-sweep promotions in `ad_sweep.json` + 63 new family decks: windgen,
+U1.3 invcontrol, LINE-DEEP, coverage waves) received the explicit pending
+disposition `off:unclassified-new-deck` (allowlisted in `AD_OFF_REASONS` with
+the same note). This is a declared backlog, not a measured verdict — a
+follow-up classification round runs DSS_AD_CLASSIFY/DSS_AD_DECOMPOSE over the
+bucket and retires the reason.
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`

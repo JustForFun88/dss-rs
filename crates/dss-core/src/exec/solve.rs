@@ -22,6 +22,18 @@ impl Dss {
             self.do_auto_add_solve();
             return;
         }
+        // A-Diakoptics coordinator solve (Pascal `Solve` → `SolveSnap` with the
+        // AD branch). The per-iteration stitch is WP-AD.3 Stage 2b.
+        if self
+            .circuit
+            .as_ref()
+            .expect("gated in command()")
+            .solution
+            .adiakoptics
+        {
+            self.ad_solve();
+            return;
+        }
         let Dss {
             classes,
             circuit,

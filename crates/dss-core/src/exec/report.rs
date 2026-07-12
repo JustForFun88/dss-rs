@@ -425,6 +425,14 @@ impl Dss {
             ),
             56 => self.export_with(&explicit, "Bus_Levels.csv", export::export_bus_levels),
             57 => self.export_with(&explicit, "Laplacian.csv", export::export_laplacian),
+            // A-Diakoptics matrix exports (WP-AD.3): silent no-op unless
+            // `Solution.ADiakoptics` (Pascal `if ADiakoptics then …`). Default
+            // filenames per official `ExportOptions.pas:380-387` (keyword 60
+            // `Contours` → `C.csv`).
+            58 => self.export_ad(&explicit, "ZLL.csv", export::export_zll),
+            59 => self.export_ad(&explicit, "ZCC.csv", export::export_zcc),
+            60 => self.export_ad(&explicit, "C.csv", export::export_contours),
+            61 => self.export_ad(&explicit, "Y4.csv", export::export_y4),
             20 => {
                 // `Export CIM100Fragments` (Pascal `ExportCDPSM(..., Combined =
                 // FALSE)`): the `Separate = true` per-profile file split. A
@@ -478,6 +486,46 @@ impl Dss {
     fn export_with(&mut self, explicit: &str, default_name: &str, f: fn(&Circuit) -> String) {
         let content = f(self.circuit.as_ref().expect("post-circuit dispatch"));
         self.write_export(explicit, default_name, &content);
+    }
+
+    /// An A-Diakoptics matrix export (58–61). The Pascal *procedure* body (file
+    /// write + `GlobalResult := FileNm`) is wrapped in `if ADiakoptics then …`
+    /// (`ExportResults.pas:3546`), so an inactive AD state writes nothing and
+    /// leaves `GlobalResult` untouched. But `DoExportCmd`'s tail
+    /// (`ExportOptions.pas:503–507`) still runs `SetLastResultFile(FileName)` +
+    /// `ParserVars.Add('@lastexportfile', FileName)` **unconditionally** (gated
+    /// only by `Not AbortExport`, which stays false for a known keyword). So even
+    /// with AD off the executive's last-file state points at the (uncreated)
+    /// `ZLL.csv`/… path — reproduced here 1:1.
+    fn export_ad(&mut self, explicit: &str, default_name: &str, f: fn(&Circuit) -> String) {
+        if self
+            .circuit
+            .as_ref()
+            .is_some_and(|c| c.solution.adiakoptics)
+        {
+            self.export_with(explicit, default_name, f);
+        } else {
+            // Body skipped (no file, `GlobalResult` untouched), but the
+            // DoExportCmd tail still points the last-file state at the resolved
+            // (never-written) path.
+            let case = self
+                .circuit
+                .as_ref()
+                .map(|c| c.case_name.clone())
+                .unwrap_or_default();
+            let circuit_name_ = format!("{case}_");
+            let path = crate::report::output::export_path(
+                &self.output_directory,
+                &self.current_dir,
+                &circuit_name_,
+                explicit,
+                default_name,
+            );
+            let p = path.to_string_lossy().into_owned();
+            self.last_result_file = p.clone();
+            self.vars.add("@lastfile", &p);
+            self.vars.add("@lastexportfile", &p);
+        }
     }
 
     /// Like [`Dss::export_with`] but for the **element** exports, which call the

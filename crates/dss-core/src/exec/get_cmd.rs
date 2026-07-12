@@ -45,9 +45,15 @@ impl Dss {
             // Params are themselves the option names to return.
             let pointer = option_list.get_command(&param).map(|i| i + 1).unwrap_or(0);
             match pointer {
-                0 => errors.push(format!(
-                    "Unknown parameter \"{param_name}\" for Get Command"
-                )),
+                0 => {
+                    // A-Diakoptics options (§0.2 departure): intercept before the
+                    // "Unknown parameter" error. `get ADiakoptics` is WP-AD.3.
+                    if !crate::exec::tearing::try_get_ad_option(ckt, &param, &mut result) {
+                        errors.push(format!(
+                            "Unknown parameter \"{param_name}\" for Get Command"
+                        ));
+                    }
+                }
                 opt::HOUR => append_result(&mut result, &ckt.solution.int_hour.to_string()),
                 opt::SEC => append_result(&mut result, &float_to_str(ckt.solution.t)),
                 opt::STEPSIZE | opt::H => append_result(&mut result, &float_to_str(ckt.solution.h)),

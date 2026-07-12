@@ -33,6 +33,7 @@ mod accessors;
 mod dump;
 mod edit;
 mod matrix;
+mod save;
 
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};

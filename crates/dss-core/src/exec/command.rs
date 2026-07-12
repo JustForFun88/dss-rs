@@ -43,6 +43,37 @@ impl Dss {
             return;
         }
 
+        // A-Diakoptics tearing commands (`Tear_Circuit`, `AggregateProfiles`)
+        // are compiled out of the vendored/oracle build (plan §0.2), so they are
+        // absent from `EXEC_COMMANDS` (which the oracle-pinned `Dump commands`
+        // golden mirrors byte-exact). Register them here as a deliberate,
+        // recorded departure — the engine behaves like a `DSS_CAPI_ADIAKOPTICS`
+        // build — without perturbing that golden. `help` still resolves them
+        // (`help_catalog` already carries their text). See STATUS §WP-AD.2.
+        if pointer == 0 && param_name.is_empty() {
+            match param.to_ascii_lowercase().as_str() {
+                "tear_circuit" => {
+                    if self.circuit.is_none() {
+                        self.errors.push(
+                            "You must create a new circuit object first: \"new circuit.mycktname\" to execute this command."
+                                .to_string(),
+                        );
+                    } else {
+                        self.do_tear_circuit_cmd();
+                    }
+                    return;
+                }
+                "aggregateprofiles" => {
+                    // NOT_PORTED (scoped): `AggregateProfiles` is WP-AD.5.
+                    self.errors.push(
+                        "Command \"AggregateProfiles\" is not ported yet (WP-AD.5).".to_string(),
+                    );
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         // Things that are OK to do before a circuit is defined.
         match pointer {
             cmd::NEW => {
@@ -253,6 +284,7 @@ impl Dss {
             // Incidence matrix commands (WP-AD.1, Pascal `ExecCommands.pas:406-433`).
             cmd::CALC_INC_MATRIX => self.do_calc_inc_matrix(false),
             cmd::CALC_INC_MATRIX_O => self.do_calc_inc_matrix(true),
+            cmd::REFINE_BUSLEVELS => self.do_refine_bus_levels(),
             cmd::CALC_LAPLACIAN => self.do_calc_laplacian(),
             // Pascal `TExecHelper.DoMakePosSeq` (ExecHelper.pas:3035): flip the
             // circuit to positive-sequence and convert every element in creation
@@ -348,6 +380,21 @@ impl Dss {
         } else {
             crate::solution::inc_matrix::calc_inc_matrix(&self.classes, ckt);
         }
+    }
+
+    /// Pascal `ExecCommands.pas` cmd 114 (`Refine_BusLevels`): run
+    /// `Get_paths_4_Coverage` (trace the longest paths from the feeder backbone up
+    /// to the requested `Coverage`), then `GlobalResult := IntToStr(
+    /// length(Path_Idx)-1) + ' new paths detected'` (ExecCommands.pas:691–694).
+    /// Requires a prior `CalcIncMatrix_O` (the hierarchical levels); with no
+    /// incidence matrix the coverage tracer reports 0 new paths (WP-AD.5).
+    fn do_refine_bus_levels(&mut self) {
+        let Some(ckt) = self.circuit.as_mut() else {
+            return;
+        };
+        ckt.get_paths_4_coverage();
+        let new_paths = ckt.ad.path_idx.len().saturating_sub(1);
+        self.last_result = format!("{new_paths} new paths detected");
     }
 
     /// Pascal `ExecCommands.pas` `ord(Cmd.CalcLaplacian)`: `Laplacian :=

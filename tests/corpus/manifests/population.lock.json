@@ -1,6 +1,7 @@
 {
   "comment": "Anti-shrink guard (FA fix 3; FA settle: per-case rigor + family path lists): committed fingerprint of the gated corpus population. Trips on any drift — a path leaving solvable_now, a retained deck weakened in place (kind/tolerance-tier flip, steps/probes/meters cut — see solvable_now value fingerprints), a family deck swapped, or any manifest/family case-count change. Regenerate DELIBERATELY with `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock` and commit the diff alongside the manifest change. See TESTING.md §Anti-shrink population lock.",
   "manifest_counts": {
+    "ad_sweep.json": 295,
     "missing_dependency.json": 9,
     "not_an_entry_point.json": 586,
     "skipped_needs_investigation.json": 10,

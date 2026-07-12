@@ -1,0 +1,405 @@
+! WP-AD.2 committed A-Diakoptics fixture: synthesized radial all-3-phase feeder.
+! Every branch is a 3-phase Line (any cut satisfies the D5 ZLL 3-phase-Line
+! constraint); every bus carries a 3-phase load. Deterministic, self-contained.
+! Reused by WP-AD.2/AD.3/AD.4. Ends at calcv (the driver solves after datapath).
+clear
+new circuit.admacro basekv=12.47 phases=3 bus1=sourcebus
+new linecode.lc nphases=3 r1=0.15 x1=0.35 r0=0.45 x0=1.05 c1=0 c0=0 units=km
+new line.main1 bus1=sourcebus bus2=m1 linecode=lc length=0.1 units=km
+new load.lm1 bus1=m1 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main2 bus1=m1 bus2=m2 linecode=lc length=0.1 units=km
+new load.lm2 bus1=m2 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main3 bus1=m2 bus2=m3 linecode=lc length=0.1 units=km
+new load.lm3 bus1=m3 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main4 bus1=m3 bus2=m4 linecode=lc length=0.1 units=km
+new load.lm4 bus1=m4 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main5 bus1=m4 bus2=m5 linecode=lc length=0.1 units=km
+new load.lm5 bus1=m5 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main6 bus1=m5 bus2=m6 linecode=lc length=0.1 units=km
+new load.lm6 bus1=m6 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main7 bus1=m6 bus2=m7 linecode=lc length=0.1 units=km
+new load.lm7 bus1=m7 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main8 bus1=m7 bus2=m8 linecode=lc length=0.1 units=km
+new load.lm8 bus1=m8 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main9 bus1=m8 bus2=m9 linecode=lc length=0.1 units=km
+new load.lm9 bus1=m9 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main10 bus1=m9 bus2=m10 linecode=lc length=0.1 units=km
+new load.lm10 bus1=m10 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main11 bus1=m10 bus2=m11 linecode=lc length=0.1 units=km
+new load.lm11 bus1=m11 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main12 bus1=m11 bus2=m12 linecode=lc length=0.1 units=km
+new load.lm12 bus1=m12 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main13 bus1=m12 bus2=m13 linecode=lc length=0.1 units=km
+new load.lm13 bus1=m13 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main14 bus1=m13 bus2=m14 linecode=lc length=0.1 units=km
+new load.lm14 bus1=m14 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main15 bus1=m14 bus2=m15 linecode=lc length=0.1 units=km
+new load.lm15 bus1=m15 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main16 bus1=m15 bus2=m16 linecode=lc length=0.1 units=km
+new load.lm16 bus1=m16 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main17 bus1=m16 bus2=m17 linecode=lc length=0.1 units=km
+new load.lm17 bus1=m17 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main18 bus1=m17 bus2=m18 linecode=lc length=0.1 units=km
+new load.lm18 bus1=m18 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main19 bus1=m18 bus2=m19 linecode=lc length=0.1 units=km
+new load.lm19 bus1=m19 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main20 bus1=m19 bus2=m20 linecode=lc length=0.1 units=km
+new load.lm20 bus1=m20 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main21 bus1=m20 bus2=m21 linecode=lc length=0.1 units=km
+new load.lm21 bus1=m21 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main22 bus1=m21 bus2=m22 linecode=lc length=0.1 units=km
+new load.lm22 bus1=m22 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main23 bus1=m22 bus2=m23 linecode=lc length=0.1 units=km
+new load.lm23 bus1=m23 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main24 bus1=m23 bus2=m24 linecode=lc length=0.1 units=km
+new load.lm24 bus1=m24 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main25 bus1=m24 bus2=m25 linecode=lc length=0.1 units=km
+new load.lm25 bus1=m25 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main26 bus1=m25 bus2=m26 linecode=lc length=0.1 units=km
+new load.lm26 bus1=m26 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main27 bus1=m26 bus2=m27 linecode=lc length=0.1 units=km
+new load.lm27 bus1=m27 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main28 bus1=m27 bus2=m28 linecode=lc length=0.1 units=km
+new load.lm28 bus1=m28 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main29 bus1=m28 bus2=m29 linecode=lc length=0.1 units=km
+new load.lm29 bus1=m29 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main30 bus1=m29 bus2=m30 linecode=lc length=0.1 units=km
+new load.lm30 bus1=m30 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main31 bus1=m30 bus2=m31 linecode=lc length=0.1 units=km
+new load.lm31 bus1=m31 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main32 bus1=m31 bus2=m32 linecode=lc length=0.1 units=km
+new load.lm32 bus1=m32 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main33 bus1=m32 bus2=m33 linecode=lc length=0.1 units=km
+new load.lm33 bus1=m33 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main34 bus1=m33 bus2=m34 linecode=lc length=0.1 units=km
+new load.lm34 bus1=m34 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main35 bus1=m34 bus2=m35 linecode=lc length=0.1 units=km
+new load.lm35 bus1=m35 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main36 bus1=m35 bus2=m36 linecode=lc length=0.1 units=km
+new load.lm36 bus1=m36 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main37 bus1=m36 bus2=m37 linecode=lc length=0.1 units=km
+new load.lm37 bus1=m37 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main38 bus1=m37 bus2=m38 linecode=lc length=0.1 units=km
+new load.lm38 bus1=m38 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main39 bus1=m38 bus2=m39 linecode=lc length=0.1 units=km
+new load.lm39 bus1=m39 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main40 bus1=m39 bus2=m40 linecode=lc length=0.1 units=km
+new load.lm40 bus1=m40 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main41 bus1=m40 bus2=m41 linecode=lc length=0.1 units=km
+new load.lm41 bus1=m41 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main42 bus1=m41 bus2=m42 linecode=lc length=0.1 units=km
+new load.lm42 bus1=m42 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main43 bus1=m42 bus2=m43 linecode=lc length=0.1 units=km
+new load.lm43 bus1=m43 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main44 bus1=m43 bus2=m44 linecode=lc length=0.1 units=km
+new load.lm44 bus1=m44 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main45 bus1=m44 bus2=m45 linecode=lc length=0.1 units=km
+new load.lm45 bus1=m45 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main46 bus1=m45 bus2=m46 linecode=lc length=0.1 units=km
+new load.lm46 bus1=m46 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main47 bus1=m46 bus2=m47 linecode=lc length=0.1 units=km
+new load.lm47 bus1=m47 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main48 bus1=m47 bus2=m48 linecode=lc length=0.1 units=km
+new load.lm48 bus1=m48 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main49 bus1=m48 bus2=m49 linecode=lc length=0.1 units=km
+new load.lm49 bus1=m49 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main50 bus1=m49 bus2=m50 linecode=lc length=0.1 units=km
+new load.lm50 bus1=m50 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main51 bus1=m50 bus2=m51 linecode=lc length=0.1 units=km
+new load.lm51 bus1=m51 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main52 bus1=m51 bus2=m52 linecode=lc length=0.1 units=km
+new load.lm52 bus1=m52 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main53 bus1=m52 bus2=m53 linecode=lc length=0.1 units=km
+new load.lm53 bus1=m53 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main54 bus1=m53 bus2=m54 linecode=lc length=0.1 units=km
+new load.lm54 bus1=m54 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main55 bus1=m54 bus2=m55 linecode=lc length=0.1 units=km
+new load.lm55 bus1=m55 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main56 bus1=m55 bus2=m56 linecode=lc length=0.1 units=km
+new load.lm56 bus1=m56 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main57 bus1=m56 bus2=m57 linecode=lc length=0.1 units=km
+new load.lm57 bus1=m57 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main58 bus1=m57 bus2=m58 linecode=lc length=0.1 units=km
+new load.lm58 bus1=m58 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main59 bus1=m58 bus2=m59 linecode=lc length=0.1 units=km
+new load.lm59 bus1=m59 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main60 bus1=m59 bus2=m60 linecode=lc length=0.1 units=km
+new load.lm60 bus1=m60 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main61 bus1=m60 bus2=m61 linecode=lc length=0.1 units=km
+new load.lm61 bus1=m61 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main62 bus1=m61 bus2=m62 linecode=lc length=0.1 units=km
+new load.lm62 bus1=m62 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main63 bus1=m62 bus2=m63 linecode=lc length=0.1 units=km
+new load.lm63 bus1=m63 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main64 bus1=m63 bus2=m64 linecode=lc length=0.1 units=km
+new load.lm64 bus1=m64 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main65 bus1=m64 bus2=m65 linecode=lc length=0.1 units=km
+new load.lm65 bus1=m65 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main66 bus1=m65 bus2=m66 linecode=lc length=0.1 units=km
+new load.lm66 bus1=m66 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main67 bus1=m66 bus2=m67 linecode=lc length=0.1 units=km
+new load.lm67 bus1=m67 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main68 bus1=m67 bus2=m68 linecode=lc length=0.1 units=km
+new load.lm68 bus1=m68 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main69 bus1=m68 bus2=m69 linecode=lc length=0.1 units=km
+new load.lm69 bus1=m69 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main70 bus1=m69 bus2=m70 linecode=lc length=0.1 units=km
+new load.lm70 bus1=m70 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main71 bus1=m70 bus2=m71 linecode=lc length=0.1 units=km
+new load.lm71 bus1=m71 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main72 bus1=m71 bus2=m72 linecode=lc length=0.1 units=km
+new load.lm72 bus1=m72 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main73 bus1=m72 bus2=m73 linecode=lc length=0.1 units=km
+new load.lm73 bus1=m73 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main74 bus1=m73 bus2=m74 linecode=lc length=0.1 units=km
+new load.lm74 bus1=m74 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main75 bus1=m74 bus2=m75 linecode=lc length=0.1 units=km
+new load.lm75 bus1=m75 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main76 bus1=m75 bus2=m76 linecode=lc length=0.1 units=km
+new load.lm76 bus1=m76 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main77 bus1=m76 bus2=m77 linecode=lc length=0.1 units=km
+new load.lm77 bus1=m77 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main78 bus1=m77 bus2=m78 linecode=lc length=0.1 units=km
+new load.lm78 bus1=m78 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main79 bus1=m78 bus2=m79 linecode=lc length=0.1 units=km
+new load.lm79 bus1=m79 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main80 bus1=m79 bus2=m80 linecode=lc length=0.1 units=km
+new load.lm80 bus1=m80 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main81 bus1=m80 bus2=m81 linecode=lc length=0.1 units=km
+new load.lm81 bus1=m81 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main82 bus1=m81 bus2=m82 linecode=lc length=0.1 units=km
+new load.lm82 bus1=m82 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main83 bus1=m82 bus2=m83 linecode=lc length=0.1 units=km
+new load.lm83 bus1=m83 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main84 bus1=m83 bus2=m84 linecode=lc length=0.1 units=km
+new load.lm84 bus1=m84 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main85 bus1=m84 bus2=m85 linecode=lc length=0.1 units=km
+new load.lm85 bus1=m85 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main86 bus1=m85 bus2=m86 linecode=lc length=0.1 units=km
+new load.lm86 bus1=m86 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main87 bus1=m86 bus2=m87 linecode=lc length=0.1 units=km
+new load.lm87 bus1=m87 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main88 bus1=m87 bus2=m88 linecode=lc length=0.1 units=km
+new load.lm88 bus1=m88 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main89 bus1=m88 bus2=m89 linecode=lc length=0.1 units=km
+new load.lm89 bus1=m89 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main90 bus1=m89 bus2=m90 linecode=lc length=0.1 units=km
+new load.lm90 bus1=m90 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main91 bus1=m90 bus2=m91 linecode=lc length=0.1 units=km
+new load.lm91 bus1=m91 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main92 bus1=m91 bus2=m92 linecode=lc length=0.1 units=km
+new load.lm92 bus1=m92 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main93 bus1=m92 bus2=m93 linecode=lc length=0.1 units=km
+new load.lm93 bus1=m93 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main94 bus1=m93 bus2=m94 linecode=lc length=0.1 units=km
+new load.lm94 bus1=m94 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main95 bus1=m94 bus2=m95 linecode=lc length=0.1 units=km
+new load.lm95 bus1=m95 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main96 bus1=m95 bus2=m96 linecode=lc length=0.1 units=km
+new load.lm96 bus1=m96 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main97 bus1=m96 bus2=m97 linecode=lc length=0.1 units=km
+new load.lm97 bus1=m97 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main98 bus1=m97 bus2=m98 linecode=lc length=0.1 units=km
+new load.lm98 bus1=m98 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main99 bus1=m98 bus2=m99 linecode=lc length=0.1 units=km
+new load.lm99 bus1=m99 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main100 bus1=m99 bus2=m100 linecode=lc length=0.1 units=km
+new load.lm100 bus1=m100 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main101 bus1=m100 bus2=m101 linecode=lc length=0.1 units=km
+new load.lm101 bus1=m101 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main102 bus1=m101 bus2=m102 linecode=lc length=0.1 units=km
+new load.lm102 bus1=m102 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main103 bus1=m102 bus2=m103 linecode=lc length=0.1 units=km
+new load.lm103 bus1=m103 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main104 bus1=m103 bus2=m104 linecode=lc length=0.1 units=km
+new load.lm104 bus1=m104 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main105 bus1=m104 bus2=m105 linecode=lc length=0.1 units=km
+new load.lm105 bus1=m105 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main106 bus1=m105 bus2=m106 linecode=lc length=0.1 units=km
+new load.lm106 bus1=m106 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main107 bus1=m106 bus2=m107 linecode=lc length=0.1 units=km
+new load.lm107 bus1=m107 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main108 bus1=m107 bus2=m108 linecode=lc length=0.1 units=km
+new load.lm108 bus1=m108 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main109 bus1=m108 bus2=m109 linecode=lc length=0.1 units=km
+new load.lm109 bus1=m109 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main110 bus1=m109 bus2=m110 linecode=lc length=0.1 units=km
+new load.lm110 bus1=m110 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main111 bus1=m110 bus2=m111 linecode=lc length=0.1 units=km
+new load.lm111 bus1=m111 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main112 bus1=m111 bus2=m112 linecode=lc length=0.1 units=km
+new load.lm112 bus1=m112 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main113 bus1=m112 bus2=m113 linecode=lc length=0.1 units=km
+new load.lm113 bus1=m113 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main114 bus1=m113 bus2=m114 linecode=lc length=0.1 units=km
+new load.lm114 bus1=m114 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main115 bus1=m114 bus2=m115 linecode=lc length=0.1 units=km
+new load.lm115 bus1=m115 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main116 bus1=m115 bus2=m116 linecode=lc length=0.1 units=km
+new load.lm116 bus1=m116 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main117 bus1=m116 bus2=m117 linecode=lc length=0.1 units=km
+new load.lm117 bus1=m117 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main118 bus1=m117 bus2=m118 linecode=lc length=0.1 units=km
+new load.lm118 bus1=m118 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main119 bus1=m118 bus2=m119 linecode=lc length=0.1 units=km
+new load.lm119 bus1=m119 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main120 bus1=m119 bus2=m120 linecode=lc length=0.1 units=km
+new load.lm120 bus1=m120 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main121 bus1=m120 bus2=m121 linecode=lc length=0.1 units=km
+new load.lm121 bus1=m121 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main122 bus1=m121 bus2=m122 linecode=lc length=0.1 units=km
+new load.lm122 bus1=m122 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main123 bus1=m122 bus2=m123 linecode=lc length=0.1 units=km
+new load.lm123 bus1=m123 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main124 bus1=m123 bus2=m124 linecode=lc length=0.1 units=km
+new load.lm124 bus1=m124 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main125 bus1=m124 bus2=m125 linecode=lc length=0.1 units=km
+new load.lm125 bus1=m125 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main126 bus1=m125 bus2=m126 linecode=lc length=0.1 units=km
+new load.lm126 bus1=m126 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main127 bus1=m126 bus2=m127 linecode=lc length=0.1 units=km
+new load.lm127 bus1=m127 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main128 bus1=m127 bus2=m128 linecode=lc length=0.1 units=km
+new load.lm128 bus1=m128 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main129 bus1=m128 bus2=m129 linecode=lc length=0.1 units=km
+new load.lm129 bus1=m129 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main130 bus1=m129 bus2=m130 linecode=lc length=0.1 units=km
+new load.lm130 bus1=m130 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main131 bus1=m130 bus2=m131 linecode=lc length=0.1 units=km
+new load.lm131 bus1=m131 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main132 bus1=m131 bus2=m132 linecode=lc length=0.1 units=km
+new load.lm132 bus1=m132 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main133 bus1=m132 bus2=m133 linecode=lc length=0.1 units=km
+new load.lm133 bus1=m133 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main134 bus1=m133 bus2=m134 linecode=lc length=0.1 units=km
+new load.lm134 bus1=m134 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main135 bus1=m134 bus2=m135 linecode=lc length=0.1 units=km
+new load.lm135 bus1=m135 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main136 bus1=m135 bus2=m136 linecode=lc length=0.1 units=km
+new load.lm136 bus1=m136 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main137 bus1=m136 bus2=m137 linecode=lc length=0.1 units=km
+new load.lm137 bus1=m137 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main138 bus1=m137 bus2=m138 linecode=lc length=0.1 units=km
+new load.lm138 bus1=m138 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main139 bus1=m138 bus2=m139 linecode=lc length=0.1 units=km
+new load.lm139 bus1=m139 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main140 bus1=m139 bus2=m140 linecode=lc length=0.1 units=km
+new load.lm140 bus1=m140 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main141 bus1=m140 bus2=m141 linecode=lc length=0.1 units=km
+new load.lm141 bus1=m141 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main142 bus1=m141 bus2=m142 linecode=lc length=0.1 units=km
+new load.lm142 bus1=m142 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main143 bus1=m142 bus2=m143 linecode=lc length=0.1 units=km
+new load.lm143 bus1=m143 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main144 bus1=m143 bus2=m144 linecode=lc length=0.1 units=km
+new load.lm144 bus1=m144 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main145 bus1=m144 bus2=m145 linecode=lc length=0.1 units=km
+new load.lm145 bus1=m145 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main146 bus1=m145 bus2=m146 linecode=lc length=0.1 units=km
+new load.lm146 bus1=m146 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main147 bus1=m146 bus2=m147 linecode=lc length=0.1 units=km
+new load.lm147 bus1=m147 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main148 bus1=m147 bus2=m148 linecode=lc length=0.1 units=km
+new load.lm148 bus1=m148 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main149 bus1=m148 bus2=m149 linecode=lc length=0.1 units=km
+new load.lm149 bus1=m149 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main150 bus1=m149 bus2=m150 linecode=lc length=0.1 units=km
+new load.lm150 bus1=m150 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main151 bus1=m150 bus2=m151 linecode=lc length=0.1 units=km
+new load.lm151 bus1=m151 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main152 bus1=m151 bus2=m152 linecode=lc length=0.1 units=km
+new load.lm152 bus1=m152 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main153 bus1=m152 bus2=m153 linecode=lc length=0.1 units=km
+new load.lm153 bus1=m153 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main154 bus1=m153 bus2=m154 linecode=lc length=0.1 units=km
+new load.lm154 bus1=m154 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main155 bus1=m154 bus2=m155 linecode=lc length=0.1 units=km
+new load.lm155 bus1=m155 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main156 bus1=m155 bus2=m156 linecode=lc length=0.1 units=km
+new load.lm156 bus1=m156 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main157 bus1=m156 bus2=m157 linecode=lc length=0.1 units=km
+new load.lm157 bus1=m157 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main158 bus1=m157 bus2=m158 linecode=lc length=0.1 units=km
+new load.lm158 bus1=m158 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main159 bus1=m158 bus2=m159 linecode=lc length=0.1 units=km
+new load.lm159 bus1=m159 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main160 bus1=m159 bus2=m160 linecode=lc length=0.1 units=km
+new load.lm160 bus1=m160 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main161 bus1=m160 bus2=m161 linecode=lc length=0.1 units=km
+new load.lm161 bus1=m161 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main162 bus1=m161 bus2=m162 linecode=lc length=0.1 units=km
+new load.lm162 bus1=m162 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main163 bus1=m162 bus2=m163 linecode=lc length=0.1 units=km
+new load.lm163 bus1=m163 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main164 bus1=m163 bus2=m164 linecode=lc length=0.1 units=km
+new load.lm164 bus1=m164 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main165 bus1=m164 bus2=m165 linecode=lc length=0.1 units=km
+new load.lm165 bus1=m165 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main166 bus1=m165 bus2=m166 linecode=lc length=0.1 units=km
+new load.lm166 bus1=m166 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main167 bus1=m166 bus2=m167 linecode=lc length=0.1 units=km
+new load.lm167 bus1=m167 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main168 bus1=m167 bus2=m168 linecode=lc length=0.1 units=km
+new load.lm168 bus1=m168 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main169 bus1=m168 bus2=m169 linecode=lc length=0.1 units=km
+new load.lm169 bus1=m169 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main170 bus1=m169 bus2=m170 linecode=lc length=0.1 units=km
+new load.lm170 bus1=m170 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main171 bus1=m170 bus2=m171 linecode=lc length=0.1 units=km
+new load.lm171 bus1=m171 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main172 bus1=m171 bus2=m172 linecode=lc length=0.1 units=km
+new load.lm172 bus1=m172 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main173 bus1=m172 bus2=m173 linecode=lc length=0.1 units=km
+new load.lm173 bus1=m173 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main174 bus1=m173 bus2=m174 linecode=lc length=0.1 units=km
+new load.lm174 bus1=m174 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main175 bus1=m174 bus2=m175 linecode=lc length=0.1 units=km
+new load.lm175 bus1=m175 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main176 bus1=m175 bus2=m176 linecode=lc length=0.1 units=km
+new load.lm176 bus1=m176 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main177 bus1=m176 bus2=m177 linecode=lc length=0.1 units=km
+new load.lm177 bus1=m177 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main178 bus1=m177 bus2=m178 linecode=lc length=0.1 units=km
+new load.lm178 bus1=m178 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main179 bus1=m178 bus2=m179 linecode=lc length=0.1 units=km
+new load.lm179 bus1=m179 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.main180 bus1=m179 bus2=m180 linecode=lc length=0.1 units=km
+new load.lm180 bus1=m180 phases=3 kv=12.47 kw=120 pf=0.95 model=1
+new line.lat1 bus1=m10 bus2=x1 linecode=lc length=0.08 units=km
+new load.lx1 bus1=x1 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat2 bus1=m19 bus2=x2 linecode=lc length=0.08 units=km
+new load.lx2 bus1=x2 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat3 bus1=m29 bus2=x3 linecode=lc length=0.08 units=km
+new load.lx3 bus1=x3 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat4 bus1=m38 bus2=x4 linecode=lc length=0.08 units=km
+new load.lx4 bus1=x4 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat5 bus1=m48 bus2=x5 linecode=lc length=0.08 units=km
+new load.lx5 bus1=x5 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat6 bus1=m57 bus2=x6 linecode=lc length=0.08 units=km
+new load.lx6 bus1=x6 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat7 bus1=m67 bus2=x7 linecode=lc length=0.08 units=km
+new load.lx7 bus1=x7 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat8 bus1=m76 bus2=x8 linecode=lc length=0.08 units=km
+new load.lx8 bus1=x8 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat9 bus1=m86 bus2=x9 linecode=lc length=0.08 units=km
+new load.lx9 bus1=x9 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat10 bus1=m95 bus2=x10 linecode=lc length=0.08 units=km
+new load.lx10 bus1=x10 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat11 bus1=m105 bus2=x11 linecode=lc length=0.08 units=km
+new load.lx11 bus1=x11 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat12 bus1=m114 bus2=x12 linecode=lc length=0.08 units=km
+new load.lx12 bus1=x12 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat13 bus1=m124 bus2=x13 linecode=lc length=0.08 units=km
+new load.lx13 bus1=x13 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat14 bus1=m133 bus2=x14 linecode=lc length=0.08 units=km
+new load.lx14 bus1=x14 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat15 bus1=m143 bus2=x15 linecode=lc length=0.08 units=km
+new load.lx15 bus1=x15 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat16 bus1=m152 bus2=x16 linecode=lc length=0.08 units=km
+new load.lx16 bus1=x16 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat17 bus1=m162 bus2=x17 linecode=lc length=0.08 units=km
+new load.lx17 bus1=x17 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+new line.lat18 bus1=m171 bus2=x18 linecode=lc length=0.08 units=km
+new load.lx18 bus1=x18 phases=3 kv=12.47 kw=90 pf=0.95 model=1
+set voltagebases=[12.47]
+calcv
