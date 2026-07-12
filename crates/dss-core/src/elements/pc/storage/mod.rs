@@ -160,12 +160,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("Conn", enums.connection),
         // `kW`: read returns `kW_out` (the field), write goes through Set_kW
         // (sets the state + %Discharge/%Charge).
-        PropDef::double("kW"),
+        PropDef::double("kW").flags(PropFlags::REPLACE_ZERO),
         // `kvar`: read returns `kvar_out` (Pascal `Getkvar`), write stores
         // `kvarRequested`.
         PropDef::double("kvar").flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double("PF").flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("kVA"),
+        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO),
         PropDef::double("%CutIn"),
         PropDef::double("%CutOut"),
         PropDef::object_ref_class("XYcurve", "EffCurve"),

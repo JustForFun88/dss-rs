@@ -77,6 +77,63 @@ fn load_with_three_shapes() -> Load {
     load
 }
 
+/// Edit a fresh `Load` through its real property engine (string-edit path, so
+/// the `PropFlags::REPLACE_ZERO` clamp in `set_obj_double` runs).
+fn edit_load(edits: &[(&str, &str)]) -> Load {
+    let enums = EnumRegistry::new();
+    let cls = super::class_props(&enums);
+    let mut load = Load::new("lz");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in edits {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut load, idx, value, &mut eng).unwrap();
+    }
+    assert!(errors.is_empty(), "{errors:?}");
+    load
+}
+
+/// UPGRADE_PLAN ledger L2 (WP-U1.1): `kW`/`kVA` parsed as 0 clamp to `1e-8`
+/// (EPRI r4133 `DblValueNZ`), never kept as 0 and never an error. The whole
+/// open band `(-1e-8, 1e-8)` maps to `+1e-8`; out-of-band values are untouched.
+#[test]
+fn zero_kw_kva_clamp_dblvaluenz() {
+    let load = edit_load(&[("kw", "0"), ("kva", "0")]);
+    assert_eq!(
+        load.kw_base.to_bits(),
+        1e-8f64.to_bits(),
+        "kw {}",
+        load.kw_base
+    );
+    assert_eq!(
+        load.kva_base.to_bits(),
+        1e-8f64.to_bits(),
+        "kva {}",
+        load.kva_base
+    );
+    // Tiny in-band (incl. negative) also clamps to +1e-8.
+    assert_eq!(
+        edit_load(&[("kw", "5e-9")]).kw_base.to_bits(),
+        1e-8f64.to_bits()
+    );
+    assert_eq!(
+        edit_load(&[("kw", "-3e-9")]).kw_base.to_bits(),
+        1e-8f64.to_bits()
+    );
+    // Out-of-band values are unaffected; `kvar` (no flag) keeps a literal 0.
+    let ld = edit_load(&[("kw", "100"), ("kvar", "0")]);
+    assert_eq!(ld.kw_base, 100.0);
+    assert_eq!(ld.kvar_base, 0.0);
+}
+
 /// A 100 kW / pf 0.9 three-phase load (the probed oracle scenario).
 fn load_100kw_pf09() -> Load {
     let mut load = Load::new("lb");

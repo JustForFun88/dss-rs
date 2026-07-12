@@ -118,7 +118,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1),
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
-        PropDef::double("kW"),
+        PropDef::double("kW").flags(PropFlags::REPLACE_ZERO),
         PropDef::double("PF"),
         PropDef::double("kvar"),
         PropDef::mapped_int_enum("Model", enums.gen_model),
@@ -137,7 +137,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("Minkvar"),
         PropDef::double("PVFactor"),
         PropDef::boolean("ForceOn"),
-        PropDef::double("kVA"),
+        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO),
+        // `MVA` (prop 27) uses plain `DblValue * 1000` in r4133 (`generator.pas:664`)
+        // — NOT `DblValueNZ`: no zero-clamp, unlike `kVA` (prop 26). Reproduce the
+        // upstream asymmetry (only WindGen's MVA clamps, via `DblValueNZ * 1000`, at
+        // WP-U1.8). See `docs/upgrade/DIVERGENCES.md` L2.
         PropDef::double("MVA")
             .scale(1000.0)
             .flags(PropFlags::REDUNDANT),

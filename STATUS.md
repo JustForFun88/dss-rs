@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-11.
+Last updated: 2026-07-12 (WP-U1.1 item 1 — ledger L2 zero-kW clamp; record below).
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
@@ -3125,6 +3125,56 @@ channel; `storagecontroller_seasonal` is storage+line, not transformer AmpRating
 qualified (`B4-r3723`/`A5-r3723` vs this-file's B4/A5) + legend note. (6–9)
 per-signal count-table relabels, delta_r4088_r4133 headline caveat → B5/B6,
 capi015=r4103 version-gap caveat. No engine/golden/oracle changes; docs only.
+
+### WP-U1.1 (parser & property-system semantics) — branch `wp-u11`, 2026-07-12
+
+Rung 1, exec opus-high. **Item 1 of 5 landed** (ledger L2, the `DblValueNZ`
+zero-`kW`/`kVA` clamp); items 2–5 (`ParseAsSymMatrix` incomplete-matrix error,
+`AllowNoneItem`/`WasQuoted`, `TCC_Curve.none`, C11 class-command activation)
+remain — see "next" below. This session RESUMED a crashed executor's dirty draft
+(item 1 only); the draft was re-verified against the spec + re-probed, one real
+bug fixed, and the ledger's central gate-consequence claim corrected.
+
+**L2 clamp (adopt EPRI r4133 `DblValueNZ`).** A parsed essential-sizing double in
+the open band `(-1e-8, 1e-8)` → `+1e-8`, unconditionally (EPRI default), pre-
+scale, in `obj/props/setters.rs::set_obj_double` via new `PropFlags::REPLACE_ZERO`.
+Carried by Load `kW`/`kVA`, Generator `kW`/`kVA`, Storage `kW`/`kVA`, PVSystem
+`kVA`. Probes I re-ran (`scratch_probe_l2.py`, 2026-07-12): capi015 default keeps
+`0`, `+0x200` (PermissiveProperties) clamps; r4088/r4133 clamp by default. We
+adopt the r4133 default; we do NOT adopt dss_capi's strict-`NonZero`-error surface
+(dss-ext-only). `ParserDel.pas:912 MakeDoubleNZ` confirmed as the exact band-clamp.
+
+**Salvage record (crashed draft):**
+- KEPT: the `REPLACE_ZERO` flag + `set_obj_double` clamp, Load/Storage/PVSystem
+  `class_props` flags, the exact unit test `zero_kw_kva_clamp_dblvaluenz`, the
+  synthesized `modes/upgrade_parser_zerokw.dss` deck (r4133, fingerprint
+  `e177df8e74141adf`, re-validated two-process on r4133).
+- FIXED (real bug): the draft flagged Generator **`MVA`** with `REPLACE_ZERO`.
+  r4133 `generator.pas:664` reads `MVA` (prop 27) through plain `DblValue*1000`
+  — NOT `DblValueNZ` (only prop 26 `kVA` clamps). Removed the flag; documented the
+  upstream asymmetry (only WindGen's `MVA` clamps, U1.8). Fixed in
+  `generator/mod.rs`, `prop_flags.rs` doc, and the ledger decision text.
+- CORRECTED (falsified claim): the draft ledger claimed the clamp "moves no
+  default-oracle observable." **False.** A Load with both `kW=0` **and** `kvar=0`
+  ends in the `KwKvar` spec; the clamp makes `kVA=1e-8>0`, so `RecalcElementData`
+  recomputes `PF = kW/kVA = 1` (un-clamped `kVA=0` skips the recompute, keeping the
+  parsed `pf`). So `? load.pf` reads `1` (Rust≡r4088/r4133) vs `0.9` (0.14.5).
+  Probe `scratch_probe_pf.py`. Corpus scan (`/tmp/scan_zero.py`): the breaking
+  pattern hits exactly one mandatory-gate deck, `epri_dpv/M1/Master_NoPV.dss`
+  (feeder, 8 zero-loads). Per §1.2 it is **flipped to `oracle: "r4133"` in this
+  same commit**; the whole-model live compare passes green against r4133 (target-
+  rev cases drop `compare_all_properties` per §1.3-2, so the PF readback is no
+  longer compared vs the 0.14.5 oracle it deliberately mismatches). No golden
+  migration (no byte-golden covers M1); no `known_diffs.json` change.
+
+**known_diffs burn-down:** none (no zero-kW entry existed @ r3723; Rust now matches
+r4133). **Iteration policy (§1.3-1):** M1 is the only newly-flipped case; the
+`--nocapture` gate run emits **no** `NOTE Rust converged …` line for it — Rust
+matched r4133's iteration count exactly (no suspicious strict `<`).
+
+**Next (resume point):** items 2–5 of `UPGRADE_PLAN §WP-U1.1` are NOT started.
+Item 1 is a self-contained committed green package; a follow-up session continues
+at item 2 (`ParseAsSymMatrix` incomplete-matrix validation).
 
 ### Gate state (all green)
 ```

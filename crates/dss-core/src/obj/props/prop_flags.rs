@@ -76,6 +76,19 @@ impl PropFlags {
     /// the source EMF — see `export_elem_powers` in `report/export/elem.rs`). No
     /// Pascal property-table read needs `iterminal` today.
     pub const READS_VTERMINAL: Self = Self(1 << 16);
+    /// Pascal `ReplaceZero` (`DSSObjectHelper.pas:2984`) — but adopted here with
+    /// **EPRI r4133 `DblValueNZ` semantics** (UPGRADE_PLAN ledger L2). A parsed
+    /// double in the open band `(-1e-8, 1e-8)` is replaced by `+1e-8`. EPRI's
+    /// `TParser.MakeDoubleNZ` (`ParserDel.pas:912`) does this **unconditionally by
+    /// default**; dss_capi 0.15.x instead gates its exact-zero `ReplaceZero` behind
+    /// the `PermissiveProperties` compat flag and adds a strict `NonZero` error by
+    /// default. We adopt the EPRI default (clamp, no compat flag, no error) — see
+    /// `docs/upgrade/DIVERGENCES.md` L2. Carried by the essential-sizing doubles
+    /// (Load `kW`/`kVA`, Generator `kW`/`kVA` — but NOT Generator `MVA`, which uses
+    /// plain `DblValue*1000` in r4133 — Storage `kW`/`kVA`,
+    /// PVSystem `kVA`; WindGen `kW`/`kVA`/`MVA` at U1.8). Applied pre-scale, matching where
+    /// `DblValueNZ`/`ReplaceZero` sit in the parse.
+    pub const REPLACE_ZERO: Self = Self(1 << 17);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);
