@@ -2,7 +2,7 @@
  "comment": "Controls live gate decks (CONTROL_COVERAGE_PLAN.md): control/protection/metering elements in symmetric, asymmetric, and combination scenarios, live-compared by controls_cases_match_oracle with the full-model mandate plus element-specific state channels (probes / compare_variables / compare_eventlog / compare_ctrlqueue / check_meters_monitors). Cases with pending=true cover features the port does not implement yet (absorbed from the former gaps/ staging family, GAPS_PLAN.md section 3.1): the gate asserts the Rust engine errors loudly on them; the WP in each wp field flips pending=false when it ports the feature.",
  "cases": [
   {
-   "path": "regcontrol_sym.dss",
+   "path": "regcontrol/regcontrol_sym.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -32,7 +32,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "regcontrol_asym.dss",
+   "path": "regcontrol/regcontrol_asym.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -64,7 +64,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "capcontrol_sym.dss",
+   "path": "capcontrol/capcontrol_sym.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -91,7 +91,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "capcontrol_asym.dss",
+   "path": "capcontrol/capcontrol_asym.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -133,7 +133,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "invcontrol_vv_sym.dss",
+   "path": "invcontrol/invcontrol_vv_sym.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -154,7 +154,7 @@
    ]
   },
   {
-   "path": "invcontrol_vvvw_asym.dss",
+   "path": "invcontrol/invcontrol_vvvw_asym.dss",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -178,7 +178,7 @@
    ]
   },
   {
-   "path": "storagectrl_peakshave.dss",
+   "path": "storagecontroller/storagectrl_peakshave.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -219,7 +219,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "storagectrl_time.dss",
+   "path": "storagecontroller/storagectrl_time.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -251,7 +251,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "midi_controls.dss",
+   "path": "combo/midi_controls.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -339,7 +339,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_protection.dss",
+   "path": "combo/midi_protection.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -377,7 +377,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "combo_protection.dss",
+   "path": "combo/combo_protection.dss",
    "kind": "micro",
    "n_steps": 20,
    "selected_elements": [
@@ -411,7 +411,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "combo_voltvar_asym.dss",
+   "path": "combo/combo_voltvar_asym.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -446,7 +446,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "combo_metering.dss",
+   "path": "combo/combo_metering.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -474,7 +474,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "energymeter_sym.dss",
+   "path": "energymeter/energymeter_sym.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -492,7 +492,7 @@
    ]
   },
   {
-   "path": "energymeter_asym.dss",
+   "path": "energymeter/energymeter_asym.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -510,7 +510,7 @@
    ]
   },
   {
-   "path": "monitor_modes.dss",
+   "path": "monitor/monitor_modes.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -549,7 +549,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "sensor_map.dss",
+   "path": "sensor/sensor_map.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -593,7 +593,7 @@
    ]
   },
   {
-   "path": "recloser_temp.dss",
+   "path": "recloser/recloser_temp.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -616,7 +616,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "recloser_perm.dss",
+   "path": "recloser/recloser_perm.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -639,7 +639,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "relay_oc_sym.dss",
+   "path": "relay/relay_oc_sym.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -663,7 +663,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "relay_4647_asym.dss",
+   "path": "relay/relay_4647_asym.dss",
    "kind": "micro",
    "n_steps": 10,
    "selected_elements": [
@@ -694,7 +694,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "fuse_blow_asym.dss",
+   "path": "fuse/fuse_blow_asym.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -715,7 +715,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "swtcontrol_time.dss",
+   "path": "swtcontrol/swtcontrol_time.dss",
    "kind": "micro",
    "n_steps": 12,
    "post": [
@@ -739,7 +739,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "gendispatcher.dss",
+   "path": "gendispatcher/gendispatcher.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -773,7 +773,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "midi_regcontrol.dss",
+   "path": "regcontrol/midi_regcontrol.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -809,7 +809,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_capcontrol.dss",
+   "path": "capcontrol/midi_capcontrol.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -849,7 +849,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_invcontrol.dss",
+   "path": "invcontrol/midi_invcontrol.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -871,7 +871,7 @@
    ]
   },
   {
-   "path": "midi_storagectrl.dss",
+   "path": "storagecontroller/midi_storagectrl.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -902,7 +902,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "midi_gendispatcher.dss",
+   "path": "gendispatcher/midi_gendispatcher.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -935,7 +935,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "midi_recloser_temp.dss",
+   "path": "recloser/midi_recloser_temp.dss",
    "kind": "micro",
    "n_steps": 16,
    "selected_elements": [
@@ -956,7 +956,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_recloser_perm.dss",
+   "path": "recloser/midi_recloser_perm.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -977,7 +977,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_relay_4647.dss",
+   "path": "relay/midi_relay_4647.dss",
    "kind": "micro",
    "n_steps": 10,
    "selected_elements": [
@@ -1005,7 +1005,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_fuse.dss",
+   "path": "fuse/midi_fuse.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1025,7 +1025,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_swtcontrol.dss",
+   "path": "swtcontrol/midi_swtcontrol.dss",
    "kind": "micro",
    "n_steps": 12,
    "post": [
@@ -1048,7 +1048,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_energymeter.dss",
+   "path": "energymeter/midi_energymeter.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1073,7 +1073,7 @@
    ]
   },
   {
-   "path": "midi_monitor.dss",
+   "path": "monitor/midi_monitor.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -1103,7 +1103,7 @@
    ]
   },
   {
-   "path": "midi_sensor.dss",
+   "path": "sensor/midi_sensor.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -1147,7 +1147,7 @@
    ]
   },
   {
-   "path": "capcontrol_follow.dss",
+   "path": "capcontrol/capcontrol_follow.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1167,7 +1167,7 @@
    "wp": "WPG.7"
   },
   {
-   "path": "capcontrol_follow_noshape.dss",
+   "path": "capcontrol/capcontrol_follow_noshape.dss",
    "kind": "micro",
    "pending": false,
    "expect_solve_abort": "Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
@@ -1175,7 +1175,7 @@
    "note": "Malformed input: type=Follow CapControl with no ControlSignal. Pascal CapControl.pas Sample (l.1153-1158) sets DSS.SolutionAbort:=True; the pinned oracle raises #10362 at solve. Both engines abort; the Rust port sets solution_abort + surfaces the same message (WPG.7 audit follow-up)."
   },
   {
-   "path": "invcontrol_expmodel.dss",
+   "path": "invcontrol/invcontrol_expmodel.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1195,7 +1195,7 @@
    "note": "ControlModel accepts only the ordinal (ControlModel=1); the enum name is rejected by the upstream text parser (probe-proven). WPG.9 ports the TPICtrl PI controller (Exponential ControlModel) in the VV/AVR/DRC/VV_DRC var-calc paths; live-compared here (kvar probe = the controller-driven var output + event log; the full-model compare covers the PV's P/Q each step). PVSystem exposes no `kW` property (probe-proven: `? PVSystem.pv.kW` = 'Property Unknown' on both engines), so the var trajectory is observed via `kvar`."
   },
   {
-   "path": "invcontrol_storage_vw.dss",
+   "path": "invcontrol/invcontrol_storage_vw.dss",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -1217,7 +1217,7 @@
    "wp": "WPG.10"
   },
   {
-   "path": "invcontrol_storage_vv_vw.dss",
+   "path": "invcontrol/invcontrol_storage_vv_vw.dss",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -1240,7 +1240,7 @@
    "wp": "WPG.10"
   },
   {
-   "path": "gfm_micro.dss",
+   "path": "gfm/gfm_micro.dss",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -1263,7 +1263,7 @@
    "note": "Storage grid-forming (ControlMode=GFM) forming an islanded section (sw1 opened) in daily mode. Feature-sensitive: WITHOUT ControlMode=GFM the islanded storage cannot form voltage and islbus is dead (0 pu, 0 kW) vs the GFM island at ~0.998 pu / ~400 kW. Two-process oracle capture bit-identical (determinism proven)."
   },
   {
-   "path": "gfm_invcontrol.dss",
+   "path": "gfm/gfm_invcontrol.dss",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -1285,7 +1285,7 @@
    "note": "InvControl mode=GFM amps limiter over a grid-forming Storage (islanded like gfm_micro). AmpLimit=400 makes CheckAmpsLimit bite (dynVars.IComp>0 -> DoGFM_Mode shrinks BaseV): Storage throttled to ~-158 kW vs ~-400 kW without the limit (feature-sensitive, ~2.5x per step). Two-process oracle capture bit-identical (determinism proven)."
   },
   {
-   "path": "gfm_dynamics.dss",
+   "path": "gfm/gfm_dynamics.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -1308,7 +1308,7 @@
    "note": "Storage grid-forming (ControlMode=GFM) BLACK-STARTING an islanded section (sw1 opened) in DYNAMICS mode (one solve = 60x 1ms steps; mode-0 + mode-3 monitors). Exercises the ported dynamics-mode GFM: IntegrateStates VDelta droop -> ISPDelta ramp + FixPhaseAngle, DoDynamicMode BaseV=BasekV*1000*(it[0]/iMaxPPhase) internal-source injection, CheckIfDelivering. Re-probed pinned oracle dss-python 0.15.7 (WPG.17): (1) compiles+solves+converges; (2) two-process ByteStream bit-identical (mvi sha 1edc4824..., msv sha d049f4a6...); (3) feature-sensitive -- WITH ControlMode=GFM+SafeVoltage=0 the island energises to islbus ~0.977 pu with the Storage delivering ~-400.7 kW / ~-80.9 kvar (State=DISCHARGING, %stored ~99.9999), vs WITHOUT ControlMode=GFM the islanded inverter is NON-CONVERGENT (NaN node voltages, 0 kW). SafeVoltage=0 is mandatory (default 100 MinVS blocks the black start from 0 V)."
   },
   {
-   "path": "pv_gfm_dynamics.dss",
+   "path": "gfm/pv_gfm_dynamics.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -1330,7 +1330,7 @@
    "note": "PVSystem twin of gfm_dynamics.dss (GFM audit settlement: the PV GFM dynamics path previously had only a last-sample unit pin). Islanded PV in ControlMode=GFM black-starts the section in dynamics mode (60x 1ms; mode-0 + mode-3 monitors); exercises PVsystem.pas InitStateVars GFM it:=0 seed, IntegrateStates GFM droop with the OVERWRITTEN iMaxPPhase (unlike Storage's local IMaxPhase), DoDynamicMode GFM injection. Validated pinned oracle dss-python 0.15.7 (2026-07-09): (1) compiles+solves+converges; (2) two-process fingerprint (AllBusVmag + both monitor ByteStreams) bit-identical 9981f5f49a610a61; (3) feature-sensitive -- WITHOUT ControlMode=GFM the islanded dynamics solve is NON-CONVERGENT. SafeVoltage=0 mandatory."
   },
   {
-   "path": "storagecontroller_seasonal.dss",
+   "path": "storagecontroller/storagecontroller_seasonal.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1352,7 +1352,7 @@
    "note": "Feature-sensitive probe-proven: with Set SeasonRating=no the event log diverges from hour 12 (the 500 kW season target never engages). Option spelling is 'Set SeasonRating', not 'SeasonalRating'."
   },
   {
-   "path": "isource_daily.dss",
+   "path": "isource/isource_daily.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1363,7 +1363,7 @@
    "wp": "WPG.14"
   },
   {
-   "path": "autotrans_reg.dss",
+   "path": "autotrans/autotrans_reg.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1392,7 +1392,7 @@
    "note": "RegControl drives the AutoTrans COMMON (wye) winding via the Pascal Transf_Or_AutoTrans proxy. Oracle 2026-07-05: 10 tap-change events over the 8 hours, final tapnum=5."
   },
   {
-   "path": "isource_both.dss",
+   "path": "isource/isource_both.dss",
    "kind": "micro",
    "n_steps": 9,
    "selected_elements": [
@@ -1404,7 +1404,7 @@
    "note": "Snapshot Solve then the daily run in one session - cross-mode state-leak coverage."
   },
   {
-   "path": "midi_isource.dss",
+   "path": "isource/midi_isource.dss",
    "kind": "midi",
    "n_steps": 8,
    "selected_elements": [
@@ -1415,7 +1415,7 @@
    "wp": "WPG.14"
   },
   {
-   "path": "midi_isource_both.dss",
+   "path": "isource/midi_isource_both.dss",
    "kind": "midi",
    "n_steps": 9,
    "selected_elements": [
@@ -1426,7 +1426,7 @@
    "wp": "WPG.14"
   },
   {
-   "path": "autotrans_both.dss",
+   "path": "autotrans/autotrans_both.dss",
    "kind": "micro",
    "n_steps": 9,
    "selected_elements": [
@@ -1455,7 +1455,7 @@
    "note": "Snapshot Solve then the RegControl daily run in one session (12 tap events, final tapnum=5 on the oracle) - cross-mode state-leak coverage."
   },
   {
-   "path": "midi_autotrans.dss",
+   "path": "autotrans/midi_autotrans.dss",
    "kind": "midi",
    "n_steps": 8,
    "selected_elements": [
@@ -1484,7 +1484,7 @@
    "note": "Control-active at midi scale on the oracle: 10 tap events, final tapnum=11."
   },
   {
-   "path": "midi_autotrans_both.dss",
+   "path": "autotrans/midi_autotrans_both.dss",
    "kind": "midi",
    "n_steps": 9,
    "selected_elements": [
@@ -1505,7 +1505,7 @@
    "wp": "WPG.15"
   },
   {
-   "path": "monitor_pst.dss",
+   "path": "monitor/monitor_pst.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1514,13 +1514,923 @@
    "check_meters_monitors": true
   },
   {
-   "path": "midi_monitor_pst.dss",
+   "path": "monitor/midi_monitor_pst.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
     "*"
    ],
    "check_meters_monitors": true
+  },
+  {
+   "path": "regcontrol/regcontrol_ldc.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum",
+      "r",
+      "x",
+      "vreg",
+      "band"
+     ]
+    },
+    {
+     "element": "Transformer.tr",
+     "props": [
+      "tap"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "LDC forward path (RegControl.pas Sample l.1040-1048): R+jX line-drop comp shifts the effective control voltage with load current. Feature-sensitive: neutralizing r=0 x=0 changes the tap event log (two-process oracle capture bit-identical; probe-proven)."
+  },
+  {
+   "path": "regcontrol/regcontrol_reverse.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum",
+      "reversible",
+      "revvreg",
+      "revband",
+      "vreg",
+      "band"
+     ]
+    },
+    {
+     "element": "Transformer.tr",
+     "props": [
+      "tap"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Reversible + reverse setpoints: a downstream generator ramp drives reverse power through the LTC past revThreshold, flipping InReverseMode so it regulates to revVreg/revBand. Feature-sensitive: reversible=no keeps it forward-only (different taps/event log; probe-proven)."
+  },
+  {
+   "path": "regcontrol/regcontrol_remotebus.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum",
+      "bus",
+      "remoteptratio",
+      "vreg"
+     ]
+    },
+    {
+     "element": "Transformer.tr",
+     "props": [
+      "tap"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Remote regulated bus (UsingRegulatedBus): the regulator holds a bus one line-section downstream via RemotePTRatio. Feature-sensitive: watching the local winding (bus=mv) lands a different tap trajectory by the daily line drop (probe-proven)."
+  },
+  {
+   "path": "regcontrol/regcontrol_inversetime.dss",
+   "kind": "micro",
+   "n_steps": 40,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum",
+      "inversetime",
+      "vlimit",
+      "delay",
+      "vreg"
+     ]
+    },
+    {
+     "element": "Transformer.tr",
+     "props": [
+      "tap"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Inverse-time tap delay + Vlimit clamp (RegControl.pas ComputeTimeDelay l.1294 + VLimit l.1086-1096). DUTY mode 2s steps: an overvoltage source (pu=1.045) drives a multi-tap buck so inverse-time places taps on different sub-steps and Vlimit=119 (below the vreg=120/band=4 window) bucks the endpoint lower. Feature-sensitive on BOTH knobs (probe-proven, two-process bit-identical): inversetime=no shifts the first tap Sec=10->18, vlimit=0 settles at tap 0.975 vs 0.95625."
+  },
+  {
+   "path": "capcontrol/capcontrol_pf.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "CapControl.cc",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting",
+      "pctminkvar"
+     ]
+    },
+    {
+     "element": "Capacitor.cb",
+     "props": [
+      "states"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "PFCONTROL: offsetting=-0.99 exercises the leading PF1to2 fold; a low-PF load ramp pulls the bank ON and the added kvar sheds it toward the leading OFF target. Feature-sensitive (probe-proven, two-process bit-identical): type=pf vs type=kvar differ (PFCONTROL branch taken) and offsetting=-0.99 vs +0.90 gives a different step trajectory. pctMinkvar=25 does NOT bite here (pctminkvar=0 is bit-identical) and onsetting is inert (no re-ON after shedding) -- both are configured, not claimed as boundaries."
+  },
+  {
+   "path": "capcontrol/capcontrol_time.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "CapControl.cc1",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting"
+     ]
+    },
+    {
+     "element": "CapControl.cc2",
+     "props": [
+      "onsetting",
+      "offsetting"
+     ]
+    },
+    {
+     "element": "Capacitor.cday",
+     "props": [
+      "states"
+     ]
+    },
+    {
+     "element": "Capacitor.cnight",
+     "props": [
+      "states"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "TIMECONTROL: cc1 ON<OFF (8-20h), cc2 OFF<ON so its window WRAPS past midnight (ON 21-06h; the next-day branch). cnight is ON at hours 0-5 and 21-23. Feature-sensitive: shifting cc2 offsetting moves the switch (probe-proven)."
+  },
+  {
+   "path": "capcontrol/capcontrol_voverride.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "CapControl.cc",
+     "props": [
+      "voltoverride",
+      "vmax",
+      "vmin"
+     ]
+    },
+    {
+     "element": "Capacitor.cb",
+     "props": [
+      "states"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Voltage override ahead of the kvar logic: a kvar-latched bank is shed by the High-Voltage Override (126.4 V > Vmax=126) during a light-load overvoltage window. Feature-sensitive: voltoverride=no leaves it ON (probe-proven). VoverrideBus reverts at parse upstream (documented no-op), so it senses the monitored terminal."
+  },
+  {
+   "path": "invcontrol/invcontrol_drc.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode",
+      "deltaq_factor"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "DRC standalone: a 4h DRC window lags the ramping bus V so deltaV drives the ArGraHiV droop above DbVMax. Feature-sensitive: DbVMax=1.5 collapses the response (two-process bit-identical; probe-proven)."
+  },
+  {
+   "path": "invcontrol/invcontrol_vv_drc.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "combimode",
+      "deltaq_factor"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "CombiMode VV_DRC (untested combi branch): VV-curve Q + DRC-droop Q summed (CalcVVDRC_vars). Feature-sensitive: DbVMax=1.5 removes the DRC term (probe-proven)."
+  },
+  {
+   "path": "invcontrol/invcontrol_wattpf.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "WATTPF: wattpf_curve maps P(pu) -> target PF, Q derived from P and PF. Feature-sensitive: unity-PF curve removes the response (probe-proven)."
+  },
+  {
+   "path": "invcontrol/invcontrol_wattvar.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "WATTVAR: wattvar_curve maps P(pu) -> target Q(pu) with the kVA-circle quadratic. Feature-sensitive: zero-var curve removes the response (probe-proven)."
+  },
+  {
+   "path": "invcontrol/invcontrol_avr.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode",
+      "vsetpoint"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "AVR with the DEFAULT (linear) ControlModel - the 3-stage DQDV regulator toward Vsetpoint (distinct from invcontrol_expmodel's Exponential model). Feature-sensitive: Vsetpoint=1.06 collapses the response (probe-proven)."
+  },
+  {
+   "path": "invcontrol/invcontrol_monbus.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "monbus",
+      "monvoltagecalc"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "Explicit monBus=(r.1.2.3) monVoltageCalc=MAX: the VV control samples a remote bus (GetMonVoltage FUsingMonBuses branch), not its own terminal. Feature-sensitive: monBus=b changes the sampled V and the kvar trajectory (probe-proven)."
+  },
+  {
+   "path": "invcontrol/midi_invcontrol_drc.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode",
+      "deltaq_factor"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv3",
+    "PVSystem.pv1a",
+    "PVSystem.pv1b",
+    "PVSystem.pv1c"
+   ],
+   "compare_eventlog": true,
+   "note": "Midi: mixed 3ph+1ph DER fleet under one DRC control so the per-member FNphases recalc runs across differing phase counts in the multi-control round (the last-member FNphases-bug trait). Feature-sensitive: DbVMax=1.5 collapses the fleet response (probe-proven)."
+  },
+  {
+   "path": "storagecontroller/storagectrl_follow.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "kwtarget",
+      "kwthreshold",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
+   "compare_eventlog": true,
+   "note": "Follow discharge (MODE_FOLLOW): TimeDischargeTrigger latches kWTarget=max(kWThreshold,load) then holds; RELEASE_INHIBIT differs. Feature-sensitive: modedis=peakshave changes dispatch (probe-proven)."
+  },
+  {
+   "path": "storagecontroller/storagectrl_support.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "kwtarget",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
+   "compare_eventlog": true,
+   "note": "Support discharge (MODE_SUPPORT): Pdiff=Pmon+kWTarget, opposite sign to PeakShave; a generator backfeed reverses the monitored power. Feature-sensitive: modedis=peakshave dispatches differently (probe-proven)."
+  },
+  {
+   "path": "storagecontroller/storagectrl_ipeakshave.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "kwtarget",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
+   "compare_eventlog": true,
+   "note": "I-PeakShave discharge (CURRENT_PEAKSHAVE): target in AMPS (kWTarget=0.24=240A), distinct amps->kW conversion via the terminal voltage. Feature-sensitive: modedis=peakshave (kW target) dispatches on a different quantity (probe-proven)."
+  },
+  {
+   "path": "storagecontroller/storagectrl_loadshape.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "ModeCharge",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
+   "compare_eventlog": true,
+   "note": "Loadshape dispatch (DoLoadShapeMode): the controller's own Daily shape commands charge(mult<0)/idle(0)/discharge(mult>0) directly - both loadshape branches at once. Feature-sensitive: zeroing the dispatch shape freezes the fleet (probe-proven)."
+  },
+  {
+   "path": "storagecontroller/storagectrl_chargelow.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "StorageController.sc",
+     "props": [
+      "ModeDischarge",
+      "ModeCharge",
+      "kwtargetlow",
+      "%reserve"
+     ]
+    },
+    {
+     "element": "Storage.sa",
+     "props": [
+      "state",
+      "kw",
+      "kwhstored",
+      "%stored"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "Storage.sa"
+   ],
+   "compare_eventlog": true,
+   "note": "Charge PeakShaveLow (DoPeakShaveModeLow): charges the fleet when the monitored power falls below kWTargetLow (valley fill), untouched by the Time-charge decks. Feature-sensitive: modecharge=time charges on a clock trigger instead (probe-proven)."
+  },
+  {
+   "path": "relay/relay_voltage.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "kvbase",
+      "delay"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "VOLTAGE (27 undervoltage): a bolted 3ph fault at the monitored bus collapses V below the UnderVolt TCC -> UV trip + lockout. Feature-sensitive: a deep UV pickup keeps it in-band (probe-proven)."
+  },
+  {
+   "path": "relay/relay_revpower.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "delay"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "REVERSEPOWER (32): a downstream generator ramp backfeeds reverse power past PhaseInst -> one-shot lockout (RevPowerLogic). Feature-sensitive: PhaseInst above the backfeed keeps it closed (probe-proven)."
+  },
+  {
+   "path": "relay/relay_generic.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "delay"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "GENERIC: watches the Storage 'kWh' state variable (a StorageController discharges it) and trips the feeder open when energy drops below undertrip. Feature-sensitive: undertrip below end-of-run kWh stops the trip (probe-proven)."
+  },
+  {
+   "path": "relay/relay_distance.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "shots"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "DISTANCE (21 mho): apparent-impedance reach to a bolted 3ph fault inside Mphase -> trip + lockout (Kersting ex.4.1 impedances). Feature-sensitive: Mphase below the fault distance stops the trip (probe-proven)."
+  },
+  {
+   "path": "relay/relay_td21.dss",
+   "kind": "micro",
+   "n_steps": 30,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "shots"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "TD21 (time-distance): the memory ring-buffer distance element primes over duty sub-steps before the in-reach fault, then trips + locks out. Feature-sensitive: Mphase below the fault distance stops the trip (probe-proven)."
+  },
+  {
+   "path": "relay/relay_doc.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "delay"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "DOC (directional overcurrent): DOC_P1Blocking=TRUE (default) trips only on net reverse power; a downstream generator export drives reverse current into the trip region past DOC_TripSettingLow. Feature-sensitive: raising the pickup stops the trip (probe-proven)."
+  },
+  {
+   "path": "recloser/recloser_ground.dss",
+   "kind": "micro",
+   "n_steps": 16,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal",
+      "shots",
+      "numfast"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Ground-curve path: groundfast/grounddelayed ASSIGNED (else GroundCurve=NIL skips the path, Recloser.pas l.355/578) and phasetrip=3000 set above the SLG faulted-phase current (~2585A) so only the ground curve trips on the residual (~2558A) through the low groundtrip=30 pickup (eventlog GROUND TARGET, Sec=0.4). Temporary fault self-clears, recloses. Feature-sensitive (probe-proven): groundtrip=3000 stops the trip and dropping groundfast/grounddelayed stops it, while phasetrip=30000 is bit-identical (phase path inert)."
+  },
+  {
+   "path": "fuse/fuse_blow_3ph.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Fuse.fz",
+     "props": [
+      "state",
+      "normal"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "note": "3-phase simultaneous blow: a balanced 3ph fault melts all three per-phase links in the same round -> State=[open,open,open] (vs the one-phase asym deck). Feature-sensitive: ratedcurrent=5000 keeps them closed (probe-proven)."
+  },
+  {
+   "path": "swtcontrol/swtcontrol_lock.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "post": [
+    "edit swtcontrol.sw action=open"
+   ],
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "SwtControl.sw",
+     "props": [
+      "state",
+      "normal",
+      "lock"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Lock=yes makes the control IGNORE the post action=open, so the switch stays closed. Feature-sensitive: with lock=no the same action opens it after the delay (probe-proven)."
+  },
+  {
+   "path": "gendispatcher/gendispatcher_kvarlimit.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "GenDispatcher.gd1",
+     "props": [
+      "kwlimit",
+      "kvarlimit",
+      "weights"
+     ]
+    },
+    {
+     "element": "Generator.g1",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    },
+    {
+     "element": "Generator.g2",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    },
+    {
+     "element": "Generator.g3",
+     "props": [
+      "kw",
+      "kvar"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "note": "kvarLimit clamp + unequal weights [4,2,1] over 3 gens: the load swing drives the reactive share past kvarLimit=400 so the clamp bites. Feature-sensitive: kvarlimit=99999 removes the clamp and the kvar split differs (probe-proven)."
+  },
+  {
+   "path": "energymeter/energymeter_options.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "EnergyMeter.em",
+     "props": [
+      "element",
+      "terminal"
+     ]
+    }
+   ],
+   "note": "Option flags LineLosses=no/XfmrLosses=no/VbaseLosses=no over a line+transformer zone -> the loss/overload registers accumulate differently. Feature-sensitive: default all-on options record different registers (two-process bit-identical; register compare)."
+  },
+  {
+   "path": "monitor/monitor_modes_hi.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Monitor.mloss",
+     "props": [
+      "element",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.mcap",
+     "props": [
+      "element",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.mall",
+     "props": [
+      "element",
+      "mode"
+     ]
+    }
+   ],
+   "note": "High save-record branches (ported): mode 6 (cap switching) on a switched cap, mode 9 (losses) on a transformer, mode 11 (all-terminal V&I) on a line. The mode selects the byte-stream channel set; the per-step channel arrays are compared. Modes 8/10/12 have a deferred stub sample body in the port and are not exercised."
+  },
+  {
+   "path": "monitor/monitor_seqmag.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Monitor.mseq",
+     "props": [
+      "element",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.mmag",
+     "props": [
+      "element",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.mseqmag",
+     "props": [
+      "element",
+      "mode"
+     ]
+    }
+   ],
+   "note": "Flag-bit save branches on an unbalanced feeder: mode 16 (+sequence V012/I012), mode 32 (+magnitude), mode 48 (both). Each flag changes the channel layout; the per-step channel arrays are compared."
+  },
+  {
+   "path": "expcontrol/expcontrol_basic.dss",
+   "kind": "micro",
+   "n_steps": 10,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "PVSystem.pv",
+     "props": [
+      "kvar"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "ExpControl (IEEE-1547 adaptive volt-var, separate element): the adaptive Vreg tracks with VregTau and clamps to [VregMin,VregMax], DeltaQ_factor damping. A wide daily irradiance ramp moves Vreg and hits the clamps. Feature-sensitive: enabled=no holds fixed Q (probe-proven)."
+  },
+  {
+   "path": "upfc/upfc_vreg.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "UPFC.test",
+     "props": [
+      "mode",
+      "refkv"
+     ]
+    }
+   ],
+   "note": "UPFC mode 1 (series voltage regulator) + UPFCControl wrapper: injects a series Vpq through Xs to drive the output to refkV (UPFC.pas GetOutputCurr ModeUPFC=1). Modes 2/3 are NOT covered here: mode-2 series path is a CurrOut:=0 stub in dss_capi 0.14.5 (identical to off) and its shunt reactive-comp path needs element= and does not converge in this topology; mode 3 collapses onto mode 1 here (see STATUS). Feature-sensitive (probe-proven): mode=0 removes the injection AND refkV=0.250/0.230 each shift the regulated output (two-process bit-identical)."
+  },
+  {
+   "path": "upfc/upfc_doubleref.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "UPFC.test",
+     "props": [
+      "mode",
+      "refkv",
+      "refkv2"
+     ]
+    }
+   ],
+   "note": "UPFC mode 4 (DoubleReference voltage) + UPFCControl wrapper: two-band reference [refkV2,refkV]; the loaded input sags below the band and the UPFC engages via sf2. Feature-sensitive: mode=0 OR widening the band (input stays inside -> disengaged) each differ (probe-proven)."
   }
  ]
 }

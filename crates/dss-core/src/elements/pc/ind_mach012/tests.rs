@@ -53,6 +53,166 @@ fn recalc_sets_impedances() {
     assert_eq!(m.yeq.re, 0.0);
 }
 
+/// Pascal `SetNominalPower` GENERALTIME/DYNAMICMODE arm (IndMach012.pas:
+/// 1091-1105): the `ActiveLoadShapeClass` (`Set LoadShapeClass=`) picks WHICH
+/// of the three curves drives `ShapeFactor` in dynamics (at hr 2: daily→0.6,
+/// yearly→0.7, duty→0.5); default `USENONE` leaves it 1+j1. Same family as the
+/// CF2-G PVSystem dynamics load-shape fix.
+#[test]
+fn dynamics_loadshapeclass_selects_matching_curve() {
+    use crate::elements::general::load_shape::{self, LoadShapeObj};
+    use crate::obj::base::DssObject;
+    use crate::obj::props::PropEngine;
+    use crate::solution::{SolveMode, USEDAILY, USEDUTY, USENONE, USEYEARLY};
+    use dss_parser::{Parser, ParserVars};
+
+    /// Build a populated `LoadShapeObj` through its real property engine.
+    fn build_shape(mult: &str) -> LoadShapeObj {
+        let enums = EnumRegistry::new();
+        let cls = load_shape::class_props(&enums);
+        let mut obj = LoadShapeObj::new("s");
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        let mut errors = Vec::new();
+        for (name, value) in [("npts", "4"), ("interval", "1"), ("mult", mult)] {
+            let idx = cls.property_index(name).expect("known property");
+            let mut eng = PropEngine {
+                parser: &mut parser,
+                vars: &vars,
+                enums: &enums,
+                errors: &mut errors,
+                foreign: None,
+            };
+            cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+        }
+        obj.end_edit();
+        assert!(errors.is_empty(), "{errors:?}");
+        obj
+    }
+
+    let mut m = IndMach012::new("m1");
+    m.daily_shape_obj = Some(build_shape("0.2 0.6 1.0 0.5"));
+    m.yearly_shape_obj = Some(build_shape("0.3 0.7 0.9 0.4"));
+    m.duty_shape_obj = Some(build_shape("0.1 0.5 0.8 0.6"));
+
+    let dyn_ctx = |class: i32| SysCtx {
+        mode: SolveMode::Dynamic,
+        is_dynamic_model: true,
+        active_load_shape_class: class,
+        dbl_hour: 2.0,
+        ..default_recalc_ctx()
+    };
+
+    m.set_nominal_power(&dyn_ctx(USEDAILY));
+    assert!(
+        (m.shape_factor.re - 0.6).abs() < 1e-9,
+        "daily: {}",
+        m.shape_factor.re
+    );
+    m.set_nominal_power(&dyn_ctx(USEYEARLY));
+    assert!(
+        (m.shape_factor.re - 0.7).abs() < 1e-9,
+        "yearly: {}",
+        m.shape_factor.re
+    );
+    m.set_nominal_power(&dyn_ctx(USEDUTY));
+    assert!(
+        (m.shape_factor.re - 0.5).abs() < 1e-9,
+        "duty: {}",
+        m.shape_factor.re
+    );
+    m.set_nominal_power(&dyn_ctx(USENONE));
+    assert_eq!(m.shape_factor, CDOUBLEONE, "USENONE must leave 1+j1");
+}
+
+/// Pascal `TPCElement.GetCurrents` `LastSolutionWasDirect` shortcut (PCElement.pas
+/// l.137) wired into `IndMach012::get_currents`: after a direct solve the reported
+/// terminal current is `YPrim·Vterminal` (frozen shadow-admittance); without the
+/// flag it is the model current `YPrim·V − InjCurrent`. Guards the per-class
+/// shortcut branch — IndMach012 inherits the base `GetCurrents`. (Delta default:
+/// 3 conductors, no neutral.)
+#[test]
+fn direct_shortcut_selects_yprim_currents() {
+    use crate::elements::pc::generator::default_recalc_ctx;
+    use crate::elements::traits::{CktElement, SysCtx};
+    use crate::support::cmatrix::CMatrix;
+    use num_complex::Complex64;
+
+    let node_v = vec![
+        Complex64::ZERO, // ground slot (unused by a delta machine)
+        Complex64::new(7200.0, 0.0),
+        Complex64::new(-3600.0, -6235.0),
+        Complex64::new(-3600.0, 6235.0),
+    ];
+    let inj = Complex64::new(11.0, -4.0);
+
+    let build = || -> IndMach012 {
+        let mut m = IndMach012::new("m1");
+        CktElement::calc_yprim(&mut m, &default_recalc_ctx()); // sizes yorder + buffers
+        let n = m.cd.yorder;
+        let mut yp = CMatrix::new(n);
+        for i in 0..n {
+            yp.set(i, i, Complex64::new(0.01, -0.02));
+        }
+        m.cd.yprim = Some(yp);
+        m.cd.set_node_ref(1, &[1, 2, 3]); // delta: 3 conductors
+        m.cd.inj_current = vec![inj; n];
+        m.cd.iterminal_solution_count = 0; // == solution_count → skip model recompute
+        m
+    };
+
+    // Independent YPrim·Vterminal.
+    let n = 3usize;
+    let mut yp = CMatrix::new(n);
+    for i in 0..n {
+        yp.set(i, i, Complex64::new(0.01, -0.02));
+    }
+    let vterm: Vec<Complex64> = [1usize, 2, 3].iter().map(|&r| node_v[r]).collect();
+    let mut yprim_v = vec![Complex64::ZERO; n];
+    yp.mv_mult(&mut yprim_v, &vterm);
+
+    // Direct read (flag set) → the shortcut YPrim·V.
+    let mut m_d = build();
+    let sys_direct = SysCtx {
+        last_solution_was_direct: true,
+        solution_count: 0,
+        ..default_recalc_ctx()
+    };
+    let mut i_d = vec![Complex64::ZERO; n];
+    m_d.get_currents(&sys_direct, &node_v, &mut i_d);
+
+    // Normal read (flag clear, model skipped, Vterminal preset) → YPrim·V − Inj.
+    let mut m_n = build();
+    m_n.cd.compute_vterminal(&node_v);
+    let sys_normal = SysCtx {
+        solution_count: 0,
+        ..default_recalc_ctx()
+    };
+    let mut i_n = vec![Complex64::ZERO; n];
+    m_n.get_currents(&sys_normal, &node_v, &mut i_n);
+
+    for k in 0..n {
+        assert!(
+            (i_d[k] - yprim_v[k]).norm() < 1e-9,
+            "direct read [{k}] {} != YPrim·V {}",
+            i_d[k],
+            yprim_v[k]
+        );
+        assert!(
+            (i_d[k] - i_n[k] - inj).norm() < 1e-9,
+            "shortcut − model [{k}] {} != InjCurrent {}",
+            i_d[k] - i_n[k],
+            inj
+        );
+    }
+    assert!(
+        (i_d[0] - i_n[0]).norm() > 1.0,
+        "shortcut indistinguishable from model current: {} vs {}",
+        i_d[0],
+        i_n[0]
+    );
+}
+
 /// IndMach012 `MakePosSequence` is an EMPTY Pascal body (IndMach012.pas:1424-1426):
 /// no property edits and no `inherited` call → `PosSeqPlan::no_base()`.
 #[test]

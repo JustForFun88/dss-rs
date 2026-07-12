@@ -2,89 +2,9 @@
  "comment": "Entry points using a class/command/mode the port lacks. Required tag: unsupported_class=.. | unsupported_command=.. | unsupported_mode=.. | missing_feature=..",
  "cases": [
   {
-   "path": "Test/CapControlFollow.dss",
-   "tag": "unsupported_property=CapControl.ControlSignal",
-   "note": "Re-probed 2026-07-11 (FA fix 1 classify re-sweep): still blocked. CapControl.ControlSignal is not ported -> the CapControl samples with no monitored element set and the solve aborts (\"Monitored element not set\" -> \"Solution aborted\"). Genuine unported property."
-  },
-  {
-   "path": "Test/Source012Test.dss",
-   "tag": "missing_feature=utf8-bom-strip",
-   "note": "Re-probed 2026-07-11 (FA fix 1 classify re-sweep): NOT a class/feature gap. The file begins with a UTF-8 BOM (U+FEFF) that the Rust executive does not strip before the first command, so the first line parses as \"\\ufeffClear\" -> \"Unknown Command\". A parser BOM-handling gap (the oracle strips the BOM). Flagged as a real, in-scope-adjacent bug for follow-up."
-  },
-  {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Run_Master_ckt5-7proc.dss",
    "tag": "unsupported_command=SolveAll",
-   "note": "RE-TRIAGED 2026-07-10 (WP8.8 final classify): a 7-actor DSS_CAPI_PM script (NewActor/SolveAll) -- the actor family is the documented Phase-9/MULTITHREADING_PLAN-M2 residual; the one-shot oracle server dies running it (no JSON response), so no live compare is possible either. Rust refuses SolveAll loudly."
-  },
-  {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM/GFL power-flow model and the GFL dynamics-mode machinery (WP7.7) are ported and gate-verified. Every command this deck uses is now handled: `Plot` is a headless no-op, `set steptime` a silent no-op Set option (WPG.17), and daily/dynamics GFL + `export monitors` are ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123 whole-feeder GFL dynamics trajectory in the live gate is disproportionate risk vs the controlled inverter-dynamics gates -- NOT on any unported feature."
-  },
-  {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM/GFL power-flow model and the GFL dynamics-mode machinery (WP7.7) are ported and gate-verified. Every command this deck uses is now handled: `Plot` is a headless no-op, `set steptime` a silent no-op Set option (WPG.17), and daily/dynamics GFL + `export monitors` are ported. It stays deferred purely as a scope decision -- bit-matching a full-IEEE123 whole-feeder GFL dynamics trajectory in the live gate is disproportionate risk vs the controlled inverter-dynamics gates -- NOT on any unported feature."
-  },
-  {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. Update 2026-07-11 (FA fix 2): the snapshot sibling Run_IEEE123Bus_GFMSnap.DSS is FLOOR-PROVEN (floating-delta common mode; L-L rel 2.27e-10, 0/284 nodes above large after per-bus shift removal -- tests/TOLERANCE_NOTES.md section floating-delta) and is solvable_now (large_floating_delta), gate-green; the multi-step trajectories stay deferred by scope only. The controlled micro gates (gfm_micro/gfm_dynamics/pv_gfm_dynamics) are live-green."
-  },
-  {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. Update 2026-07-11 (FA fix 2): the snapshot sibling Run_IEEE123Bus_GFMSnap.DSS is FLOOR-PROVEN (floating-delta common mode; L-L rel 2.27e-10, 0/284 nodes above large after per-bus shift removal -- tests/TOLERANCE_NOTES.md section floating-delta) and is solvable_now (large_floating_delta), gate-green; the multi-step trajectories stay deferred by scope only. The controlled micro gates (gfm_micro/gfm_dynamics/pv_gfm_dynamics) are live-green."
-  },
-  {
-   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. Update 2026-07-11 (FA fix 2): the snapshot sibling Run_IEEE123Bus_GFMSnap.DSS is FLOOR-PROVEN (floating-delta common mode; L-L rel 2.27e-10, 0/284 nodes above large after per-bus shift removal -- tests/TOLERANCE_NOTES.md section floating-delta) and is solvable_now (large_floating_delta), gate-green; the multi-step trajectories stay deferred by scope only. The controlled micro gates (gfm_micro/gfm_dynamics/pv_gfm_dynamics) are live-green."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. Update 2026-07-11 (FA fix 2): the snapshot sibling Run_IEEE123Bus_GFMSnap.DSS is FLOOR-PROVEN (floating-delta common mode; L-L rel 2.27e-10, 0/284 nodes above large after per-bus shift removal -- tests/TOLERANCE_NOTES.md section floating-delta) and is solvable_now (large_floating_delta), gate-green; the multi-step trajectories stay deferred by scope only. The controlled micro gates (gfm_micro/gfm_dynamics/pv_gfm_dynamics) are live-green."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. Update 2026-07-11 (FA fix 2): the snapshot sibling Run_IEEE123Bus_GFMSnap.DSS is FLOOR-PROVEN (floating-delta common mode; L-L rel 2.27e-10, 0/284 nodes above large after per-bus shift removal -- tests/TOLERANCE_NOTES.md section floating-delta) and is solvable_now (large_floating_delta), gate-green; the multi-step trajectories stay deferred by scope only. The controlled micro gates (gfm_micro/gfm_dynamics/pv_gfm_dynamics) are live-green."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow (snapshot) model is ported and gate-verified by tests/corpus/controls/gfm_micro.dss. `Plot Profile` is a headless no-op in the port (not a blocker). This whole-IEEE123 GFM snapshot deck stays deferred as a scope decision -- not migrating the full feeder into the live gate -- rather than any unported feature (some snapshot variants also invoke unported `Show` reports)."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. Update 2026-07-11 (FA fix 2): the snapshot sibling Run_IEEE123Bus_GFMSnap.DSS is FLOOR-PROVEN (floating-delta common mode; L-L rel 2.27e-10, 0/284 nodes above large after per-bus shift removal -- tests/TOLERANCE_NOTES.md section floating-delta) and is solvable_now (large_floating_delta), gate-green; the multi-step trajectories stay deferred by scope only. The controlled micro gates (gfm_micro/gfm_dynamics/pv_gfm_dynamics) are live-green."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. Update 2026-07-11 (FA fix 2): the snapshot sibling Run_IEEE123Bus_GFMSnap.DSS is FLOOR-PROVEN (floating-delta common mode; L-L rel 2.27e-10, 0/284 nodes above large after per-bus shift removal -- tests/TOLERANCE_NOTES.md section floating-delta) and is solvable_now (large_floating_delta), gate-green; the multi-step trajectories stay deferred by scope only. The controlled micro gates (gfm_micro/gfm_dynamics/pv_gfm_dynamics) are live-green."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow (snapshot) model is ported and gate-verified by tests/corpus/controls/gfm_micro.dss. `Plot Profile` is a headless no-op in the port (not a blocker). This whole-IEEE123 GFM snapshot deck stays deferred as a scope decision -- not migrating the full feeder into the live gate -- rather than any unported feature (some snapshot variants also invoke unported `Show` reports)."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow (snapshot) model is ported and gate-verified by tests/corpus/controls/gfm_micro.dss. `Plot Profile` is a headless no-op in the port (not a blocker). This whole-IEEE123 GFM snapshot deck stays deferred as a scope decision -- not migrating the full feeder into the live gate -- rather than any unported feature (some snapshot variants also invoke unported `Show` reports)."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow (snapshot) model is ported and gate-verified by tests/corpus/controls/gfm_micro.dss. `Plot Profile` is a headless no-op in the port (not a blocker). This whole-IEEE123 GFM snapshot deck stays deferred as a scope decision -- not migrating the full feeder into the live gate -- rather than any unported feature (some snapshot variants also invoke unported `Show` reports)."
-  },
-  {
-   "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
-   "tag": "deferred=ieee123-gfm-trajectory-scope",
-   "note": "Re-probed 2026-07-09 (WPG.17): the GFM power-flow model AND the dynamics-mode GFM black-start branch (DoDynamicMode/IntegrateStates GFM: VDelta droop -> ISPDelta ramp, FixPhaseAngle) are now ported and gate-verified by tests/corpus/controls/gfm_micro.dss + gfm_invcontrol.dss + gfm_dynamics.dss. Every command this deck uses is now handled: `set steptime` is a silent no-op Set option (WPG.17, matching the oracle's no Set arm), `Plot` is a headless no-op, and daily/dynamics GFM + `export monitors` are all ported. Update 2026-07-11 (FA fix 2): the snapshot sibling Run_IEEE123Bus_GFMSnap.DSS is FLOOR-PROVEN (floating-delta common mode; L-L rel 2.27e-10, 0/284 nodes above large after per-bus shift removal -- tests/TOLERANCE_NOTES.md section floating-delta) and is solvable_now (large_floating_delta), gate-green; the multi-step trajectories stay deferred by scope only. The controlled micro gates (gfm_micro/gfm_dynamics/pv_gfm_dynamics) are live-green."
+   "note": "BLOCKED_PENDING actor mode / MULTITHREADING_PLAN M2 (CF-B item 8b, T-B U4). 7-actor DSS_CAPI_PM script (NewActor/SolveAll/Set CPU/ActiveActor). Rust refuses SolveAll and the actor family loudly. The pinned one-shot oracle server dies (no JSON), and r3723 segfaults under the Oddie bridge on multi-actor -- no live compare possible on any channel. Unblocks with M2."
   }
  ]
 }

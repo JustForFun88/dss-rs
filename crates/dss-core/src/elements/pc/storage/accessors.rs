@@ -24,6 +24,24 @@ use super::{
 };
 
 impl Storage {
+    /// CF-C Port 2 — the `DynaDLL` side effect (Pascal `TStoreDynaModel.Set_Name`,
+    /// StoreUserModel.pas l.329). Emits the non-fatal `#1570` "Not Loaded"
+    /// diagnostic (warn severity, matching the official Direct DLL — not the
+    /// pinned oracle's hard raise) and falls back to the built-in dynamics model.
+    /// The DLL loader is permanently out of scope (forbid(unsafe_code)); the
+    /// `DSS Directory = ...` tail is omitted (unreachable from a side effect).
+    fn warn_dyna_model_not_loaded(&mut self) {
+        let name = self.dyna_model_name.trim().to_string();
+        if name.is_empty() || name.eq_ignore_ascii_case("none") {
+            return; // Pascal Set_Name `Exit` on blank / 'none'
+        }
+        let full = format!("Storage.{}", self.cd.obj.name());
+        self.cd.obj.push_error(format!(
+            "Storage User-written Dynamics Model \"{name}\" Not Loaded (user-written model DLL \
+             loading is out of scope in safe Rust). {full} falls back to its built-in model."
+        ));
+    }
+
     /// Pascal `Set_kW`: set the state + the dispatch percentage from a signed kW.
     /// `pub(crate)` so the StorageController fleet dispatch can drive `obj.kW`.
     pub(crate) fn set_kw(&mut self, value: f64) {
@@ -208,6 +226,15 @@ impl CktElement for Storage {
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
         if !self.cd.enabled {
             curr.fill(Complex64::ZERO);
+            return;
+        }
+        // Pascal `TInvBasedPCE.GetCurrents` (InvBasedPCE.pas l.216): non-GFM
+        // falls through to `inherited` `TPCElement.GetCurrents`, whose l.137
+        // `LastSolutionWasDirect` shortcut reports `YPrim · Vterminal` after a
+        // direct solve. The GFM branch below never calls `inherited`, so it
+        // must NOT take the shortcut.
+        if !self.base.gfm_mode && sys.pc_direct_shortcut() {
+            self.cd.calc_yprim_contribution(node_v, curr);
             return;
         }
         if self.cd.iterminal_solution_count != sys.solution_count && !self.storage_obj_switch_open {
@@ -606,6 +633,16 @@ impl DssObject for Storage {
             // Pascal `TProp.DynamicEq` side effect: size the DynamicEqVals memory
             // to the linked DynamicExp's NVariables (a nil ref leaves it empty).
             DYNAMIC_EQ => self.base.dyneq.on_dynamic_eq_set(),
+            // Pascal `TProp.DynaDLL` side effect (Storage.pas l.864-867):
+            // `DynaModel.Name := DynaModelNameStr` → `TStoreDynaModel.Set_Name`.
+            // Safe Rust never loads the DLL (loader out of scope). Set_Name bails
+            // on empty / "none"; any real name "fails" LoadLibrary, so it emits
+            // `DoSimpleMsg(... 'Not Loaded' ..., 1570)` and `Exists` stays false —
+            // the storage element falls back to the built-in dynamics model
+            // (CF-C Port 2). Non-fatal, matching the official Direct DLL.
+            DYNA_DLL => self.warn_dyna_model_not_loaded(),
+            // `TProp.DynaData` (l.869): `if DynaModel.Exists then Edit`. The model
+            // never exists, so this only stores the string for the dump.
             _ => {}
         }
     }

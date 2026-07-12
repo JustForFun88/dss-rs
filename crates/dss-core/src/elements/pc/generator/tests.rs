@@ -369,6 +369,65 @@ fn makeposseq_generator_xdp_trips_kva_divide() {
     )));
 }
 
+// --- CF-C Port 2: UserModel/UserData property surface (warn + fallback) ---
+
+/// Edit one property through the real property engine, returning any messages
+/// the side effect queued on the object.
+fn edit_gen_prop(g: &mut Generator, name: &str, value: &str) -> Vec<String> {
+    let enums = EnumRegistry::new();
+    let cls = super::class_props(&enums);
+    let idx = cls.property_index(name).expect("known Generator property");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    let mut eng = PropEngine {
+        parser: &mut parser,
+        vars: &vars,
+        enums: &enums,
+        errors: &mut errors,
+        foreign: None,
+    };
+    cls.edit_property(g, idx, value, &mut eng).unwrap();
+    // The "Not Loaded" diagnostic is queued on the object (push_error), not on
+    // the PropEngine error sink; drain both so callers see everything.
+    let mut msgs = errors;
+    msgs.extend(g.cd.obj.take_errors());
+    msgs
+}
+
+/// `UserModel=<dll>` parses (no longer a hard NOT_PORTED error), stores the name
+/// for the dump, and warns that the DLL is not loaded (safe-Rust fallback).
+#[test]
+fn user_model_stores_and_warns_not_loaded() {
+    let mut g = gen_3ph();
+    let msgs = edit_gen_prop(&mut g, "UserModel", "Indmach012a");
+    assert_eq!(g.user_model_name, "Indmach012a");
+    assert_eq!(g.get_string(prop::USERMODEL), "Indmach012a"); // dump parity
+    assert_eq!(msgs.len(), 1, "exactly one warning: {msgs:?}");
+    assert!(msgs[0].contains("Not Loaded"));
+    assert!(msgs[0].contains("Indmach012a"));
+    assert!(msgs[0].contains("built-in model"));
+}
+
+/// `UserData` stores (for the dump) and — since no user model exists — is a
+/// silent no-op (Pascal `if UserModel.Exists then Edit`).
+#[test]
+fn user_data_stores_without_warning() {
+    let mut g = gen_3ph();
+    let msgs = edit_gen_prop(&mut g, "UserData", "(rs=0.03 xs=0.08)");
+    assert_eq!(g.user_data, "(rs=0.03 xs=0.08)");
+    assert_eq!(g.get_string(prop::USERDATA), "(rs=0.03 xs=0.08)");
+    assert!(msgs.is_empty(), "UserData must not warn: {msgs:?}");
+}
+
+/// Pascal `Set_Name` bails on a blank / `none` name — no warning.
+#[test]
+fn user_model_none_does_not_warn() {
+    let mut g = gen_3ph();
+    let msgs = edit_gen_prop(&mut g, "UserModel", "none");
+    assert!(msgs.is_empty(), "none must not warn: {msgs:?}");
+}
+
 /// 1-phase generator: V stays base kV, and NO power split (oldPhases==1).
 #[test]
 fn makeposseq_generator_single_phase() {
@@ -384,5 +443,90 @@ fn makeposseq_generator_single_phase() {
             PosSeqAction::SetF64(prop::KV, 12.47), // NOT /√3
             PosSeqAction::EndEdit,
         ]
+    );
+}
+
+/// Pascal `TPCElement.GetCurrents` `LastSolutionWasDirect` shortcut (PCElement.pas
+/// l.137) wired into `Generator::get_currents`: after a direct solve the reported
+/// terminal current is `YPrim·Vterminal` (the frozen shadow-admittance current);
+/// without the flag it is the model current `YPrim·V − InjCurrent`. Guards the
+/// per-class shortcut branch — Generator inherits the base `GetCurrents`.
+#[test]
+fn direct_shortcut_selects_yprim_currents() {
+    use crate::elements::traits::CktElement;
+
+    let node_v = vec![
+        Complex64::ZERO, // ground slot
+        Complex64::new(7200.0, 0.0),
+        Complex64::new(-3600.0, -6235.0),
+        Complex64::new(-3600.0, 6235.0),
+    ];
+    let inj = Complex64::new(15.0, -6.0);
+
+    let build = || -> Generator {
+        let mut g = Generator::new("g1");
+        CktElement::calc_yprim(&mut g, &snap_ctx()); // sizes yorder + buffers
+        let n = g.cd.yorder;
+        let mut yp = CMatrix::new(n);
+        for i in 0..n {
+            yp.set(i, i, Complex64::new(0.01, -0.02));
+        }
+        g.cd.yprim = Some(yp);
+        g.cd.set_node_ref(1, &[1, 2, 3, 0]);
+        g.cd.inj_current = vec![inj; n];
+        g.cd.iterminal_solution_count = 0; // == solution_count → skip model recompute
+        g
+    };
+
+    // Independent YPrim·Vterminal.
+    let n = 4usize;
+    let mut yp = CMatrix::new(n);
+    for i in 0..n {
+        yp.set(i, i, Complex64::new(0.01, -0.02));
+    }
+    let vterm: Vec<Complex64> = [1usize, 2, 3, 0].iter().map(|&r| node_v[r]).collect();
+    let mut yprim_v = vec![Complex64::ZERO; n];
+    yp.mv_mult(&mut yprim_v, &vterm);
+
+    // Direct read (flag set) → the shortcut YPrim·V.
+    let mut g_d = build();
+    let sys_direct = SysCtx {
+        last_solution_was_direct: true,
+        solution_count: 0,
+        ..snap_ctx()
+    };
+    let mut i_d = vec![Complex64::ZERO; n];
+    g_d.get_currents(&sys_direct, &node_v, &mut i_d);
+
+    // Normal read (flag clear, model skipped via matching SolutionCount, Vterminal
+    // preset) → the model current YPrim·V − InjCurrent.
+    let mut g_n = build();
+    g_n.cd.compute_vterminal(&node_v);
+    let sys_normal = SysCtx {
+        solution_count: 0,
+        ..snap_ctx()
+    };
+    let mut i_n = vec![Complex64::ZERO; n];
+    g_n.get_currents(&sys_normal, &node_v, &mut i_n);
+
+    for k in 0..n {
+        assert!(
+            (i_d[k] - yprim_v[k]).norm() < 1e-9,
+            "direct read [{k}] {} != YPrim·V {}",
+            i_d[k],
+            yprim_v[k]
+        );
+        assert!(
+            (i_d[k] - i_n[k] - inj).norm() < 1e-9,
+            "shortcut − model [{k}] {} != InjCurrent {}",
+            i_d[k] - i_n[k],
+            inj
+        );
+    }
+    assert!(
+        (i_d[0] - i_n[0]).norm() > 1.0,
+        "shortcut indistinguishable from model current: {} vs {}",
+        i_d[0],
+        i_n[0]
     );
 }

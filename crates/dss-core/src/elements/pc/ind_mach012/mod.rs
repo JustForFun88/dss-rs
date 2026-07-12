@@ -396,7 +396,7 @@ impl IndMach012 {
     /// target for the power-flow slip-Newton. `Factor` is always 1.0 (an
     /// induction machine does not apply the generator multiplier).
     pub(super) fn set_nominal_power(&mut self, sys: &SysCtx) {
-        use crate::solution::SolveMode;
+        use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 
         let machine_on_saved = self.machine_on;
         self.shape_factor = CDOUBLEONE;
@@ -416,10 +416,16 @@ impl IndMach012 {
                 SolveMode::Daily => self.calc_daily_mult(dbl_hour),
                 SolveMode::Yearly => self.calc_yearly_mult(dbl_hour),
                 SolveMode::DutyCycle => self.calc_duty_mult(dbl_hour),
-                // GENERALTIME / DYNAMICMODE: one load-shape class.
-                // ActiveLoadShapeClass is `USENONE` by default → 1+j1 (the
-                // established Generator/Storage/PVSystem assumption).
-                SolveMode::Time | SolveMode::Dynamic => self.shape_factor = CDOUBLEONE,
+                // GENERALTIME / DYNAMICMODE (IndMach012.pas l.1091-1105): the
+                // one class `ActiveLoadShapeClass` selects (`Set
+                // LoadShapeClass=`) drives `ShapeFactor`; default `USENONE` →
+                // 1+j1.
+                SolveMode::Time | SolveMode::Dynamic => match sys.active_load_shape_class {
+                    USEDAILY => self.calc_daily_mult(dbl_hour),
+                    USEYEARLY => self.calc_yearly_mult(dbl_hour),
+                    USEDUTY => self.calc_duty_mult(dbl_hour),
+                    _ => self.shape_factor = CDOUBLEONE,
+                },
                 SolveMode::Monte2 | SolveMode::Monte3 | SolveMode::LD1 | SolveMode::LD2 => {
                     self.calc_daily_mult(dbl_hour)
                 }

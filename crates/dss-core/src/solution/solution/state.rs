@@ -446,5 +446,6 @@ pub fn sys_ctx(ckt: &Circuit) -> SysCtx {
         dyna_h: s.h,
         dyna_t: s.t,
         iteration_flag: s.iteration_flag,
+        last_solution_was_direct: s.last_solution_was_direct,
     }
 }

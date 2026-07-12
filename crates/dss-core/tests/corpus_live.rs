@@ -678,6 +678,35 @@ fn corpus_guard_restores_case_dir_recursively() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// Reconcile the engine's accumulated error log against a deck's declared
+/// non-fatal `expect_warnings` (see the field doc): every actual error must
+/// match some expected substring, and every expected substring must appear.
+/// With an empty list this is exactly `errors().is_empty()`.
+fn assert_expected_warnings(dss: &Dss, expect: &[String], ctx: &str) {
+    let errors = dss.errors();
+    if expect.is_empty() {
+        assert!(
+            errors.is_empty(),
+            "{ctx}: unexpected Rust engine errors: {errors:?}"
+        );
+        return;
+    }
+    let unexpected: Vec<&String> = errors
+        .iter()
+        .filter(|e| !expect.iter().any(|w| e.contains(w.as_str())))
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "{ctx}: Rust engine errors not covered by expect_warnings: {unexpected:?}"
+    );
+    for w in expect {
+        assert!(
+            errors.iter().any(|e| e.contains(w.as_str())),
+            "{ctx}: expected warning {w:?} never fired (actual: {errors:?})"
+        );
+    }
+}
+
 /// Compile + solve one case on both engines and compare every captured field at
 /// every step. `c.selected_elements` is the YPrim focus set (`["*"]` = every
 /// element); element currents/powers/losses are compared for *all* elements.
@@ -712,18 +741,26 @@ fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCa
     for c in post {
         dss.command(c);
     }
-    assert!(
-        dss.errors().is_empty(),
-        "{label}: Rust engine errors after compile: {:?}",
-        dss.errors()
-    );
+    // A deck may deliberately produce non-fatal warnings the port reproduces
+    // 1:1 (CF-C Port 2: a user-written model DLL is not loadable in safe Rust,
+    // so the engine warns and falls back to the built-in model — exactly the
+    // official Direct DLL's warn-and-solve, which is why these decks gate vs
+    // `oracle: "r3723"`). `expect_warnings` lists the substrings those messages
+    // must contain: every actual error must match one (else it is an unexpected
+    // failure), and every declared substring must actually appear (else the
+    // warning silently stopped firing). Empty list ⇒ zero errors, as before.
+    assert_expected_warnings(&dss, &c.expect_warnings, &format!("{label}: after compile"));
+    // The warnings fire once at compile and then persist in the accumulating
+    // error log; per step we require NO NEW errors beyond that baseline.
+    let baseline_errors = dss.errors().len();
 
     for (i, cp) in oc.checkpoints.iter().enumerate() {
         dss.command("solve");
-        assert!(
-            dss.errors().is_empty(),
-            "{label} step {i}: Rust engine errors: {:?}",
-            dss.errors()
+        assert_eq!(
+            dss.errors().len(),
+            baseline_errors,
+            "{label} step {i}: new Rust engine errors: {:?}",
+            &dss.errors()[baseline_errors.min(dss.errors().len())..]
         );
         // WPG.5: capture `DSS.GlobalResult` right after the solve — the `?`-query
         // probes below overwrite it (each `?` clears + resets GlobalResult).
@@ -1062,20 +1099,38 @@ struct SolvableCase {
     /// feature.
     #[serde(default)]
     pending: bool,
-    /// This deck aborts the solve on BOTH engines — a malformed input the port
-    /// reproduces as Pascal `DSS.SolutionAbort` (e.g. CapControl `type=Follow`
-    /// with no `ControlSignal`). It is not a per-step live compare (the oracle
-    /// *raises* at solve, so `run_and_compare`'s checkpoint capture cannot run):
-    /// the value is the error substring BOTH engines must produce — the oracle
-    /// raising it at solve, the Rust engine setting `solution_abort` and
-    /// surfacing it. Mutually exclusive with `pending` and the normal compare;
-    /// gated by [`run_and_compare_abort`].
+    /// This deck aborts the solve on BOTH engines; the value is the error
+    /// substring both must produce. Two distinct classes share this contract.
+    /// **Malformed input** the port reproduces as Pascal `DSS.SolutionAbort`
+    /// (e.g. CapControl `type=Follow` with no `ControlSignal`). **Control
+    /// non-settling** — a *valid* model whose controls legitimately never drain
+    /// the control queue within `MaxControlIter` (a regulator hunting/re-arming
+    /// at a band edge, changing its tap every control iteration), which Pascal
+    /// `SolveSnap` reports as `#485 Max Control Iterations Exceeded` (CF2-R: the
+    /// three 8500/IEEE123 recloser-siting decks); its captured state is a
+    /// mid-adjustment truncation, not a settled fixpoint — identical on both
+    /// engines.
+    ///
+    /// Either way it is not a per-step live compare: the pinned oracle *raises*
+    /// at solve (and r3723 via Oddie raises the same #485), so
+    /// `run_and_compare`'s checkpoint capture cannot run. The contract is that
+    /// BOTH engines abort with this message — the oracle raising it at solve, the
+    /// Rust engine setting `solution_abort` and surfacing it. Mutually exclusive
+    /// with `pending` and the normal compare; gated by [`run_and_compare_abort`].
     #[serde(default)]
     expect_solve_abort: Option<String>,
     /// Work package that ports this case's feature (`WPG.*` → GAPS_PLAN.md,
     /// `WP8.*` → PHASE8_PLAN.md). Mandatory while `pending` is true.
     #[serde(default)]
     wp: Option<String>,
+    /// Non-fatal warnings this deck's compile deliberately produces, which the
+    /// port reproduces 1:1 (CF-C Port 2: a user-written model DLL that safe Rust
+    /// cannot load — the engine warns and falls back to the built-in model, like
+    /// the official Direct DLL). Each string is a substring an actual engine
+    /// error must contain; every actual error must match one, and every listed
+    /// substring must actually appear. Empty ⇒ zero errors are tolerated.
+    #[serde(default)]
+    expect_warnings: Vec<String>,
     /// Target oracle for this case's live compare (UPGRADE_PLAN.md): absent =
     /// the pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle; `"capi015"` =
     /// the dss_capi 0.15.x-line oracle; `"r3723"|"r4088"|"r4133"` = an
@@ -1176,8 +1231,20 @@ fn corpus_live_solvable_cases_match_oracle() {
     }
     let mut pool = OraclePool::new();
     let mut props_gated = 0usize;
+    let mut aborts_gated = 0usize;
     for c in &cases {
         let abs = corpus_file(&c.path);
+        // A deck that aborts the solve on BOTH engines (e.g. #485 Max Control
+        // Iterations Exceeded: a control that never drains the queue within
+        // MaxControlIter) has no solved state to line up — the oracle *raises*
+        // at solve. Route it to the abort contract (both engines abort with the
+        // same message), mirroring the synthetic-family gate. Mutually exclusive
+        // with the per-step compare below.
+        if c.expect_solve_abort.is_some() {
+            run_and_compare_abort(pool.get(c.oracle.as_deref()), &c.path, &abs, c);
+            aborts_gated += 1;
+            continue;
+        }
         // WP8.5b: gate every element's every property value (Rust `?`-surface vs
         // oracle `Properties(p).Val`) on the vendored corpus too — the pinned-capi
         // `feeder`/`micro`-kind decks, which the `corpus_live_properties` pilot
@@ -1198,8 +1265,9 @@ fn corpus_live_solvable_cases_match_oracle() {
         run_and_compare(pool.get(cc.oracle.as_deref()), &cc.path, &abs, &cc);
     }
     eprintln!(
-        "corpus_live: {} solvable case(s) matched the oracle ({props_gated} with full property parity)",
-        cases.len()
+        "corpus_live: {} solvable case(s) matched the oracle ({props_gated} with full \
+         property parity, {aborts_gated} solve-abort case(s))",
+        cases.len() - aborts_gated
     );
 }
 
@@ -1520,48 +1588,61 @@ fn assert_pending_errors_loudly(label: &str, case_path: &str, c: &SolvableCase) 
 // from the former `tests/corpus/gaps/` staging family.
 // ---------------------------------------------------------------------------
 
-/// The pinned element-coverage floor: one deck per stamping element class plus
-/// the combination decks. Removing a deck (even together with its manifest
-/// entry) fails here — mirrors the "no silent omission" role of
-/// `corpus_manifest.rs` for the vendored corpus.
+/// The pinned element-coverage floor: one deck per stamping element class, the
+/// combination decks, and the boundary-coverage decks added by the Phase-3
+/// asymmetric wave (geometry/cable Carson-Z, wye-delta/delta-delta, Load
+/// voltage-region, current-limited generator, DER state-machine). Removing a
+/// deck (even together with its manifest entry) fails here — mirrors the
+/// "no silent omission" role of `corpus_manifest.rs` for the vendored corpus.
 const ASYMMETRIC_REQUIRED: &[&str] = &[
-    "vsource_asym.dss",
-    "reactor_asym.dss",
-    "capacitor_asym.dss",
-    "line_asym.dss",
-    "transformer_asym.dss",
-    "fault_asym.dss",
-    "load_asym.dss",
-    "generator_asym.dss",
-    "der_asym.dss",
-    "indmach_asym.dss",
-    "vccs_asym.dss",
-    "upfc_asym.dss",
-    "combo_chain_asym.dss",
-    "combo_mesh_asym.dss",
-    "midi_asym.dss",
-    "midi_vsource_asym.dss",
-    "midi_reactor_asym.dss",
-    "midi_capacitor_asym.dss",
-    "midi_line_asym.dss",
-    "midi_transformer_asym.dss",
-    "midi_fault_asym.dss",
-    "midi_load_asym.dss",
-    "midi_generator_asym.dss",
-    "midi_der_asym.dss",
-    "midi_indmach_asym.dss",
-    "midi_vccs_asym.dss",
-    "midi_upfc_asym.dss",
+    "vsource/vsource_asym.dss",
+    "reactor/reactor_asym.dss",
+    "capacitor/capacitor_asym.dss",
+    "line/line_asym.dss",
+    "line/line_geometry_asym.dss",
+    "line/line_cable_asym.dss",
+    "line/line_spacing_asym.dss",
+    "line/line_llc_harm_asym.dss",
+    "line/line_ground_z_asym.dss",
+    "line/line_fullcarson_asym.dss",
+    "transformer/transformer_asym.dss",
+    "transformer/transformer_wyedelta_asym.dss",
+    "fault/fault_asym.dss",
+    "load/load_asym.dss",
+    "load/midi_load_vregion_asym.dss",
+    "generator/generator_asym.dss",
+    "generator/gen_currentlimited_asym.dss",
+    "der/der_asym.dss",
+    "der/der_state_asym.dss",
+    "indmach/indmach_asym.dss",
+    "vccs/vccs_asym.dss",
+    "upfc/upfc_asym.dss",
+    "combo/combo_chain_asym.dss",
+    "combo/combo_mesh_asym.dss",
+    "combo/midi_asym.dss",
+    "combo/midi_geometry_cable_asym.dss",
+    "vsource/midi_vsource_asym.dss",
+    "reactor/midi_reactor_asym.dss",
+    "capacitor/midi_capacitor_asym.dss",
+    "line/midi_line_asym.dss",
+    "transformer/midi_transformer_asym.dss",
+    "fault/midi_fault_asym.dss",
+    "load/midi_load_asym.dss",
+    "generator/midi_generator_asym.dss",
+    "der/midi_der_asym.dss",
+    "indmach/midi_indmach_asym.dss",
+    "vccs/midi_vccs_asym.dss",
+    "upfc/midi_upfc_asym.dss",
     // pending (unported element classes; wp fields name the porting WP)
-    "isource_snap.dss",
-    "midi_isource_asym.dss",
-    "autotrans_snap.dss",
-    "midi_autotrans_asym.dss",
-    "autotrans_gic.dss",
-    "gicline_gic.dss",
-    "gictransformer_gic.dss",
-    "gicsource_gic.dss",
-    "gic_midi.dss",
+    "isource/isource_snap.dss",
+    "isource/midi_isource_asym.dss",
+    "autotrans/autotrans_snap.dss",
+    "autotrans/midi_autotrans_asym.dss",
+    "autotrans/autotrans_gic.dss",
+    "gic/gicline_gic.dss",
+    "gic/gictransformer_gic.dss",
+    "gic/gicsource_gic.dss",
+    "gic/gic_midi.dss",
 ];
 
 /// Every asymmetric case must name selected_elements: the live YPrim compare
@@ -1614,66 +1695,109 @@ fn asymmetric_cases_match_oracle() {
 /// The pinned per-class deck floor (grows as CONTROL_COVERAGE_PLAN.md steps
 /// land). Removing a deck (even with its manifest entry) fails here.
 const CONTROLS_REQUIRED: &[&str] = &[
-    "regcontrol_sym.dss",
-    "regcontrol_asym.dss",
-    "capcontrol_sym.dss",
-    "capcontrol_asym.dss",
-    "invcontrol_vv_sym.dss",
-    "invcontrol_vvvw_asym.dss",
-    "storagectrl_peakshave.dss",
-    "storagectrl_time.dss",
-    "gendispatcher.dss",
-    "recloser_temp.dss",
-    "recloser_perm.dss",
-    "relay_oc_sym.dss",
-    "relay_4647_asym.dss",
-    "fuse_blow_asym.dss",
-    "swtcontrol_time.dss",
-    "energymeter_sym.dss",
-    "energymeter_asym.dss",
-    "monitor_modes.dss",
-    "sensor_map.dss",
-    "combo_protection.dss",
-    "combo_voltvar_asym.dss",
-    "combo_metering.dss",
-    "midi_controls.dss",
-    "midi_protection.dss",
-    "midi_regcontrol.dss",
-    "midi_capcontrol.dss",
-    "midi_invcontrol.dss",
-    "midi_storagectrl.dss",
-    "midi_gendispatcher.dss",
-    "midi_recloser_temp.dss",
-    "midi_recloser_perm.dss",
-    "midi_relay_4647.dss",
-    "midi_fuse.dss",
-    "midi_swtcontrol.dss",
-    "midi_energymeter.dss",
-    "midi_monitor.dss",
-    "midi_sensor.dss",
+    "regcontrol/regcontrol_sym.dss",
+    "regcontrol/regcontrol_asym.dss",
+    // corpus coverage wave (controls): RegControl Pascal-branch decks.
+    "regcontrol/regcontrol_ldc.dss",
+    "regcontrol/regcontrol_reverse.dss",
+    "regcontrol/regcontrol_remotebus.dss",
+    "regcontrol/regcontrol_inversetime.dss",
+    "capcontrol/capcontrol_sym.dss",
+    "capcontrol/capcontrol_asym.dss",
+    // corpus coverage wave (controls): CapControl case-ControlType decks.
+    "capcontrol/capcontrol_pf.dss",
+    "capcontrol/capcontrol_time.dss",
+    "capcontrol/capcontrol_voverride.dss",
+    "invcontrol/invcontrol_vv_sym.dss",
+    "invcontrol/invcontrol_vvvw_asym.dss",
+    // corpus coverage wave (controls): InvControl ControlMode decks.
+    "invcontrol/invcontrol_drc.dss",
+    "invcontrol/invcontrol_vv_drc.dss",
+    "invcontrol/invcontrol_wattpf.dss",
+    "invcontrol/invcontrol_wattvar.dss",
+    "invcontrol/invcontrol_avr.dss",
+    "invcontrol/invcontrol_monbus.dss",
+    "invcontrol/midi_invcontrol_drc.dss",
+    "storagecontroller/storagectrl_peakshave.dss",
+    "storagecontroller/storagectrl_time.dss",
+    // corpus coverage wave (controls): StorageController dispatch-mode decks.
+    "storagecontroller/storagectrl_follow.dss",
+    "storagecontroller/storagectrl_support.dss",
+    "storagecontroller/storagectrl_ipeakshave.dss",
+    "storagecontroller/storagectrl_loadshape.dss",
+    "storagecontroller/storagectrl_chargelow.dss",
+    "gendispatcher/gendispatcher.dss",
+    "recloser/recloser_temp.dss",
+    "recloser/recloser_perm.dss",
+    // corpus coverage wave (controls): singleton branch decks.
+    "recloser/recloser_ground.dss",
+    "fuse/fuse_blow_3ph.dss",
+    "swtcontrol/swtcontrol_lock.dss",
+    "gendispatcher/gendispatcher_kvarlimit.dss",
+    "relay/relay_oc_sym.dss",
+    "relay/relay_4647_asym.dss",
+    // corpus coverage wave (controls): Relay ControlType decks.
+    "relay/relay_voltage.dss",
+    "relay/relay_revpower.dss",
+    "relay/relay_generic.dss",
+    "relay/relay_distance.dss",
+    "relay/relay_td21.dss",
+    "relay/relay_doc.dss",
+    "fuse/fuse_blow_asym.dss",
+    "swtcontrol/swtcontrol_time.dss",
+    "energymeter/energymeter_sym.dss",
+    "energymeter/energymeter_asym.dss",
+    // corpus coverage wave (controls): metering + adaptive-control decks.
+    "energymeter/energymeter_options.dss",
+    "monitor/monitor_modes_hi.dss",
+    "monitor/monitor_seqmag.dss",
+    "expcontrol/expcontrol_basic.dss",
+    "monitor/monitor_modes.dss",
+    "sensor/sensor_map.dss",
+    // corpus coverage wave (controls): UPFC ModeUPFC decks.
+    "upfc/upfc_vreg.dss",
+    "upfc/upfc_doubleref.dss",
+    "combo/combo_protection.dss",
+    "combo/combo_voltvar_asym.dss",
+    "combo/combo_metering.dss",
+    "combo/midi_controls.dss",
+    "combo/midi_protection.dss",
+    "regcontrol/midi_regcontrol.dss",
+    "capcontrol/midi_capcontrol.dss",
+    "invcontrol/midi_invcontrol.dss",
+    "storagecontroller/midi_storagectrl.dss",
+    "gendispatcher/midi_gendispatcher.dss",
+    "recloser/midi_recloser_temp.dss",
+    "recloser/midi_recloser_perm.dss",
+    "relay/midi_relay_4647.dss",
+    "fuse/midi_fuse.dss",
+    "swtcontrol/midi_swtcontrol.dss",
+    "energymeter/midi_energymeter.dss",
+    "monitor/midi_monitor.dss",
+    "sensor/midi_sensor.dss",
     // WP-PF.2 Monitor mode-4 (flicker) sample-path decks.
-    "monitor_pst.dss",
-    "midi_monitor_pst.dss",
+    "monitor/monitor_pst.dss",
+    "monitor/midi_monitor_pst.dss",
     // pending (unported control / time-series features; wp names the WP)
-    "capcontrol_follow.dss",
-    "invcontrol_expmodel.dss",
-    "invcontrol_storage_vw.dss",
-    "invcontrol_storage_vv_vw.dss",
-    "storagecontroller_seasonal.dss",
-    "isource_daily.dss",
-    "isource_both.dss",
-    "midi_isource.dss",
-    "midi_isource_both.dss",
-    "autotrans_reg.dss",
-    "autotrans_both.dss",
-    "midi_autotrans.dss",
-    "midi_autotrans_both.dss",
+    "capcontrol/capcontrol_follow.dss",
+    "invcontrol/invcontrol_expmodel.dss",
+    "invcontrol/invcontrol_storage_vw.dss",
+    "invcontrol/invcontrol_storage_vv_vw.dss",
+    "storagecontroller/storagecontroller_seasonal.dss",
+    "isource/isource_daily.dss",
+    "isource/isource_both.dss",
+    "isource/midi_isource.dss",
+    "isource/midi_isource_both.dss",
+    "autotrans/autotrans_reg.dss",
+    "autotrans/autotrans_both.dss",
+    "autotrans/midi_autotrans.dss",
+    "autotrans/midi_autotrans_both.dss",
     // WPG.13/WPG.17 grid-forming decks (audit settlement: every feature deck
     // joins the anti-deletion floor).
-    "gfm_micro.dss",
-    "gfm_invcontrol.dss",
-    "gfm_dynamics.dss",
-    "pv_gfm_dynamics.dss",
+    "gfm/gfm_micro.dss",
+    "gfm/gfm_invcontrol.dss",
+    "gfm/gfm_dynamics.dss",
+    "gfm/pv_gfm_dynamics.dss",
 ];
 
 /// Every controls case must exercise at least one element-specific channel
@@ -1734,49 +1858,59 @@ fn controls_cases_match_oracle() {
 /// executive verb scenario. Removing a deck (even with its manifest entry)
 /// fails here.
 const MODES_REQUIRED: &[&str] = &[
-    "shape_binfiles/shape_binfiles.dss",
+    "inputformat/shape_binfiles/shape_binfiles.dss",
     // WPG.17 feature decks (audit settlement: the anti-deletion floor must
     // cover every feature deck, not only the pre-WPG.17 set).
-    "xycurve_files/xycurve_files.dss",
-    "shape_mmf/shape_mmf.dss",
-    "shape_filearr/shape_filearr.dss",
-    "generaltime.dss",
-    "ld1.dss",
-    "ld2.dss",
-    "monte1.dss",
-    "monte2.dss",
-    "monte3.dss",
-    "montefault.dss",
-    "autoadd.dss",
-    "autoadd_cap.dss",
-    "newton.dss",
-    "newton_feeder.dss",
-    "reactor_rlcurve.dss",
-    "isource_harm.dss",
-    "batchedit.dss",
-    "midi_batchedit.dss",
-    "reduce_default.dss",
-    "reduce_shortlines.dss",
-    "reduce_dangling.dss",
-    "reduce_switches.dss",
-    "reduce_laterals.dss",
-    "reduce_mergeparallel.dss",
-    "reduce_breakloop.dss",
-    "reduce_keeplist.dss",
-    "reduce_remove.dss",
-    "midi_reduce.dss",
+    "inputformat/xycurve_files/xycurve_files.dss",
+    "inputformat/shape_mmf/shape_mmf.dss",
+    "inputformat/shape_filearr/shape_filearr.dss",
+    "time/generaltime.dss",
+    "time/ld1.dss",
+    "time/ld2.dss",
+    "montecarlo/monte1.dss",
+    "montecarlo/monte2.dss",
+    "montecarlo/monte3.dss",
+    "montecarlo/montefault.dss",
+    "autoadd/autoadd.dss",
+    "autoadd/autoadd_cap.dss",
+    "newton/newton.dss",
+    "newton/newton_feeder.dss",
+    "harmonics/reactor_rlcurve.dss",
+    "harmonics/isource_harm.dss",
+    "batchedit/batchedit.dss",
+    "batchedit/midi_batchedit.dss",
+    "reduce/reduce_default.dss",
+    "reduce/reduce_shortlines.dss",
+    "reduce/reduce_dangling.dss",
+    "reduce/reduce_switches.dss",
+    "reduce/reduce_laterals.dss",
+    "reduce/reduce_mergeparallel.dss",
+    "reduce/reduce_breakloop.dss",
+    "reduce/reduce_keeplist.dss",
+    "reduce/reduce_remove.dss",
+    "reduce/midi_reduce.dss",
     // UPGRADE_PLAN.md WP-U0: the target-rev oracle machinery pilot (compares
     // against the official EPRI r4133 binary; keeps the multi-oracle plumbing
     // exercised by every cargo test).
-    "upgrade_pilot.dss",
+    "upgrade/upgrade_pilot.dss",
     // WPG.21 MakePosSequence feature decks (pending until WPG.21 A2 wires the
     // `makeposseq` dispatch; each errors loudly on the Rust engine meanwhile).
-    "makeposseq_line.dss",
-    "makeposseq_xfmr.dss",
-    "makeposseq_shunt.dss",
-    "makeposseq_pc.dss",
-    "makeposseq_ctrl.dss",
-    "makeposseq_report.dss",
+    "makeposseq/makeposseq_line.dss",
+    "makeposseq/makeposseq_xfmr.dss",
+    "makeposseq/makeposseq_shunt.dss",
+    "makeposseq/makeposseq_pc.dss",
+    "makeposseq/makeposseq_ctrl.dss",
+    "makeposseq/makeposseq_report.dss",
+    // GEN-MODE solve-mode coverage wave (audit settlement: every feature deck
+    // joins the anti-deletion floor, per the WPG.13/WPG.17 convention above).
+    "time/daily.dss",
+    "time/daily_bigstep.dss",
+    "time/yearly.dss",
+    "time/duty.dss",
+    "time/midi_duty_ctrl.dss",
+    "harmonics/harmonic_hlist.dss",
+    "harmonics/harmonict.dss",
+    "reset/mode_reset.dss",
 ];
 
 /// Every modes case must name selected_elements: the live compare (once the
@@ -1955,7 +2089,9 @@ fn corpus_live_properties() {
     let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
     for fam in [&ASYMMETRIC, &CONTROLS, &MODES] {
         for c in load_family(fam.name) {
-            if c.pending || c.oracle.is_some() {
+            // Abort cases have no solved state to property-compare (the oracle
+            // raises at solve); their contract is `run_and_compare_abort`.
+            if c.pending || c.oracle.is_some() || c.expect_solve_abort.is_some() {
                 continue;
             }
             let abs = family_file(fam.name, &c.path);
@@ -1963,7 +2099,9 @@ fn corpus_live_properties() {
         }
     }
     for c in load_solvable() {
-        if c.oracle.is_some() {
+        // Abort cases have no solved state to property-compare (the oracle raises
+        // at solve); the abort contract is gated by `run_and_compare_abort`.
+        if c.oracle.is_some() || c.expect_solve_abort.is_some() {
             continue;
         }
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
@@ -2205,13 +2343,24 @@ fn corpus_live_opendss() {
             target_rev_excluded.push(format!("solvable_now:{}", c.path));
             continue;
         }
+        // Abort cases raise #485 at solve on BOTH the pinned oracle AND r3723 via
+        // Oddie (dss-python's error check elevates the Direct DLL's `DoSimpleMsg`
+        // to a `DSSException` — verified), so `run_and_compare`'s checkpoint
+        // capture cannot run through the raised solve on this channel either. (The
+        // settled state IS readable if the exception is caught — that is how CF2-R
+        // measured the offline Rust==r3723 full-state identity — but this
+        // report-only channel does not implement exception-tolerant capture; the
+        // mandatory abort contract lives in `run_and_compare_abort`.)
+        if c.expect_solve_abort.is_some() {
+            continue;
+        }
         let mut c = c;
         c.compare_all_properties = false;
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
     }
     for fam in [&ASYMMETRIC, &CONTROLS, &MODES] {
         for c in load_family(fam.name) {
-            if c.pending {
+            if c.pending || c.expect_solve_abort.is_some() {
                 continue;
             }
             if c.oracle.is_some() {

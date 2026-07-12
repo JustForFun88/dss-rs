@@ -1,0 +1,21 @@
+// SwtControl LOCK: with Lock=yes the control must IGNORE an action=open command
+// (SwtControl.pas: a locked control blocks the armed action), so the switch
+// stays CLOSED for the whole run despite the manifest's post `action=open`.
+// Feature-sensitive: with Lock=no the same action opens the switch after its
+// delay (probe-proven). Compared per step: full model + State/Normal/Lock
+// probes + the (empty vs OPENED) event log + the control queue.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.prot basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi
+new line.lat bus1=mid bus2=loadb linecode=lc length=1 units=mi
+new load.l bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
+
+new swtcontrol.sw switchedobj=line.feed switchedterm=1 normal=closed
+~ delay=0.25 lock=yes
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.1 number=1 controlmode=time

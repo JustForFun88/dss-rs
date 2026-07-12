@@ -1,0 +1,30 @@
+// InvControl WATTPF mode (CalcQWPcurve_desiredpu): the wattpf_curve maps the
+// inverter's active-power output (per-unit of rated) to a target power factor,
+// and Q is derived from P and that PF. As irradiance ramps P up, the curve
+// walks the PF from unity down into the absorbing region, so the PV takes on
+// vars. Feature-sensitive: flattening the curve to unity PF removes the var
+// response (probe-proven).
+// Compared per step: full model + PVSystem f64 state variables + probes + EL.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.icwpf basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=0.6 x1=2.4 c1=0 length=3 units=km
+
+New loadshape.irrad npts=8 interval=1 mult=(.20 .40 .60 .78 .90 1.0 1.0 .95)
+
+// P(pu of rated kVA) -> power factor: unity at low output, absorbing (0.90
+// leading, encoded as -0.90) as output climbs.
+New xycurve.wpf npts=4 yarray=(1.0 1.0 -0.95 -0.90) xarray=(0.0 0.3 0.7 1.0)
+
+New pvsystem.pv bus1=b phases=3 kv=12.47 kva=700 pmpp=600 pf=1.0
+~ daily=irrad irradiance=1
+
+New invcontrol.ic mode=WATTPF wattpf_curve=wpf
+~ deltaq_factor=0.4 refreactivepower=VARMAX eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=2000
+Set mode=daily stepsize=1h number=1

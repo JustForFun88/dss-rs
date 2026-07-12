@@ -92,7 +92,7 @@ fn storage_gfm_mode_solves() {
 /// pins (dss-python 0.15.7, 60x 1ms steps) are islbus ~0.977 pu and the Storage
 /// delivering ~-400.7 kW. (SafeVoltage=0 is mandatory — the default 100 blocks the
 /// black start from 0 V.) The full monitor trajectory is bit-checked against the
-/// oracle by the live-gate deck `tests/corpus/controls/gfm_dynamics.dss`.
+/// oracle by the live-gate deck `tests/corpus/controls/gfm/gfm_dynamics.dss`.
 #[test]
 fn storage_gfm_dynamics_matches_oracle() {
     let mut dss = Dss::new();

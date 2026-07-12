@@ -27,7 +27,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::pd::winding::Winding;
 use crate::elements::traits::{ElemRef, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
-use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
 
 mod accessors;
@@ -103,7 +103,7 @@ pub mod prop {
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let pct = 0.01;
-    let defs = vec![
+    let mut defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::integer("Windings").flags(PropFlags::GREATER_THAN_ONE | PropFlags::SUPPRESS_JSON),
         // Winding definition (active winding selected by `Wdg=`).
@@ -170,6 +170,47 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
+
+    // JSON metadata (Pascal `Transformer.pas:452,491-538,593-598`). The
+    // singular per-winding scalars carry an `array_alternative` to their plural
+    // array form, so the JSON default sweep renders them as the full per-winding
+    // array; the plural forms are `REDUNDANT` and defer back to the singular.
+    // The remaining per-winding scalars with no plural form (Rneut/Xneut/
+    // Max/MinTap/RdcOhms/NumTaps) are `ON_ARRAY`: under `preferArray` they too
+    // render the full per-winding array (`DSSObjectHelper.pas:1014/1054`).
+    {
+        // (singular, plural) — bidirectional array_alternative / redundant_with.
+        for (single, plural) in [
+            ("kV", "kVs"),
+            ("kVA", "kVAs"),
+            ("Tap", "Taps"),
+            ("%R", "%Rs"),
+            ("Bus", "Buses"),
+            ("Conn", "Conns"),
+        ] {
+            let si = prop_index(&defs, single);
+            let pi = prop_index(&defs, plural);
+            defs[si - 1].array_alternative = pi;
+            defs[pi - 1].flags |= PropFlags::REDUNDANT;
+            defs[pi - 1].redundant_with = si;
+        }
+        // XHL/XHT/XLT are redundant aliases of X12/X13/X23 (REDUNDANT already set
+        // via the flag mutation here).
+        for (alias, canon) in [("XHL", "X12"), ("XHT", "X13"), ("XLT", "X23")] {
+            let ai = prop_index(&defs, alias);
+            let ci = prop_index(&defs, canon);
+            defs[ai - 1].flags |= PropFlags::REDUNDANT;
+            defs[ai - 1].redundant_with = ci;
+        }
+        // Per-winding scalars with no array alternative → ON_ARRAY.
+        for name in ["RNeut", "XNeut", "MaxTap", "MinTap", "RDCOhms", "NumTaps"] {
+            let i = prop_index(&defs, name);
+            defs[i - 1].flags |= PropFlags::ON_ARRAY;
+        }
+        // The active-winding selector is a struct index → skipped by the sweep.
+        let wdg = prop_index(&defs, "Wdg");
+        defs[wdg - 1].flags |= PropFlags::INTEGER_STRUCT_INDEX;
+    }
     ClassProps::new("Transformer", defs, true)
 }
 

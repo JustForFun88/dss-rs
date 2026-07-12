@@ -1,0 +1,32 @@
+// StorageController I-PeakShave discharge mode (DoLoadFollowMode
+// CURRENT_PEAKSHAVE): the target is in AMPS, not kW, and Pdiff is computed as
+// (Imonitored - kWTarget*1000) then converted amps->kW via the monitored
+// terminal voltage (l.1146/1263 - a distinct conversion branch from the kW
+// PeakShave). kWTarget=0.30 = a 300 A feeder-current cap; the daily peak drives
+// the current over it so the fleet discharges to hold the amp target.
+// Feature-sensitive: modedis=peakshave (a kW target) dispatches on a different
+// quantity (probe-proven).
+// Compared per step: full model + Storage State/kW/kWhstored probes + Storage
+// f64 state variables + the controller's event log.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.scipeak basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km
+
+New loadshape.day npts=24 interval=1
+~ mult=(0.45 0.42 0.40 0.40 0.45 0.55 0.70 0.85 0.95 1.00 1.05 1.10 1.15 1.20 1.15 1.10 1.05 1.00 0.95 0.85 0.75 0.65 0.55 0.48)
+
+New load.ld bus1=b phases=3 kv=12.47 kw=6000 pf=1.0 model=1 daily=day
+
+New storage.sa bus1=b phases=3 kv=12.47 kwrated=1500 kva=1500 kwhrated=6000
+~ %stored=80 %idlingkw=0 pf=1.0
+
+New storagecontroller.sc element=line.l1 terminal=1 modedis=I-Peakshave
+~ monphase=avg kwtarget=0.24 %reserve=20 eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=50
+Set mode=daily stepsize=1h number=1

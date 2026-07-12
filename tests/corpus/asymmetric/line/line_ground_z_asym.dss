@@ -1,0 +1,57 @@
+// Asymmetric Line coverage — Rg/Xg/Kxg ground-return frequency correction.
+// The deck does NOT set LongLineCorrection (default FALSE, Circuit.pas:492), so
+// YPrim is assembled by the NON-LLC else branch (Line.pas:1281-1287), NOT the
+// sibling LongLineCorrection branch (:1262-1269). The Xgmod formula is identical
+// in both (:1282 == :1263), but the ZinvValues assembly genuinely differs: the
+// else branch scales the whole imaginary part by FreqMultiplier
+// (:1287, `(im - Xgmod)*LenMult*FreqMult`) whereas the LLC branch scales only
+// Xgmod (:1269, `(im - Xgmod*FreqMult)*LenMult`).
+// SymComponentsModel lines with EXPLICIT non-default Rg/Xg/rho, solved at the
+// 7th harmonic (`Set frequency=420`, FreqMultiplier=7) so the earth-return
+// terms actually enter YPrim:
+//   * lgx: Xg <> 0, Rg = 0 -> the `if Xg<>0` Xgmod branch fires
+//     (Xgmod = 0.5*Kxg*ln(FreqMultiplier), Line.pas:1282); Rg add is 0.
+//   * lgr: Rg <> 0, Xg = 0 -> Xgmod = 0; the Rg*(FreqMultiplier-1) real add
+//     fires (Line.pas:1287). Clean per-term isolation.
+// rho is set explicitly per line (150 / 200) to pin the
+// Kxg = Xg / ln(658.5*sqrt(rho/BaseFrequency)) dependence (Line.pas:520/713/967).
+//
+// U1.2 INVARIANT (tracked in the upgrade ledger rows B2/D1 — this is an upgrade-
+// ledger item, NOT a compat-precision shim): Kxg deliberately KEEPS the 658.5
+// constant while SimpleCarson Get_Ze moves 658.5 -> 658.853. 658.5 is the
+// faithful 0.14.5 spec literal at every Kxg site (Line.pas:520/713/967) and the
+// newer engine keeps it there too, so it is NOT a port-introduced inexactness to
+// be wiped in the precision cleanup pass — hence the Kxg code sites carry no
+// compat tag (deliberately: the greppable compat-tag namespace stays a pure
+// index of section-6 cleanup sites). This deck is the
+// regression proving the inconsistency: its YPrim must NOT move under U1.2 (do
+// NOT flip to capi015). The SymComponentsModel path never calls Get_Ze, so only
+// the 658.5-in-Kxg constant is observable here.
+//
+// r0 <> r1 keeps the 0-sequence correction distinct. Linear per-phase-unequal
+// shunt reactors draw the unbalanced current (autotrans_gic set-frequency-
+// snapshot pattern; no nonlinear loads -> frequency-well-defined on both
+// engines). Line YPrims compared directly.
+Clear
+Set DefaultBaseFrequency=60
+
+New Circuit.line_ground_z_asym basekv=115 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=20000 mvasc1=21000
+
+! Xg-only line: Xgmod branch active, Rg add zeroed.
+New Line.lgx bus1=src bus2=b1 phases=3 r1=0.06 x1=0.55 r0=0.20 x0=1.60 c1=3.2 c0=1.5 Rg=0 Xg=0.30 rho=150 length=40 units=mi
+
+! Rg-only line: Rg*(FreqMultiplier-1) add active, Xgmod zeroed.
+New Line.lgr bus1=b1 bus2=b2 phases=3 r1=0.08 x1=0.60 r0=0.24 x0=1.75 c1=3.0 c0=1.4 Rg=0.12 Xg=0 rho=200 length=35 units=mi
+
+! Per-phase-unequal shunt reactors -> unbalanced current at the harmonic.
+New Reactor.rb1a phases=1 bus1=b1.1 r=2.0 x=140
+New Reactor.rb1b phases=1 bus1=b1.2 r=2.0 x=210
+New Reactor.rb1c phases=1 bus1=b1.3 r=2.0 x=175
+New Reactor.rb2a phases=1 bus1=b2.1 r=2.0 x=160
+New Reactor.rb2c phases=1 bus1=b2.3 r=2.0 x=195
+
+Set voltagebases=[115]
+calcv
+Set frequency=420
+Solve

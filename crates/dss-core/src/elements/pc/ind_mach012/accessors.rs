@@ -109,6 +109,12 @@ impl CktElement for IndMach012 {
             curr.fill(Complex64::ZERO);
             return;
         }
+        // Pascal `TPCElement.GetCurrents` l.137 (`LastSolutionWasDirect`
+        // shortcut): report `YPrim · Vterminal` after a direct solve.
+        if sys.pc_direct_shortcut() {
+            self.cd.calc_yprim_contribution(node_v, curr);
+            return;
+        }
         if self.cd.iterminal_solution_count != sys.solution_count && !self.ind_mach_switch_open {
             self.calc_model_contribution(sys, node_v);
         }

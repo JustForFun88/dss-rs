@@ -1,0 +1,36 @@
+// CapControl PF mode (CapControl.pas Sample l.917 case PFCONTROL): switches on
+// measured power factor. onsetting/offsetting are power factors folded through
+// PF1to2 (l.383-399: a leading target < 0 maps to 2.0+value internally). A
+// low-PF load ramp pulls the bank ON, and the added kvar drives the terminal PF
+// from lagging toward the leading OFF target so the bank sheds. Feature-sensitive
+// (probe-proven, pinned oracle): type=pf vs type=kvar differ (the PFCONTROL
+// branch is really taken), and the leading OFF target offsetting=-0.99 vs +0.90
+// gives a different step-state trajectory. (pctMinkvar=25 is configured but does
+// NOT bite in this scenario -- pctminkvar=0 is bit-identical -- and no step
+// re-arms ON after shedding, so onsetting is inert here; both verified, not
+// claimed as boundaries.) Compared per step: full model + capacitor step states,
+// PF setting probes, switching event log + control queue.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.cappf basekv=12.47 pu=1.02 angle=0 phases=3 bus1=src
+~ mvasc3=2000 mvasc1=2100
+
+New line.lf bus1=src bus2=b r1=0.3 x1=0.75 r0=0.7 x0=2.0 c1=0 c0=0 length=3
+
+New capacitor.cb phases=3 bus1=b conn=wye kvar=1800 kv=12.47 numsteps=3
+
+// type=pf: turn ON below 0.95 lag, turn OFF at 0.99 leading (offsetting<0 =
+// leading), pctMinkvar floor prevents the last step over-leading.
+New capcontrol.cc element=line.lf terminal=2 capacitor=cb type=pf
+~ ptratio=60 onsetting=0.95 offsetting=-0.99 pctminkvar=25 eventlog=yes
+
+New loadshape.day npts=24 interval=1
+~ mult=(0.30 0.32 0.38 0.48 0.60 0.75 0.90 1.02 1.12 1.20 1.25 1.18 1.05 0.95 0.85 0.75 0.68 0.74 0.90 1.05 1.15 0.85 0.50 0.32)
+
+New load.l1 bus1=b phases=3 conn=wye model=1 kv=12.47 kw=4200 pf=0.85
+~ daily=day
+
+Set voltagebases=[12.47]
+calcv
+Set mode=daily stepsize=1h number=1

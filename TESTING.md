@@ -78,7 +78,7 @@ A case marked **`pending: true`** covers a feature the port does not implement
 yet: the gate asserts the Rust engine **errors loudly** on it (never a silent
 fallback), and the WP named in its `wp` field flips the flag when it ports the
 feature (GAPS_PLAN.md §3.1). Multi-file cases live in a subfolder named after
-the deck (e.g. `modes/shape_binfiles/`).
+the deck (e.g. `modes/inputformat/shape_binfiles/`).
 
 A case with an **`oracle`** field (UPGRADE_PLAN.md target-rev gating) is
 live-compared against **that** engine instead of the pinned capi oracle:
@@ -90,7 +90,7 @@ against the pinned 0.14.5 oracle); everything else (voltages, Y,
 currents/powers, discrete state, tolerances) uses the same shared comparators,
 never weakened. An upgrade WP flips a case's `oracle` in the **same commit**
 that ports the newer upstream behavior the case covers. The
-`modes/upgrade_pilot.dss` case keeps this machinery permanently exercised,
+`modes/upgrade/upgrade_pilot.dss` case keeps this machinery permanently exercised,
 which makes the Oddie venv + `tools/opendss/bin/` binaries a **mandatory**
 `cargo test` prerequisite (like the pinned oracle itself; setup in
 `tools/opendss/README.md`).

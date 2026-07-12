@@ -9,7 +9,8 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
-use crate::support::cmatrix::CMatrix;
+use crate::support::cmatrix::{CMatrix, cdiv_fpc};
+use crate::support::line_constants::csqrt_fpc;
 use crate::support::line_units::{LineUnits, convert_line_units};
 use crate::support::mathutil::SymComp;
 
@@ -18,6 +19,18 @@ use super::{Line, prop};
 /// Pascal `CAP_EPSILON` (Line.pas): "5 kvar of capacitive reactance at
 /// 345 kV to avoid open line problem", added to the series Yprim diagonal.
 const CAP_EPSILON: Complex64 = Complex64::new(0.0, 4.2e-8);
+
+/// Pascal `EPSILON` (DSSGlobals.pas:86): default tiny floating point.
+const EPSILON: f64 = 1.0e-12;
+
+/// FPC `ucomplex` `cinv` — `1/z` as the **naive** `conj(z)/|z|²`
+/// (`re/(re²+im²)`, `-im/(re²+im²)`), NOT Smith's form (that is `cdiv_fpc`).
+/// Used by `TLineObj.DoLongLine` for `Cinv(ExpP)` / `Cinv(Zc)`.
+#[inline]
+fn cinv_fpc(z: Complex64) -> Complex64 {
+    let denom = z.re * z.re + z.im * z.im;
+    Complex64::new(z.re / denom, -z.im / denom)
+}
 
 impl Line {
     /// Pascal `TLineObj.RecalcElementData`: compute the per-unit-length
@@ -131,6 +144,39 @@ impl Line {
         self.fz_frequency = f;
         Ok(())
     }
+
+    /// Pascal `TLineObj.DoLongLine` (Line.pas:1046). Long-line (distributed-
+    /// parameter) correction of one sequence's per-unit-length `R/X/C` at the
+    /// solution `frequency`, via the exact-PI hyperbolic factors
+    /// `Zm = Zc·sinh(γl)`, `Ym = (2/Zc)·(cosh(γl)−1)/sinh(γl)`. `R`/`X`/`C` are
+    /// the base-frequency per-unit-length inputs; the returned `_h` values are
+    /// per-unit-length again (`Zm/Len`, `Ym.im/Len/2πf`), already carrying the
+    /// frequency adjustment. Uses the RTL-faithful `Csqrt`/`Cinv`/Smith-`/`
+    /// (`csqrt_fpc`/`cinv_fpc`/`cdiv_fpc`) so the corrected YPrim matches the
+    /// oracle bit-for-bit. Returns `(r_h, x_h, c_h, g_h)`.
+    fn do_long_line(&self, frequency: f64, r: f64, x: f64, c: f64) -> (f64, f64, f64, f64) {
+        let len = self.len;
+        let two_pi = 2.0 * std::f64::consts::PI;
+        // A tiny conductance so a C=0 line is not skipped (Pascal `G_h := EPSILON`).
+        let g_h = EPSILON;
+        let zs = Complex64::new(r * len, x * len * frequency / self.cd.base_frequency);
+        let ys = Complex64::new(g_h, two_pi * frequency * c * len);
+
+        let gamma_l = csqrt_fpc(zs * ys);
+        let zc = csqrt_fpc(cdiv_fpc(zs, ys));
+        let exp_p = Complex64::new(gamma_l.im.cos(), gamma_l.im.sin()) * gamma_l.re.exp();
+        let exp_m = cinv_fpc(exp_p);
+
+        let sinh_gl = (exp_p - exp_m) * 0.5;
+        let cosh_gl = (exp_p + exp_m) * 0.5;
+        let zm = zc * sinh_gl;
+        let ym = cinv_fpc(zc) * cdiv_fpc(cosh_gl - 1.0, sinh_gl) * 2.0;
+
+        let r_h = zm.re / len;
+        let x_h = zm.im / len; // already at the desired frequency
+        let c_h = ym.im / len / two_pi / frequency;
+        (r_h, x_h, c_h, ym.re)
+    }
 }
 
 impl CktElement for Line {
@@ -200,10 +246,11 @@ impl CktElement for Line {
         (pos, neg, zero)
     }
 
-    /// Pascal `TLineObj.CalcYPrim` (sym-component, matrix and geometry paths;
-    /// the long-line correction is Phase 7+). Below `0.51 Hz` (GIC) the inverted
-    /// series Z collapses to its positive-sequence resistance
-    /// (`ConvertZinvToPosSeqR`) and the shunt capacitance is skipped.
+    /// Pascal `TLineObj.CalcYPrim` (sym-component, matrix and geometry paths,
+    /// including the SymComponentsModel long-line correction — see `do_long_line`
+    /// and the `long_line` branches). Below `0.51 Hz` (GIC) the inverted series Z
+    /// collapses to its positive-sequence resistance (`ConvertZinvToPosSeqR`) and
+    /// the shunt capacitance is skipped.
     fn calc_yprim(&mut self, sys: &SysCtx) {
         let nphases = self.cd.nphases;
         let yorder = self.cd.yorder;
@@ -231,6 +278,11 @@ impl CktElement for Line {
         let geometry_path = self.geometry_obj.is_some();
         let spacing_path = self.spacing_specified();
         let total_z_path = geometry_path || spacing_path;
+        // Pascal: long-line correction only enters for the SymComponentsModel
+        // (per-unit-length) path (Line.pas:1199/1369). It is mutually exclusive
+        // with the geometry/spacing total-Z path (which clears
+        // sym_components_model).
+        let long_line = self.sym_components_model && sys.long_line_correction;
         let mut length_multiplier = 1.0;
         let mut freq_multiplier = 1.0;
 
@@ -272,6 +324,47 @@ impl CktElement for Line {
             self.cd.yprim_freq = sys.frequency;
             freq_multiplier = self.cd.yprim_freq / self.cd.base_frequency;
 
+            // Long-line correction (Line.pas:1199-1254): recompute the
+            // per-unit-length Z/Yc at the solution frequency with the exact-PI
+            // hyperbolic factors, sequence-by-sequence, and rebuild the phase
+            // Z/Yc from the corrected symmetrical components. Frequency is
+            // already folded into the corrected X_h/Yc_h here.
+            if long_line {
+                let f = self.cd.yprim_freq;
+                let (r1h, x1h, c1h, g1h) = self.do_long_line(f, self.r1, self.x1, self.c1);
+                let (r0h, x0h, c0h, g0h) = if nphases > 1 && !sys.positive_sequence {
+                    self.do_long_line(f, self.r0, self.x0, self.c0)
+                } else {
+                    // Zero sequence the same as positive sequence.
+                    (r1h, x1h, c1h, g1h)
+                };
+
+                let ztemp = Complex64::new(r1h, x1h) * 2.0;
+                let zs = (ztemp + Complex64::new(r0h, x0h)) / 3.0;
+                let zm = (Complex64::new(r0h, x0h) - Complex64::new(r1h, x1h)) / 3.0;
+
+                let two_pi = 2.0 * std::f64::consts::PI;
+                let yc1 = two_pi * f * c1h;
+                let yc0 = two_pi * f * c0h;
+                let ys = (Complex64::new(g1h, yc1) * 2.0 + Complex64::new(g0h, yc0)) / 3.0;
+                let ym = (Complex64::new(g0h, yc0) - Complex64::new(g1h, yc1)) / 3.0;
+
+                let mut z = CMatrix::new(nphases);
+                let mut yc = CMatrix::new(nphases);
+                for i in 0..nphases {
+                    z.set(i, i, zs);
+                    yc.set(i, i, ys);
+                    for j in 0..i {
+                        z.set(i, j, zm);
+                        z.set(j, i, zm);
+                        yc.set(i, j, ym);
+                        yc.set(j, i, ym);
+                    }
+                }
+                self.z = Some(z);
+                self.yc = Some(yc);
+            }
+
             // Put in series RL, corrected for length and frequency: Rg increases
             // with frequency, Xg is modified by ln of sqrt(1/f).
             let xgmod = if self.xg != 0.0 {
@@ -285,12 +378,20 @@ impl CktElement for Line {
             for i in 0..nphases {
                 for j in 0..nphases {
                     let zv = z.get(i, j);
+                    // The long-line branch already applied the frequency
+                    // adjustment to X_h, so freq_multiplier here scales ONLY the
+                    // earth-return Xgmod term (Line.pas:1269 vs :1287).
+                    let im = if long_line {
+                        (zv.im - xgmod * freq_multiplier) * length_multiplier
+                    } else {
+                        (zv.im - xgmod) * length_multiplier * freq_multiplier
+                    };
                     zinv.set(
                         i,
                         j,
                         Complex64::new(
                             (zv.re + self.rg * (freq_multiplier - 1.0)) * length_multiplier,
-                            (zv.im - xgmod) * length_multiplier * freq_multiplier,
+                            im,
                         ),
                     );
                 }
@@ -389,6 +490,11 @@ impl CktElement for Line {
                     let value = if total_z_path {
                         // Already total (length + frequency folded in); halve it.
                         Complex64::new(ycv.re / 2.0, ycv.im / 2.0)
+                    } else if long_line {
+                        // Frequency already applied above during the Yc
+                        // recalculation; keep the conductance real part and scale
+                        // the susceptance by length only (Line.pas:1372).
+                        Complex64::new(ycv.re / 2.0, ycv.im * length_multiplier / 2.0)
                     } else {
                         Complex64::new(0.0, ycv.im * length_multiplier * freq_multiplier / 2.0)
                     };

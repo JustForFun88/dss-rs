@@ -29,7 +29,7 @@ mod setters;
 
 pub use class_props::ClassProps;
 pub use engine::{ForeignClassesView, PropEngine};
-pub use prop_def::PropDef;
+pub use prop_def::{PropDef, prop_index};
 pub use prop_flags::PropFlags;
 pub use prop_type::PropType;
 

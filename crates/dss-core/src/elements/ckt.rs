@@ -318,6 +318,19 @@ impl CktElementData {
         }
     }
 
+    /// Pascal `TPCElement.CalcYPrimContribution` (`PCElement.pas` l.162):
+    /// `ComputeVTerminal` then `Curr = YPrim · Vterminal` — the frozen
+    /// shadow-admittance terminal current the `LastSolutionWasDirect`
+    /// `GetCurrents` shortcut reports. Note it neither subtracts `InjCurrent`
+    /// nor marks `Iterminal` updated (the Pascal routine touches only
+    /// `Vterminal` and `Curr`).
+    pub fn calc_yprim_contribution(&mut self, node_v: &[Complex64], curr: &mut [Complex64]) {
+        self.compute_vterminal(node_v);
+        if let Some(yprim) = &self.yprim {
+            yprim.mv_mult(curr, &self.vterminal);
+        }
+    }
+
     /// Pascal `ZeroITerminal`.
     pub fn zero_iterminal(&mut self) {
         self.iterminal.fill(Complex64::ZERO);
