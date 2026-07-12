@@ -8,27 +8,27 @@ New "EnergyMeter.zone_2" Element=Line.main20 Terminal=1 Option=[E, R, C]
 === GrowthShape.dss ===
 New "GrowthShape.default" NPts=2 Year=[ 1 20] Mult=[ 1.025 1.025]
 === Line.dss ===
-New "Line.main1" Bus1=sourcebus Bus2=m1 LineCode=lc Length=0.1 Units=km
-New "Line.main2" Bus1=m1 Bus2=m2 LineCode=lc Length=0.1 Units=km
-New "Line.main3" Bus1=m2 Bus2=m3 LineCode=lc Length=0.1 Units=km
-New "Line.main4" Bus1=m3 Bus2=m4 LineCode=lc Length=0.1 Units=km
-New "Line.main5" Bus1=m4 Bus2=m5 LineCode=lc Length=0.1 Units=km
-New "Line.main6" Bus1=m5 Bus2=m6 LineCode=lc Length=0.1 Units=km
-New "Line.main7" Bus1=m6 Bus2=m7 LineCode=lc Length=0.1 Units=km
-New "Line.main8" Bus1=m7 Bus2=m8 LineCode=lc Length=0.1 Units=km
-New "Line.main9" Bus1=m8 Bus2=m9 LineCode=lc Length=0.1 Units=km
-New "Line.main10" Bus1=m9 Bus2=m10 LineCode=lc Length=0.1 Units=km
-New "Line.main11" Bus1=m10 Bus2=m11 LineCode=lc Length=0.1 Units=km
-New "Line.main12" Bus1=m11 Bus2=m12 LineCode=lc Length=0.1 Units=km
-New "Line.main13" Bus1=m12 Bus2=m13 LineCode=lc Length=0.1 Units=km
-New "Line.main14" Bus1=m13 Bus2=m14 LineCode=lc Length=0.1 Units=km
-New "Line.main15" Bus1=m14 Bus2=m15 LineCode=lc Length=0.1 Units=km
-New "Line.main16" Bus1=m15 Bus2=m16 LineCode=lc Length=0.1 Units=km
-New "Line.main17" Bus1=m16 Bus2=m17 LineCode=lc Length=0.1 Units=km
-New "Line.main18" Bus1=m17 Bus2=m18 LineCode=lc Length=0.1 Units=km
-New "Line.main19" Bus1=m18 Bus2=m19 LineCode=lc Length=0.1 Units=km
-New "Line.lat1" Bus1=m8 Bus2=x1 LineCode=lc Length=0.08 Units=km
-New "Line.lat2" Bus1=m15 Bus2=x2 LineCode=lc Length=0.08 Units=km
+New "Line.main1" Bus1=sourcebus Bus2=m1 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main2" Bus1=m1 Bus2=m2 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main3" Bus1=m2 Bus2=m3 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main4" Bus1=m3 Bus2=m4 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main5" Bus1=m4 Bus2=m5 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main6" Bus1=m5 Bus2=m6 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main7" Bus1=m6 Bus2=m7 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main8" Bus1=m7 Bus2=m8 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main9" Bus1=m8 Bus2=m9 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main10" Bus1=m9 Bus2=m10 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main11" Bus1=m10 Bus2=m11 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main12" Bus1=m11 Bus2=m12 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main13" Bus1=m12 Bus2=m13 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main14" Bus1=m13 Bus2=m14 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main15" Bus1=m14 Bus2=m15 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main16" Bus1=m15 Bus2=m16 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main17" Bus1=m16 Bus2=m17 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main18" Bus1=m17 Bus2=m18 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main19" Bus1=m18 Bus2=m19 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.lat1" Bus1=m8 Bus2=x1 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.08 Units=km
+New "Line.lat2" Bus1=m15 Bus2=x2 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.08 Units=km
 === LineCode.dss ===
 New "LineCode.lc" NPhases=3 R1=0.15 X1=0.35 R0=0.45 X0=1.05 C1=0 C0=0 Units=km
 === Load.dss ===
@@ -120,25 +120,25 @@ Edit Vsource.source bus1=sourcebus.1 phases=1 pu=1.0 basekv=7.1897975 angle=-0.1
 New Vsource.Vph_2 bus1=sourcebus.2 phases=1 pu=1.0 basekv=7.1897975 angle=-120.11989 R1=0 X1=0.001 R0=0 X0=0.001
 New Vsource.Vph_3 bus1=sourcebus.3 phases=1 pu=1.0 basekv=7.1897975 angle=119.88011 R1=0 X1=0.001 R0=0 X0=0.001
 === zone_2/Branches.dss ===
-New "Line.main20" Bus1=m19 Bus2=m20 LineCode=lc Length=0.1 Units=km
-New "Line.main21" Bus1=m20 Bus2=m21 LineCode=lc Length=0.1 Units=km
-New "Line.main22" Bus1=m21 Bus2=m22 LineCode=lc Length=0.1 Units=km
-New "Line.lat3" Bus1=m22 Bus2=x3 LineCode=lc Length=0.08 Units=km
-New "Line.main23" Bus1=m22 Bus2=m23 LineCode=lc Length=0.1 Units=km
-New "Line.main24" Bus1=m23 Bus2=m24 LineCode=lc Length=0.1 Units=km
-New "Line.main25" Bus1=m24 Bus2=m25 LineCode=lc Length=0.1 Units=km
-New "Line.main26" Bus1=m25 Bus2=m26 LineCode=lc Length=0.1 Units=km
-New "Line.main27" Bus1=m26 Bus2=m27 LineCode=lc Length=0.1 Units=km
-New "Line.main28" Bus1=m27 Bus2=m28 LineCode=lc Length=0.1 Units=km
-New "Line.main29" Bus1=m28 Bus2=m29 LineCode=lc Length=0.1 Units=km
-New "Line.lat4" Bus1=m29 Bus2=x4 LineCode=lc Length=0.08 Units=km
-New "Line.main30" Bus1=m29 Bus2=m30 LineCode=lc Length=0.1 Units=km
-New "Line.main31" Bus1=m30 Bus2=m31 LineCode=lc Length=0.1 Units=km
-New "Line.main32" Bus1=m31 Bus2=m32 LineCode=lc Length=0.1 Units=km
-New "Line.main33" Bus1=m32 Bus2=m33 LineCode=lc Length=0.1 Units=km
-New "Line.main34" Bus1=m33 Bus2=m34 LineCode=lc Length=0.1 Units=km
-New "Line.main35" Bus1=m34 Bus2=m35 LineCode=lc Length=0.1 Units=km
-New "Line.main36" Bus1=m35 Bus2=m36 LineCode=lc Length=0.1 Units=km
+New "Line.main20" Bus1=m19 Bus2=m20 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main21" Bus1=m20 Bus2=m21 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main22" Bus1=m21 Bus2=m22 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.lat3" Bus1=m22 Bus2=x3 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.08 Units=km
+New "Line.main23" Bus1=m22 Bus2=m23 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main24" Bus1=m23 Bus2=m24 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main25" Bus1=m24 Bus2=m25 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main26" Bus1=m25 Bus2=m26 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main27" Bus1=m26 Bus2=m27 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main28" Bus1=m27 Bus2=m28 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main29" Bus1=m28 Bus2=m29 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.lat4" Bus1=m29 Bus2=x4 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.08 Units=km
+New "Line.main30" Bus1=m29 Bus2=m30 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main31" Bus1=m30 Bus2=m31 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main32" Bus1=m31 Bus2=m32 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main33" Bus1=m32 Bus2=m33 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main34" Bus1=m33 Bus2=m34 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main35" Bus1=m34 Bus2=m35 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
+New "Line.main36" Bus1=m35 Bus2=m36 LineCode=lc Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600 Length=0.1 Units=km
 === zone_2/GrowthShape.dss ===
 New "GrowthShape.default" NPts=2 Year=[ 1 20] Mult=[ 1.025 1.025]
 === zone_2/LineCode.dss ===

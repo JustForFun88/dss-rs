@@ -29,7 +29,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "regcontrol/regcontrol_asym.dss",
@@ -61,7 +62,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "capcontrol/capcontrol_sym.dss",
@@ -88,7 +90,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "capcontrol/capcontrol_asym.dss",
@@ -130,7 +133,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "invcontrol/invcontrol_vv_sym.dss",
@@ -151,7 +155,8 @@
    ],
    "compare_variables": [
     "PVSystem.pv"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "invcontrol/invcontrol_vvvw_asym.dss",
@@ -175,7 +180,8 @@
     "PVSystem.pva",
     "PVSystem.pvb",
     "PVSystem.pvc"
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "storagecontroller/storagectrl_peakshave.dss",
@@ -216,7 +222,8 @@
     "Storage.sa",
     "Storage.sb"
    ],
-   "compare_eventlog": true
+   "compare_eventlog": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "storagecontroller/storagectrl_time.dss",
@@ -248,7 +255,8 @@
    "compare_variables": [
     "Storage.sa"
    ],
-   "compare_eventlog": true
+   "compare_eventlog": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "combo/midi_controls.dss",
@@ -336,7 +344,8 @@
     "Storage.st1"
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:save-roundtrip-control"
   },
   {
    "path": "combo/midi_protection.dss",
@@ -374,7 +383,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:too-small"
   },
   {
    "path": "combo/combo_protection.dss",
@@ -408,7 +418,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "pf"
   },
   {
    "path": "combo/combo_voltvar_asym.dss",
@@ -443,7 +454,8 @@
     "PVSystem.pv"
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "combo/combo_metering.dss",
@@ -471,7 +483,8 @@
      ]
     }
    ],
-   "compare_eventlog": true
+   "compare_eventlog": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "energymeter/energymeter_sym.dss",
@@ -489,7 +502,8 @@
       "terminal"
      ]
     }
-   ]
+   ],
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "energymeter/energymeter_asym.dss",
@@ -507,7 +521,8 @@
       "terminal"
      ]
     }
-   ]
+   ],
+   "ad": "pf"
   },
   {
    "path": "monitor/monitor_modes.dss",
@@ -546,7 +561,8 @@
    "compare_variables": [
     "Storage.s1"
    ],
-   "compare_eventlog": true
+   "compare_eventlog": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "sensor/sensor_map.dss",
@@ -590,7 +606,8 @@
       "kvars"
      ]
     }
-   ]
+   ],
+   "ad": "off:too-small"
   },
   {
    "path": "recloser/recloser_temp.dss",
@@ -613,7 +630,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "recloser/recloser_perm.dss",
@@ -636,7 +654,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "relay/relay_oc_sym.dss",
@@ -660,7 +679,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "relay/relay_4647_asym.dss",
@@ -691,7 +711,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "fuse/fuse_blow_asym.dss",
@@ -712,7 +733,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "swtcontrol/swtcontrol_time.dss",
@@ -736,7 +758,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "gendispatcher/gendispatcher.dss",
@@ -770,7 +793,8 @@
      ]
     }
    ],
-   "compare_eventlog": true
+   "compare_eventlog": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "regcontrol/midi_regcontrol.dss",
@@ -806,7 +830,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "capcontrol/midi_capcontrol.dss",
@@ -846,7 +871,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "invcontrol/midi_invcontrol.dss",
@@ -868,7 +894,8 @@
    "compare_variables": [
     "PVSystem.pv3",
     "PVSystem.pv1"
-   ]
+   ],
+   "ad": "off:ad-singular-zone"
   },
   {
    "path": "storagecontroller/midi_storagectrl.dss",
@@ -899,7 +926,8 @@
    "compare_variables": [
     "Storage.st1"
    ],
-   "compare_eventlog": true
+   "compare_eventlog": true,
+   "ad": "off:save-roundtrip-control"
   },
   {
    "path": "gendispatcher/midi_gendispatcher.dss",
@@ -932,7 +960,8 @@
      ]
     }
    ],
-   "compare_eventlog": true
+   "compare_eventlog": true,
+   "ad": "off:save-roundtrip-control"
   },
   {
    "path": "recloser/midi_recloser_temp.dss",
@@ -953,7 +982,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:too-small"
   },
   {
    "path": "recloser/midi_recloser_perm.dss",
@@ -974,7 +1004,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:too-small"
   },
   {
    "path": "relay/midi_relay_4647.dss",
@@ -1002,7 +1033,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:too-small"
   },
   {
    "path": "fuse/midi_fuse.dss",
@@ -1022,7 +1054,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:too-small"
   },
   {
    "path": "swtcontrol/midi_swtcontrol.dss",
@@ -1045,7 +1078,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "energymeter/midi_energymeter.dss",
@@ -1070,7 +1104,8 @@
       "terminal"
      ]
     }
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "monitor/midi_monitor.dss",
@@ -1100,7 +1135,8 @@
    ],
    "compare_variables": [
     "Storage.st1"
-   ]
+   ],
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "sensor/midi_sensor.dss",
@@ -1144,7 +1180,8 @@
       "kvars"
      ]
     }
-   ]
+   ],
+   "ad": "off:save-roundtrip-control"
   },
   {
    "path": "capcontrol/capcontrol_follow.dss",
@@ -1164,7 +1201,8 @@
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
    "pending": false,
-   "wp": "WPG.7"
+   "wp": "WPG.7",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "capcontrol/capcontrol_follow_noshape.dss",
@@ -1172,7 +1210,8 @@
    "pending": false,
    "expect_solve_abort": "Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
    "wp": "WPG.7",
-   "note": "Malformed input: type=Follow CapControl with no ControlSignal. Pascal CapControl.pas Sample (l.1153-1158) sets DSS.SolutionAbort:=True; the pinned oracle raises #10362 at solve. Both engines abort; the Rust port sets solution_abort + surfaces the same message (WPG.7 audit follow-up)."
+   "note": "Malformed input: type=Follow CapControl with no ControlSignal. Pascal CapControl.pas Sample (l.1153-1158) sets DSS.SolutionAbort:=True; the pinned oracle raises #10362 at solve. Both engines abort; the Rust port sets solution_abort + surfaces the same message (WPG.7 audit follow-up).",
+   "ad": "off:deck-aborts-by-design"
   },
   {
    "path": "invcontrol/invcontrol_expmodel.dss",
@@ -1192,7 +1231,8 @@
    "compare_eventlog": true,
    "pending": false,
    "wp": "WPG.9",
-   "note": "ControlModel accepts only the ordinal (ControlModel=1); the enum name is rejected by the upstream text parser (probe-proven). WPG.9 ports the TPICtrl PI controller (Exponential ControlModel) in the VV/AVR/DRC/VV_DRC var-calc paths; live-compared here (kvar probe = the controller-driven var output + event log; the full-model compare covers the PV's P/Q each step). PVSystem exposes no `kW` property (probe-proven: `? PVSystem.pv.kW` = 'Property Unknown' on both engines), so the var trajectory is observed via `kvar`."
+   "note": "ControlModel accepts only the ordinal (ControlModel=1); the enum name is rejected by the upstream text parser (probe-proven). WPG.9 ports the TPICtrl PI controller (Exponential ControlModel) in the VV/AVR/DRC/VV_DRC var-calc paths; live-compared here (kvar probe = the controller-driven var output + event log; the full-model compare covers the PV's P/Q each step). PVSystem exposes no `kW` property (probe-proven: `? PVSystem.pv.kW` = 'Property Unknown' on both engines), so the var trajectory is observed via `kvar`.",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "invcontrol/invcontrol_storage_vw.dss",
@@ -1214,7 +1254,8 @@
    ],
    "compare_eventlog": true,
    "pending": false,
-   "wp": "WPG.10"
+   "wp": "WPG.10",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "invcontrol/invcontrol_storage_vv_vw.dss",
@@ -1237,7 +1278,8 @@
    ],
    "compare_eventlog": true,
    "pending": false,
-   "wp": "WPG.10"
+   "wp": "WPG.10",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "gfm/gfm_micro.dss",
@@ -1260,7 +1302,8 @@
    ],
    "pending": false,
    "wp": "WPG.13",
-   "note": "Storage grid-forming (ControlMode=GFM) forming an islanded section (sw1 opened) in daily mode. Feature-sensitive: WITHOUT ControlMode=GFM the islanded storage cannot form voltage and islbus is dead (0 pu, 0 kW) vs the GFM island at ~0.998 pu / ~400 kW. Two-process oracle capture bit-identical (determinism proven)."
+   "note": "Storage grid-forming (ControlMode=GFM) forming an islanded section (sw1 opened) in daily mode. Feature-sensitive: WITHOUT ControlMode=GFM the islanded storage cannot form voltage and islbus is dead (0 pu, 0 kW) vs the GFM island at ~0.998 pu / ~400 kW. Two-process oracle capture bit-identical (determinism proven).",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "gfm/gfm_invcontrol.dss",
@@ -1282,7 +1325,8 @@
    ],
    "pending": false,
    "wp": "WPG.13",
-   "note": "InvControl mode=GFM amps limiter over a grid-forming Storage (islanded like gfm_micro). AmpLimit=400 makes CheckAmpsLimit bite (dynVars.IComp>0 -> DoGFM_Mode shrinks BaseV): Storage throttled to ~-158 kW vs ~-400 kW without the limit (feature-sensitive, ~2.5x per step). Two-process oracle capture bit-identical (determinism proven)."
+   "note": "InvControl mode=GFM amps limiter over a grid-forming Storage (islanded like gfm_micro). AmpLimit=400 makes CheckAmpsLimit bite (dynVars.IComp>0 -> DoGFM_Mode shrinks BaseV): Storage throttled to ~-158 kW vs ~-400 kW without the limit (feature-sensitive, ~2.5x per step). Two-process oracle capture bit-identical (determinism proven).",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "gfm/gfm_dynamics.dss",
@@ -1305,7 +1349,8 @@
    ],
    "pending": false,
    "wp": "WPG.17",
-   "note": "Storage grid-forming (ControlMode=GFM) BLACK-STARTING an islanded section (sw1 opened) in DYNAMICS mode (one solve = 60x 1ms steps; mode-0 + mode-3 monitors). Exercises the ported dynamics-mode GFM: IntegrateStates VDelta droop -> ISPDelta ramp + FixPhaseAngle, DoDynamicMode BaseV=BasekV*1000*(it[0]/iMaxPPhase) internal-source injection, CheckIfDelivering. Re-probed pinned oracle dss-python 0.15.7 (WPG.17): (1) compiles+solves+converges; (2) two-process ByteStream bit-identical (mvi sha 1edc4824..., msv sha d049f4a6...); (3) feature-sensitive -- WITH ControlMode=GFM+SafeVoltage=0 the island energises to islbus ~0.977 pu with the Storage delivering ~-400.7 kW / ~-80.9 kvar (State=DISCHARGING, %stored ~99.9999), vs WITHOUT ControlMode=GFM the islanded inverter is NON-CONVERGENT (NaN node voltages, 0 kW). SafeVoltage=0 is mandatory (default 100 MinVS blocks the black start from 0 V)."
+   "note": "Storage grid-forming (ControlMode=GFM) BLACK-STARTING an islanded section (sw1 opened) in DYNAMICS mode (one solve = 60x 1ms steps; mode-0 + mode-3 monitors). Exercises the ported dynamics-mode GFM: IntegrateStates VDelta droop -> ISPDelta ramp + FixPhaseAngle, DoDynamicMode BaseV=BasekV*1000*(it[0]/iMaxPPhase) internal-source injection, CheckIfDelivering. Re-probed pinned oracle dss-python 0.15.7 (WPG.17): (1) compiles+solves+converges; (2) two-process ByteStream bit-identical (mvi sha 1edc4824..., msv sha d049f4a6...); (3) feature-sensitive -- WITH ControlMode=GFM+SafeVoltage=0 the island energises to islbus ~0.977 pu with the Storage delivering ~-400.7 kW / ~-80.9 kvar (State=DISCHARGING, %stored ~99.9999), vs WITHOUT ControlMode=GFM the islanded inverter is NON-CONVERGENT (NaN node voltages, 0 kW). SafeVoltage=0 is mandatory (default 100 MinVS blocks the black start from 0 V).",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "gfm/pv_gfm_dynamics.dss",
@@ -1327,7 +1372,8 @@
    ],
    "pending": false,
    "wp": "WPG.17",
-   "note": "PVSystem twin of gfm_dynamics.dss (GFM audit settlement: the PV GFM dynamics path previously had only a last-sample unit pin). Islanded PV in ControlMode=GFM black-starts the section in dynamics mode (60x 1ms; mode-0 + mode-3 monitors); exercises PVsystem.pas InitStateVars GFM it:=0 seed, IntegrateStates GFM droop with the OVERWRITTEN iMaxPPhase (unlike Storage's local IMaxPhase), DoDynamicMode GFM injection. Validated pinned oracle dss-python 0.15.7 (2026-07-09): (1) compiles+solves+converges; (2) two-process fingerprint (AllBusVmag + both monitor ByteStreams) bit-identical 9981f5f49a610a61; (3) feature-sensitive -- WITHOUT ControlMode=GFM the islanded dynamics solve is NON-CONVERGENT. SafeVoltage=0 mandatory."
+   "note": "PVSystem twin of gfm_dynamics.dss (GFM audit settlement: the PV GFM dynamics path previously had only a last-sample unit pin). Islanded PV in ControlMode=GFM black-starts the section in dynamics mode (60x 1ms; mode-0 + mode-3 monitors); exercises PVsystem.pas InitStateVars GFM it:=0 seed, IntegrateStates GFM droop with the OVERWRITTEN iMaxPPhase (unlike Storage's local IMaxPhase), DoDynamicMode GFM injection. Validated pinned oracle dss-python 0.15.7 (2026-07-09): (1) compiles+solves+converges; (2) two-process fingerprint (AllBusVmag + both monitor ByteStreams) bit-identical 9981f5f49a610a61; (3) feature-sensitive -- WITHOUT ControlMode=GFM the islanded dynamics solve is NON-CONVERGENT. SafeVoltage=0 mandatory.",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "storagecontroller/storagecontroller_seasonal.dss",
@@ -1349,7 +1395,8 @@
    "compare_eventlog": true,
    "pending": false,
    "wp": "WPG.11",
-   "note": "Feature-sensitive probe-proven: with Set SeasonRating=no the event log diverges from hour 12 (the 500 kW season target never engages). Option spelling is 'Set SeasonRating', not 'SeasonalRating'."
+   "note": "Feature-sensitive probe-proven: with Set SeasonRating=no the event log diverges from hour 12 (the 500 kW season target never engages). Option spelling is 'Set SeasonRating', not 'SeasonalRating'.",
+   "ad": "off:save-roundtrip-control"
   },
   {
    "path": "isource/isource_daily.dss",
@@ -1360,7 +1407,8 @@
    ],
    "check_meters_monitors": true,
    "pending": false,
-   "wp": "WPG.14"
+   "wp": "WPG.14",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "autotrans/autotrans_reg.dss",
@@ -1389,7 +1437,8 @@
    "compare_ctrlqueue": true,
    "pending": false,
    "wp": "WPG.15",
-   "note": "RegControl drives the AutoTrans COMMON (wye) winding via the Pascal Transf_Or_AutoTrans proxy. Oracle 2026-07-05: 10 tap-change events over the 8 hours, final tapnum=5."
+   "note": "RegControl drives the AutoTrans COMMON (wye) winding via the Pascal Transf_Or_AutoTrans proxy. Oracle 2026-07-05: 10 tap-change events over the 8 hours, final tapnum=5.",
+   "ad": "off:save-roundtrip-control"
   },
   {
    "path": "isource/isource_both.dss",
@@ -1401,7 +1450,8 @@
    "check_meters_monitors": true,
    "pending": false,
    "wp": "WPG.14",
-   "note": "Snapshot Solve then the daily run in one session - cross-mode state-leak coverage."
+   "note": "Snapshot Solve then the daily run in one session - cross-mode state-leak coverage.",
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "isource/midi_isource.dss",
@@ -1412,7 +1462,8 @@
    ],
    "check_meters_monitors": true,
    "pending": false,
-   "wp": "WPG.14"
+   "wp": "WPG.14",
+   "ad": "off:too-small"
   },
   {
    "path": "isource/midi_isource_both.dss",
@@ -1423,7 +1474,8 @@
    ],
    "check_meters_monitors": true,
    "pending": false,
-   "wp": "WPG.14"
+   "wp": "WPG.14",
+   "ad": "off:too-small"
   },
   {
    "path": "autotrans/autotrans_both.dss",
@@ -1452,7 +1504,8 @@
    "compare_ctrlqueue": true,
    "pending": false,
    "wp": "WPG.15",
-   "note": "Snapshot Solve then the RegControl daily run in one session (12 tap events, final tapnum=5 on the oracle) - cross-mode state-leak coverage."
+   "note": "Snapshot Solve then the RegControl daily run in one session (12 tap events, final tapnum=5 on the oracle) - cross-mode state-leak coverage.",
+   "ad": "off:save-roundtrip-control"
   },
   {
    "path": "autotrans/midi_autotrans.dss",
@@ -1481,7 +1534,8 @@
    "compare_ctrlqueue": true,
    "pending": false,
    "wp": "WPG.15",
-   "note": "Control-active at midi scale on the oracle: 10 tap events, final tapnum=11."
+   "note": "Control-active at midi scale on the oracle: 10 tap events, final tapnum=11.",
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "autotrans/midi_autotrans_both.dss",
@@ -1502,7 +1556,8 @@
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
    "pending": false,
-   "wp": "WPG.15"
+   "wp": "WPG.15",
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "monitor/monitor_pst.dss",
@@ -1511,7 +1566,8 @@
    "selected_elements": [
     "*"
    ],
-   "check_meters_monitors": true
+   "check_meters_monitors": true,
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "monitor/midi_monitor_pst.dss",
@@ -1520,7 +1576,8 @@
    "selected_elements": [
     "*"
    ],
-   "check_meters_monitors": true
+   "check_meters_monitors": true,
+   "ad": "off:non-3ph-cut-only"
   }
  ]
 }

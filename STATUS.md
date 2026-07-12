@@ -9,6 +9,125 @@
 
 Last updated: 2026-07-12.
 
+**WP-AD.4 — corpus-wide AD↔normal sweep (branch `wp-ad4`, 2026-07-12).** The
+user-mandated A-Diakoptics gate. Two parts landed:
+
+- **Child `DO_CTRL_ACTIONS` fan-out + `GETCTRLMODE`** (the explicit AD.3 deferral).
+  `ad_check_controls` now ports the official `CheckControls` AD branch
+  (Solution.pas:1248, ActorID=1): the coordinator fans `DO_CTRL_ACTIONS` to each
+  child (`sample_do_control_actions` + `check_fault_status` + child-Y rebuild) and
+  ANDs their `ControlActionsDone`, instead of sampling its own (controls-off)
+  controls. `set controlmode=`/`maxcontroliter=` on the AD coordinator now fans
+  `GETCTRLMODE` to the children (`exec/set_cmd.rs`). Controls-off decks unchanged.
+- **The sweep** (`corpus_ad_matches_normal_mode`, rust-vs-rust, always-on): every
+  `solvable_now` entry (`manifests/ad_sweep.json`, bijective) **and** every family
+  deck (mandatory `ad` field, loader-enforced) carries a disposition
+  `full|pf|off:<specific-reason>`. `pf`/`full` decks are solved both ways and
+  node-V compared at `AD_SWEEP_TIER=2e-3` (Torn_Circuit → per-case temp datapath,
+  never the vendored deck). Population: **37 pf** (26 corpus + 11 family), 0
+  `full`, 382 `off` (of 419); **zero `off:unclassified`**. Sweep wall-time **~22s**
+  (no cap needed). Dispositions are evidence-backed (`DSS_AD_CLASSIFY` probe +
+  `DSS_AD_DECOMPOSE` D7 leg split).
+
+**Headline finding (AD engine vindicated).** The canonical feeders (IEEE13/34/37/
+123, 8500-Node, …) show 2–66 % AD-vs-normal gaps, but the D7 decomposition proves
+the gap is **100 % the save round-trip leg** (`Master_Interconnected.dss` reload
+loses regulator/transformer/geometry/relative-file fidelity) while the AD leg
+proper is clean at the fixture floor (IEEE13 leg1=5.9e-2 vs leg2 AD=**1.6e-6**;
+ieee37 1.16e-1 vs **1.3e-5**; 8500 2.5e-1 vs **7.6e-6**). These are `off:save-
+roundtrip-*` — a save-circuit gap to fix in save, not AD (per D7). Off-class
+census after the settle-pass decomposition (corpus only; specific, categorized):
+non-3ph-cut-only 106, save-roundtrip-{geometry 40, relpath 26, regxfmr 17, relay
+8, autotrans 3, userdll 2}, already-torn-artifact 18, too-small 11, ad-islanded-
+divergence 10, ad-nonconvergent 7, mode-outside-AD-scope 4, ad-switched-divergence
+3, ad-floor-above-tier 3, ad-regulator-divergence 2 (plus the family classes).
+The `ad-*` classes are OPEN AD-engine defects (see the settle-pass record below),
+not undecomposed buckets.
+
+**Bugs found (open items for follow-up, NOT this WP's gate):** (1) the save
+round-trip fidelity gap above (regulator/transformer state + LineGeometry/WireData
+ordering + relative data-file paths not preserved through `Master_Interconnected`
+save/reload) blocks promoting ~68 corpus feeders from `off:save-roundtrip-*` to
+`pf` — a save-circuit task.
+
+**WP-AD.4 SETTLE PASS (branch `wp-ad4`, 2026-07-12) — audit findings resolved
+empirically.** Every off:ad bucket was decomposed and the audit's Major/Minor
+findings settled with evidence:
+
+- **`full` now has real active-control coverage** (was 0, un-gated). New
+  synthesized fixture `tests/data/adiakoptics/adreg.dss` (midi radial + a head
+  RegControl LTC, zone-local) drives `adiakoptics.rs::full_zone_local_regcontrol_
+  matches_normal`: the ONE gate on the child `DO_CTRL_ACTIONS` fan-out active
+  path. Proof is a controlled experiment — the AD tear re-seeds each zone from the
+  transformer's *declared* tap (1.0), so the **controls-OFF** AD arm lands 4.3 %
+  off normal (one tap ratio); the **controls-STATIC** AD arm re-establishes the
+  regulator **inside the child zone** (its tap events live in the child eventlog,
+  not the coordinator's) and matches normal at 3.2e-5. That clean/diverged split
+  is only possible if the child fan-out actually sampled + operated the zone
+  control. (A capcontrol fixture was tried first and abandoned: the CapControl's
+  reset/initial-state latches inconsistently across the base-solve/AD-reseed
+  paths — a plain shunt cap is clean under AD at 3.6e-5, but adding the capcontrol
+  makes even the controls-off gap 4 % purely from the bank's reset state, so it
+  cannot isolate the fan-out. The regulator's integer tap has no such ambiguity.)
+  No corpus/family deck qualifies for `full` (their regcontrol/capcontrol decks
+  are `non-3ph-cut-only` or don't tear), so the sweep stays `full=0` — the
+  capability is gated in `adiakoptics.rs` where synthesized fixtures live (§0.2).
+- **off:ad-* bucket fully decomposed** (`DSS_AD_DECOMPOSE` on every deck), mislabels
+  fixed, real AD bugs filed with specific reasons:
+  - *AD vindicated → moved to save-roundtrip:* the distance/TD21 **relay** decks
+    (8) had leg2 **2.3e-15** (AD clean) with leg1=2.4e3 → `off:save-roundtrip-relay`;
+    the **autotrans** Auto1bus decks (3) had leg1>>1 (save reload broken) →
+    `off:save-roundtrip-autotrans`.
+  - *Out of AD scope:* the 3 **harmonics** IEEE_519 decks → `off:mode-outside-AD-scope`.
+  - *Open AD-engine defects (leg1 small, leg2 large — a real AD↔normal physics gap
+    per §5, filed here, kept off the gate because fixing the AD engine is outside
+    the sweep WP's charter):* `off:ad-regulator-divergence` (ODRegTest leg2=1.5e15,
+    TestDDRegulator leg2=0.88); `off:ad-switched-divergence` (IEEE123Switches
+    leg2=19, civanlar/SecPar leg2=1.0 — open-switch/reconfiguration/meshed
+    secondary); `off:ad-islanded-divergence` (10 GFM/GFL/ISource grid-forming
+    microgrids, leg2~7e5 — no firm source reference); `off:ad-nonconvergent` (7
+    islanded GFM/GFL decks whose AD arm does not even init/converge). The generic
+    `ad-singular-zone`/`ad-divergent` corpus labels are gone.
+- **Real AD-arm panic fixed** (was `off:ad-probe-panic`). `Sensor::update_current_
+  vector`/`_for_wls` indexed `sensor_current[i]` for `i<nphases` while the buffer
+  was still unsized (kW set mid-edit, before `RecalcElementData` allocates —
+  reachable via a `save circuit`-emitted sensor). Now sizes the buffer to match
+  Pascal's `AllocateSensorObjArrays` (transient; recalc re-zeros, TakeSample
+  recomputes). The two sensor decks reclassify: `sensor_map` → `off:too-small`
+  (2-line feeder, no two ≥2-bus zones), `midi_sensor` → `off:save-roundtrip-control`
+  (interconnected save loses the metered `Line.bb1_2` reference).
+- **Disposition validator hardened.** `ad_disposition_is_valid` now checks off:
+  reasons against a closed `AD_OFF_REASONS` allowlist (was "any non-empty
+  string") — a new deck can't invent an unreviewed reason to dodge the sweep, and
+  the `ad-*` defect classes stay a bounded, greppable list.
+- **GETCTRLMODE 1:1 fix.** `ad_send_get_ctrl_mode` set the child's
+  `DefaultControlMode` from the coordinator's `DefaultControlMode`; official
+  Solution.pas:3261 sets it from the coordinator's live `ControlMode`. Corrected
+  (equal at every dispatch point, but now exact). Sweep `ad_solve_ad`'s `full`
+  path no longer hardcodes `controlmode=static` — it re-asserts the deck's own
+  declared control mode (symmetric with the normal arm).
+- **pf/full comparison scope (node-V is sufficient).** The sweep compares node
+  voltages, which on the shared interconnected network *determines* element
+  currents (`I=Yprim·V`) and powers (`S=V·conj(I)`) — a stitch error leaving all
+  voltages right but a flow wrong is not physically realizable for a shared
+  element. Confirmed empirically: an element-power cross-check over every `pf`
+  deck tracked the node-V gap with no independent divergence; its only
+  above-node-floor residuals were transformer/line **loss** channels on the
+  short-circuit decks (worst 2.2e-2 on `ieee37_SC_Currents` `line.l6` — the
+  documented cancellation-floor class, not a gate-able quantity). The
+  monitors/eventlog behavioral channel is gated by the `adreg` full test.
+
+- **AD-master migration (EPRI_Ckt5-G/7-G, IEEE_123_Bus-G, ckt24 masters) + D9(d)
+  `oracle:"r3723"` sweep cases: still DEFERRED (recorded, not silent).** These
+  stay in `skipped_oracle_issue`/`skipped_needs_investigation`; `ad_sweep.json`
+  carries no `oracle` field. Rationale: Part II has no pinned oracle by design
+  (§0.2); D9(d) is an EPRI *reference* channel, and the plan places the Oddie
+  AD-replay harness + EPRI reference-channel hardening in **WP-AD.5**. The AD
+  numbers are validated (a) rust-vs-rust at the D7 tier — the WP's stated
+  contract — across the 37 `pf` decks + the `adiakoptics.rs` D7 fixtures, and (b)
+  the child control fan-out is now gated end-to-end by the `adreg` full test.
+  Building the external r3723 AD-replay compare is the WP-AD.5 task.
+
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a
 pure move — **no deck content changed** (every family deck is self-contained;
@@ -642,10 +761,10 @@ SOLVE_AD2); `ad_init_actors` = `INIT_ADIAKOPTICS` (`Start_Diakoptics` for actors
 `ad_solve_into_parent` driven (were `#[allow(dead_code)]`). Newton is NOT AD-aware
 (verified: official `DoNormalSolution` only branches to `Solve_Diakoptics` on the
 fixed-point path) → an AD deck set to Newton falls through to the per-child
-fixed-point, documented. The child `DO_CTRL_ACTIONS` fan-out is WP-AD.4 — the
-WP-AD.3/D7 gates run `controlmode=off`; `ad_check_controls` currently samples the
-coordinator's controls (benign for controls-off; the faithful AD-branch child
-delegate is a WP-AD.4 item, flagged for auditors).
+fixed-point, documented. The child `DO_CTRL_ACTIONS` fan-out was deferred to
+WP-AD.4 — **now landed** (`ad_check_controls` ports the official AD branch: the
+coordinator fans `DO_CTRL_ACTIONS` to the children + ANDs their
+`ControlActionsDone`; see the WP-AD.4 record at the top of §1).
 
 **r3723 Oddie probe (re-run by the resume executor, own transcript, 2026-07-12;
 `solve mode=snap`, `controlmode=off`, `Num_SubCircuits=2`; scripts in scratchpad

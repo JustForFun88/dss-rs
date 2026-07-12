@@ -1349,33 +1349,99 @@ mod ad_solve_gate {
         (worst, wn)
     }
 
-    #[test]
-    fn midi_snapshot_matches_normal() {
-        // Method floor 3.21e-5 (r3723 oracle: 3.25e-5); D7 tier = 4× ≈ 1.3e-4.
-        let vn = solve_normal("midi", 1e-4);
-        let va = solve_ad("midi", 2, 1e-4);
-        let (gap, node) = max_rel_gap(&vn, &va);
-        println!("midi AD-vs-normal gap = {gap:.4e} @ {node}");
-        assert!(
-            gap < 1.3e-4,
-            "midi AD-vs-normal gap {gap:.3e} @ {node} exceeds the D7 tier"
-        );
-        assert!(
-            gap > 1.0e-6,
-            "gap {gap:.3e} suspiciously small — the AD solve may be a normal-solve passthrough"
-        );
+    /// Drive a fixture with `controlmode=static` under both engines, plus a
+    /// controls-off AD reference. Returns (normal-V, AD-static-V, AD-off-V,
+    /// normal-eventlog). The two AD arms are identical up to the final control
+    /// mode, so any AD-static-vs-AD-off difference is caused *only* by the child
+    /// control loop running.
+    #[allow(clippy::type_complexity)]
+    fn solve_full_arms(
+        fixture: &str,
+        tol: f64,
+    ) -> (
+        HashMap<String, Complex64>,
+        HashMap<String, Complex64>,
+        HashMap<String, Complex64>,
+        Vec<String>,
+    ) {
+        // Normal, active controls.
+        let mut dn = Dss::new();
+        compile_fixture(&mut dn, fixture, &scratch_dir("fulln"));
+        dn.command("set controlmode=static");
+        dn.command(&format!("set tolerance={tol}"));
+        dn.command("solve mode=snap");
+        assert!(dn.errors().is_empty(), "normal errors: {:?}", dn.errors());
+
+        // AD helper: base solve controls-off, tear, then `final_mode` for the
+        // compared solve (`static` = active child fan-out; `off` = reference).
+        let ad_arm = |final_mode: &str, tag: &str| -> HashMap<String, Complex64> {
+            let mut da = Dss::new();
+            compile_fixture(&mut da, fixture, &scratch_dir(tag));
+            da.command("set controlmode=off");
+            da.command(&format!("set tolerance={tol}"));
+            da.command("solve mode=snap");
+            da.command("set Num_SubCircuits=2");
+            da.command("set ADiakoptics=True");
+            assert!(
+                da.circuit().unwrap().solution.adiakoptics,
+                "AD init failed: {}",
+                da.result()
+            );
+            da.command(&format!("set controlmode={final_mode}")); // GETCTRLMODE fan-out
+            da.command(&format!("set tolerance={tol}"));
+            da.command("solve mode=snap");
+            assert!(da.errors().is_empty(), "AD solve errors: {:?}", da.errors());
+            node_voltages(&da)
+        };
+        let va_static = ad_arm("static", "fullstat");
+        let va_off = ad_arm("off", "fulloff");
+        (
+            node_voltages(&dn),
+            va_static,
+            va_off,
+            dn.event_log().to_vec(),
+        )
     }
 
+    /// WP-AD.4 `full`-disposition proof: a zone-local RegControl (head LTC) is
+    /// solved normally and under A-Diakoptics with controls ACTIVE. This is the
+    /// one gate that drives the child `DO_CTRL_ACTIONS` fan-out's active path
+    /// (`ad_check_controls` -> child `sample_do_control_actions` + Y-rebuild ->
+    /// `ControlActionsDone` AND-fold), plus the `GETCTRLMODE` propagation that
+    /// re-arms the deck's control mode on the children.
+    ///
+    /// The proof is a controlled experiment. The AD tear re-seeds each zone from
+    /// the transformer's *declared* tap (1.0), discarding the base-solve tap — so
+    /// the controls-OFF AD arm lands ~4 % off the normal solve (one tap ratio).
+    /// The controls-STATIC AD arm re-establishes the regulator **inside the child
+    /// zone** (its tap events live in the child eventlog, not the coordinator's),
+    /// so it matches the normal solve at the D7 tier. That AD-static clean /
+    /// AD-off diverged split is only possible if the child fan-out actually ran
+    /// and operated the zone control.
     #[test]
-    fn midi_d7_gap_stable_under_tighten() {
-        let g_loose = max_rel_gap(&solve_normal("midi", 1e-4), &solve_ad("midi", 2, 1e-4)).0;
-        let g_tight = max_rel_gap(&solve_normal("midi", 1e-10), &solve_ad("midi", 2, 1e-10)).0;
-        println!("midi D7 tighten: loose={g_loose:.4e} tight={g_tight:.4e}");
-        let ratio = g_tight / g_loose;
+    fn full_zone_local_regcontrol_matches_normal() {
+        let (vn, va_static, va_off, elog) = solve_full_arms("adreg", 1e-8);
+
+        // The normal control loop tapped the regulator (else nothing is proven).
         assert!(
-            (0.5..2.0).contains(&ratio),
-            "midi AD-vs-normal gap not stable under tighten (oracle: bit-stable): \
-             loose={g_loose:.3e} tight={g_tight:.3e} ratio={ratio:.3}"
+            elog.iter().any(|l| l.to_uppercase().contains("TAPS")),
+            "normal eventlog shows no regulator tap: {elog:?}"
+        );
+        // Controls-off AD misses the tap the re-seed discarded => materially off.
+        let (off_gap, _) = max_rel_gap(&vn, &va_off);
+        assert!(
+            off_gap > 1e-2,
+            "controls-off AD unexpectedly matched normal ({off_gap:.3e}); the fixture no \
+             longer isolates the child control action"
+        );
+        // Active AD (child fan-out) re-establishes the zone regulator => matches.
+        let (gap, node) = max_rel_gap(&vn, &va_static);
+        println!(
+            "full zone-local regcontrol: AD-static gap={gap:.4e} @ {node}, AD-off gap={off_gap:.4e}"
+        );
+        assert!(
+            gap < 1.3e-4,
+            "AD-static (child fan-out) node-V gap {gap:.3e} @ {node} exceeds the D7 tier"
         );
     }
 
