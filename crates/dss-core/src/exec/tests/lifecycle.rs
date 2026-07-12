@@ -45,16 +45,36 @@ fn fuse_curve_none_clears_with_error_like_capi015() {
     // the plain not-found path (no AllowNone shortcut). This pins that behavior so
     // a future "silent none-clear" refactor (which would diverge from capi015) is
     // caught.
+    // Probed 2026-07-12 (capi015 0.16.0b2 AND 0.14.5, identical): with a REAL
+    // curve set (`tlink`), `Edit fuse.f fusecurve=none` logs #401
+    // "Fuse.f.FuseCurve: TCC_Curve object \"none\" not found." AND clears the ref
+    // to "". A real `tlink` is defined here so the pre-existing set succeeds
+    // cleanly and the assertions isolate the `none`-clear behavior (not an
+    // undefined-curve error), and we snapshot the error count so only the Edit's
+    // error is inspected.
     let mut dss = dss_with_circuit();
+    dss.command("New TCC_Curve.tlink npts=2 C_array=(1 10) T_array=(1 0.1)");
     dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");
     dss.command("New fuse.f monitoredobj=line.l1 fusecurve=tlink");
-    dss.command("Edit fuse.f fusecurve=none");
     assert!(
+        dss.errors().is_empty(),
+        "setup should be clean: {:?}",
         dss.errors()
+    );
+    assert_eq!(
+        query(&mut dss, "fuse.f.fusecurve"),
+        "tlink",
+        "curve set cleanly"
+    );
+
+    let before = dss.errors().len();
+    dss.command("Edit fuse.f fusecurve=none");
+    let from_edit = &dss.errors()[before..];
+    assert!(
+        from_edit
             .iter()
             .any(|e| e.contains("FuseCurve") && e.contains("not found")),
-        "expected the #401-style not-found error, got {:?}",
-        dss.errors()
+        "expected the #401-style not-found error from the none-edit, got {from_edit:?}"
     );
     // The ref is cleared (renders "" — NIL), like capi015.
     assert_eq!(query(&mut dss, "fuse.f.fusecurve"), "");

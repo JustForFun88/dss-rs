@@ -254,6 +254,34 @@ fn set_class_activates_and_set_object_selects() {
 }
 
 #[test]
+fn set_object_unknown_class_qualifier_falls_back() {
+    // Pascal `SetObject` (DSSGlobals.pas:303): an UNKNOWN class qualifier makes
+    // `SetObjectClass` log #903, but its FALSE return is DISCARDED — the name is
+    // then resolved against the *previously-referenced* class. Probed 2026-07-12:
+    // capi015 (0.16.0b2) & 0.14.5 both log #903 for `Set Object=badclass.l1` yet
+    // still select `Line.l1` (fall-back). The port previously aborted on an
+    // unknown qualifier; it now mirrors the oracle fall-back.
+    let mut dss = Dss::new();
+    build(&mut dss);
+    dss.command("Set Class=Line"); // active class = Line
+    let line_ci = dss.class_by_name["line"];
+    dss.command("Set Object=badclass.l1");
+    // #903 logged for the bad qualifier...
+    assert!(
+        dss.errors().iter().any(|e| e.contains("Object Class")),
+        "expected class-not-found #903, got {:?}",
+        dss.errors()
+    );
+    // ...but l1 is still selected in the fallen-back-to Line class.
+    let l1 = (line_ci, dss.classes[line_ci].name_to_idx["l1"]);
+    assert_eq!(
+        dss.active_ckt_element,
+        Some(l1),
+        "bad qualifier falls back to previous class and selects l1"
+    );
+}
+
+#[test]
 fn set_class_unknown_errors_keeps_previous() {
     let mut dss = Dss::new();
     build(&mut dss);

@@ -412,20 +412,28 @@ impl Dss {
             Some(p) => (param[..p].to_string(), param[p + 1..].to_string()),
             None => (String::new(), param.to_string()),
         };
-        let ci = if class_part.is_empty() {
-            self.active_class
-        } else {
-            self.class_by_name.get(&class_part.to_lowercase()).copied()
-        };
-        let Some(ci) = ci else {
+        // Pascal `if Length(ObjClass) > 0 then SetObjectClass(ObjClass)`: a class
+        // qualifier activates that class; an UNKNOWN one logs #903 and its FALSE
+        // return is DISCARDED — the previously-referenced class stays active and the
+        // name below is resolved against IT (fall-back), exactly like `do_select_cmd`.
+        // Probed 2026-07-12: capi015 & 0.14.5 both keep #903 yet still select the
+        // name in the previous class (`Set Object=badclass.l1` → `Line.l1`).
+        if !class_part.is_empty() {
+            self.set_object_class(&class_part);
+        }
+        // Pascal `ActiveDSSClass := Get(LastClassReferenced)` = our `active_class`;
+        // NIL (no class ever referenced) → #905 "Active object type/class is not set."
+        let Some(ci) = self.active_class else {
             self.errors
-                .push(format!("Error! Object \"{param}\" not found."));
+                .push("Error! Active object type/class is not set.".to_string());
             return false;
         };
-        self.active_class = Some(ci);
         if !self.classes[ci].set_active(&name_part) {
-            self.errors
-                .push(format!("Error! Object \"{param}\" not found."));
+            // Pascal #904: message uses the bare ObjName + the command string.
+            self.errors.push(format!(
+                "Error! Object \"{name_part}\" not found. \n{}",
+                self.parser.cmd_string()
+            ));
             return false;
         }
         // Pascal `SetActive` also makes a circuit element the `ActiveCktElement`
