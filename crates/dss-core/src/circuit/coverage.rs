@@ -170,12 +170,7 @@ impl Circuit {
                     let start_u = start.max(0) as usize;
                     let lp = self.ad.longest_paths.clone();
                     for &bus in lp.iter().skip(start_u) {
-                        if let Some(slot) = self
-                            .solution
-                            .inc_matrix
-                            .levels
-                            .get_mut(bus as usize)
-                        {
+                        if let Some(slot) = self.solution.inc_matrix.levels.get_mut(bus as usize) {
                             *slot = 0;
                         }
                     }
