@@ -115,6 +115,84 @@ un-clamped, while `kVA=0` clamps to `1e-8`. Reproduced 1:1 (only `kVA` carries
 
 ---
 
+## ParseAsSymMatrix incomplete matrix — SETTLED (WP-U1.1 item 2, adopt EPRI reject)
+
+**Observable.** A symmetric-matrix property (`rmatrix`/`xmatrix`/`cmatrix` on
+Line/LineCode/Reactor, LineGeometry `Zmatrix`, …) whose value supplies **fewer
+rows than the element's order** (`NPhases`/`NConds`) — e.g. a 3-row `cmatrix` on
+an `nphases=4` linecode.
+
+**dss_capi 0.14.5 (default oracle) AND 0.15.x (capi015).** The FPC
+`TDSSParser.ParseAsSymMatrix` (`ParserDel.pas:736`) has **no `OrderFound`
+check**: it zero-fills the buffer, writes the rows that were supplied, and always
+returns `ExpectedOrder`. So a missing row silently stays **zero** and the element
+is built from that partly-zero matrix. (The FPC guard that *does* error is
+`subpos > maxpos` — too *many* elements on one row — code 65534.)
+
+**EPRI r4088 / r4133.** Delphi `TParser.ParseAsSymMatrix` (`ParserDel.pas:741`)
+increments `OrderFound` per row with `ElementsFound > 0` and, after the loop,
+`if OrderFound < ExpectedOrder then DSSMessageDlg('The matrix entered does not
+match with the expected order, review the entered parameters and try again.',
+TRUE); Result := 0`. `Result = 0` makes the caller **reject** the matrix — the
+property keeps its prior value — with a log-and-continue error (the object
+survives). The r4088→r4133 parser is byte-identical, so both behave the same.
+
+**Probe** (`probe_symmatrix.py`, 2026-07-12; `new linecode.lc nphases=3
+rmatrix=(1|2 3) xmatrix=(complete) cmatrix=(complete)`, then `? …rmatrix`):
+
+| engine | `rmatrix=(1)` (1 row) | `rmatrix=(1|2 3)` (2 rows) |
+|---|---|---|
+| capi 0.14.5 (default) | `[1 \|0 0 \|0 0 0]` (zero-fill) | `[1 \|2 3 \|0 0 0]` (zero-fill) |
+| capi015 (0.15.0b4) | `[1 \|0 0 \|0 0 0]` | `[1 \|2 3 \|0 0 0]` |
+| oddie r4088 (10.2.0.1) | rmatrix = **default** (rejected) | rmatrix = **default** (rejected) |
+| oddie r4133 (11.0.0.1) | rmatrix = **default** (rejected) | rmatrix = **default** (rejected) |
+
+So r4088/r4133 reject and revert; both capi lines zero-fill.
+
+**Decision — adopt the EPRI r4133 reject as the dss-rs default.**
+`Parser::parse_as_sym_matrix` now returns `OrderFound` (rows with ≥1 value); the
+caller `ClassProps::parse_into` (both `SymMatrix*` and `DoubleSymMatrix` arms)
+rejects when `OrderFound < order`: it pushes the r4133 message to `eng.errors`
+and skips the commit, leaving the property at its prior value — the exact
+DoSimpleMsg-and-continue semantics. The too-many-per-row `subpos>maxpos` path
+stays an `Err` (unchanged; both oracles also error on it). This diverges from
+capi015 (the Rung-1 primary oracle) — a deliberate ledger exception favoring the
+plan's r4133 end-target (§1.4 default "EPRI r4133 wins").
+
+**Gate consequence.**
+- **No mandatory-gate (solvable_now) deck moves.** A full corpus scan
+  (`scan_incomplete_matrix.py`) for a sym-matrix with fewer rows than its phase
+  count finds exactly one witness: `IEEETestCases/4wire-Delta/
+  Kersting4wireIndMotor.dss` (linecode `556MCM`, `nphases=4`, a **3-row
+  cmatrix**). All three `Kersting4wire*` decks are already in
+  `skipped_oracle_issue.json` (the oracle cannot load their `IndMach012a`
+  user-model, #570 — unrelated to matrices), so none is a live gate case. The
+  default-oracle gate stays green because no compared case supplies an
+  incomplete matrix.
+- **No live deck is possible for this behavior.** The adopted reject cannot be
+  gated live: **capi015 zero-fills** (comparing Rust-reject against it would be a
+  deliberate mismatch, forbidden by §1.2), and **oddie r4133 hangs** the moment
+  an incomplete rmatrix leaves a linecode's series Zmatrix inconsistent — probed
+  2026-07-12: `new linecode.lc nphases=3 rmatrix=(0.4|0.1 0.4)` (rmatrix-only,
+  no xmatrix/cmatrix) never returns under Oddie, and any deck that reaches
+  `solve` after such a reject times out. So r4133 can neither compile nor solve
+  the reject feature, and §1.7's "compiles/solves on target oracle" is
+  unattainable here. (The one corpus witness keeps a *complete* rmatrix+xmatrix,
+  so its series Z is fine, but it is oracle-skipped for the user-model reason
+  above.)
+- **Pinned by feature-sensitive Rust unit tests instead** — the honest gate for
+  a behavior neither oracle can drive: `dss-parser`
+  `sym_matrix_returns_order_found_for_incomplete_input` (OrderFound 2 for a
+  2-of-3-row matrix; 3 for a complete one) and `dss-core` line_code
+  `incomplete_sym_matrix_rejected_keeps_default` (asserts BOTH the r4133 reject
+  message is logged AND rmatrix reverts to the default symmetric-component matrix
+  — not the zero-filled `[1|2 3|0 0 0]`) + `complete_sym_matrix_still_accepted`
+  (guards against over-rejection). Each flips if the reject is removed — a
+  discrete structural change, far above any numeric floor.
+- `known_diffs.json`: no Rust↔EPRI entry existed for this (0.14.5 and the port
+  both zero-filled, matching each other at r3723); adopting the reject makes Rust
+  match r4133 — nothing to retire.
+
 ## L1, L3, L4 — pending later WPs
 
 - **L1** InvControl `InvControlDeltaV` buffer — WP-U1.3.

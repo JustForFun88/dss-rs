@@ -116,8 +116,16 @@ impl ClassProps {
                 eng.parser.set_auto_increment(false);
                 eng.parser.set_cmd_string(&format!("[{value}]"));
                 eng.parser.next_param(eng.vars);
-                eng.parser
+                let order_found = eng
+                    .parser
                     .parse_as_sym_matrix(eng.vars, &mut buf, order, 1, scale)?;
+                // EPRI r4133 (WP-U1.1 item 2): an incomplete matrix is rejected —
+                // the property keeps its prior value — with a DoSimpleMsg-and-
+                // continue error, unlike the FPC line which silently zero-fills.
+                if order_found < order {
+                    eng.errors.push(sym_matrix_order_error(&full, pd.name));
+                    return Ok(0);
+                }
                 obj.set_matrix_part(idx, &buf, order, pd.ptype == PropType::SymMatrixReal);
                 Ok(0)
             }
@@ -371,8 +379,13 @@ impl ClassProps {
                 eng.parser.set_auto_increment(false);
                 eng.parser.set_cmd_string(&format!("[{value}]"));
                 eng.parser.next_param(eng.vars);
-                eng.parser
+                let order_found = eng
+                    .parser
                     .parse_as_sym_matrix(eng.vars, &mut buf, order, 1, pd.scale)?;
+                if order_found < order {
+                    eng.errors.push(sym_matrix_order_error(&full, pd.name));
+                    return Ok(0);
+                }
                 obj.set_f64_array(idx, buf);
                 Ok(0)
             }
@@ -522,4 +535,15 @@ impl ClassProps {
             }
         }
     }
+}
+
+/// EPRI r4133 `ParseAsSymMatrix` incomplete-matrix message (`ParserDel.pas`:
+/// "The matrix entered does not match with the expected order…"). Prefixed with
+/// the element/property like the other `DoSimpleMsg`-and-continue diagnostics so
+/// a bad deck is greppable in the error log. WP-U1.1 item 2 / DIVERGENCES.md.
+fn sym_matrix_order_error(full: &str, name: &str) -> String {
+    format!(
+        "{full}.{name}: The matrix entered does not match with the expected order, \
+         review the entered parameters and try again."
+    )
 }
