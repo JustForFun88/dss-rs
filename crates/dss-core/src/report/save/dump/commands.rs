@@ -45,6 +45,7 @@ pub(crate) const PASCAL_CLASS_ORDER: &[&str] = &[
     "Fault",
     "DynamicExp",
     "Generator",
+    "WindGen",
     "GenDispatcher",
     "Storage",
     "StorageController",

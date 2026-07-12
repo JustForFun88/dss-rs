@@ -38,6 +38,9 @@ MULTITHREADING M0–M4. Part II A-Diakoptics (WP-AD.2–AD.6) is sequenced after
 MULTITHREADING M2.
 
 **In flight / next.**
+- **WP-U1.8 (WindGen + WTG3 dynamics) — LANDED** on branch `wp-u18` (new PC element +
+  the general dynamics-entry Y-rebuild fix + the `micro_wtg3_dynamics` floor tier).
+  See the UPGRADE record below.
 - **WP-U1.2 (numeric long tail)** — rows B2/D1, D7, D6, B1, D8 landed; **remaining:
   D3** (report-only spacing ratings — needs an overload-report deck) and **B3-r3723**
   (Load.GrowthFactor Year=0 — needs a growthshape + multi-hour year-0 run). See the
@@ -112,6 +115,27 @@ zero-`kW`/`kVA` clamp, `ParseAsSymMatrix` incomplete-matrix reject, `AllowNoneIt
 `PanelkW→FkVArating`), D6 (Transformer seasonal AmpRatings drop `1.1×`), B1
 (Capacitor Cmatrix YPrim diagonal `×1.000001`), D8 (settled, no code change — not a
 0.14.5→0.15.x delta). Full detail: **`docs/phase-records/upgrade-rung1.md`**.
+**WP-U1.8 (WindGen + WTG3 dynamics) — LANDED (branch `wp-u18`).** New PC element
+`elements/pc/windgen/` (Generator-shaped negative load): aerodynamic power-flow
+(`Pm=0.5·ρ·π·Rad²·v³·Cp`, the load shape supplies WIND SPEED not a pu multiplier;
+kWBase curtailment + cut-in/cut-out; 4 models 1/2/4/5) + the embedded GE WTG type-3
+dynamics (`wtg3.rs`, 1:1 of `WTG3_Model.pas`: PLL, seq-current PI regulators,
+LVPL/LVQL ride-through, Cp 5×5 aero, MPPT/torque/pitch/inertia, one-mass swing, the
+**odd-substep 50 µs trapezoidal sub-cycle**, all 22 state vars). Harmonics DISABLED
+upstream → reproduced as a loud abort. `windgen_model`/`windgen_qmode` enums,
+`ElemKind::WindGen`, PASCAL_CLASS_ORDER slot after Generator. 5 live `modes/windgen/`
+capi015 decks (snap wye/delta, daily single-step, dynamics, dynamics+fault) + 11
+unit tests. Two cross-cutting findings: (1) a **general dynamics-entry Y-rebuild
+fix** — `calc_initial_machine_states` now raises `system_y_changed` (Pascal
+`InitStateVars`→`SetYprimInvalid`→`SystemYChanged`, lost in the port), without which
+the WTG3 Norton injection ran the terminal voltage away; (2) the new
+`micro_wtg3_dynamics` tolerance tier (decomposition-proven: snapshot input matches
+1e-8, the PLL derivative `×60000` amplifies the near-cancellation `Vq` into a ~1e-5
+state / ~1e-6-rel terminal-V floor that DECAYS as the transient settles — a WPG.13
+amplification floor, NOT a bug). WindGen energy-meter registers not ported
+(`EnergyMeter.SampleAll` never samples WindGenClass — unreachable). Daily deck is
+single-step: dss_capi 0.15.x caches per-element `Losses` and WindGen doesn't
+invalidate it (bucket-F API quirk, out of scope).
 - **Resume note (WP-U1.2 remaining).** Rows **D3** (report-only spacing ratings —
   overload-report deck) and **B3-r3723** (Load.GrowthFactor Year=0) still to port;
   the golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the

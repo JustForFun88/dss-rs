@@ -19,6 +19,8 @@ pub(super) struct PcEnums {
     pub(super) ind_mach_slip_option: EnumId,
     pub(super) vsc_mode: EnumId,
     pub(super) upfc_mode: EnumId,
+    pub(super) windgen_model: EnumId,
+    pub(super) windgen_qmode: EnumId,
 }
 
 pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
@@ -199,6 +201,36 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
         &[0, 1, 2, 3, 4, 5],
     ));
 
+    // WindGen.pas TWindGen.Create: `WindGenModelEnum` (JSONUseNumbers; values
+    // 1,2,4,5 — no model 3/6/7). Constant PQ / Constant Z / Constant P,fixed Q /
+    // Constant P,fixed X.
+    let windgen_model = push(DssEnum::new(
+        "WindGen: Model",
+        true,
+        0,
+        0,
+        &[
+            "Constant PQ",
+            "Constant Z",
+            "Constant P, fixed Q",
+            "Constant P, fixed X",
+        ],
+        &[1, 2, 4, 5],
+    ));
+
+    // WindGen.pas TWindGen.Create: `WindGenQModeEnum` (JSONUseNumbers; DefaultValue
+    // 0 = Q). Q / PF / VoltVar.
+    let mut wgq = DssEnum::new(
+        "WindGen: Q Mode",
+        true,
+        0,
+        0,
+        &["Q", "PF", "VoltVar"],
+        &[0, 1, 2],
+    );
+    wgq.default_value = 0;
+    let windgen_qmode = push(wgq);
+
     PcEnums {
         connection,
         vsource_model,
@@ -214,5 +246,7 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PcEnums {
         ind_mach_slip_option,
         vsc_mode,
         upfc_mode,
+        windgen_model,
+        windgen_qmode,
     }
 }

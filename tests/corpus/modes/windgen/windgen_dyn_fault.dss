@@ -1,0 +1,16 @@
+! WP-U1.8 — WindGen WTG3 dynamics FAULT RIDE-THROUGH (LVPL/LVQL-sensitive). A
+! sustained 3-phase fault (Fault.f1, R=0.05) on the WindGen terminal depresses the
+! voltage to ~0.90 pu through the whole dynamics run, so the low-voltage
+! power-logic (LVPL curtailment) and low-voltage reactive-logic (LVQL Iq limit)
+! engage: Qgen swings positive (reactive support) vs ~0 in the healthy deck, and
+! dOmg goes negative. Probe-proven feature-sensitive (capi015: Vmag 0.898, Qgen
+! +0.071). oracle capi015; 30x1ms dynamics steps.
+Clear
+New Circuit.wtg_fault basekv=0.69 phases=3 bus1=srcbus
+New Line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.005 x1=0.02 length=1
+New WindGen.w1 bus1=wbus phases=3 kv=0.69 kW=1500 kva=1800 conn=wye model=1 vss=1 pss=1 qss=0 vwind=12
+New Fault.f1 bus1=wbus phases=3 r=0.05
+Set voltagebases=[0.69]
+Calcvoltagebases
+solve
+Set mode=dynamic stepsize=0.001 number=30

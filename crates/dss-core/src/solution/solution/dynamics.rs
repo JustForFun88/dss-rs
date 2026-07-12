@@ -31,6 +31,18 @@ pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv)
             elem.init_state_vars(&sys, &node_v);
         }
     }
+    // Pascal `TPCElement.InitStateVars` calls `SetYprimInvalid(TRUE)` on the
+    // machines that present a *dynamics* YPrim (the Norton `Yeq`/`Zthev`
+    // admittance a Generator/IndMach012/WindGen switches to, the Storage/PVSystem
+    // GFM short-circuit YPrim), and `SetYprimInvalid` raises `SystemYChanged`
+    // (`CktElement.pas:245`) — so the first dynamics solve rebuilds the system Y
+    // with those dynamics YPrims stamped in. The port sets each element's
+    // `yprim_invalid` inside `init_state_vars` but loses that `SystemYChanged`
+    // side effect (no solution channel there); raise it here so the next
+    // `solve_snap` rebuilds Y. Without it the machine's power-flow YPrim survives
+    // into dynamics and its (large) Norton injection current is left uncancelled
+    // (the WindGen runs the terminal voltage away — WP-U1.8).
+    ckt.solution.system_y_changed = true;
 }
 
 /// Pascal `TSolutionAlgs.IntegratePCStates` (`SolutionAlgs.pas` l.321):

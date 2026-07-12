@@ -19,6 +19,7 @@ pub mod upfc;
 pub mod vccs;
 pub mod vs_converter;
 pub mod vsource;
+pub mod windgen;
 
 pub use generator::Generator;
 pub use gic_line::GicLine;
@@ -33,3 +34,4 @@ pub use upfc::Upfc;
 pub use vccs::Vccs;
 pub use vs_converter::VsConverter;
 pub use vsource::VSource;
+pub use windgen::WindGen;
