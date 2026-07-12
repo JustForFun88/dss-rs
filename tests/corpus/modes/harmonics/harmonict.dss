@@ -8,8 +8,11 @@
 ! modulates the per-step harmonic injection.
 ! Boundary pinned: the HarmonicT dispatch (harmonics.rs solve_harmonic_t) + the
 ! per-step re-seed; compared via the per-step/per-harmonic monitor samples.
-! Feature-sensitive vs plain HARMONICMODE (identical spectra, single sweep): the
-! loadshape varies the injection across the 3 steps — proven on the oracle.
+! Feature-sensitive vs plain HARMONICMODE (identical spectra, single sweep) via
+! the harmonicT dispatch itself. NOTE: the daily shape does NOT change the
+! compared output on the oracle (flattened-shape fingerprint is bit-identical) —
+! the injection derives from the saved fundamental; shape-sensitivity is not
+! part of this deck's proof basis.
 Clear
 New Circuit.gaps_harmt basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
 New Loadshape.d3 npts=3 interval=1 mult=(0.70 1.00 0.85)
