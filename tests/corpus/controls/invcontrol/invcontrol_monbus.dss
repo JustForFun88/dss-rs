@@ -1,0 +1,33 @@
+// InvControl explicit monitored bus (GetMonVoltage FUsingMonBuses branch): the
+// VOLTVAR control samples a REMOTE bus (one line-section beyond the PV) with
+// monVoltageCalc=MAX (the max-phase reduction), not the inverter's own
+// terminal. The remote node runs at a different per-unit voltage, so the var
+// response is driven by the monitored-bus choice. Feature-sensitive: pointing
+// monBus at the PV's own bus changes the sampled voltage and the kvar
+// trajectory (probe-proven).
+// Compared per step: full model + PVSystem f64 state variables + probes + EL.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.icmon basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=4 units=km
+// A downstream section to a separately-loaded remote bus the control watches.
+New line.l2 bus1=b bus2=r phases=3 r1=0.8 x1=2.0 c1=0 length=3 units=km
+New load.lr bus1=r phases=3 conn=wye model=1 kv=12.47 kw=400 pf=0.95
+
+New loadshape.irrad npts=8 interval=1 mult=(.20 .40 .60 .78 .90 1.0 1.0 .95)
+
+New xycurve.vv npts=5 yarray=(1 1 0 -1 -1) xarray=(0.5 0.92 1.0 1.08 1.5)
+
+New pvsystem.pv bus1=b phases=3 kv=12.47 kva=700 pmpp=600 pf=1.0
+~ daily=irrad irradiance=1
+
+New invcontrol.ic mode=VOLTVAR vvc_curve1=vv voltage_curvex_ref=rated
+~ monBus=(r.1.2.3) monVoltageCalc=MAX MonBusesVbase=(7200)
+~ deltaq_factor=0.3 refreactivepower=VARMAX eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=2000
+Set mode=daily stepsize=1h number=1

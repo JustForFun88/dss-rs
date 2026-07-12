@@ -1,0 +1,27 @@
+// InvControl AVR mode with the DEFAULT (linear) ControlModel
+// (CalcQAVR_desiredpu, the 3-stage DQDV regulator toward Vsetpoint). Distinct
+// from invcontrol_expmodel, which forces ControlModel=Exponential; this pins
+// the linear-model AVR path. A weak feeder + irradiance ramp lift the PV bus
+// above Vsetpoint, so the inverter absorbs vars to pull it back. Feature-
+// sensitive: raising Vsetpoint (=1.06) removes the deviation and the var
+// response collapses (probe-proven).
+// Compared per step: full model + PVSystem f64 state variables + probes + EL.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.icavr basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=1.0 x1=4.0 c1=0 length=4 units=km
+
+New loadshape.irrad npts=8 interval=1 mult=(.20 .40 .60 .78 .90 1.0 1.0 .95)
+
+New pvsystem.pv bus1=b phases=3 kv=12.47 kva=700 pmpp=600 pf=1.0
+~ daily=irrad irradiance=1
+
+New invcontrol.ic mode=AVR Vsetpoint=1.0
+~ deltaq_factor=0.4 refreactivepower=VARMAX eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=2000
+Set mode=daily stepsize=1h number=1
