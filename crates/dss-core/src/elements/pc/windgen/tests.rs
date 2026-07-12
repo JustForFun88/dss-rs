@@ -240,6 +240,36 @@ fn dynamics_solve_no_nan() {
     assert!(ckt.solution.converged_flag, "dynamics steps must converge");
 }
 
+/// A 1-phase WindGen entering dynamics aborts cleanly (loud error, no panic).
+/// The embedded WTG3 model is 3-phase-only — `Instrumentation`/`CalcDynamic`
+/// read V[1..3]/i[1..3], so a 2-conductor terminal over-reads = heap UB
+/// upstream (WindGen.pas:1868/1905 accept 1-phase then call `WindModelDyn.Init`
+/// on a 2-element `Vterminal`). Per CLAUDE.md that UB is NOT reproduced: the
+/// port aborts at `InitStateVars` instead of panicking on the OOB index.
+#[test]
+fn single_phase_dynamics_aborts_cleanly() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.wtg basekv=0.69 phases=3 bus1=srcbus",
+        "new line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.005 x1=0.02 length=1",
+        "new windgen.w1 bus1=wbus.1 phases=1 kv=0.4 kW=200 kva=300 conn=wye model=1 \
+         vss=1 pss=1 qss=0 vwind=12",
+        "solve",
+        "set mode=dynamic stepsize=0.001 number=1",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("Dynamics mode requires a 3-phase WindGen")),
+        "expected the 3-phase-only dynamics abort, got {:?}",
+        dss.errors()
+    );
+}
+
 /// Harmonics mode is disabled upstream in 0.15.x: entering it with a WindGen
 /// raises the loud abort (`InitHarmonics` / `DoHarmonicMode`), reproduced 1:1.
 #[test]

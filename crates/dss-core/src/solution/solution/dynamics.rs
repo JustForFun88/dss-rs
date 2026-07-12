@@ -25,11 +25,27 @@ use super::{SolveEnv, SolveResult, sys_ctx};
 pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let node_v = ckt.solution.node_v.clone();
+    // Pascal `TWindGenObj.InitStateVars` (and the classic machines) can
+    // `DoSimpleMsg` + `SetSolutionAbort(TRUE)` from inside init (e.g. a
+    // non-3-phase WindGen — the WTG3 model is 3-phase-only). Drain each
+    // element's error/abort here and lift the abort onto the solution, so the
+    // subsequent `solve_dynamic` skips its steps instead of running the model
+    // on a malformed terminal (which would over-read the terminal array).
+    let mut aborted = false;
+    let mut errs: Vec<String> = Vec::new();
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
         if elem.cd().enabled {
             elem.init_state_vars(&sys, &node_v);
+            errs.extend(elem.cd_mut().obj.take_errors());
+            if elem.cd_mut().obj.take_abort() {
+                aborted = true;
+            }
         }
+    }
+    env.errors.extend(errs);
+    if aborted {
+        ckt.solution.solution_abort = true;
     }
     // Pascal `TPCElement.InitStateVars` calls `SetYprimInvalid(TRUE)` on the
     // machines that present a *dynamics* YPrim (the Norton `Yeq`/`Zthev`
