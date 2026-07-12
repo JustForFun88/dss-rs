@@ -52,6 +52,7 @@ pub enum ElemKind {
     Fault,
     Control,
     Generator,
+    WindGen,
     PVSystem,
     Storage,
     IndMach012,
@@ -500,6 +501,12 @@ impl Circuit {
                 self.pc_elements.push(r);
                 self.generators.push(r);
             }
+            // WindGen (Pascal `WINDGEN_ELEMENT`): a PC element in `pc_elements`
+            // only. No dedicated list — nothing iterates WindGens specifically
+            // (`TEnergyMeter.SampleAll` samples Generator/Storage/PVSystem, NOT
+            // WindGenClass — `EnergyMeter.pas:950-953` — so its energy registers
+            // never accumulate in a normal solve; not ported).
+            ElemKind::WindGen => self.pc_elements.push(r),
             ElemKind::PVSystem => {
                 self.pc_elements.push(r);
                 self.pv_systems.push(r);
