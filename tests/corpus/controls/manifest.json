@@ -2394,6 +2394,44 @@
    ],
    "compare_eventlog": true,
    "note": "ExpControl (IEEE-1547 adaptive volt-var, separate element): the adaptive Vreg tracks with VregTau and clamps to [VregMin,VregMax], DeltaQ_factor damping. A wide daily irradiance ramp moves Vreg and hits the clamps. Feature-sensitive: enabled=no holds fixed Q (probe-proven)."
+  },
+  {
+   "path": "upfc/upfc_pac.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "UPFC.test",
+     "props": [
+      "mode",
+      "pf",
+      "kvarlimit"
+     ]
+    }
+   ],
+   "note": "UPFC mode 2 (reactive/PF compensation) + UPFCControl wrapper: injects reactive current toward PF, clamped at kvarLimit (distinct from mode-1 voltage reg). Feature-sensitive: mode=0 removes the injection (two-process bit-identical; probe-proven)."
+  },
+  {
+   "path": "upfc/upfc_doubleref.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "UPFC.test",
+     "props": [
+      "mode",
+      "refkv",
+      "refkv2"
+     ]
+    }
+   ],
+   "note": "UPFC mode 4 (DoubleReference voltage) + UPFCControl wrapper: two-band reference [refkV2,refkV]; the loaded input sags below the band and the UPFC engages via sf2. Feature-sensitive: mode=0 OR widening the band (input stays inside -> disengaged) each differ (probe-proven)."
   }
  ]
 }

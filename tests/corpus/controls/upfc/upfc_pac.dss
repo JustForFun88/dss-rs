@@ -1,0 +1,39 @@
+// UPFC mode 2 (reactive compensation / phase-angle regulator) + the
+// UPFCControl wrapper (UPFC.pas ModeUPFC=2, l.577/773/925: injects reactive
+// current to drive the input power factor toward PF, clamped at kvarLimit -
+// a distinct injection branch from the mode-1 voltage regulator). Built on the
+// proven UPFC_test_3 interface-transformer topology. Feature-sensitive: mode=0
+// (off) removes the series injection, so the model differs (probe-proven).
+// Compared per step: full model (the series-injected V/I) + UPFC mode probe.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.upfcpac bus1=source_bus.1.0 phases=1 basekv=7.2 pu=1 angle=0
+~ mvasc3=2000000 mvasc1=20000000
+
+New xycurve.losses npts=3 xarray=[0.9 1 1.1] yarray=[1.0143 1.008 1.0143]
+
+New xfmrcode.1-ph50kva-2 phases=1 windings=2 ppm=0 xhl=2.04 %noloadloss=.02
+~ kvs=[7.2 0.24] kvas=[50 50] %rs=[0.9 0.9] conns=[wye wye]
+
+New xfmrcode.upfcinterface phases=1 windings=3 ppm=0 xhl=.0204 xht=.0204
+~ xlt=.0136 %noloadloss=.01 kvs=[0.24 0.12 0.12] kvas=[50 50 50]
+~ %rs=[0.006 .012 .012] conns=[wye wye wye]
+
+New transformer.service50kva xfmrcode=1-ph50kva-2 buses=[source_bus.1.0 upfc_input.1]
+
+New upfc.test phases=1 bus1=upfc_input.1 bus2=upfc_output.1 refkv=0.242 mode=2
+~ pf=0.97 kvarlimit=5 losscurve=losses tol1=0.001 xs=0.02
+
+New upfccontrol.myupfcctrl
+
+New transformer.tupfcout xfmrcode=upfcinterface
+~ buses=[upfc_output.1.0 load_bus.1.0 load_bus.0.2]
+
+New load.load120a phases=1 model=1 bus1=load_bus.1.0 kv=0.12 kw=14.98 kvar=10.08
+New load.load120b phases=1 model=1 bus1=load_bus.2.0 kv=0.12 kw=12.38 kvar=1.71
+
+Set voltagebases=[12.47 .415 0.208]
+calcv
+Set tolerance=1e-12
+Set maxiterations=100
