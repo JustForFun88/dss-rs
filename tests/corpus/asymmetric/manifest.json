@@ -133,6 +133,17 @@
    ]
   },
   {
+   "path": "generator/gen_currentlimited_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Generator.g7",
+    "Generator.g4",
+    "Generator.g3"
+   ],
+   "note": "Boundaries: Model 7 current-limited PQ (DoCurrentLimitedPQ clamp fires on the two phases sagged below Vminpu), Model 4 fixed-Q, Model 3 PV latched at a tight maxkvar. Oracle: converged 5 iters; bit-identical across 2 processes. Feature-sensitive: g7 model 7->1 changes the whole model (clamp active); g3 maxkvar 100->800 changes it (limit binding)."
+  },
+  {
    "path": "der/der_asym.dss",
    "kind": "micro",
    "n_steps": 1,
