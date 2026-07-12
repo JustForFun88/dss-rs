@@ -7,3 +7,4 @@ harvested by tools/opendss/gen_ad_reference.py
 zll.csv sha256[:16]=f01b525421c3b686
 zcc.csv sha256[:16]=ccfac7f7daa0dd36
 y4.csv sha256[:16]=4ca1d11d965b1de4
+voltages.csv nodes=41 sha256[:16]=8d4d0a9160bb4f29

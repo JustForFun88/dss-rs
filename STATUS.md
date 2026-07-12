@@ -95,7 +95,7 @@ not reproduced — the Rust port post-processes correctly).
 **WP-AD.3 — A-Diakoptics engine (in progress, staged; branch `wp-ad3`).**
 Stage list: (1) matrices ✅ · (2a) init machine + matrices-on-real-coordinator +
 options + get_Statistics ✅ · **(2b) the AD solve stitch ✅** · (3) exports 58–61 ✅
-· (4) D7 calibration ✅ + EPRI/r3723 refs (in progress).
+· **(4) D7 calibration + snapshot/time-series + EPRI/r3723 refs ✅** (settle round 2).
 
 **Stage 3 exports (gate-green):** `Export ZLL|ZCC|Contours|Y4` (keywords 58–61,
 `report/export/adiakoptics.rs`, official `ExportResults.pas:3541–3627`) —
@@ -191,18 +191,25 @@ freeze (no re-seed) passes midi (3.80e-5) but diverges macro to 3.46e-3 @ M180 (
 floor). Open item for auditors/WP-AD.4: root-cause the reference-free-zone faer↔KLU gap
 so the re-seed can be dropped.
 
-**Stage 4 official-reference gate (D9 b/c) — IEEE-13 ✅.** `tests/ad_reference.rs`
-replays the EPRI IEEE-13 AD example with the identical **manual** cut
-(`set LinkBranches=[Line.670671] UseMyLinkBranches=True`) and compares the built
-`ZLL`/`ZCC`/`Y4` against **fresh r3723 references** harvested by the new
-`tools/opendss/gen_ad_reference.py` (committed at `tests/data/adiakoptics/r3723_ref/
-ieee13/` with `PROVENANCE.txt`). Result: Rust **bit-matches live r3723** — ZLL
-3.8e-15 (f64 ulp), ZCC 6.2e-8, Y4 2.7e-8 (faer↔KLU last-ulp). Finding: the trunk's
-own `References/SolveDirect/ADiakoptics_matrixes/*.csv` are **STALE** (older deck
-revision, ~20% reactance drift; live r3723 on the current deck agrees with Rust
-bit-for-bit), so the gate pins fresh harvests, never the committed trunk CSVs.
-**D9(c) IEEE_123_Bus-G** (explicit-LinkBranches harvest via the same script) remains
-open — the harvester is parameterized for it; resume point.
+**Stage 4 official-reference gate (D9 b/c) — IEEE-13 + IEEE-123 ✅.**
+`tests/ad_reference.rs` replays TWO EPRI AD examples with the identical **manual**
+cut on both engines and compares the built matrices **and** the post-AD SOLVED node
+voltages against **fresh r3723 references** harvested by
+`tools/opendss/gen_ad_reference.py` (committed under `tests/data/adiakoptics/
+r3723_ref/{ieee13,ieee123}/` with `PROVENANCE.txt`):
+- **IEEE-13** (`Line.670671`, 2 zones): ZLL 3.8e-15, ZCC 6.2e-8, Y4 2.7e-8, **41
+  solved node voltages 1.2e-6** — all faer↔KLU last-ulp.
+- **IEEE-123** (r3723's own auto-tear links `[Line.l10, Line.l73]` → 3 zones, TWO
+  reference-free = the multi-link D9c case): ZLL 3.0e-15, ZCC 7.4e-10, Y4 4.9e-10,
+  **278 solved node voltages 4.85e-6**.
+
+The solved-voltage legs close audit finding #7 (the AD SOLVE output now has an
+external trusted-baseline gate, not just AD↔normal self-consistency) and #8 (the
+IEEE-123 multi-link D9c harvest+compare). `gen_ad_reference.py` grew a `--tree`
+(subdir-redirect decks) + comma-separated `--link` (multi-link) mode and now exports
+`voltages.csv` (post-AD actor-1 NodeV). Finding retained: the trunk's own
+`References/SolveDirect/ADiakoptics_matrixes/*.csv` are **STALE** (older deck
+revision, ~20% reactance drift), so the gate pins fresh harvests, never the trunk CSVs.
 
 **WP-AD.3 audit settle (opus-xhigh).** Findings settled empirically against official
 r3723:
@@ -229,13 +236,44 @@ r3723:
   added the non-circular D1(a) `ZCC = CᵀZCT + ZLL` re-derivation to BOTH the unit test
   and the real init. The `ad_children` field doc was corrected (it is rebuilt each init,
   not cleared by `=no`/`Clear`).
-- **Deferred (Stage 4, honestly open):** the EPRI first-party IEEE-13 CSVs
-  (`.../References/SolveDirect/ADiakoptics_matrixes/ieee13nodeckt_{ZCC,ZLL,Y4}.csv`, D9b)
-  and the r3723 `gen_ad_reference.py` IEEE_123 harvest (D9c) are vendored/planned but not
-  yet consumed — the AD matrices still have no *external* trusted-baseline value
-  comparison (only in-test re-derivation + inverter self-consistency). Tracked as the
-  remaining Stage-4 numeric gate, alongside the Stage-2b AD solve stitch and D7
-  calibration.
+- *Stage-4 external-baseline gate (was deferred): now CLOSED* — see the Stage 4
+  record above (IEEE-13 + IEEE-123 matrices + solved voltages vs fresh r3723).
+
+**WP-AD.3 audit settle ROUND 2 (opus-xhigh, 2026-07-12).** The Stage-2b/Stage-4
+audit's 8 findings settled empirically against official r3723 (Oddie):
+- *Newton+AD dispatch (Major, FIXED + finding refuted):* `ad_solve_snap` now honors
+  `Set algorithm=Newton` — official `DoPFLOWsolution` (Solution.pas:1125) dispatches
+  `CASE Algorithm`, and `DoNewtonSolution` has NO ADiakoptics branch (`SolveSystem(dV,1)`
+  = full `@V[1]`), so Newton solves the *closed interconnected coordinator* directly.
+  Ported via a faithful `ad_do_pflow_solution` (Newton → coordinator `do_newton_solution`;
+  default → the `Solve_Diakoptics` fixed point) and the false "matches upstream" comment
+  corrected. **Refutes the finding's premise** that Newton and fixed-point AD "differ by
+  the method floor": A-Diakoptics is EXACT, so both land on the same interconnected
+  fixpoint to f64 ulp (midi 7e-13, macro 1.3e-12; `{midi,macro}_newton_ad_matches_
+  fixedpoint_ad`).
+- *Re-seed conditioning "asserted not proven" (Major, PROVEN + doc corrected):* the
+  Newton path is an independent in-engine ground truth (full coordinator solve, no
+  children/re-seed) — the re-seeded fixed-point matches it to f64 ulp, *proving by
+  decomposition* the re-seed recovers the exact interconnected answer. This also
+  **corrected two false claims**: the AD floor is NOT a "first-order boundary
+  approximation / fixed distance" (the stitch is exact) — it is the interconnected-
+  coordinator-vs-original-deck difference, shared by all AD paths and oracle-matched;
+  and the frozen-divergence faer↔KLU attribution is downgraded from asserted fact to an
+  explicitly-labeled, not-yet-bit-proven hypothesis (open item retained). Docs at
+  `ad_solve_into_parent` + `solve.rs` + `TOLERANCE_NOTES §AD`.
+- *DoPFLOWsolution head drops (Minor, FIXED):* `ad_do_pflow_solution` now runs the
+  per-control-iteration `Inc(SolutionCount)` + `VoltageBaseChanged→InitializeNodeVbase`
+  guard (Solution.pas:1092-1094), previously omitted.
+- *AD solved voltages no oracle gate (Minor→closed by #7):* the AD SOLVE output is now
+  oracle-gated (see Stage 4 voltage legs), no longer self-consistency-only.
+- *IndexBuses past-end value (Minor, FIXED):* `past_end` corrected `src_bus.len()+1`
+  → `+2` to byte-match Pascal's `LocalBusIdx := j+1` after the completed search (SrcBus
+  carries a trailing empty slot; unreachable/bounds-checked, cosmetic fidelity).
+- *Time-series D7 gates absent (Major, FIXED):* added `midi_daily24_matches_normal` +
+  `macro_yearly168_matches_normal` — they drive `ad_solve_time_series` (previously ZERO
+  coverage), assert the clock advanced the full horizon, and pin the §AD floor.
+- *No post-AD oracle voltage compare (Major, FIXED) + IEEE-123 multi-link (Major, FIXED):*
+  see the Stage 4 record — findings #7 and #8 both closed.
 
 **WP-AD.1 — incidence matrix + Sparse_Math + exports 53–57 (2026-07-11), gate-green.**
 `support/sparse_math.rs` (SparseInt/SparseComplex 1:1 COO: insert
