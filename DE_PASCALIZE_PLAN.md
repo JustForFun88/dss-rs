@@ -2,10 +2,19 @@
 
 Typed arenas + `enum ElemId` (eliminate downcasting) · **index elimination** (flat-offset
 arithmetic, 1-based remnants, parallel arrays, sentinels) · integer-constant families →
-enums · bitfield → typed flags · borrow hygiene · error/case fidelity cleanups ·
-**Stage F: the `oracle-parity` feature split** (idiomatic default build; bit-compat
-verification build) · a (small) keep list of genuine product semantics · thread-readiness
-design constraints. Master ordering across all plan documents: `PLAN_SEQUENCE.md`.
+enums · bitfield → typed flags · borrow hygiene · miette diagnostics · case-fidelity
+cleanups · **Stage F: the `oracle-parity` feature split** (idiomatic default build;
+bit-compat verification build) **+ F-FMT native report rendering** · a (small) keep list
+of genuine product semantics · thread-readiness design constraints. Master ordering across
+all plan documents: `PLAN_SEQUENCE.md` (this is stage 5 — it runs after UPGRADE Rungs 1–2,
+so Stage F pins **r4133** parity, not r3723).
+
+> **Anchor freshness:** quantitative claims and `file:line` anchors marked
+> *(re-verified 2026-07-12)* are current as of that date; everything else is the
+> 2026-07-06 audit. The tree keeps moving (UPGRADE Rung 1 added ~16 classes, CIM
+> exporters, NCIM). Executors: re-locate by **identifier**, never by line number, and
+> re-run the counting greps at WP start — absolute counts only grow until the WP lands,
+> which is the point of fixing the architecture.
 
 Companion: `MULTITHREADING_PLAN.md` (Phase 9 parallelism). This plan's job is to make sure
 the de-Pascalized architecture is the one that plan builds on.
@@ -13,7 +22,10 @@ the de-Pascalized architecture is the one that plan builds on.
 ## Scheduling & golden policy (user decision, 2026-07-06 — supersedes the earlier
 "no goldens regenerated" scoping)
 
-All of this runs **after the 1:1 port reaches final acceptance** (`PORTING_PLAN §6`). At that
+All of this runs **after the 1:1 port reaches final acceptance** (`PORTING_PLAN §6` —
+**executed 2026-07-11, referee ACCEPT**; per `PLAN_SEQUENCE` this plan is stage 5, after
+UPGRADE Rungs 1–2 — Rung 1 in flight on the `update` integration branch as of
+2026-07-12). At that
 point the porting rules ("Pascal is the spec", "port loop-for-loop where numerics matter")
 **no longer bind** — this is refactoring of an accepted engine, and **byte-exact goldens may
 be deliberately regenerated**. Two contracts survive acceptance and still constrain every
@@ -21,6 +33,9 @@ stage:
 
 1. **The live oracle is not regenerable.** `corpus_live` compares the Rust engine against
    pinned dss-python *live*, under calibrated tolerance floors (`tests/TOLERANCE_NOTES.md`).
+   *(Since UPGRADE WP-U0 the oracle is per-case: the manifest `oracle` field selects the
+   pinned 0.14.5 backend, `capi015`, or an Oddie target-rev engine — by the time this plan
+   runs, post-Rung-2, the parity target is r4133 per `UPGRADE_PLAN §5`/`PLAN_SEQUENCE`.)*
    Any refactor that changes floating-point results must stay inside those floors — or come
    with the empirical decomposition proof the `CLAUDE.md` rules demand. No fudging: a
    tolerance is never loosened to admit a refactor. (The only exceptions are Stage F's
@@ -99,7 +114,8 @@ down and where mechanical execution is enough:
 
 | Stage | Exec tier | Audit tier | Executor notes |
 |---|---|---|---|
-| R0, R3, Part II (P1/P2/P5/P6/P7), P3 | opus-medium+ | opus-high+ | compiler-guided; each WP names its pattern and pinning tests — follow them literally |
+| R0, R3, Part II (P1/P2/P6/P7), P3 | opus-medium+ | opus-high+ | compiler-guided; each WP names its pattern and pinning tests — follow them literally |
+| P5 (miette diagnostics) | opus-medium+ (**P5b spans: opus-high+**) | opus-high+ | P5a is compiler-driven churn over the 163 push sites + one sanctioned text-golden re-baseline; P5b needs care only around token-span recording and the Redirect/Compile `origin` naming — follow the scope rule (one command line = one source) literally |
 | **R1** | **opus-xhigh** | **opus-xhigh** | follow the macro sketch below **literally**; land as two commits (arena types first, ownership flip second). If the macro fights: **hand-writing the 34 match arms behind the same API is the sanctioned fallback** — the macro is a convenience, not a requirement |
 | R2 | opus-high+ | opus-high+ | flip one class/cross-ref cluster at a time; the build must compile between clusters; `pair_mut`-style disjoint borrows, `mem::take` as escape hatch |
 | Part III P8/P9/P11/P12/P13/P14 | opus-medium+ | opus-high+ | bit-neutrality: after each rewritten file, run that WP's named pinning tests; a failing golden means *your* rewrite changed arithmetic |
@@ -110,7 +126,9 @@ down and where mechanical execution is enough:
 Tier vocabulary and the step-0 refuse protocol: `PLAN_SEQUENCE.md` §Model-tier protocol.
 
 **Forbidden moves (hard rules; violating any one = stop, revert the change, record in STATUS):**
-1. Never regenerate any golden in an [A] stage.
+1. Never regenerate any golden in an [A] stage. (Single sanctioned exception: P5's
+   error-**text** goldens/asserts — user decision 2026-07-12, text only, once; numeric
+   goldens still never.)
 2. Never loosen any tolerance, anywhere, for any reason.
 3. Never reorder floating-point accumulation "because it's cleaner" — order changes are
    Stage F's job, behind the feature.
@@ -134,7 +152,8 @@ macro_rules! with_all_classes { ($m:ident) => { $m! {
     (Line,        lines,         Line),
     (Load,        loads,         Load),
     (Transformer, transformers,  Transformer),
-    /* … one row per registered class — ALL 34, registration order … */
+    /* … one row per registered class — ALL of them (50 as of 2026-07-12; recount
+       against construct.rs at execution), registration order … */
 } } }
 // ONE consumer macro expands that list into: `enum ElemId`, `struct Elements`,
 // and every impl (ckt_elem/ckt_elem_mut/obj/obj_mut/kind/find/pair_mut) as match arms.
@@ -151,7 +170,9 @@ pub fn cdiv_std_impl(a: Complex64, b: Complex64) -> Complex64 { a / b }
 #[cfg(feature = "oracle-parity")]      pub use cdiv_fpc_impl as cdiv;
 #[cfg(not(feature = "oracle-parity"))] pub use cdiv_std_impl as cdiv;
 // Same alias pattern for: round_i32, PI, stddev_single_point, SymComp variant,
-// the two bug-fix branches, the solver Par/refinement knobs (dss-sparse).
+// the two bug-fix branches, the solver Par/refinement knobs (dss-sparse), and the
+// F-FMT rendering seam (compat::g / compat::g_w / … — parity = fmt_g family as-is,
+// default = plain format!; see Part IV.2 §F-FMT).
 // Unit tests call BOTH `_impl`s directly and assert the documented bound — in any build.
 ```
 
@@ -162,9 +183,11 @@ pub fn cdiv_std_impl(a: Complex64, b: Complex64) -> Complex64 { a / b }
 ## Context
 
 The port is idiomatic Rust almost everywhere; the one pervasive Pascal-ism is **dynamic
-downcasting** — verified at **306 `downcast_ref`/`downcast_mut`/`as_any` sites across 55
-production files** (the draft's "239/52" is a stale undercount). Root cause: every class
-stores its objects as a heterogeneous `Vec<Box<dyn DssObject>>` (`exec/registry.rs:16`), so
+downcasting** — **740 `downcast_ref`/`downcast_mut`/`as_any` sites across 105 production
+files** *(re-verified 2026-07-12; the 2026-07-06 audit's 306/55 predates the UPGRADE/CIM
+waves — the count grows with every ported class, which is exactly why the architecture,
+not the sites, is the fix)*. Root cause: every class stores its objects as a heterogeneous
+`Vec<Box<dyn DssObject>>` (`exec/registry.rs:16`), so
 any code needing a concrete `&Load`/`&mut Transformer` recovers it at runtime via
 `as_any().downcast_ref::<T>()`. This **diverges from `PORTING_PLAN.md §2.1`**, which specified
 typed `Vec<T>` arenas + `Idx<T>` newtype indices + an `enum ElemId` with match dispatch —
@@ -173,22 +196,26 @@ restores the specified design.
 
 ## What exploration confirmed (and corrected vs. the draft)
 
-- **`ElemRef { cls: usize, idx: usize }`** (`elements/traits.rs:15`) is already a tagged
+- **`ElemRef { cls: usize, idx: usize }`** (`elements/traits.rs:18`) is already a tagged
   index; every cross-ref is `Vec<ElemRef>`/`Option<ElemRef>`. The plumbing exists — R2 retypes
   the `cls` tag into an enum variant.
-- **Registry blast radius is small and contained:** only ~56 direct `.objects[` accesses,
-  almost entirely in `exec/` (`registry` 17, `view` 16, `command` 11, `helpers` 2). The solver
-  reaches elements through `ElemStore`/`ElemRef`, not direct indexing — so R2's flip is mostly
-  confined to the executive.
-- **34 classes are registered in `exec/construct.rs`, and registration order is semantically
-  significant** — bare-name `find_ckt_element` and `ForeignClasses` lookups iterate classes in
-  registration order and return the first match. **The `Elements` arena layout and any
-  iteration over it MUST preserve this order.** This is the single most important invariant the
-  macro must encode.
-- **`ElemId`/`Elements` must cover ALL 34 classes, not just circuit elements.** General data
-  classes (LoadShape, TCC_Curve, Spectrum, WireData/CnData/TsData, LineGeometry, …) also live
-  in `DssClass` arenas and are produced as `ElemRef` by object-ref resolution. The draft's
-  `ElemId` sketch (circuit classes only) is incomplete.
+- **Registry blast radius** *(re-verified 2026-07-12)*: **262 direct `.objects[` accesses**,
+  concentrated in the executive **and the CIM exporters** — `cim/export.rs` 48,
+  `exec/command.rs` 23, `exec/reduce.rs` 22, `exec/report.rs` 17, `cim/ieee1547.rs` 14,
+  `exec/registry.rs` 12, `cim/power_xfmr.rs` 12, `exec/view.rs` 11, `exec/save_circuit.rs`
+  10 (the 2026-07-06 "~56, almost entirely exec/" is stale — CIM landed since). The solver
+  still reaches elements through `ElemStore`/`ElemRef`, not direct indexing — R2's flip is
+  confined to the executive + report/CIM layer, never the solve loops.
+- **50 classes are registered in `exec/construct.rs`** (`:17-316`, *re-verified 2026-07-12*;
+  the 2026-07-06 "34" predates WindGen/AutoTrans/the upgrade waves — **recount at R1
+  execution**), **and registration order is semantically significant** — bare-name
+  `find_ckt_element` and `ForeignClasses` lookups iterate classes in registration order and
+  return the first match. **The `Elements` arena layout and any iteration over it MUST
+  preserve this order.** This is the single most important invariant the macro must encode.
+- **`ElemId`/`Elements` must cover ALL registered classes, not just circuit elements.**
+  General data classes (LoadShape, TCC_Curve, Spectrum, WireData/CnData/TsData,
+  LineGeometry, …) also live in `DssClass` arenas and are produced as `ElemRef` by
+  object-ref resolution. The draft's `ElemId` sketch (circuit classes only) is incomplete.
 - **The draft over-claims that R0 "deletes the 67-downcast block" in `dispatch.rs`.** A
   `ControlElem` trait removes the *identification* chain and the generic-controlled-element
   downcasts, but RegControl needs `&mut Transformer` and CapControl needs `&mut Capacitor` —
@@ -205,9 +232,15 @@ restores the specified design.
 | **D** | Shape/ref clone-on-resolve | ~10 | `set_object_ref` impls in `{load,line,vsource,generator}/accessors.rs` (LoadShape/GrowthShape/etc.) | Hardest. Carry a **typed handle in the resolved object-ref tuple** (`ElemId` instead of bare `&dyn DssObject`); each `set_object_ref` matches the variant it expects and the executive clones the concrete object from the typed arena. Preserve resolve-time snapshot timing (no behavior change) | R2 |
 | **E** | `make_like` + misc executive | ~20 | `exec/helpers.rs:280`, `command.rs` (TCC injection, GET) | `make_like` is always same-class → change signature to `make_like(&mut self, other: &Self)` called from a typed arena match (downcast vanishes entirely — better than the draft's `clone_state_from` which keeps an internal downcast and *fails the grep gate*). `command.rs`/`view.rs` GET paths → `ElemId` match arms over typed arenas | R2 |
 
-`clone_box` (`obj/base/mod.rs:508`) is **not** a downcast and need not be removed — but with
+`clone_box` (`obj/base/mod.rs:881`, *re-verified 2026-07-12*) is **not** a downcast and need not be removed — but with
 typed arenas the two callers (make_like in `helpers.rs`, self-monitoring `mon_clone` in
 `dispatch.rs`) become typed clones, so it can be dropped if convenient.
+
+*(Category-count note, 2026-07-12: the per-category site counts above are the 2026-07-06
+audit's relative shares. The absolute population has since grown to 740 — chiefly the CIM
+exporters (`cim/{export,ieee1547,power_xfmr}.rs`, WPG.18) and `exec/reduce.rs`, whose
+concrete reads are Category B/E patterns (typed reads / `ElemId` match over arenas). The
+category taxonomy and fixes are unchanged; only the blast radius is bigger.)*
 
 ## Target architecture (`PORTING_PLAN §2.1`)
 
@@ -215,7 +248,7 @@ typed arenas the two callers (make_like in `helpers.rs`, self-monitoring `mon_cl
 // crates/dss-core/src/obj/arena.rs  (new)
 pub struct Idx<T>(u32, PhantomData<T>);   // stable: OpenDSS never deletes individual
                                           // elements mid-script (Clear drops the whole ckt)
-pub enum ElemId {                         // ONE variant per registered class (all 34),
+pub enum ElemId {                         // ONE variant per registered class (all 50),
     Line(Idx<Line>), Load(Idx<Load>), Transformer(Idx<Transformer>), /* …ckt… */
     RegControl(Idx<RegControl>), CapControl(Idx<CapControl>), /* …controls… */
     LoadShape(Idx<LoadShapeObj>), TccCurve(Idx<TccCurveObj>), WireData(Idx<WireDataObj>),
@@ -264,8 +297,10 @@ still a strict improvement.
 **R0 — behavior traits on the current `Box<dyn>` storage (removes ~120 downcasts, no storage change).**
 - Add **`ControlElem`** (`elements/control/control_elem.rs`): `ccd()/ccd_mut()` (every control
   already embeds `ccd: ControlElemData`), `control_kind()`, `reset_control_side()`. Rewrite the
-  *identification* block in `dispatch.rs:92-161` to `obj.as_control()?.ccd()` + a `control_kind`
-  match, deleting the 8-arm `as_any().downcast_ref::<…>()` chain and shrinking the `ControlKind`
+  *identification* block in `dispatch.rs:134-204` *(re-verified 2026-07-12; now a 10-arm
+  chain — Reg/Cap/Swt/Fuse/Recloser/Relay/GenDispatcher/StorageController/Inv/ExpControl)*
+  to `obj.as_control()?.ccd()` + a `control_kind`
+  match, deleting the `as_any().downcast_ref::<…>()` chain and shrinking the `ControlKind`
   mirror. Generic-controlled controls (Swt/Fuse/Recloser/Relay act through `&mut dyn
   CktElement`) lose their `cobj.as_any_mut().downcast_mut::<Swt…>()` via a `&mut dyn ControlElem`
   acquired from the store. (Reg→Transformer / Cap→Capacitor concrete borrows stay until R2.)
@@ -283,7 +318,8 @@ still a strict improvement.
   zone-build line length at `build.rs:214`/load data at `:279`), returning `Option`.
 
 **R1 — introduce `Idx<T>`, `ElemId`, `Elements` behind the current API.**
-- New `obj/arena.rs`: `Idx<T>`, `ElemId` (all 34 classes), `Elements` (per-class `Vec<T>`).
+- New `obj/arena.rs`: `Idx<T>`, `ElemId` (every registered class — 50 as of 2026-07-12),
+  `Elements` (per-class `Vec<T>`).
   **Drive the arena fields + every match arm (`ckt_elem`/`obj`/`kind`/`pair_mut`/`triple_mut`/
   `find`) from one macro over the class list, emitted in registration order** so class index ==
   variant order, preserving lookup tie-breaking.
@@ -329,6 +365,8 @@ Run the full gate + live oracle + perf check.
 - `elements/general/conductor_data/mod.rs`, `line_geometry/{matrix,edit}.rs`, `pd/line/mod.rs` — `ConductorData` trait.
 - `meters/zones/build.rs`, `sampling/{take_sample,allocate}.rs`, `meter/**/accessors.rs`, `exec/view.rs` — guards → `kind`/trait.
 - `exec/{command,helpers}.rs` — TCC injection, GET, `make_like` → typed arena matches.
+- `cim/{export,ieee1547,power_xfmr}.rs`, `exec/{reduce,save_circuit}.rs` — concrete
+  reads → typed arena matches (post-2026-07-06 additions; largest new `.objects[` users).
 - every `elements/**/accessors.rs` `set_object_ref`/`make_like` — final downcast removals.
 
 ## Risks & fallback
@@ -347,6 +385,9 @@ Run the full gate + live oracle + perf check.
   `&dyn DssObject` to a typed `ElemId`/arena clone. Verify via the existing object-ref dump tests.
 - **`Idx<T>` invalidation.** Safe only because OpenDSS never deletes individual elements
   mid-script. Document the invariant on `Idx<T>`; `Clear` resets all arenas together.
+- **WASM_USERMODELS overlap.** `WASM_USERMODELS_PLAN` (PLAN_SEQUENCE stage 9, early-start
+  allowed) adds thin per-element hooks; if it lands before R2, the arena flip re-touches
+  those hooks — cheap and expected (PLAN_SEQUENCE early-start note), not a conflict.
 
 ---
 
@@ -358,7 +399,9 @@ and lands gate-green in one commit.
 
 ## P1 — Integer-constant families → enums
 
-**Finding.** Beyond the enums already done right (`SolveMode` in `solution/state.rs:19` with
+**Finding.** Beyond the enums already done right (`SolveMode` in
+`solution/solution/state.rs:19` (path *re-verified 2026-07-12* — the module was split;
+`state.rs` anchors below mean this file) with
 explicit discriminants + `ordinal()`/`from_ordinal`; `PropType`; `ElemKind`; `LoadModel`;
 `Connection`; …), ~20 mode/state families remain **raw `i32` fields + `pub const` chains**,
 compared inline and (for controls) dispatched through long if-else chains. The key boundary:
@@ -398,7 +441,7 @@ InvControl/CapControl/RegControl/StorageController): one shared
 `enum MonPhase { Avg, Max, Min, Phase(i32) }` with pinned `from_ordinal`/`ordinal` — kills
 four copies of the sentinel triple.
 
-**Also:** resolve the `SolveMode` name collision (`solution/state.rs:19` vs
+**Also:** resolve the `SolveMode` name collision (`solution/solution/state.rs:19` vs
 `support/dynamics/mod.rs:10`) — rename the dynamics one (`DynSolveMode`).
 
 **Out of scope (see keep list):** the ~1000 per-class property-index `usize` consts
@@ -410,7 +453,7 @@ churn with no readability gain — the value *is* the contract.
 
 The one genuine raw-int bitfield: `Monitor.mode: i32` with `MODEMASK=15`,
 `SEQUENCEMASK=16`, `MAGNITUDEMASK=32`, `POSSEQONLYMASK=64`
-(`elements/meter/monitor/mod.rs:37-40`), decoded ad-hoc with `&`/`+` in `sample.rs:60,158,209`
+(`elements/meter/monitor/mod.rs:39-42`, *re-verified 2026-07-12*), decoded ad-hoc with `&`/`+` in `sample.rs:60,158,209`
 and `header.rs:30,96,212-216` (including the magic `(mode & MODEMASK) == 1`).
 
 **Fix:** decode **once** at the top of `take_sample`/header generation into
@@ -449,22 +492,184 @@ Note: several of these clone sites vanish naturally in R2 (typed `pair_mut` repl
 release-reborrow dance); do P3 after R2 to avoid doing the work twice, except the `node_v`
 clones and monitor buffers, which are independent.
 
-## P5 — Error-handling: adopt-or-drop `thiserror`, unify the taxonomy
+## P5 — Diagnostics: one `miette`-based error infrastructure (CLI + future GUI)
 
-- `thiserror` is declared in `dss-core/Cargo.toml` and **used nowhere**. Either wire
-  `ParserError` (hand-rolled struct), `SparseError` (already a proper enum), and cmatrix's
-  `SingularMatrix` into one `#[derive(Error)]` taxonomy, or drop the dependency. Low priority,
-  zero golden impact (error *text* is what goldens pin, not Rust types).
-- **Keep** the executive's string-accumulation (`errors: Vec<String>`, `solution_abort` flag) —
-  it is a byte-faithful port of Pascal `DoSimpleMsg` and the error-log goldens check the text.
-  Pascal error numbers stay as the existing source comments.
-- The 445 `unreachable!` (generated-style property dispatch arms) and 259 invariant
-  `.expect(` are a robustness note, not a refactor item; R2/R3 delete the downcast-related
-  subset. No blanket "replace with Result" pass — the arms are structurally unreachable.
+**Decision (user, 2026-07-12 — supersedes the earlier "adopt-or-drop `thiserror`"
+scoping).** The hand-rolled error zoo — `ParserError` (a string wrapper,
+`dss-parser/src/parser/error.rs`), `SparseError` (`dss-sparse/src/lib.rs:32`),
+`SingularMatrix` (`support/cmatrix/mod.rs:43`), plus the `errors: Vec<String>`
+DoSimpleMsg log (`exec/mod.rs:108`) — is unified on **`miette`** as the single
+diagnostics infrastructure. Why miette and not ariadne: miette is a *protocol* — the
+`Diagnostic` trait exposes `code`/`severity`/`labels`+source spans/`help`/`related` as
+structured, queryable fields, with terminal rendering as one pluggable handler; ariadne
+is only a terminal pretty-printer with no structured surface. The planned **GUI**
+consumes the same `Diagnostic` objects and renders them its own way — one error
+infrastructure, two (or more) frontends. Reference implementation vendored in-tree:
+**`.inputs/nushell`** (miette 7.6; `ShellError`/`ParseError` derive `Diagnostic` and
+carry spans over the script source; the `fancy` handler lives only in the binary) —
+copy its *layering*, not its types.
+
+**Golden policy — message-text pinning is LIFTED (user decision, 2026-07-12).** The
+Pascal `DoSimpleMsg` wording was a *porting* contract, not a product contract; this
+runs post-acceptance, so error **text is free to change** — rewrite messages to be
+clear and helpful (miette `help`, labels, modern phrasing), don't preserve Pascal's.
+What survives is the *mechanics*, not the words: record-and-continue semantics, the
+`solution_abort` flow, drain order (`exec/command.rs:1732`), and **which** situations
+raise **which** error (the Pascal error *numbers* live on as `code(dss::eNNN)` — the
+stable identity of an error is its code, never its text). Consequences:
+- Error-log/`GlobalResult` **text** goldens and exact-message asserts (e.g.
+  `golden_reports.rs:3507`) are deliberately re-baselined/rewritten in the P5 commits —
+  re-target them to error **codes** + presence, not wording. This is a sanctioned,
+  text-only exception to forbidden move 1; numeric goldens stay byte-identical (the
+  arithmetic is untouched — the WP stays **[A]** for numerics).
+- The oracle lanes don't care: error text is never numerically compared against
+  dss-python, so Stage F needs **no** dual kernel for messages.
+
+**Dependency layering (nushell's — copy it):** `miette` (protocol only, **no** `fancy`
+feature) in `dss-parser` + `dss-core`; the `fancy-no-backtrace` render handler **only
+in `dss-cli`** — the binary owns presentation, the library carries structured data. The
+GUI links `dss-core` and reads `Diagnostic` fields directly (never re-parses rendered
+text). `dss-sparse` stays on plain `thiserror` (`SparseError` is already a proper
+enum); `dss-core` wraps it at the call boundary — keeps the solver crate light.
+`thiserror` (declared in `dss-core/Cargo.toml:13`, used nowhere today) finally earns
+its keep — it supplies `Error`/`Display`; miette supplies the diagnostic protocol on
+top.
+
+### Inventory — what exists today (verified against the tree, 2026-07-12)
+
+- **Central log:** `Dss.errors: Vec<String>` (`exec/mod.rs:109`), read via
+  `Dss::errors()` (`exec/mod.rs:183`). **163 `errors.push(...)` sites across 41
+  files** — the big ones: `exec/command.rs` 35, `exec/report.rs` 16,
+  `exec/set_cmd.rs` 14, `exec/helpers.rs` 11, `obj/props/setters.rs` 8,
+  `exec/solve.rs`/`reduce.rs` 6 each; long tail in `elements/`/`solution/`.
+- **Deferred channel** (property hooks can't reach `Dss`):
+  `DssObjectData::{push_error, push_error_abort, take_errors, take_abort}`
+  (`obj/base/mod.rs:128-152`); the executive drains it after each edit at
+  `exec/command.rs:1732` — `push_error_abort` = Pascal `DoErrorMsg` (also requests
+  `SolutionAbort`), plain `push_error` = `DoSimpleMsg`. **14 call sites.**
+- **Control-loop trait channels:** local `fn push_error(&mut self, msg: String)` on
+  ctx traits — `solution/controls/dispatch.rs:1561,1836`,
+  `inv_control/compute.rs:174`, `storage_controller/mod.rs:426`.
+- **Typed errors:** `ParserError` (string wrapper, `dss-parser/src/parser/error.rs` —
+  also reused by dss-core wherever Pascal raised a caught exception), `SparseError`
+  (`dss-sparse/src/lib.rs:32`), `SingularMatrix` (`support/cmatrix/mod.rs:43`).
+- **Consumers:** `Export ErrorLog` (`report/export/logs.rs` → the `EXP_ErrorLog.txt`
+  golden), `?`/`Get` → `last_result` (GlobalResult), exact-text test asserts
+  (`golden_reports.rs:3479-3507`; reliability/autoadd/allocation tests record Pascal
+  error *numbers* in doc fields already).
+- **Span raw material already exists:** the tokenizer maintains a byte cursor over
+  `cmd_string` — `Parser::{position, set_position, remainder}`
+  (`dss-parser/src/parser/mod.rs:160-169`). P5b only has to *remember* the cursor at
+  token start; no re-architecture.
+
+### The one diagnostic type (sketch — follow literally)
+
+Do **not** build a per-message enum (hundreds of numbered messages → churn with no
+payoff, and miette's derive can't express runtime `dss::eNNN` codes anyway). One
+struct, one hand-written `Diagnostic` impl (~25 lines, written once):
+
+```rust
+// crates/dss-core/src/diag.rs (new)
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("{message}")]
+pub struct DssDiagnostic {
+    pub message: String,          // free-form human text — NOT a contract (see policy)
+    pub code: Option<u32>,        // Pascal DoSimpleMsg/DoErrorMsg number; rendered as
+                                  // `dss::eNNN`. The STABLE identity of an error —
+                                  // tests and the GUI key on this, never on text.
+    pub abort: bool,              // true = DoErrorMsg semantics (SolutionAbort)
+    pub span: Option<miette::SourceSpan>,               // P5b; None until then
+    pub src: Option<miette::NamedSource<String>>,       // P5b; the command line/file
+    pub help: Option<String>,     // optional "valid range is …"-style hint
+}
+impl miette::Diagnostic for DssDiagnostic {
+    // code()     -> self.code.map(|n| format!("dss::e{n}"))
+    // severity() -> Error if self.abort else Warning
+    // labels()/source_code()/help() -> delegate to the fields
+}
+// Constructors used by the mechanical sweep:
+//   DssDiagnostic::msg(text, code)          — DoSimpleMsg
+//   DssDiagnostic::abort(text, code)        — DoErrorMsg
+//   .with_span(span, src) / .with_help(txt) — builder add-ons (P5b/P5c)
+```
+
+Unit tests in `diag.rs`: `Display` == `message` verbatim; `code()` renders
+`dss::e705`; severity flips on `abort`.
+
+### Staged execution (each stage gate-green, one commit)
+
+**P5a — the type + flip both channels (mechanical, compiler-driven, big diff).**
+1. Add `miette` (default features, no `fancy`) to the workspace + `dss-core`; land
+   `diag.rs` as sketched, with its unit tests.
+2. Flip the central log: `Dss.errors: Vec<DssDiagnostic>`; `Dss::errors() ->
+   &[DssDiagnostic]` plus a convenience `Dss::error_texts() -> Vec<String>` for
+   existing harness callers. Convert the 163 push sites:
+   `errors.push(format!(...))` → `errors.push(DssDiagnostic::msg(format!(...), Some(NNN)))`,
+   where `NNN` is the Pascal number the adjacent source comment already cites (the
+   `DoSimpleMsg(..., 705)`-style numbers); a site with no number in the Pascal gets
+   `None` — never invent one. Message text may be improved *opportunistically* while
+   touching a site, but text cleanup is not this stage's goal — codes are.
+3. Flip the deferred channel (`obj/base/mod.rs:128-152`) to `Vec<DssDiagnostic>`;
+   `push_error_abort` sets `abort: true` on the diagnostic itself **and** keeps the
+   separate `deferred_abort` bool so the drain sequence at `exec/command.rs:1732`
+   (take_errors → take_abort → lift into `Solution`) is byte-for-byte the same flow.
+4. The control-loop `push_error(&mut self, msg: String)` trait methods: either retype
+   to `DssDiagnostic` or keep `String` and wrap at the sink — executor's choice, but
+   record which in STATUS and be consistent across the four traits.
+5. Wrap the typed errors at their catch sites: `From<ParserError> for DssDiagnostic`
+   (catch sites keep their current message text), `SparseError`/`SingularMatrix`
+   wrapped where caught (the `"Error Encountered in Solve: {e}"` sites in
+   `exec/solve.rs`, `exec/auto_add.rs:328,419`, `exec/diakoptics/solve.rs:485-493`).
+   `ParserError` itself stays in `dss-parser` (it gains a span field in P5b).
+6. Re-baseline the text consumers **once**: `Export ErrorLog` now writes
+   `[dss::eNNN] message` (or similar — pick one format and freeze it); regenerate the
+   `EXP_ErrorLog.txt`-family goldens; rewrite exact-text asserts
+   (`golden_reports.rs:3507` etc.) to assert on `code` + a stable substring, so future
+   wording edits don't churn tests.
+
+   **DoD:** gate green; `rg "errors: Vec<String>" crates/dss-core/src` → zero;
+   `rg "push_error\(" ` sites all typed; spot-check 10 numbered sites against the
+   Pascal source numbers; numeric goldens byte-identical (this stage touches no
+   arithmetic — a numeric diff = you broke something).
+
+**P5b — spans (the "beautiful errors" payoff; the only subtle stage).**
+1. `dss-parser`: record the cursor at token start; new `Parser::token_span() ->
+   Range<usize>` next to `token()`. `ParserError` gains `span: Option<Range<usize>>`
+   (populated by the conversion/inline-math raisers, which know the offending token).
+2. Attach spans at the highest-value sites first — property edits
+   (`obj/props/setters.rs` numbered sites + `class_props/parse.rs`: span of the
+   offending *value* token) and command dispatch (`exec/command.rs` unknown
+   command/property: span of the *name* token). `src` = `NamedSource::new(origin,
+   Parser::cmd_string().to_string())`.
+3. **Scope rule for v1: one command line = one source.** The executive processes
+   scripts line-by-line; `origin` is `"<command>"` interactively or
+   `"<file>:<line-no>"` under `Redirect`/`Compile`. Do **not** build whole-file
+   offset maps in v1 — per-line spans already point at the exact token, and the
+   file:line origin gives the GUI its jump-to location.
+4. Long-tail sites (solve-time errors with no command context) simply stay span-less —
+   `span: None` renders as a plain diagnostic; that is fine and final for them.
+
+   **DoD:** a deliberately broken deck (`New Load.x phases=abc`) rendered via
+   `miette::Report` underlines `abc`; snapshot-test the fancy render (ANSI stripped)
+   for 3 representative errors (bad property value, unknown command, mid-script
+   Redirect error with file:line origin).
+
+**P5c — presentation (small).** `dss-cli` adds the `fancy-no-backtrace` feature and
+installs the miette hook (binary only); a CLI switch (e.g. `--diag=pretty|plain`,
+default `plain`) selects rendering of engine diagnostics; default/scripted output and
+`?`/GlobalResult stay plain text so drivers and goldens see no change unless asked.
+
+**Not changed:** record-and-continue semantics and the `solution_abort` flow (drain
+order `exec/command.rs:1732`); which situations error (behavior); the ~509
+`unreachable!` (generated-style property dispatch arms) and ~348 invariant `.expect(`
+in production code (*re-verified 2026-07-12*)
+remain a robustness note, not a refactor item — R2/R3 delete the downcast-related
+subset; no blanket "replace with Result" pass.
 
 ## P6 — Case-fidelity: Unicode `to_lowercase` → ASCII
 
-173 occurrences across 69 files use Unicode `to_lowercase()` where Pascal `AnsiLowerCase` is
+113 occurrences across 49 production files (*re-verified 2026-07-12*; was 173/69 —
+shrinking as code churns) use Unicode `to_lowercase()` where Pascal `AnsiLowerCase` is
 byte-based. Divergence is latent (all corpus identifiers are ASCII), but the lowercase-keyed
 `HashList`/`CommandList`/DssEnum registries could mis-key on non-ASCII names (`ß`, Turkish
 `I`). Mechanical fix: `to_ascii_lowercase()` / `eq_ignore_ascii_case` on all *identifier*
@@ -494,8 +699,9 @@ mostly vacuous but stay as documentation + regression guard.
 # Part III — Index elimination (WPs P8–P15)
 
 **Decision (user, 2026-07-06):** raw index access goes away **everywhere it can be expressed
-better** — the loop-for-loop porting rule is retired post-acceptance. The 2026-07-06 audit
-measured **74 flat-offset arithmetic sites across 32 files** (`(j-1)*nconds + k`-style),
+better** — the loop-for-loop porting rule is retired post-acceptance. Current measure
+(*re-verified 2026-07-12*): **64 flat-offset arithmetic sites across 32 files**
+(`(j-1)*nconds + k`-style),
 near-zero `chunks_exact`/slice-view usage in production, ~20 parallel arrays in
 `line_constants`, a 1-based `term_ref` with a dead slot 0, and dozens of C-style
 `for i in 0..n { v[i] }` loops.
@@ -557,8 +763,11 @@ proof).
 ## P10 — Transformer terminal core [A] — the densest single file
 
 `transformer/{yterminal,windings}.rs`: 1-based `term_ref` with an unused slot 0
-(`windings.rs:209`), `2*i-1`/`2*i` conductor-pair math (`yterminal.rs:205-219,248`),
-`(iwind-1)*nconds` offsets (`:342-347`), `for i in 1..=nw { …[i-1] }` loops throughout.
+(`set_term_ref` at `windings.rs:318`, offset math `:327-346`, *re-verified 2026-07-12*),
+`2*i-1`/`2*i` conductor-pair math (`yterminal.rs:212-213,255,346`),
+`for i in 1..=nw { …[i-1] }` loops throughout. **UPGRADE added a sibling
+`auto_trans/yterminal.rs` (AutoTrans, WP-U1.x) with the same idiom family — this WP
+covers both files with the same pattern and the same bit-exactness proof.**
 
 **Fix:**
 - `term_ref: Vec<usize>` (slot-0 dead) → **`TermRef(Vec<[usize; 2]>)`**, one 0-based
@@ -588,8 +797,8 @@ order. The `#[allow(clippy::needless_range_loop)]` escapes go away with the loop
 
 ## P12 — `line_constants` parallel arrays → `Vec<Conductor>` [A]
 
-`support/line_constants/mod.rs:125-147`: ~20 parallel `Vec<f64>`/`Vec<i32>` indexed by
-conductor (`fx, fy, frdc, frac, fgmr, fradius, fcapradius` + 11 cable-only arrays). Textbook
+`support/line_constants/mod.rs:128-147` (init `:193-198`, *re-verified 2026-07-12*): ~20
+parallel `Vec<f64>`/`Vec<i32>` indexed by conductor (`fx, fy, frdc, frac, fgmr, fradius, fcapradius` + 11 cable-only arrays). Textbook
 Vec-of-struct:
 
 ```rust
@@ -633,7 +842,11 @@ that boundary conversion is by design):
 
 The sparse *formats* (COO/CSC) stay index-based by nature, but the audited implementation
 (`crates/dss-sparse/src/lib.rs` + its dss-core call sites) re-allocates the world on every
-Y rebuild and every solve iteration. All fixes below are **bit-neutral** — same values,
+Y rebuild and every solve iteration. *(Post-audit note: dss-sparse has since grown a
+real-valued `RealSparseSet` (NCIM Jacobian path, UPGRADE WP-U1.7 Stage 1) — the items
+below target the complex `SparseSet`; apply the same reuse/dedup treatment to
+`RealSparseSet` where the pattern transfers, under NCIM's own gates. Line anchors below
+are 2026-07-06 — re-locate by identifier.)* All fixes below are **bit-neutral** — same values,
 same summation order — and are pinned by the strongest gate in the tree (the checkpoint
 goldens compare the assembled Y **bit-exactly** as full CSC on micro/feeders):
 
@@ -705,10 +918,19 @@ than faer's hashing dedup *and* parity-correct), so Stage F has **no** dedup dua
 - Property-index ordinals (~1000 consts — dump/Save order contract), `exec/tables.rs`
   command codes, DssEnum ordinals (user-visible numbers), `CommandList` abbreviation
   matching.
-- Output formats users consume: FPC-style `%g`/`Str` rendering (`fmt_g`,
-  `report/format.rs`), OpenDSS ad-hoc CSV (`comma_text`, hand-built exports — **no `csv`
-  crate**), monitor f64→f32 channel precision. dss-rs deliberately prints what OpenDSS
-  prints — this is ecosystem compatibility, kept in *both* build modes.
+- Output **structure** users consume: CSV/export **column sets, order, and row
+  semantics** (machine-parsed downstream), `Save` output **re-compilability** (round-trip
+  through our own parser), monitor f64→f32 channel precision (a numeric truncation, not
+  cosmetics). These stay in both build modes. **Text *rendering* is NOT on this list
+  anymore** (user decision, 2026-07-12): FPC-style `%g`/`Str` emulation (`fmt_g` at
+  `util.rs:282`, **89 call sites**; a local twin at `exec/reduce.rs:1255`), `comma_text`
+  (`util.rs:243`), and the hand-rolled width/pad helper family (`report/format.rs` —
+  `fixed_w_fpc`/`g_w`/`fpc_sci_w`/`pad`/`pad_dots`, …) are porting instruments, not
+  product behavior — upstream dss_capi itself does not
+  render like official OpenDSS and has no print-comparison gate of its own. Rendering
+  moves to the Stage F dual-kernel table (see **F-FMT** in IV.2); the "no `csv` crate"
+  rule keeps binding the parity writers only — the default lane may adopt rendering
+  crates where they win.
 - `dss-sparse` **row equilibration** (KLU `scale=2`) — a numerical-conditioning necessity
   (ill-scaled ideal-switch systems limit-cycle without it), kept in both modes.
 - Crate verdicts that stand (2026-07-06 audit): `hashlist` stays custom (IndexMap lacks
@@ -746,7 +968,7 @@ oracle* is neither deleted (that loses 1:1 verifiability forever) nor kept as th
 | Export SeqCurrents `Iresidual` | reproduced terminal-1 bug | fixed `(j-1)*Ncond` offset |
 | multi-meter `Bus_Int_Duration` | reproduced cross-zone overwrite | foreign section ids skipped |
 | solver execution | `Par::Seq`, no refinement (iterate paths pinned) | `Par::rayon` allowed (`MULTITHREADING_PLAN` M3c), WP-R1 iterative refinement on (`RESONANCE_PLAN`) |
-| `fmt_g` `exp < -5` threshold | *same in both* — FPC output format is product behavior (IV.1), not a kernel | — |
+| **report text rendering (F-FMT)** | `fmt_g` FPC `%g`/`Str` emulation + `comma_text` + the `report/format.rs` width/pad family, moved as-is | native `format!` precision via one `compat::fmt` seam; `Show` tables through a table crate (pick ONE at Stage F: `tabled` or `comfy-table`, plain no-color output); CSV keeps columns/order, native numbers |
 
 **Mechanism — no cfg spaghetti, and both kernels always compiled:**
 - One `compat` module per affected crate (`dss-core/src/compat.rs`, `dss-sparse/src/compat.rs`)
@@ -767,12 +989,58 @@ oracle* is neither deleted (that loses 1:1 verifiability forever) nor kept as th
 | Continuous results (voltages, currents, powers, losses, registers) | ulp-level kernel differences amplify to ~1e-12..1e-9 rel through the solve — **orders below** the calibrated 1e-6-class floors | **still oracle-compared, same floors, unchanged** |
 | **Iteration counts** | can genuinely shift (±1 near the convergence boundary; more under M3c parallel LU / WP-R1 refinement) | **unpinned vs oracle**; tracked vs the parity build with a small documented slack — growth beyond it is a regression signal |
 | Discrete states (taps, switch/control states, action counts, event log) | a ulp drift flips one **only** at an exact deadband knife-edge — rare, and `PORTING_PLAN §5` already classifies an unexplained flip as a bug signal | **still exact vs oracle.** A knife-edge flip on a corpus case is investigated per the `CLAUDE.md` prove-it rule and documented individually (`TOLERANCE_NOTES` style) — never blanket-relaxed |
-| Byte-exact text goldens (Dump/Save/Show) | format identical (IV.1 keeps `fmt_g`), last printed digit may move with the kernels | parity lane keeps the **byte** comparison; default lane runs the same goldens **parsed-numeric** under the floors (the `PORTING_PLAN §4` text-comparison rule) |
+| Text reports (Dump/Save/Show/Export) | rendering differs wholesale after F-FMT (native formatter; table-crate layout) | parity lane keeps the **byte** comparison vs the committed goldens; default lane compares **parsed-numeric** with the *already-existing* tokenizer (`tests/harness/mod.rs::compare_export` + `ExportPolicy`, PHASE8_PLAN §2.3: numeric fields under per-column floors, text fields case-insensitive, padding collapsed) against the same goldens while row/column structure is unchanged; re-layouted reports get default-lane self-goldens + the differential gate |
 | Deliberate divergences (Iresidual fix, `Bus_Int_Duration` fix, WP-R1 refinement) | intentionally different from the oracle | excluded from oracle comparison at those fields; pinned by their own **expected-value tests** |
 
-So the user-visible answer to "what moves?": in practice only iteration counts (and the
-handful of deliberate fixes) — everything else either stays inside existing floors or stays
+So the user-visible answer to "what moves?": iteration counts, the handful of deliberate
+fixes, and — after F-FMT — how report text *looks* (never which numbers it contains) —
+everything else either stays inside existing floors or stays
 exact, and the lane machinery *verifies* that claim instead of assuming it.
+
+### F-FMT — native report rendering + parsed-numeric goldens (user decision, 2026-07-12)
+
+**Rationale.** Byte-fidelity of printed reports was a porting *instrument* (the cheapest
+possible equivalence oracle), never a product contract: upstream dss_capi renders
+differently from official OpenDSS and carries no print-comparison gate of its own, so
+nothing in the ecosystem depends on the exact glyphs. What IS contractual is in IV.1:
+CSV/export column structure, `Save` round-trip re-compilability, monitor channel
+precision. Everything else about rendering is ours to modernize — and the same rendering
+seam is what the future **GUI** consumes (it reads structured values and diagnostics, not
+`Pad`-ded strings).
+
+**Execution (inside Stage F, same commit discipline):**
+1. **Seam first.** Route every number-to-text call through `compat::fmt` aliases
+   (`compat::g(x)`, `compat::g_w(x, w)`, …): parity kernel = today's `fmt_g`
+   (`util.rs:282`; fold the `exec/reduce.rs:1255` local twin into it) + `comma_text` +
+   the `report/format.rs` width family, moved as-is; default kernel = plain `format!`
+   with explicit precision. Same alias pattern as the numeric kernels — both compiled
+   always, cfg only selects.
+2. **Table layout.** `Show`-style reports assemble rows as data (`Vec<Row>`), rendered by
+   the lane: parity = the existing `pad`/`pad_dots` writer; default = ONE table crate
+   (`tabled` or `comfy-table` — evaluate at Stage F start, criteria: plain ASCII output,
+   no mandatory color, `forbid(unsafe_code)`-clean dependency tree). CSV/`Export` writers
+   keep column sets and order in **both** lanes (IV.1) — only number rendering differs.
+3. **Golden comparison flip (default lane).** The mechanism already exists and is proven:
+   `compare_export`/`ExportPolicy` (`tests/harness/mod.rs:1650`, PHASE8_PLAN §2.3)
+   tokenizes reports, compares numeric fields under per-column floors, text fields
+   case-insensitively, and already collapses `PadDots` padding. Default lane: the
+   byte-golden families (Dump/Save/Show/Export) run through this comparator against the
+   **same committed goldens** — valid as long as F-FMT v1 keeps row/column structure
+   (it does; only rendering changes). Parity lane keeps byte comparison untouched.
+4. **v2 (optional, GUI era, separate decision):** free re-layout of human-facing `Show`
+   reports (table crate styling, column reordering). At that point the oracle-derived
+   goldens can't align → those reports switch to default-lane self-goldens; numeric
+   content is still guarded by the parity lane + the parity↔default differential gate.
+
+**Sequencing guard (binding):** F-FMT lands **only inside Stage F** — Parts I–III depend
+on byte-stable goldens as their free [A] equivalence proof; touching rendering earlier is
+forbidden move 1/3 territory. `Save` output in the default lane must stay re-compilable
+by our own parser (add a round-trip test: Save → Compile → same checkpoint Y).
+
+**Payoff:** `fmt_g`/`comma_text`/pad emulation shrink to parity-lane-only code; the
+default lane and the GUI print through one native seam; report-writing code stops
+hand-measuring column widths (~16k lines in `report/` today, much of it layout
+arithmetic).
 
 **Two validation lanes (both in CI, permanently) + the differential gate:**
 - **Parity lane:** `cargo test --workspace --features oracle-parity` — the entire existing
@@ -832,13 +1100,15 @@ Phase-9 parallelism:
 
 ```
 1. Part I  R0 → R1(+P7) → R2(+riders) → R3          — arenas, downcast removal      [A]
-2. Part II P1 (enums) · P2 (monitor mode) · P6 (ascii) · P5 (errors)   — independent [A]
+2. Part II P1 (enums) · P2 (monitor mode) · P6 (ascii) · P5 (miette diagnostics)   — independent [A]
 3. Part III P8 → P10 → P11 → P12 → P13 → P14 · P9 · P15 · P3(after R2) — de-indexing +
    solver hot-path hygiene [A]  (M1 benches should exist before P15 — its wins are measured)
    ── all [A] stages BEFORE Stage F: the still-stable byte-exact goldens are the free
       equivalence proof for every [A] rewrite ──
 4. Stage F (Part IV.2) — the `oracle-parity` feature split; absorbs the TODO(compat)
-   sweep; ONE default-lane re-baseline; parity lane keeps every existing gate forever.
+   sweep (111 sites as of 2026-07-12); includes F-FMT (native rendering + parsed-numeric
+   default-lane goldens); ONE default-lane re-baseline; parity lane keeps every existing
+   gate forever.
 ```
 
 P1 before P10/P14 (the `Connection`/mode enums feed the rewritten match arms). Each WP = one
@@ -864,8 +1134,8 @@ lane) — see `PLAN_SEQUENCE.md` for the cross-plan order.
   - `rg "downcast_ref|downcast_mut|as_any" crates/dss-core/src` → **zero** (R3).
   - `rg "RefCell|Rc<|static mut|thread_local" crates/*/src` → **zero** (P7).
   - flat-offset arithmetic (`\* nconds`, `\* ncond\b`, `(… - 1) \*` index forms): from
-    **74 sites / 32 files** down to **accessor-internal only** (P8/P10/P11 — target ≤10,
-    each inside a named view type); `rg "term_ref\[" ` → zero outside `TermRef`.
+    **64 sites / 32 files** (2026-07-12) down to **accessor-internal only** (P8/P10/P11 —
+    target ≤10, each inside a named view type); `rg "term_ref\[" ` → zero outside `TermRef`.
   - `rg "for .* in 1\.\.=" crates/dss-core/src/elements` → boundary accessors only (P14).
   - after P1: `rg "pub const .*: i32 = " crates/dss-core/src/elements` shrinks to the
     keep-list families only (property indices are `usize` and exempt).
