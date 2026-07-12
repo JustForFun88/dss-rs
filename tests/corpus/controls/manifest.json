@@ -2,7 +2,7 @@
  "comment": "Controls live gate decks (CONTROL_COVERAGE_PLAN.md): control/protection/metering elements in symmetric, asymmetric, and combination scenarios, live-compared by controls_cases_match_oracle with the full-model mandate plus element-specific state channels (probes / compare_variables / compare_eventlog / compare_ctrlqueue / check_meters_monitors). Cases with pending=true cover features the port does not implement yet (absorbed from the former gaps/ staging family, GAPS_PLAN.md section 3.1): the gate asserts the Rust engine errors loudly on them; the WP in each wp field flips pending=false when it ports the feature.",
  "cases": [
   {
-   "path": "regcontrol_sym.dss",
+   "path": "regcontrol/regcontrol_sym.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -32,7 +32,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "regcontrol_asym.dss",
+   "path": "regcontrol/regcontrol_asym.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -64,7 +64,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "capcontrol_sym.dss",
+   "path": "capcontrol/capcontrol_sym.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -91,7 +91,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "capcontrol_asym.dss",
+   "path": "capcontrol/capcontrol_asym.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -133,7 +133,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "invcontrol_vv_sym.dss",
+   "path": "invcontrol/invcontrol_vv_sym.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -154,7 +154,7 @@
    ]
   },
   {
-   "path": "invcontrol_vvvw_asym.dss",
+   "path": "invcontrol/invcontrol_vvvw_asym.dss",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -178,7 +178,7 @@
    ]
   },
   {
-   "path": "storagectrl_peakshave.dss",
+   "path": "storagecontroller/storagectrl_peakshave.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -219,7 +219,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "storagectrl_time.dss",
+   "path": "storagecontroller/storagectrl_time.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -251,7 +251,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "midi_controls.dss",
+   "path": "combo/midi_controls.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -339,7 +339,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_protection.dss",
+   "path": "combo/midi_protection.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -377,7 +377,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "combo_protection.dss",
+   "path": "combo/combo_protection.dss",
    "kind": "micro",
    "n_steps": 20,
    "selected_elements": [
@@ -411,7 +411,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "combo_voltvar_asym.dss",
+   "path": "combo/combo_voltvar_asym.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -446,7 +446,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "combo_metering.dss",
+   "path": "combo/combo_metering.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -474,7 +474,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "energymeter_sym.dss",
+   "path": "energymeter/energymeter_sym.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -492,7 +492,7 @@
    ]
   },
   {
-   "path": "energymeter_asym.dss",
+   "path": "energymeter/energymeter_asym.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -510,7 +510,7 @@
    ]
   },
   {
-   "path": "monitor_modes.dss",
+   "path": "monitor/monitor_modes.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -549,7 +549,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "sensor_map.dss",
+   "path": "sensor/sensor_map.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -593,7 +593,7 @@
    ]
   },
   {
-   "path": "recloser_temp.dss",
+   "path": "recloser/recloser_temp.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -616,7 +616,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "recloser_perm.dss",
+   "path": "recloser/recloser_perm.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -639,7 +639,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "relay_oc_sym.dss",
+   "path": "relay/relay_oc_sym.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -663,7 +663,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "relay_4647_asym.dss",
+   "path": "relay/relay_4647_asym.dss",
    "kind": "micro",
    "n_steps": 10,
    "selected_elements": [
@@ -694,7 +694,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "fuse_blow_asym.dss",
+   "path": "fuse/fuse_blow_asym.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -715,7 +715,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "swtcontrol_time.dss",
+   "path": "swtcontrol/swtcontrol_time.dss",
    "kind": "micro",
    "n_steps": 12,
    "post": [
@@ -739,7 +739,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "gendispatcher.dss",
+   "path": "gendispatcher/gendispatcher.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -773,7 +773,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "midi_regcontrol.dss",
+   "path": "regcontrol/midi_regcontrol.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -809,7 +809,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_capcontrol.dss",
+   "path": "capcontrol/midi_capcontrol.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -849,7 +849,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_invcontrol.dss",
+   "path": "invcontrol/midi_invcontrol.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -871,7 +871,7 @@
    ]
   },
   {
-   "path": "midi_storagectrl.dss",
+   "path": "storagecontroller/midi_storagectrl.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -902,7 +902,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "midi_gendispatcher.dss",
+   "path": "gendispatcher/midi_gendispatcher.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -935,7 +935,7 @@
    "compare_eventlog": true
   },
   {
-   "path": "midi_recloser_temp.dss",
+   "path": "recloser/midi_recloser_temp.dss",
    "kind": "micro",
    "n_steps": 16,
    "selected_elements": [
@@ -956,7 +956,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_recloser_perm.dss",
+   "path": "recloser/midi_recloser_perm.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -977,7 +977,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_relay_4647.dss",
+   "path": "relay/midi_relay_4647.dss",
    "kind": "micro",
    "n_steps": 10,
    "selected_elements": [
@@ -1005,7 +1005,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_fuse.dss",
+   "path": "fuse/midi_fuse.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1025,7 +1025,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_swtcontrol.dss",
+   "path": "swtcontrol/midi_swtcontrol.dss",
    "kind": "micro",
    "n_steps": 12,
    "post": [
@@ -1048,7 +1048,7 @@
    "compare_ctrlqueue": true
   },
   {
-   "path": "midi_energymeter.dss",
+   "path": "energymeter/midi_energymeter.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1073,7 +1073,7 @@
    ]
   },
   {
-   "path": "midi_monitor.dss",
+   "path": "monitor/midi_monitor.dss",
    "kind": "micro",
    "n_steps": 12,
    "selected_elements": [
@@ -1103,7 +1103,7 @@
    ]
   },
   {
-   "path": "midi_sensor.dss",
+   "path": "sensor/midi_sensor.dss",
    "kind": "micro",
    "n_steps": 2,
    "selected_elements": [
@@ -1147,7 +1147,7 @@
    ]
   },
   {
-   "path": "capcontrol_follow.dss",
+   "path": "capcontrol/capcontrol_follow.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1167,7 +1167,7 @@
    "wp": "WPG.7"
   },
   {
-   "path": "capcontrol_follow_noshape.dss",
+   "path": "capcontrol/capcontrol_follow_noshape.dss",
    "kind": "micro",
    "pending": false,
    "expect_solve_abort": "Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
@@ -1175,7 +1175,7 @@
    "note": "Malformed input: type=Follow CapControl with no ControlSignal. Pascal CapControl.pas Sample (l.1153-1158) sets DSS.SolutionAbort:=True; the pinned oracle raises #10362 at solve. Both engines abort; the Rust port sets solution_abort + surfaces the same message (WPG.7 audit follow-up)."
   },
   {
-   "path": "invcontrol_expmodel.dss",
+   "path": "invcontrol/invcontrol_expmodel.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1195,7 +1195,7 @@
    "note": "ControlModel accepts only the ordinal (ControlModel=1); the enum name is rejected by the upstream text parser (probe-proven). WPG.9 ports the TPICtrl PI controller (Exponential ControlModel) in the VV/AVR/DRC/VV_DRC var-calc paths; live-compared here (kvar probe = the controller-driven var output + event log; the full-model compare covers the PV's P/Q each step). PVSystem exposes no `kW` property (probe-proven: `? PVSystem.pv.kW` = 'Property Unknown' on both engines), so the var trajectory is observed via `kvar`."
   },
   {
-   "path": "invcontrol_storage_vw.dss",
+   "path": "invcontrol/invcontrol_storage_vw.dss",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -1217,7 +1217,7 @@
    "wp": "WPG.10"
   },
   {
-   "path": "invcontrol_storage_vv_vw.dss",
+   "path": "invcontrol/invcontrol_storage_vv_vw.dss",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -1240,7 +1240,7 @@
    "wp": "WPG.10"
   },
   {
-   "path": "gfm_micro.dss",
+   "path": "gfm/gfm_micro.dss",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -1263,7 +1263,7 @@
    "note": "Storage grid-forming (ControlMode=GFM) forming an islanded section (sw1 opened) in daily mode. Feature-sensitive: WITHOUT ControlMode=GFM the islanded storage cannot form voltage and islbus is dead (0 pu, 0 kW) vs the GFM island at ~0.998 pu / ~400 kW. Two-process oracle capture bit-identical (determinism proven)."
   },
   {
-   "path": "gfm_invcontrol.dss",
+   "path": "gfm/gfm_invcontrol.dss",
    "kind": "micro",
    "n_steps": 6,
    "selected_elements": [
@@ -1285,7 +1285,7 @@
    "note": "InvControl mode=GFM amps limiter over a grid-forming Storage (islanded like gfm_micro). AmpLimit=400 makes CheckAmpsLimit bite (dynVars.IComp>0 -> DoGFM_Mode shrinks BaseV): Storage throttled to ~-158 kW vs ~-400 kW without the limit (feature-sensitive, ~2.5x per step). Two-process oracle capture bit-identical (determinism proven)."
   },
   {
-   "path": "gfm_dynamics.dss",
+   "path": "gfm/gfm_dynamics.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -1308,7 +1308,7 @@
    "note": "Storage grid-forming (ControlMode=GFM) BLACK-STARTING an islanded section (sw1 opened) in DYNAMICS mode (one solve = 60x 1ms steps; mode-0 + mode-3 monitors). Exercises the ported dynamics-mode GFM: IntegrateStates VDelta droop -> ISPDelta ramp + FixPhaseAngle, DoDynamicMode BaseV=BasekV*1000*(it[0]/iMaxPPhase) internal-source injection, CheckIfDelivering. Re-probed pinned oracle dss-python 0.15.7 (WPG.17): (1) compiles+solves+converges; (2) two-process ByteStream bit-identical (mvi sha 1edc4824..., msv sha d049f4a6...); (3) feature-sensitive -- WITH ControlMode=GFM+SafeVoltage=0 the island energises to islbus ~0.977 pu with the Storage delivering ~-400.7 kW / ~-80.9 kvar (State=DISCHARGING, %stored ~99.9999), vs WITHOUT ControlMode=GFM the islanded inverter is NON-CONVERGENT (NaN node voltages, 0 kW). SafeVoltage=0 is mandatory (default 100 MinVS blocks the black start from 0 V)."
   },
   {
-   "path": "pv_gfm_dynamics.dss",
+   "path": "gfm/pv_gfm_dynamics.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -1330,7 +1330,7 @@
    "note": "PVSystem twin of gfm_dynamics.dss (GFM audit settlement: the PV GFM dynamics path previously had only a last-sample unit pin). Islanded PV in ControlMode=GFM black-starts the section in dynamics mode (60x 1ms; mode-0 + mode-3 monitors); exercises PVsystem.pas InitStateVars GFM it:=0 seed, IntegrateStates GFM droop with the OVERWRITTEN iMaxPPhase (unlike Storage's local IMaxPhase), DoDynamicMode GFM injection. Validated pinned oracle dss-python 0.15.7 (2026-07-09): (1) compiles+solves+converges; (2) two-process fingerprint (AllBusVmag + both monitor ByteStreams) bit-identical 9981f5f49a610a61; (3) feature-sensitive -- WITHOUT ControlMode=GFM the islanded dynamics solve is NON-CONVERGENT. SafeVoltage=0 mandatory."
   },
   {
-   "path": "storagecontroller_seasonal.dss",
+   "path": "storagecontroller/storagecontroller_seasonal.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1352,7 +1352,7 @@
    "note": "Feature-sensitive probe-proven: with Set SeasonRating=no the event log diverges from hour 12 (the 500 kW season target never engages). Option spelling is 'Set SeasonRating', not 'SeasonalRating'."
   },
   {
-   "path": "isource_daily.dss",
+   "path": "isource/isource_daily.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1363,7 +1363,7 @@
    "wp": "WPG.14"
   },
   {
-   "path": "autotrans_reg.dss",
+   "path": "autotrans/autotrans_reg.dss",
    "kind": "micro",
    "n_steps": 8,
    "selected_elements": [
@@ -1392,7 +1392,7 @@
    "note": "RegControl drives the AutoTrans COMMON (wye) winding via the Pascal Transf_Or_AutoTrans proxy. Oracle 2026-07-05: 10 tap-change events over the 8 hours, final tapnum=5."
   },
   {
-   "path": "isource_both.dss",
+   "path": "isource/isource_both.dss",
    "kind": "micro",
    "n_steps": 9,
    "selected_elements": [
@@ -1404,7 +1404,7 @@
    "note": "Snapshot Solve then the daily run in one session - cross-mode state-leak coverage."
   },
   {
-   "path": "midi_isource.dss",
+   "path": "isource/midi_isource.dss",
    "kind": "midi",
    "n_steps": 8,
    "selected_elements": [
@@ -1415,7 +1415,7 @@
    "wp": "WPG.14"
   },
   {
-   "path": "midi_isource_both.dss",
+   "path": "isource/midi_isource_both.dss",
    "kind": "midi",
    "n_steps": 9,
    "selected_elements": [
@@ -1426,7 +1426,7 @@
    "wp": "WPG.14"
   },
   {
-   "path": "autotrans_both.dss",
+   "path": "autotrans/autotrans_both.dss",
    "kind": "micro",
    "n_steps": 9,
    "selected_elements": [
@@ -1455,7 +1455,7 @@
    "note": "Snapshot Solve then the RegControl daily run in one session (12 tap events, final tapnum=5 on the oracle) - cross-mode state-leak coverage."
   },
   {
-   "path": "midi_autotrans.dss",
+   "path": "autotrans/midi_autotrans.dss",
    "kind": "midi",
    "n_steps": 8,
    "selected_elements": [
@@ -1484,7 +1484,7 @@
    "note": "Control-active at midi scale on the oracle: 10 tap events, final tapnum=11."
   },
   {
-   "path": "midi_autotrans_both.dss",
+   "path": "autotrans/midi_autotrans_both.dss",
    "kind": "midi",
    "n_steps": 9,
    "selected_elements": [
@@ -1505,7 +1505,7 @@
    "wp": "WPG.15"
   },
   {
-   "path": "monitor_pst.dss",
+   "path": "monitor/monitor_pst.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
@@ -1514,7 +1514,7 @@
    "check_meters_monitors": true
   },
   {
-   "path": "midi_monitor_pst.dss",
+   "path": "monitor/midi_monitor_pst.dss",
    "kind": "micro",
    "n_steps": 24,
    "selected_elements": [
