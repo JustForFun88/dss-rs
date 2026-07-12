@@ -54,3 +54,9 @@ pub(crate) use power_flow::solve_circuit;
 // The `_InitSnap`/`_SolveNoControl`/`_SolveDirect`/`_SolvePFlow` step-solution
 // executive commands (`ExecCommands.pas:578-601`) drive these directly.
 pub(crate) use power_flow::{do_pflow_solution, set_generator_disp_ref, solve_direct};
+// The A-Diakoptics child-side solve stage + the coordinator generator-dQ/dV seed,
+// driven by the executive coordinator loop (`exec/diakoptics/solve.rs`, WP-AD.3).
+pub(crate) use power_flow::{set_generator_dqdv, solve_ad};
+// The per-step sampling/cleanup tail shared by the time-series modes, reused by
+// the A-Diakoptics time-series coordinator loop.
+pub(crate) use time_series::{end_of_time_step_cleanup, sample_all_monitors_and_meters};

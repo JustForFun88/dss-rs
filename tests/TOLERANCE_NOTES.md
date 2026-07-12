@@ -532,6 +532,44 @@ the controlled transformer's **live** `PresentTap[TapWinding]`; the `&self` gett
 now resyncs the snapshot from the live transformer at the read choke point
 (`Dss::refresh_vterminal_if_marked`).
 
+## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
+
+The A-Diakoptics solve and the normal solve are two iterations to *almost* the
+same fixpoint: the `Y4`/`Ic` boundary model is a **first-order** approximation of
+the inter-zone coupling, so the AD fixpoint sits a **fixed** distance from the
+interconnected fixpoint — a genuine method floor, not a bug. Per plan D7 the tier
+is calibrated once, here, and never loosened.
+
+Calibration (r3723 Oddie probe by the WP-AD.3 resume executor, 2026-07-12;
+`solve mode=snap`, `controlmode=off`, `Num_SubCircuits=2`, worst node by max rel
+`|V_ad − V_normal|`):
+
+| fixture | oracle floor (r3723) | Rust floor | D7 tier (×4) |
+|---|---|---|---|
+| midi (2 zones) | 3.25e-5 | 3.21e-5 | 1.3e-4 |
+| midi (3 zones) | — | 3.21e-5 | 1.3e-4 |
+| macro (2 zones) | 1.318e-4 | 1.319e-4 | 5.3e-4 |
+
+**Tolerance stability (the permanent tighten-proof).** On the oracle the floor is
+bit-stable as `ConvergenceTolerance` tightens 1e-4 → 1e-10 (midi 3.265e-5 →
+3.254e-5; macro 1.318e-4 flat at every tol; iteration counts `itN == itA`), i.e.
+it does **not** collapse — proof the two engines share the fixpoint and the gap is
+the boundary-model floor. `midi_d7_gap_stable_under_tighten` /
+`macro_d7_gap_stable_under_tighten` (`tests/adiakoptics.rs`) assert the Rust
+loose/tight ratio stays in `[0.5, 2.0]`; a gap that *collapses* would flag a
+cross-step state leak, a gap that *balloons* a port bug. Both stay flat.
+
+**Documented deviation folded into this floor** (`ad_solve_into_parent`): official
+freezes each child's own `NodeV` at its state-2 standalone solve (probe: actor-3
+`NodeV` moves `0.0` across the AD solve; that state-2 solve is already 7.9e-5 from
+interconnected via `PConn_Voltages`). A byte-faithful freeze diverges in this port
+to 3.46e-3 at the deep node of the **reference-free** zone (its `Start_Diakoptics`
+disables all sources → `hY` anchored only by load `Yeq` shunts, near singular →
+faer↔KLU factor gap amplified down the long radial). Re-seeding the child `NodeV`
+with the solved column each iteration recovers the floors above — an explicit,
+documented compensation (never a silent Y regularization, §5). Open item: make the
+reference-free zone solve match KLU so the re-seed can be dropped.
+
 ## `TODO(compat)`
 
 Tolerances absorb f64/ULP differences only. Deliberately-reproduced upstream

@@ -531,22 +531,68 @@ fn update_isrc(ckt: &mut Circuit, parent_ic: &SparseComplex) {
 }
 
 /// Pascal `SolveSystem(ActiveCircuit[1].Solution.NodeV, ActorID)` for a child
-/// (Solution.pas:2658): `SolveSparseSet(hY, @V[LocalBusIdx[0]], @Currents[1])` —
-/// solve the child's own factored `hY` and write the `NumNodes`-long solution
-/// **contiguously** into the parent NodeV starting at `LocalBusIdx[0]` (the tear
-/// guarantees each zone's nodes are a contiguous run in the interconnected
-/// numbering).
+/// (Solution.pas:2658): `SolveSparseSet(hY, @V[LocalBusIdx[0]], @Currents[1])`
+/// solves the child's own factored `hY` and writes the `NumNodes`-long solution
+/// into the coordinator NodeV. Pascal uses the **contiguous** address form
+/// `@V[LocalBusIdx[0]]` (the zone's interconnected nodes are a contiguous run);
+/// this port **scatters** each child node `j+1` into its mapped slot
+/// `LocalBusIdx[j]` (the explicit form `UploadV2Master` uses) — equal to the
+/// contiguous write when the run is contiguous, but robust to the interconnected
+/// node ordering.
+///
+/// **DEVIATION (documented) — the child's own `NodeV` is re-seeded from the
+/// solved column** (r3723 Oddie probe, resume executor 2026-07-12; the brief's
+/// anticipated faer-vs-KLU reference-free-zone case). Official `SolveSystem`
+/// writes ONLY into `ActiveCircuit[1].Solution.NodeV`; a child's own
+/// `Solution.NodeV` stays frozen at its state-2 standalone solve for the whole AD
+/// run. The probe proved this directly: on macro, actor 3's own `NodeV` moves
+/// `0.000e+00` between init and the post-AD read, and that frozen state-2 solve
+/// is already within `7.9e-5` of the interconnected result (the tearing seeds
+/// each zone-head artificial `VSource` with the true boundary voltage via
+/// `PConn_Voltages`). Official therefore FREEZES the child, and its floor is
+/// `1.318e-4` (worst near the real source).
+///
+/// A byte-faithful freeze does NOT hold in this port: with the child frozen, the
+/// deep interior of the **reference-free** zone diverges to `3.46e-3` @ M180
+/// (26× the oracle floor). That zone's `Start_Diakoptics` disables its artificial
+/// sources, so its `hY` is anchored only by the loads' weak `Yeq` shunts (near
+/// singular, cond ≫ 1e9) — exactly the regime where faer's factorization differs
+/// from KLU, and a frozen linearization lets that difference accumulate down the
+/// long radial. Re-seeding the child `NodeV` with the just-solved column each
+/// iteration keeps the reference-free solve tracking the true voltage and
+/// recovers the oracle floor: macro `1.319e-4` (oracle `1.318e-4`), midi
+/// `3.21e-5` (oracle `3.25e-5`). This is an explicit, documented compensation —
+/// NOT a silent Y regularization (§ forbidden) — for a faer↔KLU conditioning
+/// gap on the near-singular reference-free child Y. The residual stays a
+/// tolerance-**stable** method floor (the `Y4`/`Ic` boundary model is a
+/// first-order approximation of the coupling, so the AD fixpoint sits a fixed
+/// distance from the interconnected one and does **not** collapse under a tighter
+/// `ConvergenceTolerance` — oracle-proven, `tests/TOLERANCE_NOTES.md` §AD).
+/// Open item (auditors / WP-AD.4): make the reference-free zone solve match KLU
+/// so a faithful freeze suffices and the re-seed can be dropped.
+///
+/// The parent write itself: Pascal uses the **contiguous** address form
+/// `@V[LocalBusIdx[0]]` (the zone's interconnected nodes are a contiguous run);
+/// this port **scatters** each child node `j+1` into its mapped slot
+/// `LocalBusIdx[j]` — equal to the contiguous write when the run is contiguous,
+/// but robust to the interconnected node ordering.
 #[allow(dead_code)] // wired by `solve_ad` (WP-AD.3 Stage 2b).
 fn ad_solve_into_parent(ckt: &mut Circuit, parent_node_v: &mut [Complex64]) -> SolveResult {
     let n = ckt.num_nodes;
-    let base = ckt.solution.local_bus_idx.first().copied().unwrap_or(1);
     let mut x = vec![Complex64::ZERO; n];
     ckt.solution.solve_system_into(&mut x)?;
+    let idx = &ckt.solution.local_bus_idx;
     for (j, &v) in x.iter().enumerate() {
-        if let Some(slot) = parent_node_v.get_mut(base + j) {
+        if let Some(&p) = idx.get(j)
+            && let Some(slot) = parent_node_v.get_mut(p)
+        {
             *slot = v;
         }
     }
+    // DEVIATION (see doc): re-seed the child NodeV with the solved column so the
+    // near-singular reference-free zone tracks the true voltage (faer↔KLU
+    // conditioning compensation); official freezes the child at state-2.
+    ckt.solution.node_v[1..=n].copy_from_slice(&x);
     Ok(())
 }
 

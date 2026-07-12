@@ -94,8 +94,8 @@ not reproduced — the Rust port post-processes correctly).
 
 **WP-AD.3 — A-Diakoptics engine (in progress, staged; branch `wp-ad3`).**
 Stage list: (1) matrices ✅ · (2a) init machine + matrices-on-real-coordinator +
-options + get_Statistics ✅ · **(2b) the AD solve stitch (pending r3723 probe)** ·
-(3) exports 58–61 ✅ · (4) D7 calibration + EPRI/r3723 refs.
+options + get_Statistics ✅ · **(2b) the AD solve stitch ✅** · (3) exports 58–61 ✅
+· (4) D7 calibration ✅ + EPRI/r3723 refs (in progress).
 
 **Stage 3 exports (gate-green):** `Export ZLL|ZCC|Contours|Y4` (keywords 58–61,
 `report/export/adiakoptics.rs`, official `ExportResults.pas:3541–3627`) —
@@ -138,21 +138,61 @@ avg; `fmt_g`=`floattostrf(ffgeneral,4)` + Pascal f32-array narrowing per D4),
 `=no` clears flag-only, and init-without-prior-solve fails. The CPU clamp
 (`Num_SubCkts ≤ CPU_Cores−2`) is ported → AD gates assume ≥4 cores (D6).
 
-**Stage 2b (NOT started — the AD solve stitch).** `Solve_Diakoptics`/`SolveAD`/
-`UpdateISrc`/`Start_Diakoptics`/`IndexBuses` + the coordinator solve driver + the D7
-equivalence gate. The child-side `solve_ad`/`update_isrc`/`ad_solve_into_parent` and
-the per-child index fields (`local_bus_idx`/`ad_ibus`/`ad_isrc_idx`) are ported and
-`#[allow(dead_code)]` in `solution/solution/power_flow.rs`, awaiting the driver.
-`Dss::ad_solve` (the `Solve`-with-`ADiakoptics` dispatch) currently records an honest
-"Stage 2b pending" error rather than run a guessed stitch. **Open question to settle
-with an r3723 Oddie probe before implementing (do NOT guess):** `Start_Diakoptics`
-disables each zone's artificial VSources (`source`/`vph_2`/`vph_3`) and its feeder-head
-link, driving the boundary purely through the `Ic` current injection — a radial
-single-cut zone then has no voltage/ground reference, so how the child Y stays
-non-singular (KLU regularization? a retained reference?) must be measured on r3723.
-Note: our torn-coordinator `Calc_ZCC` solve DID populate ZCT (faer factored the
-opened-link Y without erroring); whether that matches KLU physically is the D9(b)
-EPRI-IEEE-13 reference comparison (Stage 3/2b).
+**Stage 2b (gate-green — the AD solve stitch).** `ad_solve` dispatch (Direct →
+`SolveDirect` AD branch; Snapshot → the `SolveSnap` control loop wrapping the AD
+`DoNormalSolution` fixed-point; Daily/Yearly/Duty/Peak/Time → coordinator clock-step
+re-entering the snapshot solve); `Solve_Diakoptics` coordinator stitch (SOLVE_AD1 →
+`Vpartial`=contour-pair NodeV diffs → `Y4·Vpartial` → `Ic=Contours·Vpartial` →
+SOLVE_AD2); `ad_init_actors` = `INIT_ADIAKOPTICS` (`Start_Diakoptics` for actors > 2
++ `IndexBuses` on every child); the child-side `solve_ad`/`update_isrc`/
+`ad_solve_into_parent` driven (were `#[allow(dead_code)]`). Newton is NOT AD-aware
+(verified: official `DoNormalSolution` only branches to `Solve_Diakoptics` on the
+fixed-point path) → an AD deck set to Newton falls through to the per-child
+fixed-point, documented. The child `DO_CTRL_ACTIONS` fan-out is WP-AD.4 — the
+WP-AD.3/D7 gates run `controlmode=off`; `ad_check_controls` currently samples the
+coordinator's controls (benign for controls-off; the faithful AD-branch child
+delegate is a WP-AD.4 item, flagged for auditors).
+
+**r3723 Oddie probe (re-run by the resume executor, own transcript, 2026-07-12;
+`solve mode=snap`, `controlmode=off`, `Num_SubCircuits=2`; scripts in scratchpad
+`ad_probe3.py`/`ad_probe_childv.py`/`probe_state2.py`).** Settles the two blocking
+questions:
+- *Child Y non-singularity:* with `Start_Diakoptics` disabling a zone's sources, the
+  loads' `Yeq` shunts (stamped into Y as the fixed-point accelerator) anchor every
+  node to ground → the reference-free zone is near-singular but solvable; faer factors
+  it, **no** KLU tiny-pivot/regularization is involved. Port uses ordinary faer with no
+  guard; a genuinely singular Y → normal `SolutionAbort` (never silently regularized).
+- *Child voltage maintenance:* official **FREEZES** each child's own `NodeV` at its
+  state-2 standalone solve for the entire AD run — `SolveSystem` writes only into the
+  coordinator array (**proven**: macro actor-3 `NodeV` moves `0.000e+00` between init
+  and the post-AD read). That frozen state-2 solve is already within `7.9e-5` of
+  interconnected (the reference-free zone; the source zone's isolated solve is 25% off
+  at its cut node — it lacks the downstream current — but that node is corrected by the
+  boundary `Ic`). The earlier (crashed-draft) claim that official "tracks" the child
+  was a misread of that 5e-5 residual.
+- *Method floor + tolerance stability:* AD-vs-normal max rel `|V|` is a **stable** floor
+  that does NOT collapse as tol tightens 1e-4 → 1e-10 — midi 3.265e-5 → 3.254e-5, macro
+  1.318e-4 flat; iteration counts `itN == itA`. Proof the engines share the fixpoint
+  (D1 leg 3 / D7). Rust matches: midi 3.21e-5 (oracle 3.25e-5), macro 1.319e-4 (oracle
+  1.318e-4). Tiers ×4 recorded in `tests/TOLERANCE_NOTES.md` §AD; permanent tighten-proof
+  tests `{midi,macro}_d7_gap_stable_under_tighten`.
+
+**Salvage/reset ledger (resume protocol).** The crashed executor's ~815-line dirty
+draft was competent and gate-green; evaluated file-by-file against official r3723 +
+re-run probe: **SALVAGED** `engine.rs` (init wiring), `solve.rs` (dispatch/stitch —
+verified loop-for-loop vs `Solve_Diakoptics`/`SolveAD`/`Start_Diakoptics`/`IndexBuses`),
+`mod.rs`/`time_series.rs` (re-exports), the `tests/adiakoptics.rs` D7 gate, and
+`power_flow.rs`'s scatter parent-write. **CORRECTED** the `ad_solve_into_parent` child
+re-seed: kept the line (it recovers the oracle floor — a brief-sanctioned faer↔KLU
+compensation on the near-singular reference-free zone) but **rewrote its false
+justification** (official freezes, does not track) with the honest probe result, per
+`ad_solve_into_parent`/`solve.rs` module docs. Confirmed by experiment: a byte-faithful
+freeze (no re-seed) passes midi (3.80e-5) but diverges macro to 3.46e-3 @ M180 (26× the
+floor). Open item for auditors/WP-AD.4: root-cause the reference-free-zone faer↔KLU gap
+so the re-seed can be dropped.
+
+**D9(b) EPRI-IEEE-13 + D9(c) r3723 IEEE-123 references** are Stage 4 (below), still
+open at this record.
 
 **WP-AD.3 audit settle (opus-xhigh).** Findings settled empirically against official
 r3723:
