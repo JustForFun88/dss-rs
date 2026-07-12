@@ -1,0 +1,44 @@
+// InvControl midi: a MIXED 3-phase + 1-phase DER fleet under ONE DRC control,
+// so the per-member phase-count recalc (FNphases) runs across members of
+// different phase counts in the multi-control round - the trait that caught
+// the last-member FNphases bug (CONTROL_PLAN per-element midi). The DRC roll-
+// average window + the delta-Q convergence run for every member each step over
+// a 24-step daily irradiance ramp on a weak, per-phase-loaded feeder.
+// Feature-sensitive: widening every member's DbVMax stops the droop (probe-
+// proven -> a different fleet kvar trajectory).
+// Compared per step: full model + each PVSystem's f64 state variables +
+// InvControl probes + event log.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.midiicdrc basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=0.8 x1=3.2 c1=0 length=3 units=km
+New line.l2 bus1=b bus2=c phases=3 r1=0.6 x1=2.4 c1=0 length=3 units=km
+
+New loadshape.irrad npts=24 interval=1
+~ mult=(.05 .05 .05 .05 .05 .10 .25 .45 .65 .80 .92 1.0 1.0 .98 .90 .78 .60 .40 .20 .08 .05 .05 .05 .05)
+
+// A 3-phase DER plus three per-phase 1-phase DERs (mixed phase counts).
+New pvsystem.pv3 bus1=b phases=3 kv=12.47 kva=600 pmpp=520 pf=1.0
+~ daily=irrad irradiance=1
+New pvsystem.pv1a bus1=c.1 phases=1 kv=7.2 kva=250 pmpp=210 pf=1.0
+~ daily=irrad irradiance=1
+New pvsystem.pv1b bus1=c.2 phases=1 kv=7.2 kva=180 pmpp=150 pf=1.0
+~ daily=irrad irradiance=1
+New pvsystem.pv1c bus1=c.3 phases=1 kv=7.2 kva=320 pmpp=270 pf=1.0
+~ daily=irrad irradiance=1
+
+// Per-phase-unequal loads keep the phases at different voltages.
+New load.la bus1=c.1 phases=1 conn=wye model=1 kv=7.2 kw=90 pf=0.95 daily=irrad
+New load.lb bus1=c.2 phases=1 conn=wye model=1 kv=7.2 kw=140 pf=0.92 daily=irrad
+New load.lc bus1=c.3 phases=1 conn=wye model=1 kv=7.2 kw=60 pf=0.9 daily=irrad
+
+New invcontrol.ic mode=DynamicReaccurr DynReacavgwindowlen=14400
+~ DbVMin=0.98 DbVMax=1.0 ArGraLowV=1.0 ArGraHiV=1.0
+~ deltaq_factor=0.4 refreactivepower=VARMAX eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=2000
+Set mode=daily stepsize=1h number=1

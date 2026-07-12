@@ -1,0 +1,26 @@
+// Relay REVERSEPOWER (32) — the reverse-power trip (Relay.pas RevPowerLogic:
+// trips one-shot to lockout when the monitored terminal real power reverses
+// past PhaseInst kW). A downstream generator ramps up until it backfeeds the
+// monitored line above the reverse-power threshold, tripping the relay open.
+// Feature-sensitive: raising PhaseInst above the backfeed keeps it closed
+// (probe-proven). Compared per step: full model + State/Normal + type/delay
+// probes + the trip event log + control queue.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.rlyrev basekv=12.47 phases=3 pu=1.02 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi
+new load.l bus1=mid phases=3 kv=12.47 kw=800 pf=0.95 model=1
+
+// Generator ramps up mid-run to backfeed reverse power through line.feed.
+new loadshape.gen npts=8 interval=1 mult=(0.05 0.10 0.20 0.50 1.0 1.0 1.0 1.0)
+new generator.g1 bus1=mid phases=3 kv=12.47 kw=4000 pf=1.0 model=1 daily=gen
+
+new relay.rl type=reversepower monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 phaseinst=1000 delay=0.1
+~ shots=1 recloseintervals=None eventlog=yes
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=daily stepsize=1h number=1 controlmode=time

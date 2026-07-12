@@ -1,0 +1,30 @@
+// GenDispatcher kvarLimit clamp + unequal weights across 3 gens
+// (GenDispatcher.pas: the dispatched kvar is clamped at kvarLimit). A daily
+// load swing drives the kW dispatch up so the reactive share crosses kvarLimit
+// and the clamp bites, while the three unequal Weights split the kW command.
+// Feature-sensitive: raising kvarLimit out of reach removes the clamp and the
+// kvar split differs (probe-proven). Compared per step: full model + per-gen
+// kW/kvar probes (the dispatched bases) + the event log.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.gdkvar basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6
+
+New loadshape.day npts=12 interval=1
+~ mult=(0.45 0.60 0.78 0.92 1.05 1.15 1.20 1.10 0.95 0.80 0.62 0.48)
+
+New load.ld1 bus1=b1 phases=3 kv=12.47 kw=6000 pf=0.90 daily=day
+
+New generator.g1 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.90 model=1
+New generator.g2 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.90 model=1
+New generator.g3 bus1=b1 phases=3 kv=12.47 kw=1000 pf=0.90 model=1
+
+New gendispatcher.gd1 element=line.l1 terminal=1 kwlimit=2500 kwband=100
+~ kvarlimit=400 genlist=[g1, g2, g3] weights=[4, 2, 1]
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=200
+Set mode=daily stepsize=1h number=1

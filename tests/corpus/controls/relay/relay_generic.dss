@@ -1,0 +1,35 @@
+// Relay GENERIC — the generic over/under element (Relay.pas GenericLogic:
+// reads a named state variable of the monitored PC element and trips when it
+// leaves [undertrip, overtrip]). A StorageController discharges a Storage over
+// a daily run, so the Storage's "kWh" state variable falls monotonically; the
+// generic relay watches that variable and opens the feeder (lockout) once the
+// energy drops below undertrip. Feature-sensitive: lowering undertrip below the
+// end-of-run kWh stops the trip (probe-proven). Compared per step: full model +
+// State/Normal + type/delay probes + the trip event log + control queue.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.rlyg basekv=12.47 phases=3 pu=1.02 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=b linecode=lc length=1 units=mi
+new load.l bus1=b phases=3 kv=12.47 kw=1500 pf=0.95 model=1
+
+new storage.s1 bus1=b phases=3 kv=12.47 kwrated=800 kva=800 kwhrated=3000
+~ %stored=70 %idlingkw=0 pf=1.0
+new storagecontroller.sc element=line.feed terminal=1 modedis=time
+~ timedischargetrigger=1 %ratekw=100 %reserve=5 eventlog=no
+
+// Generic relay watches the Storage "kWh" variable; trips the feeder open once
+// the fleet energy falls below undertrip (overtrip set out of reach).
+new relay.rl type=generic monitoredobj=storage.s1 monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 variable=kWh
+~ overtrip=1.0e9 undertrip=1500 delay=0.0 shots=1 recloseintervals=None
+~ eventlog=yes
+
+new loadshape.day npts=12 interval=1
+~ mult=(0.50 0.62 0.75 0.88 1.00 1.10 1.15 1.10 1.00 0.88 0.72 0.58)
+edit load.l daily=day
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=daily stepsize=1h number=1 controlmode=time
