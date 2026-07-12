@@ -1,0 +1,31 @@
+! GAPS corpus-coverage deck (family=modes, midi/interaction): the DUTYCYCLE
+! ControlMode := TIMEDRIVEN arm (set in Set_Mode for DUTY, set_mode.rs:99). Only
+! under TIMEDRIVEN does the control queue honor a control's time delay and fire
+! on schedule: the recloser picks up on the fault, trips FAST after its curve
+! delay, the temporary fault self-clears below MinAmps, and it RECLOSES on the
+! recloseintervals schedule — a timed trip/reclose sequence at specific dblHour
+! stamps. Duty mode, 0.1 s steps; the deck does NOT set controlmode explicitly,
+! so the value under test is DUTY's *default* TIMEDRIVEN (the whole point).
+! Boundary pinned: DUTY -> TIMEDRIVEN control-queue dispatch + recloser reclose
+! scheduling; compared via the EVENTLOG (op timestamps) + control queue + the
+! post-action full model.
+! Feature-sensitive: forcing `controlmode=static` (same duty mode) collapses the
+! timed reclose schedule — the eventlog differs — proven on the oracle.
+clear
+Set DefaultBaseFrequency=60
+new circuit.gaps_dutyctrl basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi
+new line.lat1 bus1=mid bus2=loadb linecode=lc length=1 units=mi
+new line.lat2 bus1=mid bus2=loadc linecode=lc length=0.8 units=mi
+new load.lb bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
+new load.lc bus1=loadc phases=3 kv=12.47 kw=350 pf=0.92 model=1
+new recloser.r monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 numfast=1 shots=2
+~ phasetrip=80 groundtrip=40 recloseintervals=(0.5, 1.0)
+new fault.f bus1=loadb phases=3 ontime=0.1 r=1 temporary=yes
+new monitor.mfeed element=line.feed terminal=1 mode=0
+new energymeter.em element=line.feed terminal=1
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.1 number=1
