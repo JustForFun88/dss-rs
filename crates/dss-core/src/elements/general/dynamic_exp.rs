@@ -155,17 +155,20 @@ impl DynamicExpObj {
     /// Pascal `Get_Out_Idx`: the index of `var_name` if it is a state variable
     /// *and* an output (its slot is immediately followed by an [`EQ_MARK`] in
     /// `cmds`), or -1.
+    ///
+    /// 0.15.x (`2a8bdb78`) rewrites the inner scan as `for CmdIdx := 0 to
+    /// High(Cmds) - 1` and drops the old `CmdIdx < High(Cmds)` guard. That is
+    /// **form-only**: the shortened bound already keeps `Cmds[CmdIdx + 1]` in
+    /// range, so it selects exactly the same outputs as the guarded 0.14.5 loop.
     pub fn get_out_idx(&self, var_name: &str) -> i32 {
         let lower = var_name.to_lowercase();
         for (idx, name) in self.var_names.iter().enumerate() {
             if *name != lower {
                 continue;
             }
-            for cmd_idx in 0..self.cmds.len() {
-                if self.cmds[cmd_idx] == idx as i32
-                    && cmd_idx + 1 < self.cmds.len()
-                    && self.cmds[cmd_idx + 1] == EQ_MARK
-                {
+            // `0 to High(Cmds) - 1` == `0..cmds.len()-1`; idx+1 always in range.
+            for cmd_idx in 0..self.cmds.len().saturating_sub(1) {
+                if self.cmds[cmd_idx] == idx as i32 && self.cmds[cmd_idx + 1] == EQ_MARK {
                     return idx as i32;
                 }
             }
@@ -224,26 +227,55 @@ impl DynamicExpObj {
         self.var_names.len()
     }
 
-    /// Pascal `SolveEq`: evaluate every compiled equation over `mem_space`,
-    /// writing each output variable's derivative into column 1 of its row.
+    /// Pascal `SolveEq` (0.15.x form, upstream `2a8bdb78` "DynamicExp: reuse RPN,
+    /// fix index bug"). Two coupled deltas vs the 0.14.5 evaluator:
+    ///
+    /// * the loop bound `for idx := 0 to High(Cmds)` becomes `High(Cmds) - 1`,
+    ///   which drops the 0.14.5 out-of-bounds `Cmds[idx + 1]` read at the final
+    ///   index; and
+    /// * an `Exit` is added right after the first equation's output index is
+    ///   latched.
+    ///
+    /// The `Exit` means the RHS is **never evaluated**: a well-formed cmd stream
+    /// always starts `[outIdx, EQ_MARK, ...]`, so the loop hits that marker at
+    /// idx 0 and returns immediately — leaving every derivative slot exactly as
+    /// the host set it. `SolveEq` is therefore a no-op evaluator in practice and
+    /// the state variable's derivative stays frozen at its `InitStateVars` value.
+    /// Confirmed live vs the `capi015` oracle (dss_capi 0.15.x): a Generator with
+    /// `DynamicEq=myDiffEq` reports `dspeed = 0` / `speed` frozen where the 0.14.5
+    /// engine integrated `dspeed = -1.6e-6`. This is the D14 upgrade behavior
+    /// (see `docs/upgrade/DIVERGENCES.md` §D14), not a quirk to gate around.
+    ///
+    /// The RPN calculator is a reused member field upstream (create-once/reuse
+    /// instead of per-call create/free); with the `Exit` it is never stepped for
+    /// a well-formed stream, so the reuse has no observable effect — **form-only**,
+    /// and we keep a local instance. The op-dispatch arms below are likewise
+    /// dynamically dead for well-formed streams but retained 1:1 with the Pascal
+    /// `case` (they still run for a malformed, marker-less cmd stream).
+    ///
     /// `mem_space` must have at least [`Self::num_state_vars`] rows.
+    #[allow(unused_assignments)] // dead `out_idx` store mirrors Pascal (see below)
     pub fn solve_eq(&self, mem_space: &mut [[f64; DYN_SLOT_LENGTH]]) {
         let mut rpn = RPNCalculator::new();
         let mut out_idx: i32 = -1;
-        for idx in 0..self.cmds.len() {
-            // The start of a new equation is `[outVar, EQ_MARK, ...]`: detect it
-            // by the slot immediately preceding an EQ_MARK, or the EQ_MARK itself.
-            // (Pascal reads `Cmds[idx + 1]` unguarded; past the end there is no
-            // EQ_MARK, so the guarded `.get` reproduces the intent without the UB.)
-            let next_is_mark = self.cmds.get(idx + 1) == Some(&EQ_MARK);
+        // `0 to High(Cmds) - 1` == `0..cmds.len()-1`; empty for len <= 1.
+        for idx in 0..self.cmds.len().saturating_sub(1) {
+            // idx+1 is always in bounds now (idx <= len-2): the 0.15.x bound
+            // removed the 0.14.5 OOB read of `Cmds[idx + 1]` at the last index.
+            let next_is_mark = self.cmds[idx + 1] == EQ_MARK;
             if next_is_mark || self.cmds[idx] == EQ_MARK {
                 if self.cmds[idx] != EQ_MARK {
-                    // It's the output-variable index of a new equation.
+                    // It's the output-variable index of a new equation: upload the
+                    // *previous* equation's result (the guard is false at the first
+                    // marker), latch this output, then `Exit` — the 0.15.x fix.
+                    // `out_idx = ...` right before the return is a dead store (as it
+                    // is in the Pascal `OutIdx := Cmds[idx]; Exit;`) but kept for a
+                    // 1:1 structure; hence the scoped `unused_assignments` allow.
                     if out_idx >= 0 {
-                        // Upload the previous equation's result.
                         mem_space[out_idx as usize][1] = rpn.get_x();
                     }
                     out_idx = self.cmds[idx];
+                    return;
                 }
                 continue;
             }
