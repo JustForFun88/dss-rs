@@ -60,6 +60,58 @@ MULTITHREADING M2.
 - Part II A-Diakoptics AD.2/AD.3 progressing on a separate `part2-adiakoptics`
   branch (not in this main).
 
+**SKIPPED-SWEEP (branch `skipped-sweep`, 2026-07-12).** Gave every in-scope entry
+in `skipped_needs_investigation.json` a real disposition (19 entries; the 2
+`upgrade_straddle_gfm_wp` + 1 `upgrade_straddle_u16_dynexp` decks were left to their
+dedicated WPs). Probed each on the official EPRI engines (r3723/r4088/r4133 via the
+Oddie bridge) and the pinned 0.14.5 oracle; verified Rust behaviour first-hand.
+**9 promoted to `solvable_now`, 10 kept parked with refreshed evidence** (settle
+2026-07-12 promoted 2 more 4wire-Delta decks — see the settle note below).
+
+- **Root cause found for 6 "oracle_nonconvergence" decks: the deck's `maxiterations`
+  cap was simply below what the (convergent) circuit needs** — not a solver defect.
+  With `post: ["Set maxiterations=200"]` the pinned 0.14.5 oracle AND Rust converge
+  at the **exact same** iteration count with bit-identical node voltages:
+  StevensonPflow (90), StevensonPflow-3ph (106), IEEE 30 Bus/Master (19; its own
+  sibling `Run_IEEE30.DSS` sets maxiterations=100), 8500-Node/Master-unbal (62),
+  GFM_IEEE8500/Master (67), GFM_IEEE8500/Master-unbal (62). Promoted `kind=large`.
+- **1 "user_model" deck promoted via a harness change:** `Test/indmachtest/Master.DSS`
+  (Generator model=6 with an unvendored user-model DLL). The oracle server learned a
+  `warn_and_continue` mode (driven by the case's existing `expect_warnings`): set
+  `DSS.Error.EarlyAbort=False` + tolerate the user-model DoSimpleMsg (#567/#570/#1570)
+  at compile, every solve, and the priming currents read — 1:1 with the official
+  Direct DLL's warn-and-solve. Rust 8 iters == pinned 8, node V bit-identical.
+- **Kept parked (refreshed):** `vsctest` + `Torn_Circuit`
+  Master/Interconnected (GENUINE non-convergence on r3723/r4088/r4133 even at
+  maxiterations=1000); `IEEE118Bus` (convergence is an r4088/r4133-only solver change,
+  Rust mirrors r3723=NO → BLOCKED_PENDING UPGRADE); the 2 `oracle_timeout` TnD decks
+  (A-Diakoptics not ported → not promotable regardless); `ieee9500_base` (pathological
+  voltage-collapse deck, NO on r3723/r4088/r4133); the 2 `conditioning_floor` decks
+  (`CIM/IEEE13_Assets`, `SecondaryTestCircuit_modified` — proven cross-solver floors
+  re-affirmed by decomposition, no honest band fits).
+- Harness change: `tools/oracle/oracle_server.py` (`warn_and_continue`,
+  `_USER_MODEL_ERRNOS`, EarlyAbort toggle in `main`, priming retry in
+  `capture_all_elements`) + `corpus_live.rs` (send `warn_and_continue` when
+  `expect_warnings` is set). `solvable_now` 283→290, `skipped_needs_investigation`
+  22→15; `population.lock` regenerated in-commit.
+
+**SKIPPED-SWEEP settle (2026-07-12).** Audit found the two 4wire-Delta `Kersting4wire_Lagging`
+/ `Kersting4wire_Leading` decks were parked on a false premise. The "Rust 3 iters vs oracle 2"
+claim compared Rust COLD (the deck's internal compile-time Solve, 3) against the oracle WARM
+re-solve (2). Measured symmetrically on both engines: **cold 3 / warm 2 on BOTH**, and the live
+harness (compile + explicit solve) compares the WARM re-solve → 2 == 2. Warm node V is
+bit-identical (Lagging SOURCEBUS.1 7200.002150, Leading 7199.557591; all 12 nodes agree to 6+
+figures on both engines). Promoted both via the same `warn_and_continue` path as `indmachtest`
+(`kind=feeder`, `expect_warnings=["Not Loaded"]`). `Kersting4wireIndMotor` stays parked, note
+corrected: its real blocker is NOT iterations (also cold 3 / warm 2) but a genuine 4th-wire/
+neutral-node divergence — its `LineCode.556MCM` declares `nphases=4` yet supplies only a 3×3
+(6-entry) cmatrix; safe Rust rejects the malformed 4-phase Cmatrix while the oracle tolerates
+it, so PRIMARY.4 diverges 13.363452 vs 13.363170 (|diff| 2.82e-4), above the feeder floor. The
+`warn_and_continue`→`expect_warnings` coupling remains non-masking (all 5 opted-in decks are
+genuine user-model DoSimpleMsg cases; Rust independently enforces convergence + exact iterations
++ bit-identical V). `solvable_now` 290→292, `skipped_needs_investigation` 15→13; `population.lock`
+regenerated in-commit.
+
 > Working cadence and the standing toolchain note are just below; the full
 > per-step ritual is `PLAN_SEQUENCE.md` / the active plan's §0.
 
