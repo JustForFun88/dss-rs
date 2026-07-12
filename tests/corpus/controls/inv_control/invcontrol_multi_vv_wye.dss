@@ -13,9 +13,14 @@
 // voltagechangesolution) cannot be gated live -- it needs a multi-step run,
 // and the capi015 oracle re-nominalizes time-varying elements in its multi-
 // step capture (STATUS WP-U1.3 + ledger L1). It is pinned instead by the
-// feature-sensitive Rust unit test `d1_buffer_2slot_tracks_voltage_change`
+// feature-sensitive Rust unit test `d1_buffer_2slot_tracks_last_two_pu_voltages`
 // (with the capi015-vs-r4133 probe evidence in the ledger). This snapshot
 // deck gates the multi-DER dispatch that the fix operates over.
+//
+// This deck is revision-insensitive by construction (a single snapshot, no
+// hysteresis): pv1/pv2 kvar are byte-identical on 0.14.5 and capi015 (probed).
+// Kept on capi015 to stay aligned with the WP-U1.3 target engine; the D1
+// divergence itself is unit-pinned, not witnessed live here.
 clear
 Set DefaultBaseFrequency=60
 
