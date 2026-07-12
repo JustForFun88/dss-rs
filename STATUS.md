@@ -9,6 +9,29 @@
 
 Last updated: 2026-07-12.
 
+**Corpus coverage wave — controls family (branch `cgen-ctrl`), 2026-07-12.**
+35 new live decks (34 mini + 1 midi) closing Pascal-branch gaps per
+`corpus_matrix/controls.md`; each oracle-validated (two-process determinism +
+feature-sensitivity, probe-proven) and green on `controls_cases_match_oracle`
+with the full-model + property-parity mandate (controls family 57 → 92 live
+decks). Per element group: RegControl (ldc / reverse / remotebus /
+inversetime+vlimit), CapControl (pf lead-fold+pctMinkvar / time midnight-wrap /
+voltoverride), InvControl (drc / vv_drc / wattpf / wattvar / avr-linear /
+monbus + midi mixed-fleet drc), StorageController (follow / support /
+i-peakshave / loadshape / chargelow), Relay (voltage / revpower / generic /
+distance / td21 / doc), Recloser-ground, Fuse-3ph, SwtControl-lock,
+GenDispatcher-kvarlimit, EnergyMeter-options, Monitor (modes 6/9/11, seq/mag
+flag bits), ExpControl, UPFC (mode 2 / mode 4). Family gate wall-time ~21 s →
+~24 s. No port bugs (one SUPPORT deck's first draft hit a control-iteration
+knife-edge from a co-located gen + railing storage; a gentler redesign matched
+exactly — the shared do_load_follow_mode is not at fault). **Findings/open
+items:** (1) Monitor modes 8/10/12 (winding I/V, LL) have a deferred stub
+sample body (`sample.rs` `_ => return`) while `header.rs` declares
+`record_size`, so a monitor using them PANICS (OOB in `channel()`) rather than
+erroring cleanly — excluded from the new decks, remains uncovered pending that
+port work; (2) `midi_relay_dist` (distance+DOC coordination), UPFC modes 3/5
+deferred (budget).
+
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a
 pure move — **no deck content changed** (every family deck is self-contained;
