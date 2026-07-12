@@ -487,6 +487,47 @@ already used `FkVArating`; only `IntegrateStates` moved.
   unit-test-only same-commit package (no manifest flip), decoupled from B5.
 - `known_diffs`: none matched — nothing to retire.
 
+## D8 — Transformer X13/X23 `TrapZero` — SETTLED (WP-U1.2, no code change: not an observable delta; Rust already traps)
+
+**Observable.** The 3-winding transformer reactances `X13`/`X23` (and `X12`) when
+parsed as `0`.
+
+**Spec.** The `TrapZero` FLAG on `X12`/`X13`/`X23` (commit `69fca934`,
+`Transformer.pas` DefineProperties) and the `NonZero` flag on `XSCArray` are
+BOTH already present in the 0.14.5 baseline — commit `69fca934` landed *before*
+the 0.14.5 tag, not in the 0.15.x window. Verified against the vendored sources:
+the `PropertyTrapZero` values (7/35/30 %) AND the `[TrapZero, ...]`
+`PropertyFlags` block are byte-identical between `.inputs/dss_capi` (0.14.5,
+`Transformer.pas:584-595` values+flags) and `.inputs/dss_capi_with_git` (0.15.x,
+`:586-597`), and `NonZero` on `XSCArray` is present in both (0.14.5 `:413`, 0.15.x
+`:401`). So this is **not a 0.14.5 → 0.15.x delta at all** — the source is
+identical across our baseline and target (empirically reconfirmed by the
+0.14.5 == capi015 probe below).
+
+**Probe** (`/tmp/probe_d8.py`, `/tmp/probe_d8b.py`, 2026-07-12; 3-winding
+delta/wye/wye, `XHT=0`):
+
+| observable | capi 0.14.5 | capi015 |
+|---|---|---|
+| `? Transformer.t.XHT` (XHT=0) | `3500` | `3500` |
+| `AllBusVmagPu` Vmin (XHT=0, solved) | `0.124819` | `0.124819` |
+| `AllBusVmagPu` Vmin (XHT=35, solved) | `0.928196` | `0.928196` |
+
+**Decision — no code change; NOT an observable delta for our port.** 0.14.5 and
+capi015 are **bit-identical** for the reachable scalar `X13`/`X23`=0 path (both
+reach the same trapped default via the Xsc build). The Rust port ALREADY traps
+these: the `PropertyTrapZero` 7/35/30 were ported onto `XHL`/`XHT`/`XLT`
+(`transformer/mod.rs`) and `setters.rs` applies `trap_zero` unconditionally, so
+`XHT=0 → xht=35.0`, matching both engines. The `XSCArray` `NonZero` **strict
+error** (present in both baselines, above) is the same C2/PermissiveProperties
+strict surface the plan's L2 decision deliberately does NOT adopt (dss-ext-only).
+Mirrors WP-U1.1's D5 / D8-r3723 "not a delta for us" records.
+
+**Gate consequence.** No case/golden moves (no corpus deck sets X13/X23=0). Pinned
+by the feature-sensitive unit test
+`transformer::tests::three_winding_x13_x23_trap_zero_to_default` (XHT=0 → 35,
+XLT=0 → 30). `known_diffs`: nothing to retire.
+
 ## B1 — Capacitor Cmatrix YPrim diagonal ×1.000001 before inversion — SETTLED (WP-U1.2, adopt capi015)
 
 **Observable.** The YPrim of a `Cmatrix` (SpecType=3) capacitor that also carries
