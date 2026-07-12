@@ -417,34 +417,102 @@ reproduce the `Line.Kxg` 658.5 inconsistency.** Consistent with the plan's
 - `known_diffs.json`: no Rust↔EPRI entry existed (0.14.5 and the port both used
   658.5, matching each other at r3723) — nothing to retire.
 
-## B5 — GFM `Isc1` factor-1000 removal — DEFERRED (WP-U1.2, blocked on a Rust GFM op-point gap)
+## B5 — GFM `Isc1` factor-1000 removal — SETTLED (GFM WP, adopt capi015; no Rust op-point gap remained)
 
 **Observable.** The equivalent short-circuit admittance (`CalcGFMYprim`) of any
 PVSystem/Storage operating in grid-forming (GFM) mode — its Norton YPrim.
 
 **dss_capi 0.14.5 (default).** `Isc1 = mKVArating·1000 / (√3·RatedkVLL) /
 NPhases`. **0.15.x (capi015) / EPRI r4088+.** `Isc1 = mKVArating / (√3·
-RatedkVLL) / NPhases` — the `·1000` DROPPED (`InvDynamics.pas:229`, commit
+RatedkVLL) / NPhases` — the `·1000` DROPPED (`InvDynamics.pas:263`, commit
 `de6a5a42`, port of SVN r3865, "preventing oversizing the model"). `Isc1` feeds
 only `c = 4·(R1²+X1²) − (√3·RatedkVLL·1000/Isc1)²` in the R0 quadratic; the
 separate `·1000` there (kV→V of RatedkVLL) is unchanged.
 
-**Decision — DEFER (not landed in WP-U1.2).** Adopting the `Isc1` change in
-`inv_based_pce.rs::calc_gfm_yprim` moved the Rust GFM **operating point**
-(`gfm_micro` `Load.isl` 400 kW → 368 kW live vs capi015), but the U0.2 sweep and
-a direct two-engine probe (`/tmp/probe_gfm.py`, 2026-07-12) prove the Pascal
-op-point is **Isc1-INVARIANT** — `0.14.5` and `capi015` give the *bit-identical*
-`Load.isl = 127094.3908 W/φ` despite the ~3.6e-3 Yf YPrim move. The GFM
-voltage-source injection on the Pascal engines compensates the impedance change;
-the Rust GFM power-flow injection does **not** (its op-point is Isc1-sensitive),
-so the port matched 0.14.5 only because it shared the old `Isc1`. This is a
-**pre-existing Rust GFM injection-vs-YPrim consistency gap** that the B5 change
-merely unmasks — NOT a B5 problem. Per CLAUDE.md's prove-don't-rationalize rule
-it needs a dedicated investigation (the GFM injection current must track
-`YPrim·Vset` so the terminal voltage — hence load power — stays invariant to the
-Norton impedance), out of the WP-U1.2 numeric-long-tail scope. **B5 + its four
-GFM live-deck flips are reverted; the GFM decks stay on the default 0.14.5
-oracle.** Recorded as an open follow-up in STATUS. `known_diffs`: nothing changed.
+**Decision — adopt the capi015 (=r4133) `Isc1` (drop the `·1000`)** in
+`inv_based_pce.rs::calc_gfm_yprim`. Consistent with the plan's "EPRI r4133 wins".
+
+**The "pre-existing injection-vs-YPrim gap" the WP-U1.2 draft feared does NOT
+exist at the GFM-WP base (`d99f0f3`, post U1.1/U1.2/CF2-G sync).** Re-probed
+2026-07-12 (dss-python live `ActiveCktElement` f64 reads, both engines, +
+toggled the Rust `Isc1` factor in-tree): the Rust GFM op-point is **already
+Isc1-invariant**. On the islanded `gfm_micro` deck, `Load.isl` and
+`Storage.batt` power and `islbus` voltage are **bit-identical** with the old and
+the new `Isc1` (`Load.isl P = 399.999986 W`, `islbus = 0.99777 pu` both ways),
+and both equal the bit-identical value 0.14.5 **and** capi015 report. The
+YPrim itself moves to the capi015 value (`Y[0,0]: 613.68−2402.46j →
+561.47−2245.82j`, matching the capi015 live probe). The U1.2 draft's "400→368
+gap" was an artifact of that earlier code state (the CF2-G PVSystem dynamics
+load-shape/`iMaxPPhase` fixes landed between U1.2 and this WP resolved it); the
+`127094.3908 W/φ` figure was from a different probe deck.
+
+**Why the op-point is invariant — the exact mechanism (decomposition, not a
+tolerance sweep).** `Isc1` feeds ONLY the R0-quadratic, i.e. the **zero-sequence**
+impedance `Z0 = Zs + 2·Zm`. The **positive-sequence** impedance `Zs − Zm`
+collapses algebraically to `R1 + jX1 = Z1`, a function of `X1` alone
+(`X1 = RatedkVLL²/mKVArating/√1.0625`) — **`Isc1`-free**. A balanced /
+delta-fed GFM load excites only the positive sequence, so its terminal voltage —
+hence delivered power — is invariant to the ~1000× `Z0` (Norton virtual-impedance
+scale) move. Verified numerically: the balanced Norton eigenvalue `Y·v_pos/v_pos
+= 842.14 − 3368.55j = 1/Z1` is bit-identical on 0.14.5 and capi015, while the
+zero-sequence eigenvalue moves ~1000×. Pinned by
+`inv_based_pce::tests::gfm_norton_positive_seq_admittance_is_isc1_invariant`,
+`gfm_calc_yprim_matches_capi015_isc1_no_1000`, and
+`storage::storage_gfm_micro_op_point_isc1_invariant`.
+
+**Gate consequence.**
+- **All GFM decks whose gated state has a discharging-GFM inverter move to
+  `oracle: "capi015"`** in this same commit (the B5 `Isc1` change moves the
+  assembled system Y at the StoBus/PVBus mutuals — witnessed `Y[STOBUS.1,STOBUS.2]`
+  0.14.5→capi015 rel `1.209e-1` on IEEE123, `1.172e-1` on 8500-Node; the op-point
+  channels V/I/P do NOT move, only the Norton YPrim). Determined empirically by
+  diffing the capi015-vs-0.14.5 assembled Y per deck: **8 vendored decks** (the 2
+  re-promoted `IBRDynamics_Cases/GFM_IEEE123{,_AmpLimit}` GFMDaily decks +
+  `CannotPickUpLoad` + `Microgrid/.../{GFM_IEEE123/GFMSnap-C,GFM_IEEE123/GFMDailySwapRef,
+  GFM_AmpsLimit_123/GFMSnap,GFM_AmpsLimit_123/GFMDailySwapRef,GFM_IEEE8500/GFMSnap}`)
+  and **4 controls decks** (`controls/gfm/{gfm_micro,gfm_invcontrol,gfm_dynamics,
+  pv_gfm_dynamics}`). Whole-model live compare (system Y + V/I/P per step) green
+  vs capi015.
+- **GFM decks whose gated state ends non-discharging stay 0.14.5-green** (their
+  YPrim never reaches `CalcGFMYprim`): the `Microgrid/GFM_IEEE123/GFMDaily`,
+  `GFMSnap`, `GFMSnap-A/B`, `GFMWholeDaily`, `GFM_AmpsLimit_123/GFMDaily`,
+  `GFM_IEEE8500/{GFMDaily,GFMDailySmallerPV,Unbal}` decks all end
+  Charging/GFL/IDLING. Confirmed by the same per-deck Y diff (rel 0.0).
+- `known_diffs.json`: no Rust↔EPRI entry existed for GFM `Isc1` at r3723 (0.14.5
+  and the port shared the `·1000`, matching each other) — nothing to retire;
+  adopting the change makes Rust match r4133.
+
+## capi015 daily `CktElement.Losses` staleness — SETTLED (GFM WP, capi015 quirk NOT reproduced)
+
+**Observable.** `CktElement.Losses` (the engine `Get_Losses` path) of ANY element
+in a multi-step **daily** (time-series) run, read after the first solve.
+
+**dss_capi 0.14.5 (default) / EPRI r4133.** `Get_Losses` recomputes per solve;
+for a daily-shaped Load it tracks the scaled power each step. **0.15.x (capi015).**
+`CktElement.Losses` **freezes at the step-0 value** across subsequent daily steps
+while `CktElement.Powers` scales correctly. Probed 2026-07-12 (a plain
+grid-connected 3-phase daily `Load kW=400 daily=dl`, `mult=[1.0 0.92 0.85 …]`):
+
+| step | capi015 `Powers` | capi015 `Losses` | 0.14.5 `Losses` |
+|---|---|---|---|
+| 0 | 400.00 kW | 400000 W | 400000 W |
+| 1 | 368.00 kW | **400000 W** (stale) | 368000 W |
+| 2 | 340.00 kW | **400000 W** (stale) | 340000 W |
+
+General (not GFM/islanding-specific), an unrelated 0.15.x engine caching change.
+
+**Decision — do NOT reproduce (capi015 quirk).** Rust — like 0.14.5 and r4133 —
+recomputes losses fresh, matching `Powers`. Since `Get_Losses = Σ_k S_k` is
+**mathematically the sum of the per-conductor `Powers`** the live gate already
+compares (and which match), the `loss_w` channel is redundant; comparing Rust's
+correct losses against capi015's stale ones would be a §1.2-forbidden deliberate
+mismatch. `harness::compare_element` now **skips the `loss_w` cross-engine
+compare only when the oracle's own captured `Losses` disagrees with the sum of
+its own captured `Powers`** (the stale-oracle condition) — a self-validating
+guard: a self-consistent oracle (0.14.5, r4133, and capi015 at step 0) still
+fully gates the `Get_Losses` path, and no real coverage is lost because the
+per-conductor Powers pin the same physics. `known_diffs`: nothing to retire (no
+prior Rust↔EPRI entry).
 
 ## D7 — IBR dynamics current-limit base `PanelkW → FkVArating` (PVSystem) — SETTLED (WP-U1.2, adopt capi015)
 
@@ -481,10 +549,12 @@ already used `FkVArating`; only `IntegrateStates` moved.
   does not reach the iMaxPPhase clamp).
 - **No live corpus deck moves under D7.** The GFM PVSystem deck `pv_gfm_dynamics.dss`
   has `kVA = Pmpp = 800` (`irradiance=1` ⇒ `PanelkW = FkVArating = 800`), so D7 is
-  a numeric NO-OP there — probed bit-identical on 0.14.5 and capi015 (`/tmp/probe_pvgfm.py`),
-  so it stays on the default oracle. No other corpus PVSystem-dynamics deck
-  captures the current-limit under `kVA ≠ Pmpp`. D7 therefore lands as a
-  unit-test-only same-commit package (no manifest flip), decoupled from B5.
+  a numeric NO-OP there — probed bit-identical on 0.14.5 and capi015 (`/tmp/probe_pvgfm.py`).
+  (It later flipped to `oracle:capi015` in the **GFM WP** — for B5, not D7: the
+  GFM PVSystem reaches `CalcGFMYprim`, whose YPrim the B5 `Isc1` change moves;
+  D7 stays a no-op there, so capi015 == 0.14.5 for the op-point.) No other corpus
+  PVSystem-dynamics deck captures the current-limit under `kVA ≠ Pmpp`. D7 therefore
+  lands as a unit-test-only same-commit package (no manifest flip), decoupled from B5.
 - `known_diffs`: none matched — nothing to retire.
 
 ## D8 — Transformer X13/X23 `TrapZero` — SETTLED (WP-U1.2, no code change: not an observable delta; Rust already traps)
