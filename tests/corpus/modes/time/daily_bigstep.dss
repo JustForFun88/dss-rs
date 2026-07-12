@@ -1,0 +1,24 @@
+! GAPS corpus-coverage deck (family=modes): SolveMode=DAILYMODE with a >1h step
+! size to reach the `IncrementTime` multi-decrement branch (Solution.pas
+! IncrementTime: `DynaVars.t += h; while t >= 3600 do begin t -= 3600; intHour++ end`).
+! At the usual h<=3600 the while-loop runs at most once; here stepsize=7200 (2h)
+! makes it decrement TWICE per step, advancing intHour by 2 — the branch is
+! unreachable at h<=3600, so no other modes deck covers it. The 12 solves sample
+! hours 2,4,...,24 of day24.
+! Boundary pinned: the IncrementTime hour-wrap while-loop (>1 decrement/step).
+! Feature-sensitive vs the same feeder at stepsize=1h: the hour sampled per step
+! differs (2,4,... vs 1,2,...), moving every monitor/meter channel — oracle-proven.
+Clear
+New Circuit.gaps_daily2 basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.day24 npts=24 interval=1 mult=(0.42 0.40 0.38 0.37 0.40 0.48 0.62 0.78 0.90 0.95 0.98 1.00 0.99 0.97 0.95 0.93 0.94 0.98 1.00 0.96 0.85 0.72 0.58 0.48)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1 daily=day24
+New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=400 pf=0.92 model=2 daily=day24
+New Monitor.m_ld1 element=Load.ld1 terminal=1 mode=1 ppolar=no
+New EnergyMeter.em element=Line.l1 terminal=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set LoadMult=1.2
+! stepsize 7200s = 2h: IncrementTime's while t>=3600 fires twice per step.
+Set mode=daily stepsize=7200 number=1

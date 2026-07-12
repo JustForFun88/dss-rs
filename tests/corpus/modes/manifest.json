@@ -929,6 +929,85 @@
    "pending": false,
    "wp": "WPG.21",
    "note": "MakePosSequence end-to-end report path: a mixed mini feeder (115/12.47 sub xfmr + 3 lines + cap + mixed loads + meter + monitor) solve -> makeposseq -> solve -> report reads (summary/losses/monitor sample) that exercise the PositiveSequence x3 power paths (Get_Power/Get_Losses/summary scale by 3). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 4 iters, 5 nodes); feature-sensitive. Pending until WPG.21 A2."
-  }
+  },
+ {
+  "path": "time/daily.dss",
+  "kind": "micro",
+  "n_steps": 24,
+  "selected_elements": [
+   "*"
+  ],
+  "check_meters_monitors": true,
+  "probes": [
+   {
+    "element": "Load.ld1",
+    "props": [
+     "kw"
+    ]
+   }
+  ],
+  "pending": false,
+  "wp": "GEN-MODE",
+  "note": "SolveMode=DAILYMODE (Pascal SolveDaily, SolutionAlgs.pas:160): the 24-step daily loop that GENERALTIME (single-step) and PEAKDAY (ignores LoadMult) do not cover. `Set LoadMult=1.2` IS applied in DAILY (power_flow.rs:285), SampleTheMeters+DI open/close, EndOfTimeStepCleanup + a trailing IncrementTime per step; the 24 solves walk hours 0..23. Oracle-validated: 24 converged steps, bit-identical across two processes (d4bde52ae6197a1c); feature-sensitive vs LoadMult=1.0 (5008550ad64a3c2e \u2014 every monitor/meter channel shifts)."
+ },
+ {
+  "path": "time/daily_bigstep.dss",
+  "kind": "micro",
+  "n_steps": 12,
+  "selected_elements": [
+   "*"
+  ],
+  "check_meters_monitors": true,
+  "pending": false,
+  "wp": "GEN-MODE",
+  "note": "SolveMode=DAILYMODE at stepsize=7200s (2h) to reach the IncrementTime multi-decrement branch (`while t>=3600 do begin t-=3600; intHour++ end` runs TWICE/step) \u2014 unreachable at h<=3600, so no other modes deck covers it. The 12 solves sample hours 2,4,...,24. Oracle-validated: 12 converged steps, bit-identical across two processes (c5e11c7486c85a51); feature-sensitive vs stepsize=3600 (c93630d4dc1234c8 \u2014 hours 1..12, one decrement/step)."
+ },
+ {
+  "path": "time/yearly.dss",
+  "kind": "micro",
+  "n_steps": 8,
+  "selected_elements": [
+   "*"
+  ],
+  "check_meters_monitors": true,
+  "pending": false,
+  "wp": "GEN-MODE",
+  "note": "SolveMode=YEARLYMODE (Pascal SolveYearly, SolutionAlgs.pas:112): the DefaultYearlyShapeObj.GetMultAtHour channel (loads carry `yearly=`; yearly applies NO LoadMultiplier, power_flow.rs:284) and the `if PriceCurveObj<>NIL then PriceSignal:=GetPrice(dblHour)` arm (SolutionAlgs.pas:136). PriceSignal drives a price-dispatched Generator (dispmode=price, Generator.pas:1090): g_pk runs ALL year (curve 50..80 >= dispvalue=40) with the curve present, and stays OFF without it (PriceSignal holds its default 25 < 40). dispvalue sits above the default 25 but below every curve price so the split is steady ON vs steady OFF (a mid-run flip would cost the oracle an extra convergence iteration on the flip step). Oracle-validated: 8 converged steps (2 iters each), bit-identical across two processes (b7fca76ea63c5cd6); feature-sensitive two ways \u2014 removing PriceCurve leaves g_pk OFF every step (145fe14c895d109e), flattening yr8 removes the shape trajectory (afa7f01995a9ce01)."
+ },
+ {
+  "path": "time/duty.dss",
+  "kind": "micro",
+  "n_steps": 8,
+  "selected_elements": [
+   "*"
+  ],
+  "check_meters_monitors": true,
+  "probes": [
+   {
+    "element": "Storage.batt",
+    "props": [
+     "%stored",
+     "state"
+    ]
+   }
+  ],
+  "pending": false,
+  "wp": "GEN-MODE",
+  "note": "SolveMode=DUTYCYCLE (Pascal SolveDuty, SolutionAlgs.pas:249): the distinguishing arms are ControlMode:=TIMEDRIVEN and DynaVars.h:=1.0 (a 1-second step, set_mode.rs:99) \u2014 IntervalHrs=h/3600 is tiny so the storage %stored barely moves; the load follows its `duty=` shape (CalcDutyMult) at the 1-second grid, pricesignal held constant. The 8 solves walk dc8 at seconds 1..8 (dblHour=n/3600). Oracle-validated: 8 converged steps, bit-identical across two processes (fc42b0d0bbecf307); feature-sensitive vs a flat dc8 (4b9c39449efb02f1)."
+ },
+ {
+  "path": "time/midi_duty_ctrl.dss",
+  "kind": "micro",
+  "n_steps": 20,
+  "selected_elements": [
+   "*"
+  ],
+  "check_meters_monitors": true,
+  "compare_eventlog": true,
+  "compare_ctrlqueue": true,
+  "pending": false,
+  "wp": "GEN-MODE",
+  "note": "DUTYCYCLE ControlMode:=TIMEDRIVEN interaction (set in Set_Mode for DUTY, set_mode.rs:99). Only under TIMEDRIVEN does the control queue honor a delay and fire on schedule: the recloser picks up on a temporary fault (applied 0.2s), trips FAST (0.4s), the fault self-clears below MinAmps, then RECLOSES on the recloseintervals schedule (0.9s) \u2014 a timed trip/reclose sequence. The deck does NOT set controlmode (the value under test is DUTY's default TIMEDRIVEN). Oracle-validated: 20 converged steps, bit-identical across two processes incl. eventlog+ctrlqueue (ea25e8d2106ac212); feature-sensitive vs `controlmode=static` (c0eb10198c3db72e \u2014 the timed reclose schedule collapses)."
+ }
  ]
 }
