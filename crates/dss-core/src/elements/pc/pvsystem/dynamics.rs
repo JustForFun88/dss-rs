@@ -39,7 +39,7 @@ impl PVSystem {
     /// (l.2281): sample the mult + temperature the active load-shape class selects
     /// (`Set LoadShapeClass=`) at the dynamics hour, or leave `ShapeFactor := 1+j1`
     /// when unset (`USENONE`). The subsequent `compute_panel_power` reads the result.
-    fn apply_dynamics_load_shape(&mut self, sys: &SysCtx) {
+    pub(super) fn apply_dynamics_load_shape(&mut self, sys: &SysCtx) {
         match sys.active_load_shape_class {
             USEDAILY => {
                 self.calc_daily_mult(sys.dbl_hour);
