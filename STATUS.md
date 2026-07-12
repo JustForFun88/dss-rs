@@ -272,6 +272,52 @@ already reproduces #485 exactly.
     `DSS_UPDATE_POPULATION_LOCK=1` and commit the lock at merge, else merged main
     is red (manifests 282 solvable / 23 skipped vs the committed lock's 279/26).
 
+**Corpus coverage wave — `modes` family (branch `cgen-mode`), 2026-07-12.**
+Added 8 feature-sensitive, two-process-validated solve-mode decks closing the
+zero-coverage `TSolveMode` branch gaps (modes family 40 → 48). Each deck: pinned
+Pascal-cited boundary, oracle-solvable, bit-identical fingerprint across two
+oracle processes, feature-sensitive (neutralizing the pinned feature moves the
+oracle output). Live-green under `modes_cases_match_oracle` (full model + all
+element currents/powers/losses + meters/monitors, `micro` tier).
+- **`time/daily`** (DAILYMODE, 24-step loop + global LoadMult applied — PeakDay
+  ignores it); **`time/daily_bigstep`** (stepsize=7200s → the IncrementTime
+  `while t>=3600` multi-decrement branch, unreachable at h≤3600); **`time/yearly`**
+  (YEARLYMODE shape + no-LoadMult + the PriceCurve→PriceSignal→price-dispatched
+  Generator arm); **`time/duty`** (DUTYCYCLE h=1s + ControlMode=TIMEDRIVEN +
+  `duty=` shape); **`time/midi_duty_ctrl`** (DUTY default TIMEDRIVEN lets a
+  recloser fire a timed trip/reclose sequence — eventlog + ctrlqueue compared);
+  **`harmonics/harmonic_hlist`** (HARMONICMODE explicit `Set harmonics=(1 3 5 13)`
+  list + skip-fundamental gate + a zero-injection frequency); **`harmonics/harmonict`**
+  (HARMONICMODET sequential-time harmonic sweep); **`reset/mode_reset`** (the
+  Set_Mode reset tail — ResetAll meters/monitors/controls on a mode change).
+- **Real port bug caught + ESCALATED (not fixed here): DIRECT-mode PC-element
+  current reporting.** A `direct` deck (constant-power loads, `Set mode=direct`)
+  found node voltages match the oracle but Load currents diverge (42.056 vs
+  40.731 A, ~1.4 A). Root cause: Pascal `TPCElement.GetCurrents` (PCElement.pas
+  :137) takes a `LastSolutionWasDirect` shortcut — report `YPrim·Vterminal` (the
+  frozen shadow-admittance current), NOT the load-model current — which the port
+  omits (acknowledged TODO at `pc/load/accessors.rs:133`). The fix is 1:1 but
+  broad (a new `SysCtx.last_solution_was_direct` threaded through ~13 PC
+  `get_currents` impls + ~10 test-literal builders); its blast radius is
+  DIRECT-mode-only (untested until now), so it is deferred to a dedicated WP. The
+  `direct` deck is discarded (no feature-sensitive DIRECT deck can avoid the bug:
+  only constant-Z loads dodge it, and those make DIRECT ≡ snapshot). See report.
+- Deferred (matrix lower-priority, live-channel overlap with existing unit tests):
+  `dynamic` (dSpeed f32-cancellation floor caveat) and `faultstudy` (needs a
+  bus-SC compare surface the harness lacks) — `exec/tests/dynamics.rs` /
+  `fault_study.rs` still cover the numerics.
+- **Audit settle (2 Minor).** (1) Added the 8 GEN-MODE decks to the
+  `MODES_REQUIRED` anti-deletion floor (`corpus_live.rs`), per the WPG.13/WPG.17
+  convention that every feature deck joins the floor — the bijection guard only
+  catches a single-sided drop, the floor catches a coordinated file+manifest
+  removal. (2) Fixed the daily/yearly manifest-note engine citations: the
+  per-mode LOAD multiplier lives in `nominal.rs` (Daily `f *= load_multiplier`
+  :138-141; Yearly :146-148), not `set_generator_disp_ref` (`power_flow.rs`
+  :284-285, the generator dispatch reference); corrected the yearly note's
+  imprecise "loads apply no LoadMultiplier" (loads DO scale by LoadMult in every
+  mode — the deck just leaves it at 1.0; it is the generator dispatch reference
+  that omits it in YEARLY).
+
 **CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
 quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch
 `cf-a`). `solvable_now` **245 → 249**.

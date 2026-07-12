@@ -1,0 +1,27 @@
+! GAPS corpus-coverage deck (family=modes): SolveMode=DAILYMODE (Pascal
+! TSolutionAlgs.SolveDaily, SolutionAlgs.pas:160). Isolates the daily loop that
+! GENERALTIME/PEAKDAY do NOT cover:
+!  * the GLOBAL LoadMultiplier is applied in DAILY (LoadMultForMode = lm*gf*hm,
+!    power_flow.rs:285) — PEAKDAY ignores it, so `Set LoadMult=1.2` here scales
+!    every load 1.2x on top of the daily shape;
+!  * SampleTheMeters=TRUE + the DI-file open/close around the loop;
+!  * EndOfTimeStepCleanup + a TRAILING IncrementTime per step.
+! Each harness `solve` runs one daily step (number=1, set_mode.rs default is 24
+! but the deck re-sets number=1) and IncrementTime advances one hour; the 24
+! solves walk hours 0..23 of day24.
+! Feature-sensitive: removing `Set LoadMult=1.2` (or swapping to PeakDay, which
+! drops the multiplier) shifts every monitor/meter channel — proven on the oracle.
+Clear
+New Circuit.gaps_daily basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.day24 npts=24 interval=1 mult=(0.42 0.40 0.38 0.37 0.40 0.48 0.62 0.78 0.90 0.95 0.98 1.00 0.99 0.97 0.95 0.93 0.94 0.98 1.00 0.96 0.85 0.72 0.58 0.48)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1 daily=day24
+New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=400 pf=0.92 model=2 daily=day24
+New Monitor.m_ld1 element=Load.ld1 terminal=1 mode=1 ppolar=no
+New EnergyMeter.em element=Line.l1 terminal=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+! Global LoadMultiplier != 1 — DAILY applies it (unlike PeakDay). This is the axis.
+Set LoadMult=1.2
+Set mode=daily stepsize=1h number=1
