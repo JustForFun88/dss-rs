@@ -88,6 +88,11 @@ pub fn write_dss_object(
         .downcast_ref::<crate::elements::general::line_geometry::LineGeometryObj>()
     {
         lg.save_write_body(out, cx);
+    } else if let Some(ln) = obj
+        .as_any()
+        .downcast_ref::<crate::elements::pd::line::Line>()
+    {
+        ln.save_write_body(out, cx);
     } else {
         save_write(out, cx, &*obj);
     }
