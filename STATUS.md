@@ -36,30 +36,97 @@ loses regulator/transformer/geometry/relative-file fidelity) while the AD leg
 proper is clean at the fixture floor (IEEE13 leg1=5.9e-2 vs leg2 AD=**1.6e-6**;
 ieee37 1.16e-1 vs **1.3e-5**; 8500 2.5e-1 vs **7.6e-6**). These are `off:save-
 roundtrip-*` — a save-circuit gap to fix in save, not AD (per D7). Off-class
-census (specific, categorized): non-3ph-cut-only 106+68, save-roundtrip-*
-68+10, ad-nonconvergent 28+21, already-torn-artifact 18, too-small 11+18,
-ad-singular-zone 6+1, ad-floor-above-tier 3, ad-islanded-divergence 2,
-mode-outside-AD-scope 1, plus a handful of family-only classes.
+census after the settle-pass decomposition (corpus only; specific, categorized):
+non-3ph-cut-only 106, save-roundtrip-{geometry 40, relpath 26, regxfmr 17, relay
+8, autotrans 3, userdll 2}, already-torn-artifact 18, too-small 11, ad-islanded-
+divergence 10, ad-nonconvergent 7, mode-outside-AD-scope 4, ad-switched-divergence
+3, ad-floor-above-tier 3, ad-regulator-divergence 2 (plus the family classes).
+The `ad-*` classes are OPEN AD-engine defects (see the settle-pass record below),
+not undecomposed buckets.
 
 **Bugs found (open items for follow-up, NOT this WP's gate):** (1) the save
 round-trip fidelity gap above (regulator/transformer state + LineGeometry/WireData
 ordering + relative data-file paths not preserved through `Master_Interconnected`
 save/reload) blocks promoting ~68 corpus feeders from `off:save-roundtrip-*` to
-`pf` — a save-circuit task. (2) Two family sensor decks (`controls/sensor/
-{sensor_map,midi_sensor}`) **panic** ("index out of bounds: len 0 index 0") inside
-the AD arm — a latent AD-with-sensors crash (classified `off:ad-probe-panic`).
-(3) ~49 corpus + 22 family decks are `off:ad-nonconvergent`/`ad-singular-zone`/
-`ad-divergent` — many likely downstream of the corrupted interconnected save, but
-un-decomposed here. **Deliberate scope decision:** no deck was promoted to `full`
-(the plan's `full` = eventlog-equality proof for zone-local controls needs child-
-eventlog plumbing not built here); all control decks are `pf` (physics-only,
-controls-off both arms) or `off`. The child fan-out is still ported + exercised on
-the controls-off path.
+`pf` — a save-circuit task.
+
+**WP-AD.4 SETTLE PASS (branch `wp-ad4`, 2026-07-12) — audit findings resolved
+empirically.** Every off:ad bucket was decomposed and the audit's Major/Minor
+findings settled with evidence:
+
+- **`full` now has real active-control coverage** (was 0, un-gated). New
+  synthesized fixture `tests/data/adiakoptics/adreg.dss` (midi radial + a head
+  RegControl LTC, zone-local) drives `adiakoptics.rs::full_zone_local_regcontrol_
+  matches_normal`: the ONE gate on the child `DO_CTRL_ACTIONS` fan-out active
+  path. Proof is a controlled experiment — the AD tear re-seeds each zone from the
+  transformer's *declared* tap (1.0), so the **controls-OFF** AD arm lands 4.3 %
+  off normal (one tap ratio); the **controls-STATIC** AD arm re-establishes the
+  regulator **inside the child zone** (its tap events live in the child eventlog,
+  not the coordinator's) and matches normal at 3.2e-5. That clean/diverged split
+  is only possible if the child fan-out actually sampled + operated the zone
+  control. (A capcontrol fixture was tried first and abandoned: the CapControl's
+  reset/initial-state latches inconsistently across the base-solve/AD-reseed
+  paths — a plain shunt cap is clean under AD at 3.6e-5, but adding the capcontrol
+  makes even the controls-off gap 4 % purely from the bank's reset state, so it
+  cannot isolate the fan-out. The regulator's integer tap has no such ambiguity.)
+  No corpus/family deck qualifies for `full` (their regcontrol/capcontrol decks
+  are `non-3ph-cut-only` or don't tear), so the sweep stays `full=0` — the
+  capability is gated in `adiakoptics.rs` where synthesized fixtures live (§0.2).
+- **off:ad-* bucket fully decomposed** (`DSS_AD_DECOMPOSE` on every deck), mislabels
+  fixed, real AD bugs filed with specific reasons:
+  - *AD vindicated → moved to save-roundtrip:* the distance/TD21 **relay** decks
+    (8) had leg2 **2.3e-15** (AD clean) with leg1=2.4e3 → `off:save-roundtrip-relay`;
+    the **autotrans** Auto1bus decks (3) had leg1>>1 (save reload broken) →
+    `off:save-roundtrip-autotrans`.
+  - *Out of AD scope:* the 3 **harmonics** IEEE_519 decks → `off:mode-outside-AD-scope`.
+  - *Open AD-engine defects (leg1 small, leg2 large — a real AD↔normal physics gap
+    per §5, filed here, kept off the gate because fixing the AD engine is outside
+    the sweep WP's charter):* `off:ad-regulator-divergence` (ODRegTest leg2=1.5e15,
+    TestDDRegulator leg2=0.88); `off:ad-switched-divergence` (IEEE123Switches
+    leg2=19, civanlar/SecPar leg2=1.0 — open-switch/reconfiguration/meshed
+    secondary); `off:ad-islanded-divergence` (10 GFM/GFL/ISource grid-forming
+    microgrids, leg2~7e5 — no firm source reference); `off:ad-nonconvergent` (7
+    islanded GFM/GFL decks whose AD arm does not even init/converge). The generic
+    `ad-singular-zone`/`ad-divergent` corpus labels are gone.
+- **Real AD-arm panic fixed** (was `off:ad-probe-panic`). `Sensor::update_current_
+  vector`/`_for_wls` indexed `sensor_current[i]` for `i<nphases` while the buffer
+  was still unsized (kW set mid-edit, before `RecalcElementData` allocates —
+  reachable via a `save circuit`-emitted sensor). Now sizes the buffer to match
+  Pascal's `AllocateSensorObjArrays` (transient; recalc re-zeros, TakeSample
+  recomputes). The two sensor decks reclassify: `sensor_map` → `off:too-small`
+  (2-line feeder, no two ≥2-bus zones), `midi_sensor` → `off:save-roundtrip-control`
+  (interconnected save loses the metered `Line.bb1_2` reference).
+- **Disposition validator hardened.** `ad_disposition_is_valid` now checks off:
+  reasons against a closed `AD_OFF_REASONS` allowlist (was "any non-empty
+  string") — a new deck can't invent an unreviewed reason to dodge the sweep, and
+  the `ad-*` defect classes stay a bounded, greppable list.
+- **GETCTRLMODE 1:1 fix.** `ad_send_get_ctrl_mode` set the child's
+  `DefaultControlMode` from the coordinator's `DefaultControlMode`; official
+  Solution.pas:3261 sets it from the coordinator's live `ControlMode`. Corrected
+  (equal at every dispatch point, but now exact). Sweep `ad_solve_ad`'s `full`
+  path no longer hardcodes `controlmode=static` — it re-asserts the deck's own
+  declared control mode (symmetric with the normal arm).
+- **pf/full comparison scope (node-V is sufficient).** The sweep compares node
+  voltages, which on the shared interconnected network *determines* element
+  currents (`I=Yprim·V`) and powers (`S=V·conj(I)`) — a stitch error leaving all
+  voltages right but a flow wrong is not physically realizable for a shared
+  element. Confirmed empirically: an element-power cross-check over every `pf`
+  deck tracked the node-V gap with no independent divergence; its only
+  above-node-floor residuals were transformer/line **loss** channels on the
+  short-circuit decks (worst 2.2e-2 on `ieee37_SC_Currents` `line.l6` — the
+  documented cancellation-floor class, not a gate-able quantity). The
+  monitors/eventlog behavioral channel is gated by the `adreg` full test.
 
 - **AD-master migration (EPRI_Ckt5-G/7-G, IEEE_123_Bus-G, ckt24 masters) + D9(d)
-  `oracle:"r3723"` cases: NOT done** (budget). These stay in `skipped_oracle_issue`/
-  `skipped_needs_investigation`. Migrating them needs the r3723 Oddie AD-replay
-  compare (D9d) which was not reached; flagged for a follow-up.
+  `oracle:"r3723"` sweep cases: still DEFERRED (recorded, not silent).** These
+  stay in `skipped_oracle_issue`/`skipped_needs_investigation`; `ad_sweep.json`
+  carries no `oracle` field. Rationale: Part II has no pinned oracle by design
+  (§0.2); D9(d) is an EPRI *reference* channel, and the plan places the Oddie
+  AD-replay harness + EPRI reference-channel hardening in **WP-AD.5**. The AD
+  numbers are validated (a) rust-vs-rust at the D7 tier — the WP's stated
+  contract — across the 37 `pf` decks + the `adiakoptics.rs` D7 fixtures, and (b)
+  the child control fan-out is now gated end-to-end by the `adreg` full test.
+  Building the external r3723 AD-replay compare is the WP-AD.5 task.
 
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a
