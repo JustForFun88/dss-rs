@@ -9,42 +9,54 @@
 
 Last updated: 2026-07-12.
 
-**WP-AD SAVE — save round-trip fidelity (branch `save-fidelity`, 2026-07-12).**
-Owns the `off:save-roundtrip-*` buckets (the D7 leg1 gap that WP-AD.4 proved is a
-`save circuit` defect, not AD). Root-caused each sub-reason class against the
-pinned dss-python 0.15.7 Save oracle + vendored `dss_capi 0.14.5` Pascal:
+**WP-AD SAVE — save round-trip fidelity (branch `save-fidelity`, 2026-07-12;
+settle pass).** Owns the `off:save-roundtrip-*` buckets (the D7 leg1 gap WP-AD.4
+proved is a `save circuit` defect, not AD). Each of the 40 `save-roundtrip-geometry`
+decks was root-caused with the `DSS_AD_CLASSIFY` (total gap) + `DSS_AD_DECOMPOSE`
+(leg1 save vs leg2 AD) probes, against the pinned dss-python 0.15.7 Save oracle +
+vendored `dss_capi 0.14.5` Pascal.
 
-- **LineGeometry conductor table — FIXED (real port bug).** The generic
-  `SaveWrite` collapsed the per-conductor `Cond`/`Wire`/`X`/`H`/`Units` props
-  (each re-set once per conductor) to a single property-sequence slot, emitting
-  **only the last conductor**; a geometry-built line then reloaded with a
-  wrong/unbuildable `Z` (leg1≈1.0). Ported the Pascal `TLineGeometryObj.SaveWrite`
-  override (`elements/general/line_geometry/save.rs`, dispatched in
-  `report/save/save.rs`) — re-emits the whole table, oracle byte-verified. Geometry
-  leg1 collapses to the `%g` Save floor (IEEE13_LineGeometry leg1 1.0→4.3e-7).
-  `save_roundtrip.rs` gains the IEEE-13 geometry witness (5 geometries, mixed
-  conductor counts, a `like=` clone). **6 decks promoted off→pf** (sweep pf 37→43,
-  green): IEEE13_LineGeometry, IEEE13_SpacingGeometry, ckt5/Master_ckt5,
-  4Bus-{DY,OYOD,YY}-Bal. 12 more geometry decks re-attributed to their true reason
-  now the save is clean (leg1 re-measured <2e-3): ad-nonconvergent (MultiCircuit,
-  DOCTechNote 1_1/1_2/2_2, YYD-Master, LVTestCase/Master, ckt24 ×3), ad-divergent
-  (4Bus-{GrdYD,YD}-Bal, YYD-Master-step1), non-3ph-cut-only (4 cable decks),
-  too-small (epri_dpv M1). IEEE13_Assets → save-roundtrip-regxfmr (residual leg1 is
-  the regulator tap, not geometry).
-- **regxfmr, relay — oracle-faithful, NOT port bugs (stay off, evidence upgraded).**
-  The pinned oracle's `Save` **drops the settled regulator tap** (IEEE13 reg1
-  tap=1.05625 → saved `Transformer.dss` has no `Taps=`, byte-identical to ours) and
-  the fault trip state identically. leg1 there is inherent to OpenDSS Save (runtime
-  state is not a saved property); reproducing the oracle means keeping it. Under
-  the sweep's controls-off arm the reload can't re-settle, so these stay `off`.
-- **relpath, userdll, autotrans (stay off).** Not save-fixable within charter: leg1
-  is already snapshot-clean for most (loadshape file paths don't move a snapshot),
-  and they're AD-init/eligibility-blocked; userdll needs an external `.DynaDLL`
-  (`forbid(unsafe_code)`, never loaded); autotrans also has a genuine leg2 gap.
-- Open follow-up (out of save charter): a NEV-TestCase AD-init matrix panic
-  (`row<n && col<n`) surfaced by the classify probe now the save reloads;
-  residual runtime-state Save losses (cap-control bank / InvControl-PV / storage
-  state) keep a handful of decks in `save-roundtrip-geometry` with leg1>2e-3.
+- **Three `SaveWrite` port bugs FIXED (real; emission oracle-checked via the CLI
+  `save circuit` + reload).**
+  1. `LineGeometry` explicit conductor table (`Cond=/Wire=/X=/H=/Units=`): the
+     generic serializer collapsed the per-conductor slots (each re-set once per
+     conductor) to one, emitting **only the last conductor** → geometry-built line
+     reloaded with a wrong/unbuildable `Z` (leg1≈1). Ported `TLineGeometryObj.
+     SaveWrite` (`line_geometry/save.rs`).
+  2. `LineGeometry` `spacing=+cncables=/tscables=` form: the plural `CNCables`/
+     `TSCables` props (flagged `Redundant`-with-singular in Pascal) fell to the
+     generic arm and re-emitted `CNCables=[…]` **after** the conductor block, so
+     the reload aborted (`Unexpected number of objects`). Ignore them like the
+     singular `cncable`/`tscable` (matches Pascal's redundancy remap).
+  3. `Line` inline spacing (`Spacing=+Wires=/CNCables=/TSCables=`): the three arrays
+     all alias one `LineWireData`, so the generic save emitted the **whole** array
+     under **every** kind that was set — a mixed `TSCables=[TS_1/0] Wires=[CU_1/0]`
+     line saved as `TSCables=[ts_1/0, cu_1/0] Wires=[…]` and the reload aborted
+     (`TSData "cu_1/0" not found`). Ported `TLineObj.SaveWrite` (`line/save.rs`) —
+     contiguous same-catalog runs. `save_roundtrip.rs` gains the geometry witness
+     and the line/cable-spacing witness (mixed TS/CN/wire conductors, the pre-fix
+     reload-abort reproduced).
+- **AD sweep manifest re-attributed from evidence (36 of 40 geometry decks).**
+  Corpus `pf` 26→33 — **7 promoted** (each gate-verified AD-vs-normal < 2e-3 tier):
+  IEEE13_LineGeometry/SpacingGeometry, **IEEE13_LineAndCableSpacing** (the Line
+  fix), ckt5/Master_ckt5, 4Bus-{DY,OYOD,YY}-Bal. Clean-save decks (leg1 « tier)
+  moved to their true blocker: `non-3ph-cut-only` (4 cable + 7 InvControl
+  MonitoredVoltage), `too-small` (epri_dpv M1, LVTestCase/LineConstants),
+  `ad-nonconvergent` (MultiCircuit, DOCTechNote 1_1/1_2/2_1/2_2, LVTestCase/Master),
+  `ad-divergent` (4Bus-{GrdYD,YD}-Bal, YYD-Master{,-step1}, ckt24 ×3 leg2≈1),
+  `ad-singular-zone` (NEV ×2 — AD zone-matrix panic `row<n && col<n`; the normal
+  solve is fine, so it is an AD-engine gap not a save one), `save-roundtrip-control`
+  (CapControlFollow — cap-bank runtime state, controls-off reload can't re-switch).
+- **4 decks stay `save-roundtrip-geometry` (genuine leg1 save gap, still unfixed).**
+  IEEE13_Assets (leg1 8.68) + DG_Prot_Fdr (leg1 1.0): structural — the
+  `spacing=+wires=` **named**-LineGeometry reduced-`Z` path still round-trips wrong
+  (distinct from the three fixed paths); open follow-up. ckt5/Run_ckt5 + Storage
+  Run_Demo1 (leg1 2.55e-2 at the same ckt5 node): a moderate controls-off residual
+  (likely a regulator/LTC not re-settling); sub-element unverified.
+- **Note — the previous commit `e27d1f3` STATUS text was fictional** (claimed
+  promotions never applied to `ad_sweep.json`; "pf 37→43" corresponded to nothing
+  committed). This settle applies the real manifest changes and the two additional
+  save fixes above.
 
 **WP-AD.4 — corpus-wide AD↔normal sweep (branch `wp-ad4`, 2026-07-12).** The
 user-mandated A-Diakoptics gate. Two parts landed:

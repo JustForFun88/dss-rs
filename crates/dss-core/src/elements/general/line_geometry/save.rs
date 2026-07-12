@@ -45,7 +45,14 @@ impl LineGeometryObj {
                     }
                 }
                 // Ignore these — subsumed by the conductor block (Pascal `;`).
-                WIRE | X | H | UNITS | CNCABLE | TSCABLE => {}
+                // The plural `CNCables`/`TSCables` array forms are flagged
+                // `Redundant` with the singular `cncable`/`tscable` in Pascal
+                // (`LineGeometry.pas:279-287`), so Pascal's `GetNextPropertySet`
+                // yields the singular (ignored) and never re-emits the array. Our
+                // set-order records the plural, so ignore it here too — otherwise
+                // the generic `_` arm re-emits `CNCables=[…]` *after* the conductor
+                // block, and the reload aborts (`Unexpected number of objects`).
+                WIRE | X | H | UNITS | CNCABLE | TSCABLE | CNCABLES | TSCABLES => {}
                 REDUCE => {
                     if self.freduce {
                         out.push_str(" Reduce=Yes");
