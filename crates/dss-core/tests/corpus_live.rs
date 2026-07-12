@@ -1661,8 +1661,17 @@ fn asymmetric_cases_match_oracle() {
 const CONTROLS_REQUIRED: &[&str] = &[
     "regcontrol/regcontrol_sym.dss",
     "regcontrol/regcontrol_asym.dss",
+    // corpus coverage wave (controls): RegControl Pascal-branch decks.
+    "regcontrol/regcontrol_ldc.dss",
+    "regcontrol/regcontrol_reverse.dss",
+    "regcontrol/regcontrol_remotebus.dss",
+    "regcontrol/regcontrol_inversetime.dss",
     "capcontrol/capcontrol_sym.dss",
     "capcontrol/capcontrol_asym.dss",
+    // corpus coverage wave (controls): CapControl case-ControlType decks.
+    "capcontrol/capcontrol_pf.dss",
+    "capcontrol/capcontrol_time.dss",
+    "capcontrol/capcontrol_voverride.dss",
     "invcontrol/invcontrol_vv_sym.dss",
     "invcontrol/invcontrol_vvvw_asym.dss",
     "storagecontroller/storagectrl_peakshave.dss",

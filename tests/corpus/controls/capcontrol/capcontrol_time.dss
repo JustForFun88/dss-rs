@@ -1,0 +1,36 @@
+// CapControl TIME mode (CapControl.pas Sample TIMECONTROL branch): switch on a
+// clock schedule. Two banks exercise both sub-branches: cc1 has ON<OFF (on
+// through the day, 8h..20h), cc2 has OFF<ON so its ON window WRAPS past
+// midnight (on 21h..next-day-06h; l.1058/1089 next-day branch). A daily 24h
+// run walks both windows. Feature-sensitive: shifting the OFF hour moves the
+// switch times (probe-proven), and the wrap bank is ON at hours 0-5 and 21-23
+// exactly because of the OFF<ON next-day branch.
+// Compared per step: full model + both banks' step states, TIME setting
+// probes, switching event log + control queue.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.captime basekv=12.47 pu=1.02 angle=0 phases=3 bus1=src
+~ mvasc3=2000 mvasc1=2100
+
+New line.lf bus1=src bus2=b r1=0.3 x1=0.75 r0=0.7 x0=2.0 c1=0 c0=0 length=3
+
+New capacitor.cday phases=3 bus1=b conn=wye kvar=900 kv=12.47 numsteps=1
+New capacitor.cnight phases=3 bus1=b conn=wye kvar=600 kv=12.47 numsteps=1
+
+// Daytime schedule: ON at 08:00, OFF at 20:00 (ON < OFF).
+New capcontrol.cc1 element=line.lf terminal=2 capacitor=cday type=time
+~ onsetting=8 offsetting=20 eventlog=yes
+// Overnight schedule: ON at 21:00, OFF at 06:00 next day (OFF < ON = wrap).
+New capcontrol.cc2 element=line.lf terminal=2 capacitor=cnight type=time
+~ onsetting=21 offsetting=6 eventlog=yes
+
+New loadshape.day npts=24 interval=1
+~ mult=(0.35 0.35 0.38 0.42 0.50 0.62 0.78 0.92 1.05 1.15 1.20 1.15 1.05 0.98 0.90 0.82 0.74 0.80 0.95 1.08 1.15 0.90 0.55 0.38)
+
+New load.l1 bus1=b phases=3 conn=wye model=1 kv=12.47 kw=4000 pf=0.90
+~ daily=day
+
+Set voltagebases=[12.47]
+calcv
+Set mode=daily stepsize=1h number=1

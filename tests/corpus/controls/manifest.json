@@ -1521,6 +1521,217 @@
     "*"
    ],
    "check_meters_monitors": true
+  },
+  {
+   "path": "regcontrol/regcontrol_ldc.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum",
+      "r",
+      "x",
+      "vreg",
+      "band"
+     ]
+    },
+    {
+     "element": "Transformer.tr",
+     "props": [
+      "tap"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "LDC forward path (RegControl.pas Sample l.1040-1048): R+jX line-drop comp shifts the effective control voltage with load current. Feature-sensitive: neutralizing r=0 x=0 changes the tap event log (two-process oracle capture bit-identical; probe-proven)."
+  },
+  {
+   "path": "regcontrol/regcontrol_reverse.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum",
+      "reversible",
+      "revvreg",
+      "revband",
+      "vreg",
+      "band"
+     ]
+    },
+    {
+     "element": "Transformer.tr",
+     "props": [
+      "tap"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Reversible + reverse setpoints: a downstream generator ramp drives reverse power through the LTC past revThreshold, flipping InReverseMode so it regulates to revVreg/revBand. Feature-sensitive: reversible=no keeps it forward-only (different taps/event log; probe-proven)."
+  },
+  {
+   "path": "regcontrol/regcontrol_remotebus.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum",
+      "bus",
+      "remoteptratio",
+      "vreg"
+     ]
+    },
+    {
+     "element": "Transformer.tr",
+     "props": [
+      "tap"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Remote regulated bus (UsingRegulatedBus): the regulator holds a bus one line-section downstream via RemotePTRatio. Feature-sensitive: watching the local winding (bus=mv) lands a different tap trajectory by the daily line drop (probe-proven)."
+  },
+  {
+   "path": "regcontrol/regcontrol_inversetime.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum",
+      "inversetime",
+      "vlimit",
+      "delay",
+      "vreg"
+     ]
+    },
+    {
+     "element": "Transformer.tr",
+     "props": [
+      "tap"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Inverse-time tap delay + Vlimit clamp (RegControl.pas Inversetime + VLimitActive): Vlimit=124 caps the boost on an overvoltage-prone light-load feeder. Feature-sensitive on BOTH knobs: vlimit=0 and inversetime=no each change the outcome (probe-proven)."
+  },
+  {
+   "path": "capcontrol/capcontrol_pf.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "CapControl.cc",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting",
+      "pctminkvar"
+     ]
+    },
+    {
+     "element": "Capacitor.cb",
+     "props": [
+      "states"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "PFCONTROL: offsetting=-0.99 exercises the leading PF1to2 fold; the over-sized bank sheds then the half-bank on-check declines re-ON, and pctMinkvar=25 gates the last step off. Feature-sensitive: pctminkvar=0 changes the trajectory (two-process bit-identical; probe-proven)."
+  },
+  {
+   "path": "capcontrol/capcontrol_time.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "CapControl.cc1",
+     "props": [
+      "type",
+      "onsetting",
+      "offsetting"
+     ]
+    },
+    {
+     "element": "CapControl.cc2",
+     "props": [
+      "onsetting",
+      "offsetting"
+     ]
+    },
+    {
+     "element": "Capacitor.cday",
+     "props": [
+      "states"
+     ]
+    },
+    {
+     "element": "Capacitor.cnight",
+     "props": [
+      "states"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "TIMECONTROL: cc1 ON<OFF (8-20h), cc2 OFF<ON so its window WRAPS past midnight (ON 21-06h; the next-day branch). cnight is ON at hours 0-5 and 21-23. Feature-sensitive: shifting cc2 offsetting moves the switch (probe-proven)."
+  },
+  {
+   "path": "capcontrol/capcontrol_voverride.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "CapControl.cc",
+     "props": [
+      "voltoverride",
+      "vmax",
+      "vmin"
+     ]
+    },
+    {
+     "element": "Capacitor.cb",
+     "props": [
+      "states"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "Voltage override ahead of the kvar logic: a kvar-latched bank is shed by the High-Voltage Override (126.4 V > Vmax=126) during a light-load overvoltage window. Feature-sensitive: voltoverride=no leaves it ON (probe-proven). VoverrideBus reverts at parse upstream (documented no-op), so it senses the monitored terminal."
   }
  ]
 }
