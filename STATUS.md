@@ -32,7 +32,10 @@ Folder map:
   `ASYMMETRIC/CONTROLS/MODES_REQUIRED` floors + population lock `family_paths`
   in `corpus_live.rs`/`population.lock.json`; the fixture/midi generators under
   `tools/decks/` (subfolder-aware `dest()` resolver in `gen_midi_decks.py`);
-  and doc-comment deck paths in a few `src/` tests. Plan docs (CONTROL_COVERAGE/
+  doc-comment deck paths in a few `src/` tests; and the current-layout deck
+  paths in the operational docs (TESTING.md, tests/corpus/README.md,
+  tools/opendss/README.md → `modes/inputformat/shape_binfiles/`,
+  `modes/upgrade/upgrade_pilot.dss`). Plan docs (CONTROL_COVERAGE/
   GAPS/DIAKOPTICS/UPGRADE) keep their historical flat paths as history.
 
 **CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
