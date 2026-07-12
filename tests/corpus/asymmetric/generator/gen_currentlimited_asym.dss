@@ -1,0 +1,37 @@
+// Asymmetric Generator coverage — the two dispatch branches generator_asym
+// leaves in their normal region:
+//   g7  Model 7 current-limited PQ (generator.pas:1799 DoCurrentLimitedPQ): a
+//       gen behind a weak, high-impedance feeder whose terminal sags below
+//       Vminpu on the two heavily-loaded phases, so the per-phase current is
+//       clamped to the max (distinct injection vs constPQ) — unbalanced, so
+//       some phases clamp and some do not.
+//   g4  Model 4 fixed-Q gen (a distinct dispatch from g1/g2/g3).
+//   g3  Model 3 PV-type with TIGHT maxkvar/minkvar so the kvar-limit sub-branch
+//       actually latches (generator_asym's g3 has wide limits it never hits).
+// Unbalanced loads pull b2 down. n_steps=1, YPrim + node-V compare.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.gen_cl_asym basekv=12.47 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=400 mvasc1=350
+
+New line.t1 bus1=src bus2=b1 r1=0.25 x1=0.7 r0=0.7 x0=2.1 c1=0 c0=0 length=3
+New line.t2 bus1=b1 bus2=b2 r1=0.35 x1=0.9 r0=0.9 x0=2.6 c1=0 c0=0 length=3
+
+! Model 7 current-limited PQ, vminpu high so the clamp fires under the sag.
+New generator.g7 phases=3 bus1=b2 conn=wye model=7 kv=12.47 kw=500 pf=0.9 vminpu=0.90
+
+! Model 4 fixed-Q.
+New generator.g4 phases=3 bus1=b1 conn=wye model=4 kv=12.47 kw=300 kvar=150
+
+! Model 3 PV-type with tight kvar limits -> latches at maxkvar.
+New generator.g3 phases=3 bus1=b1 conn=wye model=3 kv=12.47 kw=400 kvar=100
+~ maxkvar=100 minkvar=-100
+
+! Heavy unbalanced loads sag b2 below Vminpu on phases 1 & 2.
+New load.la bus1=b2.1 phases=1 conn=wye model=1 kv=7.2 kw=1500 pf=0.9
+New load.lb bus1=b2.2 phases=1 conn=wye model=1 kv=7.2 kw=1900 pf=0.85
+New load.lc bus1=b2.3 phases=1 conn=wye model=1 kv=7.2 kw=1100 pf=0.88
+
+Set voltagebases=[12.47]
+calcv
