@@ -2489,9 +2489,46 @@ fn corpus_live_opendss() {
 
 use num_complex::Complex64;
 
-/// A valid `ad` disposition is `full`, `pf`, or `off:<non-empty reason>`.
+/// The closed set of `off:` reasons a disposition may carry. Keeping this an
+/// allowlist (rather than "any non-empty string") is what makes a real AD-engine
+/// bucket distinguishable from a legitimate exclusion at the manifest level: a
+/// new deck cannot invent an unreviewed `off:reason` to dodge the sweep, and the
+/// `ad-*` classes (genuine AD-vs-normal divergences, section 5) stay a bounded,
+/// greppable, STATUS-documented list. Extend this ONLY with a reason that is
+/// itself evidence-backed (DSS_AD_CLASSIFY + DSS_AD_DECOMPOSE) and recorded.
+const AD_OFF_REASONS: &[&str] = &[
+    // Eligibility / topology (deck cannot be AD-swept by construction).
+    "non-3ph-cut-only", // D5 ZLL: only cut candidates are non-3-phase lines/xfmrs
+    "too-small",        // Tear_Circuit cannot form two connected >=2-bus zones
+    "already-torn-artifact", // a pre-torn Torn_Circuit/zone master, not a top entry
+    "mode-outside-AD-scope", // dynamics/harmonics/faultstudy/monte/LD - not power-flow
+    "deck-aborts-by-design", // the deck's own solve aborts (e.g. #485 control-limit)
+    // Save round-trip (D7 leg1): AD leg proper is CLEAN, the gap is the reload.
+    "save-roundtrip-geometry",
+    "save-roundtrip-relpath",
+    "save-roundtrip-userdll",
+    "save-roundtrip-regxfmr",
+    "save-roundtrip-autotrans",
+    "save-roundtrip-relay",
+    "save-roundtrip-control",
+    // Open AD-engine defects (D7 leg2 large, leg1 small): filed in STATUS, kept
+    // off the gate because fixing the AD engine is outside WP-AD.4's charter.
+    "ad-regulator-divergence",
+    "ad-switched-divergence",
+    "ad-islanded-divergence",
+    "ad-nonconvergent",
+    "ad-singular-zone",
+    "ad-divergent",
+    "ad-floor-above-tier",
+];
+
+/// A valid `ad` disposition is `full`, `pf`, or `off:<reason>` where `reason` is
+/// one of the reviewed [`AD_OFF_REASONS`] (not merely any non-empty string).
 fn ad_disposition_is_valid(s: &str) -> bool {
-    s == "full" || s == "pf" || s.strip_prefix("off:").is_some_and(|r| !r.is_empty())
+    s == "full"
+        || s == "pf"
+        || s.strip_prefix("off:")
+            .is_some_and(|r| AD_OFF_REASONS.contains(&r))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2627,8 +2664,21 @@ fn ad_solve_ad(abs: &str, controls_off: bool) -> Result<Dss, String> {
         return Err(format!("ad-init: {msg}"));
     }
     if !controls_off {
-        // GETCTRLMODE: re-assert the deck's control mode so the children run it.
-        dss.command("set controlmode=static");
+        // GETCTRLMODE: re-assert the deck's OWN declared control mode (not a
+        // hardcoded `static`) so the children run the same loop the normal arm
+        // does. The normal `full` arm keeps the deck's mode; forcing `static`
+        // here would compare a non-static deck under two different modes.
+        let mode = dss
+            .circuit()
+            .map(|c| c.solution.default_control_mode)
+            .unwrap_or(0);
+        let mode_cmd = match mode {
+            -1 => "off",
+            1 => "event",
+            2 => "time",
+            _ => "static",
+        };
+        dss.command(&format!("set controlmode={mode_cmd}"));
     }
     dss.command("solve mode=snap");
     if !dss.circuit().is_some_and(|c| c.is_solved) {
@@ -2641,6 +2691,22 @@ fn ad_solve_ad(abs: &str, controls_off: bool) -> Result<Dss, String> {
 /// tier (rust-vs-rust). An AD-init failure is a hard test failure (the
 /// disposition is a promise). `abs` is the resolved deck path (corpus or family);
 /// `label`/`ad` are for the message.
+///
+/// The compared quantity is node voltages by name. Node-V equality is the
+/// *sufficient* physics check on the shared interconnected network: every element
+/// shared between the two arms carries the same primitive `Yprim`, so its
+/// terminal currents `I = Yprim·Vterminal` and powers `S = V·conj(I)` are fixed
+/// once the node voltages agree — a stitch error that left every voltage right
+/// but a flow wrong is not physically realizable for a shared element. (Verified
+/// empirically: an element-power cross-check over every `pf` deck tracked the
+/// node-V gap and revealed no independent divergence; its only residuals above
+/// the node-V floor were transformer/line **loss** channels on the short-circuit
+/// decks — a small difference of large terminal flows, worst 2.2e-2 on
+/// `ieee37_SC_Currents` `line.l6` — i.e. the documented cancellation-floor class,
+/// not a stitch error. The AD arm's only element-set difference is the extra
+/// link-cut boundary `VSource`/`ISource`, which have no normal-arm counterpart.
+/// The active-control / eventlog channel is gated separately by
+/// `adiakoptics.rs::full_zone_local_regcontrol_matches_normal`.)
 fn ad_run_case_abs(abs: &str, label: &str, ad: &str, full: bool) {
     let controls_off = !full;
     let _guard = CorpusGuard::new(abs);
@@ -2760,6 +2826,11 @@ fn corpus_ad_matches_normal_mode() {
                 .ad
                 .clone()
                 .unwrap_or_else(|| panic!("{fam}:{}: missing mandatory `ad` disposition", c.path));
+            assert!(
+                ad_disposition_is_valid(&ad),
+                "{fam}:{}: invalid ad disposition {ad:?} (not in AD_OFF_REASONS)",
+                c.path
+            );
             entries.push((family_file(fam, &c.path), format!("{fam}/{}", c.path), ad));
         }
     }
