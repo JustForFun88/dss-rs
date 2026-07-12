@@ -1,0 +1,37 @@
+! GAPS corpus-coverage deck (family=modes): SolveMode=YEARLYMODE (Pascal
+! TSolutionAlgs.SolveYearly, SolutionAlgs.pas:112). Isolates two yearly-only
+! branches no other modes deck reaches:
+!  * the DefaultYearlyShapeObj.GetMultAtHour channel (loads carry `yearly=`);
+!    yearly applies NO global LoadMultiplier (LoadMultForMode = gf*hm only,
+!    power_flow.rs:284) — distinct from daily;
+!  * the `if PriceCurveObj<>NIL then PriceSignal := GetPrice(dblHour)` arm
+!    (SolutionAlgs.pas:136). PriceSignal drives the price-dispatched Generator
+!    (dispmode=price, Generator.pas:1090): GenON when PriceSignal >= dispvalue=40.
+!    The price curve (50..80) is >= 40 every step, so g_pk runs ALL year while the
+!    curve is present; WITHOUT the curve PriceSignal holds its default 25 (< 40)
+!    and g_pk stays OFF. (dispvalue is chosen to sit ABOVE the default 25 but
+!    BELOW every curve price, so the split is steady ON vs steady OFF — a mid-run
+!    OFF->ON flip would cost the oracle an extra convergence iteration on the flip
+!    step, an unstable axis; a steady split keeps the iteration count pinned.)
+! Each harness `solve` runs one yearly step (number=1); the 8 solves walk the
+! yearly shape + price curve.
+! Feature-sensitive two ways (both oracle-proven): (a) flattening yr8 to 1.0
+! removes the shape trajectory; (b) removing `Set PriceCurve=pc` leaves
+! PriceSignal at the default 25 (< 40), so g_pk stays OFF every step.
+Clear
+New Circuit.gaps_yearly basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.yr8 npts=8 interval=1 mult=(0.55 0.62 0.78 0.90 1.00 0.92 0.75 0.60)
+New PriceShape.pc npts=8 interval=1 price=(50 55 66 74 80 68 58 52)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=800 pf=0.95 model=1 yearly=yr8
+New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=400 pf=0.92 model=2 yearly=yr8
+! Price-dispatched peaker: ON only while PriceSignal >= 40 (the GetPrice arm).
+New Generator.g_pk bus1=b2 phases=3 kv=12.47 kw=300 pf=1.0 model=1 dispmode=price dispvalue=40
+New Monitor.m_ld1 element=Load.ld1 terminal=1 mode=1 ppolar=no
+New Monitor.m_gpk element=Generator.g_pk terminal=1 mode=1 ppolar=no
+New EnergyMeter.em element=Line.l1 terminal=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set PriceCurve=pc
+Set mode=yearly stepsize=1h number=1

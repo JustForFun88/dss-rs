@@ -1,0 +1,35 @@
+! GAPS corpus-coverage deck (family=modes): the Set_Mode RESET tail (Pascal
+! TSolutionObj.Set_Mode, Solution.pas L2024-2136; port set_mode.rs). Changing the
+! solve mode resets a large tail of state: ControlMode<-DefaultControlMode,
+! LoadModel<-DefaultLoadModel, intHour<-0, t<-0, TrapezoidalIntegration<-FALSE,
+! SolutionInitialized<-FALSE, PreserveNodeVoltages<-FALSE, and four ResetAll
+! (Monitors, EnergyMeters, DoResetFaults, DoResetControls).
+! Design: a daily solve (number=24) accumulates ~thousands of kWh in the meter
+! and toggles the CapControl; then `Set mode=snapshot` fires the reset tail
+! (meters/monitors/controls zeroed); the harness's single snapshot solve then
+! leaves the meter registers reflecting only that one sample (near-zero energy),
+! and the capacitor reverted to its DefaultControlMode disposition.
+! Boundary pinned: the ResetAll(meters)/ResetAll(monitors)/DoResetControls arms
+! of Set_Mode. Probes the EnergyMeter registers + capacitor state after reset.
+! Feature-sensitive: removing `Set mode=snapshot` (staying in daily) skips the
+! reset, so the harness solve CONTINUES accumulating — the meter registers stay
+! large — proven on the oracle.
+Clear
+New Circuit.gaps_reset basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.day24 npts=24 interval=1 mult=(0.42 0.40 0.38 0.37 0.40 0.48 0.62 0.78 0.90 0.95 0.98 1.00 0.99 0.97 0.95 0.93 0.94 0.98 1.00 0.96 0.85 0.72 0.58 0.48)
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.35 x1=0.95 r0=1.0 x0=2.8 c1=3.0 c0=1.5 length=1.5 units=km
+New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=900 pf=0.95 model=1 daily=day24
+New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=500 pf=0.92 model=2 daily=day24
+New Capacitor.cap1 bus1=b2 phases=3 kvar=600 kv=12.47
+New CapControl.cc element=Line.l1 terminal=1 capacitor=cap1 type=current ptratio=1 ctratio=1 onsetting=60 offsetting=40 delay=1 delayoff=1
+New Monitor.m_ld1 element=Load.ld1 terminal=1 mode=1 ppolar=no
+New EnergyMeter.em element=Line.l1 terminal=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+! Accumulate a full day (meter energy grows, CapControl toggles) ...
+Set mode=daily stepsize=1h number=24
+Solve
+! ... then change mode: the reset tail zeroes the meters/monitors and resets
+! the controls. The harness's snapshot solve starts from the clean state.
+Set mode=snapshot
