@@ -3358,18 +3358,29 @@ non-seasonal reports use `norm_amps`; `Ratings` readback = kVARatings), so pinne
 by a feature-sensitive unit test (`seasonal_amp_ratings_drop_the_1_1_factor`).
 Ledger §D6.
 
-**Rows B1/D8/D3/B3 — NOT started (budget); see resume note.** B1 (Capacitor
-Cmatrix ×1.000001) triggers only for a Cmatrix cap WITH series R/XL (`has_zl`) —
-no obvious corpus witness, needs a synthesized deck/unit test. D3 is report-only
+**Row B1 — Capacitor Cmatrix YPrim diagonal ×1.000001 — LANDED.**
+`capacitor/solve.rs` SpecType-3 `_ =>` arm gains the ×1.000001 diagonal loop
+before `invert()` (`Capacitor.pas MakeYprimWork`). Only reached for a Cmatrix cap
+WITH series R/XL (`has_zl`); revision-sensitive garbage(1e-23 @0.14.5)→finite
+(@capi015). No corpus witness (corpus caps are shunt-kvar, cmatrix hits are
+LineCodes), so oracle-validated unit test
+(`cmatrix_with_series_reactance_yprim_matches_capi015`, capi015 probe values
+pinned to 1e-11/1e-12). A live modes deck was prepped but the manifest's mixed
+manual unicode-escaping + CRLF blocks a clean append — the unit test carries the
+same capi015 numbers. Ledger §B1.
+
+**Rows D8/D3/B3 — NOT started (budget); see resume note.** D3 is report-only
 (spacing ratings — overload-report deck). D8 needs a 3-winding transformer with
 X13/X23=0. B3-r3723 (Load.GrowthFactor Year=0 from dblHour/8760) needs a
 growthshape + multi-hour year-0 run.
 
-**Resume note (WP-U1.2 remaining):** rows B1, D8, D3, B3-r3723 still to port;
-the golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and
-the same-commit workflow are proven (B2/D1, D7, D6). B5's GFM gap is the one hard
+**Resume note (WP-U1.2 remaining):** rows D8, D3, B3-r3723 still to port; the
+golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the
+same-commit workflow are proven (B2/D1, D7, D6, B1). B5's GFM gap is the one hard
 blocker (a control-consistency bug, not a numeric constant) — needs a dedicated
-GFM WP.
+GFM WP. NB the modes manifest is NOT json.dumps-round-trippable (mixed manual
+`\uXXXX` escaping + CRLF) — append new cases with a surgical text edit, not a
+full JSON rewrite.
 
 ### Gate state (all green)
 ```
