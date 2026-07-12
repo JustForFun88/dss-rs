@@ -92,6 +92,189 @@ the meter-wide convention (EnergyMeter identical); doc corrected. Follow-up cand
 document the oracle mode-4 crash in `investigations/` (deterministic upstream crash,
 not reproduced — the Rust port post-processes correctly).
 
+**WP-AD.3 — A-Diakoptics engine (in progress, staged; branch `wp-ad3`).**
+Stage list: (1) matrices ✅ · (2a) init machine + matrices-on-real-coordinator +
+options + get_Statistics ✅ · **(2b) the AD solve stitch ✅** · (3) exports 58–61 ✅
+· **(4) D7 calibration + snapshot/time-series + EPRI/r3723 refs ✅** (settle round 2).
+
+**Stage 3 exports (gate-green):** `Export ZLL|ZCC|Contours|Y4` (keywords 58–61,
+`report/export/adiakoptics.rs`, official `ExportResults.pas:3541–3627`) —
+compressed-coordinate CSV (`Row,Col,Value(Real), Value(Imag)`; Contours is real-part
+only, `Row,Col,Value`), default files `ZLL.csv`/`ZCC.csv`/`C.csv`/`Y4.csv`, values
+via FPC `float_to_str`. **When `ADiakoptics=false`** the export *body* is a no-op
+(Pascal `if ADiakoptics` — no file, `GlobalResult` untouched), but `DoExportCmd`'s
+tail (`ExportOptions.pas:503–507`) still sets `LastResultFile`/`@lastfile`/
+`@lastexportfile` to the resolved (never-written) path **unconditionally** — now
+reproduced 1:1 (was previously a total no-op). Gates: header + per-line VALUE match
+vs the built matrices (ZLL/ZCC/Y4 float fields, not just the field count), Contours
+±1 real-only, and the false-flag path (last-file set, no file on disk, empty
+GlobalResult). Keywords registered in `EXPORT_OPTIONS` as a recorded departure
+(compiled out of the pinned oracle, §0.2).
+
+**Stage 1 (gate-green):** the four matrix builders in `exec/diakoptics/matrices.rs`
+— 1:1 port of official `Diakoptics.pas` (D10): `Calc_C_Matrix` (contours, substring
+node lookup D5), `Calc_ZLL` (inverted 3×3 link-Yprim self-block), `Calc_ZCC`
+(per-column `Y_torn·z=c` via the cached `dss-sparse` factorization → ZCT, then
+`ZCC = Contoursᵀ·ZCT + ZLL`, `re≠0 AND im≠0` drop D5), `Calc_Y4` (`ZCC⁻¹` via
+`CMatrix::invert`, the double-`.re` drop D5) + `AdMsg` + `ad_find_element`. 4 unit
+tests recompute the D1 invariants on a tiny inline link feeder. `NOTE(upstream-quirk)`
+at each D5 site.
+
+**Stage 2a (gate-green):** the `ADiakopticsInit` state machine (`exec/diakoptics/
+engine.rs`, `Diakoptics.pas:541`) — states 0–9: tear (`ADiakoptics_Tearing`, shared
+with the `Tear_Circuit` cmd) → `ClearAll` + recompile `Torn_Circuit/
+Master_Interconnected.dss` into the coordinator + build each child zone engine
+(`ad_children: Vec<Dss>`, D3 ownership) + disable `zone_*` meters + open link branches
++ build the torn Y + `Calc_C/ZLL/ZCC/Y4` on the REAL interconnected coordinator +
+`SendIdx2Actors` + close links + `get_Statistics` + the progress-string summary.
+Options wired: `set ADiakoptics=yes` → init (deferred past `do_set_cmd`'s field
+borrow via a `pending_ad_init` flag); `=no` clears the flag only; `get ADiakoptics`;
+`Solve` resets `AD_Init`. Integration gates on the midi feeder (2 zones): flag flip
++ summary, Contours ±1-per-column, ZLL block, **Y4·ZCC ≈ I to 1e-6 with ZCT populated
+(369 nz)** + the D1(a) `ZCC = CᵀZCT + ZLL` re-derivation recomputed on the real init
+(non-circular, catches a bad transpose/RHS/ZLL that `Y4·ZCC≈I` cannot), the
+`get_Statistics` **value golden** (46.34% reduction / 13.64% max imbalance / 6.818%
+avg; `fmt_g`=`floattostrf(ffgeneral,4)` + Pascal f32-array narrowing per D4),
+`=no` clears flag-only, and init-without-prior-solve fails. The CPU clamp
+(`Num_SubCkts ≤ CPU_Cores−2`) is ported → AD gates assume ≥4 cores (D6).
+
+**Stage 2b (gate-green — the AD solve stitch).** `ad_solve` dispatch (Direct →
+`SolveDirect` AD branch; Snapshot → the `SolveSnap` control loop wrapping the AD
+`DoNormalSolution` fixed-point; Daily/Yearly/Duty/Peak/Time → coordinator clock-step
+re-entering the snapshot solve); `Solve_Diakoptics` coordinator stitch (SOLVE_AD1 →
+`Vpartial`=contour-pair NodeV diffs → `Y4·Vpartial` → `Ic=Contours·Vpartial` →
+SOLVE_AD2); `ad_init_actors` = `INIT_ADIAKOPTICS` (`Start_Diakoptics` for actors > 2
++ `IndexBuses` on every child); the child-side `solve_ad`/`update_isrc`/
+`ad_solve_into_parent` driven (were `#[allow(dead_code)]`). Newton is NOT AD-aware
+(verified: official `DoNormalSolution` only branches to `Solve_Diakoptics` on the
+fixed-point path) → an AD deck set to Newton falls through to the per-child
+fixed-point, documented. The child `DO_CTRL_ACTIONS` fan-out is WP-AD.4 — the
+WP-AD.3/D7 gates run `controlmode=off`; `ad_check_controls` currently samples the
+coordinator's controls (benign for controls-off; the faithful AD-branch child
+delegate is a WP-AD.4 item, flagged for auditors).
+
+**r3723 Oddie probe (re-run by the resume executor, own transcript, 2026-07-12;
+`solve mode=snap`, `controlmode=off`, `Num_SubCircuits=2`; scripts in scratchpad
+`ad_probe3.py`/`ad_probe_childv.py`/`probe_state2.py`).** Settles the two blocking
+questions:
+- *Child Y non-singularity:* with `Start_Diakoptics` disabling a zone's sources, the
+  loads' `Yeq` shunts (stamped into Y as the fixed-point accelerator) anchor every
+  node to ground → the reference-free zone is near-singular but solvable; faer factors
+  it, **no** KLU tiny-pivot/regularization is involved. Port uses ordinary faer with no
+  guard; a genuinely singular Y → normal `SolutionAbort` (never silently regularized).
+- *Child voltage maintenance:* official **FREEZES** each child's own `NodeV` at its
+  state-2 standalone solve for the entire AD run — `SolveSystem` writes only into the
+  coordinator array (**proven**: macro actor-3 `NodeV` moves `0.000e+00` between init
+  and the post-AD read). That frozen state-2 solve is already within `7.9e-5` of
+  interconnected (the reference-free zone; the source zone's isolated solve is 25% off
+  at its cut node — it lacks the downstream current — but that node is corrected by the
+  boundary `Ic`). The earlier (crashed-draft) claim that official "tracks" the child
+  was a misread of that 5e-5 residual.
+- *Method floor + tolerance stability:* AD-vs-normal max rel `|V|` is a **stable** floor
+  that does NOT collapse as tol tightens 1e-4 → 1e-10 — midi 3.265e-5 → 3.254e-5, macro
+  1.318e-4 flat; iteration counts `itN == itA`. Proof the engines share the fixpoint
+  (D1 leg 3 / D7). Rust matches: midi 3.21e-5 (oracle 3.25e-5), macro 1.319e-4 (oracle
+  1.318e-4). Tiers ×4 recorded in `tests/TOLERANCE_NOTES.md` §AD; permanent tighten-proof
+  tests `{midi,macro}_d7_gap_stable_under_tighten`.
+
+**Salvage/reset ledger (resume protocol).** The crashed executor's ~815-line dirty
+draft was competent and gate-green; evaluated file-by-file against official r3723 +
+re-run probe: **SALVAGED** `engine.rs` (init wiring), `solve.rs` (dispatch/stitch —
+verified loop-for-loop vs `Solve_Diakoptics`/`SolveAD`/`Start_Diakoptics`/`IndexBuses`),
+`mod.rs`/`time_series.rs` (re-exports), the `tests/adiakoptics.rs` D7 gate, and
+`power_flow.rs`'s scatter parent-write. **CORRECTED** the `ad_solve_into_parent` child
+re-seed: kept the line (it recovers the oracle floor — a brief-sanctioned faer↔KLU
+compensation on the near-singular reference-free zone) but **rewrote its false
+justification** (official freezes, does not track) with the honest probe result, per
+`ad_solve_into_parent`/`solve.rs` module docs. Confirmed by experiment: a byte-faithful
+freeze (no re-seed) passes midi (3.80e-5) but diverges macro to 3.46e-3 @ M180 (26× the
+floor). Open item for auditors/WP-AD.4: root-cause the reference-free-zone faer↔KLU gap
+so the re-seed can be dropped.
+
+**Stage 4 official-reference gate (D9 b/c) — IEEE-13 + IEEE-123 ✅.**
+`tests/ad_reference.rs` replays TWO EPRI AD examples with the identical **manual**
+cut on both engines and compares the built matrices **and** the post-AD SOLVED node
+voltages against **fresh r3723 references** harvested by
+`tools/opendss/gen_ad_reference.py` (committed under `tests/data/adiakoptics/
+r3723_ref/{ieee13,ieee123}/` with `PROVENANCE.txt`):
+- **IEEE-13** (`Line.670671`, 2 zones): ZLL 3.8e-15, ZCC 6.2e-8, Y4 2.7e-8, **41
+  solved node voltages 1.2e-6** — all faer↔KLU last-ulp.
+- **IEEE-123** (r3723's own auto-tear links `[Line.l10, Line.l73]` → 3 zones, TWO
+  reference-free = the multi-link D9c case): ZLL 3.0e-15, ZCC 7.4e-10, Y4 4.9e-10,
+  **278 solved node voltages 4.85e-6**.
+
+The solved-voltage legs close audit finding #7 (the AD SOLVE output now has an
+external trusted-baseline gate, not just AD↔normal self-consistency) and #8 (the
+IEEE-123 multi-link D9c harvest+compare). `gen_ad_reference.py` grew a `--tree`
+(subdir-redirect decks) + comma-separated `--link` (multi-link) mode and now exports
+`voltages.csv` (post-AD actor-1 NodeV). Finding retained: the trunk's own
+`References/SolveDirect/ADiakoptics_matrixes/*.csv` are **STALE** (older deck
+revision, ~20% reactance drift), so the gate pins fresh harvests, never the trunk CSVs.
+
+**WP-AD.3 audit settle (opus-xhigh).** Findings settled empirically against official
+r3723:
+- *get_Statistics formatting (Major, fixed):* hand-rolled `fmt_g42` replaced with the
+  FPC-bit-exact `crate::util::fmt_g(x, 4)` = `floattostrf(ffgeneral,4)`; and the
+  `unbalance/ASize : Array of single` f32 narrowing reproduced per D4 (`GReduct/
+  MaxImbal/AvgImbal : Double`). Output unchanged on midi (46.34/13.64/6.818), now
+  pinned as a **value golden** (was determinism+substring only).
+- *AD-off export (Minor, fixed):* the `export_ad` no-op was total; Pascal
+  `DoExportCmd`'s tail still runs `SetLastResultFile`+`@lastexportfile` (only gated by
+  `Not AbortExport`). Now sets the last-file state to the resolved never-written path,
+  body still skipped — truly 1:1; test + doc corrected.
+- *State-2 child abort (Minor, aligned):* the check added `!errors().is_empty()` on top
+  of `SolutionAbort`; Pascal (Diakoptics.pas:644) breaks on `SolutionAbort` only, and a
+  benign `DoSimpleMsg` child message does not set it — so the extra arm would spuriously
+  fail init where official proceeds. Narrowed to `SolutionAbort` + a no-circuit clause
+  (the Rust analog of a nil child actor after a total compile failure).
+- *D5 drop quirks unpinned (Major, fixed):* the fixture R+jX topology never yields a
+  drop-eligible entry, so the integration assertions held vacuously. The two quirks are
+  now extracted to `zct_keep`/`y4_keep` and pinned directly by unit tests fed
+  drop-eligible values (the doubled-`.re` Y4 bug: `re=0,im≠0` dropped) — a "cleanup" to
+  `re≠0 OR im≠0` fails them.
+- *ZCC assembly baseline (Major, partially fixed):* only the circular `Y4·ZCC≈I` existed;
+  added the non-circular D1(a) `ZCC = CᵀZCT + ZLL` re-derivation to BOTH the unit test
+  and the real init. The `ad_children` field doc was corrected (it is rebuilt each init,
+  not cleared by `=no`/`Clear`).
+- *Stage-4 external-baseline gate (was deferred): now CLOSED* — see the Stage 4
+  record above (IEEE-13 + IEEE-123 matrices + solved voltages vs fresh r3723).
+
+**WP-AD.3 audit settle ROUND 2 (opus-xhigh, 2026-07-12).** The Stage-2b/Stage-4
+audit's 8 findings settled empirically against official r3723 (Oddie):
+- *Newton+AD dispatch (Major, FIXED + finding refuted):* `ad_solve_snap` now honors
+  `Set algorithm=Newton` — official `DoPFLOWsolution` (Solution.pas:1125) dispatches
+  `CASE Algorithm`, and `DoNewtonSolution` has NO ADiakoptics branch (`SolveSystem(dV,1)`
+  = full `@V[1]`), so Newton solves the *closed interconnected coordinator* directly.
+  Ported via a faithful `ad_do_pflow_solution` (Newton → coordinator `do_newton_solution`;
+  default → the `Solve_Diakoptics` fixed point) and the false "matches upstream" comment
+  corrected. **Refutes the finding's premise** that Newton and fixed-point AD "differ by
+  the method floor": A-Diakoptics is EXACT, so both land on the same interconnected
+  fixpoint to f64 ulp (midi 7e-13, macro 1.3e-12; `{midi,macro}_newton_ad_matches_
+  fixedpoint_ad`).
+- *Re-seed conditioning "asserted not proven" (Major, PROVEN + doc corrected):* the
+  Newton path is an independent in-engine ground truth (full coordinator solve, no
+  children/re-seed) — the re-seeded fixed-point matches it to f64 ulp, *proving by
+  decomposition* the re-seed recovers the exact interconnected answer. This also
+  **corrected two false claims**: the AD floor is NOT a "first-order boundary
+  approximation / fixed distance" (the stitch is exact) — it is the interconnected-
+  coordinator-vs-original-deck difference, shared by all AD paths and oracle-matched;
+  and the frozen-divergence faer↔KLU attribution is downgraded from asserted fact to an
+  explicitly-labeled, not-yet-bit-proven hypothesis (open item retained). Docs at
+  `ad_solve_into_parent` + `solve.rs` + `TOLERANCE_NOTES §AD`.
+- *DoPFLOWsolution head drops (Minor, FIXED):* `ad_do_pflow_solution` now runs the
+  per-control-iteration `Inc(SolutionCount)` + `VoltageBaseChanged→InitializeNodeVbase`
+  guard (Solution.pas:1092-1094), previously omitted.
+- *AD solved voltages no oracle gate (Minor→closed by #7):* the AD SOLVE output is now
+  oracle-gated (see Stage 4 voltage legs), no longer self-consistency-only.
+- *IndexBuses past-end value (Minor, FIXED):* `past_end` corrected `src_bus.len()+1`
+  → `+2` to byte-match Pascal's `LocalBusIdx := j+1` after the completed search (SrcBus
+  carries a trailing empty slot; unreachable/bounds-checked, cosmetic fidelity).
+- *Time-series D7 gates absent (Major, FIXED):* added `midi_daily24_matches_normal` +
+  `macro_yearly168_matches_normal` — they drive `ad_solve_time_series` (previously ZERO
+  coverage), assert the clock advanced the full horizon, and pin the §AD floor.
+- *No post-AD oracle voltage compare (Major, FIXED) + IEEE-123 multi-link (Major, FIXED):*
+  see the Stage 4 record — findings #7 and #8 both closed.
+
 **WP-AD.1 — incidence matrix + Sparse_Math + exports 53–57 (2026-07-11), gate-green.**
 `support/sparse_math.rs` (SparseInt/SparseComplex 1:1 COO: insert
 accumulate-else-append, insertion-order storage, multiply/add drop quirks

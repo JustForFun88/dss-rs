@@ -423,13 +423,10 @@ fn set_get_ad_options_roundtrip() {
     dss.command("get UseMyLinkBranches");
     assert_eq!(dss.result(), "Yes");
 
-    // `set ADiakoptics` is a scoped refusal (WP-AD.3), not an unknown-parameter.
-    dss.command("set ADiakoptics=True");
-    assert!(
-        dss.errors().iter().any(|e| e.contains("WP-AD.3")),
-        "expected scoped ADiakoptics refusal, got {:?}",
-        dss.errors()
-    );
+    // `get ADiakoptics` reflects the flag (default off before init). The real
+    // `set ADiakoptics=yes` init is covered by `adiakoptics_init_*` above.
+    dss.command("get ADiakoptics");
+    assert_eq!(dss.result(), "No", "ADiakoptics off before init");
 }
 
 /// `Tear_Circuit` reads `Solution.NodeV` at each point of connection, so it
@@ -806,4 +803,748 @@ fn ckt24_graph_diagnostic() {
          (WP-AD.5 driver territory); this diagnostic records the vendored artifact shape. \
          Divergence is expected (D2: METIS 4.0 kmetis vs the 5.2.1 port)."
     );
+}
+
+// ===========================================================================
+// WP-AD.3 Stage 2 — `ADiakopticsInit` state machine (init + matrices + options
+// + get_Statistics). Rust-only (plan D8). The per-iteration AD solve is Stage 2b
+// (see `exec/diakoptics/solve.rs`); these gates validate the init machine
+// end-to-end: ClearAll + recompile the interconnected coordinator + build the
+// child zones + open link branches + Contours/ZLL/ZCC/Y4 on the REAL torn
+// coordinator, with the D1 invariants recomputed in-test.
+// ===========================================================================
+
+use num_complex::Complex64;
+
+/// Dense row-major `n*n` copy of a (row,col,value) triple list.
+fn ad_dense(cdata: &[(i32, i32, Complex64)], n: usize) -> Vec<Complex64> {
+    ad_dense_rc(cdata, n, n)
+}
+
+/// Row-major `nrows×ncols` dense copy of a sparse `(row,col,value)` list.
+fn ad_dense_rc(cdata: &[(i32, i32, Complex64)], nrows: usize, ncols: usize) -> Vec<Complex64> {
+    let mut d = vec![Complex64::new(0.0, 0.0); nrows * ncols];
+    for &(r, c, v) in cdata {
+        if (r as usize) < nrows && (c as usize) < ncols {
+            d[r as usize * ncols + c as usize] = v;
+        }
+    }
+    d
+}
+
+/// Run the full A-Diakoptics init on the midi feeder (2 zones); returns the Dss
+/// (coordinator = the interconnected model with Contours/ZLL/ZCC/Y4 built).
+fn init_midi_ad(scratch: &Path) -> Dss {
+    let mut dss = Dss::new();
+    compile_fixture(&mut dss, "midi", scratch);
+    dss.command("set Num_SubCircuits=2");
+    dss.command("set ADiakoptics=yes");
+    dss
+}
+
+#[test]
+fn adiakoptics_init_flips_flag_and_reports_summary() {
+    let scratch = scratch_dir("ad3_flag");
+    let dss = init_midi_ad(&scratch);
+    let ckt = dss.circuit().expect("coordinator circuit");
+    assert!(
+        ckt.solution.adiakoptics,
+        "init failed; summary: {}",
+        dss.result()
+    );
+    assert!(
+        ckt.solution.parallel_enabled,
+        "parallel_enabled set on success"
+    );
+    assert!(!ckt.solution.adiak_init, "adiak_init cleared on success");
+    let summary = dss.result();
+    assert!(
+        summary.contains("Sub-Circuits Created"),
+        "summary: {summary}"
+    );
+    assert!(summary.contains("Building Contours"), "summary: {summary}");
+    assert!(
+        summary.contains("A-Diakoptics initialized"),
+        "summary: {summary}"
+    );
+}
+
+#[test]
+fn adiakoptics_init_contours_have_plus_minus_per_column() {
+    let scratch = scratch_dir("ad3_contours");
+    let dss = init_midi_ad(&scratch);
+    let ckt = dss.circuit().unwrap();
+    let contours = &ckt.ad.contours;
+    assert_eq!(contours.ncols(), 3, "contour columns");
+    for col in 0..3 {
+        let entries: Vec<_> = contours.cdata.iter().filter(|cd| cd.col == col).collect();
+        assert_eq!(entries.len(), 2, "column {col}: two boundary nodes");
+        let plus = entries
+            .iter()
+            .filter(|cd| cd.value == Complex64::new(1.0, 0.0))
+            .count();
+        let minus = entries
+            .iter()
+            .filter(|cd| cd.value == Complex64::new(-1.0, 0.0))
+            .count();
+        assert_eq!((plus, minus), (1, 1), "column {col}: one +1 and one -1");
+        assert_ne!(entries[0].row, entries[1].row, "distinct boundary nodes");
+    }
+}
+
+#[test]
+fn adiakoptics_init_zll_is_link_block() {
+    // Shape of the real-init ZLL block. Its VALUES are pinned two ways: the
+    // inverted-Yprim-self-block equality on a controlled circuit
+    // (`matrices::tests::zll_block_is_inverted_link_yprim_self_block`), and the
+    // real-init ZCC re-derivation in `adiakoptics_init_y4_inverts_zcc` (ZLL is an
+    // additive summand of ZCC, so a wrong real-init ZLL fails it).
+    let scratch = scratch_dir("ad3_zll");
+    let dss = init_midi_ad(&scratch);
+    let ckt = dss.circuit().unwrap();
+    let zll = &ckt.ad.zll;
+    assert_eq!(zll.nzero(), 9, "3x3 dense ZLL block");
+    for cd in &zll.cdata {
+        assert!(
+            cd.row < 3 && cd.col < 3,
+            "entry inside the single link block"
+        );
+    }
+    assert!(
+        zll.cdata.iter().any(|c| c.value.norm() > 1e-9),
+        "ZLL block is non-zero"
+    );
+}
+
+#[test]
+fn adiakoptics_init_y4_inverts_zcc() {
+    let scratch = scratch_dir("ad3_y4");
+    let dss = init_midi_ad(&scratch);
+    let ckt = dss.circuit().unwrap();
+    let nn = ckt.num_nodes; // Contours / ZCT rows
+    let n = ckt.ad.zcc.nrows() as usize;
+    assert_eq!(n, 3, "ZCC order = real-links x 3");
+    assert_eq!(ckt.ad.y4.nrows() as usize, n, "Y4 same order");
+    // The torn-Y per-column solve populates ZCT (a full response, not a
+    // degenerate empty), so ZCC carries the CᵀZCT coupling, not just ZLL.
+    assert!(ckt.ad.zct.nzero() > 0, "ZCT populated by the torn-Y solve");
+    assert_eq!(ckt.ad.zcc.nzero(), 9, "ZCC is a full 3×3");
+
+    // D1 invariant (a) on the REAL init pipeline (not just the unit fixture):
+    // ZCC re-derived INDEPENDENTLY of the builder's transpose/multiply/add as a
+    // dense `Contoursᵀ·ZCT + ZLL`. A wrong link resolution, a wrong post-close
+    // rebuild ZLL, or a bad ZCT coupling here breaks this even though the shape
+    // checks and the circular `Y4·ZCC≈I` would still pass.
+    let c_dense = ad_dense_rc(
+        &ckt.ad
+            .contours
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        nn,
+        n,
+    );
+    let zct_dense = ad_dense_rc(
+        &ckt.ad
+            .zct
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        nn,
+        n,
+    );
+    let zll_dense = ad_dense(
+        &ckt.ad
+            .zll
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        n,
+    );
+    let zcc_dense = ad_dense(
+        &ckt.ad
+            .zcc
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        n,
+    );
+    for i in 0..n {
+        for j in 0..n {
+            let mut s = Complex64::new(0.0, 0.0);
+            for k in 0..nn {
+                s += c_dense[k * n + i] * zct_dense[k * n + j];
+            }
+            s += zll_dense[i * n + j];
+            let got = zcc_dense[i * n + j];
+            assert!(
+                (got - s).norm() < 1e-7,
+                "ZCC[{i},{j}] builder={got} vs CᵀZCT+ZLL={s}"
+            );
+        }
+    }
+
+    let y4 = ad_dense(
+        &ckt.ad
+            .y4
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        n,
+    );
+    let zcc = ad_dense(
+        &ckt.ad
+            .zcc
+            .cdata
+            .iter()
+            .map(|c| (c.row, c.col, c.value))
+            .collect::<Vec<_>>(),
+        n,
+    );
+    for i in 0..n {
+        for j in 0..n {
+            let mut s = Complex64::new(0.0, 0.0);
+            for k in 0..n {
+                s += y4[i * n + k] * zcc[k * n + j];
+            }
+            let want = if i == j { 1.0 } else { 0.0 };
+            assert!(
+                (s.re - want).abs() < 1e-6 && s.im.abs() < 1e-6,
+                "Y4.ZCC[{i},{j}] = {s} (want {want})"
+            );
+        }
+    }
+    for cd in &ckt.ad.y4.cdata {
+        assert_ne!(cd.value.re, 0.0, "Y4 stores only nonzero-real entries (D5)");
+    }
+}
+
+#[test]
+fn adiakoptics_get_flag_and_stats_deterministic() {
+    let scratch = scratch_dir("ad3_stats");
+    let mut dss = init_midi_ad(&scratch);
+    // Capture the init summary's statistics BEFORE any further command overwrites
+    // `GlobalResult`.
+    let stats1 = summary_stats(&dss);
+    dss.command("get ADiakoptics");
+    assert_eq!(dss.result(), "Yes", "get ADiakoptics after init");
+
+    let scratch2 = scratch_dir("ad3_stats2");
+    let dss2 = init_midi_ad(&scratch2);
+    let stats2 = summary_stats(&dss2);
+    assert_eq!(stats1, stats2, "statistics deterministic across runs");
+
+    // Value golden (plan gate 5): the fixed 2-zone midi partition yields fixed
+    // node counts → fixed reduction/imbalance numbers with `floattostrf(ffgeneral,
+    // 4)` (via `fmt_g`) formatting. Part II has no oracle (§0.2), so this pins the
+    // engine's own deterministic 1:1 output as a committed characterization
+    // constant — a regression in the get_Statistics computation OR the number
+    // formatting now fails here, where the run-to-run determinism check alone
+    // (both runs regress identically) would pass. Machine-independent given ≥4
+    // cores (D6): the in-process METIS partition is deterministic.
+    assert_eq!(
+        stats1,
+        "Circuit reduction    (%): 46.34\n\
+         Max imbalance       (%): 13.64\n\
+         Average imbalance(%): 6.818",
+        "get_Statistics value golden (midi, 2 zones)"
+    );
+}
+
+#[test]
+fn adiakoptics_set_no_clears_flag_only() {
+    let scratch = scratch_dir("ad3_clear");
+    let mut dss = init_midi_ad(&scratch);
+    assert!(dss.circuit().unwrap().solution.adiakoptics);
+    dss.command("set ADiakoptics=no");
+    assert!(!dss.circuit().unwrap().solution.adiakoptics, "flag cleared");
+    assert_eq!(
+        dss.circuit().unwrap().ad.contours.ncols(),
+        3,
+        "matrices retained (clear = flag only)"
+    );
+}
+
+#[test]
+fn adiakoptics_init_without_prior_solve_fails() {
+    let scratch = scratch_dir("ad3_nosolve");
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", fixture("midi").display()));
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("set Num_SubCircuits=2");
+    dss.command("set ADiakoptics=yes");
+    assert!(
+        !dss.circuit().unwrap().solution.adiakoptics,
+        "init must fail without a converged prior solve"
+    );
+    assert!(
+        dss.result().contains("errors found"),
+        "summary: {}",
+        dss.result()
+    );
+}
+
+/// The deterministic partitioning-statistics lines of the init summary.
+fn summary_stats(dss: &Dss) -> String {
+    dss.result()
+        .lines()
+        .filter(|l| {
+            l.contains("Circuit reduction")
+                || l.contains("Max imbalance")
+                || l.contains("Average imbalance")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// ===========================================================================
+// WP-AD.3 Stage 3 — AD matrix exports 58-61 (ExportResults.pas:3541-3627).
+// Silent no-op unless Solution.ADiakoptics; format = compressed-coordinate CSV.
+// ===========================================================================
+
+#[test]
+fn export_zll_matches_matrix() {
+    use dss_core::util::float_to_str;
+    let scratch = scratch_dir("ad3_exp_zll");
+    let mut dss = init_midi_ad(&scratch);
+    dss.command("export ZLL");
+    let path = dss.last_result_file().to_string();
+    assert!(!path.is_empty(), "ZLL export wrote a file");
+    let text = std::fs::read_to_string(&path).expect("read ZLL.csv");
+    let mut lines = text.lines();
+    assert_eq!(
+        lines.next().unwrap(),
+        "Row,Col,Value(Real), Value(Imag)",
+        "ZLL header"
+    );
+    let data: Vec<&str> = lines.filter(|l| !l.trim().is_empty()).collect();
+    let ckt = dss.circuit().unwrap();
+    let cdata = &ckt.ad.zll.cdata;
+    // One data line per stored non-zero (9 for a single 3x3 link block).
+    assert_eq!(data.len(), cdata.len(), "one data line per stored non-zero");
+    // VALUE-level: each emitted line is `row,col,float_to_str(re),float_to_str(im)`
+    // of the matching matrix entry in storage order — catches a Re/Im column swap
+    // or a wrong float rendering that a field-count check silently passes.
+    for (l, cd) in data.iter().zip(cdata) {
+        let want = format!(
+            "{},{},{},{}",
+            cd.row,
+            cd.col,
+            float_to_str(cd.value.re),
+            float_to_str(cd.value.im)
+        );
+        assert_eq!(*l, want, "ZLL export line equals the matrix entry");
+    }
+}
+
+#[test]
+fn export_contours_is_real_only() {
+    let scratch = scratch_dir("ad3_exp_c");
+    let mut dss = init_midi_ad(&scratch);
+    dss.command("export Contours");
+    let path = dss.last_result_file();
+    assert!(
+        path.ends_with("C.csv"),
+        "Contours default file is C.csv: {path}"
+    );
+    let text = std::fs::read_to_string(path).expect("read C.csv");
+    let mut lines = text.lines();
+    assert_eq!(lines.next().unwrap(), "Row,Col,Value", "Contours header");
+    let data: Vec<&str> = lines.filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(data.len(), 6, "6 contour entries (3 columns x +-1)");
+    for l in &data {
+        // real-only: `row,col,value` (3 fields), value is +-1.
+        assert_eq!(l.split(',').count(), 3, "Contours line has 3 fields: {l}");
+        let v: &str = l.split(',').nth(2).unwrap();
+        assert!(v == "1" || v == "-1", "contour value is +-1: {v}");
+    }
+}
+
+#[test]
+fn export_zcc_and_y4_match_matrix() {
+    use dss_core::util::float_to_str;
+    let scratch = scratch_dir("ad3_exp_zccy4");
+    let mut dss = init_midi_ad(&scratch);
+    for kw in ["ZCC", "Y4"] {
+        dss.command(&format!("export {kw}"));
+        let path = dss.last_result_file().to_string();
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {kw}: {e}"));
+        let mut lines = text.lines();
+        assert_eq!(
+            lines.next().unwrap(),
+            "Row,Col,Value(Real), Value(Imag)",
+            "{kw} header"
+        );
+        let data: Vec<&str> = lines.filter(|l| !l.trim().is_empty()).collect();
+        let ckt = dss.circuit().unwrap();
+        let cdata = if kw == "ZCC" {
+            &ckt.ad.zcc.cdata
+        } else {
+            &ckt.ad.y4.cdata
+        };
+        assert_eq!(data.len(), 9, "{kw} has 9 entries (3x3)");
+        assert_eq!(
+            data.len(),
+            cdata.len(),
+            "{kw}: one line per stored non-zero"
+        );
+        // VALUE-level (see `export_zll_matches_matrix`): pin the emitted floats
+        // against the matrix entries, not merely the 4-field shape.
+        for (l, cd) in data.iter().zip(cdata) {
+            let want = format!(
+                "{},{},{},{}",
+                cd.row,
+                cd.col,
+                float_to_str(cd.value.re),
+                float_to_str(cd.value.im)
+            );
+            assert_eq!(*l, want, "{kw} export line equals the matrix entry");
+        }
+    }
+}
+
+#[test]
+fn export_ad_matrices_write_no_file_but_set_lastfile_without_init() {
+    // Compile + solve but do NOT init A-Diakoptics. Pascal 1:1 (ExportResults.pas
+    // :3546 body gated by `if ADiakoptics` + ExportOptions.pas:503-507 tail run
+    // UNCONDITIONALLY): the export writes NO file and leaves GlobalResult
+    // untouched, but `SetLastResultFile(FileName)` + `@lastexportfile` still point
+    // the executive at the (never-created) default path.
+    let scratch = scratch_dir("ad3_exp_noop");
+    let mut dss = Dss::new();
+    compile_fixture(&mut dss, "midi", &scratch);
+    assert!(!dss.circuit().unwrap().solution.adiakoptics);
+    assert_eq!(dss.last_result_file(), "", "no report written yet");
+    for (kw, file) in [
+        ("ZLL", "ZLL.csv"),
+        ("ZCC", "ZCC.csv"),
+        ("Contours", "C.csv"),
+        ("Y4", "Y4.csv"),
+    ] {
+        dss.command(&format!("export {kw}"));
+        let p = dss.last_result_file().to_string();
+        assert!(
+            p.ends_with(file),
+            "export {kw} points LastResultFile at {file} (Pascal tail): {p}"
+        );
+        assert!(
+            !std::path::Path::new(&p).exists(),
+            "export {kw} writes NO file when ADiakoptics is false: {p}"
+        );
+        // GlobalResult is cleared at command start (Pascal `GlobalResult := ''`)
+        // and the gated-off export body never sets it.
+        assert_eq!(
+            dss.result(),
+            "",
+            "export {kw} leaves GlobalResult empty when ADiakoptics is false"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WP-AD.3 Stage 2b/Stage 4 — the A-Diakoptics solve + D7 equivalence gate.
+// ---------------------------------------------------------------------------
+mod ad_solve_gate {
+    use super::*;
+    use num_complex::Complex64;
+    use std::collections::HashMap;
+
+    /// Node-name → complex voltage for the (possibly reordered) coordinator.
+    fn node_voltages(dss: &Dss) -> HashMap<String, Complex64> {
+        let ckt = dss.circuit().expect("circuit");
+        (1..=ckt.num_nodes)
+            .map(|i| (ckt.node_name(i), ckt.solution.node_v[i]))
+            .collect()
+    }
+
+    /// Compile + base-solve a fixture, apply `pre` setup commands, then run
+    /// `solve_cmd` on the plain (non-AD) engine. Returns the driven `Dss` (so
+    /// callers can read the post-solve clock as well as the voltages).
+    fn solve_normal_dss(fixture_name: &str, tol: f64, pre: &[&str], solve_cmd: &str) -> Dss {
+        let scratch = scratch_dir("d7norm");
+        let mut dss = Dss::new();
+        compile_fixture(&mut dss, fixture_name, &scratch);
+        dss.command("set controlmode=off");
+        dss.command(&format!("set tolerance={tol}"));
+        for p in pre {
+            dss.command(p);
+        }
+        dss.command(solve_cmd);
+        assert!(dss.errors().is_empty(), "normal errors: {:?}", dss.errors());
+        dss
+    }
+
+    /// As [`solve_normal_dss`] but with the A-Diakoptics preamble (`set
+    /// Num_SubCircuits=…; set ADiakoptics=True`) applied after the mandatory init
+    /// snap solve; `pre` commands run after init, before `solve_cmd`.
+    fn solve_ad_dss(
+        fixture_name: &str,
+        num_sub: i32,
+        tol: f64,
+        pre: &[&str],
+        solve_cmd: &str,
+    ) -> Dss {
+        let scratch = scratch_dir("d7ad");
+        let mut dss = Dss::new();
+        compile_fixture(&mut dss, fixture_name, &scratch);
+        dss.command("set controlmode=off");
+        dss.command(&format!("set tolerance={tol}"));
+        dss.command("solve mode=snap");
+        dss.command(&format!("set Num_SubCircuits={num_sub}"));
+        dss.command("set ADiakoptics=True");
+        assert!(
+            dss.circuit().unwrap().solution.adiakoptics,
+            "AD init failed: {}",
+            dss.result()
+        );
+        dss.command(&format!("set tolerance={tol}"));
+        for p in pre {
+            dss.command(p);
+        }
+        dss.command(solve_cmd);
+        assert!(
+            dss.errors().is_empty(),
+            "AD solve errors: {:?}",
+            dss.errors()
+        );
+        dss
+    }
+
+    fn solve_normal(fixture_name: &str, tol: f64) -> HashMap<String, Complex64> {
+        node_voltages(&solve_normal_dss(fixture_name, tol, &[], "solve mode=snap"))
+    }
+
+    fn solve_ad(fixture_name: &str, num_sub: i32, tol: f64) -> HashMap<String, Complex64> {
+        node_voltages(&solve_ad_dss(
+            fixture_name,
+            num_sub,
+            tol,
+            &[],
+            "solve mode=snap",
+        ))
+    }
+
+    fn max_rel_gap(
+        a: &HashMap<String, Complex64>,
+        b: &HashMap<String, Complex64>,
+    ) -> (f64, String) {
+        let mut worst = 0.0;
+        let mut wn = String::new();
+        for (name, va) in a {
+            if let Some(vb) = b.get(name) {
+                let dv = (va - vb).norm();
+                let base = va.norm();
+                let rel = if base > 1e-6 { dv / base } else { dv };
+                if rel > worst {
+                    worst = rel;
+                    wn = name.clone();
+                }
+            }
+        }
+        (worst, wn)
+    }
+
+    #[test]
+    fn midi_snapshot_matches_normal() {
+        // Method floor 3.21e-5 (r3723 oracle: 3.25e-5); D7 tier = 4× ≈ 1.3e-4.
+        let vn = solve_normal("midi", 1e-4);
+        let va = solve_ad("midi", 2, 1e-4);
+        let (gap, node) = max_rel_gap(&vn, &va);
+        println!("midi AD-vs-normal gap = {gap:.4e} @ {node}");
+        assert!(
+            gap < 1.3e-4,
+            "midi AD-vs-normal gap {gap:.3e} @ {node} exceeds the D7 tier"
+        );
+        assert!(
+            gap > 1.0e-6,
+            "gap {gap:.3e} suspiciously small — the AD solve may be a normal-solve passthrough"
+        );
+    }
+
+    #[test]
+    fn midi_d7_gap_stable_under_tighten() {
+        let g_loose = max_rel_gap(&solve_normal("midi", 1e-4), &solve_ad("midi", 2, 1e-4)).0;
+        let g_tight = max_rel_gap(&solve_normal("midi", 1e-10), &solve_ad("midi", 2, 1e-10)).0;
+        println!("midi D7 tighten: loose={g_loose:.4e} tight={g_tight:.4e}");
+        let ratio = g_tight / g_loose;
+        assert!(
+            (0.5..2.0).contains(&ratio),
+            "midi AD-vs-normal gap not stable under tighten (oracle: bit-stable): \
+             loose={g_loose:.3e} tight={g_tight:.3e} ratio={ratio:.3}"
+        );
+    }
+
+    #[test]
+    fn midi_three_zones_snapshot_matches_normal() {
+        // Two reference-free zones (actors 3 & 4): exercises multi-link Contours.
+        let vn = solve_normal("midi", 1e-4);
+        let va = solve_ad("midi", 3, 1e-4);
+        let (gap, node) = max_rel_gap(&vn, &va);
+        println!("midi 3-zone AD-vs-normal gap = {gap:.4e} @ {node}");
+        // Floor 3.21e-5; D7 tier = 4× ≈ 1.3e-4.
+        assert!(gap < 1.3e-4, "midi 3-zone gap {gap:.3e} @ {node}");
+        assert!(gap > 1.0e-7, "3-zone gap {gap:.3e} suspiciously small");
+    }
+
+    #[test]
+    fn macro_snapshot_matches_normal() {
+        // ~200-bus feeder; method floor 1.319e-4 (r3723 oracle, same main92 cut:
+        // 1.318e-4); D7 tier = 4× ≈ 5.3e-4.
+        let vn = solve_normal("macro", 1e-4);
+        let va = solve_ad("macro", 2, 1e-4);
+        let (gap, node) = max_rel_gap(&vn, &va);
+        println!("macro AD-vs-normal gap = {gap:.4e} @ {node}");
+        assert!(gap < 5.3e-4, "macro AD-vs-normal gap {gap:.3e} @ {node}");
+        assert!(gap > 1.0e-7, "macro gap {gap:.3e} suspiciously small");
+    }
+
+    #[test]
+    fn macro_d7_gap_stable_under_tighten() {
+        // The bug that inflated the deep-zone gap 26× lived here (long
+        // reference-free zone): pin the tolerance-stability on macro too.
+        let g_loose = max_rel_gap(&solve_normal("macro", 1e-4), &solve_ad("macro", 2, 1e-4)).0;
+        let g_tight = max_rel_gap(&solve_normal("macro", 1e-10), &solve_ad("macro", 2, 1e-10)).0;
+        println!("macro D7 tighten: loose={g_loose:.4e} tight={g_tight:.4e}");
+        let ratio = g_tight / g_loose;
+        assert!(
+            (0.5..2.0).contains(&ratio),
+            "macro AD-vs-normal gap not stable under tighten: \
+             loose={g_loose:.3e} tight={g_tight:.3e} ratio={ratio:.3}"
+        );
+    }
+
+    // --- Newton + A-Diakoptics dispatch (Solution.pas:1125 CASE Algorithm) -----
+    //
+    // Official `DoNewtonSolution` (Solution.pas:1018) has NO `if ADiakoptics`
+    // branch and its `SolveSystem(dV,1)` uses the full `@V[1]` form — so a Newton
+    // AD deck solves the *closed interconnected coordinator* directly, bypassing
+    // the child stitch entirely. A-Diakoptics is an EXACT decomposition, so both
+    // the fixed-point AD stitch and this pure-coordinator Newton solve land on the
+    // same interconnected fixpoint. This is the independent ground-truth check:
+    // the Newton path (which never touches the children or the re-seed) must agree
+    // with the fixed-point AD path (which does) to f64 ulp. It proves (a) the
+    // Newton dispatch is wired and produces a valid full-system solve, and (b) the
+    // child re-seed recovers the exact interconnected answer (WP-AD.3 audit finding
+    // #2 — the re-seed's correctness rests on this decomposition, not a tol sweep).
+    //
+    // NB the AD-vs-normal "floor" (3.25e-5 midi / 1.32e-4 macro) is the
+    // interconnected-coordinator-vs-original-deck difference — SHARED by the
+    // fixed-point AND Newton AD paths (both reproduce the coordinator solve) — not
+    // a child-solve approximation, so a Newton-vs-normal comparison would sit at
+    // that same floor; the discriminating comparison is Newton-AD vs fixed-point-AD.
+
+    fn solve_alg(dss: &Dss) -> i32 {
+        dss.circuit().unwrap().solution.algorithm
+    }
+
+    #[test]
+    fn midi_newton_ad_matches_fixedpoint_ad() {
+        let vfp = solve_ad("midi", 2, 1e-10);
+        let dnewt = solve_ad_dss(
+            "midi",
+            2,
+            1e-10,
+            &["set algorithm=newton"],
+            "solve mode=snap",
+        );
+        assert_eq!(
+            solve_alg(&dnewt),
+            1,
+            "algorithm did not stick at NEWTONSOLVE"
+        );
+        let (gap, node) = max_rel_gap(&vfp, &node_voltages(&dnewt));
+        println!("midi Newton-AD vs fixed-point-AD gap = {gap:.4e} @ {node}");
+        // Two faer solves of the same interconnected system → f64-ulp agreement.
+        assert!(
+            gap < 1.0e-9,
+            "Newton-AD must land on the same interconnected fixpoint as the AD \
+             stitch (exact decomposition); gap {gap:.3e} @ {node}"
+        );
+    }
+
+    #[test]
+    fn macro_newton_ad_matches_fixedpoint_ad() {
+        let vfp = solve_ad("macro", 2, 1e-10);
+        let dnewt = solve_ad_dss(
+            "macro",
+            2,
+            1e-10,
+            &["set algorithm=newton"],
+            "solve mode=snap",
+        );
+        assert_eq!(
+            solve_alg(&dnewt),
+            1,
+            "algorithm did not stick at NEWTONSOLVE"
+        );
+        let (gap, node) = max_rel_gap(&vfp, &node_voltages(&dnewt));
+        println!("macro Newton-AD vs fixed-point-AD gap = {gap:.4e} @ {node}");
+        assert!(
+            gap < 1.0e-9,
+            "Newton-AD must land on the same interconnected fixpoint as the AD \
+             stitch (exact decomposition); gap {gap:.3e} @ {node}"
+        );
+    }
+
+    // --- Time-series D7 equivalence (plan §WP-AD.3 tests: midi daily-24, macro
+    // yearly-168) --------------------------------------------------------------
+    //
+    // These exercise `ad_solve_time_series` (the coordinator clock-step loop +
+    // per-step monitor/meter sampling + end-of-step cleanup) which the snapshot
+    // gates never reach. The fixtures carry no load shapes (constant loads), so
+    // every step is a snapshot and the AD-vs-normal gap stays at the snapshot
+    // method floor. We assert BOTH that the final voltages match at the D7 tier
+    // AND that the clock actually advanced the full horizon (proving the step
+    // loop ran, not a single-solve short-circuit).
+
+    fn int_hour(dss: &Dss) -> i32 {
+        dss.circuit().unwrap().solution.int_hour
+    }
+
+    #[test]
+    fn midi_daily24_matches_normal() {
+        let dn = solve_normal_dss("midi", 1e-4, &[], "solve mode=daily number=24");
+        let da = solve_ad_dss("midi", 2, 1e-4, &[], "solve mode=daily number=24");
+        assert_eq!(
+            int_hour(&dn),
+            24,
+            "normal daily-24 did not advance 24 hours"
+        );
+        assert_eq!(int_hour(&da), 24, "AD daily-24 did not advance 24 hours");
+        let (gap, node) = max_rel_gap(&node_voltages(&dn), &node_voltages(&da));
+        println!("midi daily-24 AD-vs-normal gap = {gap:.4e} @ {node}");
+        assert!(gap < 1.3e-4, "midi daily-24 gap {gap:.3e} @ {node}");
+        assert!(
+            gap > 1.0e-6,
+            "gap {gap:.3e} suspiciously small — AD may be a passthrough"
+        );
+    }
+
+    #[test]
+    fn macro_yearly168_matches_normal() {
+        let dn = solve_normal_dss("macro", 1e-4, &[], "solve mode=yearly number=168");
+        let da = solve_ad_dss("macro", 2, 1e-4, &[], "solve mode=yearly number=168");
+        assert_eq!(
+            int_hour(&dn),
+            168,
+            "normal yearly-168 did not advance 168 hours"
+        );
+        assert_eq!(
+            int_hour(&da),
+            168,
+            "AD yearly-168 did not advance 168 hours"
+        );
+        let (gap, node) = max_rel_gap(&node_voltages(&dn), &node_voltages(&da));
+        println!("macro yearly-168 AD-vs-normal gap = {gap:.4e} @ {node}");
+        assert!(gap < 5.3e-4, "macro yearly-168 gap {gap:.3e} @ {node}");
+        assert!(
+            gap > 1.0e-7,
+            "gap {gap:.3e} suspiciously small — AD may be a passthrough"
+        );
+    }
 }
