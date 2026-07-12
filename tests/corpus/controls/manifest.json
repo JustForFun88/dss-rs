@@ -2049,6 +2049,139 @@
    ],
    "compare_eventlog": true,
    "note": "Charge PeakShaveLow (DoPeakShaveModeLow): charges the fleet when the monitored power falls below kWTargetLow (valley fill), untouched by the Time-charge decks. Feature-sensitive: modecharge=time charges on a clock trigger instead (probe-proven)."
+  },
+  {
+   "path": "relay/relay_voltage.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "kvbase",
+      "delay"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "VOLTAGE (27 undervoltage): a bolted 3ph fault at the monitored bus collapses V below the UnderVolt TCC -> UV trip + lockout. Feature-sensitive: a deep UV pickup keeps it in-band (probe-proven)."
+  },
+  {
+   "path": "relay/relay_revpower.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "delay"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "REVERSEPOWER (32): a downstream generator ramp backfeeds reverse power past PhaseInst -> one-shot lockout (RevPowerLogic). Feature-sensitive: PhaseInst above the backfeed keeps it closed (probe-proven)."
+  },
+  {
+   "path": "relay/relay_generic.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "delay"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "GENERIC: watches the Storage 'kWh' state variable (a StorageController discharges it) and trips the feeder open when energy drops below undertrip. Feature-sensitive: undertrip below end-of-run kWh stops the trip (probe-proven)."
+  },
+  {
+   "path": "relay/relay_distance.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "shots"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "DISTANCE (21 mho): apparent-impedance reach to a bolted 3ph fault inside Mphase -> trip + lockout (Kersting ex.4.1 impedances). Feature-sensitive: Mphase below the fault distance stops the trip (probe-proven)."
+  },
+  {
+   "path": "relay/relay_td21.dss",
+   "kind": "micro",
+   "n_steps": 30,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "shots"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "TD21 (time-distance): the memory ring-buffer distance element primes over duty sub-steps before the in-reach fault, then trips + locks out. Feature-sensitive: Mphase below the fault distance stops the trip (probe-proven)."
+  },
+  {
+   "path": "relay/relay_doc.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Relay.rl",
+     "props": [
+      "state",
+      "normal",
+      "type",
+      "delay"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "DOC (directional overcurrent): DOC_P1Blocking=TRUE (default) trips only on net reverse power; a downstream generator export drives reverse current into the trip region past DOC_TripSettingLow. Feature-sensitive: raising the pickup stops the trip (probe-proven)."
   }
  ]
 }
