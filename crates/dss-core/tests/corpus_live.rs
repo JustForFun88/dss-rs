@@ -2683,6 +2683,8 @@ fn ad_decompose_probe() {
         return;
     };
     let abs = corpus_file(&rel);
+    // Keep the vendored corpus pristine (the compile-time solve writes reports).
+    let _guard = CorpusGuard::new(&abs);
     // Original normal.
     let vn = ad_node_voltages(&ad_solve_normal(&abs, true).expect("orig normal"));
     // AD arm — but keep the scratch dir so we can compile the interconnected save.
