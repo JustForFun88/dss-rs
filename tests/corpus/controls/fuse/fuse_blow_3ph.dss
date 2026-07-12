@@ -1,0 +1,25 @@
+// Fuse, 3-PHASE simultaneous blow: a balanced 3-phase fault melts ALL three
+// per-phase fuse links in the same control round (the simultaneous-blow branch
+// vs the one-phase asymmetric deck). The per-phase `State` array probe pins the
+// all-[open] pattern; the event log the three PHASE n BLOWN lines. Feature-
+// sensitive: raising ratedcurrent above the fault current keeps all links
+// closed (probe-proven). Compared per step: full model + per-phase State/Normal
+// probes + the blow event log.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.prot basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi
+new line.lat bus1=mid bus2=loadb linecode=lc length=1 units=mi
+new load.l bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
+
+new fuse.fz monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 ratedcurrent=40
+
+! Balanced 3-phase fault -> all three links carry fault current and blow.
+new fault.f bus1=loadb.1.2.3 phases=3 ontime=0.1 r=0.5 temporary=no
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.1 number=1 controlmode=time

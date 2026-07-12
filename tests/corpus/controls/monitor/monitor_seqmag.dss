@@ -1,0 +1,30 @@
+// Monitor flag-bit save branches (Monitor.pas l.853/868, SEQUENCEMASK +16 /
+// MAGNITUDEMASK +32 / +64 posseq-avg): the same base V&I mode (0) with the
+// sequence bit (mode=16 -> V012/I012), the magnitude bit (mode=32 -> |V|,|I|
+// only) and both (mode=48). The byte-stream channel layout changes per flag, so
+// each monitor records a distinct channel set. A daily ramp on an unbalanced
+// (per-phase-unequal) feeder makes the sequence components non-trivial. Headers,
+// sample counts, and all channel arrays are compared per step
+// (check_meters_monitors).
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.monsq basekv=12.47 pu=1.02 phases=3 bus1=src mvasc3=15000 mvasc1=12000
+
+new line.feed bus1=src bus2=b r1=0.25 x1=0.6 r0=0.6 x0=1.6 c1=0 c0=0 length=2
+
+new loadshape.day npts=12 interval=1
+~ mult=(0.35 0.50 0.70 0.90 1.10 1.25 1.20 1.05 0.85 0.65 0.50 0.40)
+
+! Per-phase-unequal loads -> non-trivial negative/zero sequence components.
+new load.la bus1=b.1 phases=1 kv=7.2 kw=1400 pf=0.92 model=1 daily=day
+new load.lb bus1=b.2 phases=1 kv=7.2 kw=600 pf=0.95 model=1 daily=day
+new load.lc bus1=b.3 phases=1 kv=7.2 kw=1900 pf=0.88 model=1 daily=day
+
+new monitor.mseq element=line.feed terminal=1 mode=16
+new monitor.mmag element=line.feed terminal=1 mode=32
+new monitor.mseqmag element=line.feed terminal=1 mode=48
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=daily stepsize=1h number=1

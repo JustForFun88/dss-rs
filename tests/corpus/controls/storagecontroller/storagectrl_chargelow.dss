@@ -1,0 +1,34 @@
+// StorageController charge PeakShaveLow (DoPeakShaveModeLow, l.1411): the
+// low-side charge branch - when the monitored feeder power falls BELOW
+// kWTargetLow (a light-load valley), the controller charges the fleet to fill
+// the valley toward the low target (the mirror of PeakShave's discharge). This
+// branch is untouched by the Time-charge decks. A daily load with a deep
+// overnight trough drives the charge. Feature-sensitive: modecharge=time (a
+// clock trigger, not a power-threshold valley) charges on a different schedule
+// (probe-proven).
+// Compared per step: full model + Storage State/kW/kWhstored probes + Storage
+// f64 state variables + the controller's event log.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.scclo basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km
+
+New loadshape.day npts=24 interval=1
+~ mult=(0.35 0.30 0.28 0.28 0.32 0.45 0.65 0.85 1.00 1.10 1.15 1.18 1.20 1.18 1.12 1.05 1.00 1.05 1.10 1.00 0.85 0.65 0.48 0.38)
+
+New load.ld bus1=b phases=3 kv=12.47 kw=4500 pf=1.0 model=1 daily=day
+
+New storage.sa bus1=b phases=3 kv=12.47 kwrated=1200 kva=1200 kwhrated=5000
+~ %stored=40 %idlingkw=0 pf=1.0
+
+// Discharge peakshave at the daytime peak + charge PeakShaveLow in the trough.
+New storagecontroller.sc element=line.l1 terminal=1 modedis=peakshave
+~ kwtarget=4800 modecharge=peakshavelow kwtargetlow=1800
+~ %ratecharge=100 %reserve=15 eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=50
+Set mode=daily stepsize=1h number=1

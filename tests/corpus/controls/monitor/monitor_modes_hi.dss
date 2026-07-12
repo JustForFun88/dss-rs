@@ -1,0 +1,36 @@
+// Monitor high modes: the ported save-record branches beyond 0-3 (Monitor.pas
+// `case Mode of` l.539/720). Mode 6 (capacitor switching) on a CapControl-
+// switched cap, mode 9 (losses W+var) on a transformer, mode 11 (all-terminal
+// V&I) on a line. A daily ramp moves everything (the cap switches, losses vary)
+// so every channel carries a varying trajectory. Headers, sample counts, and
+// all channel arrays are compared per step (check_meters_monitors).
+// NOTE: modes 8/10 (winding I/V) and 12 (LL) build a header but their sample
+// body is a deferred stub in the port (sample.rs `_ => return`), so they are
+// NOT exercised here - they remain uncovered pending that port work.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.monhi basekv=115 pu=1.03 phases=3 bus1=src mvasc3=15000 mvasc1=12000
+
+new transformer.tr phases=3 windings=2 buses=(src, mv) conns=(delta, wye)
+~ kvs=(115, 12.47) kvas=(10000, 10000) xhl=7
+
+new line.feed bus1=mv bus2=b r1=0.25 x1=0.6 r0=0.6 x0=1.6 c1=0 c0=0 length=2
+
+new loadshape.day npts=12 interval=1
+~ mult=(0.35 0.50 0.70 0.90 1.10 1.25 1.20 1.05 0.85 0.65 0.50 0.40)
+
+new load.l1 bus1=b phases=3 kv=12.47 kw=6000 pf=0.92 model=1 daily=day
+
+// Switched capacitor -> mode 6 capacitor-switching monitor.
+new capacitor.cb phases=3 bus1=b conn=wye kvar=1200 kv=12.47 numsteps=2
+new capcontrol.cc element=line.feed terminal=2 capacitor=cb type=voltage
+~ ptratio=60 onsetting=118 offsetting=122
+
+new monitor.mloss element=transformer.tr terminal=1 mode=9
+new monitor.mcap element=capacitor.cb terminal=1 mode=6
+new monitor.mall element=line.feed terminal=1 mode=11
+
+set voltagebases=[115 12.47]
+calcvoltagebases
+set mode=daily stepsize=1h number=1

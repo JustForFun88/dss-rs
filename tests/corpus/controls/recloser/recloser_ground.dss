@@ -1,0 +1,34 @@
+// Recloser GROUND-curve path (Recloser.pas Sample l.578-594: GroundFast/
+// GroundDelayed drive the shots on the residual current Csum=Sum(cBuffer), a
+// path SKIPPED entirely when GroundCurve=NIL — the defaults, l.355-356). This
+// deck ASSIGNS groundfast/grounddelayed so the ground path is live, and sets
+// phasetrip=3000 ABOVE the SLG faulted-phase current (~2585 A) so the phase
+// curve never picks up while the residual (~2558 A) clears the low groundtrip=30
+// pickup by ~85x — so ONLY the ground curve trips (eventlog: GROUND TARGET,
+// trips faster at Sec=0.4 than the phase path would). Temporary fault self-
+// clears; the recloser recloses (ends CLOSED). Feature-sensitive (probe-proven,
+// pinned oracle): groundtrip=3000 (above the residual) STOPS the trip and
+// removing groundfast/grounddelayed STOPS it, while phasetrip=30000 leaves the
+// result bit-identical (phase path inert). Compared per step: full model +
+// State/Normal probes + trip/reclose event log + pending shots in the ctrl queue.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.prot basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi
+new line.lat bus1=mid bus2=loadb linecode=lc length=1 units=mi
+new load.l bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
+
+// Ground curves assigned + phase pickup above the faulted-phase current ->
+// only the ground curve can trip on the SLG.
+new recloser.r monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 numfast=1 shots=2
+~ phasefast=a phasedelayed=d groundfast=a grounddelayed=d
+~ phasetrip=3000 groundtrip=30 recloseintervals=(0.5, 1.0)
+
+new fault.f bus1=loadb.1 phases=1 ontime=0.1 r=1 temporary=yes
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.1 number=1 controlmode=time

@@ -1,0 +1,36 @@
+// StorageController Loadshape dispatch (DoLoadShapeMode, covers both the
+// discharge and charge loadshape branches at once): the controller's own Daily
+// dispatch shape commands the fleet directly - mult<0 charges (rate =
+// |mult|*100%), mult=0 idles, mult>0 discharges (rate = mult*100%). A daily
+// dispatch shape with a negative overnight charge window and a positive daytime
+// discharge window walks all three arms. Feature-sensitive: zeroing the
+// dispatch shape (all idle) freezes the fleet (probe-proven).
+// Compared per step: full model + Storage State/kW/kWhstored probes + Storage
+// f64 state variables + the controller's event log.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.scls basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km
+
+New loadshape.day npts=24 interval=1
+~ mult=(0.50 0.48 0.45 0.45 0.50 0.60 0.72 0.85 0.95 1.00 1.05 1.08 1.10 1.12 1.10 1.05 1.02 1.00 0.95 0.85 0.75 0.65 0.58 0.52)
+
+New load.ld bus1=b phases=3 kv=12.47 kw=4000 pf=0.98 model=1 daily=day
+
+// Controller dispatch shape: charge overnight (negative), idle, discharge at
+// the daytime peak (positive), idle again.
+New loadshape.disp npts=24 interval=1
+~ mult=(-0.5 -0.6 -0.7 -0.5 -0.3 0 0 0 0 0.4 0.6 0.8 0.9 0.8 0.6 0.4 0 0 0 0 -0.2 -0.4 -0.5 -0.5)
+
+New storage.sa bus1=b phases=3 kv=12.47 kwrated=1000 kva=1000 kwhrated=4000
+~ %stored=50 %idlingkw=0 pf=1.0
+
+New storagecontroller.sc element=line.l1 terminal=1 modedis=loadshape
+~ modecharge=loadshape daily=disp %reserve=15 eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=50
+Set mode=daily stepsize=1h number=1

@@ -1,0 +1,41 @@
+// UPFC mode 4 (DoubleReference, voltage) + UPFCControl wrapper (UPFC.pas
+// ModeUPFC=4: a two-band reference - the input voltage is left alone while it
+// stays inside [refkV2, refkV], and regulated to the near band edge once it
+// leaves the band via the sf2 flag). The loaded interface sags the input below
+// refkV2, so the UPFC engages the lower-band regulation. Feature-sensitive:
+// mode=0 (off) removes the series injection; widening the band so the input
+// stays inside also disengages it (probe-proven). Compared per step: full
+// model (the series-injected V/I) + UPFC mode/refkv/refkv2 probe.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.upfcdr bus1=source_bus.1.0 phases=1 basekv=7.2 pu=1 angle=0
+~ mvasc3=2000000 mvasc1=20000000
+
+New xycurve.losses npts=3 xarray=[0.9 1 1.1] yarray=[1.0143 1.008 1.0143]
+
+New xfmrcode.1-ph50kva-2 phases=1 windings=2 ppm=0 xhl=2.04 %noloadloss=.02
+~ kvs=[7.2 0.24] kvas=[50 50] %rs=[0.9 0.9] conns=[wye wye]
+
+New xfmrcode.upfcinterface phases=1 windings=3 ppm=0 xhl=.0204 xht=.0204
+~ xlt=.0136 %noloadloss=.01 kvs=[0.24 0.12 0.12] kvas=[50 50 50]
+~ %rs=[0.006 .012 .012] conns=[wye wye wye]
+
+New transformer.service50kva xfmrcode=1-ph50kva-2 buses=[source_bus.1.0 upfc_input.1]
+
+// mode 4: two-band reference; refkV upper edge, refkV2 lower edge.
+New upfc.test phases=1 bus1=upfc_input.1 bus2=upfc_output.1 mode=4
+~ refkv=0.245 refkv2=0.238 losscurve=losses tol1=0.001 xs=0.02
+
+New upfccontrol.myupfcctrl
+
+New transformer.tupfcout xfmrcode=upfcinterface
+~ buses=[upfc_output.1.0 load_bus.1.0 load_bus.0.2]
+
+New load.load120a phases=1 model=1 bus1=load_bus.1.0 kv=0.12 kw=14.98 kvar=10.08
+New load.load120b phases=1 model=1 bus1=load_bus.2.0 kv=0.12 kw=12.38 kvar=1.71
+
+Set voltagebases=[12.47 .415 0.208]
+calcv
+Set tolerance=1e-12
+Set maxiterations=100
