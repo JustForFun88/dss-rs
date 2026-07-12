@@ -45,6 +45,39 @@ dynamics/harmonics, PC terminal currents are `CalcYPrimContribution` =
   `SumAllCurrents` — exactly Pascal's live-variable read (cleared only at
   `DoPFLOWsolution`'s end).
 
+**FIX-DIRECT settle (audit findings), 2026-07-12.** Five auditor findings on the
+shortcut wave (all coverage, no code defect) settled empirically:
+- *GFM-exclusion branch untested (Major).* Added hermetic dispatch unit tests
+  `storage::tests::direct_shortcut_excluded_in_gfm_mode` and the PVSystem twin:
+  with a known diagonal YPrim + nonzero InjCurrent and the model recompute
+  suppressed (`iterminal_solution_count == solution_count`), a GFM unit in DIRECT
+  mode reports `YPrim·V − InjCurrent` (GFM path, InvBasedPCE.pas l.211-219) while a
+  non-GFM unit reports the frozen `YPrim·V` (shortcut) — the two differ by exactly
+  InjCurrent, so inverting/dropping the `!self.base.gfm_mode` guard fails the test.
+- *Generator / IndMach012 per-class wiring untested (Minor).* Added
+  `generator::tests` + `ind_mach012::tests` `direct_shortcut_selects_yprim_currents`
+  (same hermetic method: direct read = `YPrim·V`, normal read = `YPrim·V − Inj`,
+  difference = InjCurrent). All five inheriting classes (Load, Generator,
+  IndMach012, non-GFM PVSystem, non-GFM Storage) now have a real-`get_currents`
+  dispatch guard; a live oracle deck was judged lower-value than the hermetic
+  guards since the base shortcut numerics are already oracle-pinned by
+  `time/direct.dss` and the wiring is a shared one-liner.
+- *Dynamics exclusion arm not asserted (Minor).* Added the `is_dynamic_model:true`
+  mirror to the Load test — both OR terms of the l.137 `not(IsDynamicModel or
+  IsHarmonicModel)` guard now assert.
+- *Direct→Newton SumAllCurrents interaction not oracle-gated (Minor, no action).*
+  Confirmed a faithful 1:1 of Pascal's live-variable read; the default NORMALSOLVE
+  never calls `SumAllCurrents`, so it is a no-op there. Rests on code fidelity by
+  the auditor's own assessment — no defect.
+- *Deck captures only final direct state; revert only in-process (Minor).* The
+  post-direct reversion is pinned by the Load unit test (`snap2` → model current at
+  1e-9); oracle-gating the revert (a trailing snapshot step) was deferred as
+  low-value — the revert is just the flag-cleared default path.
+- Set/CLEAR completeness (brief item 1): the Pascal `:= TRUE` at Solution.pas
+  l.2704 is inside `SolveAD` under `{$IFDEF DSS_CAPI_ADIAKOPTICS}` (A-Diakoptics
+  Part II, not in this base) — out of scope; the three non-ADIAKOPTICS lifecycle
+  points (init l.464, clear l.1022, set l.1282) are ported 1:1.
+
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a
 pure move — **no deck content changed** (every family deck is self-contained;
