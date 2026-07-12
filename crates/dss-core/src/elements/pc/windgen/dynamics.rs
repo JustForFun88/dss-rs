@@ -39,14 +39,6 @@ impl WindGen {
         self.compute_iterminal(sys, node_v);
 
         match self.cd.nphases {
-            1 => {
-                let nr = &self.cd.node_ref;
-                let edp = node_v[nr[0]]
-                    - node_v[nr[1]]
-                    - self.cd.iterminal[0] * self.wind_model_dyn.zthev;
-                self.edp = edp;
-                self.v_thev_mag = edp.norm();
-            }
             3 => {
                 let sc = SymComp::default();
                 let mut i012 = [Complex64::ZERO; 3];
@@ -62,11 +54,21 @@ impl WindGen {
                 self.v_thev_mag = edp.norm();
             }
             _ => {
-                // Pascal sets DSS.SolutionAbort := TRUE (msg 5672). Dynamics is
-                // implemented only for 1-/3-phase WindGens.
+                // Pascal `case Fnphases of 1: 3: else DoSimpleMsg(...5672)` accepts
+                // 1-phase (computes Edp) then still calls `WindModelDyn.Init` — but
+                // the embedded WTG3 model is 3-phase-only: `Instrumentation`
+                // (WTG3_Model.pas:494) and every per-step `CalcDynamic` read
+                // `V[1..3]`/`i[1..3]`, so a 1-phase terminal (2 conductors)
+                // over-reads the terminal array = heap UB upstream. Per CLAUDE.md
+                // (UB-class quirks are NOT reproduced — gate around them), abort
+                // for anything but 3 phases rather than reproduce the over-read.
+                // `do_dynamic_mode` calls `calc_dynamic` unconditionally (even on
+                // the DynamicEq path), so there is no valid non-3-phase dynamics
+                // path; this init-time abort sets `solution_abort`, which
+                // `solve_dynamic_body` honors before any step runs.
                 self.cd.obj.push_error_abort(format!(
-                    "Dynamics mode is implemented only for 1- or 3-phase WindGens. \
-                     WindGen.{} has {} phases.",
+                    "Dynamics mode requires a 3-phase WindGen (the WTG3 model is \
+                     3-phase-only). WindGen.{} has {} phases.",
                     self.cd.obj.name(),
                     self.cd.nphases
                 ));
@@ -184,9 +186,30 @@ impl WindGen {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        _errors: &mut Vec<String>,
+        errors: &mut Vec<String>,
     ) {
         self.cd.compute_vterminal(node_v);
+
+        // The WTG3 model is 3-phase-only: `calc_dynamic` → `instrumentation`
+        // reads V[1..3]/i[1..3], so a non-3-phase terminal (e.g. a 1-phase
+        // WindGen's 2 conductors) would over-read the terminal array = heap UB
+        // upstream (WindGen.pas:1868/1905). Per CLAUDE.md that UB is NOT
+        // reproduced. `init_state_vars` already aborts the dynamics entry, but
+        // an external `solve` clears `solution_abort` (Text_Set_Command reset)
+        // before the step loop, so guard the per-step path too — record the
+        // error and inject nothing (mirrors Generator `do_dynamic_mode`).
+        if self.cd.nphases != 3 {
+            errors.push(format!(
+                "Dynamics mode requires a 3-phase WindGen (the WTG3 model is \
+                 3-phase-only). WindGen.{} has {} phases.",
+                self.cd.obj.name(),
+                self.cd.nphases
+            ));
+            for c in self.cd.inj_current.iter_mut() {
+                *c = Complex64::ZERO;
+            }
+            return;
+        }
 
         let vterm = self.cd.vterminal.clone();
         self.wind_model_dyn.calc_dynamic(

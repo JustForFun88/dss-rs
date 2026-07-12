@@ -136,6 +136,22 @@ amplification floor, NOT a bug). WindGen energy-meter registers not ported
 (`EnergyMeter.SampleAll` never samples WindGenClass — unreachable). Daily deck is
 single-step: dss_capi 0.15.x caches per-element `Losses` and WindGen doesn't
 invalidate it (bucket-F API quirk, out of scope).
+- **WP-U1.8 settle (audit).** (1) The `micro_wtg3_dynamics` tier is empirically
+  confirmed a genuine cancellation floor, not a masked state-leak: a per-variable +
+  per-node decomposition vs capi015 (throwaway probe, reverted) shows the gap is
+  confined to exactly the 3 PLL-derivative-fed vars (`dOmg`/`Pgen`/`Qgen`, ~1e-5
+  healthy / ~4e-5 fault) while 14 of 22 vars are bit-exact and the other 5 are ≤5e-7;
+  the worst node-V is always WBUS (the terminal bus) at 9.6e-7 rel healthy / 3.4e-6
+  fault, so the default `v_rel=1e-7` genuinely fails and `8e-6` covers it at ×2.3
+  (not over-loose). (2) Fixed a robustness defect: a 1-phase WindGen entering
+  dynamics used to **panic** (OOB in `wtg3` `instrumentation`, which reads V[1..3] —
+  the WTG3 model is 3-phase-only; upstream over-reads = heap UB, NOT reproduced). Now
+  a loud clean abort — `init_state_vars` aborts non-3φ before the model init, and
+  `do_dynamic_mode` guards the per-step path (external `solve` clears the init abort);
+  `calc_initial_machine_states` now drains+propagates element init aborts to
+  `solution_abort` (also surfaces the latent >3φ silent-garbage path for all
+  machines). New unit test `single_phase_dynamics_aborts_cleanly`. (3) The 5
+  `windgen/*` decks joined the `MODES_REQUIRED` anti-deletion floor.
 - **Resume note (WP-U1.2 remaining).** Rows **D3** (report-only spacing ratings —
   overload-report deck) and **B3-r3723** (Load.GrowthFactor Year=0) still to port;
   the golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the
