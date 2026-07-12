@@ -155,6 +155,17 @@
    ]
   },
   {
+   "path": "der/der_state_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Storage.stidle",
+    "PVSystem.pvcut",
+    "PVSystem.pvclamp"
+   ],
+   "note": "Boundaries (all wye-3ph): Storage IDLING state (Storage.pas:1410), PVSystem below %CutOut (P=0), PVSystem at the kvar clamp (tight kvarMax + WattPriority). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: idling->discharging, irradiance 0.05->0.9 (cutout), kvarMax 50->450 (clamp) each change the whole model."
+  },
+  {
    "path": "indmach/indmach_asym.dss",
    "kind": "micro",
    "n_steps": 1,
