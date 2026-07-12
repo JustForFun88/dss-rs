@@ -33,8 +33,10 @@
     "Capacitor.cdel",
     "Capacitor.c1p",
     "Capacitor.cser",
-    "Capacitor.cstep"
-   ]
+    "Capacitor.cstep",
+    "Capacitor.cfilt"
+   ],
+   "note": "Extended with cfilt: a series-tuned harmonic-filter bank (per-step R+XL) whose YPrim is a full series R+L+C branch off the pure-C diagonal at 60 Hz. Oracle-validated + feature-sensitive (dropping XL collapses it onto the pure-C stamp)."
   },
   {
    "path": "line/line_asym.dss",
@@ -49,6 +51,27 @@
    ]
   },
   {
+   "path": "line/line_geometry_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lgeo",
+    "Line.lspur",
+    "Line.llong"
+   ],
+   "note": "Boundaries: LineGeometry+WireData Carson full-asym Z/Yc (Line.pas geometry path, reduce=y Kron), 1-phase reduced spur, and the SymComponentsModel-only LongLineCorrection sinh(gamma*l)/(gamma*l) branch (Line.pas:1199/1369). Oracle: converged 5 iters; bit-identical across 2 processes. Feature-sensitive: LongLineCorrection yes->no changes Line.llong YPrim; swapping cond=1 wire changes Line.lgeo YPrim."
+  },
+  {
+   "path": "line/line_cable_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lcn",
+    "Line.lts"
+   ],
+   "note": "Boundaries: CNData concentric-neutral and TSData tape-shield reduced-Y (distinct Kron neutral elimination CN vs TS), asymmetric underground burial. Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: CN strand count k 13->7 changes Line.lcn YPrim; TS TapeLayer 0.005->0.008 changes Line.lts YPrim."
+  },
+  {
    "path": "transformer/transformer_asym.dss",
    "kind": "micro",
    "n_steps": 1,
@@ -61,6 +84,16 @@
     "Transformer.tn",
     "Transformer.tu"
    ]
+  },
+  {
+   "path": "transformer/transformer_wyedelta_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Transformer.twd",
+    "Transformer.tdd"
+   ],
+   "note": "Boundaries: wye-delta step-up (delta-lead +30deg phase shift, opposite of transformer_asym.tdy's delta-wye lag) and delta-delta (both terminals ungrounded, common mode held by ppm_antifloat + a small wye cap pin per the family floor rule). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: twd conns wye-delta->wye-wye changes both YPrims."
   },
   {
    "path": "fault/fault_asym.dss",
@@ -100,6 +133,17 @@
    ]
   },
   {
+   "path": "generator/gen_currentlimited_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Generator.g7",
+    "Generator.g4",
+    "Generator.g3"
+   ],
+   "note": "Boundaries: Model 7 current-limited PQ (DoCurrentLimitedPQ clamp fires on the two phases sagged below Vminpu), Model 4 fixed-Q, Model 3 PV latched at a tight maxkvar. Oracle: converged 5 iters; bit-identical across 2 processes. Feature-sensitive: g7 model 7->1 changes the whole model (clamp active); g3 maxkvar 100->800 changes it (limit binding)."
+  },
+  {
    "path": "der/der_asym.dss",
    "kind": "micro",
    "n_steps": 1,
@@ -109,6 +153,17 @@
     "Storage.st3",
     "Storage.st1"
    ]
+  },
+  {
+   "path": "der/der_state_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Storage.stidle",
+    "PVSystem.pvcut",
+    "PVSystem.pvclamp"
+   ],
+   "note": "Boundaries (all wye-3ph): Storage IDLING state (Storage.pas:1410), PVSystem below %CutOut (P=0), PVSystem at the kvar clamp (tight kvarMax + WattPriority). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: idling->discharging, irradiance 0.05->0.9 (cutout), kvarMax 50->450 (clamp) each change the whole model."
   },
   {
    "path": "indmach/indmach_asym.dss",
@@ -163,6 +218,15 @@
    "selected_elements": [
     "*"
    ]
+  },
+  {
+   "path": "combo/midi_geometry_cable_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "note": "Cross-element (midi): overhead Carson geometry -> CN cable -> delta-wye transformer -> unbalanced loads + TS 1-phase spur. Boundary: Carson/cable mutuals meet the transformer grounded-wye zero-sequence path across the assembled system Y (neutral-return coupling). Oracle: converged 3 iters; bit-identical across 2 processes. Feature-sensitive: adding a wdg-2 rneut/xneut ground impedance changes the whole-model fingerprint."
   },
   {
    "path": "combo/combo_mesh_asym.dss",
@@ -235,6 +299,15 @@
    "selected_elements": [
     "*"
    ]
+  },
+  {
+   "path": "load/midi_load_vregion_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "note": "Load voltage-region state machine (Load.pas:1373/1433/1473/1658): a weak source + high-Z radial feeder sags far loads below Vminpu (interpolate_y95_ylow) and, at b3.2, below Vlowpu (const-Z Yeq), while a cap-boosted stub pushes bs above Vmaxpu (Yeq105 clamp). Models 1/3/5 (distinct interp paths) + 6/7 (yq_fixed) all fired off-normal. Oracle: converged 3 iters; bit-identical across 2 processes. Feature-sensitive: models 6/7 (interp/clamp) -> 1 changes the whole-model fingerprint."
   },
   {
    "path": "generator/midi_generator_asym.dss",

@@ -27,6 +27,12 @@ New capacitor.cser phases=3 bus1=b1 bus2=b2 kvar=20000 kv=12.47
 ! Multi-step wye bank with mixed states.
 New capacitor.cstep phases=3 bus1=b2 kvar=600 kv=12.47 numsteps=4 states=[1 0 1 0]
 
+! Series-tuned harmonic-FILTER bank: per-step R + XL put a series R+L in series
+! with the C, so the YPrim is a full series R+L+C branch (off the pure-C
+! diagonal even at the fundamental) — the distinct filter-reactance stamp
+! (Capacitor.pas / solve.rs "Add the filter reactance").
+New capacitor.cfilt phases=3 bus1=b2 conn=wye kvar=300 kv=12.47 R=[0.6] XL=[4.5]
+
 ! Unbalanced excitation.
 New load.la bus1=b2.1 phases=1 conn=wye model=1 kv=7.2 kw=700 pf=0.9
 New load.lb bus1=b2.2 phases=1 conn=wye model=1 kv=7.2 kw=250 pf=0.95

@@ -1,0 +1,53 @@
+// Asymmetric Line coverage — GEOMETRY path (Line.pas:503-727, KillGeometry-
+// Specified: LineGeometry -> WireData -> Carson Z). Each phase sits at a
+// DIFFERENT (x,h) and carries a DIFFERENT wire size, with the neutral offset,
+// so every mutual coupling is distinct -> Carson's Z/Yc come out FULL-asym,
+// Kron-reduced (reduce=y) from a 4-conductor bundle (3 phase + neutral). Plus a
+// 1-phase reduced spur off the same conductor family, and a long sym-components
+// line under `Set LongLineCorrection=yes` to pin the sinh(gamma*l)/(gamma*l)
+// correction branch (Line.pas:1199/1369, SymComponentsModel only). Unbalanced
+// 1-phase loads keep every stamp exercised out of balance.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.line_geometry_asym basekv=12.47 pu=1.0 angle=0 phases=3 bus1=src
+~ mvasc3=2000 mvasc1=2100
+Set EarthModel=Carson
+
+! Conductor library (transcribed from Test/IEEELineGeometry.dss).
+new WireData.ACSR_336_4 NormAmps=530 DIAM=0.721 GMRac=0.29280 Rdc=0.057954545 Runits=kft Radunits=in gmrunits=in
+new WireData.ACSR_4-0   NormAmps=340 DIAM=0.563 GMRac=0.09768 Rdc=0.112121212 Runits=kft Radunits=in gmrunits=in
+new WireData.ACSR_1-0   NormAmps=230 DIAM=0.398 GMRac=0.05352 Rdc=0.212121212 Runits=kft Radunits=in gmrunits=in
+new WireData.ACSR_2     NormAmps=180 DIAM=0.316 GMRac=0.05016 Rdc=0.320075758 Runits=kft Radunits=in gmrunits=in
+
+! Asymmetric overhead geometry: distinct (x,h) and distinct wire per phase.
+new LineGeometry.oh3 nconds=4 nphases=3 reduce=y
+~ cond=1 wire=ACSR_336_4 x=-4.0 h=29.0 units=ft
+~ cond=2 wire=ACSR_4-0   x=-0.5 h=27.0 units=ft
+~ cond=3 wire=ACSR_1-0   x= 3.5 h=30.0 units=ft
+~ cond=4 wire=ACSR_2     x= 0.3 h=24.0 units=ft
+
+! 1-phase reduced spur geometry (2-conductor phase+neutral -> reduced Y).
+new LineGeometry.oh1 nconds=2 nphases=1 reduce=y
+~ cond=1 wire=ACSR_1-0 x=-0.5 h=29.0 units=ft
+~ cond=2 wire=ACSR_2   x= 0.0 h=24.0 units=ft
+
+! 3-phase geometry line — the full-asym Carson Z/Yc stamp we pin.
+new line.lgeo bus1=src bus2=b1 geometry=oh3 length=6 units=kft
+
+! 1-phase spur on phase 2.
+new line.lspur phases=1 bus1=b1.2 bus2=b2.2 geometry=oh1 length=3 units=kft
+
+! Long sym-components line, r0<>r1, under LongLineCorrection -> pins the
+! sinh(gamma*l)/(gamma*l) branch (only fires for SymComponentsModel).
+Set LongLineCorrection=yes
+new line.llong bus1=b1 bus2=b3 r1=0.05 x1=0.35 r0=0.15 x0=1.05 c1=3.4 c0=1.6 length=80 units=mi
+
+! Unbalanced excitation.
+New load.la bus1=b3.1 phases=1 conn=wye model=1 kv=7.2 kw=900 pf=0.9
+New load.lb bus1=b2.2 phases=1 conn=wye model=1 kv=7.2 kw=180 pf=0.95
+New load.lc bus1=b3.3 phases=1 conn=wye model=1 kv=7.2 kw=1250 pf=0.85
+New load.ln bus1=b3.2 phases=1 conn=wye model=1 kv=7.2 kw=300 pf=0.9
+
+Set voltagebases=[12.47]
+calcv

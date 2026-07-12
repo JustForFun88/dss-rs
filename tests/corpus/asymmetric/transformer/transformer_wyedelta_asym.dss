@@ -1,0 +1,36 @@
+// Asymmetric Transformer coverage — the two connection combos transformer_asym
+// does not reach (Transformer.pas phase-shift direction + ungrounded common
+// mode):
+//   twd  wye-delta step-up: the delta-LEAD +30 deg phase shift, opposite of
+//        tdy's delta-wye delta-lag. Delta secondary common mode is ungrounded.
+//   tdd  delta-delta: BOTH terminals ungrounded -> the zero-sequence common
+//        mode is held only by ppm_antifloat (~1e-6), the near-singular mode the
+//        family's floor rule pins with a small wye-grounded capacitor (see the
+//        cpin1/cpinu note in transformer_asym.dss). NOT a tolerance dodge.
+// Unbalanced L-L loads keep both YPrims exercised out of balance.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.xfmr_wd_asym basekv=12.47 pu=1.02 angle=0 phases=3 bus1=src
+~ mvasc3=8000 mvasc1=6000
+
+! Wye-delta step-up (delta-lead +30 deg). Wye primary grounded via the source.
+New transformer.twd phases=3 windings=2 buses=(src, hv) conns=(wye, delta)
+~ kvs=(12.47, 24.9) kvas=(5000, 5000) xhl=7
+
+! Delta-delta, both terminals ungrounded.
+New transformer.tdd phases=3 windings=2 buses=(src, dd) conns=(delta, delta)
+~ kvs=(12.47, 4.16) kvas=(3000, 3000) xhl=6
+
+! Cap pins for the ungrounded delta secondaries' common mode (floor rule).
+New capacitor.cpinhv phases=3 bus1=hv conn=wye kvar=30 kv=24.9
+New capacitor.cpindd phases=3 bus1=dd conn=wye kvar=15 kv=4.16
+
+! Unbalanced L-L excitation on both secondaries.
+New load.hda bus1=hv.1.2 phases=1 conn=delta model=1 kv=24.9 kw=900 pf=0.9
+New load.hdb bus1=hv.2.3 phases=1 conn=delta model=1 kv=24.9 kw=350 pf=0.95
+New load.dda bus1=dd.1.2 phases=1 conn=delta model=1 kv=4.16 kw=600 pf=0.88
+New load.ddb bus1=dd.3.1 phases=1 conn=delta model=1 kv=4.16 kw=250 pf=0.92
+
+Set voltagebases=[12.47 24.9 4.16]
+calcv

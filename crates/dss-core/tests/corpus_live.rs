@@ -1588,26 +1588,35 @@ fn assert_pending_errors_loudly(label: &str, case_path: &str, c: &SolvableCase) 
 // from the former `tests/corpus/gaps/` staging family.
 // ---------------------------------------------------------------------------
 
-/// The pinned element-coverage floor: one deck per stamping element class plus
-/// the combination decks. Removing a deck (even together with its manifest
-/// entry) fails here — mirrors the "no silent omission" role of
-/// `corpus_manifest.rs` for the vendored corpus.
+/// The pinned element-coverage floor: one deck per stamping element class, the
+/// combination decks, and the boundary-coverage decks added by the Phase-3
+/// asymmetric wave (geometry/cable Carson-Z, wye-delta/delta-delta, Load
+/// voltage-region, current-limited generator, DER state-machine). Removing a
+/// deck (even together with its manifest entry) fails here — mirrors the
+/// "no silent omission" role of `corpus_manifest.rs` for the vendored corpus.
 const ASYMMETRIC_REQUIRED: &[&str] = &[
     "vsource/vsource_asym.dss",
     "reactor/reactor_asym.dss",
     "capacitor/capacitor_asym.dss",
     "line/line_asym.dss",
+    "line/line_geometry_asym.dss",
+    "line/line_cable_asym.dss",
     "transformer/transformer_asym.dss",
+    "transformer/transformer_wyedelta_asym.dss",
     "fault/fault_asym.dss",
     "load/load_asym.dss",
+    "load/midi_load_vregion_asym.dss",
     "generator/generator_asym.dss",
+    "generator/gen_currentlimited_asym.dss",
     "der/der_asym.dss",
+    "der/der_state_asym.dss",
     "indmach/indmach_asym.dss",
     "vccs/vccs_asym.dss",
     "upfc/upfc_asym.dss",
     "combo/combo_chain_asym.dss",
     "combo/combo_mesh_asym.dss",
     "combo/midi_asym.dss",
+    "combo/midi_geometry_cable_asym.dss",
     "vsource/midi_vsource_asym.dss",
     "reactor/midi_reactor_asym.dss",
     "capacitor/midi_capacitor_asym.dss",
