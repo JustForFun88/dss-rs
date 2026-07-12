@@ -66,6 +66,52 @@ fn build_tshape(temp: &str) -> TShapeObj {
     obj
 }
 
+/// Edit a fresh `PVSystem` through its real property engine (string-edit path,
+/// so the `PropFlags::REPLACE_ZERO` clamp in `set_obj_double` runs).
+fn edit_pvsystem(edits: &[(&str, &str)]) -> PVSystem {
+    let enums = EnumRegistry::new();
+    let cls = super::class_props(&enums);
+    let mut pv = PVSystem::new("pvz");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in edits {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut pv, idx, value, &mut eng).unwrap();
+    }
+    assert!(errors.is_empty(), "{errors:?}");
+    pv
+}
+
+/// UPGRADE_PLAN ledger L2 (WP-U1.1): a PVSystem `kVA` parsed as 0 clamps to
+/// `1e-8` (EPRI r4133 `DblValueNZ`). PVSystem sizes on `Pmpp`/`kVA` (no `kW`
+/// prop), so `kVA` is the only clamped rating; pins that `REPLACE_ZERO` stays on
+/// it.
+#[test]
+fn zero_kva_clamp_dblvaluenz() {
+    let pv = edit_pvsystem(&[("kVA", "0")]);
+    assert_eq!(
+        pv.f_kva_rating.to_bits(),
+        1e-8f64.to_bits(),
+        "kVA {}",
+        pv.f_kva_rating
+    );
+    // Tiny in-band (incl. negative) also clamps to +1e-8.
+    assert_eq!(
+        edit_pvsystem(&[("kVA", "-2e-9")]).f_kva_rating.to_bits(),
+        1e-8f64.to_bits()
+    );
+    // Out-of-band values are untouched.
+    assert_eq!(edit_pvsystem(&[("kVA", "5000")]).f_kva_rating, 5000.0);
+}
+
 fn time_class_ctx(class: i32, dbl_hour: f64) -> SysCtx {
     SysCtx {
         mode: SolveMode::Time,

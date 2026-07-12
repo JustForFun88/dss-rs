@@ -3147,8 +3147,9 @@ adopt the r4133 default; we do NOT adopt dss_capi's strict-`NonZero`-error surfa
 **Salvage record (crashed draft):**
 - KEPT: the `REPLACE_ZERO` flag + `set_obj_double` clamp, Load/Storage/PVSystem
   `class_props` flags, the exact unit test `zero_kw_kva_clamp_dblvaluenz`, the
-  synthesized `modes/upgrade_parser_zerokw.dss` deck (r4133, fingerprint
-  `e177df8e74141adf`, re-validated two-process on r4133).
+  synthesized `modes/upgrade_parser_zerokw.dss` deck (r4133). Both the per-class
+  test coverage and the deck's feature-sensitivity were extended in settle (see
+  "Settle" below; deck fp is now `02037161f3236a3b` after adding `Load.zpf`).
 - FIXED (real bug): the draft flagged Generator **`MVA`** with `REPLACE_ZERO`.
   r4133 `generator.pas:664` reads `MVA` (prop 27) through plain `DblValue*1000`
   — NOT `DblValueNZ` (only prop 26 `kVA` clamps). Removed the flag; documented the
@@ -3171,6 +3172,27 @@ adopt the r4133 default; we do NOT adopt dss_capi's strict-`NonZero`-error surfa
 r4133). **Iteration policy (§1.3-1):** M1 is the only newly-flipped case; the
 `--nocapture` gate run emits **no** `NOTE Rust converged …` line for it — Rust
 matched r4133's iteration count exactly (no suspicious strict `<`).
+
+**Settle (audit findings, 2026-07-12).** Two real gaps in item 1's regression
+coverage were closed:
+- **Clamp untested on Generator/Storage/PVSystem + MVA asymmetry unpinned.** The
+  only clamp test was Load-only, so removing `REPLACE_ZERO` from the other three
+  classes — or re-adding it to Generator `MVA` (the exact crashed-draft bug) —
+  passed silently. Added `zero_kw_kva_clamp_dblvaluenz` to Generator (also asserts
+  `MVA=0 → kVA rating 0`, NOT clamped) and Storage (`kW=0` clamp witnessed via the
+  `Set_kW` state resolving DISCHARGING not IDLING), and `zero_kva_clamp_dblvaluenz`
+  to PVSystem. All four verified feature-sensitive (each fails when the clamp is
+  disabled).
+- **Deck not feature-sensitive (§1.7-3).** `upgrade_parser_zerokw.dss`'s numeric
+  channels all sit below the 1e-8 clamp floor, so it passed identically with and
+  without the clamp. Added `Load.zpf` (`kW=0` AND `kvar=0`) + a `?pf` probe: under
+  the clamp its `KwKvar` spec recomputes `PF 0.9→1`, un-clamped it stays `0.9`
+  (re-probed r4133/r4088 → `pf=1`; Rust `KwKvar` path → `pf=1`). The `?pf` probe
+  now diverges `0.9` vs `1` (|Δ|=0.1 » floor) if the clamp regresses. Deck
+  two-process determinism re-validated on r4133 (fp `02037161f3236a3b`).
+- Corrected the deck header comment (was: "capi015 keeps a literal 0"; the real
+  reason it can't run on capi015 is the `Generator.kVA=0` `NonZero` rejection) and
+  refreshed the manifest note to match.
 
 **Next (resume point):** items 2–5 of `UPGRADE_PLAN §WP-U1.1` are NOT started.
 Item 1 is a self-contained committed green package; a follow-up session continues

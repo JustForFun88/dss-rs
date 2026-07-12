@@ -2,15 +2,21 @@
 // clamp. A Load `kW=0` and a Generator `kVA=0`/`kW=0` parse their essential
 // sizing props through the band-clamp `(-1e-8,1e-8) -> +1e-8`
 // (`ParserDel.pas:912 MakeDoubleNZ`), which the port adopts UNCONDITIONALLY as
-// its default (`PropFlags::REPLACE_ZERO`). Gated `oracle: "r4133"` — the only
-// oracle that clamps by default (capi015 default keeps a literal 0 and would
-// deliberately mismatch our default-clamp; oddie clamps like the port).
+// its default (`PropFlags::REPLACE_ZERO`). Gated `oracle: "r4133"`: this deck
+// declares `Generator.g ... kva=0`, which capi015's DEFAULT strict validation
+// REJECTS (`NonZero` error) — so the deck cannot even compile on capi015 —
+// while r4133 clamps by default (as the port does) and oddie matches. r4133 is
+// the only pinned oracle that both clamps and accepts this deck.
 //
-// The clamp value is 1e-8, so the numeric channels (V/I/Y/S) move by ~1e-8 —
-// below the live-compare i_abs floor. The EXACT contract is pinned by the Rust
-// unit test `zero_kw_kva_clamp_dblvaluenz`; this live deck confirms Rust≡r4133
-// non-regression and keeps the r4133 oracle path exercised. Validated per
-// UPGRADE_PLAN §1.7 (two-process determinism on the r4133 engine).
+// Feature sensitivity (UPGRADE_PLAN §1.7-3): the clamp magnitude 1e-8 is below
+// the live-compare i_abs floor on the V/I/Y/S channels, so those alone cannot
+// tell a working clamp from a silent no-op. Load `zpf` (kW=0 AND kvar=0) adds an
+// AMPLIFIED channel: under the clamp its kW/kvar spec recomputes PF 0.9 -> 1
+// (kW=kVA=1e-8), whereas with NO clamp kVA=0 and PF stays 0.9. The `?pf` probe
+// therefore diverges 0.9 vs 1 (|Δ|=0.1 » floor) the moment the clamp regresses.
+// The bit-exact per-class contract is the Rust unit tests
+// (`zero_kw_kva_clamp_dblvaluenz` on Load/Generator/Storage, `zero_kva...` on
+// PVSystem). Validated per §1.7 (two-process determinism on the r4133 engine).
 clear
 Set DefaultBaseFrequency=60
 
@@ -21,6 +27,11 @@ New line.l1 phases=3 bus1=src bus2=b1 r1=0.1 x1=0.3 c1=2 length=1 units=km
 
 ! Zero-kW load (kW parsed as 0 -> clamped to 1e-8; kvar kept as given).
 New load.z bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=0 kvar=5
+
+! Zero-kW AND zero-kvar load: under the clamp kW=kVA=1e-8 so PF recomputes to 1;
+! without the clamp kVA=0 leaves PF at 0.9. The `?pf` probe is the above-floor,
+! feature-sensitive witness of the clamp (UPGRADE_PLAN §1.7-3).
+New load.zpf bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=0 kvar=0 pf=0.9
 
 ! Generator with kVA=0 and kW=0 (both essential-sizing props clamp).
 New generator.g bus1=b1 phases=3 kv=12.47 kw=0 kva=0 model=1 pf=1
