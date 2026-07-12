@@ -9,6 +9,43 @@
 
 Last updated: 2026-07-12.
 
+**WP-AD SAVE — save round-trip fidelity (branch `save-fidelity`, 2026-07-12).**
+Owns the `off:save-roundtrip-*` buckets (the D7 leg1 gap that WP-AD.4 proved is a
+`save circuit` defect, not AD). Root-caused each sub-reason class against the
+pinned dss-python 0.15.7 Save oracle + vendored `dss_capi 0.14.5` Pascal:
+
+- **LineGeometry conductor table — FIXED (real port bug).** The generic
+  `SaveWrite` collapsed the per-conductor `Cond`/`Wire`/`X`/`H`/`Units` props
+  (each re-set once per conductor) to a single property-sequence slot, emitting
+  **only the last conductor**; a geometry-built line then reloaded with a
+  wrong/unbuildable `Z` (leg1≈1.0). Ported the Pascal `TLineGeometryObj.SaveWrite`
+  override (`elements/general/line_geometry/save.rs`, dispatched in
+  `report/save/save.rs`) — re-emits the whole table, oracle byte-verified. Geometry
+  leg1 collapses to the `%g` Save floor (IEEE13_LineGeometry leg1 1.0→4.3e-7).
+  `save_roundtrip.rs` gains the IEEE-13 geometry witness (5 geometries, mixed
+  conductor counts, a `like=` clone). **6 decks promoted off→pf** (sweep pf 37→43,
+  green): IEEE13_LineGeometry, IEEE13_SpacingGeometry, ckt5/Master_ckt5,
+  4Bus-{DY,OYOD,YY}-Bal. 12 more geometry decks re-attributed to their true reason
+  now the save is clean (leg1 re-measured <2e-3): ad-nonconvergent (MultiCircuit,
+  DOCTechNote 1_1/1_2/2_2, YYD-Master, LVTestCase/Master, ckt24 ×3), ad-divergent
+  (4Bus-{GrdYD,YD}-Bal, YYD-Master-step1), non-3ph-cut-only (4 cable decks),
+  too-small (epri_dpv M1). IEEE13_Assets → save-roundtrip-regxfmr (residual leg1 is
+  the regulator tap, not geometry).
+- **regxfmr, relay — oracle-faithful, NOT port bugs (stay off, evidence upgraded).**
+  The pinned oracle's `Save` **drops the settled regulator tap** (IEEE13 reg1
+  tap=1.05625 → saved `Transformer.dss` has no `Taps=`, byte-identical to ours) and
+  the fault trip state identically. leg1 there is inherent to OpenDSS Save (runtime
+  state is not a saved property); reproducing the oracle means keeping it. Under
+  the sweep's controls-off arm the reload can't re-settle, so these stay `off`.
+- **relpath, userdll, autotrans (stay off).** Not save-fixable within charter: leg1
+  is already snapshot-clean for most (loadshape file paths don't move a snapshot),
+  and they're AD-init/eligibility-blocked; userdll needs an external `.DynaDLL`
+  (`forbid(unsafe_code)`, never loaded); autotrans also has a genuine leg2 gap.
+- Open follow-up (out of save charter): a NEV-TestCase AD-init matrix panic
+  (`row<n && col<n`) surfaced by the classify probe now the save reloads;
+  residual runtime-state Save losses (cap-control bank / InvControl-PV / storage
+  state) keep a handful of decks in `save-roundtrip-geometry` with leg1>2e-3.
+
 **WP-AD.4 — corpus-wide AD↔normal sweep (branch `wp-ad4`, 2026-07-12).** The
 user-mandated A-Diakoptics gate. Two parts landed:
 
