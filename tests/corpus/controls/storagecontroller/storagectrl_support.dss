@@ -1,0 +1,38 @@
+// StorageController Support discharge mode (DoLoadFollowMode MODE_SUPPORT):
+// Pdiff = Pmonitored + kWTarget, the OPPOSITE trigger sign to PeakShave. A
+// downstream generator on a separate bus makes the monitored feeder-head power
+// swing low/negative through midday, and the Support law converts that into a
+// discharge command. The fleet is sized well above the dispatch so it never
+// rails (a smooth, unambiguous dispatch each step). Feature-sensitive:
+// modedis=peakshave (the opposite sign) dispatches differently on the same
+// swing (probe-proven).
+// Compared per step: full model + Storage State/kW/kWhstored probes + Storage
+// f64 state variables + the controller's event log.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.scsupport basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=0.08 x1=0.24 c1=0 length=1 units=km
+New line.l2 bus1=b bus2=c phases=3 r1=0.10 x1=0.30 c1=0 length=1 units=km
+
+New loadshape.day npts=24 interval=1
+~ mult=(0.60 0.58 0.55 0.55 0.60 0.70 0.82 0.92 1.00 1.05 1.08 1.05 0.98 0.90 0.82 0.75 0.70 0.78 0.90 1.00 1.05 0.85 0.65 0.58)
+
+New load.ld bus1=c phases=3 kv=12.47 kw=3000 pf=0.98 model=1 daily=day
+
+// Generator on the downstream bus makes the monitored head power sag midday.
+New loadshape.gen npts=24 interval=1
+~ mult=(0.15 0.15 0.15 0.18 0.25 0.40 0.60 0.78 0.88 0.92 0.94 0.92 0.88 0.82 0.72 0.58 0.42 0.28 0.18 0.15 0.15 0.15 0.15 0.15)
+New generator.g1 bus1=c phases=3 kv=12.47 kw=3200 pf=1.0 model=1 daily=gen
+
+New storage.sa bus1=b phases=3 kv=12.47 kwrated=2500 kva=2500 kwhrated=12000
+~ %stored=75 %idlingkw=0 pf=1.0
+
+New storagecontroller.sc element=line.l1 terminal=1 modedis=support
+~ kwtarget=800 %ratekw=100 %reserve=15 eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=50
+Set mode=daily stepsize=1h number=1
