@@ -95,12 +95,20 @@ un-clamped, while `kVA=0` clamps to `1e-8`. Reproduced 1:1 (only `kVA` carries
   readback is no longer compared against the 0.14.5 oracle it deliberately
   mismatches. The 748 zero-`kW`/`kVA` corpus lines that end in a `KwPf`/`KvaPf`
   spec (or are on `large`-kind decks, property compare off) stay green.
-- The exact behavior is pinned two ways: (1) an **exact** Rust unit test
-  (`load::tests::zero_kw_kva_clamp_dblvaluenz`) asserting `kW=0 → kw_base=1e-8`;
+- The exact behavior is pinned three ways: (1) **exact per-class** Rust unit
+  tests — `zero_kw_kva_clamp_dblvaluenz` on `load`, `generator` (also pins the
+  `MVA`-NOT-clamped asymmetry: `MVA=0 → kVA rating 0`), and `storage` (`kW=0`
+  clamp witnessed via `Set_kW` resolving DISCHARGING not IDLING), plus
+  `zero_kva_clamp_dblvaluenz` on `pvsystem`; each fails when the clamp is disabled.
   (2) the live `epri_dpv/M1` feeder now on `oracle: "r4133"` — a real corpus
-  witness whose loads clamp on r4133 too, so a broken clamp would diverge. The
-  synthesized `modes/upgrade_parser_zerokw.dss` (also `oracle: "r4133"`) keeps the
-  r4133 channel exercised and confirms Rust≡r4133 non-regression.
+  witness whose loads clamp on r4133 too, so a broken clamp would diverge.
+  (3) the synthesized `modes/upgrade_parser_zerokw.dss` (also `oracle: "r4133"`),
+  made **feature-sensitive per §1.7-3** by `Load.zpf` (`kW=0 ∧ kvar=0`) + a `?pf`
+  probe: the clamp recomputes `PF 0.9→1` (kW=kVA=1e-8), so the probe diverges
+  `0.9` vs `1` (|Δ|=0.1 » the 1e-8 numeric-channel floor) the moment the clamp
+  no-ops. (Settle 2026-07-12: coverage-gap findings — (1) and the deck's
+  feature-sensitivity were added then; the item-1 draft had only the Load unit
+  test and numeric-only probes below floor.)
 - `known_diffs.json`: no Rust↔EPRI entry existed for zero-kW at r3723 (0.14.5 and
   the port both kept `0`, matching each other); adopting the clamp now makes
   Rust match r4133 — nothing to retire, nothing newly diverges vs r4133.

@@ -672,6 +672,12 @@
      ]
     },
     {
+     "element": "Load.zpf",
+     "props": [
+      "pf"
+     ]
+    },
+    {
      "element": "Generator.g",
      "props": [
       "kw",
@@ -679,7 +685,7 @@
      ]
     }
    ],
-   "note": "UPGRADE_PLAN.md WP-U1.1 / ledger L2 (docs/upgrade/DIVERGENCES.md): EPRI r4133 DblValueNZ zero-kW clamp. Load kW=0 and Generator kVA=0/kW=0 clamp their essential-sizing props to 1e-8 (band (-1e-8,1e-8)->+1e-8). Gated r4133 because it is the only oracle that clamps by default -- capi015 default ERRORS (Generator.kVA NonZero) and would deliberately mismatch (probe 2026-07-12). Validated per UPGRADE_PLAN §1.7 on r4133 (two-process determinism, fingerprint e177df8e74141adf; ?kw=1E-008 on load+gen, ?kva=1E-008 on gen). The clamp magnitude (1e-8) is below the live i_abs floor, so the numeric channels do not move observably; the EXACT contract is the Rust unit test zero_kw_kva_clamp_dblvaluenz, and this deck confirms Rust==r4133 non-regression."
+   "note": "UPGRADE_PLAN.md WP-U1.1 / ledger L2 (docs/upgrade/DIVERGENCES.md): EPRI r4133 DblValueNZ zero-kW clamp. Load kW=0 and Generator kVA=0/kW=0 clamp their essential-sizing props to 1e-8 (band (-1e-8,1e-8)->+1e-8). Gated r4133 because this deck declares Generator.kVA=0, which capi015's DEFAULT strict validation REJECTS (NonZero error) so the deck cannot compile there, while r4133 clamps by default (like the port) and oddie matches (re-probed 2026-07-12). Feature sensitivity (§1.7-3): the 1e-8 clamp is below the live i_abs floor on kw/kva/V/I/Y/S, so Load.zpf (kW=0 AND kvar=0) supplies an amplified channel -- under the clamp its kW/kvar spec recomputes PF 0.9->1, with no clamp PF stays 0.9; the ?pf probe (0.9 vs 1, |d|=0.1) fails if the clamp regresses. Bit-exact per-class contract = the Rust unit tests zero_kw_kva_clamp_dblvaluenz (Load/Generator/Storage) + zero_kva_clamp_dblvaluenz (PVSystem). Validated per §1.7 on r4133 (two-process determinism)."
   },
   {
    "path": "reduce_remove.dss",
