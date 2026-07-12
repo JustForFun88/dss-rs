@@ -551,3 +551,30 @@ dynamics-tolerance reviews, and every audit follow-up) archived at
 - **Generic/TD21 Relay Sample logic deferred to WP7.7** (dynamics): the relay
   parses + dumps `Type=Generic`/`TD21` but the live sensing records a `NOT_PORTED`
   error. The corpus Distance/TD21 relay demos also need the dynamics solve mode.
+
+
+---
+
+# Phase 7 / Phase 6 frontier summary moved from STATUS.md
+
+> **Archived verbatim from `STATUS.md` on 2026-07-12** (the compact Phase-7-COMPLETE / earlier-phases
+summary that sat at the top of the record pile).
+
+**Phase 7 COMPLETE** (WP7.1–WP7.10, branch `phase-7-extended-elements`,
+gate-green) but **NOT merged to `main`** (per-phase merge = explicit-request-only
+HARD STOP; `phase-8-reporting` builds on top of it). Roll-up + archives in **§1e**
+([`docs/phase-records/phase-7.md`](docs/phase-records/phase-7.md) +
+`phase-7-wp{1..7}.md`). Tracked-open Phase-7 deferrals (both Plot-blocked, zero
+corpus payoff): the **GFM grid-forming inverter mode** and the **Generic/TD21
+relay `Sample`**. Current scores: dss-core **lib 742**, **`solvable_now` 168**;
+oracle pinned to dss-python 0.15.7 (backend = dss_capi 0.14.5,
+`tools/golden/PIN.txt`).
+
+Phase 7 = DER, protection, line constants, harmonics, dynamics (PORTING_PLAN.md
+§Phase 7, the largest phase ~18%). Earlier phases merged to `main` (newest first):
+**Phase 6** (WP6.1–WP6.10 — meters/monitors/topology/Generator + the 8500-node gate
++ the live corpus gate; `--no-ff` `b98223a`, `main` not pushed to origin)
+→ [record](docs/phase-records/phase-6.md); **Phase 5** (`10d3550`), **Phase 4**
+(`5f27a25`). Their full logs and the per-WP detail live under `docs/phase-records/`
+(§1b–1d indexes them) and the §1 table below.
+

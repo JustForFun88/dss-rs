@@ -1088,3 +1088,1690 @@ new electrical math, no new solve mode — the risk is faithful report layout an
 
 **WP8.3 COMPLETE (steps 1–5 + both audit follow-ups), gate-green.** next = **WP8.4 (Show reports)** —
 upgrade the current `Show` no-op to real text reports (shares field logic with the WP8.2 exports).
+
+
+---
+
+# Phase 8 — completed WP8.* records moved from STATUS.md
+
+> **Archived verbatim from `STATUS.md` on 2026-07-12** (WP8.8 exit + classify Rounds 2b/2c, the
+Phase-8-complete roll-up and WP8.4–8.7 detail, and the §1f inline WP8.1–8.4
+completed detail). Superseded only by the code and tests.
+
+**WP8.8 Phase-8 exit COMPLETE (2026-07-10), gate-green — PHASE 8 IS COMPLETE.**
+All five exit steps ran; per the port-don't-defer rule the sweep also closed the
+whole corpus-used executive-command tail on the way out. **Next: Phase 9
+exotics — optional; stopping here is a complete usable simulator**
+(PORTING_PLAN cumulative note). Remaining named work: actor mode
+(`MULTITHREADING_PLAN.md` M2), A-Diakoptics, Pstcalc, WPG.19 (file-backed
+`File=` arrays — now the proven sole blocker of the whole ckt24/SolarRamp
+family), WPG.20 (MMF save), `RESONANCE_PLAN.md` WP-R1. **`JSON_EXPORT_PLAN.md`
+Stage A + Stage B DONE (2026-07-12, branch `wp-json-a`)** — the full AltDSS JSON
+export (single object / class batch / whole circuit); only JSON **import** +
+`CAPI_Schema` remain (named §6 follow-ups). Details:
+
+- **Step 1 (marker sweep).** Every stale marker settled: **(a)** `show powers
+  e` now emits the three exact Pascal whitespace layouts (Sources `%s %4d`, PC
+  `:6:1` + `kW   +j  kvar` header + `'  TERMINAL TOTAL '` label) — the WP8.4
+  byte-pass `TODO(WP8)` is gone; **(b)** the **AutoTrans `Ntimes = Nphases`
+  arms** of `WriteTerminalCurrents` (`ShowResults.pas:604`, with the
+  per-terminal `Inc(k, Ntimes)` block-skip), `ShowPowers` case 1 (`:1190` —
+  the post-loop `Inc` there is DEAD, terminal 2 re-reads the first conductor
+  block; reproduced) and `ShowNodeCurrentSum` (`:3636`) are ported and pinned
+  by three new oracle goldens on a well-conditioned AutoTrans snapshot
+  (`gen_show_autotrans`; all passed first run); **(c)**
+  `max_bus_name_length`'s byte-pass note settled as final (the upstream
+  effective-width quirk is nondeterministic → NOT reproduced, UB rule);
+  **(d)** the **dynamics-leave `InvalidateAllPCElements`** is ported
+  (`set_mode.rs`): Pascal `OK_for_Dynamics` raises `SystemYChanged` on leaving
+  dynamics (Circuit.pas:2331) — real since WP7.7 machines + WPG.13/17 GFM have
+  mode-dependent YPrims (the old "inert" note predated them); harmonics-leave
+  now raises it unconditionally like Pascal; **(e)** 3 stale `TODO(WP7.7)`
+  retagged on-demand.
+- **Step 2 (cmd_coverage + tail ports).** Newly ported, each oracle-probed
+  live and pinned by 9 new unit tests (`exec/tests/exec_tail.rs`, 18 total):
+  Enable/Disable (named = the edit path, `*` = bare `Set_Enabled`; unknown /
+  DSS_OBJECT classes are SILENT upstream), SetkVBase (kvll/kvln/positional,
+  `Bus x not found.` GlobalResult), Losses (`%10.5g` pair off the ACTIVE
+  element; the ActiveCktElement-on-New side effect is not reproduced —
+  documented, the corpus use is `select`+`losses`), Summary (GlobalResult text
+  byte-exact incl. the `Control Mode =` missing space and the literal
+  `(**** %%)` arm), Reconductor (`isPathBetween`/`TraceAndEdit` over the
+  meter-zone `parent_pd` chain; errors 28701-28707 verbatim), the
+  step-solution family `_InitSnap/_SolveNoControl/_SampleControls/
+  _DoControlActions/_ShowControlQueue/_SolveDirect/_SolvePFlow`, `var`
+  (`DoVarCmd`: define/echo/list + err 28725 — the parser-vars machinery
+  already existed), and the pre-circuit utilities Fileedit/Classes/
+  Userclasses/CD/DOScmd (live in the PRE-circuit dispatch upstream,
+  `ExecCommands.pas:301-335`; the post-circuit case only holds commented-out
+  duplicates — Classes walks the Pascal class order via the Dump table) +
+  `Set/Get ShowExport` (`AutoShowExport`, GUI-consumer no-op). **Documented
+  residual:** the `DSS_CAPI_PM` actor family — commands NewActor/SolveAll/
+  Abort/Clone (10 corpus uses) + options ActiveActor/CPU/Parallel/
+  ConcatenateReports (115 uses), owner MULTITHREADING_PLAN M2; zero-corpus-use
+  query verbs (Voltages/…/Zsc*) and AlignFile/CvrtLoadshapes on-demand;
+  DI_plot/CompareCases/YearlyCurves stay loud (upstream NIL-callback UB).
+  Fixed a `cmd_coverage.py` misread (the last `cmd::` arm swallowed the
+  catch-all and reported not-ported).
+- **Steps 3-4 (checks, gate, final classify).** All 12 `wp:"WP8.*"` manifest
+  cases `pending:false`; every `report_decks/` deck wired into
+  `gen_reports.py`. Full gate green twice (34 binaries, 0 failures; live
+  corpus 217 → **226** decks). Final `DSS_LIVE_CLASSIFY` over the 11
+  documented cases + the 24 decks the tail ports unblocked: **+9 solvable_now
+  (217→226, 67.5% of entry points)** — Dynamic_Kundur (var), K1 Master_NoPV
+  (SetkVBase), Paulo ×2 (AddBusMarker), WampServer testcommandline (var),
+  Run_NEV (Export/Select/Show), and the three **8500-node runners**
+  Run_8500Node/Run_8500Node_Unbal/GFM Run_8500Node_Unbal (Export/Show). 9
+  decks re-sorted to `skipped_unsupported` on their TRUE blocker (the whole
+  mm-ckt24 family + Run_Ckt24 + Storage-Quasi Run_Demo1 + P174 SolarRamp →
+  WPG.19 file-backed arrays; ckt5-7proc → SolveAll actor script, which also
+  kills the one-shot oracle). **New findings (honest, kept
+  needs_investigation):** the 4 DOCTechNote decks run on both engines but
+  exceed the feeder band (~2e-3 V abs ≈ 2.4e-7 rel node V — same order as the
+  proven zero-seq floors; root-cause per the no-rationalizing rule before any
+  move); IEEE118Bus master joins the oracle_nonconvergence class (the pinned
+  oracle itself diverges). Counts: needs_investigation 35→16 (11 documented +
+  4 DOC + 118Bus), unsupported 64→50, COVERAGE.md regenerated (bijection 915).
+- **CorpusGuard extended RECURSIVE on both sides** (Rust `corpus_live.rs` +
+  Python `corpus_guard.py`, the STATUS WP8.8 candidate): run-created files
+  inside pre-existing fixture subdirs are now tracked by relative path and
+  removed; an incomplete snapshot walk still disables deletion wholesale (the
+  war-story bias). Writes OUTSIDE the case-dir tree (manual `dss-cli` runs)
+  stay git-backstop territory — TESTING.md updated. Verified live across the
+  full gate + all classify probes: `git status tests/corpus` clean.
+- **Step 5.** PORTING_PLAN §Phase 8 marked COMPLETE (executed marker + the
+  actor-residual pointer); this STATUS record; phase records live in
+  `docs/phase-records/phase-8.md`.
+- **Audit settlement (2026-07-10, two fresh independent opus agents: 0
+  Critical/Major).** audit-code: port faithful across all seven focus areas
+  (mode-leave observable proven identical incl. harmonics iteration counts;
+  AutoTrans k-indexing; PowersFamily byte-exact; every ordinal/error text
+  verified; recursive guard "strictly safer"); its one Minor — the CD/`Set
+  DataPath=` non-writable-dir scratch fallback (`DSSGlobals.pas:562-568`) —
+  settled as the pre-existing recorded narrowing (not oracle-pinnable,
+  corpus-unreachable; now documented at `do_cd_cmd` too). audit-tests: every
+  spot-checked oracle pin reproduced live; goldens feature-sensitive; nothing
+  loosened. Its two Minors settled by STRENGTHENING: **(1)** the per-family
+  `show powers e` whitespace layouts are now byte-pinned
+  (`show_powers_elem_autotrans_layout_bytes` — headers/bus-rows/totals
+  verbatim vs the golden; degenerate |S|≈0 rows excluded: their `0.0`/`-0.0`
+  render sign is faer-vs-KLU residual noise, numerically pinned by the
+  tokenizing twin); **(2)** Reconductor now pins all seven error surfaces
+  (#28701/#28706 added, both re-probed live). Its Question settled: NEW
+  CorpusGuard self-test (`corpus_guard_restores_case_dir_recursively` —
+  vendored preserved, overwrite restored, subdir/DI-tree pollution swept).
+  Owed follow-up (recorded): root-cause the DOCTechNote×4 live_mismatch
+  (~2.4e-7 rel) per the no-rationalizing rule. **→ DONE (FA fix 2, 2026-07-11):
+  proven zero-seq common-mode floor, migrated to `large_floating_zeroseq`.**
+
+**needs_investigation burn-down, round 2 — AutoTrans family (2026-07-10,
+user-directed "проверь автотрансформатор построчно").** Element EXONERATED
+with bit-level proof: on all probed family decks the assembled system Y is
+BIT-IDENTICAL across engines at every stage (pins every Transformer/XfmrCode/
+AutoTrans YPrim formula AND the whole 8-edit deck sequence — stronger than an
+eyeball line-by-line), iteration counts equal at every solve, and the
+constant-P load loop is self-consistent. The V gaps are the CROSS-SOLVER
+one-shot LU floor of the κ≈1e12 construction (mvasc3=2e6 source + 1e-6 Ω
+switches + floating delta tertiary): faer-vs-KLU on bit-identical (Y, I)
+reproduces the entire engine gap (5.505e-2 vs 5.472e-2 V at LOW;
+scipy+rowscale 6.9e-2). Migration ATTEMPTED and REVERTED: the gate itself
+proved the floor contaminates the element channels — the Vsource no-load
+current (0.15 A resolved through the 1.7e7 S source) inherits dI = Y_src·dV ≈
+6.2e-2 A (40%) and powers dS = V·dI ≈ 12 kVA; admitting that needs ~500×
+i_abs loosening = forbidden fudging masking real short-circuit-current
+regressions. Family stays documented-skipped (tag `near_ideal_source_floor`,
+full proof in each note + TOLERANCE_NOTES §near-ideal-source); counts
+unchanged (solvable 194, needs_investigation 34, of which 9 are this closed
+class). Also measured for WP-R1: iterative refinement DIVERGES on the
+floating tertiary (one step 1.3e-3 → 1492 V — the u·κ≳1 limit live) →
+divergence guard added to RESONANCE_PLAN WP-R1.
+
+**needs_investigation burn-down, round 3 (2026-07-10, user-directed "иди
+дальше").** Fresh `DSS_LIVE_CLASSIFY` sweep over the 25 remaining cases; 14
+root-caused and migrated (solvable 203 → 217, needs_investigation 25 → 11):
+**(a)** 4 tier-misclassifications → kind `large` (IEEE13_CDPSM, ckt7 Master,
+EPRI_Ckt5-G torn ×2 — their old probes ran at `feeder` bands; all clear the
+`large` floors, per the default-classification policy). **(b)** PV
+`currentkvarLimit` pair → `large_near_ideal_source` (deliberate Thevenin
+Z=1e-8 Ω ≈ 7e7 S; Vsource dI = Y_src·(~3 ulp dV) = 1.9e-4 A while the
+PVSystem itself matches). **(c)** NEW tier `large_floating_zeroseq` (`large` +
+v_abs 3e-2): TestDDRegulator (amplification 1.4e10), DG_Prot_Fdr (4.2e11), and
+the newly root-caused LVTestCaseNorthAmerican Master/SecPar — its 230/13.8 kV
+substation transformers are DELTA-DELTA and every distribution transformer is
+delta on the MV side, so the whole 13.8 kV system floats in zero-seq: the
+entire gap is an identical complex common-mode shift on all MV buses
+(Master 2.354e-3 V, per-bus differential 8.2e-7; SecPar 1.94e-3 V, ≤1e-5;
+Y pattern identical, worst entry 1.28e-15 rel = libm last-ulp in the
+LineGeometry line-constants). **(d)** NEW tier `large_ultra_switch` (`large` +
+i_abs 2e-3): ADiakoptics ckt24 + EPRI_Ckt7-G torn pairs — the 1e-8 Ω stitching
+pseudo-switch (Y≈1e8 S) turns a <2-f64-ulp cross-engine (V1−V2) difference
+into dI = 6.5e-4 A on a 375 A flow (arithmetic bit-floor; the f32-looking
+values are the coarse dyadic near-cancellation grid, both engines produce
+them). Remaining 11: 10 oracle-blocked (timeouts/non-convergence — nothing to
+fix port-side) + ieee9500_base — ROOT-CAUSED on the user's question: the deck
+DATA is pathological — its 480 V DER microgrid island sits at the edge of
+voltage collapse and `Storage.battery1` (charging) / `battery2` (idling) tip
+the snapshot over the fixed-point stability boundary (|V| at M2001-ESS1 grows
+~×2000/iteration to NaN). NO engine solves it as vendored (pinned oracle,
+official EPRI r3723/r4088/r4133, Rust — all diverge identically); with both
+storages disabled it converges on the oracle AND the Rust port in the SAME
+121 iterations (battery1=discharging: 130) — an iteration-exact parity data
+point on an extremely marginal system. Tag `deck_unsolvable_all_engines`;
+deck/scenario bug upstream, nothing to fix port-side. Full proofs:
+TOLERANCE_NOTES §floating-zeroseq, §ultra-switch, §near-ideal-source.
+
+**Round 2c — user-directed migration ("перенеси в solvable — мы же всё равно
+решаем эти схемы", 2026-07-10).** With the floor proven by decomposition
+(round 2b — the sanctioned path for a band change), the 9 AutoTrans decks
+moved to `solvable_now` under a new `large_near_ideal_source` tier: `large` +
+`v_rel` 5e-6 (family worst 1.46e-6, ×3.4) + `i_abs` 0.1 A (user-set; measured
+worst 9.375e-2 A = 94% of band — a future trip is a re-triage signal, not a
+widen signal). The Y channel keeps the tight `large` floors and is the
+regression sentinel (bit-identical today; the family's unique surface is
+YPrim assembly). Counts: solvable 194 → 203, needs_investigation 34 → 25.
+
+**Round 2b — second user challenge ("такие большие значения = баг в порте,
+найди и устрани"), per-element decomposition (2026-07-10, Auto1bus-step1,
+hex-bit transport).** Every remaining channel closed, no bug exists to fix:
+**(1)** substituting the oracle's NodeV bit-exactly into the Rust engine
+reproduces all 8 elements' Currents AND Powers **bit-for-bit** (ulp = 0;
+Vsource alone at 2.3e-10 A = half an ulp of the ≈3.35e6 A cancelling
+`Yprim·V − Iinj` operands) — the entire 6.2e-2 A currents gap is the V vector,
+none of it the element/report formulas. **(2)** RHS: 1 of 42 components off by
+exactly 1 ulp (phase-2 source `inj.im`, libm sin/cos last bit); same-solver
+substitution measures its effect at 1.5e-11 V — innocent. **(3)** residual
+parity: ‖Y·V−I‖₂ = 7.1e-2 (KLU) vs 1.3e-1 (faer) — the oracle sits at the same
+junk floor, so no refinement could close the family below KLU's own error.
+**(4)** third solver: scipy `splu` on the same bits lands 51.6 V from BOTH
+engines (uniform on the six floating-tertiary nodes = zero-seq common mode)
+with a *better* residual (4.8e-2) than the oracle's V (5.6e-2) — the
+mathematically-equivalent solution set spans ~51 V; faer↔KLU's 3.7e-3 V gap is
+four orders tighter. Full numbers in TOLERANCE_NOTES §near-ideal-source.
+
+**needs_investigation burn-down, round 1 (2026-07-10, user-directed).** Three
+real port gaps found by the triage, fixed 1:1 and pinned by migrating their
+decks into the live gate: **(1)** Monitor mode-7 (Storage state) had a header
+promising `record_size = 5` with a deferred sample body — every yearly export
+panicked in `to_csv` (`StoCtrl_Current_PeakShave`); body now ported from
+Monitor.pas l.1298 (PresentkW/Presentkvar/kWhStored/%stored/State). **(2)**
+`Dss::regcontrol_tap_numbers` didn't mirror the oracle iterator's
+enabled-filter (`RegControls.First/.Next` skip disabled; verified live), so
+`BatchEdit RegControl..* enabled=False` decks compared 12 taps vs 0. **(3)**
+StorageController parse-time semantics: Pascal `RecalcElementData` ends EVERY
+edit line by `MakeFleetList` + `SetFleetToExternal` + `SetAllFleetValues` — the
+Rust port deferred that to the first Sample, losing the observable residue (a
+controller defined across `~` lines pushes its DEFAULT %reserve/rates onto the
+scan-all fleet before `elementList=` shrinks it; SupportRun pins Storage.A..E
+at %Reserve=25 from exactly that). Now runs eagerly via
+`storage_controller_recalc_fleet` from the executive's edit tail; also fixed
+the Pascal local-`kWNeeded` SHADOW in `DoPeakShaveModeLow` (the `kWneed`
+property only ever reflects the discharge path — the charge path's value is
+local). Also ported en route: the `Wait` executive command (a silent no-op
+while `Parallel_enabled` is false — ExecCommands.pas `ord(Cmd.Wait)`; the
+StoCtrl deck's `Add_Issues.dss` issues a bare `wait`). The 8
+StorageControllerTechNote decks pass the FULL live compare incl. property
+parity, and the yearly `StoCtrl_Current_PeakShave/master.dss` (8760-step, EPRI
+ckt7 + StorageController I-peakshave) passes the full live compare too — all 9
+migrated to `solvable_now` (185→194; needs_investigation 43→34). **Gate
+runtime:** the yearly deck cost ~27 min at opt-0, so the dev/test profile now
+carries `opt-level=3` overrides for the engine crates + all deps (workspace
+Cargo.toml; TESTING.md) with `overflow-checks`/`debug-assertions` explicitly
+pinned `true` — release-speed engine, dev-profile safety, same gate command.
+
+
+---
+
+**Phase 8 — COMPLETE 2026-07-10** (`PHASE8_PLAN.md` —
+reporting/exports/Save; branch **`phase-8-reporting`**, branched from the
+gate-green Phase-7 tip; WP8.8 exit record in §1). **WP8.1–8.7 COMPLETE + audited** (WP8.5 steps 1–6
+incl. `Save circuit` + the classify pass; WP8.6 incl. step 7; WP8.7
+ReduceAlgs), **plus GAPS WPG.1 + WPG.14 landed + audited** — records in this
+frontier below; `solvable_now` **178 (53.1%)**. Older per-step detail
+(chronological) follows. **WP8.5 (Save/Dump)** began with **Dump steps 1–3a +
+Save step 4, gate-green** (single-object
+`Dump <class>.[name|*] [debug]`: the `report/save/dump.rs` generic base — the
+3-kind `TDSSObject`/`TDSSCktElement`/`TPCElement` chain — + `#903`/`#256` errors).
+**Dump step 2 (2026-07-05):** the **per-winding / matrix `DumpProperties`
+overrides** — Transformer (+ the `debug` `ZB`/`Y_OneVolt`/`Y_Terminal`/`TermRef`
+complex lower-triangle block), Line, LineCode, LineGeometry, XfmrCode (each a
+co-located `dump_body`; dispatch made `&mut` so the LineGeometry override can walk
+`ActiveCond` per conductor, Pascal `LineGeometry.pas:669`). **Three real
+byte-fidelity fixes landed:** (1) `fmt_g`'s low scientific threshold was C's
+`exp < -4`, but FPC `%g` keeps fixed for one more decade — `exp < -5`
+(precision-independent; empirically oracle-verified over prec 8/15,
+`TODO(compat)` at `util::fmt_g`); (2) `TTransfObj.WdgCurrents` rendered lowercase
+`e` (was `fmt_g`) — FPC `%g` is uppercase `E`, routed through `report::format::g`;
+(3) the dump now refreshes each ckt element's `Vterminal` from the solved
+`node_v` (Pascal `ComputeVTerminal`) so `WdgCurrents` reads the live solution, not
+a stale/zero buffer. Property display-case corrected for Line/Transformer/
+LineGeometry tails (LineCode/XfmrCode already correct; matching stays
+case-insensitive). golden_phase8 **130→142** (11 new byte-exact dump goldens + 1 `?`-query
+regression this step; 16 dump goldens total);
+the bare-`dump`/`solution`/aux forms + the 8 remaining overrides (Capacitor/Fault/
+VSource/UPFC/RegControl/Monitor/EnergyMeter/Spectrum) are TODO(WP8) step 3.
+**Audits (both ran on `53d9006`):** audit-code — one Minor real fix:
+`get_all_winding_currents` dropped Pascal's `not Enabled` guard
+(`Transformer.pas:1530`), so a post-solve `enabled=no` transformer dumped stale
+non-zero `WdgCurrents` where the oracle prints `0` — guard restored + pinned by
+`dump_transformer_disabled`. audit-tests — one High coverage gap closed: the Line
+`LengthMult = Len` matrix-fold branch (geometry/spacing lines) was unexercised
+(both test lines had empty geometry) → added `dump_line_geo` (a Carson-geometry
+line, `length=2`, byte-exact — proving Rust's geometry-`Z` embeds length like
+Pascal) + `dump_line_switch` (`Switch=Yes`). Follow-up (deeper fix): the same
+stale-`Vterminal` read also broke the **`?`-query** path — `? transformer.x.
+wdgcurrents` after a solve returned **all-zeros** where the oracle recomputes live
+(`6.535435, (-57.242), 312.9242, …`; pre-existing, `&self` getters can't reach
+`node_v`). `do_query_cmd` now refreshes `Vterminal` before `get_value`, mirroring
+the Dump/Export paths — pinned byte-exact by `query_wdgcurrents_refreshes_vterminal`
+(golden_phase8 **141→142**). Property `Save` is unaffected (it emits only
+explicitly-set properties, never the read-only `WdgCurrents` result). **Follow-up
+(fundamental fix, 2026-07-05, gate-green):** full Pascal+Rust audit proved the
+stale-cache class is exactly the `WdgCurrents` family — the whole upstream property
+table has only three live-solution reads (`Transformer.WdgCurrents`; unported
+`AutoTrans.WdgCurrents`, vterminal-only too; `IndMach012.pf`, which upstream
+renders `''` **always** — `PropertyOffset` stays `-1` so the `GetObjPropertyValue`
+guard skips the read function even post-solve, probe-proven — Rust's
+`SILENT_READ_ONLY → ""` is byte-correct, its doc rationale corrected). The blanket
+`?`/Dump `compute_vterminal` (a Pascal-divergent write on *every* element) is
+replaced by a declarative Rust-only `PropFlags::READS_VTERMINAL` on the prop def +
+one choke point `Dss::refresh_vterminal_if_marked` used by both surfaces (a future
+AutoTrans port inherits correctness by setting the flag; an iterminal-needing
+property must add a separate marker with iterminal-then-vterminal order — VSource
+EMF side effect). New golden `query_indmach012_pf_empty_after_solve` freezes the
+post-solve `''` probe (golden_phase8 **142→143**). **Two byte-fidelity gaps + TWO real bugs found + fixed:**
+property names now carry the oracle **display case** (`Bus1`/`kV`/`NormAmps`,
+Reactor done; matching stays case-insensitive) and `float_to_str` now emits FPC
+`FloatToStr`'s **15-sig-fig** form (was 17-digit round-trip; both masked by
+`props_roundtrip`'s numeric compare); **audit** then found (Finding 1) `Terminal
+Bus Ref` = `0` vs Pascal `-1` for an unset terminal, and — via the sym-components
+coverage golden — a **latent Phase-4 reactor bug**: `stamp_series` transposed the
+series-stamp bottom-left block (`(j+n,i)` vs Pascal `(i+n,j)`), harmless for
+symmetric reactor Y but corrupting the asymmetric induction-motor (`Z1≠Z2`) YPrim /
+an unbalanced solve — both fixed, full suite green. golden_phase8 **125→130**; lib
+**744→748**. REACTORTest unblocked (migration deferred to Dump completion). The
+stamp-bug class is now guarded corpus-wide: **asymmetric live gate** —
+`tests/corpus/asymmetric/` (now **27** synthetic decks: every stamping element +
+combinations + the per-element midi wave, asymmetric configs, unbalanced solves)
+live-compared at micro tolerance by `corpus_live.rs::asymmetric_cases_match_oracle`
+(details in §1f). **Controls live gate COMPLETE** (`CONTROL_COVERAGE_PLAN.md`,
+steps 1–5 + the midi network gate + the per-element midi wave, 2026-07-05):
+**`tests/corpus/controls/`, 37 decks** (LTC/cap/volt-var/storage/dispatch +
+protection + metering + combos + the ~94-node midi network), live-compared with
+element-state channels (probes / variables / eventlog / ctrlqueue); it caught
+**three further real port bugs, all fixed** — two in the
+bare-field-write-vs-`Set_YprimInvalid` family (`update_all_storage` and
+`InvDispEnv::der_set_nominal`, each dropping Pascal's `SystemYChanged` side
+effect) and the InvControl/ExpControl fleet-`nphases` last-member-wins rule
+(`InvControl.pas:916`). Details in §1f. **`GAPS_PLAN.md` authored (2026-07-05)** —
+the test-blocked-deferral closure plan (the WP7.9 "zero corpus cases → skip"
+correction PHASE8_PLAN §1 promised): 14 deferrals inventoried (Monte/LD/AutoAdd/
+GeneralTime/Newton/… + the stale "Plot-blocked" TD21+GFM tracked-opens
+reassessed), **16 oracle-validated decks** landed as the third live-gate family
+`tests/corpus/gaps/` (manifest, every case `pending: true`; two-process
+determinism + feature-sensitivity proven on the pinned oracle), WPG.1–17
+packaged; executes after/alongside the remaining Phase-8 WPs (§1f).
+**PHASE8_PLAN tail refresh (2026-07-05, docs/decks only):** WP8.1–8.4
+collapsed to done-markers; WP8.5 steps 3–6, WP8.6 and WP8.7 rewritten to
+Sonnet-executable detail from a fresh Pascal deep-read + oracle probes, with
+the test fixtures authored up front — 7 golden fixture decks at
+`tools/golden/phase8_decks/` (dump3, dump_capacitor, save_forms, interp,
+distrib, uuids+csv) and 12 live staging decks at `tests/corpus/gaps/`
+(`wp: "WP8.6"/"WP8.7"`: batchedit ×2, the 8 reduce strategies + `Remove` +
+midi_reduce), all two-process oracle-validated + feature-sensitive (details
+in §1f). **Dump step 3a COMPLETE (2026-07-06), gate-green:** the 8 remaining
+leaf `DumpProperties` overrides — Capacitor, Fault, VSource, UPFC, RegControl,
+Monitor, EnergyMeter, Spectrum — each a co-located `dump_body` dispatched from
+`report/save/dump/overrides.rs` (every ported class's Pascal override is now
+wired; only the Phase-9-deferred AutoTrans/GICLine are outstanding). New
+`report/save/dump.rs` shared prefix `prefix_pc` (header + `! ENABLED` + Complete
+Y-block + `! VARIABLES`, mirroring `prefix_ckt`) and the EnergyMeter-only
+`energy_meter_branch_list` helper (the `Branch List:` zone-tree walk needs the
+full class registry to resolve each branch/shunt name, which a per-object
+`DumpCtx` can't reach — precomputed by the dispatcher like the PC `variables`
+block, threaded through a new `DumpCtx.branch_list` field). Verified against the
+pinned oracle by direct probe (not guessed): the Fault `MinAmps` double-print
+quirk (`NumPropsThisClass = Ord(High(TProp)) = 9 = MinAmps`, so the generic tail
+reprints it), the Monitor `// Sec=`/`// BaseFrequency=%.1g` comment lines, and
+the Capacitor `SpecType=` bare (no `~`) line all matched the implementation
+written from the Pascal source alone — but the probe caught **two real
+byte-fidelity bugs**, both fixed: (1) `format::fpc_sci_w` (`Str(v:width)`) had
+no floor under `width=8`, so `width=0` (`Sec: 0` in `Monitor.pas`) produced
+`"0E+000"` instead of the oracle's `" 0.0E+000"` — FPC's minimum scientific
+representation reserves an explicit sign slot AND floors the fraction digits at
+1, not 0; fixed (`frac = (width-8).max(1)`, explicit `' '`/`'-'` sign prefix,
+mantissa formatted from `v.abs()`) — the one existing caller (`show_convergence`
+at width 14) is bit-identical before/after (verified full-suite green); (2)
+`util::float_to_str` (`FloatToStrEx`/complex-property renderer) emitted a
+lowercase-`e` exponent in its scientific branch (a `TODO(compat)` already
+flagged this as unreproduced, "no in-scope dump value reaches scientific
+notation" — VSource's `puZIdeal=[1E-6, 0.001]` now does) — fixed to uppercase
+`E` (matching `report::format::g`'s existing fixup exactly, probe-confirmed
+`1E-6` not `1E-06`/`1e-6`). **Also landed:** the systematic PropDef display-case
+pass for all 8 classes (Reactor-convention: `Bus1`/`kV`/`NormAmps`/…), catching
+several real mismatches only visible byte-exact — `MVASC3`/`MVASC1`/`X1R1`/
+`X0R0`/`puZIdeal`/`BasekV`/`BaseMVA` (VSource), `RefkV` (UPFC), `CMatrix`/`Cuf`/
+`States`/`Conn`/`kV` (Capacitor), `3PhaseLosses`/`VBaseLosses`/`Option`/
+`Element`/`Terminal`/`Action` (EnergyMeter), `Element`/`Terminal`/`Mode`/
+`Action`/`Residual` (Monitor) — plus the universal `BaseFreq`/`Enabled`/
+`Spectrum` tails; Fault/RegControl/Spectrum needed only the tail fix (RegControl
+and Spectrum were already fully correct). 10 new byte-exact dump goldens
+(`dump_{vsource,upfc,regcontrol,monitor,energymeter,spectrum,fault,
+fault_gmatrix,capacitor_cmatrix,capacitor_steps}`, golden_phase8 **143→153**)
+over the pre-validated `dump3.dss`/`dump_capacitor.dss` fixtures; the Capacitor
+pair uses a new `run_deck_dump_exact_masked` (drops the `~ CMatrix=(`/
+`~ FaultRate=`/`~ pctPerm=` ASLR-garbage line prefixes from **both** sides —
+the golden was captured pre-stripped, the Rust output stripped at compare time,
+since Rust's own values are correct and therefore genuinely different text).
+**Both audits ran on `2548a17` (opus): no correctness bug in the port.**
+**audit-tests — one real Major coverage gap, closed:** the Monitor `// Buffer=`
+sample-float render (the fixed `2+Fnconds*4` wrap quirk) was unpinned by any
+golden — the fixture monitor never sampled. Root cause turned out to be
+structural, not a fixable fixture gap: every solve algorithm that calls
+`MonitorClass.SampleAll` also calls `MonitorClass.SaveAll` at its end
+(`SolutionAlgs.pas`, every `SolveDaily`/`SolveYearly`/… loop), and
+`TMonitorObj.Save` unconditionally resets `BufPtr := 0` — probe-confirmed a
+3-step `solve mode=daily` still dumps `// Bufptr=0`. A non-empty buffer is
+real Pascal state (only reachable mid-`TakeSample`, between individual solve
+steps) the executive can never observe from script — the same "oracle-
+unreachable" class as the `show_controlqueue` row-body gap (WP8.4 step 7).
+Closed the same way: extracted `render_buffer` and pinned its wrap-width/
+`%.1f`/comma-layout behavior with 3 unit tests instead of a golden (lib
+**748→751**). Two accepted Minor gaps (no action): Capacitor's garbage-masked
+`CMatrix`/`FaultRate`/`pctPerm` render is covered by proxy (`dump_fault`'s
+unmasked `FaultRate`/`pctPerm`, `dump_reactor`/`dump_linecode_matrix`'s
+`CMatrix` shape) since it can never be oracle-pinned directly (upstream UB);
+Capacitor `SpecType=2` (Cuf-only) is untested but provably the same code path
+as the tested SpecType 1/3 (only the integer + numeric values differ).
+**audit-code — no correctness bug; two Minor `TODO(compat)`/`NOT_PORTED`
+tagging gaps, closed:** the Fault `MinAmps` double-print (a real deterministic
+upstream bug, byte-pinned by `dump_fault`/`dump_fault_gmatrix`) had no
+greppable `TODO(compat)` tag — added. The Monitor buffer-flush model gap
+(Pascal's `BufferSize` is a fixed `1024`, flushed-and-`BufPtr`-reset on fill
+**or** at the end of every multi-step solve; the port's `mon_buffer` never
+flushes, so `Dump` on a solved+sampled monitor would diverge — untested, no
+gate fixture samples before dumping) had no `NOT_PORTED` marker — added,
+cross-referenced from `render_buffer`'s doc. Two Question-level probe
+extrapolations flagged (Monitor's `%.1g`→15-sig `BaseFrequency` render and the
+`Sec:0` frac-floor, both confirmed only at the one value the fixture exercises,
+`60`/`0.0`) — already honestly hedged in the code's own doc comments as
+probe-derived, not asserted as general FPC rules; no further action pending a
+fixture that exercises a different value.
+**WP8.5 step 4 COMPLETE (2026-07-07), gate-green** (landed via a parallel
+worktree agent, merged by cherry-pick): `do_save_cmd` replaces the stub —
+the `SaveCommands` `[class,file,dir,keepdisabled]` positional-or-named parse
+(`keepdisabled` parsed+ignored, `ExecHelper.pas:780`), `CompareTextShortest`
+dispatch in Pascal order; `save circuit` stays a clearly-marked
+NOT_PORTED(WP8.5 step 5) stub. `save`/`save meters` = Monitor.Save as a
+**documented structural no-op** (the Rust monitor merges MonBuffer+
+MonitorStream into one Vec; probe-proven the oracle writes NO monitor file)
++ per-EnergyMeter `SaveRegisters` → `MTR_<name>.csv` (`Year, <year>,` header
++ `"<RegName>",<:0:0>` rows; GlobalResult = the RELATIVE csv name, err 526).
+`save voltages` = `Solution.SaveVoltages` (`%-.7g` |V|/angle, GlobalResult =
+full path even on write failure, err 488). `save <class>` = `WriteClassFile`
+(`Utilities.pas:1134-1210`: default filename = bare class name, NO
+extension; create-then-delete-on-0-records; err 718/247). NEW
+`report/save/save.rs` serializer pair shared with step 5: `WriteDSSObject`
+(`New "Class.name"` always-quoted + ` ENABLED=NO` for a disabled CktElement
++ `HasBeenSaved` mark) / `SaveWrite` (ONLY explicitly-set props in set order
+via `DssObjData::next_property_set`, `----` sentinel skip) /
+`CheckForBlanks`. `DssObjData` gained `has_been_saved` (persists across save
+commands — probe-proven a 2nd `save load` deletes the file; test-pinned).
+Load's PropDef display case corrected (oracle `AllPropertyNames` probe).
+Probe-pinned quirks: a disabled load serializes `… Enabled=No ENABLED=NO`
+(both the property and the WriteDSSObject suffix); Pascal doubles the path
+delimiter in GlobalResult (`…\\load`) — not reproduced, path-equivalent,
+documented. Goldens: `save_mtr` byte-exact (all 67 registers),
+`save_voltages` + `save_class_load` via `compare_export` at rel=0/abs=0
+(token-exact — no tolerance needed) over `save_forms.dss` via
+`gen_reports.py::gen_save_decks`.
+**WP8.6 steps 1–6 COMPLETE (2026-07-07), gate-green** (two parallel worktree
+agents, merged by cherry-pick; corpus migration = step 7 still pending, see
+below). Step 1: `tools/cmd_coverage.py` (stdlib-only; replicates
+`TCommandList` abbreviation matching over the vendored corpus vs the
+dispatched set). Dispatch: cmd ordinals MakeBusList=59, Interpolate=62,
+Distribute=68, Uuids=86, SetBusXY=91, BatchEdit=95, GISCoords=118 + arms.
+Step 2 BatchEdit (`do_batch_edit_cmd`): `regex` crate (workspace dep),
+case-insensitive UNANCHORED match, parser position saved/rewound per match
+exactly like Pascal, silent (no count message), error 240/267 with
+CRLF+CmdString; `tests/corpus/modes` `batchedit.dss`+`midi_batchedit.dss`
+flipped `pending:false`, live compare green. Step 3: MakeBusList =
+`if bus_name_redefined { reprocess_bus_defs }`; GISCoords = documented no-op.
+Step 4: SetBusXY (write-after-every-param, err 28721/28722) + Interpolate
+(`solution/meters/interpolate.rs`: `InterpolateCoordinates` +
+`CalcBusCoordinates` loop-for-loop; errs 277/283/529; the Pascal `buses[0]`
+OOB for a NO_BUS from-bus = safe `.get()` per the UB rule); golden
+`export_buscoords_interp` byte-exact (pins the oracle's zone-end order —
+c2 first). Step 5 Distribute (`exec/distribute.rs`): the four
+`Write*Generators` writers loop-for-loop, errs 721/722, `what=Load`
+unconditional `DistLoads.dss` rename, Uniform divides by the FULL load count
+incl. disabled (probe-proven `Utilities.pas:1349`), Skip's trailing space;
+`how=Random` ported with fresh entropy, never golden-gated; 4 goldens
+(Proportional/Uniform/Skip/Load) token-exact. Step 6 Uuids/Export Uuids:
+`exec/uuids_cmd.rs` (comma-CSV, err 242, brace-wrap, `=`-names →
+AddHashedUuid, circuit/Bus/Class dispatch, StartUuidList reset first) + NEW
+`crates/dss-core/src/cim/` seeding the WPG.18 storage shape (UuidHash/
+UuidList/UuidKeyList, StartUuidList/FreeUuidList/GetHashedUuid/AddHashedUuid/
+GetDevUuid/WriteHashedUUIDs, FPC braced-uppercase GUID render) + lazily-
+created v4 UUID slots on DssObjData/Bus/Circuit (`uuid` crate);
+`DoExportCmd` calls `DefaultCircuitUUIDs` on EVERY export keyword
+(`ExportOptions.pas:188`); `Export Uuids` (keyword 25) byte-exact golden
+incl. the 3 auto hashed keys; probe-proven `Text.Result` stays EMPTY after
+`export uuids` — reproduced. `cmd_coverage.py` corpus tail after this WP:
+15 unported commands (SetkVBase 158, Wait 30, var 20, _SolveDirect 11, …),
+11 unported options (TotalTime 40, LoadShapeClass 10, StepTime 10, …).
+**Six Opus audits (code+tests × step 4 / WP8.6-part1 / WP8.6-part2) ran on
+the pre-merge worktree commits** — findings settled below (§audit follow-up).
+**WP8.5 step 3b (whole-circuit / aux Dump forms) COMPLETE (2026-07-07,
+`34b15a1`), gate-green + audited.** Bare `dump`/`dump debug` (Circuit.DebugDump
+header + every CktElement/DSSObj/Solution with Leaf=TRUE), `dump solution`
+(`Solution.DumpProperties`, the full `Set …` option list incl. the
+Leaf-gated lines + the Complete lower-triangle system-Y block), `dump
+commands` (`DumpAllDSSCommands` over a **generated help catalog** —
+`tools/golden/gen_help_catalog.py` parses the pinned wheel's gettext `.mo`
+(1697 entries) into `report/help_catalog.rs`), `dump buslist`/`devicelist`
+(**THashList port**: `MakeHash`, bucket layout, `DumpToFile`'s three
+sections — the buslist-prints-only-LINEAR rule *derived* from `HashList.pas`
+(TAltHashList vs THashList), not special-cased), `dump alloc*`
+(`DumpAllocationFactors`: kW/PF-spec loads print NOTHING, probe-proven). 7
+new byte-exact dump3 goldens (golden_reports 166→173). **The load-bearing new
+machinery: a loop-for-loop port of FPC 3.2.2 Grisu1 float→ASCII**
+(`flt_core.inc` `str_real` + `FloatToStrFIntl` ffGeneral post) as the
+`fmt_g`/`float_to_str` backend (TODO(compat) documents the half-away-from-zero
+`round_digits` re-round). **Audits (opus, both fresh agents): no correctness
+bug.** audit-tests Major — the "20k-value oracle-validated battery" was an
+uncommitted throwaway → **settled by committing a permanent FPC-RTL battery**:
+`tests/golden/fmt_battery.csv` — 13 198 deterministic f64 bit patterns
+(subnormals, 10^±320, the exp<-5 fixed/sci threshold band, tie-bands,
+digit-count boundaries, seeded random) × 7 render forms (`FloatToStr`,
+`fmt_g` sig 2/5/8/15, `Str(v:0/14)`) rendered by the real FPC 3.2.2 RTL
+(`ppcrossx64`; generator `tools/fpc/fmt_battery/`) — **92 386 renders, 0
+mismatches**, gated by `crates/dss-core/tests/fmt_battery.rs` (also closes
+the subnormal/extreme-exponent Minor). Accepted + recorded: the three
+whole-circuit dump goldens pin `Set editor=NotePad.exe` (Windows-pinned
+project — a platform guard only if the suite ever runs cross-OS); `Set
+LDCurve=` renders empty (LD mode NOT_PORTED → WPG.3, marker present);
+`help_catalog.rs` is pinned transitively via `dump3_commands` (standard
+generated-golden convention). Also landed: `tests/golden/feeders_controlsoff`
+fixtures un-tethered from git-ignored `.inputs` (redirects → the tracked
+`tests/corpus/electricdss-tst` mirror + generator re-pointed) — fixes
+`golden_feeders` in fresh worktrees.
+
+**Parallel-fleet round (2026-07-07): five isolated-worktree agents (WP8.5
+step 5, WP8.7, WPG.14, WPG.1, WP8.6 step 7), merged by cherry-pick; each
+branch got its own opus audit-code+audit-tests pair on the pre-merge commit,
+findings settled by the coordinator (below). Full gate re-verified green on
+the merged head (fmt/clippy/`cargo test --workspace`, 32 binaries, 0
+failures, live corpus at 178 decks).**
+
+
+---
+
+**WP8.5 step 5 (`Save circuit` + round-trip gate) COMPLETE (2026-07-07),
+gate-green + audited.** `TDSSCircuit.Save` (Circuit.pas:2409-2988) +
+`WriteVsourceClassFile`/`WriteClassFile` + `TEnergyMeterObj.SaveZone`
+(EnergyMeter.pas:2585-2807) as `exec/save_circuit.rs`, replacing the step-5
+stub: whole-circuit multi-file emit in verbatim Pascal order (library
+classes → Vsource `Edit`-first → SaveFeeders per-enabled-meter zone subdirs
+(branch→Branches/Transformers, shunt→Loads/Generators/Capacitors/Shunts,
+controls written after their element for Xfmr/Branch/Gen/Cap but NOT loads,
+the load-allocation `allocationfactor` side effect, empty files
+deleted+unlisted) → SaveDSSObjects → BusVoltageBases (`! CalcVoltageBases`
+commented, oracle-proven) → BusCoords (always created) → Master.dss with
+relative Redirects). `DSSSaveFlag` enum faithful; command path = empty set,
+flag-gated branches dormant. **Gap ported in-step:** the Transformer
+`SaveWrite` override (Transformer.pas:1045) — per-winding-scalar→
+array-property rewrite (`elements/pd/transformer/save.rs`); the generic
+serializer had dropped winding 1. **Gate:** `tests/save_roundtrip.rs` —
+IEEE13/37/123 solve→save→clear→recompile→resolve, voltages ≤1e-6 rel by node
+name + warm-re-solve iteration count exact; `save_forms` structural file-SET
+test (oracle-probe-proven set incl. the `em1/` feeder subdir). **Audit
+settlements:** `New Circuit.<name>` now emits the lowercase `LocalName`
+(Circuit.pas:386; the port had used `CaseName` — behaviorally cosmetic,
+fixed for fidelity); the SaveZone path gained a **numeric** gate (snapshot
+voltage round-trip on `save_forms`, closing the audit-tests Major that the
+feeder path was structurally-only gated); recorded accepted notes — the
+Transformer rare per-winding scalar tail (RdcOhms/RNeut/…) is unexercised by
+the gate decks, the file-set baseline is a dated oracle probe without a
+committed capture script, and the round-trip is self-consistency by design
+(§2.4). The step's original audit-code agent returned an empty result — a
+fresh audit-code re-run covers this code (findings settled in the follow-up
+records here).
+
+**WP8.7 (ReduceAlgs full) COMPLETE (2026-07-07), gate-green + audited.** New
+`exec/reduce.rs` (~1200 lines, executive-level — reduction mutates through
+the edit machinery): `TLineObj.MergeWith` (Line.pas:1631-1840; sym-component
+sets through the property-edit path so SetDouble scaling + side effects
+reproduce; matrix-series element-wise `(Z1·len1+Z2·len2)/TotalLen`;
+matrix-parallel `Len/2` "assume equal" as a write-only no-op TODO(compat));
+all eight `ReduceAlgs.pas` strategies + `IsShortLine`; `ReduceZone`
+dispatch (both `reduce_deferred_msg()` stubs gone); `Set KeepList=`
+(`DoKeeperBusList`); the `Remove` command (`cmd::REMOVE=107` →
+`DoRemoveBranches` incl. the KeepLoad `Eq_<elem>_<frombus>` equivalent
+load). Gate: all ten `tests/corpus/modes` reduce decks `pending:false`, live
+compare green at micro tolerance (merged names `l1~l2`/`s1~s2`/`b1||b2`,
+disabled partners, node counts 15→12/15→9/16→14/94→88, KeepList block, x2
+skip, `Load.eq_l2_b2`); `golden_autoadd_reduce` extended with an
+oracle-captured post-Reduce re-solve. **Audit findings, settled:** (1)
+*Major:* the `kVBase<=0` fallback read the never-refreshed `bus.vbus` →
+now reads the live `NodeV[RefNo[1]]` (the `UpdateVBus` equivalent;
+upstream's `VBus=NIL` read is a NIL-deref — UB, gated per the CLAUDE.md
+rule). (2) the laterals shunt re-bus loop now runs **unconditionally**
+(Pascal `:505-513` sits outside the KeepLoad block: `Bus1= kV=1` when
+KeepLoad=No, BusName stays empty). (3) `MergeWith` sets
+`YPrimInvalid`+`SystemYChanged` up front (CktElement.pas:240 setter
+semantics). (4) control repointing now replays the full `element=` property
+edit (Line.pas:1849 `ParsePropertyValue`) so the stored ElementName renders
+right in Save/Dump. (5) TODO(compat): the parent cap/reactor scan checks
+**only the parent's FIRST shunt** — upstream mixes cursors
+(`ParentNode.FirstShuntObject()` but `PresentBranch.NextShuntObject()`,
+ReduceAlgs.pas:200-210) and `TDSSPointerList.Add` leaves `ActiveItem=Count`,
+so the first `Next` overflows → NIL (proven from `DSSPointerList.pas`
+sources); a cap/reactor at parent-shunt position ≥2 does not block the
+merge upstream — reproduced. (6) `Some(NO_BUS)` to-bus guard in dangling
+(Pascal `ToBusRef>0`). Recorded (no action): `UpdateControlElements` has no
+runtime deck coverage (synthesized control-on-merged-line deck = a WP8.8
+sweep candidate); the manifest "disabled partner" expectations are asserted
+via node_order/Y/voltage equality rather than an explicit enabled-flag
+channel.
+
+**WP8.6 step 7 / WP8.5 step 6 (corpus classify/migrate) COMPLETE
+(2026-07-07), gate-green.** Live-reprobed all 59 `skipped_unsupported` decks
+tagged with the landed verbs. `solvable_now` **169→178 (53.1%)**: the 2
+Dump-blocked decks (REACTORTest, Split-Phase_IEEE_TIA), 4 SetBusXY
+IEEE-TIA-LV masters, 3 ADiakoptics Torn_Circuit feeders
+(MakeBusList/GISCoords) — all pass the always-on live gate (178-deck run
+green). 28 candidates retagged to their real remaining blocker (var, GFM
+combi ×18, file-backed arrays, SeasonRating/Signal, ControlSignal, CIM100).
+22 moved to `skipped_needs_investigation` as **real newly-visible findings**
+(not fixed — manifest-only WP): AutoTrans Auto1bus/Auto3bus + several EPRI
+meshed Torn_Circuit decks diverge above tolerance (reproducible, must be
+root-caused per the no-rationalizing rule); 2 TnDSystem decks hit oracle
+non-convergence; `StoCtrl_Current_PeakShave` hits a **real engine panic**
+(index out of bounds, len==idx==17520 — a yearly/DI buffer sized hourly,
+indexed finer); 8 StorageControllerTechNote decks expose a **verified engine
+gap** — `exec/view.rs::regcontrol_tap_numbers()` does not skip disabled
+RegControls, unlike the oracle's `RegControls.First/.Next` (live-probe
+proven; likely one-line fix, tag `regcontrol_enabled_filter`). COVERAGE.md
+regenerated (bijection 915 holds).
+
+**Final audit wave (2026-07-07, three fresh opus agents): the Save-circuit
+CODE audit (re-run — the fleet-round attempt had returned an empty result),
+an audit of the coordinator's own follow-up commits, and an audit-tests pass
+over tests/fixtures/manifests. Findings settled:**
+- **Save-circuit code: faithful 1:1 on the reachable path, no Critical/Major**
+  (independently re-verified: body order, clear-flags, Edit-first vsource,
+  SaveZone routing + control emission + allocation side effect, the
+  Transformer per-winding rewrite incl. the `PrpSpecified`-guarded scalar
+  tail, relative-Redirect math, flag ordinals, the lowercase-name fix).
+  Fixed from its Minors: a mid-save file-write failure no longer reports the
+  "Circuit saved" GlobalResult (Pascal `Success` chain / err-434 semantics —
+  the first error text is returned instead); the simplified
+  `Path::is_absolute()` dir resolution (Pascal's bare-root `\foo` drive-
+  prefixing / drive-relative `C:foo` cases dropped) is now documented at the
+  resolution site as a recorded narrowing. Recorded Questions: the serializer
+  renders via live `get_value` where Pascal emits the cached
+  `PropertyValue[i]` (a WP8.5-step-4-wide decision — revisit at WP8.5b, whose
+  property-parity sweep compares exactly this surface); the fleet-control
+  in-zone omission stays documented-unobservable.
+- **Coordinator follow-ups: one real Major found + fixed** — the f32 patch
+  left `read_csv_file`/`read_pq_csv_file`/`read_dbl_file` without Pascal's
+  head-of-reader `UseFloat64` (`LoadShape.pas:1044/:970/:1220`), so a stale
+  `sP` from an earlier `sngfile=` would keep winning the lookup after a
+  CSV/Dbl re-read (`sngfile=… csvfile=…` in one edit) — reset added to all
+  three + regression pin `csv_after_sng_ends_single_storage`. Also fixed:
+  stale GrowthShape doc comments still claiming CSV year-rounding; MakeLike
+  now drops `s_h` for a fixed interval (symmetry with `dH`). The reduce.rs
+  fixes were independently re-derived and confirmed (incl. the
+  `DSSPointerList` cursor analysis behind the first-shunt-only TODO(compat)).
+- **audit-tests: verification strengthened, nothing weakened** — fmt_battery
+  unconditional + fully parsed; the f32 feature-sensitivity claim
+  independently confirmed (f32-off produces different bits and fails the
+  gate); all shape fixtures regenerate byte-exact from the committed
+  generator (a working-tree CRLF artifact of `core.autocrlf` noted for any
+  future byte-compare hygiene check); classify manifests internally
+  consistent (bijection 915, solvable_now 178) — the `279f703` commit
+  message's stale 168→177 counts are a traceability nit only; parking the
+  root-caused `regcontrol_enabled_filter` gap + the 17520 engine panic in
+  `skipped_needs_investigation` is recorded as deliberate (tracked above,
+  next-step candidates), not a silent skip.
+
+**next = WP8.5b (corpus property parity addendum — design pre-approved,
+§PHASE8_PLAN WP8.5b; it also revisits the cached-vs-re-rendered SaveWrite
+question) → WP8.7/WP8.5 residual sweep items above → WP8.8 phase exit;
+GAPS_PLAN WPGs continue in parallel (WPG.2/3 next by tier).**
+**WP8.4 (Show) steps 1–16
+gate-green** (Buses/Losses/Taps/Voltages/Currents/Powers seq+elem + Elements +
+Result/EventLog/Ratings/Variables/Mismatch/monitor + step 7: Convergence/Y/
+controlqueue/kvbasemismatch + step 8: Meters/Generators register tables +
+step 9: Overloads/Unserved + step 10: FaultStudy + step 11: Yprim (+ the
+`Select` command / active-ckt-element surface) + step 12: Loops/Zone (the
+EnergyMeter zone-tree pair) + step 13: Controlled (the PD→controls map via the
+new `CktElement::controlled_element` accessor) + step 14: LineConstants (the
+LineGeometry Carson R/jX/L/C matrix dump + seq-component summary, two files) +
+step 15: busflow (`ShowBusPowers` seq+elem, reusing the extracted per-bus/
+per-element voltage/current/power helpers) + **step 16: Isolated/Topology** (the
+circuit-wide CktTree pair, over the new `solution/topology.rs` `GetTopology`/
+`GetIsolatedSubArea` builder) + dispatcher; **~32 `Show` reports ported**). **All
+real `Show` reports are now ported** (incl. `deltaV` — the step-4 delta-winding
+node_ref deferral is **resolved**: later Phase-7 transformer work fixed the layout,
+so `Show DeltaV` now writes the `Transformer.SUB` rows the oracle does). Remaining
+`Show` no-ops: only `autoadded`/`QueryLog` (headless FireOffEditor); the `#24700`
+unknown-keyword error is ported. Full Phase-8 detail is in **§1f**; the current
+frontier:
+
+- **WP8.1 COMPLETE** (dispatch skeleton + output-path machinery + `Export Counts`
+  + the `compare_export` golden harness).
+- **WP8.2 COMPLETE** — the solution/power/symmetrical-component/per-terminal/matrix
+  export families (`Voltages`…`Currents`…`Yprims`/`Y`/`SeqZ`/`Summary`/`Result`) +
+  the mutable element-walk infra; the completion gate migrated the `Export`-unblocked
+  corpus (`solvable_now` **88→119**, COVERAGE **26.3%→35.5%**) + landed the Rust
+  `CorpusGuard`. The "9 decks hang" and "live-gate flake" tracked-opens are both
+  **RESOLVED** (§1f Issue-1/Issue-2).
+- **WP8.3 COMPLETE (steps 1–5 + both audit follow-ups), gate-green** — the
+  device/meter/reliability/log exports (`Monitors`/`Meters`/DER/`EventLog`/
+  `Faultstudy`/`BusReliability`…/`Sections`/`Profile`) + the `TSystemMeter` core
+  and the full demand-interval (`DI_*`) file machinery + its `Set`/`Set year=`
+  wiring (§2.6). The completion gate migrated `solvable_now` **119→168** (COVERAGE
+  **50.1%**), incl. fixing the **silent Spectrum `CSVFile` no-op** two IEEE_519
+  harmonicT decks exposed. The two independent audits found **no correctness bug**;
+  two LOW code findings fixed (`Export Profile` `1732.0` `TODO(compat)` marker; the
+  `Spectrum.read_csv_file` byte-position EOF guard, oracle-confirmed) + five
+  oracle-pinned coverage tests (incl. the multi-meter `Bus_Int_Duration` cross-zone
+  bug — filed upstream + in-range regime gated). golden_phase8 **59**; lib **731**.
+  Detail in §1f.
+- **WP8.4 (Show reports) — step 5 COMPLETE, gate-green** (audited with step 6, see
+  the next bullet). The `do_show_cmd` dispatcher (`ShowOptions.pas` option/solve-guard) + the new
+  `report/show/` module of fixed-width text formatters: `Show Buses`/`Losses`/`Taps`
+  + `panel`→#999 (step 1); `Voltages` seq (step 2); `Currents`/`Powers` seq (step 3);
+  `Voltages` node/elem + `Currents` elem + `Elements` (step 4); **`Powers` elem +
+  `Result`/`EventLog`/`Ratings`/`Variables`** (step 5). Remaining unported keywords
+  (meters/zone/topology/lineconstants/yprim/y/faults/mismatch/…) stay *silent*
+  headless no-ops. Shared machinery: `format.rs` `Pad`/`PadDots`/width formatters, the
+  whitespace+comma `compare_export` tokenizer (`sep: ' '`) + `ColSel::AfterToken` +
+  `GateSpec::MinCols` (PF-of-degenerate-power gate). **Key finding (step 5):**
+  `MaxBusNameLength` is an **inconsistent per-report backend quirk** (`ShowVoltages`→12,
+  `ShowPowers`→~5, even in isolation) — *not* a consistent floor, so the step-4
+  floor-12 `TODO(compat)` was withdrawn; instead the comparator **drops pure dot-run
+  tokens** (`PadDots` padding carries no data), making the gate immune to the quirk,
+  and `max_bus_name_length` keeps the clean source value. `MaxDeviceNameLength=0`
+  `TODO(compat)` stands. golden_phase8 **59→74**.
+- **WP8.4 (Show reports) — steps 5–6 COMPLETE + audited, gate-green.** Step 6:
+  `Show monitor` (`TranslateToCSV`, corpus×24 — reuses the monitor CSV; golden via the
+  daily monitor fixture) + `Show Mismatch` (`ShowNodeCurrentSum`, per-node KCL sum).
+  golden_phase8 **74→78**. **Both audits ran on steps 5–6** (`263898f`): **one real
+  bug found + fixed** — the `Show Result` output filename (`Result.txt` → the spec's
+  `Result.csv`, `ShowOptions.pas:432`) + its/`EventLog`'s `GlobalResult` side-effect
+  (`write_show_global`). The audit-tests-recommended **`Show Variables` golden
+  (generator fixture) surfaced a real Phase-7 port bug**: the generator's `w0` (base
+  angular frequency) was 0 pre-dynamics, so the classic `Frequency` state var read 0
+  not 60 — fixed by initialising `w0 = TwoPi·base_frequency` at construction
+  (`Generator.pas:986`); safe across the full suite (dynamics `InitStateVars`
+  overwrites `w0` anyway). Test follow-ups: `Show Mismatch` upgraded from a structural
+  smoke test to a **value golden** (pins `Max Current` via the new `ColSel::FromEnd`,
+  gates the `Current Sum`/`%error` faer-vs-KLU residuals via `GateSpec::Mask` — those
+  are inherently not cross-engine-pinnable); new `show_variables`/`show_result`
+  goldens; the powers PF gate doc corrected (`min(kW,kvar)`, not kVA) + tolerance
+  tightened `abs 1e-3→2e-4`; a powers code-1 whitespace-variant `TODO(WP8)`
+  breadcrumb. **All 19 `Show` goldens converted to exact equality** (`rel=0, abs=0`):
+  against a fixed oracle-bytes golden the deterministic Rust output is byte-identical,
+  so the prior fuzzy tolerances only hid that — 14 are fully exact, the other 5 gate
+  out only the genuinely-non-comparable cells (near-zero faer-vs-KLU cancellation
+  residuals V0/V2/I0/I2/I1/`|I|`/kvar, skipped incl. exact-0 via `GateSpec::MinCols`)
+  + one real `%10.5f` rounding-boundary straddle (`mismatch` Max Current → the
+  `1.1e-5` render floor). **DeltaV deferred** (silent no-op, `TODO(WP8)`):
+  `WriteElementDeltaVoltages`' `NodeRef[i+NCond]` cross-terminal read yields 0 rows for
+  the delta-primary
+  `Transformer.sub` where the oracle writes 3 — the delta-winding node_ref layout
+  needs investigation (deltaV is not corpus-used).
+- **WP8.4 (Show reports) — step 7 COMPLETE, gate-green** (the diagnostic/matrix
+  cluster): `Show Convergence` (`Solution.WriteConvergenceReport` — per-node saved
+  error/`|V|`/`Vbase` + Max Error footer, over the existing `error_saved`/
+  `vmag_saved`/`node_vbase`/`max_error` solution arrays), `Show Y` (`ShowY` — the
+  assembled system Y, lower triangle by columns, `[row,col] = G + jB` `%13.10g`,
+  reusing `system_y_csc` + the column-major-lower-triangle order that matches KLU's
+  `GetTripletMatrix`), `Show controlqueue` (`ControlQueue.WriteQueue` — the pending
+  action queue, drained to the header alone after a converged snapshot; new
+  `ControlQueue::queue_rows` accessor), and `Show kvbasemismatch`
+  (`ShowkVBaseMismatch` — loads/generators >10% off their bus base, LN/LL forms +
+  the per-family header). New `report/show/matrix.rs`; the three diagnostics in
+  `report/show/diagnostics.rs`; dispatcher arms 4/26/27/30 in `exec/report.rs`. New
+  `format::fpc_sci_w` reproduces FPC `Str(v:width)` (scientific, `width-8` frac
+  digits, ≥3-digit exponent) for the convergence `:14` columns. golden_phase8
+  **78→83**: `show_{convergence,y,controlqueue,kvbasemismatch}` on solved IEEE13 +
+  the synthesized `show_kvbasemismatch_vals` (4 kV-mismatched load/gen elements
+  exercising both LN/LL forms + the GENERATOR block). **All 5 are exact equality**
+  (`rel=0, abs=0`), incl. the convergence `|V|` column: the preemptive `rel=1e-6`
+  "7th-sig printing floor" shipped with step 7 was never exercised — the produced
+  file is byte-identical to the oracle golden (faer-vs-KLU voltage gap is orders
+  below the 7-sig print step) — so it was tightened back to exact per the
+  no-unproven-floors rule; Y's G/B are byte-identical (bit-exact assembled
+  Y on the LineCode-based IEEE13). **Remaining unported Show keywords** (all still
+  *silent* no-ops, `TODO(WP8)` in `do_show_cmd`): `Controlled` (needs the
+  `ControlElementList` accessor), `Meters`/`Generators`/`Zone`/`Overloads`/
+  `Unserved`, `FaultStudy`, `Yprim` (needs the active-element surface + its
+  non-`CircuitName_` filename), `LineConstants`, `Isolated`/`Loops`/`Topology`
+  (CktTree walks), `busflow` (`ShowBusPowers`), `autoadded`/`QueryLog` (headless
+  FireOffEditor no-ops), `deltaV` (deferred, above).
+  **Both audits ran on step 7.** **audit-code — one real Minor bug found + fixed:**
+  `Show Convergence` (arm 4) + `Show controlqueue` (arm 27) were setting
+  `@lastshowfile`, but Pascal dispatches them *inline* with only `FireOffEditor`
+  (`ShowOptions.pas:187-197`/`404-414`) and does **not** — fixed via
+  `write_show_named(…, set_last=false)`, the `write_show` doc corrected, and pinned
+  by the new `show_lastshowfile_semantics` test (Y/kvbasemismatch set it;
+  Convergence/controlqueue don't). **audit-tests — one real Major gap + closed:**
+  `show_controlqueue` only exercised the drained (empty) queue, so the new
+  `queue_rows`/row-formatting path shipped uncovered. The row body is **unreachable
+  via the executive** — a `show controlqueue` after any `solve` always sees a
+  drained queue (probe-proven, incl. the low-level `SolveNoControl`+`Sample` split),
+  so no oracle golden can reach it; covered instead by a `control_queue_row_format`
+  unit test against the Pascal `WriteQueue` format. The Sec `%-.g` precision (FPC
+  empty-precision `ffGeneral`) is unverifiable against the always-drained oracle
+  queue → documented `TODO(compat)`, 6-sig stand-in flagged for the WP8.8 byte pass.
+  Also refactored `run_feeder_show` to locate the report by its fixed
+  `<CaseName_><suffix>` name in the datapath (the oracle-generator glob) — robust to
+  the `@lastshowfile` split and still filename-pinning. Tracked-not-fixed (audit
+  notes): `show_kvbasemismatch` (plain IEEE13) is near-vacuous but backstopped by
+  `_vals`; the `show_convergence` Error column is exact-compared (`rel=0`) —
+  honest today (all `0.00000`), a robustness note only.
+- **WP8.4 (Show reports) — step 8 COMPLETE, gate-green** (the register tables):
+  `Show Meters` (`ShowMeters` → `EMout.txt`, dispatcher arm 9) and `Show Generators`
+  (`ShowGenMeters` → `GenMeterOut.txt`, arm 8) — each element's accumulated
+  energy-meter registers in Pascal's fixed-width layout: the register-name legend
+  (`Reg i = <name>`, meters only), the per-register column header, then one
+  `%10.0f`-per-register row per **enabled** element (a disabled element emits only
+  its trailing newline — Pascal writes the newline outside the `if Enabled` guard;
+  the blank line is stripped by the comparator). New `report/show/meters.rs` reuses
+  the WP8.3 register access (`EnergyMeter::register_names`/`registers`, the
+  class-fixed `GEN_REGISTER_NAMES`) and the WP8.3 register fixtures
+  (`REGISTER_A_POST` metered IEEE13, `REGISTER_B_POST` g1/g2 + disabled g3). golden
+  `show_meters`/`show_generators` (golden_phase8 **83→86**), both **exact equality**
+  (`rel=0, abs=0`): the register values are the same daily-solved meter/generator
+  paths `corpus_live.rs` + `export_meters`/`export_generators` already pin (both
+  render `%10.0f`), so every rounded integer cell is byte-identical; g3's absence
+  pins the enabled-filter. **Remaining unported Show keywords** (all still *silent*
+  no-ops, `TODO(WP8)`): `Controlled`, `Zone`/`Isolated`/`Loops`/`Topology` (CktTree
+  walks), `Overloads`/`Unserved`, `FaultStudy`, `Yprim` (needs the active-ckt-element
+  surface + its non-`CircuitName_` filename), `LineConstants`, `busflow`
+  (`ShowBusPowers`), `autoadded`/`QueryLog` (headless FireOffEditor no-ops), `deltaV`
+  (deferred). **Both independent audits ran (`059c2aa`): no correctness bug** — the
+  two formatters reproduce `ShowMeters`/`ShowGenMeters` field-for-field (banner/
+  legend/header widths, the enabled-filter, the disabled-element blank line, the
+  empty-list guards, `%10.0f`), and the dispatcher wiring (filenames/solution-guard/
+  `@lastshowfile`) is faithful. Two follow-ups landed (both **test-only**): **(F1)**
+  the generator `$` register sits **exactly** on the `%10.0f` half-boundary
+  (`7.5 → 8`) — documented at the `show_generators` pin as *stable*, not a
+  knife's-edge: it derives from the stiff clean `kWh = 300` (`model=1` holds
+  P = 100 kW → ∫P dt = 300 exactly, bit-identical both engines, no faer-vs-KLU
+  residual) and `7.5 → 8` under both round-half-to-even and round-half-away, so the
+  exact compare cannot straddle; **(F2)** three coverage goldens added —
+  `show_meters_multi` (two **partitioned-zone** meters: em1 stops at em2, so the two
+  rows carry distinct per-zone registers → pins the legend-emitted-once-from-`meters[0]`
+  + per-row-registers path) and `show_meters_none` / `show_generators_none` (the
+  empty-list banner branches: `No Energymeter Elements Defined.` / the two-line
+  Generators banner). golden_phase8 **86→89**. Left as noted (not a bug): the
+  tokenizer is field-width-blind (the whole Show family's known limit, F3).
+- **WP8.4 (Show reports) — step 9 COMPLETE, gate-green** (the overload/unserved
+  pair): `Show Overloads` (`ShowOverloads` → `Overload.txt`, dispatcher arm 16) and
+  `Show Unserved` (`ShowUnserved` → `Unserved.txt`, arm 17) — the symmetrical-
+  component PD-element overload report (one row per enabled non-capacitor PDElement
+  whose terminal-1 max phase current exceeds its normal/emergency rating: `Element
+  Term I1 IOver %Normal %Emerg I2 %I2/I1 I0 %I0/I1`, `%3d`/`%8.1f`/`%8.2f`) and the
+  Loads over their voltage-drop criterion (`name bus kW EEN UE`, `%8.0f`/`%9.3f`; a
+  nonempty trailing param → the `UE_Only` emergency criterion). New
+  `report/show/overloads.rs`/`unserved.rs` reuse the WP8.3 seq-current
+  (`for_each_enabled_elem`/`SymComp`) and Load-criterion (`unserved`/
+  `exceeds_normal`) machinery that `export_overloads`/`export_unserved` already pin;
+  the Show **layout** differs (no `kVAOver` column; fixed-width fields; the degenerate
+  `NormAmps<=0` branch emits the literal `     0.0`). golden `show_{overloads,
+  overloads_unbal,unserved,unserved_ue}` (golden_phase8 **89→93**) reuse the
+  `DECK_GROUPS` export decks (ovl/ovl2/uns/uns2 — single-sourced by index, no drift)
+  via the new deck-based `run_deck_show`/`_gen_show_deck_group` helpers; **all four
+  exact equality** (`rel=0, abs=0`) — the seq currents / EEN·UE factors are the same
+  `corpus_live`-pinned paths, and on the clean synthetic decks every `%8.1f`/`%9.3f`
+  cell is byte-identical (incl. ovl2's unbalanced I2/I0 + the `normamps=0`
+  degenerate-column row, and uns2's healthy-load exclusion). No corpus migration
+  (`Show` was never a blocker — the deferred keywords stayed *silent* no-ops, so no
+  deck was parked on them). **Both audits ran (`d44e2b3`): no correctness bug.**
+  audit-code confirmed both formatters + arm 16/17 reproduce `ShowOverloads`/
+  `ShowUnserved` field-for-field (headers, terminal-1-only walk, the `>=3`/`<3`-phase
+  split, capacitor exclusion, the overload guard, every degenerate `     0.0`
+  literal, `Show`'s no-uppercase `pLoad.Name`, filenames, `@lastshowfile`). audit-tests
+  found the goldens sound (trusted-oracle bytes, single-sourced deck, exact-equality
+  justified) but flagged two **Minor** coverage gaps — closed with two follow-up
+  goldens (golden_phase8 **93→95**): `show_overloads_1ph` (a dedicated deck: a
+  **1-phase** overloaded line with `emergamps=0` + a small overloaded capacitor —
+  pins the three branches ovl/ovl2 miss: the `<3`-phase seq fallback, the
+  `EmergAmps<=0` degenerate `%Emerg`, and the capacitor-skip) and `show_unserved_normal`
+  (`show unserved` on `uns2` — the **normal**-criterion healthy-load exclusion, a
+  distinct `ExceedsNormal` filter the single-load `uns` deck couldn't pin). Left as
+  noted (not a bug, whole-Show-family limits): the token comparator is field-width-blind
+  (widths are per-report backend quirks, deliberately not reproduced), and the
+  `.norm()`/round-half-even vs FPC `Cabs`/round-half-away last-ULP floor is a Phase-8-wide
+  formatter property (documented in `format.rs`), not a step-9 regression — watch for a
+  `%.Nf` half-boundary straddle if new fixtures land boundary values.
+  **Remaining unported Show keywords** (all still *silent*
+  no-ops, `TODO(WP8)`): `Controlled` (needs the `ControlElementList` accessor),
+  `Zone`/`Isolated`/`Loops`/`Topology` (CktTree walks), `FaultStudy`, `Yprim` (needs
+  the active-ckt-element surface + its non-`CircuitName_` filename), `LineConstants`,
+  `busflow` (`ShowBusPowers`), `autoadded`/`QueryLog` (headless FireOffEditor
+  no-ops), `deltaV` (deferred).
+- **WP8.4 (Show reports) — step 10 COMPLETE, gate-green** (the FaultStudy report):
+  `Show Faults` (`ShowFaultStudy` → `FaultStudy.txt`, dispatcher arm 6) — the
+  three-section short-circuit report over the **precomputed** bus `Zsc`/`Ysc`/`VBus`/
+  `BusCurrent` a prior `Solve mode=faultstudy` (WP7.9) populated (read-only,
+  PHASE8_PLAN §2.1): (1) all-node bolted currents (`|BusCurrent[i]|` `%15.0f` + `X/R`
+  of `Zbus = VBus[i]/BusCurrent[i]` `%5.1f`, `N/A` on zero current), (2) one-node-to-
+  ground SLG (`|VBus[iphs]/Zsc[iphs,iphs]|` + the pu node voltages `|VBus[i] −
+  Zsc[i,iphs]·IFault|`, faulted node ≈ 0), (3) adjacent node-node L-L via a
+  `GFault = 10000 S` scratch inversion of `Ysc` (`iphs < iphs2` only, no wrap). New
+  `report/show/fault_study.rs` reuses the WP7.9 fault state + the `export_fault_study`
+  scratch-inversion math; the two scalar complex divisions use the FPC-faithful
+  `cdiv_fpc` (matching the oracle's `ucomplex` `/`), the node-node inversion the
+  FPC-faithful `CMatrix::invert`. golden `show_faultstudy` (golden_phase8 **95→96**),
+  feeder-based (IEEE13 + `solve mode=faultstudy`, the `export_faultstudy`/`SeqZ`
+  fixture shape) via `run_feeder_show`, **exact equality** (`rel=0, abs=0`) on the
+  first try: the fault currents/voltages derive from the bit-exact assembled Y +
+  FPC-faithful matrix ops, so every `%15.0f`/`%12.0f`/`%5.1f`/`%10.3f` cell is
+  byte-identical Rust↔oracle (no straddle). No corpus migration (`Run_NEV.dss`, the
+  one deck with `show faults`, stays blocked on `Select`/`show yprim`). **Both
+  audits ran (`535d893`): no correctness bug in the port** (audit-code verified
+  `ShowFaultStudy` field-for-field incl. `cdiv_fpc`/`get_xr`/`CMatrix::invert`
+  fidelity and confirmed the `None`-`Zsc`/`Ysc` `continue` guard correctly protects
+  against the exact **upstream UB** — Pascal `ZFault.CopyFrom(nil)` access-violates
+  on that path). Two **audit-tests** findings, both addressed: (Major D) the golden
+  doc's "pinned to 1e-8 by `corpus_live.rs`" was **false** (corpus_live snapshot-
+  solves, never enters faultstudy, never compares `Zsc`/`Ysc`/`BusCurrent`) — doc
+  rewritten to cite the real aggregate pins (`export_faultstudy` `%.2f` +
+  `export_seqz`) and state the per-node amps/X-R/pu matrices are pinned by this
+  golden alone at print precision (the fault state carries the ~1e-8 faer-vs-KLU
+  floor from the `Zsc` re-solves; exact holds only because no cell straddles a
+  `%.Nf` boundary on this feeder). (Major A) two branches were unexercised by the
+  based-IEEE13 golden. **Empirical correction (probe-proven):** the oracle
+  access-violation is on a **cold** `solve mode=faultstudy` (no prior converged
+  solve → unallocated `Zsc`), *not* the `kVBase<=0` report itself — with a prior
+  `solve mode=snap` the oracle renders the unbased L-N-Volts report fine. So the two
+  branches split by reachability: (1) the cold path is genuine UB — our engine
+  guards it (refuses the cold faultstudy, then the `None`-`Zsc` guard yields the
+  section-1 `N/A` branch, no panic), pinned by the **`fault_study_cold_solve_is_safe`
+  unit test** (no golden — the oracle crashes there); (2) the `kVBase<=0` `%10.1f`
+  L-N-Volts branch IS oracle-comparable → pinned by the **`show_faultstudy_unbased`
+  golden** (an unbased deck via `run_deck_show`, exact equality, also pinning a
+  1-node lateral bus). golden_phase8 **96→97**; lib 732→733.
+- **WP8.4 (Show reports) — step 11 COMPLETE, gate-green** (Yprim + the
+  active-ckt-element surface): the `Select` executive command (Pascal `DoSelectCmd`,
+  `ExecHelper.pas:670`, ordinal 6 — `do_select_cmd` in `exec/command.rs`) sets the
+  new `Dss.active_ckt_element: Option<(cls,idx)>` (+ the element's active terminal;
+  `SetActiveBus` skipped as inert, like `Open`/`Close`), and `Show Yprim`
+  (`ShowYPrim`, dispatcher arm 25) dumps that active element's primitive Y — the
+  `G` (conductance) then `jB` (susceptance) **lower triangles** by rows (`%13.10g`),
+  from `cd.yprim` (`GetYprimValues(ALL_YPRIM)`); a `Nil` Yprim prints `Yprim matrix
+  is Nil`. New `report/show/yprim.rs`; the filename is the one Show exception —
+  `<ParentClass.Name>_<Name>_Yprim.txt` with **no** `CircuitName_` prefix
+  (`ShowOptions.pas:395`), written via the new `write_show_path` (raw
+  `<OutputDir><filename>`; `write_show_named` now delegates to it). golden
+  `show_yprim` (golden_phase8 **97→98**): `Select line.650632` + `show yprim` on
+  solved IEEE13, **exact equality** (`rel=0, abs=0`) — the LineCode-based line's
+  primitive Y is bit-exact Rust↔oracle, so every `G`/`jB` cell is byte-identical;
+  the `*_Yprim.txt` glob also pins the no-`CircuitName_` filename. `Select` is now a
+  real command (was a `not_ported` stub); may unblock corpus decks
+  (`Run_NEV.dss` used `Select`/`show yprim`) at the next classify pass.
+  **Both audits ran (`c66d0c0`). audit-code found ONE real Major bug + two Minor
+  error-fidelity gaps, all fixed:** (Major) `active_ckt_element` was **not reset in
+  `do_clear_cmd`**, so `select X → clear → new circuit → show yprim` indexed the
+  emptied class objects → an **OOB panic** (confirmed by the auditor's probe) — fixed
+  by resetting it alongside `active_class`; (Minor) an unknown non-empty class emitted
+  #246 instead of Pascal's **#903** ("Object Class … not found") and dropped the
+  **fallback to the previously-referenced class** — `do_select_cmd` restructured to
+  match `SetObjectClass` (log #903, keep `active_class`, fall through), oracle-probed
+  (`select badclass.l2` after a Line select → #903 + selects `l2`); (Minor) the
+  active-terminal parse used a value-based `>0` instead of Pascal's `Length(Param)>0`
+  (a present out-of-range terminal must leave the active terminal **unchanged**, not
+  reset to 1) — fixed. **audit-tests** flagged the `Select` command's error/edge
+  branches as uncovered (Major) + the no-`CircuitName_` convention + the Yprim
+  no-op/Nil arms (Minor) — closed with the new **`exec/tests/select.rs` (9 tests,
+  lib 733→742)**: the Clear-reset regression (the Major bug's guard), the #903+fallback,
+  the terminal parse incl. the OOR-unchanged case, #245, the DSS_OBJECT/`circuit.<name>`
+  no-ops, the Yprim no-op-without-Select, and the `Line_l1_Yprim.txt` filename (no
+  `CircuitName_`).
+- **WP8.4 (Show reports) — step 12 COMPLETE, gate-green** (the EnergyMeter
+  zone-tree pair): `Show Loops` (`ShowLoops` → `Loops.txt`, dispatcher arm 21) and
+  `Show Zone <meter>` (`ShowMeterZone` → `<CircuitName_>ZoneOut_<meter>.txt`, arm 14)
+  — both walk the meter's **already-built** zone tree (the WP6.4 `MakeMeterZoneLists`
+  `BranchList`): `Show Loops` writes one line per parallel/looped branch across all
+  meter zones (`(mtr) Class.UPPERCASE(Name): PARALLEL WITH|LOOPED TO
+  LoopLineObj.FullName`), `Show Zone` the whole zone as a `Level`-tab-indented
+  branch/shunt tree with the inline `(PARALLEL:LoopLineObj.Name)`/
+  `(LOOP:LoopLineObj.FullName)` + `(Sensor: …)` annotations. New
+  `report/show/meter_zone.rs` reads the persisted `sequence_list` (== the
+  `First`/`GoForward` walk order) + the new `sequence_nodes` map to reach each
+  branch's `TreeNode` (`is_parallel`/`is_looped`/`loop_elem`/`level()`/`shunts`) with
+  no cursor mutation; new `EnergyMeter::branch_list`/`sequence_nodes` +
+  `TreeNode::level` accessors. Zone `SensorObj` = the meter itself
+  (`(Sensor: EnergyMeter.<m>)`, set at zone build, `build.rs:167`/291/350). golden
+  `show_{loops,zone,loops_mesh,zone_mesh}` (golden_phase8 **98→102**): radial metered
+  IEEE13 (header-only loops + the 32-line zone tree) + a **synthesized meshed deck**
+  (a 3-line loop b1-b2-b3-b1 + a line parallel to `la`) exercising the PARALLEL/LOOP
+  branches of both reports. **All four compared BYTE-EXACT** (not the field-width-blind
+  token diff the padded Show tables must use) — these pure-text reports have no
+  `MaxBusNameLength`/`PadDots` backend quirk, so the deterministic `TABCHAR`
+  indentation + trailing spaces are reproducible in full (new
+  `assert_show_bytes_eq` + `run_{feeder,deck}_show_exact`, sharing the extracted
+  `produce_{feeder,deck}_show` replay helper). The two `ShowMeterZone` error branches
+  (#221 empty name, #220 meter-not-found — file still written, `GlobalResult` set)
+  are golden-uncoverable (they push an error) → pinned by the new
+  `show_zone_error_paths` unit test (lib **742→743**). No corpus migration (`Show`
+  was never a blocker). **Both audits ran.** **audit-code — one real Major bug found +
+  fixed:** `Show Zone` on a **found-but-disabled** meter (`BranchList = NIL`) wrote the
+  2-line header, but Pascal guards the *entire* body — header included — on
+  `BranchList <> NIL` (`ShowResults.pas:2453`), so the oracle writes an **empty** file
+  (probe-confirmed 46 bytes vs 0); a silent, gate-invisible divergence (no error, not
+  corpus-reachable) — fixed by moving the header inside the `Some(tree)` guard,
+  regression-guarded by the new `show_zone_disabled_meter_is_empty` unit test (also
+  closes audit-tests' None-`BranchList` gap for both reports). One **Minor** fixed: the
+  `Show Zone` header echoed the stored (lowercased) meter name; Pascal uses the raw
+  command `Param` (native case, like the filename) — probe-confirmed (`show zone EM1`
+  → header `EnergyMeter EM1`, SensorObj still `EnergyMeter.em1`) — fixed by threading
+  `param` into the header. **audit-tests — two Minor coverage gaps + closed:** the
+  multi-meter `show_loops` outer loop was single-meter-only → new `show_loops_multi`
+  golden (a 2-meter deck: zone A loop + zone B parallel, so **both** meters emit rows,
+  pinning header-once + per-meter `(mtr)` prefix); the None-`BranchList` branch →
+  closed by the disabled-meter unit test above. Both confirmed the `(Sensor: NIL)` /
+  `loop_elem == None` arms are **unreachable by construction** (correct 1:1 ports of
+  defensive Pascal `else`s, `build.rs:167`/334-337). golden_phase8 **102→103**; lib
+  **743→744**.
+- **WP8.4 (Show reports) — step 13 COMPLETE, gate-green** (`Show Controlled`):
+  `ShowControlledElements` (`ShowResults.pas:3905` → `ControlledElements.csv`,
+  dispatcher arm 33) — every PD element carrying a control, then `, <control
+  FullName> ` per control (Pascal `Format(', %s ', …)`, native case, trailing
+  space). **Ported the missing model piece** the report needs (per
+  [[port-gaps-immediately]]): the Rust port materialises **no** `HasControl` flag /
+  `ControlElementList` (only the forward control→element ref), so a new
+  `CktElement::controlled_element()` trait accessor (default `None`, overridden by
+  all 11 controls → `self.ccd.controlled_element`) lets `report/show/controlled.rs`
+  **derive** the PD→controls map by scanning `ckt.controls` (creation order) and
+  matching — read-only (PHASE8_PLAN §2.1), reproducing the exact observable
+  (`ControlElementList` insertion order == control creation order == `ckt.controls`
+  order; a reassigned control follows its *current* target = Pascal's remove-then-add
+  final state). golden `show_controlled` (golden_phase8 **103→104**): solved IEEE13's
+  three regulator RegControls → their Transformers, compared **byte-exact**
+  (`run_feeder_show_exact` — pure names, no `MaxBusNameLength`/`PadDots` quirk), also
+  pinning the `*_ControlledElements.csv` filename. No corpus migration (`Show` never
+  blocked a deck). **Both audits ran.** **audit-code — one real Major bug found +
+  fixed:** the override was added to only 11 controls; **Fuse** (the 12th
+  `TControlElem`, living under `elements/pd/fuse/` not `elements/control/`, so the
+  control-dir grep missed it) fell through to the `None` default → every fuse-switched
+  line **silently vanished** from the report (uncaught by the RegControl golden +
+  `corpus_live` solve-only compare). Fixed (Fuse override) + pinned by the new
+  `show_controlled_multi` golden's `Line.l3, Fuse.fu1 ` line. One **Minor** documented
+  (not materialised): the derive-at-read uses `ckt.controls` creation order, but
+  Pascal's remove-then-add **re-appends** a *re-edited* control to the end of its
+  target's list — the two disagree only for ≥2 controls on one element with a
+  post-creation element-ref edit (probe-only, no corpus deck; the faithful fix =
+  materialise the whole `ControlElementList`, disproportionate) — noted at the
+  `controlled_element()` doc. **audit-tests — Major coverage gap closed:** the feeder
+  golden exercises only single-control-per-PD + the `RegControl` override; the new
+  synthesized **`show_controlled_multi`** deck golden (byte-exact, `run_deck_show_exact`)
+  pins the repeated-control `, %s , %s ` loop + creation-order ordering (Line.l1
+  Recloser→Relay, Line.l2 two SwtControls) and **all five** PD-targeting overrides
+  (swt/recloser/relay/fuse/capcontrol). golden_phase8 **104→105**.
+- **WP8.4 (Show reports) — step 14 COMPLETE, gate-green** (`Show LineConstants`):
+  `ShowLineConstants` (`ShowResults.pas:3244`, dispatcher arm 24) — for every
+  `LineGeometry`, the per-unit-length **R / jX / susceptance / L / C** matrices
+  (lower triangle, `%.6g`) at the parsed `freq`/`units`/`rho` (defaults
+  `DefaultBaseFreq`/`kft`/`100`) + the **order-3 equivalent symmetrical-component
+  summary** (Z1/Z0 + L1/L0, C1/C0, surge impedance, propagation velocity). Writes
+  **two** files: `<CircuitName_>LineConstants.txt` (the report, sets `@lastshowfile`)
+  and `LineConstantsCode.dss` (a LineCode script, same dir, **no** `CircuitName_`
+  prefix, via `write_show_path`). New `report/show/line_constants.rs` reuses the
+  **WP7.1** `LineGeometryObj::{z_matrix,yc_matrix}` Carson recompute (`set_rho_earth`
+  + the requested freq/units/earth-model) + `CMatrix::{order,get,invert}` +
+  `LineUnits::{as_str,to_per_meter}`; the report's L/C post-scaling uses the full
+  `TwoPi` (Pascal `DSSGlobals.TwoPi = 2·PI`, distinct from the Carson engine's
+  truncated internal `TWOPI`). golden `show_lineconstants` (a synthesized 3-cond `g3`
+  + 1-cond `g1` geometry deck) verifies **both** files **byte-exact** (`g3` exercises
+  the matrices + seq summary; `g1` the order≠3 no-seq branch) — the Carson values are
+  bit-exact Rust↔oracle bar the proven transcendental libm floor, and every `%.6g`
+  cell lands byte-identical (no 6-sig straddle). **Found + fixed a real byte-fidelity
+  bug** surfaced by this first byte-exact *numeric* report: `format::g` emitted a
+  lowercase-`e` exponent (C printf) but FPC `Format('%g')` emits **uppercase `E`**
+  (`1.19304E-6`) — fixed in `format::g` (+ `g_w`/`g_left_w` routed through it); the
+  value-parsing gate was case-blind so it hid until now. golden_phase8 **105→106**.
+  No corpus migration (`Show` never blocked a deck). **audit-tests follow-up (2
+  coverage goldens):** the step-14 golden used only default args + a non-empty
+  geometry list → two branches unexercised: (1) **`show_lineconstants_mi250`**
+  (`show lineconstants 60 mi 250`) pins the `freq`/`units`/`rho` arg-parse arms AND
+  that `rho=250` (earth-return) + `units=mi` propagate into the Carson recompute
+  (values, `ohms per mi` labels, `To_per_Meter` velocity) — also **proves the
+  `set_rho_earth`-then-recompute path is correct** (a fresh geometry's `fline_data`
+  is built at parse, so the rho takes effect; the suspected rho-drop is a non-issue),
+  byte-exact on both files; (2) **`show_lineconstants_empty`** (a geometry-less deck)
+  pins the header-only path. golden_phase8 **106→108**. **audit-code — no correctness
+  bug** (rho/full-`TwoPi`/matrix-math/units/two-file all verified faithful + byte-exact
+  incl. the auditor's own `mi250`/`freq=50` probes; the `twopi=TAU` confirmed —
+  `ShowResults.pas` pulls `DSSGlobals.TwoPi=2·PI`, not the truncated Carson one). One
+  **Minor** fixed: the geometry-compute error path silently dropped Pascal's **#9934**
+  `Error computing line constants for …` message — the formatter now returns it and
+  the dispatcher extends the error log (unreachable for a validly-parsed geometry, so
+  golden-uncoverable; the safe skip still does not reproduce Pascal's post-log NIL-`Z`
+  fault). One coverage golden added on the audit's recommendation: **`show_lineconstants_f50`**
+  (`show lineconstants 50`, freq≠DefaultBaseFreq) pins the non-default-frequency Carson
+  propagation. (Pre-existing, out-of-scope: `fmt_g` NaN/Inf formatting for a
+  pathological negative-surge-radicand order-3 geometry — unreachable for real lines.)
+  golden_phase8 **108→109**.
+- **WP8.4 (Show reports) — step 15 COMPLETE, gate-green** (`Show busflow`):
+  `ShowBusPowers` (`ShowResults.pas:1493`, dispatcher arm 23) — the power flow around
+  a named bus, two forms: **code 0** (seq) the bus's seq voltages + per-element seq
+  currents (all terminals) + seq powers (the `CheckBusReference`-matched terminal);
+  **code 1** (elem) the node voltages + per-terminal branch currents (PD residual) +
+  branch power flow. New `report/show/bus_powers.rs` filters every element by
+  `check_bus_reference` and **reuses the extracted per-bus / per-element helpers**:
+  `voltages::{seq_voltage_row, bus_voltage_block}` (pulled out of `show_voltages`/
+  `show_voltages_nodes`, byte-preserving — the 4 voltage goldens still pass),
+  `currents::{get_i0i1i2, write_seq_currents, write_terminal_currents}` (`write_seq_currents`
+  = the Pascal `WriteSeqCurrents` with `NormAmps=EmergAmps=0`), `powers::write_terminal_power_seq`
+  (`WriteTerminalPowerSeq`, incl. the 1-/2-phase `S1` special cases), plus a local
+  `WriteTerminalPower`. The `#219 Bus not found` error + the `<BusName|BusPower>_{seq|
+  elem}_{kVA|MVA}.txt` filename are in the dispatcher. goldens `show_busflow` +
+  `show_busflow_elem` on solved IEEE13 **bus 675** (a fully-energised leaf) — the seq
+  form **fully exact** (`rel=0, abs=0`), the elem form exact bar the **capacitor's
+  ~0-kW / PF** faer-vs-KLU residual cells (gated on the row's kW `<1e-4`). Bus 675 was
+  chosen over a richer junction (671) whose `%10.5g` kvar cell lands on a 5-sig
+  rounding boundary (a print straddle). golden_phase8 **109→111**. No corpus migration
+  (`Show` never blocked a deck). **Both audits found no correctness bug** (audit-code
+  verified `ShowBusPowers` field-for-field incl. `check_bus_reference`, the seq
+  currents-all-terminals / powers-matched-terminal asymmetry, the element-section
+  PD-residual + PC/Faults order, both `write_terminal_power*` layouts, MVA scaling,
+  and the extraction faithfulness; audit-tests confirmed the goldens sound). **Both
+  audits' recommended coverage landed** (5 tests): `show_busflow_mva`/`_mva_elem`
+  (the `Show`-path's only MVA coverage — `×0.001` + MW/Mvar/MVA headers),
+  `show_busflow_1ph`/`_1ph_elem` (bus 611 — the `<3`-phase seq path
+  `WriteSeqVoltages`<3 / `WriteTerminalPowerSeq` `S1`), and the
+  `show_busflow_unknown_bus_errors` unit test (`#219`, golden-uncoverable) — all
+  reusing the shared `busflow_seq_policy`/`busflow_elem_policy`; golden_phase8 **→120**.
+  Tracked (WP8.8 byte pass, not gated — the token comparator masks it): FPC `Format('%g')`
+  prints **fixed** notation for a value in ~[1e-5,1e-4) where C/`fmt_g` switches to
+  scientific (`0.000043053` vs `4.3053E-5`) — a `format::g` band divergence with no
+  current byte-exact test in that range.
+- **WP8.4 (Show reports) — step 16 COMPLETE, gate-green** (`Show Isolated` +
+  `Show Topology` — the circuit-wide CktTree pair): the new `solution/topology.rs`
+  ports Pascal `GetIsolatedSubArea` (`CktTree.pas:624`) + its 5 connectivity helpers
+  (`GetSources/GetPC/GetShuntPD/FindAllChildBranches`) and `GetTopology`
+  (`Circuit.pas:3034`) — the same bus-adjacency BFS `make_meter_zone_lists` runs per
+  meter, but circuit-wide from the source, reusing the WP6.4 `CktTree` primitives +
+  `build_active_bus_adjacency_lists` + `all_terminals_closed` + the loop/parallel
+  detection. Unlike the read-only reports these **mutate** element flags
+  (`CHECKED`/`IS_ISOLATED`/`terminals_checked`) + bus `bus_checked` (via `ClassStore`,
+  the mutable `ElemStore`), exactly as Pascal does. `report/show/isolated.rs`
+  (`ShowIsolated` → `Isolated.txt`, arm 7) builds the source tree + one sub-area per
+  unreached PD element and lists the not-connected buses / isolated sub-networks /
+  isolated enabled elements / connected tree; `report/show/topology.rs` (`ShowTopology`
+  → two files `TopoTree.txt`+`TopoSumm.txt`, arm 28) the TABCHAR-indented branch/shunt
+  tree with the `(PARALLEL:…)`/`(LOOP:…)`/`(Sensor:…)`/`(Control:…)`/`(Meter:…)`
+  annotations (the control annotations derive from the `ckt.controls` scan, like
+  `Show Controlled`, since `HAS_CONTROL` is not materialised) + the level/loop/parallel/
+  isolated/switch counts (`ShowTreeView` is a headless no-op). goldens
+  `show_{isolated,topology}` on metered IEEE13 (the connected tree + the 1-loop
+  regulator topology) + `show_{isolated_iso,topology_mesh}` on a **synthesized** deck
+  (a PARALLEL line pair + a switched line/SwtControl + a fully ISOLATED island) — all
+  compared **byte-exact** (pure text: names + tree levels + TABCHAR indent, no backend
+  width quirk), covering the non-empty isolated/parallel/switch branches the radial
+  IEEE13 misses (the deck is unsolved — the island is singular — and the topology walk
+  still resolves it: the port processes buses at `calcvoltagebases`, no
+  `ReprocessBusDefs` needed). golden_phase8 **111→115**. No corpus migration.
+  **audit-tests follow-up — one Major coverage gap closed:** the two `ShowIsolated`
+  sections the IEEE13 + mesh goldens leave empty (the "ENABLED ELEMENTS ARE ISOLATED"
+  `"FullName"  Buses: "bus"` list + the 1-based `get_bus(j)` walk, and the "BUSES NOT
+  CONNECTED TO ANY POWER DELIVERY ELEMENT" list) → the new `show_isolated_orphan`
+  deck golden (an orphan Load + Generator on PD-less, source-disconnected buses)
+  pins both, byte-exact (golden_phase8 **115→121** incl. the step-15 busflow follow-up).
+  Tracked low-payoff (not added): the `(Sensor:…)` topology annotation (needs a
+  solved+metered+sensored deck), the `>30`-level `(* level *)` tab overflow, and the
+  no-source empty-tree branch. **audit-code follow-up — two real Major `ShowIsolated`
+  bugs found + fixed:** (A) the isolated-**sub-area** selection was missing the
+  `Enabled` guard (`ShowResults.pas:2915` `if TestElement.Enabled`), so a **disabled**
+  PD element (in `ckt_elements` but not the adjacency lists) would print a spurious
+  `*** START SUBAREA ***` block — fixed + pinned by `show_isolated_disabled`; (B)
+  `ShowIsolated` was missing its `if BusNameRedefined then ReprocessBusDefs`
+  (`:2859`, the one Show report that resolves bus refs itself), so on a compiled-but-
+  **unsolved** circuit the terminal `bus_ref`s stay `NO_BUS` and the walk yields a
+  degenerate one-source tree — fixed (reprocess in dispatcher arm 7, `ShowTopology`
+  correctly left without it) + pinned by `show_isolated_unsolved`. One **Minor** (the
+  inert `ToBusReference`, unread by the reports) filled for walk-fidelity. golden_phase8
+  **122→124**. (The `controls_of` multi-control annotation order the auditor flagged
+  is already validated by `show_controlled_multi` — same `ckt.controls` derive.)
+- **WP8.4 finalize — dispatch tail (partial), gate-green.** Now that every real
+  `Show` keyword is ported, `do_show_cmd` gains the Pascal **`#24700`** unknown-keyword
+  error (`ShowOptions.pas:119-124`, pushed + return before the solve-guard) and
+  explicit **silent no-op** arms for the three headless-FireOffEditor keywords
+  `autoadded`(1) / `QueryLog`(32) / `deltaV`(31) (deltaV keeps its `TODO(WP8)`) —
+  replacing the blanket `_ => {}`. Safe: all 21 distinct corpus `Show` keywords (incl.
+  the ambiguous `v`/`y`/`f`/`mon`) map to ported arms (verified — corpus_live stays
+  green). New `show_unknown_and_deferred_keywords` unit test. golden_phase8 **→122**.
+- **WP8.4 finalize — `Show DeltaV` (the last deferred report), gate-green.**
+  `ShowDeltaV` + `WriteElementDeltaVoltages` (`ShowResults.pas:3822`/`339`, arm 31,
+  in the solve-guard set): the voltage across each enabled 2-terminal element
+  (Sources/PD/PC), per conductor `NodeV[term1] − NodeV[term2]` — magnitude / percent
+  (0 when the terminals' kVBase differ, e.g. a transformer) / base-kV / angle
+  (`%12.5g`/`%6.1f`). New `report/show/delta_v.rs`. **The step-4 deferral is
+  resolved**: the `NodeRef[i+NCond]` cross-terminal read now resolves both terminals'
+  buses for the delta-primary `Transformer.SUB` (3 rows, matching the oracle) — later
+  Phase-7 transformer node_ref work fixed the layout that produced 0 rows at step 4.
+  golden `show_deltav` on solved IEEE13 (exact equality — same solved `node_v` the
+  voltage goldens pin). golden_phase8 **→125**. **next = the corpus classify/migrate
+  pass** (Show was never a blocker, so likely a no-op — refresh + confirm), then the
+  STATUS full sync + WP8.4 close.
+- **WP8.5 (Save/Dump) — Dump step 1 COMPLETE, gate-green.** The `Dump`
+  single-object forms (`Dump <class>.<name> [debug]` / `Dump <class>.* [debug]`,
+  Pascal `DoPropertyDump`, `ExecHelper.pas:1194`): new `report/save/` module
+  (`dump.rs` = the generic base reproducing Pascal's 4-level `TDSSObject`→
+  `TDSSCktElement`→`TPCElement` chain, selected per element kind — plain / non-PC
+  CktElement / PCElement — with `dump.rs::overrides` downcast-dispatching the
+  per-class leaf overrides) + the **Reactor** override (`reactor/dump.rs`: the NIL-
+  matrix skip, the un-`~` `RMatrix=`/`XMatrix=` lines, the `%-.8g` Z/LmH forms) +
+  the `#903` (`SetObjectClass` fail) / `#256` (object-not-found) errors + the
+  `dump_one_object` dispatcher (`exec/report.rs`, precomputing the PC `! VARIABLES`
+  values via the mutable element walk). The whole-circuit forms (bare `Dump` /
+  `Dump debug` + `Circuit.DebugDump` header, `Dump solution`, `Dump commands`/
+  `buslist`/`devicelist`/`alloc`) are scoped TODO(WP8) step 3; the 13 non-Reactor
+  overrides are TODO(WP8) step 2 (until each lands, its class dumps via the generic
+  base). Property lines reuse `ClassProps::get_value` (Pascal `PropertyValue[i] ==
+  GetPropertyValue(i)`). goldens `dump_reactor`/`dump_reactor_debug` (synthesized
+  reactor deck: r1 series R+X + rz R/X-matrices; `debug` adds the CktElement
+  NPhases/…/NodeRef/Terminal Status/Bus Ref + the `%13.10g` YPrim G/B) **byte-exact**
+  (golden_phase8 **125→127**). **Two latent byte-fidelity bugs found + fixed**
+  (both surfaced by this first byte-exact property dump; `props_roundtrip`'s numeric
+  compare masked both): **(1)** the port stored property names in ad-hoc lowercase
+  (`bus1`/`kv`/`normamps`) but Pascal `PropertyName[i]` (what Dump/Save emit) is the
+  **display case** (`Bus1`/`kV`/`NormAmps`) — corrected for Reactor, pinned by the
+  golden; matching stays case-insensitive (`CommandList` lowercases both sides), so
+  no parse regression, and **Save's round-trip gate is case-insensitive** so only
+  Dump byte goldens need each class's names corrected (class-by-class as they land);
+  **(2)** `float_to_str` was `format!("{v}")` (Rust's 17-digit shortest-round-trip)
+  where FPC `FloatToStr` is `ffGeneral`/**15 sig figs** — fixed to `fmt_g(v, 15)`
+  (full workspace suite green, 745 lib tests, so no numeric-gate regression; the
+  scientific-exponent FPC form is a scoped `TODO(compat)`, unreached by in-scope
+  dumps). REACTORTest unblocked (converges clean on Rust) — migration deferred to
+  the Dump-completion classify pass (PHASE8_PLAN §WP8.5 step 4).
+  **Both audits ran (`5550cf5`) — one real Dump byte bug + ONE latent Phase-4
+  reactor bug found, both fixed:** **(audit-code Finding 1, Major)** `Terminal Bus
+  Ref` printed `0` for an unresolved terminal (disabled element), but Pascal
+  `Terminal.BusRef = -1` "not set" (`Terminal.pas:41`) renders `-1` — fixed +
+  pinned by `dump_reactor_disabled`. **(audit-tests #1 → a real latent bug)** the
+  coverage golden for a symmetrical-components reactor (`SpecType=4`, Z1≠Z2 — the
+  induction-motor `KerstingMotor`) exposed that `reactor/solve.rs::stamp_series`
+  wrote the two-terminal series stamp's **bottom-left block at `(j+n, i)` instead
+  of Pascal's `(i+n, j)`** (`Reactor.pas:936`) — invisible for every *symmetric*
+  reactor Y (R+X / matrices, all prior cases) but **transposes the asymmetric
+  sym-components YPrim**, corrupting an *unbalanced* solve (a balanced solve is
+  unaffected — verified Rust≡oracle node V). Fixed; full suite green (no
+  symmetric-reactor regression). Also pinned by a **solve-level** regression test
+  `asymmetric_sym_components_reactor_unbalanced_solve` (an unbalanced deck — the
+  transposed stamp violates KCL `I_t1+I_t2=(Y−Yᵀ)V1≠0`, so reverting the fix fails
+  it by ~20 kA — plus per-conductor currents vs the pinned oracle). Coverage added
+  for every audit gap: goldens
+  `dump_reactor_symcomp` (nonzero Z1/Z2/Z0 + the single-object form),
+  `dump_reactor_disabled` (`! DISABLED` + the `-1` fix), `dump_loadshape` (the
+  generic plain-`TDSSObject` path — LoadShape names already match the oracle) +
+  unit tests `float_to_str_is_15_sig_figs` (pins the 15-sig fix directly) and
+  `dump_generic_base_ordering` (the PC `! VARIABLES`/props-after and non-PC
+  props-before-`! ENABLED` orderings, oracle-probe-confirmed). Tracked (not fixed,
+  low): the `#903` message drops Pascal's `CRLF+CmdString` suffix (consistent with
+  the existing `do_select_cmd` #903 convention); `#256` doesn't create an empty
+  `PropertyDump.txt` (unobservable — `GlobalResult` unchanged); the systematic
+  property display-name pass (needed for step-3 bare-`dump`; done class-by-class as
+  Dump goldens land). golden_phase8 **127→130**; lib **745→748**. **Dump step 2**
+  (the five per-winding/matrix overrides + the `fmt_g`/`WdgCurrents`/`Vterminal`
+  fixes + both audit follow-ups) is recorded in the header §1 frontier above.
+  Original port map below (still current for the remaining steps):
+- **GAPS_PLAN authored (2026-07-05): the test-blocked-deferral closure plan +
+  the third live-gate family.** `GAPS_PLAN.md` (repo root) inventories every
+  Phase-4–7 deferral whose only blocker was a missing corpus deck — the WP7.9
+  "zero corpus cases → skip" anti-pattern PHASE8_PLAN §1 promised to correct —
+  and packages it as work packages (now WPG.1–13 + the WPG.17 exit sweep): Monte1/2/3 + MonteFault, LD1/LD2 (+ `Set
+  LDCurve=`), AutoAdd, `mode=Time`, the Newton algorithm, CapControl
+  `Follow`+`ControlSignal`, binary shape-file inputs, Reactor `RCurve`/`LCurve`,
+  InvControl Exponential + Storage VW/VV_VW, StorageController seasonal targets
+  (+ `Set SeasonRating/SeasonSignal=`), Relay Generic/TD21, GFM. The two
+  Phase-7 "Plot-blocked, zero payoff" tracked-opens are **stale**: the TD21
+  corpus decks carry pre-WP7.2 `unsupported_class=relay` tags, and the
+  IBRDynamics `GFM_IEEE123` decks compile — blocked only by BatchEdit (WP8.6)
+  + GFM itself. **16 synthesized decks** landed at `tests/corpus/gaps/` +
+  `manifest.json` (the `asymmetric`/`controls` family pattern; every case
+  `pending: true` until its WPG ports the feature — the future
+  `gaps_cases_match_oracle` must assert a pending case errors *loudly*, never
+  skips). Every deck probe-validated on the pinned oracle: **bit-identical
+  across two separate oracle processes** and **feature-sensitive** (seasonal
+  event log diverges without `SeasonRating`; harmonic channels shift without
+  `RCurve`/`LCurve`). Probe-proven facts recorded in the plan: FPC
+  `mathutil.pas` `initialization Randomize` time-seeds the RNG per process →
+  RNG-carried values can never be oracle-pinned (gates use `Set random=none`;
+  a single-Fault deck makes MonteFault deterministic — `Trunc(Random*1)+1=1`);
+  the oracle **segfaults at process exit** after an AutoAdd solve (solve +
+  results intact — capture before teardown); `InvControl.ControlModel` parses
+  only the ordinal, not the enum name; the option spelling is `Set
+  SeasonRating`, not `SeasonalRating`. Also removed the stray empty
+  `c/DI_yr_0/` artifact dir. No engine code touched (decks/plan/docs only).
+- **GAPS_PLAN extended (2026-07-05): the unported ELEMENT classes.** A registry
+  diff (Pascal `DSSClassDefs.pas` vs `exec/construct.rs`) found five
+  upstream-registered classes with no Rust port: **Isource** (541 ln),
+  **AutoTrans** (2065 ln — both were in the PORTING_PLAN crate sketch but never
+  assigned to a phase), **GICLine**/**GICTransformer**/**GICsource** (pulled in
+  from Phase 9). Now GAPS_PLAN §1b + WPG.14–16 (exit sweep = WPG.17), each with
+  Sonnet-executable staged steps (Pascal line refs, Rust module templates,
+  registration slots, gates, corpus reclassification). **18 element decks** at
+  `tests/corpus/gaps/` covering the {snapshot × time-series × snapshot→
+  time-series} × {micro × midi} matrix (Isource 7, AutoTrans 7, GIC 4 —
+  async/both N/A upstream for GIC; midi decks generated on the shared
+  scaffold via `gen_midi_decks.py`, 94–100 nodes) — all §3-validated on the
+  pinned oracle (two-process bit-identical; the reg decks control-active:
+  10–12 tap events; `gicsource` splice probes: `line.bus2 → gic_<name>`).
+  The family is now formally a **staging area** (GAPS_PLAN §3.1): a graduated
+  deck moves to `asymmetric`/`controls`/`modes` in the WP that flips its
+  `pending`, and WPG.17 deletes the emptied dir. Probe-proven upstream facts
+  recorded: GICTransformer parses `%R1` (not `pctR1`); AutoTrans
+  `WdgCurrents` = the `READS_VTERMINAL` family; corpus `Auto1bus`/`Auto3bus`
+  need no new class (stale `fault` tags — regular transformers); `GICsource`
+  has zero corpus decks. `ControlledTransformer` + user-model DLL classes
+  verified not-registered upstream (nothing to port). No engine code touched
+  (decks/plan/docs only).
+- **PHASE8_PLAN tail refresh (2026-07-05): the remaining WPs made
+  Sonnet-executable + their test corpus pre-built.** WP8.1–8.4 collapsed to
+  one-line done-markers (records live here, not in the plan); WP8.5 steps
+  3–6 / WP8.6 / WP8.7 / WP8.8 rewritten with exact Pascal line refs (from a
+  scoped deep-read of DoSaveCmd/Circuit.Save/WriteClassFile/DoPropertyDump +
+  the 8 remaining DumpProperties overrides; DoBatchEditCmd/DoInterpolateCmd/
+  DoDistributeCmd/DoUuidsCmd; ReduceAlgs.pas + Line.MergeWith + ReduceZone/
+  KeepList) and per-step gates over pre-validated decks. **Probe-proven
+  oracle facts recorded in the plan** (all 2026-07-05, two-process): (1)
+  `dump commands` help texts come from the wheel's gettext catalog
+  `dss/messages/properties-en-US.mo` (1697 entries; `Command.*`/`Option.*`/
+  `<Class>.<prop>` keys; miss → the key itself) → plan adds a generated
+  `help_catalog.rs`; (2) **upstream garbage reads in DumpProperties**:
+  Capacitor `CMatrix`/`FaultRate`/`pctPerm` print ASLR denormals ALWAYS,
+  Reactor `FaultRate`/`pctPerm` do so whenever an EnergyMeter exists
+  (Line/Transformer/Fault/Load stay clean) — not reproduced (UB rule),
+  masked-golden strategy planned + investigations/ report at WP8.5 step 3;
+  (3) `save` (meters) writes only `MTR_<name>.csv` with a RELATIVE
+  GlobalResult, Monitor.Save is stream-internal (no file); `save load`
+  emits an extension-less file `load`; `save circuit` = 14-file dir incl.
+  per-meter `SaveZone` subdirs and an always-created (possibly empty)
+  `BusCoords.dss`; Master.dss carries a wall-clock stamp line (round-trip
+  gate ignores it); (4) `distribute what=Load` overrides an explicit
+  `file=` to `DistLoads.dss`; `how=Random` is FPC time-seeded (never
+  golden-gated); (5) `export uuids` auto-creates hashed keys
+  `Station=…`/`GeoRgn=…`/`SubGeoRgn=…`, generates random v4 for anything
+  not preloaded, and leaves `Text.Result` EMPTY. **Decks:** 7 fixture decks
+  + `uuids_pre.csv` at `tools/golden/phase8_decks/` (README records the
+  facts above; wired into gen_phase8.py by their WPs) and 12 gaps staging
+  cases (`batchedit`/`midi_batchedit` with regex-semantics probes; 8
+  `reduce_*` strategy decks incl. keeplist + `reduce_remove`
+  (`Load.eq_l2_b2` equivalent pinned by probes) + `midi_reduce` 94→88
+  nodes, 3 merges), manifest notes carrying the oracle-verified post-reduce
+  element lists (`l1~l2`, `s1~s2`, `b1||b2`, disabled partners, node
+  counts). gen_midi_decks.py gained `midi_batchedit`/`midi_reduce`
+  (existing decks regenerate byte-identical). No engine code touched.
+- **Per-element midi wave (2026-07-05, gate-green): every micro scenario
+  replayed on the midi scaffold** — 12 per-element asymmetric decks
+  (`midi_vsource_asym` … `midi_upfc_asym`, incl. VCCS behind a 12.47/0.36
+  service transformer and the proven UPFC chain fed from a backbone phase) +
+  13 per-class controls decks (`midi_regcontrol` … `midi_sensor`, incl. nested
+  EnergyMeter zones and the loop-tie SwtControl open), all from
+  `gen_midi_decks.py`'s shared scaffold; gates now 27 asymmetric + 37 controls
+  decks, all micro tolerance. **FOURTH real port bug caught**
+  (`midi_invcontrol`, InvControl element conductor count 3 vs oracle 1): the
+  parse-time fleet resolver took the control's terminal phase count from the
+  FIRST enabled DER, but Pascal's recalc loop assigns `FNphases :=
+  ControlledElement[i].NPhases` per member — the LAST wins (InvControl.pas:916;
+  ExpControl.pas:408 has the same shape, fixed too; Pascal itself carries a
+  "what if these are different sizes" TODO). Invisible with equal-phase fleets
+  (all micro decks); a mixed 3φ+1φ fleet exposes it. Fixed in
+  `exec/command.rs` + new `ForeignClasses::last_enabled`. Also fixed: oracle
+  capture counted the C-API empty-array placeholder `['NONE']` as a
+  one-element `ZonePCE` list (nested-meter zone with genuinely no PCE); and a
+  deck-scaffold bug (the swtcontrol deck was switching the DISABLED loop tie —
+  a disabled element's YPrim view diverges between engines by construction).
+- **Midi network gate (2026-07-05, gate-green): the IEEE123-class synthetic
+  network** (`tools/decks/gen_midi_decks.py`, deterministic generator; decks
+  committed) — the asymmetric configs + control/protection density at the
+  MINIMAL scale that reproduces large-network failure modes (~94 nodes,
+  14-segment backbone, loop + parallel segment, 3 voltage levels, mixed
+  3/2/1-phase laterals, many controls per control round):
+  `asymmetric/midi_asym.dss` (micro tolerance holds at 94 nodes),
+  `controls/midi_controls.dss` (cascaded LTC + 3×1φ reg bank + 2 kvar
+  CapControls + InvControl over 2 PVs + StorageController, daily 24 h),
+  `controls/midi_protection.dss` (relay→recloser→fuse fuse-save race at the
+  deep-lateral end). **THIRD real port bug caught** (midi_controls hour 2,
+  +2 iterations, systematic under perturbation — not a knife edge): when a
+  StorageController flips the fleet state and an InvControl refreshes the same
+  Storage in ONE control round, `InvDispEnv::der_set_nominal` consumed
+  `StateChanged` → `yprim_invalid` but dropped Pascal `Set_YprimInvalid`'s
+  `SystemYChanged` side effect (CktElement.pas:245) — the oracle rebuilds Y in
+  `CheckControls` (Solution.pas:1155) within the round (proven by `Set log=yes`
+  control-marker diff: oracle "Building Whole Y Matrix" at ControlIter=1, port
+  at ControlIter=2), the port ran the next round on the stale-state YPrim.
+  Fixed in `dispatch.rs` (env gained `system_y_changed`). Same bug class as
+  the step-2 `update_all_storage` find — the bare-field-write-vs-Pascal-setter
+  family; unreachable from micro decks (needs two control classes touching one
+  Storage in the same round). Deck-authoring lessons recorded in the plan doc:
+  kvar-CapControl deadband must exceed its own bank size (hunts otherwise);
+  voltage-mode CapControl under regulators never toggles.
+- **Controls live gate (2026-07-05, `CONTROL_COVERAGE_PLAN.md`, ALL 5 steps
+  COMPLETE — 22 decks, gate-green).** Steps 3–5 on top of the below: **protection**
+  (recloser temp/perm reclose+lockout, relay 51, relays 46/47 on parallel
+  branches — asymmetry-only trips, per-phase SLG fuse blow, delayed SwtControl
+  open via manifest `post`; duty mode, per-step event log + pending reclose
+  shots in the control queue), **metering** (energymeter sym/asym — all
+  registers incl. Overload/EEN/losses + zone membership; monitor modes 0/1/2/3;
+  sensor mapping probes), **combos** (`combo_protection` fuse-save coordination
+  under an EnergyMeter+monitor; `combo_voltvar_asym` LTC + kvar-CapControl +
+  volt-var InvControl interplay — a voltage-mode CapControl under an LTC never
+  toggles, hence kvar mode; `combo_metering`), and `compare_eventlog` opt-in on
+  the three daily IEEE feeders (13/37/123) in `solvable_now`. **Oracle capture
+  caveat found:** on a step whose solve rebuilt Y mid-step (fault applying at
+  ontime, protection trip opening a switch) the pinned engine's
+  `getYSparse(False)` returns None — `gen_checkpoints._get_y_sparse` retries
+  after the executive `BuildY` (proven trajectory-neutral: identical per-step
+  iterations/voltages/event log with and without); `getYSparse(True)` must NOT
+  be used (it corrupts the solution vector — YNodeVarray returns
+  injection-scale garbage, empirically). **Original steps 1–2 record:** the
+  live gate extended with **element-specific state
+  channels** (all opt-in per manifest case): property **probes** (oracle
+  `Properties(p).Val` vs the Rust `?` query, numeric-skeleton compare),
+  **PC-element state variables** (`AllVariableValues` vs `element_variables`),
+  the cumulative **event log** per step (`Solution.EventLog` vs `event_log()`,
+  the phase7-protection policy), and the pending **control queue** (new
+  `Dss::control_queue_rows`, `%.9g` QueueItem format); the mandatory full-model
+  compare additionally gained per-element **losses** (`CktElement.Losses`
+  channel, tolerance = the summed per-conductor power policy — new
+  `ElementSnapshot.loss_w`) and `selected_elements: ["*"]` (every YPrim-bearing
+  element). Decks in **`tests/corpus/controls/`** (runner
+  `controls_cases_match_oracle` + structural guard, `CONTROLS_REQUIRED` floor):
+  step 1 `regcontrol_sym` (24-step daily LTC, taps 0→3→0, 8 events); step 2
+  `regcontrol_asym` (3×1φ bank, per-phase-unequal taps, 21 events),
+  `capcontrol_sym`/`capcontrol_asym` (voltage / kvar+current-CT-phase-3 modes,
+  verified switching both directions), `invcontrol_vv_sym` (rolling-avg daily
+  VOLTVAR), `invcontrol_vvvw_asym` (CombiMode VV_VW over 3×1φ PVs, per-phase kW
+  caps + kvar), `storagectrl_peakshave` / `storagectrl_time` (charge/idle/
+  discharge trajectories, per-step kWhstored/State probes),
+  `gendispatcher` (weighted 3:1 daily redispatch). **REAL PORT BUG found and
+  fixed by the new gate** (storagectrl_peakshave step 6, +1 iteration):
+  `update_storage`'s end-of-step state flip (full → idling) set
+  `cd.yprim_invalid` as a bare field write, dropping Pascal
+  `Set_YprimInvalid`'s side effect of raising `Solution.SystemYChanged`
+  (`CktElement.pas:245`) — the next step then injected through the **stale
+  charging YPrim** on its first iteration (extra ~61 A/phase RHS, proven by
+  first-iterate injection-vector diff; V/kWh state bit-identical to ≤1e-15
+  entering the step) and needed an extra iteration to reach the same fixpoint.
+  Fixed in `time_series.rs::update_all_storage` (propagates `yprim_invalid` →
+  `system_y_changed`); all 9 decks + full corpus green at micro tolerance.
+  (The step-2 "next" — protection/metering/combos — is the steps-3–5 work
+  recorded at the top of this entry.)
+- **WP8.5 follow-up — asymmetric live gate (2026-07-05, gate-green).** The reactor
+  stamp bug class generalized into a standing guard: **`tests/corpus/asymmetric/`**
+  — 14 synthetic decks covering **every stamping element** (Vsource / Reactor /
+  Capacitor / Line / Transformer / Fault / Load models 1–5+8 / Generator models
+  1–3 / PVSystem / Storage / IndMach012 / VCCS / UPFC) + 2 **combination** decks
+  (series chain; meshed loop w/ circulating-tap transformer + IndMach012) in
+  deliberately asymmetric configurations: `Z1≠Z2` sym-components sources+reactors
+  (the non-reciprocal-YPrim class of the fixed bug), **FULL asymmetric matrix
+  inputs** (pin the parser's `ParseAsSymMatrix` lower-triangle-wins overwrite
+  order — Pascal symmetrizes, `ParserDel.pas:616`), per-phase-unequal 1φ bank
+  taps, 1φ/2φ subsets, delta conns, series capacitor, neutral-impedance +
+  ungrounded-wye windings — all solved **unbalanced** and live-compared by
+  `corpus_live.rs::asymmetric_cases_match_oracle` with the full mandate (V, full
+  system Y, every element's currents/powers, named YPrim blocks — the direct
+  transposed-stamp catch regardless of excitation) at **micro (1e-9) tolerance**;
+  oracle-free `asymmetric_manifest_is_complete` pins the dir↔manifest bijection,
+  the 14-deck per-element floor (`ASYMMETRIC_REQUIRED`), and `selected_elements`
+  non-empty per case. **VSConverter deliberately excluded** (upstream
+  state-mutating `GetCurrents`; stays gated in `exec/tests/vs_converter.rs`).
+  **Proven floor found while calibrating** (decomposition, per CLAUDE.md — not a
+  tolerance sweep): a bus whose only ground path is the transformer
+  `ppm_antifloat` (~1e-6) adder — a delta tertiary or ungrounded-wye secondary
+  serving only L-L loads — has a near-singular **common mode** where faer-vs-KLU
+  last-ulp noise reaches ~1.7e-7 rel from iteration 1 (phase-to-phase voltages
+  match to ~1e-12 V, ALL YPrims + system Y match ≤1e-12; ONLY the bus common
+  mode differs, and iteration counts drift at tight tol). Not a port bug and not
+  reproducible-pinnable; the decks pin such buses **physically** with small
+  wye-grounded capacitors (the cable-capacitance surrogate every real feeder
+  has), never by widening tolerances.
+- **WP8.5 (Save/Dump) — exploration/port map.** The port map (from a
+  scoped explore pass) so the next session resumes without re-reading:
+  - **Reuse (the oracle-validated primitive):** `ClassProps::get_value(obj, idx,
+    enums)` (`obj/props/class_props/value.rs:16`) — the exact renderer the `?` query
+    (`exec/command.rs:549` `do_query_cmd`) + `props_roundtrip` use. Plus
+    `num_properties()`/`property_name(idx)` (`class_props/mod.rs`) and, for Save's
+    set-order walk, `DssObjData::next_property_set(after)` +
+    `set_as_next_seq`/`prp_specified` (`obj/base/mod.rs:64-93`). Save/Dump are thin
+    string-joins over these — **no new formatting**.
+  - **Dump** (Pascal `DoPropertyDump` `ExecHelper.pas:1194`; `TDSSObject.DumpProperties`
+    `DSSObject.pas:110`): `New "FullName"` + `~ name=get_value` for `1..num_properties`
+    (Leaf=true). `TDSSCktElement.DumpProperties` (`CktElement.pas:918`) adds
+    `! ENABLED`/`! DISABLED` + (Complete/`debug`) NPhases/Nconds/Nterms/Yorder/NodeRef/
+    Terminal-status/Bus-ref/YPrim. **Complication: ~17 element `DumpProperties`
+    overrides** (Reactor `Reactor.pas:966` skips NIL R/X-matrices + custom `~ Z1=[…]`
+    8-sig, etc.) — each must be reproduced faithfully (byte gate). File
+    `<OutputDir><CircuitName_>PropertyDump.txt`; forms `Dump <class>.<name>` /
+    `Dump <class>.*` / `Dump` (all: every CktElement + DSSObj + Solution) /
+    `Dump debug` / `Dump solution`. Corpus: 3 decks (`dump reactor`×2, `dump
+    transformer`) — needs synthesized fixtures + the byte gate.
+  - **Save** (Pascal `DoSaveCmd` `ExecHelper.pas:744`; `Circuit.Save` `Circuit.pas:2409`;
+    `WriteClassFile` `Utilities.pas:1134`; `WriteDSSObject`+`SaveWrite`
+    `Utilities.pas:1221`/`DSSObject.pas:145`): per-object `New "Class.name"` + ` name=
+    CheckForBlanks(value)` for each `next_property_set` prop (SET props only, set order)
+    + ` ENABLED=NO` if a disabled ckt element. `Save circuit` = a fresh `<Name>NNN`
+    subdir + the library-class `WriteClassFile`s + `SaveDSSObjects` (class-ordered) +
+    `SaveVoltageBases`(`BusVoltageBases.dss`) + `SaveBusCoords`(`BusCoords.dss`) +
+    `SaveMasterFile`(`Master.dss` header/`Redirect` list/footer) + `SaveOpenTerminals`
+    + `SaveFeeders` (per-meter zone subdirs). **New plumbing needed:** subdir creation
+    (no `SetCurrentDSSDir` yet), the `Save meters` primitives `Monitor::save`/
+    `EnergyMeter::save_registers` (NOT ported), and the **`save_roundtrip.rs`** gate
+    (re-compile+re-solve = identical V, per §1 gate #3 — round-trip, not byte-match).
+    `SaveFeeders`: `Feeder` is **not** an instantiable class (only a CIM-XML label,
+    probe-confirmed) → the meter-zone path, documented not skipped. Stubs at
+    `exec/report.rs` `do_save_cmd`/`do_dump_cmd`; dispatch `command.rs:135-136`.
+  - **Suggested sub-steps:** (1) Dump (base + ckt-element + the 17 overrides + the
+    dispatcher forms + a byte golden on the corpus `dump reactor`/`transformer` +
+    synthesized `dump … debug`/`dump all`); (2) `Save <class>` (WriteClassFile) +
+    `Dump`-shared `get_value` reuse; (3) `Save circuit` + `save_roundtrip.rs`; (4)
+    `Save meters`/`voltages` (needs the Monitor/EnergyMeter save primitives). Then the
+    `Save`/`Dump` corpus migration.
+- **WP8 goldens exactness audit — ✅ COMPLETE (2026-07-04), gate-green.** All 93
+  `compare_export` compares in `golden_phase8.rs` re-measured cell-by-cell against
+  their oracle captures (a temporary harness audit mode collecting max deviations
+  instead of asserting): **74 are parse-value-identical** → pinned at exact
+  equality (`rel=0, abs=0`; the never-exercised `EXPORT_REL`/`EXPORT_ABS`/
+  `YMATRIX_REL`/`LOSSES_ABS`-class preemptive print floors deleted, incl. the
+  Voltages/8500-Voltages angle 0.11, Powers/SeqPowers 0.11, P_byphase-MVA 0.0011,
+  Taps 1e-4, monitors 1e-4/1e-5, registers 0.5, Loads 0.05, reliability 1e-8/1e-9,
+  capacity/faultstudy/SeqZ/Y/Yprims/overloads/unserved/sections/profile/
+  allocation floors, and the `show_convergence` |V| `rel=1e-6`). The **19**
+  non-exact compares all trace to three observed classes, each kept at its
+  measured floor: (1) last-digit render straddles — `P_byphase` kVA 1e-3 (kept
+  0.0011), `Losses` 7-sig 65.34585↔86 (kept `rel=1e-6`), `show_mismatch` %10.5f
+  (kept 1.1e-5); (2) near-zero cancellation residuals — `Losses` noise cells
+  ≤1.28e-8 W (`abs` 1e-6→**1e-7**), `SeqVoltages`/`SeqCurrents` residuals (abs
+  1e-9/1e-8 kept, ratio-cell abs →**1e-9**, `rel` 1e-4→**0**), `Currents`/
+  `ElemCurrents`/`ElemPowers`/`YCurrents` (`abs` 1e-6→**1e-8/1e-10/1e-10/1e-13**,
+  `rel`→0; noise-angle `PrevCol` gates kept, `ElemVoltages` gates dropped —
+  byte-exact); (3) the DI files — the only genuine non-print floor, the per-step
+  faer-vs-KLU diff integrated over 24 daily solves (measured 1.5e-8 rel):
+  `rel` 1e-6→**5e-8**, `abs` 1e-8→0. Gates kept only where observed firing on
+  noise (show_losses/voltages/currents/currents_elem/powers_elem, seqcurrents I1,
+  ang_tol PrevCol, the two Summary DateTime Masks + show_mismatch residual Masks);
+  no-op/unfired ColTols removed. `tests/TOLERANCE_NOTES.md` WP8 sections rewritten
+  to the exact-by-default regime. golden_phase8 84/84 green.
+
+
+---
+
+- **WP8.1 (Report infrastructure) — ✅ COMPLETE, gate-green** (`82b50fe` dispatch
+  skeleton + GUI/`Plot`/`Visualize` headless no-ops with the #301 pre-circuit
+  guard; `929145c` output-path machinery + `Set DataPath=` + `Export Counts`
+  end-to-end + the `compare_export` golden harness). The `Show`-silent vs
+  `Export/Save/Dump`-loud-`NOT_PORTED` asymmetry is forced + proven-safe.
+
+- **WP8.2 (Export: solution outputs) — ✅ COMPLETE, gate-green.** The full export
+  families, read-only/mutating over the solved circuit: bus/node (`Voltages`/
+  `BusCoords`/`NodeNames`/`YNodeList`), aggregate power (`Powers`/`Losses`/
+  `P_byphase` + the `for_each_enabled_elem`/`export_with_mut` mutable element-walk
+  infra + the MVA `Parm2` pre-parse), symmetrical-component (`SeqVoltages`/
+  `SeqCurrents`/`SeqPowers` + the `ColTol::gate` denominator gate), per-terminal
+  (`Currents`/`NodeOrder`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`Taps` + the
+  `ColSel` harness refactor), and matrix/summary (`Yprims`/`Y`/`SeqZ`/`Summary`/
+  `Result`). **Completion gate:** the IEEE8500 `Voltages`/`Summary`/`Counts`
+  goldens + the `Export`-unblocked corpus migration (`solvable_now` **88→119**,
+  COVERAGE **26.3%→35.5%**) + the Rust `CorpusGuard` (corpus stays pristine under
+  report-writing decks). Two tracked-opens **RESOLVED** here (detail in the
+  archive): the "9 decks hang" was a debug-build watchdog artifact (all 9 converge,
+  ≤3.4s release), and the rare live-gate flake was a per-process convergence misfire
+  *inside the pinned oracle* (now retried in-process) — neither a Rust bug.
+
+- **WP8.3 (Export: device/reliability + logs) — ✅ COMPLETE (steps 1–5 + both
+  audit follow-ups), gate-green.** The device/meter/reliability/log exports over
+  the solved circuit + the demand-interval file machinery: `Monitors` (step 1);
+  the `Meters`/`Generators`/`Loads`/`PVSystem_Meters`/`Storage_Meters` register
+  dumps (step 2, which surfaced + fixed the never-wired DER `SampleAll`/`ResetAll`
+  solve-loop tail); `EventLog`/`ErrorLog` (step 3a, + the missing circuit-build
+  `LogThisEvent` markers); `Faultstudy` (step 3b, read-only over the WP7.9
+  `Ysc`/`BusCurrent`); `BusReliability`/`BranchReliability`/`Capacity`/`Overloads`/
+  `Unserved`/`AllocationFactors`/`Sections`/`Profile` (step 3c, over the `RelCalc`
+  fields — incl. the meter `SectionCount`/`FeederSections` persistence, the seven
+  `Profile` `PhasesToPlot` branches, and the multi-meter `Bus_Int_Duration`
+  cross-zone bug — filed + gated, see below); the `TSystemMeter` core + the full demand-interval
+  (`DI_*`/phase-voltage/overload/volt-exception) writers + their `Set` handlers +
+  the `Set year=` `Set_Year` side effects + the Solve*/DI open-close wiring
+  (step 4, §2.6); and the completion gate (step 5) — 47 probe-clean decks migrated
+  + the **silent `Spectrum.CSVFile` no-op** fixed → 2 IEEE_519 harmonicT decks
+  (`solvable_now` **119→168**, COVERAGE **50.1%**). The two independent audits
+  (`bacaf13` code, `8d58a8e` tests) found **no correctness bug**; two LOW code
+  findings fixed (the `Export Profile` `1732.0` truncated-√3 `TODO(compat)` marker;
+  the `Spectrum.read_csv_file` byte-position `(F.Position+1) < F.Size` EOF guard,
+  an oracle-confirmed divergence over `str::lines()`), and five oracle-pinned tests
+  closed the coverage gaps (`Set year=` lifecycle, the five `Get` DI echoes, the
+  `NPhases<3` overload I2-column mapping, the Spectrum-`FileLoad` deck round-trip,
+  and — after the user flagged the parked multi-meter `Bus_Int_Duration` note — the
+  cross-zone reliability contamination, now **empirically settled**: a new upstream
+  bug report (`investigations/reliability_bus_int_duration_oob_bug_report.md`), the
+  in-range regime gated by `export_busreliability_multimeter`, the out-of-range OOB
+  proven-nondeterministic across processes). Full per-step + audit detail in
+  [`docs/phase-records/phase-8.md`](docs/phase-records/phase-8.md).
+  golden_phase8 **59**; lib **731**; `solvable_now` **168**.
+- **WP8.4 (Show reports) — step 1 COMPLETE, gate-green.** `do_show_cmd` is now a
+  real dispatcher (option/solve-guard per `ShowOptions.pas`), routing the first
+  ported keywords to fixed-width text formatters in the new `report/show/` module:
+  `Show Buses`/`Losses`/`Taps` + `Show panel`→#999. Unported `Show` keywords stay a
+  *silent* headless no-op (the `solvable_now` `Show Power`/`Voltage`/… decks don't
+  regress). Shared machinery: `format.rs` `Pad`/`PadDots`/`EncloseQuotes` +
+  width-aware `%W.Df`/`%Wd`/`%W.Pg` formatters, the `@lastshowfile`/`last_show_file`
+  bookkeeping, and a new **whitespace+comma tokenizer** in `harness::compare_export`
+  (`sep: ' '`, `header_lines: 0`) that diffs the fixed-width tables token-for-token.
+  golden_phase8 **59→62** (`gen_show_reports` + `show_{buses,losses,taps}`). The two
+  independent audits found **no correctness bug** (the three formatters reproduce
+  `ShowBuses`/`ShowLosses`/`ShowRegulatorTaps` field-for-field; the goldens are
+  genuine pinned-oracle bytes). Three follow-ups fixed: (audit-tests) the
+  `show_losses` policy split into per-column floors — the coarse `%8.2f` `% of Power`
+  floor (`abs=0.011`) isolated to token index 2 via `col_tol`, kW/kvar held to the
+  tight default (so a small-cell formatting regression fails); (audit-code) the
+  deferred `Show` keywords + the deferred unknown→#24700 now carry a greppable
+  `TODO(WP8)` tag (the WP8.8 exit sweep) instead of prose-only — the deferral stays a
+  *silent* no-op by design (erroring would regress the live `Show Power`/`Voltage`
+  decks); and the `Pad`/`max_*_name_length` width helpers switched to byte length
+  (`str::len`) for byte-1:1 with Pascal `Length(AnsiString)`.
+- **WP8.4 (Show reports) — step 2 COMPLETE, gate-green.** `Show Voltages` code 0
+  (Pascal `ShowVoltages` case 0 + `WriteSeqVoltages`): the symmetrical-component
+  voltages by bus — V1 (kV)/pu/V2/%V2·V1⁻¹/V0/%V0·V1⁻¹, the bare `Show Voltage`/`v`
+  default (82 live decks). The dispatcher's ptr-13 arm ports the `ShowOptions.pas`
+  option parse (first param `LL`→phase-phase file `VLL`, else `VLN`; second param
+  `N`/`E`→the node/element form). The angle-bearing node/element forms
+  (`ShowOptionCode` 1/2) stay a silent no-op with a greppable `TODO(WP8)`. New
+  `report/show/voltages.rs` reuses the `SymComp`/`bus.find` helpers; note Show's
+  `<3`-node V1 = `|V|` of the first node **unconditionally** (Pascal
+  `WriteSeqVoltages`, unlike `ExportSeqVoltages`' `PositiveSequence` gate). golden
+  `show_voltages` (golden_phase8 **62→63**). Both independent audits found **no
+  correctness bug** (the `<3`-node unconditional-first-node V1 trap is handled
+  right, and the ptr-13 LL/N/E parse + code-1/2 silent no-op match `ShowOptions.pas`
+  exactly). One audit-tests LOW fixed: the `show_voltages` golden abs tightened
+  **1e-5 → 1e-8** (the proven faer-vs-KLU floor is 1e-12 — one `sourcebus` V0 cell;
+  every significant cell is bit-identical), so a real small-cell error can no longer
+  hide under the old blanket 1e-5.
+- **WP8.4 (Show reports) — step 3 COMPLETE, gate-green.** `Show Currents` +
+  `Show Powers` code 0 (Pascal `ShowCurrents`/`ShowPowers` case 0 +
+  `WriteSeqCurrents`/`GetI0I1I2`): the per-element sequence currents (I1/I2/%I2·I1⁻¹
+  /I0/%I0·I1⁻¹/%Normal/%Emergency, with `Cmax`-based ratings, the CAP exclusion, and
+  the unconditional `<3`-phase I1) and sequence powers (P1/Q1/P2/Q2/P0/Q0 + PD
+  terminal-1 excess + the total-loss footer). The ptr-3/ptr-12 dispatcher arms port
+  the `ShowOptions.pas` residual/`m`/`e` option+filename parse (`Curr_Seq`,
+  `Power_seq_{kVA|MVA}`); the element forms (code 1) stay a `TODO(WP8)` no-op. golden
+  `show_currents`/`show_powers` (golden_phase8 **63→65**). **Two findings settled
+  during the step:** (1) the oracle's `SetMaxDeviceNameLength` is empirically **0**
+  in the pinned dss_capi 0.14.5 (device-name-independent — probe-proven; the vendored
+  source would give 16), so the `Paddots` device-name column is never padded —
+  reproduced 1:1 with a `TODO(compat)` (`max_device_name_length → 0`), which also
+  makes the step-1 `Show Losses` names byte-faithful; (2) the `%I2/I1`/`%I0/I1` ratio
+  gate threshold is **1e-6 A** — provably between the one noise row (a switch's
+  floating terminal, `I1 ≈ 1.8e-12 A`) and the smallest *real* current (`Line.671680`,
+  `5.8e-4 A`, whose ratio IS checked); an 8-order gap, so `1e-6` never gates a physical
+  current (a coarser `1e-3` would wrongly skip the real row). Also fixed a
+  **usability bug**: `gen_phase8.py` now sets `DSS.AllowEditor = False` so
+  regenerating the `Show` goldens no longer spawns a Notepad per report. Both
+  independent audits ran: **no correctness bug** (the seq math, `Cmax` ratings, CAP
+  exclusion, unconditional `<3`-phase I1, `×0.003` power scaling, the footer-loss
+  walk, and the `mdnl=0` `TODO(compat)` are all faithful; the `1e-6 A` gate proven
+  to skip only the one `1.8e-12 A` noise cell). Two Minor **byte-faithfulness** code
+  findings fixed (the numeric comparator masked both): the currents `%s %3d` literal
+  space between name and terminal, and the powers footer `%6.1f` field width (was
+  widthless); plus the continuation-label width switched to the un-uppercased byte
+  length.
+- **WP8.4 (Show reports) — step 4 COMPLETE, gate-green.** The remaining
+  solution-report Shows' **element/node forms** + `Show Elements`: `Show Voltages`
+  code 1 (`WriteBusVoltages` — line-ground **and** line-line by bus & node,
+  mag/angle/pu/base-kV, the `jj`-cursor node walk + the wrapping LL partner) and code
+  2 (`WriteElementVoltages` — node-ground by element, Sources+PD then PC); `Show
+  Currents` code 1 (`WriteTerminalCurrents` — per-terminal branch currents + the PD
+  residual row, Sources+PD+Faults then PC); and `Show Elements` (`ShowElements` +
+  `WriteElementRecord` — the element↔bus listing, PD then PC, split into the main
+  `Elements.txt` + the `_Disabled.txt` companion; the optional class-name filter).
+  The dispatcher arms 3/13 now route codes 0/1(/2), and the new **arm 5** parses the
+  class filter and writes the two files (disabled first, no `@lastshowfile`; main
+  sets it — via the new `write_show_named(set_last)` split). golden_phase8 **65→69**
+  (`show_{voltages_node,voltages_elem,currents_elem,elements}`). **One finding settled
+  during the step:** the pinned dss_capi 0.14.5 `SetMaxBusNameLength` **floors at 12**,
+  not the source's 4 — probe-proven `max(12, longest_bus_name)` (a 20-char bus widens
+  to 20, a 5-char one floors at 12), so IEEE13 (`sourcebus`=9) pads to 12. Reproduced
+  1:1 (`TODO(compat)` in `report/show/mod.rs::max_bus_name_length`), same
+  backend-vs-source class as the `MaxDeviceNameLength=0` finding; it only shows up in
+  the dot-padded `WriteBusVoltages` column (the space-padded reports are
+  token-invariant, which is why steps 1–3 didn't surface it). Both independent audits
+  ran (`0ceb615`); **no correctness bug** — audit-code verified every walk set, index
+  translation, formula and dispatcher arm against Pascal + the oracle. **audit-code
+  follow-ups** (2, both settled empirically): (1) `WriteElementVoltages` (Voltages
+  code 2) writes the per-element separating blank line **outside** the `Enabled`
+  guard, so a *disabled* element still emits its blank — reproduced (raw
+  `walk_element_voltages` over all refs, blank per element; oracle-probed on a
+  disabled-load deck, byte-match); (2) the floor-12 `TODO(compat)` refined — the
+  oracle floors the **data** (`PadDots`) rows at 12 but the **column-header** row's
+  `Bus` at 4 (a backend within-report inconsistency, probe-measured), a masked
+  whitespace-only byte divergence noted for the WP8.8 byte pass. **audit-tests
+  follow-ups** (3): (1) the angle `%.1f` printing-floor overrides were mis-indexed —
+  the first row of each bus carries an extra `..` dots token (and the elem form
+  splits `(pu)` into two tokens), shifting the angle off the fixed `Index`; fixed via
+  a new **content-relative `ColSel::AfterToken("/_")`** selector (the angle is the
+  column after the `/_` glyph, robust to the row shift); (2) the `show_currents_elem`
+  angle gate raised `1e-6 → 1e-4 A` — this report's residual rows push the noise floor
+  to ~1.08e-5 A (633/634 near-balanced-transformer residuals) while the smallest real
+  current is 5.72e-4 A, so `1e-4` brackets them (the `1e-6` code-0 threshold didn't);
+  (3) two coverage goldens added — `show_elements_class` (the class-filter path) +
+  `show_voltages_ll_node` (the LL branch). Also fixed a step-4 **test-tree leak**: the
+  `show_reports_are_silent_noops` unit test ran `Show Voltage LN Nodes` (now a *real*
+  report since step 4) with no datapath → wrote `t_VLN_Node.txt` into the source tree;
+  set a scratch datapath + switched to still-unported keywords. golden_phase8 **69→71**.
+- **WP8.4 (Show reports) — steps 5–8 + the WP8 goldens-exactness audit** continue in
+  the **header frontier** (§ top): that block carries the recent-step detail (step 5
+  `Powers` elem + `Result`/`EventLog`/`Ratings`/`Variables`/`Mismatch`/`monitor`;
+  step 6; step 7 the diagnostic/matrix cluster `Convergence`/`Y`/`controlqueue`/
+  `kvbasemismatch`; step 8 the register tables `Meters`/`Generators`; and the
+  exact-equality re-measure) until the **WP8.4-completion archive pass** folds the
+  whole Show record into [`docs/phase-records/phase-8.md`](docs/phase-records/phase-8.md),
+  the established phase-record pattern. The current active step / next is authoritative
+  in the header frontier.
