@@ -1612,7 +1612,7 @@
   {
    "path": "regcontrol/regcontrol_inversetime.dss",
    "kind": "micro",
-   "n_steps": 24,
+   "n_steps": 40,
    "selected_elements": [
     "*"
    ],
@@ -1636,7 +1636,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "Inverse-time tap delay + Vlimit clamp (RegControl.pas Inversetime + VLimitActive): Vlimit=124 caps the boost on an overvoltage-prone light-load feeder. Feature-sensitive on BOTH knobs: vlimit=0 and inversetime=no each change the outcome (probe-proven)."
+   "note": "Inverse-time tap delay + Vlimit clamp (RegControl.pas ComputeTimeDelay l.1294 + VLimit l.1086-1096). DUTY mode 2s steps: an overvoltage source (pu=1.045) drives a multi-tap buck so inverse-time places taps on different sub-steps and Vlimit=119 (below the vreg=120/band=4 window) bucks the endpoint lower. Feature-sensitive on BOTH knobs (probe-proven, two-process bit-identical): inversetime=no shifts the first tap Sec=10->18, vlimit=0 settles at tap 0.975 vs 0.95625."
   },
   {
    "path": "capcontrol/capcontrol_pf.dss",
@@ -1664,7 +1664,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "PFCONTROL: offsetting=-0.99 exercises the leading PF1to2 fold; the over-sized bank sheds then the half-bank on-check declines re-ON, and pctMinkvar=25 gates the last step off. Feature-sensitive: pctminkvar=0 changes the trajectory (two-process bit-identical; probe-proven)."
+   "note": "PFCONTROL: offsetting=-0.99 exercises the leading PF1to2 fold; a low-PF load ramp pulls the bank ON and the added kvar sheds it toward the leading OFF target. Feature-sensitive (probe-proven, two-process bit-identical): type=pf vs type=kvar differ (PFCONTROL branch taken) and offsetting=-0.99 vs +0.90 gives a different step trajectory. pctMinkvar=25 does NOT bite here (pctminkvar=0 is bit-identical) and onsetting is inert (no re-ON after shedding) -- both are configured, not claimed as boundaries."
   },
   {
    "path": "capcontrol/capcontrol_time.dss",
@@ -2203,7 +2203,7 @@
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "Ground-curve path: phasetrip=2000 (too high for the phase) so only GroundFast/GroundDelayed drive the shots on an SLG fault; temporary fault self-clears and recloses. Feature-sensitive: groundtrip=3000 stops the trip (probe-proven)."
+   "note": "Ground-curve path: groundfast/grounddelayed ASSIGNED (else GroundCurve=NIL skips the path, Recloser.pas l.355/578) and phasetrip=3000 set above the SLG faulted-phase current (~2585A) so only the ground curve trips on the residual (~2558A) through the low groundtrip=30 pickup (eventlog GROUND TARGET, Sec=0.4). Temporary fault self-clears, recloses. Feature-sensitive (probe-proven): groundtrip=3000 stops the trip and dropping groundfast/grounddelayed stops it, while phasetrip=30000 is bit-identical (phase path inert)."
   },
   {
    "path": "fuse/fuse_blow_3ph.dss",
@@ -2396,7 +2396,7 @@
    "note": "ExpControl (IEEE-1547 adaptive volt-var, separate element): the adaptive Vreg tracks with VregTau and clamps to [VregMin,VregMax], DeltaQ_factor damping. A wide daily irradiance ramp moves Vreg and hits the clamps. Feature-sensitive: enabled=no holds fixed Q (probe-proven)."
   },
   {
-   "path": "upfc/upfc_pac.dss",
+   "path": "upfc/upfc_vreg.dss",
    "kind": "micro",
    "n_steps": 1,
    "selected_elements": [
@@ -2407,12 +2407,11 @@
      "element": "UPFC.test",
      "props": [
       "mode",
-      "pf",
-      "kvarlimit"
+      "refkv"
      ]
     }
    ],
-   "note": "UPFC mode 2 (reactive/PF compensation) + UPFCControl wrapper: injects reactive current toward PF, clamped at kvarLimit (distinct from mode-1 voltage reg). Feature-sensitive: mode=0 removes the injection (two-process bit-identical; probe-proven)."
+   "note": "UPFC mode 1 (series voltage regulator) + UPFCControl wrapper: injects a series Vpq through Xs to drive the output to refkV (UPFC.pas GetOutputCurr ModeUPFC=1). Modes 2/3 are NOT covered here: mode-2 series path is a CurrOut:=0 stub in dss_capi 0.14.5 (identical to off) and its shunt reactive-comp path needs element= and does not converge in this topology; mode 3 collapses onto mode 1 here (see STATUS). Feature-sensitive (probe-proven): mode=0 removes the injection AND refkV=0.250/0.230 each shift the regulated output (two-process bit-identical)."
   },
   {
    "path": "upfc/upfc_doubleref.dss",

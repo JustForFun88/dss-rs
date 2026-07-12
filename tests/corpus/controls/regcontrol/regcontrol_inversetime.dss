@@ -1,31 +1,31 @@
 // RegControl inverse-time tap delay + voltage-limit override (RegControl.pas:
-// Inversetime l.930-960 scales the armed delay by how far V is out of band;
-// VLimitActive/Vlimit l.1060-1090 caps the effective control voltage so the
-// regulator never boosts the local bus above Vlimit). A high source with a
-// light->moderate daily load keeps the regulated bus near the top of the band,
-// and Vlimit=124 clamps the boost when the bus runs high. Feature-sensitive:
-// neutralizing vlimit=0 removes the clamp (a different tap trajectory), and
-// inversetime=no removes the delay scaling (a different event ordering) -
-// both probe-proven. Compared per step: full model + taps + TapNumber +
-// probes + event log + control queue.
+// ComputeTimeDelay l.1294 scales the armed queue delay by Delay/min(10,
+// 2*|Vreg-Vavg|/Band) so a larger out-of-band deviation trips FASTER; VLimit
+// l.1086-1096 forces a tap-down whenever Vlocalbus>Vlimit, clamping BELOW the
+// vreg band). Daily 1h steps hide inverse-time (sub-second scaling collapses to
+// the same hourly tap) and a vreg-in-band target never reaches Vlimit -- so this
+// deck runs DUTY mode at 2s steps with an overvoltage source (pu=1.045) that
+// drives a multi-tap buck sequence: inverse-time then places each tap on a
+// different sub-step (WHEN), and Vlimit=119 (< the vreg=120/band=4 window)
+// bucks the endpoint two taps lower than plain regulation. Feature-sensitive
+// (probe-proven, pinned oracle, two-process bit-identical): inversetime=no
+// shifts the first tap from Sec=10 to Sec=18 (different trajectory), and
+// vlimit=0 settles at tap 0.975 instead of 0.95625 (different endpoint).
+// Compared per step: full model + tap/TapNumber + probes + event log + ctrl queue.
 clear
 Set DefaultBaseFrequency=60
 
-New circuit.reginv basekv=115 pu=1.055 angle=0 phases=3 bus1=src
+New circuit.reginv basekv=115 pu=1.045 angle=0 phases=3 bus1=src
 ~ mvasc3=15000 mvasc1=12000
 
 New transformer.tr phases=3 windings=2 buses=(src, mv) conns=(delta, wye)
 ~ kvs=(115, 12.47) kvas=(10000, 10000) xhl=7
 
-New regcontrol.rg transformer=tr winding=2 vreg=123 band=1.5 ptratio=60
-~ inversetime=yes vlimit=124 delay=15 eventlog=yes
+New regcontrol.rg transformer=tr winding=2 vreg=120 band=4 ptratio=60
+~ inversetime=yes vlimit=119 delay=15 eventlog=yes
 
-New loadshape.day npts=24 interval=1
-~ mult=(0.20 0.22 0.28 0.35 0.45 0.60 0.75 0.85 0.95 1.00 0.98 0.90 0.80 0.70 0.60 0.50 0.42 0.55 0.72 0.88 0.95 0.70 0.40 0.22)
-
-New load.l1 bus1=mv phases=3 conn=wye model=1 kv=12.47 kw=5000 pf=0.95
-~ daily=day
+New load.l1 bus1=mv phases=3 conn=wye model=1 kv=12.47 kw=3000 pf=0.98
 
 Set voltagebases=[115 12.47]
 calcv
-Set mode=daily stepsize=1h number=1
+Set mode=duty stepsize=2 number=1 controlmode=time

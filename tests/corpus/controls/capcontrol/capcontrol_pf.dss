@@ -1,13 +1,15 @@
 // CapControl PF mode (CapControl.pas Sample l.917 case PFCONTROL): switches on
 // measured power factor. onsetting/offsetting are power factors folded through
-// PF1to2 (l.383-399: a leading target < 0 maps to 2.0+value internally); the
-// pctMinkvar floor blocks switching a step OFF when doing so would push the
-// terminal over-leading. A low-PF load ramp pulls the bank ON, and the added
-// kvar drives the terminal PF from lagging toward the leading OFF target.
-// Feature-sensitive: raising pctminkvar changes which steps are allowed off
-// (the floor bites) -> a different step-state trajectory (probe-proven).
-// Compared per step: full model + capacitor step states, PF setting probes,
-// switching event log + control queue.
+// PF1to2 (l.383-399: a leading target < 0 maps to 2.0+value internally). A
+// low-PF load ramp pulls the bank ON, and the added kvar drives the terminal PF
+// from lagging toward the leading OFF target so the bank sheds. Feature-sensitive
+// (probe-proven, pinned oracle): type=pf vs type=kvar differ (the PFCONTROL
+// branch is really taken), and the leading OFF target offsetting=-0.99 vs +0.90
+// gives a different step-state trajectory. (pctMinkvar=25 is configured but does
+// NOT bite in this scenario -- pctminkvar=0 is bit-identical -- and no step
+// re-arms ON after shedding, so onsetting is inert here; both verified, not
+// claimed as boundaries.) Compared per step: full model + capacitor step states,
+// PF setting probes, switching event log + control queue.
 clear
 Set DefaultBaseFrequency=60
 
