@@ -46,6 +46,58 @@ fn time_class_ctx(class: i32, dbl_hour: f64) -> SysCtx {
     }
 }
 
+/// Edit a fresh `Generator` through its real property engine (string-edit path,
+/// so the `PropFlags::REPLACE_ZERO` clamp in `set_obj_double` runs).
+fn edit_generator(edits: &[(&str, &str)]) -> Generator {
+    let enums = EnumRegistry::new();
+    let cls = super::class_props(&enums);
+    let mut g = Generator::new("gz");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in edits {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut g, idx, value, &mut eng).unwrap();
+    }
+    assert!(errors.is_empty(), "{errors:?}");
+    g
+}
+
+/// UPGRADE_PLAN ledger L2 (WP-U1.1): a Generator `kW`/`kVA` parsed as 0 clamps
+/// to `1e-8` (EPRI r4133 `DblValueNZ`) — but `MVA` (prop 27) does NOT (r4133
+/// `generator.pas:664` uses plain `DblValue*1000`). Pins both the adopted clamp
+/// and the deliberate MVA asymmetry, so removing `REPLACE_ZERO` from kW/kVA — or
+/// re-adding it to MVA (the crashed-draft regression) — fails here.
+#[test]
+fn zero_kw_kva_clamp_dblvaluenz() {
+    let g = edit_generator(&[("kW", "0"), ("kVA", "0")]);
+    assert_eq!(g.kw_base.to_bits(), 1e-8f64.to_bits(), "kW {}", g.kw_base);
+    assert_eq!(
+        g.kva_rating.to_bits(),
+        1e-8f64.to_bits(),
+        "kVA {}",
+        g.kva_rating
+    );
+    // Tiny in-band (incl. negative) also clamps to +1e-8.
+    assert_eq!(
+        edit_generator(&[("kW", "4e-9")]).kw_base.to_bits(),
+        1e-8f64.to_bits()
+    );
+    // MVA (prop 27) is NOT clamped: `MVA=0` -> kVA rating a literal 0 (had it
+    // been clamped, the pre-scale 1e-8 * 1000 would leave 1e-5, not 0).
+    assert_eq!(edit_generator(&[("MVA", "0")]).kva_rating, 0.0);
+    // Out-of-band values are untouched (MVA carries its *1000 scale).
+    assert_eq!(edit_generator(&[("kW", "250")]).kw_base, 250.0);
+    assert_eq!(edit_generator(&[("MVA", "2")]).kva_rating, 2000.0);
+}
+
 /// Pascal `SetNominalGeneration` GENERALTIME arm (Generator.pas:1129): the
 /// `ActiveLoadShapeClass` (`Set LoadShapeClass=`) picks WHICH of the three
 /// distinct curves drives `ShapeFactor` (at hr 2: daily→0.6, yearly→0.7,

@@ -100,6 +100,14 @@ pub(super) fn set_obj_double(
 ) {
     let f = pd.flags;
     let ignore = f.contains(PropFlags::IGNORE_INVALID);
+    // EPRI r4133 `DblValueNZ` clamp (UPGRADE_PLAN ledger L2, WP-U1.1): a parsed
+    // value inside the open band (-1e-8, 1e-8) becomes +1e-8. This runs on the raw
+    // (pre-scale) value, matching `TParser.MakeDoubleNZ` (`ParserDel.pas:912`) and
+    // dss_capi 0.15.x's pre-scale `ReplaceZero`. Adopted unconditionally (EPRI
+    // default), never as an error — so the range checks below see 1e-8, not 0.
+    if f.contains(PropFlags::REPLACE_ZERO) && value > -1e-8 && value < 1e-8 {
+        value = 1e-8;
+    }
     if f.contains(PropFlags::GREATER_THAN_ONE) && value <= 1.0 {
         if !ignore {
             eng.errors.push(format!(

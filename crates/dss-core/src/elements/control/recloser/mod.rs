@@ -105,6 +105,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_any("SwitchedObj"),
         PropDef::integer("SwitchedTerm"),
         PropDef::integer("NumFast"),
+        // SVN r4119 (fd034bb0) added `TPropertyFlag.AllowNone` here so a `none`
+        // value clears the curve — but that flag is observably a no-op in capi015
+        // (its AllowNone branch still hits the unconditional #401, see
+        // parse.rs::ObjectRef / DIVERGENCES.md §AllowNone-single-ref), so the port
+        // deliberately does NOT set it: `phasefast=none` already clears+#401 via
+        // the plain not-found path. WP-U1.1 item 4.
         PropDef::object_ref_class("TCC_Curve", "PhaseFast"),
         PropDef::object_ref_class("TCC_Curve", "PhaseDelayed"),
         PropDef::object_ref_class("TCC_Curve", "GroundFast"),

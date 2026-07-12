@@ -3,7 +3,7 @@
 //! machine.
 
 use crate::elements::traits::ElemRef;
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 
 use super::{ConductorChoice, LineGeometryObj, prop};
 
@@ -132,7 +132,7 @@ impl DssObject for LineGeometryObj {
         }
     }
 
-    fn set_object_ref_array(&mut self, idx: usize, refs: &[(String, ElemRef, &dyn DssObject)]) {
+    fn set_object_ref_array(&mut self, idx: usize, refs: &[ObjectRefArrayItem<'_>]) {
         debug_assert!(matches!(idx, prop::WIRES | prop::CNCABLES | prop::TSCABLES));
         self.set_wires(refs);
     }

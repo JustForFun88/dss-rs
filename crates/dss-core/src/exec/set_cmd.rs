@@ -49,6 +49,14 @@ impl Dss {
             self.do_set_cmd_no_circuit();
             return;
         }
+        // `Set Class=`/`Set Object=` (and their `Type=`/`Element=` aliases) touch
+        // whole-`self` state (`class_by_name`, `active_class`) not reachable inside
+        // the field-destructure below, so they are collected in encounter order
+        // here and applied right after the option loop (nothing else in a `Set`
+        // command reads the active class/object mid-parse). `true` = class (activate
+        // — Pascal `SetObjectClass`); `false` = object (select — `SetObject`).
+        // WP-U1.1 item 5.
+        let mut pending_set_active: Vec<(bool, String)> = Vec::new();
         {
             let Dss {
                 classes,
@@ -625,6 +633,8 @@ impl Dss {
                     // per ExecOptions.pas:683-684, `ProcessTime`/`StepTime` Get-only
                     // silent no-ops. The gfm branch's all-no-op arm was dropped at
                     // merge as unreachable and 107-divergent.)
+                    opt::TYPE | opt::CLASS => pending_set_active.push((true, param.clone())),
+                    opt::ELEMENT | opt::OBJECT => pending_set_active.push((false, param.clone())),
                     _ => {
                         let name = EXEC_OPTIONS.get(pointer - 1).copied().unwrap_or("?");
                         errors.push(format!("Set option \"{name}\" is not ported yet."));
@@ -633,6 +643,15 @@ impl Dss {
 
                 param_name = parser.next_param(vars);
                 param = parser.make_string(vars);
+            }
+        }
+
+        // Apply the collected `Set Class`/`Set Object` ops in order (item 5).
+        for (is_class, param) in pending_set_active {
+            if is_class {
+                self.set_object_class(&param);
+            } else {
+                self.set_object(&param);
             }
         }
 

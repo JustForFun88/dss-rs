@@ -5,8 +5,7 @@
 use crate::elements::general::conductor_data::{CnDataObj, TsDataObj, WireDataObj};
 use crate::elements::general::line_code::LineCodeObj;
 use crate::elements::general::line_geometry::LineGeometryObj;
-use crate::elements::traits::ElemRef;
-use crate::obj::base::DssObject;
+use crate::obj::base::{DssObject, ObjectRefArrayItem};
 use crate::support::line_units::{LineUnits, convert_line_units};
 
 use super::{ConductorChoice, Line, prop};
@@ -222,7 +221,7 @@ impl Line {
     /// form: overhead conductors when `FPhaseChoice = Unknown`, else bare neutrals
     /// appended after the cable phases (`istart = NPhases + 1`). Validates the count
     /// against the open conductor span and seeds the Line's ratings from the wires.
-    pub(super) fn set_wires(&mut self, refs: &[(String, ElemRef, &dyn DssObject)]) {
+    pub(super) fn set_wires(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
         let Some(spc) = self.line_spacing_obj.as_ref() else {
             self.cd.obj.push_error(format!(
                 "You must assign the LineSpacing before the Wires Property (\"Line.{}\").",
@@ -258,8 +257,13 @@ impl Line {
         let mut new_ratings: Vec<f64> = Vec::new();
         let mut ratings_inc = false;
         for (k, i) in (istart..=nwires).enumerate() {
-            let (cnorm, cemerg, cnum, crat) = conductor_amps(refs[k].2);
-            self.line_wire_data[i - 1] = Some(refs[k].2.clone_box());
+            // A `none` slot (AllowNoneItem) stays NIL and contributes no ratings.
+            let Some((_, _, obj)) = refs[k].as_ref() else {
+                self.line_wire_data[i - 1] = None;
+                continue;
+            };
+            let (cnorm, cemerg, cnum, crat) = conductor_amps(*obj);
+            self.line_wire_data[i - 1] = Some(obj.clone_box());
             if cnum > new_num_rat {
                 new_num_rat = cnum;
                 new_ratings = crat.into_iter().take(new_num_rat.max(0) as usize).collect();
@@ -288,7 +292,7 @@ impl Line {
     /// `LoadSpacingAndWires` reports the "not correctly initialized" abort exactly
     /// as upstream (probe-confirmed); but with *no* spacing at all (`FWireDataSize <
     /// 1`) the generic fill raises Pascal error 402 up front, so reproduce that.
-    pub(super) fn set_cables(&mut self, prop: &str, refs: &[(String, ElemRef, &dyn DssObject)]) {
+    pub(super) fn set_cables(&mut self, prop: &str, refs: &[ObjectRefArrayItem<'_>]) {
         if self.line_wire_data.is_empty() {
             self.cd.obj.push_error(format!(
                 "Line.{}.{prop}: No objects are expected! \
@@ -299,7 +303,8 @@ impl Line {
         }
         for (k, r) in refs.iter().enumerate() {
             if k < self.line_wire_data.len() {
-                self.line_wire_data[k] = Some(r.2.clone_box());
+                // A `none` slot (AllowNoneItem) stays NIL.
+                self.line_wire_data[k] = r.as_ref().map(|(_, _, o)| o.clone_box());
             }
         }
     }

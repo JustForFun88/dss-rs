@@ -13,6 +13,74 @@ fn new_and_query_defaults() {
 }
 
 #[test]
+fn tcc_curve_none_is_reserved() {
+    // WP-U1.1 item 4 (SVN r4119 / fd034bb0): "none" is a reserved TCC_Curve name.
+    // `new TCC_Curve.none` errors (423) and NO object is created — matching
+    // capi015 AND r4133. Feature-sensitive: the object stays absent.
+    let mut dss = dss_with_circuit();
+    dss.command("New TCC_Curve.none npts=2 C_array=(1 10) T_array=(1 0.1)");
+    assert!(
+        dss.errors().iter().any(|e| e.contains("reserved name")),
+        "expected the reserved-name error, got {:?}",
+        dss.errors()
+    );
+    // The object was not created: querying it fails to resolve (never "2").
+    let npts = query(&mut dss, "TCC_Curve.none.NPts");
+    assert_ne!(npts, "2", "TCC_Curve.none must not have been created");
+    assert!(
+        npts.is_empty() || npts.contains("Unknown"),
+        "expected a not-found query result, got {npts:?}"
+    );
+    // A real name still works right after.
+    dss.command("New TCC_Curve.ok npts=2 C_array=(1 10) T_array=(1 0.1)");
+    assert_eq!(query(&mut dss, "TCC_Curve.ok.NPts"), "2");
+}
+
+#[test]
+fn fuse_curve_none_clears_with_error_like_capi015() {
+    // WP-U1.1 item 4 / DIVERGENCES.md §AllowNone-single-ref: capi015's AllowNone
+    // flag on a single TCC_Curve ref is observably a no-op — `fusecurve=none`
+    // clears the ref to NIL *and* logs the #401 "not found" (the unconditional
+    // NIL-check fires even on the AllowNone branch). The port reproduces that via
+    // the plain not-found path (no AllowNone shortcut). This pins that behavior so
+    // a future "silent none-clear" refactor (which would diverge from capi015) is
+    // caught.
+    // Probed 2026-07-12 (capi015 0.16.0b2 AND 0.14.5, identical): with a REAL
+    // curve set (`tlink`), `Edit fuse.f fusecurve=none` logs #401
+    // "Fuse.f.FuseCurve: TCC_Curve object \"none\" not found." AND clears the ref
+    // to "". A real `tlink` is defined here so the pre-existing set succeeds
+    // cleanly and the assertions isolate the `none`-clear behavior (not an
+    // undefined-curve error), and we snapshot the error count so only the Edit's
+    // error is inspected.
+    let mut dss = dss_with_circuit();
+    dss.command("New TCC_Curve.tlink npts=2 C_array=(1 10) T_array=(1 0.1)");
+    dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");
+    dss.command("New fuse.f monitoredobj=line.l1 fusecurve=tlink");
+    assert!(
+        dss.errors().is_empty(),
+        "setup should be clean: {:?}",
+        dss.errors()
+    );
+    assert_eq!(
+        query(&mut dss, "fuse.f.fusecurve"),
+        "tlink",
+        "curve set cleanly"
+    );
+
+    let before = dss.errors().len();
+    dss.command("Edit fuse.f fusecurve=none");
+    let from_edit = &dss.errors()[before..];
+    assert!(
+        from_edit
+            .iter()
+            .any(|e| e.contains("FuseCurve") && e.contains("not found")),
+        "expected the #401-style not-found error from the none-edit, got {from_edit:?}"
+    );
+    // The ref is cleared (renders "" — NIL), like capi015.
+    assert_eq!(query(&mut dss, "fuse.f.fusecurve"), "");
+}
+
+#[test]
 fn new_with_inline_edits() {
     let mut dss = dss_with_circuit();
     dss.command("New TCC_Curve.t npts=3 C_array=(1 2 3) T_array=(0.1 0.2 0.3)");

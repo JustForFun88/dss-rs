@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-11.
+Last updated: 2026-07-12 (WP-U1.1 items 2-5 settle — Set Object fall-back fix, DoubleSymMatrix reject test, refutations/UB notes; records below).
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
@@ -3125,6 +3125,177 @@ channel; `storagecontroller_seasonal` is storage+line, not transformer AmpRating
 qualified (`B4-r3723`/`A5-r3723` vs this-file's B4/A5) + legend note. (6–9)
 per-signal count-table relabels, delta_r4088_r4133 headline caveat → B5/B6,
 capi015=r4103 version-gap caveat. No engine/golden/oracle changes; docs only.
+
+### WP-U1.1 (parser & property-system semantics) — branch `wp-u11`, 2026-07-12
+
+Rung 1, exec opus-high. **Item 1 of 5 landed** (ledger L2, the `DblValueNZ`
+zero-`kW`/`kVA` clamp); items 2–5 (`ParseAsSymMatrix` incomplete-matrix error,
+`AllowNoneItem`/`WasQuoted`, `TCC_Curve.none`, C11 class-command activation)
+remain — see "next" below. This session RESUMED a crashed executor's dirty draft
+(item 1 only); the draft was re-verified against the spec + re-probed, one real
+bug fixed, and the ledger's central gate-consequence claim corrected.
+
+**L2 clamp (adopt EPRI r4133 `DblValueNZ`).** A parsed essential-sizing double in
+the open band `(-1e-8, 1e-8)` → `+1e-8`, unconditionally (EPRI default), pre-
+scale, in `obj/props/setters.rs::set_obj_double` via new `PropFlags::REPLACE_ZERO`.
+Carried by Load `kW`/`kVA`, Generator `kW`/`kVA`, Storage `kW`/`kVA`, PVSystem
+`kVA`. Probes I re-ran (`scratch_probe_l2.py`, 2026-07-12): capi015 default keeps
+`0`, `+0x200` (PermissiveProperties) clamps; r4088/r4133 clamp by default. We
+adopt the r4133 default; we do NOT adopt dss_capi's strict-`NonZero`-error surface
+(dss-ext-only). `ParserDel.pas:912 MakeDoubleNZ` confirmed as the exact band-clamp.
+
+**Salvage record (crashed draft):**
+- KEPT: the `REPLACE_ZERO` flag + `set_obj_double` clamp, Load/Storage/PVSystem
+  `class_props` flags, the exact unit test `zero_kw_kva_clamp_dblvaluenz`, the
+  synthesized `modes/upgrade_parser_zerokw.dss` deck (r4133). Both the per-class
+  test coverage and the deck's feature-sensitivity were extended in settle (see
+  "Settle" below; deck fp is now `02037161f3236a3b` after adding `Load.zpf`).
+- FIXED (real bug): the draft flagged Generator **`MVA`** with `REPLACE_ZERO`.
+  r4133 `generator.pas:664` reads `MVA` (prop 27) through plain `DblValue*1000`
+  — NOT `DblValueNZ` (only prop 26 `kVA` clamps). Removed the flag; documented the
+  upstream asymmetry (only WindGen's `MVA` clamps, U1.8). Fixed in
+  `generator/mod.rs`, `prop_flags.rs` doc, and the ledger decision text.
+- CORRECTED (falsified claim): the draft ledger claimed the clamp "moves no
+  default-oracle observable." **False.** A Load with both `kW=0` **and** `kvar=0`
+  ends in the `KwKvar` spec; the clamp makes `kVA=1e-8>0`, so `RecalcElementData`
+  recomputes `PF = kW/kVA = 1` (un-clamped `kVA=0` skips the recompute, keeping the
+  parsed `pf`). So `? load.pf` reads `1` (Rust≡r4088/r4133) vs `0.9` (0.14.5).
+  Probe `scratch_probe_pf.py`. Corpus scan (`/tmp/scan_zero.py`): the breaking
+  pattern hits exactly one mandatory-gate deck, `epri_dpv/M1/Master_NoPV.dss`
+  (feeder, 8 zero-loads). Per §1.2 it is **flipped to `oracle: "r4133"` in this
+  same commit**; the whole-model live compare passes green against r4133 (target-
+  rev cases drop `compare_all_properties` per §1.3-2, so the PF readback is no
+  longer compared vs the 0.14.5 oracle it deliberately mismatches). No golden
+  migration (no byte-golden covers M1); no `known_diffs.json` change.
+
+**known_diffs burn-down:** none (no zero-kW entry existed @ r3723; Rust now matches
+r4133). **Iteration policy (§1.3-1):** M1 is the only newly-flipped case; the
+`--nocapture` gate run emits **no** `NOTE Rust converged …` line for it — Rust
+matched r4133's iteration count exactly (no suspicious strict `<`).
+
+**Settle (audit findings, 2026-07-12).** Two real gaps in item 1's regression
+coverage were closed:
+- **Clamp untested on Generator/Storage/PVSystem + MVA asymmetry unpinned.** The
+  only clamp test was Load-only, so removing `REPLACE_ZERO` from the other three
+  classes — or re-adding it to Generator `MVA` (the exact crashed-draft bug) —
+  passed silently. Added `zero_kw_kva_clamp_dblvaluenz` to Generator (also asserts
+  `MVA=0 → kVA rating 0`, NOT clamped) and Storage (`kW=0` clamp witnessed via the
+  `Set_kW` state resolving DISCHARGING not IDLING), and `zero_kva_clamp_dblvaluenz`
+  to PVSystem. All four verified feature-sensitive (each fails when the clamp is
+  disabled).
+- **Deck not feature-sensitive (§1.7-3).** `upgrade_parser_zerokw.dss`'s numeric
+  channels all sit below the 1e-8 clamp floor, so it passed identically with and
+  without the clamp. Added `Load.zpf` (`kW=0` AND `kvar=0`) + a `?pf` probe: under
+  the clamp its `KwKvar` spec recomputes `PF 0.9→1`, un-clamped it stays `0.9`
+  (re-probed r4133/r4088 → `pf=1`; Rust `KwKvar` path → `pf=1`). The `?pf` probe
+  now diverges `0.9` vs `1` (|Δ|=0.1 » floor) if the clamp regresses. Deck
+  two-process determinism re-validated on r4133 (fp `02037161f3236a3b`).
+- Corrected the deck header comment (was: "capi015 keeps a literal 0"; the real
+  reason it can't run on capi015 is the `Generator.kVA=0` `NonZero` rejection) and
+  refreshed the manifest note to match.
+
+**Item 2 landed (`ParseAsSymMatrix` incomplete-matrix reject — adopt EPRI r4133).**
+`Parser::parse_as_sym_matrix` now returns `OrderFound` (rows that supplied ≥1
+value) instead of always `ExpectedOrder`; `ClassProps::parse_into` rejects a
+matrix with `OrderFound < order` (both the `SymMatrix*` and `DoubleSymMatrix`
+arms): it logs the r4133 message ("The matrix entered does not match with the
+expected order…") and keeps the property's prior value — the DoSimpleMsg-and-
+continue semantics of `ParserDel.pas:741`. The FPC line (0.14.5/0.15.x) silently
+zero-filled the missing rows; capi015 does too. This is a **deliberate ledger
+exception** (DIVERGENCES.md §ParseAsSymMatrix): we favor the r4133 end-target over
+the capi015 Rung-1 oracle.
+- **No live oracle is possible.** capi015 zero-fills (comparing against it = a
+  forbidden §1.2 mismatch); oddie r4133 **hangs** the moment an incomplete rmatrix
+  leaves a linecode's series Zmatrix inconsistent (probed: `rmatrix=(0.4|0.1 0.4)`
+  never returns under Oddie; any solve after such a reject times out). So r4133 can
+  neither compile nor solve the feature — §1.7's "solves on target oracle" is
+  unattainable. Gated instead by **feature-sensitive Rust unit tests**: `dss-parser`
+  `sym_matrix_returns_order_found_for_incomplete_input`; `dss-core` line_code
+  `incomplete_sym_matrix_rejected_keeps_default` (asserts the reject message AND the
+  default-symmetric revert, not the zero-fill) + `complete_sym_matrix_still_accepted`.
+- **Gate-safe.** A full corpus scan (`scan_incomplete_matrix.py`) finds the one
+  incomplete-matrix witness (`4wire-Delta/Kersting4wireIndMotor.dss`, 556MCM
+  linecode 3-row cmatrix) already in `skipped_oracle_issue.json` (IndMach012a
+  user-model, unrelated), so no mandatory-gate case supplies an incomplete matrix —
+  the full `cargo test --workspace` is green with the default change.
+- known_diffs: nothing to retire (0.14.5 and the port both zero-filled at r3723).
+
+**Item 3 landed (`AllowNoneItem` — `none` in conductor lists — adopt capi015).**
+New `PropFlags::ALLOW_NONE_ITEM` on Line + LineGeometry `Wires`/`CNCables`/
+`TSCables`; the `ObjectRefArray` parse resolves a `none` token to a NIL slot (no
+"not found" error) — capi015 accepts it, 0.14.5 errors #40303. Threaded
+`ObjectRefArrayItem = Option<(name, ElemRef, view)>` through `set_object_ref_array`
+→ `set_wires`/`set_cables` (storages already `Vec<Option<…>>`). Exposed
+`Parser::is_quoted()` (item 3 "WasQuoted plumbing"; the parser already tracked it,
+WP-U2 consumes it). Parser/storage plumbing ONLY — the mixed-conductor-list
+*numerics* (the `Conductors` property) are WP-U1.4; a `none` conductor alone is
+degenerate (capi015 `#303`s the geometry), so no live deck (§1.7 unattainable).
+Gate-safe (no corpus deck uses `none` in a list; the `Option` thread kept the
+non-`none` path byte-identical). Pinned by `line_fetch::conductor_list_accepts_none_entry`
+(feature-sensitive — a non-`none` missing name still errors) + parser `is_quoted`.
+
+**Item 4 landed (`TCC_Curve.none`).** (a) `new TCC_Curve.none` is rejected (423,
+no object) in `add_object` — capi015 == r4133. (b) The C7 `AllowNone`-on-single-ref
+(Recloser/Fuse curve `=none`) is **observably a no-op in capi015** — its AllowNone
+branch NILs the ref then the unconditional `if otherObj=NIL` fires #401 anyway
+(DSSObjectHelper.pas:862), bit-identical to the not-found path the port already
+takes — so the port sets NO flag (a silent clear would diverge). r4133 diverges
+(stores literal `none`, no #401) — Rung-2 note. Pinned by
+`lifecycle::tcc_curve_none_is_reserved` + `fuse_curve_none_clears_with_error_like_capi015`.
+
+**Item 5 landed (C11 / SVN r3875 class-command activation).** The port collapses
+`LastClassReferenced`+`ActiveDSSClass` into one `active_class`, so every already-
+ported SetObjectClass-equivalent already reproduces the fix. The fix's only
+newly-affected consumers, `Set Class=`/`Set Object=` SET-options, were NOT_PORTED
+— now ported (opts 1/12 `Type`/`Class` → `set_object_class` activate; opts 2/13
+`Element`/`Object` → `set_object`, now also setting `ActiveCktElement`). Gate-safe
+(0 corpus uses). Pinned by `select::set_class_activates_and_set_object_selects` +
+`set_class_unknown_errors_keeps_previous`. Follow-up (separate, NOT r3875): a bare
+`? prop` querying the ActiveCktElement is still unported in `do_query_cmd` — owner
+for a later WP.
+
+**Each item's decision + probe transcript + gate consequence is in
+`docs/upgrade/DIVERGENCES.md` (§ParseAsSymMatrix, §AllowNoneItem, §TCC_Curve none,
+§Class-command activation).** No live oracle exists for items 2/3/4b (capi015 and
+r4133 each disagree in ways that can't be gated — documented per §1.4); they are
+pinned by feature-sensitive Rust unit tests, the honest gate for a behavior neither
+oracle can drive.
+
+**Settle pass (items 2-5 audit, 2026-07-12).** Eight findings triaged empirically
+(capi015 0.16.0b2 + 0.14.5 probes; `SetObject`/`SetObjectClass` are byte-identical
+across the delta, so the Pascal at `.inputs/dss_capi` is authoritative):
+- **`Set Object=badclass.l1` fall-back — FIXED.** `set_object` aborted on an
+  unknown class qualifier; Pascal (and both oracles, probed) instead log #903, keep
+  `LastClassReferenced`, and resolve the name against the previous class (`→Line.l1`).
+  `set_object` now mirrors `do_select_cmd`; a NIL class emits #905. New test
+  `set_object_unknown_class_qualifier_falls_back`. This also witnesses item-5's
+  bare-resolution against the oracle (prior "matches oracle" claim was Pascal-only).
+- **`Set Class/Object` before a circuit — REFUTED (no fix).** `DoSetCmd_NoCircuit`
+  has an `else` arm (`ExecOptions.pas:303`) emitting #301; both oracles raise #301
+  (probed). The port's catch-all already emits #301 — not a silent no-op.
+- **DoubleSymMatrix reject arm — TEST ADDED.** New
+  `line_fetch::incomplete_double_sym_matrix_rejected_keeps_default` (Reactor RMatrix):
+  reject error logged + stored value unset (revert), asserted via `get_f64_array`
+  because the DoubleSymMatrix *readback* is an all-zeros `TODO(compat)` bug-repro
+  that can't distinguish revert from zero-fill.
+- **`fuse_curve_none` test — CLARIFIED.** Now defines a real `TCC_Curve.tlink` and
+  snapshots the error count so the `none`-clear (#401 + revert to "", probed on both
+  oracles) is isolated from the previously-undefined-curve error.
+- **`wires=(w none)` readback — no fix (UB).** `? …wires` on a NIL slot is a capi015
+  **Access Violation** (probed); no defined oracle string, so the port's `[w, ]` is
+  a deterministic non-reproduction of the crash. Documented in the test + DIVERGENCES.
+- **3 of 4 corpus micro-decks absent (Major) — confirmed justified (no fix).** A
+  solvable, non-mismatching oracle deck is genuinely unattainable for items 2/3/4
+  (capi015 zero-fills / AVs, r4133 hangs on solve-after-reject, TCC `none` is a
+  rejection); each is documented as §1.7-unattainable in DIVERGENCES and pinned by
+  feature-sensitive unit tests — the honest gate for a behavior no oracle can drive.
+- **2 of 9 tests are regression-guards (accounting) — no fix.** `complete_sym_matrix_still_accepted`
+  and `fuse_curve_none…` guard behavior not changed by this WP; honestly labelled as
+  guards in their comments/DIVERGENCES, not counted as new-code coverage.
+
+**Next (resume point):** WP-U1.1 items 1–5 all landed (settle pass closed). Next WP
+is U1.2 (numeric long tail) per the plan; U1.4 owns the conductor-list-with-`none`
+numerics that this item's plumbing enables.
 
 ### Gate state (all green)
 ```

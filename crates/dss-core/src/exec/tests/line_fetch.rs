@@ -24,6 +24,100 @@ fn line_fetches_sym_linecode() {
 }
 
 #[test]
+fn conductor_list_accepts_none_entry() {
+    // WP-U1.1 item 3 (AllowNoneItem, SVN r3902/r3913): a `none` entry in a
+    // conductor list resolves to a NIL slot with NO "not found" error — capi015
+    // accepts it (0.14.5 errors #40303). Feature-sensitive: a NON-`none` missing
+    // name still errors, so the `none` acceptance is not blanket-swallowing.
+    let mut dss = Dss::new();
+    dss.command("New circuit.p");
+    dss.command("New wiredata.w Runits=mi Rac=0.1 GMRunits=mi GMRac=0.01 radunits=in diam=0.5");
+    dss.command("New linegeometry.g nconds=2 nphases=2 reduce=n");
+    dss.command("~ wires=(w none)");
+    assert!(
+        dss.errors().is_empty(),
+        "`none` conductor entry must not error (AllowNoneItem): {:?}",
+        dss.errors()
+    );
+    // The list is [w, NIL]: the readback renders the NIL slot as the empty name.
+    // NOTE: the exact readback STRING is not oracle-observable — probed
+    // 2026-07-12, `? linegeometry.g.wires` on a NIL-slot list raises a capi015
+    // Access Violation (#303, UB: the FPC readback dereferences the NIL wire).
+    // UB is not reproduced (project rule); the port renders `[w, ]` deterministically
+    // (NIL → "", consistent with the probed single-ref cleared-ref "" rendering).
+    assert_eq!(query(&mut dss, "linegeometry.g.wires"), "[w, ]");
+
+    // Control (feature-sensitivity): a genuine missing wire name still errors —
+    // only the reserved `none` is special.
+    let mut dss2 = Dss::new();
+    dss2.command("New circuit.p");
+    dss2.command("New wiredata.w Runits=mi Rac=0.1 GMRunits=mi GMRac=0.01 radunits=in diam=0.5");
+    dss2.command("New linegeometry.g2 nconds=2 nphases=2 reduce=n");
+    dss2.command("~ wires=(w nope)");
+    assert!(
+        dss2.errors().iter().any(|e| e.contains("not found")),
+        "a non-`none` missing wire must still error, got {:?}",
+        dss2.errors()
+    );
+}
+
+#[test]
+fn incomplete_double_sym_matrix_rejected_keeps_default() {
+    // WP-U1.1 item 2 settle: the DoubleSymMatrix parse arm (Reactor RMatrix/XMatrix,
+    // Capacitor CMatrix, Fault GMatrix) shares the r4133 incomplete-matrix reject
+    // with the SymMatrix arm, but only the SymMatrix arm was tested (line_code).
+    // Probed 2026-07-12: capi015 zero-fills a reactor `rmatrix=(1 | 2 3)` to
+    // `(1 |2 3 |0 0 0 )`; the port adopts the r4133 reject.
+    //
+    // The DoubleSymMatrix *readback* renders all-zeros (a `TODO(compat)` reproducing
+    // a dss_capi getter bug), so it cannot distinguish reject-revert from zero-fill —
+    // we therefore assert on the reject error AND on the STORED value (get_f64_array),
+    // which is what the arm's `return Ok(0)` skips.
+    let mut dss = Dss::new();
+    dss.command("New circuit.p");
+    dss.command("New reactor.rr bus1=a phases=3 rmatrix=(1 | 2 3) xmatrix=(1 | 2 3 | 4 5 6)");
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("does not match with the expected order")),
+        "expected the r4133 reject for the incomplete rmatrix, got {:?}",
+        dss.errors()
+    );
+    // Stored value reverted: the arm skipped `set_f64_array`, so rmatrix stays unset
+    // (None) — NOT the zero-filled partial `[1, 0,0, 2,3,0, ...]` capi015 would store.
+    let ci = dss.class_by_name["reactor"];
+    let oi = dss.classes[ci].name_to_idx["rr"];
+    let ridx = dss.classes[ci].props.property_index("RMatrix").unwrap();
+    assert!(
+        dss.classes[ci].objects[oi].get_f64_array(ridx).is_none(),
+        "incomplete rmatrix must be rejected (unset), not zero-filled"
+    );
+
+    // Over-rejection + accept-path guard for the DoubleSymMatrix arm: a fully-complete
+    // reactor matrix errors nothing and IS stored (get_f64_array Some with the values).
+    let mut dss2 = Dss::new();
+    dss2.command("New circuit.p");
+    dss2.command(
+        "New reactor.ok bus1=a phases=3 rmatrix=(1 | 2 3 | 4 5 6) xmatrix=(0.1 | 0.2 0.3 | 0.4 0.5 0.6)",
+    );
+    assert!(
+        dss2.errors().is_empty(),
+        "complete matrices must not error: {:?}",
+        dss2.errors()
+    );
+    let ci2 = dss2.class_by_name["reactor"];
+    let oi2 = dss2.classes[ci2].name_to_idx["ok"];
+    let ridx2 = dss2.classes[ci2].props.property_index("RMatrix").unwrap();
+    let stored = dss2.classes[ci2].objects[oi2]
+        .get_f64_array(ridx2)
+        .expect("a complete DoubleSymMatrix must be accepted and stored");
+    assert!(
+        stored.contains(&4.0),
+        "the complete rmatrix values must be stored, got {stored:?}"
+    );
+}
+
+#[test]
 fn load_and_vsource_resolve_shape_refs() {
     // WP5.3: the shape refs became resolved `object_ref_class` props. The
     // ObjectRef getter renders the resolved object's name, and an unset
