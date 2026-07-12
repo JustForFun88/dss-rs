@@ -1,0 +1,28 @@
+// Relay VOLTAGE (27 undervoltage) — the voltage element (Relay.pas
+// VoltageLogic: per-phase Vmin/Vmax vs kvbase, tripped by the UnderVolt TCC
+// curve). A bolted 3-phase fault at the monitored bus collapses the voltage
+// deep below the undervoltage curve, arming and tripping the relay to lockout.
+// Feature-sensitive: dropping the undervolt pickup so the collapse stays
+// in-band stops the trip (probe-proven). Compared per step: full model +
+// State/Normal + type/kvbase/delay probes + the trip event log + control queue.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.rlyv basekv=12.47 phases=3 pu=1.0 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi
+new line.lat bus1=mid bus2=loadb linecode=lc length=1 units=mi
+new load.l bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
+
+// Undervoltage TCC: below ~0.9 pu trip in 0.20 s, below ~0.6 pu in 0.05 s.
+new TCC_Curve.uv npts=3 C_array=(0.60 0.80 0.90) T_array=(0.05 0.05 0.20)
+
+new relay.rl type=voltage monitoredobj=line.lat monitoredterm=2
+~ switchedobj=line.feed switchedterm=1 kvbase=7.2
+~ undervoltcurve=uv delay=0 shots=1 recloseintervals=None eventlog=yes
+
+new fault.f bus1=loadb.1.2.3 phases=3 ontime=0.1 r=0.05 temporary=no
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.05 number=1 controlmode=time

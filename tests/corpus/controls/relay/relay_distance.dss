@@ -1,0 +1,29 @@
+// Relay DISTANCE (21 mho) — the mho-characteristic reach test (Relay.pas
+// DistanceLogic, Kersting ex.4.1 impedances). The relay measures the apparent
+// impedance to a bolted 3-phase fault inside its Mphase reach and trips; a
+// fault beyond the reach would not (the reach boundary is the branch under
+// test). Duty-mode fault applied at ontime; the relay locks out (shots=1).
+// Feature-sensitive: shrinking Mphase below the fault distance stops the trip
+// (probe-proven). Compared per step: full model + State/Normal + distance-
+// setting probes + the trip event log + control queue.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.rly21 basekv=12.47 phases=3 pu=1.0 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.kex41 r1=0.3061 x1=0.6270 r0=0.7735 x0=1.9373 c1=0 c0=0 units=mi
+
+new line.thev bus1=src bus2=mvbus linecode=kex41 len=0.5 units=mi
+new line.feed bus1=mvbus bus2=fbus linecode=kex41 len=1.0 units=mi
+new line.tail bus1=fbus bus2=endb linecode=kex41 len=1.0 units=mi
+new load.l bus1=endb phases=3 kv=12.47 kw=600 pf=0.95 model=1
+
+new relay.rl type=distance monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1
+~ Z1MAG=0.6977 Z1ANG=63.98 Z0MAG=2.0860 Z0ANG=68.23 Mphase=1.5 Mground=1.5
+~ delay=0.03 shots=1 recloseintervals=None eventlog=yes
+
+new fault.f bus1=fbus.1.2.3 phases=3 ontime=0.05 r=0.001 temporary=no
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.02 number=1 controlmode=time

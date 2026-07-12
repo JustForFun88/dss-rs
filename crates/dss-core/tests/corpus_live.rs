@@ -1695,6 +1695,13 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "recloser/recloser_perm.dss",
     "relay/relay_oc_sym.dss",
     "relay/relay_4647_asym.dss",
+    // corpus coverage wave (controls): Relay ControlType decks.
+    "relay/relay_voltage.dss",
+    "relay/relay_revpower.dss",
+    "relay/relay_generic.dss",
+    "relay/relay_distance.dss",
+    "relay/relay_td21.dss",
+    "relay/relay_doc.dss",
     "fuse/fuse_blow_asym.dss",
     "swtcontrol/swtcontrol_time.dss",
     "energymeter/energymeter_sym.dss",
