@@ -55,6 +55,22 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               deliberately outside final acceptance. Early-start:
                               may begin as soon as MULTITHREADING **M2** lands
                               (M3/M4 are not prerequisites).
+ 9. WASM_USERMODELS_PLAN.md   WP-WM.0–WM.7: replace the user-written-DLL mechanism
+                              (GenUserModel/StoreUserModel/PVSystemUserModel/
+                              CapUserControl — the one surface every prior plan
+                              listed as "never: safe Rust") with sandboxed
+                              WebAssembly over pure-Rust **wasmi** (the vendored
+                              typst plugin host is the implementation template).
+                              Same properties, same 15/13/7-function contract,
+                              same warn-and-fallback failure semantics; activation
+                              is additive (`.wasm` files only), so every existing
+                              gate — incl. the five `expect_warnings` user-model
+                              decks — stays byte-identical. Numeric gate = the
+                              pinned oracle actually loading the native twin of
+                              the reference model (FPC-built vendored IndMach012a
+                              example), goldens committed; `.wasm` fixtures pinned
+                              like goldens (`tools/wasm_usermodel/PIN.txt`).
+                              Added 2026-07-12 per the user's request.
 ```
 
 Early-start exceptions (allowed out of order because they are independent and cheap):
@@ -65,6 +81,14 @@ Early-start exceptions (allowed out of order because they are independent and ch
 - `DIAKOPTICS_PSTCALC` **Part II** may start right after MULTITHREADING **M2** —
   it does not wait for M3/M4 (its WP-AD.6 threading stretch is the only piece that
   consumes M2, and only optionally).
+- `WASM_USERMODELS` may start **any time post-acceptance** — it is purely additive
+  (new leaf crate + hooks at already-NOT_PORTED sites) and depends on no other
+  post-acceptance stage. Caveat, not a blocker: landing it before DE_PASCALIZE R2
+  means the element-side hooks get re-touched by the arena refactor (cheap — the
+  hooks are thin); its per-element-owned instances are already M3-compatible by
+  design (plan §2.7). Its extra vendored-source requirements
+  (`.inputs/electricdss-code-r3723-trunk`, `.inputs/typst`) join the ritual step-0
+  check for its WPs only.
 
 Universal discipline: the **per-step ritual** (gate green → STATUS+commit → parallel
 `/audit-code` + `/audit-tests` → STATUS review → stop and report in Russian) originates in
@@ -116,13 +140,17 @@ Tier map at a glance (full tables live in each plan; the audit tier always appli
   engine — audits there are `opus-xhigh` too).
 - **`opus-high+`**: DE_PASCALIZE R2, P10, P15 (rest); MULTITHREADING M3a/M3b/M3d/M4;
   RESONANCE WP-R1; GAPS **WPG.13** (GFM); DIAKOPTICS_PSTCALC **WP-AD.2** (partitioner +
-  torn-file emission) and **WP-AD.6**. Audits everywhere are `opus-high+` minimum,
-  `opus-xhigh` on the xhigh-exec stages.
+  torn-file emission) and **WP-AD.6**; WASM_USERMODELS **WP-WM.0** (ABI freeze),
+  **WP-WM.2** (reference-model fixture port — audits `opus-xhigh`), **WP-WM.3**
+  (Generator + oracle gate — audits `opus-xhigh`; exec escalates to `opus-xhigh` if
+  the pinned-oracle DLL channel falls through to r3723, plan §2.5) and **WP-WM.6**.
+  Audits everywhere are `opus-high+` minimum, `opus-xhigh` on the xhigh-exec stages.
 - **`opus-medium+`**: everything else in the post-acceptance plans (R0/R3, Part II,
   P8/P9/P11–P14, P3, M0/M1/M3c, WP-R3) — mechanical-with-guardrails: named pinning
   tests, forbidden-move lists, and the "when stuck: leave green, record in STATUS,
   surface" escape protocol. DIAKOPTICS_PSTCALC's remaining WPs sit here too:
-  **WP-PF.1/PF.2, WP-AD.1** (pre-acceptance Part I) and **WP-AD.4/AD.5**.
+  **WP-PF.1/PF.2, WP-AD.1** (pre-acceptance Part I) and **WP-AD.4/AD.5**; likewise
+  WASM_USERMODELS **WP-WM.1/WM.4/WM.5** (WM.7 exit sweep is `sonnet-high+`).
 - **Porting plans (`PHASE8_PLAN` §0, `GAPS_PLAN` §0-tiers)** carry their own per-WP
   tables: mostly `sonnet-high+` (deliberately Sonnet-executable, pre-validated decks),
   with `opus-medium+` on the non-mechanical spots (WP8.5 step 5, WP8.7; the numeric
@@ -144,6 +172,9 @@ Supporting documents (not stages — referenced throughout):
   `bin/` are `cargo test` prerequisites now.
 - `docs/upgrade/delta_*.md` — the three revision-delta inventories (0.14.5→0.15.x,
   r3723→r4088, r4088→r4133; surveyed 2026-07-07) — UPGRADE_PLAN's scoping input.
+- `docs/wasm/USERMODEL_ABI.md` + `tools/wasm_usermodel/` (PIN.txt, fixture sources,
+  native-twin build) — the WASM user-model ABI spec and pinned artifacts, created by
+  WASM_USERMODELS WP-WM.0/WM.2.
 - `PHASE4..7_PLAN.md`, `docs/phase-records/` — completed phases (historical).
 
 Key cross-plan dependencies (why the order is what it is):
