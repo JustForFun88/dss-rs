@@ -33,8 +33,10 @@
     "Capacitor.cdel",
     "Capacitor.c1p",
     "Capacitor.cser",
-    "Capacitor.cstep"
-   ]
+    "Capacitor.cstep",
+    "Capacitor.cfilt"
+   ],
+   "note": "Extended with cfilt: a series-tuned harmonic-filter bank (per-step R+XL) whose YPrim is a full series R+L+C branch off the pure-C diagonal at 60 Hz. Oracle-validated + feature-sensitive (dropping XL collapses it onto the pure-C stamp)."
   },
   {
    "path": "line/line_asym.dss",
