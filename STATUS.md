@@ -31,6 +31,23 @@ GFL/GFM daily decks were ABOVE-BAND (GFL source-node imag; GFM islanded node ~0.
   trajectory (open-loop AC integration; in GFM only `it[0]` feeds the injection→node-V
   fixpoint, so it stays pinned while it[1]/it[2] drift). It is not a gated quantity
   and node V/currents/powers all match.
+- **Escalation pass (fable), 2026-07-12.** Verified the fix 1:1 vs PVsystem.pas
+  l.2192-2210/l.2281-2299 (mult+temperature per class at `DynaVars.dblHour`, else
+  `ShapeFactor := 1+j1` with `TShapeValue` untouched), the Storage counter-claim
+  (Storage.pas `InitStateVars`/`IntegrateStates` never dispatch on the class),
+  and the deck-4 drift claim (Storage.pas:2142 — only `it[0]` scales `BaseV`;
+  the per-phase integrate loop is 1:1, so the closed loop pins phase 0 while
+  phases 1+ feed nothing gated; `compare_variables` is not enabled for these
+  decks). No tolerance/band/manifest gaming vs base `97b186c`. Added the missing
+  regression test (`pvsystem::tests::dynamics_loadshapeclass_selects_mult_and_temperature`,
+  incl. the USENONE keeps-TShapeValue pin) and ported the three remaining
+  same-family gaps found by sweeping every Pascal `case ActiveLoadShapeClass`
+  site: **VSource** (`GetVterminalForSource` DYNAMICMODE arm + DYNAMICMODE in the
+  loadshape-Vmag branch, VSource.pas:1006-1026), **Isource** (`GetBaseCurr`
+  DYNAMICMODE arm, Isource.pas:403-416), **IndMach012** (`SetNominalPower`
+  GENERALTIME/DYNAMICMODE arm, IndMach012.pas:1091-1105) — each with a unit test.
+  With `USENONE` (every existing green deck) all three reduce to the previous
+  behavior; Load/Generator already dispatched correctly.
 
 **CF-A (corpus completeness: base-freq inheritance + BOM + monitor-export +
 quote), 2026-07-12.** Four small real-bug fixes + 4 deck migrations (branch
