@@ -13,15 +13,38 @@
 //! `Start_Diakoptics` disables each zone's artificial `source`/`vph_2`/`vph_3`
 //! VSources and its feeder-head link PDE, so a reference-free zone (actors > 2)
 //! drives its boundary purely through the `Ic` current injections. The probe
-//! answered the blocking question — the child Y stays solvable because the loads'
-//! `Yeq` shunts (stamped into Y as the fixed-point accelerator) anchor every
-//! node to ground: even with all sources disabled the reference-free zone is
-//! near-singular but not singular, and faer factors it (no KLU tiny-pivot
-//! regularization is involved). The port therefore uses the ordinary faer
-//! factorization with **no guard**: a genuinely singular child Y surfaces as the
-//! normal solve-error path (`SolutionAbort`), never silently regularized (§5).
-//! `Start_Diakoptics` runs only for actors > 2 (Solution.pas:3232); actor 2
-//! (zone 1) keeps its real VSource reference.
+//! answered the blocking question — for a **well-referenced** zone (wye /
+//! grounded loads) the loads' `Yeq` shunts (stamped into Y as the fixed-point
+//! accelerator) anchor every node to ground: even with all sources disabled the
+//! reference-free zone is near-singular but not singular, and faer factors it (no
+//! KLU tiny-pivot regularization is involved). The port therefore uses the
+//! ordinary faer factorization with **no guard**: a genuinely singular child Y
+//! surfaces as the normal solve-error path (`SolutionAbort`), never silently
+//! regularized (§5). `Start_Diakoptics` runs only for actors > 2
+//! (Solution.pas:3232); actor 2 (zone 1) keeps its real VSource reference.
+//!
+//! NOTE(upstream-quirk): the "loads' `Yeq` anchors every node to ground" premise
+//! holds ONLY for wye/grounded shunts. When `Tear_Circuit` isolates a zone with
+//! **no adequate in-zone voltage reference** the child `hY` is genuinely singular
+//! or near-singular, and the boundary stitch produces solver-dependent garbage.
+//! This is an **upstream A-Diakoptics limitation, not a port bug** — proven in the
+//! WP-AD.4 closing round (ad-bugs branch) by driving OFFICIAL r3723 AD (Oddie) on
+//! the IDENTICAL manual-`LinkBranches` cut and observing the same-or-worse failure
+//! (each row: our AD vs official r3723 AD on the same cut):
+//!
+//! - delta-only / partial-phase load bus (no ground path): `Test/ODRegTest.dss` cut
+//!   at `Line.l2` — ours ~1.5e15 @ loadbus, official ~2.9e16 @ loadbus.
+//! - meshed / open-switch topology (a single link cut cannot separate a mesh, or
+//!   open switches strand a regulator boundary): `civanlar.dss` (bus 1 wrong on
+//!   both), `IEEE123Switches.dss` cut at `Line.l58` (both → ~40 kV on a 2.4 kV bus).
+//! - ISource/GFM microgrid island driven only by PC current injections (no in-zone
+//!   VSource admittance): `Microgrid/.../GFM_IEEE123` — ours refuses init, official
+//!   → ~5e26.
+//!
+//! These decks are classified `off:ad-{regulator,switched,islanded,nonconvergent}`
+//! in `tests/corpus/manifests/ad_sweep.json` and stay off the sweep gate: the
+//! topology is not AD-decomposable, so there is no correct AD answer to gate against
+//! on either engine. Full transcripts: STATUS §1 (WP-AD.4 ad-bugs record).
 //!
 //! The probe also settled how the child voltage is maintained: official FREEZES
 //! each child's own `NodeV` at its state-2 standalone solve for the whole AD run

@@ -2493,9 +2493,9 @@ use num_complex::Complex64;
 /// allowlist (rather than "any non-empty string") is what makes a real AD-engine
 /// bucket distinguishable from a legitimate exclusion at the manifest level: a
 /// new deck cannot invent an unreviewed `off:reason` to dodge the sweep, and the
-/// `ad-*` classes (genuine AD-vs-normal divergences, section 5) stay a bounded,
-/// greppable, STATUS-documented list. Extend this ONLY with a reason that is
-/// itself evidence-backed (DSS_AD_CLASSIFY + DSS_AD_DECOMPOSE) and recorded.
+/// `ad-*` classes stay a bounded, greppable, STATUS-documented list. Extend this
+/// ONLY with a reason that is itself evidence-backed (DSS_AD_CLASSIFY +
+/// DSS_AD_DECOMPOSE) and recorded.
 const AD_OFF_REASONS: &[&str] = &[
     // Eligibility / topology (deck cannot be AD-swept by construction).
     "non-3ph-cut-only", // D5 ZLL: only cut candidates are non-3-phase lines/xfmrs
@@ -2511,15 +2511,30 @@ const AD_OFF_REASONS: &[&str] = &[
     "save-roundtrip-autotrans",
     "save-roundtrip-relay",
     "save-roundtrip-control",
-    // Open AD-engine defects (D7 leg2 large, leg1 small): filed in STATUS, kept
-    // off the gate because fixing the AD engine is outside WP-AD.4's charter.
-    "ad-regulator-divergence",
-    "ad-switched-divergence",
-    "ad-islanded-divergence",
-    "ad-nonconvergent",
-    "ad-singular-zone",
-    "ad-divergent",
-    "ad-floor-above-tier",
+    // Upstream A-Diakoptics limitations (NOT a dss-rs port bug). Root-caused in
+    // the WP-AD.4 closing round (ad-bugs branch): each of these topologies makes
+    // Tear_Circuit isolate a zone that lacks an adequate in-zone voltage
+    // reference, so the child `hY` is singular / near-singular and the boundary
+    // stitch is solver-dependent. Proven upstream by driving OFFICIAL r3723 AD
+    // (Oddie) on the IDENTICAL manual `LinkBranches` cut: official OpenDSS AD
+    // produces the same-or-worse garbage (blow-ups 1e16..1e26 or a collapsed
+    // zone) on every one — see the STATUS §1 evidence table with the transcripts.
+    // Kept off the gate because the topology is not AD-decomposable, not because
+    // fixing our engine was out of scope.
+    "ad-regulator-divergence", // delta-only / floating-phase load bus becomes a
+    // reference-free zone: ODRegTest (delta loads, both engines -> ~1e16 @ loadbus)
+    "ad-switched-divergence", // meshed / open-switch topology: a single link cut
+    // cannot separate a mesh (civanlar), or open switches strand a regulator
+    // boundary (IEEE123Switches, both engines -> garbage)
+    "ad-islanded-divergence", // ISource/GFM microgrid island driven only by PC
+    // current injections (no in-zone VSource admittance reference)
+    "ad-nonconvergent", // GFM/GFL island whose torn zone is singular enough that
+    // AD init/solve does not converge at all (our engine refuses; official blows
+    // up to 1e26)
+    "ad-singular-zone", // synthesized family deck: an intentionally singular tear
+    "ad-divergent",     // synthesized family deck: an intentionally divergent tear
+    "ad-floor-above-tier", // genuine long-radial stitch floor just above the tier
+                        // (NOT tolerance-widened, section 5) — IEEE34Mod1 leg2=2.1e-3
 ];
 
 /// A valid `ad` disposition is `full`, `pf`, or `off:<reason>` where `reason` is
