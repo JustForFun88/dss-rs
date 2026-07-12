@@ -66,6 +66,21 @@ pub struct AdTearing {
     /// `VIndex` (Circuit.pas:231): the offset of this sub-circuit's bus 1 in the
     /// interconnected node list (set by `SendIdx2Actors` in WP-AD.3).
     pub v_index: i32,
+
+    /// `Longest_paths` (Circuit.pas:210): the flattened list of bus (incidence
+    /// column) indices of every traced longest path, appended by
+    /// `Append2PathsArray`. Working state of `Get_paths_4_Coverage` (WP-AD.5).
+    pub longest_paths: Vec<i32>,
+    /// `Path_Idx` (Circuit.pas:211): the `Longest_paths` offset at which each
+    /// traced path begins. `length(Path_Idx)-1` is the number of new paths the
+    /// `Refine_BusLevels` command reports.
+    pub path_idx: Vec<i32>,
+    /// `Buses_Covered` (Circuit.pas:212): the estimated bus count of each path
+    /// (one quadrant). Summed / `length(Inc_Mat_Cols)` = `Actual_Coverage`.
+    pub buses_covered: Vec<i32>,
+    /// `New_Graph` (Circuit.pas:214): the latest weighted graph — the backbone
+    /// path `get_longest_path` extracts, consumed by `Get_paths_4_Coverage`.
+    pub new_graph: Vec<i32>,
     /// Transient: `set ADiakoptics=yes` sets this so `do_set_cmd` runs
     /// `ADiakopticsInit` after its option-loop field borrow ends (the init needs
     /// `&mut Dss`, not just the circuit). Never persisted.

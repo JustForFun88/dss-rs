@@ -332,11 +332,11 @@ pub(crate) fn try_get_ad_option(ckt: &Circuit, param_name: &str, result: &mut St
             true
         }
         "coverage" => {
-            // `get Coverage` after `tear_circuit` reports Actual_Coverage; before,
-            // the requested Coverage (official help note). Actual_Coverage stays
-            // -1 until the coverage-path algorithm (WP-AD.5) runs, so report the
-            // requested value here.
-            super::helpers::append_result(result, &format!("{}", ckt.ad.coverage));
+            // Official ExecOptions.pas:1086: `get Coverage` reports
+            // `Actual_Coverage` (the achieved coverage), `Format('%-g')`, NOT the
+            // requested `Coverage`. It stays -1 (the ctor sentinel) until
+            // `Refine_BusLevels`/`Get_paths_4_Coverage` (WP-AD.5) has run.
+            super::helpers::append_result(result, &crate::util::fmt_g(ckt.ad.actual_coverage, 15));
             true
         }
         "linkbranches" => {

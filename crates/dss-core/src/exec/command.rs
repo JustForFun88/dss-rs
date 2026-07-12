@@ -284,6 +284,7 @@ impl Dss {
             // Incidence matrix commands (WP-AD.1, Pascal `ExecCommands.pas:406-433`).
             cmd::CALC_INC_MATRIX => self.do_calc_inc_matrix(false),
             cmd::CALC_INC_MATRIX_O => self.do_calc_inc_matrix(true),
+            cmd::REFINE_BUSLEVELS => self.do_refine_bus_levels(),
             cmd::CALC_LAPLACIAN => self.do_calc_laplacian(),
             // Pascal `TExecHelper.DoMakePosSeq` (ExecHelper.pas:3035): flip the
             // circuit to positive-sequence and convert every element in creation
@@ -379,6 +380,21 @@ impl Dss {
         } else {
             crate::solution::inc_matrix::calc_inc_matrix(&self.classes, ckt);
         }
+    }
+
+    /// Pascal `ExecCommands.pas` cmd 114 (`Refine_BusLevels`): run
+    /// `Get_paths_4_Coverage` (trace the longest paths from the feeder backbone up
+    /// to the requested `Coverage`), then `GlobalResult := IntToStr(
+    /// length(Path_Idx)-1) + ' new paths detected'` (ExecCommands.pas:691–694).
+    /// Requires a prior `CalcIncMatrix_O` (the hierarchical levels); with no
+    /// incidence matrix the coverage tracer reports 0 new paths (WP-AD.5).
+    fn do_refine_bus_levels(&mut self) {
+        let Some(ckt) = self.circuit.as_mut() else {
+            return;
+        };
+        ckt.get_paths_4_coverage();
+        let new_paths = ckt.ad.path_idx.len().saturating_sub(1);
+        self.last_result = format!("{new_paths} new paths detected");
     }
 
     /// Pascal `ExecCommands.pas` `ord(Cmd.CalcLaplacian)`: `Laplacian :=
