@@ -9,6 +9,42 @@
 
 Last updated: 2026-07-12.
 
+**FIX-DIRECT (PCElement LastSolutionWasDirect shortcut), 2026-07-12.** Ported the
+escalated DIRECT-mode `TPCElement.GetCurrents` shortcut (PCElement.pas l.137,
+branch `fix-direct`): after a direct solve (`LastSolutionWasDirect` set at the end
+of `SolveDirect`, Solution.pas l.1282; cleared at the end of `DoPFLOWsolution`,
+l.1022 — the Rust flag lifecycle in `power_flow.rs` was already 1:1) and outside
+dynamics/harmonics, PC terminal currents are `CalcYPrimContribution` =
+`YPrim·Vterminal` (frozen shadow-admittance), NOT the model `conj(S/V)`.
+- Threading: `SysCtx.last_solution_was_direct` + `SysCtx::pc_direct_shortcut()`
+  (the exact l.137 condition) + `CktElementData::calc_yprim_contribution`
+  (PCElement.pas l.162 — no InjCurrent subtraction, no Iterminal marking).
+- Wired per the Pascal class hierarchy: Load / Generator / IndMach012 inherit the
+  base `GetCurrents` → shortcut; Storage / PVSystem get it only when NOT in GFM
+  mode (`TInvBasedPCE.GetCurrents` calls `inherited` on the non-GFM branch,
+  InvBasedPCE.pas l.216-219, and never on the GFM branch); the seven overrides
+  that never call `inherited` (VSource, Isource, GICLine, GICsource, VCCS, UPFC,
+  VSConverter) are untouched.
+- Powers/Losses interplay: `compute_iterminal`/`refresh_iterminal` both route
+  through `get_currents`, so the cache-aware Powers/Losses and the fresh Currents
+  agree after direct (oracle probe: Powers-before-Currents shows no order
+  dependence; P = V·conj(YPrim·V)).
+- Probe facts (pinned dss-python 0.15.7): `Set mode=direct` WITHOUT a solve does
+  NOT flip currents; a snapshot solve after direct reverts to model currents;
+  `Set loadmodel=admittance` + `Solve` in snap mode takes the same shortcut
+  (SolveCircuit→SolveDirect, 1 iteration); direct solve leaves `Iterations`=1.
+- Regression: new live deck `tests/corpus/modes/time/direct.dss` (snapshot solve
+  then `Set mode=direct; Solve`; oracle-validated: converged, bit-identical
+  across two processes; feature-sensitive: ld1 |I1| 38.461 A shortcut vs 39.540 A
+  model, and a negative-control run with the shortcut disabled fails the gate at
+  |diff| 1.06 A vs 1.0e-6 band) + unit test
+  `load::tests::direct_shortcut_selects_yprim_currents` (shortcut = YPrim·V,
+  harmonics exclusion, snapshot-after-direct reversion).
+- Note: `sum_all_currents` builds `sys_ctx` fresh inside the Newton loop, so a
+  PFLOW solve issued right after a direct one sees the flag still true during
+  `SumAllCurrents` — exactly Pascal's live-variable read (cleared only at
+  `DoPFLOWsolution`'s end).
+
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a
 pure move — **no deck content changed** (every family deck is self-contained;
