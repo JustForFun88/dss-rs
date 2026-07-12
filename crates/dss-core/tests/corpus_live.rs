@@ -1711,6 +1711,11 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "swtcontrol/swtcontrol_time.dss",
     "energymeter/energymeter_sym.dss",
     "energymeter/energymeter_asym.dss",
+    // corpus coverage wave (controls): metering + adaptive-control decks.
+    "energymeter/energymeter_options.dss",
+    "monitor/monitor_modes_hi.dss",
+    "monitor/monitor_seqmag.dss",
+    "expcontrol/expcontrol_basic.dss",
     "monitor/monitor_modes.dss",
     "sensor/sensor_map.dss",
     "combo/combo_protection.dss",
