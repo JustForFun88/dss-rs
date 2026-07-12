@@ -2288,6 +2288,112 @@
    ],
    "compare_eventlog": true,
    "note": "kvarLimit clamp + unequal weights [4,2,1] over 3 gens: the load swing drives the reactive share past kvarLimit=400 so the clamp bites. Feature-sensitive: kvarlimit=99999 removes the clamp and the kvar split differs (probe-proven)."
+  },
+  {
+   "path": "energymeter/energymeter_options.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "EnergyMeter.em",
+     "props": [
+      "element",
+      "terminal"
+     ]
+    }
+   ],
+   "note": "Option flags LineLosses=no/XfmrLosses=no/VbaseLosses=no over a line+transformer zone -> the loss/overload registers accumulate differently. Feature-sensitive: default all-on options record different registers (two-process bit-identical; register compare)."
+  },
+  {
+   "path": "monitor/monitor_modes_hi.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Monitor.mloss",
+     "props": [
+      "element",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.mcap",
+     "props": [
+      "element",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.mall",
+     "props": [
+      "element",
+      "mode"
+     ]
+    }
+   ],
+   "note": "High save-record branches (ported): mode 6 (cap switching) on a switched cap, mode 9 (losses) on a transformer, mode 11 (all-terminal V&I) on a line. The mode selects the byte-stream channel set; the per-step channel arrays are compared. Modes 8/10/12 have a deferred stub sample body in the port and are not exercised."
+  },
+  {
+   "path": "monitor/monitor_seqmag.dss",
+   "kind": "micro",
+   "n_steps": 12,
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Monitor.mseq",
+     "props": [
+      "element",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.mmag",
+     "props": [
+      "element",
+      "mode"
+     ]
+    },
+    {
+     "element": "Monitor.mseqmag",
+     "props": [
+      "element",
+      "mode"
+     ]
+    }
+   ],
+   "note": "Flag-bit save branches on an unbalanced feeder: mode 16 (+sequence V012/I012), mode 32 (+magnitude), mode 48 (both). Each flag changes the channel layout; the per-step channel arrays are compared."
+  },
+  {
+   "path": "expcontrol/expcontrol_basic.dss",
+   "kind": "micro",
+   "n_steps": 10,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "PVSystem.pv",
+     "props": [
+      "kvar"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "ExpControl (IEEE-1547 adaptive volt-var, separate element): the adaptive Vreg tracks with VregTau and clamps to [VregMin,VregMax], DeltaQ_factor damping. A wide daily irradiance ramp moves Vreg and hits the clamps. Feature-sensitive: enabled=no holds fixed Q (probe-proven)."
   }
  ]
 }

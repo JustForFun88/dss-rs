@@ -1,0 +1,32 @@
+// EnergyMeter option flags (EnergyMeter.pas: LineLosses / XfmrLosses /
+// VbaseLosses toggle which loss contributions accumulate into the zone
+// registers). A zone spanning a line AND a transformer, with LineLosses=no +
+// XfmrLosses=no + VbaseLosses=no, so the loss/overload registers accumulate
+// differently than the default all-on meter. Feature-sensitive: the default
+// option meter records different register values (probe-proven vs the register
+// compare). Daily 24 steps, check_meters_monitors.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.emopt basekv=115 pu=1.02 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+
+new transformer.sub phases=3 windings=2 buses=(src, mv) conns=(delta, wye)
+~ kvs=(115, 12.47) kvas=(10000, 10000) xhl=7
+
+new line.feed bus1=mv bus2=m1 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 length=1
+~ normamps=300 emergamps=400
+new line.lat bus1=m1 bus2=m2 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 length=1
+
+new loadshape.day npts=24 interval=1
+~ mult=(0.40 0.42 0.45 0.50 0.58 0.68 0.80 0.92 1.02 1.10 1.15 1.18 1.20 1.15 1.08 1.00 0.92 0.88 0.95 1.05 1.10 0.90 0.65 0.45)
+
+new load.l1 bus1=m1 phases=3 kv=12.47 kw=4000 pf=0.95 model=1 daily=day
+new load.l2 bus1=m2 phases=3 kv=12.47 kw=3000 pf=0.92 model=1 daily=day
+
+// Meter at the transformer primary; loss segregation flags OFF.
+new energymeter.em element=transformer.sub terminal=1
+~ LineLosses=no XfmrLosses=no VbaseLosses=no
+
+set voltagebases=[115 12.47]
+calcvoltagebases
+set mode=daily stepsize=1h number=1
