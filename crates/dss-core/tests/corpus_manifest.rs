@@ -84,6 +84,13 @@ fn every_dss_is_accounted_for_exactly_once() {
         .unwrap_or_else(|e| panic!("read {}: {e}", mdir.display()))
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        // `ad_sweep.json` (WP-AD.4) is an orthogonal A-Diakoptics disposition
+        // OVERLAY on the `solvable_now.json` entry points, not an ownership
+        // manifest — its paths are deliberately a subset already owned elsewhere,
+        // so it must not participate in the exactly-once ownership bijection. Its
+        // own coverage (bijective with solvable_now) is checked by
+        // `ad_sweep_covers_solvable_now` in `corpus_live.rs`.
+        .filter(|p| p.file_name().is_none_or(|n| n != "ad_sweep.json"))
         .collect();
     files.sort();
     assert!(!files.is_empty(), "no manifests in {}", mdir.display());
