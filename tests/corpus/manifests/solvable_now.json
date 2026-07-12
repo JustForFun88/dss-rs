@@ -216,7 +216,8 @@
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS",

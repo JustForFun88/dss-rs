@@ -1,0 +1,29 @@
+// UPGRADE_PLAN.md WP-U1.1 / ledger L2 — the EPRI r4133 `DblValueNZ` zero-kW
+// clamp. A Load `kW=0` and a Generator `kVA=0`/`kW=0` parse their essential
+// sizing props through the band-clamp `(-1e-8,1e-8) -> +1e-8`
+// (`ParserDel.pas:912 MakeDoubleNZ`), which the port adopts UNCONDITIONALLY as
+// its default (`PropFlags::REPLACE_ZERO`). Gated `oracle: "r4133"` — the only
+// oracle that clamps by default (capi015 default keeps a literal 0 and would
+// deliberately mismatch our default-clamp; oddie clamps like the port).
+//
+// The clamp value is 1e-8, so the numeric channels (V/I/Y/S) move by ~1e-8 —
+// below the live-compare i_abs floor. The EXACT contract is pinned by the Rust
+// unit test `zero_kw_kva_clamp_dblvaluenz`; this live deck confirms Rust≡r4133
+// non-regression and keeps the r4133 oracle path exercised. Validated per
+// UPGRADE_PLAN §1.7 (two-process determinism on the r4133 engine).
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.upgrade_parser_zerokw basekv=12.47 pu=1.0 phases=3 bus1=src
+~ mvasc3=20000 mvasc1=21000
+
+New line.l1 phases=3 bus1=src bus2=b1 r1=0.1 x1=0.3 c1=2 length=1 units=km
+
+! Zero-kW load (kW parsed as 0 -> clamped to 1e-8; kvar kept as given).
+New load.z bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=0 kvar=5
+
+! Generator with kVA=0 and kW=0 (both essential-sizing props clamp).
+New generator.g bus1=b1 phases=3 kv=12.47 kw=0 kva=0 model=1 pf=1
+
+Set voltagebases=[12.47]
+calcv

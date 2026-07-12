@@ -141,7 +141,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // `kvar`: read returns `kvar_out` (Pascal `Getkvar`), write stores
         // `kvarRequested`.
         PropDef::double("kvar").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("kVA"),
+        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO),
         PropDef::double("%CutIn"),
         PropDef::double("%CutOut"),
         PropDef::object_ref_class("XYcurve", "EffCurve"),
