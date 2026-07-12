@@ -1798,6 +1798,11 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "gfm/gfm_invcontrol.dss",
     "gfm/gfm_dynamics.dss",
     "gfm/pv_gfm_dynamics.dss",
+    // WP-U1.3 InvControl-cluster upgrade decks (oracle capi015): D1
+    // InvControlDeltaV (multi-control fleet build) + D4 delta-DER LL monitored
+    // voltage.
+    "invcontrol/invcontrol_multi_vv_wye.dss",
+    "invcontrol/invcontrol_vv_delta.dss",
 ];
 
 /// Every controls case must exercise at least one element-specific channel

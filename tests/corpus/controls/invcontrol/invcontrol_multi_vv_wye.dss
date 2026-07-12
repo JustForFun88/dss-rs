@@ -1,0 +1,50 @@
+// WP-U1.3 / row D1, ledger L1 (docs/upgrade/DIVERGENCES.md) -- multi-DER
+// volt-var, oracle capi015. SNAPSHOT.
+//
+// TWO InvControls, each controlling its own wye PVSystem on a different bus
+// (hence a different monitored voltage), both VOLTVAR. This gates the
+// multi-InvControl fleet build + independent per-control dispatch against
+// capi015: each control resolves its own DER, computes its own monitored
+// voltage / curve Q, and both settle -- the per-control state separation the
+// 0.15.x InvControlDeltaV fix (row D1 / ledger L1) is about.
+//
+// NOTE on scope: the D1 divergence proper (the shared-FVpuSolutionIdx bug that
+// only bites the SECOND+ InvControl over a TIME series, via the hysteresis
+// voltagechangesolution) cannot be gated live -- it needs a multi-step run,
+// and the capi015 oracle re-nominalizes time-varying elements in its multi-
+// step capture (STATUS WP-U1.3 + ledger L1). It is pinned instead by the
+// feature-sensitive Rust unit test `d1_buffer_2slot_tracks_last_two_pu_voltages`
+// (with the capi015-vs-r4133 probe evidence in the ledger). This snapshot
+// deck gates the multi-DER dispatch that the fix operates over.
+//
+// This deck is revision-insensitive by construction (a single snapshot, no
+// hysteresis): pv1/pv2 kvar are byte-identical on 0.14.5 and capi015 (probed).
+// Kept on capi015 to stay aligned with the WP-U1.3 target engine; the D1
+// divergence itself is unit-pinned, not witnessed live here.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.c basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b1 phases=3 r1=0.3 x1=0.6 c1=0 length=2 units=km
+New line.l2 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 c1=0 length=3 units=km
+
+New load.ld1 bus1=b1 phases=3 kv=12.47 kw=600 pf=0.95
+New load.ld2 bus1=b2 phases=3 kv=12.47 kw=400 pf=0.95
+
+New pvsystem.pv1 phases=3 bus1=b1 kv=12.47 kva=900 pmpp=800 irradiance=1
+New pvsystem.pv2 phases=3 bus1=b2 kv=12.47 kva=900 pmpp=800 irradiance=1
+
+New xycurve.vv npts=6 xarray=(0.5 0.92 0.98 1.02 1.08 1.5)
+~ yarray=(1 1 0.1 -0.1 -1 -1)
+
+New invcontrol.ic1 mode=VOLTVAR voltage_curvex_ref=rated vvc_curve1=vv
+~ deltaq_factor=0.4 derlist=(pvsystem.pv1)
+New invcontrol.ic2 mode=VOLTVAR voltage_curvex_ref=rated vvc_curve1=vv
+~ deltaq_factor=0.4 derlist=(pvsystem.pv2)
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=100
+Set controlmode=static
+solve

@@ -9,7 +9,9 @@
 
 Last updated: 2026-07-12 (merged `upgrade-rung1` — U0.2 sweeps + WP-U1.1 + WP-U1.2
 numeric long tail — with the post-acceptance main: corpus CF/CF2/coverage rounds,
-families 47/92/49, JSON export, FIX-DIRECT, LINE-DEEP; both records below).
+families 47/92/49, JSON export, FIX-DIRECT, LINE-DEEP; then merged WP-U1.3
+InvControl cluster. Integration branch is now `update` (pushed to origin); main
+untouched until an explicit merge request.)
 
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
@@ -111,7 +113,16 @@ zero-`kW`/`kVA` clamp, `ParseAsSymMatrix` incomplete-matrix reject, `AllowNoneIt
 `658.5→658.8530451057239`), D7 (PVSystem dynamics current-limit base
 `PanelkW→FkVArating`), D6 (Transformer seasonal AmpRatings drop `1.1×`), B1
 (Capacitor Cmatrix YPrim diagonal `×1.000001`), D8 (settled, no code change — not a
-0.14.5→0.15.x delta). Full detail: **`docs/phase-records/upgrade-rung1.md`**.
+0.14.5→0.15.x delta). **WP-U1.3 (InvControl cluster) — all 6 rows settled:** D1/ledger-L1
+InvControlDeltaV per-control 2-slot buffer (adopt capi015 fix; the r4133 `i=1`
+cursor gating cataloged as a known upstream bug), D2 per-DER basekV, D3
+sqrt-guard (EPSILON=1e-12), D4 delta-DER LL monitored voltage (sign-flipping,
+capi015==r4133; unit + capi015 deck pinned), D5 no-delta, C8 (a)
+`VV_RefReactivePower` removal NOT adopted (r4133 keeps it) + (b) MonBus
+#2024111/#2024112 validations. Known limit: the capi015 oracle cannot gate
+multi-step decks (per-step capture re-nominalizes shapes) — capi015 corpus cases
+are snapshots; follow-up logged for the oracle-infra owner. Full detail:
+**`docs/phase-records/upgrade-rung1.md`**.
 - **Resume note (WP-U1.2 remaining).** Rows **D3** (report-only spacing ratings —
   overload-report deck) and **B3-r3723** (Load.GrowthFactor Year=0) still to port;
   the golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the

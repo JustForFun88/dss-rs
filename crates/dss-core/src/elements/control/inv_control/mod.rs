@@ -389,8 +389,10 @@ pub(crate) struct InvVars {
     pub f_active_vv_curve: i32,
 
     // --- rolling-average windows + the per-step voltage history ---
-    /// `FVpuSolution[1..2]` — last two per-unit solution voltages (index 0 unused).
-    pub f_vpu_solution: [f64; 3],
+    /// `FVpuSolution[0..1]` — the last two per-unit solution voltages (dss_capi
+    /// 0.15.x `InvControlDeltaV` fix: a per-control 2-slot buffer; see the
+    /// `f_vpu_solution_idx` doc + ledger L1).
+    pub f_vpu_solution: [f64; 2],
     pub prior_roll_avg_window: f64,
     pub prior_drc_roll_avg_window: f64,
     pub f_roll_avg_window: RollAvgWindow,
@@ -546,7 +548,11 @@ pub struct InvControl {
     pub(crate) fleet: Vec<ElemRef>,
     /// `CtrlVars` — one [`InvVars`] per fleet member (1:1 with `fleet`).
     ctrl_vars: Vec<InvVars>,
-    /// `FVpuSolutionIdx` — toggles 1↔2 each `UpdateInvControl` pass.
+    /// `FVpuSolutionIdx` — the write/read cursor into the per-control 2-slot
+    /// `f_vpu_solution`. dss_capi 0.15.x `InvControlDeltaV` fix: initialized to
+    /// `-1` and toggled `0↔1` unconditionally once per `UpdateInvControl` pass
+    /// (0.14.5 gated the bump on the element-list index `i=1`, so only the first
+    /// InvControl in the circuit advanced — see ledger L1).
     f_vpu_solution_idx: i32,
     /// `FVreg` — the pu voltage used in the volt-var / volt-watt curves (object-level
     /// in Pascal; the per-DER value of the current Sample iteration).
@@ -631,7 +637,7 @@ impl InvControl {
 
             fleet: Vec::new(), // empty → the first Sample builds it
             ctrl_vars: Vec::new(),
-            f_vpu_solution_idx: 0,
+            f_vpu_solution_idx: -1, // Pascal l.816 (0.15.x InvControlDeltaV fix)
             f_vreg: 0.0,
             f_using_mon_buses: false,
             mon_bus: String::new(),
