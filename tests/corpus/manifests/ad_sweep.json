@@ -1,13 +1,13 @@
 {
- "comment": "WP-AD.4 A-Diakoptics disposition overlay: one disposition per solvable_now.json entry point (bijective; corpus_ad_matches_normal_mode enforces it rust-vs-rust). ad = full|pf|off:<specific-reason>. Every disposition is evidence-backed by the empirical AD-init + AD-vs-normal snapshot-gap probe (DSS_AD_CLASSIFY=1), and the ad-gap decks were further split into the D7 two legs (DSS_AD_DECOMPOSE) to attribute the gap. off reason classes: non-3ph-cut-only (D5 ZLL: the only cut candidates are non-3-phase lines/transformers); too-small (Tear_Circuit cannot form two connected >=2-bus zones); already-torn-artifact (a pre-torn Torn_Circuit/zone master, not a top-level entry); mode-outside-AD-scope (deck runs dynamics/harmonics/faultstudy/monte/LD - AD is a snapshot/direct/time-series power-flow accelerator); save-roundtrip-geometry / save-roundtrip-relpath / save-roundtrip-userdll / save-roundtrip-regxfmr (the AD lifecycle's save+reload of Master_Interconnected.dss loses fidelity - LineGeometry/WireData ordering, relative data-file paths, user-DLL models, or regulator/transformer state. This is the D7 ROUND-TRIP leg, a save-circuit gap to fix in save, NOT in AD: the decomposition proves the AD leg proper (inter-normal vs AD) is clean (<=1e-4) while leg1 (orig-normal vs inter-normal) carries the whole gap - e.g. IEEE13 leg1=5.9e-2, leg2=1.6e-6); ad-nonconvergent (tear ok, the AD snapshot did not converge - usually downstream of the corrupted interconnected save); ad-floor-above-tier (the AD leg's genuine long-radial stitch floor exceeds AD_SWEEP_TIER, e.g. IEEE34Mod1 leg2=2.1e-3 - NOT tolerance-widened per section 5); ad-islanded-divergence (pathological islanded/ISource-driven microgrid with no firm source reference - AD leg genuinely diverges: Microgrid/ISource leg2=2.0, GFM_8500 Snap leg2=7.4e-2); ad-singular-zone (a torn zone Y is singular). oracle names an EPRI rev for the D9(d) named cases.",
+ "comment": "WP-AD.4 A-Diakoptics disposition overlay: one disposition per solvable_now.json entry point (bijective; corpus_ad_matches_normal_mode enforces it rust-vs-rust). ad = full|pf|off:<specific-reason>. Every disposition is evidence-backed by the empirical AD-init + AD-vs-normal snapshot-gap probe (DSS_AD_CLASSIFY=1); every ad-* deck was split into the D7 two legs (DSS_AD_DECOMPOSE: leg1=save round-trip orig-normal vs inter-normal, leg2=AD proper inter-normal vs AD) to attribute the gap. off reason classes: non-3ph-cut-only (D5 ZLL: only cut candidates are non-3-phase lines/transformers); too-small (Tear_Circuit cannot form two connected >=2-bus zones); already-torn-artifact (a pre-torn Torn_Circuit/zone master); mode-outside-AD-scope (dynamics/harmonics/faultstudy/monte/LD - AD is a snapshot/direct/time-series power-flow accelerator); save-roundtrip-{geometry,relpath,userdll,regxfmr,autotrans,relay} (the AD save+reload of Master_Interconnected.dss loses fidelity - the D7 ROUND-TRIP leg1, a save-circuit gap NOT an AD gap: the decomposition proves the AD leg proper (leg2) is CLEAN while leg1 carries the whole gap, e.g. the distance-relay decks leg1=2.4e3 / leg2=2.3e-15, IEEE13 leg1=5.9e-2 / leg2=1.6e-6; the autotrans decks have leg1>>1 so the save is the dominant proven defect and leg2 is measured against a corrupt baseline). The remaining ad-* classes are OPEN AD-engine defects (leg1 small, leg2 large = a genuine AD-vs-normal physics gap per section 5, filed in STATUS, kept off the gate because fixing the AD engine is outside WP-AD.4's sweep charter): ad-regulator-divergence (in-line/overexcitation regulator - ODRegTest leg2=1.5e15, TestDDRegulator leg2=0.88); ad-switched-divergence (open-switch/reconfiguration or meshed secondary - IEEE123Switches leg2=1.9e1, civanlar/SecPar leg2=1.0); ad-islanded-divergence (grid-forming/ISource microgrid with no firm source reference - GFM_IEEE123 leg2~7e5, Microgrid/ISource leg2=2.0); ad-nonconvergent (the AD snapshot did not even init/converge - the islanded GFM/GFL decks); ad-floor-above-tier (genuine long-radial stitch floor just above AD_SWEEP_TIER, IEEE34Mod1 leg2=2.1e-3 - NOT tolerance-widened per section 5). oracle names an EPRI rev for the D9(d) named cases.",
  "cases": [
   {
    "path": "Test/AutoTrans/Auto1bus-step1.dss",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-autotrans"
   },
   {
    "path": "Test/AutoTrans/Auto1bus.dss",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-autotrans"
   },
   {
    "path": "Test/AutoTrans/Auto3bus.dss",
@@ -51,7 +51,7 @@
   },
   {
    "path": "Test/DistanceRelayTest.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-relay"
   },
   {
    "path": "Test/Dynamic_Kundur.dss",
@@ -99,7 +99,7 @@
   },
   {
    "path": "Test/ODRegTest.dss",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-regulator-divergence"
   },
   {
    "path": "Test/PVSystemTest-Duty.dss",
@@ -123,11 +123,11 @@
   },
   {
    "path": "Test/ReverseDistanceRelayTest.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-relay"
   },
   {
    "path": "Test/ReverseTD21RelayTest.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-relay"
   },
   {
    "path": "Test/Stevenson.dss",
@@ -135,7 +135,7 @@
   },
   {
    "path": "Test/TD21RelayTest.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-relay"
   },
   {
    "path": "Test/TestAuto.dss",
@@ -143,7 +143,7 @@
   },
   {
    "path": "Test/TestDDRegulator.dss",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-regulator-divergence"
   },
   {
    "path": "Test/TextTsCable750MCM.dss",
@@ -259,7 +259,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/Auto1bus.dss",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-autotrans"
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/Auto3bus.dss",
@@ -275,19 +275,19 @@
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/DistanceRelayTest.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-relay"
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/ReverseDistanceRelayTest.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-relay"
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/ReverseTD21RelayTest.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-relay"
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/TD21RelayTest.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:save-roundtrip-relay"
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
@@ -327,11 +327,11 @@
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:mode-outside-AD-scope"
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:mode-outside-AD-scope"
   },
   {
    "path": "Version8/Distrib/Examples/InductionMachine/Master.DSS",
@@ -711,7 +711,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:mode-outside-AD-scope"
   },
   {
    "path": "Version8/Distrib/Examples/Matlab/pst.dss",
@@ -719,7 +719,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS",
-   "ad": "off:ad-singular-zone"
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss",
@@ -863,7 +863,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-switched-divergence"
   },
   {
    "path": "Version8/Distrib/Examples/civinlar model/regulator.dss",
@@ -875,7 +875,7 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Switches.dss",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-switched-divergence"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS",
@@ -971,7 +971,7 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-switched-divergence"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Source/LineConstants.dss",
@@ -1031,51 +1031,51 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-islanded-divergence"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
-   "ad": "off:ad-singular-zone"
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-islanded-divergence"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-islanded-divergence"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
-   "ad": "off:ad-singular-zone"
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-islanded-divergence"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
-   "ad": "off:ad-singular-zone"
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-islanded-divergence"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-islanded-divergence"
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-islanded-divergence"
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
-   "ad": "off:ad-singular-zone"
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
-   "ad": "off:ad-singular-zone"
+   "ad": "off:ad-nonconvergent"
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
@@ -1083,7 +1083,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
-   "ad": "off:ad-nonconvergent"
+   "ad": "off:ad-islanded-divergence"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",

@@ -607,7 +607,7 @@
      ]
     }
    ],
-   "ad": "off:ad-probe-panic"
+   "ad": "off:too-small"
   },
   {
    "path": "recloser/recloser_temp.dss",
@@ -1181,7 +1181,7 @@
      ]
     }
    ],
-   "ad": "off:ad-probe-panic"
+   "ad": "off:save-roundtrip-control"
   },
   {
    "path": "capcontrol/capcontrol_follow.dss",
