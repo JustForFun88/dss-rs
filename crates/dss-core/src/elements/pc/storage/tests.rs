@@ -21,6 +21,51 @@ fn ctx() -> crate::elements::traits::SysCtx {
     crate::elements::pc::generator::default_recalc_ctx()
 }
 
+/// Edit a fresh `Storage` through its real property engine (string-edit path, so
+/// the `PropFlags::REPLACE_ZERO` clamp in `set_obj_double` runs).
+fn edit_storage(edits: &[(&str, &str)]) -> Storage {
+    let enums = EnumRegistry::new();
+    let cls = super::class_props(&enums);
+    let mut st = Storage::new("sz");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in edits {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut st, idx, value, &mut eng).unwrap();
+    }
+    assert!(errors.is_empty(), "{errors:?}");
+    st
+}
+
+/// UPGRADE_PLAN ledger L2 (WP-U1.1): a Storage `kW`/`kVA` parsed as 0 clamps to
+/// `1e-8` (EPRI r4133 `DblValueNZ`). `kVA` is the direct rating field; `kW` runs
+/// through `Set_kW`, where the clamped `+1e-8` (>0) resolves the state to
+/// DISCHARGING — a literal 0 would resolve to IDLING, so the state is the
+/// discrete witness that the clamp fired.
+#[test]
+fn zero_kw_kva_clamp_dblvaluenz() {
+    let st = edit_storage(&[("kVA", "0")]);
+    assert_eq!(
+        st.f_kva_rating.to_bits(),
+        1e-8f64.to_bits(),
+        "kVA {}",
+        st.f_kva_rating
+    );
+    // kW=0 clamps to +1e-8 before `Set_kW`: state DISCHARGING, not IDLING.
+    let st = edit_storage(&[("kW", "0")]);
+    assert_eq!(st.f_state, STORE_DISCHARGING, "state {}", st.f_state);
+    // Out-of-band kVA is untouched.
+    assert_eq!(edit_storage(&[("kVA", "25")]).f_kva_rating, 25.0);
+}
+
 /// Build a populated `LoadShapeObj` through its real property engine.
 fn build_shape(mult: &str) -> LoadShapeObj {
     let enums = EnumRegistry::new();

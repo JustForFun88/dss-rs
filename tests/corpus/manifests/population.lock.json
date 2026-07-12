@@ -11,7 +11,7 @@
   "family_counts": {
     "asymmetric": 36,
     "controls": 57,
-    "modes": 40
+    "modes": 41
   },
   "family_paths": {
     "asymmetric": [
@@ -150,6 +150,7 @@
       "shape_binfiles/shape_binfiles.dss",
       "shape_filearr/shape_filearr.dss",
       "shape_mmf/shape_mmf.dss",
+      "upgrade_parser_zerokw.dss",
       "upgrade_pilot.dss",
       "xycurve_files/xycurve_files.dss"
     ]
@@ -197,7 +198,7 @@
     "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
-    "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
+    "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=r4133",
     "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS": "kind=large steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss": "kind=large steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss": "kind=large steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",

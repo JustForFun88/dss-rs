@@ -387,28 +387,63 @@ impl Dss {
         parse_object_class_and_name(&mut self.parser, &self.vars, &param)
     }
 
+    /// Pascal `DSSClassDefs.SetObjectClass`: activate the class named `param`.
+    /// Sets `active_class` — the unified field for both Pascal
+    /// `LastClassReferenced` AND `ActiveDSSClass`. The r3875 fix
+    /// (dss_capi `7457fc0b`, C11) added the `ActiveDSSClass := …` assignment so
+    /// SetObjectClass *always* activates the selected class; because the port
+    /// collapses the two Pascal fields into one, that fix is inherent here. An
+    /// unknown class logs #903 and leaves the previously-referenced class in
+    /// place. WP-U1.1 item 5.
+    pub(super) fn set_object_class(&mut self, param: &str) {
+        match self.class_by_name.get(&param.to_lowercase()).copied() {
+            Some(ci) => self.active_class = Some(ci),
+            None => self.errors.push(format!(
+                "Error! Object Class \"{param}\" not found. \n{}",
+                self.parser.cmd_string()
+            )),
+        }
+    }
+
     /// Pascal `DSSGlobals.SetObject`: set the active object by `class.name`
     /// (or bare `name` against the active class).
-    fn set_object(&mut self, param: &str) -> bool {
+    pub(super) fn set_object(&mut self, param: &str) -> bool {
         let (class_part, name_part) = match param.find('.') {
             Some(p) => (param[..p].to_string(), param[p + 1..].to_string()),
             None => (String::new(), param.to_string()),
         };
-        let ci = if class_part.is_empty() {
-            self.active_class
-        } else {
-            self.class_by_name.get(&class_part.to_lowercase()).copied()
-        };
-        let Some(ci) = ci else {
+        // Pascal `if Length(ObjClass) > 0 then SetObjectClass(ObjClass)`: a class
+        // qualifier activates that class; an UNKNOWN one logs #903 and its FALSE
+        // return is DISCARDED — the previously-referenced class stays active and the
+        // name below is resolved against IT (fall-back), exactly like `do_select_cmd`.
+        // Probed 2026-07-12: capi015 & 0.14.5 both keep #903 yet still select the
+        // name in the previous class (`Set Object=badclass.l1` → `Line.l1`).
+        if !class_part.is_empty() {
+            self.set_object_class(&class_part);
+        }
+        // Pascal `ActiveDSSClass := Get(LastClassReferenced)` = our `active_class`;
+        // NIL (no class ever referenced) → #905 "Active object type/class is not set."
+        let Some(ci) = self.active_class else {
             self.errors
-                .push(format!("Error! Object \"{param}\" not found."));
+                .push("Error! Active object type/class is not set.".to_string());
             return false;
         };
-        self.active_class = Some(ci);
         if !self.classes[ci].set_active(&name_part) {
-            self.errors
-                .push(format!("Error! Object \"{param}\" not found."));
+            // Pascal #904: message uses the bare ObjName + the command string.
+            self.errors.push(format!(
+                "Error! Object \"{name_part}\" not found. \n{}",
+                self.parser.cmd_string()
+            ));
             return false;
+        }
+        // Pascal `SetActive` also makes a circuit element the `ActiveCktElement`
+        // (a general DSS_OBJECT does not) — so `Set Object=line.l1` followed by a
+        // bare `? prop`/`~ prop=` reaches it. Mirrors `do_select_cmd`.
+        let idx = self.classes[ci]
+            .active
+            .expect("set_active set the active index");
+        if self.classes[ci].objects[idx].as_ckt_element().is_some() {
+            self.active_ckt_element = Some((ci, idx));
         }
         true
     }
@@ -876,6 +911,25 @@ impl Dss {
         }
 
         if !self.classes[ci].requires_circuit {
+            // Pascal `TTCC_Curve.NewObject` (SVN r4119, fd034bb0): `none` is a
+            // reserved TCC_Curve name — it means "no curve" when referenced by a
+            // circuit element — so creating one errors (423) and NewObject returns
+            // NIL, which the caller's `if obj=NIL then Exit` guard drops (here: we
+            // return without adding). WP-U1.1 item 4.
+            if name.eq_ignore_ascii_case("none")
+                && self.classes[ci]
+                    .props
+                    .class_name()
+                    .eq_ignore_ascii_case("TCC_Curve")
+            {
+                self.errors.push(
+                    "TCC_Curve: \"NONE\", \"none\" is a reserved name that means no curve \
+                     specified when referenced by circuit elements. A different name must be \
+                     specified. Error in definition of object."
+                        .to_string(),
+                );
+                return;
+            }
             // DSS_OBJECT path: duplicates become edits.
             if !self.classes[ci].set_active(name) {
                 let cls = &mut self.classes[ci];

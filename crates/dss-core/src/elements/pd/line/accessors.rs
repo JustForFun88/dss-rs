@@ -6,7 +6,7 @@ use crate::elements::general::line_code::LineCodeObj;
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::traits::{CktElement, ElemRef};
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::{LineUnits, convert_line_units};
 
@@ -184,7 +184,7 @@ impl DssObject for Line {
     /// forms. `wires=` runs the `SetWires` state machine (overhead/buried-neutral);
     /// `cncables=`/`tscables=` use Pascal's generic array fill (the side effect
     /// sets the conductor model).
-    fn set_object_ref_array(&mut self, idx: usize, refs: &[(String, ElemRef, &dyn DssObject)]) {
+    fn set_object_ref_array(&mut self, idx: usize, refs: &[ObjectRefArrayItem<'_>]) {
         use super::prop::*;
         match idx {
             WIRES => self.set_wires(refs),

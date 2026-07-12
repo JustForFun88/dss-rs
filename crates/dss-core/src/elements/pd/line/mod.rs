@@ -137,10 +137,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("LineGeometry", "Geometry"),
         PropDef::mapped_string_enum("Units", enums.units),
         PropDef::object_ref_class("LineSpacing", "Spacing"),
-        PropDef::object_ref_array("WireData", "Wires"),
+        // SVN r3902/r3913 (0.15.x): the conductor lists accept `none` entries
+        // (NIL slot) — `TPropertyFlag.AllowNoneItem`. WP-U1.1 item 3.
+        PropDef::object_ref_array("WireData", "Wires").flags(PropFlags::ALLOW_NONE_ITEM),
         PropDef::mapped_string_enum("EarthModel", enums.earth_model),
-        PropDef::object_ref_array("CNData", "CNCables"),
-        PropDef::object_ref_array("TSData", "TSCables"),
+        PropDef::object_ref_array("CNData", "CNCables").flags(PropFlags::ALLOW_NONE_ITEM),
+        PropDef::object_ref_array("TSData", "TSCables").flags(PropFlags::ALLOW_NONE_ITEM),
         PropDef::double("B1").flags(
             PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | PropFlags::CONDITIONAL_VALUE,
         ),

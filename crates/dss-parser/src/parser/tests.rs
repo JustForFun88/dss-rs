@@ -362,6 +362,38 @@ fn sym_matrix_with_stride_and_scale() {
 }
 
 #[test]
+fn is_quoted_reflects_the_last_token_quote_state() {
+    // WP-U1.1 item 3 "WasQuoted plumbing": the exposed accessor mirrors the
+    // parser's internal quote tracking (a quoted composite vs a bare token).
+    let (mut p, vars) = parser_with("a=(1 2 3) b=bare");
+    p.next_param(&vars);
+    let _ = p.token();
+    assert!(p.is_quoted(), "(1 2 3) is a quoted composite");
+    p.next_param(&vars);
+    let _ = p.token();
+    assert!(!p.is_quoted(), "bare token is not quoted");
+}
+
+#[test]
+fn sym_matrix_returns_order_found_for_incomplete_input() {
+    // WP-U1.1 item 2: a 3x3 sym matrix given only 2 rows returns OrderFound=2
+    // (< 3) so the caller can reject it (EPRI r4133); the FPC line returned 3.
+    let (mut p, vars) = parser_with("z=[1 | 2 3]");
+    p.next_param(&vars);
+    let mut out = [0.0; 9];
+    let n = p.parse_as_sym_matrix(&vars, &mut out, 3, 1, 1.0).unwrap();
+    assert_eq!(n, 2, "two rows supplied -> OrderFound 2");
+    // A complete matrix returns OrderFound == order.
+    let (mut p2, vars2) = parser_with("z=[1 | 2 3 | 4 5 6]");
+    p2.next_param(&vars2);
+    let mut out2 = [0.0; 9];
+    let n2 = p2
+        .parse_as_sym_matrix(&vars2, &mut out2, 3, 1, 1.0)
+        .unwrap();
+    assert_eq!(n2, 3);
+}
+
+#[test]
 fn matrix_full_rows_no_terminator() {
     // 3x3 matrix as three rows
     let (mut p, vars) = parser_with("m=[1 2 3 | 4 5 6 | 7 8 9]");

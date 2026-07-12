@@ -88,6 +88,40 @@ fn default_sym_matrices_match_oracle() {
 }
 
 #[test]
+fn incomplete_sym_matrix_rejected_keeps_default() {
+    // WP-U1.1 item 2 (DIVERGENCES.md §ParseAsSymMatrix): EPRI r4133 rejects a
+    // symmetric matrix supplying fewer rows than NPhases — the property keeps
+    // its prior (default) value and a DoSimpleMsg-and-continue error is logged.
+    // The FPC line (0.14.5/0.15.x) silently zero-fills the missing row instead.
+    let (cls, obj, errs) = edited(&[
+        ("nphases", "3"),
+        ("rmatrix", "1 | 2 3"), // only 2 of 3 rows
+    ]);
+    // Error logged, but the object survives and rmatrix reverted to the default
+    // symmetric-component matrix (NOT the zero-filled [1 |2 3 |0 0 0]).
+    assert!(
+        errs.iter()
+            .any(|e| e.contains("does not match with the expected order")),
+        "expected reject message, got {errs:?}"
+    );
+    let zs = (2.0 * 0.058 + 0.1784) / 3.0;
+    let zm = (0.1784 - 0.058) / 3.0;
+    assert_matrix(
+        &get(&cls, &obj, "RMatrix"),
+        &[&[zs], &[zm, zs], &[zm, zm, zs]],
+    );
+}
+
+#[test]
+fn complete_sym_matrix_still_accepted() {
+    // Guard the item-2 change against over-rejection: a full lower triangle
+    // (OrderFound == NPhases) parses and stores exactly.
+    let (cls, obj, errs) = edited(&[("nphases", "3"), ("rmatrix", "1 | 2 3 | 4 5 6")]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(get(&cls, &obj, "RMatrix"), "[1 |2 3 |4 5 6 ]");
+}
+
+#[test]
 fn one_phase_has_no_positive_seq_special_case() {
     // Oracle: `r1=0.1 x1=0.2 units=mi` on a 1-phase code dumps
     // rmatrix=[0.126133333333333 ] because R0/X0 keep their defaults.
