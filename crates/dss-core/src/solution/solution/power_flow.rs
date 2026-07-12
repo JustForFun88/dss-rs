@@ -9,6 +9,7 @@ use crate::circuit::{CAPADD, Circuit, GENADD};
 use crate::elements::pc::generator::Generator;
 use crate::elements::traits::{ElemRef, InjCtx};
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
+use crate::support::sparse_math::SparseComplex;
 
 use super::{ActiveY, NEWTONSOLVE, SolveEnv, SolveMode, SolveResult, sys_ctx};
 
@@ -196,7 +197,7 @@ fn sum_all_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
 /// `DoNormalSolution`: `(Converged and Iteration >= MinIterations) or
 /// Iteration >= MaxIterations`. The `dV` work array (`ReAllocMem(dV, NumNodes+1)`)
 /// is the per-step scratch inside `solve_system_newton_step`.
-fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     // ControlIteration == 1: update the load multipliers for this solution.
     if ckt.solution.control_iteration == 1 {
         get_pc_inj_curr(ckt, env);
@@ -299,7 +300,7 @@ pub(crate) fn set_generator_disp_ref(ckt: &mut Circuit) {
 /// Pascal `TSolutionObj.SetGeneratordQdV`: for model-3 (PV) generators, seed
 /// the `dQ/dV` slope from the system Y diagonal, then re-establish the
 /// zero-load snapshot if any was found.
-fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+pub(crate) fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     let gens: Vec<ElemRef> = ckt.generators.clone();
     let gen_disp_save = ckt.generator_dispatch_reference;
     ckt.generator_dispatch_reference = 1000.0; // turn all generators on
@@ -457,6 +458,160 @@ pub(crate) fn solve_snap(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     }
 
     ckt.solution.iteration = total_iterations; // "so that it reports a more interesting number"
+    Ok(())
+}
+
+/// Pascal `TSolutionObj.SolveAD(ActorID, Initialize)` (Solution.pas:1263): the
+/// **child** side of one A-Diakoptics stage. Under plan D3 the parent context is
+/// passed explicitly (no `ActiveCircuit[1]` global): the child solves its own
+/// `hY` with its own injection currents **into the coordinator's NodeV**
+/// (`parent_node_v`) at its `LocalBusIdx[0]` offset; `parent_ic` is the
+/// coordinator's `Ic`.
+///
+/// - `Initialize = true` (SOLVE_AD1): zero + source injections (+PC injections
+///   when `adiak_pcinj`, or in dynamics/harmonics), Y check.
+/// - `Initialize = false` (SOLVE_AD2): `UpdateISrc` — add the coordinator's
+///   boundary-current correction, then re-solve.
+// Wired by `Solve_Diakoptics` in WP-AD.3 Stage 2b (the coordinator drive loop).
+#[allow(dead_code)]
+pub(crate) fn solve_ad(
+    ckt: &mut Circuit,
+    env: &mut SolveEnv,
+    initialize: bool,
+    adiak_pcinj: bool,
+    parent_node_v: &mut [Complex64],
+    parent_ic: &SparseComplex,
+) -> SolveResult {
+    if initialize {
+        ckt.solution.zero_inj_curr();
+        get_source_inj_currents(ckt, env);
+        if adiak_pcinj {
+            ckt.solution.loads_need_updating = true; // force loads to update once
+            get_pc_inj_curr(ckt, env);
+        } else if ckt.solution.is_dynamic_model || ckt.solution.is_harmonic_model {
+            ckt.solution.loads_need_updating = true;
+            get_pc_inj_curr(ckt, env);
+        }
+        if ckt.solution.system_y_changed {
+            build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?;
+        }
+    } else {
+        update_isrc(ckt, parent_ic);
+    }
+
+    // `SolveSystem(ActiveCircuit[1].Solution.NodeV, ActorID)` — solve the child's
+    // system into the parent's NodeV at the child's contiguous offset.
+    ad_solve_into_parent(ckt, parent_node_v)?;
+    ckt.solution.loads_need_updating = false;
+    ckt.solution.last_solution_was_direct = true;
+    ckt.is_solved = true;
+    Ok(())
+}
+
+/// Pascal `UpdateISrc` (Solution.pas:3116): for each of this child's AD injection
+/// buses, add the negated coordinator `Ic` boundary current into `Currents`.
+///
+/// NOTE(upstream-quirk): the Pascal `Found` flag is initialized ONCE before the
+/// outer loop (Solution.pas:3125), not per bus — so an `AD_ISrcIdx` that is
+/// absent from `Ic` (its contour product was dropped by the D5 `re≠0 AND im≠0`
+/// filter) reuses the previous iteration's `idx`, reading a stale/out-of-range
+/// `Ic` entry. That is the UB class (plan D5): we do a fresh per-bus lookup and
+/// skip a miss (the boundary buses of a well-formed tear are always present).
+#[allow(dead_code)] // wired by `solve_ad` (WP-AD.3 Stage 2b).
+fn update_isrc(ckt: &mut Circuit, parent_ic: &SparseComplex) {
+    let sol = &mut ckt.solution;
+    for (i, &ibus) in sol.ad_ibus.iter().enumerate() {
+        let target = sol.ad_isrc_idx[i];
+        if let Some(cd) = parent_ic.cdata.iter().find(|c| c.row == target)
+            && let Some(slot) = sol.currents.get_mut(ibus)
+        {
+            *slot += -cd.value; // cmulreal(Ic, -1) + cadd
+        }
+    }
+}
+
+/// Pascal `SolveSystem(ActiveCircuit[1].Solution.NodeV, ActorID)` for a child
+/// (Solution.pas:2658): `SolveSparseSet(hY, @V[LocalBusIdx[0]], @Currents[1])`
+/// solves the child's own factored `hY` and writes the `NumNodes`-long solution
+/// into the coordinator NodeV. Pascal uses the **contiguous** address form
+/// `@V[LocalBusIdx[0]]` (the zone's interconnected nodes are a contiguous run);
+/// this port **scatters** each child node `j+1` into its mapped slot
+/// `LocalBusIdx[j]` (the explicit form `UploadV2Master` uses) — equal to the
+/// contiguous write when the run is contiguous, but robust to the interconnected
+/// node ordering.
+///
+/// **DEVIATION (documented) — the child's own `NodeV` is re-seeded from the
+/// solved column** (r3723 Oddie probe, resume executor 2026-07-12; the brief's
+/// anticipated faer-vs-KLU reference-free-zone case). Official `SolveSystem`
+/// writes ONLY into `ActiveCircuit[1].Solution.NodeV`; a child's own
+/// `Solution.NodeV` stays frozen at its state-2 standalone solve for the whole AD
+/// run. The probe proved this directly: on macro, actor 3's own `NodeV` moves
+/// `0.000e+00` between init and the post-AD read, and that frozen state-2 solve
+/// is already within `7.9e-5` of the interconnected result (the tearing seeds
+/// each zone-head artificial `VSource` with the true boundary voltage via
+/// `PConn_Voltages`). Official therefore FREEZES the child, and its floor is
+/// `1.318e-4` (worst near the real source).
+///
+/// **The re-seed is provably correct** (WP-AD.3 audit finding #2, settled by
+/// decomposition — not a tolerance sweep). A-Diakoptics is an EXACT decomposition,
+/// so the fixed-point stitch must land on the interconnected-coordinator solution.
+/// That interconnected solution is available independently: a `Set algorithm=Newton`
+/// AD deck runs a full-system Newton on the closed coordinator (Solution.pas:1018,
+/// no ADiakoptics branch) and never touches the children or this re-seed. With the
+/// re-seed in place, the fixed-point stitch matches that pure-coordinator Newton
+/// solve to **f64 ulp** (midi `7e-13`, macro `1.3e-12`;
+/// `adiakoptics.rs::{midi,macro}_newton_ad_matches_fixedpoint_ad`) — i.e. the
+/// re-seed recovers the exact interconnected answer. The AD-vs-**normal** "floor"
+/// (midi `3.25e-5`, macro `1.32e-4`) is therefore NOT a stitch approximation: it is
+/// the interconnected-coordinator-deck-vs-original-deck difference, shared by the
+/// fixed-point AND Newton AD paths and matched to the r3723 oracle
+/// (`tests/TOLERANCE_NOTES.md` §AD); it stays tolerance-**stable** because it is a
+/// deck-structure difference, not an iteration residual.
+///
+/// A byte-faithful freeze does NOT hold in this port: with the child frozen, the
+/// deep interior of the **reference-free** zone diverges to `3.46e-3` @ M180 from
+/// that same interconnected ground truth (26× the floor). The characterised
+/// mechanism: `Start_Diakoptics` disables the reference-free zone's artificial
+/// sources, so its `hY` is anchored only by the loads' weak `Yeq` shunts and is
+/// ill-conditioned; the frozen child `NodeV` (its state-2 standalone solve, ~`7.9e-5`
+/// off) makes `GetPCInjCurr` evaluate the constant-power loads at a slightly wrong
+/// voltage, and that small current error is amplified down the long radial. Pascal
+/// (KLU) tolerates the same freeze (converges to the floor); this port (faer) does
+/// not — the leading, but not yet bit-level-proven, hypothesis is a faer-vs-KLU
+/// difference in factoring the near-singular reference-free child `hY`. Re-seeding
+/// the child `NodeV` with the just-solved column each iteration removes the frozen
+/// linearisation error at its source (the loads see the boundary-corrected voltage),
+/// so the reference-free solve tracks the true voltage and recovers the exact answer
+/// above. This is an explicit, documented compensation — NOT a silent Y
+/// regularization (§ forbidden).
+///
+/// Open item (auditors / WP-AD.4): bit-level confirm the freeze-divergence cause by
+/// running the exact frozen reference-free child system through both faer and KLU
+/// (and measuring its condition number); if it is faer-vs-KLU as hypothesised, make
+/// that solve match KLU so a faithful freeze suffices and the re-seed can be dropped.
+///
+/// The parent write itself: Pascal uses the **contiguous** address form
+/// `@V[LocalBusIdx[0]]` (the zone's interconnected nodes are a contiguous run);
+/// this port **scatters** each child node `j+1` into its mapped slot
+/// `LocalBusIdx[j]` — equal to the contiguous write when the run is contiguous,
+/// but robust to the interconnected node ordering.
+#[allow(dead_code)] // wired by `solve_ad` (WP-AD.3 Stage 2b).
+fn ad_solve_into_parent(ckt: &mut Circuit, parent_node_v: &mut [Complex64]) -> SolveResult {
+    let n = ckt.num_nodes;
+    let mut x = vec![Complex64::ZERO; n];
+    ckt.solution.solve_system_into(&mut x)?;
+    let idx = &ckt.solution.local_bus_idx;
+    for (j, &v) in x.iter().enumerate() {
+        if let Some(&p) = idx.get(j)
+            && let Some(slot) = parent_node_v.get_mut(p)
+        {
+            *slot = v;
+        }
+    }
+    // DEVIATION (see doc): re-seed the child NodeV with the solved column so the
+    // near-singular reference-free zone tracks the true voltage (faer↔KLU
+    // conditioning compensation); official freezes the child at state-2.
+    ckt.solution.node_v[1..=n].copy_from_slice(&x);
     Ok(())
 }
 

@@ -25,9 +25,10 @@ pub mod save;
 pub mod show;
 
 /// Pascal `TExportOption` names in ordinal order (`ExportOptions.pas`
-/// `DefineOptions` → `GetEnumName`), the **non-`DSS_CAPI_ADIAKOPTICS`** build
-/// (`High(TExportOption) = Laplacian`, so 57 options; `ZLL`/`ZCC`/`Contours`/
-/// `Y4` are ADIAKOPTICS-only and not registered — Phase 9, PHASE8_PLAN §4).
+/// `DefineOptions` → `GetEnumName`). Ordinals 58–61 (`ZLL`/`ZCC`/`Contours`/
+/// `Y4`) are the A-Diakoptics matrix exports — compiled out of the pinned oracle
+/// build (plan §0.2) but registered here as a recorded departure (WP-AD.3), each
+/// a **silent no-op unless `Solution.ADiakoptics`** (Pascal `if ADiakoptics`).
 /// Index `i` is ordinal `i + 1`, matching the Pascal `case ParamPointer of`.
 /// Spelling is verbatim from the enum (case-insensitive at match time via
 /// [`CommandList`](crate::support::command_list::CommandList), so the
@@ -90,6 +91,10 @@ pub(crate) const EXPORT_OPTIONS: &[&str] = &[
     "IncMatrixCols",     // 55
     "BusLevels",         // 56
     "Laplacian",         // 57
+    "ZLL",               // 58 — A-Diakoptics (silent no-op unless ADiakoptics)
+    "ZCC",               // 59
+    "Contours",          // 60 (filename `C.csv`)
+    "Y4",                // 61
 ];
 
 /// Pascal `TShowOption` names in ordinal order (`ShowOptions.pas`

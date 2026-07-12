@@ -650,6 +650,15 @@ impl Dss {
             }
         }
 
+        // `set ADiakoptics=yes` requested `ADiakopticsInit`, deferred here past
+        // the option-loop borrow (it needs `&mut Dss`, not just the circuit).
+        if self.circuit.as_ref().is_some_and(|c| c.ad.pending_ad_init) {
+            if let Some(ckt) = self.circuit.as_mut() {
+                ckt.ad.pending_ad_init = false;
+            }
+            self.adiakoptics_init();
+        }
+
         if solve_option == 1 {
             self.do_solve_cmd();
         }

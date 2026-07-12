@@ -53,6 +53,7 @@ pub(crate) use crate::util::{float_to_str, interpret_yes_no, parse_object_class_
 mod auto_add;
 mod command;
 mod construct;
+mod diakoptics;
 mod distribute;
 mod get_cmd;
 mod helpers;
@@ -158,6 +159,16 @@ pub struct Dss {
     /// a GUI daisy-plot marker radius written into the plot-callback payload.
     /// Lives on the DSS context, not the circuit.
     daisy_size: f64,
+    /// The A-Diakoptics child engines (Pascal `ActiveCircuit[2..NumOfActors]`),
+    /// owned by the coordinator per plan D3 (`children: Vec<Dss>`, sequential —
+    /// no threads, no shared state). Empty until `set ADiakoptics=yes` runs
+    /// `ADiakopticsInit`; `child[0]` is Pascal actor 2 (the feeder-head zone 1),
+    /// `child[k-2]` is actor `k`. Rebuilt from scratch each init (cleared then
+    /// repopulated in state 2, `diakoptics/engine.rs`); `set ADiakoptics=no`
+    /// (flag-only, per §WP-AD.3) and `Clear` leave the vector intact — the stale
+    /// children are inert (they are only read while `Solution.ADiakoptics` is
+    /// true, which a re-init re-establishes after clearing them).
+    ad_children: Vec<Dss>,
     /// `DSS.DSSPlotCallback` (`Common/DSSClass.pas:658`). Native replacement for
     /// the C export `DSS_RegisterPlotCallback` (`CAPI_DSS.pas:267`). `None` =>
     /// `Plot` is a total no-op and `DoVisualizeCmd` skips its JSON emission —
