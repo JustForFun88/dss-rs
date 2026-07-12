@@ -3,10 +3,10 @@
   "manifest_counts": {
     "missing_dependency.json": 9,
     "not_an_entry_point.json": 586,
-    "skipped_needs_investigation.json": 15,
+    "skipped_needs_investigation.json": 13,
     "skipped_oracle_issue.json": 14,
     "skipped_unsupported.json": 1,
-    "solvable_now.json": 290
+    "solvable_now.json": 292
   },
   "family_counts": {
     "asymmetric": 47,
@@ -481,6 +481,8 @@
     "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=capi015",
     "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS": "kind=large steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=capi015",
     "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS": "kind=large steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=r4088",
+    "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Lagging.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
+    "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss": "kind=large steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/IEEETestCases/8500-Node/Master.dss": "kind=large steps=1 sel=1 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",

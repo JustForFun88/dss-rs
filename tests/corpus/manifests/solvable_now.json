@@ -9,6 +9,20 @@
    "note": "SKIPPED-SWEEP (2026-07-12): Generator model=6 with an unvendored user-written induction-machine DLL (UserModel=Indmach012a). Both engines warn-and-solve exactly like the official Direct DLL: safe Rust falls back to Yprim-only + a non-fatal #567 each iteration (discarded, never in errors()) plus one compile-time #570 'Not Loaded' (expect_warnings); the pinned 0.14.5 oracle runs with EarlyAbort off + the user-model errnos tolerated (oracle_server warn_and_continue, driven by expect_warnings). Rust 8 iters == pinned 8 iters, node V bit-identical (SOURCEBUS.1 66329.351914, B1.1 8050.617448). Was parked user_model_oracle_raises_567 (the harness surfaced the DoSimpleMsg as fatal); the warn_and_continue harness path now produces a checkpoint."
   },
   {
+   "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Lagging.dss",
+   "kind": "feeder",
+   "n_steps": 1,
+   "expect_warnings": ["Not Loaded"],
+   "note": "SKIPPED-SWEEP settle (2026-07-12): same class as Test/indmachtest — Generator model=6, unvendored UserModel=IndMach012a. Both engines warn-and-solve (safe Rust falls back to Yprim-only + non-fatal #567 each iter, discarded; one compile-time #570 'Not Loaded' = expect_warnings; pinned 0.14.5 oracle runs EarlyAbort off + user-model errnos tolerated via warn_and_continue). The prior park cited a '3 vs 2 iteration' gap; that compared Rust COLD (the deck's internal compile-time Solve, 3 iters) against the oracle WARM re-solve (2). Measured symmetrically BOTH engines are cold 3 / warm 2, and the harness (compile + explicit solve) compares the WARM re-solve: 2 == 2. Warm node V bit-identical (SOURCEBUS.1 7200.002150; all 12 nodes agree to 6+ figures across both engines)."
+  },
+  {
+   "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss",
+   "kind": "feeder",
+   "n_steps": 1,
+   "expect_warnings": ["Not Loaded"],
+   "note": "SKIPPED-SWEEP settle (2026-07-12): same class as Kersting4wire_Lagging — Generator model=6, unvendored UserModel=IndMach012a, warn_and_continue oracle path. The prior '3 vs 2 iteration' park was Rust COLD (3) vs oracle WARM (2); measured symmetrically both engines are cold 3 / warm 2 and the harness compares the WARM re-solve 2 == 2. Warm node V bit-identical (SOURCEBUS.1 7199.557591; all 12 nodes agree to 6+ figures on both engines)."
+  },
+  {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
    "kind": "large",
    "n_steps": 1,
