@@ -49,6 +49,27 @@
    ]
   },
   {
+   "path": "line/line_geometry_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lgeo",
+    "Line.lspur",
+    "Line.llong"
+   ],
+   "note": "Boundaries: LineGeometry+WireData Carson full-asym Z/Yc (Line.pas geometry path, reduce=y Kron), 1-phase reduced spur, and the SymComponentsModel-only LongLineCorrection sinh(gamma*l)/(gamma*l) branch (Line.pas:1199/1369). Oracle: converged 5 iters; bit-identical across 2 processes. Feature-sensitive: LongLineCorrection yes->no changes Line.llong YPrim; swapping cond=1 wire changes Line.lgeo YPrim."
+  },
+  {
+   "path": "line/line_cable_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lcn",
+    "Line.lts"
+   ],
+   "note": "Boundaries: CNData concentric-neutral and TSData tape-shield reduced-Y (distinct Kron neutral elimination CN vs TS), asymmetric underground burial. Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: CN strand count k 13->7 changes Line.lcn YPrim; TS TapeLayer 0.005->0.008 changes Line.lts YPrim."
+  },
+  {
    "path": "transformer/transformer_asym.dss",
    "kind": "micro",
    "n_steps": 1,
@@ -163,6 +184,15 @@
    "selected_elements": [
     "*"
    ]
+  },
+  {
+   "path": "combo/midi_geometry_cable_asym.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "note": "Cross-element (midi): overhead Carson geometry -> CN cable -> delta-wye transformer -> unbalanced loads + TS 1-phase spur. Boundary: Carson/cable mutuals meet the transformer grounded-wye zero-sequence path across the assembled system Y (neutral-return coupling). Oracle: converged 3 iters; bit-identical across 2 processes. Feature-sensitive: adding a wdg-2 rneut/xneut ground impedance changes the whole-model fingerprint."
   },
   {
    "path": "combo/combo_mesh_asym.dss",

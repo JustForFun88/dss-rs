@@ -9,6 +9,24 @@
 
 Last updated: 2026-07-12.
 
+**Corpus coverage wave: asymmetric (Phase 3), 2026-07-12.** Added boundary-
+coverage decks to the `asymmetric/` family from `corpus_matrix/asymmetric.md`,
+each validated on the pinned oracle (converges + bit-identical across 2 oracle
+processes + feature-sensitivity probe) and green on the live family gate.
+- **Line:** `line/line_geometry_asym` (LineGeometry+WireData full-asym Carson
+  Z/Yc + 1φ reduced spur + the LongLineCorrection branch), `line/line_cable_asym`
+  (CNData + TSData reduced-Y), `combo/midi_geometry_cable_asym` (geometry→cable→
+  delta-wye ground-return coupling).
+- **Real port bug caught + fixed:** `line_geometry_asym` exposed that
+  `Set LongLineCorrection=yes` was stored on the circuit but **never applied** to
+  the sym-components Line YPrim (the port doc even flagged it "Phase 7+"). Ported
+  `TLineObj.DoLongLine` (Line.pas:1046) + the `long_line` Z/Yc/series/shunt
+  branches (Line.pas:1199-1269, :1369-1377) in `elements/pd/line/solve.rs`, using
+  the RTL-faithful `csqrt_fpc`/`cinv_fpc`/`cdiv_fpc` (naive FPC `cinv`; `csqrt_fpc`
+  exposed `pub(crate)`). Matches the oracle bit-exactly (2e-3 V gap → under micro
+  floor). Regression: `long_line_correction_matches_oracle_yprim` (oracle-anchored
+  YPrim) + `_changes_the_long_line_yprim` (flag-respected guard).
+
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a
 pure move — **no deck content changed** (every family deck is self-contained;
