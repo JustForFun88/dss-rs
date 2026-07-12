@@ -89,8 +89,11 @@ fn cabs_fpc(z: Complex64) -> f64 {
 /// FPC `ucomplex` `csqrt` — the Numerical-Recipes stable square root
 /// (`root = √(½(|re|+|z|))`, the other component `= im/(2·root)`), branch-split
 /// on the signs so the robust component is the directly-rooted one.
+///
+/// `pub(crate)` so the Line `DoLongLine` port (`elements/pd/line/solve.rs`)
+/// reuses the identical, RTL-proven `csqrt` rather than duplicating it.
 #[inline]
-fn csqrt_fpc(z: Complex64) -> Complex64 {
+pub(crate) fn csqrt_fpc(z: Complex64) -> Complex64 {
     if z.re != 0.0 || z.im != 0.0 {
         let root = (0.5 * (z.re.abs() + cabs_fpc(z))).sqrt();
         let q = z.im / (2.0 * root);

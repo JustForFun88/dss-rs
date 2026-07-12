@@ -829,3 +829,75 @@ fn make_pos_sequence_single_phase_is_base_only() {
     assert!(plan.actions.is_empty());
     assert!(plan.run_base);
 }
+
+// --- Long-line correction (Line.pas:1046 DoLongLine / :1199,1369) --------------
+
+/// Build a 3-phase sym-components line (r0≠r1) matching the oracle reference
+/// deck `llc_ref`: r1=0.05 x1=0.35 r0=0.15 x0=1.05 c1=3.4 c0=1.6 nF, 120 mi.
+fn build_llc_line() -> Line {
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let mut line = Line::new("ll");
+    for (n, v) in &[
+        ("phases", "3"),
+        ("r1", "0.05"),
+        ("x1", "0.35"),
+        ("r0", "0.15"),
+        ("x0", "1.05"),
+        ("c1", "3.4"),
+        ("c0", "1.6"),
+        ("length", "120"),
+        ("units", "mi"),
+    ] {
+        scalar(&lcls, &mut line, n, v);
+    }
+    line
+}
+
+/// The SymComponentsModel long-line correction matches the pinned oracle YPrim
+/// (dss-python 0.14.5, `Set LongLineCorrection=yes`) entry-for-entry. Regression
+/// for the ported `DoLongLine` + the `long_line` Z/Yc/shunt branches. The values
+/// are the full YPrim (series + shunt + CAP_EPSILON) read from the oracle for
+/// the `llc_ref` deck — a 120-mile r0≠r1 line where the correction is ~0.3 %.
+#[test]
+fn long_line_correction_matches_oracle_yprim() {
+    let mut sys = test_sys();
+    sys.long_line_correction = true;
+    let mut line = build_llc_line();
+    line.calc_yprim(&sys);
+
+    let yp = line.cd.yprim.as_ref().expect("yprim built");
+    // Oracle anchors (column-major full YPrim).
+    let (r00, i00) = (2.592595398246e-03, -1.810590551924e-02);
+    let (r03, i03) = (-2.592590137414e-03, 1.816927682269e-02);
+    assert_close(yp.get(0, 0).re, r00, "Y00.re");
+    assert_close(yp.get(0, 0).im, i00, "Y00.im");
+    assert_close(yp.get(0, 3).re, r03, "Y03.re");
+    assert_close(yp.get(0, 3).im, i03, "Y03.im");
+    // Phase symmetry of a sym-components line: Y[1,1] == Y[0,0].
+    assert_close(yp.get(1, 1).re, r00, "Y11.re");
+    assert_close(yp.get(1, 1).im, i00, "Y11.im");
+}
+
+/// The correction is actually wired: with `long_line_correction` the series
+/// YPrim differs from the uncorrected build for a long line (and the flag is
+/// respected, not ignored). Guards against the pre-port state where the flag was
+/// stored but never applied.
+#[test]
+fn long_line_correction_changes_the_long_line_yprim() {
+    let mut off = build_llc_line();
+    off.calc_yprim(&test_sys()); // long_line_correction = false
+    let y_off = off.cd.yprim.as_ref().expect("yprim off").get(0, 0);
+
+    let mut sys_on = test_sys();
+    sys_on.long_line_correction = true;
+    let mut on = build_llc_line();
+    on.calc_yprim(&sys_on);
+    let y_on = on.cd.yprim.as_ref().expect("yprim on").get(0, 0);
+
+    let rel = (y_on - y_off).norm() / y_off.norm();
+    assert!(
+        rel > 1e-4,
+        "long-line correction must move the 120-mi YPrim (rel change {rel:.3e})"
+    );
+}

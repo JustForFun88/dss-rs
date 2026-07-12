@@ -9,6 +9,62 @@
 
 Last updated: 2026-07-12.
 
+**Corpus coverage wave: asymmetric (Phase 3), 2026-07-12.** Added 7 boundary-
+coverage decks + 1 extension to the `asymmetric/` family from
+`corpus_matrix/asymmetric.md` (36 → 43 cases). Each validated on the pinned
+oracle (converges + bit-identical across 2 oracle processes + a
+feature-sensitivity probe) and green on the live family gate at **micro** tier.
+- **Line:** `line/line_geometry_asym` (LineGeometry+WireData full-asym Carson
+  Z/Yc + 1φ reduced spur + the LongLineCorrection branch), `line/line_cable_asym`
+  (CNData + TSData reduced-Y), `combo/midi_geometry_cable_asym` (geometry→cable→
+  delta-wye ground-return coupling).
+- **Transformer:** `transformer/transformer_wyedelta_asym` (wye-delta delta-lead
+  +30° + ungrounded delta-delta with a wye cap pin).
+- **Load:** `load/midi_load_vregion_asym` — a weak-source radial that develops
+  physical sag so every Load voltage-region branch fires (interpolate_y95_ylow,
+  const-Z below Vlowpu, Yeq105 clamp above Vmaxpu) across models 1/3/5 and the
+  previously-unpinned **models 6/7** (constP-fixedQ / constP-constZ<Vmin, feature-
+  sensitive only off-normal — hence a vregion deck, not the flat load_asym).
+- **Generator:** `generator/gen_currentlimited_asym` (Model 7 DoCurrentLimitedPQ
+  clamp fired unbalanced below Vminpu + Model 4 + Model 3 latched at a tight
+  maxkvar).
+- **DER:** `der/der_state_asym` (Storage IDLING, PVSystem below %CutOut → P=0,
+  PVSystem at the kvar clamp with WattPriority; all wye-3φ).
+- **Extension:** `capacitor/capacitor_asym` +`cfilt` (series-tuned R+XL filter →
+  full R+L+C YPrim off the pure-C diagonal).
+- **Real port bug caught + fixed:** `line_geometry_asym` exposed that
+  `Set LongLineCorrection=yes` was stored on the circuit but **never applied** to
+  the sym-components Line YPrim (the port doc even flagged it "Phase 7+"; the
+  flag was threaded through SysCtx but unused). Ported `TLineObj.DoLongLine`
+  (Line.pas:1046) + the `long_line` Z/Yc/series/shunt branches (Line.pas:
+  1199-1269, :1369-1377) in `elements/pd/line/solve.rs`, using the RTL-faithful
+  `csqrt_fpc`/`cinv_fpc`/`cdiv_fpc` (naive FPC `cinv`; `csqrt_fpc` exposed
+  `pub(crate)`). Matches the oracle bit-exactly (2e-3 V gap → under the micro
+  floor). Regression: `long_line_correction_matches_oracle_yprim` (oracle-anchored
+  YPrim) + `_changes_the_long_line_yprim` (flag-respected guard).
+- **Discarded / deferred (documented, no escalation):** `vsconverter_asym`
+  discarded — the asymmetric family runs a full-model compare of *every* element's
+  currents (no per-element opt-out), and the upstream VSConverter `GetCurrents`
+  bug makes the oracle's self-reported currents violate KCL + mutate state on
+  every read (CLAUDE.md / corpus_live.rs:1558 explicitly forbid VSConverter in a
+  live full-model compare); it is already correctly gated via source-current KCL
+  in `exec/tests/vs_converter.rs`. UPFC modes 2/3 deferred (low priority): the
+  series-injection YPrim stamp is control-mode-independent and already pinned by
+  `upfc_asym` mode 1; modes 2/3 only vary the control dispatch and would perturb
+  that deck's tol=1e-12 pin for negligible stamp coverage.
+- **Settle pass (audit findings, 2026-07-12).** (1) *Fixed:* the 7 new decks were
+  in `manifest.json` (bijection-guarded) but absent from the `ASYMMETRIC_REQUIRED`
+  anti-shrink floor in `corpus_live.rs`, so a joint deck+entry deletion would pass
+  undetected — and flooring combo decks but not the new `midi_geometry_cable_asym`
+  was inconsistent. Added all 7 to `ASYMMETRIC_REQUIRED` and widened the floor's
+  doc comment; gate stays green. (2) *Cleaned:* removed the untracked, out-of-scope
+  `tools/oracle/validate_deck.py` ad-hoc wave helper (never committed; leftover
+  clutter outside the family dir). (3) *No defect:* the `vsconverter_asym` discard
+  was flagged as possibly under-documented in the handoff text, but it is already
+  fully recorded above with the correct rationale (full-model current compare has
+  no per-element opt-out; the `GetCurrents` bug forbids a live compare) — nothing
+  to change.
+
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a
 pure move — **no deck content changed** (every family deck is self-contained;
