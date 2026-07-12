@@ -53,6 +53,11 @@ MULTITHREADING M2.
 - **WP-U1.8 (WindGen + WTG3 dynamics) — LANDED** on branch `wp-u18` (new PC element +
   the general dynamics-entry Y-rebuild fix + the `micro_wtg3_dynamics` floor tier).
   See the UPGRADE record below.
+- **WP-U1.7 (NCIM solver)** — **Stage 1 landed** (branch `wp-u17`): the
+  `dss-sparse` real-valued `RealSparseSet` Jacobian path. Stages 2–4 (the solver
+  port itself, generator PV participation, options/dispatch, reports, decks) are
+  a large remaining body of work with a full integration map in the §UPGRADE
+  WP-U1.7 record below.
 - **WP-U1.2 (numeric long tail)** — rows B2/D1, D7, D6, B1, D8 landed; **remaining:
   D3** (report-only spacing ratings — needs an overload-report deck) and **B3-r3723**
   (Load.GrowthFactor Year=0 — needs a growthshape + multi-hour year-0 run). See the
