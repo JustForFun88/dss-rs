@@ -330,6 +330,17 @@
    "note": "PeakDay Load daily-shape fix: the load current follows day8 exactly (|I1| = mult x 300A: 120/165/225/285/300/270/210/150) and PeakDay applies NO LoadMultiplier (peak 300A not 450A despite Set LoadMult=1.5). Feature-sensitive vs a flat shape (monitor channels + meter registers diverge); the missing-calc_daily_mult bug would sit flat at nominal. Oracle-validated (dss-python 0.15.7): bit-identical across two processes."
   },
   {
+   "path": "time/direct.dss",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "pending": false,
+   "wp": "FIX-DIRECT",
+   "note": "Set mode=direct + the TPCElement.GetCurrents LastSolutionWasDirect shortcut (PCElement.pas l.137): snapshot solve first (flag cleared by DoPFLOWsolution), then a direct solve; reported Load currents/powers must be the frozen shadow-admittance YPrim*Vterminal (CalcYPrimContribution), not the model conj(S/V). Feature-sensitive well above band: on ld1 the shortcut gives I1=(36.3266,-12.6335) |I1|=38.461 A / P1=259.493 kW vs model 39.540 A / 266.665 kW (~1.1 A, ~7.2 kW per phase); omitting the shortcut reproduces the old escalated divergence. Oracle-validated (dss-python 0.15.7): converged, 1 iteration, bit-identical across two processes. Probe facts: Set mode=direct WITHOUT solve does NOT flip currents; a snapshot solve after direct reverts to model currents; Set loadmodel=admittance + Solve in snap mode takes the same shortcut (SolveCircuit->SolveDirect); Powers read before Currents shows no order dependence."
+  },
+  {
    "path": "montecarlo/monte1.dss",
    "kind": "micro",
    "n_steps": 5,
