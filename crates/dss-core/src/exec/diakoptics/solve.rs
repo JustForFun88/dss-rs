@@ -473,9 +473,11 @@ impl Dss {
     /// Pascal `SolveSnap` AD path (coordinator): the control loop wrapping the AD
     /// `DoNormalSolution` (Solution.pas:1006 — `ADiak_PCInj := True;
     /// Solve_Diakoptics()` per fixed-point iteration, convergence over the
-    /// interconnected `NodeV`). Controls are checked on the coordinator; the
-    /// child `DO_CTRL_ACTIONS` propagation (`full` control decks) is WP-AD.4 —
-    /// the WP-AD.3/D7 fixtures solve controls-off.
+    /// interconnected `NodeV`). Controls are checked via the AD branch
+    /// ([`Self::ad_check_controls`]): the coordinator fans `DO_CTRL_ACTIONS` out
+    /// to the children and ANDs their `ControlActionsDone` (ported in WP-AD.4).
+    /// The WP-AD.3/D7 fixtures solve controls-off, where that fan-out is the
+    /// trivial `CONTROLSOFF` no-op.
     fn ad_solve_snap(&mut self) -> SolveResult {
         {
             let coord = self.circuit.as_mut().ok_or("no coordinator")?;
@@ -739,20 +741,25 @@ impl Dss {
     /// is how a `full`-disposition sweep case re-asserts the deck mode on the
     /// zones.)
     pub(crate) fn ad_send_get_ctrl_mode(&mut self) {
-        let (mode, default_mode, max_iter) = {
+        let (mode, max_iter) = {
             let Some(coord) = self.circuit.as_ref() else {
                 return;
             };
             (
                 coord.solution.control_mode,
-                coord.solution.default_control_mode,
                 coord.solution.max_control_iterations,
             )
         };
+        // Solution.pas:3260-3263: `ControlMode := Actor1.ControlMode;
+        // DefaultControlMode := ControlMode; MaxControlIterations :=
+        // Actor1.MaxControlIterations` — the child's DefaultControlMode is set to
+        // the *coordinator's ControlMode*, not the coordinator's DefaultControlMode
+        // (they are equal at every `set controlmode=` dispatch point, but the 1:1
+        // transcription is the coordinator's live ControlMode for both).
         for child in self.ad_children.iter_mut() {
             if let Some(ckt) = child.circuit.as_mut() {
                 ckt.solution.control_mode = mode;
-                ckt.solution.default_control_mode = default_mode;
+                ckt.solution.default_control_mode = mode;
                 ckt.solution.max_control_iterations = max_iter;
             }
         }
