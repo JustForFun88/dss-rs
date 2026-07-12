@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-12 (WP-U1.1 item 2 — ParseAsSymMatrix incomplete-matrix reject; record below).
+Last updated: 2026-07-12 (WP-U1.1 items 3-5 — AllowNoneItem, TCC_Curve.none, C11 class activation; records below).
 
 **FINAL ACCEPTANCE (PORTING_PLAN §6) EXECUTED 2026-07-11, on explicit user
 request.** A max-effort referee round on branch `final-acceptance` (HEAD after the
@@ -3220,10 +3220,50 @@ the capi015 Rung-1 oracle.
   the full `cargo test --workspace` is green with the default change.
 - known_diffs: nothing to retire (0.14.5 and the port both zero-filled at r3723).
 
-**Next (resume point):** items 3–5 of `UPGRADE_PLAN §WP-U1.1` remain (item 3
-`AllowNoneItem` conductor-list plumbing; item 4 `TCC_Curve.none`; item 5 C11
-class-command activation). Items 1 and 2 are self-contained committed green
-packages.
+**Item 3 landed (`AllowNoneItem` — `none` in conductor lists — adopt capi015).**
+New `PropFlags::ALLOW_NONE_ITEM` on Line + LineGeometry `Wires`/`CNCables`/
+`TSCables`; the `ObjectRefArray` parse resolves a `none` token to a NIL slot (no
+"not found" error) — capi015 accepts it, 0.14.5 errors #40303. Threaded
+`ObjectRefArrayItem = Option<(name, ElemRef, view)>` through `set_object_ref_array`
+→ `set_wires`/`set_cables` (storages already `Vec<Option<…>>`). Exposed
+`Parser::is_quoted()` (item 3 "WasQuoted plumbing"; the parser already tracked it,
+WP-U2 consumes it). Parser/storage plumbing ONLY — the mixed-conductor-list
+*numerics* (the `Conductors` property) are WP-U1.4; a `none` conductor alone is
+degenerate (capi015 `#303`s the geometry), so no live deck (§1.7 unattainable).
+Gate-safe (no corpus deck uses `none` in a list; the `Option` thread kept the
+non-`none` path byte-identical). Pinned by `line_fetch::conductor_list_accepts_none_entry`
+(feature-sensitive — a non-`none` missing name still errors) + parser `is_quoted`.
+
+**Item 4 landed (`TCC_Curve.none`).** (a) `new TCC_Curve.none` is rejected (423,
+no object) in `add_object` — capi015 == r4133. (b) The C7 `AllowNone`-on-single-ref
+(Recloser/Fuse curve `=none`) is **observably a no-op in capi015** — its AllowNone
+branch NILs the ref then the unconditional `if otherObj=NIL` fires #401 anyway
+(DSSObjectHelper.pas:862), bit-identical to the not-found path the port already
+takes — so the port sets NO flag (a silent clear would diverge). r4133 diverges
+(stores literal `none`, no #401) — Rung-2 note. Pinned by
+`lifecycle::tcc_curve_none_is_reserved` + `fuse_curve_none_clears_with_error_like_capi015`.
+
+**Item 5 landed (C11 / SVN r3875 class-command activation).** The port collapses
+`LastClassReferenced`+`ActiveDSSClass` into one `active_class`, so every already-
+ported SetObjectClass-equivalent already reproduces the fix. The fix's only
+newly-affected consumers, `Set Class=`/`Set Object=` SET-options, were NOT_PORTED
+— now ported (opts 1/12 `Type`/`Class` → `set_object_class` activate; opts 2/13
+`Element`/`Object` → `set_object`, now also setting `ActiveCktElement`). Gate-safe
+(0 corpus uses). Pinned by `select::set_class_activates_and_set_object_selects` +
+`set_class_unknown_errors_keeps_previous`. Follow-up (separate, NOT r3875): a bare
+`? prop` querying the ActiveCktElement is still unported in `do_query_cmd` — owner
+for a later WP.
+
+**Each item's decision + probe transcript + gate consequence is in
+`docs/upgrade/DIVERGENCES.md` (§ParseAsSymMatrix, §AllowNoneItem, §TCC_Curve none,
+§Class-command activation).** No live oracle exists for items 2/3/4b (capi015 and
+r4133 each disagree in ways that can't be gated — documented per §1.4); they are
+pinned by feature-sensitive Rust unit tests, the honest gate for a behavior neither
+oracle can drive.
+
+**Next (resume point):** WP-U1.1 items 1–5 all landed. Next WP is U1.2 (numeric
+long tail) per the plan; U1.4 owns the conductor-list-with-`none` numerics that
+this item's plumbing enables.
 
 ### Gate state (all green)
 ```

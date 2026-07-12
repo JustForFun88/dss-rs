@@ -78,6 +78,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // behavior (store ref + snapshot) is identical to the generic path.
         PropDef::object_ref_any("SwitchedObj"),
         PropDef::integer("SwitchedTerm"),
+        // SVN r4119 (fd034bb0) added `AllowNone` here, but it is a capi015 no-op
+        // (clear+#401 == the not-found path); the port omits it. WP-U1.1 item 4 /
+        // DIVERGENCES.md §AllowNone-single-ref.
         PropDef::object_ref_class("TCC_Curve", "FuseCurve"),
         PropDef::double("RatedCurrent"),
         PropDef::double("Delay"),

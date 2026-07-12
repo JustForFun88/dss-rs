@@ -193,6 +193,127 @@ plan's r4133 end-target (§1.4 default "EPRI r4133 wins").
   both zero-filled, matching each other at r3723); adopting the reject makes Rust
   match r4133 — nothing to retire.
 
+## AllowNoneItem — `none` in conductor lists — SETTLED (WP-U1.1 item 3, adopt capi015)
+
+**Observable.** A `none` entry inside a `DSSObjectReferenceArrayProperty` — the
+conductor lists `Wires`/`CNCables`/`TSCables` on Line and LineGeometry (SVN
+r3902/r3913, `TPropertyFlag.AllowNoneItem`).
+
+**Probe** (`probe_nonewire.py`, 2026-07-12; `new linegeometry.g nconds=2
+nphases=2 ~ wires=(w none)`):
+
+| engine | `wires=(w none)` |
+|---|---|
+| capi 0.14.5 (default) | **error #40303** "WireData object `none` not found" |
+| capi015 (0.15.0b4) | **accepted** — NIL slot, no error |
+
+**Decision — adopt the capi015 accept-`none`.** Added `PropFlags::ALLOW_NONE_ITEM`
+(Pascal `AllowNoneItem`, distinct from the single-ref/`DoubleVArray` `AllowNone`),
+set on Line + LineGeometry `Wires`/`CNCables`/`TSCables`. The `ObjectRefArray`
+parse arm now resolves a `none` token (when the flag is set) to a **`None`
+slot** instead of the "not found" error; the storage chain
+(`set_object_ref_array` → `set_wires`/`set_cables`) threads
+`ObjectRefArrayItem = Option<(name, ElemRef, view)>` and leaves a `None` slot NIL
+(both `line_wire_data`/`fwiredata` are already `Vec<Option<…>>`). Also exposed
+`Parser::is_quoted()` (item 3 "WasQuoted plumbing" — the parser already tracked
+`IsQuotedString`; WP-U2's per-phase state arrays will consume it).
+
+**Scope split with WP-U1.4.** This item is the **parser/storage plumbing** only.
+The mixed-conductor-list *numerics* that actually consume a NIL conductor (the
+new `Conductors` property, EqDist spacing, CN/TS mixing) are **WP-U1.4**. A
+`none` conductor in isolation is degenerate — capi015 accepts the parse but then
+`#303`s on the incomplete geometry (probed), so there is no solvable standalone
+`none` deck; §1.7's "solves on target oracle" is unattainable until U1.4.
+
+**Gate consequence.**
+- **Gate-safe:** no corpus deck puts `none` in a conductor list (scanned — 0
+  hits), so no default-oracle case moves; the `Option`-threading kept the
+  non-`none` path byte-identical (the whole line/line_geometry unit suites +
+  full workspace gate stay green).
+- **Pinned by feature-sensitive unit tests** (no live oracle, per above):
+  `dss-core` `line_fetch::conductor_list_accepts_none_entry` (`wires=(w none)`
+  yields a NIL slot with no error, while a non-`none` missing name — `nope` —
+  still errors "not found"), + `dss-parser`
+  `is_quoted_reflects_the_last_token_quote_state`.
+- known_diffs: nothing to retire (0.14.5 errored, the port errored — no prior
+  Rust↔EPRI entry).
+
+## TCC_Curve `none` (rejection + AllowNone-single-ref) — SETTLED (WP-U1.1 item 4)
+
+**Observable.** (a) `new TCC_Curve.none …`; (b) a single TCC_Curve reference on a
+Recloser (`PhaseFast`/`PhaseDelayed`/`GroundFast`/`GroundDelayed`) or Fuse
+(`FuseCurve`) set to the literal value `none`.
+
+**Spec.** dss_capi `fd034bb0` ("port SVN r4119"): `TTCC_Curve.NewObject` rejects
+name `none` (DoErrorMsg 423, returns NIL) + `TPropertyFlag.AllowNone` added to the
+five curve refs so `none` clears them (`DSSObjectHelper.pas:862`).
+
+**Probe** (`probe_tcc_none.py` / `probe_r4133_tcc.py`, 2026-07-12):
+
+| observable | capi 0.14.5 | capi015 | r4133 |
+|---|---|---|---|
+| `new TCC_Curve.none` | (no reject) created | **#423 reject**, not created | **#423 reject**, not created |
+| `fusecurve=none` readback | `''` (cleared) | `''` (cleared) | **`none`** (literal stored) |
+| `fusecurve=none` error | #401 not-found | **#401 not-found** | none |
+
+**(a) Rejection — adopt.** `new TCC_Curve.none` now errors ("…\"none\" is a
+reserved name…") and creates no object, in `command.rs::add_object` (the
+DSS_OBJECT branch, keyed on class name). capi015 == r4133 here. (0.14.5, the
+default oracle, did NOT reject — but no corpus deck defines `TCC_Curve.none`, so
+no gate case moves.) Gated by the `tcc_curve_none_is_reserved` unit test
+(feature-sensitive: the object stays absent).
+
+**(b) AllowNone-single-ref — NOT ported (capi015 no-op quirk).** The C7 feature
+is **observably a no-op in capi015**: its AllowNone branch sets `otherObj := NIL`
+(l.862) but the *unconditional* `if otherObj = NIL then DoSimpleMsg(… 401)`
+immediately below (l.867) fires the "not found" error anyway — so `fusecurve=none`
+on capi015 clears the ref AND logs #401, bit-identical to the plain not-found path
+the port ALREADY reproduces. Adding a silent AllowNone clear in Rust would
+**diverge** from capi015. So the port sets NO `ALLOW_NONE` flag on these refs;
+`fusecurve=none` clears + logs #401 through the existing path. Pinned by
+`fuse_curve_none_clears_with_error_like_capi015`.
+- **r4133 divergence (Rung-2 note, not adopted here):** r4133 stores the literal
+  `none` as the ref name (readback `none`, no #401) instead of clearing to `''`.
+  The functional effect (no curve at runtime) is the same across all three; only
+  the readback + error-log differ. Recorded for a Rung-2 revisit; no Rung-1
+  action. No live oracle gates (b): capi015 raises the #401 in dss-python
+  (early-abort), r4133 renders a different readback — the divergence is unit-test
+  pinned, same rationale as §ParseAsSymMatrix.
+
+## Class-command activation (C11 / SVN r3875) — SETTLED (WP-U1.1 item 5)
+
+**Spec.** dss_capi `7457fc0b` ("port part of SVN r3875"): `SetObjectClass` now
+sets `DSS.ActiveDSSClass` (not only `LastClassReferenced`) — "always activate the
+selected class, if any" — and two callers (ShowResults, DoSelectCmd) drop their
+now-redundant `ActiveDSSClass := …`.
+
+**Port mapping.** The port collapses Pascal `LastClassReferenced` **and**
+`ActiveDSSClass` into a single `active_class` field, so every already-ported
+SetObjectClass-equivalent (`do_select_cmd`, `add_object`, `do_edit_cmd`,
+`do_batch_edit_cmd`, `do_enable_disable_cmd`) *already* reproduces the fixed
+behavior — no stale-`ActiveDSSClass` divergence is representable. The only Rust
+paths where the r3875 fix introduces behavior over 0.14.5 were the `Set Class=`
+and `Set Object=` SET-options, which were **NOT_PORTED** (emitted "not ported
+yet"). Per "port gaps immediately", this WP ports them:
+- `Set Class=`/`Set Type=` (opts 12/1) → `set_object_class`: activate the named
+  class (unified `active_class` — carries the r3875 `ActiveDSSClass` set); unknown
+  class logs #903 and keeps the previous class.
+- `Set Object=`/`Set Element=` (opts 13/2) → `set_object`: select the object
+  (class-qualified or bare against the active class), now also making a circuit
+  element the `ActiveCktElement` (Pascal `SetActive` — was missing, so a bare
+  `? prop`/`~` couldn't reach it).
+
+**Gate.** No corpus deck uses `Set Class=`/`Set Object=` (scanned — 0 hits), so
+zero mandatory-gate movement; the port is gate-safe. Pinned by
+`set_class_activates_and_set_object_selects` (Set Class activates the class; a
+bare `Set Object` resolves against it and sets `ActiveCktElement`; `Type`/`Element`
+aliases) + `set_class_unknown_errors_keeps_previous`. The observable is identical
+on capi015 and 0.14.5 (the r3875 `ActiveDSSClass` refresh is unobservable in any
+constructible sequence — `Set Object` bare-resolution reads `LastClassReferenced`,
+set in both revs), so no oracle flip is needed. Follow-up (separate `?`-command
+gap, NOT r3875): a bare `? prop` querying the ActiveCktElement is still unported
+in `do_query_cmd` — noted in STATUS, an owner for a later WP.
+
 ## L1, L3, L4 — pending later WPs
 
 - **L1** InvControl `InvControlDeltaV` buffer — WP-U1.3.

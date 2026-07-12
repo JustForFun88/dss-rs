@@ -24,6 +24,39 @@ fn line_fetches_sym_linecode() {
 }
 
 #[test]
+fn conductor_list_accepts_none_entry() {
+    // WP-U1.1 item 3 (AllowNoneItem, SVN r3902/r3913): a `none` entry in a
+    // conductor list resolves to a NIL slot with NO "not found" error — capi015
+    // accepts it (0.14.5 errors #40303). Feature-sensitive: a NON-`none` missing
+    // name still errors, so the `none` acceptance is not blanket-swallowing.
+    let mut dss = Dss::new();
+    dss.command("New circuit.p");
+    dss.command("New wiredata.w Runits=mi Rac=0.1 GMRunits=mi GMRac=0.01 radunits=in diam=0.5");
+    dss.command("New linegeometry.g nconds=2 nphases=2 reduce=n");
+    dss.command("~ wires=(w none)");
+    assert!(
+        dss.errors().is_empty(),
+        "`none` conductor entry must not error (AllowNoneItem): {:?}",
+        dss.errors()
+    );
+    // The list is [w, NIL]: the readback renders the NIL slot as the empty name.
+    assert_eq!(query(&mut dss, "linegeometry.g.wires"), "[w, ]");
+
+    // Control (feature-sensitivity): a genuine missing wire name still errors —
+    // only the reserved `none` is special.
+    let mut dss2 = Dss::new();
+    dss2.command("New circuit.p");
+    dss2.command("New wiredata.w Runits=mi Rac=0.1 GMRunits=mi GMRac=0.01 radunits=in diam=0.5");
+    dss2.command("New linegeometry.g2 nconds=2 nphases=2 reduce=n");
+    dss2.command("~ wires=(w nope)");
+    assert!(
+        dss2.errors().iter().any(|e| e.contains("not found")),
+        "a non-`none` missing wire must still error, got {:?}",
+        dss2.errors()
+    );
+}
+
+#[test]
 fn load_and_vsource_resolve_shape_refs() {
     // WP5.3: the shape refs became resolved `object_ref_class` props. The
     // ObjectRef getter renders the resolved object's name, and an unset

@@ -362,6 +362,19 @@ fn sym_matrix_with_stride_and_scale() {
 }
 
 #[test]
+fn is_quoted_reflects_the_last_token_quote_state() {
+    // WP-U1.1 item 3 "WasQuoted plumbing": the exposed accessor mirrors the
+    // parser's internal quote tracking (a quoted composite vs a bare token).
+    let (mut p, vars) = parser_with("a=(1 2 3) b=bare");
+    p.next_param(&vars);
+    let _ = p.token();
+    assert!(p.is_quoted(), "(1 2 3) is a quoted composite");
+    p.next_param(&vars);
+    let _ = p.token();
+    assert!(!p.is_quoted(), "bare token is not quoted");
+}
+
+#[test]
 fn sym_matrix_returns_order_found_for_incomplete_input() {
     // WP-U1.1 item 2: a 3x3 sym matrix given only 2 rows returns OrderFound=2
     // (< 3) so the caller can reject it (EPRI r4133); the FPC line returned 3.

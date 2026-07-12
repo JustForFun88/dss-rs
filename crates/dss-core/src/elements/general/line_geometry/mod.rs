@@ -59,11 +59,11 @@ define_properties! {
     9  EMERGAMPS => PropDef::double("EmergAmps");
     10 REDUCE    => PropDef::boolean("Reduce");
     11 SPACING   => PropDef::object_ref_class("LineSpacing", "Spacing");
-    12 WIRES     => PropDef::object_ref_array("WireData", "Wires");
+    12 WIRES     => PropDef::object_ref_array("WireData", "Wires").flags(PropFlags::ALLOW_NONE_ITEM);
     13 CNCABLE   => PropDef::object_ref_class("CNData", "CNCable");
     14 TSCABLE   => PropDef::object_ref_class("TSData", "TSCable");
-    15 CNCABLES  => PropDef::object_ref_array("CNData", "CNCables");
-    16 TSCABLES  => PropDef::object_ref_array("TSData", "TSCables");
+    15 CNCABLES  => PropDef::object_ref_array("CNData", "CNCables").flags(PropFlags::ALLOW_NONE_ITEM);
+    16 TSCABLES  => PropDef::object_ref_array("TSData", "TSCables").flags(PropFlags::ALLOW_NONE_ITEM);
     17 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
     18 RATINGS   => PropDef::double_array("Ratings", SEASONS);
     19 LINETYPE  => PropDef::mapped_string_enum("LineType", enums.line_type);

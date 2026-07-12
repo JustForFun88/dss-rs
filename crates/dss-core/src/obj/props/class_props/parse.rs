@@ -162,6 +162,21 @@ impl ClassProps {
                         obj.set_object_ref(idx, name, resolved.map(|(r, o, _)| (r, o)));
                     }
                     Some(class) => {
+                        // NOTE(upstream-quirk): `TPropertyFlag.AllowNone` on a
+                        // single object ref (SVN r4119 / fd034bb0, meant to let a
+                        // `none` value clear a Recloser/Fuse TCC_Curve ref) is
+                        // **observably a no-op in the Rung-1 oracle (capi015)**: its
+                        // AllowNone branch (`DSSObjectHelper.pas:862`) sets `otherObj
+                        // := NIL`, but the *unconditional* `if otherObj = NIL then
+                        // DoSimpleMsg(... 401)` two lines down fires the "not found"
+                        // error anyway (l.867-874). So `fusecurve=none` on capi015
+                        // clears the ref AND logs #401 — bit-identical to the plain
+                        // not-found path below, which the port already reproduces.
+                        // We therefore add NO AllowNone shortcut (a silent clear
+                        // would *diverge* from capi015). r4133 diverges differently
+                        // (stores the literal `none` name, no #401) — a Rung-2 note,
+                        // see DIVERGENCES.md §AllowNone-single-ref. WP-U1.1 item 4.
+                        //
                         // Pascal `ParseObjPropertyValue` for
                         // `DSSObjectReferenceProperty`: resolve `cls.Find(name)`
                         // (case-insensitive). On failure DoSimpleMsg 401 and the
@@ -218,10 +233,22 @@ impl ClassProps {
                     }
                     names.push(token);
                 }
-                let mut refs = Vec::with_capacity(names.len());
+                let allow_none = pd.flags.contains(PropFlags::ALLOW_NONE_ITEM);
+                let mut refs: Vec<crate::obj::base::ObjectRefArrayItem> =
+                    Vec::with_capacity(names.len());
                 for token in &names {
+                    // Pascal `AllowNoneItem` (`DSSObjectHelper.ValidateObjectItem`
+                    // l.6456, SVN r3902/r3913): a `none` list entry becomes a NIL
+                    // slot (no "not found" error) — used by the mixed conductor
+                    // lists (Line/LineGeometry Wires/CNCables/TSCables). WP-U1.1
+                    // item 3. (0.14.5 errors #40303 here; the mixed-list *numerics*
+                    // that consume a NIL conductor are WP-U1.4.)
+                    if allow_none && token.eq_ignore_ascii_case("none") {
+                        refs.push(None);
+                        continue;
+                    }
                     match eng.foreign.and_then(|f| f.find(class, token)) {
-                        Some((r, o)) => refs.push((o.data().name().to_string(), r, o)),
+                        Some((r, o)) => refs.push(Some((o.data().name().to_string(), r, o))),
                         None => {
                             eng.errors.push(format!(
                                 "{full}.{}: {class} object \"{token}\" not found.",

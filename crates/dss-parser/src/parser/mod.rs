@@ -175,6 +175,15 @@ impl Parser {
     pub fn convert_error(&self) -> bool {
         self.convert_error
     }
+
+    /// True when the token just read was wrapped in a quote pair (Pascal
+    /// `IsQuotedString`). Exposed for property parsers that must distinguish a
+    /// quoted composite value from a bare token — e.g. the per-phase protection
+    /// state arrays (`[closed closed open]`) WP-U2 will consume (WP-U1.1 item 3
+    /// "WasQuoted plumbing"; the parser already tracks the flag internally).
+    pub fn is_quoted(&self) -> bool {
+        self.is_quoted_string
+    }
 }
 
 impl Default for Parser {
