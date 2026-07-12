@@ -1535,7 +1535,8 @@
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot; floating-delta common-mode floor (precedent GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS, TOLERANCE_NOTES section floating-delta). Validated live green vs the pinned oracle."
+   "oracle": "capi015",
+   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot; floating-delta common-mode floor (precedent GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS, TOLERANCE_NOTES section floating-delta). Flipped oracle:capi015 by the GFM WP: the snapshot leaves the GFM storage in discharging+GFM, so the B5 Isc1 change (drop *1000, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals (witnessed 0.14.5 vs capi015 rel 1.209e-1). Whole-model live compare green vs capi015 (op-point Isc1-invariant, only the Norton YPrim moves)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
@@ -1553,7 +1554,8 @@
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+   "oracle": "capi015",
+   "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant C); floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: variant C ends with the GFM storage discharging (variants A/B end idling/charging and stay 0.14.5-green), so the B5 Isc1 change (de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (witnessed rel 1.209e-1). Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
@@ -1565,7 +1567,8 @@
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap (AmpLimit); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+   "oracle": "capi015",
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap (AmpLimit); floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: the SwapRef trajectory ends with the GFM storage discharging (its non-SwapRef GFMDaily sibling ends charging/GFL and stays 0.14.5-green), so the B5 Isc1 change (de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (witnessed rel 1.209e-1). Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
@@ -1577,7 +1580,8 @@
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap; floating-delta common-mode floor. Validated live green vs the pinned oracle."
+   "oracle": "capi015",
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap; floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: the SwapRef trajectory ends with the GFM storage discharging (its non-SwapRef GFMDaily sibling ends charging/GFL and stays 0.14.5-green), so the B5 Isc1 change (de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (witnessed rel 1.209e-1). Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
@@ -1589,7 +1593,22 @@
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory (cannot-pick-up-load scenario); floating-delta common-mode floor. Validated live green vs the pinned oracle."
+   "oracle": "capi015",
+   "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily->dynamics trajectory (cannot-pick-up-load: Load.s103c.kW=400 collapses the island so the GFM storage cannot form voltage); floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: its GFM storage reaches CalcGFMYprim in the discharging+GFM final state, so the B5 Isc1 change (drop *1000, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals (witnessed Y[STOBUS.2,STOBUS.1] 0.14.5 vs capi015 rel 1.209e-1). Contrary to the WP-U1.2 note that this deck 'stays 0.14.5-green', it moves like its GFMDaily sibling (the AmpLimit current limit is a separate axis and does not shield the YPrim). Whole-model live compare green vs capi015."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "oracle": "capi015",
+   "note": "GFM WP re-promotion (was parked upgrade_straddle_gfm_wp). Islanded GFM daily->dynamics deck (sw5 open, storage GFM discharge). The 0.15.x GFM Storage YPrim delta (B5: Isc1 drops the *1000 factor, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) is now ported, moving the assembled system Y at the StoBus mutuals to the capi015 value (witnessed Y[STOBUS.1,STOBUS.2] 0.14.5 vs capi015 rel 1.209e-1). Straddle-axis (1) WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW->FkVArating) is also resolved on capi015. Whole-model live compare (system Y + V/I/P per step) green vs capi015; the GFM power-flow op-point is Isc1-invariant (proven), so V/I/P did not move -- only the Norton YPrim did."
+  },
+  {
+   "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
+   "kind": "large_floating_delta",
+   "n_steps": 1,
+   "oracle": "capi015",
+   "note": "GFM WP re-promotion (was parked upgrade_straddle_gfm_wp). Current-limited (AmpLimit=500) islanded GFM daily->dynamics deck; same class as its GFM_IEEE123/GFMDaily sibling. B5 (Isc1 drop *1000, de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals to capi015 (witnessed rel 1.209e-1). The storage dynamics state var it[last] is an open-loop, non-injecting integration (only it[0] drives the GFM voltage source), so it drifts on the oscillating AC waveform over the long trajectory; it is not a gated quantity and does not affect node V, which stays pinned by the it[0]<->node-V fixpoint. Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
@@ -1651,7 +1670,9 @@
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
    "kind": "large",
-   "n_steps": 1
+   "n_steps": 1,
+   "oracle": "capi015",
+   "note": "Flipped oracle:capi015 by the GFM WP: the 8500-node GFM snapshot leaves its GFM storage discharging, so the B5 Isc1 change (drop *1000, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals (witnessed 0.14.5 vs capi015 rel 1.172e-1). Its GFMDaily/GFMDailySmallerPV siblings end charging/GFL and stay 0.14.5-green. Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",

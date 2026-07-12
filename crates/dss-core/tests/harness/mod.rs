@@ -819,9 +819,32 @@ pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tolera
         let allowed_w = allowed_kw * 1000.0;
         let (ar, ai) = snap.loss_w;
         let (er, ei) = (exp.loss_w[0], exp.loss_w[1]);
+
+        // The oracle's `Get_Losses` must be self-consistent with its OWN captured
+        // per-conductor powers (`losses = Σ_k S_k`, W) before we trust it as a
+        // cross-engine reference. capi015 (dss_capi 0.15.x) has a stale-cache
+        // quirk here: in a multi-step *daily* run `CktElement.Losses` freezes at
+        // the step-0 value while `Powers` scales correctly (probed 2026-07-12 on a
+        // plain grid-connected daily Load AND the islanded GFM decks — general,
+        // unrelated to GFM/B5; DIVERGENCES.md §capi015-daily-losses). Rust — like
+        // 0.14.5 and EPRI r4133 — recomputes losses fresh, so comparing the two is
+        // a §1.2-forbidden deliberate mismatch. When the oracle's own
+        // losses≠Σpowers we skip ONLY this redundant channel (the per-conductor
+        // Powers above already pin the same physics); a self-consistent oracle
+        // still fully gates the `Get_Losses` path.
+        let (osum_re, osum_im): (f64, f64) = exp
+            .p_kw
+            .iter()
+            .zip(&exp.p_kvar)
+            .fold((0.0, 0.0), |(r, i), (p, q)| {
+                (r + p * 1000.0, i + q * 1000.0)
+            });
+        let oracle_self_gap = ((er - osum_re).powi(2) + (ei - osum_im).powi(2)).sqrt();
+        let oracle_losses_trustworthy = oracle_self_gap <= allowed_w.max(1e-6);
+
         let diff = ((ar - er).powi(2) + (ai - ei).powi(2)).sqrt();
         assert!(
-            diff <= allowed_w,
+            !oracle_losses_trustworthy || diff <= allowed_w,
             "{ctx} {} losses differ: actual ({ar}, {ai}) W vs oracle ({er}, {ei}) W; \
              |diff| = {diff:e} > allowed {allowed_w:e}",
             exp.name
