@@ -21,7 +21,7 @@ monbus + midi mixed-fleet drc), StorageController (follow / support /
 i-peakshave / loadshape / chargelow), Relay (voltage / revpower / generic /
 distance / td21 / doc), Recloser-ground, Fuse-3ph, SwtControl-lock,
 GenDispatcher-kvarlimit, EnergyMeter-options, Monitor (modes 6/9/11, seq/mag
-flag bits), ExpControl, UPFC (mode 2 / mode 4). Family gate wall-time ~21 s →
+flag bits), ExpControl, UPFC (mode 1 / mode 4 — see settlement below). Family gate wall-time ~21 s →
 ~24 s. No port bugs (one SUPPORT deck's first draft hit a control-iteration
 knife-edge from a co-located gen + railing storage; a gentler redesign matched
 exactly — the shared do_load_follow_mode is not at fault). **Findings/open
@@ -31,6 +31,52 @@ sample body (`sample.rs` `_ => return`) while `header.rs` declares
 erroring cleanly — excluded from the new decks, remains uncovered pending that
 port work; (2) `midi_relay_dist` (distance+DOC coordination), UPFC modes 3/5
 deferred (budget).
+
+**Controls-wave settlement (branch `cgen-ctrl`), 2026-07-12.** Audit of the 35
+wave decks flagged four decks whose pinned-oracle feature-sensitivity did not
+hold as claimed. Each settled empirically (pinned dss-python 0.15.7, two-process
+determinism), fixed, and re-green on `controls_cases_match_oracle` (91 decks
+match, 1 both-abort):
+- **`recloser_ground` (was a phase trip).** With no ground TCC assigned,
+  `GroundFast/GroundDelayed` default NIL and Recloser.pas l.578 skips the whole
+  ground path; the phase curve tripped (eventlog PHASE TARGET) and groundtrip was
+  dead (30→3000 bit-identical). Fix: assign `groundfast=a grounddelayed=d` and
+  raise `phasetrip` to 3000 (above the ~2585 A faulted-phase current) so only the
+  low groundtrip=30 pickup fires on the ~2558 A residual. Now GROUND TARGET;
+  proven feature-sensitive — groundtrip=3000 or dropping the ground curves stops
+  the trip, phasetrip=30000 is bit-identical (phase path inert).
+- **`upfc_pac`→`upfc_vreg` (mode 2 was a stub).** UPFC mode 2 (phase-angle) is
+  bit-identical to mode 0 (off) in dss_capi 0.14.5: `GetOutputCurr` l.605 hardcodes
+  `CurrOut:=0`, and the mode-2 shunt reactive-comp path (l.787) requires the UPFC's
+  `element=` monitor (else `checkPF` false → no `UploadCurrents`) and does NOT
+  converge in the interface-xfmr topology (max control iterations). Mode 3 collapses
+  onto mode 1 here. Repointed the deck to **mode 1 (series voltage regulator)** —
+  the canonical UPFC branch, uncovered in the controls family — renamed to
+  `upfc_vreg.dss`. Feature-sensitive: mode=0 removes the injection and refkV
+  ±0.008 shifts the regulated output. (Manifest path + `corpus_live.rs` list
+  updated.)
+- **`regcontrol_inversetime` (both knobs inert).** In daily 1h mode the sub-second
+  inverse-time delay scaling collapses to the same hourly tap, and vreg=123 sat
+  below Vlimit=124 so the clamp never bit (both 24-step fingerprints bit-identical
+  to neutralized). Rebuilt as **duty mode, 2 s steps, 40 steps**, overvoltage
+  source (pu=1.045) driving a multi-tap buck: inverse-time now places each tap on
+  a different sub-step (first tap Sec=10 vs Sec=18 with `inversetime=no`) and
+  Vlimit=119 (< the vreg=120/band=4 window) bucks the endpoint to tap 0.95625 vs
+  0.975 with `vlimit=0`. Both knobs now provably bind.
+- **`capcontrol_pf` (note fix only).** Core PFCONTROL coverage is valid and
+  feature-sensitive (type=pf vs type=kvar differ; offsetting=-0.99 vs +0.90
+  differ). Two secondary claims were false — pctMinkvar=25 does not bite
+  (pctminkvar=0 bit-identical) and no step re-arms ON (onsetting inert). Header +
+  manifest note corrected to state only the proven boundaries.
+
+No-fix findings (refuted / documentation-only, disclosed here): the report's
+"1 midi" wording refers to the multi-element filename convention — the manifest
+tier stays `kind=micro` per the family convention (no tier invented); the UPFC
+decks are probes-only / n_steps=1 (a UPFC snapshot emits no control-round
+eventlog) — a defensible deviation from the matrix's suggested EL flag; and the
+Monitor modes 8/10/12 deferred-stub port gap (`sample.rs` `_ => return`) is
+pre-existing and correctly avoided (the wave's `monitor_modes_hi` uses supported
+modes 6/9/11 only), owned by the future monitor-winding port, not this wave.
 
 **Corpus family reorg (Phase 1), 2026-07-12.** Reorganized the three synthetic
 deck families into per-element/method subfolders (branch `corpus-reorg`); a
