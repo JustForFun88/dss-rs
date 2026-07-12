@@ -83,6 +83,14 @@ pub fn write_dss_object(
         .downcast_ref::<crate::elements::pd::auto_trans::AutoTrans>()
     {
         at.save_write_body(out, cx);
+    } else if let Some(lg) = obj
+        .as_any()
+        .downcast_ref::<crate::elements::general::line_geometry::LineGeometryObj>()
+    {
+        // The multi-conductor array structure needs the per-conductor rewrite
+        // (else the reloaded geometry has undefined conductors). See
+        // `elements/general/line_geometry/save.rs`.
+        lg.save_write_body(out, cx);
     } else {
         save_write(out, cx, &*obj);
     }
