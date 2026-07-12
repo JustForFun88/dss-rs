@@ -1732,6 +1732,161 @@
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
    "note": "Voltage override ahead of the kvar logic: a kvar-latched bank is shed by the High-Voltage Override (126.4 V > Vmax=126) during a light-load overvoltage window. Feature-sensitive: voltoverride=no leaves it ON (probe-proven). VoverrideBus reverts at parse upstream (documented no-op), so it senses the monitored terminal."
+  },
+  {
+   "path": "invcontrol/invcontrol_drc.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode",
+      "deltaq_factor"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "DRC standalone: a 4h DRC window lags the ramping bus V so deltaV drives the ArGraHiV droop above DbVMax. Feature-sensitive: DbVMax=1.5 collapses the response (two-process bit-identical; probe-proven)."
+  },
+  {
+   "path": "invcontrol/invcontrol_vv_drc.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "combimode",
+      "deltaq_factor"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "CombiMode VV_DRC (untested combi branch): VV-curve Q + DRC-droop Q summed (CalcVVDRC_vars). Feature-sensitive: DbVMax=1.5 removes the DRC term (probe-proven)."
+  },
+  {
+   "path": "invcontrol/invcontrol_wattpf.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "WATTPF: wattpf_curve maps P(pu) -> target PF, Q derived from P and PF. Feature-sensitive: unity-PF curve removes the response (probe-proven)."
+  },
+  {
+   "path": "invcontrol/invcontrol_wattvar.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "WATTVAR: wattvar_curve maps P(pu) -> target Q(pu) with the kVA-circle quadratic. Feature-sensitive: zero-var curve removes the response (probe-proven)."
+  },
+  {
+   "path": "invcontrol/invcontrol_avr.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode",
+      "vsetpoint"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "AVR with the DEFAULT (linear) ControlModel - the 3-stage DQDV regulator toward Vsetpoint (distinct from invcontrol_expmodel's Exponential model). Feature-sensitive: Vsetpoint=1.06 collapses the response (probe-proven)."
+  },
+  {
+   "path": "invcontrol/invcontrol_monbus.dss",
+   "kind": "micro",
+   "n_steps": 8,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "monbus",
+      "monvoltagecalc"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv"
+   ],
+   "compare_eventlog": true,
+   "note": "Explicit monBus=(r.1.2.3) monVoltageCalc=MAX: the VV control samples a remote bus (GetMonVoltage FUsingMonBuses branch), not its own terminal. Feature-sensitive: monBus=b changes the sampled V and the kvar trajectory (probe-proven)."
+  },
+  {
+   "path": "invcontrol/midi_invcontrol_drc.dss",
+   "kind": "micro",
+   "n_steps": 24,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "InvControl.ic",
+     "props": [
+      "mode",
+      "deltaq_factor"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "PVSystem.pv3",
+    "PVSystem.pv1a",
+    "PVSystem.pv1b",
+    "PVSystem.pv1c"
+   ],
+   "compare_eventlog": true,
+   "note": "Midi: mixed 3ph+1ph DER fleet under one DRC control so the per-member FNphases recalc runs across differing phase counts in the multi-control round (the last-member FNphases-bug trait). Feature-sensitive: DbVMax=1.5 collapses the fleet response (probe-proven)."
   }
  ]
 }

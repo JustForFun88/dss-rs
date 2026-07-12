@@ -1,0 +1,30 @@
+// InvControl WATTVAR mode (CalcQWVcurve_desiredpu + the kVA-circle quadratic):
+// the wattvar_curve maps active-power output (per-unit of rated) directly to a
+// target reactive power (per-unit of the reference var power). As irradiance
+// ramps P up, the curve pushes the PV further into the absorbing region.
+// Feature-sensitive: flattening the curve to zero var removes the response
+// (probe-proven).
+// Compared per step: full model + PVSystem f64 state variables + probes + EL.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.icwv basekv=12.47 phases=3 bus1=src basefreq=60
+
+New line.l1 bus1=src bus2=b phases=3 r1=0.6 x1=2.4 c1=0 length=3 units=km
+
+New loadshape.irrad npts=8 interval=1 mult=(.20 .40 .60 .78 .90 1.0 1.0 .95)
+
+// P(pu of rated) -> Q(pu of refReactivePower): flat until 40% output, then
+// ramps to full absorption at rated output.
+New xycurve.wv npts=4 yarray=(0.0 0.0 -0.4 -0.8) xarray=(0.0 0.4 0.7 1.0)
+
+New pvsystem.pv bus1=b phases=3 kv=12.47 kva=700 pmpp=600 pf=1.0
+~ daily=irrad irradiance=1
+
+New invcontrol.ic mode=WATTVAR wattvar_curve=wv
+~ deltaq_factor=0.4 refreactivepower=VARMAX eventlog=yes
+
+Set voltagebases=[12.47]
+calcv
+Set maxcontroliter=2000
+Set mode=daily stepsize=1h number=1
