@@ -221,6 +221,102 @@ mod comparator_tests {
     }
 }
 
+#[cfg(test)]
+mod props_015x_tests {
+    use super::compare_prop_lists;
+
+    /// Build a `(name, value)` list from string slices.
+    fn props(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(n, v)| (n.to_string(), v.to_string()))
+            .collect()
+    }
+
+    /// Synthetic allowlist for the self-tests — never a real shipped row.
+    const TEST_ALLOW: &[(&str, &[&str])] = &[("Foo", &["NewTrail", "NewMid"])];
+
+    fn run(actual: &[(&str, &str)], oracle: &[(&str, &str)]) {
+        compare_prop_lists(
+            "Foo.x",
+            "Foo",
+            &props(actual),
+            &props(oracle),
+            TEST_ALLOW,
+            false,
+            1e-9,
+            1e-9,
+            "self",
+        );
+    }
+
+    fn expect_panic(actual: &[(&str, &str)], oracle: &[(&str, &str)]) {
+        let a = props(actual);
+        let o = props(oracle);
+        let r = std::panic::catch_unwind(|| {
+            compare_prop_lists(
+                "Foo.x", "Foo", &a, &o, TEST_ALLOW, false, 1e-9, 1e-9, "self",
+            );
+        });
+        assert!(r.is_err(), "expected a panic but the compare passed");
+    }
+
+    /// A trailing allowlisted extra (absent from the oracle) is excluded → pass.
+    #[test]
+    fn trailing_allowlisted_extra_passes() {
+        run(
+            &[("A", "1"), ("B", "2"), ("NewTrail", "9")],
+            &[("A", "1"), ("B", "2")],
+        );
+    }
+
+    /// An INSERTED allowlisted extra is excluded, and the order contract around
+    /// it is preserved (B still lines up with the oracle's B).
+    #[test]
+    fn inserted_allowlisted_extra_passes() {
+        run(
+            &[("A", "1"), ("NewMid", "9"), ("B", "2")],
+            &[("A", "1"), ("B", "2")],
+        );
+    }
+
+    /// A non-allowlisted trailing extra still fails (count mismatch).
+    #[test]
+    fn non_allowlisted_extra_panics() {
+        expect_panic(
+            &[("A", "1"), ("B", "2"), ("Bogus", "9")],
+            &[("A", "1"), ("B", "2")],
+        );
+    }
+
+    /// An allowlisted prop PRESENT in the oracle capture (capi015) is NOT
+    /// excluded — full value compare applies, so a value mismatch panics.
+    #[test]
+    fn allowlisted_present_in_oracle_value_mismatch_panics() {
+        expect_panic(
+            &[("A", "1"), ("NewTrail", "9")],
+            &[("A", "1"), ("NewTrail", "7")],
+        );
+        // …and matches when the value agrees.
+        run(
+            &[("A", "1"), ("NewTrail", "9")],
+            &[("A", "1"), ("NewTrail", "9")],
+        );
+    }
+
+    /// A missing prop (Rust lacks one the oracle has, none allowlisted) fails.
+    #[test]
+    fn missing_prop_panics() {
+        expect_panic(&[("A", "1")], &[("A", "1"), ("B", "2")]);
+    }
+
+    /// A misordered (swapped) pair fails on the name check even at equal count.
+    #[test]
+    fn misordered_prop_panics() {
+        expect_panic(&[("B", "2"), ("A", "1")], &[("A", "1"), ("B", "2")]);
+    }
+}
+
 /// Compare two interleaved re/im arrays element-wise: passes when
 /// `|actual − expected| ≤ abs_floor + rel · |expected|` per complex entry.
 /// Panics with the first offending index and values.
@@ -1014,27 +1110,133 @@ fn skip_transformer_cursor(class: &str, prop: &str, cursors_disagree: bool) -> b
             .any(|p| p.eq_ignore_ascii_case(prop))
 }
 
+/// 0.15.x-only properties (`class` → property names, matched case-insensitively)
+/// that the pinned **0.14.5** default oracle capture CANNOT contain. This is a
+/// §1.3-style property-table *shape* relaxation, NEVER a value-tolerance change:
+/// a Rust-side property whose `(class, name)` is in this table **and** whose name
+/// is absent from the oracle capture's name list is excluded from the
+/// count/order/name walk in [`compare_all_properties`] (a 0.14.5 oracle cannot
+/// know a 0.15.x prop). Everything else keeps the exact existing semantics.
+///
+/// Rules (documented in tests/TOLERANCE_NOTES.md §"0.15.x property-table
+/// allowlist"):
+///  * If the oracle capture DOES contain the prop (a capi015-regenerated
+///    capture), it is NOT excluded — full name+value compare applies. capi015
+///    decks therefore keep pinning the new props' values; only 0.14.5-oracle
+///    decks skip their existence.
+///  * Inserted props are handled, not only trailing ones (e.g. LoadShape `Mode`
+///    lands at index 22, shifting `Interpolation` 22→23 — the walk compares the
+///    Rust list with `Mode` removed against the 0.14.5 capture).
+///  * A NON-allowlisted extra/missing/misordered prop still fails exactly as it
+///    does without this table.
+///  * Every row must cite its upstream commit / UPGRADE_PLAN row in a comment
+///    (same documentation style as [`SKIP_PROPS`]).
+///
+/// Ships EMPTY: rows land with the WP that ports each 0.15.x property. Keep it
+/// one class per line so parallel WP branches each add a line without conflict
+/// (duplicate class rows are fine — the predicate ORs every matching row).
+const PROPS_015X: &[(&str, &[&str])] = &[
+    // Rows land here with their porting WP, e.g.:
+    // ("Line", &["EpsRMedium", "HeightOffset", "HeightUnit", "Conductors"]),  // WP-U1.x
+    // ("RegControl", &["Idle", "IdleReverse", "IdleForward", "FwdThreshold"]),  // WP-U1.x
+    // ("Transformer", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
+    // ("AutoTrans", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
+    // ("LoadShape", &["Mode"]),  // WP-U1.x
+];
+
+/// Whether property `prop` of `class` is a 0.15.x-only property in `allowlist`
+/// (matched case-insensitively across every row, so duplicate class rows OR).
+fn prop_015x(allowlist: &[(&str, &[&str])], class: &str, prop: &str) -> bool {
+    allowlist.iter().any(|(c, props)| {
+        class.eq_ignore_ascii_case(c) && props.iter().any(|p| prop.eq_ignore_ascii_case(p))
+    })
+}
+
+/// The property-list comparison core of [`compare_all_properties`], factored out
+/// so the [`PROPS_015X`] allowlist can be injected for the self-tests (the
+/// shipped table is empty). `actual` is the Rust `?`-surface list, `oracle` the
+/// capture; both are `(name, value)` in property-index order. A Rust-side prop
+/// that is 0.15.x-only (`allowlist`) AND absent from the `oracle` capture is
+/// dropped before the count/order/name walk; every surviving prop is compared
+/// exactly as before (name in order, value via [`assert_value_matches_tol`],
+/// with the [`SKIP_PROPS`]/[`skip_transformer_cursor`] value-skip gates).
+#[allow(clippy::too_many_arguments)]
+fn compare_prop_lists(
+    element: &str,
+    class: &str,
+    actual: &[(String, String)],
+    oracle: &[(String, String)],
+    allowlist: &[(&str, &[&str])],
+    cursors_disagree: bool,
+    rel: f64,
+    abs: f64,
+    ctx: &str,
+) {
+    // Oracle capture's property names (case-insensitive) — the "does the pinned
+    // oracle know this prop?" set that gates the 0.15.x exclusion.
+    let oracle_names: BTreeSet<String> = oracle.iter().map(|(n, _)| n.to_lowercase()).collect();
+    // Exclude Rust-side 0.15.x-only props the 0.14.5 capture cannot contain. If
+    // the capture DOES contain the prop (capi015), keep it → full compare.
+    let filtered: Vec<&(String, String)> = actual
+        .iter()
+        .filter(|(n, _)| {
+            !(prop_015x(allowlist, class, n) && !oracle_names.contains(&n.to_lowercase()))
+        })
+        .collect();
+    assert_eq!(
+        filtered.len(),
+        oracle.len(),
+        "{ctx}: {element} property count differs (rust {} -> {} after PROPS_015X allowlist \
+         vs oracle {}) — property-table shape changed. A NON-allowlisted extra/missing prop \
+         fails here; a deliberately ported 0.15.x prop must be added to PROPS_015X in \
+         tests/harness/mod.rs",
+        actual.len(),
+        filtered.len(),
+        oracle.len()
+    );
+    for (i, (a, e)) in filtered.iter().zip(oracle).enumerate() {
+        let (aname, aval) = (&a.0, &a.1);
+        let (ename, eval) = (&e.0, &e.1);
+        assert!(
+            aname.eq_ignore_ascii_case(ename),
+            "{ctx}: {element} property {i} name differs: rust {aname:?} vs oracle {ename:?} \
+             (property-index order is the contract)"
+        );
+        if skip_prop(class, ename) || skip_transformer_cursor(class, ename, cursors_disagree) {
+            continue;
+        }
+        // Case-EXACT compare (no lowercasing): every DSS enum getter renders the
+        // Pascal-faithful case — `ordinal_to_string` returns the exact registry
+        // strings (`wye`/`delta` lowercase, `Variable`/`Fixed` capitalized,
+        // booleans `Yes`/`No`) that the oracle's `Val` emits, so a case
+        // divergence is a real rendering regression this gate must catch, not a
+        // formatting artifact to smooth over.
+        assert_value_matches_tol(
+            aval,
+            eval,
+            rel,
+            abs,
+            &format!("{ctx}: {element} property {ename}"),
+        );
+    }
+}
+
 /// Compare EVERY property of EVERY captured element (WP8.5b): the property-NAME
 /// lists must be equal IN ORDER (case-insensitive — pins the property-table
 /// shape), then each value through [`assert_value_matches_tol`] (the same
 /// `compare_probe` numeric-skeleton semantics). A `(class, prop)` in
 /// [`SKIP_PROPS`] is excluded from the VALUE compare only (its name is still
-/// order-checked). This catches latent property-rendering/port bugs the
-/// live-model gate (Y/V/I/P) cannot see.
+/// order-checked). A Rust-side property that is 0.15.x-only ([`PROPS_015X`]) and
+/// absent from the (0.14.5-pinned) oracle capture is excluded from the whole walk
+/// — a property-table *shape* relaxation, never a value-tolerance change. This
+/// catches latent property-rendering/port bugs the live-model gate (Y/V/I/P)
+/// cannot see.
 pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances, ctx: &str) {
     for pc in exp {
         let class = pc.element.split('.').next().unwrap_or("");
         let actual = dss
             .element_properties(&pc.element)
             .unwrap_or_else(|| panic!("{ctx}: no element {} (all_properties)", pc.element));
-        assert_eq!(
-            actual.len(),
-            pc.props.len(),
-            "{ctx}: {} property count differs (rust {} vs oracle {}) — property-table shape changed",
-            pc.element,
-            actual.len(),
-            pc.props.len()
-        );
         // Transformer cursor-skip gate (see [`skip_transformer_cursor`]): the
         // singular per-winding forms compare only when both engines' ActiveWinding
         // (the `Wdg` value) point to the same winding. Read Rust's from `actual`
@@ -1047,30 +1249,17 @@ pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances,
         };
         let cursors_disagree =
             class.eq_ignore_ascii_case("Transformer") && cursor_of(&actual) != cursor_of(&pc.props);
-        for (i, ((aname, aval), (ename, eval))) in actual.iter().zip(&pc.props).enumerate() {
-            assert!(
-                aname.eq_ignore_ascii_case(ename),
-                "{ctx}: {} property {i} name differs: rust {aname:?} vs oracle {ename:?} \
-                 (property-index order is the contract)",
-                pc.element
-            );
-            if skip_prop(class, ename) || skip_transformer_cursor(class, ename, cursors_disagree) {
-                continue;
-            }
-            // Case-EXACT compare (no lowercasing): every DSS enum getter renders
-            // the Pascal-faithful case — `ordinal_to_string` returns the exact
-            // registry strings (`wye`/`delta` lowercase, `Variable`/`Fixed`
-            // capitalized, booleans `Yes`/`No`) that the oracle's `Val` emits, so
-            // a case divergence is a real rendering regression this gate must
-            // catch, not a formatting artifact to smooth over.
-            assert_value_matches_tol(
-                aval,
-                eval,
-                tol.i_rel,
-                tol.i_abs,
-                &format!("{ctx}: {} property {ename}", pc.element),
-            );
-        }
+        compare_prop_lists(
+            &pc.element,
+            class,
+            &actual,
+            &pc.props,
+            PROPS_015X,
+            cursors_disagree,
+            tol.i_rel,
+            tol.i_abs,
+            ctx,
+        );
     }
 }
 
