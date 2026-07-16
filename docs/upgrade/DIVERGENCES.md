@@ -1103,12 +1103,11 @@ unit test, the 0.14.5 oracle renders them `oh`); **WP-U1.2 D3 spacing ratings**
 (min over phase conductors, not conductor 1 — `line_spacing_asym` flipped to
 capi015, YPrim bit-identical). See STATUS §WP-U1.4 property tail.
 
-**Remaining WP-U1.4 row (after the wt-u14props × wt-u14cnts integration merge).**
-Only the `Line.Conductors` *property* (0.15.x Line prop 34, mixed wire/CN/TS
-list + `none`) — the per-conductor engine below is landed and mixed conductors
-work end-to-end via LineGeometry; the property needs a 3-class
-WireData|CNData|TSData proxy-array resolver + JSON-export restructure, ordered
-after props 31-33. See STATUS §WP-U1.4 (merged-CNTS record).
+**WP-U1.4 is now COMPLETE (wt-u14cond).** The last row, the `Line.Conductors` /
+`LineGeometry.Conductors` *property* (Line prop 34, LineGeometry prop 20; the
+3-class `(WireData|CNData|TSData)` proxy), is ported — see
+§"Line/LineGeometry Conductors (text upstream-broken)" below and STATUS
+§WP-U1.4 (wt-u14cond).
 
 ## Merged TCableConstants (per-conductor CN/TS) + CNData.SemiconLayer — SETTLED (WP-U1.4, adopt capi015; pure paths byte-green)
 
@@ -1158,13 +1157,87 @@ ohm/m), `C` diag `283.089` nF/km; a CN cable `SemiconLayer=no` → `C` diag
 - `known_diffs`: no Rust↔EPRI entry existed (0.14.5 had no mixed-conductor or
   semicon-branch path); adopting matches r4088+ for the new surface — nothing to
   retire.
-- **`Line.Conductors` (the 0.15.x Line-level mixed-conductor *property*, prop 34)
-  is DEFERRED**, not the engine: the merged per-conductor engine (its whole
-  point) is landed and mixed conductors already work via a `LineGeometry`. The
-  property needs a net-new 3-class proxy-array resolver (WireData|CNData|TSData),
-  restructuring the JSON export (the `"Conductors"` key today maps from `Wires`),
-  and a Line property-table insertion coordinated with the parallel wt-u14props
-  branch. See STATUS §WP-U1.4.
+- **`Line.Conductors` / `LineGeometry.Conductors` (the 0.15.x mixed-conductor
+  *property*) — LANDED (wt-u14cond).** See §"Line/LineGeometry Conductors (text
+  upstream-broken)" below.
+
+## Line/LineGeometry Conductors (text upstream-broken) — SETTLED (WP-U1.4 wt-u14cond, reproduce 1:1)
+
+**Observable.** The 0.15.x `Conductors` property — Line prop 34 (`Line.pas:62`),
+LineGeometry prop 20 (`LineGeometry.pas:80`) — a mixed
+`WireData|CNData|TSData` object-reference-array over a `TProxyClass` created with
+`fullNames=True` and `.Name = "Conductor"` (`DSSClass.pas:2603`;
+`LineGeometry.pas:159`). Replaces `Spacing, Wires` with `Spacing, Conductors` in
+the spacing spec-set; `Wires`/`CNCables`/`TSCables` become `RedundantWith(Conductors)`.
+
+**Empirical capi015 behavior (0.15.0b4, probed 2026-07-17) — the text property is
+BROKEN.** Every `Conductors=[…]` with a real item errors and never populates the
+array:
+- A class-prefixed item (`Conductors=[WireData.w1, …]`, ANY case) → `#10103
+  "…Conductors: Invalid class (wiredata) for item. Valid classes:
+  (WireData|CNData|TSData)"`. **Root cause: a deterministic upstream bug** —
+  `TProxyClass.GetDSSClass` (`DSSClass.pas:2644`) compares the parser's
+  `AnsiLowerCase`d class token (`ValidateObjectItem`, `DSSObjectHelper.pas:6462`)
+  against the *original-case* `TargetClassNames` (`'WireData'`…), never satisfiable
+  (the parallel `TargetClassNamesLower` array is never consulted).
+- A bare item (`Conductors=[w1, …]`) → `#10103 "…Conductors: You must define the
+  Conductor class for all the valid items in the array."` (`FullNameAsArray`
+  requires a class prefix).
+- `Conductors=` before the spacing / `NConds` (array count `< 1`) → `#402
+  "…Conductors: No objects are expected! …"` (checked before item validation).
+- All-`none` → **Line** parses (all NIL slots, model → spacing, `phaseChoice =
+  Overhead`; err#0); **LineGeometry** rejects it → `#10103 "…Conductors: At least
+  one valid conductor must be provided."`.
+- `? <elem>.Conductors` (the text getter) → **Access Violation (#303)** in capi015
+  — a getter UB, NOT reproduced (safe name list instead).
+
+So text `Conductors=` can only ever be all-`none` (a no-op) or an error; the
+property is otherwise reachable only through the JSON export/import round-trip.
+
+**Decision — reproduce 1:1 (`TODO(compat)`), keep the JSON masquerade + HIDE_015X.**
+- The proxy resolution + the four diagnostics are reproduced exactly in
+  `parse_conductor_proxy` (`obj/props/class_props/parse.rs`), with a
+  `TODO(compat)` on the `GetDSSClass` case bug (the clean fix — compare the
+  lowercased token against lowercased class names — lands in the §6 shim sweep;
+  the golden/unit pins hold it until then). The `#303` getter crash is UB → not
+  reproduced.
+- **JSON export is unchanged.** dss_capi already emits `"Conductors":[FullName…]`
+  with each conductor's *actual* class; the Rust port has emitted the same bytes
+  since wt-u14props via the `Line.Wires → "Conductors"` `json_name` masquerade
+  (default set-order sweep). The real `Conductors` prop is added with `HIDE_015X`,
+  so it is invisible to the byte-exact 0.14.5 Dump / FULL-JSON / `Dump commands`
+  goldens (the catalog's running counter already skips `HIDE_015X`), and the
+  `Wires` masquerade continues to own the `"Conductors"` JSON key. **The
+  masquerade + HIDE_015X are retained deliberately** rather than flipping the
+  Line/LineGeometry Dump/JSON golden surface to capi015: `gen_json.py` is
+  hard-pinned to the 0.14.5 oracle (no capi015 engine switch, unlike
+  `gen_bh_capi015.py`/`gen_regcontrol_capi015.py`), so flipping would require
+  teaching the shared multi-element JSON generator the engine switch and
+  re-verifying every captured element's FULL sweep — disproportionate for this
+  tail row (UPGRADE_PLAN §1.4 fallback: "if the flip is disproportionate, keep
+  HIDE_015X and document why"). Residual, latent, untested: the `Wires`
+  masquerade renders a *mixed* conductor list (e.g. `cncables=cn1 wires=wn`) with
+  a single `WireData.` prefix, where capi015 renders each conductor's real class;
+  no golden/deck exercises a mixed-conductor Line's JSON, so this is inert until
+  the §6 sweep flips the surface and drops the masquerade.
+
+**Gate.** `PROPS_015X += ("Line", …+"Conductors")` and `("LineGeometry",
+["Conductors"])` (the inserted props excluded from the 0.14.5 property-table
+walk); `tests/upgrade_conductors.rs` pins all four capi015 diagnostics + the
+all-`none` split (Line parses / LineGeometry rejects). The net-new
+**resolved-ref** fill (unreachable via the broken text parse; the path the
+§6-fixed parser and a JSON-import round-trip take) is gated by whitebox
+equivalence tests that drive `set_object_ref_array(CONDUCTORS)` + the side
+effect directly — `line::tests::conductors_array_matches_buried_neutral_and_oracle`
+/ `conductors_array_overhead_matches_wires_and_oracle` /
+`conductors_all_none_after_wires_clears_wires_seq` (Line
+`set_conductors`/`conductors_phase_choice`/`conductor_choice_of` + last-writer
+`clear_seq`), and `line_geometry::tests::conductors_array_matches_mixed_capi015`
+/ `conductors_array_defaults_ratings_from_first_valid` (LineGeometry
+`apply_conductors`/per-conductor `change_line_constants_type`/`default_amps_from`),
+each pinned to the same capi015 Z/Yc/ratings the traditional `wires=`/`cncables=`
+paths pin. No solvable-corpus / byte-golden case moves (HIDE_015X + the masquerade
+keep them byte-identical); whole workspace green.
 
 ## WP-U1.6 partial — B3-r3723 / D10 / D12 / D15 / A7-r3723 — SETTLED (plain adoptions)
 
