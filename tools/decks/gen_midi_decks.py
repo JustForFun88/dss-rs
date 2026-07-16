@@ -319,9 +319,18 @@ new relay.backup type=current monitoredobj=transformer.sub monitoredterm=2
 new recloser.r monitoredobj=line.bb11_12 monitoredterm=1
 ~ switchedobj=line.bb11_12 switchedterm=1 numfast=1 shots=3
 ~ phasetrip=150 groundtrip=75 recloseintervals=(0.5, 1.0)
-! Lateral fuse at the head of L6.
+! Lateral fuse at the head of L6. WP-U2.1 (r4133): the fuse default curve moved
+! tlink->none (never blows) and its divisor moved RatedCurrent->CurveMultiplier
+! (an r4133-only property the 0.14.5 oracle rejects). This deck stays gated on
+! the 0.14.5 oracle for its still-0.14.5 Recloser/Relay tiers (their r4133
+! overhaul is WP-U2.2/U2.3, unported), so the fuse tier is temporarily NEUTRALIZED
+! (ratedcurrent raised well above the ~400 A lateral fault so it never blows on
+! 0.14.5 either) -- matching the Rust port's r4133 never-blows. When the whole
+! protection rung lands, this deck flips to oracle:"r4133" and the fuse re-arms
+! via fusecurve=tlink + curvemultiplier. (fuse_curvemult_blow already gates the
+! r4133 CurveMultiplier-scaled blow live.)
 new fuse.fz monitoredobj=line.l6a monitoredterm=1
-~ switchedobj=line.l6a switchedterm=1 ratedcurrent=50
+~ switchedobj=line.l6a switchedterm=1 ratedcurrent=5000
 ! Permanent SLG fault at the very END of the deep lateral (phase 1).
 new fault.f bus1=l6e.1 phases=1 ontime=0.2 r=0.5 temporary=no
 

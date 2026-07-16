@@ -501,16 +501,6 @@
    "n_steps": 1
   },
   {
-   "path": "Version8/Distrib/Examples/InductionMachine/Master.DSS",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/InductionMachine/Run.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss",
    "kind": "large",
    "n_steps": 1
