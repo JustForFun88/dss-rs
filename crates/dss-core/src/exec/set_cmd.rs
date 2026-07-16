@@ -116,6 +116,15 @@ impl Dss {
                     opt::HOUR => {
                         if let Some(v) = get_int(parser, vars, errors) {
                             ckt.solution.int_hour = v;
+                            // Pascal `55400a29` `Set Hour` (ExecOptions param 3)
+                            // re-syncs the global seasonal-rating index, so a
+                            // `solve; set hour=X; export overloads` sequence reads
+                            // the new index rather than the stale solve-time one
+                            // (verified on capi015: idx follows the new hour).
+                            let mut store = ClassStore {
+                                classes: &mut *classes,
+                            };
+                            crate::solution::meters::sync_seasonal_rating_idx(ckt, &mut store);
                         }
                     }
                     opt::SEC => {
@@ -387,8 +396,23 @@ impl Dss {
                     // option is spelled `SeasonRating`, the global it sets is
                     // `SeasonalRating` (probe-proven: `Set SeasonalRating` is
                     // error #130, unknown parameter).
-                    opt::SEASON_RATING => ckt.season_rating = interpret_yes_no(&param),
-                    opt::SEASON_SIGNAL => ckt.season_signal = param.clone(),
+                    // Pascal `55400a29` `Set SeasonRating`/`SeasonSignal`
+                    // (ExecOptions params 114/115) each re-sync the global
+                    // seasonal-rating index after mutating the toggle/signal.
+                    opt::SEASON_RATING => {
+                        ckt.season_rating = interpret_yes_no(&param);
+                        let mut store = ClassStore {
+                            classes: &mut *classes,
+                        };
+                        crate::solution::meters::sync_seasonal_rating_idx(ckt, &mut store);
+                    }
+                    opt::SEASON_SIGNAL => {
+                        ckt.season_signal = param.clone();
+                        let mut store = ClassStore {
+                            classes: &mut *classes,
+                        };
+                        crate::solution::meters::sync_seasonal_rating_idx(ckt, &mut store);
+                    }
                     opt::VOLTAGE_BASES => {
                         // Pascal `DoLegalVoltageBases` (1000-slot buffer).
                         let mut buf = vec![0.0; 1000];
