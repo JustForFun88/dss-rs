@@ -6,6 +6,7 @@ use num_complex::Complex64;
 use dss_sparse::SparseSet;
 
 use crate::circuit::Circuit;
+use crate::elements::ckt::ElemFlags;
 use crate::solution::solution::{ActiveY, SolveEnv, SolveResult, sys_ctx};
 
 /// Pascal `SERIESONLY` / `WHOLEMATRIX`.
@@ -147,6 +148,13 @@ pub fn build_y_matrix(
     let mut yprim_errors: Vec<String> = Vec::new();
     for &r in &ckt.ckt_elements {
         let elem = env.store.ckt_elem_mut(r);
+        // Pascal `ReCalcAllYPrims`/`ReCalcInvalidYPrims` (Ymatrix.pas @ 0.15.0b4):
+        // skip `CalcYPrim` for an element whose YPrim was forced from the DSS
+        // language (`Set YPrim=…`, `Flg.ForceYPrim`) — the user-supplied matrix
+        // (already in `cd.yprim`) is added to the system Y below as-is.
+        if elem.cd().flags.contains(ElemFlags::FORCE_YPRIM) {
+            continue;
+        }
         elem.calc_yprim(&sys);
         elem.cd_mut().yprim_invalid = false;
         // A `CalcYPrim` that aborts (e.g. a `LineGeometry` Zmatrix error) queues a

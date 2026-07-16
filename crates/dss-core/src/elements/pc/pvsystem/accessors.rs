@@ -6,7 +6,7 @@
 
 use num_complex::Complex64;
 
-use crate::elements::ckt::CktElementData;
+use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::temp_shape::TShapeObj;
@@ -183,7 +183,12 @@ impl CktElement for PVSystem {
             self.cd.calc_yprim_contribution(node_v, curr);
             return;
         }
-        if self.cd.iterminal_solution_count != sys.solution_count && !self.pv_system_obj_switch_open
+        // Pascal `TPVsystemObj.GetTerminalCurrents` (@ 0.15.0b4): `and (not
+        // (Flg.ForceInjCurrents in Flags))` — skip the model recompute when the
+        // currents are forced from the DSS language (WP-U1.9).
+        if self.cd.iterminal_solution_count != sys.solution_count
+            && !self.pv_system_obj_switch_open
+            && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {
             let mut errors = Vec::new();
             self.calc_pvsystem_model_contribution(sys, node_v, &mut errors);

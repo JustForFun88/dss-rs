@@ -19,6 +19,7 @@ mod energymeter_zones;
 mod espvl_control;
 mod exec_tail;
 mod fault_study;
+mod force_hooks;
 mod harmonics;
 mod lifecycle;
 mod line_fetch;

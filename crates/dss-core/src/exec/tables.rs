@@ -364,6 +364,25 @@ pub(crate) const EXEC_OPTIONS: &[&str] = &[
     "Parallel",
     "ConcatenateReports",
     "NUMANodes",
+    // dss_capi 0.15.0b4 (`e936d210`) appended these after the PM block (the
+    // `DSS_CAPI_ADIAKOPTICS` block is compiled out of the oracle build, so it
+    // does not shift the ordinals). `IgnoreGenQLimits`/`NCIMQGain` are NCIM
+    // (WP-U1.7); `PyPath` is NOT_PORTED (loud, §0); `AllowForms`/
+    // `AllowProgressBar` are GUI no-ops. `StateVar`/`IterNumber`/
+    // `CtrlIterNumber`/`InjCurrent`/`ITerminal`/`YPrim`/`IntegrationFlag` are
+    // the WP-U1.9 PCE force hooks. Names must equal FPC `GetEnumName`.
+    "IgnoreGenQLimits",
+    "NCIMQGain",
+    "StateVar",
+    "PyPath",
+    "IterNumber",
+    "CtrlIterNumber",
+    "InjCurrent",
+    "ITerminal",
+    "YPrim",
+    "IntegrationFlag",
+    "AllowForms",
+    "AllowProgressBar",
 ];
 
 /// Pascal `TPlotOption` names in ordinal order (`PlotOptions.DefineOptions`),
@@ -517,4 +536,28 @@ pub(crate) mod opt {
     /// circuit's long-line (Kron) impedance correction flag. In the oracle's
     /// `DSS_CAPI_PM` build (`ExecOptions.pas:737/1095`).
     pub const LONG_LINE_CORRECTION: usize = 118;
+
+    // WP-U1.9 PCE force-hook options, appended in dss_capi 0.15.0b4
+    // (`ExecOptions.pas` @ `e936d210`) after the PM block (NUMANodes = ordinal
+    // 128 in the oracle/runtime `EXEC_OPTIONS`). `IgnoreGenQLimits` (129) /
+    // `NCIMQGain` (130) are NCIM (WP-U1.7). Ordinals verified against the runtime
+    // `option_list.get_command` (an in-array comment made a naive source count
+    // read one high).
+    /// `Set StateVar <pce> <name> <value>` / `Get StateVar <pce> <name>`:
+    /// write/read a PC element's dynamic state variable (A5-r3723 option).
+    pub const STATE_VAR: usize = 131;
+    /// `Set PyPath=` — pyControl co-simulation server launch; NOT_PORTED (§0).
+    pub const PY_PATH: usize = 132;
+    /// `Get IterNumber` (read-only): `Solution.Iteration`.
+    pub const ITER_NUMBER: usize = 133;
+    /// `Get CtrlIterNumber` (read-only): `Solution.ControlIteration`.
+    pub const CTRL_ITER_NUMBER: usize = 134;
+    /// `Set/Get InjCurrent`: force/read the active PCE's injection currents.
+    pub const INJ_CURRENT: usize = 135;
+    /// `Set/Get ITerminal`: force/read the active PCE's terminal currents.
+    pub const ITERMINAL: usize = 136;
+    /// `Set/Get YPrim`: force/read the active PCE's primitive Y matrix.
+    pub const YPRIM: usize = 137;
+    /// `Get IntegrationFlag` (read-only): `Solution.DynaVars.IterationFlag`.
+    pub const INTEGRATION_FLAG: usize = 138;
 }
