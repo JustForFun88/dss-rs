@@ -4,7 +4,7 @@
 //! `AddToVoltBaseList`. Split out of `zones/mod.rs` (no behavioral change).
 
 use crate::circuit::Circuit;
-use crate::circuit::ckt_tree::{BusAdjLists, CktTree, NO_BUS};
+use crate::circuit::ckt_tree::{BusAdjLists, CktTree};
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE};
 use crate::elements::pc::generator::Generator;
@@ -377,7 +377,15 @@ pub(super) fn make_meter_zone_lists(
                             if !enabled || !is_pd_element(store, test_ref) {
                                 zone_list_counter += 1; // ignore disabled / non-PD
                             } else {
-                                tree.add_new_child(test_ref, NO_BUS, 0);
+                                // D8-r3723 (dss_capi 0.15.x manual-zonelist fix): the
+                                // child is added with the element's terminal-1 bus
+                                // reference and terminal 1 — Pascal `AddNewChild(
+                                // TestElement, TestCE.Terminals[0].BusRef, 1)`. The
+                                // 0.14.5 baseline passed `(0, 0)` (unset from-bus,
+                                // terminal 0), leaving the manual-zonelist branch's
+                                // `FromBusReference`/`FromTerminal` wrong for reports.
+                                let from_bus = store.ckt_elem(test_ref).cd().terminals[0].bus_ref;
+                                tree.add_new_child(test_ref, from_bus, 1);
                             }
                             break;
                         }

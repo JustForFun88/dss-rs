@@ -471,6 +471,41 @@ pub trait CktElement {
         0.0
     }
 
+    /// `NumAmpRatings` — the number of seasonal current ratings (`Seasons`).
+    /// `1` for a base PDElement / non-PD element (no seasonal ratings).
+    fn num_amp_ratings(&self) -> i32 {
+        1
+    }
+
+    /// `AmpRatings` — the per-season current ratings array (PD elements with
+    /// `Seasons > 1` override). Empty by default.
+    fn amp_ratings(&self) -> &[f64] {
+        &[]
+    }
+
+    /// Pascal `TPDElement.GetRatings` (dss_capi 0.15.x `55400a29`, PDElement.pas
+    /// l.330): the (norm, emerg) current ratings, overridden by the seasonal
+    /// rating `AmpRatings[seasonal_idx]` when the global season index is in range
+    /// (`0 <= seasonal_idx < NumAmpRatings`) — applied to ANY PDElement (0.14.5's
+    /// `DI_Overloads` path restricted this to lines). `55400a29` dropped the
+    /// pre-refactor/r4133 `NumAmpRatings > 1` guard, so a single-season element
+    /// (`NumAmpRatings == 1`) at idx 0 also takes `AmpRatings[0]`. Both norm and
+    /// emerg take the same seasonal value.
+    fn get_ratings(&self, seasonal_idx: i32) -> (f64, f64) {
+        let norm = self.norm_amps();
+        let emerg = self.emerg_amps();
+        if seasonal_idx >= 0 && seasonal_idx < self.num_amp_ratings() {
+            let r = self
+                .amp_ratings()
+                .get(seasonal_idx as usize)
+                .copied()
+                .unwrap_or(norm);
+            (r, r)
+        } else {
+            (norm, emerg)
+        }
+    }
+
     /// Pascal `TDSSCktElement.MaxTerminalOneIMag` (CktElement.pas l.552): the
     /// max phase-current magnitude on terminal 1. Forces `Iterminal`.
     fn max_terminal_one_imag(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {

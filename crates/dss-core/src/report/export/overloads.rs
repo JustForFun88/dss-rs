@@ -27,6 +27,7 @@ pub(crate) fn export_overloads(
         "Element, Terminal,  I1, AmpsOver, kVAOver, %Normal, %Emergency, I2, %I2/I1, I0, %I0/I1\n",
     );
     let sc = SymComp::default();
+    let seasonal_idx = ckt.seasonal_rating_idx;
     for_each_enabled_elem(classes, &ckt.pd_elements, |name, elem| {
         // Pascal `if (CLASSMASK and PDElem.DSSObjType) <> CAP_ELEMENT` — ignore
         // capacitors (they carry current but are not "overload" candidates).
@@ -38,8 +39,10 @@ pub(crate) fn export_overloads(
             return;
         }
         elem.compute_iterminal(sys, node_v);
-        let norm_amps = elem.norm_amps();
-        let emerg_amps = elem.emerg_amps();
+        // Seasonal ratings (dss_capi 0.15.x `55400a29`, WP-U1.5 E2): Pascal
+        // `PdElem.GetRatings(iNormal, iEmerg)` — the globally-synced season
+        // index overrides norm/emerg for any PDElement with `NumAmpRatings > 1`.
+        let (norm_amps, emerg_amps) = elem.get_ratings(seasonal_idx);
         let nphases = elem.cd().nphases;
 
         // Terminal-1 max phase current over the first `min(Nphases, 3)` phases

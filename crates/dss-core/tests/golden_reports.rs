@@ -3770,6 +3770,174 @@ fn export_overloads_unbal_matches_oracle() {
     run_deck_export("export_overloads_unbal", &overloads_policy());
 }
 
+/// WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): seasonal ratings, gated on
+/// **capi015** (`.meta.json` `"oracle": "capi015"`). Three overloaded PDElements
+/// — an overhead Line, a Transformer, and a CN cable Line — each with
+/// `Seasons=4 Ratings=[...]`; `SeasonRating=yes`/`SeasonSignal=season`/`hour=13`
+/// -> `SeasonalRatingIdx = trunc(GetYValue(13)) = 2`, so `Export Overloads`
+/// applies `AmpRatings[2]` (via `TPDElement.GetRatings`) to **every** PDElement,
+/// not just lines (0.14.5's `DI_Overloads` restriction). Revision-SENSITIVE: the
+/// default 0.14.5 oracle reports base ratings (`%Normal=134.5` for L1), capi015
+/// reports the seasonal ones (`%Normal=336.3`); a broken/missing seasonal
+/// override diverges by >200 percentage points. The golden was regenerated with
+/// `DSS_ORACLE_ENGINE=capi015`; capi015 == oddie:r4133 bit-identical (§1.7).
+/// Exact `0.0/0.0` policy: the Rust render matches the capi015 golden
+/// byte-for-byte (the CN-cable sparse solve agrees to render precision), so the
+/// sibling non-seasonal `overloads_policy` exactness applies here too.
+#[test]
+fn export_overloads_seasonal_matches_capi015() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_deck_export("export_overloads_seasonal", &policy);
+}
+
+/// WP-U1.5 E2: the `Export Capacity` twin of the seasonal overload golden — the
+/// same fixture, exercising `export_capacity`'s `GetRatings` wiring (the
+/// `%normal`/`%emergency` columns use the seasonal `AmpRatings[2]`). Gated on
+/// capi015 (`.meta.json` `"oracle": "capi015"`).
+#[test]
+fn export_capacity_seasonal_matches_capi015() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    };
+    run_deck_export("export_capacity_seasonal", &policy);
+}
+
+/// WP-U1.5 E2 audit (finding 1): `Set Hour`/`SeasonRating`/`SeasonSignal` each
+/// re-sync the global `seasonal_rating_idx` (Pascal `55400a29`
+/// `SyncSeasonalRatingIdx` at ExecOptions params 3/114/115 + CAPI Set_Hour), so a
+/// `solve; set hour=X; export overloads` reads the NEW index, not the stale
+/// solve-time one. Verified on capi015: `solve@hour0; set hour=18; export` reports
+/// `AmpRatings[3]`, not `AmpRatings[0]`. Feature-sensitive — without the
+/// set-command sync the index would latch at its solve-time (or `-1`) value.
+#[test]
+fn set_commands_resync_seasonal_rating_idx() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.ss basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+    dss.command("new xycurve.season npts=4 xarray=[0 6 12 18] yarray=[0 1 2 3]");
+    dss.command(
+        "new linecode.lc nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=0 c0=0 normamps=100 emergamps=120",
+    );
+    dss.command(
+        "new line.l1 bus1=sourcebus bus2=b1 linecode=lc length=1 seasons=4 ratings=[100 50 40 30]",
+    );
+    dss.command("new load.ld bus1=b1 phases=3 kv=12.47 kw=3000 pf=0.95 model=1");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+
+    // Feature OFF: even with a signal + hour set, the index stays -1 (inactive).
+    dss.command("set hour=18");
+    assert_eq!(dss.circuit().unwrap().seasonal_rating_idx, -1);
+    dss.command("set seasonsignal=season");
+    assert_eq!(dss.circuit().unwrap().seasonal_rating_idx, -1);
+
+    // Enabling SeasonRating re-syncs immediately at the current hour=18 →
+    // trunc(GetYValue(18)) = 3.
+    dss.command("set seasonrating=yes");
+    assert_eq!(dss.circuit().unwrap().seasonal_rating_idx, 3);
+
+    // The finding-1 case: solve at hour 0, then move the hour WITHOUT re-solving —
+    // the Set Hour sync advances the index (0 → 2 for hour=12).
+    dss.command("set mode=snap");
+    dss.command("set hour=0");
+    assert_eq!(dss.circuit().unwrap().seasonal_rating_idx, 0);
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "solve errors: {:?}", dss.errors());
+    dss.command("set hour=12");
+    assert_eq!(dss.circuit().unwrap().seasonal_rating_idx, 2);
+}
+
+/// WP-U1.5 E2 audit (finding 4): the `DI_Overloads` demand-interval path
+/// (`write_overload_report`) applies the seasonal rating too — Pascal `55400a29`
+/// `EnergyMeter.pas::WriteOverloadReport` keeps the BASE `NormAmps`/`EmergAmps`
+/// entry gate but uses `AmpRatings[SeasonalRatingIdx]` (guard `0 <= idx <
+/// NumAmpRatings`) for the overload test AND the reported `Normal Amps`/`Emerg
+/// Amps` columns. Feature-sensitive & solve-independent: `Normal Amps` is a deck
+/// constant (`AmpRatings[2]`), so it pins the seasonal wiring, not the numeric
+/// solve. A constant `SeasonSignal` (`yarray=[2 2 2 2]`) fixes the index at 2 for
+/// every daily step, so `Line.L1` reports `AmpRatings[2] = 40` (NOT the base
+/// linecode `NormAmps = 100`); a regression to base ratings flips it to 100.
+#[test]
+fn di_overloads_applies_seasonal_rating() {
+    let scratch = scratch_dir("di_overloads_seasonal");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in [
+        "new circuit.ss basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+        "new xycurve.season npts=4 xarray=[0 6 12 18] yarray=[2 2 2 2]",
+        "new linecode.lc nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=0 c0=0 normamps=100 emergamps=120",
+        "new line.l1 bus1=sourcebus bus2=b1 linecode=lc length=1 seasons=4 ratings=[100 50 40 30]",
+        "new load.ld bus1=b1 phases=3 kv=12.47 kw=3000 pf=0.95 model=1",
+        "new energymeter.em1 element=Line.l1 terminal=1",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "set seasonrating=yes",
+        "set seasonsignal=season",
+    ] {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("solve");
+    dss.command("set demandinterval=yes");
+    dss.command("set overloadreport=yes");
+    dss.command("set mode=daily number=2 stepsize=1h");
+    dss.command("solve");
+    dss.command("closedi");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Locate the produced DI_Overloads file (scratch/<case>/DI_yr_0/…).
+    let di = find_file(&scratch, "DI_Overloads")
+        .unwrap_or_else(|| panic!("no DI_Overloads file under {}", scratch.display()));
+    let text = std::fs::read_to_string(&di).unwrap();
+    let l1_norm = text
+        .lines()
+        .skip(1)
+        .find_map(|line| {
+            let f: Vec<&str> = line
+                .split(',')
+                .map(|s| s.trim().trim_matches('"'))
+                .collect();
+            (f.len() > 3 && f[1].eq_ignore_ascii_case("Line.L1"))
+                .then(|| f[2].parse::<f64>().ok())
+                .flatten()
+        })
+        .unwrap_or_else(|| panic!("no Line.L1 row in DI_Overloads:\n{text}"));
+    // Seasonal AmpRatings[2] = 40, NOT the base linecode NormAmps = 100.
+    assert!(
+        (l1_norm - 40.0).abs() < 1e-6,
+        "DI_Overloads Line.L1 Normal Amps = {l1_norm}, expected seasonal AmpRatings[2] = 40 \
+         (base NormAmps = 100 would mean the seasonal override is not wired)"
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Recursively find the first file whose name contains `needle`.
+fn find_file(dir: &Path, needle: &str) -> Option<PathBuf> {
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let p = entry.path();
+        if p.is_dir() {
+            if let Some(hit) = find_file(&p, needle) {
+                return Some(hit);
+            }
+        } else if p.file_name()?.to_string_lossy().contains(needle) {
+            return Some(p);
+        }
+    }
+    None
+}
+
 /// The shared `Export Unserved` tolerance policy: `kW` is a deck constant
 /// (`%8.0f`) and `EEN_Factor`/`UE_Factor` are `%9.3f` renders of ~1e-8-agreeing
 /// solves — byte-identical, exact equality; a real regression (wrong criterion,
