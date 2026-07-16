@@ -736,6 +736,45 @@ deck's shape assert.
   relaxation)"; `TESTING.md` pointer. Gate green (fmt/clippy/`cargo test
   --workspace`) — nothing moves, the table is empty.
 
+**WP-U1.4 heavy tail (branch wt-u14cnts) — merged TCableConstants per-conductor
+model + CNData.SemiconLayer — LANDED.** dss_capi 0.15.x merges the separate
+`TCNLineConstants`/`TTSLineConstants` classes into one `TCableConstants`
+(`CableConstants.pas`): the CN-vs-TS choice moves from the engine kind to a
+per-conductor `FCondType[i]` (`SetCondType`), so one engine carries **mixed
+wire/CN/TS conductors** (Kersting). Ported 1:1, defaults byte-green:
+- `support/line_constants`: `LineConstantsKind` collapses to `{Overhead, Cable}`;
+  new `ConductorType` (Invalid/Cn/Ts/Bare) + per-conductor `fcond_type`/
+  `fsemicon_layer`; the two `calc_cn`/`calc_ts` merge into one `calc_cable` (in
+  `cable.rs`) branching per conductor, with the `GetDij` equivalent-spacing helper
+  and the semicon capacitance branch; `cn.rs`/`ts.rs` keep only their setters.
+  `new_cn`/`new_ts` become convenience presets over the merged cable engine.
+- `CNData.SemiconLayer` (prop 5, LongBool default `true` = classic
+  `ln(RadOut/RadIn)`; `false` = Synergi/Kersting no-semicon
+  `ln(RadCN/RadIn)-(1/k)·ln(k·RadStrand/RadCN)`). Threaded through
+  `CableGeom::Cn` + `UpdateLineGeometryData`'s `SetSemiconLayer`. Harness
+  `PROPS_015X += ("CNData", ["SemiconLayer"])` (inserted prop).
+- **Byte-green proof.** A pure-CN/TS geometry reproduces the old `Calc`
+  bit-for-bit (the whole `line_constants`/`line_geometry` golden family +
+  `props_roundtrip` stay green untouched); `GetDij` = old raw `sqrt` in the
+  default path.
+- **New numeric surface pinned vs capi015 (1e-8):** engine
+  `cn_cable_no_semicon_capacitance` (C 167.168 vs 283.089 nF/km) and LineGeometry
+  `matrices_mixed_cn_ts_wire_match_capi015` (mixed CN/TS/wire reduced Z/Yc);
+  CNData `cndata_semicon_layer_roundtrip` (Yes/No render + make_like).
+- **Gate decks (capi015):** `modes/upgrade/upgrade_linecs_mixed.dss` (mixed
+  conductors on one line) + `upgrade_linecs_semicon.dss` (`SemiconLayer=no`) —
+  both converge (2 iters), two-process bit-identical, whole-model + YPrim
+  live-green. `population.lock` regenerated (modes 58→60). DIVERGENCES.md
+  §"Merged TCableConstants".
+- **DEFERRED — `Line.Conductors`** (the 0.15.x Line-level mixed-conductor
+  *property*, prop 34): the engine (its whole point) is landed and mixed
+  conductors already work via a `LineGeometry`; the property itself needs a
+  net-new 3-class proxy-array resolver (WireData|CNData|TSData), a JSON-export
+  restructure (the `"Conductors"` key today maps from `Wires`), and a Line
+  property-table insertion coordinated with the parallel wt-u14props branch
+  (Conductors must land at 34, after that branch's EpsRMedium/HeightOffset/
+  HeightUnit at 31–33). Left for a follow-up to keep the gate green.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
