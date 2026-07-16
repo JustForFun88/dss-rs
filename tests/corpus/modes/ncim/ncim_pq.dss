@@ -1,0 +1,17 @@
+! UPGRADE_PLAN WP-U1.7 (NCIM solver) — micro PQ-only snapshot.
+! A two-line radial feeder (sourcebus -> mid -> loadbus) with all model-1
+! constant-power loads, re-solved with Set algorithm=NCIM (the Newton
+! Current-Injection Method). NCIM holds the swing bus at the ideal EMF (no
+! Thevenin droop) and converges in 3 iterations on capi015 (dss_capi 0.15.x).
+! Feature-sensitive: only the NCIM dispatch produces the ideal-EMF swing bus +
+! the NCIM_CalcInjCurrAtBus swing-source reported currents.
+Clear
+New circuit.ncimtest basekv=12.47 phases=3 bus1=sourcebus
+New Line.l1 bus1=sourcebus bus2=mid phases=3 r1=0.12 x1=0.35 length=2
+New Line.l2 bus1=mid bus2=loadbus phases=3 r1=0.12 x1=0.35 length=1
+New Load.ld1 bus1=loadbus phases=3 kv=12.47 kw=1200 kvar=500 model=1
+New Load.ld2 bus1=mid phases=3 kv=12.47 kw=600 kvar=200 model=1
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set algorithm=NCIM
+Solve
