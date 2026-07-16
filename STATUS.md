@@ -286,6 +286,13 @@ preserve 0.14.5 numerics):
   two-process bit-identical), new capi015 props golden
   `props/linespacing_eqspacing.json`. No existing golden/live case moves
   (`Detailed` default true; 0 corpus decks set the props). DIVERGENCES.md §B3/C1.
+- **Audit follow-up (both minor findings fixed):** the always-on unit test now also
+  pins the equivalent-spacing **Yc/capacitance** branch (reduced 3×3 C = capi015
+  `? line.l1.cmatrix` 16.16 / -4.087 nF/mi to 1e-8), so the shunt branch no longer
+  relies solely on the live YPrim compare; and the `Set_FUserHeightUnit` meters-value
+  re-conversion quirk in `support/line_constants` now carries a greppable
+  `TODO(compat)` marker (dead scaffolding today — height_offset is always 0 and the
+  Line-level HeightUnit prop is deferred; golden pins it when that slice lands).
 - **Remaining WP-U1.4 rows (documented, not landed):** `Line.EpsRMedium`/
   `HeightOffset`/`HeightUnit`/`Conductors` **Line-level properties** — BLOCKED on the
   `compare_all_properties` count-equality harness (adding a property to the
