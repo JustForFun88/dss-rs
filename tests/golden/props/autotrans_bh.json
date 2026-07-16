@@ -1,0 +1,23 @@
+{
+ "schema": 1,
+ "oracle": {
+  "engine_spec": "capi015",
+  "engine": "DSS C-API Library version 0.15.0b4 revision e936d2101d745e0f0ea6872d7aa8545cb6bbd5ae based on OpenDSS SVN 4103 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20260226044838; License Status: Open \nDSS-Python version: 0.16.0b2",
+  "note": "WP-U1.6 C6 default BH-curve props (r4064, 90962ae8). Only the empty default is oracle-probable (a non-empty BHcurrent parse segfaults the capi015 backend); the set-state is pinned by Rust unit tests."
+ },
+ "class": "autotrans_bh",
+ "scenarios": [
+  {
+   "name": "autotransbh_default",
+   "commands": [
+    "New AutoTrans.a1 phases=3 windings=2 buses=(a.1.2.3, b.1.2.3, b.0) kvs=(115 12.47) kvas=(1000 1000) xhx=5"
+   ],
+   "target": "AutoTrans.a1",
+   "properties": {
+    "BHpoints": "0",
+    "BHcurrent": "",
+    "BHflux": ""
+   }
+  }
+ ]
+}

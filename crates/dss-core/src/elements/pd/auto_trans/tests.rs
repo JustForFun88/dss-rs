@@ -142,3 +142,24 @@ fn make_pos_sequence_1ph_on_phase1_survives() {
     assert_eq!(plan.actions[0], PosSeqAction::BeginEdit);
     assert_eq!(plan.actions[1], PosSeqAction::SetI32(prop::PHASES, 1));
 }
+
+/// C6 (r4064, 90962ae8): the AutoTrans GICharm BH-curve `Unused` props. Default
+/// is unallocated (NIL → dumps ''); BHpoints reallocates both arrays zeroed.
+/// The array PARSE is the shared DoubleArray path (covered by the Transformer
+/// sibling test); here we pin the AutoTrans wiring: default, side effect, dump.
+#[test]
+fn bh_curve_default_and_realloc() {
+    use crate::obj::base::DssObject;
+    let mut t = AutoTrans::new("a1");
+    assert_eq!(t.bh_points, 0);
+    assert!(t.bh_current.is_empty() && t.bh_flux.is_empty());
+    // NIL pointer renders '' (get_f64_array yields None for an empty array).
+    assert!(t.get_f64_array(prop::BHCURRENT).is_none());
+    assert!(t.get_f64_array(prop::BHFLUX).is_none());
+
+    t.set_i32(prop::BHPOINTS, 3);
+    t.side_effects(prop::BHPOINTS, 0);
+    assert_eq!(t.bh_current, vec![0.0; 3]);
+    assert_eq!(t.bh_flux, vec![0.0; 3]);
+    assert_eq!(t.get_f64_array(prop::BHCURRENT), Some(&[0.0, 0.0, 0.0][..]));
+}
