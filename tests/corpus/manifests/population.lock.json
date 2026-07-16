@@ -11,7 +11,7 @@
   },
   "family_counts": {
     "asymmetric": 47,
-    "controls": 95,
+    "controls": 97,
     "modes": 68
   },
   "family_paths": {
@@ -89,6 +89,8 @@
       "expcontrol/expcontrol_basic.dss",
       "fuse/fuse_blow_3ph.dss",
       "fuse/fuse_blow_asym.dss",
+      "fuse/fuse_curvemult_blow.dss",
+      "fuse/fuse_legacy_noblow.dss",
       "fuse/midi_fuse.dss",
       "gendispatcher/gendispatcher.dss",
       "gendispatcher/gendispatcher_kvarlimit.dss",

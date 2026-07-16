@@ -159,6 +159,16 @@ impl PropFlags {
     /// when the class's Dump/JSON goldens regenerate on capi015. Carried by Line
     /// `EpsRMedium`/`HeightOffset`/`HeightUnit` (WP-U1.4).
     pub const HIDE_015X: Self = Self(1 << 48);
+    /// **EPRI r4133 `GetTccCurve('none')` semantics** (WP-U2.1, delta D1/E3). On a
+    /// single `DSSObjectReferenceProperty` (a TCC_Curve ref), a value of literal
+    /// `none` resolves to a **NIL reference silently** — no #401 "not found" — and
+    /// the stored name renders as `none`. r4133's `fuse.pas` general
+    /// `GetTccCurve(CurveName)` short-circuits `if lowercase(CurveName)='none' then
+    /// Exit` before the registry lookup + the unconditional NIL-check #401. Distinct
+    /// from the capi015 path (clear **and** #401 — the Rung-1 [`Self::ALLOW_NONE`]
+    /// note), which the fuse used pre-U2.1. Carried by Fuse `FuseCurve` only;
+    /// Recloser/Relay adopt it at U2.2/U2.3.
+    pub const ALLOW_NONE_REF: Self = Self(1 << 49);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

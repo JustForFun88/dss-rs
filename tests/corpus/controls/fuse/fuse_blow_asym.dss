@@ -1,8 +1,11 @@
-// Fuse, ASYMMETRIC blow: a single-line-to-ground fault on phase 2 melts ONLY
-// that phase's fuse link (default tlink curve) — the per-phase `State` array
-// probe pins the mixed [closed/open] pattern, the event log the PHASE n BLOWN
-// action. Compared per step: full model + per-phase State/Normal probes +
-// event log.
+// Fuse, r4133 never-blows (WP-U2.1, delta D1): historically an asymmetric
+// single-line-to-ground blow deck (default `tlink` curve, RatedCurrent-scaled).
+// On r4133 the default FuseCurve moved `tlink` -> `none`, so this fuse (no
+// explicit curve) NEVER blows: State stays [closed, closed, closed], the blow
+// event log + control queue are empty (a ctrlqueue action of 1 on 0.14.5). Pins
+// the breaking never-blows default; the CurveMultiplier-scaled asymmetric blow
+// now lives in the sibling `fuse_curvemult_blow` deck. Gated `oracle:"r4133"`.
+// Compared per step: full model + per-phase State/Normal probes + event log.
 clear
 Set DefaultBaseFrequency=60
 

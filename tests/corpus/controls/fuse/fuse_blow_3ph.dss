@@ -1,9 +1,10 @@
-// Fuse, 3-PHASE simultaneous blow: a balanced 3-phase fault melts ALL three
-// per-phase fuse links in the same control round (the simultaneous-blow branch
-// vs the one-phase asymmetric deck). The per-phase `State` array probe pins the
-// all-[open] pattern; the event log the three PHASE n BLOWN lines. Feature-
-// sensitive: raising ratedcurrent above the fault current keeps all links
-// closed (probe-proven). Compared per step: full model + per-phase State/Normal
+// Fuse, r4133 never-blows (WP-U2.1, delta D1): historically a 3-phase
+// simultaneous blow deck (balanced fault, default `tlink` curve). On r4133 the
+// default FuseCurve moved `tlink` -> `none`, so this fuse (no explicit curve)
+// NEVER blows: State stays [closed, closed, closed] and the blow event log is
+// empty (three PHASE n BLOWN lines on 0.14.5). Pins the breaking never-blows
+// default; the CurveMultiplier-scaled blow now lives in `fuse_curvemult_blow`.
+// Gated `oracle:"r4133"`. Compared per step: full model + per-phase State/Normal
 // probes + the blow event log.
 clear
 Set DefaultBaseFrequency=60
