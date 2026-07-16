@@ -1205,6 +1205,13 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   parallel/A-Diakoptics path we do not have). Oracle-confirmed (dss-python
   0.15.7): `SolveAll` solves like `Solve`; the spaced `Solve all` errors
   `Object Class "all" not found`. Unit-pinned (`solve_all_alias_matches_plain_solve`).
+  **0.15.x spaced-form delta (not adopted, ungated).** The 0.15.x parser
+  (`ExecCommands.pas:505-521`) added a `Solve`-modifier that also maps the
+  *spaced* `Solve all` to `SolveAll` (a plain solve, no error). The port keeps
+  the 0.14.5 behavior (`Solve` + unknown token `all` → `Object Class "all" not
+  found`), matching the default 0.14.5 oracle; C4's scope is the one-word
+  `SolveAll` command word only. No corpus deck exercises spaced `Solve all`, so
+  the delta is ungated either way — tracked here for a later parser-parity pass.
 - **D13** LoadShape MMF fixes (`c4590d16`) — **not-a-delta for the port** (already
   matches the fix). The three Pascal hunks are: (1) the single-column `csvfile=`
   `CreateMMF` guard's missing `not` (`LoadShape.pas ~:1032`) — 0.14.5 exits on
@@ -1223,7 +1230,15 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   bug the fix removes, §1.2; §1.7 two-process determinism confirmed, fingerprint
   `0ead40d7199b0781`) + unit `mmf_single_column_csvfile_loads_like_capi015`. The
   existing `inputformat/shape_mmf` deck stays 0.14.5 (it uses `sngfile`/`dblfile`/
-  `pqcsvfile`, not the single-column path).
+  `pqcsvfile`, not the single-column path). **Vendored-spec caveat.** The `#482`
+  claim above is against the pinned 0.14.5 oracle **binary** (tag `0.14.5`, which
+  ships the buggy `if CreateMMF(...)`), settled empirically — NOT by reading the
+  vendored source. The vendored `.inputs/dss_capi/src/General/LoadShape.pas:1035`
+  already reads the FIXED `if not CreateMMF(...)` (the c4590d16 fix, dated after
+  the 0.14.5 tag), so a `grep` of `.inputs/dss_capi` for this hunk shows the fix,
+  not the bug — a hole in the "`.inputs/dss_capi` == the 0.14.5 backend" invariant
+  at this one line. Gating was correctly settled against the oracle binary, so the
+  outcome is unaffected.
 
 `known_diffs.json`: none of these had a prior Rust↔EPRI entry — nothing to retire.
 

@@ -32,6 +32,10 @@ fn time_control_requires_monitored_element() {
     // every non-FOLLOW type. capi015 (0.15.0b4) probe: `type=time terminal=2`
     // with no `element=` errors `CapControl.cc1: "Element" is not set,
     // aborting.` (only FOLLOWCONTROL falls back to the capacitor + terminal 1).
+    // The port keeps the base 0.14.5 message form (unquoted `Element is not
+    // set`); b9bc87b8 ports the guard drop, not the separate 0.15.x error-
+    // quoting change — so the substring below matches only the emitted 0.14.5
+    // form (the quoted form has `"Element" is not set`).
     let mut cc = CapControl::new("cc1");
     cc.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
     cc.ctrl_snap = Some(RefSnapshot {
