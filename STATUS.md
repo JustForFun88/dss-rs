@@ -754,7 +754,13 @@ line_constants goldens byte-untouched):
   wt-u14cnts row). Pins: capi015 props golden `props/linemedium.json`
   (default/set/none/units rendering), capi015 decks `modes/upgrade/
   upgrade_linecs_epsrmedium` + `_heightoffset` (YPrim live compare, §1.7
-  bit-identical across two processes).
+  bit-identical across two processes). The three props insert at their upstream
+  index (shifting NormAmps 31->34), breaking every *index-absolute* 0.14.5-gated
+  surface; new `PropFlags::HIDE_015X` defers them from the `Dump` text report +
+  AltDSS JSON export, and the `Dump commands` catalog renumbers via a running
+  counter (0.14.5 props keep their indices). The `?`/props-table surface still
+  exposes them; drop `HIDE_015X` when the Line Dump/JSON/catalog goldens flip to
+  capi015 alongside the sibling's `Conductors`.
 - **LineType enum width 4->5** (DSSClass.pas:1071): the eight `swt_*` names share the
   4-char prefix `swt_`, so 5-char abbreviations (`swt_l`->swt_ldbrk, ...) fell back to
   `oh` under width 4. One-char fix in `dss_enum/registry/pd.rs`; unit test
