@@ -167,17 +167,16 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // feed `LineConstants.SetEpsRMedium/SetHeightOffset/SetUserHeightUnit` at
         // the geometry/spacing Z build (see `line/solve.rs`).
         //
-        // SUPPRESS_JSON is a *temporary* 0.14.5-JSON-parity measure, NOT the Pascal
-        // flag's normal meaning: capi015 FULL JSON DOES emit these three (probed
-        // 2026-07-16), but the byte-exact JSON goldens (`tests/golden/json/`) are
-        // pinned to 0.14.5, and the Line JSON surface cannot flip to capi015 until
-        // the sibling wt-u14cnts lands `Conductors` (index 34 — capi015 FULL emits
-        // it between HeightUnit and NormAmps). Drop these flags when the Line JSON
-        // goldens regenerate on capi015. The `?`/dump property surface (props_015x
-        // allowlist + `linemedium.json` golden) is unaffected.
-        PropDef::double("EpsRMedium").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double("HeightOffset").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::mapped_string_enum("HeightUnit", enums.units).flags(PropFlags::SUPPRESS_JSON),
+        // HIDE_015X defers these from the *full-enumeration* 0.14.5-gated surfaces
+        // — the `Dump` text report and the AltDSS JSON export — whose byte-exact
+        // goldens are pinned to 0.14.5. capi015 FULL DOES emit all three (probed
+        // 2026-07-16), but the Line Dump/JSON surface cannot flip to capi015 until
+        // the sibling wt-u14cnts lands `Conductors` (index 34, emitted between
+        // HeightUnit and NormAmps). The `?` named-query + props-table (PROPS_015X)
+        // surfaces still expose them (`linemedium.json` golden pins the rendering).
+        PropDef::double("EpsRMedium").flags(PropFlags::HIDE_015X),
+        PropDef::double("HeightOffset").flags(PropFlags::HIDE_015X),
+        PropDef::mapped_string_enum("HeightUnit", enums.units).flags(PropFlags::HIDE_015X),
         // TPDClass tail:
         PropDef::double("NormAmps"),
         PropDef::double("EmergAmps"),
