@@ -1298,6 +1298,87 @@
   "wp": "WP-U1.7",
   "oracle": "capi015",
   "note": "UPGRADE_PLAN WP-U1.7 (NCIM solver, §1.7): midi 27-node IEEE123-class radial feeder re-solved under NCIM. 6-segment backbone + two laterals, mixed model-1/model-2 loads, a model-3 generator at b5 that hits its +400 kvar limit -> PV->PQ. Probed on capi015 (0.15.0b4): converged (8 iters, 27 nodes), bit-identical across two processes; iteration policy <= per §1.3-1. Exercises NCIM at scale (PDE-only Y over a linecode network, ConstZ ZBus stamping, and the PV->PQ Q-limit path in one solve)."
- }
+ },
+  {
+   "path": "upgrade/upgrade_linecs_epsrmedium.dss",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.l1"
+   ],
+   "pending": false,
+   "wp": "WP-U1.4",
+   "oracle": "capi015",
+   "note": "UPGRADE_PLAN WP-U1.4 (Line.pas:428/2049, LineConstants.pas): Line-level EpsRMedium. A 3-cond OH LineGeometry line with EpsRMedium=2.3 divides the shunt-capacitance potential factor by the medium permittivity (Pfactor /= E0*epsR), moving Yc/YPrim while the series Z is unchanged; default EpsRMedium=1 is 0.14.5-exact (E0*1.0==E0). Probed on capi015 (0.15.0b4): converged, YPrim shifts vs the eps=1 baseline (maxdiff ~4.8e-6 S); bit-identical across two capi015 processes. Feature-sensitive: EpsRMedium drives the whole shunt branch."
+  },
+  {
+   "path": "upgrade/upgrade_linecs_heightoffset.dss",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.l1"
+   ],
+   "pending": false,
+   "wp": "WP-U1.4",
+   "oracle": "capi015",
+   "note": "UPGRADE_PLAN WP-U1.4 (Line.pas:430/2113, LineConstants.pas): Line-level HeightOffset+HeightUnit. An equivalent-spacing line (LineSpacing detailed=no) whose HeightOffset=5 ft is folded into the average conductor heights in UpdateLineGeometryData's equivalent-spacing branch (SetHeightOffset via SetUserHeightUnit's meters re-conversion), shifting the Carson Z/Yc; HeightUnit=ft exercises the re-conversion quirk. (On the detailed-coordinate path HeightOffset is a no-op -- SetY re-sets FY from raw coordinates.) Probed on capi015 (0.15.0b4): converged, YPrim shifts vs offset=0 (maxdiff ~2.3e-5 S); bit-identical across two capi015 processes."
+  },
+  {
+   "path": "upgrade/upgrade_linetype_width.dss",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lldbrk"
+   ],
+   "probes": [
+    {
+     "element": "Line.lldbrk",
+     "props": [
+      "LineType"
+     ]
+    },
+    {
+     "element": "Line.lrec",
+     "props": [
+      "LineType"
+     ]
+    },
+    {
+     "element": "Line.lelbow",
+     "props": [
+      "LineType"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WP-U1.4",
+   "oracle": "capi015",
+   "note": "UPGRADE_PLAN WP-U1.4 (DSSClass.pas:1071): LineType enum-width fix (match length 4 -> 5). The eight swt_* names share the 4-char prefix `swt_`, so a 5-char abbreviation like `swt_l` matched nothing and fell back to the default `oh` under the old width. capi015 (0.15.x): swt_l -> swt_ldbrk, swt_r -> swt_rec, swt_e -> swt_elbow (probed 2026-07-16, bit-identical across two processes). Gated oracle:capi015 -- the 0.14.5 default oracle renders these abbreviations as `oh`. Feature-sensitive: the LineType property differs between the two engines."
+  },
+  {
+   "path": "upgrade/upgrade_spacing_ratings.dss",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.l1"
+   ],
+   "probes": [
+    {
+     "element": "Line.l1",
+     "props": [
+      "normamps",
+      "emergamps"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WP-U1.2",
+   "oracle": "capi015",
+   "note": "UPGRADE_PLAN WP-U1.2 row D3 (LineGeometry.pas:1060-1064): spacing ratings from the MINIMUM over PHASE conductors, not conductor 1. Phase wires [big small big] have differing normamps and the neutral (neut, normamps=999) is excluded (index > FNphases). capi015 (0.15.x): Line.l1 normamps = min(600,400,600)=400, emergamps = the governing phase's 500 (probed 2026-07-16, bit-identical across two processes). 0.14.5 took conductor 1 (600/800). Ratings do not affect V/I/P, so the observable is probed on normamps/emergamps."
+  }
  ]
 }

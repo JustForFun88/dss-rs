@@ -835,6 +835,55 @@ landed. Spec = `Common/ExportResults.pas` (`ExportJacobian`/`ExportdeltaF`/
   ~2.2e-10, ~45x headroom) to catch a systematic ~1e-8-scale offset without value-pinning
   the genuine ~1e-11 cancellation noise.
 
+**WP-U1.4 property tail + WP-U1.2 D3 (branch wt-u14props) — LANDED.** Ported the
+0.15.x Line-level property surface + catalog fixes on top of the already-landed
+equivalent-spacing engine numerics (the WP-U1.4 partial), gate-safe (existing
+line_constants goldens byte-untouched):
+- **Line `EpsRMedium`/`HeightOffset`/`HeightUnit`** (Line.pas:59-61,375-431): raw
+  double/double + MappedStringEnum(UnitsEnum) props with the `HeightUnit` none->m
+  side effect (Line.pas:646). Threaded into `make_z_from_geometry` /
+  `make_z_from_spacing` in the exact upstream order (`SetEpsRMedium`,
+  `SetHeightOffset`, `SetUserHeightUnit`) *before* the matrix read, so the
+  `set_user_height_unit` meters re-conversion `TODO(compat)` is now live. `EpsRMedium`
+  divides the shunt Pfactor (moves Yc on both paths); `HeightOffset` folds into the
+  equivalent-spacing average heights (observable there) and is a no-op on the
+  detailed-coordinate path (SetY re-sets FY) — reproduced 1:1, probe-confirmed on
+  capi015. Defaults (1.0/0/m) preserve 0.14.5 numerics. `PROPS_015X` allowlist gains
+  `("Line", ["EpsRMedium","HeightOffset","HeightUnit"])` (`Conductors` is the sibling
+  wt-u14cnts row). Pins: capi015 props golden `props/linemedium.json`
+  (default/set/none/units rendering), capi015 decks `modes/upgrade/
+  upgrade_linecs_epsrmedium` + `_heightoffset` (YPrim live compare, §1.7
+  bit-identical across two processes). The three props insert at their upstream
+  index (shifting NormAmps 31->34), breaking every *index-absolute* 0.14.5-gated
+  surface; new `PropFlags::HIDE_015X` defers them from the `Dump` text report +
+  AltDSS JSON export, and the `Dump commands` catalog renumbers via a running
+  counter (0.14.5 props keep their indices). The `?`/props-table surface still
+  exposes them; drop `HIDE_015X` when the Line Dump/JSON/catalog goldens flip to
+  capi015 alongside the sibling's `Conductors`.
+- **LineType enum width 4->5** (DSSClass.pas:1071): the eight `swt_*` names share the
+  4-char prefix `swt_`, so 5-char abbreviations (`swt_l`->swt_ldbrk, ...) fell back to
+  `oh` under width 4. One-char fix in `dss_enum/registry/pd.rs`; unit test
+  `line_type_abbreviations_widened_to_five_chars` + capi015 deck
+  `upgrade_linetype_width` (LineType probes; the 0.14.5 oracle renders these as `oh`).
+  No corpus deck used `linetype=`, so the default gate is unaffected.
+- **LineCode FaultRate/PctPerm/Repair deprecation** (LineCode.pas:283-288): new
+  metadata-only `PropFlags::DEPRECATED`/`UNUSED` set on the three props. Schema-only —
+  probe-confirmed capi015 stores the values silently (no runtime warning), so no
+  golden/behaviour moves.
+- **WP-U1.2 row D3 spacing ratings** (LineGeometry.pas:1060-1064): the Line
+  `makeZFromSpacing` throwaway geometry now derives NormAmps/EmergAmps as the *minimum
+  over the phase conductors* (`j <= FNphases`), not conductor 1. Localized to
+  `load_spacing_and_wires` (the NIL/actualNConds sizing stays the sibling's row); unit
+  test `spacing_ratings_min_over_phase_conductors` + capi015 deck
+  `upgrade_spacing_ratings` (min 600/400/600 -> 400/500 via probes). The existing
+  `asymmetric/line/line_spacing_asym` deck (distinct phase wires) moved NormAmps
+  730->230, so it flipped to `oracle:capi015` with ratings probes — YPrim is
+  bit-identical 0.14.5==capi015 (ratings-only flip).
+- **Remaining WP-U1.4 (sibling wt-u14cnts):** `Line.Conductors` mixed wire/CN/TS
+  list, the merged `CNTSLineConstants` per-conductor class, `CNData.SemiconLayer`.
+- Gate green (fmt/clippy/`cargo test --workspace`); population.lock regenerated for
+  the 4 new decks + the asym oracle flip.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail

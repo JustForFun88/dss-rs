@@ -24,11 +24,17 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> PdEnums {
     );
     earth.default_value = 1;
     let earth_model = push(earth);
+    // dss_capi 0.15.x (DSSClass.pas:1071, SVN 4103) widens the max match length
+    // 4 -> 5: with 4 the eight `swt_*` names all collapse to the ambiguous 4-char
+    // prefix `swt_`, so a 5-char abbreviation like `swt_l` fell back to the
+    // default `oh` (WP-U1.4 LineType enum-width fix). Full names always matched
+    // (the exact-name shortcut fires regardless of max length); only abbreviations
+    // of length 5 that disambiguate the `swt_` group are affected.
     let mut ltype = DssEnum::new(
         "Line Type",
         true,
         2,
-        4,
+        5,
         &[
             "oh",
             "ug",

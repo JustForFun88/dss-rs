@@ -45,6 +45,8 @@ impl DssObject for Line {
             RG => self.rg,
             XG => self.xg,
             RHO => self.rho,
+            EPS_R_MEDIUM => self.eps_r_medium,
+            HEIGHT_OFFSET => self.height_offset,
             NORMAMPS => self.norm_amps,
             EMERGAMPS => self.emerg_amps,
             FAULTRATE => self.fault_rate,
@@ -67,6 +69,8 @@ impl DssObject for Line {
             RG => self.rg = value,
             XG => self.xg = value,
             RHO => self.rho = value,
+            EPS_R_MEDIUM => self.eps_r_medium = value,
+            HEIGHT_OFFSET => self.height_offset = value,
             NORMAMPS => self.norm_amps = value,
             EMERGAMPS => self.emerg_amps = value,
             FAULTRATE => self.fault_rate = value,
@@ -85,6 +89,7 @@ impl DssObject for Line {
             EARTH_MODEL => self.earth_model,
             SEASONS => self.num_amp_ratings,
             LINE_TYPE => self.line_type,
+            HEIGHT_UNIT => self.height_units,
             _ => unreachable!("Line has no integer property {idx}"),
         }
     }
@@ -96,6 +101,7 @@ impl DssObject for Line {
             EARTH_MODEL => self.earth_model = value,
             SEASONS => self.num_amp_ratings = value,
             LINE_TYPE => self.line_type = value,
+            HEIGHT_UNIT => self.height_units = value,
             _ => unreachable!("Line has no integer property {idx}"),
         }
     }
@@ -358,6 +364,14 @@ impl DssObject for Line {
                 }
                 self.user_length_units = self.length_units;
                 self.cd.yprim_invalid = true;
+            }
+            HEIGHT_UNIT => {
+                // Pascal `Line.pas:644-648`: `none` is not a valid height unit —
+                // it snaps back to Meters. (No YPrim-invalidation here; the value
+                // only takes effect at the next geometry/spacing Z build.)
+                if self.height_units == LineUnits::None.code() {
+                    self.height_units = LineUnits::Meter.code();
+                }
             }
             _ => {}
         }

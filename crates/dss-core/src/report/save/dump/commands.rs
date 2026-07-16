@@ -121,9 +121,28 @@ pub(crate) fn dump_all_dss_commands(
         };
         let props = &classes[ci].props;
         out.push_str(&format!("[{}]\n", props.class_name()));
+        // Running 1-based index that skips 0.15.x-deferred props (`HIDE_015X`):
+        // the catalog is a byte-exact 0.14.5 golden, so a prop inserted at its
+        // upstream position (e.g. Line EpsRMedium at 31) must not shift the printed
+        // index of the 0.14.5 props after it (NormAmps stays 31). The prop still
+        // occupies its real slot in the class; only this help listing renumbers.
+        let mut printed = 0usize;
         for i in 1..=props.num_properties() {
+            if props
+                .prop(i)
+                .flags
+                .contains(crate::obj::props::PropFlags::HIDE_015X)
+            {
+                continue;
+            }
+            printed += 1;
             let name = props.property_name(i);
-            entry_line(&mut out, i, name, &property_help(props.class_name(), name));
+            entry_line(
+                &mut out,
+                printed,
+                name,
+                &property_help(props.class_name(), name),
+            );
         }
     }
     out

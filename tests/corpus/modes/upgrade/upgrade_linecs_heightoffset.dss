@@ -1,0 +1,17 @@
+! WP-U1.4 (UPGRADE_PLAN §WP-U1.4, Line.pas:430/2113) — Line HeightOffset+HeightUnit.
+! An equivalent-spacing line (LineSpacing detailed=no) whose HeightOffset=5 ft is
+! folded into the LineConstants average conductor heights (SetHeightOffset via
+! SetUserHeightUnit's re-conversion, applied in UpdateLineGeometryData's
+! equivalent-spacing branch), shifting the Carson Z/Yc. HeightUnit=ft exercises the
+! meters re-conversion. (On the detailed-coordinate path HeightOffset is a no-op —
+! SetY re-sets FY from the raw coordinates; here the equivalent model makes it
+! live.) oracle capi015. YPrim-focused live compare on line.l1.
+Clear
+New Circuit.linecs_hoff basekv=12.47 phases=3 bus1=sourcebus
+New WireData.acsr gmrac=0.0244 diam=0.721 rac=0.306 runits=mi radunits=in gmrunits=ft normamps=530
+New LineSpacing.sp nconds=4 nphases=3 units=ft detailed=no EqDistPhPh=2.5 EqDistPhN=4.272 AvgPhaseHeight=28.0 AvgNeutralHeight=24.0
+New LineGeometry.g nconds=4 nphases=3 spacing=sp wires=[acsr acsr acsr acsr] reduce=y
+New Line.l1 bus1=sourcebus bus2=b2 geometry=g length=1 units=mi HeightOffset=5 HeightUnit=ft
+New Load.ld bus1=b2 phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+Calcvoltagebases
