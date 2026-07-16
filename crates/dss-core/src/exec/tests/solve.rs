@@ -64,6 +64,49 @@ fn generator_model1_pq_snapshot() {
     }
 }
 
+/// `SolveAll` (cmd 123 — a `DSS_CAPI_PM`-only command word, mirroring
+/// `ClearAll`) reduces to a plain `Solve` of the single active circuit
+/// (`ExecCommands.pas:346`); it must reach the identical solved node state.
+/// Oracle-confirmed (dss-python 0.15.7): `SolveAll` converges in 2 iters on
+/// this feeder, while the *spaced* `Solve all` errors `Object Class "all" not
+/// found` (`Solve` + option token `all`) — the port matches both.
+#[test]
+fn solve_all_alias_matches_plain_solve() {
+    let build = |cmd: &str| {
+        let mut dss = Dss::new();
+        dss.command("New circuit.twobus basekv=12.47 pu=1.0 phases=3 mvasc3=2000");
+        dss.command("New Line.l1 bus1=sourcebus bus2=loadbus length=1 units=km");
+        dss.command("New Load.ld1 bus1=loadbus phases=3 kv=12.47 kw=600 pf=0.95");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command(cmd);
+        dss
+    };
+    let plain = build("Solve");
+    let all = build("SolveAll");
+    assert!(all.errors().is_empty(), "SolveAll: {:?}", all.errors());
+    let a = plain.circuit().unwrap();
+    let b = all.circuit().unwrap();
+    assert!(a.is_solved && b.is_solved);
+    assert_eq!(a.num_nodes, b.num_nodes);
+    assert_eq!(a.solution.iteration, b.solution.iteration);
+    for i in 1..=a.num_nodes {
+        assert_eq!(a.solution.node_v[i], b.solution.node_v[i], "node {i}");
+    }
+
+    // Spaced `Solve all` is `Solve` + unknown option token `all` → the same
+    // "Object Class ... not found" error the oracle raises.
+    let spaced = build("Solve all");
+    assert!(
+        spaced
+            .errors()
+            .iter()
+            .any(|e| e.contains("\"all\" not found")),
+        "Solve all should error like the oracle: {:?}",
+        spaced.errors()
+    );
+}
+
 /// A model-3 (constant P, |V|) "PV bus" generator on a stiff source → line →
 /// constant-PQ-load feeder, built (not solved). The 300 kW PV generator holds
 /// |V| ≈ 1 pu by absorbing/producing vars via the DQDV machinery

@@ -225,6 +225,12 @@ pub(crate) mod cmd {
     pub const REFINE_BUSLEVELS: usize = 110;
     pub const CALC_LAPLACIAN: usize = 111;
     pub const WAIT: usize = 122;
+    /// `SolveAll` (ordinal 123, `DSS_CAPI_PM`-only, appended to the oracle
+    /// build's command list). Single-actor semantics = plain `Solve`
+    /// (`ExecCommands.pas:346` iterates `DoSetCmd(child, 1)` over the one
+    /// actor; `IsSolveAll` only steers the parallel/A-Diakoptics path we do
+    /// not have).
+    pub const SOLVE_ALL: usize = 123;
     pub const CLEAR_ALL: usize = 119;
     pub const COMHELP: usize = 120;
 }
