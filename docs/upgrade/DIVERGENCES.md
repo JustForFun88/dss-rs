@@ -970,11 +970,47 @@ inner loop bound shortened, form-only). Cited to the 0.15.x Pascal + commit
 These Rung-1 rows are straight adoptions of the 0.15.x (= r4088/r4133) behavior
 with no new dss_capi↔EPRI divergence to catalog; detail in STATUS §WP-U1.6.
 
-- **B3-r3723** `Load.GrowthFactor` Year=0 hourly progression — adopt (0.15.x =
-  r4088). No corpus witness (needs a >8760 h Year=0 growth run); unit-pinned.
+**Version note (settle 2026-07-16, audit-U1.6).** The vendored
+`.inputs/dss_capi_with_git` **working tree** is checked out at `f5728aec`
+(`0.14.6a1-8`, dated 2024-07-11) — which PREDATES the B3/D10 fixes, so a plain
+`grep` of the checkout shows the *old* code and the fix commits carry a
+re-vendor **commit-date** of 2026-02-16. Both are misleading: the fixes'
+**author-dates** are 2025-06, and — decisively — `git merge-base --is-ancestor`
+proves `d…`/`a14c3f1f`/`1b3123ce` are all **ancestors of tag `0.15.0b4`**, the
+actual capi015 oracle backend (`ab_compare.py`: 0.15.0b4 = OpenDSS **SVN r4103**).
+Read the target via `git -C .inputs/dss_capi_with_git show 0.15.0b4:src/…`, NOT
+the working-tree checkout. **Both B3 and D10 therefore live in the capi015
+oracle** and are directly oracle-validatable (probed below) — they do NOT
+"diverge from both pinned oracles."
+
+- **B3-r3723** `Load.GrowthFactor` Year=0 hourly progression — adopt (in capi015
+  0.15.0b4 = r4103; `git show 0.15.0b4:src/PCElements/Load.pas` has the
+  `calcYear := dblHour/8760` rewrite verbatim; 0.14.5 = flat 1.0). **capi015
+  probe** (`/tmp/probe_b3*.py`, growthshape `year=(0,1,2) mult=(1.2,1.5,2.0)`,
+  100 kW pf 0.9 load): snapshot Year=0 → **120 kW** (factor `GetMultIdx(1)=1.2`)
+  at every hour (snapshot never advances `dblHour` past 8760); daily Year=0 with
+  `dblHour≈8760` → **180 kW** (`GetMult(2)=1.8`), `≈17520` → 360, `≈8759` → 120.
+  0.14.5 gives **100 kW** (flat 1.0) throughout. **Now deck-gated:**
+  `modes/upgrade/upgrade_growth_year0.dss` (`oracle: "capi015"`, snapshot,
+  feature-sensitive 120-vs-100 kW / B1 |V| 7198.16 vs 7198.40 V; §1.7 two-process
+  determinism confirmed) — the whole-model live compare fails on any regression to
+  the flat factor. Per-branch values also unit-pinned
+  (`growth_factor_year0_tracks_simulated_hours_with_growthshape`).
 - **D10** StorageController `FpctkWBandLow` typo (`a14c3f1f`) + first-iter
-  `StorekWChanged` (`1b3123ce`) — adopt (r4058 bug fixes, r4133-aligned). The typo
-  fix retired a `TODO(compat)`. Unit-pinned.
+  `StorekWChanged` (`1b3123ce`) — adopt (SVN r4058, in capi015 0.15.0b4 = r4103;
+  `git show 0.15.0b4:src/Controls/StorageController.pas:547` has
+  `FpctkWBandLow := FkWBandLow/FkWTargetLow*100`). The typo fix retired a
+  `TODO(compat)`. **capi015 probe** (`/tmp/probe_d10.py`,
+  `kWTarget=300 kWTargetLow=100 kWBand=50 kWBandLow=20`): capi015 `%kWBand=16.667`
+  / `%kWBandLow=20`; 0.14.5 `%kWBand=6.667` / `%kWBandLow=2` (the typo overwrites
+  `%kWBand` from `kWBandLow/kWTarget` and never syncs `%kWBandLow`). Both halves
+  **unit-pinned** and oracle-validated: `kw_band_low_side_effect_syncs_the_low_pct_pair`
+  (property sync, 16.667/20 vs the typo's 6.667/2 discriminator) and
+  `d10_discharge_transition_forces_resolve_on_first_iteration` (force-resolve).
+  No corpus witness: the property sync is property-only (target-rev cases don't
+  property-compare, §1.3-2) and the force-resolve needs a multi-step control-
+  iteration run (capi015 re-nominalizes multi-step captures, L1 note) — so unit-
+  test gating is the honest gate here (precedent: B1/D6/D7).
 - **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **ported then
   reverted** (see STATUS §WP-U1.6). The mapping is correct but its `Normal`/`State`
   readback change moves two default-oracle multi-step live decks

@@ -271,14 +271,26 @@ Landed rows (each unit/deck-pinned, gate-green):
 - **B3-r3723** (own commit) — `Load.GrowthFactor` Year=0 with a GrowthShape now
   tracks the simulated hours (`calcYear=dblHour/8760`; `GetMult(Ceil)` or
   `GetMultIdx(1)` when firstY=0 & <1yr) instead of a flat 1.0. Added GrowthShape
-  `get_year`/`get_mult_idx`. Unit tests `growth_factor_year0_tracks_simulated_hours_with_growthshape`
-  + `get_year_and_mult_idx_are_one_based`.
+  `get_year`/`get_mult_idx`. **Oracle-validated + deck-gated** (audit-U1.6
+  settlement): `git show 0.15.0b4:src/PCElements/Load.pas` carries the rewrite
+  verbatim (the working-tree checkout f5728aec predates it, see DIVERGENCES.md
+  version note), and capi015 probes confirm 120 kW (factor 1.2) vs 0.14.5's flat
+  100 kW. New corpus deck `modes/upgrade/upgrade_growth_year0.dss` (`oracle:
+  "capi015"`, snapshot, feature-sensitive 120-vs-100 kW; §1.7 two-process
+  determinism confirmed). Unit tests
+  `growth_factor_year0_tracks_simulated_hours_with_growthshape` (probe-cited) +
+  `get_year_and_mult_idx_are_one_based`.
 - **D10** StorageController — (a) `a14c3f1f` FpctkWBandLow typo fix (was reproduced
   as `TODO(compat)`; adopted, `FpctkWBandLow := FkWBandLow/FkWTargetLow*100`);
   (b) `1b3123ce` force a new power flow on control iter 1 when peakshave(-low)
   moves the fleet into (dis)charge even when the condition matched last step
-  (added `control_iteration()` to `StorageDispatchEnv`). Unit test
-  `d10_discharge_transition_forces_resolve_on_first_iteration`.
+  (added `control_iteration()` to `StorageDispatchEnv`). Both in capi015 0.15.0b4
+  (= r4103; `StorageController.pas:547`). **Oracle-validated** (audit-U1.6):
+  capi015 `%kWBand=16.667`/`%kWBandLow=20` vs 0.14.5 typo `6.667`/`2`. Unit tests
+  `kw_band_low_side_effect_syncs_the_low_pct_pair` (property sync, added under
+  audit) + `d10_discharge_transition_forces_resolve_on_first_iteration`
+  (force-resolve). Unit-pinned (no single-step corpus witness: property-only sync +
+  multi-step force-resolve; precedent B1/D6/D7).
 - **D15** (`4366b126`) — `LookupVariable` case-insensitivity: the only
   equivalent in the port (relay) already uses `eq_ignore_ascii_case` (= the fixed
   side); not-a-delta, upper-case query pinned in `lookup_variable_prefix_match`.
