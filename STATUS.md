@@ -7,15 +7,36 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-12 (merged `upgrade-rung1` — U0.2 sweeps + WP-U1.1 + WP-U1.2
-numeric long tail — with the post-acceptance main: corpus CF/CF2/coverage rounds,
-families 47/92/49, JSON export, FIX-DIRECT, LINE-DEEP; then merged WP-U1.3
-InvControl cluster, D14 (pulled ahead), SKIPPED-SWEEP, the GFM WP (B5 Isc1 +
-capi015 daily-Losses skip — see §UPGRADE), WP-U1.7 Stage 1, WP-U1.8 WindGen, and
-**Part II A-Diakoptics** (AD.2–AD.5 consolidated: dss-metis, tearing, AD engine,
-419-deck sweep, save-fidelity fixes, ad-bugs proven upstream — records in
-`docs/phase-records/part2-adiakoptics.md`). Integration branch is `update`
-(pushed to origin); main untouched until an explicit merge request.)
+Last updated: 2026-07-16 (parallel Rung-1 round, 6 worktrees, each port +
+dual-audit + fix, all merged to `update` and pushed: **WP-U1.5 complete**
+(seasonal/allocation/zonelist), **WP-U1.9 complete** (PCE force hooks),
+**WP-U1.7 Stages 2–4 core** (NCIM solver; corpus decks + Export/Show reports
+remaining), **WP-U1.4 partial** (equivalent-spacing landed; Line-props/CNTS
+blocked, see below), **WP-U1.6 partial** (B3/D10/D15/A7; C5/C6/D11/D13/C4
+remaining, D12 reverted for re-land), **coverage parked test RESOLVED**. Two
+merge-integration fixes (dump3 golden mask supersedes hand-added lines;
+population.lock regen 56→58). Earlier 2026-07-12 merge summary → git history.
+Integration branch is `update` (pushed to origin); main untouched until an
+explicit merge request.)
+
+**Rung-1 remaining tail (2026-07-16, the short list to rung exit):**
+1. **PENDING USER DECISION — property-count harness accommodation:**
+   `compare_all_properties` asserts Rust property count == 0.14.5-oracle count
+   per circuit element, so any 0.15.x-appended property (U1.4 Line
+   EpsRMedium/HeightOffset/HeightUnit/Conductors — engine numerics already
+   ported; U1.6 C5 RegControl FwdThreshold/Idle*, C6 BH-props, C5-r3723
+   LoadShape Mode) breaks nearly every default-oracle deck. Proposed: a named
+   per-class allowlist of 0.15.x-only trailing props (§1.3-style relaxation).
+2. WP-U1.7 tail: `modes/ncim/` corpus deck matrix (numerics already unit-pinned
+   vs capi015), `Export Jacobian/deltaF/deltaZ` + `Show PV2PQ_Conversions`,
+   `VSource.NCIM_CalcInjCurrAtBus` (reporting), r4088 cross-check.
+3. WP-U1.6 small tail: C4 `Solve all` alias; D13 (needs a non-crashing MMF
+   deck — corpus one hits capi015 #58614); D11 part 2 (capcontrol_time deck
+   entanglement); D12 re-land (needs multi-step capi015 oracle support).
+4. WP-U1.4 heavy tail: merged `CNTSLineConstants` per-conductor refactor +
+   `CNData.SemiconLayer`; LineCode deprecation flags; LineType enum width;
+   U1.2-D3 spacing ratings + overload deck.
+5. WP-U1.10 rung exit (r4088 sweep + known_diffs burn-down) — after 1–4.
 
 **PARKED TEST — RESOLVED (2026-07-16, branch wt-coverage):**
 `circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` is
@@ -108,8 +129,12 @@ MULTITHREADING M2.
   `oracle:capi015` (whole-model green); non-discharging-GFM decks stay 0.14.5-green.
   Also settled the unrelated capi015 daily `CktElement.Losses` staleness quirk (not
   reproduced; harness `loss_w` self-validating skip). See §UPGRADE + DIVERGENCES.md.
-- Part II A-Diakoptics AD.2/AD.3 progressing on a separate `part2-adiakoptics`
-  branch (not in this main).
+- **WP-U1.5 — LANDED complete** and **WP-U1.9 — LANDED complete** (2026-07-16
+  round); **WP-U1.4 / WP-U1.6 — PARTIAL** (blockers in the Rung-1 remaining-tail
+  list above). Full records in §UPGRADE below.
+- Part II A-Diakoptics (AD.2–AD.5) merged 2026-07-12 — records in
+  `docs/phase-records/part2-adiakoptics.md`; AD.6 (threaded children) remains
+  sequenced after MULTITHREADING M2.
 
 **SKIPPED-SWEEP (branch `skipped-sweep`, 2026-07-12).** Gave every in-scope entry
 in `skipped_needs_investigation.json` a real disposition (19 entries; the 2
@@ -700,16 +725,10 @@ harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `m
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # dss-core lib 748, golden_feeders 1,
-                            # golden_feeders_controls 4, golden_phase5 1,
-                            # golden_phase6 1, golden_phase7 1,
-                            # golden_phase7_protection 1, golden_phase8 130,
-                            # golden_checkpoints 1, golden_ieee8500 1,
-                            # golden_reliability 1, golden_allocation 1,
-                            # golden_gendispatcher 1, golden_autoadd_reduce 1,
-                            # golden_slice 2, golden_smoke 3, props_roundtrip 1,
-                            # corpus_manifest 1, corpus_live 3 (168 solvable_now
-                            #   cases live-compared)
+cargo test --workspace      # 45 test binaries, 0 failures (2026-07-16 round):
+                            # dss-core lib 1171, golden_reports 197 (incl. the
+                            # capi015 seasonal pair), corpus_live (292
+                            # solvable_now cases live-compared; modes family 58)
                             #   (corpus_live_solvable_cases_match_oracle +
                             #    solvable_now_has_multistep_depth run
                             #    UNCONDITIONALLY — the pinned oracle MUST be
