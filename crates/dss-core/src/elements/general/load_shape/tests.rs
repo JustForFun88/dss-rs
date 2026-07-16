@@ -1120,3 +1120,29 @@ fn mmf_leaves_max_p_and_q_at_defaults() {
     assert_eq!(dss.result(), "0", "MMF leaves MaxQ at the 0.0 default");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// WP-U1.6 C5-r3723: settled as NOT-a-delta for the capi015 oracle. EPRI's
+/// SVN r40xx line inserts a LoadShape `Mode` prop at index 22 (shifting
+/// `Interpolation` to 23), but dss_capi 0.15.x explicitly declines it — the
+/// enum keeps `// Mode = 22, -- not useful to implement this yet` with
+/// `Interpolation = 22` (both 0.14.5 AND 0.15.0b4). capi015 probe (2026-07-16)
+/// confirms 23 props, `Interpolation` at 22, no `Mode`. Porting Mode would
+/// break every LoadShape deck's property-count parity against the oracle, so
+/// the port matches capi015 verbatim. This guard fails if a stray `Mode` lands.
+#[test]
+fn no_mode_prop_interpolation_stays_at_22() {
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    assert_eq!(prop::INTERPOLATION, 22);
+    assert_eq!(
+        cls.property_index("Interpolation"),
+        Some(prop::INTERPOLATION)
+    );
+    assert_eq!(
+        cls.property_index("Mode"),
+        None,
+        "dss_capi 0.15.x has no Mode"
+    );
+    // 22 class props + the `Like` tail = 23 (matches the capi015 count).
+    assert_eq!(prop::NUM_PROPS, 23);
+}
