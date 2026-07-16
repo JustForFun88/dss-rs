@@ -24,6 +24,7 @@ mod lifecycle;
 mod line_fetch;
 mod make_pos_seq;
 mod monitors;
+mod ncim;
 mod open_close;
 mod options_timing;
 mod pvsystem;

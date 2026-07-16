@@ -364,6 +364,11 @@ pub(crate) const EXEC_OPTIONS: &[&str] = &[
     "Parallel",
     "ConcatenateReports",
     "NUMANodes",
+    // NCIM solver options (the `DSS_CAPI_ADIAKOPTICS` block above them is not
+    // built in the capi oracle, so these follow `NUMANodes` directly at ordinals
+    // 129/130 — matching `DSS.SolveAlgEnum`/`Dump commands` in that build).
+    "IgnoreGenQLimits",
+    "NCIMQGain",
 ];
 
 /// Pascal `TPlotOption` names in ordinal order (`PlotOptions.DefineOptions`),
@@ -517,4 +522,12 @@ pub(crate) mod opt {
     /// circuit's long-line (Kron) impedance correction flag. In the oracle's
     /// `DSS_CAPI_PM` build (`ExecOptions.pas:737/1095`).
     pub const LONG_LINE_CORRECTION: usize = 118;
+    /// `Set/Get IgnoreGenQLimits=` (`ExecOptions.pas:156`, ordinal 129 in the
+    /// capi build — the `DSS_CAPI_ADIAKOPTICS` block is ifdef'd out of the
+    /// oracle, so the NCIM options follow `NUMANodes=128` directly): NCIM's
+    /// `Solution.NCIM_IgnoreQLimit`.
+    pub const IGNORE_GEN_Q_LIMITS: usize = 129;
+    /// `Set/Get NCIMQGain=` (`ExecOptions.pas:157`, ordinal 130): NCIM's global
+    /// reactive-power injection gain `Solution.NCIM_GenGain`.
+    pub const NCIM_Q_GAIN: usize = 130;
 }

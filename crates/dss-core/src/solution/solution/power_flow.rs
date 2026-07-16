@@ -82,7 +82,7 @@ fn log_event(ckt: &mut Circuit, name: &str) {
 /// then the grid-forming PC elements (`GetPCInjCurr(TRUE)` — a GFM inverter is
 /// a voltage source behind its `CalcGFMYprim` impedance, so it injects with the
 /// sources, not with the ordinary PC elements).
-fn get_source_inj_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
+pub(super) fn get_source_inj_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let sol = &mut ckt.solution;
     let mut ctx = InjCtx {
@@ -364,6 +364,7 @@ pub(crate) fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
 
     match ckt.solution.algorithm {
         NEWTONSOLVE => do_newton_solution(ckt, env),
+        super::NCIMSOLVE => super::do_ncim_solution(ckt, env),
         _ => do_normal_solution(ckt, env),
     }?;
 
@@ -405,6 +406,14 @@ fn check_controls(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         } else {
             ckt.solution.control_actions_done = true; // Stop if failure to converge
         }
+    }
+    // Pascal `CheckControls` (`Solution.pas` l.1182): under NCIM a Y change means
+    // the PDE-only network + NCIM structures must be rebuilt on the next solve —
+    // flag `NCIM_Ready = false` and skip the normal `WholeMatrix` rebuild (NCIM
+    // rebuilds its own `PDE_ONLY` matrix in `NCIM_Init`).
+    if ckt.solution.system_y_changed && ckt.solution.algorithm == super::NCIMSOLVE {
+        ckt.solution.ncim_ready = false;
+        return Ok(());
     }
     if ckt.solution.system_y_changed {
         build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?; // V stays same
