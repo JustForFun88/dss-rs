@@ -941,6 +941,37 @@ than faer's hashing dedup *and* parity-correct), so Stage F has **no** dedup dua
 - Complex Bessel `bessel_i0/i1` (power series over `Complex64`) — legitimate numerics with
   no crate equivalent (`libm` is real-only); not a compat item, stays in both modes.
 
+## IV.1b TBD — command-input strictness & degenerate-input guards (user request, 2026-07-16)
+
+Origin: the parked `refine_bus_levels_reports_paths_on_radial` hang (resolved
+2026-07-16, branch `wt-coverage`). A test fed an 8-line deck to a single
+`Dss::command()` call; the Pascal-faithful parser treats line breaks as
+whitespace, so every line after `new circuit.covtest` was consumed as extra
+parameters of that one command — the resulting degenerate 1-bus circuit is an
+input on which `Get_paths_4_Coverage`'s sole exit (Circuit.pas:909) can
+genuinely never fire (upstream-faithful nontermination). Post-port, "reject
+buggy input" decomposes into three layers with different homes — parser
+strictness alone does NOT close the class:
+
+1. **API-boundary guard (cheap, both lanes, may land any time post-port):**
+   `Dss::command()` rejects — or explicitly script-splits — input containing
+   line breaks. Touches no deck-language semantics (script/redirect paths
+   already split lines before `ProcessCommand`), so it is parity-safe; it turns
+   this whole misuse class into a loud immediate error.
+2. **Strict deck parsing (opt-in, default lane, after Stage F):** a strict mode
+   that flags/rejects trailing junk tokens, unknown property names, and
+   over-length positional lists instead of silently consuming them. MUST stay
+   opt-in or warnings-only: the vendored corpus deliberately relies on upstream
+   leniency (bare-quote inline comments; tolerated malformed matrices, e.g.
+   Kersting4wire's 3×3 cmatrix under `nphases=4`), and the live-oracle gates
+   bind both lanes. Diagnostics surface = P5's miette infrastructure.
+3. **Degenerate-input loop guards (default lane, Stage F):** the same
+   degenerate circuit is constructible from perfectly *valid* commands, so the
+   known-nonterminating state machines need algorithmic guards (iteration cap /
+   coverage-plateau detection with a loud abort) — first candidate
+   `Get_paths_4_Coverage`; the parity lane keeps reproducing upstream behavior
+   unchanged.
+
 ## IV.2 Stage F — the `oracle-parity` feature split (absorbs the `TODO(compat)` sweep)
 
 **Idea (user, 2026-07-06).** Everything we kept *only for bit-parity with the pinned
