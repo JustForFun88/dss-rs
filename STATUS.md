@@ -630,9 +630,11 @@ Three commits on top of Stage 1:
   `solve_alg` enum gains `NCIM` (ordinal 2, min-abbrev 2 = prefix `nc`);
   `IgnoreGenQLimits`→`ncim_ignore_q_limit`, `NCIMQGain`→`ncim_gen_gain` at ordinals
   129/130 (the `DSS_CAPI_ADIAKOPTICS` block is ifdef'd out of the capi oracle, so the
-  NCIM options follow `NUMANodes=128`) + Get readback. `dump3_commands` golden gains
-  the two execoptions lines (same-commit migration; Rust-self-generated fixture,
-  catalog-miss placeholder help like `LongLineCorrection`).
+  NCIM options follow `NUMANodes=128`) + Get readback. `dump3_commands`: the two
+  execoptions lines are dropped by the WP-U1.9 `run_deck_dump_exact_block_masked`
+  0.15.x-options mask (integration fix at the wt-u17×wt-u19 merge — u17's
+  hand-added golden lines were superseded by u19's uniform mask; the golden stays
+  the pure 0.14.5-oracle text).
 - **Validation**: `exec/tests/ncim.rs` — every electrical assertion now pinned
   against **capi015** NCIM captures (dss_capi 0.15.0b4 / SVN r4103; the pinned 0.14.5
   gate oracle has no NCIM), embedded golden-style, matched to <5e-11 V (faer-vs-KLU
