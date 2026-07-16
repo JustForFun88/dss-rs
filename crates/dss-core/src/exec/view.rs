@@ -286,6 +286,13 @@ impl Dss {
                         snap.powers[2 * k + 1] = 0.0;
                     }
                 }
+                // Pascal `Get_Losses`: `if PositiveSequence then Result := Result*3`.
+                // Mirror the ×3 the general `elem.losses()` path applies (traits.rs),
+                // so overridden losses stay consistent with the per-conductor powers
+                // (which triple `s` above) under a positive-sequence CktModel.
+                if positive_seq {
+                    loss *= 3.0;
+                }
                 snap.loss_w = (loss.re, loss.im);
             }
         }
@@ -941,6 +948,18 @@ fn ncim_swing_source_currents(
 
     // The 0-based terminal of `cd` connected to the source bus, if any (Pascal
     // `BusName = StripExtension(ce.GetBus(j))`).
+    //
+    // NON-reproduced quirk (deliberate, per CLAUDE.md "do not reproduce UB"):
+    // Pascal computes `myTerm` fresh per element only in the **PD** loop
+    // (`myTerm := 0` inside `for ce in ceList`, l.1247). In the **PC** loop
+    // (l.1268) `myTerm := 0` is set ONCE before the loop and never reset, so its
+    // terminal-finder `inc(myTerm)` accumulates across PCEs at the bus — a stateful
+    // cross-element index. That accumulation is inert whenever each PCE connects at
+    // its first terminal (`inc` never fires → myTerm stays 0), which is the only
+    // deterministic in-range case; with a PCE bonded at a non-first terminal it can
+    // run the `ElmCurrents[(myTerm*NPhases)+j]` index past `SetLength(…, Yorder+1)`
+    // into an OOB heap read. We compute `my_term` fresh per element for both loops:
+    // identical to Pascal on the defined path, and refusing to reproduce the OOB.
     let my_term = |cd: &crate::elements::ckt::CktElementData| -> Option<usize> {
         (0..cd.nterms).find(|&t| cd.terminals.get(t).map(|x| x.bus_ref) == Some(src_bus))
     };

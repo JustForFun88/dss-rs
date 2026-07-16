@@ -736,6 +736,16 @@ landed. Spec = `Common/ExportResults.pas` (`ExportJacobian`/`ExportdeltaF`/
   (OpenDSS 10.2) supports NCIM and reaches **bit-identical** converged node voltages,
   but converges the PV→PQ decks in 4 iters vs capi015's 8 (PQ-only matches at 3). Pinned
   to capi015; iteration policy already `<=` for capi015 cases; not gated.
+- **Audit follow-ups settled** (this branch): (1) the NCIM swing/generator loss override
+  in `exec/view.rs` now applies the positive-sequence ×3 that the general `elem.losses()`
+  path does, so overridden `loss_w` stays consistent with the per-conductor powers under a
+  positive-sequence CktModel (latent — the ncim decks run full 3-phase); (2) the deliberate
+  non-reproduction of Pascal's PC-loop `myTerm` accumulation (`NCIM_CalcInjCurrAtBus`
+  l.1268 — a stateful cross-element index that can run OOB; we compute it fresh per element,
+  identical on the defined path) now carries an explanatory comment beside the `+1`
+  `TODO(compat)`; (3) the deltaF/deltaZ structural bound tightened 1e-6→1e-8 (observed max
+  ~2.2e-10, ~45x headroom) to catch a systematic ~1e-8-scale offset without value-pinning
+  the genuine ~1e-11 cancellation noise.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in

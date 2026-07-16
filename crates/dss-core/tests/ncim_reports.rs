@@ -151,10 +151,16 @@ fn run(stem: &str) {
         for (i, &v) in vals.iter().take(6).enumerate() {
             assert_eq!(v, 0.0, "{stem}: {rep} swing row {i} must be 0, got {v}");
         }
-        // Converged: every entry is at the mismatch/correction floor.
+        // Converged: every entry is at the mismatch/correction floor. Empirically
+        // the observed max over both decks is ~2.2e-10 (deltaZ, pq); the 1e-8 bound
+        // keeps ~45x headroom over that faer floor yet tightens 100x from the old
+        // 1e-6 so a systematic ~1e-8-scale offset (wrong-ordering/sign-away-from-
+        // swing bugs stay at the ~1e-10 noise floor and are inherently invisible to
+        // a magnitude gate on genuine cancellation noise — the values cannot be
+        // value-pinned per the CLAUDE.md cancellation-floor rule) is caught.
         let mx = vals.iter().fold(0.0_f64, |m, &v| m.max(v.abs()));
         assert!(
-            mx < 1e-6,
+            mx < 1e-8,
             "{stem}: {rep} not at converged floor (max {mx:.2e})"
         );
     }
