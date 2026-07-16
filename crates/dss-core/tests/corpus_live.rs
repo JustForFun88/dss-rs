@@ -1931,6 +1931,10 @@ const MODES_REQUIRED: &[&str] = &[
     // WP-U1.6 B3-r3723: Load.GrowthFactor Year=0 dblHour progression
     // (oracle: capi015; feature-sensitive 120-vs-100 kW).
     "upgrade/upgrade_growth_year0.dss",
+    // WP-U1.9 PCE force-hook deck (oracle capi015): `Set InjCurrent=` forces a
+    // load's injection currents; the re-solve settles at the forced operating
+    // point (b2 Vmag 7187 -> 7224 V).
+    "upgrade/upgrade_forcehooks.dss",
     // WPG.21 MakePosSequence feature decks (pending until WPG.21 A2 wires the
     // `makeposseq` dispatch; each errors loudly on the Rust engine meanwhile).
     "makeposseq/makeposseq_line.dss",

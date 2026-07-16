@@ -290,6 +290,46 @@ are snapshots; follow-up logged for the oracle-infra owner. Full detail:
   unnecessary). (4) Added `di_overloads_applies_seasonal_rating` (DI-path seasonal
   wiring).
 
+**WP-U1.9 (PCE force hooks) — LANDED (branch `wt-u19`).** Ported the dss_capi
+0.15.0b4 pyControl engine hooks — spec read via `git show 0.15.0b4:` because the
+vendored working tree `.inputs/dss_capi_with_git` sits at a later `master`
+(`f5728aec`) where these options were **removed** upstream; the capi015 oracle
+(tag `e936d210`) still carries them, so it remains the authoritative spec.
+Landed: `Set`/`Get` `InjCurrent`/`ITerminal`/`YPrim`/`StateVar`/`IterNumber`/
+`CtrlIterNumber`/`IntegrationFlag` + `Flg.ForceInjCurrents`/`ForceYPrim`, honored
+in the injection loop (`solution/solution/power_flow.rs` injects the stored
+`InjCurrent` directly, per `TPCElement.InjCurrents`) and `ReCalcAllYPrims`
+(`solution/ymatrix.rs` skips `CalcYPrim` when `ForceYPrim`); the five PCE
+`GetTerminalCurrents` (Load/Generator/PVsystem/Storage/IndMach012) skip the model
+recompute when forced. `Set IterNumber`/`CtrlIterNumber`/`IntegrationFlag` are
+read-only; `Set PyPath=` + the pyControl component stay NOT_PORTED (loud, §0).
+`SampleControlDevices` was already ported (present in 0.14.5, `Solution.pas:1974`
+→ `solution/controls/sampling.rs`) — NOT a delta; `delta_capi_0145_015x.md` A3
+over-claimed it as new. Parser gained `make_complex`/`parse_as_complex_vector`/
+`parse_as_complex_matrix` (`ParserDel.pas`, `(f64,f64)`-tuple, dep-free). Gated by
+the live `modes/upgrade_forcehooks.dss` (oracle:capi015, validated bit-identical
+across two capi015 processes; `Set InjCurrent=[80 0 80 0 80 0]` moves b2 Vmag
+7187.45→7224.14 V) + the capi015-pinned unit suite `exec/tests/force_hooks.rs`
+(forced Vmag 7224.143523 @1e-6, frozen `Get InjCurrent`/`ITerminal`, read-only
+sets, `Set YPrim` survives a rebuild, `Set/Get StateVar`, and **`Clear` resets
+the force flags**). Ledger: `docs/upgrade/DIVERGENCES.md §A3/A5`.
+
+**WP-U1.9 audit follow-up — LANDED (branch `wt-u19`).** Addressed 7 audit
+findings against the capi015 oracle. Fixed: `Set/Get AllowForms`/
+`AllowProgressBar` now accepted headless no-ops (round-trip, default `No`) —
+were erroring "not ported"; `Set/Get StateVar` non-PCE now gives the Pascal 7103
+"is not a valid PC element" (guard runs before the 7101 NumVariables check); the
+force-hook error arms now `Exit` (break) the option loop like Pascal. Corrected
+the false "Set/Get StateVar covered" claim: `Set StateVar` via text is
+**upstream-broken** (positional `DoSetCmd` parse never reaches the arm →
+capi015 `#303`, reproduced as error + no write); `Get StateVar` is the
+functional read path. Grew the unit suite to 12 tests (added: `Set ITerminal`
+freeze, Generator 2nd-PCE force-skip, oversize-row `#3004`, natural-syntax `Set
+StateVar` error, both 7103 guards, AllowForms round-trip). The `#3004` YPrim
+error zeroes capi015's live matrix (its own known error-state imperfection) —
+**not reproduced** (scratch-buffer parse leaves the real YPrim intact; transient,
+next `ReCalcAllYPrims` recomputes). Ledger updated in DIVERGENCES §A3/A5.
+
 **WP-U1.8 (WindGen + WTG3 dynamics) — LANDED (branch `wp-u18`).** New PC element
 `elements/pc/windgen/` (Generator-shaped negative load): aerodynamic power-flow
 (`Pm=0.5·ρ·π·Rad²·v³·Cp`, the load shape supplies WIND SPEED not a pu multiplier;

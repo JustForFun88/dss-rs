@@ -44,6 +44,15 @@ impl ElemFlags {
     pub const HAS_OCP_DEVICE: Self = Self(1 << 7);
     /// `Flg.HasAutoOCPDevice` — Relay or Recloser only.
     pub const HAS_AUTO_OCP_DEVICE: Self = Self(1 << 8);
+    /// `Flg.ForceYPrim` — use the YPrim supplied by the user (`Set YPrim=…`,
+    /// WP-U1.9): `ReCalcAllYPrims`/`BuildYMatrix` skip `CalcYPrim`, and
+    /// `SetYPrimInvalid(true)` is suppressed so the forced matrix stays live.
+    pub const FORCE_YPRIM: Self = Self(1 << 9);
+    /// `Flg.ForceInjCurrents` — use the injection/terminal currents supplied by
+    /// the user (`Set InjCurrent=…`/`Set ITerminal=…`, WP-U1.9): the injection
+    /// loop injects the stored `InjCurrent` directly and `GetCurrents` returns
+    /// the stored `ITerminal` instead of recomputing the PC-element model.
+    pub const FORCE_INJ_CURRENTS: Self = Self(1 << 10);
 
     /// Pascal `<flag> in Flags`.
     pub fn contains(self, other: Self) -> bool {

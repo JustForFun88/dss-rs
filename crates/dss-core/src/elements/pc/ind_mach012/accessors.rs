@@ -4,7 +4,7 @@
 
 use num_complex::Complex64;
 
-use crate::elements::ckt::CktElementData;
+use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pc::generator::{Connection, default_recalc_ctx};
@@ -115,7 +115,13 @@ impl CktElement for IndMach012 {
             self.cd.calc_yprim_contribution(node_v, curr);
             return;
         }
-        if self.cd.iterminal_solution_count != sys.solution_count && !self.ind_mach_switch_open {
+        // Pascal `TIndMach012Obj.GetTerminalCurrents` (@ 0.15.0b4): `and (not
+        // (Flg.ForceInjCurrents in Flags))` — skip the model recompute when the
+        // currents are forced from the DSS language (WP-U1.9).
+        if self.cd.iterminal_solution_count != sys.solution_count
+            && !self.ind_mach_switch_open
+            && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
+        {
             self.calc_model_contribution(sys, node_v);
         }
         if self.cd.iterminal_updated {

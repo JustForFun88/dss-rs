@@ -1234,6 +1234,18 @@
   "wp": "WP-U1.4",
   "oracle": "capi015",
   "note": "UPGRADE_PLAN WP-U1.4 (B3/C1, LineSpacing.pas/LineConstants.pas): LineSpacing equivalent-spacing model. detailed=no supplies EqDistPhPh=2.5/EqDistPhN=4.272/AvgPhaseHeight=28/AvgNeutralHeight=24 (ft) instead of per-conductor X/H; the LineGeometry (nconds=4 nphases=3 reduce=y) Kron-reduces to a 3x3 phase Z. Probed on capi015 (0.15.0b4): converged (2 iters), reduced rmatrix diag 0.4105655/off 0.1095458, xmatrix diag 0.9883347/off 0.4265879 ohm/mi; bit-identical fingerprint across two capi015 processes. Feature-sensitive: the equivalent distances drive the whole Z/YPrim (also unit-pinned by line_geometry::tests::matrices_equivalent_spacing_match_capi015)."
+ },
+ {
+  "path": "upgrade/upgrade_forcehooks.dss",
+  "ad": "off:unclassified-new-deck",
+  "kind": "micro",
+  "n_steps": 1,
+  "selected_elements": [
+   "*"
+  ],
+  "oracle": "capi015",
+  "pending": false,
+  "note": "UPGRADE_PLAN WP-U1.9 (A3/A5, §1.7): PCE force hooks. After a baseline solve, `select load.ld; set InjCurrent=[80 0 80 0 80 0]` forces the load's injection currents (Flg.ForceInjCurrents); the harness re-solve injects them directly and settles at a new operating point. Gated oracle:capi015 -- these options do not exist in the 0.14.5 default oracle. Feature-sensitive: forcing moves b2 Vmag 7187.45 -> 7224.14 V (probed on capi015, bit-identical across two processes). Per-option contract (frozen Get InjCurrent/ITerminal, YPrim/StateVar/IterNumber, clear reset) is exec/tests/force_hooks.rs, pinned to the same probe."
  }
  ]
 }

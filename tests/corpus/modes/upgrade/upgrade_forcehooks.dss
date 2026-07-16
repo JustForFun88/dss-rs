@@ -1,0 +1,30 @@
+// UPGRADE_PLAN.md WP-U1.9 — the PCE force hooks (dss_capi 0.15.0b4
+// `ExecOptions.pas` @ e936d210: `Set InjCurrent=` + `Flg.ForceInjCurrents`).
+// After a baseline solve, `Set InjCurrent=` overrides the load's injection
+// currents; the injection loop injects the forced values directly and the
+// re-solve settles at a DIFFERENT operating point. Gated `oracle: "capi015"`:
+// these options do not exist in the 0.14.5 default oracle (they were added in
+// the 0.15.x line), so only capi015 both accepts and applies them.
+//
+// Feature sensitivity (UPGRADE_PLAN §1.7-3): forcing an 80 A injection on the
+// b2 load moves b2 Vmag from 7187.45 V (baseline) to 7224.14 V — a ~37 V shift,
+// far above the live-compare i_abs/v floor. If the injection loop stops
+// honouring `Flg.ForceInjCurrents`, the whole-model V/I/Y diverges from capi015
+// at b2. The exact per-option contract (frozen `Get InjCurrent`/`ITerminal`,
+// `YPrim`/`StateVar`/`IterNumber` readbacks, `clear` reset) is the Rust unit
+// suite `exec/tests/force_hooks.rs`, pinned to the same capi015 0.15.0b4 probe.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.upgrade_forcehooks basekv=12.47 pu=1.0 phases=3 bus1=sourcebus
+New line.l1 phases=3 bus1=sourcebus bus2=b2 r1=0.3 x1=0.6 r0=0.5 x0=1.0 c1=0 c0=0 length=1
+New load.ld bus1=b2 phases=3 kv=12.47 kw=500 kvar=150 model=1
+
+Set voltagebases=[12.47]
+calcv
+solve
+
+! Force the load's injection currents, then let the harness re-solve: the forced
+! 80 A per phase (Flg.ForceInjCurrents) shifts the operating point.
+select load.ld
+set InjCurrent=[80 0 80 0 80 0]

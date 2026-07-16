@@ -965,6 +965,89 @@ inner loop bound shortened, form-only). Cited to the 0.15.x Pascal + commit
   no-op witness.
 - `known_diffs`: none matched — nothing to retire.
 
+## A3/A5 — PCE force hooks (`Set`/`Get` InjCurrent/ITerminal/YPrim/StateVar/…) — SETTLED (WP-U1.9, adopt capi015)
+
+**Observable.** The `Set`/`Get` options `InjCurrent`/`ITerminal`/`YPrim`/
+`StateVar`/`IterNumber`/`CtrlIterNumber`/`IntegrationFlag` and the element flags
+`Flg.ForceInjCurrents`/`Flg.ForceYPrim` — the pyControl co-simulation engine
+hooks (the `pyControl` component + `Set PyPath=` stay `NOT_PORTED`, §0).
+
+**Source-tree note (important for future WPs).** These options do **not** exist
+in the vendored working tree `.inputs/dss_capi_with_git` — it is checked out at
+`master` (`f5728aec`), a commit *after* `0.15.0b4` where the pyControl hooks were
+**removed** upstream. But the **capi015 oracle** the plan pins to is
+`0.15.0b4` (tag `e936d210`), which **does** carry them (`get InjCurrent` returns
+a value; `git show 0.15.0b4:src/Executive/ExecOptions.pas` shows the enum tail
+`…StateVar, PyPath, IterNumber, CtrlIterNumber, InjCurrent, ITerminal, YPrim,
+IntegrationFlag, …`). The spec for this WP was therefore read via
+`git show 0.15.0b4:`, not the working tree. `delta_capi_0145_015x.md` A3 also
+wrongly listed `SampleControlDevices` as a new hook — it is present already in
+`0.14.5` (`Solution.pas:1974`) and was ported long ago
+(`solution/controls/sampling.rs`); not a delta.
+
+**Decision — adopt the capi015 (=0.15.0b4) behavior.** `ElemFlags::FORCE_YPRIM`/
+`FORCE_INJ_CURRENTS`, honored in the injection loop
+(`solution/solution/power_flow.rs::get_pc_inj_curr_filtered` injects the stored
+`InjCurrent` directly, per `TPCElement.InjCurrents`) and in `ReCalcAllYPrims`
+(`solution/ymatrix.rs` skips `CalcYPrim` for a `ForceYPrim` element); the five
+PCE `GetTerminalCurrents` skip the model recompute when forced (Load/Generator/
+PVsystem/Storage/IndMach012). The option set/get is in `exec/set_cmd.rs`/
+`exec/get_cmd.rs`; the parser gained `make_complex`/`parse_as_complex_vector`/
+`parse_as_complex_matrix` (`ParserDel.pas`). `Set IterNumber`/`CtrlIterNumber`/
+`IntegrationFlag` are read-only (error 25040103); `Set PyPath=` is a loud
+NOT_PORTED.
+
+**Audit follow-ups (WP-U1.9, verified against the capi015 0.15.0b4 oracle).**
+- **`Set StateVar` via text is upstream-broken — reproduced as an error, not a
+  write.** `DoSetCmd` matches bare tokens *positionally* (only `name=value`
+  pairs are looked up by name — `ExecOptions.pas:247-255`), so
+  `set StateVar generator.g1 Frequency 55` never reaches the StateVar arm: the
+  tokens land on options 1/3/4 and the integer `hour` option rejects
+  `Frequency` (capi015 `#303`; the port errors the same way and leaves the
+  variable unchanged). `Get StateVar` **does** work (`DoGetCmd` name-matches
+  every token — `:951-957`) and is the pinned/read path. The earlier
+  "Set/Get StateVar covered" claim was corrected to reflect this: the unit
+  suite now pins the natural-syntax error + the read path + both 7103 guards.
+- **7103 `is TPCElement` guard.** `Set/Get StateVar` on a non-PCE now errors
+  `Object "<Class>.<name>" is not a valid PC element.` (Pascal 7103, checked
+  *before* the NumVariables 7101 check), matching capi015
+  (`get StateVar line.ln Frequency` → `#7103`).
+- **`Set/Get AllowForms`/`AllowProgressBar`** are accepted headless no-ops
+  (`NoFormsAllowed`/`NoProgressBarFormAllowed` stored for `Set`/`Get`
+  round-trip, unread; default `No`). capi015 silently accepts them — the
+  pre-fix "not ported yet" error diverged.
+- **Force-hook error arms `Exit`** the whole `Set`/`Get` command in Pascal
+  (`DoSimpleMsg(...); Exit`); the port now breaks the option loop on those
+  errors instead of continuing.
+- **`Set YPrim` size-mismatch is only the oversize-row case.** capi015's
+  `ParseAsComplexMatrix` returns `ExpectedOrder` (accept) for a too-*few*-row
+  matrix (`[5 0 | 0 5]` on a 4-cond PCE → zero-padded, no error, both engines);
+  the `#3004` size-mismatch fires only when a single row exceeds `NConds²`
+  (>16). **Not reproduced (deliberate):** on that `#3004` capi015 has already
+  zeroed the live YPrim (its own source comments this is a known error-state
+  imperfection — "we'd need to keep a copy of the old matrix"), whereas the
+  port parses into a scratch buffer and leaves the real YPrim intact. The
+  difference is transient — neither engine sets `ForceYPrim` on the error, so
+  the next `ReCalcAllYPrims` recomputes the matrix on both — and it is an
+  error state, so the safer preserve-on-error is kept.
+
+**Gate consequence.**
+- **Live capi015 deck** `modes/upgrade_forcehooks.dss` (`oracle: "capi015"`,
+  validated bit-identical across two capi015 processes): `Set InjCurrent=[80 0
+  80 0 80 0]` on the b2 load shifts b2 Vmag 7187.45 → 7224.14 V; whole-model
+  live compare green. Feature-sensitive (a broken injection-loop honor → 7187 vs
+  capi015 7224, ≫ floor).
+- **capi015-pinned Rust unit suite** `exec/tests/force_hooks.rs` (12 tests):
+  forced Vmag 7224.143523 (1e-6), frozen `Get InjCurrent`/`ITerminal` (Load) +
+  frozen Generator `ITerminal` (2nd PCE force-skip), `Set ITerminal` freeze
+  (base 23.175527 → forced `[10,0,10]`), `Get IterNumber`/`IntegrationFlag`,
+  read-only `Set` (aborts the loop), `Set PyPath` NOT_PORTED, `Set YPrim`
+  survives a rebuild + oversize-row `#3004`, `Get StateVar` read + natural-syntax
+  `Set StateVar` upstream-broken error + 7103 non-PCE guard, `AllowForms`/
+  `AllowProgressBar` round-trip, and `Clear` resets the force flags.
+- `known_diffs.json`: no Rust↔EPRI entry existed for the force hooks at r3723
+  (the options did not exist) — nothing to retire.
+
 ## B3/C1 — LineSpacing equivalent-spacing model — SETTLED (WP-U1.4, adopt capi015; default-off, no golden movement)
 
 **Observable.** The series `Z` / shunt `Yc` of a Line whose `LineGeometry`

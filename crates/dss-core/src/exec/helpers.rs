@@ -4,6 +4,74 @@
 
 use super::*;
 
+/// The active circuit element as a mutable PC element, or its full name if the
+/// active element is not a PCE / not set (Pascal
+/// `(cktElem.DSSObjType and BASECLASSMASK) = PC_ELEMENT`). WP-U1.9 force hooks.
+pub(crate) fn active_pce<'a>(
+    classes: &'a mut [DssClass],
+    ckt: &Circuit,
+    active: Option<(usize, usize)>,
+) -> Result<&'a mut dyn CktElement, String> {
+    match active {
+        Some((ci, oi)) if ckt.pc_elements.contains(&ElemRef { cls: ci, idx: oi }) => {
+            Ok(classes[ci].objects[oi]
+                .as_ckt_element_mut()
+                .expect("pc_elements entry is a circuit element"))
+        }
+        Some((ci, oi)) => Err(format!(
+            "{}.{}",
+            classes[ci].props.class_name(),
+            classes[ci].objects[oi].data().name()
+        )),
+        None => Err("NIL".to_string()),
+    }
+}
+
+/// Whether the `(class, object)` pair is a PC element (Pascal
+/// `ActiveCktElement is TPCElement`). Used by the `Set/Get StateVar` guard
+/// (error 7103 "is not a valid PC element"). WP-U1.9.
+pub(crate) fn is_pce(ckt: &Circuit, ci: usize, oi: usize) -> bool {
+    ckt.pc_elements.contains(&ElemRef { cls: ci, idx: oi })
+}
+
+/// Resolve `Class.Name` (or a bare name searched across circuit-element classes)
+/// to `(class idx, object idx)` (Pascal `TDSSCircuit.SetElementActive`). WP-U1.9.
+pub(crate) fn resolve_ckt_element(
+    classes: &mut [DssClass],
+    class_by_name: &HashMap<String, usize>,
+    parser: &mut Parser,
+    vars: &ParserVars,
+    full_name: &str,
+) -> Option<(usize, usize)> {
+    let (cls, name) = parse_object_class_and_name(parser, vars, full_name);
+    if !cls.is_empty() {
+        let ci = *class_by_name.get(&cls.to_lowercase())?;
+        if classes[ci].set_active(&name)
+            && classes[ci].objects[classes[ci].active?]
+                .as_ckt_element()
+                .is_some()
+        {
+            return Some((ci, classes[ci].active?));
+        }
+        return None;
+    }
+    for (ci, class) in classes.iter_mut().enumerate() {
+        if class.set_active(&name)
+            && let Some(oi) = class.active
+            && class.objects[oi].as_ckt_element().is_some()
+        {
+            return Some((ci, oi));
+        }
+    }
+    None
+}
+
+/// Pascal `LookupVariable(name, true)` (case-insensitive, PCElement.pas D15 fix):
+/// 1-based index of state variable `name`, or `None`. WP-U1.9.
+pub(crate) fn lookup_variable(elem: &dyn CktElement, name: &str) -> Option<usize> {
+    (1..=elem.num_variables()).find(|&i| elem.variable_name(i).eq_ignore_ascii_case(name))
+}
+
 /// Pascal `interpretTimeStepSize` (`ExecOptions.pas` l.315): plain number =
 /// seconds; otherwise a single-char `h`/`m`/`s` suffix. On error the step size
 /// is left unchanged.
