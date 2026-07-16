@@ -542,6 +542,27 @@ fn matrices_equivalent_spacing_match_capi015() {
             assert_close(z.get(i, j).im, want_im, &format!("Z[{i}][{j}].im"));
         }
     }
+
+    // Shunt capacitance (the equivalent-spacing Yc branch: dijp = 2*avg height /
+    // avg_phase+avg_neutral, self term via Fcapradius directly). Reduced 3x3,
+    // nF/mi. capi015 `? line.l1.cmatrix` on the identical deck (probe 2026-07-16):
+    //   cmatrix diag 16.1618729173611, off-diag -4.08707678619493
+    let yc = g.yc_matrix(60.0, 1.0, MI_UNIT, DERI).expect("yc");
+    for i in 0..3 {
+        for j in 0..3 {
+            // Im(Yc)/omega = C (farads/mi); reference is nF/mi -> *1e-9.
+            let want_nf = if i == j {
+                16.1618729173611
+            } else {
+                -4.08707678619493
+            };
+            assert_close(
+                yc.get(i, j).im / W60,
+                want_nf * 1e-9,
+                &format!("C[{i}][{j}]"),
+            );
+        }
+    }
 }
 
 #[test]
