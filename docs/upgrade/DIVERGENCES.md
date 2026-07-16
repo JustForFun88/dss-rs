@@ -1335,3 +1335,41 @@ change** (ledger L3). The port's monitor header is compared token-wise
 `monitor-header-whitespace` entry (Rust/dss_capi strip EPRI's leading-space
 padding — a deliberate KEPT divergence vs the EPRI oddie binaries) **stays** — E1
 confirms keeping it, it is not retired.
+
+## NCIM PV→PQ Q-limit iteration count — SETTLED (WP-U1.7 cross-check, capi015 pinned; r4088 differs, report-only)
+
+**Observable.** The NCIM (`Set algorithm=NCIM`) iteration count to converge a deck
+that hits a generator Q-limit → PV→PQ conversion (`NCIM_UpdateGenQ` switching).
+
+**dss_capi 0.15.x (capi015, r4103).** The PV→PQ decks converge in **8 iterations**
+(`ncim_pv_pq`, `ncim_midi`). PQ-only (`ncim_pq`) converges in **3**.
+
+**EPRI r4088 (OpenDSS 10.2.0.1 "Columbus").** NCIM IS supported (accepts `Set
+algorithm=NCIM`, `get algorithm → ncim`, swing bus at the ideal EMF). The PV→PQ
+decks converge in **4 iterations** — half of capi015's 8 — while PQ-only matches
+(3). The r4088→r4103 window changed the PV→PQ switching/relaxation cadence.
+
+**Probe** (`ab_ncim.py`, 2026-07-16; capi015 vs oddie:r4088 on the three
+`modes/ncim/` decks, comparing `YNodeVarray`):
+
+| deck | capi015 conv/iters | r4088 conv/iters | max\|dV\| |
+|---|---|---|---|
+| ncim_pq | True / 3 | True / 3 | 7.1e-12 V |
+| ncim_pv_pq | True / 8 | True / 4 | 1.8e-12 V |
+| ncim_midi | True / 8 | True / 4 | 7.2e-11 V |
+
+The **converged node voltages are bit-identical** across the two engines (max\|dV\|
+at the KLU-vs-KLU last-ulp floor); only the iteration COUNT to reach the same
+fixpoint differs on the PV→PQ decks. No physics divergence.
+
+**Decision — pin capi015 (the Rung-1 primary oracle); the r4088 iteration count is
+report-only, NOT gated.** The port reproduces capi015's NCIM solver loop-for-loop
+(`NCIMSolutionHelper.pas`, r4103) and pins its 8-iteration PV→PQ convergence
+(`exec/tests/ncim.rs`, unit; `modes/ncim/*` live). The corpus iteration policy is
+already `<=` for `oracle: "capi015"` cases (§1.3-1), so a future engine that
+converges the same fixpoint in fewer passes would not fail the gate.
+
+**Gate consequence.** None — this is an inventory note for the eventual r4133
+end-target (§1.4). No `known_diffs.json` entry (NCIM is a 0.15.x-line feature with
+no 0.14.5 baseline; the port matches capi015, its spec). If a later rung retargets
+NCIM to r4133, the switching cadence (not the fixpoint) is the item to revisit.
