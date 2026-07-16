@@ -31,9 +31,17 @@ new recloser.r monitoredobj=line.mid monitoredterm=1
 ~ switchedobj=line.mid switchedterm=1 numfast=1 shots=3
 ~ phasetrip=100 groundtrip=60 recloseintervals=(0.5, 1.0)
 
-! Lateral fuse (default tlink curve).
+! Lateral fuse. WP-U2.1 (r4133): the fuse default curve moved tlink->none (never
+! blows) and its divisor moved RatedCurrent->CurveMultiplier (r4133-only). This
+! deck stays gated on the 0.14.5 oracle for its still-0.14.5 Recloser/Relay tiers
+! (r4133 overhaul = WP-U2.2/U2.3, unported), so the fuse tier is temporarily
+! NEUTRALIZED (ratedcurrent raised so it never blows on 0.14.5 either) to match
+! the Rust port's r4133 never-blows -- the classic fuse-save race described above
+! is deferred: it needs all three tiers version-consistent, so it returns when
+! this deck flips to oracle:"r4133" after the protection rung lands. (The r4133
+! CurveMultiplier-scaled blow is gated live by fuse_curvemult_blow.)
 new fuse.fz monitoredobj=line.latf monitoredterm=1
-~ switchedobj=line.latf switchedterm=1 ratedcurrent=40
+~ switchedobj=line.latf switchedterm=1 ratedcurrent=100000
 
 ! Permanent SLG fault on the fused lateral, phase 1.
 new fault.f bus1=b3.1 phases=1 ontime=0.2 r=0.5 temporary=no
