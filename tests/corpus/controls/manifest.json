@@ -765,6 +765,8 @@
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 12,
+   "oracle": "capi015",
+   "wp": "WP-U1.6",
    "post": [
     "edit swtcontrol.sw action=open"
    ],
@@ -783,7 +785,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "note": "WP-U1.6 D12 (bb9c9785): SwtControl Normal/State map to distinct fields (NormalState/PresentState), not the shared CurrentAction. Gated capi015 because the `state` probe readback moves: after the armed `action=open` post-command the port (D12, matching capi015 GetState = live element) reads State=Closed until the switch operates at the 0.25 s delay (step 3), then Open; 0.14.5 read the armed CurrentAction=Open from step 0. Cannot gate 0.14.5 (deliberate mismatch, §1.2). Multi-step capi015 capture is valid here (per-step Monitor/probe/eventlog reflect the solve; the L1 re-nominalization affects only the getYSparse element-state re-read, not these channels -- verified 2026-07-16). normal=Closed throughout. Feature-sensitive: the switch opens at step 3 (delay-driven); the state trajectory Closed x3 -> Open flips if the field mapping regresses."
   },
   {
    "path": "gendispatcher/gendispatcher.dss",
@@ -1086,6 +1089,8 @@
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 12,
+   "oracle": "capi015",
+   "wp": "WP-U1.6",
    "post": [
     "edit swtcontrol.sw action=open"
    ],
@@ -1103,7 +1108,8 @@
     }
    ],
    "compare_eventlog": true,
-   "compare_ctrlqueue": true
+   "compare_ctrlqueue": true,
+   "note": "WP-U1.6 D12 (bb9c9785): SwtControl Normal/State map to distinct fields. Gated capi015 (like swtcontrol_time): the armed `action=open` post-command opens the loop tie at the 0.25 s delay (step 3); the port (D12, matching capi015 GetState) reads State=Closed until then, 0.14.5 read the armed CurrentAction=Open from step 0 -- a deliberate mismatch (§1.2). The switch is UNLOCKED so the post-command does not hit capi015's strict read-only surface. No loadshapes (constant loads) so the capi015 multi-step capture is exact. Feature-sensitive: the state Closed x3 -> Open trajectory flips if the field mapping regresses."
   },
   {
    "path": "energymeter/midi_energymeter.dss",
