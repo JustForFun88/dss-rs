@@ -84,10 +84,11 @@ pub fn obj_to_json_data(
                 continue;
             }
 
-            // Skip Like, substructure index, or suppressed props.
+            // Skip Like, substructure index, suppressed, or 0.15.x-deferred props.
             if pd.ptype == PropType::MakeLike
                 || (pd.flags.contains(PropFlags::SUPPRESS_JSON)
                     && !pd.flags.contains(PropFlags::REDUNDANT))
+                || pd.flags.contains(PropFlags::HIDE_015X)
                 || pd.flags.contains(PropFlags::ALT_INDEX)
                 || pd.flags.contains(PropFlags::INTEGER_STRUCT_INDEX)
             {
@@ -106,6 +107,7 @@ pub fn obj_to_json_data(
                 continue;
             }
             if pd.flags.contains(PropFlags::SUPPRESS_JSON)
+                || pd.flags.contains(PropFlags::HIDE_015X)
                 || pd.flags.contains(PropFlags::ALT_INDEX)
                 || pd.flags.contains(PropFlags::INTEGER_STRUCT_INDEX)
             {

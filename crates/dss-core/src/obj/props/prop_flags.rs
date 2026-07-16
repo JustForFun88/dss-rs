@@ -149,6 +149,16 @@ impl PropFlags {
     /// Pascal `Unused`: the property is accepted for backward compatibility but is
     /// not consumed by the engine (`CAPI_Schema.pas:74`). Schema-only, inert here.
     pub const UNUSED: Self = Self(1 << 47);
+    /// **Not a Pascal flag.** A 0.15.x-only property deferred from the
+    /// *full-enumeration* 0.14.5-gated surfaces — the `Dump` text report
+    /// ([`report::save::dump`](crate::report::save::dump)) and the AltDSS JSON
+    /// export — because those byte-exact goldens are pinned to 0.14.5 and the class
+    /// cannot flip them to capi015 until a sibling WP lands the remaining 0.15.x
+    /// props (e.g. Line `Conductors`). The named-query (`?`) and props-table
+    /// (`PROPS_015X` allowlist) surfaces still expose the property. Drop the flag
+    /// when the class's Dump/JSON goldens regenerate on capi015. Carried by Line
+    /// `EpsRMedium`/`HeightOffset`/`HeightUnit` (WP-U1.4).
+    pub const HIDE_015X: Self = Self(1 << 48);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
