@@ -135,12 +135,12 @@ fn build_tcc(npts: &str, c: &str, t: &str) -> TccCurveObj {
     obj
 }
 
-/// A 3-phase fuse armed with a simple `c=[1,10] t=[1,0.1]` link and rated 1 A,
-/// its controlled element a 3-phase line.
+/// A 3-phase fuse armed with a simple `c=[1,10] t=[1,0.1]` link, its controlled
+/// element a 3-phase line. `CurveMultiplier` stays at the `new()` default 1.0 (the
+/// r4133 divisor), so a `Cmag` pu multiple equals the raw current magnitude.
 fn armed_fuse() -> Fuse {
     let mut f = Fuse::new("f1");
     f.fuse_curve_obj = Some(build_tcc("2", "1 10", "1 0.1"));
-    f.rated_current = 1.0;
     f.ctrl_snap = Some(crate::elements::control::control_elem::RefSnapshot {
         full_name: "Line.l1".into(),
         nphases: 3,
@@ -159,8 +159,12 @@ fn default_is_3ph_closed_fuse() {
     assert_eq!(f.ccd.cd.nterms, 1);
     assert_eq!(f.ccd.element_terminal, 1);
     assert_eq!(f.monitored_element_terminal, 1);
-    assert_eq!(f.fuse_curve_name, "tlink");
-    assert_eq!(f.rated_current, 1.0);
+    // r4133 (WP-U2.1): default curve `none` (never blows), RatedCurrent 0,
+    // CurveMultiplier 1.0.
+    assert_eq!(f.fuse_curve_name, "none");
+    assert_eq!(f.rated_current, 0.0);
+    assert_eq!(f.curve_multiplier, 1.0);
+    assert_eq!(f.interrupting_rating, 0.0);
     assert_eq!(f.delay_time, 0.0);
     assert!(f.present_state.iter().all(|&s| s == CTRL_CLOSE));
     assert!(f.normal_state.iter().all(|&s| s == CTRL_CLOSE));
@@ -202,15 +206,40 @@ fn sample_disarms_when_current_drops_below_pickup() {
 }
 
 #[test]
-fn sample_divides_current_by_rated_current() {
-    // Pins the `Cmag / RatedCurrent` divisor: 5 A at rated 10 A is a 0.5 pu
-    // multiple — below the first curve point (c[0] = 1) → no operation. A dropped
-    // or inverted divisor would push the multiple ≥ 1 and (wrongly) arm.
+fn sample_divides_current_by_curve_multiplier() {
+    // r4133 (WP-U2.1): the divisor is `CurveMultiplier`, NOT the (now
+    // informational) `RatedCurrent`. 5 A / CurveMultiplier 10 = 0.5 pu multiple —
+    // below the first curve point (c[0] = 1) → no operation. A dropped or inverted
+    // divisor would push the multiple ≥ 1 and (wrongly) arm. RatedCurrent is set
+    // small here to prove it is NOT consulted (the old code divided by it → would
+    // arm).
     let mut f = armed_fuse();
     f.ccd.cd.nphases = 3;
-    f.rated_current = 10.0;
+    f.curve_multiplier = 10.0;
+    f.rated_current = 1.0; // informational — must NOT affect the divisor
     let mut ctrl = MockLine::new(3, 0.0);
     let mut mon = MockLine::new(3, 5.0); // 5 A / 10 A = 0.5 pu < pickup
+    let mut sc = Scratch::new();
+    f.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(f.ready_to_blow[..3].iter().all(|&b| !b));
+    assert_eq!(sc.queue.queue_size(), 0);
+}
+
+#[test]
+fn default_fuse_never_blows() {
+    // r4133 breaking default (WP-U2.1): a default-constructed fuse has no curve
+    // (`none`) so `Sample` never arms, even under massive overcurrent.
+    let mut f = Fuse::new("f1");
+    f.ctrl_snap = Some(crate::elements::control::control_elem::RefSnapshot {
+        full_name: "Line.l1".into(),
+        nphases: 3,
+        nterms: 1,
+        buses: vec!["b".into()],
+    });
+    f.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    assert!(f.fuse_curve_obj.is_none());
+    let mut ctrl = MockLine::new(3, 0.0);
+    let mut mon = MockLine::new(3, 1e6); // enormous overcurrent
     let mut sc = Scratch::new();
     f.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
     assert!(f.ready_to_blow[..3].iter().all(|&b| !b));
@@ -348,6 +377,8 @@ fn make_like_copies_fuse_state() {
     base.ccd.element_terminal = 2;
     base.monitored_element_terminal = 2;
     base.rated_current = 25.0;
+    base.curve_multiplier = 3.0;
+    base.interrupting_rating = 12000.0;
     base.delay_time = 0.5;
     base.fuse_curve_name = "klink".into();
     base.ctrl_snap = Some(crate::elements::control::control_elem::RefSnapshot {
@@ -365,6 +396,9 @@ fn make_like_copies_fuse_state() {
     assert_eq!(f.ccd.element_terminal, 2);
     assert_eq!(f.monitored_element_terminal, 2);
     assert_eq!(f.rated_current, 25.0);
+    // r4133 (WP-U2.1): CurveMultiplier + InterruptingRating are copied.
+    assert_eq!(f.curve_multiplier, 3.0);
+    assert_eq!(f.interrupting_rating, 12000.0);
     // Pascal `TFuseObj.MakeLike` copies neither `DelayTime` — it stays at the
     // Create default — nor `NormalStateSet`.
     assert_eq!(f.delay_time, 0.0);
@@ -395,8 +429,9 @@ fn default_state_arrays_dump_per_phase() {
     };
     assert_eq!(dump(&mut dss, "Normal"), "[closed, closed, closed, ]");
     assert_eq!(dump(&mut dss, "State"), "[closed, closed, closed, ]");
-    // The default fuse link resolves to the built-in `tlink` curve.
-    assert_eq!(dump(&mut dss, "FuseCurve"), "tlink");
+    // r4133 (WP-U2.1): the default fuse curve is `none` (never blows), rendered
+    // as the literal `none` (Pascal `if FuseCurve <> nil then Name else 'none'`).
+    assert_eq!(dump(&mut dss, "FuseCurve"), "none");
     // SwitchedObj defaults to the monitored element.
     assert_eq!(dump(&mut dss, "SwitchedObj"), "Line.l1");
 }
@@ -455,8 +490,10 @@ fn fuse_blows_phases_on_overcurrent() {
         "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
         "new line.l1 bus1=src bus2=b phases=3 r1=0.3 x1=0.6 length=1",
         "new load.ld bus1=b phases=3 kv=12.47 kw=5000",
-        // rated 1 A → a huge overcurrent ratio → trips on the tlink tail.
-        "new fuse.f1 monitoredobj=line.l1 ratedcurrent=1",
+        // r4133 (WP-U2.1): an explicit curve is now required to blow (default is
+        // `none`); CurveMultiplier defaults to 1.0 → the full current hits the
+        // tlink tail → trips.
+        "new fuse.f1 monitoredobj=line.l1 fusecurve=tlink",
         "set voltagebases=[12.47]",
         "calcvoltagebases",
         "set controlmode=time",

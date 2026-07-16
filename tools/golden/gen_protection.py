@@ -108,10 +108,17 @@ def deck_relay_current() -> dict:
 
 
 def deck_fuse_blow() -> dict:
+    # WP-U2.1 (r4133): the fuse default is now `none` (never blows) and the TCC
+    # divisor is `CurveMultiplier`, not `RatedCurrent`. To keep this the blow gate
+    # it was, the curve is named explicitly (`fusecurve=tlink`) and the divisor
+    # `curvemultiplier=40` reproduces the exact pre-r4133 `ratedcurrent=40` scaling
+    # (`GetTCCTime(Cmag/40)`), so the blow trajectory is numerically unchanged;
+    # `ratedcurrent=40` stays as the now-informational rating. Captured on the
+    # EPRI r4133 engine (see `main`).
     cmds = [
         *CKT,
         "new fuse.fz monitoredobj=line.feed monitoredterm=1 "
-        "switchedobj=line.feed switchedterm=1 ratedcurrent=40",
+        "switchedobj=line.feed switchedterm=1 fusecurve=tlink curvemultiplier=40 ratedcurrent=40",
         "new fault.f bus1=loadb phases=3 ontime=0.1 r=1 temporary=no",
         *TAIL,
         DUTY,
@@ -184,22 +191,70 @@ def build(d, spec: dict) -> dict:
     }
 
 
-def main() -> None:
-    oracle = check_pin()
-    from dss import DSS as d
+# Scenarios captured on an EPRI Oddie engine instead of the pinned capi oracle,
+# because their behavior is r4133-specific (WP-U2.1: the fuse overhaul — default
+# curve `none`, `CurveMultiplier` divisor — exists only in r4133). `fuse_blow`'s
+# blow trajectory is numerically identical to the retired 0.14.5 capture (the
+# curve/divisor are pinned to reproduce it), but it must be captured on the
+# engine whose fuse semantics the port now targets.
+ODDIE_SCENARIOS = {"fuse_blow": "r4133"}
 
+
+def make_oddie(rev: str):
+    """Build an official EPRI `OpenDSSDirect.dll` engine (Oddie bridge) for `rev`
+    and return `(engine, oracle_provenance)`."""
+    from dss import IOddieDSS
+
+    revs = json.loads((REPO_ROOT / "tools" / "opendss" / "revisions.json").read_text())
+    if rev not in revs:
+        sys.exit(f"unknown opendss rev {rev!r}; known: {sorted(revs)}")
+    dll = str((REPO_ROOT / revs[rev]["dll"]).resolve())
+    expect = revs[rev].get("expect_version", "")
+    d = IOddieDSS(library_path=dll)
+    ver = str(d.Version)
+    if expect and expect not in ver:
+        sys.exit(f"engine {ver!r} does not contain expected {expect!r} (rev={rev})")
+    d.AllowForms = False
+    d.Text.Command = "Set RegistryUpdate=No"
+    d.Text.Command = "Set Editor=rundll32.exe"
+    return d, {"engine_spec": rev, "engine": ver}
+
+
+def main() -> None:
     wanted = set(sys.argv[1:])
     unknown = wanted - set(SCENARIOS)
     if unknown:
         sys.exit(f"unknown scenario(s): {sorted(unknown)}; known: {sorted(SCENARIOS)}")
     names = [n for n in SCENARIOS if not wanted or n in wanted]
 
+    # The capi oracle (check_pin: dss-python 0.15.7) is bound lazily — an
+    # oddie-only run (e.g. `gen_protection.py fuse_blow` under the Oddie venv,
+    # dss-python 0.16.0b2) must not trip the capi pin.
+    capi = None
+
+    def get_capi():
+        nonlocal capi
+        if capi is None:
+            oracle = check_pin()
+            from dss import DSS as dcapi
+
+            capi = (dcapi, oracle)
+        return capi
+
+    oddie_cache: dict[str, tuple] = {}
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for name in names:
-        sc = build(d, SCENARIOS[name]())
+        if name in ODDIE_SCENARIOS:
+            rev = ODDIE_SCENARIOS[name]
+            if rev not in oddie_cache:
+                oddie_cache[rev] = make_oddie(rev)
+            eng, sc_oracle = oddie_cache[rev]
+        else:
+            eng, sc_oracle = get_capi()
+        sc = build(eng, SCENARIOS[name]())
         path = OUT_DIR / f"{name}.json"
         path.write_text(
-            json.dumps({"schema": SCHEMA, "oracle": oracle, "scenario": sc}, indent=1) + "\n"
+            json.dumps({"schema": SCHEMA, "oracle": sc_oracle, "scenario": sc}, indent=1) + "\n"
         )
         print(f"wrote {path.relative_to(REPO_ROOT)} ({len(sc['event_log'])} event-log lines)")
 
