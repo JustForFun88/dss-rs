@@ -196,13 +196,17 @@ impl DssObject for Line {
             WIRES => self.set_wires(refs),
             CNCABLES => self.set_cables("CNCables", refs),
             TSCABLES => self.set_cables("TSCables", refs),
+            CONDUCTORS => self.set_conductors(refs),
             _ => unreachable!("Line has no object-ref-array property {idx}"),
         }
     }
     fn get_object_ref_names(&self, idx: usize) -> Vec<String> {
         debug_assert!(matches!(
             idx,
-            super::prop::WIRES | super::prop::CNCABLES | super::prop::TSCABLES
+            super::prop::WIRES
+                | super::prop::CNCABLES
+                | super::prop::TSCABLES
+                | super::prop::CONDUCTORS
         ));
         self.line_wire_data
             .iter()
@@ -212,6 +216,15 @@ impl DssObject for Line {
                     .unwrap_or_default()
             })
             .collect()
+    }
+
+    /// Pascal `PropertyStructArrayCountOffset := @obj.conductorDataSize`
+    /// (`Line.pas:319`): the pre-sized conductor-array length the generic
+    /// `Conductors=` fill validates against (`#402` when `< 1`). Sized by
+    /// `fetch_line_spacing` (0 = no spacing yet, Pascal NIL).
+    fn array_size(&self, idx: usize) -> usize {
+        debug_assert_eq!(idx, super::prop::CONDUCTORS);
+        self.line_wire_data.len()
     }
 
     fn get_string(&self, idx: usize) -> String {
@@ -490,14 +503,25 @@ impl DssObject for Line {
                 self.kill_geometry_specified();
                 self.fphase_choice = ConductorChoice::TapeShield;
             }
+            // Pascal Line.pas:750-782: the 0.15.x `Conductors=` list infers the
+            // model from the conductors themselves (last valid phase conductor
+            // wins) and clears the redundant Wires/CNCables/TSCables set-marks. The
+            // common block below completes the model switch (and defaults an
+            // all-`none`/Unknown list to Overhead).
+            CONDUCTORS => {
+                self.fphase_choice = self.conductors_phase_choice();
+                for p in [WIRES, CNCABLES, TSCABLES] {
+                    self.cd.obj.clear_seq(p);
+                }
+            }
             _ => {}
         }
 
-        // Pascal block 2 (Line.pas:716-746): the spacing/wires/cncables/tscables
-        // group. `spacing=` fetches first; once both the spacing and the wire
-        // array exist, switch to the spacing impedance model and clear the marks
-        // it supersedes.
-        if matches!(idx, SPACING | WIRES | CNCABLES | TSCABLES) {
+        // Pascal block 2 (Line.pas:716-746 / 785-865): the spacing/wires/cncables/
+        // tscables/conductors group. `spacing=` fetches first; once both the
+        // spacing and the conductor array exist, switch to the spacing impedance
+        // model and clear the marks it supersedes.
+        if matches!(idx, SPACING | WIRES | CNCABLES | TSCABLES | CONDUCTORS) {
             if idx == SPACING {
                 self.fetch_line_spacing();
             }
@@ -506,6 +530,11 @@ impl DssObject for Line {
                 self.sym_components_changed = false;
                 self.kill_geometry_specified();
                 self.got_ratings_after_spacing_conds = false;
+                // Pascal `if phaseChoice = Unknown then phaseChoice := Overhead`
+                // (0.15.x, the `Conductors=` all-`none`/wire-only fallback).
+                if idx == CONDUCTORS && self.fphase_choice == ConductorChoice::Unknown {
+                    self.fphase_choice = ConductorChoice::Overhead;
+                }
                 for p in [
                     SEASONS, RATINGS, NORMAMPS, EMERGAMPS, R1, X1, R0, X0, C1, C0, B1, B0,
                 ] {
