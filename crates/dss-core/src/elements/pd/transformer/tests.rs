@@ -376,3 +376,32 @@ fn three_winding_x13_x23_trap_zero_to_default() {
         t.xlt
     );
 }
+
+/// C6 (r4064, 90962ae8): the GICharm BH-curve `Unused` data props parse and
+/// store. `BHpoints` (re)allocates both arrays zeroed; `BHcurrent`/`BHflux`
+/// overwrite them. (Values are post-tokenization, as the `edited` helper
+/// receives them — the top-level parser strips the array brackets.) Default is
+/// empty, matching capi015 (BHpoints=0, arrays '').
+#[test]
+fn bh_curve_props_parse_and_store() {
+    let d = Transformer::new("t");
+    assert_eq!(d.bh_points, 0);
+    assert!(d.bh_current.is_empty() && d.bh_flux.is_empty());
+
+    let t = edited(&[
+        ("BHpoints", "3"),
+        ("BHcurrent", "1 2 3"),
+        ("BHflux", "4 5 6"),
+    ]);
+    assert_eq!(t.bh_points, 3);
+    assert_eq!(t.bh_current, vec![1.0, 2.0, 3.0]);
+    assert_eq!(t.bh_flux, vec![4.0, 5.0, 6.0]);
+}
+
+/// `BHpoints` alone reallocates both arrays to that length, zeroed.
+#[test]
+fn bh_points_realloc_zeroes_arrays() {
+    let t = edited(&[("BHpoints", "4")]);
+    assert_eq!(t.bh_current, vec![0.0; 4]);
+    assert_eq!(t.bh_flux, vec![0.0; 4]);
+}

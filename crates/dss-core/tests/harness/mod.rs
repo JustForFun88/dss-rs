@@ -1142,9 +1142,11 @@ const PROPS_015X: &[(&str, &[&str])] = &[
         "RegControl",
         &["Idle", "IdleReverse", "IdleForward", "FwdThreshold"],
     ),
+    // WP-U1.6 C6 (dss_capi 0.15.x r4064, commit 90962ae8): GICharm BH-curve
+    // `Unused` data props on BOTH transformer classes.
+    ("Transformer", &["BHpoints", "BHcurrent", "BHflux"]),
+    ("AutoTrans", &["BHpoints", "BHcurrent", "BHflux"]),
     // Further rows land here with their porting WP, e.g.:
-    // ("Transformer", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
-    // ("AutoTrans", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
     // ("LoadShape", &["Mode"]),  // WP-U1.x
 ];
 
