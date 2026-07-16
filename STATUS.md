@@ -696,6 +696,47 @@ Three commits on top of Stage 1:
      NCIM — reporting-only, node voltages already correct).
   3. `oddie:r4088` cross-check of one deck (report-only).
 
+**WP-U1.7 (NCIM solver) tail — COMPLETE (branch `wt-u17tail`).** The three
+"Remaining (Stage 3 infra / reporting)" items above are done; WP-U1.7 is fully
+landed. Spec = `Common/ExportResults.pas` (`ExportJacobian`/`ExportdeltaF`/
+`ExportdeltaZ` l.3903-3988), `Common/ShowResults.pas` (`ShowPV2PQGen` l.3978),
+`PCElements/vsource.pas` (`NCIM_CalcInjCurrAtBus` l.1225), all 0.15.x.
+- **Reports** (`report/export/ncim.rs`, `report/show/pv2pq.rs`, wired at export opts
+  62-64 / show opt 35 in `exec/report.rs`; `EXPORT_OPTIONS`/`SHOW_OPTIONS`):
+  `Export Jacobian` dumps the last NCIM Jacobian triplets (`RealSparseSet::coo_entries`,
+  0-based column-major `Row,Col,Value`); `Export deltaF`/`deltaZ` dump the mismatch/
+  correction vectors; `Show PV2PQ_Conversions` lists generators carrying `NCIM_ExPV`.
+  Gated vs **capi015** in `crates/dss-core/tests/ncim_reports.rs` (goldens
+  `tests/golden/ncim/`, `tools/golden/gen_ncim_reports.py`): Jacobian numeric-token
+  compare (row/col exact, value 1e-6 — built from node V pinned <5e-11), PV2PQ
+  byte-exact, deltaF/deltaZ **structural** (line count `2·NumNodes+PVphases`, six
+  leading swing zeros, converged floor — the vectors are ~1e-11 faer-vs-KLU noise, so
+  value-pinning them is meaningless; documented in the test). `Export Jacobian` with
+  no NCIM solve raises #222 "Jacobian matrix not built."; deltaF/deltaZ silently no-op
+  (unit-pinned in `exec/tests/ncim.rs`).
+- **`VSource.NCIM_CalcInjCurrAtBus`** (`exec/view.rs::snapshot_elements` post-pass):
+  under NCIM the swing bus sits at the ideal EMF, so `YPrim·V - Iinj` reports ~0; the
+  swing source's reported currents are the KCL sum at its bus (− PDE terminal currents,
+  + other PCE terminal currents). Reproduces the upstream 0-based/1-based `ElmCurrents`
+  **off-by-one** (`TODO(compat)`: the reported phase-A current is the negated phase-**B**
+  branch current — deterministic, in-range). Pinned vs capi015 currents/powers/losses
+  (`ncim_vsource_reported_currents_match_oracle`).
+- **Two engine reporting fixes** the corpus decks exposed: (1) `system_y_csc` now reads
+  the **active** Y handle (Pascal's moving `hY`), so after an NCIM `PDE_ONLY` build it
+  reports the PDE-only network Y (no load `Yeq`), matching `getYSparse`; (2) NCIM
+  generator terminal currents are overridden in the snapshot from the solver's
+  `-conj((Pnom+j·deltaQNom)/V)` — the post-NCIM `YPrim`/`Yeq` is stale, so the general
+  `YPrim·V-Iinj` recompute no longer collapses to it (`ncim_generator_currents`).
+- **Corpus decks** `tests/corpus/modes/ncim/` (all `oracle:"capi015"`, `pending:false`,
+  live-compared in `modes_cases_match_oracle`, `population.lock` regenerated):
+  `ncim_pq` (micro PQ, 9 nodes, 3 iters), `ncim_pv_pq` (PV→PQ Q-limit, 6 nodes, 8 iters),
+  `ncim_midi` (27-node IEEE123-class radial, PV→PQ, 8 iters). Each §1.7-validated on
+  capi015 (converged + bit-identical across two processes).
+- **`oddie:r4088` cross-check** (report-only, `docs/upgrade/DIVERGENCES.md`): r4088
+  (OpenDSS 10.2) supports NCIM and reaches **bit-identical** converged node voltages,
+  but converges the PV→PQ decks in 4 iters vs capi015's 8 (PQ-only matches at 3). Pinned
+  to capi015; iteration policy already `<=` for capi015 cases; not gated.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail

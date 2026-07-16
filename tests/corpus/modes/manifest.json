@@ -1249,7 +1249,7 @@
  },
  {
   "path": "ncim/ncim_pq.dss",
-  "ad": "off:ncim-algorithm-not-ad-swept",
+  "ad": "off:unclassified-new-deck",
   "kind": "micro",
   "n_steps": 1,
   "selected_elements": [
@@ -1262,7 +1262,7 @@
  },
  {
   "path": "ncim/ncim_pv_pq.dss",
-  "ad": "off:ncim-algorithm-not-ad-swept",
+  "ad": "off:unclassified-new-deck",
   "kind": "micro",
   "n_steps": 1,
   "selected_elements": [
@@ -1275,7 +1275,7 @@
  },
  {
   "path": "ncim/ncim_midi.dss",
-  "ad": "off:ncim-algorithm-not-ad-swept",
+  "ad": "off:unclassified-new-deck",
   "kind": "midi",
   "n_steps": 1,
   "selected_elements": [
