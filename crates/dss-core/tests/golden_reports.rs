@@ -3770,6 +3770,49 @@ fn export_overloads_unbal_matches_oracle() {
     run_deck_export("export_overloads_unbal", &overloads_policy());
 }
 
+/// WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): seasonal ratings, gated on
+/// **capi015** (`.meta.json` `"oracle": "capi015"`). Three overloaded PDElements
+/// — an overhead Line, a Transformer, and a CN cable Line — each with
+/// `Seasons=4 Ratings=[...]`; `SeasonRating=yes`/`SeasonSignal=season`/`hour=13`
+/// -> `SeasonalRatingIdx = trunc(GetYValue(13)) = 2`, so `Export Overloads`
+/// applies `AmpRatings[2]` (via `TPDElement.GetRatings`) to **every** PDElement,
+/// not just lines (0.14.5's `DI_Overloads` restriction). Revision-SENSITIVE: the
+/// default 0.14.5 oracle reports base ratings (`%Normal=134.5` for L1), capi015
+/// reports the seasonal ones (`%Normal=336.3`); a broken/missing seasonal
+/// override diverges by >200 percentage points. The golden was regenerated with
+/// `DSS_ORACLE_ENGINE=capi015`; capi015 == oddie:r4133 bit-identical (§1.7). A
+/// small numeric floor absorbs faer-vs-KLU last-digit rounding on the derived
+/// %-loading columns (the CN-cable solve routes through the sparse solver).
+#[test]
+fn export_overloads_seasonal_matches_capi015() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-3,
+        abs: 1e-2,
+        col_tol: vec![],
+    };
+    run_deck_export("export_overloads_seasonal", &policy);
+}
+
+/// WP-U1.5 E2: the `Export Capacity` twin of the seasonal overload golden — the
+/// same fixture, exercising `export_capacity`'s `GetRatings` wiring (the
+/// `%normal`/`%emergency` columns use the seasonal `AmpRatings[2]`). Gated on
+/// capi015 (`.meta.json` `"oracle": "capi015"`).
+#[test]
+fn export_capacity_seasonal_matches_capi015() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-3,
+        abs: 1e-2,
+        col_tol: vec![],
+    };
+    run_deck_export("export_capacity_seasonal", &policy);
+}
+
 /// The shared `Export Unserved` tolerance policy: `kW` is a deck constant
 /// (`%8.0f`) and `EEN_Factor`/`UE_Factor` are `%9.3f` renders of ~1e-8-agreeing
 /// solves — byte-identical, exact equality; a real regression (wrong criterion,

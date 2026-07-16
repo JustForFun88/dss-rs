@@ -26,6 +26,7 @@ Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -2887,6 +2888,78 @@ def gen_loadshape_binsave_mmf(d) -> None:
     )
 
 
+# WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): seasonal ratings. A snapshot circuit
+# with three overloaded PDElements — an overhead Line, a Transformer, and a CN
+# cable Line — each carrying `Seasons=4 Ratings=[...]`. `SeasonRating=yes` +
+# `SeasonSignal=season` + `set hour=13` -> `SeasonalRatingIdx = trunc(GetYValue(
+# 13)) = 2`, so `Export Overloads`/`Capacity` apply `AmpRatings[2]` to ANY
+# PDElement with `NumAmpRatings>1` (0.14.5 restricted the `DI_Overloads` override
+# to lines and did NOT apply it in `Export Overloads` at all — this golden is
+# revision-SENSITIVE: the default 0.14.5 oracle reports base ratings, capi015 ==
+# r4133 report the seasonal ones). Validated bit-identical on capi015 and
+# oddie:r4133 (§1.7). GATED ON `capi015` — regenerate with
+# `DSS_ORACLE_ENGINE=capi015 <oddie-venv>/python tools/golden/gen_reports.py`.
+SEASONAL_FIXTURE = "seasov"
+SEASONAL_DECK = [
+    f"new circuit.{SEASONAL_FIXTURE} basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+    "new xycurve.season npts=4 xarray=[0 6 12 18] yarray=[0 1 2 3]",
+    "new linecode.lc nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=0 c0=0 normamps=100 emergamps=120",
+    "new CNData.CN_250 NormAmps=260 DIAM=0.567 GMRac=0.20520 Rac=0.41 Runits=mi "
+    "Radunits=in gmrunits=in EpsR=2.3 Ins=0.220 DiaIns=1.06 DiaCable=1.29 k=13 "
+    "DiaStrand=0.0641 GmrStrand=0.02496 Rstrand=14.8722",
+    "new LineGeometry.cabgeo nconds=3 nphases=3 reduce=y",
+    "~ cond=1 cncable=CN_250 x=-0.5 h=-4 units=ft",
+    "~ cond=2 cncable=CN_250 x=0.0 h=-4 units=ft",
+    "~ cond=3 cncable=CN_250 x=0.5 h=-4 units=ft",
+    "new line.l1 bus1=sourcebus bus2=b1 linecode=lc length=1 seasons=4 ratings=[100 50 40 30]",
+    "new transformer.t1 phases=3 windings=2 buses=[b1 b2] conns=[wye wye] "
+    "kvs=[12.47 12.47] kvas=[500 500] xhl=5 seasons=4 ratings=[60 25 20 15]",
+    "new line.lc1 bus1=b2 bus2=b3 geometry=cabgeo length=0.5 units=km seasons=4 ratings=[260 45 35 25]",
+    "new load.ld bus1=b3 phases=3 kv=12.47 kw=3000 pf=0.95 model=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "set seasonrating=yes",
+    "set seasonsignal=season",
+    "set mode=snap",
+    "set hour=13",
+    "solve",
+]
+SEASONAL_REPORTS = [
+    ("overloads", "EXP_OVERLOADS.CSV", "export_overloads_seasonal"),
+    ("capacity", "EXP_CAPACITY.CSV", "export_capacity_seasonal"),
+]
+
+
+def gen_seasonal_overloads(d, engine_spec: str) -> None:
+    """Capture the capi015 seasonal `Export Overloads`/`Capacity` goldens (E2)."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
+    try:
+        for c in SEASONAL_DECK:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in SEASONAL_REPORTS:
+            d.Text.Command = f"export {keyword}"
+            produced = Path(d.Text.Result)  # GlobalResult = produced path
+            content = produced.read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "fixture": case,
+                "suffix": suffix,
+                "deck": SEASONAL_DECK,
+                "oracle": engine_spec,  # §1.5 provenance stamp
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -2898,6 +2971,15 @@ def main() -> None:
     # Report *content* is unaffected — the file is always written; only the GUI
     # editor launch is disabled (headless-faithful, PHASE8_PLAN §2.2).
     d.AllowEditor = False
+
+    # WP-U1.5 E2: the seasonal goldens are gated on `capi015` (0.14.5 does not
+    # apply seasonal ratings in these reports). Running the generator under
+    # `DSS_ORACLE_ENGINE=capi015` regenerates ONLY those files (§1.5); the default
+    # (0.14.5) run leaves them untouched and regenerates the rest.
+    engine_spec = pin.get("engine_spec", "capi")
+    if os.environ.get("DSS_ORACLE_ENGINE", "capi") == "capi015":
+        gen_seasonal_overloads(d, engine_spec)
+        return
 
     gen_counts(d)
     gen_feeder_reports(d)

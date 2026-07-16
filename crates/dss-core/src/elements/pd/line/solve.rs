@@ -208,6 +208,12 @@ impl CktElement for Line {
     fn emerg_amps(&self) -> f64 {
         self.emerg_amps
     }
+    fn num_amp_ratings(&self) -> i32 {
+        self.num_amp_ratings
+    }
+    fn amp_ratings(&self) -> &[f64] {
+        &self.amp_ratings
+    }
 
     /// Pascal `TLineObj.GetSeqLosses` (Line.pas l.1495): pos/neg/zero-mode
     /// losses summed over both terminals — 3-phase branches only.
