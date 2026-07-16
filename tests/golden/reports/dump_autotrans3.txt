@@ -51,6 +51,9 @@ New "AutoTrans.t3"
 ~ XRConst=No
 ~ LeadLag=Lag
 ~ WdgCurrents=0, (0), 0, (0), 0, (0), 0, (0), 0, (0), 0, (0), 0, (0), 0, (0), 0, (0), 
+~ BHPoints=0
+~ BHCurrent=
+~ BHFlux=
 ~ NormAmps=1139.01167236866
 ~ EmergAmps=1553.19773504818
 ~ FaultRate=0.007

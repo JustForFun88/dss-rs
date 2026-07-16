@@ -1326,14 +1326,17 @@ WARNING: If the transformer has open terminal(s), results may be wrong, i.e. avo
 48, "Seasons", "Defines the number of ratings to be defined for the transfomer, to be used only when defining seasonal ratings using the "Ratings" property."
 49, "Ratings", "An array of ratings to be used when the seasonal ratings flag is True. It can be used to insert
 multiple ratings to change during a QSTS simulation to evaluate different ratings in transformers. Is given in kVA"
-50, "NormAmps", "Normal rated current."
-51, "EmergAmps", "Maximum or emerg current."
-52, "FaultRate", "Failure rate per year."
-53, "pctPerm", "Percent of failures that become permanent."
-54, "Repair", "Hours to repair."
-55, "BaseFreq", "Base Frequency for ratings."
-56, "Enabled", "{Yes|No or True|False} Indicates whether this element is enabled."
-57, "Like", "Make like another object, e.g.:
+50, "BHPoints", "Transformer.bhpoints"
+51, "BHCurrent", "Transformer.bhcurrent"
+52, "BHFlux", "Transformer.bhflux"
+53, "NormAmps", "Normal rated current."
+54, "EmergAmps", "Maximum or emerg current."
+55, "FaultRate", "Failure rate per year."
+56, "pctPerm", "Percent of failures that become permanent."
+57, "Repair", "Hours to repair."
+58, "BaseFreq", "Base Frequency for ratings."
+59, "Enabled", "{Yes|No or True|False} Indicates whether this element is enabled."
+60, "Like", "Make like another object, e.g.:
 
 New Capacitor.C2 like=c1  ..."
 [RegControl]
@@ -1375,9 +1378,13 @@ Set this to 0 to fix the tap in the current position."
 30, "LDC_Z", "Z value for Beckwith LDC_Z control option. Volts adjustment at rated control current."
 31, "Rev_Z", "Reverse Z value for Beckwith LDC_Z control option."
 32, "Cogen", "{Yes|No*} Default is No. The Cogen feature is activated. Continues looking forward if power reverses, but switches to reverse-mode LDC, vreg and band values."
-33, "BaseFreq", "Base Frequency for ratings."
-34, "Enabled", "{Yes|No or True|False} Indicates whether this element is enabled."
-35, "Like", "Make like another object, e.g.:
+33, "Idle", "RegControl.idle"
+34, "IdleReverse", "RegControl.idlereverse"
+35, "IdleForward", "RegControl.idleforward"
+36, "FwdThreshold", "RegControl.fwdthreshold"
+37, "BaseFreq", "Base Frequency for ratings."
+38, "Enabled", "{Yes|No or True|False} Indicates whether this element is enabled."
+39, "Like", "Make like another object, e.g.:
 
 New Capacitor.C2 like=c1  ..."
 [Capacitor]
@@ -2181,14 +2188,17 @@ New AutoTrans.T1 buses=[Hibus, lowbus] ~ %Rs=(0.2  0.3)"
 41, "WdgCurrents", "(Read only) Makes winding currents available via return on query (? AutoTrans.TX.WdgCurrents). Order: Phase 1, Wdg 1, Wdg 2, ..., Phase 2 ...
 
 WARNING: If the transformer has open terminal(s), results may be wrong, i.e. avoid using this in those situations. For more information, see https://github.com/dss-extensions/dss-extensions/issues/24"
-42, "NormAmps", "Normal rated current."
-43, "EmergAmps", "Maximum or emerg current."
-44, "FaultRate", "Failure rate per year."
-45, "pctPerm", "Percent of failures that become permanent."
-46, "Repair", "Hours to repair."
-47, "BaseFreq", "Base Frequency for ratings."
-48, "Enabled", "{Yes|No or True|False} Indicates whether this element is enabled."
-49, "Like", "Make like another object, e.g.:
+42, "BHPoints", "AutoTrans.bhpoints"
+43, "BHCurrent", "AutoTrans.bhcurrent"
+44, "BHFlux", "AutoTrans.bhflux"
+45, "NormAmps", "Normal rated current."
+46, "EmergAmps", "Maximum or emerg current."
+47, "FaultRate", "Failure rate per year."
+48, "pctPerm", "Percent of failures that become permanent."
+49, "Repair", "Hours to repair."
+50, "BaseFreq", "Base Frequency for ratings."
+51, "Enabled", "{Yes|No or True|False} Indicates whether this element is enabled."
+52, "Like", "Make like another object, e.g.:
 
 New Capacitor.C2 like=c1  ..."
 [InvControl]

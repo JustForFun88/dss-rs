@@ -1074,6 +1074,17 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     ("Capacitor", "pctperm"),
     ("Reactor", "FaultRate"),
     ("Reactor", "pctperm"),
+    // (e) A 0.15.x-CHANGED DEFAULT (not UB): WP-U1.6 C5 (`8a898cba`, r4086) flips
+    //     RegControl's `RevThreshold` default from +100 kW (0.14.5) to the signed
+    //     −100 kW. `compare_all_properties` runs ONLY on the 0.14.5 oracle
+    //     (corpus_live.rs:1276 gates it on `oracle.is_none()`), where −100 vs +100
+    //     is a deliberate version mismatch (§1.2), so the value is excluded here.
+    //     It is fully pinned elsewhere: the capi015 props golden
+    //     (`regcontrol.json`, all scenarios incl. the −150/−50 EndEdit-fallback
+    //     values) and the capi015 `regcontrol_idle.dss` live probe. New siblings
+    //     `FwdThreshold`/`Idle*` are absent from the 0.14.5 capture → handled by
+    //     the [`PROPS_015X`] allowlist, not here.
+    ("RegControl", "RevThreshold"),
 ];
 
 fn skip_prop(class: &str, prop: &str) -> bool {
@@ -1142,11 +1153,17 @@ const PROPS_015X: &[(&str, &[&str])] = &[
     ("Line", &["EpsRMedium", "HeightOffset", "HeightUnit"]),
     // WP-U1.4 (wt-u14cnts): CNData.pas SemiconLayer=5, inserted.
     ("CNData", &["SemiconLayer"]),
-    // Rows land here with their porting WP, e.g.:
-    // ("RegControl", &["Idle", "IdleReverse", "IdleForward", "FwdThreshold"]),  // WP-U1.x
-    // ("Transformer", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
-    // ("AutoTrans", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
-    // ("LoadShape", &["Mode"]),  // WP-U1.x
+    // WP-U1.6 C5 (dss_capi 0.15.x r4086, commit 8a898cba): RegControl gains the
+    // idle-zone flags + the signed forward-power threshold.
+    (
+        "RegControl",
+        &["Idle", "IdleReverse", "IdleForward", "FwdThreshold"],
+    ),
+    // WP-U1.6 C6 (dss_capi 0.15.x r4064, commit 90962ae8): GICharm BH-curve
+    // `Unused` data props on BOTH transformer classes.
+    ("Transformer", &["BHpoints", "BHcurrent", "BHflux"]),
+    ("AutoTrans", &["BHpoints", "BHcurrent", "BHflux"]),
+    // Further rows land here with their porting WP.
 ];
 
 /// Whether property `prop` of `class` is a 0.15.x-only property in `allowlist`

@@ -272,6 +272,7 @@ impl DssObject for Transformer {
             LEADLAG => self.hv_leads_lv as i32,
             CORE => self.core_type,
             SEASONS => self.num_amp_ratings,
+            BHPOINTS => self.bh_points,
             _ => unreachable!("Transformer has no integer property {idx}"),
         }
     }
@@ -292,6 +293,7 @@ impl DssObject for Transformer {
             LEADLAG => self.hv_leads_lv = value != 0,
             CORE => self.core_type = value,
             SEASONS => self.num_amp_ratings = value,
+            BHPOINTS => self.bh_points = value,
             _ => unreachable!("Transformer has no integer property {idx}"),
         }
     }
@@ -413,6 +415,10 @@ impl DssObject for Transformer {
         match idx {
             prop::XSCARRAY => Some(&self.xsc),
             prop::RATINGS => Some(&self.kva_ratings),
+            // Pascal `GetDSSArray` renders a NIL pointer as '' (Utilities.pas:1857);
+            // an unallocated (BHpoints=0) BH array is the NIL equivalent.
+            prop::BHCURRENT => (!self.bh_current.is_empty()).then_some(&self.bh_current[..]),
+            prop::BHFLUX => (!self.bh_flux.is_empty()).then_some(&self.bh_flux[..]),
             _ => unreachable!("Transformer has no array property {idx}"),
         }
     }
@@ -420,6 +426,8 @@ impl DssObject for Transformer {
         match idx {
             prop::XSCARRAY => self.xsc = value,
             prop::RATINGS => self.kva_ratings = value,
+            prop::BHCURRENT => self.bh_current = value,
+            prop::BHFLUX => self.bh_flux = value,
             _ => unreachable!("Transformer has no array property {idx}"),
         }
     }
@@ -586,6 +594,13 @@ impl DssObject for Transformer {
             SEASONS => self
                 .kva_ratings
                 .resize(self.num_amp_ratings.max(0) as usize, 0.0),
+            // r4064 (90962ae8): BHpoints reallocates both BH arrays, zeroed
+            // (Pascal FreeMem + AllocMem(SizeOf(Double)*BHPoints)).
+            BHPOINTS => {
+                let n = self.bh_points.max(0) as usize;
+                self.bh_current = vec![0.0; n];
+                self.bh_flux = vec![0.0; n];
+            }
             XSCARRAY => {
                 for p in [XHL, XHT, XLT, X12, X13, X23, XFMRCODE] {
                     self.cd.obj.clear_seq(p);
@@ -675,6 +690,12 @@ impl DssObject for Transformer {
 
         self.num_amp_ratings = o.num_amp_ratings;
         self.kva_ratings.clone_from(&o.kva_ratings);
+
+        // r4064 (90962ae8): TControlledTransformerObj.MakeLike copies BHpoints
+        // and the two BH arrays.
+        self.bh_points = o.bh_points;
+        self.bh_current.clone_from(&o.bh_current);
+        self.bh_flux.clone_from(&o.bh_flux);
     }
 
     /// Target side of RegControl's deferred `TapNum` write (Pascal

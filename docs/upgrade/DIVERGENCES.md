@@ -1307,6 +1307,70 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
 
 `known_diffs.json`: none of these had a prior Rust↔EPRI entry — nothing to retire.
 
+## WP-U1.6 C5 — RegControl signed thresholds + idle zones — SETTLED (adopt capi015 = r4086)
+
+`8a898cba` (SVN r4086, in capi015 0.15.0b4) reworks RegControl's reverse-power
+surface and adds an idle-zone family:
+
+- `RevThreshold` becomes a **signed W** field with a kW→W property scale
+  (default **−100 kW**, was +100 kW), and a new `FwdThreshold` (+100 kW) splits
+  the forward edge. The reverse-power detection sign moved from the *comparison*
+  into the *stored value* (`FwdPower < RevPowerThreshold`, no unary `−`), so a
+  legacy deck that sets only `revThreshold=X (X>0)` is **behavior-identical**:
+  `EndEdit`'s compat fallback sets `Fwd:=abs(Rev); Rev:=−Fwd`, restoring the old
+  symmetric ±X band. The fallback is per-edit (tracked via a new `PrpSequence`
+  BeginEdit boundary), so a later rev-only edit re-symmetrizes and clobbers an
+  earlier `FwdThreshold` — reproduced 1:1 (capi015-probed, 2026-07-16).
+- New `Idle`/`IdleReverse`/`IdleForward` flags suppress a pending tap when the
+  through-power sits in a dead-band. Ported verbatim, **including** the no-load
+  test's `(FwdPower>=Rev) or (FwdPower<=Fwd)` — with the default −100/+100 kW band
+  that OR spans the whole axis, so an idling reversible reg never taps. Not
+  "corrected" to AND (would diverge from the oracle).
+
+Gate: capi015 props golden re-baseline (`tests/golden/props/regcontrol.json`,
+`gen_regcontrol_capi015.py`) pinning the signed defaults + the two-edit fallback;
+harness `PROPS_015X` row; capi015 deck `regcontrol_idle.dss` (idle suppresses a
+tap that would otherwise reach tapnum 15 / tap 1.09375; |ΔV|≈0.075 pu, two-process
+deterministic); RegControl unit tests. Legacy equivalence is covered by the
+existing default-oracle `regcontrol_reverse.dss` (unchanged trajectory).
+
+## WP-U1.6 C6 — Transformer/AutoTrans BH-curve `Unused` props — SETTLED (adopt capi015 = r4064)
+
+`90962ae8` (SVN r4064) adds three GICharm data props — `BHpoints` (int),
+`BHcurrent`/`BHflux` (double arrays sized by BHpoints) — to **both** transformer
+classes, flagged `Unused` (parsed + stored, never consumed by a solve; the port
+does not implement GICharm). Ported: the props, the `BHpoints` realloc side
+effect (zeroes both arrays), and the MakeLike copy.
+
+**Upstream crash NOT reproduced (UB, per CLAUDE.md).** On capi015, *parsing* a
+non-empty `BHcurrent=(…)` **segfaults** the backend, and *reading* the array with
+`BHpoints>0` errors — the `Unused` DoubleVArray getter reads its element count
+from an **unset `PropertyOffset2`** (BHcurrent only wires `Offset3`), so `Norder`
+is garbage. Only the empty default is well-defined: `GetDSSArray` guards
+`ptr=NIL → ''` first (`Utilities.pas:1857`), so a default (BHpoints=0, NIL arrays)
+dumps `''`. The port matches that (empty Vec ⇒ `get_f64_array` returns `None`
+⇒ `''`) and renders the set-state safely as `[ … ]` instead of crashing.
+
+Gate: capi015 default-state props goldens (`transformer_bh.json`/
+`autotrans_bh.json`, `gen_bh_capi015.py`) — the only oracle-probable state; the
+set-state (parse/store/realloc/dump) is unit-pinned (`bh_curve_props_parse_and_store`
++ `auto_trans::…::bh_curve_default_and_realloc`); harness `PROPS_015X` rows for
+both classes. No `known_diffs.json` entry existed.
+
+## WP-U1.6 C5-r3723 — LoadShape `Mode` prop — SETTLED (NOT a delta for us; dss_capi 0.15.x declines it)
+
+The EPRI SVN r40xx line inserts a LoadShape `Mode` property at index 22, shifting
+`Interpolation` 22→23. **dss_capi 0.15.x explicitly declines to port it** — the
+`TLoadShapeProp` enum carries `// Mode = 22, -- not useful to implement this yet`
+with `Interpolation = 22` in **both** 0.14.5 and 0.15.0b4
+(`git show 0.15.0b4:src/General/LoadShape.pas`). The capi015 oracle therefore has
+**23 properties, `Interpolation` at 22, no `Mode`** (probed 2026-07-16) — identical
+to 0.14.5. The port already matches this exactly, so there is **nothing to port**:
+adding `Mode` would break every LoadShape deck's property-count parity against the
+binding oracle. No allowlist row (the tables are equal), no golden change. Pinned
+by the guard `no_mode_prop_interpolation_stays_at_22` (fails if a stray `Mode`
+ever lands). No `known_diffs.json` entry existed.
+
 ## L4, E2 — SeasonalRating reimplementation (global `SeasonalRatingIdx`) — SETTLED (WP-U1.5, adopt capi015 = r4133)
 
 **Observable.** The per-PDElement norm/emerg current ratings used by the overload
