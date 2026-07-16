@@ -1224,9 +1224,20 @@ property is otherwise reachable only through the JSON export/import round-trip.
 **Gate.** `PROPS_015X += ("Line", …+"Conductors")` and `("LineGeometry",
 ["Conductors"])` (the inserted props excluded from the 0.14.5 property-table
 walk); `tests/upgrade_conductors.rs` pins all four capi015 diagnostics + the
-all-`none` split (Line parses / LineGeometry rejects). No solvable-corpus /
-byte-golden case moves (HIDE_015X + the masquerade keep them byte-identical);
-whole workspace green.
+all-`none` split (Line parses / LineGeometry rejects). The net-new
+**resolved-ref** fill (unreachable via the broken text parse; the path the
+§6-fixed parser and a JSON-import round-trip take) is gated by whitebox
+equivalence tests that drive `set_object_ref_array(CONDUCTORS)` + the side
+effect directly — `line::tests::conductors_array_matches_buried_neutral_and_oracle`
+/ `conductors_array_overhead_matches_wires_and_oracle` /
+`conductors_all_none_after_wires_clears_wires_seq` (Line
+`set_conductors`/`conductors_phase_choice`/`conductor_choice_of` + last-writer
+`clear_seq`), and `line_geometry::tests::conductors_array_matches_mixed_capi015`
+/ `conductors_array_defaults_ratings_from_first_valid` (LineGeometry
+`apply_conductors`/per-conductor `change_line_constants_type`/`default_amps_from`),
+each pinned to the same capi015 Z/Yc/ratings the traditional `wires=`/`cncables=`
+paths pin. No solvable-corpus / byte-golden case moves (HIDE_015X + the masquerade
+keep them byte-identical); whole workspace green.
 
 ## WP-U1.6 partial — B3-r3723 / D10 / D12 / D15 / A7-r3723 — SETTLED (plain adoptions)
 

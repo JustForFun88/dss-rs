@@ -293,7 +293,9 @@ impl Line {
     /// effect (`Line.pas:750-865`), matching upstream's split. In practice the
     /// text proxy only ever delivers an all-`none` list (real items error in
     /// `parse_conductor_proxy`, the upstream `GetDSSClass` case bug), so this
-    /// mostly writes NIL slots; it is written generally for JSON-import fidelity.
+    /// mostly writes NIL slots; the real-conductor fill (for the §6-fixed parser
+    /// and JSON import) is gated by the whitebox equivalence test
+    /// `tests::conductors_array_matches_buried_neutral_and_oracle`.
     pub(super) fn set_conductors(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
         for (i, r) in refs.iter().enumerate() {
             if i < self.line_wire_data.len() {
