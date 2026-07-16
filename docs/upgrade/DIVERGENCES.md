@@ -997,16 +997,54 @@ PVsystem/Storage/IndMach012). The option set/get is in `exec/set_cmd.rs`/
 `IntegrationFlag` are read-only (error 25040103); `Set PyPath=` is a loud
 NOT_PORTED.
 
+**Audit follow-ups (WP-U1.9, verified against the capi015 0.15.0b4 oracle).**
+- **`Set StateVar` via text is upstream-broken — reproduced as an error, not a
+  write.** `DoSetCmd` matches bare tokens *positionally* (only `name=value`
+  pairs are looked up by name — `ExecOptions.pas:247-255`), so
+  `set StateVar generator.g1 Frequency 55` never reaches the StateVar arm: the
+  tokens land on options 1/3/4 and the integer `hour` option rejects
+  `Frequency` (capi015 `#303`; the port errors the same way and leaves the
+  variable unchanged). `Get StateVar` **does** work (`DoGetCmd` name-matches
+  every token — `:951-957`) and is the pinned/read path. The earlier
+  "Set/Get StateVar covered" claim was corrected to reflect this: the unit
+  suite now pins the natural-syntax error + the read path + both 7103 guards.
+- **7103 `is TPCElement` guard.** `Set/Get StateVar` on a non-PCE now errors
+  `Object "<Class>.<name>" is not a valid PC element.` (Pascal 7103, checked
+  *before* the NumVariables 7101 check), matching capi015
+  (`get StateVar line.ln Frequency` → `#7103`).
+- **`Set/Get AllowForms`/`AllowProgressBar`** are accepted headless no-ops
+  (`NoFormsAllowed`/`NoProgressBarFormAllowed` stored for `Set`/`Get`
+  round-trip, unread; default `No`). capi015 silently accepts them — the
+  pre-fix "not ported yet" error diverged.
+- **Force-hook error arms `Exit`** the whole `Set`/`Get` command in Pascal
+  (`DoSimpleMsg(...); Exit`); the port now breaks the option loop on those
+  errors instead of continuing.
+- **`Set YPrim` size-mismatch is only the oversize-row case.** capi015's
+  `ParseAsComplexMatrix` returns `ExpectedOrder` (accept) for a too-*few*-row
+  matrix (`[5 0 | 0 5]` on a 4-cond PCE → zero-padded, no error, both engines);
+  the `#3004` size-mismatch fires only when a single row exceeds `NConds²`
+  (>16). **Not reproduced (deliberate):** on that `#3004` capi015 has already
+  zeroed the live YPrim (its own source comments this is a known error-state
+  imperfection — "we'd need to keep a copy of the old matrix"), whereas the
+  port parses into a scratch buffer and leaves the real YPrim intact. The
+  difference is transient — neither engine sets `ForceYPrim` on the error, so
+  the next `ReCalcAllYPrims` recomputes the matrix on both — and it is an
+  error state, so the safer preserve-on-error is kept.
+
 **Gate consequence.**
 - **Live capi015 deck** `modes/upgrade_forcehooks.dss` (`oracle: "capi015"`,
   validated bit-identical across two capi015 processes): `Set InjCurrent=[80 0
   80 0 80 0]` on the b2 load shifts b2 Vmag 7187.45 → 7224.14 V; whole-model
   live compare green. Feature-sensitive (a broken injection-loop honor → 7187 vs
   capi015 7224, ≫ floor).
-- **capi015-pinned Rust unit suite** `exec/tests/force_hooks.rs`: forced Vmag
-  7224.143523 (1e-6), frozen `Get InjCurrent`/`ITerminal`, `Get IterNumber`/
-  `IntegrationFlag`, read-only `Set`, `Set PyPath` NOT_PORTED, `Set YPrim`
-  survives a rebuild, `Set/Get StateVar`, and `Clear` resets the force flags.
+- **capi015-pinned Rust unit suite** `exec/tests/force_hooks.rs` (12 tests):
+  forced Vmag 7224.143523 (1e-6), frozen `Get InjCurrent`/`ITerminal` (Load) +
+  frozen Generator `ITerminal` (2nd PCE force-skip), `Set ITerminal` freeze
+  (base 23.175527 → forced `[10,0,10]`), `Get IterNumber`/`IntegrationFlag`,
+  read-only `Set` (aborts the loop), `Set PyPath` NOT_PORTED, `Set YPrim`
+  survives a rebuild + oversize-row `#3004`, `Get StateVar` read + natural-syntax
+  `Set StateVar` upstream-broken error + 7103 non-PCE guard, `AllowForms`/
+  `AllowProgressBar` round-trip, and `Clear` resets the force flags.
 - `known_diffs.json`: no Rust↔EPRI entry existed for the force hooks at r3723
   (the options did not exist) — nothing to retire.
 
