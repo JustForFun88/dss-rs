@@ -118,7 +118,9 @@ impl DssObject for RegControl {
             REVX => self.rev_x,
             TAPDELAY => self.tap_delay,
             VLIMIT => self.vlimit,
-            REVTHRESHOLD => self.kw_rev_power_threshold,
+            // Signed W fields dumped through the kW→W `scale(1000)` (getter divides).
+            REVTHRESHOLD => self.rev_power_threshold,
+            FWDTHRESHOLD => self.fwd_power_threshold,
             REVDELAY => self.rev_delay,
             REMOTEPTRATIO => self.remote_pt_ratio,
             LDC_Z => self.ldc_z,
@@ -143,7 +145,9 @@ impl DssObject for RegControl {
             REVX => self.rev_x = value,
             TAPDELAY => self.tap_delay = value,
             VLIMIT => self.vlimit = value,
-            REVTHRESHOLD => self.kw_rev_power_threshold = value,
+            // `value` arrives already scaled to W (parse multiplies by scale=1000).
+            REVTHRESHOLD => self.rev_power_threshold = value,
+            FWDTHRESHOLD => self.fwd_power_threshold = value,
             REVDELAY => self.rev_delay = value,
             REMOTEPTRATIO => self.remote_pt_ratio = value,
             LDC_Z => self.ldc_z = value,
@@ -185,6 +189,9 @@ impl DssObject for RegControl {
             REVNEUTRAL => self.reverse_neutral,
             EVENTLOG => self.ccd.show_event_log,
             COGEN => self.cogen_enabled,
+            IDLE => self.idle_enabled,
+            IDLEREVERSE => self.idle_reverse_enabled,
+            IDLEFORWARD => self.idle_forward_enabled,
             RESET => false, // Pascal BooleanActionProperty getter: always 0
             ENABLED => self.ccd.cd.enabled,
             _ => unreachable!("RegControl has no boolean property {idx}"),
@@ -199,6 +206,9 @@ impl DssObject for RegControl {
             REVNEUTRAL => self.reverse_neutral = value,
             EVENTLOG => self.ccd.show_event_log = value,
             COGEN => self.cogen_enabled = value,
+            IDLE => self.idle_enabled = value,
+            IDLEREVERSE => self.idle_reverse_enabled = value,
+            IDLEFORWARD => self.idle_forward_enabled = value,
             RESET => {
                 // Pascal BooleanActionProperty: the action fires on TRUE only.
                 if value {
@@ -310,15 +320,25 @@ impl DssObject for RegControl {
             MAXTAPCHANGE => {
                 self.tap_limit_per_change = self.tap_limit_per_change.max(0);
             }
-            REVTHRESHOLD => {
-                self.rev_power_threshold = self.kw_rev_power_threshold * 1000.0;
-            }
+            // r4086 (8a898cba): the `revThreshold` *1000 side effect is gone —
+            // the kW→W conversion now rides the property `scale`, and the
+            // signed-band legacy fallback moved to `end_edit` (`EndEdit`).
             _ => {}
         }
     }
 
-    /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
+    /// Pascal `TRegControl.EndEdit` (r4086, 8a898cba). Legacy-compat band: if
+    /// `RevThreshold` was set in *this* edit but `FwdThreshold` was not, mirror
+    /// the old symmetric-around-0 behavior — `Fwd := abs(Rev); Rev := -Fwd`
+    /// (`abs` keeps `Rev < Fwd`). Then the base `RecalcElementData`.
     fn end_edit(&mut self) {
+        let obj = &self.ccd.cd.obj;
+        if obj.prop_edited_since_boundary(prop::REVTHRESHOLD)
+            && !obj.prop_edited_since_boundary(prop::FWDTHRESHOLD)
+        {
+            self.fwd_power_threshold = self.rev_power_threshold.abs();
+            self.rev_power_threshold = -self.fwd_power_threshold;
+        }
         self.recalc();
     }
 
@@ -364,8 +384,8 @@ impl DssObject for RegControl {
         self.tap_winding = other.tap_winding;
         self.inverse_time = other.inverse_time;
         self.tap_limit_per_change = other.tap_limit_per_change;
-        self.kw_rev_power_threshold = other.kw_rev_power_threshold;
         self.rev_power_threshold = other.rev_power_threshold;
+        self.fwd_power_threshold = other.fwd_power_threshold;
         self.rev_delay = other.rev_delay;
         self.reverse_neutral = other.reverse_neutral;
         self.ccd.show_event_log = other.ccd.show_event_log;
@@ -376,6 +396,9 @@ impl DssObject for RegControl {
         // no-op write of the mid-tap.
         self.set_tap_num(other.get_tap_num());
         self.cogen_enabled = other.cogen_enabled;
+        self.idle_enabled = other.idle_enabled;
+        self.idle_reverse_enabled = other.idle_reverse_enabled;
+        self.idle_forward_enabled = other.idle_forward_enabled;
         self.ldc_z = other.ldc_z;
         self.rev_ldc_z = other.rev_ldc_z;
     }

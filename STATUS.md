@@ -922,6 +922,57 @@ wire/CN/TS conductors** (Kersting). Ported 1:1, defaults byte-green:
   property-table insertion coordinated with the parallel wt-u14props branch
   (Conductors must land at 34, after that branch's EpsRMedium/HeightOffset/
   HeightUnit at 31–33). Left for a follow-up to keep the gate green.
+**WP-U1.6 tail (C5 / C6 / C5-r3723) — LANDED (branch wt-u16tail).** Three of the
+previously-deferred WP-U1.6 rows, gate-green (fmt/clippy/`cargo test --workspace`),
+built on the `PROPS_015X` harness allowlist:
+
+- **C5** RegControl `FwdThreshold` + idle zones (`8a898cba`, SVN r4086, in capi015
+  0.15.0b4). `RevThreshold` is now a **signed W** field (default −100 kW, kW→W via
+  property `scale`), joined by `FwdThreshold` (+100 kW) and the
+  `Idle`/`IdleReverse`/`IdleForward` flags. The reverse-power detection sign moved
+  into the stored value (`FwdPower < RevPowerThreshold`, no unary −) so **legacy
+  decks are behavior-identical**: the new `EndEdit` fallback (`Fwd:=abs(Rev);
+  Rev:=−Fwd`) restores the old symmetric band. The fallback is **per-edit**, via a
+  new `DssObjData` BeginEdit boundary (`PrpSequence[NumProps+1]`, wired at the
+  executive edit-start) — a later rev-only edit re-symmetrizes and clobbers an
+  earlier Fwd, reproduced 1:1 (capi015-probed). The base `MakeLike`
+  (`copy_prp_sequence_from`) copies the counter + property slots but **not** the
+  boundary slot (Pascal `MakeLike` copies `NumProps+1` ints, excluding index
+  `NumProps+1`), so a `New … like=parent` child keeps its own boundary and the
+  fallback fires per the child's own edit — audit fix, regression-tested in
+  `obj/base/tests.rs`. Idle no-load test ported verbatim
+  incl. the `>=/<=` OR (spans the whole axis at the default band; **not** "fixed"
+  to AND). **Gate:** capi015 props golden re-baseline
+  (`tests/golden/props/regcontrol.json` via `gen_regcontrol_capi015.py`) pinning the
+  signed defaults + the two-edit fallback; `PROPS_015X` RegControl row; capi015 deck
+  `regcontrol_idle.dss` (idle holds tapnum 0/tap 1.0 where a non-idle reg reaches
+  tapnum 15/1.09375, |ΔV|≈0.075 pu; §1.7 two-process deterministic); 5 RegControl
+  unit tests. Legacy equivalence rides the unchanged default-oracle
+  `regcontrol_reverse.dss`. DIVERGENCES.md §C5.
+- **C6** Transformer/AutoTrans `BHpoints`/`BHcurrent`/`BHflux` (`90962ae8`, SVN
+  r4064). Three GICharm `Unused` data props on both classes — parse+store only,
+  never consumed (no GICharm port): the props, the `BHpoints` realloc side effect
+  (zeroes both arrays), and the MakeLike copy. **Upstream crash NOT reproduced**
+  (CLAUDE.md UB rule): parsing a non-empty `BHcurrent` **segfaults** the capi015
+  backend and reading with `BHpoints>0` errors — the `Unused` DoubleVArray getter
+  reads its count from an **unset `PropertyOffset2`** (only `Offset3` is wired) →
+  garbage `Norder`. Only the empty default is well-defined (`GetDSSArray` NIL-guards
+  to `''`); the port matches (empty Vec ⇒ `''`) and renders the set-state safely.
+  **Gate:** capi015 default-state props goldens (`transformer_bh.json`/
+  `autotrans_bh.json` via `gen_bh_capi015.py`); `PROPS_015X` rows for both classes;
+  set-state unit-pinned on both classes. DIVERGENCES.md §C6.
+- **C5-r3723** LoadShape `Mode` — **NOT a delta for us; unported.** EPRI SVN r40xx
+  inserts `Mode` at 22 (shifting `Interpolation` 22→23), but dss_capi 0.15.x
+  declines it (`// Mode = 22, -- not useful to implement this yet`, `Interpolation
+  = 22` in **both** 0.14.5 and 0.15.0b4). capi015 has 23 props, `Interpolation` at
+  22, no `Mode` (probed) — the port already matches. Porting Mode would break every
+  LoadShape deck's count parity against the oracle, so it stays unported; guard test
+  `no_mode_prop_interpolation_stays_at_22`. DIVERGENCES.md §C5-r3723.
+
+Still deferred from WP-U1.6 (sibling `wt-u16ind` / follow-ups): C4 `Solve all`,
+D11 part 2 (CapControl TIMECONTROL effElement), D12 (SwtControl re-land), D13
+(LoadShape MMF), B4-capi. `known_diffs.json`: none of C5/C6/C5-r3723 had a prior
+Rust↔EPRI entry — nothing to retire.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in

@@ -11,7 +11,7 @@
   },
   "family_counts": {
     "asymmetric": 47,
-    "controls": 94,
+    "controls": 95,
     "modes": 68
   },
   "family_paths": {
@@ -129,6 +129,7 @@
       "recloser/recloser_temp.dss",
       "regcontrol/midi_regcontrol.dss",
       "regcontrol/regcontrol_asym.dss",
+      "regcontrol/regcontrol_idle.dss",
       "regcontrol/regcontrol_inversetime.dss",
       "regcontrol/regcontrol_ldc.dss",
       "regcontrol/regcontrol_remotebus.dss",

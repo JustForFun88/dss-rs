@@ -87,16 +87,21 @@ pub mod prop {
     pub const RDCOHMS: usize = 47;
     pub const SEASONS: usize = 48;
     pub const RATINGS: usize = 49;
+    // GICharm BH-curve data props (dss_capi 0.15.x r4064, commit 90962ae8) —
+    // `Unused` (parse+store only; never consumed by the port).
+    pub const BHPOINTS: usize = 50;
+    pub const BHCURRENT: usize = 51;
+    pub const BHFLUX: usize = 52;
     // TPDClass tail:
-    pub const NORMAMPS: usize = 50;
-    pub const EMERGAMPS: usize = 51;
-    pub const FAULTRATE: usize = 52;
-    pub const PCTPERM: usize = 53;
-    pub const REPAIR: usize = 54;
+    pub const NORMAMPS: usize = 53;
+    pub const EMERGAMPS: usize = 54;
+    pub const FAULTRATE: usize = 55;
+    pub const PCTPERM: usize = 56;
+    pub const REPAIR: usize = 57;
     // TCktElementClass tail:
-    pub const BASE_FREQ: usize = 55;
-    pub const ENABLED: usize = 56;
-    pub const NUM_PROPS: usize = 57; // incl. Like
+    pub const BASE_FREQ: usize = 58;
+    pub const ENABLED: usize = 59;
+    pub const NUM_PROPS: usize = 60; // incl. Like
 }
 
 /// `TTransf.DefineProperties`.
@@ -159,6 +164,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("RDCOhms"),
         PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double_array("Ratings", SEASONS),
+        // GICharm BH-curve data (r4064, 90962ae8): `Unused` props — parsed and
+        // stored, never used in a solve. `BHpoints` reallocates the two arrays
+        // (side effect below); `BHcurrent`/`BHflux` are `BHpoints`-sized.
+        PropDef::integer("BHPoints").flags(PropFlags::SUPPRESS_JSON | PropFlags::NON_NEGATIVE),
+        PropDef::double_array("BHCurrent", BHPOINTS),
+        PropDef::double_array("BHFlux", BHPOINTS),
         // TPDClass tail:
         PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),
@@ -273,6 +284,11 @@ pub struct Transformer {
     num_amp_ratings: i32,
     kva_ratings: Vec<f64>,
     amp_ratings: Vec<f64>,
+    // GICharm BH-curve data (Unused; r4064). `bh_current`/`bh_flux` are kept at
+    // length `bh_points` by the BHpoints side effect.
+    bh_points: i32,
+    bh_current: Vec<f64>,
+    bh_flux: Vec<f64>,
 }
 
 /// Pascal `XscSize`: `(NumWindings-1)·NumWindings/2`.
@@ -336,6 +352,9 @@ impl Transformer {
             num_amp_ratings: 1,
             kva_ratings: vec![0.0],
             amp_ratings: vec![0.0],
+            bh_points: 0,
+            bh_current: Vec::new(),
+            bh_flux: Vec::new(),
         };
         t.set_num_windings(2); // allocates windings, XSC, terminals, matrices
         t.active_winding = 1;

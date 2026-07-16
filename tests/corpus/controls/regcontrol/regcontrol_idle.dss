@@ -1,0 +1,40 @@
+// RegControl idle-zone suppression (dss_capi 0.15.x r4086, commit 8a898cba,
+// WP-U1.6 C5). `idle=yes` on a reversible regulator makes `Sample` read the
+// through-power and, when it lands in the no-load dead-band, drop the pending
+// tap change ("idle in no-load zone"). With the default −100/+100 kW band the
+// zone spans the whole power axis (the upstream `>=`/`<=` OR), so an idling
+// regulator never taps.
+//
+// Feature sensitivity (UPGRADE_PLAN §1.7-3): the load pulls the regulated bus
+// far below the 128 V target, so a NON-idle regulator taps all the way up
+// (tapnum 15, tap 1.09375, |V|≈0.939 pu). With idle=yes the tap stays at
+// neutral (tapnum 0, tap 1.0) and the bus droops to |V|≈0.864 pu — a ~0.075 pu
+// gap, far above every live-compare floor. `idle` is a 0.15.x-only property
+// (0.14.5 rejects it), so this deck is inherently capi015 and cannot gate
+// against 0.14.5 (§1.2). Probed idle=yes vs idle=no on capi015 2026-07-16.
+//
+// Oracle: capi015 (backend 0.15.0b4 = SVN r4103). Validated per §1.7
+// (two-process determinism on the capi015 engine).
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.regidle basekv=12.47 pu=1.0 phases=3 bus1=src
+~ mvasc3=20000 mvasc1=21000
+
+New transformer.tr phases=3 windings=2 buses=(src, mv) conns=(wye wye)
+~ kvs=(12.47 12.47) kvas=(10000 10000) xhl=7
+
+New line.l1 phases=3 bus1=mv bus2=ld r1=0.4 x1=0.7 c1=0 length=4 units=km
+
+New load.ld bus1=ld phases=3 conn=wye model=1 kv=12.47 kw=7000 pf=0.95
+
+// Reversible regulator with idle=yes: it senses the deep under-voltage but
+// idles in the no-load zone instead of tapping up.
+New regcontrol.rg transformer=tr winding=2 vreg=128 band=1 ptratio=60
+~ reversible=yes idle=yes
+
+Set voltagebases=[12.47]
+calcv
+Set mode=snap
+Set controlmode=static
+Solve

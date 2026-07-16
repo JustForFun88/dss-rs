@@ -88,16 +88,21 @@ pub mod prop {
     pub const XRCONST: usize = 39;
     pub const LEADLAG: usize = 40;
     pub const WDGCURRENTS: usize = 41;
+    // GICharm BH-curve data props (dss_capi 0.15.x r4064, commit 90962ae8) —
+    // `Unused` (parse+store only; never consumed by the port).
+    pub const BHPOINTS: usize = 42;
+    pub const BHCURRENT: usize = 43;
+    pub const BHFLUX: usize = 44;
     // TPDClass tail:
-    pub const NORMAMPS: usize = 42;
-    pub const EMERGAMPS: usize = 43;
-    pub const FAULTRATE: usize = 44;
-    pub const PCTPERM: usize = 45;
-    pub const REPAIR: usize = 46;
+    pub const NORMAMPS: usize = 45;
+    pub const EMERGAMPS: usize = 46;
+    pub const FAULTRATE: usize = 47;
+    pub const PCTPERM: usize = 48;
+    pub const REPAIR: usize = 49;
     // TCktElementClass tail:
-    pub const BASE_FREQ: usize = 47;
-    pub const ENABLED: usize = 48;
-    pub const NUM_PROPS: usize = 49; // incl. Like
+    pub const BASE_FREQ: usize = 50;
+    pub const ENABLED: usize = 51;
+    pub const NUM_PROPS: usize = 52; // incl. Like
 }
 
 /// `TAutoTrans.DefineProperties` (`AutoTrans.pas:364`).
@@ -153,6 +158,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // Read-only result string (winding currents mag/angle); the render reads
         // the live `cd.vterminal`, so the `?`/`Dump` surfaces refresh it first.
         PropDef::string("WdgCurrents").flags(PropFlags::READS_VTERMINAL),
+        // GICharm BH-curve data (r4064, 90962ae8): `Unused` props — parsed and
+        // stored, never used in a solve (mirrors the Transformer port).
+        PropDef::integer("BHPoints").flags(PropFlags::SUPPRESS_JSON | PropFlags::NON_NEGATIVE),
+        PropDef::double_array("BHCurrent", BHPOINTS),
+        PropDef::double_array("BHFlux", BHPOINTS),
         // TPDClass tail:
         PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),
@@ -224,6 +234,11 @@ pub struct AutoTrans {
     fault_rate: f64,
     pct_perm: f64,
     hrs_to_repair: f64,
+    // GICharm BH-curve data (Unused; r4064). Kept at length `bh_points` by the
+    // BHpoints side effect.
+    bh_points: i32,
+    bh_current: Vec<f64>,
+    bh_flux: Vec<f64>,
 }
 
 /// Pascal `XscSize`: `(NumWindings-1)·NumWindings/2`.
@@ -322,6 +337,9 @@ impl AutoTrans {
             fault_rate: 0.007,
             pct_perm: 0.0,
             hrs_to_repair: 0.0,
+            bh_points: 0,
+            bh_current: Vec::new(),
+            bh_flux: Vec::new(),
         };
         t.set_num_windings(2); // allocates windings, puXSC, terminals, matrices
         t.active_winding = 1;

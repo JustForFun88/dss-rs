@@ -232,8 +232,18 @@ fn run_case(name: &str) {
     // significant quantities pinned tightly.
     let element_names: Vec<String> = golden.elements.keys().cloned().collect();
     for el_name in &element_names {
+        let class = el_name.split('.').next().unwrap_or("");
         let props = &golden.elements[el_name].properties;
         for (prop, expected) in props {
+            // WP-U1.6 C5 (r4086): RegControl's `RevThreshold` default flipped from
+            // +100 kW to the signed −100 kW. These Phase-0 goldens are 0.14.5-pinned
+            // (+100) and must not be regenerated (the 0.14.5 oracle still dumps
+            // +100); the port's 0.15.x −100 is a deliberate version mismatch (§1.2),
+            // pinned against capi015 by props/regcontrol.json + regcontrol_idle.dss.
+            if class.eq_ignore_ascii_case("RegControl") && prop.eq_ignore_ascii_case("RevThreshold")
+            {
+                continue;
+            }
             dss.command(&format!("? {el_name}.{prop}"));
             let actual = dss.result().to_string();
             assert_value_matches_tol(

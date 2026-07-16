@@ -340,6 +340,7 @@ impl DssObject for AutoTrans {
             NUMTAPS => self.windings[self.aw()].num_taps,
             LEADLAG => self.hv_leads_lv as i32,
             CORE => self.core_type,
+            BHPOINTS => self.bh_points,
             _ => unreachable!("AutoTrans has no integer property {idx}"),
         }
     }
@@ -359,6 +360,7 @@ impl DssObject for AutoTrans {
             }
             LEADLAG => self.hv_leads_lv = value != 0,
             CORE => self.core_type = value,
+            BHPOINTS => self.bh_points = value,
             _ => unreachable!("AutoTrans has no integer property {idx}"),
         }
     }
@@ -474,12 +476,18 @@ impl DssObject for AutoTrans {
     fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
         match idx {
             prop::XSCARRAY => Some(&self.xsc),
+            // Pascal `GetDSSArray` renders a NIL pointer as '' (Utilities.pas:1857);
+            // an unallocated (BHpoints=0) BH array is the NIL equivalent.
+            prop::BHCURRENT => (!self.bh_current.is_empty()).then_some(&self.bh_current[..]),
+            prop::BHFLUX => (!self.bh_flux.is_empty()).then_some(&self.bh_flux[..]),
             _ => unreachable!("AutoTrans has no array property {idx}"),
         }
     }
     fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
         match idx {
             prop::XSCARRAY => self.xsc = value,
+            prop::BHCURRENT => self.bh_current = value,
+            prop::BHFLUX => self.bh_flux = value,
             _ => unreachable!("AutoTrans has no array property {idx}"),
         }
     }
@@ -632,6 +640,12 @@ impl DssObject for AutoTrans {
                     self.cd.obj.clear_seq(p);
                 }
             }
+            // r4064 (90962ae8): BHpoints reallocates both BH arrays, zeroed.
+            BHPOINTS => {
+                let n = self.bh_points.max(0) as usize;
+                self.bh_current = vec![0.0; n];
+                self.bh_flux = vec![0.0; n];
+            }
             _ => {}
         }
 
@@ -708,6 +722,12 @@ impl DssObject for AutoTrans {
         self.xrconst = o.xrconst;
 
         self.xfmr_bank = o.xfmr_bank.clone();
+
+        // r4064 (90962ae8): TControlledTransformerObj.MakeLike copies BHpoints
+        // and the two BH arrays.
+        self.bh_points = o.bh_points;
+        self.bh_current.clone_from(&o.bh_current);
+        self.bh_flux.clone_from(&o.bh_flux);
     }
 
     /// Target side of RegControl's deferred `TapNum` write (Pascal `Set_TapNum`
