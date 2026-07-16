@@ -965,6 +965,59 @@ inner loop bound shortened, form-only). Cited to the 0.15.x Pascal + commit
   no-op witness.
 - `known_diffs`: none matched — nothing to retire.
 
+## B3/C1 — LineSpacing equivalent-spacing model — SETTLED (WP-U1.4, adopt capi015; default-off, no golden movement)
+
+**Observable.** The series `Z` / shunt `Yc` of a Line whose `LineGeometry`
+references a `LineSpacing` with `Detailed=No` (`EquivalentSpacing = not detailed`):
+the four equivalent distances `EqDistPhPh`/`EqDistPhN`/`AvgPhaseHeight`/
+`AvgNeutralHeight` replace the per-conductor `X`/`H` coordinates in the Carson
+`D_ij` / image-distance / earth-return terms.
+
+**dss_capi 0.15.x (capi015) / EPRI r4088+.** New `LineSpacing` properties
+(`LineSpacing.pas`): `Detailed` (bool, default `true`), `EqDistPhPh`, `EqDistPhN`,
+`AvgPhaseHeight`, `AvgNeutralHeight` (double, default `0.0`). `TLineConstants`
+(`LineConstants.pas`, SVN r3913-era) grows an `equivalentSpacing` flag + the four
+distances; `Calc`/`GetZearth`/`ConductorsInSameSpace` branch on it. `LineGeometry`
+copies the spacing's equivalent state (`UpdateLineGeometryData` converts the
+distances to meters via `To_Meters(FLastUnit)`), and skips `SetX`/`SetY`.
+
+**Decision — adopt (default-off preserves 0.14.5 numerics).** `Detailed=true` ⇒
+`equivalentSpacing=false` ⇒ the legacy per-conductor-coordinate path, bit-identical
+to 0.14.5 (`eps_r_medium=1.0` ⇒ `E0*1.0 == E0` exactly; `height_offset=0.0`).
+Ported 1:1 in `support/line_constants/mod.rs` (the `equivalent_spacing` branches in
+`calc_overhead`/`get_ze`/`cisp_overhead`, plus `set_equivalent_spacing`/
+`set_equivalent_distances`/`set_eps_r_medium`/`set_height_offset` setters),
+`elements/general/line_spacing/mod.rs` (the five props + `equivalent_spacing()`
+accessor + the `Detailed` prop-tracking side effect), and the
+`elements/general/line_geometry` handoff (`apply_spacing`/`load_spacing_and_wires`/
+`update_line_geometry_data`).
+
+**Probe / gate.** capi015 (0.15.0b4), a 4-conductor (3φ+N) overhead line under an
+equivalent-spacing spacing, DERI, reduce=y, ohms/mi (probe 2026-07-16): reduced
+`rmatrix` diag `0.410565535096229` / off `0.109545787814619`, `xmatrix` diag
+`0.988334662246234` / off `0.426587892673967`. Rust matches to 1e-8 rel
+(`line_geometry::tests::matrices_equivalent_spacing_match_capi015`).
+- **No existing golden/live case moves** (`Detailed` defaults true; no corpus deck
+  sets the equivalent-spacing props — scanned). The whole `line_constants`/
+  `line_geometry`/`line` suites + `props_roundtrip` stay green untouched.
+- **New capi015 corpus deck** `modes/upgrade/upgrade_linecs_eqspacing.dss`
+  (`oracle: "capi015"`, YPrim-focused on `line.l1`; §1.7-validated: converges in 2
+  iters, bit-identical fingerprint across two capi015 processes).
+- **New capi015 props golden** `tests/golden/props/linespacing_eqspacing.json`
+  (per-file `engine_spec: capi015` provenance) pins the property surface
+  (`Detailed`/`EqDistPhPh`/… readbacks).
+- `known_diffs`: no Rust↔EPRI entry existed (0.14.5 had no equivalent-spacing
+  path); adopting it makes Rust match r4133 for the new surface — nothing to retire.
+
+**Remaining WP-U1.4 rows (not in this slice).** `Line.EpsRMedium`/`HeightOffset`/
+`HeightUnit`/`Conductors` (Line-level props — blocked on the `compare_all_properties`
+count-equality harness: adding a property to the circuit-element class `Line`
+breaks every default-oracle feeder's property-table-shape check; the engine
+numerics for EpsRMedium/HeightOffset are already ported default-off), the merged
+`CNTSLineConstants` mixed-conductor class + `CNData.SemiconLayer` capacitance,
+`LineCode` FaultRate/PctPerm/Repair deprecation, LineType enum width. D3 spacing
+ratings + overload deck (folded from WP-U1.2). See STATUS §WP-U1.4.
+
 ## L3, L4 — pending later WPs
 
 - **L3** Monitor CSV header — WP-U1.5 (report-format, numeric-token gated).

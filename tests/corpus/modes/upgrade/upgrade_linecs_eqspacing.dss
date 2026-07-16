@@ -1,0 +1,15 @@
+! WP-U1.4 (UPGRADE_PLAN §WP-U1.4) — LineSpacing equivalent-spacing model.
+! A LineSpacing with detailed=no supplies the four equivalent distances
+! (EqDistPhPh/EqDistPhN/AvgPhaseHeight/AvgNeutralHeight) instead of per-conductor
+! X/H coordinates; the LineGeometry (nconds=4, nphases=3, reduce=y) Kron-reduces
+! to a 3x3 phase Z/Yc. oracle capi015 (0.15.x LineSpacing.pas/LineConstants.pas).
+! YPrim-focused live compare on line.l1 (the asymmetric-family convention).
+Clear
+New Circuit.linecs_eq basekv=12.47 phases=3 bus1=sourcebus
+New WireData.acsr gmrac=0.0244 diam=0.721 rac=0.306 runits=mi radunits=in gmrunits=ft normamps=530
+New LineSpacing.sp nconds=4 nphases=3 units=ft detailed=no EqDistPhPh=2.5 EqDistPhN=4.272 AvgPhaseHeight=28.0 AvgNeutralHeight=24.0
+New LineGeometry.g nconds=4 nphases=3 spacing=sp wires=[acsr acsr acsr acsr] reduce=y
+New Line.l1 bus1=sourcebus bus2=b2 geometry=g length=1 units=mi
+New Load.ld bus1=b2 phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+Calcvoltagebases

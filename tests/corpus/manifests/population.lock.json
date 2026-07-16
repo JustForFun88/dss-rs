@@ -12,7 +12,7 @@
   "family_counts": {
     "asymmetric": 47,
     "controls": 94,
-    "modes": 55
+    "modes": 56
   },
   "family_paths": {
     "asymmetric": [
@@ -209,6 +209,7 @@
       "time/midi_duty_ctrl.dss",
       "time/peakday.dss",
       "time/yearly.dss",
+      "upgrade/upgrade_linecs_eqspacing.dss",
       "upgrade/upgrade_parser_zerokw.dss",
       "upgrade/upgrade_pilot.dss",
       "windgen/windgen_daily.dss",
