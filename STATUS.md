@@ -262,6 +262,19 @@ are snapshots; follow-up logged for the oracle-infra owner. Full detail:
 - known_diffs burn-down: no seasonal/allocation entry ever existed (reports were
   NOT_PORTED); `meter-zonepce-count` (r3723-only) + `monitor-header-whitespace`
   both document behaviors this WP does not change → retained.
+- **Audit fixes (branch `wt-u15`).** (1) `get_ratings` blocker REBUTTED: the
+  auditor cited r4133/pre-refactor `NumAmpRatings > 1`, but the port ports
+  `55400a29`'s `GetRatings` guard `0 <= idx < NumAmpRatings` (no `>1`); the pinned
+  capi015 oracle (0.15.0b4/SVN4103) confirms it — a single-season Line at idx 0
+  reports `%Normal == %Emergency` (AmpRatings[0] overrides both). No code change;
+  docs corrected to stop misquoting the guard. (2) Set-command sync (real
+  divergence): `Set Hour`/`SeasonRating`/`SeasonSignal` now re-sync
+  `seasonal_rating_idx` (`55400a29` ExecOptions 3/114/115), verified on capi015
+  (`solve; set hour; export` reads the new index) —
+  `set_commands_resync_seasonal_rating_idx`. (3) Seasonal report goldens tightened
+  to exact `0.0/0.0` (Rust == capi015 byte-for-byte; the faer-vs-KLU floor was
+  unnecessary). (4) Added `di_overloads_applies_seasonal_rating` (DI-path seasonal
+  wiring).
 
 **WP-U1.8 (WindGen + WTG3 dynamics) — LANDED (branch `wp-u18`).** New PC element
 `elements/pc/windgen/` (Generator-shaped negative load): aerodynamic power-flow

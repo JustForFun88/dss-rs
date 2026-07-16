@@ -1000,18 +1000,38 @@ Overloads`):
 capi015 == r4133 bit-identical (ledger L4 confirmed). A >200-percentage-point,
 revision-**sensitive** move.
 
-**Decision — adopt the capi015 (=r4133) global-index form.** New
+**Decision — adopt the capi015 global-index form.** New
 `Circuit::seasonal_rating_idx` (`-1` init) synced by
-`solution::meters::sync_seasonal_rating_idx` at every solve (the union of the
-Pascal per-solve sync sites; reports always follow a solve, so a separate
-`Set`-command sync is unnecessary — documented at the call site). New
-`CktElement::get_ratings(seasonal_idx)` trait method (Pascal
+`solution::meters::sync_seasonal_rating_idx` on **every solve AND on the `Set
+Hour`/`SeasonRating`/`SeasonSignal` commands** (`55400a29` calls
+`SyncSeasonalRatingIdx` at ExecOptions params 3/114/115 + CAPI `Set_Hour`/
+`Set_dblHour` — the union of the Pascal sync sites). The set-command sync is
+**not** optional: a `solve; set hour=X; export overloads` (no re-solve) reads the
+new index on capi015, verified empirically (`solve@hour0; set hour=18; export`
+reports `AmpRatings[3]`, not the stale `AmpRatings[0]`) — pinned by
+`golden_reports.rs::set_commands_resync_seasonal_rating_idx`. New
+`CktElement::get_ratings(seasonal_idx)` trait method (Pascal `55400a29`
 `TPDElement.GetRatings`) overridden by Line + Transformer's `num_amp_ratings`/
 `amp_ratings` accessors; wired into `export_capacity`, `export_overloads`, and
 `write_overload_report` (the DI path keeps the BASE-rating entry gate, then uses
-the seasonal ratings for the overload test + reported values, exactly as 0.15.x).
-The 0.14.5 state-mutating `DSS.SeasonalRating := FALSE`-on-miss read is NOT
-reproduced (CLAUDE.md known-bug policy) — the precomputed index removes it.
+the seasonal ratings for the overload test + reported values, exactly as 0.15.x
+`EnergyMeter.pas::WriteOverloadReport` — pinned by
+`di_overloads_applies_seasonal_rating`). The 0.14.5 state-mutating
+`DSS.SeasonalRating := FALSE`-on-miss read is NOT reproduced (CLAUDE.md known-bug
+policy) — the precomputed index removes it.
+
+**capi015 ≠ r4133 on SINGLE-season elements (adopt capi015, the binding
+oracle).** The `55400a29` `GetRatings` guard is `(idx >= 0) and (idx <
+NumAmpRatings)` — it **dropped** the pre-refactor/r4133 `(RatingIdx <=
+NumAmpRatings) and (NumAmpRatings > 1)` guard. So under an active signal at idx 0
+a **single-season** PDElement (`NumAmpRatings = 1`, the default) takes
+`AmpRatings[0]` for BOTH norm and emerg on capi015, whereas r4133 keeps the base
+`(NormAmps, EmergAmps)`. Verified on the pinned capi015 oracle (0.15.0b4 / SVN
+4103, newer than `55400a29`): a default single-season Line under `SeasonRating`
+at idx 0 reports `%Normal == %Emergency` (both use `AmpRatings[0]`), i.e. the
+no-`>1`-guard behavior. The port follows **capi015** (the goldens' oracle);
+the earlier "capi015 == r4133 bit-identical" claim above holds only for the
+multi-season fixtures (`Seasons=4`), which is all the goldens exercise.
 
 **Gate consequence.**
 - **New capi015 goldens** `tests/golden/reports/export_overloads_seasonal.txt` +
@@ -1023,7 +1043,10 @@ reproduced (CLAUDE.md known-bug policy) — the precomputed index removes it.
   validated bit-identical on capi015 and oddie:r4133 (§1.7).
 - **Feature-sensitive unit tests** `line::tests::get_ratings_applies_seasonal_index`
   + `transformer::tests::get_ratings_applies_seasonal_index_on_transformer` (pin the
-  `AmpRatings[idx]` override + the `idx<NumAmpRatings`/`-1` guard).
+  `AmpRatings[idx]` override + the `idx<NumAmpRatings`/`-1` guard, no `>1`), plus
+  `golden_reports.rs::{set_commands_resync_seasonal_rating_idx,
+  di_overloads_applies_seasonal_rating}` (the set-command re-sync and the DI-path
+  seasonal wiring).
 - `known_diffs.json`: no seasonal Rust↔EPRI entry existed (the override was
   NOT_PORTED, so it never produced a cataloged divergence); porting it now makes
   Rust match r4133. Nothing to retire; a latent Rust↔r4133 gap is resolved.
