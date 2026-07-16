@@ -28,6 +28,13 @@ ENTRY_BUCKETS = [
 ]
 NON_ENTRY = "not_an_entry_point"
 
+# The corpus partition = every `.dss` in exactly one of these manifests (the
+# invariant `corpus_manifest.rs` enforces). Report ONLY these — other files in
+# `manifests/` (`ad_sweep.json`, a disposition list that OVERLAPS `solvable_now`;
+# `population.lock.json`, a fingerprint lock with no `cases`) are not partition
+# buckets and must not enter the total, or it double-counts.
+PARTITION_BUCKETS = ENTRY_BUCKETS + [NON_ENTRY]
+
 
 def count(name: str) -> int:
     p = MANIFESTS / f"{name}.json"
@@ -37,7 +44,7 @@ def count(name: str) -> int:
 
 
 def main() -> None:
-    counts = {p.stem: count(p.stem) for p in sorted(MANIFESTS.glob("*.json"))}
+    counts = {name: count(name) for name in sorted(PARTITION_BUCKETS)}
     total = sum(counts.values())
     entry = sum(counts.get(b, 0) for b in ENTRY_BUCKETS)
     solvable = counts.get("solvable_now", 0)
