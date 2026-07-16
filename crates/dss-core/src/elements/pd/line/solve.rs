@@ -89,10 +89,15 @@ impl Line {
         let len = self.len;
         let units = self.length_units.code();
         let earth_model = self.earth_model;
+        let (eps, h_off, h_unit) = (self.eps_r_medium, self.height_offset, self.height_units);
         let geom = self
             .geometry_obj
             .as_mut()
             .expect("make_z_from_geometry called without a geometry");
+        // dss_capi 0.15.x (Line.pas:2049-2051): push EpsRMedium/HeightOffset/
+        // HeightUnit into the geometry's engine *before* the matrix read (which
+        // recomputes because these flag `rhoChanged`).
+        geom.set_line_constants_medium(eps, h_off, h_unit);
         let z = geom.z_matrix(f, len, units, earth_model)?;
         let yc = geom.yc_matrix(f, len, units, earth_model)?;
         self.z = Some(z);
@@ -114,24 +119,39 @@ impl Line {
         let len = self.len;
         let units = self.length_units.code();
         let earth_model = self.earth_model;
+        let (eps, h_off, h_unit) = (self.eps_r_medium, self.height_offset, self.height_units);
 
         // Pascal builds a temporary `TLineGeometryObj` named after the Line and
         // loads the spacing + conductors into it (`LoadSpacingAndWires` runs the
-        // Carson calc under this Line's `FEarthModel`).
+        // Carson calc under this Line's `FEarthModel`). dss_capi 0.15.x
+        // (Line.pas:2111-2113) pushes EpsRMedium/HeightOffset/HeightUnit into the
+        // temporary geometry's engine *before* the Carson calc — threaded through
+        // `load_spacing_and_wires` so they are applied before its internal
+        // `update_line_geometry_data` (which folds `heightOffset` into the
+        // equivalent-spacing average heights).
         let mut pgeo = LineGeometryObj::new(self.cd.obj.name().to_string());
         {
             let spc = self
                 .line_spacing_obj
                 .as_ref()
                 .expect("make_z_from_spacing called without a spacing");
-            pgeo.load_spacing_and_wires(spc, &self.line_wire_data, f, earth_model)?;
+            pgeo.load_spacing_and_wires(
+                spc,
+                &self.line_wire_data,
+                f,
+                earth_model,
+                eps,
+                h_off,
+                h_unit,
+            )?;
         }
         // A `rho=` on the Line overrides the geometry's earth resistivity.
         if self.cd.obj.prp_specified(prop::RHO) {
             pgeo.set_rho_earth(self.rho);
         }
         // Unless ratings were specified *after* the spacing conductors, seed the
-        // Line's amps from the temporary geometry (which took them from wire 1).
+        // Line's amps from the temporary geometry (0.15.x D3: the minimum over
+        // the phase conductors — see `load_spacing_and_wires`).
         if !self.got_ratings_after_spacing_conds {
             self.norm_amps = pgeo.norm_amps();
             self.emerg_amps = pgeo.emerg_amps();

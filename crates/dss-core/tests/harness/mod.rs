@@ -1136,6 +1136,10 @@ fn skip_transformer_cursor(class: &str, prop: &str, cursors_disagree: bool) -> b
 /// one class per line so parallel WP branches each add a line without conflict
 /// (duplicate class rows are fine — the predicate ORs every matching row).
 const PROPS_015X: &[(&str, &[&str])] = &[
+    // dss_capi 0.15.x Line.pas:59-61 (SVN r3913-era) — WP-U1.4 (wt-u14props).
+    // `Conductors` (Line.pas:62) is the sibling wt-u14cnts's row; it lands here
+    // when that mixed wire/CN/TS list is ported.
+    ("Line", &["EpsRMedium", "HeightOffset", "HeightUnit"]),
     // Rows land here with their porting WP, e.g.:
     // ("Line", &["EpsRMedium", "HeightOffset", "HeightUnit", "Conductors"]),  // WP-U1.x
     // ("RegControl", &["Idle", "IdleReverse", "IdleForward", "FwdThreshold"]),  // WP-U1.x

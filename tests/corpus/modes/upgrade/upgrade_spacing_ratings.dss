@@ -1,0 +1,17 @@
+! WP-U1.2 row D3 (UPGRADE_PLAN §WP-U1.2, LineGeometry.pas:1060-1064) — spacing
+! ratings from the MINIMUM over PHASE conductors, not conductor 1. Phase wires
+! [big small big] have differing normamps; the neutral (neut, normamps=999) is
+! excluded (index > FNphases). 0.15.x: Line.normamps = min(600,400,600)=400,
+! emergamps = the governing phase's 500. 0.14.5 took conductor 1 (600/800).
+! oracle capi015. Ratings do not affect V/I/P, so the D3 observable is probed on
+! Line.l1.normamps/emergamps directly.
+Clear
+New Circuit.spc_rate basekv=12.47 phases=3 bus1=sourcebus
+New WireData.big   gmrac=0.0244 diam=0.721 rac=0.306 runits=mi radunits=in gmrunits=ft normamps=600 emergamps=800
+New WireData.small gmrac=0.0244 diam=0.721 rac=0.306 runits=mi radunits=in gmrunits=ft normamps=400 emergamps=500
+New WireData.neut  gmrac=0.0244 diam=0.721 rac=0.306 runits=mi radunits=in gmrunits=ft normamps=999 emergamps=999
+New LineSpacing.sp nconds=4 nphases=3 units=ft x=[-1.0 0.0 1.0 0.5] h=[28 28 28 24]
+New Line.l1 bus1=sourcebus bus2=b2 spacing=sp wires=[big small big neut] length=1 units=mi
+New Load.ld bus1=b2 phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+Calcvoltagebases
