@@ -513,6 +513,24 @@ impl Dss {
         None
     }
 
+    /// The named generator's *present* (solved) `(kW, kvar)` output — Pascal
+    /// `Get_PresentkW`/`Get_Presentkvar` (`Pnominalperphase`/`Qnominalperphase`
+    /// times `nphases/1000`). Unlike [`Self::generator_kw_kvar`] (the input
+    /// bases), this reflects the solved per-phase power, so under NCIM it tracks
+    /// the PV-bus `deltaQNom` — the channel dss-python's `Generators.kvar` reads.
+    pub fn generator_present_kw_kvar(&self, name: &str) -> Option<(f64, f64)> {
+        for class in &self.classes {
+            for obj in &class.objects {
+                if let Some(g) = obj.as_any().downcast_ref::<generator::Generator>()
+                    && g.data().name().eq_ignore_ascii_case(name)
+                {
+                    return Some((g.present_kw(), g.present_kvar()));
+                }
+            }
+        }
+        None
+    }
+
     /// Test API for Pascal `TSensorObj.TakeSample`: drive the named sensor
     /// against the solved circuit and return its `(CalculatedCurrent,
     /// CalculatedVoltage)` per phase. (`TakeSample` is otherwise dead in the
