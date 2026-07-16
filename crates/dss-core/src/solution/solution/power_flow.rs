@@ -6,6 +6,7 @@
 use num_complex::Complex64;
 
 use crate::circuit::{CAPADD, Circuit, GENADD};
+use crate::elements::ckt::ElemFlags;
 use crate::elements::pc::generator::Generator;
 use crate::elements::traits::{ElemRef, InjCtx};
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
@@ -121,7 +122,22 @@ fn get_pc_inj_curr_filtered(ckt: &mut Circuit, env: &mut SolveEnv, gfm_only: boo
         let elem = env.store.ckt_elem_mut(r);
         let on_gfm = elem.is_gfm();
         if !(gfm_only ^ on_gfm) && elem.cd().enabled {
-            elem.inj_currents(&sys, &mut ctx);
+            // Pascal per-PCE `InjCurrents` (Load/Generator/PVsystem/Storage/
+            // IndMach012 @ 0.15.0b4): `if not (Flg.ForceInjCurrents in Flags)
+            // then Calc…; Result := inherited InjCurrents`. When the injection
+            // is forced from the DSS language (`Set InjCurrent=…`/`Set
+            // ITerminal=…`, WP-U1.9) the model recompute is skipped and the
+            // stored `InjCurrent` is added straight into the global Currents
+            // array — exactly what `TPCElement.InjCurrents` does. Handling it
+            // here honors the flag uniformly for every PC element.
+            if elem.cd().flags.contains(ElemFlags::FORCE_INJ_CURRENTS) {
+                let cd = elem.cd();
+                for i in 0..cd.yorder {
+                    ctx.currents[cd.node_ref[i]] += cd.inj_current[i];
+                }
+            } else {
+                elem.inj_currents(&sys, &mut ctx);
+            }
         }
     }
 }

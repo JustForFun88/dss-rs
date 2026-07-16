@@ -209,6 +209,7 @@
       "time/midi_duty_ctrl.dss",
       "time/peakday.dss",
       "time/yearly.dss",
+      "upgrade/upgrade_forcehooks.dss",
       "upgrade/upgrade_growth_year0.dss",
       "upgrade/upgrade_linecs_eqspacing.dss",
       "upgrade/upgrade_parser_zerokw.dss",

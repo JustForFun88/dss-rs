@@ -1,7 +1,10 @@
 //! The `Set` option command (`DoSetCmd` and its no-circuit variant). Split out
 //! of `exec/set_get.rs`.
 
+use num_complex::Complex64;
+
 use super::*;
+use crate::elements::ckt::ElemFlags;
 
 /// Pascal `SetDataPath` (DSSGlobals.pas:540): create the dir if missing (#907 on
 /// failure → leave dirs unchanged), then point both the working dir and the
@@ -41,6 +44,57 @@ fn apply_data_path(
     }
 }
 
+/// Pascal `Set InjCurrent=`/`Set ITerminal=` (ExecOptions.pas @ 0.15.0b4): parse
+/// a complex vector of `NPhases` values into the active PCE's `InjCurrent` (or
+/// `ITerminal`, also flagging `ITerminalUpdated`) and set `Flg.ForceInjCurrents`
+/// so the injection loop / `GetCurrents` use the user-supplied values. WP-U1.9.
+fn apply_force_currents(
+    elem: &mut dyn CktElement,
+    parser: &mut Parser,
+    vars: &ParserVars,
+    is_terminal: bool,
+) {
+    let cd = elem.cd_mut();
+    let np = cd.nphases;
+    let mut buf = vec![(0.0, 0.0); np];
+    parser.parse_as_complex_vector(vars, &mut buf);
+    let target = if is_terminal {
+        &mut cd.iterminal
+    } else {
+        &mut cd.inj_current
+    };
+    for (i, &(re, im)) in buf.iter().enumerate().take(target.len()) {
+        target[i] = Complex64::new(re, im);
+    }
+    if is_terminal {
+        cd.iterminal_updated = true;
+    }
+    cd.flags.include(ElemFlags::FORCE_INJ_CURRENTS);
+}
+
+/// Pascal `Set YPrim=` (ExecOptions.pas @ 0.15.0b4): parse an `NConds×NConds`
+/// complex matrix into the active PCE's primitive Y (column-major, matching
+/// `TcMatrix.GetValuesArrayPtr`), clear `YPrimInvalid`, and set `Flg.ForceYPrim`.
+/// Returns `false` on a size mismatch (Pascal error 3004) or an uninitialized
+/// YPrim. WP-U1.9.
+fn apply_force_yprim(elem: &mut dyn CktElement, parser: &mut Parser, vars: &ParserVars) -> bool {
+    let cd = elem.cd_mut();
+    let norder = cd.yorder;
+    let mut buf = vec![(0.0, 0.0); norder * norder];
+    if parser.parse_as_complex_matrix(vars, &mut buf, norder) != norder {
+        return false;
+    }
+    let Some(yp) = cd.yprim.as_mut() else {
+        return false;
+    };
+    for (v, &(re, im)) in yp.values_mut().iter_mut().zip(buf.iter()) {
+        *v = Complex64::new(re, im);
+    }
+    cd.yprim_invalid = false;
+    cd.flags.include(ElemFlags::FORCE_YPRIM);
+    true
+}
+
 impl Dss {
     /// Pascal `DoSetCmd(SolveOption)`: parse `option=value` pairs, then run
     /// the solve when called from the `Solve` command.
@@ -75,9 +129,13 @@ impl Dss {
                 default_earth_model,
                 max_allocation_iterations,
                 auto_show_export,
+                no_forms_allowed,
+                no_progress_bar_form_allowed,
                 current_dir,
                 output_directory,
                 daisy_size,
+                active_ckt_element,
+                class_by_name,
                 ..
             } = self;
             let ckt = circuit.as_mut().expect("checked above");
@@ -95,6 +153,10 @@ impl Dss {
                         .unwrap_or(0);
                 }
 
+                // Pascal `Exit` semantics: the force-hook error arms abort the
+                // whole `Set` command (they `DoSimpleMsg(...); Exit`), unlike a
+                // normal option that logs and continues. Set by those arms.
+                let mut abort = false;
                 match pointer {
                     0 => {
                         // A-Diakoptics options (`Num_SubCircuits`, `Coverage`,
@@ -705,6 +767,106 @@ impl Dss {
                     // per ExecOptions.pas:683-684, `ProcessTime`/`StepTime` Get-only
                     // silent no-ops. The gfm branch's all-no-op arm was dropped at
                     // merge as unreachable and 107-divergent.)
+                    // `Set AllowForms`/`AllowProgressBar` (ExecOptions.pas:777-780):
+                    // console-form gates, inert headless — stored so the value
+                    // round-trips (capi015 silently accepts; erroring diverges).
+                    opt::ALLOW_FORMS => *no_forms_allowed = !interpret_yes_no(&param),
+                    opt::ALLOW_PROGRESS_BAR => {
+                        *no_progress_bar_form_allowed = !interpret_yes_no(&param)
+                    }
+                    // WP-U1.9 PCE force hooks (ExecOptions.pas @ 0.15.0b4). Their
+                    // error arms `Exit` in Pascal → `abort` breaks the option loop.
+                    opt::INJ_CURRENT | opt::ITERMINAL => {
+                        let is_terminal = pointer == opt::ITERMINAL;
+                        match active_pce(classes, ckt, *active_ckt_element) {
+                            Ok(elem) => apply_force_currents(elem, parser, vars, is_terminal),
+                            Err(name) => {
+                                errors.push(format!("Active element ({name}) is not a PCElement."));
+                                abort = true;
+                            }
+                        }
+                    }
+                    opt::YPRIM => match active_pce(classes, ckt, *active_ckt_element) {
+                        Ok(elem) => {
+                            if !apply_force_yprim(elem, parser, vars) {
+                                errors.push(
+                                    "The size of the matrix provided does not match with the \
+                                     number of conductors of the active PCE."
+                                        .to_string(),
+                                );
+                                abort = true;
+                            }
+                        }
+                        Err(name) => {
+                            errors.push(format!("Active element ({name}) is not a PCElement."));
+                            abort = true;
+                        }
+                    },
+                    opt::STATE_VAR => {
+                        // `Set StateVar <element> <varname> <value>` (positional).
+                        parser.next_param(vars);
+                        let elem_name = parser.make_string(vars);
+                        let resolved =
+                            resolve_ckt_element(classes, class_by_name, parser, vars, &elem_name);
+                        parser.next_param(vars);
+                        let var_name = parser.make_string(vars);
+                        parser.next_param(vars);
+                        let value = parser.make_double(vars).unwrap_or(0.0);
+                        match resolved {
+                            None => {
+                                errors.push(format!("Object \"{elem_name}\" not found"));
+                                abort = true;
+                            }
+                            // Pascal checks `is TPCElement` (7103) BEFORE the
+                            // NumVariables check (7101).
+                            Some((ci, oi)) if !is_pce(ckt, ci, oi) => {
+                                errors.push(format!(
+                                    "Object \"{}.{}\" is not a valid PC element.",
+                                    classes[ci].props.class_name(),
+                                    classes[ci].objects[oi].data().name()
+                                ));
+                                abort = true;
+                            }
+                            Some((ci, oi)) => {
+                                let elem = classes[ci].objects[oi]
+                                    .as_ckt_element_mut()
+                                    .expect("resolved circuit element");
+                                if elem.num_variables() == 0 {
+                                    errors.push(format!(
+                                        "Object \"{elem_name}\" is not a valid element for this \
+                                         command. Only a selection of PC elements have state \
+                                         variables."
+                                    ));
+                                    abort = true;
+                                } else if let Some(i) = lookup_variable(elem, &var_name) {
+                                    elem.set_variable(i, value);
+                                } else {
+                                    errors.push(format!(
+                                        "State variable \"{}\" not found in \"{}.{}\".",
+                                        var_name.to_lowercase(),
+                                        classes[ci].props.class_name(),
+                                        classes[ci].objects[oi].data().name()
+                                    ));
+                                    abort = true;
+                                }
+                            }
+                        }
+                    }
+                    opt::ITER_NUMBER | opt::CTRL_ITER_NUMBER | opt::INTEGRATION_FLAG => {
+                        // Pascal: these are read-only (error 25040103) then `Exit`.
+                        errors.push("This value is read-only.".to_string());
+                        abort = true;
+                    }
+                    opt::PY_PATH => {
+                        // pyControl co-simulation server — NOT_PORTED (§0). Loud,
+                        // like capi015's "not supported in the AltDSS engine".
+                        errors.push(
+                            "Set PyPath= (pyControl co-simulation) is not supported in the \
+                             dss-rs engine."
+                                .to_string(),
+                        );
+                        abort = true;
+                    }
                     opt::TYPE | opt::CLASS => pending_set_active.push((true, param.clone())),
                     opt::ELEMENT | opt::OBJECT => pending_set_active.push((false, param.clone())),
                     _ => {
@@ -713,6 +875,9 @@ impl Dss {
                     }
                 }
 
+                if abort {
+                    break;
+                }
                 param_name = parser.next_param(vars);
                 param = parser.make_string(vars);
             }
