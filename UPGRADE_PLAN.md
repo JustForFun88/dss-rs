@@ -678,6 +678,14 @@ Save round-trip case over a protection-heavy deck.
   documented-upstream-bug).
 - The golden tree is provenance-stamped (`oracle` field in every regenerated
   `.meta.json`); `TESTING.md` reflects the final oracle map.
+- `PropFlags::HIDE_015X` retired: the Line/LineGeometry Dump/JSON golden
+  surface flips to capi015 (`gen_json.py` re-pinned from 0.14.5), the
+  `Line.Wires → "Conductors"` `json_name` masquerade drops, and the real
+  `Conductors` prop owns the JSON key (mixed-class lists then render with
+  per-item class prefixes — currently untested by any byte golden). Deferred
+  from WP-U1.4 wt-u14cond; full decision in `docs/upgrade/DIVERGENCES.md`
+  §"Line/LineGeometry Conductors (text upstream-broken)". `rg HIDE_015X`
+  must be empty at plan exit.
 - Handoff notes for DE_PASCALIZE Stage F: the `oracle-parity` lane's target
   is r4133-parity (this plan's end state), and RESONANCE's iteration-count
   freedom is already structurally supported by the §1.3-1 policy.
