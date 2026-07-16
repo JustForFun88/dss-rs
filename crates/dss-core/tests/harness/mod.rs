@@ -1147,10 +1147,15 @@ fn skip_transformer_cursor(class: &str, prop: &str, cursors_disagree: bool) -> b
 /// one class per line so parallel WP branches each add a line without conflict
 /// (duplicate class rows are fine — the predicate ORs every matching row).
 const PROPS_015X: &[(&str, &[&str])] = &[
-    // dss_capi 0.15.x Line.pas:59-61 (SVN r3913-era) — WP-U1.4 (wt-u14props).
-    // `Conductors` (Line.pas:62) is the sibling wt-u14cnts's row; it lands here
-    // when that mixed wire/CN/TS list is ported.
-    ("Line", &["EpsRMedium", "HeightOffset", "HeightUnit"]),
+    // dss_capi 0.15.x Line.pas:59-62 (SVN r3913-era) — WP-U1.4.
+    // `Conductors` (Line.pas:62, prop 34) — the merged mixed wire/CN/TS
+    // object-reference-array (wt-u14cond).
+    (
+        "Line",
+        &["EpsRMedium", "HeightOffset", "HeightUnit", "Conductors"],
+    ),
+    // WP-U1.4 (wt-u14cond): LineGeometry.pas Conductors=20, inserted.
+    ("LineGeometry", &["Conductors"]),
     // WP-U1.4 (wt-u14cnts): CNData.pas SemiconLayer=5, inserted.
     ("CNData", &["SemiconLayer"]),
     // WP-U1.6 C5 (dss_capi 0.15.x r4086, commit 8a898cba): RegControl gains the
