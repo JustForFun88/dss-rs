@@ -235,6 +235,67 @@ impl Dss {
                 loss_w: (loss.re, loss.im),
             });
         }
+        // Under NCIM the swing source's reported terminal currents are the KCL
+        // sum at its bus, not `YPrim·V - Iinj` (Pascal `TVsourceObj.GetCurrents`
+        // takes the `NCIM_CalcInjCurrAtBus` branch when `Algorithm = NCIMSOLVE`
+        // and `NodeRef[1] = 1`). Every connected element's `Iterminal` is now
+        // fresh (refreshed in the loop above), so recompute the swing source's
+        // currents/powers/losses from those and overwrite its snapshot entry.
+        //
+        // The generator overrides are needed for the same reason: after NCIM
+        // adjusts a PV/converted generator's reactive power, its `YPrim` (`Yeq`)
+        // is stale, so the general `YPrim·V - Iinj` reporting recompute no longer
+        // cancels to `-conj(S/V)`. The NCIM solver computed the exact terminal
+        // current (`-conj((Pnom + j·deltaQNom)/V)`); reproduce it here.
+        if ckt.solution.algorithm == crate::solution::solution::NCIMSOLVE {
+            let mut overrides: Vec<(ElemRef, Vec<num_complex::Complex64>)> = Vec::new();
+            if let Some(o) = ncim_swing_source_currents(classes, ckt) {
+                overrides.push(o);
+            }
+            overrides.extend(ncim_generator_currents(classes, ckt, &node_v));
+            for (r, curr) in overrides {
+                let name = format!(
+                    "{}.{}",
+                    classes[r.cls].props.class_name(),
+                    classes[r.cls].objects[r.idx].data().name()
+                );
+                let Some(snap) = out.iter_mut().find(|s| s.name.eq_ignore_ascii_case(&name)) else {
+                    continue;
+                };
+                let node_ref = classes[r.cls].objects[r.idx]
+                    .as_ckt_element()
+                    .expect("ncim override target is a ckt element")
+                    .cd()
+                    .node_ref
+                    .clone();
+                let mut loss = num_complex::Complex64::ZERO;
+                for (k, &i) in curr.iter().enumerate() {
+                    snap.currents[2 * k] = i.re;
+                    snap.currents[2 * k + 1] = i.im;
+                    let n = node_ref.get(k).copied().unwrap_or(0);
+                    if n > 0 {
+                        let mut s = node_v[n] * i.conj();
+                        loss += s; // Get_Losses = Σ V·conj(I) over conductors (W/var)
+                        if positive_seq {
+                            s *= 3.0;
+                        }
+                        snap.powers[2 * k] = s.re * 0.001;
+                        snap.powers[2 * k + 1] = s.im * 0.001;
+                    } else {
+                        snap.powers[2 * k] = 0.0;
+                        snap.powers[2 * k + 1] = 0.0;
+                    }
+                }
+                // Pascal `Get_Losses`: `if PositiveSequence then Result := Result*3`.
+                // Mirror the ×3 the general `elem.losses()` path applies (traits.rs),
+                // so overridden losses stay consistent with the per-conductor powers
+                // (which triple `s` above) under a positive-sequence CktModel.
+                if positive_seq {
+                    loss *= 3.0;
+                }
+                snap.loss_w = (loss.re, loss.im);
+            }
+        }
         out
     }
 
@@ -770,9 +831,20 @@ impl Dss {
     /// so they line up with the oracle's `YMatrix.getYSparse(factor=False)`.
     /// `None` if no system Y has been built. Test/golden API (the assembled-model
     /// checkpoint of `golden_checkpoints.rs`).
+    ///
+    /// Reads the **active** handle (`Solution.active_y`), modelling Pascal's `hY`
+    /// pointer: `BuildYMatrix` sets `hY := hYsystem` for `WHOLEMATRIX` and `hY :=
+    /// hYseries` for `SERIESONLY`/`PDE_ONLY` (`YMatrix.pas` l.394/402), and
+    /// `getYSparse` reads that pointer. So after an NCIM solve (`PDE_ONLY`) the
+    /// reported system Y is the PDE-only network Y — no load `Yeq` — exactly as
+    /// the oracle reports it.
     pub fn system_y_csc(&mut self) -> Option<SystemYCsc> {
+        use crate::solution::solution::ActiveY;
         let ckt = self.circuit.as_mut()?;
-        let y = ckt.solution.y_system.as_mut()?;
+        let y = match ckt.solution.active_y {
+            ActiveY::System => ckt.solution.y_system.as_mut(),
+            ActiveY::Series => ckt.solution.y_series.as_mut(),
+        }?;
         let n = y.size();
         let (rows, cols, vals) = y.coo_entries().ok()?;
         let coords = rows
@@ -833,4 +905,153 @@ impl Dss {
             None => Vec::new(),
         }
     }
+}
+
+/// Pascal `TVsourceObj.NCIM_CalcInjCurrAtBus` (`PCElements/vsource.pas` l.1225):
+/// the swing source's NCIM-reported terminal currents. NCIM holds the swing bus
+/// at the ideal EMF, so `YPrim·V - Iinj` is ~0 there; instead the source's
+/// terminal current is the Kirchhoff sum at its bus — **minus** every connected
+/// PD-element terminal current, **plus** every other connected PC-element terminal
+/// current. Returns `(swing-source ElemRef, its yorder-long terminal-current
+/// vector)` — the swing source is the [`VSource`] whose first node is the global
+/// slack (`NodeRef[0] == 1`) — or `None` if there is none.
+///
+/// Reads each connected element's `Iterminal` cache, which
+/// [`Dss::snapshot_elements`] has just refreshed at the converged `NodeV` (Pascal
+/// recomputes each `ce.GetCurrents` fresh; the values are identical). PD elements
+/// use the Pascal `Round(Yorder/2)` conductors-per-terminal stride (its 2-terminal
+/// assumption); PC elements use `NPhases`.
+fn ncim_swing_source_currents(
+    classes: &[DssClass],
+    ckt: &Circuit,
+) -> Option<(ElemRef, Vec<num_complex::Complex64>)> {
+    use num_complex::Complex64;
+
+    // The swing VSource: a source whose first node is the global slack node 1.
+    let src_ref = ckt.sources.iter().copied().find(|&r| {
+        let obj = &classes[r.cls].objects[r.idx];
+        obj.as_any()
+            .downcast_ref::<crate::elements::pc::vsource::VSource>()
+            .is_some()
+            && obj
+                .as_ckt_element()
+                .is_some_and(|ce| ce.cd().node_ref.first() == Some(&1))
+    })?;
+
+    let src_cd = classes[src_ref.cls].objects[src_ref.idx]
+        .as_ckt_element()?
+        .cd();
+    let src_bus = src_cd.terminals.first()?.bus_ref;
+    let nphases = src_cd.nphases;
+    let yorder = src_cd.yorder;
+    let mut curr = vec![Complex64::ZERO; yorder];
+
+    // The 0-based terminal of `cd` connected to the source bus, if any (Pascal
+    // `BusName = StripExtension(ce.GetBus(j))`).
+    //
+    // NON-reproduced quirk (deliberate, per CLAUDE.md "do not reproduce UB"):
+    // Pascal computes `myTerm` fresh per element only in the **PD** loop
+    // (`myTerm := 0` inside `for ce in ceList`, l.1247). In the **PC** loop
+    // (l.1268) `myTerm := 0` is set ONCE before the loop and never reset, so its
+    // terminal-finder `inc(myTerm)` accumulates across PCEs at the bus — a stateful
+    // cross-element index. That accumulation is inert whenever each PCE connects at
+    // its first terminal (`inc` never fires → myTerm stays 0), which is the only
+    // deterministic in-range case; with a PCE bonded at a non-first terminal it can
+    // run the `ElmCurrents[(myTerm*NPhases)+j]` index past `SetLength(…, Yorder+1)`
+    // into an OOB heap read. We compute `my_term` fresh per element for both loops:
+    // identical to Pascal on the defined path, and refusing to reproduce the OOB.
+    let my_term = |cd: &crate::elements::ckt::CktElementData| -> Option<usize> {
+        (0..cd.nterms).find(|&t| cd.terminals.get(t).map(|x| x.bus_ref) == Some(src_bus))
+    };
+
+    // TODO(compat): the `+ 1` on every `iterminal` index below reproduces an
+    // upstream off-by-one. Pascal `NCIM_CalcInjCurrAtBus` fills a **0-based**
+    // dynamic `ElmCurrents: array of Complex` via `ce.GetCurrents`, then indexes
+    // it as `ElmCurrents[(myTerm*stride) + j]` with `j := 1..NPhases` — a 1-based
+    // index into a 0-based array, so it reads each connected element's conductor
+    // shifted by one (the swing source's reported phase-A current is actually the
+    // negated phase-B branch current, etc.; the last read lands on the array's
+    // unwritten, zero-initialized tail slot). It is deterministic and in-range
+    // (never OOB — `SetLength(ElmCurrents, Yorder+1)`), so — per CLAUDE.md — it is
+    // reproduced 1:1 (the `.get(..).map` returns 0 for the tail slot the port's
+    // `Yorder`-length `iterminal` lacks, matching the zero slot). Clean fix: drop
+    // the `+ 1`. NCIM affects only the *reported* swing-source current; node
+    // voltages are unaffected.
+    let clip = |v: Option<&num_complex::Complex64>| v.copied().unwrap_or(Complex64::ZERO);
+
+    // PD elements (+ faults) at the bus: subtract their terminal currents. Pascal
+    // stride `Round(ce.Yorder / 2)` (its 2-terminal conductors-per-terminal).
+    for &r in ckt.pd_elements.iter().chain(ckt.faults.iter()) {
+        let Some(ce) = classes[r.cls].objects[r.idx].as_ckt_element() else {
+            continue;
+        };
+        let cd = ce.cd();
+        if !cd.enabled {
+            continue;
+        }
+        let Some(t) = my_term(cd) else { continue };
+        let stride = ((cd.yorder as f64) / 2.0).round() as usize;
+        for (i, c) in curr.iter_mut().enumerate().take(nphases) {
+            *c -= clip(cd.iterminal.get(t * stride + i + 1));
+        }
+    }
+    // PC elements (+ other sources) at the bus, excluding the source itself: add
+    // their terminal currents (stride `ce.NPhases`).
+    for &r in ckt.pc_elements.iter().chain(ckt.sources.iter()) {
+        if r == src_ref {
+            continue;
+        }
+        let Some(ce) = classes[r.cls].objects[r.idx].as_ckt_element() else {
+            continue;
+        };
+        let cd = ce.cd();
+        if !cd.enabled {
+            continue;
+        }
+        let Some(t) = my_term(cd) else { continue };
+        for (i, c) in curr.iter_mut().enumerate().take(nphases) {
+            *c += clip(cd.iterminal.get(t * cd.nphases + i + 1));
+        }
+    }
+    Some((src_ref, curr))
+}
+
+/// NCIM-reported terminal currents for every generator the NCIM solver touched
+/// (Pascal `NCIM_UpdateGenQ` l.772: `Iterminal[j+1] := -cong(cmplx(Pnom,
+/// deltaQNom[j])/V)`). After NCIM adjusts a generator's reactive power its
+/// `YPrim`/`Yeq` is stale, so the general `YPrim·V - Iinj` reporting recompute
+/// (which [`Dss::snapshot_elements`]'s main loop applies) no longer collapses to
+/// `-conj(S/V)`; this reproduces the exact terminal current the solver computed.
+/// Returns `(generator ElemRef, its yorder-long terminal-current vector)` for
+/// every enabled generator carrying NCIM state (`delta_q_nom` non-empty).
+fn ncim_generator_currents(
+    classes: &[DssClass],
+    ckt: &Circuit,
+    node_v: &[num_complex::Complex64],
+) -> Vec<(ElemRef, Vec<num_complex::Complex64>)> {
+    use crate::elements::pc::generator::Generator;
+    use num_complex::Complex64;
+
+    let mut out = Vec::new();
+    for &r in &ckt.generators {
+        let obj = &classes[r.cls].objects[r.idx];
+        let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
+            continue;
+        };
+        if !g.cd.enabled || g.delta_q_nom.is_empty() {
+            continue;
+        }
+        let mut curr = vec![Complex64::ZERO; g.cd.yorder];
+        let p = g.p_nominal_per_phase;
+        for (j, c) in curr.iter_mut().enumerate().take(g.cd.nphases) {
+            let nr = g.cd.node_ref[j];
+            if nr == 0 {
+                continue;
+            }
+            let q = g.delta_q_nom.get(j).copied().unwrap_or(g.delta_q_nom[0]);
+            *c = -(Complex64::new(p, q) / node_v[nr]).conj();
+        }
+        out.push((r, curr));
+    }
+    out
 }

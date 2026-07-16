@@ -433,6 +433,14 @@ impl Dss {
             59 => self.export_ad(&explicit, "ZCC.csv", export::export_zcc),
             60 => self.export_ad(&explicit, "C.csv", export::export_contours),
             61 => self.export_ad(&explicit, "Y4.csv", export::export_y4),
+            // NCIM solver dumps (WP-U1.7, `ExportResults.pas:3903-3988`): the
+            // Jacobian triplets + the last mismatch/correction vectors. Only
+            // populated after a `Set Algorithm=NCIM` solve; no solution guard
+            // (Pascal exits gracefully otherwise — Jacobian errors #222, the
+            // vectors silently no-op).
+            62 => self.export_ncim_jacobian(&explicit),
+            63 => self.export_ncim_delta(&explicit, "deltaF.csv", true),
+            64 => self.export_ncim_delta(&explicit, "deltaZ.csv", false),
             20 => {
                 // `Export CIM100Fragments` (Pascal `ExportCDPSM(..., Combined =
                 // FALSE)`): the `Separate = true` per-profile file split. A
@@ -486,6 +494,38 @@ impl Dss {
     fn export_with(&mut self, explicit: &str, default_name: &str, f: fn(&Circuit) -> String) {
         let content = f(self.circuit.as_ref().expect("post-circuit dispatch"));
         self.write_export(explicit, default_name, &content);
+    }
+
+    /// `Export Jacobian` (Pascal `ExportJacobian`): factor + dump the last NCIM
+    /// Jacobian. With no NCIM solve the Jacobian is unbuilt → Pascal's #222
+    /// "Jacobian matrix not built." error (no file written).
+    fn export_ncim_jacobian(&mut self, explicit: &str) {
+        let res = {
+            let ckt = self.circuit.as_mut().expect("post-circuit dispatch");
+            crate::report::export::export_jacobian(ckt)
+        };
+        match res {
+            Ok(content) => self.write_export(explicit, "Jacobian.csv", &content),
+            Err(msg) => self.errors.push(msg),
+        }
+    }
+
+    /// `Export deltaF`/`deltaZ` (Pascal `ExportdeltaF`/`ExportdeltaZ`): dump the
+    /// last NCIM mismatch/correction vector. Empty (no NCIM solve) → silent no-op,
+    /// no file, `GlobalResult` untouched (Pascal `if Length(..) = 0 then Exit`).
+    fn export_ncim_delta(&mut self, explicit: &str, default_name: &str, is_delta_f: bool) {
+        use crate::report::export;
+        let content = {
+            let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
+            if is_delta_f {
+                export::export_delta_f(ckt)
+            } else {
+                export::export_delta_z(ckt)
+            }
+        };
+        if let Some(c) = content {
+            self.write_export(explicit, default_name, &c);
+        }
     }
 
     /// An A-Diakoptics matrix export (58–61). The Pascal *procedure* body (file
@@ -1654,6 +1694,20 @@ impl Dss {
                 let val = self.vars.get("@result").unwrap_or("null").to_string();
                 let content = show::show_result(&val);
                 self.write_show_global("Result.csv", &content);
+            }
+            // 35 `PV2PQ_Conversions` (`ShowPV2PQGen`): the generators converted
+            // from PV to PQ during the last NCIM solve. No solution guard (reads
+            // the `NCIM_ExPV` flag). Sets GlobalResult (Pascal `GlobalResult :=
+            // FileNm`), so `write_show_global`.
+            35 => {
+                let content = {
+                    let Dss {
+                        classes, circuit, ..
+                    } = self;
+                    let ckt = circuit.as_ref().expect("post-circuit dispatch");
+                    show::show_pv2pq_gen(classes, ckt)
+                };
+                self.write_show_global("PV2PQ_Generators.csv", &content);
             }
             // 29 `mismatch` (`ShowNodeCurrentSum`): per-node KCL current sum.
             29 => {

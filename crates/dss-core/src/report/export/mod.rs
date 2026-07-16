@@ -25,6 +25,7 @@ pub mod json;
 mod loads;
 mod logs;
 mod losses;
+mod ncim;
 mod node_names;
 mod node_order;
 mod overloads;
@@ -65,6 +66,7 @@ pub(crate) use inc_matrix::{
 pub(crate) use loads::export_loads;
 pub(crate) use logs::{export_error_log, export_event_log};
 pub(crate) use losses::export_losses;
+pub(crate) use ncim::{export_delta_f, export_delta_z, export_jacobian};
 pub use node_names::export_node_names;
 pub(crate) use node_order::export_node_order;
 pub(crate) use overloads::export_overloads;

@@ -649,7 +649,8 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
             }
         }
 
-        // Update the reported terminal currents for every generator model.
+        // Update the reported terminal currents for every generator model
+        // (Pascal l.772: `Iterminal[j+1] := -cong(cmplx(Pnom, deltaQNom[j])/V)`).
         if !gobj.delta_q_nom.is_empty() {
             let q0 = gobj.delta_q_nom[0];
             let p = gobj.p_nominal_per_phase;
