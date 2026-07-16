@@ -290,6 +290,17 @@ pub struct Generator {
     pub dqdv_saved: f64,
     pub delta_q_max: f64,
 
+    // NCIM solver PV-bus participation (`Generator.pas` l.216/l.322).
+    /// `GenVars.deltaQNom` — the reactive-power delta per phase carried across
+    /// NCIM iterations (PV-bus voltage regulation / PQ Q-injection).
+    pub delta_q_nom: Vec<f64>,
+    /// `NCIM_Idx` — this generator's base index within the Jacobian's voltage-
+    /// regulation (gen) rows.
+    pub ncim_idx: i32,
+    /// `Flg.NCIM_ExPV` — set when NCIM auto-converted this model-3 (PV) generator
+    /// to model-4 (PQ) because it hit a Q-limit; reset by `NCIM_ReversePQ2PV`.
+    pub ncim_expv: bool,
+
     pub gen_solution_count: i32,
     pub open_gen_solution_count: i32,
     pub yprim_open_cond: Option<CMatrix>,
@@ -460,6 +471,9 @@ impl Generator {
             dqdv: 0.0,
             dqdv_saved: 0.0,
             delta_q_max: 0.0,
+            delta_q_nom: Vec::new(),
+            ncim_idx: 0,
+            ncim_expv: false,
             gen_solution_count: -1,
             open_gen_solution_count: -1,
             yprim_open_cond: None,

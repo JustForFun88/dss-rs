@@ -8,11 +8,17 @@ use dss_sparse::SparseSet;
 use crate::circuit::Circuit;
 use crate::solution::solution::{ActiveY, SolveEnv, SolveResult, sys_ctx};
 
-/// Pascal `SERIESONLY` / `WHOLEMATRIX`.
+/// Pascal `SERIESONLY` / `WHOLEMATRIX` / `PDE_ONLY` (`Ymatrix.pas` l.22-24).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildOption {
     SeriesOnly,
     WholeMatrix,
+    /// PDE-only: stamp the **full** (`ALL_YPRIM`) primitive of every enabled PD
+    /// element **or** SOURCE (VSource) into the series handle, excluding all PC
+    /// elements. This is the network admittance NCIM factors and reads back as
+    /// its `NCIM_Y` triplet dump (`Ymatrix.pas` l.442-497). Like `WholeMatrix`
+    /// it invalidates the series matrix and clears `SystemYChanged`.
+    PdeOnly,
 }
 
 /// `DSS.LogThisEvent` with the solution's clock/iteration fields (callers
@@ -107,7 +113,7 @@ pub fn build_y_matrix(
             ckt.solution.y_system = Some(SparseSet::new(y_matrix_size));
             ckt.solution.active_y = ActiveY::System;
         }
-        BuildOption::SeriesOnly => {
+        BuildOption::SeriesOnly | BuildOption::PdeOnly => {
             ckt.solution.y_series = Some(SparseSet::new(y_matrix_size));
             ckt.solution.active_y = ActiveY::Series;
         }
@@ -170,24 +176,43 @@ pub fn build_y_matrix(
             match option {
                 BuildOption::WholeMatrix => "Building Whole Y Matrix",
                 BuildOption::SeriesOnly => "Building Series Y Matrix",
+                BuildOption::PdeOnly => "Building PDE only Y Matrix",
             },
         );
     }
 
-    // Add in Yprims for all enabled devices.
+    // Add in Yprims for all enabled devices. `PDE_ONLY` restricts the element
+    // set to PD elements + sources (Ymatrix.pas l.463-467) and, like
+    // `WholeMatrix`, uses the FULL (`ALL_YPRIM`) primitive — not the series one.
     {
+        // Pascal iterates all `CktElements` and filters; PD/source membership is
+        // disjoint, so iterating `pd_elements` then `sources` visits exactly the
+        // qualifying set once each (order is irrelevant — the assembled matrix
+        // sums duplicates). Build the ref list up front to drop the `ckt` borrow
+        // before the mutable `y_series`/`y_system` borrow below.
+        let refs: Vec<crate::elements::traits::ElemRef> = match option {
+            BuildOption::WholeMatrix | BuildOption::SeriesOnly => ckt.ckt_elements.clone(),
+            BuildOption::PdeOnly => ckt
+                .pd_elements
+                .iter()
+                .chain(ckt.sources.iter())
+                .copied()
+                .collect(),
+        };
         let sparse = match option {
             BuildOption::WholeMatrix => ckt.solution.y_system.as_mut().unwrap(),
-            BuildOption::SeriesOnly => ckt.solution.y_series.as_mut().unwrap(),
+            BuildOption::SeriesOnly | BuildOption::PdeOnly => {
+                ckt.solution.y_series.as_mut().unwrap()
+            }
         };
-        for &r in &ckt.ckt_elements {
+        for &r in &refs {
             let elem = env.store.ckt_elem(r);
             let cd = elem.cd();
             if !cd.enabled {
                 continue;
             }
             let mat = match option {
-                BuildOption::WholeMatrix => cd.yprim.as_ref(),
+                BuildOption::WholeMatrix | BuildOption::PdeOnly => cd.yprim.as_ref(),
                 BuildOption::SeriesOnly => cd.yprim_series.as_ref(),
             };
             if let Some(m) = mat {
@@ -227,6 +252,10 @@ pub fn build_y_matrix(
         }
         BuildOption::SeriesOnly => {
             ckt.solution.series_y_invalid = false; // SystemYChange unchanged
+        }
+        BuildOption::PdeOnly => {
+            ckt.solution.series_y_invalid = true; // series may not match
+            ckt.solution.system_y_changed = false;
         }
     }
 
