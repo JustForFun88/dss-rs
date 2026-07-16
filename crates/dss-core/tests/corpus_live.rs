@@ -1928,6 +1928,9 @@ const MODES_REQUIRED: &[&str] = &[
     // against the official EPRI r4133 binary; keeps the multi-oracle plumbing
     // exercised by every cargo test).
     "upgrade/upgrade_pilot.dss",
+    // WP-U1.6 B3-r3723: Load.GrowthFactor Year=0 dblHour progression
+    // (oracle: capi015; feature-sensitive 120-vs-100 kW).
+    "upgrade/upgrade_growth_year0.dss",
     // WPG.21 MakePosSequence feature decks (pending until WPG.21 A2 wires the
     // `makeposseq` dispatch; each errors loudly on the Rust engine meanwhile).
     "makeposseq/makeposseq_line.dss",

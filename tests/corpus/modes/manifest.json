@@ -733,6 +733,18 @@
    "note": "UPGRADE_PLAN.md WP-U1.1 / ledger L2 (docs/upgrade/DIVERGENCES.md): EPRI r4133 DblValueNZ zero-kW clamp. Load kW=0 and Generator kVA=0/kW=0 clamp their essential-sizing props to 1e-8 (band (-1e-8,1e-8)->+1e-8). Gated r4133 because this deck declares Generator.kVA=0, which capi015's DEFAULT strict validation REJECTS (NonZero error) so the deck cannot compile there, while r4133 clamps by default (like the port) and oddie matches (re-probed 2026-07-12). Feature sensitivity (§1.7-3): the 1e-8 clamp is below the live i_abs floor on kw/kva/V/I/Y/S, so Load.zpf (kW=0 AND kvar=0) supplies an amplified channel -- under the clamp its kW/kvar spec recomputes PF 0.9->1, with no clamp PF stays 0.9; the ?pf probe (0.9 vs 1, |d|=0.1) fails if the clamp regresses. Bit-exact per-class contract = the Rust unit tests zero_kw_kva_clamp_dblvaluenz (Load/Generator/Storage) + zero_kva_clamp_dblvaluenz (PVSystem). Validated per §1.7 on r4133 (two-process determinism)."
   },
   {
+   "path": "upgrade/upgrade_growth_year0.dss",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "load.lb"
+   ],
+   "oracle": "capi015",
+   "pending": false,
+   "note": "UPGRADE_PLAN.md WP-U1.6 / row B3-r3723 (docs/upgrade/DIVERGENCES.md): Load.GrowthFactor at Year=0 with a GrowthShape tracks simulated hours (calcYear=dblHour/8760) instead of a flat 1.0. The rewrite is in the capi015 backend 0.15.0b4 (SVN r4103, carrying the r4088-era Load.pas GrowthFactor change). Feature sensitivity (§1.7-3): the growthshape's first year is 0, so a Year=0 snapshot takes GetMultIdx(1)=1.2 -- a 20% load lift that needs no >8760h run for a single-step witness. capi015 reports Load.lb at 120 kW total (B1 |V|=7198.164683 V), the pre-B3 flat-1.0 path 100 kW (B1 |V|=7198.397078 V); |dP|=20 kW and |dV|=0.23 V are far above every live floor, so a regression to the flat Year=0 factor fails the whole-model compare (load power AND node voltages). Gated capi015 (not 0.14.5): the r3723 baseline and capi015 DIVERGE here so it cannot gate against 0.14.5 (§1.2). Validated per §1.7 (two-process determinism on capi015: bit-identical Vmag fingerprint, probe_deck.py 2026-07-16). Exact per-branch values (GetMultIdx(1)=1.2, GetMult(2)=1.8) pinned by the Rust unit test growth_factor_year0_tracks_simulated_hours_with_growthshape."
+  },
+  {
    "path": "reduce/reduce_remove.dss",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
