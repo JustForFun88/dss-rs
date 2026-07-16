@@ -31,7 +31,7 @@ New "RegControl.rc1"
 ~ TapWinding=2
 ~ VLimit=0
 ~ PTPhase=1
-~ RevThreshold=100
+~ RevThreshold=-100
 ~ RevDelay=60
 ~ RevNeutral=No
 ~ EventLog=No
@@ -41,6 +41,10 @@ New "RegControl.rc1"
 ~ LDC_Z=0
 ~ Rev_Z=0
 ~ Cogen=No
+~ Idle=No
+~ IdleReverse=No
+~ IdleForward=No
+~ FwdThreshold=100
 ~ BaseFreq=60
 ~ Enabled=Yes
 ~ Like=

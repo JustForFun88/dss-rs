@@ -14,9 +14,9 @@
    ],
    "target": "Transformer.t1",
    "properties": {
-    "BHpoints": "0",
-    "BHcurrent": "",
-    "BHflux": ""
+    "BHPoints": "0",
+    "BHCurrent": "",
+    "BHFlux": ""
    }
   }
  ]
