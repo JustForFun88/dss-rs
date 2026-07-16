@@ -12,7 +12,7 @@
   "family_counts": {
     "asymmetric": 47,
     "controls": 94,
-    "modes": 58
+    "modes": 60
   },
   "family_paths": {
     "asymmetric": [
@@ -212,6 +212,8 @@
       "upgrade/upgrade_forcehooks.dss",
       "upgrade/upgrade_growth_year0.dss",
       "upgrade/upgrade_linecs_eqspacing.dss",
+      "upgrade/upgrade_linecs_mixed.dss",
+      "upgrade/upgrade_linecs_semicon.dss",
       "upgrade/upgrade_parser_zerokw.dss",
       "upgrade/upgrade_pilot.dss",
       "windgen/windgen_daily.dss",

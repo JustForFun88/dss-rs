@@ -1,0 +1,19 @@
+! WP-U1.4 (UPGRADE_PLAN §WP-U1.4) — CNData.SemiconLayer capacitance branch.
+! dss_capi 0.15.x adds CNData.SemiconLayer (default yes = classic ln(RadOut/RadIn)
+! coaxial capacitance). SemiconLayer=no selects the Synergi / Kersting no-semicon
+! formula, Denom = ln(RadCN/RadIn) - (1/k)*ln(k*RadStrand/RadCN), a distinct shunt
+! capacitance (here 167.17 vs 283.09 nF/km) — so the line YPrim shunt block moves.
+! oracle capi015 (0.15.x CableConstants.pas / CNData.pas). YPrim-focused live
+! compare on line.l1 (the asymmetric-family convention).
+Clear
+New Circuit.linecs_sc basekv=12.47 phases=3 bus1=sourcebus
+Set earthmodel=deri
+New CNData.cn1 Runits=m radunits=m gmrunits=m Rdc=1.0e-4 Rac=1.05e-4 GMRac=0.004 radius=0.005 capradius=0.005 EpsR=2.3 InsLayer=0.004 DiaIns=0.022 DiaCable=0.030 k=16 DiaStrand=0.001 GmrStrand=0.0004 Rstrand=2.0e-3 SemiconLayer=no
+New LineGeometry.g nconds=3 nphases=3 reduce=n
+~ cond=1 cncable=cn1 x=0    h=-1.2 units=m
+~ cond=2 cncable=cn1 x=0.1  h=-1.2 units=m
+~ cond=3 cncable=cn1 x=0.2  h=-1.2 units=m
+New Line.l1 bus1=sourcebus bus2=b2 geometry=g length=1 units=km phases=3
+New Load.ld bus1=b2 phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+Calcvoltagebases
