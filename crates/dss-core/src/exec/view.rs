@@ -235,6 +235,47 @@ impl Dss {
                 loss_w: (loss.re, loss.im),
             });
         }
+        // Under NCIM the swing source's reported terminal currents are the KCL
+        // sum at its bus, not `YPrim·V - Iinj` (Pascal `TVsourceObj.GetCurrents`
+        // takes the `NCIM_CalcInjCurrAtBus` branch when `Algorithm = NCIMSOLVE`
+        // and `NodeRef[1] = 1`). Every connected element's `Iterminal` is now
+        // fresh (refreshed in the loop above), so recompute the swing source's
+        // currents/powers/losses from those and overwrite its snapshot entry.
+        if ckt.solution.algorithm == crate::solution::solution::NCIMSOLVE
+            && let Some((src_ref, curr)) = ncim_swing_source_currents(classes, ckt)
+        {
+            let name = format!(
+                "{}.{}",
+                classes[src_ref.cls].props.class_name(),
+                classes[src_ref.cls].objects[src_ref.idx].data().name()
+            );
+            if let Some(snap) = out.iter_mut().find(|s| s.name.eq_ignore_ascii_case(&name)) {
+                let node_ref = &classes[src_ref.cls].objects[src_ref.idx]
+                    .as_ckt_element()
+                    .expect("source is a ckt element")
+                    .cd()
+                    .node_ref;
+                let mut loss = num_complex::Complex64::ZERO;
+                for (k, &i) in curr.iter().enumerate() {
+                    snap.currents[2 * k] = i.re;
+                    snap.currents[2 * k + 1] = i.im;
+                    let n = node_ref.get(k).copied().unwrap_or(0);
+                    if n > 0 {
+                        let mut s = node_v[n] * i.conj();
+                        loss += s; // Get_Losses = Σ V·conj(I) over conductors (W/var)
+                        if positive_seq {
+                            s *= 3.0;
+                        }
+                        snap.powers[2 * k] = s.re * 0.001;
+                        snap.powers[2 * k + 1] = s.im * 0.001;
+                    } else {
+                        snap.powers[2 * k] = 0.0;
+                        snap.powers[2 * k + 1] = 0.0;
+                    }
+                }
+                snap.loss_w = (loss.re, loss.im);
+            }
+        }
         out
     }
 
@@ -833,4 +874,101 @@ impl Dss {
             None => Vec::new(),
         }
     }
+}
+
+/// Pascal `TVsourceObj.NCIM_CalcInjCurrAtBus` (`PCElements/vsource.pas` l.1225):
+/// the swing source's NCIM-reported terminal currents. NCIM holds the swing bus
+/// at the ideal EMF, so `YPrim·V - Iinj` is ~0 there; instead the source's
+/// terminal current is the Kirchhoff sum at its bus — **minus** every connected
+/// PD-element terminal current, **plus** every other connected PC-element terminal
+/// current. Returns `(swing-source ElemRef, its yorder-long terminal-current
+/// vector)` — the swing source is the [`VSource`] whose first node is the global
+/// slack (`NodeRef[0] == 1`) — or `None` if there is none.
+///
+/// Reads each connected element's `Iterminal` cache, which
+/// [`Dss::snapshot_elements`] has just refreshed at the converged `NodeV` (Pascal
+/// recomputes each `ce.GetCurrents` fresh; the values are identical). PD elements
+/// use the Pascal `Round(Yorder/2)` conductors-per-terminal stride (its 2-terminal
+/// assumption); PC elements use `NPhases`.
+fn ncim_swing_source_currents(
+    classes: &[DssClass],
+    ckt: &Circuit,
+) -> Option<(ElemRef, Vec<num_complex::Complex64>)> {
+    use num_complex::Complex64;
+
+    // The swing VSource: a source whose first node is the global slack node 1.
+    let src_ref = ckt.sources.iter().copied().find(|&r| {
+        let obj = &classes[r.cls].objects[r.idx];
+        obj.as_any()
+            .downcast_ref::<crate::elements::pc::vsource::VSource>()
+            .is_some()
+            && obj
+                .as_ckt_element()
+                .is_some_and(|ce| ce.cd().node_ref.first() == Some(&1))
+    })?;
+
+    let src_cd = classes[src_ref.cls].objects[src_ref.idx]
+        .as_ckt_element()?
+        .cd();
+    let src_bus = src_cd.terminals.first()?.bus_ref;
+    let nphases = src_cd.nphases;
+    let yorder = src_cd.yorder;
+    let mut curr = vec![Complex64::ZERO; yorder];
+
+    // The 0-based terminal of `cd` connected to the source bus, if any (Pascal
+    // `BusName = StripExtension(ce.GetBus(j))`).
+    let my_term = |cd: &crate::elements::ckt::CktElementData| -> Option<usize> {
+        (0..cd.nterms).find(|&t| cd.terminals.get(t).map(|x| x.bus_ref) == Some(src_bus))
+    };
+
+    // TODO(compat): the `+ 1` on every `iterminal` index below reproduces an
+    // upstream off-by-one. Pascal `NCIM_CalcInjCurrAtBus` fills a **0-based**
+    // dynamic `ElmCurrents: array of Complex` via `ce.GetCurrents`, then indexes
+    // it as `ElmCurrents[(myTerm*stride) + j]` with `j := 1..NPhases` — a 1-based
+    // index into a 0-based array, so it reads each connected element's conductor
+    // shifted by one (the swing source's reported phase-A current is actually the
+    // negated phase-B branch current, etc.; the last read lands on the array's
+    // unwritten, zero-initialized tail slot). It is deterministic and in-range
+    // (never OOB — `SetLength(ElmCurrents, Yorder+1)`), so — per CLAUDE.md — it is
+    // reproduced 1:1 (the `.get(..).map` returns 0 for the tail slot the port's
+    // `Yorder`-length `iterminal` lacks, matching the zero slot). Clean fix: drop
+    // the `+ 1`. NCIM affects only the *reported* swing-source current; node
+    // voltages are unaffected.
+    let clip = |v: Option<&num_complex::Complex64>| v.copied().unwrap_or(Complex64::ZERO);
+
+    // PD elements (+ faults) at the bus: subtract their terminal currents. Pascal
+    // stride `Round(ce.Yorder / 2)` (its 2-terminal conductors-per-terminal).
+    for &r in ckt.pd_elements.iter().chain(ckt.faults.iter()) {
+        let Some(ce) = classes[r.cls].objects[r.idx].as_ckt_element() else {
+            continue;
+        };
+        let cd = ce.cd();
+        if !cd.enabled {
+            continue;
+        }
+        let Some(t) = my_term(cd) else { continue };
+        let stride = ((cd.yorder as f64) / 2.0).round() as usize;
+        for (i, c) in curr.iter_mut().enumerate().take(nphases) {
+            *c -= clip(cd.iterminal.get(t * stride + i + 1));
+        }
+    }
+    // PC elements (+ other sources) at the bus, excluding the source itself: add
+    // their terminal currents (stride `ce.NPhases`).
+    for &r in ckt.pc_elements.iter().chain(ckt.sources.iter()) {
+        if r == src_ref {
+            continue;
+        }
+        let Some(ce) = classes[r.cls].objects[r.idx].as_ckt_element() else {
+            continue;
+        };
+        let cd = ce.cd();
+        if !cd.enabled {
+            continue;
+        }
+        let Some(t) = my_term(cd) else { continue };
+        for (i, c) in curr.iter_mut().enumerate().take(nphases) {
+            *c += clip(cd.iterminal.get(t * cd.nphases + i + 1));
+        }
+    }
+    Some((src_ref, curr))
 }

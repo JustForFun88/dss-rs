@@ -298,6 +298,64 @@ fn ncim_resolve_is_stable() {
     assert!(drift < 1e-9, "NCIM re-solve drifted by {drift:.2e}");
 }
 
+/// Swing-source **reported currents** under NCIM (`VSource.NCIM_CalcInjCurrAtBus`,
+/// `vsource.pas` l.1225): NCIM holds the swing bus at the ideal EMF, so the normal
+/// `YPrim·V - Iinj` path reports ~0 there; the source's terminal current is instead
+/// the KCL sum at its bus. Pinned vs capi015 `Vsource.source.Currents/Powers/Losses`
+/// — including the reproduced upstream off-by-one (see the `TODO(compat)` in
+/// `exec/view.rs::ncim_swing_source_currents`: the reported phase-A current is the
+/// negated phase-**B** branch current, etc.).
+#[test]
+fn ncim_vsource_reported_currents_match_oracle() {
+    let mut dss = solve_ncim(&pq_circuit(1));
+    let snap = dss
+        .snapshot_elements()
+        .into_iter()
+        .find(|s| s.name.eq_ignore_ascii_case("Vsource.source"))
+        .expect("Vsource.source");
+
+    // capi015 `Vsource.source` terminal currents (A), first three conductors
+    // (the second terminal is grounded → 0). The phase order is the upstream
+    // off-by-one shift.
+    let exp_i = [
+        cx(70.71691867579602, 55.78569119895437),
+        cx(12.95336640806454, -89.1354936500793),
+        cx(83.6702202736991, -33.368203132757344),
+        ZERO,
+        ZERO,
+        ZERO,
+    ];
+    for (k, e) in exp_i.iter().enumerate() {
+        let got = cx(snap.currents[2 * k], snap.currents[2 * k + 1]);
+        assert!(
+            (got - e).norm() < 1e-6,
+            "source current[{k}]: {got:?} vs capi015 {e:?}"
+        );
+    }
+    // capi015 per-conductor powers (kW/kvar) and total losses (W/var).
+    let exp_p = [
+        (509.13054746, -401.63231137),
+        (509.13054746, -401.63231137),
+        (-509.24504241, 401.56566889),
+    ];
+    for (k, (pr, pi)) in exp_p.iter().enumerate() {
+        assert!(
+            (snap.powers[2 * k] - pr).abs() < 1e-4 && (snap.powers[2 * k + 1] - pi).abs() < 1e-4,
+            "source power[{k}]: ({}, {}) vs capi015 ({pr}, {pi})",
+            snap.powers[2 * k],
+            snap.powers[2 * k + 1]
+        );
+    }
+    assert!(
+        (snap.loss_w.0 - 509016.05251295).abs() < 1e-2
+            && (snap.loss_w.1 - (-401698.95384555)).abs() < 1e-2,
+        "source losses: {:?} vs capi015 (509016.05, -401698.95)",
+        snap.loss_w
+    );
+}
+
+const ZERO: Complex64 = Complex64::ZERO;
+
 /// `Export Jacobian` with no NCIM solve raises Pascal's #222 "Jacobian matrix not
 /// built." (`ExportResults.pas` l.3920) — a normal (fixed-point) solve never
 /// populates `NCIM_Jacobian`. `Export deltaF`/`deltaZ` instead silently no-op
