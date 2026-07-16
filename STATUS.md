@@ -76,11 +76,14 @@ MULTITHREADING M2.
 - **WP-U1.8 (WindGen + WTG3 dynamics) — LANDED** on branch `wp-u18` (new PC element +
   the general dynamics-entry Y-rebuild fix + the `micro_wtg3_dynamics` floor tier).
   See the UPGRADE record below.
-- **WP-U1.7 (NCIM solver)** — **Stage 1 landed** (branch `wp-u17`): the
-  `dss-sparse` real-valued `RealSparseSet` Jacobian path. Stages 2–4 (the solver
-  port itself, generator PV participation, options/dispatch, reports, decks) are
-  a large remaining body of work with a full integration map in the §UPGRADE
-  WP-U1.7 record below.
+- **WP-U1.7 (NCIM solver)** — **Stages 1–4 core landed** (branch `wt-u17`): Stage 1
+  (`RealSparseSet`) + the full `NCIMSolutionHelper.pas` port (`ncim.rs`), PDE_ONLY Y
+  build, generator PV fields, `Set Algorithm=NCIM` dispatch, and the
+  `IgnoreGenQLimits`/`NCIMQGain` options. Self-validated at the Rust level (NCIM ==
+  Normal solve on PQ + ConstZ). **Remaining:** capi015 oracle deck matrix (micro/PV/
+  midi decks flip `pending:false`), PV-bus generator validation on the oracle, and
+  the `Export Jacobian/deltaF/deltaZ` + `Show PV2PQ_Conversions` reports. See the
+  §UPGRADE WP-U1.7 record below.
 - **WP-U1.2 (numeric long tail)** — rows B2/D1, D7, D6, B1, D8 landed; **remaining:
   D3** (report-only spacing ratings — needs an overload-report deck) and **B3-r3723**
   (Load.GrowthFactor Year=0 — needs a growthshape + multi-hour year-0 run). See the
@@ -350,6 +353,52 @@ oracle in Stage 3; a covering test (`zero_stamp_is_dropped`) was added.
     deck (Q-limit hit → PV→PQ via `Show PV2PQ_Conversions` token + iter ≤); midi
     IEEE123-class re-solve. Cross-check one on `oddie:r4088`. Iteration policy:
     Rust ≤ oracle (§1.3-1); first-divergence trajectory dump on any gap.
+
+**WP-U1.7 (NCIM solver) Stages 2–4 core — LANDED (branch `wt-u17`).** Spec = A1,
+`Common/NCIMSolutionHelper.pas` (1047, FPC) + the Solution/YMatrix/Generator hooks.
+Three commits on top of Stage 1:
+- **State** (`solution/solution/state.rs`): `NCIMSOLVE=2`, `NCIM_PQ_NODE`/
+  `NCIM_PV_NODE`, the ~15 `ncim_*` fields (1-based-with-slot-0 node arrays; the
+  Jacobian's own 0-based `2*(i-1)` layout), and the `Converged` NCIM branch
+  (`ncim_converged` = max|deltaF| ≤ ConvergenceTolerance).
+- **Y build** (`solution/ymatrix.rs`): `BuildOption::PdeOnly` — stamps the FULL
+  (`ALL_YPRIM`) primitive of every PD element **or** SOURCE into the series handle,
+  PC elements excluded (Ymatrix.pas l.442-497); NCIM reads it back via `coo_entries`.
+- **NCIM helper** (new `solution/solution/ncim.rs`, ~660 lines): loop-for-loop port
+  of every `NCIMSolutionHelper.pas` routine — `NCIM_GetPowers` (Load ConstZ→ZBus
+  else PQ; Gen model 3=PV/4=PQ/else Z), `Do{PV,PQ,Z}Bus`, `CalcInjCurr` (I=Y·V,
+  first-6 deltaF=0), `BuildJacobian` (fresh `RealSparseSet`, `[B,G;G,−B]` blocks,
+  swing identity via the `<6` guards, PV-bus `InitPVBusJac` placeholder cells),
+  `GetNumGenerators` (PV-bus indexing + Q-limits), `UpdateGenQ` (PV↔PQ switching),
+  `Init` (PDE_ONLY build + flat start), `DoNCIMSolution`. KLUSolveX `SetMatrixElement`
+  is 1-based → mapped to the 0-based `RealSparseSet::set_element` by `−1`.
+- **Generator** (`elements/pc/generator/mod.rs`): `delta_q_nom`/`ncim_idx`/`ncim_expv`
+  (transient solver state, not copied by MakeLike — same convention as dynamics state).
+- **Dispatch**: `do_pflow_solution` NCIMSOLVE → `do_ncim_solution`; `check_controls`
+  resets `ncim_ready=false`+early-returns when `system_y_changed && algorithm==NCIM`.
+- **Options** (`exec/set_cmd.rs`/`get_cmd.rs`/`tables.rs`, `dss_enum/registry/solution.rs`):
+  `solve_alg` enum gains `NCIM` (ordinal 2, min-abbrev 2 = prefix `nc`);
+  `IgnoreGenQLimits`→`ncim_ignore_q_limit`, `NCIMQGain`→`ncim_gen_gain` at ordinals
+  129/130 (the `DSS_CAPI_ADIAKOPTICS` block is ifdef'd out of the capi oracle, so the
+  NCIM options follow `NUMANodes=128`) + Get readback. `dump3_commands` golden gains
+  the two execoptions lines (same-commit migration; Rust-self-generated fixture,
+  catalog-miss placeholder help like `LongLineCorrection`).
+- **Validation**: `exec/tests/ncim.rs` — NCIM converges to the default fixed-point
+  (`Normal`) node voltages on a 3-phase PQ circuit and a ConstZ circuit (both solve
+  `I(V)=0`; diff < 1e-3, bounded by Normal's looser voltage tolerance), NCIM warm
+  re-solve stable to 1e-9, and the option/enum surface round-trips. Gate green
+  (fmt/clippy/`cargo test --workspace`: dss-core lib 1144, corpus_live 3, dss-sparse 15).
+- **Remaining (not in this landing; keeps the gate green because NCIM only activates
+  on `Set Algorithm=NCIM` and no corpus deck does yet):**
+  1. The capi015 deck matrix (`tests/corpus/modes/ncim/` micro/PV/midi, `pending:true`)
+     — synthesize, validate per §1.7, flip `pending:false`, prove live-compare green.
+  2. **PV-bus generator path oracle validation** — `NCIM_DoPVBus`/`UpdateGenQ` are
+     ported loop-for-loop but only the PQ/ConstZ paths are Rust-self-validated; the
+     PV Q-limit / PV→PQ switching needs a generator deck probed against capi015.
+  3. `Export Jacobian/deltaF/deltaZ` + `Show PV2PQ_Conversions` reports (numeric-token
+     gates) and `VSource.NCIM_CalcInjCurrAtBus` (swing-source reported currents under
+     NCIM — a reporting-path concern needed for deck live-compare of source I/P).
+  4. `oddie:r4088` cross-check of one deck (report-only).
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
