@@ -1928,6 +1928,10 @@ const MODES_REQUIRED: &[&str] = &[
     // against the official EPRI r4133 binary; keeps the multi-oracle plumbing
     // exercised by every cargo test).
     "upgrade/upgrade_pilot.dss",
+    // WP-U1.9 PCE force-hook deck (oracle capi015): `Set InjCurrent=` forces a
+    // load's injection currents; the re-solve settles at the forced operating
+    // point (b2 Vmag 7187 -> 7224 V).
+    "upgrade/upgrade_forcehooks.dss",
     // WPG.21 MakePosSequence feature decks (pending until WPG.21 A2 wires the
     // `makeposseq` dispatch; each errors loudly on the Rust engine meanwhile).
     "makeposseq/makeposseq_line.dss",

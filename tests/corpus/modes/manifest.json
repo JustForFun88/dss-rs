@@ -1209,6 +1209,18 @@
   "wp": "WP-U1.8",
   "oracle": "capi015",
   "note": "UPGRADE_PLAN WP-U1.8 (A2/\u00a71.7): WindGen WTG3 dynamics FAULT RIDE-THROUGH (LVPL/LVQL-sensitive). A sustained 3ph fault (Fault.f1 R=0.05) on the terminal depresses Vmag to ~0.90 pu through the run, engaging the low-voltage power-logic (LVPL curtailment) and reactive-logic (LVQL Iq limit). Probe-proven feature-sensitive on capi015: Vmag 0.898 (vs 1.015 healthy), Qgen +0.0712 (vs -0.0063 healthy -> reactive support), dOmg -0.081 (vs +0.010). 30x1ms steps; compare_variables all 22. Deterministic."
+ },
+ {
+  "path": "upgrade/upgrade_forcehooks.dss",
+  "ad": "off:unclassified-new-deck",
+  "kind": "micro",
+  "n_steps": 1,
+  "selected_elements": [
+   "*"
+  ],
+  "oracle": "capi015",
+  "pending": false,
+  "note": "UPGRADE_PLAN WP-U1.9 (A3/A5, §1.7): PCE force hooks. After a baseline solve, `select load.ld; set InjCurrent=[80 0 80 0 80 0]` forces the load's injection currents (Flg.ForceInjCurrents); the harness re-solve injects them directly and settles at a new operating point. Gated oracle:capi015 -- these options do not exist in the 0.14.5 default oracle. Feature-sensitive: forcing moves b2 Vmag 7187.45 -> 7224.14 V (probed on capi015, bit-identical across two processes). Per-option contract (frozen Get InjCurrent/ITerminal, YPrim/StateVar/IterNumber, clear reset) is exec/tests/force_hooks.rs, pinned to the same probe."
  }
  ]
 }
