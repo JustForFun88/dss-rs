@@ -584,9 +584,12 @@ impl LoadShapeObj {
     pub(super) fn read_csv_file(&mut self, content: &str) {
         // Pascal `ReadCSVFile` MMF branch (`LoadShape.pas:1031-1041`): map the
         // whole file (`file=`+name, column 1) and eager-read via the text
-        // accept-set. (Single-column text under MMF divides by zero in the
-        // oracle's lazy byte reader — an upstream defect the eager reader
-        // sidesteps; no gated deck exercises it.)
+        // accept-set. Single-column text under MMF divides by zero in the
+        // pinned 0.14.5 oracle's lazy byte reader (#482) — the c4590d16 fix
+        // (D13) restored the missing `not` on the CreateMMF guard; the eager
+        // reader already loads the P data the fixed engine loads. Gated capi015
+        // (`modes/upgrade/mmf_singlecol`) + unit
+        // `mmf_single_column_csvfile_loads_like_capi015`.
         if self.use_mmf {
             let npts = self.n();
             let vals = self.mmf_read_text(content, 1, npts);
