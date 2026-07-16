@@ -133,11 +133,26 @@ impl DssObject for LineGeometryObj {
     }
 
     fn set_object_ref_array(&mut self, idx: usize, refs: &[ObjectRefArrayItem<'_>]) {
-        debug_assert!(matches!(idx, prop::WIRES | prop::CNCABLES | prop::TSCABLES));
-        self.set_wires(refs);
+        match idx {
+            prop::WIRES | prop::CNCABLES | prop::TSCABLES => self.set_wires(refs),
+            // Pascal generic fill (no WriteByFunction): write each resolved
+            // conductor / NIL straight into `conductors` from slot 0; the side
+            // effect sets the engine kind + ratings (`Conductors` handling).
+            prop::CONDUCTORS => {
+                for (i, r) in refs.iter().enumerate() {
+                    if i < self.fwiredata.len() {
+                        self.fwiredata[i] = r.as_ref().map(|(_, _, o)| o.clone_box());
+                    }
+                }
+            }
+            _ => unreachable!("LineGeometry has no object-ref-array property {idx}"),
+        }
     }
     fn get_object_ref_names(&self, idx: usize) -> Vec<String> {
-        debug_assert!(matches!(idx, prop::WIRES | prop::CNCABLES | prop::TSCABLES));
+        debug_assert!(matches!(
+            idx,
+            prop::WIRES | prop::CNCABLES | prop::TSCABLES | prop::CONDUCTORS
+        ));
         self.fwiredata
             .iter()
             .map(|o| {
@@ -146,6 +161,14 @@ impl DssObject for LineGeometryObj {
                     .unwrap_or_default()
             })
             .collect()
+    }
+
+    /// Pascal `PropertyStructArrayCountOffset := @obj.FNConds`
+    /// (LineGeometry.pas:244): the conductor-array length the generic
+    /// `Conductors=` fill validates against (#402 when `< 1`).
+    fn array_size(&self, idx: usize) -> usize {
+        debug_assert_eq!(idx, prop::CONDUCTORS);
+        self.fnconds.max(0) as usize
     }
 
     fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
@@ -231,6 +254,15 @@ impl DssObject for LineGeometryObj {
             prop::SEASONS => {
                 let n = self.num_amp_ratings.max(0) as usize;
                 self.amp_ratings.resize(n, 0.0);
+            }
+            // Pascal LineGeometry.pas:497-539: the 0.15.x `Conductors=` list. On an
+            // all-NIL list `apply_conductors` logs #10103 and Pascal `Exit`s before
+            // the `dataChanged` block, so flag stale only when a conductor was
+            // valid.
+            prop::CONDUCTORS => {
+                if self.apply_conductors() {
+                    self.data_changed = true;
+                }
             }
             _ => {}
         }
