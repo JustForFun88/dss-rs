@@ -41,7 +41,7 @@ harmonics and reduction paths are byte-identical r3723=r4088 (see
 `delta_r3723_r4088.md`), which is why the numeric floors carry the same magnitude
 against both EPRI revs.
 
-## Entry ledger at Rung-1 exit (21 entries)
+## Entry ledger at Rung-1 exit (22 entries)
 
 ### Retained from the original r3723 triage, unchanged
 
@@ -58,7 +58,7 @@ against both EPRI revs.
 | entry | revs | r4088 hits | note |
 |---|---|---|---|
 | `iteration-count-delta` | +r4088 | 4 | now also AutoTrans+RegControl (6-vs-3) & GenDispatcher (20-vs-4/31-vs-5) control-iteration deltas |
-| `storage-kwhstored-drift` | +r4088 | 8 | **broadened** reason `kwhstored`→drop, so the `.kw` dispatch probes match (same StorageController-drift + Delphi 6-sf display class) |
+| `storage-kwhstored-drift` | +r4088 | 6 | kWhStored idling-loss integral drift (rel ~2e-7); the `.kw` dispatch-precision probes are a distinct class, split into `storage-kw-display-precision` below |
 | `injection-fpc-delphi-ulp` | +r4088 | 4 | IndMach asymmetric injection ~3.9e-6 (identical magnitude vs r3723) |
 | `meter-zonepce-count` | +r4088 | 6 | EPRI ZonePCE off-by-one (+energymeter +autoadd) |
 | `harmonics-yfingerprint-drift` | +r4088 | 1 | IEEE_519 trace.im 2.891e-5 (identical vs r3723; the r4133 IEEE_519 move is Rung-2) |
@@ -71,7 +71,8 @@ against both EPRI revs.
 | `makeposseq-fpc-delphi` | 6 | MakePosSequence reduction last-digit drift (rel ~6e-6..4e-5) |
 | `reduce-fpc-delphi` | 6 | circuit-reduction collapses branches differently (structural reduced-YPrim diff); port matches 0.14.5 reduced net exactly |
 | `ckt24-regcontrol-conditioning` | 11 | ckt24 SubXFMR ultra-switch conditioning floor (rel ~1.2e-7, ~1.2× the pinned tol); STATUS CF-D |
-| `pvsystem-kvar-display-precision` | 2 | Delphi renders PVSystem `kvar` to ~6 sf (§1.3-2); expected == actual@6sf |
+| `pvsystem-kvar-display-precision` | 2 | Delphi renders PVSystem `kvar` to ~6 sf (empirically; the Delphi/FPC `Format`/`Str` last-digit rendering §1.3-2 relaxes to numeric-token); expected == actual@6sf |
+| `storage-kw-display-precision` | 2 | Delphi renders StorageController-dispatched Storage `kw` to ~6 sf (split from `storage-kwhstored-drift`; the `.kw:` term scopes it, not a broad Storage-probe mask); expected == actual@6sf |
 | `vsource-nearzero-power` | 1 | Vsource unenergized-conductor power (0,0) vs ~1e-4 VA near-ideal floor |
 
 ### New this WP — r3723-only
@@ -93,7 +94,7 @@ against both EPRI revs.
 
 | entry | why |
 |---|---|
-| `epri-gendispatcher-propname` | **dead** — 0 hits on both r3723 and r4088. r4088/r4133 added the GenDispatcher `kvarlimit`+`GenList` props (`NumPropsThisClass` 4→6, `Controls/GenDispatcher.pas`), and the current decks use only the four base props, so no engine raises "Invalid property name". The residual GenDispatcher control-iteration delta (dss_capi iterates more than EPRI) is folded into `iteration-count-delta`. |
+| `epri-gendispatcher-propname` | **dead** — 0 hits on both r3723 and r4088 (re-verified: the three gendispatcher decks diverge on control-iteration count, 20-vs-4 / 31-vs-5, never on a property name). The entry was originally cataloged when an EPRI engine rejected a deck property with `DSSException #34` "Invalid property name"; the current swept decks — which **do** set `kvarlimit`/`genlist`/`weights` (all seven props exist in dss_capi 0.14.5 `Controls/GenDispatcher.pas`, so the port accepts them) — surface no such rejection on either rev. The residual GenDispatcher control-iteration delta (dss_capi iterates more than EPRI) is folded into `iteration-count-delta`. |
 
 ## Rung-2 handoff (`WP-U2.6`)
 

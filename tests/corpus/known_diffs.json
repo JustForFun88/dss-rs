@@ -69,9 +69,17 @@
       "id": "storage-kwhstored-drift",
       "revs": ["r3723", "r4088"],
       "case_contains": "",
-      "reason_contains": ["probe Storage.", "number 0 differs"],
-      "cause": "Storage kWhStored/kW probe drifts by <5e-4 rel after StorageController dispatch steps (kWhStored 2207.9995 vs EPRI 2208; dispatch kW 2122.18500 vs 2122.18): dss_capi's Storage model revision accrues idling losses slightly differently and EPRI's Delphi renders the property to ~6 sig figs (UPGRADE_PLAN §1.3-2). Broadened from the 'kwhstored'-only match to also cover the .kw dispatch probes (same class).",
-      "source": "triage 2026-07 r3723 (3 storagectrl cases) + WP-U1.10 r4088 sweep (8 storagectrl kw/kwhstored probes)"
+      "reason_contains": ["probe Storage.", "kwhstored", "number 0 differs"],
+      "cause": "Storage kWhStored integral drifts by <5e-4 rel after StorageController dispatch steps (2207.9995 vs EPRI 2208, rel ~2e-7): dss_capi's Storage model revision accrues idling losses slightly differently than EPRI's Delphi. The port matches the pinned FPC oracle (mandatory gate green). Same class vs r3723 and r4088 (Storage model byte-identical across the EPRI delta). The .kw dispatch-precision probes are a distinct class, split into storage-kw-display-precision.",
+      "source": "triage 2026-07 r3723 (3 storagectrl cases) + WP-U1.10 r4088 sweep (6 storagectrl kwhstored probes)"
+    },
+    {
+      "id": "storage-kw-display-precision",
+      "revs": ["r3723", "r4088"],
+      "case_contains": "",
+      "reason_contains": ["probe Storage.", ".kw:", "number 0 differs"],
+      "cause": "EPRI's Delphi renders the StorageController-dispatched Storage kW property to ~6 significant figures (2122.18) where the port/capi015 return full f64 (~2122.185) — the Delphi-vs-FPC Format/Str last-digit rendering difference §1.3-2 relaxes to numeric-token comparison; the parsed probe diff is property-display precision (rel ~2e-7), not an op-point move (expected == actual rounded to 6 sf). The port matches the pinned FPC oracle (mandatory gate green). Split out from storage-kwhstored-drift (the distinct idling-loss integral class); the `.kw:` term keeps this from swallowing arbitrary Storage number-0 probe diffs.",
+      "source": "WP-U1.10 r4088 sweep (2 storagectrl .kw dispatch probes); r3723 sweep same class"
     },
     {
       "id": "injection-fpc-delphi-ulp",
@@ -143,7 +151,7 @@
       "revs": ["r3723", "r4088"],
       "case_contains": "",
       "reason_contains": ["probe PVSystem", "kvar", "number 0 differs"],
-      "cause": "EPRI's Delphi renders the PVSystem kvar property to ~6 significant figures (-28.3773) where the port/capi015 return full f64 (-28.3772649824657); the parsed probe diff is Delphi property-display precision (UPGRADE_PLAN §1.3-2), not an op-point move (expected == actual rounded to 6 sf). The port matches the pinned FPC oracle (mandatory gate green).",
+      "cause": "EPRI's Delphi renders the PVSystem kvar property to ~6 significant figures (-28.3773) where the port/capi015 return full f64 (-28.3772649824657) — the Delphi-vs-FPC Format/Str last-digit rendering difference §1.3-2 relaxes to numeric-token comparison; the parsed probe diff is property-display precision (empirically ~6 sf), not an op-point move (expected == actual rounded to 6 sf). The port matches the pinned FPC oracle (mandatory gate green).",
       "source": "WP-U1.10 r4088 sweep (controls:expcontrol_basic, controls:invcontrol_expmodel PVSystem.pv.kvar); r3723 sweep same class"
     },
     {

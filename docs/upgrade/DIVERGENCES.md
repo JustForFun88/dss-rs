@@ -1664,13 +1664,15 @@ The Rung-1 exit swept the port against official EPRI **r4088** (and r3723 for th
 prune criterion) with `DSS_LIVE_OPENDSS_ASSERT=1` and drove **both** green: every
 remaining Rust↔EPRI divergence is a justified `known_diffs.json` entry — a
 cross-solver FPC(0.14.5)↔Delphi floor, Delphi property-display precision
-(§1.3-2), or an oracle-can't-run `skip` — or a documented Rung-2 item. None is a
+(the Delphi/FPC `Format`/`Str` last-digit rendering §1.3-2 relaxes to
+numeric-token comparison), or an oracle-can't-run `skip` — or a documented
+Rung-2 item. None is a
 divergence DECISION in this ledger's sense (no adopt/reproduce arbitration); they
 are the report-only inventory. Proof that none is a Rung-1 regression: every
 swept case is also in the mandatory gate vs the pinned 0.14.5 oracle (green), so
 the port equals the FPC oracle and the r4088 gap is purely the FPC↔Delphi layer,
 corroborated by `sweeps/capi015_vs_r4088.md`.
 
-The full entry-by-entry burn-down (11→21 entries: pruned
-`epri-gendispatcher-propname`, +5 extended to r4088, +6 new numeric floors, +1
+The full entry-by-entry burn-down (11→22 entries: pruned
+`epri-gendispatcher-propname`, +5 extended to r4088, +7 new numeric floors, +1
 r3723-only, +4 skip) is in **`docs/upgrade/known_diffs_burndown.md`**.
