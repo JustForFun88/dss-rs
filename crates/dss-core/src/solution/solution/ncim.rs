@@ -383,6 +383,13 @@ fn ncim_get_powers(ckt: &mut Circuit, env: &mut SolveEnv) {
                     3 => {
                         // PV bus.
                         let q = delta_q.get(p).copied().unwrap_or(0.0);
+                        // Pascal `NCIM_GetPowers` l.121:
+                        // `Qnominalperphase := deltaQNom[idx-1]`. Persist the
+                        // per-phase Q so the reported generator reactive power
+                        // (`present_kvar` = `Qnominalperphase·nphases/1000`)
+                        // reflects the solved value, matching the oracle. No
+                        // effect on the solve (`gen_s` already uses `q`).
+                        gobj.q_nominal_per_phase = q;
                         let gen_s = Complex64::new(p_nom, q);
                         if ckt.solution.ncim_node_type[node_idx] == NCIM_PQ_NODE {
                             ckt.solution.ncim_node_power[node_idx] =
