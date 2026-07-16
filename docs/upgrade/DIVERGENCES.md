@@ -1093,13 +1093,67 @@ equivalent-spacing spacing, DERI, reduce=y, ohms/mi (probe 2026-07-16): reduced
   path); adopting it makes Rust match r4133 for the new surface — nothing to retire.
 
 **Remaining WP-U1.4 rows (not in this slice).** `Line.EpsRMedium`/`HeightOffset`/
-`HeightUnit`/`Conductors` (Line-level props — blocked on the `compare_all_properties`
-count-equality harness: adding a property to the circuit-element class `Line`
-breaks every default-oracle feeder's property-table-shape check; the engine
-numerics for EpsRMedium/HeightOffset are already ported default-off), the merged
-`CNTSLineConstants` mixed-conductor class + `CNData.SemiconLayer` capacitance,
-`LineCode` FaultRate/PctPerm/Repair deprecation, LineType enum width. D3 spacing
-ratings + overload deck (folded from WP-U1.2). See STATUS §WP-U1.4.
+`HeightUnit` engine numerics are ported default-off; the matching Line-level
+*properties* (incl. `Line.Conductors`) are still deferred (see the merged-CNTS
+section below for `Line.Conductors`). `LineCode` FaultRate/PctPerm/Repair
+deprecation, LineType enum width. D3 spacing ratings + overload deck (folded from
+WP-U1.2). See STATUS §WP-U1.4.
+
+## Merged TCableConstants (per-conductor CN/TS) + CNData.SemiconLayer — SETTLED (WP-U1.4, adopt capi015; pure paths byte-green)
+
+**Observable.** The series `Z` / shunt `Yc` of a Line whose `LineGeometry`
+carries **mixed** conductor kinds (CN and TS cables plus bare wires on one
+geometry), and the shunt capacitance of a CN cable with `SemiconLayer=no`.
+
+**dss_capi 0.15.x (capi015) / EPRI r4088+.** The separate
+`TCNLineConstants`/`TTSLineConstants` classes are **merged** into a single
+`TCableConstants` (`CableConstants.pas`): the CN-vs-TS choice moves from the
+engine kind to a per-conductor `FCondType[i]` (`SetCondType(i, CN|TS)`), so one
+engine carries mixed conductors (Kersting mixed-conductor model). `Calc` branches
+per conductor on `FCondType`; the mutual/`ConductorsInSameSpace` distance uses a
+new `GetDij` helper (equivalent-spacing aware). `CNData` gains `SemiconLayer`
+(prop 5, LongBool default `true`): `true` = the classic `Denom = ln(RadOut/RadIn)`
+coaxial capacitance; `false` = the Synergi / Kersting no-semicon formula
+`Denom = ln(RadCN/RadIn) - (1/k)·ln(k·RadStrand/RadCN)`.
+
+**Decision — adopt (default preserves 0.14.5 numerics).** A pure-CN (all
+`FCondType=CN`) or pure-TS geometry reproduces the former class `Calc`
+bit-for-bit — the merged `Calc` restricted to one conductor type IS the old
+`Calc`, and `GetDij` equals the old raw `sqrt` distance in the default
+(non-equivalent-spacing) path; `SemiconLayer` defaults `true` = the old formula.
+Ported in `support/line_constants/{mod,cable,cn,ts}.rs` (kind collapses to
+`{Overhead, Cable}`, per-conductor `ConductorType` + `semicon_layer`,
+`set_cond_type`/`set_semicon_layer`, merged `calc_cable`), the
+`line_geometry` handoff (`change_line_constants_type` → one cable engine,
+`update_line_geometry_data` sets `SetCondType`/`SetSemiconLayer` per conductor),
+and `conductor_data/cn_data.rs` (`SemiconLayer` prop + field + make_like).
+
+**Probe / gate.** capi015 (0.15.0b4), DERI, ohm/m and nF/m (probe 2026-07-16):
+a mixed geometry (phase 1 CN, phase 2 TS, phase 3 CN, bare-wire neutral,
+reduce=y) → reduced `Z` asymmetric (rmatrix diag `2.043e-4`/`1.649e-4`/`1.937e-4`
+ohm/m), `C` diag `283.089` nF/km; a CN cable `SemiconLayer=no` → `C` diag
+`167.168` nF/km (vs `283.089` for the default). Rust matches to 1e-8
+(`line_constants::tests::cn_cable_no_semicon_capacitance`,
+`line_geometry::tests::matrices_mixed_cn_ts_wire_match_capi015`).
+- **No existing golden/live case moves** — the whole `line_constants`/
+  `line_geometry` golden family + `props_roundtrip` stay green untouched; the
+  merged `Calc` is bit-identical on every pure-CN/TS deck.
+- **New capi015 corpus decks** `modes/upgrade/upgrade_linecs_mixed.dss`
+  (mixed CN/TS/wire) and `modes/upgrade/upgrade_linecs_semicon.dss`
+  (`SemiconLayer=no`), both `oracle: "capi015"`, YPrim-focused on `line.l1`,
+  §1.7-validated (2 iters, two-process bit-identical fingerprint).
+- **Harness allowlist** `PROPS_015X += ("CNData", ["SemiconLayer"])` — the
+  inserted prop is excluded from the 0.14.5-oracle property-table walk.
+- `known_diffs`: no Rust↔EPRI entry existed (0.14.5 had no mixed-conductor or
+  semicon-branch path); adopting matches r4088+ for the new surface — nothing to
+  retire.
+- **`Line.Conductors` (the 0.15.x Line-level mixed-conductor *property*, prop 34)
+  is DEFERRED**, not the engine: the merged per-conductor engine (its whole
+  point) is landed and mixed conductors already work via a `LineGeometry`. The
+  property needs a net-new 3-class proxy-array resolver (WireData|CNData|TSData),
+  restructuring the JSON export (the `"Conductors"` key today maps from `Wires`),
+  and a Line property-table insertion coordinated with the parallel wt-u14props
+  branch. See STATUS §WP-U1.4.
 
 ## WP-U1.6 partial — B3-r3723 / D10 / D12 / D15 / A7-r3723 — SETTLED (plain adoptions)
 
