@@ -146,8 +146,10 @@ impl RegControl {
         // 1) Reverse / cogen power-direction handling (not for regulated bus).
         if !self.using_regulated_bus && (self.is_reversible || self.cogen_enabled) {
             if looking_forward && !self.in_cogen_mode {
+                // r4086 (8a898cba): thresholds are now signed W — `RevPowerThreshold`
+                // is negative by default, so the guard compares directly (no unary −).
                 let fwd_power = -tr.power_into_re(element_terminal, ctx.node_v, ctx.sys);
-                if !self.reverse_pending && fwd_power < -self.rev_power_threshold {
+                if !self.reverse_pending && fwd_power < self.rev_power_threshold {
                     self.reverse_pending = true;
                     self.rev_handle = ctx.queue.push_delay(
                         ctx.int_hour,
@@ -158,7 +160,7 @@ impl RegControl {
                         ctx.self_ref,
                     );
                 }
-                if self.reverse_pending && fwd_power >= -self.rev_power_threshold {
+                if self.reverse_pending && fwd_power >= self.rev_power_threshold {
                     self.reverse_pending = false; // Reset it if power goes back
                     if self.rev_handle > 0 {
                         ctx.queue.delete(self.rev_handle);
@@ -166,9 +168,10 @@ impl RegControl {
                     }
                 }
             } else {
-                // Looking the reverse direction or in cogen mode.
+                // Looking the reverse direction or in cogen mode. r4086: the
+                // switch-back edge now uses the (positive) FwdPowerThreshold.
                 let fwd_power = -tr.power_into_re(element_terminal, ctx.node_v, ctx.sys);
-                if !self.reverse_pending && fwd_power > self.rev_power_threshold {
+                if !self.reverse_pending && fwd_power > self.fwd_power_threshold {
                     self.reverse_pending = true;
                     self.rev_back_handle = ctx.queue.push_delay(
                         ctx.int_hour,
@@ -179,7 +182,7 @@ impl RegControl {
                         ctx.self_ref,
                     );
                 }
-                if self.reverse_pending && fwd_power <= self.rev_power_threshold {
+                if self.reverse_pending && fwd_power <= self.fwd_power_threshold {
                     self.reverse_pending = false;
                     if self.rev_back_handle > 0 {
                         ctx.queue.delete(self.rev_back_handle);
@@ -295,6 +298,37 @@ impl RegControl {
             (self.vreg, self.bandwidth)
         };
         let mut tap_change_needed = (vreg_test - vactual).abs() > band_test / 2.0;
+
+        // r4086 (8a898cba): idle dead-band zones suppress the pending tap change.
+        // Ordered exactly as Pascal `Sample` — they run *before* the VLimit
+        // re-check below, so a live VLimit violation still forces a tap. The
+        // DebugTrace log lines are omitted (the port never opens the trace file).
+        if tap_change_needed && self.idle_enabled && (self.cogen_enabled || self.is_reversible) {
+            let fwd_power = -tr.power_into_re(element_terminal, ctx.node_v, ctx.sys);
+            // Ported verbatim from Pascal: the `>=`/`<=` OR is upstream's exact
+            // no-load-zone test (with the default −100/+100 kW band it spans the
+            // whole axis; asymmetric thresholds narrow it). Not "fixed" to AND.
+            if fwd_power >= self.rev_power_threshold || fwd_power <= self.fwd_power_threshold {
+                tap_change_needed = false; // idle in no-load zone
+            }
+        }
+        if tap_change_needed
+            && self.idle_reverse_enabled
+            && self.is_reversible
+            && !self.reverse_neutral
+        {
+            let fwd_power = -tr.power_into_re(element_terminal, ctx.node_v, ctx.sys);
+            if fwd_power < self.rev_power_threshold {
+                tap_change_needed = false; // idle in reverse zone
+            }
+        }
+        if tap_change_needed && self.idle_forward_enabled && self.is_reversible {
+            let fwd_power = -tr.power_into_re(element_terminal, ctx.node_v, ctx.sys);
+            if fwd_power > self.fwd_power_threshold {
+                tap_change_needed = false; // idle in forward zone
+            }
+        }
+
         if vlimit_active && vlocalbus > self.vlimit {
             tap_change_needed = true;
         }

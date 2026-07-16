@@ -1669,6 +1669,36 @@
    "note": "Reversible + reverse setpoints: a downstream generator ramp drives reverse power through the LTC past revThreshold, flipping InReverseMode so it regulates to revVreg/revBand. Feature-sensitive: reversible=no keeps it forward-only (different taps/event log; probe-proven)."
   },
   {
+   "path": "regcontrol/regcontrol_idle.dss",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "oracle": "capi015",
+   "pending": false,
+   "probes": [
+    {
+     "element": "RegControl.rg",
+     "props": [
+      "tapnum",
+      "reversible",
+      "idle",
+      "revthreshold",
+      "fwdthreshold"
+     ]
+    },
+    {
+     "element": "Transformer.tr",
+     "props": [
+      "tap"
+     ]
+    }
+   ],
+   "note": "WP-U1.6 C5 (r4086, 8a898cba): RegControl idle-zone no-load suppression. idle=yes on a reversible regulator drops the pending tap when through-power lands in the default -100/+100 kW dead-band (which spans the whole axis, upstream >=/<= OR), so it never taps: a NON-idle reg taps up to 1.09375 (tapnum 15, |V|~0.939 pu) but idle=yes holds tap 1.0 (tapnum 0, |V|~0.864 pu) -- ~0.075 pu gap, far above every live floor. idle is 0.15.x-only (0.14.5 rejects it), so gated capi015 not 0.14.5 (section 1.2). Validated per section 1.7 (two-process determinism on capi015). Probed idle=yes vs idle=no 2026-07-16."
+  },
+  {
    "path": "regcontrol/regcontrol_remotebus.dss",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",

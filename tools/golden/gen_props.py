@@ -856,6 +856,44 @@ SCENARIOS = [
             "New RegControl.reg1 like=base transformer=t2 R=1.4 X=2.6",
         ],
     },
+    # C5 (dss_capi 0.15.x r4086, commit 8a898cba): idle-zone flags + the signed
+    # forward-power threshold. Both thresholds set in one edit -> no legacy
+    # fallback, so the asymmetric band and the three idle flags are pinned.
+    {
+        "name": "regcontrol_idlezones",
+        "target": "RegControl.reg1",
+        "commands": [
+            "New Transformer.t1 phases=1 windings=2 buses=(650.1, rg60.1) "
+            "kvs=(2.4 2.4) kvas=(1666 1666) xhl=0.01",
+            "New RegControl.reg1 transformer=t1 winding=2 reversible=yes "
+            "idle=yes idleReverse=yes idleForward=yes revThreshold=-50 "
+            "fwdThreshold=200",
+        ],
+    },
+    # FwdThreshold set alone leaves RevThreshold at its −100 kW default (the
+    # legacy fallback only fires when RevThreshold is the one edited).
+    {
+        "name": "regcontrol_fwdthreshold_only",
+        "target": "RegControl.reg1",
+        "commands": [
+            "New Transformer.t1 phases=1 windings=2 buses=(650.1, rg60.1) "
+            "kvs=(2.4 2.4) kvas=(1666 1666) xhl=0.01",
+            "New RegControl.reg1 transformer=t1 winding=2 fwdThreshold=200",
+        ],
+    },
+    # Per-edit boundary: a second edit that sets RevThreshold alone re-triggers
+    # the symmetric-band fallback, clobbering the earlier FwdThreshold=200
+    # (Rev=−50, Fwd=50).
+    {
+        "name": "regcontrol_thresh_two_edits",
+        "target": "RegControl.reg1",
+        "commands": [
+            "New Transformer.t1 phases=1 windings=2 buses=(650.1, rg60.1) "
+            "kvs=(2.4 2.4) kvas=(1666 1666) xhl=0.01",
+            "New RegControl.reg1 transformer=t1 winding=2 fwdThreshold=200",
+            "Edit RegControl.reg1 revThreshold=50",
+        ],
+    },
     {
         "name": "capcontrol_current",
         "target": "CapControl.cc1",

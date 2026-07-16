@@ -110,6 +110,9 @@ struct MockTransformer {
     base_v: Vec<f64>,
     conn: Vec<i32>,
     wv: Vec<Complex64>,
+    /// Through-power `Power[ElementTerminal].re` (W) the mock reports; the reg
+    /// reads `FwdPower = -Power`. Default 0.
+    power_re: f64,
 }
 
 impl MockTransformer {
@@ -128,7 +131,14 @@ impl MockTransformer {
             base_v: vec![100.0, 100.0],
             conn: vec![0, 0],
             wv: vec![Complex64::new(vph, 0.0)],
+            power_re: 0.0,
         }
+    }
+
+    /// Set the reported through-power (W) so `FwdPower = -power_re`.
+    fn with_power(mut self, power_re: f64) -> Self {
+        self.power_re = power_re;
+        self
     }
 }
 
@@ -179,7 +189,7 @@ impl ControlledTransformer for MockTransformer {
         }
     }
     fn power_into_re(&mut self, _term: usize, _node_v: &[Complex64], _sys: &SysCtx) -> f64 {
-        0.0
+        self.power_re
     }
     fn winding_voltages(&mut self, _term: usize, _node_v: &[Complex64], vbuffer: &mut [Complex64]) {
         for (i, v) in vbuffer.iter_mut().take(self.nphases).enumerate() {
@@ -337,6 +347,81 @@ fn maxtapchange_zero_zeroes_pending_and_exits() {
     rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(sc.queue.is_empty());
+}
+
+// --- C5 (r4086, 8a898cba): signed thresholds + idle zones ---
+
+#[test]
+fn defaults_are_signed_thresholds() {
+    // r4086: RevPowerThreshold −100 kW, FwdPowerThreshold +100 kW.
+    let rc = RegControl::new("r1");
+    assert_eq!(rc.rev_power_threshold, -100_000.0);
+    assert_eq!(rc.fwd_power_threshold, 100_000.0);
+}
+
+#[test]
+fn idle_no_load_zone_suppresses_out_of_band_tap() {
+    // Out-of-band high (125 vs 120±1.5) would arm a downward tap, but idle=yes
+    // on a reversible reg drops it: with FwdPower 0 in the default −100/+100 kW
+    // band the no-load OR test is true → "idle in no-load zone".
+    let mut rc = RegControl::new("r1");
+    rc.pt_ratio = 1.0;
+    rc.ccd.cd.nphases = 1;
+    rc.is_reversible = true;
+    rc.idle_enabled = true;
+    let mut tr = MockTransformer::wye_2wdg(125.0); // power_re 0 → FwdPower 0
+    let mut sc = Scratch::new();
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    assert_eq!(rc.pending_tap_change, 0.0);
+    assert!(!rc.armed);
+    assert!(sc.queue.is_empty());
+}
+
+#[test]
+fn idle_without_reversible_or_cogen_still_taps() {
+    // IdleEnabled alone (no reversible/cogen) does NOT gate the idle zone, so
+    // the out-of-band reg still arms exactly like the non-idle case.
+    let mut rc = RegControl::new("r1");
+    rc.pt_ratio = 1.0;
+    rc.ccd.cd.nphases = 1;
+    rc.idle_enabled = true; // but is_reversible = cogen_enabled = false
+    let mut tr = MockTransformer::wye_2wdg(125.0);
+    let mut sc = Scratch::new();
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
+    assert!(rc.armed);
+}
+
+#[test]
+fn idle_forward_zone_suppresses_when_exporting_hard() {
+    // idleForward + reversible: FwdPower above FwdPowerThreshold (+100 kW) →
+    // idle in the forward zone (FwdPower = -power_re = 200 kW here).
+    let mut rc = RegControl::new("r1");
+    rc.pt_ratio = 1.0;
+    rc.ccd.cd.nphases = 1;
+    rc.is_reversible = true;
+    rc.idle_forward_enabled = true;
+    let mut tr = MockTransformer::wye_2wdg(125.0).with_power(-200_000.0);
+    let mut sc = Scratch::new();
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    assert_eq!(rc.pending_tap_change, 0.0);
+    assert!(!rc.armed);
+}
+
+#[test]
+fn signed_rev_threshold_arms_reverse_pending_below_default() {
+    // FwdPower −150 kW < RevPowerThreshold (−100 kW) → schedule ACTION_REVERSE.
+    // Pins the sign move: the guard is `FwdPower < RevPowerThreshold` (no unary −).
+    let mut rc = RegControl::new("r1");
+    rc.pt_ratio = 1.0;
+    rc.ccd.cd.nphases = 1;
+    rc.is_reversible = true;
+    // FwdPower = -power_re = -150 kW ⇒ power_re = +150 kW.
+    let mut tr = MockTransformer::wye_2wdg(120.0).with_power(150_000.0);
+    let mut sc = Scratch::new();
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    assert!(rc.reverse_pending);
+    assert_eq!(sc.queue.queue_size(), 1);
 }
 
 #[cfg(test)]

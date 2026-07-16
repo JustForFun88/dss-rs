@@ -21,6 +21,12 @@ pub struct DssObjData {
     /// Pascal `PrpSequence`: `[0]` is the counter, `[i]` is the order in
     /// which property `i` was last set (0 = never set).
     prp_sequence: Vec<u32>,
+    /// Pascal `PrpSequence[NumProperties + 1]` (DSSClass.pas:1666, r4086): the
+    /// value of the `[0]` counter captured at `BeginEdit`, so `EndEdit` can tell
+    /// which properties were set in *this* edit (`PrpSequence[i] > boundary`).
+    /// Kept as a scalar so it stays out of the `next_property_set`/`prp_specified`
+    /// property-index sweeps; copied by `MakeLike` exactly like the array.
+    edit_seq_boundary: u32,
     /// Deferred `DoSimpleMsg`/`DoErrorMsg` messages emitted by
     /// `side_effects`/`end_edit` (which run without direct access to the
     /// engine error sink). The executive drains these right after the edit
@@ -68,6 +74,7 @@ impl DssObjData {
         Self {
             name: name.into(),
             prp_sequence: vec![0; num_props + 1],
+            edit_seq_boundary: 0,
             deferred_errors: Vec::new(),
             deferred_abort: false,
             has_been_saved: false,
@@ -174,6 +181,21 @@ impl DssObjData {
         self.prp_sequence.get(index).copied().unwrap_or(0) != 0
     }
 
+    /// Pascal `TDSSClass.BeginEdit` (`DSSClass.pas:1666`, r4086): snapshot the
+    /// current set-order counter as the per-edit boundary, so `EndEdit` can
+    /// distinguish props set in *this* edit from ones set earlier. The executive
+    /// calls this at the start of every object edit.
+    pub fn begin_edit_boundary(&mut self) {
+        self.edit_seq_boundary = self.prp_sequence[0];
+    }
+
+    /// Whether property `index` was set in the current edit, i.e. after the last
+    /// [`begin_edit_boundary`](Self::begin_edit_boundary) (Pascal
+    /// `PrpSequence[i] >= PrpSequence[NumProperties + 1] + 1`).
+    pub fn prop_edited_since_boundary(&self, index: usize) -> bool {
+        self.prp_sequence.get(index).copied().unwrap_or(0) > self.edit_seq_boundary
+    }
+
     /// Pascal `PrpSequence[index] := 0`: spec-set side effects clear the
     /// "explicitly set" marks of competing properties.
     pub fn clear_seq(&mut self, index: usize) {
@@ -188,6 +210,8 @@ impl DssObjData {
     /// `make_like` impls call this first, mirroring `inherited MakeLike`.
     pub fn copy_prp_sequence_from(&mut self, other: &DssObjData) {
         self.prp_sequence.clone_from(&other.prp_sequence);
+        // Pascal `MakeLike` copies the whole PrpSequence, boundary slot included.
+        self.edit_seq_boundary = other.edit_seq_boundary;
     }
 
     /// Pascal `GetNextPropertySet`: the property index whose set-order is the
