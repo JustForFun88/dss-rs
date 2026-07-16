@@ -298,6 +298,36 @@ fn ncim_resolve_is_stable() {
     assert!(drift < 1e-9, "NCIM re-solve drifted by {drift:.2e}");
 }
 
+/// `Export Jacobian` with no NCIM solve raises Pascal's #222 "Jacobian matrix not
+/// built." (`ExportResults.pas` l.3920) — a normal (fixed-point) solve never
+/// populates `NCIM_Jacobian`. `Export deltaF`/`deltaZ` instead silently no-op
+/// (Pascal `if Length(..) = 0 then Exit`): no error, nothing written.
+#[test]
+fn ncim_report_exports_without_ncim_solve() {
+    let mut dss = Dss::new();
+    for line in as_refs(&pq_circuit(1)) {
+        dss.command(line);
+    }
+    dss.command("Solve"); // Normal algorithm — no NCIM state built.
+
+    dss.command("Export Jacobian");
+    assert_eq!(
+        dss.errors(),
+        &["Jacobian matrix not built.".to_string()],
+        "Export Jacobian without NCIM should raise #222"
+    );
+    let n_errs = dss.errors().len();
+
+    dss.command("Export deltaF");
+    dss.command("Export deltaZ");
+    assert_eq!(
+        dss.errors().len(),
+        n_errs,
+        "deltaF/deltaZ silently no-op with no NCIM state (no new error): {:?}",
+        dss.errors()
+    );
+}
+
 /// `Set Algorithm=NCIM` parses (prefix `nc`, min-abbrev 2) and `Get Algorithm`
 /// reads it back; the two NCIM options round-trip through `Set`/`Get`.
 #[test]
