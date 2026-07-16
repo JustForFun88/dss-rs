@@ -263,6 +263,12 @@ impl DssObject for LineGeometryObj {
             self.realloc_conductors();
             self.fnphases = o.fnphases;
             self.line_spacing_obj = o.line_spacing_obj.as_ref().map(|b| b.clone_box());
+            // dss_capi 0.15.x `MakeLike` copies the equivalent-spacing fields.
+            self.eq_dist_ph_ph = o.eq_dist_ph_ph;
+            self.eq_dist_ph_n = o.eq_dist_ph_n;
+            self.avg_phase_height = o.avg_phase_height;
+            self.avg_neutral_height = o.avg_neutral_height;
+            self.equivalent_spacing = o.equivalent_spacing;
             self.fline_type = o.fline_type;
             self.fphase_choice.clone_from(&o.fphase_choice);
             self.fwiredata = o

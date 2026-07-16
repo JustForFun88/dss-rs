@@ -1956,6 +1956,8 @@ const MODES_REQUIRED: &[&str] = &[
     "windgen/windgen_daily.dss",
     "windgen/windgen_dyn.dss",
     "windgen/windgen_dyn_fault.dss",
+    // WP-U1.4 LineSpacing equivalent-spacing model feature deck.
+    "upgrade/upgrade_linecs_eqspacing.dss",
 ];
 
 /// Every modes case must name selected_elements: the live compare (once the

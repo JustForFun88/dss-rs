@@ -210,6 +210,7 @@
       "time/peakday.dss",
       "time/yearly.dss",
       "upgrade/upgrade_growth_year0.dss",
+      "upgrade/upgrade_linecs_eqspacing.dss",
       "upgrade/upgrade_parser_zerokw.dss",
       "upgrade/upgrade_pilot.dss",
       "windgen/windgen_daily.dss",

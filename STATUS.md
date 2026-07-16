@@ -415,6 +415,46 @@ property-count-comparison flip beyond this pass's safe budget):
   `Solve all`/`SolveAll` (`cmd::SOLVE_ALL`=123) not yet dispatched — small command
   alias (single-actor = plain solve), unstarted.
 
+**WP-U1.4 (line/cable-constants cluster) — PARTIAL: equivalent-spacing model LANDED
+(branch wt-u14).** Ported the **B3/C1 equivalent-spacing model** (dss_capi 0.15.x
+`LineSpacing.pas`/`LineConstants.pas`, SVN r3913-era) end-to-end, gate-safe (defaults
+preserve 0.14.5 numerics):
+- `LineSpacing` gains `Detailed` (bool, default `true`) + `EqDistPhPh`/`EqDistPhN`/
+  `AvgPhaseHeight`/`AvgNeutralHeight` (double, default 0) + `EquivalentSpacing() =
+  !detailed` + the `Detailed` prop-tracking side effect.
+- `LineConstants` engine gains `equivalent_spacing`/`eps_r_medium` (1.0)/`height_offset`
+  (0)/`user_height_unit` + the four equivalent distances; `calc_overhead`/`get_ze`/
+  `cisp_overhead` branch on equivalent spacing 1:1 with the Pascal. `EpsRMedium`
+  (`pfactor /= E0*eps_r_medium`, `E0*1.0==E0`) and `HeightOffset` engine numerics are
+  ported default-off (the Line-level *properties* that drive them are deferred, below).
+- `LineGeometry` copies the spacing's equivalent state (`apply_spacing`/
+  `load_spacing_and_wires`) and threads it into `UpdateLineGeometryData`
+  (distances × `To_Meters(FLastUnit)`; skips `SetX`/`SetY`).
+- **Validation:** unit `line_geometry::tests::matrices_equivalent_spacing_match_capi015`
+  (reduced 3×3 Z = capi015 to 1e-8), new capi015 corpus deck
+  `modes/upgrade/upgrade_linecs_eqspacing.dss` (live YPrim compare green; §1.7
+  two-process bit-identical), new capi015 props golden
+  `props/linespacing_eqspacing.json`. No existing golden/live case moves
+  (`Detailed` default true; 0 corpus decks set the props). DIVERGENCES.md §B3/C1.
+- **Audit follow-up (both minor findings fixed):** the always-on unit test now also
+  pins the equivalent-spacing **Yc/capacitance** branch (reduced 3×3 C = capi015
+  `? line.l1.cmatrix` 16.16 / -4.087 nF/mi to 1e-8), so the shunt branch no longer
+  relies solely on the live YPrim compare; and the `Set_FUserHeightUnit` meters-value
+  re-conversion quirk in `support/line_constants` now carries a greppable
+  `TODO(compat)` marker (dead scaffolding today — height_offset is always 0 and the
+  Line-level HeightUnit prop is deferred; golden pins it when that slice lands).
+- **Remaining WP-U1.4 rows (documented, not landed):** `Line.EpsRMedium`/
+  `HeightOffset`/`HeightUnit`/`Conductors` **Line-level properties** — BLOCKED on the
+  `compare_all_properties` count-equality harness (adding a property to the
+  circuit-element class `Line` breaks every default-oracle feeder's property-table-
+  shape assert; needs a harness accommodation for 0.15.x-only trailing props, a
+  design decision — the engine numerics are already in place); the merged
+  `CNTSLineConstants` mixed-conductor class + `CNData.SemiconLayer` capacitance
+  (an engine architectural refactor: 0.15.x moves the CN/TS choice per-conductor via
+  `SetCondType(i, CN|TS)` — the port still has per-*engine* CN/TS kinds); `LineCode`
+  FaultRate/PctPerm/Repair deprecation (catalog, adds Deprecated/Unused flags);
+  LineType enum width; and **WP-U1.2 D3** spacing ratings + overload deck.
+
 **GFM WP (branch `gfm-wp`) — B5 + injection-vs-YPrim + 0.15.x YPrim delta —
 SETTLED.** Adopted B5 (`calc_gfm_yprim` `Isc1` drops the `·1000`, dss_capi
 `de6a5a42` = SVN r3865). The deliverable-3 "0.15.x GFM Storage YPrim delta" is the

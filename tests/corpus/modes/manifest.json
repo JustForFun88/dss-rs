@@ -1221,6 +1221,19 @@
   "wp": "WP-U1.8",
   "oracle": "capi015",
   "note": "UPGRADE_PLAN WP-U1.8 (A2/\u00a71.7): WindGen WTG3 dynamics FAULT RIDE-THROUGH (LVPL/LVQL-sensitive). A sustained 3ph fault (Fault.f1 R=0.05) on the terminal depresses Vmag to ~0.90 pu through the run, engaging the low-voltage power-logic (LVPL curtailment) and reactive-logic (LVQL Iq limit). Probe-proven feature-sensitive on capi015: Vmag 0.898 (vs 1.015 healthy), Qgen +0.0712 (vs -0.0063 healthy -> reactive support), dOmg -0.081 (vs +0.010). 30x1ms steps; compare_variables all 22. Deterministic."
+ },
+ {
+  "path": "upgrade/upgrade_linecs_eqspacing.dss",
+  "ad": "off:unclassified-new-deck",
+  "kind": "micro",
+  "n_steps": 1,
+  "selected_elements": [
+   "Line.l1"
+  ],
+  "pending": false,
+  "wp": "WP-U1.4",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.4 (B3/C1, LineSpacing.pas/LineConstants.pas): LineSpacing equivalent-spacing model. detailed=no supplies EqDistPhPh=2.5/EqDistPhN=4.272/AvgPhaseHeight=28/AvgNeutralHeight=24 (ft) instead of per-conductor X/H; the LineGeometry (nconds=4 nphases=3 reduce=y) Kron-reduces to a 3x3 phase Z. Probed on capi015 (0.15.0b4): converged (2 iters), reduced rmatrix diag 0.4105655/off 0.1095458, xmatrix diag 0.9883347/off 0.4265879 ohm/mi; bit-identical fingerprint across two capi015 processes. Feature-sensitive: the equivalent distances drive the whole Z/YPrim (also unit-pinned by line_geometry::tests::matrices_equivalent_spacing_match_capi015)."
  }
  ]
 }
