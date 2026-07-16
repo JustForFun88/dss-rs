@@ -7,36 +7,32 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-16 (parallel Rung-1 round, 6 worktrees, each port +
-dual-audit + fix, all merged to `update` and pushed: **WP-U1.5 complete**
-(seasonal/allocation/zonelist), **WP-U1.9 complete** (PCE force hooks),
-**WP-U1.7 Stages 2–4 core** (NCIM solver; corpus decks + Export/Show reports
-remaining), **WP-U1.4 partial** (equivalent-spacing landed; Line-props/CNTS
-blocked, see below), **WP-U1.6 partial** (B3/D10/D15/A7; C5/C6/D11/D13/C4
-remaining, D12 reverted for re-land), **coverage parked test RESOLVED**. Two
-merge-integration fixes (dump3 golden mask supersedes hand-added lines;
-population.lock regen 56→58). Earlier 2026-07-12 merge summary → git history.
-Integration branch is `update` (pushed to origin); main untouched until an
-explicit merge request.)
+Last updated: 2026-07-17 (Rung-1 tail rounds merged to `update` and pushed:
+**PROPS_015X harness allowlist** (the 2026-07-16 "pending user decision"
+resolved as the named per-class allowlist, branch wt-h015), **WP-U1.7
+COMPLETE** (NCIM Export Jacobian/deltaF/deltaZ + Show PV2PQ_Conversions,
+VSource.NCIM_CalcInjCurrAtBus, `modes/ncim/` deck matrix, r4088 cross-check —
+wt-u17tail), **WP-U1.6 COMPLETE** (wt-u16ind: C4 SolveAll, D11 part 2, D12
+re-land, D13 not-a-delta; wt-u16tail: C5 RegControl FwdThreshold/idle zones,
+C6 Transformer/AutoTrans BH props, C5-r3723 LoadShape Mode declined; B4-capi
+faithful-as-is), **WP-U1.4 COMPLETE** (wt-u14props: Line
+EpsRMedium/HeightOffset/HeightUnit + HIDE_015X; wt-u14cnts: merged
+TCableConstants + CNData.SemiconLayer; wt-u14cond: `Conductors` property on
+Line (34, NormAmps→35) + LineGeometry (20) over a 3-class
+WireData|CNData|TSData proxy resolver — text `Conductors=` is upstream-broken
+(GetDSSClass case bug, TODO(compat)); resolved-ref path equivalence-gated).
+All six round worktrees + 11 old agent worktrees removed per the junction
+protocol (.inputs verified intact); merged branches deleted. Integration
+branch is `update` (pushed to origin); main untouched until an explicit merge
+request.)
 
-**Rung-1 remaining tail (2026-07-16, the short list to rung exit):**
-1. **PENDING USER DECISION — property-count harness accommodation:**
-   `compare_all_properties` asserts Rust property count == 0.14.5-oracle count
-   per circuit element, so any 0.15.x-appended property (U1.4 Line
-   EpsRMedium/HeightOffset/HeightUnit/Conductors — engine numerics already
-   ported; U1.6 C5 RegControl FwdThreshold/Idle*, C6 BH-props, C5-r3723
-   LoadShape Mode) breaks nearly every default-oracle deck. Proposed: a named
-   per-class allowlist of 0.15.x-only trailing props (§1.3-style relaxation).
-2. WP-U1.7 tail: `modes/ncim/` corpus deck matrix (numerics already unit-pinned
-   vs capi015), `Export Jacobian/deltaF/deltaZ` + `Show PV2PQ_Conversions`,
-   `VSource.NCIM_CalcInjCurrAtBus` (reporting), r4088 cross-check.
-3. WP-U1.6 small tail: C4 `Solve all` alias; D13 (needs a non-crashing MMF
-   deck — corpus one hits capi015 #58614); D11 part 2 (capcontrol_time deck
-   entanglement); D12 re-land (needs multi-step capi015 oracle support).
-4. WP-U1.4 heavy tail: merged `CNTSLineConstants` per-conductor refactor +
-   `CNData.SemiconLayer`; LineCode deprecation flags; LineType enum width;
-   U1.2-D3 spacing ratings + overload deck.
-5. WP-U1.10 rung exit (r4088 sweep + known_diffs burn-down) — after 1–4.
+**Rung-1 remaining tail (2026-07-17):**
+1. WP-U1.10 rung exit (r4088 sweep + known_diffs burn-down, COVERAGE.md
+   refresh, NOT_PORTED(U1…) marker sweep) — the only remaining Rung-1 item.
+2. Deferred to the §6 sweep (documented, not rung-blocking): JSON/Dump golden
+   surface flip to capi015 + dropping the Wires→"Conductors" JSON masquerade
+   (gen_json.py is hard-pinned to the 0.14.5 oracle; HIDE_015X retained on the
+   0.15.x-only Line/LineGeometry props — see DIVERGENCES §Conductors).
 
 **PARKED TEST — RESOLVED (2026-07-16, branch wt-coverage):**
 `circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` is
@@ -969,9 +965,9 @@ built on the `PROPS_015X` harness allowlist:
   LoadShape deck's count parity against the oracle, so it stays unported; guard test
   `no_mode_prop_interpolation_stays_at_22`. DIVERGENCES.md §C5-r3723.
 
-Still deferred from WP-U1.6 (sibling `wt-u16ind` / follow-ups): C4 `Solve all`,
-D11 part 2 (CapControl TIMECONTROL effElement), D12 (SwtControl re-land), D13
-(LoadShape MMF), B4-capi. `known_diffs.json`: none of C5/C6/C5-r3723 had a prior
+(Merge note 2026-07-17: the sibling `wt-u16ind` landed C4/D11-part-2/D12/D13 in
+the same round — see its block above — and B4-capi stays faithful-as-is, so
+WP-U1.6 is COMPLETE.) `known_diffs.json`: none of C5/C6/C5-r3723 had a prior
 Rust↔EPRI entry — nothing to retire.
 
 **WP-U1.4 final row — `Conductors` property — LANDED (branch wt-u14cond); WP-U1.4
