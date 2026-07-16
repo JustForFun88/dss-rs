@@ -1,0 +1,32 @@
+! UPGRADE_PLAN WP-U1.7 (NCIM solver) — midi radial feeder, NCIM re-solve.
+! A 27-node IEEE123-class radial 12.47 kV feeder: a 6-segment backbone with two
+! laterals, mixed constant-power (model 1) and constant-impedance (model 2)
+! loads, and a model-3 voltage-regulating generator at b5 that hits its +400
+! kvar limit -> PV->PQ conversion. Re-solved with Set algorithm=NCIM; capi015
+! (dss_capi 0.15.x) converges in 8 iterations. Exercises NCIM at scale: the
+! PDE-only Y assembly over a linecode network, ConstZ ZBus stamping, and the
+! PV->PQ Q-limit path all in one converged solve.
+Clear
+New Circuit.midi_ncim basekv=12.47 phases=3 bus1=sourcebus mvasc3=3000 mvasc1=2500
+New Linecode.lc1 nphases=3 r1=0.12 x1=0.35 r0=0.35 x0=1.1 c1=3.0 c0=1.6 units=km
+New Line.b0_1 bus1=sourcebus bus2=b1 linecode=lc1 length=1.5 units=km
+New Line.b1_2 bus1=b1 bus2=b2 linecode=lc1 length=1.2 units=km
+New Line.b2_3 bus1=b2 bus2=b3 linecode=lc1 length=1.0 units=km
+New Line.b3_4 bus1=b3 bus2=b4 linecode=lc1 length=1.4 units=km
+New Line.b4_5 bus1=b4 bus2=b5 linecode=lc1 length=1.1 units=km
+New Line.b5_6 bus1=b5 bus2=b6 linecode=lc1 length=1.3 units=km
+New Line.l2a bus1=b2 bus2=lat2 linecode=lc1 length=0.8 units=km
+New Line.l4a bus1=b4 bus2=lat4 linecode=lc1 length=0.9 units=km
+New Load.d1 bus1=b1 phases=3 kv=12.47 kw=450 kvar=200 model=1
+New Load.d2 bus1=b2 phases=3 kv=12.47 kw=520 kvar=180 model=1
+New Load.d3 bus1=b3 phases=3 kv=12.47 kw=380 kvar=150 model=2
+New Load.d4 bus1=b4 phases=3 kv=12.47 kw=610 kvar=240 model=1
+New Load.d5 bus1=b5 phases=3 kv=12.47 kw=300 kvar=120 model=1
+New Load.d6 bus1=b6 phases=3 kv=12.47 kw=270 kvar=90 model=1
+New Load.dl2 bus1=lat2 phases=3 kv=12.47 kw=340 kvar=130 model=1
+New Load.dl4 bus1=lat4 phases=3 kv=12.47 kw=290 kvar=110 model=2
+New Generator.g1 bus1=b5 phases=3 kv=12.47 kw=600 model=3 maxkvar=400 minkvar=-400 vpu=1.0
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set algorithm=NCIM
+Solve

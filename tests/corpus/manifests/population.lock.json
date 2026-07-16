@@ -12,7 +12,7 @@
   "family_counts": {
     "asymmetric": 47,
     "controls": 94,
-    "modes": 59
+    "modes": 62
   },
   "family_paths": {
     "asymmetric": [
@@ -183,6 +183,9 @@
       "montecarlo/monte2.dss",
       "montecarlo/monte3.dss",
       "montecarlo/montefault.dss",
+      "ncim/ncim_midi.dss",
+      "ncim/ncim_pq.dss",
+      "ncim/ncim_pv_pq.dss",
       "newton/newton.dss",
       "newton/newton_feeder.dss",
       "pstcalc/pstcalc_cmd.dss",
