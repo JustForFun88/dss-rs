@@ -16,8 +16,8 @@ pub use control_queue::{ControlActioner, ControlQueue, TimeRec};
 pub use event_log::EventLog;
 pub use solution::{
     ADMITTANCE, ActiveY, CONTROLSOFF, CTRLSTATIC, EVENTDRIVEN, GAUSSIAN, LOGNORMAL, MULTIRATE,
-    NEWTONSOLVE, NORMALSOLVE, POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult, TIMEDRIVEN,
-    UNIFORM, USEDAILY, USEDUTY, USENONE, USEYEARLY, set_mode, set_voltage_bases, solve,
+    NCIMSOLVE, NEWTONSOLVE, NORMALSOLVE, POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult,
+    TIMEDRIVEN, UNIFORM, USEDAILY, USEDUTY, USENONE, USEYEARLY, set_mode, set_voltage_bases, solve,
     solve_zero_load_snapshot, sys_ctx,
 };
 pub(crate) use solution::{calc_initial_machine_states, initialize_for_harmonics, solve_snap};

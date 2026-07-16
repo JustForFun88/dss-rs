@@ -33,6 +33,7 @@ mod dynamics;
 mod fault_study;
 mod harmonics;
 mod monte_carlo;
+mod ncim;
 mod power_flow;
 mod set_mode;
 mod state;
@@ -44,9 +45,11 @@ pub use power_flow::solve_zero_load_snapshot;
 pub use set_mode::set_mode;
 pub use state::{
     ADMITTANCE, ActiveY, CONTROLSOFF, CTRLSTATIC, EVENTDRIVEN, GAUSSIAN, LOGNORMAL, MULTIRATE,
-    NEWTONSOLVE, NORMALSOLVE, POWERFLOW, Solution, SolveEnv, SolveMode, SolveResult, TIMEDRIVEN,
-    UNIFORM, USEDAILY, USEDUTY, USENONE, USEYEARLY, sys_ctx,
+    NCIM_PQ_NODE, NCIM_PV_NODE, NCIMSOLVE, NEWTONSOLVE, NORMALSOLVE, POWERFLOW, Solution, SolveEnv,
+    SolveMode, SolveResult, TIMEDRIVEN, UNIFORM, USEDAILY, USEDUTY, USENONE, USEYEARLY, sys_ctx,
 };
+
+pub(crate) use ncim::do_ncim_solution;
 
 pub(crate) use dynamics::calc_initial_machine_states;
 pub(crate) use harmonics::initialize_for_harmonics;
