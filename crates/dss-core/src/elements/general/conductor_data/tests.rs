@@ -147,6 +147,25 @@ fn cndata_too_few_strands_errors() {
 }
 
 #[test]
+fn cndata_semicon_layer_roundtrip() {
+    // dss_capi 0.15.x `SemiconLayer` (LongBool, default true → renders "Yes").
+    // capi015 (dss-python 0.16.0b2) renders "Yes"/"No"; `like=` copies it.
+    let enums = EnumRegistry::new();
+    let cls = cn_data::class_props(&enums);
+    let mut def = CnDataObj::new("cn0");
+    assert_eq!(get(&cls, &def, "SemiconLayer"), "Yes");
+
+    let mut obj = CnDataObj::new("cn1");
+    let errs = apply(&cls, &mut obj, &[("semiconlayer", "no")]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(get(&cls, &obj, "SemiconLayer"), "No");
+
+    // MakeLike copies the flag.
+    def.make_like(&obj);
+    assert_eq!(get(&cls, &def, "SemiconLayer"), "No");
+}
+
+#[test]
 fn cndata_low_permittivity_errors() {
     // EpsR has no NonNegative flag, so the side-effect <1.0 check is the
     // only guard (message uses the bare name).

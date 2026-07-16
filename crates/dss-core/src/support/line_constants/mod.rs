@@ -31,17 +31,35 @@ pub const FULL_CARSON: i32 = 2;
 pub const DERI: i32 = 3;
 
 /// Which Pascal `TLineConstants` subclass this engine reproduces. Selects the
-/// `Calc`/`ConductorsInSameSpace` behavior; the overhead Carson model is the
-/// base, the cable kinds (`TCNLineConstants`/`TTSLineConstants`, both deriving
-/// from `TCableConstants`) build the impedance from coaxial cable data instead.
+/// `Calc`/`ConductorsInSameSpace` behavior. dss_capi 0.15.x **merged** the two
+/// separate `TCNLineConstants`/`TTSLineConstants` classes into a single
+/// `TCableConstants` (CableConstants.pas): the CN-vs-TS choice moved from the
+/// engine kind to a per-conductor `FCondType[i]` array ([`ConductorType`]), so
+/// one engine can carry mixed wire/CN/TS conductors (Kersting mixed-conductor
+/// model). The overhead Carson model is still the base.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineConstantsKind {
     /// `TOHLineConstants` — overhead line (the base Carson model).
     Overhead,
-    /// `TCNLineConstants` — concentric-neutral cable.
-    ConcentricNeutral,
-    /// `TTSLineConstants` — tape-shield cable.
-    TapeShield,
+    /// `TCableConstants` — coaxial cable (concentric-neutral and/or tape-shield
+    /// conductors, selected per-conductor by [`LineConstants::set_cond_type`]).
+    Cable,
+}
+
+/// Pascal `TConductorType` (CableConstants.pas): the per-conductor kind inside a
+/// merged `TCableConstants` engine. `INVALID`/`Bare` conductors contribute no
+/// CN/TS cable branch (a plain overhead wire buried among cables). Ordinals match
+/// the Pascal enum (INVALID=0, CN=1, TS=2, Bare=3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConductorType {
+    /// `INVALID` — never assigned a cable type (Allocmem zero); no cable branch.
+    Invalid,
+    /// `CN` — concentric-neutral cable conductor.
+    Cn,
+    /// `TS` — tape-shield cable conductor.
+    Ts,
+    /// `Bare` — bare wire conductor; no cable branch (defined for 1:1 parity).
+    Bare,
 }
 
 // Pascal `LineConstants` unit constants.
@@ -133,18 +151,23 @@ pub struct LineConstants {
     fradius: Vec<f64>,    // m
     fcapradius: Vec<f64>, // m; <0 ⇒ defaults to fradius
 
-    // Cable data (`TCableConstants` and its CN/TS subclasses); empty for the
-    // overhead kind. Units are meters / per-meter like the base arrays.
+    // Cable data (merged `TCableConstants`); empty for the overhead kind. Units
+    // are meters / per-meter like the base arrays. dss_capi 0.15.x holds the
+    // CN and TS arrays together and selects per-conductor via `fcond_type`.
     feps_r: Vec<f64>,     // relative permittivity of insulation
     fins_layer: Vec<f64>, // m
     fdia_ins: Vec<f64>,   // m, diameter over insulation
     fdia_cable: Vec<f64>, // m, diameter over cable
-    // Concentric-neutral strand data (`TCNLineConstants`); empty otherwise.
+    // Per-conductor cable kind (`FCondType`) and semicon-layer flag
+    // (`semiconLayer`, CableConstants.pas); empty for the overhead kind.
+    fcond_type: Vec<ConductorType>,
+    fsemicon_layer: Vec<bool>,
+    // Concentric-neutral strand data (CN conductors); zeroed for TS/bare.
     fk_strand: Vec<i32>,
     fdia_strand: Vec<f64>, // m
     fgmr_strand: Vec<f64>, // m
     frstrand: Vec<f64>,    // ohms/m
-    // Tape-shield data (`TTSLineConstants`); empty otherwise.
+    // Tape-shield data (TS conductors); zeroed for CN/bare.
     fdia_shield: Vec<f64>, // m
     ftape_layer: Vec<f64>, // m
     ftape_lap: Vec<f64>,   // percent
@@ -181,23 +204,42 @@ impl LineConstants {
         Self::with_kind(num_conductors, LineConstantsKind::Overhead)
     }
 
-    /// `TCNLineConstants.Create(NumConductors)` — concentric-neutral cable.
-    pub fn new_cn(num_conductors: usize) -> Self {
-        Self::with_kind(num_conductors, LineConstantsKind::ConcentricNeutral)
+    /// `TCableConstants.Create(NumConductors)` — merged cable engine (no
+    /// per-conductor type set yet; `FCondType` all `INVALID`, `semiconLayer`
+    /// all `false`, per Pascal `Allocmem`). Callers assign each conductor's kind
+    /// via [`Self::set_cond_type`] / [`Self::set_semicon_layer`].
+    pub fn new_cable(num_conductors: usize) -> Self {
+        Self::with_kind(num_conductors, LineConstantsKind::Cable)
     }
 
-    /// `TTSLineConstants.Create(NumConductors)` — tape-shield cable.
+    /// Convenience: a cable engine with every conductor preset to
+    /// concentric-neutral (`FCondType=CN`, `semiconLayer=true` — the `CNData`
+    /// default). Mirrors a pure-CN geometry; used by the engine unit tests.
+    pub fn new_cn(num_conductors: usize) -> Self {
+        let mut lc = Self::with_kind(num_conductors, LineConstantsKind::Cable);
+        for i in 0..num_conductors {
+            lc.fcond_type[i] = ConductorType::Cn;
+            lc.fsemicon_layer[i] = true;
+        }
+        lc
+    }
+
+    /// Convenience: a cable engine with every conductor preset to tape-shield
+    /// (`FCondType=TS`). Mirrors a pure-TS geometry; used by the unit tests.
     pub fn new_ts(num_conductors: usize) -> Self {
-        Self::with_kind(num_conductors, LineConstantsKind::TapeShield)
+        let mut lc = Self::with_kind(num_conductors, LineConstantsKind::Cable);
+        for i in 0..num_conductors {
+            lc.fcond_type[i] = ConductorType::Ts;
+        }
+        lc
     }
 
     fn with_kind(num_conductors: usize, kind: LineConstantsKind) -> Self {
         let n = num_conductors;
-        // The cable subclasses `Allocmem` their extra arrays in the constructor;
-        // the overhead base leaves them empty (never indexed in its `Calc`).
-        let cable = !matches!(kind, LineConstantsKind::Overhead);
-        let cn = matches!(kind, LineConstantsKind::ConcentricNeutral);
-        let ts = matches!(kind, LineConstantsKind::TapeShield);
+        // The merged cable engine `Allocmem`s all extra arrays in the
+        // constructor; the overhead base leaves them empty (never indexed in
+        // its `Calc`).
+        let cable = matches!(kind, LineConstantsKind::Cable);
         let z = |on: bool| if on { vec![0.0; n] } else { Vec::new() };
         LineConstants {
             kind,
@@ -216,13 +258,19 @@ impl LineConstants {
             fins_layer: z(cable),
             fdia_ins: z(cable),
             fdia_cable: z(cable),
-            fk_strand: if cn { vec![0; n] } else { Vec::new() },
-            fdia_strand: z(cn),
-            fgmr_strand: z(cn),
-            frstrand: z(cn),
-            fdia_shield: z(ts),
-            ftape_layer: z(ts),
-            ftape_lap: z(ts),
+            fcond_type: if cable {
+                vec![ConductorType::Invalid; n]
+            } else {
+                Vec::new()
+            },
+            fsemicon_layer: if cable { vec![false; n] } else { Vec::new() },
+            fk_strand: if cable { vec![0; n] } else { Vec::new() },
+            fdia_strand: z(cable),
+            fgmr_strand: z(cable),
+            frstrand: z(cable),
+            fdia_shield: z(cable),
+            ftape_layer: z(cable),
+            ftape_lap: z(cable),
             fz_matrix: CMatrix::new(n),
             fyc_matrix: CMatrix::new(n),
             fz_reduced: None,
@@ -575,8 +623,7 @@ impl LineConstants {
     pub fn calc(&mut self, f: f64, earth_model: i32) {
         match self.kind {
             LineConstantsKind::Overhead => self.calc_overhead(f, earth_model),
-            LineConstantsKind::ConcentricNeutral => self.calc_cn(f, earth_model),
-            LineConstantsKind::TapeShield => self.calc_ts(f, earth_model),
+            LineConstantsKind::Cable => self.calc_cable(f, earth_model),
         }
     }
 
@@ -777,7 +824,7 @@ impl LineConstants {
     pub fn conductors_in_same_space(&self) -> Option<String> {
         match self.kind {
             LineConstantsKind::Overhead => self.cisp_overhead(),
-            _ => self.cisp_cable(),
+            LineConstantsKind::Cable => self.cisp_cable(),
         }
     }
 

@@ -12,7 +12,7 @@
   "family_counts": {
     "asymmetric": 47,
     "controls": 94,
-    "modes": 66
+    "modes": 68
   },
   "family_paths": {
     "asymmetric": [
@@ -218,6 +218,8 @@
       "upgrade/upgrade_linecs_epsrmedium.dss",
       "upgrade/upgrade_linecs_eqspacing.dss",
       "upgrade/upgrade_linecs_heightoffset.dss",
+      "upgrade/upgrade_linecs_mixed.dss",
+      "upgrade/upgrade_linecs_semicon.dss",
       "upgrade/upgrade_linetype_width.dss",
       "upgrade/upgrade_parser_zerokw.dss",
       "upgrade/upgrade_pilot.dss",

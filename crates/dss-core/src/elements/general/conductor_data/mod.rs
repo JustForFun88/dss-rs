@@ -323,7 +323,8 @@ pub struct ConductorGeom {
 /// The cable-class extras `UpdateLineGeometryData` copies into the
 /// `TCNLineConstants`/`TTSLineConstants` engine.
 pub enum CableGeom {
-    /// `TCNDataObj` fields (LineGeometry.pas:939-951).
+    /// `TCNDataObj` fields (LineGeometry.pas:947-960). dss_capi 0.15.x also
+    /// copies the `semiconLayer` flag into the merged cable engine.
     Cn {
         eps_r: f64,
         ins_layer: f64,
@@ -333,6 +334,7 @@ pub enum CableGeom {
         dia_strand: f64,
         gmr_strand: f64,
         r_strand: f64,
+        semicon_layer: bool,
     },
     /// `TTSDataObj` fields (LineGeometry.pas:953-963).
     Ts {

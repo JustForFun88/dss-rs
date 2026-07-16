@@ -1236,6 +1236,32 @@
   "note": "UPGRADE_PLAN WP-U1.4 (B3/C1, LineSpacing.pas/LineConstants.pas): LineSpacing equivalent-spacing model. detailed=no supplies EqDistPhPh=2.5/EqDistPhN=4.272/AvgPhaseHeight=28/AvgNeutralHeight=24 (ft) instead of per-conductor X/H; the LineGeometry (nconds=4 nphases=3 reduce=y) Kron-reduces to a 3x3 phase Z. Probed on capi015 (0.15.0b4): converged (2 iters), reduced rmatrix diag 0.4105655/off 0.1095458, xmatrix diag 0.9883347/off 0.4265879 ohm/mi; bit-identical fingerprint across two capi015 processes. Feature-sensitive: the equivalent distances drive the whole Z/YPrim (also unit-pinned by line_geometry::tests::matrices_equivalent_spacing_match_capi015)."
  },
  {
+  "path": "upgrade/upgrade_linecs_mixed.dss",
+  "ad": "off:unclassified-new-deck",
+  "kind": "micro",
+  "n_steps": 1,
+  "selected_elements": [
+   "Line.l1"
+  ],
+  "pending": false,
+  "wp": "WP-U1.4",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.4 (CableConstants.pas): merged TCableConstants per-conductor model. One LineGeometry mixes conductor kinds -- phase 1 CN, phase 2 TS, phase 3 CN, plus a bare wire neutral (cond 4), reduce=y -> 3x3 phase Z/YPrim. Impossible under the pre-0.15.x per-engine CN/TS kind (which forces every phase to one type). Probed on capi015 (0.15.0b4): converged (2 iters), reduced Z asymmetric (rmatrix diag 0.2043048/0.1649111/0.1936951 ohm/km), cmatrix diag 283.089 nF/km; bit-identical Vmag fingerprint across two capi015 processes. Feature-sensitive: a regression to a single whole-engine CN or TS kind changes the mixed Z (also unit-pinned by line_geometry::tests::matrices_mixed_cn_ts_wire_match_capi015)."
+ },
+ {
+  "path": "upgrade/upgrade_linecs_semicon.dss",
+  "ad": "off:unclassified-new-deck",
+  "kind": "micro",
+  "n_steps": 1,
+  "selected_elements": [
+   "Line.l1"
+  ],
+  "pending": false,
+  "wp": "WP-U1.4",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.4 (CableConstants.pas/CNData.pas): CNData.SemiconLayer=no capacitance branch. The no-semicon formula Denom=ln(RadCN/RadIn)-(1/k)*ln(k*RadStrand/RadCN) yields a distinct shunt C (167.168 vs 283.089 nF/km for the semicon=yes default), moving the line YPrim shunt block; Z is unchanged. Probed on capi015 (0.15.0b4): converged (2 iters), cmatrix diag 167.168 nF/km; bit-identical Vmag fingerprint across two capi015 processes. Feature-sensitive: a regression to the default semicon formula changes the YPrim shunt (also unit-pinned by line_constants::tests::cn_cable_no_semicon_capacitance)."
+ },
+ {
   "path": "upgrade/upgrade_forcehooks.dss",
   "ad": "off:unclassified-new-deck",
   "kind": "micro",

@@ -1881,6 +1881,7 @@ fn write_cn_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
             dia_strand,
             gmr_strand,
             r_strand,
+            semicon_layer: _, // not a CIM field
         }) = &geom.cable
         {
             write_cable_data(

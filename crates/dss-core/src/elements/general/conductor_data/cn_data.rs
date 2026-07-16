@@ -5,43 +5,47 @@ use super::*;
 
 define_properties! {
     class "CNData", abbrev true, enums enums;
-    1  K         => PropDef::integer("k");
-    2  DIASTRAND => PropDef::double("DiaStrand")
+    1  K            => PropDef::integer("k");
+    2  DIASTRAND    => PropDef::double("DiaStrand")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
-    3  GMRSTRAND => PropDef::double("GMRStrand")
+    3  GMRSTRAND    => PropDef::double("GMRStrand")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
-    4  RSTRAND   => PropDef::double("RStrand")
+    4  RSTRAND      => PropDef::double("RStrand")
         .flags(PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM_PER_LENGTH);
-    5  EPSR      => PropDef::double("EpsR");
-    6  INSLAYER  => PropDef::double("InsLayer")
+    // dss_capi 0.15.x new prop (CNData.pas `SemiconLayer = 5`): selects the CN
+    // capacitance formula. Default `true` = the classic `ln(RadOut/RadIn)`,
+    // preserving 0.14.5 numerics (UPGRADE_PLAN.md WP-U1.4).
+    5  SEMICONLAYER => PropDef::boolean("SemiconLayer");
+    6  EPSR         => PropDef::double("EpsR");
+    7  INSLAYER     => PropDef::double("InsLayer")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
-    7  DIAINS    => PropDef::double("DiaIns")
+    8  DIAINS       => PropDef::double("DiaIns")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
-    8  DIACABLE  => PropDef::double("DiaCable")
+    9  DIACABLE     => PropDef::double("DiaCable")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::NO_DEFAULT);
-    9  RDC       => PropDef::double("RDC")
+    10 RDC          => PropDef::double("RDC")
         .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_OHM_PER_LENGTH);
-    10 RAC       => PropDef::double("RAC").flags(PropFlags::DYNAMIC_DEFAULT);
-    11 RUNITS    => PropDef::mapped_string_enum("RUnits", enums.units);
-    12 GMRAC     => PropDef::double("GMRAC")
+    11 RAC          => PropDef::double("RAC").flags(PropFlags::DYNAMIC_DEFAULT);
+    12 RUNITS       => PropDef::mapped_string_enum("RUnits", enums.units);
+    13 GMRAC        => PropDef::double("GMRAC")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
-    13 GMRUNITS  => PropDef::mapped_string_enum("GMRUnits", enums.units);
-    14 RADIUS    => PropDef::double("Radius")
+    14 GMRUNITS     => PropDef::mapped_string_enum("GMRUnits", enums.units);
+    15 RADIUS       => PropDef::double("Radius")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
-    15 RADUNITS  => PropDef::mapped_string_enum("RadUnits", enums.units);
-    16 NORMAMPS  => PropDef::double("NormAmps").flags(PropFlags::DYNAMIC_DEFAULT);
-    17 EMERGAMPS => PropDef::double("EmergAmps").flags(PropFlags::DYNAMIC_DEFAULT);
-    18 DIAM      => PropDef::double("Diam").scale(0.5)
+    16 RADUNITS     => PropDef::mapped_string_enum("RadUnits", enums.units);
+    17 NORMAMPS     => PropDef::double("NormAmps").flags(PropFlags::DYNAMIC_DEFAULT);
+    18 EMERGAMPS    => PropDef::double("EmergAmps").flags(PropFlags::DYNAMIC_DEFAULT);
+    19 DIAM         => PropDef::double("Diam").scale(0.5)
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::REDUNDANT);
-    19 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
-    20 RATINGS   => PropDef::double_array("Ratings", SEASONS);
-    21 CAPRADIUS => PropDef::double("CapRadius")
+    20 SEASONS      => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
+    21 RATINGS      => PropDef::double_array("Ratings", SEASONS);
+    22 CAPRADIUS    => PropDef::double("CapRadius")
         .flags(PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
 }
 
 // Global ordinal → relative-block offsets.
-const CABLE_OFFSET: usize = 4; // EpsR..DiaCable at global 5..8
-const COND_OFFSET: usize = 8; // Rdc..Capradius at global 9..21
+const CABLE_OFFSET: usize = 5; // EpsR..DiaCable at global 6..9
+const COND_OFFSET: usize = 9; // Rdc..Capradius at global 10..22
 
 /// `TCNDataObj`.
 #[derive(Debug, Clone)]
@@ -53,6 +57,8 @@ pub struct CnDataObj {
     fdia_strand: f64,
     fgmr_strand: f64,
     fr_strand: f64,
+    /// dss_capi 0.15.x `semiconLayer` (LongBool, default `true`).
+    fsemicon_layer: bool,
 }
 
 impl CnDataObj {
@@ -66,6 +72,7 @@ impl CnDataObj {
             fdia_strand: -1.0,
             fgmr_strand: -1.0,
             fr_strand: -1.0,
+            fsemicon_layer: true,
         }
     }
 
@@ -87,6 +94,7 @@ impl CnDataObj {
             dia_strand: self.fdia_strand,
             gmr_strand: self.fgmr_strand,
             r_strand: self.fr_strand,
+            semicon_layer: self.fsemicon_layer,
         });
         g
     }
@@ -136,6 +144,14 @@ impl DssObject for CnDataObj {
             _ => self.cond.set_i32(idx - COND_OFFSET, value),
         }
     }
+    fn get_bool(&self, idx: usize) -> bool {
+        debug_assert_eq!(idx, prop::SEMICONLAYER);
+        self.fsemicon_layer
+    }
+    fn set_bool(&mut self, idx: usize, value: bool) {
+        debug_assert_eq!(idx, prop::SEMICONLAYER);
+        self.fsemicon_layer = value;
+    }
     fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
         debug_assert_eq!(idx, prop::RATINGS);
         (!self.cond.amp_ratings.is_empty()).then_some(self.cond.amp_ratings.as_slice())
@@ -182,7 +198,7 @@ impl DssObject for CnDataObj {
                 let full = format!("CNData.{name}");
                 self.cond.side_effects(idx - COND_OFFSET, &full, &mut errs);
             }
-            // RStrand (and any own prop without a side effect) is a no-op.
+            // RStrand / SemiconLayer (own props without a side effect) are a no-op.
             _ => {}
         }
         for e in errs {
@@ -199,6 +215,7 @@ impl DssObject for CnDataObj {
             self.fdia_strand = o.fdia_strand;
             self.fgmr_strand = o.fgmr_strand;
             self.fr_strand = o.fr_strand;
+            self.fsemicon_layer = o.fsemicon_layer;
         }
     }
 

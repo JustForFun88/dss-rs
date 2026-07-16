@@ -53,10 +53,14 @@ impl LineGeometryObj {
             // Pascal's `case` allocates only for the three concrete kinds; an
             // `Unknown` request leaves `FLineData` untouched (never reached in
             // practice — the callers always pass a concrete choice).
+            // dss_capi 0.15.x: CN and TS both build the merged `TCableConstants`
+            // engine; the per-conductor CN/TS type is assigned in
+            // `UpdateLineGeometryData` via `SetCondType`.
             let fresh = match new_choice {
                 ConductorChoice::Overhead => Some(LineConstants::new(n)),
-                ConductorChoice::ConcentricNeutral => Some(LineConstants::new_cn(n)),
-                ConductorChoice::TapeShield => Some(LineConstants::new_ts(n)),
+                ConductorChoice::ConcentricNeutral | ConductorChoice::TapeShield => {
+                    Some(LineConstants::new_cable(n))
+                }
                 ConductorChoice::Unknown => None,
             };
             if let Some(mut ld) = fresh {
