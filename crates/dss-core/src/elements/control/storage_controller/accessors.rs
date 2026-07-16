@@ -350,10 +350,11 @@ impl DssObject for StorageController {
                     1.0
                 };
                 self.half_kw_band_low = self.f_kw_band_low / 2.0 * casemult;
-                // TODO(compat): Pascal writes FpctkWBand (not FpctkWBandLow)
-                // here (StorageController.pas l.544) — an upstream typo; the
-                // clean fix targets FpctkWBandLow.
-                self.f_pct_kw_band = self.f_kw_band_low / self.f_kw_target * 100.0;
+                // D10 (WP-U1.6, `a14c3f1f`, SVN r4058): 0.14.5 synced the wrong
+                // fields here (`FpctkWBand := FkWBandLow / FkWTarget * 100`) when
+                // `kWBandLow` was set; the fix targets the *Low* pair. Adopted
+                // (r4133-aligned bug fix, plan §1.4 "EPRI r4133 wins").
+                self.f_pct_kw_band_low = self.f_kw_band_low / self.f_kw_target_low * 100.0;
             }
             MODE_DISCHARGE => {
                 if self.discharge_mode == MODE_FOLLOW {

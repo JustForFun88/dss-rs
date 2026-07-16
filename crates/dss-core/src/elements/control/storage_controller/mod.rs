@@ -468,6 +468,9 @@ pub(crate) trait StorageDispatchEnv {
     fn dyna_h(&self) -> f64;
     /// `ActiveCircuit.Solution.DynaVars.dblHour`.
     fn dbl_hour(&self) -> f64;
+    /// `ActiveCircuit.Solution.ControlIteration` — D10 (`1b3123ce`) forces a new
+    /// power flow (`StorekWChanged`) on the first control iteration.
+    fn control_iteration(&self) -> i32;
     /// `ActiveCircuit.Solution.Mode`.
     fn solve_mode(&self) -> SolveMode;
 

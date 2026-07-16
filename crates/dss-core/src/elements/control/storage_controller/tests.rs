@@ -301,6 +301,7 @@ struct MockEnv {
     time_of_day: f64,
     dyna_h: f64,
     dbl_hour: f64,
+    control_iter: i32,
     mode: SolveMode,
     /// `DSS.SeasonalRating` (default `false`, matching Pascal).
     season_rating: bool,
@@ -323,6 +324,7 @@ impl MockEnv {
             time_of_day: 0.0,
             dyna_h: 3600.0,
             dbl_hour: 0.0,
+            control_iter: 1,
             mode: SolveMode::Daily,
             season_rating: false,
             season_rating_idx: None,
@@ -444,6 +446,9 @@ impl StorageDispatchEnv for MockEnv {
     fn dbl_hour(&self) -> f64 {
         self.dbl_hour
     }
+    fn control_iteration(&self) -> i32 {
+        self.control_iter
+    }
     fn solve_mode(&self) -> SolveMode {
         self.mode
     }
@@ -499,6 +504,41 @@ fn sample_peakshave_discharges_overage() {
     );
     assert!(sc.fleet_state == STORE_DISCHARGING);
     assert!(env.loads_need_updating);
+}
+
+#[test]
+fn d10_discharge_transition_forces_resolve_on_first_iteration() {
+    // D10 (WP-U1.6, `1b3123ce`, SVN r4058): a peakshave discharge that moves the
+    // fleet OUT of a non-discharging state forces a new power flow on control
+    // iteration 1 — even when the per-element kW dispatch itself does NOT change
+    // (Storage already sitting at its rating). Pre-D14 no push happened, so
+    // Storage.kW could stay stale across matching steps.
+    fn run(control_iter: i32) -> MockEnv {
+        let mut sc = peakshave_controller(10_000.0);
+        let mut st = MockStorage::new("a", 2000.0, 500.0, 0.7);
+        st.present_kw = 2000.0; // already at rating → the dispatch is a no-op
+        st.kw_out = 2000.0;
+        let mut env = MockEnv::new(12_000.0, vec![st]); // PDiff +2000 > half-band
+        env.control_iter = control_iter;
+        sc.sample(&mut env);
+        env
+    }
+    // Iter 1: IDLING→DISCHARGING with no kW change ⇒ D10 forces the re-solve.
+    let e1 = run(1);
+    assert_eq!(e1.fleet[0].state, STORE_DISCHARGING);
+    assert!(
+        e1.pushes.contains(&STORE_DISCHARGING),
+        "iter 1 must force a re-solve, pushes = {:?}",
+        e1.pushes
+    );
+    // Iter > 1: same transition, but with no kW change D10 does NOT push.
+    let e2 = run(2);
+    assert_eq!(e2.fleet[0].state, STORE_DISCHARGING);
+    assert!(
+        !e2.pushes.contains(&STORE_DISCHARGING),
+        "iter 2 must not push without a kW change, pushes = {:?}",
+        e2.pushes
+    );
 }
 
 #[test]
