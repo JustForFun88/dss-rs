@@ -404,9 +404,16 @@ impl LineConstants {
             return;
         }
         self.user_height_unit = value;
-        // Update the existing (meters) value to fit the new user units. Pascal
-        // passes `heightOffset` (the meters field) straight into SetHeightOffset,
-        // which multiplies by To_Meters(new unit); reproduce that exactly.
+        // TODO(compat): upstream re-conversion quirk. Pascal `Set_FUserHeightUnit`
+        // passes `FHeightOffset` — a value already stored in METERS — straight into
+        // `Set_FHeightOffset`, which multiplies its argument by `To_Meters(new unit)`.
+        // So a stored 10 m offset, on switching the unit to ft, is re-scaled to
+        // 10*0.3048 = 3.048 m: a meters value is treated as if it were in the new
+        // user unit, physically changing the offset. Reproduce it exactly (goldens
+        // will pin it when the Line-level HeightUnit/HeightOffset slice lands).
+        // Clean fix: convert the stored meters value into the new unit before
+        // re-applying (`FHeightOffset * From_Meters(new unit)`), or leave the meters
+        // field untouched and only re-express the reported value.
         let offset_field = self.height_offset;
         self.set_height_offset(offset_field);
     }
