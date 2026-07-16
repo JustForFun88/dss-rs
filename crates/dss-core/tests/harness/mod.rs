@@ -1140,7 +1140,8 @@ const PROPS_015X: &[(&str, &[&str])] = &[
     // `Conductors` (Line.pas:62) is the sibling wt-u14cnts's row; it lands here
     // when that mixed wire/CN/TS list is ported.
     ("Line", &["EpsRMedium", "HeightOffset", "HeightUnit"]),
-    ("CNData", &["SemiconLayer"]), // WP-U1.4 (CNData.pas SemiconLayer=5, inserted)
+    // WP-U1.4 (wt-u14cnts): CNData.pas SemiconLayer=5, inserted.
+    ("CNData", &["SemiconLayer"]),
     // Rows land here with their porting WP, e.g.:
     // ("RegControl", &["Idle", "IdleReverse", "IdleForward", "FwdThreshold"]),  // WP-U1.x
     // ("Transformer", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
