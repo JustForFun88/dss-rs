@@ -717,7 +717,7 @@ deck's shape assert.
   misordered prop still fails exactly as before; the count-mismatch panic names
   the allowlist for triage.
 - **Implementation:** extracted the list-comparison core into `compare_prop_lists`
-  (allowlist injectable) so the shipped-empty table is validated by 7 inline
+  (allowlist injectable) so the shipped-empty table is validated by 6 inline
   `props_015x_tests` self-tests with synthetic data (trailing extra passes;
   inserted extra passes with order preserved; non-allowlisted extra panics;
   allowlisted-present-in-oracle value mismatch panics + match passes; missing +
