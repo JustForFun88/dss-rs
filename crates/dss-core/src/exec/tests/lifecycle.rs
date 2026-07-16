@@ -53,21 +53,15 @@ fn tcc_curve_none_is_reserved() {
 }
 
 #[test]
-fn fuse_curve_none_clears_with_error_like_capi015() {
-    // WP-U1.1 item 4 / DIVERGENCES.md §AllowNone-single-ref: capi015's AllowNone
-    // flag on a single TCC_Curve ref is observably a no-op — `fusecurve=none`
-    // clears the ref to NIL *and* logs the #401 "not found" (the unconditional
-    // NIL-check fires even on the AllowNone branch). The port reproduces that via
-    // the plain not-found path (no AllowNone shortcut). This pins that behavior so
-    // a future "silent none-clear" refactor (which would diverge from capi015) is
-    // caught.
-    // Probed 2026-07-12 (capi015 0.16.0b2 AND 0.14.5, identical): with a REAL
-    // curve set (`tlink`), `Edit fuse.f fusecurve=none` logs #401
-    // "Fuse.f.FuseCurve: TCC_Curve object \"none\" not found." AND clears the ref
-    // to "". A real `tlink` is defined here so the pre-existing set succeeds
-    // cleanly and the assertions isolate the `none`-clear behavior (not an
-    // undefined-curve error), and we snapshot the error count so only the Edit's
-    // error is inspected.
+fn fuse_curve_none_clears_silently_like_r4133() {
+    // WP-U2.1 (EPRI r4133, delta D1/E3): `GetTccCurve('none')` returns NIL
+    // **silently** — no #401 — and prop 5 renders the literal `none` (Pascal `if
+    // FuseCurve <> nil then FuseCurve.Name else 'none'`). This supersedes the
+    // Rung-1 capi015 behavior (clear + #401, the WP-U1.1 item-4 / DIVERGENCES.md
+    // §AllowNone-single-ref decision) which the fuse used before this WP; the fuse
+    // now moves to the r4133 protection surface.
+    // Probed 2026-07-16 on the EPRI r4133 engine (Oddie): with a real `tlink` set,
+    // `Edit fuse.f fusecurve=none` leaves Error.Number 0 and renders `none`.
     let mut dss = dss_with_circuit();
     dss.command("New TCC_Curve.tlink npts=2 C_array=(1 10) T_array=(1 0.1)");
     dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");
@@ -87,13 +81,11 @@ fn fuse_curve_none_clears_with_error_like_capi015() {
     dss.command("Edit fuse.f fusecurve=none");
     let from_edit = &dss.errors()[before..];
     assert!(
-        from_edit
-            .iter()
-            .any(|e| e.contains("FuseCurve") && e.contains("not found")),
-        "expected the #401-style not-found error from the none-edit, got {from_edit:?}"
+        from_edit.is_empty(),
+        "r4133 `fusecurve=none` is silent (no #401), got {from_edit:?}"
     );
-    // The ref is cleared (renders "" — NIL), like capi015.
-    assert_eq!(query(&mut dss, "fuse.f.fusecurve"), "");
+    // The ref is cleared to NIL and renders the literal `none` (r4133), not "".
+    assert_eq!(query(&mut dss, "fuse.f.fusecurve"), "none");
 }
 
 #[test]
