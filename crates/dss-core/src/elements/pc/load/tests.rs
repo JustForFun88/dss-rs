@@ -65,13 +65,28 @@ fn build_growth_shape(
 /// B3-r3723: `Load.GrowthFactor` at Year=0 with a GrowthShape now tracks the
 /// simulated hours (`calcYear = dblHour/8760`) instead of a flat 1.0 — so a
 /// long (>8760 h) Year=0 run advances through the growth curve.
+///
+/// Oracle-validated against capi015 (backend 0.15.0b4 = SVN r4103, which carries
+/// the r4088-era `GrowthFactor` rewrite; `/tmp/probe_b3*.py`, 2026-07-16;
+/// growthshape `year=(0,1,2) mult=(1.2,1.5,2.0)`, a 100 kW pf 0.9 3-phase load):
+///
+/// | run (year=0)             | capi015 total kW | pre-B3 (0.14.5) |
+/// |--------------------------|------------------|-----------------|
+/// | snapshot, any hour       | 120 (factor 1.2) | 100 (flat 1.0)  |
+/// | daily, dblHour≈8760      | 180 (GetMult 2)  | 100             |
+///
+/// The snapshot 120-vs-100 split is the deck-gated witness
+/// (`modes/upgrade/upgrade_growth_year0.dss`, `oracle: "capi015"`); the exact
+/// per-branch values below match the same oracle (`GetMultIdx(1)=1.2`,
+/// `GetMult(2)=1.8`).
 #[test]
 fn growth_factor_year0_tracks_simulated_hours_with_growthshape() {
     let gs = build_growth_shape(&[("npts", "3"), ("year", "0 1 2"), ("mult", "1.2 1.5 2.0")]);
     let mut load = load_100kw_pf09(); // 33.333 kW/phase nominal
     load.growth_shape_obj = Some(gs);
     // Year 0, dblHour 100 → calcYear ≈ 0.011 < 1 AND firstY == 0 ⇒
-    // factor = GetMultIdx(1) = 1.2 (pre-B3 this was a flat 1.0).
+    // factor = GetMultIdx(1) = 1.2 (pre-B3 this was a flat 1.0). capi015 probe:
+    // snapshot year=0 hour=100 → 120 kW total = 40 kW/phase.
     load.set_nominal_load(&mode_ctx(SolveMode::Snapshot, 100.0));
     assert!(
         (load.w_nominal - 40000.0).abs() < 1.0,

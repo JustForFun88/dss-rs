@@ -1,0 +1,42 @@
+// UPGRADE_PLAN.md WP-U1.6 / row B3-r3723 — `Load.GrowthFactor` at Year=0 with a
+// GrowthShape tracks the simulated hours (`calcYear = dblHour/8760`) instead of
+// the flat 1.0 the r3723 port emitted. The rewrite is in the capi015 backend
+// 0.15.0b4 (= SVN r4103, which carries the r4088-era `Load.pas GrowthFactor`
+// change); the port adopts it (plan §1.4 "EPRI r4133 wins").
+//
+// Feature sensitivity (UPGRADE_PLAN §1.7-3): the growthshape's first year is 0,
+// so at Year=0 the `calcYear < 1` branch applies `GetMultIdx(1) = 1.2` — a
+// straight 20% lift of the load power that holds in SNAPSHOT (where `dblHour`
+// never reaches 8760, so the `>= 1yr` `GetMult(Ceil)` branch is not needed for a
+// single-step witness). capi015 reports the load at 120 kW total (40 kW/phase);
+// the pre-B3 flat-1.0 path reports 100 kW. The |Δ| = 20 kW is far above every
+// live-compare floor, so a regression to the flat Year=0 factor fails the whole-
+// model compare (load power AND the node voltages it drives) against capi015.
+//
+// Oracle: capi015 — the r3723 baseline (default 0.14.5) and capi015 DIVERGE
+// here (100 vs 120 kW, probed `/tmp/probe_b3*.py` 2026-07-16), so this deck
+// cannot gate against 0.14.5 (§1.2 deliberate-mismatch). Validated per §1.7
+// (two-process determinism on the capi015 engine). The exact per-branch values
+// (GetMultIdx(1)=1.2, daily GetMult(2)=1.8) are pinned by the Rust unit test
+// `growth_factor_year0_tracks_simulated_hours_with_growthshape`.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.upgrade_growth_year0 basekv=12.47 pu=1.0 phases=3 bus1=src
+~ mvasc3=20000 mvasc1=21000
+
+New line.l1 phases=3 bus1=src bus2=b1 r1=0.1 x1=0.3 c1=2 length=1 units=km
+
+// GrowthShape whose FIRST year is 0 -> the Year=0 `calcYear<1` branch takes
+// GetMultIdx(1) = 1.2 (not the flat 1.0 of the r3723 baseline).
+New growthshape.g npts=3 year=(0,1,2) mult=(1.2,1.5,2.0)
+
+// 100 kW / pf 0.9 3-phase load carrying the growth shape. Year=0 snapshot ->
+// 120 kW total on capi015 (factor 1.2), 100 kW pre-B3.
+New load.lb bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=100 pf=0.9 growth=g
+
+Set voltagebases=[12.47]
+calcv
+Set year=0
+Set mode=snap
+Solve
