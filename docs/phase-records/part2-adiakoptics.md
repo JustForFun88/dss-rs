@@ -74,17 +74,20 @@ tests 2 Minor → fixed in settle. `Refine_BusLevels` stays refused (AD-gated �
 
 ## Part II records (moved verbatim from the part2-adiakoptics branch STATUS at the update-integration merge, 2026-07-12)
 
-**PARKED TEST (needs investigation, user decision 2026-07-12):**
-`circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` is
-`#[ignore]`d. The WP-AD.5 `Get_paths_4_Coverage` state machine (ported 1:1;
-sole exit at Circuit.pas:909) never terminates on the test's 6-bus radial,
-even after requesting a reachable `set coverage=0.5` — the first hypothesis
-(unreachable 0.9 default; see the NOTE(upstream-quirk) at the function) proved
-insufficient. Needs a trace of `Inc_Mat_Levels` / per-path `Buses_Covered` on
-the official r3723 engine vs ours. Surfaced at the part2 consolidation gate:
-the AD5 line's own full gate was never witnessed (killed mid-run) and its
-audits never ran (the round stopped on `gate_green=false`), so the hang
-shipped unreviewed. `Refine_BusLevels` itself stays ported/enabled.
+**PARKED TEST (needs investigation, user decision 2026-07-12) — RESOLVED
+2026-07-16 (branch wt-coverage, WP-COV-PARKED; see STATUS.md §UPGRADE):**
+`circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` was
+`#[ignore]`d after the WP-AD.5 `Get_paths_4_Coverage` state machine (ported
+1:1; sole exit at Circuit.pas:909) "never terminated" on the test's 6-bus
+radial. Root cause = **test-harness bug**: the whole multi-line deck was fed to
+a single `Dss::command` call (= Pascal `ProcessCommand`, one command line), so
+the circuit degenerated to one Vsource on bus b5 with no lines; the resulting
+1-bus incidence matrix has coverage plateau 0, on which the sole exit genuinely
+never fires (upstream-faithful). Fed line-by-line, the port terminates in
+microseconds and bit-matches the official r3723 engine (Oddie probes) on both
+`coverage=0.5` and the 0.9 default; the tests now pin those observables. The
+"unreachable 0.9 default" hypothesis was disproven (`Buses_Covered` index-span
+sums overshoot `Sys_Size`; r3723 reaches `Actual_Coverage=1`).
 
 **WP-AD SAVE — save round-trip fidelity (branch `save-fidelity`, 2026-07-12;
 settle pass).** Owns the `off:save-roundtrip-*` buckets (the D7 leg1 gap WP-AD.4

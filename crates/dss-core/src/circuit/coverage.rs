@@ -120,8 +120,15 @@ impl Circuit {
     /// `DBLTemp` stops changing and the loop can never satisfy
     /// "changed AND >= Coverage": a `Coverage` request above the reachable
     /// plateau loops forever, on the official engine exactly as here. Reproduced
-    /// 1:1 (the command is explicit-opt-in); callers must request a reachable
-    /// coverage (`set coverage=`).
+    /// 1:1 (the command is explicit-opt-in). In practice the plateau is rarely
+    /// below 1.0 on a healthy hierarchical graph — `Buses_Covered` entries are
+    /// bus-index SPANS (`New_Graph[0] - New_Graph[High]`, plus the max backbone
+    /// index seeded by state 0), so their running sum normally overshoots
+    /// `Sys_Size` (the official r3723 engine reaches `Actual_Coverage = 1.0` on a
+    /// 6-bus radial even for the 0.9 default — probed 2026-07-16). The
+    /// nontermination is real only for degenerate inputs whose every path
+    /// contributes 0 (e.g. a single-bus incidence matrix, where the plateau is 0
+    /// and any positive `Coverage` request loops forever).
     pub fn get_paths_4_coverage(&mut self) {
         let sys_size = self.solution.inc_matrix.cols.len() as f64;
         // Empty incidence matrix (no `Calc_Inc_Matrix_Org` yet): nothing to trace.
@@ -205,54 +212,68 @@ impl Circuit {
 mod tests {
     use crate::exec::Dss;
 
+    /// The 6-bus radial (backbone sourcebus→b1→b4→b5, branch b1→b2→b3):
+    /// `CalcIncMatrix_O` orders the columns [sourcebus, b1, b4, b5, b2, b3] with
+    /// normalized levels [0, 0, 1, 2, 0, 3].
+    const RADIAL_DECK: &str = "\
+        new circuit.covtest basekv=12.47 phases=3 bus1=sourcebus\n\
+        new line.l1 bus1=sourcebus bus2=b1 length=1 r1=0.1 x1=0.1\n\
+        new line.l2 bus1=b1 bus2=b2 length=1 r1=0.1 x1=0.1\n\
+        new line.l3 bus1=b2 bus2=b3 length=1 r1=0.1 x1=0.1\n\
+        new line.l4 bus1=b1 bus2=b4 length=1 r1=0.1 x1=0.1\n\
+        new line.l5 bus1=b4 bus2=b5 length=1 r1=0.1 x1=0.1\n\
+        new load.ld1 bus1=b3 kv=12.47 kw=100\n\
+        new load.ld2 bus1=b5 kv=12.47 kw=100\n";
+
     /// A simple radial feeder, torn-free: build the hierarchical incidence matrix
-    /// then refine bus levels. The command must un-refuse and report a path count.
-    fn build_and_refine(deck: &str) -> (Dss, String) {
+    /// then refine bus levels. NB: `Dss::command` is Pascal `ProcessCommand` — ONE
+    /// command line per call; the deck must be fed line by line. (Passing the
+    /// whole deck string in one call once made everything after `new circuit.…`
+    /// extra parameters of that command — the Vsource landed on bus b5, no lines
+    /// existed, and the 1-bus incidence matrix drove `Get_paths_4_Coverage` into
+    /// its genuine degenerate-input nontermination. That was the parked "hang".)
+    fn build_and_refine(deck: &str, coverage_cmd: Option<&str>) -> (Dss, String) {
         let mut dss = Dss::new();
         dss.command("clear");
-        dss.command(deck);
+        for line in deck.lines() {
+            dss.command(line);
+        }
         dss.command("solve");
         dss.command("CalcIncMatrix_O");
-        // The requested Coverage must be REACHABLE: the upstream state machine's
-        // only exit (Circuit.pas:909) needs the summed path coverage to both
-        // change and meet `Coverage`, so an unreachable request (the 0.9 default
-        // on this 6-bus radial, whose plateau is 5/6) loops forever — on the
-        // Pascal engine just the same (see `get_paths_4_coverage`).
-        dss.command("set coverage=0.5");
+        if let Some(cmd) = coverage_cmd {
+            dss.command(cmd);
+        }
         dss.command("Refine_BusLevels");
         let r = dss.result().to_string();
         (dss, r)
     }
 
+    /// Observables pinned to the official r3723 engine (Oddie bridge, probed
+    /// 2026-07-16): `set coverage=0.5` is satisfied by the state-0 backbone path
+    /// alone (max backbone index 4 → 4/6 ≥ 0.5), so the tracer stops immediately
+    /// with 0 additional paths and `Actual_Coverage = 0.666666666666667`.
     #[test]
-    #[ignore = "NEEDS INVESTIGATION (user-parked 2026-07-12): loops forever even \
-                after requesting reachable coverage (set coverage=0.5). The \
-                Get_paths_4_Coverage state machine's sole exit (Circuit.pas:909, \
-                ported 1:1) never fires on this 6-bus radial — first hypothesis \
-                (unreachable 0.9 default) was insufficient; the per-path covered \
-                estimate / level layout from CalcIncMatrix_O needs a trace on the \
-                official engine before this can be re-enabled. Found at the \
-                part2-adiakoptics consolidation gate: the WP-AD.5 line's own full \
-                gate was never witnessed (killed mid-run) and its audit never ran, \
-                so this hang shipped unreviewed."]
     fn refine_bus_levels_reports_paths_on_radial() {
-        let deck = "\
-            new circuit.covtest basekv=12.47 phases=3 bus1=sourcebus\n\
-            new line.l1 bus1=sourcebus bus2=b1 length=1 r1=0.1 x1=0.1\n\
-            new line.l2 bus1=b1 bus2=b2 length=1 r1=0.1 x1=0.1\n\
-            new line.l3 bus1=b2 bus2=b3 length=1 r1=0.1 x1=0.1\n\
-            new line.l4 bus1=b1 bus2=b4 length=1 r1=0.1 x1=0.1\n\
-            new line.l5 bus1=b4 bus2=b5 length=1 r1=0.1 x1=0.1\n\
-            new load.ld1 bus1=b3 kv=12.47 kw=100\n\
-            new load.ld2 bus1=b5 kv=12.47 kw=100\n";
-        let (dss, r) = build_and_refine(deck);
-        assert!(
-            r.contains("new paths detected"),
-            "Refine_BusLevels result: {r:?}"
-        );
-        // Actual_Coverage advanced off its -1 sentinel.
+        let (mut dss, r) = build_and_refine(RADIAL_DECK, Some("set coverage=0.5"));
+        assert_eq!(r, "0 new paths detected");
         let ac = dss.circuit().unwrap().ad.actual_coverage;
-        assert!(ac >= 0.0, "actual_coverage should be set, got {ac}");
+        assert_eq!(ac, 4.0 / 6.0, "actual_coverage");
+        // `get coverage` reports Actual_Coverage (official r3723 string).
+        dss.command("get coverage");
+        assert_eq!(dss.result(), "0.666666666666667");
+    }
+
+    /// Default `Coverage` (0.9): the tracer keeps extracting branch paths; the
+    /// index-span sum overshoots to 6/6 on the second branch. Official r3723:
+    /// "2 new paths detected", `Actual_Coverage = 1`.
+    #[test]
+    fn refine_bus_levels_default_coverage_on_radial() {
+        let (mut dss, r) = build_and_refine(RADIAL_DECK, None);
+        assert_eq!(r, "2 new paths detected");
+        let ac = dss.circuit().unwrap().ad.actual_coverage;
+        assert_eq!(ac, 1.0, "actual_coverage");
+        dss.command("get coverage");
+        assert_eq!(dss.result(), "1");
     }
 
     #[test]
