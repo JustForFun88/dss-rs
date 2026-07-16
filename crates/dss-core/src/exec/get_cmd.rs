@@ -138,6 +138,13 @@ impl Dss {
                         .get(enums.solve_alg)
                         .ordinal_to_string(ckt.solution.algorithm),
                 ),
+                // NCIM solver options (`ExecOptions.pas:1268-1271`).
+                opt::IGNORE_GEN_Q_LIMITS => {
+                    append_result(&mut result, yes_no(ckt.solution.ncim_ignore_q_limit))
+                }
+                opt::NCIM_Q_GAIN => {
+                    append_result(&mut result, &float_to_str(ckt.solution.ncim_gen_gain))
+                }
                 opt::AUTO_BUS_LIST => {
                     for name in &ckt.auto_add_bus_list {
                         append_result(&mut result, name);
