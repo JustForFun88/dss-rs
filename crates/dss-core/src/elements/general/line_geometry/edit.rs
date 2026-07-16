@@ -150,6 +150,50 @@ impl LineGeometryObj {
         self.factive_cond = istop as i32;
     }
 
+    /// Pascal `Conductors=` side effect (LineGeometry.pas:497-539): "simulate
+    /// setting the conductors one by one" — set each valid conductor's engine
+    /// kind (its `ChangeLineConstantsType`) and default the geometry ratings from
+    /// the first valid conductor; an all-NIL list is rejected with #10103. Returns
+    /// `true` when at least one conductor was valid (the caller flags
+    /// `data_changed`; Pascal `Exit`s before the `dataChanged` block on rejection).
+    ///
+    /// Reachable via text only as an all-`none` list — every real item errors in
+    /// `parse_conductor_proxy` (the upstream `GetDSSClass` case bug) — so the
+    /// rejection path is the live one via text; the per-conductor dispatch (the
+    /// path the parser calls after the §6 compat fix, and the JSON-import
+    /// round-trip) is gated by the whitebox equivalence tests
+    /// `tests::conductors_array_matches_mixed_capi015` /
+    /// `conductors_array_defaults_ratings_from_first_valid`, which drive the
+    /// resolved-ref entry point directly against the capi015 references.
+    pub(super) fn apply_conductors(&mut self) -> bool {
+        let n = self.fnconds.max(0) as usize;
+        let mut first_valid: Option<usize> = None;
+        for i in 0..n {
+            self.factive_cond = (i + 1) as i32;
+            let choice = match self.fwiredata.get(i).and_then(|o| o.as_ref()) {
+                Some(c) => conductor_choice_of(c.as_ref()),
+                None => continue, // NIL slot skipped
+            };
+            if first_valid.is_none() {
+                first_valid = Some(i);
+            }
+            self.change_line_constants_type(choice);
+        }
+        match first_valid {
+            Some(i) => {
+                self.default_amps_from(i);
+                true
+            }
+            None => {
+                let name = self.data.name().to_string();
+                self.data.push_error(format!(
+                    "LineGeometry.{name}.Conductors: At least one valid conductor must be provided."
+                ));
+                false
+            }
+        }
+    }
+
     /// Pascal `wire`/`cncable`/`tscable` side effect (active conductor) and the
     /// `wires`/`cncables`/`tscables` "traditional" branch (first conductor):
     /// default this geometry's ratings from the conductor's once, when unset.
@@ -175,6 +219,19 @@ impl LineGeometryObj {
             let n = self.num_amp_ratings.max(0) as usize;
             self.amp_ratings = crat.into_iter().take(n).collect();
         }
+    }
+}
+
+/// Pascal `conductors[i] is TCNDataObj / TTSDataObj` (LineGeometry.pas:522-533):
+/// the conductor model a single catalog object implies.
+fn conductor_choice_of(o: &dyn DssObject) -> ConductorChoice {
+    let any = o.as_any();
+    if any.downcast_ref::<CnDataObj>().is_some() {
+        ConductorChoice::ConcentricNeutral
+    } else if any.downcast_ref::<TsDataObj>().is_some() {
+        ConductorChoice::TapeShield
+    } else {
+        ConductorChoice::Overhead
     }
 }
 

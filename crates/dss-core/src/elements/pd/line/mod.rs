@@ -22,6 +22,7 @@
 mod tests;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::general::conductor_data::{CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::traits::ElemRef;
@@ -82,24 +83,24 @@ pub mod prop {
     pub const RATINGS: usize = 29;
     pub const LINE_TYPE: usize = 30;
     // dss_capi 0.15.x (Line.pas:59-62, SVN r3913-era): EpsRMedium/HeightOffset/
-    // HeightUnit surface the LineConstants medium permittivity + height offset.
-    // (`Conductors=34`, the merged mixed wire/CN/TS list, is the sibling
-    // wt-u14cnts's row and is NOT defined here — the Rust class stops at
-    // HeightUnit; the trailing tail keeps the 0.14.5 layout, one shorter than
-    // upstream until Conductors lands.)
+    // HeightUnit surface the LineConstants medium permittivity + height offset;
+    // `Conductors=34` is the merged mixed wire/CN/TS object-reference-array (the
+    // 3-class `WireData|CNData|TSData` proxy). Their insertion shifts every
+    // 0.14.5 tail prop +4 (NormAmps 30→34 upstream).
     pub const EPS_R_MEDIUM: usize = 31;
     pub const HEIGHT_OFFSET: usize = 32;
     pub const HEIGHT_UNIT: usize = 33;
+    pub const CONDUCTORS: usize = 34;
     // TPDClass tail:
-    pub const NORMAMPS: usize = 34;
-    pub const EMERGAMPS: usize = 35;
-    pub const FAULTRATE: usize = 36;
-    pub const PCTPERM: usize = 37;
-    pub const REPAIR: usize = 38;
+    pub const NORMAMPS: usize = 35;
+    pub const EMERGAMPS: usize = 36;
+    pub const FAULTRATE: usize = 37;
+    pub const PCTPERM: usize = 38;
+    pub const REPAIR: usize = 39;
     // TCktElementClass tail:
-    pub const BASE_FREQ: usize = 39;
-    pub const ENABLED: usize = 40;
-    pub const NUM_PROPS: usize = 41; // incl. Like
+    pub const BASE_FREQ: usize = 40;
+    pub const ENABLED: usize = 41;
+    pub const NUM_PROPS: usize = 42; // incl. Like
 }
 
 /// `TLine.DefineProperties`.
@@ -177,6 +178,28 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("EpsRMedium").flags(PropFlags::HIDE_015X),
         PropDef::double("HeightOffset").flags(PropFlags::HIDE_015X),
         PropDef::mapped_string_enum("HeightUnit", enums.units).flags(PropFlags::HIDE_015X),
+        // dss_capi 0.15.x (Line.pas:62,341-344): `Conductors` — the merged mixed
+        // wire/CN/TS object-reference-array over the 3-class proxy
+        // `(WireData|CNData|TSData)` (`fullNames=True`, proxy `.Name = "Conductor"`).
+        // The spacing-spec-set required member (0.15.x replaced `Wires` with
+        // `Conductors` in `'Spacing, Conductors'`). HIDE_015X keeps the byte-exact
+        // 0.14.5 Dump/JSON/`Dump commands` goldens green (the flip to capi015 is
+        // disproportionate — `gen_json.py` is 0.14.5-pinned; DIVERGENCES.md §Line
+        // Conductors). Text parse is upstream-broken (the proxy `GetDSSClass` case
+        // bug: any real item errors #10103) — see `parse_conductor_proxy`; the JSON
+        // "Conductors" key is still emitted via the `Wires` masquerade below.
+        PropDef::object_ref_array_proxy(
+            "Conductors",
+            CONDUCTOR_PROXY_NAME,
+            &CONDUCTOR_PROXY_CLASSES,
+        )
+        .flags(
+            PropFlags::FULL_NAME_AS_ARRAY
+                | PropFlags::FULL_NAME_AS_JSON_ARRAY
+                | PropFlags::ALLOW_NONE_ITEM
+                | PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::HIDE_015X,
+        ),
         // TPDClass tail:
         PropDef::double("NormAmps"),
         PropDef::double("EmergAmps"),

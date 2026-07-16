@@ -41,7 +41,7 @@ impl Line {
         let mut iprop = self.data().next_property_set(None);
         while let Some(ip) = iprop {
             match ip {
-                WIRES | CNCABLES | TSCABLES => {
+                WIRES | CNCABLES | TSCABLES | CONDUCTORS => {
                     if !wrote_conds {
                         self.write_conductor_arrays(out);
                         wrote_conds = true;

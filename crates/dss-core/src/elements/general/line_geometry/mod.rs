@@ -35,6 +35,7 @@ mod edit;
 mod matrix;
 mod save;
 
+use crate::elements::general::conductor_data::{CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
 use crate::support::line_constants::LineConstants;
@@ -68,6 +69,16 @@ define_properties! {
     17 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
     18 RATINGS   => PropDef::double_array("Ratings", SEASONS);
     19 LINETYPE  => PropDef::mapped_string_enum("LineType", enums.line_type);
+    // dss_capi 0.15.x (LineGeometry.pas:80,287-291): `Conductors` — the merged
+    // mixed wire/CN/TS object-reference-array over the 3-class proxy
+    // `(WireData|CNData|TSData)` (`fullNames=True`, proxy `.Name = "Conductor"`).
+    // HIDE_015X keeps the byte-exact 0.14.5 Dump/`Dump commands` goldens green
+    // (no LineGeometry JSON golden defines conductors). Text parse is
+    // upstream-broken (proxy `GetDSSClass` case bug: any real item errors #10103;
+    // an all-`none` list errors "At least one valid conductor") — see
+    // `parse_conductor_proxy` and the `Conductors` side effect.
+    20 CONDUCTORS => PropDef::object_ref_array_proxy("Conductors", CONDUCTOR_PROXY_NAME, &CONDUCTOR_PROXY_CLASSES)
+        .flags(PropFlags::FULL_NAME_AS_ARRAY | PropFlags::FULL_NAME_AS_JSON_ARRAY | PropFlags::ALLOW_NONE_ITEM | PropFlags::HIDE_015X);
 }
 
 /// Pascal `ConductorChoice`: the per-conductor model a conductor uses. Selects

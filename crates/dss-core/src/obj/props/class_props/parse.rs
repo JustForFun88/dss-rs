@@ -210,6 +210,15 @@ impl ClassProps {
                 }
                 Ok(0)
             }
+            PropType::ObjectRefArray if !pd.object_classes.is_empty() => {
+                // Pascal `DSSObjectReferenceArrayProperty` over a **3-class
+                // `TProxyClass`** created with `fullNames=True` — Line/LineGeometry
+                // `Conductors` (`FullNameAsArray`). This is the generic array-fill
+                // path (no `WriteByFunction`): first the count guard, then
+                // `ValidateObjectItem` per item, writing NIL/objects into the
+                // pre-sized conductor array (`DSSObjectHelper.pas:966-1010,6444`).
+                parse_conductor_proxy(obj, idx, pd, value, eng, &full)
+            }
             PropType::ObjectRefArray => {
                 // Pascal `DSSObjectReferenceArrayProperty` (`WriteByFunction`):
                 // parse every token, resolve each against the fixed class
@@ -562,6 +571,110 @@ impl ClassProps {
             }
         }
     }
+}
+
+/// Pascal `ValidateObjectItem` + the generic array fill for a **3-class
+/// `TProxyClass`** `DSSObjectReferenceArrayProperty` created with
+/// `fullNames=True` — Line/LineGeometry `Conductors`
+/// (`DSSObjectHelper.pas:966-1010,6444`; `DSSClass.pas:2603`). Reproduces the
+/// upstream diagnostics 1:1:
+///  * count `< 1` (spacing/`NConds` not yet set) → #402 "No objects are
+///    expected!", checked **before** any item;
+///  * a bare item (no `Class.` prefix) → #10103 "You must define the `<Proxy>`
+///    class for all the valid items in the array." (`AllowNoneItem` → "valid");
+///  * a class-prefixed item → #10103 "Invalid class (`<lowercased>`) for item.
+///    Valid classes: (`WireData|CNData|TSData`)".
+///
+/// TODO(compat): the "Invalid class" branch is reached for **every** prefixed
+/// item, because Pascal `TProxyClass.GetDSSClass` compares the parser's
+/// `AnsiLowerCase`d class token against the *original-case* `TargetClassNames`
+/// (`'WireData'`…), a mismatch that is never satisfiable. So a `Conductors=` list
+/// can only ever be all-`none` (a no-op that leaves NIL slots) or an error —
+/// probe-confirmed on capi015 (0.15.0b4). The property is otherwise reachable
+/// only through the JSON export/import round-trip. The clean fix (compare against
+/// `TargetClassNamesLower`) lands with the §6 compat-shim sweep; the golden/unit
+/// pins reproduce the broken behavior until then.
+fn parse_conductor_proxy(
+    obj: &mut dyn DssObject,
+    idx: usize,
+    pd: &crate::obj::props::PropDef,
+    value: &str,
+    eng: &mut PropEngine,
+    full: &str,
+) -> Result<i32, ParserError> {
+    let allow_none = pd.flags.contains(PropFlags::ALLOW_NONE_ITEM);
+    let proxy_name = pd.proxy_name.unwrap_or("Conductor");
+    let valid_classes = format!("({})", pd.object_classes.join("|"));
+
+    // Pascal count guard (`intVal := PropertyStructArrayCountOffset^`): the
+    // conductor array must already be sized (spacing/NConds set) → #402.
+    let count = obj.array_size(idx);
+    if count < 1 {
+        eng.errors.push(format!(
+            "{full}.{}: No objects are expected! Check if the order of property \
+             assignments is correct.",
+            pd.name
+        ));
+        return Ok(0);
+    }
+
+    // Tokenize, then validate/fill up to `count` items (Pascal reads at most
+    // `intVal` items and stops at the first empty token).
+    eng.parser.set_auto_increment(false);
+    eng.parser.set_cmd_string(value);
+    let mut refs: Vec<crate::obj::base::ObjectRefArrayItem> = Vec::new();
+    for _ in 0..count {
+        eng.parser.next_param(eng.vars);
+        let token = eng.parser.make_string(eng.vars);
+        if token.is_empty() {
+            break;
+        }
+        // `ValidateObjectItem` (`DSSObjectHelper.pas:6444`).
+        if allow_none && token.eq_ignore_ascii_case("none") {
+            refs.push(None);
+            continue;
+        }
+        // `FullNameAsArray`: `ParseObjectClassAndName(AnsiLowerCase(token))`.
+        let lower = token.to_lowercase();
+        let (class_tok, name_tok) = match lower.split_once('.') {
+            Some((c, n)) => (c, n),
+            None => {
+                // No class prefix → error #10103.
+                let items = if allow_none { "valid items" } else { "items" };
+                eng.errors.push(format!(
+                    "{full}.{}: You must define the {proxy_name} class for all the \
+                     {items} in the array.",
+                    pd.name
+                ));
+                return Ok(0);
+            }
+        };
+        // Pascal `TProxyClass.GetDSSClass`: TODO(compat) case bug — the lowercased
+        // token never matches the original-case target names, so `subcls` is
+        // always NIL → #10103 "Invalid class". The resolve arm below is faithful
+        // structure but unreachable until the §6 sweep fixes the compare.
+        let subcls = pd.object_classes.iter().find(|c| **c == class_tok).copied();
+        let Some(subcls) = subcls else {
+            eng.errors.push(format!(
+                "{full}.{}: Invalid class ({class_tok}) for item. Valid classes: \
+                 {valid_classes}",
+                pd.name
+            ));
+            return Ok(0);
+        };
+        match eng.foreign.and_then(|f| f.find(subcls, name_tok)) {
+            Some((r, o)) => refs.push(Some((o.data().name().to_string(), r, o))),
+            None => {
+                eng.errors.push(format!(
+                    "{full}.{}: {subcls} object \"{token}\" not found.",
+                    pd.name
+                ));
+                return Ok(0);
+            }
+        }
+    }
+    obj.set_object_ref_array(idx, &refs);
+    Ok(0)
 }
 
 /// EPRI r4133 `ParseAsSymMatrix` incomplete-matrix message (`ParserDel.pas`:

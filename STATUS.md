@@ -974,6 +974,57 @@ D11 part 2 (CapControl TIMECONTROL effElement), D12 (SwtControl re-land), D13
 (LoadShape MMF), B4-capi. `known_diffs.json`: none of C5/C6/C5-r3723 had a prior
 Rust↔EPRI entry — nothing to retire.
 
+**WP-U1.4 final row — `Conductors` property — LANDED (branch wt-u14cond); WP-U1.4
+now COMPLETE.** The last deferred WP-U1.4 row: the dss_capi 0.15.x `Conductors`
+mixed `WireData|CNData|TSData` object-reference-array on both classes (Line prop
+**34**, `Line.pas:62`; LineGeometry prop **20**, `LineGeometry.pas:80`), resolved
+through a `TProxyClass` created with `fullNames=True`, `.Name = "Conductor"`
+(`DSSClass.pas:2603`). Inserting Line prop 34 shifts NormAmps 34→35 (tail +1).
+- **The text property is upstream-BROKEN** (probed capi015 0.15.0b4) and is
+  reproduced 1:1. `TProxyClass.GetDSSClass` compares an `AnsiLowerCase`d class
+  token against the original-case target names, so every real item errors #10103
+  "Invalid class (wiredata)…"; a bare item errors #10103 "You must define the
+  Conductor class…"; a pre-spacing list errors #402 "No objects are expected!";
+  an all-`none` list parses on Line (NIL slots, overhead model) but is rejected on
+  LineGeometry (#10103 "At least one valid conductor must be provided"). The text
+  getter `? …Conductors` Access-Violates in capi015 (UB, not reproduced). The
+  property is thus effectively JSON-only. Ported in `parse_conductor_proxy`
+  (`obj/props/class_props/parse.rs`, new `PropDef::object_ref_array_proxy` +
+  `object_classes`/`proxy_name` fields), the Line/LineGeometry property tables
+  (`HIDE_015X`), Line `set_conductors`/`conductors_phase_choice` + side effect,
+  LineGeometry `apply_conductors` side effect. `TODO(compat)` on the GetDSSClass
+  case bug (clean fix = compare lowercased names, §6 sweep).
+- **JSON export unchanged / no golden movement.** dss_capi emits
+  `"Conductors":[FullName…]`; the Rust port already emits the same bytes via the
+  `Line.Wires → "Conductors"` `json_name` masquerade (since wt-u14props). The real
+  `Conductors` prop carries `HIDE_015X`, so it is invisible to the byte-exact
+  0.14.5 Dump / FULL-JSON / `Dump commands` goldens (catalog running-counter skips
+  it) and the masquerade keeps owning the JSON key. The flip to a capi015
+  Dump/JSON surface + dropping the masquerade is deferred to the §6 sweep:
+  `gen_json.py` is 0.14.5-pinned (no capi015 engine switch), so flipping is
+  disproportionate for this row (UPGRADE_PLAN §1.4 fallback). Residual (latent,
+  untested): the masquerade renders a mixed-class list with one `WireData.` prefix
+  vs capi015's per-conductor class — no golden/deck exercises it. DIVERGENCES.md
+  §"Line/LineGeometry Conductors (text upstream-broken)".
+- **Gate.** `PROPS_015X` gains `Conductors` on the Line row + a new `LineGeometry`
+  row (inserted props excluded from the 0.14.5 shape walk);
+  `tests/upgrade_conductors.rs` pins all four capi015 diagnostics + the all-`none`
+  split. The net-new **resolved-ref** fill (unreachable via the broken text parse;
+  the path the §6-fixed parser + a JSON-import round-trip take) is gated by whitebox
+  equivalence tests that call `set_object_ref_array(CONDUCTORS)` + the side effect
+  directly — Line `conductors_array_matches_buried_neutral_and_oracle` /
+  `conductors_array_overhead_matches_wires_and_oracle` /
+  `conductors_all_none_after_wires_clears_wires_seq`, LineGeometry
+  `conductors_array_matches_mixed_capi015` /
+  `conductors_array_defaults_ratings_from_first_valid` — each pinned to the same
+  capi015 Z/Yc/ratings as the traditional `wires=`/`cncables=` paths, so
+  `set_conductors`/`conductors_phase_choice`/`apply_conductors`/per-conductor
+  `change_line_constants_type`/`default_amps_from`/`conductor_choice_of` and the
+  last-writer `clear_seq` are covered (audit wt-u14cond, major finding). No
+  solvable-corpus / byte-golden case moves; fmt/clippy/`cargo test --workspace`
+  green (incl. the live oracle gate). `known_diffs.json`: no prior Rust↔EPRI entry
+  (0.14.5 has no `Conductors` prop) — nothing to retire.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
