@@ -1021,6 +1021,47 @@ through a `TProxyClass` created with `fullNames=True`, `.Name = "Conductor"`
   green (incl. the live oracle gate). `known_diffs.json`: no prior Rust↔EPRI entry
   (0.14.5 has no `Conductors` prop) — nothing to retire.
 
+**WP-U1.10 — Rung 1 EXITED (2026-07-16, branch wt-u110).** The formal rung-1 exit:
+the opt-in EPRI r4088 sweep (`DSS_LIVE_OPENDSS=r4088 DSS_LIVE_OPENDSS_ASSERT=1
+cargo test -p dss-core --test corpus_live`) is **green** — every remaining
+Rust↔r4088 divergence is a justified `known_diffs.json` entry or a Rung-2 item;
+**zero unexplained**.
+- **Sweep.** 430 cases (71 target-rev `oracle:capi015` excluded): 313 matched, 113
+  known-diverged, 4 known-skipped, **0 NEW**. An informational r3723 ASSERT sweep
+  (also green) supplied the prune criterion + confirmed the new-deck classes are
+  rev-independent (classic power flow / injection / meter zone / harmonics /
+  reduction byte-identical r3723=r4088, `delta_r3723_r4088.md`).
+- **No Rung-1 regression (proof spine).** Every swept case is ALSO in the mandatory
+  gate vs the pinned dss_capi 0.14.5 oracle, which is green → the port equals the
+  FPC oracle on all 55 new divergences → the r4088 gap is purely the
+  FPC(0.14.5)↔Delphi(r4088) layer, corroborated by the committed capi015↔r4088
+  engine sweep (`docs/upgrade/sweeps/capi015_vs_r4088.md`). A Rung-1 regression
+  would have turned the mandatory gate red.
+- **Catalog burn-down (11→22 entries).** PRUNED `epri-gendispatcher-propname` (dead
+  on both revs — 0 hits; the gendispatcher decks diverge on control-iteration count,
+  not a property name. The decks do set `kvarlimit`/`genlist`/`weights`, all seven of
+  which exist in dss_capi 0.14.5 `GenDispatcher.pas` so the port accepts them; no
+  engine surfaces the original `#34` "Invalid property name" on the swept decks;
+  residual iteration delta folded into `iteration-count-delta`). EXTENDED 5 to r4088
+  (iteration-count-delta, storage-kwhstored-drift [kWhStored idling-loss drift],
+  injection-fpc-delphi-ulp, meter-zonepce-count, harmonics-yfingerprint-drift). NEW:
+  7 cross-solver FPC-vs-Delphi floors (autotrans reg-tap, makeposseq, reduce, ckt24
+  SubXFMR conditioning, PVSystem-kvar Delphi 6-sf display, Storage-`kw` Delphi 6-sf
+  display [`.kw:`-scoped, split from storage-kwhstored-drift], Vsource near-zero
+  power), 1 r3723-only (invcontrol-fixpoint-drift-synthetic), 4 `skip` (EPRI r4088
+  #303 crashes:
+  binary-shape [+r3723], IEEE13 line-spacing, IEEE13 line+cable-spacing,
+  CapControlFollow). Full ledger: `docs/upgrade/known_diffs_burndown.md`.
+- **Docs.** `tests/corpus/COVERAGE.md` refreshed (solvable_now **295/329 = 89.7%**,
+  skipped_needs_investigation 19→10); `tools/corpus/coverage_report.py` fixed to
+  report only the true partition buckets — it was globbing all `manifests/*.json`
+  and double-counting the `ad_sweep.json` disposition list (295, overlaps
+  solvable_now) + the empty `population.lock` row into the total. Marker sweep:
+  `rg "NOT_PORTED\(U1"` is empty across all source (pinned; only prose in the plan
+  docs references the tag).
+- **Rung 1 is COMPLETE** (U1.1–U1.10). Next: Rung 2 (WP-U2.* — r4133 protection
+  overhaul + the r4133-side IEEE_519/InductionMachine moves, `delta_r4088_r4133.md`).
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
