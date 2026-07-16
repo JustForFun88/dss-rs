@@ -241,20 +241,33 @@ impl Dss {
         // and `NodeRef[1] = 1`). Every connected element's `Iterminal` is now
         // fresh (refreshed in the loop above), so recompute the swing source's
         // currents/powers/losses from those and overwrite its snapshot entry.
-        if ckt.solution.algorithm == crate::solution::solution::NCIMSOLVE
-            && let Some((src_ref, curr)) = ncim_swing_source_currents(classes, ckt)
-        {
-            let name = format!(
-                "{}.{}",
-                classes[src_ref.cls].props.class_name(),
-                classes[src_ref.cls].objects[src_ref.idx].data().name()
-            );
-            if let Some(snap) = out.iter_mut().find(|s| s.name.eq_ignore_ascii_case(&name)) {
-                let node_ref = &classes[src_ref.cls].objects[src_ref.idx]
+        //
+        // The generator overrides are needed for the same reason: after NCIM
+        // adjusts a PV/converted generator's reactive power, its `YPrim` (`Yeq`)
+        // is stale, so the general `YPrim·V - Iinj` reporting recompute no longer
+        // cancels to `-conj(S/V)`. The NCIM solver computed the exact terminal
+        // current (`-conj((Pnom + j·deltaQNom)/V)`); reproduce it here.
+        if ckt.solution.algorithm == crate::solution::solution::NCIMSOLVE {
+            let mut overrides: Vec<(ElemRef, Vec<num_complex::Complex64>)> = Vec::new();
+            if let Some(o) = ncim_swing_source_currents(classes, ckt) {
+                overrides.push(o);
+            }
+            overrides.extend(ncim_generator_currents(classes, ckt, &node_v));
+            for (r, curr) in overrides {
+                let name = format!(
+                    "{}.{}",
+                    classes[r.cls].props.class_name(),
+                    classes[r.cls].objects[r.idx].data().name()
+                );
+                let Some(snap) = out.iter_mut().find(|s| s.name.eq_ignore_ascii_case(&name)) else {
+                    continue;
+                };
+                let node_ref = classes[r.cls].objects[r.idx]
                     .as_ckt_element()
-                    .expect("source is a ckt element")
+                    .expect("ncim override target is a ckt element")
                     .cd()
-                    .node_ref;
+                    .node_ref
+                    .clone();
                 let mut loss = num_complex::Complex64::ZERO;
                 for (k, &i) in curr.iter().enumerate() {
                     snap.currents[2 * k] = i.re;
@@ -811,9 +824,20 @@ impl Dss {
     /// so they line up with the oracle's `YMatrix.getYSparse(factor=False)`.
     /// `None` if no system Y has been built. Test/golden API (the assembled-model
     /// checkpoint of `golden_checkpoints.rs`).
+    ///
+    /// Reads the **active** handle (`Solution.active_y`), modelling Pascal's `hY`
+    /// pointer: `BuildYMatrix` sets `hY := hYsystem` for `WHOLEMATRIX` and `hY :=
+    /// hYseries` for `SERIESONLY`/`PDE_ONLY` (`YMatrix.pas` l.394/402), and
+    /// `getYSparse` reads that pointer. So after an NCIM solve (`PDE_ONLY`) the
+    /// reported system Y is the PDE-only network Y — no load `Yeq` — exactly as
+    /// the oracle reports it.
     pub fn system_y_csc(&mut self) -> Option<SystemYCsc> {
+        use crate::solution::solution::ActiveY;
         let ckt = self.circuit.as_mut()?;
-        let y = ckt.solution.y_system.as_mut()?;
+        let y = match ckt.solution.active_y {
+            ActiveY::System => ckt.solution.y_system.as_mut(),
+            ActiveY::Series => ckt.solution.y_series.as_mut(),
+        }?;
         let n = y.size();
         let (rows, cols, vals) = y.coo_entries().ok()?;
         let coords = rows
@@ -971,4 +995,44 @@ fn ncim_swing_source_currents(
         }
     }
     Some((src_ref, curr))
+}
+
+/// NCIM-reported terminal currents for every generator the NCIM solver touched
+/// (Pascal `NCIM_UpdateGenQ` l.772: `Iterminal[j+1] := -cong(cmplx(Pnom,
+/// deltaQNom[j])/V)`). After NCIM adjusts a generator's reactive power its
+/// `YPrim`/`Yeq` is stale, so the general `YPrim·V - Iinj` reporting recompute
+/// (which [`Dss::snapshot_elements`]'s main loop applies) no longer collapses to
+/// `-conj(S/V)`; this reproduces the exact terminal current the solver computed.
+/// Returns `(generator ElemRef, its yorder-long terminal-current vector)` for
+/// every enabled generator carrying NCIM state (`delta_q_nom` non-empty).
+fn ncim_generator_currents(
+    classes: &[DssClass],
+    ckt: &Circuit,
+    node_v: &[num_complex::Complex64],
+) -> Vec<(ElemRef, Vec<num_complex::Complex64>)> {
+    use crate::elements::pc::generator::Generator;
+    use num_complex::Complex64;
+
+    let mut out = Vec::new();
+    for &r in &ckt.generators {
+        let obj = &classes[r.cls].objects[r.idx];
+        let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
+            continue;
+        };
+        if !g.cd.enabled || g.delta_q_nom.is_empty() {
+            continue;
+        }
+        let mut curr = vec![Complex64::ZERO; g.cd.yorder];
+        let p = g.p_nominal_per_phase;
+        for (j, c) in curr.iter_mut().enumerate().take(g.cd.nphases) {
+            let nr = g.cd.node_ref[j];
+            if nr == 0 {
+                continue;
+            }
+            let q = g.delta_q_nom.get(j).copied().unwrap_or(g.delta_q_nom[0]);
+            *c = -(Complex64::new(p, q) / node_v[nr]).conj();
+        }
+        out.push((r, curr));
+    }
+    out
 }
