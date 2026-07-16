@@ -126,6 +126,20 @@ DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock
 writes the lock from the current manifests. Commit the `population.lock.json`
 diff **together with** the manifest change that caused it.
 
+### 0.15.x property-table allowlist (`PROPS_015X`)
+
+`corpus_live`'s property-parity gate (`harness::compare_all_properties`) asserts
+the Rust property-table **shape** (count + name order) against the oracle capture.
+The pinned default oracle is dss_capi **0.14.5**, so a deliberately ported 0.15.x
+property (which cannot appear in a 0.14.5 capture) is declared in the named
+per-class allowlist `PROPS_015X` (`tests/harness/mod.rs`): a Rust-side prop in the
+allowlist and absent from the capture is excluded from the shape walk (handles
+inserted props, not just trailing). Present-in-capture (capi015) props are NOT
+excluded — full name+value compare still applies. It relaxes shape only, never a
+value tolerance, and a non-allowlisted extra/missing/misordered prop still fails.
+Rules + row-documentation requirements: `tests/TOLERANCE_NOTES.md` §"0.15.x
+property-table allowlist (shape relaxation)".
+
 ## Environment variables
 
 | var | consumer | meaning |

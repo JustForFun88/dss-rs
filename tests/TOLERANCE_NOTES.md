@@ -747,6 +747,51 @@ the controlled transformer's **live** `PresentTap[TapWinding]`; the `&self` gett
 now resyncs the snapshot from the live transformer at the read choke point
 (`Dss::refresh_vterminal_if_marked`).
 
+### 0.15.x property-table allowlist (shape relaxation)
+
+`compare_all_properties` also asserts the property-table **shape**: the Rust
+`?`-surface name list must equal the oracle capture's name list **in order**, and
+the counts must match. The pinned **default** oracle is dss_capi **0.14.5**, so a
+deliberately ported 0.15.x-added property (Rung-1: Line `EpsRMedium`/
+`HeightOffset`/`HeightUnit`/`Conductors`; RegControl `Idle`/`IdleReverse`/
+`IdleForward`/`FwdThreshold`; Transformer+AutoTrans `BHpoints`/`BHcurrent`/
+`BHflux`; LoadShape `Mode`) exists on the Rust side but **cannot** appear in a
+0.14.5 capture — it would break the count/order/name walk of nearly every
+default-oracle deck.
+
+`PROPS_015X` (in `tests/harness/mod.rs`) is a **named per-class allowlist** of
+those 0.15.x-only property names. In `compare_all_properties`, a Rust-side
+property whose `(class, name)` is in `PROPS_015X` **and** whose name is **absent**
+from the oracle capture's name list is excluded from the whole walk (count, order,
+name, value) before the comparison. This handles **inserted** props, not only
+trailing ones (LoadShape `Mode` lands at index 22, shifting `Interpolation`
+22→23): the Rust list is filtered down to the props the 0.14.5 oracle can know,
+then compared position-for-position against the capture.
+
+What it **relaxes**: the property-table *shape* (count/order/existence) of a
+0.14.5-pinned capture, and only for the named allowlisted props. This is a
+§1.3-style shape relaxation, the exact analogue of `SKIP_PROPS` for value
+comparability.
+
+What it **never** relaxes:
+- **No value tolerance changes** — allowlisted props that ARE present in the
+  oracle capture (a **capi015**-regenerated capture) are **not** excluded; the
+  full name+value compare applies, so capi015 decks keep pinning the new props'
+  values to the case tolerance. Only 0.14.5-oracle decks skip their existence.
+- **No masking of real shape bugs** — a NON-allowlisted extra/missing/misordered
+  property still fails exactly as before (count mismatch on an extra/missing; name
+  mismatch on a reorder). The count-mismatch panic names the allowlist so triage
+  finds it.
+
+**Row-documentation requirement:** each `PROPS_015X` row (`(class, &[names])`,
+matched case-insensitively) must cite its upstream commit / UPGRADE_PLAN row in a
+comment, same style as `SKIP_PROPS`. Rows land with the WP that ports each
+property; the table ships **empty** (the mechanism is validated by inline
+`props_015x_tests` self-tests with synthetic data). Keep it one class per line so
+parallel WP branches each add a line without conflict (duplicate class rows are
+fine — the predicate ORs every matching row). Adding a row is a *shape*
+declaration only — it never touches any numeric floor.
+
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
 
 A-Diakoptics is an **EXACT** domain decomposition: at convergence the AD stitch
