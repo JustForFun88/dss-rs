@@ -668,6 +668,157 @@ fn cncables_without_spacing_errors() {
     assert!(line.line_wire_data.is_empty());
 }
 
+// --- WP-U1.4 (wt-u14cond) — the 0.15.x `Conductors=` array (Line prop 34) -----
+//
+// The text `Conductors=` parse is upstream-broken (the `parse_conductor_proxy`
+// `GetDSSClass` case bug), so a real mixed list can only ever reach the object
+// via the resolved-refs entry point `set_object_ref_array(CONDUCTORS)` + the
+// `CONDUCTORS` side effect — exactly the path the parser would call after the §6
+// compat fix (and the JSON-import round-trip). These whitebox tests drive that
+// entry point directly (the established `wires=`/`cncables=` test precedent),
+// gating `set_conductors` / `conductors_phase_choice` / `conductor_choice_of` /
+// the `CONDUCTORS` side effect that were otherwise unreachable end-to-end.
+
+/// A mixed `Conductors=[cn, cn, cn, wire]` over a 4-wire/3-phase spacing must
+/// build the **same** total Z/Yc — and infer the same ConcentricNeutral model
+/// with the neutral in slot 4 — as the traditional `cncables=[c,c,c]` +
+/// `wires=[w]` buried-neutral sequence (`spacing_buried_neutral_via_*`), which
+/// is oracle-pinned. Proves `conductors_phase_choice` (last valid phase
+/// conductor → CN) and `set_conductors` (all four slots filled from index 0).
+#[test]
+fn conductors_array_matches_buried_neutral_and_oracle() {
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let gcls = line_geometry::class_props(&enums);
+
+    let c = build_cn();
+    let w = build_wire();
+    // Equivalent `geometry=` line → oracle-pinned total matrices (the same
+    // reference the `spacing_buried_neutral_via_cncables_then_wires` case pins).
+    let mut geom = LineGeometryObj::new("gbn");
+    scalar(&gcls, &mut geom, "nconds", "4");
+    scalar(&gcls, &mut geom, "nphases", "3");
+    scalar(&gcls, &mut geom, "reduce", "yes");
+    for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
+        scalar(&gcls, &mut geom, "cond", &(k + 1).to_string());
+        set_ref(&gcls, &mut geom, "cncable", &c);
+        scalar(&gcls, &mut geom, "x", x);
+        scalar(&gcls, &mut geom, "h", "-1.2");
+        scalar(&gcls, &mut geom, "units", "m");
+    }
+    scalar(&gcls, &mut geom, "cond", "4");
+    set_ref(&gcls, &mut geom, "wire", &w);
+    scalar(&gcls, &mut geom, "x", "0.1");
+    scalar(&gcls, &mut geom, "h", "-1.0");
+    scalar(&gcls, &mut geom, "units", "m");
+    let z_ref = geom.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z_ref");
+    let yc_ref = geom.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc_ref");
+
+    let s = build_spacing(
+        "sbn",
+        4,
+        3,
+        &["0", "0.1", "0.2", "0.1"],
+        &["-1.2", "-1.2", "-1.2", "-1.0"],
+    );
+    let mut line = Line::new("l1");
+    scalar(&lcls, &mut line, "length", "1");
+    scalar(&lcls, &mut line, "units", "m");
+    set_ref(&lcls, &mut line, "spacing", &s);
+    // The single mixed list — 3 CN phases + 1 bare neutral — instead of the
+    // `cncables=` then `wires=` two-step. `set_ref_array` runs the resolved-ref
+    // write + the `CONDUCTORS` side effect (what the parser would call).
+    set_ref_array(&lcls, &mut line, "conductors", &[&c, &c, &c, &w]);
+
+    // The list inferred ConcentricNeutral (last valid phase conductor) and filled
+    // every slot including the slot-4 neutral.
+    assert_eq!(line.fphase_choice, ConductorChoice::ConcentricNeutral);
+    assert!(line.spacing_specified());
+    assert_eq!(line.cd.nphases, 3);
+    assert!(line.line_wire_data[3].is_some(), "neutral landed in slot 4");
+    // The redundant `wires=`/`cncables=`/`tscables=` set-marks are cleared.
+    for p in [prop::WIRES, prop::CNCABLES, prop::TSCABLES] {
+        assert!(!line.cd.obj.prp_specified(p), "prop {p} not cleared");
+    }
+
+    line.calc_yprim(&test_sys());
+    assert_zyc_match(
+        &line,
+        &z_ref,
+        &yc_ref,
+        (1.935274209913e-04, 1.418618628466e-04),
+        3,
+    );
+}
+
+/// An all-overhead `Conductors=[w, w, w]` over a plain 3-wire spacing must build
+/// the same matrices as the overhead `wires=[w,w,w]` case and default to the
+/// Overhead model (the `phaseChoice = Unknown → Overhead` fallback).
+#[test]
+fn conductors_array_overhead_matches_wires_and_oracle() {
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let mut geom = build_overhead_geometry();
+    let z_ref = geom.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z_ref");
+    let yc_ref = geom.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc_ref");
+
+    let w = build_wire();
+    let s = build_spacing("sp3", 3, 3, &["0", "1", "2"], &["10", "10", "10"]);
+    let mut line = Line::new("l1");
+    scalar(&lcls, &mut line, "length", "1");
+    scalar(&lcls, &mut line, "units", "m");
+    set_ref(&lcls, &mut line, "spacing", &s);
+    set_ref_array(&lcls, &mut line, "conductors", &[&w, &w, &w]);
+
+    // No cable in the phase set → Unknown, defaulted to Overhead by the side
+    // effect's `if fphase_choice = Unknown then Overhead` fallback.
+    assert_eq!(line.fphase_choice, ConductorChoice::Overhead);
+
+    line.calc_yprim(&test_sys());
+    assert_zyc_match(
+        &line,
+        &z_ref,
+        &yc_ref,
+        (3.525947626277e-04, 9.150978496084e-04),
+        3,
+    );
+}
+
+/// Redundancy / last-writer (minor audit item): an all-`none` `Conductors=`
+/// (the one text-reachable form) after a `wires=` clears the redundant `Wires`
+/// set-mark (Pascal `PrpSequence[Wires] := 0`) and NILs every slot, then
+/// defaults the model to Overhead. Pins the `clear_seq(WIRES/CNCABLES/TSCABLES)`
+/// in the `CONDUCTORS` side effect that dump/JSON emission ordering depends on.
+#[test]
+fn conductors_all_none_after_wires_clears_wires_seq() {
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let w = build_wire();
+    let s = build_spacing("sp3", 3, 3, &["0", "1", "2"], &["10", "10", "10"]);
+    let mut line = Line::new("l1");
+    set_ref(&lcls, &mut line, "spacing", &s);
+    set_ref_array(&lcls, &mut line, "wires", &[&w, &w, &w]);
+    // The `wires=` write recorded the Wires set-mark and filled every slot.
+    assert!(line.cd.obj.prp_specified(prop::WIRES), "Wires mark set");
+    assert!(line.line_wire_data.iter().all(|o| o.is_some()));
+
+    // The all-`none` list (the only text-valid Conductors form) — NIL refs.
+    let idx = lcls.property_index("conductors").expect("conductors prop");
+    let none_refs: Vec<crate::obj::base::ObjectRefArrayItem> = vec![None, None, None];
+    line.set_object_ref_array(idx, &none_refs);
+    line.cd.obj.set_as_next_seq(idx);
+    line.side_effects(idx, 0);
+
+    // The redundant Wires mark is cleared and every slot is NIL again.
+    assert!(
+        !line.cd.obj.prp_specified(prop::WIRES),
+        "Wires mark must be cleared by the Conductors last-writer"
+    );
+    assert!(line.line_wire_data.iter().all(|o| o.is_none()));
+    // No cable/phase conductor left → Unknown, defaulted to Overhead.
+    assert_eq!(line.fphase_choice, ConductorChoice::Overhead);
+}
+
 // --- WPG.21 — TLineObj.MakePosSequence (Line.pas:1531-1629) -------------------
 
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};

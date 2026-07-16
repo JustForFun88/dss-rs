@@ -159,8 +159,12 @@ impl LineGeometryObj {
     ///
     /// Reachable via text only as an all-`none` list — every real item errors in
     /// `parse_conductor_proxy` (the upstream `GetDSSClass` case bug) — so the
-    /// rejection path is the live one; the per-conductor dispatch is faithful
-    /// structure for a JSON-import round-trip (untested/ungated today).
+    /// rejection path is the live one via text; the per-conductor dispatch (the
+    /// path the parser calls after the §6 compat fix, and the JSON-import
+    /// round-trip) is gated by the whitebox equivalence tests
+    /// `tests::conductors_array_matches_mixed_capi015` /
+    /// `conductors_array_defaults_ratings_from_first_valid`, which drive the
+    /// resolved-ref entry point directly against the capi015 references.
     pub(super) fn apply_conductors(&mut self) -> bool {
         let n = self.fnconds.max(0) as usize;
         let mut first_valid: Option<usize> = None;

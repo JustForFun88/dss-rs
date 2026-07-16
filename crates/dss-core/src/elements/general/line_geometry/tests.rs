@@ -894,6 +894,97 @@ fn matrices_mixed_cn_ts_wire_match_capi015() {
 }
 
 #[test]
+fn conductors_array_matches_mixed_capi015() {
+    // WP-U1.4 (wt-u14cond): the 0.15.x `Conductors=` array (prop 20). The text
+    // parse is upstream-broken (the `parse_conductor_proxy` `GetDSSClass` case
+    // bug), so a real mixed list reaches the object only through the resolved-ref
+    // entry point `set_object_ref_array(CONDUCTORS)` + the `CONDUCTORS` side
+    // effect — the path the parser calls after the §6 compat fix (and JSON
+    // import). This drives that entry point directly (the `wires=` test
+    // precedent), gating `apply_conductors` / per-conductor
+    // `change_line_constants_type` / `default_amps_from` / `conductor_choice_of`.
+    //
+    // The identical MIXED geometry as `matrices_mixed_cn_ts_wire_match_capi015`
+    // (phase-1 CN, phase-2 TS, phase-3 CN, cond-4 bare wire), but the per-
+    // conductor kinds are assigned by ONE `Conductors=[cn, ts, cn, w]` list
+    // instead of the `cond=/cncable=/tscable=/wire=` state machine. The reduced
+    // 3x3 Z must equal the same capi015 reference.
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let cn = build_si_cn();
+    let ts = build_si_ts();
+    let w = build_wire(
+        "wn",
+        &[
+            ("runits", "m"),
+            ("gmrunits", "m"),
+            ("radunits", "m"),
+            ("rdc", "0.0001"),
+            ("rac", "0.000105"),
+            ("radius", "0.005"),
+            ("gmrac", "0.004"),
+        ],
+    );
+    let mut g = LineGeometryObj::new("g1");
+    scalar(&cls, &mut g, "nconds", "4");
+    scalar(&cls, &mut g, "nphases", "3");
+    scalar(&cls, &mut g, "reduce", "yes");
+    // Coordinates via the per-conductor scalars (no wire refs yet); the
+    // conductor OBJECTS + engine kinds come from the `Conductors=` list below.
+    for (k, x) in ["0", "0.1", "0.2", "0.3"].iter().enumerate() {
+        scalar(&cls, &mut g, "cond", &(k + 1).to_string());
+        scalar(&cls, &mut g, "x", x);
+        scalar(&cls, &mut g, "h", "-1.2");
+        scalar(&cls, &mut g, "units", "m");
+    }
+    set_ref_array(&cls, &mut g, "conductors", &[&cn, &ts, &cn, &w]);
+    assert!(g.data_mut().take_errors().is_empty());
+
+    let z = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z");
+    let z_ref = [
+        (2.043047617632e-04, 1.359764636804e-04),
+        (5.238862037842e-05, 4.408760014295e-06),
+        (1.340115107358e-05, -1.594581609220e-05),
+        (5.238862037842e-05, 4.408760014295e-06),
+        (1.649110726797e-04, 2.800828107382e-04),
+        (4.559802639218e-05, 4.875809286083e-06),
+        (1.340115107358e-05, -1.594581609220e-05),
+        (4.559802639218e-05, 4.875809286083e-06),
+        (1.936950836687e-04, 1.415056424162e-04),
+    ];
+    assert_z(&z, &z_ref, 3);
+
+    let yc = g.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc");
+    for i in 0..3 {
+        assert_close(
+            yc.get(i, i).im / W60,
+            2.830890564838e-01 * 1e-9,
+            &format!("C[{i}][{i}]"),
+        );
+    }
+}
+
+#[test]
+fn conductors_array_defaults_ratings_from_first_valid() {
+    // The `Conductors=` list defaults the geometry ratings from the first valid
+    // conductor (`apply_conductors` → `default_amps_from(first_valid)`), exactly
+    // like the traditional `wires=` path. A wire with NormAmps=530 seeds the
+    // geometry's NormAmps/EmergAmps (1.5× on the wire).
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let w = build_wire("acsr", &[("normamps", "530"), ("radius", "0.0306")]);
+    let mut g = LineGeometryObj::new("g1");
+    scalar(&cls, &mut g, "nconds", "3");
+    scalar(&cls, &mut g, "nphases", "3");
+    set_ref_array(&cls, &mut g, "conductors", &[&w, &w, &w]);
+    assert!(g.data_mut().take_errors().is_empty());
+    assert_eq!(get(&cls, &g, "normamps"), "530");
+    assert_eq!(get(&cls, &g, "emergamps"), "795");
+    // All-overhead list → every conductor's engine kind is Overhead.
+    assert_eq!(get(&cls, &g, "wires"), "[acsr, acsr, acsr]");
+}
+
+#[test]
 fn update_uninitialized_conductor_errors() {
     // A conductor slot left NIL is the Pascal "WireData is not correctly
     // initialized" hard error.
