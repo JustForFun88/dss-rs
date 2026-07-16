@@ -696,6 +696,46 @@ Three commits on top of Stage 1:
      NCIM — reporting-only, node voltages already correct).
   3. `oddie:r4088` cross-check of one deck (report-only).
 
+**WP-H015 — 0.15.x property-table allowlist (`PROPS_015X`).** Resolves Rung-1
+remaining-tail item 1. The corpus property-parity gate
+(`harness::compare_all_properties`) asserts the Rust property-table **shape**
+(count + name order) against the oracle capture; the pinned default oracle is
+dss_capi **0.14.5**, so a deliberately ported 0.15.x-added property (Line
+`EpsRMedium`/`HeightOffset`/`HeightUnit`/`Conductors`; RegControl `Idle`/
+`IdleReverse`/`IdleForward`/`FwdThreshold`; Transformer+AutoTrans `BHpoints`/
+`BHcurrent`/`BHflux`; LoadShape `Mode`) would break nearly every default-oracle
+deck's shape assert.
+- **Decision (adopted, coordinator-approved): a named per-class allowlist** —
+  `PROPS_015X: &[(&str, &[&str])]` in `tests/harness/mod.rs`. A Rust-side prop
+  whose `(class, name)` is in the table **and** whose name is absent from the
+  oracle capture is excluded from the count/order/name/value walk (a §1.3-style
+  *shape* relaxation, NEVER a value-tolerance change). Handles **inserted** props,
+  not only trailing (the Rust list is filtered to what a 0.14.5 capture can know,
+  then compared position-for-position). If the capture DOES contain the prop
+  (capi015-regenerated), it is NOT excluded → full name+value compare, so capi015
+  decks keep pinning the new props' values. A non-allowlisted extra/missing/
+  misordered prop still fails exactly as before; the count-mismatch panic names
+  the allowlist for triage.
+- **Implementation:** extracted the list-comparison core into `compare_prop_lists`
+  (allowlist injectable) so the shipped-empty table is validated by 7 inline
+  `props_015x_tests` self-tests with synthetic data (trailing extra passes;
+  inserted extra passes with order preserved; non-allowlisted extra panics;
+  allowlisted-present-in-oracle value mismatch panics + match passes; missing +
+  misordered panic).
+- **Surface survey (item 3):** `compare_all_properties` is the **only** surface
+  that asserts Rust property count/order against a 0.14.5-pinned capture.
+  `props_roundtrip.rs` + the props goldens (`golden_feeders_controls`,
+  `scenario.rs`) iterate only the props present in the (0.14.5) golden — no
+  Rust-side shape assert. `save_roundtrip.rs` round-trips through our own engine
+  (node-V + discrete state), not oracle property tables. `population_lock.rs`
+  fingerprints manifest membership/rigor, not property-table shape. None need the
+  allowlist.
+- **Ships EMPTY** — rows land with the three sibling Rung-1 WPs that port each
+  property (one class per line, merge-friendly; duplicate class rows OR).
+- Docs: `tests/TOLERANCE_NOTES.md` §"0.15.x property-table allowlist (shape
+  relaxation)"; `TESTING.md` pointer. Gate green (fmt/clippy/`cargo test
+  --workspace`) — nothing moves, the table is empty.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
