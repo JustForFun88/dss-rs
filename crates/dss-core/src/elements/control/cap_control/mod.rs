@@ -346,8 +346,17 @@ impl CapControl {
         // derives PresentState/InitialState here — control actions are Phase 5
         // and capacitor terminals start (and stay) closed during parse.
 
-        let eff = if self.control_type != ctrl_type::TIME && self.control_type != ctrl_type::FOLLOW
-        {
+        // Every control type except FOLLOWCONTROL requires a monitored element
+        // and uses it as `effElement` (dss_capi `b9bc87b8`: TIMECONTROL now
+        // requires + uses the monitored element too — the `<> TIMECONTROL`
+        // guard was dropped, `CapControl.pas:581`). b9bc87b8 ports only the
+        // guard drop; the message keeps the base 0.14.5 form `%s: Element is
+        // not set` (`.inputs/dss_capi` CapControl.pas:601). 0.15.x quotes the
+        // object-type name (`%s: "Element" is not set`, capi015 line :584) as
+        // part of a separate cross-class error-quoting change we do not adopt
+        // here — no deck gates the exact string (substring-checked, default
+        // oracle stays 0.14.5).
+        let eff = if self.control_type != ctrl_type::FOLLOW {
             if self.mon_snap.is_none() {
                 self.ccd.cd.obj.push_error(format!(
                     "CapControl.{}: Element is not set, aborting.",

@@ -1147,18 +1147,98 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   property-compare, §1.3-2) and the force-resolve needs a multi-step control-
   iteration run (capi015 re-nominalizes multi-step captures, L1 note) — so unit-
   test gating is the honest gate here (precedent: B1/D6/D7).
-- **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **ported then
-  reverted** (see STATUS §WP-U1.6). The mapping is correct but its `Normal`/`State`
-  readback change moves two default-oracle multi-step live decks
-  (`swtcontrol_time.dss` probe + `civanlar.dss` `Normal`), which cannot flip to
-  capi015 (multi-step re-nominalization). Deferred to a coordinated re-land. When
-  re-landed: capi015 raises the strict PermissiveProperties read-only #2024106 on a
-  locked `Action=` write (the not-adopted L2/C2 dss-ext surface) — the port keeps
-  the 0.14.5/r4133 silent-ignore.
+- **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **RE-LANDED**
+  (WP-U1.6 tail). `Normal`→`NormalState`, `State`→`PresentState`, `Action`→
+  `CurrentAction` (distinct offsets, `SwtControl.pas:156-166`); the side effects
+  sync `CurrentAction := NormalState`/`PresentState` (were the reverse). 0.14.5
+  mapped all three onto the single `CurrentAction`, so a write to any changed the
+  others' readback and `State` reported the *armed* action rather than the live
+  switch. The props golden `swtcontrol.json` is re-baselined to capi015 (probed
+  2026-07-16: `Normal=''` default/lock, `State=Closed` after `action=/normal=`
+  since the switch has not operated; `swtcontrol_locked_then_action` dropped — see
+  below). **Entangled decks resolved** (the earlier revert's blocker): the moved
+  `state`/`normal` readback moves three default-oracle SwtControl decks —
+  `swtcontrol_time.dss` + `midi_swtcontrol.dss` **flipped to capi015** (the armed
+  `action=open` opens the switch at its delay; the port, matching capi015
+  `GetState`=live element, reads `State=Closed` until step 3 then `Open`; 0.14.5
+  read `Open` from the arm). Multi-step capi015 capture is valid for these
+  (constant loads / no loadshapes → the L1 re-nominalization touches only the
+  getYSparse element-state re-read, NOT the per-step Monitor/probe/eventlog
+  channels — verified 2026-07-16 by a stepwise capi015 probe). `civanlar.dss`
+  (snapshot) **flipped to capi015**: `SwtControl.5_11` is `Action=c` then `edit
+  action=o`, so D12/capi015 read `Normal=NormalState=closed` while 0.14.5 read the
+  edited `CurrentAction=open`; the whole-model physics is capi015==0.14.5 (no
+  loadshapes) so only the property readback moves and target-rev cases do not
+  property-compare. `swtcontrol_lock.dss` **unaffected** (stays 0.14.5): the locked
+  switch never operates, so both `State` and `Normal` read `closed` on every engine
+  — and it *cannot* flip to capi015 anyway, since the strict PermissiveProperties
+  read-only #2024106 rejects the locked `Action=` post-command there (the
+  not-adopted L2/C2 dss-ext surface; the port silently ignores it, matching
+  0.14.5/r4133, unit-pinned `locked_ignores_action_write` /
+  `locked_ignores_normal_and_state_writes`). Feature-sensitivity: unit
+  `d12_normal_and_state_readbacks_are_independent` (0.14.5 conflated both onto
+  `CurrentAction`).
 - **D15** `LookupVariable` case-insensitivity (`4366b126`) — not-a-delta: the
   port's only equivalent (relay) already matches the fixed side.
 - **A7-r3723** GenController deregistration — not-a-delta: never registered in the
   r3723 port; `New GenController` already errors "not found".
+- **D11 (part 2)** CapControl TIMECONTROL monitored-element requirement
+  (`b9bc87b8`) — adopt. **0.14.5:** TIMECONTROL (like FOLLOWCONTROL) used the
+  *controlled* capacitor as `effElement` and forced `ElementTerminal := 1`.
+  **0.15.x (capi015 0.15.0b4):** the `<> TIMECONTROL` guard was dropped, so only
+  FOLLOWCONTROL falls back to the capacitor; TIME now **requires** a monitored
+  element and uses it as `effElement` with the specified terminal
+  (`CapControl.pas:581`). **capi015 probe** (0.15.0b4): `type=time` with no
+  `element=` errors `CapControl.cc1: "Element" is not set, aborting.`;
+  `type=time element=line.l1 terminal=2` keeps `Terminal=2` (0.14.5 forces →1)
+  and binds to the monitored element. Part 1 (PT/CTPhase validation scope) was
+  already aligned. **Unit-pinned** (`time_control_requires_monitored_element` +
+  `time_control_uses_monitored_element_terminal`, both citing the capi015 probe).
+  The existing multi-step `controls/capcontrol/capcontrol_time.dss` schedule deck
+  cannot flip to capi015 (it has a `daily=` load → multi-step re-nominalization,
+  L1) and its only moved observable is the static `Terminal` readback; reworked to
+  `terminal=1` so the readback is engine-agnostic (0.14.5 forces→1, port keeps 1)
+  while the clock-based switching feature is unchanged.
+- **C4** `SolveAll` command (ordinal 123, a `DSS_CAPI_PM`-only command word) —
+  now dispatched. Single-actor semantics = plain `Solve` (`ExecCommands.pas:346`
+  iterates `DoSetCmd(child,1)` over the one actor; `IsSolveAll` only steers the
+  parallel/A-Diakoptics path we do not have). Oracle-confirmed (dss-python
+  0.15.7): `SolveAll` solves like `Solve`; the spaced `Solve all` errors
+  `Object Class "all" not found`. Unit-pinned (`solve_all_alias_matches_plain_solve`).
+  **0.15.x spaced-form delta (not adopted, ungated).** The 0.15.x parser
+  (`ExecCommands.pas:505-521`) added a `Solve`-modifier that also maps the
+  *spaced* `Solve all` to `SolveAll` (a plain solve, no error). The port keeps
+  the 0.14.5 behavior (`Solve` + unknown token `all` → `Object Class "all" not
+  found`), matching the default 0.14.5 oracle; C4's scope is the one-word
+  `SolveAll` command word only. No corpus deck exercises spaced `Solve all`, so
+  the delta is ungated either way — tracked here for a later parser-parity pass.
+- **D13** LoadShape MMF fixes (`c4590d16`) — **not-a-delta for the port** (already
+  matches the fix). The three Pascal hunks are: (1) the single-column `csvfile=`
+  `CreateMMF` guard's missing `not` (`LoadShape.pas ~:1032`) — 0.14.5 exits on
+  CreateMMF **success**, so a single-column MMF shape never loads its P data and
+  the daily solve raises `#482 Division by zero`; (2) `mmDataSizeQ := mmDataSize`
+  (a debug-only field, no observable); (3) the Linux `fpMUnMap` disposal
+  `mmFileSize`/`mmFileSizeQ` swap. The port is `#![forbid(unsafe_code)]` with no
+  memory-mapping — it eager-reads the whole file into `p_mult`/`q_mult`
+  (`read_csv_file` MMF branch), so hunks 2/3 have no equivalent and hunk 1's data
+  ALREADY loads. **Probe** (single-column `npts=8 MemoryMapping=Yes csvfile=`, 8
+  daily steps): 0.14.5 aborts `#482 Division by zero` (Pmult=`[0.0]`); capi015
+  (0.15.0b4) drives the load to P/phase `[20 40 70 110 160 130 90 50]` kW
+  (= 200·`[0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25]`). **Gate:** new capi015 live
+  deck `modes/upgrade/mmf_singlecol/mmf_singlecol.dss` (`oracle:"capi015"`,
+  `n_steps=8`, whole-model per-step compare; cannot gate 0.14.5 — the deck is the
+  bug the fix removes, §1.2; §1.7 two-process determinism confirmed, fingerprint
+  `0ead40d7199b0781`) + unit `mmf_single_column_csvfile_loads_like_capi015`. The
+  existing `inputformat/shape_mmf` deck stays 0.14.5 (it uses `sngfile`/`dblfile`/
+  `pqcsvfile`, not the single-column path). **Vendored-spec caveat.** The `#482`
+  claim above is against the pinned 0.14.5 oracle **binary** (tag `0.14.5`, which
+  ships the buggy `if CreateMMF(...)`), settled empirically — NOT by reading the
+  vendored source. The vendored `.inputs/dss_capi/src/General/LoadShape.pas:1035`
+  already reads the FIXED `if not CreateMMF(...)` (the c4590d16 fix, dated after
+  the 0.14.5 tag), so a `grep` of `.inputs/dss_capi` for this hunk shows the fix,
+  not the bug — a hole in the "`.inputs/dss_capi` == the 0.14.5 backend" invariant
+  at this one line. Gating was correctly settled against the oracle binary, so the
+  outcome is unaffected.
 
 `known_diffs.json`: none of these had a prior Rust↔EPRI entry — nothing to retire.
 

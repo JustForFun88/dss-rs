@@ -1,0 +1,25 @@
+! WP-U1.6 row D13 (docs/upgrade/DIVERGENCES.md): LoadShape single-column
+! csvfile= under MemoryMapping=Yes. dss_capi c4590d16 restored the missing
+! `not` on the single-column CreateMMF guard (LoadShape.pas ~:1032) so the P
+! data actually loads; 0.14.5 exits on CreateMMF SUCCESS -> the shape stays
+! empty and the daily solve raises "Division by zero" (#482). Gated capi015
+! (0.15.0b4), NOT 0.14.5: the deck CANNOT compile+solve on the pinned 0.14.5
+! oracle at all (it is the bug the fix removes), so §1.2 forbids gating it
+! there. The Rust port's eager MMF reader (read_csv_file MMF branch) already
+! matches the fixed behavior, so this whole-model daily compare vs capi015 is
+! green. Feature sensitivity (§1.7-3): the single-column shape drives the load
+! [0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25] over 8 daily steps; if the MMF
+! single-column read regressed to empty/1.0 the per-step load power AND node
+! voltages would move far above every live floor. Fixture mm8.csv is
+! uniform-width (5-byte "0.XX\n" rows) so the MMF byte-stride reader is aligned;
+! all bytes are in the accept-set [46,58).
+Clear
+New Circuit.mmf_sc basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210
+New Loadshape.lsc npts=8 interval=1 MemoryMapping=Yes csvfile=mm8.csv
+New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=2 units=km
+New Load.ld bus1=b1 phases=3 kv=12.47 kw=600 pf=0.95 model=1 daily=lsc
+New Monitor.m element=Load.ld terminal=1 mode=1 ppolar=no
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set mode=daily stepsize=1h number=8
+Solve

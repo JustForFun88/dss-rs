@@ -187,7 +187,11 @@ impl Dss {
             cmd::SELECT => self.do_select_cmd(),
             cmd::OPEN => self.do_open_close_cmd(false),
             cmd::CLOSE => self.do_open_close_cmd(true),
-            cmd::SOLVE => self.do_set_cmd(1), // Solve = Set + DoSolveCmd
+            // Solve = Set + DoSolveCmd. `SolveAll` (`Solve all`) is the
+            // PM-build command that solves every actor; with a single actor
+            // it reduces to a plain solve of the active circuit
+            // (`ExecCommands.pas:346`).
+            cmd::SOLVE | cmd::SOLVE_ALL => self.do_set_cmd(1),
             cmd::SET => self.do_set_cmd(0),
             cmd::QUERY => self.do_query_cmd(),
             cmd::CALC_VOLTAGE_BASES => self.do_calc_voltage_bases(),
