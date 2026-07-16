@@ -115,6 +115,16 @@ pub struct LineGeometryObj {
     fline_type: i32,
     /// Snapshot-cloned `LineSpacing` (`spacing=`), or `None`.
     line_spacing_obj: Option<Box<dyn DssObject>>,
+    // dss_capi 0.15.x equivalent-spacing state, copied from the referenced
+    // `LineSpacing` when it is not detailed. Default `equivalent_spacing=false`
+    // (the detailed per-conductor-coordinate model) preserves 0.14.5 numerics.
+    // The distances are stored in `flast_unit` and converted to meters in
+    // `update_line_geometry_data`.
+    equivalent_spacing: bool,
+    eq_dist_ph_ph: f64,
+    eq_dist_ph_n: f64,
+    avg_phase_height: f64,
+    avg_neutral_height: f64,
 }
 
 impl Clone for LineGeometryObj {
@@ -143,6 +153,11 @@ impl Clone for LineGeometryObj {
             amp_ratings: self.amp_ratings.clone(),
             fline_type: self.fline_type,
             line_spacing_obj: self.line_spacing_obj.as_ref().map(|b| b.clone_box()),
+            equivalent_spacing: self.equivalent_spacing,
+            eq_dist_ph_ph: self.eq_dist_ph_ph,
+            eq_dist_ph_n: self.eq_dist_ph_n,
+            avg_phase_height: self.avg_phase_height,
+            avg_neutral_height: self.avg_neutral_height,
         }
     }
 }
@@ -187,6 +202,11 @@ impl LineGeometryObj {
             amp_ratings: vec![0.0],
             fline_type: LINETYPE_OH,
             line_spacing_obj: None,
+            equivalent_spacing: false,
+            eq_dist_ph_ph: 0.0,
+            eq_dist_ph_n: 0.0,
+            avg_phase_height: 0.0,
+            avg_neutral_height: 0.0,
         }
     }
 

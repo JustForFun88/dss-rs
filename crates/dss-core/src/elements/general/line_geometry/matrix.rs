@@ -54,14 +54,27 @@ impl LineGeometryObj {
         }
         self.change_line_constants_type(new_choice);
 
+        // dss_capi 0.15.x: adopt the spacing's equivalent-spacing model. When
+        // equivalent, the per-conductor coordinates are not read.
+        self.equivalent_spacing = spc.equivalent_spacing();
+        if self.equivalent_spacing {
+            self.eq_dist_ph_ph = spc.eq_dist_ph_ph();
+            self.eq_dist_ph_n = spc.eq_dist_ph_n();
+            self.avg_phase_height = spc.avg_phase_height();
+            self.avg_neutral_height = spc.avg_neutral_height();
+            self.flast_unit = spc.spacing_units();
+        }
+
         let units = spc.spacing_units();
         let xs = spc.xcoord();
         let hs = spc.ycoord();
         for i in 0..n {
             self.fwiredata[i] = wires[i].as_ref().map(|o| o.clone_box());
-            self.fx[i] = xs[i];
-            self.fy[i] = hs[i];
-            self.funits[i] = units;
+            if !self.equivalent_spacing {
+                self.fx[i] = xs[i];
+                self.fy[i] = hs[i];
+                self.funits[i] = units;
+            }
         }
         self.data_changed = true;
         // NormAmps/EmergAmps := Wires[1].* (conductor 1).
@@ -109,9 +122,28 @@ impl LineGeometryObj {
             return Ok(());
         };
 
+        // dss_capi 0.15.x `UpdateLineGeometryData`: push the equivalent-spacing
+        // state first. The distances are converted from `flast_unit` to meters;
+        // the avg heights also carry the (0-default) height offset.
+        eng.set_equivalent_spacing(self.equivalent_spacing);
+        if self.equivalent_spacing {
+            let to_m =
+                crate::support::line_units::LineUnits::from_code(self.flast_unit).to_meters();
+            let h_off = eng.height_offset_meters();
+            eng.set_equivalent_distances(
+                self.eq_dist_ph_ph * to_m,
+                self.eq_dist_ph_n * to_m,
+                self.avg_phase_height * to_m + h_off,
+                self.avg_neutral_height * to_m + h_off,
+            );
+        }
+
         for (i, g) in geoms.iter().enumerate() {
-            eng.set_x(i, self.funits[i], self.fx[i]);
-            eng.set_y(i, self.funits[i], self.fy[i]);
+            // Pascal skips SetX/SetY under equivalent spacing (coordinates unused).
+            if !self.equivalent_spacing {
+                eng.set_x(i, self.funits[i], self.fx[i]);
+                eng.set_y(i, self.funits[i], self.fy[i]);
+            }
             eng.set_radius(i, g.radius_units, g.radius);
             eng.set_capradius(i, g.radius_units, g.cap_radius);
             eng.set_gmr(i, g.gmr_units, g.gmr);

@@ -85,14 +85,25 @@ impl LineGeometryObj {
         };
         if self.fnconds == spc.nwires() {
             let units = spc.spacing_units();
-            let xs = spc.xcoord().to_vec();
-            let hs = spc.ycoord().to_vec();
             self.flast_unit = units;
-            let n = self.fnconds.max(0) as usize;
-            for i in 0..n {
-                self.fx[i] = xs[i];
-                self.fy[i] = hs[i];
-                self.funits[i] = units;
+            // dss_capi 0.15.x: an equivalent-spacing spacing copies its four
+            // distances (not per-conductor coordinates); a detailed spacing
+            // copies the coordinates as before.
+            self.equivalent_spacing = spc.equivalent_spacing();
+            if self.equivalent_spacing {
+                self.eq_dist_ph_ph = spc.eq_dist_ph_ph();
+                self.eq_dist_ph_n = spc.eq_dist_ph_n();
+                self.avg_phase_height = spc.avg_phase_height();
+                self.avg_neutral_height = spc.avg_neutral_height();
+            } else {
+                let xs = spc.xcoord().to_vec();
+                let hs = spc.ycoord().to_vec();
+                let n = self.fnconds.max(0) as usize;
+                for i in 0..n {
+                    self.fx[i] = xs[i];
+                    self.fy[i] = hs[i];
+                    self.funits[i] = units;
+                }
             }
             // Pascal clears PrpSequence[X]/[H] so SaveWrite emits the spacing,
             // not the (now spacing-derived) coordinates (NoPropertyTracking off).
