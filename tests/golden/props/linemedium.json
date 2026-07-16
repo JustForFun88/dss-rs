@@ -1,0 +1,65 @@
+{
+ "schema": 1,
+ "oracle": {
+  "engine_spec": "capi015",
+  "engine": "DSS C-API Library version 0.15.0b4 revision e936d2101d745e0f0ea6872d7aa8545cb6bbd5ae based on OpenDSS SVN 4103",
+  "note": "WP-U1.4 Line-level EpsRMedium/HeightOffset/HeightUnit property surface (Line.pas:59-61, 375-431); values probed on capi015 2026-07-16 (probe_render.py). The pinned 0.14.5 default oracle cannot render these 0.15.x-only props, so this golden is capi015; the rendered strings must match on the Rust engine."
+ },
+ "class": "linemedium",
+ "scenarios": [
+  {
+   "name": "linemedium_default",
+   "commands": [
+    "New Line.l1 bus1=a bus2=b phases=3 r1=0.1 x1=0.2"
+   ],
+   "target": "Line.l1",
+   "properties": {
+    "EpsRMedium": "1",
+    "HeightOffset": "0",
+    "HeightUnit": "m"
+   }
+  },
+  {
+   "name": "linemedium_set_ft",
+   "commands": [
+    "New Line.l2 bus1=a bus2=b phases=3 r1=0.1 x1=0.2 EpsRMedium=2.3 HeightOffset=5 HeightUnit=ft"
+   ],
+   "target": "Line.l2",
+   "properties": {
+    "EpsRMedium": "2.3",
+    "HeightOffset": "5",
+    "HeightUnit": "ft"
+   }
+  },
+  {
+   "name": "linemedium_heightunit_none_snaps_to_m",
+   "commands": [
+    "New Line.l3 bus1=a bus2=b phases=3 r1=0.1 x1=0.2 HeightUnit=none"
+   ],
+   "target": "Line.l3",
+   "properties": {
+    "HeightUnit": "m"
+   }
+  },
+  {
+   "name": "linemedium_heightunit_cm",
+   "commands": [
+    "New Line.l4 bus1=a bus2=b phases=3 r1=0.1 x1=0.2 HeightUnit=cm"
+   ],
+   "target": "Line.l4",
+   "properties": {
+    "HeightUnit": "cm"
+   }
+  },
+  {
+   "name": "linemedium_heightunit_meter_alias",
+   "commands": [
+    "New Line.l5 bus1=a bus2=b phases=3 r1=0.1 x1=0.2 HeightUnit=meter"
+   ],
+   "target": "Line.l5",
+   "properties": {
+    "HeightUnit": "m"
+   }
+  }
+ ]
+}

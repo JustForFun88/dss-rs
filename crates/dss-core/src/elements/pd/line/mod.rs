@@ -81,16 +81,25 @@ pub mod prop {
     pub const SEASONS: usize = 28;
     pub const RATINGS: usize = 29;
     pub const LINE_TYPE: usize = 30;
+    // dss_capi 0.15.x (Line.pas:59-62, SVN r3913-era): EpsRMedium/HeightOffset/
+    // HeightUnit surface the LineConstants medium permittivity + height offset.
+    // (`Conductors=34`, the merged mixed wire/CN/TS list, is the sibling
+    // wt-u14cnts's row and is NOT defined here — the Rust class stops at
+    // HeightUnit; the trailing tail keeps the 0.14.5 layout, one shorter than
+    // upstream until Conductors lands.)
+    pub const EPS_R_MEDIUM: usize = 31;
+    pub const HEIGHT_OFFSET: usize = 32;
+    pub const HEIGHT_UNIT: usize = 33;
     // TPDClass tail:
-    pub const NORMAMPS: usize = 31;
-    pub const EMERGAMPS: usize = 32;
-    pub const FAULTRATE: usize = 33;
-    pub const PCTPERM: usize = 34;
-    pub const REPAIR: usize = 35;
+    pub const NORMAMPS: usize = 34;
+    pub const EMERGAMPS: usize = 35;
+    pub const FAULTRATE: usize = 36;
+    pub const PCTPERM: usize = 37;
+    pub const REPAIR: usize = 38;
     // TCktElementClass tail:
-    pub const BASE_FREQ: usize = 36;
-    pub const ENABLED: usize = 37;
-    pub const NUM_PROPS: usize = 38; // incl. Like
+    pub const BASE_FREQ: usize = 39;
+    pub const ENABLED: usize = 40;
+    pub const NUM_PROPS: usize = 41; // incl. Like
 }
 
 /// `TLine.DefineProperties`.
@@ -153,6 +162,21 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double_array("Ratings", SEASONS),
         PropDef::mapped_string_enum("LineType", enums.line_type),
+        // dss_capi 0.15.x (Line.pas:375-431): plain-double EpsRMedium/HeightOffset
+        // + a MappedStringEnum HeightUnit (the same `UnitsEnum` as `Units`). They
+        // feed `LineConstants.SetEpsRMedium/SetHeightOffset/SetUserHeightUnit` at
+        // the geometry/spacing Z build (see `line/solve.rs`).
+        //
+        // HIDE_015X defers these from the *full-enumeration* 0.14.5-gated surfaces
+        // — the `Dump` text report and the AltDSS JSON export — whose byte-exact
+        // goldens are pinned to 0.14.5. capi015 FULL DOES emit all three (probed
+        // 2026-07-16), but the Line Dump/JSON surface cannot flip to capi015 until
+        // the sibling wt-u14cnts lands `Conductors` (index 34, emitted between
+        // HeightUnit and NormAmps). The `?` named-query + props-table (PROPS_015X)
+        // surfaces still expose them (`linemedium.json` golden pins the rendering).
+        PropDef::double("EpsRMedium").flags(PropFlags::HIDE_015X),
+        PropDef::double("HeightOffset").flags(PropFlags::HIDE_015X),
+        PropDef::mapped_string_enum("HeightUnit", enums.units).flags(PropFlags::HIDE_015X),
         // TPDClass tail:
         PropDef::double("NormAmps"),
         PropDef::double("EmergAmps"),
@@ -222,6 +246,19 @@ pub struct Line {
     pub rho: f64,
     pub earth_model: i32,
     pub line_type: i32,
+    /// dss_capi 0.15.x `epsRMedium`: relative permittivity of the surrounding
+    /// medium, pushed into the geometry/spacing `LineConstants` at the Z build
+    /// (`SetEpsRMedium`). Raw stored value (the getter reads it directly); default
+    /// `1.0` preserves 0.14.5 numerics (`E0 * 1.0 == E0`).
+    pub eps_r_medium: f64,
+    /// dss_capi 0.15.x `heightOffset`: conductor height offset in `height_units`,
+    /// pushed into the `LineConstants` at the Z build (`SetHeightOffset`). Raw
+    /// stored value; default `0.0`. Only observable on the equivalent-spacing path
+    /// (the detailed-coordinate path re-sets `FY` from the raw coordinates).
+    pub height_offset: f64,
+    /// dss_capi 0.15.x `heightUnits`: the `LineUnits` code `height_offset` is
+    /// expressed in (`SetUserHeightUnit`). Default `UNITS_M` (Meters).
+    pub height_units: i32,
     /// Pascal `LineGeometryObj` — the snapshot-cloned geometry a `geometry=`
     /// reference attaches (the WP4.2 `FetchLineCode` pattern). `Some` activates
     /// the Carson matrix path in [`Line::calc_yprim`], driving `Z`/`Yc` from the
@@ -293,6 +330,9 @@ impl Clone for Line {
             rho: self.rho,
             earth_model: self.earth_model,
             line_type: self.line_type,
+            eps_r_medium: self.eps_r_medium,
+            height_offset: self.height_offset,
+            height_units: self.height_units,
             geometry_obj: self.geometry_obj.clone(),
             geometry_name: self.geometry_name.clone(),
             fz_frequency: self.fz_frequency,
@@ -373,6 +413,9 @@ impl Line {
             rho,
             earth_model: 3, // DSS.DefaultEarthModel = DERI
             line_type: 1,   // OH line
+            eps_r_medium: 1.0,
+            height_offset: 0.0,
+            height_units: LineUnits::Meter.code(), // UNITS_M
             geometry_obj: None,
             geometry_name: String::new(),
             fz_frequency: -1.0,

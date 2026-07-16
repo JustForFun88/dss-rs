@@ -1,0 +1,15 @@
+! WP-U1.4 (UPGRADE_PLAN §WP-U1.4, DSSClass.pas:1071) — LineType enum-width fix.
+! dss_capi 0.15.x widens the LineType enum match length 4 -> 5: the eight swt_*
+! names share the 4-char prefix `swt_`, so a 5-char abbreviation like `swt_l`
+! matched nothing and fell back to the default `oh` under the old width. With
+! width 5, `swt_l` -> swt_ldbrk, `swt_r` -> swt_rec, etc. oracle capi015 (the
+! 0.14.5 default oracle renders these abbreviations as `oh`). Probe the LineType
+! property per line.
+Clear
+New Circuit.linetype_w basekv=12.47 phases=1 bus1=sourcebus
+New Line.lldbrk bus1=sourcebus bus2=b1 phases=1 r1=1 x1=1 c1=0 linetype=swt_l
+New Line.lrec   bus1=sourcebus bus2=b2 phases=1 r1=1 x1=1 c1=0 linetype=swt_r
+New Line.lelbow bus1=sourcebus bus2=b3 phases=1 r1=1 x1=1 c1=0 linetype=swt_e
+New Load.ld bus1=b1 phases=1 kv=12.47 kw=100 pf=1
+Set voltagebases=[12.47]
+Calcvoltagebases

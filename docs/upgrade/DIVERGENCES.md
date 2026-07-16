@@ -1092,14 +1092,20 @@ equivalent-spacing spacing, DERI, reduce=y, ohms/mi (probe 2026-07-16): reduced
 - `known_diffs`: no Rust↔EPRI entry existed (0.14.5 had no equivalent-spacing
   path); adopting it makes Rust match r4133 for the new surface — nothing to retire.
 
-**Remaining WP-U1.4 rows (not in this slice).** `Line.EpsRMedium`/`HeightOffset`/
-`HeightUnit`/`Conductors` (Line-level props — blocked on the `compare_all_properties`
-count-equality harness: adding a property to the circuit-element class `Line`
-breaks every default-oracle feeder's property-table-shape check; the engine
-numerics for EpsRMedium/HeightOffset are already ported default-off), the merged
-`CNTSLineConstants` mixed-conductor class + `CNData.SemiconLayer` capacitance,
-`LineCode` FaultRate/PctPerm/Repair deprecation, LineType enum width. D3 spacing
-ratings + overload deck (folded from WP-U1.2). See STATUS §WP-U1.4.
+**WP-U1.4 property tail — LANDED (wt-u14props, adopt capi015).** `Line.EpsRMedium`/
+`HeightOffset`/`HeightUnit` Line-level props wired to the engine fields (the
+`compare_all_properties` block is now resolved by the `PROPS_015X` allowlist landed
+on wt-h015 — 0.15.x-only trailing props are excluded from the 0.14.5 shape check);
+`LineCode` FaultRate/PctPerm/Repair deprecation (schema-metadata Deprecated/Unused
+flags, no runtime observable); **LineType enum width 4->5** (5-char `swt_*`
+abbreviations now disambiguate instead of falling back to `oh`; capi015 deck +
+unit test, the 0.14.5 oracle renders them `oh`); **WP-U1.2 D3 spacing ratings**
+(min over phase conductors, not conductor 1 — `line_spacing_asym` flipped to
+capi015, YPrim bit-identical). See STATUS §WP-U1.4 property tail.
+
+**Remaining WP-U1.4 rows (sibling wt-u14cnts).** `Line.Conductors` mixed
+wire/CN/TS list, the merged `CNTSLineConstants` mixed-conductor class +
+`CNData.SemiconLayer` capacitance.
 
 ## WP-U1.6 partial — B3-r3723 / D10 / D12 / D15 / A7-r3723 — SETTLED (plain adoptions)
 
