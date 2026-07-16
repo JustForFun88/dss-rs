@@ -1,9 +1,8 @@
 {
  "schema": 1,
  "oracle": {
-  "engine_spec": "capi015",
-  "dss_python": "0.16.0b2",
-  "engine": "dss_capi 0.15.0b4 (OpenDSS SVN r4103); regenerated for WP-U1.6 D12 (SwtControl Normal/State field mapping). The `swtcontrol_locked_then_action` scenario was dropped: capi015 raises the strict PermissiveProperties read-only error (#2024106) on a locked `Action=` write, which the port deliberately does NOT adopt (ledger L2 / C2 dss-ext-only surface) — it silently ignores, unit-pinned by `locked_ignores_action_write` / `locked_ignores_normal_and_state_writes`."
+  "dss_python": "0.15.7",
+  "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
  },
  "class": "swtcontrol",
  "scenarios": [
@@ -20,7 +19,7 @@
     "Action": "close",
     "Lock": "No",
     "Delay": "120",
-    "Normal": "",
+    "Normal": "closed",
     "State": "closed",
     "Reset": "No",
     "BaseFreq": "60",
@@ -42,7 +41,7 @@
     "Lock": "No",
     "Delay": "120",
     "Normal": "open",
-    "State": "closed",
+    "State": "open",
     "Reset": "No",
     "BaseFreq": "60",
     "Enabled": "Yes",
@@ -63,7 +62,7 @@
     "Lock": "No",
     "Delay": "120",
     "Normal": "open",
-    "State": "closed",
+    "State": "open",
     "Reset": "No",
     "BaseFreq": "60",
     "Enabled": "Yes",
@@ -104,7 +103,28 @@
     "Action": "close",
     "Lock": "Yes",
     "Delay": "30",
-    "Normal": "",
+    "Normal": "closed",
+    "State": "closed",
+    "Reset": "No",
+    "BaseFreq": "60",
+    "Enabled": "Yes",
+    "Like": ""
+   }
+  },
+  {
+   "name": "swtcontrol_locked_then_action",
+   "commands": [
+    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
+    "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 lock=yes action=open"
+   ],
+   "target": "SwtControl.sw1",
+   "properties": {
+    "SwitchedObj": "Line.l1",
+    "SwitchedTerm": "1",
+    "Action": "close",
+    "Lock": "Yes",
+    "Delay": "120",
+    "Normal": "closed",
     "State": "closed",
     "Reset": "No",
     "BaseFreq": "60",
@@ -127,7 +147,7 @@
     "Lock": "Yes",
     "Delay": "45",
     "Normal": "open",
-    "State": "closed",
+    "State": "open",
     "Reset": "No",
     "BaseFreq": "60",
     "Enabled": "Yes",

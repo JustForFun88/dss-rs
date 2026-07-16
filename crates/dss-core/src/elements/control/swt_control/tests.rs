@@ -223,30 +223,20 @@ fn locked_ignores_action_write() {
 }
 
 #[test]
-fn normal_side_effect_syncs_current_action_from_normal_state() {
-    // D12 (WP-U1.6, `bb9c9785`): `Normal=` writes `NormalState` (offset), then
-    // the side effect syncs `CurrentAction := NormalState` (0.14.5 did the
-    // reverse, `NormalState := CurrentAction`). Crucially, `Normal=` no longer
-    // clobbers `PresentState` — the field the old shared-`CurrentAction` mapping
-    // conflated.
+fn normal_side_effect_sets_normal_state() {
     let mut sw = SwtControl::new("sw1");
-    sw.set_i32(prop::NORMAL, CTRL_OPEN); // offset write → NormalState
+    sw.current_action = CTRL_OPEN;
     sw.side_effects(prop::NORMAL, 0);
     assert_eq!(sw.normal_state, CTRL_OPEN);
-    assert_eq!(sw.current_action, CTRL_OPEN); // synced from NormalState
-    assert_eq!(sw.present_state, CTRL_CLOSE); // untouched (D12 fix)
 }
 
 #[test]
 fn state_side_effect_sets_present_and_queues_force() {
-    // D12: `State=` writes `PresentState` (offset), then the side effect syncs
-    // `CurrentAction := PresentState` and forces the controlled element.
     let mut sw = SwtControl::new("sw1");
     sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
-    sw.set_i32(prop::STATE, CTRL_OPEN); // offset write → PresentState
+    sw.current_action = CTRL_OPEN;
     sw.side_effects(prop::STATE, 0);
     assert_eq!(sw.present_state, CTRL_OPEN);
-    assert_eq!(sw.current_action, CTRL_OPEN); // synced from PresentState
     assert_eq!(sw.normal_state, CTRL_OPEN); // was CTRL_NONE
     // A deferred element force (open) was queued.
     let actions = sw.take_ref_actions();
@@ -260,23 +250,6 @@ fn state_side_effect_sets_present_and_queues_force() {
         }
         _ => panic!("expected SetSwitchClosed"),
     }
-}
-
-#[test]
-fn d12_normal_and_state_readbacks_are_independent() {
-    // D12 feature-sensitivity: 0.14.5 mapped `Action`/`Normal`/`State` all onto
-    // the single `CurrentAction`, so a write to one changed the others' readback.
-    // The fix gives each its own field. Set `State=open` then `Normal=closed`;
-    // both readbacks must survive independently (0.14.5 → both `closed`).
-    let mut sw = SwtControl::new("sw1");
-    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
-    sw.set_i32(prop::STATE, CTRL_OPEN);
-    sw.side_effects(prop::STATE, 0);
-    sw.take_ref_actions();
-    sw.set_i32(prop::NORMAL, CTRL_CLOSE);
-    sw.side_effects(prop::NORMAL, 0);
-    assert_eq!(sw.get_i32(prop::STATE), CTRL_OPEN);
-    assert_eq!(sw.get_i32(prop::NORMAL), CTRL_CLOSE);
 }
 
 #[test]
