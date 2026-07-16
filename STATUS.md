@@ -244,6 +244,23 @@ across two capi015 processes; `Set InjCurrent=[80 0 80 0 80 0]` moves b2 Vmag
 (forced Vmag 7224.143523 @1e-6, frozen `Get InjCurrent`/`ITerminal`, read-only
 sets, `Set YPrim` survives a rebuild, `Set/Get StateVar`, and **`Clear` resets
 the force flags**). Ledger: `docs/upgrade/DIVERGENCES.md §A3/A5`.
+
+**WP-U1.9 audit follow-up — LANDED (branch `wt-u19`).** Addressed 7 audit
+findings against the capi015 oracle. Fixed: `Set/Get AllowForms`/
+`AllowProgressBar` now accepted headless no-ops (round-trip, default `No`) —
+were erroring "not ported"; `Set/Get StateVar` non-PCE now gives the Pascal 7103
+"is not a valid PC element" (guard runs before the 7101 NumVariables check); the
+force-hook error arms now `Exit` (break) the option loop like Pascal. Corrected
+the false "Set/Get StateVar covered" claim: `Set StateVar` via text is
+**upstream-broken** (positional `DoSetCmd` parse never reaches the arm →
+capi015 `#303`, reproduced as error + no write); `Get StateVar` is the
+functional read path. Grew the unit suite to 12 tests (added: `Set ITerminal`
+freeze, Generator 2nd-PCE force-skip, oversize-row `#3004`, natural-syntax `Set
+StateVar` error, both 7103 guards, AllowForms round-trip). The `#3004` YPrim
+error zeroes capi015's live matrix (its own known error-state imperfection) —
+**not reproduced** (scratch-buffer parse leaves the real YPrim intact; transient,
+next `ReCalcAllYPrims` recomputes). Ledger updated in DIVERGENCES §A3/A5.
+
 **WP-U1.8 (WindGen + WTG3 dynamics) — LANDED (branch `wp-u18`).** New PC element
 `elements/pc/windgen/` (Generator-shaped negative load): aerodynamic power-flow
 (`Pm=0.5·ρ·π·Rad²·v³·Cp`, the load shape supplies WIND SPEED not a pu multiplier;
