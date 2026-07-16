@@ -771,27 +771,26 @@ pub(super) fn sample_all_di_tail(ckt: &mut Circuit, store: &mut dyn ElemStore, s
 }
 
 /// Pascal `TEnergyMeter.WriteOverloadReport` (l.3171): one `DI_Overloads` row
-/// per overloaded, non-shunt, enabled PD element. `DSS.SeasonalRating`/
-/// `DSS.SeasonSignal` are now real engine globals (`Set SeasonRating=`/
-/// `Set SeasonSignal=`, GAPS_PLAN WPG.11), but this function's seasonal
-/// amp-rating override (restricted here to `ClassName = 'line'`, unlike
-/// `export_capacity`'s unrestricted one) is still NOT_PORTED — same
-/// reasoning as `export_capacity` documents (unverified by any corpus case;
-/// the state-mutating `DSS.SeasonalRating := FALSE`-on-miss read is not
-/// reproduced per CLAUDE.md's known-bug policy). The element's own
-/// `NormAmps`/`EmergAmps` always apply, exactly as upstream with the flag
-/// off.
+/// per overloaded, non-shunt, enabled PD element. Seasonal ratings (dss_capi
+/// 0.15.x `55400a29`, WP-U1.5 E2): the entry gate uses the element's BASE
+/// `NormAmps`/`EmergAmps`, then the overload test + reported ratings use the
+/// globally-synced season index (`Circuit::seasonal_rating_idx`) applied to ANY
+/// PDElement with `NumAmpRatings > 1` — the 0.14.5 baseline restricted this
+/// override to `ClassName = 'line'` and re-read the XYCurve per element with a
+/// state-mutating `DSS.SeasonalRating := FALSE`-on-miss (not reproduced; the
+/// index is precomputed at solve time by `sync_seasonal_rating_idx`).
 fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let node_v = ckt.solution.node_v.clone();
     let dbl_hour = ckt.solution.dbl_hour;
+    let seasonal_idx = ckt.seasonal_rating_idx;
     for &r in &ckt.pd_elements {
         let elem = store.ckt_elem_mut(r);
         if !elem.cd().enabled || elem.is_shunt() {
             continue;
         }
-        let norm_amps = elem.norm_amps();
-        let emerg_amps = elem.emerg_amps();
-        if !(norm_amps > 0.0 || emerg_amps > 0.0) {
+        // Entry gate: BASE ratings (Pascal `(PdElem.Normamps > 0.0) or
+        // (PdElem.Emergamps > 0.0)`).
+        if !(elem.norm_amps() > 0.0 || elem.emerg_amps() > 0.0) {
             continue;
         }
         elem.compute_iterminal(sys, &node_v);
@@ -801,6 +800,8 @@ fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &Sys
         for i in 0..nphases {
             cmax = cmax.max(elem.cd().iterminal[i].norm());
         }
+        // Overload test + reported ratings: SEASONAL (Pascal `GetRatings`-equivalent).
+        let (norm_amps, emerg_amps) = elem.get_ratings(seasonal_idx);
         if !(cmax > norm_amps || cmax > emerg_amps) {
             continue;
         }

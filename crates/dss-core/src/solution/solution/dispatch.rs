@@ -33,6 +33,11 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         return Ok(());
     }
 
+    // dss_capi 0.15.x `55400a29`: sync the global season index at the solved
+    // hour so the seasonal report paths read it without re-evaluating the
+    // XYCurve per element (Pascal `TSolutionObj.Solve`/`SolveSnap` etc.).
+    crate::solution::meters::sync_seasonal_rating_idx(ckt, env.store);
+
     // Grid-forming inverter mode is fully ported: power-flow / time-series /
     // direct / harmonic (WPG.13) plus the dynamic-model GFM branch
     // (`DoDynamicMode`/`IntegrateStates` GFM, WPG.17). `is_dynamic_model` is TRUE

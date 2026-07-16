@@ -16,23 +16,15 @@ use crate::report::format;
 /// PDElements calling the mutating `GetCurrents`/`Power` getters (PHASE8_PLAN
 /// §2.1).
 ///
-/// NOT_PORTED (seasonal-rating): `DSS.SeasonalRating`/`DSS.SeasonSignal` are now
-/// real engine globals (`Set SeasonRating=`/`Set SeasonSignal=`, GAPS_PLAN
-/// WPG.11 — see `Circuit::season_rating`/`season_signal`), but
-/// `CalcAndWriteMaxCurrents`'s (`ExportResults.pas:567`) seasonal-amp-rating
-/// override still isn't modeled here, for two independent reasons: (1) the
-/// override branch it guards (`PElem.NumAmpRatings > 1`) is reachable in the
-/// port — `Ratings=` (`PDElement.pas` `AmpRatings`) is ported per-element on
-/// Line/Transformer — but wiring it through this generic per-element walk is
-/// unverified by any corpus case (no live-oracle deck exercises `Export
-/// Capacity` with `SeasonalRating=yes`); (2) the Pascal code itself
-/// **mutates** `DSS.SeasonalRating := FALSE` on a miss (empty `SeasonSignal`/
-/// unregistered curve) — a state-mutating *read* from a report export, the
-/// same category CLAUDE.md's known-bug policy says not to reproduce (cf. the
-/// VSConverter `GetCurrents` precedent). `SeasonalRating` is false-by-default,
-/// and when false Pascal takes the element's own `NormAmps`/`EmergAmps` —
-/// exactly what this always does — so every non-seasonal deck matches the
-/// oracle bit-for-bit.
+/// Seasonal ratings (dss_capi 0.15.x `55400a29`, WP-U1.5 E2): the norm/emerg
+/// ratings come from `TPDElement.GetRatings`, which applies the globally-synced
+/// `DSS.SeasonalRatingIdx` (`Circuit::seasonal_rating_idx`) to ANY PDElement with
+/// `NumAmpRatings > 1`. The 0.14.5 baseline re-read the XYCurve per element AND
+/// state-mutated `DSS.SeasonalRating := FALSE` on a miss (a state-mutating read
+/// from a report export — not reproduced, per CLAUDE.md's known-bug policy); the
+/// 0.15.x form drops that mutation by precomputing the index at solve time
+/// (`sync_seasonal_rating_idx`). `seasonal_rating_idx == -1` (feature off) → the
+/// element's own `NormAmps`/`EmergAmps`.
 pub(crate) fn export_capacity(
     classes: &mut [DssClass],
     ckt: &Circuit,
@@ -42,10 +34,10 @@ pub(crate) fn export_capacity(
     let mut s = String::from(
         "Name, Imax, %normal, %emergency, kW, kvar, NumCustomers, TotalCustomers, NumPhases, kVBase\n",
     );
+    let seasonal_idx = ckt.seasonal_rating_idx;
     for_each_enabled_elem(classes, &ckt.pd_elements, |name, elem| {
         elem.compute_iterminal(sys, node_v);
-        let norm_amps = elem.norm_amps();
-        let emerg_amps = elem.emerg_amps();
+        let (norm_amps, emerg_amps) = elem.get_ratings(seasonal_idx);
 
         // Max |I| over the terminal-1 phase conductors (Pascal `for i := 1 to
         // Nphases: Cabs(Cbuffer^[i])`, `Cbuffer` = the full Iterminal buffer).
