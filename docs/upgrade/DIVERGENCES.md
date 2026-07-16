@@ -1159,6 +1159,29 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   port's only equivalent (relay) already matches the fixed side.
 - **A7-r3723** GenController deregistration — not-a-delta: never registered in the
   r3723 port; `New GenController` already errors "not found".
+- **D11 (part 2)** CapControl TIMECONTROL monitored-element requirement
+  (`b9bc87b8`) — adopt. **0.14.5:** TIMECONTROL (like FOLLOWCONTROL) used the
+  *controlled* capacitor as `effElement` and forced `ElementTerminal := 1`.
+  **0.15.x (capi015 0.15.0b4):** the `<> TIMECONTROL` guard was dropped, so only
+  FOLLOWCONTROL falls back to the capacitor; TIME now **requires** a monitored
+  element and uses it as `effElement` with the specified terminal
+  (`CapControl.pas:581`). **capi015 probe** (0.15.0b4): `type=time` with no
+  `element=` errors `CapControl.cc1: "Element" is not set, aborting.`;
+  `type=time element=line.l1 terminal=2` keeps `Terminal=2` (0.14.5 forces →1)
+  and binds to the monitored element. Part 1 (PT/CTPhase validation scope) was
+  already aligned. **Unit-pinned** (`time_control_requires_monitored_element` +
+  `time_control_uses_monitored_element_terminal`, both citing the capi015 probe).
+  The existing multi-step `controls/capcontrol/capcontrol_time.dss` schedule deck
+  cannot flip to capi015 (it has a `daily=` load → multi-step re-nominalization,
+  L1) and its only moved observable is the static `Terminal` readback; reworked to
+  `terminal=1` so the readback is engine-agnostic (0.14.5 forces→1, port keeps 1)
+  while the clock-based switching feature is unchanged.
+- **C4** `SolveAll` command (ordinal 123, a `DSS_CAPI_PM`-only command word) —
+  now dispatched. Single-actor semantics = plain `Solve` (`ExecCommands.pas:346`
+  iterates `DoSetCmd(child,1)` over the one actor; `IsSolveAll` only steers the
+  parallel/A-Diakoptics path we do not have). Oracle-confirmed (dss-python
+  0.15.7): `SolveAll` solves like `Solve`; the spaced `Solve all` errors
+  `Object Class "all" not found`. Unit-pinned (`solve_all_alias_matches_plain_solve`).
 
 `known_diffs.json`: none of these had a prior Rust↔EPRI entry — nothing to retire.
 

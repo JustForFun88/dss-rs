@@ -19,10 +19,16 @@ New capacitor.cday phases=3 bus1=b conn=wye kvar=900 kv=12.47 numsteps=1
 New capacitor.cnight phases=3 bus1=b conn=wye kvar=600 kv=12.47 numsteps=1
 
 // Daytime schedule: ON at 08:00, OFF at 20:00 (ON < OFF).
-New capcontrol.cc1 element=line.lf terminal=2 capacitor=cday type=time
+// terminal=1: TIMECONTROL's effElement/Terminal readback moved in dss_capi
+// 0.15.x (b9bc87b8, effElement=MonitoredElement, terminal kept as-specified);
+// 0.14.5 forces terminal→1. Using terminal=1 keeps this schedule deck's
+// Terminal readback engine-agnostic (1 on both) while the switching feature
+// (clock-based, terminal-independent) is unchanged. The moved behavior is
+// pinned feature-sensitively by the cap_control TIMECONTROL unit tests.
+New capcontrol.cc1 element=line.lf terminal=1 capacitor=cday type=time
 ~ onsetting=8 offsetting=20 eventlog=yes
 // Overnight schedule: ON at 21:00, OFF at 06:00 next day (OFF < ON = wrap).
-New capcontrol.cc2 element=line.lf terminal=2 capacitor=cnight type=time
+New capcontrol.cc2 element=line.lf terminal=1 capacitor=cnight type=time
 ~ onsetting=21 offsetting=6 eventlog=yes
 
 New loadshape.day npts=24 interval=1

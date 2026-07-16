@@ -346,8 +346,11 @@ impl CapControl {
         // derives PresentState/InitialState here — control actions are Phase 5
         // and capacitor terminals start (and stay) closed during parse.
 
-        let eff = if self.control_type != ctrl_type::TIME && self.control_type != ctrl_type::FOLLOW
-        {
+        // Every control type except FOLLOWCONTROL requires a monitored element
+        // and uses it as `effElement` (dss_capi `b9bc87b8`: TIMECONTROL now
+        // requires + uses the monitored element too — the `<> TIMECONTROL`
+        // guard was dropped, `CapControl.pas:581`).
+        let eff = if self.control_type != ctrl_type::FOLLOW {
             if self.mon_snap.is_none() {
                 self.ccd.cd.obj.push_error(format!(
                     "CapControl.{}: Element is not set, aborting.",
