@@ -129,6 +129,8 @@ impl Dss {
                 default_earth_model,
                 max_allocation_iterations,
                 auto_show_export,
+                no_forms_allowed,
+                no_progress_bar_form_allowed,
                 current_dir,
                 output_directory,
                 daisy_size,
@@ -151,6 +153,10 @@ impl Dss {
                         .unwrap_or(0);
                 }
 
+                // Pascal `Exit` semantics: the force-hook error arms abort the
+                // whole `Set` command (they `DoSimpleMsg(...); Exit`), unlike a
+                // normal option that logs and continues. Set by those arms.
+                let mut abort = false;
                 match pointer {
                     0 => {
                         // A-Diakoptics options (`Num_SubCircuits`, `Coverage`,
@@ -723,13 +729,22 @@ impl Dss {
                     // per ExecOptions.pas:683-684, `ProcessTime`/`StepTime` Get-only
                     // silent no-ops. The gfm branch's all-no-op arm was dropped at
                     // merge as unreachable and 107-divergent.)
-                    // WP-U1.9 PCE force hooks (ExecOptions.pas @ 0.15.0b4).
+                    // `Set AllowForms`/`AllowProgressBar` (ExecOptions.pas:777-780):
+                    // console-form gates, inert headless — stored so the value
+                    // round-trips (capi015 silently accepts; erroring diverges).
+                    opt::ALLOW_FORMS => *no_forms_allowed = !interpret_yes_no(&param),
+                    opt::ALLOW_PROGRESS_BAR => {
+                        *no_progress_bar_form_allowed = !interpret_yes_no(&param)
+                    }
+                    // WP-U1.9 PCE force hooks (ExecOptions.pas @ 0.15.0b4). Their
+                    // error arms `Exit` in Pascal → `abort` breaks the option loop.
                     opt::INJ_CURRENT | opt::ITERMINAL => {
                         let is_terminal = pointer == opt::ITERMINAL;
                         match active_pce(classes, ckt, *active_ckt_element) {
                             Ok(elem) => apply_force_currents(elem, parser, vars, is_terminal),
                             Err(name) => {
-                                errors.push(format!("Active element ({name}) is not a PCElement."))
+                                errors.push(format!("Active element ({name}) is not a PCElement."));
+                                abort = true;
                             }
                         }
                     }
@@ -741,10 +756,12 @@ impl Dss {
                                      number of conductors of the active PCE."
                                         .to_string(),
                                 );
+                                abort = true;
                             }
                         }
                         Err(name) => {
-                            errors.push(format!("Active element ({name}) is not a PCElement."))
+                            errors.push(format!("Active element ({name}) is not a PCElement."));
+                            abort = true;
                         }
                     },
                     opt::STATE_VAR => {
@@ -758,7 +775,20 @@ impl Dss {
                         parser.next_param(vars);
                         let value = parser.make_double(vars).unwrap_or(0.0);
                         match resolved {
-                            None => errors.push(format!("Object \"{elem_name}\" not found")),
+                            None => {
+                                errors.push(format!("Object \"{elem_name}\" not found"));
+                                abort = true;
+                            }
+                            // Pascal checks `is TPCElement` (7103) BEFORE the
+                            // NumVariables check (7101).
+                            Some((ci, oi)) if !is_pce(ckt, ci, oi) => {
+                                errors.push(format!(
+                                    "Object \"{}.{}\" is not a valid PC element.",
+                                    classes[ci].props.class_name(),
+                                    classes[ci].objects[oi].data().name()
+                                ));
+                                abort = true;
+                            }
                             Some((ci, oi)) => {
                                 let elem = classes[ci].objects[oi]
                                     .as_ckt_element_mut()
@@ -769,6 +799,7 @@ impl Dss {
                                          command. Only a selection of PC elements have state \
                                          variables."
                                     ));
+                                    abort = true;
                                 } else if let Some(i) = lookup_variable(elem, &var_name) {
                                     elem.set_variable(i, value);
                                 } else {
@@ -778,13 +809,15 @@ impl Dss {
                                         classes[ci].props.class_name(),
                                         classes[ci].objects[oi].data().name()
                                     ));
+                                    abort = true;
                                 }
                             }
                         }
                     }
                     opt::ITER_NUMBER | opt::CTRL_ITER_NUMBER | opt::INTEGRATION_FLAG => {
-                        // Pascal: these are read-only (error 25040103).
+                        // Pascal: these are read-only (error 25040103) then `Exit`.
                         errors.push("This value is read-only.".to_string());
+                        abort = true;
                     }
                     opt::PY_PATH => {
                         // pyControl co-simulation server — NOT_PORTED (§0). Loud,
@@ -794,6 +827,7 @@ impl Dss {
                              dss-rs engine."
                                 .to_string(),
                         );
+                        abort = true;
                     }
                     opt::TYPE | opt::CLASS => pending_set_active.push((true, param.clone())),
                     opt::ELEMENT | opt::OBJECT => pending_set_active.push((false, param.clone())),
@@ -803,6 +837,9 @@ impl Dss {
                     }
                 }
 
+                if abort {
+                    break;
+                }
                 param_name = parser.next_param(vars);
                 param = parser.make_string(vars);
             }

@@ -370,7 +370,10 @@ pub(crate) const EXEC_OPTIONS: &[&str] = &[
     // (WP-U1.7); `PyPath` is NOT_PORTED (loud, §0); `AllowForms`/
     // `AllowProgressBar` are GUI no-ops. `StateVar`/`IterNumber`/
     // `CtrlIterNumber`/`InjCurrent`/`ITerminal`/`YPrim`/`IntegrationFlag` are
-    // the WP-U1.9 PCE force hooks. Names must equal FPC `GetEnumName`.
+    // the WP-U1.9 PCE force hooks. `AllowForms`/`AllowProgressBar` are accepted
+    // headless no-ops (`Set` stores the flag, `Get` reads it back — capi015
+    // silently accepts them; erroring would diverge). Names must equal FPC
+    // `GetEnumName`.
     "IgnoreGenQLimits",
     "NCIMQGain",
     "StateVar",
@@ -560,4 +563,11 @@ pub(crate) mod opt {
     pub const YPRIM: usize = 137;
     /// `Get IntegrationFlag` (read-only): `Solution.DynaVars.IterationFlag`.
     pub const INTEGRATION_FLAG: usize = 138;
+    /// `Set/Get AllowForms` (`ExecOptions.pas:777`, `NoFormsAllowed`): a
+    /// console-form gate with no meaning in a headless engine — stored for
+    /// `Set`/`Get` round-trip parity, nothing reads it (cf. `SHOW_EXPORT`).
+    pub const ALLOW_FORMS: usize = 139;
+    /// `Set/Get AllowProgressBar` (`ExecOptions.pas:779`,
+    /// `NoProgressBarFormAllowed`): headless no-op, stored for parity.
+    pub const ALLOW_PROGRESS_BAR: usize = 140;
 }

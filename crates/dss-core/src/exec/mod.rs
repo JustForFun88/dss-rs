@@ -130,6 +130,15 @@ pub struct Dss {
     /// a GUI no-op headless, so the flag is stored for `Set`/`Get` parity and
     /// nothing reads it.
     auto_show_export: bool,
+    /// `NoFormsAllowed` (`ExecOptions.pas:778`, `Set/Get AllowForms`); default
+    /// TRUE (headless = no console forms). A GUI gate with no headless effect —
+    /// stored so `Set AllowForms=` / `Get AllowForms` round-trip like capi015,
+    /// nothing reads it (mirrors `auto_show_export`).
+    no_forms_allowed: bool,
+    /// `NoProgressBarFormAllowed` (`ExecOptions.pas:780`, `Set/Get
+    /// AllowProgressBar`); default TRUE (headless). Stored for `Set`/`Get`
+    /// parity, unread.
+    no_progress_bar_form_allowed: bool,
     /// `DSS.CurrentDSSDir`: base for resolving relative script paths.
     current_dir: PathBuf,
     /// `DSS.OutputDirectory`: where reports are written (Pascal
