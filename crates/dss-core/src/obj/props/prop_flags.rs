@@ -138,6 +138,17 @@ impl PropFlags {
     /// whose JSON uses `FullName` regardless of `FullNames`
     /// (`DSSObjectHelper.pas:1175`).
     pub const FULL_NAME_AS_ARRAY: Self = Self(1 << 45);
+    /// Pascal `Deprecated`: the property still parses/stores normally but is
+    /// flagged deprecated in the JSON schema (`CAPI_Schema.pas:79/1277`,
+    /// `deprecationMessage`). Unlike `DeprecatedAndRemoved` (a *ptype* that rejects
+    /// the write with a message) it emits **no** runtime warning — probe-confirmed
+    /// on capi015 that `New LineCode.x faultrate=…` still stores the value
+    /// silently. Inert for the text dump/setters; kept for fidelity. Carried by
+    /// LineCode `FaultRate`/`PctPerm`/`Repair` (WP-U1.4).
+    pub const DEPRECATED: Self = Self(1 << 46);
+    /// Pascal `Unused`: the property is accepted for backward compatibility but is
+    /// not consumed by the engine (`CAPI_Schema.pas:74`). Schema-only, inert here.
+    pub const UNUSED: Self = Self(1 << 47);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
