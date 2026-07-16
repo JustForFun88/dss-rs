@@ -965,6 +965,51 @@ inner loop bound shortened, form-only). Cited to the 0.15.x Pascal + commit
   no-op witness.
 - `known_diffs`: none matched — nothing to retire.
 
+## A3/A5 — PCE force hooks (`Set`/`Get` InjCurrent/ITerminal/YPrim/StateVar/…) — SETTLED (WP-U1.9, adopt capi015)
+
+**Observable.** The `Set`/`Get` options `InjCurrent`/`ITerminal`/`YPrim`/
+`StateVar`/`IterNumber`/`CtrlIterNumber`/`IntegrationFlag` and the element flags
+`Flg.ForceInjCurrents`/`Flg.ForceYPrim` — the pyControl co-simulation engine
+hooks (the `pyControl` component + `Set PyPath=` stay `NOT_PORTED`, §0).
+
+**Source-tree note (important for future WPs).** These options do **not** exist
+in the vendored working tree `.inputs/dss_capi_with_git` — it is checked out at
+`master` (`f5728aec`), a commit *after* `0.15.0b4` where the pyControl hooks were
+**removed** upstream. But the **capi015 oracle** the plan pins to is
+`0.15.0b4` (tag `e936d210`), which **does** carry them (`get InjCurrent` returns
+a value; `git show 0.15.0b4:src/Executive/ExecOptions.pas` shows the enum tail
+`…StateVar, PyPath, IterNumber, CtrlIterNumber, InjCurrent, ITerminal, YPrim,
+IntegrationFlag, …`). The spec for this WP was therefore read via
+`git show 0.15.0b4:`, not the working tree. `delta_capi_0145_015x.md` A3 also
+wrongly listed `SampleControlDevices` as a new hook — it is present already in
+`0.14.5` (`Solution.pas:1974`) and was ported long ago
+(`solution/controls/sampling.rs`); not a delta.
+
+**Decision — adopt the capi015 (=0.15.0b4) behavior.** `ElemFlags::FORCE_YPRIM`/
+`FORCE_INJ_CURRENTS`, honored in the injection loop
+(`solution/solution/power_flow.rs::get_pc_inj_curr_filtered` injects the stored
+`InjCurrent` directly, per `TPCElement.InjCurrents`) and in `ReCalcAllYPrims`
+(`solution/ymatrix.rs` skips `CalcYPrim` for a `ForceYPrim` element); the five
+PCE `GetTerminalCurrents` skip the model recompute when forced (Load/Generator/
+PVsystem/Storage/IndMach012). The option set/get is in `exec/set_cmd.rs`/
+`exec/get_cmd.rs`; the parser gained `make_complex`/`parse_as_complex_vector`/
+`parse_as_complex_matrix` (`ParserDel.pas`). `Set IterNumber`/`CtrlIterNumber`/
+`IntegrationFlag` are read-only (error 25040103); `Set PyPath=` is a loud
+NOT_PORTED.
+
+**Gate consequence.**
+- **Live capi015 deck** `modes/upgrade_forcehooks.dss` (`oracle: "capi015"`,
+  validated bit-identical across two capi015 processes): `Set InjCurrent=[80 0
+  80 0 80 0]` on the b2 load shifts b2 Vmag 7187.45 → 7224.14 V; whole-model
+  live compare green. Feature-sensitive (a broken injection-loop honor → 7187 vs
+  capi015 7224, ≫ floor).
+- **capi015-pinned Rust unit suite** `exec/tests/force_hooks.rs`: forced Vmag
+  7224.143523 (1e-6), frozen `Get InjCurrent`/`ITerminal`, `Get IterNumber`/
+  `IntegrationFlag`, read-only `Set`, `Set PyPath` NOT_PORTED, `Set YPrim`
+  survives a rebuild, `Set/Get StateVar`, and `Clear` resets the force flags.
+- `known_diffs.json`: no Rust↔EPRI entry existed for the force hooks at r3723
+  (the options did not exist) — nothing to retire.
+
 ## L3, L4 — pending later WPs
 
 - **L3** Monitor CSV header — WP-U1.5 (report-format, numeric-token gated).
