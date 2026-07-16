@@ -6,7 +6,7 @@
 use num_complex::Complex64;
 
 use dss_parser::{Parser, ParserVars};
-use dss_sparse::SparseSet;
+use dss_sparse::{RealSparseSet, SparseSet};
 
 use crate::circuit::Circuit;
 use crate::elements::traits::{ElemStore, SysCtx};
@@ -89,9 +89,14 @@ pub const USEYEARLY: i32 = 1;
 pub const USEDUTY: i32 = 2;
 pub const USENONE: i32 = -1;
 
-/// Algorithm codes.
+/// Algorithm codes (`Solution.pas` l.39-41).
 pub const NORMALSOLVE: i32 = 0;
 pub const NEWTONSOLVE: i32 = 1;
+pub const NCIMSOLVE: i32 = 2;
+
+/// NCIM node-type codes (`Solution.pas` l.44-45).
+pub const NCIM_PQ_NODE: i32 = 0;
+pub const NCIM_PV_NODE: i32 = 1;
 
 /// Control modes (DSSGlobals.pas).
 pub const CONTROLSOFF: i32 = -1;
@@ -241,6 +246,49 @@ pub struct Solution {
     /// `AD_ISrcIdx` (child): the coordinator `Contours` row each `AD_IBus` entry
     /// maps to (the `Ic` row read in `UpdateISrc`).
     pub ad_isrc_idx: Vec<i32>,
+
+    // --- NCIM solver state (`Solution.pas` l.243-271). All empty/false until
+    // `Set Algorithm=NCIM` runs `DoNCIMSolution`. The 1-based-with-dummy-slot-0
+    // vectors mirror the Pascal `array of` layout (index 0 is the ground
+    // placeholder — `NCIM_NodeType[0] = -1` "ignore"), so a node `i` (1-based,
+    // ground=0) indexes `NCIM_*[i]` directly. The Jacobian uses its own 0-based
+    // layout: node `i` (1-based) → Jacobian rows `2*(i-1)`, `2*(i-1)+1`.
+    /// `NCIM_deltaZ` — voltage-mismatch solution vector (the solve output).
+    pub ncim_delta_z: Vec<f64>,
+    /// `NCIM_deltaF` — injection-current mismatch vector (the solve RHS).
+    pub ncim_delta_f: Vec<f64>,
+    /// `NCIM_NodePower` — total complex power per node.
+    pub ncim_node_power: Vec<Complex64>,
+    /// `NCIM_GenPower` — total generation power per node (per iteration).
+    pub ncim_gen_power: Vec<Complex64>,
+    /// `NCIM_Y` — nonzero values of the PDE-only Y bus (triplet form).
+    pub ncim_y: Vec<Complex64>,
+    /// `NCIM_NodeLimits` — total Q limits per node (re=qMax, im=qMin), for PV buses.
+    pub ncim_node_limits: Vec<Complex64>,
+    /// `NCIM_YRow` — row indices (0-based) of the `NCIM_Y` nonzeros.
+    pub ncim_y_row: Vec<usize>,
+    /// `NCIM_YCol` — col indices (0-based) of the `NCIM_Y` nonzeros.
+    pub ncim_y_col: Vec<usize>,
+    /// `NCIM_NodeType` — per-node PQ (0) / PV (1) classification (slot 0 = -1).
+    pub ncim_node_type: Vec<i32>,
+    /// `NCIM_NodeNumGen` — number of generators per node.
+    pub ncim_node_num_gen: Vec<i32>,
+    /// `NCIM_NodePVTarget` — target (voltage) of the PV buses.
+    pub ncim_node_pv_target: Vec<f64>,
+    /// `NCIM_PVBusIdx` — the PV-bus current index within the Jacobian's gen rows.
+    pub ncim_pv_bus_idx: Vec<i32>,
+    /// `NCIM_Jacobian` — the real-valued sparse Jacobian (rebuilt each iteration).
+    pub ncim_jacobian: Option<RealSparseSet>,
+    /// `NCIM_InitGenQ` — first-run / reinit flag for the generator Q registries.
+    pub ncim_init_gen_q: bool,
+    /// `NCIM_Ready` — whether the NCIM structures are initialized.
+    pub ncim_ready: bool,
+    /// `NCIM_IgnoreQLimit` — `Set IgnoreGenQLimits`.
+    pub ncim_ignore_q_limit: bool,
+    /// `NCIM_GenGain` — `Set NCIMQGain` (global reactive-power injection gain).
+    pub ncim_gen_gain: f64,
+    /// `NCIM_Nodes` — number of nodes in the PDE-only Y bus.
+    pub ncim_nodes: usize,
 }
 
 impl Solution {
@@ -313,6 +361,24 @@ impl Solution {
             local_bus_idx: Vec::new(),
             ad_ibus: Vec::new(),
             ad_isrc_idx: Vec::new(),
+            ncim_delta_z: Vec::new(),
+            ncim_delta_f: Vec::new(),
+            ncim_node_power: Vec::new(),
+            ncim_gen_power: Vec::new(),
+            ncim_y: Vec::new(),
+            ncim_node_limits: Vec::new(),
+            ncim_y_row: Vec::new(),
+            ncim_y_col: Vec::new(),
+            ncim_node_type: Vec::new(),
+            ncim_node_num_gen: Vec::new(),
+            ncim_node_pv_target: Vec::new(),
+            ncim_pv_bus_idx: Vec::new(),
+            ncim_jacobian: None,
+            ncim_init_gen_q: true,
+            ncim_ready: false,
+            ncim_ignore_q_limit: false,
+            ncim_gen_gain: 1.0,
+            ncim_nodes: 0,
         }
     }
 
@@ -432,6 +498,10 @@ impl Solution {
     /// Pascal `Converged`: per-node voltage-magnitude error against
     /// `NodeVbase` (or relative change when no base), exact NaN/Inf checks.
     pub(crate) fn converged(&mut self, num_nodes: usize) -> bool {
+        // Pascal `Converged` (`Solution.pas` l.731-734): NCIM has its own test.
+        if self.algorithm == NCIMSOLVE {
+            return self.ncim_converged();
+        }
         self.max_error = 0.0;
         for i in 1..=num_nodes {
             let vmag = self.node_v[i].norm();
@@ -446,6 +516,22 @@ impl Solution {
         let result = self.max_error <= self.convergence_tolerance
             && !self.max_error.is_nan()
             && !self.max_error.is_infinite();
+        self.converged_flag = result;
+        result
+    }
+
+    /// Pascal `TNCIMSolutionHelper.NCIM_Converged` (`NCIMSolutionHelper.pas`
+    /// l.1034): converged when every injection-current mismatch `|deltaF[i]|` is
+    /// within `ConvergenceTolerance`. The Pascal seeds `Result := false` (so an
+    /// empty `deltaF` reports NOT converged) and breaks on the first miss.
+    fn ncim_converged(&mut self) -> bool {
+        let mut result = false;
+        for &f in &self.ncim_delta_f {
+            result = f.abs() <= self.convergence_tolerance;
+            if !result {
+                break;
+            }
+        }
         self.converged_flag = result;
         result
     }
