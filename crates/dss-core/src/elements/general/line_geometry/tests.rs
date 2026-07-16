@@ -324,6 +324,7 @@ use crate::support::line_constants::{DERI, SIMPLE_CARSON};
 
 const M_UNIT: i32 = 4; // LineUnits::Meter code
 const KM_UNIT: i32 = 3; // LineUnits::Km code (from_per_meter = 1000)
+const MI_UNIT: i32 = 1; // LineUnits::Mile code
 /// Truncated `Twopi * 60` — *exactly* the engine's `Fw` at 60 Hz (the engine
 /// uses the same truncated `TWOPI = 6.283185307`), so dividing `Im(Yc)` by
 /// `W60` here reuses the engine's own omega, not an independent `2*pi`.
@@ -477,6 +478,68 @@ fn matrices_overhead_match_oracle() {
                 c_ref_nf[i * 3 + j] * 1e-9,
                 &format!("C[{i}][{j}]"),
             );
+        }
+    }
+}
+
+#[test]
+fn matrices_equivalent_spacing_match_capi015() {
+    // dss_capi 0.15.x equivalent-spacing model (WP-U1.4, LineSpacing.pas /
+    // LineConstants.pas). A LineSpacing with `detailed=no` supplies the four
+    // equivalent distances instead of per-conductor coordinates; the geometry
+    // (nconds=4, nphases=3, reduce=y) Kron-reduces to a 3x3 phase matrix. The
+    // reference is capi015 (0.15.0b4) reading `? line.l1.rmatrix/xmatrix` on the
+    // identical deck at 60 Hz, DERI earth model, ohms/mi (probe 2026-07-16):
+    //   rmatrix diag 0.410565535096229, off-diag 0.109545787814619
+    //   xmatrix diag 0.988334662246234, off-diag 0.426587892673967
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let acsr = build_wire(
+        "acsr",
+        &[
+            ("gmrac", "0.0244"),
+            ("diam", "0.721"),
+            ("rac", "0.306"),
+            ("runits", "mi"),
+            ("radunits", "in"),
+            ("gmrunits", "ft"),
+            ("normamps", "530"),
+        ],
+    );
+    let sp = build_spacing(&[
+        ("nconds", "4"),
+        ("nphases", "3"),
+        ("units", "ft"),
+        ("detailed", "no"),
+        ("EqDistPhPh", "2.5"),
+        ("EqDistPhN", "4.272"),
+        ("AvgPhaseHeight", "28.0"),
+        ("AvgNeutralHeight", "24.0"),
+    ]);
+    let mut g = LineGeometryObj::new("g1");
+    scalar(&cls, &mut g, "nconds", "4");
+    scalar(&cls, &mut g, "nphases", "3");
+    scalar(&cls, &mut g, "reduce", "y");
+    set_ref(&cls, &mut g, "spacing", &sp);
+    set_ref_array(&cls, &mut g, "wires", &[&acsr, &acsr, &acsr, &acsr]);
+    assert!(g.data_mut().take_errors().is_empty());
+
+    let z = g.z_matrix(60.0, 1.0, MI_UNIT, DERI).expect("z");
+    // Reduced 3x3, ohms/mi.
+    for i in 0..3 {
+        for j in 0..3 {
+            let want_re = if i == j {
+                0.410565535096229
+            } else {
+                0.109545787814619
+            };
+            let want_im = if i == j {
+                0.988334662246234
+            } else {
+                0.426587892673967
+            };
+            assert_close(z.get(i, j).re, want_re, &format!("Z[{i}][{j}].re"));
+            assert_close(z.get(i, j).im, want_im, &format!("Z[{i}][{j}].im"));
         }
     }
 }
