@@ -542,13 +542,43 @@ fn run_deck_dump_exact_block_masked(stem: &str, block_headers: &[&str]) {
     let rust = std::fs::read_to_string(produced)
         .unwrap_or_else(|e| panic!("{stem}: read produced {produced}: {e}"));
 
+    // WP-U1.9: the 0.15.x ExecOptions the pinned 0.14.5 oracle lacks (the PCE
+    // force hooks + the NCIM options they share an enum tail with). They dump as
+    // single `<ord>, "<Name>", "<help>"` lines after the last 0.14.5 option
+    // (NUMANodes, 128) and before the first class block; drop them before the
+    // exact compare, same as the `[WindGen]` class block (gated live vs capi015
+    // + `exec/tests/force_hooks.rs` instead).
+    const NEW_015X_OPTIONS: &[&str] = &[
+        "IgnoreGenQLimits",
+        "NCIMQGain",
+        "StateVar",
+        "PyPath",
+        "IterNumber",
+        "CtrlIterNumber",
+        "InjCurrent",
+        "ITerminal",
+        "YPrim",
+        "IntegrationFlag",
+        "AllowForms",
+        "AllowProgressBar",
+    ];
+    let is_new_option_line = |ln: &str| {
+        // `<digits>, "<Name>", …` where Name is a 0.15.x-only option.
+        ln.split_once(", \"")
+            .and_then(|(ord, rest)| {
+                ord.trim().parse::<u32>().ok()?;
+                rest.split_once('"').map(|(name, _)| name)
+            })
+            .is_some_and(|name| NEW_015X_OPTIONS.contains(&name))
+    };
+
     let mut out = String::new();
     let mut dropping = false;
     for ln in rust.lines() {
         if ln.starts_with('[') {
             dropping = block_headers.contains(&ln.trim());
         }
-        if !dropping {
+        if !dropping && !is_new_option_line(ln) {
             out.push_str(ln);
             out.push('\n');
         }
