@@ -1660,6 +1660,9 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
     fn dbl_hour(&self) -> f64 {
         self.sys.dbl_hour
     }
+    fn control_iteration(&self) -> i32 {
+        self.control_iter
+    }
     fn solve_mode(&self) -> SolveMode {
         self.sys.mode
     }

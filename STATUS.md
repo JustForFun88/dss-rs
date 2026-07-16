@@ -91,10 +91,10 @@ MULTITHREADING M2.
   port itself, generator PV participation, options/dispatch, reports, decks) are
   a large remaining body of work with a full integration map in the §UPGRADE
   WP-U1.7 record below.
-- **WP-U1.2 (numeric long tail)** — rows B2/D1, D7, D6, B1, D8 landed; **remaining:
-  D3** (report-only spacing ratings — needs an overload-report deck) and **B3-r3723**
-  (Load.GrowthFactor Year=0 — needs a growthshape + multi-hour year-0 run). See the
-  resume note under §UPGRADE below.
+- **WP-U1.2 (numeric long tail)** — rows B2/D1, D7, D6, B1, D8 landed; **B3-r3723**
+  (Load.GrowthFactor Year=0) landed under WP-U1.6; **remaining: D3** (report-only
+  spacing ratings — needs an overload-report deck). See the resume note under
+  §UPGRADE below.
 - **B5 GFM `Isc1` ×1000 — SETTLED (GFM WP, branch `gfm-wp`).** Adopted the r4133
   `Isc1` (drop the `·1000`) in `calc_gfm_yprim`. The feared "injection-vs-YPrim
   gap" does **not** exist at this base: the Rust GFM op-point is already
@@ -268,12 +268,93 @@ invalidate it (bucket-F API quirk, out of scope).
   `solution_abort` (also surfaces the latent >3φ silent-garbage path for all
   machines). New unit test `single_phase_dynamics_aborts_cleanly`. (3) The 5
   `windgen/*` decks joined the `MODES_REQUIRED` anti-deletion floor.
-- **Resume note (WP-U1.2 remaining).** Rows **D3** (report-only spacing ratings —
-  overload-report deck) and **B3-r3723** (Load.GrowthFactor Year=0) still to port;
-  the golden engine switch (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the
+- **Resume note (WP-U1.2 remaining).** Row **D3** (report-only spacing ratings —
+  overload-report deck) still to port. **B3-r3723** (Load.GrowthFactor Year=0)
+  LANDED under WP-U1.6 (branch wt-u16). The golden engine switch
+  (`gen_checkpoints::check_pin` `DSS_ORACLE_ENGINE`) and the
   same-commit flip/regen/retire workflow are proven. NB the modes manifest is NOT
   `json.dumps`-round-trippable (mixed manual `\uXXXX` escaping + CRLF) — append new
   cases with a surgical text edit.
+
+**WP-U1.6 (controls & misc long tail) — PARTIAL, LANDED (branch wt-u16).**
+Landed rows (each unit/deck-pinned, gate-green):
+- **B3-r3723** (own commit) — `Load.GrowthFactor` Year=0 with a GrowthShape now
+  tracks the simulated hours (`calcYear=dblHour/8760`; `GetMult(Ceil)` or
+  `GetMultIdx(1)` when firstY=0 & <1yr) instead of a flat 1.0. Added GrowthShape
+  `get_year`/`get_mult_idx`. **Oracle-validated + deck-gated** (audit-U1.6
+  settlement): `git show 0.15.0b4:src/PCElements/Load.pas` carries the rewrite
+  verbatim (the working-tree checkout f5728aec predates it, see DIVERGENCES.md
+  version note), and capi015 probes confirm 120 kW (factor 1.2) vs 0.14.5's flat
+  100 kW. New corpus deck `modes/upgrade/upgrade_growth_year0.dss` (`oracle:
+  "capi015"`, snapshot, feature-sensitive 120-vs-100 kW; §1.7 two-process
+  determinism confirmed). Unit tests
+  `growth_factor_year0_tracks_simulated_hours_with_growthshape` (probe-cited) +
+  `get_year_and_mult_idx_are_one_based`.
+- **D10** StorageController — (a) `a14c3f1f` FpctkWBandLow typo fix (was reproduced
+  as `TODO(compat)`; adopted, `FpctkWBandLow := FkWBandLow/FkWTargetLow*100`);
+  (b) `1b3123ce` force a new power flow on control iter 1 when peakshave(-low)
+  moves the fleet into (dis)charge even when the condition matched last step
+  (added `control_iteration()` to `StorageDispatchEnv`). Both in capi015 0.15.0b4
+  (= r4103; `StorageController.pas:547`). **Oracle-validated** (audit-U1.6):
+  capi015 `%kWBand=16.667`/`%kWBandLow=20` vs 0.14.5 typo `6.667`/`2`. Unit tests
+  `kw_band_low_side_effect_syncs_the_low_pct_pair` (property sync, added under
+  audit) + `d10_discharge_transition_forces_resolve_on_first_iteration`
+  (force-resolve). Unit-pinned (no single-step corpus witness: property-only sync +
+  multi-step force-resolve; precedent B1/D6/D7).
+- **D15** (`4366b126`) — `LookupVariable` case-insensitivity: the only
+  equivalent in the port (relay) already uses `eq_ignore_ascii_case` (= the fixed
+  side); not-a-delta, upper-case query pinned in `lookup_variable_prefix_match`.
+- **A7-r3723** — GenController deregistration: the r3723 port never registered the
+  class, so `New GenController.…` already errors "not found"; not-a-delta, pinned
+  by `gen_controller_class_is_not_registered`.
+
+Not landed (documented for a follow-up — each needs oracle-validated decks and/or a
+property-count-comparison flip beyond this pass's safe budget):
+- **C5** RegControl `FwdThreshold` (`8a898cba`, SVN r4086) — the flagship: adds 4
+  new props (`Idle`/`IdleReverse`/`IdleForward` [new in 0.15.x, absent from the
+  r3723 port] + `FwdThreshold`) → RegControl property-count change (entangles the
+  RegControl deck property-count compare, C8-class), PLUS the signed
+  `RevPowerThreshold`/`FwdPowerThreshold` rework (defaults −100kW/+100kW, EndEdit
+  legacy fallback `Fwd:=abs(Rev); Rev:=−Fwd`), the idle-zone `SetPointCalc` logic,
+  and the reverse-power detection rewrite. Precise hunks in
+  `.inputs/dss_capi_with_git` commit `8a898cba`. Needs the RegControl reverse-power
+  deck matrix (legacy-input equivalence + new-property divergence) on capi015.
+- **C6** Transformer/AutoTrans `BHpoints`/`BHcurrent`/`BHflux` (`90962ae8`) — 3
+  new `Unused` data props on BOTH classes → property-count change entangles every
+  default-oracle transformer/autotrans deck (C8-class); needs a coordinated flip.
+- **C5-r3723** LoadShape `Mode` prop (22) + `Interpolation` shift 22→23 — new
+  prop → property-count change (LoadShape decks) + property-index parity; same
+  entanglement class as C6.
+- **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **ported +
+  reverted** (commit 82d62c3 reverted by 0c918ab). The field-mapping change was
+  correct (props golden re-baselined to capi015, 22 unit tests + props_roundtrip
+  green), BUT it moves the `Normal`/`State` *readback* on TWO default-oracle
+  **multi-step** live decks: `controls/swtcontrol/swtcontrol_time.dss` (manifest
+  probe `SwtControl.sw.state`: 0.14.5 reads `CurrentAction`="open" after an armed
+  `action=open`, the port reads `PresentState`="closed" until the switch operates)
+  and `Version8/.../civanlar model/civanlar.dss` (`SwtControl.5_11` `Normal`
+  readback). Neither can flip to capi015 (multi-step decks re-nominalize on the
+  capi015 capture, L1 note), and they cannot stay 0.14.5 (deliberate mismatch,
+  §1.2). Landing D12 needs the oracle-infra multi-step-capi015 support OR reworking
+  those decks' probes off the moved readback. Code hunks are in commit 82d62c3 for
+  the re-land.
+- **D11** CapControl — part 1 (PT/CTPhase validation scope: PF-value validation
+  gated behind `control_type==PF`, phase validation unconditional) is ALREADY
+  aligned in the port. Part 2 (`b9bc87b8`: TIMECONTROL now REQUIRES a monitored
+  element AND uses it as `effElement`, was ControlledElement) changes TIME
+  effElement semantics → entangles the `capcontrol_time.dss` corpus deck (default
+  oracle) + `time_control_forces_terminal_1` unit; needs capi015 deck validation.
+  Code change is a one-liner in `cap_control/mod.rs::recalc` (drop the `!= TIME`).
+- **D13** LoadShape MMF fixes (`c4590d16`) — the corpus MMF deck crashes #58614 on
+  capi015 (B9); needs a non-crashing MMF deck; not assessed this pass.
+- **B4-capi** harmonics init-failure abort (`6ad39597`) — the port's
+  `solve_harmonic_t_body` ALREADY returns on `!initialize_for_harmonics` (aborts
+  the sweep); the `In_ReDirect → Redirect_Abort` nuance is unreachable (no ported
+  `init_harmonics` sets `solution_abort`; see `harmonics.rs` doc). Faithful as-is;
+  no feature-sensitive deck possible.
+- **C4** `Clear all`/`ClearAll` already handled (`cmd::CLEAR|CLEAR_ALL`);
+  `Solve all`/`SolveAll` (`cmd::SOLVE_ALL`=123) not yet dispatched — small command
+  alias (single-actor = plain solve), unstarted.
 
 **GFM WP (branch `gfm-wp`) — B5 + injection-vs-YPrim + 0.15.x YPrim delta —
 SETTLED.** Adopted B5 (`calc_gfm_yprim` `Isc1` drops the `·1000`, dss_capi
@@ -392,7 +473,11 @@ harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `m
 — roll-up in §1e and **`docs/phase-records/phase-7.md`**.
 
 ### Standing open follow-ups (actionable)
-- **WP-U1.2 rows D3 + B3-r3723** — port with their overload/growthshape decks.
+- **WP-U1.2 row D3** — port with its overload deck (B3-r3723 landed under WP-U1.6).
+- **WP-U1.6 remaining** (branch wt-u16 §UPGRADE): C5 RegControl FwdThreshold+idle
+  props, C6 Transformer BH props, C5-r3723 LoadShape Mode index, D11 CapControl
+  TIMECONTROL effElement, D13 LoadShape MMF, C4 `Solve all` alias — see the
+  WP-U1.6 §UPGRADE block for the property-count/deck entanglements.
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — now floored as
   ultra-switch conditioning (CF-D), watch on re-touch.
 - **Monitor modes 8/10/12** (winding I/V, LL) have a deferred stub sample body

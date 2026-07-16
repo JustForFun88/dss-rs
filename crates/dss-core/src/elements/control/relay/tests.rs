@@ -803,12 +803,19 @@ fn distance_reverse_negates_current() {
 // --- Generic (PC state-variable relay) --------------------------------------
 
 /// Pascal `LookupVariable`: case-insensitive *prefix* match, 1-based, −1 if none.
+/// D15 (WP-U1.6, `4366b126`): 0.14.5 compared the *original-case* query `s`
+/// against the lowercased variable name (`if s = LowerCase(name)`), so a
+/// mixed/upper-case query silently missed; the fix lowercases `s` too. The port
+/// never had the bug — `lookup_variable` uses `eq_ignore_ascii_case` (equivalent
+/// to the fixed side), and it is the only `LookupVariable`-equivalent in the
+/// engine (state vars are otherwise index-addressed). The upper-case queries
+/// below (`"VD"`→`"Vd"`, `"frequency"`→`"Frequency"`) pin the fixed behavior.
 #[test]
 fn lookup_variable_prefix_match() {
     let names = vec!["Frequency".to_string(), "Vd".to_string()];
     assert_eq!(Relay::lookup_variable(&names, "frequency"), 1); // full, case-insensitive
     assert_eq!(Relay::lookup_variable(&names, "freq"), 1); // prefix
-    assert_eq!(Relay::lookup_variable(&names, "VD"), 2);
+    assert_eq!(Relay::lookup_variable(&names, "VD"), 2); // D15: upper query, mixed-case name
     assert_eq!(Relay::lookup_variable(&names, "theta"), -1); // absent
     assert_eq!(Relay::lookup_variable(&names, "frequencyX"), -1); // longer than name
 }

@@ -149,6 +149,27 @@ fn get_mult_grows_table_past_initial_nyears() {
 }
 
 #[test]
+fn get_year_and_mult_idx_are_one_based() {
+    // B3-r3723: `Load.GrowthFactor` Year=0 path reads `GetYear(1)` (the raw
+    // first year, its `firstY` probe) and `GetMultIdx(1)` (the first cumulative
+    // `YearMult`, not the raw multiplier).
+    let (_cls, obj, errs) = edited(&[("npts", "3"), ("year", "0 1 2"), ("mult", "1.2 1.5 2.0")]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(obj.get_year(1), 0.0);
+    assert_eq!(obj.get_year(2), 1.0);
+    // GetMultIdx(1) = YearMult[0] = first cumulative = first raw mult (1.2).
+    assert!((obj.get_mult_idx(1) - 1.2).abs() < 1e-12);
+    // GetMultIdx(2) compounds the second rate: 1.2 * 1.5 = 1.8.
+    assert!((obj.get_mult_idx(2) - 1.8).abs() < 1e-12);
+    // Empty / out-of-range guards return 0.0.
+    assert_eq!(obj.get_year(0), 0.0);
+    assert_eq!(obj.get_mult_idx(0), 0.0);
+    let (_c, empty, _e) = edited(&[]);
+    assert_eq!(empty.get_year(1), 0.0);
+    assert_eq!(empty.get_mult_idx(1), 0.0);
+}
+
+#[test]
 fn make_like_copies_curve() {
     let (cls, base, _) = edited(&[("npts", "2"), ("year", "2000 2010"), ("mult", "1.05 1.02")]);
     let mut obj = GrowthShapeObj::new("derived");
