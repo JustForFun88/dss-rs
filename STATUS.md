@@ -7,32 +7,33 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-17 (Rung-1 tail rounds merged to `update` and pushed:
-**PROPS_015X harness allowlist** (the 2026-07-16 "pending user decision"
-resolved as the named per-class allowlist, branch wt-h015), **WP-U1.7
-COMPLETE** (NCIM Export Jacobian/deltaF/deltaZ + Show PV2PQ_Conversions,
-VSource.NCIM_CalcInjCurrAtBus, `modes/ncim/` deck matrix, r4088 cross-check —
-wt-u17tail), **WP-U1.6 COMPLETE** (wt-u16ind: C4 SolveAll, D11 part 2, D12
-re-land, D13 not-a-delta; wt-u16tail: C5 RegControl FwdThreshold/idle zones,
-C6 Transformer/AutoTrans BH props, C5-r3723 LoadShape Mode declined; B4-capi
-faithful-as-is), **WP-U1.4 COMPLETE** (wt-u14props: Line
-EpsRMedium/HeightOffset/HeightUnit + HIDE_015X; wt-u14cnts: merged
-TCableConstants + CNData.SemiconLayer; wt-u14cond: `Conductors` property on
-Line (34, NormAmps→35) + LineGeometry (20) over a 3-class
-WireData|CNData|TSData proxy resolver — text `Conductors=` is upstream-broken
-(GetDSSClass case bug, TODO(compat)); resolved-ref path equivalence-gated).
-All six round worktrees + 11 old agent worktrees removed per the junction
-protocol (.inputs verified intact); merged branches deleted. Integration
-branch is `update` (pushed to origin); main untouched until an explicit merge
-request.)
+Last updated: 2026-07-17 — **UPGRADE Rung 1 (WP-U1.1–U1.10) EXITED** (wt-u110
+merged to `update`). The exit criterion — the r4088 ASSERT sweep
+(`DSS_LIVE_OPENDSS=r4088 DSS_LIVE_OPENDSS_ASSERT=1`) — is green: 313 matched /
+113 known-diverged / 4 known-skipped / **0 NEW**; the r3723 sweep re-confirmed
+green (273/156/1/0). `known_diffs.json` burn-down 11→22 entries (pruned
+`epri-gendispatcher-propname`; 5 extended to r4088; +7 FPC-vs-Delphi numeric
+floors; +1 r3723-only; +4 skip), full ledger in
+`docs/upgrade/known_diffs_burndown.md`; no r4088-only adopt/reproduce decisions
+were left unowned — every residual is a cross-compiler (FPC↔Delphi) floor,
+proven by the mandatory 0.14.5 gate staying green on the same cases +
+the committed capi015↔r4088 engine-to-engine sweep. COVERAGE.md refreshed
+(solvable_now **295/329 = 89.7%**; `coverage_report.py` double-count fixed);
+`NOT_PORTED(U1…)` marker sweep empty. Earlier same-day rounds: PROPS_015X
+harness allowlist (wt-h015), **WP-U1.7 COMPLETE** (NCIM export/Show tail,
+wt-u17tail), **WP-U1.6 COMPLETE** (wt-u16ind + wt-u16tail), **WP-U1.4
+COMPLETE** (wt-u14props + wt-u14cnts + wt-u14cond `Conductors` 3-class proxy;
+text `Conductors=` upstream-broken, TODO(compat)). All round worktrees removed
+per the junction protocol (.inputs verified intact); merged branches deleted.
+Integration branch is `update` (pushed to origin); main untouched until an
+explicit merge request. **Next: Rung 2 (WP-U2.1–U2.6, r4133 parity —
+protection overhaul: Fuse, Recloser, Relay, SwtControl + rung exit).**
 
-**Rung-1 remaining tail (2026-07-17):**
-1. WP-U1.10 rung exit (r4088 sweep + known_diffs burn-down, COVERAGE.md
-   refresh, NOT_PORTED(U1…) marker sweep) — the only remaining Rung-1 item.
-2. Deferred to the §6 sweep (documented, not rung-blocking): JSON/Dump golden
-   surface flip to capi015 + dropping the Wires→"Conductors" JSON masquerade
-   (gen_json.py is hard-pinned to the 0.14.5 oracle; HIDE_015X retained on the
-   0.15.x-only Line/LineGeometry props — see DIVERGENCES §Conductors).
+**Deferred to the §6 sweep** (documented, was never rung-blocking; now also a
+plan-wide exit criterion in `UPGRADE_PLAN.md` §5): JSON/Dump golden surface
+flip to capi015 + dropping the Wires→"Conductors" JSON masquerade
+(gen_json.py is hard-pinned to the 0.14.5 oracle; HIDE_015X retained on the
+0.15.x-only Line/LineGeometry props — see DIVERGENCES §Conductors).
 
 **PARKED TEST — RESOLVED (2026-07-16, branch wt-coverage):**
 `circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` is
