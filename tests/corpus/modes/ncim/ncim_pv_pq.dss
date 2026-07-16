@@ -1,0 +1,17 @@
+! UPGRADE_PLAN WP-U1.7 (NCIM solver) — PV bus hitting its Q-limit -> PV->PQ.
+! A radial feeder (sourcebus -> genbus) with a 2 MW/0.8 Mvar load and a model-3
+! (voltage-regulating) generator at genbus, regulating to vpu=1.01. The target
+! demands more than the +1500 kvar limit, so NCIM_UpdateGenQ clamps Q at 1500
+! and converts the generator to model-4 (PQ). capi015 (dss_capi 0.15.x) NCIM
+! converges in 8 iterations; the converted generator shows in
+! `Show PV2PQ_Conversions`. Feature-sensitive: the PV->PQ switch is the whole
+! point — without it the generator over-injects reactive power.
+Clear
+New circuit.ncimpv basekv=12.47 phases=3 bus1=sourcebus
+New Line.l1 bus1=sourcebus bus2=genbus phases=3 r1=0.12 x1=0.35 length=3
+New Load.ld1 bus1=genbus phases=3 kv=12.47 kw=2000 kvar=800 model=1
+New Generator.g1 bus1=genbus phases=3 kv=12.47 kw=800 model=3 maxkvar=1500 minkvar=-1500 vpu=1.01
+Set voltagebases=[12.47]
+Calcvoltagebases
+Set algorithm=NCIM
+Solve

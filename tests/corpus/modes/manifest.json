@@ -1246,6 +1246,45 @@
   "oracle": "capi015",
   "pending": false,
   "note": "UPGRADE_PLAN WP-U1.9 (A3/A5, §1.7): PCE force hooks. After a baseline solve, `select load.ld; set InjCurrent=[80 0 80 0 80 0]` forces the load's injection currents (Flg.ForceInjCurrents); the harness re-solve injects them directly and settles at a new operating point. Gated oracle:capi015 -- these options do not exist in the 0.14.5 default oracle. Feature-sensitive: forcing moves b2 Vmag 7187.45 -> 7224.14 V (probed on capi015, bit-identical across two processes). Per-option contract (frozen Get InjCurrent/ITerminal, YPrim/StateVar/IterNumber, clear reset) is exec/tests/force_hooks.rs, pinned to the same probe."
+ },
+ {
+  "path": "ncim/ncim_pq.dss",
+  "ad": "off:ncim-algorithm-not-ad-swept",
+  "kind": "micro",
+  "n_steps": 1,
+  "selected_elements": [
+   "*"
+  ],
+  "pending": false,
+  "wp": "WP-U1.7",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.7 (NCIM solver, §1.7): micro PQ-only snapshot. Two-line radial feeder, all model-1 loads, Set algorithm=NCIM. Probed on capi015 (0.15.0b4): converged (3 iters, 9 nodes), bit-identical fingerprint across two capi015 processes. Feature-sensitive: NCIM holds the swing bus at the ideal EMF (no Thevenin droop) and reports the swing-source current via NCIM_CalcInjCurrAtBus -- both differ from the default fixed-point (unit-pinned in exec/tests/ncim.rs)."
+ },
+ {
+  "path": "ncim/ncim_pv_pq.dss",
+  "ad": "off:ncim-algorithm-not-ad-swept",
+  "kind": "micro",
+  "n_steps": 1,
+  "selected_elements": [
+   "*"
+  ],
+  "pending": false,
+  "wp": "WP-U1.7",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.7 (NCIM solver, §1.7): PV bus hitting its +Q limit -> PV->PQ conversion. A model-3 regulating generator (vpu=1.01, +/-1500 kvar) demands more than +1500 kvar, so NCIM_UpdateGenQ clamps Q=1500 and switches the generator to model-4. Probed on capi015 (0.15.0b4): converged (8 iters, 6 nodes), bit-identical across two processes; iteration policy <= per §1.3-1. Feature-sensitive: the converted generator appears in Show PV2PQ_Conversions (gated in ncim_reports.rs); without the switch the generator over-injects reactive power."
+ },
+ {
+  "path": "ncim/ncim_midi.dss",
+  "ad": "off:ncim-algorithm-not-ad-swept",
+  "kind": "midi",
+  "n_steps": 1,
+  "selected_elements": [
+   "*"
+  ],
+  "pending": false,
+  "wp": "WP-U1.7",
+  "oracle": "capi015",
+  "note": "UPGRADE_PLAN WP-U1.7 (NCIM solver, §1.7): midi 27-node IEEE123-class radial feeder re-solved under NCIM. 6-segment backbone + two laterals, mixed model-1/model-2 loads, a model-3 generator at b5 that hits its +400 kvar limit -> PV->PQ. Probed on capi015 (0.15.0b4): converged (8 iters, 27 nodes), bit-identical across two processes; iteration policy <= per §1.3-1. Exercises NCIM at scale (PDE-only Y over a linecode network, ConstZ ZBus stamping, and the PV->PQ Q-limit path in one solve)."
  }
  ]
 }
