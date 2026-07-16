@@ -27,6 +27,13 @@ pub(crate) fn active_pce<'a>(
     }
 }
 
+/// Whether the `(class, object)` pair is a PC element (Pascal
+/// `ActiveCktElement is TPCElement`). Used by the `Set/Get StateVar` guard
+/// (error 7103 "is not a valid PC element"). WP-U1.9.
+pub(crate) fn is_pce(ckt: &Circuit, ci: usize, oi: usize) -> bool {
+    ckt.pc_elements.contains(&ElemRef { cls: ci, idx: oi })
+}
+
 /// Resolve `Class.Name` (or a bare name searched across circuit-element classes)
 /// to `(class idx, object idx)` (Pascal `TDSSCircuit.SetElementActive`). WP-U1.9.
 pub(crate) fn resolve_ckt_element(

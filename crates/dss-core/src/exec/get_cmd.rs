@@ -27,25 +27,29 @@ fn cstr(c: Complex64) -> String {
 /// render the active PCE's injection/terminal currents (over `NConds`) or its
 /// primitive Y. Non-PCE → the EPRI-compatible "not PCE" text; an
 /// unallocated buffer → "not initialized yet". WP-U1.9.
+///
+/// Returns `Err(text)` for the two Pascal error cases (both `AppendGlobalResult`
+/// the text and then `Exit`) so the caller can reproduce the `Exit` (abort the
+/// option loop); `Ok(text)` on a normal readback.
 fn get_force_readback(
     classes: &mut [DssClass],
     ckt: &Circuit,
     active: Option<(usize, usize)>,
     pointer: usize,
-) -> String {
+) -> Result<String, String> {
     let elem = match active_pce(classes, ckt, active) {
         Ok(e) => e,
-        Err(_) => return "Error, the active element is not PCE".to_string(),
+        Err(_) => return Err("Error, the active element is not PCE".to_string()),
     };
     let cd = elem.cd();
     let uninit = "Error, the active element is not initialized yet".to_string();
     if cd.node_ref.is_empty() {
-        return uninit;
+        return Err(uninit);
     }
     if pointer == opt::YPRIM {
         return match &cd.yprim {
-            Some(m) => cmatrix_to_string(m),
-            None => uninit,
+            Some(m) => Ok(cmatrix_to_string(m)),
+            None => Err(uninit),
         };
     }
     let arr = if pointer == opt::ITERMINAL {
@@ -54,9 +58,9 @@ fn get_force_readback(
         &cd.inj_current
     };
     if arr.len() < cd.nconds {
-        return uninit;
+        return Err(uninit);
     }
-    complex_array_to_string(&arr[..cd.nconds])
+    Ok(complex_array_to_string(&arr[..cd.nconds]))
 }
 
 /// Pascal `ComplexArrayToString(data, count)` (Utilities.pas @ 0.15.0b4).
@@ -126,6 +130,8 @@ impl Dss {
             default_base_freq,
             daisy_size,
             auto_show_export,
+            no_forms_allowed,
+            no_progress_bar_form_allowed,
             last_result,
             active_ckt_element,
             class_by_name,
@@ -142,6 +148,8 @@ impl Dss {
             }
             // Params are themselves the option names to return.
             let pointer = option_list.get_command(&param).map(|i| i + 1).unwrap_or(0);
+            // Pascal `Exit` semantics for the force-hook error arms (see set_cmd).
+            let mut abort = false;
             match pointer {
                 0 => {
                     // A-Diakoptics options (§0.2 departure): intercept before the
@@ -422,9 +430,20 @@ impl Dss {
                     // Pascal `Solution.DynaVars.IterationFlag` (0 = new step, 1 = same).
                     &(ckt.solution.iteration_flag as i32).to_string(),
                 ),
+                // `Get AllowForms`/`AllowProgressBar` (ExecOptions.pas:1246-1249,
+                // `not NoFormsAllowed` / `not NoProgressBarFormAllowed`).
+                opt::ALLOW_FORMS => append_result(&mut result, yes_no(!*no_forms_allowed)),
+                opt::ALLOW_PROGRESS_BAR => {
+                    append_result(&mut result, yes_no(!*no_progress_bar_form_allowed))
+                }
                 opt::INJ_CURRENT | opt::ITERMINAL | opt::YPRIM => {
-                    let s = get_force_readback(classes, ckt, *active_ckt_element, pointer);
-                    append_result(&mut result, &s);
+                    match get_force_readback(classes, ckt, *active_ckt_element, pointer) {
+                        Ok(s) => append_result(&mut result, &s),
+                        Err(s) => {
+                            append_result(&mut result, &s);
+                            abort = true;
+                        }
+                    }
                 }
                 opt::STATE_VAR => {
                     // `Get StateVar <element> <varname>` (positional).
@@ -435,7 +454,19 @@ impl Dss {
                     parser.next_param(vars);
                     let var_name = parser.make_string(vars);
                     match resolved {
-                        None => errors.push(format!("Object \"{elem_name}\" not found")),
+                        None => {
+                            errors.push(format!("Object \"{elem_name}\" not found"));
+                            abort = true;
+                        }
+                        // Pascal checks `is TPCElement` (7103) BEFORE NumVariables.
+                        Some((ci, oi)) if !is_pce(ckt, ci, oi) => {
+                            errors.push(format!(
+                                "Object \"{}.{}\" is not a valid PC element.",
+                                classes[ci].props.class_name(),
+                                classes[ci].objects[oi].data().name()
+                            ));
+                            abort = true;
+                        }
                         Some((ci, oi)) => {
                             let nvars = classes[ci].objects[oi]
                                 .as_ckt_element()
@@ -454,6 +485,7 @@ impl Dss {
                                      command. Only a selection of PC elements have state \
                                      variables."
                                 ));
+                                abort = true;
                             } else if let Some(i) = found {
                                 let sys = sys_ctx(ckt);
                                 let node_v = ckt.solution.node_v.clone();
@@ -470,6 +502,7 @@ impl Dss {
                                     classes[ci].props.class_name(),
                                     classes[ci].objects[oi].data().name()
                                 ));
+                                abort = true;
                             }
                         }
                     }
@@ -478,6 +511,9 @@ impl Dss {
                     let name = EXEC_OPTIONS.get(pointer - 1).copied().unwrap_or("?");
                     errors.push(format!("Get option \"{name}\" is not ported yet."));
                 }
+            }
+            if abort {
+                break;
             }
         }
         *last_result = result;
