@@ -486,9 +486,11 @@ pub trait CktElement {
     /// Pascal `TPDElement.GetRatings` (dss_capi 0.15.x `55400a29`, PDElement.pas
     /// l.330): the (norm, emerg) current ratings, overridden by the seasonal
     /// rating `AmpRatings[seasonal_idx]` when the global season index is in range
-    /// (`0 <= seasonal_idx < NumAmpRatings`) — applied to ANY PDElement with
-    /// `NumAmpRatings > 1` (0.14.5's `DI_Overloads` path restricted this to
-    /// lines). Both norm and emerg take the same seasonal value.
+    /// (`0 <= seasonal_idx < NumAmpRatings`) — applied to ANY PDElement (0.14.5's
+    /// `DI_Overloads` path restricted this to lines). `55400a29` dropped the
+    /// pre-refactor/r4133 `NumAmpRatings > 1` guard, so a single-season element
+    /// (`NumAmpRatings == 1`) at idx 0 also takes `AmpRatings[0]`. Both norm and
+    /// emerg take the same seasonal value.
     fn get_ratings(&self, seasonal_idx: i32) -> (f64, f64) {
         let norm = self.norm_amps();
         let emerg = self.emerg_amps();

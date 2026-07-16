@@ -774,8 +774,9 @@ pub(super) fn sample_all_di_tail(ckt: &mut Circuit, store: &mut dyn ElemStore, s
 /// per overloaded, non-shunt, enabled PD element. Seasonal ratings (dss_capi
 /// 0.15.x `55400a29`, WP-U1.5 E2): the entry gate uses the element's BASE
 /// `NormAmps`/`EmergAmps`, then the overload test + reported ratings use the
-/// globally-synced season index (`Circuit::seasonal_rating_idx`) applied to ANY
-/// PDElement with `NumAmpRatings > 1` — the 0.14.5 baseline restricted this
+/// globally-synced season index (`Circuit::seasonal_rating_idx`), guarded by
+/// `0 <= idx < NumAmpRatings` and applied to ANY PDElement — the 0.14.5 baseline
+/// restricted this
 /// override to `ClassName = 'line'` and re-read the XYCurve per element with a
 /// state-mutating `DSS.SeasonalRating := FALSE`-on-miss (not reproduced; the
 /// index is precomputed at solve time by `sync_seasonal_rating_idx`).
