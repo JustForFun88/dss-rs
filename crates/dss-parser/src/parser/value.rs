@@ -197,6 +197,43 @@ impl Parser {
         }
     }
 
+    /// Current token as a complex number `(re, im)` (Pascal
+    /// `TDSSParser.MakeComplex`, `ParserDel.pas`). Reads `token_buffer`
+    /// directly (no `NextParam` — the vector/matrix parsers set the token
+    /// first). A token containing `i`/`I`/`j`/`J` splits at that letter: the
+    /// substring before it is read as two whitespace-separated reals `re im`
+    /// (FPC `ReadStr(spart, re, im)`); on failure as a single real taken as the
+    /// imaginary part (FPC `ReadStr(spart, im)`); on failure `(0, 0)`. Without
+    /// an imaginary marker the whole token is the real part (im `= 0`), `(0, 0)`
+    /// on a conversion error. Matches capi015 (`5` → `5+0i`, `3i` → `0+3i`,
+    /// `5+3i` → `0` since `5+3` is not two whitespace-separated reals).
+    pub fn make_complex(&self) -> (f64, f64) {
+        let token = self.token_buffer.as_str();
+        let ipos = token
+            .bytes()
+            .position(|b| matches!(b, b'i' | b'I' | b'j' | b'J'));
+        if let Some(ipos) = ipos {
+            let spart = &token[..ipos];
+            let parts: Vec<&str> = spart.split_whitespace().collect();
+            // FPC `ReadStr(spart, re, im)`: both reals required.
+            if let (Some(re), Some(im)) = (
+                parts.first().and_then(|s| val_f64(s)),
+                parts.get(1).and_then(|s| val_f64(s)),
+            ) {
+                return (re, im);
+            }
+            // FPC `ReadStr(spart, im)`: single leading real → imaginary.
+            if let Some(im) = parts.first().and_then(|s| val_f64(s)) {
+                return (0.0, im);
+            }
+            return (0.0, 0.0);
+        }
+        match val_f64(token) {
+            Some(re) => (re, 0.0),
+            None => (0.0, 0.0),
+        }
+    }
+
     /// Evaluate the current (quoted) token as a whitespace-separated RPN
     /// program; the X register persists across calls, exactly like the
     /// Pascal calculator instance (Pascal `InterpretRPNString`).

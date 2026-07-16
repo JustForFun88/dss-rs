@@ -84,6 +84,50 @@ fn slash_inside_token_is_not_a_comment() {
 }
 
 #[test]
+fn make_complex_matches_capi015_token_forms() {
+    // Reproduces the capi015 probe (0.15.0b4): single tokens give real-only or
+    // pure-imaginary; `5+3i` is 0 because `5+3` is not two whitespace-separated
+    // reals for FPC `ReadStr(spart, re, im)`.
+    for (tok, want) in [
+        ("5", (5.0, 0.0)),
+        ("-2.5", (-2.5, 0.0)),
+        ("3i", (0.0, 3.0)),
+        ("3j", (0.0, 3.0)),
+        ("5+3i", (0.0, 0.0)),
+        ("-2.5-1.5i", (0.0, 0.0)),
+        ("abc", (0.0, 0.0)),
+    ] {
+        let (mut p, vars) = parser_with(tok);
+        p.next_param(&vars);
+        assert_eq!(p.token(), tok);
+        assert_eq!(p.make_complex(), want, "token {tok:?}");
+    }
+}
+
+#[test]
+fn parse_as_complex_vector_fills_expected_size_only() {
+    let (mut p, vars) = parser_with("x=[5 6 7 8]");
+    assert_eq!(p.next_param(&vars), "x");
+    // ExpectedSize 2: first two kept, extras counted; backing tail preserved.
+    let mut out = [(1.0, 1.0); 3];
+    let found = p.parse_as_complex_vector(&vars, &mut out[..2]);
+    assert_eq!(found, 4);
+    assert_eq!(out[0], (5.0, 0.0));
+    assert_eq!(out[1], (6.0, 0.0));
+    assert_eq!(out[2], (1.0, 1.0), "slot past ExpectedSize is untouched");
+}
+
+#[test]
+fn parse_as_complex_matrix_column_major() {
+    let (mut p, vars) = parser_with("x=[1 2 | 3 4]");
+    assert_eq!(p.next_param(&vars), "x");
+    let mut out = [(0.0, 0.0); 4];
+    assert_eq!(p.parse_as_complex_matrix(&vars, &mut out, 2), 2);
+    // column-major: out[j*order + i] = row i col j
+    assert_eq!(out, [(1.0, 0.0), (3.0, 0.0), (2.0, 0.0), (4.0, 0.0)]);
+}
+
+#[test]
 fn make_double_accepts_fpc_val_forms() {
     // Forms verified against the reference parser (probe_val.py).
     for (s, expected) in [

@@ -111,6 +111,77 @@ impl Parser {
         }
     }
 
+    /// Parse the current token as a vector of complex numbers into `out`
+    /// (Pascal `ParseAsComplexVector`, `ParserDel.pas`). Returns the number of
+    /// elements *found* (may exceed `out.len()`; extras are consumed but
+    /// dropped). Only the first `out.len()` slots are zeroed then filled — the
+    /// caller passes a slice sized to `ExpectedSize` (e.g. `NPhases`), so a
+    /// larger backing buffer keeps its tail (matches capi015's InjCurrent/
+    /// ITerminal force path, which leaves conductors past `NPhases` untouched).
+    /// Scanning stops at the matrix row terminator `|`.
+    pub fn parse_as_complex_vector(&mut self, vars: &ParserVars, out: &mut [(f64, f64)]) -> usize {
+        if self.auto_increment {
+            self.next_param(vars);
+        }
+        let mut num_elements = 0usize;
+        out.fill((0.0, 0.0));
+
+        let parse_buffer = format!("{} ", self.token_buffer);
+        let mut pos = 0usize;
+        let delim_save = self.delim_chars.clone();
+        self.delim_chars.push(self.matrix_row_terminator as char);
+
+        self.skip_white_space(&parse_buffer, &mut pos);
+        self.token_buffer = self.get_token_at(&parse_buffer, &mut pos);
+        self.check_for_var(vars);
+        while !self.token_buffer.is_empty() {
+            num_elements += 1;
+            if num_elements <= out.len() {
+                out[num_elements - 1] = self.make_complex();
+            }
+            if self.last_delimiter == self.matrix_row_terminator {
+                break;
+            }
+            self.token_buffer = self.get_token_at(&parse_buffer, &mut pos);
+            self.check_for_var(vars);
+        }
+
+        self.delim_chars = delim_save; // restore original delimiters
+        // prepare for the next trip (the following matrix row)
+        self.token_buffer = parse_buffer.get(pos..).unwrap_or("").to_string();
+        num_elements
+    }
+
+    /// Parse `order` rows separated by `|` into a full complex matrix in
+    /// column-major (Fortran) order (Pascal `ParseAsComplexMatrix`). Returns
+    /// `order` on success, or `ElementsFound` (`> order*order`) on the
+    /// too-many-per-row overflow the caller treats as a size mismatch.
+    pub fn parse_as_complex_matrix(
+        &mut self,
+        vars: &ParserVars,
+        out: &mut [(f64, f64)],
+        order: usize,
+    ) -> usize {
+        if self.auto_increment {
+            self.next_param(vars);
+        }
+        let mut row_buf = vec![(0.0, 0.0); order];
+        out[..order * order].fill((0.0, 0.0));
+
+        for i in 0..order {
+            let elements_found = self.parse_as_complex_vector(vars, &mut row_buf);
+            if elements_found > order * order {
+                return elements_found;
+            }
+            // Returns matrix in column order (Fortran order); Pascal reads past
+            // `RowBuf` for extras (UB there) — the extras are ignored here.
+            for j in 0..elements_found.min(order) {
+                out[j * order + i] = row_buf[j];
+            }
+        }
+        order
+    }
+
     /// Parse `order` rows separated by `|` into a full matrix in
     /// column-major (Fortran) order (Pascal `ParseAsMatrix`).
     /// Returns `order` on success.
