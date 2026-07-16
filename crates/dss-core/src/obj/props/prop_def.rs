@@ -40,6 +40,18 @@ pub struct PropDef {
     /// resolves against both `Transformer` and `AutoTrans`. `None` for the
     /// single-class case.
     pub object_class2: Option<&'static str>,
+    /// `PropertyOffset2` pointing at a Pascal `TProxyClass` over **three** classes
+    /// created with `fullNames=True` (Line/LineGeometry `Conductors`, over
+    /// `[WireData, CNData, TSData]`; `DSSClass.pas:2603`): the ordered target class
+    /// list, together with [`PropFlags::FULL_NAME_AS_ARRAY`], drives the
+    /// `ValidateObjectItem` full-name proxy resolution in
+    /// [`ClassProps::parse_into`](super::ClassProps::parse_into). Empty = not a
+    /// proxy array. The label `(WireData|CNData|TSData)` for the "Invalid class"
+    /// diagnostic is `format!("({})", classes.join("|"))`.
+    pub object_classes: &'static [&'static str],
+    /// The proxy class's own `.Name` (`TProxyClass.Name`, e.g. `Conductor`) — used
+    /// only in the "You must define the `<Name>` class …" full-name diagnostic.
+    pub proxy_name: Option<&'static str>,
     /// Pascal `PropertyRedundantWith` (JSON default-mode sweep): the 1-based
     /// index of the property this one is a redundant alias of; 0 = none. Only
     /// meaningful together with [`PropFlags::REDUNDANT`]. Drives the
@@ -82,6 +94,8 @@ impl PropDef {
             size_prop: 0,
             object_class: None,
             object_class2: None,
+            object_classes: &[],
+            proxy_name: None,
             redundant_with: 0,
             array_alternative: 0,
             json_name: None,
@@ -223,6 +237,23 @@ impl PropDef {
     pub fn object_ref_array(class: &'static str, name: &'static str) -> Self {
         Self {
             object_class: Some(class),
+            ..Self::base(name, PropType::ObjectRefArray)
+        }
+    }
+    /// `DSSObjectReferenceArrayProperty` resolved against a Pascal `TProxyClass`
+    /// created with `fullNames=True` over an ordered class list (Line/LineGeometry
+    /// `Conductors` over `[WireData, CNData, TSData]`, proxy `.Name = "Conductor"`;
+    /// `DSSClass.pas:2603`). Every list item must be a `Class.Name` full name; the
+    /// parse reproduces `ValidateObjectItem`'s full-name resolution + diagnostics.
+    /// The caller adds `FULL_NAME_AS_ARRAY` (and any JSON/spec flags).
+    pub fn object_ref_array_proxy(
+        name: &'static str,
+        proxy_name: &'static str,
+        classes: &'static [&'static str],
+    ) -> Self {
+        Self {
+            object_classes: classes,
+            proxy_name: Some(proxy_name),
             ..Self::base(name, PropType::ObjectRefArray)
         }
     }

@@ -30,6 +30,19 @@ pub mod wire_data;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
 
+/// The ordered target classes of the Line/LineGeometry `Conductors`
+/// `TProxyClass` — Pascal `TProxyClass.Create(dssContext, ['WireData', 'CNData',
+/// 'TSData'], True)` (`LineGeometry.pas:159`; `DSSClass.pas:2603`). Resolution
+/// order and the `(WireData|CNData|TSData)` "Invalid class" label derive from
+/// this list. Shared by both classes (upstream builds one proxy on
+/// `LineGeometryClass` and `Line` reuses it via
+/// `LineGeometryClass.ConductorProxyClass`).
+pub const CONDUCTOR_PROXY_CLASSES: [&str; 3] = ["WireData", "CNData", "TSData"];
+
+/// Pascal `TProxyClass.Name := 'Conductor'` (`LineGeometry.pas:160`) — the proxy
+/// class name used in the "You must define the `Conductor` class …" diagnostic.
+pub const CONDUCTOR_PROXY_NAME: &str = "Conductor";
+
 // `TConductorDataProp` ordinals, relative to the start of the ConductorData
 // block (1-based; the same order Pascal's `PopulatePropertyNames` emits).
 mod cd {
