@@ -535,6 +535,12 @@ enum); `dss-core` wraps it at the call boundary — keeps the solver crate light
 its keep — it supplies `Error`/`Display`; miette supplies the diagnostic protocol on
 top.
 
+**Post-P5 continuation ("P5b"), decided 2026-07-16:** the parser's property core goes
+**schema-first** (machine-readable per-class property tables generating dispatch /
+validation / spans / docs; one parser with parity-lenient and strict modes; parser
+*generators* rejected — the language is stateful and junk-tolerant, not context-free).
+Full rationale + sequencing (after Stage F): **§IV.1b design note**.
+
 ### Inventory — what exists today (verified against the tree, 2026-07-12)
 
 - **Central log:** `Dss.errors: Vec<String>` (`exec/mod.rs:109`), read via
@@ -971,6 +977,40 @@ strictness alone does NOT close the class:
    coverage-plateau detection with a loud abort) — first candidate
    `Get_paths_4_Coverage`; the parity lane keeps reproducing upstream behavior
    unchanged.
+
+**Design note — how layer 2 gets built (user decision, 2026-07-16): schema-first
+property core, NOT a parser generator.** Once P5 (miette) lands, the language
+authority shifts from "what the Pascal does" to "the DSS language spec" — and the
+right formalization of that spec is **data, not grammar**:
+
+- A classical parser generator (LALR/PEG — lalrpop, pest, …) is rejected: the DSS
+  command language is not context-free. The RHS "grammar" is parameterized by the
+  active class and a stateful positional-property cursor; command/property names
+  resolve by prefix-abbreviation against dynamic tables; five quote forms
+  (`"…"`, `'…'`, `[…]`, `(…)`, `{…}`) plus `|`-row matrices are local lexical
+  polymorphism; and the semantics are deliberately junk-tolerant (the vendored
+  corpus depends on it) while generators are built to reject at first error. A
+  grammar file would lie about the real language; the tokenizer is tiny and the
+  complexity lives in dispatch semantics.
+- Instead: extract the de-facto spec already smeared through the code (~1000
+  property ordinals, `exec/tables.rs`, the props-roundtrip contract) into a
+  **machine-readable schema** — per class: property name, type, ordinal, units,
+  flags, accepted value forms. From it, *generate*: the parse dispatch (one core
+  instead of per-class ad-hoc code), validation (strict mode = checks enabled
+  over the same schema; parity mode = the same schema with upstream leniency —
+  **one parser, two strictness modes**, no dual-implementation drift), miette
+  diagnostics with spans, docs, `Save` writers, and the props-roundtrip tests.
+- Cross-check the extracted schema against DSS-Extensions' existing
+  machine-readable property metadata (altdss-schema, the source their generated
+  APIs are built from) rather than inventing the spec from scratch.
+- Parser *combinators* (winnow/chumsky-style) remain fine **locally** for the
+  real micro-grammars — array/matrix literals, bus spec `name.1.2.3`, DynamicExp
+  RPN — where spans for miette come cheap. Point applications only, not a parser
+  rewrite.
+- Sequencing: after Stage F (the parity lane must keep the byte-exact contract —
+  property ordinals, `Save` re-compilability, abbreviation semantics); dovetails
+  with P5 as its natural continuation ("P5b: schema-driven property core").
+  Before Stage F only layer 1 above (the `\n` guard in `command()`) may land.
 
 ## IV.2 Stage F — the `oracle-parity` feature split (absorbs the `TODO(compat)` sweep)
 
