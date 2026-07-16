@@ -1,0 +1,6 @@
+# Memory-mapped LoadShape fixture (D13): the MMF reader indexes by fixed line
+# width, so the byte layout is load-bearing and the manifest.note fingerprint
+# was computed from these exact bytes. Never apply EOL/other normalization
+# (core.autocrlf is on in this repo) — LF-only, uniform 5-byte "0.XX\n" rows.
+mm8.csv -text
+mmf_singlecol.dss -text

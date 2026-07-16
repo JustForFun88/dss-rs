@@ -1182,6 +1182,25 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   parallel/A-Diakoptics path we do not have). Oracle-confirmed (dss-python
   0.15.7): `SolveAll` solves like `Solve`; the spaced `Solve all` errors
   `Object Class "all" not found`. Unit-pinned (`solve_all_alias_matches_plain_solve`).
+- **D13** LoadShape MMF fixes (`c4590d16`) — **not-a-delta for the port** (already
+  matches the fix). The three Pascal hunks are: (1) the single-column `csvfile=`
+  `CreateMMF` guard's missing `not` (`LoadShape.pas ~:1032`) — 0.14.5 exits on
+  CreateMMF **success**, so a single-column MMF shape never loads its P data and
+  the daily solve raises `#482 Division by zero`; (2) `mmDataSizeQ := mmDataSize`
+  (a debug-only field, no observable); (3) the Linux `fpMUnMap` disposal
+  `mmFileSize`/`mmFileSizeQ` swap. The port is `#![forbid(unsafe_code)]` with no
+  memory-mapping — it eager-reads the whole file into `p_mult`/`q_mult`
+  (`read_csv_file` MMF branch), so hunks 2/3 have no equivalent and hunk 1's data
+  ALREADY loads. **Probe** (single-column `npts=8 MemoryMapping=Yes csvfile=`, 8
+  daily steps): 0.14.5 aborts `#482 Division by zero` (Pmult=`[0.0]`); capi015
+  (0.15.0b4) drives the load to P/phase `[20 40 70 110 160 130 90 50]` kW
+  (= 200·`[0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25]`). **Gate:** new capi015 live
+  deck `modes/upgrade/mmf_singlecol/mmf_singlecol.dss` (`oracle:"capi015"`,
+  `n_steps=8`, whole-model per-step compare; cannot gate 0.14.5 — the deck is the
+  bug the fix removes, §1.2; §1.7 two-process determinism confirmed, fingerprint
+  `0ead40d7199b0781`) + unit `mmf_single_column_csvfile_loads_like_capi015`. The
+  existing `inputformat/shape_mmf` deck stays 0.14.5 (it uses `sngfile`/`dblfile`/
+  `pqcsvfile`, not the single-column path).
 
 `known_diffs.json`: none of these had a prior Rust↔EPRI entry — nothing to retire.
 
