@@ -35,6 +35,66 @@ fn build_shape(edits: &[(&str, &str)]) -> LoadShapeObj {
     obj
 }
 
+/// Build a populated `GrowthShapeObj` through its real property engine.
+fn build_growth_shape(
+    edits: &[(&str, &str)],
+) -> crate::elements::general::growth_shape::GrowthShapeObj {
+    use crate::elements::general::growth_shape::{self, GrowthShapeObj};
+    let enums = EnumRegistry::new();
+    let cls = growth_shape::class_props();
+    let mut obj = GrowthShapeObj::new("g");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = Vec::new();
+    for (name, value) in edits {
+        let idx = cls.property_index(name).expect("known property");
+        let mut eng = PropEngine {
+            parser: &mut parser,
+            vars: &vars,
+            enums: &enums,
+            errors: &mut errors,
+            foreign: None,
+        };
+        cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
+    }
+    obj.end_edit();
+    assert!(errors.is_empty(), "{errors:?}");
+    obj
+}
+
+/// B3-r3723: `Load.GrowthFactor` at Year=0 with a GrowthShape now tracks the
+/// simulated hours (`calcYear = dblHour/8760`) instead of a flat 1.0 — so a
+/// long (>8760 h) Year=0 run advances through the growth curve.
+#[test]
+fn growth_factor_year0_tracks_simulated_hours_with_growthshape() {
+    let gs = build_growth_shape(&[("npts", "3"), ("year", "0 1 2"), ("mult", "1.2 1.5 2.0")]);
+    let mut load = load_100kw_pf09(); // 33.333 kW/phase nominal
+    load.growth_shape_obj = Some(gs);
+    // Year 0, dblHour 100 → calcYear ≈ 0.011 < 1 AND firstY == 0 ⇒
+    // factor = GetMultIdx(1) = 1.2 (pre-B3 this was a flat 1.0).
+    load.set_nominal_load(&mode_ctx(SolveMode::Snapshot, 100.0));
+    assert!(
+        (load.w_nominal - 40000.0).abs() < 1.0,
+        "w {}",
+        load.w_nominal
+    );
+    // Year 0, dblHour 17520 → calcYear = 2.0 ≥ 1 ⇒ factor = GetMult(2) = 1.8.
+    load.set_nominal_load(&mode_ctx(SolveMode::Snapshot, 17520.0));
+    assert!(
+        (load.w_nominal - 60000.0).abs() < 1.0,
+        "w {}",
+        load.w_nominal
+    );
+    // A NIL growthshape keeps the flat Year=0 factor of 1.0 (unchanged path).
+    let mut plain = load_100kw_pf09();
+    plain.set_nominal_load(&mode_ctx(SolveMode::Snapshot, 17520.0));
+    assert!(
+        (plain.w_nominal - 33333.333).abs() < 1.0,
+        "w {}",
+        plain.w_nominal
+    );
+}
+
 fn mode_ctx(mode: SolveMode, dbl_hour: f64) -> SysCtx {
     SysCtx {
         mode,
