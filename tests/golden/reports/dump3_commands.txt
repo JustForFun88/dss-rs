@@ -859,7 +859,12 @@ New Capacitor.C2 like=c1  ..."
 3, "X", "Array of wire X coordinates."
 4, "H", "Array of wire Heights."
 5, "Units", "Units for x and h: {mi|kft|km|m|Ft|in|cm } Initial default is "ft", but defaults to last unit defined"
-6, "Like", "Make like another object, e.g.:
+6, "Detailed", "{Yes/True | No/False} Default = Yes. Determines whether the spacing uses a detailed cross-section coordinates with x and h arrays (Yes/True), or uses equivalent spacing fields (No/False). The equivalent spacing fields are EqDistPhPh, EqDistPhN, AvgPhaseHeight and AvgNeutralHeight."
+7, "EqDistPhPh", "Equivalent distance between phase conductors (geometric mean distance). Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates."
+8, "EqDistPhN", "Equivalent distance between phase and neutral conductors (geometric mean distance). Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates."
+9, "AvgPhaseHeight", "Average height of phase conductors. Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates."
+10, "AvgNeutralHeight", "Average height of neutral conductors. Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates."
+11, "Like", "Make like another object, e.g.:
 
 New Capacitor.C2 like=c1  ..."
 [LineGeometry]

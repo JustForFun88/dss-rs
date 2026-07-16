@@ -1,0 +1,45 @@
+{
+ "schema": 1,
+ "oracle": {
+  "engine_spec": "capi015",
+  "engine": "DSS C-API Library version 0.15.0b4 revision e936d2101d745e0f0ea6872d7aa8545cb6bbd5ae based on OpenDSS SVN 4103",
+  "note": "WP-U1.4 equivalent-spacing property surface (LineSpacing.pas Detailed/EqDistPhPh/EqDistPhN/AvgPhaseHeight/AvgNeutralHeight); values probed on capi015 2026-07-16 (ls_props.py)."
+ },
+ "class": "linespacing",
+ "scenarios": [
+  {
+   "name": "linespacing_equivalent_spacing",
+   "commands": [
+    "New LineSpacing.ls1 nconds=4 nphases=3 units=ft detailed=no EqDistPhPh=2.5 EqDistPhN=4.272 AvgPhaseHeight=28.0 AvgNeutralHeight=24.0"
+   ],
+   "target": "LineSpacing.ls1",
+   "properties": {
+    "NConds": "4",
+    "NPhases": "3",
+    "Units": "ft",
+    "Detailed": "No",
+    "EqDistPhPh": "2.5",
+    "EqDistPhN": "4.272",
+    "AvgPhaseHeight": "28",
+    "AvgNeutralHeight": "24",
+    "X": "[ 0 0 0 0]",
+    "H": "[ 0 0 0 0]",
+    "Like": ""
+   }
+  },
+  {
+   "name": "linespacing_detailed_default",
+   "commands": [
+    "New LineSpacing.ls2 nconds=3 nphases=3 x=(-1.2909 0 1.2909) h=(28.6 28.6 28.6) units=ft"
+   ],
+   "target": "LineSpacing.ls2",
+   "properties": {
+    "Detailed": "Yes",
+    "EqDistPhPh": "0",
+    "EqDistPhN": "0",
+    "AvgPhaseHeight": "0",
+    "AvgNeutralHeight": "0"
+   }
+  }
+ ]
+}

@@ -3389,6 +3389,26 @@ static HELP_CATALOG: &[(&str, &str)] = &[
         "Array of WireData names for use in a line constants calculation.\nAlternative to individual wire inputs. ALL MUST BE PREVIOUSLY DEFINED.\nMust match \"nconds\" as previously defined for this geometry,\nunless TSData or CNData were previously assigned to phases, and these wires are neutrals.\nMust be used in conjunction with the Spacing property.",
     ),
     ("LineGeometry.x", "x coordinate."),
+    (
+        "LineSpacing.avgneutralheight",
+        "Average height of neutral conductors. Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates.",
+    ),
+    (
+        "LineSpacing.avgphaseheight",
+        "Average height of phase conductors. Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates.",
+    ),
+    (
+        "LineSpacing.detailed",
+        "{Yes/True | No/False} Default = Yes. Determines whether the spacing uses a detailed cross-section coordinates with x and h arrays (Yes/True), or uses equivalent spacing fields (No/False). The equivalent spacing fields are EqDistPhPh, EqDistPhN, AvgPhaseHeight and AvgNeutralHeight.",
+    ),
+    (
+        "LineSpacing.eqdistphn",
+        "Equivalent distance between phase and neutral conductors (geometric mean distance). Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates.",
+    ),
+    (
+        "LineSpacing.eqdistphph",
+        "Equivalent distance between phase conductors (geometric mean distance). Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates.",
+    ),
     ("LineSpacing.h", "Array of wire Heights."),
     (
         "LineSpacing.like",

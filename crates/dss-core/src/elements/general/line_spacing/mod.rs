@@ -26,6 +26,14 @@ define_properties! {
     3 X       => PropDef::double_v_array("X");
     4 H       => PropDef::double_v_array("H");
     5 UNITS   => PropDef::mapped_string_enum("Units", enums.units);
+    // dss_capi 0.15.x additions (LineSpacing.pas): the equivalent-spacing model.
+    // `Detailed` (default true) selects per-conductor coordinates; when false the
+    // four equivalent distances replace them. UPGRADE_PLAN.md WP-U1.4 rows B3/C1.
+    6 DETAILED          => PropDef::boolean("Detailed");
+    7 EQDISTPHPH        => PropDef::double("EqDistPhPh");
+    8 EQDISTPHN         => PropDef::double("EqDistPhN");
+    9 AVGPHASEHEIGHT    => PropDef::double("AvgPhaseHeight");
+    10 AVGNEUTRALHEIGHT => PropDef::double("AvgNeutralHeight");
 }
 
 /// `TLineSpacingObj`. Pascal stores `FX`/`FY` as 1-based `pDoubleArray`s of
@@ -38,6 +46,14 @@ pub struct LineSpacingObj {
     fnconds: i32,
     nphases: i32,
     units: i32,
+    // dss_capi 0.15.x equivalent-spacing fields. `detailed` defaults `true`
+    // (`EquivalentSpacing = not detailed`), so the default is the legacy
+    // per-conductor-coordinate model.
+    detailed: bool,
+    eq_dist_ph_ph: f64,
+    eq_dist_ph_n: f64,
+    avg_phase_height: f64,
+    avg_neutral_height: f64,
 }
 
 impl LineSpacingObj {
@@ -52,9 +68,37 @@ impl LineSpacingObj {
             fnconds: 3,
             nphases: 3,
             units: UNITS_FT,
+            // Pascal `Create`: eqDist*/avg* := 0.0, detailed := true.
+            detailed: true,
+            eq_dist_ph_ph: 0.0,
+            eq_dist_ph_n: 0.0,
+            avg_phase_height: 0.0,
+            avg_neutral_height: 0.0,
         };
         obj.realloc_conductors();
         obj
+    }
+
+    /// Pascal `EquivalentSpacing()` = `not detailed`: `TLineGeometryObj` reads
+    /// this (plus the four equivalent distances) when building the Carson matrices.
+    pub fn equivalent_spacing(&self) -> bool {
+        !self.detailed
+    }
+    /// Equivalent phase-phase distance (in this spacing's `Units`).
+    pub fn eq_dist_ph_ph(&self) -> f64 {
+        self.eq_dist_ph_ph
+    }
+    /// Equivalent phase-neutral distance (in this spacing's `Units`).
+    pub fn eq_dist_ph_n(&self) -> f64 {
+        self.eq_dist_ph_n
+    }
+    /// Average phase-conductor height (in this spacing's `Units`).
+    pub fn avg_phase_height(&self) -> f64 {
+        self.avg_phase_height
+    }
+    /// Average neutral-conductor height (in this spacing's `Units`).
+    pub fn avg_neutral_height(&self) -> f64 {
+        self.avg_neutral_height
     }
 
     /// Pascal `NWires` (= `FNConds`): the conductor count a `LineGeometry`
@@ -121,6 +165,38 @@ impl DssObject for LineSpacingObj {
         }
     }
 
+    fn get_bool(&self, idx: usize) -> bool {
+        match idx {
+            prop::DETAILED => self.detailed,
+            _ => unreachable!("LineSpacing has no boolean at {idx}"),
+        }
+    }
+    fn set_bool(&mut self, idx: usize, value: bool) {
+        match idx {
+            prop::DETAILED => self.detailed = value,
+            _ => unreachable!("LineSpacing has no boolean at {idx}"),
+        }
+    }
+
+    fn get_f64(&self, idx: usize) -> f64 {
+        match idx {
+            prop::EQDISTPHPH => self.eq_dist_ph_ph,
+            prop::EQDISTPHN => self.eq_dist_ph_n,
+            prop::AVGPHASEHEIGHT => self.avg_phase_height,
+            prop::AVGNEUTRALHEIGHT => self.avg_neutral_height,
+            _ => unreachable!("LineSpacing has no double at {idx}"),
+        }
+    }
+    fn set_f64(&mut self, idx: usize, value: f64) {
+        match idx {
+            prop::EQDISTPHPH => self.eq_dist_ph_ph = value,
+            prop::EQDISTPHN => self.eq_dist_ph_n = value,
+            prop::AVGPHASEHEIGHT => self.avg_phase_height = value,
+            prop::AVGNEUTRALHEIGHT => self.avg_neutral_height = value,
+            _ => unreachable!("LineSpacing has no double at {idx}"),
+        }
+    }
+
     fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
         let arr = match idx {
             prop::X => &self.fx,
@@ -157,11 +233,30 @@ impl DssObject for LineSpacingObj {
 
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
         // Pascal `TLineSpacingObj.PropertySideEffects`: `nconds` resizes the
-        // coordinate arrays and resets the unit to feet; the rest only flag
-        // `DataChanged`, which we do not track.
-        if idx == prop::NCONDS {
-            self.realloc_conductors();
-            self.units = UNITS_FT;
+        // coordinate arrays and resets the unit to feet.
+        match idx {
+            prop::NCONDS => {
+                self.realloc_conductors();
+                self.units = UNITS_FT;
+            }
+            // dss_capi 0.15.x `Detailed` side effect: use `Detailed` to clear the
+            // property-tracking of the now-unused set, so Save/Dump only emit the
+            // active model. (The upstream `NoPropertyTracking` compat flag is
+            // off by default; the port always tracks.)
+            prop::DETAILED => {
+                if self.detailed {
+                    // Detailed distances: clear the equivalent data.
+                    self.data.clear_seq(prop::EQDISTPHPH);
+                    self.data.clear_seq(prop::EQDISTPHN);
+                    self.data.clear_seq(prop::AVGPHASEHEIGHT);
+                    self.data.clear_seq(prop::AVGNEUTRALHEIGHT);
+                } else {
+                    // Equivalent distances: clear X and H.
+                    self.data.clear_seq(prop::X);
+                    self.data.clear_seq(prop::H);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -178,6 +273,12 @@ impl DssObject for LineSpacingObj {
             self.fx[..n].copy_from_slice(&o.fx[..n]);
             self.fy[..n].copy_from_slice(&o.fy[..n]);
             self.units = o.units;
+            // TODO(compat): dss_capi 0.15.x `TLineSpacingObj.MakeLike` does NOT
+            // copy `detailed`/`eqDistPhPh`/`eqDistPhN`/`avgPhaseHeight`/
+            // `avgNeutralHeight` (only NConds/NPhases/FX/FY/Units), so a `like=`
+            // spacing keeps its `Create` defaults for the equivalent-spacing
+            // fields while its PrpSequence (copied by the base) may still mark
+            // them set. Reproduced 1:1; the clean fix copies them post-port.
         }
     }
 

@@ -155,11 +155,24 @@ pub struct LineConstants {
     fz_reduced: Option<CMatrix>, // exist only after a Kron reduction
     fyc_reduced: Option<CMatrix>,
 
-    ffrequency: f64, // frequency for which impedances are computed
-    fw: f64,         // 2*pi*f (truncated twopi)
-    frho_earth: f64, // ohm-m
-    fme: Complex64,  // factor for earth impedance
-    frho_changed: bool,
+    ffrequency: f64,    // frequency for which impedances are computed
+    fw: f64,            // 2*pi*f (truncated twopi)
+    frho_earth: f64,    // ohm-m
+    fme: Complex64,     // factor for earth impedance
+    frho_changed: bool, // also flags eps_r_medium / height_offset / user_height_unit / equiv changes
+
+    // dss_capi 0.15.x `TLineConstants` additions (SVN r3913-era line/conductor
+    // rework, LineConstants.pas). Defaults preserve the 0.14.5 numerics:
+    // `equivalent_spacing=false`, `eps_r_medium=1.0` (so `E0*1.0 == E0` exactly),
+    // `height_offset=0.0`. UPGRADE_PLAN.md WP-U1.4 rows B3/C1.
+    equivalent_spacing: bool,
+    eps_r_medium: f64, // relative permittivity of the surrounding medium (unit-less)
+    height_offset: f64, // stored in meters
+    user_height_unit: i32, // LineUnits code the height_offset is reported in
+    eq_dist_ph_ph: f64, // equivalent phase-phase distance (meters)
+    eq_dist_ph_n: f64, // equivalent phase-neutral distance (meters)
+    avg_phase_height: f64, // meters
+    avg_neutral_height: f64, // meters
 }
 
 impl LineConstants {
@@ -218,7 +231,15 @@ impl LineConstants {
             fw: 0.0,
             frho_earth: 100.0, // default value
             fme: Complex64::ZERO,
-            frho_changed: true,
+            frho_changed: true, // using for both rho and epsilon_r
+            equivalent_spacing: false,
+            eps_r_medium: 1.0,   // default value should be 1.0
+            height_offset: 0.0,  // default value should be 0.0
+            user_height_unit: 4, // UNITS_M
+            eq_dist_ph_ph: 0.0,
+            eq_dist_ph_n: 0.0,
+            avg_phase_height: 0.0,
+            avg_neutral_height: 0.0,
         }
     }
 
@@ -317,6 +338,99 @@ impl LineConstants {
         }
     }
 
+    // ---- dss_capi 0.15.x additions (LineConstants.pas, SVN r3913-era) ----
+
+    /// `SetEquivalentSpacing`: switch between the detailed per-conductor
+    /// coordinate model and the equivalent-distance model. Flags `rhoChanged`
+    /// so the next `z_matrix`/`yc_matrix` recomputes.
+    pub fn set_equivalent_spacing(&mut self, value: bool) {
+        if value == self.equivalent_spacing {
+            return;
+        }
+        self.equivalent_spacing = value;
+        self.frho_changed = true;
+    }
+
+    /// `SetEpsRMedium`: relative permittivity of the surrounding medium (used in
+    /// the shunt-capacitance `Pfactor`). Default `1.0` preserves the 0.14.5
+    /// numerics (`E0 * 1.0 == E0`).
+    pub fn set_eps_r_medium(&mut self, value: f64) {
+        if value == self.eps_r_medium {
+            return;
+        }
+        self.frho_changed = true;
+        self.eps_r_medium = value;
+    }
+
+    /// `GetEpsRMedium`.
+    pub fn eps_r_medium(&self) -> f64 {
+        self.eps_r_medium
+    }
+
+    /// `SetHeightOffset` (LineConstants.pas): `Value` is in the current
+    /// `user_height_unit`; shifts every conductor's `FY` by the change. Stored
+    /// internally in meters.
+    pub fn set_height_offset(&mut self, value: f64) {
+        let new_offset_m = value * LineUnits::from_code(self.user_height_unit).to_meters();
+        if new_offset_m != self.height_offset {
+            self.frho_changed = true;
+        }
+        // Remove old value from Y positions first (offset already in meters).
+        for i in 0..self.num_conds {
+            self.fy[i] -= self.height_offset;
+        }
+        self.height_offset = new_offset_m; // replace old value with new value
+        // Add new value to Y positions.
+        for i in 0..self.num_conds {
+            self.fy[i] += self.height_offset;
+        }
+    }
+
+    /// `GetHeightOffset`: the stored (meters) offset reported in the user unit.
+    pub fn height_offset(&self) -> f64 {
+        self.height_offset * LineUnits::from_code(self.user_height_unit).from_meters()
+    }
+
+    /// The raw stored height offset in meters (Pascal `heightOffset`), which
+    /// `LineGeometry` adds to the equivalent avg heights.
+    pub fn height_offset_meters(&self) -> f64 {
+        self.height_offset
+    }
+
+    /// `SetUserHeightUnit`: re-express the existing height offset in the new
+    /// unit (Pascal re-runs `SetHeightOffset(heightOffset)`).
+    pub fn set_user_height_unit(&mut self, value: i32) {
+        if value == self.user_height_unit {
+            return;
+        }
+        self.user_height_unit = value;
+        // Update the existing (meters) value to fit the new user units. Pascal
+        // passes `heightOffset` (the meters field) straight into SetHeightOffset,
+        // which multiplies by To_Meters(new unit); reproduce that exactly.
+        let offset_field = self.height_offset;
+        self.set_height_offset(offset_field);
+    }
+
+    /// `GetUserHeightUnit`.
+    pub fn user_height_unit(&self) -> i32 {
+        self.user_height_unit
+    }
+
+    /// Equivalent-spacing distances (meters). Set by `LineGeometry`'s
+    /// `UpdateLineGeometryData` when the referenced spacing is not detailed.
+    pub fn set_equivalent_distances(
+        &mut self,
+        eq_dist_ph_ph: f64,
+        eq_dist_ph_n: f64,
+        avg_phase_height: f64,
+        avg_neutral_height: f64,
+    ) {
+        self.eq_dist_ph_ph = eq_dist_ph_ph;
+        self.eq_dist_ph_n = eq_dist_ph_n;
+        self.avg_phase_height = avg_phase_height;
+        self.avg_neutral_height = avg_neutral_height;
+    }
+
     /// `Get_Zint(i, EarthModel)`: internal impedance of conductor `i`.
     fn get_zint(&self, i: usize, earth_model: i32) -> Complex64 {
         match earth_model {
@@ -341,8 +455,32 @@ impl LineConstants {
     /// `Get_Ze(i, j, EarthModel)`: earth-return impedance for the `ij` element.
     fn get_ze(&self, i: usize, j: usize, earth_model: i32) -> Complex64 {
         let pi = std::f64::consts::PI;
-        let fyi = self.fy[i].abs();
-        let fyj = self.fy[j].abs();
+        // dss_capi 0.15.x `GetZearth`: in equivalent-spacing mode the heights
+        // are the avg phase/neutral heights and the horizontal separation is
+        // the equivalent phase-phase / phase-neutral distance (assumed to lie on
+        // the X axis). 0-based: conductor `k` is a phase iff `k < nphases`.
+        let fyi = if !self.equivalent_spacing {
+            self.fy[i].abs()
+        } else if i < self.nphases {
+            self.avg_phase_height.abs()
+        } else {
+            self.avg_neutral_height.abs()
+        };
+        let fyj = if !self.equivalent_spacing {
+            self.fy[j].abs()
+        } else if j < self.nphases {
+            self.avg_phase_height.abs()
+        } else {
+            self.avg_neutral_height.abs()
+        };
+        let fxi_fxj = if !self.equivalent_spacing {
+            self.fx[i] - self.fx[j]
+        } else if (i < self.nphases && j < self.nphases) || (i >= self.nphases && j >= self.nphases)
+        {
+            self.eq_dist_ph_ph
+        } else {
+            self.eq_dist_ph_n
+        };
 
         match earth_model {
             // dss_capi 0.15.x `TLineConstants.GetZearth`/`SIMPLECARSON`
@@ -373,7 +511,7 @@ impl LineConstants {
                 let (thetaij, dij) = if i == j {
                     (0.0, 2.0 * fyi)
                 } else {
-                    let dij = ((fyi + fyj).powi(2) + (self.fx[i] - self.fx[j]).powi(2)).sqrt();
+                    let dij = ((fyi + fyj).powi(2) + fxi_fxj.powi(2)).sqrt();
                     (((fyi + fyj) / dij).acos(), dij)
                 };
                 let mij = 2.8099e-3 * dij * (self.ffrequency / self.frho_earth).sqrt();
@@ -405,7 +543,7 @@ impl LineConstants {
             _ => {
                 if i != j {
                     let hterm = cmplx(fyi + fyj, 0.0) + self.fme.inv() * 2.0;
-                    let xterm = cmplx(self.fx[i] - self.fx[j], 0.0);
+                    let xterm = cmplx(fxi_fxj, 0.0);
                     let ln_arg = csqrt_fpc(hterm * hterm + xterm * xterm);
                     cmplx(0.0, self.fw * MU0 / TWOPI) * cln_fpc(ln_arg)
                 } else {
@@ -464,11 +602,19 @@ impl LineConstants {
                 .set(i, i, zi + zspacing + self.get_ze(i, i, earth_model));
         }
 
-        // Mutual impedances
+        // Mutual impedances. In equivalent-spacing mode the horizontal
+        // separation is the equivalent phase-neutral distance for a phase-to-
+        // neutral pair, else the phase-phase distance (0-based: conductor `k` is
+        // a phase iff `k < nphases`; the loop has `j < i`).
         for i in 0..self.num_conds {
             for j in 0..i {
-                let dij =
-                    ((self.fx[i] - self.fx[j]).powi(2) + (self.fy[i] - self.fy[j]).powi(2)).sqrt();
+                let dij = if !self.equivalent_spacing {
+                    ((self.fx[i] - self.fx[j]).powi(2) + (self.fy[i] - self.fy[j]).powi(2)).sqrt()
+                } else if j < self.nphases && i >= self.nphases {
+                    self.eq_dist_ph_n
+                } else {
+                    self.eq_dist_ph_ph
+                };
                 let z = lfactor * (1.0 / dij).ln() + self.get_ze(i, j, earth_model);
                 self.fz_matrix.set(i, j, z);
                 self.fz_matrix.set(j, i, z);
@@ -476,25 +622,61 @@ impl LineConstants {
         }
 
         // Capacitance matrix: construct P matrix then invert.
-        let pfactor = -1.0 / TWOPI / E0 / self.fw; // include frequency
+        // `eps_r_medium` defaults to 1.0 (`E0 * 1.0 == E0`), so the default path
+        // is bit-identical to 0.14.5.
+        let pfactor = -1.0 / TWOPI / (E0 * self.eps_r_medium) / self.fw; // include frequency
 
         // Self uses capradius, which defaults to actual conductor radius.
         for i in 0..self.num_conds {
-            let r = if self.fcapradius[i] < 0.0 {
-                self.fradius[i]
+            if !self.equivalent_spacing {
+                let r = if self.fcapradius[i] < 0.0 {
+                    self.fradius[i]
+                } else {
+                    self.fcapradius[i]
+                };
+                self.fyc_matrix
+                    .set(i, i, cmplx(0.0, pfactor * (2.0 * self.fy[i] / r).ln()));
+                continue;
+            }
+            // Equivalent spacing: use the avg phase/neutral height (Pascal uses
+            // Fcapradius[i] directly here, no radius fallback).
+            let h = if i >= self.nphases {
+                self.avg_neutral_height
             } else {
-                self.fcapradius[i]
+                self.avg_phase_height
             };
-            self.fyc_matrix
-                .set(i, i, cmplx(0.0, pfactor * (2.0 * self.fy[i] / r).ln()));
+            self.fyc_matrix.set(
+                i,
+                i,
+                cmplx(0.0, pfactor * (2.0 * h / self.fcapradius[i]).ln()),
+            );
         }
         for i in 0..self.num_conds {
             for j in 0..i {
-                let dij =
-                    ((self.fx[i] - self.fx[j]).powi(2) + (self.fy[i] - self.fy[j]).powi(2)).sqrt();
-                // distance to image j
-                let dijp =
-                    ((self.fx[i] - self.fx[j]).powi(2) + (self.fy[i] + self.fy[j]).powi(2)).sqrt();
+                let (dij, dijp) = if !self.equivalent_spacing {
+                    let dij = ((self.fx[i] - self.fx[j]).powi(2)
+                        + (self.fy[i] - self.fy[j]).powi(2))
+                    .sqrt();
+                    // distance to image j
+                    let dijp = ((self.fx[i] - self.fx[j]).powi(2)
+                        + (self.fy[i] + self.fy[j]).powi(2))
+                    .sqrt();
+                    (dij, dijp)
+                } else {
+                    let dij = if j < self.nphases && i >= self.nphases {
+                        self.eq_dist_ph_n
+                    } else {
+                        self.eq_dist_ph_ph
+                    };
+                    let dijp = if j < self.nphases && i >= self.nphases {
+                        self.avg_phase_height + self.avg_neutral_height
+                    } else if i < self.nphases && j < self.nphases {
+                        2.0 * self.avg_phase_height
+                    } else {
+                        2.0 * self.avg_neutral_height
+                    };
+                    (dij, dijp)
+                };
                 let v = cmplx(0.0, pfactor * (dijp / dij).ln());
                 self.fyc_matrix.set(i, j, v);
                 self.fyc_matrix.set(j, i, v);
@@ -595,6 +777,35 @@ impl LineConstants {
     /// `TLineConstants.ConductorsInSameSpace`: fails when a conductor height is
     /// ≤ 0 or two conductors overlap.
     fn cisp_overhead(&self) -> Option<String> {
+        // Equivalent-spacing model: heights must be > 0 and no phase-neutral /
+        // phase-phase distance may be smaller than the touching-conductor radius
+        // sum (dss_capi 0.15.x `ConductorsInSameSpace` equivalent branch).
+        if self.equivalent_spacing {
+            if self.avg_phase_height <= 0.0 || self.avg_neutral_height <= 0.0 {
+                return Some(
+                    "Conductor average heights (overhead equivalent spacing) must be > 0."
+                        .to_string(),
+                );
+            }
+            for i in 0..self.num_conds {
+                for j in (i + 1)..self.num_conds {
+                    let dij = if i < self.nphases && j >= self.nphases {
+                        self.eq_dist_ph_n
+                    } else {
+                        self.eq_dist_ph_ph
+                    };
+                    if dij < (self.fradius[i] + self.fradius[j]) {
+                        return Some(format!(
+                            "Conductors {} and {} occupy the same space.",
+                            i + 1,
+                            j + 1
+                        ));
+                    }
+                }
+            }
+            return None;
+        }
+
         // Check for 0 (or negative) Y coordinate.
         for i in 0..self.num_conds {
             if self.fy[i] <= 0.0 {
