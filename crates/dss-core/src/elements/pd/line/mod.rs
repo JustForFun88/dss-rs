@@ -166,9 +166,18 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // + a MappedStringEnum HeightUnit (the same `UnitsEnum` as `Units`). They
         // feed `LineConstants.SetEpsRMedium/SetHeightOffset/SetUserHeightUnit` at
         // the geometry/spacing Z build (see `line/solve.rs`).
-        PropDef::double("EpsRMedium"),
-        PropDef::double("HeightOffset"),
-        PropDef::mapped_string_enum("HeightUnit", enums.units),
+        //
+        // SUPPRESS_JSON is a *temporary* 0.14.5-JSON-parity measure, NOT the Pascal
+        // flag's normal meaning: capi015 FULL JSON DOES emit these three (probed
+        // 2026-07-16), but the byte-exact JSON goldens (`tests/golden/json/`) are
+        // pinned to 0.14.5, and the Line JSON surface cannot flip to capi015 until
+        // the sibling wt-u14cnts lands `Conductors` (index 34 — capi015 FULL emits
+        // it between HeightUnit and NormAmps). Drop these flags when the Line JSON
+        // goldens regenerate on capi015. The `?`/dump property surface (props_015x
+        // allowlist + `linemedium.json` golden) is unaffected.
+        PropDef::double("EpsRMedium").flags(PropFlags::SUPPRESS_JSON),
+        PropDef::double("HeightOffset").flags(PropFlags::SUPPRESS_JSON),
+        PropDef::mapped_string_enum("HeightUnit", enums.units).flags(PropFlags::SUPPRESS_JSON),
         // TPDClass tail:
         PropDef::double("NormAmps"),
         PropDef::double("EmergAmps"),
