@@ -1,124 +1,311 @@
 //! NCIM solver (`Set Algorithm=NCIM`) integration tests.
 //!
-//! The oracle-gated deck matrix (capi015 micro/PV/midi) lands with the WP deck
-//! flips; these Rust-level tests pin the two properties that hold *independently*
-//! of the oracle:
+//! Every electrical assertion here is pinned against the **capi015** NCIM oracle
+//! — dss_capi 0.15.0b4, OpenDSS SVN r4103, the 0.15.x engine line that owns NCIM
+//! (the port's pinned 0.14.5 gate oracle has no NCIM at all, so these expected
+//! values were captured 2026-07-16 from `tools/opendss/.venv`
+//! (`DSS_ORACLE_ENGINE=capi015`) and embedded as constants, golden-style). The
+//! Rust port reproduces them to <5e-11 V — faer-vs-KLU last-ulp — so the 1e-6 V
+//! band below is ~4 orders above the cross-solver floor yet still ~7 orders
+//! *tighter* than any physically-meaningful voltage error.
 //!
-//! 1. **Self-consistency** — NCIM and the default fixed-point (`Normal`) solve
-//!    the same power-flow equations, so on a PQ-only circuit they must converge to
-//!    the same node voltages (to the looser of the two convergence criteria).
-//! 2. **Option surface** — `Set/Get IgnoreGenQLimits` and `NCIMQGain` round-trip,
-//!    and `NCIM` parses as algorithm ordinal 2.
+//! **NCIM does not converge to the same node voltages as the default fixed-point
+//! (`Normal`).** NCIM holds the swing (source) bus at the ideal EMF with *no*
+//! series-impedance droop; `Normal` models the VSource as a Thevenin source, so
+//! its source bus droops (≈4 V here). Both engines agree on this — see
+//! [`ncim_source_bus_is_ideal_emf_matches_oracle`] — so comparing NCIM against
+//! `Normal` (as an earlier revision of this file did) was the wrong baseline;
+//! these tests compare NCIM against the NCIM oracle.
+
+use num_complex::Complex64;
 
 use crate::exec::Dss;
 
-fn build_pq_circuit(load_model: i32) -> Dss {
+fn cx(re: f64, im: f64) -> Complex64 {
+    Complex64::new(re, im)
+}
+
+/// Run a script and return the `Dss`. Setup errors abort; a non-converged NCIM
+/// solve is *not* an error (`DoNCIMSolution` returns Ok even when it stalls,
+/// matching upstream), so callers assert `is_solved` themselves.
+fn run(lines: &[&str]) -> Dss {
     let mut dss = Dss::new();
-    for line in [
-        "New circuit.ncimtest basekv=12.47 phases=3 bus1=sourcebus",
-        "New Line.l1 bus1=sourcebus bus2=mid phases=3 r1=0.12 x1=0.35 length=2",
-        "New Line.l2 bus1=mid bus2=loadbus phases=3 r1=0.12 x1=0.35 length=1",
-        &format!("New Load.ld1 bus1=loadbus phases=3 kv=12.47 kw=1200 kvar=500 model={load_model}"),
-        "New Load.ld2 bus1=mid phases=3 kv=12.47 kw=600 kvar=200 model=1",
-        "Set voltagebases=[12.47]",
-        "Calcvoltagebases",
-    ] {
+    for line in lines {
         dss.command(line);
-        assert!(
-            dss.errors().is_empty(),
-            "setup `{line}` -> {:?}",
-            dss.errors()
-        );
+        assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
     }
     dss
 }
 
-/// The maximum per-node voltage-magnitude relative difference between two
-/// solutions (relative to the source magnitude).
-fn max_rel_vmag_diff(a: &[num_complex::Complex64], b: &[num_complex::Complex64]) -> f64 {
-    assert_eq!(a.len(), b.len());
-    let base = a.get(1).map(|v| v.norm()).unwrap_or(1.0).max(1.0);
-    a.iter()
-        .zip(b)
-        .skip(1)
-        .map(|(x, y)| (x.norm() - y.norm()).abs() / base)
-        .fold(0.0_f64, f64::max)
+/// Assert every node voltage (1-based, in Y-order) matches `expected` to `tol`
+/// on both the real and imaginary components.
+fn assert_nodes(dss: &Dss, expected: &[Complex64], tol: f64) {
+    let ckt = dss.circuit().unwrap();
+    assert_eq!(
+        ckt.solution.node_v.len(),
+        expected.len() + 1,
+        "node count (excl. ground)"
+    );
+    for (k, e) in expected.iter().enumerate() {
+        let v = ckt.solution.node_v[k + 1];
+        assert!(
+            (v.re - e.re).abs() < tol && (v.im - e.im).abs() < tol,
+            "node {} ({}): Rust {v:?} vs capi015 {e:?} (tol {tol:.0e})",
+            k + 1,
+            ckt.node_name(k + 1),
+        );
+    }
 }
 
-/// NCIM converges to the same node voltages as the default fixed-point solver on
-/// a PQ (constant-power) circuit. Both solve `I(V) = 0`; the difference is bounded
-/// by the looser convergence criterion (`Normal`'s voltage tolerance, 1e-4).
-#[test]
-fn ncim_matches_normal_solve_pq() {
-    let mut dss = build_pq_circuit(1);
-    dss.command("Solve");
-    assert!(
-        dss.errors().is_empty(),
-        "normal solve -> {:?}",
-        dss.errors()
-    );
-    let v_normal = dss.circuit().unwrap().solution.node_v.clone();
-    assert!(dss.circuit().unwrap().is_solved);
+const V_TOL: f64 = 1e-6;
+const KVAR_TOL: f64 = 1e-4;
 
-    dss.command("Set algorithm=NCIM");
-    dss.command("Solve");
-    assert!(dss.errors().is_empty(), "ncim solve -> {:?}", dss.errors());
+/// The two-line PQ feeder (`sourcebus → mid → loadbus`) the PQ/ConstZ tests use.
+fn pq_circuit(ld1_model: i32) -> Vec<String> {
+    vec![
+        "New circuit.ncimtest basekv=12.47 phases=3 bus1=sourcebus".into(),
+        "New Line.l1 bus1=sourcebus bus2=mid phases=3 r1=0.12 x1=0.35 length=2".into(),
+        "New Line.l2 bus1=mid bus2=loadbus phases=3 r1=0.12 x1=0.35 length=1".into(),
+        format!("New Load.ld1 bus1=loadbus phases=3 kv=12.47 kw=1200 kvar=500 model={ld1_model}"),
+        "New Load.ld2 bus1=mid phases=3 kv=12.47 kw=600 kvar=200 model=1".into(),
+        "Set voltagebases=[12.47]".into(),
+        "Calcvoltagebases".into(),
+    ]
+}
+
+/// A radial PV-bus feeder: `sourcebus → genbus`, a 2 MW/0.8 Mvar load and a
+/// model-3 (voltage-regulating) generator at `genbus`, ±1.5 Mvar Q-range.
+fn pv_circuit(vpu: &str) -> Vec<String> {
+    vec![
+        "New circuit.ncimpv basekv=12.47 phases=3 bus1=sourcebus".into(),
+        "New Line.l1 bus1=sourcebus bus2=genbus phases=3 r1=0.12 x1=0.35 length=3".into(),
+        "New Load.ld1 bus1=genbus phases=3 kv=12.47 kw=2000 kvar=800 model=1".into(),
+        format!(
+            "New Generator.g1 bus1=genbus phases=3 kv=12.47 kw=800 model=3 \
+             maxkvar=1500 minkvar=-1500 vpu={vpu}"
+        ),
+        "Set voltagebases=[12.47]".into(),
+        "Calcvoltagebases".into(),
+    ]
+}
+
+fn as_refs(v: &[String]) -> Vec<&str> {
+    v.iter().map(String::as_str).collect()
+}
+
+fn solve_ncim(setup: &[String]) -> Dss {
+    let mut lines = as_refs(setup);
+    lines.push("Set algorithm=NCIM");
+    lines.push("Solve");
+    run(&lines)
+}
+
+/// capi015 NCIM source bus (nodes 1..3): the ideal EMF, no droop, imag(node 1)=0.
+const ORACLE_SOURCEBUS: [Complex64; 3] = [
+    Complex64::new(7199.557856794634, 0.0),
+    Complex64::new(-3599.77892839732, -6234.999999999999),
+    Complex64::new(-3599.778928397315, 6235.000000000002),
+];
+
+/// PQ (all model-1 loads): NCIM node voltages match the capi015 NCIM oracle.
+#[test]
+fn ncim_pq_matches_oracle() {
+    let dss = solve_ncim(&pq_circuit(1));
     let ckt = dss.circuit().unwrap();
-    assert!(ckt.is_solved, "NCIM did not converge");
+    assert!(ckt.is_solved, "NCIM PQ did not converge");
     assert_eq!(ckt.solution.algorithm, 2, "algorithm should be NCIM (2)");
-    let v_ncim = ckt.solution.node_v.clone();
+    assert_eq!(ckt.solution.iteration, 3, "capi015 converges PQ in 3 iters");
 
-    let diff = max_rel_vmag_diff(&v_normal, &v_ncim);
-    assert!(
-        diff < 1e-3,
-        "NCIM vs Normal node-voltage magnitudes diverge by {diff:.2e} (rel)"
-    );
+    let expected = [
+        ORACLE_SOURCEBUS[0],
+        ORACLE_SOURCEBUS[1],
+        ORACLE_SOURCEBUS[2],
+        cx(7156.125666935628, -50.5630322082336),
+        cx(-3621.8517038525165, -6172.105104135991),
+        cx(-3534.2739630831124, 6222.668136344223),
+        cx(7141.080031242963, -67.22612265245337),
+        cx(-3628.759545636436, -6150.743656187946),
+        cx(-3512.320485606528, 6217.969778840398),
+    ];
+    assert_nodes(&dss, &expected, V_TOL);
 }
 
-/// The constant-impedance (`model=2`, `NCIM_DoZBus`) path also matches: a ConstZ
-/// load's admittance is stamped into the NCIM Jacobian + mismatch directly rather
-/// than via the PQ derivative.
+/// ConstZ `ld1` (`model=2`, `NCIM_DoZBus`): the admittance is stamped straight
+/// into the Jacobian + mismatch rather than via the PQ derivative. Matches the
+/// capi015 NCIM oracle.
 #[test]
-fn ncim_matches_normal_solve_constz() {
-    let mut dss = build_pq_circuit(2);
-    dss.command("Solve");
-    let v_normal = dss.circuit().unwrap().solution.node_v.clone();
-
-    dss.command("Set algorithm=NCIM");
-    dss.command("Solve");
-    assert!(dss.errors().is_empty(), "ncim solve -> {:?}", dss.errors());
+fn ncim_constz_matches_oracle() {
+    let dss = solve_ncim(&pq_circuit(2));
     let ckt = dss.circuit().unwrap();
-    assert!(ckt.is_solved, "NCIM (ConstZ) did not converge");
-    let v_ncim = ckt.solution.node_v.clone();
+    assert!(ckt.is_solved, "NCIM ConstZ did not converge");
+    assert_eq!(ckt.solution.iteration, 3);
 
-    let diff = max_rel_vmag_diff(&v_normal, &v_ncim);
+    let expected = [
+        ORACLE_SOURCEBUS[0],
+        ORACLE_SOURCEBUS[1],
+        ORACLE_SOURCEBUS[2],
+        cx(7156.612809917596, -50.03324451428737),
+        cx(-3621.636465741933, -6172.7918761806295),
+        cx(-3534.9763441756672, 6222.825120694914),
+        cx(7141.8096524178145, -66.43152609318317),
+        cx(-3628.436215417777, -6151.772824940151),
+        cx(-3513.3734370000425, 6218.204351033329),
+    ];
+    assert_nodes(&dss, &expected, V_TOL);
+}
+
+/// NCIM holds the source bus at the ideal EMF (`7199.56 + 0i`), whereas the
+/// default fixed-point (`Normal`) droops it under the VSource impedance
+/// (`7195.46 − 5.68i`). This ≈4 V gap is a genuine NCIM modelling property —
+/// confirmed by the capi015 oracle — not a convergence-tolerance artifact, and
+/// is why NCIM must be pinned against the NCIM oracle, never against `Normal`.
+#[test]
+fn ncim_source_bus_is_ideal_emf_matches_oracle() {
+    // Normal solve: source bus droops.
+    let mut normal = Dss::new();
+    for line in as_refs(&pq_circuit(1)) {
+        normal.command(line);
+    }
+    normal.command("Solve");
+    let v_normal = normal.circuit().unwrap().solution.node_v[1];
     assert!(
-        diff < 1e-3,
-        "NCIM(ConstZ) vs Normal node-voltage magnitudes diverge by {diff:.2e} (rel)"
+        (v_normal.re - 7195.4576).abs() < 1e-2 && (v_normal.im - (-5.6823)).abs() < 1e-2,
+        "Normal source bus droops: {v_normal:?}"
+    );
+
+    // NCIM: ideal EMF, no droop — matches capi015.
+    let dss = solve_ncim(&pq_circuit(1));
+    let v_ncim = dss.circuit().unwrap().solution.node_v[1];
+    assert!(
+        (v_ncim - ORACLE_SOURCEBUS[0]).norm() < V_TOL,
+        "NCIM source bus = ideal EMF (capi015): {v_ncim:?}"
+    );
+    assert!(
+        (v_ncim.re - v_normal.re).abs() > 3.0,
+        "NCIM vs Normal source bus differ by the impedance droop (not tolerance)"
     );
 }
 
-/// Re-solving under NCIM (a second `Solve`) stays converged and stable — exercises
-/// the warm-start path (`NCIM_Ready` true, `NCIM_InitGenQ` false).
+/// PV bus **actively regulating within its Q-limits**: `vpu=1.0` needs
+/// Q≈1217 kvar (< the ±1500 limit), so the generator stays model-3 and drives
+/// `|genbus|` to its target (`7199.56 V`, exactly the source EMF). capi015 NCIM
+/// converges in 3 iters; node voltages **and** the reported generator reactive
+/// power (`NCIM_GetPowers` persists `deltaQNom` into `Qnominalperphase`) match.
+#[test]
+fn ncim_pv_regulating_matches_oracle() {
+    let dss = solve_ncim(&pv_circuit("1.0"));
+    let ckt = dss.circuit().unwrap();
+    assert!(ckt.is_solved, "NCIM PV (regulating) did not converge");
+    assert_eq!(ckt.solution.iteration, 3);
+
+    let expected = [
+        ORACLE_SOURCEBUS[0],
+        ORACLE_SOURCEBUS[1],
+        ORACLE_SOURCEBUS[2],
+        cx(7199.26175142393, -65.29600154522561),
+        cx(-3656.178871815681, -6202.09556445416),
+        cx(-3543.0828796082506, 6267.391565999387),
+    ];
+    assert_nodes(&dss, &expected, V_TOL);
+
+    // Reported generator Q tracks the solved deltaQNom (finding: Qnominalperphase
+    // write-back). capi015 `Generators.kvar` = 1217.2208409024108.
+    let (kw, kvar) = dss.generator_present_kw_kvar("g1").expect("g1");
+    assert!((kw - 800.0).abs() < KVAR_TOL, "g1 kW = {kw}");
+    assert!(
+        (kvar - 1217.2208409024108).abs() < KVAR_TOL,
+        "g1 kvar = {kvar} (capi015 1217.2208)"
+    );
+}
+
+/// PV bus **hitting its Q-limit → PV→PQ conversion**: `vpu=1.01` demands more
+/// than the +1500 kvar limit, so `NCIM_UpdateGenQ` clamps Q and converts the
+/// generator to model-4 (PQ). capi015 NCIM converges in 8 iters at Q=1500.
+#[test]
+fn ncim_pv_qlimit_pv2pq_matches_oracle() {
+    let dss = solve_ncim(&pv_circuit("1.01"));
+    let ckt = dss.circuit().unwrap();
+    assert!(ckt.is_solved, "NCIM PV (Q-limit) did not converge");
+    assert_eq!(
+        ckt.solution.iteration, 8,
+        "capi015 needs 8 iters for the PV→PQ conversion"
+    );
+
+    let expected = [
+        ORACLE_SOURCEBUS[0],
+        ORACLE_SOURCEBUS[1],
+        ORACLE_SOURCEBUS[2],
+        cx(7212.895598275793, -70.00930104534172),
+        cx(-3667.077632344357, -6211.546172429123),
+        cx(-3545.817965931437, 6281.5554734744655),
+    ];
+    assert_nodes(&dss, &expected, V_TOL);
+
+    let (_, kvar) = dss.generator_present_kw_kvar("g1").expect("g1");
+    assert!((kvar - 1500.0).abs() < KVAR_TOL, "g1 kvar clamped = {kvar}");
+}
+
+/// PV bus that **cannot be satisfied**: `vpu=1.02` drives Q to the +1500 limit,
+/// yet the current-injection mismatch never closes. capi015 NCIM ALSO fails to
+/// converge on this deck — it runs the full 15 iterations and stalls at exactly
+/// the same fixpoint (`|genbus| = 7343.55 V`, the VTarget). The port reproduces
+/// that faithfully; this pins the shared non-convergence so a future change that
+/// silently "fixes" it (diverging from the oracle) is caught.
+#[test]
+fn ncim_pv_aggressive_nonconvergence_is_faithful() {
+    let dss = solve_ncim(&pv_circuit("1.02"));
+    let ckt = dss.circuit().unwrap();
+    assert!(
+        !ckt.is_solved,
+        "capi015 NCIM does NOT converge here; the port must match"
+    );
+    assert_eq!(
+        ckt.solution.iteration, 15,
+        "runs to max_iterations like the oracle"
+    );
+
+    // Even non-converged, the stalled fixpoint matches capi015 node-for-node.
+    let expected = [
+        ORACLE_SOURCEBUS[0],
+        ORACLE_SOURCEBUS[1],
+        ORACLE_SOURCEBUS[2],
+        cx(7342.634931411053, -115.86364409175604),
+        cx(-3771.65832486403, -6300.976559271102),
+        cx(-3570.9766065470253, 6416.84020336286),
+    ];
+    assert_nodes(&dss, &expected, V_TOL);
+    // The stall sits at the regulation target: |genbus| = 1.02·(12470/√3).
+    assert!((ckt.solution.node_v[4].norm() - 7343.54901393).abs() < 1e-4);
+}
+
+/// Re-solving under NCIM (a second `Solve`) stays at the converged fixpoint —
+/// exercises the warm-start path (`NCIM_Ready` true, `NCIM_InitGenQ` false).
+/// Correctness is pinned by the oracle tests above; this only guards warm-start
+/// stability.
 #[test]
 fn ncim_resolve_is_stable() {
-    let mut dss = build_pq_circuit(1);
-    dss.command("Set algorithm=NCIM");
-    dss.command("Solve");
+    let mut dss = solve_ncim(&pq_circuit(1));
     let v1 = dss.circuit().unwrap().solution.node_v.clone();
     dss.command("Solve");
     let ckt = dss.circuit().unwrap();
     assert!(ckt.is_solved);
-    let v2 = ckt.solution.node_v.clone();
-    let diff = max_rel_vmag_diff(&v1, &v2);
-    assert!(diff < 1e-9, "NCIM re-solve drifted by {diff:.2e}");
+    let v2 = &ckt.solution.node_v;
+    let drift = v1
+        .iter()
+        .zip(v2)
+        .map(|(a, b)| (a - b).norm())
+        .fold(0.0_f64, f64::max);
+    assert!(drift < 1e-9, "NCIM re-solve drifted by {drift:.2e}");
 }
 
 /// `Set Algorithm=NCIM` parses (prefix `nc`, min-abbrev 2) and `Get Algorithm`
 /// reads it back; the two NCIM options round-trip through `Set`/`Get`.
 #[test]
 fn ncim_options_roundtrip() {
-    let mut dss = build_pq_circuit(1);
+    let mut dss = Dss::new();
+    for line in as_refs(&pq_circuit(1)) {
+        dss.command(line);
+    }
 
     dss.command("Set algorithm=nc"); // min-abbreviation
     dss.command("Get algorithm");
@@ -133,7 +320,6 @@ fn ncim_options_roundtrip() {
     let g: f64 = dss.result().trim().parse().expect("numeric NCIMQGain");
     assert!((g - 0.75).abs() < 1e-12, "got {g}");
 
-    // Defaults on a fresh solution.
     let ckt = dss.circuit().unwrap();
     assert!(ckt.solution.ncim_ignore_q_limit);
     assert!((ckt.solution.ncim_gen_gain - 0.75).abs() < 1e-12);
