@@ -881,6 +881,32 @@ fn mmf_plaintext_accept_set_quirk() {
     assert!((obj.get_mult_at_hour(3.0).re - 1.0).abs() < 1e-12);
 }
 
+/// D13 (dss_capi `c4590d16`): the single-column `csvfile=` MMF path loads its P
+/// data. In 0.14.5 the `ReadCSVFile` single-column branch exits on CreateMMF
+/// **success** (the "missing not"), so the shape stays empty → daily solve
+/// divides by zero (`#482`). The fix restores the load; the port's eager
+/// `read_csv_file` MMF branch already matches it. **capi015 probe** (0.15.0b4):
+/// this same `npts=8 MemoryMapping=Yes csvfile=` shape drives a 600 kW load to
+/// P/phase `[20 40 70 110 160 130 90 50]` kW = 200·`[0.10 0.20 0.35 0.55 0.80
+/// 0.65 0.45 0.25]`; 0.14.5 aborts with #482. This pins the uniform-width
+/// single-column values load (a regression to empty/1.0 breaks it), the
+/// per-step witness the capi015 `mmf_singlecol` deck gates whole-model.
+#[test]
+fn mmf_single_column_csvfile_loads_like_capi015() {
+    let vals = [0.10, 0.20, 0.35, 0.55, 0.80, 0.65, 0.45, 0.25];
+    let (_c, mut obj, _) = edited(&[("memorymapping", "yes"), ("npts", "8"), ("interval", "1")]);
+    obj.read_csv_file("0.10\n0.20\n0.35\n0.55\n0.80\n0.65\n0.45\n0.25\n");
+    for (h, &v) in (1..=8).zip(vals.iter()) {
+        assert!(
+            (obj.get_mult_at_hour(h as f64).re - v).abs() < 1e-12,
+            "hour {h}: {} vs {v}",
+            obj.get_mult_at_hour(h as f64).re
+        );
+    }
+    // The MMF read never shrinks NumPoints (unlike the non-MM ReadCSVFile).
+    assert_eq!(obj.num_points(), 8, "MMF must not shrink NumPoints");
+}
+
 /// PlainText column selection: MMF `PQCSVFile` reads P from column 1, Q from
 /// column 2 of the same content.
 #[test]

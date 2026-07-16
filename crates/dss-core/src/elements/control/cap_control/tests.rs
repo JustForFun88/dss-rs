@@ -27,8 +27,15 @@ fn default_shape_is_3ph_1term() {
 }
 
 #[test]
-fn time_control_forces_terminal_1() {
-    // Probed: `type=time terminal=2` dumps Terminal = 1.
+fn time_control_requires_monitored_element() {
+    // dss_capi `b9bc87b8`: TIMECONTROL now REQUIRES a monitored element, like
+    // every non-FOLLOW type. capi015 (0.15.0b4) probe: `type=time terminal=2`
+    // with no `element=` errors `CapControl.cc1: "Element" is not set,
+    // aborting.` (only FOLLOWCONTROL falls back to the capacitor + terminal 1).
+    // The port keeps the base 0.14.5 message form (unquoted `Element is not
+    // set`); b9bc87b8 ports the guard drop, not the separate 0.15.x error-
+    // quoting change — so the substring below matches only the emitted 0.14.5
+    // form (the quoted form has `"Element" is not set`).
     let mut cc = CapControl::new("cc1");
     cc.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
     cc.ctrl_snap = Some(RefSnapshot {
@@ -40,7 +47,36 @@ fn time_control_forces_terminal_1() {
     cc.control_type = ctrl_type::TIME;
     cc.ccd.element_terminal = 2;
     cc.recalc();
-    assert_eq!(cc.ccd.element_terminal, 1);
+    let errs = cc.ccd.cd.obj.take_errors();
+    assert!(
+        errs.iter().any(|e| e.contains("Element is not set")),
+        "expected the aborting Element error, got {errs:?}"
+    );
+}
+
+#[test]
+fn time_control_uses_monitored_element_terminal() {
+    // capi015 probe: `type=time element=line.l1 terminal=2` keeps Terminal = 2
+    // (NOT forced to 1) and binds to the *monitored* element's terminal-2 bus
+    // (effElement = MonitoredElement, `CapControl.pas:585`).
+    let mut cc = CapControl::new("cc1");
+    cc.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    cc.ctrl_snap = Some(RefSnapshot {
+        full_name: "Capacitor.cap1".into(),
+        nphases: 3,
+        nterms: 1,
+        buses: vec!["capbus.1.2.3".into()],
+    });
+    cc.mon_snap = Some(RefSnapshot {
+        full_name: "Line.l1".into(),
+        nphases: 3,
+        nterms: 2,
+        buses: vec!["sb.1.2.3".into(), "b2.1.2.3".into()],
+    });
+    cc.control_type = ctrl_type::TIME;
+    cc.ccd.element_terminal = 2;
+    cc.recalc();
+    assert_eq!(cc.ccd.element_terminal, 2);
     assert_eq!(cc.ccd.cd.get_bus(1), "b2.1.2.3");
     assert!(cc.ccd.cd.obj.take_errors().is_empty());
 }

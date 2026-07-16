@@ -103,10 +103,16 @@ impl DssObject for SwtControl {
         use super::prop::*;
         match idx {
             SWITCHED_TERM => self.ccd.element_terminal,
-            // Action/Normal/State all read the single `CurrentAction` field; the
-            // text dump renders it via the property's own enum (the `GetState`
-            // read-function is not used by the `?` dump — probed).
-            ACTION | NORMAL | STATE => self.current_action,
+            // D12 (WP-U1.6, `bb9c9785`): `Normal`/`State` map to their own fields
+            // (`NormalState`/`PresentState`), NOT the shared `CurrentAction` the
+            // 0.14.5 port used for all three. `Action` keeps `CurrentAction`.
+            // (Pascal's `State` read-function `GetState` reports the *live*
+            // controlled-element closed state; the port has no live view in this
+            // accessor, so it returns the tracked `present_state`, which follows
+            // the element after every `State`/action write.)
+            ACTION => self.current_action,
+            NORMAL => self.normal_state,
+            STATE => self.present_state,
             _ => unreachable!("SwtControl has no integer property {idx}"),
         }
     }
@@ -115,9 +121,21 @@ impl DssObject for SwtControl {
         match idx {
             SWITCHED_TERM => self.ccd.element_terminal = value,
             // ConditionalReadOnly on `Locked`: a write while locked is ignored.
-            ACTION | NORMAL | STATE => {
+            // D12: `Action`→`CurrentAction`, `Normal`→`NormalState`,
+            // `State`→`PresentState` (the property offsets, now distinct).
+            ACTION => {
                 if !self.locked {
                     self.current_action = value;
+                }
+            }
+            NORMAL => {
+                if !self.locked {
+                    self.normal_state = value;
+                }
+            }
+            STATE => {
+                if !self.locked {
+                    self.present_state = value;
                 }
             }
             _ => unreachable!("SwtControl has no integer property {idx}"),
@@ -205,17 +223,20 @@ impl DssObject for SwtControl {
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
         use super::prop::*;
         match idx {
-            // Default to the first action specified for legacy scripts.
+            // D12 (WP-U1.6, `bb9c9785`): `Normal` writes `NormalState` (offset),
+            // then the side effect syncs `CurrentAction := NormalState` (was the
+            // reverse `NormalState := CurrentAction`).
             NORMAL => {
                 if self.locked {
                     return;
                 }
-                self.normal_state = self.current_action;
+                self.current_action = self.normal_state;
             }
             ACTION => {
                 if self.locked {
                     return;
                 }
+                // Default to the first action specified for legacy scripts.
                 if self.normal_state == CTRL_NONE {
                     self.normal_state = self.current_action;
                 }
@@ -223,11 +244,14 @@ impl DssObject for SwtControl {
             LOCK => {
                 self.lock_command = if self.locked { CTRL_LOCK } else { CTRL_UNLOCK };
             }
+            // D12: `State` writes `PresentState` (offset), then the side effect
+            // syncs `CurrentAction := PresentState` (was `PresentState :=
+            // CurrentAction`) and forces the controlled element to that state.
             STATE => {
                 if self.locked {
                     return;
                 }
-                self.present_state = self.current_action;
+                self.current_action = self.present_state;
                 if self.normal_state == CTRL_NONE {
                     self.normal_state = self.present_state;
                 }

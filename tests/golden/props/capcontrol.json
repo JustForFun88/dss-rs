@@ -118,14 +118,15 @@
    }
   },
   {
-   "name": "capcontrol_time_forces_terminal",
+   "name": "capcontrol_time_with_element",
    "commands": [
     "New Capacitor.cap1 bus1=b632 phases=3 kvar=600 kv=4.16",
-    "New CapControl.cc1 capacitor=cap1 type=time terminal=2 onsetting=10 offsetting=14"
+    "New Line.l1 bus1=b632 bus2=b633 phases=3 r1=0.1 x1=0.2 c1=3 length=1",
+    "New CapControl.cc1 element=Line.l1 terminal=1 capacitor=cap1 type=time onsetting=10 offsetting=14"
    ],
    "target": "CapControl.cc1",
    "properties": {
-    "Element": "",
+    "Element": "Line.l1",
     "Terminal": "1",
     "Capacitor": "cap1",
     "Type": "Time",
