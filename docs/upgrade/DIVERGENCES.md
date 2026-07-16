@@ -965,6 +965,31 @@ inner loop bound shortened, form-only). Cited to the 0.15.x Pascal + commit
   no-op witness.
 - `known_diffs`: none matched — nothing to retire.
 
+## WP-U1.6 partial — B3-r3723 / D10 / D12 / D15 / A7-r3723 — SETTLED (plain adoptions)
+
+These Rung-1 rows are straight adoptions of the 0.15.x (= r4088/r4133) behavior
+with no new dss_capi↔EPRI divergence to catalog; detail in STATUS §WP-U1.6.
+
+- **B3-r3723** `Load.GrowthFactor` Year=0 hourly progression — adopt (0.15.x =
+  r4088). No corpus witness (needs a >8760 h Year=0 growth run); unit-pinned.
+- **D10** StorageController `FpctkWBandLow` typo (`a14c3f1f`) + first-iter
+  `StorekWChanged` (`1b3123ce`) — adopt (r4058 bug fixes, r4133-aligned). The typo
+  fix retired a `TODO(compat)`. Unit-pinned.
+- **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **ported then
+  reverted** (see STATUS §WP-U1.6). The mapping is correct but its `Normal`/`State`
+  readback change moves two default-oracle multi-step live decks
+  (`swtcontrol_time.dss` probe + `civanlar.dss` `Normal`), which cannot flip to
+  capi015 (multi-step re-nominalization). Deferred to a coordinated re-land. When
+  re-landed: capi015 raises the strict PermissiveProperties read-only #2024106 on a
+  locked `Action=` write (the not-adopted L2/C2 dss-ext surface) — the port keeps
+  the 0.14.5/r4133 silent-ignore.
+- **D15** `LookupVariable` case-insensitivity (`4366b126`) — not-a-delta: the
+  port's only equivalent (relay) already matches the fixed side.
+- **A7-r3723** GenController deregistration — not-a-delta: never registered in the
+  r3723 port; `New GenController` already errors "not found".
+
+`known_diffs.json`: none of these had a prior Rust↔EPRI entry — nothing to retire.
+
 ## L3, L4 — pending later WPs
 
 - **L3** Monitor CSV header — WP-U1.5 (report-format, numeric-token gated).
