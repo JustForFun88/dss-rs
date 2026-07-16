@@ -88,7 +88,24 @@
     "Line.lsp",
     "Line.lspc"
    ],
-   "note": "Boundary: FMakeZFromSpacing (Line.pas:1183/1964) — the LineSpacing state machine, DISTINCT from the geometry path. lsp = overhead Spacing nconds=4 nphases=3 + distinct wires -> full-asym Carson Z/Yc via LoadSpacingAndWires + auto-reduce (NWires>NPhases, LineGeometry.pas:992); lspc = spacing+cable (TSCables+Wires) 1-phase spur, pins the spacing-with-cables sub-branch + gotRatingsAfterSpacingConds NormAmps/EmergAmps seed (Line.pas:1994). EarthModel DEFAULT (DERI) -> YPrim U1.2-STABLE (shares Get_Ze; the 658.5->658.853 SimpleCarson move does NOT touch this deck; do NOT flip to capi015). Also the U1.4 default-path no-change anchor (LineSpacing.Detailed/EqDist* + spacing-ratings defaults preserve 0.14.5 numerics). Oracle: converged 3 iters; bit-identical across 2 processes. Feature-sensitive: swapping the phase-2 wire ACSR_4-0->ACSR_556 changes Line.lsp YPrim."
+   "oracle": "capi015",
+   "probes": [
+    {
+     "element": "Line.lsp",
+     "props": [
+      "normamps",
+      "emergamps"
+     ]
+    },
+    {
+     "element": "Line.lspc",
+     "props": [
+      "normamps",
+      "emergamps"
+     ]
+    }
+   ],
+   "note": "WP-U1.2 D3 flip: the spacing path now derives NormAmps/EmergAmps as the MINIMUM over the PHASE conductors (LineGeometry.pas:1060-1064), so Line.lsp (wires ACSR_556/4-0/1-0, distinct ratings) moves 730/1095 -> 230/345 -- a 0.15.x observable the 0.14.5 oracle cannot match; flipped to oracle:capi015 (probed 2026-07-16, YPrim BIT-IDENTICAL 0.14.5==capi015 so the Carson stamp is unchanged, only the ratings move). Line.lspc is D3-invariant (165/247.5, the single tape-shield phase). Boundary: FMakeZFromSpacing (Line.pas:1183/1964) — the LineSpacing state machine, DISTINCT from the geometry path. lsp = overhead Spacing nconds=4 nphases=3 + distinct wires -> full-asym Carson Z/Yc via LoadSpacingAndWires + auto-reduce (NWires>NPhases, LineGeometry.pas:992); lspc = spacing+cable (TSCables+Wires) 1-phase spur, pins the spacing-with-cables sub-branch + gotRatingsAfterSpacingConds NormAmps/EmergAmps seed (Line.pas:1994). EarthModel DEFAULT (DERI) -> YPrim shares Get_Ze, so the 658.5->658.853 SimpleCarson move does NOT touch this deck (YPrim is bit-identical 0.14.5==capi015 -- the flip is ratings-only). Still a U1.4 default-path no-change anchor for the equivalent-spacing numerics (LineSpacing.Detailed/EqDist* default to the 0.14.5 detailed model). Oracle: converged 3 iters; bit-identical across 2 processes. Feature-sensitive: swapping the phase-2 wire ACSR_4-0->ACSR_556 changes Line.lsp YPrim."
   },
   {
    "path": "line/line_llc_harm_asym.dss",

@@ -22,12 +22,16 @@ impl LineGeometryObj {
     /// `DSS.ActiveEarthModel := FEarthModel` around the matrix read; computing here
     /// under that model makes the later `z_matrix`/`yc_matrix` scale-only reads
     /// reproduce it). `wires[i]` is conductor `i+1` (the Line's `LineWireData`).
+    #[allow(clippy::too_many_arguments)]
     pub fn load_spacing_and_wires(
         &mut self,
         spc: &LineSpacingObj,
         wires: &[Option<Box<dyn DssObject>>],
         f: f64,
         earth_model: i32,
+        eps_r_medium: f64,
+        height_offset: f64,
+        height_units: i32,
     ) -> Result<(), String> {
         // `NConds := Spc.NWires` runs the nconds side effect (full reset/realloc).
         self.fnconds = spc.nwires();
@@ -77,12 +81,31 @@ impl LineGeometryObj {
             }
         }
         self.data_changed = true;
-        // NormAmps/EmergAmps := Wires[1].* (conductor 1).
-        if let Some(o) = wires.first().and_then(|o| o.as_ref()) {
+        // dss_capi 0.15.x (WP-U1.2 D3, LineGeometry.pas:1060-1064): NormAmps/
+        // EmergAmps are the *minimum* over the PHASE conductors (the running
+        // `j <= FNPhases` guard), not conductor 1's — a phase with a lower rating
+        // now governs the line. `j` counts only non-NIL conductors (Pascal skips
+        // the `continue`d slots); the NIL/`actualNConds` sizing itself is the
+        // sibling wt-u14cnts mixed-list row (0-count decks here have no NILs).
+        let nph = self.fnphases.max(0) as usize;
+        self.norm_amps = 0.0;
+        self.emerg_amps = 0.0;
+        let mut j = 0usize; // 1-based phase counter over non-NIL conductors
+        for o in wires.iter().take(n) {
+            let Some(o) = o.as_ref() else { continue };
+            j += 1;
             let (cn, ce) = conductor_norm_emerg(o.as_ref());
-            self.norm_amps = cn;
-            self.emerg_amps = ce;
+            if (cn < self.norm_amps || self.norm_amps == 0.0) && j <= nph {
+                self.norm_amps = cn;
+                self.emerg_amps = ce;
+            }
         }
+
+        // dss_capi 0.15.x (Line.pas:2111-2113): apply the consuming Line's
+        // EpsRMedium/HeightOffset/HeightUnit to the engine *before* the Carson
+        // calc, so the equivalent-spacing height offset folds into the average
+        // heights (`update_line_geometry_data`) and eps/height flag `rhoChanged`.
+        self.set_line_constants_medium(eps_r_medium, height_offset, height_units);
 
         self.update_line_geometry_data(f, earth_model)
     }
@@ -248,6 +271,28 @@ impl LineGeometryObj {
             .as_ref()
             .ok_or_else(|| format!("LineGeometry.{}: no conductors defined.", self.data.name()))?;
         Ok(eng.yc_matrix(length, units))
+    }
+
+    /// dss_capi 0.15.x `TLineObj.makeZFromGeometry`/`makeZFromSpacing`
+    /// (Line.pas:2049-2051 / 2111-2113): push the consuming Line's medium
+    /// permittivity + height offset into the Carson engine, in the exact upstream
+    /// call order (`SetEpsRMedium`, then `SetHeightOffset`, then
+    /// `SetUserHeightUnit`) — the last re-applies the offset in the new unit
+    /// (the `set_user_height_unit` re-conversion quirk). Each setter flags
+    /// `rhoChanged`, so the next `z_matrix`/`yc_matrix` (or a still-pending
+    /// `update_line_geometry_data`) recomputes. A no-op when no engine exists yet
+    /// (Pascal's `lineConstants` is always allocated for a real geometry).
+    pub fn set_line_constants_medium(
+        &mut self,
+        eps_r_medium: f64,
+        height_offset: f64,
+        height_units: i32,
+    ) {
+        if let Some(eng) = self.fline_data.as_mut() {
+            eng.set_eps_r_medium(eps_r_medium);
+            eng.set_height_offset(height_offset);
+            eng.set_user_height_unit(height_units);
+        }
     }
 
     /// Pascal `Get_RhoEarth` (`FLineData.rhoearth`; the engine default 100 when

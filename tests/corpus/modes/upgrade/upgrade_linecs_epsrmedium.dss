@@ -1,0 +1,17 @@
+! WP-U1.4 (UPGRADE_PLAN §WP-U1.4, Line.pas:428/2049) — Line-level EpsRMedium.
+! A LineGeometry OH line with EpsRMedium=2.3 divides the shunt-capacitance
+! potential factor by the medium permittivity (LineConstants Pfactor /= E0*epsR),
+! moving Yc/YPrim; the series Z is unchanged. Default EpsRMedium=1 is 0.14.5-exact
+! (E0*1.0==E0). oracle capi015 (0.15.x LineConstants.pas). YPrim-focused live
+! compare on line.l1 (the asymmetric-family convention).
+Clear
+New Circuit.linecs_eps basekv=12.47 phases=3 bus1=sourcebus
+New WireData.acsr gmrac=0.0244 diam=0.721 rac=0.306 runits=mi radunits=in gmrunits=ft normamps=530
+New LineGeometry.g nconds=3 nphases=3 reduce=n
+~ cond=1 wire=acsr x=-1 h=28 units=ft
+~ cond=2 wire=acsr x=0 h=28 units=ft
+~ cond=3 wire=acsr x=1 h=28 units=ft
+New Line.l1 bus1=sourcebus bus2=b2 geometry=g length=1 units=mi EpsRMedium=2.3
+New Load.ld bus1=b2 phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+Calcvoltagebases

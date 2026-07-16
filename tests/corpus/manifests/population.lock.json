@@ -12,7 +12,7 @@
   "family_counts": {
     "asymmetric": 47,
     "controls": 94,
-    "modes": 58
+    "modes": 62
   },
   "family_paths": {
     "asymmetric": [
@@ -211,9 +211,13 @@
       "time/yearly.dss",
       "upgrade/upgrade_forcehooks.dss",
       "upgrade/upgrade_growth_year0.dss",
+      "upgrade/upgrade_linecs_epsrmedium.dss",
       "upgrade/upgrade_linecs_eqspacing.dss",
+      "upgrade/upgrade_linecs_heightoffset.dss",
+      "upgrade/upgrade_linetype_width.dss",
       "upgrade/upgrade_parser_zerokw.dss",
       "upgrade/upgrade_pilot.dss",
+      "upgrade/upgrade_spacing_ratings.dss",
       "windgen/windgen_daily.dss",
       "windgen/windgen_dyn.dss",
       "windgen/windgen_dyn_fault.dss",

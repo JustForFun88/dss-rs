@@ -205,6 +205,73 @@ fn spacing_copies_coordinates() {
 }
 
 #[test]
+fn spacing_ratings_min_over_phase_conductors() {
+    // WP-U1.2 row D3 (LineGeometry.pas:1060-1064): the Line's `makeZFromSpacing`
+    // throwaway geometry derives NormAmps/EmergAmps as the MINIMUM over the PHASE
+    // conductors (`j <= FNphases`), not conductor 1. Phase wires big/small/big +
+    // a high-rated neutral: min over phases = small's 400/500; the neutral's 999
+    // is excluded. Pinned to the capi015 probe (upgrade_spacing_ratings deck).
+    let big = build_wire(
+        "big",
+        &[
+            ("gmrac", "0.0244"),
+            ("diam", "0.721"),
+            ("rac", "0.306"),
+            ("radunits", "in"),
+            ("gmrunits", "ft"),
+            ("runits", "mi"),
+            ("normamps", "600"),
+            ("emergamps", "800"),
+        ],
+    );
+    let small = build_wire(
+        "small",
+        &[
+            ("gmrac", "0.0244"),
+            ("diam", "0.721"),
+            ("rac", "0.306"),
+            ("radunits", "in"),
+            ("gmrunits", "ft"),
+            ("runits", "mi"),
+            ("normamps", "400"),
+            ("emergamps", "500"),
+        ],
+    );
+    let neut = build_wire(
+        "neut",
+        &[
+            ("gmrac", "0.0244"),
+            ("diam", "0.721"),
+            ("rac", "0.306"),
+            ("radunits", "in"),
+            ("gmrunits", "ft"),
+            ("runits", "mi"),
+            ("normamps", "999"),
+            ("emergamps", "999"),
+        ],
+    );
+    let sp = build_spacing(&[
+        ("nconds", "4"),
+        ("nphases", "3"),
+        ("x", "-1 0 1 0.5"),
+        ("h", "28 28 28 24"),
+        ("units", "ft"),
+    ]);
+    let wires: Vec<Option<Box<dyn DssObject>>> = vec![
+        Some(Box::new(big.clone())),
+        Some(Box::new(small.clone())),
+        Some(Box::new(big.clone())),
+        Some(Box::new(neut.clone())),
+    ];
+    let mut g = LineGeometryObj::new("g_ratings");
+    // eps=1.0, height_offset=0, height_unit=UNITS_M (4): the default medium.
+    g.load_spacing_and_wires(&sp, &wires, 60.0, DERI, 1.0, 0.0, 4)
+        .expect("spacing load succeeds");
+    assert_eq!(g.norm_amps(), 400.0);
+    assert_eq!(g.emerg_amps(), 500.0);
+}
+
+#[test]
 fn spacing_wrong_wire_count_errors() {
     // A spacing with a different wire count logs error 10103.
     let enums = EnumRegistry::new();
