@@ -965,7 +965,153 @@ inner loop bound shortened, form-only). Cited to the 0.15.x Pascal + commit
   no-op witness.
 - `known_diffs`: none matched — nothing to retire.
 
-## L3, L4 — pending later WPs
+## L4, E2 — SeasonalRating reimplementation (global `SeasonalRatingIdx`) — SETTLED (WP-U1.5, adopt capi015 = r4133)
 
-- **L3** Monitor CSV header — WP-U1.5 (report-format, numeric-token gated).
-- **L4** SeasonalRating application — WP-U1.5.
+**Observable.** The per-PDElement norm/emerg current ratings used by the overload
+report paths — `Export Overloads` (`ExportOverloads`), `Export Capacity`
+(`CalcAndWriteMaxCurrents`), and `DI_Overloads` (`WriteOverloadReport`) — when
+`SeasonRating=yes` + a `SeasonSignal` XYCurve are active and the element carries
+`Seasons>1` (`NumAmpRatings>1`).
+
+**dss_capi 0.14.5 (default oracle).** Each report re-read the XYCurve per element
+and **state-mutated** `DSS.SeasonalRating := FALSE` on a miss; `DI_Overloads`
+applied the override only to `ClassName='line'`; `Export Overloads` did **not**
+apply the seasonal rating at all (it read base `NormAmps`).
+
+**dss_capi 0.15.x (capi015) / EPRI r4133.** `55400a29`: a global
+`DSS.SeasonalRatingIdx` is precomputed once (`SyncSeasonalRatingIdx`:
+`trunc(SeasonSignalObj.GetYValue(intHour))`, `-1` when inactive) on every solve
+and the season/hour `Set` commands; `TPDElement.GetRatings` centralizes the
+override (`if (idx>=0) and (idx<NumAmpRatings) then Norm/Emerg := AmpRatings[idx]`)
+and it applies to **any** PDElement (Line, Transformer, cable), not just lines.
+The state-mutating XYCurve re-read is gone.
+
+**Probe** (`scratch_seasdeck.py`, 2026-07-16; overhead Line + Transformer + CN
+cable, each `Seasons=4 Ratings=[...]`, `SeasonSignal` maps hour→index,
+`set hour=13` → `SeasonalRatingIdx = trunc(GetYValue(13)) = 2`, `Export
+Overloads`):
+
+| engine | `Line.L1 %Normal` | applies to Transformer/cable? |
+|---|---|---|
+| capi 0.14.5 (default) | `134.5` (base `NormAmps=100`) | **no** — base ratings |
+| capi015 (0.15.0b4) | `336.3` (`AmpRatings[2]=40`) | **yes** |
+| oddie r4133 (11.0.0.1) | `336.3` | **yes** — bit-identical to capi015 |
+
+capi015 == r4133 bit-identical (ledger L4 confirmed). A >200-percentage-point,
+revision-**sensitive** move.
+
+**Decision — adopt the capi015 (=r4133) global-index form.** New
+`Circuit::seasonal_rating_idx` (`-1` init) synced by
+`solution::meters::sync_seasonal_rating_idx` at every solve (the union of the
+Pascal per-solve sync sites; reports always follow a solve, so a separate
+`Set`-command sync is unnecessary — documented at the call site). New
+`CktElement::get_ratings(seasonal_idx)` trait method (Pascal
+`TPDElement.GetRatings`) overridden by Line + Transformer's `num_amp_ratings`/
+`amp_ratings` accessors; wired into `export_capacity`, `export_overloads`, and
+`write_overload_report` (the DI path keeps the BASE-rating entry gate, then uses
+the seasonal ratings for the overload test + reported values, exactly as 0.15.x).
+The 0.14.5 state-mutating `DSS.SeasonalRating := FALSE`-on-miss read is NOT
+reproduced (CLAUDE.md known-bug policy) — the precomputed index removes it.
+
+**Gate consequence.**
+- **New capi015 goldens** `tests/golden/reports/export_overloads_seasonal.txt` +
+  `export_capacity_seasonal.txt` (`.meta.json` `"oracle":"capi015"`), regenerated
+  with `DSS_ORACLE_ENGINE=capi015 <oddie-venv>/python tools/golden/gen_reports.py`
+  (the generator gained a `capi015` branch that regenerates ONLY these files, §1.5).
+  Driven by `golden_reports.rs::export_{overloads,capacity}_seasonal_matches_capi015`
+  (`compare_export`, small numeric floor for the CN-cable sparse solve). Deck
+  validated bit-identical on capi015 and oddie:r4133 (§1.7).
+- **Feature-sensitive unit tests** `line::tests::get_ratings_applies_seasonal_index`
+  + `transformer::tests::get_ratings_applies_seasonal_index_on_transformer` (pin the
+  `AmpRatings[idx]` override + the `idx<NumAmpRatings`/`-1` guard).
+- `known_diffs.json`: no seasonal Rust↔EPRI entry existed (the override was
+  NOT_PORTED, so it never produced a cataloged divergence); porting it now makes
+  Rust match r4133. Nothing to retire; a latent Rust↔r4133 gap is resolved.
+
+## D9 — AllocateLoad/CalcAllocationFactors ignore disabled meters/sensors — SETTLED (WP-U1.5, adopt capi015; 0.14.5 UB not reproduced)
+
+**Observable.** `AllocateLoads` when a metered zone's EnergyMeter (or a Sensor)
+is disabled.
+
+**dss_capi 0.14.5 (default).** No `Enabled` guard: walking a disabled meter's
+(un-built / stale) `BranchList` raises an **Access Violation** (probed
+2026-07-16: `edit energymeter.m1 enabled=no; allocateloads` → AV). **0.15.x
+(capi015) / EPRI r4133.** `fb728364` (SVN r4115): `TEnergyMeterObj.AllocateLoad`
+and `TMeterElement.CalcAllocationFactors` each open with `if not Enabled then
+Exit` — a disabled meter/sensor is skipped; its zone loads keep their factors.
+
+**Probe** (`scratch_alloc4.py`, 2026-07-16; two `xfkva` loads, meter enabled at
+zone-build then `enabled=no` before `allocateloads`): capi015 → both loads' factor
+stays `0.5` (skipped); 0.14.5 → Access Violation. Enabled contrast → factor
+`6.3725`.
+
+**Decision — adopt** (the two `if !enabled` guards in
+`solution/meters/sampling/allocate.rs`, `calc_allocation_factors_all` +
+`allocate_load_all`). The 0.14.5 AV is UB → not reproduced (the Rust port is
+memory-safe regardless; the guards make the r4115 skip faithful and cover the
+disable-after-zone-build case).
+
+**Gate consequence.** `allocation.rs::allocateloads_ignores_disabled_meter`
+(feature-sensitive: the meter is enabled at zone-build so the zone is populated,
+then disabled — the guard keeps the factors at `0.5`; without it the populated
+zone drives them to `6.3725`). No corpus deck moves (none disables a meter with an
+allocating zone). `known_diffs.json`: no entry — nothing to retire.
+
+## D16 — zone-list counter skips disabled + non-PD — SETTLED (WP-U1.5, NOT a delta for us; already ported)
+
+The manual-`ZoneList` build's "ignore disabled devices and non-PD elements" skip
+(`MakeMeterZoneLists`, `690e02f9` flattened it) is **already present in the 0.14.5
+baseline** (`.inputs/dss_capi` and `.inputs/dss_capi_with_git` `MakeMeterZoneLists`
+carry the same `if not TestElement.Enabled ... Inc; if (DSSObjType and BaseClassMask)
+<> PD_ELEMENT ... Inc` logic; 0.15.x only refactored it to a single
+`if (not Enabled) or (... <> PD_ELEMENT)` guard). The Rust port already reproduces
+it (`solution/meters/zones/build.rs`: `if !enabled || !is_pd_element(...) {
+zone_list_counter += 1 }`). **No code change; not an observable delta** — mirrors
+the D5/D8 "not a delta for us" records. `known_diffs.json`: the `meter-zonepce-count`
+entry documents an EPRI-r3723-only ZonePCE off-by-one this WP does not change (it
+stays for a Rung-2 r4133 re-check).
+
+## D8-r3723 — manual-ZoneList child from-bus/terminal — SETTLED (WP-U1.5, adopt r4133; effect masked in our path)
+
+**Observable.** The `FromBusReference`/`FromTerminal` of a branch added to a meter
+zone from a manual `ZoneList`.
+
+**dss_capi 0.14.5.** `BranchList.AddNewChild(TestElement, 0, 0)` — from-bus unset,
+from-terminal 0; the broken tree AVs downstream in the oracle (`calcvoltagebases`,
+probed 2026-07-16 — the manual-zone deck raises an Access Violation on 0.14.5).
+**0.15.x (capi015) / r4133.** `AddNewChild(TestElement, TestCE.Terminals[0].BusRef,
+1)` — the element's terminal-1 bus and terminal 1.
+
+**Verify verdict (per the WP's instruction).** Our Phase-6 port used the 0.14.5
+form (`add_new_child(NO_BUS, 0)`), so it did NOT build the tree the r4133 way — it
+**is** a code delta. Applied the fix
+(`solution/meters/zones/build.rs`: `add_new_child(terminals[0].bus_ref, 1)`). Its
+observable effect is **masked** in the current manual-zone path: the corrected
+from-bus feeds the volt-base-list (the bus is already listed from the metered
+branch) and the `DistFromMeter` base (not propagated in the manual branch), and
+the zone's branch/PCE lists + load collection are unchanged — so no report or
+`meter_zone` channel moves. The 0.14.5 side is UB (AV) → no oracle golden is
+possible; the existing memory-safe `energymeter_manual_zonelist` test guards the
+build (still green with the fix).
+
+## E1 / L3 — Monitor CSV header — SETTLED (WP-U1.5, keep the dss_capi form; tokens match capi015)
+
+**Observable.** The monitor CSV header channel-name tokens.
+
+**Spec.** dss_capi 0.15.x `a6d3aa2c`/`6b54aba5`: the header omits quotes
+(`CommaText`→`DelimitedText`) and a `MonitorHeader` compat flag (0x80, **off by
+default**) restores EPRI's extra leading spaces + trailing comma. Both are CSV
+**file-rendering** changes; the parsed `Monitors.Header` **token list** is
+unchanged (the flag is off by default; the port stores bare tokens, not a rendered
+CSV).
+
+**Probe** (`scratch_monhdr.py`, 2026-07-16; mode-0 V/I monitor `Monitors.Header`):
+capi015 and 0.14.5 both return `['V1','VAngle1',…,'IAngle3']` — **identical**.
+
+**Decision — keep the dss_capi-ported form (no quotes, no extra spaces); no code
+change** (ledger L3). The port's monitor header is compared token-wise
+(`harness::compare_monitor`) and already matches the default oracle; capi015 ==
+0.14.5 on tokens, so no case moves. `known_diffs.json`: the
+`monitor-header-whitespace` entry (Rust/dss_capi strip EPRI's leading-space
+padding — a deliberate KEPT divergence vs the EPRI oddie binaries) **stays** — E1
+confirms keeping it, it is not retired.
