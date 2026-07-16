@@ -1655,3 +1655,22 @@ converges the same fixpoint in fewer passes would not fail the gate.
 end-target (§1.4). No `known_diffs.json` entry (NCIM is a 0.15.x-line feature with
 no 0.14.5 baseline; the port matches capi015, its spec). If a later rung retargets
 NCIM to r4133, the switching cadence (not the fixpoint) is the item to revisit.
+
+---
+
+## Rung-1 EXITED — `known_diffs.json` burn-down (WP-U1.10)
+
+The Rung-1 exit swept the port against official EPRI **r4088** (and r3723 for the
+prune criterion) with `DSS_LIVE_OPENDSS_ASSERT=1` and drove **both** green: every
+remaining Rust↔EPRI divergence is a justified `known_diffs.json` entry — a
+cross-solver FPC(0.14.5)↔Delphi floor, Delphi property-display precision
+(§1.3-2), or an oracle-can't-run `skip` — or a documented Rung-2 item. None is a
+divergence DECISION in this ledger's sense (no adopt/reproduce arbitration); they
+are the report-only inventory. Proof that none is a Rung-1 regression: every
+swept case is also in the mandatory gate vs the pinned 0.14.5 oracle (green), so
+the port equals the FPC oracle and the r4088 gap is purely the FPC↔Delphi layer,
+corroborated by `sweeps/capi015_vs_r4088.md`.
+
+The full entry-by-entry burn-down (11→21 entries: pruned
+`epri-gendispatcher-propname`, +5 extended to r4088, +6 new numeric floors, +1
+r3723-only, +4 skip) is in **`docs/upgrade/known_diffs_burndown.md`**.
