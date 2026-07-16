@@ -67,6 +67,49 @@ fn pct_kw_band_side_effect_sets_kw_band() {
     assert!(!sc.f_kw_band_specified);
 }
 
+/// D10 (WP-U1.6, `a14c3f1f`, SVN r4058, in the capi015 backend 0.15.0b4 = SVN
+/// r4103): setting `kWBandLow` syncs the **Low** percent/target pair
+/// (`FpctkWBandLow := FkWBandLow / FkWTargetLow * 100`), not the typo'd
+/// `FpctkWBand := FkWBandLow / FkWTarget * 100` the 0.14.5 baseline reproduced.
+///
+/// Oracle-validated against capi015 (`/tmp/probe_d10.py`, 2026-07-16;
+/// `StorageController kWTarget=300 kWTargetLow=100 kWBand=50 kWBandLow=20`,
+/// applied in that order, then `? %kWBand`/`? %kWBandLow`):
+///
+/// | engine | `%kWBand` | `%kWBandLow` |
+/// |---|---|---|
+/// | capi015 (0.15.0b4, the fix) | `16.6667` | `20` |
+/// | capi 0.14.5 (the typo)      | `6.6667`  | `2`  |
+///
+/// The typo corrupts BOTH: it overwrites the correct `%kWBand` (16.667) with
+/// `20/300*100 = 6.667` and never syncs `%kWBandLow` (kept at its 2.0 default).
+/// Both assertions below flip if the fix is reverted — feature-sensitive.
+#[test]
+fn kw_band_low_side_effect_syncs_the_low_pct_pair() {
+    let mut sc = StorageController::new("sc1");
+    // Apply in the probe's order (kWTarget, kWTargetLow, kWBand, kWBandLow).
+    sc.set_f64(prop::KW_TARGET, 300.0);
+    sc.side_effects(prop::KW_TARGET, 0);
+    sc.set_f64(prop::KW_TARGET_LOW, 100.0);
+    sc.side_effects(prop::KW_TARGET_LOW, 0);
+    sc.set_f64(prop::KW_BAND, 50.0);
+    sc.side_effects(prop::KW_BAND, 0);
+    sc.set_f64(prop::KW_BAND_LOW, 20.0);
+    sc.side_effects(prop::KW_BAND_LOW, 0);
+    // capi015: %kWBand stays 16.667 (kWBand arm), %kWBandLow syncs to 20.
+    assert!(
+        (sc.f_pct_kw_band - 16.666_666_666_666_7).abs() < 1e-9,
+        "%kWBand {} (typo would be 6.667)",
+        sc.f_pct_kw_band
+    );
+    assert!(
+        (sc.f_pct_kw_band_low - 20.0).abs() < 1e-9,
+        "%kWBandLow {} (typo would leave the 2.0 default)",
+        sc.f_pct_kw_band_low
+    );
+    assert_eq!(sc.f_kw_band_low, 20.0);
+}
+
 #[test]
 fn mode_discharge_follow_sets_noon_trigger() {
     let mut sc = StorageController::new("sc1");
