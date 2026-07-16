@@ -279,6 +279,10 @@ static HELP_CATALOG: &[(&str, &str)] = &[
         "CNData.seasons",
         "Defines the number of ratings to be defined for the wire, to be used only when defining seasonal ratings using the \"Ratings\" property.",
     ),
+    (
+        "CNData.semiconlayer",
+        "{Yes/True | No/False}  Default is Yes. Existence of a semicon layer between the insulation layer and the concentric neutral strands. Affects calculation of shunt self admittances.",
+    ),
     ("CapControl.basefreq", "Base Frequency for ratings."),
     (
         "CapControl.capacitor",
