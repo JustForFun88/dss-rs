@@ -13,6 +13,22 @@ fn new_and_query_defaults() {
 }
 
 #[test]
+fn gen_controller_class_is_not_registered() {
+    // A7-r3723 (`Common/DSSClassDefs.pas`, r4088): GenController was deregistered
+    // upstream ("up to date it does nothing"), so `New GenController.…` errors
+    // with a class-not-found parity error. The r3723 dss-rs port never registered
+    // the class, so it already produces the not-found error — "not a delta for
+    // us" (nothing to deregister). Feature-sensitive: no object is created.
+    let mut dss = dss_with_circuit();
+    dss.command("New GenController.g1");
+    assert!(
+        dss.errors().iter().any(|e| e.contains("not found")),
+        "expected an object-type-not-found error, got {:?}",
+        dss.errors()
+    );
+}
+
+#[test]
 fn tcc_curve_none_is_reserved() {
     // WP-U1.1 item 4 (SVN r4119 / fd034bb0): "none" is a reserved TCC_Curve name.
     // `new TCC_Curve.none` errors (423) and NO object is created — matching
