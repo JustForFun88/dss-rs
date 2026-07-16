@@ -17,16 +17,26 @@ capi015 daily-Losses skip — see §UPGRADE), WP-U1.7 Stage 1, WP-U1.8 WindGen, 
 `docs/phase-records/part2-adiakoptics.md`). Integration branch is `update`
 (pushed to origin); main untouched until an explicit merge request.)
 
-**PARKED TEST (needs investigation, user decision 2026-07-12):**
+**PARKED TEST — RESOLVED (2026-07-16, branch wt-coverage):**
 `circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` is
-`#[ignore]`d. The WP-AD.5 `Get_paths_4_Coverage` state machine (ported 1:1;
-sole exit at Circuit.pas:909) never terminates on the test's 6-bus radial,
-even after requesting a reachable `set coverage=0.5` — the first hypothesis
-(unreachable 0.9 default; see the NOTE(upstream-quirk) at the function) proved
-insufficient. Needs a trace of `Inc_Mat_Levels` / per-path `Buses_Covered` on
-the official r3723 engine vs ours. Surfaced at the part2 consolidation gate
-(the AD5 line's own full gate was never witnessed and its audits never ran).
-`Refine_BusLevels` itself stays ported/enabled.
+un-ignored and green. Root cause was the **test harness, not the port**: the
+test passed its whole 8-line deck string to a single `Dss::command` call —
+`command` is Pascal `ProcessCommand` (ONE command line), so everything after
+`new circuit.covtest …` became extra parameters of that command (the trailing
+`bus1=b5` from load ld2 landed on the Vsource; no lines were ever created).
+`CalcIncMatrix_O` on that 1-bus circuit yields `Inc_Mat_Cols=["b5"]`,
+`levels=[0]`: every traced path covers 0, the coverage plateau is 0, and the
+state machine's sole exit (Circuit.pas:909, "changed AND >= Coverage") can then
+never fire — a genuine, upstream-faithful degenerate-input nontermination fed
+by a corrupted circuit. Fed line-by-line, the port terminates instantly and
+bit-matches the official r3723 engine (Oddie probe 2026-07-16, both variants
+< 50 µs): `set coverage=0.5` → "0 new paths detected", `Actual_Coverage =
+0.666666666666667`; default 0.9 → "2 new paths detected", `Actual_Coverage =
+1`. Both are now pinned in the tests (including the `get coverage` strings).
+The second old hypothesis ("0.9 default unreachable, plateau 5/6") was also
+disproven: `Buses_Covered` entries are bus-index SPANS whose sum overshoots
+`Sys_Size` (r3723 reaches 1.0); the function's NOTE(upstream-quirk) was
+corrected accordingly. See the WP-COV-PARKED record in §UPGRADE.
 
 **AD dispositions — `off:unclassified-new-deck` bucket (2026-07-12):** at the
 part2→update integration merge, every deck added after the WP-AD.4 sweep
@@ -350,6 +360,29 @@ oracle in Stage 3; a covering test (`zero_stamp_is_dropped`) was added.
     deck (Q-limit hit → PV→PQ via `Show PV2PQ_Conversions` token + iter ≤); midi
     IEEE123-class re-solve. Cross-check one on `oddie:r4088`. Iteration policy:
     Rust ≤ oracle (§1.3-1); first-divergence trajectory dump on any gap.
+
+**WP-COV-PARKED (Refine_BusLevels parked-test closure) — LANDED (branch
+wt-coverage).** Root-caused and closed the `#[ignore]`d
+`circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` "infinite
+loop": a **test-harness bug**, not a port bug. The test fed its whole 8-line
+deck to ONE `Dss::command` call (`command` = Pascal `ProcessCommand`, one
+command line) — the lines/loads after `new circuit.covtest …` were consumed as
+extra parameters of the `new circuit` command (last `bus1=b5` re-based the
+Vsource; no lines existed), so `CalcIncMatrix_O` yielded a 1-bus incidence
+matrix (`cols=["b5"]`, `levels=[0]`) whose coverage plateau is 0 — on such a
+degenerate input the state machine's sole exit (Circuit.pas:909) genuinely
+never fires, faithfully to upstream. WP-AD.5's `Get_paths_4_Coverage` /
+`get_longest_path` / `Normalize_graph` and WP-AD.1's `Calc_Inc_Matrix_Org` are
+verified correct line-by-line vs r3723 Delphi AND empirically: fed line-by-line
+the port bit-matches the official r3723 engine (Oddie probes 2026-07-16,
+both < 50 µs wall): cov=0.5 → "0 new paths detected"/`Actual_Coverage
+0.666666666666667`; default 0.9 → "2 new paths detected"/`1`. Tests un-ignored
++ a new default-coverage test, both pinning result strings, `ad.actual_coverage`
+values, and the `get coverage` formatted strings to the official engine. Also
+disproved the old "0.9 unreachable, plateau 5/6" hypothesis (`Buses_Covered`
+are index spans; the sum overshoots `Sys_Size`) and corrected the
+NOTE(upstream-quirk) at `get_paths_4_coverage` accordingly. No engine code
+changed; no new decks.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
