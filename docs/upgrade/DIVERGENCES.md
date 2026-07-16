@@ -1147,14 +1147,37 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   property-compare, §1.3-2) and the force-resolve needs a multi-step control-
   iteration run (capi015 re-nominalizes multi-step captures, L1 note) — so unit-
   test gating is the honest gate here (precedent: B1/D6/D7).
-- **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **ported then
-  reverted** (see STATUS §WP-U1.6). The mapping is correct but its `Normal`/`State`
-  readback change moves two default-oracle multi-step live decks
-  (`swtcontrol_time.dss` probe + `civanlar.dss` `Normal`), which cannot flip to
-  capi015 (multi-step re-nominalization). Deferred to a coordinated re-land. When
-  re-landed: capi015 raises the strict PermissiveProperties read-only #2024106 on a
-  locked `Action=` write (the not-adopted L2/C2 dss-ext surface) — the port keeps
-  the 0.14.5/r4133 silent-ignore.
+- **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **RE-LANDED**
+  (WP-U1.6 tail). `Normal`→`NormalState`, `State`→`PresentState`, `Action`→
+  `CurrentAction` (distinct offsets, `SwtControl.pas:156-166`); the side effects
+  sync `CurrentAction := NormalState`/`PresentState` (were the reverse). 0.14.5
+  mapped all three onto the single `CurrentAction`, so a write to any changed the
+  others' readback and `State` reported the *armed* action rather than the live
+  switch. The props golden `swtcontrol.json` is re-baselined to capi015 (probed
+  2026-07-16: `Normal=''` default/lock, `State=Closed` after `action=/normal=`
+  since the switch has not operated; `swtcontrol_locked_then_action` dropped — see
+  below). **Entangled decks resolved** (the earlier revert's blocker): the moved
+  `state`/`normal` readback moves three default-oracle SwtControl decks —
+  `swtcontrol_time.dss` + `midi_swtcontrol.dss` **flipped to capi015** (the armed
+  `action=open` opens the switch at its delay; the port, matching capi015
+  `GetState`=live element, reads `State=Closed` until step 3 then `Open`; 0.14.5
+  read `Open` from the arm). Multi-step capi015 capture is valid for these
+  (constant loads / no loadshapes → the L1 re-nominalization touches only the
+  getYSparse element-state re-read, NOT the per-step Monitor/probe/eventlog
+  channels — verified 2026-07-16 by a stepwise capi015 probe). `civanlar.dss`
+  (snapshot) **flipped to capi015**: `SwtControl.5_11` is `Action=c` then `edit
+  action=o`, so D12/capi015 read `Normal=NormalState=closed` while 0.14.5 read the
+  edited `CurrentAction=open`; the whole-model physics is capi015==0.14.5 (no
+  loadshapes) so only the property readback moves and target-rev cases do not
+  property-compare. `swtcontrol_lock.dss` **unaffected** (stays 0.14.5): the locked
+  switch never operates, so both `State` and `Normal` read `closed` on every engine
+  — and it *cannot* flip to capi015 anyway, since the strict PermissiveProperties
+  read-only #2024106 rejects the locked `Action=` post-command there (the
+  not-adopted L2/C2 dss-ext surface; the port silently ignores it, matching
+  0.14.5/r4133, unit-pinned `locked_ignores_action_write` /
+  `locked_ignores_normal_and_state_writes`). Feature-sensitivity: unit
+  `d12_normal_and_state_readbacks_are_independent` (0.14.5 conflated both onto
+  `CurrentAction`).
 - **D15** `LookupVariable` case-insensitivity (`4366b126`) — not-a-delta: the
   port's only equivalent (relay) already matches the fixed side.
 - **A7-r3723** GenController deregistration — not-a-delta: never registered in the
