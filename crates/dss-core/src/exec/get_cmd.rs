@@ -1,7 +1,102 @@
 //! The `Get` option command (`DoGetCmd` and its no-circuit variant). Split out
 //! of `exec/set_get.rs`.
 
+use num_complex::Complex64;
+
 use super::*;
+use crate::solution::solution::sys_ctx;
+use crate::support::cmatrix::CMatrix;
+
+/// FPC `UComplex.cstr`: a complex as a string — the real part alone when the
+/// imaginary part is exactly zero, else `re±imi`. Used by the WP-U1.9
+/// `Get InjCurrent`/`ITerminal`/`YPrim` renderers.
+fn cstr(c: Complex64) -> String {
+    if c.im == 0.0 {
+        float_to_str(c.re)
+    } else {
+        format!(
+            "{}{}{}i",
+            float_to_str(c.re),
+            if c.im < 0.0 { "-" } else { "+" },
+            float_to_str(c.im.abs())
+        )
+    }
+}
+
+/// Pascal `Get InjCurrent`/`ITerminal`/`YPrim` (ExecOptions.pas @ 0.15.0b4):
+/// render the active PCE's injection/terminal currents (over `NConds`) or its
+/// primitive Y. Non-PCE → the EPRI-compatible "not PCE" text; an
+/// unallocated buffer → "not initialized yet". WP-U1.9.
+fn get_force_readback(
+    classes: &mut [DssClass],
+    ckt: &Circuit,
+    active: Option<(usize, usize)>,
+    pointer: usize,
+) -> String {
+    let elem = match active_pce(classes, ckt, active) {
+        Ok(e) => e,
+        Err(_) => return "Error, the active element is not PCE".to_string(),
+    };
+    let cd = elem.cd();
+    let uninit = "Error, the active element is not initialized yet".to_string();
+    if cd.node_ref.is_empty() {
+        return uninit;
+    }
+    if pointer == opt::YPRIM {
+        return match &cd.yprim {
+            Some(m) => cmatrix_to_string(m),
+            None => uninit,
+        };
+    }
+    let arr = if pointer == opt::ITERMINAL {
+        &cd.iterminal
+    } else {
+        &cd.inj_current
+    };
+    if arr.len() < cd.nconds {
+        return uninit;
+    }
+    complex_array_to_string(&arr[..cd.nconds])
+}
+
+/// Pascal `ComplexArrayToString(data, count)` (Utilities.pas @ 0.15.0b4).
+fn complex_array_to_string(data: &[Complex64]) -> String {
+    if data.is_empty() {
+        return "[]".to_string();
+    }
+    let mut s = String::from("[");
+    for (i, c) in data.iter().enumerate() {
+        s.push_str(&cstr(*c));
+        if i != data.len() - 1 {
+            s.push_str(", ");
+        }
+    }
+    s.push(']');
+    s
+}
+
+/// Pascal `TcMatrix.ToString` (Ucmatrix.pas @ 0.15.0b4): `[a, b| c, d]`,
+/// column-major storage read row-by-row.
+fn cmatrix_to_string(m: &CMatrix) -> String {
+    let n = m.order();
+    if n == 0 {
+        return "[]".to_string();
+    }
+    let mut s = String::from("[");
+    for i in 0..n {
+        for j in 0..n {
+            s.push_str(&cstr(m.get(i, j)));
+            if j != n - 1 {
+                s.push_str(", ");
+            }
+        }
+        if i != n - 1 {
+            s.push_str("| ");
+        }
+    }
+    s.push(']');
+    s
+}
 
 /// Pascal `get voltagebases` (`ExecOptions.pas`): the legal-voltage-base list
 /// rendered `(b1, b2, … , )` — each value `FloatToStr`-formatted, followed by
@@ -21,6 +116,7 @@ impl Dss {
     /// `GlobalResult`, comma-separated.
     pub(super) fn do_get_cmd(&mut self) {
         let Dss {
+            classes,
             circuit,
             option_list,
             parser,
@@ -31,6 +127,8 @@ impl Dss {
             daisy_size,
             auto_show_export,
             last_result,
+            active_ckt_element,
+            class_by_name,
             ..
         } = self;
         let ckt = circuit.as_mut().expect("gated in command()");
@@ -313,6 +411,68 @@ impl Dss {
                 }
                 opt::STEP_TIME => {
                     append_result(&mut result, &float_to_str(ckt.solution.step_time_elapsed))
+                }
+                // WP-U1.9 PCE force hooks / counters (ExecOptions.pas @ 0.15.0b4).
+                opt::ITER_NUMBER => append_result(&mut result, &ckt.solution.iteration.to_string()),
+                opt::CTRL_ITER_NUMBER => {
+                    append_result(&mut result, &ckt.solution.control_iteration.to_string())
+                }
+                opt::INTEGRATION_FLAG => append_result(
+                    &mut result,
+                    // Pascal `Solution.DynaVars.IterationFlag` (0 = new step, 1 = same).
+                    &(ckt.solution.iteration_flag as i32).to_string(),
+                ),
+                opt::INJ_CURRENT | opt::ITERMINAL | opt::YPRIM => {
+                    let s = get_force_readback(classes, ckt, *active_ckt_element, pointer);
+                    append_result(&mut result, &s);
+                }
+                opt::STATE_VAR => {
+                    // `Get StateVar <element> <varname>` (positional).
+                    parser.next_param(vars);
+                    let elem_name = parser.make_string(vars);
+                    let resolved =
+                        resolve_ckt_element(classes, class_by_name, parser, vars, &elem_name);
+                    parser.next_param(vars);
+                    let var_name = parser.make_string(vars);
+                    match resolved {
+                        None => errors.push(format!("Object \"{elem_name}\" not found")),
+                        Some((ci, oi)) => {
+                            let nvars = classes[ci].objects[oi]
+                                .as_ckt_element()
+                                .map(|e| e.num_variables())
+                                .unwrap_or(0);
+                            let found = (1..=nvars).find(|&i| {
+                                classes[ci].objects[oi]
+                                    .as_ckt_element()
+                                    .expect("ckt element")
+                                    .variable_name(i)
+                                    .eq_ignore_ascii_case(&var_name)
+                            });
+                            if nvars == 0 {
+                                errors.push(format!(
+                                    "Object \"{elem_name}\" is not a valid element for this \
+                                     command. Only a selection of PC elements have state \
+                                     variables."
+                                ));
+                            } else if let Some(i) = found {
+                                let sys = sys_ctx(ckt);
+                                let node_v = ckt.solution.node_v.clone();
+                                let mut states = vec![0.0; nvars];
+                                classes[ci].objects[oi]
+                                    .as_ckt_element_mut()
+                                    .expect("ckt element")
+                                    .get_all_variables(&sys, &node_v, &mut states);
+                                append_result(&mut result, &format!("{}", states[i - 1]));
+                            } else {
+                                errors.push(format!(
+                                    "State variable \"{}\" not found in \"{}.{}\".",
+                                    var_name.to_lowercase(),
+                                    classes[ci].props.class_name(),
+                                    classes[ci].objects[oi].data().name()
+                                ));
+                            }
+                        }
+                    }
                 }
                 _ => {
                     let name = EXEC_OPTIONS.get(pointer - 1).copied().unwrap_or("?");

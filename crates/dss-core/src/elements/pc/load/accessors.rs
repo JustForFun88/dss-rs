@@ -5,7 +5,7 @@
 
 use num_complex::Complex64;
 
-use crate::elements::ckt::CktElementData;
+use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::growth_shape::GrowthShapeObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
@@ -138,7 +138,13 @@ impl CktElement for Load {
             self.cd.calc_yprim_contribution(node_v, curr);
             return;
         }
-        if self.cd.iterminal_solution_count != sys.solution_count {
+        // Pascal `TLoadObj.GetTerminalCurrents` (@ 0.15.0b4): recompute the load
+        // model contribution unless the terminal currents were forced from the
+        // DSS language (`Set InjCurrent=`/`Set ITerminal=`, `Flg.ForceInjCurrents`,
+        // WP-U1.9) — then the stored/forced `ITerminal` is used as-is.
+        if self.cd.iterminal_solution_count != sys.solution_count
+            && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
+        {
             let mut errors = Vec::new();
             self.calc_load_model_contribution(sys, node_v, &mut errors);
         }
