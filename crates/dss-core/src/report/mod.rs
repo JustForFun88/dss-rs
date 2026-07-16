@@ -95,44 +95,48 @@ pub(crate) const EXPORT_OPTIONS: &[&str] = &[
     "ZCC",               // 59
     "Contours",          // 60 (filename `C.csv`)
     "Y4",                // 61
+    "Jacobian",          // 62 — NCIM solver state (WP-U1.7)
+    "DeltaF",            // 63
+    "DeltaZ",            // 64
 ];
 
 /// Pascal `TShowOption` names in ordinal order (`ShowOptions.pas`
 /// `DefineOptions` → `GetEnumName`). Index `i` is ordinal `i + 1`. No build
 /// guards. Spelling verbatim from the enum.
 pub(crate) const SHOW_OPTIONS: &[&str] = &[
-    "autoadded",      // 1
-    "buses",          // 2
-    "currents",       // 3
-    "convergence",    // 4
-    "elements",       // 5
-    "faults",         // 6
-    "isolated",       // 7
-    "generators",     // 8
-    "meters",         // 9
-    "monitor",        // 10
-    "panel",          // 11
-    "powers",         // 12
-    "voltages",       // 13
-    "zone",           // 14
-    "taps",           // 15
-    "overloads",      // 16
-    "unserved",       // 17
-    "eventlog",       // 18
-    "variables",      // 19
-    "ratings",        // 20
-    "loops",          // 21
-    "losses",         // 22
-    "busflow",        // 23
-    "lineconstants",  // 24
-    "yprim",          // 25
-    "y",              // 26
-    "controlqueue",   // 27
-    "topology",       // 28
-    "mismatch",       // 29
-    "kvbasemismatch", // 30
-    "deltaV",         // 31
-    "QueryLog",       // 32
-    "Controlled",     // 33
-    "Result",         // 34
+    "autoadded",         // 1
+    "buses",             // 2
+    "currents",          // 3
+    "convergence",       // 4
+    "elements",          // 5
+    "faults",            // 6
+    "isolated",          // 7
+    "generators",        // 8
+    "meters",            // 9
+    "monitor",           // 10
+    "panel",             // 11
+    "powers",            // 12
+    "voltages",          // 13
+    "zone",              // 14
+    "taps",              // 15
+    "overloads",         // 16
+    "unserved",          // 17
+    "eventlog",          // 18
+    "variables",         // 19
+    "ratings",           // 20
+    "loops",             // 21
+    "losses",            // 22
+    "busflow",           // 23
+    "lineconstants",     // 24
+    "yprim",             // 25
+    "y",                 // 26
+    "controlqueue",      // 27
+    "topology",          // 28
+    "mismatch",          // 29
+    "kvbasemismatch",    // 30
+    "deltaV",            // 31
+    "QueryLog",          // 32
+    "Controlled",        // 33
+    "Result",            // 34
+    "PV2PQ_Conversions", // 35 — NCIM PV→PQ conversion list (WP-U1.7)
 ];
