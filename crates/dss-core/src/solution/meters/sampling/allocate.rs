@@ -31,6 +31,12 @@ pub(crate) fn allocate_loads(ckt: &mut Circuit, env: &mut SolveEnv, max_iters: u
 fn calc_allocation_factors_all(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let node_v = &ckt.solution.node_v;
     for meter_ref in ckt.energy_meters.clone() {
+        // D9 (dss_capi `fb728364`, SVN r4115): `TMeterElement.CalcAllocationFactors`
+        // opens with `if not Enabled then Exit` — a disabled meter contributes no
+        // allocation factors.
+        if !downcast_meter(store, meter_ref).enabled() {
+            continue;
+        }
         let Some(mr) = downcast_meter(store, meter_ref).metered_element() else {
             continue;
         };
@@ -46,12 +52,17 @@ fn calc_allocation_factors_all(ckt: &Circuit, store: &mut dyn ElemStore, sys: &S
             .calc_allocation_factors(ce, sys, node_v);
     }
     for sensor_ref in ckt.sensors.clone() {
-        let metered = store
+        let sensor = store
             .obj(sensor_ref)
             .as_any()
             .downcast_ref::<Sensor>()
-            .expect("sensors holds Sensor objects")
-            .metered_element();
+            .expect("sensors holds Sensor objects");
+        // D9 (SVN r4115): `TMeterElement.CalcAllocationFactors` skips a disabled
+        // sensor too (both EnergyMeter and Sensor are `TMeterElement`).
+        if !sensor.med.cd.enabled {
+            continue;
+        }
+        let metered = sensor.metered_element();
         let Some(mr) = metered else { continue };
         let (sensor_obj, metered_obj) = store.pair_mut(sensor_ref, mr);
         let ce = metered_obj
@@ -69,6 +80,12 @@ fn calc_allocation_factors_all(ckt: &Circuit, store: &mut dyn ElemStore, sys: &S
 /// `AllocateLoad` over every EnergyMeter zone.
 fn allocate_load_all(ckt: &Circuit, store: &mut dyn ElemStore) {
     for meter_ref in ckt.energy_meters.clone() {
+        // D9 (dss_capi `fb728364`, SVN r4115): `TEnergyMeterObj.AllocateLoad`
+        // opens with `if not Enabled then Exit` — a disabled meter does not
+        // adjust its zone loads.
+        if !downcast_meter(store, meter_ref).enabled() {
+            continue;
+        }
         allocate_load_for_meter(meter_ref, ckt, store);
     }
 }

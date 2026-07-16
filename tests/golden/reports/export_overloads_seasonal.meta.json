@@ -1,0 +1,27 @@
+{
+  "report": "overloads",
+  "fixture": "seasov",
+  "suffix": "EXP_OVERLOADS.CSV",
+  "deck": [
+    "new circuit.seasov basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+    "new xycurve.season npts=4 xarray=[0 6 12 18] yarray=[0 1 2 3]",
+    "new linecode.lc nphases=3 r1=0.1 x1=0.2 r0=0.3 x0=0.6 c1=0 c0=0 normamps=100 emergamps=120",
+    "new CNData.CN_250 NormAmps=260 DIAM=0.567 GMRac=0.20520 Rac=0.41 Runits=mi Radunits=in gmrunits=in EpsR=2.3 Ins=0.220 DiaIns=1.06 DiaCable=1.29 k=13 DiaStrand=0.0641 GmrStrand=0.02496 Rstrand=14.8722",
+    "new LineGeometry.cabgeo nconds=3 nphases=3 reduce=y",
+    "~ cond=1 cncable=CN_250 x=-0.5 h=-4 units=ft",
+    "~ cond=2 cncable=CN_250 x=0.0 h=-4 units=ft",
+    "~ cond=3 cncable=CN_250 x=0.5 h=-4 units=ft",
+    "new line.l1 bus1=sourcebus bus2=b1 linecode=lc length=1 seasons=4 ratings=[100 50 40 30]",
+    "new transformer.t1 phases=3 windings=2 buses=[b1 b2] conns=[wye wye] kvs=[12.47 12.47] kvas=[500 500] xhl=5 seasons=4 ratings=[60 25 20 15]",
+    "new line.lc1 bus1=b2 bus2=b3 geometry=cabgeo length=0.5 units=km seasons=4 ratings=[260 45 35 25]",
+    "new load.ld bus1=b3 phases=3 kv=12.47 kw=3000 pf=0.95 model=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "set seasonrating=yes",
+    "set seasonsignal=season",
+    "set mode=snap",
+    "set hour=13",
+    "solve"
+  ],
+  "oracle": "capi015"
+}

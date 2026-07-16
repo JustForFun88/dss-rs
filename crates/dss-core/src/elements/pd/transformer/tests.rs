@@ -313,6 +313,32 @@ fn seasonal_amp_ratings_drop_the_1_1_factor() {
     }
 }
 
+/// WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): the seasonal `GetRatings` override
+/// applies to a Transformer too (0.14.5's `DI_Overloads` path restricted it to
+/// lines). With `Seasons=2 Ratings=[1000 1200]`, `get_ratings(1)` returns the
+/// derived `amp_ratings[1]` for both norm and emerg; an out-of-range/`-1` index
+/// falls back to the base `NormAmps`/`EmergAmps` (feature-sensitive).
+#[test]
+fn get_ratings_applies_seasonal_index_on_transformer() {
+    let t = edited(&[
+        ("phases", "3"),
+        ("windings", "2"),
+        ("kvs", "115, 4.16"),
+        ("conns", "wye, wye"),
+        ("kvas", "1000, 1000"),
+        ("Seasons", "2"),
+        ("Ratings", "[1000 1200]"),
+    ]);
+    assert_eq!(t.num_amp_ratings(), 2);
+    let (n0, e0) = t.get_ratings(0);
+    assert_eq!((n0, e0), (t.amp_ratings[0], t.amp_ratings[0]));
+    let (n1, e1) = t.get_ratings(1);
+    assert_eq!((n1, e1), (t.amp_ratings[1], t.amp_ratings[1]));
+    // Inactive / out of range → base ratings.
+    assert_eq!(t.get_ratings(-1), (t.norm_amps, t.emerg_amps));
+    assert_eq!(t.get_ratings(2), (t.norm_amps, t.emerg_amps));
+}
+
 /// WP-U1.2 D8: dss_capi 0.15.x added the `TrapZero` FLAG to the 3-winding
 /// reactances `X12`/`X13`/`X23` (`Transformer.pas` DefineProperties, commit
 /// 69fca934), so a parsed `0` is replaced by the property default (7/35/30 %).

@@ -286,6 +286,20 @@ pub struct Circuit {
     /// `Get_DynamicTarget` looks up — resolved by name fresh on every read
     /// (see `StorageDispatchEnv::season_rating_idx`), never cached.
     pub season_signal: String,
+    /// `DSS.SeasonalRatingIdx` (dss_capi 0.15.x `55400a29`, on `TDSSContext`):
+    /// the pre-computed season index (`trunc(SeasonSignal.GetYValue(intHour))`)
+    /// synced by `sync_seasonal_rating_idx` on every solve and on the season/hour
+    /// `Set` commands, so the seasonal report paths (`Export Overloads`/`Capacity`,
+    /// `DI_Overloads`) don't re-read the XYCurve per element. `-1` = seasonal
+    /// rating inactive (feature off, no signal, or no circuit/solution). The
+    /// `55400a29` `TPDElement.GetRatings` guard is `0 <= idx < NumAmpRatings`
+    /// (the `-1` inactive value fails `>= 0`), applied to ANY PDElement — Line,
+    /// Transformer, cable (0.14.5 restricted the `DI_Overloads` override to
+    /// `ClassName='line'`). NOTE this drops the pre-`55400a29`/r4133 `NumAmpRatings
+    /// > 1` guard, so a single-season element under an active signal at idx 0 now
+    /// takes `AmpRatings[0]` for BOTH norm and emerg (a no-op only when
+    /// `AmpRatings[0] == NormAmps`); the port follows capi015, the binding oracle.
+    pub seasonal_rating_idx: i32,
 
     pub normal_min_volts: f64,
     pub normal_max_volts: f64,
@@ -433,6 +447,7 @@ impl Circuit {
             load_dur_curve_obj: None,
             season_rating: false,
             season_signal: String::new(),
+            seasonal_rating_idx: -1,
             normal_min_volts: 0.95,
             normal_max_volts: 1.05,
             emerg_min_volts: 0.90,

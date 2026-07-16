@@ -235,6 +235,61 @@ capi015==r4133; unit + capi015 deck pinned), D5 no-delta, C8 (a)
 multi-step decks (per-step capture re-nominalizes shapes) — capi015 corpus cases
 are snapshots; follow-up logged for the oracle-infra owner. Full detail:
 **`docs/phase-records/upgrade-rung1.md`**.
+
+**WP-U1.5 (EnergyMeter seasonal / allocation / monitor-header) — LANDED (branch
+`wt-u15`).** Five spec rows settled (detail in `docs/upgrade/DIVERGENCES.md`):
+- **E2 / ledger L4 (SeasonalRating reimplementation) — adopted capi015 = r4133.**
+  New global `Circuit::seasonal_rating_idx` synced by
+  `solution::meters::sync_seasonal_rating_idx` at every solve (Pascal
+  `SyncSeasonalRatingIdx`, `55400a29`); new `CktElement::get_ratings(idx)` trait
+  method (`TPDElement.GetRatings`) overridden by Line + Transformer `num_amp_ratings`/
+  `amp_ratings`; wired into `export_capacity`/`export_overloads`/`write_overload_report`
+  so the seasonal `AmpRatings[idx]` applies to ANY PDElement (0.14.5 restricted
+  `DI_Overloads` to lines and never applied it in `Export Overloads`). The
+  0.14.5 state-mutating `SeasonalRating := FALSE`-on-miss read is not reproduced
+  (precomputed index removes it). Gate: 2 new **capi015** report goldens
+  (`export_{overloads,capacity}_seasonal`, `.meta.json` `oracle:capi015`,
+  regenerated via the new `DSS_ORACLE_ENGINE=capi015` branch in `gen_reports.py`;
+  deck = overhead Line + Transformer + CN cable, all `Seasons=4`, validated
+  bit-identical capi015 == oddie:r4133 §1.7) + feature-sensitive `get_ratings`
+  unit tests (Line + Transformer). Probe: 0.14.5 reports base `%Normal=134.5`,
+  capi015/r4133 the seasonal `336.3` — revision-sensitive.
+- **D9 (AllocateLoad/CalcAllocationFactors skip disabled meters/sensors) — adopted
+  capi015 (r4115 `fb728364`).** Two `if !enabled` guards in
+  `sampling/allocate.rs`. 0.14.5 hit an Access Violation walking a disabled
+  meter (UB, not reproduced). Gate: `allocateloads_ignores_disabled_meter`
+  (feature-sensitive — meter enabled at zone-build then disabled; factors stay 0.5
+  vs 6.3725 enabled).
+- **D8-r3723 (manual-ZoneList child from-bus/terminal) — adopted r4133.**
+  `zones/build.rs`: `add_new_child(terminals[0].bus_ref, 1)` (was `(NO_BUS, 0)` =
+  0.14.5). IS a code delta (verify verdict), but its effect is **masked** in our
+  path (from-bus already volt-base-listed; DistFromMeter not propagated for manual
+  zones); 0.14.5 AVs so no oracle golden — the memory-safe
+  `energymeter_manual_zonelist` test guards it.
+- **D16 (zone counter skips disabled + non-PD) — NOT a delta for us.** Already in
+  the 0.14.5 baseline and already ported (`zones/build.rs` `if !enabled ||
+  !is_pd_element`); 0.15.x only flattened the guard. No code change.
+- **E1 / ledger L3 (Monitor header) — keep the dss_capi form.** The quote-removal
+  + `MonitorHeader` flag are CSV-render only (flag off by default); probed
+  capi015 `Monitors.Header` tokens == 0.14.5 == Rust. No code change; the
+  `monitor-header-whitespace` known_diff (KEPT vs EPRI) stays.
+- known_diffs burn-down: no seasonal/allocation entry ever existed (reports were
+  NOT_PORTED); `meter-zonepce-count` (r3723-only) + `monitor-header-whitespace`
+  both document behaviors this WP does not change → retained.
+- **Audit fixes (branch `wt-u15`).** (1) `get_ratings` blocker REBUTTED: the
+  auditor cited r4133/pre-refactor `NumAmpRatings > 1`, but the port ports
+  `55400a29`'s `GetRatings` guard `0 <= idx < NumAmpRatings` (no `>1`); the pinned
+  capi015 oracle (0.15.0b4/SVN4103) confirms it — a single-season Line at idx 0
+  reports `%Normal == %Emergency` (AmpRatings[0] overrides both). No code change;
+  docs corrected to stop misquoting the guard. (2) Set-command sync (real
+  divergence): `Set Hour`/`SeasonRating`/`SeasonSignal` now re-sync
+  `seasonal_rating_idx` (`55400a29` ExecOptions 3/114/115), verified on capi015
+  (`solve; set hour; export` reads the new index) —
+  `set_commands_resync_seasonal_rating_idx`. (3) Seasonal report goldens tightened
+  to exact `0.0/0.0` (Rust == capi015 byte-for-byte; the faer-vs-KLU floor was
+  unnecessary). (4) Added `di_overloads_applies_seasonal_rating` (DI-path seasonal
+  wiring).
+
 **WP-U1.8 (WindGen + WTG3 dynamics) — LANDED (branch `wp-u18`).** New PC element
 `elements/pc/windgen/` (Generator-shaped negative load): aerodynamic power-flow
 (`Pm=0.5·ρ·π·Rad²·v³·Cp`, the load shape supplies WIND SPEED not a pu multiplier;

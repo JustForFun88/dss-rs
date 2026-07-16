@@ -41,6 +41,12 @@ impl CktElement for Transformer {
     fn emerg_amps(&self) -> f64 {
         self.emerg_amps
     }
+    fn num_amp_ratings(&self) -> i32 {
+        self.num_amp_ratings
+    }
+    fn amp_ratings(&self) -> &[f64] {
+        &self.amp_ratings
+    }
 
     /// Pascal `TTransfObj.GetLosses` (Transformer.pas l.1635): no-load losses
     /// are the power into `Yprim_Shunt` from each terminal; load losses are the
