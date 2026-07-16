@@ -1136,9 +1136,13 @@ fn skip_transformer_cursor(class: &str, prop: &str, cursors_disagree: bool) -> b
 /// one class per line so parallel WP branches each add a line without conflict
 /// (duplicate class rows are fine — the predicate ORs every matching row).
 const PROPS_015X: &[(&str, &[&str])] = &[
-    // Rows land here with their porting WP, e.g.:
-    // ("Line", &["EpsRMedium", "HeightOffset", "HeightUnit", "Conductors"]),  // WP-U1.x
-    // ("RegControl", &["Idle", "IdleReverse", "IdleForward", "FwdThreshold"]),  // WP-U1.x
+    // WP-U1.6 C5 (dss_capi 0.15.x r4086, commit 8a898cba): RegControl gains the
+    // idle-zone flags + the signed forward-power threshold.
+    (
+        "RegControl",
+        &["Idle", "IdleReverse", "IdleForward", "FwdThreshold"],
+    ),
+    // Further rows land here with their porting WP, e.g.:
     // ("Transformer", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
     // ("AutoTrans", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
     // ("LoadShape", &["Mode"]),  // WP-U1.x

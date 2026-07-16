@@ -74,10 +74,15 @@ pub mod prop {
     pub const LDC_Z: usize = 30;
     pub const REV_Z: usize = 31;
     pub const COGEN: usize = 32;
+    // Idle-zone + forward-threshold props (dss_capi 0.15.x r4086, commit 8a898cba).
+    pub const IDLE: usize = 33;
+    pub const IDLEREVERSE: usize = 34;
+    pub const IDLEFORWARD: usize = 35;
+    pub const FWDTHRESHOLD: usize = 36;
     // TCktElementClass tail:
-    pub const BASE_FREQ: usize = 33;
-    pub const ENABLED: usize = 34;
-    pub const NUM_PROPS: usize = 35; // incl. Like
+    pub const BASE_FREQ: usize = 37;
+    pub const ENABLED: usize = 38;
+    pub const NUM_PROPS: usize = 39; // incl. Like
 }
 
 /// `TRegControl.DefineProperties`.
@@ -109,7 +114,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("TapWinding"),
         PropDef::double("VLimit"),
         PropDef::mapped_string_enum("PTPhase", enums.reg_control_phase),
-        PropDef::double("RevThreshold"),
+        // r4086 (8a898cba): RevThreshold now points at the signed W field with
+        // a kW→W scale (Pascal `PropertyScale := 1000`), replacing the old
+        // `kWRevPowerThreshold` field + the `*1000` side effect.
+        PropDef::double("RevThreshold").scale(1000.0),
         PropDef::double("RevDelay"),
         PropDef::boolean("RevNeutral"),
         PropDef::boolean("EventLog"),
@@ -121,6 +129,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("LDC_Z"),
         PropDef::double("Rev_Z"),
         PropDef::boolean("Cogen"),
+        // r4086 (8a898cba): idle-zone flags + the forward-power threshold. Idle
+        // suppresses tap changes inside a power dead-band; FwdThreshold is the
+        // signed W upper edge (kW→W scale, mirrors RevThreshold).
+        PropDef::boolean("Idle"),
+        PropDef::boolean("IdleReverse"),
+        PropDef::boolean("IdleForward"),
+        PropDef::double("FwdThreshold").scale(1000.0),
         // TCktElementClass tail:
         PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::enabled("Enabled"),
@@ -175,10 +190,18 @@ pub struct RegControl {
     rev_x: f64,
     rev_ldc_z: f64,
     rev_delay: f64,
+    /// Pascal `RevPowerThreshold` (W, **signed** since r4086 — default −100 kW).
     rev_power_threshold: f64,
-    kw_rev_power_threshold: f64,
+    /// Pascal `FwdPowerThreshold` (W, r4086 — default +100 kW). Replaces the old
+    /// `kWRevPowerThreshold` scratch field.
+    fwd_power_threshold: f64,
     reverse_neutral: bool,
     cogen_enabled: bool,
+    /// Pascal `IdleEnabled`/`IdleReverseEnabled`/`IdleForwardEnabled` (r4086):
+    /// suppress tap changes inside the no-load / reverse / forward dead-bands.
+    idle_enabled: bool,
+    idle_reverse_enabled: bool,
+    idle_forward_enabled: bool,
     // Runtime control state (Pascal `TRegControlObj` mutable fields):
     pending_tap_change: f64,
     armed: bool,
@@ -235,10 +258,13 @@ impl RegControl {
             rev_x: 0.0,
             rev_ldc_z: 0.0,
             rev_delay: 60.0,
-            rev_power_threshold: 100_000.0, // 100 kW
-            kw_rev_power_threshold: 100.0,
+            rev_power_threshold: -100_000.0, // -100 kW (signed, r4086)
+            fwd_power_threshold: 100_000.0,  // 100 kW
             reverse_neutral: false,
             cogen_enabled: false,
+            idle_enabled: false,
+            idle_reverse_enabled: false,
+            idle_forward_enabled: false,
             pending_tap_change: 0.0,
             armed: false,
             last_change: 0,

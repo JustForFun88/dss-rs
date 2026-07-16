@@ -1324,6 +1324,10 @@ impl Dss {
         // whole-circuit JSON dump. Harmless on the initial `New` of the default
         // items themselves (the flag is set afterwards by `CreateDefaultDSSItems`).
         objects[oi].data_mut().set_default_and_unedited(false);
+        // Pascal `BeginEdit` (DSSClass.pas:1666, r4086): capture the set-order
+        // counter so `end_edit` knows which props this edit touched (RegControl's
+        // signed-threshold legacy fallback needs it).
+        objects[oi].data_mut().begin_edit_boundary();
 
         let mut param_pointer: i64 = 0;
         let mut param_name = parser.next_param(vars);
