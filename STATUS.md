@@ -383,22 +383,41 @@ Three commits on top of Stage 1:
   NCIM options follow `NUMANodes=128`) + Get readback. `dump3_commands` golden gains
   the two execoptions lines (same-commit migration; Rust-self-generated fixture,
   catalog-miss placeholder help like `LongLineCorrection`).
-- **Validation**: `exec/tests/ncim.rs` — NCIM converges to the default fixed-point
-  (`Normal`) node voltages on a 3-phase PQ circuit and a ConstZ circuit (both solve
-  `I(V)=0`; diff < 1e-3, bounded by Normal's looser voltage tolerance), NCIM warm
-  re-solve stable to 1e-9, and the option/enum surface round-trips. Gate green
-  (fmt/clippy/`cargo test --workspace`: dss-core lib 1144, corpus_live 3, dss-sparse 15).
-- **Remaining (not in this landing; keeps the gate green because NCIM only activates
-  on `Set Algorithm=NCIM` and no corpus deck does yet):**
-  1. The capi015 deck matrix (`tests/corpus/modes/ncim/` micro/PV/midi, `pending:true`)
-     — synthesize, validate per §1.7, flip `pending:false`, prove live-compare green.
-  2. **PV-bus generator path oracle validation** — `NCIM_DoPVBus`/`UpdateGenQ` are
-     ported loop-for-loop but only the PQ/ConstZ paths are Rust-self-validated; the
-     PV Q-limit / PV→PQ switching needs a generator deck probed against capi015.
-  3. `Export Jacobian/deltaF/deltaZ` + `Show PV2PQ_Conversions` reports (numeric-token
-     gates) and `VSource.NCIM_CalcInjCurrAtBus` (swing-source reported currents under
-     NCIM — a reporting-path concern needed for deck live-compare of source I/P).
-  4. `oddie:r4088` cross-check of one deck (report-only).
+- **Validation**: `exec/tests/ncim.rs` — every electrical assertion now pinned
+  against **capi015** NCIM captures (dss_capi 0.15.0b4 / SVN r4103; the pinned 0.14.5
+  gate oracle has no NCIM), embedded golden-style, matched to <5e-11 V (faer-vs-KLU
+  floor) under a 1e-6 V band: PQ, ConstZ, PV **regulating within Q-limits** (vpu=1.0,
+  Q≈1217 kvar, reported `present_kvar` matched), PV **Q-limit → PV→PQ** (vpu=1.01,
+  8 iters, Q=1500), and the **faithful shared non-convergence** (vpu=1.02: capi015
+  NCIM also stalls at max iters at the identical `|genbus|=7343.55` fixpoint — pinned
+  so a future silent "fix" that diverges from the oracle is caught). Plus warm-resolve
+  stability and option round-trip. Gate green (fmt/clippy/`cargo test --workspace`).
+- **Audit (Stages 2-4) findings addressed (branch `wt-u17`):**
+  - PV-bus path is oracle-validated (above); the earlier "PV bus does not converge"
+    concern is a **faithful upstream limitation**, not a port bug — capi015 NCIM fails
+    on the same aggressive deck node-for-node.
+  - The source bus sitting at the ideal EMF (`7199.56+0i`, no droop) under NCIM —
+    flagged as an unported `VSource.NCIM_CalcInjCurrAtBus` bug — is the **correct**
+    NCIM value (matches capi015 exactly). `NCIM_CalcInjCurrAtBus` is a *reporting*
+    path (`GetCurrents` at the source terminal); it does **not** touch node voltages.
+    The old vs-`Normal` self-consistency comparison was the wrong baseline and is
+    replaced by the vs-oracle pins.
+  - `NCIM_GetPowers` now persists `deltaQNom → Qnominalperphase` (Pascal l.121) so the
+    reported model-3 generator Q matches the oracle (was a stale-nominal reporting
+    divergence). `exec::Dss::generator_present_kw_kvar` reads the solved `(kW,kvar)`.
+  - The two new exec-option help rows (129/130) render the catalog-miss placeholder
+    (raw key) — verified empirically that the **pinned 0.15.7 catalog lacks both
+    keys**, so `help_catalog.rs` is not stale; identical to the `LongLineCorrection`
+    precedent, resolved in the acceptance help-catalog regeneration pass.
+- **Remaining (Stage 3 infra / reporting — keeps the gate green because NCIM only
+  activates on `Set Algorithm=NCIM` and no corpus deck does yet):**
+  1. Fold the above decks into the live-gate `tests/corpus/modes/ncim/` matrix
+     (`oracle:"capi015"`, §1.7 manifest + population.lock) — the numerics are already
+     oracle-pinned in `exec/tests/ncim.rs`; this is the corpus/manifest plumbing.
+  2. `Export Jacobian/deltaF/deltaZ` + `Show PV2PQ_Conversions` reports (numeric-token
+     gates) and `VSource.NCIM_CalcInjCurrAtBus` (swing-source reported *currents* under
+     NCIM — reporting-only, node voltages already correct).
+  3. `oddie:r4088` cross-check of one deck (report-only).
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
