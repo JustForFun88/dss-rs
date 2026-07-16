@@ -641,6 +641,13 @@ impl StorageController {
                 if p_diff.abs() > self.half_kw_band {
                     if self.fleet_state != STORE_DISCHARGING {
                         self.set_fleet_to_discharge(env);
+                        // D10 (WP-U1.6, `1b3123ce`, SVN r4058): if not already
+                        // discharging, force a new power flow on the first control
+                        // iteration so Storage.kW updates even when this step's
+                        // discharge condition matches the last one.
+                        if env.control_iteration() == 1 {
+                            store_kw_changed = true;
+                        }
                     }
                     if self.ccd.show_event_log {
                         let msg = format!(
@@ -863,6 +870,12 @@ impl StorageController {
             if p_diff.abs() > self.half_kw_band_low {
                 if self.fleet_state != STORE_CHARGING {
                     self.set_fleet_to_charge(env);
+                    // D10 (WP-U1.6, `1b3123ce`, SVN r4058): if not already
+                    // charging, force a new power flow on the first control
+                    // iteration (peakshavelow charge).
+                    if env.control_iteration() == 1 {
+                        store_kw_changed = true;
+                    }
                 }
                 if self.ccd.show_event_log {
                     let msg = format!(
