@@ -1063,6 +1063,49 @@ Rust↔r4088 divergence is a justified `known_diffs.json` entry or a Rung-2 item
 - **Rung 1 is COMPLETE** (U1.1–U1.10). Next: Rung 2 (WP-U2.* — r4133 protection
   overhaul + the r4133-side IEEE_519/InductionMachine moves, `delta_r4088_r4133.md`).
 
+**WP-U2.1 — Fuse overhaul (r4133) — LANDED (branch wt-u21).** Ported the
+`Controls/fuse.pas` r4088→r4133 delta (rows C3/D1/E3) loop-for-loop:
+- **Defaults/semantics:** `RatedCurrent` repurposed to an informational continuous
+  rating (default 1.0 → **0.0**, unused in `Sample`); new **`CurveMultiplier`**
+  (default 1.0) is the TCC divisor — `GetTCCTime(Cmag/CurveMultiplier)`, not
+  `RatedCurrent`; default `FuseCurve` `tlink` → **`none`** (a default-constructed
+  fuse **never blows**); new informational `InterruptingRating`. Props 10 → **12**
+  (BaseFreq/Enabled/NumProps shift +2). `elements/pd/fuse/{mod,accessors}.rs`.
+- **`GetTccCurve('none')` → NIL silently** (E3/D1): new `PropFlags::ALLOW_NONE_REF`
+  on the Fuse `FuseCurve` single ref — literal `none` resolves to NIL with **no
+  #401** and renders `none` (Pascal `if FuseCurve<>nil then Name else 'none'`).
+  Fuse-local; Recloser/Relay keep the not-found path until U2.2/U2.3. Supersedes
+  the Rung-1 capi015 clear+#401 pin (`exec::tests::lifecycle` updated to r4133).
+- **Property surfaces:** the 0.14.5-absent `CurveMultiplier`/`InterruptingRating`
+  carry `HIDE_015X` (byte Dump/`Dump commands`/JSON goldens stay green) + a
+  `PROPS_015X` Fuse row (shape walk). The changed defaults `FuseCurve`/`RatedCurrent`
+  get `SKIP_PROPS` rows (value mask on the 0.14.5 all-props walk, RegControl
+  RevThreshold precedent (e)→(f)); pinned instead on the r4133 side.
+- **Goldens:** `tests/golden/props/fuse.json` regenerated to the r4133 surface
+  (derived from the retired 0.14.5 golden + Oddie-verified r4133 value deltas —
+  no capi engine has the r4133 fuse behavior; `gen_fuse_r4133.py`). Protection
+  golden `fuse_blow.json` captured on the **r4133 Oddie** engine (blow trajectory
+  preserved via `fusecurve=tlink curvemultiplier=40`, reproducing the old
+  RatedCurrent=40 divisor; `gen_protection.py` gained an oddie route).
+- **Deck matrix** (`controls/fuse/`, §1.7 two-process-validated on r4133): new
+  `fuse_curvemult_blow` (SLG, `curvemultiplier=40` → single-phase blow at Sec=0.4;
+  feature-sensitive — `curvemultiplier=1` melts all three; pins the divisor) and
+  `fuse_legacy_noblow` (legacy RatedCurrent-only → never blows). Existing
+  `fuse_blow_3ph`/`fuse_blow_asym`/`midi_fuse` flipped `oracle:"r4133"` (now
+  never-blows; re-probed).
+- **Breaking-default fallout:** the fuse-save combo decks `combo/combo_protection`
+  and `combo/midi_protection` are entangled with the **unported** Recloser default-
+  curve removal (proven inert on r4133) + Relay r4133 wording — they cannot flip
+  to r4133 (recloser/relay diverge) nor stay on 0.14.5 (fuse diverges), so their
+  fuse tier is temporarily **neutralized** (ratedcurrent raised → never blows on
+  0.14.5, matching the port) with a documented deferral to the protection-rung
+  completion. Vendored `InductionMachine/{Master.DSS,Run.dss}` go **non-convergent
+  under r4133** — proven on the EPRI r4133 engine itself (explicit-curve fuses
+  blow at Sec=0, island the transformer) — so they move `solvable_now` →
+  `skipped_needs_investigation` (tag `r4133_breaking_nonconvergence`); the port
+  correctly reproduces the r4133 divergence. `population.lock` regenerated.
+- **known_diffs:** no fuse-scoped entries present (nothing to retire).
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
