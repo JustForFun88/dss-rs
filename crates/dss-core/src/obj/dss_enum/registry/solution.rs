@@ -84,8 +84,8 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> SolutionEnums
         true,
         2,
         2,
-        &["Normal", "Newton"],
-        &[0, 1],
+        &["Normal", "Newton", "NCIM"],
+        &[0, 1, 2],
     );
     alg.default_value = 0;
     let solve_alg = push(alg);

@@ -403,6 +403,20 @@ impl Dss {
                     opt::ALGORITHM => {
                         if let Some(v) = enum_ord(enums, enums.solve_alg, &param, errors) {
                             ckt.solution.algorithm = v;
+                            // Pascal `ExecOptions.pas:530`: selecting NCIM forces a
+                            // rebuild of its structures on the next solve.
+                            if v == crate::solution::solution::NCIMSOLVE {
+                                ckt.solution.ncim_ready = false;
+                            }
+                        }
+                    }
+                    // NCIM solver options (`ExecOptions.pas:794-797`).
+                    opt::IGNORE_GEN_Q_LIMITS => {
+                        ckt.solution.ncim_ignore_q_limit = interpret_yes_no(&param);
+                    }
+                    opt::NCIM_Q_GAIN => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.solution.ncim_gen_gain = v;
                         }
                     }
                     opt::CONTROL_MODE => {
