@@ -1,0 +1,23 @@
+! WP-U1.4 (UPGRADE_PLAN §WP-U1.4) — merged TCableConstants per-conductor model.
+! dss_capi 0.15.x merges TCNLineConstants/TTSLineConstants into one TCableConstants
+! whose CN-vs-TS choice is per-conductor (FCondType via SetCondType). This geometry
+! MIXES conductor kinds on one line: phase 1 CN, phase 2 TS, phase 3 CN, plus a bare
+! wire neutral (cond 4), Kron-reduced to a 3x3 phase Z/Yc — impossible under the
+! pre-0.15.x per-engine CN/TS kind (which would force every phase to one type).
+! oracle capi015 (0.15.x CableConstants.pas). YPrim-focused live compare on line.l1
+! (the asymmetric-family convention).
+Clear
+New Circuit.linecs_mix basekv=12.47 phases=3 bus1=sourcebus
+Set earthmodel=deri
+New CNData.cn1 Runits=m radunits=m gmrunits=m Rdc=1.0e-4 Rac=1.05e-4 GMRac=0.004 radius=0.005 capradius=0.005 EpsR=2.3 InsLayer=0.004 DiaIns=0.022 DiaCable=0.030 k=16 DiaStrand=0.001 GmrStrand=0.0004 Rstrand=2.0e-3
+New TSData.ts1 Runits=m radunits=m gmrunits=m Rdc=1.0e-4 Rac=1.05e-4 GMRac=0.004 radius=0.005 capradius=0.005 EpsR=2.3 InsLayer=0.004 DiaIns=0.022 DiaCable=0.030 DiaShield=0.025 TapeLayer=0.0002 TapeLap=20.0
+New WireData.wn Runits=m radunits=m gmrunits=m Rdc=1.0e-4 Rac=1.05e-4 GMRac=0.004 radius=0.005 capradius=0.005
+New LineGeometry.g nconds=4 nphases=3 reduce=y
+~ cond=1 cncable=cn1 x=0    h=-1.2 units=m
+~ cond=2 tscable=ts1 x=0.1  h=-1.2 units=m
+~ cond=3 cncable=cn1 x=0.2  h=-1.2 units=m
+~ cond=4 wire=wn     x=0.3  h=-1.2 units=m
+New Line.l1 bus1=sourcebus bus2=b2 geometry=g length=1 units=km phases=3
+New Load.ld bus1=b2 phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+Calcvoltagebases
