@@ -1136,12 +1136,13 @@ fn skip_transformer_cursor(class: &str, prop: &str, cursors_disagree: bool) -> b
 /// one class per line so parallel WP branches each add a line without conflict
 /// (duplicate class rows are fine — the predicate ORs every matching row).
 const PROPS_015X: &[(&str, &[&str])] = &[
-    // Rows land here with their porting WP, e.g.:
-    // ("Line", &["EpsRMedium", "HeightOffset", "HeightUnit", "Conductors"]),  // WP-U1.x
-    // ("RegControl", &["Idle", "IdleReverse", "IdleForward", "FwdThreshold"]),  // WP-U1.x
-    // ("Transformer", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
-    // ("AutoTrans", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
-    // ("LoadShape", &["Mode"]),  // WP-U1.x
+    ("CNData", &["SemiconLayer"]), // WP-U1.4 (CNData.pas SemiconLayer=5, inserted)
+                                   // Rows land here with their porting WP, e.g.:
+                                   // ("Line", &["EpsRMedium", "HeightOffset", "HeightUnit", "Conductors"]),  // WP-U1.x
+                                   // ("RegControl", &["Idle", "IdleReverse", "IdleForward", "FwdThreshold"]),  // WP-U1.x
+                                   // ("Transformer", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
+                                   // ("AutoTrans", &["BHpoints", "BHcurrent", "BHflux"]),  // WP-U1.x
+                                   // ("LoadShape", &["Mode"]),  // WP-U1.x
 ];
 
 /// Whether property `prop` of `class` is a 0.15.x-only property in `allowlist`

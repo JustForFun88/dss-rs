@@ -378,7 +378,8 @@ fn conductors_in_same_space_detects_overlap() {
 #[test]
 fn cn_cable_deri_3cond() {
     let mut lc = build_cn();
-    assert_eq!(lc.kind(), LineConstantsKind::ConcentricNeutral);
+    // 0.15.x: one merged cable engine, per-conductor CN type.
+    assert_eq!(lc.kind(), LineConstantsKind::Cable);
     lc.calc(60.0, DERI);
     let z_ref = [
         (1.957766526264e-04, 1.402105660670e-04),
@@ -395,10 +396,54 @@ fn cn_cable_deri_3cond() {
     check_c(&lc, &CABLE_C3_NF);
 }
 
+/// CN cable with `SemiconLayer=no` (dss_capi 0.15.x CableConstants.pas): the
+/// capacitance uses the Synergi / Kersting no-semicon formula, `Denom :=
+/// ln(RadCN/RadIn) - (1/k)·ln(k·RadStrand/RadCN)`, a distinct C from the
+/// default `ln(RadOut/RadIn)` branch; Z is unchanged (semicon only affects the
+/// shunt admittance). capi015 (dss-python 0.16.0b2 / dss_capi 0.15.0b4)
+/// reference: `? line.l1.cmatrix` on the identical deck with `SemiconLayer=no`
+/// (probe 2026-07-16) — C diagonal 0.1671684817477 nF/m (vs 0.2830890564838 for
+/// the semicon default).
+#[test]
+fn cn_cable_no_semicon_capacitance() {
+    let mut lc = build_cn();
+    for i in 0..3 {
+        lc.set_semicon_layer(i, false);
+    }
+    lc.calc(60.0, DERI);
+    // Z is identical to the default-semicon CN case (`cn_cable_deri_3cond`).
+    let z_ref = [
+        (1.957766526264e-04, 1.402105660670e-04),
+        (2.071515058850e-05, -1.736794561581e-05),
+        (7.705339488750e-06, -1.452216497679e-05),
+        (2.071515058850e-05, -1.736794561581e-05),
+        (1.844408315520e-04, 1.418811316531e-04),
+        (2.071515058850e-05, -1.736794561581e-05),
+        (7.705339488750e-06, -1.452216497679e-05),
+        (2.071515058850e-05, -1.736794561581e-05),
+        (1.957766526264e-04, 1.402105660670e-04),
+    ];
+    check_z(&lc, &z_ref);
+    // No-semicon capacitance branch (off-diagonals still exactly zero).
+    let c_ref_nf = [
+        1.671684817477e-01,
+        0.0,
+        0.0,
+        0.0,
+        1.671684817477e-01,
+        0.0,
+        0.0,
+        0.0,
+        1.671684817477e-01,
+    ];
+    check_c(&lc, &c_ref_nf);
+}
+
 #[test]
 fn ts_cable_deri_3cond() {
     let mut lc = build_ts();
-    assert_eq!(lc.kind(), LineConstantsKind::TapeShield);
+    // 0.15.x: one merged cable engine, per-conductor TS type.
+    assert_eq!(lc.kind(), LineConstantsKind::Cable);
     lc.calc(60.0, DERI);
     let z_ref = [
         (4.675825330004e-04, 4.983304721750e-04),

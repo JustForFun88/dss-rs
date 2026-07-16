@@ -8,6 +8,7 @@ use crate::elements::general::conductor_data::{
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::obj::base::DssObject;
 use crate::support::cmatrix::CMatrix;
+use crate::support::line_constants::ConductorType;
 
 use super::{ConductorChoice, LineGeometryObj};
 
@@ -149,6 +150,10 @@ impl LineGeometryObj {
             eng.set_gmr(i, g.gmr_units, g.gmr);
             eng.set_rdc(i, g.res_units, g.rdc);
             eng.set_rac(i, g.res_units, g.rac);
+            // dss_capi 0.15.x `UpdateLineGeometryData`: for cable conductors,
+            // assign the per-conductor CN/TS type (`SetCondType`) into the
+            // merged engine before pushing the cable data. A plain wire
+            // conductor stays `INVALID` (no cable branch).
             match &g.cable {
                 Some(CableGeom::Cn {
                     eps_r,
@@ -159,7 +164,9 @@ impl LineGeometryObj {
                     dia_strand,
                     gmr_strand,
                     r_strand,
+                    semicon_layer,
                 }) => {
+                    eng.set_cond_type(i, ConductorType::Cn);
                     eng.set_eps_r(i, *eps_r);
                     eng.set_ins_layer(i, g.radius_units, *ins_layer);
                     eng.set_dia_ins(i, g.radius_units, *dia_ins);
@@ -168,6 +175,7 @@ impl LineGeometryObj {
                     eng.set_dia_strand(i, g.radius_units, *dia_strand);
                     eng.set_gmr_strand(i, g.gmr_units, *gmr_strand);
                     eng.set_r_strand(i, g.res_units, *r_strand);
+                    eng.set_semicon_layer(i, *semicon_layer);
                 }
                 Some(CableGeom::Ts {
                     eps_r,
@@ -178,6 +186,7 @@ impl LineGeometryObj {
                     tape_layer,
                     tape_lap,
                 }) => {
+                    eng.set_cond_type(i, ConductorType::Ts);
                     eng.set_eps_r(i, *eps_r);
                     eng.set_ins_layer(i, g.radius_units, *ins_layer);
                     eng.set_dia_ins(i, g.radius_units, *dia_ins);

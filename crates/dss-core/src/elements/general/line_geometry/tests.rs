@@ -750,6 +750,83 @@ fn matrices_ts_cable_match_oracle() {
 }
 
 #[test]
+fn matrices_mixed_cn_ts_wire_match_capi015() {
+    // dss_capi 0.15.x merged `TCableConstants`: one geometry with MIXED
+    // per-conductor types — phase 1 CN, phase 2 TS, phase 3 CN, plus a bare
+    // wire neutral (cond 4). This is impossible under the pre-0.15.x per-engine
+    // CN/TS kind; the merged engine assigns each conductor's `FCondType` via
+    // `SetCondType` in `UpdateLineGeometryData`. nconds=4/nphases=3/reduce=yes
+    // → reduced 3x3. capi015 (dss-python 0.16.0b2 / dss_capi 0.15.0b4) reference
+    // `? line.l1.rmatrix/xmatrix/cmatrix` on the identical deck (probe
+    // 2026-07-16), ohm/m and nF/m.
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let cn = build_si_cn();
+    let ts = build_si_ts();
+    // Bare-wire neutral sharing the cable core (Rdc/Rac/GMR/radius) — matches
+    // the probe's `WireData.w1`.
+    let w = build_wire(
+        "wn",
+        &[
+            ("runits", "m"),
+            ("gmrunits", "m"),
+            ("radunits", "m"),
+            ("rdc", "0.0001"),
+            ("rac", "0.000105"),
+            ("radius", "0.005"),
+            ("gmrac", "0.004"),
+        ],
+    );
+    let mut g = LineGeometryObj::new("g1");
+    scalar(&cls, &mut g, "nconds", "4");
+    scalar(&cls, &mut g, "nphases", "3");
+    scalar(&cls, &mut g, "reduce", "yes");
+    let conds: [(&str, &dyn DssObject, &str); 4] = [
+        ("cncable", &cn, "0"),
+        ("tscable", &ts, "0.1"),
+        ("cncable", &cn, "0.2"),
+        ("wire", &w, "0.3"),
+    ];
+    for (k, (prop_name, obj, x)) in conds.iter().enumerate() {
+        scalar(&cls, &mut g, "cond", &(k + 1).to_string());
+        set_ref(&cls, &mut g, prop_name, *obj);
+        scalar(&cls, &mut g, "x", x);
+        scalar(&cls, &mut g, "h", "-1.2");
+        scalar(&cls, &mut g, "units", "m");
+    }
+
+    let z = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z");
+    let z_ref = [
+        (2.043047617632e-04, 1.359764636804e-04),
+        (5.238862037842e-05, 4.408760014295e-06),
+        (1.340115107358e-05, -1.594581609220e-05),
+        (5.238862037842e-05, 4.408760014295e-06),
+        (1.649110726797e-04, 2.800828107382e-04),
+        (4.559802639218e-05, 4.875809286083e-06),
+        (1.340115107358e-05, -1.594581609220e-05),
+        (4.559802639218e-05, 4.875809286083e-06),
+        (1.936950836687e-04, 1.415056424162e-04),
+    ];
+    assert_z(&z, &z_ref, 3);
+
+    // Capacitance: all three phases share identical insulation geometry and
+    // the semicon default, so the reduced C is diagonal 0.2830890564838 nF/m.
+    let yc = g.yc_matrix(60.0, 1.0, M_UNIT, DERI).expect("yc");
+    for i in 0..3 {
+        assert_close(
+            yc.get(i, i).im / W60,
+            2.830890564838e-01 * 1e-9,
+            &format!("C[{i}][{i}]"),
+        );
+        for j in 0..3 {
+            if i != j {
+                assert_close(yc.get(i, j).im, 0.0, &format!("C[{i}][{j}]"));
+            }
+        }
+    }
+}
+
+#[test]
 fn update_uninitialized_conductor_errors() {
     // A conductor slot left NIL is the Pascal "WireData is not correctly
     // initialized" hard error.
