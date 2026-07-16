@@ -1074,6 +1074,17 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     ("Capacitor", "pctperm"),
     ("Reactor", "FaultRate"),
     ("Reactor", "pctperm"),
+    // (e) A 0.15.x-CHANGED DEFAULT (not UB): WP-U1.6 C5 (`8a898cba`, r4086) flips
+    //     RegControl's `RevThreshold` default from +100 kW (0.14.5) to the signed
+    //     −100 kW. `compare_all_properties` runs ONLY on the 0.14.5 oracle
+    //     (corpus_live.rs:1276 gates it on `oracle.is_none()`), where −100 vs +100
+    //     is a deliberate version mismatch (§1.2), so the value is excluded here.
+    //     It is fully pinned elsewhere: the capi015 props golden
+    //     (`regcontrol.json`, all scenarios incl. the −150/−50 EndEdit-fallback
+    //     values) and the capi015 `regcontrol_idle.dss` live probe. New siblings
+    //     `FwdThreshold`/`Idle*` are absent from the 0.14.5 capture → handled by
+    //     the [`PROPS_015X`] allowlist, not here.
+    ("RegControl", "RevThreshold"),
 ];
 
 fn skip_prop(class: &str, prop: &str) -> bool {
