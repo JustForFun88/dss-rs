@@ -1212,6 +1212,20 @@ set-state (parse/store/realloc/dump) is unit-pinned (`bh_curve_props_parse_and_s
 + `auto_trans::…::bh_curve_default_and_realloc`); harness `PROPS_015X` rows for
 both classes. No `known_diffs.json` entry existed.
 
+## WP-U1.6 C5-r3723 — LoadShape `Mode` prop — SETTLED (NOT a delta for us; dss_capi 0.15.x declines it)
+
+The EPRI SVN r40xx line inserts a LoadShape `Mode` property at index 22, shifting
+`Interpolation` 22→23. **dss_capi 0.15.x explicitly declines to port it** — the
+`TLoadShapeProp` enum carries `// Mode = 22, -- not useful to implement this yet`
+with `Interpolation = 22` in **both** 0.14.5 and 0.15.0b4
+(`git show 0.15.0b4:src/General/LoadShape.pas`). The capi015 oracle therefore has
+**23 properties, `Interpolation` at 22, no `Mode`** (probed 2026-07-16) — identical
+to 0.14.5. The port already matches this exactly, so there is **nothing to port**:
+adding `Mode` would break every LoadShape deck's property-count parity against the
+binding oracle. No allowlist row (the tables are equal), no golden change. Pinned
+by the guard `no_mode_prop_interpolation_stays_at_22` (fails if a stray `Mode`
+ever lands). No `known_diffs.json` entry existed.
+
 ## L4, E2 — SeasonalRating reimplementation (global `SeasonalRatingIdx`) — SETTLED (WP-U1.5, adopt capi015 = r4133)
 
 **Observable.** The per-PDElement norm/emerg current ratings used by the overload
