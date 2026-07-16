@@ -1037,16 +1037,19 @@ Rust↔r4088 divergence is a justified `known_diffs.json` entry or a Rung-2 item
   FPC(0.14.5)↔Delphi(r4088) layer, corroborated by the committed capi015↔r4088
   engine sweep (`docs/upgrade/sweeps/capi015_vs_r4088.md`). A Rung-1 regression
   would have turned the mandatory gate red.
-- **Catalog burn-down (11→21 entries).** PRUNED `epri-gendispatcher-propname` (dead
-  on both revs: r4088/r4133 added GenDispatcher `kvarlimit`+`GenList`,
-  `GenDispatcher.pas` `NumPropsThisClass` 4→6, so no "Invalid property name";
+- **Catalog burn-down (11→22 entries).** PRUNED `epri-gendispatcher-propname` (dead
+  on both revs — 0 hits; the gendispatcher decks diverge on control-iteration count,
+  not a property name. The decks do set `kvarlimit`/`genlist`/`weights`, all seven of
+  which exist in dss_capi 0.14.5 `GenDispatcher.pas` so the port accepts them; no
+  engine surfaces the original `#34` "Invalid property name" on the swept decks;
   residual iteration delta folded into `iteration-count-delta`). EXTENDED 5 to r4088
-  (iteration-count-delta, storage-kwhstored-drift [broadened to also match the `.kw`
-  dispatch probes], injection-fpc-delphi-ulp, meter-zonepce-count,
-  harmonics-yfingerprint-drift). NEW: 6 cross-solver FPC-vs-Delphi floors (autotrans
-  reg-tap, makeposseq, reduce, ckt24 SubXFMR conditioning, PVSystem-kvar Delphi
-  6-sf display, Vsource near-zero power), 1 r3723-only
-  (invcontrol-fixpoint-drift-synthetic), 4 `skip` (EPRI r4088 #303 crashes:
+  (iteration-count-delta, storage-kwhstored-drift [kWhStored idling-loss drift],
+  injection-fpc-delphi-ulp, meter-zonepce-count, harmonics-yfingerprint-drift). NEW:
+  7 cross-solver FPC-vs-Delphi floors (autotrans reg-tap, makeposseq, reduce, ckt24
+  SubXFMR conditioning, PVSystem-kvar Delphi 6-sf display, Storage-`kw` Delphi 6-sf
+  display [`.kw:`-scoped, split from storage-kwhstored-drift], Vsource near-zero
+  power), 1 r3723-only (invcontrol-fixpoint-drift-synthetic), 4 `skip` (EPRI r4088
+  #303 crashes:
   binary-shape [+r3723], IEEE13 line-spacing, IEEE13 line+cable-spacing,
   CapControlFollow). Full ledger: `docs/upgrade/known_diffs_burndown.md`.
 - **Docs.** `tests/corpus/COVERAGE.md` refreshed (solvable_now **295/329 = 89.7%**,
