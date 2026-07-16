@@ -286,6 +286,37 @@ impl Line {
         self.cd.obj.set_as_next_seq(prop::EMERGAMPS);
     }
 
+    /// Pascal generic `DSSObjectReferenceArrayProperty` fill for the 0.15.x
+    /// `Conductors=` form (`Line.pas:341-344`, the 3-class proxy): write each
+    /// resolved conductor / NIL straight into `LineWireData` from slot 0. The
+    /// conductor *model* (`FPhaseChoice`) and ratings are computed by the side
+    /// effect (`Line.pas:750-865`), matching upstream's split. In practice the
+    /// text proxy only ever delivers an all-`none` list (real items error in
+    /// `parse_conductor_proxy`, the upstream `GetDSSClass` case bug), so this
+    /// mostly writes NIL slots; it is written generally for JSON-import fidelity.
+    pub(super) fn set_conductors(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
+        for (i, r) in refs.iter().enumerate() {
+            if i < self.line_wire_data.len() {
+                self.line_wire_data[i] = r.as_ref().map(|(_, _, o)| o.clone_box());
+            }
+        }
+    }
+
+    /// Pascal `Line.pas:762-782`: the conductor *model* the `Conductors=` list
+    /// implies — the **last** valid phase conductor decides (`TCNDataObj` →
+    /// ConcentricNeutral, `TTSDataObj` → TapeShield, any wire → Overhead); an
+    /// all-`none` phase set leaves `Unknown` (the caller defaults it to Overhead).
+    pub(super) fn conductors_phase_choice(&self) -> ConductorChoice {
+        let nph = (self.cd.nphases).min(self.line_wire_data.len());
+        let mut choice = ConductorChoice::Unknown;
+        for slot in self.line_wire_data.iter().take(nph) {
+            if let Some(c) = slot.as_ref() {
+                choice = conductor_choice_of(c.as_ref());
+            }
+        }
+        choice
+    }
+
     /// Pascal's generic `DSSObjectReferenceArrayProperty` fill for the
     /// `cncables=`/`tscables=` forms (no `WriteByFunction`, unlike `wires=`): write
     /// the resolved cables straight into `LineWireData` from conductor 1, with no
@@ -312,6 +343,19 @@ impl Line {
                 self.line_wire_data[k] = r.as_ref().map(|(_, _, o)| o.clone_box());
             }
         }
+    }
+}
+
+/// Pascal `condObj is TCNDataObj / TTSDataObj` (`Line.pas:772-780`): the
+/// conductor model a single catalog object implies.
+fn conductor_choice_of(o: &dyn DssObject) -> ConductorChoice {
+    let any = o.as_any();
+    if any.downcast_ref::<CnDataObj>().is_some() {
+        ConductorChoice::ConcentricNeutral
+    } else if any.downcast_ref::<TsDataObj>().is_some() {
+        ConductorChoice::TapeShield
+    } else {
+        ConductorChoice::Overhead
     }
 }
 
