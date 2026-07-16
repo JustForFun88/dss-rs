@@ -138,6 +138,9 @@ New "Transformer.tr1"
 ~ RDCOhms=0.00078336
 ~ Seasons=1
 ~ Ratings=[ 1100]
+~ BHPoints=0
+~ BHCurrent=
+~ BHFlux=
 ~ NormAmps=25.4645267084438
 ~ EmergAmps=34.7243546024234
 ~ FaultRate=0.007
@@ -171,7 +174,7 @@ New "RegControl.rc1"
 ~ TapWinding=2
 ~ VLimit=0
 ~ PTPhase=1
-~ RevThreshold=100
+~ RevThreshold=-100
 ~ RevDelay=60
 ~ RevNeutral=No
 ~ EventLog=No
@@ -181,6 +184,10 @@ New "RegControl.rc1"
 ~ LDC_Z=0
 ~ Rev_Z=0
 ~ Cogen=No
+~ Idle=No
+~ IdleReverse=No
+~ IdleForward=No
+~ FwdThreshold=100
 ~ BaseFreq=60
 ~ Enabled=Yes
 ~ Like=
@@ -464,6 +471,9 @@ New "Transformer.tup"
 ~ RDCOhms=0.0019584
 ~ Seasons=1
 ~ Ratings=[ 1100]
+~ BHPoints=0
+~ BHCurrent=
+~ BHFlux=
 ~ NormAmps=7.63888888888889
 ~ EmergAmps=10.4166666666667
 ~ FaultRate=0.007

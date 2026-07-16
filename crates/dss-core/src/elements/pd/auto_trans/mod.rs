@@ -160,9 +160,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::string("WdgCurrents").flags(PropFlags::READS_VTERMINAL),
         // GICharm BH-curve data (r4064, 90962ae8): `Unused` props — parsed and
         // stored, never used in a solve (mirrors the Transformer port).
-        PropDef::integer("BHpoints").flags(PropFlags::SUPPRESS_JSON | PropFlags::NON_NEGATIVE),
-        PropDef::double_array("BHcurrent", BHPOINTS),
-        PropDef::double_array("BHflux", BHPOINTS),
+        PropDef::integer("BHPoints").flags(PropFlags::SUPPRESS_JSON | PropFlags::NON_NEGATIVE),
+        PropDef::double_array("BHCurrent", BHPOINTS),
+        PropDef::double_array("BHFlux", BHPOINTS),
         // TPDClass tail:
         PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),

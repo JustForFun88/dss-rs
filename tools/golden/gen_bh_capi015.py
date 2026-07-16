@@ -53,7 +53,7 @@ SCENARIOS = {
         "skip_props": [],
     },
 }
-BH = ["BHpoints", "BHcurrent", "BHflux"]
+BH = ["BHPoints", "BHCurrent", "BHFlux"]
 
 
 def main() -> None:

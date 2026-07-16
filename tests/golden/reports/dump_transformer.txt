@@ -85,6 +85,9 @@ New "Transformer.t1"
 ~ RDCOhms=0.00490325333333333
 ~ Seasons=1
 ~ Ratings=[ 1100]
+~ BHPoints=0
+~ BHCurrent=
+~ BHFlux=
 ~ NormAmps=27.6124041786343
 ~ EmergAmps=37.6532784254104
 ~ FaultRate=0.007

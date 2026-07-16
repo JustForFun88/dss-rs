@@ -167,9 +167,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // GICharm BH-curve data (r4064, 90962ae8): `Unused` props — parsed and
         // stored, never used in a solve. `BHpoints` reallocates the two arrays
         // (side effect below); `BHcurrent`/`BHflux` are `BHpoints`-sized.
-        PropDef::integer("BHpoints").flags(PropFlags::SUPPRESS_JSON | PropFlags::NON_NEGATIVE),
-        PropDef::double_array("BHcurrent", BHPOINTS),
-        PropDef::double_array("BHflux", BHPOINTS),
+        PropDef::integer("BHPoints").flags(PropFlags::SUPPRESS_JSON | PropFlags::NON_NEGATIVE),
+        PropDef::double_array("BHCurrent", BHPOINTS),
+        PropDef::double_array("BHFlux", BHPOINTS),
         // TPDClass tail:
         PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),
