@@ -204,14 +204,22 @@ impl DssObjData {
         }
     }
 
-    /// Pascal `TDSSObject.MakeLike`: the base-class part of `like=` copies the
-    /// source's whole `PrpSequence` (counter slot included) onto the target,
-    /// so `Save` later writes the copied properties as explicitly set. Class
+    /// Pascal `TDSSObject.MakeLike` (`DSSObject.pas:133`): the base-class part
+    /// of `like=` copies `SizeOf(Integer) * (NumProperties + 1)` bytes = the
+    /// counter slot (index 0) plus every property slot (1..=NumProperties), so
+    /// `Save` later writes the copied properties as explicitly set. Class
     /// `make_like` impls call this first, mirroring `inherited MakeLike`.
+    ///
+    /// The per-edit boundary slot lives at index `NumProperties + 1` (Pascal
+    /// `PrpSequence[NumProperties + 1]`, our [`edit_seq_boundary`]) and is
+    /// **outside** that byte range — MakeLike deliberately does not copy it, so
+    /// the target keeps its own boundary (0 for a fresh `New … like=`). Copying
+    /// it would clobber the child's boundary with the parent's and mis-fire the
+    /// RegControl `EndEdit` signed-threshold legacy fallback.
+    ///
+    /// [`edit_seq_boundary`]: Self::begin_edit_boundary
     pub fn copy_prp_sequence_from(&mut self, other: &DssObjData) {
         self.prp_sequence.clone_from(&other.prp_sequence);
-        // Pascal `MakeLike` copies the whole PrpSequence, boundary slot included.
-        self.edit_seq_boundary = other.edit_seq_boundary;
     }
 
     /// Pascal `GetNextPropertySet`: the property index whose set-order is the

@@ -749,7 +749,12 @@ built on the `PROPS_015X` harness allowlist:
   Rev:=−Fwd`) restores the old symmetric band. The fallback is **per-edit**, via a
   new `DssObjData` BeginEdit boundary (`PrpSequence[NumProps+1]`, wired at the
   executive edit-start) — a later rev-only edit re-symmetrizes and clobbers an
-  earlier Fwd, reproduced 1:1 (capi015-probed). Idle no-load test ported verbatim
+  earlier Fwd, reproduced 1:1 (capi015-probed). The base `MakeLike`
+  (`copy_prp_sequence_from`) copies the counter + property slots but **not** the
+  boundary slot (Pascal `MakeLike` copies `NumProps+1` ints, excluding index
+  `NumProps+1`), so a `New … like=parent` child keeps its own boundary and the
+  fallback fires per the child's own edit — audit fix, regression-tested in
+  `obj/base/tests.rs`. Idle no-load test ported verbatim
   incl. the `>=/<=` OR (spans the whole axis at the default band; **not** "fixed"
   to AND). **Gate:** capi015 props golden re-baseline
   (`tests/golden/props/regcontrol.json` via `gen_regcontrol_capi015.py`) pinning the
