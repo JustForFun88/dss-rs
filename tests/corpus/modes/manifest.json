@@ -1246,6 +1246,19 @@
   "oracle": "capi015",
   "pending": false,
   "note": "UPGRADE_PLAN WP-U1.9 (A3/A5, §1.7): PCE force hooks. After a baseline solve, `select load.ld; set InjCurrent=[80 0 80 0 80 0]` forces the load's injection currents (Flg.ForceInjCurrents); the harness re-solve injects them directly and settles at a new operating point. Gated oracle:capi015 -- these options do not exist in the 0.14.5 default oracle. Feature-sensitive: forcing moves b2 Vmag 7187.45 -> 7224.14 V (probed on capi015, bit-identical across two processes). Per-option contract (frozen Get InjCurrent/ITerminal, YPrim/StateVar/IterNumber, clear reset) is exec/tests/force_hooks.rs, pinned to the same probe."
+ },
+ {
+  "path": "upgrade/mmf_singlecol/mmf_singlecol.dss",
+  "ad": "off:unclassified-new-deck",
+  "kind": "micro",
+  "n_steps": 8,
+  "selected_elements": [
+   "*"
+  ],
+  "oracle": "capi015",
+  "pending": false,
+  "wp": "WP-U1.6",
+  "note": "UPGRADE_PLAN WP-U1.6 row D13 (docs/upgrade/DIVERGENCES.md): LoadShape single-column csvfile= under MemoryMapping=Yes. dss_capi c4590d16 restored the missing `not` on the single-column CreateMMF guard (LoadShape.pas ~:1032) so the shape's P data loads; 0.14.5 exits on CreateMMF success -> empty shape -> the daily Solve raises #482 Division by zero. Gated capi015 (0.15.0b4), NOT 0.14.5: the deck CANNOT compile+solve on the pinned 0.14.5 oracle (it is the bug the fix removes), so §1.2 forbids a 0.14.5 gate. The Rust port's eager MMF reader (read_csv_file MMF branch) already matches the fixed behavior. Feature-sensitive (§1.7-3): the single-column MMF shape drives Load.ld over 8 daily steps to P/phase [20 40 70 110 160 130 90 50] kW (= 200 kW * [0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25]); a regression to an empty/1.0 shape moves per-step load power AND node voltages far above every live floor. Fixture mm8.csv is uniform 5-byte rows (aligned MMF byte stride; all bytes in accept-set [46,58)). Validated per §1.7 (two-process determinism on capi015: converged 2 iters, Vmag fingerprint 0ead40d7199b0781 bit-identical across two processes, 2026-07-16). Also unit-pinned by load_shape::tests::mmf_single_column_csvfile_loads_like_capi015."
  }
  ]
 }

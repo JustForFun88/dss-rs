@@ -12,7 +12,7 @@
   "family_counts": {
     "asymmetric": 47,
     "controls": 94,
-    "modes": 58
+    "modes": 59
   },
   "family_paths": {
     "asymmetric": [
@@ -209,6 +209,7 @@
       "time/midi_duty_ctrl.dss",
       "time/peakday.dss",
       "time/yearly.dss",
+      "upgrade/mmf_singlecol/mmf_singlecol.dss",
       "upgrade/upgrade_forcehooks.dss",
       "upgrade/upgrade_growth_year0.dss",
       "upgrade/upgrade_linecs_eqspacing.dss",
