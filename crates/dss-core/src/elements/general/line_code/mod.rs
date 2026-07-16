@@ -81,9 +81,15 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double("NormAmps"),
         PropDef::double("EmergAmps"),
-        PropDef::double("FaultRate"),
-        PropDef::double("PctPerm"),
-        PropDef::double("Repair"),
+        // dss_capi 0.15.x (LineCode.pas:283-288): FaultRate/PctPerm/Repair are
+        // flagged Deprecated+Unused — a LineCode never propagated them to its
+        // Lines (unused in the engine since 2014), so they carry a
+        // `deprecationMessage` in the JSON schema. Still parsed/stored/dumped
+        // exactly as before (probe-confirmed: no runtime warning); the flags are
+        // schema metadata only.
+        PropDef::double("FaultRate").flags(PropFlags::DEPRECATED | PropFlags::UNUSED),
+        PropDef::double("PctPerm").flags(PropFlags::DEPRECATED | PropFlags::UNUSED),
+        PropDef::double("Repair").flags(PropFlags::DEPRECATED | PropFlags::UNUSED),
         // BooleanActionProperty: setting it `yes` runs DoKronReduction; the
         // getter always reads back `No` (it stores no state).
         PropDef::boolean("Kron"),

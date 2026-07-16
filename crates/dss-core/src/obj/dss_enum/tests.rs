@@ -76,3 +76,29 @@ fn joined_lists_names() {
     let e = DssEnum::new("X", true, 1, 1, &["a", "b"], &[1, 2]);
     assert_eq!(e.joined(), "[a,b]");
 }
+
+/// dss_capi 0.15.x LineType enum-width fix (DSSClass.pas:1071, `4 -> 5`).
+/// The eight `swt_*` names collapse to the ambiguous 4-char prefix `swt_`; with
+/// the old MaxChars=4 a 5-char abbreviation like `swt_l` fell back to the
+/// default `oh` (ordinal 1). With MaxChars=5 the 5-char prefix disambiguates.
+/// Probed on capi015 2026-07-16 (probe_abbr.py): `swt_l -> swt_ldbrk`, etc.
+#[test]
+fn line_type_abbreviations_widened_to_five_chars() {
+    let reg = EnumRegistry::new();
+    let lt = reg.get(reg.line_type).clone();
+    // 5-char abbreviations now disambiguate the swt_ group (were `oh`=1 at MaxCh=4)
+    assert_eq!(lt.string_to_ordinal("swt_l").unwrap(), 5); // swt_ldbrk
+    assert_eq!(lt.string_to_ordinal("swt_f").unwrap(), 6); // swt_fuse
+    assert_eq!(lt.string_to_ordinal("swt_s").unwrap(), 7); // swt_sect
+    assert_eq!(lt.string_to_ordinal("swt_r").unwrap(), 8); // swt_rec
+    assert_eq!(lt.string_to_ordinal("swt_d").unwrap(), 9); // swt_disc
+    assert_eq!(lt.string_to_ordinal("swt_b").unwrap(), 10); // swt_brk
+    assert_eq!(lt.string_to_ordinal("swt_e").unwrap(), 11); // swt_elbow
+    // Full names always matched (exact-name shortcut, MaxChars-independent).
+    assert_eq!(lt.string_to_ordinal("swt_ldbrk").unwrap(), 5);
+    assert_eq!(lt.string_to_ordinal("busbar").unwrap(), 12);
+    // 4-char-disambiguable names unaffected by the widening.
+    assert_eq!(lt.string_to_ordinal("oh").unwrap(), 1);
+    assert_eq!(lt.string_to_ordinal("ug_t").unwrap(), 3); // ug_ts
+    assert_eq!(lt.string_to_ordinal("ug_c").unwrap(), 4); // ug_cn
+}
