@@ -14,13 +14,29 @@ use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 use super::{Connection, Load, LoadModel, LoadSpec, prop};
 
 impl Load {
-    /// Pascal `GrowthFactor`: year 0 → 1.0 (use base values); otherwise the
-    /// `GrowthShape`'s `GetMult(Year)` when one is assigned, else the circuit
-    /// default growth factor. (Pascal never updates `LastYear` here, so a fresh
-    /// `Year <> LastYear` always re-reads the curve — ported verbatim.)
-    fn growth_factor(&mut self, year: i32, default_growth_factor: f64) -> f64 {
+    /// Pascal `GrowthFactor` (`Load.pas:1014`, B3-r3723 / SVN r3723-era update):
+    /// year 0 → 1.0 (use base values), UNLESS a `GrowthShape` is assigned — then
+    /// the factor tracks the *simulated hours* so a >8760 h Year=0 run advances
+    /// through the curve. `calcYear := dblHour/8760`; if `calcYear < 1` the factor
+    /// stays 1.0 unless the curve's first year is 0 (then `GetMultIdx(1)`), else
+    /// `GetMult(Ceil(calcYear))`. For `year <> 0` it is the `GrowthShape`'s
+    /// `GetMult(Year)` when assigned, else the circuit default growth factor.
+    /// (Pascal never updates `LastYear` here, so a fresh `Year <> LastYear` always
+    /// re-reads the curve — ported verbatim.)
+    fn growth_factor(&mut self, year: i32, default_growth_factor: f64, dbl_hour: f64) -> f64 {
         if year == 0 {
             self.last_growth_factor = 1.0;
+            if let Some(gs) = self.growth_shape_obj.as_mut() {
+                let first_y = gs.get_year(1);
+                let calc_year = dbl_hour / 8760.0; // Aprox year
+                if calc_year < 1.0 {
+                    if first_y == 0.0 {
+                        self.last_growth_factor = gs.get_mult_idx(1);
+                    }
+                } else {
+                    self.last_growth_factor = gs.get_mult(calc_year.ceil() as i32);
+                }
+            }
         } else if let Some(gs) = self.growth_shape_obj.as_mut() {
             if year != self.last_year {
                 self.last_growth_factor = gs.get_mult(year);
@@ -123,20 +139,21 @@ impl Load {
 
         let factor = if self.status == 1 {
             // Fixed: consider only the growth factor.
-            self.growth_factor(sys.year, sys.default_growth_factor)
+            self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour)
         } else {
             match sys.mode {
                 SolveMode::Snapshot | SolveMode::Harmonic => {
                     if self.status == 2 {
                         // Exempt
-                        self.growth_factor(sys.year, sys.default_growth_factor)
+                        self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour)
                     } else {
                         sys.load_multiplier
-                            * self.growth_factor(sys.year, sys.default_growth_factor)
+                            * self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour)
                     }
                 }
                 SolveMode::Daily => {
-                    let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    let mut f =
+                        self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
                     if self.status != 2 {
                         f *= sys.load_multiplier;
                     }
@@ -145,7 +162,7 @@ impl Load {
                 }
                 SolveMode::Yearly => {
                     let f = sys.load_multiplier
-                        * self.growth_factor(sys.year, sys.default_growth_factor);
+                        * self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
                     self.calc_yearly_mult(sys.dbl_hour);
                     if self.load_model == LoadModel::Cvr {
                         self.calc_cvr_mult(sys.dbl_hour);
@@ -153,7 +170,8 @@ impl Load {
                     f
                 }
                 SolveMode::DutyCycle => {
-                    let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    let mut f =
+                        self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
                     if self.status != 2 {
                         f *= sys.load_multiplier;
                     }
@@ -165,7 +183,8 @@ impl Load {
                     // (unless Exempt); the ShapeFactor comes from the one class
                     // `ActiveLoadShapeClass` selects (`Set LoadShapeClass=`).
                     // `USENONE` (the default) falls through, leaving 1+j1.
-                    let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    let mut f =
+                        self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
                     if self.status != 2 {
                         f *= sys.load_multiplier;
                     }
@@ -184,7 +203,8 @@ impl Load {
                 // the solve dispatcher still errors loudly on them), but LD1/LD2
                 // are (WPG.3), so this arm is live.
                 SolveMode::Monte2 | SolveMode::Monte3 | SolveMode::LD1 | SolveMode::LD2 => {
-                    let mut f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    let mut f =
+                        self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
                     self.calc_daily_mult(sys.dbl_hour);
                     if self.status != 2 {
                         f *= sys.load_multiplier;
@@ -201,7 +221,7 @@ impl Load {
                 // its daily-mult; Load had silently fallen through to the
                 // growth-only catch-all (flat nominal kW) — the bug this fixes.
                 SolveMode::PeakDay => {
-                    let f = self.growth_factor(sys.year, sys.default_growth_factor);
+                    let f = self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
                     self.calc_daily_mult(sys.dbl_hour);
                     f
                 }
@@ -218,8 +238,8 @@ impl Load {
                 // to growth × LoadMultiplier — the deterministic gated path
                 // (GAPS_PLAN.md §2.1).
                 SolveMode::Monte1 => {
-                    let mut f =
-                        self.random_mult * self.growth_factor(sys.year, sys.default_growth_factor);
+                    let mut f = self.random_mult
+                        * self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
                     if self.status != 2 {
                         f *= sys.load_multiplier;
                     }
@@ -229,7 +249,7 @@ impl Load {
                 // errors loudly on them — so they default to growth-only with a
                 // unit ShapeFactor, matching the Pascal trailing `else`; wired in
                 // later phases as those modes land.
-                _ => self.growth_factor(sys.year, sys.default_growth_factor),
+                _ => self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour),
             }
         };
 

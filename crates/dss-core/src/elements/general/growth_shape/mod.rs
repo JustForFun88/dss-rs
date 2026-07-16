@@ -122,6 +122,35 @@ impl GrowthShapeObj {
         self.year_mult[(index - 1) as usize]
     }
 
+    /// Pascal `TGrowthShapeObj.GetYear` (`GrowthShape.pas:297`): the raw year
+    /// value stored at the 1-based `idx` (`Year[idx]`), or `0.0` when the curve
+    /// is empty or `idx` is out of range. Used by `Load.GrowthFactor`'s Year=0
+    /// hourly-progression path (B3-r3723).
+    pub fn get_year(&self, idx: i32) -> f64 {
+        if self.npts <= 0 || idx < 1 {
+            return 0.0;
+        }
+        self.year
+            .as_ref()
+            .and_then(|y| y.get((idx - 1) as usize))
+            .copied()
+            .unwrap_or(0.0)
+    }
+
+    /// Pascal `TGrowthShapeObj.GetMultIdx` (`GrowthShape.pas:313`): the
+    /// *cumulative* multiplier `YearMult[idx]` at the 1-based `idx` (NOT the raw
+    /// `Multiplier` — Pascal returns `YearMult[Index]`), or `0.0` when empty / out
+    /// of range. Used by `Load.GrowthFactor`'s Year=0 path (B3-r3723).
+    pub fn get_mult_idx(&self, idx: i32) -> f64 {
+        if self.npts <= 0 || idx < 1 {
+            return 0.0;
+        }
+        self.year_mult
+            .get((idx - 1) as usize)
+            .copied()
+            .unwrap_or(0.0)
+    }
+
     /// Pascal `TGrowthShapeObj.ReCalcYearMult`: fill `YearMult` with the running
     /// product of the per-point multipliers, year by year from the base year.
     fn recalc_year_mult(&mut self) {
