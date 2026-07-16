@@ -449,36 +449,24 @@ property-count-comparison flip beyond this pass's safe budget):
 - **C5-r3723** LoadShape `Mode` prop (22) + `Interpolation` shift 22→23 — new
   prop → property-count change (LoadShape decks) + property-index parity; same
   entanglement class as C6.
-- **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **ported +
-  reverted** (commit 82d62c3 reverted by 0c918ab). The field-mapping change was
-  correct (props golden re-baselined to capi015, 22 unit tests + props_roundtrip
-  green), BUT it moves the `Normal`/`State` *readback* on TWO default-oracle
-  **multi-step** live decks: `controls/swtcontrol/swtcontrol_time.dss` (manifest
-  probe `SwtControl.sw.state`: 0.14.5 reads `CurrentAction`="open" after an armed
-  `action=open`, the port reads `PresentState`="closed" until the switch operates)
-  and `Version8/.../civanlar model/civanlar.dss` (`SwtControl.5_11` `Normal`
-  readback). Neither can flip to capi015 (multi-step decks re-nominalize on the
-  capi015 capture, L1 note), and they cannot stay 0.14.5 (deliberate mismatch,
-  §1.2). Landing D12 needs the oracle-infra multi-step-capi015 support OR reworking
-  those decks' probes off the moved readback. Code hunks are in commit 82d62c3 for
-  the re-land.
-- **D11** CapControl — part 1 (PT/CTPhase validation scope: PF-value validation
-  gated behind `control_type==PF`, phase validation unconditional) is ALREADY
-  aligned in the port. Part 2 (`b9bc87b8`: TIMECONTROL now REQUIRES a monitored
-  element AND uses it as `effElement`, was ControlledElement) changes TIME
-  effElement semantics → entangles the `capcontrol_time.dss` corpus deck (default
-  oracle) + `time_control_forces_terminal_1` unit; needs capi015 deck validation.
-  Code change is a one-liner in `cap_control/mod.rs::recalc` (drop the `!= TIME`).
-- **D13** LoadShape MMF fixes (`c4590d16`) — the corpus MMF deck crashes #58614 on
-  capi015 (B9); needs a non-crashing MMF deck; not assessed this pass.
+- **D12** SwtControl `Normal`/`State` field mapping (`bb9c9785`) — **RE-LANDED**
+  (branch wt-u16ind); see the "WP-U1.6 tail" block below. The revert's multi-step
+  entanglement was resolved by flipping `swtcontrol_time`/`midi_swtcontrol`/
+  `civanlar` to capi015 (multi-step capi015 proven viable) and leaving the
+  unaffected `swtcontrol_lock` on 0.14.5.
+- **D11** part 2 (`b9bc87b8`: TIMECONTROL requires + uses a monitored element) —
+  **LANDED** (branch wt-u16ind); see the "WP-U1.6 tail" block below. Part 1
+  (PT/CTPhase validation scope) was already aligned.
+- **D13** LoadShape MMF fixes (`c4590d16`) — **LANDED as not-a-delta** (branch
+  wt-u16ind); the eager MMF reader already matches the fix, gated by a fresh
+  single-column capi015 deck + unit. See the "WP-U1.6 tail" block below.
 - **B4-capi** harmonics init-failure abort (`6ad39597`) — the port's
   `solve_harmonic_t_body` ALREADY returns on `!initialize_for_harmonics` (aborts
   the sweep); the `In_ReDirect → Redirect_Abort` nuance is unreachable (no ported
   `init_harmonics` sets `solution_abort`; see `harmonics.rs` doc). Faithful as-is;
   no feature-sensitive deck possible.
-- **C4** `Clear all`/`ClearAll` already handled (`cmd::CLEAR|CLEAR_ALL`);
-  `Solve all`/`SolveAll` (`cmd::SOLVE_ALL`=123) not yet dispatched — small command
-  alias (single-actor = plain solve), unstarted.
+- **C4** `SolveAll` (`cmd::SOLVE_ALL`=123) — **LANDED** (branch wt-u16ind); see the
+  "WP-U1.6 tail" block below.
 
 **WP-U1.4 (line/cable-constants cluster) — PARTIAL: equivalent-spacing model LANDED
 (branch wt-u14).** Ported the **B3/C1 equivalent-spacing model** (dss_capi 0.15.x
@@ -695,6 +683,66 @@ Three commits on top of Stage 1:
      gates) and `VSource.NCIM_CalcInjCurrAtBus` (swing-source reported *currents* under
      NCIM — reporting-only, node voltages already correct).
   3. `oddie:r4088` cross-check of one deck (report-only).
+
+**WP-U1.6 tail (harness-independent rows C4/D11/D13/D12) — LANDED (branch
+wt-u16ind).** The four rows that need no 0.15.x property allowlist; each
+gate-green, one logical commit.
+- **C4** `SolveAll` (cmd 123, the `DSS_CAPI_PM`-only command word) now dispatched —
+  single-actor semantics = plain `Solve` (`ExecCommands.pas:346`; `IsSolveAll`
+  only steers the parallel/A-Diakoptics path). Oracle-confirmed (dss-python
+  0.15.7): `SolveAll` solves like `Solve`; the *spaced* `Solve all` errors
+  `Object Class "all" not found` (`Solve` + option token `all`) — the port already
+  matched that. Unit `solve_all_alias_matches_plain_solve`.
+- **D11 part 2** (`b9bc87b8`) — CapControl TIMECONTROL now REQUIRES a monitored
+  element and uses it as `effElement` (dropped the `<> TIMECONTROL` guard in
+  `recalc`; only FOLLOWCONTROL falls back to the capacitor + terminal 1). **capi015
+  probe** (0.15.0b4): `type=time` with no `element=` errors "Element is not set,
+  aborting"; `type=time element=line.l1 terminal=2` keeps `Terminal=2` (0.14.5
+  forces →1) and binds to the monitored element. Units re-pinned
+  (`time_control_requires_monitored_element` + `time_control_uses_monitored_element_terminal`).
+  `capcontrol_time.dss` reworked to `terminal=1` (engine-agnostic readback; it has
+  a `daily=` load so it can't flip to capi015, and the only moved observable is the
+  static `Terminal`) — stays 0.14.5-green. Props golden `capcontrol.json`
+  `capcontrol_time` scenario rebased to `element=Line.l1 terminal=1` (both engines
+  identical). Part 1 (PT/CTPhase validation scope) was already aligned.
+- **D13** (`c4590d16`) — LoadShape MMF fixes = **not-a-delta** (the port's
+  forbid-unsafe eager MMF reader already matches). The behaviorally-live hunk is
+  the single-column `csvfile=` `CreateMMF` "missing not": 0.14.5 exits on CreateMMF
+  success → empty shape → daily solve `#482 Division by zero`; the fix loads it.
+  **Probe:** 0.14.5 aborts #482, capi015 (0.15.0b4) drives the load to P/phase
+  `[20 40 70 110 160 130 90 50]` kW. New capi015 live deck
+  `modes/upgrade/mmf_singlecol/mmf_singlecol.dss` (`n_steps=8`, whole-model;
+  **the first multi-step capi015 live deck** — cannot gate 0.14.5, it *is* the
+  bug; §1.7 two-process fingerprint `0ead40d7199b0781`) + unit
+  `mmf_single_column_csvfile_loads_like_capi015`. Hunks 2/3 (mmDataSizeQ debug
+  field, Linux fpMUnMap disposal) have no forbid-unsafe port equivalent.
+- **D12** (`bb9c9785`) — SwtControl `Normal`/`State` field mapping **RE-LANDED**
+  (the earlier 82d62c3→0c918ab revert is undone). `Normal`→`NormalState`,
+  `State`→`PresentState`, `Action`→`CurrentAction` (distinct offsets); side effects
+  sync `CurrentAction` from them. Props golden `swtcontrol.json` re-baselined to
+  capi015 (probe 2026-07-16; `swtcontrol_locked_then_action` dropped = the
+  not-adopted strict read-only #2024106). The revert's blocker (moved `state`/
+  `normal` readback on default-oracle multi-step decks) is **resolved**:
+  `swtcontrol_time.dss` + `midi_swtcontrol.dss` **flipped to capi015** (armed
+  `action=open` opens at its delay; the port reads `State=Closed` until step 3 then
+  `Open`, matching capi015 `GetState`=live element; 0.14.5 read `Open` from the
+  arm). `civanlar.dss` (snapshot) **flipped to capi015** (`SwtControl.5_11`
+  `Action=c` then `edit action=o`: D12/capi015 `Normal=NormalState=closed`, 0.14.5
+  `CurrentAction=open`; physics unchanged, target-rev cases don't property-compare).
+  `swtcontrol_lock.dss` **unaffected** (locked switch never operates → both
+  readbacks `closed` on every engine; it also can't flip since capi015's strict
+  read-only rejects its locked `action=` post). Unit
+  `d12_normal_and_state_readbacks_are_independent`.
+- **Multi-step capi015 is viable** (correcting the earlier L1 "re-nominalization
+  blocks multi-step flips" note): the re-nominalization affects only the
+  `getYSparse` element-state re-read, NOT the per-step Monitor/probe/eventlog/node-V
+  captures — proven 2026-07-16 by the passing `mmf_singlecol` (loadshape-driven
+  load, 8 steps) + `swtcontrol_time`/`midi_swtcontrol` (12 steps) capi015 live
+  gates. This unblocked the D12 deck flips.
+- **Sibling scope (NOT this branch):** C5 RegControl `FwdThreshold`+idle props, C6
+  Transformer/AutoTrans BH props, C5-r3723 LoadShape `Mode` — all property-adding
+  rows owned by `wt-u16tail`. B4-capi harmonics init-abort stays faithful-as-is
+  (no feature-sensitive deck possible). DIVERGENCES.md D11/D12/D13/C4.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
