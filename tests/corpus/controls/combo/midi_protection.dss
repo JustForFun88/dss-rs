@@ -116,9 +116,14 @@ new relay.backup type=current monitoredobj=transformer.sub monitoredterm=2
 ~ switchedobj=transformer.sub switchedterm=2 phasetrip=900 groundtrip=450
 ~ delay=1.5 shots=1 recloseintervals=None eventlog=yes
 ! Midline recloser on backbone segment 11->12 (upstream of L6).
+! Explicit A/D curves: r4133 removed the built-in default curves, so a
+! curveless recloser is inert (WP-U2.2 D2). Naming them keeps this cross-chain
+! deck's ganged trip/reclose identical to the 0.14.5-era default and lets it stay
+! on the pinned 0.14.5 oracle until the whole protection suite (Fuse/Relay) is
+! r4133 (rung exit WP-U2.6).
 new recloser.r monitoredobj=line.bb11_12 monitoredterm=1
 ~ switchedobj=line.bb11_12 switchedterm=1 numfast=1 shots=3
-~ phasetrip=150 groundtrip=75 recloseintervals=(0.5, 1.0)
+~ phasefast=a phasedelayed=d phasetrip=150 groundtrip=75 recloseintervals=(0.5, 1.0)
 ! Lateral fuse at the head of L6. WP-U2.1 (r4133): the fuse default curve moved
 ! tlink->none (never blows) and its divisor moved RatedCurrent->CurveMultiplier
 ! (an r4133-only property the 0.14.5 oracle rejects). This deck stays gated on

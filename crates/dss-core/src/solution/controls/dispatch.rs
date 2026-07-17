@@ -339,7 +339,7 @@ pub(super) fn dispatch_control(
             match op {
                 ControlOp::Sample => sc.sample(&mut env),
                 ControlOp::Reset => sc.reset(&mut env),
-                ControlOp::Action { code } => sc.do_pending_action(code),
+                ControlOp::Action { code, .. } => sc.do_pending_action(code),
             }
         }
         *store
@@ -630,7 +630,7 @@ pub(super) fn dispatch_control(
                         .expect("kind matched above");
                     sw.sample(&mut ctx);
                 }
-                ControlOp::Action { code } => {
+                ControlOp::Action { code, .. } => {
                     let Some(target) = controlled else {
                         return Err(abort(ctx.errors, &full_name, "Switched element not set"));
                     };
@@ -734,7 +734,7 @@ pub(super) fn dispatch_control(
                         fuse.sample(ctrl, mon_elem, &mut ctx);
                     }
                 }
-                ControlOp::Action { code } => {
+                ControlOp::Action { code, .. } => {
                     let (cobj, tobj) = store.pair_mut(r, target);
                     let fuse = cobj
                         .as_any_mut()
@@ -820,7 +820,7 @@ pub(super) fn dispatch_control(
                         rec.sample(ctrl, mon_elem, &mut ctx);
                     }
                 }
-                ControlOp::Action { code } => {
+                ControlOp::Action { code, proxy } => {
                     let Some(target) = controlled else {
                         return Err(abort(ctx.errors, &full_name, "Switched element not set"));
                     };
@@ -836,8 +836,9 @@ pub(super) fn dispatch_control(
                             "Switched element is not a circuit element",
                         ));
                     };
-                    // The queue `code` carries CTRL_OPEN/CTRL_CLOSE/CTRL_RESET.
-                    rec.do_pending_action(code, ctrl, &mut ctx);
+                    // The queue `code` carries CTRL_OPEN/CTRL_CLOSE/CTRL_RESET;
+                    // `proxy` carries the phase index (single-phase trip).
+                    rec.do_pending_action(code, proxy, ctrl, &mut ctx);
                 }
                 ControlOp::Reset => {
                     // Pascal `Reset` restores the present state and forces the
@@ -932,7 +933,7 @@ pub(super) fn dispatch_control(
                         solution_abort_requested = rel.sample(ctrl, mon_elem, &mut ctx);
                     }
                 }
-                ControlOp::Action { code } => {
+                ControlOp::Action { code, .. } => {
                     let Some(target) = controlled else {
                         return Err(abort(ctx.errors, &full_name, "Switched element not set"));
                     };
@@ -1014,7 +1015,7 @@ pub(super) fn dispatch_control(
                         return Err(abort(ctx.errors, &full_name, &what));
                     }
                 }
-                ControlOp::Action { code } => rc.do_pending_action(code, tr, &mut ctx),
+                ControlOp::Action { code, .. } => rc.do_pending_action(code, tr, &mut ctx),
                 ControlOp::Reset => rc.reset(),
             }
         }

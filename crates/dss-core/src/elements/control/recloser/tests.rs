@@ -40,10 +40,9 @@ fn test_sys() -> SysCtx {
     }
 }
 
-/// A 1-terminal mock that carries a fixed per-phase current magnitude (the
-/// monitored role) and per-conductor closed state (the controlled role). The
-/// phases are deliberately all equal (not 120° apart) so the residual sum is
-/// `nphases·imag`, which lets a ground-curve test see a non-zero sum.
+/// A 1-terminal mock carrying a fixed per-phase current magnitude (monitored) and
+/// per-conductor closed state (controlled). Phases are deliberately all equal (in
+/// phase) so the residual sum is `nphases·imag` (a live ground path).
 struct MockLine {
     cd: CktElementData,
     imag: f64,
@@ -137,14 +136,15 @@ fn build_tcc(npts: &str, c: &str, t: &str) -> TccCurveObj {
     obj
 }
 
-/// A 3-phase recloser with a simple `c=[1,10] t=[1,0.1]` fast phase curve (and a
-/// slower delayed one), rated `PhaseTrip=1`, its controlled element a 3-phase
-/// line.
+/// A 3-phase recloser with an explicit fast phase curve (r4133 defaults are
+/// inert), `PhFastPickup=1`, its controlled element a 3-phase line.
 fn armed_recloser() -> Recloser {
     let mut r = Recloser::new("r1");
-    r.phase_fast = Some(build_tcc("2", "1 10", "1 0.1"));
-    r.phase_delayed = Some(build_tcc("2", "1 10", "2 0.2"));
-    r.phase_trip = 1.0;
+    r.ph_fast = Some(build_tcc("2", "1 10", "1 0.1"));
+    r.ph_slow = Some(build_tcc("2", "1 10", "2 0.2"));
+    r.ph_fast_pickup = 1.0;
+    r.ph_slow_pickup = 1.0;
+    r.ccd.show_event_log = true; // exercise the r4133 event-log wording
     r.ctrl_snap = Some(RefSnapshot {
         full_name: "Line.l1".into(),
         nphases: 3,
@@ -159,55 +159,77 @@ fn log_has(sc: &Scratch, needle: &str) -> bool {
     sc.events.entries().iter().any(|e| e.contains(needle))
 }
 
+/// The ganged operation slot (Pascal `IdxMultiPh = NPhases+1`).
+const G: usize = 4;
+
 #[test]
-fn default_is_3ph_closed_recloser() {
+fn default_is_inert_3ph_closed_recloser() {
     let r = Recloser::new("r1");
     assert_eq!(r.ccd.cd.nphases, 3);
     assert_eq!(r.ccd.cd.nconds, 3);
     assert_eq!(r.ccd.cd.nterms, 1);
     assert_eq!(r.ccd.element_terminal, 1);
-    assert_eq!(r.monitored_element_terminal, 1);
-    assert_eq!(r.phase_fast_name, "a");
-    assert_eq!(r.phase_delayed_name, "d");
-    assert_eq!(r.ground_fast_name, "");
+    // D2: default curves removed -> inert.
+    assert_eq!(r.ph_fast_name, "none");
+    assert_eq!(r.ph_slow_name, "none");
+    assert!(r.ph_fast.is_none());
     assert_eq!(r.num_fast, 1);
     assert_eq!(r.num_reclose, 3); // Shots default 4
     assert_eq!(r.reset_time, 15.0);
     assert_eq!(r.reclose_intervals[..3], [0.5, 2.0, 2.0]);
-    assert_eq!(r.present_state, CTRL_CLOSE);
-    assert_eq!(r.normal_state, CTRL_CLOSE);
+    assert_eq!(r.present_state[1..=3], [CTRL_CLOSE; 3]);
+    assert_eq!(r.normal_state[1..=3], [CTRL_CLOSE; 3]);
     assert!(!r.normal_state_set);
-    assert_eq!(r.operation_count, 1);
+    assert_eq!(r.operation_count[1..=G], [1; 4]);
+    assert_eq!(r.idx_multi_ph, G);
+    // r4133 `ShowEventLog := EventLogDefault` (global False) — no override.
+    assert!(!r.ccd.show_event_log);
     assert!(r.ccd.cd.yprim.is_none());
+}
+
+/// A default (no-curve) recloser never arms — the D2 breaking default.
+#[test]
+fn inert_default_recloser_never_arms() {
+    let mut r = Recloser::new("r1");
+    r.ctrl_snap = Some(RefSnapshot {
+        full_name: "Line.l1".into(),
+        nphases: 3,
+        nterms: 1,
+        buses: vec!["b".into()],
+    });
+    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    let mut ctrl = MockLine::new(3, 0.0);
+    let mut mon = MockLine::new(3, 1000.0); // huge overcurrent
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(!r.armed_for_open[G], "no curves => inert => never arms");
+    assert_eq!(sc.queue.queue_size(), 0);
 }
 
 #[test]
 fn sample_arms_open_then_reclose_on_overcurrent() {
     let mut r = armed_recloser();
     let mut ctrl = MockLine::new(3, 0.0); // closed
-    let mut mon = MockLine::new(3, 10.0); // 10 A → ratio 10 → fast trip 0.1 s
+    let mut mon = MockLine::new(3, 10.0); // ratio 10 -> fast trip 0.1 s
     let mut sc = Scratch::new();
     r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-    assert!(r.armed_for_open);
-    assert!(r.armed_for_close);
-    assert!(r.phase_target);
-    // An OPEN action plus a reclose CLOSE (operation_count 1 ≤ NumReclose 3).
+    assert!(r.armed_for_open[G]);
+    assert!(r.armed_for_close[G]);
+    assert!(r.phase_target[G]);
+    // An OPEN action plus a reclose CLOSE (operation_count 1 <= NumReclose 3).
     assert_eq!(sc.queue.queue_size(), 2);
 }
 
-/// Pins the *times* of the queued OPEN and reclose CLOSE — the arithmetic
-/// `queue_size` can't see: `TripTime = TDPhFast · GetTCCTime(10) = 2·0.1 = 0.2`,
-/// the OPEN at `TripTime + DelayTime = 0.25`, and the reclose at
-/// `+ RecloseIntervals[OperationCount-1] = +0.5 = 0.75`. A dropped `+DelayTime`,
-/// a missing time-dial, or an off-by-one on the interval index (reading
-/// `RecloseIntervals[1]=2.0` instead of `[0]=0.5`) all shift these.
+/// Pins the queued OPEN / reclose CLOSE times and the D3 inst-delay single-count:
+/// `TripTime = TDPhFast·GetTCCTime(10) = 2·0.1 = 0.2`, OPEN at
+/// `TripTime + MechanicalDelay = 0.25`, reclose at `+ RecloseIntervals[0] = 0.75`.
 #[test]
 fn sample_queues_trip_and_reclose_at_correct_times() {
     let mut r = armed_recloser();
-    r.delay_time = 0.05; // added to every trip time
-    r.td_ph_fast = 2.0; // time-dial multiplier
+    r.mechanical_delay = 0.05;
+    r.td_ph_fast = 2.0;
     let mut ctrl = MockLine::new(3, 0.0);
-    let mut mon = MockLine::new(3, 10.0); // ratio 10 → GetTCCTime = 0.1
+    let mut mon = MockLine::new(3, 10.0);
     let mut sc = Scratch::new();
     r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
     let far = TimeRec {
@@ -222,133 +244,99 @@ fn sample_queues_trip_and_reclose_at_correct_times() {
     assert!((t_close - 0.75).abs() < 1e-9, "reclose time = {t_close}");
 }
 
+/// D3: an instantaneous trip fires at a bare `0.01` + one `MechanicalDelay` (not
+/// the r4088 `0.01 + 2·delay`).
 #[test]
-fn sample_no_reclose_queued_when_no_shots_left() {
+fn inst_trip_single_counts_the_mechanical_delay() {
     let mut r = armed_recloser();
-    r.operation_count = 4; // > NumReclose 3 → final trip, no reclose
+    r.ph_fast = Some(build_tcc("2", "100 200", "1 0.1")); // curve never picks up at 10 A
+    r.ph_inst = 5.0; // 10 A >= 5 A
+    r.mechanical_delay = 0.03;
     let mut ctrl = MockLine::new(3, 0.0);
     let mut mon = MockLine::new(3, 10.0);
     let mut sc = Scratch::new();
     r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-    assert!(r.armed_for_open);
+    let far = TimeRec {
+        hour: 999,
+        sec: 0.0,
+    };
+    let (open, t_open) = sc.queue.pop_time(far, false).unwrap();
+    assert_eq!(open.code, CTRL_OPEN);
+    // 0.01 (bare) + 0.03 (once) = 0.04.
+    assert!((t_open - 0.04).abs() < 1e-9, "inst open time = {t_open}");
+}
+
+#[test]
+fn sample_no_reclose_queued_when_no_shots_left() {
+    let mut r = armed_recloser();
+    r.operation_count[G] = 4; // > NumReclose 3 -> final trip, no reclose
+    let mut ctrl = MockLine::new(3, 0.0);
+    let mut mon = MockLine::new(3, 10.0);
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert!(r.armed_for_open[G]);
     assert_eq!(sc.queue.queue_size(), 1); // only the OPEN, no reclose
 }
 
 #[test]
-fn sample_disarms_and_resets_when_current_drops() {
-    let mut r = armed_recloser();
-    let mut ctrl = MockLine::new(3, 0.0);
-    let mut sc = Scratch::new();
-    {
-        let mut mon = MockLine::new(3, 10.0);
-        r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-    }
-    assert_eq!(sc.queue.queue_size(), 2);
-    r.phase_target = true;
-    // Current falls below pickup (ratio < 1) → disarm and queue a RESET.
-    let mut mon = MockLine::new(3, 0.0);
-    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 1.0));
-    assert!(!r.armed_for_open);
-    assert!(!r.armed_for_close);
-    assert!(!r.phase_target);
-    // Pascal pushes a single CTRL_RESET (the prior two stay queued — Recloser
-    // never deletes them, unlike the Fuse).
-    assert_eq!(sc.queue.queue_size(), 3);
-}
-
-#[test]
-fn sample_uses_fast_then_delayed_curve_by_operation_count() {
-    // Delayed curve never picks up at 10 A (c starts at 100); the fast one does.
+fn sample_uses_fast_then_slow_curve_by_operation_count() {
+    // Slow curve never picks up at 10 A (c starts at 100); the fast one does.
     let make = || {
         let mut r = armed_recloser();
-        r.phase_delayed = Some(build_tcc("2", "100 200", "2 0.2"));
+        r.ph_slow = Some(build_tcc("2", "100 200", "2 0.2"));
         r
     };
-    // operation_count 1 ≤ NumFast 1 → fast curve → trips.
     {
-        let mut r = make();
+        let mut r = make(); // operation_count 1 <= NumFast 1 -> fast -> trips
         let mut ctrl = MockLine::new(3, 0.0);
         let mut mon = MockLine::new(3, 10.0);
         let mut sc = Scratch::new();
         r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-        assert!(r.armed_for_open, "fast curve should trip at 10 A");
+        assert!(r.armed_for_open[G], "fast curve should trip at 10 A");
     }
-    // operation_count 2 > NumFast 1 → delayed curve → no pickup at 10 A.
     {
         let mut r = make();
-        r.operation_count = 2;
+        r.operation_count[G] = 2; // > NumFast 1 -> slow -> no pickup at 10 A
         let mut ctrl = MockLine::new(3, 0.0);
         let mut mon = MockLine::new(3, 10.0);
         let mut sc = Scratch::new();
         r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-        assert!(!r.armed_for_open, "delayed curve pickup (100) not reached");
+        assert!(!r.armed_for_open[G], "slow curve pickup (100) not reached");
         assert_eq!(sc.queue.queue_size(), 0);
-    }
-}
-
-#[test]
-fn sample_phase_inst_trips_on_first_operation_only() {
-    // The phase curve never picks up (c starts at 100); only the instantaneous
-    // element can arm, and only on operation_count == 1.
-    let make = || {
-        let mut r = armed_recloser();
-        // Neither the fast nor the delayed curve picks up at 10 A (c starts at
-        // 100), so only the instantaneous element can arm.
-        r.phase_fast = Some(build_tcc("2", "100 200", "1 0.1"));
-        r.phase_delayed = Some(build_tcc("2", "100 200", "2 0.2"));
-        r.phase_inst = 5.0; // 10 A ≥ 5 A
-        r
-    };
-    {
-        let mut r = make();
-        let mut ctrl = MockLine::new(3, 0.0);
-        let mut mon = MockLine::new(3, 10.0);
-        let mut sc = Scratch::new();
-        r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-        assert!(r.armed_for_open, "inst should trip on the first operation");
-    }
-    {
-        let mut r = make();
-        r.operation_count = 2; // inst only fires when operation_count == 1
-        let mut ctrl = MockLine::new(3, 0.0);
-        let mut mon = MockLine::new(3, 10.0);
-        let mut sc = Scratch::new();
-        r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-        assert!(!r.armed_for_open, "inst is first-operation only");
     }
 }
 
 #[test]
 fn sample_ground_trip_on_residual_sum() {
     let mut r = armed_recloser();
-    r.phase_fast = None; // isolate the ground path
-    r.phase_delayed = None;
-    r.ground_fast = Some(build_tcc("2", "1 10", "1 0.1"));
-    r.ground_trip = 1.0;
+    r.ph_fast = None; // isolate the ground path
+    r.ph_slow = None;
+    r.gnd_fast = Some(build_tcc("2", "1 10", "1 0.1"));
+    r.gnd_fast_pickup = 1.0;
     let mut ctrl = MockLine::new(3, 0.0);
-    let mut mon = MockLine::new(3, 10.0); // residual sum = 30 A → ratio 30
+    let mut mon = MockLine::new(3, 10.0); // residual sum = 30 A -> ratio 30
     let mut sc = Scratch::new();
     r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-    assert!(r.armed_for_open);
+    assert!(r.armed_for_open[G]);
     assert!(r.ground_target);
-    assert!(!r.phase_target);
+    assert!(!r.phase_target[G]);
 }
 
 #[test]
-fn sample_skips_when_terminal_open() {
+fn sample_skips_when_all_phases_open() {
     let mut r = armed_recloser();
     let mut ctrl = MockLine::new(3, 0.0);
     ctrl.cd.set_terminal_closed(1, false); // controlled terminal open
     let mut mon = MockLine::new(3, 10.0);
     let mut sc = Scratch::new();
     r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-    assert_eq!(r.present_state, CTRL_OPEN);
-    assert!(!r.armed_for_open);
+    assert_eq!(r.present_state[1..=3], [CTRL_OPEN; 3]);
+    assert!(!r.armed_for_open[G]);
     assert_eq!(sc.queue.queue_size(), 0);
 }
 
 #[test]
-fn do_pending_open_trips_logs_fast_and_target() {
+fn do_pending_open_ganged_trips_and_logs_3ph() {
     let mut r = armed_recloser();
     let mut ctrl = MockLine::new(3, 0.0);
     let mut sc = Scratch::new();
@@ -356,253 +344,274 @@ fn do_pending_open_trips_logs_fast_and_target() {
         let mut mon = MockLine::new(3, 10.0);
         r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
     }
-    r.do_pending_action(CTRL_OPEN, &mut ctrl, &mut sc.ctx(0, 0.1));
+    r.do_pending_action(CTRL_OPEN, 0, &mut ctrl, &mut sc.ctx(0, 0.1));
     assert!(!ctrl.cd.terminal_all_phases_closed(1)); // opened
-    assert!(!r.armed_for_open);
+    assert!(!r.armed_for_open[G]);
     assert!(sc.y_changed);
     assert!(
-        log_has(&sc, "OPENED, FAST"),
+        log_has(&sc, "OPENED ON PH FAST (3PH TRIP)"),
         "log = {:?}",
         sc.events.entries()
     );
-    assert!(log_has(&sc, "PHASE TARGET"));
-    assert!(!r.locked_out); // operation_count 1 ≤ NumReclose 3
+    assert!(!r.locked_out[G]); // operation_count 1 <= NumReclose 3
 }
 
 #[test]
-fn do_pending_open_locks_out_after_last_shot() {
+fn do_pending_open_ganged_locks_out_after_last_shot() {
     let mut r = armed_recloser();
-    r.operation_count = 4; // > NumReclose 3
-    r.armed_for_open = true;
+    r.operation_count[G] = 4; // > NumReclose 3
+    r.armed_for_open[G] = true;
+    r.recloser_target[G] = "Ph Fast".to_string();
     let mut ctrl = MockLine::new(3, 0.0); // closed
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_OPEN, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(CTRL_OPEN, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
     assert!(!ctrl.cd.terminal_all_phases_closed(1));
-    assert!(r.locked_out);
-    assert!(log_has(&sc, "OPENED, LOCKED OUT"));
+    assert!(r.locked_out[G]);
+    assert!(log_has(&sc, "LOCKED OUT (3PH LOCKOUT)"));
 }
 
 #[test]
-fn do_pending_open_logs_delayed_after_numfast() {
+fn do_pending_close_ganged_recloses_and_counts() {
     let mut r = armed_recloser();
-    r.operation_count = 2; // > NumFast 1, ≤ NumReclose 3
-    r.armed_for_open = true;
-    let mut ctrl = MockLine::new(3, 0.0);
-    let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_OPEN, &mut ctrl, &mut sc.ctx(0, 0.0));
-    assert!(log_has(&sc, "OPENED, DELAYED"));
-    assert!(!r.locked_out);
-}
-
-#[test]
-fn do_pending_close_recloses_and_counts() {
-    let mut r = armed_recloser();
-    r.present_state = CTRL_OPEN; // the prior Sample saw the open terminal
-    r.armed_for_close = true;
-    r.operation_count = 1;
+    for i in 1..=3 {
+        r.present_state[i] = CTRL_OPEN; // the prior Sample saw the open terminal
+    }
+    r.armed_for_close[G] = true;
+    r.operation_count[G] = 1;
     let mut ctrl = MockLine::new(3, 0.0);
     ctrl.cd.set_terminal_closed(1, false); // currently open
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_CLOSE, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(CTRL_CLOSE, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // reclosed
-    assert_eq!(r.operation_count, 2);
-    assert!(!r.armed_for_close);
+    assert_eq!(r.operation_count[G], 2);
+    assert!(!r.armed_for_close[G]);
     assert!(sc.y_changed);
-    assert!(log_has(&sc, "CLOSED"));
+    assert!(log_has(&sc, "CLOSED (3PH RECLOSING)"));
 }
 
 #[test]
-fn do_pending_close_blocked_when_locked_out() {
+fn do_pending_close_ganged_blocked_when_locked_out() {
     let mut r = armed_recloser();
-    r.present_state = CTRL_OPEN;
-    r.armed_for_close = true;
-    r.locked_out = true; // lockout blocks the reclose
+    for i in 1..=3 {
+        r.present_state[i] = CTRL_OPEN;
+    }
+    r.armed_for_close[G] = true;
+    r.locked_out[G] = true; // lockout blocks the reclose
     let mut ctrl = MockLine::new(3, 0.0);
     ctrl.cd.set_terminal_closed(1, false);
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_CLOSE, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(CTRL_CLOSE, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
     assert!(!ctrl.cd.terminal_all_phases_closed(1)); // stays open
-    assert_eq!(r.operation_count, 1);
+    // Pascal `Inc(OperationCount[PhIdx])` is UNCONDITIONAL in the ganged CLOSE
+    // (outside the per-phase loop), so a blocked reclose still advances the count.
+    assert_eq!(r.operation_count[G], 2);
 }
 
 #[test]
-fn do_pending_reset_clears_operation_count_when_disarmed() {
+fn do_pending_reset_ganged_clears_operation_count_when_disarmed() {
     let mut r = armed_recloser();
-    r.operation_count = 3;
-    r.armed_for_open = false;
-    let mut ctrl = MockLine::new(3, 0.0); // closed → present_state CLOSE in DoPendingAction? no: read happens in Sample
+    r.operation_count[G] = 3;
+    r.armed_for_open[G] = false;
+    let mut ctrl = MockLine::new(3, 0.0); // closed
     let mut sc = Scratch::new();
-    // present_state must be CLOSE for RESET to fire; the Sample-read happens in
-    // the loop, here we set it explicitly.
-    r.present_state = CTRL_CLOSE;
-    r.do_pending_action(CTRL_RESET, &mut ctrl, &mut sc.ctx(0, 0.0));
-    assert_eq!(r.operation_count, 1);
+    r.do_pending_action(CTRL_RESET, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    assert_eq!(r.operation_count[G], 1);
+    assert!(log_has(&sc, "PHASE ALL RESET (3PH RESET)"));
 }
 
 #[test]
-fn do_pending_reset_skipped_when_rearmed() {
+fn do_pending_reset_ganged_skipped_when_rearmed() {
     let mut r = armed_recloser();
-    r.operation_count = 3;
-    r.armed_for_open = true; // re-armed → don't reset
-    r.present_state = CTRL_CLOSE;
+    r.operation_count[G] = 3;
+    r.armed_for_open[G] = true; // re-armed -> don't reset
     let mut ctrl = MockLine::new(3, 0.0);
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_RESET, &mut ctrl, &mut sc.ctx(0, 0.0));
-    assert_eq!(r.operation_count, 3); // unchanged
+    r.do_pending_action(CTRL_RESET, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    assert_eq!(r.operation_count[G], 3); // unchanged
+}
+
+// ---- single-phase trip machinery ----
+
+#[test]
+fn single_phase_trip_arms_only_the_faulted_phase() {
+    let mut r = armed_recloser();
+    r.single_ph_trip = true;
+    // Only phase 1 carries the overcurrent; phases 2/3 are below pickup.
+    let mut ctrl = MockLine::new(3, 0.0);
+    // craft per-phase currents: phase 1 = 10 A, others 0.
+    struct PerPhase {
+        cd: CktElementData,
+    }
+    impl CktElement for PerPhase {
+        fn cd(&self) -> &CktElementData {
+            &self.cd
+        }
+        fn cd_mut(&mut self) -> &mut CktElementData {
+            &mut self.cd
+        }
+        fn recalc_element_data(&mut self, _s: &SysCtx) {}
+        fn calc_yprim(&mut self, _s: &SysCtx) {}
+        fn get_currents(&mut self, _s: &SysCtx, _v: &[Complex64], curr: &mut [Complex64]) {
+            curr.fill(Complex64::ZERO);
+            curr[0] = Complex64::new(10.0, 0.0); // phase 1 only
+        }
+    }
+    let mut mon_pp = PerPhase {
+        cd: {
+            let mut cd = CktElementData::new("ln", 1);
+            cd.nphases = 3;
+            cd.nconds = 3;
+            cd.set_nterms(1);
+            cd.yorder = 3;
+            cd
+        },
+    };
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon_pp, &mut sc.ctx(0, 0.0));
+    assert!(r.armed_for_open[1], "phase 1 should arm");
+    assert!(!r.armed_for_open[2], "phase 2 below pickup");
+    assert!(!r.armed_for_open[3], "phase 3 below pickup");
+    // The queued OPEN carries the phase index in its proxy handle.
+    let far = TimeRec {
+        hour: 999,
+        sec: 0.0,
+    };
+    let (open, _t) = sc.queue.pop_time(far, false).unwrap();
+    assert_eq!(open.code, CTRL_OPEN);
+    assert_eq!(open.proxy, 1, "single-phase OPEN carries phase index 1");
+}
+
+#[test]
+fn single_phase_open_then_lockout_escalation() {
+    // SinglePhTrip with SinglePhLockout=false -> a 1-ph final trip escalates to a
+    // 3-ph lockout (opens the other phases too).
+    let mut r = armed_recloser();
+    r.single_ph_trip = true;
+    r.single_ph_lockout = false;
+    r.operation_count[1] = 4; // phase 1 exhausted its shots
+    r.armed_for_open[1] = true;
+    r.recloser_target[1] = "Ph Fast".to_string();
+    let mut ctrl = MockLine::new(3, 0.0); // all closed
+    let mut sc = Scratch::new();
+    r.do_pending_action(CTRL_OPEN, 1, &mut ctrl, &mut sc.ctx(0, 0.0));
+    assert!(r.locked_out[1]);
+    // Escalation opened & locked the other phases.
+    assert!(!ctrl.cd.conductor_closed(1, 1));
+    assert!(!ctrl.cd.conductor_closed(1, 2));
+    assert!(!ctrl.cd.conductor_closed(1, 3));
+    assert!(r.locked_out[2] && r.locked_out[3]);
+    assert!(log_has(&sc, "LOCKED OUT (3PH LOCKOUT)"));
+    assert!(log_has(&sc, "3PH LOCKOUT (1PH TRIP)"));
+}
+
+#[test]
+fn single_phase_lockout_keeps_other_phases_closed() {
+    // SinglePhLockout=true -> a 1-ph final trip locks out ONLY that phase.
+    let mut r = armed_recloser();
+    r.single_ph_trip = true;
+    r.single_ph_lockout = true;
+    r.operation_count[1] = 4;
+    r.armed_for_open[1] = true;
+    r.recloser_target[1] = "Ph Fast".to_string();
+    let mut ctrl = MockLine::new(3, 0.0);
+    let mut sc = Scratch::new();
+    r.do_pending_action(CTRL_OPEN, 1, &mut ctrl, &mut sc.ctx(0, 0.0));
+    assert!(!ctrl.cd.conductor_closed(1, 1)); // phase 1 open
+    assert!(ctrl.cd.conductor_closed(1, 2)); // phase 2 still closed
+    assert!(ctrl.cd.conductor_closed(1, 3)); // phase 3 still closed
+    assert!(r.locked_out[1]);
+    assert!(!r.locked_out[2] && !r.locked_out[3]);
+    assert!(log_has(&sc, "LOCKED OUT (1PH LOCKOUT)"));
 }
 
 #[test]
 fn reset_with_restores_closed_normal_state() {
     let mut r = armed_recloser();
-    r.normal_state = CTRL_CLOSE;
-    r.present_state = CTRL_OPEN;
-    r.operation_count = 4;
-    r.locked_out = true;
+    for i in 1..=3 {
+        r.normal_state[i] = CTRL_CLOSE;
+        r.present_state[i] = CTRL_OPEN;
+    }
+    r.operation_count[1] = 4;
+    r.locked_out[1] = true;
     let mut ctrl = MockLine::new(3, 0.0);
     ctrl.cd.set_terminal_closed(1, false); // start open
     let rebuild = r.reset_with(&mut ctrl);
     assert!(rebuild);
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // restored closed
-    assert_eq!(r.present_state, CTRL_CLOSE);
-    assert!(!r.locked_out);
-    assert_eq!(r.operation_count, 1);
+    assert_eq!(r.present_state[1..=3], [CTRL_CLOSE; 3]);
+    assert!(!r.locked_out[1]);
+    assert_eq!(r.operation_count[1], 1);
 }
 
 #[test]
 fn reset_with_open_normal_state_locks_out() {
     let mut r = armed_recloser();
-    r.normal_state = CTRL_OPEN;
+    for i in 1..=3 {
+        r.normal_state[i] = CTRL_OPEN;
+    }
     let mut ctrl = MockLine::new(3, 0.0); // start closed
     let rebuild = r.reset_with(&mut ctrl);
     assert!(rebuild);
     assert!(!ctrl.cd.terminal_all_phases_closed(1)); // forced open
-    assert_eq!(r.present_state, CTRL_OPEN);
-    assert!(r.locked_out);
-    assert_eq!(r.operation_count, r.num_reclose + 1);
+    assert_eq!(r.present_state[1..=3], [CTRL_OPEN; 3]);
+    assert!(r.locked_out[1] && r.locked_out[2] && r.locked_out[3]);
+    assert_eq!(r.operation_count[1], r.num_reclose + 1);
 }
 
-/// Fail-on-regression guard for the WP7.2 step-2a Reset dirty edge (`d0addb4`,
-/// the rule recorded in `d1f48231`): `reset_with` must raise the Y-rebuild flag
-/// (return `true`) **unconditionally**, never gated on an all-or-nothing
-/// `terminal_all_phases_closed` aggregate. The seed is chosen so the aggregate
-/// reads the same (false) before and after, yet a real phase flips: terminal
-/// `[closed, open, open]` (aggregate false) with `normal=OPEN` ⇒ `[open, open,
-/// open]` (aggregate still false), while phase 0 (closed→open) actually changes.
-/// A reintroduced `was_all_closed != want_all_closed` gate would compute
-/// `false != false` and *skip* the rebuild, reusing a stale system Y.
+/// A `Locked` recloser does not reset (Pascal `if not Locked`).
 #[test]
-fn reset_with_partial_open_terminal_still_forces_rebuild() {
+fn locked_recloser_does_not_reset() {
     let mut r = armed_recloser();
-    r.normal_state = CTRL_OPEN;
+    r.f_locked = true;
+    for i in 1..=3 {
+        r.normal_state[i] = CTRL_OPEN;
+        r.present_state[i] = CTRL_CLOSE;
+    }
     let mut ctrl = MockLine::new(3, 0.0);
-    ctrl.cd.terminals[0].conductors_closed[0] = true; // phase 0 closed
-    ctrl.cd.terminals[0].conductors_closed[1] = false; // phase 1 open
-    ctrl.cd.terminals[0].conductors_closed[2] = false; // phase 2 open
-    assert!(!ctrl.cd.terminal_all_phases_closed(1)); // aggregate false before
-
     let rebuild = r.reset_with(&mut ctrl);
-    assert!(
-        rebuild,
-        "reset must force a Y rebuild even when the aggregate is unchanged"
-    );
-    assert!(!ctrl.cd.terminal_all_phases_closed(1)); // aggregate false after too
-    assert!(!ctrl.cd.conductor_closed(1, 1)); // phase 0: closed → open (the missed change)
-}
-
-/// `DoPendingAction(OPEN)` is a no-op when the terminal is already open
-/// (`FPresentState = CTRL_OPEN`), and `DoPendingAction(CLOSE)` is a no-op when
-/// already closed — the Pascal `case FPresentState of CTRL_CLOSE:` / `CTRL_OPEN:`
-/// guards. Dropping either guard would flip the terminal (and raise the rebuild
-/// flag) spuriously.
-#[test]
-fn do_pending_open_close_are_wrong_state_no_ops() {
-    // OPEN when already open.
-    {
-        let mut r = armed_recloser();
-        r.present_state = CTRL_OPEN;
-        r.armed_for_open = true;
-        let mut ctrl = MockLine::new(3, 0.0);
-        ctrl.cd.set_terminal_closed(1, false); // already open
-        let mut sc = Scratch::new();
-        r.do_pending_action(CTRL_OPEN, &mut ctrl, &mut sc.ctx(0, 0.0));
-        assert!(!ctrl.cd.terminal_all_phases_closed(1)); // unchanged
-        assert!(!sc.y_changed);
-        assert_eq!(sc.events.entries().len(), 0);
-    }
-    // CLOSE when already closed.
-    {
-        let mut r = armed_recloser();
-        r.present_state = CTRL_CLOSE;
-        r.armed_for_close = true;
-        let mut ctrl = MockLine::new(3, 0.0); // closed
-        let mut sc = Scratch::new();
-        r.do_pending_action(CTRL_CLOSE, &mut ctrl, &mut sc.ctx(0, 0.0));
-        assert!(ctrl.cd.terminal_all_phases_closed(1)); // unchanged
-        assert!(!sc.y_changed);
-        assert_eq!(sc.events.entries().len(), 0);
-    }
-}
-
-/// A ground trip logs `Ground Target` on the open (the `' '`-element line), the
-/// ground-path analog of the phase-target check in
-/// [`do_pending_open_trips_logs_fast_and_target`].
-#[test]
-fn do_pending_open_logs_ground_target() {
-    let mut r = armed_recloser();
-    r.phase_fast = None; // isolate the ground path
-    r.phase_delayed = None;
-    r.ground_fast = Some(build_tcc("2", "1 10", "1 0.1"));
-    r.ground_trip = 1.0;
-    let mut ctrl = MockLine::new(3, 0.0);
-    let mut sc = Scratch::new();
-    {
-        let mut mon = MockLine::new(3, 10.0); // residual sum 30 A → ground trip
-        r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-    }
-    assert!(r.ground_target);
-    r.do_pending_action(CTRL_OPEN, &mut ctrl, &mut sc.ctx(0, 0.1));
-    assert!(
-        log_has(&sc, "GROUND TARGET"),
-        "log = {:?}",
-        sc.events.entries()
-    );
-    assert!(!log_has(&sc, "PHASE TARGET"));
+    assert!(!rebuild, "a locked recloser must not force the element");
+    assert!(ctrl.cd.terminal_all_phases_closed(1)); // untouched
+    assert_eq!(r.present_state[1..=3], [CTRL_CLOSE; 3]); // untouched
 }
 
 #[test]
 fn make_like_copies_recloser_state_not_time_dials() {
     let mut base = Recloser::new("base");
     base.num_fast = 2;
-    base.phase_trip = 700.0;
-    base.ground_trip = 400.0;
+    base.ph_fast_pickup = 700.0;
+    base.ph_slow_pickup = 700.0;
+    base.gnd_fast_pickup = 400.0;
     base.reset_time = 22.0;
+    base.mechanical_delay = 0.9;
     base.num_reclose = 2;
     base.reclose_intervals[..2].copy_from_slice(&[0.5, 1.0]);
-    base.normal_state = CTRL_OPEN;
-    base.normal_state_set = true;
-    base.delay_time = 0.9; // NOT copied
+    base.single_ph_trip = true;
+    base.rated_current = 630.0;
+    for i in 1..=3 {
+        base.normal_state[i] = CTRL_OPEN;
+    }
     base.td_ph_fast = 1.5; // NOT copied
-    // The resolved curve clones (Pascal copies the pointers) must carry over, or
-    // a `like=` recloser would silently never trip.
-    base.phase_fast = Some(build_tcc("2", "1 10", "1 0.1"));
-    base.ground_fast = Some(build_tcc("2", "5 50", "2 0.2"));
+    base.ph_fast = Some(build_tcc("2", "1 10", "1 0.1"));
+    base.gnd_fast = Some(build_tcc("2", "5 50", "2 0.2"));
 
     let mut r = Recloser::new("r1");
     r.make_like(&base);
     assert_eq!(r.num_fast, 2);
-    assert_eq!(r.phase_trip, 700.0);
-    assert_eq!(r.ground_trip, 400.0);
+    assert_eq!(r.ph_fast_pickup, 700.0);
+    assert_eq!(r.gnd_fast_pickup, 400.0);
     assert_eq!(r.reset_time, 22.0);
+    assert_eq!(r.mechanical_delay, 0.9); // r4133 DOES copy MechanicalDelay
     assert_eq!(r.num_reclose, 2);
     assert_eq!(r.reclose_intervals[..2], [0.5, 1.0]);
-    assert_eq!(r.normal_state, CTRL_OPEN);
-    assert!(r.normal_state_set);
-    // The curve clones copied (a like= recloser still trips).
-    assert!(r.phase_fast.is_some());
-    assert!(r.ground_fast.is_some());
-    assert!(r.phase_delayed.is_none()); // base's was None → stays None
-    // Pascal MakeLike omits DelayTime and the TD* dials → Create defaults.
-    assert_eq!(r.delay_time, 0.0);
+    assert!(r.single_ph_trip);
+    assert_eq!(r.rated_current, 630.0);
+    assert_eq!(r.normal_state[1..=3], [CTRL_OPEN; 3]);
+    // r4133 MakeLike does NOT copy NormalStateSet (only the state values).
+    assert!(!r.normal_state_set);
+    assert!(r.ph_fast.is_some());
+    assert!(r.gnd_fast.is_some());
+    assert!(r.ph_slow.is_none()); // base's was None -> stays None
+    // Pascal MakeLike omits the TD* dials -> Create defaults.
     assert_eq!(r.td_ph_fast, 1.0);
 }
 
@@ -613,12 +622,11 @@ fn dump(dss: &mut Dss, prop: &str) -> String {
     dss.result().to_string()
 }
 
-/// The default property dump (oracle-probed): the curves default to the built-in
-/// `a`/`d`, `Shots=4` (NumReclose 3), `RecloseIntervals=[ 0.5 2 2]`, and
-/// Action/Normal/State render `close`/`closed`/`closed`. SwitchedObj defaults to
-/// the monitored element.
+/// The r4133 default property dump (oracle-probed on r4133): curves default to
+/// `none` (inert), and `State`/`Normal` render the `[closed, closed, closed, ]`
+/// per-phase form.
 #[test]
-fn default_dump_matches_oracle() {
+fn default_dump_matches_r4133() {
     let mut dss = Dss::new();
     for c in [
         "clear",
@@ -629,43 +637,55 @@ fn default_dump_matches_oracle() {
         dss.command(c);
     }
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
-    assert_eq!(dump(&mut dss, "SwitchedObj"), "Line.l1");
-    assert_eq!(dump(&mut dss, "PhaseFast"), "a");
-    assert_eq!(dump(&mut dss, "PhaseDelayed"), "d");
-    assert_eq!(dump(&mut dss, "GroundFast"), "");
+    assert_eq!(dump(&mut dss, "PhFastCurve"), "none");
+    assert_eq!(dump(&mut dss, "PhSlowCurve"), "none");
+    assert_eq!(dump(&mut dss, "GndFastCurve"), "none");
     assert_eq!(dump(&mut dss, "Shots"), "4");
-    assert_eq!(dump(&mut dss, "RecloseIntervals"), "[ 0.5 2 2]");
-    assert_eq!(dump(&mut dss, "Action"), "close");
-    assert_eq!(dump(&mut dss, "Normal"), "closed");
-    assert_eq!(dump(&mut dss, "State"), "closed");
+    assert_eq!(dump(&mut dss, "State"), "[closed, closed, closed, ]");
+    assert_eq!(dump(&mut dss, "Normal"), "[closed, closed, closed, ]");
+    assert_eq!(dump(&mut dss, "SinglePhTrip"), "No");
+    assert_eq!(dump(&mut dss, "Lock"), "No");
+    // Deprecated aliases resolve to the same fields.
+    assert_eq!(dump(&mut dss, "PhaseFast"), "none");
 }
 
-/// `Shots` and `RecloseIntervals` both write `NumReclose`; the last one wins
-/// (oracle: `shots=2 recloseintervals=(1 3)` ⇒ Shots=3, RecloseIntervals=[ 1 3]).
+/// Legacy alias parsing: `phasefast`/`phasetrip`/`delay`/`tdgrfast` set the same
+/// state as the canonical `phfastcurve`/`phfastpickup`/`mechanicaldelay`/`tdgndfast`.
 #[test]
-fn shots_and_reclose_intervals_alias_num_reclose() {
+fn legacy_alias_parsing_round_trips() {
     let mut dss = Dss::new();
     for c in [
         "clear",
         "new circuit.t basekv=12.47",
         "new line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
-        "new recloser.r1 monitoredobj=line.l1 shots=2 recloseintervals=(1.0 3.0)",
+        "new tcc_curve.pf npts=2 c_array=[1,10] t_array=[1,0.1]",
+        // Legacy names: phasefast/phasetrip/delay/tdgrfast/phaseinst.
+        "new recloser.r1 monitoredobj=line.l1 phasefast=pf phasetrip=800 delay=0.1 tdgrfast=1.3 phaseinst=2000",
     ] {
         dss.command(c);
     }
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
-    assert_eq!(dump(&mut dss, "Shots"), "3");
-    assert_eq!(dump(&mut dss, "RecloseIntervals"), "[ 1 3]");
-    // shots=1 ⇒ NumReclose=0 ⇒ empty array.
-    dss.command("new recloser.r2 monitoredobj=line.l1 shots=1");
-    dss.command("? recloser.r2.recloseintervals");
-    assert_eq!(dss.result(), "[]");
+    // PhaseTrip sets BOTH fast & slow pickups (canonical readback).
+    assert_eq!(
+        dump(&mut dss, "PhFastPickup").parse::<f64>().unwrap(),
+        800.0
+    );
+    assert_eq!(
+        dump(&mut dss, "PhSlowPickup").parse::<f64>().unwrap(),
+        800.0
+    );
+    assert_eq!(
+        dump(&mut dss, "MechanicalDelay").parse::<f64>().unwrap(),
+        0.1
+    );
+    assert_eq!(dump(&mut dss, "TDGndFast").parse::<f64>().unwrap(), 1.3);
+    assert_eq!(dump(&mut dss, "PhInst").parse::<f64>().unwrap(), 2000.0);
+    assert_eq!(dump(&mut dss, "PhFastCurve"), "pf");
 }
 
-/// `state=open` (and the `trip` alias) drive `FPresentState`, default
-/// `NormalState`, and (via RecalcElementData) force the controlled terminal open.
+/// `state=open` (ganged) forces every phase open at parse and defaults `Normal`.
 #[test]
-fn state_open_forces_controlled_terminal_open_at_parse() {
+fn state_open_forces_all_phases_open_at_parse() {
     let mut dss = Dss::new();
     for c in [
         "clear",
@@ -681,8 +701,8 @@ fn state_open_forces_controlled_terminal_open_at_parse() {
         dss.command(c);
     }
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
-    assert_eq!(dump(&mut dss, "State"), "open");
-    assert_eq!(dump(&mut dss, "Normal"), "open"); // defaulted from State
+    assert_eq!(dump(&mut dss, "State"), "[open, open, open, ]");
+    assert_eq!(dump(&mut dss, "Normal"), "[open, open, open, ]"); // defaulted from State
     assert!(
         line_term1_max_current(&mut dss, "Line.l2") < 1.0,
         "state=open should force l2 open at parse"
@@ -690,8 +710,8 @@ fn state_open_forces_controlled_terminal_open_at_parse() {
     assert!(line_term1_max_current(&mut dss, "Line.l1") > 1.0);
 }
 
-/// End-to-end: a recloser on an overloaded line trips its controlled terminal
-/// open on overcurrent (the default `a` fast curve), logging `Opened, Fast`.
+/// End-to-end: an explicit-curve recloser on an overloaded line trips it open and
+/// logs the r4133 per-phase wording.
 #[test]
 fn recloser_trips_overloaded_line() {
     let mut dss = Dss::new();
@@ -700,8 +720,9 @@ fn recloser_trips_overloaded_line() {
         "new circuit.t basekv=12.47 phases=3 bus1=src basefreq=60",
         "new line.l1 bus1=src bus2=b phases=3 r1=0.3 x1=0.6 length=1",
         "new load.ld bus1=b phases=3 kv=12.47 kw=5000",
-        // PhaseTrip low → the real line current is a large overcurrent multiple.
-        "new recloser.r1 monitoredobj=line.l1 phasetrip=1",
+        // Explicit fast curve (r4133 has no default curves) + low pickup + a
+        // single shot so the first trip locks out open deterministically.
+        "new recloser.r1 monitoredobj=line.l1 phasefast=a phasetrip=1 shots=1 eventlog=yes",
         "set voltagebases=[12.47]",
         "calcvoltagebases",
         "set controlmode=time",
@@ -712,15 +733,10 @@ fn recloser_trips_overloaded_line() {
     }
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
     assert!(
-        dss.event_log().iter().any(|s| s.contains("OPENED, FAST")),
-        "expected a fast trip; log = {:?}",
+        dss.event_log().iter().any(|s| s.contains("3PH TRIP")),
+        "expected a 3ph trip; log = {:?}",
         dss.event_log()
     );
-    // The trip must actually open the controlled line, not just log it (the Fuse
-    // precedent `fuse_blows_phases_on_overcurrent`): a regression that logs but
-    // never flips the terminal — or a spurious immediate reclose — would pass a
-    // log-only check. The line stays open through the run (the reclose interval
-    // outlasts the 5 steps).
     assert!(
         line_term1_max_current(&mut dss, "Line.l1") < 1.0,
         "the tripped recloser should open the line"
@@ -750,8 +766,6 @@ mod make_pos_seq_tests {
     use crate::elements::traits::{CktElement, ElemRef};
     use crate::obj::base::DssObject;
 
-    /// Pascal `TRecloserObj.MakePosSequence` (Recloser.pas:460): phases/conds +
-    /// bus from the monitored element at ElementTerminal.
     #[test]
     fn resyncs_to_monitored() {
         let mut r = Recloser::new("r1");

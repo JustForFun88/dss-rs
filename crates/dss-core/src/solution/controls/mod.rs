@@ -39,8 +39,10 @@ pub(crate) use sampling::sample_control_devices;
 pub(super) enum ControlOp {
     /// `TControlElem.Sample`.
     Sample,
-    /// `TControlElem.DoPendingAction(Code, ProxyHdl)`.
-    Action { code: i32 },
+    /// `TControlElem.DoPendingAction(Code, ProxyHdl)`. `proxy` carries the phase
+    /// index for the per-phase protection controls (Recloser/Relay single-phase
+    /// trip); every other control ignores it.
+    Action { code: i32, proxy: i32 },
     /// `TControlElem.Reset` (the `Reset` command / `Set mode=` side effect).
     Reset,
 }

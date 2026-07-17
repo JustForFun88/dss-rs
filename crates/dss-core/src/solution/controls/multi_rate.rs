@@ -40,7 +40,10 @@ pub(super) fn do_multi_rate(
         temp_dbl[3] = atime;
         dispatch_control(
             p.control,
-            ControlOp::Action { code: p.code },
+            ControlOp::Action {
+                code: p.code,
+                proxy: p.proxy,
+            },
             ckt,
             env,
             queue,
@@ -71,7 +74,10 @@ pub(super) fn do_multi_rate(
             temp_dbl[3] = atime2;
             dispatch_control(
                 p2.control,
-                ControlOp::Action { code: p2.code },
+                ControlOp::Action {
+                    code: p2.code,
+                    proxy: p2.proxy,
+                },
                 ckt,
                 env,
                 queue,
@@ -81,7 +87,10 @@ pub(super) fn do_multi_rate(
             // The next action is outside the time window: run it and exit.
             dispatch_control(
                 p.control,
-                ControlOp::Action { code: p.code },
+                ControlOp::Action {
+                    code: p.code,
+                    proxy: p.proxy,
+                },
                 ckt,
                 env,
                 queue,

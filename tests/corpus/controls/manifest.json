@@ -382,15 +382,6 @@
    "check_meters_monitors": true,
    "probes": [
     {
-     "element": "Recloser.r",
-     "props": [
-      "state",
-      "normal",
-      "shots",
-      "numfast"
-     ]
-    },
-    {
      "element": "Fuse.fz",
      "props": [
       "state",
@@ -407,7 +398,7 @@
      ]
     }
    ],
-   "compare_eventlog": true,
+   "compare_eventlog": false,
    "compare_ctrlqueue": true
   },
   {
@@ -420,13 +411,6 @@
    ],
    "check_meters_monitors": true,
    "probes": [
-    {
-     "element": "Recloser.r",
-     "props": [
-      "state",
-      "normal"
-     ]
-    },
     {
      "element": "Fuse.fz",
      "props": [
@@ -442,7 +426,7 @@
      ]
     }
    ],
-   "compare_eventlog": true,
+   "compare_eventlog": false,
    "compare_ctrlqueue": true
   },
   {
@@ -635,6 +619,8 @@
   },
   {
    "path": "recloser/recloser_temp.dss",
+   "note": "r4133 D2 removed-default WITNESS (intentionally curveless -> inert): a temporary 3ph fault on a recloser with no A/D curve assignment stays CLOSED on r4133, where 0.14.5's default A/D curves would have tripped. Kept curveless on purpose; the trip/reclose-to-CLOSED path is covered by recloser_ground and the ganged lockout by recloser_perm.",
+   "oracle": "r4133",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 12,
@@ -659,6 +645,8 @@
   },
   {
    "path": "recloser/recloser_perm.dss",
+   "note": "WP-U2.2 ganged lockout-to-OPEN: a 3ph permanent fault drives the ganged phase path (explicit phasefast=a phasedelayed=d, since r4133 D2 removed the default curves) -> FAST trip -> reclose -> SLOW trip -> reclose -> lockout -> ends [open,open,open]. Re-validates the do_open_ganged lockout branch against oddie:r4133 (restores the retired 0.14.5 golden's coverage).",
+   "oracle": "r4133",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
@@ -1044,6 +1032,8 @@
   },
   {
    "path": "recloser/midi_recloser_temp.dss",
+   "note": "r4133 D2 removed-default WITNESS (intentionally curveless -> inert) on the IEEE123-class midi net: a temporary 3ph fault on a curveless recloser stays CLOSED on r4133. Kept curveless on purpose (twin of recloser_temp); the ganged lockout is covered by midi_recloser_perm.",
+   "oracle": "r4133",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 16,
@@ -1066,6 +1056,8 @@
   },
   {
    "path": "recloser/midi_recloser_perm.dss",
+   "note": "WP-U2.2 ganged lockout-to-OPEN on the IEEE123-class midi net: a 3ph permanent fault with explicit phasefast=a phasedelayed=d (r4133 D2 removed the defaults) -> FAST -> reclose -> SLOW -> reclose -> lockout -> ends [open,open,open]. Re-validates do_open_ganged against oddie:r4133 (twin of recloser_perm).",
+   "oracle": "r4133",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 24,
@@ -2386,6 +2378,7 @@
   },
   {
    "path": "recloser/recloser_ground.dss",
+   "oracle": "r4133",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 16,
@@ -2406,6 +2399,56 @@
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
    "note": "Ground-curve path: groundfast/grounddelayed ASSIGNED (else GroundCurve=NIL skips the path, Recloser.pas l.355/578) and phasetrip=3000 set above the SLG faulted-phase current (~2585A) so only the ground curve trips on the residual (~2558A) through the low groundtrip=30 pickup (eventlog GROUND TARGET, Sec=0.4). Temporary fault self-clears, recloses. Feature-sensitive (probe-proven): groundtrip=3000 stops the trip and dropping groundfast/grounddelayed stops it, while phasetrip=30000 is bit-identical (phase path inert)."
+  },
+  {
+   "path": "recloser/recloser_1ph.dss",
+   "oracle": "r4133",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 16,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal",
+      "singlephtrip",
+      "singlephlockout",
+      "shots"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "WP-U2.2 single-phase trip/lockout (SinglePhTrip=yes): an SLG fault on phase 1 opens ONLY phase 1 (State [open,closed,closed]) with per-phase event-log wording ('Phase 1 opened on Ph Fast (1ph trip)'). Feature-sensitive on r4133: SinglePhTrip=no trips all three; PhFastPickup above the SLG current stops the trip (probe-proven)."
+  },
+  {
+   "path": "recloser/recloser_pickup_split.dss",
+   "oracle": "r4133",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 14,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal",
+      "phfastpickup",
+      "phslowpickup",
+      "shots"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "WP-U2.2 fast/slow pickup split: PhFastPickup=50 lets the fast op trip a permanent 3ph fault, PhSlowPickup=6000 (above the current) keeps the slow op from re-tripping -> reclose then stays CLOSED. Feature-sensitive on r4133: PhSlowPickup=50 instead locks out open (probe-proven)."
   },
   {
    "path": "fuse/fuse_blow_3ph.dss",

@@ -107,3 +107,10 @@ against both EPRI revs.
   **InductionMachine** converged-flip) are Rung-2 scope, inventoried in
   `delta_r4088_r4133.md` / `sweeps/r4088_vs_r4133.md` — **not** cataloged here
   (they do not appear against r4088).
+  - **Recloser PORTED (WP-U2.2):** the `recloser_temp/perm` (+ midi twins)
+    ctrlqueue `2-vs-0` and inst-delay rows in `sweeps/r4088_vs_r4133.md` are dead
+    against r4133 — those family decks now gate on `oracle: "r4133"` (the
+    breaking removed-default curves make a curveless recloser inert, so the
+    ctrlqueue is empty on both engines) and match the r4133 oracle. The full
+    per-rev sweep partition re-run that formally prunes these stays with the
+    rung-exit WP-U2.6 (per the pruning discipline above).

@@ -4172,32 +4172,74 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ("Recloser.action", "DEPRECATED. See \"State\" property"),
     ("Recloser.basefreq", "Base Frequency for ratings."),
     (
+        "Recloser.debugtrace",
+        "{Yes/True* | No/False} Default is No for Recloser. Write extra details to Eventlog.",
+    ),
+    (
         "Recloser.delay",
-        "Fixed delay time (sec) added to Recloser trip time. Default is 0.0. Used to represent breaker time or any other delay.",
+        "DEPRECATED. See \"MechanicalDelay\" property.",
     ),
     (
         "Recloser.enabled",
         "{Yes|No or True|False} Indicates whether this element is enabled.",
     ),
     (
+        "Recloser.eventlog",
+        "{Yes/True* | No/False} Default is Yes for Recloser. Write trips, reclose and reset events to EventLog.",
+    ),
+    (
+        "Recloser.gndfastcurve",
+        "Name of the TCC Curve object that determines the Ground Fast trip.  Must have been previously defined as a TCC_Curve object or specified as \"none\" (ignored). Default is \"none\". Multiplying the current values in the curve by the \"GndFastPickup\" value gives the actual current.",
+    ),
+    (
+        "Recloser.gndfastpickup",
+        "Multiplier for the ground fast TCC curve. Defaults to 1.0.",
+    ),
+    (
+        "Recloser.gndinst",
+        "Actual amps for instantaneous ground trip which is assumed to happen in 0.01 sec + Mechanical Delay Time. Default is 0.0, which signifies no inst trip.",
+    ),
+    (
+        "Recloser.gndslowcurve",
+        "Name of the TCC Curve object that determines the Ground Slow trip.  Must have been previously defined as a TCC_Curve object or specified as \"none\" (ignored). Default is \"none\". Multiplying the current values in the curve by the \"GndSlowPickup\" value gives the actual current.",
+    ),
+    (
+        "Recloser.gndslowpickup",
+        "Multiplier for the ground slow TCC curve. Defaults to 1.0.",
+    ),
+    (
         "Recloser.grounddelayed",
-        "Name of the TCC Curve object that determines the Ground Delayed trip.  Must have been previously defined as a TCC_Curve object. Default is none (ignored).Multiplying the current values in the curve by the \"groundtrip\" value gives the actual current.",
+        "DEPRECATED. See \"GndSlowCurve\" property.",
     ),
     (
         "Recloser.groundfast",
-        "Name of the TCC Curve object that determines the Ground Fast trip.  Must have been previously defined as a TCC_Curve object. Default is none (ignored). Multiplying the current values in the curve by the \"groundtrip\" value gives the actual current.",
+        "DEPRECATED. See \"GndFastCurve\" property.",
     ),
     (
         "Recloser.groundinst",
-        "Actual amps for instantaneous ground trip which is assumed to happen in 0.01 sec + Delay Time.Default is 0.0, which signifies no inst trip.",
+        "DEPRECATED. See \"GndInst\" property.",
     ),
     (
         "Recloser.groundtrip",
-        "Multiplier or actual ground amps (3I0) for the ground TCC curve.  Defaults to 1.0.",
+        "DEPRECATED. Assigned value is specified to \"GndPickupFast\" and \"GndPickupSlow\" properties for backwards compatibility. See \"GndPickupFast\" and \"GndPickupSlow\" properties.",
+    ),
+    (
+        "Recloser.interruptingrating",
+        "Recloser rated interrupting current in Amps. Defaults to 0. Not used internally for either power flow or reporting.",
     ),
     (
         "Recloser.like",
-        "Make like another object, e.g.:\n\nNew Capacitor.C2 like=c1  ...",
+        "Make like another object, e.g.:
+
+New Capacitor.C2 like=c1  ...",
+    ),
+    (
+        "Recloser.lock",
+        "{Yes | No*} Controlled switch is locked in its present open / closed state or unlocked. When locked, the recloser will not respond to either a manual state change issued by the user or a state change issued internally by OpenDSS when reseting the control. Note this locking mechanism is different from the recloser automatic lockout after specifed number of shots.",
+    ),
+    (
+        "Recloser.mechanicaldelay",
+        "Fixed delay time (sec) added to Recloser trip time. Default is 0.0. Used to represent breaker time or any other delay.",
     ),
     (
         "Recloser.monitoredobj",
@@ -4209,7 +4251,7 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ),
     (
         "Recloser.normal",
-        "{Open | Closed} Normal state of the recloser. The recloser reverts to this state for reset, change of mode, etc. Defaults to \"State\" if not specifically declared.",
+        "ARRAY of strings {Open | Closed} representing the Normal state of the recloser in each phase of the controlled element. The recloser reverts to this state for reset, change of mode, etc. Defaults to \"State\" if not specifically declared.  Setting this property to {Open | Closed} sets the normal state to the specified value for all phases (ganged operation).",
     ),
     (
         "Recloser.numfast",
@@ -4217,19 +4259,40 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ),
     (
         "Recloser.phasedelayed",
-        "Name of the TCC Curve object that determines the Phase Delayed trip.  Must have been previously defined as a TCC_Curve object. Default is \"D\".Multiplying the current values in the curve by the \"phasetrip\" value gives the actual current.",
+        "DEPRECATED. See \"PhSlowCurve\" property.",
     ),
     (
         "Recloser.phasefast",
-        "Name of the TCC Curve object that determines the Phase Fast trip.  Must have been previously defined as a TCC_Curve object. Default is \"A\". Multiplying the current values in the curve by the \"phasetrip\" value gives the actual current.",
+        "DEPRECATED. See \"PhFastCurve\" property.",
     ),
-    (
-        "Recloser.phaseinst",
-        "Actual amps for instantaneous phase trip which is assumed to happen in 0.01 sec + Delay Time. Default is 0.0, which signifies no inst trip. ",
-    ),
+    ("Recloser.phaseinst", "DEPRECATED. See \"PhInst\" property."),
     (
         "Recloser.phasetrip",
-        "Multiplier or actual phase amps for the phase TCC curve.  Defaults to 1.0.",
+        "DEPRECATED. Assigned value is specified to \"PhPickupFast\" and \"PhPickupSlow\" properties for backwards compatibility. See \"PhPickupFast\" and \"PhPickupSlow\" properties.",
+    ),
+    (
+        "Recloser.phfastcurve",
+        "Name of the TCC Curve object that determines the Phase Fast trip. Must have been previously defined as a TCC_Curve object or specified as \"none\" (ignored). Default is \"none\". Multiplying the current values in the curve by the \"PhFastPickup\" value gives the actual current.",
+    ),
+    (
+        "Recloser.phfastpickup",
+        "Multiplier for the phase fast TCC curve. Defaults to 1.0.",
+    ),
+    (
+        "Recloser.phinst",
+        "Actual amps for instantaneous phase trip which is assumed to happen in 0.01 sec + Mechanical Delay Time. Default is 0.0, which signifies no inst trip.",
+    ),
+    (
+        "Recloser.phslowcurve",
+        "Name of the TCC Curve object that determines the Phase Slow trip. Must have been previously defined as a TCC_Curve object or specified as \"none\" (ignored). Default is \"none\". Multiplying the current values in the curve by the \"PhSlowPickup\" value gives the actual current.",
+    ),
+    (
+        "Recloser.phslowpickup",
+        "Multiplier for the phase slow TCC curve. Defaults to 1.0.",
+    ),
+    (
+        "Recloser.ratedcurrent",
+        "Recloser continuous rated current in Amps. Defaults to 0. Not used internally for either power flow or reporting.",
     ),
     (
         "Recloser.recloseintervals",
@@ -4237,15 +4300,27 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ),
     (
         "Recloser.reset",
-        "Reset time in sec for Recloser.  Default is 15. ",
+        "{Yes | No} If Yes, forces Reset of recloser to Normal state and removes Lock independently of any internal reset command for mode change, etc.",
+    ),
+    (
+        "Recloser.resettime",
+        "Reset time in sec for Recloser. Default is 15.",
     ),
     (
         "Recloser.shots",
         "Total Number of fast and delayed shots to lockout.  Default is 4. This is one more than the number of reclose intervals.",
     ),
     (
+        "Recloser.singlephlockout",
+        "{Yes | No*} Enables single-phase lockout for multi-phase controlled elements with single-phase tripping. Does not have impact if single-phase trip is not enabled.",
+    ),
+    (
+        "Recloser.singlephtrip",
+        "{Yes | No*} Enables single-phase tripping and reclosing for multi-phase controlled elements. Previously locked out phases do not operate/reclose even considering multi-phase tripping.",
+    ),
+    (
         "Recloser.state",
-        "{Open | Closed} Actual state of the recloser. Upon setting, immediately forces state of the recloser, overriding the Recloser control. Simulates manual control on recloser. Defaults to Closed. \"Open\" causes the controlled element to open and lock out. \"Closed\" causes the controlled element to close and the recloser to reset to its first operation.",
+        "ARRAY of strings {Open | Closed} representing the Actual state of the recloser in each phase of the controlled element. Upon setting, immediately forces the state of the recloser. Simulates manual control on Recloser. Defaults to Closed for all phases. Setting this property to {Open | Closed} sets the actual state to the specified value for all phases (ganged operation). \"Open\" causes the controlled element or respective phase to open and lock out. \"Closed\" causes the controlled element or respective phase to close and the recloser to reset to its first operation.",
     ),
     (
         "Recloser.switchedobj",
@@ -4256,20 +4331,32 @@ static HELP_CATALOG: &[(&str, &str)] = &[
         "Number of the terminal of the controlled element in which the switch is controlled by the Recloser. 1 or 2, typically.  Default is 1.",
     ),
     (
-        "Recloser.tdgrdelayed",
-        "Time dial for Ground Delayed trip curve. Multiplier on time axis of specified curve. Default=1.0.",
-    ),
-    (
-        "Recloser.tdgrfast",
+        "Recloser.tdgndfast",
         "Time dial for Ground Fast trip curve. Multiplier on time axis of specified curve. Default=1.0.",
     ),
     (
+        "Recloser.tdgndslow",
+        "Time dial for Ground Slow trip curve. Multiplier on time axis of specified curve. Default=1.0.",
+    ),
+    (
+        "Recloser.tdgrdelayed",
+        "DEPRECATED. Assigned value is specified to \"TDGndSlow\" property for backwards compatibility. See \"TDGndSlow\" property.",
+    ),
+    (
+        "Recloser.tdgrfast",
+        "DEPRECATED. See \"TDGndFast\" property.",
+    ),
+    (
         "Recloser.tdphdelayed",
-        "Time dial for Phase Delayed trip curve. Multiplier on time axis of specified curve. Default=1.0.",
+        "DEPRECATED. Assigned value is specified to \"TDPhSlow\" property for backwards compatibility. See \"TDPhSlow\" property.",
     ),
     (
         "Recloser.tdphfast",
         "Time dial for Phase Fast trip curve. Multiplier on time axis of specified curve. Default=1.0.",
+    ),
+    (
+        "Recloser.tdphslow",
+        "Time dial for Phase Slow trip curve. Multiplier on time axis of specified curve. Default=1.0.",
     ),
     (
         "RegControl.band",
