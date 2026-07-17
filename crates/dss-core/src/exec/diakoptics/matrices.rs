@@ -35,7 +35,7 @@ fn zct_keep(v: Complex64) -> bool {
 /// `(value.re <> 0) and (value.re <> 0)` — `.re` is tested **twice**, so `.im`
 /// is never consulted and a Y4 entry with `re=0, im≠0` is dropped. Reproduced
 /// 1:1 (the doubled `.re` IS the upstream bug); unit-test-pinned.
-#[allow(clippy::eq_op)]
+#[allow(clippy::eq_op, clippy::nonminimal_bool)]
 fn y4_keep(v: Complex64) -> bool {
     v.re != 0.0 && v.re != 0.0
 }

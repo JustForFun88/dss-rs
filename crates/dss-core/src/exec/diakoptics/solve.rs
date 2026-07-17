@@ -84,7 +84,7 @@ use num_complex::Complex64;
 use super::super::registry::ClassStore;
 use crate::exec::Dss;
 use crate::solution::solution::{
-    NEWTONSOLVE, do_newton_solution, end_of_time_step_cleanup, sample_all_monitors_and_meters,
+    SolveAlgorithm, do_newton_solution, end_of_time_step_cleanup, sample_all_monitors_and_meters,
     set_generator_disp_ref, set_generator_dqdv, solve_ad,
 };
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
@@ -603,7 +603,7 @@ impl Dss {
             .ok_or("no coordinator")?
             .solution
             .algorithm;
-        if algorithm == NEWTONSOLVE {
+        if algorithm == SolveAlgorithm::Newton {
             self.ad_coord_newton()?;
         } else {
             self.ad_do_normal_solution()?;

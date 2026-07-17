@@ -16,8 +16,8 @@ use std::path::Path;
 use num_complex::Complex64;
 
 use super::*;
+use crate::circuit::AddType;
 use crate::circuit::auto_add::{compute_kw_losses_een, make_bus_list, weighted_losses};
-use crate::circuit::{CAPADD, GENADD};
 use crate::report::format::{fixed_w, g};
 use crate::solution::meters::{reset_all_meters, take_sample_all};
 use crate::solution::{ADMITTANCE, CONTROLSOFF, CTRLSTATIC, POWERFLOW, solve_snap, sys_ctx};
@@ -27,7 +27,7 @@ use crate::util::sqrt3;
 /// instantiate the winner + set `GlobalResult`).
 struct AutoAddOutcome {
     /// `AddType` (GENADD/CAPADD) the search ran.
-    add_type: i32,
+    add_type: AddType,
     /// Winning bus as a Pascal 1-based `BusList` index (0 = none found).
     min_loss_bus: usize,
     /// The winner's phase count (1 or 3).
@@ -108,7 +108,7 @@ fn auto_add_search(
     let gen_kw = ckt.auto_add_obj.gen_kw;
 
     match add_type {
-        GENADD => {
+        AddType::Gen => {
             test_gen_kw = if ckt.positive_sequence {
                 ckt.auto_add_obj.gen_kw / 3.0
             } else {
@@ -177,7 +177,7 @@ fn auto_add_search(
                 }
             }
         }
-        CAPADD => {
+        AddType::Cap => {
             test_cap_kvar = if ckt.positive_sequence {
                 ckt.auto_add_obj.cap_kvar / 3.0
             } else {
@@ -228,7 +228,6 @@ fn auto_add_search(
                 }
             }
         }
-        _ => {}
     }
 
     // Put control mode back to default before inserting the device for real.
@@ -337,7 +336,7 @@ impl Dss {
         // fmCreate`). Written unconditionally, winner or not.
         self.write_auto_add_file("AutoAddLog.csv", &outcome.log_content, false);
 
-        let is_gen = outcome.add_type == GENADD;
+        let is_gen = outcome.add_type == AddType::Gen;
         let min_loss_bus = outcome.min_loss_bus;
 
         // Winning bus name (empty string when none found).

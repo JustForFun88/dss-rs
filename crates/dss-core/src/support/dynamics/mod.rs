@@ -7,7 +7,7 @@ mod tests;
 /// engine's external behavior (`Set mode=` and golden `solution.mode`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(i32)]
-pub enum SolveMode {
+pub enum DynSolveMode {
     #[default]
     Snapshot = 0,
     Daily = 1,
@@ -33,31 +33,31 @@ pub enum SolveMode {
     HarmonicT = 17,
 }
 
-impl SolveMode {
+impl DynSolveMode {
     pub fn code(self) -> i32 {
         self as i32
     }
 
-    pub fn from_code(code: i32) -> Option<SolveMode> {
+    pub fn from_code(code: i32) -> Option<DynSolveMode> {
         Some(match code {
-            0 => SolveMode::Snapshot,
-            1 => SolveMode::Daily,
-            2 => SolveMode::Yearly,
-            3 => SolveMode::MonteCarlo1,
-            4 => SolveMode::LoadDuration1,
-            5 => SolveMode::PeakDay,
-            6 => SolveMode::DutyCycle,
-            7 => SolveMode::Direct,
-            8 => SolveMode::MonteFault,
-            9 => SolveMode::FaultStudy,
-            10 => SolveMode::MonteCarlo2,
-            11 => SolveMode::MonteCarlo3,
-            12 => SolveMode::LoadDuration2,
-            13 => SolveMode::AutoAddFlag,
-            14 => SolveMode::Dynamic,
-            15 => SolveMode::Harmonic,
-            16 => SolveMode::GeneralTime,
-            17 => SolveMode::HarmonicT,
+            0 => DynSolveMode::Snapshot,
+            1 => DynSolveMode::Daily,
+            2 => DynSolveMode::Yearly,
+            3 => DynSolveMode::MonteCarlo1,
+            4 => DynSolveMode::LoadDuration1,
+            5 => DynSolveMode::PeakDay,
+            6 => DynSolveMode::DutyCycle,
+            7 => DynSolveMode::Direct,
+            8 => DynSolveMode::MonteFault,
+            9 => DynSolveMode::FaultStudy,
+            10 => DynSolveMode::MonteCarlo2,
+            11 => DynSolveMode::MonteCarlo3,
+            12 => DynSolveMode::LoadDuration2,
+            13 => DynSolveMode::AutoAddFlag,
+            14 => DynSolveMode::Dynamic,
+            15 => DynSolveMode::Harmonic,
+            16 => DynSolveMode::GeneralTime,
+            17 => DynSolveMode::HarmonicT,
             _ => return None,
         })
     }
@@ -83,7 +83,7 @@ pub struct DynaVars {
     pub t_start: f64,
     pub t_stop: f64,
     pub iteration_flag: IterationFlag,
-    pub solution_mode: SolveMode,
+    pub solution_mode: DynSolveMode,
     /// Time in hours as an integer.
     pub int_hour: i32,
     /// Time in hours as a float, including the fractional part.

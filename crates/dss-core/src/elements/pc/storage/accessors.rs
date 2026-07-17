@@ -19,8 +19,8 @@ use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
 use super::{
-    STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, Storage, VARMODE_KVAR, VARMODE_PF,
-    nconds_for_connection, prop,
+    STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, Storage, StorageDispatchMode, VARMODE_KVAR,
+    VARMODE_PF, nconds_for_connection, prop,
 };
 
 impl Storage {
@@ -414,7 +414,7 @@ impl DssObject for Storage {
             STATE => self.f_state,
             MODEL => self.base.voltage_model,
             CLS => self.storage_class,
-            DISP_MODE => self.dispatch_mode,
+            DISP_MODE => self.dispatch_mode.ordinal(),
             CONTROL_MODE => self.base.gfm_mode as i32,
             _ => unreachable!("Storage has no integer property {idx}"),
         }
@@ -435,7 +435,10 @@ impl DssObject for Storage {
             STATE => self.f_state = value,
             MODEL => self.base.voltage_model = value,
             CLS => self.storage_class = value,
-            DISP_MODE => self.dispatch_mode = value,
+            DISP_MODE => {
+                self.dispatch_mode =
+                    StorageDispatchMode::from_ordinal(value).unwrap_or(self.dispatch_mode)
+            }
             CONTROL_MODE => self.base.gfm_mode = value != 0,
             _ => unreachable!("Storage has no integer property {idx}"),
         }

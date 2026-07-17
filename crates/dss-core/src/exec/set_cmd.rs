@@ -400,8 +400,10 @@ impl Dss {
                         }
                     }
                     opt::ADD_TYPE => {
-                        if let Some(v) = enum_ord(enums, enums.add_type, &param, errors) {
-                            ckt.auto_add_obj.add_type = v;
+                        if let Some(at) = enum_ord(enums, enums.add_type, &param, errors)
+                            .and_then(crate::circuit::AddType::from_ordinal)
+                        {
+                            ckt.auto_add_obj.add_type = at;
                         }
                     }
                     opt::ALLOW_DUPLICATES => ckt.duplicates_allowed = interpret_yes_no(&param),
@@ -487,11 +489,13 @@ impl Dss {
                         }
                     }
                     opt::ALGORITHM => {
-                        if let Some(v) = enum_ord(enums, enums.solve_alg, &param, errors) {
-                            ckt.solution.algorithm = v;
+                        if let Some(alg) = enum_ord(enums, enums.solve_alg, &param, errors)
+                            .and_then(crate::solution::solution::SolveAlgorithm::from_ordinal)
+                        {
+                            ckt.solution.algorithm = alg;
                             // Pascal `ExecOptions.pas:530`: selecting NCIM forces a
                             // rebuild of its structures on the next solve.
-                            if v == crate::solution::solution::NCIMSOLVE {
+                            if alg == crate::solution::solution::SolveAlgorithm::Ncim {
                                 ckt.solution.ncim_ready = false;
                             }
                         }

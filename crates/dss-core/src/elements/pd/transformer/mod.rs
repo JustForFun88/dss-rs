@@ -225,6 +225,43 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     ClassProps::new("Transformer", defs, true)
 }
 
+/// Pascal transformer core type (`Set Core=`, `CoreTypeEnum`; shared by
+/// `AutoTrans`). The ordinals are **non-contiguous** (shell=0, 1-phase=1,
+/// 3-leg=3, 4-leg=4, 5-leg=5, core-1-phase=9) and user-visible/frozen
+/// (round-trip through the `DssEnum` registry); `i32` survives only at the
+/// property parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum CoreType {
+    Shell = 0,
+    OnePhase = 1,
+    ThreeLeg = 3,
+    FourLeg = 4,
+    FiveLeg = 5,
+    CoreOnePhase = 9,
+}
+
+impl CoreType {
+    /// The `CoreTypeEnum` ordinal (property `?`/dump boundary value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// `TCoreType(ordinal)` from the enum-registry value; an ordinal not in the
+    /// (non-contiguous) set yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Shell),
+            1 => Some(Self::OnePhase),
+            3 => Some(Self::ThreeLeg),
+            4 => Some(Self::FourLeg),
+            5 => Some(Self::FiveLeg),
+            9 => Some(Self::CoreOnePhase),
+            _ => None,
+        }
+    }
+}
+
 /// `TTransfObj`.
 #[derive(Debug, Clone)]
 pub struct Transformer {
@@ -255,7 +292,7 @@ pub struct Transformer {
     xfmr_bank: String,
     xfmr_code_name: String,
     xfmr_code_ref: Option<ElemRef>,
-    core_type: i32,
+    core_type: CoreType,
     xhl: f64,
     xht: f64,
     xlt: f64,
@@ -326,7 +363,7 @@ impl Transformer {
             xfmr_bank: String::new(),
             xfmr_code_name: String::new(),
             xfmr_code_ref: None,
-            core_type: 0,
+            core_type: CoreType::Shell,
             xhl: 0.07,
             xht: 0.35,
             xlt: 0.30,
