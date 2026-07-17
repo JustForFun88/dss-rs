@@ -17,7 +17,7 @@
 //! are token-equivalent on re-parse and the `Save` contract is round-trip
 //! fidelity, not byte-equality (`report/save/save.rs` header).
 
-use crate::elements::general::conductor_data::{CnDataObj, TsDataObj};
+use crate::elements::general::conductor_data::ConductorKind;
 use crate::obj::base::DssObject;
 use crate::report::format::g;
 use crate::report::save::save::SaveCtx;
@@ -92,12 +92,10 @@ impl LineGeometryObj {
             let Some(w) = self.fwiredata[i].as_ref() else {
                 continue; // Pascal `if FWireData[i] = NIL then continue`.
             };
-            let kind = if w.as_any().downcast_ref::<TsDataObj>().is_some() {
-                "tscable"
-            } else if w.as_any().downcast_ref::<CnDataObj>().is_some() {
-                "cncable"
-            } else {
-                "wire"
+            let kind = match w.as_conductor().map(|c| c.conductor_kind()) {
+                Some(ConductorKind::Ts) => "tscable",
+                Some(ConductorKind::Cn) => "cncable",
+                _ => "wire",
             };
             out.push_str(&format!(
                 " Cond={} {}={} X={} h={} units={}",

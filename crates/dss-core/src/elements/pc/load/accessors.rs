@@ -27,6 +27,10 @@ impl CktElement for Load {
         &mut self.cd
     }
 
+    fn load_num_customers(&self) -> Option<i32> {
+        Some(self.num_customers)
+    }
+
     fn recalc_element_data(&mut self, sys: &SysCtx) {
         self.recalc(sys);
     }

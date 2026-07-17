@@ -30,6 +30,14 @@ pub trait ElemStore {
     /// control's references before splitting the mutable borrows).
     fn obj(&self, r: ElemRef) -> &dyn crate::obj::base::DssObject;
 
+    /// The [`ElemKind`] of the class the ref points at — the meter/sampling
+    /// type-guards (`is_line`/`is_pd_element`/PD/PC checks) match on this
+    /// instead of an `as_any` downcast probe. Panics if `r` names a non-circuit
+    /// ("general") class, which those guards never pass.
+    ///
+    /// [`ElemKind`]: crate::circuit::ElemKind
+    fn kind(&self, r: ElemRef) -> crate::circuit::ElemKind;
+
     /// Pascal `TDSSCircuit.SetElementActive`: resolve a full element name
     /// (`Class.Name`, or a bare `Name` searched across all circuit-element
     /// classes) to its [`ElemRef`], or `None` if not found. Used by the
@@ -612,6 +620,29 @@ pub trait CktElement {
     fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
         let _ = ctx;
         PosSeqPlan::default()
+    }
+
+    /// Pascal `TLineObj` length in kilometres (`Len · <units→km>`). `None` for
+    /// every non-Line element — the EnergyMeter zone walk adds it to
+    /// `DistFromMeter` only for lines (R0 Category B typed read, replacing an
+    /// `as_any().downcast_ref::<Line>()` guard on `store.obj`).
+    fn line_length_km(&self) -> Option<f64> {
+        None
+    }
+
+    /// Pascal `TLoadObj.NumCustomers`. `None` for every non-Load element — the
+    /// EnergyMeter zone walk counts customers and appends to the load list only
+    /// for loads (R0 Category B typed read).
+    fn load_num_customers(&self) -> Option<i32> {
+        None
+    }
+
+    /// Pascal transformer / autotransformer `PresentTap[iWinding]` (Monitor
+    /// mode 2, the tap monitor). `None` for every non-transformer element (the
+    /// mode records `0.0`). `terminal` is the 1-based winding index.
+    fn present_tap(&self, terminal: usize) -> Option<f64> {
+        let _ = terminal;
+        None
     }
 
     /// Pascal `TControlElem.MonitoredElement` / `TMeterElement.MeteredElement`:

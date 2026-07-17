@@ -23,6 +23,10 @@ impl CktElement for AutoTrans {
         &mut self.cd
     }
 
+    fn present_tap(&self, terminal: usize) -> Option<f64> {
+        Some(AutoTrans::present_tap(self, terminal))
+    }
+
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
     }
