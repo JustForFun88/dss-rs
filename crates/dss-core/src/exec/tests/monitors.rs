@@ -290,3 +290,167 @@ fn monitor_mode4_flicker_end_to_end() {
     assert_eq!(&post2.channels[0], flk1, "re-export must not reprocess");
     assert_eq!(&post2.channels[1], pst1, "re-export must not reprocess");
 }
+
+/// A small delta/wye transformer + a load at the primary — a shared fixture for
+/// the winding / line-to-line monitor modes 8/10/12.
+fn windings_fixture() -> Dss {
+    let mut dss = Dss::new();
+    dss.command("New circuit.test basekv=12.47 pu=1.0");
+    dss.command("New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1");
+    dss.command(
+        "New transformer.t1 phases=3 windings=2 buses=[b2 b3] conns=[delta wye] \
+             kvs=[12.47 4.16] kvas=[1000 1000] xhl=5 tap=1.05",
+    );
+    dss.command("New load.ld1 bus1=b3 phases=3 kv=4.16 kw=800 pf=0.95 model=1");
+    dss.command("New load.ldw bus1=b2 phases=3 kv=12.47 kw=400 pf=0.95 model=1 conn=wye");
+    dss.command("New monitor.m8 element=transformer.t1 terminal=1 mode=8");
+    dss.command("New monitor.m10 element=transformer.t1 terminal=1 mode=10");
+    dss.command("New monitor.m12 element=load.ldw terminal=1 mode=12");
+    dss.command("New monitor.m12l element=line.l1 terminal=1 mode=12");
+    dss.command("Set mode=daily number=1 stepsize=1h");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss
+}
+
+/// Assert `actual` (f32 monitor channel) is within the proven Rust↔oracle floor
+/// of the pinned oracle value (dss-python 0.15.7 f32 `Channel`). Not a loosened
+/// tolerance — the band is the measured floor across all pinned channels
+/// (empirically ≤4.7e-7 abs / ≤2.5e-8 rel): a `1e-6` absolute term dominated by
+/// the 6-decimal-place printing of the pinned literals (whose own rounding is
+/// ≤5e-7), plus a `1e-7` relative term (~1.7 f32 ulps of faer-vs-KLU margin).
+fn close(actual: f32, expected: f64, what: &str) {
+    let a = actual as f64;
+    let allowed = 1e-6 + 1e-7 * expected.abs();
+    assert!(
+        (a - expected).abs() <= allowed,
+        "{what}: {a} vs {expected} (|diff|={:.3e} > {allowed:.3e})",
+        (a - expected).abs()
+    );
+}
+
+/// Pascal `TakeSample` mode 8 (`Monitor.pas:1311`): all transformer winding
+/// currents (`P{phase}W{winding}`, mag+deg). Values pinned from the oracle
+/// (dss-python 0.15.7). The delta primary / wye secondary give distinct W1/W2
+/// magnitudes; the magnitude is identical across the three phases (balanced).
+#[test]
+fn monitor_mode8_winding_currents() {
+    let dss = windings_fixture();
+    let m = dss.monitor_view("m8").expect("m8");
+    assert_eq!(m.sample_count, 1);
+    assert_eq!(
+        m.header,
+        vec![
+            "hour", "t(sec)", "P1W1", "Deg", "P1W2", "Deg", "P2W1", "Deg", "P2W2", "Deg", "P3W1",
+            "Deg", "P3W2", "Deg"
+        ]
+    );
+    // W1 (delta-side) current magnitude, W2 (wye-side), and the phase-1 angles.
+    close(m.channels[0][0], 22.944778, "P1W1 mag");
+    close(m.channels[1][0], -50.532013, "P1W1 deg");
+    close(m.channels[2][0], 113.456177, "P1W2 mag");
+    close(m.channels[3][0], 129.468033, "P1W2 deg");
+    // Balanced: phase-2 and phase-3 share the phase-1 magnitudes.
+    close(m.channels[4][0], 22.944778, "P2W1 mag");
+    close(m.channels[8][0], 22.944778, "P3W1 mag");
+    close(m.channels[10][0], 113.456177, "P3W2 mag");
+}
+
+/// Pascal `TakeSample` mode 10 (`Monitor.pas:1337`): all winding voltages
+/// (`P{phase}W{winding}`, mag+deg). Values pinned from the oracle. W1 is the
+/// 12.47 kV delta primary line-neutral-ish winding voltage, W2 the 4.16 kV wye.
+#[test]
+fn monitor_mode10_winding_voltages() {
+    let dss = windings_fixture();
+    let m = dss.monitor_view("m10").expect("m10");
+    assert_eq!(m.sample_count, 1);
+    assert_eq!(
+        m.header,
+        vec![
+            "hour", "t(sec)", "P1W1", "Deg", "P1W2", "Deg", "P2W1", "Deg", "P2W2", "Deg", "P3W1",
+            "Deg", "P3W2", "Deg"
+        ]
+    );
+    close(m.channels[0][0], 12452.436523, "P1W1 mag");
+    close(m.channels[1][0], -30.058962, "P1W1 deg");
+    close(m.channels[2][0], 2474.301758, "P1W2 mag");
+    close(m.channels[3][0], -32.337429, "P1W2 deg");
+    close(m.channels[8][0], 12452.436523, "P3W1 mag");
+    close(m.channels[10][0], 2474.301758, "P3W2 mag");
+}
+
+/// Pascal `TakeSample` mode 12 (`Monitor.pas:1374`): line-to-line terminal
+/// voltages + terminal currents. On a single-terminal element (here a wye Load)
+/// the monitor's `Yorder` equals the metered element's, so there is no
+/// uninitialized-current region — the whole record matches the oracle. The wye
+/// load has 4 conductors, so the currents run I1T1..I4T1 (I4 = neutral ≈ 0).
+#[test]
+fn monitor_mode12_line_to_line_single_terminal() {
+    let dss = windings_fixture();
+    let m = dss.monitor_view("m12").expect("m12");
+    assert_eq!(m.sample_count, 1);
+    assert_eq!(
+        m.header,
+        vec![
+            "hour", "t(sec)", "V1-2T1", "Deg", "V2-3T1", "Deg", "V3-1T1", "Deg", "I1T1", "Deg",
+            "I2T1", "Deg", "I3T1", "Deg", "I4T1", "Deg"
+        ]
+    );
+    // LL voltages: |Vab| = sqrt(3)·|Vln| ≈ 12.45 kV, 120° apart.
+    close(m.channels[0][0], 12452.436523, "V1-2 mag");
+    close(m.channels[1][0], 29.941038, "V1-2 deg");
+    close(m.channels[2][0], 12452.436523, "V2-3 mag");
+    close(m.channels[4][0], 12452.436523, "V3-1 mag");
+    // Terminal currents (phase mags equal; neutral I4 ≈ 0).
+    close(m.channels[6][0], 19.521914, "I1T1 mag");
+    close(m.channels[7][0], -18.253927, "I1T1 deg");
+    close(m.channels[8][0], 19.521914, "I2T1 mag");
+    close(m.channels[10][0], 19.521914, "I3T1 mag");
+    assert!(m.channels[12][0].abs() < 1e-2, "I4 neutral ≈ 0");
+}
+
+/// Mode 12 on a MULTI-terminal element (a 2-terminal line) exercises the
+/// documented upstream UB: Pascal fills only the monitor's own `Yorder`
+/// (= `Nconds`, terminal 1) of the current buffer but emits
+/// `MeteredElement.Yorder` entries, so terminal-2 currents are read from
+/// uninitialized heap (the oracle prints `inf`/`nan`/garbage — see
+/// `investigations/monitor_mode12_terminal_currents_ub.md`). The port does NOT
+/// reproduce the UB: it fills all terminal currents. This test pins the
+/// *defined* channels (both terminals' LL voltages + terminal-1 currents)
+/// against the oracle, and asserts the terminal-2 currents the port computes are
+/// finite and physically consistent (≈ terminal-1 magnitude, KCL on a ~series
+/// element) — which the oracle's UB values are not.
+#[test]
+fn monitor_mode12_multiterminal_avoids_upstream_ub() {
+    let dss = windings_fixture();
+    let m = dss.monitor_view("m12l").expect("m12l");
+    assert_eq!(m.sample_count, 1);
+    assert_eq!(
+        m.header,
+        vec![
+            "hour", "t(sec)", "V1-2T1", "Deg", "V2-3T1", "Deg", "V3-1T1", "Deg", "V1-2T2", "Deg",
+            "V2-3T2", "Deg", "V3-1T2", "Deg", "I1T1", "Deg", "I2T1", "Deg", "I3T1", "Deg", "I1T2",
+            "Deg", "I2T2", "Deg", "I3T2", "Deg"
+        ]
+    );
+    // Defined region — both terminals' LL voltages (Vterminal is computed for
+    // all terminals) and terminal-1 currents.
+    close(m.channels[0][0], 12465.561523, "V1-2T1 mag");
+    close(m.channels[6][0], 12452.436523, "V1-2T2 mag");
+    close(m.channels[12][0], 59.250011, "I1T1 mag");
+    close(m.channels[14][0], 59.250011, "I2T1 mag");
+    close(m.channels[16][0], 59.250011, "I3T1 mag");
+    // UB region in Pascal (terminal-2 currents, channels 18/20/22 0-based). The
+    // port computes real currents: finite and ≈ the terminal-1 magnitude.
+    for (ch, name) in [(18, "I1T2"), (20, "I2T2"), (22, "I3T2")] {
+        let v = m.channels[ch][0];
+        assert!(
+            v.is_finite(),
+            "{name} must be finite (UB not reproduced): {v}"
+        );
+        assert!(
+            (v as f64 - 59.250011).abs() < 5.0,
+            "{name} = {v} not ≈ terminal-1 magnitude (KCL)"
+        );
+    }
+}
