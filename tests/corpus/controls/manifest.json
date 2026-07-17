@@ -619,6 +619,7 @@
   },
   {
    "path": "recloser/recloser_temp.dss",
+   "note": "r4133 D2 removed-default WITNESS (intentionally curveless -> inert): a temporary 3ph fault on a recloser with no A/D curve assignment stays CLOSED on r4133, where 0.14.5's default A/D curves would have tripped. Kept curveless on purpose; the trip/reclose-to-CLOSED path is covered by recloser_ground and the ganged lockout by recloser_perm.",
    "oracle": "r4133",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
@@ -644,6 +645,7 @@
   },
   {
    "path": "recloser/recloser_perm.dss",
+   "note": "WP-U2.2 ganged lockout-to-OPEN: a 3ph permanent fault drives the ganged phase path (explicit phasefast=a phasedelayed=d, since r4133 D2 removed the default curves) -> FAST trip -> reclose -> SLOW trip -> reclose -> lockout -> ends [open,open,open]. Re-validates the do_open_ganged lockout branch against oddie:r4133 (restores the retired 0.14.5 golden's coverage).",
    "oracle": "r4133",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
@@ -978,6 +980,7 @@
   },
   {
    "path": "recloser/midi_recloser_temp.dss",
+   "note": "r4133 D2 removed-default WITNESS (intentionally curveless -> inert) on the IEEE123-class midi net: a temporary 3ph fault on a curveless recloser stays CLOSED on r4133. Kept curveless on purpose (twin of recloser_temp); the ganged lockout is covered by midi_recloser_perm.",
    "oracle": "r4133",
    "ad": "off:too-small",
    "kind": "micro",
@@ -1001,6 +1004,7 @@
   },
   {
    "path": "recloser/midi_recloser_perm.dss",
+   "note": "WP-U2.2 ganged lockout-to-OPEN on the IEEE123-class midi net: a 3ph permanent fault with explicit phasefast=a phasedelayed=d (r4133 D2 removed the defaults) -> FAST -> reclose -> SLOW -> reclose -> lockout -> ends [open,open,open]. Re-validates do_open_ganged against oddie:r4133 (twin of recloser_perm).",
    "oracle": "r4133",
    "ad": "off:too-small",
    "kind": "micro",

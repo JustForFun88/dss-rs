@@ -1,8 +1,13 @@
-// Recloser, permanent fault (the golden_phase7_protection recloser_perm
-// scenario, promoted to the live gate): FAST trip -> reclose -> DELAYED trip
-// -> reclose -> LOCKED OUT (ends OPEN). Exercises NumFast, RecloseIntervals,
-// Shots, and lockout. Compared per step: full model + State/Normal probes +
-// the full shot-sequence event log + pending reclose shots in the queue.
+// Recloser, permanent GANGED fault (r4133 WP-U2.2): a 3-phase permanent fault
+// drives the ganged (all-phase) trip path -> FAST trip (curve A) -> reclose ->
+// SLOW trip (curve D, OperationCount>NumFast) -> lockout -> ends OPEN
+// [open,open,open]. This re-validates the do_open_ganged lockout-to-OPEN branch
+// against oddie:r4133 (restoring the coverage of the retired 0.14.5 golden).
+// r4133 D2 removes the default A/D curves, so the phase curves are named
+// EXPLICITLY (phasefast=a phasedelayed=d, the engine's built-in A/D). Exercises
+// NumFast, RecloseIntervals, Shots, and ganged lockout. Compared per step vs
+// oddie:r4133: full model + State/Normal probes + the full shot-sequence event
+// log + pending reclose shots in the queue.
 clear
 Set DefaultBaseFrequency=60
 
@@ -14,7 +19,7 @@ new load.l bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
 
 new recloser.r monitoredobj=line.feed monitoredterm=1
 ~ switchedobj=line.feed switchedterm=1 numfast=1 shots=2
-~ phasetrip=80 groundtrip=40 recloseintervals=(0.5, 1.0)
+~ phasefast=a phasedelayed=d phasetrip=80 groundtrip=40 recloseintervals=(0.5, 1.0)
 
 new fault.f bus1=loadb phases=3 ontime=0.1 r=1 temporary=no
 
