@@ -114,3 +114,76 @@ against both EPRI revs.
     ctrlqueue is empty on both engines) and match the r4133 oracle. The full
     per-rev sweep partition re-run that formally prunes these stays with the
     rung-exit WP-U2.6 (per the pruning discipline above).
+
+## The Rung-2-exit sweep (WP-U2.6, 2026-07-17)
+
+Swept the port against official-EPRI **r4133** with `DSS_LIVE_OPENDSS_ASSERT=1`
+(the rung-exit gate) and re-ran **r4088** (direction sanity-check). Both green;
+the mandatory gate stays the regression spine (every swept case is also compared
+vs the pinned 0.14.5 oracle, green — so the EPRI gap is purely FPC↔Delphi, never
+a Rung-2 regression). `103` target-rev `oracle`-flipped cases are excluded (gated
+in the mandatory gate against their own target).
+
+| sweep | matched | known-diverged | known-skipped | NEW: before → after cataloging |
+|---|---|---|---|---|
+| `r4133` (11.0.0.1, the rung-2 EPRI target) | 326 | 70 | 4 | **58 → 0** (ASSERT green) |
+| `r4088` (10.2.0.1, direction check) | 329 | 67 | 4 | **7 → 0** (%stored + monitor_seqmag) |
+
+Of the 70 r4133 known-diverged, 16 are the format classes
+(`property-format-brackets` ×10 + `eventlog-trailing-space` ×6) and 54 are the
+FPC↔Delphi last-ulp/display floors (44 via entries extended to r4133 + 10 via the
+3 new entries); known-skipped = the four EPRI-DLL #303 crash decks.
+
+### Entry ledger change at Rung-2 exit (22 → 25 entries)
+
+**Extended to r4133** (the divergence persists on a path byte-identical
+r4088=r4133 — solver / `PCElements/` / `Meters/` / injection / reduction / ckt24
+feeder all unchanged across the EPRI delta; each also stays green in the mandatory
+gate vs 0.14.5):
+
+| entry | new revs | r4133 hits |
+|---|---|---|
+| `iteration-count-delta` | +r4133 | 4 (autotrans_both/reg, gendispatcher{,_kvarlimit}) |
+| `injection-fpc-delphi-ulp` | +r4133 | 4 (combo/indmach asymmetric) |
+| `autotrans-regcontrol-tap` | +r4133 | 2 (midi_autotrans{,_both}) |
+| `pvsystem-kvar-display-precision` | +r4133 | 2 (expcontrol_basic, invcontrol_expmodel) |
+| `storage-kwhstored-drift` | +r4133 | 6 (storagectrl kwhstored probes) |
+| `storage-kw-display-precision` | +r4133 | 2 (storagectrl_chargelow/support) |
+| `makeposseq-fpc-delphi` | +r4133 | 6 (modes:makeposseq) |
+| `reduce-fpc-delphi` | +r4133 | 6 (modes:reduce YPrim + mergeparallel) |
+| `ckt24-regcontrol-conditioning` | +r4133 | 11 (ckt24 + Torn_Circuit + MemoryMapping) |
+| `vsource-nearzero-power` | +r4133 | 1 (Paulo_Example/subestacao) |
+| `epri-binaryshape-crash` (skip) | +r4133 | 1 (#303, same as r4088) |
+| `epri-linespacing-r4088-crash` (skip) | +r4133 | 1 (#303 at calcv) |
+| `epri-linecablespacing-r4088-crash` (skip) | +r4133 | 1 (#303) |
+| `epri-capcontrolfollow-r4088` (skip) | +r4133 | 1 (#303) |
+
+**New this WP** (classes first witnessed by the Rung-2 sweeps; r4088+r4133 unless
+noted, all display/last-ulp floors byte-identical across the delta):
+
+| entry | revs | class |
+|---|---|---|
+| `storage-pctstored-display-precision` | r4088+r4133 | Storage `%stored` rendered to 6 sf by Delphi (`75.089575→75.0896`); §1.3-2 display-precision, sibling to `.kw`/`kvar` (6 decks: invcontrol_storage_vv_vw/vw + modes:time/*) |
+| `monitor-seq-magnitude-drift` | r4088+r4133 | seq-magnitude monitor channel (V2) Fortescue-transform FPC↔Delphi last-ulp (rel ~1.1e-5); `Meters/Monitor.pas` byte-identical r4088=r4133 |
+| `harmonics-ieee519-r4133` | **r4133** | the r4088→r4133 harmonics voltage move on IEEE_519 (V ~4.3e-4, Y bit-identical). Source-confirmed nothing to port: SolutionAlgs/Load/Spectrum/YMatrix byte-identical r4088=r4133; determinism-proven per engine ⇒ build-drift amplified by the 519-filter near-resonance (3 IEEE_519 decks) |
+
+**Narrowed this WP** (empirically 0 hits on r4088 **and** r4133 — dropped to
+`r3723`, their original triage provenance; a future r3723 sweep confirms or
+prunes the tail):
+
+| entry | new revs | why dead on r4088/r4133 |
+|---|---|---|
+| `monitor-header-whitespace` | r3723 | the harness `compare_monitor` now normalizes the Delphi leading-space CSV header directly (WP-U2.1 combo-restore audit fix), so it never surfaces on the EPRI channel |
+| `meter-zonepce-count` | r3723 | the six witness decks (energymeter {sym,asym,options,midi} + autoadd{,_cap}) now MATCH both EPRI revs (check_meters_monitors runs, oracle=None, ZonePCE agrees) |
+
+### The two WP-U0.2 non-protection surprises — closed
+
+- **IEEE_519 harmonics** (V 1.3e-2): `harmonics-ieee519-r4133`, source-confirmed
+  nothing to port (above).
+- **InductionMachine converged-flip**: already resolved by **WP-U2.1** —
+  `InductionMachine/{Master.DSS,Run.dss}` moved `solvable_now →
+  skipped_needs_investigation` (tag `r4133_breaking_nonconvergence`); the port
+  reproduces the r4133 non-convergence, so the deck is out of the swept universe.
+
+**Rung-2 complete: engine behavior = OpenDSS 11.0.0.1 (r4133) except this
+documented ledger.**
