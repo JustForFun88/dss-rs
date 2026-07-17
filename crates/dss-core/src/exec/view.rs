@@ -419,13 +419,17 @@ impl Dss {
     /// (draft 2020-12) envelope with the reusable global `$defs` and the static
     /// `circuitProperties` head.
     ///
-    /// This is the **static core** of the schema: the per-class and per-enum
-    /// `$defs` walk is NOT emitted — it is blocked on per-property metadata the
-    /// Rust port never carried (help/description text, `AltPropertyOrder`,
-    /// `SpecSets`, enum JSON names, most `Units_*` flags). See
-    /// [`crate::report::export::json::schema`] and STATUS §OG-1.5. The result is
-    /// independent of circuit state (all constant), so it needs no `&mut self`
-    /// and no `New circuit`.
+    /// # Incomplete
+    /// This returns the **static core skeleton only**, not a usable AltDSS
+    /// schema: the per-class and per-enum `$defs` walk is NOT emitted, so the
+    /// envelope's `required: ["Vsource"]` and every `circuitProperties` ref
+    /// dangle (their class `$defs` are absent). It is blocked on per-property
+    /// metadata the Rust port never carried (help/description text,
+    /// `AltPropertyOrder`, `SpecSets`, enum JSON names, most `Units_*` flags).
+    /// See [`crate::report::export::json::schema`] and STATUS §OG-1.5. The
+    /// result is independent of circuit state (all constant), so it needs no
+    /// `&mut self` and no `New circuit`. Do not treat the output as a complete
+    /// schema until the class/enum walk is ported.
     pub fn extract_schema_json(&self) -> String {
         crate::report::export::json::schema::extract_schema_skeleton_json()
     }

@@ -166,6 +166,18 @@ absent). Recorded as the remaining `ORPHANED_GAPS.md` §1.5 follow-up. Oracle IS
 reachable (`lib.DSS_ExtractSchema`) — the blocker is Rust-side metadata, not
 oracle access. Gate green (fmt/clippy/test).
 
+**Settle round (2026-07-18).** Two read-only audits reviewed the branch. The one
+Major finding (WP as literally briefed = ~90% deferred) is the honestly-disclosed
+partial documented above — not a defect; the deferral is empirically justified
+(only 2 of ~30 `Units_*` flags carried) and stays open in ORPHANED_GAPS §1.5. Two
+Minor findings fixed: (a) `extract_schema_json()` now carries a `# Incomplete`
+rustdoc header spelling out that the returned skeleton is not a usable schema
+(dangling `required:["Vsource"]` + `circuitProperties` refs whose class `$defs`
+are absent); (b) `skeleton_envelope_is_well_formed` gained a byte-level
+top-level-member-order assertion against the Pascal envelope order
+(`CAPI_Schema.pas:1504-1513`) — serde's object map ignored ordering, so an
+envelope reorder previously slipped all four tests.
+
 **Era: post-acceptance DE_PASCALIZE (PLAN_SEQUENCE stage 5).** The 1:1 port
 reached FINAL ACCEPTANCE (2026-07-11, referee ACCEPT); UPGRADE Rungs 1–2 are
 COMPLETE (2026-07-16/17 — engine behavior = OpenDSS 11.0.0.1 (r4133) except the
