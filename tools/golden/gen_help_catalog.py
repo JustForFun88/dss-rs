@@ -131,12 +131,14 @@ def main() -> None:
     pairs = parse_mo(mo)
     print(f"parsed {len(pairs)} entries from {mo}")
 
-    # WP-U2.5: override/add the r4133 protection help (Relay/Fuse/SwtControl
-    # property surfaces the 0.14.5 wheel predates — see `r4133_help.py`). A key
-    # that already exists (deprecated aliases whose help became "DEPRECATED. See
-    # …") is replaced in place; a renamed/new prop (`PhCurve`, `SinglePhTrip`,
-    # `CurveMultiplier`, …) is appended. Recloser (WP-U2.2) already landed via the
-    # wheel-independent capture, so it is not in the supplement.
+    # WP-U2.5: override/add the r4133 protection help for all four classes
+    # (Relay/Recloser/Fuse/SwtControl property surfaces the 0.14.5 wheel predates —
+    # see `r4133_help.py`). A key that already exists (deprecated aliases whose help
+    # became "DEPRECATED. See …") is replaced in place; a renamed/new prop
+    # (`PhCurve`, `SinglePhTrip`, `CurveMultiplier`, …) is appended. The Recloser
+    # help was hand-edited into the catalog at WP-U2.2; U2.5 folds it into the
+    # supplement too, so `gen_help_catalog.py` reproduces the committed file exactly
+    # instead of silently reverting it.
     catalog = dict(pairs)
     catalog.update(R4133_HELP)
     pairs = list(catalog.items())

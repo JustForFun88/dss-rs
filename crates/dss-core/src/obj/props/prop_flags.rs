@@ -178,8 +178,16 @@ impl PropFlags {
     /// non-r4133 full-enumeration surface (r4133 render is never byte-gated,
     /// RUNG2-COMMON §"Property renames / additions"). The named-query (`?`) and
     /// props-table surfaces still expose it; the props-table comparison excludes
-    /// it via the `PROPS_015X` allowlist row (tests/harness). Carried by SwtControl
-    /// `RatedCurrent` (WP-U2.4, `Controls/SwtControl.pas` r4133).
+    /// it via the `PROPS_015X` allowlist row (tests/harness).
+    ///
+    /// **No live application site as of WP-U2.5.** SwtControl `RatedCurrent`
+    /// (WP-U2.4) was the sole carrier; U2.5 brought all four protection `Dump
+    /// commands` blocks to their full r4133 shape (self-referential goldens), so
+    /// every r4133 prop now renders on the full-enum surface and the flag was
+    /// dropped. It is retained (like [`HIDE_015X`]) as the mechanism a future
+    /// r4133-only prop on another class re-uses until that class's Dump block
+    /// regenerates. The `PROPS_015X` allowlist rows that hide such props from the
+    /// 0.14.5 property-table walk are name-based, independent of this flag.
     pub const HIDE_R4133: Self = Self(1 << 50);
 
     pub fn contains(self, other: Self) -> bool {
