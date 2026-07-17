@@ -159,4 +159,24 @@ fn skeleton_envelope_is_well_formed() {
 
     // CRLF line breaks (fpjson Windows RTL), matching the oracle goldens.
     assert!(out.contains("\r\n"), "fpjson pretty uses CRLF");
+
+    // Byte-level top-level member ORDER — serde's object map above ignores it,
+    // so assert the emitted key sequence directly against the Pascal envelope
+    // order (`CAPI_Schema.pas:1504-1513`): $schema, $id, $defs, type,
+    // properties, required. `type`/`properties`/`required` also occur nested
+    // inside `$defs`, so anchor each match to the top-level 2-space indent
+    // (`\r\n  "key":`) — nested members sit at >=4 spaces. Catches an envelope
+    // reordering that all the serde-parse checks would silently accept.
+    let keys = ["$schema", "$id", "$defs", "type", "properties", "required"];
+    let positions: Vec<usize> = keys
+        .iter()
+        .map(|k| {
+            out.find(&format!("\r\n  \"{k}\" :"))
+                .unwrap_or_else(|| panic!("top-level envelope key `{k}` not found at indent 0"))
+        })
+        .collect();
+    assert!(
+        positions.windows(2).all(|w| w[0] < w[1]),
+        "envelope top-level member order drifted from the Pascal spec: {positions:?}"
+    );
 }
