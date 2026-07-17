@@ -2807,6 +2807,83 @@
     }
    ],
    "note": "UPFC mode 4 (DoubleReference voltage) + UPFCControl wrapper: two-band reference [refkV2,refkV]; the loaded input sags below the band and the UPFC engages via sf2. Feature-sensitive: mode=0 OR widening the band (input stays inside -> disengaged) each differ (probe-proven)."
+  },
+  {
+   "path": "upfc/upfc_statcom.dss",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "UPFC.test",
+     "props": [
+      "mode",
+      "pf",
+      "element",
+      "kvarlimit"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "UPFC.test"
+   ],
+   "wp": "OG-1.7",
+   "note": "UPFC mode 2 (StatCOM / shunt reactive compensation): the series path is OFF (GetOutputCurr mode 2 = CurrOut:=0, so Sr0 stays 0) and the device injects a shunt reactive current at Bus1 sized from CalcUPFCPowers(2) and the target pf (QIdeal, clamped to kvarLimit). CheckStatus mode 2 = checkPF() only, so element= is mandatory; here it monitors the input service transformer and drives its PF toward pf=0.95 (QIdeal ~3.1 kvar, unclamped; 16 iters). All 14 UPFC state variables compared + full model. Feature-sensitive (two-process bit-identical, probe-proven): mode=0 zeros QIdeal, pf=0.90 flips QIdeal sign (-1140 var)."
+  },
+  {
+   "path": "upfc/upfc_dual.dss",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "UPFC.test",
+     "props": [
+      "mode",
+      "refkv",
+      "pf",
+      "element",
+      "kvarlimit"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "UPFC.test"
+   ],
+   "wp": "OG-1.7",
+   "note": "UPFC mode 3 (Dual: series voltage regulation to refkV + shunt PF correction). GetOutputCurr mode 3 runs the mode-1 series Vpq to drive Vbout to refkV and sets SyncFlag inside tol1; GetInputCurr mode 3 then, while synced, absorbs reactive power (QIdeal clamped to kvarLimit) on top of the loss-balancing current. CheckStatus mode 3 = voltage-error OR checkPF(), so element= is required (monitors the input service transformer; without it mode 3 collapses onto mode 1). pf=0.99/kvarLimit=20/tol1=0.005 keeps the target reachable -> Vbout ~242 V AND QIdeal ~7570 var (25 iters). All 14 UPFC state variables + full model. Feature-sensitive (two-process bit-identical): mode=1 keeps the SAME series V (Sr0 identical) but QIdeal=0 -> isolates the dual shunt branch; mode=0 removes both."
+  },
+  {
+   "path": "upfc/upfc_doubleref_dual.dss",
+   "ad": "off:unclassified-new-deck",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "UPFC.test",
+     "props": [
+      "mode",
+      "refkv",
+      "refkv2",
+      "pf",
+      "element"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "UPFC.test"
+   ],
+   "wp": "OG-1.7",
+   "note": "UPFC mode 5 (Double Reference, Dual: mode-4 two-band reference + mode-3 shunt PF correction). While |Vbin| is inside [refkV2, refkV] the device is off (SF2=False); the loaded interface sags |Vbin| below refkV2*1000, so the lower band engages (VRefD=refkV2), the series path regulates Vbout to ~238 V AND the shunt branch drives the monitored PF toward pf=0.99 (QIdeal ~7.8 kvar). element= required for the checkPF branch. tol1=0.005 settles both deadbands (25 iters). All 14 UPFC state variables + full model. Feature-sensitive (two-process bit-identical): mode=4 keeps the SAME double-ref series V (Sr0 identical) but QIdeal=0 -> isolates the dual shunt branch; widening the band disengages the device (Sr0=0); mode=0 removes both."
   }
  ]
 }
