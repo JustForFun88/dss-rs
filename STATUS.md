@@ -1092,8 +1092,10 @@ the `oddie:r4133` engine (v11.0.0.1 Charlottesville).
   oracle **byte-for-byte** (proven for single-phase, ganged, ground and
   pickup-split decks — no mask row needed).
 - **Gate.** Family decks `recloser_temp/perm/ground` + midi twins flipped to
-  `oracle: "r4133"` (temp/perm/midi curveless → inert on r4133, pinning the D2
-  removed-default `2-vs-0` ctrlqueue witness; ground trips via the ground curve).
+  `oracle: "r4133"`. `temp`/`midi_temp` are curveless → inert on r4133, pinning the
+  D2 removed-default witness; `ground` trips via the ground curve; `perm`/`midi_perm`
+  carry explicit A/D curves and exercise the ganged lockout-to-OPEN sequence (see
+  the audit-fix addendum below).
   New decks `recloser_1ph.dss` (single-phase trip/lockout) + `recloser_pickup_split.dss`
   (fast≠slow pickup) — all §1.7-validated on r4133. `props/recloser.json`
   regenerated to the r4133 46-prop surface (props_roundtrip green); the
@@ -1115,6 +1117,34 @@ the `oddie:r4133` engine (v11.0.0.1 Charlottesville).
   dropping their Recloser probe + `compare_eventlog` until Fuse (U2.1) + Relay
   (U2.3) land and the whole suite flips at rung exit (U2.6). population.lock
   regenerated.
+
+**WP-U2.2 audit fixes (2026-07-17, wt-u22).** Three findings addressed:
+- **(major) Restored ganged lockout-to-OPEN oracle coverage.** `recloser_perm` +
+  `midi_recloser_perm` were flipped to `oracle:"r4133"` but left **curveless** →
+  inert no-ops (they asserted nothing about trip/reclose/lockout, matching r4133
+  only because both engines did nothing), so the `do_open_ganged` lockout branch was
+  validated by a Rust-only unit test against no oracle. Gave both decks explicit
+  `phasefast=a phasedelayed=d` (the engine's built-in A/D curves — r4133 D2 removed
+  the defaults) so a 3ph permanent fault now drives FAST→reclose→SLOW→reclose→lockout
+  → ends `[open,open,open]`, re-validated **exactly** against `oddie:r4133`.
+  `midi_recloser_perm` also fixed at its generator (`tools/decks/gen_midi_decks.py`).
+  `temp`/`midi_temp` kept curveless **on purpose** as the D2 removed-default witness
+  (the reclose-to-CLOSED path is covered by `ground`); manifest notes added to all
+  four so the intent is explicit. controls live gate still 96/96 vs r4133.
+- **(minor) DebugTrace wording matched to Recloser.pas r4133.** The ground-trip trace
+  now emits the distinct inst line (`Gnd Instantaneous Trip`, raw `Cmag`) vs curve
+  line (`Gnd %s Curve Trip`, `Cmag/GroundCurveMultiplier`); the single-phase and
+  three-phase **curve-branch** traces (`Ph %s (1-Phase)/(3-Phase) Trip`), previously
+  missing, are now logged (probe-confirmed). Latent path (no deck sets
+  `DebugTrace=yes`); the residual `%.3g`-vs-`{:.3}` sig-fig rendering is absorbed by
+  the numeric-skeleton comparator and left as-is.
+- **(minor, DEFERRED) quoted single-element `state=[open]` parses as ganged.** Delphi
+  branches on `Parser.WasQuoted` (a quoted single-element list sets only phase 1);
+  the Rust `set_enum_array` sees only the parsed ordinal array. A faithful fix must
+  plumb `WasQuoted` through the **shared** `MappedStringEnumArray` parse dispatch +
+  the shared `set_enum_array` trait (which also drives **Fuse**, U2.1/U2.4 territory)
+  — out of this WP's recloser-local scope, latent (no deck/test exercises it, no
+  oracle channel to validate), and already documented at `accessors.rs:272-277`.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
