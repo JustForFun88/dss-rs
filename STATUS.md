@@ -1114,6 +1114,17 @@ harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `m
 — roll-up in §1e and **`docs/phase-records/phase-7.md`**.
 
 ### Standing open follow-ups (actionable)
+- **Restore combo fuse-save coverage (WP-U2.1 deferral)** — `combo/combo_protection`
+  and `combo/midi_protection` neutralize their fuse tier (`ratedcurrent`
+  100000/5000 → never blows on 0.14.5) so the still-0.14.5 Recloser/Relay tiers
+  keep the deck gated on the 0.14.5 oracle. Confirmed a *real* coverage loss (on
+  r4088 the pre-WP combo fuse DID blow — default FuseCurve resolves a built-in
+  Tlink and melts all three phases under fault), not a no-op. When the protection
+  rung (WP-U2.2 Recloser + WP-U2.3 Relay) lands, **flip both decks to
+  `oracle:"r4133"` and remove the `ratedcurrent` neutralization** so the classic
+  fuse-save race is re-exercised end-to-end across all three version-consistent
+  tiers. Until then the r4133 CurveMultiplier-scaled blow is covered live by
+  `fuse_curvemult_blow`.
 - **WP-U1.2 row D3** — port with its overload deck (B3-r3723 landed under WP-U1.6).
 - **WP-U1.6 remaining** (branch wt-u16 §UPGRADE): C5 RegControl FwdThreshold+idle
   props, C6 Transformer BH props, C5-r3723 LoadShape Mode index, D11 CapControl
