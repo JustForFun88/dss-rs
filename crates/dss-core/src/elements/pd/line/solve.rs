@@ -207,6 +207,10 @@ impl CktElement for Line {
         &mut self.cd
     }
 
+    fn line_length_km(&self) -> Option<f64> {
+        Some(self.len * convert_line_units(self.length_units, LineUnits::Km))
+    }
+
     fn recalc_element_data(&mut self, sys: &SysCtx) {
         self.recalc(sys.positive_sequence);
     }

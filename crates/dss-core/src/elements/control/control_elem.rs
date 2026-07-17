@@ -86,6 +86,72 @@ pub struct ControlElemData {
     pub show_event_log: bool,
 }
 
+/// Which concrete control class a control object is — the behavior-trait
+/// replacement for the `as_any().downcast_ref::<…>()` identification chain in
+/// `solution/controls/dispatch.rs`. Returned by [`ControlElem::control_kind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlClass {
+    Reg,
+    Cap,
+    Swt,
+    Fuse,
+    Recloser,
+    Relay,
+    GenDispatch,
+    StorageCtrl,
+    Inv,
+    Exp,
+    Upfc,
+    Espvl,
+}
+
+impl ControlClass {
+    /// The display name the dispatcher prints in `Error Sampling Control
+    /// Device "<name>"` diagnostics — byte-identical to the old per-arm
+    /// `format!("RegControl.{…}", …)` prefixes (note `UPFCControl` /
+    /// `ESPVLControl` / `GenDispatcher` differ from the bare class idents).
+    pub fn display_name(self) -> &'static str {
+        match self {
+            ControlClass::Reg => "RegControl",
+            ControlClass::Cap => "CapControl",
+            ControlClass::Swt => "SwtControl",
+            ControlClass::Fuse => "Fuse",
+            ControlClass::Recloser => "Recloser",
+            ControlClass::Relay => "Relay",
+            ControlClass::GenDispatch => "GenDispatcher",
+            ControlClass::StorageCtrl => "StorageController",
+            ControlClass::Inv => "InvControl",
+            ControlClass::Exp => "ExpControl",
+            ControlClass::Upfc => "UPFCControl",
+            ControlClass::Espvl => "ESPVLControl",
+        }
+    }
+}
+
+/// The shared behavior surface of every control element (`TControlElem`): its
+/// [`ControlElemData`] base state, its concrete [`ControlClass`], and the
+/// control-only `Reset`. Acquired from a [`DssObject`] via
+/// `as_control()`/`as_control_mut()`, this replaces the `dispatch.rs`
+/// identification downcast chain (R0); the per-control `Sample`/`Action`
+/// behavioral entry points keep their concrete signatures until R2 hands
+/// dispatch typed-arena pair access.
+///
+/// [`DssObject`]: crate::obj::base::DssObject
+pub trait ControlElem {
+    /// The `TControlElem` base state (controlled/monitored refs, terminal, …).
+    fn ccd(&self) -> &ControlElemData;
+    fn ccd_mut(&mut self) -> &mut ControlElemData;
+    /// Which concrete control class this is.
+    fn control_kind(&self) -> ControlClass;
+    /// Reset only the control's own state — the `Reset` path taken when the
+    /// controlled element is unset (Pascal `Reset` with no controlled handle).
+    /// Only the generic-controlled protection controls (SwtControl / Recloser /
+    /// Relay) reach this arm; the default is unreachable for the rest.
+    fn reset_control_side(&mut self) {
+        unreachable!("reset_control_side: control has no None-controlled reset path");
+    }
+}
+
 impl ControlElemData {
     /// Pascal `TControlElem.Create`: zero delay/trace, no event log, no
     /// controlled element yet.

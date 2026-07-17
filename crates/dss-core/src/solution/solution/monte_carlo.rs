@@ -393,6 +393,9 @@ mod tests {
         fn obj(&self, r: ElemRef) -> &dyn DssObject {
             &self.faults[r.idx]
         }
+        fn kind(&self, _r: ElemRef) -> crate::circuit::ElemKind {
+            unimplemented!()
+        }
         fn ckt_elem(&self, _r: ElemRef) -> &dyn CktElement {
             unimplemented!()
         }

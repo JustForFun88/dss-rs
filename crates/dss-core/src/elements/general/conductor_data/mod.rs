@@ -379,20 +379,76 @@ impl ConductorDataCore {
     }
 }
 
+/// Which concrete catalog class a conductor object is — the behavior-trait
+/// replacement for the `FWireData[i] is T…DataObj` dispatch chains (the
+/// conductor-model choice, `Save`-array kind, cable-vs-wire rendering).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConductorKind {
+    Wire,
+    Cn,
+    Ts,
+}
+
+/// The shared behavior of the three conductor catalog classes
+/// (`WireData`/`CNData`/`TSData`, Pascal `TConductorDataObj` and its cable
+/// subtree). Acquired from a [`DssObject`] via `as_conductor()`, this replaces
+/// the `FWireData[i] is T…DataObj` downcast dispatch (R0, Category C): the
+/// LineGeometry/Line resolution reads `geom()`/`amps()`/`conductor_kind()`
+/// through the trait instead of probing each concrete type.
+pub trait ConductorData {
+    /// The per-conductor geometry the `LineConstants` engine copies
+    /// (`UpdateLineGeometryData`).
+    fn geom(&self) -> ConductorGeom;
+    /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` — the current ratings
+    /// a `LineGeometry`/`Line` defaults from its first conductor.
+    fn amps(&self) -> (f64, f64, i32, &[f64]);
+    /// The concrete catalog class.
+    fn conductor_kind(&self) -> ConductorKind;
+}
+
 /// The [`ConductorGeom`] of any catalog conductor (`WireData`/`CNData`/`TSData`),
 /// or `None` for any other object type. The dispatch Pascal gets for free from
 /// `FWireData[i] is T…DataObj`.
 pub fn conductor_geom(o: &dyn DssObject) -> Option<ConductorGeom> {
-    let any = o.as_any();
-    if let Some(w) = any.downcast_ref::<WireDataObj>() {
-        Some(w.geom())
-    } else if let Some(c) = any.downcast_ref::<CnDataObj>() {
-        Some(c.geom())
-    } else {
-        any.downcast_ref::<TsDataObj>().map(|t| t.geom())
-    }
+    o.as_conductor().map(|c| c.geom())
 }
 
 pub use cn_data::CnDataObj;
 pub use ts_data::TsDataObj;
 pub use wire_data::WireDataObj;
+
+impl ConductorData for WireDataObj {
+    fn geom(&self) -> ConductorGeom {
+        WireDataObj::geom(self)
+    }
+    fn amps(&self) -> (f64, f64, i32, &[f64]) {
+        WireDataObj::amps(self)
+    }
+    fn conductor_kind(&self) -> ConductorKind {
+        ConductorKind::Wire
+    }
+}
+
+impl ConductorData for CnDataObj {
+    fn geom(&self) -> ConductorGeom {
+        CnDataObj::geom(self)
+    }
+    fn amps(&self) -> (f64, f64, i32, &[f64]) {
+        CnDataObj::amps(self)
+    }
+    fn conductor_kind(&self) -> ConductorKind {
+        ConductorKind::Cn
+    }
+}
+
+impl ConductorData for TsDataObj {
+    fn geom(&self) -> ConductorGeom {
+        TsDataObj::geom(self)
+    }
+    fn amps(&self) -> (f64, f64, i32, &[f64]) {
+        TsDataObj::amps(self)
+    }
+    fn conductor_kind(&self) -> ConductorKind {
+        ConductorKind::Ts
+    }
+}

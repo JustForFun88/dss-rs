@@ -301,6 +301,9 @@ mod tests {
         fn obj(&self, _r: ElemRef) -> &dyn DssObject {
             unimplemented!()
         }
+        fn kind(&self, _r: ElemRef) -> crate::circuit::ElemKind {
+            unimplemented!()
+        }
         fn obj_mut(&mut self, _r: ElemRef) -> &mut dyn DssObject {
             unimplemented!()
         }

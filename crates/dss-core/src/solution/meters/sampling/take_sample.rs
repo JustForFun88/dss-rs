@@ -7,13 +7,11 @@
 
 use num_complex::Complex64;
 
-use crate::circuit::Circuit;
+use crate::circuit::{Circuit, ElemKind};
 use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE, reg};
 use crate::elements::pc::generator::Generator;
 use crate::elements::pc::load::Load;
 use crate::elements::pc::{PVSystem, Storage};
-use crate::elements::pd::line::Line;
-use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::{CktElement, ElemRef, ElemStore, SysCtx};
 
 use super::super::downcast_meter;
@@ -137,9 +135,8 @@ fn sample_all_der(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
 
 /// PD-element kind probe used by the loss split.
 fn branch_kind(store: &dyn ElemStore, r: ElemRef) -> (bool, bool, usize) {
-    let any = store.obj(r).as_any();
-    let is_line = any.downcast_ref::<Line>().is_some();
-    let is_xfmr = any.downcast_ref::<Transformer>().is_some();
+    let is_line = matches!(store.kind(r), ElemKind::Line);
+    let is_xfmr = matches!(store.kind(r), ElemKind::Transformer);
     let nphases = store.ckt_elem(r).cd().nphases;
     (is_line, is_xfmr, nphases)
 }
@@ -296,12 +293,8 @@ fn take_sample_one(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn ElemStore,
         let vbi = volt_base_index; // 1-based; 0 = none
 
         for pc in &shunts {
-            let is_load = store.obj(*pc).as_any().downcast_ref::<Load>().is_some();
-            let is_gen = store
-                .obj(*pc)
-                .as_any()
-                .downcast_ref::<Generator>()
-                .is_some();
+            let is_load = matches!(store.kind(*pc), ElemKind::Load);
+            let is_gen = matches!(store.kind(*pc), ElemKind::Generator);
             if is_load && !st.local_only {
                 let load = store
                     .obj_mut(*pc)

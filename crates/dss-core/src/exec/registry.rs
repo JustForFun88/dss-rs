@@ -84,6 +84,12 @@ impl ElemStore for ClassStore<'_> {
         self.classes[r.cls].objects[r.idx].as_ref()
     }
 
+    fn kind(&self, r: ElemRef) -> ElemKind {
+        self.classes[r.cls]
+            .kind
+            .expect("kind: ElemRef must point at a circuit-element class")
+    }
+
     fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef> {
         let lower = full_name.to_lowercase();
         let (cls_name, obj_name) = match lower.split_once('.') {

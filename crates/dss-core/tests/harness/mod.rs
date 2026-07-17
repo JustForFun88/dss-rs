@@ -1315,7 +1315,7 @@ fn compare_prop_lists(
     let filtered: Vec<&(String, String)> = actual
         .iter()
         .filter(|(n, _)| {
-            !(prop_015x(allowlist, class, n) && !oracle_names.contains(&n.to_lowercase()))
+            !prop_015x(allowlist, class, n) || oracle_names.contains(&n.to_lowercase())
         })
         .collect();
     assert_eq!(
