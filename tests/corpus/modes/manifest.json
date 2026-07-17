@@ -548,6 +548,45 @@
    ]
   },
   {
+   "path": "batchedit/batchedit_where.dss",
+   "ad": "off:non-3ph-cut-only",
+   "kind": "micro",
+   "n_steps": 1,
+   "oracle": "r4133",
+   "wp": "WP-U2.4",
+   "selected_elements": [
+    "*"
+   ],
+   "note": "WP-U2.4 (EPRI r4133 ExecHelper.pas): `batchedit ... where` property conditionals. `where kw>150` edits lb/lc (kw 200/300 -> 1000), leaving la=100/ld=120; a second `where phases=3 and pf<0.9` narrows to lc (pf=0.85) for vminpu=0.8. The where-filtered edit sets are pinned via the live r4133 model (the changed kw/vminpu drive the power flow) + the per-load kw probes. r4133-validated (§1.7 two-process determinant, converged). The `Elements edited: N` result token is pinned by the exec_tail unit test. Feature-sensitive: a wrong conditional selection changes which loads scale.",
+   "probes": [
+    {
+     "element": "Load.la",
+     "props": [
+      "kw"
+     ]
+    },
+    {
+     "element": "Load.lb",
+     "props": [
+      "kw"
+     ]
+    },
+    {
+     "element": "Load.lc",
+     "props": [
+      "kw",
+      "vminpu"
+     ]
+    },
+    {
+     "element": "Load.ld",
+     "props": [
+      "kw"
+     ]
+    }
+   ]
+  },
+  {
    "path": "batchedit/midi_batchedit.dss",
    "ad": "off:ad-nonconvergent",
    "kind": "midi",

@@ -280,6 +280,88 @@ fn d12_normal_and_state_readbacks_are_independent() {
 }
 
 #[test]
+fn d6_action_forces_present_state_and_element_like_state() {
+    // WP-U2.4 D6 (EPRI r4133 `SwtControl.pas` `InterpretSwitchState`): the
+    // deprecated `Action` now sets the ACTUAL state — like `State` — instead of
+    // only the normal state, and fires the same first-set normal-default side
+    // effect. Probed on r4133: `New SwtControl.x action=open` → state reads
+    // `[open, open, open, ]` (immediately forced), and (no prior `normal`) normal
+    // defaults to `[open, open, open, ]`.
+    let mut sw = SwtControl::new("sw1");
+    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.set_i32(prop::ACTION, CTRL_OPEN); // offset write → CurrentAction
+    sw.side_effects(prop::ACTION, 0);
+    assert_eq!(sw.present_state, CTRL_OPEN); // D6: Action forces present state
+    assert_eq!(sw.current_action, CTRL_OPEN);
+    assert_eq!(sw.normal_state, CTRL_OPEN); // first-set default (was CTRL_NONE)
+    // A deferred element force (open) was queued — the switch operates now, with
+    // no control-queue delay (r4133 has no Sample-time queue for Action).
+    let actions = sw.take_ref_actions();
+    assert_eq!(actions.len(), 1);
+    match actions[0] {
+        crate::obj::base::RefAction::SetSwitchClosed { closed, .. } => assert!(!closed),
+        _ => panic!("expected SetSwitchClosed(open)"),
+    }
+}
+
+#[test]
+fn d6_action_after_declared_normal_leaves_normal_unchanged() {
+    // r4133-probed: `New SwtControl.x normal=closed` then `action=open` leaves
+    // `normal=[closed, closed, closed, ]` (the first-set default already fired on
+    // `normal=`) while `state` flips to `[open, open, open, ]`. Mirrors the
+    // civanlar/swtcontrol_time pattern.
+    let mut sw = SwtControl::new("sw1");
+    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    // normal=closed → NormalState set, so NormalStateSet is effectively TRUE.
+    sw.set_i32(prop::NORMAL, CTRL_CLOSE);
+    sw.side_effects(prop::NORMAL, 0);
+    // action=open forces the present state open, normal stays closed.
+    sw.set_i32(prop::ACTION, CTRL_OPEN);
+    sw.side_effects(prop::ACTION, 0);
+    assert_eq!(sw.present_state, CTRL_OPEN);
+    assert_eq!(sw.normal_state, CTRL_CLOSE); // unchanged — not defaulted again
+    let actions = sw.take_ref_actions();
+    assert_eq!(actions.len(), 1); // only the action's open force
+    match actions[0] {
+        crate::obj::base::RefAction::SetSwitchClosed { closed, .. } => assert!(!closed),
+        _ => panic!("expected SetSwitchClosed(open)"),
+    }
+}
+
+#[test]
+fn d6_locked_action_does_not_force_element() {
+    // r4133-probed: with `lock=yes`, `action=open` is ignored (the
+    // InterpretSwitchState `if Locked and (property in {a,s}) then Exit`) — the
+    // switch stays closed, no element force queued.
+    let mut sw = SwtControl::new("sw1");
+    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.locked = true;
+    sw.set_i32(prop::ACTION, CTRL_OPEN); // ignored (ConditionalReadOnly)
+    sw.side_effects(prop::ACTION, 0); // early-return on locked
+    assert_eq!(sw.present_state, CTRL_CLOSE); // untouched
+    assert_eq!(sw.current_action, CTRL_CLOSE);
+    assert!(sw.take_ref_actions().is_empty()); // no force
+}
+
+#[test]
+fn rated_current_parses_and_reads_back() {
+    // WP-U2.4 C4 (r4133 `SwtControl.pas` prop 9): informational continuous
+    // rating. `New SwtControl.x ratedcurrent=250.5` stores 250.5; default 0.0.
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.c");
+    dss.command("new line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y");
+    dss.command("new swtcontrol.sw switchedobj=line.l1 switchedterm=1 ratedcurrent=250.5");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("? swtcontrol.sw.ratedcurrent");
+    assert_eq!(dss.result().trim().parse::<f64>().unwrap(), 250.5);
+    // default is 0.0
+    dss.command("new swtcontrol.sw2 switchedobj=line.l1 switchedterm=1");
+    dss.command("? swtcontrol.sw2.ratedcurrent");
+    assert_eq!(dss.result().trim().parse::<f64>().unwrap(), 0.0);
+}
+
+#[test]
 fn reset_with_restores_normal_state_and_forces_element() {
     let mut sw = SwtControl::new("sw1");
     sw.normal_state = CTRL_CLOSE;
@@ -420,11 +502,16 @@ fn term1_max_current(dss: &mut Dss, name: &str) -> f64 {
     m
 }
 
-/// End-to-end: a switch on a parallel-fed bus opens on an `action=open`
-/// command after its time delay, dropping its through-current to ~0 and logging
-/// `Element=SwtControl.sw1, Action=OPENED` (oracle-probed switching).
+/// WP-U2.4 D6 (EPRI r4133 `SwtControl.pas`): the deprecated `Action=open` now
+/// forces the switched element open **immediately at parse time** — like
+/// `State=open` — with NO control-queue delay and NO `OPENED` event. This is the
+/// r4088/0.14.5 → r4133 flip (was: queued, opens after `delay`, logs `OPENED`).
+/// Probed on r4133: after `edit swtcontrol.sw1 action=open` (even with `delay=2`)
+/// the switch is open on the very next solve and the event log is empty.
+/// Feature-sensitive: if `Action` regressed to setting only the normal state
+/// (r4088), l1 would stay closed and share current with l2.
 #[test]
-fn action_open_opens_switched_line() {
+fn action_open_forces_line_open_at_parse_no_event() {
     let mut dss = Dss::new();
     for c in [
         "clear",
@@ -433,32 +520,32 @@ fn action_open_opens_switched_line() {
         "new line.l1 bus1=src bus2=b phases=3 r1=0.3 x1=0.6 length=1 switch=y",
         "new line.l2 bus1=src bus2=b phases=3 r1=0.3 x1=0.6 length=1",
         "new load.ld bus1=b phases=3 kv=12.47 kw=300",
+        // delay=2 is now vestigial for Action (r4133 forces immediately).
         "new swtcontrol.sw1 switchedobj=line.l1 switchedterm=1 normal=closed delay=2",
         "set voltagebases=[12.47]",
         "calcvoltagebases",
-        "set controlmode=time",
-        "set mode=duty number=5 stepsize=1 hour=0",
-        // arm the open AFTER set mode (so DoResetControls doesn't wipe it).
         "edit swtcontrol.sw1 action=open",
         "solve",
     ] {
         dss.command(c);
     }
     assert!(dss.errors().is_empty(), "engine errors: {:?}", dss.errors());
-    // l1 (the switch) is open → near-zero current; l2 carries the load.
+    // l1 (the switch) is open at parse → near-zero current; l2 carries the load.
     assert!(
         term1_max_current(&mut dss, "Line.l1") < 1.0,
-        "switch line should be open"
+        "action=open should force the switch open at parse (D6)"
     );
     assert!(
         term1_max_current(&mut dss, "Line.l2") > 1.0,
         "parallel line should carry the load"
     );
-    let opened = dss
-        .event_log()
-        .iter()
-        .any(|s| s.contains("Element=SwtControl.sw1, Action=OPENED"));
-    assert!(opened, "expected OPENED; log = {:?}", dss.event_log());
+    // No control-queue OPENED event — the switch operates at edit time, not via
+    // Sample/DoPendingAction (r4133 Sample is inert).
+    assert!(
+        !dss.event_log().iter().any(|s| s.contains("Action=OPENED")),
+        "D6: action forces at parse, so no queued OPENED event; log = {:?}",
+        dss.event_log()
+    );
 }
 
 /// `State=open` forces the switched element open at parse time (the deferred

@@ -14,7 +14,10 @@
 //!   - relay_current: definite-time overcurrent relay (eventlog=yes) -> RESETTING
 //!     + OPENED ON PH & LOCKED OUT;
 //!   - fuse_blow:     per-phase fuse on tlink -> PHASE 3/2/1 BLOWN;
-//!   - swt_manual:    manual switch opened by a mid-run `edit ... action=open`.
+//!   - swt_manual:    manual switch opened by a mid-run `edit ... action=open`
+//!     — pinned on **EPRI r4133** (`oracle: oddie:r4133`), where WP-U2.4 D6 makes
+//!     the deprecated `Action` force the actual state immediately (no queue/delay,
+//!     empty event log), unlike the r4088/0.14.5 queued form.
 //!
 //! Pins: per-step dblHour + iteration count + converged + node voltages (the
 //! feeder voltage collapses on every step the line is held open, so the voltage

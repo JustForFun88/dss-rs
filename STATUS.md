@@ -1189,6 +1189,78 @@ the `oddie:r4133` engine (v11.0.0.1 Charlottesville).
   — out of this WP's recloser-local scope, latent (no deck/test exercises it, no
   oracle channel to validate), and already documented at `accessors.rs:272-277`.
 
+**WP-U2.4 — SwtControl D6 + RatedCurrent, batchedit `where`, TCC/DoNewCmd/AllocateLoad
+verify — LANDED (branch wt-u24, base `1287ec4`).** Rung-2 rows C4/C5/C6/D6/E1 of
+`delta_r4088_r4133.md`. Spec = the Delphi r4088→r4133 diff (`.inputs/electricdss-code-
+r4133-trunk`); oracle = `oddie:r4133`. Gate green (fmt/clippy/`cargo test --workspace`).
+
+- **SwtControl D6 (`elements/control/swt_control/`).** The deprecated `Action` (prop 3)
+  now sets the ACTUAL state — like `State` (prop 7) — instead of only the normal state
+  (r4088/0.14.5 bug), and fires the "normal defaults to state on first set" side effect
+  (Edit supplemental `case 3, 7`). Ported by making `side_effects(ACTION)` mirror
+  `STATE`: force `present_state`, default `normal` on first set, push the `SetSwitchClosed`
+  RefAction (guarded by `Locked`). Probed on r4133: `action=open` opens the switch
+  immediately (no queue/delay, empty event log), `normal` stays as declared (or defaults
+  to the action value when Action/State is the first setter), `lock=yes` still ignores it.
+- **RatedCurrent (prop 9, C4).** New informational continuous rating (default 0.0; "Not
+  used internally for either power flow or reporting"). Parse-accept + store; ordinals
+  shift (BaseFreq 9→10, Enabled 10→11, NUM_PROPS 11→12). r4133-only ⇒ hidden from the
+  0.14.5-pinned full-enumeration surfaces via the new **`PropFlags::HIDE_R4133`** (sibling
+  of `HIDE_015X`; Dump / `Dump commands` / JSON skip it, `?`/props-table still expose it)
+  + a **`PROPS_015X`** allowlist row (excludes it from the shape walk on the 0.14.5 AND
+  capi015 captures). Added `hidden_from_full_enum()` helper; the four Dump/JSON check
+  sites now test both flags.
+- **`batchedit … where` conditionals + E1 (`exec/batchedit.rs`, new module).** Faithful
+  port of r4133 `DoCheckConditionals`/`DoEvalConditionals`/`DoLocalizeOp_Index`: filter
+  regex matches by `>,<,>=,<=,=,!=` combined with `and/or/xor` before editing. The Delphi
+  tokenizer quirks are reproduced (probed on r4133): whole clause lowercased; logic op
+  chosen by list order `and`>`or`>`xor` (first text anywhere wins → `and` beats an earlier
+  `or` and absorbs the rest into the value; any `xor` matches `or` first → behaves as
+  `or`); missing property → empty value (numeric 0) → silently false, no abort. `=`/`!=`
+  are string compares against the (lowercased) LHS, `>`/`<`/… numeric via `AuxParser`
+  DblValue. E1: **every** batchedit now sets `GlobalResult := 'Elements edited: N'`
+  (ExecCommands cmd 95), with or without `where`; the without-`where` model effect is
+  unchanged (default-oracle decks stay green — they compare the model, not the result
+  string). Property resolution is exact case-insensitive (Delphi `PropertyIndex`), not
+  abbreviated.
+- **TCC `none` + DoNewCmd abort + AllocateLoad — VERIFIED, no port.** (1) TCC_Curve `none`
+  reserved-name rejection + the `DoNewCmd` `if Result=0 then Exit` abort: already ported
+  (`exec/command.rs` `add_object`, returns before `edit_active`/`dss_objs.push`), tested
+  by `tcc_curve_none_is_reserved` (proves NO phantom object created); matches r4133 (probed:
+  `new tcc_curve.none` never resolves). (2) AllocateLoad D5 disabled-meter/sensor skip:
+  already ported at the loop level (`solution/meters/sampling/allocate.rs`, `if !enabled()
+  continue` for CalcAllocationFactors AND AllocateLoad), tested by
+  `allocateloads_ignores_disabled_meter` (WP-U1.5 D9, r4115 == r4133 form).
+- **Decks / goldens.** New `tests/corpus/modes/batchedit/batchedit_where.dss` (`oracle:
+  r4133`, §1.7 two-process determinant): pins the where-filtered edit sets via the live
+  r4133 model + per-load kw probes; the `Elements edited: N` token is pinned by the
+  `batchedit_where_conditionals_match_r4133` exec_tail unit test (8 probed cases incl. the
+  and-first quirk). Flipped `swtcontrol_time.dss` + `midi_swtcontrol.dss` capi015→r4133
+  (D6 makes `action=open` open at parse; the capi015 `Closed×3→Open` trajectory was exactly
+  the r4088→r4133 move) — render-form probes (state/normal `[open,..]` arrays = E3/U2.5
+  scope; Delphi drops prop-5 Delay so `delay` renders 120) dropped, whole-model + empty
+  eventlog/ctrlqueue pin the physics. `swtcontrol_lock.dss` stays default-oracle: locked ⇒
+  Action ignored ⇒ switch unchanged, but the deeper reason it CANNOT move to r4133 is a
+  latent Sample divergence OUTSIDE the r4088→r4133 delta — Delphi (both r4088 and r4133)
+  comments out the ENTIRE `TSwtControlObj.Sample` body ("action/lock are instantaneous"),
+  whereas our FPC 0.14.5 port still pushes `CTRL_LOCK` onto the control queue; the deck's
+  `compare_ctrlqueue` pins that FPC push, so it can only stay on capi015 (documented at the
+  `sample()` doc-comment; closing this gap = retiring the Sample body, deferred). **civanlar.dss (vendored corpus) flipped capi015→r4133**:
+  its `edit action=o` on the 3 tie switches now opens them at parse (D6), converging in 2
+  iters to the open-tie topology — PROVEN bit-identical to r4133 (node0 V (13261.309423,
+  -34.747502) both); capi015's Rung-1 control-loop path took 5 iters to a
+  physically-equivalent-but-not-bit-identical point (8e-4 above the feeder tier floor — a
+  solve-PATH difference, not conditioning). Regenerated `swt_manual.json` protection golden
+  on `oddie:r4133` (empty event log; `gen_protection.py` routes it via `ODDIE_SCENARIOS`,
+  merged with the WP-U2.1 oddie route). `props/swtcontrol.json`: removed the D6-superseded `swtcontrol_action_open`
+  scenario (r4133 forces State=open, not capi015-pinnable) and re-based `swtcontrol_makelike`
+  on `state=open` (State=open, the oracle-derived value shared with `swtcontrol_state_open`).
+  `population.lock` regenerated (modes 68→69; civanlar oracle). `known_diffs.json` unchanged:
+  no swtcontrol-BEHAVIOR entry exists that this delta kills (the `property-format-brackets`
+  row is the E3 array render = WP-U2.5 scope). New SwtControl unit tests: `d6_*` (3) +
+  `rated_current_parses_and_reads_back`; `action_open_opens_switched_line` rewritten to
+  pin the D6 immediate-force (no OPENED event); `batchedit_where_conditionals_match_r4133`.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail

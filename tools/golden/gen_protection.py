@@ -44,6 +44,7 @@ Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -53,6 +54,7 @@ from gen_checkpoints import capture_element, check_pin  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT / "tests" / "golden" / "protection"
 SCHEMA = 1
+
 
 # A small radial feeder: source -> line.feed -> line.lat -> 3-phase load. The
 # protection device monitors and switches line.feed; the fault is at the load bus.
@@ -133,7 +135,10 @@ def deck_swt_manual() -> dict:
         *TAIL,
         DUTY,
     ]
-    # Mirror the corpus `edit swtcontrol.x action=o`: arm an open before step 5.
+    # Mirror the corpus `edit swtcontrol.x action=o`: a mid-run open before step 5.
+    # Captured on r4133 (WP-U2.4 D6, see ODDIE_SCENARIOS): the `Action` forces the
+    # switch open immediately (no `delay` queue), so the switch is open from step 5
+    # and the event log is empty.
     return {
         "name": "swt_manual",
         "commands": cmds,
@@ -193,11 +198,12 @@ def build(d, spec: dict) -> dict:
 
 # Scenarios captured on an EPRI Oddie engine instead of the pinned capi oracle,
 # because their behavior is r4133-specific (WP-U2.1: the fuse overhaul — default
-# curve `none`, `CurveMultiplier` divisor — exists only in r4133). `fuse_blow`'s
-# blow trajectory is numerically identical to the retired 0.14.5 capture (the
-# curve/divisor are pinned to reproduce it), but it must be captured on the
-# engine whose fuse semantics the port now targets.
-ODDIE_SCENARIOS = {"fuse_blow": "r4133"}
+# curve `none`, `CurveMultiplier` divisor — exists only in r4133; WP-U2.4: the
+# SwtControl D6 `Action`-forces-actual-state fix). `fuse_blow`'s blow trajectory
+# is numerically identical to the retired 0.14.5 capture (the curve/divisor are
+# pinned to reproduce it), but it must be captured on the engine whose fuse
+# semantics the port now targets.
+ODDIE_SCENARIOS = {"fuse_blow": "r4133", "swt_manual": "r4133"}
 
 
 def make_oddie(rev: str):
@@ -210,6 +216,7 @@ def make_oddie(rev: str):
         sys.exit(f"unknown opendss rev {rev!r}; known: {sorted(revs)}")
     dll = str((REPO_ROOT / revs[rev]["dll"]).resolve())
     expect = revs[rev].get("expect_version", "")
+    os.add_dll_directory(str(Path(dll).parent))
     d = IOddieDSS(library_path=dll)
     ver = str(d.Version)
     if expect and expect not in ver:

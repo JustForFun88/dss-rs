@@ -423,7 +423,7 @@ impl Dss {
 
     /// Pascal `GetObjClassAndName`: read the `class.name` token (optionally
     /// prefixed `object=`) from the main parser.
-    fn get_obj_class_and_name(&mut self) -> (String, String) {
+    pub(super) fn get_obj_class_and_name(&mut self) -> (String, String) {
         let param_name = self.parser.next_param(&self.vars).to_lowercase();
         let param = self.parser.make_string(&self.vars);
         if !param_name.is_empty() && !crate::util::compare_text_shortest_eq(&param_name, "object") {
@@ -555,56 +555,8 @@ impl Dss {
         }
     }
 
-    /// Pascal `DoBatchEditCmd` (`ExecHelper.pas:292`):
-    /// `BatchEdit class.pattern editstring` — replay the trailing edit string
-    /// against every object of the class whose NAME matches the regex pattern
-    /// **case-insensitively and unanchored** (`TRegExpr` `ModifierI` + `Exec`
-    /// = search anywhere in the name). The parser position at the start of the
-    /// edit string is remembered and rewound for each match, exactly like the
-    /// Pascal `Params := Parser.Position` / `Parser.Position := Params` dance.
-    /// The command always returns 0 silently — there is no count message.
-    fn do_batch_edit_cmd(&mut self) {
-        let (obj_class, pattern) = self.get_obj_class_and_name();
-        if obj_class.eq_ignore_ascii_case("circuit") {
-            return; // Do nothing
-        }
-        let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
-            // Pascal error 267 (the `%s` is `CRLF + Parser.CmdString`; LF here,
-            // same rendering as error 240 in `get_obj_class_and_name`).
-            self.errors.push(format!(
-                "BatchEdit Command: Object Type \"{obj_class}\" not found. \n{}",
-                self.parser.cmd_string()
-            ));
-            return;
-        };
-        self.active_class = Some(ci); // DSS.LastClassReferenced / ActiveDSSClass
-        // `Params := DSS.Parser.Position` — the edit string starts here.
-        let params_pos = self.parser.position();
-        let re = match regex::RegexBuilder::new(&pattern)
-            .case_insensitive(true) // TRegExpr `ModifierI := TRUE`
-            .build()
-        {
-            Ok(re) => re,
-            Err(e) => {
-                // TRegExpr raises `ERegExpr` on a bad pattern, surfaced as an
-                // engine error by the executive's exception handler; the exact
-                // upstream text is FPC-internal, so record the regex error.
-                self.errors.push(format!("BatchEdit Command: {e}"));
-                return;
-            }
-        };
-        // `First`/`Next`: walk the class list in creation order; every visited
-        // object becomes the active one (matching or not), the edit runs only
-        // on a regex match.
-        for oi in 0..self.classes[ci].objects.len() {
-            self.classes[ci].active = Some(oi);
-            let name = self.classes[ci].objects[oi].data().name().to_string();
-            if re.is_match(&name) {
-                self.parser.set_position(params_pos);
-                self.edit_active();
-            }
-        }
-    }
+    // `DoBatchEditCmd` (incl. the r4133 `where` conditionals + `Elements edited:
+    // N` result) lives in `exec/batchedit.rs`.
 
     /// Pascal `DoEnableCmd`/`DoDisableCmd` (`ExecHelper.pas:1095/1145`):
     /// `Enable`/`Disable class[.name|.*]`. `circuit` → no-op; an unknown class
