@@ -3,7 +3,7 @@
 //! post-processing that rewrites the recorded (mag, angle) stream in place with
 //! (flicker level, Pst) per phase.
 
-use super::Monitor;
+use super::{Monitor, MonitorBaseMode};
 use crate::support::flicker::flicker_meter;
 
 impl Monitor {
@@ -22,7 +22,7 @@ impl Monitor {
             return;
         }
         // Pascal guard: `(mode = 4) and (MonitorStream.Position > 0)`.
-        if (self.mode & super::MODEMASK) == 4 && self.sample_count > 0 {
+        if self.mode.base == MonitorBaseMode::Flicker && self.sample_count > 0 {
             self.do_flicker_calculations(kv_base);
         }
         self.is_processed = true;

@@ -106,7 +106,7 @@ impl DssObject for Monitor {
         use super::prop::*;
         match idx {
             TERMINAL => self.med.metered_terminal,
-            MODE => self.mode,
+            MODE => self.mode.to_raw(),
             _ => unreachable!("Monitor has no integer property {idx}"),
         }
     }
@@ -114,7 +114,7 @@ impl DssObject for Monitor {
         use super::prop::*;
         match idx {
             TERMINAL => self.med.metered_terminal = value,
-            MODE => self.mode = value,
+            MODE => self.mode = super::MonitorModeView::from_raw(value),
             _ => unreachable!("Monitor has no integer property {idx}"),
         }
     }
@@ -343,6 +343,7 @@ fn capture_metered(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
 
 #[cfg(test)]
 mod make_pos_seq_tests {
+    use super::super::MonitorModeView;
     use super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
 
@@ -395,7 +396,7 @@ mod make_pos_seq_tests {
     #[test]
     fn mode3_record_size_is_num_variables() {
         let mut m = Monitor::new("mon1");
-        m.mode = 3;
+        m.mode = MonitorModeView::from_raw(3);
         m.med.metered_element = Some(ElemRef { cls: 2, idx: 5 });
         m.med.metered_snap = Some(snap(1, 1, 2));
         let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
@@ -409,7 +410,7 @@ mod make_pos_seq_tests {
     #[test]
     fn mode4_record_size_is_two_per_phase() {
         let mut m = Monitor::new("mon1");
-        m.mode = 4;
+        m.mode = MonitorModeView::from_raw(4);
         m.med.metered_element = Some(ElemRef { cls: 1, idx: 0 });
         m.med.metered_snap = Some(snap(1, 1, 0));
         let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
@@ -425,7 +426,7 @@ mod make_pos_seq_tests {
     #[test]
     fn mode5_record_size_is_num_solution_vars() {
         let mut m = Monitor::new("mon1");
-        m.mode = 5;
+        m.mode = MonitorModeView::from_raw(5);
         m.med.metered_element = Some(ElemRef { cls: 1, idx: 0 });
         m.med.metered_snap = Some(snap(1, 1, 0));
         let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
