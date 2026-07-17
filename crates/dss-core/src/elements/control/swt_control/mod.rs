@@ -52,10 +52,13 @@ pub mod prop {
     pub const NORMAL: usize = 6;
     pub const STATE: usize = 7;
     pub const RESET: usize = 8;
+    /// r4133 informational continuous rating (WP-U2.4). Not used in power flow or
+    /// reporting; hidden from the 0.14.5-pinned full-enumeration surfaces.
+    pub const RATED_CURRENT: usize = 9;
     // TCktElementClass tail:
-    pub const BASE_FREQ: usize = 9;
-    pub const ENABLED: usize = 10;
-    pub const NUM_PROPS: usize = 11; // incl. Like
+    pub const BASE_FREQ: usize = 10;
+    pub const ENABLED: usize = 11;
+    pub const NUM_PROPS: usize = 12; // incl. Like
 }
 
 /// `TSwtControl.DefineProperties`.
@@ -78,6 +81,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("State", enums.swt_control_state).flags(PropFlags::NO_DEFAULT),
         // Pascal BooleanActionProperty (DoReset); the getter is always 0.
         PropDef::boolean("Reset"),
+        // r4133 `RatedCurrent` (SwtControl.pas props 8->9): informational
+        // continuous rating, default 0.0, "Not used internally for either power
+        // flow or reporting." HIDE_R4133 defers it from the 0.14.5-pinned
+        // full-enumeration Dump/`Dump commands`/JSON surfaces (capi015 lacks it
+        // too); the props-table compare excludes it via the PROPS_015X allowlist.
+        PropDef::double("RatedCurrent").flags(PropFlags::HIDE_R4133),
         // TCktElementClass tail:
         PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::enabled("Enabled"),
@@ -110,6 +119,10 @@ pub struct SwtControl {
     /// `Armed` — a queue action is outstanding.
     armed: bool,
 
+    /// `RatedCurrent` (r4133) — switch continuous rated current in Amps.
+    /// Informational only; not used in power flow or reporting.
+    rated_current: f64,
+
     /// Deferred parse-time element forces (the `State=`/`Reset` side effects).
     pending_ref_actions: Vec<RefAction>,
 }
@@ -134,6 +147,7 @@ impl SwtControl {
             lock_command: CTRL_NONE,
             locked: false,
             armed: false,
+            rated_current: 0.0, // r4133 default
             pending_ref_actions: Vec::new(),
         }
     }

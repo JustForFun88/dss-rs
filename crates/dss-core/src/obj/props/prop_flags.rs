@@ -159,9 +159,29 @@ impl PropFlags {
     /// when the class's Dump/JSON goldens regenerate on capi015. Carried by Line
     /// `EpsRMedium`/`HeightOffset`/`HeightUnit` (WP-U1.4).
     pub const HIDE_015X: Self = Self(1 << 48);
+    /// **Not a Pascal flag.** An **EPRI r4133-only** property deferred from the
+    /// *full-enumeration* 0.14.5-gated surfaces (Dump text report, `Dump
+    /// commands` help catalog, AltDSS JSON export). Sibling of [`HIDE_015X`] for
+    /// the Rung-2 (r4133) delta: unlike a 0.15.x prop — which a capi015-regenerated
+    /// surface *does* expose — an r4133 prop is absent from **both** the pinned
+    /// 0.14.5 and the capi015 property tables, so it must stay hidden on every
+    /// non-r4133 full-enumeration surface (r4133 render is never byte-gated,
+    /// RUNG2-COMMON §"Property renames / additions"). The named-query (`?`) and
+    /// props-table surfaces still expose it; the props-table comparison excludes
+    /// it via the `PROPS_015X` allowlist row (tests/harness). Carried by SwtControl
+    /// `RatedCurrent` (WP-U2.4, `Controls/SwtControl.pas` r4133).
+    pub const HIDE_R4133: Self = Self(1 << 49);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
+    }
+
+    /// Whether the property is deferred from the *full-enumeration* 0.14.5-pinned
+    /// surfaces (Dump / `Dump commands` / JSON): either a 0.15.x-deferred
+    /// ([`HIDE_015X`]) or an r4133-only ([`HIDE_R4133`]) property. The `?` query
+    /// and props-table surfaces still expose these.
+    pub fn hidden_from_full_enum(self) -> bool {
+        self.contains(Self::HIDE_015X) || self.contains(Self::HIDE_R4133)
     }
 }
 
