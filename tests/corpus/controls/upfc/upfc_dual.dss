@@ -1,0 +1,58 @@
+// UPFC mode 3 (Dual regulator: series voltage regulation + shunt PF correction)
+// + the UPFCControl wrapper (UPFC.pas GetOutputCurr ModeUPFC=3 l.606-631 injects
+// the series Vpq that drives Vbout to refkV exactly as mode 1, and additionally
+// sets SyncFlag once |Vbout| is inside tol1; GetInputCurr mode 3 l.796-814 then,
+// while SyncFlag is set, absorbs reactive power - QIdeal = Q_UPFC -
+// sqrt(1-pf^2)*|P|/pf, clamped to kvarLimit - on top of the mode-1 loss-balancing
+// current). CheckStatus mode 3 (UPFC.pas l.938-946) keeps the loop alive while
+// EITHER the voltage error > tol1 OR checkPF() is out of band, so the UPFC needs
+// `Element=` set (here the input service transformer) for the PF branch to
+// engage; without it mode 3 collapses onto mode 1 (SyncFlag toggles but no
+// checkPF re-trigger, so the reactive branch never fires - see upfc_vreg note).
+// pf=0.99 with kvarLimit=20 keeps the PF target reachable (QIdeal ~7.6 kvar,
+// unclamped); tol1=0.005 lets both the voltage deadband and the PF deadband
+// settle (tol1=0.001 hits max-control-iterations). Converges in 25 iters with
+// Vbout regulated to ~242 V (mode-1 branch) AND QIdeal ~7570 var (the dual
+// branch). Compared per step: full model + all 14 UPFC state variables +
+// mode/refkv/pf/element probes.
+//
+// Feature-sensitive (probe-proven, pinned oracle): mode=1 (voltage-only) has the
+// SAME series regulation but QIdeal=0 (no shunt reactive branch) - so the two
+// modes share Vbout yet differ in the source-side Q and the UPFC Q_UPFC/Qideal
+// variables; mode=0 removes both; changing pf moves QIdeal to a distinct value.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.upfcdual bus1=source_bus.1.0 phases=1 basekv=7.2 pu=1 angle=0
+~ mvasc3=2000000 mvasc1=20000000
+
+New xycurve.losses npts=3 xarray=[0.9 1 1.1] yarray=[1.0143 1.008 1.0143]
+
+New xfmrcode.1-ph50kva-2 phases=1 windings=2 ppm=0 xhl=2.04 %noloadloss=.02
+~ kvs=[7.2 0.24] kvas=[50 50] %rs=[0.9 0.9] conns=[wye wye]
+
+New xfmrcode.upfcinterface phases=1 windings=3 ppm=0 xhl=.0204 xht=.0204
+~ xlt=.0136 %noloadloss=.01 kvs=[0.24 0.12 0.12] kvas=[50 50 50]
+~ %rs=[0.006 .012 .012] conns=[wye wye wye]
+
+New transformer.service50kva xfmrcode=1-ph50kva-2 buses=[source_bus.1.0 upfc_input.1]
+
+// mode 3: dual (series V regulation to refkV + shunt PF correction of the
+// monitored service transformer to pf).
+New upfc.test phases=1 bus1=upfc_input.1 bus2=upfc_output.1 refkv=0.242 mode=3
+~ losscurve=losses tol1=0.005 xs=0.02 pf=0.99 kvarlim=20
+~ element=Transformer.service50kva
+
+New upfccontrol.myupfcctrl
+
+New transformer.tupfcout xfmrcode=upfcinterface
+~ buses=[upfc_output.1.0 load_bus.1.0 load_bus.0.2]
+
+New load.load120a phases=1 model=1 bus1=load_bus.1.0 kv=0.12 kw=14.98 kvar=10.08
+New load.load120b phases=1 model=1 bus1=load_bus.2.0 kv=0.12 kw=12.38 kvar=1.71
+
+Set voltagebases=[12.47 .415 0.208]
+calcv
+Set tolerance=1e-12
+Set maxiterations=100
+Set maxcontroliter=30
