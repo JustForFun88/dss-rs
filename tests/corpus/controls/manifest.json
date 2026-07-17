@@ -373,51 +373,83 @@
   },
   {
    "path": "combo/midi_protection.dss",
+   "note": "WP-U2.1 handoff restore: the three-tier fuse-save race (backup relay -> midline recloser -> lateral fuse) re-armed on the version-consistent r4133 chain (Fuse U2.1 / Recloser U2.2 / Relay U2.3). The fuse melts phase 1 of L6 on the recloser's delayed cycle at Sec=0.9 while the recloser reclose restores the other phases and the backup relay never trips (probe-verified on oddie:r4133). Recloser/Relay per-phase state arrays + the per-phase event log (incl. the r4133 Relay 'Debug Sample' lines) compared vs oddie:r4133. EnergyMeter registers/zone + the mode-0 monitor channels are compared vs oddie:r4133 too (check_meters_monitors): the comparator now normalizes the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns).",
+   "oracle": "r4133",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 24,
+   "check_meters_monitors": true,
    "selected_elements": [
     "*"
    ],
-   "check_meters_monitors": true,
    "probes": [
+    {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal",
+      "shots",
+      "numfast"
+     ]
+    },
     {
      "element": "Fuse.fz",
      "props": [
       "state",
       "normal",
-      "ratedcurrent"
+      "fusecurve",
+      "curvemultiplier"
      ]
     },
     {
      "element": "Relay.backup",
      "props": [
+      "state",
+      "normal",
       "delay"
      ]
     }
    ],
-   "compare_eventlog": false,
+   "compare_eventlog": true,
    "compare_ctrlqueue": true
   },
   {
    "path": "combo/combo_protection.dss",
+   "note": "WP-U2.1 handoff restore: the classic three-tier fuse-save race (substation backup relay -> midline recloser -> lateral fuse) re-armed on the version-consistent r4133 chain (Fuse U2.1 / Recloser U2.2 / Relay U2.3). The recloser FAST shot clears at Sec=0.4, the fuse melts the faulted phase on the delayed cycle at Sec=0.5, the recloser recloses restoring service except the blown phase, and the backup relay never trips (probe-verified on oddie:r4133). Recloser/Relay per-phase state arrays + the per-phase event log compared vs oddie:r4133. EnergyMeter registers/zone + the mode-0 monitor channels are compared vs oddie:r4133 too (check_meters_monitors): the comparator now normalizes the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns).",
+   "oracle": "r4133",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 20,
+   "check_meters_monitors": true,
    "selected_elements": [
     "*"
    ],
-   "check_meters_monitors": true,
    "probes": [
     {
+     "element": "Recloser.r",
+     "props": [
+      "state",
+      "normal"
+     ]
+    },
+    {
      "element": "Fuse.fz",
+     "props": [
+      "state",
+      "normal",
+      "fusecurve",
+      "curvemultiplier"
+     ]
+    },
+    {
+     "element": "Relay.backup",
      "props": [
       "state",
       "normal"
      ]
     }
    ],
-   "compare_eventlog": false,
+   "compare_eventlog": true,
    "compare_ctrlqueue": true
   },
   {
@@ -727,18 +759,18 @@
    "oracle": "r4133",
    "wp": "WP-U2.1",
    "selected_elements": [
-       "*"
+    "*"
    ],
    "probes": [
-       {
-        "element": "Fuse.fz",
-        "props": [
-         "state",
-         "normal",
-         "fusecurve",
-         "curvemultiplier"
-        ]
-       }
+    {
+     "element": "Fuse.fz",
+     "props": [
+      "state",
+      "normal",
+      "fusecurve",
+      "curvemultiplier"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
@@ -752,17 +784,17 @@
    "oracle": "r4133",
    "wp": "WP-U2.1",
    "selected_elements": [
-       "*"
+    "*"
    ],
    "probes": [
-       {
-        "element": "Fuse.fz",
-        "props": [
-         "state",
-         "normal",
-         "fusecurve"
-        ]
-       }
+    {
+     "element": "Fuse.fz",
+     "props": [
+      "state",
+      "normal",
+      "fusecurve"
+     ]
+    }
    ],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
@@ -809,7 +841,7 @@
    "probes": [],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U2.4 D6 (EPRI r4133 SwtControl.pas): FLIPPED capi015 -> r4133. The deprecated `Action` now forces the ACTUAL state immediately (like State), so the post `action=open` opens line.feed at parse time (before any step) instead of arming a delayed control-queue action. r4133-validated (§1.7 two-process determinant; the switch is open from step 0, line.feed |I|~7e-9, event log empty, control queue empty). Under capi015 (Rung-1) the same post armed a delayed action that fired at the 0.25 s delay (step 3) -- this deck's capi015 trajectory Closed x3 -> Open is exactly the r4088->r4133 D6 move. Render-form probes dropped: r4133 renders state/normal as `[open, open, open, ]` arrays (E3, WP-U2.5 scope) and does not wire prop-5 Delay (renders default 120), so the whole-model V/Y + empty eventlog/ctrlqueue pin the switch physics instead. Feature-sensitive: if Action regressed to setting only the normal state (r4088) the switch would stay closed and the model would not collapse."
+   "note": "WP-U2.4 D6 (EPRI r4133 SwtControl.pas): FLIPPED capi015 -> r4133. The deprecated `Action` now forces the ACTUAL state immediately (like State), so the post `action=open` opens line.feed at parse time (before any step) instead of arming a delayed control-queue action. r4133-validated (\u00a71.7 two-process determinant; the switch is open from step 0, line.feed |I|~7e-9, event log empty, control queue empty). Under capi015 (Rung-1) the same post armed a delayed action that fired at the 0.25 s delay (step 3) -- this deck's capi015 trajectory Closed x3 -> Open is exactly the r4088->r4133 D6 move. Render-form probes dropped: r4133 renders state/normal as `[open, open, open, ]` arrays (E3, WP-U2.5 scope) and does not wire prop-5 Delay (renders default 120), so the whole-model V/Y + empty eventlog/ctrlqueue pin the switch physics instead. Feature-sensitive: if Action regressed to setting only the normal state (r4088) the switch would stay closed and the model would not collapse."
   },
   {
    "path": "gendispatcher/gendispatcher.dss",
@@ -1131,7 +1163,7 @@
    "probes": [],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U2.4 D6 (EPRI r4133 SwtControl.pas): FLIPPED capi015 -> r4133. The post `action=open` now forces the loop tie (line.tie) open immediately (D6: Action sets the actual state, like State), converting the meshed IEEE123-class midi network to radial at parse time -- a STRONG pin: the loads stay fed (min bus 0.889 pu) so the whole-model V/Y differs materially with the tie open. r4133-validated (§1.7 two-process determinant; line.tie |I|~7e-9, event log empty, control queue empty). Under capi015 (Rung-1) the same post armed a delayed action firing at step 3 -- the r4088->r4133 D6 move. Render-form probes dropped (r4133 renders state/normal as `[.., ..]` arrays, E3/WP-U2.5 scope); the whole-model compare pins the physics. Feature-sensitive: an Action regression to normal-only would leave the tie closed and the mesh intact."
+   "note": "WP-U2.4 D6 (EPRI r4133 SwtControl.pas): FLIPPED capi015 -> r4133. The post `action=open` now forces the loop tie (line.tie) open immediately (D6: Action sets the actual state, like State), converting the meshed IEEE123-class midi network to radial at parse time -- a STRONG pin: the loads stay fed (min bus 0.889 pu) so the whole-model V/Y differs materially with the tie open. r4133-validated (\u00a71.7 two-process determinant; line.tie |I|~7e-9, event log empty, control queue empty). Under capi015 (Rung-1) the same post armed a delayed action firing at step 3 -- the r4088->r4133 D6 move. Render-form probes dropped (r4133 renders state/normal as `[.., ..]` arrays, E3/WP-U2.5 scope); the whole-model compare pins the physics. Feature-sensitive: an Action regression to normal-only would leave the tie closed and the mesh intact."
   },
   {
    "path": "energymeter/midi_energymeter.dss",

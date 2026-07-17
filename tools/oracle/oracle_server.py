@@ -127,8 +127,21 @@ def capture_eventlog(d, ckt) -> list:
             # so `if ln.strip()` keeps it). WP-U2.5.
             with open(path, encoding="utf-8-sig", errors="replace") as f:
                 # The CSV has no header row — each line is a full event record
-                # ("Hour=…, Sec=…, ControlIter=…, Element=…, Action=…").
-                return [ln.rstrip("\r\n") for ln in f if ln.strip()]
+                # ("Hour=…, Sec=…, ControlIter=…, Element=…, Action=…"). Delphi's
+                # file writer prefixes the file with a UTF-8 BOM (U+FEFF); strip
+                # it per line so (a) an EMPTY event log (which exports as a lone
+                # BOM) reads back as [] rather than ["﻿"], and (b) the first
+                # record is not BOM-glued — matching the Rust `event_log()` and
+                # the capi engines' `Solution.EventLog`, both BOM-free. Without
+                # this an empty step trips the length assert (0 vs 1) and a
+                # non-empty first line trips the numeric-skeleton comparator on
+                # the multi-byte BOM. WP-U2.1 restore.
+                out = []
+                for ln in f:
+                    ln = ln.lstrip("﻿").rstrip("\r\n")
+                    if ln.strip():
+                        out.append(ln)
+                return out
         except OSError:
             return []
     return [str(s) for s in ckt.Solution.EventLog]
@@ -251,9 +264,13 @@ def capture_all_meters(ckt) -> list:
     while i:
         # An EMPTY string-array comes back as the C-API placeholder ['NONE']
         # (DefaultResult, like CtrlQueue's 'No events') — filter it so an empty
-        # zone list compares as empty, not as a phantom one-element list.
+        # zone list compares as empty, not as a phantom one-element list. The
+        # official-EPRI (Oddie) engine additionally renders these string arrays
+        # with a trailing empty element (`['load.a', …, '']` — the same Delphi
+        # trailing-separator artifact as the monitor CSV header), so drop
+        # empty/whitespace-only entries too; an element name is never empty.
         def _lst(v):
-            xs = [str(s) for s in v]
+            xs = [s for s in (str(s).strip() for s in v) if s]
             return [] if xs == ["NONE"] else xs
 
         branches = _lst(m.AllBranchesInZone)

@@ -1650,9 +1650,27 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str)
         .unwrap_or_else(|| panic!("{ctx}: no monitor {}", exp.name));
     // Our header leads with the hour / t(sec) columns; the oracle Header is the
     // data channels only (`Channel(i)` already skips the time slots).
+    //
+    // Normalize away the official-EPRI (Oddie) monitor CSV rendering artifact
+    // before comparing: Delphi `TMonitorObj` writes the header row with a leading
+    // space after each comma separator (`' VAngle1'`) and a trailing comma, so
+    // `Monitors.Header` comes back as `['V1',' VAngle1',…,'']` (leading-space
+    // columns + a trailing empty). The dss_capi/Rust engines emit a clean header;
+    // trimming each column and dropping trailing whitespace-only columns makes the
+    // two comparable without weakening the check — the channel COUNT is asserted
+    // independently below and every channel's samples are compared numerically, so
+    // a genuine channel-identity mismatch still fails. The product-side header
+    // normalization (what the Rust engine *emits*) is WP-U1.5 E1.
+    let norm = |cols: &[String]| -> Vec<String> {
+        let mut v: Vec<String> = cols.iter().map(|s| s.trim().to_string()).collect();
+        while v.last().is_some_and(String::is_empty) {
+            v.pop();
+        }
+        v
+    };
     assert_eq!(
-        &view.header[2..],
-        exp.header.as_slice(),
+        norm(&view.header[2..]),
+        norm(&exp.header),
         "{ctx}: monitor {} header differs",
         exp.name
     );
