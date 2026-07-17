@@ -259,9 +259,13 @@ def capture_all_meters(ckt) -> list:
     while i:
         # An EMPTY string-array comes back as the C-API placeholder ['NONE']
         # (DefaultResult, like CtrlQueue's 'No events') — filter it so an empty
-        # zone list compares as empty, not as a phantom one-element list.
+        # zone list compares as empty, not as a phantom one-element list. The
+        # official-EPRI (Oddie) engine additionally renders these string arrays
+        # with a trailing empty element (`['load.a', …, '']` — the same Delphi
+        # trailing-separator artifact as the monitor CSV header), so drop
+        # empty/whitespace-only entries too; an element name is never empty.
         def _lst(v):
-            xs = [str(s) for s in v]
+            xs = [s for s in (str(s).strip() for s in v) if s]
             return [] if xs == ["NONE"] else xs
 
         branches = _lst(m.AllBranchesInZone)
