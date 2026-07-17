@@ -20,10 +20,7 @@ Distinct from **§2 owned deferrals** (a live plan tracks them — do NOT re-por
 ## 1. Orphans — actionable, unowned
 
 ### 1.1 `Export GICMvars` (report verb 36) + `GICTransformer.WriteVarOutputRecord`
-- **Deferred by:** GAPS_PLAN WPG.16 (GIC elements were ported; only this export was punted to "Phase 9", which never materialized as a plan).
-- **Spec:** `GICTransformer.pas` `WriteVarOutputRecord`; `ExportOptions.pas` `GICMvars` verb.
-- **Current state:** `crates/dss-core/src/elements/pd/gic_transformer/mod.rs:118` (`// WriteVarOutputRecord (Export GICMvar, not ported here)`); the verb records a scoped `NOT_PORTED`, pinned by `crates/dss-core/src/exec/tests/report.rs` (asserts `export gicmvars` errors "not ported").
-- **To do:** port `WriteVarOutputRecord` (per-GICTransformer Mvar/loss output), wire the `GICMvars` export verb, add a golden over a GIC deck, retire the `report.rs` negative-assert. **Priority: low** (niche; only GIC studies).
+**PORTED 2026-07-18** on `og11-gicmvars` — see STATUS §OG-1.1.
 
 ### 1.2 AltDSS JSON `DynInit` tail
 - **Deferred by:** JSON_EXPORT_PLAN §6 ("DynInit JSON tail", explicitly scoped out).

@@ -28,6 +28,39 @@ impl GicTransformer {
         }
     }
 
+    /// Pascal `TGICTransformerObj.WriteVarOutputRecord` (GICTransformer.pas:450):
+    /// the per-GICTransformer record for `Export GICMvars` — the reactive (Mvar)
+    /// demand the winding GIC drives, plus the per-phase GIC magnitude. Mutating:
+    /// recomputes `Iterminal` (and, on the VarCurve path, hunts the curve cache).
+    /// Returns `(GetBus(1), MVarMag, GICperPhase)`; the caller formats the row.
+    pub(crate) fn var_output_record(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> (String, f64, f64) {
+        self.compute_iterminal(sys, node_v);
+        let nphases = self.cd.nphases;
+        // Curr := 0; for i := 1 to Fnphases do Curr += Iterminal[i].
+        let mut curr = Complex64::ZERO;
+        for i in 0..nphases {
+            curr += self.cd.iterminal[i];
+        }
+        let gic_per_phase = curr.norm() / nphases as f64;
+        let mvar_mag = if self.k_specified {
+            self.k_factor * self.kv1 * gic_per_phase / 1000.0
+        } else if let Some(vc) = self.var_curve.as_mut() {
+            // MVA = sqrt(3) * kVLL * I/1000; pu A per phase (avg). Pascal
+            // divides `GICperPhase` by `FMVArating*1000/FkV1/Sqrt3`, then reads
+            // the VarCurve and scales by `FMVARating/Sqrt2`.
+            let pu_curr_mag =
+                gic_per_phase / (self.mva_rating * 1000.0 / self.kv1 / crate::util::sqrt3());
+            vc.get_y_value(pu_curr_mag) * self.mva_rating / 2.0_f64.sqrt()
+        } else {
+            0.0
+        };
+        (self.cd.get_bus(1).to_string(), mvar_mag, gic_per_phase)
+    }
+
     /// Stamp one 2-terminal conductance block `G` between the phases of
     /// consecutive terminals starting at 0-based conductor offset `base`
     /// (Pascal's `for i := base+1 to base+Fnphases` diagonal loop).
