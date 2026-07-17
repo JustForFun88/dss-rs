@@ -21,6 +21,24 @@ use dss_parser::{Parser, ParserVars};
 use crate::elements::general::dynamic_exp::{DYN_SLOT_LENGTH, DynamicExpObj};
 use crate::elements::traits::ElemRef;
 
+/// One `UserDynInit` entry value. Pascal stores each assignment in a
+/// `TJSONObject` as either a `TJSONNumber` (a constant with no RPN) or a
+/// `TJSONString` (a calc-value operand, or a constant that required RPN
+/// evaluation) — see `TDynEqPCE.ParseDynVar` (`DynEqPCE.pas:159-179`). The
+/// distinction drives both the `SaveWrite` dump (`FloatToStr` vs
+/// `CheckForBlanks`) and the AltDSS JSON `"DynInit"` tail (a bare number vs a
+/// quoted string, `CAPI_Obj.pas:759`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum DynInitValue {
+    /// `TJSONNumber` — a plain constant (`Damp = 0` → `0.0`), the evaluated
+    /// double. Serialized as a JSON number.
+    Number(f64),
+    /// `TJSONString` — a calc-value operand (`PShaft = P0` → `"P0"`) or an
+    /// RPN constant (`Mass = (3.5 2 * ...)`), stored as the raw user token.
+    /// Serialized as a JSON string (case preserved).
+    Text(String),
+}
+
 /// `TDynEqPCE` shared data. The host PC element embeds this and exposes it via the
 /// [`DynEqPce`] trait so the edit loop and the dynamics step loop reach it
 /// polymorphically.
@@ -40,9 +58,12 @@ pub struct DynEqPceData {
     /// `DynamicEqPair` — flat (var-index, operand-code) pairs for the
     /// calculated/initialization values (`ParseDynVar` / `Check_If_CalcValue`).
     pub dynamic_eq_pair: Vec<i32>,
-    /// `UserDynInit` — the user dynamic-init assignments as written (var → value
-    /// string), deduped by variable. Its only consumer is `SaveWrite` (Phase 8).
-    pub user_dyn_init: Vec<(String, String)>,
+    /// `UserDynInit` — the user dynamic-init assignments (var → typed value),
+    /// deduped by variable and kept in insertion order (the last write of a
+    /// variable moves to the end, mirroring Pascal `Delete` + `Add`). Consumed
+    /// by the AltDSS JSON `"DynInit"` tail (`CAPI_Obj.pas:752-759`) and, once
+    /// ported, `SaveWrite`.
+    pub user_dyn_init: Vec<(String, DynInitValue)>,
 }
 
 impl DynEqPceData {
@@ -99,21 +120,32 @@ impl DynEqPceData {
         if op >= 0 {
             // A value the host computes from its model (P/Q/Vmag/.../P0/Q0/edp):
             // record the (var index, operand code) pair for the step loop.
+            // Pascal stores the raw operand token as a `TJSONString`.
             self.dynamic_eq_pair.push(var_idx as i32);
             self.dynamic_eq_pair.push(op);
-            self.user_dyn_init.push((variable, value.to_string()));
+            self.user_dyn_init
+                .push((variable, DynInitValue::Text(value.to_string())));
         } else {
             // A constant: evaluate (with RPN) into the values array. A fresh
             // parser defaults `auto_increment = false`, so advance to the token
-            // explicitly before `make_double` reads it.
+            // explicitly before `make_double` reads it. `make_double_ex` also
+            // reports Pascal's `requiredRPN` (more than one RPN token): a plain
+            // number is stored as a `TJSONNumber` (the evaluated double), a value
+            // that required RPN is stored as the raw `TJSONString`
+            // (`DynEqPCE.pas:173-178`).
             let mut parser = Parser::new();
             parser.set_cmd_string(&format!("({value})"));
             parser.next_param(vars);
-            let dbl = parser.make_double(vars).unwrap_or(0.0);
+            let (dbl, required_rpn) = parser.make_double_ex(vars).unwrap_or((0.0, false));
             if var_idx < self.dynamic_eq_vals.len() {
                 self.dynamic_eq_vals[var_idx][0] = dbl;
             }
-            self.user_dyn_init.push((variable, value.to_string()));
+            let stored = if required_rpn {
+                DynInitValue::Text(value.to_string())
+            } else {
+                DynInitValue::Number(dbl)
+            };
+            self.user_dyn_init.push((variable, stored));
         }
         true
     }

@@ -161,10 +161,21 @@ open item is not buried in the §1a archive):
 - **GICMvars export (verb 36) / GICTransformer `WriteVarOutputRecord` → Phase 9 —
   NOT started.** Still `NOT_PORTED` (GAPS WPG.16's only deferred piece; pinned by
   `exec/tests/report.rs`).
-- **AltDSS JSON `DynInit` tail + Full-mode Transformer/AutoTrans WdgCurrents +
-  Capacitor CMatrix → a JSON-export follow-up WP — NOT started.**
-  `report/export/json/build.rs:123` `NOT_PORTED`; goldens exclude the Full path for
-  those classes.
+- **AltDSS JSON `DynInit` tail + Full-mode Transformer WdgCurrents — DONE
+  (og1213, 2026-07-18; see §OG-1.2+1.3).** Capacitor CMatrix = proven UB
+  non-port (uninitialized heap, nondeterministic across processes). New
+  sub-follow-ups surfaced (below).
+- **AutoTrans JSON array-alternative metadata → NOT started (og1213 discovery).**
+  `auto_trans/mod.rs` carries none of the singular/plural `array_alternative` +
+  `REDUNDANT` + `ON_ARRAY` JSON metadata the Transformer has, so its default JSON
+  sweep renders `Buses/Conns/kVs/kVAs` where the oracle renders `Bus/Conn/kV/kVA`.
+  Blocks an AutoTrans JSON golden (incl. Full WdgCurrents, which otherwise works
+  via the shared refresh route). Out of §1.3 scope.
+- **Generator/PVSystem/Storage `ShaftModel`/`ShaftData` hidden under JSON Full →
+  NOT started (og1213 discovery).** They carry `PropFlags::NOT_PORTED` →
+  `hidden_from_full_enum()` skips them, but the 0.14.5 oracle emits them (`""`).
+  Blocks a Generator/Storage *Full* JSON golden; the DynInit tail is pinned in
+  default-family combos instead.
 - **A-Diakoptics `AggregateProfiles` command + D9(d) official-r3723 AD-replay →
   DIAKOPTICS Part II WP-AD.5 — partial.** `exec/command.rs:69` `NOT_PORTED`; WP-AD.6
   threaded children not started (needs MULTITHREADING M2).
@@ -183,6 +194,41 @@ open item is not buried in the §1a archive):
 
 Retired (done): combo fuse-save restore (wt-combo); WP-U1.2 D3 / WP-U1.6 tail (all
 landed pre-rung-exit); Monitor modes 8/10/12 (test-triage wt-t3).
+
+### OG-1.2+1.3 AltDSS JSON tails — DynInit + Full WdgCurrents (orphaned-gaps round, 2026-07-18)
+
+Branch `og1213-json-tails`. Closes `ORPHANED_GAPS.md` §1.2 and the WdgCurrents
+half of §1.3.
+
+- **§1.2 DynInit tail — PORTED.** `obj_to_json_data` now appends the Pascal
+  `TDynEqPCE` `"DynInit"` object (`CAPI_Obj.pas:752-759`) for any object whose
+  `UserDynInit` is non-empty (Generator/PVSystem/Storage, reached via a new
+  `DssObject::as_dyneq` accessor). `DynEqPceData.user_dyn_init` changed from
+  `Vec<(String,String)>` to `Vec<(String,DynInitValue)>` where `DynInitValue` is
+  `Number(f64)` | `Text(String)`: `parse_dyn_var` uses `make_double_ex` to
+  recover Pascal's `requiredRPN`, so a plain constant → JSON number, a
+  calc-value operand or RPN constant → JSON string (raw case). The `"DynInit"`
+  key is emitted literally (never lowercased, even under LowercaseKeys — matches
+  oracle). Golden `dyneq_micro` (Generator + Storage; default-family combos).
+- **§1.3 Full WdgCurrents — PORTED (refresh route).** Added
+  `Dss::obj_to_json_mut` / `class_batch_to_json_mut`: they run
+  `refresh_vterminal_if_marked` before the `&self` builder, so Full-mode
+  `READS_VTERMINAL` result strings (Transformer/AutoTrans `WdgCurrents`) render
+  from the current solution exactly as Pascal's self-refreshing getter does
+  (pre-solve = all-zero phasor list). Golden driver uses the `_mut` routes.
+  `transformer_micro` flipped off `skip_full` → Full WdgCurrents now pinned
+  byte-exact. Fixed en route: Transformer/AutoTrans `BHCurrent`/`BHFlux` (newer
+  r4064 props absent from the 0.14.5 oracle) leaked into Full JSON as `null` —
+  now `SUPPRESS_JSON` like their sibling `BHPoints`.
+- **§1.3 Capacitor CMatrix — proven UB, NOT reproduced.** The oracle renders
+  Capacitor `CMatrix` under Full from an uninitialized `pDoubleArray` (denormal
+  garbage: `2.1e-308`, `4.9e-318` …) that **differs across oracle processes**
+  (probed twice), for both kvar- and explicit-`cmatrix`-defined caps. Per the
+  UB/state-mutating-read rule it is not reproduced (like the multi-meter OOB
+  case); decks with capacitors stay `skip_full`.
+- Gate green (fmt + clippy + `cargo test --workspace`). Out-of-scope discoveries
+  recorded in Standing follow-ups (AutoTrans JSON array-alt metadata; Generator
+  ShaftModel/ShaftData hidden under Full).
 
 ---
 

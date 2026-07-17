@@ -1,0 +1,198 @@
+{
+  "name": "dyneq_micro",
+  "commands": [
+    "new circuit.dyn basekv=24 bus1=sourcebus",
+    "new DynamicExp.gde nvariables=6 varnames=[Speed Mass PShaft Pterm Damp theta] expression=[Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *; theta dt = Speed]",
+    "new Generator.g1 Bus1=sourcebus kV=24 kW=100 kvar=50 Model=1 DynamicEq=gde",
+    "~ Damp = 0 PShaft = P0 Pterm = P Speed = 0 theta = Edp Mass = (3.5 2 * 2220000000 376.99112 / *)",
+    "~ DynOut = [Speed theta]",
+    "new DynamicExp.stde nvariables=2 varnames=[wp wq] expression=[wp dt = 0; wq dt = 0]",
+    "new Storage.st1 phases=3 bus1=sourcebus kv=24 kwrated=100 kwhrated=200 DynamicEq=stde",
+    "~ wp = 7 wq = (4 5 +)",
+    "set voltagebases=[24]",
+    "calcv"
+  ],
+  "combo_names": [
+    "default",
+    "pretty",
+    "include_class",
+    "enum_as_int",
+    "full_names",
+    "lowercase_keys"
+  ],
+  "captures": [
+    {
+      "kind": "obj",
+      "target": "Generator.g1",
+      "opts": "default",
+      "bits": 0,
+      "expected": "{\"Name\":\"g1\",\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"DynamicEq\":\"gde\",\"DynOut\":[\"speed\",\"theta\"],\"DynInit\":{\"damp\":0.0000000000000000E+000,\"pshaft\":\"P0\",\"pterm\":\"P\",\"speed\":0.0000000000000000E+000,\"theta\":\"Edp\",\"mass\":\"3.5 2 * 2220000000 376.99112 / *\"}}"
+    },
+    {
+      "kind": "obj",
+      "target": "Generator.g1",
+      "opts": "pretty",
+      "bits": 16,
+      "expected": "{\r\n  \"Name\" : \"g1\",\r\n  \"Bus1\" : \"sourcebus\",\r\n  \"kV\" : 2.4000000000000000E+001,\r\n  \"kW\" : 1.0000000000000000E+002,\r\n  \"kvar\" : 5.0000000000000000E+001,\r\n  \"Model\" : 1,\r\n  \"DynamicEq\" : \"gde\",\r\n  \"DynOut\" : [\r\n    \"speed\",\r\n    \"theta\"\r\n  ],\r\n  \"DynInit\" : {\r\n    \"damp\" : 0.0000000000000000E+000,\r\n    \"pshaft\" : \"P0\",\r\n    \"pterm\" : \"P\",\r\n    \"speed\" : 0.0000000000000000E+000,\r\n    \"theta\" : \"Edp\",\r\n    \"mass\" : \"3.5 2 * 2220000000 376.99112 / *\"\r\n  }\r\n}"
+    },
+    {
+      "kind": "obj",
+      "target": "Generator.g1",
+      "opts": "include_class",
+      "bits": 64,
+      "expected": "{\"DSSClass\":\"Generator\",\"Name\":\"g1\",\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"DynamicEq\":\"gde\",\"DynOut\":[\"speed\",\"theta\"],\"DynInit\":{\"damp\":0.0000000000000000E+000,\"pshaft\":\"P0\",\"pterm\":\"P\",\"speed\":0.0000000000000000E+000,\"theta\":\"Edp\",\"mass\":\"3.5 2 * 2220000000 376.99112 / *\"}}"
+    },
+    {
+      "kind": "obj",
+      "target": "Generator.g1",
+      "opts": "enum_as_int",
+      "bits": 4,
+      "expected": "{\"Name\":\"g1\",\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"DynamicEq\":\"gde\",\"DynOut\":[\"speed\",\"theta\"],\"DynInit\":{\"damp\":0.0000000000000000E+000,\"pshaft\":\"P0\",\"pterm\":\"P\",\"speed\":0.0000000000000000E+000,\"theta\":\"Edp\",\"mass\":\"3.5 2 * 2220000000 376.99112 / *\"}}"
+    },
+    {
+      "kind": "obj",
+      "target": "Generator.g1",
+      "opts": "full_names",
+      "bits": 8,
+      "expected": "{\"Name\":\"g1\",\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"DynamicEq\":\"DynamicExp.gde\",\"DynOut\":[\"speed\",\"theta\"],\"DynInit\":{\"damp\":0.0000000000000000E+000,\"pshaft\":\"P0\",\"pterm\":\"P\",\"speed\":0.0000000000000000E+000,\"theta\":\"Edp\",\"mass\":\"3.5 2 * 2220000000 376.99112 / *\"}}"
+    },
+    {
+      "kind": "obj",
+      "target": "Generator.g1",
+      "opts": "lowercase_keys",
+      "bits": 128,
+      "expected": "{\"Name\":\"g1\",\"bus1\":\"sourcebus\",\"kv\":2.4000000000000000E+001,\"kw\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"model\":1,\"dynamiceq\":\"gde\",\"dynout\":[\"speed\",\"theta\"],\"DynInit\":{\"damp\":0.0000000000000000E+000,\"pshaft\":\"P0\",\"pterm\":\"P\",\"speed\":0.0000000000000000E+000,\"theta\":\"Edp\",\"mass\":\"3.5 2 * 2220000000 376.99112 / *\"}}"
+    },
+    {
+      "kind": "obj",
+      "target": "Storage.st1",
+      "opts": "default",
+      "bits": 0,
+      "expected": "{\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"DynamicEq\":\"stde\",\"DynInit\":{\"wp\":7.0000000000000000E+000,\"wq\":\"4 5 +\"}}"
+    },
+    {
+      "kind": "obj",
+      "target": "Storage.st1",
+      "opts": "pretty",
+      "bits": 16,
+      "expected": "{\r\n  \"Name\" : \"st1\",\r\n  \"PF\" : 1.0000000000000000E+000,\r\n  \"Phases\" : 3,\r\n  \"Bus1\" : \"sourcebus\",\r\n  \"kV\" : 2.4000000000000000E+001,\r\n  \"kWRated\" : 1.0000000000000000E+002,\r\n  \"kWhRated\" : 2.0000000000000000E+002,\r\n  \"DynamicEq\" : \"stde\",\r\n  \"DynInit\" : {\r\n    \"wp\" : 7.0000000000000000E+000,\r\n    \"wq\" : \"4 5 +\"\r\n  }\r\n}"
+    },
+    {
+      "kind": "obj",
+      "target": "Storage.st1",
+      "opts": "include_class",
+      "bits": 64,
+      "expected": "{\"DSSClass\":\"Storage\",\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"DynamicEq\":\"stde\",\"DynInit\":{\"wp\":7.0000000000000000E+000,\"wq\":\"4 5 +\"}}"
+    },
+    {
+      "kind": "obj",
+      "target": "Storage.st1",
+      "opts": "enum_as_int",
+      "bits": 4,
+      "expected": "{\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"DynamicEq\":\"stde\",\"DynInit\":{\"wp\":7.0000000000000000E+000,\"wq\":\"4 5 +\"}}"
+    },
+    {
+      "kind": "obj",
+      "target": "Storage.st1",
+      "opts": "full_names",
+      "bits": 8,
+      "expected": "{\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"DynamicEq\":\"DynamicExp.stde\",\"DynInit\":{\"wp\":7.0000000000000000E+000,\"wq\":\"4 5 +\"}}"
+    },
+    {
+      "kind": "obj",
+      "target": "Storage.st1",
+      "opts": "lowercase_keys",
+      "bits": 128,
+      "expected": "{\"Name\":\"st1\",\"pf\":1.0000000000000000E+000,\"phases\":3,\"bus1\":\"sourcebus\",\"kv\":2.4000000000000000E+001,\"kwrated\":1.0000000000000000E+002,\"kwhrated\":2.0000000000000000E+002,\"dynamiceq\":\"stde\",\"DynInit\":{\"wp\":7.0000000000000000E+000,\"wq\":\"4 5 +\"}}"
+    },
+    {
+      "kind": "batch",
+      "target": "Generator",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"g1\",\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"DynamicEq\":\"gde\",\"DynOut\":[\"speed\",\"theta\"],\"DynInit\":{\"damp\":0.0000000000000000E+000,\"pshaft\":\"P0\",\"pterm\":\"P\",\"speed\":0.0000000000000000E+000,\"theta\":\"Edp\",\"mass\":\"3.5 2 * 2220000000 376.99112 / *\"}}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Generator",
+      "opts": "pretty",
+      "bits": 16,
+      "expected": "[\r\n  {\r\n    \"Name\" : \"g1\",\r\n    \"Bus1\" : \"sourcebus\",\r\n    \"kV\" : 2.4000000000000000E+001,\r\n    \"kW\" : 1.0000000000000000E+002,\r\n    \"kvar\" : 5.0000000000000000E+001,\r\n    \"Model\" : 1,\r\n    \"DynamicEq\" : \"gde\",\r\n    \"DynOut\" : [\r\n      \"speed\",\r\n      \"theta\"\r\n    ],\r\n    \"DynInit\" : {\r\n      \"damp\" : 0.0000000000000000E+000,\r\n      \"pshaft\" : \"P0\",\r\n      \"pterm\" : \"P\",\r\n      \"speed\" : 0.0000000000000000E+000,\r\n      \"theta\" : \"Edp\",\r\n      \"mass\" : \"3.5 2 * 2220000000 376.99112 / *\"\r\n    }\r\n  }\r\n]"
+    },
+    {
+      "kind": "batch",
+      "target": "Generator",
+      "opts": "include_class",
+      "bits": 64,
+      "expected": "[{\"DSSClass\":\"Generator\",\"Name\":\"g1\",\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"DynamicEq\":\"gde\",\"DynOut\":[\"speed\",\"theta\"],\"DynInit\":{\"damp\":0.0000000000000000E+000,\"pshaft\":\"P0\",\"pterm\":\"P\",\"speed\":0.0000000000000000E+000,\"theta\":\"Edp\",\"mass\":\"3.5 2 * 2220000000 376.99112 / *\"}}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Generator",
+      "opts": "enum_as_int",
+      "bits": 4,
+      "expected": "[{\"Name\":\"g1\",\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"DynamicEq\":\"gde\",\"DynOut\":[\"speed\",\"theta\"],\"DynInit\":{\"damp\":0.0000000000000000E+000,\"pshaft\":\"P0\",\"pterm\":\"P\",\"speed\":0.0000000000000000E+000,\"theta\":\"Edp\",\"mass\":\"3.5 2 * 2220000000 376.99112 / *\"}}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Generator",
+      "opts": "full_names",
+      "bits": 8,
+      "expected": "[{\"Name\":\"g1\",\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"DynamicEq\":\"DynamicExp.gde\",\"DynOut\":[\"speed\",\"theta\"],\"DynInit\":{\"damp\":0.0000000000000000E+000,\"pshaft\":\"P0\",\"pterm\":\"P\",\"speed\":0.0000000000000000E+000,\"theta\":\"Edp\",\"mass\":\"3.5 2 * 2220000000 376.99112 / *\"}}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Generator",
+      "opts": "lowercase_keys",
+      "bits": 128,
+      "expected": "[{\"Name\":\"g1\",\"bus1\":\"sourcebus\",\"kv\":2.4000000000000000E+001,\"kw\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"model\":1,\"dynamiceq\":\"gde\",\"dynout\":[\"speed\",\"theta\"],\"DynInit\":{\"damp\":0.0000000000000000E+000,\"pshaft\":\"P0\",\"pterm\":\"P\",\"speed\":0.0000000000000000E+000,\"theta\":\"Edp\",\"mass\":\"3.5 2 * 2220000000 376.99112 / *\"}}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"DynamicEq\":\"stde\",\"DynInit\":{\"wp\":7.0000000000000000E+000,\"wq\":\"4 5 +\"}}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "pretty",
+      "bits": 16,
+      "expected": "[\r\n  {\r\n    \"Name\" : \"st1\",\r\n    \"PF\" : 1.0000000000000000E+000,\r\n    \"Phases\" : 3,\r\n    \"Bus1\" : \"sourcebus\",\r\n    \"kV\" : 2.4000000000000000E+001,\r\n    \"kWRated\" : 1.0000000000000000E+002,\r\n    \"kWhRated\" : 2.0000000000000000E+002,\r\n    \"DynamicEq\" : \"stde\",\r\n    \"DynInit\" : {\r\n      \"wp\" : 7.0000000000000000E+000,\r\n      \"wq\" : \"4 5 +\"\r\n    }\r\n  }\r\n]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "include_class",
+      "bits": 64,
+      "expected": "[{\"DSSClass\":\"Storage\",\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"DynamicEq\":\"stde\",\"DynInit\":{\"wp\":7.0000000000000000E+000,\"wq\":\"4 5 +\"}}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "enum_as_int",
+      "bits": 4,
+      "expected": "[{\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"DynamicEq\":\"stde\",\"DynInit\":{\"wp\":7.0000000000000000E+000,\"wq\":\"4 5 +\"}}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "full_names",
+      "bits": 8,
+      "expected": "[{\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"DynamicEq\":\"DynamicExp.stde\",\"DynInit\":{\"wp\":7.0000000000000000E+000,\"wq\":\"4 5 +\"}}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "lowercase_keys",
+      "bits": 128,
+      "expected": "[{\"Name\":\"st1\",\"pf\":1.0000000000000000E+000,\"phases\":3,\"bus1\":\"sourcebus\",\"kv\":2.4000000000000000E+001,\"kwrated\":1.0000000000000000E+002,\"kwhrated\":2.0000000000000000E+002,\"dynamiceq\":\"stde\",\"DynInit\":{\"wp\":7.0000000000000000E+000,\"wq\":\"4 5 +\"}}]"
+    }
+  ],
+  "schema": 1,
+  "oracle": {
+    "dss_python": "0.15.7",
+    "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+  }
+}
