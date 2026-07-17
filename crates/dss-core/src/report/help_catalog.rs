@@ -2142,6 +2142,10 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ("Fuse.action", "DEPRECATED. See \"State\" property."),
     ("Fuse.basefreq", "Base Frequency for ratings."),
     (
+        "Fuse.curvemultiplier",
+        "Current multiplier for the TCC curve. Defaults to 1.0.",
+    ),
+    (
         "Fuse.delay",
         "Fixed delay time (sec) added to Fuse blowing time determined from the TCC curve. Default is 0.0. Used to represent fuse clearing time or any other delay.",
     ),
@@ -2151,7 +2155,11 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ),
     (
         "Fuse.fusecurve",
-        "Name of the TCC Curve object that determines the fuse blowing.  Must have been previously defined as a TCC_Curve object. Default is \"Tlink\". Multiplying the current values in the curve by the \"RatedCurrent\" value gives the actual current.",
+        "Name of the TCC Curve object that determines the fuse blowing.  Must have been previously defined as a TCC_Curve object or specified as \"none\" (ignored). If \"none\", fuse sampling will be skipped and device will not blow for any current level. Default is \"none\". Multiplying the current values in the curve by the \"CurveMultiplier\" value gives the actual current.",
+    ),
+    (
+        "Fuse.interruptingrating",
+        "Fuse rated interrupting current in Amps. Defaults to 0. Not used internally for either power flow or reporting.",
     ),
     (
         "Fuse.like",
@@ -2171,7 +2179,7 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ),
     (
         "Fuse.ratedcurrent",
-        "Multiplier or actual phase amps for the phase TCC curve.  Defaults to 1.0.",
+        "Fuse continuous rated current in Amps. Defaults to 0. Not used internally for either power flow or reporting.",
     ),
     (
         "Fuse.state",
@@ -4229,9 +4237,7 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ),
     (
         "Recloser.like",
-        "Make like another object, e.g.:
-
-New Capacitor.C2 like=c1  ...",
+        "Make like another object, e.g.:\n\nNew Capacitor.C2 like=c1  ...",
     ),
     (
         "Recloser.lock",
@@ -4515,15 +4521,19 @@ New Capacitor.C2 like=c1  ...",
     ("Relay.basefreq", "Base Frequency for ratings."),
     (
         "Relay.breakertime",
-        "Fixed delay time (sec) added to relay time. Default is 0.0. Designed to represent breaker time or some other delay after a trip decision is made.Use Delay property for setting a fixed trip time delay.Added to trip time of current and voltage relays. Could use in combination with inst trip value to obtain a definite time overcurrent relay.",
+        "DEPRECATED. See \"MechanicalDelay\" property.",
     ),
     (
         "Relay.debugtrace",
-        "{Yes/True* | No/False* } Default is No for Relay. Write extra details to Eventlog.",
+        "{Yes/True* | No/False} Default is No for Relay. Write extra details to Eventlog.",
+    ),
+    (
+        "Relay.definitetimedelay",
+        "Trip time delay (sec) for DEFINITE TIME relays. Default is 0.0 for current and DOC relays. For overcurrent relays, if>0 and specified pickups (ground and/or phase) are excedeed, definite time operation is used instead of curves. For DOC relay, if>0 definite time operation is used instead of curves. Used by Generic, RevPower, 46 and 47 relays. Defaults to 0.1 s for these relays.",
     ),
     (
         "Relay.delay",
-        "Trip time delay (sec) for DEFINITE TIME relays. Default is 0.0 for current, voltage and DOC relays. If >0 then this value is used instead of curves. Used by Generic, RevPower, 46 and 47 relays. Defaults to 0.1 s for these relays.",
+        "DEPRECATED. See \"DefiniteTimeDelay\" property.",
     ),
     (
         "Relay.distreverse",
@@ -4539,7 +4549,7 @@ New Capacitor.C2 like=c1  ...",
     ),
     (
         "Relay.doc_phasecurveinner",
-        "Name of the TCC Curve object that determines the phase trip for operation in inner region for DOC relay. Must have been previously defined as a TCC_Curve object. Default is none (ignored). Multiplying the current values in the curve by the \"DOC_PhaseTripInner\" value gives the actual current.",
+        "Name of the TCC Curve object that determines the phase trip for operation in inner region for DOC relay. Must have been previously defined as a TCC_Curve object or specified as \"none\" (ignored). Default is \"none\". Multiplying the current values in the curve by the \"DOC_PhaseTripInner\" value gives the actual current.",
     ),
     (
         "Relay.doc_phasetripinner",
@@ -4563,7 +4573,7 @@ New Capacitor.C2 like=c1  ...",
     ),
     (
         "Relay.doc_tripsettinglow",
-        "Resistive trip setting for low-current line. Default is 0.",
+        "Resistive trip setting for low-current line.  Default is 0.",
     ),
     (
         "Relay.doc_tripsettingmag",
@@ -4575,19 +4585,35 @@ New Capacitor.C2 like=c1  ...",
     ),
     (
         "Relay.eventlog",
-        "{Yes/True | No/False* } Default is No for Relay. Write trips, reclose and reset events to EventLog.",
+        "{Yes/True* | No/False} Default is Yes for Relay. Write trips, reclose and reset events to EventLog.",
+    ),
+    (
+        "Relay.generic_overtrip",
+        "Trip setting (high value) for Generic relay variable. Relay trips in definite time if value of variable exceeds this value.",
+    ),
+    (
+        "Relay.generic_undertrip",
+        "Trip setting (low value) for Generic relay variable. Relay trips in definite time if value of variable is less than this value.",
+    ),
+    (
+        "Relay.generic_variable",
+        "Name of variable in PC Elements being monitored. Only applies to Generic relay.",
     ),
     (
         "Relay.groundcurve",
-        "Name of the TCC Curve object that determines the ground trip.  Must have been previously defined as a TCC_Curve object. Default is none (ignored).For overcurrent relay, multiplying the current values in the curve by the \"groundtrip\" valuw gives the actual current.",
+        "DEPRECATED. See \"OC_GndCurve\" property.",
     ),
     (
         "Relay.groundinst",
-        "Actual  amps for instantaneous ground trip which is assumed to happen in 0.01 sec + Delay Time.Default is 0.0, which signifies no inst trip.",
+        "DEPRECATED. See \"OC_GndInst\" property.",
     ),
     (
         "Relay.groundtrip",
-        "Multiplier or actual ground amps (3I0) for the ground TCC curve.  Defaults to 1.0.",
+        "DEPRECATED. See \"OC_GndPickup\" property.",
+    ),
+    (
+        "Relay.interruptingrating",
+        "Controlled conducting element's rated interrupting current in Amps. Defaults to 0. Not used internally for either power flow or reporting.",
     ),
     (
         "Relay.kvbase",
@@ -4596,6 +4622,14 @@ New Capacitor.C2 like=c1  ...",
     (
         "Relay.like",
         "Make like another object, e.g.:\n\nNew Capacitor.C2 like=c1  ...",
+    ),
+    (
+        "Relay.lock",
+        "{Yes/True | No*/False} Controlled switch is locked in its present open / closed state or unlocked. When locked, the relay will not respond to either a manual state change issued by the user or a state change issued internally by OpenDSS when Reseting the control. Note this locking mechanism is different from the relay automatic lockout after specifed Shots.",
+    ),
+    (
+        "Relay.mechanicaldelay",
+        "Fixed delay time (sec) added to relay time. Default is 0.0. Designed to represent breaker time or some other delay after a trip decision is made.Use Delay property for setting a fixed trip time delay.Added to trip time of current and voltage relays. Could use in combination with inst trip value to obtain a definite time overcurrent relay.",
     ),
     (
         "Relay.mground",
@@ -4615,43 +4649,78 @@ New Capacitor.C2 like=c1  ...",
     ),
     (
         "Relay.normal",
-        "{Open | Closed} Normal state of the relay. The relay reverts to this state for reset, change of mode, etc. Defaults to \"State\" if not specifically declared.",
+        "ARRAY of strings {Open | Closed} representing the Normal state of the relay in each phase of the controlled element. The relay reverts to this state for reset, change of mode, etc. Defaults to \"State\" if not specifically declared.  Setting this property to {Open | Closed} sets the normal state to the specified value for all phases (ganged operation).",
+    ),
+    (
+        "Relay.oc_gndcurve",
+        "Name of the TCC Curve object that determines the ground trip for overcurrent relay.  Must have been previously defined as a TCC_Curve object or specified as \"none\" (ignored). Default is \"none\". For overcurrent relay, multiplying the current values in the curve by the \"GndPickup\" value gives the actual current.",
+    ),
+    (
+        "Relay.oc_gndinst",
+        "Actual amps for instantaneous ground trip for overcurrent relay which is assumed to happen in 0.01 sec + Mechanical Delay Time. Default is 0.0, which signifies no inst trip.",
+    ),
+    (
+        "Relay.oc_gndpickup",
+        "Multiplier for the ground TCC curve for overcurrent relay OR actual ground amps (3I0) when operating with definite time (see \"DefiniteTimeDelay\" property). Defaults to 1.0.",
+    ),
+    (
+        "Relay.oc_tdgnd",
+        "Time dial for Ground trip curve for overcurrent relay. Multiplier on time axis of specified curve. Default=1.0.",
     ),
     (
         "Relay.overtrip",
-        "Trip setting (high value) for Generic relay variable.  Relay trips in definite time if value of variable exceeds this value.",
+        "DEPRECATED. See \"Generic_OverTrip\" property.",
     ),
     (
         "Relay.overvoltcurve",
-        "TCC Curve object to use for overvoltage relay.  Curve is assumed to be defined with per unit voltage values. Voltage base should be defined for the relay. Default is none (ignored).",
+        "DEPRECATED. See \"Voltage_OVCurve\" property.",
+    ),
+    ("Relay.phasecurve", "DEPRECATED. See \"PhCurve\" property."),
+    ("Relay.phaseinst", "DEPRECATED. See \"PhInst\" property."),
+    ("Relay.phasetrip", "DEPRECATED. See \"PhPickup\" property."),
+    (
+        "Relay.phcurve",
+        "Name of the TCC Curve object that determines the phase trip.  Must have been previously defined as a TCC_Curve object or specified as \"none\" (ignored). Default is \"none\". For overcurrent relay, multiplying the current values in the curve by the \"PhPickup\" value gives the actual current.",
     ),
     (
-        "Relay.phasecurve",
-        "Name of the TCC Curve object that determines the phase trip.  Must have been previously defined as a TCC_Curve object. Default is none (ignored). For overcurrent relay, multiplying the current values in the curve by the \"phasetrip\" value gives the actual current.",
+        "Relay.phinst",
+        "Actual  amps (Current relay) or kW (reverse power relay) for instantaneous phase trip which is assumed to happen in 0.01 sec + Mechanical Delay Time. Default is 0.0, which signifies no inst trip. Use this value for specifying the Reverse Power threshold (kW) for reverse power relays.",
     ),
     (
-        "Relay.phaseinst",
-        "Actual  amps (Current relay) or kW (reverse power relay) for instantaneous phase trip which is assumed to happen in 0.01 sec + Delay Time. Default is 0.0, which signifies no inst trip. Use this value for specifying the Reverse Power threshold (kW) for reverse power relays.",
+        "Relay.phpickup",
+        "Multiplier for the phase TCC curve for overcurrent relay OR actual phase amps when operating with definite time (see \"DefiniteTimeDelay\" property). Defaults to 1.0.",
     ),
     (
-        "Relay.phasetrip",
-        "Multiplier or actual phase amps for the phase TCC curve.  Defaults to 1.0.",
+        "Relay.ratedcurrent",
+        "Controlled conducting element's continuous rated current in Amps. Defaults to 0. Not used internally for either power flow or reporting.",
     ),
     (
         "Relay.recloseintervals",
-        "Array of reclose intervals. If none, specify \"NONE\". Default for overcurrent relay is (0.5, 2.0, 2.0) seconds. Default for a voltage relay is (5.0). In a voltage relay, this is  seconds after restoration of voltage that the reclose occurs. Reverse power relay is one shot to lockout, so this is ignored.  A locked out relay must be closed manually (set action=close).",
+        "Array of reclose intervals. If none, specify \"NONE\". Default for overcurrent relay is (0.5, 2.0, 2.0) seconds. Default for a voltage relay is (5.0). In a voltage relay, this is seconds after restoration of voltage that the reclose occurs. Reverse power relay is one shot to lockout, so this is ignored.  A locked out relay must be closed manually (set action=close).",
     ),
     (
         "Relay.reset",
+        "{Yes/True | No*/False} If Yes, forces Reset of relay to Normal state and removes Lock independently of any internal reset command for mode change, etc.",
+    ),
+    (
+        "Relay.resettime",
         "Reset time in sec for relay.  Default is 15. If this much time passes between the last pickup event, and the relay has not locked out, the operation counter resets.",
     ),
     (
         "Relay.shots",
-        "Number of shots to lockout.  Default is 4. This is one more than the number of reclose intervals.",
+        "Number of shots to lockout. Default is 4. This is one more than the number of reclose intervals.",
+    ),
+    (
+        "Relay.singlephlockout",
+        "{Yes/True | No*/False} Enables single-phase lockout for multi-phase controlled elements with single-phase tripping. Does not have impact if single-phase trip is not enabled.",
+    ),
+    (
+        "Relay.singlephtrip",
+        "{Yes/True | No*/False} Enables single-phase tripping and reclosing for multi-phase controlled elements. Previously locked out phases do not operate/reclose even considering multi-phase tripping. Applies to overcurrent relays only (type=current). Ignored for other types.",
     ),
     (
         "Relay.state",
-        "{Open | Closed} Actual state of the relay. Upon setting, immediately forces state of the relay, overriding the Relay control. Simulates manual control on relay. Defaults to Closed. \"Open\" causes the controlled element to open and lock out. \"Closed\" causes the controlled element to close and the relay to reset to its first operation.",
+        "ARRAY of strings {Open | Closed} representing the Actual state of the relay in each phase of the controlled element. Upon setting, immediately forces the state of the relay. Simulates manual control on the controlled relay. Defaults to Closed for all phases. Setting this property to {Open | Closed} sets the actual state to the specified value for all phases (ganged operation). \"Open\" causes the controlled element or respective phase to open and lock out. \"Closed\" causes the controlled element or respective phase to close and the relay to reset to its first operation.",
     ),
     (
         "Relay.switchedobj",
@@ -4661,29 +4730,35 @@ New Capacitor.C2 like=c1  ...",
         "Relay.switchedterm",
         "Number of the terminal of the controlled element in which the switch is controlled by the Relay. 1 or 2, typically.  Default is 1.",
     ),
+    ("Relay.tdground", "DEPRECATED. See \"OC_TDGnd\" property."),
     (
-        "Relay.tdground",
-        "Time dial for Ground trip curve. Multiplier on time axis of specified curve. Default=1.0.",
-    ),
-    (
-        "Relay.tdphase",
+        "Relay.tdph",
         "Time dial for Phase trip curve. Multiplier on time axis of specified curve. Default=1.0.",
     ),
+    ("Relay.tdphase", "DEPRECATED. See \"TDPh\" property."),
     (
         "Relay.type",
-        "One of a legal relay type:\n  Current\n  Voltage\n  Reversepower\n  46 (neg seq current)\n  47 (neg seq voltage)\n  Generic (generic over/under relay)\n  Distance\n  TD21\n  DOC (directional overcurrent)\n\nDefault is overcurrent relay (Current) Specify the curve and pickup settings appropriate for each type. Generic relays monitor PC Element Control variables and trip on out of over/under range in definite time.",
+        "One of a legal relay type:\n  Current\n  Voltage\n  Reversepower\n  46 (neg seq current)\n  47 (neg seq voltage)\n  Generic (generic over/under relay)\n  Distance\n  TD21\n  DOC (directional overcurrent)\n\nDefault is overcurrent relay (Current). Specify the curve and pickup settings appropriate for each type. Generic relays monitor PC Element Control variables and trip on out of over/under range in definite time.",
     ),
     (
         "Relay.undertrip",
-        "Trip setting (low value) for Generic relay variable.  Relay trips in definite time if value of variable is less than this value.",
+        "DEPRECATED. See \"Generic_UnderTrip\" property.",
     ),
     (
         "Relay.undervoltcurve",
-        "TCC Curve object to use for undervoltage relay.  Curve is assumed to be defined with per unit voltage values. Voltage base should be defined for the relay. Default is none (ignored).",
+        "DEPRECATED. See \"Voltage_UVCurve\" property.",
     ),
     (
         "Relay.variable",
-        "Name of variable in PC Elements being monitored.  Only applies to Generic relay.",
+        "DEPRECATED. See \"Generic_Variable\" property.",
+    ),
+    (
+        "Relay.voltage_ovcurve",
+        "TCC Curve object to use for overvoltage relay. Must have been previously defined as a TCC_Curve object or specified as \"none\" (ignored). Default is \"none\". Curve is assumed to be defined with per unit voltage values. Voltage base should be defined for the relay. Default is none (ignored).",
+    ),
+    (
+        "Relay.voltage_uvcurve",
+        "TCC Curve object to use for undervoltage relay. Must have been previously defined as a TCC_Curve object or specified as \"none\" (ignored). Default is \"none\". Curve is assumed to be defined with per unit voltage values. Voltage base should be defined for the relay. Default is none (ignored).",
     ),
     (
         "Relay.z0ang",
@@ -5324,15 +5399,9 @@ New Capacitor.C2 like=c1  ...",
         "StorageController.yearly",
         "Dispatch loadshape object, If any, for Yearly solution Mode.",
     ),
-    (
-        "SwtControl.action",
-        "{Open | Close}  After specified delay time, and if not locked, causes the controlled switch to open or close. ",
-    ),
+    ("SwtControl.action", "DEPRECATED. See \"State\" property."),
     ("SwtControl.basefreq", "Base Frequency for ratings."),
-    (
-        "SwtControl.delay",
-        "Operating time delay (sec) of the switch. Defaults to 120.",
-    ),
+    ("SwtControl.delay", "DEPRECATED."),
     (
         "SwtControl.enabled",
         "{Yes|No or True|False} Indicates whether this element is enabled.",
@@ -5343,11 +5412,15 @@ New Capacitor.C2 like=c1  ...",
     ),
     (
         "SwtControl.lock",
-        "{Yes | No} Delayed action. Sends CTRL_LOCK or CTRL_UNLOCK message to control queue. After delay time, controlled switch is locked in its present open / close state or unlocked. Switch will not respond to either manual (Action) or automatic (APIs) control or internal OpenDSS Reset when locked.",
+        "{Yes | No} Controlled switch is locked in its present open / closed state or unlocked. When locked, the switch will not respond to either a manual state change issued by the user or a state change issued internally by OpenDSS when reseting the control.",
     ),
     (
         "SwtControl.normal",
-        "{Open | Closed] Normal state of the switch. If not Locked, the switch reverts to this state for reset, change of mode, etc. Defaults to first Action or State specified if not specifically declared.",
+        "ARRAY of strings {Open | Closed} representing the Normal state of the switch in each phase of the controlled element. The switch reverts to this state for reset, change of mode, etc. Defaults to \"State\" if not specifically declared.  Setting this property to {Open | Closed} sets the normal state to the specified value for all phases (ganged operation).",
+    ),
+    (
+        "SwtControl.ratedcurrent",
+        "Switch continuous rated current in Amps. Defaults to 0. Not used internally for either power flow or reporting.",
     ),
     (
         "SwtControl.reset",
@@ -5355,7 +5428,7 @@ New Capacitor.C2 like=c1  ...",
     ),
     (
         "SwtControl.state",
-        "{Open | Closed] Present state of the switch. Upon setting, immediately forces state of switch.",
+        "ARRAY of strings {Open | Closed} representing the Actual state of the switch in each phase of the controlled element. Upon setting, immediately forces the state of the switch(es). Simulates manual control on Switch. Defaults to Closed for all phases. Setting this property to {Open | Closed} sets the actual state to the specified value for all phases (ganged operation).",
     ),
     (
         "SwtControl.switchedobj",
