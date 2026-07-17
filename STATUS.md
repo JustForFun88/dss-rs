@@ -7,7 +7,58 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-17 — **WP-U2.5 (protection report/log surface) + WP-U2.6
+Last updated: 2026-07-17 — **UPGRADE Rung 2 EXITED — WP-U2.6 the 11.0.0.1 (r4133)
+parity claim (branch wt-u26).** The opt-in EPRI sweep
+`DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1` is **GREEN** (326 matched, 70
+known-diverged, 4 known-skipped, **0 NEW** of 400; 103 target-rev `oracle`-flipped
+cases excluded — gated in the mandatory gate). Every surviving Rust↔r4133
+divergence is a documented `known_diffs.json` class: FPC↔Delphi last-ulp /
+display-precision floors, dss_capi's bracketed numeric-array PropertyValue render
+(`property-format-brackets` ×10 — the WP-U2.5-deferred numeric-array class,
+**closed** here), EPRI's InvControl event-log trailing space
+(`eventlog-trailing-space` ×6 — the WP-U2.3-deferred class, **keeps** its r4133 tag,
+still witnessed), or the four EPRI-DLL #303 crash decks. The **58** raw NEW
+divergences were all dispositioned (mandatory gate green ⇒ port == pinned 0.14.5 ⇒
+the r4133 gap is purely FPC↔Delphi, never a Rung-2 regression): 48 cases (44 diff
++ 4 skip) extend an existing r4088 floor/skip entry on a **behaviorally-identical
+r4088=r4133 path** (source-verified; 14 entries), 10 cases → 3 new entries
+(`storage-pctstored-display-precision`, `monitor-seq-magnitude-drift`,
+`harmonics-ieee519-r4133`); separately 2 entries narrowed to r3723
+(`monitor-header-whitespace` now handled by the harness header-normalization,
+`meter-zonepce-count` decks now match). **Direction check** — `r4088` re-run green
+(329 matched, 0 NEW after the same %stored/monitor_seqmag cataloging); the only
+sweep-set difference vs r4133 is the r4133-only IEEE_519 harmonics move + the
+r4088-only harmonics-Y witness = exactly the r4088→r4133 delta this rung owns. The
+**IEEE_519 harmonics surprise is source-confirmed "nothing to port"**
+(SolutionAlgs/Load/Spectrum/YMatrix byte-identical r4088=r4133; Solution.pas diff =
+progress-form + commented debug only) — a determinism-proven build-drift amplified
+by the 519-filter near-resonance, cataloged `harmonics-ieee519-r4133`; the
+InductionMachine converged-flip was already resolved by WP-U2.1. `DIVERGENCES.md`
++ `known_diffs_burndown.md` carry the full Rung-2 exit record; `PLAN_SEQUENCE.md`
+marks UPGRADE COMPLETE; new root `README.md` states the parity claim. **Engine
+behavior = OpenDSS 11.0.0.1 (r4133) except the documented ledger.** `rg
+"NOT_PORTED\(U2"` empty; zero `pending` upgrade decks. Mandatory gate (fmt +
+clippy + `cargo test --workspace`) green.
+
+**Audit fixes (post-merge, wt-u26).** Wording-accuracy pass on the Rung-2 ledger
+after re-`cmp`ing the vendored r4088/r4133 Version8 trees: the summary phrase
+"byte-identical r4088=r4133" is literally false for the **solver**
+(`Common/Solution.pas` differs — progress-form/GUI plumbing + a commented-out debug
+`WriteLn`, numerically inert) and `PDElements/AutoTrans.pas` (two read-only
+PropertyHelp strings). All non-`Solution.pas`/`AutoTrans.pas` units named in these
+entries (`PCElements/`, `Meters/Monitor.pas`, `SolutionAlgs.pas`, `YMatrix.pas`,
+`ReduceAlgs.pas`, injection/reduction/ckt24 feeder) ARE byte-identical, so the
+behavioral conclusion (no algorithm changed) stands. Reworded the overstated
+claims to "behaviorally identical (only progress-form/PropertyHelp text differs)"
+in `known_diffs.json` (iteration-count-delta, ckt24-regcontrol-conditioning),
+`DIVERGENCES.md`, `known_diffs_burndown.md`, and this record. Also: documented that
+the `monitor-header-whitespace` r3723 tag is likely already dead (the
+`compare_monitor` header normalization is rev-independent — a future r3723 re-sweep
+prunes it), and scope-noted `harmonics-ieee519-r4133`'s deliberately-broad match
+(mirrors sibling floor entries; re-triage a materially different IEEE_519 move). No
+code/behavior change; mandatory gate re-run green.
+
+**Prior — WP-U2.5 (protection report/log surface) + WP-U2.6
 (59NRelayDemo decomposition) MERGED.** WP-U2.6 found + fixed a relay port bug:
 `state_size()` / `MakeLike` sized the per-phase state arrays by the relay's OWN
 Nphases, but the state-array paths iterate `Min(RELAYCONTROLMAXDIM,
@@ -1711,8 +1762,8 @@ harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `m
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # 45 test binaries, 0 failures (2026-07-16 round):
-                            # dss-core lib 1171, golden_reports 197 (incl. the
+cargo test --workspace      # 0 failures (2026-07-17 WP-U2.6 round):
+                            # dss-core lib 1213, golden_reports 197 (incl. the
                             # capi015 seasonal pair), corpus_live (292
                             # solvable_now cases live-compared; modes family 58)
                             #   (corpus_live_solvable_cases_match_oracle +
@@ -1724,6 +1775,9 @@ cargo test --workspace      # 45 test binaries, 0 failures (2026-07-16 round):
                             # dss-parser 62+1, dss-sparse 15
                             #   (6 complex SparseSet + 9 real RealSparseSet —
                             #    WP-U1.7 Stage 1, the NCIM Jacobian path)
+# WP-U2.6 opt-in EPRI sweeps (not part of the mandatory gate): both green —
+#   DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1 → 326/70/4/0
+#   DSS_LIVE_OPENDSS=r4088 DSS_LIVE_OPENDSS_ASSERT=1 → 329/67/4/0
 ```
 
 ### Phase 5 gate — green  *(detail → `docs/phase-records/phase-5.md`)*
