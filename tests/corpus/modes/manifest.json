@@ -1106,11 +1106,11 @@
     "*"
    ],
    "check_meters_monitors": true,
-   "compare_eventlog": true,
+   "compare_eventlog": false,
    "compare_ctrlqueue": true,
    "pending": false,
    "wp": "GEN-MODE",
-   "note": "DUTYCYCLE ControlMode:=TIMEDRIVEN interaction (set in Set_Mode for DUTY, set_mode.rs:99). Only under TIMEDRIVEN does the control queue honor a delay and fire on schedule: the recloser picks up on a temporary fault (applied 0.2s), trips FAST (0.4s), the fault self-clears below MinAmps, then RECLOSES on the recloseintervals schedule (0.9s) \u2014 a timed trip/reclose sequence. The deck does NOT set controlmode (the value under test is DUTY's default TIMEDRIVEN). Oracle-validated: 20 converged steps, bit-identical across two processes incl. eventlog+ctrlqueue (ea25e8d2106ac212); feature-sensitive vs `controlmode=static` (c0eb10198c3db72e \u2014 the timed reclose schedule collapses)."
+   "note": "DUTYCYCLE ControlMode:=TIMEDRIVEN interaction (set in Set_Mode for DUTY, set_mode.rs:99). Only under TIMEDRIVEN does the control queue honor a delay and fire on schedule: the recloser picks up on a temporary fault (applied 0.2s), trips FAST (0.4s), the fault self-clears below MinAmps, then RECLOSES on the recloseintervals schedule (0.9s) \u2014 a timed trip/reclose sequence. The deck does NOT set controlmode (the value under test is DUTY's default TIMEDRIVEN). Oracle-validated: 20 converged steps, bit-identical across two processes incl. eventlog+ctrlqueue (ea25e8d2106ac212); feature-sensitive vs `controlmode=static` (c0eb10198c3db72e \u2014 the timed reclose schedule collapses). WP-U2.2: recloser given explicit A/D curves (r4133 removed the built-in defaults); compare_eventlog dropped (the r4133 recloser logs different per-phase wording / off by default) -- the timed control stays gated by ctrlqueue + V/I."
   },
   {
    "path": "harmonics/harmonic_hlist.dss",

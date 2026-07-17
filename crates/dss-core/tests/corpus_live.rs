@@ -931,7 +931,8 @@ fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCa
             compare_variables(&mut dss, v, &tol, &ctx);
         }
         if c.compare_eventlog {
-            compare_eventlog(&dss, &cp.eventlog, &ctx);
+            // §1.3-3 per-rev event-log masks keyed by the case's oracle spec.
+            compare_eventlog(&dss, &cp.eventlog, c.oracle.as_deref(), &ctx);
         }
         if c.compare_ctrlqueue {
             compare_ctrlqueue(&dss, &cp.ctrlqueue, &ctx);
@@ -1761,6 +1762,9 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "recloser/recloser_perm.dss",
     // corpus coverage wave (controls): singleton branch decks.
     "recloser/recloser_ground.dss",
+    // WP-U2.2 r4133 recloser matrix: single-phase trip/lockout + fast/slow pickup split.
+    "recloser/recloser_1ph.dss",
+    "recloser/recloser_pickup_split.dss",
     "fuse/fuse_blow_3ph.dss",
     "swtcontrol/swtcontrol_lock.dss",
     "gendispatcher/gendispatcher_kvarlimit.dss",

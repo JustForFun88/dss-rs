@@ -1,0 +1,30 @@
+// Recloser fast/slow pickup split (r4133 WP-U2.2, delta rows B3/C2): r4133 splits
+// the single PhaseTrip pickup into separate PhFastPickup (used while OperationCount
+// <= NumFast) and PhSlowPickup (used after). Here PhFastPickup=50 lets the FAST
+// operation trip on a permanent 3ph fault, but PhSlowPickup=6000 is set ABOVE the
+// faulted current so the SLOW operation never picks up -> after the first fast
+// trip + reclose the recloser stays CLOSED with the fault uncleared (ends closed,
+// State [closed,closed,closed]). Feature-sensitive on r4133 (probe-proven):
+// PhSlowPickup=50 (= fast) instead trips slow -> reclose -> lockout (ends open);
+// with the legacy single PhaseTrip these could not differ. eventlog=yes exercises
+// the 'Ph Fast' vs 'Ph Slow' target wording. Compared per step vs oddie:r4133:
+// full model + State/Normal probes + event log + pending shots.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.prot basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi
+new line.lat bus1=mid bus2=loadb linecode=lc length=1 units=mi
+new load.l bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
+
+new recloser.r monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 phfastcurve=a phslowcurve=d
+~ phfastpickup=50 phslowpickup=6000 numfast=1 shots=3
+~ recloseintervals=(0.3, 0.5, 0.7) mechanicaldelay=0.03 eventlog=yes
+
+new fault.f bus1=loadb phases=3 ontime=0.1 r=1 temporary=no
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.1 number=1 controlmode=time

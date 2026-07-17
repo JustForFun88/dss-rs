@@ -27,9 +27,13 @@ new relay.backup type=current monitoredobj=line.sub monitoredterm=1
 ~ delay=1.5 shots=1 recloseintervals=None eventlog=yes
 
 ! Midline recloser: one FAST shot (fuse saving), then delayed.
+! Explicit A/D curves (r4133 removed the built-in defaults; WP-U2.2 D2) so this
+! cross-chain deck's ganged recloser stays identical to the 0.14.5-era default
+! and the deck can remain on the pinned 0.14.5 oracle until the whole protection
+! suite is r4133 (rung exit WP-U2.6).
 new recloser.r monitoredobj=line.mid monitoredterm=1
 ~ switchedobj=line.mid switchedterm=1 numfast=1 shots=3
-~ phasetrip=100 groundtrip=60 recloseintervals=(0.5, 1.0)
+~ phasefast=a phasedelayed=d phasetrip=100 groundtrip=60 recloseintervals=(0.5, 1.0)
 
 ! Lateral fuse (default tlink curve).
 new fuse.fz monitoredobj=line.latf monitoredterm=1
