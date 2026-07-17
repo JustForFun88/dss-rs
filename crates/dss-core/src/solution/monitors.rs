@@ -46,7 +46,7 @@ pub(crate) fn sample_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv, mode5_o
                 .as_any()
                 .downcast_ref::<Monitor>()
                 .expect("ckt.monitors holds Monitor objects");
-            (m.mode, m.med.cd.enabled, m.med.metered_element)
+            (m.mode_raw(), m.med.cd.enabled, m.med.metered_element)
         };
         if !enabled {
             continue;

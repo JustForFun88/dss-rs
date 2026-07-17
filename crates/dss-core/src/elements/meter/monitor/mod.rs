@@ -33,13 +33,12 @@ use crate::obj::props::{ClassProps, PropDef};
 mod accessors;
 mod dump;
 mod header;
+mod mode;
 mod post;
 mod sample;
 
-const MODEMASK: i32 = 15;
-const SEQUENCEMASK: i32 = 16;
-const MAGNITUDEMASK: i32 = 32;
-const POSSEQONLYMASK: i32 = 64;
+use mode::{MonitorBaseMode, MonitorModeView};
+
 const NUM_SOLUTION_VARS: usize = 12;
 /// Pascal `BufferSize` (`Meters/Monitor.pas:478`): a **fixed** 1024-single
 /// (4 KiB) scratch buffer. `AddDblToBuffer` flushes once `BufPtr` reaches it.
@@ -86,7 +85,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
 #[derive(Debug, Clone)]
 pub struct Monitor {
     pub med: MeterElementData,
-    pub mode: i32,
+    /// Typed decode of the raw `mode=` bitfield (`mode` submodule). The raw
+    /// `i32` survives only at the property boundary ([`Self::get_i32`]/
+    /// [`Self::set_i32`] via `to_raw`/`from_raw`).
+    mode: MonitorModeView,
     include_residual: bool,
     vi_polar: bool,
     pp_polar: bool,
@@ -166,7 +168,7 @@ impl Monitor {
         med.metered_terminal = 1;
         Self {
             med,
-            mode: 0,
+            mode: MonitorModeView::default(),
             include_residual: false,
             vi_polar: true,
             pp_polar: true,
@@ -191,6 +193,12 @@ impl Monitor {
     }
     pub fn sample_count(&self) -> i32 {
         self.sample_count
+    }
+    /// The raw `mode=` ordinal (re-packed from the typed view) — the property
+    /// report boundary. `solution::monitors` uses it for the Pascal
+    /// `SampleAllMode5` `Mode = 5` full-ordinal split.
+    pub fn mode_raw(&self) -> i32 {
+        self.mode.to_raw()
     }
     pub fn num_channels(&self) -> usize {
         self.record_size
@@ -226,7 +234,7 @@ impl Monitor {
     /// (`DoFlickerCalculations`, `Monitor.pas:1655-1656`). `None` if unset or not
     /// a mode-4 monitor.
     pub fn metered_bus_name(&self) -> Option<String> {
-        if (self.mode & MODEMASK) != 4 {
+        if self.mode.base != MonitorBaseMode::Flicker {
             return None;
         }
         let snap = self.med.metered_snap.as_ref()?;
