@@ -154,6 +154,11 @@ fn json_transformer_micro() {
 }
 
 #[test]
+fn json_transformer_solved() {
+    run_deck("transformer_solved");
+}
+
+#[test]
 fn json_dyneq_micro() {
     run_deck("dyneq_micro");
 }
