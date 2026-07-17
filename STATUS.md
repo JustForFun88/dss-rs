@@ -1744,8 +1744,8 @@ harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `m
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # 45 test binaries, 0 failures (2026-07-16 round):
-                            # dss-core lib 1171, golden_reports 197 (incl. the
+cargo test --workspace      # 0 failures (2026-07-17 WP-U2.6 round):
+                            # dss-core lib 1213, golden_reports 197 (incl. the
                             # capi015 seasonal pair), corpus_live (292
                             # solvable_now cases live-compared; modes family 58)
                             #   (corpus_live_solvable_cases_match_oracle +
@@ -1757,6 +1757,9 @@ cargo test --workspace      # 45 test binaries, 0 failures (2026-07-16 round):
                             # dss-parser 62+1, dss-sparse 15
                             #   (6 complex SparseSet + 9 real RealSparseSet —
                             #    WP-U1.7 Stage 1, the NCIM Jacobian path)
+# WP-U2.6 opt-in EPRI sweeps (not part of the mandatory gate): both green —
+#   DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1 → 326/70/4/0
+#   DSS_LIVE_OPENDSS=r4088 DSS_LIVE_OPENDSS_ASSERT=1 → 329/67/4/0
 ```
 
 ### Phase 5 gate — green  *(detail → `docs/phase-records/phase-5.md`)*
