@@ -107,6 +107,41 @@ behavior-neutrally so the gate is green:
 - `elements/pc/windgen/tests.rs`: `vwind < 5.0 || vwind > 23.0` → `!(5.0..=23.0).contains(&vwind)`.
 - `tests/harness/mod.rs`: De Morgan on a filter predicate (clippy's exact rewrite).
 
+## Audit settlement
+
+Two independent auditors (audit-code, audit-tests) both returned PASS/Approve.
+Every finding was `note` severity (transparency-only, no blocker); each settled
+empirically below. No finding required a code change — all are **rebutted** with
+evidence. No golden/tolerance/corpus/toml edit was made in settlement.
+
+1. **audit-code — `capture_metered` PD probe left as concrete downcasts.**
+   *Rebutted (legitimate deferral, already recorded §Part 2).* Verified the
+   signature is `capture_metered(full_name: String, obj: &dyn DssObject)`
+   (`energymeter/accessors.rs:17`) — a **bare `&dyn DssObject`** with no
+   `ElemStore`/`ElemRef` in scope, so `store.kind(r)` cannot apply without a
+   signature change (arena work, R1/R2). The retained downcasts (`:25–32`) are
+   bit-neutral under [A]. No action.
+
+2. **audit-code — commit `1e8dcdf` touches four sites outside R0 downcast scope.**
+   *Rebutted (necessary + behavior-neutral, already recorded §Baseline clippy).*
+   Stable drifted to 1.96.0; its `nonminimal_bool`/`manual_range_contains` fire on
+   sites the `update` base predates (proven pre-existing by stashing all R0
+   changes). Reverting them would fail `clippy -D warnings` (gate requirement).
+   All four diffs re-verified from `git show 1e8dcdf`: `matrices.rs` only extends
+   `#[allow]` + a comment — body `v.re != 0.0 && v.re != 0.0` preserved verbatim
+   (doubled-`.re` upstream bug intact); `inc_matrix.rs` `!(n>1)`→`n<=1` (i32,
+   exact); `windgen/tests.rs` `<5.0||>23.0`→`!(5.0..=23.0).contains` (finite swept
+   var, identical boundaries); `harness/mod.rs` De Morgan `!(A&&!B)`→`!A||B` (exact,
+   the `assert_eq!` untouched). Isolated in a separate labeled commit for trivial
+   review/revert. No action.
+
+3. **audit-tests — two behavior-neutral test-line edits (nonzero test churn vs the
+   [A] zero-churn ideal).** *Rebutted (same two edits as finding 2, forced by lint
+   drift not by R0).* Both live only in `1e8dcdf`; the R0 work commit `2740e78`
+   touches zero test files. `windgen::tests::aerodynamic_wind_speed_sweep` re-runs
+   green; the harness De Morgan leaves its assertion unchanged. No golden/corpus/
+   pin added or removed. No action.
+
 ## Gate
 
 - `cargo +stable fmt --all --check` — clean.
