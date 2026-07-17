@@ -1044,26 +1044,22 @@ SCENARIOS = [
             "New StorageController.sc1 like=base element=Line.l2",
         ],
     },
-    # --- SwtControl (WP7.2 step 2a) ---------------------------------------
-    # Action/Normal/State all map onto the one CurrentAction field; the text
-    # dump renders it (Action=close/open, Normal/State=closed/open) — GetState is
-    # not used by the `?` dump (probed). Action/Normal/State are ConditionalReadOnly
-    # on Locked (a write while locked is ignored). Every scenario defines the
-    # switched Line first (SwtControl without SwitchedObj raises 387).
+    # --- SwtControl (WP7.2 step 2a; capi015-baselined WP-U1.6 D12) ---------
+    # D12 gave Action/Normal/State distinct fields (CurrentAction/NormalState/
+    # PresentState). Action/Normal/State are ConditionalReadOnly on Locked. Every
+    # scenario defines the switched Line first (SwtControl without SwitchedObj
+    # raises 387). NOTE (WP-U2.4 D6): the deprecated `Action` scenario was removed
+    # here — r4133 makes `action=open` force the ACTUAL state (State=open), which
+    # capi015 (this golden's oracle) does NOT do (State=closed), so it is no longer
+    # capi015-pinnable; the D6 behavior is pinned by the swt_control unit tests +
+    # the r4133 live decks (swtcontrol_time/midi). `swtcontrol_state_open` still
+    # covers the immediate force (identical on capi015 and r4133).
     {
         "name": "swtcontrol_default",
         "target": "SwtControl.sw1",
         "commands": [
             "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
             "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1",
-        ],
-    },
-    {
-        "name": "swtcontrol_action_open",
-        "target": "SwtControl.sw1",
-        "commands": [
-            "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
-            "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 action=open",
         ],
     },
     {
@@ -1106,11 +1102,14 @@ SCENARIOS = [
     },
     {
         # MakeLike copies CurrentAction/NormalState/PresentState/TimeDelay/Locked.
+        # Base uses `state=open` (not the deprecated `action=open`) so the copied
+        # PresentState is capi015-pinnable AND unchanged by the WP-U2.4 D6 Action
+        # fix (state= forces the switch open identically on capi015 and r4133).
         "name": "swtcontrol_makelike",
         "target": "SwtControl.sw1",
         "commands": [
             "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
-            "New SwtControl.base switchedobj=line.l1 switchedterm=1 action=open "
+            "New SwtControl.base switchedobj=line.l1 switchedterm=1 state=open "
             "normal=open delay=45 lock=yes",
             "New SwtControl.sw1 like=base",
         ],

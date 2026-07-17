@@ -1185,8 +1185,8 @@
    "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015",
-   "note": "Flipped to oracle:capi015 by WP-U1.6 D12 (SwtControl Normal/State field mapping, bb9c9785). SwtControl.5_11 is created `Action=c` then `edit action=o`; under D12 (matching capi015) `Normal` reads NormalState=closed (unchanged by the Action edit), while 0.14.5 read the shared CurrentAction=open -- a deliberate readback mismatch (§1.2). Snapshot deck, so no multi-step concern; capi015==0.14.5 on civanlar physics (no loadshapes/seasonal/growth), so the whole-model V/Y/power compare is unchanged -- only the property readback moves, and target-rev cases do not property-compare (the SwtControl Normal/State readback is pinned by the swtcontrol_time/midi_swtcontrol capi015 decks + swt_control unit tests). See DIVERGENCES.md §D12."
+   "oracle": "r4133",
+   "note": "Flipped capi015 -> oracle:r4133 by WP-U2.4 D6 (SwtControl `Action` fix). SwtControl.5_11/7_16/10_14 are created `Action=c` then `edit action=o`; under D6 (r4133) the `action=o` opens the tie switches IMMEDIATELY at parse (the switch state forced like `State`), so the snapshot solve converges in 2 iterations to the open-tie topology. capi015 (Rung-1) instead armed a control-queue action that opened the ties during the solve's control loop (5 iterations, warm-started from the closed mesh), converging to a physically-equivalent-but-not-bit-identical point (node0 V differs 8e-4, above the feeder tier abs floor 1.3e-4 -- a solve-PATH difference, not conditioning). PROVEN the port matches r4133 exactly: r4133 also converges in 2 iters to node0 V=(13261.309423, -34.747502), bit-identical to the port; capi015's 5-iter path gives (13261.308840, -34.748053). All three ties open on every engine (|I|=0). Target-rev case -> no property-compare, so the D12 Normal/State readback (still pinned by the swtcontrol/swt_control unit tests) is moot here. See DIVERGENCES.md §D12 (SwtControl field mapping) + STATUS §WP-U2.4."
   },
   {
    "path": "Version8/Distrib/Examples/civinlar model/regulator.dss",
