@@ -3,7 +3,7 @@
  "oracle": {
   "engine_spec": "capi015",
   "dss_python": "0.16.0b2",
-  "engine": "dss_capi 0.15.0b4 (OpenDSS SVN r4103); regenerated for WP-U1.6 D12 (SwtControl Normal/State field mapping). The `swtcontrol_locked_then_action` scenario was dropped: capi015 raises the strict PermissiveProperties read-only error (#2024106) on a locked `Action=` write, which the port deliberately does NOT adopt (ledger L2 / C2 dss-ext-only surface) — it silently ignores, unit-pinned by `locked_ignores_action_write` / `locked_ignores_normal_and_state_writes`."
+  "engine": "dss_capi 0.15.0b4 (OpenDSS SVN r4103); regenerated for WP-U1.6 D12 (SwtControl Normal/State field mapping). WP-U2.4 D6: `swtcontrol_action_open` removed and `swtcontrol_makelike` re-based on `state=open` — EPRI r4133 makes the deprecated `Action` force the ACTUAL state (State=open), which capi015 (this golden's oracle) does NOT (State=closed), so it is no longer default-oracle-pinnable; the D6 behavior is pinned by the swt_control unit tests + the r4133 live decks (swtcontrol_time/midi). `state=open` forces the switch identically on capi015/0.14.5 and r4133, so makelike's State=open is oracle-derived (== swtcontrol_state_open). Values render lowercase (0.14.5/Rust enum), matching the port's `?` surface. The `swtcontrol_locked_then_action` scenario was dropped: capi015 raises the strict PermissiveProperties read-only error (#2024106) on a locked `Action=` write, which the port deliberately does NOT adopt (ledger L2 / C2 dss-ext-only surface) — it silently ignores, unit-pinned by `locked_ignores_action_write` / `locked_ignores_normal_and_state_writes`."
  },
  "class": "swtcontrol",
  "scenarios": [
@@ -21,27 +21,6 @@
     "Lock": "No",
     "Delay": "120",
     "Normal": "",
-    "State": "closed",
-    "Reset": "No",
-    "BaseFreq": "60",
-    "Enabled": "Yes",
-    "Like": ""
-   }
-  },
-  {
-   "name": "swtcontrol_action_open",
-   "commands": [
-    "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
-    "New SwtControl.sw1 switchedobj=line.l1 switchedterm=1 action=open"
-   ],
-   "target": "SwtControl.sw1",
-   "properties": {
-    "SwitchedObj": "Line.l1",
-    "SwitchedTerm": "1",
-    "Action": "open",
-    "Lock": "No",
-    "Delay": "120",
-    "Normal": "open",
     "State": "closed",
     "Reset": "No",
     "BaseFreq": "60",
@@ -116,7 +95,7 @@
    "name": "swtcontrol_makelike",
    "commands": [
     "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1 switch=y",
-    "New SwtControl.base switchedobj=line.l1 switchedterm=1 action=open normal=open delay=45 lock=yes",
+    "New SwtControl.base switchedobj=line.l1 switchedterm=1 state=open normal=open delay=45 lock=yes",
     "New SwtControl.sw1 like=base"
    ],
    "target": "SwtControl.sw1",
@@ -127,7 +106,7 @@
     "Lock": "Yes",
     "Delay": "45",
     "Normal": "open",
-    "State": "closed",
+    "State": "open",
     "Reset": "No",
     "BaseFreq": "60",
     "Enabled": "Yes",

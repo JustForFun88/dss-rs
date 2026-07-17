@@ -44,6 +44,7 @@ Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -53,6 +54,42 @@ from gen_checkpoints import capture_element, check_pin  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT / "tests" / "golden" / "protection"
 SCHEMA = 1
+
+
+def make_engine() -> tuple[object, dict]:
+    """Return the golden-generation engine + its provenance dict.
+
+    `DSS_ORACLE_ENGINE` selects it: `capi` (default, pinned dss-python 0.14.5) /
+    `capi015` via `check_pin`, or `oddie` — an official EPRI `OpenDSSDirect.dll`
+    (`DSS_OPENDSS_REV` -> tools/opendss/revisions.json) driven through the AltDSS
+    Oddie bridge from the Oddie venv. The Oddie path is used to pin an r4133-only
+    protection behavior (WP-U2.4 SwtControl D6: `swt_manual` regenerated on
+    r4133), self-describing via the `engine_spec` key in a mixed golden tree
+    (UPGRADE_PLAN §1.5). Run this from the Oddie venv python for `oddie`.
+    """
+    engine = os.environ.get("DSS_ORACLE_ENGINE", "capi")
+    if engine != "oddie":
+        from dss import DSS as d
+
+        return d, check_pin()
+
+    rev = os.environ.get("DSS_OPENDSS_REV", "")
+    revs = json.loads((REPO_ROOT / "tools" / "opendss" / "revisions.json").read_text())
+    if rev not in revs:
+        sys.exit(f"DSS_OPENDSS_REV={rev!r} not in revisions.json ({sorted(revs)})")
+    dll = str((REPO_ROOT / revs[rev]["dll"]).resolve())
+    expect = revs[rev].get("expect_version", "")
+    os.add_dll_directory(str(Path(dll).parent))
+    from dss import IOddieDSS
+
+    d = IOddieDSS(library_path=dll)
+    ver = str(d.Version)
+    if expect and expect not in ver:
+        sys.exit(f"engine {ver!r} does not contain pinned {expect!r} (rev={rev!r})")
+    d.AllowForms = False
+    d.Text.Command = "Set RegistryUpdate=No"
+    d.Text.Command = "Set Editor=rundll32.exe"
+    return d, {"engine_spec": f"oddie:{rev}", "oddie": True, "rev": rev, "engine": ver}
 
 # A small radial feeder: source -> line.feed -> line.lat -> 3-phase load. The
 # protection device monitors and switches line.feed; the fault is at the load bus.
@@ -126,7 +163,10 @@ def deck_swt_manual() -> dict:
         *TAIL,
         DUTY,
     ]
-    # Mirror the corpus `edit swtcontrol.x action=o`: arm an open before step 5.
+    # Mirror the corpus `edit swtcontrol.x action=o`: a mid-run open before step 5.
+    # Regenerate on r4133 (WP-U2.4 D6): `DSS_ORACLE_ENGINE=oddie DSS_OPENDSS_REV=r4133`.
+    # Under r4133 the `Action` forces the switch open immediately (no `delay`
+    # queue), so the switch is open from step 5 and the event log is empty.
     return {
         "name": "swt_manual",
         "commands": cmds,
@@ -185,8 +225,7 @@ def build(d, spec: dict) -> dict:
 
 
 def main() -> None:
-    oracle = check_pin()
-    from dss import DSS as d
+    d, oracle = make_engine()
 
     wanted = set(sys.argv[1:])
     unknown = wanted - set(SCENARIOS)

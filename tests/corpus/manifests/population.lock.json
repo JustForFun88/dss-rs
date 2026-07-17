@@ -12,7 +12,7 @@
   "family_counts": {
     "asymmetric": 47,
     "controls": 95,
-    "modes": 68
+    "modes": 69
   },
   "family_paths": {
     "asymmetric": [
@@ -165,6 +165,7 @@
       "autoadd/autoadd.dss",
       "autoadd/autoadd_cap.dss",
       "batchedit/batchedit.dss",
+      "batchedit/batchedit_where.dss",
       "batchedit/midi_batchedit.dss",
       "harmonics/harmonic_hlist.dss",
       "harmonics/harmonict.dss",
@@ -485,7 +486,7 @@
     "Version8/Distrib/Examples/VCCS/HWtest.dss": "kind=feeder steps=1 sel=2 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/Examples/VSConverter/SG2012.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/Examples/WampServer/testcommandline.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
-    "Version8/Distrib/Examples/civinlar model/civanlar.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=capi015",
+    "Version8/Distrib/Examples/civinlar model/civanlar.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=r4133",
     "Version8/Distrib/Examples/civinlar model/regulator.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss": "kind=large steps=24 sel=2 mm=1 probes=0 vars=0 evlog=1 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/IEEETestCases/123Bus/IEEE123Switches.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",

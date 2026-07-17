@@ -765,28 +765,18 @@
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 12,
-   "oracle": "capi015",
-   "wp": "WP-U1.6",
+   "oracle": "r4133",
+   "wp": "WP-U2.4",
    "post": [
     "edit swtcontrol.sw action=open"
    ],
    "selected_elements": [
     "*"
    ],
-   "probes": [
-    {
-     "element": "SwtControl.sw",
-     "props": [
-      "state",
-      "normal",
-      "delay",
-      "lock"
-     ]
-    }
-   ],
+   "probes": [],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U1.6 D12 (bb9c9785): SwtControl Normal/State map to distinct fields (NormalState/PresentState), not the shared CurrentAction. Gated capi015 because the `state` probe readback moves: after the armed `action=open` post-command the port (D12, matching capi015 GetState = live element) reads State=Closed until the switch operates at the 0.25 s delay (step 3), then Open; 0.14.5 read the armed CurrentAction=Open from step 0. Cannot gate 0.14.5 (deliberate mismatch, §1.2). Multi-step capi015 capture is valid here (per-step Monitor/probe/eventlog reflect the solve; the L1 re-nominalization affects only the getYSparse element-state re-read, not these channels -- verified 2026-07-16). normal=Closed throughout. Feature-sensitive: the switch opens at step 3 (delay-driven); the state trajectory Closed x3 -> Open flips if the field mapping regresses."
+   "note": "WP-U2.4 D6 (EPRI r4133 SwtControl.pas): FLIPPED capi015 -> r4133. The deprecated `Action` now forces the ACTUAL state immediately (like State), so the post `action=open` opens line.feed at parse time (before any step) instead of arming a delayed control-queue action. r4133-validated (§1.7 two-process determinant; the switch is open from step 0, line.feed |I|~7e-9, event log empty, control queue empty). Under capi015 (Rung-1) the same post armed a delayed action that fired at the 0.25 s delay (step 3) -- this deck's capi015 trajectory Closed x3 -> Open is exactly the r4088->r4133 D6 move. Render-form probes dropped: r4133 renders state/normal as `[open, open, open, ]` arrays (E3, WP-U2.5 scope) and does not wire prop-5 Delay (renders default 120), so the whole-model V/Y + empty eventlog/ctrlqueue pin the switch physics instead. Feature-sensitive: if Action regressed to setting only the normal state (r4088) the switch would stay closed and the model would not collapse."
   },
   {
    "path": "gendispatcher/gendispatcher.dss",
@@ -1089,27 +1079,18 @@
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 12,
-   "oracle": "capi015",
-   "wp": "WP-U1.6",
+   "oracle": "r4133",
+   "wp": "WP-U2.4",
    "post": [
     "edit swtcontrol.sw action=open"
    ],
    "selected_elements": [
     "*"
    ],
-   "probes": [
-    {
-     "element": "SwtControl.sw",
-     "props": [
-      "state",
-      "normal",
-      "delay"
-     ]
-    }
-   ],
+   "probes": [],
    "compare_eventlog": true,
    "compare_ctrlqueue": true,
-   "note": "WP-U1.6 D12 (bb9c9785): SwtControl Normal/State map to distinct fields. Gated capi015 (like swtcontrol_time): the armed `action=open` post-command opens the loop tie at the 0.25 s delay (step 3); the port (D12, matching capi015 GetState) reads State=Closed until then, 0.14.5 read the armed CurrentAction=Open from step 0 -- a deliberate mismatch (§1.2). The switch is UNLOCKED so the post-command does not hit capi015's strict read-only surface. No loadshapes (constant loads) so the capi015 multi-step capture is exact. Feature-sensitive: the state Closed x3 -> Open trajectory flips if the field mapping regresses."
+   "note": "WP-U2.4 D6 (EPRI r4133 SwtControl.pas): FLIPPED capi015 -> r4133. The post `action=open` now forces the loop tie (line.tie) open immediately (D6: Action sets the actual state, like State), converting the meshed IEEE123-class midi network to radial at parse time -- a STRONG pin: the loads stay fed (min bus 0.889 pu) so the whole-model V/Y differs materially with the tie open. r4133-validated (§1.7 two-process determinant; line.tie |I|~7e-9, event log empty, control queue empty). Under capi015 (Rung-1) the same post armed a delayed action firing at step 3 -- the r4088->r4133 D6 move. Render-form probes dropped (r4133 renders state/normal as `[.., ..]` arrays, E3/WP-U2.5 scope); the whole-model compare pins the physics. Feature-sensitive: an Action regression to normal-only would leave the tie closed and the mesh intact."
   },
   {
    "path": "energymeter/midi_energymeter.dss",
