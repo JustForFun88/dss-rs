@@ -4,7 +4,7 @@
     "ad_sweep.json": 292,
     "missing_dependency.json": 9,
     "not_an_entry_point.json": 586,
-    "skipped_needs_investigation.json": 12,
+    "skipped_needs_investigation.json": 13,
     "skipped_oracle_issue.json": 14,
     "skipped_unsupported.json": 1,
     "solvable_now.json": 292
