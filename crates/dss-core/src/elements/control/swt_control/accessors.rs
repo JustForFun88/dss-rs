@@ -86,6 +86,7 @@ impl DssObject for SwtControl {
         use super::prop::*;
         match idx {
             DELAY => self.ccd.time_delay,
+            RATED_CURRENT => self.rated_current,
             BASE_FREQ => self.ccd.cd.base_frequency,
             _ => unreachable!("SwtControl has no double property {idx}"),
         }
@@ -94,6 +95,8 @@ impl DssObject for SwtControl {
         use super::prop::*;
         match idx {
             DELAY => self.ccd.time_delay = value,
+            // r4133 `RatedCurrent := Parser.DblValue` — informational store.
+            RATED_CURRENT => self.rated_current = value,
             BASE_FREQ => self.ccd.cd.base_frequency = value,
             _ => unreachable!("SwtControl has no double property {idx}"),
         }
@@ -236,9 +239,28 @@ impl DssObject for SwtControl {
                 if self.locked {
                     return;
                 }
-                // Default to the first action specified for legacy scripts.
+                // D6 (r4133 `SwtControl.pas` `InterpretSwitchState`, prop 3):
+                // the deprecated `Action` now sets the ACTUAL state — like `State`
+                // (prop 7) — instead of the normal state (the r4088/0.14.5 form set
+                // only `NormalStates[i]` and left the switch untouched). It also
+                // now fires the same "normal defaults to state on first set" side
+                // effect (Edit's supplemental `case 3, 7`). So `Action` becomes a
+                // ganged alias of `State`: force the present state + the controlled
+                // element, and default the normal on first set.
+                // (Probed r4133: `action=open` immediately opens the switch with no
+                // control-queue delay; `normal` stays as previously declared, or
+                // defaults to the action value when `Action`/`State` is the first
+                // state-setting command.)
+                self.present_state = self.current_action;
                 if self.normal_state == CTRL_NONE {
-                    self.normal_state = self.current_action;
+                    self.normal_state = self.present_state;
+                }
+                if let Some(target) = self.ccd.controlled_element {
+                    self.pending_ref_actions.push(RefAction::SetSwitchClosed {
+                        target,
+                        terminal: self.ccd.element_terminal as usize,
+                        closed: self.present_state == CTRL_CLOSE,
+                    });
                 }
             }
             LOCK => {
@@ -299,6 +321,8 @@ impl DssObject for SwtControl {
         self.present_state = other.present_state;
         self.normal_state = other.normal_state;
         self.current_action = other.current_action;
+        // r4133 `MakeLike`: `RatedCurrent := OtherSwtControl.RatedCurrent`.
+        self.rated_current = other.rated_current;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

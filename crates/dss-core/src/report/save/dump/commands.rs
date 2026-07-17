@@ -121,18 +121,15 @@ pub(crate) fn dump_all_dss_commands(
         };
         let props = &classes[ci].props;
         out.push_str(&format!("[{}]\n", props.class_name()));
-        // Running 1-based index that skips 0.15.x-deferred props (`HIDE_015X`):
-        // the catalog is a byte-exact 0.14.5 golden, so a prop inserted at its
-        // upstream position (e.g. Line EpsRMedium at 31) must not shift the printed
-        // index of the 0.14.5 props after it (NormAmps stays 31). The prop still
-        // occupies its real slot in the class; only this help listing renumbers.
+        // Running 1-based index that skips deferred props (`HIDE_015X` /
+        // `HIDE_R4133`): the catalog is a byte-exact 0.14.5 golden, so a prop
+        // inserted at its upstream position (e.g. Line EpsRMedium at 31, SwtControl
+        // RatedCurrent at 9) must not shift the printed index of the 0.14.5 props
+        // after it (NormAmps stays 31, BaseFreq stays 9). The prop still occupies
+        // its real slot in the class; only this help listing renumbers.
         let mut printed = 0usize;
         for i in 1..=props.num_properties() {
-            if props
-                .prop(i)
-                .flags
-                .contains(crate::obj::props::PropFlags::HIDE_015X)
-            {
+            if props.prop(i).flags.hidden_from_full_enum() {
                 continue;
             }
             printed += 1;

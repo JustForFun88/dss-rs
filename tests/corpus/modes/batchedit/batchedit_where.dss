@@ -1,0 +1,26 @@
+// WP-U2.4: `batchedit ... where` conditionals (EPRI r4133). The where-filter
+// edits ONLY the loads whose kw exceeds 150 (lb=200, lc=300 -> 1000), leaving
+// la=100 and ld=120 untouched; the live r4133 model compare confirms exactly
+// which loads changed (their kw drives the power flow). A second batchedit with
+// a `phases=3 and pf<0.9` filter narrows to lc only. Pins that the r4133
+// property-conditional selection matches the official engine; `oracle: r4133`.
+clear
+Set DefaultBaseFrequency=60
+new circuit.c basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.f1 bus1=src bus2=b1 linecode=lc length=0.5 units=mi
+new line.f2 bus1=src bus2=b2 linecode=lc length=0.5 units=mi
+new line.f3 bus1=src bus2=b3 linecode=lc length=0.5 units=mi
+new line.f4 bus1=src bus2=b4 linecode=lc length=0.5 units=mi
+new load.la bus1=b1 phases=3 kv=12.47 kw=100 pf=0.95 model=1
+new load.lb bus1=b2 phases=3 kv=12.47 kw=200 pf=0.95 model=1
+new load.lc bus1=b3 phases=3 kv=12.47 kw=300 pf=0.85 model=1
+new load.ld bus1=b4 phases=3 kv=12.47 kw=120 pf=0.90 model=1
+
+// numeric filter: kw>150 -> lb, lc get kw=1000
+batchedit load..* kw=1000 where kw>150
+// combined filter: phases=3 and pf<0.9 -> lc only (pf=0.85), gets vminpu=0.8
+batchedit load..* vminpu=0.8 where phases=3 and pf<0.9
+
+set voltagebases=[12.47]
+calcvoltagebases

@@ -144,15 +144,10 @@ pub(crate) fn generic_props_from(
 /// One `~ <PropertyName[i]>=<GetPropertyValue(i)>` line (Pascal
 /// `'~ ' + ParentClass.PropertyName[i] + '=' + PropertyValue[i]`).
 pub(crate) fn prop_line(out: &mut String, cx: &DumpCtx, obj: &dyn DssObject, i: usize) {
-    // A 0.15.x-only property deferred from the 0.14.5-pinned Dump goldens
-    // (see `PropFlags::HIDE_015X`). Skipped from the full-enumeration dump; the
-    // `?` query still surfaces it.
-    if cx
-        .cls
-        .prop(i)
-        .flags
-        .contains(crate::obj::props::PropFlags::HIDE_015X)
-    {
+    // A 0.15.x-only (`HIDE_015X`) or r4133-only (`HIDE_R4133`) property deferred
+    // from the 0.14.5-pinned Dump goldens. Skipped from the full-enumeration
+    // dump; the `?` query still surfaces it.
+    if cx.cls.prop(i).flags.hidden_from_full_enum() {
         return;
     }
     out.push_str("~ ");
