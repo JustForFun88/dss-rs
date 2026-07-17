@@ -136,10 +136,12 @@ FPC↔Delphi last-ulp/display floors (44 via entries extended to r4133 + 10 via 
 
 ### Entry ledger change at Rung-2 exit (22 → 25 entries)
 
-**Extended to r4133** (the divergence persists on a path byte-identical
-r4088=r4133 — solver / `PCElements/` / `Meters/` / injection / reduction / ckt24
-feeder all unchanged across the EPRI delta; each also stays green in the mandatory
-gate vs 0.14.5):
+**Extended to r4133** (the divergence persists on a path behaviorally identical
+r4088=r4133 — `PCElements/` / `Meters/` / injection / reduction / ckt24 feeder all
+byte-identical; the solver `Common/Solution.pas` differs only in inert progress-form
+plumbing + a commented-out debug `WriteLn`, `PDElements/AutoTrans.pas` only in two
+read-only PropertyHelp strings — numerically inert across the EPRI delta; each also
+stays green in the mandatory gate vs 0.14.5):
 
 | entry | new revs | r4133 hits |
 |---|---|---|
