@@ -318,6 +318,9 @@ impl DssObject for Storage {
     fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
         Some(self)
     }
+    fn as_dyneq(&self) -> Option<&crate::elements::pc::dyneq_pce::DynEqPceData> {
+        Some(&self.base.dyneq)
+    }
 
     fn get_f64(&self, idx: usize) -> f64 {
         use prop::*;

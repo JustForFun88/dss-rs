@@ -106,11 +106,14 @@ fn run_deck(stem: &str) {
     for cap in &golden.captures {
         let opts = JsonOpts::from_bits(cap.bits);
         let got = match cap.kind.as_str() {
+            // The `_mut` routes refresh live-state caches (Transformer/AutoTrans
+            // `WdgCurrents`) before rendering — a no-op for classes without a
+            // `READS_VTERMINAL` property, so it is safe for every deck.
             "obj" => dss
-                .obj_to_json(&cap.target, opts)
+                .obj_to_json_mut(&cap.target, opts)
                 .unwrap_or_else(|| panic!("{}: obj {} not found", golden.name, cap.target)),
             "batch" => dss
-                .class_batch_to_json(&cap.target, opts)
+                .class_batch_to_json_mut(&cap.target, opts)
                 .unwrap_or_else(|| panic!("{}: class {} not found", golden.name, cap.target)),
             "circuit" => dss
                 .circuit_to_json(opts)
@@ -148,6 +151,16 @@ fn json_vsource_micro() {
 #[test]
 fn json_transformer_micro() {
     run_deck("transformer_micro");
+}
+
+#[test]
+fn json_transformer_solved() {
+    run_deck("transformer_solved");
+}
+
+#[test]
+fn json_dyneq_micro() {
+    run_deck("dyneq_micro");
 }
 
 #[test]
