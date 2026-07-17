@@ -373,9 +373,11 @@ fn save_roundtrip_ieee13_lineandcablespacing() {
 fn save_roundtrip_protection() {
     let out = scratch_dir("protection");
     // A source → main line with Relay/Recloser/Fuse/SwtControl guarding branches.
-    // Pickups are set well above the small steady load currents so nothing trips
-    // (the round-trip pins Save *serialization* of the r4133 surface, not protection
-    // action — non-default `[open,..]` array parses are pinned by `props/*.json`).
+    // Pickups are set well above the small steady load currents so nothing trips on
+    // current (the round-trip pins Save *serialization* of the r4133 surface, not
+    // protection action). The relay additionally carries manually-forced mixed
+    // per-phase `Normal`/`State` arrays so the round-trip covers Save of a non-
+    // default `[open, closed, closed, ]` array (not just the all-closed default).
     // Built-in `tlink`/`A`/`D` TCC curves + one explicit phase curve.
     let deck: &[&str] = &[
         "clear",
@@ -393,11 +395,19 @@ fn save_roundtrip_protection() {
         "new load.l4 bus1=b4 phases=3 kv=12.47 kw=10 pf=0.92",
         "new load.l5 bus1=b5 phases=3 kv=12.47 kw=5 pf=0.95",
         // Relay (overcurrent) with renamed + new r4133 props. High pickups so it
-        // never trips on the steady load current.
+        // never trips on the steady load current. `Normal`/`State` carry DISTINCT
+        // mixed per-phase arrays — `State=(open closed closed)` manually forces
+        // phase 1 of the controlled br1 open (a locked-out actual state, as after a
+        // single-phase trip; explicit Normal first sets NormalStateSet so the State
+        // write does not copy it) — so the round-trip exercises Save serialization
+        // and re-parse of a mixed `[open, closed, closed, ]` array on BOTH the
+        // Normal and the (physically-applied) State surface, not just the
+        // all-closed default (audit WP-U2.5, finding-4 coverage gap).
         "new relay.rel monitoredobj=line.br1 monitoredterm=1 type=current phcurve=ph \
          oc_gndcurve=ph phpickup=5000 oc_gndpickup=5000 tdph=1.5 oc_tdgnd=1.1 \
          definitetimedelay=0.1 mechanicaldelay=0.05 singlephtrip=yes singlephlockout=yes \
-         ratedcurrent=600 interruptingrating=10000",
+         ratedcurrent=600 interruptingrating=10000 normal=(closed open closed) \
+         state=(open closed closed)",
         // Recloser with fast/slow curves + pickups + new props.
         "new recloser.rec monitoredobj=line.br2 monitoredterm=1 phfastcurve=A phslowcurve=D \
          phfastpickup=5000 phslowpickup=5000 numfast=2 shots=3 singlephtrip=yes \

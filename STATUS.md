@@ -8,7 +8,7 @@
 > frontier.
 
 Last updated: 2026-07-17 — **WP-U2.5 (protection report/log surface) DONE on
-branch `wt-u25`** (not yet merged). The r4133 protection `Dump commands`
+branch `wt-u25`, + audit fixes** (not yet merged). The r4133 protection `Dump commands`
 help-catalog surface is complete for all four classes: `[Relay]` unmasked from
 the `dump3_commands` golden (71-prop r4133 shape), `[Fuse]`/`[SwtControl]`
 brought to their full r4133 12/9-prop shapes (HIDE flags dropped — matching the
@@ -1454,6 +1454,23 @@ relay help-catalog/dump surface. Oracle = oddie:r4133.
   corpus_live property. Fixed at the source (`capture_eventlog` → `utf-8-sig`) +
   defensively in `numeric_skeleton` (strip `﻿`, spurious export cruft, never
   real data). Not a tolerance/divergence change.
+
+**WP-U2.5 audit fixes (2026-07-17, wt-u25).** Four minor findings addressed:
+- `save_roundtrip_protection` now forces DISTINCT mixed per-phase arrays on the
+  relay (`normal=(closed open closed) state=(open closed closed)`) so the Save
+  round-trip covers serialization + re-parse of a non-default `[open, closed,
+  closed, ]` array (and an actual locked-out open phase) — not just the all-closed
+  default. Probed: both round-trip exactly (dV=0, iter 2→2).
+- `gen_help_catalog.py` comment corrected (it wrongly said Recloser was NOT in the
+  supplement; `r4133_help.py` carries the full Recloser block, folded in at U2.5).
+  Re-verified: `gen_help_catalog.py` + `cargo fmt` reproduces the committed
+  `help_catalog.rs` byte-for-byte.
+- `PropFlags::HIDE_R4133` doc now records it has NO live application site after U2.5
+  (retained as infrastructure like `HIDE_015X`); the stale harness comment that
+  cited the flag for the name-based `PROPS_015X` SwtControl row is corrected.
+- dump3 `[Relay]/[Fuse]/[SwtControl]` self-referential circular-derivation +
+  save-roundtrip self-consistency are already documented at their sites (no code
+  change) — surfaced as sanctioned by UPGRADE_PLAN §1.3-2 / WP8.5.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in

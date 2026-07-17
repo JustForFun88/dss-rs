@@ -1246,9 +1246,10 @@ const PROPS_015X: &[(&str, &[&str])] = &[
     ("Fuse", &["CurveMultiplier", "InterruptingRating"]),
     // WP-U2.4 C4 (EPRI r4133 `Controls/SwtControl.pas`, props 8->9): the new
     // informational `RatedCurrent`. r4133-only (absent from BOTH the 0.14.5 and
-    // capi015 property tables) — see `PropFlags::HIDE_R4133`. Excluded from the
-    // count/order/name walk on every default-oracle capture (0.14.5 and capi015);
-    // r4133-oracle cases do not property-compare.
+    // capi015 property tables). This name-based row (not the `PropFlags::HIDE_R4133`
+    // flag, dropped at U2.5 when the SwtControl surface went full-r4133) is what
+    // excludes it from the count/order/name walk on every default-oracle capture
+    // (0.14.5 and capi015); r4133-oracle cases do not property-compare.
     ("SwtControl", &["RatedCurrent"]),
     // Further rows land here with their porting WP.
 ];
