@@ -27,25 +27,23 @@ new relay.backup type=current monitoredobj=line.sub monitoredterm=1
 ~ delay=1.5 shots=1 recloseintervals=None eventlog=yes
 
 ! Midline recloser: one FAST shot (fuse saving), then delayed.
-! Explicit A/D curves (r4133 removed the built-in defaults; WP-U2.2 D2) so this
-! cross-chain deck's ganged recloser stays identical to the 0.14.5-era default
-! and the deck can remain on the pinned 0.14.5 oracle until the whole protection
-! suite is r4133 (rung exit WP-U2.6).
+! Explicit A/D curves (r4133 removed the built-in defaults; WP-U2.2 D2) so the
+! ganged recloser is armed; the whole chain is now version-consistent on r4133.
 new recloser.r monitoredobj=line.mid monitoredterm=1
 ~ switchedobj=line.mid switchedterm=1 numfast=1 shots=3
 ~ phasefast=a phasedelayed=d phasetrip=100 groundtrip=60 recloseintervals=(0.5, 1.0)
 
 ! Lateral fuse. WP-U2.1 (r4133): the fuse default curve moved tlink->none (never
-! blows) and its divisor moved RatedCurrent->CurveMultiplier (r4133-only). This
-! deck stays gated on the 0.14.5 oracle for its still-0.14.5 Recloser/Relay tiers
-! (r4133 overhaul = WP-U2.2/U2.3, unported), so the fuse tier is temporarily
-! NEUTRALIZED (ratedcurrent raised so it never blows on 0.14.5 either) to match
-! the Rust port's r4133 never-blows -- the classic fuse-save race described above
-! is deferred: it needs all three tiers version-consistent, so it returns when
-! this deck flips to oracle:"r4133" after the protection rung lands. (The r4133
-! CurveMultiplier-scaled blow is gated live by fuse_curvemult_blow.)
+! blows) and its divisor moved RatedCurrent->CurveMultiplier. The whole
+! protection rung (Fuse U2.1 / Recloser U2.2 / Relay U2.3) has landed, so this
+! deck is version-consistent on oracle:"r4133" and the fuse is re-armed with an
+! explicit curve: fusecurve=tlink + curvemultiplier=40 reproduces the pre-WP
+! r4088-era RatedCurrent=40 divisor, so the classic three-tier fuse-save race
+! (recloser FAST clears -> reclose -> fuse melts the faulted phase on the delayed
+! cycle -> recloser recloses -> service restored except the blown phase; the
+! backup relay never trips) runs end-to-end (WP-U2.1 handoff restore).
 new fuse.fz monitoredobj=line.latf monitoredterm=1
-~ switchedobj=line.latf switchedterm=1 ratedcurrent=100000
+~ switchedobj=line.latf switchedterm=1 fusecurve=tlink curvemultiplier=40
 
 ! Permanent SLG fault on the fused lateral, phase 1.
 new fault.f bus1=b3.1 phases=1 ontime=0.2 r=0.5 temporary=no

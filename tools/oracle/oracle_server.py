@@ -122,8 +122,21 @@ def capture_eventlog(d, ckt) -> list:
         try:
             with open(path, encoding="utf-8", errors="replace") as f:
                 # The CSV has no header row — each line is a full event record
-                # ("Hour=…, Sec=…, ControlIter=…, Element=…, Action=…").
-                return [ln.rstrip("\r\n") for ln in f if ln.strip()]
+                # ("Hour=…, Sec=…, ControlIter=…, Element=…, Action=…"). Delphi's
+                # file writer prefixes the file with a UTF-8 BOM (U+FEFF); strip
+                # it per line so (a) an EMPTY event log (which exports as a lone
+                # BOM) reads back as [] rather than ["﻿"], and (b) the first
+                # record is not BOM-glued — matching the Rust `event_log()` and
+                # the capi engines' `Solution.EventLog`, both BOM-free. Without
+                # this an empty step trips the length assert (0 vs 1) and a
+                # non-empty first line trips the numeric-skeleton comparator on
+                # the multi-byte BOM. WP-U2.1 restore.
+                out = []
+                for ln in f:
+                    ln = ln.lstrip("﻿").rstrip("\r\n")
+                    if ln.strip():
+                        out.append(ln)
+                return out
         except OSError:
             return []
     return [str(s) for s in ckt.Solution.EventLog]
