@@ -373,11 +373,12 @@
   },
   {
    "path": "combo/midi_protection.dss",
-   "note": "WP-U2.1 handoff restore: the three-tier fuse-save race (backup relay -> midline recloser -> lateral fuse) re-armed on the version-consistent r4133 chain (Fuse U2.1 / Recloser U2.2 / Relay U2.3). The fuse melts phase 1 of L6 on the recloser's delayed cycle at Sec=0.9 while the recloser reclose restores the other phases and the backup relay never trips (probe-verified on oddie:r4133). Recloser/Relay per-phase state arrays + the per-phase event log (incl. the r4133 Relay 'Debug Sample' lines) compared vs oddie:r4133. Meter/monitor oracle compare stays off here: the Oddie monitor CSV header carries Delphi leading-space + trailing-empty columns the harness monitor comparator can't match yet (owed to the WP-U2.5 monitor-header surface).",
+   "note": "WP-U2.1 handoff restore: the three-tier fuse-save race (backup relay -> midline recloser -> lateral fuse) re-armed on the version-consistent r4133 chain (Fuse U2.1 / Recloser U2.2 / Relay U2.3). The fuse melts phase 1 of L6 on the recloser's delayed cycle at Sec=0.9 while the recloser reclose restores the other phases and the backup relay never trips (probe-verified on oddie:r4133). Recloser/Relay per-phase state arrays + the per-phase event log (incl. the r4133 Relay 'Debug Sample' lines) compared vs oddie:r4133. EnergyMeter registers/zone + the mode-0 monitor channels are compared vs oddie:r4133 too (check_meters_monitors): the comparator now normalizes the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns).",
    "oracle": "r4133",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 24,
+   "check_meters_monitors": true,
    "selected_elements": [
     "*"
    ],
@@ -414,11 +415,12 @@
   },
   {
    "path": "combo/combo_protection.dss",
-   "note": "WP-U2.1 handoff restore: the classic three-tier fuse-save race (substation backup relay -> midline recloser -> lateral fuse) re-armed on the version-consistent r4133 chain (Fuse U2.1 / Recloser U2.2 / Relay U2.3). The recloser FAST shot clears at Sec=0.4, the fuse melts the faulted phase on the delayed cycle at Sec=0.5, the recloser recloses restoring service except the blown phase, and the backup relay never trips (probe-verified on oddie:r4133). Recloser/Relay per-phase state arrays + the per-phase event log compared vs oddie:r4133. Meter/monitor oracle compare stays off here: the Oddie monitor CSV header carries Delphi leading-space + trailing-empty columns the harness monitor comparator can't match yet (owed to the WP-U2.5 monitor-header surface).",
+   "note": "WP-U2.1 handoff restore: the classic three-tier fuse-save race (substation backup relay -> midline recloser -> lateral fuse) re-armed on the version-consistent r4133 chain (Fuse U2.1 / Recloser U2.2 / Relay U2.3). The recloser FAST shot clears at Sec=0.4, the fuse melts the faulted phase on the delayed cycle at Sec=0.5, the recloser recloses restoring service except the blown phase, and the backup relay never trips (probe-verified on oddie:r4133). Recloser/Relay per-phase state arrays + the per-phase event log compared vs oddie:r4133. EnergyMeter registers/zone + the mode-0 monitor channels are compared vs oddie:r4133 too (check_meters_monitors): the comparator now normalizes the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns).",
    "oracle": "r4133",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 20,
+   "check_meters_monitors": true,
    "selected_elements": [
     "*"
    ],

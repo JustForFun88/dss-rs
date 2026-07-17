@@ -20,10 +20,17 @@ capture bug uncovered here: `capture_eventlog` returned a lone `['﻿']` for
 an EMPTY Oddie event log (Delphi BOM) and BOM-glued the first record — which made
 `recloser_temp`/etc. r4133 event-log compares RED on this machine; now the BOM is
 stripped per line so empty→`[]` and line-0 matches the BOM-free Rust log. The
-`Standing open follow-ups` combo-restore entry is retired. Meter/monitor oracle
-compare stays off on these two decks (Oddie monitor CSV header = Delphi
-leading-space + trailing-empty columns the harness monitor comparator can't match;
-owed to the WP-U2.5 monitor-header surface).
+`Standing open follow-ups` combo-restore entry is retired. **Audit fixes
+(2026-07-17):** meter/monitor oracle compare RE-ENABLED on both decks
+(`check_meters_monitors: true`) — the harness `compare_monitor` now normalizes
+the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns,
+`['V1',' VAngle1',…,'']`) so the Oddie r4133 header compares against the clean
+dss_capi/Rust header without weakening the channel-count/value asserts. Verified
+against oddie:r4133: EnergyMeter registers match (duty mode → 0 / -1e50 drag-hand
+sentinel, identical on both engines) and the mode-0 V/I monitor channels match
+the already-pinned full-model trajectory. The product-side monitor-header
+normalization (what the Rust engine *emits*) remains WP-U1.5 E1 scope; this is a
+test-comparator normalization only.
 
 Prior: 2026-07-17 — **Rung 2 wave 2 MERGED: WP-U2.3 (Relay r4133
 per-phase rewrite) landed on `update`** via a port→audit→fix worktree chain
@@ -1411,14 +1418,31 @@ two cross-chain fuse-save decks are version-consistent on r4133.
   running the pristine controls gate). Fix strips the BOM per line: empty→`[]`, line-0
   matches the BOM-free Rust `event_log()` / capi `Solution.EventLog`. Restores the
   whole r4133 event-log channel (recloser/relay decks too), not just the combo pair.
-- **Meter/monitor compare deferred** on these two decks (WP-U2.5 owed): the Oddie
-  monitor CSV `Header` carries Delphi leading-space + trailing-empty columns
-  (`[' VAngle1', …, '']`) the harness `compare_monitor` exact-header assert can't
-  match (dss_capi/Rust emit clean `['V1','VAngle1',…]`). `check_meters_monitors`
-  dropped on the r4133 flip (the decks keep their monitor+meter definitions; the live
-  full-model per-step compare covers the V/I trajectory). No harness edit made here
-  (WP-U2.5 owns the monitor-header surface).
-- `population.lock` unchanged (no deck added/removed; only oracle/probe fields moved).
+- **Meter/monitor compare RE-ENABLED** on these two decks (audit fix 2026-07-17;
+  `check_meters_monitors: true`). The blocker was the Oddie monitor CSV `Header`:
+  Delphi renders it with a leading space after each comma + a trailing comma, so
+  `Monitors.Header` reads back `['V1',' VAngle1',…,'']` (leading-space columns +
+  trailing empty) which the harness `compare_monitor` exact-header assert could not
+  match against the clean dss_capi/Rust `['V1','VAngle1',…]`. Fixed by normalizing
+  the header in `compare_monitor` (trim each column + drop trailing whitespace-only
+  columns) before the equality assert — a test-comparator normalization that does
+  not weaken the check (channel COUNT + every channel's samples are still asserted).
+  A second Oddie array artifact surfaced under the re-enabled compare and was fixed
+  the same way: the Oddie `ZonePCE`/`AllBranchesInZone`/`AllEndElements` string
+  arrays carry a trailing empty element (`['load.a',…,'']`), so `capture_all_meters`'s
+  `_lst` helper (which already dropped the `['NONE']` placeholder) now also strips
+  empty/whitespace-only entries — else midi's zone PCE set read 33 (32 real + phantom
+  empty) vs Rust's 32.
+  Empirically verified vs oddie:r4133: EnergyMeter registers match (duty mode does
+  not integrate → registers 0 / Max drag-hands -1e50, the identical `-1.0e50`
+  sentinel on both engines) with the zone branch/end/PCE membership compared as a
+  set, and the mode-0 V/I monitor channels match the already-pinned full-model
+  trajectory. The product-side header normalization (what the Rust engine *emits*
+  — the WP-U1.5 E1 `monitor-header-whitespace` known_diff) is unrelated and stays
+  scoped there.
+- `population.lock` unchanged: the two combo decks are controls-family cases (the
+  lock fingerprints per-case rigor flags only for `solvable_now.json`; the synthetic
+  families track counts + path lists, both unchanged here).
   `known_diffs.json` untouched (no combo-scoped entry).
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
@@ -1431,10 +1455,10 @@ harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `m
 ### Standing open follow-ups (actionable)
 - **Combo fuse-save restore — DONE (2026-07-17, wt-combo).** Both decks flipped to
   `oracle:"r4133"` with the fuse re-armed and the three-tier race re-exercised
-  end-to-end; see the WP record below. Remaining sub-item owed to WP-U2.5: re-enable
-  meter/monitor oracle compare on these two decks once the Oddie monitor-header
-  format (Delphi leading-space + trailing-empty columns) is normalized in the
-  monitor comparator (harness surface WP-U2.5 owns).
+  end-to-end; see the WP record below. Audit fix (2026-07-17): meter/monitor oracle
+  compare re-enabled — `compare_monitor` now normalizes the Delphi monitor-CSV header
+  artifact (leading-space + trailing-empty columns), so `check_meters_monitors` is
+  back on both decks and verified vs oddie:r4133. No sub-item remains.
 - **WP-U1.2 row D3** — port with its overload deck (B3-r3723 landed under WP-U1.6).
 - **WP-U1.6 remaining** (branch wt-u16 §UPGRADE): C5 RegControl FwdThreshold+idle
   props, C6 Transformer BH props, C5-r3723 LoadShape Mode index, D11 CapControl
