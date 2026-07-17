@@ -304,18 +304,19 @@ fn export_records_scoped_not_ported() {
         dss.errors()
     );
 
-    // (2) A still-unported export records the scoped `NOT_PORTED`. `GICMvars`(36)
-    //     is a Phase-9 GIC export (stays unported through all of Phase 8) and is
-    //     not solution-guarded (36 ∉ the #24712 ptr set), so no solve is needed.
-    //     (WP8.3 step 3a ported `EventLog`(33)/`ErrorLog`(52), so those are now
-    //     real dumps gated by `golden_reports.rs`, not this NOT_PORTED test.)
+    // (2) A still-unported export records the scoped `NOT_PORTED`. `Estimation`(5)
+    //     is a state-estimation report (never ported) — solution-guarded (5 ∈ the
+    //     #24712 `1..24` set), so the circuit is solved first to reach the dispatch
+    //     `_ =>` NOT_PORTED arm rather than the solve guard. (`GICMvars`(36), the
+    //     former example here, is now a real export gated by `golden_reports.rs`.)
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
+    dss.command("solve");
     dss.command(&set_dp);
-    dss.command("export gicmvars");
+    dss.command("export estimation");
     assert_eq!(dss.errors().len(), 1, "{:?}", dss.errors());
     assert!(
-        dss.errors()[0].contains("\"GICMvars\"") && dss.errors()[0].contains("not ported"),
+        dss.errors()[0].contains("\"Estimation\"") && dss.errors()[0].contains("not ported"),
         "{:?}",
         dss.errors()
     );

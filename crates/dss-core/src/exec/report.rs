@@ -391,6 +391,9 @@ impl Dss {
             35 => self.export_with_mut(&explicit, "EXP_VOLTAGES_ELEM.csv", |c, ckt, _sys, _nv| {
                 export::export_voltages_elements(c, ckt)
             }),
+            36 => self.export_with_mut(&explicit, "EXP_GIC_Mvar.csv", |c, ckt, sys, nv| {
+                export::export_gic_mvars(c, ckt, sys, nv)
+            }),
             15 => self.export_monitors(&monitor_name),
             12 => self.export_registers(&explicit, RegKind::Generators),
             13 => self.export_loads_to_file(&explicit),

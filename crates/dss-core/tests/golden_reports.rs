@@ -3632,6 +3632,29 @@ fn export_capacity_matches_oracle() {
     run_deck_export("export_capacity", &policy);
 }
 
+/// `Export GICMvars` (Pascal `ExportGICMvar` + `TGICTransformerObj.
+/// WriteVarOutputRecord`): one `Bus, Mvar, GIC Amps per phase` row per
+/// GICTransformer. The GIC-study deck (`Set frequency=0.1`) exercises all three
+/// types — GSU (tg1)/YY (tg2) on the K-factor Mvar path, Auto (tg3) on the
+/// VarCurve path (`varcurve=vgic` → `GetYValue`). Both the Mvar and the per-phase
+/// GIC magnitude are solve-derived winding currents; the quasi-DC GIC solve is
+/// pinned to ~1e-8 by `corpus_live.rs` (the same `asymmetric/gic` deck), so the
+/// `%.8g`-rendered cells agree at the faer-vs-KLU floor — a small rel/abs band. A
+/// real regression (wrong K/VarCurve scaling, a swapped Mvar/GIC column, a dropped
+/// phase in the `Curr` sum) shifts values far past the band and fails loudly.
+#[test]
+fn export_gicmvars_matches_oracle() {
+    let policy = ExportPolicy {
+        sep: ',',
+        header_lines: 1,
+        rows: RowPolicy::ExactOrdered,
+        rel: 1e-7,
+        abs: 1e-8,
+        col_tol: vec![],
+    };
+    run_deck_export("export_gicmvars", &policy);
+}
+
 /// Split every non-empty CSV data line (after the header) into trimmed fields.
 fn csv_rows(content: &str) -> Vec<Vec<String>> {
     content
