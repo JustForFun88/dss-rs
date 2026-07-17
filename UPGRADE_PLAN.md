@@ -605,6 +605,12 @@ log with §1.3-3 masks; final per-phase states exact), pickup-split deck,
 alias-parsing props round-trip. The existing recloser decks
 (`recloser_temp/perm`, midi twins) flip with re-probed event logs.
 
+**WP-U2.1 handoff:** once Recloser lands here (and Relay in U2.3), restore the
+combo fuse-save decks `combo/combo_protection` + `combo/midi_protection` —
+flip both to `oracle:"r4133"` and drop the fuse-tier neutralization
+(`ratedcurrent` 100000/5000) so the three-tier fuse-save race is re-exercised
+(tracked in STATUS §"Standing open follow-ups").
+
 ### WP-U2.3 — Relay per-phase rewrite [8%]
 
 **Spec:** `Controls/Relay.pas` (2211): the same per-phase machinery for
