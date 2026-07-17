@@ -776,6 +776,91 @@ fn voltage_ov_uses_closed_phase_extrema_b2() {
     );
 }
 
+/// **59NRelayDemo regression (WP-U2.6):** a `type=voltage` relay whose MONITORED
+/// element is a 1-phase broken-delta PT (measuring 3V0 across an open point to
+/// ground) but whose SWITCHED element is a 3-phase line. Pascal
+/// `RecalcElementData` forces `Nphases := MonitoredElement.NPhases` (=1, used only
+/// for `vbase`/`cBuffer`/`CondOffset`), while every per-phase state-array loop —
+/// `VoltageLogic` (Relay.pas:2852), `GetPropertyValue` 39/40, `Sample`, `Reset` —
+/// iterates `Min(RELAYCONTROLMAXDIM, ControlledElement.NPhases)` (=3). With the
+/// wrong count=1 the loop reads only `cBuffer[1]` (the high 3V0) and trips on the
+/// ground overvoltage; with the correct count=3 the loop's final *phantom* phase
+/// (beyond the 1-phase PT terminal's conductors) reads 0, so `Vmag` ends 0, the
+/// `IF Vmag > 0` guard fails, `OVTime` stays -1 and the relay correctly does NOT
+/// trip — matching oddie:r4133. (For the usual mon==ctrl-phase relay the two
+/// counts coincide, so this is the only path that distinguishes them.)
+#[test]
+fn voltage_relay_open_point_sizes_state_by_controlled_nphases_59n() {
+    let mut r = armed_relay(); // ctrl_snap = 3-phase line
+    r.control_type = ctype::VOLTAGE;
+    r.vbase = 277.0; // kvbase 0.277 kV, 1-phase ⇒ line-neutral
+    r.ov_curve = Some(build_tcc("1", ".3", ".1")); // 3V0: trip above 0.3 pu
+    // Pascal RecalcElementData: relay's own Nphases := MonitoredElement.NPhases.
+    r.ccd.cd.nphases = 1;
+    assert_eq!(
+        r.state_size(),
+        3,
+        "state array must be sized by ControlledElement.NPhases (3), not the \
+         relay's own Nphases (= MonitoredElement.NPhases = 1)"
+    );
+
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(1); // 1-phase PT
+    mon.cd.nconds = 2; // PT term 2 has 2 conductors (Delta.3, Delta.2)
+    mon.vph = vec![Complex64::new(438.0, 0.0)]; // 3V0 ≈ 1.58 pu ≫ 0.3 pu pickup
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.3));
+
+    assert!(
+        !r.armed_for_open[G],
+        "the phantom phase makes Vmag=0 ⇒ the `IF Vmag>0` guard fails ⇒ no OV trip \
+         (with the buggy count=1 it would read 438 V and trip)"
+    );
+    assert_eq!(
+        sc.queue.queue_size(),
+        0,
+        "no trip queued across the broken-delta open point"
+    );
+    assert_eq!(
+        r.render_state_array(),
+        "[closed, closed, closed, ]",
+        "State renders ControlledElement.NPhases (=3) entries"
+    );
+}
+
+/// **MakeLike per-phase state count (WP-U2.6 audit).** Pascal `TRelayObj.MakeLike`
+/// (Relay.pas:683) copies `FPresentState`/`FNormalState` over
+/// `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)` — the SWITCHED element's
+/// phase count, resolved before the copy — NOT the relay's own `FNPhases`
+/// (= MonitoredElement.NPhases). For an asymmetric `like=` source (1-phase
+/// monitored PT, 3-phase switched line) an OPEN state latched on a high phase must
+/// survive the copy; the old `other.ccd.cd.nphases`-bounded loop dropped it.
+#[test]
+fn make_like_copies_state_by_controlled_nphases() {
+    let mut src = armed_relay(); // ctrl_snap = 3-phase line
+    src.ccd.cd.nphases = 1; // relay's own count = MonitoredElement.NPhases
+    src.present_state[3] = CTRL_OPEN;
+    src.normal_state[3] = CTRL_OPEN;
+
+    let mut dst = Relay::new("r2");
+    dst.make_like(&src as &dyn DssObject);
+
+    assert_eq!(
+        dst.state_size(),
+        3,
+        "MakeLike sets ctrl_snap (3-phase) + own nphases (1); state sizes by ctrl"
+    );
+    assert_eq!(
+        dst.present_state[3], CTRL_OPEN,
+        "phase-3 present_state must copy over ControlledElement.Nphases (=3), \
+         not the relay's own Nphases (=1)"
+    );
+    assert_eq!(
+        dst.normal_state[3], CTRL_OPEN,
+        "phase-3 normal_state must copy over ControlledElement.Nphases"
+    );
+}
+
 #[test]
 fn voltage_recloses_when_voltage_recovers() {
     let mut r = armed_relay();
