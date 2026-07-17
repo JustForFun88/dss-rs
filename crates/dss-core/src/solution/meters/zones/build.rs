@@ -3,53 +3,50 @@
 //! `TotalUpDownstreamCustomers`, with the zone-eligibility predicates and
 //! `AddToVoltBaseList`. Split out of `zones/mod.rs` (no behavioral change).
 
-use crate::circuit::Circuit;
 use crate::circuit::ckt_tree::{BusAdjLists, CktTree};
+use crate::circuit::{Circuit, ElemKind};
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE};
-use crate::elements::pc::generator::Generator;
-use crate::elements::pc::load::Load;
-use crate::elements::pc::pvsystem::PVSystem;
-use crate::elements::pc::storage::Storage;
-use crate::elements::pd::auto_trans::AutoTrans;
-use crate::elements::pd::capacitor::Capacitor;
-use crate::elements::pd::line::Line;
-use crate::elements::pd::reactor::Reactor;
-use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::{ElemRef, ElemStore};
-use crate::support::line_units::{LineUnits, convert_line_units};
 
 use super::super::downcast_meter;
 
 /// Whether the element at `r` is a Line (Pascal `IsLineElement`).
 fn is_line(store: &dyn ElemStore, r: ElemRef) -> bool {
-    store.obj(r).as_any().downcast_ref::<Line>().is_some()
+    matches!(store.kind(r), ElemKind::Line)
 }
 
 /// Whether the element at `r` is one of the zone-eligible shunt PC element
 /// types (Pascal `PCElementType in {LOAD,GEN,PVSYSTEM,STORAGE,CAP,REACTOR}` —
 /// `EnergyMeter.pas:1911`). Shunt capacitors/reactors reach the PC adjacency
-/// list via `is_shunt()`.
+/// list via `is_shunt()`. WindGen is deliberately excluded — the old downcast
+/// probe caught only the concrete `Generator` type, not `WindGen`.
 fn is_zone_pce(store: &dyn ElemStore, r: ElemRef) -> bool {
-    let any = store.obj(r).as_any();
-    any.downcast_ref::<Load>().is_some()
-        || any.downcast_ref::<Generator>().is_some()
-        || any.downcast_ref::<PVSystem>().is_some()
-        || any.downcast_ref::<Storage>().is_some()
-        || any.downcast_ref::<Capacitor>().is_some()
-        || any.downcast_ref::<Reactor>().is_some()
+    matches!(
+        store.kind(r),
+        ElemKind::Load
+            | ElemKind::Generator
+            | ElemKind::PVSystem
+            | ElemKind::Storage
+            | ElemKind::Capacitor
+            | ElemKind::Reactor
+    )
 }
 
 /// Whether the element at `r` is a Power Delivery element (Pascal
 /// `(DSSObjType and BaseClassMask) = PD_ELEMENT`), used by the manual
-/// `ZoneList` filter.
+/// `ZoneList` filter. Matches exactly the five concrete types the old downcast
+/// probe caught (Line/Transformer/AutoTrans/Capacitor/Reactor) — GIC PD
+/// elements were never accepted here and stay excluded.
 fn is_pd_element(store: &dyn ElemStore, r: ElemRef) -> bool {
-    let any = store.obj(r).as_any();
-    any.downcast_ref::<Line>().is_some()
-        || any.downcast_ref::<Transformer>().is_some()
-        || any.downcast_ref::<AutoTrans>().is_some()
-        || any.downcast_ref::<Capacitor>().is_some()
-        || any.downcast_ref::<Reactor>().is_some()
+    matches!(
+        store.kind(r),
+        ElemKind::Line
+            | ElemKind::Transformer
+            | ElemKind::AutoTrans
+            | ElemKind::Capacitor
+            | ElemKind::Reactor
+    )
 }
 
 /// Pascal `CheckParallel`: two lines share both terminal buses (in either
@@ -215,22 +212,16 @@ pub(super) fn make_meter_zone_lists(
         // Read the active branch's shape once (counts, buses, line length, the
         // sensor it passes down to its children/shunts).
         let (nterms, term_bus, terminals_checked, active_is_line, len_km, active_sensor) = {
-            let cd = store.ckt_elem(active_ref).cd();
-            let len_km = if let Some(line) = store.obj(active_ref).as_any().downcast_ref::<Line>() {
-                line.len * convert_line_units(line.length_units, LineUnits::Km)
-            } else {
-                0.0
-            };
+            let elem = store.ckt_elem(active_ref);
+            let cd = elem.cd();
+            // A Line reports its length (km); every other element `None`.
+            let line_len = elem.line_length_km();
             (
                 cd.nterms,
                 cd.terminals.iter().map(|t| t.bus_ref).collect::<Vec<_>>(),
                 cd.terminals_checked.clone(),
-                store
-                    .obj(active_ref)
-                    .as_any()
-                    .downcast_ref::<Line>()
-                    .is_some(),
-                len_km,
+                line_len.is_some(),
+                line_len.unwrap_or(0.0),
                 cd.sensor_obj,
             )
         };
@@ -281,8 +272,8 @@ pub(super) fn make_meter_zone_lists(
                 }
                 tree.add_new_object(pc_ref);
                 // Count customers if it is a load, and add to the load list.
-                if let Some(load) = store.obj(pc_ref).as_any().downcast_ref::<Load>() {
-                    branch_num_customers += load.num_customers;
+                if let Some(num_customers) = store.ckt_elem(pc_ref).load_num_customers() {
+                    branch_num_customers += num_customers;
                     load_list.push(pc_ref);
                 }
                 let cd = store.ckt_elem_mut(pc_ref).cd_mut();

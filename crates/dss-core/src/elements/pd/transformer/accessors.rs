@@ -22,6 +22,10 @@ impl CktElement for Transformer {
         &mut self.cd
     }
 
+    fn present_tap(&self, terminal: usize) -> Option<f64> {
+        Some(Transformer::present_tap(self, terminal))
+    }
+
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
         self.recalc();
     }

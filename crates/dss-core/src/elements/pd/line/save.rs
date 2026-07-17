@@ -22,7 +22,7 @@
 //! two are token-equivalent on re-parse and the `Save` contract is round-trip
 //! fidelity, not byte-equality (`report/save/save.rs` header).
 
-use crate::elements::general::conductor_data::{CnDataObj, TsDataObj};
+use crate::elements::general::conductor_data::ConductorKind;
 use crate::obj::base::DssObject;
 use crate::report::save::save::SaveCtx;
 use crate::util::check_for_blanks;
@@ -108,11 +108,9 @@ impl Line {
 /// `LineWireData[i].ParentClass`): `TSData` → `TSCables`, `CNData` → `CNCables`,
 /// else (`WireData`) → `Wires`.
 fn conductor_kind(w: &dyn DssObject) -> &'static str {
-    if w.as_any().downcast_ref::<TsDataObj>().is_some() {
-        "TSCables"
-    } else if w.as_any().downcast_ref::<CnDataObj>().is_some() {
-        "CNCables"
-    } else {
-        "Wires"
+    match w.as_conductor().map(|c| c.conductor_kind()) {
+        Some(ConductorKind::Ts) => "TSCables",
+        Some(ConductorKind::Cn) => "CNCables",
+        _ => "Wires",
     }
 }

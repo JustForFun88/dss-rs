@@ -559,6 +559,27 @@ pub trait DssObject {
         None
     }
 
+    /// Control-element view (Pascal `obj is TControlElem`). `Some` only for the
+    /// control classes; the dispatch loop identifies a control and reads its
+    /// base state through this instead of an `as_any` downcast chain (R0).
+    /// `None` for every non-control object.
+    fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
+        None
+    }
+    fn as_control_mut(
+        &mut self,
+    ) -> Option<&mut dyn crate::elements::control::control_elem::ControlElem> {
+        None
+    }
+
+    /// Conductor-catalog view (Pascal `obj is TConductorDataObj`). `Some` only
+    /// for the `WireData`/`CNData`/`TSData` classes; the LineGeometry/Line
+    /// conductor resolution reads geometry/ratings/class through this instead
+    /// of an `as_any` downcast chain (R0, Category C). `None` otherwise.
+    fn as_conductor(&self) -> Option<&dyn crate::elements::general::conductor_data::ConductorData> {
+        None
+    }
+
     fn get_f64(&self, idx: usize) -> f64 {
         unreachable!("get_f64 not implemented for property {idx}")
     }

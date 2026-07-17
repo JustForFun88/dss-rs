@@ -18,7 +18,7 @@ pub mod swt_control;
 pub mod upfc_control;
 
 pub use cap_control::CapControl;
-pub use control_elem::{ControlElemData, RefSnapshot};
+pub use control_elem::{ControlClass, ControlElem, ControlElemData, RefSnapshot};
 pub use espvl_control::EspvlControl;
 pub use exp_control::ExpControl;
 pub use gen_dispatcher::GenDispatcher;

@@ -3,7 +3,7 @@
 //! plus the `RhoEarth` getter/setter.
 
 use crate::elements::general::conductor_data::{
-    CableGeom, CnDataObj, ConductorGeom, TsDataObj, conductor_geom,
+    CableGeom, ConductorGeom, ConductorKind, conductor_geom,
 };
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::obj::base::DssObject;
@@ -49,12 +49,12 @@ impl LineGeometryObj {
         // else Overhead.
         let mut new_choice = ConductorChoice::Overhead;
         for o in wires.iter().take(n).flatten() {
-            let any = o.as_any();
-            if any.is::<CnDataObj>() {
-                new_choice = ConductorChoice::ConcentricNeutral;
-            }
-            if any.is::<TsDataObj>() {
-                new_choice = ConductorChoice::TapeShield;
+            // Sequential ifs in Pascal: TS wins if both a CN and a TS are
+            // present. Preserve that by not resetting on a plain Wire.
+            match o.as_conductor().map(|c| c.conductor_kind()) {
+                Some(ConductorKind::Cn) => new_choice = ConductorChoice::ConcentricNeutral,
+                Some(ConductorKind::Ts) => new_choice = ConductorChoice::TapeShield,
+                _ => {}
             }
         }
         self.change_line_constants_type(new_choice);
@@ -321,18 +321,11 @@ impl LineGeometryObj {
 /// `(NormAmps, EmergAmps)` of a conductor (Pascal `Wires[1].NormAmps/EmergAmps`),
 /// whichever concrete catalog type it is.
 fn conductor_norm_emerg(o: &dyn DssObject) -> (f64, f64) {
-    use crate::elements::general::conductor_data::WireDataObj;
-    let any = o.as_any();
-    if let Some(w) = any.downcast_ref::<WireDataObj>() {
-        let (n, e, _, _) = w.amps();
-        (n, e)
-    } else if let Some(c) = any.downcast_ref::<CnDataObj>() {
-        let (n, e, _, _) = c.amps();
-        (n, e)
-    } else if let Some(t) = any.downcast_ref::<TsDataObj>() {
-        let (n, e, _, _) = t.amps();
-        (n, e)
-    } else {
-        (0.0, 0.0)
+    match o.as_conductor() {
+        Some(c) => {
+            let (n, e, _, _) = c.amps();
+            (n, e)
+        }
+        None => (0.0, 0.0),
     }
 }

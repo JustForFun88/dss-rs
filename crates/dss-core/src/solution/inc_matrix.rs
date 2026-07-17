@@ -187,7 +187,7 @@ fn add_series_caps(b: &mut FlatBuilder, classes: &[DssClass]) {
             .downcast_ref::<crate::elements::pd::capacitor::Capacitor>()
             .expect("shunt_capacitors list holds Capacitor objects")
             .num_terminals();
-        if !(num_terminals > 1) || !enabled {
+        if num_terminals <= 1 || !enabled {
             continue;
         }
         b.temp_counter += 1;
