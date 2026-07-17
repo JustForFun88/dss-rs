@@ -84,7 +84,7 @@ pub struct DynamicExpObj {
 impl DynamicExpObj {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
-            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
+            data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             var_idx: -1,
             var_names: Vec::new(),
             var_consts: Vec::new(),
@@ -106,7 +106,7 @@ impl DynamicExpObj {
     /// Pascal `Get_Var_Idx`: the index of `var_name` in the state-variable list,
     /// or [`CONST_CODE`] if it parses as a numeric constant, or -1 otherwise.
     pub fn get_var_idx(&self, var_name: &str) -> i32 {
-        let lower = var_name.to_lowercase();
+        let lower = var_name.to_ascii_lowercase();
         if let Some(i) = self.var_names.iter().position(|n| *n == lower) {
             return i as i32;
         }
@@ -161,7 +161,7 @@ impl DynamicExpObj {
     /// **form-only**: the shortened bound already keeps `Cmds[CmdIdx + 1]` in
     /// range, so it selects exactly the same outputs as the guarded 0.14.5 loop.
     pub fn get_out_idx(&self, var_name: &str) -> i32 {
-        let lower = var_name.to_lowercase();
+        let lower = var_name.to_ascii_lowercase();
         for (idx, name) in self.var_names.iter().enumerate() {
             if *name != lower {
                 continue;
@@ -214,7 +214,7 @@ impl DynamicExpObj {
         const VAL_NAMES: [&str; 12] = [
             "p", "q", "vmag", "vang", "imag", "iang", "s", "p0", "q0", "edp", "kvdc", "mod",
         ];
-        let lower = value_str.to_lowercase();
+        let lower = value_str.to_ascii_lowercase();
         VAL_NAMES
             .iter()
             .position(|n| *n == lower)
@@ -327,7 +327,7 @@ impl DynamicExpObj {
         self.cmds.clear();
         // Pascal does NOT clear VarConsts here; new constants append and the
         // freshly-built cmds reference the new (correct) indices.
-        let full_expr = format!("[{}]", self.expression.to_lowercase());
+        let full_expr = format!("[{}]", self.expression.to_ascii_lowercase());
         let mut expr = full_expr;
 
         while !expr.is_empty() {
@@ -384,7 +384,7 @@ impl DynamicExpObj {
                         let idx = self.get_var_idx(token);
                         if idx == CONST_CODE {
                             self.var_consts
-                                .push(val_f64(&token.to_lowercase()).unwrap_or(0.0));
+                                .push(val_f64(&token.to_ascii_lowercase()).unwrap_or(0.0));
                             self.cmds
                                 .push(CONST_BASE + (self.var_consts.len() as i32 - 1));
                         } else if idx < 0 {

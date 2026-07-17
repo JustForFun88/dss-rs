@@ -348,7 +348,7 @@ impl Circuit {
     /// Pascal `TDSSCircuit.Create` (Phase 3 fields).
     pub fn new(name: &str, default_base_freq: f64) -> Self {
         Self {
-            name: name.to_lowercase(),
+            name: name.to_ascii_lowercase(),
             uuid: None,
             case_name: name.to_string(),
             bus_list: HashList::new(),

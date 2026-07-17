@@ -65,7 +65,7 @@ impl CnDataObj {
     pub fn new(name: impl Into<String>) -> Self {
         // Pascal `TCNDataObj.Create`.
         Self {
-            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
+            data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             cond: ConductorDataCore::new(),
             cable: CableDataCore::new(),
             fk_strand: 2,

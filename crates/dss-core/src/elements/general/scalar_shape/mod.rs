@@ -65,7 +65,7 @@ impl ScalarShapeCore {
     /// Pascal `TTShapeObj.Create` / `TPriceShapeObj.Create`.
     pub fn new(name: impl Into<String>, num_props: usize) -> Self {
         Self {
-            data: DssObjData::new(name.into().to_lowercase(), num_props),
+            data: DssObjData::new(name.into().to_ascii_lowercase(), num_props),
             num_points: 0,
             interval: 1.0, // hr
             values: None,

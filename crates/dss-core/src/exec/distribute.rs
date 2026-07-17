@@ -90,7 +90,7 @@ impl Dss {
                 }
                 7 => {
                     // `Load or Generator` — dispatch on the value's first letter.
-                    do_generators = !param.to_uppercase().starts_with('L');
+                    do_generators = !param.to_ascii_uppercase().starts_with('L');
                 }
                 _ => {} // ignore unnamed and extra parms
             }

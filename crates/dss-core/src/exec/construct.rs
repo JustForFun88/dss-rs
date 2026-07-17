@@ -317,7 +317,7 @@ impl Dss {
         let class_by_name = classes
             .iter()
             .enumerate()
-            .map(|(i, c)| (c.props.class_name().to_lowercase(), i))
+            .map(|(i, c)| (c.props.class_name().to_ascii_lowercase(), i))
             .collect();
 
         let mut dss = Self {

@@ -67,7 +67,7 @@ impl Bus {
     /// Pascal `TDSSBus.Create`.
     pub fn new(name: impl Into<String>) -> Self {
         Self {
-            name: name.into().to_lowercase(),
+            name: name.into().to_ascii_lowercase(),
             uuid: None,
             nodes: Vec::new(),
             ref_no: Vec::new(),

@@ -274,7 +274,7 @@ struct XfmrCodeData {
 /// stores the object name through the class hash list, which lowercases it (the
 /// oracle emits `cimxfmrcode_<name>` and keys `TankInfo=cimxfmrcode_<name>=1`).
 fn synth_code_name(xf_name: &str) -> String {
-    format!("CIMXfmrCode_{xf_name}").to_lowercase()
+    format!("CIMXfmrCode_{xf_name}").to_ascii_lowercase()
 }
 
 /// Find-or-create the bank named `s_bank` (Pascal `GetBank`/`AddBank` over a
@@ -286,7 +286,7 @@ fn ensure_bank(
     max_wdg: usize,
     s_bank: &str,
 ) -> usize {
-    let key = s_bank.to_lowercase();
+    let key = s_bank.to_ascii_lowercase();
     if let Some(&i) = bank_idx.get(&key) {
         return i;
     }
@@ -591,7 +591,7 @@ fn hv_current_limit(
     emerg: f64,
 ) {
     let limit_name = writer::op_lim_i_name(norm, emerg);
-    let key = limit_name.to_lowercase();
+    let key = limit_name.to_ascii_lowercase();
     let limit_uuid = match op_limit_idx.get(&key) {
         Some(&idx) => op_limits[idx].uuid,
         None => {

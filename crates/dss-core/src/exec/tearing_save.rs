@@ -445,7 +445,7 @@ fn strip_prefix_ci(line: &str, prefix_lower: &str) -> String {
 /// `SetElementActive(full_name); ActiveCktElement.GetBus(bus_num)` (1-based
 /// terminal) — the bus name at a PDE's terminal, or `None` when unresolved.
 fn element_bus(classes: &[DssClass], full_name: &str, bus_num: usize) -> Option<String> {
-    let lower = full_name.to_lowercase();
+    let lower = full_name.to_ascii_lowercase();
     let (cls_name, obj_name) = match lower.split_once('.') {
         Some((c, n)) => (Some(c), n),
         None => (None, lower.as_str()),

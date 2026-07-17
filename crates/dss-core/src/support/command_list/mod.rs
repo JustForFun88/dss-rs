@@ -41,14 +41,14 @@ impl CommandList {
 
         // Pascal fills both hash lists with the full names first...
         for (i, name) in names.iter().enumerate() {
-            let key = name.to_lowercase();
+            let key = name.to_ascii_lowercase();
             full.entry(key.clone()).or_insert(i);
             abbrev.entry(key).or_insert(i);
         }
         // ...then adds every proper prefix that is still free, command by
         // command (`for j := 1 to Length(Commands[i]) - 1`).
         for (i, name) in names.iter().enumerate() {
-            let key = name.to_lowercase();
+            let key = name.to_ascii_lowercase();
             for j in 1..key.len() {
                 if !key.is_char_boundary(j) {
                     continue; // names are ASCII in practice; stay panic-free
@@ -68,7 +68,7 @@ impl CommandList {
     /// Look a (possibly abbreviated) command up, returning its 0-based index
     /// (Pascal `GetCommand`, which returned 1-based with 0 = not found).
     pub fn get_command(&self, cmd: &str) -> Option<usize> {
-        let key = cmd.to_lowercase();
+        let key = cmd.to_ascii_lowercase();
         if !self.abbrev_allowed {
             self.full.get(&key).copied()
         } else {

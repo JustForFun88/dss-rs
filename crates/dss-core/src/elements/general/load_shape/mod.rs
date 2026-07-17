@@ -177,7 +177,7 @@ impl LoadShapeObj {
     /// Pascal `TLoadShapeObj.Create`.
     pub fn new(name: impl Into<String>) -> Self {
         Self {
-            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
+            data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             num_points: 0,
             interval: 1.0,
             p_mult: None,

@@ -100,7 +100,11 @@ impl ClassProps {
                     if token.is_empty() {
                         break;
                     }
-                    list.push(if lower { token.to_lowercase() } else { token });
+                    list.push(if lower {
+                        token.to_ascii_lowercase()
+                    } else {
+                        token
+                    });
                 }
                 obj.set_string_list(idx, list);
                 Ok(0)
@@ -139,7 +143,7 @@ impl ClassProps {
                 match pd.object_class {
                     None => {
                         // Phase 3 behavior: store the lowercased name only.
-                        obj.set_string(idx, value.to_lowercase());
+                        obj.set_string(idx, value.to_ascii_lowercase());
                     }
                     Some("") => {
                         // Pascal `DSSObjectReferenceProperty` with
@@ -307,7 +311,7 @@ impl ClassProps {
                 let ord = if pd.ptype == PropType::MappedStringEnum {
                     eng.enums
                         .get(enum_id)
-                        .string_to_ordinal(&value.to_lowercase())?
+                        .string_to_ordinal(&value.to_ascii_lowercase())?
                 } else {
                     let v = get_integer(eng, value)?;
                     if !eng.enums.get(enum_id).is_ordinal_valid(v) {
@@ -328,13 +332,13 @@ impl ClassProps {
                 let ord = eng
                     .enums
                     .get(enum_id)
-                    .string_to_ordinal(&value.to_lowercase())?;
+                    .string_to_ordinal(&value.to_ascii_lowercase())?;
                 obj.do_action(ord, eng.errors);
                 Ok(0)
             }
             PropType::String => {
                 let v = if pd.flags.contains(PropFlags::TRANSFORM_LOWERCASE) {
-                    value.to_lowercase()
+                    value.to_ascii_lowercase()
                 } else {
                     value.to_string()
                 };
@@ -528,7 +532,7 @@ impl ClassProps {
                     let ord = eng
                         .enums
                         .get(enum_id)
-                        .string_to_ordinal(&token.to_lowercase())?;
+                        .string_to_ordinal(&token.to_ascii_lowercase())?;
                     ords.push(ord);
                 }
                 obj.set_struct_i32_array(idx, &ords);
@@ -553,7 +557,7 @@ impl ClassProps {
                     let ord = eng
                         .enums
                         .get(enum_id)
-                        .string_to_ordinal(&token.to_lowercase())?;
+                        .string_to_ordinal(&token.to_ascii_lowercase())?;
                     ords.push(ord);
                 }
                 obj.set_enum_array(idx, &ords);
@@ -646,7 +650,7 @@ fn parse_conductor_proxy(
             continue;
         }
         // `FullNameAsArray`: `ParseObjectClassAndName(AnsiLowerCase(token))`.
-        let lower = token.to_lowercase();
+        let lower = token.to_ascii_lowercase();
         let (class_tok, name_tok) = match lower.split_once('.') {
             Some((c, n)) => (c, n),
             None => {

@@ -80,7 +80,7 @@ impl DynEqPceData {
     /// stripped, so it is re-wrapped in `(...)` before `make_double`, exactly as
     /// `obj/props/setters.rs` does for a `Double` property).
     pub fn parse_dyn_var(&mut self, variable: &str, value: &str, vars: &ParserVars) -> bool {
-        let variable = variable.to_lowercase();
+        let variable = variable.to_ascii_lowercase();
         let Some(eq) = &self.dynamic_eq_obj else {
             return false;
         };

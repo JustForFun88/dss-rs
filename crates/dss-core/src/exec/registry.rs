@@ -52,7 +52,7 @@ impl DssClass {
     /// Pascal `SetActive`: make the named object active; returns whether it
     /// existed.
     pub(crate) fn set_active(&mut self, name: &str) -> bool {
-        match self.name_to_idx.get(&name.to_lowercase()) {
+        match self.name_to_idx.get(&name.to_ascii_lowercase()) {
             Some(&idx) => {
                 self.active = Some(idx);
                 true
@@ -85,7 +85,7 @@ impl ElemStore for ClassStore<'_> {
     }
 
     fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef> {
-        let lower = full_name.to_lowercase();
+        let lower = full_name.to_ascii_lowercase();
         let (cls_name, obj_name) = match lower.split_once('.') {
             Some((c, n)) => (Some(c), n),
             None => (None, lower.as_str()),
@@ -108,7 +108,7 @@ impl ElemStore for ClassStore<'_> {
     }
 
     fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemRef> {
-        let lower = obj_name.to_lowercase();
+        let lower = obj_name.to_ascii_lowercase();
         for (ci, class) in self.classes.iter().enumerate() {
             if !class.props.class_name().eq_ignore_ascii_case(class_name) {
                 continue;
@@ -282,7 +282,7 @@ impl<'a> ForeignClasses<'a> {
 
 impl<'a> ForeignClassesView<'a> for ForeignClasses<'a> {
     fn find(&self, class: &str, name: &str) -> Option<(ElemRef, &'a dyn DssObject)> {
-        self.lookup(class, &name.to_lowercase())
+        self.lookup(class, &name.to_ascii_lowercase())
     }
 
     /// Pascal `GetCktElementIndex`: resolve a full `Class.Name` reference (the
@@ -292,7 +292,7 @@ impl<'a> ForeignClassesView<'a> for ForeignClasses<'a> {
         let dot = full_name.find('.')?;
         let (class, name) = (&full_name[..dot], &full_name[dot + 1..]);
         // Reuse the per-class lookup, then rebuild the canonical FullName.
-        let (r, obj) = self.lookup(class, &name.to_lowercase())?;
+        let (r, obj) = self.lookup(class, &name.to_ascii_lowercase())?;
         let cls = if r.cls < self.split {
             &self.left[r.cls]
         } else {

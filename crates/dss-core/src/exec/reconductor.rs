@@ -94,7 +94,7 @@ impl Dss {
         let find = |classes: &[DssClass], name: &str| -> Option<usize> {
             classes[line_ci]
                 .name_to_idx
-                .get(&name.to_lowercase())
+                .get(&name.to_ascii_lowercase())
                 .copied()
         };
         let (Some(i1), Some(i2)) = (find(&self.classes, &line1), find(&self.classes, &line2))
