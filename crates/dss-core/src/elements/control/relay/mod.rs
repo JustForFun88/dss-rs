@@ -1,42 +1,55 @@
-//! Port of `Controls/Relay.pas` — `TRelayObj`, the most general protection
-//! control: a `TControlElem` that monitors one circuit element's terminal and
-//! opens/closes a switch on the same or another terminal. A Relay has nine
-//! **sub-types** selected by `Type=` (Pascal `ControlType`), each with its own
-//! sensing logic but the same arm/trip/reclose/reset state machine and the same
-//! whole-terminal `Closed[0]` force:
+//! Port of `Controls/Relay.pas` (**EPRI OpenDSS r4133**) — `TRelayObj`, the most
+//! general protection control: a `TControlElem` that monitors one circuit
+//! element's terminal and opens/closes a switch on the same or another terminal.
+//! A Relay has nine **sub-types** selected by `Type=` (Pascal `ControlType`),
+//! each with its own sensing logic but the same arm/trip/reclose/reset state
+//! machine:
 //!
 //! - `Current` (overcurrent 50/51) — phase + ground TCC pickup, fast inst trip.
+//!   The **only** type that supports per-phase single-phase tripping/lockout.
 //! - `Voltage` (27/59) — definite-time over/under-voltage, voltage reclose.
 //! - `ReversePower` (32) — one-shot reverse-power lockout.
-//! - `46` (`NegCurrent`) — negative-sequence current, one-shot lockout.
-//! - `47` (`NegVoltage`) — negative-sequence voltage, one-shot lockout.
-//! - `Distance` (21) — mho-style loop impedance reach.
+//! - `46`/`47` (`NegCurrent`/`NegVoltage`) — negative-sequence, one-shot lockout.
+//! - `Distance` (21) / `TD21` (differential) — mho / incremental loop reach.
 //! - `DOC` — directional overcurrent (the dominant corpus type).
-//! - `Generic` — reads a monitored PC element's state `Variable[MonitorVarIndex]`
-//!   and trips on an over/under bound (`OverTrip`/`UnderTrip`); the index is
-//!   resolved once in `recalc` via `LookupVariable`. See [`logic::Relay::generic_logic`].
-//! - `TD21` (WPG.12) — the differential time-distance relay: a per-cycle ring
-//!   buffer of terminal V/I (`DynaVars.h`/`Frequency`/`IterationFlag`, now
-//!   available) drives an incremental (pre-fault-referenced) distance reach. See
-//!   [`logic::Relay::td21_logic`]; the four `TD21RelayTest` corpus decks exercise
-//!   it live in dynamics mode.
+//! - `Generic` — reads a monitored PC element's state variable and trips out of
+//!   an over/under band.
 //!
-//! Joins the WP5.7 control sweep exactly like the Recloser (no new dispatch):
-//! `Sample` reads `Closed[0]` to refresh `FPresentState`, then runs the
-//! sub-type logic which arms/queues `OPEN`/`CLOSE`/`RESET`; `DoPendingAction`
-//! flips the whole controlled terminal; `Reset` restores the `Normal` state.
+//! **r4133 rewrite (WP-U2.3, delta_r4088_r4133 rows B1/B2/B4/C1/D3/D4/D7/E2/E3):**
+//! - **Per-phase state machine for `type=current`.** `FPresentState`/`FNormalState`
+//!   become per-phase arrays (`StateArray[1..RELAYCONTROLMAXDIM=6]`);
+//!   `OperationCount`, `LockedOut`, `ArmedForOpen/Close/Reset`, `PhaseTarget`,
+//!   `RelayTarget` become per-phase with an extra `IdxMultiPh = NPhases+1` ganged
+//!   slot. All non-overcurrent sub-types drive the ganged slot only.
+//! - **Single-phase tripping/lockout** (`SinglePhTrip`/`SinglePhLockout`, overcurrent
+//!   ONLY — selecting any other type force-disables them): per-phase TCC eval of
+//!   `cBuffer^[i+CondOffset]`, the phase index rides the control-queue proxy handle.
+//! - **Ganged-path changes (B4):** sampling continues while ≥1 phase is closed;
+//!   `MaxOperatingCount` curve selection over non-locked-out phases;
+//!   `DoPendingAction` iterates phases honoring previously locked-out phases.
+//! - **VoltageLogic (B2):** OV/UV over `Vmax_closed`/`Vmin_closed` (closed phases
+//!   only); the reclose voltage check is still all-phase.
+//! - **CTRL_RESET semantics (D4):** the popped `CTRL_RESET` action no longer runs
+//!   the full `Reset` — it only resets `OperationCount` to 1 for closed phases (+
+//!   the TD21 quiet window); a reset no longer forces the element to normal state.
+//! - **Inst-trip delay single-count (D3):** inst time is a bare `0.01` (the
+//!   `MechanicalDelay` is added once, at the queue push).
+//! - **Property table 50 → 71** with deprecated aliases (`PhaseCurve→PhCurve`,
+//!   `GroundTrip→OC_GndPickup`, `Delay→DefiniteTimeDelay`,
+//!   `Breakertime→MechanicalDelay`, `Variable→Generic_Variable`,
+//!   `Overvoltcurve→Voltage_OVCurve`…), plus `SinglePhTrip`/`SinglePhLockout`,
+//!   `Lock`/`Reset` actions, `RatedCurrent`/`InterruptingRating`, and the
+//!   `Normal`/`State` per-phase arrays.
+//! - **Event-log overhaul (E2/E3):** per-phase `'Phase %d opened on %s (…trip) …'`
+//!   wording, descriptive relay targets (`'Gnd Curve + Ph Curve'` etc.), and an
+//!   **unconditional** `'Debug Sample: Relay.<name> FPresentState: […]'` line on
+//!   every `Sample` (r4133 forgot the `DebugTrace` guard the Recloser has — a
+//!   deterministic, defined behavior, reproduced with `TODO(compat)`).
 //!
-//! **The dirty-edge rule (WP7.2 step-2a, verified against Pascal + oracle):**
-//! every `Closed[0] := …` in Pascal raises `SystemYChanged` **unconditionally**
-//! (`CktElement.pas:287` → `:240`), so each force here sets
-//! `*ctx.system_y_changed = true` unconditionally — never gated on a
-//! terminal-aggregate — and a partial-open fail-on-regression test ships in
-//! [`tests`].
-//!
-//! Concern split mirrors the Recloser: this file holds the property metadata,
-//! the [`Relay`] struct, construction/`recalc`, and the `Sample` dispatch +
-//! `DoPendingAction`/`Reset`; [`logic`] holds the per-sub-type sensing
-//! functions; [`accessors`] holds the trait impls.
+//! Concern split mirrors the Recloser: this file holds the property metadata, the
+//! [`Relay`] struct, construction/`recalc`, and `Sample`/`DoPendingAction`/`Reset`;
+//! [`logic`] holds the per-sub-type sensing functions; [`accessors`] holds the
+//! trait impls.
 
 #[cfg(test)]
 mod tests;
@@ -47,7 +60,7 @@ mod logic;
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{
-    CTRL_CLOSE, CTRL_OPEN, ControlElemData, CtrlCtx, RefSnapshot,
+    CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, ControlElemData, CtrlCtx, RefSnapshot,
 };
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::CktElement;
@@ -58,6 +71,16 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 /// `RecloseIntervals` fixed allocation (Pascal `Reallocmem(…, SizeOf(Double) *
 /// 4)`).
 const RECLOSE_MAX: usize = 4;
+
+/// `RELAYCONTROLMAXDIM` — the per-phase state-array bound (Pascal `const`).
+const RCMAX: usize = 6;
+
+/// Per-phase array length. The arrays are indexed **1-based** (Pascal
+/// `Array[1..RELAYCONTROLMAXDIM]`); slot 0 is unused so `arr[i]` lines up with the
+/// Pascal phase index. The ganged slot lives at `IdxMultiPh = NPhases+1` (= 4,
+/// frozen at the `Create`-time `NPhases=3`), which is `< ARR`. Sizing to `RCMAX +
+/// 2` covers per-phase indices `1..=RCMAX` plus that ganged slot.
+const ARR: usize = RCMAX + 2;
 
 /// Pascal `MIN_DISTANCE_REACTANCE = -1.0e-8` — allows near-bolted faults to be
 /// detected by the Distance characteristic.
@@ -77,37 +100,39 @@ pub mod ctype {
     pub const DOC: i32 = 9;
 }
 
-/// 1-based property ordinals (Pascal `TRelayProp` + the `TCktElementClass`
-/// tail). Names confirmed against the oracle's `AllPropertyNames`.
+/// 1-based property ordinals in **display order** (the r4133
+/// `TRelay.DefineProperties` `AddProperty` sequence, which is what the `?`/Dump
+/// surface and the accessor trait use — the Pascal *internal* index is folded
+/// into the deprecated-alias arms that share fields).
 pub mod prop {
     pub const MONITORED_OBJ: usize = 1;
     pub const MONITORED_TERM: usize = 2;
     pub const SWITCHED_OBJ: usize = 3;
     pub const SWITCHED_TERM: usize = 4;
     pub const TYP: usize = 5;
-    pub const PHASE_CURVE: usize = 6;
-    pub const GROUND_CURVE: usize = 7;
-    pub const PHASE_TRIP: usize = 8;
-    pub const GROUND_TRIP: usize = 9;
-    pub const TD_PHASE: usize = 10;
-    pub const TD_GROUND: usize = 11;
-    pub const PHASE_INST: usize = 12;
-    pub const GROUND_INST: usize = 13;
-    pub const RESET: usize = 14;
+    pub const PH_CURVE: usize = 6;
+    pub const OC_GND_CURVE: usize = 7;
+    pub const PH_PICKUP: usize = 8;
+    pub const OC_GND_PICKUP: usize = 9;
+    pub const TD_PH: usize = 10;
+    pub const OC_TD_GND: usize = 11;
+    pub const PH_INST: usize = 12;
+    pub const OC_GND_INST: usize = 13;
+    pub const RESET_TIME: usize = 14;
     pub const SHOTS: usize = 15;
     pub const RECLOSE_INTERVALS: usize = 16;
-    pub const DELAY: usize = 17;
-    pub const OVERVOLT_CURVE: usize = 18;
-    pub const UNDERVOLT_CURVE: usize = 19;
+    pub const DEFINITE_TIME_DELAY: usize = 17;
+    pub const VOLTAGE_OV_CURVE: usize = 18;
+    pub const VOLTAGE_UV_CURVE: usize = 19;
     pub const KV_BASE: usize = 20;
     pub const PCT_PICKUP47: usize = 21;
     pub const BASE_AMPS46: usize = 22;
     pub const PCT_PICKUP46: usize = 23;
     pub const ISQT46: usize = 24;
-    pub const VARIABLE: usize = 25;
-    pub const OVERTRIP: usize = 26;
-    pub const UNDERTRIP: usize = 27;
-    pub const BREAKER_TIME: usize = 28;
+    pub const GENERIC_VARIABLE: usize = 25;
+    pub const GENERIC_OVER_TRIP: usize = 26;
+    pub const GENERIC_UNDER_TRIP: usize = 27;
+    pub const MECHANICAL_DELAY: usize = 28;
     pub const ACTION: usize = 29;
     pub const Z1MAG: usize = 30;
     pub const Z1ANG: usize = 31;
@@ -130,32 +155,53 @@ pub mod prop {
     pub const DOC_PHASE_TRIP_INNER: usize = 48;
     pub const DOC_TD_PHASE_INNER: usize = 49;
     pub const DOC_P1_BLOCKING: usize = 50;
+    pub const SINGLE_PH_TRIP: usize = 51;
+    pub const SINGLE_PH_LOCKOUT: usize = 52;
+    pub const LOCK: usize = 53;
+    pub const RESET_ACTION: usize = 54;
+    pub const RATED_CURRENT: usize = 55;
+    pub const INTERRUPTING_RATING: usize = 56;
+    // Deprecated aliases (share fields with the canonical props above):
+    pub const BREAKER_TIME: usize = 57; // -> MECHANICAL_DELAY
+    pub const DELAY: usize = 58; // -> DEFINITE_TIME_DELAY
+    pub const GROUND_CURVE: usize = 59; // -> OC_GND_CURVE
+    pub const GROUND_TRIP: usize = 60; // -> OC_GND_PICKUP
+    pub const GROUND_INST: usize = 61; // -> OC_GND_INST
+    pub const TD_GROUND: usize = 62; // -> OC_TD_GND
+    pub const PHASE_CURVE: usize = 63; // -> PH_CURVE
+    pub const PHASE_TRIP: usize = 64; // -> PH_PICKUP
+    pub const PHASE_INST: usize = 65; // -> PH_INST
+    pub const TD_PHASE: usize = 66; // -> TD_PH
+    pub const OVERTRIP: usize = 67; // -> GENERIC_OVER_TRIP
+    pub const UNDERTRIP: usize = 68; // -> GENERIC_UNDER_TRIP
+    pub const VARIABLE: usize = 69; // -> GENERIC_VARIABLE
+    pub const OVERVOLT_CURVE: usize = 70; // -> VOLTAGE_OV_CURVE
+    pub const UNDERVOLT_CURVE: usize = 71; // -> VOLTAGE_UV_CURVE
     // TCktElementClass tail:
-    pub const BASE_FREQ: usize = 51;
-    pub const ENABLED: usize = 52;
-    pub const NUM_PROPS: usize = 53; // incl. Like
+    pub const BASE_FREQ: usize = 72;
+    pub const ENABLED: usize = 73;
+    pub const NUM_PROPS: usize = 74; // incl. Like
 }
 
-/// `TRelay.DefineProperties`. Property names match the oracle's
-/// `AllPropertyNames` (the `?`-query dump keys) exactly.
+/// `TRelay.DefineProperties` (r4133). Property names match the oracle's
+/// `AllPropertyNames` (the `?`-query dump keys) exactly, in `AddProperty` order.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
-    use prop::*;
     let defs = vec![
         PropDef::object_ref_any("MonitoredObj"),
         PropDef::integer("MonitoredTerm"),
         PropDef::object_ref_any("SwitchedObj"),
         PropDef::integer("SwitchedTerm"),
         PropDef::mapped_string_enum("Type", enums.relay_type),
-        PropDef::object_ref_class("TCC_Curve", "PhaseCurve"),
-        PropDef::object_ref_class("TCC_Curve", "GroundCurve"),
-        PropDef::double("PhaseTrip"),
-        PropDef::double("GroundTrip"),
-        PropDef::double("TDPhase"),
-        PropDef::double("TDGround"),
-        PropDef::double("PhaseInst"),
-        PropDef::double("GroundInst"), // Pascal Units_A (JSON-only)
-        PropDef::double("Reset"),      // Pascal Units_s (JSON-only)
-        // Shots aliases NumReclose with a -1 value offset (the Recloser precedent).
+        // TCC curves. `GetTccCurve('none')` -> NIL silently; default names `none`.
+        PropDef::object_ref_class("TCC_Curve", "PhCurve"),
+        PropDef::object_ref_class("TCC_Curve", "OC_GndCurve"),
+        PropDef::double("PhPickup"),
+        PropDef::double("OC_GndPickup"),
+        PropDef::double("TDPh"),
+        PropDef::double("OC_TDGnd"),
+        PropDef::double("PhInst"),
+        PropDef::double("OC_GndInst"),
+        PropDef::double("ResetTime"),
         PropDef::integer("Shots")
             .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::VALUE_OFFSET)
             .value_offset(-1.0),
@@ -163,20 +209,20 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // zero-count dump render `[NONE]` (Type=DOC ⇒ NumReclose 0).
         PropDef::double_v_array_max("RecloseIntervals", RECLOSE_MAX)
             .flags(PropFlags::ARRAY_MAX_SIZE | PropFlags::ALLOW_NONE),
-        PropDef::double("Delay").flags(PropFlags::DYNAMIC_DEFAULT), // type sets it
-        PropDef::object_ref_class("TCC_Curve", "OvervoltCurve"),
-        PropDef::object_ref_class("TCC_Curve", "UndervoltCurve"),
+        PropDef::double("DefiniteTimeDelay").flags(PropFlags::DYNAMIC_DEFAULT), // type sets it
+        PropDef::object_ref_class("TCC_Curve", "Voltage_OVCurve"),
+        PropDef::object_ref_class("TCC_Curve", "Voltage_UVCurve"),
         PropDef::double("kVBase"),
         PropDef::double("47%Pickup"),
         PropDef::double("46BaseAmps"),
         PropDef::double("46%Pickup"),
         PropDef::double("46isqt"),
-        PropDef::string("Variable"),
-        PropDef::double("Overtrip"),
-        PropDef::double("Undertrip"),
-        PropDef::double("BreakerTime"),
-        // Action: MappedStringEnum onto FPresentState (Redundant with State).
-        PropDef::mapped_string_enum("Action", enums.relay_action).flags(PropFlags::REDUNDANT),
+        PropDef::string("Generic_Variable"),
+        PropDef::double("Generic_OverTrip"),
+        PropDef::double("Generic_UnderTrip"),
+        PropDef::double("MechanicalDelay"),
+        // Action: deprecated ganged StringEnumActionProperty (getter dumps empty).
+        PropDef::action("Action", enums.relay_action),
         PropDef::double("Z1Mag"),
         PropDef::double("Z1Ang"),
         PropDef::double("Z0Mag"),
@@ -186,8 +232,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("EventLog"),
         PropDef::boolean("DebugTrace"),
         PropDef::boolean("DistReverse"),
-        PropDef::mapped_string_enum("Normal", enums.relay_state).flags(PropFlags::DYNAMIC_DEFAULT),
-        PropDef::mapped_string_enum("State", enums.relay_state),
+        PropDef::mapped_string_enum_array("Normal", enums.relay_state)
+            .flags(PropFlags::DYNAMIC_DEFAULT),
+        PropDef::mapped_string_enum_array("State", enums.relay_state),
         PropDef::double("DOC_TiltAngleLow"),
         PropDef::double("DOC_TiltAngleHigh"),
         PropDef::double("DOC_TripSettingLow"),
@@ -198,15 +245,37 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("DOC_PhaseTripInner"),
         PropDef::double("DOC_TDPhaseInner"),
         PropDef::boolean("DOC_P1Blocking"),
+        PropDef::boolean("SinglePhTrip"),
+        PropDef::boolean("SinglePhLockout"),
+        PropDef::boolean("Lock"),
+        PropDef::boolean("Reset"),
+        PropDef::double("RatedCurrent"),
+        PropDef::double("InterruptingRating"),
+        // Deprecated aliases (props 57-71):
+        PropDef::double("Breakertime"),
+        PropDef::double("Delay"),
+        PropDef::object_ref_class("TCC_Curve", "GroundCurve"),
+        PropDef::double("GroundTrip"),
+        PropDef::double("GroundInst"),
+        PropDef::double("TDGround"),
+        PropDef::object_ref_class("TCC_Curve", "Phasecurve"),
+        PropDef::double("PhaseTrip"),
+        PropDef::double("PhaseInst"),
+        PropDef::double("TDPhase"),
+        PropDef::double("overtrip"),
+        PropDef::double("undertrip"),
+        PropDef::string("Variable"),
+        PropDef::object_ref_class("TCC_Curve", "Overvoltcurve"),
+        PropDef::object_ref_class("TCC_Curve", "Undervoltcurve"),
         // TCktElementClass tail:
         PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::enabled("Enabled"),
     ];
-    debug_assert_eq!(defs.len(), NUM_PROPS - 1);
+    debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
     ClassProps::new("Relay", defs, true)
 }
 
-/// `TRelayObj`.
+/// `TRelayObj` (r4133).
 #[derive(Debug, Clone)]
 pub struct Relay {
     pub ccd: ControlElemData,
@@ -242,14 +311,18 @@ pub struct Relay {
     td_phase: f64,
     td_ground: f64,
 
-    // --- Reclose / timing ---
+    // --- Reclose / timing (Pascal DefiniteTimeDelay / MechanicalDelay) ---
     reset_time: f64,
-    delay_time: f64,
-    breaker_time: f64,
+    definite_time_delay: f64,
+    mechanical_delay: f64,
     num_reclose: i32,
     reclose_intervals: [f64; RECLOSE_MAX],
-    /// `RelayTarget` — the trip-cause string logged on open.
-    relay_target: String,
+    /// `RelayTarget[1..IdxMultiPh]` — the per-slot trip-cause string logged on open.
+    relay_target: [String; ARR],
+
+    // --- Informational ratings (not used in the power flow) ---
+    rated_current: f64,
+    interrupting_rating: f64,
 
     // --- Voltage relay ---
     kv_base: f64,
@@ -279,23 +352,14 @@ pub struct Relay {
     dist_reverse: bool,
 
     // --- TD21 (time-distance) differential ring-buffer state (Pascal `td21_*`) ---
-    /// Present ring index into `td21_h` (Pascal `td21_i`, constructor −1).
     td21_i: i32,
-    /// Index one cycle back = the oldest sample and next write slot (`td21_next`).
     td21_next: i32,
-    /// Number of time samples held (`td21_pt`).
     td21_pt: i32,
-    /// Length of one time sample in `td21_h` = `2·Nphases` (`td21_stride`).
     td21_stride: i32,
-    /// Wait this many samples after an operation before sensing again (`td21_quiet`).
     td21_quiet: i32,
-    /// VI history: `td21_pt` samples × `td21_stride` (V then I, per phase) (`td21_h`).
     td21_h: Vec<Complex64>,
-    /// Reference (pre-fault) voltages, per phase (`td21_Uref`).
     td21_uref: Vec<Complex64>,
-    /// Incremental voltages, per phase (`td21_dV`).
     td21_dv: Vec<Complex64>,
-    /// Incremental currents, per phase (`td21_dI`).
     td21_di: Vec<Complex64>,
 
     // --- Directional overcurrent (DOC) ---
@@ -311,44 +375,50 @@ pub struct Relay {
 
     // --- Generic (PC state-variable relay) ---
     monitor_variable: String,
-    /// `MonitorVarIndex` — the 1-based state-variable index resolved from
-    /// `MonitorVariable` against the monitored PC element (Pascal
-    /// `RecalcElementData`'s `LookupVariable`); < 1 = unresolved / not found.
     monitor_var_index: i32,
-    /// The monitored element's state-variable names (1-based, stored 0-based),
-    /// captured when `monitoredobj=` resolves — `recalc` has no foreign-element
-    /// access, so `LookupVariable` matches `MonitorVariable` against this cache.
     monitor_var_names: Vec<String>,
     over_trip: f64,
     under_trip: f64,
 
-    // --- Present/normal state ---
-    present_state: i32,
-    normal_state: i32,
+    // --- Per-phase state machine (r4133 arrays, 1-based; ganged at IdxMultiPh) ---
+    /// `FPresentState[1..RCMAX]` (per phase).
+    present_state: [i32; ARR],
+    /// `FNormalState[1..RCMAX]` (per phase).
+    normal_state: [i32; ARR],
     normal_state_set: bool,
-
-    // --- Operation state machine ---
-    operation_count: i32,
-    locked_out: bool,
-    armed_for_open: bool,
-    armed_for_close: bool,
-    armed_for_reset: bool,
-    phase_target: bool,
+    /// `OperationCount[1..IdxMultiPh]`.
+    operation_count: [i32; ARR],
+    /// `LockedOut[1..IdxMultiPh]`.
+    locked_out: [bool; ARR],
+    /// `ArmedForOpen`/`ArmedForClose`/`ArmedForReset[1..IdxMultiPh]`.
+    armed_for_open: [bool; ARR],
+    armed_for_close: [bool; ARR],
+    armed_for_reset: [bool; ARR],
+    /// `PhaseTarget[1..IdxMultiPh]`.
+    phase_target: [bool; ARR],
+    /// `GroundTarget` — scalar.
     ground_target: bool,
+    /// `IdxMultiPh = NPhases+1` — the ganged operation slot (frozen at 4).
+    idx_multi_ph: usize,
     next_trip_time: f64,
-    /// `LastEventHandle` — the queue handle of the last pushed action, used by
-    /// the Voltage/Distance relays to `Delete` a superseded trip event.
+    /// `LastEventHandle` — the queue handle of the last pushed action.
     last_event_handle: i32,
 
-    /// `DebugTrace` (no trace file is written; round-tripped only).
+    /// `SinglePhTrip`/`SinglePhLockout` — single-phase operation modes (overcurrent
+    /// type only).
+    single_ph_trip: bool,
+    single_ph_lockout: bool,
+    /// `FLocked` — the `Lock` property (blocks manual/internal state changes).
+    f_locked: bool,
+    /// `DebugTrace` — write extra `Debug Sample:` detail lines to the event log.
     debug_trace: bool,
 
-    /// Deferred parse-time element forces (the `RecalcElementData` Closed[0] sync).
+    /// Deferred parse-time element forces (the `RecalcElementData` Closed[i] sync).
     pending_ref_actions: Vec<RefAction>,
 }
 
 impl Relay {
-    /// Pascal `TRelayObj.Create`.
+    /// Pascal `TRelayObj.Create` (r4133).
     pub fn new(name: &str) -> Self {
         let mut ccd = ControlElemData::new(name, prop::NUM_PROPS);
         ccd.cd.nphases = 3; // directly set conds and phases
@@ -364,11 +434,11 @@ impl Relay {
             ctrl_snap: None,
             monitored_element_terminal: 1,
             control_type: ctype::CURRENT, // RelayTypeEnum DefaultValue = 0
-            phase_curve_name: String::new(),
-            ground_curve_name: String::new(),
-            ov_curve_name: String::new(),
-            uv_curve_name: String::new(),
-            doc_phase_curve_inner_name: String::new(),
+            phase_curve_name: "none".to_string(),
+            ground_curve_name: "none".to_string(),
+            ov_curve_name: "none".to_string(),
+            uv_curve_name: "none".to_string(),
+            doc_phase_curve_inner_name: "none".to_string(),
             phase_curve: None,
             ground_curve: None,
             ov_curve: None,
@@ -381,14 +451,13 @@ impl Relay {
             td_phase: 1.0,
             td_ground: 1.0,
             reset_time: 15.0,
-            delay_time: 0.0,
-            breaker_time: 0.0,
+            definite_time_delay: 0.0,
+            mechanical_delay: 0.0,
             num_reclose: 3, // Shots default 4 ⇒ NumReclose 3
-            // Pascal sets [1..3] and leaves [4] uninitialized; the dump renders
-            // NumReclose of them, and `Sample` only reads `[OperationCount-1]`
-            // for `OperationCount ≤ NumReclose ≤ 3`, so the 4th slot is dead.
             reclose_intervals: [0.5, 2.0, 2.0, 0.0],
-            relay_target: String::new(),
+            relay_target: std::array::from_fn(|_| String::new()),
+            rated_current: 0.0,
+            interrupting_rating: 0.0,
             kv_base: 0.0,
             vbase: 0.0,
             pickup_amps46: 100.0 * 20.0 * 0.01, // BaseAmps46 * PctPickup46 * 0.01
@@ -407,8 +476,6 @@ impl Relay {
             dist_z0: Complex64::ZERO,
             dist_k0: Complex64::ZERO,
             dist_reverse: false,
-            // TD21 ring buffer: constructor `td21_i := -1`, everything else 0/NIL;
-            // (re)allocated on the first dynamics `Sample` (Pascal `TD21Logic`).
             td21_i: -1,
             td21_next: 0,
             td21_pt: 0,
@@ -432,18 +499,22 @@ impl Relay {
             monitor_var_names: Vec::new(),
             over_trip: 1.2,
             under_trip: 0.8,
-            present_state: CTRL_CLOSE,
-            normal_state: CTRL_CLOSE,
+            present_state: [CTRL_CLOSE; ARR],
+            normal_state: [CTRL_CLOSE; ARR],
             normal_state_set: false,
-            operation_count: 1,
-            locked_out: false,
-            armed_for_open: false,
-            armed_for_close: false,
-            armed_for_reset: false,
-            phase_target: false,
+            operation_count: [1; ARR],
+            locked_out: [false; ARR],
+            armed_for_open: [false; ARR],
+            armed_for_close: [false; ARR],
+            armed_for_reset: [false; ARR],
+            phase_target: [false; ARR],
             ground_target: false,
+            idx_multi_ph: 3 + 1, // NPhases(=3) + 1, frozen at Create
             next_trip_time: -1.0,
             last_event_handle: 0,
+            single_ph_trip: false,
+            single_ph_lockout: false,
+            f_locked: false,
             debug_trace: false,
             pending_ref_actions: Vec::new(),
         }
@@ -454,20 +525,98 @@ impl Relay {
         format!("Relay.{}", self.ccd.cd.obj.name())
     }
 
-    /// Pascal `TRelayObj.PropertySideEffects(Action|State)`: default `NormalState`
-    /// to the first `State`/`Action` written (`NormalStateSet`).
+    /// Per-phase state-array count (Pascal `Min(RELAYCONTROLMAXDIM, NPhases)`).
+    fn state_size(&self) -> usize {
+        RCMAX.min(self.ccd.cd.nphases.max(1))
+    }
+
+    /// Pascal `Edit` CASE `19,40`: default `NormalState` per phase from
+    /// `PresentState` on the first `State`/`Action` write (`NormalStateSet`).
     fn state_side_effect(&mut self) {
         if !self.normal_state_set {
+            let n = self.ccd.cd.nphases.max(1); // Pascal `for i := 1 to FNPhases`
+            for i in 1..=n.min(RCMAX) {
+                self.normal_state[i] = self.present_state[i];
+            }
             self.normal_state_set = true;
-            self.normal_state = self.present_state;
         }
     }
 
-    /// Pascal `TRelayObj.PropertySideEffects(typ)`: per-type definite-time delay
-    /// and default reclose intervals. (`SetAsNextSeq` only affects the JSON/Save
-    /// ordering, which the per-property `?` dump doesn't use — omitted.)
+    /// Pascal `InterpretRelayState` ganged path (unquoted scalar / `Action`): set
+    /// **every** phase (`for i := 1 to RELAYCONTROLMAXDIM`). Blocked while `Locked`.
+    fn set_all_present(&mut self, state: i32) {
+        for i in 1..=RCMAX {
+            self.present_state[i] = state;
+        }
+    }
+
+    fn set_all_normal(&mut self, state: i32) {
+        for i in 1..=RCMAX {
+            self.normal_state[i] = state;
+        }
+    }
+
+    /// Pascal `Action`'s ganged `DoAction` (deprecated): set every phase's present
+    /// state + the `State` side effect. Blocked while `Locked`.
+    fn do_action(&mut self, ordinal: i32) {
+        if self.f_locked {
+            return; // Pascal `InterpretRelayState`: blocked while Locked.
+        }
+        self.set_all_present(ordinal);
+        self.state_side_effect();
+    }
+
+    /// Pascal prop 54 (`Reset=Yes`): clear `Lock`, run `Reset`, and force the
+    /// controlled element per phase (deferred at `EndEdit`).
+    fn reset_action(&mut self) {
+        self.f_locked = false;
+        // Pascal `Reset(ActorID)` — but at edit time no controlled element handle
+        // is available, so mirror the control-side reset + queue the element force
+        // per phase (the dispatch `Reset` op re-forces live if it has the handle).
+        self.next_trip_time = -1.0;
+        let n = self.state_size();
+        for i in 1..=n {
+            self.present_state[i] = self.normal_state[i];
+            self.armed_for_open[i] = false;
+            self.armed_for_close[i] = false;
+            self.armed_for_reset[i] = false;
+            self.phase_target[i] = false;
+            if self.normal_state[i] == CTRL_OPEN {
+                self.locked_out[i] = true;
+                self.operation_count[i] = self.num_reclose + 1;
+            } else {
+                self.locked_out[i] = false;
+                self.operation_count[i] = 1;
+            }
+        }
+        self.ground_target = false;
+        if let Some(target) = self.ccd.controlled_element {
+            let closed: Vec<bool> = (1..=n)
+                .map(|i| self.normal_state[i] == CTRL_CLOSE)
+                .collect();
+            self.pending_ref_actions
+                .push(RefAction::SetConductorsClosed {
+                    target,
+                    terminal: self.ccd.element_terminal.max(1) as usize,
+                    closed,
+                });
+        }
+    }
+
+    /// Pascal `TRelayObj.PropertySideEffects(typ)` (r4133 oracle-verified): the
+    /// per-type definite-time delay, the DOC-only reclose default, and the
+    /// SinglePhTrip/Lockout force-disable for any non-overcurrent type.
+    ///
+    /// **r4133 note (oddie:r4133-verified):** unlike the r4088/0.14.5 form (and the
+    /// r4133 *source* Edit CASE 5, which still writes `'[5.0]'` for voltage), the
+    /// r4133 engine does NOT apply the current/voltage reclose-interval defaults —
+    /// every non-DOC type keeps the constructor `(0.5, 2, 2)`/Shots 4 (probed:
+    /// current/voltage/46/47/distance/td21 all report Shots 4, reclose `(0.5,2,2)`).
+    /// Only DOC forces `NumReclose 0` (RecloseIntervals `NONE`, Shots 1). The
+    /// source-vs-binary divergence on the voltage default is resolved to the oracle
+    /// (RUNG2-COMMON: oddie:r4133 is authoritative for this rung).
     fn type_side_effect(&mut self) {
-        self.delay_time = match self.control_type {
+        self.definite_time_delay = match self.control_type {
             ctype::REVPOWER
             | ctype::NEGCURRENT
             | ctype::NEGVOLTAGE
@@ -476,47 +625,37 @@ impl Relay {
             | ctype::TD21 => 0.1,
             _ => 0.0, // CURRENT / VOLTAGE / DOC / else
         };
-        match self.control_type {
-            ctype::CURRENT => {
-                self.reclose_intervals[0] = 0.5;
-                self.reclose_intervals[1] = 2.0;
-                self.reclose_intervals[2] = 2.0;
-                self.num_reclose = 3;
-            }
-            ctype::VOLTAGE => {
-                // Pascal sets `RecloseIntervals[3]:=5.0; NumReclose:=1`. With
-                // NumReclose 1 the reclose reads `RecloseIntervals[OperationCount]`
-                // = `[1]` (the 0.5 constructor default), so this 5.0 is dead
-                // unless OperationCount reaches 3 — a faithful upstream quirk
-                // (`Relay.pas:573` vs `:2309`); do not "simplify" it away.
-                self.reclose_intervals[2] = 5.0;
-                self.num_reclose = 1;
-            }
-            ctype::DOC => {
-                self.num_reclose = 0;
-            }
-            _ => {}
+        if self.control_type == ctype::DOC {
+            self.num_reclose = 0;
+        }
+        // Pascal `Edit` CASE 5 side effect: any non-overcurrent type disables the
+        // single-phase modes (`SinglePhTrip`/`SinglePhLockout := FALSE`).
+        if self.control_type != ctype::CURRENT {
+            self.single_ph_trip = false;
+            self.single_ph_lockout = false;
         }
     }
 
-    /// Queue the `RecalcElementData` Closed[0] sync: force the controlled
-    /// element's whole terminal to match `FPresentState` (Pascal
-    /// `ControlledElement.Closed[0] := …`), deferred as a [`RefAction`].
-    fn queue_switch_force(&mut self, closed: bool) {
+    /// Queue the per-phase `RecalcElementData` Closed[i] sync (Pascal
+    /// `ControlledElement.Closed[i] := …` per phase). Deferred as a [`RefAction`].
+    fn queue_switch_force(&mut self) {
         if let Some(target) = self.ccd.controlled_element {
-            self.pending_ref_actions.push(RefAction::SetSwitchClosed {
-                target,
-                terminal: self.ccd.element_terminal.max(1) as usize,
-                closed,
-            });
+            let n = self.state_size();
+            let closed: Vec<bool> = (1..=n)
+                .map(|i| self.present_state[i] == CTRL_CLOSE)
+                .collect();
+            self.pending_ref_actions
+                .push(RefAction::SetConductorsClosed {
+                    target,
+                    terminal: self.ccd.element_terminal.max(1) as usize,
+                    closed,
+                });
         }
     }
 
-    /// Queue the `RecalcElementData` reliability flag: mark the controlled
-    /// element as carrying an OCP device (Pascal `Include(ControlledElement
-    /// .Flags, Flg.HasOCPDevice/HasAutoOCPDevice)`). Only an enabled relay sets
-    /// it; the Relay is an auto-reclosing device, so it sets `HasAutoOCPDevice`
-    /// too and reports `GetOCPDeviceType` ordinal 3.
+    /// Queue the `RecalcElementData` reliability flag (Pascal
+    /// `Include(ControlledElement.Flags, Flg.HasOCPDevice/HasAutoOCPDevice)`). An
+    /// enabled relay is an auto-reclosing device; reports `GetOCPDeviceType` ord 3.
     fn queue_ocp_flag(&mut self) {
         if let Some(target) = self.ccd.controlled_element
             && self.ccd.cd.enabled
@@ -529,26 +668,13 @@ impl Relay {
         }
     }
 
-    /// Pascal `TRelayObj.RecalcElementData`: take the phase count + bus from the
-    /// monitored element, compute the derived pickups (`PickupAmps46`, `Vbase`,
-    /// `PickupVolts47`, the distance impedances), and sync the controlled element
-    /// to `FPresentState`. An enabled relay also marks its controlled element
-    /// with the `Flg.HasOCPDevice`/`HasAutoOCPDevice` reliability flags
-    /// (WP7.2 step 3, via [`Self::queue_ocp_flag`]).
-    ///
-    /// For a `Generic` relay this also resolves `MonitorVarIndex` from
-    /// `MonitorVariable` via [`Self::lookup_variable`] against the monitored PC
-    /// element's state-variable names (captured at `monitoredobj=` resolution).
+    /// Pascal `TRelayObj.RecalcElementData` (r4133): take the phase count + bus
+    /// from the monitored element, compute the derived pickups/impedances, and
+    /// sync the controlled element **per phase** to `FPresentState`.
     fn recalc(&mut self) {
         if let Some(mon) = self.mon_snap.clone() {
             self.ccd.cd.nphases = mon.nphases;
             if self.monitored_element_terminal > mon.nterms as i32 {
-                // Pascal `DoErrorMsg` 384 (Relay.pas:813) sets
-                // `SolutionAbort := True` then falls through (no Exit) — but the
-                // bus/CondOffset setup is skipped. We mirror: record + request
-                // the abort, skip the bus set, still run the misc block below.
-                // (Errors 385/386 below use `DoSimpleMsg` → record-only, no
-                // abort.)
                 self.ccd.cd.obj.push_error_abort(format!(
                     "Relay: \"{}\": Terminal no. \"{}\" does not exist. Re-specify terminal no. (Error 384)",
                     self.ccd.cd.obj.name(),
@@ -563,12 +689,6 @@ impl Relay {
                 };
                 self.ccd.cd.set_bus(1, &bus);
 
-                // Pascal `RecalcElementData` Generic case: resolve the monitored
-                // PC element's state-variable index. Pascal also errors 385 when
-                // the monitored element is not a PC element; the port folds that
-                // into the 386 not-found path — a non-PC element exposes no
-                // variable names, so `LookupVariable` returns < 1 (no corpus deck
-                // exercises Generic relays; PC-ness is not available at recalc).
                 if self.control_type == ctype::GENERIC {
                     self.monitor_var_index =
                         Self::lookup_variable(&self.monitor_var_names, &self.monitor_variable);
@@ -583,23 +703,23 @@ impl Relay {
             }
         }
 
-        // Sync the controlled element to the present state and (when enabled)
-        // mark it as an OCP device. Pascal `DoErrorMsg` 387 (Relay.pas:889) sets
-        // `SolutionAbort := True` (`DSSGlobals.pas:265`) when no controlled
-        // element is set — same abort class as errors 384/388, so request it.
+        // Sync the controlled element to the present state per phase and (when
+        // enabled) mark it as an OCP device.
         if self.ccd.controlled_element.is_some() {
             self.queue_ocp_flag();
-            if self.present_state == CTRL_CLOSE {
-                self.locked_out = false;
-                self.operation_count = 1;
-                self.armed_for_open = false;
-                self.queue_switch_force(true);
-            } else {
-                self.locked_out = true;
-                self.operation_count = self.num_reclose + 1;
-                self.armed_for_close = false;
-                self.queue_switch_force(false);
+            let n = self.state_size();
+            for i in 1..=n {
+                if self.present_state[i] == CTRL_CLOSE {
+                    self.locked_out[i] = false;
+                    self.operation_count[i] = 1;
+                    self.armed_for_open[i] = false;
+                } else {
+                    self.locked_out[i] = true;
+                    self.operation_count[i] = self.num_reclose + 1;
+                    self.armed_for_close[i] = false;
+                }
             }
+            self.queue_switch_force();
         } else {
             self.ccd.cd.obj.push_error_abort(format!(
                 "Relay: \"{}\": CktElement for SwitchedObj is not set. Element must be defined previously. (Error 387)",
@@ -617,22 +737,18 @@ impl Relay {
         self.pickup_volts47 = self.vbase * self.pct_pickup47 * 0.01;
 
         if self.control_type == ctype::DISTANCE || self.control_type == ctype::TD21 {
-            // Pascal `pclx(Mag, Ang / RadiansToDegrees)` — degrees → radians by
-            // the full-precision Math constant; `to_radians()` is identical and
-            // un-pinned (no Distance corpus case yet).
             self.dist_z1 = crate::support::complexutil::pclx(self.z1mag, self.z1ang.to_radians());
             self.dist_z0 = crate::support::complexutil::pclx(self.z0mag, self.z0ang.to_radians());
             self.dist_k0 = ((self.dist_z0 - self.dist_z1) / 3.0) / self.dist_z1;
         }
     }
 
-    /// Pascal `TRelayObj.Sample`: refresh the live state from the controlled
-    /// terminal, then dispatch to the sub-type sensing logic. `ctrl` is the
-    /// controlled element, `mon` the monitored element (often the same object).
+    /// Pascal `TRelayObj.Sample` (r4133): resync the live per-phase state from the
+    /// controlled terminal, emit the (unconditional) `Debug Sample` line, then
+    /// dispatch to the sub-type sensing logic.
     ///
     /// Returns `true` if a sub-type requested a solution abort (only `TD21Logic`'s
-    /// coarse-time-step guard, error 388, does — Pascal `DoErrorMsg` →
-    /// `SolutionAbort`); the dispatch layer lifts it into `Solution.SolutionAbort`.
+    /// coarse-time-step guard, error 388).
     pub(crate) fn sample(
         &mut self,
         ctrl: &mut dyn CktElement,
@@ -640,16 +756,34 @@ impl Relay {
         ctx: &mut CtrlCtx,
     ) -> bool {
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
-        // ControlledElement.ActiveTerminalIdx := ElementTerminal.
         if element_terminal <= ctrl.cd().nterms {
             ctrl.cd_mut().active_terminal = element_terminal - 1;
         }
-        // FPresentState := Closed[0] ? CTRL_CLOSE : CTRL_OPEN.
-        self.present_state = if ctrl.cd().terminal_all_phases_closed(element_terminal) {
-            CTRL_CLOSE
-        } else {
-            CTRL_OPEN
-        };
+        // Resync FPresentState[i] from Closed[i] for i=1..min(6,nphases).
+        let n = self.state_size();
+        for i in 1..=n {
+            self.present_state[i] = if ctrl.cd().conductor_closed(element_terminal, i) {
+                CTRL_CLOSE
+            } else {
+                CTRL_OPEN
+            };
+        }
+        // TODO(compat): r4133 emits this "Debug Sample" line UNCONDITIONALLY on
+        // every Sample — it forgot the `if DebugTrace` guard the Recloser has
+        // (Relay.pas:1325 vs Recloser.pas). Deterministic and defined, so it is
+        // reproduced 1:1; the clean fix (a DebugTrace guard) is deferred to the
+        // §6 TODO(compat) wipe. The line is NOT gated on ShowEventLog either.
+        {
+            let s = self.render_state_array();
+            let el = format!("Debug Sample: Relay.{}", self.ccd.cd.obj.name());
+            ctx.events.append(
+                &el,
+                &format!("FPresentState: {s} "),
+                ctx.int_hour,
+                ctx.t,
+                ctx.control_iter,
+            );
+        }
 
         match self.control_type {
             ctype::CURRENT => self.overcurrent_logic(mon, ctx),
@@ -659,7 +793,6 @@ impl Relay {
             ctype::NEGVOLTAGE => self.neg_seq47_logic(mon, ctx),
             ctype::GENERIC => self.generic_logic(mon, ctx),
             ctype::DISTANCE => self.distance_logic(mon, ctx),
-            // The only sub-type that can request a solution abort (error 388).
             ctype::TD21 => return self.td21_logic(mon, ctx),
             ctype::DOC => self.directional_overcurrent_logic(mon, ctx),
             _ => {}
@@ -667,9 +800,8 @@ impl Relay {
         false
     }
 
-    /// Pascal `TPCElement.LookupVariable`: return the 1-based index of the first
-    /// state-variable name (case-insensitively) *prefixed* by `s` — Pascal
-    /// compares `Copy(VariableName(i), 1, Length(S))` against `S` — or −1 if none.
+    /// Pascal `TPCElement.LookupVariable`: 1-based index of the first
+    /// state-variable name (case-insensitively) *prefixed* by `s`, or −1.
     fn lookup_variable(names: &[String], s: &str) -> i32 {
         let test_len = s.chars().count();
         for (i, name) in names.iter().enumerate() {
@@ -681,75 +813,156 @@ impl Relay {
         -1
     }
 
-    /// Pascal `TRelayObj.DoPendingAction`: execute a popped queue action — OPEN
-    /// trips (and locks out past the last shot), CLOSE recloses, RESET resets if
-    /// armed. `ctrl` is the controlled element.
+    /// Render `FPresentState` as `[closed, closed, closed, ]` — the
+    /// `GetPropertyValue(40)` form the `Debug Sample` line uses. Iterates over
+    /// [`Self::state_size`] phases (Pascal `ControlledElement.NPhases`).
+    fn render_state_array(&self) -> String {
+        Self::render_states(&self.present_state, self.state_size())
+    }
+
+    fn render_states(arr: &[i32; ARR], n: usize) -> String {
+        let mut s = String::from("[");
+        for &v in arr.iter().take(n + 1).skip(1) {
+            s.push_str(if v == CTRL_OPEN { "open" } else { "closed" });
+            s.push_str(", ");
+        }
+        s.push(']');
+        s
+    }
+
+    /// `if ShowEventLog then AppendToEventLog` — every Relay protection event line
+    /// is gated on `ShowEventLog` (the `Debug Sample` line above is NOT).
+    fn log(&self, ctx: &mut CtrlCtx, element: &str, action: &str) {
+        if self.ccd.show_event_log {
+            ctx.events
+                .append(element, action, ctx.int_hour, ctx.t, ctx.control_iter);
+        }
+    }
+
+    /// `if DebugTrace then AppendToEventLog('Debug ... Relay.<name>', …)` — the
+    /// per-sub-type trace lines (gated on `DebugTrace`, NOT `ShowEventLog`).
+    fn dbg(&self, ctx: &mut CtrlCtx, element: &str, action: &str) {
+        if self.debug_trace {
+            ctx.events
+                .append(element, action, ctx.int_hour, ctx.t, ctx.control_iter);
+        }
+    }
+
+    /// Pascal `TRelayObj.DoPendingAction` (r4133). `proxy` carries the phase index
+    /// for single-phase trips; the ganged path uses `IdxMultiPh`.
     pub(crate) fn do_pending_action(
         &mut self,
         code: i32,
+        proxy: i32,
         ctrl: &mut dyn CktElement,
         ctx: &mut CtrlCtx,
     ) {
-        use crate::elements::control::control_elem::CTRL_RESET;
+        let ph_idx = if self.single_ph_trip {
+            proxy.max(1) as usize
+        } else {
+            self.idx_multi_ph
+        };
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
-        // ControlledElement.ActiveTerminalIdx := ElementTerminal.
         if element_terminal <= ctrl.cd().nterms {
             ctrl.cd_mut().active_terminal = element_terminal - 1;
         }
+        if self.debug_trace {
+            let ph_debug = if self.single_ph_trip {
+                ph_idx.to_string()
+            } else {
+                "ALL".to_string()
+            };
+            let state = self.render_state_array();
+            let el = format!("Relay.{}", self.ccd.cd.obj.name());
+            let msg = format!(
+                "Debug DoPendingAction Code={code} Phase={ph_debug} State={state} ArmedOpen={} ArmedForClose={} ArmedForReset={} Count={} NumReclose={}",
+                bool_to_str(self.armed_for_open[ph_idx]),
+                bool_to_str(self.armed_for_close[ph_idx]),
+                bool_to_str(self.armed_for_reset[ph_idx]),
+                self.operation_count[ph_idx],
+                self.num_reclose
+            );
+            // Pascal logs this via AppendToEventLog gated only on DebugTrace.
+            ctx.events
+                .append(&el, &msg, ctx.int_hour, ctx.t, ctx.control_iter);
+        }
+        let nphases = self.state_size();
         match code {
             CTRL_OPEN => {
-                // ignore if we became disarmed in the meantime
-                if self.present_state == CTRL_CLOSE && self.armed_for_open {
-                    ctrl.cd_mut().set_terminal_closed(element_terminal, false); // open all phases
-                    if self.operation_count > self.num_reclose {
-                        self.locked_out = true;
-                        let target = self.relay_target.clone();
-                        self.log(
-                            ctx,
-                            &self.full_name(),
-                            &format!("Opened on {target} & Locked Out"),
-                        );
-                    } else {
-                        let target = self.relay_target.clone();
-                        self.log(ctx, &self.full_name(), &format!("Opened on {target}"));
-                    }
-                    if self.phase_target {
-                        self.log(ctx, " ", "Phase Target");
-                    }
-                    if self.ground_target {
-                        self.log(ctx, " ", "Ground Target");
-                    }
-                    self.armed_for_open = false;
-                    // TD21: wait a full cycle + 1 sample before sensing resumes.
-                    if self.control_type == ctype::TD21 {
-                        self.td21_quiet = self.td21_pt + 1;
-                    }
-                    // Pascal `Closed[]` sets YprimInvalid -> SystemYChanged.
-                    *ctx.system_y_changed = true;
+                if self.single_ph_trip {
+                    self.do_open_single(ph_idx, nphases, ctrl, ctx);
+                } else {
+                    self.do_open_ganged(ph_idx, nphases, ctrl, ctx);
                 }
             }
             CTRL_CLOSE => {
-                if self.present_state == CTRL_OPEN && self.armed_for_close && !self.locked_out {
-                    ctrl.cd_mut().set_terminal_closed(element_terminal, true); // close all phases
-                    self.operation_count += 1;
-                    self.log(ctx, &self.full_name(), "Closed");
-                    self.armed_for_close = false;
-                    // TD21: half a cycle of quiet after a reclose.
+                if self.single_ph_trip {
+                    if self.present_state[ph_idx] == CTRL_OPEN
+                        && self.armed_for_close[ph_idx]
+                        && !self.locked_out[ph_idx]
+                    {
+                        ctrl.cd_mut()
+                            .set_conductor_closed(element_terminal, ph_idx, true);
+                        self.present_state[ph_idx] = CTRL_CLOSE;
+                        let m = format!("Phase {ph_idx} closed (1ph reclosing)");
+                        self.log(ctx, &self.full_name(), &m);
+                        self.operation_count[ph_idx] += 1;
+                        self.armed_for_close[ph_idx] = false;
+                        *ctx.system_y_changed = true;
+                    }
+                } else {
+                    for i in 1..=nphases {
+                        if self.present_state[i] == CTRL_OPEN
+                            && self.armed_for_close[ph_idx]
+                            && !self.locked_out[i]
+                            && !self.locked_out[ph_idx]
+                        {
+                            ctrl.cd_mut()
+                                .set_conductor_closed(element_terminal, i, true);
+                            self.present_state[i] = CTRL_CLOSE;
+                            let m = format!("Phase {i} closed (3ph reclosing)");
+                            self.log(ctx, &self.full_name(), &m);
+                            *ctx.system_y_changed = true;
+                        }
+                    }
+                    self.armed_for_close[ph_idx] = false;
+                    self.operation_count[ph_idx] += 1;
                     if self.control_type == ctype::TD21 {
                         self.td21_quiet = self.td21_pt / 2;
                     }
-                    *ctx.system_y_changed = true;
                 }
             }
             CTRL_RESET => {
-                // Pascal: `if ArmedForClose and not LockedOut` → log "Reset",
-                // then run the full `Reset()` procedure (which re-forces the
-                // controlled element to NormalState and logs "Resetting").
-                if self.armed_for_close && !self.locked_out {
-                    self.log(ctx, &self.full_name(), "Reset");
-                    self.reset_with(ctrl, ctx);
-                    // TD21: half a cycle of quiet after a reset.
-                    if self.control_type == ctype::TD21 {
+                // D4: no longer runs the full Reset — only resets OperationCount to
+                // 1 for closed phases (+ the TD21 quiet window). NB: r4133 logs this
+                // event as `Recloser.<name>` (upstream copy-paste bug — deterministic
+                // and defined, reproduced with TODO(compat) below).
+                if self.single_ph_trip {
+                    if self.present_state[ph_idx] == CTRL_CLOSE && !self.armed_for_open[ph_idx] {
+                        self.operation_count[ph_idx] = 1;
+                        // TODO(compat): r4133 logs the reset as `Recloser.<name>`,
+                        // not `Relay.<name>` (Relay.pas:1196 copy-paste from the
+                        // Recloser). Deterministic; reproduced. Clean fix deferred.
+                        let el = format!("Recloser.{}", self.ccd.cd.obj.name());
+                        let m = format!("Phase {ph_idx} reset (1ph reset)");
+                        self.log(ctx, &el, &m);
+                    }
+                } else {
+                    for i in 1..=nphases {
+                        if self.present_state[i] == CTRL_CLOSE {
+                            if !self.armed_for_open[ph_idx] {
+                                self.operation_count[ph_idx] = 1;
+                                // TODO(compat): logged as `Recloser.<name>` (bug).
+                                let el = format!("Recloser.{}", self.ccd.cd.obj.name());
+                                self.log(ctx, &el, "Phase ALL reset (3ph reset)");
+                            }
+                            break; // no need to loop over all closed phases
+                        }
+                    }
+                    if self.armed_for_reset[ph_idx]
+                        && !self.locked_out[ph_idx]
+                        && self.control_type == ctype::TD21
+                    {
                         self.td21_quiet = self.td21_pt / 2;
                     }
                 }
@@ -758,49 +971,153 @@ impl Relay {
         }
     }
 
-    /// `AppendtoEventLog` helper. Unlike the Recloser (which logs
-    /// unconditionally), every Relay event-log line is gated on `ShowEventLog`
-    /// (`if ShowEventLog then AppendToEventLog(...)`).
-    fn log(&self, ctx: &mut CtrlCtx, element: &str, action: &str) {
-        if self.ccd.show_event_log {
-            ctx.events
-                .append(element, action, ctx.int_hour, ctx.t, ctx.control_iter);
+    /// Pascal `DoPendingAction` CTRL_OPEN, single-phase branch.
+    fn do_open_single(
+        &mut self,
+        ph_idx: usize,
+        nphases: usize,
+        ctrl: &mut dyn CktElement,
+        ctx: &mut CtrlCtx,
+    ) {
+        let element_terminal = self.ccd.element_terminal.max(1) as usize;
+        if self.present_state[ph_idx] != CTRL_CLOSE || !self.armed_for_open[ph_idx] {
+            return;
+        }
+        ctrl.cd_mut()
+            .set_conductor_closed(element_terminal, ph_idx, false);
+        self.present_state[ph_idx] = CTRL_OPEN;
+
+        if self.operation_count[ph_idx] > self.num_reclose {
+            self.locked_out[ph_idx] = true;
+            if self.single_ph_lockout {
+                let msg = format!(
+                    "Phase {ph_idx} opened on {} (1ph trip) & locked out (1ph lockout)",
+                    self.relay_target[ph_idx]
+                );
+                self.log(ctx, &self.full_name(), &msg);
+            } else {
+                let msg = format!(
+                    "Phase {ph_idx} opened on {} (1ph trip) & locked out (3ph lockout)",
+                    self.relay_target[ph_idx]
+                );
+                self.log(ctx, &self.full_name(), &msg);
+                // 3-phase lockout: open every other not-yet-locked-out phase.
+                for i in 1..=nphases {
+                    if i != ph_idx && !self.locked_out[i] {
+                        ctrl.cd_mut()
+                            .set_conductor_closed(element_terminal, i, false);
+                        self.present_state[i] = CTRL_OPEN;
+                        self.locked_out[i] = true;
+                        if self.armed_for_open[i] {
+                            self.armed_for_open[i] = false;
+                        }
+                        let m = format!("Phase {i} opened (1ph trip) & locked out (3ph lockout)");
+                        self.log(ctx, &self.full_name(), &m);
+                    }
+                }
+            }
+        } else {
+            let msg = format!(
+                "Phase {ph_idx} opened on {} (1ph trip)",
+                self.relay_target[ph_idx]
+            );
+            self.log(ctx, &self.full_name(), &msg);
+        }
+        self.armed_for_open[ph_idx] = false;
+        *ctx.system_y_changed = true;
+    }
+
+    /// Pascal `DoPendingAction` CTRL_OPEN, three-phase (ganged) branch.
+    fn do_open_ganged(
+        &mut self,
+        ph_idx: usize,
+        nphases: usize,
+        ctrl: &mut dyn CktElement,
+        ctx: &mut CtrlCtx,
+    ) {
+        let element_terminal = self.ccd.element_terminal.max(1) as usize;
+        for i in 1..=nphases {
+            if self.present_state[i] == CTRL_CLOSE && self.armed_for_open[ph_idx] {
+                ctrl.cd_mut()
+                    .set_conductor_closed(element_terminal, i, false);
+                self.present_state[i] = CTRL_OPEN;
+                if self.operation_count[ph_idx] > self.num_reclose {
+                    self.locked_out[ph_idx] = true;
+                    let m = format!(
+                        "Phase {i} opened on {} (3ph trip) & locked out (3ph lockout)",
+                        self.relay_target[ph_idx]
+                    );
+                    self.log(ctx, &self.full_name(), &m);
+                } else {
+                    let m = format!(
+                        "Phase {i} opened on {} (3ph trip)",
+                        self.relay_target[ph_idx]
+                    );
+                    self.log(ctx, &self.full_name(), &m);
+                }
+                *ctx.system_y_changed = true;
+            }
+        }
+        self.armed_for_open[ph_idx] = false;
+        if self.control_type == ctype::TD21 {
+            self.td21_quiet = self.td21_pt + 1;
         }
     }
 
-    /// Pascal `TRelayObj.Reset` control-side state (`FPresentState`/armed/targets)
-    /// restored to `NormalState`. The element force + locked/operation updates
-    /// land in [`Self::reset_with`].
+    /// Pascal `TRelayObj.Reset` control-side state restored to `NormalState` per
+    /// phase (no element force / no lock guard here — the caller has that).
     pub(crate) fn reset_control_side(&mut self) {
-        self.present_state = self.normal_state;
-        self.armed_for_open = false;
-        self.armed_for_close = false;
-        self.armed_for_reset = false;
-        self.phase_target = false;
-        self.ground_target = false;
         self.next_trip_time = -1.0;
+        let n = self.state_size();
+        for i in 1..=n {
+            self.present_state[i] = self.normal_state[i];
+            self.armed_for_open[i] = false;
+            self.armed_for_close[i] = false;
+            self.armed_for_reset[i] = false;
+            self.phase_target[i] = false;
+        }
+        self.ground_target = false;
     }
 
-    /// Pascal `TRelayObj.Reset` (the full procedure): log "Resetting", restore
-    /// the control state to `NormalState`, and force the controlled element's
-    /// whole terminal to match. Raises `SystemYChanged` (the `Closed[0]` force is
-    /// **unconditional** — the WP7.2 step-2a dirty-edge guard).
+    /// Pascal `TRelayObj.Reset` (the full procedure, r4133): a `Locked` relay does
+    /// NOT reset. Log "Resetting", restore per-phase state, and force the
+    /// controlled element's conductors to `NormalState`. Raises `SystemYChanged`.
     pub(crate) fn reset_with(&mut self, ctrl: &mut dyn CktElement, ctx: &mut CtrlCtx) {
+        if self.f_locked {
+            return;
+        }
         self.log(ctx, &self.full_name(), "Resetting");
-        self.reset_control_side();
+        self.next_trip_time = -1.0;
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
         if element_terminal <= ctrl.cd().nterms {
             ctrl.cd_mut().active_terminal = element_terminal - 1;
         }
-        if self.normal_state == CTRL_OPEN {
-            ctrl.cd_mut().set_terminal_closed(element_terminal, false);
-            self.locked_out = true;
-            self.operation_count = self.num_reclose + 1;
-        } else {
-            ctrl.cd_mut().set_terminal_closed(element_terminal, true);
-            self.locked_out = false;
-            self.operation_count = 1;
+        let n = self.state_size();
+        for i in 1..=n {
+            self.present_state[i] = self.normal_state[i];
+            self.armed_for_open[i] = false;
+            self.armed_for_close[i] = false;
+            self.armed_for_reset[i] = false;
+            self.ground_target = false;
+            self.phase_target[i] = false;
+            if self.normal_state[i] == CTRL_OPEN {
+                ctrl.cd_mut()
+                    .set_conductor_closed(element_terminal, i, false);
+                self.locked_out[i] = true;
+                self.operation_count[i] = self.num_reclose + 1;
+            } else {
+                ctrl.cd_mut()
+                    .set_conductor_closed(element_terminal, i, true);
+                self.locked_out[i] = false;
+                self.operation_count[i] = 1;
+            }
         }
         *ctx.system_y_changed = true;
     }
+}
+
+/// Pascal `BoolToStr(b, TRUE)` — the `True`/`False` spelling used by the
+/// `DebugTrace` `DoPendingAction` line.
+fn bool_to_str(b: bool) -> &'static str {
+    if b { "True" } else { "False" }
 }

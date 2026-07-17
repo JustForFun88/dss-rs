@@ -933,7 +933,7 @@ pub(super) fn dispatch_control(
                         solution_abort_requested = rel.sample(ctrl, mon_elem, &mut ctx);
                     }
                 }
-                ControlOp::Action { code, .. } => {
+                ControlOp::Action { code, proxy } => {
                     let Some(target) = controlled else {
                         return Err(abort(ctx.errors, &full_name, "Switched element not set"));
                     };
@@ -949,8 +949,9 @@ pub(super) fn dispatch_control(
                             "Switched element is not a circuit element",
                         ));
                     };
-                    // The queue `code` carries CTRL_OPEN/CTRL_CLOSE/CTRL_RESET.
-                    rel.do_pending_action(code, ctrl, &mut ctx);
+                    // The queue `code` carries CTRL_OPEN/CTRL_CLOSE/CTRL_RESET;
+                    // `proxy` carries the phase index (single-phase trip).
+                    rel.do_pending_action(code, proxy, ctrl, &mut ctx);
                 }
                 ControlOp::Reset => {
                     // Pascal `Reset()` logs "Resetting", restores the present
