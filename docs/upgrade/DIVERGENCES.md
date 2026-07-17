@@ -1676,3 +1676,103 @@ corroborated by `sweeps/capi015_vs_r4088.md`.
 The full entry-by-entry burn-down (11→22 entries: pruned
 `epri-gendispatcher-propname`, +5 extended to r4088, +7 new numeric floors, +1
 r3723-only, +4 skip) is in **`docs/upgrade/known_diffs_burndown.md`**.
+
+## Rung-2 EXITED — the r4133 parity claim + `known_diffs.json` burn-down (WP-U2.6)
+
+The Rung-2 exit swept the port against official EPRI **r4133** (11.0.0.1
+"Charlottesville") with `DSS_LIVE_OPENDSS_ASSERT=1` and drove it **GREEN**, and
+re-ran **r4088** as the direction sanity-check. Every remaining Rust↔r4133
+divergence is a documented `known_diffs.json` class — an FPC(0.14.5)↔Delphi
+last-ulp/display-precision floor, a dss_capi property-system format difference, or
+an oracle-can't-run `skip` — and every case the Rung-2 protection overhaul moved
+is gated in the **mandatory** gate against its own `oracle: "r4133"` target
+(excluded from the sweep). **Zero unexplained, zero "not yet ported."**
+
+### r4133 ASSERT sweep — GREEN
+
+`326 matched · 70 known-diverged · 4 known-skipped · 0 NEW` (of 400; **103**
+target-rev cases excluded — the Rung-2 protection flips + the Rung-1 capi015
+flips + the L2 clamp deck, all gated in the mandatory gate). Of the 70
+known-diverged, 16 are the two format classes and 54 are the FPC↔Delphi
+last-ulp / display-precision floors now cataloged for r4133 (44 via entries
+extended to r4133 + 10 via the 3 new entries; the 4 EPRI-DLL crash cases are the
+separate known-skipped tally — see below). The two
+format classes: `property-format-brackets` ×10 (dss_capi's bracketed
+numeric-array PropertyValue render, e.g. sensor `[ 100 90 80]` vs EPRI
+`100,90,80` — the class STATUS §WP-U2.5 flagged as still-live on r4133; **this is
+its closure**) and `eventlog-trailing-space` ×6 (EPRI's trailing space after
+InvControl event text — the class WP-U2.3 deferred here; it still has 6 r4133
+witnesses on non-protection InvControl decks, so it **keeps** its r4133 tag, not
+retired). Known-skipped: the four EPRI-DLL crash decks (`shape_binfiles`,
+`IEEE13_LineSpacing`, `IEEE13_LineAndCableSpacing`, `CapControlFollow` — all
+#303 access violations on the r4133 binary, same as r4088).
+
+### Direction check — r4088 re-run
+
+`329 matched · 67 known-diverged · 4 known-skipped · 0 NEW` (103 excluded, same
+set; ASSERT green). The port (now r4133-behavior on the flipped cases, shared
+0.14.5=r4088=r4133 behavior elsewhere) diverges from r4088 on exactly the same
+FPC↔Delphi floor classes as it does from r4133, minus the r4133-only
+**IEEE_519 harmonics** move and plus the r4088-only `harmonics-yfingerprint-drift`
+(Y-trace) witness — precisely the r4088→r4133 delta this rung owns, confirming
+the direction. The Rung-2 protection deltas themselves are invisible to both
+sweeps (excluded), gated in the mandatory gate. Summary committed at
+`docs/upgrade/sweeps/` and `known_diffs_burndown.md`.
+
+### The 58 r4133 NEW divergences — all dispositioned (nothing masked)
+
+Every one was proven a legitimate class, corroborated by the **mandatory gate
+being green** (the port equals the pinned 0.14.5 oracle on all 58 → the r4133 gap
+is purely the FPC↔Delphi layer, never a Rung-2 regression):
+
+- **48** (44 `diff` + 4 `skip` cases) map to an existing r4088-tagged floor/skip
+  entry on a path that is **byte-identical r4088=r4133** (source-verified: solver,
+  `PCElements/`, `Meters/`, injection assembly, reduction, ckt24 feeder all
+  unchanged across the EPRI delta) → the entry's `revs` extended to include
+  `r4133` (14 entries): `iteration-count-delta`, `injection-fpc-delphi-ulp`,
+  `autotrans-regcontrol-tap`, `pvsystem-kvar-display-precision`,
+  `storage-kwhstored-drift`, `storage-kw-display-precision`,
+  `makeposseq-fpc-delphi`, `reduce-fpc-delphi`, `ckt24-regcontrol-conditioning`,
+  `vsource-nearzero-power`, `epri-binaryshape-crash`, `epri-linespacing-r4088-crash`,
+  `epri-linecablespacing-r4088-crash`, `epri-capcontrolfollow-r4088`.
+- **10 cases → 3 new entries** for classes first witnessed this sweep (all present
+  on r4088 too — byte-identical source — so tagged `r4088`+`r4133`, except the
+  r4133-only IEEE_519 move):
+  - `storage-pctstored-display-precision` — Storage `%stored` rendered to 6 sf by
+    Delphi (`75.089575→75.0896`); the display-precision class (§1.3-2), sibling to
+    the `.kw`/`kvar` entries.
+  - `monitor-seq-magnitude-drift` — the sequence-magnitude monitor channel (V2)
+    FPC↔Delphi Fortescue-transform last-ulp (rel ~1.1e-5); `Meters/Monitor.pas`
+    byte-identical r4088=r4133.
+  - `harmonics-ieee519-r4133` — the r4088→r4133 harmonics voltage move on IEEE_519
+    (see below). **r4133-only.**
+- **2 entries narrowed** (empirically 0 hits on r4088 **and** r4133, so their
+  `revs` dropped to `r3723`): `monitor-header-whitespace` (the harness
+  `compare_monitor` now normalizes the Delphi leading-space header directly —
+  WP-U2.1 audit fix — so it never surfaces on the EPRI channel) and
+  `meter-zonepce-count` (its six witness decks now MATCH both EPRI revs).
+
+### IEEE_519 harmonics — source-confirmed "nothing to port"
+
+The WP-U0.2 sweep flagged an r4088→r4133 harmonics-mode voltage move on IEEE_519
+(V ~4.3e-4 @ pcc, assembled Y bit-identical) that WP-U2.6 had to "source-confirm
+or catalog." **Source-confirmed:** `Common/SolutionAlgs.pas` (harmonics driver),
+`PCElements/Load.pas`, `General/Spectrum.pas` and `Common/YMatrix.pas` are all
+**byte-identical r4088=r4133** (`Common/Solution.pas` differs only in progress-form
+plumbing + commented-out debug `WriteLn`), so **no harmonics/injection algorithm
+changed** — there is nothing to port. The move is determinism-proven per engine
+(r4088↔r4088 and r4133↔r4133 both match, `sweeps/r4088_vs_r4133.md` §Surprises)
+⇒ a build-to-build Delphi last-ulp drift amplified by the near-resonance of the
+519 filter (an ill-conditioned harmonics fixpoint). The port matches the pinned
+FPC 0.14.5 oracle (mandatory gate green) and its own physically-correct harmonics
+solution; cataloged as `harmonics-ieee519-r4133` (documented upstream, no port
+action). The InductionMachine converged-flip surprise was already resolved by
+WP-U2.1 (`InductionMachine/{Master,Run}` moved to
+`skipped_needs_investigation` — the port reproduces the r4133 non-convergence).
+
+### Net catalog state at Rung-2 exit (25 entries)
+
+r4133-applicable: 19 (15 `diff` + 4 `skip`). r4088-applicable: 19. r3723-applicable:
+19. No divergence decision lives only in a commit message; the entry-by-entry
+Rung-2 burn-down is in `docs/upgrade/known_diffs_burndown.md`. **Engine behavior =
+OpenDSS 11.0.0.1 (r4133) except this documented ledger.**

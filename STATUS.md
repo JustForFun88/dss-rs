@@ -7,7 +7,40 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-17 — **WP-U2.5 (protection report/log surface) + WP-U2.6
+Last updated: 2026-07-17 — **UPGRADE Rung 2 EXITED — WP-U2.6 the 11.0.0.1 (r4133)
+parity claim (branch wt-u26).** The opt-in EPRI sweep
+`DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1` is **GREEN** (326 matched, 70
+known-diverged, 4 known-skipped, **0 NEW** of 400; 103 target-rev `oracle`-flipped
+cases excluded — gated in the mandatory gate). Every surviving Rust↔r4133
+divergence is a documented `known_diffs.json` class: FPC↔Delphi last-ulp /
+display-precision floors, dss_capi's bracketed numeric-array PropertyValue render
+(`property-format-brackets` ×10 — the WP-U2.5-deferred numeric-array class,
+**closed** here), EPRI's InvControl event-log trailing space
+(`eventlog-trailing-space` ×6 — the WP-U2.3-deferred class, **keeps** its r4133 tag,
+still witnessed), or the four EPRI-DLL #303 crash decks. The **58** raw NEW
+divergences were all dispositioned (mandatory gate green ⇒ port == pinned 0.14.5 ⇒
+the r4133 gap is purely FPC↔Delphi, never a Rung-2 regression): 48 cases (44 diff
++ 4 skip) extend an existing r4088 floor/skip entry on a **byte-identical
+r4088=r4133 path** (source-verified; 14 entries), 10 cases → 3 new entries
+(`storage-pctstored-display-precision`, `monitor-seq-magnitude-drift`,
+`harmonics-ieee519-r4133`); separately 2 entries narrowed to r3723
+(`monitor-header-whitespace` now handled by the harness header-normalization,
+`meter-zonepce-count` decks now match). **Direction check** — `r4088` re-run green
+(329 matched, 0 NEW after the same %stored/monitor_seqmag cataloging); the only
+sweep-set difference vs r4133 is the r4133-only IEEE_519 harmonics move + the
+r4088-only harmonics-Y witness = exactly the r4088→r4133 delta this rung owns. The
+**IEEE_519 harmonics surprise is source-confirmed "nothing to port"**
+(SolutionAlgs/Load/Spectrum/YMatrix byte-identical r4088=r4133; Solution.pas diff =
+progress-form + commented debug only) — a determinism-proven build-drift amplified
+by the 519-filter near-resonance, cataloged `harmonics-ieee519-r4133`; the
+InductionMachine converged-flip was already resolved by WP-U2.1. `DIVERGENCES.md`
++ `known_diffs_burndown.md` carry the full Rung-2 exit record; `PLAN_SEQUENCE.md`
+marks UPGRADE COMPLETE; new root `README.md` states the parity claim. **Engine
+behavior = OpenDSS 11.0.0.1 (r4133) except the documented ledger.** `rg
+"NOT_PORTED\(U2"` empty; zero `pending` upgrade decks. Mandatory gate (fmt +
+clippy + `cargo test --workspace`) green.
+
+**Prior — WP-U2.5 (protection report/log surface) + WP-U2.6
 (59NRelayDemo decomposition) MERGED.** WP-U2.6 found + fixed a relay port bug:
 `state_size()` / `MakeLike` sized the per-phase state arrays by the relay's OWN
 Nphases, but the state-array paths iterate `Min(RELAYCONTROLMAXDIM,
