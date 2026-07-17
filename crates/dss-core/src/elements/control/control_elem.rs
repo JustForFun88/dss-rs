@@ -27,6 +27,14 @@ pub const CTRL_RESET: i32 = 3;
 pub const CTRL_LOCK: i32 = 4;
 pub const CTRL_UNLOCK: i32 = 5;
 
+/// Sentinel returned by the Relay `Normal`/`State`/`Action` enums for a token
+/// whose first character is neither `o` nor `c` (Pascal `InterpretRelayState`,
+/// Relay.pas r4133: the `case LowerCase(param)[1]` has only `'o'`/`'c'` arms, so
+/// any other spelling — `trip`, `xyz`, ... — leaves the phase's state array slot
+/// *unchanged*, silently). The relay state-array setter treats this ordinal as
+/// "keep the prior value" for that phase; it is never stored or rendered.
+pub const CTRL_STATE_KEEP: i32 = i32::MIN;
+
 /// Scalar/queue/event context handed to a control's `Sample` and
 /// `DoPendingAction` (PHASE5_PLAN §2.1) — the disjoint-borrow stand-in for the
 /// Pascal `ActiveCircuit.Solution.*` / `ActiveCircuit.ControlQueue` /
