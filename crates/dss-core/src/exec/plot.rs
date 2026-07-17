@@ -175,7 +175,7 @@ impl Dss {
         let mut pointer: usize = 0;
         let mut param_name = parser.next_param(vars);
         let mut param_original = parser.make_string(vars);
-        let mut param = param_original.to_uppercase();
+        let mut param = param_original.to_ascii_uppercase();
 
         while !param.is_empty() {
             if param_name.is_empty() {
@@ -288,7 +288,7 @@ impl Dss {
 
             param_name = parser.next_param(vars);
             param_original = parser.make_string(vars);
-            param = param_original.to_uppercase();
+            param = param_original.to_ascii_uppercase();
         }
         Some(p)
     }

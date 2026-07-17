@@ -192,7 +192,7 @@ impl LineGeometryObj {
         // allocation), ActiveCond=1, LastUnit=ft, LineType=oh, 1 amp rating
         // equal to NormAmps (0).
         Self {
-            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
+            data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             fnconds: 0,
             fnphases: 0,
             factive_cond: 1,

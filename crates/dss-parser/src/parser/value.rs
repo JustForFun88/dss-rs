@@ -18,7 +18,7 @@ fn process_rpn_command(token: &str, rpn: &mut RPNCalculator) -> Result<(), Parse
         rpn.set_x(number);
         return Ok(());
     }
-    match token.to_lowercase().as_str() {
+    match token.to_ascii_lowercase().as_str() {
         "+" => rpn.add(),
         "-" => rpn.subtract(),
         "*" => rpn.multiply(),

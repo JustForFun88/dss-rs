@@ -135,7 +135,7 @@ impl Dss {
     /// in this port yet, so those selectors are accepted as no-ops.
     pub(super) fn do_reset_cmd(&mut self) {
         self.parser.next_param(&self.vars);
-        let param = self.parser.make_string(&self.vars).to_uppercase();
+        let param = self.parser.make_string(&self.vars).to_ascii_uppercase();
         let b = param.as_bytes();
         // Decode the Pascal `case Param[1] of` dispatch into a set of targets.
         let (do_monitors, do_meters, do_faults, do_controls, do_eventlog) = if param.is_empty() {
@@ -278,7 +278,7 @@ impl Dss {
     pub(super) fn do_reduce_cmd(&mut self) {
         // Pascal reads the next parm and uppercases it (`AnsiUpperCase`).
         self.parser.next_param(&self.vars);
-        let mut param = self.parser.make_string(&self.vars).to_uppercase();
+        let mut param = self.parser.make_string(&self.vars).to_ascii_uppercase();
 
         // Pascal marks cap/reactor buses Keep *before* the meter-count check.
         self.mark_cap_and_reactor_buses();
@@ -522,8 +522,8 @@ impl Dss {
     /// class as `DoOpenCmd`'s `SetActiveBus`).
     pub(super) fn do_set_kv_base_cmd(&mut self) {
         self.parser.next_param(&self.vars);
-        let bus_name = self.parser.make_string(&self.vars).to_lowercase();
-        let param_name = self.parser.next_param(&self.vars).to_lowercase();
+        let bus_name = self.parser.make_string(&self.vars).to_ascii_lowercase();
+        let param_name = self.parser.next_param(&self.vars).to_ascii_lowercase();
         let kv_value = self.parser.make_double(&self.vars).unwrap_or(0.0);
 
         let ckt = self.circuit.as_mut().expect("gated in command()");
@@ -730,7 +730,7 @@ impl Dss {
     /// missing → error 277).
     pub(super) fn do_interpolate_cmd(&mut self) {
         self.parser.next_param(&self.vars);
-        let mut param = self.parser.make_string(&self.vars).to_uppercase();
+        let mut param = self.parser.make_string(&self.vars).to_ascii_uppercase();
 
         let meter_ci = self.class_by_name.get("energymeter").copied();
 

@@ -89,7 +89,7 @@ impl Dss {
     pub(crate) fn do_export_cmd(&mut self) {
         // Pascal `ParamName := DSS.Parser.NextParam; Parm1 := AnsiLowerCase(...)`.
         self.parser.next_param(&self.vars);
-        let parm1 = self.parser.make_string(&self.vars).to_lowercase();
+        let parm1 = self.parser.make_string(&self.vars).to_ascii_lowercase();
         let ptr = self
             .export_commands
             .get_command(&parm1)
@@ -138,7 +138,7 @@ impl Dss {
         let mut mva_opt = 0;
         if matches!(ptr, 9 | 19) {
             self.parser.next_param(&self.vars);
-            let parm2 = self.parser.make_string(&self.vars).to_lowercase();
+            let parm2 = self.parser.make_string(&self.vars).to_ascii_lowercase();
             if parm2.starts_with('m') {
                 mva_opt = 1;
             }
@@ -148,7 +148,7 @@ impl Dss {
         let mut ue_only = false;
         if ptr == 8 {
             self.parser.next_param(&self.vars);
-            let parm2 = self.parser.make_string(&self.vars).to_lowercase();
+            let parm2 = self.parser.make_string(&self.vars).to_ascii_lowercase();
             ue_only = parm2.starts_with('u');
         }
         // `Y`(17) traps a leading `t…` → the sparse-triplet form (Pascal
@@ -156,7 +156,7 @@ impl Dss {
         let mut triplet = false;
         if ptr == 17 {
             self.parser.next_param(&self.vars);
-            let parm2 = self.parser.make_string(&self.vars).to_lowercase();
+            let parm2 = self.parser.make_string(&self.vars).to_ascii_lowercase();
             triplet = parm2.starts_with('t');
         }
         // `Monitors`(15) consumes the required monitor name (Pascal
@@ -256,7 +256,7 @@ impl Dss {
             cim_sub_geo = format!("{ckt_name}_SubRegion");
             cim_geo_region = format!("{ckt_name}_Region");
             loop {
-                let param_name = self.parser.next_param(&self.vars).to_lowercase();
+                let param_name = self.parser.next_param(&self.vars).to_ascii_lowercase();
                 if param_name.is_empty() {
                     break;
                 }
@@ -1039,7 +1039,7 @@ impl Dss {
         };
 
         // Pascal `AnsiLowerCase(Copy(FileNm, 1, 2)) = '/m'` (the multi-file switch).
-        if explicit.to_lowercase().starts_with("/m") {
+        if explicit.to_ascii_lowercase().starts_with("/m") {
             self.write_register_multi(multi_prefix, label, year, &ldcurve, hour, &rows);
         } else {
             self.write_register_single(
@@ -1479,7 +1479,7 @@ impl Dss {
     pub(crate) fn do_show_cmd(&mut self) {
         // Pascal `DSS.Parser.NextParam; Param := AnsiLowerCase(StrValue)`.
         self.parser.next_param(&self.vars);
-        let param = self.parser.make_string(&self.vars).to_lowercase();
+        let param = self.parser.make_string(&self.vars).to_ascii_lowercase();
         let ptr = self
             .show_commands
             .get_command(&param)
@@ -1527,7 +1527,7 @@ impl Dss {
             // `E`→element form; filename `Curr_Seq` (code 0) / `Curr_Elem` (code 1).
             3 => {
                 self.parser.next_param(&self.vars);
-                let p1 = self.parser.make_string(&self.vars).to_uppercase();
+                let p1 = self.parser.make_string(&self.vars).to_ascii_uppercase();
                 let (mut code, mut show_resid) = (0, false);
                 match p1.chars().next() {
                     Some('Y') | Some('T') => show_resid = true,
@@ -1536,7 +1536,7 @@ impl Dss {
                     _ => {}
                 }
                 self.parser.next_param(&self.vars);
-                let p2 = self.parser.make_string(&self.vars).to_uppercase();
+                let p2 = self.parser.make_string(&self.vars).to_ascii_uppercase();
                 if p2.starts_with('E') {
                     code = 1;
                 }
@@ -1565,7 +1565,7 @@ impl Dss {
             // `Elements_Disabled.txt`). No solution guard (bus connections only).
             5 => {
                 self.parser.next_param(&self.vars);
-                let param = self.parser.make_string(&self.vars).to_lowercase();
+                let param = self.parser.make_string(&self.vars).to_ascii_lowercase();
                 let (main, disabled) = {
                     let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
                     show::show_elements(&self.classes, ckt, &param)
@@ -1599,7 +1599,7 @@ impl Dss {
             // form); the element form (code 1) stays deferred.
             12 => {
                 self.parser.next_param(&self.vars);
-                let p1 = self.parser.make_string(&self.vars).to_lowercase();
+                let p1 = self.parser.make_string(&self.vars).to_ascii_lowercase();
                 let (mut mva, mut code) = (0, 0);
                 match p1.chars().next() {
                     Some('m') => mva = 1,
@@ -1607,7 +1607,7 @@ impl Dss {
                     _ => {}
                 }
                 self.parser.next_param(&self.vars);
-                let p2 = self.parser.make_string(&self.vars).to_lowercase();
+                let p2 = self.parser.make_string(&self.vars).to_ascii_lowercase();
                 if p2.starts_with('e') {
                     code = 1;
                 }
@@ -1747,7 +1747,7 @@ impl Dss {
                     filname = "VLL".to_string();
                 }
                 self.parser.next_param(&self.vars);
-                let p2 = self.parser.make_string(&self.vars).to_uppercase();
+                let p2 = self.parser.make_string(&self.vars).to_ascii_uppercase();
                 let mut code = 0;
                 if let Some(c) = p2.chars().next() {
                     match c {
@@ -1952,14 +1952,14 @@ impl Dss {
                 let bus_name = self.parser.make_string(&self.vars);
                 let (mut mva, mut code) = (0, 0);
                 self.parser.next_param(&self.vars);
-                let p1 = self.parser.make_string(&self.vars).to_lowercase();
+                let p1 = self.parser.make_string(&self.vars).to_ascii_lowercase();
                 match p1.chars().next() {
                     Some('m') => mva = 1,
                     Some('e') => code = 1,
                     _ => {}
                 }
                 self.parser.next_param(&self.vars);
-                let p2 = self.parser.make_string(&self.vars).to_lowercase();
+                let p2 = self.parser.make_string(&self.vars).to_ascii_lowercase();
                 if p2.starts_with('e') {
                     code = 1;
                 }
@@ -2289,7 +2289,7 @@ impl Dss {
         // Assume ObjClass names a DSS class (`GetDSSClassPtr`); an unknown class
         // silently writes nothing (no Pascal error — probe-proven).
         let mut final_file = save_file.clone();
-        if let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) {
+        if let Some(&ci) = self.class_by_name.get(&obj_class.to_ascii_lowercase()) {
             if save_file.is_empty() {
                 save_file = obj_class.clone(); // bare class name, NO extension
             }
@@ -2621,7 +2621,7 @@ impl Dss {
         // Pascal `SetObjectClass`: an unknown (incl. empty) class logs #903 and
         // Exits with no file written (`dump all` takes this path — `all` parses as
         // an empty class + name `all`).
-        let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
+        let Some(&ci) = self.class_by_name.get(&obj_class.to_ascii_lowercase()) else {
             self.errors
                 .push(format!("Error! Object Class \"{obj_class}\" not found. "));
             return;

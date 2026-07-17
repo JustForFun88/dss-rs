@@ -82,7 +82,7 @@ impl Dss {
     /// False`). The Pascal state-2 child disable uses the executive command form
     /// `X.enabled=False`; the effect (Enabled + SystemYChanged) is identical.
     pub(super) fn ad_set_element_enabled(&mut self, full_name: &str, enabled: bool) {
-        let lower = full_name.to_lowercase();
+        let lower = full_name.to_ascii_lowercase();
         let (cls, name) = match lower.split_once('.') {
             Some((c, n)) => (Some(c), n),
             None => (None, lower.as_str()),

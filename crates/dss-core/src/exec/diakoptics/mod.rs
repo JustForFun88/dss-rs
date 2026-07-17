@@ -61,7 +61,7 @@ pub(crate) fn ad_find_element<'a>(
     classes: &'a [DssClass],
     full_name: &str,
 ) -> Option<&'a dyn CktElement> {
-    let lower = full_name.to_lowercase();
+    let lower = full_name.to_ascii_lowercase();
     let (cls_name, obj_name) = match lower.split_once('.') {
         Some((c, n)) => (Some(c), n),
         None => (None, lower.as_str()),

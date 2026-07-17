@@ -40,7 +40,7 @@ pub(crate) fn show_losses(
         let term_power = elem.terminal_power(sys, node_v, 1) * 0.001; // terminal-1 power
 
         // Aggregate by element class (Pascal's CLASSMASK XFMR/AUTOTRANS/LINE test).
-        let class = name.split('.').next().unwrap_or("").to_lowercase();
+        let class = name.split('.').next().unwrap_or("").to_ascii_lowercase();
         if class == "transformer" || class == "autotransformer" || class == "autotrans" {
             trans += klosses;
         } else if class == "line" {

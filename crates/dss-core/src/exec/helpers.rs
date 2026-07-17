@@ -45,7 +45,7 @@ pub(crate) fn resolve_ckt_element(
 ) -> Option<(usize, usize)> {
     let (cls, name) = parse_object_class_and_name(parser, vars, full_name);
     if !cls.is_empty() {
-        let ci = *class_by_name.get(&cls.to_lowercase())?;
+        let ci = *class_by_name.get(&cls.to_ascii_lowercase())?;
         if classes[ci].set_active(&name)
             && classes[ci].objects[classes[ci].active?]
                 .as_ckt_element()
@@ -111,7 +111,7 @@ pub(crate) fn find_load_shape(
     let cls = classes
         .iter()
         .find(|c| c.props.class_name().eq_ignore_ascii_case("LoadShape"))?;
-    let &idx = cls.name_to_idx.get(&name.to_lowercase())?;
+    let &idx = cls.name_to_idx.get(&name.to_ascii_lowercase())?;
     cls.objects[idx]
         .as_any()
         .downcast_ref::<load_shape::LoadShapeObj>()
@@ -126,7 +126,7 @@ pub(crate) fn find_price_shape(
     let cls = classes
         .iter()
         .find(|c| c.props.class_name().eq_ignore_ascii_case("PriceShape"))?;
-    let &idx = cls.name_to_idx.get(&name.to_lowercase())?;
+    let &idx = cls.name_to_idx.get(&name.to_ascii_lowercase())?;
     cls.objects[idx]
         .as_any()
         .downcast_ref::<price_shape::PriceShapeObj>()
@@ -171,7 +171,7 @@ pub(crate) fn enum_ord(
     value: &str,
     errors: &mut Vec<String>,
 ) -> Option<i32> {
-    match enums.get(id).string_to_ordinal(&value.to_lowercase()) {
+    match enums.get(id).string_to_ordinal(&value.to_ascii_lowercase()) {
         Ok(v) => Some(v),
         Err(e) => {
             errors.push(e.message().to_string());
@@ -284,7 +284,7 @@ pub(crate) fn do_keeper_bus_list(
     errors: &mut Vec<String>,
 ) {
     let mark = |ckt: &mut Circuit, name: &str| {
-        if let Some(idx) = ckt.bus_list.find(&name.to_lowercase()) {
+        if let Some(idx) = ckt.bus_list.find(&name.to_ascii_lowercase()) {
             ckt.buses[idx].keep = true;
         }
     };
@@ -397,7 +397,7 @@ pub(crate) fn make_like(
     errors: &mut Vec<String>,
     class_name: &str,
 ) {
-    match name_to_idx.get(&source_name.to_lowercase()) {
+    match name_to_idx.get(&source_name.to_ascii_lowercase()) {
         Some(&si) => {
             let src = objects[si].clone_box();
             objects[target].make_like(src.as_ref());

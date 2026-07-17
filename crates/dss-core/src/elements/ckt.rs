@@ -185,7 +185,7 @@ impl CktElementData {
     /// (the Pascal constructors assign `FNphases`/`Fnconds`/`Nterms`).
     pub fn new(name: &str, num_props: usize) -> Self {
         Self {
-            obj: DssObjData::new(name.to_lowercase(), num_props),
+            obj: DssObjData::new(name.to_ascii_lowercase(), num_props),
             enabled: true,
             nterms: 0,
             nconds: 0,
@@ -287,7 +287,7 @@ impl CktElementData {
     /// Pascal `SetBus` (1-based terminal).
     pub fn set_bus(&mut self, i: usize, s: &str) {
         if i >= 1 && i <= self.nterms {
-            self.bus_names[i - 1] = s.to_lowercase();
+            self.bus_names[i - 1] = s.to_ascii_lowercase();
             self.signal_bus_name_redefined = true;
         }
         // else: Pascal DoSimpleMsg 7541; the executive records that
