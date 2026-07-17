@@ -20,6 +20,7 @@ mod counts;
 mod currents;
 mod elem;
 mod fault_study;
+mod gic_mvars;
 mod inc_matrix;
 pub mod json;
 mod loads;
@@ -59,6 +60,7 @@ pub use counts::export_counts;
 pub(crate) use currents::export_currents;
 pub(crate) use elem::{export_elem_currents, export_elem_powers, export_elem_voltages};
 pub(crate) use fault_study::export_fault_study;
+pub(crate) use gic_mvars::export_gic_mvars;
 pub(crate) use inc_matrix::{
     export_bus_levels, export_inc_matrix, export_inc_matrix_cols, export_inc_matrix_rows,
     export_laplacian,

@@ -159,8 +159,8 @@ open item is not buried in the §1a archive):
   r4133's newer cadence; parked `skipped_needs_investigation`, report-only in
   DIVERGENCES.md.
 - **GICMvars export (verb 36) / GICTransformer `WriteVarOutputRecord` → Phase 9 —
-  NOT started.** Still `NOT_PORTED` (GAPS WPG.16's only deferred piece; pinned by
-  `exec/tests/report.rs`).
+  ✅ PORTED 2026-07-18** (orphaned-gaps round OG-1.1, branch `og11-gicmvars`; see
+  §OG-1.1 below). Was GAPS WPG.16's only deferred piece.
 - **AltDSS JSON `DynInit` tail + Full-mode Transformer/AutoTrans WdgCurrents +
   Capacitor CMatrix → a JSON-export follow-up WP — NOT started.**
   `report/export/json/build.rs:123` `NOT_PORTED`; goldens exclude the Full path for
@@ -183,6 +183,28 @@ open item is not buried in the §1a archive):
 
 Retired (done): combo fuse-save restore (wt-combo); WP-U1.2 D3 / WP-U1.6 tail (all
 landed pre-rung-exit); Monitor modes 8/10/12 (test-triage wt-t3).
+
+### OG-1.1 GICMvars export (orphaned-gaps round, 2026-07-18)
+
+Ported `Export GICMvars` (report verb 36) — the last unported GIC surface
+(ORPHANED_GAPS §1.1; GAPS WPG.16's punt to a never-materialized "Phase 9").
+
+- **`WriteVarOutputRecord`** → `GicTransformer::var_output_record`
+  (`elements/pd/gic_transformer/solve.rs`): `ComputeIterminal`, sum the per-phase
+  terminal currents, `GICperPhase = |ΣI|/nphases`; Mvar on the K-factor path
+  (`FKfactor·FkV1·GICperPhase/1000`) or the VarCurve path
+  (`GetYValue(pu)·FMVArating/√2`, pu = GICperPhase/(MVA·1000/kV1/√3)).
+- **Driver** `ExportGICMvar` → `report/export/gic_mvars.rs::export_gic_mvars`:
+  walks the GICTransformer class ElementList (creation order, no Enabled filter);
+  header `Bus, Mvar, GIC Amps per phase`; `%.8g` cells. Verb 36 routed in
+  `exec/report.rs` (default file `EXP_GIC_Mvar.csv`; not solution-guarded, 1:1 with
+  Pascal `ExportOptions.pas`).
+- **Test surface:** new golden `export_gicmvars` (generator `gen_gic_mvars` in
+  `tools/golden/gen_reports.py`) over the GIC-study deck — all three types
+  (GSU/YY K-path + Auto VarCurve path); `golden_reports.rs::export_gicmvars_matches_oracle`
+  (rel 1e-7/abs 1e-8, the faer-vs-KLU GIC-current floor). Retired the
+  `exec/tests/report.rs` GICMvars NOT_PORTED assert → now pins `Estimation`(5) on a
+  solved circuit (all remaining unported verbs are solution-guarded).
 
 ---
 

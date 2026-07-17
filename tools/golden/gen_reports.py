@@ -1341,6 +1341,66 @@ def gen_reliability_multimeter(d) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# The GICMvars fixture (ORPHANED_GAPS §1.1). No corpus deck *exports* it, so the
+# GAPS `gictransformer_gic` deck is reused as a self-contained fixture: a quasi-DC
+# (Set frequency=0.1) GIC study with all three GICTransformer types — GSU (tg1) +
+# YY (tg2) on the K-factor Mvar path, and an Auto (tg3) on the VarCurve path
+# (varcurve=vgic → the FVarCurveObj.GetYValue branch). `Export GICMvars` writes
+# one `Bus, Mvar, GIC Amps per phase` row per GICTransformer (Pascal
+# `ExportGICMvar` + `WriteVarOutputRecord`).
+GIC_MVAR_FIXTURE = "gaps_gict"
+GIC_MVAR_DECK = [
+    "set defaultbasefrequency=60",
+    f"new circuit.{GIC_MVAR_FIXTURE} basekv=345 phases=3 bus1=b1 mvasc3=2000000 2000000",
+    "new gicline.gl12 bus1=b1 bus2=b2 R=3.5 Volts=100 Angle=0",
+    "new gicline.gl23 bus1=b2 bus2=b3 R=2.9 EN=1.0 EE=1.0",
+    "~ Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605",
+    "new gictransformer.tg1 busH=b1 busNH=b1.4.4.4 R1=0.12 type=GSU",
+    "new gictransformer.tg2 busH=b2 busNH=b2.4.4.4 busX=b2x busNX=b2.4.4.4 R1=0.2 R2=0.1 type=YY",
+    "new xycurve.vgic npts=3 xarray=(0 1 2) yarray=(0 0.6 1.0)",
+    "new gictransformer.tg3 busH=b3 busX=b3x busNX=b3.4.4.4 %R1=0.2 %R2=0.15",
+    "~ kvll1=345 kvll2=138 mva=300 varcurve=vgic type=Auto",
+    "new reactor.gg1 phases=1 bus1=b1.4 r=0.20 x=0",
+    "new reactor.gg2 phases=1 bus1=b2.4 r=0.15 x=0",
+    "new reactor.gg3 phases=1 bus1=b3.4 r=0.25 x=0",
+    "set voltagebases=[345 138]",
+    "calcvoltagebases",
+    "set frequency=0.1",
+    "solve",
+]
+GIC_MVAR_REPORTS = [("gicmvars", "EXP_GIC_Mvar.csv", "export_gicmvars")]
+
+
+def gen_gic_mvars(d) -> None:
+    """Capture the oracle's `Export GICMvars` on the GIC-study fixture."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
+    try:
+        d.Text.Command = "clear"
+        for c in GIC_MVAR_DECK:
+            d.Text.Command = c
+        case = d.ActiveCircuit.Name
+        d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+        for keyword, suffix, stem in GIC_MVAR_REPORTS:
+            d.Text.Command = f"export {keyword}"
+            produced = Path(d.Text.Result)  # GlobalResult = produced path
+            content = produced.read_text()  # universal newlines -> LF
+            (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+            meta = {
+                "report": keyword,
+                "fixture": case,
+                "suffix": suffix,
+                "deck": GIC_MVAR_DECK,
+            }
+            (OUT_DIR / f"{stem}.meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", newline="\n"
+            )
+            print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+    finally:
+        d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def gen_reliability(d) -> None:
     """Capture the oracle's BusReliability/BranchReliability/Capacity reports."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -3000,6 +3060,7 @@ def main() -> None:
     gen_faultstudy(d)
     gen_show_faultstudy(d)
     gen_reliability(d)
+    gen_gic_mvars(d)
     gen_deck_groups(d)
     gen_show_overload_unserved(d)
     gen_show_zone_loops(d)
