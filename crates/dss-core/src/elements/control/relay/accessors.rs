@@ -7,6 +7,7 @@
 
 use num_complex::Complex64;
 
+use crate::elements::control::control_elem::CTRL_STATE_KEEP;
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
@@ -312,7 +313,10 @@ impl DssObject for Relay {
     /// Pascal `InterpretRelayState`: a bare unquoted scalar fills **all** phases
     /// (ganged); a quoted list fills phase-by-phase. `State` writes are blocked
     /// while `Locked`; `Normal` writes are NOT (Pascal `property_name[1] in
-    /// {'a','s'}` guard — Normal starts with 'n').
+    /// {'a','s'}` guard — Normal starts with 'n'). A [`CTRL_STATE_KEEP`] ordinal
+    /// (a token whose first char is neither `o` nor `c`) leaves that phase's slot
+    /// unchanged — for a ganged scalar that means *every* phase is left as-is
+    /// (Pascal's `case` with no matching arm).
     fn set_enum_array(&mut self, idx: usize, values: &[i32]) {
         use super::prop::*;
         let n = self.state_size();
@@ -320,10 +324,14 @@ impl DssObject for Relay {
         match idx {
             NORMAL => {
                 if ganged {
-                    self.set_all_normal(values[0]);
+                    if values[0] != CTRL_STATE_KEEP {
+                        self.set_all_normal(values[0]);
+                    }
                 } else {
                     for (k, &v) in values.iter().take(n).enumerate() {
-                        self.normal_state[k + 1] = v;
+                        if v != CTRL_STATE_KEEP {
+                            self.normal_state[k + 1] = v;
+                        }
                     }
                 }
             }
@@ -332,10 +340,14 @@ impl DssObject for Relay {
                     return; // Pascal: state writes blocked while Locked.
                 }
                 if ganged {
-                    self.set_all_present(values[0]);
+                    if values[0] != CTRL_STATE_KEEP {
+                        self.set_all_present(values[0]);
+                    }
                 } else {
                     for (k, &v) in values.iter().take(n).enumerate() {
-                        self.present_state[k + 1] = v;
+                        if v != CTRL_STATE_KEEP {
+                            self.present_state[k + 1] = v;
+                        }
                     }
                 }
             }

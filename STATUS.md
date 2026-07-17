@@ -1330,6 +1330,30 @@ text (props 50→71 renamed) — masked out of the dump golden for now (as
 gated by `relay.json` + the live r4133 decks + the `compare_all_properties`
 skip). Full mandatory gate green; 57 relay inline unit tests pass.
 
+**WP-U2.3 audit-fix pass (2026-07-17, wt-u23).** (1) *Major — `Normal`/`State`/
+`Action` discrete-state parse.* The r4133 surface reused the 0.14.5 `trip`→open
+enum alias, so `normal=trip` rendered `[open,open,open]` while oddie:r4133 leaves
+it `[closed,closed,closed]` (`InterpretRelayState`, Relay.pas:1237 — first char
+`o`/`c` only, no else arm ⇒ non-o/c leaves the slot unchanged). Reworked the
+relay-only `relay_state`/`relay_action` enums to reproduce it exactly:
+`allow_longer` + `max_chars=1` (leading-char match: `openZ`→open, `cs`→closed)
+and `default_value = CTRL_STATE_KEEP` (new sentinel; unmatched ⇒ keep the phase,
+no parse error), with the state-array setter/`do_action` skipping KEEP slots.
+Empirically re-verified on oddie:r4133 (`trip`/`xyz`→unchanged, `openZ`→open,
+`[open trip closed]`→`[open,closed,closed]`); recloser/fuse enums untouched
+(their own defs). Fixed the `relay_normal_trip` props golden (`Normal` open→closed)
+and added an inline pin `state_parse_is_first_char_only_r4133`. (2) *Minor —
+props-golden note.* `relay.json` is a self-referential regression pin (Rust
+renders compared back to Rust), not an independent oracle gate; softened the
+`oracle.note` to say so and to scope the r4133 cross-validation as a manual
+(non-CI) spot check — genuine oracle coverage is the live `oracle:"r4133"` relay
+decks. (3) *Minor — `59NRelayDemo`* stays parked in
+`skipped_needs_investigation` (tag `relay_voltage_dynamics_residual`) with its
+decomposition plan; the ~7e-4 open-point residual is un-triaged (suspected bug
+until proven a floor per CLAUDE.md) and the live-f64 trip-time + per-node
+trajectory decomposition is owed to WP-U2.6's rung-exit sweep — an honest
+deferral, not tolerance-masked. Full mandatory gate re-run green.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
