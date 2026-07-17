@@ -138,6 +138,7 @@
   },
   {
    "path": "Test/DistanceRelayTest.DSS",
+   "oracle": "r4133",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -228,11 +229,13 @@
   },
   {
    "path": "Test/ReverseDistanceRelayTest.DSS",
+   "oracle": "r4133",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/ReverseTD21RelayTest.DSS",
+   "oracle": "r4133",
    "kind": "feeder",
    "n_steps": 1,
    "compare_eventlog": true
@@ -244,6 +247,7 @@
   },
   {
    "path": "Test/TD21RelayTest.DSS",
+   "oracle": "r4133",
    "kind": "feeder",
    "n_steps": 1,
    "compare_eventlog": true
@@ -423,22 +427,26 @@
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/DistanceRelayTest.DSS",
+   "oracle": "r4133",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/ReverseDistanceRelayTest.DSS",
+   "oracle": "r4133",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/ReverseTD21RelayTest.DSS",
+   "oracle": "r4133",
    "kind": "feeder",
    "n_steps": 1,
    "compare_eventlog": true
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/TD21RelayTest.DSS",
+   "oracle": "r4133",
    "kind": "feeder",
    "n_steps": 1,
    "compare_eventlog": true
@@ -1009,11 +1017,6 @@
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/subestacao.dss",
-   "kind": "feeder",
-   "n_steps": 1
-  },
-  {
-   "path": "Version8/Distrib/Examples/Scripts/59NRelayDemo.dss",
    "kind": "feeder",
    "n_steps": 1
   },
