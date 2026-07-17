@@ -730,10 +730,6 @@
    "ad": "off:non-3ph-cut-only"
   },
   {
-   "path": "Version8/Distrib/Examples/Scripts/59NRelayDemo.dss",
-   "ad": "off:non-3ph-cut-only"
-  },
-  {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss",
    "ad": "off:non-3ph-cut-only"
   },
