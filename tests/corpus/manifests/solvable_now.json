@@ -1011,6 +1011,13 @@
    "n_steps": 1
   },
   {
+   "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss",
+   "kind": "large",
+   "n_steps": 1,
+   "oracle": "capi015",
+   "note": "T1 test-triage promotion (2026-07-17): was skipped_oracle_issue #24713 ('Unknown Export command: deltaf') -- STALE, the pinned 0.14.5 oracle predates NCIM and its deltaF/deltaZ/jacobian exports. Kundur two-area transmission network solved with `set algorithm=NCIM` (the 0.15.x-line solver). Flipped oracle:capi015 (the NCIM-owning dss_capi 0.15.0b4 / SVN r4103 line). Validated per UPGRADE_PLAN.md §1.7: (1) capi015 compiles+solves+converges (warm re-solve 1 iter); (2) bit-identical across two capi015 processes (y_fp nnz=99 frob=4352.558077818025 tr_re=2002.050898338095 tr_im=-7402.642529188686 identical); (3) feature-sensitive -- forcing `set algorithm=Normal` DIVERGES on capi015 (|V|~8e115, 200 iters), so NCIM cannot silently no-op. Whole-model live compare: Rust matches capi015 to 0 (all 33 nodes byte-identical, B1.1=11893.415545). Iteration policy Rust<=capi015: warm re-solve 1==1 (equal). The `export deltaF/deltaZ/jacobian` NCIM exports are ported (WP-U1.7); the port raises no errors."
+  },
+  {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss",
    "kind": "feeder",
    "n_steps": 1

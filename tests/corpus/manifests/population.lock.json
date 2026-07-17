@@ -1,13 +1,13 @@
 {
   "comment": "Anti-shrink guard (FA fix 3; FA settle: per-case rigor + family path lists): committed fingerprint of the gated corpus population. Trips on any drift — a path leaving solvable_now, a retained deck weakened in place (kind/tolerance-tier flip, steps/probes/meters cut — see solvable_now value fingerprints), a family deck swapped, or any manifest/family case-count change. Regenerate DELIBERATELY with `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock` and commit the diff alongside the manifest change. See TESTING.md §Anti-shrink population lock.",
   "manifest_counts": {
-    "ad_sweep.json": 292,
+    "ad_sweep.json": 293,
     "missing_dependency.json": 9,
     "not_an_entry_point.json": 586,
     "skipped_needs_investigation.json": 13,
-    "skipped_oracle_issue.json": 14,
+    "skipped_oracle_issue.json": 13,
     "skipped_unsupported.json": 1,
-    "solvable_now.json": 292
+    "solvable_now.json": 293
   },
   "family_counts": {
     "asymmetric": 47,
@@ -452,6 +452,7 @@
     "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS": "kind=large steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=1 oracle=-",
     "Version8/Distrib/Examples/Microgrid/ISource/Master.DSS": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
+    "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss": "kind=large steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=capi015",
     "Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/Examples/Paulo_Example/DSSFiles/subestacao.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",
     "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 oracle=-",

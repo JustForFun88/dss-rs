@@ -37,11 +37,6 @@
    "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-p.dss failed: Some(\"DSSException: (#482) Error Encountered in Solve: Division by zero\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\e"
   },
   {
-   "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss",
-   "tag": "oracle_error_#24713",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss failed: Some(\"DSSException: (#24713) Error: Unknown Export command: \\\"deltaf\\\"\\r\\n[file: \\\"E:\\\\RustProject\\\\dss-rs\\\\tests\\\\corpus\\\\electricdss-ts"
-  },
-  {
    "path": "Version8/Distrib/Examples/VSConverter/vsc0test.dss",
    "tag": "live_mismatch=VSConverter.Currents self-alias bug in GetCurrents (KCL-violating reported currents; the solve/voltages are correct). Gated by exec/tests/vs_converter.rs via oracle source currents + KCL."
   },
@@ -51,13 +46,13 @@
   },
   {
    "path": "Version8/Distrib/Examples/WindGenerator/WindGen_GFL_Dynamics/Run_IEEE123Bus_GFLDaily.DSS",
-   "tag": "oracle_error_#263",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/WindGenerator/WindGen_GFL_Dynamics/Run_IEEE123Bus_GFLDaily.DSS failed: Some(\"DSSException: (#263) New Command: Object Type \\\"WindGen\\\" not found. \\r\\nNew WindGen.wtg1 phases=3 bus1=WindGB k"
+   "tag": "capi015_multistep_limitation",
+   "note": "T3 test-triage re-note (2026-07-17): the old #263 'Object Type WindGen not found' block is STALE -- the pinned 0.14.5 oracle predates WindGen, but WindGen is ported (WP-U1.8) and capi015 (dss_capi 0.15.0b4 / SVN r4103) compiles+solves this deck (probed 2026-07-17: converged, 281 nodes, 244 elements). NEW blocker: the deck is a MULTI-STEP dynamics run (snapshot solve, then `set mode=dynamics stepsize=0.001 number=200/70/2000` with a fault at bus 51, plus `BatchEdit Load..* Daily=default` loadshapes). The capi015 oracle CANNOT gate a multi-step deck -- oracle_server.run_case's per-step capture re-nominalizes time-varying elements (loads/shapes read their step-0/nominal value while dbl_hour advances; docs/upgrade/DIVERGENCES.md 'No live multi-step gate is possible', docs/phase-records/upgrade-rung1.md 'Oracle-infra finding'). All capi015 corpus cases are n_steps=1 for this reason; the harness n_steps=1 solve here lands mid-dynamics (dbl_hour advanced to ~0.00119). Additionally WindGen carries a daily Losses-staleness quirk (dss_capi caches el.Losses across daily steps, WP-U1.8 windgen_daily note) that would diverge the full-model losses channel. WindGen snapshot/daily/dynamics coverage IS gated by the modes/windgen family (windgen_snap/_delta/_daily/_dyn/_dyn_fault) + the aerodynamic_wind_speed_sweep unit test. Promotable only once the oracle-infra multi-step re-nominalization fix lands."
   },
   {
    "path": "Version8/Distrib/Examples/WindGenerator/WindGen_QSTS/Run_IEEE123Bus_GFLDaily.DSS",
-   "tag": "oracle_error_#263",
-   "note": "oracle case E:/RustProject/dss-rs/crates/dss-core/../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/WindGenerator/WindGen_QSTS/Run_IEEE123Bus_GFLDaily.DSS failed: Some(\"DSSException: (#263) New Command: Object Type \\\"WindGen\\\" not found. \\r\\nNew WindGen.wtg1 phases=3 bus1=WindGB kV=0.69 k"
+   "tag": "capi015_multistep_limitation",
+   "note": "T3 test-triage re-note (2026-07-17): the old #263 'Object Type WindGen not found' block is STALE -- WindGen is ported (WP-U1.8) and capi015 (dss_capi 0.15.0b4 / SVN r4103) compiles+solves this deck (probed 2026-07-17: converged, 281 nodes, 244 elements). NEW blocker: MULTI-STEP QSTS run -- snapshot solve then `set mode=daily number=24` over a WindData daily loadshape (the shape supplies wind SPEED) plus `BatchEdit Load..* Daily=default`. The capi015 oracle CANNOT gate a multi-step deck: run_case's per-step capture re-nominalizes time-varying elements (DIVERGENCES.md / upgrade-rung1.md oracle-infra finding), so a daily deck reports the nominal step-0 state every step; the harness n_steps=1 solve advances to dbl_hour=48. Plus the WindGen daily Losses-staleness quirk (WP-U1.8 windgen_daily note) would diverge the full-model losses channel. WindGen daily/dynamics/snapshot coverage IS gated by the modes/windgen family + aerodynamic_wind_speed_sweep unit test. Promotable only once the oracle-infra multi-step re-nominalization fix lands."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/WindRamp.DSS",
