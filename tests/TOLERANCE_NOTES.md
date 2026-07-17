@@ -44,6 +44,12 @@ tiers tolerances by **conditioning**, not size:
   below). A-Diakoptics torn circuits whose 1e-8 Ω stitching pseudo-switches
   (Y≈1e8 S) resolve sub-ulp voltage differences into the currents channel:
   ckt24 and EPRI_Ckt7-G Torn Master/Master_Interconnected.
+- **micro_wtg3_dynamics** — a `micro`-scale WindGen (WTG3) dynamics tier with
+  `v_rel` 8e-6, `i_rel` 2e-5, `i_abs` 1e-4 (Y stays tight at `y_rel` 1e-9); see
+  §wtg3-dynamics below. Two members (`windgen_dyn`, `windgen_dyn_fault`): the
+  phase-locked-loop derivative term amplifies a last-ulp `Vq` cancellation by
+  6e4×, loosening only the three PLL-fed quantities (`dOmg`/`Pgen`/`Qgen`) while
+  every non-PLL state variable and the assembled Y hold tight.
 
 | Quantity | micro | feeder | large |
 |---|---|---|---|
@@ -394,6 +400,40 @@ the tier is permanent until the oracle itself is re-pinned.
 only after `corpus_live` confirms it holds the tighter floor. Golden tests that
 drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios in
 `golden_metering_monitors` / the DER/harmonics/protection scenarios) pass `"large"` explicitly.
+
+### wtg3-dynamics (`micro_wtg3_dynamics`): the PLL derivative-gain cancellation floor
+
+The WindGen (WTG3) dynamics decks (`windgen_dyn`, `windgen_dyn_fault`, WP-U1.8).
+Proven by decomposition (CLAUDE.md — a floor changes only by proof, never a
+sweep; the full leg-by-leg audit lives at the tier's inline comment in
+`harness::tol_for`, this is its summary):
+
+- The snapshot operating point that seeds dynamics matches the oracle to the
+  solver floor (node V ≤3.7e-9 abs on the 398 V L-N buses, feeder-tight), and
+  every WTG3 state variable **not** touched by the phase-locked loop matches to
+  ≤2e-7 (Pcmd 4.8e-8, Vref 1.2e-7, Vmag 4.6e-7, WtAct 1.9e-8, thetaPitch
+  1.5e-7; Pg/Ps/Pr/s bit-exact).
+- Only the three PLL-fed quantities are loose — `dOmg` (9.1e-6), `Pgen`
+  (9.7e-6), `Qgen` (3.4e-6): `PllLogic`'s derivative term
+  `KpPLL·(Vq−VqOld)/deltSim = 60·Δ/0.001 = 60000·Δ` amplifies the last-ulp
+  difference in `Vq` (itself the small imaginary residual ~3.5e-3 of a voltage
+  the PLL rotates onto the real axis — a near-cancellation) by 6e4×; the
+  amplified `dOmg` then feeds the whole trajectory (the WPG.13/`dSpeed`
+  cancellation-floor class).
+- Not a divergent state-leak: the gap **decays** as the startup transient
+  settles (node V |Δ| 8e-5 @ 1 step → 4.4e-6 @ 20 → 1.6e-6 @ 100). The amplified
+  injection current reaches the WindGen *terminal* bus through the small series
+  line (`V_term = V_src − I·Z_line`); the far *source* bus stays feeder-tight
+  (3.5e-8 rel) because the ideal source buffers it.
+
+Calibration (binding fault case × ~2): `windgen_dyn` wbus |Δ|3.9e-4 V (9.6e-7
+rel); `windgen_dyn_fault` (sustained 3φ fault → LVPL/LVQL ride-through) wbus
+|Δ|1.23e-3 V (3.4e-6 rel), srcbus 3.5e-8 rel. `v_rel` 8e-6 covers the fault wbus
+3.4e-6 rel (×2.3); `i_abs` 1e-4 covers the per-unit small-variable amplification
+(`dOmg` 0.08, |Δ| 4.2e-5); `i_rel` 2e-5 covers the ~1e-5-rel amplified
+per-unit/ampere currents. `y_rel`/`y_abs` stay tight (the dynamic Norton YPrim is
+a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variables
+(all ≤2e-6 here) or the assembled Y far past these floors.
 
 ## Field-specific exceptions
 
