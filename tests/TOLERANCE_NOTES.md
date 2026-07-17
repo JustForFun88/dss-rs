@@ -792,6 +792,21 @@ parallel WP branches each add a line without conflict (duplicate class rows are
 fine — the predicate ORs every matching row). Adding a row is a *shape*
 declaration only — it never touches any numeric floor.
 
+**r4133 extension (WP-U2.1, Rung 2).** r4133 adds properties and changes defaults
+the pinned 0.14.5 oracle cannot report. Rather than mint parallel `PROPS_R4133` /
+`HIDE_R4133` mechanisms, the *identical* Rung-1 machinery is reused (the semantics
+are the same — a post-0.14.5 surface the 0.14.5 oracle predates):
+- **Added props** (Fuse `CurveMultiplier`/`InterruptingRating`): a `PROPS_015X`
+  Fuse row (shape walk) + `PropFlags::HIDE_015X` (byte Dump/`Dump commands`/JSON
+  goldens), exactly as for the 0.15.x-line additions.
+- **Changed defaults** (Fuse `FuseCurve` tlink→none, `RatedCurrent` 1→0): a
+  `SKIP_PROPS` row each — category (f) — masking the VALUE only on the 0.14.5
+  all-props walk (name still order-checked), the same treatment as RegControl
+  `RevThreshold` (e). The r4133 values are pinned on the r4133 side (the
+  `fuse.json` props golden + the `fuse_curvemult_blow`/`fuse_legacy_noblow`
+  controls decks), never masked there.
+This is a *shape/version-mismatch* declaration only — no numeric floor moves.
+
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
 
 A-Diakoptics is an **EXACT** domain decomposition: at convergence the AD stitch

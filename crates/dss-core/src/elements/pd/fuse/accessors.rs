@@ -78,6 +78,8 @@ impl DssObject for Fuse {
         use super::prop::*;
         match idx {
             RATED_CURRENT => self.rated_current,
+            CURVE_MULTIPLIER => self.curve_multiplier,
+            INTERRUPTING_RATING => self.interrupting_rating,
             DELAY => self.delay_time,
             BASE_FREQ => self.ccd.cd.base_frequency,
             _ => unreachable!("Fuse has no double property {idx}"),
@@ -87,6 +89,8 @@ impl DssObject for Fuse {
         use super::prop::*;
         match idx {
             RATED_CURRENT => self.rated_current = value,
+            CURVE_MULTIPLIER => self.curve_multiplier = value,
+            INTERRUPTING_RATING => self.interrupting_rating = value,
             DELAY => self.delay_time = value,
             BASE_FREQ => self.ccd.cd.base_frequency = value,
             _ => unreachable!("Fuse has no double property {idx}"),
@@ -131,7 +135,15 @@ impl DssObject for Fuse {
         match idx {
             MONITORED_OBJ => self.monitored_full_name.clone(),
             SWITCHED_OBJ => self.switched_full_name.clone(),
-            FUSE_CURVE => self.fuse_curve_name.clone(),
+            // r4133 `GetPropertyValue` prop 5: `if FuseCurve <> nil then
+            // FuseCurve.Name else 'none'` — render the resolved curve's name, or
+            // the literal `none` when NIL (default, `fusecurve=none`, or a missed
+            // resolve). The executive resolves `fuse_curve_obj` after every edit.
+            FUSE_CURVE => self
+                .fuse_curve_obj
+                .as_ref()
+                .map(|c| c.data().name().to_string())
+                .unwrap_or_else(|| "none".to_string()),
             _ => unreachable!("Fuse has no string property {idx}"),
         }
     }
@@ -274,6 +286,9 @@ impl DssObject for Fuse {
         self.fuse_curve_name = other.fuse_curve_name.clone();
         self.fuse_curve_obj = other.fuse_curve_obj.clone();
         self.rated_current = other.rated_current;
+        // r4133 (WP-U2.1): MakeLike copies the new divisor + interrupting rating.
+        self.curve_multiplier = other.curve_multiplier;
+        self.interrupting_rating = other.interrupting_rating;
 
         // Pascal copies the first `min(FUSEMAXDIM, ControlledElement.NPhases)`
         // per-phase states; with no controlled element it copies none.

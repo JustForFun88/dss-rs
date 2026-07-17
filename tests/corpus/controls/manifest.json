@@ -739,7 +739,59 @@
    "compare_ctrlqueue": true
   },
   {
+   "path": "fuse/fuse_curvemult_blow.dss",
+   "ad": "off:non-3ph-cut-only",
+   "kind": "micro",
+   "n_steps": 8,
+   "oracle": "r4133",
+   "wp": "WP-U2.1",
+   "selected_elements": [
+       "*"
+   ],
+   "probes": [
+       {
+        "element": "Fuse.fz",
+        "props": [
+         "state",
+         "normal",
+         "fusecurve",
+         "curvemultiplier"
+        ]
+       }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "WP-U2.1 (r4133 C3/D1): explicit fusecurve=tlink scaled by the new CurveMultiplier divisor (curvemultiplier=40 -> GetTCCTime(Cmag/40)) blows ONLY the SLG phase 2 at Sec=0.4 -> State=[closed,open,closed]. Feature-sensitive: curvemultiplier=1 melts all three at Sec=0.2 (probe-proven); RatedCurrent is the r4133 informational default 0, so dividing by it (the pre-r4133 divisor) would divide-by-zero and blow every phase -- pins CurveMultiplier as the divisor. r4133-only property. Full-model per-step + State/Normal probes + blow event log + ctrlqueue."
+  },
+  {
+   "path": "fuse/fuse_legacy_noblow.dss",
+   "ad": "off:non-3ph-cut-only",
+   "kind": "micro",
+   "n_steps": 8,
+   "oracle": "r4133",
+   "wp": "WP-U2.1",
+   "selected_elements": [
+       "*"
+   ],
+   "probes": [
+       {
+        "element": "Fuse.fz",
+        "props": [
+         "state",
+         "normal",
+         "fusecurve"
+        ]
+       }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "WP-U2.1 (r4133 breaking default D1): a legacy fuse (RatedCurrent only, no explicit curve) gets the r4133 default FuseCurve=none and NEVER blows even under a solid 3ph fault -> State stays [closed,closed,closed], empty blow event log + ctrlqueue (blew all three on 0.14.5). Pins the never-blows breaking default. r4133-only observable. Full-model per-step + State/Normal probes."
+  },
+  {
    "path": "fuse/fuse_blow_asym.dss",
+   "oracle": "r4133",
+   "wp": "WP-U2.1",
+   "note": "WP-U2.1 (r4133 breaking default D1): the default FuseCurve moved tlink->none, so this fuse (no explicit curve) NEVER blows on r4133 -- State stays [closed,...], the blow eventlog + ctrlqueue are empty (was 1 on 0.14.5). Pins the never-blows breaking default live; the CurveMultiplier-scaled blow path is the sibling fuse_curvemult_blow deck. RatedCurrent is now informational.",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -1065,6 +1117,9 @@
   },
   {
    "path": "fuse/midi_fuse.dss",
+   "oracle": "r4133",
+   "wp": "WP-U2.1",
+   "note": "WP-U2.1 (r4133 breaking default D1): the default FuseCurve moved tlink->none, so this fuse (no explicit curve) NEVER blows on r4133 -- State stays [closed,...], the blow eventlog + ctrlqueue are empty (was 1 on 0.14.5). Pins the never-blows breaking default live; the CurveMultiplier-scaled blow path is the sibling fuse_curvemult_blow deck. RatedCurrent is now informational.",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 8,
@@ -2354,6 +2409,8 @@
   },
   {
    "path": "fuse/fuse_blow_3ph.dss",
+   "oracle": "r4133",
+   "wp": "WP-U2.1",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
@@ -2370,7 +2427,7 @@
     }
    ],
    "compare_eventlog": true,
-   "note": "3-phase simultaneous blow: a balanced 3ph fault melts all three per-phase links in the same round -> State=[open,open,open] (vs the one-phase asym deck). Feature-sensitive: ratedcurrent=5000 keeps them closed (probe-proven)."
+   "note": "WP-U2.1 (r4133 breaking default D1): default FuseCurve tlink->none, so this 3ph deck (no explicit curve) NEVER blows on r4133 -- State stays [closed,closed,closed], blow eventlog empty (was PHASE n BLOWN on 0.14.5). Pins the never-blows breaking default live."
   },
   {
    "path": "swtcontrol/swtcontrol_lock.dss",

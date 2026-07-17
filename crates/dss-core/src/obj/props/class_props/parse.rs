@@ -177,6 +177,17 @@ impl ClassProps {
                         // (stores the literal `none` name, no #401) — a Rung-2 note,
                         // see DIVERGENCES.md §AllowNone-single-ref. WP-U1.1 item 4.
                         //
+                        // EPRI r4133 `GetTccCurve('none')` (WP-U2.1, Fuse
+                        // `FuseCurve` via `ALLOW_NONE_REF`): literal `none` resolves
+                        // to NIL **silently** — no #401 — and renders `none`. Store
+                        // the literal name so the executive re-resolve also misses
+                        // (obj stays NIL). Supersedes the capi015 clear+#401 path.
+                        if pd.flags.contains(PropFlags::ALLOW_NONE_REF)
+                            && value.eq_ignore_ascii_case("none")
+                        {
+                            obj.set_object_ref(idx, "none".to_string(), None);
+                            return Ok(0);
+                        }
                         // Pascal `ParseObjPropertyValue` for
                         // `DSSObjectReferenceProperty`: resolve `cls.Find(name)`
                         // (case-insensitive). On failure DoSimpleMsg 401 and the

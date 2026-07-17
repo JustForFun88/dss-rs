@@ -1085,6 +1085,18 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     `FwdThreshold`/`Idle*` are absent from the 0.14.5 capture → handled by
     //     the [`PROPS_015X`] allowlist, not here.
     ("RegControl", "RevThreshold"),
+    // (f) r4133-CHANGED DEFAULTS (WP-U2.1, delta D1): the Fuse overhaul repurposed
+    //     `RatedCurrent` (default 1.0 → 0.0, informational) and moved the default
+    //     `FuseCurve` `tlink` → `none`. `compare_all_properties` runs ONLY on the
+    //     0.14.5 oracle (which still reports RatedCurrent 1 / FuseCurve tlink),
+    //     where none-vs-tlink and 0-vs-1 are deliberate version mismatches (§1.2) —
+    //     the value is excluded here (name still order-checked). Fully pinned on
+    //     the r4133 side: the r4133 props golden (`fuse.json`) and the r4133
+    //     controls decks (`fuse_curvemult_blow`, `fuse_legacy_noblow`). The new
+    //     `CurveMultiplier`/`InterruptingRating` props (absent from the 0.14.5
+    //     capture) are handled by the [`PROPS_015X`] allowlist, not here.
+    ("Fuse", "FuseCurve"),
+    ("Fuse", "RatedCurrent"),
 ];
 
 fn skip_prop(class: &str, prop: &str) -> bool {
@@ -1168,6 +1180,11 @@ const PROPS_015X: &[(&str, &[&str])] = &[
     // `Unused` data props on BOTH transformer classes.
     ("Transformer", &["BHpoints", "BHcurrent", "BHflux"]),
     ("AutoTrans", &["BHpoints", "BHcurrent", "BHflux"]),
+    // WP-U2.1 (EPRI r4133, delta C3/D1): Fuse props 10 -> 12 — the new TCC divisor
+    // and interrupting rating, absent from the 0.14.5 capture. (This is a Rung-2
+    // r4133 addition, not a 0.15.x-line one, but the mechanism — a post-0.14.5 prop
+    // the 0.14.5 oracle cannot report — is identical.)
+    ("Fuse", &["CurveMultiplier", "InterruptingRating"]),
     // Further rows land here with their porting WP.
 ];
 
