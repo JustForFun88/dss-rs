@@ -68,3 +68,17 @@ Zero behavior change on the corpus — all corpus identifiers are ASCII, for whi
 
 None. Every identifier path was converted; no site required leaving the old code in
 place.
+
+## Audit settlement (orchestrator note, 2026-07-17)
+
+Both auditors returned PASS with note-severity observations only; the fix agent
+exited before writing the settlement, recorded here instead:
+
+- **(code) `to_ascii_lowercase` is not byte-identical to FPC `AnsiLowerCase` for
+  high bytes (>=0x80)** — acknowledged, plan-sanctioned. DE_PASCALIZE P6
+  prescribes ASCII folding as the byte-based target; the *Unicode* folding was
+  the latent divergence (multi-byte case folds could mis-key lowercase-keyed
+  registries). High-byte single-byte folds differ per Windows codepage and are
+  not corpus-reachable; permanent semantics, not a bug.
+- **(tests) zero golden/corpus/tolerance churn; symmetric 125-add/125-remove
+  diff** — confirms bit-neutrality; no action.
