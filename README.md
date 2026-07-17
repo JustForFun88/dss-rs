@@ -55,6 +55,7 @@ upstream inventorying and the per-rung exit sweeps.
 - **`PORTING_PLAN.md`** — the authoritative roadmap and binding decisions.
 - **`CLAUDE.md`** — conventions (`TODO(compat)`, known upstream bugs, the
   no-tolerance-fudging / prove-the-divergence rules).
-- **`UPGRADE_PLAN.md`** — the r3723 → r4133 upgrade, both rungs.
+- **`docs/plans-archive/UPGRADE_PLAN.md`** — the r3723 → r4133 upgrade, both
+  rungs (archived — completed).
 - **`TESTING.md`** — the map of the whole test infrastructure.
 - **`STATUS.md`** — the living project-status / session-handoff snapshot.
