@@ -134,3 +134,41 @@ the base. They block `clippy -D warnings`, so they are fixed here **bit-neutrall
 --all-targets -- -D warnings` · `cargo +stable test --workspace` — all green in
 the worktree; `tests/corpus` pristine. Numeric goldens byte-identical (no
 arithmetic touched). 7 new discriminant-pin unit tests added.
+
+## Audit settlement
+
+Two independent auditors (audit-code, audit-tests) returned **no blockers/majors** —
+only 5 `note`-severity observations, all confirming bit-neutrality. Each settled
+empirically below; none required a code change (all are disclosed, verified-neutral
+rewrites), so nothing was refixed. Verdicts: audit-code "faithful, bit-neutral
+Stratum [A] refactor, no behavioral regressions"; audit-tests "CLEAN test-side
+Stratum [A] conversion, zero golden/corpus/tolerance churn."
+
+- **(code+tests) windgen predicate `vwind < 5.0 || vwind > 23.0` →
+  `!(5.0..=23.0).contains(&vwind)`** — *rebutted.* The two forms differ only for
+  NaN (old→false, new→true); identical for every finite input. The sweep is the
+  fixed literal set `[4.0, 10.0, 15.0, 24.0]` (verified in `windgen/tests.rs`
+  `aerodynamic_wind_speed_sweep`), so NaN can never reach the branch. Bit-neutral
+  for the actual inputs; the theoretical NaN divergence is dead.
+- **(code+tests) harness `compare_prop_lists` `!(A && !B) → !A || B`** — *rebutted.*
+  Pure-boolean De Morgan identity (A,B are `bool`, no float/partial-order path);
+  identical truth table for all inputs. Disclosed clippy `nonminimal_bool` fix.
+- **(code) inc_matrix `!(num_terminals > 1) → num_terminals <= 1`** — *rebutted.*
+  `num_terminals` is a `usize` count (total order, no NaN); `!(x > 1) == x <= 1`
+  for all integers. Bit-neutral.
+- **(code) matrices.rs `y4_keep` added `clippy::nonminimal_bool` allow** —
+  *rebutted.* The reproduced upstream doubled-`.re` bug
+  (`v.re != 0.0 && v.re != 0.0`) is left **textually unchanged**; only a second
+  lint name joined the existing `#[allow(clippy::eq_op)]`. Zero logic change; the
+  bug's unit-test pin is untouched.
+- **(tests) storage_controller mock `dispatch_mode: i32 → StorageDispatchMode`** —
+  *rebutted.* Part of the P1 enum conversion. Verified against base `19b9633`:
+  `STORE_DEFAULT=0 == Default=0`, `STORE_EXTERNALMODE=3 == ExternalMode=3`; the
+  `==`/`!=` comparisons are preserved verbatim. Bit-neutral.
+
+The two auditors also affirmatively disproved the one structural concern they
+raised themselves — that the `Enum::from_ordinal(v).unwrap_or(field)` set-boundary
+could swallow out-of-range inputs the old `= value` stored: all 7 backing DssEnums
+are non-hybrid, so the parse/`Set` path only ever yields in-set ordinals (or an
+error both old and new code skip identically) and the `unwrap_or` fallback is
+provably dead. No action needed.
