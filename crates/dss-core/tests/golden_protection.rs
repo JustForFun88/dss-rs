@@ -7,12 +7,12 @@
 //! step, and must match its file under `tests/golden/protection/` (one
 //! `<scenario>.json` per scenario; the gate runs every file in the dir):
 //!
-//!   (The recloser_temp/recloser_perm scenarios were retired in WP-U2.2: the
-//!   r4133 per-phase rewrite moves their behavior off the 0.14.5 oracle; their
-//!   coverage is now the live r4133 family gate under
-//!   `tests/corpus/controls/recloser/`.)
-//!   - relay_current: definite-time overcurrent relay (eventlog=yes) -> RESETTING
-//!     + OPENED ON PH & LOCKED OUT;
+//!   (The recloser_temp/recloser_perm scenarios were retired in WP-U2.2, and
+//!   relay_current in WP-U2.3: the r4133 per-phase rewrites move their event-log
+//!   behavior off the 0.14.5 oracle — new per-phase wording + an unconditional
+//!   `Debug Sample` line — so they are no longer byte-golden-able against the
+//!   pinned 0.14.5 oracle; their coverage is now the live r4133 family gates
+//!   under `tests/corpus/controls/{recloser,relay}/`.)
 //!   - fuse_blow:     per-phase fuse on tlink -> PHASE 3/2/1 BLOWN;
 //!   - swt_manual:    manual switch opened by a mid-run `edit ... action=open`
 //!     — pinned on **EPRI r4133** (`oracle: oddie:r4133`), where WP-U2.4 D6 makes
@@ -225,13 +225,14 @@ fn protection_scenarios_match_oracle() {
     // Every protection device must stay represented, so a future edit can't
     // silently drop a device's trip/reclose coverage (mirrors the count guards in
     // golden_{timeseries_controls,metering_monitors,der_controls} and corpus_live's depth guard).
-    // NB: the recloser_temp/recloser_perm scenarios were retired in WP-U2.2 —
-    // the r4133 per-phase rewrite (event-log wording overhaul + removed default
-    // curves + inst-delay single-count) moves their behavior off the pinned
-    // 0.14.5 oracle, so they are no longer byte-golden-able (§1.3-2). Their
-    // trip/reclose coverage lives in the live r4133 family gate
-    // (tests/corpus/controls/recloser/*, oracle: "r4133").
-    for must in ["relay_current", "fuse_blow", "swt_manual"] {
+    // NB: the recloser_temp/recloser_perm scenarios were retired in WP-U2.2 and
+    // relay_current in WP-U2.3 — the r4133 per-phase rewrites (event-log wording
+    // overhaul + unconditional Debug Sample line + inst-delay single-count) move
+    // their behavior off the pinned 0.14.5 oracle, so they are no longer
+    // byte-golden-able (§1.3-2). Their trip/reclose coverage lives in the live
+    // r4133 family gates (tests/corpus/controls/{recloser,relay}/*, oracle:
+    // "r4133").
+    for must in ["fuse_blow", "swt_manual"] {
         assert!(
             scenarios.iter().any(|s| s.name == must),
             "protection golden missing required scenario {must}"

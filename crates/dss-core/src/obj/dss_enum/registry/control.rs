@@ -3,6 +3,7 @@
 //! charge modes. Split out of `registry/mod.rs` (no behavioral change).
 
 use super::super::{DssEnum, EnumId};
+use crate::elements::control::control_elem::CTRL_STATE_KEEP;
 
 pub(super) struct ControlEnums {
     pub(super) reg_control_phase: EnumId,
@@ -180,24 +181,23 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
         ],
         &[0, 1, 3, 4, 5, 6, 7, 8, 9],
     ));
-    // Action/State carry a third `trip` spelling that maps to CTRL_OPEN, exactly
-    // like the Recloser (the reverse-lookup of ordinal 1 picks `open`, not `trip`).
-    let relay_action = push(DssEnum::new(
-        "Relay: Action",
-        false,
-        1,
-        1,
-        &["close", "open", "trip"],
-        &[2, 1, 1],
-    ));
-    let relay_state = push(DssEnum::new(
-        "Relay: State",
-        false,
-        1,
-        1,
-        &["closed", "open", "trip"],
-        &[2, 1, 1],
-    ));
+    // Relay.pas r4133 `InterpretRelayState`: parsing is FIRST-CHARACTER ONLY —
+    // `case LowerCase(param)[1] of 'o': CTRL_OPEN; 'c': CTRL_CLOSE; end` with no
+    // else arm, so any other spelling (`trip`, `xyz`, ...) leaves the state
+    // slot UNCHANGED (empirically on oddie:r4133: `normal=trip` → Normal stays
+    // `[closed,closed,closed]`). Reproduced with `allow_longer` + `max_chars=1`
+    // (match on the leading char alone: `openx`→open, `cs`→closed) and
+    // `default_value = CTRL_STATE_KEEP` (unmatched → keep, no parse error). This
+    // deliberately does NOT carry the old `trip`→open alias, which diverged from
+    // r4133. (The Recloser enums, WP-U2.2's lane, keep their own separate defs.)
+    let mut relay_action = DssEnum::new("Relay: Action", false, 1, 1, &["close", "open"], &[2, 1]);
+    relay_action.allow_longer = true;
+    relay_action.default_value = CTRL_STATE_KEEP;
+    let relay_action = push(relay_action);
+    let mut relay_state = DssEnum::new("Relay: State", false, 1, 1, &["closed", "open"], &[2, 1]);
+    relay_state.allow_longer = true;
+    relay_state.default_value = CTRL_STATE_KEEP;
+    let relay_state = push(relay_state);
     // InvControl.pas TInvControl.Create: the seven smart-inverter enums. The
     // control-mode ordinals are VOLTVAR=1 VOLTWATT=2 DRC=3 WATTPF=4 WATTVAR=5
     // AVR=6 GFM=7 (NONE_MODE=0 dumps ''); CombiMode VV_VW=1 VV_DRC=2. All seven
