@@ -77,3 +77,50 @@ exactly — that is what the golden pins.
 
 Gate: `cargo +stable fmt --all --check`, `clippy --workspace --all-targets -D
 warnings`, `cargo +stable test --workspace` — all green.
+
+## Audit settlement
+
+Two independent audits returned "faithful port / PASS" with one **minor**
+finding (raised by both) plus notes. Dispositions:
+
+- **[minor — FIXED] `close()` tolerance comment overstated the band.** The
+  unit-test helper claimed the band was "the f32 quantization floor (~1.2e-7
+  rel) plus a small faer-vs-KLU last-ulp margin" but actually allowed
+  `1e-3 + 5e-5·|expected|` (~400–2000× looser). Settled empirically, not by
+  editing the comment: instrumented `close()` to print every pinned channel's
+  Rust↔oracle diff. Measured floor across all four tests is **≤4.7e-7 abs /
+  ≤2.5e-8 rel** — the absolute term is dominated by the 6-decimal-place printing
+  of the pinned literals (own rounding ≤5e-7), the relative term is ~1.7 f32
+  ulps of faer-vs-KLU. **Tightened** the band to the proven floor
+  `1e-6 + 1e-7·|expected|` (6–16× margin over the worst observed diff) and
+  rewrote the comment to state the measured numbers. All 9 monitor tests pass
+  under the tightened band; a 5e-5-scale port error in modes 8/10/12 now fails
+  the unit layer too (previously only the golden caught it). No fudging — the
+  band moved *tighter*, toward the empirical floor.
+
+- **[note — confirmed intended] `investigations/` writeup not in the commit.**
+  `investigations/` is gitignored (`.gitignore:3:/investigations`), so
+  `monitor_mode12_terminal_currents_ub.md` ships in main's working tree
+  (`D:/Rust/dss-rs/investigations/`, 5567 bytes, present) but is not a tracked
+  file — identical to the 5 pre-existing upstream-bug reports. The code comments
+  in `sample.rs` that reference it are self-contained. Intended; no change.
+
+- **[note — settled, no change] Mode-12 LL wrap `my_ref0 == np` assumption.**
+  Verified against `Monitor.pas:1374–1416`. Pascal plants phase-1 at 1-based
+  `myRefIdx` (`NPhases+1` when `NPhases=NConds`, else `NConds`) and the last
+  phase's wrap subtracts `VoltageBuffer[NPhases+1]`. Rust mirrors this exactly:
+  `my_ref0 = if np==nc {np} else {nc-1}` plants at 1-based index `nc`, and
+  `voltage_buffer[np]` (0-based) is the wrap-read slot = 1-based `NPhases+1`.
+  For every reachable config — `nc==np` (delta) and `nc==np+1` (wye+neutral) —
+  `my_ref0` lands exactly at the read slot, so the wrap is correct and
+  byte-faithful. The `nc>=np+2` divergence (Rust reads its buffer slot, Pascal a
+  stale field) is unreachable for LL-voltage-monitored elements and both engines
+  mirror the same index arithmetic there; nothing to fix.
+
+- **[notes — PASS, acknowledged]** Golden `monitor_windings` and the unit
+  constants are genuine oracle baselines (embedded banner DSS C-API 0.14.5 rev
+  `87d85c26…` / DSS-Python 0.15.7 matches `PIN.txt`), compared header-exact +
+  sample-count-exact + every-channel-elementwise at `tol_for("large")` with
+  empty `skip_channels`; and a regression of the `TakeSample` bodies back to the
+  timestamp-only stub fails both the golden (channel misalignment) and the unit
+  layer (pinned channel-value asserts). No action.
