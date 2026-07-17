@@ -1680,12 +1680,17 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str)
     // before comparing: Delphi `TMonitorObj` writes the header row with a leading
     // space after each comma separator (`' VAngle1'`) and a trailing comma, so
     // `Monitors.Header` comes back as `['V1',' VAngle1',…,'']` (leading-space
-    // columns + a trailing empty). The dss_capi/Rust engines emit a clean header;
-    // trimming each column and dropping trailing whitespace-only columns makes the
-    // two comparable without weakening the check — the channel COUNT is asserted
-    // independently below and every channel's samples are compared numerically, so
-    // a genuine channel-identity mismatch still fails. The product-side header
-    // normalization (what the Rust engine *emits*) is WP-U1.5 E1.
+    // columns + a trailing empty). Normalize **only the expected side** — the
+    // artifact originates there. The Rust `monitor_view().header` is built
+    // structurally (`header.push("V1")` / `push(format!("P{i}W{j}"))`, never a
+    // CSV round-trip; `monitor/header.rs`), so it is clean by construction and
+    // stays strict, keeping the golden monitor-header check (dss_capi golden,
+    // also clean — this comparator is shared with `golden_metering_monitors.rs`)
+    // exactly as tight as before combo restore: a genuine Rust-side header defect
+    // (leading space / phantom trailing column) still fails here. The channel
+    // COUNT is also asserted independently below and every channel's samples are
+    // compared numerically. The product-side header normalization (what the Rust
+    // engine *emits*) is WP-U1.5 E1.
     let norm = |cols: &[String]| -> Vec<String> {
         let mut v: Vec<String> = cols.iter().map(|s| s.trim().to_string()).collect();
         while v.last().is_some_and(String::is_empty) {
@@ -1694,8 +1699,8 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str)
         v
     };
     assert_eq!(
-        norm(&view.header[2..]),
-        norm(&exp.header),
+        &view.header[2..],
+        norm(&exp.header).as_slice(),
         "{ctx}: monitor {} header differs",
         exp.name
     );
