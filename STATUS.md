@@ -7,31 +7,34 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-17 — **Rung 2 wave 1 MERGED: WP-U2.1 (Fuse) + WP-U2.2
-(Recloser) + WP-U2.4 (SwtControl/batchedit-where) landed on `update`** via
-parallel port→audit→fix worktree chains (wt-u21/wt-u22/wt-u24, each audited by
-an independent opus agent, all findings fixed or evidence-deferred; full
-mandatory gate green after the 3-way merge, 47/47 suites). Highlights: fuse
-`CurveMultiplier` divisor + never-blows default; recloser full per-phase
-rewrite (24→46 props) + the §1.3-3 event-log mask infra (r4133 table EMPTY —
-wording reproduced byte-for-byte); SwtControl D6 `Action`-forces-state +
-`batchedit … where` (all Delphi tokenizer quirks probe-pinned); TCC
-`none`/DoNewCmd/AllocateLoad verified already-ported. Fallout handled, not
-parked: vendored `InductionMachine/{Master,Run}` proven non-convergent on the
-EPRI r4133 engine itself → `skipped_needs_investigation`
-(`r4133_breaking_nonconvergence`); `civanlar` flipped to r4133 with a
-bit-identical proof; combo decks' fuse tier neutralized + recloser given
-explicit A/D curves so they stay 0.14.5-gated until rung exit (tracked in
-§Standing open follow-ups). solvable_now **293/329** (the two InductionMachine
-paths left the bucket for a proven upstream-breaking reason, not lost
-coverage). **Rung 1 (WP-U1.1–U1.10) EXITED earlier the same day** — r4088
-ASSERT sweep green (313/113/4/**0 NEW**), r3723 re-confirmed (273/156/1/0),
-known_diffs 11→22 with full ledger in `docs/upgrade/known_diffs_burndown.md`.
-Integration branch is `update` (pushed to origin); main untouched until an
-explicit merge request. **Next: wave 2 — WP-U2.3 (Relay per-phase rewrite,
-builds on the landed recloser patterns + mask infra), then WP-U2.5
-(protection report/log surface) and WP-U2.6 (rung exit: r4133 ASSERT
-sweep).**
+Last updated: 2026-07-17 — **Rung 2 wave 2 MERGED: WP-U2.3 (Relay r4133
+per-phase rewrite) landed on `update`** via a port→audit→fix worktree chain
+(wt-u23, opus-audited, major finding fixed in-branch; full mandatory gate
+green, 47/47 suites). The delta's largest unit (Controls/Relay.pas
+r4088→r4133) ported loop-for-loop: per-phase StateArray for type=current
+(SinglePhTrip/Lockout, phase-proxy queue), VoltageLogic closed-phase OV/UV
+(B2), CTRL_RESET opcount-only (D4), inst single-count (D3), props 50→71 with
+15 aliases + Normal/State arrays. Two upstream bugs reproduced with
+TODO(compat), oracle-verified (unconditional `Debug Sample` event line;
+reset events logged as `Recloser.<name>`); the r4133 source-vs-binary
+voltage/current-reclose-default divergence settled empirically for the BINARY
+(oracle-authoritative). Audit fix: Normal/State/Action discrete parse is
+first-char-only (`o`/`c`, else keep) per r4133 `InterpretRelayState` — the
+0.14.5 `trip`→open alias dropped, re-proven on oddie:r4133. 9 relay controls
+decks + 8 vendored Distance/TD21 decks flipped to `oracle:"r4133"`;
+relay_current 0.14.5 golden retired; relay.json props golden regenerated (74
+props, self-referential regression pin — noted as such). INFRA: the missing
+Oddie r4133 venv created from vendored wheels (was blocking the whole r4133
+channel). solvable_now **292/329** (59NRelayDemo → `skipped_needs_investigation`:
+open-point voltage-relay dynamics ~7e-4 residual vs oddie:r4133, decomposition
+owed at WP-U2.6 — honest deferral, not tolerance-masked). Wave 1 (WP-U2.1
+Fuse / U2.2 Recloser / U2.4 SwtControl+batchedit-where) merged earlier the
+same day; Rung 1 EXITED 2026-07-16. Integration branch is `update` (pushed to
+origin); main untouched until an explicit merge request. **Next: WP-U2.5
+(protection report/log surface — incl. r4133 relay/recloser help-catalog +
+dump3 `[Relay]` unmasking, per-phase `[closed,...]` renders, Save round-trip),
+then WP-U2.6 (rung exit: r4133 ASSERT sweep + combo-deck restores +
+59NRelayDemo decomposition).**
 
 **Deferred to the §6 sweep** (documented, was never rung-blocking; now also a
 plan-wide exit criterion in `UPGRADE_PLAN.md` §5): JSON/Dump golden surface
