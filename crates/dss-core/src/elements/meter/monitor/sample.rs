@@ -4,6 +4,7 @@ use num_complex::Complex64;
 
 use super::{Monitor, MonitorBaseMode, MonitorSampleCtx};
 use crate::elements::pd::capacitor::Capacitor;
+use crate::elements::pd::transformer::Transformer;
 use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
 use crate::support::complexutil::cdang;
@@ -207,15 +208,129 @@ impl Monitor {
                 }
                 return;
             }
-            // Modes 8/10 (transformer winding currents/voltages), 12 (LL) build
-            // their header but defer the sample body to Phase 6+/7 (no gate uses
-            // them; the metered surface they need is not yet exposed).
-            // `Undefined` (base 13/14/15) also lands here: Pascal's `TakeSample`
+            MonitorBaseMode::TransformerWindingCurrents => {
+                // Pascal `TakeSample` mode 8 (Monitor.pas l.1311-1327): all
+                // winding currents of a transformer. `GetAllWindingCurrents`
+                // returns `2·Nphases·NumWindings` complex currents (both ends of
+                // each winding); Pascal reloads `Vterminal` from `NodeV` inside
+                // that routine, but the `&self` Rust getter reads the
+                // caller-populated `cd.vterminal`, so refresh it first (as mode 11
+                // does). Convert the whole buffer to polar, then store every other
+                // entry's (mag, angle) — the magnitude is identical at each end of
+                // a winding (`k := 1; k += 2`).
+                {
+                    let e = metered.as_ckt_element_mut().expect("ckt element");
+                    e.cd_mut().compute_vterminal(node_v);
+                }
+                let tr = metered
+                    .as_any()
+                    .downcast_ref::<Transformer>()
+                    .expect("mode 8 monitor validated as a transformer in recalc");
+                let mut wdg = tr.get_all_winding_currents();
+                let n = wdg.len();
+                convert_to_polar(&mut wdg, n);
+                let mut k = 0usize;
+                while k < n {
+                    self.add_dbl(wdg[k].re); // magnitude
+                    self.add_dbl(wdg[k].im); // angle (deg)
+                    k += 2;
+                }
+                return;
+            }
+            MonitorBaseMode::TransformerWindingVoltages => {
+                // Pascal `TakeSample` mode 10 (Monitor.pas l.1337-1351): all
+                // winding voltages. For each winding `i`, `GetWindingVoltages`
+                // fills `PhsVoltagesBuffer[1..Nphases]`; they are scattered into
+                // `WdgVoltagesBuffer[i + (j-1)·NumWindings]` (winding-minor within
+                // each phase — matching the `P{phase}W{winding}` header order).
+                // Convert `NumWindingVoltages = NumWindings·Nphases` entries to
+                // polar and store all as (mag, angle) pairs.
+                let np = fnphases;
+                let tr = metered
+                    .as_any_mut()
+                    .downcast_mut::<Transformer>()
+                    .expect("mode 10 monitor validated as a transformer in recalc");
+                let nw = tr.num_windings().max(0) as usize;
+                let num_wdg_volts = nw * np;
+                let mut wdg_v = vec![Complex64::ZERO; num_wdg_volts];
+                let mut phs = vec![Complex64::ZERO; np];
+                for i in 1..=nw {
+                    tr.get_winding_voltages(i, node_v, &mut phs);
+                    for (j, &pv) in phs.iter().enumerate() {
+                        // Pascal 1-based `WdgVoltagesBuffer[i + (j-1)*NumWindings]`.
+                        wdg_v[(i - 1) + j * nw] = pv;
+                    }
+                }
+                convert_to_polar(&mut wdg_v, num_wdg_volts);
+                for &c in &wdg_v {
+                    self.add_dbl(c.re); // magnitude
+                    self.add_dbl(c.im); // angle (deg)
+                }
+                return;
+            }
+            MonitorBaseMode::LineToLineVoltages => {
+                // Pascal `TakeSample` mode 12 (Monitor.pas l.1374-1416): all
+                // terminal line-to-line voltages and terminal currents of any
+                // device. Per terminal `k`, extract that terminal's phase voltages
+                // into `VoltageBuffer[1..NPhases]`, plant `VoltageBuffer[1]` at the
+                // "reference" slot (`NPhases+1` when `NPhases = NConds`, else
+                // `NConds`) so the last phase wraps, form the LL differences
+                // `V[i] -= V[i+1]`, convert to polar and store `2·NPhases` doubles.
+                // Then the full terminal currents (`2·MeteredElement.Yorder`,
+                // like mode 11).
+                //
+                // NOT reproduced — upstream UB (see
+                // `investigations/monitor_mode12_terminal_currents_ub.md`): Pascal
+                // fills the current buffer with `for i := 1 to Yorder` using the
+                // *monitor's own* `Yorder` (= `Nconds`, since the monitor always
+                // has `NTerms = 1`, `Monitor.pas:458`) but then
+                // `ConvertComplexArrayToPolar`/`AddDblsToBuffer` run over
+                // `MeteredElement.Yorder` (`Monitor.pas:1407,1410,1413`). For any
+                // element with `NTerms > 1` the terminal-2..N currents are read
+                // from uninitialized `CurrentBuffer` heap — proven
+                // nondeterministic (byte-identical solve, terminal-2 currents
+                // change with unrelated prior monitor allocations). Per CLAUDE.md
+                // (UB is documented and gated around, never reproduced) the port
+                // fills all `MeteredElement.Yorder` currents correctly. Mode 12 on
+                // a single-terminal element (Load/Generator/Capacitor) has no UB
+                // region (`monitor Yorder == MeteredElement.Yorder`) and matches
+                // the oracle exactly — that is what the goldens pin.
+                let e = metered.as_ckt_element_mut().expect("ckt element");
+                e.cd_mut().compute_vterminal(node_v);
+                let (np, nc, yorder, nterms) = {
+                    let cd = e.cd();
+                    (cd.nphases, cd.nconds, cd.yorder, cd.nterms)
+                };
+                let vterminal = e.cd().vterminal.clone();
+                // Pascal 1-based `myRefIdx`; 0-based here.
+                let my_ref0 = if np == nc { np } else { nc - 1 };
+                for k in 0..nterms {
+                    let buff0 = np * k; // 0-based start of terminal k's phases
+                    voltage_buffer[..np].copy_from_slice(&vterminal[buff0..buff0 + np]);
+                    // Bring the first phase to the reference slot for the wrap.
+                    voltage_buffer[my_ref0] = voltage_buffer[0];
+                    for p in 0..np {
+                        let next = voltage_buffer[p + 1];
+                        voltage_buffer[p] -= next;
+                    }
+                    convert_to_polar(&mut voltage_buffer, yorder);
+                    for &c in &voltage_buffer[..np] {
+                        self.add_dbl(c.re); // magnitude
+                        self.add_dbl(c.im); // angle (deg)
+                    }
+                }
+                e.compute_iterminal(sys, node_v);
+                current_buffer[..yorder].copy_from_slice(&e.cd().iterminal[..yorder]);
+                convert_to_polar(&mut current_buffer, yorder);
+                for &c in &current_buffer[..yorder] {
+                    self.add_dbl(c.re); // magnitude
+                    self.add_dbl(c.im); // angle (deg)
+                }
+                return;
+            }
+            // `Undefined` (base 13/14/15) lands here: Pascal's `TakeSample`
             // `else Exit` writes a timestamp-only row for those ordinals.
-            MonitorBaseMode::TransformerWindingCurrents
-            | MonitorBaseMode::TransformerWindingVoltages
-            | MonitorBaseMode::LineToLineVoltages
-            | MonitorBaseMode::Undefined => return,
+            MonitorBaseMode::Undefined => return,
         }
 
         // --- Common tail for modes 0 and 1 --------------------------------
