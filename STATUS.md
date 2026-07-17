@@ -1265,6 +1265,66 @@ r4133-trunk`); oracle = `oddie:r4133`. Gate green (fmt/clippy/`cargo test --work
   `rated_current_parses_and_reads_back`; `action_open_opens_switched_line` rewritten to
   pin the D6 immediate-force (no OPENED event); `batchedit_where_conditionals_match_r4133`.
 
+**WP-U2.3 — Relay per-phase rewrite (r4133, 2026-07-17, branch wt-u23).** Ported
+`Controls/Relay.pas` r4088→r4133 (the delta's largest unit: 1403+/808−) into
+`elements/control/relay/` (mod/logic/accessors), mirroring the landed recloser
+per-phase machinery but from Relay's own Pascal. Delivered B1 (per-phase
+`StateArray` for `type=current`: `SinglePhTrip`/`SinglePhLockout`, per-phase
+TCC eval of `cBuffer^[i+CondOffset]`, phase index on the control-queue proxy,
+`MaxOperatingCount` curve selection, ≥1-phase sampling gate; `IdxMultiPh`
+ganged slot drives all non-overcurrent sub-types — those changed *only* by the
+`^[IdxMultiPh]` indexing, verified by the r4088↔r4133 per-method diff), B2
+(`VoltageLogic` OV/UV over `Vmax_closed`/`Vmin_closed`, reclose still all-phase),
+B4 (sample continues while ≥1 phase closed), D3 (inst time bare `0.01`, delay
+added once at push), D4 (queued `CTRL_RESET` only resets `OperationCount` for
+closed phases — no full `Reset`, no element force), C1 (props **50→71** with 15
+deprecated aliases sharing fields + `Normal`/`State` per-phase arrays +
+`Lock`/`Reset` actions + `RatedCurrent`/`InterruptingRating`), D7 (first-`State`
+side effect defaults `Normal` per phase), E2/E3 (per-phase event wording,
+descriptive targets `Gnd Curve + Ph Curve`/`Ph Instantaneous`/…, separate
+Phase/Ground Target lines dropped). Two upstream bugs reproduced with
+`TODO(compat)`: the **unconditional** `Debug Sample: Relay.<name> FPresentState:
+[…]` line on every `Sample` (r4133 forgot the `DebugTrace` guard the recloser
+has), and reset events logged as `Recloser.<name>` (copy-paste); both
+oracle-verified (oddie:r4133 emits them). **Empirical source-vs-binary
+resolution (RUNG2 oracle-authoritative):** the r4133 *source* Edit CASE 5 still
+writes `'[5.0]'`/`'[0.5,2,2]'` reclose defaults for voltage/current, but the
+r4133 *binary* applies neither — every non-DOC type keeps the constructor
+`(0.5,2,2)`/Shots 4 (probed current/voltage/46/47/distance/td21); only DOC forces
+`NumReclose 0`. `type_side_effect` matches the binary. Dispatch: Relay `Action`
+op now carries the phase proxy. Harness: Relay added to the
+`compare_all_properties` skip list (71-prop table can't match 0.14.5, as
+Recloser). `relay.json` props golden regenerated (74 props, 10 scenarios incl. a
+single-phase-trip scenario), Rust r4133 renders cross-validated against
+oddie:r4133 (only report-format diffs remain: `SwitchedObj` empty-echo, and
+`reset=20` legacy-collision hitting the new Reset action while `ResetTime`
+correctly stays 15). Retired `relay_current` 0.14.5 protection golden (event-log
+behavior moved off 0.14.5, as the recloser scenarios). **Decks:** all 9 relay
+controls decks (`relay_{oc_sym,4647_asym,voltage,revpower,generic,distance,
+td21,doc}` + `midi_relay_4647`) flipped to `oracle:"r4133"` — event log (incl.
+the Debug Sample lines) + ctrlqueue + probes match oddie:r4133; `relay_generic`
+`delay` 0→0.1 (a delay=0 generic trip fires in-step and oscillates the control
+loop, #485 on r4133; 0.1 queues it, both converge). Vendored r4088→r4133
+witnesses `Test/{Distance,TD21,Reverse*}RelayTest` + Version8 twins (8 decks)
+flipped to r4133. `combo/{combo,midi}_protection` kept on 0.14.5 with the
+now-array Relay `state`/`normal` probes dropped (can't compare vs scalar 0.14.5;
+`check_meters_monitors` blocks an r4133 flip on the Oddie monitor-header format)
+— `delay` probe + ctrlqueue + meters retained. `population.lock` regenerated
+(solvable_now 293→292). **Deferred follow-ups:** (1) `59NRelayDemo` (a
+`type=voltage` relay across an open point) excluded from `solvable_now` — my
+correct B2 + dropped-voltage-reclose move it off 0.14.5, but a ~7e-4 residual vs
+oddie:r4133 on this open-point *dynamics* topology needs decomposition triage
+(`relay_voltage` passes on r4133, so the standard voltage relay is correct); (2)
+the `known_diffs` `eventlog-trailing-space` row (r3723/r4088/r4133) is untouched
+— retiring its r4133 portion needs a proving partition re-run, deferred to
+WP-U2.6's sweep; (3) new SinglePhTrip/partial-open-voltage synthetic *corpus*
+deck families (the brief's synthesize list) not added — single-phase machinery
+is covered by inline unit tests (`single_phase_trip_arms_only_faulted_phase`,
+`single_phase_do_open_opens_only_that_phase`,
+`single_phase_lockout_escalates_to_3ph`) + the props golden, but a live
+`oracle:"r4133"` family deck is still owed. Full mandatory gate green; 57 relay
+inline unit tests pass.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
