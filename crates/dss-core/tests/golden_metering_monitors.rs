@@ -8,6 +8,9 @@
 //!     sample arrays elementwise (only the mode-5 wall-clock timing channels
 //!     are skipped — the port records 0 for them; the iteration-count channels
 //!     now match the oracle exactly);
+//!   - monitor_windings: monitor modes 8 (transformer winding currents), 10
+//!     (winding voltages), 12 (line-to-line, on single-terminal loads) —
+//!     per-monitor header + SampleCount exact, channels elementwise;
 //!   - meter_daily_ieee13: registers 1e-4 rel + names exact, zone branch / end
 //!     / PCE counts exact;
 //!   - generator_snap: iterations + node order exact, voltages 1e-6 rel, each
@@ -236,11 +239,12 @@ fn run_generator_snap(sc: &Scenario, dss: &mut Dss) {
 #[test]
 fn metering_monitors_scenarios_match_oracle() {
     let scenarios = load_scenarios();
-    assert_eq!(scenarios.len(), 4, "expected 4 metering_monitors scenarios");
+    assert_eq!(scenarios.len(), 5, "expected 5 metering_monitors scenarios");
     for sc in &scenarios {
         let mut dss = replay(sc);
         match sc.name.as_str() {
             "monitor_daily_ieee13" => run_monitors(sc, &dss),
+            "monitor_windings" => run_monitors(sc, &dss),
             "meter_daily_ieee13" => run_meters(sc, &dss),
             "generator_snap" => run_generator_snap(sc, &mut dss),
             "meter_zone_micro" => run_meter_zones(sc, &dss),

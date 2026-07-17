@@ -15,6 +15,11 @@ meter/monitor/generator/topology machinery against the oracle; the Rust harness
     Per-monitor header strings + SampleCount exact, channel sample arrays
     elementwise at 1e-6 rel (mode-5 wall-clock channels SolveSnap_uSecs /
     TimeStep_uSecs are skipped — the port records 0 for them).
+  - monitor_windings: a delta/wye transformer + wye/delta loads over 2 daily
+    steps, exercising monitor modes 8 (winding currents), 10 (winding voltages)
+    and 12 (line-to-line voltages + currents, pinned on single-terminal loads
+    where mode 12 is fully defined). Per-monitor header + SampleCount exact,
+    channels elementwise.
   - meter_daily_ieee13: IEEE13 + the same daily shape + `energymeter.m1` on
     `line.650632`; 24 daily steps. Registers 1e-4 rel + names exact; zone
     branch / end / PCE counts exact.
@@ -116,6 +121,56 @@ def scenario_monitor_daily(d) -> dict:
     return {"name": "monitor_daily_ieee13", "commands": cmds, "monitors": monitors}
 
 
+def scenario_monitor_windings(d) -> dict:
+    """Monitor modes 8 (transformer winding currents), 10 (winding voltages),
+    and 12 (line-to-line terminal voltages + currents) over a 2-step daily run.
+
+    A delta/wye transformer carries the winding modes; mode 12 is pinned on
+    single-terminal Loads (wye + delta) where the monitor's Yorder equals the
+    metered element's, so there is NO uninitialized-current region — the whole
+    record is defined and reproducible. Mode 12 on a MULTI-terminal element
+    (line/transformer) is an upstream UB (uninitialized terminal-2 currents,
+    investigations/monitor_mode12_terminal_currents_ub.md); it is covered by a
+    Rust-only unit test and deliberately kept out of the golden.
+    """
+    cmds = [
+        "New circuit.wind basekv=12.47 pu=1.0",
+        "New line.l1 bus1=sourcebus bus2=b2 r1=0.1 x1=0.1 length=1",
+        "New transformer.t1 phases=3 windings=2 buses=[b2 b3] conns=[delta wye] "
+        "kvs=[12.47 4.16] kvas=[1000 1000] xhl=5 tap=1.05",
+        "New loadshape.s2 npts=2 interval=1 mult=[1.0 0.7]",
+        "New load.ldw bus1=b3 phases=3 kv=4.16 kw=600 pf=0.95 model=1 conn=wye daily=s2",
+        "New load.ldd bus1=b2 phases=3 kv=12.47 kw=300 pf=0.90 model=1 conn=delta daily=s2",
+        "New monitor.m8 element=transformer.t1 terminal=1 mode=8",
+        "New monitor.m10 element=transformer.t1 terminal=1 mode=10",
+        "New monitor.mw element=load.ldw terminal=1 mode=12",
+        "New monitor.md element=load.ldd terminal=1 mode=12",
+        "set mode=daily stepsize=1h number=2",
+    ]
+    d.Text.Command = "clear"
+    for c in cmds:
+        d.Text.Command = c
+    d.Text.Command = "solve"
+
+    mon = d.ActiveCircuit.Monitors
+    monitors = []
+    for nm in ("m8", "m10", "mw", "md"):
+        mon.Name = nm
+        header = list(mon.Header)
+        nch = mon.NumChannels
+        channels = [[float(x) for x in mon.Channel(i)] for i in range(1, nch + 1)]
+        monitors.append(
+            {
+                "name": nm,
+                "header": header,
+                "sample_count": int(mon.SampleCount),
+                "channels": channels,
+                "skip_channels": [],
+            }
+        )
+    return {"name": "monitor_windings", "commands": cmds, "monitors": monitors}
+
+
 def scenario_meter_daily(d) -> dict:
     cmds = ieee13_daily()
     cmds += [
@@ -214,6 +269,7 @@ def main() -> None:
 
     scenarios = [
         scenario_monitor_daily(d),
+        scenario_monitor_windings(d),
         scenario_meter_daily(d),
         scenario_generator_snap(d),
         scenario_meter_zone_micro(d),
