@@ -1322,8 +1322,13 @@ deck families (the brief's synthesize list) not added — single-phase machinery
 is covered by inline unit tests (`single_phase_trip_arms_only_faulted_phase`,
 `single_phase_do_open_opens_only_that_phase`,
 `single_phase_lockout_escalates_to_3ph`) + the props golden, but a live
-`oracle:"r4133"` family deck is still owed. Full mandatory gate green; 57 relay
-inline unit tests pass.
+`oracle:"r4133"` family deck is still owed; (4) the `help_catalog.rs` relay
+entries + the `dump3_commands` golden's `[Relay]` block still carry 0.14.5 help
+text (props 50→71 renamed) — masked out of the dump golden for now (as
+`[WindGen]`), the r4133 relay help-catalog/dump-surface regeneration is WP-U2.5
+(protection report/log surface) scope (the property NAMES/values are already
+gated by `relay.json` + the live r4133 decks + the `compare_all_properties`
+skip). Full mandatory gate green; 57 relay inline unit tests pass.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
