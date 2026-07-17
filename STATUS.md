@@ -26,15 +26,17 @@ relay_current 0.14.5 golden retired; relay.json props golden regenerated (74
 props, self-referential regression pin — noted as such). INFRA: the missing
 Oddie r4133 venv created from vendored wheels (was blocking the whole r4133
 channel). solvable_now **292/329** (59NRelayDemo → `skipped_needs_investigation`:
-open-point voltage-relay dynamics ~7e-4 residual vs oddie:r4133, decomposition
-owed at WP-U2.6 — honest deferral, not tolerance-masked). Wave 1 (WP-U2.1
+its ~7e-4 open-point voltage-relay residual is now **DECOMPOSED** — a real
+`state_size` phase-count port bug (fixed on wt-59n) plus a proven chaotic
+pole-slip floor; see the WP-U2.6 59N record below). Wave 1 (WP-U2.1
 Fuse / U2.2 Recloser / U2.4 SwtControl+batchedit-where) merged earlier the
 same day; Rung 1 EXITED 2026-07-16. Integration branch is `update` (pushed to
 origin); main untouched until an explicit merge request. **Next: WP-U2.5
 (protection report/log surface — incl. r4133 relay/recloser help-catalog +
 dump3 `[Relay]` unmasking, per-phase `[closed,...]` renders, Save round-trip),
 then WP-U2.6 (rung exit: r4133 ASSERT sweep + combo-deck restores +
-59NRelayDemo decomposition).**
+59NRelayDemo decomposition — **59N done on wt-59n: `state_size` phase-count port
+bug fixed + chaotic pole-slip floor proven; see the WP-U2.6 record**).**
 
 **Deferred to the §6 sweep** (documented, was never rung-blocking; now also a
 plan-wide exit criterion in `UPGRADE_PLAN.md` §5): JSON/Dump golden surface
@@ -1356,6 +1358,43 @@ decomposition plan; the ~7e-4 open-point residual is un-triaged (suspected bug
 until proven a floor per CLAUDE.md) and the live-f64 trip-time + per-node
 trajectory decomposition is owed to WP-U2.6's rung-exit sweep — an honest
 deferral, not tolerance-masked. Full mandatory gate re-run green.
+
+**WP-U2.6 — 59NRelayDemo decomposition (2026-07-17, branch wt-59n).** Owed at the
+Rung-2 exit. Reproduced the deck's ~7e-4 residual vs oddie:r4133 and found the
+**first diverging quantity** by a per-step trajectory on both engines (Rust
+instrumentation vs an Oddie r4133 probe reading live-f64 `YNodeVarray` +
+`AllVariableValues`, not the f32 monitor). **PORT BUG FOUND + FIXED:** the relay
+`state_size()` sized the per-phase state arrays + `VoltageLogic` loop by the
+relay's OWN Nphases, but Pascal forces `Nphases := MonitoredElement.NPhases`
+(RecalcElementData:906) — for this deck the 1-phase broken-delta PT — while every
+state-array path (`VoltageLogic` Relay.pas:2852, `GetPropertyValue` 39/40, Sample,
+Reset) iterates `Min(RELAYCONTROLMAXDIM, ControlledElement.NPhases)` = the 3-phase
+switched Line1. The relay's own count feeds only `vbase`/`cBuffer`/`CondOffset`
+(read separately via `ccd.cd.nphases`/`mon_offset`), so the two counts coincide
+for every existing relay deck (mon==ctrl phases) and this is the only deck that
+distinguishes them. With the wrong count=1 the VoltageLogic loop read only
+`cBuffer[1]` (the 3V0 ≈438 V) leaving `Vmag`>0, so the relay tripped Line1
+(438/277=1.58 pu ≫ 0.3 pu pickup); count=3 makes the loop's final *phantom* phase
+(beyond the PT terminal's 2 conds) read 0 → `Vmag`=0 → the `IF Vmag>0` guard fails
+→ `OVTime`=-1 → no trip, matching oddie:r4133 (state `[closed,closed,closed]` all
+10 steps, iteration counts identical every step). Fix: `state_size` → `ctrl_snap`
+(controlled element) nphases; regression-guarded by the new relay unit test
+`voltage_relay_open_point_sizes_state_by_controlled_nphases_59n` (a 1-ph-monitored
+/ 3-ph-switched voltage relay must not trip on the open-point 3V0). **Residual
+after the fix = proven chaotic-dynamics floor, NOT gateable:** the un-tripped
+generator (D=1) pole-slips under the sustained fault on BOTH engines (θ 12→777°,
+f 60→79 Hz by t=1.0). Rust then matches oddie:r4133 to the solver floor with
+identical iteration counts, and the generator live-f64 state matches to machine-eps
+early (dθ 7e-15, df 1.4e-14 at t=0.1); the pole-slip's positive Lyapunov exponent
+amplifies the faer-vs-KLU last-ulp difference exponentially (~2×/step): node-V Linf
+4.5e-6 (t=1.1) → 7.8e-3 (t=1.9) → O(1 V) by t≈2.5, unbounded. The harness
+checkpoint (deck runs `number=10` inline to t=1.0 during compile, then n_steps≥1
+solves → t≥2.0) necessarily lands in this chaotic regime, where no fixed tolerance
+honestly bounds the node-V (the t=2.0 value 1.9e-5 is a deterministic chaotic dip,
+not a floor) — masking it with a tolerance is exactly what CLAUDE.md forbids. So
+the deck STAYS in `skipped_needs_investigation`, re-tagged
+`relay_voltage_dynamics_chaos_floor` with the full decomposition; the fix itself is
+proven vs oddie:r4133 and unit-gated. Mandatory gate green.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in

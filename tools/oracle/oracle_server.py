@@ -120,7 +120,12 @@ def capture_eventlog(d, ckt) -> list:
         d.Text.Command = "export eventlog"
         path = str(d.Text.Result).strip()
         try:
-            with open(path, encoding="utf-8", errors="replace") as f:
+            # `utf-8-sig` strips the leading UTF-8 BOM the EPRI DLL writes to the
+            # exported CSV. Read as plain `utf-8` it survives as a phantom `﻿`
+            # — attached to the first event line (breaking the per-line compare) or,
+            # for an EMPTY eventlog (e.g. an intentionally-inert `recloser_temp`),
+            # as a spurious 1-element `['﻿']` list vs the Rust engine's `[]`.
+            with open(path, encoding="utf-8-sig", errors="replace") as f:
                 # The CSV has no header row — each line is a full event record
                 # ("Hour=…, Sec=…, ControlIter=…, Element=…, Action=…").
                 return [ln.rstrip("\r\n") for ln in f if ln.strip()]

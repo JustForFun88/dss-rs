@@ -525,9 +525,26 @@ impl Relay {
         format!("Relay.{}", self.ccd.cd.obj.name())
     }
 
-    /// Per-phase state-array count (Pascal `Min(RELAYCONTROLMAXDIM, NPhases)`).
+    /// Per-phase state-array count (Pascal `Min(RELAYCONTROLMAXDIM,
+    /// ControlledElement.NPhases)` — GetPropertyValue 39/40, VoltageLogic,
+    /// Sample, Reset, ...). The per-phase state arrays are dimensioned by the
+    /// SWITCHED (controlled) element's phase count, NOT the relay's own
+    /// `FNPhases` (which Pascal forces to `MonitoredElement.NPhases`,
+    /// RecalcElementData line 906 — used only for `vbase`, `cBuffer` sizing and
+    /// `CondOffset`, which the port reads separately via `ccd.cd.nphases` /
+    /// `mon_offset`). The two counts coincide for the usual case where the
+    /// monitored and switched elements have the same phase count (and when no
+    /// `SwitchedObj` is given, `ctrl_snap == mon_snap`); they differ only when
+    /// they don't — e.g. 59NRelayDemo, a 1-phase broken-delta PT monitored with
+    /// a 3-phase line switched. `ctrl_snap` is `None` only before the reference
+    /// is resolved, where the relay's own count is the right fallback.
     fn state_size(&self) -> usize {
-        RCMAX.min(self.ccd.cd.nphases.max(1))
+        let ctrl_nphases = self
+            .ctrl_snap
+            .as_ref()
+            .map(|s| s.nphases)
+            .unwrap_or(self.ccd.cd.nphases);
+        RCMAX.min(ctrl_nphases.max(1))
     }
 
     /// Pascal `Edit` CASE `19,40`: default `NormalState` per phase from
