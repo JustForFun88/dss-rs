@@ -169,8 +169,9 @@ open item is not buried in the §1a archive):
   `auto_trans/mod.rs` carries none of the singular/plural `array_alternative` +
   `REDUNDANT` + `ON_ARRAY` JSON metadata the Transformer has, so its default JSON
   sweep renders `Buses/Conns/kVs/kVAs` where the oracle renders `Bus/Conn/kV/kVA`.
-  Blocks an AutoTrans JSON golden (incl. Full WdgCurrents, which otherwise works
-  via the shared refresh route). Out of §1.3 scope.
+  Blocks an AutoTrans JSON golden (incl. Full WdgCurrents, which is *inferred* to
+  work via the class-agnostic refresh route — proven post-solve on Transformer,
+  but AutoTrans's own getter is not independently oracle-pinned). Out of §1.3 scope.
 - **Generator/PVSystem/Storage `ShaftModel`/`ShaftData` hidden under JSON Full →
   NOT started (og1213 discovery).** They carry `PropFlags::NOT_PORTED` →
   `hidden_from_full_enum()` skips them, but the 0.14.5 oracle emits them (`""`).
@@ -229,6 +230,32 @@ half of §1.3.
 - Gate green (fmt + clippy + `cargo test --workspace`). Out-of-scope discoveries
   recorded in Standing follow-ups (AutoTrans JSON array-alt metadata; Generator
   ShaftModel/ShaftData hidden under Full).
+
+**Audit-settle round (2026-07-18).** Two read-only audits returned 6 findings
+(1 major, 5 minor); settled empirically against the pinned oracle:
+- **[FIXED — major] Full WdgCurrents pinned only pre-solve (a no-op).** The
+  pre-solve refresh recomputes zeros (NodeV=0), so `transformer_micro` alone
+  could not catch a refresh regression. Added golden **`transformer_solved`**:
+  the transformer primary is on the energized `sourcebus` feeding a 500 kW load,
+  the deck `solve`s, and Full `WdgCurrents` is now a NONZERO phasor list pinned
+  byte-exact (obj + batch × 4 Full combos). Verified Rust==oracle bit-for-bit;
+  byte-exact is valid post-solve because the getter formats at `%.7g`/`%.5g`
+  (Transformer.pas:362), far coarser than faer-vs-KLU last-ULP. Deleting the
+  `refresh_vterminal_if_marked` call now fails the gate.
+- **[FIXED — minor] DynInit dedup rewrite unpinned.** `dyneq_micro` now assigns
+  `Damp` twice (`= 0` number, then `= (1 2 +)` RPN string): pins the Pascal
+  `UserDynInit.Delete`+`Add` reorder — the rewrite changes the value type AND
+  moves `damp` to the tail. Oracle-confirmed and reproduced byte-exact.
+- **[disproven — minor] AutoTrans "proven byte-exact by analogy".** Overstated;
+  softened the `gen_json.py` NOTE to "inference, not verified". The refresh route
+  is class-agnostic (now proven post-solve via `transformer_solved`), but a
+  standalone AutoTrans byte-golden stays blocked by the plural/singular metadata
+  gap (already a follow-up below). Real, deferred — not silently dropped.
+- **[not-a-defect — minor] WindGen `as_dyneq` override.** `WindGen.pas` is absent
+  from the 0.14.5 pinned source (Rust-only forward-port from a newer engine where
+  WindGen IS a `TDynEqPCE`); it embeds a real `dyneq` field, so emitting DynInit
+  is internally consistent. Cannot appear in any oracle golden/live compare, so
+  untestable and harmless — kept for sibling consistency (Generator/PVSystem/Storage).
 
 ---
 
