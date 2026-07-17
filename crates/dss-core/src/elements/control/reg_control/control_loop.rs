@@ -12,7 +12,7 @@ use crate::elements::pd::transformer::ControlledTransformer;
 use crate::solution::{CTRLSTATIC, EVENTDRIVEN, MULTIRATE, TIMEDRIVEN};
 use crate::util::EPSILON;
 
-use super::{ACTION_REVERSE, ACTION_TAPCHANGE, MAXPHASE, MINPHASE, RegControl};
+use super::{MAXPHASE, MINPHASE, RegControl, RegControlAction};
 
 impl RegControl {
     /// Pascal `set_PendingTapChange`: store the pending change and mirror it to
@@ -155,7 +155,7 @@ impl RegControl {
                         ctx.int_hour,
                         ctx.t,
                         self.rev_delay,
-                        ACTION_REVERSE,
+                        RegControlAction::Reverse.ordinal(),
                         0,
                         ctx.self_ref,
                     );
@@ -177,7 +177,7 @@ impl RegControl {
                         ctx.int_hour,
                         ctx.t,
                         self.rev_delay,
-                        ACTION_REVERSE,
+                        RegControlAction::Reverse.ordinal(),
                         0,
                         ctx.self_ref,
                     );
@@ -204,7 +204,7 @@ impl RegControl {
                                     ctx.int_hour,
                                     ctx.t,
                                     self.tap_delay,
-                                    ACTION_TAPCHANGE,
+                                    RegControlAction::TapChange.ordinal(),
                                     0,
                                     ctx.self_ref,
                                 );
@@ -364,7 +364,7 @@ impl RegControl {
                         ctx.int_hour,
                         ctx.t,
                         delay,
-                        ACTION_TAPCHANGE,
+                        RegControlAction::TapChange.ordinal(),
                         0,
                         ctx.self_ref,
                     );
@@ -392,8 +392,8 @@ impl RegControl {
         tr: &mut dyn ControlledTransformer,
         ctx: &mut CtrlCtx,
     ) {
-        match code {
-            ACTION_TAPCHANGE => {
+        match RegControlAction::from_ordinal(code) {
+            Some(RegControlAction::TapChange) => {
                 if self.pending_tap_change == 0.0 {
                     // Control has reset since the action was queued.
                     self.armed = false;
@@ -448,7 +448,7 @@ impl RegControl {
                             ctx.int_hour,
                             ctx.t,
                             self.tap_delay,
-                            ACTION_TAPCHANGE,
+                            RegControlAction::TapChange.ordinal(),
                             0,
                             ctx.self_ref,
                         );
@@ -458,7 +458,7 @@ impl RegControl {
                 }
             }
             // Toggle reverse mode or cogen mode flag (only if still pending).
-            ACTION_REVERSE if self.reverse_pending => {
+            Some(RegControlAction::Reverse) if self.reverse_pending => {
                 if self.cogen_enabled {
                     // Cogen mode takes precedence if present.
                     self.in_cogen_mode = !self.in_cogen_mode;
