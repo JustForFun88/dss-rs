@@ -273,7 +273,7 @@ when such a file exists it supersedes the summary here for execution purposes.
   (d) all 8 load models exercised and matching.
 
 ### Phase 4 — Core PD elements + catalog objects (~10%)
-> **Detailed execution plan: [`PHASE4_PLAN.md`](PHASE4_PLAN.md)** — work packages
+> **Detailed execution plan: [`PHASE4_PLAN.md`](docs/plans-archive/PHASE4_PLAN.md)** — work packages
 > WP4.1–WP4.10 with Pascal line references, the object-reference-resolution and
 > control-element design decisions, the `define_properties!` macro spec, and the
 > controls-off variant-script gate procedure. Execute that file, not this summary.
@@ -286,7 +286,7 @@ when such a file exists it supersedes the summary here for execution purposes.
   1e-6 rel, iteration counts exact; property-dump tests for all new classes.
 
 ### Phase 5 — Control loop, RegControl/CapControl, time-series modes (~10%)
-> **Detailed execution plan: [`PHASE5_PLAN.md`](PHASE5_PLAN.md)** — work packages
+> **Detailed execution plan: [`PHASE5_PLAN.md`](docs/plans-archive/PHASE5_PLAN.md)** — work packages
 > WP5.1–WP5.10 with the control-sampling borrow design (`CtrlCtx`), ControlQueue
 > semantics, the FPC-rounding tap-computation pitfall, and the gate test inventory.
 > Execute that file, not this summary.

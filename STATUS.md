@@ -7,7 +7,7 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-17 (evening) — **TEST-TRIAGE ROUND MERGED** (user-ordered
+Last updated: 2026-07-17 (late evening) — **STATUS RESTRUCTURED + PLAN-COMPLETION AUDIT.** All 16 plan docs were re-verified against the codebase; the records of the *completed* plans (FINAL ACCEPTANCE, JSON export, DIAKOPTICS Part I, UPGRADE Rung 1+2) moved to the new **§1a archive**, and every item those plans handed to a still-unfinished successor is now explicit in **§Standing open follow-ups**. Prior same-day — **TEST-TRIAGE ROUND MERGED** (user-ordered
 backlog burn-down; six parallel worktree WPs, each gate-green + audited/verified,
 merged wt-t1→t2→t3→t4→t6; DE_PASCALIZE is PAUSED by user order after wave 1 —
 wave-2 WIP salvaged to origin as `wt-p5a`/`wt-p1b`/`wt-p1213`, R1 not started).
@@ -111,189 +111,6 @@ proof. Full records: `docs/phase-records/depascalize-{r0,p1,p2,p6}.md`.
   Part III P8/P10/P11/P14/P15 after R2 (P10 needs `Winding.connection` from
   P1-continuation).
 
-**Prior — UPGRADE Rung 2 EXITED — WP-U2.6 the 11.0.0.1 (r4133)
-parity claim (branch wt-u26).** The opt-in EPRI sweep
-`DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1` is **GREEN** (326 matched, 70
-known-diverged, 4 known-skipped, **0 NEW** of 400; 103 target-rev `oracle`-flipped
-cases excluded — gated in the mandatory gate). Every surviving Rust↔r4133
-divergence is a documented `known_diffs.json` class: FPC↔Delphi last-ulp /
-display-precision floors, dss_capi's bracketed numeric-array PropertyValue render
-(`property-format-brackets` ×10 — the WP-U2.5-deferred numeric-array class,
-**closed** here), EPRI's InvControl event-log trailing space
-(`eventlog-trailing-space` ×6 — the WP-U2.3-deferred class, **keeps** its r4133 tag,
-still witnessed), or the four EPRI-DLL #303 crash decks. The **58** raw NEW
-divergences were all dispositioned (mandatory gate green ⇒ port == pinned 0.14.5 ⇒
-the r4133 gap is purely FPC↔Delphi, never a Rung-2 regression): 48 cases (44 diff
-+ 4 skip) extend an existing r4088 floor/skip entry on a **behaviorally-identical
-r4088=r4133 path** (source-verified; 14 entries), 10 cases → 3 new entries
-(`storage-pctstored-display-precision`, `monitor-seq-magnitude-drift`,
-`harmonics-ieee519-r4133`); separately 2 entries narrowed to r3723
-(`monitor-header-whitespace` now handled by the harness header-normalization,
-`meter-zonepce-count` decks now match). **Direction check** — `r4088` re-run green
-(329 matched, 0 NEW after the same %stored/monitor_seqmag cataloging); the only
-sweep-set difference vs r4133 is the r4133-only IEEE_519 harmonics move + the
-r4088-only harmonics-Y witness = exactly the r4088→r4133 delta this rung owns. The
-**IEEE_519 harmonics surprise is source-confirmed "nothing to port"**
-(SolutionAlgs/Load/Spectrum/YMatrix byte-identical r4088=r4133; Solution.pas diff =
-progress-form + commented debug only) — a determinism-proven build-drift amplified
-by the 519-filter near-resonance, cataloged `harmonics-ieee519-r4133`; the
-InductionMachine converged-flip was already resolved by WP-U2.1. `DIVERGENCES.md`
-+ `known_diffs_burndown.md` carry the full Rung-2 exit record; `PLAN_SEQUENCE.md`
-marks UPGRADE COMPLETE; new root `README.md` states the parity claim. **Engine
-behavior = OpenDSS 11.0.0.1 (r4133) except the documented ledger.** `rg
-"NOT_PORTED\(U2"` empty; zero `pending` upgrade decks. Mandatory gate (fmt +
-clippy + `cargo test --workspace`) green.
-
-**Audit fixes (post-merge, wt-u26).** Wording-accuracy pass on the Rung-2 ledger
-after re-`cmp`ing the vendored r4088/r4133 Version8 trees: the summary phrase
-"byte-identical r4088=r4133" is literally false for the **solver**
-(`Common/Solution.pas` differs — progress-form/GUI plumbing + a commented-out debug
-`WriteLn`, numerically inert) and `PDElements/AutoTrans.pas` (two read-only
-PropertyHelp strings). All non-`Solution.pas`/`AutoTrans.pas` units named in these
-entries (`PCElements/`, `Meters/Monitor.pas`, `SolutionAlgs.pas`, `YMatrix.pas`,
-`ReduceAlgs.pas`, injection/reduction/ckt24 feeder) ARE byte-identical, so the
-behavioral conclusion (no algorithm changed) stands. Reworded the overstated
-claims to "behaviorally identical (only progress-form/PropertyHelp text differs)"
-in `known_diffs.json` (iteration-count-delta, ckt24-regcontrol-conditioning),
-`DIVERGENCES.md`, `known_diffs_burndown.md`, and this record. Also: documented that
-the `monitor-header-whitespace` r3723 tag is likely already dead (the
-`compare_monitor` header normalization is rev-independent — a future r3723 re-sweep
-prunes it), and scope-noted `harmonics-ieee519-r4133`'s deliberately-broad match
-(mirrors sibling floor entries; re-triage a materially different IEEE_519 move). No
-code/behavior change; mandatory gate re-run green.
-
-**Prior — WP-U2.5 (protection report/log surface) + WP-U2.6
-(59NRelayDemo decomposition) MERGED.** WP-U2.6 found + fixed a relay port bug:
-`state_size()` / `MakeLike` sized the per-phase state arrays by the relay's OWN
-Nphases, but the state-array paths iterate `Min(RELAYCONTROLMAXDIM,
-ControlledElement.NPhases)` (Pascal Relay.pas) — the two counts diverge only on a
-1-ph-monitored / 3-ph-switched voltage relay (59NRelayDemo), where count=1 made
-the VoltageLogic loop read the 3V0 open-point residual and spuriously trip;
-count=3 (controlled) reads the phantom phase → 0 → no trip, matching oddie:r4133.
-Unit-gated (`voltage_relay_open_point_sizes_state_by_controlled_nphases_59n`,
-`make_like_copies_state_by_controlled_nphases`); the deck itself STAYS in
-`skipped_needs_investigation` (re-tagged `relay_voltage_dynamics_chaos_floor`) —
-post-fix residual is a proven chaotic pole-slip floor, not tolerance-maskable.
-The r4133 protection `Dump commands`
-help-catalog surface is complete for all four classes: `[Relay]` unmasked from
-the `dump3_commands` golden (71-prop r4133 shape), `[Fuse]`/`[SwtControl]`
-brought to their full r4133 12/9-prop shapes (HIDE flags dropped — matching the
-already-r4133 Recloser), all pinned self-referentially against our own render.
-The r4133 help text now lives in a generator supplement (`tools/golden/
-r4133_help.py`, captured verbatim from the oddie:r4133 binary's own `Dump
-commands`), which ALSO folds in the recloser help that WP-U2.2 had hand-edited
-into the "GENERATED" `help_catalog.rs` (+ the CNData/LineSpacing/tear_circuit
-pre-r4133 edits) — so `python gen_help_catalog.py` is fully reproducible again.
-Property-render `[closed, closed, closed, ]` verified shared across all four
-classes (already landed). New `save_roundtrip_protection` gate: a
-Relay+Recloser+Fuse+SwtControl deck round-trips its full r4133 property surface
-(renamed/new props + array renders) through our own `Save circuit`→re-parse.
-compare_eventlog was already enabled on every non-combo protection deck (combo
-decks untouched — parallel WP owns them); EVENTLOG_MASKS stays EMPTY. Two
-findings: (1) the `known_diffs` `property-format-brackets` row was NOT retired —
-empirically it still masks a LIVE r4133 divergence (our `[ 100 90 80]` numeric-
-array render vs EPRI's plain `100,90,80`, e.g. sensor.currents); only its E3
-protection-state-array portion is resolved (our `[closed,..]` now matches EPRI
-r4133's own bracketed state render) — the numeric-array class is a DIVERGENCES
-ledger item owned by WP-U2.6's sweep. (2) A **pre-existing** environmental gate
-failure (reproduces on pristine `update`): the r4133 Oddie DLL emits a UTF-8 BOM
-in `export eventlog` / some `Text.Result` that the oracle capture didn't strip —
-fixed at the source (`capture_eventlog` → `utf-8-sig`) + defensively in
-`numeric_skeleton`. §E4 help-only: LineSpacing already r4133-aligned; Line prop
-20 / AutoTrans "(Read only)" left 0.14.5 (those surfaces don't claim r4133).
-
-**Also merged this session — WP-U2.1 handoff RESTORED (branch wt-combo):** the
-combo fuse-save decks `combo/{combo,midi}_protection` flipped to `oracle:"r4133"`
-with the fuse tier re-armed (`fusecurve=tlink curvemultiplier=40/50`, reproducing
-the pre-WP r4088-era RatedCurrent divisor) and the Recloser probe + Relay
-`state`/`normal` probe + `compare_eventlog` restored (dropped by WP-U2.2/U2.3
-while the tiers were version-split). The classic three-tier fuse-save race
-(backup relay → midline recloser → lateral fuse) now runs end-to-end on the
-version-consistent r4133 chain, two-process-determinant + live-compared vs
-oddie:r4133 (controls live gate 96→**98**). Also fixed a **pre-existing** oracle
-capture bug uncovered here: `capture_eventlog` returned a lone `['﻿']` for
-an EMPTY Oddie event log (Delphi BOM) and BOM-glued the first record — which made
-`recloser_temp`/etc. r4133 event-log compares RED on this machine; now the BOM is
-stripped per line so empty→`[]` and line-0 matches the BOM-free Rust log. The
-`Standing open follow-ups` combo-restore entry is retired. **Audit fixes
-(2026-07-17):** meter/monitor oracle compare RE-ENABLED on both decks
-(`check_meters_monitors: true`) — the harness `compare_monitor` now normalizes
-the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns,
-`['V1',' VAngle1',…,'']`) so the Oddie r4133 header compares against the clean
-dss_capi/Rust header without weakening the channel-count/value asserts. Verified
-against oddie:r4133: EnergyMeter registers match (duty mode → 0 / -1e50 drag-hand
-sentinel, identical on both engines) and the mode-0 V/I monitor channels match
-the already-pinned full-model trajectory. The product-side monitor-header
-normalization (what the Rust engine *emits*) remains WP-U1.5 E1 scope; this is a
-test-comparator normalization only.
-
-**Prior frontier — Rung 2 wave 2 MERGED: WP-U2.3 (Relay r4133
-per-phase rewrite) landed on `update`** via a port→audit→fix worktree chain
-(wt-u23, opus-audited, major finding fixed in-branch; full mandatory gate
-green, 47/47 suites). The delta's largest unit (Controls/Relay.pas
-r4088→r4133) ported loop-for-loop: per-phase StateArray for type=current
-(SinglePhTrip/Lockout, phase-proxy queue), VoltageLogic closed-phase OV/UV
-(B2), CTRL_RESET opcount-only (D4), inst single-count (D3), props 50→71 with
-15 aliases + Normal/State arrays. Two upstream bugs reproduced with
-TODO(compat), oracle-verified (unconditional `Debug Sample` event line;
-reset events logged as `Recloser.<name>`); the r4133 source-vs-binary
-voltage/current-reclose-default divergence settled empirically for the BINARY
-(oracle-authoritative). Audit fix: Normal/State/Action discrete parse is
-first-char-only (`o`/`c`, else keep) per r4133 `InterpretRelayState` — the
-0.14.5 `trip`→open alias dropped, re-proven on oddie:r4133. 9 relay controls
-decks + 8 vendored Distance/TD21 decks flipped to `oracle:"r4133"`;
-relay_current 0.14.5 golden retired; relay.json props golden regenerated (74
-props, self-referential regression pin — noted as such). INFRA: the missing
-Oddie r4133 venv created from vendored wheels (was blocking the whole r4133
-channel). solvable_now **292/329** (59NRelayDemo → `skipped_needs_investigation`:
-its ~7e-4 open-point voltage-relay residual is now **DECOMPOSED** — a real
-`state_size` phase-count port bug (fixed on wt-59n) plus a proven chaotic
-pole-slip floor; see the WP-U2.6 59N record below). Wave 1 (WP-U2.1
-Fuse / U2.2 Recloser / U2.4 SwtControl+batchedit-where) merged earlier the
-same day; Rung 1 EXITED 2026-07-16. Integration branch is `update` (pushed to
-origin); main untouched until an explicit merge request. **Next: WP-U2.5
-(protection report/log surface — incl. r4133 relay/recloser help-catalog +
-dump3 `[Relay]` unmasking, per-phase `[closed,...]` renders, Save round-trip),
-then WP-U2.6 (rung exit: r4133 ASSERT sweep + combo-deck restores +
-59NRelayDemo decomposition — **59N done on wt-59n: `state_size` phase-count port
-bug fixed + chaotic pole-slip floor proven; see the WP-U2.6 record**).**
-
-**Deferred to the §6 sweep** (documented, was never rung-blocking; now also a
-plan-wide exit criterion in `UPGRADE_PLAN.md` §5): JSON/Dump golden surface
-flip to capi015 + dropping the Wires→"Conductors" JSON masquerade
-(gen_json.py is hard-pinned to the 0.14.5 oracle; HIDE_015X retained on the
-0.15.x-only Line/LineGeometry props — see DIVERGENCES §Conductors).
-
-**PARKED TEST — RESOLVED (2026-07-16, branch wt-coverage):**
-`circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` is
-un-ignored and green. Root cause was the **test harness, not the port**: the
-test passed its whole 8-line deck string to a single `Dss::command` call —
-`command` is Pascal `ProcessCommand` (ONE command line), so everything after
-`new circuit.covtest …` became extra parameters of that command (the trailing
-`bus1=b5` from load ld2 landed on the Vsource; no lines were ever created).
-`CalcIncMatrix_O` on that 1-bus circuit yields `Inc_Mat_Cols=["b5"]`,
-`levels=[0]`: every traced path covers 0, the coverage plateau is 0, and the
-state machine's sole exit (Circuit.pas:909, "changed AND >= Coverage") can then
-never fire — a genuine, upstream-faithful degenerate-input nontermination fed
-by a corrupted circuit. Fed line-by-line, the port terminates instantly and
-bit-matches the official r3723 engine (Oddie probe 2026-07-16, both variants
-< 50 µs): `set coverage=0.5` → "0 new paths detected", `Actual_Coverage =
-0.666666666666667`; default 0.9 → "2 new paths detected", `Actual_Coverage =
-1`. Both are now pinned in the tests (including the `get coverage` strings).
-The second old hypothesis ("0.9 default unreachable, plateau 5/6") was also
-disproven: `Buses_Covered` entries are bus-index SPANS whose sum overshoots
-`Sys_Size` (r3723 reaches 1.0); the function's NOTE(upstream-quirk) was
-corrected accordingly. See the WP-COV-PARKED record in §UPGRADE.
-
-**AD dispositions — `off:unclassified-new-deck` bucket (2026-07-12):** at the
-part2→update integration merge, every deck added after the WP-AD.4 sweep
-(9 skipped-sweep promotions in `ad_sweep.json` + 63 new family decks: windgen,
-U1.3 invcontrol, LINE-DEEP, coverage waves) received the explicit pending
-disposition `off:unclassified-new-deck` (allowlisted in `AD_OFF_REASONS` with
-the same note). This is a declared backlog, not a measured verdict — a
-follow-up classification round runs DSS_AD_CLASSIFY/DSS_AD_DECOMPOSE over the
-bucket and retires the reason.
-
 **Standing toolchain note:** the gate runs on **`stable`** (`cargo +stable …`),
 matching CI (`dtolnay/rust-toolchain@stable`) — no nightly dependency. `dss-core`
 carries `#![allow(clippy::collapsible_match)]` (`d85d026`): clippy 0.1.96 (now on
@@ -317,7 +134,177 @@ documented ledger). Active work is **DE_PASCALIZE_PLAN.md** on the `update`
 integration branch: wave 1 (R0 / P1-partial / P2 / P6, all stratum [A]) merged
 2026-07-17 — see the frontier block above. Remaining sequence:
 DE_PASCALIZE Parts I–III + Stage F → RESONANCE → MULTITHREADING M0–M4;
-Part II A-Diakoptics (WP-AD.2–AD.6) after MULTITHREADING M2.
+Part II A-Diakoptics (WP-AD.2–AD.6) after MULTITHREADING M2. The records of the
+completed plans (FINAL ACCEPTANCE, JSON, DIAKOPTICS Part I, UPGRADE Rung 1+2) are now
+archived in **§1a**; their still-open carried-forward items (TODO(compat) sweep +
+HIDE_015X → Stage F, GICMvars → Phase 9, JSON DynInit/Full tail, AggregateProfiles →
+AD Part II, user-model DLLs → WASM, IEEE118 NCIM → a future rung) are tracked in
+§Standing-open-follow-ups just below.
+
+### Standing open follow-ups (actionable)
+
+**Carried-forward handoffs — work a *declared-complete* plan deferred to a
+successor plan that has NOT finished it** (audited 2026-07-17; surfaced here so the
+open item is not buried in the §1a archive):
+- **TODO(compat) bug-for-bug sweep → DE_PASCALIZE Stage F — NOT started.** 123
+  `TODO(compat)` shims across 71 files still in-tree (PORTING_PLAN §4.1 rule 4, the
+  single dedicated post-acceptance cleanup pass, re-assigned to Stage F). Stage F is
+  unbuilt (DE_PASCALIZE paused after wave 1) → cleanup unexecuted.
+- **UPGRADE §5 exit criterion `rg HIDE_015X` empty → DE_PASCALIZE Stage F — NOT
+  started.** 15 `HIDE_015X` refs in 5 files (line / line_geometry / prop_flags /
+  save/dump). UPGRADE was declared COMPLETE having consciously waived this own-§5
+  criterion to Stage F (byte-neutral, non-rung-blocking); still unmet.
+- **IEEE118Bus NCIM PV→PQ switching-cadence → a future UPGRADE rung — NOT started.**
+  Port matches its capi015 oracle loop-for-loop incl. non-convergence, but not
+  r4133's newer cadence; parked `skipped_needs_investigation`, report-only in
+  DIVERGENCES.md.
+- **GICMvars export (verb 36) / GICTransformer `WriteVarOutputRecord` → Phase 9 —
+  NOT started.** Still `NOT_PORTED` (GAPS WPG.16's only deferred piece; pinned by
+  `exec/tests/report.rs`).
+- **AltDSS JSON `DynInit` tail + Full-mode Transformer/AutoTrans WdgCurrents +
+  Capacitor CMatrix → a JSON-export follow-up WP — NOT started.**
+  `report/export/json/build.rs:123` `NOT_PORTED`; goldens exclude the Full path for
+  those classes.
+- **A-Diakoptics `AggregateProfiles` command + D9(d) official-r3723 AD-replay →
+  DIAKOPTICS Part II WP-AD.5 — partial.** `exec/command.rs:69` `NOT_PORTED`; WP-AD.6
+  threaded children not started (needs MULTITHREADING M2).
+- **User-model native DLLs (Gen/PVSystem/Storage/CapControl UserModel) →
+  WASM_USERMODELS — NOT started.** All still `PropFlags::NOT_PORTED`; the sandboxed
+  wasmi replacement is unbuilt (`#![forbid(unsafe_code)]` cannot load a DLL).
+
+**Residual floors / parked (documented, not bugs):**
+- **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — ultra-switch
+  conditioning floor (CF-D), watch on re-touch.
+- **UPFC modes 2/3/5**, `midi_relay_dist` deferred (budget); Kersting4wire #567
+  UserModel decks parked (no oracle channel tolerates the DoSimpleMsg).
+- **UTF-8-BOM edge cases** — GAPS follow-up. (`CapControl.ControlSignal` FOLLOW path
+  is in fact *ported* and live in `cap_control` — the old "unported" note was stale
+  and is retired.)
+
+Retired (done): combo fuse-save restore (wt-combo); WP-U1.2 D3 / WP-U1.6 tail (all
+landed pre-rung-exit); Monitor modes 8/10/12 (test-triage wt-t3).
+
+---
+
+### Gate state (all green)
+```
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace      # 0 failures (2026-07-17 WP-U2.6 round):
+                            # dss-core lib 1213, golden_reports 197 (incl. the
+                            # capi015 seasonal pair), corpus_live (292
+                            # solvable_now cases live-compared; modes family 58)
+                            #   (corpus_live_solvable_cases_match_oracle +
+                            #    solvable_now_has_multistep_depth run
+                            #    UNCONDITIONALLY — the pinned oracle MUST be
+                            #    installed (it fails, not skips, without it);
+                            #    only corpus_live_classify is opt-in, via
+                            #    DSS_LIVE_CLASSIFY=1 — the growth/classify probe),
+                            # dss-parser 62+1, dss-sparse 15
+                            #   (6 complex SparseSet + 9 real RealSparseSet —
+                            #    WP-U1.7 Stage 1, the NCIM Jacobian path)
+# WP-U2.6 opt-in EPRI sweeps (not part of the mandatory gate): both green —
+#   DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1 → 326/70/4/0
+#   DSS_LIVE_OPENDSS=r4088 DSS_LIVE_OPENDSS_ASSERT=1 → 329/67/4/0
+```
+
+### Phase 5 gate — green  *(detail → `docs/phase-records/phase-5.md`)*
+- `golden_feeders_controls.rs`: the unmodified IEEE13/IEEE37/IEEE123 masters
+  (controls active) + `ieee34mod1` match the Phase-0 goldens — converged + total
+  iterations exact, `YNodeOrder` exact, RegControl `tap_number` / capacitor
+  `states` exact, final taps 1e-12 rel (the integer `tap_number` is the exact
+  discrete check), V/I/P 1e-6, and every element's full property dump.
+- `golden_phase5.rs` vs `tests/golden/phase5/*.json` (`gen_phase5.py`):
+  `daily_ieee13`, `duty_2bus`, `eventlog_ieee13`, `capcontrol_micro` — per-step
+  `dblHour` + iteration counts exact, **event logs line-for-line** (normalized),
+  per-step V 1e-6 (the shape-scaled `Yeq` restamp per Y build, `a6903f1`).
+
+### Checkpointed-model gate (`crates/dss-core/tests/golden_checkpoints.rs`) — green
+- `gen_checkpoints.py` → `tests/golden/checkpoints/<scenario>.json` (schema 2,
+  one file per scenario; the gate runs every file in the directory, so adding a
+  scenario is just adding a file). Unlike the
+  other command-replay gates (which compare only converged outputs), this one
+  captures the **assembled electrical model after every committed time step** —
+  the unfactored system Y, selected element YPrim blocks, the injection vector,
+  node voltages, and discrete control state — and compares each to the oracle.
+  A stale Y/YPrim fails at the step and matrix entry it first goes wrong, not as
+  downstream register drift. Scenarios: `micro_yeq_steps` (control-free daily,
+  full-CSC per-step pin), `ieee13_daily` (24-step daily with regulator tap
+  changes — full CSC + fingerprint; the direct regression guard for the
+  "frozen load Yeq" bug: reverting commit `a6903f1` makes it fail at step 6,
+  `Y[634.1]`), `ieee123_snap` (large-feeder fingerprint-only + selected YPrim
+  path). Tolerances: `tests/TOLERANCE_NOTES.md`. The assembled Y is compared
+  **unfactored** so the `dss-sparse` row equilibration is out of scope.
+
+### Live corpus oracle gate (`crates/dss-core/tests/corpus_live.rs`) — runs unconditionally
+See `CORPUS_TEST_PLAN.md`. The whole `electricdss-tst` corpus is **vendored** into
+`tests/corpus/electricdss-tst/` (1544 files, 122 MiB; `tools/corpus/vendor.py`,
+`.git` excluded, with `SHA256SUMS` + `README.md` provenance) so tests no longer
+depend on the temporary `.inputs/electricdss-tst`.
+- **Manifest accounting (always-on).** Every `.dss` (915) is in exactly one
+  manifest under `tests/corpus/manifests/` (`solvable_now`, `skipped_unsupported`,
+  `skipped_oracle_issue`, `skipped_needs_investigation`, `missing_dependency`,
+  `not_an_entry_point`). `corpus_manifest.rs` enforces the bijection — no silent
+  omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
+  it until the file is classified.
+- **Live comparison (runs unconditionally in `cargo test`; the pinned oracle must
+  be installed).** For each of the **293** `solvable_now` cases the gate
+  compiles+solves on the Rust engine and on the pinned dss-python oracle
+  (`tools/oracle/oracle_server.py`, a
+  one-shot subprocess over JSON), and compares the full assembled model per step —
+  node order, **full** system Y (entry-by-entry, no fingerprint substitution),
+  node voltages, **every** element's currents/powers, selected YPrim blocks (a
+  guard fails the case if the oracle returns no YPrim for a named selected
+  element), the injection vector, and discrete state — reusing the `harness/mod.rs`
+  comparators and the checkpoint gate's tolerance policy.
+  - **Three control-diverse 24-step daily runs** — `IEEE13Nodeckt` (wye gang
+    reg), `ieee37` (delta, open-delta LDC reg bank) and `IEEE123Master` (multiple
+    cascaded reg banks) — each with a meter + three monitors (modes 0/1/2) +
+    selected elements, so the **multi-step per-step**, **YPrim**,
+    **monitor-channel** and **EnergyMeter-register/zone** paths are all exercised
+    live (`compare_monitor`/`compare_meter`, the *same* comparators
+    `golden_phase6.rs` now routes through, gated per case by
+    `check_meters_monitors`). Incidental master-defined monitors are *not*
+    compared — the pinned oracle returns a phantom `Channel(i)` for an unsampled
+    monitor (see `tests/TOLERANCE_NOTES.md`).
+  - The **IEEE 8500-Node master is promoted** (snapshot; `post: Set
+    Maxiterations=20` to converge — the bare probe didn't, which is why the
+    classifier had parked it), so the full 8531-node Y, every element's I/P, and a
+    YPrim block are compared live at scale (complementing the always-on
+    `golden_ieee8500.rs` golden, whose `compare_discrete` also pins the full
+    1190-transformer tap set here).
+  - **Depth is guarded always-on.** `solvable_now_has_multistep_depth` (no oracle)
+    asserts `solvable_now` keeps ≥1 multi-step `check_meters_monitors` case and ≥1
+    case with selected elements, so the deep coverage can't silently revert to
+    snapshots. The solvable + classify tests **auto-skip (pass)** without the env
+    var / oracle, so `cargo test --workspace` stays green everywhere; the
+    **`live-oracle` GitHub Actions job** installs the pinned oracle (PIN.txt) and
+    runs the **whole `corpus_live` binary** (not a name filter that could green on
+    zero matched tests). The oracle server hard-asserts **both** dss-python 0.15.7
+    **and** engine 0.14.5 (PIN.txt). No goldens are written; the oracle is
+    consulted live.
+- **Growth.** `DSS_LIVE_CLASSIFY=1 corpus_live_classify` probes the
+  `skipped_needs_investigation` candidates with the full comparison and writes
+  `tmp/classify_report.json`; `tools/corpus/apply_classify.py` promotes the
+  passing cases into `solvable_now` (and routes oracle/engine failures to the
+  right skip bucket). `tools/corpus/coverage_report.py` →
+  `tests/corpus/COVERAGE.md` tracks the burn-down toward 100% of entry points.
+
+### Phase 4 gate (`golden_feeders.rs`) — green  *(detail → `docs/phase-records/phase-4.md`)*
+The controls-off IEEE13/37/123 variants (`gen_phase4.py`) match `phase4.json`
+(pinned oracle): converged + iterations exact (3/3/3), `YNodeOrder` exact
+(41/117/278), V 1e-6, every element's I/P 1e-6 (creation order), total
+power/losses 1e-6. The Phase-3 `golden_slice.rs` (13 scenarios) stays green; the
+CLI runs the real masters (`cargo run -p dss-cli -- script.dss`).
+
+---
+
+
+---
+
+## 1a. Archived — completed plan records (100% done)
+
+> Moved out of the active §1 frontier on 2026-07-17. These are the records of plans whose own work-package scope is closed and gate-green: the 1:1 FINAL ACCEPTANCE, JSON export (Stages A+B), DIAKOPTICS/PSTCALC **Part I**, and the full **UPGRADE** Rung 1 + Rung 2 (r4133 parity). A few carried a documented item forward to a successor plan that has **not** finished it yet (TODO(compat) sweep + HIDE_015X → DE_PASCALIZE Stage F; GICMvars export → Phase 9; JSON DynInit/Full-mode tail → a follow-up WP; IEEE118 NCIM → a future UPGRADE rung) — those open items are surfaced in §1's **Standing open follow-ups**, not buried here. Frozen history — superseded only by the code and tests. In-progress / not-started plans (DE_PASCALIZE, DIAKOPTICS Part II, RESONANCE, MULTITHREADING, WASM_USERMODELS) stay in the active §1 above.
 
 **Late-UPGRADE work records (historical — all landed; kept for the §UPGRADE
 cross-refs).**
@@ -1838,139 +1825,188 @@ in **`docs/phase-records/phase-8.md`**. Phase 7 (DER/protection/line-constants/
 harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `main`)
 — roll-up in §1e and **`docs/phase-records/phase-7.md`**.
 
-### Standing open follow-ups (actionable)
-- **Combo fuse-save restore — DONE (2026-07-17, wt-combo).** Both decks flipped to
-  `oracle:"r4133"` with the fuse re-armed and the three-tier race re-exercised
-  end-to-end; see the WP record below. Audit fix (2026-07-17): meter/monitor oracle
-  compare re-enabled — `compare_monitor` now normalizes the Delphi monitor-CSV header
-  artifact (leading-space + trailing-empty columns), so `check_meters_monitors` is
-  back on both decks and verified vs oddie:r4133. No sub-item remains.
-- ~~WP-U1.2 row D3~~ / ~~WP-U1.6 remaining (C5/C6/C5-r3723/D11/D13/C4)~~ — ALL
-  LANDED before the Rung exits (wt-u14props, wt-u16ind, wt-u16 records in
-  §UPGRADE; C5-r3723 settled not-a-delta). This list entry is retired.
-- **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — now floored as
-  ultra-switch conditioning (CF-D), watch on re-touch.
-- ~~Monitor modes 8/10/12 panic stub~~ — PORTED + golden-gated (test-triage
-  wt-t3, 2026-07-17); entry retired.
-- **UPFC modes 2/3/5**, `midi_relay_dist` deferred (budget); Kersting4wire #567
-  UserModel decks parked (no oracle channel tolerates the DoSimpleMsg).
-- **actor / parallel mode** + `CapControl.ControlSignal` + UTF-8-BOM edge cases —
-  MULTITHREADING M2+ (actor) / GAPS follow-up.
+**Prior — UPGRADE Rung 2 EXITED — WP-U2.6 the 11.0.0.1 (r4133)
+parity claim (branch wt-u26).** The opt-in EPRI sweep
+`DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1` is **GREEN** (326 matched, 70
+known-diverged, 4 known-skipped, **0 NEW** of 400; 103 target-rev `oracle`-flipped
+cases excluded — gated in the mandatory gate). Every surviving Rust↔r4133
+divergence is a documented `known_diffs.json` class: FPC↔Delphi last-ulp /
+display-precision floors, dss_capi's bracketed numeric-array PropertyValue render
+(`property-format-brackets` ×10 — the WP-U2.5-deferred numeric-array class,
+**closed** here), EPRI's InvControl event-log trailing space
+(`eventlog-trailing-space` ×6 — the WP-U2.3-deferred class, **keeps** its r4133 tag,
+still witnessed), or the four EPRI-DLL #303 crash decks. The **58** raw NEW
+divergences were all dispositioned (mandatory gate green ⇒ port == pinned 0.14.5 ⇒
+the r4133 gap is purely FPC↔Delphi, never a Rung-2 regression): 48 cases (44 diff
++ 4 skip) extend an existing r4088 floor/skip entry on a **behaviorally-identical
+r4088=r4133 path** (source-verified; 14 entries), 10 cases → 3 new entries
+(`storage-pctstored-display-precision`, `monitor-seq-magnitude-drift`,
+`harmonics-ieee519-r4133`); separately 2 entries narrowed to r3723
+(`monitor-header-whitespace` now handled by the harness header-normalization,
+`meter-zonepce-count` decks now match). **Direction check** — `r4088` re-run green
+(329 matched, 0 NEW after the same %stored/monitor_seqmag cataloging); the only
+sweep-set difference vs r4133 is the r4133-only IEEE_519 harmonics move + the
+r4088-only harmonics-Y witness = exactly the r4088→r4133 delta this rung owns. The
+**IEEE_519 harmonics surprise is source-confirmed "nothing to port"**
+(SolutionAlgs/Load/Spectrum/YMatrix byte-identical r4088=r4133; Solution.pas diff =
+progress-form + commented debug only) — a determinism-proven build-drift amplified
+by the 519-filter near-resonance, cataloged `harmonics-ieee519-r4133`; the
+InductionMachine converged-flip was already resolved by WP-U2.1. `DIVERGENCES.md`
++ `known_diffs_burndown.md` carry the full Rung-2 exit record; `PLAN_SEQUENCE.md`
+marks UPGRADE COMPLETE; new root `README.md` states the parity claim. **Engine
+behavior = OpenDSS 11.0.0.1 (r4133) except the documented ledger.** `rg
+"NOT_PORTED\(U2"` empty; zero `pending` upgrade decks. Mandatory gate (fmt +
+clippy + `cargo test --workspace`) green.
 
----
+**Audit fixes (post-merge, wt-u26).** Wording-accuracy pass on the Rung-2 ledger
+after re-`cmp`ing the vendored r4088/r4133 Version8 trees: the summary phrase
+"byte-identical r4088=r4133" is literally false for the **solver**
+(`Common/Solution.pas` differs — progress-form/GUI plumbing + a commented-out debug
+`WriteLn`, numerically inert) and `PDElements/AutoTrans.pas` (two read-only
+PropertyHelp strings). All non-`Solution.pas`/`AutoTrans.pas` units named in these
+entries (`PCElements/`, `Meters/Monitor.pas`, `SolutionAlgs.pas`, `YMatrix.pas`,
+`ReduceAlgs.pas`, injection/reduction/ckt24 feeder) ARE byte-identical, so the
+behavioral conclusion (no algorithm changed) stands. Reworded the overstated
+claims to "behaviorally identical (only progress-form/PropertyHelp text differs)"
+in `known_diffs.json` (iteration-count-delta, ckt24-regcontrol-conditioning),
+`DIVERGENCES.md`, `known_diffs_burndown.md`, and this record. Also: documented that
+the `monitor-header-whitespace` r3723 tag is likely already dead (the
+`compare_monitor` header normalization is rev-independent — a future r3723 re-sweep
+prunes it), and scope-noted `harmonics-ieee519-r4133`'s deliberately-broad match
+(mirrors sibling floor entries; re-triage a materially different IEEE_519 move). No
+code/behavior change; mandatory gate re-run green.
 
-### Gate state (all green)
-```
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace      # 0 failures (2026-07-17 WP-U2.6 round):
-                            # dss-core lib 1213, golden_reports 197 (incl. the
-                            # capi015 seasonal pair), corpus_live (292
-                            # solvable_now cases live-compared; modes family 58)
-                            #   (corpus_live_solvable_cases_match_oracle +
-                            #    solvable_now_has_multistep_depth run
-                            #    UNCONDITIONALLY — the pinned oracle MUST be
-                            #    installed (it fails, not skips, without it);
-                            #    only corpus_live_classify is opt-in, via
-                            #    DSS_LIVE_CLASSIFY=1 — the growth/classify probe),
-                            # dss-parser 62+1, dss-sparse 15
-                            #   (6 complex SparseSet + 9 real RealSparseSet —
-                            #    WP-U1.7 Stage 1, the NCIM Jacobian path)
-# WP-U2.6 opt-in EPRI sweeps (not part of the mandatory gate): both green —
-#   DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1 → 326/70/4/0
-#   DSS_LIVE_OPENDSS=r4088 DSS_LIVE_OPENDSS_ASSERT=1 → 329/67/4/0
-```
+**Prior — WP-U2.5 (protection report/log surface) + WP-U2.6
+(59NRelayDemo decomposition) MERGED.** WP-U2.6 found + fixed a relay port bug:
+`state_size()` / `MakeLike` sized the per-phase state arrays by the relay's OWN
+Nphases, but the state-array paths iterate `Min(RELAYCONTROLMAXDIM,
+ControlledElement.NPhases)` (Pascal Relay.pas) — the two counts diverge only on a
+1-ph-monitored / 3-ph-switched voltage relay (59NRelayDemo), where count=1 made
+the VoltageLogic loop read the 3V0 open-point residual and spuriously trip;
+count=3 (controlled) reads the phantom phase → 0 → no trip, matching oddie:r4133.
+Unit-gated (`voltage_relay_open_point_sizes_state_by_controlled_nphases_59n`,
+`make_like_copies_state_by_controlled_nphases`); the deck itself STAYS in
+`skipped_needs_investigation` (re-tagged `relay_voltage_dynamics_chaos_floor`) —
+post-fix residual is a proven chaotic pole-slip floor, not tolerance-maskable.
+The r4133 protection `Dump commands`
+help-catalog surface is complete for all four classes: `[Relay]` unmasked from
+the `dump3_commands` golden (71-prop r4133 shape), `[Fuse]`/`[SwtControl]`
+brought to their full r4133 12/9-prop shapes (HIDE flags dropped — matching the
+already-r4133 Recloser), all pinned self-referentially against our own render.
+The r4133 help text now lives in a generator supplement (`tools/golden/
+r4133_help.py`, captured verbatim from the oddie:r4133 binary's own `Dump
+commands`), which ALSO folds in the recloser help that WP-U2.2 had hand-edited
+into the "GENERATED" `help_catalog.rs` (+ the CNData/LineSpacing/tear_circuit
+pre-r4133 edits) — so `python gen_help_catalog.py` is fully reproducible again.
+Property-render `[closed, closed, closed, ]` verified shared across all four
+classes (already landed). New `save_roundtrip_protection` gate: a
+Relay+Recloser+Fuse+SwtControl deck round-trips its full r4133 property surface
+(renamed/new props + array renders) through our own `Save circuit`→re-parse.
+compare_eventlog was already enabled on every non-combo protection deck (combo
+decks untouched — parallel WP owns them); EVENTLOG_MASKS stays EMPTY. Two
+findings: (1) the `known_diffs` `property-format-brackets` row was NOT retired —
+empirically it still masks a LIVE r4133 divergence (our `[ 100 90 80]` numeric-
+array render vs EPRI's plain `100,90,80`, e.g. sensor.currents); only its E3
+protection-state-array portion is resolved (our `[closed,..]` now matches EPRI
+r4133's own bracketed state render) — the numeric-array class is a DIVERGENCES
+ledger item owned by WP-U2.6's sweep. (2) A **pre-existing** environmental gate
+failure (reproduces on pristine `update`): the r4133 Oddie DLL emits a UTF-8 BOM
+in `export eventlog` / some `Text.Result` that the oracle capture didn't strip —
+fixed at the source (`capture_eventlog` → `utf-8-sig`) + defensively in
+`numeric_skeleton`. §E4 help-only: LineSpacing already r4133-aligned; Line prop
+20 / AutoTrans "(Read only)" left 0.14.5 (those surfaces don't claim r4133).
 
-### Phase 5 gate — green  *(detail → `docs/phase-records/phase-5.md`)*
-- `golden_feeders_controls.rs`: the unmodified IEEE13/IEEE37/IEEE123 masters
-  (controls active) + `ieee34mod1` match the Phase-0 goldens — converged + total
-  iterations exact, `YNodeOrder` exact, RegControl `tap_number` / capacitor
-  `states` exact, final taps 1e-12 rel (the integer `tap_number` is the exact
-  discrete check), V/I/P 1e-6, and every element's full property dump.
-- `golden_phase5.rs` vs `tests/golden/phase5/*.json` (`gen_phase5.py`):
-  `daily_ieee13`, `duty_2bus`, `eventlog_ieee13`, `capcontrol_micro` — per-step
-  `dblHour` + iteration counts exact, **event logs line-for-line** (normalized),
-  per-step V 1e-6 (the shape-scaled `Yeq` restamp per Y build, `a6903f1`).
+**Also merged this session — WP-U2.1 handoff RESTORED (branch wt-combo):** the
+combo fuse-save decks `combo/{combo,midi}_protection` flipped to `oracle:"r4133"`
+with the fuse tier re-armed (`fusecurve=tlink curvemultiplier=40/50`, reproducing
+the pre-WP r4088-era RatedCurrent divisor) and the Recloser probe + Relay
+`state`/`normal` probe + `compare_eventlog` restored (dropped by WP-U2.2/U2.3
+while the tiers were version-split). The classic three-tier fuse-save race
+(backup relay → midline recloser → lateral fuse) now runs end-to-end on the
+version-consistent r4133 chain, two-process-determinant + live-compared vs
+oddie:r4133 (controls live gate 96→**98**). Also fixed a **pre-existing** oracle
+capture bug uncovered here: `capture_eventlog` returned a lone `['﻿']` for
+an EMPTY Oddie event log (Delphi BOM) and BOM-glued the first record — which made
+`recloser_temp`/etc. r4133 event-log compares RED on this machine; now the BOM is
+stripped per line so empty→`[]` and line-0 matches the BOM-free Rust log. The
+`Standing open follow-ups` combo-restore entry is retired. **Audit fixes
+(2026-07-17):** meter/monitor oracle compare RE-ENABLED on both decks
+(`check_meters_monitors: true`) — the harness `compare_monitor` now normalizes
+the Delphi monitor-CSV header artifact (leading-space + trailing-empty columns,
+`['V1',' VAngle1',…,'']`) so the Oddie r4133 header compares against the clean
+dss_capi/Rust header without weakening the channel-count/value asserts. Verified
+against oddie:r4133: EnergyMeter registers match (duty mode → 0 / -1e50 drag-hand
+sentinel, identical on both engines) and the mode-0 V/I monitor channels match
+the already-pinned full-model trajectory. The product-side monitor-header
+normalization (what the Rust engine *emits*) remains WP-U1.5 E1 scope; this is a
+test-comparator normalization only.
 
-### Checkpointed-model gate (`crates/dss-core/tests/golden_checkpoints.rs`) — green
-- `gen_checkpoints.py` → `tests/golden/checkpoints/<scenario>.json` (schema 2,
-  one file per scenario; the gate runs every file in the directory, so adding a
-  scenario is just adding a file). Unlike the
-  other command-replay gates (which compare only converged outputs), this one
-  captures the **assembled electrical model after every committed time step** —
-  the unfactored system Y, selected element YPrim blocks, the injection vector,
-  node voltages, and discrete control state — and compares each to the oracle.
-  A stale Y/YPrim fails at the step and matrix entry it first goes wrong, not as
-  downstream register drift. Scenarios: `micro_yeq_steps` (control-free daily,
-  full-CSC per-step pin), `ieee13_daily` (24-step daily with regulator tap
-  changes — full CSC + fingerprint; the direct regression guard for the
-  "frozen load Yeq" bug: reverting commit `a6903f1` makes it fail at step 6,
-  `Y[634.1]`), `ieee123_snap` (large-feeder fingerprint-only + selected YPrim
-  path). Tolerances: `tests/TOLERANCE_NOTES.md`. The assembled Y is compared
-  **unfactored** so the `dss-sparse` row equilibration is out of scope.
+**Prior frontier — Rung 2 wave 2 MERGED: WP-U2.3 (Relay r4133
+per-phase rewrite) landed on `update`** via a port→audit→fix worktree chain
+(wt-u23, opus-audited, major finding fixed in-branch; full mandatory gate
+green, 47/47 suites). The delta's largest unit (Controls/Relay.pas
+r4088→r4133) ported loop-for-loop: per-phase StateArray for type=current
+(SinglePhTrip/Lockout, phase-proxy queue), VoltageLogic closed-phase OV/UV
+(B2), CTRL_RESET opcount-only (D4), inst single-count (D3), props 50→71 with
+15 aliases + Normal/State arrays. Two upstream bugs reproduced with
+TODO(compat), oracle-verified (unconditional `Debug Sample` event line;
+reset events logged as `Recloser.<name>`); the r4133 source-vs-binary
+voltage/current-reclose-default divergence settled empirically for the BINARY
+(oracle-authoritative). Audit fix: Normal/State/Action discrete parse is
+first-char-only (`o`/`c`, else keep) per r4133 `InterpretRelayState` — the
+0.14.5 `trip`→open alias dropped, re-proven on oddie:r4133. 9 relay controls
+decks + 8 vendored Distance/TD21 decks flipped to `oracle:"r4133"`;
+relay_current 0.14.5 golden retired; relay.json props golden regenerated (74
+props, self-referential regression pin — noted as such). INFRA: the missing
+Oddie r4133 venv created from vendored wheels (was blocking the whole r4133
+channel). solvable_now **292/329** (59NRelayDemo → `skipped_needs_investigation`:
+its ~7e-4 open-point voltage-relay residual is now **DECOMPOSED** — a real
+`state_size` phase-count port bug (fixed on wt-59n) plus a proven chaotic
+pole-slip floor; see the WP-U2.6 59N record below). Wave 1 (WP-U2.1
+Fuse / U2.2 Recloser / U2.4 SwtControl+batchedit-where) merged earlier the
+same day; Rung 1 EXITED 2026-07-16. Integration branch is `update` (pushed to
+origin); main untouched until an explicit merge request. **Next: WP-U2.5
+(protection report/log surface — incl. r4133 relay/recloser help-catalog +
+dump3 `[Relay]` unmasking, per-phase `[closed,...]` renders, Save round-trip),
+then WP-U2.6 (rung exit: r4133 ASSERT sweep + combo-deck restores +
+59NRelayDemo decomposition — **59N done on wt-59n: `state_size` phase-count port
+bug fixed + chaotic pole-slip floor proven; see the WP-U2.6 record**).**
 
-### Live corpus oracle gate (`crates/dss-core/tests/corpus_live.rs`) — opt-in
-See `CORPUS_TEST_PLAN.md`. The whole `electricdss-tst` corpus is **vendored** into
-`tests/corpus/electricdss-tst/` (1544 files, 122 MiB; `tools/corpus/vendor.py`,
-`.git` excluded, with `SHA256SUMS` + `README.md` provenance) so tests no longer
-depend on the temporary `.inputs/electricdss-tst`.
-- **Manifest accounting (always-on).** Every `.dss` (915) is in exactly one
-  manifest under `tests/corpus/manifests/` (`solvable_now`, `skipped_unsupported`,
-  `skipped_oracle_issue`, `skipped_needs_investigation`, `missing_dependency`,
-  `not_an_entry_point`). `corpus_manifest.rs` enforces the bijection — no silent
-  omissions — and runs in the normal `cargo test`: adding/removing a `.dss` fails
-  it until the file is classified.
-- **Live comparison (runs unconditionally in `cargo test`; the pinned oracle must
-  be installed).** For each of the **84** `solvable_now` cases the gate
-  compiles+solves on the Rust engine and on the pinned dss-python oracle
-  (`tools/oracle/oracle_server.py`, a
-  one-shot subprocess over JSON), and compares the full assembled model per step —
-  node order, **full** system Y (entry-by-entry, no fingerprint substitution),
-  node voltages, **every** element's currents/powers, selected YPrim blocks (a
-  guard fails the case if the oracle returns no YPrim for a named selected
-  element), the injection vector, and discrete state — reusing the `harness/mod.rs`
-  comparators and the checkpoint gate's tolerance policy.
-  - **Three control-diverse 24-step daily runs** — `IEEE13Nodeckt` (wye gang
-    reg), `ieee37` (delta, open-delta LDC reg bank) and `IEEE123Master` (multiple
-    cascaded reg banks) — each with a meter + three monitors (modes 0/1/2) +
-    selected elements, so the **multi-step per-step**, **YPrim**,
-    **monitor-channel** and **EnergyMeter-register/zone** paths are all exercised
-    live (`compare_monitor`/`compare_meter`, the *same* comparators
-    `golden_phase6.rs` now routes through, gated per case by
-    `check_meters_monitors`). Incidental master-defined monitors are *not*
-    compared — the pinned oracle returns a phantom `Channel(i)` for an unsampled
-    monitor (see `tests/TOLERANCE_NOTES.md`).
-  - The **IEEE 8500-Node master is promoted** (snapshot; `post: Set
-    Maxiterations=20` to converge — the bare probe didn't, which is why the
-    classifier had parked it), so the full 8531-node Y, every element's I/P, and a
-    YPrim block are compared live at scale (complementing the always-on
-    `golden_ieee8500.rs` golden, whose `compare_discrete` also pins the full
-    1190-transformer tap set here).
-  - **Depth is guarded always-on.** `solvable_now_has_multistep_depth` (no oracle)
-    asserts `solvable_now` keeps ≥1 multi-step `check_meters_monitors` case and ≥1
-    case with selected elements, so the deep coverage can't silently revert to
-    snapshots. The solvable + classify tests **auto-skip (pass)** without the env
-    var / oracle, so `cargo test --workspace` stays green everywhere; the
-    **`live-oracle` GitHub Actions job** installs the pinned oracle (PIN.txt) and
-    runs the **whole `corpus_live` binary** (not a name filter that could green on
-    zero matched tests). The oracle server hard-asserts **both** dss-python 0.15.7
-    **and** engine 0.14.5 (PIN.txt). No goldens are written; the oracle is
-    consulted live.
-- **Growth.** `DSS_LIVE_CLASSIFY=1 corpus_live_classify` probes the
-  `skipped_needs_investigation` candidates with the full comparison and writes
-  `tmp/classify_report.json`; `tools/corpus/apply_classify.py` promotes the
-  passing cases into `solvable_now` (and routes oracle/engine failures to the
-  right skip bucket). `tools/corpus/coverage_report.py` →
-  `tests/corpus/COVERAGE.md` tracks the burn-down toward 100% of entry points.
+**Deferred to the §6 sweep** (documented, was never rung-blocking; now also a
+plan-wide exit criterion in `UPGRADE_PLAN.md` §5): JSON/Dump golden surface
+flip to capi015 + dropping the Wires→"Conductors" JSON masquerade
+(gen_json.py is hard-pinned to the 0.14.5 oracle; HIDE_015X retained on the
+0.15.x-only Line/LineGeometry props — see DIVERGENCES §Conductors).
 
-### Phase 4 gate (`golden_feeders.rs`) — green  *(detail → `docs/phase-records/phase-4.md`)*
-The controls-off IEEE13/37/123 variants (`gen_phase4.py`) match `phase4.json`
-(pinned oracle): converged + iterations exact (3/3/3), `YNodeOrder` exact
-(41/117/278), V 1e-6, every element's I/P 1e-6 (creation order), total
-power/losses 1e-6. The Phase-3 `golden_slice.rs` (13 scenarios) stays green; the
-CLI runs the real masters (`cargo run -p dss-cli -- script.dss`).
+**PARKED TEST — RESOLVED (2026-07-16, branch wt-coverage):**
+`circuit::coverage::tests::refine_bus_levels_reports_paths_on_radial` is
+un-ignored and green. Root cause was the **test harness, not the port**: the
+test passed its whole 8-line deck string to a single `Dss::command` call —
+`command` is Pascal `ProcessCommand` (ONE command line), so everything after
+`new circuit.covtest …` became extra parameters of that command (the trailing
+`bus1=b5` from load ld2 landed on the Vsource; no lines were ever created).
+`CalcIncMatrix_O` on that 1-bus circuit yields `Inc_Mat_Cols=["b5"]`,
+`levels=[0]`: every traced path covers 0, the coverage plateau is 0, and the
+state machine's sole exit (Circuit.pas:909, "changed AND >= Coverage") can then
+never fire — a genuine, upstream-faithful degenerate-input nontermination fed
+by a corrupted circuit. Fed line-by-line, the port terminates instantly and
+bit-matches the official r3723 engine (Oddie probe 2026-07-16, both variants
+< 50 µs): `set coverage=0.5` → "0 new paths detected", `Actual_Coverage =
+0.666666666666667`; default 0.9 → "2 new paths detected", `Actual_Coverage =
+1`. Both are now pinned in the tests (including the `get coverage` strings).
+The second old hypothesis ("0.9 default unreachable, plateau 5/6") was also
+disproven: `Buses_Covered` entries are bus-index SPANS whose sum overshoots
+`Sys_Size` (r3723 reaches 1.0); the function's NOTE(upstream-quirk) was
+corrected accordingly. See the WP-COV-PARKED record in §UPGRADE.
 
----
+**AD dispositions — `off:unclassified-new-deck` bucket (2026-07-12):** at the
+part2→update integration merge, every deck added after the WP-AD.4 sweep
+(9 skipped-sweep promotions in `ad_sweep.json` + 63 new family decks: windgen,
+U1.3 invcontrol, LINE-DEEP, coverage waves) received the explicit pending
+disposition `off:unclassified-new-deck` (allowlisted in `AD_OFF_REASONS` with
+the same note). This is a declared backlog, not a measured verdict — a
+follow-up classification round runs DSS_AD_CLASSIFY/DSS_AD_DECOMPOSE over the
+bucket and retires the reason.
 
 ## 1b–1d. Completed-phase records (archived)
 
@@ -2159,7 +2195,7 @@ lists; `yprim` stays `None` and the Y build skips them.
 
 ## 5. `TODO(compat)` / deferrals
 
-Grep `rg "TODO\(compat\)"` for the full marker list (39 sites). Notable:
+Grep `rg "TODO\(compat\)"` for the full marker list (**123 sites across 71 files** as of 2026-07-17 — Phase 7/8/GAPS/UPGRADE added many; the whole set is wiped in one DE_PASCALIZE Stage F pass, not yet run). Notable:
 truncated `CALPHA`/`pi`/`0.001732`/`57.29577951` constants, FPC banker's
 `Round` shims, LineCode `Repair`=0 default, the `DoubleSymMatrix` zero-matrix
 getter.

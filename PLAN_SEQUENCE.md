@@ -5,6 +5,14 @@ the porting phases themselves; this file orders the *documents*, including every
 final acceptance. Order confirmed by the user 2026-07-06; UPGRADE_PLAN inserted as
 post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-landed).
 
+> **Plan file locations (2026-07-18).** The completed plans below — `PHASE4–8_PLAN.md`,
+> `GAPS_PLAN.md`, `JSON_EXPORT_PLAN.md`, `UPGRADE_PLAN.md`, plus the finished test-infra
+> build-plans `CORPUS_TEST_PLAN.md` / `CONTROL_COVERAGE_PLAN.md` — are archived under
+> **`docs/plans-archive/`** (their names in the ordering are unchanged). Active/foundational
+> plans stay at the repo root: `PORTING_PLAN.md`, `DE_PASCALIZE_PLAN.md`,
+> `DIAKOPTICS_PSTCALC_PLAN.md`, `RESONANCE_PLAN.md`, `MULTITHREADING_PLAN.md`,
+> `WASM_USERMODELS_PLAN.md`. Residual work no plan owns is tracked in `ORPHANED_GAPS.md`.
+
 ```
 ── PORTING (pre-acceptance) ────────────────────────────────────────────────────────
  1. PHASE8_PLAN.md            COMPLETE (branch phase-8-reporting; WP8.8 exit done)
