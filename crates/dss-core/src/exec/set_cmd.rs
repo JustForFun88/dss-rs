@@ -374,6 +374,23 @@ impl Dss {
                             ckt.emerg_max_volts = v;
                         }
                     }
+                    // Pascal `Set %mean/%stddev=` (`ExecHelper.pas:476-478`): the
+                    // default daily loadshape's `Set_Mean`/`Set_StdDev` (value /
+                    // 100). A silent no-op when no default daily shape exists.
+                    opt::PCT_MEAN => {
+                        if let Some(v) = get_dbl(parser, vars, errors)
+                            && let Some(sh) = ckt.default_daily_shape_obj.as_mut()
+                        {
+                            sh.set_mean(v / 100.0);
+                        }
+                    }
+                    opt::PCT_STDDEV => {
+                        if let Some(v) = get_dbl(parser, vars, errors)
+                            && let Some(sh) = ckt.default_daily_shape_obj.as_mut()
+                        {
+                            sh.set_std_dev(v / 100.0);
+                        }
+                    }
                     opt::PCT_GROWTH => {
                         if let Some(v) = get_dbl(parser, vars, errors) {
                             ckt.default_growth_rate = 1.0 + v / 100.0;
@@ -412,6 +429,13 @@ impl Dss {
                         ckt.long_line_correction = interpret_yes_no(&param);
                     }
                     opt::ZONE_LOCK => ckt.zones_locked = interpret_yes_no(&param),
+                    // Pascal `Set genmult=` (`ExecOptions.pas:529`): the global
+                    // generation multiplier (`ActiveCircuit.GenMultiplier`).
+                    opt::GEN_MULT => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            ckt.gen_multiplier = v;
+                        }
+                    }
                     opt::UE_WEIGHT => {
                         if let Some(v) = get_dbl(parser, vars, errors) {
                             ckt.ue_weight = v;

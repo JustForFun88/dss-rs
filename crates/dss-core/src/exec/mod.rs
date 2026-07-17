@@ -58,6 +58,7 @@ mod diakoptics;
 mod distribute;
 mod get_cmd;
 mod helpers;
+mod json_import;
 mod make_pos_seq;
 mod plot;
 mod pstcalc;
