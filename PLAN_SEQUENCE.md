@@ -34,7 +34,9 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               parallel porting branches inherited it. Ran FIRST post-acceptance:
                               freshest porting context, avoided double-touching code DE_PASCALIZE
                               would refactor, and lets Stage F pin r4133-parity (not r3723).
- 5. DE_PASCALIZE_PLAN.md      IN PROGRESS (wave 1 merged 2026-07-17: R0 + P1-partial +
+ 5. DE_PASCALIZE_PLAN.md      PAUSED by user 2026-07-17 after wave 1; wave-2 WIP
+                              salvaged to origin branches wt-p5a/wt-p1b/wt-p1213
+                              (R1 not started). Wave 1 merged 2026-07-17: R0 + P1-partial +
                               P2 + P6, all [A]/bit-neutral, parallel worktrees + opus
                               audits; records docs/phase-records/depascalize-*.md).
                               Parts I–III [A] (arenas/enums/de-indexing, bit-neutral,
