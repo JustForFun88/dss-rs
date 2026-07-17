@@ -313,13 +313,15 @@ fn windings_fixture() -> Dss {
     dss
 }
 
-/// Assert `actual` (f32 monitor channel) is within a magnitude-scaled band of
-/// the pinned oracle value (dss-python 0.15.7 f32 `Channel`). Not a loosened
-/// tolerance: the band is the f32 quantization floor (`~1.2e-7` rel) plus a
-/// small faer-vs-KLU last-ulp margin.
+/// Assert `actual` (f32 monitor channel) is within the proven Rust↔oracle floor
+/// of the pinned oracle value (dss-python 0.15.7 f32 `Channel`). Not a loosened
+/// tolerance — the band is the measured floor across all pinned channels
+/// (empirically ≤4.7e-7 abs / ≤2.5e-8 rel): a `1e-6` absolute term dominated by
+/// the 6-decimal-place printing of the pinned literals (whose own rounding is
+/// ≤5e-7), plus a `1e-7` relative term (~1.7 f32 ulps of faer-vs-KLU margin).
 fn close(actual: f32, expected: f64, what: &str) {
     let a = actual as f64;
-    let allowed = 1e-3 + 5e-5 * expected.abs();
+    let allowed = 1e-6 + 1e-7 * expected.abs();
     assert!(
         (a - expected).abs() <= allowed,
         "{what}: {a} vs {expected} (|diff|={:.3e} > {allowed:.3e})",
