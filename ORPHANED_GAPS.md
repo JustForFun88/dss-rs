@@ -54,10 +54,15 @@ Distinct from **§2 owned deferrals** (a live plan tracks them — do NOT re-por
 - **To do:** port the newer cadence, then promote `IEEE118Bus`. **This is genuinely a new UPGRADE rung** (adopting a behavior *past* r4133-as-shipped). **Priority: low**, and note it moves the parity target.
 
 ### 1.7 UPFC control modes 2/3/5
-- **Deferred by:** Phase 7 / UPGRADE (budget-parked; STATUS standing-follow-up).
-- **Spec:** `UPFC.pas` — the mode dispatch (`Mode` 1..5). Only the ported subset works today.
-- **Current state:** `crates/dss-core/src/elements/pc/upfc/` (grep the `mode` dispatch; modes 2/3/5 unhandled). No corpus deck exercises them.
-- **To do:** port the missing UPFC modes + a `controls/upfc` deck per mode; gate vs the oracle. **Priority: low** (no corpus case demands it).
+**PORTED 2026-07-18** on `og17-upfc-modes` — see STATUS. The mode dispatch
+(0..5) was already implemented in `crates/dss-core/src/elements/pc/upfc/compute.rs`
+(GetOutputCurr/GetInputCurr/CheckStatus/CalcUPFCPowers cover all six modes); the
+gap was the missing test surface. Added three live corpus decks under
+`tests/corpus/controls/upfc/` (`upfc_statcom.dss` = mode 2, `upfc_dual.dss` =
+mode 3, `upfc_doubleref_dual.dss` = mode 5), each GAPS §3-proven (pin
+solves+converges; two-process bit-identical; feature-sensitive), registered in
+the controls manifest + `CONTROLS_REQUIRED` floor, gated vs the pinned oracle
+(full model + all 14 UPFC state variables).
 
 ### 1.8 UTF-8 BOM residual edge cases *(minor)*
 - **Deferred by:** final acceptance / GAPS ("GAPS follow-up"; GAPS is now closed).
