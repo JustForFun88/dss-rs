@@ -1,7 +1,7 @@
 //! `RecalcElementData`, `ResetIt`, and the per-mode header construction
 //! (`ClearMonitorStream` plus the general V/I header for modes 0/1).
 
-use super::{MAGNITUDEMASK, MODEMASK, Monitor, NUM_SOLUTION_VARS, POSSEQONLYMASK, SEQUENCEMASK};
+use super::{Monitor, MonitorBaseMode, NUM_SOLUTION_VARS};
 use crate::elements::meter::meter_element::MeteredKind;
 
 impl Monitor {
@@ -28,22 +28,28 @@ impl Monitor {
         };
 
         // Mode-specific element-class validation (Monitor.pas l.539).
-        let class_error = match self.mode & MODEMASK {
-            2 | 8 | 10 if snap.kind != MeteredKind::Transformer => {
+        let class_error = match self.mode.base {
+            MonitorBaseMode::Tap
+            | MonitorBaseMode::TransformerWindingCurrents
+            | MonitorBaseMode::TransformerWindingVoltages
+                if snap.kind != MeteredKind::Transformer =>
+            {
                 Some(format!("{} is not a transformer!", snap.full_name))
             }
             // Pascal mode 3 checks BASECLASSMASK = PC_ELEMENT, so Storage (a PC
             // element carrying its own `MeteredKind` for the mode-7 check) passes.
-            3 if !matches!(snap.kind, MeteredKind::PcElement | MeteredKind::Storage) => {
+            MonitorBaseMode::StateVars
+                if !matches!(snap.kind, MeteredKind::PcElement | MeteredKind::Storage) =>
+            {
                 Some(format!(
                     "{} must be a power conversion element (Load or Generator)!",
                     snap.full_name
                 ))
             }
-            6 if snap.kind != MeteredKind::Capacitor => {
+            MonitorBaseMode::CapacitorSteps if snap.kind != MeteredKind::Capacitor => {
                 Some(format!("{} is not a capacitor!", snap.full_name))
             }
-            7 if snap.kind != MeteredKind::Storage => {
+            MonitorBaseMode::Storage if snap.kind != MeteredKind::Storage => {
                 Some(format!("{} is not a storage device!", snap.full_name))
             }
             _ => None,
@@ -101,14 +107,13 @@ impl Monitor {
         let nphases = self.med.cd.nphases;
         let nconds = self.med.cd.nconds;
         let snap = self.med.metered_snap.clone().unwrap_or_default();
-        let mode_mask = self.mode & MODEMASK;
 
-        match mode_mask {
-            2 => {
+        match self.mode.base {
+            MonitorBaseMode::Tap => {
                 self.record_size = 1;
                 self.header.push("Tap (pu)".into());
             }
-            3 => {
+            MonitorBaseMode::StateVars => {
                 // Pascal `ClearMonitorStream` mode 3 (Monitor.pas l.727-731):
                 // RecordSize := Length(StateBuffer) (= NumVariables), then
                 // Header.Add(VariableName(i)) for i := 1 to RecordSize.
@@ -117,14 +122,14 @@ impl Monitor {
                     self.header.push(name.clone());
                 }
             }
-            4 => {
+            MonitorBaseMode::Flicker => {
                 self.record_size = 2 * nphases;
                 for i in 1..=nphases {
                     self.header.push(format!("Flk{i}"));
                     self.header.push(format!("Pst{i}"));
                 }
             }
-            5 => {
+            MonitorBaseMode::SolutionVars => {
                 self.record_size = NUM_SOLUTION_VARS;
                 for s in [
                     "TotalIterations",
@@ -143,13 +148,13 @@ impl Monitor {
                     self.header.push(s.into());
                 }
             }
-            6 => {
+            MonitorBaseMode::CapacitorSteps => {
                 self.record_size = snap.num_steps;
                 for i in 1..=self.record_size {
                     self.header.push(format!("Step_{i}"));
                 }
             }
-            7 => {
+            MonitorBaseMode::Storage => {
                 self.record_size = 5;
                 for s in [
                     "kW output",
@@ -161,7 +166,8 @@ impl Monitor {
                     self.header.push(s.into());
                 }
             }
-            8 | 10 => {
+            MonitorBaseMode::TransformerWindingCurrents
+            | MonitorBaseMode::TransformerWindingVoltages => {
                 let nw = snap.num_windings;
                 self.record_size = 2 * nw * nphases;
                 for i in 1..=nphases {
@@ -171,12 +177,12 @@ impl Monitor {
                     }
                 }
             }
-            9 => {
+            MonitorBaseMode::Losses => {
                 self.record_size = 2;
                 self.header.push("watts".into());
                 self.header.push("vars".into());
             }
-            11 => {
+            MonitorBaseMode::AllTerminalVI => {
                 let yorder = snap.yorder;
                 self.record_size = 2 * 2 * yorder;
                 for j in 1..=snap.nterms {
@@ -192,7 +198,7 @@ impl Monitor {
                     }
                 }
             }
-            12 => {
+            MonitorBaseMode::LineToLineVoltages => {
                 let np = snap.nphases;
                 self.record_size = 2 * ((np * snap.nterms) + snap.yorder);
                 // Phase-pair map (LL): 1->2, 2->3, ..., np->1.
@@ -217,12 +223,12 @@ impl Monitor {
 
     /// The general V/I header (modes 0/1) with the ±16/±32/±64 modifiers.
     fn clear_general_header(&mut self, nphases: usize, nconds: usize) {
-        let is_pos_seq = (self.mode & SEQUENCEMASK) > 0 && nphases == 3;
+        let is_pos_seq = self.mode.sequence && nphases == 3;
         let num_vi = if is_pos_seq { 3 } else { nconds };
-        let is_power = (self.mode & MODEMASK) == 1;
+        let is_power = self.mode.base == MonitorBaseMode::Power;
 
-        match self.mode & (MAGNITUDEMASK + POSSEQONLYMASK) {
-            32 => {
+        match (self.mode.magnitude, self.mode.posseq_only) {
+            (true, false) => {
                 self.record_size = num_vi;
                 if !is_power {
                     self.record_size += num_vi;
@@ -251,7 +257,7 @@ impl Monitor {
                     }
                 }
             }
-            64 => {
+            (false, true) => {
                 self.record_size = 2;
                 if !is_power {
                     self.record_size += 2;
@@ -272,7 +278,7 @@ impl Monitor {
                     self.header.push("Q1 (kvar)".into());
                 }
             }
-            96 => {
+            (true, true) => {
                 self.record_size = 1;
                 if !is_power {
                     self.record_size += 1;
@@ -284,7 +290,7 @@ impl Monitor {
                     self.header.push("P1 (kW)".into());
                 }
             }
-            _ => {
+            (false, false) => {
                 self.record_size = num_vi * 2;
                 let (i_min, i_max) = if is_pos_seq {
                     (0, num_vi - 1)
