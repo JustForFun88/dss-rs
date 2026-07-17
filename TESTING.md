@@ -17,8 +17,17 @@ cargo test --workspace
 `cargo test` runs everything below except the opt-in EPRI channel. The pinned
 dss-python oracle (`tools/golden/PIN.txt`, 0.15.7 / dss_capi 0.14.5) **must be
 installed** — the live gate calls it in-process and fails (not skips) without
-it. Nothing here has an `#[ignore]` or an env gate that could green on zero
-matches.
+it. No test that **participates** in the gate can green on zero matches or
+silently skip: the corpus/family gates assert a non-empty, count-locked
+population (`population_lock.rs`, `*_manifest_is_complete`, `solvable_now_has_multistep_depth`),
+and the live comparison fails (not skips) if the oracle is absent. The gate
+carries exactly **two** ignored items, both non-gating and deliberate: one
+`#[ignore]`d diagnostic (`adiakoptics::ckt24_graph_diagnostic` — a `.graph`
+inventory probe, run with `--ignored`, pending the WP-AD.5 driver) and one
+illustrative ` ```ignore ` doctest (the `define_properties!` macro-DSL snippet
+in `obj/props/mod.rs`, which cannot compile standalone). The `DSS_LIVE_*` /
+`DSS_EXPENSIVE_TESTS` / `DSS_AD_*` env knobs below are opt-in **diagnostics**
+outside the gate — they print `SKIPPED` when unset and never gate a commit.
 
 The dev/test profile carries `opt-level = 3` overrides for the engine crates
 and all dependencies (workspace `Cargo.toml`): the live gate runs
@@ -59,7 +68,18 @@ names were retired 2026-07-07 — see the STATUS.md rename map):
 | `checkpoints/` | `gen_checkpoints.py` | `golden_checkpoints.rs` | per-step assembled model (Y, YPrim, injection, discrete state) |
 | `plot_callback/` | `gen_plot_callback.py` | `golden_plot_callback.rs` | `Plot`/`Visualize` callback `plotParams` JSON payload (captured via the oracle's `DSS_RegisterPlotCallback`; structural compare, numbers by tolerance) |
 | `props/` | `gen_props.py` | `props_roundtrip.rs` | per-class property round-trip |
+| `cim/` | `gen_cim.py` | `golden_cim.rs` | CIM/XML export round-trip |
+| `ncim/` | `gen_ncim_reports.py` | `ncim_reports.rs` | NCIM Jacobian/deltaF/deltaZ/PV2PQ reports (vs capi015 oracle) |
+| `inc_matrix/` | `gen_inc_matrix.py` | `inc_matrix_reports.rs` | incidence/BusLevel/Laplacian reports |
+| `flicker/` | `gen_flicker.py` | `golden_flicker.rs` | Pst flicker meter |
+| `pstcalc/` | `gen_pstcalc.py` | `golden_pstcalc.rs` | IEC Pst calculator |
+| `json/` | `gen_json.py` | `golden_json.rs` | AltDSS JSON export (`DSSElement_ToJSON`/`ToJSON`) byte goldens |
+| `adiakoptics/` | in-test (`DSS_REGEN_AD_GOLDEN=1`) | `adiakoptics.rs` | A-Diakoptics init/solve matrices (ZLL/ZCC/Y4) |
 | `ieee*.json`, `slice`, `allocation`, `autoadd_reduce`, `gendispatcher`, `ieee8500`, `reliability`, `parser` | `generate.py` / `gen_<name>.py` | `golden_smoke.rs`, `golden_feeders_controls.rs`, `golden_slice.rs`, … | named feeders / features |
+
+(The capi015/r4133 props goldens — `gen_bh_capi015.py`, `gen_regcontrol_capi015.py`,
+`gen_fuse_r4133.py` — regenerate individual `props/` captures against the Oddie
+oracle; `gen_help_catalog.py` pins the `help` catalog. They share `props_roundtrip.rs`.)
 
 The three `der_controls` / `line_constants` / `harmonics` gates share one
 replay engine, `tests/harness/scenario.rs::check_family`.
@@ -152,6 +172,11 @@ property-table allowlist (shape relaxation)".
 | `DSS_ORACLE_ENGINE`, `DSS_OPENDSS_REV`, `DSS_OPENDSS_DLL`, `DSS_OPENDSS_EXPECT` | oracle_server | select/point the EPRI engine (see `tools/opendss/README.md`) |
 | `DSS_OPENDSS_PYTHON` | corpus_live / ab_compare | the separate Oddie venv interpreter |
 | `DSS_UPDATE_POPULATION_LOCK` | population_lock | `1` → rewrite `population.lock.json` from the current manifests (deliberate regen) |
+| `DSS_LIVE_PROPS` | corpus_live | `1` → opt-in all-property parity sweep over the corpus (diagnostic; prints `SKIPPED` unset) |
+| `DSS_LIVE_PROPS_MAX` | corpus_live | cap the `DSS_LIVE_PROPS` sweep at `<n>` cases |
+| `DSS_EXPENSIVE_TESTS` | adiakoptics | `1` → run the 168-step (yearly) A-Diakoptics time-series variant instead of daily-24 |
+| `DSS_REGEN_AD_GOLDEN` | adiakoptics | `1` → rewrite the committed A-Diakoptics matrix golden (deliberate regen) |
+| `DSS_AD_CLASSIFY`, `DSS_AD_DECOMPOSE` | corpus_live | throwaway A-Diakoptics triage probes (classify off-tier decks / split the AD-vs-normal gap into save+stitch legs) |
 
 ## Procedures
 
