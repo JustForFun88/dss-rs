@@ -1,5 +1,5 @@
 {
- "comment": "WP-AD.4 A-Diakoptics disposition overlay: one disposition per solvable_now.json entry point (bijective; corpus_ad_matches_normal_mode enforces it rust-vs-rust). ad = full|pf|off:<specific-reason>. Every disposition is evidence-backed by the empirical AD-init + AD-vs-normal snapshot-gap probe (DSS_AD_CLASSIFY=1); every ad-* deck was split into the D7 two legs (DSS_AD_DECOMPOSE: leg1=save round-trip orig-normal vs inter-normal, leg2=AD proper inter-normal vs AD) to attribute the gap. off reason classes: non-3ph-cut-only (D5 ZLL: only cut candidates are non-3-phase lines/transformers); too-small (Tear_Circuit cannot form two connected >=2-bus zones); already-torn-artifact (a pre-torn Torn_Circuit/zone master); mode-outside-AD-scope (dynamics/harmonics/faultstudy/monte/LD - AD is a snapshot/direct/time-series power-flow accelerator); save-roundtrip-{geometry,relpath,userdll,regxfmr,autotrans,relay} (the AD save+reload of Master_Interconnected.dss loses fidelity - the D7 ROUND-TRIP leg1, a save-circuit gap NOT an AD gap: the decomposition proves the AD leg proper (leg2) is CLEAN while leg1 carries the whole gap, e.g. the distance-relay decks leg1=2.4e3 / leg2=2.3e-15, IEEE13 leg1=5.9e-2 / leg2=1.6e-6; the autotrans decks have leg1>>1 so the save is the dominant proven defect and leg2 is measured against a corrupt baseline). The remaining ad-* classes are UPSTREAM A-Diakoptics limitations, NOT dss-rs port bugs (root-caused in the WP-AD.4 closing round + settle, ad-bugs branch): each topology makes Tear_Circuit isolate a zone with no adequate in-zone voltage reference, so the child hY is singular/near-singular and the boundary stitch is solver-dependent. Shown upstream by driving OFFICIAL r3723 AD via the Oddie bridge on the IDENTICAL cut (child cut extracted from our engine link_branches, forced with set LinkBranches + UseMyLinkBranches) for SIX class representatives - on every one official OpenDSS AD fails the same or worse (no convergence / >10x over-voltage / a hang on the singular zone). The magnitudes are ill-conditioned near-singular blow-ups: reproducible on the reference box but environment-sensitive across hosts, so the invariant is the CHARACTER not the exact number. Remaining class members are inferred from the shared mechanism, not individually driven - the per-deck official-AD replay is the tracked WP-AD.5 task, not a wontfix. Kept off the gate because there is no correct AD answer on either engine (STATUS section 1 has the evidence table + reproduction recipe). Classes: ad-regulator-divergence (delta-only/partial-phase load bus, no ground path -> singular child Y: ODRegTest cut Line.l2 ours ~1.5e15 @ loadbus / official r3723 2.9e16 @ loadbus conv=False; TestDDRegulator cut Line.line2 floating phases 2,3 -> exactly singular, ours 0.88 @ regbus3.4, official AD-init succeeds then the final AD solve HANGS - neither engine yields a usable AD answer); ad-switched-divergence (meshed or open-switch: a single link cut cannot separate a mesh - civanlar bus1 wrong on both engines; open switches strand a regulator boundary - IEEE123Switches cut Line.l58 ours 19.5 / official 42.6kV on a 2.4kV system conv=False; SecPar meshed secondary); ad-islanded-divergence (GFM/GFL microgrid island driven only by PC current injection, no in-zone Y reference - GFM_IEEE123 family; the one ISource deck Microgrid/ISource cut Line.650632 is subtler: the ISource island 675/692 is determinate and correct on both engines, the AD gap lives in the torn main-feeder xfmr-secondary zone 632/634/671, ours total 0.66 @ 634.1 MILDER than official same-cut AD 13.4 @ 634.1 - kept here by deck type); ad-nonconvergent (GFM/GFL island singular enough that AD init/solve does not converge - our engine refuses init, official r3723 blows up); ad-floor-above-tier (genuine long-radial stitch floor just above AD_SWEEP_TIER, IEEE34Mod1 leg2=2.1e-3 - NOT tolerance-widened per section 5). oracle names an EPRI rev for the D9(d) named cases.",
+ "comment": "WP-AD.4 A-Diakoptics disposition overlay: one disposition per solvable_now.json entry point (bijective; corpus_ad_matches_normal_mode enforces it rust-vs-rust). ad = full|pf|off:<specific-reason>. Every disposition is evidence-backed by the empirical AD-init + AD-vs-normal snapshot-gap probe (DSS_AD_CLASSIFY=1); every ad-* deck was split into the D7 two legs (DSS_AD_DECOMPOSE: leg1=save round-trip orig-normal vs inter-normal, leg2=AD proper inter-normal vs AD) to attribute the gap. off reason classes: non-3ph-cut-only (D5 ZLL: only cut candidates are non-3-phase lines/transformers); too-small (Tear_Circuit cannot form two connected >=2-bus zones); already-torn-artifact (a pre-torn Torn_Circuit/zone master); mode-outside-AD-scope (dynamics/harmonics/faultstudy/monte/LD - AD is a snapshot/direct/time-series power-flow accelerator); save-roundtrip-{geometry,relpath,userdll,regxfmr,autotrans,relay} (the AD save+reload of Master_Interconnected.dss loses fidelity - the D7 ROUND-TRIP leg1, a save-circuit gap NOT an AD gap: the decomposition proves the AD leg proper (leg2) is CLEAN while leg1 carries the whole gap, e.g. the distance-relay decks leg1=2.4e3 / leg2=2.3e-15, IEEE13 leg1=5.9e-2 / leg2=1.6e-6; the autotrans decks have leg1>>1 so the save is the dominant proven defect and leg2 is measured against a corrupt baseline). The remaining ad-* classes are UPSTREAM A-Diakoptics limitations, NOT dss-rs port bugs (root-caused in the WP-AD.4 closing round + settle, ad-bugs branch): each topology makes Tear_Circuit isolate a zone with no adequate in-zone voltage reference, so the child hY is singular/near-singular and the boundary stitch is solver-dependent. Shown upstream by driving OFFICIAL r3723 AD via the Oddie bridge on the IDENTICAL cut (child cut extracted from our engine link_branches, forced with set LinkBranches + UseMyLinkBranches) for SIX class representatives - on every one official OpenDSS AD fails the same or worse (no convergence / >10x over-voltage / a hang on the singular zone). The magnitudes are ill-conditioned near-singular blow-ups: reproducible on the reference box but environment-sensitive across hosts, so the invariant is the CHARACTER not the exact number. Remaining class members are inferred from the shared mechanism, not individually driven - the per-deck official-AD replay is the tracked WP-AD.5 task, not a wontfix. Kept off the gate because there is no correct AD answer on either engine (STATUS section 1 has the evidence table + reproduction recipe). Classes: ad-regulator-divergence (delta-only/partial-phase load bus, no ground path -> singular child Y: ODRegTest cut Line.l2 ours ~1.5e15 @ loadbus / official r3723 2.9e16 @ loadbus conv=False; TestDDRegulator cut Line.line2 floating phases 2,3 -> exactly singular, ours 0.88 @ regbus3.4, official AD-init succeeds then the final AD solve HANGS - neither engine yields a usable AD answer); ad-switched-divergence (meshed or open-switch: a single link cut cannot separate a mesh - civanlar bus1 wrong on both engines; open switches strand a regulator boundary - IEEE123Switches cut Line.l58 ours 19.5 / official 42.6kV on a 2.4kV system conv=False; SecPar meshed secondary); ad-islanded-divergence (GFM/GFL microgrid island driven only by PC current injection, no in-zone Y reference - GFM_IEEE123 family; the one ISource deck Microgrid/ISource cut Line.650632 is subtler: the ISource island 675/692 is determinate and correct on both engines, the AD gap lives in the torn main-feeder xfmr-secondary zone 632/634/671, ours total 0.66 @ 634.1 MILDER than official same-cut AD 13.4 @ 634.1 - kept here by deck type); ad-nonconvergent (GFM/GFL island singular enough that AD init/solve does not converge - our engine refuses init, official r3723 blows up); ad-floor-above-tier (genuine long-radial stitch floor just above AD_SWEEP_TIER, IEEE34Mod1 leg2=2.1e-3 - NOT tolerance-widened per section 5). oracle names an EPRI rev for the D9(d) named cases. WP-T2 A-Diakoptics classification round (2026-07-17, DSS_AD_CLASSIFY + DSS_AD_DECOMPOSE, evidence in docs/phase-records/test-triage-ad-classify.md): the 9 `off:unclassified-new-deck` placeholders retired to measured verdicts. Promoted 3 to `pf` (GFM_IEEE8500/Master{,-unbal}, 8500-Node/Master-unbal - plain 8500 feeders, AD-vs-normal gap ~7e-6). Classified: indmachtest/Master `ad-floor-above-tier` (decompose leg1 save 6.3e-5 clean / leg2 AD 2.47e-3 just above the 2e-3 tier @ neutral B1.4); StevensonPflow-3ph `ad-switched-divergence` (5-bus mesh, AD-init OK but AD-solve non-convergent, reduction 0%/imbalance 80% - single link cut cannot separate a mesh, civanlar mechanism); StevensonPflow `non-3ph-cut-only` (1-phase pos-seq, AD-init fails Building ZLL - no 3-phase link); Kersting4wire_{Lagging,Leading} `ad-singular-zone` (normal solve fine, AD arm panics on the singular zone-matrix assertion row<n && col<n, identical to NEV); IEEE 30 Bus/Master `too-small` (meshed transmission, AD sub-system cannot be compiled, same circuit + verdict as Run_IEEE30). The `unclassified-new-deck` reason stays in AD_OFF_REASONS: still carried by the asymmetric/controls/modes family manifests (out of scope here).",
  "cases": [
   {
    "path": "Test/AutoTrans/Auto1bus-step1.dss",
@@ -1135,39 +1135,39 @@
   },
   {
    "path": "Test/indmachtest/Master.DSS",
-   "ad": "off:unclassified-new-deck"
+   "ad": "off:ad-floor-above-tier"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss",
-   "ad": "off:unclassified-new-deck"
+   "ad": "pf"
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss",
-   "ad": "off:unclassified-new-deck"
+   "ad": "pf"
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss",
-   "ad": "off:unclassified-new-deck"
+   "ad": "off:ad-switched-divergence"
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
-   "ad": "off:unclassified-new-deck"
+   "ad": "off:non-3ph-cut-only"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Lagging.dss",
-   "ad": "off:unclassified-new-deck"
+   "ad": "off:ad-singular-zone"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss",
-   "ad": "off:unclassified-new-deck"
+   "ad": "off:ad-singular-zone"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss",
-   "ad": "off:unclassified-new-deck"
+   "ad": "pf"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss",
-   "ad": "off:unclassified-new-deck"
+   "ad": "off:too-small"
   }
  ]
 }
