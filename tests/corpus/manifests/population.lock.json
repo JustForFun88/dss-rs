@@ -11,7 +11,7 @@
   },
   "family_counts": {
     "asymmetric": 47,
-    "controls": 104,
+    "controls": 105,
     "modes": 69
   },
   "family_paths": {
@@ -167,6 +167,7 @@
       "upfc/upfc_doubleref.dss",
       "upfc/upfc_doubleref_dual.dss",
       "upfc/upfc_dual.dss",
+      "upfc/upfc_dual_daily.dss",
       "upfc/upfc_statcom.dss",
       "upfc/upfc_vreg.dss"
     ],
