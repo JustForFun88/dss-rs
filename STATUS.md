@@ -7,7 +7,65 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-17 — **DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
+Last updated: 2026-07-17 (evening) — **TEST-TRIAGE ROUND MERGED** (user-ordered
+backlog burn-down; six parallel worktree WPs, each gate-green + audited/verified,
+merged wt-t1→t2→t3→t4→t6; DE_PASCALIZE is PAUSED by user order after wave 1 —
+wave-2 WIP salvaged to origin as `wt-p5a`/`wt-p1b`/`wt-p1213`, R1 not started).
+Records: `docs/phase-records/test-triage-{promotions,ad-classify,monitor-windings,indmach,infra-audit}.md`.
+- **Stale-skip promotions (wt-t1).** Kundur2Area NCIM → `solvable_now`
+  (`oracle:"capi015"`, kind large; §1.7 two-process bit-identical; Rust matches
+  capi015 to 0 on all 33 nodes; warm 1 iter == oracle). **IEEE118Bus NOT
+  promoted** — the earlier "port converges" read was a stalled iterate
+  (`is_solved=false`); Rust reproduces capi015's NCIM non-convergence
+  **byte-identically** (both stall at identical voltages, 100 iters) while EPRI
+  r4088/r4133 converge (2 iters) via their newer NCIM PV→PQ switching cadence —
+  the documented report-only DIVERGENCES item; re-tagged
+  `ncim_pv_pq_switching_divergence` (future rung adopts the cadence). WindGen
+  GFLDaily ×2: #263 block was stale (WindGen ported) but both decks are
+  multi-step → blocked by the capi015 per-step re-nominalization limit;
+  re-noted honestly. `solvable_now` 292→293; lock regenerated.
+- **AD classify round (wt-t2).** The 9 `off:unclassified-new-deck` entries in
+  `ad_sweep.json` got measured verdicts via DSS_AD_CLASSIFY/DECOMPOSE: 3 → `pf`
+  (both 8500-Node masters + GFM twin; gaps ~7e-6 ≪ tier), 6 → measured `off:`
+  reasons (indmachtest `ad-floor-above-tier` leg2=2.469e-3; StevensonPflow-3ph
+  `ad-switched-divergence` mesh; StevensonPflow `non-3ph-cut-only` pos-seq;
+  Kersting4wire ×2 `ad-singular-zone` panic-probed; IEEE30 `too-small`). Bucket
+  emptied for ad_sweep (family manifests keep their separate follow-up round).
+- **Monitor modes 8/10/12 — PORTED (wt-t3).** The deferred TakeSample bodies
+  (winding currents / winding voltages / line-line V, Pascal `Monitor.pas`
+  1:1) — the panic path is gone. New pinned golden `monitor_windings` (0.14.5
+  oracle via `gen_metering_monitors.py`), unit pins in `exec/tests/monitors.rs`;
+  audit settlement TIGHTENED the unit close() band 1e-3→1e-6+1e-7·|x| (measured
+  floor ≤4.7e-7). Mode-12 upstream terminal-currents UB documented in
+  `investigations/monitor_mode12_terminal_currents_ub.md` (local, gitignored).
+- **InductionMachine r4133 — VERDICT: INTENTIONAL breaking change (wt-t4,
+  fable-xhigh investigation, adversarially CONFIRMED).** The r4133 fuse
+  overhaul (CurveMultiplier is the TCC divisor; RatedCurrent demoted to
+  nameplate, NO legacy fallback; default curve none) is announced in the 11.0
+  release notes, executed coherently across all four protection classes + COM
+  API. Physics: Fuse.f2 carries ~53.5 A ≈ 0.82× of the 65 A link (holds, sound
+  transformer-primary fusing) but 53.5 multiples under divisor 1.0 → blows at
+  Sec=0 → island → non-convergence; EPRI shipped their own example un-migrated.
+  Port keeps r4133 parity (no DIVERGENCES entry — nothing diverges). **Equivalent
+  coverage added:** corpus twins `controls/fuse/indmach_r4133/{indmach_snap,
+  indmach_dyn}.dss` (single edit `CurveMultiplier=65`, restores the exact
+  r4088-era coordination incl. the full relay/recloser fault sequence),
+  `oracle:"r4133"`, §1.7-validated, live-gated in the mandatory gate; originals
+  stay parked as SETTLED. Harness: `compare_monitor` gained the **proven
+  f32-ULP floor** (+ its angular image) — decomposition-proven (99.25% of
+  490k-sample diffs are exactly 1 ulp at 2.8e-11 rel f64; TOLERANCE_NOTES
+  §monitor-f32-floor); this is a floor-proof band, not a widening.
+- **EPRI DLL crash repros.** All four #303 crash classes bisected to minimal
+  repro decks + Delphi-source suspects:
+  `investigations/epri_dll_crashes_r4088_r4133.md` (local). Upstream-binary
+  bugs; port-side correctness re-affirmed; nothing to fix in the port.
+- **Test-infra audit (wt-t6).** TESTING.md + TOLERANCE_NOTES synced to the
+  tree; findings + dispositions in
+  `docs/phase-records/test-triage-infra-audit.md`.
+- Gate after merges: fmt/clippy clean, `cargo +stable test --workspace` exit 0;
+  population.lock consistency re-proven by deliberate regen (no diff).
+
+**Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),
 merged into `update` in that order (final merge `e7cfc1e`). UPGRADE_PLAN is
@@ -1792,9 +1850,8 @@ harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `m
   §UPGRADE; C5-r3723 settled not-a-delta). This list entry is retired.
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — now floored as
   ultra-switch conditioning (CF-D), watch on re-touch.
-- **Monitor modes 8/10/12** (winding I/V, LL) have a deferred stub sample body
-  (`sample.rs` `_ => return`) while `header.rs` declares `record_size` → a monitor
-  using them PANICS (OOB in `channel()`); uncovered pending the monitor-winding port.
+- ~~Monitor modes 8/10/12 panic stub~~ — PORTED + golden-gated (test-triage
+  wt-t3, 2026-07-17); entry retired.
 - **UPFC modes 2/3/5**, `midi_relay_dist` deferred (budget); Kersting4wire #567
   UserModel decks parked (no oracle channel tolerates the DoSimpleMsg).
 - **actor / parallel mode** + `CapControl.ControlSignal` + UTF-8-BOM edge cases —
