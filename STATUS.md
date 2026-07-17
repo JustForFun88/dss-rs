@@ -171,6 +171,25 @@ checkPF at max-control-iterations) and tol1≥0.005 to settle both deadbands —
 non-convergence the pre-existing `upfc_vreg` note warned about. No engine code
 changed.
 
+**Settle round (2026-07-18, two audits).** Both audits confirmed the engine port is
+faithful (all 6 modes loop-for-loop) with no regressions/simplifications and the
+decks feature-sensitive vs the pinned oracle. The single substantive finding (both
+audits, minor): the three new decks are all snapshot (`n_steps:1`), so the brief's
+"multi-step solve if the mode has temporal state" clause was not literally met even
+though UPFC carries genuine cross-step `Sr0/Sr1` shift-register state. **Closed** by
+adding a fourth deck `upfc_dual_daily.dss` (mode 3, `n_steps:4`, daily loadshape
+0.7/1.0/1.25/0.9): the load ramps each hour so the UPFC re-regulates from the
+`Sr0/Sr1` carried over from the prior step. The cross-step channel is proven — at
+step1 the dual series deadband does not re-fire so `Sr0` stays at the step0 value
+(79.40,-261.23) while mode=1 on the same feeder moves `Sr0` to (111.26,-328.50);
+the persisted `Sr0` is exactly the cross-step divergence a snapshot cannot reach.
+GAPS §3-proven (4 steps converge 22/16/26/24 iters; two-process bit-identical;
+mode 1/0 feature-sensitivity per step); `compare_variables:[UPFC.test]` all 14 vars
++ full model compared PER STEP; `controls_cases_match_oracle` green. Second finding
+(untracked `GFM_IEEE8500/IEEE8500u_VLN_Node.txt` solve byproduct) was a pre-declared
+unrelated GFM output, not part of this WP's diff — removed from the worktree to keep
+`tests/corpus` pristine; nothing to commit there.
+
 ### Standing open follow-ups (actionable)
 
 **Carried-forward handoffs — work a *declared-complete* plan deferred to a
