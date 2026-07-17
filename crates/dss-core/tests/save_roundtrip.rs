@@ -352,6 +352,224 @@ fn save_roundtrip_ieee13_lineandcablespacing() {
     round_trip("ie13lcs", corpus("Test/IEEE13_LineAndCableSpacing.dss"));
 }
 
+/// `Save circuit` round-trip over a **protection-heavy** deck (WP-U2.5): a
+/// Relay + Recloser + Fuse + SwtControl, each carrying r4133-surface property
+/// values — renamed props (`PhCurve`/`PhFastCurve`/`CurveMultiplier`), the new
+/// r4133 props (`SinglePhTrip`/`SinglePhLockout`/`Lock`/`RatedCurrent`/
+/// `InterruptingRating`), and the per-phase `Normal`/`State` arrays that render
+/// `[open, closed, closed, ]`. `Save` must serialize this surface such that OUR
+/// own parser re-reads the identical model (the WP8.5 round-trip convention).
+///
+/// The gate: snapshot **every** property of each control via `element_properties`
+/// (the byte-proven `?` surface), `save circuit`, `clear`, re-compile the emitted
+/// tree on our engine, and assert each control's full property list is unchanged
+/// (numeric-token compare — pins the renamed/new-prop names, values, and array
+/// renders through the Save→re-parse boundary). Node voltages + the discrete
+/// control decision are also compared. The r4133 property VALUES themselves are
+/// cross-checked against oddie:r4133 by the `oracle:"r4133"` controls decks +
+/// `props/*.json`; here we pin that `Save` does not drop or corrupt the r4133
+/// surface on the way out and back.
+#[test]
+fn save_roundtrip_protection() {
+    let out = scratch_dir("protection");
+    // A source → main line with Relay/Recloser/Fuse/SwtControl guarding branches.
+    // Pickups are set well above the small steady load currents so nothing trips
+    // (the round-trip pins Save *serialization* of the r4133 surface, not protection
+    // action — non-default `[open,..]` array parses are pinned by `props/*.json`).
+    // Built-in `tlink`/`A`/`D` TCC curves + one explicit phase curve.
+    let deck: &[&str] = &[
+        "clear",
+        "new circuit.prot basekv=12.47 bus1=src phases=3",
+        "~ r1=0.1 x1=0.4 r0=0.3 x0=1.2",
+        "new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.9 x0=1.8 c1=3 c0=1.5 units=km",
+        "new line.main bus1=src bus2=b1 linecode=lc length=1 units=km",
+        "new line.br1 bus1=b1 bus2=b2 linecode=lc length=0.5 units=km",
+        "new line.br2 bus1=b1 bus2=b3 linecode=lc length=0.5 units=km",
+        "new line.br3 bus1=b1 bus2=b4 linecode=lc length=0.5 units=km",
+        "new line.tie bus1=b1 bus2=b5 linecode=lc length=0.2 units=km",
+        "new tcc_curve.ph npts=4 c_array=[1 2 4 6] t_array=[10 2 0.5 0.1]",
+        "new load.l2 bus1=b2 phases=3 kv=12.47 kw=20 pf=0.95",
+        "new load.l3 bus1=b3 phases=3 kv=12.47 kw=15 pf=0.9",
+        "new load.l4 bus1=b4 phases=3 kv=12.47 kw=10 pf=0.92",
+        "new load.l5 bus1=b5 phases=3 kv=12.47 kw=5 pf=0.95",
+        // Relay (overcurrent) with renamed + new r4133 props. High pickups so it
+        // never trips on the steady load current.
+        "new relay.rel monitoredobj=line.br1 monitoredterm=1 type=current phcurve=ph \
+         oc_gndcurve=ph phpickup=5000 oc_gndpickup=5000 tdph=1.5 oc_tdgnd=1.1 \
+         definitetimedelay=0.1 mechanicaldelay=0.05 singlephtrip=yes singlephlockout=yes \
+         ratedcurrent=600 interruptingrating=10000",
+        // Recloser with fast/slow curves + pickups + new props.
+        "new recloser.rec monitoredobj=line.br2 monitoredterm=1 phfastcurve=A phslowcurve=D \
+         phfastpickup=5000 phslowpickup=5000 numfast=2 shots=3 singlephtrip=yes \
+         ratedcurrent=400 interruptingrating=8000",
+        // Fuse with r4133 curvemultiplier divisor + informational ratings.
+        "new fuse.fus monitoredobj=line.br3 monitoredterm=1 fusecurve=tlink \
+         curvemultiplier=2 ratedcurrent=65 interruptingrating=5000 delay=0.02",
+        // Tie switch (SwtControl) with the r4133 informational rating.
+        "new swtcontrol.sw switchedobj=line.tie switchedterm=1 ratedcurrent=300 normal=closed",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+        "solve",
+    ];
+    let controls = ["relay.rel", "recloser.rec", "fuse.fus", "swtcontrol.sw"];
+
+    let mut dss = Dss::new();
+    for c in deck {
+        dss.command(c);
+    }
+    assert!(
+        dss.errors().is_empty(),
+        "protection deck pre-save errors: {:?}",
+        dss.errors()
+    );
+    let (pre, pre_iter) = snapshot(&dss);
+    assert!(!pre.is_empty(), "no nodes pre-save");
+    let pre_props: Vec<(String, Vec<(String, String)>)> = controls
+        .iter()
+        .map(|el| {
+            (
+                el.to_string(),
+                dss.element_properties(el)
+                    .unwrap_or_else(|| panic!("{el} not found pre-save")),
+            )
+        })
+        .collect();
+
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        out.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "save errors: {:?}", dss.errors());
+    let emitted_master = out.join("Master.dss");
+    assert!(emitted_master.is_file(), "no Master.dss emitted");
+
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        emitted_master.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        dss.errors().is_empty(),
+        "re-compile of emitted protection tree errored: {:?}",
+        dss.errors()
+    );
+    dss.command("solve");
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "post-save solve errors: {:?}",
+        dss.errors()
+    );
+    let (post, post_iter) = snapshot(&dss);
+
+    // Every control's full r4133 property surface must round-trip through our own
+    // parser (renamed/new prop names + values + `[..]` array renders).
+    for (el, pre_list) in &pre_props {
+        let post_list = dss
+            .element_properties(el)
+            .unwrap_or_else(|| panic!("{el} missing after round-trip"));
+        assert_eq!(
+            pre_list.len(),
+            post_list.len(),
+            "{el}: property count changed across save round-trip ({} -> {})",
+            pre_list.len(),
+            post_list.len()
+        );
+        for ((pn, pv), (qn, qv)) in pre_list.iter().zip(&post_list) {
+            assert_eq!(pn, qn, "{el}: property name order changed ({pn} vs {qn})");
+            assert_prop_token_eq(pv, qv, &format!("{el}.{pn}"));
+        }
+    }
+
+    // Iteration count + node voltages round-trip (the physics is unaffected by the
+    // controls at snapshot, but a corrupted re-parse would perturb both).
+    assert_eq!(
+        pre_iter, post_iter,
+        "warm re-solve iteration count changed across protection save round-trip"
+    );
+    use std::collections::HashMap;
+    let post_map: HashMap<&str, (f64, f64)> = post
+        .iter()
+        .map(|(n, re, im)| (n.as_str(), (*re, *im)))
+        .collect();
+    assert_eq!(pre.len(), post.len(), "node count changed");
+    for (name, re, im) in &pre {
+        let &(qre, qim) = post_map
+            .get(name.as_str())
+            .unwrap_or_else(|| panic!("node {name} missing after round-trip"));
+        let mag = (re * re + im * im).sqrt().max(1e-9);
+        let d = ((qre - re).powi(2) + (qim - im).powi(2)).sqrt();
+        assert!(
+            d / mag <= 1e-6,
+            "node {name}: |dV|/|V|={:.3e} > 1e-6 across protection save round-trip",
+            d / mag
+        );
+    }
+
+    std::fs::remove_dir_all(&out).ok();
+}
+
+/// Numeric-token equality (WP8.1 skeleton compare): non-numeric structure exact,
+/// numbers within a tight relative floor. A Save→re-parse must reproduce a
+/// property string exactly modulo last-digit `%g` rendering.
+fn assert_prop_token_eq(a: &str, b: &str, ctx: &str) {
+    fn split(s: &str) -> (String, Vec<f64>) {
+        let mut skel = String::new();
+        let mut nums = Vec::new();
+        let bytes = s.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            let c = bytes[i];
+            let starts_num = c.is_ascii_digit()
+                || ((c == b'-' || c == b'+' || c == b'.')
+                    && i + 1 < bytes.len()
+                    && bytes[i + 1].is_ascii_digit());
+            if starts_num {
+                let mut end = i;
+                while end < bytes.len()
+                    && (bytes[end].is_ascii_digit()
+                        || matches!(bytes[end], b'.' | b'+' | b'-' | b'e' | b'E'))
+                {
+                    end += 1;
+                }
+                let mut e = end;
+                while e > i {
+                    if let Ok(v) = s[i..e].parse::<f64>() {
+                        nums.push(v);
+                        skel.push('#');
+                        i = e;
+                        break;
+                    }
+                    e -= 1;
+                }
+                if e == i {
+                    skel.push(c as char);
+                    i += 1;
+                }
+            } else {
+                skel.push(c as char);
+                i += 1;
+            }
+        }
+        (skel, nums)
+    }
+    let (sa, na) = split(a);
+    let (sb, nb) = split(b);
+    assert_eq!(sa, sb, "{ctx}: structure differs ({a:?} vs {b:?})");
+    assert_eq!(
+        na.len(),
+        nb.len(),
+        "{ctx}: number count differs ({a:?} vs {b:?})"
+    );
+    for (x, y) in na.iter().zip(&nb) {
+        assert!(
+            (x - y).abs() <= 1e-9 + 1e-9 * y.abs(),
+            "{ctx}: number differs ({x} vs {y}) in {a:?} vs {b:?}"
+        );
+    }
+}
+
 /// Collect the set of emitted files relative to `root`, using `/` separators.
 fn emitted_set(root: &std::path::Path) -> BTreeSet<String> {
     let mut set = BTreeSet::new();
