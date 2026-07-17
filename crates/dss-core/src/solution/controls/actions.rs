@@ -109,7 +109,7 @@ impl ControlActioner for Actioner<'_, '_> {
         &mut self,
         control: ElemRef,
         code: i32,
-        _proxy: i32,
+        proxy: i32,
         queue: &mut ControlQueue,
     ) {
         if self.failure.is_some() {
@@ -117,7 +117,7 @@ impl ControlActioner for Actioner<'_, '_> {
         }
         if let Err(e) = dispatch_control(
             control,
-            ControlOp::Action { code },
+            ControlOp::Action { code, proxy },
             self.ckt,
             self.env,
             queue,

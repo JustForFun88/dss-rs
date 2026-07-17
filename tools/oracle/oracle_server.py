@@ -106,6 +106,29 @@ def capture_all_elements(ckt, tolerate_user_model: bool = False) -> list:
     return out
 
 
+def capture_eventlog(d, ckt) -> list:
+    """The cumulative event log (`DSS.EventStrings`), as a list of lines.
+
+    The AltDSS **Oddie** bridge (official EPRI DLL) does NOT populate the
+    `Solution.EventLog` COM accessor — it always returns empty — even though the
+    engine records events (protection trips/recloses/etc.) and `export eventlog`
+    writes the real CSV. So for the Oddie engine we capture via that export and
+    read the CSV back; the pinned dss-python (`capi*`) engines keep the direct
+    `Solution.EventLog` read (bit-identical lines). WP-U2.2.
+    """
+    if type(d).__name__ == "IOddieDSS":
+        d.Text.Command = "export eventlog"
+        path = str(d.Text.Result).strip()
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                # The CSV has no header row — each line is a full event record
+                # ("Hour=…, Sec=…, ControlIter=…, Element=…, Action=…").
+                return [ln.rstrip("\r\n") for ln in f if ln.strip()]
+        except OSError:
+            return []
+    return [str(s) for s in ckt.Solution.EventLog]
+
+
 def capture_probes(d, probes: list) -> list:
     """Element-specific state via the generic property surface: for each
     `{element, props: [...]}` spec, the `? element.prop` executive query
@@ -446,9 +469,7 @@ def run_case(d, req: dict) -> dict:
                         "meters": capture_all_meters(ckt) if check_mm else [],
                         "probes": capture_probes(d, probes),
                         "variables": capture_variables(ckt, variables),
-                        "eventlog": (
-                            [str(s) for s in sol.EventLog] if want_eventlog else []
-                        ),
+                        "eventlog": (capture_eventlog(d, ckt) if want_eventlog else []),
                         "ctrlqueue": capture_ctrlqueue(ckt) if want_ctrlqueue else [],
                         # WP8.5b: read LAST, after every established capture above,
                         # so the property sweep's `?` queries never perturb any

@@ -1,0 +1,31 @@
+// Recloser single-phase tripping (r4133 WP-U2.2, delta rows B3/C2): SinglePhTrip
+// enables per-phase trip/reclose so a single-line-to-ground fault opens ONLY the
+// faulted phase, leaving the other two closed. A bolted SLG fault on phase 1
+// drives the phase-1 current far above the PhFastPickup while phases 2/3 stay
+// below it -> State ends [open, closed, closed] (single-phase lockout after the
+// shots run out). eventlog=yes exercises the r4133 per-phase wording
+// ('Phase 1 opened on Ph Fast (1ph trip)' ...). Feature-sensitive: SinglePhTrip=no
+// would trip all three phases (ganged); a PhFastPickup above the SLG current
+// stops the trip (probe-proven on r4133). Compared per step vs oddie:r4133:
+// full model + State/Normal per-phase probes + event log + pending shots.
+clear
+Set DefaultBaseFrequency=60
+
+new circuit.prot basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000
+new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi
+new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi
+new line.lat bus1=mid bus2=loadb linecode=lc length=1 units=mi
+new load.l bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
+
+// Single-phase tripping recloser with explicit fast/slow curves (r4133 has no
+// default curves). SinglePhLockout=yes keeps the lockout to the faulted phase.
+new recloser.r monitoredobj=line.feed monitoredterm=1
+~ switchedobj=line.feed switchedterm=1 singlephtrip=yes singlephlockout=yes
+~ phfastcurve=a phslowcurve=d phfastpickup=200 numfast=1 shots=2
+~ recloseintervals=(0.2, 0.4) mechanicaldelay=0.02 eventlog=yes
+
+new fault.f bus1=loadb.1 phases=1 ontime=0.1 r=0.5 temporary=no
+
+set voltagebases=[12.47]
+calcvoltagebases
+set mode=duty stepsize=0.1 number=1 controlmode=time

@@ -20,9 +20,14 @@ new line.lat1 bus1=mid bus2=loadb linecode=lc length=1 units=mi
 new line.lat2 bus1=mid bus2=loadc linecode=lc length=0.8 units=mi
 new load.lb bus1=loadb phases=3 kv=12.47 kw=500 pf=0.95 model=1
 new load.lc bus1=loadc phases=3 kv=12.47 kw=350 pf=0.92 model=1
+! Explicit A/D curves: r4133 removed the built-in default recloser curves
+! (WP-U2.2 D2), so a curveless recloser is inert. Naming them keeps this
+! DUTYCYCLE-control-mode deck's timed trip/reclose sequence identical to the
+! 0.14.5-era default and lets it stay on the pinned 0.14.5 oracle (the value under
+! test is the control-mode plumbing, not the recloser's r4133 property surface).
 new recloser.r monitoredobj=line.feed monitoredterm=1
 ~ switchedobj=line.feed switchedterm=1 numfast=1 shots=2
-~ phasetrip=80 groundtrip=40 recloseintervals=(0.5, 1.0)
+~ phasefast=a phasedelayed=d phasetrip=80 groundtrip=40 recloseintervals=(0.5, 1.0)
 new fault.f bus1=loadb phases=3 ontime=0.1 r=1 temporary=yes
 new monitor.mfeed element=line.feed terminal=1 mode=0
 new energymeter.em element=line.feed terminal=1
