@@ -83,10 +83,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("Reset"),
         // r4133 `RatedCurrent` (SwtControl.pas props 8->9): informational
         // continuous rating, default 0.0, "Not used internally for either power
-        // flow or reporting." HIDE_R4133 defers it from the 0.14.5-pinned
-        // full-enumeration Dump/`Dump commands`/JSON surfaces (capi015 lacks it
-        // too); the props-table compare excludes it via the PROPS_015X allowlist.
-        PropDef::double("RatedCurrent").flags(PropFlags::HIDE_R4133),
+        // flow or reporting." WP-U2.5 brought the SwtControl `Dump commands` block
+        // to its full r4133 9-prop shape (self-referential golden), so it no longer
+        // hides from the full-enum surface; `compare_all_properties` still excludes
+        // it from the 0.14.5 property-table walk via the name-based PROPS_015X row.
+        PropDef::double("RatedCurrent"),
         // TCktElementClass tail:
         PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::enabled("Enabled"),

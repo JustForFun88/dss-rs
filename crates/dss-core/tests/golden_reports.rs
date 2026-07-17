@@ -5251,16 +5251,19 @@ fn dump3_commands_matches_oracle() {
     // `[WindGen]` (WP-U1.8) is a 0.15.x class the pinned 0.14.5 oracle lacks; drop
     // its block before the exact compare (gated live vs capi015 + props instead).
     //
-    // `[Relay]` (WP-U2.3): the r4133 Relay port renamed props 50→71 (PhaseCurve→
-    // PhCurve, …) with new r4133 help text; the `help_catalog.rs` relay entries +
-    // the golden's `[Relay]` block still carry the 0.14.5 strings. The r4133 relay
-    // help-catalog + dump-surface regeneration is the WP-U2.5 (protection
-    // report/log surface) scope — the relay property NAMES/values are already gated
-    // by the `relay.json` props round-trip, the `oracle:"r4133"` live family decks,
-    // and the `compare_all_properties` skip. The golden's `[Relay]` block was
-    // dropped to keep this 0.14.5 help-text golden self-consistent; mask it from the
-    // Rust dump too (as `[WindGen]`).
-    run_deck_dump_exact_block_masked("dump3_commands", &["[WindGen]", "[Relay]"]);
+    // The four protection classes (`[Relay]`/`[Recloser]`/`[Fuse]`/`[SwtControl]`,
+    // WP-U2.1..U2.5) are on their **r4133** property surfaces, so their blocks in
+    // this golden are r4133-shaped and pinned **self-referentially** against our
+    // own render — the r4133 help text lives in `help_catalog.rs` (from the
+    // `r4133_help.py` supplement, sourced verbatim from the oddie:r4133 engine's
+    // own `Dump commands`), and no byte-exact-vs-Delphi help gate exists
+    // (UPGRADE_PLAN.md §1.3-2). The property NAMES/VALUES are gated live against
+    // oddie:r4133 by the `oracle:"r4133"` controls decks + the `props/*.json`
+    // round-trips. WP-U2.3 masked `[Relay]` here pending this regeneration; U2.5
+    // unmasks it (the other three never needed masking — Recloser regenerated in
+    // U2.2, Fuse/SwtControl kept 0.14.5-shaped names with the new props hidden
+    // until U2.5 dropped the HIDE flags for the full r4133 surface).
+    run_deck_dump_exact_block_masked("dump3_commands", &["[WindGen]"]);
 }
 
 /// `Dump alloc` — `DumpAllocationFactors`: `ConnectedkVA`-spec loads render

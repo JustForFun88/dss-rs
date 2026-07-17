@@ -107,13 +107,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             .flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::mapped_string_enum_array("State", enums.fuse_state),
         // r4133 (WP-U2.1, delta C3/D1): the new TCC divisor (`GetTCCTime(Cmag/
-        // CurveMultiplier)`) and an informational interrupting rating. Both are
-        // absent from the 0.14.5 capture, so `HIDE_015X` keeps the byte-exact
-        // 0.14.5 Dump/`Dump commands`/JSON goldens green (the `?`-query + props
-        // table via the `PROPS_015X`/r4133 allowlist still expose them); drop the
-        // flag when the fuse Dump/JSON goldens regenerate on r4133.
-        PropDef::double("CurveMultiplier").flags(PropFlags::HIDE_015X),
-        PropDef::double("InterruptingRating").flags(PropFlags::HIDE_015X),
+        // CurveMultiplier)`) and an informational interrupting rating. WP-U2.5
+        // brought the Fuse `Dump commands` block to its full r4133 12-prop shape
+        // (self-referential golden), so these no longer hide from the full-enum
+        // surface — like the sibling r4133 Recloser props, which never carried a
+        // HIDE flag. `compare_all_properties` still excludes them from the 0.14.5
+        // property-table walk via the name-based `PROPS_015X` allowlist.
+        PropDef::double("CurveMultiplier"),
+        PropDef::double("InterruptingRating"),
         // TCktElementClass tail:
         PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::enabled("Enabled"),

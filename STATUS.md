@@ -7,7 +7,36 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-17 — **Rung 2 wave 2 MERGED: WP-U2.3 (Relay r4133
+Last updated: 2026-07-17 — **WP-U2.5 (protection report/log surface) DONE on
+branch `wt-u25`** (not yet merged). The r4133 protection `Dump commands`
+help-catalog surface is complete for all four classes: `[Relay]` unmasked from
+the `dump3_commands` golden (71-prop r4133 shape), `[Fuse]`/`[SwtControl]`
+brought to their full r4133 12/9-prop shapes (HIDE flags dropped — matching the
+already-r4133 Recloser), all pinned self-referentially against our own render.
+The r4133 help text now lives in a generator supplement (`tools/golden/
+r4133_help.py`, captured verbatim from the oddie:r4133 binary's own `Dump
+commands`), which ALSO folds in the recloser help that WP-U2.2 had hand-edited
+into the "GENERATED" `help_catalog.rs` (+ the CNData/LineSpacing/tear_circuit
+pre-r4133 edits) — so `python gen_help_catalog.py` is fully reproducible again.
+Property-render `[closed, closed, closed, ]` verified shared across all four
+classes (already landed). New `save_roundtrip_protection` gate: a
+Relay+Recloser+Fuse+SwtControl deck round-trips its full r4133 property surface
+(renamed/new props + array renders) through our own `Save circuit`→re-parse.
+compare_eventlog was already enabled on every non-combo protection deck (combo
+decks untouched — parallel WP owns them); EVENTLOG_MASKS stays EMPTY. Two
+findings: (1) the `known_diffs` `property-format-brackets` row was NOT retired —
+empirically it still masks a LIVE r4133 divergence (our `[ 100 90 80]` numeric-
+array render vs EPRI's plain `100,90,80`, e.g. sensor.currents); only its E3
+protection-state-array portion is resolved (our `[closed,..]` now matches EPRI
+r4133's own bracketed state render) — the numeric-array class is a DIVERGENCES
+ledger item owned by WP-U2.6's sweep. (2) A **pre-existing** environmental gate
+failure (reproduces on pristine `update`): the r4133 Oddie DLL emits a UTF-8 BOM
+in `export eventlog` / some `Text.Result` that the oracle capture didn't strip —
+fixed at the source (`capture_eventlog` → `utf-8-sig`) + defensively in
+`numeric_skeleton`. §E4 help-only: LineSpacing already r4133-aligned; Line prop
+20 / AutoTrans "(Read only)" left 0.14.5 (those surfaces don't claim r4133).
+
+**Prior frontier — Rung 2 wave 2 MERGED: WP-U2.3 (Relay r4133
 per-phase rewrite) landed on `update`** via a port→audit→fix worktree chain
 (wt-u23, opus-audited, major finding fixed in-branch; full mandatory gate
 green, 47/47 suites). The delta's largest unit (Controls/Relay.pas
@@ -1356,6 +1385,75 @@ decomposition plan; the ~7e-4 open-point residual is un-triaged (suspected bug
 until proven a floor per CLAUDE.md) and the live-f64 trip-time + per-node
 trajectory decomposition is owed to WP-U2.6's rung-exit sweep — an honest
 deferral, not tolerance-masked. Full mandatory gate re-run green.
+
+**WP-U2.5 — Protection report/log surface (r4133, 2026-07-17, branch wt-u25).**
+E-bucket of `delta_r4088_r4133.md` + the WP-U2.3-deferred (commit fb6db95)
+relay help-catalog/dump surface. Oracle = oddie:r4133.
+
+- **`Dump commands` help-catalog surface → full r4133 for all four protection
+  classes.** The `help_catalog.rs` help text (rendered by `Dump commands`) was
+  0.14.5 for the renamed/new Relay/Fuse/SwtControl props. Added
+  `tools/golden/r4133_help.py` — a generator supplement holding the r4133
+  protection help, captured **verbatim from the oddie:r4133 binary's own `Dump
+  commands`** (its `PropertyHelp` arrays = `Version8/Source/Controls/{Relay,
+  Recloser,fuse,SwtControl}.pas`). `gen_help_catalog.py` applies it over the
+  0.14.5 wheel parse. The supplement ALSO carries the recloser r4133 help that
+  WP-U2.2 had **hand-edited** into the "GENERATED" file (+ the earlier
+  CNData.SemiconLayer / LineSpacing-0.15.x / A-Diakoptics tear_circuit non-wheel
+  edits), so `python gen_help_catalog.py` reproduces the committed file exactly
+  instead of silently reverting them (verified: only Relay/Fuse/SwtControl
+  runtime values changed vs HEAD; Recloser render byte-identical).
+- **`[Relay]` unmasked** from the `dump3_commands` golden (was masked as
+  `[WindGen]` since fb6db95); `[Fuse]`/`[SwtControl]` brought to their full
+  r4133 12/9-prop shapes by dropping `HIDE_015X`/`HIDE_R4133` from
+  CurveMultiplier/InterruptingRating/RatedCurrent (matching Recloser, which
+  never carried a HIDE flag). Empirically only `dump3_commands` pinned these —
+  no element-Dump or JSON-export golden does — so the un-hide is clean;
+  `compare_all_properties` still excludes them from the 0.14.5 property walk via
+  the name-based `PROPS_015X` rows (independent of the HIDE flag: the `?`-surface
+  always shows them). The four blocks are **self-referential regression pins**
+  (our render vs our render; the r4133 property NAMES/VALUES are gated live vs
+  oddie:r4133 by the `oracle:"r4133"` controls decks + `props/*.json`).
+- **Property-value render `[closed, closed, closed, ]`** — verified the shared
+  `MappedStringEnumArray` render already backs Relay/Recloser/Fuse/SwtControl
+  Normal/State (nothing to port); Fuse GetPropertyValue special cases 5/6/12
+  (FuseCurve→`none`, RatedCurrent/InterruptingRating `%-.6g`) already match r4133.
+- **`known_diffs` `property-format-brackets` — NOT retired (empirically still
+  live on r4133).** Probed oddie:r4133: EPRI renders `sensor.currents` PLAIN
+  (`100,90,80`) while our dss_capi-based port brackets numeric arrays
+  (`[ 100 90 80]`, `util.get_dss_array_f64`) — the dss_capi property-system
+  rework difference persists on r4133. The row's E3 *protection-state-array*
+  portion IS resolved (our `[closed,..]` render now matches EPRI r4133's own
+  bracketed `GetPropertyValue` state render, so the row no longer fires for
+  those), but the generic numeric-array class stands — a DIVERGENCES ledger item
+  owned by WP-U2.6's r4133 ASSERT sweep. Retiring the whole row would re-expose
+  it as an uncataloged sweep failure; kept, documented here (deviates from the
+  literal U2.4 "retire in U2.5" note, which pre-dated this probe).
+- **Event-log §1.3-3.** `compare_eventlog` was already `true` on every non-combo
+  protection deck (relay_*/recloser_*/fuse_*/swtcontrol_* + midi twins) — nothing
+  to re-enable; the two combo decks (owned by a parallel WP) are untouched.
+  `EVENTLOG_MASKS` stays **EMPTY** (the port emits r4133 wording 1:1).
+- **Save round-trip.** New `save_roundtrip_protection` (crates/dss-core/tests/
+  save_roundtrip.rs): a Relay+Recloser+Fuse+SwtControl deck carrying r4133-surface
+  values (PhCurve/PhFastCurve/CurveMultiplier, SinglePhTrip/Lock/RatedCurrent/
+  InterruptingRating) `Save circuit`→`clear`→re-compile→re-solve; every control's
+  full property list (via `element_properties`) round-trips (numeric-token) +
+  node V ≤1e-6. Pins that Save does not drop/corrupt the renamed/new/array surface.
+- **§E4 help-only edits.** LineSpacing 7-10 already r4133-aligned (the U1.4
+  equivalent-spacing help, "geometric mean distance", matches the r4133 binary
+  verbatim — verified). Line prop 20 (units-reset warning) + AutoTrans
+  normamps/emergamps "(Read only)" left at 0.14.5: those surfaces are NOT
+  r4133-ported (their `dump3_commands` blocks stay byte-exact 0.14.5), so per the
+  brief's "where our surface claims r4133 text" qualifier they are out of scope.
+- **Pre-existing environmental fix (not WP-U2.5 behavior).** The mandatory gate
+  was RED on this machine's base `update` branch (proven by re-running with my
+  changes stashed): the official r4133 Oddie DLL prefixes its `export eventlog`
+  CSV (and some `Text.Result`) with a UTF-8 BOM (`﻿`), which the oracle capture
+  read as plain utf-8 → a lone `['﻿']` line for an inert deck's empty log
+  (`recloser_temp`) and a char-boundary panic in `numeric_skeleton` on a
+  corpus_live property. Fixed at the source (`capture_eventlog` → `utf-8-sig`) +
+  defensively in `numeric_skeleton` (strip `﻿`, spurious export cruft, never
+  real data). Not a tolerance/divergence change.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in

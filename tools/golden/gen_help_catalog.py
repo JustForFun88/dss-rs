@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_checkpoints import check_pin  # noqa: E402
+from r4133_help import R4133_HELP  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_RS = REPO_ROOT / "crates" / "dss-core" / "src" / "report" / "help_catalog.rs"
@@ -129,6 +130,16 @@ def main() -> None:
     mo = Path(dss.__file__).resolve().parent / "messages" / "properties-en-US.mo"
     pairs = parse_mo(mo)
     print(f"parsed {len(pairs)} entries from {mo}")
+
+    # WP-U2.5: override/add the r4133 protection help (Relay/Fuse/SwtControl
+    # property surfaces the 0.14.5 wheel predates — see `r4133_help.py`). A key
+    # that already exists (deprecated aliases whose help became "DEPRECATED. See
+    # …") is replaced in place; a renamed/new prop (`PhCurve`, `SinglePhTrip`,
+    # `CurveMultiplier`, …) is appended. Recloser (WP-U2.2) already landed via the
+    # wheel-independent capture, so it is not in the supplement.
+    catalog = dict(pairs)
+    catalog.update(R4133_HELP)
+    pairs = list(catalog.items())
 
     for k, v in pairs:
         assert k.isascii() and v.isascii(), f"non-ASCII entry: {k!r}"
