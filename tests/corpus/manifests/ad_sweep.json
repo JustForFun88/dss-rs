@@ -334,14 +334,6 @@
    "ad": "off:mode-outside-AD-scope"
   },
   {
-   "path": "Version8/Distrib/Examples/InductionMachine/Master.DSS",
-   "ad": "off:save-roundtrip-relpath"
-  },
-  {
-   "path": "Version8/Distrib/Examples/InductionMachine/Run.dss",
-   "ad": "off:save-roundtrip-relpath"
-  },
-  {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss",
    "ad": "off:non-3ph-cut-only"
   },
