@@ -1113,8 +1113,13 @@ r4133-trunk`); oracle = `oddie:r4133`. Gate green (fmt/clippy/`cargo test --work
   (D6 makes `action=open` open at parse; the capi015 `Closed×3→Open` trajectory was exactly
   the r4088→r4133 move) — render-form probes (state/normal `[open,..]` arrays = E3/U2.5
   scope; Delphi drops prop-5 Delay so `delay` renders 120) dropped, whole-model + empty
-  eventlog/ctrlqueue pin the physics. `swtcontrol_lock.dss` stays default-oracle (locked ⇒
-  Action ignored ⇒ unchanged). **civanlar.dss (vendored corpus) flipped capi015→r4133**:
+  eventlog/ctrlqueue pin the physics. `swtcontrol_lock.dss` stays default-oracle: locked ⇒
+  Action ignored ⇒ switch unchanged, but the deeper reason it CANNOT move to r4133 is a
+  latent Sample divergence OUTSIDE the r4088→r4133 delta — Delphi (both r4088 and r4133)
+  comments out the ENTIRE `TSwtControlObj.Sample` body ("action/lock are instantaneous"),
+  whereas our FPC 0.14.5 port still pushes `CTRL_LOCK` onto the control queue; the deck's
+  `compare_ctrlqueue` pins that FPC push, so it can only stay on capi015 (documented at the
+  `sample()` doc-comment; closing this gap = retiring the Sample body, deferred). **civanlar.dss (vendored corpus) flipped capi015→r4133**:
   its `edit action=o` on the 3 tie switches now opens them at parse (D6), converging in 2
   iters to the open-tie topology — PROVEN bit-identical to r4133 (node0 V (13261.309423,
   -34.747502) both); capi015's Rung-1 control-loop path took 5 iters to a

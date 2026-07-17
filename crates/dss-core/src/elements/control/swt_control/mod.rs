@@ -180,9 +180,21 @@ impl SwtControl {
         self.ccd.cd.set_bus(1, &bus);
     }
 
-    /// Pascal `TSwtControlObj.Sample`: push the pending lock command (if any) and
-    /// the pending switch action onto the control queue at the current time
-    /// delay. Reads only the control's own state — no monitored quantity.
+    /// Pascal (FPC 0.14.5) `TSwtControlObj.Sample`: push the pending lock command
+    /// (if any) and the pending switch action onto the control queue at the current
+    /// time delay. Reads only the control's own state — no monitored quantity.
+    ///
+    /// NOTE (r4133-fidelity gap, out of the r4088→r4133 delta): the Delphi engine
+    /// (r4088 *and* r4133) comments out this ENTIRE body — "Removing because action
+    /// (redirects to state) and lock are instantaneous" — so on r4133 `Sample`
+    /// queues nothing. This port keeps the FPC 0.14.5 body because it is pinned by
+    /// the default (capi015 = FPC 0.14.5) oracle: `swtcontrol_lock.dss`
+    /// (`compare_ctrlqueue`) verifies the spurious `CTRL_LOCK` push and so cannot
+    /// flip to `oracle: "r4133"`. The D6 fix makes the action path inert on r4133's
+    /// action/state decks (`current_action == present_state` after an immediate
+    /// force ⇒ the action-queue branch is false), but the LOCK branch still queues
+    /// a `CTRL_LOCK` that r4133 does not — a latent gap blocking future r4133
+    /// lock-path coverage, to be closed when this Sample body is retired.
     pub(crate) fn sample(&mut self, ctx: &mut CtrlCtx) {
         if self.lock_command != CTRL_NONE {
             ctx.queue.push_delay(
