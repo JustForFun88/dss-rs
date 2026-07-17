@@ -21,16 +21,19 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
    STATUS.md §1 + PORTING_PLAN §6). DIAKOPTICS Part II early-start (stage 8) was
    user-ordered and ran in parallel — deliberately outside this acceptance. ═
 ── POST-ACCEPTANCE (upgrade, then refactor & improvement era) ──────────────────────
- 4. UPGRADE_PLAN.md           Rung 1 (WP-U1.*: dss_capi 0.15.x / r4088-line parity,
-                              spec = .inputs/dss_capi_with_git@0.15.x, oracle capi015)
-                              then Rung 2 (WP-U2.*: OpenDSS 11.0.0.1 / r4133 parity,
-                              spec = Delphi diff, oracle oddie:r4133). Its WP-U0 test
-                              infra (branch upgrade-test-infra: per-case `oracle`
-                              manifest field, capi015 engine, iteration policy ≤) is
-                              ALREADY LANDED (2026-07-07) so parallel porting branches
-                              inherit it. Runs FIRST post-acceptance: freshest porting
-                              context, avoids double-touching code DE_PASCALIZE would
-                              refactor, and lets Stage F pin r4133-parity (not r3723).
+ 4. UPGRADE_PLAN.md           COMPLETE (2026-07-17) — Rung 1 (WP-U1.*: dss_capi 0.15.x /
+                              r4088-line parity, spec = .inputs/dss_capi_with_git@0.15.x,
+                              oracle capi015) exited WP-U1.10; **Rung 2 (WP-U2.*: OpenDSS
+                              11.0.0.1 / r4133 parity, spec = Delphi diff, oracle
+                              oddie:r4133) exited WP-U2.6** — r4133 `DSS_LIVE_OPENDSS_ASSERT=1`
+                              sweep GREEN (0 unexplained divergences), r4088 direction check
+                              green, `docs/upgrade/DIVERGENCES.md` complete. Engine behavior =
+                              OpenDSS 11.0.0.1 (r4133) except the documented ledger. Its WP-U0
+                              test infra (branch upgrade-test-infra: per-case `oracle` manifest
+                              field, capi015 engine, iteration policy ≤) landed 2026-07-07 so
+                              parallel porting branches inherited it. Ran FIRST post-acceptance:
+                              freshest porting context, avoided double-touching code DE_PASCALIZE
+                              would refactor, and lets Stage F pin r4133-parity (not r3723).
  5. DE_PASCALIZE_PLAN.md      Parts I–III [A] (arenas/enums/de-indexing, bit-neutral,
                               proven by the still-stable goldens), then Stage F —
                               the `oracle-parity` feature split (absorbs the

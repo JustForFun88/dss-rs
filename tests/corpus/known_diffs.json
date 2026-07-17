@@ -42,20 +42,28 @@
     },
     {
       "id": "iteration-count-delta",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "",
       "reason_contains": ["iteration count differs"],
       "ab_contains": ["iterations "],
-      "cause": "Solve/control iteration-count deltas: Delphi-vs-FPC last-ulp rounding shifts convergence-check outcomes, and dss_capi's reworked controls iterate differently (AutoTrans+RegControl reg-tap 6-vs-3; GenDispatcher dispatch 20-vs-4 / 31-vs-5 on r4088). The port matches the pinned FPC oracle's EXACT count (mandatory gate green); EPRI's Delphi settles a near-identical state (V ~3.5e-4) in a different number of control iterations.",
-      "source": "triage 2026-07 r3723 (10 controls cases) + WP-U1.10 r4088 sweep (controls:autotrans_both/autotrans_reg, controls:gendispatcher{,_kvarlimit})"
+      "cause": "Solve/control iteration-count deltas: Delphi-vs-FPC last-ulp rounding shifts convergence-check outcomes, and dss_capi's reworked controls iterate differently (AutoTrans+RegControl reg-tap 6-vs-3; GenDispatcher dispatch 20-vs-4 / 31-vs-5 on r4088). The port matches the pinned FPC oracle's EXACT count (mandatory gate green); EPRI's Delphi settles a near-identical state (V ~3.5e-4) in a different number of control iterations. Identical magnitude vs r4133 (solver + these controls behaviorally identical r4088=r4133 — RegControl/GenDispatcher byte-identical; Solution.pas differs only in inert progress-form plumbing + a commented-out debug WriteLn, AutoTrans.pas only in two read-only PropertyHelp strings).",
+      "source": "triage 2026-07 r3723 (10 controls cases) + WP-U1.10 r4088 sweep (controls:autotrans_both/autotrans_reg, controls:gendispatcher{,_kvarlimit}) + WP-U2.6 r4133 sweep (same 4 cases, same counts)"
     },
     {
       "id": "monitor-header-whitespace",
-      "revs": ["r3723", "r4088", "r4133"],
+      "revs": ["r3723"],
       "case_contains": "",
       "reason_contains": ["header differs"],
-      "cause": "EPRI pads monitor header channel names with a leading space (' VAngle1'); dss_capi strips them.",
-      "source": "triage 2026-07 r3723 (8 controls cases); cf. DSS-Python compare_outputs.py string handling"
+      "cause": "EPRI pads monitor header channel names with a leading space (' VAngle1'); dss_capi strips them. Narrowed to r3723 by WP-U2.6: zero hits on the r4088 AND r4133 sweeps because the harness `compare_monitor` now normalizes the Delphi monitor-CSV header artifact directly (leading-space + trailing-empty columns; WP-U2.1 combo-restore audit fix) — so the header no longer surfaces as a compare divergence on the EPRI channel. Retained on r3723 (its original triage provenance, not re-swept this WP). NOTE: the `compare_monitor` header normalization (harness/mod.rs trim + trailing-empty drop) is rev-INDEPENDENT — it applies to the expected side for every EPRI rev, r3723 included — so this entry is most likely already dead on r3723 too; a future r3723 re-sweep (its only residual cost is a zero-hit prune warning) will confirm and prune it.",
+      "source": "triage 2026-07 r3723 (8 controls cases); cf. DSS-Python compare_outputs.py string handling; narrowed WP-U2.6 (0 hits r4088+r4133 post harness header-normalization)"
+    },
+    {
+      "id": "monitor-seq-magnitude-drift",
+      "revs": ["r4088", "r4133"],
+      "case_contains": "monitor_seqmag",
+      "reason_contains": ["channel", "differs"],
+      "cause": "Sequence-magnitude monitor channel (V2, mode=32 seq-voltage) drifts ~2.4e-6 abs / rel ~1.1e-5 (0.21350601 vs 0.21350846) — above the 1e-6 monitor-channel abs floor. The symmetrical-component transform (Fortescue A-matrix over complex node voltages) amplifies Delphi-vs-FPC transcendental last-ulp; the port matches the pinned FPC 0.14.5 oracle (mandatory gate green). Meters/Monitor.pas is byte-identical r4088=r4133, so the drift is identical against both EPRI revs — an FPC<->Delphi Seq floor, not an r4088->r4133 change (dss_capi's own dsspy_validation loosens Seq* categories to 1e-2 for the same reason).",
+      "source": "WP-U2.6 r4088+r4133 sweeps (controls:monitor/monitor_seqmag.dss mseq channel 5 V2)"
     },
     {
       "id": "property-format-brackets",
@@ -67,35 +75,43 @@
     },
     {
       "id": "storage-kwhstored-drift",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "",
       "reason_contains": ["probe Storage.", "kwhstored", "number 0 differs"],
-      "cause": "Storage kWhStored integral drifts by <5e-4 rel after StorageController dispatch steps (2207.9995 vs EPRI 2208, rel ~2e-7): dss_capi's Storage model revision accrues idling losses slightly differently than EPRI's Delphi. The port matches the pinned FPC oracle (mandatory gate green). Same class vs r3723 and r4088 (Storage model byte-identical across the EPRI delta). The .kw dispatch-precision probes are a distinct class, split into storage-kw-display-precision.",
-      "source": "triage 2026-07 r3723 (3 storagectrl cases) + WP-U1.10 r4088 sweep (6 storagectrl kwhstored probes)"
+      "cause": "Storage kWhStored integral drifts by <5e-4 rel after StorageController dispatch steps (2207.9995 vs EPRI 2208, rel ~2e-7): dss_capi's Storage model revision accrues idling losses slightly differently than EPRI's Delphi. The port matches the pinned FPC oracle (mandatory gate green). Same class vs r3723, r4088 and r4133 (Storage model byte-identical across both EPRI deltas). The .kw dispatch-precision probes are a distinct class, split into storage-kw-display-precision; the %stored display-precision is storage-pctstored-display-precision.",
+      "source": "triage 2026-07 r3723 (3 storagectrl cases) + WP-U1.10 r4088 sweep (6 storagectrl kwhstored probes) + WP-U2.6 r4133 sweep (same, Storage byte-identical r4088=r4133)"
     },
     {
       "id": "storage-kw-display-precision",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "",
       "reason_contains": ["probe Storage.", ".kw:", "number 0 differs"],
       "cause": "EPRI's Delphi renders the StorageController-dispatched Storage kW property to ~6 significant figures (2122.18) where the port/capi015 return full f64 (~2122.185) — the Delphi-vs-FPC Format/Str last-digit rendering difference §1.3-2 relaxes to numeric-token comparison; the parsed probe diff is property-display precision (rel ~2e-7), not an op-point move (expected == actual rounded to 6 sf). The port matches the pinned FPC oracle (mandatory gate green). Split out from storage-kwhstored-drift (the distinct idling-loss integral class); the `.kw:` term keeps this from swallowing arbitrary Storage number-0 probe diffs.",
-      "source": "WP-U1.10 r4088 sweep (2 storagectrl .kw dispatch probes); r3723 sweep same class"
+      "source": "WP-U1.10 r4088 sweep (2 storagectrl .kw dispatch probes); r3723 sweep same class; WP-U2.6 r4133 sweep (storagectrl_chargelow/support, Storage byte-identical r4088=r4133)"
+    },
+    {
+      "id": "storage-pctstored-display-precision",
+      "revs": ["r4088", "r4133"],
+      "case_contains": "",
+      "reason_contains": ["probe Storage.", "%stored", "number 0 differs"],
+      "cause": "EPRI's Delphi renders the Storage `%stored` property to ~6 significant figures (75.0896 / 59.9968 / 68.6113) where the port/capi015 return full f64 (75.089575 / 59.996836 / 68.611325) — the Delphi-vs-FPC Format/Str last-digit rendering difference §1.3-2 relaxes to numeric-token comparison; the parsed probe diff is property-display precision (rel ~1e-7..6e-7, expected == actual rounded to 6 sf), not an op-point move. The port matches the pinned FPC oracle (mandatory gate green). Same magnitude vs r4088 and r4133 (Storage model byte-identical r4088=r4133, PCElements/ unchanged); the `%stored` term scopes it apart from storage-kwhstored-drift (`kwhstored`) and storage-kw-display-precision (`.kw:`).",
+      "source": "WP-U2.6 r4088+r4133 sweeps (controls:invcontrol/invcontrol_storage_v{v_,}vw + modes:time/{duty,generaltime,generaltime_duty,generaltime_yearly} Storage.batt.%stored)"
     },
     {
       "id": "injection-fpc-delphi-ulp",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "asymmetric:",
       "reason_contains": ["injection currents", "differs"],
-      "cause": "Injection RHS entries ~1.4x above the calibrated faer-vs-KLU floor (3.9e-6 vs 2.8e-6 allowed) on IndMach-bearing asymmetric decks: Delphi-vs-FPC transcendental last-ulp drift amplified by the machine model — same class as the proven dSpeed cancellation floor, floor calibrated against FPC not Delphi. Identical magnitude vs r3723 and r4088 (injection assembly byte-identical across the EPRI delta).",
-      "source": "triage 2026-07 r3723 (4 asymmetric cases) + WP-U1.10 r4088 sweep (same 4 cases, same ~3.9e-6)"
+      "cause": "Injection RHS entries ~1.4x above the calibrated faer-vs-KLU floor (3.9e-6 vs 2.8e-6 allowed) on IndMach-bearing asymmetric decks: Delphi-vs-FPC transcendental last-ulp drift amplified by the machine model — same class as the proven dSpeed cancellation floor, floor calibrated against FPC not Delphi. Identical magnitude vs r3723, r4088 and r4133 (injection assembly + machine model byte-identical across both EPRI deltas).",
+      "source": "triage 2026-07 r3723 (4 asymmetric cases) + WP-U1.10 r4088 sweep (same 4 cases, same ~3.9e-6) + WP-U2.6 r4133 sweep (same 4 cases)"
     },
     {
       "id": "meter-zonepce-count",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723"],
       "case_contains": "",
       "reason_contains": ["PCE count differs"],
-      "cause": "EPRI's EnergyMeter ZonePCE enumerates one more PCE than dss_capi on the same zone (off-by-one in membership, e.g. source-side element counted); dss_capi reworked zone bookkeeping. Zone bookkeeping is byte-identical across the r3723->r4088 EPRI delta, so the off-by-one is the same on both.",
-      "source": "triage 2026-07 r3723 (3 energymeter cases: 4v5, 2v3, 25v26) + WP-U1.10 r4088 sweep (4 energymeter + 2 autoadd, e.g. 3v4)"
+      "cause": "EPRI's EnergyMeter ZonePCE enumerates one more PCE than dss_capi on the same zone (off-by-one in membership, e.g. source-side element counted); dss_capi reworked zone bookkeeping. Narrowed to r3723 by WP-U2.6: zero hits on the r4088 AND r4133 sweeps — the six witness decks (controls:energymeter/{sym,asym,options,midi} + modes:autoadd/{autoadd,autoadd_cap}) now MATCH both EPRI revs (check_meters_monitors runs, oracle=None, ZonePCE agrees). Retained on r3723 (original triage provenance, not re-swept this WP).",
+      "source": "triage 2026-07 r3723 (3 energymeter cases: 4v5, 2v3, 25v26) + WP-U1.10 r4088 sweep (4 energymeter + 2 autoadd, e.g. 3v4); narrowed WP-U2.6 (0 hits r4088+r4133, decks now match)"
     },
     {
       "id": "eventlog-trailing-space",
@@ -111,56 +127,64 @@
       "revs": ["r3723", "r4088"],
       "case_contains": "IEEE_519",
       "reason_contains": ["Y fingerprint"],
-      "cause": "Harmonics-mode system-Y trace.im off by 2.9e-5 (allowed 1.6e-5): Delphi-vs-FPC drift in harmonic load/source Y stamps summed over the whole trace; single case, magnitude consistent with transcendental last-ulp accumulation. Same 2.891e-5 vs r3723 and r4088 (harmonics path byte-identical across the EPRI delta; the r4133-side IEEE_519 move is a separate Rung-2 item).",
+      "cause": "Harmonics-mode system-Y trace.im off by 2.9e-5 (allowed 1.6e-5): Delphi-vs-FPC drift in harmonic load/source Y stamps summed over the whole trace; single case, magnitude consistent with transcendental last-ulp accumulation. Same 2.891e-5 vs r3723 and r4088 (harmonics path byte-identical across the EPRI delta; the r4133-side IEEE_519 move is a separate Rung-2 item — harmonics-ieee519-r4133).",
       "source": "triage 2026-07 r3723 + WP-U1.10 r4088 sweep (HarmonicsVariableLoad/IEEE_519.DSS, same magnitude)"
     },
     {
+      "id": "harmonics-ieee519-r4133",
+      "revs": ["r4133"],
+      "case_contains": "IEEE_519",
+      "reason_contains": ["entry ", "differs"],
+      "cause": "The documented r4088->r4133 harmonics-mode voltage move on the IEEE_519 filter deck (WP-U0.2 surprise, docs/upgrade/sweeps/r4088_vs_r4133.md): node V ~4.3e-4 at pcc (rel ~4e-4) with the assembled Y bit-identical (Yf=0). WP-U2.6 SOURCE-CONFIRMED there is nothing to port: SolutionAlgs.pas (harmonics driver), PCElements/Load.pas, General/Spectrum.pas and Common/YMatrix.pas are all byte-identical r4088=r4133 (Solution.pas differs only in progress-form plumbing + commented-out debug WriteLn), so no harmonics/injection algorithm changed. The move is determinism-proven per engine (r4088<->r4088 and r4133<->r4133 both match) => a build-to-build Delphi last-ulp drift amplified by the near-resonance of the 519 filter (an ill-conditioned harmonics fixpoint), NOT a portable behavior change. The port matches the pinned FPC 0.14.5 oracle (mandatory gate green) and its own physically-correct harmonics solution; documented upstream, no port action. SCOPE NOTE: the case_contains='IEEE_519' + reason_contains=['entry ',' differs'] match is deliberately broad (mirroring the sibling harmonics-yfingerprint-drift / autotrans-regcontrol-tap floor entries) — it absorbs ANY node-voltage 'entry N differs' on the three IEEE_519 decks on r4133, not only the specific ~4.3e-4 pcc-node move. A materially different IEEE_519 divergence (different node/magnitude) would therefore be classified 'known' here rather than surfacing as NEW under ASSERT; if the source ever ceases to be byte-identical r4088=r4133 on the harmonics path, re-triage this class instead of assuming it.",
+      "source": "WP-U0.2 r4088<->r4133 sweep + WP-U2.6 r4133 sweep (HarmonicsTMode/HarmonicsVariableLoad/Matlab HarmonicT_MATLAB IEEE_519.DSS)"
+    },
+    {
       "id": "autotrans-regcontrol-tap",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "controls:autotrans/",
       "reason_contains": ["entry ", "differs"],
       "cause": "AutoTrans + RegControl reg-tap resolves on a different discrete step FPC(dss_capi/port) vs EPRI(Delphi): a last-ulp voltage nudges the tap decision across a boundary, moving the atf node V ~2.4e-2 (rel ~3.6e-7). The port matches the pinned FPC oracle (mandatory gate green); the committed capi015<->r4088 sweep shows the same 'regcontrols differ: [rat]' engine-to-engine, so it is FPC-vs-Delphi, not a port bug. Paired with iteration-count-delta (autotrans_both/_reg 6-vs-3).",
-      "source": "WP-U1.10 r4088 sweep (controls:autotrans/midi_autotrans{,_both}); r3723 sweep same class"
+      "source": "WP-U1.10 r4088 sweep (controls:autotrans/midi_autotrans{,_both}); r3723 sweep same class; WP-U2.6 r4133 sweep (same 2 cases, entry 0)"
     },
     {
       "id": "makeposseq-fpc-delphi",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "makeposseq/",
       "reason_contains": ["entry ", "differs"],
       "cause": "MakePosSequence positive-sequence reduction last-digit drift FPC(port) vs EPRI(Delphi): the reduction averages/collapses the model, amplifying transcendental last-ulp so node V drifts rel ~6e-6..4e-5 (above the tight makeposseq gate tier). The port matches the pinned FPC oracle (mandatory gate green); capi015<->r4088 confirms makeposseq drifts engine-to-engine.",
-      "source": "WP-U1.10 r4088 sweep (6 modes:makeposseq cases); r3723 sweep same class"
+      "source": "WP-U1.10 r4088 sweep (6 modes:makeposseq cases); r3723 sweep same class; WP-U2.6 r4133 sweep (same 6 cases, reduction path byte-identical r4088=r4133)"
     },
     {
       "id": "reduce-fpc-delphi",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "modes:reduce/",
       "reason_contains": ["differs"],
       "cause": "Circuit-reduction produces a different reduced network FPC(port) vs EPRI(Delphi): reduce keep/merge/switch handling collapses branches differently, so a reduced Line YPrim can differ structurally (e.g. a merged branch vs a retained pseudo-switch Y=500) and node V drifts. The port matches the pinned FPC oracle's reduced network EXACTLY (mandatory gate green, incl. YPrim); capi015<->r4088 confirms reduce_mergeparallel drifts engine-to-engine. Reduction is not a Rung-1 item (not in WP-U1.*).",
-      "source": "WP-U1.10 r4088 sweep (6 modes:reduce cases: 5 YPrim + reduce_mergeparallel); r3723 sweep same class"
+      "source": "WP-U1.10 r4088 sweep (6 modes:reduce cases: 5 YPrim + reduce_mergeparallel); r3723 sweep same class; WP-U2.6 r4133 sweep (same 6 cases, reduction path byte-identical r4088=r4133)"
     },
     {
       "id": "ckt24-regcontrol-conditioning",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "ckt24",
       "reason_contains": ["entry ", "differs"],
-      "cause": "ckt24 substation RegControl/LDC tap-current at the SubXFMR ultra-switch (1e-8 ohm stitch, Y~1e8 S): the near-cancellation floors at rel ~1.2e-7, and Delphi-vs-FPC last-ulp nudges the substation node V (entry 4/5) ~1.2x over the faer-vs-KLU-calibrated pinned tol. Documented conditioning floor (STATUS CF-D 'SubXFMR ultra-switch'); the port matches the pinned FPC oracle (mandatory gate green). Same magnitude vs r3723 and r4088 (feeder unchanged across the EPRI delta).",
-      "source": "WP-U1.10 r4088 sweep (11 ckt24 decks: EPRITestCircuits + ADiakoptics/Torn_Circuit + MemoryMappingLoadShapes); r3723 sweep same class"
+      "cause": "ckt24 substation RegControl/LDC tap-current at the SubXFMR ultra-switch (1e-8 ohm stitch, Y~1e8 S): the near-cancellation floors at rel ~1.2e-7, and Delphi-vs-FPC last-ulp nudges the substation node V (entry 4/5) ~1.2x over the faer-vs-KLU-calibrated pinned tol. Documented conditioning floor (STATUS CF-D 'SubXFMR ultra-switch'); the port matches the pinned FPC oracle (mandatory gate green). Same magnitude vs r3723, r4088 and r4133 (feeder unchanged and solver behaviorally unchanged — Solution.pas differs only in inert progress-form plumbing — across both EPRI deltas).",
+      "source": "WP-U1.10 r4088 sweep (11 ckt24 decks: EPRITestCircuits + ADiakoptics/Torn_Circuit + MemoryMappingLoadShapes); r3723 sweep same class; WP-U2.6 r4133 sweep (same 11 ckt24 decks, entry 4/5)"
     },
     {
       "id": "pvsystem-kvar-display-precision",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "",
       "reason_contains": ["probe PVSystem", "kvar", "number 0 differs"],
-      "cause": "EPRI's Delphi renders the PVSystem kvar property to ~6 significant figures (-28.3773) where the port/capi015 return full f64 (-28.3772649824657) — the Delphi-vs-FPC Format/Str last-digit rendering difference §1.3-2 relaxes to numeric-token comparison; the parsed probe diff is property-display precision (empirically ~6 sf), not an op-point move (expected == actual rounded to 6 sf). The port matches the pinned FPC oracle (mandatory gate green).",
-      "source": "WP-U1.10 r4088 sweep (controls:expcontrol_basic, controls:invcontrol_expmodel PVSystem.pv.kvar); r3723 sweep same class"
+      "cause": "EPRI's Delphi renders the PVSystem kvar property to ~6 significant figures (-28.3773) where the port/capi015 return full f64 (-28.3772649824657) — the Delphi-vs-FPC Format/Str last-digit rendering difference §1.3-2 relaxes to numeric-token comparison; the parsed probe diff is property-display precision (empirically ~6 sf), not an op-point move (expected == actual rounded to 6 sf). The port matches the pinned FPC oracle (mandatory gate green). Same class vs r4133 (PVSystem byte-identical r4088=r4133).",
+      "source": "WP-U1.10 r4088 sweep (controls:expcontrol_basic, controls:invcontrol_expmodel PVSystem.pv.kvar); r3723 sweep same class; WP-U2.6 r4133 sweep (same 2 cases)"
     },
     {
       "id": "vsource-nearzero-power",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "Paulo_Example",
       "reason_contains": ["Vsource", "conductor", "differs"],
       "cause": "Vsource unenergized-conductor power near-zero common mode: EPRI reports exactly (0,0) on conductor 2 where the port reports ~1e-4 VA (rel ~1e-7 on a 1 kV source) — the near-ideal-source/floating floor class. The port matches the pinned FPC oracle (mandatory gate green).",
-      "source": "WP-U1.10 r4088 sweep (Paulo_Example/subestacao Vsource.source cond 2); r3723 sweep same class"
+      "source": "WP-U1.10 r4088 sweep (Paulo_Example/subestacao Vsource.source cond 2); r3723 sweep same class; WP-U2.6 r4133 sweep (same case, ~1.3e-4 VA)"
     },
     {
       "id": "invcontrol-fixpoint-drift-synthetic",
@@ -172,35 +196,35 @@
     },
     {
       "id": "epri-binaryshape-crash",
-      "revs": ["r3723", "r4088"],
+      "revs": ["r3723", "r4088", "r4133"],
       "case_contains": "shape_binfiles",
       "kind": "skip",
-      "cause": "The binary/MMF GrowthShape deck (g4.csv) crashes the EPRI DLL (#303/#58614 access violation) on both r3723 and r4088 where the port reads it correctly; the EPRI channel cannot A/B it. dss-extensions-era known regression (docs/upgrade/sweeps/README §Surprises); no port action.",
-      "source": "WP-U1.10 sweeps (modes:inputformat/shape_binfiles, oracle #303 on r3723 and r4088)"
+      "cause": "The binary/MMF GrowthShape deck (g4.csv) crashes the EPRI DLL (#303/#58614 access violation) on r3723, r4088 and r4133 where the port reads it correctly; the EPRI channel cannot A/B it. dss-extensions-era known regression (docs/upgrade/sweeps/README §Surprises); no port action.",
+      "source": "WP-U1.10 sweeps (modes:inputformat/shape_binfiles, oracle #303 on r3723 and r4088) + WP-U2.6 r4133 sweep (same #303)"
     },
     {
       "id": "epri-linespacing-r4088-crash",
-      "revs": ["r4088"],
+      "revs": ["r4088", "r4133"],
       "case_contains": "IEEE13_LineSpacing",
       "kind": "skip",
-      "cause": "EPRI r4088 raises #303 on the line-spacing deck where the port (and r3723 EPRI) solve it; the r4088 channel cannot A/B it. Confirmed r4088-specific (r3723 MATCHED). docs/upgrade/sweeps/capi015_vs_r4088.md.",
-      "source": "WP-U1.10 r4088 sweep (Test/IEEE13_LineSpacing; r3723 solves it)"
+      "cause": "EPRI r4088 AND r4133 raise #303 (access violation, at `calcv`) on the line-spacing deck where the port (and r3723 EPRI) solve it; neither EPRI channel can A/B it. Confirmed rev-persistent (r3723 MATCHED; r4088 and r4133 crash). docs/upgrade/sweeps/capi015_vs_r4088.md.",
+      "source": "WP-U1.10 r4088 sweep (Test/IEEE13_LineSpacing; r3723 solves it) + WP-U2.6 r4133 sweep (same #303 at calcv)"
     },
     {
       "id": "epri-linecablespacing-r4088-crash",
-      "revs": ["r4088"],
+      "revs": ["r4088", "r4133"],
       "case_contains": "IEEE13_LineAndCableSpacing",
       "kind": "skip",
-      "cause": "EPRI r4088 raises #303 on the line+cable-spacing deck where the port (and r3723 EPRI) solve it; the r4088 channel cannot A/B it. Confirmed r4088-specific (r3723 MATCHED).",
-      "source": "WP-U1.10 r4088 sweep (Test/IEEE13_LineAndCableSpacing; r3723 solves it)"
+      "cause": "EPRI r4088 AND r4133 raise #303 (access violation, on the `New Line ... TSCables=[..] Wires=[..]` command) on the line+cable-spacing deck where the port (and r3723 EPRI) solve it; neither EPRI channel can A/B it. Confirmed rev-persistent (r3723 MATCHED; r4088 and r4133 crash).",
+      "source": "WP-U1.10 r4088 sweep (Test/IEEE13_LineAndCableSpacing; r3723 solves it) + WP-U2.6 r4133 sweep (same #303)"
     },
     {
       "id": "epri-capcontrolfollow-r4088",
-      "revs": ["r4088"],
+      "revs": ["r4088", "r4133"],
       "case_contains": "CapControlFollow",
       "kind": "skip",
-      "cause": "EPRI r4088 raises #303 on the CapControl Type=Follow deck (dss-ext ControlSignal feature) where the port solves it; the r4088 channel cannot A/B it. On r3723 the deck runs (diff = monitor-header only).",
-      "source": "WP-U1.10 r4088 sweep (Test/CapControlFollow; r3723 runs, monitor-header known)"
+      "cause": "EPRI r4088 AND r4133 raise #303 on the CapControl Type=Follow deck (dss-ext ControlSignal feature) where the port solves it; neither EPRI channel can A/B it. On r3723 the deck runs (diff = monitor-header only).",
+      "source": "WP-U1.10 r4088 sweep (Test/CapControlFollow; r3723 runs, monitor-header known) + WP-U2.6 r4133 sweep (same #303)"
     }
   ]
 }
