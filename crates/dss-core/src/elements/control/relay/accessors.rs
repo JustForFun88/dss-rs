@@ -13,7 +13,7 @@ use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
-use super::{RCMAX, Relay};
+use super::Relay;
 
 impl Relay {
     /// Executive hook: the five TCC curve names to resolve against the TCC_Curve
@@ -495,9 +495,12 @@ impl DssObject for Relay {
         self.f_locked = other.f_locked;
         self.locked_out = other.locked_out;
 
-        // Per-phase state (Pascal copies FPresentState/FNormalState over the
-        // controlled element's phases).
-        let n = RCMAX.min(other.ccd.cd.nphases.max(1));
+        // Per-phase state (Pascal MakeLike Relay.pas:683 copies
+        // FPresentState/FNormalState over `Min(RELAYCONTROLMAXDIM,
+        // ControlledElement.Nphases)`, NOT the relay's own FNPhases). `ctrl_snap`
+        // was copied from `other` above, so `state_size()` yields the same
+        // controlled-element phase count Pascal loops here.
+        let n = self.state_size();
         for i in 1..=n {
             self.present_state[i] = other.present_state[i];
             self.normal_state[i] = other.normal_state[i];
