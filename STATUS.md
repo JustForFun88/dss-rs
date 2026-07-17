@@ -1427,6 +1427,17 @@ two cross-chain fuse-save decks are version-consistent on r4133.
   the header in `compare_monitor` (trim each column + drop trailing whitespace-only
   columns) before the equality assert — a test-comparator normalization that does
   not weaken the check (channel COUNT + every channel's samples are still asserted).
+  **Audit fix (2026-07-17, wt-combo).** `compare_monitor` is shared with the strict
+  golden path (`golden_metering_monitors.rs`/`golden_ieee8500.rs`/`scenario.rs`), so
+  the normalization is now applied to the **expected side only**, keeping the Rust
+  `view.header` strict: `monitor_view().header` is built structurally in
+  `monitor/header.rs` (`push("V1")`/`push(format!("P{i}W{j}"))`, no CSV round-trip)
+  → clean by construction, so a genuine Rust-side header defect (leading space /
+  phantom trailing column) still fails, exactly as before combo restore. The two
+  oracle-capture normalizations (`_lst` trailing-empty drop, `capture_eventlog` BOM
+  strip) only ever remove empty/whitespace/BOM content that is never a real element
+  name or event record, so they cannot equalize distinct values. `controls_cases_match_oracle`
+  green (26 cases, oddie:r4133).
   A second Oddie array artifact surfaced under the re-enabled compare and was fixed
   the same way: the Oddie `ZonePCE`/`AllBranchesInZone`/`AllEndElements` string
   arrays carry a trailing empty element (`['load.a',…,'']`), so `capture_all_meters`'s
