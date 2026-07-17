@@ -7,7 +7,7 @@ use num_complex::Complex64;
 
 use crate::circuit::Circuit;
 use crate::elements::control::cap_control::CapControl;
-use crate::elements::control::control_elem::CtrlCtx;
+use crate::elements::control::control_elem::{ControlClass, CtrlCtx};
 use crate::elements::control::espvl_control::{EspvlControl, EspvlDispatchEnv};
 use crate::elements::control::exp_control::{ExpControl, ExpDispatchEnv, PvFind, PvSnap};
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
@@ -128,104 +128,63 @@ pub(super) fn dispatch_control(
     let sys = sys_ctx(ckt);
     let SolveEnv { store, errors, .. } = env;
 
-    // Identify the control and read its target refs (immutable peek).
+    // Identify the control and read its target refs (immutable peek) through
+    // the `ControlElem` behavior trait — R0 replaces the `as_any` downcast
+    // chain. The concrete `ControlKind` mirror (with the captured refs the
+    // borrow-split below needs) is built from `control_kind()` + `ccd()`.
     let (kind, full_name) = {
         let obj = store.obj(r);
-        if let Some(rc) = obj.as_any().downcast_ref::<RegControl>() {
-            (
-                ControlKind::Reg {
-                    controlled: rc.ccd.controlled_element,
-                },
-                format!("RegControl.{}", rc.ccd.cd.obj.name()),
-            )
-        } else if let Some(cc) = obj.as_any().downcast_ref::<CapControl>() {
-            (
-                ControlKind::Cap {
-                    controlled: cc.ccd.controlled_element,
-                    monitored: cc.ccd.monitored_element,
-                },
-                format!("CapControl.{}", cc.ccd.cd.obj.name()),
-            )
-        } else if let Some(sw) = obj.as_any().downcast_ref::<SwtControl>() {
-            (
-                ControlKind::Swt {
-                    controlled: sw.ccd.controlled_element,
-                },
-                format!("SwtControl.{}", sw.ccd.cd.obj.name()),
-            )
-        } else if let Some(fu) = obj.as_any().downcast_ref::<Fuse>() {
-            (
-                ControlKind::Fuse {
-                    controlled: fu.ccd.controlled_element,
-                    monitored: fu.ccd.monitored_element,
-                },
-                format!("Fuse.{}", fu.ccd.cd.obj.name()),
-            )
-        } else if let Some(rec) = obj.as_any().downcast_ref::<Recloser>() {
-            (
-                ControlKind::Recloser {
-                    controlled: rec.ccd.controlled_element,
-                    monitored: rec.ccd.monitored_element,
-                },
-                format!("Recloser.{}", rec.ccd.cd.obj.name()),
-            )
-        } else if let Some(rel) = obj.as_any().downcast_ref::<Relay>() {
-            (
-                ControlKind::Relay {
-                    controlled: rel.ccd.controlled_element,
-                    monitored: rel.ccd.monitored_element,
-                },
-                format!("Relay.{}", rel.ccd.cd.obj.name()),
-            )
-        } else if let Some(gd) = obj.as_any().downcast_ref::<GenDispatcher>() {
-            (
-                ControlKind::GenDispatch {
-                    monitored: gd.ccd.monitored_element,
-                    // 1-based terminal; `.max(1)` guards an unset/0 terminal that
-                    // Pascal would turn into an out-of-range `Power[0]`.
-                    element_terminal: gd.ccd.element_terminal.max(1) as usize,
-                },
-                format!("GenDispatcher.{}", gd.ccd.cd.obj.name()),
-            )
-        } else if let Some(sc) = obj.as_any().downcast_ref::<StorageController>() {
-            (
-                ControlKind::StorageCtrl {
-                    monitored: sc.ccd.monitored_element,
-                    // 1-based; `.max(1)` guards an unset/0 terminal.
-                    element_terminal: sc.ccd.element_terminal.max(1) as usize,
-                },
-                format!("StorageController.{}", sc.ccd.cd.obj.name()),
-            )
-        } else if let Some(ic) = obj.as_any().downcast_ref::<InvControl>() {
-            (
-                ControlKind::Inv,
-                format!("InvControl.{}", ic.ccd.cd.obj.name()),
-            )
-        } else if let Some(ec) = obj.as_any().downcast_ref::<ExpControl>() {
-            (
-                ControlKind::Exp,
-                format!("ExpControl.{}", ec.ccd.cd.obj.name()),
-            )
-        } else if let Some(uc) = obj.as_any().downcast_ref::<UpfcControl>() {
-            (
-                ControlKind::Upfc,
-                format!("UPFCControl.{}", uc.ccd.cd.obj.name()),
-            )
-        } else if let Some(ec) = obj.as_any().downcast_ref::<EspvlControl>() {
-            (
-                ControlKind::Espvl {
-                    monitored: ec.ccd.monitored_element,
-                    // 1-based terminal; `.max(1)` guards an unset/0 terminal.
-                    element_terminal: ec.ccd.element_terminal.max(1) as usize,
-                },
-                format!("ESPVLControl.{}", ec.ccd.cd.obj.name()),
-            )
-        } else {
+        let Some(control) = obj.as_control() else {
             return Err(format!(
                 "Internal error: control element {} is not a ported control class.",
                 obj.data().name()
             ));
-        }
+        };
+        let ccd = control.ccd();
+        let class = control.control_kind();
+        let full_name = format!("{}.{}", class.display_name(), ccd.cd.obj.name());
+        let kind = match class {
+            ControlClass::Reg => ControlKind::Reg {
+                controlled: ccd.controlled_element,
+            },
+            ControlClass::Cap => ControlKind::Cap {
+                controlled: ccd.controlled_element,
+                monitored: ccd.monitored_element,
+            },
+            ControlClass::Swt => ControlKind::Swt {
+                controlled: ccd.controlled_element,
+            },
+            ControlClass::Fuse => ControlKind::Fuse {
+                controlled: ccd.controlled_element,
+                monitored: ccd.monitored_element,
+            },
+            ControlClass::Recloser => ControlKind::Recloser {
+                controlled: ccd.controlled_element,
+                monitored: ccd.monitored_element,
+            },
+            ControlClass::Relay => ControlKind::Relay {
+                controlled: ccd.controlled_element,
+                monitored: ccd.monitored_element,
+            },
+            // 1-based terminal; `.max(1)` guards an unset/0 terminal that Pascal
+            // would turn into an out-of-range `Power[0]`.
+            ControlClass::GenDispatch => ControlKind::GenDispatch {
+                monitored: ccd.monitored_element,
+                element_terminal: ccd.element_terminal.max(1) as usize,
+            },
+            ControlClass::StorageCtrl => ControlKind::StorageCtrl {
+                monitored: ccd.monitored_element,
+                element_terminal: ccd.element_terminal.max(1) as usize,
+            },
+            ControlClass::Inv => ControlKind::Inv,
+            ControlClass::Exp => ControlKind::Exp,
+            ControlClass::Upfc => ControlKind::Upfc,
+            ControlClass::Espvl => ControlKind::Espvl {
+                monitored: ccd.monitored_element,
+                element_terminal: ccd.element_terminal.max(1) as usize,
+            },
+        };
+        (kind, full_name)
     };
 
     let abort = |errors: &mut Vec<String>, full_name: &str, what: &str| -> String {
@@ -554,7 +513,12 @@ pub(super) fn dispatch_control(
                 .controls
                 .iter()
                 .copied()
-                .filter(|&c| store.obj(c).as_any().is::<EspvlControl>())
+                .filter(|&c| {
+                    store
+                        .obj(c)
+                        .as_control()
+                        .is_some_and(|cc| cc.control_kind() == ControlClass::Espvl)
+                })
                 .collect();
             {
                 let mut env = EspvlDispEnv {
@@ -667,12 +631,11 @@ pub(super) fn dispatch_control(
                             }
                         }
                         None => {
-                            let sw = store
+                            store
                                 .obj_mut(r)
-                                .as_any_mut()
-                                .downcast_mut::<SwtControl>()
-                                .expect("kind matched above");
-                            sw.reset_control_side();
+                                .as_control_mut()
+                                .expect("kind matched above")
+                                .reset_control_side();
                         }
                     }
                 }
@@ -860,12 +823,11 @@ pub(super) fn dispatch_control(
                             }
                         }
                         None => {
-                            let rec = store
+                            store
                                 .obj_mut(r)
-                                .as_any_mut()
-                                .downcast_mut::<Recloser>()
-                                .expect("kind matched above");
-                            rec.reset_control_side();
+                                .as_control_mut()
+                                .expect("kind matched above")
+                                .reset_control_side();
                         }
                     }
                 }
@@ -971,12 +933,11 @@ pub(super) fn dispatch_control(
                             }
                         }
                         None => {
-                            let rel = store
+                            store
                                 .obj_mut(r)
-                                .as_any_mut()
-                                .downcast_mut::<Relay>()
-                                .expect("kind matched above");
-                            rel.reset_control_side();
+                                .as_control_mut()
+                                .expect("kind matched above")
+                                .reset_control_side();
                         }
                     }
                 }

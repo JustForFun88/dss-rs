@@ -100,6 +100,9 @@ impl DssObject for TsDataObj {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
+    fn as_conductor(&self) -> Option<&dyn crate::elements::general::conductor_data::ConductorData> {
+        Some(self)
+    }
 
     fn get_f64(&self, idx: usize) -> f64 {
         match idx {

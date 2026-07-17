@@ -2,7 +2,7 @@
 //! catalog object onto the line, and the `Kill*Specified`/`ResetLengthUnits`
 //! helpers the property side effects use to switch back to the sym model.
 
-use crate::elements::general::conductor_data::{CnDataObj, TsDataObj, WireDataObj};
+use crate::elements::general::conductor_data::ConductorKind;
 use crate::elements::general::line_code::LineCodeObj;
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::obj::base::{DssObject, ObjectRefArrayItem};
@@ -351,30 +351,21 @@ impl Line {
 /// Pascal `condObj is TCNDataObj / TTSDataObj` (`Line.pas:772-780`): the
 /// conductor model a single catalog object implies.
 fn conductor_choice_of(o: &dyn DssObject) -> ConductorChoice {
-    let any = o.as_any();
-    if any.downcast_ref::<CnDataObj>().is_some() {
-        ConductorChoice::ConcentricNeutral
-    } else if any.downcast_ref::<TsDataObj>().is_some() {
-        ConductorChoice::TapeShield
-    } else {
-        ConductorChoice::Overhead
+    match o.as_conductor().map(|c| c.conductor_kind()) {
+        Some(ConductorKind::Cn) => ConductorChoice::ConcentricNeutral,
+        Some(ConductorKind::Ts) => ConductorChoice::TapeShield,
+        _ => ConductorChoice::Overhead,
     }
 }
 
 /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` of a resolved conductor,
 /// whichever concrete catalog type it is (Pascal reads `TConductorDataObj` fields).
 fn conductor_amps(o: &dyn DssObject) -> (f64, f64, i32, Vec<f64>) {
-    let any = o.as_any();
-    if let Some(w) = any.downcast_ref::<WireDataObj>() {
-        let (n, e, c, r) = w.amps();
-        (n, e, c, r.to_vec())
-    } else if let Some(c) = any.downcast_ref::<CnDataObj>() {
-        let (n, e, k, r) = c.amps();
-        (n, e, k, r.to_vec())
-    } else if let Some(t) = any.downcast_ref::<TsDataObj>() {
-        let (n, e, k, r) = t.amps();
-        (n, e, k, r.to_vec())
-    } else {
-        (0.0, 0.0, 1, Vec::new())
+    match o.as_conductor() {
+        Some(c) => {
+            let (n, e, k, r) = c.amps();
+            (n, e, k, r.to_vec())
+        }
+        None => (0.0, 0.0, 1, Vec::new()),
     }
 }

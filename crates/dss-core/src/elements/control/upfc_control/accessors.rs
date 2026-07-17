@@ -92,6 +92,14 @@ impl DssObject for UpfcControl {
     fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
         Some(self)
     }
+    fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
+        Some(self)
+    }
+    fn as_control_mut(
+        &mut self,
+    ) -> Option<&mut dyn crate::elements::control::control_elem::ControlElem> {
+        Some(self)
+    }
 
     fn get_f64(&self, idx: usize) -> f64 {
         match idx {
@@ -164,5 +172,17 @@ impl DssObject for UpfcControl {
 
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())
+    }
+}
+
+impl crate::elements::control::control_elem::ControlElem for UpfcControl {
+    fn ccd(&self) -> &crate::elements::control::control_elem::ControlElemData {
+        &self.ccd
+    }
+    fn ccd_mut(&mut self) -> &mut crate::elements::control::control_elem::ControlElemData {
+        &mut self.ccd
+    }
+    fn control_kind(&self) -> crate::elements::control::control_elem::ControlClass {
+        crate::elements::control::control_elem::ControlClass::Upfc
     }
 }
