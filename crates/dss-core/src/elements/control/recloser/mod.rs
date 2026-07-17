@@ -611,16 +611,28 @@ impl Recloser {
                 csum += cur(i);
             }
             let cmag = csum.norm();
-            ground_time = if self.gnd_inst > 0.0 && cmag >= self.gnd_inst && max_op == 1 {
-                0.01 // D3: bare inst trip, delay added once at push
+            // Pascal `TRecloserObj.Sample` (r4133 l.1091-1108): the inst and curve
+            // branches log DISTINCT DebugTrace lines — inst uses raw `Cmag`, curve
+            // uses `Cmag/GroundCurveMultiplier` and the curve-type label.
+            if self.gnd_inst > 0.0 && cmag >= self.gnd_inst && max_op == 1 {
+                ground_time = 0.01; // D3: bare inst trip, delay added once at push
+                if self.debug_trace {
+                    self.dbg(
+                        ctx,
+                        &format!("Gnd Instantaneous Trip: Mag={cmag:.3}, Time={ground_time:.3}"),
+                    );
+                }
             } else {
-                td_ground * gc.get_tcc_time(cmag / gnd_mult)
-            };
-            if ground_time > 0.0 && self.debug_trace {
-                self.dbg(
-                    ctx,
-                    &format!("Gnd {ground_type} Curve Trip: Mag={cmag:.3}, Time={ground_time:.3}"),
-                );
+                ground_time = td_ground * gc.get_tcc_time(cmag / gnd_mult);
+                if ground_time > 0.0 && self.debug_trace {
+                    self.dbg(
+                        ctx,
+                        &format!(
+                            "Gnd {ground_type} Curve Trip: Mag={:.3}, Time={ground_time:.3}",
+                            cmag / gnd_mult
+                        ),
+                    );
+                }
             }
         }
         if ground_time > 0.0 {
@@ -680,6 +692,16 @@ impl Recloser {
                     let time_test = td_phase * pc.get_tcc_time(cmag / ph_mult);
                     if time_test > 0.0 {
                         phase_time = time_test;
+                        // Pascal `Sample` (r4133 l.1155-1160): curve-branch trace.
+                        if self.debug_trace {
+                            self.dbg(
+                                ctx,
+                                &format!(
+                                    "Ph {phase_type} (1-Phase) Trip: Phase={i}, Mag={:.3}, Time={phase_time:.3}",
+                                    cmag / ph_mult
+                                ),
+                            );
+                        }
                     }
                 }
             }
@@ -781,6 +803,18 @@ impl Recloser {
                 }
                 let time_test = td_phase * pc.get_tcc_time(cmag / ph_mult);
                 if time_test > 0.0 {
+                    // Pascal `Sample` (r4133 l.1257-1262): curve-branch trace,
+                    // logged before the phase-time min-update.
+                    if self.debug_trace {
+                        self.dbg(
+                            ctx,
+                            &format!(
+                                "Ph {phase_type} (3-Phase) Trip: Phase={}, Mag={:.3}, Time={time_test:.3}",
+                                i - cond_offset,
+                                cmag / ph_mult
+                            ),
+                        );
+                    }
                     phase_time = if phase_time < 0.0 {
                         time_test
                     } else {
