@@ -1235,6 +1235,55 @@ fn state_open_forces_controlled_terminal_open_at_parse() {
     assert!(line_term1_max_current(&mut dss, "Line.l1") > 1.0);
 }
 
+/// r4133 `InterpretRelayState` is FIRST-CHARACTER only (`'o'`/`'c'`); any other
+/// spelling leaves the state array UNCHANGED, silently — it is NOT the old
+/// dss_capi 0.14.5 `trip`->open alias. Pinned against oddie:r4133, where
+/// `normal=trip` and `normal=xyz` both leave Normal at `[closed,closed,closed]`,
+/// `normal=openZ` sets open (leading char), and a bracketed list goes
+/// phase-by-phase.
+#[test]
+fn state_parse_is_first_char_only_r4133() {
+    let base = [
+        "clear",
+        "new circuit.t basekv=12.47",
+        "new line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
+    ];
+    let closed = "[closed, closed, closed, ]";
+    let open = "[open, open, open, ]";
+
+    // `trip` / arbitrary non-o/c: leaves every phase unchanged (default closed).
+    for spec in ["normal=trip", "normal=xyz", "state=trip"] {
+        let mut dss = Dss::new();
+        for c in base {
+            dss.command(c);
+        }
+        dss.command(&format!("new relay.r1 monitoredobj=line.l1 {spec}"));
+        assert!(dss.errors().is_empty(), "{spec}: errors {:?}", dss.errors());
+        assert_eq!(dump(&mut dss, "Normal"), closed, "{spec} Normal");
+        assert_eq!(dump(&mut dss, "State"), closed, "{spec} State");
+    }
+
+    // Leading 'o' wins regardless of the tail (`openZ`, `o`).
+    for spec in ["normal=openZ", "normal=o"] {
+        let mut dss = Dss::new();
+        for c in base {
+            dss.command(c);
+        }
+        dss.command(&format!("new relay.r1 monitoredobj=line.l1 {spec}"));
+        assert!(dss.errors().is_empty(), "{spec}: errors {:?}", dss.errors());
+        assert_eq!(dump(&mut dss, "Normal"), open, "{spec} Normal");
+    }
+
+    // Bracketed list: phase-by-phase, a non-o/c token keeps that phase.
+    let mut dss = Dss::new();
+    for c in base {
+        dss.command(c);
+    }
+    dss.command("new relay.r1 monitoredobj=line.l1 normal=[open trip closed]");
+    assert!(dss.errors().is_empty(), "errors {:?}", dss.errors());
+    assert_eq!(dump(&mut dss, "Normal"), "[open, closed, closed, ]");
+}
+
 /// End-to-end: an overcurrent relay on an overloaded line trips its controlled
 /// terminal open, logging a per-phase `Opened on Ph Definite Time` and actually
 /// opening the line.

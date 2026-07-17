@@ -60,7 +60,7 @@ mod logic;
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{
-    CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, ControlElemData, CtrlCtx, RefSnapshot,
+    CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, CTRL_STATE_KEEP, ControlElemData, CtrlCtx, RefSnapshot,
 };
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::CktElement;
@@ -561,6 +561,9 @@ impl Relay {
     fn do_action(&mut self, ordinal: i32) {
         if self.f_locked {
             return; // Pascal `InterpretRelayState`: blocked while Locked.
+        }
+        if ordinal == CTRL_STATE_KEEP {
+            return; // First char not 'o'/'c' — Pascal leaves every phase unchanged.
         }
         self.set_all_present(ordinal);
         self.state_side_effect();

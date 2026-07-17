@@ -2,7 +2,7 @@
  "schema": 1,
  "oracle": {
   "engine": "EPRI OpenDSS r4133 (v11.0.0.1 Charlottesville) via AltDSS Oddie; DSS-Python 0.16.0b2",
-  "note": "WP-U2.3 r4133 Relay per-phase rewrite (50->71 props). Regenerated per UPGRADE_PLAN 1.5; values are the Rust r4133 renders, cross-validated against oddie:r4133 (SwitchedObj/RecloseIntervals/Normal/State/Enabled/EventLog per 1.3-2 report-format, numeric-token compared)."
+  "note": "WP-U2.3 r4133 Relay per-phase rewrite (50->71 props). Values are the Rust r4133 renders; the props_roundtrip gate compares Rust output back to them, so this file is a REGRESSION PIN (self-consistency), not an independent oracle gate — genuine r4133 oracle coverage lives in the live controls-family relay decks (oracle:\"r4133\"). The load-bearing discrete state (Normal/State arrays incl. the first-char-only `trip`->unchanged case) plus SwitchedObj/RecloseIntervals/Enabled were spot cross-validated MANUALLY (non-CI) against oddie:r4133."
  },
  "class": "relay",
  "scenarios": [
@@ -601,6 +601,7 @@
   },
   {
    "name": "relay_normal_trip",
+   "_note": "r4133 InterpretRelayState is first-char-only: `trip` (leading 't') matches no arm, so Normal stays at its [closed,closed,closed] default. Verified on oddie:r4133 (`normal=trip`->`[closed,closed,closed]`).",
    "commands": [
     "New Line.l1 bus1=b1 bus2=b2 phases=3 r1=0.3 x1=0.6 length=1",
     "New Relay.r1 monitoredobj=line.l1 normal=trip"
@@ -645,7 +646,7 @@
     "EventLog": "No",
     "DebugTrace": "No",
     "DistReverse": "No",
-    "Normal": "[open, open, open, ]",
+    "Normal": "[closed, closed, closed, ]",
     "State": "[closed, closed, closed, ]",
     "DOC_TiltAngleLow": "90",
     "DOC_TiltAngleHigh": "90",
