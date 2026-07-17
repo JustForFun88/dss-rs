@@ -1659,6 +1659,23 @@ gate re-run green.
   entries self-report — so a stale mask surfaces. Closure is owned by WP-U2.6's
   r4133 ASSERT sweep, not U2.5.
 
+*Audit fixes, round 2 (2026-07-17, wt-59n).* Follow-up findings all flagged the
+same confidence-inflation risk: the post-fix `chaos_floor` classification and the
+r4133 no-trip outcome rested on non-checked-in prose from the opt-in Oddie r4133
+channel, verifiable only by manual eyeballing. Addressed by turning the prose into
+a **checked-in, re-runnable oracle read**, `tools/opendss/probe_59n.py`, and
+confirming both claims empirically on the r4133 engine: (A) the engine's OWN
+`Relay.State` property reads `[closed, closed, closed, ]` — byte-identical to the
+port's `render_state_array()` and the unit test's asserted `no_trip` — with
+Line.line1 still at ~1381 A, so the encoded outcome reflects oddie:r4133, not a
+self-pinned value (the unit-test doc comment now cites this); (B) the generator
+frequency leaves 60 Hz (78.88 Hz at t=1.0) and wanders unboundedly over 67–115 Hz
+across the next 15 s = pole-slip, so no fixed node-V tolerance honestly bounds the
+faer-vs-KLU residual (the parking is correct, not a masked bug). The probe exits 0
+iff r4133 reads all-closed. Manifest note + unit-test doc updated to point at the
+probe; the residual stays parked (unchanged), now backed by a regenerable artifact
+rather than eyeball-only prose. No engine code changed; mandatory gate re-run green.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
