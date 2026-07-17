@@ -106,7 +106,7 @@ fn time_class_ctx(class: i32, dbl_hour: f64) -> SysCtx {
 #[test]
 fn time_loadshapeclass_selects_matching_curve() {
     let mut st = Storage::new("s1");
-    assert_eq!(st.dispatch_mode, STORE_DEFAULT); // the `_ =>` mode-dispatch path
+    assert_eq!(st.dispatch_mode, StorageDispatchMode::Default); // the `_ =>` mode-dispatch path
     st.base.daily_shape_obj = Some(build_shape("0.2 0.6 1.0 0.5"));
     st.base.yearly_shape_obj = Some(build_shape("0.3 0.7 0.9 0.4"));
     st.base.duty_shape_obj = Some(build_shape("0.1 0.5 0.8 0.6"));
@@ -192,7 +192,7 @@ fn create_defaults() {
     assert_eq!(st.pct_reserve, 20.0);
     assert_eq!(st.kwh_reserve, 10.0); // kWhRating·pctReserve/100
     assert_eq!(st.f_state, STORE_IDLING);
-    assert_eq!(st.dispatch_mode, STORE_DEFAULT);
+    assert_eq!(st.dispatch_mode, StorageDispatchMode::Default);
     assert_eq!(st.pct_kw_out, 100.0);
     assert_eq!(st.pct_kw_in, 100.0);
     assert_eq!(st.pct_idle_kw, 1.0);
@@ -553,4 +553,24 @@ fn dyna_dll_none_does_not_warn() {
     let mut st = Storage::new("s1");
     let msgs = edit_storage_prop(&mut st, "DynaDLL", "none");
     assert!(msgs.is_empty(), "none must not warn: {msgs:?}");
+}
+
+#[test]
+fn storage_dispatch_mode_pins_enum_ordinals() {
+    assert_eq!(StorageDispatchMode::Default.ordinal(), 0);
+    assert_eq!(StorageDispatchMode::LoadMode.ordinal(), 1);
+    assert_eq!(StorageDispatchMode::PriceMode.ordinal(), 2);
+    assert_eq!(StorageDispatchMode::ExternalMode.ordinal(), 3);
+    assert_eq!(StorageDispatchMode::Follow.ordinal(), 4);
+    for (ord, m) in [
+        (0, StorageDispatchMode::Default),
+        (1, StorageDispatchMode::LoadMode),
+        (2, StorageDispatchMode::PriceMode),
+        (3, StorageDispatchMode::ExternalMode),
+        (4, StorageDispatchMode::Follow),
+    ] {
+        assert_eq!(StorageDispatchMode::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(StorageDispatchMode::from_ordinal(5), None);
+    assert_eq!(StorageDispatchMode::from_ordinal(-1), None);
 }

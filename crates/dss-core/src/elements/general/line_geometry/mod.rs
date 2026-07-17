@@ -36,6 +36,7 @@ mod matrix;
 mod save;
 
 use crate::elements::general::conductor_data::{CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME};
+use crate::elements::general::line_code::LineType;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
 use crate::support::line_constants::LineConstants;
@@ -43,9 +44,6 @@ use crate::support::line_constants::LineConstants;
 /// Pascal `LineUnits.UNITS_FT` — the `ft` ordinal; the value `FLastUnit` resets
 /// to and the default coordinate unit.
 const UNITS_FT: i32 = 5;
-
-/// Pascal default `FLineType` (`oh`, the 1-based `LineTypeEnum` ordinal 1).
-const LINETYPE_OH: i32 = 1;
 
 define_properties! {
     class "LineGeometry", abbrev true, enums enums;
@@ -123,7 +121,7 @@ pub struct LineGeometryObj {
     emerg_amps: f64,
     num_amp_ratings: i32,
     amp_ratings: Vec<f64>,
-    fline_type: i32,
+    fline_type: LineType,
     /// Snapshot-cloned `LineSpacing` (`spacing=`), or `None`.
     line_spacing_obj: Option<Box<dyn DssObject>>,
     // dss_capi 0.15.x equivalent-spacing state, copied from the referenced
@@ -211,7 +209,7 @@ impl LineGeometryObj {
             emerg_amps: 0.0,
             num_amp_ratings: 1,
             amp_ratings: vec![0.0],
-            fline_type: LINETYPE_OH,
+            fline_type: LineType::Oh,
             line_spacing_obj: None,
             equivalent_spacing: false,
             eq_dist_ph_ph: 0.0,
@@ -265,7 +263,7 @@ impl LineGeometryObj {
     }
 
     /// Pascal `LineGeometryObj.FLineType`.
-    pub fn line_type(&self) -> i32 {
+    pub fn line_type(&self) -> LineType {
         self.fline_type
     }
 

@@ -6,7 +6,7 @@
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 
-use super::{LineCodeObj, TWO_PI, prop};
+use super::{LineCodeObj, LineType, TWO_PI, prop};
 
 impl DssObject for LineCodeObj {
     fn data(&self) -> &DssObjData {
@@ -72,7 +72,7 @@ impl DssObject for LineCodeObj {
             UNITS => self.units,
             NEUTRAL => self.fneutral_conductor,
             SEASONS => self.num_amp_ratings,
-            LINE_TYPE => self.fline_type,
+            LINE_TYPE => self.fline_type.ordinal(),
             _ => unreachable!("LineCode has no integer property {idx}"),
         }
     }
@@ -83,7 +83,7 @@ impl DssObject for LineCodeObj {
             UNITS => self.units = value,
             NEUTRAL => self.fneutral_conductor = value,
             SEASONS => self.num_amp_ratings = value,
-            LINE_TYPE => self.fline_type = value,
+            LINE_TYPE => self.fline_type = LineType::from_ordinal(value).unwrap_or(self.fline_type),
             _ => unreachable!("LineCode has no integer property {idx}"),
         }
     }

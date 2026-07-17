@@ -9,7 +9,7 @@
 use num_complex::Complex64;
 use std::collections::BTreeMap;
 
-use crate::circuit::{CAPADD, Circuit};
+use crate::circuit::{AddType, Circuit};
 use crate::exec::{SystemYCsc, int_array_to_string};
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
@@ -159,7 +159,7 @@ pub(crate) fn dump_solution_properties(
     // Pascal writes `Set addtype=` then the branch word; the `case` has no
     // else (both branches covered: AddType is only ever GENADD/CAPADD).
     out.push_str("Set addtype=");
-    out.push_str(if ckt.auto_add_obj.add_type == CAPADD {
+    out.push_str(if ckt.auto_add_obj.add_type == AddType::Cap {
         "capacitor\n"
     } else {
         "generator\n"
@@ -196,7 +196,9 @@ pub(crate) fn dump_solution_properties(
     }
     out.push_str(&format!(
         "Set algorithm={}\n",
-        enums.get(enums.solve_alg).ordinal_to_string(sol.algorithm)
+        enums
+            .get(enums.solve_alg)
+            .ordinal_to_string(sol.algorithm.ordinal())
     ));
     out.push_str(&format!(
         "Set Trapezoidal={}\n",

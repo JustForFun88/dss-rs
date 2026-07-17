@@ -25,7 +25,7 @@ use crate::elements::control::upfc_control::{UpfcControl, UpfcDispatchEnv};
 use crate::elements::pc::generator::Generator;
 use crate::elements::pc::inv_based_pce::Connection as InvConnection;
 use crate::elements::pc::pvsystem::{PVSystem, VARMODE_KVAR};
-use crate::elements::pc::storage::{STORE_EXTERNALMODE, Storage};
+use crate::elements::pc::storage::{Storage, StorageDispatchMode};
 use crate::elements::pc::upfc::Upfc;
 use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
@@ -1554,7 +1554,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
             .copied()
             .filter_map(|r| {
                 let st = Self::storage(self.store, r);
-                (st.cd.enabled && st.dispatch_mode != STORE_EXTERNALMODE)
+                (st.cd.enabled && st.dispatch_mode != StorageDispatchMode::ExternalMode)
                     .then(|| (st.cd.obj.name().to_string(), r))
             })
             .collect()
@@ -1601,7 +1601,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         Self::storage_mut(self.store, r).state_desired = state;
     }
     fn set_dispatch_external(&mut self, r: ElemRef) {
-        Self::storage_mut(self.store, r).dispatch_mode = STORE_EXTERNALMODE;
+        Self::storage_mut(self.store, r).dispatch_mode = StorageDispatchMode::ExternalMode;
     }
     fn set_nominal(&mut self, r: ElemRef) {
         let sys = self.sys;

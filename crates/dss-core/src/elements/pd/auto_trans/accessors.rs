@@ -6,7 +6,7 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::pd::transformer::ControlledTransformer;
+use crate::elements::pd::transformer::{ControlledTransformer, CoreType};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
@@ -339,7 +339,7 @@ impl DssObject for AutoTrans {
             CONN => self.windings[self.aw()].connection,
             NUMTAPS => self.windings[self.aw()].num_taps,
             LEADLAG => self.hv_leads_lv as i32,
-            CORE => self.core_type,
+            CORE => self.core_type.ordinal(),
             BHPOINTS => self.bh_points,
             _ => unreachable!("AutoTrans has no integer property {idx}"),
         }
@@ -359,7 +359,7 @@ impl DssObject for AutoTrans {
                 self.windings[w].num_taps = value;
             }
             LEADLAG => self.hv_leads_lv = value != 0,
-            CORE => self.core_type = value,
+            CORE => self.core_type = CoreType::from_ordinal(value).unwrap_or(self.core_type),
             BHPOINTS => self.bh_points = value,
             _ => unreachable!("AutoTrans has no integer property {idx}"),
         }

@@ -113,7 +113,11 @@ fn ncim_pq_matches_oracle() {
     let dss = solve_ncim(&pq_circuit(1));
     let ckt = dss.circuit().unwrap();
     assert!(ckt.is_solved, "NCIM PQ did not converge");
-    assert_eq!(ckt.solution.algorithm, 2, "algorithm should be NCIM (2)");
+    assert_eq!(
+        ckt.solution.algorithm,
+        crate::solution::solution::SolveAlgorithm::Ncim,
+        "algorithm should be NCIM (2)"
+    );
     assert_eq!(ckt.solution.iteration, 3, "capi015 converges PQ in 3 iters");
 
     let expected = [

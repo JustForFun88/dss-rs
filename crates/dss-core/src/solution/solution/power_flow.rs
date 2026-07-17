@@ -5,21 +5,21 @@
 
 use num_complex::Complex64;
 
-use crate::circuit::{CAPADD, Circuit, GENADD};
+use crate::circuit::{AddType, Circuit};
 use crate::elements::ckt::ElemFlags;
 use crate::elements::pc::generator::Generator;
 use crate::elements::traits::{ElemRef, InjCtx};
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
 use crate::support::sparse_math::SparseComplex;
 
-use super::{ActiveY, NEWTONSOLVE, SolveEnv, SolveMode, SolveResult, sys_ctx};
+use super::{ActiveY, SolveAlgorithm, SolveEnv, SolveMode, SolveResult, sys_ctx};
 
 /// Pascal `TSolutionObj.AddInAuxCurrents` → `TAutoAdd.AddCurrents`
 /// (`Solution.pas` l.2139 / `AutoAdd.pas` l.597): during an AutoAdd candidate
 /// solve, inject the trial generator/capacitor current at the bus under test.
 /// The `AddInAuxCurrents` gate is `SolutionMode = AUTOADDFLAG`, so this no-ops
 /// in any other mode even though only AutoAdd ever sets `use_aux_currents`.
-fn add_in_aux_currents(ckt: &mut Circuit, solve_type: i32) {
+fn add_in_aux_currents(ckt: &mut Circuit, solve_type: SolveAlgorithm) {
     if ckt.solution.mode != SolveMode::AutoAdd {
         return;
     }
@@ -45,23 +45,22 @@ fn add_in_aux_currents(ckt: &mut Circuit, solve_type: i32) {
         }
         // Current INTO the system network.
         match add_type {
-            GENADD => {
+            AddType::Gen => {
                 let inj = (gen_va / bus_v).conj();
-                if solve_type == NEWTONSOLVE {
+                if solve_type == SolveAlgorithm::Newton {
                     ckt.solution.currents[nref] -= inj; // Terminal Current
                 } else {
                     ckt.solution.currents[nref] += inj; // Injection Current
                 }
             }
-            CAPADD => {
+            AddType::Cap => {
                 // Constant Y model.
-                if solve_type == NEWTONSOLVE {
+                if solve_type == SolveAlgorithm::Newton {
                     ckt.solution.currents[nref] += Complex64::new(0.0, ycap) * bus_v;
                 } else {
                     ckt.solution.currents[nref] += Complex64::new(0.0, -ycap) * bus_v;
                 }
             }
-            _ => {}
         }
     }
 }
@@ -166,7 +165,7 @@ fn do_normal_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         // Pascal `if UseAuxCurrents then AddInAuxCurrents(NORMALSOLVE)`
         // (Solution.pas l.899): AutoAdd's per-candidate trial-device injection.
         if ckt.solution.use_aux_currents {
-            add_in_aux_currents(ckt, super::NORMALSOLVE);
+            add_in_aux_currents(ckt, SolveAlgorithm::Normal);
         }
 
         if ckt.log_events {
@@ -379,9 +378,9 @@ pub(crate) fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
     }
 
     match ckt.solution.algorithm {
-        NEWTONSOLVE => do_newton_solution(ckt, env),
-        super::NCIMSOLVE => super::do_ncim_solution(ckt, env),
-        _ => do_normal_solution(ckt, env),
+        SolveAlgorithm::Newton => do_newton_solution(ckt, env),
+        SolveAlgorithm::Ncim => super::do_ncim_solution(ckt, env),
+        SolveAlgorithm::Normal => do_normal_solution(ckt, env),
     }?;
 
     ckt.is_solved = ckt.solution.converged_flag;
@@ -427,7 +426,7 @@ fn check_controls(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     // the PDE-only network + NCIM structures must be rebuilt on the next solve —
     // flag `NCIM_Ready = false` and skip the normal `WholeMatrix` rebuild (NCIM
     // rebuilds its own `PDE_ONLY` matrix in `NCIM_Init`).
-    if ckt.solution.system_y_changed && ckt.solution.algorithm == super::NCIMSOLVE {
+    if ckt.solution.system_y_changed && ckt.solution.algorithm == SolveAlgorithm::Ncim {
         ckt.solution.ncim_ready = false;
         return Ok(());
     }

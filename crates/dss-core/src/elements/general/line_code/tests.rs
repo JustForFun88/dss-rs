@@ -219,3 +219,15 @@ fn make_like_copies_matrices() {
     assert_eq!(get(&cls, &obj, "R1"), "0.2");
     assert_eq!(get(&cls, &obj, "X1"), "0.4");
 }
+
+#[test]
+fn line_type_pins_enum_ordinals() {
+    use super::LineType;
+    assert_eq!(LineType::Oh.ordinal(), 1);
+    assert_eq!(LineType::Busbar.ordinal(), 12);
+    for ord in 1..=12 {
+        assert_eq!(LineType::from_ordinal(ord).unwrap().ordinal(), ord);
+    }
+    assert_eq!(LineType::from_ordinal(0), None);
+    assert_eq!(LineType::from_ordinal(13), None);
+}

@@ -5,7 +5,7 @@
 use crate::elements::traits::ElemRef;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 
-use super::{ConductorChoice, LineGeometryObj, prop};
+use super::{ConductorChoice, LineGeometryObj, LineType, prop};
 
 impl DssObject for LineGeometryObj {
     fn data(&self) -> &DssObjData {
@@ -33,7 +33,7 @@ impl DssObject for LineGeometryObj {
                 .active_index()
                 .map_or(self.flast_unit, |a| self.funits[a]),
             prop::SEASONS => self.num_amp_ratings,
-            prop::LINETYPE => self.fline_type,
+            prop::LINETYPE => self.fline_type.ordinal(),
             _ => unreachable!("LineGeometry has no integer at {idx}"),
         }
     }
@@ -55,7 +55,9 @@ impl DssObject for LineGeometryObj {
                 }
             }
             prop::SEASONS => self.num_amp_ratings = value,
-            prop::LINETYPE => self.fline_type = value,
+            prop::LINETYPE => {
+                self.fline_type = LineType::from_ordinal(value).unwrap_or(self.fline_type)
+            }
             _ => unreachable!("LineGeometry has no integer at {idx}"),
         }
     }

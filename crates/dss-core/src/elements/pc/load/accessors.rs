@@ -16,7 +16,8 @@ use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
 use super::{
-    Connection, Load, LoadModel, LoadSpec, default_recalc_ctx, nconds_for_connection, prop,
+    Connection, Load, LoadModel, LoadSpec, LoadStatus, default_recalc_ctx, nconds_for_connection,
+    prop,
 };
 
 impl CktElement for Load {
@@ -256,7 +257,7 @@ impl DssObject for Load {
             PHASES => self.cd.nphases as i32,
             MODEL => self.load_model as i32,
             CONN => self.connection as i32,
-            STATUS => self.status,
+            STATUS => self.status.ordinal(),
             CLS => self.load_class,
             NUMCUST => self.num_customers,
             _ => unreachable!("Load has no integer property {idx}"),
@@ -274,7 +275,7 @@ impl DssObject for Load {
                     Connection::Wye
                 }
             }
-            STATUS => self.status = value,
+            STATUS => self.status = LoadStatus::from_ordinal(value).unwrap_or(self.status),
             CLS => self.load_class = value,
             NUMCUST => self.num_customers = value,
             _ => unreachable!("Load has no integer property {idx}"),

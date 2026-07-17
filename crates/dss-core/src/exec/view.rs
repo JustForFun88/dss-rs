@@ -247,7 +247,7 @@ impl Dss {
         // is stale, so the general `YPrim·V - Iinj` reporting recompute no longer
         // cancels to `-conj(S/V)`. The NCIM solver computed the exact terminal
         // current (`-conj((Pnom + j·deltaQNom)/V)`); reproduce it here.
-        if ckt.solution.algorithm == crate::solution::solution::NCIMSOLVE {
+        if ckt.solution.algorithm == crate::solution::solution::SolveAlgorithm::Ncim {
             let mut overrides: Vec<(ElemRef, Vec<num_complex::Complex64>)> = Vec::new();
             if let Some(o) = ncim_swing_source_currents(classes, ckt) {
                 overrides.push(o);

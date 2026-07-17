@@ -11,7 +11,7 @@ use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::support::mathutil::{FpcRng, gauss, quasi_log_normal};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
-use super::{Connection, Load, LoadModel, LoadSpec, prop};
+use super::{Connection, Load, LoadModel, LoadSpec, LoadStatus, prop};
 
 impl Load {
     /// Pascal `GrowthFactor` (`Load.pas:1014`, B3-r3723 / SVN r3723-era update):
@@ -137,13 +137,13 @@ impl Load {
         self.shape_factor = CDOUBLEONE;
         self.shape_is_actual = false;
 
-        let factor = if self.status == 1 {
+        let factor = if self.status == LoadStatus::Fixed {
             // Fixed: consider only the growth factor.
             self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour)
         } else {
             match sys.mode {
                 SolveMode::Snapshot | SolveMode::Harmonic => {
-                    if self.status == 2 {
+                    if self.status == LoadStatus::Exempt {
                         // Exempt
                         self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour)
                     } else {
@@ -154,7 +154,7 @@ impl Load {
                 SolveMode::Daily => {
                     let mut f =
                         self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
-                    if self.status != 2 {
+                    if self.status != LoadStatus::Exempt {
                         f *= sys.load_multiplier;
                     }
                     self.calc_daily_mult(sys.dbl_hour);
@@ -172,7 +172,7 @@ impl Load {
                 SolveMode::DutyCycle => {
                     let mut f =
                         self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
-                    if self.status != 2 {
+                    if self.status != LoadStatus::Exempt {
                         f *= sys.load_multiplier;
                     }
                     self.calc_duty_mult(sys.dbl_hour);
@@ -185,7 +185,7 @@ impl Load {
                     // `USENONE` (the default) falls through, leaving 1+j1.
                     let mut f =
                         self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
-                    if self.status != 2 {
+                    if self.status != LoadStatus::Exempt {
                         f *= sys.load_multiplier;
                     }
                     match sys.active_load_shape_class {
@@ -206,7 +206,7 @@ impl Load {
                     let mut f =
                         self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
                     self.calc_daily_mult(sys.dbl_hour);
-                    if self.status != 2 {
+                    if self.status != LoadStatus::Exempt {
                         f *= sys.load_multiplier;
                     }
                     f
@@ -240,7 +240,7 @@ impl Load {
                 SolveMode::Monte1 => {
                     let mut f = self.random_mult
                         * self.growth_factor(sys.year, sys.default_growth_factor, sys.dbl_hour);
-                    if self.status != 2 {
+                    if self.status != LoadStatus::Exempt {
                         f *= sys.load_multiplier;
                     }
                     f
