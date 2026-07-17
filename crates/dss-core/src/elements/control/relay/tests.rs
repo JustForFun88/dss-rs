@@ -789,6 +789,12 @@ fn voltage_ov_uses_closed_phase_extrema_b2() {
 /// `IF Vmag > 0` guard fails, `OVTime` stays -1 and the relay correctly does NOT
 /// trip — matching oddie:r4133. (For the usual mon==ctrl-phase relay the two
 /// counts coincide, so this is the only path that distinguishes them.)
+///
+/// The no-trip outcome is NOT self-pinned: on the r4133 engine itself the deck's
+/// own `Relay.State` property reads `[closed, closed, closed, ]` (byte-identical
+/// to the `render_state_array()` asserted below) and Line.line1 still carries
+/// ~1381 A. Reproduce via `tools/opendss/probe_59n.py` (exits 0 iff r4133 reads
+/// all-closed / no trip).
 #[test]
 fn voltage_relay_open_point_sizes_state_by_controlled_nphases_59n() {
     let mut r = armed_relay(); // ctrl_snap = 3-phase line
