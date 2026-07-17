@@ -11,10 +11,10 @@
 //!
 //! Modes ported (PHASE6_PLAN §2.3): 0 (V&I), 1 (powers), 2 (transformer tap),
 //! 3 (PCElement state vars), 4 (flicker/Pst — WP-PF.2), 5 (solution variables),
-//! 6 (capacitor steps), 7 (Storage), 9 (losses), 11 (all terminal V&I) — plus
-//! the ±16/±32/±64 modifiers, residual, VIpolar/Ppolar. Modes 8/10 (transformer
-//! winding currents/voltages) and 12 (LL voltages) build their **header** but
-//! defer the sample body (Phase 6+/7). File save/`TranslateToCSV` is Phase 8;
+//! 6 (capacitor steps), 7 (Storage), 8 (transformer winding currents), 9
+//! (losses), 10 (transformer winding voltages), 11 (all terminal V&I), 12
+//! (line-to-line terminal voltages + currents) — plus the ±16/±32/±64
+//! modifiers, residual, VIpolar/Ppolar. File save/`TranslateToCSV` is Phase 8;
 //! the mode-4 flicker post-process (`DoFlickerCalculations`) is in `post.rs`.
 //!
 //! Split into submodules mirroring `load/`, `generator/`, `vsource/`:

@@ -327,7 +327,7 @@ impl Transformer {
     /// carries `PropFlags::READS_VTERMINAL` and the `?`/`Dump` surfaces refresh
     /// via `Dss::refresh_vterminal_if_marked`; the solve path for
     /// `Powers`/`Currents` refreshes as before).
-    fn get_all_winding_currents(&self) -> Vec<Complex64> {
+    pub(crate) fn get_all_winding_currents(&self) -> Vec<Complex64> {
         let nw = self.num_windings.max(0) as usize;
         let np = self.cd.nphases;
         let nconds = self.cd.nconds;
