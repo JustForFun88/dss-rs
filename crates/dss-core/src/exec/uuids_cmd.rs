@@ -100,7 +100,7 @@ impl Dss {
                         }
                     }
                 }
-            } else if let Some(&ci) = self.class_by_name.get(&dev_class.to_lowercase()) {
+            } else if let Some(&ci) = self.class_by_name.get(&dev_class.to_ascii_lowercase()) {
                 // Pascal sets `LastClassReferenced`/`ActiveDSSClass` as a side
                 // effect of the lookup.
                 self.active_class = Some(ci);

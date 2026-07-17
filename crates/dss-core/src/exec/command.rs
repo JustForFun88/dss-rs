@@ -424,7 +424,7 @@ impl Dss {
     /// Pascal `GetObjClassAndName`: read the `class.name` token (optionally
     /// prefixed `object=`) from the main parser.
     pub(super) fn get_obj_class_and_name(&mut self) -> (String, String) {
-        let param_name = self.parser.next_param(&self.vars).to_lowercase();
+        let param_name = self.parser.next_param(&self.vars).to_ascii_lowercase();
         let param = self.parser.make_string(&self.vars);
         if !param_name.is_empty() && !crate::util::compare_text_shortest_eq(&param_name, "object") {
             // Pascal error 240: the `%s` argument is `CRLF + Parser.CmdString`
@@ -447,7 +447,7 @@ impl Dss {
     /// unknown class logs #903 and leaves the previously-referenced class in
     /// place. WP-U1.1 item 5.
     pub(super) fn set_object_class(&mut self, param: &str) {
-        match self.class_by_name.get(&param.to_lowercase()).copied() {
+        match self.class_by_name.get(&param.to_ascii_lowercase()).copied() {
             Some(ci) => self.active_class = Some(ci),
             None => self.errors.push(format!(
                 "Error! Object Class \"{param}\" not found. \n{}",
@@ -543,7 +543,7 @@ impl Dss {
         if obj_class.eq_ignore_ascii_case("circuit") {
             return; // Do nothing if editing Circuit
         }
-        let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
+        let Some(&ci) = self.class_by_name.get(&obj_class.to_ascii_lowercase()) else {
             self.errors.push(format!(
                 "Edit Command: Object Type \"{obj_class}\" not found."
             ));
@@ -571,7 +571,7 @@ impl Dss {
         if obj_type.is_empty() || obj_type.eq_ignore_ascii_case("circuit") {
             return; // Pascal: do nothing
         }
-        let Some(&ci) = self.class_by_name.get(&obj_type.to_lowercase()) else {
+        let Some(&ci) = self.class_by_name.get(&obj_type.to_ascii_lowercase()) else {
             return; // Pascal: GetDSSClassPtr = NIL → nothing
         };
         if self.classes[ci].kind.is_none() {
@@ -686,7 +686,7 @@ impl Dss {
         if obj_class.eq_ignore_ascii_case("circuit") {
             return None; // Pascal: do nothing (retval stays 0)
         }
-        let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
+        let Some(&ci) = self.class_by_name.get(&obj_class.to_ascii_lowercase()) else {
             self.errors.push(format!(
                 "Error in {verb} Command: Object Type \"{obj_class}\" not found."
             ));
@@ -731,7 +731,11 @@ impl Dss {
         // falls back to it) — it does NOT abort. An empty class keeps the previous
         // class unchanged.
         if !obj_class.is_empty() {
-            match self.class_by_name.get(&obj_class.to_lowercase()).copied() {
+            match self
+                .class_by_name
+                .get(&obj_class.to_ascii_lowercase())
+                .copied()
+            {
                 Some(ci) => self.active_class = Some(ci),
                 None => self
                     .errors
@@ -857,7 +861,7 @@ impl Dss {
         // (Handle = 0, see the doc note) → not found.
         let (cls_str, obj_str) =
             crate::util::parse_object_class_and_name(&mut self.parser, &self.vars, &elem_name);
-        let ci = match self.class_by_name.get(&cls_str.to_lowercase()) {
+        let ci = match self.class_by_name.get(&cls_str.to_ascii_lowercase()) {
             Some(&ci) => Some(ci),
             None => self.active_class, // `DSS.LastClassReferenced` fallback
         };
@@ -866,7 +870,7 @@ impl Dss {
                 && !obj_str.is_empty()
                 && self.classes[ci]
                     .name_to_idx
-                    .contains_key(&obj_str.to_lowercase())
+                    .contains_key(&obj_str.to_ascii_lowercase())
         });
         if !found {
             self.errors.push(format!(
@@ -882,7 +886,7 @@ impl Dss {
         let ci = ci.expect("found implies ci is Some");
         let oi = self.classes[ci]
             .name_to_idx
-            .get(&obj_str.to_lowercase())
+            .get(&obj_str.to_ascii_lowercase())
             .copied()
             .expect("found confirmed the object exists");
         let element_name = self.classes[ci].objects[oi].data().name().to_string();
@@ -894,7 +898,7 @@ impl Dss {
     /// active for `DSS_OBJECT` classes), register circuit elements with the
     /// circuit, and edit the rest of the line.
     pub(super) fn add_object(&mut self, obj_class: &str, name: &str) {
-        let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
+        let Some(&ci) = self.class_by_name.get(&obj_class.to_ascii_lowercase()) else {
             self.errors.push(format!(
                 "New Command: Object Type \"{obj_class}\" not found."
             ));
@@ -1087,7 +1091,7 @@ impl Dss {
         };
 
         self.last_result = "Property Unknown".to_string();
-        let Some(&ci) = self.class_by_name.get(&class_name.to_lowercase()) else {
+        let Some(&ci) = self.class_by_name.get(&class_name.to_ascii_lowercase()) else {
             self.errors
                 .push(format!("Error! Object \"{obj_name}\" not found."));
             return;

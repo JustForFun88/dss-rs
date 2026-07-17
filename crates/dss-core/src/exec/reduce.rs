@@ -439,7 +439,7 @@ impl Dss {
 
     /// Pascal `Set_Name`: rename a line + keep the class name→index map in sync.
     fn red_rename_line(&mut self, r: ElemRef, new_name: &str) {
-        let lower = new_name.to_lowercase();
+        let lower = new_name.to_ascii_lowercase();
         let cls = &mut self.classes[r.cls];
         let old = cls.objects[r.idx].data().name().to_string();
         cls.objects[r.idx].data_mut().set_name(lower.clone());
@@ -1187,7 +1187,7 @@ impl Dss {
 /// of a `Remove` parameter name, 0 if unmatched.
 fn remove_commands_index(name: &str) -> i64 {
     const NAMES: [&str; 3] = ["elementname", "keepload", "editstring"];
-    let lower = name.to_lowercase();
+    let lower = name.to_ascii_lowercase();
     for (i, n) in NAMES.iter().enumerate() {
         if n.starts_with(&lower) {
             return (i + 1) as i64;

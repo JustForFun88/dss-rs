@@ -343,7 +343,7 @@ impl Dss {
             let mut p = Parser::new();
             parse_object_class_and_name(&mut p, &self.vars, full_name)
         };
-        let &ci = self.class_by_name.get(&class_name.to_lowercase())?;
+        let &ci = self.class_by_name.get(&class_name.to_ascii_lowercase())?;
         if !self.classes[ci].set_active(&name) {
             return None;
         }
@@ -386,8 +386,10 @@ impl Dss {
             let mut p = Parser::new();
             parse_object_class_and_name(&mut p, &self.vars, full_name)
         };
-        let &ci = self.class_by_name.get(&class_name.to_lowercase())?;
-        let &oi = self.classes[ci].name_to_idx.get(&name.to_lowercase())?;
+        let &ci = self.class_by_name.get(&class_name.to_ascii_lowercase())?;
+        let &oi = self.classes[ci]
+            .name_to_idx
+            .get(&name.to_ascii_lowercase())?;
         let json = json_build::obj_to_json_data(
             &self.classes[ci].props,
             self.classes[ci].objects[oi].as_ref(),
@@ -402,7 +404,7 @@ impl Dss {
     /// 1254`). `class` is the class name (case-insensitive); `None` if unknown.
     /// An empty class serializes to `[]`.
     pub fn class_batch_to_json(&self, class: &str, opts: JsonOpts) -> Option<String> {
-        let &ci = self.class_by_name.get(&class.to_lowercase())?;
+        let &ci = self.class_by_name.get(&class.to_ascii_lowercase())?;
         let json = json_build::batch_to_json(
             &self.classes[ci].props,
             &self.classes[ci].objects,

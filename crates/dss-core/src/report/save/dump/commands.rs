@@ -90,7 +90,7 @@ fn entry_line(out: &mut String, i: usize, name: &str, help: &str) {
 /// (no parent-class-prefixed key exists — asserted by
 /// `tools/golden/gen_help_catalog.py`), so own-key-or-miss is complete.
 fn property_help(class_name: &str, prop_name: &str) -> String {
-    let key = format!("{class_name}.{}", prop_name.to_lowercase());
+    let key = format!("{class_name}.{}", prop_name.to_ascii_lowercase());
     dss_help(&key).to_string()
 }
 
@@ -105,18 +105,18 @@ pub(crate) fn dump_all_dss_commands(
 
     out.push_str("[execcommands]\n");
     for (i, name) in EXEC_COMMANDS.iter().enumerate() {
-        let key = format!("Command.{}", name.to_lowercase());
+        let key = format!("Command.{}", name.to_ascii_lowercase());
         entry_line(&mut out, i + 1, name, dss_help(&key));
     }
 
     out.push_str("[execoptions]\n");
     for (i, name) in EXEC_OPTIONS.iter().enumerate() {
-        let key = format!("Executive.{}", name.to_lowercase());
+        let key = format!("Executive.{}", name.to_ascii_lowercase());
         entry_line(&mut out, i + 1, name, dss_help(&key));
     }
 
     for class_name in PASCAL_CLASS_ORDER {
-        let Some(&ci) = class_by_name.get(&class_name.to_lowercase()) else {
+        let Some(&ci) = class_by_name.get(&class_name.to_ascii_lowercase()) else {
             continue; // NOT_PORTED class (see PASCAL_CLASS_ORDER above).
         };
         let props = &classes[ci].props;

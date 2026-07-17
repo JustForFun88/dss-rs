@@ -37,7 +37,7 @@ impl HashList {
     /// Append a name (stored lowercased) and return its index. Duplicate
     /// names are allowed, like the Pascal `Add`.
     pub fn add(&mut self, s: &str) -> usize {
-        let lower = s.to_lowercase();
+        let lower = s.to_ascii_lowercase();
         let idx = self.names.len();
         self.map.entry(lower.clone()).or_default().push(idx as u32);
         self.names.push(lower);
@@ -53,7 +53,7 @@ impl HashList {
     /// All indices holding the name `s`, in insertion order. Replaces the
     /// Pascal `Find`/`FindNext` cursor pair.
     pub fn indices_of(&self, s: &str) -> impl Iterator<Item = usize> + '_ {
-        let lower = s.to_lowercase();
+        let lower = s.to_ascii_lowercase();
         self.map
             .get(&lower)
             .map(|v| v.as_slice())

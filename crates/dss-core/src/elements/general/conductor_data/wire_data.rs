@@ -35,7 +35,7 @@ pub struct WireDataObj {
 impl WireDataObj {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
-            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
+            data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             cond: ConductorDataCore::new(),
         }
     }

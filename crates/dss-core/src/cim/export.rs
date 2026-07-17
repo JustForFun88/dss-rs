@@ -894,7 +894,7 @@ fn write_reference_terminals(
                 emerg = norm;
             }
             let limit_name = writer::op_lim_i_name(norm, emerg);
-            let key = limit_name.to_lowercase();
+            let key = limit_name.to_ascii_lowercase();
             let limit_uuid = match op_limit_idx.get(&key) {
                 Some(&idx) => op_limits[idx].uuid,
                 None => {

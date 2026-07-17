@@ -43,7 +43,7 @@ impl ParserVars {
     /// Define or redefine a variable, returning its index (Pascal `Add`).
     /// A value containing `@` is stored wrapped in braces.
     pub fn add(&mut self, name: &str, value: &str) -> usize {
-        let key = name.to_lowercase();
+        let key = name.to_ascii_lowercase();
         let stored = if value.contains('@') {
             format!("{{{value}}}")
         } else {
@@ -67,7 +67,7 @@ impl ParserVars {
     /// Index of a variable, case-insensitively (Pascal `Lookup`; `None`
     /// replaces the 0 = not-found convention).
     pub fn lookup(&self, name: &str) -> Option<usize> {
-        self.map.get(&name.to_lowercase()).copied()
+        self.map.get(&name.to_ascii_lowercase()).copied()
     }
 
     /// Raw stored value of a variable — including the `{...}` wrapper when

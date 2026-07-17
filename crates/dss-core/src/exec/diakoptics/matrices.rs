@@ -67,7 +67,7 @@ impl Dss {
         for i in 1..=num_nodes {
             let nb = ckt.map_node_to_bus[i];
             let bus_name = ckt.bus_list.name(nb.bus_ref).unwrap_or("");
-            node_names.push(format!("{}.{}", bus_name.to_lowercase(), nb.node_num));
+            node_names.push(format!("{}.{}", bus_name.to_ascii_lowercase(), nb.node_num));
         }
 
         ckt.ad
@@ -79,8 +79,8 @@ impl Dss {
         for (lidx, link) in links.iter().enumerate().skip(1) {
             // The class-name prefix; a link must be a `line` (Diakoptics.pas:349).
             let prefix = match link.split_once('.') {
-                Some((c, _)) => c.to_lowercase(),
-                None => link.to_lowercase(),
+                Some((c, _)) => c.to_ascii_lowercase(),
+                None => link.to_ascii_lowercase(),
             };
             if prefix != "line" {
                 result = -1; // Not a line — abort (Diakoptics.pas:395).

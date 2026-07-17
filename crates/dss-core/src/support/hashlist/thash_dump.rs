@@ -59,7 +59,7 @@ impl THashSim {
     /// Pascal `THashList.Add`: lowercase, hash, append to the bucket and the
     /// linear list.
     fn add(&mut self, s: &str) {
-        let lower = s.to_lowercase();
+        let lower = s.to_ascii_lowercase();
         let idx = self.linear.len() + 1; // 1-based NumElements
         let b = self.hash(&lower);
         self.buckets[b].push((lower.clone(), idx));
