@@ -222,6 +222,55 @@ mod comparator_tests {
 }
 
 #[cfg(test)]
+mod eventlog_mask_tests {
+    use super::{EVENTLOG_MASKS, EventLogMask, apply_eventlog_masks};
+
+    /// The §1.3-3 mask mechanism: a documented rule for a target rev folds a
+    /// cosmetic delta on the matched spec only; the default oracle (`None`) and
+    /// non-matching specs pass through untouched.
+    #[test]
+    fn masks_fold_documented_delta_on_matching_spec_only() {
+        const T: &[(&str, &[EventLogMask])] = &[(
+            "testrev",
+            &[EventLogMask {
+                note: "self-test only",
+                find: "opened, delayed",
+                to: "opened on ph slow (3ph trip)",
+            }],
+        )];
+        assert_eq!(
+            apply_eventlog_masks(
+                T,
+                Some("testrev"),
+                "Action=OPENED, DELAYED".to_lowercase().as_str()
+            ),
+            "action=opened on ph slow (3ph trip)"
+        );
+        // Non-matching spec / default oracle → unchanged.
+        assert_eq!(
+            apply_eventlog_masks(T, Some("r4133"), "action=opened, delayed"),
+            "action=opened, delayed"
+        );
+        assert_eq!(
+            apply_eventlog_masks(T, None, "action=opened, delayed"),
+            "action=opened, delayed"
+        );
+    }
+
+    /// The shipped r4133 table has NO rows — the WP-U2.2 Recloser port
+    /// reproduces the r4133 wording exactly, so every line passes through the
+    /// mask untouched (the empty table is the proof).
+    #[test]
+    fn shipped_r4133_masks_are_empty_passthrough() {
+        let line = "Hour=0, Sec=0.2, ControlIter=1, Element=Recloser.r, Action=PHASE 1 OPENED ON PH FAST (3PH TRIP)";
+        assert_eq!(
+            apply_eventlog_masks(EVENTLOG_MASKS, Some("r4133"), line),
+            line
+        );
+    }
+}
+
+#[cfg(test)]
 mod props_015x_tests {
     use super::compare_prop_lists;
 
@@ -1261,6 +1310,19 @@ fn compare_prop_lists(
 pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances, ctx: &str) {
     for pc in exp {
         let class = pc.element.split('.').next().unwrap_or("");
+        // WP-U2.2: the Recloser property TABLE moved to the r4133 46-prop surface
+        // (renames + new props); it cannot match the pinned **0.14.5** oracle's
+        // 24-prop table shape (`compare_all_properties` runs only vs 0.14.5 —
+        // corpus_live gates it on `oracle.is_none()`). The recloser's r4133 shape
+        // is code-verified (the `class_props` `debug_assert` on the 46 defs) and
+        // its property VALUES are gated by the `recloser.json` props golden (by
+        // name) + the `oracle: "r4133"` family probes; its shape simply isn't
+        // 0.14.5-oracle-gateable. Skip the whole element here rather than mask 46
+        // individual rows. Sibling protection classes (Relay/Fuse) join this list
+        // when WP-U2.1/U2.3 move their tables.
+        if class.eq_ignore_ascii_case("Recloser") {
+            continue;
+        }
         let actual = dss
             .element_properties(&pc.element)
             .unwrap_or_else(|| panic!("{ctx}: no element {} (all_properties)", pc.element));
@@ -1324,12 +1386,81 @@ pub fn compare_variables(dss: &mut Dss, exp: &VariablesCap, tol: &Tolerances, ct
     }
 }
 
+/// One documented per-rev event-log normalization (§1.3-3): a literal substring
+/// `find` replaced by `to` on **both** engines' lines before comparison. `note`
+/// cites the `tests/TOLERANCE_NOTES.md` §"r4133 event-log masks" entry that
+/// justifies it. A mask only folds a COSMETIC text delta — it never drops or
+/// reorders a line, so the compared sequence (order / hours / devices / actions)
+/// is never relaxed.
+pub struct EventLogMask {
+    /// Human tag → TOLERANCE_NOTES.md justification.
+    pub note: &'static str,
+    /// Literal substring to normalize.
+    pub find: &'static str,
+    /// Its replacement (applied to both the Rust and oracle line).
+    pub to: &'static str,
+}
+
+/// Per-oracle-spec event-log masks (§1.3-3, created by WP-U2.2). Keyed by the
+/// case's `oracle` manifest spec; applied to both the Rust and oracle line
+/// before the numeric-skeleton comparison in [`compare_eventlog`].
+///
+/// **Ships with NO r4133 rows.** The WP-U2.2 Recloser per-phase rewrite
+/// reproduces the r4133 event-log wording byte-for-byte (proven against the
+/// oracle's `export eventlog` — `Phase %d opened on %s (…trip) …` etc.), so no
+/// recloser mask is required — the empty `r4133` table is the *proof* the port
+/// is exact. The mechanism exists so WP-U2.3 (Relay) and later revs can add
+/// documented rows here without restructuring (union-mergeable, one row per
+/// line). Rules: cite the delta row / TOLERANCE_NOTES entry in `note`; never add
+/// a row that would drop or reorder a line (that is a real divergence, not a
+/// format delta — fix the port instead).
+const EVENTLOG_MASKS: &[(&str, &[EventLogMask])] = &[("r4133", &[])];
+
+/// Apply the [`EVENTLOG_MASKS`] rows for `oracle_spec` to a single event-log
+/// line (no-op when `oracle_spec` is `None`/the default oracle, or the rev has
+/// no rows).
+fn apply_eventlog_masks(
+    masks: &[(&str, &[EventLogMask])],
+    oracle_spec: Option<&str>,
+    line: &str,
+) -> String {
+    let Some(spec) = oracle_spec else {
+        return line.to_string();
+    };
+    let mut s = line.to_string();
+    for (rev, rules) in masks {
+        if rev.eq_ignore_ascii_case(spec) {
+            for m in *rules {
+                if !m.find.is_empty() {
+                    s = s.replace(m.find, m.to);
+                }
+            }
+        }
+    }
+    s
+}
+
 /// Compare the event log line-for-line (normalized numeric skeleton at 1e-6
 /// rel — the exact policy `golden_protection.rs` pins trip/reclose
 /// sequences with). The log is cumulative, so a per-step compare pins *when*
-/// each control action happened, not just the final set.
-pub fn compare_eventlog(dss: &Dss, exp: &[String], ctx: &str) {
+/// each control action happened, not just the final set. `oracle_spec` selects
+/// the §1.3-3 per-rev [`EVENTLOG_MASKS`] applied to both sides (`None` = the
+/// pinned 0.14.5 oracle, no masking).
+pub fn compare_eventlog(dss: &Dss, exp: &[String], oracle_spec: Option<&str>, ctx: &str) {
+    compare_eventlog_masked(dss, exp, oracle_spec, EVENTLOG_MASKS, ctx);
+}
+
+/// The masked comparison core (factored out so the self-test can inject a table).
+fn compare_eventlog_masked(
+    dss: &Dss,
+    exp: &[String],
+    oracle_spec: Option<&str>,
+    masks: &[(&str, &[EventLogMask])],
+    ctx: &str,
+) {
     let log = dss.event_log();
+    // Masks never drop lines, so the length check stays a pure sequence-length
+    // gate (order/count never relaxed).
     assert_eq!(
         log.len(),
         exp.len(),
@@ -1338,7 +1469,9 @@ pub fn compare_eventlog(dss: &Dss, exp: &[String], ctx: &str) {
         exp.join("\n    ")
     );
     for (i, (a, e)) in log.iter().zip(exp).enumerate() {
-        assert_value_matches_tol(a, e, 1e-6, 1e-9, &format!("{ctx}: event-log line {i}"));
+        let am = apply_eventlog_masks(masks, oracle_spec, a);
+        let em = apply_eventlog_masks(masks, oracle_spec, e);
+        assert_value_matches_tol(&am, &em, 1e-6, 1e-9, &format!("{ctx}: event-log line {i}"));
     }
 }
 

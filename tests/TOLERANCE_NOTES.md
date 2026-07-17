@@ -678,6 +678,40 @@ only for cases that sample them in deterministic modes (`check_meters_monitors` 
 `solvable_now.json`) — an unsampled monitor returns a phantom channel from the
 pinned oracle, an artifact, not an engine gap.
 
+## r4133 event-log masks (`harness::EVENTLOG_MASKS`, §1.3-3)
+
+`compare_eventlog` compares the cumulative event log line-for-line (numeric
+skeleton at 1e-6 rel), pinning **when** each control action happened, not just
+the final set. UPGRADE_PLAN §1.3-3 allows exact-string comparison against an
+EPRI-rev oracle **only after masking documented per-rev format deltas** — the
+sequence (order / hours / devices / actions) is never relaxed.
+
+The mask infra (created by **WP-U2.2**) is `EVENTLOG_MASKS` in
+`tests/harness/mod.rs`: a per-oracle-spec table of literal `(find → to)`
+substitutions applied to **both** the Rust and the oracle line before the
+skeleton comparison. A mask only folds a cosmetic text delta — it never drops or
+reorders a line (masks are applied *after* the length/order gate, and a
+line-dropping "mask" would be a real divergence to fix in the port, not a format
+delta). Rows are keyed by the case's `oracle` manifest spec (`r4133`, …); the
+default 0.14.5 oracle (`oracle` absent) is never masked.
+
+**The shipped `r4133` table is EMPTY.** The WP-U2.2 Recloser per-phase rewrite
+reproduces the r4133 event-log wording byte-for-byte — proven against the
+oracle's `export eventlog` CSV (`Phase %d opened on %s (…trip) & locked out
+(…lockout)`, `Phase %d closed (…reclosing)`, `Phase ALL reset (3ph reset)`), so
+no recloser mask is required; the empty table *is* the proof the port is exact.
+The mechanism (and its self-tests in `harness::eventlog_mask_tests`) exists so
+WP-U2.3 (Relay) and later revs can add documented rows without restructuring —
+one row per delta, `note` citing the delta row this file references.
+
+**Oddie event-log capture (`tools/oracle/oracle_server.py`):** the AltDSS Oddie
+bridge over the official EPRI DLL does **not** populate the `Solution.EventLog`
+accessor (it always returns empty), though the engine records events and `export
+eventlog` writes the real CSV. WP-U2.2 taught `capture_eventlog` to read that CSV
+for the Oddie engine (the pinned dss-python `capi*` engines keep the direct
+`Solution.EventLog` read); without this fix no `oracle: "r4133"` deck could
+compare its event log at all.
+
 ## WP8.5b property parity (`harness::compare_all_properties` / `SKIP_PROPS`)
 
 The corpus property-parity gate compares **every** element's **every** property
