@@ -1726,9 +1726,11 @@ being green** (the port equals the pinned 0.14.5 oracle on all 58 → the r4133 
 is purely the FPC↔Delphi layer, never a Rung-2 regression):
 
 - **48** (44 `diff` + 4 `skip` cases) map to an existing r4088-tagged floor/skip
-  entry on a path that is **byte-identical r4088=r4133** (source-verified: solver,
+  entry on a path that is **behaviorally identical r4088=r4133** (source-verified:
   `PCElements/`, `Meters/`, injection assembly, reduction, ckt24 feeder all
-  unchanged across the EPRI delta) → the entry's `revs` extended to include
+  byte-identical; the solver `Common/Solution.pas` differs only in inert
+  progress-form plumbing + a commented-out debug `WriteLn`, and `PDElements/AutoTrans.pas`
+  only in two read-only PropertyHelp strings — numerically inert) → the entry's `revs` extended to include
   `r4133` (14 entries): `iteration-count-delta`, `injection-fpc-delphi-ulp`,
   `autotrans-regcontrol-tap`, `pvsystem-kvar-display-precision`,
   `storage-kwhstored-drift`, `storage-kw-display-precision`,

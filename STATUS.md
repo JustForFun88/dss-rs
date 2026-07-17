@@ -20,7 +20,7 @@ display-precision floors, dss_capi's bracketed numeric-array PropertyValue rende
 still witnessed), or the four EPRI-DLL #303 crash decks. The **58** raw NEW
 divergences were all dispositioned (mandatory gate green ⇒ port == pinned 0.14.5 ⇒
 the r4133 gap is purely FPC↔Delphi, never a Rung-2 regression): 48 cases (44 diff
-+ 4 skip) extend an existing r4088 floor/skip entry on a **byte-identical
++ 4 skip) extend an existing r4088 floor/skip entry on a **behaviorally-identical
 r4088=r4133 path** (source-verified; 14 entries), 10 cases → 3 new entries
 (`storage-pctstored-display-precision`, `monitor-seq-magnitude-drift`,
 `harmonics-ieee519-r4133`); separately 2 entries narrowed to r3723
@@ -39,6 +39,24 @@ marks UPGRADE COMPLETE; new root `README.md` states the parity claim. **Engine
 behavior = OpenDSS 11.0.0.1 (r4133) except the documented ledger.** `rg
 "NOT_PORTED\(U2"` empty; zero `pending` upgrade decks. Mandatory gate (fmt +
 clippy + `cargo test --workspace`) green.
+
+**Audit fixes (post-merge, wt-u26).** Wording-accuracy pass on the Rung-2 ledger
+after re-`cmp`ing the vendored r4088/r4133 Version8 trees: the summary phrase
+"byte-identical r4088=r4133" is literally false for the **solver**
+(`Common/Solution.pas` differs — progress-form/GUI plumbing + a commented-out debug
+`WriteLn`, numerically inert) and `PDElements/AutoTrans.pas` (two read-only
+PropertyHelp strings). All non-`Solution.pas`/`AutoTrans.pas` units named in these
+entries (`PCElements/`, `Meters/Monitor.pas`, `SolutionAlgs.pas`, `YMatrix.pas`,
+`ReduceAlgs.pas`, injection/reduction/ckt24 feeder) ARE byte-identical, so the
+behavioral conclusion (no algorithm changed) stands. Reworded the overstated
+claims to "behaviorally identical (only progress-form/PropertyHelp text differs)"
+in `known_diffs.json` (iteration-count-delta, ckt24-regcontrol-conditioning),
+`DIVERGENCES.md`, `known_diffs_burndown.md`, and this record. Also: documented that
+the `monitor-header-whitespace` r3723 tag is likely already dead (the
+`compare_monitor` header normalization is rev-independent — a future r3723 re-sweep
+prunes it), and scope-noted `harmonics-ieee519-r4133`'s deliberately-broad match
+(mirrors sibling floor entries; re-triage a materially different IEEE_519 move). No
+code/behavior change; mandatory gate re-run green.
 
 **Prior — WP-U2.5 (protection report/log surface) + WP-U2.6
 (59NRelayDemo decomposition) MERGED.** WP-U2.6 found + fixed a relay port bug:
