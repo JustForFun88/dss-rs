@@ -7,7 +7,53 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-17 — **UPGRADE Rung 2 EXITED — WP-U2.6 the 11.0.0.1 (r4133)
+Last updated: 2026-07-17 — **DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
+P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
+(wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),
+merged into `update` in that order (final merge `e7cfc1e`). UPGRADE_PLAN is
+COMPLETE (Rung-2 exit record below); per `PLAN_SEQUENCE.md` the active plan is
+now **`DE_PASCALIZE_PLAN.md`**. All four WPs are stratum **[A]** (bit-neutral):
+zero golden/tolerance churn — the untouched byte goldens are the equivalence
+proof. Full records: `docs/phase-records/depascalize-{r0,p1,p2,p6}.md`.
+- **R0** (Part I): `ControlElem` trait + `ControlClass` over all 12 control
+  classes (dispatch.rs identification chain collapsed; error prefixes
+  byte-identical), `ElemStore::kind()` type-guards (zones/build, take_sample),
+  `ConductorData` trait (Wire/CN/TS, ~13 downcasts), typed `present_tap` read.
+  Downcasts 766→699 (−67). R2 handoffs recorded (heterogeneous
+  sample/do_pending_action, Reg→Transformer / Cap→Capacitor pairs,
+  `capture_metered` bare-`&dyn` sites).
+- **P1** (partial — 7 families fully converted, each discriminant-pin-tested):
+  `DynSolveMode` rename, `AddType`, `SolveAlgorithm`, `LoadStatus`,
+  `StorageDispatchMode`, `CoreType` (non-contiguous), `LineType`. The deferred
+  remainder (Solution control_mode/load_model/random_type ctx ripple, InvControl
+  family, Storage f_state + StorageController via the control-queue i32 channel,
+  var_mode, item-7 element families, bare-i32 fields incl. `Winding.connection`
+  [P10 dependency], `MonPhase`, Tier-2) is enumerated in the record file
+  §Deferred — a P1-continuation WP.
+- **P2**: `MonitorModeView` typed decode stored on Monitor (masks 15/16/32/64
+  pinned in `from_raw`/`to_raw` only). Audit caught a genuine [A] violation —
+  undefined base modes 13/14/15 + junk bits ≥128 were lossily canonicalized —
+  fixed: the view carries the verbatim `raw: i32` (lossless boundary), new
+  `Undefined` base variant = timestamp-only sample row + general header
+  (Pascal `else Exit` / `ClearMonitorStream` else), 2 new pins.
+- **P6**: 125 identifier-path `to_lowercase()`→`to_ascii_lowercase()` /
+  `eq_ignore_ascii_case` conversions across 53 files; report-text paths
+  untouched. Both audits PASS; note recorded: ASCII folding is the
+  plan-prescribed byte-based behavior (the Unicode folding was the latent
+  divergence for non-ASCII identifiers) — permanent semantics, not a bug.
+- Toolchain drift: stable-1.96 clippy flags 4 pre-existing sites
+  (`matrices.rs` doubled-`.re` bug pin, `inc_matrix`, windgen test, harness) —
+  fixed bit-neutrally in wt-r0 `1e8dcdf`; wt-p1/wt-p6 converged on the same
+  fixes (one doc-comment merge conflict, resolved keep-fullest).
+- Gate on merged `update` (`e7cfc1e`): fmt clean, clippy clean, `cargo +stable
+  test --workspace` exit 0 — 47 suites, dss-core lib 1223, corpus_live 27
+  (548 s), 0 failures; `tests/corpus` pristine.
+- **Next (wave 2):** R1 typed arenas (opus-xhigh exec + xhigh audits) ∥ P5a
+  miette diagnostics ∥ P1-continuation ∥ P12+P13 — then R2 (opus-high) → R3;
+  Part III P8/P10/P11/P14/P15 after R2 (P10 needs `Winding.connection` from
+  P1-continuation).
+
+**Prior — UPGRADE Rung 2 EXITED — WP-U2.6 the 11.0.0.1 (r4133)
 parity claim (branch wt-u26).** The opt-in EPRI sweep
 `DSS_LIVE_OPENDSS=r4133 DSS_LIVE_OPENDSS_ASSERT=1` is **GREEN** (326 matched, 70
 known-diverged, 4 known-skipped, **0 NEW** of 400; 103 target-rev `oracle`-flipped
@@ -206,17 +252,17 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
-**Era: post-final-acceptance UPGRADE (PLAN_SEQUENCE stages 4+).** The 1:1 port
-reached FINAL ACCEPTANCE (2026-07-11, referee ACCEPT) and the post-acceptance
-corpus-completeness rounds + JSON export merged to `main`. Active work is
-**UPGRADE_PLAN Rung 1** (dss_capi 0.15.x / EPRI r4088 parity) on `upgrade-rung1`,
-now merged with post-acceptance main. Post-acceptance sequence:
-UPGRADE Rung 1 → Rung 2 (OpenDSS 11.0.0.1 / r4133) → DE_PASCALIZE (the dedicated
-`TODO(compat)` wipe + golden regen, PORTING_PLAN §4.1/§6) → RESONANCE →
-MULTITHREADING M0–M4. Part II A-Diakoptics (WP-AD.2–AD.6) is sequenced after
-MULTITHREADING M2.
+**Era: post-acceptance DE_PASCALIZE (PLAN_SEQUENCE stage 5).** The 1:1 port
+reached FINAL ACCEPTANCE (2026-07-11, referee ACCEPT); UPGRADE Rungs 1–2 are
+COMPLETE (2026-07-16/17 — engine behavior = OpenDSS 11.0.0.1 (r4133) except the
+documented ledger). Active work is **DE_PASCALIZE_PLAN.md** on the `update`
+integration branch: wave 1 (R0 / P1-partial / P2 / P6, all stratum [A]) merged
+2026-07-17 — see the frontier block above. Remaining sequence:
+DE_PASCALIZE Parts I–III + Stage F → RESONANCE → MULTITHREADING M0–M4;
+Part II A-Diakoptics (WP-AD.2–AD.6) after MULTITHREADING M2.
 
-**In flight / next.**
+**Late-UPGRADE work records (historical — all landed; kept for the §UPGRADE
+cross-refs).**
 - **D14 (DynamicExp RPN "index-bug fix") — landed, pulled ahead of WP-U1.6** (branch
   `dynexp-d14`). Upstream `2a8bdb78` adds an `Exit` to `SolveEq` that returns before
   evaluating the RHS, making it a no-op evaluator: DynExp state variables freeze at
@@ -1741,11 +1787,9 @@ harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `m
   compare re-enabled — `compare_monitor` now normalizes the Delphi monitor-CSV header
   artifact (leading-space + trailing-empty columns), so `check_meters_monitors` is
   back on both decks and verified vs oddie:r4133. No sub-item remains.
-- **WP-U1.2 row D3** — port with its overload deck (B3-r3723 landed under WP-U1.6).
-- **WP-U1.6 remaining** (branch wt-u16 §UPGRADE): C5 RegControl FwdThreshold+idle
-  props, C6 Transformer BH props, C5-r3723 LoadShape Mode index, D11 CapControl
-  TIMECONTROL effElement, D13 LoadShape MMF, C4 `Solve all` alias — see the
-  WP-U1.6 §UPGRADE block for the property-count/deck entanglements.
+- ~~WP-U1.2 row D3~~ / ~~WP-U1.6 remaining (C5/C6/C5-r3723/D11/D13/C4)~~ — ALL
+  LANDED before the Rung exits (wt-u14props, wt-u16ind, wt-u16 records in
+  §UPGRADE; C5-r3723 settled not-a-delta). This list entry is retired.
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — now floored as
   ultra-switch conditioning (CF-D), watch on re-touch.
 - **Monitor modes 8/10/12** (winding I/V, LL) have a deferred stub sample body

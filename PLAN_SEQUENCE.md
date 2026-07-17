@@ -34,7 +34,10 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               parallel porting branches inherited it. Ran FIRST post-acceptance:
                               freshest porting context, avoided double-touching code DE_PASCALIZE
                               would refactor, and lets Stage F pin r4133-parity (not r3723).
- 5. DE_PASCALIZE_PLAN.md      Parts I–III [A] (arenas/enums/de-indexing, bit-neutral,
+ 5. DE_PASCALIZE_PLAN.md      IN PROGRESS (wave 1 merged 2026-07-17: R0 + P1-partial +
+                              P2 + P6, all [A]/bit-neutral, parallel worktrees + opus
+                              audits; records docs/phase-records/depascalize-*.md).
+                              Parts I–III [A] (arenas/enums/de-indexing, bit-neutral,
                               proven by the still-stable goldens), then Stage F —
                               the `oracle-parity` feature split (absorbs the
                               TODO(compat) sweep; creates the two CI lanes; parity
