@@ -23,6 +23,7 @@ mod tests;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::conductor_data::{CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME};
+use crate::elements::general::line_code::LineType;
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::traits::ElemRef;
@@ -268,7 +269,7 @@ pub struct Line {
     pub kxg: f64,
     pub rho: f64,
     pub earth_model: i32,
-    pub line_type: i32,
+    pub line_type: LineType,
     /// dss_capi 0.15.x `epsRMedium`: relative permittivity of the surrounding
     /// medium, pushed into the geometry/spacing `LineConstants` at the Z build
     /// (`SetEpsRMedium`). Raw stored value (the getter reads it directly); default
@@ -435,7 +436,7 @@ impl Line {
             kxg: xg / (658.5 * (rho / base_freq).sqrt()).ln(),
             rho,
             earth_model: 3, // DSS.DefaultEarthModel = DERI
-            line_type: 1,   // OH line
+            line_type: LineType::Oh,
             eps_r_medium: 1.0,
             height_offset: 0.0,
             height_units: LineUnits::Meter.code(), // UNITS_M

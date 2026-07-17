@@ -27,6 +27,53 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
 
+/// Pascal line type (`Set LineType=`, `LineTypeEnum`; shared by `LineCode`,
+/// `LineGeometry` and `Line`). Discriminants are user-visible and frozen
+/// (round-trip through the `DssEnum` registry, ordinals `oh=1`..`busbar=12`);
+/// `i32` survives only at the property parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum LineType {
+    Oh = 1,
+    Ug = 2,
+    UgTs = 3,
+    UgCn = 4,
+    SwtLdbrk = 5,
+    SwtFuse = 6,
+    SwtSect = 7,
+    SwtRec = 8,
+    SwtDisc = 9,
+    SwtBrk = 10,
+    SwtElbow = 11,
+    Busbar = 12,
+}
+
+impl LineType {
+    /// The `LineTypeEnum` ordinal (property `?`/dump boundary value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// `TLineType(ordinal)`; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            1 => Some(Self::Oh),
+            2 => Some(Self::Ug),
+            3 => Some(Self::UgTs),
+            4 => Some(Self::UgCn),
+            5 => Some(Self::SwtLdbrk),
+            6 => Some(Self::SwtFuse),
+            7 => Some(Self::SwtSect),
+            8 => Some(Self::SwtRec),
+            9 => Some(Self::SwtDisc),
+            10 => Some(Self::SwtBrk),
+            11 => Some(Self::SwtElbow),
+            12 => Some(Self::Busbar),
+            _ => None,
+        }
+    }
+}
+
 /// 1-based property ordinals (Pascal `TLineCodeProp`).
 pub mod prop {
     pub const NPHASES: usize = 1;
@@ -155,7 +202,7 @@ pub struct LineCodeObj {
     xg: f64,
     rho: f64,
     amp_ratings: Vec<f64>,
-    fline_type: i32,
+    fline_type: LineType,
     units: i32,
 }
 
@@ -196,8 +243,8 @@ impl LineCodeObj {
             xg: 0.155081,
             rho: 100.0,
             amp_ratings: vec![400.0],
-            fline_type: 1, // OH line
-            units: 0,      // UNITS_NONE
+            fline_type: LineType::Oh,
+            units: 0, // UNITS_NONE
         };
         for p in [prop::R1, prop::X1, prop::R0, prop::X0, prop::C1, prop::C0] {
             obj.data.set_as_next_seq(p);
@@ -268,7 +315,7 @@ impl LineCodeObj {
     pub fn nphases(&self) -> i32 {
         self.fnphases
     }
-    pub fn fline_type(&self) -> i32 {
+    pub fn fline_type(&self) -> LineType {
         self.fline_type
     }
     pub fn z(&self) -> Option<&CMatrix> {

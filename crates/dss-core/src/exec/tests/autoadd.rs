@@ -27,7 +27,7 @@ fn autoadd_options_set_then_get() {
         assert_eq!(ckt.auto_add_obj.gen_kw, 500.0);
         assert_eq!(ckt.auto_add_obj.gen_pf, 0.95);
         assert_eq!(ckt.auto_add_obj.cap_kvar, 1200.0);
-        assert_eq!(ckt.auto_add_obj.add_type, crate::circuit::CAPADD);
+        assert_eq!(ckt.auto_add_obj.add_type, crate::circuit::AddType::Cap);
         assert_eq!(ckt.ue_weight, 2.0);
         assert_eq!(ckt.loss_weight, 3.0);
         assert_eq!(ckt.ue_regs, vec![1, 2, 3]);
@@ -79,7 +79,7 @@ fn addtype_unknown_falls_back_to_default_no_error() {
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     assert_eq!(
         dss.circuit().unwrap().auto_add_obj.add_type,
-        crate::circuit::CAPADD
+        crate::circuit::AddType::Cap
     );
     dss.command("Get addtype");
     assert_eq!(dss.result(), "capacitor");

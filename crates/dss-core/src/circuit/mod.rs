@@ -9,7 +9,7 @@ pub mod coverage;
 pub mod tearing;
 pub mod terminal;
 
-pub use auto_add::{AutoAdd, CAPADD, GENADD};
+pub use auto_add::{AddType, AutoAdd};
 pub use bus::Bus;
 pub use circuit::{BusMarker, Circuit, ElemKind, NodeBus, ReductionStrategy};
 pub use ckt_tree::{BusAdjLists, CktTree, TreeNode, ZoneEndsList};

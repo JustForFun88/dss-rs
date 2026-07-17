@@ -220,8 +220,8 @@ impl Dss {
                     &mut result,
                     // Pascal echoes the lowercase device word, not the enum name.
                     match ckt.auto_add_obj.add_type {
-                        crate::circuit::CAPADD => "capacitor",
-                        _ => "generator",
+                        crate::circuit::AddType::Cap => "capacitor",
+                        crate::circuit::AddType::Gen => "generator",
                     },
                 ),
                 opt::ALLOW_DUPLICATES => append_result(&mut result, yes_no(ckt.duplicates_allowed)),
@@ -242,7 +242,7 @@ impl Dss {
                     &mut result,
                     &enums
                         .get(enums.solve_alg)
-                        .ordinal_to_string(ckt.solution.algorithm),
+                        .ordinal_to_string(ckt.solution.algorithm.ordinal()),
                 ),
                 // NCIM solver options (`ExecOptions.pas:1268-1271`).
                 opt::IGNORE_GEN_Q_LIMITS => {

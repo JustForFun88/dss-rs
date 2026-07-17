@@ -89,10 +89,35 @@ pub const USEYEARLY: i32 = 1;
 pub const USEDUTY: i32 = 2;
 pub const USENONE: i32 = -1;
 
-/// Algorithm codes (`Solution.pas` l.39-41).
-pub const NORMALSOLVE: i32 = 0;
-pub const NEWTONSOLVE: i32 = 1;
-pub const NCIMSOLVE: i32 = 2;
+/// Power-flow algorithm (`Solution.pas` l.39-41, `SolveAlgEnum`: `Set
+/// algorithm=`). Discriminants are user-visible and frozen (round-trip through
+/// the `DssEnum` registry); `i32` survives only at the parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum SolveAlgorithm {
+    #[default]
+    Normal = 0,
+    Newton = 1,
+    Ncim = 2,
+}
+
+impl SolveAlgorithm {
+    /// The `SolveAlgEnum` ordinal (`Set algorithm=`/`?`/dump boundary value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// `TSolveAlgorithm(ordinal)` from the enum-registry value; out-of-range
+    /// yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Normal),
+            1 => Some(Self::Newton),
+            2 => Some(Self::Ncim),
+            _ => None,
+        }
+    }
+}
 
 /// NCIM node-type codes (`Solution.pas` l.44-45).
 pub const NCIM_PQ_NODE: i32 = 0;
@@ -128,7 +153,7 @@ pub type SolveResult = Result<(), String>;
 /// Pascal `TSolutionObj` state.
 pub struct Solution {
     pub mode: SolveMode,
-    pub algorithm: i32,
+    pub algorithm: SolveAlgorithm,
     pub control_mode: i32,
     pub default_control_mode: i32,
     pub load_model: i32,
@@ -296,7 +321,7 @@ impl Solution {
     pub fn new(default_base_freq: f64) -> Self {
         Self {
             mode: SolveMode::Snapshot,
-            algorithm: NORMALSOLVE,
+            algorithm: SolveAlgorithm::Normal,
             control_mode: CTRLSTATIC,
             default_control_mode: CTRLSTATIC,
             load_model: POWERFLOW,
@@ -499,7 +524,7 @@ impl Solution {
     /// `NodeVbase` (or relative change when no base), exact NaN/Inf checks.
     pub(crate) fn converged(&mut self, num_nodes: usize) -> bool {
         // Pascal `Converged` (`Solution.pas` l.731-734): NCIM has its own test.
-        if self.algorithm == NCIMSOLVE {
+        if self.algorithm == SolveAlgorithm::Ncim {
             return self.ncim_converged();
         }
         self.max_error = 0.0;
@@ -566,5 +591,26 @@ pub fn sys_ctx(ckt: &Circuit) -> SysCtx {
         dyna_t: s.t,
         iteration_flag: s.iteration_flag,
         last_solution_was_direct: s.last_solution_was_direct,
+    }
+}
+
+#[cfg(test)]
+mod enum_discriminant_tests {
+    use super::SolveAlgorithm;
+
+    #[test]
+    fn solve_algorithm_pins_solvealgenum_ordinals() {
+        assert_eq!(SolveAlgorithm::Normal.ordinal(), 0);
+        assert_eq!(SolveAlgorithm::Newton.ordinal(), 1);
+        assert_eq!(SolveAlgorithm::Ncim.ordinal(), 2);
+        for (ord, alg) in [
+            (0, SolveAlgorithm::Normal),
+            (1, SolveAlgorithm::Newton),
+            (2, SolveAlgorithm::Ncim),
+        ] {
+            assert_eq!(SolveAlgorithm::from_ordinal(ord), Some(alg));
+        }
+        assert_eq!(SolveAlgorithm::from_ordinal(-1), None);
+        assert_eq!(SolveAlgorithm::from_ordinal(3), None);
     }
 }

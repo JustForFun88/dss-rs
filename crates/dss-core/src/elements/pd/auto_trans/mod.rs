@@ -31,6 +31,7 @@
 mod tests;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::pd::transformer::CoreType;
 use crate::elements::pd::winding::Winding;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -205,7 +206,7 @@ pub struct AutoTrans {
     is_substation: bool,
     substation_name: String,
     xfmr_bank: String,
-    core_type: i32,
+    core_type: CoreType,
     /// Pascal `puXHX`/`puXHT`/`puXXT` — per-unit reactances between winding pairs.
     puxhx: f64,
     puxht: f64,
@@ -313,7 +314,7 @@ impl AutoTrans {
             is_substation: false,
             substation_name: String::new(),
             xfmr_bank: String::new(),
-            core_type: 0,
+            core_type: CoreType::Shell,
             puxhx: 0.10,
             puxht: 0.35,
             puxxt: 0.30,

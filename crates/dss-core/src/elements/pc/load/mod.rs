@@ -70,6 +70,35 @@ pub enum Connection {
     Delta = 1,
 }
 
+/// Pascal `TLoadStatus` (`Load.pas`; `Set status=`, `LoadStatusEnum`
+/// `Variable=0`/`Fixed=1`/`Exempt=2`). Discriminants are user-visible and
+/// frozen (round-trip through the `DssEnum` registry); `i32` survives only at
+/// the property parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum LoadStatus {
+    Variable = 0,
+    Fixed = 1,
+    Exempt = 2,
+}
+
+impl LoadStatus {
+    /// The `LoadStatusEnum` ordinal (property `?`/dump boundary value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// `TLoadStatus(ordinal)`; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Variable),
+            1 => Some(Self::Fixed),
+            2 => Some(Self::Exempt),
+            _ => None,
+        }
+    }
+}
+
 /// Pascal `TLoadSpec`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoadSpec {
@@ -189,7 +218,7 @@ pub struct Load {
 
     pub connection: Connection,
     pub load_model: LoadModel,
-    pub status: i32, // 0=Variable, 1=Fixed, 2=Exempt
+    pub status: LoadStatus,
     pub kw_base: f64,
     pub kvar_base: f64,
     pub kva_base: f64,
@@ -326,7 +355,7 @@ impl Load {
             cd,
             connection: Connection::Wye,
             load_model: LoadModel::ConstPQ,
-            status: 0,
+            status: LoadStatus::Variable,
             kw_base,
             kvar_base: 5.0,
             kva_base: kw_base / pf_nominal,

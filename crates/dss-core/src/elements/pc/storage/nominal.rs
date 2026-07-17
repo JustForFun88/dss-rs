@@ -11,8 +11,7 @@ use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
 use super::{
-    STORE_CHARGING, STORE_DISCHARGING, STORE_EXTERNALMODE, STORE_FOLLOW, STORE_IDLING,
-    STORE_LOADMODE, STORE_PRICEMODE, Storage, VARMODE_PF,
+    STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, Storage, StorageDispatchMode, VARMODE_PF,
 };
 
 /// Pascal `Math.Sign(Double): Integer` — returns 0 at exactly zero (unlike
@@ -67,7 +66,7 @@ impl Storage {
         self.state_changed = false;
         let old_state = self.f_state;
 
-        if self.dispatch_mode == STORE_FOLLOW {
+        if self.dispatch_mode == StorageDispatchMode::Follow {
             // Charge/discharge by the sign of the load-shape.
             if level > 0.0 && (self.kwh_stored - self.kwh_reserve) > EPSILON {
                 self.set_storage_state(STORE_DISCHARGING);
@@ -163,7 +162,7 @@ impl Storage {
         match self.f_state {
             STORE_CHARGING => {
                 if self.kwh_stored < self.kwh_rating {
-                    if self.dispatch_mode == STORE_FOLLOW {
+                    if self.dispatch_mode == StorageDispatchMode::Follow {
                         self.base.kw_out = self.kw_rating * self.base.shape_factor.re;
                         self.pct_kw_in = self.base.shape_factor.re.abs() * 100.0;
                     } else {
@@ -175,7 +174,7 @@ impl Storage {
             }
             STORE_DISCHARGING => {
                 if self.kwh_stored > self.kwh_reserve {
-                    if self.dispatch_mode == STORE_FOLLOW {
+                    if self.dispatch_mode == StorageDispatchMode::Follow {
                         self.base.kw_out = self.kw_rating * self.base.shape_factor.re;
                         self.pct_kw_out = self.base.shape_factor.re.abs() * 100.0;
                     } else {
@@ -505,11 +504,13 @@ impl Storage {
         if !(sys.is_dynamic_model || sys.is_harmonic_model) {
             // Dispatch decides the state.
             match self.dispatch_mode {
-                STORE_EXTERNALMODE => {} // do nothing
-                STORE_LOADMODE => {
+                StorageDispatchMode::ExternalMode => {} // do nothing
+                StorageDispatchMode::LoadMode => {
                     self.check_state_trigger_level(sys.generator_dispatch_reference, sys)
                 }
-                STORE_PRICEMODE => self.check_state_trigger_level(sys.price_signal, sys),
+                StorageDispatchMode::PriceMode => {
+                    self.check_state_trigger_level(sys.price_signal, sys)
+                }
                 _ => match sys.mode {
                     SolveMode::Snapshot => {} // present kW/kvar; no state check
                     SolveMode::Daily => self.calc_daily_mult(sys.dbl_hour, sys),

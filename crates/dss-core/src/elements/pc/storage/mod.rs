@@ -65,12 +65,38 @@ pub(crate) const STORE_CHARGING: i32 = -1;
 pub(crate) const STORE_IDLING: i32 = 0;
 pub(crate) const STORE_DISCHARGING: i32 = 1;
 
-/// Pascal dispatch modes (`STORE_DEFAULT`..`STORE_FOLLOW`).
-pub(crate) const STORE_DEFAULT: i32 = 0;
-pub(crate) const STORE_LOADMODE: i32 = 1;
-pub(crate) const STORE_PRICEMODE: i32 = 2;
-pub(crate) const STORE_EXTERNALMODE: i32 = 3;
-pub(crate) const STORE_FOLLOW: i32 = 4;
+/// Pascal Storage dispatch modes (`STORE_DEFAULT`..`STORE_FOLLOW`; `Set
+/// DispMode=`, `StorageDispatchModeEnum`). Discriminants are user-visible and
+/// frozen (round-trip through the `DssEnum` registry); `i32` survives only at
+/// the property parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum StorageDispatchMode {
+    Default = 0,
+    LoadMode = 1,
+    PriceMode = 2,
+    ExternalMode = 3,
+    Follow = 4,
+}
+
+impl StorageDispatchMode {
+    /// The `StorageDispatchModeEnum` ordinal (property `?`/dump boundary value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// `TStorageDispatchMode(ordinal)`; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Default),
+            1 => Some(Self::LoadMode),
+            2 => Some(Self::PriceMode),
+            3 => Some(Self::ExternalMode),
+            4 => Some(Self::Follow),
+            _ => None,
+        }
+    }
+}
 
 // Register indices (Pascal `Reg_kWh = 1` .. `Reg_Price = 6`, 0-based here).
 const REG_KWH: usize = 0;
@@ -335,7 +361,7 @@ pub struct Storage {
     /// `pctReserve`.
     pub pct_reserve: f64,
     /// `DispatchMode`.
-    pub dispatch_mode: i32,
+    pub dispatch_mode: StorageDispatchMode,
     /// `pctIdlekW`.
     pub pct_idle_kw: f64,
     /// `pctIdlekvar` — deprecated/removed; kept for struct + MakeLike fidelity.
@@ -480,7 +506,7 @@ impl Storage {
             pct_kw_out: 100.0,
             pct_kw_in: 100.0,
             pct_reserve,
-            dispatch_mode: STORE_DEFAULT,
+            dispatch_mode: StorageDispatchMode::Default,
             pct_idle_kw: 1.0,
             pct_idle_kvar: 0.0,
             kvar_requested: 0.0,
