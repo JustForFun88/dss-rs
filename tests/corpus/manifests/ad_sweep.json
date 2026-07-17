@@ -722,6 +722,10 @@
    "ad": "off:ad-islanded-divergence"
   },
   {
+   "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss",
+   "ad": "off:unclassified-new-deck"
+  },
+  {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss",
    "ad": "pf"
   },
