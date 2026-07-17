@@ -1490,8 +1490,8 @@ relay help-catalog/dump surface. Oracle = oddie:r4133.
   read as plain utf-8 → a lone `['﻿']` line for an inert deck's empty log
   (`recloser_temp`) and a char-boundary panic in `numeric_skeleton` on a
   corpus_live property. Fixed at the source (`capture_eventlog` → `utf-8-sig`) +
-  defensively in `numeric_skeleton` (strip `﻿`, spurious export cruft, never
-  real data). Not a tolerance/divergence change.
+  defensively in `numeric_skeleton` (strip a *leading* `﻿`, spurious export
+  cruft, never real data). Not a tolerance/divergence change.
 
 **WP-U2.5 audit fixes (2026-07-17, wt-u25).** Four minor findings addressed:
 - `save_roundtrip_protection` now forces DISTINCT mixed per-phase arrays on the
@@ -1624,6 +1624,29 @@ independently proven (Pascal citations + full live gate green + unit test) and t
 chaotic pole-slip residual is legitimately NOT tolerance-maskable per CLAUDE.md, so
 continued parking is the correct (and only honest) call. No code change. Mandatory
 gate re-run green.
+
+**WP-U2.5 audit fixes, round 2 (2026-07-17, wt-u25).** Three minor findings:
+- `numeric_skeleton` BOM strip **narrowed to leading-only** (`strip_prefix('﻿')`,
+  was a whole-string `replace`). The whole-string strip was broader than the
+  actual Oddie failure mode (a *leading* export BOM that mid-slices the ASCII
+  loop) and would have silently swallowed a spurious interior BOM on one side.
+  The else-branch now advances char-wise, so an interior BOM flows into the
+  skeleton and surfaces as a structure mismatch (flagged, no panic) — the primary
+  fix (oracle_server `capture_eventlog` → `utf-8-sig`, scoped to the IOddieDSS
+  path) is unchanged. New `comparator_tests::bom_strip_is_leading_only` pins both
+  halves (leading stripped ⇒ match; interior kept ⇒ flagged).
+- dump3 protection help-blocks are a self-referential pin (our-render → golden →
+  our-render) with no automated oracle gate on the help TEXT: **sanctioned** —
+  UPGRADE_PLAN §1.3-2 deliberately has no byte-exact-vs-Delphi help gate; the
+  `r4133_help.py` transcription was independently re-verified verbatim against the
+  vendored r4133 Pascal (Fuse/SwtControl/Relay `PropertyHelp`). No code change.
+- `known_diffs` `property-format-brackets` mask: **retained by design** (see the
+  WP-U2.5 note above — the generic numeric-array class is empirically still live
+  on oddie:r4133). It lives ONLY in the opt-in, report-only EPRI A/B channel
+  (never gates commits), `reason_contains` requires ALL substrings
+  (`["probe ","structure differs"]`, `.all()` at corpus_live.rs), and zero-hit
+  entries self-report — so a stale mask surfaces. Closure is owned by WP-U2.6's
+  r4133 ASSERT sweep, not U2.5.
 
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
