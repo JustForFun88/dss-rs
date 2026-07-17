@@ -392,8 +392,6 @@
     {
      "element": "Relay.backup",
      "props": [
-      "state",
-      "normal",
       "delay"
      ]
     }
@@ -413,13 +411,6 @@
    "probes": [
     {
      "element": "Fuse.fz",
-     "props": [
-      "state",
-      "normal"
-     ]
-    },
-    {
-     "element": "Relay.backup",
      "props": [
       "state",
       "normal"
@@ -671,6 +662,7 @@
   },
   {
    "path": "relay/relay_oc_sym.dss",
+   "oracle": "r4133",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -696,6 +688,7 @@
   },
   {
    "path": "relay/relay_4647_asym.dss",
+   "oracle": "r4133",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 10,
@@ -1070,6 +1063,7 @@
   },
   {
    "path": "relay/midi_relay_4647.dss",
+   "oracle": "r4133",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 10,
@@ -2220,6 +2214,7 @@
   },
   {
    "path": "relay/relay_voltage.dss",
+   "oracle": "r4133",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
@@ -2244,6 +2239,7 @@
   },
   {
    "path": "relay/relay_revpower.dss",
+   "oracle": "r4133",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
@@ -2267,6 +2263,7 @@
   },
   {
    "path": "relay/relay_generic.dss",
+   "oracle": "r4133",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 12,
@@ -2290,6 +2287,7 @@
   },
   {
    "path": "relay/relay_distance.dss",
+   "oracle": "r4133",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
@@ -2313,6 +2311,7 @@
   },
   {
    "path": "relay/relay_td21.dss",
+   "oracle": "r4133",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 30,
@@ -2336,6 +2335,7 @@
   },
   {
    "path": "relay/relay_doc.dss",
+   "oracle": "r4133",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,

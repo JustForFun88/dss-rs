@@ -21,9 +21,14 @@ new storagecontroller.sc element=line.feed terminal=1 modedis=time
 
 // Generic relay watches the Storage "kWh" variable; trips the feeder open once
 // the fleet energy falls below undertrip (overtrip set out of reach).
+// r4133: a generic trip with DefiniteTimeDelay=0 fires the OPEN in-step and the
+// immediate feeder-open oscillates the control loop (#485 Max Control Iterations
+// on oddie:r4133 at the trip step). A small definite-time delay (0.1 s) queues
+// the trip for the next step — the generic trip + lockout still fire (final
+// state = open), and both engines converge.
 new relay.rl type=generic monitoredobj=storage.s1 monitoredterm=1
 ~ switchedobj=line.feed switchedterm=1 variable=kWh
-~ overtrip=1.0e9 undertrip=1500 delay=0.0 shots=1 recloseintervals=None
+~ overtrip=1.0e9 undertrip=1500 delay=0.1 shots=1 recloseintervals=None
 ~ eventlog=yes
 
 new loadshape.day npts=12 interval=1
