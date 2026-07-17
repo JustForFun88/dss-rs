@@ -843,7 +843,7 @@ impl Dss {
                                 } else {
                                     errors.push(format!(
                                         "State variable \"{}\" not found in \"{}.{}\".",
-                                        var_name.to_lowercase(),
+                                        var_name.to_ascii_lowercase(),
                                         classes[ci].props.class_name(),
                                         classes[ci].objects[oi].data().name()
                                     ));

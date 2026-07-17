@@ -340,7 +340,7 @@ impl DssObject for CapControl {
             // CAPACITOR: Pascal stores ControlVars.CapacitorName :=
             // ControlledElement.FullName for Save; Save is not ported.
             VBUS => {
-                self.voverride_bus_name = self.voverride_bus_name.to_lowercase();
+                self.voverride_bus_name = self.voverride_bus_name.to_ascii_lowercase();
                 self.voverride_bus_specified = true;
             }
             // USERMODEL/USERDATA are NOT_PORTED (hard parse error upstream of

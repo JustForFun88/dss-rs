@@ -48,7 +48,7 @@ pub struct TccCurveObj {
 impl TccCurveObj {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
-            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
+            data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             npts: 0,
             c_values: None,
             t_values: None,

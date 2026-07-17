@@ -49,7 +49,7 @@ impl LineUnits {
     /// characters are examined, case-insensitively, and unknown strings give
     /// `None`.
     pub fn parse(s: &str) -> LineUnits {
-        let stest: String = s.chars().take(2).collect::<String>().to_lowercase();
+        let stest: String = s.chars().take(2).collect::<String>().to_ascii_lowercase();
         match stest.as_str() {
             "no" => LineUnits::None,
             "mi" => LineUnits::Miles,

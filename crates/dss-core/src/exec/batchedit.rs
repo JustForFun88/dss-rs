@@ -141,7 +141,7 @@ impl Dss {
             self.last_result = "Elements edited: 0".to_string();
             return; // Do nothing
         }
-        let Some(&ci) = self.class_by_name.get(&obj_class.to_lowercase()) else {
+        let Some(&ci) = self.class_by_name.get(&obj_class.to_ascii_lowercase()) else {
             // Pascal error 267 (the `%s` is `CRLF + Parser.CmdString`; LF here,
             // same rendering as error 240 in `get_obj_class_and_name`).
             self.errors.push(format!(
@@ -159,7 +159,7 @@ impl Dss {
         // remainder. The clause is lowercased for tokenizing; the edit string
         // (everything before `where`) keeps its original case.
         let remainder = self.parser.remainder().to_string();
-        let lower = remainder.to_lowercase();
+        let lower = remainder.to_ascii_lowercase();
         let where_pos = lower.find("where"); // naive Pos, first occurrence
         let conditionals = match where_pos {
             None => None,

@@ -363,7 +363,7 @@ pub fn circuit_to_json(
     // ahead of circuit-element classes internally). `DefaultAndUnedited` objects
     // are skipped unless `IncludeDefaultObjs`; an empty class array is omitted.
     for class_name in PASCAL_CLASS_ORDER {
-        let Some(&ci) = class_by_name.get(&class_name.to_lowercase()) else {
+        let Some(&ci) = class_by_name.get(&class_name.to_ascii_lowercase()) else {
             continue;
         };
         let cls = &classes[ci];

@@ -95,8 +95,8 @@ use crate::support::sparse_math::SparseComplex;
 /// (the node-list suffix). Lowercased, matching `getPDEatBus`.
 fn strip_ext(bus: &str) -> String {
     match bus.split_once('.') {
-        Some((b, _)) => b.to_lowercase(),
-        None => bus.to_lowercase(),
+        Some((b, _)) => b.to_ascii_lowercase(),
+        None => bus.to_ascii_lowercase(),
     }
 }
 

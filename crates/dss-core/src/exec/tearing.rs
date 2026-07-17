@@ -27,7 +27,7 @@ use std::path::PathBuf;
 /// incidence matrix (every `Inc_Mat_Row` is a real, resolvable PDE), so it has
 /// no numeric effect; we prefer a defined 0 over reproducing a stale-state read.
 fn nphases_of(classes: &[DssClass], full_name: &str) -> Option<usize> {
-    let lower = full_name.to_lowercase();
+    let lower = full_name.to_ascii_lowercase();
     let (cls_name, obj_name) = match lower.split_once('.') {
         Some((c, n)) => (Some(c), n),
         None => (None, lower.as_str()),
@@ -729,7 +729,7 @@ impl Dss {
 /// element cannot be resolved. Used by `get_PDE_Bus1_Location` (the Pascal name
 /// says bus 1 but reads bus 2 — Solution.pas:1707).
 fn pde_bus2_name(classes: &[DssClass], full_name: &str) -> Option<String> {
-    let lower = full_name.to_lowercase();
+    let lower = full_name.to_ascii_lowercase();
     let (cls_name, obj_name) = match lower.split_once('.') {
         Some((c, n)) => (Some(c), n),
         None => (None, lower.as_str()),
@@ -759,7 +759,7 @@ fn pde_bus2_name(classes: &[DssClass], full_name: &str) -> Option<String> {
 /// error-5008 "Line not found" honestly. The returned bus keeps its node dots
 /// (the caller strips them, Circuit.pas:1987–1989).
 fn line_bus(classes: &[DssClass], lname: &str, nbus: usize) -> Option<String> {
-    let key = lname.to_lowercase();
+    let key = lname.to_ascii_lowercase();
     for class in classes {
         if class.kind.is_none() {
             continue;

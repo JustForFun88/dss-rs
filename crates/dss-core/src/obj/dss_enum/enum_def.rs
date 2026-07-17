@@ -42,7 +42,7 @@ impl DssEnum {
             ordinals.len(),
             "Could not initialize enum (\"{name}\")."
         );
-        let lower_names = names.iter().map(|n| n.to_lowercase()).collect();
+        let lower_names = names.iter().map(|n| n.to_ascii_lowercase()).collect();
         let min_ordinal = ordinals.iter().copied().min().unwrap_or(9999999);
         let max_ordinal = ordinals.iter().copied().max().unwrap_or(-9999999);
         Self {

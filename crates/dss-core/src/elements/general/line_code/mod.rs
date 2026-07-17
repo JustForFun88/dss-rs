@@ -165,7 +165,7 @@ impl LineCodeObj {
     /// Pascal `TLineCodeObj.Create`.
     pub fn new(name: &str) -> Self {
         let mut obj = Self {
-            data: DssObjData::new(name.to_lowercase(), prop::NUM_PROPS),
+            data: DssObjData::new(name.to_ascii_lowercase(), prop::NUM_PROPS),
             fnphases: 3,
             fneutral_conductor: 3, // last conductor
             num_amp_ratings: 1,

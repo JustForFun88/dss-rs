@@ -60,7 +60,7 @@ pub struct SpectrumObj {
 impl SpectrumObj {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
-            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
+            data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             num_harm: 0,
             harm_array: None,
             pu_mag_array: None,

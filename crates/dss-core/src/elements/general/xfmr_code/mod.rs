@@ -170,7 +170,7 @@ impl XfmrCodeObj {
         let windings = vec![Winding::new(); num_windings as usize];
         let vabase = windings[0].kva * 1000.0;
         let mut obj = Self {
-            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
+            data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             fnphases: 3,
             active_winding: 1,
             num_windings,

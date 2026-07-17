@@ -426,7 +426,7 @@ impl DssObject for Relay {
             }
             MONITORED_TERM => self.ccd.element_terminal = self.monitored_element_terminal,
             GENERIC_VARIABLE | VARIABLE => {
-                self.monitor_variable = self.monitor_variable.to_lowercase()
+                self.monitor_variable = self.monitor_variable.to_ascii_lowercase()
             }
             TYP => self.type_side_effect(),
             NORMAL => self.normal_state_set = true,

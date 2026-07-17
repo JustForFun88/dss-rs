@@ -62,7 +62,7 @@ impl LineSpacingObj {
         // side effect sizes FX/FY to 3 (and sets Units := ft); the arrays are
         // then zeroed and NPhases := 3.
         let mut obj = Self {
-            data: DssObjData::new(name.into().to_lowercase(), prop::NUM_PROPS),
+            data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             fx: Vec::new(),
             fy: Vec::new(),
             fnconds: 3,
