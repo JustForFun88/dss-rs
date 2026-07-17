@@ -44,10 +44,22 @@ Distinct from **§2 owned deferrals** (a live plan tracks them — do NOT re-por
 - **To do:** port the JSON reader (mirrors the §1.2-1.4 export renderer inversely). **Priority: medium** (the GUI the JSON export was built for may need round-trip). Sizeable WP.
 
 ### 1.5 `CAPI_Schema` JSON schema export
-- **Deferred by:** JSON_EXPORT_PLAN §6 (out-of-scope sibling).
-- **Spec:** `CAPI_Schema.pas`.
-- **Current state:** not implemented; the `Units_*`/`NoDefault`/`DynamicDefault` PropFlags that feed it sit inert.
-- **To do:** port the schema emitter. **Priority: low.**
+- **STATIC CORE PORTED 2026-07-18** on `og15-capi-schema` — see STATUS §OG-1.5.
+  The schema envelope + the ten reusable global `$defs` + the static
+  `circuitProperties` head are ported byte-exact vs the oracle
+  (`report/export/json/schema.rs`, `Dss::extract_schema_json`, golden
+  `tests/golden/json/schema_static_core.json` via `tools/golden/gen_schema.py`).
+- **Still orphaned (the bulk):** the per-class walk (`prepareClassJsonSchema`) +
+  per-enum walk (`prepareEnumJsonSchema`) — the **49 class + 21 global enum
+  `$defs`** (plus each class's `List`/`Container` defs and `circuitProperties`
+  ref). These are blocked on per-property metadata the Rust port never carried, a
+  large self-contained data-entry effort: property **help/description** text
+  (`GetPropertyHelp`, ~1109 strings), per-class **`AltPropertyOrder`**
+  (`$dssPropertyOrder`), **`SpecSets`** (`oneOf`), enum
+  **`AltNames`/`JSONName`/`JSONUseNumbers`**, and ~28 of ~30 `Units_*` `PropFlags`
+  (only `UNITS_HOUR`/`UNITS_OHM_PER_LENGTH` exist). Oracle is reachable
+  (`lib.DSS_ExtractSchema`) — the blocker is Rust-side metadata, not access.
+  **Priority: low.**
 
 ### 1.6 IEEE118Bus NCIM `PV→PQ` r4133 switching cadence
 - **Deferred by:** UPGRADE_PLAN (parked to "a future rung" that has no plan).

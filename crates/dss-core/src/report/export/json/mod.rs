@@ -35,6 +35,7 @@ mod tests;
 
 pub(crate) mod build;
 pub(crate) mod circuit;
+pub mod schema;
 
 /// One JSON value, an insertion-ordered tree (fpjson `TJSONData` subset). `Obj`
 /// preserves member order because the object dump depends on the property
