@@ -210,10 +210,22 @@ open item is not buried in the §1a archive):
 - **GICMvars export (verb 36) / GICTransformer `WriteVarOutputRecord` → Phase 9 —
   ✅ PORTED 2026-07-18** (orphaned-gaps round OG-1.1, branch `og11-gicmvars`; see
   §OG-1.1 below). Was GAPS WPG.16's only deferred piece.
-- **AltDSS JSON `DynInit` tail + Full-mode Transformer/AutoTrans WdgCurrents +
-  Capacitor CMatrix → a JSON-export follow-up WP — NOT started.**
-  `report/export/json/build.rs:123` `NOT_PORTED`; goldens exclude the Full path for
-  those classes.
+- **AltDSS JSON `DynInit` tail + Full-mode Transformer WdgCurrents — DONE
+  (og1213, 2026-07-18; see §OG-1.2+1.3).** Capacitor CMatrix = proven UB
+  non-port (uninitialized heap, nondeterministic across processes). New
+  sub-follow-ups surfaced (below).
+- **AutoTrans JSON array-alternative metadata → NOT started (og1213 discovery).**
+  `auto_trans/mod.rs` carries none of the singular/plural `array_alternative` +
+  `REDUNDANT` + `ON_ARRAY` JSON metadata the Transformer has, so its default JSON
+  sweep renders `Buses/Conns/kVs/kVAs` where the oracle renders `Bus/Conn/kV/kVA`.
+  Blocks an AutoTrans JSON golden (incl. Full WdgCurrents, which is *inferred* to
+  work via the class-agnostic refresh route — proven post-solve on Transformer,
+  but AutoTrans's own getter is not independently oracle-pinned). Out of §1.3 scope.
+- **Generator/PVSystem/Storage `ShaftModel`/`ShaftData` hidden under JSON Full →
+  NOT started (og1213 discovery).** They carry `PropFlags::NOT_PORTED` →
+  `hidden_from_full_enum()` skips them, but the 0.14.5 oracle emits them (`""`).
+  Blocks a Generator/Storage *Full* JSON golden; the DynInit tail is pinned in
+  default-family combos instead.
 - **A-Diakoptics `AggregateProfiles` command + D9(d) official-r3723 AD-replay →
   DIAKOPTICS Part II WP-AD.5 — partial.** `exec/command.rs:69` `NOT_PORTED`; WP-AD.6
   threaded children not started (needs MULTITHREADING M2).
@@ -255,6 +267,67 @@ Ported `Export GICMvars` (report verb 36) — the last unported GIC surface
   (rel 1e-7/abs 1e-8, the faer-vs-KLU GIC-current floor). Retired the
   `exec/tests/report.rs` GICMvars NOT_PORTED assert → now pins `Estimation`(5) on a
   solved circuit (all remaining unported verbs are solution-guarded).
+
+### OG-1.2+1.3 AltDSS JSON tails — DynInit + Full WdgCurrents (orphaned-gaps round, 2026-07-18)
+
+Branch `og1213-json-tails`. Closes `ORPHANED_GAPS.md` §1.2 and the WdgCurrents
+half of §1.3.
+
+- **§1.2 DynInit tail — PORTED.** `obj_to_json_data` now appends the Pascal
+  `TDynEqPCE` `"DynInit"` object (`CAPI_Obj.pas:752-759`) for any object whose
+  `UserDynInit` is non-empty (Generator/PVSystem/Storage, reached via a new
+  `DssObject::as_dyneq` accessor). `DynEqPceData.user_dyn_init` changed from
+  `Vec<(String,String)>` to `Vec<(String,DynInitValue)>` where `DynInitValue` is
+  `Number(f64)` | `Text(String)`: `parse_dyn_var` uses `make_double_ex` to
+  recover Pascal's `requiredRPN`, so a plain constant → JSON number, a
+  calc-value operand or RPN constant → JSON string (raw case). The `"DynInit"`
+  key is emitted literally (never lowercased, even under LowercaseKeys — matches
+  oracle). Golden `dyneq_micro` (Generator + Storage; default-family combos).
+- **§1.3 Full WdgCurrents — PORTED (refresh route).** Added
+  `Dss::obj_to_json_mut` / `class_batch_to_json_mut`: they run
+  `refresh_vterminal_if_marked` before the `&self` builder, so Full-mode
+  `READS_VTERMINAL` result strings (Transformer/AutoTrans `WdgCurrents`) render
+  from the current solution exactly as Pascal's self-refreshing getter does
+  (pre-solve = all-zero phasor list). Golden driver uses the `_mut` routes.
+  `transformer_micro` flipped off `skip_full` → Full WdgCurrents now pinned
+  byte-exact. Fixed en route: Transformer/AutoTrans `BHCurrent`/`BHFlux` (newer
+  r4064 props absent from the 0.14.5 oracle) leaked into Full JSON as `null` —
+  now `SUPPRESS_JSON` like their sibling `BHPoints`.
+- **§1.3 Capacitor CMatrix — proven UB, NOT reproduced.** The oracle renders
+  Capacitor `CMatrix` under Full from an uninitialized `pDoubleArray` (denormal
+  garbage: `2.1e-308`, `4.9e-318` …) that **differs across oracle processes**
+  (probed twice), for both kvar- and explicit-`cmatrix`-defined caps. Per the
+  UB/state-mutating-read rule it is not reproduced (like the multi-meter OOB
+  case); decks with capacitors stay `skip_full`.
+- Gate green (fmt + clippy + `cargo test --workspace`). Out-of-scope discoveries
+  recorded in Standing follow-ups (AutoTrans JSON array-alt metadata; Generator
+  ShaftModel/ShaftData hidden under Full).
+
+**Audit-settle round (2026-07-18).** Two read-only audits returned 6 findings
+(1 major, 5 minor); settled empirically against the pinned oracle:
+- **[FIXED — major] Full WdgCurrents pinned only pre-solve (a no-op).** The
+  pre-solve refresh recomputes zeros (NodeV=0), so `transformer_micro` alone
+  could not catch a refresh regression. Added golden **`transformer_solved`**:
+  the transformer primary is on the energized `sourcebus` feeding a 500 kW load,
+  the deck `solve`s, and Full `WdgCurrents` is now a NONZERO phasor list pinned
+  byte-exact (obj + batch × 4 Full combos). Verified Rust==oracle bit-for-bit;
+  byte-exact is valid post-solve because the getter formats at `%.7g`/`%.5g`
+  (Transformer.pas:362), far coarser than faer-vs-KLU last-ULP. Deleting the
+  `refresh_vterminal_if_marked` call now fails the gate.
+- **[FIXED — minor] DynInit dedup rewrite unpinned.** `dyneq_micro` now assigns
+  `Damp` twice (`= 0` number, then `= (1 2 +)` RPN string): pins the Pascal
+  `UserDynInit.Delete`+`Add` reorder — the rewrite changes the value type AND
+  moves `damp` to the tail. Oracle-confirmed and reproduced byte-exact.
+- **[disproven — minor] AutoTrans "proven byte-exact by analogy".** Overstated;
+  softened the `gen_json.py` NOTE to "inference, not verified". The refresh route
+  is class-agnostic (now proven post-solve via `transformer_solved`), but a
+  standalone AutoTrans byte-golden stays blocked by the plural/singular metadata
+  gap (already a follow-up below). Real, deferred — not silently dropped.
+- **[not-a-defect — minor] WindGen `as_dyneq` override.** `WindGen.pas` is absent
+  from the 0.14.5 pinned source (Rust-only forward-port from a newer engine where
+  WindGen IS a `TDynEqPCE`); it embeds a real `dyneq` field, so emitting DynInit
+  is internally consistent. Cannot appear in any oracle golden/live compare, so
+  untestable and harmless — kept for sibling consistency (Generator/PVSystem/Storage).
 
 ---
 
