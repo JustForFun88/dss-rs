@@ -1346,6 +1346,15 @@ pub fn compare_all_properties(dss: &mut Dss, exp: &[PropsCap], tol: &Tolerances,
         if class.eq_ignore_ascii_case("Recloser") {
             continue;
         }
+        // WP-U2.3: the Relay property TABLE likewise moved to the r4133 71-prop
+        // surface (50->71 renames + new props + `Normal`/`State` per-phase arrays);
+        // it cannot match the pinned 0.14.5 oracle's 50-prop table shape. Its shape
+        // is code-verified (`class_props` `debug_assert` on 73 defs) and its values
+        // are gated by the `relay.json` props golden (by name) + the `oracle:
+        // "r4133"` family probes. Skip the whole element here (as Recloser).
+        if class.eq_ignore_ascii_case("Relay") {
+            continue;
+        }
         let actual = dss
             .element_properties(&pc.element)
             .unwrap_or_else(|| panic!("{ctx}: no element {} (all_properties)", pc.element));
