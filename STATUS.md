@@ -1063,6 +1063,59 @@ Rust↔r4088 divergence is a justified `known_diffs.json` entry or a Rung-2 item
 - **Rung 1 is COMPLETE** (U1.1–U1.10). Next: Rung 2 (WP-U2.* — r4133 protection
   overhaul + the r4133-side IEEE_519/InductionMachine moves, `delta_r4088_r4133.md`).
 
+**WP-U2.2 — Recloser per-phase rewrite (2026-07-17, branch wt-u22, UNMERGED).**
+Ported `Controls/Recloser.pas` r4088→r4133 (delta rows B3/B4/C2/D2/D3/E2/E3) into
+`elements/control/recloser/` — a full per-phase rewrite validated exactly against
+the `oddie:r4133` engine (v11.0.0.1 Charlottesville).
+- **Per-phase state machine.** `FPresentState`/`FNormalState` are per-phase state
+  arrays; `OperationCount`/`LockedOut`/`ArmedForOpen/Close`/`PhaseTarget`/
+  `RecloserTarget` are per-phase with the ganged `IdxMultiPh = NPhases+1` slot
+  (frozen at 4). Arrays are 1-based (`[T; RCMAX+2]`, slot 0 unused) — Pascal's
+  >3-phase OOB (arrays frozen at IdxMultiPh=4) is UB, **not** reproduced (sized to
+  avoid it; ≤3-phase — every real deck — is exact).
+- **Single-phase trip/reclose/lockout** (`SinglePhTrip`/`SinglePhLockout`): the
+  phase index rides the control-queue **proxy handle** — plumbed through
+  `ControlOp::Action{code, proxy}` (dispatch/actions/multi_rate) to
+  `Recloser::do_pending_action(code, proxy, …)`; every other control ignores it.
+- **Fast/slow pickup split** (`PhFastPickup`/`PhSlowPickup`, `Gnd*`); legacy
+  `PhaseTrip`/`GroundTrip` set both. **D2 breaking default:** the A/D default
+  curves are removed → a curveless recloser is **inert**. **D3:** inst trip time
+  is a bare `0.01` (MechanicalDelay added once at push).
+- **Props 24 → 46** with deprecated aliases (`PhaseFast→PhFastCurve`, `Reset→
+  ResetTime`, `Delay→MechanicalDelay`, TD renames…), `Lock`/`Reset` actions,
+  `EventLog`/`DebugTrace`, `RatedCurrent`/`InterruptingRating`, `Normal`/`State`
+  per-phase arrays (`[closed, closed, closed, ]`, ganged scalar or quoted list).
+  `ShowEventLog := EventLogDefault` (global **False**) — no override (the oracle
+  logs nothing until `EventLog=yes`, empirically confirmed).
+- **Event-log wording overhaul (E2/E3):** the r4133 per-phase messages
+  (`Phase %d opened on %s (…trip) & locked out (…lockout)` etc.) reproduce the
+  oracle **byte-for-byte** (proven for single-phase, ganged, ground and
+  pickup-split decks — no mask row needed).
+- **Gate.** Family decks `recloser_temp/perm/ground` + midi twins flipped to
+  `oracle: "r4133"` (temp/perm/midi curveless → inert on r4133, pinning the D2
+  removed-default `2-vs-0` ctrlqueue witness; ground trips via the ground curve).
+  New decks `recloser_1ph.dss` (single-phase trip/lockout) + `recloser_pickup_split.dss`
+  (fast≠slow pickup) — all §1.7-validated on r4133. `props/recloser.json`
+  regenerated to the r4133 46-prop surface (props_roundtrip green); the
+  `golden_protection` recloser scenarios retired (§1.3-2, superseded by the live
+  r4133 gate). **controls family live gate: 96 decks match the oracle.**
+- **Event-log mask infra CREATED** (`harness::EVENTLOG_MASKS`, §1.3-3):
+  per-oracle-spec `(find→to)` substitutions applied to both engines' lines, never
+  dropping/reordering; **the shipped r4133 table is EMPTY** (the port is exact —
+  the empty table is the proof), with self-tests + TOLERANCE_NOTES doc, generic
+  for WP-U2.3 to extend. Enabling fix: `oracle_server.capture_eventlog` now reads
+  the `export eventlog` CSV for the Oddie engine (its `Solution.EventLog`
+  accessor returns empty — a bridge gap that blocked every r4133 event-log
+  compare).
+- **compare_all_properties** skips the Recloser class (its table moved to the
+  r4133 46-prop shape; ungateable vs the 0.14.5 oracle — shape is code-verified +
+  `recloser.json` gates values by name). Cross-chain combo decks
+  (`combo/midi_protection`, `combo/combo_protection`) kept on the 0.14.5 oracle by
+  naming the recloser's A/D curves explicitly (identical ganged behavior) and
+  dropping their Recloser probe + `compare_eventlog` until Fuse (U2.1) + Relay
+  (U2.3) land and the whole suite flips at rung exit (U2.6). population.lock
+  regenerated.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
