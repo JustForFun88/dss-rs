@@ -1396,6 +1396,21 @@ the deck STAYS in `skipped_needs_investigation`, re-tagged
 `relay_voltage_dynamics_chaos_floor` with the full decomposition; the fix itself is
 proven vs oddie:r4133 and unit-gated. Mandatory gate green.
 
+*Audit fixes (2026-07-17, wt-59n).* (1) The same phase-count port bug lived in
+`TRelayObj.MakeLike` (accessors.rs): the per-phase `FPresentState`/`FNormalState`
+copy loop was bounded by the source relay's OWN Nphases (= MonitoredElement.NPhases)
+instead of `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)` (Relay.pas:683). For
+an asymmetric `like=` source (mon != ctrl phases) an OPEN state latched on a high
+phase was dropped (left CTRL_CLOSE). Fixed to reuse `state_size()` (ctrl_snap is
+already copied from the source before the loop, so the count matches Pascal);
+regression-guarded by `make_like_copies_state_by_controlled_nphases`. (2) The
+chaos-floor classification (finding: proof is prose from the non-gating Oddie r4133
+channel, not a checked-in artifact) stays as documented — the `state_size` fix is
+independently proven (Pascal citations + full live gate green + unit test) and the
+chaotic pole-slip residual is legitimately NOT tolerance-maskable per CLAUDE.md, so
+continued parking is the correct (and only honest) call. No code change. Mandatory
+gate re-run green.
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail

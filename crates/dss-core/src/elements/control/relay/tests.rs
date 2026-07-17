@@ -828,6 +828,39 @@ fn voltage_relay_open_point_sizes_state_by_controlled_nphases_59n() {
     );
 }
 
+/// **MakeLike per-phase state count (WP-U2.6 audit).** Pascal `TRelayObj.MakeLike`
+/// (Relay.pas:683) copies `FPresentState`/`FNormalState` over
+/// `Min(RELAYCONTROLMAXDIM, ControlledElement.Nphases)` — the SWITCHED element's
+/// phase count, resolved before the copy — NOT the relay's own `FNPhases`
+/// (= MonitoredElement.NPhases). For an asymmetric `like=` source (1-phase
+/// monitored PT, 3-phase switched line) an OPEN state latched on a high phase must
+/// survive the copy; the old `other.ccd.cd.nphases`-bounded loop dropped it.
+#[test]
+fn make_like_copies_state_by_controlled_nphases() {
+    let mut src = armed_relay(); // ctrl_snap = 3-phase line
+    src.ccd.cd.nphases = 1; // relay's own count = MonitoredElement.NPhases
+    src.present_state[3] = CTRL_OPEN;
+    src.normal_state[3] = CTRL_OPEN;
+
+    let mut dst = Relay::new("r2");
+    dst.make_like(&src as &dyn DssObject);
+
+    assert_eq!(
+        dst.state_size(),
+        3,
+        "MakeLike sets ctrl_snap (3-phase) + own nphases (1); state sizes by ctrl"
+    );
+    assert_eq!(
+        dst.present_state[3], CTRL_OPEN,
+        "phase-3 present_state must copy over ControlledElement.Nphases (=3), \
+         not the relay's own Nphases (=1)"
+    );
+    assert_eq!(
+        dst.normal_state[3], CTRL_OPEN,
+        "phase-3 normal_state must copy over ControlledElement.Nphases"
+    );
+}
+
 #[test]
 fn voltage_recloses_when_voltage_recovers() {
     let mut r = armed_relay();
