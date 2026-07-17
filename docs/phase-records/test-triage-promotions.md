@@ -116,3 +116,28 @@ the oracle-infra multi-step re-nominalization fix lands.
   dss-core --test population_lock`): the two count deltas + the Kundur rigor
   fingerprint.
 - Stale `E:/RustProject/...` machine paths dropped from every note rewritten here.
+
+---
+
+## Audit settlement (2026-07-17)
+
+Settle-and-fix pass over the audit findings for the "promotions" WP.
+
+- **Findings input:** a single placeholder entry (verdict **PASS**; one `note`
+  severity item with `summary: "test"` / `evidence: "test"`). No actionable
+  content — no code path, test, tolerance, or manifest entry is named, so there
+  is nothing to fix or empirically rebut beyond re-confirming the delivered work.
+  **Disposition: no change warranted** (settled by re-verification below).
+- **State re-verified before closing:**
+  - Ritual step 0: `.inputs/dss_capi` = **186** `.pas` files (intact).
+  - Working tree was already committed at `7581d2c`; no uncommitted work.
+  - Full gate re-run green from the worktree (see SHA/exit codes in the closing
+    report): `cargo +stable fmt --all --check`, `cargo +stable clippy --workspace
+    --all-targets -- -D warnings`, `cargo +stable test --workspace` (incl. the
+    unconditional `corpus_live` oracle compare — the new Kundur/capi015 case
+    among the matched set).
+  - `git status tests/corpus` clean (corpus decks pristine; only the intended
+    manifest/lock/note edits are staged in history).
+
+No finding required a code or test change; the settlement is the documented
+re-verification of the already-committed triage work.
