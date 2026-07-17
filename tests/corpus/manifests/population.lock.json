@@ -11,7 +11,7 @@
   },
   "family_counts": {
     "asymmetric": 47,
-    "controls": 99,
+    "controls": 101,
     "modes": 69
   },
   "family_paths": {
@@ -91,6 +91,8 @@
       "fuse/fuse_blow_asym.dss",
       "fuse/fuse_curvemult_blow.dss",
       "fuse/fuse_legacy_noblow.dss",
+      "fuse/indmach_r4133/indmach_dyn.dss",
+      "fuse/indmach_r4133/indmach_snap.dss",
       "fuse/midi_fuse.dss",
       "gendispatcher/gendispatcher.dss",
       "gendispatcher/gendispatcher_kvarlimit.dss",

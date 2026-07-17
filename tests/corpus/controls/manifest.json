@@ -801,6 +801,113 @@
    "note": "WP-U2.1 (r4133 breaking default D1): a legacy fuse (RatedCurrent only, no explicit curve) gets the r4133 default FuseCurve=none and NEVER blows even under a solid 3ph fault -> State stays [closed,closed,closed], empty blow event log + ctrlqueue (blew all three on 0.14.5). Pins the never-blows breaking default. r4133-only observable. Full-model per-step + State/Normal probes."
   },
   {
+   "path": "fuse/indmach_r4133/indmach_snap.dss",
+   "ad": "off:save-roundtrip-relpath",
+   "kind": "feeder",
+   "n_steps": 8,
+   "oracle": "r4133",
+   "wp": "WP-U2.1",
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Fuse.f1",
+     "props": [
+      "state",
+      "normal",
+      "fusecurve",
+      "ratedcurrent",
+      "curvemultiplier"
+     ]
+    },
+    {
+     "element": "Fuse.f2",
+     "props": [
+      "state",
+      "normal",
+      "fusecurve",
+      "ratedcurrent",
+      "curvemultiplier"
+     ]
+    }
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "WP-U2.1 re-evaluation (2026-07-17): r4133 twin of the vendored InductionMachine/Master.DSS, which is UNSOLVABLE under r4133 by upstream design (INTENTIONAL breaking change, 11.0.0.1 release notes 'Protection Elements Enhancements': RatedCurrent demoted to informational nameplate, new CurveMultiplier default 1.0 is the TCC divisor, no legacy fallback -- Controls/fuse.pas Edit case 6 writes only RatedCurrent). Single functional edit: CurveMultiplier=65 on both fuses restores the original coordination -- Fuse.f2 (Tlink) sees ~54-56 A of motor load = 0.83x-0.86x of the 65 A curve base, below the 2.0x minimum-melt threshold, so it HOLDS (under the r4133 default divisor 1.0 the same current reads 54x-56x -> instant melt at Sec=0, islanding Transformer.Tg + IndMach012.Motor1 -> non-convergence; probe-proven on oddie:r4133, eventlog 'Fuse.f2 PHASE 1/2/3 BLOWN'). 1.7 validated on oddie:r4133 2026-07-17: converged 8/8 (iters 18,2,...,2), fingerprint sha256 0a90d76d bit-identical across two processes; feature-sensitive (divisor 65 vs default 1.0 flips converged/blown, the divide-by-RatedCurrent pre-r4133 path is pinned by sibling fuse_curvemult_blow). Full-model per-step + fuse State/Normal/curve/multiplier probes + eventlog + ctrlqueue. AD classified (DSS_AD_CLASSIFY probe, 2026-07-17): snapshot-mode and AD-eligible by mode, but the AD save/reload leg fails to re-open the deck's relative-path fixture wpwind2400.csv from the torn-circuit scratch dir (probe: 'ad-init: Error opening file: wpwind2400.csv') -> off:save-roundtrip-relpath, same class as ExpControl/Master.dss."
+  },
+  {
+   "path": "fuse/indmach_r4133/indmach_dyn.dss",
+   "ad": "off:mode-outside-AD-scope",
+   "kind": "feeder",
+   "n_steps": 2,
+   "oracle": "r4133",
+   "wp": "WP-U2.1",
+   "selected_elements": [
+    "*"
+   ],
+   "check_meters_monitors": true,
+   "probes": [
+    {
+     "element": "Fuse.f1",
+     "props": [
+      "state",
+      "normal",
+      "fusecurve",
+      "curvemultiplier"
+     ]
+    },
+    {
+     "element": "Fuse.f2",
+     "props": [
+      "state",
+      "normal",
+      "fusecurve",
+      "curvemultiplier"
+     ]
+    },
+    {
+     "element": "Relay.mfrov/uv",
+     "props": [
+      "state",
+      "normal"
+     ]
+    },
+    {
+     "element": "Relay.mfr46",
+     "props": [
+      "state"
+     ]
+    },
+    {
+     "element": "Relay.mfr47",
+     "props": [
+      "state"
+     ]
+    },
+    {
+     "element": "Recloser.rec1",
+     "props": [
+      "state",
+      "normal",
+      "shots"
+     ]
+    },
+    {
+     "element": "Recloser.cb1",
+     "props": [
+      "state"
+     ]
+    }
+   ],
+   "compare_variables": [
+    "IndMach012.Motor1"
+   ],
+   "compare_eventlog": true,
+   "compare_ctrlqueue": true,
+   "note": "WP-U2.1 re-evaluation (2026-07-17): r4133 twin of the vendored InductionMachine/Run.dss (see indmach_snap note for the intentional-breaking-change verdict; CurveMultiplier=65 restores the RatedCurrent=65 coordination). Inline driver mirrors Run.dss: snapshot solve + 5001 dynamics steps at h=166.67us -- SLG fault at B3.1 applied t=0.3 s, Relay.mfrov/uv isolates the motor ~0.42 s, Recloser.rec1 trips FAST Sec=0.5115, temporary fault clears, both fuses HOLD (f2 fault-window multiples stay under the Tlink melt clock; r4088-era sequence reproduced identically on oddie:r4133). Monitors modes 0+3 (7 monitors, 5001 samples) compared; Run.dss's mode=5 Monitor.Mtime dropped (wall-clock channels, nondeterministic). Motor coast-down end-state f=57.2053 Hz slip=0.0466. 1.7 validated on oddie:r4133 2026-07-17: converged, fingerprint sha256 a73077ba (23.7 MB capture incl 30029-entry eventlog) bit-identical across two processes; feature-sensitive (without CurveMultiplier=65 the same circuit blows f2 at Sec=0 and does not converge -- the vendored original, probe-proven). n_steps=2 continues the dynamics one 166.67us step each (Set number=1). AD classified (2026-07-17): dynamics deck -> off:mode-outside-AD-scope (AD sweep is power-flow-only; precedent VCCS/DG_Prot_Fdr.dss); the DSS_AD_CLASSIFY probe additionally hits the same wpwind2400.csv save-roundtrip relpath failure as indmach_snap."
+  },
+  {
    "path": "fuse/fuse_blow_asym.dss",
    "oracle": "r4133",
    "wp": "WP-U2.1",

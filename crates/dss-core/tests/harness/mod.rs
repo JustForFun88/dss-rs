@@ -1698,9 +1698,10 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str)
         }
         v
     };
+    let exp_header = norm(&exp.header);
     assert_eq!(
         &view.header[2..],
-        norm(&exp.header).as_slice(),
+        exp_header.as_slice(),
         "{ctx}: monitor {} header differs",
         exp.name
     );
@@ -1726,9 +1727,47 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str)
             exp.name,
             ch + 1
         );
+        // Polar ANGLE channel (`VAngle<n>`/`IAngle<n>`, VIpolar modes): the angle
+        // of a near-cancellation magnitude carries the magnitude floor amplified
+        // by 1/|mag| — see the band derivation at the sample loop below.
+        let angle_mag_channel = exp_header
+            .get(ch)
+            .is_some_and(|h| polar_angle_channel(h))
+            .then(|| exp.channels.get(ch.wrapping_sub(1)))
+            .flatten();
         for (k, (a, ev)) in act.iter().zip(e).enumerate() {
             let a = *a as f64;
-            let allowed = tol.i_abs + tol.i_rel * ev.abs();
+            // Monitor channels are **f32 recordings** (Pascal `MonBuffer:
+            // pSingleArray`), so the honest comparison floor is one f32 ULP of
+            // the recorded value (tests/TOLERANCE_NOTES.md §monitor-f32-floor):
+            // two f64 trajectories agreeing far inside the f64 floors still
+            // record one-ulp-apart f32 samples whenever they straddle an f32
+            // rounding midpoint. Proven by decomposition on the InductionMachine
+            // r4133 twin (indmach_dyn): at the straddle sample the live f64
+            // |V(B4.2)| differed by 2.8e-11 rel (350x inside the feeder v_rel
+            // floor) yet the stored f32s differ by a full ulp (9.77e-4 V at
+            // 8.9 kV); over 490k samples 99.25% of diffs were exactly 1 ulp with
+            // no growth in time. A real defect is >= 2 ulps or visible in the
+            // f64 surfaces (node V / element currents / variables), which keep
+            // their full tier floors — this floor widens nothing above the
+            // information content of the f32 data itself.
+            let mut allowed = (tol.i_abs + tol.i_rel * ev.abs()).max(ulp_f32(*ev));
+            // Angle-of-near-zero-magnitude: the polar angle is atan2 of a
+            // near-cancellation pair, so the already-accepted magnitude floor
+            // maps to `rad2deg * (i_abs + i_rel*|mag|)/|mag|` degrees — the
+            // exact angular image of the magnitude band (same construction as
+            // the voltage-scaled power floor, tests/TOLERANCE_NOTES.md). At
+            // healthy magnitudes the image is far tighter than the base band
+            // (1.7e-5 deg at 50 A); it only opens where the magnitude — still
+            // tightly compared on its own channel — carries no angular
+            // information (indmach_dyn: 0.10-0.24 A residual phase-3 current
+            // during the SLG fault, dI=1.3e-7 A -> 3-6e-5 deg).
+            if let Some(mags) = angle_mag_channel {
+                let mag = mags.get(k).copied().unwrap_or(0.0).abs();
+                if mag > 0.0 {
+                    allowed = allowed.max(57.29577951308232 * (tol.i_abs + tol.i_rel * mag) / mag);
+                }
+            }
             assert!(
                 (a - ev).abs() <= allowed,
                 "{ctx}: monitor {} channel {} ({}) sample {k} differs: {a} vs {ev} \
@@ -1740,6 +1779,31 @@ pub fn compare_monitor(dss: &Dss, exp: &MonitorCap, tol: &Tolerances, ctx: &str)
             );
         }
     }
+}
+
+/// One f32 ULP of `x` — the spacing of the f32 grid the monitor recorded `x`
+/// on (`compare_monitor`; TOLERANCE_NOTES §monitor-f32-floor). 0 for
+/// non-finite input (falls back to the base band).
+fn ulp_f32(x: f64) -> f64 {
+    let ax = x.abs() as f32;
+    if !ax.is_finite() {
+        return 0.0;
+    }
+    (f32::from_bits(ax.to_bits() + 1) - ax) as f64
+}
+
+/// Is this monitor header column a VIpolar ANGLE channel (`VAngle<n>` /
+/// `IAngle<n>`)? Deliberately exact — mode-3 state-variable names like
+/// `Theta (deg)` or `Angle (deg)` must NOT match (their magnitudes live in
+/// unrelated channels).
+fn polar_angle_channel(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix('V').or_else(|| name.strip_prefix('I')) else {
+        return false;
+    };
+    let Some(digits) = rest.strip_prefix("Angle") else {
+        return false;
+    };
+    !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// Compare an EnergyMeter's registers (names exact, values within the

@@ -415,6 +415,52 @@ drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios i
   the comparison floor is the f32 ULP — monitor/dynamics channels at `i_rel`/`i_abs`
   (`golden_metering_monitors.rs`, `exec/tests/dynamics.rs`). The mode-5 wall-clock channels
   are skipped.
+- **§monitor-f32-floor** (`harness::compare_monitor`, 2026-07-17): the per-sample
+  band is `max(i_abs + i_rel·|v|, ulp_f32(v))` — the f32-ULP floor stated in the
+  bullet above, now actually implemented. For tiers with `i_rel < 1.19e-7`
+  (feeder 1e-7, micro 1e-9) the bare band is *narrower than one ulp of the
+  recording format* at rel-dominated magnitudes, so a sub-f64-floor trajectory
+  straddling an f32 rounding midpoint failed spuriously. **Proof by
+  decomposition** (InductionMachine r4133 twin `controls/fuse/indmach_r4133/
+  indmach_dyn.dss`, 5001-step dynamics vs oddie:r4133): at the failing sample
+  (f2 `V2`, t=0.35917 s, mid-SLG-fault) the **live f64** |V(B4.2)| was
+  8939.842285059083 (Rust) vs 8939.842285310006 (r4133) — **2.8e-11 rel**,
+  350× inside the feeder `v_rel` floor — yet the two f64s straddle the f32
+  midpoint 8939.84228515625, so the recorded f32s differ by a full ulp
+  (9.77e-4). Across all 490,098 samples of the run: 5,622 differ, **99.25%
+  by exactly 1 ulp**, none growing in time (diffs *decrease* toward the end
+  of the transient), and the same step's f64 node-V/Y/element/property
+  surfaces all pass the full feeder floors. A real defect is ≥2 ulps or
+  visible in the (unchanged, tight) f64 surfaces.
+  Companion term, same commit: **polar ANGLE channels** (`VAngle<n>`/`IAngle<n>`
+  only — mode-3 state names like `Theta (deg)` deliberately excluded) get
+  `max(band, rad2deg·(i_abs + i_rel·|mag|)/|mag|)` where `mag` is the *same
+  sample* of the preceding magnitude channel — the exact angular image of the
+  already-accepted magnitude floor (the voltage-scaled power-floor
+  construction above). At healthy magnitudes the image is far *tighter* than
+  the base band (1.7e-5 ° at 50 A); it opens only where the magnitude carries
+  no angular information (indmach_dyn: 0.10–0.24 A residual `I3` during the
+  phase-1 fault, dI = 1.3e-7 A cross-solver floor → 3–6e-5 ° swing, 3 samples).
+  The magnitude channel itself stays fully banded, so a real current defect
+  cannot hide behind its angle.
+  **Scope — deliberately global, not per-deck** (T4 audit settlement): the floor
+  applies to every `compare_monitor` call, pinned-0.14.5 decks included, because
+  the recording format is f32 on *every* engine generation — the pinned oracle's
+  own `Monitor.pas:143` declares `MonBuffer: pSingleArray` and each buffered
+  sample is an f64→f32 store (`Monitor.pas:1599`); the r4088/r4133 trunks use the
+  same single-precision buffer. Scoping the floor to r4133 decks would assert
+  that 0.14.5 monitor data carries sub-ulp information, which is false by
+  representation. Bounds of the widening where the floor engages (base band
+  < 1 ulp ≈ 1.19e-7 rel): feeder tier `i_rel` 1e-7 → ≤19% on rel-dominated
+  samples; micro tier (`i_rel` 1e-9, `i_abs` 1e-6) the ulp term dominates for
+  |v| ≳ 8.4, where the old band *de facto* demanded bit-identical f32 samples —
+  a requirement no f64-correct trajectory can guarantee (any midpoint straddle
+  breaks it, proven above at 2.8e-11 f64 rel). And the floor cannot mask any
+  live divergence: the full gate was green under the narrower pre-floor bands
+  immediately before this change, so no existing comparison sits in the
+  newly-opened sub-ulp window; a future defect is ≥2 ulps there or visible in
+  the same steps' f64 surfaces (node V / currents / powers / variables), which
+  keep full tier floors.
 - **Dynamics fixpoint residuals** (`dSpeed`/`dTheta`/`speed`) are pinned against
   the oracle's actual (small, non-zero) value, not `≈0`: `dSpeed = (Pshaft +
   electrical_power)/Mmass` is a ~1.5e-8-rel residual the oracle reproduces; a value
