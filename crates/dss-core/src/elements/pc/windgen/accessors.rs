@@ -244,6 +244,9 @@ impl DssObject for WindGen {
     fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
         Some(self)
     }
+    fn as_dyneq(&self) -> Option<&crate::elements::pc::dyneq_pce::DynEqPceData> {
+        Some(&self.dyneq)
+    }
 
     fn get_f64(&self, idx: usize) -> f64 {
         use prop::*;

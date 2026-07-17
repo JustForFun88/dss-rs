@@ -146,9 +146,12 @@ DECKS = [
         # plural alternative: set here so the default sweep renders each as a
         # per-winding array — this pins the DoubleOnStructArray (`RDCOhms`…) and
         # IntegerOnStructArray (`NumTaps`) JSON arms against the oracle without
-        # needing Full mode. Full-family combos remain excluded: they add the
-        # WdgCurrents result string, which is solve-state the pre-solve Rust dump
-        # path does not surface (recorded deferral).
+        # needing Full mode. Full-family combos are INCLUDED: the Rust JSON path
+        # now refreshes Vterminal (`obj_to_json_mut`/`class_batch_to_json_mut`),
+        # so the `WdgCurrents` result string renders exactly as the oracle's
+        # self-refreshing getter does (pre-solve = the all-zero phasor list).
+        # Captured pre-solve, so `voltagebases`/`calcv` are set to give a
+        # well-formed (zeroed) solution vector to refresh from.
         "commands": [
             "new circuit.probe basekv=12.47",
             "new transformer.t1 windings=2 buses=(probe, b2) "
@@ -156,8 +159,64 @@ DECKS = [
             "xhl=6 %rs=(0.5, 0.5) "
             "wdg=1 rdcohms=0.11 maxtap=1.1 mintap=0.9 numtaps=32 rneut=0.5 "
             "wdg=2 rdcohms=0.22 maxtap=1.2 mintap=0.8 numtaps=16 rneut=1.5",
+            "makebuslist",
+            "set voltagebases=[12.47,0.48]",
+            "calcv",
         ],
         "captures": [("obj", "transformer.t1"), ("batch", "Transformer")],
+    },
+    # NOTE: an AutoTrans Full golden (the second WdgCurrents exerciser) is NOT
+    # added here. The JSON Vterminal-refresh route this WP adds is class-agnostic
+    # and is proven byte-exact by `transformer_micro`'s Full WdgCurrents; AutoTrans
+    # WdgCurrents flows through the identical READS_VTERMINAL + refresh path. A
+    # standalone AutoTrans JSON golden is blocked by a SEPARATE, out-of-scope gap:
+    # AutoTrans carries none of the JSON array-alternative/redundant metadata the
+    # Transformer has, so even its default sweep renders `Buses/Conns/kVs/kVAs`
+    # where the oracle renders `Bus/Conn/kV/kVA`. Recorded as a STATUS follow-up.
+    {
+        "name": "dyneq_micro",
+        # The `TDynEqPCE` "DynInit" tail (CAPI_Obj.pas:752-759): a
+        # Generator/PVSystem/Storage carrying a DynamicExp with UserDynInit
+        # assignments appends a literal "DynInit" object after all properties.
+        # The assignment mix pins all three value renderings: a plain constant
+        # (Damp=0 / wp=7) → JSON number; a calc-value operand (PShaft=P0,
+        # Pterm=P, theta=Edp) → JSON string (case preserved); an RPN constant
+        # (Mass=(...), wq=(4 5 +)) → JSON string. Generator exercises the
+        # `self.dyneq` host, Storage the InvBasedPCE `base.dyneq` host. The
+        # literal "DynInit" key must survive LowercaseKeys unchanged, and the
+        # calc-value/RPN strings must be untouched by FullNames/EnumAsInt — so
+        # the full combo sweep is captured (obj + batch, both classes).
+        "commands": [
+            "new circuit.dyn basekv=24 bus1=sourcebus",
+            "new DynamicExp.gde nvariables=6 "
+            "varnames=[Speed Mass PShaft Pterm Damp theta] "
+            "expression=[Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *;"
+            " theta dt = Speed]",
+            "new Generator.g1 Bus1=sourcebus kV=24 kW=100 kvar=50 Model=1 "
+            "DynamicEq=gde",
+            "~ Damp = 0 PShaft = P0 Pterm = P Speed = 0 theta = Edp "
+            "Mass = (3.5 2 * 2220000000 376.99112 / *)",
+            "~ DynOut = [Speed theta]",
+            "new DynamicExp.stde nvariables=2 varnames=[wp wq] "
+            "expression=[wp dt = 0; wq dt = 0]",
+            "new Storage.st1 phases=3 bus1=sourcebus kv=24 kwrated=100 "
+            "kwhrated=200 DynamicEq=stde",
+            "~ wp = 7 wq = (4 5 +)",
+            "set voltagebases=[24]",
+            "calcv",
+        ],
+        "captures": [
+            ("obj", "Generator.g1"),
+            ("obj", "Storage.st1"),
+            ("batch", "Generator"),
+            ("batch", "Storage"),
+        ],
+        # Default-family combos only: the DynInit tail is appended after both the
+        # default and Full sweeps by the same code, so the default sweep fully
+        # exercises it (number/string value split, the literal `"DynInit"` key
+        # surviving LowercaseKeys, calc-strings untouched by FullNames/EnumAsInt).
+        # Full mode is skipped here to avoid an unrelated Generator Full-render
+        # gap (ShaftModel/ShaftData hidden by NOT_PORTED) — a recorded follow-up.
         "skip_full": True,
     },
     {

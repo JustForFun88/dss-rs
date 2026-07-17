@@ -26,16 +26,17 @@ Distinct from **§2 owned deferrals** (a live plan tracks them — do NOT re-por
 - **To do:** port `WriteVarOutputRecord` (per-GICTransformer Mvar/loss output), wire the `GICMvars` export verb, add a golden over a GIC deck, retire the `report.rs` negative-assert. **Priority: low** (niche; only GIC studies).
 
 ### 1.2 AltDSS JSON `DynInit` tail
-- **Deferred by:** JSON_EXPORT_PLAN §6 ("DynInit JSON tail", explicitly scoped out).
-- **Spec:** `CAPI_Obj.pas:752-759` — for a `TDynEqPCE` with `UserDynInit <> NIL`, append a `"DynInit"` object.
-- **Current state:** `crates/dss-core/src/report/export/json/build.rs:123` (NOT_PORTED comment). Only fires for a Generator/PVSystem/Storage carrying a `UserDynInit` DynamicExp.
-- **To do:** emit the DynInit tail in `obj_to_json_data`; add a golden with such a deck (a covered deck currently loud-mismatches, so it fails safe). **Priority: low.**
+**PORTED 2026-07-18** on `og1213-json-tails` — see STATUS §OG-1.2+1.3.
+`obj_to_json_data` emits the `TDynEqPCE` `"DynInit"` tail; golden `dyneq_micro`.
 
 ### 1.3 AltDSS JSON `Full`-mode solve-state matrices
-- **Deferred by:** JSON_EXPORT_PLAN (discovered mid-implementation; `docs/phase-records/gaps.md:1030-1034`).
-- **What:** under `Full`, Transformer/AutoTrans `WdgCurrents` + Capacitor `CMatrix` are excluded because the `&self` JSON path cannot run `refresh_vterminal_if_marked`.
-- **Current state:** `crates/dss-core/src/exec/view.rs:381-382`; goldens mark those classes "Full excluded".
-- **To do:** give the JSON-Full path a `&mut` (or pre-refreshed) route so those matrices render; extend the goldens. **Priority: low.**
+**WdgCurrents PORTED 2026-07-18** on `og1213-json-tails` — see STATUS §OG-1.2+1.3.
+Transformer/AutoTrans `WdgCurrents` now render via a `&mut` JSON refresh route
+(`obj_to_json_mut`/`class_batch_to_json_mut`); golden `transformer_micro` Full.
+**Capacitor `CMatrix` = proven UB non-port** (uninitialized heap, nondeterministic
+across oracle processes) — not reproduced. Two out-of-scope blockers to an
+AutoTrans Full golden and a Generator/Storage Full golden are recorded in STATUS
+Standing follow-ups (AutoTrans JSON array-alt metadata; NOT_PORTED ShaftModel).
 
 ### 1.4 AltDSS JSON **import** (`Obj_Circuit_FromJSON_`)
 - **Deferred by:** JSON_EXPORT_PLAN §6 (out-of-scope sibling — export only was in scope).

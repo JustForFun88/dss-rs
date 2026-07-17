@@ -6,6 +6,7 @@
 //! and the skip flags all live here; the value of each surviving property comes
 //! from [`ClassProps::get_json_value`](crate::obj::props::class_props).
 
+use crate::elements::pc::dyneq_pce::DynInitValue;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropFlags, PropType};
@@ -120,11 +121,31 @@ pub fn obj_to_json_data(
         }
     }
 
-    // The `TDynEqPCE` `"DynInit"` tail (`CAPI_Obj.pas:752-759`) is NOT ported
-    // (§6, follow-up "DynInit JSON tail"): it only fires for a
-    // Generator/PVSystem/Storage with a `UserDynInit` DynamicExp attached, which
-    // the goldens never set. A covered deck that did would be a loud golden
-    // mismatch, not a silent wrong answer.
+    // The `TDynEqPCE` `"DynInit"` tail (`CAPI_Obj.pas:752-759`): for an object
+    // that is a `TDynEqPCE` (Generator/PVSystem/Storage) whose `UserDynInit`
+    // is non-NIL — i.e. at least one `DynamicEq` state-variable assignment was
+    // parsed — append a literal `"DynInit"` object of its var→value init
+    // assignments. The `"DynInit"` key is emitted verbatim (Pascal `resObj.Add`
+    // with a string literal — never lowercased, even under LowercaseKeys). The
+    // inner keys are the already-lowercased variable names; each value is a JSON
+    // number (a plain constant) or a JSON string (a calc-value operand or an
+    // RPN constant). Appended in both default and Full sweeps, always last.
+    if let Some(dyneq) = obj.as_dyneq()
+        && !dyneq.user_dyn_init.is_empty()
+    {
+        let dyn_members: Vec<(String, Json)> = dyneq
+            .user_dyn_init
+            .iter()
+            .map(|(k, v)| {
+                let jv = match v {
+                    DynInitValue::Number(n) => Json::Float(*n),
+                    DynInitValue::Text(s) => Json::Str(s.clone()),
+                };
+                (k.clone(), jv)
+            })
+            .collect();
+        members.push(("DynInit".to_string(), Json::Obj(dyn_members)));
+    }
 
     Json::Obj(members)
 }
