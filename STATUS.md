@@ -7,7 +7,25 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-17 — **Rung 2 wave 2 MERGED: WP-U2.3 (Relay r4133
+Last updated: 2026-07-17 — **WP-U2.1 handoff RESTORED (branch wt-combo):** the
+combo fuse-save decks `combo/{combo,midi}_protection` flipped to `oracle:"r4133"`
+with the fuse tier re-armed (`fusecurve=tlink curvemultiplier=40/50`, reproducing
+the pre-WP r4088-era RatedCurrent divisor) and the Recloser probe + Relay
+`state`/`normal` probe + `compare_eventlog` restored (dropped by WP-U2.2/U2.3
+while the tiers were version-split). The classic three-tier fuse-save race
+(backup relay → midline recloser → lateral fuse) now runs end-to-end on the
+version-consistent r4133 chain, two-process-determinant + live-compared vs
+oddie:r4133 (controls live gate 96→**98**). Also fixed a **pre-existing** oracle
+capture bug uncovered here: `capture_eventlog` returned a lone `['﻿']` for
+an EMPTY Oddie event log (Delphi BOM) and BOM-glued the first record — which made
+`recloser_temp`/etc. r4133 event-log compares RED on this machine; now the BOM is
+stripped per line so empty→`[]` and line-0 matches the BOM-free Rust log. The
+`Standing open follow-ups` combo-restore entry is retired. Meter/monitor oracle
+compare stays off on these two decks (Oddie monitor CSV header = Delphi
+leading-space + trailing-empty columns the harness monitor comparator can't match;
+owed to the WP-U2.5 monitor-header surface).
+
+Prior: 2026-07-17 — **Rung 2 wave 2 MERGED: WP-U2.3 (Relay r4133
 per-phase rewrite) landed on `update`** via a port→audit→fix worktree chain
 (wt-u23, opus-audited, major finding fixed in-branch; full mandatory gate
 green, 47/47 suites). The delta's largest unit (Controls/Relay.pas
@@ -1357,6 +1375,52 @@ until proven a floor per CLAUDE.md) and the live-f64 trip-time + per-node
 trajectory decomposition is owed to WP-U2.6's rung-exit sweep — an honest
 deferral, not tolerance-masked. Full mandatory gate re-run green.
 
+**WP-U2.1 handoff — combo fuse-save restore (r4133, 2026-07-17, branch wt-combo).**
+The WP-U2.1 deferral (STATUS `Standing open follow-ups`, UPGRADE_PLAN WP-U2.1 handoff):
+now that Fuse (U2.1) / Recloser (U2.2) / Relay (U2.3) all landed on `update`, the
+two cross-chain fuse-save decks are version-consistent on r4133.
+- **Decks re-armed.** `combo/combo_protection` + `combo/midi_protection` flipped to
+  `oracle:"r4133"`; the fuse-tier neutralization (`ratedcurrent=100000/5000`, which
+  existed only so the fuse never blew on 0.14.5) removed. r4133's default `FuseCurve`
+  moved `tlink`→`none` (a curveless fuse never blows), so the fuse is given an
+  explicit curve: `fusecurve=tlink curvemultiplier=40` (combo) / `=50` (midi) — the
+  CurveMultiplier divisor reproduces the pre-WP r4088-era `RatedCurrent=40/50`
+  divisor (WP-U2.1 CurveMultiplier semantics). The midi recloser also gained explicit
+  `phasefast=a phasedelayed=d` (r4133 D2 removed the built-in defaults). midi is
+  generated — fixed at `tools/decks/gen_midi_decks.py` (`PROTECTION_EXTRA`) and
+  regenerated.
+- **Race re-exercised end-to-end** (probe-verified on oddie:r4133): recloser FAST
+  shot clears the fault, on reclose the fault persists and the fuse melts the faulted
+  phase on the delayed cycle (`Fuse.fz PHASE 1 BLOWN` at Sec=0.5 combo / 0.9 midi),
+  the recloser recloses and restores service except the blown phase, and the
+  substation backup relay never trips. Both decks converge every step; two-process
+  determinant bit-identical (§1.7).
+- **Probes/eventlog restored** (dropped by WP-U2.2/U2.3 while the tiers were
+  version-split): `Recloser.r` (`state`/`normal` [+`shots`/`numfast` on midi]),
+  `Fuse.fz` (`state`/`normal`/`fusecurve`/`curvemultiplier`), `Relay.backup`
+  (`state`/`normal` [+`delay` on midi]), and `compare_eventlog:true`. The r4133 relay
+  `Debug Sample: FPresentState` lines + the fuse `PHASE n BLOWN` line reproduce the
+  oracle (the Rust port's TODO(compat) relay lines + fuse blow). controls live gate
+  **96→98** decks matched.
+- **Pre-existing infra bug fixed** (`tools/oracle/oracle_server.py::capture_eventlog`,
+  NOT combo-scoped but the enabling infra): Delphi's `export eventlog` writes a UTF-8
+  BOM, so an EMPTY Oddie event log read back as `['﻿']` (one lone-BOM line) and a
+  non-empty first record was BOM-glued. This made the length assert (0 vs 1) fire on
+  every empty r4133 event-log step and the numeric-skeleton comparator panic on the
+  multi-byte BOM — pristine `update` was RED here on `recloser_temp` step 0 (proven by
+  running the pristine controls gate). Fix strips the BOM per line: empty→`[]`, line-0
+  matches the BOM-free Rust `event_log()` / capi `Solution.EventLog`. Restores the
+  whole r4133 event-log channel (recloser/relay decks too), not just the combo pair.
+- **Meter/monitor compare deferred** on these two decks (WP-U2.5 owed): the Oddie
+  monitor CSV `Header` carries Delphi leading-space + trailing-empty columns
+  (`[' VAngle1', …, '']`) the harness `compare_monitor` exact-header assert can't
+  match (dss_capi/Rust emit clean `['V1','VAngle1',…]`). `check_meters_monitors`
+  dropped on the r4133 flip (the decks keep their monitor+meter definitions; the live
+  full-model per-step compare covers the V/I trajectory). No harness edit made here
+  (WP-U2.5 owns the monitor-header surface).
+- `population.lock` unchanged (no deck added/removed; only oracle/probe fields moved).
+  `known_diffs.json` untouched (no combo-scoped entry).
+
 **GAPS (WPG.*), Phase 8, Phase 7.** The per-WP GAPS_PLAN records (WPG.1/10/12/13/
 14/15/16/17/18/19/20/21 + CIM XML export stages) are archived in
 **`docs/phase-records/gaps.md`**. Phase 8 (reporting/executive) is COMPLETE — detail
@@ -1365,17 +1429,12 @@ harmonics/dynamics) is COMPLETE on `phase-7-extended-elements` (not merged to `m
 — roll-up in §1e and **`docs/phase-records/phase-7.md`**.
 
 ### Standing open follow-ups (actionable)
-- **Restore combo fuse-save coverage (WP-U2.1 deferral)** — `combo/combo_protection`
-  and `combo/midi_protection` neutralize their fuse tier (`ratedcurrent`
-  100000/5000 → never blows on 0.14.5) so the still-0.14.5 Recloser/Relay tiers
-  keep the deck gated on the 0.14.5 oracle. Confirmed a *real* coverage loss (on
-  r4088 the pre-WP combo fuse DID blow — default FuseCurve resolves a built-in
-  Tlink and melts all three phases under fault), not a no-op. When the protection
-  rung (WP-U2.2 Recloser + WP-U2.3 Relay) lands, **flip both decks to
-  `oracle:"r4133"` and remove the `ratedcurrent` neutralization** so the classic
-  fuse-save race is re-exercised end-to-end across all three version-consistent
-  tiers. Until then the r4133 CurveMultiplier-scaled blow is covered live by
-  `fuse_curvemult_blow`.
+- **Combo fuse-save restore — DONE (2026-07-17, wt-combo).** Both decks flipped to
+  `oracle:"r4133"` with the fuse re-armed and the three-tier race re-exercised
+  end-to-end; see the WP record below. Remaining sub-item owed to WP-U2.5: re-enable
+  meter/monitor oracle compare on these two decks once the Oddie monitor-header
+  format (Delphi leading-space + trailing-empty columns) is normalized in the
+  monitor comparator (harness surface WP-U2.5 owns).
 - **WP-U1.2 row D3** — port with its overload deck (B3-r3723 landed under WP-U1.6).
 - **WP-U1.6 remaining** (branch wt-u16 §UPGRADE): C5 RegControl FwdThreshold+idle
   props, C6 Transformer BH props, C5-r3723 LoadShape Mode index, D11 CapControl
