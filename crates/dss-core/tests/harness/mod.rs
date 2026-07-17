@@ -111,6 +111,16 @@ impl Golden {
 /// by `#`) and the list of numbers it contains — the property-dump comparator
 /// (PORTING_PLAN.md §4: numbers with tolerance, structure exactly).
 pub fn numeric_skeleton(s: &str) -> (String, Vec<f64>) {
+    // The official r4133 Oddie DLL prefixes some captured strings with a UTF-8 BOM
+    // (spurious export cruft, never real value data). Strip it: the loop below
+    // assumes ASCII bytes, and a 3-byte `﻿` at index 0 would make `&s[1..]` slice
+    // inside the char → panic. WP-U2.5.
+    let s = if s.contains('\u{feff}') {
+        s.replace('\u{feff}', "")
+    } else {
+        s.to_string()
+    };
+    let s = s.as_str();
     let mut skeleton = String::new();
     let mut nums = Vec::new();
     let mut i = 0;
@@ -120,7 +130,7 @@ pub fn numeric_skeleton(s: &str) -> (String, Vec<f64>) {
             skeleton.push('#');
             i += len;
         } else {
-            // values are ASCII; advance one byte
+            // values are ASCII (after the BOM strip above); advance one byte.
             skeleton.push(s.as_bytes()[i] as char);
             i += 1;
         }
@@ -1236,9 +1246,10 @@ const PROPS_015X: &[(&str, &[&str])] = &[
     ("Fuse", &["CurveMultiplier", "InterruptingRating"]),
     // WP-U2.4 C4 (EPRI r4133 `Controls/SwtControl.pas`, props 8->9): the new
     // informational `RatedCurrent`. r4133-only (absent from BOTH the 0.14.5 and
-    // capi015 property tables) — see `PropFlags::HIDE_R4133`. Excluded from the
-    // count/order/name walk on every default-oracle capture (0.14.5 and capi015);
-    // r4133-oracle cases do not property-compare.
+    // capi015 property tables). This name-based row (not the `PropFlags::HIDE_R4133`
+    // flag, dropped at U2.5 when the SwtControl surface went full-r4133) is what
+    // excludes it from the count/order/name walk on every default-oracle capture
+    // (0.14.5 and capi015); r4133-oracle cases do not property-compare.
     ("SwtControl", &["RatedCurrent"]),
     // Further rows land here with their porting WP.
 ];

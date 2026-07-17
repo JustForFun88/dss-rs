@@ -118,9 +118,14 @@ def capture_eventlog(d, ckt) -> list:
     """
     if type(d).__name__ == "IOddieDSS":
         d.Text.Command = "export eventlog"
-        path = str(d.Text.Result).strip()
+        path = str(d.Text.Result).strip().lstrip("﻿")
         try:
-            with open(path, encoding="utf-8", errors="replace") as f:
+            # `utf-8-sig` strips a leading UTF-8 BOM: the official r4133 DLL writes
+            # its `export eventlog` CSV with a BOM, so a plain-`utf-8` read would
+            # (a) glue `﻿` onto the first event line and (b) turn an EMPTY log
+            # into a spurious one-line `['﻿']` (the BOM is not `str.isspace()`,
+            # so `if ln.strip()` keeps it). WP-U2.5.
+            with open(path, encoding="utf-8-sig", errors="replace") as f:
                 # The CSV has no header row — each line is a full event record
                 # ("Hour=…, Sec=…, ControlIter=…, Element=…, Action=…").
                 return [ln.rstrip("\r\n") for ln in f if ln.strip()]
