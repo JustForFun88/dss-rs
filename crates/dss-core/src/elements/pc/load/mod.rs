@@ -167,7 +167,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::bus("Bus1", 1),
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
         PropDef::double("kW").flags(PropFlags::REPLACE_ZERO),
-        PropDef::double("PF"),
+        PropDef::double("PF").flags(PropFlags::ORDERING_LAST),
         PropDef::mapped_int_enum("Model", enums.load_model),
         PropDef::object_ref_class("LoadShape", "Yearly"),
         PropDef::object_ref_class("LoadShape", "Daily"),

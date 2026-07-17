@@ -472,6 +472,19 @@ impl DssObject for Transformer {
                 KVAS => w.kva = *v,
                 TAPS => w.putap = *v,
                 PCTRS => w.rpu = *v,
+                // JSON import of the per-winding `ON_ARRAY` scalars, whose
+                // export twin is `get_struct_f64_array` above
+                // (DoubleOnStructArrayProperty). Only the values are written;
+                // `RdcSpecified` is left to the `RDCOHMS` `PropertySideEffects`,
+                // which — like the oracle's `SetObjDoubles` — marks only the
+                // *active* (last) winding (Transformer.pas:708). So a per-winding
+                // `RDCOhms` array leaves winding 1 unspecified → its Rdc is
+                // derived at `recalc`, matching the oracle round-trip 1:1.
+                RNEUT => w.rneut = *v,
+                XNEUT => w.xneut = *v,
+                MAXTAP => w.max_tap = *v,
+                MINTAP => w.min_tap = *v,
+                RDCOHMS => w.rdcohms = *v,
                 _ => unreachable!("Transformer has no struct array {idx}"),
             }
         }
@@ -492,6 +505,13 @@ impl DssObject for Transformer {
             prop::CONNS => {
                 for (w, v) in self.windings.iter_mut().zip(values) {
                     w.connection = *v;
+                }
+            }
+            // JSON import of the per-winding `NumTaps` `ON_ARRAY` scalar
+            // (IntegerOnStructArrayProperty; export twin `get_struct_i32_array`).
+            prop::NUMTAPS => {
+                for (w, v) in self.windings.iter_mut().zip(values) {
+                    w.num_taps = *v;
                 }
             }
             _ => unreachable!("Transformer has no struct enum array {idx}"),

@@ -35,6 +35,9 @@ mod tests;
 
 pub(crate) mod build;
 pub(crate) mod circuit;
+mod read;
+
+pub use read::parse_json;
 
 /// One JSON value, an insertion-ordered tree (fpjson `TJSONData` subset). `Obj`
 /// preserves member order because the object dump depends on the property

@@ -898,23 +898,40 @@ impl Dss {
     /// active for `DSS_OBJECT` classes), register circuit elements with the
     /// circuit, and edit the rest of the line.
     pub(super) fn add_object(&mut self, obj_class: &str, name: &str) {
+        if self.create_object_no_edit(obj_class, name) {
+            self.edit_active();
+        }
+    }
+
+    /// The object-creation half of [`Dss::add_object`] (Pascal `AddObject` up to
+    /// but not including the `TDSSClass.Edit` of the remaining parameters):
+    /// resolve/validate the class, create the object (or activate the existing
+    /// `DSS_OBJECT`), apply the per-class creation defaults and register a
+    /// circuit element with the circuit. Returns `true` when an object is active
+    /// and ready to be edited (so `add_object` runs `edit_active`); the JSON
+    /// reader instead applies `FillObjFromJSON`. This split matches the Pascal
+    /// `obj_NewFromClass` (create, no `RecalcElementData`) used by
+    /// `loadClassFromJSON` — a JSON-imported element that needs another element
+    /// (RegControl → its transformer) must not run its recalc on the empty
+    /// pre-fill object.
+    pub(super) fn create_object_no_edit(&mut self, obj_class: &str, name: &str) -> bool {
         let Some(&ci) = self.class_by_name.get(&obj_class.to_ascii_lowercase()) else {
             self.errors.push(format!(
                 "New Command: Object Type \"{obj_class}\" not found."
             ));
-            return;
+            return false;
         };
         self.active_class = Some(ci);
 
         if name.is_empty() {
             self.errors.push("Object Name Missing".to_string());
-            return;
+            return false;
         }
 
         if self.classes[ci].requires_circuit && self.circuit.is_none() {
             self.errors
                 .push("You Must Create a circuit first: \"new circuit.yourcktname\"".to_string());
-            return;
+            return false;
         }
 
         if !self.classes[ci].requires_circuit {
@@ -935,7 +952,7 @@ impl Dss {
                      specified. Error in definition of object."
                         .to_string(),
                 );
-                return;
+                return false;
             }
             // DSS_OBJECT path: duplicates become edits.
             if !self.classes[ci].set_active(name) {
@@ -962,8 +979,7 @@ impl Dss {
                 // global creation-order list the whole-circuit Dump walks.
                 self.dss_objs.push(ElemRef { cls: ci, idx });
             }
-            self.edit_active();
-            return;
+            return true;
         }
 
         // Circuit-element path. Duplicate names: warn and bail (the Pascal
@@ -975,7 +991,7 @@ impl Dss {
                 self.classes[ci].props.class_name(),
                 name
             ));
-            return;
+            return false;
         }
 
         let cls = &mut self.classes[ci];
@@ -1044,7 +1060,7 @@ impl Dss {
             .expect("circuit element class builds circuit elements");
         ckt.add_ckt_element(ElemRef { cls: ci, idx }, kind, elem);
 
-        self.edit_active();
+        true
     }
 
     /// Pascal `DoClearCmd`: drop the circuit and every object. The executive

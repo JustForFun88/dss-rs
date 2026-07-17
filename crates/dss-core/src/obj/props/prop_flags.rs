@@ -190,6 +190,19 @@ impl PropFlags {
     /// 0.14.5 property-table walk are name-based, independent of this flag.
     pub const HIDE_R4133: Self = Self(1 << 50);
 
+    /// Pascal `TPropertyFlag.Ordering_First` (`DSSClass.pas:216`): this property
+    /// is moved to the very front of the alternate load/save order
+    /// (`AltPropertyOrder`, right after `Like`), so the JSON reader
+    /// (`FillObjFromJSON`) applies it before the rest — e.g. Transformer
+    /// `XfmrCode`, Line `Switch`, LoadShape `MemoryMapping`. Inert on every path
+    /// except [`ClassProps::alt_property_order`](crate::obj::props::ClassProps).
+    pub const ORDERING_FIRST: Self = Self(1 << 51);
+    /// Pascal `TPropertyFlag.Ordering_Last` (`DSSClass.pas:217`): this property
+    /// is moved to the very end of `AltPropertyOrder` (with the action
+    /// properties), so the JSON reader applies it after every other property —
+    /// e.g. Load `PF`. Inert except in `alt_property_order`.
+    pub const ORDERING_LAST: Self = Self(1 << 52);
+
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
     }

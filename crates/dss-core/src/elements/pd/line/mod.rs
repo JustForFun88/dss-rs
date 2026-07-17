@@ -142,7 +142,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::sym_matrix_imag("XMatrix", PHASES)
             .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::sym_matrix_imag("CMatrix", PHASES).flags(PropFlags::SCALED_BY_FUNCTION),
-        PropDef::boolean("Switch"),
+        PropDef::boolean("Switch").flags(PropFlags::ORDERING_FIRST),
         PropDef::double("Rg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("Xg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("rho"),

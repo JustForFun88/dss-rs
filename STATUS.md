@@ -7,6 +7,67 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### OG-1.4 AltDSS JSON import `Circuit_FromJSON` (orphaned-gaps round, 2026-07-18)
+
+Ported the whole-circuit AltDSS JSON **reader** — the inverse of the JSON export —
+on `og14-json-import` (branch based `883a656`). Closes `ORPHANED_GAPS.md` §1.4.
+
+- **What:** `Dss::circuit_from_json(&mut self, json) -> Result<(),String>`
+  (`exec/json_import.rs`) — a loop-for-loop port of `Obj_Circuit_FromJSON_` +
+  `loadClassFromJSON` + `busFromJSON` (`CAPI_Obj.pas:2674-2983`), wrapped like
+  `Circuit_FromJSON` (`CAPI_Circuit.pas`). Clear → DefaultBaseFreq → MakeNewCircuit
+  → PreCommands → per-class load (`PASCAL_CLASS_ORDER`) → ReprocessBusDefs → Bus
+  coords → PostCommands. Property application is `ClassProps::fill_from_json` /
+  `set_json_value` (`obj/props/class_props/json_set.rs`), the port of
+  `FillObjFromJSON` / `SetObjPropertyJSONValue`: walks the new **`AltPropertyOrder`**
+  (`class_props/mod.rs`, driven by two new flags `ORDERING_FIRST`/`ORDERING_LAST`
+  on LoadShape.MemoryMapping / Line.Switch / Transformer.XfmrCode / Load.PF),
+  redirects the `array_alternative` (singular per-winding key → plural array),
+  drives the typed struct setters for `ON_ARRAY` scalars, and renders every other
+  type to the string its existing `edit_property` parse path reads (a scalar
+  double round-trips bit-exactly via `f64::from_str`). A hand-rolled `parse_json`
+  (`report/export/json/read.rs`) is the text→`Json` front (no serde_json, same
+  reason as the writers).
+- **Why the re-export differs from J0:** the imported set-order becomes
+  `AltPropertyOrder` (not the original deck order), so `export(J0) != export(import(J0))`
+  in general — but the oracle round trip is **idempotent after one cycle**
+  (J1 == J2). The test therefore imports the oracle's J0 and requires the re-export
+  to equal the oracle's own re-export **J1 byte-for-byte** (oracle `Circuit_FromJSON`
+  is reachable on the pin), plus idempotency. Goldens `tests/golden/json_import/`
+  (`rt_micro` / `rt_transformer` / `rt_ieee13`), generator `tools/golden/gen_json_import.py`,
+  driver `tests/golden_json_import.rs` (+ negative tests: malformed/non-object/
+  unknown-class/unknown-prop/missing-Name).
+- **Bugs found + fixed in-scope (all gate-green):**
+  1. **Transformer constructor `SetAsNextSeq(XHL)`** (`Transformer.pas:848`) was
+     not reproduced — so a JSON-imported `X12` (or any never-edited transformer)
+     rendered its impedance at the wrong set-order position. Added; the low-seq
+     redundant `XHL` defers to canonical `X12`, so `X12` renders first. Safe for
+     existing goldens (an explicit `xhl=` overwrites the seq).
+  2. **Transformer `set_struct_f64_array`/`set_struct_i32_array`** only handled the
+     plural array props (kVs/kVAs/…); extended to the `ON_ARRAY` per-winding
+     scalars (RNeut/XNeut/MaxTap/MinTap/RDCOhms/NumTaps) for JSON import.
+     `RDCOhms` deliberately leaves `RdcSpecified` to the side effect (marks only
+     the *active/last* winding), so winding-1 Rdc is derived at recalc — matching
+     the oracle round trip 1:1.
+  3. **`add_object` split** into `create_object_no_edit` + `edit_active` so JSON
+     import creates an element without the empty pre-fill recalc (a RegControl's
+     `RecalcElementData` errors "transformer not set" if run before `FillObjFromJSON`
+     applies the ref). Pascal `obj_NewFromClass` does the same.
+  4. **`Set` command gaps** the export's PostCommands emit but the executive
+     lacked: `%mean`/`%stddev` (default daily shape Set_Mean/Set_StdDev) and
+     `genmult` (GenMultiplier). Ported (`set_cmd.rs`, `tables.rs`, LoadShape
+     `set_mean`/`set_std_dev`).
+- **Deferred (recorded):** the `DynInit` tail of `FillObjFromJSON` (ORPHANED_GAPS
+  §1.2, Generator/PVSystem/Storage `DynamicExp` init) — mirrors the export-side
+  `DynInit` deferral; not exercised by any covered deck. The public wrapper takes
+  no `joptions` (only the import-internal `DSSJSONOptions.Edit` bit matters and it
+  is applied internally).
+- **Gate:** fmt + clippy clean; `cargo test --workspace` green (all 27 live-corpus
+  cases match the oracle — the transformer/add_object changes cause no divergence).
+  NOTE: the worktree lacks the Oddie `tools/opendss/.venv` junction (4 corpus cases
+  need it); run with `DSS_OPENDSS_PYTHON` pointing at main's venv, else those cases
+  abort on setup (environment, not a code failure).
+
 Last updated: 2026-07-17 (late evening) — **STATUS RESTRUCTURED + PLAN-COMPLETION AUDIT.** All 16 plan docs were re-verified against the codebase; the records of the *completed* plans (FINAL ACCEPTANCE, JSON export, DIAKOPTICS Part I, UPGRADE Rung 1+2) moved to the new **§1a archive**, and every item those plans handed to a still-unfinished successor is now explicit in **§Standing open follow-ups**. Prior same-day — **TEST-TRIAGE ROUND MERGED** (user-ordered
 backlog burn-down; six parallel worktree WPs, each gate-green + audited/verified,
 merged wt-t1→t2→t3→t4→t6; DE_PASCALIZE is PAUSED by user order after wave 1 —

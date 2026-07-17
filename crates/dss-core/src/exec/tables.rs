@@ -486,6 +486,8 @@ pub(crate) mod opt {
     pub const NORMVMAXPU: usize = 22;
     pub const EMERGVMINPU: usize = 23;
     pub const EMERGVMAXPU: usize = 24;
+    pub const PCT_MEAN: usize = 25;
+    pub const PCT_STDDEV: usize = 26;
     pub const LDCURVE: usize = 27;
     pub const PCT_GROWTH: usize = 28;
     pub const GEN_KW: usize = 29;
@@ -501,6 +503,7 @@ pub(crate) mod opt {
     pub const VOLTAGE_BASES: usize = 39;
     pub const ALGORITHM: usize = 40;
     pub const TRAPEZOIDAL: usize = 41;
+    pub const GEN_MULT: usize = 45;
     pub const AUTO_BUS_LIST: usize = 42;
     pub const CONTROL_MODE: usize = 43;
     pub const DEFAULT_DAILY: usize = 46;
