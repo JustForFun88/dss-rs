@@ -111,16 +111,16 @@ impl Golden {
 /// by `#`) and the list of numbers it contains — the property-dump comparator
 /// (PORTING_PLAN.md §4: numbers with tolerance, structure exactly).
 pub fn numeric_skeleton(s: &str) -> (String, Vec<f64>) {
-    // The official r4133 Oddie DLL prefixes some captured strings with a UTF-8 BOM
-    // (spurious export cruft, never real value data). Strip it: the loop below
-    // assumes ASCII bytes, and a 3-byte `﻿` at index 0 would make `&s[1..]` slice
-    // inside the char → panic. WP-U2.5.
-    let s = if s.contains('\u{feff}') {
-        s.replace('\u{feff}', "")
-    } else {
-        s.to_string()
-    };
-    let s = s.as_str();
+    // Strip a *leading* UTF-8 BOM only. The official r4133 Oddie DLL prefixes
+    // some captured strings with one (spurious export cruft, never real value
+    // data), and a 3-byte `﻿` at index 0 would make the `&s[i..]` slices below cut
+    // inside the char → panic. This is the exact Oddie failure mode (WP-U2.5). A
+    // BOM anywhere ELSE is deliberately NOT stripped: it flows into the skeleton
+    // via the char-wise else-branch (which never mid-slices a multibyte char), so
+    // a spurious mid-string BOM on one side surfaces as a structure mismatch
+    // instead of being silently swallowed — and DSS ASCII output never carries a
+    // legitimate interior BOM.
+    let s = s.strip_prefix('\u{feff}').unwrap_or(s);
     let mut skeleton = String::new();
     let mut nums = Vec::new();
     let mut i = 0;
@@ -130,9 +130,12 @@ pub fn numeric_skeleton(s: &str) -> (String, Vec<f64>) {
             skeleton.push('#');
             i += len;
         } else {
-            // values are ASCII (after the BOM strip above); advance one byte.
-            skeleton.push(s.as_bytes()[i] as char);
-            i += 1;
+            // Not a number start: copy one whole char. A bytewise advance would
+            // split a multibyte char and panic the next `&s[i..]`; `scan_number`
+            // only ever consumes ASCII numeric bytes, so `i` stays on a boundary.
+            let ch = s[i..].chars().next().unwrap();
+            skeleton.push(ch);
+            i += ch.len_utf8();
         }
     }
     (skeleton, nums)
@@ -204,7 +207,29 @@ pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64
 
 #[cfg(test)]
 mod comparator_tests {
-    use super::assert_value_matches_tol;
+    use super::{assert_value_matches_tol, numeric_skeleton};
+
+    /// A *leading* Oddie BOM is stripped (so `﻿100` compares equal to `100`),
+    /// but an *interior* BOM is preserved into the skeleton — so a spurious
+    /// mid-string BOM on one side alone is FLAGGED as a structure mismatch, not
+    /// silently swallowed (the audit-narrowed strip; WP-U2.5 audit fix).
+    #[test]
+    fn bom_strip_is_leading_only() {
+        // Leading BOM: stripped, so both sides skeletonize identically.
+        assert_value_matches_tol("\u{feff}100", "100", 1e-9, 1e-9, "leading-bom");
+        // Interior BOM: kept in the skeleton, so it participates in structure.
+        let (sk_bom, _) = numeric_skeleton("1\u{feff}00");
+        let (sk_plain, _) = numeric_skeleton("100");
+        assert_ne!(
+            sk_bom, sk_plain,
+            "an interior BOM must change the skeleton (be flagged), not vanish"
+        );
+        // And a one-sided interior BOM fails the value compare (no panic).
+        let r = std::panic::catch_unwind(|| {
+            assert_value_matches_tol("1\u{feff}00", "100", 1e-9, 1e-9, "interior-bom");
+        });
+        assert!(r.is_err(), "one-sided interior BOM must fail, not match");
+    }
 
     /// Byte-identical strings pass even when a token overflows to inf; two
     /// DISTINCT strings differing only in such a token FAIL (the per-number
