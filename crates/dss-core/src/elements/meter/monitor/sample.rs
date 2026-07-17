@@ -2,7 +2,7 @@
 
 use num_complex::Complex64;
 
-use super::{MAGNITUDEMASK, MODEMASK, Monitor, MonitorSampleCtx, POSSEQONLYMASK, SEQUENCEMASK};
+use super::{Monitor, MonitorBaseMode, MonitorSampleCtx};
 use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::Transformer;
@@ -75,14 +75,14 @@ impl Monitor {
             self.add_dbl(self.sec);
         }
 
-        let mode_mask = self.mode & MODEMASK;
+        let base = self.mode.base;
 
         // Scratch buffers (Pascal keeps them as fields for reuse).
         let mut current_buffer = vec![Complex64::ZERO; m_yorder.max(fnconds + 1)];
         let mut voltage_buffer = vec![Complex64::ZERO; m_yorder.max(fnconds + 1)];
 
-        match mode_mask {
-            0 | 1 => {
+        match base {
+            MonitorBaseMode::VoltageAndCurrent | MonitorBaseMode::Power => {
                 let e = metered.as_ckt_element_mut().expect("ckt element");
                 e.compute_iterminal(sys, node_v);
                 let cd = e.cd();
@@ -91,7 +91,7 @@ impl Monitor {
                     *v = node_v[self.med.cd.node_ref[i]];
                 }
             }
-            2 => {
+            MonitorBaseMode::Tap => {
                 let w = self.med.metered_terminal as usize;
                 let any = metered.as_any();
                 let tap = if let Some(t) = any.downcast_ref::<Transformer>() {
@@ -104,7 +104,7 @@ impl Monitor {
                 self.add_dbl(tap);
                 return;
             }
-            3 => {
+            MonitorBaseMode::StateVars => {
                 // Pascal `TakeSample` mode 3 (Monitor.pas l.1245-1250): pick up
                 // the metered PC element's state variables —
                 // GetAllVariables(StateBuffer) then AddDblsToBuffer(StateBuffer,
@@ -117,7 +117,7 @@ impl Monitor {
                 self.add_dbls(&states);
                 return;
             }
-            5 => {
+            MonitorBaseMode::SolutionVars => {
                 // Solution variables (no metered access).
                 let vars = [
                     sol.iteration as f64,
@@ -136,21 +136,21 @@ impl Monitor {
                 self.add_dbls(&vars);
                 return;
             }
-            6 => {
+            MonitorBaseMode::CapacitorSteps => {
                 if let Some(cap) = metered.as_any().downcast_ref::<Capacitor>() {
                     let states: Vec<f64> = cap.states().iter().map(|&s| s as f64).collect();
                     self.add_dbls(&states);
                 }
                 return;
             }
-            9 => {
+            MonitorBaseMode::Losses => {
                 let e = metered.as_ckt_element_mut().expect("ckt element");
                 let losses = e.losses(sys, node_v);
                 self.add_dbl(losses.re);
                 self.add_dbl(losses.im);
                 return;
             }
-            11 => {
+            MonitorBaseMode::AllTerminalVI => {
                 let e = metered.as_ckt_element_mut().expect("ckt element");
                 e.cd_mut().compute_vterminal(node_v);
                 e.compute_iterminal(sys, node_v);
@@ -169,7 +169,7 @@ impl Monitor {
                 }
                 return;
             }
-            7 => {
+            MonitorBaseMode::Storage => {
                 // Pascal `TakeSample` mode 7 (Monitor.pas l.1298): Storage device
                 // state — PresentkW, Presentkvar, kWhStored, %stored, StorageState,
                 // guarded on the element class exactly like Pascal (a non-Storage
@@ -189,7 +189,7 @@ impl Monitor {
                 }
                 return;
             }
-            4 => {
+            MonitorBaseMode::Flicker => {
                 // Pascal `TakeSample` mode 4 (Monitor.pas l.1252-1263, 1479,
                 // 1560-1562): RMS phase voltages for flicker. Fill
                 // `FlickerBuffer[i] := NodeV[NodeRef[i]]` for the metered phases,
@@ -216,11 +216,16 @@ impl Monitor {
             // Modes 8/10 (transformer winding currents/voltages), 12 (LL) build
             // their header but defer the sample body to Phase 6+/7 (no gate uses
             // them; the metered surface they need is not yet exposed).
-            _ => return,
+            // `Undefined` (base 13/14/15) also lands here: Pascal's `TakeSample`
+            // `else Exit` writes a timestamp-only row for those ordinals.
+            MonitorBaseMode::TransformerWindingCurrents
+            | MonitorBaseMode::TransformerWindingVoltages
+            | MonitorBaseMode::LineToLineVoltages
+            | MonitorBaseMode::Undefined => return,
         }
 
         // --- Common tail for modes 0 and 1 --------------------------------
-        let is_sequence = (self.mode & SEQUENCEMASK) > 0 && fnphases == 3;
+        let is_sequence = self.mode.sequence && fnphases == 3;
         let num_vi = if is_sequence {
             let sc = SymComp::default();
             let mut v012 = [Complex64::ZERO; 3];
@@ -239,8 +244,8 @@ impl Monitor {
         // Residual (mode 0 only) and per-mode conversion.
         let mut residual_volt = Complex64::ZERO;
         let mut residual_curr = Complex64::ZERO;
-        let is_power = mode_mask == 1;
-        if mode_mask == 0 {
+        let is_power = base == MonitorBaseMode::Power;
+        if base == MonitorBaseMode::VoltageAndCurrent {
             if self.include_residual {
                 if self.vi_polar {
                     residual_volt = residual_polar(&voltage_buffer[0..fnphases]);
@@ -271,8 +276,8 @@ impl Monitor {
         }
 
         // --- Write to disk (the MAGNITUDE/POSSEQ modifier paths) ----------
-        match self.mode & (MAGNITUDEMASK + POSSEQONLYMASK) {
-            32 => {
+        match (self.mode.magnitude, self.mode.posseq_only) {
+            (true, false) => {
                 for &c in &voltage_buffer[..num_vi] {
                     self.add_dbl(c.re);
                 }
@@ -288,7 +293,7 @@ impl Monitor {
                     }
                 }
             }
-            64 => {
+            (false, true) => {
                 if is_sequence {
                     self.add_dbl(voltage_buffer[1].re);
                     self.add_dbl(voltage_buffer[1].im);
@@ -312,7 +317,7 @@ impl Monitor {
                     self.add_dbl(sum2.im);
                 }
             }
-            96 => {
+            (true, true) => {
                 if is_sequence {
                     self.add_dbl(voltage_buffer[1].re);
                     if !is_power {
@@ -334,7 +339,7 @@ impl Monitor {
                     }
                 }
             }
-            _ => {
+            (false, false) => {
                 // V and I in mag/angle or complex kW/kvar.
                 for &c in &voltage_buffer[..num_vi] {
                     self.add_dbl(c.re);
