@@ -23,21 +23,114 @@ fn dss_with_loads() -> Dss {
 
 /// Pascal `DoBatchEditCmd`: the pattern is a regex matched case-insensitively
 /// and UNANCHORED (`TRegExpr` ModifierI + `Exec` = search anywhere), so `LA`
-/// hits la1/la2/xla1 but not lb1, and `^lb` (anchored) hits lb1 only. The
-/// command is silent — no count message, no error.
+/// hits la1/la2/xla1 but not lb1, and `^lb` (anchored) hits lb1 only. WP-U2.4
+/// E1 (r4133): every batchedit sets `GlobalResult := 'Elements edited: N'`.
 #[test]
 fn batchedit_selects_by_unanchored_case_insensitive_regex() {
     let mut dss = dss_with_loads();
     dss.command("batchedit load.LA kw=180");
+    assert_eq!(dss.result(), "Elements edited: 3"); // la1/la2/xla1
     dss.command("batchedit load.^lb pf=0.85");
+    assert_eq!(dss.result(), "Elements edited: 1"); // lb1 only
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
-    assert!(dss.result().is_empty(), "BatchEdit must set no result");
     assert_eq!(query(&mut dss, "load.la1.kw"), "180");
     assert_eq!(query(&mut dss, "load.la2.kw"), "180");
     assert_eq!(query(&mut dss, "load.xla1.kw"), "180");
     assert_eq!(query(&mut dss, "load.lb1.kw"), "100");
     assert_eq!(query(&mut dss, "load.lb1.pf"), "0.85");
     assert_eq!(query(&mut dss, "load.la1.pf"), "0.92");
+}
+
+/// WP-U2.4: `batchedit ... where <conditionals>` filters the regex matches by
+/// property comparisons before editing. Every case here is pinned against the
+/// official r4133 binary (probed 2026-07-17): the result string
+/// (`Elements edited: N`) and which loads changed. The load set:
+///   la(3ph,kv12.47,kw100)  lb(1ph,kv7.2,kw200)  lc(3ph,kv12.47,kw300)
+///   ld(1ph,kv0.48,kw400)   le(3ph,kv12.47,kw500)
+#[test]
+fn batchedit_where_conditionals_match_r4133() {
+    fn feeder() -> Dss {
+        let mut dss = dss_with_circuit();
+        for c in [
+            "new load.la bus1=b1 phases=3 kv=12.47 kw=100 pf=0.9",
+            "new load.lb bus1=b2 phases=1 kv=7.2  kw=200 pf=0.95",
+            "new load.lc bus1=b3 phases=3 kv=12.47 kw=300 pf=0.8",
+            "new load.ld bus1=b4 phases=1 kv=0.48 kw=400 pf=0.85",
+            "new load.le bus1=b5 phases=3 kv=12.47 kw=500 pf=0.9",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+    let kw = |dss: &mut Dss, n: &str| query(dss, &format!("load.{n}.kw"));
+
+    // where phases=3 → la, lc, le (string eq on the lowercased clause).
+    let mut dss = feeder();
+    dss.command("batchedit load..* kw=999 where phases=3");
+    assert_eq!(dss.result(), "Elements edited: 3");
+    for n in ["la", "lc", "le"] {
+        assert_eq!(kw(&mut dss, n), "999");
+    }
+    for n in ["lb", "ld"] {
+        assert_ne!(kw(&mut dss, n), "999");
+    }
+
+    // numeric > : where kw>250 → lc, ld, le.
+    let mut dss = feeder();
+    dss.command("batchedit load..* kw=888 where kw>250");
+    assert_eq!(dss.result(), "Elements edited: 3");
+    for n in ["lc", "ld", "le"] {
+        assert_eq!(kw(&mut dss, n), "888");
+    }
+    assert_eq!(kw(&mut dss, "la"), "100");
+
+    // and : where phases=1 and kv=7.2 → lb only.
+    let mut dss = feeder();
+    dss.command("batchedit load..* kw=555 where phases=1 and kv=7.2");
+    assert_eq!(dss.result(), "Elements edited: 1");
+    assert_eq!(kw(&mut dss, "lb"), "555");
+
+    // or : where phases=3 or phases=1 → all 5.
+    let mut dss = feeder();
+    dss.command("batchedit load..* kw=444 where phases=3 or phases=1");
+    assert_eq!(dss.result(), "Elements edited: 5");
+
+    // != : where phases!=3 → lb, ld (1-phase).
+    let mut dss = feeder();
+    dss.command("batchedit load..* pf=0.7 where phases!=3");
+    assert_eq!(dss.result(), "Elements edited: 2");
+    assert_eq!(query(&mut dss, "load.lb.pf"), "0.7");
+    assert_eq!(query(&mut dss, "load.ld.pf"), "0.7");
+    assert_eq!(query(&mut dss, "load.la.pf"), "0.9");
+
+    // spaces around the operator, three conditions: where phases=3 and kw>150
+    // and kw<450 → lc only.
+    let mut dss = feeder();
+    dss.command("batchedit load..* kw=333 where phases = 3 and kw > 150 and kw < 450");
+    assert_eq!(dss.result(), "Elements edited: 1");
+    assert_eq!(kw(&mut dss, "lc"), "333");
+
+    // missing property → conditional false, 0 edited, no error/abort.
+    let mut dss = feeder();
+    dss.command("batchedit load..* kw=111 where nosuchprop>1");
+    assert_eq!(dss.result(), "Elements edited: 0");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(kw(&mut dss, "la"), "100");
+
+    // WITHOUT where the old path is unchanged, and the result is still E1.
+    let mut dss = feeder();
+    dss.command("batchedit load..* kw=222");
+    assert_eq!(dss.result(), "Elements edited: 5");
+    for n in ["la", "lb", "lc", "ld", "le"] {
+        assert_eq!(kw(&mut dss, n), "222");
+    }
+
+    // r4133 tokenizer quirk (probed): `and` is preferred over an earlier `or`,
+    // absorbing `or phases=3` into the first value → 0 edited.
+    let mut dss = feeder();
+    dss.command("batchedit load..* kw=777 where phases=1 or phases=3 and kw<400");
+    assert_eq!(dss.result(), "Elements edited: 0");
 }
 
 /// Pascal error 267: `BatchEdit Command: Object Type "%s" not found. %s` with
