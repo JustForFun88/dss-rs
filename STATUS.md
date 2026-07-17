@@ -141,6 +141,36 @@ HIDE_015X → Stage F, GICMvars → Phase 9, JSON DynInit/Full tail, AggregatePr
 AD Part II, user-model DLLs → WASM, IEEE118 NCIM → a future rung) are tracked in
 §Standing-open-follow-ups just below.
 
+### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
+
+Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already
+handled all six modes** (0..5) — `elements/pc/upfc/compute.rs`
+`get_output_curr`/`get_input_curr`/`check_status`/`calc_upfc_powers` are a
+loop-for-loop port of `UPFC.pas` and match the oracle to the printed precision on
+modes 2/3/5. The real gap was the **missing test surface**: no corpus deck
+exercised modes 2 (StatCOM shunt reactive), 3 (Dual = series V-reg + shunt PF),
+or 5 (DoubleRef Dual). Added three live decks under `tests/corpus/controls/upfc/`:
+- `upfc_statcom.dss` (mode 2): series path off (Sr0=0), shunt QIdeal ~3.1 kvar
+  drives the monitored service-transformer PF to pf=0.95; `element=` mandatory
+  (CheckStatus mode 2 = checkPF only); 16 iters.
+- `upfc_dual.dss` (mode 3): mode-1 series V-reg to refkV **plus** the synced shunt
+  reactive branch (QIdeal ~7570 var); `element=` required or it collapses onto
+  mode 1; 25 iters.
+- `upfc_doubleref_dual.dss` (mode 5): mode-4 two-band reference (lower band
+  engaged, Vbout→refkV2) **plus** the shunt PF branch (QIdeal ~7.8 kvar); 25 iters.
+
+Each GAPS §3-proven (pin solves+converges; two-process bit-identical fingerprint;
+feature-sensitive — mode 3 vs mode 1 and mode 5 vs mode 4 share the series Sr0 but
+QIdeal→0, isolating exactly the dual shunt branch; mode=0 zeros both). Registered
+in the controls `manifest.json` + `CONTROLS_REQUIRED` floor with
+`compare_variables:[UPFC.test]` (all 14 state vars) + mode/refkv/pf/element probes;
+`controls_cases_match_oracle` green (Rust == pinned dss-python 0.15.7 on full model
++ all UPFC variables + properties). Convergence needs a **reachable** PF target
+(pf=0.99 unclamped only with kvarLimit≥20; the kvarLimit clamp otherwise stalls
+checkPF at max-control-iterations) and tol1≥0.005 to settle both deadbands — the
+non-convergence the pre-existing `upfc_vreg` note warned about. No engine code
+changed.
+
 ### Standing open follow-ups (actionable)
 
 **Carried-forward handoffs — work a *declared-complete* plan deferred to a
@@ -175,7 +205,8 @@ open item is not buried in the §1a archive):
 **Residual floors / parked (documented, not bugs):**
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — ultra-switch
   conditioning floor (CF-D), watch on re-touch.
-- **UPFC modes 2/3/5**, `midi_relay_dist` deferred (budget); Kersting4wire #567
+- ~~**UPFC modes 2/3/5**~~ **CLOSED 2026-07-18 (OG-1.7)** — see §OG-1.7 record;
+  `midi_relay_dist` deferred (budget); Kersting4wire #567
   UserModel decks parked (no oracle channel tolerates the DoSimpleMsg).
 - **UTF-8-BOM edge cases** — GAPS follow-up. (`CapControl.ControlSignal` FOLLOW path
   is in fact *ported* and live in `cap_control` — the old "unported" note was stale

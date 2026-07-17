@@ -1,0 +1,58 @@
+// UPFC mode 5 (Double Reference, Dual: the two-band reference of mode 4 PLUS the
+// shunt PF correction of mode 3) + the UPFCControl wrapper. UPFC.pas
+// GetOutputCurr ModeUPFC=5 (l.677-724): while the INPUT voltage |Vbin| is inside
+// the band [refkV2, refkV] the device is off (SF2:=False); once it leaves the
+// band it picks the dynamic reference VRefD (refkV above the band, refkV2 below)
+// and runs the mode-3 series regulation to VRefD, setting SyncFlag when |Vbout|
+// is inside tol1. GetInputCurr mode 5 (l.832-859): the SF2 branch does the
+// loss-balancing input current, then - independent of SF2 - the SyncFlag branch
+// absorbs reactive power (QIdeal = Q_UPFC - sqrt(1-pf^2)*|P|/pf, clamped to
+// kvarLimit). CheckStatus mode 5 (UPFC.pas l.971-994) requires `Element=` for the
+// checkPF branch, so the UPFC monitors the input service transformer. The loaded
+// interface sags |Vbin| (~237 V) below refkV2*1000 (238 V), so the LOWER band
+// engages: VRefD=refkV2, the series path regulates Vbout to ~238 V AND the shunt
+// branch drives the monitored PF toward pf=0.99 (QIdeal ~7.8 kvar, unclamped at
+// kvarLimit=20). tol1=0.005 settles both deadbands (tol1=0.001 hits
+// max-control-iterations); converges in 25 iters. Compared per step: full model +
+// all 14 UPFC state variables + mode/refkv/refkv2/pf/element probes.
+//
+// Feature-sensitive (probe-proven, pinned oracle): mode=4 (double-ref VOLTAGE
+// only) keeps the SAME series regulation to VRefD but QIdeal=0 (no shunt branch);
+// mode=0 removes both; widening the band so |Vbin| stays inside [refkV2, refkV]
+// disengages the device entirely (SF2=False, Sr0=0); changing pf moves QIdeal.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.upfcdrdual bus1=source_bus.1.0 phases=1 basekv=7.2 pu=1 angle=0
+~ mvasc3=2000000 mvasc1=20000000
+
+New xycurve.losses npts=3 xarray=[0.9 1 1.1] yarray=[1.0143 1.008 1.0143]
+
+New xfmrcode.1-ph50kva-2 phases=1 windings=2 ppm=0 xhl=2.04 %noloadloss=.02
+~ kvs=[7.2 0.24] kvas=[50 50] %rs=[0.9 0.9] conns=[wye wye]
+
+New xfmrcode.upfcinterface phases=1 windings=3 ppm=0 xhl=.0204 xht=.0204
+~ xlt=.0136 %noloadloss=.01 kvs=[0.24 0.12 0.12] kvas=[50 50 50]
+~ %rs=[0.006 .012 .012] conns=[wye wye wye]
+
+New transformer.service50kva xfmrcode=1-ph50kva-2 buses=[source_bus.1.0 upfc_input.1]
+
+// mode 5: two-band reference [refkV2, refkV] (dual) + shunt PF correction of the
+// monitored service transformer to pf.
+New upfc.test phases=1 bus1=upfc_input.1 bus2=upfc_output.1 mode=5
+~ refkv=0.245 refkv2=0.238 losscurve=losses tol1=0.005 xs=0.02 pf=0.99 kvarlim=20
+~ element=Transformer.service50kva
+
+New upfccontrol.myupfcctrl
+
+New transformer.tupfcout xfmrcode=upfcinterface
+~ buses=[upfc_output.1.0 load_bus.1.0 load_bus.0.2]
+
+New load.load120a phases=1 model=1 bus1=load_bus.1.0 kv=0.12 kw=14.98 kvar=10.08
+New load.load120b phases=1 model=1 bus1=load_bus.2.0 kv=0.12 kw=12.38 kvar=1.71
+
+Set voltagebases=[12.47 .415 0.208]
+calcv
+Set tolerance=1e-12
+Set maxiterations=100
+Set maxcontroliter=30
