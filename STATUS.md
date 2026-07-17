@@ -127,6 +127,45 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+### OG-1.5 `CAPI_Schema` JSON-schema export — static core ported (orphaned-gaps round, 2026-07-18)
+
+Branch `og15-capi-schema`. Ported the **static core** of Pascal
+`DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
+JSON-Schema (draft 2020-12) envelope (`$schema`/`$id`/`type`/`required`), the ten
+reusable global `$defs` (`Complex`, `PComplex`, `SymmetricMatrix`,
+`ArrayOrFilePath`, `StringArrayOrFilePath`, `JSONFilePath`, `JSONLinesFilePath`,
+`Bus`, `BusConnection`, `DynInitType`), and the static `circuitProperties` head
+(`Name`/`DefaultBaseFreq`/`PreCommands`/`PostCommands`/`Bus`).
+- New: `crates/dss-core/src/report/export/json/schema.rs` (reuses the existing
+  fpjson `Json` tree + `write_pretty`); public `Dss::extract_schema_json()` in
+  `exec/view.rs`.
+- Test surface: `tools/golden/gen_schema.py` (pin-checked; proves the oracle
+  bytes deterministic across two processes; self-validates each rendered fragment
+  by verbatim containment in the real 592 KB oracle output), golden
+  `tests/golden/json/schema_static_core.json`, driver
+  `crates/dss-core/tests/golden_schema.rs` — **byte-equality** on all 10 static
+  defs + the 5 head props + the `$id`/`required` envelope.
+
+**Deferred (genuinely orphaned, blocked on unported metadata):** the per-class
+walk (`prepareClassJsonSchema`) and per-enum walk (`prepareEnumJsonSchema`) —
+i.e. the `<Class>`/`<Class>List`/`<Class>Container` `$defs` triples (**49 class +
+21 global enum defs**) and their `circuitProperties` refs — need per-property
+metadata the Rust port never carried and which is a large, self-contained
+data-entry effort:
+- property **help/description** text (`GetPropertyHelp`; ~1109 strings in the
+  oracle document),
+- per-class **`AltPropertyOrder`** (`$dssPropertyOrder`, 1161 occurrences),
+- **`SpecSets`** / `SpecSetNames` / `RequiredInSpecSet` (the `oneOf` blocks, 78),
+- enum **`AltNames`/`JSONName`/`JSONUseNumbers`** JSON metadata (not on `DssEnum`),
+- ~28 of the ~30 `Units_*` property flags (only `UNITS_HOUR` /
+  `UNITS_OHM_PER_LENGTH` exist on `PropFlags` today).
+
+The mission-brief premise that these inputs "already sit inert, ready to feed the
+emitter" is only partly true (the `Units_*` family in particular is largely
+absent). Recorded as the remaining `ORPHANED_GAPS.md` §1.5 follow-up. Oracle IS
+reachable (`lib.DSS_ExtractSchema`) — the blocker is Rust-side metadata, not
+oracle access. Gate green (fmt/clippy/test).
+
 **Era: post-acceptance DE_PASCALIZE (PLAN_SEQUENCE stage 5).** The 1:1 port
 reached FINAL ACCEPTANCE (2026-07-11, referee ACCEPT); UPGRADE Rungs 1–2 are
 COMPLETE (2026-07-16/17 — engine behavior = OpenDSS 11.0.0.1 (r4133) except the

@@ -414,6 +414,22 @@ impl Dss {
         Some(json_serialize(&json, opts))
     }
 
+    /// AltDSS JSON-schema export — Pascal `DSS_ExtractSchema(DSS,
+    /// jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`). Emits the JSON-Schema
+    /// (draft 2020-12) envelope with the reusable global `$defs` and the static
+    /// `circuitProperties` head.
+    ///
+    /// This is the **static core** of the schema: the per-class and per-enum
+    /// `$defs` walk is NOT emitted — it is blocked on per-property metadata the
+    /// Rust port never carried (help/description text, `AltPropertyOrder`,
+    /// `SpecSets`, enum JSON names, most `Units_*` flags). See
+    /// [`crate::report::export::json::schema`] and STATUS §OG-1.5. The result is
+    /// independent of circuit state (all constant), so it needs no `&mut self`
+    /// and no `New circuit`.
+    pub fn extract_schema_json(&self) -> String {
+        crate::report::export::json::schema::extract_schema_skeleton_json()
+    }
+
     /// AltDSS whole-circuit JSON dump — Pascal `Obj_Circuit_ToJSON_`
     /// (`CAPI_Obj.pas:2513-2672`). Returns `None` when no circuit exists
     /// (`New circuit.` has not run). The circuit is **always** serialized pretty
