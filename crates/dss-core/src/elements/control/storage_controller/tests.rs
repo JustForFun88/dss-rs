@@ -1,6 +1,6 @@
 use super::*;
 use crate::elements::pc::storage::{
-    STORE_CHARGING, STORE_DISCHARGING, STORE_EXTERNALMODE, STORE_IDLING,
+    STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, StorageDispatchMode,
 };
 use crate::elements::traits::ElemRef;
 use crate::obj::base::DssObject;
@@ -234,7 +234,7 @@ fn make_like_copies_dispatch_settings() {
 struct MockStorage {
     name: String,
     enabled: bool,
-    dispatch_mode: i32,
+    dispatch_mode: StorageDispatchMode,
     state: i32,
     kw_out: f64,
     present_kw: f64,
@@ -260,7 +260,7 @@ impl MockStorage {
         Self {
             name: name.into(),
             enabled: true,
-            dispatch_mode: 0, // STORE_DEFAULT
+            dispatch_mode: StorageDispatchMode::Default,
             state: STORE_IDLING,
             kw_out: 0.0,
             present_kw: 0.0,
@@ -411,7 +411,7 @@ impl StorageDispatchEnv for MockEnv {
         self.fleet
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.enabled && s.dispatch_mode != STORE_EXTERNALMODE)
+            .filter(|(_, s)| s.enabled && s.dispatch_mode != StorageDispatchMode::ExternalMode)
             .map(|(i, s)| (s.name.clone(), ElemRef { cls: 0, idx: i }))
             .collect()
     }
@@ -455,7 +455,7 @@ impl StorageDispatchEnv for MockEnv {
         self.fleet[Self::idx(r)].state_desired = state;
     }
     fn set_dispatch_external(&mut self, r: ElemRef) {
-        self.fleet[Self::idx(r)].dispatch_mode = STORE_EXTERNALMODE;
+        self.fleet[Self::idx(r)].dispatch_mode = StorageDispatchMode::ExternalMode;
     }
     fn set_nominal(&mut self, r: ElemRef) {
         self.fleet[Self::idx(r)].set_nominal();
@@ -526,7 +526,10 @@ fn sample_first_run_sets_fleet_external_and_values() {
     let mut sc = peakshave_controller(10_000.0);
     let mut env = MockEnv::new(10_000.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
     sc.sample(&mut env);
-    assert_eq!(env.fleet[0].dispatch_mode, STORE_EXTERNALMODE);
+    assert_eq!(
+        env.fleet[0].dispatch_mode,
+        StorageDispatchMode::ExternalMode
+    );
     assert_eq!(env.fleet[0].pct_kw_out, sc.pct_kw_rate);
     assert_eq!(env.fleet[0].pct_reserve, sc.pct_fleet_reserve);
     assert_eq!(sc.fleet.len(), 1);

@@ -2,7 +2,7 @@
 //! matrix get/set, property scaling/conditional flags, `set_object_ref`
 //! (LineCode/LineGeometry resolution), `PropertySideEffects`, and `MakeLike`.
 
-use crate::elements::general::line_code::LineCodeObj;
+use crate::elements::general::line_code::{LineCodeObj, LineType};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::traits::{CktElement, ElemRef};
@@ -88,7 +88,7 @@ impl DssObject for Line {
             UNITS => self.length_units.code(),
             EARTH_MODEL => self.earth_model,
             SEASONS => self.num_amp_ratings,
-            LINE_TYPE => self.line_type,
+            LINE_TYPE => self.line_type.ordinal(),
             HEIGHT_UNIT => self.height_units,
             _ => unreachable!("Line has no integer property {idx}"),
         }
@@ -100,7 +100,7 @@ impl DssObject for Line {
             UNITS => self.length_units = LineUnits::from_code(value),
             EARTH_MODEL => self.earth_model = value,
             SEASONS => self.num_amp_ratings = value,
-            LINE_TYPE => self.line_type = value,
+            LINE_TYPE => self.line_type = LineType::from_ordinal(value).unwrap_or(self.line_type),
             HEIGHT_UNIT => self.height_units = value,
             _ => unreachable!("Line has no integer property {idx}"),
         }

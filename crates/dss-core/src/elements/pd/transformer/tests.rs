@@ -405,3 +405,18 @@ fn bh_points_realloc_zeroes_arrays() {
     assert_eq!(t.bh_current, vec![0.0; 4]);
     assert_eq!(t.bh_flux, vec![0.0; 4]);
 }
+
+#[test]
+fn core_type_pins_noncontiguous_enum_ordinals() {
+    use super::CoreType;
+    assert_eq!(CoreType::Shell.ordinal(), 0);
+    assert_eq!(CoreType::OnePhase.ordinal(), 1);
+    assert_eq!(CoreType::ThreeLeg.ordinal(), 3);
+    assert_eq!(CoreType::FourLeg.ordinal(), 4);
+    assert_eq!(CoreType::FiveLeg.ordinal(), 5);
+    assert_eq!(CoreType::CoreOnePhase.ordinal(), 9);
+    // Non-contiguous: the gap ordinals are not members.
+    assert_eq!(CoreType::from_ordinal(2), None);
+    assert_eq!(CoreType::from_ordinal(6), None);
+    assert_eq!(CoreType::from_ordinal(9), Some(CoreType::CoreOnePhase));
+}

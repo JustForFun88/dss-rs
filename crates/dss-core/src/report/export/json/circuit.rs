@@ -271,7 +271,9 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
         push(format!("Set capkvar={}", g(aa.cap_kvar, 15)));
         push(format!(
             "Set addtype={}",
-            enums.get(enums.add_type).ordinal_to_string(aa.add_type)
+            enums
+                .get(enums.add_type)
+                .ordinal_to_string(aa.add_type.ordinal())
         ));
         push(format!("Set zonelock={}", str_y_or_n(ckt.zones_locked)));
         // `%8.2f` = width-8 fixed 2-decimal, right-justified (TODO(compat)).
@@ -290,7 +292,9 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
         ));
         push(format!(
             "Set algorithm={}",
-            enums.get(enums.solve_alg).ordinal_to_string(sol.algorithm)
+            enums
+                .get(enums.solve_alg)
+                .ordinal_to_string(sol.algorithm.ordinal())
         ));
         push(format!(
             "Set Trapezoidal={}",

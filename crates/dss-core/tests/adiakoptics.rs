@@ -1508,7 +1508,7 @@ mod ad_solve_gate {
     // that same floor; the discriminating comparison is Newton-AD vs fixed-point-AD.
 
     fn solve_alg(dss: &Dss) -> i32 {
-        dss.circuit().unwrap().solution.algorithm
+        dss.circuit().unwrap().solution.algorithm.ordinal()
     }
 
     #[test]

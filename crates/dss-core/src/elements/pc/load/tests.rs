@@ -715,3 +715,14 @@ fn direct_shortcut_selects_yprim_currents() {
         );
     }
 }
+
+#[test]
+fn load_status_pins_enum_ordinals() {
+    assert_eq!(LoadStatus::Variable.ordinal(), 0);
+    assert_eq!(LoadStatus::Fixed.ordinal(), 1);
+    assert_eq!(LoadStatus::Exempt.ordinal(), 2);
+    assert_eq!(LoadStatus::from_ordinal(0), Some(LoadStatus::Variable));
+    assert_eq!(LoadStatus::from_ordinal(1), Some(LoadStatus::Fixed));
+    assert_eq!(LoadStatus::from_ordinal(2), Some(LoadStatus::Exempt));
+    assert_eq!(LoadStatus::from_ordinal(3), None);
+}

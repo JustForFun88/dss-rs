@@ -29,10 +29,35 @@ use crate::elements::traits::{ElemStore, SysCtx};
 use crate::report::format::strip_extension;
 use crate::support::hashlist::HashList;
 
-/// Pascal `DSSGlobals.GENADD` — add a generator at the lowest-loss bus.
-pub const GENADD: i32 = 1;
-/// Pascal `DSSGlobals.CAPADD` — add a capacitor at the lowest-loss bus.
-pub const CAPADD: i32 = 2;
+/// Pascal `DSSGlobals.GENADD`/`CAPADD` — the AutoAdd device type
+/// (`AddTypeEnum`, `Set addtype=`). Discriminants are user-visible and frozen
+/// (round-trip through the `DssEnum` registry); `i32` survives only at that
+/// parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum AddType {
+    /// `GENADD` — add a generator at the lowest-loss bus.
+    Gen = 1,
+    /// `CAPADD` — add a capacitor at the lowest-loss bus.
+    Cap = 2,
+}
+
+impl AddType {
+    /// The `AddTypeEnum` ordinal (`Set addtype=`/`?` boundary value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// `TAddType(ordinal)` from the enum-registry value; out-of-range yields
+    /// `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            1 => Some(Self::Gen),
+            2 => Some(Self::Cap),
+            _ => None,
+        }
+    }
+}
 
 /// Pascal `TAutoAdd` (record), one per circuit (`Circuit.AutoAddObj`).
 #[derive(Debug, Clone)]
@@ -47,7 +72,7 @@ pub struct AutoAdd {
     /// `Capkvar` — kvar of the trial capacitor.
     pub cap_kvar: f64,
     /// `AddType` — `GENADD`/`CAPADD`.
-    pub add_type: i32,
+    pub add_type: AddType,
     /// `ModeChanged` — forces `MakeBusList` to rebuild on the next auto-add
     /// solve.
     pub mode_changed: bool,
@@ -78,7 +103,7 @@ impl AutoAdd {
             gen_pf: 1.0,
             gen_kvar: 0.0,
             cap_kvar: 600.0,
-            add_type: GENADD,
+            add_type: AddType::Gen,
             mode_changed: true,
             bus_idx_list: Vec::new(),
             bus_index: 0,
@@ -267,5 +292,20 @@ impl AutoAdd {
                 return trial;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod add_type_tests {
+    use super::AddType;
+
+    #[test]
+    fn discriminants_pin_addtypeenum_ordinals() {
+        assert_eq!(AddType::Gen.ordinal(), 1);
+        assert_eq!(AddType::Cap.ordinal(), 2);
+        assert_eq!(AddType::from_ordinal(1), Some(AddType::Gen));
+        assert_eq!(AddType::from_ordinal(2), Some(AddType::Cap));
+        assert_eq!(AddType::from_ordinal(0), None);
+        assert_eq!(AddType::from_ordinal(3), None);
     }
 }

@@ -12,7 +12,7 @@ use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
-use super::{ControlledTransformer, Transformer, prop, xsc_size};
+use super::{ControlledTransformer, CoreType, Transformer, prop, xsc_size};
 
 impl CktElement for Transformer {
     fn cd(&self) -> &CktElementData {
@@ -274,7 +274,7 @@ impl DssObject for Transformer {
             CONN => self.windings[self.aw()].connection,
             NUMTAPS => self.windings[self.aw()].num_taps,
             LEADLAG => self.hv_leads_lv as i32,
-            CORE => self.core_type,
+            CORE => self.core_type.ordinal(),
             SEASONS => self.num_amp_ratings,
             BHPOINTS => self.bh_points,
             _ => unreachable!("Transformer has no integer property {idx}"),
@@ -295,7 +295,7 @@ impl DssObject for Transformer {
                 self.windings[w].num_taps = value;
             }
             LEADLAG => self.hv_leads_lv = value != 0,
-            CORE => self.core_type = value,
+            CORE => self.core_type = CoreType::from_ordinal(value).unwrap_or(self.core_type),
             SEASONS => self.num_amp_ratings = value,
             BHPOINTS => self.bh_points = value,
             _ => unreachable!("Transformer has no integer property {idx}"),
