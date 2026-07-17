@@ -7,27 +7,31 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-Last updated: 2026-07-17 — **UPGRADE Rung 1 (WP-U1.1–U1.10) EXITED** (wt-u110
-merged to `update`). The exit criterion — the r4088 ASSERT sweep
-(`DSS_LIVE_OPENDSS=r4088 DSS_LIVE_OPENDSS_ASSERT=1`) — is green: 313 matched /
-113 known-diverged / 4 known-skipped / **0 NEW**; the r3723 sweep re-confirmed
-green (273/156/1/0). `known_diffs.json` burn-down 11→22 entries (pruned
-`epri-gendispatcher-propname`; 5 extended to r4088; +7 FPC-vs-Delphi numeric
-floors; +1 r3723-only; +4 skip), full ledger in
-`docs/upgrade/known_diffs_burndown.md`; no r4088-only adopt/reproduce decisions
-were left unowned — every residual is a cross-compiler (FPC↔Delphi) floor,
-proven by the mandatory 0.14.5 gate staying green on the same cases +
-the committed capi015↔r4088 engine-to-engine sweep. COVERAGE.md refreshed
-(solvable_now **295/329 = 89.7%**; `coverage_report.py` double-count fixed);
-`NOT_PORTED(U1…)` marker sweep empty. Earlier same-day rounds: PROPS_015X
-harness allowlist (wt-h015), **WP-U1.7 COMPLETE** (NCIM export/Show tail,
-wt-u17tail), **WP-U1.6 COMPLETE** (wt-u16ind + wt-u16tail), **WP-U1.4
-COMPLETE** (wt-u14props + wt-u14cnts + wt-u14cond `Conductors` 3-class proxy;
-text `Conductors=` upstream-broken, TODO(compat)). All round worktrees removed
-per the junction protocol (.inputs verified intact); merged branches deleted.
+Last updated: 2026-07-17 — **Rung 2 wave 1 MERGED: WP-U2.1 (Fuse) + WP-U2.2
+(Recloser) + WP-U2.4 (SwtControl/batchedit-where) landed on `update`** via
+parallel port→audit→fix worktree chains (wt-u21/wt-u22/wt-u24, each audited by
+an independent opus agent, all findings fixed or evidence-deferred; full
+mandatory gate green after the 3-way merge, 47/47 suites). Highlights: fuse
+`CurveMultiplier` divisor + never-blows default; recloser full per-phase
+rewrite (24→46 props) + the §1.3-3 event-log mask infra (r4133 table EMPTY —
+wording reproduced byte-for-byte); SwtControl D6 `Action`-forces-state +
+`batchedit … where` (all Delphi tokenizer quirks probe-pinned); TCC
+`none`/DoNewCmd/AllocateLoad verified already-ported. Fallout handled, not
+parked: vendored `InductionMachine/{Master,Run}` proven non-convergent on the
+EPRI r4133 engine itself → `skipped_needs_investigation`
+(`r4133_breaking_nonconvergence`); `civanlar` flipped to r4133 with a
+bit-identical proof; combo decks' fuse tier neutralized + recloser given
+explicit A/D curves so they stay 0.14.5-gated until rung exit (tracked in
+§Standing open follow-ups). solvable_now **293/329** (the two InductionMachine
+paths left the bucket for a proven upstream-breaking reason, not lost
+coverage). **Rung 1 (WP-U1.1–U1.10) EXITED earlier the same day** — r4088
+ASSERT sweep green (313/113/4/**0 NEW**), r3723 re-confirmed (273/156/1/0),
+known_diffs 11→22 with full ledger in `docs/upgrade/known_diffs_burndown.md`.
 Integration branch is `update` (pushed to origin); main untouched until an
-explicit merge request. **Next: Rung 2 (WP-U2.1–U2.6, r4133 parity —
-protection overhaul: Fuse, Recloser, Relay, SwtControl + rung exit).**
+explicit merge request. **Next: wave 2 — WP-U2.3 (Relay per-phase rewrite,
+builds on the landed recloser patterns + mask infra), then WP-U2.5
+(protection report/log surface) and WP-U2.6 (rung exit: r4133 ASSERT
+sweep).**
 
 **Deferred to the §6 sweep** (documented, was never rung-blocking; now also a
 plan-wide exit criterion in `UPGRADE_PLAN.md` §5): JSON/Dump golden surface
