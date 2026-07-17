@@ -353,7 +353,7 @@ fn aerodynamic_wind_speed_sweep() {
             ("vwind", &vwind.to_string()),
         ]);
         g.set_nominal_generation(&sys, &[]);
-        let expect_total = if vwind < 5.0 || vwind > 23.0 {
+        let expect_total = if !(5.0..=23.0).contains(&vwind) {
             // cut-in / cut-out: Pnominalperphase = 0.001*kWBase (watts), so the
             // 3-phase total is a tiny 0.001*kWBase*nphases/1e3 kW (~off).
             0.001 * kw_base * g.cd.nphases as f64 / 1e3

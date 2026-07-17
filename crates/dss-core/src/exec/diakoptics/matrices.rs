@@ -34,8 +34,10 @@ fn zct_keep(v: Complex64) -> bool {
 /// NOTE(upstream-quirk): the Y4 keep test (Diakoptics.pas:201) is
 /// `(value.re <> 0) and (value.re <> 0)` — `.re` is tested **twice**, so `.im`
 /// is never consulted and a Y4 entry with `re=0, im≠0` is dropped. Reproduced
-/// 1:1 (the doubled `.re` IS the upstream bug); unit-test-pinned.
-#[allow(clippy::eq_op)]
+/// 1:1 (the doubled `.re` IS the upstream bug); unit-test-pinned. The doubled
+/// term also trips `nonminimal_bool` on newer clippy — allowed alongside
+/// `eq_op` so the 1:1 bug mirror is preserved verbatim.
+#[allow(clippy::eq_op, clippy::nonminimal_bool)]
 fn y4_keep(v: Complex64) -> bool {
     v.re != 0.0 && v.re != 0.0
 }
