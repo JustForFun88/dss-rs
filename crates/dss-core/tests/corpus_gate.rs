@@ -29,6 +29,8 @@ mod harness;
 // against `tests/` directly.
 #[path = "corpus_gate/engines.rs"]
 mod engines;
+#[path = "corpus_gate/ledger.rs"]
+mod ledger;
 #[path = "corpus_gate/manifest.rs"]
 mod manifest;
 #[path = "corpus_gate/runner.rs"]
@@ -63,6 +65,14 @@ use scheduler::{CaseOutcome, GateRun, run_gate};
 /// unchanged mandate. Fails iff any case failed, printing the complete list.
 #[test]
 fn corpus_gate_all_cases_match_engines() {
+    // Seeding report mode (§4 Phase D step 2): run every case against BOTH
+    // channels regardless of its `engines`, measure the raw divergence, and write
+    // candidate ledger entries — never asserting. Consumed by hand for triage.
+    if std::env::var("DSS_GATE_SEED_LEDGER").is_ok() {
+        scheduler::seed_ledger();
+        return;
+    }
+
     let run = run_gate();
 
     if let Ok(path) = std::env::var("DSS_GATE_DUMP") {
@@ -80,6 +90,18 @@ fn corpus_gate_all_cases_match_engines() {
         run.pool_size,
         run.elapsed.as_secs_f64(),
     );
+    // Ledger hit accounting (§1.3): report every entry with its hit count.
+    let hits = run.ledger.hit_report();
+    if !hits.is_empty() {
+        let total_hits: usize = hits.iter().map(|(_, _, _, n)| n).sum();
+        eprintln!(
+            "corpus_gate ledger: {} entry(ies), {total_hits} total hit(s):",
+            hits.len()
+        );
+        for (id, ch, kind, n) in &hits {
+            eprintln!("  {id} [{ch:?} {kind}]: {n} hit(s)");
+        }
+    }
     assert_eq!(
         run.outcomes.len(),
         run.total,
@@ -100,6 +122,13 @@ fn corpus_gate_all_cases_match_engines() {
             msg.push_str(&format!("  {}\n      {first}\n", f.label));
         }
         panic!("{msg}");
+    }
+    // Fail-on-stale (§1.3 runtime rule / §5 R3): every applicable ledger entry
+    // must have been hit within its envelope; a stale/unhit entry fails the gate.
+    // Only checked once all cases passed — a failing case may not have reached its
+    // ledger scope, which would produce misleading staleness noise.
+    if let Err(stale) = run.ledger.assert_all_hit() {
+        panic!("{stale}");
     }
 }
 
