@@ -166,7 +166,7 @@ impl DssObject for PriceShapeObj {
     /// Pascal `StringEnumActionProperty` for `Action` (`TPriceShapeAction`:
     /// DblSave=0, SngSave=1 — `PriceShape.pas:149-150`). Queues the binary write
     /// (Pascal `SaveToDblFile`/`SaveToSngFile`, `PriceShape.pas:547/568`).
-    fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
+    fn do_action(&mut self, ordinal: i32, errors: &mut crate::diag::ErrorLog) {
         let full_name = format!("PriceShape.{}", self.core.data.name());
         self.core
             .queue_shape_save(ordinal == 1, "Price", &full_name, "Prices", errors);
@@ -181,7 +181,12 @@ impl DssObject for PriceShapeObj {
     }
 
     /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`).
-    fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
+    fn apply_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &str,
+        _errors: &mut crate::diag::ErrorLog,
+    ) {
         if load.prop == CSVFILE {
             self.core.read_csv_file(content);
         }
@@ -192,7 +197,7 @@ impl DssObject for PriceShapeObj {
         &mut self,
         load: &FileLoad,
         content: &[u8],
-        _errors: &mut Vec<String>,
+        _errors: &mut crate::diag::ErrorLog,
     ) {
         match load.prop {
             SNGFILE => self.core.read_sng_file(content),

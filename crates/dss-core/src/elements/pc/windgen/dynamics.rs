@@ -186,7 +186,7 @@ impl WindGen {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         self.cd.compute_vterminal(node_v);
 

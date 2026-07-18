@@ -23,8 +23,8 @@
 //! * `DSS_GATE_JOBS=<n>` — override the scheduler thread count.
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -32,6 +32,7 @@ use serde_json::Value;
 use crate::engines::{
     CaseResult, Channel, EpriOneShot, EpriPool, Oracle, WorkerPool, build_run_request,
 };
+use crate::ledger::LedgerRuntime;
 use crate::manifest::{
     EngineChannel, FAMILIES, SolvableCase, corpus_file, family_file, load_family, load_solvable,
 };
@@ -244,6 +245,7 @@ struct Ctx<'a> {
     capi_oneshot: Option<&'a Oracle>,
     epri_pool: Option<&'a EpriPool>,
     epri_oneshot: Option<&'a EpriOneShot>,
+    ledger: &'a LedgerRuntime,
 }
 
 impl<'a> Ctx<'a> {
@@ -324,6 +326,11 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
         CaseClass::Abort => {
             // Abort against every gating channel (Phase C: exactly one).
             for ch in uc.case.engine_channels() {
+                // A ledger `skip` entry (a hard-crash deck on this channel) means
+                // the channel is not sent at all; the other channel still gates.
+                if ctx.ledger.channel_is_skipped(&uc.label, ch) {
+                    continue;
+                }
                 let channel = ctx.channel(uc, ch);
                 let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     run_and_compare_abort(&channel, &uc.label, &uc.abs, &uc.case);
@@ -335,11 +342,15 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
             ok_outcome(None)
         }
         CaseClass::Live => {
-            // Live-compare against every gating channel (Phase C: exactly one).
-            // The Rust engine is re-run per channel inside `compare_with_result`;
-            // `both` (Phase D) thus runs it twice — the seam is intentional.
+            // Live-compare against every gating channel. The Rust engine is re-run
+            // per channel inside `compare_with_result`; `both` (Phase D) thus runs
+            // it twice — the seam is intentional. A ledger `skip` entry drops a
+            // hard-crash channel; the ledger's field scopes partition the compare.
             let mut dump_val: Option<Value> = None;
             for ch in uc.case.engine_channels() {
+                if ctx.ledger.channel_is_skipped(&uc.label, ch) {
+                    continue;
+                }
                 let channel = ctx.channel(uc, ch);
                 // The r4133 bridge has no all-properties capture (§1.2 keeps it
                 // capi_v0145-only) — mask it off in both the request and compare.
@@ -376,10 +387,11 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
                 }
                 let label = uc.label.clone();
                 let abs = uc.abs.clone();
+                let view = ctx.ledger.view(&uc.label, ch);
                 let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                     let oc: CaseResult = serde_json::from_value(val)
                         .unwrap_or_else(|e| panic!("{label}: malformed CaseResult: {e}"));
-                    compare_with_result(&oc, &label, &abs, &cc, ch);
+                    compare_with_result(&oc, &label, &abs, &cc, ch, Some(&view));
                 }));
                 if let Err(e) = res {
                     return fail_outcome(format!("[{ch:?}] {}", panic_msg(e)), dump_val);
@@ -398,6 +410,9 @@ pub(crate) struct GateRun {
     pub(crate) jobs: usize,
     pub(crate) pool_size: usize,
     pub(crate) total: usize,
+    /// The loaded ledger, kept for the `#[test]` to assert fail-on-stale and print
+    /// per-entry hit accounting (§1.3 runtime rule).
+    pub(crate) ledger: Arc<LedgerRuntime>,
 }
 
 /// Run the whole unified gate once (mode from env). Pure execution — the
@@ -426,7 +441,25 @@ pub(crate) fn run_gate() -> GateRun {
     let pool_size = (jobs / 2).max(2);
 
     let start = Instant::now();
-    let cases = build_unified_cases();
+    let mut cases = build_unified_cases();
+    // Optional case filter (`DSS_GATE_ONLY=<substr>[,<substr>...]`) for cheap
+    // targeted verification under load — the FULL gate (no filter) is the one that
+    // gates commits. When set, prints a loud banner so a filtered run is never
+    // mistaken for the full gate.
+    if let Ok(only) = std::env::var("DSS_GATE_ONLY") {
+        let subs: Vec<String> = only
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let before = cases.len();
+        cases.retain(|c| subs.iter().any(|s| c.label.contains(s)));
+        eprintln!(
+            "corpus_gate: DSS_GATE_ONLY filter kept {}/{before} case(s) — THIS IS A PARTIAL \
+             RUN, not the commit gate",
+            cases.len()
+        );
+    }
     let total = cases.len();
 
     // Which transports does the case set actually need? A case can gate the
@@ -457,6 +490,11 @@ pub(crate) fn run_gate() -> GateRun {
     let epri_oneshot: Option<EpriOneShot> = needs_epri_oneshot.then(EpriOneShot::new);
     let epri_pool: Option<EpriPool> = needs_epri_pool.then(|| EpriPool::new(pool_size));
 
+    let ledger = Arc::new(LedgerRuntime::load());
+    // GateRun keeps its own handle to the same runtime (shared hit counters); the
+    // `ctx` borrow of `ledger` lives until the end of the function, so move the
+    // clone (not the borrowed original) into the result.
+    let ledger_result = Arc::clone(&ledger);
     let tasks = build_tasks(cases, shuffle_seed);
     let ctx = Ctx {
         serial,
@@ -465,6 +503,7 @@ pub(crate) fn run_gate() -> GateRun {
         capi_oneshot: capi_oneshot.as_ref(),
         epri_pool: epri_pool.as_ref(),
         epri_oneshot: epri_oneshot.as_ref(),
+        ledger: &ledger,
     };
 
     let cursor = AtomicUsize::new(0);
@@ -515,5 +554,176 @@ pub(crate) fn run_gate() -> GateRun {
         jobs,
         pool_size,
         total,
+        ledger: ledger_result,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Seeding report mode (§4 Phase D step 2 — DSS_GATE_SEED_LEDGER=1).
+// ---------------------------------------------------------------------------
+
+/// One seeding measurement: how a case compares against ONE channel, with NO
+/// ledger applied (raw divergence), so triage sees where each case would need a
+/// ledger entry to gate `both`.
+#[derive(serde::Serialize)]
+struct SeedRecord {
+    case: String,
+    channel: String,
+    status: String,
+    reason: String,
+}
+
+/// Run every live case against BOTH channels regardless of its `engines`,
+/// measuring the raw (ledger-free) divergence, and write candidate triage data to
+/// `tmp/ledger_candidates.json`. Never asserts — a report tool.
+pub(crate) fn seed_ledger() {
+    let jobs = std::env::var("DSS_GATE_JOBS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&n| n >= 1)
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+        });
+    let pool_size = (jobs / 2).max(2);
+    let start = Instant::now();
+
+    // Optional case filter (`DSS_GATE_SEED_ONLY=<substr>[,<substr>...]`) — measure
+    // only matching labels, for cheap targeted re-measurement under load.
+    let only: Vec<String> = std::env::var("DSS_GATE_SEED_ONLY")
+        .ok()
+        .map(|s| {
+            s.split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let cases = build_unified_cases();
+    // Seed only Live cases (Pending is oracle-free; Abort has its own contract) —
+    // but a Deferred case IS a primary seed, so include it as Live.
+    let seedable: Vec<UnifiedCase> = cases
+        .into_iter()
+        .filter(|c| matches!(c.class, CaseClass::Live | CaseClass::Deferred))
+        .filter(|c| only.is_empty() || only.iter().any(|s| c.label.contains(s)))
+        .collect();
+    let total = seedable.len();
+
+    let capi_pool = WorkerPool::new(pool_size);
+    let epri_pool = EpriPool::new(pool_size);
+    let capi_oneshot = Oracle::for_spec(None);
+    let epri_oneshot = EpriOneShot::new();
+    let ctx = Ctx {
+        serial: false,
+        dumping: false,
+        capi_pool: Some(&capi_pool),
+        capi_oneshot: Some(&capi_oneshot),
+        epri_pool: Some(&epri_pool),
+        epri_oneshot: Some(&epri_oneshot),
+        // A throwaway empty ledger — seeding measures the RAW divergence.
+        ledger: EMPTY_LEDGER_FOR_SEEDING.get_or_init(LedgerRuntime::empty),
+    };
+
+    // Group by dir like the main gate (avoid same-dir contention).
+    let tasks = build_tasks(seedable, None);
+    let cursor = AtomicUsize::new(0);
+    let records: Mutex<Vec<SeedRecord>> = Mutex::new(Vec::with_capacity(2 * total));
+
+    std::thread::scope(|s| {
+        for _ in 0..jobs {
+            s.spawn(|| {
+                loop {
+                    let idx = cursor.fetch_add(1, Ordering::Relaxed);
+                    if idx >= tasks.len() {
+                        break;
+                    }
+                    let mut local = Vec::new();
+                    for uc in &tasks[idx].cases {
+                        for ch in [EngineChannel::CapiV0145, EngineChannel::R4133] {
+                            local.push(seed_one(uc, ch, &ctx));
+                        }
+                    }
+                    records.lock().unwrap().extend(local);
+                }
+            });
+        }
+    });
+
+    capi_pool.close();
+    epri_pool.close();
+
+    let mut records = records.into_inner().unwrap();
+    records.sort_by(|a, b| a.case.cmp(&b.case).then(a.channel.cmp(&b.channel)));
+    let matched = records.iter().filter(|r| r.status == "match").count();
+    let diverged = records.iter().filter(|r| r.status == "diverge").count();
+    let errored = records.iter().filter(|r| r.status == "error").count();
+
+    let out: std::path::PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "tmp"]
+        .iter()
+        .collect::<std::path::PathBuf>()
+        .join("ledger_candidates.json");
+    let _ = std::fs::create_dir_all(out.parent().unwrap());
+    let json = serde_json::json!({
+        "total_cases": total,
+        "measurements": records.len(),
+        "match": matched,
+        "diverge": diverged,
+        "error": errored,
+        "records": records,
+    });
+    std::fs::write(&out, serde_json::to_string_pretty(&json).unwrap())
+        .unwrap_or_else(|e| panic!("write {}: {e}", out.display()));
+    eprintln!(
+        "seed_ledger: {total} case(s) x2 channels = {} measurement(s): {matched} match, \
+         {diverged} diverge, {errored} error in {:.1}s -> {}",
+        records.len(),
+        start.elapsed().as_secs_f64(),
+        out.display()
+    );
+}
+
+static EMPTY_LEDGER_FOR_SEEDING: std::sync::OnceLock<LedgerRuntime> = std::sync::OnceLock::new();
+
+/// Measure one (case, channel) with no ledger; catch every panic into a status.
+fn seed_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> SeedRecord {
+    let channel_name = match ch {
+        EngineChannel::CapiV0145 => "capi_v0145",
+        EngineChannel::R4133 => "r4133",
+    };
+    let mk = |status: &str, reason: String| SeedRecord {
+        case: uc.label.clone(),
+        channel: channel_name.to_string(),
+        status: status.to_string(),
+        reason: reason.chars().take(300).collect(),
+    };
+    let _guard = CorpusGuard::new(&uc.abs);
+    let channel = ctx.channel(uc, ch);
+    let mut cc = uc.case.clone();
+    if ch == EngineChannel::R4133 {
+        cc.compare_all_properties = false;
+    }
+    let req = build_run_request(&uc.abs, &cc);
+    let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| channel.call(&req))) {
+        Ok(r) => r,
+        Err(e) => return mk("error", format!("fetch panic: {}", panic_msg(e))),
+    };
+    if !resp.ok {
+        return mk("error", format!("oracle: {:?}", resp.error));
+    }
+    let Some(val) = resp.result else {
+        return mk("error", "ok response missing result".to_string());
+    };
+    let label = uc.label.clone();
+    let abs = uc.abs.clone();
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let oc: CaseResult =
+            serde_json::from_value(val).unwrap_or_else(|e| panic!("malformed CaseResult: {e}"));
+        compare_with_result(&oc, &label, &abs, &cc, ch, None);
+    }));
+    match res {
+        Ok(()) => mk("match", String::new()),
+        Err(e) => mk("diverge", panic_msg(e)),
     }
 }

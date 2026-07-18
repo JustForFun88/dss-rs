@@ -231,7 +231,7 @@ impl Generator {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         // Init InjCurrent array and compute VTerminal (L-N). Inj = -Itotal - Yprim·Vtemp.
         self.calc_yprim_contribution(node_v);
@@ -246,11 +246,16 @@ impl Generator {
             // (no UserModel can be configured — the prop is NOT_PORTED). On-demand
             // (retagged at the WP8.8 sweep): surface as a loud abort if a corpus
             // case ever needs it.
-            errors.push(format!(
-                "{}.{} model designated to use user-written dynamics model, but \
-                 user-written model is not defined.",
-                "Generator",
-                self.cd.obj.name()
+            errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "{}.{} model designated to use user-written dynamics model, but \
+                     user-written model is not defined.",
+                    "Generator",
+                    self.cd.obj.name()
+                ),
+                // Pascal `DoSimpleMsg('Dynamics model missing for %s ', 5671)`
+                // (generator.pas:1904).
+                Some(5671),
             ));
         } else {
             let sc = SymComp::default();
@@ -320,13 +325,21 @@ impl Generator {
                     }
                 }
                 _ => {
-                    // Pascal sets DSS.SolutionAbort := TRUE (msg 5671).
-                    errors.push(format!(
-                        "Dynamics mode is implemented only for 1- or 3-phase Generators. \
-                         {}.{} has {} phases.",
-                        "Generator",
-                        self.cd.obj.name(),
-                        self.cd.nphases
+                    // Pascal sets DSS.SolutionAbort := TRUE (msg 5671,
+                    // generator.pas:1984 — this is the phases-else of
+                    // `DoDynamicMode`; the identical-text message at
+                    // generator.pas:2357 belongs to a *different* procedure,
+                    // `InitStateVars`, and carries the separate code 5672
+                    // (ported at `init_state_vars_impl`).
+                    errors.push(crate::diag::DssDiagnostic::msg(
+                        format!(
+                            "Dynamics mode is implemented only for 1- or 3-phase Generators. \
+                             {}.{} has {} phases.",
+                            "Generator",
+                            self.cd.obj.name(),
+                            self.cd.nphases
+                        ),
+                        Some(5671),
                     ));
                 }
             }

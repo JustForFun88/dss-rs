@@ -22,7 +22,7 @@ impl CktElement for Monitor {
     }
 
     fn recalc_element_data(&mut self, sys: &SysCtx) {
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.recalc(&mut errors, sys.is_harmonic_model);
         for e in errors {
             self.med.cd.obj.push_error(e);
@@ -212,7 +212,7 @@ impl DssObject for Monitor {
     /// circuit — so the flicker rewrite is covered; the pinned dss_capi oracle
     /// cannot gate `Process` anyway (its `DoFlickerCalculations` segfaults on the
     /// `Terminals` OOB, so `Monitors.Process()` hard-crashes).
-    fn do_action(&mut self, ordinal: i32, _errors: &mut Vec<String>) {
+    fn do_action(&mut self, ordinal: i32, _errors: &mut crate::diag::ErrorLog) {
         if ordinal == 0 {
             // `Action=Clear/Reset` runs at parse time with no solution context,
             // so the header is rebuilt with the fundamental `hour`/`t(sec)`
@@ -234,7 +234,7 @@ impl DssObject for Monitor {
         // mode, where Pascal would write `Freq`/`Harmonic`) relabels only on the
         // next `Set mode=`/`Reset Monitors`; it is unobservable through the
         // oracle (the C-API strips both time columns) and self-healing.
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.recalc(&mut errors, false);
         for e in errors {
             self.med.cd.obj.push_error(e);

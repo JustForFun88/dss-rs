@@ -140,7 +140,7 @@ fn batchedit_unknown_class_error_267() {
     let mut dss = dss_with_circuit();
     dss.command("batchedit foo.bar kw=1");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         ["BatchEdit Command: Object Type \"foo\" not found. \nbatchedit foo.bar kw=1 "]
     );
 }
@@ -189,7 +189,7 @@ fn setbusxy_needs_bus_list_then_sets_coords() {
     dss.command("setbusxy bus=b1 x=3 y=4");
     // The Pascal loop runs `BusList.Find` + the 28722 error once per
     // PARAMETER, so the three-parameter command logs it three times.
-    assert_eq!(dss.errors(), ["Error: Bus \"b1\" not found."; 3]);
+    assert_eq!(dss.error_texts(), ["Error: Bus \"b1\" not found."; 3]);
     dss.errors.clear();
 
     dss.command("makebuslist");
@@ -211,7 +211,7 @@ fn setbusxy_unknown_parameter_error() {
     dss.command("makebuslist");
     dss.command("setbusxy bus=sourcebus x=1 y=2 q=3");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         ["Error: Unknown Parameter on command line: 3"]
     );
     let ckt = dss.circuit.as_ref().expect("circuit");
@@ -291,14 +291,14 @@ fn interpolate_named_meter_fills_zone_coordinates() {
 fn interpolate_named_meter_errors() {
     let mut dss = dss_with_circuit();
     dss.command("interpolate m7");
-    assert_eq!(dss.errors(), ["EnergyMeter \"M7\" not found."]);
+    assert_eq!(dss.error_texts(), ["EnergyMeter \"M7\" not found."]);
     dss.errors.clear();
 
     dss.command("new line.l1 bus1=sourcebus bus2=b1");
     dss.command("new energymeter.em element=line.l1 terminal=1");
     dss.command("interpolate em");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         ["Meter Zone Lists need to be built. Do Solve or Makebuslist first!"]
     );
 }
@@ -514,26 +514,29 @@ fn reconductor_traces_path_and_errors() {
     // still runs, so this is the only error recorded.
     dss.command("Reconductor Line1=632670 Line2=670671 linecode=mtx601 bogus=5");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         ["Error: Unknown Parameter on command line: 5"]
     );
     dss.errors.clear();
     dss.command("Reconductor Linecode=mtx601");
-    assert_eq!(dss.errors(), ["Both Line1 and Line2 must be specified!"]);
+    assert_eq!(
+        dss.error_texts(),
+        ["Both Line1 and Line2 must be specified!"]
+    );
     dss.errors.clear();
     dss.command("Reconductor Line1=632670 Line2=692675");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         ["Either a new LineCode or a Geometry must be specified!"]
     );
     dss.errors.clear();
     dss.command("Reconductor Line1=zzz Line2=692675 linecode=mtx601");
-    assert_eq!(dss.errors(), ["Line.zzz not found."]);
+    assert_eq!(dss.error_texts(), ["Line.zzz not found."]);
     dss.errors.clear();
     // Sibling branches: no traceback path in either direction.
     dss.command("Reconductor Line1=632633 Line2=692675 linecode=mtx601");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         ["Traceback path not found between Line1 and Line2."]
     );
     dss.errors.clear();
@@ -543,7 +546,7 @@ fn reconductor_traces_path_and_errors() {
     dss.command("solve");
     dss.command("Reconductor Line1=632670 Line2=692675 linecode=mtx601");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         [
             "Error: Both Lines must be in the same EnergyMeter zone. One or both are not in any meter zone."
         ]
@@ -559,7 +562,7 @@ fn reconductor_traces_path_and_errors() {
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     dss.command("Reconductor Line1=670671 Line2=645646 linecode=mtx601");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         [
             "Error: Line1 is in EnergyMeter.em1 zone while Line2 is in EnergyMeter.em2 zone. Both must be in the same Zone."
         ]
@@ -592,7 +595,7 @@ fn var_cmd_define_echo_list_and_illegal() {
     assert_eq!(dss.result(), expected);
     dss.command("var bogus=1");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         ["Illegal Variable Name: bogus; Must begin with \"@\""]
     );
 }
@@ -626,12 +629,12 @@ fn pre_circuit_utility_commands_match_oracle() {
     assert_eq!(dss.result(), "No User Classes Defined.");
 
     dss.command("cd \"Q:/nope\"");
-    assert_eq!(dss.errors(), ["Directory \"Q:/nope\" not found."]);
+    assert_eq!(dss.error_texts(), ["Directory \"Q:/nope\" not found."]);
     dss.errors.clear();
 
     dss.command("doscmd echo hi");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         [
             "DOScmd is disabled. Enable it via API or set the environment variable DSS_CAPI_ALLOW_DOSCMD=1 before starting the process."
         ]

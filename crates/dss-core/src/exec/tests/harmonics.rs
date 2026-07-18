@@ -269,7 +269,7 @@ fn unknown_spectrum_name_errors_not_silent() {
     let mut dss = Dss::new();
     dss.command("New circuit.s basekv=12.47 phases=3 bus1=src");
     dss.command("New Load.x bus1=src phases=3 kv=12.47 kw=100 spectrum=doesnotexist");
-    let errs = dss.errors().join("\n");
+    let errs = dss.error_texts().join("\n");
     assert!(
         errs.contains("Spectrum object \"doesnotexist\" not found"),
         "expected a loud missing-spectrum error, got: {errs:?}"

@@ -151,7 +151,7 @@ pub fn build_y_matrix(
             },
         );
     }
-    let mut yprim_errors: Vec<String> = Vec::new();
+    let mut yprim_errors = crate::diag::ErrorLog::new();
     for &r in &ckt.ckt_elements {
         let elem = env.store.ckt_elem_mut(r);
         // Pascal `ReCalcAllYPrims`/`ReCalcInvalidYPrims` (Ymatrix.pas @ 0.15.0b4):
@@ -412,7 +412,7 @@ mod tests {
         let mut store = EmptyStore;
         let mut parser = Parser::new();
         let vars = ParserVars::new();
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         {
             let mut env = SolveEnv {
                 store: &mut store,
@@ -446,7 +446,7 @@ mod tests {
         let mut store = EmptyStore;
         let mut parser = Parser::new();
         let vars = ParserVars::new();
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         {
             let mut env = SolveEnv {
                 store: &mut store,

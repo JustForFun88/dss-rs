@@ -2075,7 +2075,7 @@ pub(crate) fn export_cdpsm(
     classes: &mut [DssClass],
     ckt: &mut Circuit,
     cim: &mut CimExporter,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
     substation: &str,
     sub_geographic_region: &str,
     geographic_region: &str,

@@ -19,7 +19,7 @@ use crate::elements::traits::{CktElement, SysCtx};
 use crate::support::complexutil::cang;
 use crate::support::dynamics::IterationFlag;
 
-use super::{Vccs, map_idx, offset_idx};
+use super::{Vccs, offset_idx};
 
 // Pascal RTL `Pi` (full f64 precision); `cang` carries the truncated-pi atan2
 // from `DSSUcomplex` (matching the oracle's polar conversion).
@@ -185,10 +185,10 @@ impl Vccs {
             // Apply the filter and second PWL block.
             let mut z_iu = 0.0;
             for k in 1..=ffiltlen {
-                z_iu += filter_y[k - 1] * self.whist[map_idx(iu - k as i64 + 1, fl)];
+                z_iu += filter_y[k - 1] * self.whist.tap(iu - k as i64 + 1);
             }
             for k in 2..=ffiltlen {
-                z_iu -= filter_x[k - 1] * self.z[map_idx(iu - k as i64 + 1, fl)];
+                z_iu -= filter_x[k - 1] * self.z.tap(iu - k as i64 + 1);
             }
             self.z[iu_u] = z_iu;
             y = fbp2.get_y_value(z_iu);
@@ -268,10 +268,10 @@ impl Vccs {
             // Apply the filter and second PWL block.
             let mut z_iu = 0.0;
             for k in 1..=ffiltlen {
-                z_iu += filter_y[k - 1] * self.whist[map_idx(iu - k as i64 + 1, fl)];
+                z_iu += filter_y[k - 1] * self.whist.tap(iu - k as i64 + 1);
             }
             for k in 2..=ffiltlen {
-                z_iu -= filter_x[k - 1] * self.z[map_idx(iu - k as i64 + 1, fl)];
+                z_iu -= filter_x[k - 1] * self.z.tap(iu - k as i64 + 1);
             }
             self.z[iu_u] = z_iu;
             self.s3 = z_iu;

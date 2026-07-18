@@ -38,7 +38,7 @@ impl CktElement for Sensor {
     }
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.recalc(&mut errors);
         for e in errors {
             self.med.cd.obj.push_error(e);
@@ -282,7 +282,7 @@ impl DssObject for Sensor {
         if !self.needs_recalc {
             return;
         }
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.recalc(&mut errors);
         for e in errors {
             self.med.cd.obj.push_error(e);

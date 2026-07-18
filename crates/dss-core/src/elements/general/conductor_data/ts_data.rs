@@ -139,7 +139,7 @@ impl DssObject for TsDataObj {
 
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
         let name = self.data.name().to_string();
-        let mut errs = Vec::new();
+        let mut errs = crate::diag::ErrorLog::new();
         match idx {
             // TS's own props (Pascal `TTSDataObj.PropertySideEffects`).
             prop::DIASHIELD => {

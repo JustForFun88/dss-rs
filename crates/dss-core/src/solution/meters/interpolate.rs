@@ -28,7 +28,7 @@ pub(crate) fn interpolate_coordinates(
     meter_ref: ElemRef,
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     // Pascal `CheckBranchList(529)`.
     let Some(tree) = downcast_meter(store, meter_ref).take_branch_list() else {
