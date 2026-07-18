@@ -2858,3 +2858,101 @@ have real bodies; the zone-build dispatcher (`solution/meters/mod.rs`) fires fro
 `build_y_matrix` after bus reprocessing; `TakeSample`/`Integrate` + the
 reliability fault-rate sweep are ported. Still Phase 8: the `SystemMeter`
 register core and all demand-interval/phase-voltage/`Show`/`Export` files.
+
+---
+
+## UNIFIED_GATE Phase A — `dss-epri` bridge + `epri-worker` + smoke + xcheck (session record)
+
+New test-only crate `crates/dss-epri` (`publish = false`) — the **only** crate
+without `#![forbid(unsafe_code)]` (carries `#![deny(unsafe_op_in_unsafe_fn)]` +
+`#[cfg(windows)]` + module `// SAFETY` docs; carve-out documented in
+`PORTING_PLAN.md` §1). It drives the official EPRI `OpenDSSDirect.dll` (r4133) via
+`libloading` as a second live oracle (UNIFIED_GATE_PLAN.md R1/§2). Layout: `ffi.rs`
+(raw `cdecl` externs + load with `LOAD_WITH_ALTERED_SEARCH_PATH` so sibling
+`KLUSolve.dll` resolves), `dss.rs` (command + V-protocol decode + error polling),
+`capture.rs` (`CaseResult` assembly, byte-mirroring `oracle_server.py` +
+`gen_checkpoints.py`), `guard.rs` (corpus-guard port), `src/bin/epri-worker.rs`
+(persistent `ping`/`run`/`quit` line-JSON worker + `--smoke`). Root `Cargo.toml`:
+added the workspace member, `libloading` workspace dep, and the dev opt-level-3
+override.
+
+**Root-cause war story (load-bearing, do not re-litigate).** The DLL deadlocked
+when driven from Rust — every call appeared to hang. Diagnosed by minidump: the
+process parks in `NtUserMsgWaitForMultipleObjectsEx` inside `OpenDSSDirect.dll`.
+The trigger is **`FreeLibrary` on `libloading::Library` drop**: the r4133 DLL's
+unit finalization tears down its Delphi solver **actor thread** through a
+message-pumping `TThread.WaitFor` that never completes headless (no VCL
+`Application`/`WakeMainThread`). The hang *looked* mid-execution only because the
+`Engine` (local in `run_smoke`) dropped — and FreeLibrary'd — before the report
+printed. The Python/Oddie host never hit it because interpreter shutdown doesn't
+`FreeLibrary` the DLL. **Fix:** never unload — `Dll::leak()` (`mem::forget` the
+`Library`); the OS reclaims it at process exit (actor thread already terminated,
+so DllMain-detach is clean). Confirmed by a minimal raw-FFI reproducer:
+libloading-load hangs at drop, `mem::forget(lib)` cures it (single-thread, no
+message pump needed). All the earlier COM/FP/message-pump/two-thread experiments
+were chasing the wrong symptom and were reverted.
+
+**Capture-decode notes** (verified against raw-DLL ctypes + Oddie probes):
+V-protocol `mySize` is always **bytes**; type tags 1=int / 2=double / 3=complex
+(flat re/im) / 4=string / 5=byte-stream. String arrays: strip **one** trailing
+`\0`, split on `\0`, then lstrip a single leading space from element 0 (the Oddie
+monitor-header first-column artifact — `[' V1', ...] → ['V1', ...]`; no other
+array's element 0 has a leading space, so applying it universally is a no-op).
+Monitor channels decoded from the raw `ByteStream` exactly like `IMonitors.Channel`
+(272-byte header, `record_size = int32@offset8 + 2`, f32 records). The DDLL solve
+is **async** (dispatches `SIMULATE` to the actor and returns), so `solve()` polls
+`ParallelV(1)` = `ActorStatus` until done.
+
+**DONE-bar evidence:**
+- `epri-worker --smoke` (10/10 runs, exit 0, stderr→/dev/null):
+  `version OK: Version 11.0.0.1 (64-bit build) - Charlottesville`
+  `IEEE13 solved: 41 nodes, 2 iterations`
+  `CSC export OK: n=41, nnz=267, voltages bit-identical (solution-neutral)`
+  `getIpointer OK: len=84 (= 2*(NumNodes+1))`
+- Smoke `#[test]` (`crates/dss-epri/tests/smoke.rs`) runs under `cargo test
+  --workspace`, oracle-free.
+- **xcheck** (`tools/opendss/xcheck_bridge.py`, temporary — Phase E deletes it):
+  drives all 396 cases of the r4133 `corpus_live_opendss` universe (240
+  solvable_now + 43 asymmetric + 66 controls + 47 modes; #303 `skip` decks
+  excluded identically both sides) through the Python/Oddie r4133 engine AND the
+  Rust `epri-worker`, bit-diffing the raw `CaseResult` — twice, second pass
+  order-shuffled (seed 1337). Result (settle re-run, ~4m50s wall): **396 matched
+  of 396** on pass 1 (manifest order) AND pass 2 (shuffled) → `XCHECK PASS: both
+  passes bit-identical over 396 cases`, exit 0. `diverged = ok_mismatch =
+  both_err = 0` (matched == universe). `tests/corpus` verified pristine after
+  (CorpusGuard on both sides).
+- fmt + clippy (`-D warnings`) clean on `dss-epri`.
+
+**Audit dispositions (two independent audits of the phase diff).**
+- **F1/A1 — `both_err` not gated in `xcheck_bridge.py` (real, FIXED).** The PASS
+  boolean was `clean = not diverged and not ok_mismatch`, so a case that errored
+  symmetrically on BOTH engines was silently absorbed — a latent fake-success
+  channel (arithmetically inert for the reported clean run, but a weaker guarantee
+  than the DONE bar). Strengthened to `... and not both_err`: the universe excludes
+  solve-abort/pending cases, so every case must yield a comparable `CaseResult` on
+  both engines; a symmetric error is a hole, not a pass. Empirically settled — the
+  full re-run above with the stricter gate still PASSES 396/396 (both_err = 0), so
+  the fix closes the channel without any false failure. Strengthening only; no
+  tolerance/assertion weakened.
+- **F2 — additive `clear` command in `oracle_server.py` (real deviation,
+  ACCEPTED, no change).** UNIFIED_GATE_PLAN D8/§3.2 noted "no protocol change
+  needed server-side." Phase A added a `clear` handler (release the circuit + any
+  held loadshape MMF handle so the two processes can compile the same case). It is
+  purely additive and non-breaking: `corpus_live.rs` never sends `clear`; `run`/
+  `ping`/`quit` are untouched; `oracle_server.py` is not in the brief §4 "untouched
+  consumers" list. Used only by the temporary `xcheck_bridge.py` (Phase E deletes
+  both the tool and its need for the command). Kept as a justified, harmless
+  deviation.
+- **F3 — universal leading-space strip on string-array element[0] (not a bug,
+  documented).** `decode_string_array` lstrips one leading space from element[0]
+  of every V-protocol string array. Settled empirically + by grammar, not by
+  universe coincidence: the other arrays (node order, element/register/variable
+  names, zone lists) are whitespace-delimited DSS identifiers that can never begin
+  with a space → the strip is a guaranteed no-op on them; the monitor CSV header
+  (the one array whose first token carries a leading space) is exactly the intended
+  target. Confirmed bit-for-bit against Oddie over all 396 cases. Doc comment
+  strengthened to record the grammar guarantee. No behavior change.
+
+Follow-ups (STATUS, non-blocking): none block Phase A. Phase E removes
+`xcheck_bridge.py` and, with it, the `oracle_server.py` `clear` handler's only
+consumer (drop the handler then).
