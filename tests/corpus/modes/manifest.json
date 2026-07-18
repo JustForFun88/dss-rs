@@ -400,6 +400,7 @@
   },
   {
    "path": "autoadd/autoadd.dss",
+   "isolate": true,
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -426,6 +427,7 @@
   },
   {
    "path": "autoadd/autoadd_cap.dss",
+   "isolate": true,
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
