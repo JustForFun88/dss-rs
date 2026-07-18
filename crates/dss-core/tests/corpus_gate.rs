@@ -126,8 +126,12 @@ fn corpus_gate_all_cases_match_engines() {
     // Fail-on-stale (§1.3 runtime rule / §5 R3): every applicable ledger entry
     // must have been hit within its envelope; a stale/unhit entry fails the gate.
     // Only checked once all cases passed — a failing case may not have reached its
-    // ledger scope, which would produce misleading staleness noise.
-    if let Err(stale) = run.ledger.assert_all_hit() {
+    // ledger scope, which would produce misleading staleness noise. A partial run
+    // (`DSS_GATE_ONLY`, a dev filter — never the commit gate) skips the check: an
+    // unhit entry there only means its case was filtered out, not that it is stale.
+    if std::env::var("DSS_GATE_ONLY").is_err()
+        && let Err(stale) = run.ledger.assert_all_hit()
+    {
         panic!("{stale}");
     }
 }
