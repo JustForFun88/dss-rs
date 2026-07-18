@@ -7,6 +7,33 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### UNIFIED_GATE Phase 0 — baseline recorded (2026-07-18)
+
+`UNIFIED_GATE_PLAN.md` execution started (parallel worktree agents; Phases
+A/B in flight on `ug-phase-a`/`ug-phase-b`, based `449c745`). Phase 0
+baseline, tag **`pre-unified-gate`** = `449c745`:
+
+- Full three-command gate wall-clock (measured 2026-07-18 01:52–02:00,
+  **under concurrent load** — the ORPHANED_GAPS session was merging og*
+  branches into `update` mid-run, so treat as an upper-bound baseline):
+  fmt 1.4 s; clippy 50.5 s; `cargo +stable test --workspace` 426.6 s, of
+  which the serial one-shot corpus_live suite = 292.6 s (27 tests; ~510
+  cases across the four manifests). dss-core lib 1223+ unit tests.
+- Populations at baseline: `solvable_now` 293 (oracle: 246 pinned /
+  30 capi015 / 10 r4133 / 6 r3723 / 1 r4088), families asymmetric 47 /
+  controls 101 / modes 69, `.dss` bijection 915, `known_diffs.json` 25
+  entries (the Phase D ledger seed).
+- The one red in the baseline run (`json_transformer_micro`) was an
+  artifact of compiling mid-merge of og1213 (BHCurrent/BHFlux emission
+  before its `SUPPRESS_JSON` fix landed) — not a unified-gate item;
+  re-verified at the next merge-window gate.
+
+Wall-clock table (rows appended per plan §6 at Phases B/D/F):
+
+| point | fmt | clippy | test (full) | corpus gate share |
+|---|---|---|---|---|
+| `pre-unified-gate` (449c745, loaded box) | 1.4 s | 50.5 s | 426.6 s | 292.6 s |
+
 ### OG-1.4 AltDSS JSON import `Circuit_FromJSON` (orphaned-gaps round, 2026-07-18)
 
 Ported the whole-circuit AltDSS JSON **reader** — the inverse of the JSON export —
