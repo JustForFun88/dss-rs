@@ -1,4 +1,6 @@
 /target
+# workspace-excluded fixture crates build locally (plan §2.6)
+tools/wasm_usermodel/models/*/target/
 .inputs
 /investigations
 __pycache__/

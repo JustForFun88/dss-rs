@@ -301,7 +301,298 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
-### OG-1.5 `CAPI_Schema` JSON-schema export — static core ported (orphaned-gaps round, 2026-07-18)
+### WASM-UM WP-WM.0 — ABI freeze + probes (branch `wasm-um`, 2026-07-18)
+
+`WASM_USERMODELS_PLAN.md` execution started (WM.0→WM.2 authorized for this
+round; WM.3+ deferred — parallel workflows own the element files). WP-WM.0 is
+**docs + probe scripts only** (zero engine/product code changes):
+
+- **`docs/wasm/USERMODEL_ABI.md` FROZEN** — export lists (15/13/7 + `memory` +
+  `dss_alloc`), packed record offset tables **transcribed from FPC probe
+  output** (never from reading), the 32-slot callback import table (module
+  `dss_env`) with tiers + census, activation rule, failure/trap/sandbox
+  policy, probe-evidence ledger. Probe kit: `tools/fpc/usermodel_abi/`
+  (verbatim-extraction script + 2 offset probes + 15-export stub DLL + oracle
+  driver + build script); evidence: `docs/wasm/probes/p1..p5*.txt`.
+- **P1 (oracle loads native DLL): PASS, all 5 asserts** — pinned dss-python
+  0.15.7/0.14.5 loads the FPC-built stub via `Generator.UserModel=`, stub
+  state vars appear on the element variable surface, `UserData=` reaches
+  `Edit` (len verified), Model=6 snapshot converges with terminal currents ==
+  stub `Calc` output **bit-exact**, marshalled V == terminal-1 node voltage at
+  4.8e-7 rel (one fixed-point iterate stale by construction — documented in
+  the probe). **Plan §2.5 channel 1 CONFIRMED; r3723 fallback not engaged; the
+  WM.3 audit-tier escalation clause is moot.**
+- **P2 (layouts): packed confirmed** (release cfgs never set
+  `DSS_CAPI_NO_PACKED_RECORDS`; probed with `-Mdelphi` + release defines,
+  x86_64-win64): `TDynamicsRec` 52 B, `TGeneratorVars` 244 B (unaligned tail
+  after the 3 i32s — `#[repr(C)]` would mis-pad, noted in the ABI doc),
+  `TDSSCallBacks` 256 B = 32×8. dss_capi 0.14.5 vs r3723 header sets:
+  **byte-identical** (twin probe over the real vendored r3723 units).
+- **P2 twin decision: PLAN A** — FPC 3.2.2 `ppcrossx64 -Mdelphi` builds the
+  **vendored `IndMach012a.dpr` as-is** (search paths only, zero source edits;
+  `.res` links); the resulting DLL loads under the pinned oracle, all 14
+  machine vars live, Model=6 solve converges with physically-sensible slip
+  (−0.0064). Plan B (Rust native-shim twin) not needed.
+- **P3 (callback census): `MsgCallBack` only** (`IndMach012Model.pas:474`,
+  help text); parser bundled (`ModelParser`), `DoDSSCommand` **unused** ⇒ the
+  WM.6 deferral stands. Full 32-slot table in the ABI doc.
+- **P4 (toolchain pins):** stable rustc 1.96.0; `wasm32-unknown-unknown`
+  target added (machine-global, additive); `wasmi ==1.0.9`
+  (`default-features=false`, `features=["simd"]`, the typst-verified pin)
+  compiles on stable with a pure-Rust closure (wasmi_core/ir/collections
+  1.1.0, wasmparser 0.228.0, bitflags, libm, spin — zero C/FFI) and exposes
+  fuel + store-limiter APIs (`instantiate_and_start` is the 1.x spelling).
+  Initial `tools/wasm_usermodel/PIN.txt` written. No wasmi blocker ⇒ the pin
+  stands.
+- **§2.7 upgrade one-line diff check — one real finding:** the four loader
+  units + callback vtable + `TDynamicsRec` are contract-identical across
+  0.14.5→0.15.x and r3723→r4133 (host-side property→method refactors only),
+  **but** 0.15.x and r4088+ insert `deltaQNom: array of Double` into
+  `TGeneratorVars` between `Qnominalperphase` and `NumPhases` (+8 tail shift,
+  managed reference). Frozen ABI = pinned 0.14.5/r3723 layout; caution
+  recorded in the ABI doc §2.2 (never mix ≤r3723-header DLLs with
+  r4088/r4133 binaries; an engine upgrade to 0.15.x semantics must revisit by
+  recorded decision). Evidence `docs/wasm/probes/p5_upgrade_diff.txt`.
+
+Follow-ups: none blocking WM.1. `TStorageVars`/`TPVSystemVars`/
+`TCapControlVars` offset tables are frozen at their owning WPs (WM.4/WM.5) via
+the same probe kit (ABI doc §2.4 records this explicitly).
+
+### WASM-UM WP-WM.1 — the `dss-usermodel` crate (branch `wasm-wm1`, 2026-07-18)
+
+The wasmi host per plan §2.1–§2.3; template = the vendored typst plugin host
+(`.inputs/typst/.../plugin.rs`, cited in doc comments throughout). New leaf
+workspace crate `crates/dss-usermodel/` (`#![forbid(unsafe_code)]`; deps:
+`wasmi =1.0.9` pinned in `[workspace.dependencies]` per PIN.txt
+(`default-features=false`, `["simd"]`), `num-complex`, `dss-parser` (the owned
+AuxParser); dev-deps `wat` + `sha2`). No dss-core changes — the crate is not
+consumed yet (WM.3 wires it).
+
+- **`UserModelHost`** (`src/host.rs`): deterministic engine config (relaxed
+  SIMD off = typst `:271-272`; `consume_fuel(true)`), module compile, and
+  **load-time export-set validation** — `memory`, `dss_alloc`, then the
+  interface functions in the **Pascal binding order**
+  (`GenUserModel.pas:173-187` / `StoreUserModel.pas:336-348` /
+  `CapUserControl.pas:176-182`), so the first missing name is exactly what the
+  engine's 569/1569 path reports; present-but-wrong-signature = typed
+  `SignatureMismatch` (ABI §6 protocol violation). `InterfaceKind` carries the
+  five Pascal loader shapes (Gen15 `new(genvars,dynarec)`, Store15/PV15/Dyna13
+  `new(dynarec)`, Cap7 `new()`). `HostConfig`: per-call fuel budget (default
+  1e8 — the plan's <1%-of-budget calibration bar is verified against the real
+  fixture at WM.2) + 64 MiB memory cap.
+- **`UserModelInstance`/`CapControlInstance`** (`src/instance.rs`): one
+  `Store` per element binding (plan §2.7 — `Store` is `Send`, M3-safe); guest
+  buffers allocated once via `dss_alloc` (genvars 244 B / dynarec 52 B / V+I
+  `yorder`×16 / name scratch; grow-only edit + vars buffers) and range-checked
+  (`dss_alloc` returning 0 / out-of-range = typed error). Record shuttle =
+  `GeneratorVars`/`DynamicsRec` mirrors (`src/records.rs`) serialized
+  **field-by-field at the frozen ABI offsets** (never `#[repr(C)]` — the
+  packed unaligned tail; unit tests pin every offset against the ABI-doc
+  tables). Records written before and read back after **every** call (ABI
+  §2); Pascal wrapper quirks reproduced: `Edit` ignored while `FID=0`,
+  `Integrate` = `select(id)`+`integrate` (`GenUserModel.pas:123-138`),
+  `new`→0 = model-absent (`Get_Exists`), delete-guard on nonzero id.
+- **Callbacks** (`src/callbacks.rs` + `src/imports.rs`): the 32-slot
+  `TDSSCallBacks` vtable as module `dss_env`, tiered per ABI §4 — tier A
+  served from the per-call `Box<dyn Callbacks>` snapshot (default method
+  bodies mirror each Pascal nil path, incl. `Exit`-without-touching
+  semantics via `Option`), tier B = `Effect` queue (`Msg`,
+  `ControlQueuePush` with provisional handles `seed, seed+1, …` from
+  `control_queue_next_handle()` — exact Pascal handle sequence under
+  drain-in-order), tier C = owned `dss_parser::Parser` in `CallData`
+  reproducing `CallBackParser` semantics (`NextParam` returns the **value**
+  length and copies the **name**; `GetStrValue` serves `CB_Param` from the
+  last `NextParam` incl. the deterministic truncate-on-short-maxlen;
+  FPC-exception-on-conversion-error = UB upstream, defined port writes 0).
+  All 32 imports exist at link time; `do_dss_command`/`get_result_str`
+  (WM.6) and `get_active_element_ptr` (permanent) raise the loud attributed
+  `Unsupported` error when called — no silent no-ops (plan §2.9-5).
+- **Typed failure contract** (`src/error.rs`, ABI §6): faults recorded by
+  imports win (the typst `memory_error` take-pattern), then
+  `TrapCode::OutOfFuel` → `FuelExhausted`, `GrowthOperationLimited` (store
+  limiter with `trap_on_grow_failure`) → `MemoryCapExceeded`, else `Trap` —
+  every variant naming the model and function.
+- **Channel-2 protocol tests** (`tests/protocol.rs`, 23 tests, inline-WAT
+  guests via dev-dep `wat`): happy-path 15-function round trip (call
+  counters + V/I marshalling + records); record byte-exact round trip
+  (distinct bit patterns in every field → guest increments `Pshaft`/`t` →
+  only those change); tier A full-surface exerciser (all 22 snapshot reads
+  incl. copy-semantics counts) + the Pascal nil-path defaults; tier B order +
+  handle sequence; tier C parser round trip over the owned AuxParser;
+  missing export → exact name + binding-order-first + 13-vs-15-fn sets +
+  missing `memory`/`dss_alloc`; wrong signature; trap / fuel / import-OOB /
+  host-OOB / alloc-0 / memory-cap → the typed errors; unsupported-import
+  trio; CapControl 7-fn round trip; host-API misuse (`Usage`).
+  `tests/fixture_pin.rs` = the **hash-vs-PIN scaffold**, self-activating
+  (dormant pre-WM.2 state = no fixture + no `sha256(...)` line in PIN.txt;
+  any half-state is red; format documented for WM.2) — no `#[ignore]`.
+
+Workspace edits: members + `[workspace.dependencies].wasmi` +
+`[profile.dev.package.dss-usermodel]` opt-3 (safety knobs pinned) in the root
+`Cargo.toml`. Follow-ups for WM.2: commit the fixture + PIN hash line
+(activates the scaffold), verify the fuel-calibration bar (<1% of 1e8 per
+reference-model call).
+
+### WASM-UM WP-WM.2 items 1–3 — IndMach012a fixture port + pinned `.wasm` + native twin (branch `wasm-wm2`, 2026-07-18)
+
+Items 1–3 of plan §WP-WM.2 (+ the item-4 data pre-stage); item 4 (fixture
+self-gate through the `dss-usermodel` API) and item 5 (audits) belong to the
+integrator/workflow. Zero product-code changes — everything lives under
+`tools/wasm_usermodel/`, `tests/fixtures/wasm/`, `docs/wasm/probes/`.
+
+- **Item 1 — the port.** `tools/wasm_usermodel/models/indmach012a/`
+  (workspace-excluded crate, `[workspace]` opt-out, zero deps, cdylib+rlib):
+  loop-for-loop port of r3723 `IndMach012Model.pas` (machine math, slip
+  clamp, dSdP, dynamic/pflow currents, trapezoidal `Integrate`, 14-variable
+  surface — `model.rs`), `MainUnit.pas` (ModelList/ActiveModel semantics incl.
+  the delete-clears-active quirk and the guarded/unguarded nil-ActiveModel
+  split — `mainunit.rs`), the units the DLL links: `Ucomplex.pas` **as this
+  source defines it** (naive `CDIV`/`Cabs`, NOT dss-core's `cdiv_fpc` Smith
+  helpers — `cmath.rs`), `mathutil`/`Ucmatrix` sym-comp path with `Ap2s`
+  produced by a verbatim `TcMatrix.Invert` port at init (`symcomp.rs`), and a
+  minimal `ParserDel`/`Command`/`HashList` scanner (`parser.rs`; RPN-in-quotes
+  reduced to a loud trap — plan-§2.6-sanctioned, decks never use it). Boundary:
+  `records.rs` codecs at the frozen ABI offsets (never `#[repr(C)]`),
+  `wasm_exports.rs` = the 15 exports + `dss_alloc` over a safe allocation
+  registry; exactly ONE `unsafe` expression in the crate (the `dss_env.
+  msg_callback` import call). Pascal citations throughout.
+  `TODO(compat)`×3: truncated `0.866025403` (SetAMatrix), truncated `1.732`
+  (Compute_dSdP), and **a new find** — FPC folds the all-constant `3.0/746.0`
+  (HPshaft var 14) at *single* precision (both operands single-exact ⇒ FPC
+  lowest-common-precision constant folding), reproduced as
+  `(3.0f32/746.0f32) as f64` and proven by decomposition (plain f64 quotient
+  misses the twin by 2.6e-8 rel; every other value bit-exact).
+- **Item 2 — pinned artifact.** `tests/fixtures/wasm/indmach012a.wasm`
+  committed (79045 B; exports = the 15 + `memory` + `dss_alloc`, sole import
+  `dss_env.msg_callback` — verified by wasm section parse). Reproducible
+  build proven (clean rebuild ⇒ identical SHA-256):
+  `pwsh tools/wasm_usermodel/build_wasm.ps1` (stable rustc 1.96.0,
+  `--remap-path-prefix`, locked release profile). PIN.txt updated with the
+  exact command + `sha256=1849db0c…9b0ebd` (the WM.1 hash-vs-PIN test binds
+  to it at integration).
+- **Item 3 — native twin (plan A) + item-4 pre-stage.**
+  `build_native.ps1` builds the vendored `IndMach012a.dpr` on demand (FPC
+  3.2.2 ppcrossx64, exact P2 flags; `%TEMP%` output, never committed).
+  `twin_probe.py` (ctypes over the frozen packed layouts, struct-offset
+  asserts) drives the twin through a deterministic lifecycle — New →
+  var-name surface (incl. StrLCopy truncation + out-of-range no-write) →
+  initial vars → Edit (abbrev `maxs`, case `Xm`, `option=variableslip`,
+  slip→Speed write) → 5 pflow `Calc` iterations (slip fixed-point) → `Init`
+  → 3 dynamics steps × predictor/corrector `Calc`+`Integrate` → SetVariable
+  → GetAllVars → Select edges → `help` (MsgCallBack text) → second instance
+  + Delete — and records ~200 values bit-exactly:
+  `docs/wasm/probes/p6_twin_expected.txt` (evidence) + generated
+  `tests/twin_expected.rs` (`--rust` mode). `tests/twin_parity.rs` replays
+  the identical scenario on the Rust port and asserts **f64-bit-exact
+  equality on every value** — green (2/2; `cargo +stable test` in the crate).
+  The integrator pins the committed `.wasm` against the same values through
+  the WM.1 crate API (item 4).
+- **Hygiene:** `.gitignore` +`tools/wasm_usermodel/models/*/target/`;
+  fixture crate is fmt/clippy-clean on host and wasm targets (not part of
+  the repo gate — workspace-excluded by design). Machine-global additions:
+  none required beyond WM.0's pins (the stray `rustup target add` on the
+  default *nightly* toolchain during this session is additive-only; the
+  fixture builds with `+stable` per PIN).
+- Deviation note: plan §2.6 sketches the guest as "`#![no_std]`-lean"; the
+  crate uses std (wasm32 std = the allocator/panic machinery only — no WASI,
+  no imports beyond `dss_env`, verified in the artifact's import section).
+  Chosen to keep the boundary in safe Rust (registry over `Box<[u8]>`); the
+  sandbox/determinism contract is unaffected.
+
+### WASM-UM WM.1+WM.2 integration — merge + WM.2 item 4 fixture self-gate (branch `wasm-um`, 2026-07-19)
+
+Merged `wasm-wm1` (WM.1, fast-forward) then `wasm-wm2` (WM.2 items 1–3; sole
+conflict = STATUS.md section placement, resolved by union — both records kept
+in WP order). Workspace `Cargo.toml`/`Cargo.lock` merged clean (WM.2's fixture
+crate is workspace-excluded by design). Cross-WP items neither side could do
+alone:
+
+- **WM.2 item 4 — fixture self-gate:**
+  `crates/dss-usermodel/tests/fixture_self_gate.rs` drives the COMMITTED
+  `tests/fixtures/wasm/indmach012a.wasm` through the full crate API chain
+  (`UserModelHost::load` Gen15 export validation → `UserModelInstance` record
+  shuttle → guest math) with hand-fed V/records, replaying the
+  `twin_probe.py` scenario S1–S11+S13 and pinning every recorded value
+  **f64-bit-exact** against the native-twin constants (`twin_expected.rs`,
+  evidence `docs/wasm/probes/p6_twin_expected.txt`): ~200 pins — currents (5
+  pflow + 6 dynamics calc), slip fixed-point, all 14 vars at 6 checkpoints,
+  GenVars `Speed` write-backs (new/edit/init/setvar), var names, `help`
+  MsgCallBack text byte-identical through the `dss_env` effect queue. S12/S14
+  (foreign-id select, two models in one guest) are single-shared-DLL
+  artifacts the per-element-instance design deliberately does not expose
+  (plan §2.7); pinned instead: own-id select round-trip + a fresh-guest
+  second instance (id=1 again, post-Create pins verbatim) + delete clears
+  `exists`. GREEN — the committed binary and the WM.1 shuttle agree with the
+  FPC twin bit-for-bit.
+- **Hash-vs-PIN scaffold now ACTIVE:** with the fixture + PIN sha256 line
+  committed, `fixture_pin.rs::committed_fixture_hash_matches_pin` takes the
+  active branch and verifies `1849db0c…9b0ebd` — green.
+- **WM.1 fuel-calibration follow-up settled:** the plan's bar (<1% of the
+  1e8 default per reference-model call) is proven by a second self-gate run
+  under `fuel_per_call = DEFAULT/100` — the entire scenario (instantiation
+  included) completes with no `FuelExhausted`.
+- Fixture crate's own `twin_parity` suite re-verified green post-merge;
+  full three-command gate green at default settings; `tests/corpus` pristine
+  (stray solver outputs from an aborted run removed path-limited). One
+  transient on the first full-gate run: `corpus_gate` CapiV0145
+  `asymmetric:isource/isource_snap.dss` step-0 voltage off by 3.6e-3 (>floor
+  8.2e-6), NOT reproducible — same binary re-run green twice (513→514/514 and
+  the full workspace re-run), diff touches no dss-core code. Suspected
+  cross-session oracle-server contention (parallel workflows active); watch
+  if it recurs — a reproducible hit would need the CLAUDE.md prove-it
+  discipline, not a shrug.
+
+### WASM-UM WM.0–WM.2 settle — audit dispositions (branch `wasm-um`, 2026-07-19)
+
+Two independent `opus-xhigh` audits of `ae4b4ef..4051d833` (audit-code +
+audit-tests): **verdict faithful, zero Critical/Major**; both independently
+re-derived the ABI offsets, rebuilt the native twin AND the wasm fixture
+(byte-identical to the PIN), and re-ran the full gate. Findings settled
+empirically:
+
+- **WM-AUD-1 (Minor, FIXED — doc):** the frozen ABI doc omitted the
+  `get_node_voltages` ground-slot indexing decision (native
+  `GetPtrToSystemVarrayCallBack` returns the raw `Solution.NodeV` pointer
+  whose offset-0 element IS ground, `Solution.pas:88/:198`; the crate contract
+  serves `NodeV[1..NumNodes]` ground-excluded). Recorded via the doc's
+  recorded-decision mechanism (header note + §4 row 17 + indexing note with
+  the porting consequence) **before WM.3 wires the slot**; contract unchanged.
+- **WM-AUD-2 (Minor, premise DISPROVEN by probe; residual recorded):** FPC
+  3.2.2 `Val` was probed directly (ppcrossx64 x64 exe —
+  `docs/wasm/probes/p7_fpc_val_domain.txt`): it **accepts** `inf`/`nan` (any
+  case) and leading spaces, exactly like Rust `parse::<f64>()` — the fixture
+  matches the spec there. Residual Rust-wider domain (`infinity`,
+  trailing/tab whitespace via `trim`) is unreachable (tokenizer never yields
+  whitespace-padded unquoted tokens; quoted branch is RPN upstream, whose own
+  tokenizer skips whitespace; no deck feeds `infinity`). Deliberately NOT
+  changed. Lesson captured: the fixture **source is hash-frozen with the
+  artifact** — a comment-only parser.rs edit shifts panic-`Location` line
+  numbers and changes the built wasm hash (verified: pristine rebuild = the
+  pinned `1849db0c…`, +10-comment-lines rebuild = `7da8ee46…`), so fixture
+  notes live in probes/STATUS, never as source edits without a deliberate
+  re-pin.
+- **WM-T4 (Minor, FIXED):** `fixture_pin.rs`'s pre-WM.2 dormant arm
+  (no fixture + no PIN line = pass) retired — the fixture is permanent as of
+  WM.2, so both halves are now required unconditionally (simultaneous
+  deletion of fixture + PIN line is red). Strictly strengthens the gate.
+- **WM-T1 (Informational, ACCEPTED — plan-sanctioned):** the fixture crate's
+  `twin_parity` suite + fmt/clippy are workspace-excluded by design (plan
+  §2.6); the committed artifact IS gated every `cargo test` (self-gate ~200
+  bit pins + hash-vs-PIN). Follow-through: the plan's WM.7 exit sweep now
+  lists an explicit `twin_parity`+fmt/clippy re-run for the fixture crates.
+- **WM-T3 (Informational, ACCEPTED as designed):** twin scenarios S12/S14
+  (foreign-id select, two models in one guest) are single-shared-DLL
+  artifacts the per-element-instance design never exposes (plan §2.7);
+  crate-level surrogates pin the equivalent paths — already documented in the
+  self-gate header and the integration record.
+- **WM-AUD-4 / WM-T2 (watch item, STANDS):** the one non-reproducible
+  `corpus_gate` transient (isource_snap step-0, 3.6e-3 vs floor 8.2e-6; green
+  on 4 total re-runs across author+auditor) stays a recorded watch — a
+  reproducible hit gets the CLAUDE.md prove-it discipline.
+- **WM-AUD-3 (environmental):** a parallel session's corpus_gate run wrote
+  stray solver outputs into this worktree during the audit; the committed
+  range was verified clean at audit start. `tests/corpus` re-verified
+  pristine at settle.
 
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
@@ -455,8 +746,11 @@ open item is not buried in the §1a archive):
   DIAKOPTICS Part II WP-AD.5 — partial.** `exec/command.rs:69` `NOT_PORTED`; WP-AD.6
   threaded children not started (needs MULTITHREADING M2).
 - **User-model native DLLs (Gen/PVSystem/Storage/CapControl UserModel) →
-  WASM_USERMODELS — NOT started.** All still `PropFlags::NOT_PORTED`; the sandboxed
-  wasmi replacement is unbuilt (`#![forbid(unsafe_code)]` cannot load a DLL).
+  WASM_USERMODELS — infrastructure DONE (WM.0–WM.2, §WASM-UM records), element
+  wiring NOT started.** The six properties still carry `PropFlags::NOT_PORTED`
+  / warn-and-fallback; the sandboxed replacement now exists (`dss-usermodel`
+  wasmi host + pinned `indmach012a.wasm` fixture, twin-pinned bit-exact) and
+  WM.3+ flips the properties to the plan §2.4 uniform rule.
 
 **Residual floors / parked (documented, not bugs):**
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — ultra-switch
