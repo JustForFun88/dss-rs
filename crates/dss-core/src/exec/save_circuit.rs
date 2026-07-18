@@ -195,7 +195,7 @@ impl Dss {
             // Pascal `if Success then … else DoSimpleMsg('Error attempting to
             // save circuit …', 434)` — GlobalResult carries the failure, not
             // the "saved" string.
-            self.last_result = self.errors[errors_before].clone();
+            self.last_result = self.errors[errors_before].message.clone();
             return;
         }
         // Pascal `GlobalResult := 'Circuit saved in directory: "<CurrentDSSDir>"'`

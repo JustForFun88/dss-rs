@@ -201,10 +201,10 @@ fn calc_laplacian_without_inc_matrix_errors_8877() {
     dss.command("solve");
     assert!(dss.errors().is_empty(), "setup errors: {:?}", dss.errors());
     dss.command("CalcLaplacian");
-    let errs = dss.errors();
+    let errs = dss.error_texts();
     assert_eq!(
         errs,
-        &[
+        [
             "Indidence matrix is not present. Please run either \"CalcIncMatrix\" or \"CalcIncMatrix_O\" first."
                 .to_string()
         ],

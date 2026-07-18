@@ -41,7 +41,7 @@ fn setup() -> Dss {
 }
 
 fn last_errors(dss: &Dss) -> String {
-    dss.errors().join(" || ")
+    dss.error_texts().join(" || ")
 }
 
 /// A class-prefixed item (any case) hits the proxy `GetDSSClass` case bug →

@@ -102,7 +102,7 @@ impl Sensor {
     /// Pascal `RecalcElementData`: validate the metered element + terminal,
     /// adopt its phase/conductor counts and bus, then clear + size + zero the
     /// measured arrays.
-    pub fn recalc(&mut self, errors: &mut Vec<String>) {
+    pub fn recalc(&mut self, errors: &mut crate::diag::ErrorLog) {
         self.needs_recalc = false;
         self.valid_sensor = false;
         let Some(snap) = self.med.metered_snap.clone() else {

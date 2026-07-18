@@ -374,8 +374,8 @@ fn ncim_report_exports_without_ncim_solve() {
 
     dss.command("Export Jacobian");
     assert_eq!(
-        dss.errors(),
-        &["Jacobian matrix not built.".to_string()],
+        dss.error_texts(),
+        ["Jacobian matrix not built.".to_string()],
         "Export Jacobian without NCIM should raise #222"
     );
     let n_errs = dss.errors().len();

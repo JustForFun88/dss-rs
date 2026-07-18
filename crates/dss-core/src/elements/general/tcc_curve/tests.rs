@@ -11,7 +11,7 @@ fn edit_and_dump(edits: &[(&str, &str)]) -> Vec<(String, String)> {
     let mut parser = Parser::new();
     let vars = ParserVars::new();
     let enums = EnumRegistry::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
 
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
@@ -103,7 +103,7 @@ fn build_curve(npts: &str, c: &str, t: &str) -> TccCurveObj {
     let mut parser = Parser::new();
     let vars = ParserVars::new();
     let enums = EnumRegistry::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (n, v) in [("npts", npts), ("C_array", c), ("T_array", t)] {
         let idx = cls.property_index(n).unwrap();
         let mut eng = PropEngine {
@@ -188,7 +188,7 @@ fn log_points_track_c_array() {
     let mut parser = Parser::new();
     let vars = ParserVars::new();
     let enums = EnumRegistry::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (n, v) in [("npts", "2"), ("C_array", "1 100")] {
         let idx = cls.property_index(n).unwrap();
         let mut eng = PropEngine {

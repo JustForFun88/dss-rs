@@ -50,9 +50,10 @@ pub enum LineConstantsKind {
 /// merged `TCableConstants` engine. `INVALID`/`Bare` conductors contribute no
 /// CN/TS cable branch (a plain overhead wire buried among cables). Ordinals match
 /// the Pascal enum (INVALID=0, CN=1, TS=2, Bare=3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConductorType {
     /// `INVALID` — never assigned a cable type (Allocmem zero); no cable branch.
+    #[default]
     Invalid,
     /// `CN` — concentric-neutral cable conductor.
     Cn,
@@ -134,43 +135,61 @@ fn cln_fpc(z: Complex64) -> Complex64 {
     Complex64::new(cabs_fpc(z).ln(), z.im.atan2(z.re))
 }
 
-/// Pascal `TLineConstants`: the conductor coordinate/parameter arrays plus the
-/// computed `Z`/`Yc` matrices. Conductor parameters are stored internally in
-/// meters / ohms-per-meter (the setters convert from the supplied units).
+/// Per-conductor cable extension — the merged `TCableConstants` subclass arrays
+/// gathered into one struct. Present (`Some`) on every conductor of a cable
+/// engine, absent (`None`) on an overhead conductor: this `Option` is the typed
+/// form of the Pascal "subclass arrays empty on overhead lines" trick. dss_capi
+/// 0.15.x holds the CN and TS data together and selects per conductor via
+/// `cond_type`. Units are meters / per-meter; `Default` gives the Pascal
+/// `Allocmem` zeros (`FCondType=INVALID`, `semiconLayer=false`, `kStrand=0`).
+#[derive(Debug, Clone, Default)]
+struct CableData {
+    eps_r: f64,     // relative permittivity of insulation
+    ins_layer: f64, // m
+    dia_ins: f64,   // m, diameter over insulation
+    dia_cable: f64, // m, diameter over cable
+    // Per-conductor cable kind (`FCondType`) and semicon-layer flag
+    // (`semiconLayer`, CableConstants.pas).
+    cond_type: ConductorType,
+    semicon_layer: bool,
+    // Concentric-neutral strand data (CN conductors); zeroed for TS/bare.
+    k_strand: i32,
+    dia_strand: f64, // m
+    gmr_strand: f64, // m
+    rstrand: f64,    // ohms/m
+    // Tape-shield data (TS conductors); zeroed for CN/bare.
+    dia_shield: f64, // m
+    tape_layer: f64, // m
+    tape_lap: f64,   // percent
+}
+
+/// One conductor of a `TLineConstants` geometry: coordinates plus electrical
+/// parameters, stored internally in meters / ohms-per-meter (the setters convert
+/// from the supplied units). `cable` carries the cable-subclass data on a
+/// `TCableConstants` engine and is `None` for overhead.
+#[derive(Debug, Clone)]
+struct Conductor {
+    x: f64,
+    y: f64,
+    rdc: f64,        // ohms/m
+    rac: f64,        // ohms/m
+    gmr: f64,        // m
+    radius: f64,     // m
+    cap_radius: f64, // m; <0 ⇒ defaults to radius
+    cable: Option<CableData>,
+}
+
+/// Pascal `TLineConstants`: the per-conductor geometry/parameters plus the
+/// computed `Z`/`Yc` matrices.
 #[derive(Clone)]
 pub struct LineConstants {
     kind: LineConstantsKind,
     num_conds: usize,
     nphases: usize,
 
-    fx: Vec<f64>,
-    fy: Vec<f64>,
-    frdc: Vec<f64>,       // ohms/m
-    frac: Vec<f64>,       // ohms/m
-    fgmr: Vec<f64>,       // m
-    fradius: Vec<f64>,    // m
-    fcapradius: Vec<f64>, // m; <0 ⇒ defaults to fradius
-
-    // Cable data (merged `TCableConstants`); empty for the overhead kind. Units
-    // are meters / per-meter like the base arrays. dss_capi 0.15.x holds the
-    // CN and TS arrays together and selects per-conductor via `fcond_type`.
-    feps_r: Vec<f64>,     // relative permittivity of insulation
-    fins_layer: Vec<f64>, // m
-    fdia_ins: Vec<f64>,   // m, diameter over insulation
-    fdia_cable: Vec<f64>, // m, diameter over cable
-    // Per-conductor cable kind (`FCondType`) and semicon-layer flag
-    // (`semiconLayer`, CableConstants.pas); empty for the overhead kind.
-    fcond_type: Vec<ConductorType>,
-    fsemicon_layer: Vec<bool>,
-    // Concentric-neutral strand data (CN conductors); zeroed for TS/bare.
-    fk_strand: Vec<i32>,
-    fdia_strand: Vec<f64>, // m
-    fgmr_strand: Vec<f64>, // m
-    frstrand: Vec<f64>,    // ohms/m
-    // Tape-shield data (TS conductors); zeroed for CN/bare.
-    fdia_shield: Vec<f64>, // m
-    ftape_layer: Vec<f64>, // m
-    ftape_lap: Vec<f64>,   // percent
+    // One entry per conductor (the former ~20 parallel `Vec`s). The cable
+    // subclass arrays live in each conductor's `cable: Option<CableData>`.
+    cond: Vec<Conductor>,
 
     fz_matrix: CMatrix,  // ohms/m
     fyc_matrix: CMatrix, // siemens/m  (jwC)
@@ -218,8 +237,9 @@ impl LineConstants {
     pub fn new_cn(num_conductors: usize) -> Self {
         let mut lc = Self::with_kind(num_conductors, LineConstantsKind::Cable);
         for i in 0..num_conductors {
-            lc.fcond_type[i] = ConductorType::Cn;
-            lc.fsemicon_layer[i] = true;
+            let c = lc.cable_mut(i);
+            c.cond_type = ConductorType::Cn;
+            c.semicon_layer = true;
         }
         lc
     }
@@ -229,7 +249,7 @@ impl LineConstants {
     pub fn new_ts(num_conductors: usize) -> Self {
         let mut lc = Self::with_kind(num_conductors, LineConstantsKind::Cable);
         for i in 0..num_conductors {
-            lc.fcond_type[i] = ConductorType::Ts;
+            lc.cable_mut(i).cond_type = ConductorType::Ts;
         }
         lc
     }
@@ -237,40 +257,32 @@ impl LineConstants {
     fn with_kind(num_conductors: usize, kind: LineConstantsKind) -> Self {
         let n = num_conductors;
         // The merged cable engine `Allocmem`s all extra arrays in the
-        // constructor; the overhead base leaves them empty (never indexed in
-        // its `Calc`).
+        // constructor (`Some(CableData::default())`, all zeros); the overhead
+        // base leaves them empty (`None`, never indexed in its `Calc`).
         let cable = matches!(kind, LineConstantsKind::Cable);
-        let z = |on: bool| if on { vec![0.0; n] } else { Vec::new() };
+        // Pascal initializes rdc/gmr/radius/capradius to "not set" (-1.0);
+        // rac/x/y are left zero by Allocmem.
+        let cond = (0..n)
+            .map(|_| Conductor {
+                x: 0.0,
+                y: 0.0,
+                rdc: -1.0,
+                rac: 0.0,
+                gmr: -1.0,
+                radius: -1.0,
+                cap_radius: -1.0,
+                cable: if cable {
+                    Some(CableData::default())
+                } else {
+                    None
+                },
+            })
+            .collect();
         LineConstants {
             kind,
             num_conds: n,
             nphases: n,
-            fx: vec![0.0; n],
-            fy: vec![0.0; n],
-            // Pascal initializes these four to "not set" (-1.0); FRac/FX/FY are
-            // left zero by Allocmem.
-            frdc: vec![-1.0; n],
-            frac: vec![0.0; n],
-            fgmr: vec![-1.0; n],
-            fradius: vec![-1.0; n],
-            fcapradius: vec![-1.0; n],
-            feps_r: z(cable),
-            fins_layer: z(cable),
-            fdia_ins: z(cable),
-            fdia_cable: z(cable),
-            fcond_type: if cable {
-                vec![ConductorType::Invalid; n]
-            } else {
-                Vec::new()
-            },
-            fsemicon_layer: if cable { vec![false; n] } else { Vec::new() },
-            fk_strand: if cable { vec![0; n] } else { Vec::new() },
-            fdia_strand: z(cable),
-            fgmr_strand: z(cable),
-            frstrand: z(cable),
-            fdia_shield: z(cable),
-            ftape_layer: z(cable),
-            ftape_lap: z(cable),
+            cond,
             fz_matrix: CMatrix::new(n),
             fyc_matrix: CMatrix::new(n),
             fz_reduced: None,
@@ -296,6 +308,26 @@ impl LineConstants {
         self.kind
     }
 
+    /// Borrow conductor `i`'s cable data. Panics on an overhead engine, matching
+    /// the Pascal precondition that the cable setters/`Calc` run only on a
+    /// `TCableConstants` engine (the former empty-array index-out-of-bounds).
+    #[inline]
+    fn cable(&self, i: usize) -> &CableData {
+        self.cond[i]
+            .cable
+            .as_ref()
+            .expect("cable data on a cable engine")
+    }
+
+    /// Mutable [`Self::cable`].
+    #[inline]
+    fn cable_mut(&mut self, i: usize) -> &mut CableData {
+        self.cond[i]
+            .cable
+            .as_mut()
+            .expect("cable data on a cable engine")
+    }
+
     pub fn num_conductors(&self) -> usize {
         self.num_conds
     }
@@ -318,25 +350,25 @@ impl LineConstants {
 
     pub fn set_x(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fx[i] = value * LineUnits::from_code(units).to_meters();
+            self.cond[i].x = value * LineUnits::from_code(units).to_meters();
         }
     }
 
     pub fn set_y(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fy[i] = value * LineUnits::from_code(units).to_meters();
+            self.cond[i].y = value * LineUnits::from_code(units).to_meters();
         }
     }
 
     pub fn set_rdc(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.frdc[i] = value * LineUnits::from_code(units).to_per_meter();
+            self.cond[i].rdc = value * LineUnits::from_code(units).to_per_meter();
         }
     }
 
     pub fn set_rac(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.frac[i] = value * LineUnits::from_code(units).to_per_meter();
+            self.cond[i].rac = value * LineUnits::from_code(units).to_per_meter();
         }
     }
 
@@ -344,9 +376,10 @@ impl LineConstants {
     /// when radius is still unset.
     pub fn set_gmr(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fgmr[i] = value * LineUnits::from_code(units).to_meters();
-            if self.fradius[i] < 0.0 {
-                self.fradius[i] = self.fgmr[i] / 0.7788; // equivalent round conductor
+            let c = &mut self.cond[i];
+            c.gmr = value * LineUnits::from_code(units).to_meters();
+            if c.radius < 0.0 {
+                c.radius = c.gmr / 0.7788; // equivalent round conductor
             }
         }
     }
@@ -355,16 +388,17 @@ impl LineConstants {
     /// is still unset.
     pub fn set_radius(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fradius[i] = value * LineUnits::from_code(units).to_meters();
-            if self.fgmr[i] < 0.0 {
-                self.fgmr[i] = self.fradius[i] * 0.7788; // default to round conductor
+            let c = &mut self.cond[i];
+            c.radius = value * LineUnits::from_code(units).to_meters();
+            if c.gmr < 0.0 {
+                c.gmr = c.radius * 0.7788; // default to round conductor
             }
         }
     }
 
     pub fn set_capradius(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fcapradius[i] = value * LineUnits::from_code(units).to_meters();
+            self.cond[i].cap_radius = value * LineUnits::from_code(units).to_meters();
         }
     }
 
@@ -424,13 +458,13 @@ impl LineConstants {
             self.frho_changed = true;
         }
         // Remove old value from Y positions first (offset already in meters).
-        for i in 0..self.num_conds {
-            self.fy[i] -= self.height_offset;
+        for c in &mut self.cond {
+            c.y -= self.height_offset;
         }
         self.height_offset = new_offset_m; // replace old value with new value
         // Add new value to Y positions.
-        for i in 0..self.num_conds {
-            self.fy[i] += self.height_offset;
+        for c in &mut self.cond {
+            c.y += self.height_offset;
         }
     }
 
@@ -488,22 +522,23 @@ impl LineConstants {
 
     /// `Get_Zint(i, EarthModel)`: internal impedance of conductor `i`.
     fn get_zint(&self, i: usize, earth_model: i32) -> Complex64 {
+        let cond = &self.cond[i];
         match earth_model {
             // SimpleCarson / FullCarson: no skin effect.
-            FULL_CARSON => cmplx(self.frac[i], self.fw * MU0 / (8.0 * std::f64::consts::PI)),
+            FULL_CARSON => cmplx(cond.rac, self.fw * MU0 / (8.0 * std::f64::consts::PI)),
             DERI => {
                 // with skin effect model; assume round conductor
                 let c1_j1 = cmplx(1.0, 1.0);
-                let alpha = c1_j1 * (self.ffrequency * MU0 / self.frdc[i]).sqrt();
+                let alpha = c1_j1 * (self.ffrequency * MU0 / cond.rdc).sqrt();
                 let i0i1 = if cabs_fpc(alpha) > 35.0 {
                     Complex64::new(1.0, 0.0)
                 } else {
                     cdiv_fpc(bessel_i0(alpha), bessel_i1(alpha))
                 };
-                c1_j1 * i0i1 * ((self.frdc[i] * self.ffrequency * MU0).sqrt() / 2.0)
+                c1_j1 * i0i1 * ((cond.rdc * self.ffrequency * MU0).sqrt() / 2.0)
             }
             // SIMPLECARSON and any other code take the no-skin-effect branch.
-            _ => cmplx(self.frac[i], self.fw * MU0 / (8.0 * std::f64::consts::PI)),
+            _ => cmplx(cond.rac, self.fw * MU0 / (8.0 * std::f64::consts::PI)),
         }
     }
 
@@ -515,21 +550,21 @@ impl LineConstants {
         // the equivalent phase-phase / phase-neutral distance (assumed to lie on
         // the X axis). 0-based: conductor `k` is a phase iff `k < nphases`.
         let fyi = if !self.equivalent_spacing {
-            self.fy[i].abs()
+            self.cond[i].y.abs()
         } else if i < self.nphases {
             self.avg_phase_height.abs()
         } else {
             self.avg_neutral_height.abs()
         };
         let fyj = if !self.equivalent_spacing {
-            self.fy[j].abs()
+            self.cond[j].y.abs()
         } else if j < self.nphases {
             self.avg_phase_height.abs()
         } else {
             self.avg_neutral_height.abs()
         };
         let fxi_fxj = if !self.equivalent_spacing {
-            self.fx[i] - self.fx[j]
+            self.cond[i].x - self.cond[j].x
         } else if (i < self.nphases && j < self.nphases) || (i >= self.nphases && j >= self.nphases)
         {
             self.eq_dist_ph_ph
@@ -648,9 +683,9 @@ impl LineConstants {
             let mut zi = self.get_zint(i, earth_model);
             let zspacing = if power_freq {
                 zi.im = 0.0; // for less than 1 kHz, use published GMR
-                lfactor * (1.0 / self.fgmr[i]).ln()
+                lfactor * (1.0 / self.cond[i].gmr).ln()
             } else {
-                lfactor * (1.0 / self.fradius[i]).ln()
+                lfactor * (1.0 / self.cond[i].radius).ln()
             };
             self.fz_matrix
                 .set(i, i, zi + zspacing + self.get_ze(i, i, earth_model));
@@ -663,7 +698,9 @@ impl LineConstants {
         for i in 0..self.num_conds {
             for j in 0..i {
                 let dij = if !self.equivalent_spacing {
-                    ((self.fx[i] - self.fx[j]).powi(2) + (self.fy[i] - self.fy[j]).powi(2)).sqrt()
+                    ((self.cond[i].x - self.cond[j].x).powi(2)
+                        + (self.cond[i].y - self.cond[j].y).powi(2))
+                    .sqrt()
                 } else if j < self.nphases && i >= self.nphases {
                     self.eq_dist_ph_n
                 } else {
@@ -683,13 +720,13 @@ impl LineConstants {
         // Self uses capradius, which defaults to actual conductor radius.
         for i in 0..self.num_conds {
             if !self.equivalent_spacing {
-                let r = if self.fcapradius[i] < 0.0 {
-                    self.fradius[i]
+                let r = if self.cond[i].cap_radius < 0.0 {
+                    self.cond[i].radius
                 } else {
-                    self.fcapradius[i]
+                    self.cond[i].cap_radius
                 };
                 self.fyc_matrix
-                    .set(i, i, cmplx(0.0, pfactor * (2.0 * self.fy[i] / r).ln()));
+                    .set(i, i, cmplx(0.0, pfactor * (2.0 * self.cond[i].y / r).ln()));
                 continue;
             }
             // Equivalent spacing: use the avg phase/neutral height (Pascal uses
@@ -702,18 +739,18 @@ impl LineConstants {
             self.fyc_matrix.set(
                 i,
                 i,
-                cmplx(0.0, pfactor * (2.0 * h / self.fcapradius[i]).ln()),
+                cmplx(0.0, pfactor * (2.0 * h / self.cond[i].cap_radius).ln()),
             );
         }
         for i in 0..self.num_conds {
             for j in 0..i {
                 let (dij, dijp) = if !self.equivalent_spacing {
-                    let dij = ((self.fx[i] - self.fx[j]).powi(2)
-                        + (self.fy[i] - self.fy[j]).powi(2))
+                    let dij = ((self.cond[i].x - self.cond[j].x).powi(2)
+                        + (self.cond[i].y - self.cond[j].y).powi(2))
                     .sqrt();
                     // distance to image j
-                    let dijp = ((self.fx[i] - self.fx[j]).powi(2)
-                        + (self.fy[i] + self.fy[j]).powi(2))
+                    let dijp = ((self.cond[i].x - self.cond[j].x).powi(2)
+                        + (self.cond[i].y + self.cond[j].y).powi(2))
                     .sqrt();
                     (dij, dijp)
                 } else {
@@ -848,7 +885,7 @@ impl LineConstants {
                     } else {
                         self.eq_dist_ph_ph
                     };
-                    if dij < (self.fradius[i] + self.fradius[j]) {
+                    if dij < (self.cond[i].radius + self.cond[j].radius) {
                         return Some(format!(
                             "Conductors {} and {} occupy the same space.",
                             i + 1,
@@ -862,16 +899,17 @@ impl LineConstants {
 
         // Check for 0 (or negative) Y coordinate.
         for i in 0..self.num_conds {
-            if self.fy[i] <= 0.0 {
+            if self.cond[i].y <= 0.0 {
                 return Some(format!("Conductor {} height must be  > 0. ", i + 1));
             }
         }
         // Check for overlapping conductors.
         for i in 0..self.num_conds {
             for j in (i + 1)..self.num_conds {
-                let dij =
-                    ((self.fx[i] - self.fx[j]).powi(2) + (self.fy[i] - self.fy[j]).powi(2)).sqrt();
-                if dij < (self.fradius[i] + self.fradius[j]) {
+                let dij = ((self.cond[i].x - self.cond[j].x).powi(2)
+                    + (self.cond[i].y - self.cond[j].y).powi(2))
+                .sqrt();
+                if dij < (self.cond[i].radius + self.cond[j].radius) {
                     return Some(format!(
                         "Conductors {} and {} occupy the same space.",
                         i + 1,

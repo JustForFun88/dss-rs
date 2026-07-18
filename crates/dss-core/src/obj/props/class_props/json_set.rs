@@ -59,11 +59,14 @@ impl ClassProps {
                 // We push it and stop applying further properties; the caller
                 // aborts the whole import on a non-empty error list.
                 if pd.flags.contains(PropFlags::REQUIRED) {
-                    eng.errors.push(format!(
-                        "JSON/{}/{}: required property not provided: \"{}\".",
-                        self.class_name(),
-                        obj.data().name(),
-                        key
+                    eng.errors.push(crate::diag::DssDiagnostic::msg(
+                        format!(
+                            "JSON/{}/{}: required property not provided: \"{}\".",
+                            self.class_name(),
+                            obj.data().name(),
+                            key
+                        ),
+                        Some(5021),
                     ));
                     return;
                 }
@@ -137,7 +140,7 @@ impl ClassProps {
         if let Some(s) = json_to_value_string(pd, jval)
             && let Err(e) = self.edit_property(obj, idx, &s, eng)
         {
-            eng.errors.push(e.message().to_string());
+            eng.errors.push(e);
         }
     }
 }

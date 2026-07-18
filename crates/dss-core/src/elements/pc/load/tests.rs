@@ -18,7 +18,7 @@ fn build_shape(edits: &[(&str, &str)]) -> LoadShapeObj {
     let mut obj = LoadShapeObj::new("d");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
@@ -45,7 +45,7 @@ fn build_growth_shape(
     let mut obj = GrowthShapeObj::new("g");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
@@ -160,7 +160,7 @@ fn edit_load(edits: &[(&str, &str)]) -> Load {
     let mut load = Load::new("lz");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {

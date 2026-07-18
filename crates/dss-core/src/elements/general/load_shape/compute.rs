@@ -396,7 +396,7 @@ impl LoadShapeObj {
     /// (`DoSimpleMsg` 622/623), then snapshot `dP` — and `dQ` when `Assigned(dQ)`
     /// — into a [`ShapeSave`] for the executive (which owns `OutputDirectory` /
     /// `GlobalResult`). LoadShape uses the `_P`/`_Q` filename split.
-    pub(super) fn queue_shape_save(&mut self, sng: bool, errors: &mut Vec<String>) {
+    pub(super) fn queue_shape_save(&mut self, sng: bool, errors: &mut crate::diag::ErrorLog) {
         // Pascal `UseFloat64` (LoadShape.pas:1888/1946): ensure the f64 arrays.
         self.use_float64();
         // MMF (`MemoryMapping=Yes`): Pascal re-reads each value at save time via
@@ -416,9 +416,10 @@ impl LoadShapeObj {
         // Pascal `if not Assigned(dP)` → `DoSimpleMsg('%s P multipliers not
         // defined.', [FullName], 622/623)` then `Exit`.
         let Some(p) = self.p_mult.as_ref() else {
-            errors.push(format!(
-                "LoadShape.{} P multipliers not defined.",
-                self.data.name()
+            errors.push(crate::diag::DssDiagnostic::msg(
+                format!("LoadShape.{} P multipliers not defined.", self.data.name()),
+                // SaveToSngFile → 623, SaveToDblFile → 622 (LoadShape.pas:1891/1949).
+                Some(if sng { 623 } else { 622 }),
             ));
             return;
         };
@@ -440,7 +441,7 @@ impl LoadShapeObj {
 
     /// Pascal `TLoadShapeObj.Normalize`: scale the multipliers so the peak (or
     /// `BaseP`/`BaseQ` if set) becomes 1.0.
-    pub(super) fn normalize(&mut self, errors: &mut Vec<String>) {
+    pub(super) fn normalize(&mut self, errors: &mut crate::diag::ErrorLog) {
         if !self.has_data(errors) {
             return;
         }
@@ -507,7 +508,7 @@ impl LoadShapeObj {
 
     /// Pascal `TLoadShapeObj.HasData`: true once P multipliers exist; otherwise
     /// records error 61107 and returns false.
-    fn has_data(&mut self, errors: &mut Vec<String>) -> bool {
+    fn has_data(&mut self, errors: &mut crate::diag::ErrorLog) -> bool {
         if self.p_mult.as_ref().is_some_and(|p| !p.is_empty()) {
             return true;
         }
@@ -1003,10 +1004,13 @@ impl LoadShapeObj {
                 if let Some(row) = err_row {
                     // Pascal `DoSimpleMsg(#705)` then stop-and-shrink
                     // (`Utilities.pas:515-521`); `vals` already holds only `i-1`.
-                    self.data.push_error(format!(
-                        "LoadShape.{}: (#705) Error reading {row}-th numeric array \
-                         value from file.",
-                        self.data.name()
+                    self.data.push_error(crate::diag::DssDiagnostic::msg(
+                        format!(
+                            "LoadShape.{}: (#705) Error reading {row}-th numeric array \
+                             value from file.",
+                            self.data.name()
+                        ),
+                        Some(705),
                     ));
                 }
                 vals

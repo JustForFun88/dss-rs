@@ -191,7 +191,7 @@ fn line_unknown_linecode_errors_and_continues() {
     assert!(
         dss.errors()
             .iter()
-            .any(|e| e == "Line.l5.LineCode: LineCode object \"nosuch\" not found."),
+            .any(|e| e.text() == "Line.l5.LineCode: LineCode object \"nosuch\" not found."),
         "{:?}",
         dss.errors()
     );
@@ -471,7 +471,7 @@ fn line_illegal_phase_change_reverts_and_logs() {
     assert!(
         dss.errors()
             .iter()
-            .any(|e| e == "Illegal change of number of phases for \"Line.l1\""),
+            .any(|e| e.text() == "Illegal change of number of phases for \"Line.l1\""),
         "expected the 18101 message, got {:?}",
         dss.errors()
     );
