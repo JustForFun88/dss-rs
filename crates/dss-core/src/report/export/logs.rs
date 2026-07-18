@@ -26,19 +26,30 @@ pub(crate) fn export_event_log(entries: &[String]) -> String {
     save_string_list(entries)
 }
 
-/// `ExportErrorLog` — dump `DSS.ErrorStrings`: the `DoSimpleMsg` record-and-
-/// continue messages. Rust's `Dss::errors` accumulates the same messages with the
-/// same run lifecycle (grown by `DoSimpleMsg`, cleared only by `Clear`). The
-/// **content** is not byte-faithful, though: Pascal builds each `ErrorStrings`
+/// `ExportErrorLog` — dump `Dss::errors`: the `DoSimpleMsg`/`DoErrorMsg`
+/// record-and-continue diagnostics. Each line is `[dss::eNNN] {message}` when
+/// the diagnostic carries a Pascal error number, or the bare `{message}`
+/// otherwise (P5 format — frozen: the stable identity of an error is its
+/// `dss::eNNN` code, so a code-first prefix is the machine-readable half and
+/// the free-form text follows).
+///
+/// The **content** is never oracle-compared: Pascal builds each `ErrorStrings`
 /// entry as `Format('(%d) %s', [ErrorNumber, S])` (`DSSGlobals.pas:275`) — a
-/// leading `(errnum)` our port has no `ErrorNumber` concept to reproduce, and the
-/// message text itself is hand-ported. So the empty dump (the common case) is
-/// exact, but a non-empty `Export ErrorLog` diverges from the oracle in numbering
-/// and wording — a cross-cutting error-subsystem-fidelity item outside Phase 8
-/// (tracked in STATUS §WP8.3 step 3a), which is why its content is gated Rust-side
-/// only, never against the oracle.
-pub(crate) fn export_error_log(entries: &[String]) -> String {
-    save_string_list(entries)
+/// different prefix and hand-ported wording — so `Export ErrorLog` is gated
+/// Rust-side only (STATUS §WP8.3 step 3a). The empty dump (the common case, and
+/// the `export_errorlog` golden) is byte-identical regardless of format.
+pub(crate) fn export_error_log(entries: &[crate::diag::DssDiagnostic]) -> String {
+    let mut out = String::new();
+    for e in entries {
+        match e.code {
+            Some(n) => out.push_str(&format!("[dss::e{n}] {}\n", e.message)),
+            None => {
+                out.push_str(&e.message);
+                out.push('\n');
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -49,6 +60,19 @@ mod tests {
     fn empty_list_is_empty_file() {
         assert_eq!(export_event_log(&[]), "");
         assert_eq!(export_error_log(&[]), "");
+    }
+
+    #[test]
+    fn error_log_prefixes_the_code_when_present() {
+        use crate::diag::DssDiagnostic;
+        let entries = vec![
+            DssDiagnostic::msg("Object Class \"widget\" not found", Some(705)),
+            DssDiagnostic::msg("no code here", None),
+        ];
+        assert_eq!(
+            export_error_log(&entries),
+            "[dss::e705] Object Class \"widget\" not found\nno code here\n"
+        );
     }
 
     #[test]

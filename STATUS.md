@@ -7,6 +7,33 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### UNIFIED_GATE Phase 0 — baseline recorded (2026-07-18)
+
+`UNIFIED_GATE_PLAN.md` execution started (parallel worktree agents; Phases
+A/B in flight on `ug-phase-a`/`ug-phase-b`, based `449c745`). Phase 0
+baseline, tag **`pre-unified-gate`** = `449c745`:
+
+- Full three-command gate wall-clock (measured 2026-07-18 01:52–02:00,
+  **under concurrent load** — the ORPHANED_GAPS session was merging og*
+  branches into `update` mid-run, so treat as an upper-bound baseline):
+  fmt 1.4 s; clippy 50.5 s; `cargo +stable test --workspace` 426.6 s, of
+  which the serial one-shot corpus_live suite = 292.6 s (27 tests; ~510
+  cases across the four manifests). dss-core lib 1223+ unit tests.
+- Populations at baseline: `solvable_now` 293 (oracle: 246 pinned /
+  30 capi015 / 10 r4133 / 6 r3723 / 1 r4088), families asymmetric 47 /
+  controls 101 / modes 69, `.dss` bijection 915, `known_diffs.json` 25
+  entries (the Phase D ledger seed).
+- The one red in the baseline run (`json_transformer_micro`) was an
+  artifact of compiling mid-merge of og1213 (BHCurrent/BHFlux emission
+  before its `SUPPRESS_JSON` fix landed) — not a unified-gate item;
+  re-verified at the next merge-window gate.
+
+Wall-clock table (rows appended per plan §6 at Phases B/D/F):
+
+| point | fmt | clippy | test (full) | corpus gate share |
+|---|---|---|---|---|
+| `pre-unified-gate` (449c745, loaded box) | 1.4 s | 50.5 s | 426.6 s | 292.6 s |
+
 ### OG-1.4 AltDSS JSON import `Circuit_FromJSON` (orphaned-gaps round, 2026-07-18)
 
 Ported the whole-circuit AltDSS JSON **reader** — the inverse of the JSON export —
@@ -170,6 +197,48 @@ Records: `docs/phase-records/test-triage-{promotions,ad-classify,monitor-winding
 - Gate after merges: fmt/clippy clean, `cargo +stable test --workspace` exit 0;
   population.lock consistency re-proven by deliberate regen (no diff).
 
+### DE_PASCALIZE P13 — VCCS delay line → `RingBuf` (wave 2, branch `wt-p1213-v2`)
+
+Stratum **[A]** bit-neutral. The VCCS z-domain filter's two wrap-around
+histories (`z`/`whist`, tapped via the 1-based circular `MapIdx(iu-k+1, fl)` in
+`vccs/dynamics.rs`) become a `RingBuf` type whose `tap()` accessor encapsulates
+the wraparound (calling the unchanged `map_idx`) and whose `Index`/`IndexMut`
+serve the direct head/snapshot access. `y2`/`zlast`/`wlast` stay `Vec` (never
+`MapIdx`-tapped). Same slots, same statement order. Proof: new
+`ringbuf_tap_reproduces_pascal_map_idx_order` unit test (hardcoded `[1,5,4,3,2]`
+tap-order pin + an independent wraparound-range check that every raw index folds
+into a live slot `1..=len`) + the 3 oracle-gated Monitor-mode-3
+dynamics-trajectory tests (`exec::tests::vccs`, waveform + RMS 1φ/3φ) all
+UNCHANGED. Full record: `docs/phase-records/depascalize-p13.md`.
+
+### DE_PASCALIZE P12 — `line_constants` `Vec<Conductor>` (wave 2, branch `wt-p1213-v2`)
+
+Stratum **[A]** bit-neutral. The ~20 parallel per-conductor arrays on
+`LineConstants` collapse into one `cond: Vec<Conductor>`; the 11 cable-only
+arrays become each conductor's `cable: Option<CableData>` (the typed form of the
+Pascal "subclass arrays empty on overhead" trick). Carson/DERI/coaxial kernels
+in `mod.rs`/`cable.rs`/`cn.rs`/`ts.rs` read `cond[i].field` / `cable(i).field` —
+same arithmetic, same order. FPC-compat helpers untouched. Salvaged the
+`origin/wt-p1213` WIP `70cefbb` (mod.rs only, interrupted) by clean cherry-pick,
+completed the remaining mod.rs + all cable/cn/ts sites, folded to one commit.
+Proof (all unchanged): 20 line-constants unit tests, `golden_line_constants`,
+`corpus_gate` checkpoint YPrims. Full record: `docs/phase-records/depascalize-p12.md`.
+
+**Settle (P12+P13 audit dispositions).** Two independent audits (code + tests)
+found the pair faithful and bit-neutral; three low-severity notes settled
+empirically: (1) a corpus-gate `iteration count differs` on `Test/YgD-Test.dss`
+seen once under parallel load, green on an identical re-run — that deck is a bare
+`New Line.Line1` (no geometry/linecode, no VCCS), so it touches neither the P12
+line_constants geometry kernel nor the P13 RingBuf; pre-existing harness/oracle
+parallel-load nondeterminism, NOT a P12/P13 regression, left as-is. (2) The new
+ringbuf unit test's second assertion loop restated `tap`'s own body
+(`tap(idx) == self[map_idx(idx,len)]`) and could never fail — replaced with an
+independent wraparound-range check (`tap` always folds into a live slot
+`1..=len`); the `[1,5,4,3,2]` order pin was and is the real behavioral baseline.
+(3) A "corpus_gate 11 passed" count in a transient audit-evidence message was a
+miscount (the target runs 25 tests) — it never appeared in any committed
+artifact (STATUS §gate already states 25), nothing to fix.
+
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),
@@ -232,7 +301,298 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
-### OG-1.5 `CAPI_Schema` JSON-schema export — static core ported (orphaned-gaps round, 2026-07-18)
+### WASM-UM WP-WM.0 — ABI freeze + probes (branch `wasm-um`, 2026-07-18)
+
+`WASM_USERMODELS_PLAN.md` execution started (WM.0→WM.2 authorized for this
+round; WM.3+ deferred — parallel workflows own the element files). WP-WM.0 is
+**docs + probe scripts only** (zero engine/product code changes):
+
+- **`docs/wasm/USERMODEL_ABI.md` FROZEN** — export lists (15/13/7 + `memory` +
+  `dss_alloc`), packed record offset tables **transcribed from FPC probe
+  output** (never from reading), the 32-slot callback import table (module
+  `dss_env`) with tiers + census, activation rule, failure/trap/sandbox
+  policy, probe-evidence ledger. Probe kit: `tools/fpc/usermodel_abi/`
+  (verbatim-extraction script + 2 offset probes + 15-export stub DLL + oracle
+  driver + build script); evidence: `docs/wasm/probes/p1..p5*.txt`.
+- **P1 (oracle loads native DLL): PASS, all 5 asserts** — pinned dss-python
+  0.15.7/0.14.5 loads the FPC-built stub via `Generator.UserModel=`, stub
+  state vars appear on the element variable surface, `UserData=` reaches
+  `Edit` (len verified), Model=6 snapshot converges with terminal currents ==
+  stub `Calc` output **bit-exact**, marshalled V == terminal-1 node voltage at
+  4.8e-7 rel (one fixed-point iterate stale by construction — documented in
+  the probe). **Plan §2.5 channel 1 CONFIRMED; r3723 fallback not engaged; the
+  WM.3 audit-tier escalation clause is moot.**
+- **P2 (layouts): packed confirmed** (release cfgs never set
+  `DSS_CAPI_NO_PACKED_RECORDS`; probed with `-Mdelphi` + release defines,
+  x86_64-win64): `TDynamicsRec` 52 B, `TGeneratorVars` 244 B (unaligned tail
+  after the 3 i32s — `#[repr(C)]` would mis-pad, noted in the ABI doc),
+  `TDSSCallBacks` 256 B = 32×8. dss_capi 0.14.5 vs r3723 header sets:
+  **byte-identical** (twin probe over the real vendored r3723 units).
+- **P2 twin decision: PLAN A** — FPC 3.2.2 `ppcrossx64 -Mdelphi` builds the
+  **vendored `IndMach012a.dpr` as-is** (search paths only, zero source edits;
+  `.res` links); the resulting DLL loads under the pinned oracle, all 14
+  machine vars live, Model=6 solve converges with physically-sensible slip
+  (−0.0064). Plan B (Rust native-shim twin) not needed.
+- **P3 (callback census): `MsgCallBack` only** (`IndMach012Model.pas:474`,
+  help text); parser bundled (`ModelParser`), `DoDSSCommand` **unused** ⇒ the
+  WM.6 deferral stands. Full 32-slot table in the ABI doc.
+- **P4 (toolchain pins):** stable rustc 1.96.0; `wasm32-unknown-unknown`
+  target added (machine-global, additive); `wasmi ==1.0.9`
+  (`default-features=false`, `features=["simd"]`, the typst-verified pin)
+  compiles on stable with a pure-Rust closure (wasmi_core/ir/collections
+  1.1.0, wasmparser 0.228.0, bitflags, libm, spin — zero C/FFI) and exposes
+  fuel + store-limiter APIs (`instantiate_and_start` is the 1.x spelling).
+  Initial `tools/wasm_usermodel/PIN.txt` written. No wasmi blocker ⇒ the pin
+  stands.
+- **§2.7 upgrade one-line diff check — one real finding:** the four loader
+  units + callback vtable + `TDynamicsRec` are contract-identical across
+  0.14.5→0.15.x and r3723→r4133 (host-side property→method refactors only),
+  **but** 0.15.x and r4088+ insert `deltaQNom: array of Double` into
+  `TGeneratorVars` between `Qnominalperphase` and `NumPhases` (+8 tail shift,
+  managed reference). Frozen ABI = pinned 0.14.5/r3723 layout; caution
+  recorded in the ABI doc §2.2 (never mix ≤r3723-header DLLs with
+  r4088/r4133 binaries; an engine upgrade to 0.15.x semantics must revisit by
+  recorded decision). Evidence `docs/wasm/probes/p5_upgrade_diff.txt`.
+
+Follow-ups: none blocking WM.1. `TStorageVars`/`TPVSystemVars`/
+`TCapControlVars` offset tables are frozen at their owning WPs (WM.4/WM.5) via
+the same probe kit (ABI doc §2.4 records this explicitly).
+
+### WASM-UM WP-WM.1 — the `dss-usermodel` crate (branch `wasm-wm1`, 2026-07-18)
+
+The wasmi host per plan §2.1–§2.3; template = the vendored typst plugin host
+(`.inputs/typst/.../plugin.rs`, cited in doc comments throughout). New leaf
+workspace crate `crates/dss-usermodel/` (`#![forbid(unsafe_code)]`; deps:
+`wasmi =1.0.9` pinned in `[workspace.dependencies]` per PIN.txt
+(`default-features=false`, `["simd"]`), `num-complex`, `dss-parser` (the owned
+AuxParser); dev-deps `wat` + `sha2`). No dss-core changes — the crate is not
+consumed yet (WM.3 wires it).
+
+- **`UserModelHost`** (`src/host.rs`): deterministic engine config (relaxed
+  SIMD off = typst `:271-272`; `consume_fuel(true)`), module compile, and
+  **load-time export-set validation** — `memory`, `dss_alloc`, then the
+  interface functions in the **Pascal binding order**
+  (`GenUserModel.pas:173-187` / `StoreUserModel.pas:336-348` /
+  `CapUserControl.pas:176-182`), so the first missing name is exactly what the
+  engine's 569/1569 path reports; present-but-wrong-signature = typed
+  `SignatureMismatch` (ABI §6 protocol violation). `InterfaceKind` carries the
+  five Pascal loader shapes (Gen15 `new(genvars,dynarec)`, Store15/PV15/Dyna13
+  `new(dynarec)`, Cap7 `new()`). `HostConfig`: per-call fuel budget (default
+  1e8 — the plan's <1%-of-budget calibration bar is verified against the real
+  fixture at WM.2) + 64 MiB memory cap.
+- **`UserModelInstance`/`CapControlInstance`** (`src/instance.rs`): one
+  `Store` per element binding (plan §2.7 — `Store` is `Send`, M3-safe); guest
+  buffers allocated once via `dss_alloc` (genvars 244 B / dynarec 52 B / V+I
+  `yorder`×16 / name scratch; grow-only edit + vars buffers) and range-checked
+  (`dss_alloc` returning 0 / out-of-range = typed error). Record shuttle =
+  `GeneratorVars`/`DynamicsRec` mirrors (`src/records.rs`) serialized
+  **field-by-field at the frozen ABI offsets** (never `#[repr(C)]` — the
+  packed unaligned tail; unit tests pin every offset against the ABI-doc
+  tables). Records written before and read back after **every** call (ABI
+  §2); Pascal wrapper quirks reproduced: `Edit` ignored while `FID=0`,
+  `Integrate` = `select(id)`+`integrate` (`GenUserModel.pas:123-138`),
+  `new`→0 = model-absent (`Get_Exists`), delete-guard on nonzero id.
+- **Callbacks** (`src/callbacks.rs` + `src/imports.rs`): the 32-slot
+  `TDSSCallBacks` vtable as module `dss_env`, tiered per ABI §4 — tier A
+  served from the per-call `Box<dyn Callbacks>` snapshot (default method
+  bodies mirror each Pascal nil path, incl. `Exit`-without-touching
+  semantics via `Option`), tier B = `Effect` queue (`Msg`,
+  `ControlQueuePush` with provisional handles `seed, seed+1, …` from
+  `control_queue_next_handle()` — exact Pascal handle sequence under
+  drain-in-order), tier C = owned `dss_parser::Parser` in `CallData`
+  reproducing `CallBackParser` semantics (`NextParam` returns the **value**
+  length and copies the **name**; `GetStrValue` serves `CB_Param` from the
+  last `NextParam` incl. the deterministic truncate-on-short-maxlen;
+  FPC-exception-on-conversion-error = UB upstream, defined port writes 0).
+  All 32 imports exist at link time; `do_dss_command`/`get_result_str`
+  (WM.6) and `get_active_element_ptr` (permanent) raise the loud attributed
+  `Unsupported` error when called — no silent no-ops (plan §2.9-5).
+- **Typed failure contract** (`src/error.rs`, ABI §6): faults recorded by
+  imports win (the typst `memory_error` take-pattern), then
+  `TrapCode::OutOfFuel` → `FuelExhausted`, `GrowthOperationLimited` (store
+  limiter with `trap_on_grow_failure`) → `MemoryCapExceeded`, else `Trap` —
+  every variant naming the model and function.
+- **Channel-2 protocol tests** (`tests/protocol.rs`, 23 tests, inline-WAT
+  guests via dev-dep `wat`): happy-path 15-function round trip (call
+  counters + V/I marshalling + records); record byte-exact round trip
+  (distinct bit patterns in every field → guest increments `Pshaft`/`t` →
+  only those change); tier A full-surface exerciser (all 22 snapshot reads
+  incl. copy-semantics counts) + the Pascal nil-path defaults; tier B order +
+  handle sequence; tier C parser round trip over the owned AuxParser;
+  missing export → exact name + binding-order-first + 13-vs-15-fn sets +
+  missing `memory`/`dss_alloc`; wrong signature; trap / fuel / import-OOB /
+  host-OOB / alloc-0 / memory-cap → the typed errors; unsupported-import
+  trio; CapControl 7-fn round trip; host-API misuse (`Usage`).
+  `tests/fixture_pin.rs` = the **hash-vs-PIN scaffold**, self-activating
+  (dormant pre-WM.2 state = no fixture + no `sha256(...)` line in PIN.txt;
+  any half-state is red; format documented for WM.2) — no `#[ignore]`.
+
+Workspace edits: members + `[workspace.dependencies].wasmi` +
+`[profile.dev.package.dss-usermodel]` opt-3 (safety knobs pinned) in the root
+`Cargo.toml`. Follow-ups for WM.2: commit the fixture + PIN hash line
+(activates the scaffold), verify the fuel-calibration bar (<1% of 1e8 per
+reference-model call).
+
+### WASM-UM WP-WM.2 items 1–3 — IndMach012a fixture port + pinned `.wasm` + native twin (branch `wasm-wm2`, 2026-07-18)
+
+Items 1–3 of plan §WP-WM.2 (+ the item-4 data pre-stage); item 4 (fixture
+self-gate through the `dss-usermodel` API) and item 5 (audits) belong to the
+integrator/workflow. Zero product-code changes — everything lives under
+`tools/wasm_usermodel/`, `tests/fixtures/wasm/`, `docs/wasm/probes/`.
+
+- **Item 1 — the port.** `tools/wasm_usermodel/models/indmach012a/`
+  (workspace-excluded crate, `[workspace]` opt-out, zero deps, cdylib+rlib):
+  loop-for-loop port of r3723 `IndMach012Model.pas` (machine math, slip
+  clamp, dSdP, dynamic/pflow currents, trapezoidal `Integrate`, 14-variable
+  surface — `model.rs`), `MainUnit.pas` (ModelList/ActiveModel semantics incl.
+  the delete-clears-active quirk and the guarded/unguarded nil-ActiveModel
+  split — `mainunit.rs`), the units the DLL links: `Ucomplex.pas` **as this
+  source defines it** (naive `CDIV`/`Cabs`, NOT dss-core's `cdiv_fpc` Smith
+  helpers — `cmath.rs`), `mathutil`/`Ucmatrix` sym-comp path with `Ap2s`
+  produced by a verbatim `TcMatrix.Invert` port at init (`symcomp.rs`), and a
+  minimal `ParserDel`/`Command`/`HashList` scanner (`parser.rs`; RPN-in-quotes
+  reduced to a loud trap — plan-§2.6-sanctioned, decks never use it). Boundary:
+  `records.rs` codecs at the frozen ABI offsets (never `#[repr(C)]`),
+  `wasm_exports.rs` = the 15 exports + `dss_alloc` over a safe allocation
+  registry; exactly ONE `unsafe` expression in the crate (the `dss_env.
+  msg_callback` import call). Pascal citations throughout.
+  `TODO(compat)`×3: truncated `0.866025403` (SetAMatrix), truncated `1.732`
+  (Compute_dSdP), and **a new find** — FPC folds the all-constant `3.0/746.0`
+  (HPshaft var 14) at *single* precision (both operands single-exact ⇒ FPC
+  lowest-common-precision constant folding), reproduced as
+  `(3.0f32/746.0f32) as f64` and proven by decomposition (plain f64 quotient
+  misses the twin by 2.6e-8 rel; every other value bit-exact).
+- **Item 2 — pinned artifact.** `tests/fixtures/wasm/indmach012a.wasm`
+  committed (79045 B; exports = the 15 + `memory` + `dss_alloc`, sole import
+  `dss_env.msg_callback` — verified by wasm section parse). Reproducible
+  build proven (clean rebuild ⇒ identical SHA-256):
+  `pwsh tools/wasm_usermodel/build_wasm.ps1` (stable rustc 1.96.0,
+  `--remap-path-prefix`, locked release profile). PIN.txt updated with the
+  exact command + `sha256=1849db0c…9b0ebd` (the WM.1 hash-vs-PIN test binds
+  to it at integration).
+- **Item 3 — native twin (plan A) + item-4 pre-stage.**
+  `build_native.ps1` builds the vendored `IndMach012a.dpr` on demand (FPC
+  3.2.2 ppcrossx64, exact P2 flags; `%TEMP%` output, never committed).
+  `twin_probe.py` (ctypes over the frozen packed layouts, struct-offset
+  asserts) drives the twin through a deterministic lifecycle — New →
+  var-name surface (incl. StrLCopy truncation + out-of-range no-write) →
+  initial vars → Edit (abbrev `maxs`, case `Xm`, `option=variableslip`,
+  slip→Speed write) → 5 pflow `Calc` iterations (slip fixed-point) → `Init`
+  → 3 dynamics steps × predictor/corrector `Calc`+`Integrate` → SetVariable
+  → GetAllVars → Select edges → `help` (MsgCallBack text) → second instance
+  + Delete — and records ~200 values bit-exactly:
+  `docs/wasm/probes/p6_twin_expected.txt` (evidence) + generated
+  `tests/twin_expected.rs` (`--rust` mode). `tests/twin_parity.rs` replays
+  the identical scenario on the Rust port and asserts **f64-bit-exact
+  equality on every value** — green (2/2; `cargo +stable test` in the crate).
+  The integrator pins the committed `.wasm` against the same values through
+  the WM.1 crate API (item 4).
+- **Hygiene:** `.gitignore` +`tools/wasm_usermodel/models/*/target/`;
+  fixture crate is fmt/clippy-clean on host and wasm targets (not part of
+  the repo gate — workspace-excluded by design). Machine-global additions:
+  none required beyond WM.0's pins (the stray `rustup target add` on the
+  default *nightly* toolchain during this session is additive-only; the
+  fixture builds with `+stable` per PIN).
+- Deviation note: plan §2.6 sketches the guest as "`#![no_std]`-lean"; the
+  crate uses std (wasm32 std = the allocator/panic machinery only — no WASI,
+  no imports beyond `dss_env`, verified in the artifact's import section).
+  Chosen to keep the boundary in safe Rust (registry over `Box<[u8]>`); the
+  sandbox/determinism contract is unaffected.
+
+### WASM-UM WM.1+WM.2 integration — merge + WM.2 item 4 fixture self-gate (branch `wasm-um`, 2026-07-19)
+
+Merged `wasm-wm1` (WM.1, fast-forward) then `wasm-wm2` (WM.2 items 1–3; sole
+conflict = STATUS.md section placement, resolved by union — both records kept
+in WP order). Workspace `Cargo.toml`/`Cargo.lock` merged clean (WM.2's fixture
+crate is workspace-excluded by design). Cross-WP items neither side could do
+alone:
+
+- **WM.2 item 4 — fixture self-gate:**
+  `crates/dss-usermodel/tests/fixture_self_gate.rs` drives the COMMITTED
+  `tests/fixtures/wasm/indmach012a.wasm` through the full crate API chain
+  (`UserModelHost::load` Gen15 export validation → `UserModelInstance` record
+  shuttle → guest math) with hand-fed V/records, replaying the
+  `twin_probe.py` scenario S1–S11+S13 and pinning every recorded value
+  **f64-bit-exact** against the native-twin constants (`twin_expected.rs`,
+  evidence `docs/wasm/probes/p6_twin_expected.txt`): ~200 pins — currents (5
+  pflow + 6 dynamics calc), slip fixed-point, all 14 vars at 6 checkpoints,
+  GenVars `Speed` write-backs (new/edit/init/setvar), var names, `help`
+  MsgCallBack text byte-identical through the `dss_env` effect queue. S12/S14
+  (foreign-id select, two models in one guest) are single-shared-DLL
+  artifacts the per-element-instance design deliberately does not expose
+  (plan §2.7); pinned instead: own-id select round-trip + a fresh-guest
+  second instance (id=1 again, post-Create pins verbatim) + delete clears
+  `exists`. GREEN — the committed binary and the WM.1 shuttle agree with the
+  FPC twin bit-for-bit.
+- **Hash-vs-PIN scaffold now ACTIVE:** with the fixture + PIN sha256 line
+  committed, `fixture_pin.rs::committed_fixture_hash_matches_pin` takes the
+  active branch and verifies `1849db0c…9b0ebd` — green.
+- **WM.1 fuel-calibration follow-up settled:** the plan's bar (<1% of the
+  1e8 default per reference-model call) is proven by a second self-gate run
+  under `fuel_per_call = DEFAULT/100` — the entire scenario (instantiation
+  included) completes with no `FuelExhausted`.
+- Fixture crate's own `twin_parity` suite re-verified green post-merge;
+  full three-command gate green at default settings; `tests/corpus` pristine
+  (stray solver outputs from an aborted run removed path-limited). One
+  transient on the first full-gate run: `corpus_gate` CapiV0145
+  `asymmetric:isource/isource_snap.dss` step-0 voltage off by 3.6e-3 (>floor
+  8.2e-6), NOT reproducible — same binary re-run green twice (513→514/514 and
+  the full workspace re-run), diff touches no dss-core code. Suspected
+  cross-session oracle-server contention (parallel workflows active); watch
+  if it recurs — a reproducible hit would need the CLAUDE.md prove-it
+  discipline, not a shrug.
+
+### WASM-UM WM.0–WM.2 settle — audit dispositions (branch `wasm-um`, 2026-07-19)
+
+Two independent `opus-xhigh` audits of `ae4b4ef..4051d833` (audit-code +
+audit-tests): **verdict faithful, zero Critical/Major**; both independently
+re-derived the ABI offsets, rebuilt the native twin AND the wasm fixture
+(byte-identical to the PIN), and re-ran the full gate. Findings settled
+empirically:
+
+- **WM-AUD-1 (Minor, FIXED — doc):** the frozen ABI doc omitted the
+  `get_node_voltages` ground-slot indexing decision (native
+  `GetPtrToSystemVarrayCallBack` returns the raw `Solution.NodeV` pointer
+  whose offset-0 element IS ground, `Solution.pas:88/:198`; the crate contract
+  serves `NodeV[1..NumNodes]` ground-excluded). Recorded via the doc's
+  recorded-decision mechanism (header note + §4 row 17 + indexing note with
+  the porting consequence) **before WM.3 wires the slot**; contract unchanged.
+- **WM-AUD-2 (Minor, premise DISPROVEN by probe; residual recorded):** FPC
+  3.2.2 `Val` was probed directly (ppcrossx64 x64 exe —
+  `docs/wasm/probes/p7_fpc_val_domain.txt`): it **accepts** `inf`/`nan` (any
+  case) and leading spaces, exactly like Rust `parse::<f64>()` — the fixture
+  matches the spec there. Residual Rust-wider domain (`infinity`,
+  trailing/tab whitespace via `trim`) is unreachable (tokenizer never yields
+  whitespace-padded unquoted tokens; quoted branch is RPN upstream, whose own
+  tokenizer skips whitespace; no deck feeds `infinity`). Deliberately NOT
+  changed. Lesson captured: the fixture **source is hash-frozen with the
+  artifact** — a comment-only parser.rs edit shifts panic-`Location` line
+  numbers and changes the built wasm hash (verified: pristine rebuild = the
+  pinned `1849db0c…`, +10-comment-lines rebuild = `7da8ee46…`), so fixture
+  notes live in probes/STATUS, never as source edits without a deliberate
+  re-pin.
+- **WM-T4 (Minor, FIXED):** `fixture_pin.rs`'s pre-WM.2 dormant arm
+  (no fixture + no PIN line = pass) retired — the fixture is permanent as of
+  WM.2, so both halves are now required unconditionally (simultaneous
+  deletion of fixture + PIN line is red). Strictly strengthens the gate.
+- **WM-T1 (Informational, ACCEPTED — plan-sanctioned):** the fixture crate's
+  `twin_parity` suite + fmt/clippy are workspace-excluded by design (plan
+  §2.6); the committed artifact IS gated every `cargo test` (self-gate ~200
+  bit pins + hash-vs-PIN). Follow-through: the plan's WM.7 exit sweep now
+  lists an explicit `twin_parity`+fmt/clippy re-run for the fixture crates.
+- **WM-T3 (Informational, ACCEPTED as designed):** twin scenarios S12/S14
+  (foreign-id select, two models in one guest) are single-shared-DLL
+  artifacts the per-element-instance design never exposes (plan §2.7);
+  crate-level surrogates pin the equivalent paths — already documented in the
+  self-gate header and the integration record.
+- **WM-AUD-4 / WM-T2 (watch item, STANDS):** the one non-reproducible
+  `corpus_gate` transient (isource_snap step-0, 3.6e-3 vs floor 8.2e-6; green
+  on 4 total re-runs across author+auditor) stays a recorded watch — a
+  reproducible hit gets the CLAUDE.md prove-it discipline.
+- **WM-AUD-3 (environmental):** a parallel session's corpus_gate run wrote
+  stray solver outputs into this worktree during the audit; the committed
+  range was verified clean at audit start. `tests/corpus` re-verified
+  pristine at settle.
 
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
@@ -819,8 +1179,11 @@ open item is not buried in the §1a archive):
   DIAKOPTICS Part II WP-AD.5 — partial.** `exec/command.rs:69` `NOT_PORTED`; WP-AD.6
   threaded children not started (needs MULTITHREADING M2).
 - **User-model native DLLs (Gen/PVSystem/Storage/CapControl UserModel) →
-  WASM_USERMODELS — NOT started.** All still `PropFlags::NOT_PORTED`; the sandboxed
-  wasmi replacement is unbuilt (`#![forbid(unsafe_code)]` cannot load a DLL).
+  WASM_USERMODELS — infrastructure DONE (WM.0–WM.2, §WASM-UM records), element
+  wiring NOT started.** The six properties still carry `PropFlags::NOT_PORTED`
+  / warn-and-fallback; the sandboxed replacement now exists (`dss-usermodel`
+  wasmi host + pinned `indmach012a.wasm` fixture, twin-pinned bit-exact) and
+  WM.3+ flips the properties to the plan §2.4 uniform rule.
 
 **Residual floors / parked (documented, not bugs):**
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — ultra-switch
@@ -1059,6 +1422,678 @@ CLI runs the real masters (`cargo run -p dss-cli -- script.dss`).
 
 
 ---
+
+## 1g. UNIFIED_GATE Phase B — persistent oracle pools + hand-rolled scheduler (branch `ug-phase-b`)
+
+`UNIFIED_GATE_PLAN.md` §4 Phase B. Behavior-identical parallelization of the live
+corpus gate; no comparison, tolerance, golden, or `harness` change.
+
+- **Rename + module tree.** `crates/dss-core/tests/corpus_live.rs` → `corpus_gate.rs`
+  (git rename, `--follow` preserved) with `#[path="corpus_gate/…"]` submodules:
+  `manifest.rs` (schema + loaders + family completeness + AD disposition — schema
+  UNCHANGED, `oracle` field still honored, `ORACLE_SPECS` stays), `engines.rs`
+  (one-shot `Oracle` + persistent `WorkerPool`/`Worker` + `Channel`), `runner.rs`
+  (`run_rust_capture` + `compare_capture` split of `run_and_compare`, CorpusGuard,
+  abort/pending), `scheduler.rs` (task grouping + thread pool + proof modes).
+- **Persistent pinned pool (D8).** N long-lived `python -u oracle_server.py`
+  (`DSS_ORACLE_ENGINE=capi`) workers, ping-verified per process, dedicated
+  stdout-line + stderr-drain threads, one in-flight request each, per-request
+  deadline `DSS_ORACLE_TIMEOUT_SECS` (default 120) → kill/respawn/retry-once-then-
+  fail-case, recycle after 64 cases. Target-rev cases (`capi015`/`r3723`/`r4088`/
+  `r4133`) keep the ONE-SHOT `Oracle` path via `Channel::OneShot`.
+- **Scheduler (D7a + §3.3).** ONE `#[test]` `corpus_gate_all_cases_match_engines`
+  over the union of all four manifests (510 cases); task = case-dir group (cases
+  sequential inside → NO per-dir mutexes), longest-first static weight,
+  `AtomicUsize` cursor + `std::thread::scope`, T = `DSS_GATE_JOBS` |
+  `available_parallelism()` (16), per-channel pool `max(2,T/2)`. Per-case
+  `catch_unwind`; the one test fails iff any case failed and prints the COMPLETE
+  list (manifest order) — replaces the 4 abort-at-first tests
+  (`corpus_live_solvable_cases_match_oracle` + `{asymmetric,controls,modes}_cases_
+  match_oracle`). Structural manifest guards, `corpus_live_{classify,properties,
+  opendss}`, and the AD sweep are preserved (relocated, not changed).
+- **`isolate` (the one permitted early schema addition, §1.2).** Additive
+  `isolate: bool` (+ `note`, `isolate ⇒ note` enforced structurally); an isolate
+  case runs every execution on a throwaway one-shot worker. Default false; absent
+  everywhere until the contamination proof demanded it.
+
+**Contamination proof (§4 Phase B DONE bar).** Ran the full 510-case set three
+ways — (a) serial one-shot (`DSS_GATE_SERIAL=1`, T=1, fresh process per case), (b)
+persistent parallel, (c) persistent parallel shuffled (`DSS_GATE_SHUFFLE=1234567`) —
+each dumping a label-sorted `{verdict, result}` artifact (`DSS_GATE_DUMP`). All
+three **bit-identical** — sha256 `e041e018…08116` on all three 1.276 GB dumps,
+`diff -q` empty pairwise (settle re-run 2026-07-18).
+
+Three real persistent-worker contamination classes were found and root-caused
+(they pass one-shot, fail/pollute persistent) → `isolate: true` (22 cases):
+- **AutoAdd process-exit corruption** (`modes/autoadd/autoadd{,_cap}.dss`): the
+  documented AutoAdd solve corrupts the dss-python process, so the NEXT case on a
+  reused worker access-violates on `clear`. Isolated → the corruption dies with
+  the throwaway process.
+- **debugtrace held-open trace CSV** (17 solvable_now cases: 7 ckt24-mm masters +
+  EPRI/ADiakoptics ckt24 + DOCTechNote + NCIM + StorageTechNote): a `debugtrace`
+  RegControl/Storage keeps a fixed-name trace CSV open in the persistent worker,
+  so a different worker locks the file (`#303 being used by another process`) and
+  the CorpusGuard cannot delete it (pollution). Isolated → the handle releases at
+  process exit.
+- **File-backed loadshape read drift** (3 `modes/inputformat` decks —
+  `shape_mmf`, `shape_filearr`, `shape_binfiles`; found during the settle gate
+  re-run, 2026-07-18). A pooled worker reused across many decks intermittently
+  (~1-in-3 full-workspace runs) misreads a deck's file-backed loadshape data
+  (binary `sng`/`dbl`, `csv`, `MemoryMapping=Yes`) after some prior deck, giving a
+  ~2e-3 step-0 node-voltage drift on the ORACLE side. Root-caused empirically: the
+  Rust value is bit-stable (`#![forbid(unsafe_code)]` ⇒ race-free; `load_shape`
+  has no shared/global mutable state, no mmap); the oracle value drifts only under
+  the pool. Never reproduced in 150+ one-shot / in-process-reuse / 12-way
+  concurrent-process / sibling-predecessor oracle solves (all correct), and the
+  pre-Phase-B one-shot gate + the serial proof run were green — so it is pooled
+  cross-deck worker-state contamination, not intrinsic per-process nondeterminism.
+  Isolated → a fresh dedicated oracle process per run (exactly the pre-Phase-B
+  execution these decks were validated under) removes all predecessor state;
+  7/7 consecutive full-workspace gates green post-isolate vs ~2/6 pre-isolate.
+
+`all_properties` heap-UB handling (settled 2026-07-18). The upstream dss_capi
+`DoubleSymMatrixProperty` getter (`RMatrix`/`XMatrix`/`CMatrix`/`GMatrix`) and the
+shunt-PD reliability inputs render UNINITIALIZED heap memory — order-dependent by
+construction (a reused worker's heap carries prior-case residue). Those pairs are
+exactly what `harness::skip_prop` (`SKIP_PROPS`) already excludes from the value
+compare, so verdicts are unaffected. `write_gate_dump` nulls ONLY those UB values
+(keeping the property name) and RETAINS every other property — so the three-way
+bit-diff independently re-proves the byte-stability of all 72 k+ gate-asserted
+property strings across reused/shuffled workers (2128 `all_properties` blocks
+present in the dump, still sha256-identical). This is the ONLY source of
+cross-process nondeterminism; every other property is a deterministic function of
+the deck.
+
+**Audit dispositions (settle, 2026-07-18).**
+- **B1 — dropped `pending`⊕`expect_solve_abort` mutual-exclusivity assert** (both
+  audits, low). REAL, latent (0 manifest cases set both, empirically checked). The
+  old family-only `assert!` was not carried into the unified classifier, which
+  silently resolves the conflict pending-first. FIXED: restored the `assert!` in
+  `scheduler::make_case` — now applied to EVERY source (solvable_now + families),
+  strictly stronger than the family-only original.
+- **B2/B3 — dump stripped the whole `all_properties` block** (audit-code B2 /
+  audit-tests B3, low). REAL completeness gap: a within-tolerance oracle-property
+  drift on a reused worker could escape both the verdict channel
+  (`assert_value_matches_tol`) and a whole-block strip. FIXED: `strip_ub_properties`
+  now nulls only the `skip_prop` UB values, retaining all value-asserted properties;
+  the three-way bit-diff is still byte-identical (proof above), so the fix strictly
+  strengthens the artifact with no regression.
+- audit-tests B2 (stray `.claude_tmp_corpus_live_old.rs` leftover) — not present;
+  worktree clean, corpus pristine.
+
+**Wall-clock** (settle-run 2026-07-18, 16-core, incl. dump write).
+
+| mode | jobs | pool | wall-clock |
+|---|---|---|---|
+| serial one-shot (old cost model) | 1 | 2 | 341.9 s |
+| persistent parallel | 16 | 8 | 104.3 s (3.3× faster) |
+| persistent parallel shuffled | 16 | 8 | 78.1 s |
+
+`tests/corpus` pristine after all runs (the vendored decks are untouched; the
+corpus_gate CorpusGuard restores its own case dirs). `cargo fmt/clippy/test` green
+in the worktree.
+
+**Open follow-up (pre-existing, non-blocking).** A full `cargo test --workspace`
+occasionally leaves a handful of untracked solver EXPORT outputs under
+`tests/corpus/electricdss-tst` (e.g. `Test/AutoTrans/Auto3bus_noload_power.txt`,
+IEEE8500/StorageControllerTechNote monitor/EXP CSVs). These are `Export`/monitor
+files a deck writes to a path the per-case `CorpusGuard` (which guards only the
+case's parent dir) does not sweep — a pre-existing CorpusGuard corner case
+independent of Phase B (the guard logic is byte-identical to the old gate) and of
+this settle's diff. They are untracked (never committed) and path-limited-cleaned
+before commit. A future CorpusGuard hardening (guard the export CWD too) would
+close it.
+
+---
+
+## 1h. UNIFIED_GATE Phase C — manifest schema v2 (`engines`) + population lock v2 + r4133 channel wiring (branch `ug-phase-c`)
+
+`UNIFIED_GATE_PLAN.md` §4 Phase C (after the A+B integration merge, base `3ad37c8`).
+Retires the target-rev one-shot Oracle/Oddie shim for the mandatory gate: the
+`r4133` channel now gates through the in-house `epri-worker` pool (Phase A bridge).
+
+- **Schema v2 (§1.2).** `SolvableCase.oracle: Option<String>` → `engines: "capi_v0145"
+  | "r4133" | "both"` (default `"both"`; no case is `"both"` this phase). Migration
+  preserved semantics exactly: pinned (no `oracle`) → `capi_v0145` (246 solvable_now
+  + 162 family); every target-rev case (`capi015`/`r3723`/`r4088`/`r4133`) →
+  `r4133` (106 total = 47 solvable_now + 4/34/21 asym/controls/modes). `ORACLE_SPECS`
+  deleted; `EngineChannel {CapiV0145,R4133}` + `SolvableCase::engine_channels()`
+  replace it. `corpus_manifest.rs` untouched; `.dss` bijection 915 intact.
+- **r4133 worker pool (§3.1).** `engines.rs` gains `EpriPool` (persistent
+  `epri-worker` processes, mirroring the capi `WorkerPool` lifecycle: per-request
+  deadline → kill/respawn/retry-once/recycle-64, `{"epri":true,"rev":"r4133"}` ping
+  assert) + `EpriOneShot` (throwaway worker for serial/`isolate` r4133 cases).
+  Worker-binary resolution: `DSS_EPRI_WORKER` env → `target/<profile>/epri-worker` →
+  OnceLock `cargo build -p dss-epri` fallback. `Channel` now has four arms
+  (Capi/Epri × Pool/OneShot). Iteration policy is per-channel: capi_v0145 = exact
+  1:1; r4133 = `rust_le_oracle`. Eventlog masks keyed on the channel. The r4133
+  request masks `all_properties` off (capi_v0145-only per §1.2 — the bridge has no
+  all-props capture).
+- **Re-validation (§4/§5 R9) — all 106 r4133 cases gated live against the epri
+  bridge.** 95 pass green; **11 deferred** to Phase D (all were `oracle:capi015`,
+  the retired 0.15.0b4 line, and reproduce on NEITHER surviving channel — proven by
+  flipping all 11 to `capi_v0145` and re-running: 0.14.5 also diverges). The 99
+  live-gated cases split by their prior pin (base-commit `oracle` counts across
+  the four manifests: capi015 59, r4133 40, r3723 6, r4088 1):
+  - **40 were already `oracle:r4133`** → same revision, same value contract; the
+    only change is the *transport* (in-house `epri-worker` replaces the Oddie
+    one-shot). Phase A cross-validated epri-worker == Oddie **bit-for-bit on the
+    same r4133 DLL** over 396 cases, so these are unchanged by construction.
+  - **6 `oracle:r3723` + 1 `oracle:r4088` + 48 `oracle:capi015`** (55) → a genuine
+    **revision re-pin**: their value contract shifts from "matches r3723/r4088/
+    capi015-0.15.0b4" to "matches r4133". These are NOT covered by the Phase A
+    bit-for-bit proof (that proof is bridge-equivalence for one DLL, not
+    r3723≡r4133 or capi015≡r4133 behavior); the guarantee is the fresh green
+    re-validation that Rust == r4133 for each (D4/D5: r3723/r4088/capi015 retired
+    to r4133 as the single surviving EPRI line). All 55 gated green. Honest re-pins,
+    not no-ops — noted so the revision shift is not mistaken for pure transport.
+  - The remaining **11 capi015** cases could NOT re-pin to r4133 (both channels
+    diverge) → deferred (see below).
+- **`defer_ledger` — the Phase D ledger seam (§4 step c / §5 R9 last resort).** New
+  optional field carrying the Phase-D-ledger-seed cause (+ mandatory `wp`, mutually
+  exclusive with `pending`/`expect_solve_abort`). A deferred case is parked from live
+  oracle comparison but still **Rust-smoke-run** (compile + solve every step must
+  converge, no new errors) so a Rust regression can never hide. Membership is
+  preserved (counts unchanged; the population lock records the `defer` flag) — the
+  plan's "membership never shrinks" holds. The 11 deferrals, by class:
+  - **NCIM ×4** (`NCIM/Xmission…Kundur2Area`, `modes/ncim/{ncim_pq,ncim_pv_pq,ncim_midi}`):
+    0.14.5 lacks NCIM (`Set algorithm=NCIM` ignored, `Export deltaf` #24713); r4133-11.0
+    NCIM converges to a different PV/Q op-point → `Vsource.source` current diverges
+    wholesale. wp `WP-U1.7`.
+  - **DynExp ×2** (`Dynamic_Expressions/Dynamic_KundurDynExp`, `IBRDynamics_Cases/GFL_IEEE123/
+    Run_IEEE123Bus_GFLDaily_DynExp`): capi015 D14 `Exit`-no-op (frozen state); 0.14.5
+    swings, r4133 differs → node V ~1.5e-5 rel.
+  - **GFM ×3** (`controls/gfm/{gfm_micro,gfm_invcontrol,gfm_dynamics}`): capi015 B5 Isc1
+    (drop ×1000) — 0.14.5 system-Y differs (9 entries); r4133 physics MATCHES but
+    `Storage.batt.%stored` property STRING is r4133-rounded (92.4320641163609 vs
+    92.4321). wp `WPG.10`/`WPG.13`.
+  - **RegControl idle ×1** (`controls/regcontrol/regcontrol_idle`): capi015 `idle`
+    property (0.15 feature) — 0.14.5 rejects `idle` (#110); r4133 node V ~7e-5 rel.
+  - **line_spacing_asym ×1**: r4133 raises **#303 access violation at calcv** (known
+    linespacing crash) AND 0.14.5 gives `Line.normamps=230` vs Rust/capi015 730 —
+    diverges on BOTH channels (Phase D: r4133 `skip` + capi_v0145 property ledger).
+- **Population lock v2 (§1.4).** `Case::rigor` drops `oracle=`, gains
+  `engines={…} isolate={…} defer={…}`; the documented asymmetry is fixed — the three
+  family manifests are now per-case rigor-covered (`family_rigor` replaces
+  `family_paths`). Regenerated via `DSS_UPDATE_POPULATION_LOCK`; reviewed diff =
+  field additions + **zero membership loss** (counts 293/47/105/69 bit-stable;
+  solvable_now + family key sets identical to base).
+- **Report channels kept compiling.** `corpus_live_opendss` + `known_diffs.json` +
+  `DSS_LIVE_OPENDSS*` retained (Phase D deletes them); their target-rev exclusion is
+  re-keyed on `engines` (contains r4133). `corpus_live_classify`/`_properties`
+  re-keyed on `gates_capi()`. `AdSweepCase.oracle` (unused; ad_sweep.json had 0
+  oracle values) dropped with its `ORACLE_SPECS` validation.
+
+**Counts (bit-stable at base):** solvable_now 293, asymmetric 47, controls 105,
+modes 69, `.dss` bijection 915.
+
+**Gate (three-command, green).** `cargo fmt --all --check` clean; `cargo clippy
+--workspace --all-targets -- -D warnings` clean; `cargo test --workspace` all pass
+(dss-core lib 1231 + corpus_gate 25 incl. the 514-case unified gate; 1 pre-existing
+`ckt24_graph_diagnostic` ignored). Corpus gate wall-clock **with the r4133 channel
+active = 64.5 s** at the Phase-C build; the settle re-run (audit-fix build, same
+machine) measured **67.4 s** for the `corpus_gate` target (main gate test 60+ s).
+`tests/corpus` pristine after runs (path-limited-cleaned 12 pre-existing CorpusGuard
+export-CWD leftovers — StorageControllerTechNote monitor CSVs + AutoTrans txt;
+STATUS §1g open follow-up, not introduced by Phase C).
+
+Wall-clock table row (plan §3.4 / §6):
+
+| point | mode | jobs | pool | corpus gate |
+|---|---|---|---|---|
+| Phase C (r4133 channel active) | persistent-parallel | 16 | 8 (per channel) | 64.5 s |
+| Phase C settle (audit-fix build) | persistent-parallel | default | default | 67.4 s |
+
+**Deviation from plan (justified).** The brief's ladder step (c) said `pending: true
++ wp`, but `pending` structurally asserts the Rust engine ERRORS (unported feature);
+the 11 deferrals are PORTED features that solve cleanly — `pending` would fail the
+gate. Introduced `defer_ledger` instead (the plan's "leave a clear seam" for the
+Phase D ledger, §1.4): same intent (park from live compare, documented cause + wp,
+membership preserved, reviewed lock diff) without the false "must error" contract,
+and it adds a Rust-side smoke net `pending` also lacks. Brief header said "76
+re-targeted"; the actual re-targeted (oracle-carrying) population is **106** (the
+brief's own parenthetical sums to 106); all 106 re-validated.
+
+### Phase C settle — audit dispositions + empirical deferral proof (2026-07-18)
+
+Two independent audits (audit-code, audit-tests) of `3ad37c8..b89b2d3` returned
+**four low-severity findings**, all about the 11 `defer_ledger` cases. Each settled
+**empirically** against the live r4133 `epri-worker` and the pinned dss-python 0.14.5
+oracle in the worktree (not by argument).
+
+**Re-validation table (106 target-rev cases, by prior pin → r4133 channel):**
+
+| prior `oracle` | count | outcome on r4133 channel |
+|---|---|---|
+| r4133 | 40 | green — transport-only (epri-worker == Oddie bit-for-bit, Phase A) |
+| r3723 | 6 | green — revision re-pin, Rust == r4133 |
+| r4088 | 1 | green — revision re-pin, Rust == r4133 |
+| capi015 | 48 | green — revision re-pin, Rust == r4133 |
+| capi015 | 11 | **deferred** — diverges on BOTH surviving channels (proof below) |
+
+**Empirical both-channels-diverge proof for the 11 deferrals** (settle probes, live):
+- **GFM ×3** (`gfm_micro`/`gfm_invcontrol`/`gfm_dynamics`): on r4133 the worker
+  returns `Storage.batt.%stored` = **"92.4321"** (property getter rounds to 4
+  decimals); capi 0.14.5 and Rust return the full-precision **"92.43206411636…"**.
+  The `micro` tier allows `1e-6 + 1e-9·|v| ≈ 1.09e-6`, but the string gap is
+  **3.59e-5** → the probe genuinely fails on r4133. On capi_v0145 the assembled
+  system-Y differs (B5 Isc1 ×1000, DIVERGENCES.md #b5 — Rust adopted the r4133 Isc1).
+  Both channels diverge. **Why the sibling `pv_gfm_dynamics` gates r4133 GREEN and
+  is NOT deferred** (the audit's specific question): it probes `PVSystem.pv`
+  `irradiance`/`pmpp`/`kva`, which the r4133 worker returns as the stable input
+  strings **"1"/"800"/"800"** (no state-integrated float, no getter rounding) — the
+  distinguishing probe is `%stored`, not the physics, which matches r4133 for all
+  four (Rust uses the r4133 Isc1). Verified with the worker on both decks.
+- **line_spacing_asym ×1**: the r4133 worker **aborts at compile with #303 access
+  violation** (`Error 303 Reported From OpenDSS Intrinsic Function`); capi 0.14.5
+  gives `Line.normamps=230` vs Rust/capi015 730. Both channels diverge (confirmed).
+- **RegControl idle ×1**: capi 0.14.5 **rejects `idle` with #110** ("Unknown
+  parameter idle") — a 0.15 feature; r4133 idle-regulator node V ~7e-5 rel. Both
+  diverge (capi side confirmed live).
+- **NCIM ×4**: capi 0.14.5 has **no NCIM** (`Solution.algorithm` unknown to the 0.14.5
+  API; `Set algorithm=NCIM` ignored) — confirmed; r4133 NCIM converges to a different
+  PV/Q op-point than the Rust NCIM port (WP-U1.7). Both diverge.
+- **DynExp ×2**: capi015 D14 `Exit`-no-op freezes the state-var seed; 0.14.5 swings,
+  r4133 evaluates differently (documented D14, DIVERGENCES.md; STATUS §UPGRADE).
+  Both diverge.
+
+**Audit dispositions:**
+- **C-1 (both audits) — FIXED.** The deferred-smoke doc comment (`runner.rs`) and
+  the `defer_ledger` field doc (`manifest.rs`) overclaimed "a Rust regression can
+  never hide behind the deferral." The smoke asserts only per-step convergence +
+  unchanged error count — it catches a *convergence/error-surfacing* regression but
+  **not** a *numeric-correctness* regression that still converges (no physical value
+  is compared). Both comments reworded to scope the guarantee accurately and note
+  that full numeric coverage returns with the Phase D ledger. No assertion changed.
+- **C-2 (audit-tests) — FIXED.** The re-validation prose conflated bridge-equivalence
+  (epri-worker == Oddie on the *same* r4133 DLL, Phase A) with revision-equivalence.
+  Reworded above to split the 40 transport-only r4133 cases from the 55 genuine
+  revision re-pins (6 r3723 + 1 r4088 + 48 capi015), whose contract shifted to
+  "matches r4133" and rests on the fresh green re-validation, not the bit-for-bit
+  proof.
+- **C-2 (audit-code) — RECORDED, deliberately NOT code-fixed.** `defer_ledger` has no
+  *mechanical* guard that the R9 ladder was exhausted (it enforces cause + `wp` +
+  mutual-exclusion only). A mechanical guard is infeasible in an oracle-free
+  structural test: proving both channels diverge requires running both live oracles,
+  which the structural `manifest.rs` tests deliberately do not. The interim controls
+  are (a) the reviewable population-lock diff (`defer=1` per case), (b) the mandatory
+  documented per-case cause, and (c) — added here — the live both-channels-diverge
+  proof above for all 11. Each deferral is a Phase-D ledger seed; the ledger machinery
+  (envelope/probe carve-out) lands the mechanical re-gate. Recorded, not masked.
+
+## 1i. UNIFIED_GATE Phase D — divergence ledger + seeding + engine flips (branch `ug-phase-d`)
+
+Lands the gating divergence ledger (`tests/corpus/ledger.json`) that replaces the
+report-only `known_diffs.json`, seeds it from a full both-channel measurement,
+flips the cleanly-dual-gateable cases to `engines:"both"`, deletes the retired
+Oddie/OpenDSS report path, and makes the both-channel gate **deterministic**. Base
+`ae4b4ef`.
+
+**Ledger machinery (`corpus_gate/ledger.rs`, 9d5852b + settle 35ad4e2).**
+`LedgerRuntime` loads/validates `ledger.json` (kinds `divergence`/`skip`/
+`exclusion`) and exposes per-(case,channel) `LedgerView`s that `compare_capture`
+consults to partition each comparison field: the untouched `harness` comparator
+runs the unscoped remainder; the ledger's envelope/exact-pair assert covers the
+scoped part and records the hit. §1.3 envelope: (a) selected values differ ≤
+envelope; (b) unselected meet the tier floor; (c) ≥1 selected value **exceeds the
+tier floor** else the entry is **stale → gate fails**. `exceeded_floor` is measured
+against the untouchable `harness` tier floor, NOT the entry's `max_rel` — so
+widening an envelope can never hide a shrinking divergence (a stronger
+fail-on-stale than the plan's phrasing). Structural test (oracle-free): unique ids,
+case∈manifest, channel∈engines, divergence⇒non-empty match, cause/cause_ref
+resolve, regexes compile, probe/property exact-pair-only.
+
+**Seeding (`DSS_GATE_SEED_LEDGER=1`).** Ran every Live/Deferred case against BOTH
+channels with no ledger → `tmp/ledger_candidates.json`: 510 cases ×2 = 1020
+measurements, 836 match / 157 diverge / 27 error. **Zero** currently-single-channel
+case matches on both channels — the inherited flip already captured every free
+flip; further `both` requires a hand-reviewed ledger entry per case.
+
+**Gate determinism — the R2 worker-state contamination, surfaced + fixed.** The
+both-flip widened the r4133 pool's exposure enough to surface plan R2 live:
+persistent pooled workers accumulate state that `clear` does NOT reset (`Set`
+options, memory-mapped loadshape handles), so a worker that had served, e.g., a
+relay / harmonics / IEEE13-geometry deck would *intermittently* hand the next deck
+a stale option/mmap → ~1e-3 divergences on **either** channel that vanish
+serial/one-shot (~1 flake per 6 full runs — the same deck matches cleanly in the
+seeding). Fixed systemically in `engines.rs`: **`recycle_after()` now defaults to 1
+(a fresh worker per case)** — every case sees a never-used worker, so no state is
+inherited; the persistent pool keeps only its amortized startup. Wall-clock is
+unchanged (respawns overlap across the pool). `DSS_GATE_RECYCLE_AFTER=<n>` raises it
+for a faster, non-deterministic dev loop. Complementary `isolate:true` (one-shot,
+process exits → releases handles) added for the file-handle-contention decks the
+recycle cannot cover within a case: `StoCtrl_SeasonTarget` (EnergyMeter DI CSV held
+open), plus defensive isolate on the IEEE13-geometry family + `mmf_singlecol` +
+`YgD-Test`. Determinism verified: **4/4** consecutive green full runs post-fix
+(after ~10 pre-fix runs that whack-a-mole isolation could not stabilise). `M1/
+Master_NoPV` kept **r4133-only** (its both-flip surfaced a capi_v0145
+all-properties divergence — a Load renders `PF=1` on the port vs `0.9` on the 0.14.5
+oracle — **settled at Phase-D settlement, NOT a bug**: see the settlement addendum
+below).
+
+**Deletions (same landing).** `tests/corpus/known_diffs.json`, the
+`corpus_live_opendss` test + `KnownDiff`/`load_known_diffs`, `Oracle::opendss` +
+`oddie_venv_python` + the ping `want_oddie` arm, and the `DSS_LIVE_OPENDSS*` knobs.
+`rg "known_diffs|DSS_LIVE_OPENDSS|Oracle::capi015|corpus_live_opendss" crates tests`
+is clean of live code (doc-comment prose only). The `tools/opendss/*.py` report
+scripts still reference the removed file — they die in **Phase E** per the brief.
+
+**Lock v2 ledger component (§1.4).** `population_lock.rs::rigor()` gains
+`ledger={sorted per-channel entry ids}` (`ledger_tags()`); every ledger add/widen/
+flip changes the case's tag → a reviewed lock diff (e.g. `ledger=r4133:r4133-
+binaryshape-303`), so the ledger cannot become a silent soft-tolerance backdoor.
+
+**Ledger contents.** 6 entries / 20 causes: 3 `skip` (binary/MMF GrowthShape #303,
+IEEE13 line-spacing + line-and-cable-spacing #303 on r4133) + 3 GFM r4133 probe
+`divergence` (`Storage.%stored` %.6g Delphi rounding, `num_rel` 1e-6) — the
+Phase-C seed, each hit + non-stale every run.
+
+**Canary (fail-on-stale, live, §6).** A temporary all-node voltage divergence entry
+on `vsource_asym` (which matches the oracle within the tier floor) was added: the
+full gate passed all 514 cases, recorded the entry as applied (9 hits) but
+never-exceeded-floor, and **FAILED** with `STALE — every selected value is now
+within the tier floor. Prune it.` Reverted immediately. Fail-on-stale proven live.
+
+**defer_ledger retirement — partial (honest).** GFM×3 retired in the Phase-C seed
+(r4133 probe ledger). Of the remaining **8**, disposition settled empirically
+(seed + focused probes) — the field REMAINS because 4 cases cannot be responsibly
+retired:
+- **NCIM×4** (`ncim_pq/pv_pq/midi`, `NCIM/Xmission`): capi 0.14.5 lacks NCIM
+  (errors); the Rust NCIM port (validated vs the now-retired capi015) converges to a
+  **wholesale-different op-point** than r4133 NCIM (Vsource source-current sign-flip
+  ~156 A, and the Rust source-bus voltage reads suspiciously exactly-nominal). Not
+  tightly fingerprintable (plan: stays single-channel) and possibly a port issue →
+  per R3 NOT ledgered; needs a rigorous WP-U1.7 NCIM re-validation. Kept
+  `defer_ledger` (Rust-smoke), note corrected.
+- **DynExp×2** — ledgerable but deferred for measurement: the port deliberately
+  adopts capi015's D14 evaluator (DIVERGENCES §D14, *settled*); the data confirms
+  **both** 0.14.5 AND r4133 agree with each other (179425.907) and the port differs
+  by ~1.5e-5 — a documented cross-line divergence, not a bug. Retirement needs a
+  measured both-channel voltage envelope (follow-up).
+- **RegControl idle×1** — capi rejects `idle` (#110); r4133 ~7e-5 regulator-tap
+  class. Ledgerable on r4133 with a measured envelope (follow-up).
+- **line_spacing_asym×1** — capi node-V ~7e-8 (line-impedance libm floor) +
+  `Line.lsp.normamps`/`emergamps` **oracle 0.14.5 = 730/1095, port = 230/345**
+  (settled empirically 2026-07-18; the port's 230 min-over-phase is CORRECT per
+  r4133 LineGeometry.pas — earlier notes had the direction reversed, now fixed) +
+  r4133 #303 skip. Ledgerable capi voltage + property exact-pair, but the discrete
+  730→230 jump needs an exact-pair-numeric probe/property scope the current
+  machinery lacks (probe path only exact-pairs non-numeric values) → follow-up.
+
+**both% = 342/514 = 66.5%** (single-channel 172: capi_v0145 75, r4133 97). The
+plan's ≥90% target is **arithmetically unreachable**, proven by the seeding: 97
+cases are r4133-only 0.15/r4133 features 0.14.5 cannot run at all (WindGen, NCIM,
+LineConstants upgrades, MonitoredVoltage InvControl, relay-0.15, batchedit-where,
+MMF single-col …) → they can never be `both`; 75 are capi-only wholesale-divergent
+on r4133 (reduce/makeposseq reductions, Carson geometry/cable upgrades, IEEE_519
+harmonics, ckt24 conditioning …) which the plan explicitly keeps single-channel.
+Even flipping every fingerprintable candidate caps ~72%. The documented follow-up
+flip set (fingerprintable, cause-mapped, envelope-measurable): probe %.6g
+display-precision ×~16 (storage/pvsystem), injection-fpc-delphi-ulp ×4
+(indmach/combo asym), monitor-seq-magnitude-drift ×1 (`monitor_seqmag`).
+
+**Counts (bit-stable):** solvable_now 293, asymmetric 47, controls 105, modes 69,
+`.dss` bijection 915. isolate cases = 33.
+
+**Gate (three-command, green + deterministic).** fmt clean; clippy clean; `cargo
+test --workspace` green. Full BOTH gate ≈ 137–160 s at jobs=16 pool=8 recycle=1
+(≪ §3.4 ≤10 min). `tests/corpus` pristine.
+
+Wall-clock table row (plan §3.4 / §6):
+
+| point | mode | jobs | pool | recycle | corpus gate |
+|---|---|---|---|---|---|
+| Phase D (full BOTH gate, ledger active) | persistent-parallel | 16 | 8/ch | 1/case | ~150 s |
+
+**Open follow-ups (Phase D → later):** (1) retire the remaining `defer_ledger` —
+DynExp×2 / idle×1 / line_spacing×1 via measured envelopes (line_spacing also needs
+the exact-pair-numeric probe scope, below); NCIM×4 needs a WP-U1.7 NCIM op-point
+re-validation first. (2) The fingerprintable `both` flip set (~21 cases) to push
+toward the ~72% ceiling. (3) `tools/opendss/*.py` report scripts still reference
+`known_diffs`/`corpus_live_opendss` → Phase E. (`M1/Master_NoPV` follow-up (3) is
+now settled — see addendum.)
+
+### Phase-D settlement (audit dispositions, 2026-07-18)
+
+Two independent xhigh audits (audit-code + audit-tests) of `ae4b4ef..e9a2502`.
+Dispositions, settled empirically (drive the live engines / read the Pascal), never
+by loosening a tolerance:
+
+- **F1 (both audits, HIGH) — element/monitor envelope only checked the SELECTED
+  sub-channels, dropping the unscoped remainder from all comparison** (a matching
+  `element`/`monitor` entry made the caller skip the *whole* element/monitor's
+  `compare_element`/`compare_monitor`; the in-code doc falsely claimed the rest was
+  "still tier-checked"). Latent (no such entries ship yet) but a real clause-(b)
+  hole exactly on the brief's R3 focus. **FIXED** by generalizing the `property`
+  rewrite pattern: `element_rewrites`/`monitor_rewrite` re-assert the pinned
+  sub-channels inside their envelope (clause a) then rewrite ONLY those to the Rust
+  values so the untouched `compare_element`/`compare_monitor` tier-checks every
+  unscoped channel (clause b). `runner.rs` now always runs the harness comparator.
+  False doc comments corrected.
+- **F4-code (MEDIUM) — a non-numeric probe scope with no `oracle` pin
+  self-certified (marked applied+exceeded, skipped all comparison).** **FIXED**:
+  the non-numeric branch now requires an exact `oracle` pin (else panics — discrete
+  state is exact-pair only, §1.3), asserts the live Rust value against an optional
+  `rust` pin, and marks `exceeded` only when Rust ≠ oracle (so it CAN go stale).
+- **F5-tests (MEDIUM) — exact-pair `property`/non-numeric-`probe` entries marked
+  `exceeded` unconditionally → fail-on-stale could never fire for them.** **FIXED**:
+  both now query the live Rust value and mark `exceeded` only when it still differs
+  from the oracle, so a vanished discrete divergence trips STALE. (`mask_line`
+  eventlog/ctrlqueue entries already self-detect via the NEVER-APPLIED path when the
+  artifact line disappears; `skip` entries are `Kind::Skip`, exempt from the
+  divergence-stale check by design.)
+- **F2-code (HIGH-ish factual) — the `linespacing-normamps` cause, the
+  `line_spacing_asym` defer_ledger note, and STATUS recorded the 730-vs-230
+  direction BACKWARDS.** **SETTLED empirically**: pinned dss-python 0.14.5 oracle =
+  `Line.lsp.normamps 730 / emergamps 1095` (first-wire ACSR_556 rating); the port =
+  `230 / 345` (MIN over phase conductors {556→730, 4-0→340, 1-0→230}=230), matching
+  r4133 V8 `LineGeometry.pas:1237-1239`. **The port's 230 is CORRECT** (WP-U1.2 D3
+  min-over-phase upgrade) — a wrong-fact-in-the-ledger, not a papered-over bug. Cause
+  text, manifest note, and this record corrected. The cause is currently unused (no
+  entry references it), so nothing was mis-gated live.
+- **F3-tests (MEDIUM) — `M1/Master_NoPV` Load `PF=1`-vs-`0.9`, flagged "possible
+  PF-parse bug".** **SETTLED empirically: NOT a bug.** The ~10 diverging loads
+  (`Loads_Only.dss`: `kW=0 kvar=0 pf=0.9`) hit the WP-U1.1 **L2 REPLACE_ZERO** clamp
+  (`kW`/`kVA` parsed in `(-1e-8,1e-8)` → `+1e-8`, the EPRI r4133 `DblValueNZ`
+  default the 0.14.5 oracle lacks; `prop_flags.rs REPLACE_ZERO`). On 0.14.5 `kW=0`
+  stays 0 so `LoadSpec kW_kvar` leaves `PFNominal=0.9`; on the port `kW=1e-8` makes
+  `kVA>0` so `PFNominal=kW/kVA=1`. The port correctly follows r4133 (which is why M1
+  gates cleanly on r4133). The delta touches every zero-load's kw/kva/pf strings —
+  **wholesale, not tightly fingerprintable** → per §4-D it stays r4133-only with a
+  corrected note cause, not a ledger entry. No code change; the port is right.
+- **F1-defer / F3-code (HIGH) — DONE-bar "11 ex-defer_ledger live-gated;
+  defer_ledger fully retired" is NOT met; 8 remain Rust-smoke-only.** Deliberately
+  **not force-retired** (rationale, per R3 "a ledger entry that papers over a fixable
+  bug is the worst outcome"): NCIM×4 is a suspected op-point port bug (needs WP-U1.7)
+  and DynExp×2 matches NEITHER surviving oracle — force-ledgering either would pin a
+  bug; idle×1 and line_spacing_asym×1 are settled upgrades but need machinery the
+  phase doesn't ship (r4133 voltage envelope resp. exact-pair-numeric probe). All 8
+  keep `defer_ledger` (Rust-smoke: solve + no-new-errors) with corrected notes and
+  the follow-ups above. The `defer_ledger` field is therefore RETAINED, honestly.
+- **F5-code/F6-tests (LOW) — both% 66.5% < 90% target.** Disclosed above and
+  data-backed (~72% seeding ceiling); the ≥90% target is arithmetically unreachable.
+  No action.
+- **F6-code (LOW) — `injection` envelopes the whole RHS vector (no node
+  sub-selector).** Acknowledged design (injection has no natural per-node selector);
+  the planned `injection-fpc-delphi-ulp` entries are whole-vector ulp floors, so
+  clause (b) being vacuous is acceptable. No change; noted for the follow-up author.
+- **F7-code/F4-tests (LOW) — `tools/opendss/*.py` read the deleted
+  `known_diffs.json`; ~18/20 ledger causes are referenced only by prose notes.**
+  The python scripts die in **Phase E** per the brief (out of scope here); the
+  orphaned causes are the imported known_diffs class-prose kept as reference for the
+  single-channel note cases — retained as documentation, no gating impact.
+
+## 1k. UNIFIED_GATE pre-E/F cross-phase audit (branch `ug-audit`, 2026-07-19)
+
+Two independent xhigh read-only audits (code-fidelity + verification-strength) of
+the WHOLE delivered range `pre-unified-gate` (`449c745`) .. post-Phase-D `update`
+(`a0ac274`), before Phases E/F run. **Per-phase verdicts: 0 PASS, A PASS, B PASS,
+C PASS, D PASS-at-settled-bar** — the delivered gate verifies MORE than the
+pre-range gate (whole-range `tests/harness` diff = one `fn`→`pub fn` visibility
+change; no tolerance/floor/assert weakened; lock membership 514/514 zero loss;
+corpus pristine). Both audits re-derived the shipped ledger from the live engines
+(r4133 renders `Storage.%stored` to 6 sig figs vs full-f64 pinned oracle, inside
+the `num_rel 1e-6` envelope; the #303 line-spacing crash reproduces live) — no
+entry papers over a fixable port bug. 16 findings (2 medium, rest low), settled
+here empirically; every fix is rigor-ADDING, no tolerance/envelope/assert loosened,
+no golden touched.
+
+**Fixed (this branch, canary-proven live):**
+- **UGA-1/T1 (medium) — envelope widening escaped the population lock**: the
+  lock's ledger tag was entry-id-only, so raising `max_rel`/`num_rel`, adding a
+  scope, or cutting `steps` on an EXISTING entry produced no lock diff —
+  contradicting plan §1.4/§5-R3 and the STATUS §1i claim. `ledger_tags()` now
+  fingerprints each entry as `id@FNV-1a64(full entry JSON)`; lock regenerated
+  (diff = exactly the 6 ledgered cases gaining `@digest`). Canary: widening
+  `r4133-gfm-micro-pctstored` `num_rel` 1e-6→1e-2 now FAILS `population_lock`
+  (proven, reverted).
+- **UGA-T2 (medium) — `property` ledger scope half-enforced §1.3**: no mandatory
+  `oracle` pin (a bare `name_re`-only scope masked with zero assertion), `rust`
+  pin ignored, `num_rel` ignored. `property_handled_keys` now mirrors the probe
+  path exactly (Phase-D F4/F5 parity): numeric-skeleton `num_rel` envelope
+  against the live Rust `?`-value + tier-floor staleness, non-numeric requires
+  the `oracle` pin + honors the `rust` pin; structurally a probe/property scope
+  now REQUIRES `oracle` or `num_rel`. Canary-proven on `vsource_asym`
+  (`Vsource.source.basekv`): wrong pin fails loudly ("oracle 12.47 != pinned
+  9999"), `num_rel` entry applies with 1 hit. (Unblocks the ORPHANED_GAPS §1.9
+  `line_spacing_asym` exact-pair-numeric retirement.)
+- **UGA-2 — latent skip full-bypass**: no rule prevented a case's ONLY gating
+  channel(s) from all being `skip`-ledgered (→ zero verification, not even the
+  Rust smoke). `assert_structural` now requires ≥1 non-skipped channel per
+  skip-bearing case (canary: a capi skip added to the r4133-skipped
+  `IEEE13_LineSpacing` fails structurally). All 3 shipped skips sit on
+  `engines:"both"` cases — latent only.
+- **UGA-T4 — no scope-field allowlist**: a typo'd or §1.3-but-unimplemented
+  field (`yprim`/`y_fingerprint`/`meter`/`global_result`) compiled fine and
+  silently never applied (masked inside a multi-scope entry by per-entry hit
+  accounting). `compile_scope` now rejects anything outside the 9 implemented
+  fields, loudly (canary-proven).
+- **UGA-T3 — `line_re` masks could never go stale on content-matched lines**:
+  `mask_line` marked exceeded unconditionally on regex match. It now records a
+  live divergence only when the trailing-whitespace artifact is actually present
+  (`line != line.trim_end()`), so a vanished artifact trips STALE. (Mask power
+  was always bounded to `trim_end`; 0 such entries ship.)
+- **UGA-T5 — `DSS_GATE_ONLY` matching nothing greened a 0/0 run** (and skipped
+  fail-on-stale): a leftover exported env var could silently neuter the gate.
+  The scheduler now panics on zero retained cases (canary-proven).
+  (`DSS_GATE_SEED_LEDGER` remains a deliberate, loudly-bannered report mode.)
+- **UGA-3/T8 — stale in-code docs** contradicting delivered mechanics:
+  `corpus_gate.rs`/`scheduler.rs` "target-rev cases keep the one-shot Oracle
+  path" (retired in Phase C), `engines.rs` EpriPool "recycle after 64 cases"
+  (default 1 since Phase D), `manifest.rs` "valid `oracle` field" (deleted in
+  Phase C). Corrected.
+- **UGA-4 — dangling follow-up ownership**: 5 manifest `wp` pointers still named
+  `WP-UG-D` (a COMPLETE phase that deliberately did not retire them). The 4
+  ledgerable-but-unretired defer_ledger cases (DynExp×2, `regcontrol_idle`,
+  `line_spacing_asym`) now point at **ORPHANED_GAPS §1.9** (new entry, full
+  retirement recipe); the solvable_now NCIM Xmission case now points at
+  **WP-U1.7** like its 3 NCIM siblings. (`wp` is not in the rigor fingerprint —
+  no lock impact.)
+- **UGA-T6 — ubuntu CI leg structurally red post-Phase-C/D**: the mandatory gate
+  spawns `epri-worker` (`#[cfg(windows)]`, exits 1 on Linux) for 439
+  r4133/both-gated cases. `ci.yml` matrix reduced to `windows-latest` with the
+  reason documented in place.
+
+**Deliberately NOT fixed (recorded with rationale):**
+- **UGA-5 — plan §2.2 all-properties enumeration sub-item not implemented** in
+  the bridge ("implement anyway for report tooling parity"): `capture.rs`
+  fail-louds on an `all_properties` request (verified — no fake-empty dump) and
+  the scheduler masks it off per-channel; gating is unaffected (property parity
+  is capi_v0145-only by plan). Recorded as an accepted §2.2 deviation: implement
+  only if report tooling ever needs it (`DSSPut_Command("? name.Like")` +
+  `DSSElementV`).
+- **UGA-6 — "Rust runs once per case" (§3.3/D7) violated for `engines:"both"`**:
+  `compare_with_result` re-runs the deterministic Rust engine per channel (2×).
+  Cost-only (~150 s full gate ≪ 10 min target), disclosed in the scheduler
+  comment; caching the capture across channels is not worth the seam. Accepted.
+- **UGA-7 — Phase D "≥90% both" target missed (342/514 = 66.5%)**: already
+  disclosed in §1i with the seeding-data proof that ~72% is the arithmetic
+  ceiling (97 r4133-only-feature cases can never be both; 75 capi-only
+  wholesale-divergent stay single-channel per plan). The fingerprintable ~21-case
+  flip set remains the follow-up. No action here.
+- **UGA-T7 — `skip` entries can never go stale by construction**: a crash cannot
+  be observed without sending the deck, and no channel would notice the crash
+  disappearing (unlike the old report mode). Inherent to the design; the audit
+  re-reproduced #303 live on 2026-07-19. Re-validation is manual:
+  `DSS_GATE_SEED_LEDGER=1 DSS_GATE_SEED_ONLY=<case>` sends the deck to r4133 and
+  reports. Accepted with this documented procedure.
+- **UGA-T9 — P5a `show_busflow_unknown_bus_errors` assert reshape** (exact
+  message equality → code 219 + `contains("not found")`): P5a is trusted context
+  with its own audit trail; the assert gained the numeric-code dimension and the
+  reshape is disclosed in the P5a record. The only text-weaker assert in the
+  whole range — noted for completeness, no action.
+
+**Phase E handoff (confirmed, NOT fixed here per brief):** `tools/opendss/*.py`
+report scripts still read the deleted `known_diffs.json` / reference
+`corpus_live_opendss` — they die in Phase E with the Oddie venv + `bin/r3723` +
+`bin/r4088` (junction-safe protocol, CLAUDE.md). Phase F additionally rewrites
+TESTING.md/CLAUDE.md (the in-code module docs were already fixed here).
+
+**Gate:** `cargo fmt --all --check` + `cargo clippy --workspace --all-targets
+-- -D warnings` + `cargo test --workspace` green at defaults (full BOTH corpus
+gate 514/514, all 6 ledger entries hit, fail-on-stale active); `tests/corpus`
+pristine; junctions intact.
+
+## 1j. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
+
+`DE_PASCALIZE_PLAN.md` §P5a executed (P5b spans / P5c CLI presentation out of
+scope). One `miette`-based diagnostic type now backs every engine error channel.
+
+- **`crates/dss-core/src/diag.rs`** (new): `DssDiagnostic { message, code:
+  Option<u32>, abort, span, src, help }` with a hand-written `miette::Diagnostic`
+  impl (`code()` → `dss::eNNN`, `severity()` flips on `abort`) + unit tests, per
+  the plan sketch. `miette = { version = "7", default-features = false }` (no
+  `fancy`) in the workspace + dss-core. A small `ErrorLog(Vec<DssDiagnostic>)`
+  newtype with `push(impl Into<DssDiagnostic>)` + `texts()` reduces churn: bare
+  `String`/`&str` pushes stay valid (→ `code: None`), numbered sites push
+  `DssDiagnostic::msg(text, Some(NNN))`. `DssDiagnostic: Deref<str>` so the
+  ubiquitous `errors().iter().any(|e| e.contains(..))` presence checks keep
+  working (text is a display convenience, not the error's identity — the code is).
+- **Central log** flipped: `Dss.errors: ErrorLog`; `Dss::errors() ->
+  &[DssDiagnostic]` + `Dss::error_texts() -> Vec<String>`. **Deferred channel**
+  (`obj/base/mod.rs`) → `Vec<DssDiagnostic>` keeping the separate `deferred_abort`
+  bool so the `exec/command.rs` drain order is byte-for-byte unchanged.
+- **Control-loop trait channels — policy = RETYPE (not wrap-at-sink).** The four
+  `fn push_error(&mut self, msg: String)` points (2 trait decls in
+  `inv_control`/`storage_controller`, their impls in `solution/controls/dispatch.rs`
+  + the two test envs) were retyped to `fn push_error(&mut self, diag:
+  DssDiagnostic)`. Reason: their own doc-comments name "the 14403 named-missing
+  error" — these sinks carry real Pascal codes (14403, 2024112) that wrap-at-sink
+  would drop. Concrete param keeps the traits object-safe (they are used `dyn`).
+- **Error codes** = ONLY Pascal `DoSimpleMsg`/`DoErrorMsg` numbers. Assigned to
+  every push site whose adjacent comment cites one (two `rg` passes incl.
+  multi-line receivers), each verified against `.inputs/dss_capi`, plus a few
+  exact-message matches found incidentally (8877, 99933/99934, 482, 566). ~80
+  sites carry codes; uncited/port-specific messages stay `None` (never invented).
+  NOT done: an exhaustive reverse Pascal lookup of every uncited message
+  (unbounded, mis-assignment-prone) — out of P5a scope.
+- **Settlement pass (audit-code F1/F2/F3, all fixed).** (F1) generator
+  `do_dynamic_mode` phases-else was mis-coded 5672 → corrected to **5671**
+  (generator.pas:1984 — the P5a comment had taken the number from the *different*
+  procedure `InitStateVars`, gen.pas:2357/code 5672, which is ported separately at
+  `init_state_vars_impl`). (F2) `interpret_time_step_size` S2-parse-failure arm
+  (and the empty-string guard, same `'Error in specification of StepSize: %s'`
+  message) was mis-coded 99934 → corrected to **99933** (ExecOptions.pas:335);
+  99934 is a *different* message (units-else, :346) and stays on the units arm.
+  (F3) completed the missed-code sweep — bare-string pushes carrying an
+  unambiguous single Pascal number were coded: 484 (Sampling, Solution.pas:1990),
+  131 (Load-Duration, ExecOptions.pas:484), 283/277 (EnergyMeter disabled/not
+  found, ExecHelper.pas:3157/3160), 718 (WriteClassFile ×2, Utilities.pas:1204),
+  240 (obj=Class.Name, ExecHelper.pas:219), 267 (BatchEdit, ExecHelper.pas:313),
+  721 (overwrite guard, ExecHelper.pas:3713), 567 (user-model missing ×3 —
+  gen/pv/storage). Deliberately left `None`: the three "Error opening file" /
+  "could not be opened" sites (`command.rs` 1657/1663/1680) merge two Pascal
+  branches with *different* codes (615/617, 613/58613, 70401/70501/70502) so no
+  single code is faithful; and the IterNumber/CtrlIterNumber/IntegrationFlag
+  read-only site (`set_cmd.rs`), whose old comment cited a phantom code
+  (25040103) absent from the Pascal source — comment corrected, code stays `None`.
+- **Text consumers re-baselined once:** `Export ErrorLog` now writes `[dss::eNNN]
+  message` (bare message when uncoded); frozen. The only error-log golden
+  (`export_errorlog.txt`) is an empty dump → byte-identical, no regeneration.
+  Numeric goldens untouched (`git status tests/golden` clean). The `#219`
+  show-busflow assert rewritten to `code == Some(219)` + substring.
+- `From<ParserError>`/`SparseError`/`SingularMatrix` for `DssDiagnostic` land in
+  `diag.rs`; the "Error Encountered in Solve: {e}" catch sites carry code 482.
 
 ## 1a. Archived — completed plan records (100% done)
 
@@ -3141,3 +4176,101 @@ have real bodies; the zone-build dispatcher (`solution/meters/mod.rs`) fires fro
 `build_y_matrix` after bus reprocessing; `TakeSample`/`Integrate` + the
 reliability fault-rate sweep are ported. Still Phase 8: the `SystemMeter`
 register core and all demand-interval/phase-voltage/`Show`/`Export` files.
+
+---
+
+## UNIFIED_GATE Phase A — `dss-epri` bridge + `epri-worker` + smoke + xcheck (session record)
+
+New test-only crate `crates/dss-epri` (`publish = false`) — the **only** crate
+without `#![forbid(unsafe_code)]` (carries `#![deny(unsafe_op_in_unsafe_fn)]` +
+`#[cfg(windows)]` + module `// SAFETY` docs; carve-out documented in
+`PORTING_PLAN.md` §1). It drives the official EPRI `OpenDSSDirect.dll` (r4133) via
+`libloading` as a second live oracle (UNIFIED_GATE_PLAN.md R1/§2). Layout: `ffi.rs`
+(raw `cdecl` externs + load with `LOAD_WITH_ALTERED_SEARCH_PATH` so sibling
+`KLUSolve.dll` resolves), `dss.rs` (command + V-protocol decode + error polling),
+`capture.rs` (`CaseResult` assembly, byte-mirroring `oracle_server.py` +
+`gen_checkpoints.py`), `guard.rs` (corpus-guard port), `src/bin/epri-worker.rs`
+(persistent `ping`/`run`/`quit` line-JSON worker + `--smoke`). Root `Cargo.toml`:
+added the workspace member, `libloading` workspace dep, and the dev opt-level-3
+override.
+
+**Root-cause war story (load-bearing, do not re-litigate).** The DLL deadlocked
+when driven from Rust — every call appeared to hang. Diagnosed by minidump: the
+process parks in `NtUserMsgWaitForMultipleObjectsEx` inside `OpenDSSDirect.dll`.
+The trigger is **`FreeLibrary` on `libloading::Library` drop**: the r4133 DLL's
+unit finalization tears down its Delphi solver **actor thread** through a
+message-pumping `TThread.WaitFor` that never completes headless (no VCL
+`Application`/`WakeMainThread`). The hang *looked* mid-execution only because the
+`Engine` (local in `run_smoke`) dropped — and FreeLibrary'd — before the report
+printed. The Python/Oddie host never hit it because interpreter shutdown doesn't
+`FreeLibrary` the DLL. **Fix:** never unload — `Dll::leak()` (`mem::forget` the
+`Library`); the OS reclaims it at process exit (actor thread already terminated,
+so DllMain-detach is clean). Confirmed by a minimal raw-FFI reproducer:
+libloading-load hangs at drop, `mem::forget(lib)` cures it (single-thread, no
+message pump needed). All the earlier COM/FP/message-pump/two-thread experiments
+were chasing the wrong symptom and were reverted.
+
+**Capture-decode notes** (verified against raw-DLL ctypes + Oddie probes):
+V-protocol `mySize` is always **bytes**; type tags 1=int / 2=double / 3=complex
+(flat re/im) / 4=string / 5=byte-stream. String arrays: strip **one** trailing
+`\0`, split on `\0`, then lstrip a single leading space from element 0 (the Oddie
+monitor-header first-column artifact — `[' V1', ...] → ['V1', ...]`; no other
+array's element 0 has a leading space, so applying it universally is a no-op).
+Monitor channels decoded from the raw `ByteStream` exactly like `IMonitors.Channel`
+(272-byte header, `record_size = int32@offset8 + 2`, f32 records). The DDLL solve
+is **async** (dispatches `SIMULATE` to the actor and returns), so `solve()` polls
+`ParallelV(1)` = `ActorStatus` until done.
+
+**DONE-bar evidence:**
+- `epri-worker --smoke` (10/10 runs, exit 0, stderr→/dev/null):
+  `version OK: Version 11.0.0.1 (64-bit build) - Charlottesville`
+  `IEEE13 solved: 41 nodes, 2 iterations`
+  `CSC export OK: n=41, nnz=267, voltages bit-identical (solution-neutral)`
+  `getIpointer OK: len=84 (= 2*(NumNodes+1))`
+- Smoke `#[test]` (`crates/dss-epri/tests/smoke.rs`) runs under `cargo test
+  --workspace`, oracle-free.
+- **xcheck** (`tools/opendss/xcheck_bridge.py`, temporary — Phase E deletes it):
+  drives all 396 cases of the r4133 `corpus_live_opendss` universe (240
+  solvable_now + 43 asymmetric + 66 controls + 47 modes; #303 `skip` decks
+  excluded identically both sides) through the Python/Oddie r4133 engine AND the
+  Rust `epri-worker`, bit-diffing the raw `CaseResult` — twice, second pass
+  order-shuffled (seed 1337). Result (settle re-run, ~4m50s wall): **396 matched
+  of 396** on pass 1 (manifest order) AND pass 2 (shuffled) → `XCHECK PASS: both
+  passes bit-identical over 396 cases`, exit 0. `diverged = ok_mismatch =
+  both_err = 0` (matched == universe). `tests/corpus` verified pristine after
+  (CorpusGuard on both sides).
+- fmt + clippy (`-D warnings`) clean on `dss-epri`.
+
+**Audit dispositions (two independent audits of the phase diff).**
+- **F1/A1 — `both_err` not gated in `xcheck_bridge.py` (real, FIXED).** The PASS
+  boolean was `clean = not diverged and not ok_mismatch`, so a case that errored
+  symmetrically on BOTH engines was silently absorbed — a latent fake-success
+  channel (arithmetically inert for the reported clean run, but a weaker guarantee
+  than the DONE bar). Strengthened to `... and not both_err`: the universe excludes
+  solve-abort/pending cases, so every case must yield a comparable `CaseResult` on
+  both engines; a symmetric error is a hole, not a pass. Empirically settled — the
+  full re-run above with the stricter gate still PASSES 396/396 (both_err = 0), so
+  the fix closes the channel without any false failure. Strengthening only; no
+  tolerance/assertion weakened.
+- **F2 — additive `clear` command in `oracle_server.py` (real deviation,
+  ACCEPTED, no change).** UNIFIED_GATE_PLAN D8/§3.2 noted "no protocol change
+  needed server-side." Phase A added a `clear` handler (release the circuit + any
+  held loadshape MMF handle so the two processes can compile the same case). It is
+  purely additive and non-breaking: `corpus_live.rs` never sends `clear`; `run`/
+  `ping`/`quit` are untouched; `oracle_server.py` is not in the brief §4 "untouched
+  consumers" list. Used only by the temporary `xcheck_bridge.py` (Phase E deletes
+  both the tool and its need for the command). Kept as a justified, harmless
+  deviation.
+- **F3 — universal leading-space strip on string-array element[0] (not a bug,
+  documented).** `decode_string_array` lstrips one leading space from element[0]
+  of every V-protocol string array. Settled empirically + by grammar, not by
+  universe coincidence: the other arrays (node order, element/register/variable
+  names, zone lists) are whitespace-delimited DSS identifiers that can never begin
+  with a space → the strip is a guaranteed no-op on them; the monitor CSV header
+  (the one array whose first token carries a leading space) is exactly the intended
+  target. Confirmed bit-for-bit against Oddie over all 396 cases. Doc comment
+  strengthened to record the grammar guarantee. No behavior change.
+
+Follow-ups (STATUS, non-blocking): none block Phase A. Phase E removes
+`xcheck_bridge.py` and, with it, the `oracle_server.py` `clear` handler's only
+consumer (drop the handler then).

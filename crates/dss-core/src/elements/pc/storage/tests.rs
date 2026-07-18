@@ -29,7 +29,7 @@ fn edit_storage(edits: &[(&str, &str)]) -> Storage {
     let mut st = Storage::new("sz");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
@@ -73,7 +73,7 @@ fn build_shape(mult: &str) -> LoadShapeObj {
     let mut obj = LoadShapeObj::new("s");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in [("npts", "4"), ("interval", "1"), ("mult", mult)] {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
@@ -502,13 +502,13 @@ fn makeposseq_storage_single_phase() {
 
 /// Edit one property through the real property engine, returning any messages
 /// the side effect queued on the object.
-fn edit_storage_prop(st: &mut Storage, name: &str, value: &str) -> Vec<String> {
+fn edit_storage_prop(st: &mut Storage, name: &str, value: &str) -> crate::diag::ErrorLog {
     let enums = EnumRegistry::new();
     let cls = super::class_props(&enums);
     let idx = cls.property_index(name).expect("known Storage property");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     let mut eng = PropEngine {
         parser: &mut parser,
         vars: &vars,

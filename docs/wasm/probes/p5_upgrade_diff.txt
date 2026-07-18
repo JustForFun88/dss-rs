@@ -1,0 +1,57 @@
+WP-WM.0 / plan (S)2.7 - UPGRADE interplay diff check: do the user-model contract units
+change across dss_capi 0.14.5 -> 0.15.x and OpenDSS r3723 -> r4088 -> r4133?
+Date: 2026-07-18
+
+=== dss_capi lineage (git diff origin/0.14.x..origin/0.15.x in .inputs/dss_capi_with_git) ===
+changed (see verdict): src/PCElements/GenUserModel.pas  [16 12 src/PCElements/GenUserModel.pas]
+changed (see verdict): src/PCElements/StoreUserModel.pas  [27 21 src/PCElements/StoreUserModel.pas]
+changed (see verdict): src/PCElements/PVSystemUserModel.pas  [14 11 src/PCElements/PVSystemUserModel.pas]
+changed (see verdict): src/Controls/CapUserControl.pas  [16 14 src/Controls/CapUserControl.pas]
+changed (see verdict): src/Common/DSSCallBackRoutines.pas  [29 29 src/Common/DSSCallBackRoutines.pas]
+identical: src/Shared/Dynamics.pas
+TGeneratorVars record (0.14.x generator.pas vs 0.15.x Generator.pas): DIFFERS -
+0.15.x adds `deltaQNom: array of Double;` after Qnominalperphase (same NCIM
+change as upstream r4088+, see the trunk section below).
+
+Verdict (0.14.x -> 0.15.x): every diff in the four user-model units +
+DSSCallBackRoutines.pas is host-side refactoring only - property->method renames
+(Set_Name->SetName, Exists property->function), Arraydef->CAPI_Types uses-clause merge,
+parentheses style. ZERO changes to: the 15/13/7 export names, Stdcall signatures,
+callback vtable fields/packing, TDynamicsRec, load/fallback texts+codes
+(570/569/1570/1569), call ordering. The ONE contract-relevant change is
+TGeneratorVars gaining `deltaQNom` in 0.15.x (mirrors r4088+); our frozen ABI is
+the PINNED 0.14.5 layout (probe p2_offsets_dss_capi.txt, 244 bytes) - a future
+UPGRADE rung that moves engine semantics to 0.15.x must revisit the record image
+by a recorded ABI-doc decision (the field is a Delphi-managed dyn-array reference
+and cannot cross the wasm boundary as data in any case).
+
+=== OpenDSS trunk lineage (git diff --no-index between vendored trunks) ===
+identical r3723->r4133: Shared\Dynamics.pas
+CHANGED r3723->r4133: PCElements\GeneratorVars.pas
+identical r3723->r4133: Common\DSSCallBackStructDef.pas
+identical r3723->r4133: Common\DSSCallBackRoutines.pas
+identical r3723->r4133: PCElements\GenUserModel.pas
+identical r3723->r4133: PCElements\StoreUserModel.pas
+identical r3723->r4133: PCElements\PVSystemUserModel.pas
+identical r3723->r4133: Controls\CapUserControl.pas
+identical r3723->r4133: IndMach012a/ (whole example dir)
+
+The ONE change - GeneratorVars.pas (present already in r4088):
+@@ -38,6 +38,7 @@ TYPE
+         Pnominalperphase,
+         Qnominalperphase  {Target P and Q for power flow solution, watts, vars}
+                           : Double;    { All Doubles }
++        deltaQNom         : Array of Double;  // Used for updating Q when using NCIM algorithm
+ 
+         {32-bit integers}
+         NumPhases,       {Number of phases}
+
+Verdict (r3723 -> r4088/r4133): everything identical EXCEPT r4088+ inserts
+`deltaQNom: Array of Double` (an 8-byte managed dyn-array reference) BETWEEN
+Qnominalperphase and NumPhases in TGeneratorVars - i.e. the r4088+/NCIM-era
+TGeneratorVars layout shifts every later field by +8 and embeds a Delphi-managed
+reference. This does NOT touch our contract: the frozen ABI is the dss_capi
+0.14.5 (= r3723) layout, and the opt-in EPRI channel used for user-model
+cross-checks is r3723. CAUTION recorded in USERMODEL_ABI.md: never drive the
+native twin (or any DLL compiled against <=r3723/0.14.5 headers) through the
+r4088/r4133 binaries.

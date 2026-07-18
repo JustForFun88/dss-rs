@@ -275,7 +275,12 @@ impl DssObject for SpectrumObj {
     }
 
     /// Apply a resolved `CSVFile` (Pascal `DoCSVFile` → `ReadCSVFile`).
-    fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
+    fn apply_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &str,
+        _errors: &mut crate::diag::ErrorLog,
+    ) {
         if load.prop == CSV_FILE {
             self.read_csv_file(content);
         }

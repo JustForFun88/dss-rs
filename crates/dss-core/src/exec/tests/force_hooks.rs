@@ -248,7 +248,7 @@ fn force_yprim_oversize_row_errors_3004() {
     let big = std::iter::repeat_n("1", 17).collect::<Vec<_>>().join(" ");
     dss.command(&format!("set YPrim=[{big}]"));
     assert!(
-        dss.errors().iter().any(|e| e
+        dss.errors().iter().any(|e| e.text()
             == "The size of the matrix provided does not match with the number of conductors \
                 of the active PCE."),
         "an oversize YPrim row must be the 3004 size-mismatch error: {:?}",
@@ -401,7 +401,7 @@ fn state_var_non_pce_errors_7103() {
     assert!(
         dss.errors()
             .iter()
-            .any(|e| e == "Object \"Line.ln\" is not a valid PC element."),
+            .any(|e| e.text() == "Object \"Line.ln\" is not a valid PC element."),
         "get StateVar on a line must be the 7103 message: {:?}",
         dss.errors()
     );
@@ -412,7 +412,7 @@ fn state_var_non_pce_errors_7103() {
     assert!(
         dss.errors()
             .iter()
-            .any(|e| e == "Object \"Line.ln\" is not a valid PC element."),
+            .any(|e| e.text() == "Object \"Line.ln\" is not a valid PC element."),
         "set StateVar on a line must be the 7103 message: {:?}",
         dss.errors()
     );

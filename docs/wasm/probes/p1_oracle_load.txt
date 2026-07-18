@@ -1,0 +1,11 @@
+dss-python DSS version: DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open 
+DSS-Python version: 0.15.7
+baseline (no user model) variable names: ['Frequency', 'Theta (Deg)', 'Vd', 'PShaft', 'dSpeed (Deg/sec)', 'dTheta (Deg)']
+P1.a: PASS — UserModel= accepted, no 'Not Loaded' error raised
+variable names with stub loaded: ['Frequency', 'Theta (Deg)', 'Vd', 'PShaft', 'dSpeed (Deg/sec)', 'dTheta (Deg)', 'StubCalcCount', 'StubLastVre', 'StubLastVim', 'StubEditLen']
+P1.b: PASS — stub vars in surface: ['StubCalcCount', 'StubLastVre', 'StubLastVim', 'StubEditLen']
+P1.c: PASS — StubEditLen = 14.0 (UserData len = 14)
+converged=True ncond=4 terminal-1 currents=[np.float64(100.0), np.float64(-10.0), np.float64(200.0), np.float64(-20.0), np.float64(300.0), np.float64(-30.0), np.float64(400.0), np.float64(-40.0)]
+P1.d: PASS — terminal currents vs stub Calc output: max abs err = 0.000e+00 A (expected [100.0, -10.0, 200.0, -20.0, 300.0, -30.0, 400.0, -40.0])
+P1.e: PASS — StubCalcCount=2.0, StubLastV=(7196.71066741518, -4.891193697598373) vs element V1=(7196.707201561826, -4.894092009155933), rel err=4.816e-07 (one iterate stale by construction)
+RESULT: PASS — pinned oracle loads + drives a native user-model DLL (channel 1 of plan §2.5 is CONFIRMED; r3723 fallback not needed)

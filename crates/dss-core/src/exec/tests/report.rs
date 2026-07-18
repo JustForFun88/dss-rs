@@ -327,7 +327,7 @@ fn export_records_scoped_not_ported() {
     dss.command(&set_dp);
     dss.command("export notareport");
     assert_eq!(
-        dss.errors()[0],
+        dss.error_texts()[0],
         "Error: Unknown Export command: \"notareport\"",
         "{:?}",
         dss.errors()

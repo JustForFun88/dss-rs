@@ -454,7 +454,7 @@ mod tests {
         ckt.faults = (0..3).map(|idx| ElemRef { cls: 0, idx }).collect();
         let mut parser = Parser::new();
         let vars = ParserVars::new();
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
 
         for &want in &[2usize, 2, 0] {
             let picked = {
@@ -488,7 +488,7 @@ mod tests {
         ckt.faults = vec![ElemRef { cls: 0, idx: 0 }];
         let mut parser = Parser::new();
         let vars = ParserVars::new();
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
 
         let picked = {
             let mut env = SolveEnv {

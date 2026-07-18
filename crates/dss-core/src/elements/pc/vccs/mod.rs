@@ -23,6 +23,8 @@ mod tests;
 mod accessors;
 mod dynamics;
 
+use std::ops::{Index, IndexMut};
+
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
@@ -135,10 +137,12 @@ pub struct Vccs {
 
     pub vlast: Complex64,
     // Ring buffers, kept 1-based (index 0 unused) to mirror the Pascal
-    // `pDoubleArray` 1..len indexing exactly.
+    // `pDoubleArray` 1..len indexing exactly. `z`/`whist` are the wrap-around
+    // filter histories (tapped via [`RingBuf::tap`]); `y2`/`zlast`/`wlast` are
+    // plain windows / corrector-step snapshots (direct indexing only).
     pub y2: Vec<f64>,
-    pub z: Vec<f64>, // current digital-filter history terms
-    pub whist: Vec<f64>,
+    pub z: RingBuf, // current digital-filter history terms
+    pub whist: RingBuf,
     pub zlast: Vec<f64>, // update only after the corrector step
     pub wlast: Vec<f64>,
     pub s_idx_u: i64, // ring-buffer index for z and whist
@@ -169,6 +173,63 @@ fn map_idx(mut idx: i64, len: i64) -> usize {
 /// Pascal helper `OffsetIdx(idx, offset, len)`.
 fn offset_idx(idx: i64, offset: i64, len: i64) -> usize {
     map_idx(idx + offset, len)
+}
+
+/// The z-domain filter history ring — a `pDoubleArray` (Pascal) accessed both
+/// directly at a known slot and via the wrap-around tap `MapIdx(idx, len)`.
+/// Physical storage keeps the Pascal 1-based layout (slot 0 dead, valid
+/// `1..=len`) so the intricate modular wraparound ([`map_idx`]) ports verbatim
+/// and every stored/read value is bit-identical to the parallel-`Vec` form it
+/// replaces; [`Self::tap`] is the sole reader that applies the wrap. Direct
+/// writes/reads at the current head (`self[iu]`) and the whole-buffer snapshot/
+/// clear loops (`self[k]`) go through `Index`/`IndexMut`.
+#[derive(Debug, Clone)]
+pub struct RingBuf {
+    buf: Vec<f64>,
+    len: i64,
+}
+
+impl RingBuf {
+    /// Unallocated placeholder (Pascal fields are nil until `RecalcElementData`);
+    /// never indexed before [`Self::alloc`] runs.
+    fn empty() -> Self {
+        RingBuf {
+            buf: Vec::new(),
+            len: 0,
+        }
+    }
+
+    /// Allocate `len` history slots, all zero (Pascal `Allocmem(len+1)`, slot 0
+    /// unused).
+    fn alloc(len: usize) -> Self {
+        RingBuf {
+            buf: vec![0.0; len + 1],
+            len: len as i64,
+        }
+    }
+
+    /// Pascal `hist^[MapIdx(idx, len)]` — the wrap-around tap read. `idx` may be
+    /// negative (the filter walks `iu - k + 1`); [`map_idx`] folds it into
+    /// `1..=len`.
+    #[inline]
+    fn tap(&self, idx: i64) -> f64 {
+        self.buf[map_idx(idx, self.len)]
+    }
+}
+
+impl Index<usize> for RingBuf {
+    type Output = f64;
+    #[inline]
+    fn index(&self, i: usize) -> &f64 {
+        &self.buf[i]
+    }
+}
+
+impl IndexMut<usize> for RingBuf {
+    #[inline]
+    fn index_mut(&mut self, i: usize) -> &mut f64 {
+        &mut self.buf[i]
+    }
 }
 
 impl Vccs {
@@ -211,8 +272,8 @@ impl Vccs {
             s_v1: Complex64::ZERO,
             vlast: Complex64::ZERO,
             y2: Vec::new(),
-            z: Vec::new(),
-            whist: Vec::new(),
+            z: RingBuf::empty(),
+            whist: RingBuf::empty(),
             zlast: Vec::new(),
             wlast: Vec::new(),
             s_idx_u: 0,
@@ -249,8 +310,8 @@ impl Vccs {
             // Trunc toward zero (Pascal `Trunc`); both operands are positive here.
             self.fwinlen = (self.fsample_freq / self.cd.base_frequency).trunc() as usize;
             self.y2 = vec![0.0; self.fwinlen + 1];
-            self.z = vec![0.0; self.ffiltlen + 1];
-            self.whist = vec![0.0; self.ffiltlen + 1];
+            self.z = RingBuf::alloc(self.ffiltlen);
+            self.whist = RingBuf::alloc(self.ffiltlen);
             self.wlast = vec![0.0; self.ffiltlen + 1];
             self.zlast = vec![0.0; self.ffiltlen + 1];
         }

@@ -507,9 +507,12 @@ impl RegControl {
 
         if self.ccd.controlled_element.is_none() {
             // element not found or not set (DoErrorMsg 124)
-            self.ccd.cd.obj.push_error(format!(
-                "RegControl: \"{}\": Transformer Element is not set. Element must be defined previously. (Error 124)",
-                self.ccd.cd.obj.name()
+            self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "RegControl: \"{}\": Transformer Element is not set. Element must be defined previously. (Error 124)",
+                    self.ccd.cd.obj.name()
+                ),
+                Some(124),
             ));
             return;
         }
@@ -532,10 +535,13 @@ impl RegControl {
         // "Controlled Regulator Element is not a transformer" branch (error
         // 123) is unreachable here.
         if self.ccd.element_terminal > snap.nterms as i32 {
-            self.ccd.cd.obj.push_error(format!(
-                "RegControl: \"{}\": Winding no. \"{}\" does not exist. Respecify Monitored Winding no. (Error 122)",
-                self.ccd.cd.obj.name(),
-                self.ccd.element_terminal
+            self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "RegControl: \"{}\": Winding no. \"{}\" does not exist. Respecify Monitored Winding no. (Error 122)",
+                    self.ccd.cd.obj.name(),
+                    self.ccd.element_terminal
+                ),
+                Some(122),
             ));
         } else {
             // Sets the name of the 1st terminal's connected bus; this value

@@ -692,6 +692,16 @@ def main() -> None:
         if cmd == "ping":
             reply({"ok": True, "result": {"pong": True, "oracle": oracle}})
             continue
+        if cmd == "clear":
+            # Release the active circuit (and any held loadshape memory-mapped
+            # file handle) so another process can compile the same case without a
+            # concurrent-mapping conflict. Used only by tools/opendss/xcheck_bridge.py.
+            try:
+                d.Text.Command = "clear"
+                reply({"ok": True, "result": {"cleared": True}})
+            except Exception as e:  # never kill the server on a clear
+                reply({"ok": False, "error": f"{type(e).__name__}: {e}"})
+            continue
         if cmd != "run":
             reply({"ok": False, "error": f"unknown cmd {cmd!r}"})
             continue

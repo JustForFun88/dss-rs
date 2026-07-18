@@ -14,7 +14,7 @@ fn build_shape(edits: &[(&str, &str)]) -> LoadShapeObj {
     let mut obj = LoadShapeObj::new("d");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {

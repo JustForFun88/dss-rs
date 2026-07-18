@@ -107,8 +107,8 @@ pub struct Dss {
     aux_parser: Parser,
     vars: ParserVars,
     enums: EnumRegistry,
-    /// Accumulated `DoSimpleMsg` log (record-and-continue errors).
-    errors: Vec<String>,
+    /// Accumulated `DoSimpleMsg` log (record-and-continue diagnostics).
+    errors: crate::diag::ErrorLog,
     active_class: Option<usize>,
     /// `DSS.ActiveCircuit.ActiveCktElement` as `(class_idx, obj_idx)` — the circuit
     /// element the `Select` command (Pascal `DoSelectCmd`) made active, read by the
@@ -190,9 +190,18 @@ pub struct Dss {
 }
 
 impl Dss {
-    /// Accumulated error messages (`DoSimpleMsg` log).
-    pub fn errors(&self) -> &[String] {
+    /// Accumulated diagnostics (`DoSimpleMsg`/`DoErrorMsg` log). The stable
+    /// identity of each is its [`crate::diag::DssDiagnostic::code`], not its
+    /// text (P5 golden policy).
+    pub fn errors(&self) -> &[crate::diag::DssDiagnostic] {
         &self.errors
+    }
+
+    /// The message texts of the recorded diagnostics — convenience for harness
+    /// callers that compare on wording (`Dss::errors` carries the structured
+    /// diagnostics; key tests on `code`, not text).
+    pub fn error_texts(&self) -> Vec<String> {
+        self.errors.texts()
     }
 
     /// Register the plot/visualize callback — the native Rust replacement for

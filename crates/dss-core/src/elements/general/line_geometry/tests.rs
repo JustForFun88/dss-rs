@@ -16,11 +16,16 @@ use dss_parser::{Parser, ParserVars};
 /// `line_geometry_undefined_wire_in_array_aborts`. (The plural `cncables=`/
 /// `tscables=` forms are not yet golden-pinned — see STATUS: the oracle's
 /// post-plural active-conductor value diverges and is under investigation.)
-fn scalar(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, value: &str) -> Vec<String> {
+fn scalar(
+    cls: &ClassProps,
+    obj: &mut dyn DssObject,
+    name: &str,
+    value: &str,
+) -> crate::diag::ErrorLog {
     let enums = EnumRegistry::new();
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     let idx = cls.property_index(name).expect("known property");
     let mut eng = PropEngine {
         parser: &mut parser,

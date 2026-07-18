@@ -9,17 +9,19 @@
 //!
 //! This test makes any such change a **loud, reviewed event**. A committed
 //! snapshot (`tests/corpus/manifests/population.lock.json`) records, per manifest
-//! class, the case count; for every `solvable_now` case its path **and a per-case
-//! rigor fingerprint** (kind/tolerance-tier, oracle target, `n_steps`, and every
-//! compare-depth flag — `selected_elements`/`check_meters_monitors`/`probes`/
-//! `compare_variables`/eventlog/ctrlqueue/all-properties/global-result/autoadd-log/
-//! pending/solve-abort); and the three synthetic families' case counts **and path
-//! lists**. The unconditional test below rebuilds that fingerprint from the current
+//! class, the case count; a per-case **rigor fingerprint** for every `solvable_now`
+//! case **and** (schema v2 — the fixed asymmetry) every synthetic-family case
+//! (kind/tolerance-tier, `engines` channel, `isolate`, `defer_ledger`, `n_steps`,
+//! and every compare-depth flag — `selected_elements`/`check_meters_monitors`/
+//! `probes`/`compare_variables`/eventlog/ctrlqueue/all-properties/global-result/
+//! autoadd-log/pending/solve-abort); and the three synthetic families' case counts.
+//! The unconditional test below rebuilds that fingerprint from the current
 //! manifests and asserts it equals the snapshot. Any drift — a path leaving
-//! `solvable_now`, a retained deck *weakened in place* (kind flipped to a looser
-//! band, steps/probes/meters cut), a family deck swapped, or any count change —
-//! fails with a precise diff and the one-command regeneration path, so the shrink
-//! lands as a reviewable diff in the lock file rather than passing unnoticed.
+//! `solvable_now` or a family, a retained deck *weakened in place* (kind flipped to
+//! a looser band, steps/probes/meters cut, `engines` narrowed, a case `defer`red),
+//! a family deck swapped, or any count change — fails with a precise diff and the
+//! one-command regeneration path, so the shrink lands as a reviewable diff in the
+//! lock file rather than passing unnoticed.
 //!
 //! **Regenerate deliberately** (never to silence a failure you have not reviewed):
 //!
@@ -90,8 +92,18 @@ struct Case {
     pending: bool,
     #[serde(default)]
     expect_solve_abort: Option<String>,
+    /// Schema v2 (UNIFIED_GATE_PLAN.md §1.2/§1.4): gating channel(s). Replaces
+    /// the retired `oracle` target-rev field in the rigor fingerprint.
+    #[serde(default = "default_engines")]
+    engines: String,
+    /// Schema v2 (§1.4): throwaway-worker flag — part of the rigor fingerprint so
+    /// flipping it lands as a reviewed lock diff.
     #[serde(default)]
-    oracle: Option<String>,
+    isolate: bool,
+    /// Schema v2 (§4 Phase C step c): Phase-D-ledger deferral flag — parking a
+    /// case from live compare is a reviewed lock diff, never silent.
+    #[serde(default)]
+    defer_ledger: Option<String>,
 }
 
 fn default_kind() -> String {
@@ -100,16 +112,26 @@ fn default_kind() -> String {
 fn default_steps() -> usize {
     1
 }
+fn default_engines() -> String {
+    "both".to_string()
+}
 
 impl Case {
     /// A compact, deterministic one-line fingerprint of everything that sets this
     /// case's compare rigor. If any of these weakens on a **retained** deck (path
     /// unchanged, so the membership guard stays green), this string changes and the
     /// lock trips. Kept human-diffable so the reviewer sees *which* knob moved.
-    fn rigor(&self) -> String {
+    ///
+    /// `ledger_tag` is the case's per-channel sorted `id@content-digest` ledger
+    /// entries (§1.4, [`ledger_tags`]): every ledger add/widen/flip on this case —
+    /// including an in-place envelope/scope edit of an existing entry — changes the
+    /// tag → a reviewed lock diff, so an envelope can never grow (or a mask appear)
+    /// without leaving a trail.
+    fn rigor(&self, ledger_tag: &str) -> String {
         format!(
             "kind={} steps={} sel={} mm={} probes={} vars={} evlog={} ctrlq={} \
-             props={} gresult={} aalog={} pending={} abort={} oracle={}",
+             props={} gresult={} aalog={} pending={} abort={} engines={} isolate={} defer={} \
+             ledger={}",
             self.kind,
             self.n_steps,
             self.selected_elements.len(),
@@ -123,9 +145,74 @@ impl Case {
             self.compare_autoadd_log as u8,
             self.pending as u8,
             self.expect_solve_abort.is_some() as u8,
-            self.oracle.as_deref().unwrap_or("-"),
+            self.engines,
+            self.isolate as u8,
+            self.defer_ledger.is_some() as u8,
+            ledger_tag,
         )
     }
+}
+
+/// FNV-1a 64-bit over a byte string — a tiny, dependency-free content digest for
+/// the ledger-entry fingerprint below.
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in bytes {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
+/// Load `tests/corpus/ledger.json` and map each case key (`<source>:<path>`) to a
+/// deterministic per-channel sorted tag of `id@digest` pairs for the rigor
+/// fingerprint (§1.4): `capi_v0145:id1@a1b2…,id2@…;r4133:id3@…`, empty for a case
+/// with no ledger entries. The digest is FNV-1a64 over the entry's FULL serialized
+/// JSON (scopes, envelopes, steps, kind — everything), so not just adding/removing
+/// an entry but WIDENING an existing one (raising `max_rel`/`num_rel`, adding a
+/// scope, cutting `steps`) changes the case's tag → the same reviewed lock diff as
+/// a manifest edit (pre-E/F audit UGA-1: an id-only tag let envelope widening
+/// escape the lock). The ledger can never become a silent soft-tolerance backdoor
+/// (§5 R3).
+fn ledger_tags() -> BTreeMap<String, String> {
+    let p = corpus_dir().join("ledger.json");
+    let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+    let root: serde_json::Value =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
+    let entries = root
+        .get("entries")
+        .and_then(|e| e.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let mut by_case: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
+    for e in entries {
+        let field = |k: &str| -> String {
+            e.get(k)
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| panic!("ledger entry missing string field {k:?}: {e}"))
+                .to_string()
+        };
+        let (id, case, channel) = (field("id"), field("case"), field("channel"));
+        let digest = fnv1a64(e.to_string().as_bytes());
+        by_case
+            .entry(case)
+            .or_default()
+            .entry(channel)
+            .or_default()
+            .push(format!("{id}@{digest:016x}"));
+    }
+    let mut out = BTreeMap::new();
+    for (case, chans) in by_case {
+        let parts: Vec<String> = chans
+            .into_iter()
+            .map(|(ch, mut ids)| {
+                ids.sort();
+                format!("{ch}:{}", ids.join(","))
+            })
+            .collect();
+        out.insert(case, parts.join(";"));
+    }
+    out
 }
 
 /// The committed population fingerprint. Field order + `BTreeMap`/sorted `Vec`
@@ -141,9 +228,12 @@ struct PopulationLock {
     manifest_counts: BTreeMap<String, usize>,
     /// `<family name> -> case count` for the three synthetic families.
     family_counts: BTreeMap<String, usize>,
-    /// `<family name> -> sorted case path list`. Catches a family deck being
-    /// swapped for another at equal count (a count-only guard would miss it).
-    family_paths: BTreeMap<String, Vec<String>>,
+    /// `<family name> -> {case path -> per-case rigor fingerprint}` for the three
+    /// synthetic families. Schema v2 (§1.4) fixes the documented asymmetry: the
+    /// family manifests are now rigor-covered too (the keys are the membership
+    /// guard — a deck swap changes the key set; the values catch an in-place
+    /// weakening exactly as for `solvable_now`).
+    family_rigor: BTreeMap<String, BTreeMap<String, String>>,
     /// Every `solvable_now.json` case: `path -> per-case rigor fingerprint`
     /// ([`Case::rigor`]). The key set is the membership guard (a deck leaving
     /// `solvable_now` drops a key); the value is the in-place-weakening guard (a
@@ -156,7 +246,7 @@ impl PopulationLock {
     fn data_eq(&self, other: &Self) -> bool {
         self.manifest_counts == other.manifest_counts
             && self.family_counts == other.family_counts
-            && self.family_paths == other.family_paths
+            && self.family_rigor == other.family_rigor
             && self.solvable_now == other.solvable_now
     }
 }
@@ -188,6 +278,7 @@ fn current_lock() -> PopulationLock {
         .collect();
     files.sort();
 
+    let tags = ledger_tags();
     let mut manifest_counts: BTreeMap<String, usize> = BTreeMap::new();
     let mut solvable_now: BTreeMap<String, String> = BTreeMap::new();
     for p in &files {
@@ -197,7 +288,11 @@ fn current_lock() -> PopulationLock {
         if fname == "solvable_now.json" {
             for c in &m.cases {
                 let path = c.path.replace('\\', "/");
-                if let Some(prev) = solvable_now.insert(path.clone(), c.rigor()) {
+                let tag = tags
+                    .get(&format!("solvable_now:{path}"))
+                    .map(String::as_str)
+                    .unwrap_or("");
+                if let Some(prev) = solvable_now.insert(path.clone(), c.rigor(tag)) {
                     panic!("duplicate solvable_now path {path} (prev rigor {prev})");
                 }
             }
@@ -209,34 +304,45 @@ fn current_lock() -> PopulationLock {
         mdir.display()
     );
 
-    // Family manifest case counts + sorted path lists.
+    // Family manifest case counts + per-case rigor fingerprints (schema v2).
     let mut family_counts: BTreeMap<String, usize> = BTreeMap::new();
-    let mut family_paths: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut family_rigor: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     for fam in FAMILIES {
         let p = corpus_dir().join(fam).join("manifest.json");
         let m = read_manifest(&p);
         family_counts.insert(fam.to_string(), m.cases.len());
-        let mut paths: Vec<String> = m.cases.iter().map(|c| c.path.replace('\\', "/")).collect();
-        paths.sort();
-        family_paths.insert(fam.to_string(), paths);
+        let mut rigor: BTreeMap<String, String> = BTreeMap::new();
+        for c in &m.cases {
+            let path = c.path.replace('\\', "/");
+            let tag = tags
+                .get(&format!("{fam}:{path}"))
+                .map(String::as_str)
+                .unwrap_or("");
+            if let Some(prev) = rigor.insert(path.clone(), c.rigor(tag)) {
+                panic!("duplicate {fam} path {path} (prev rigor {prev})");
+            }
+        }
+        family_rigor.insert(fam.to_string(), rigor);
     }
 
     PopulationLock {
         comment: String::new(),
         manifest_counts,
         family_counts,
-        family_paths,
+        family_rigor,
         solvable_now,
     }
 }
 
-const COMMENT: &str = "Anti-shrink guard (FA fix 3; FA settle: per-case rigor + family path lists): \
-committed fingerprint of the gated corpus population. Trips on any drift — a path leaving \
-solvable_now, a retained deck weakened in place (kind/tolerance-tier flip, steps/probes/meters cut \
-— see solvable_now value fingerprints), a family deck swapped, or any manifest/family case-count \
-change. Regenerate DELIBERATELY with `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test \
-population_lock` and commit the diff alongside the manifest change. See TESTING.md \u{00a7}Anti-shrink \
-population lock.";
+const COMMENT: &str = "Anti-shrink guard (FA fix 3; UNIFIED_GATE Phase C schema v2: per-case rigor \
+now covers solvable_now AND the three families, engines/isolate/defer fields; Phase D §1.4: + the \
+ledger= component = each case's sorted per-channel divergence-ledger entry ids): committed fingerprint \
+of the gated corpus population. Trips on any drift — a path leaving solvable_now or a family, a \
+retained deck weakened in place (kind/tolerance-tier flip, steps/probes/meters cut, engines narrowed, \
+a case deferred, a ledger entry added/widened/flipped — see the rigor fingerprints), a family deck \
+swapped, or any manifest/family case-count change. Regenerate DELIBERATELY with \
+`DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock` and commit the diff \
+alongside the manifest change. See TESTING.md \u{00a7}Anti-shrink population lock.";
 
 fn lock_path() -> PathBuf {
     manifests_dir().join(LOCK_FILE)
@@ -250,7 +356,7 @@ fn serialize_lock(lock: &PopulationLock) -> String {
         comment: COMMENT.to_string(),
         manifest_counts: lock.manifest_counts.clone(),
         family_counts: lock.family_counts.clone(),
-        family_paths: lock.family_paths.clone(),
+        family_rigor: lock.family_rigor.clone(),
         solvable_now: lock.solvable_now.clone(),
     };
     let mut s = serde_json::to_string_pretty(&with_comment).expect("serialize lock");
@@ -318,21 +424,34 @@ fn population_lock_matches_manifests() {
             diff.push_str(&format!("  family {k}: {was:?} -> {now:?}\n"));
         }
     }
-    // Family path-list changes (a deck swapped at equal count).
-    for k in current.family_paths.keys() {
-        let now = current.family_paths.get(k);
-        let was = stored.family_paths.get(k);
-        if now != was {
-            let empty = Vec::new();
-            let now_set: std::collections::BTreeSet<&String> =
-                now.unwrap_or(&empty).iter().collect();
-            let was_set: std::collections::BTreeSet<&String> =
-                was.unwrap_or(&empty).iter().collect();
-            for removed in was_set.difference(&now_set) {
-                diff.push_str(&format!("  family {k} REMOVED: {removed}\n"));
-            }
-            for added in now_set.difference(&was_set) {
-                diff.push_str(&format!("  family {k} ADDED:   {added}\n"));
+    // Family membership + per-case rigor changes (a deck swapped at equal count,
+    // or a retained family deck weakened in place — schema v2).
+    let empty_map = BTreeMap::new();
+    for k in current
+        .family_rigor
+        .keys()
+        .chain(stored.family_rigor.keys())
+    {
+        let now = current.family_rigor.get(k).unwrap_or(&empty_map);
+        let was = stored.family_rigor.get(k).unwrap_or(&empty_map);
+        if now == was {
+            continue;
+        }
+        let now_keys: std::collections::BTreeSet<&String> = now.keys().collect();
+        let was_keys: std::collections::BTreeSet<&String> = was.keys().collect();
+        for removed in was_keys.difference(&now_keys) {
+            diff.push_str(&format!("  family {k} REMOVED: {removed}\n"));
+        }
+        for added in now_keys.difference(&was_keys) {
+            diff.push_str(&format!("  family {k} ADDED:   {added}\n"));
+        }
+        for path in now_keys.intersection(&was_keys) {
+            if now.get(*path) != was.get(*path) {
+                diff.push_str(&format!(
+                    "  family {k} RIGOR {path}:\n    was: {}\n    now: {}\n",
+                    was.get(*path).map(String::as_str).unwrap_or("<none>"),
+                    now.get(*path).map(String::as_str).unwrap_or("<none>"),
+                ));
             }
         }
     }

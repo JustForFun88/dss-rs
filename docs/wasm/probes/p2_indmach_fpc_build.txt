@@ -1,0 +1,49 @@
+WP-WM.0 P2 twin decision: FPC build of the VENDORED IndMach012a.dpr, AS-IS (zero source edits).
+Command: ppcrossx64.exe -Mdelphi -O2 -Fu<r3723>/IndMach012a -Fu<r3723>/Shared -Fu<r3723>/Parser -Fu<r3723>/PCElements -Fi<r3723>/Common -FU<scratch> -FE<scratch> <r3723>/IndMach012a/IndMach012a.dpr
+  where <r3723> = .inputs/electricdss-code-r3723-trunk/Version8/Source
+Compiler: C:\FPC\3.2.2\bin\i386-Win32\ppcrossx64.exe (FPC 3.2.2 x86_64-win64 cross)
+Date: 2026-07-18
+
+--- build log ---
+Free Pascal Compiler version 3.2.2 [2021/05/15] for x86_64
+Copyright (c) 1993-2021 by Florian Klaempfl and others
+Target OS: Win64 for x64
+Compiling E:\RustProject\dss-rs\.claude\worktrees\wtWM\.inputs\electricdss-code-r3723-trunk\Version8\Source\IndMach012a\IndMach012a.dpr
+Compiling E:\RustProject\dss-rs\.claude\worktrees\wtWM\.inputs\electricdss-code-r3723-trunk\Version8\Source\IndMach012a\MainUnit.pas
+Compiling .\.inputs\electricdss-code-r3723-trunk\Version8\Source\Shared\Ucomplex.pas
+Compiling .\.inputs\electricdss-code-r3723-trunk\Version8\Source\Shared\ExceptionTrace.pas
+Ucomplex.pas(210,58) Note: Call to subroutine "function topolar(const a:Double;const b:Double):<record type>;" marked as inline is not inlined
+Compiling .\.inputs\electricdss-code-r3723-trunk\Version8\Source\Shared\Arraydef.pas
+Compiling .\.inputs\electricdss-code-r3723-trunk\Version8\Source\Shared\Dynamics.pas
+Compiling E:\RustProject\dss-rs\.claude\worktrees\wtWM\.inputs\electricdss-code-r3723-trunk\Version8\Source\IndMach012a\IndMach012Model.pas
+Compiling E:\RustProject\dss-rs\.claude\worktrees\wtWM\.inputs\electricdss-code-r3723-trunk\Version8\Source\IndMach012a\ParserDel.pas
+Compiling .\.inputs\electricdss-code-r3723-trunk\Version8\Source\Parser\RPN.pas
+Compiling .\.inputs\electricdss-code-r3723-trunk\Version8\Source\Shared\Command.pas
+Compiling .\.inputs\electricdss-code-r3723-trunk\Version8\Source\Shared\HashList.pas
+Compiling .\.inputs\electricdss-code-r3723-trunk\Version8\Source\PCElements\GeneratorVars.pas
+IndMach012Model.pas(208,59) Note: Call to subroutine "function cmul(const a:complex;const b:complex):<record type>;" marked as inline is not inlined
+IndMach012Model.pas(260,38) Note: Call to subroutine "function cmul(const a:complex;const b:complex):<record type>;" marked as inline is not inlined
+IndMach012Model.pas(425,109) Note: Call to subroutine "function cmul(const a:complex;const b:complex):<record type>;" marked as inline is not inlined
+IndMach012Model.pas(425,103) Note: Call to subroutine "function cmplx(const a:Double;const b:Double):<record type>;" marked as inline is not inlined
+IndMach012Model.pas(426,109) Note: Call to subroutine "function cmul(const a:complex;const b:complex):<record type>;" marked as inline is not inlined
+IndMach012Model.pas(426,103) Note: Call to subroutine "function cmplx(const a:Double;const b:Double):<record type>;" marked as inline is not inlined
+IndMach012Model.pas(444,51) Note: Call to subroutine "function cmul(const a:complex;const b:complex):<record type>;" marked as inline is not inlined
+IndMach012Model.pas(445,51) Note: Call to subroutine "function cmul(const a:complex;const b:complex):<record type>;" marked as inline is not inlined
+Compiling .\.inputs\electricdss-code-r3723-trunk\Version8\Source\Shared\mathutil.pas
+Compiling .\.inputs\electricdss-code-r3723-trunk\Version8\Source\Shared\Ucmatrix.pas
+Ucmatrix.pas(215,75) Note: Call to subroutine "function cmul(const a:complex;const b:complex):<record type>;" marked as inline is not inlined
+Ucmatrix.pas(408,106) Note: Call to subroutine "function cmul(const a:complex;const b:complex):<record type>;" marked as inline is not inlined
+Compiling resource C:\Users\Admin\AppData\Local\Temp\claude\e--RustProject-dss-rs\a83c7246-e6c0-48f4-890c-557645ad503a\scratchpad\wm0\build_indmach2\IndMach012a.obj
+Linking C:\Users\Admin\AppData\Local\Temp\claude\e--RustProject-dss-rs\a83c7246-e6c0-48f4-890c-557645ad503a\scratchpad\wm0\build_indmach2\IndMach012a.dll
+4135 lines compiled, 0.2 sec, 203408 bytes code, 11108 bytes data
+11 note(s) issued
+
+--- artifact ---
+IndMach012a.dll size = 318976 bytes
+
+--- oracle load check (scratch indmach_load_check.py; ctypes 15-export check + pinned dss-python load + Model=6 solve) ---
+exports check: all 15 present
+variable surface with vendored IndMach012a.dll loaded: ['Frequency', 'Theta (Deg)', 'Vd', 'PShaft', 'dSpeed (Deg/sec)', 'dTheta (Deg)', 'Slip', 'puRs', 'puXs', 'puRr', 'puXr', 'puXm', 'MaxSlip', 'Is1', 'Is2', 'Ir1', 'Ir2', 'StatorLoss', 'RotorLoss', 'HPshaft']
+converged=True
+variables: {'Frequency': np.float64(60.42), 'Theta (Deg)': np.float64(0.0), 'Vd': np.float64(0.0), 'PShaft': np.float64(0.0), 'dSpeed (Deg/sec)': np.float64(0.0), 'dTheta (Deg)': np.float64(0.0), 'Slip': np.float64(-0.00638723), 'puRs': np.float64(0.0053), 'puXs': np.float64(0.106), 'puRr': np.float64(0.007), 'puXr': np.float64(0.12), 'puXm': np.float64(4.0), 'MaxSlip': np.float64(0.1), 'Is1': np.float64(51.79962465), 'Is2': np.float64(1.2e-07), 'Ir1': np.float64(48.6008298), 'Ir2': np.float64(1.2e-07), 'StatorLoss': np.float64(5528.4324918), 'RotorLoss': np.float64(6427.74033956), 'HPshaft': np.float64(-1357.6010183)}
+RESULT: PASS — vendored IndMach012a.dll (FPC build, plan A) loads + solves under the pinned oracle

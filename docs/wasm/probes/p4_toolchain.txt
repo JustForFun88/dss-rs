@@ -1,0 +1,33 @@
+WP-WM.0 P4 - toolchain pins probe
+Date: 2026-07-18
+
+--- Rust toolchains ---
+rustc 1.96.0 (ac68faa20 2026-05-25)
+cargo 1.96.0 (30a34c682 2026-05-25)
+wasm32-unknown-unknown installed on stable: True
+smoke cdylib build for wasm32-unknown-unknown: OK (1475022 bytes, trivial #[no_mangle] extern "C" add)
+
+--- wasmi pin check (scratch crate, OUTSIDE the workspace) ---
+Cargo.toml dep: wasmi = { version = "=1.0.9", default-features = false, features = ["simd"] }
+(the typst-verified pin: .inputs/typst/Cargo.toml:149)
+cargo +stable run --release output:
+wasmi =1.0.9 OK: relaxed_simd(false), consume_fuel, StoreLimits(64MiB), fuel=1000000
+
+dependency tree (pure Rust, zero C/FFI — matches plan (S)1.3 verification):
+bitflags v2.13.1
+libm v0.2.16
+spin v0.9.9
+wasmi v1.0.9
+wasmi_check v0.0.0 (C:\Users\Admin\AppData\Local\Temp\claude\E--RustProject-dss-rs\a83c7246-e6c0-48f4-890c-557645ad503a\scratchpad\wm0\wasmi_check)
+wasmi_collections v1.1.0
+wasmi_core v1.1.0
+wasmi_core v1.1.0 (*)
+wasmi_ir v1.1.0
+wasmparser v0.228.0
+
+API notes for WM.1: Config::wasm_relaxed_simd(false), Config::consume_fuel(true),
+Store::set_fuel/get_fuel, StoreLimitsBuilder::memory_size, Linker::instantiate_and_start
+(1.x renamed instantiate -> instantiate_and_start vs the typst-era snippet).
+
+--- FPC (probe + native-twin toolchain) ---
+FPC 3.2.2 cross x86_64-win64: C:\FPC\3.2.2\bin\i386-Win32\ppcrossx64.exe
