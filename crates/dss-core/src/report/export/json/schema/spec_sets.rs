@@ -289,6 +289,28 @@ pub(super) fn spec_sets(class_name: &str) -> &'static [SpecSet] {
                 props: &["XSCArray", "kV"],
             },
         ],
+        // `Storage.pas:546-553` — `SpecSetNames`/`SpecSets`.
+        "Storage" => &[
+            SpecSet {
+                name: "kWRated, PF",
+                props: &["kWRated", "PF"],
+            },
+            SpecSet {
+                name: "kWRated, kvar",
+                props: &["kWRated", "kvar"],
+            },
+        ],
+        // `Generator.pas:504-511` — `SpecSetNames`/`SpecSets`.
+        "Generator" => &[
+            SpecSet {
+                name: "kW, pf",
+                props: &["kW", "PF"],
+            },
+            SpecSet {
+                name: "kW, kvar",
+                props: &["kW", "kvar"],
+            },
+        ],
         _ => &[],
     }
 }

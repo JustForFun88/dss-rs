@@ -81,11 +81,20 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
         PropDef::double("kWBand"),
         PropDef::double("kvarLimit"),
         PropDef::string_list("GenList"),
-        // Pascal `DoubleArrayProperty` with IndirectCount over the GenList: the
-        // element count is the generator-name-list length (see `array_size`).
-        PropDef::double_v_array("Weights"),
+        // Pascal `DoubleArrayProperty` with `IndirectCount` over the GenList
+        // (`GenDispatcher.pas:140-144`, `PropertyOffset2 = @FListSize`,
+        // `PropertyOffset3 = @FGeneratorNameList`): renders `ArrayOrFilePath` +
+        // `$dssLength: GenList`. The element count is `FListSize` (kept in sync
+        // with the generator-name-list length); the port exposes it via
+        // `get_i32(GENLIST)` so the shared DoubleArray count path resolves it.
+        PropDef::double_array("Weights", GENLIST),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

@@ -114,6 +114,12 @@ impl DssObject for StorageController {
             PCT_RATE_CHARGE => self.pct_charge_rate,
             PCT_RESERVE => self.pct_fleet_reserve,
             KW_NEED => self.kw_needed,
+            // Pascal `[SilentReadOnly, ReadByFunction]` fleet aggregates: the
+            // text/props render is intercepted by SILENT_READ_ONLY (→ '' always,
+            // function-only offset -1), so this arm is unreachable in practice.
+            // Return 0 as a placeholder (the real fleet aggregate isn't computed
+            // on the `&self` accessor).
+            KWH_TOTAL | KW_TOTAL | KWH_ACTUAL | KW_ACTUAL => 0.0,
             T_UP => self.up_ramp_time,
             T_FLAT => self.flat_time,
             T_DN => self.dn_ramp_time,
@@ -140,6 +146,8 @@ impl DssObject for StorageController {
             PCT_RESERVE => self.pct_fleet_reserve = value,
             // kWNeed is SilentReadOnly — writes are ignored.
             KW_NEED => {}
+            // SilentReadOnly fleet aggregates — writes are silently ignored.
+            KWH_TOTAL | KW_TOTAL | KWH_ACTUAL | KW_ACTUAL => {}
             T_UP => self.up_ramp_time = value,
             T_FLAT => self.flat_time = value,
             T_DN => self.dn_ramp_time = value,
@@ -160,6 +168,11 @@ impl DssObject for StorageController {
             MODE_CHARGE => self.charge_mode,
             INHIBIT_TIME => self.inhibit_hrs,
             SEASONS => self.seasons,
+            // Pascal `Weights` IndirectCount reads its element count from
+            // `FleetSize` (`StorageController.pas` `PropertyOffset2 = @FleetSize`),
+            // kept in sync with the storage-name-list length. The DoubleArray count
+            // path + the schema `$dssLength: ElementList` resolve it via this slot.
+            ELEMENT_LIST => self.fleet_size,
             _ => unreachable!("StorageController has no integer property {idx}"),
         }
     }
@@ -198,16 +211,7 @@ impl DssObject for StorageController {
             YEARLY => self.yearly_shape.clone(),
             DAILY => self.daily_shape.clone(),
             DUTY => self.duty_shape.clone(),
-            // Read-only fleet aggregates (see module doc): always ''.
-            KWH_TOTAL | KW_TOTAL | KWH_ACTUAL | KW_ACTUAL => String::new(),
             _ => unreachable!("StorageController has no string property {idx}"),
-        }
-    }
-    fn set_string(&mut self, idx: usize, _value: String) {
-        match idx {
-            // SilentReadOnly fleet aggregates — writes are ignored.
-            prop::KWH_TOTAL | prop::KW_TOTAL | prop::KWH_ACTUAL | prop::KW_ACTUAL => {}
-            _ => unreachable!("StorageController has no writable string property {idx}"),
         }
     }
 

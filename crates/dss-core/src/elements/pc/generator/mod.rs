@@ -117,10 +117,20 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
-        PropDef::double("kW").flags(PropFlags::REPLACE_ZERO),
-        PropDef::double("PF"),
-        PropDef::double("kvar"),
+        // Pascal `[Required, Units_kV, NonNegative]` (`Generator.pas:625`).
+        PropDef::double("kV")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
+        // Pascal `[RequiredInSpecSet, Units_kW]` (`Generator.pas:630`). Units_kW is
+        // a vendored-newer-than-0.14.5 addition (see schema_divergences.json).
+        PropDef::double("kW")
+            .flags(PropFlags::REPLACE_ZERO | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KW),
+        // Pascal `[RequiredInSpecSet, PowerFactorLimits]` (`Generator.pas:631`).
+        PropDef::double("PF")
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::POWER_FACTOR_LIMITS),
+        // Pascal `[NoDefault, RequiredInSpecSet, Units_kvar]` (`Generator.pas:628`).
+        // Units_kvar is a vendored-newer-than-0.14.5 addition (schema_divergences).
+        PropDef::double("kvar")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KVAR),
         PropDef::mapped_int_enum("Model", enums.gen_model),
         PropDef::double("VMinpu"),
         PropDef::double("VMaxpu"),
@@ -133,11 +143,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("Status", enums.gen_status),
         PropDef::integer("Class"),
         PropDef::double("Vpu"),
-        PropDef::double("Maxkvar"),
-        PropDef::double("Minkvar"),
+        // Pascal `[DynamicDefault]` (`Generator.pas:597/600`).
+        PropDef::double("Maxkvar").flags(PropFlags::DYNAMIC_DEFAULT),
+        PropDef::double("Minkvar").flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::double("PVFactor"),
         PropDef::boolean("ForceOn"),
-        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO),
+        // Pascal `[DynamicDefault]` (`Generator.pas:615`) — derived from kW/PF.
+        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO | PropFlags::DYNAMIC_DEFAULT),
         // `MVA` (prop 27) uses plain `DblValue * 1000` in r4133 (`generator.pas:664`)
         // — NOT `DblValueNZ`: no zero-clamp, unlike `kVA` (prop 26). Reproduce the
         // upstream asymmetry (only WindGen's MVA clamps, via `DblValueNZ * 1000`, at
@@ -163,7 +175,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // still out of scope, so they remain a hard error until a deck needs them.
         PropDef::string("ShaftModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
         PropDef::string("ShaftData").flags(PropFlags::NOT_PORTED),
-        PropDef::double("DutyStart"),
+        // Pascal `[Units_hour]` (`Generator.pas:608`).
+        PropDef::double("DutyStart").flags(PropFlags::UNITS_HOUR),
         PropDef::boolean("DebugTrace"),
         PropDef::boolean("Balanced"),
         PropDef::double("XRdp"),
@@ -171,8 +184,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("FuelkWh"),
         PropDef::double("%Fuel"),
         PropDef::double("%Reserve"),
-        // BooleanActionProperty: setting it `yes` refuels; the getter is 0.
-        PropDef::boolean("Refuel"),
+        // Pascal `BooleanActionProperty` (`Generator.pas:640`): setting it `yes`
+        // refuels; the getter is 0. `BOOLEAN_ACTION` gives the schema `writeOnly`
+        // + the action-tail `AltPropertyOrder` placement.
+        PropDef::boolean("Refuel").flags(PropFlags::BOOLEAN_ACTION),
         // Dynamics machinery (WP7.7 step 3b): the linked DynamicExp + its output
         // variable selection (the `DynEqPCE` base; resolved/integrated like
         // PVSystem/Storage).
@@ -181,7 +196,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // PCClass tail:
         PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);

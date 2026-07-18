@@ -218,6 +218,43 @@ fn enum_overrides(name: &str) -> Option<(Vec<&'static str>, bool, bool)> {
             true,
             true,
         )),
+        // Pascal `StorageController.pas:292-299` — the discharge/charge mode enums
+        // carry explicit AltNames that drop the hyphen from the `I-Peakshave`/
+        // `I-PeakshaveLow` entries (`IPeakshave`/`IPeakshaveLow`); every other
+        // AltName equals its Name.
+        "StorageController: Discharge Mode" => Some((
+            vec![
+                "Peakshave",
+                "Follow",
+                "Support",
+                "Loadshape",
+                "Time",
+                "Schedule",
+                "IPeakshave",
+            ],
+            true,
+            false,
+        )),
+        "StorageController: Charge Mode" => Some((
+            vec!["Loadshape", "Time", "PeakshaveLow", "IPeakshaveLow"],
+            true,
+            false,
+        )),
+        // Pascal `Generator.pas:451-456` — an integer enum (`JSONUseNumbers`) whose
+        // AltNames are the CamelCase forms of the spaced Names.
+        "Generator: Model" => Some((
+            vec![
+                "ConstantPQ",
+                "ConstantZ",
+                "ConstantPV",
+                "ConstantP_FixedQ",
+                "ConstantP_FixedX",
+                "UserModel",
+                "ApproxInverter",
+            ],
+            true,
+            true,
+        )),
         _ => None,
     }
 }
@@ -303,7 +340,8 @@ pub(crate) fn class_schema(
         // string (Transformer/AutoTrans `WdgCurrents`) — as a `String` carrying
         // [`PropFlags::READS_VTERMINAL`], so both mark the schema `readOnly`.
         let read_only = flags.contains(PropFlags::SILENT_READ_ONLY)
-            || flags.contains(PropFlags::READS_VTERMINAL);
+            || flags.contains(PropFlags::READS_VTERMINAL)
+            || flags.contains(PropFlags::READ_ONLY);
         let no_default =
             flags.contains(PropFlags::NO_DEFAULT) || flags.contains(PropFlags::DYNAMIC_DEFAULT);
 
@@ -493,12 +531,20 @@ pub(crate) fn class_schema(
             } else {
                 prop.push(("type", s("array")));
                 prop.push(("items", obj(vec![("$ref", s(&enum_path))])));
-                // Per-element enum default (`:797-814`): read the struct-array's
-                // per-entry ordinals (Pascal `obj.GetIntegers(propIndex)`) and map
-                // each through the enum's `OrdinalToJSONValue` (e.g. Transformer
-                // `Conns` → `["Wye", "Wye"]`).
+                // Per-element enum default (`:797-814`): read the array's per-entry
+                // ordinals (Pascal `obj.GetIntegers(propIndex)`, one generic getter)
+                // and map each through the enum's `OrdinalToJSONValue`. The port
+                // splits the single Pascal getter by array kind: an on-struct-array
+                // enum (`EnumArrayOnStruct`, e.g. Transformer `Conns` →
+                // `["Wye", "Wye"]`) reads per-winding via `get_struct_i32_array`; a
+                // plain `MappedStringEnumArray` (a per-phase state array, e.g. Relay/
+                // Fuse `Normal`/`State`) reads via `get_enum_array`.
                 if !(read_only || no_default) {
-                    let vals = sample.get_struct_i32_array(prop_index);
+                    let vals = if pd.ptype == PropType::MappedStringEnumArray {
+                        sample.get_enum_array(prop_index)
+                    } else {
+                        sample.get_struct_i32_array(prop_index)
+                    };
                     if !vals.is_empty() {
                         prop.push((
                             "default",
@@ -686,6 +732,24 @@ pub(crate) fn class_schema(
             one_of.push(obj(spec));
         }
         members.retain(|(k, _)| !to_remove.contains(k));
+    }
+
+    // ---- DynInit for `TDynEqPCEClass` (`:1106-1113`) -----------------------
+    // A class deriving from the dynamics-init base (`DynEqPCE`: Generator,
+    // PVSystem, Storage) gets a synthetic write-only `DynInit` member appended
+    // after every real property, at `maxZorder + 1` (Pascal `maxZorder :=
+    // Max over cls.AltPropertyOrder`, i.e. the largest property *ordinal* present
+    // in the load order). The port detects the base by its two defining
+    // properties (`DynamicEq` + `DynOut`), exactly the ones `TDynEqPCE` adds.
+    if props.property_index("DynamicEq").is_some() && props.property_index("DynOut").is_some() {
+        let max_zorder = order.iter().copied().max().unwrap_or(0) as i64;
+        members.push((
+            "DynInit".to_string(),
+            obj(vec![
+                ("$ref", s("#/$defs/DynInitType")),
+                ("$dssPropertyOrder", i(max_zorder + 1)),
+            ]),
+        ));
     }
 
     // ---- assemble (`:1115-1132`) -------------------------------------------

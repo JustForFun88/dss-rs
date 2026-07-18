@@ -129,6 +129,12 @@ impl DssObject for GenDispatcher {
     fn get_i32(&self, idx: usize) -> i32 {
         match idx {
             prop::TERMINAL => self.ccd.element_terminal,
+            // Pascal `Weights` IndirectCount reads its element count from
+            // `FListSize` (`GenDispatcher.pas` `PropertyOffset2 = @FListSize`),
+            // kept in sync with the generator-name-list length. The DoubleArray
+            // count path (`class_props/json.rs`) + the schema `$dssLength: GenList`
+            // resolve it through the GenList property slot.
+            prop::GENLIST => self.list_size,
             _ => unreachable!("GenDispatcher has no integer property {idx}"),
         }
     }
