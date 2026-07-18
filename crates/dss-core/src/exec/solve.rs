@@ -389,6 +389,39 @@ impl Dss {
         }
     }
 
+    /// Force a full `WHOLEMATRIX` rebuild of the system Y matrix (no vector
+    /// realloc), mirroring the `BuildYMatrix` the solver runs when
+    /// `SystemYChanged`. This is the benchmark entry point for the
+    /// MULTITHREADING_PLAN M1 `ybuild_8500` bench (DE_PASCALIZE P15): it isolates
+    /// the Y-assembly cost — YPrim recompute + stamping + dedup + factor-symbolic
+    /// reuse — from the surrounding fixed-point loop. No-op without a circuit.
+    pub fn rebuild_system_y(&mut self) {
+        let Dss {
+            classes,
+            circuit,
+            aux_parser,
+            vars,
+            errors,
+            ..
+        } = self;
+        let Some(ckt) = circuit.as_mut() else {
+            return;
+        };
+        let mut store = ClassStore { classes };
+        let mut env = SolveEnv {
+            store: &mut store,
+            parser: aux_parser,
+            vars,
+            errors,
+        };
+        let _ = crate::solution::build_y_matrix(
+            ckt,
+            &mut env,
+            crate::solution::BuildOption::WholeMatrix,
+            false,
+        );
+    }
+
     /// Pascal `DoBusCoordsCmd` (`ExecHelper.pas` l.2955): read a `bus, x, y`
     /// file (one bus per line, aux-parser delimiters) and set the coordinates
     /// on buses that exist; buses not in the circuit are silently ignored.
