@@ -1530,3 +1530,16 @@ fn relay_control_type_pins_enum_ordinals() {
     assert_eq!(RelayControlType::from_ordinal(2), None);
     assert_eq!(RelayControlType::from_ordinal(10), None);
 }
+
+#[test]
+fn set_i32_type_keeps_value_on_unregistered_ordinal() {
+    // The `2` (and any out-of-range) ordinal is never produced by the
+    // RelayTypeEnum parse, but pin the deliberate keep-old fallback at the
+    // setter: `from_ordinal(value).unwrap_or(self.control_type)`.
+    let mut r = Relay::new("r1");
+    r.set_i32(prop::TYP, RelayControlType::Distance.ordinal()); // 7 -> Distance
+    assert_eq!(r.control_type, RelayControlType::Distance);
+    r.set_i32(prop::TYP, 2); // unregistered gap ordinal -> keep Distance
+    assert_eq!(r.control_type, RelayControlType::Distance);
+    assert_eq!(r.get_i32(prop::TYP), 7);
+}

@@ -675,3 +675,16 @@ fn cap_control_type_pins_enum_ordinals() {
     assert_eq!(CapControlType::from_ordinal(6), None);
     assert_eq!(CapControlType::from_ordinal(-1), None);
 }
+
+#[test]
+fn set_i32_type_keeps_value_on_unregistered_ordinal() {
+    // USERCONTROL=6 is unregistered (only reached via a user-model DLL, which is
+    // NOT_PORTED), so the setter can never see it; pin the deliberate keep-old
+    // fallback `from_ordinal(value).unwrap_or(self.control_type)` regardless.
+    let mut cc = CapControl::new("cc1");
+    cc.set_i32(prop::TYPE, CapControlType::Kvar.ordinal()); // 2 -> Kvar
+    assert_eq!(cc.control_type, CapControlType::Kvar);
+    cc.set_i32(prop::TYPE, 6); // unregistered USERCONTROL ordinal -> keep Kvar
+    assert_eq!(cc.control_type, CapControlType::Kvar);
+    assert_eq!(cc.get_i32(prop::TYPE), 2);
+}

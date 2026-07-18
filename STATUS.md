@@ -220,6 +220,14 @@ at the property parse/report + CIM-export accessors only. Proof (all unchanged):
 eventlog gate. MonPhase sentinels + the shared `CTRL_*` state channel were not
 required and stay deferred (item 7 residue / R0 `control_elem.rs`).
 
+Audit settlement (two independent auditors, no regression): 2 `low` notes.
+(1) setter keep-old fallback was not directly exercised → closed with two additive
+`set_i32_type_keeps_value_on_unregistered_ordinal` pin tests (relay + cap_control),
+no golden/tolerance touched. (2) `relay_type` DssEnum omitting Pascal's
+`DefaultValue := 0` → confirmed pre-existing (registry file untouched in-range) and
+a string-parse-fallback matter orthogonal to this `[A]` storage-type conversion;
+deferred to a registry-fidelity pass (rationale in `depascalize-p1.md`).
+
 ### DE_PASCALIZE P13 — VCCS delay line → `RingBuf` (wave 2, branch `wt-p1213-v2`)
 
 Stratum **[A]** bit-neutral. The VCCS z-domain filter's two wrap-around
