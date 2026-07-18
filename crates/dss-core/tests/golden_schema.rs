@@ -96,6 +96,36 @@ fn global_defs_bytes_match_oracle() {
 }
 
 #[test]
+fn global_enum_defs_bytes_match_oracle() {
+    let g = load_golden();
+    let want = g["enum_defs"].as_object().expect("enum_defs object");
+    let got = schema::global_enum_defs();
+
+    // The 21 global enum `$defs` (`DSS.Enums`), in Pascal insertion order,
+    // byte-for-byte — the full `prepareEnumJsonSchema` walk.
+    let want_keys: Vec<&str> = g["enum_defs_order"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    let got_keys: Vec<&str> = got.iter().map(|(k, _)| k.as_str()).collect();
+    assert_eq!(
+        got_keys, want_keys,
+        "global enum `$defs` key set / order drifted from the oracle"
+    );
+
+    for (name, value) in &got {
+        let expected = want[name].as_str().unwrap();
+        assert_eq!(
+            &render(value),
+            expected,
+            "enum def `{name}` bytes differ from the oracle"
+        );
+    }
+}
+
+#[test]
 fn circuit_properties_head_bytes_match_oracle() {
     let g = load_golden();
     let want = g["circuit_head"].as_object().expect("circuit_head object");
