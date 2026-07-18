@@ -193,9 +193,31 @@ fn enum_meta(en: &DssEnum) -> EnumMeta {
 /// (alias drops, renumbering, integer enums). Keyed by the Pascal `TDSSEnum.Name`.
 /// Empty for the pilot classes (their locals use the default); class batches
 /// extend it from the Pascal enum declarations as their classes need it.
-#[allow(clippy::match_single_binding)] // extension point: class batches add arms
 fn enum_overrides(name: &str) -> Option<(Vec<&'static str>, bool, bool)> {
     match name {
+        // Pascal `DSS.ConnectionEnum` (`DSSClass.pas:1097`): a sequential enum
+        // whose AltNames are `Wye`/`Delta` (the two real connections; the `y`/
+        // `ln`/`ll` aliases carry empty AltNames). The port's runtime `DssEnum`
+        // does not carry AltNames, so a `Conn` default renders as its AltName
+        // (`Wye`) only via this override. Global enum: feeds default computation
+        // only (the def is rendered by the global-enum walk).
+        "Connection" => Some((vec!["Wye", "Delta", "", "", ""], true, false)),
+        // Pascal `Load.pas:339-344` `LoadModelEnum`: `JSONUseNumbers := true`
+        // (an integer enum) with distinct AltNames (`ConstantPQ`, …).
+        "Load: Model" => Some((
+            vec![
+                "ConstantPQ",
+                "ConstantZ",
+                "Motor",
+                "CVR",
+                "ConstantI",
+                "ConstantP_FixedQ",
+                "ConstantP_FixedX",
+                "ZIPV",
+            ],
+            true,
+            true,
+        )),
         _ => None,
     }
 }
@@ -378,10 +400,13 @@ pub(crate) fn class_schema(
                     if !elide_scalar {
                         // MakeLike's `GetString` is `''` (Pascal), so its default
                         // is always elided; the port has no `get_string` for it.
-                        let ds = if pd.ptype == PropType::MakeLike {
-                            String::new()
-                        } else {
-                            sample.get_string(prop_index)
+                        // A `Bus` property's value is the bus name for its terminal
+                        // (`class_props/json.rs:101`, `obj.GetBus(PropertyOffset)`),
+                        // not a plain `get_string` — the terminal is `pd.size_prop`.
+                        let ds = match pd.ptype {
+                            PropType::MakeLike => String::new(),
+                            PropType::Bus => sample.get_bus_name(pd.size_prop),
+                            _ => sample.get_string(prop_index),
                         };
                         if !ds.is_empty() && !ds.starts_with("sample_for_defaults") {
                             prop.push(("default", s(&ds)));
@@ -462,6 +487,26 @@ pub(crate) fn class_schema(
                 prop.push(("type", s("array")));
                 prop.push(("items", obj(vec![("$ref", s(&enum_path))])));
                 // (array enum defaults are struct-array specific; batch classes)
+            }
+        } else if pd.ptype == PropType::ObjectRef && !on_array {
+            // Pascal `DSSObjectReferenceProperty` (`:818-895`): a scalar object
+            // ref. `PropertyOffset2 == 0` (a generic ckt/PD-element ref — the
+            // port's `object_class == Some("")`) renders a bare `type:string`; a
+            // fixed-class ref adds `minLength`/`maxLength`. The default is the
+            // referenced object's name, elided when unset (NIL on the all-default
+            // sample). The port reads the ref name via `get_string`, exactly as
+            // the JSON dump does (`class_props/json.rs:260`); for a single fixed
+            // class Pascal uses `Name` (what the sample getter already returns),
+            // and the generic/proxy `FullName` path can only fire on a non-NIL
+            // ref, which never occurs on the all-default sample.
+            prop.push(("type", s("string")));
+            if pd.object_class != Some("") {
+                prop.push(("minLength", i(1)));
+                prop.push(("maxLength", i(255)));
+            }
+            let name = sample.get_string(prop_index);
+            if !name.is_empty() {
+                prop.push(("default", s(&name)));
             }
         }
 

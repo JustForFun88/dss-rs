@@ -70,10 +70,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let mut defs = vec![
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
-        PropDef::double("Amps").flags(PropFlags::NO_DEFAULT),
-        PropDef::double("Angle"),
-        PropDef::double("Frequency")
-            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("Amps").flags(PropFlags::NO_DEFAULT | PropFlags::UNITS_A),
+        PropDef::double("Angle").flags(PropFlags::UNITS_DEG),
+        PropDef::double("Frequency").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::mapped_string_enum("ScanType", enums.scan_type),
         PropDef::mapped_string_enum("Sequence", enums.sequence),
@@ -84,7 +88,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // PCClass tail:
         PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

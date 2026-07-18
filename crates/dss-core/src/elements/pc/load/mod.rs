@@ -165,46 +165,62 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
-        PropDef::double("kW").flags(PropFlags::REPLACE_ZERO),
-        PropDef::double("PF").flags(PropFlags::ORDERING_LAST),
+        PropDef::double("kV")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
+        // NB: kW/kvar/kVA carry no `Units_*` flag — the pinned 0.14.5 oracle
+        // backend has none (`Load.pas` at tag 0.14.5); the vendored source added
+        // them post-0.14.5 (`dss_capi` `90c572e4` "AltDSS-Schema: More units"),
+        // an engine-inert schema-only change the port has not adopted.
+        PropDef::double("kW").flags(PropFlags::REPLACE_ZERO | PropFlags::REQUIRED_IN_SPEC_SET),
+        PropDef::double("PF").flags(
+            PropFlags::ORDERING_LAST
+                | PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::POWER_FACTOR_LIMITS,
+        ),
         PropDef::mapped_int_enum("Model", enums.load_model),
         PropDef::object_ref_class("LoadShape", "Yearly"),
         PropDef::object_ref_class("LoadShape", "Daily"),
         PropDef::object_ref_class("LoadShape", "Duty"),
         PropDef::object_ref_class("GrowthShape", "Growth"),
         PropDef::mapped_string_enum("Conn", enums.connection),
-        PropDef::double("kvar"),
-        PropDef::double("RNeut"),
-        PropDef::double("XNeut"),
+        PropDef::double("kvar").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT),
+        PropDef::double("RNeut").flags(PropFlags::UNITS_OHM),
+        PropDef::double("XNeut").flags(PropFlags::UNITS_OHM),
         PropDef::mapped_string_enum("Status", enums.load_status),
         PropDef::integer("Class"),
         PropDef::double("VMinpu"),
         PropDef::double("VMaxpu"),
         PropDef::double("VMinNorm"),
         PropDef::double("VMinEmerg"),
-        PropDef::double("XfkVA"),
+        PropDef::double("XfkVA").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KVA),
         PropDef::double("AllocationFactor"),
-        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO),
+        PropDef::double("kVA").flags(
+            PropFlags::REPLACE_ZERO | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT,
+        ),
         PropDef::double("%Mean").scale(0.01),
         PropDef::double("%StdDev").scale(0.01),
         PropDef::double("CVRWatts"),
         PropDef::double("CVRVars"),
-        PropDef::double("kWh"),
+        PropDef::double("kWh").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KWH),
         PropDef::double("kWhDays"),
         PropDef::double("CFactor"),
         PropDef::object_ref_class("LoadShape", "CVRCurve"),
         PropDef::integer("NumCust"),
-        PropDef::double_f_array("ZIPV", 7),
+        PropDef::double_f_array("ZIPV", 7).flags(PropFlags::NO_DEFAULT),
         PropDef::double("%SeriesRL").scale(0.01),
         PropDef::double("RelWeight"),
         PropDef::double("VLowpu"),
-        PropDef::double("puXHarm"),
+        PropDef::double("puXHarm").flags(PropFlags::NO_DEFAULT),
         PropDef::double("XRHarm"),
         // PCClass tail:
         PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
