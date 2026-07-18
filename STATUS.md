@@ -259,6 +259,63 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+### WASM-UM WP-WM.0 — ABI freeze + probes (branch `wasm-um`, 2026-07-18)
+
+`WASM_USERMODELS_PLAN.md` execution started (WM.0→WM.2 authorized for this
+round; WM.3+ deferred — parallel workflows own the element files). WP-WM.0 is
+**docs + probe scripts only** (zero engine/product code changes):
+
+- **`docs/wasm/USERMODEL_ABI.md` FROZEN** — export lists (15/13/7 + `memory` +
+  `dss_alloc`), packed record offset tables **transcribed from FPC probe
+  output** (never from reading), the 32-slot callback import table (module
+  `dss_env`) with tiers + census, activation rule, failure/trap/sandbox
+  policy, probe-evidence ledger. Probe kit: `tools/fpc/usermodel_abi/`
+  (verbatim-extraction script + 2 offset probes + 15-export stub DLL + oracle
+  driver + build script); evidence: `docs/wasm/probes/p1..p5*.txt`.
+- **P1 (oracle loads native DLL): PASS, all 5 asserts** — pinned dss-python
+  0.15.7/0.14.5 loads the FPC-built stub via `Generator.UserModel=`, stub
+  state vars appear on the element variable surface, `UserData=` reaches
+  `Edit` (len verified), Model=6 snapshot converges with terminal currents ==
+  stub `Calc` output **bit-exact**, marshalled V == terminal-1 node voltage at
+  4.8e-7 rel (one fixed-point iterate stale by construction — documented in
+  the probe). **Plan §2.5 channel 1 CONFIRMED; r3723 fallback not engaged; the
+  WM.3 audit-tier escalation clause is moot.**
+- **P2 (layouts): packed confirmed** (release cfgs never set
+  `DSS_CAPI_NO_PACKED_RECORDS`; probed with `-Mdelphi` + release defines,
+  x86_64-win64): `TDynamicsRec` 52 B, `TGeneratorVars` 244 B (unaligned tail
+  after the 3 i32s — `#[repr(C)]` would mis-pad, noted in the ABI doc),
+  `TDSSCallBacks` 256 B = 32×8. dss_capi 0.14.5 vs r3723 header sets:
+  **byte-identical** (twin probe over the real vendored r3723 units).
+- **P2 twin decision: PLAN A** — FPC 3.2.2 `ppcrossx64 -Mdelphi` builds the
+  **vendored `IndMach012a.dpr` as-is** (search paths only, zero source edits;
+  `.res` links); the resulting DLL loads under the pinned oracle, all 14
+  machine vars live, Model=6 solve converges with physically-sensible slip
+  (−0.0064). Plan B (Rust native-shim twin) not needed.
+- **P3 (callback census): `MsgCallBack` only** (`IndMach012Model.pas:474`,
+  help text); parser bundled (`ModelParser`), `DoDSSCommand` **unused** ⇒ the
+  WM.6 deferral stands. Full 32-slot table in the ABI doc.
+- **P4 (toolchain pins):** stable rustc 1.96.0; `wasm32-unknown-unknown`
+  target added (machine-global, additive); `wasmi ==1.0.9`
+  (`default-features=false`, `features=["simd"]`, the typst-verified pin)
+  compiles on stable with a pure-Rust closure (wasmi_core/ir/collections
+  1.1.0, wasmparser 0.228.0, bitflags, libm, spin — zero C/FFI) and exposes
+  fuel + store-limiter APIs (`instantiate_and_start` is the 1.x spelling).
+  Initial `tools/wasm_usermodel/PIN.txt` written. No wasmi blocker ⇒ the pin
+  stands.
+- **§2.7 upgrade one-line diff check — one real finding:** the four loader
+  units + callback vtable + `TDynamicsRec` are contract-identical across
+  0.14.5→0.15.x and r3723→r4133 (host-side property→method refactors only),
+  **but** 0.15.x and r4088+ insert `deltaQNom: array of Double` into
+  `TGeneratorVars` between `Qnominalperphase` and `NumPhases` (+8 tail shift,
+  managed reference). Frozen ABI = pinned 0.14.5/r3723 layout; caution
+  recorded in the ABI doc §2.2 (never mix ≤r3723-header DLLs with
+  r4088/r4133 binaries; an engine upgrade to 0.15.x semantics must revisit by
+  recorded decision). Evidence `docs/wasm/probes/p5_upgrade_diff.txt`.
+
+Follow-ups: none blocking WM.1. `TStorageVars`/`TPVSystemVars`/
+`TCapControlVars` offset tables are frozen at their owning WPs (WM.4/WM.5) via
+the same probe kit (ABI doc §2.4 records this explicitly).
+
 ### OG-1.5 `CAPI_Schema` JSON-schema export — static core ported (orphaned-gaps round, 2026-07-18)
 
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
