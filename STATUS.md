@@ -197,6 +197,19 @@ Records: `docs/phase-records/test-triage-{promotions,ad-classify,monitor-winding
 - Gate after merges: fmt/clippy clean, `cargo +stable test --workspace` exit 0;
   population.lock consistency re-proven by deliberate regen (no diff).
 
+### DE_PASCALIZE P12 — `line_constants` `Vec<Conductor>` (wave 2, branch `wt-p1213-v2`)
+
+Stratum **[A]** bit-neutral. The ~20 parallel per-conductor arrays on
+`LineConstants` collapse into one `cond: Vec<Conductor>`; the 11 cable-only
+arrays become each conductor's `cable: Option<CableData>` (the typed form of the
+Pascal "subclass arrays empty on overhead" trick). Carson/DERI/coaxial kernels
+in `mod.rs`/`cable.rs`/`cn.rs`/`ts.rs` read `cond[i].field` / `cable(i).field` —
+same arithmetic, same order. FPC-compat helpers untouched. Salvaged the
+`origin/wt-p1213` WIP `70cefbb` (mod.rs only, interrupted) by clean cherry-pick,
+completed the remaining mod.rs + all cable/cn/ts sites, folded to one commit.
+Proof (all unchanged): 20 line-constants unit tests, `golden_line_constants`,
+`corpus_gate` checkpoint YPrims. Full record: `docs/phase-records/depascalize-p12.md`.
+
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),
