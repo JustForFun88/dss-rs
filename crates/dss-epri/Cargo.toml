@@ -1,0 +1,18 @@
+[package]
+name = "dss-epri"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Test-only FFI bridge to the official EPRI OpenDSSDirect.dll (r4133 live-oracle channel)"
+
+[lib]
+name = "dss_epri"
+
+[[bin]]
+name = "epri-worker"
+path = "src/bin/epri-worker.rs"
+
+[dependencies]
+libloading.workspace = true
+serde.workspace = true
+serde_json.workspace = true

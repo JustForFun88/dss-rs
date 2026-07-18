@@ -2383,3 +2383,63 @@ have real bodies; the zone-build dispatcher (`solution/meters/mod.rs`) fires fro
 `build_y_matrix` after bus reprocessing; `TakeSample`/`Integrate` + the
 reliability fault-rate sweep are ported. Still Phase 8: the `SystemMeter`
 register core and all demand-interval/phase-voltage/`Show`/`Export` files.
+
+---
+
+## UNIFIED_GATE Phase A — `dss-epri` bridge + `epri-worker` + smoke + xcheck (session record)
+
+New test-only crate `crates/dss-epri` (`publish = false`) — the **only** crate
+without `#![forbid(unsafe_code)]` (carries `#![deny(unsafe_op_in_unsafe_fn)]` +
+`#[cfg(windows)]` + module `// SAFETY` docs; carve-out documented in
+`PORTING_PLAN.md` §1). It drives the official EPRI `OpenDSSDirect.dll` (r4133) via
+`libloading` as a second live oracle (UNIFIED_GATE_PLAN.md R1/§2). Layout: `ffi.rs`
+(raw `cdecl` externs + load with `LOAD_WITH_ALTERED_SEARCH_PATH` so sibling
+`KLUSolve.dll` resolves), `dss.rs` (command + V-protocol decode + error polling),
+`capture.rs` (`CaseResult` assembly, byte-mirroring `oracle_server.py` +
+`gen_checkpoints.py`), `guard.rs` (corpus-guard port), `src/bin/epri-worker.rs`
+(persistent `ping`/`run`/`quit` line-JSON worker + `--smoke`). Root `Cargo.toml`:
+added the workspace member, `libloading` workspace dep, and the dev opt-level-3
+override.
+
+**Root-cause war story (load-bearing, do not re-litigate).** The DLL deadlocked
+when driven from Rust — every call appeared to hang. Diagnosed by minidump: the
+process parks in `NtUserMsgWaitForMultipleObjectsEx` inside `OpenDSSDirect.dll`.
+The trigger is **`FreeLibrary` on `libloading::Library` drop**: the r4133 DLL's
+unit finalization tears down its Delphi solver **actor thread** through a
+message-pumping `TThread.WaitFor` that never completes headless (no VCL
+`Application`/`WakeMainThread`). The hang *looked* mid-execution only because the
+`Engine` (local in `run_smoke`) dropped — and FreeLibrary'd — before the report
+printed. The Python/Oddie host never hit it because interpreter shutdown doesn't
+`FreeLibrary` the DLL. **Fix:** never unload — `Dll::leak()` (`mem::forget` the
+`Library`); the OS reclaims it at process exit (actor thread already terminated,
+so DllMain-detach is clean). Confirmed by a minimal raw-FFI reproducer:
+libloading-load hangs at drop, `mem::forget(lib)` cures it (single-thread, no
+message pump needed). All the earlier COM/FP/message-pump/two-thread experiments
+were chasing the wrong symptom and were reverted.
+
+**Capture-decode notes** (verified against raw-DLL ctypes + Oddie probes):
+V-protocol `mySize` is always **bytes**; type tags 1=int / 2=double / 3=complex
+(flat re/im) / 4=string / 5=byte-stream. String arrays: strip **one** trailing
+`\0`, split on `\0`, then lstrip a single leading space from element 0 (the Oddie
+monitor-header first-column artifact — `[' V1', ...] → ['V1', ...]`; no other
+array's element 0 has a leading space, so applying it universally is a no-op).
+Monitor channels decoded from the raw `ByteStream` exactly like `IMonitors.Channel`
+(272-byte header, `record_size = int32@offset8 + 2`, f32 records). The DDLL solve
+is **async** (dispatches `SIMULATE` to the actor and returns), so `solve()` polls
+`ParallelV(1)` = `ActorStatus` until done.
+
+**DONE-bar evidence:**
+- `epri-worker --smoke` (10/10 runs, exit 0, stderr→/dev/null):
+  `version OK: Version 11.0.0.1 (64-bit build) - Charlottesville`
+  `IEEE13 solved: 41 nodes, 2 iterations`
+  `CSC export OK: n=41, nnz=267, voltages bit-identical (solution-neutral)`
+  `getIpointer OK: len=84 (= 2*(NumNodes+1))`
+- Smoke `#[test]` (`crates/dss-epri/tests/smoke.rs`) runs under `cargo test
+  --workspace`, oracle-free.
+- **xcheck** (`tools/opendss/xcheck_bridge.py`, temporary — Phase E deletes it):
+  drives all 396 cases of the r4133 `corpus_live_opendss` universe (240
+  solvable_now + 43 asymmetric + 66 controls + 47 modes; #303 `skip` decks
+  excluded identically both sides) through the Python/Oddie r4133 engine AND the
+  Rust `epri-worker`, bit-diffing the raw `CaseResult` — twice, second pass
+  order-shuffled (seed 1337). Result: see the phase deliverable (empty diff).
+- fmt + clippy (`-D warnings`) clean on `dss-epri`.
