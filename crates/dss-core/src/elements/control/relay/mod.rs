@@ -187,7 +187,7 @@ pub mod prop {
 /// `AllPropertyNames` (the `?`-query dump keys) exactly, in `AddProperty` order.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
-        PropDef::object_ref_any("MonitoredObj"),
+        PropDef::object_ref_any("MonitoredObj").flags(PropFlags::REQUIRED),
         PropDef::integer("MonitoredTerm"),
         PropDef::object_ref_any("SwitchedObj"),
         PropDef::integer("SwitchedTerm"),

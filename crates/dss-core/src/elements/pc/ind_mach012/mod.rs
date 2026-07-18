@@ -76,8 +76,8 @@ pub mod prop {
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::bus("Bus1", 1),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
+        PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
+        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
         PropDef::double("kW"),
         // Pascal `pf` is `[SilentReadOnly, ReadByFunction]` → PowerFactor(Power[1]):
         // read-only (writes silently ignored in set_f64), and the text render is ""
