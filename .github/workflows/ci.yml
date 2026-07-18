@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12.4"
-      # `cargo test` now runs the live oracle gate unconditionally (corpus_live.rs
+      # `cargo test` now runs the live oracle gate unconditionally (corpus_gate.rs
       # no longer reads DSS_LIVE_ORACLE), so the pinned dss-python oracle must be
       # present for the test step. Versions MUST match tools/golden/PIN.txt exactly.
       - name: Install pinned oracle (tools/golden/PIN.txt)

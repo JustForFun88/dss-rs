@@ -392,11 +392,15 @@
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
@@ -453,21 +457,29 @@
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
@@ -1012,6 +1024,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/NCIM/Xmission_System_Kundur2Area/Master.dss",
+   "isolate": true,
    "kind": "large",
    "n_steps": 1,
    "oracle": "capi015",
@@ -1119,6 +1132,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1693,46 +1708,64 @@
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
+   "isolate": true,
+   "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },

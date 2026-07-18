@@ -302,6 +302,78 @@ CLI runs the real masters (`cargo run -p dss-cli -- script.dss`).
 
 ---
 
+## 1g. UNIFIED_GATE Phase B — persistent oracle pools + hand-rolled scheduler (branch `ug-phase-b`)
+
+`UNIFIED_GATE_PLAN.md` §4 Phase B. Behavior-identical parallelization of the live
+corpus gate; no comparison, tolerance, golden, or `harness` change.
+
+- **Rename + module tree.** `crates/dss-core/tests/corpus_live.rs` → `corpus_gate.rs`
+  (git rename, `--follow` preserved) with `#[path="corpus_gate/…"]` submodules:
+  `manifest.rs` (schema + loaders + family completeness + AD disposition — schema
+  UNCHANGED, `oracle` field still honored, `ORACLE_SPECS` stays), `engines.rs`
+  (one-shot `Oracle` + persistent `WorkerPool`/`Worker` + `Channel`), `runner.rs`
+  (`run_rust_capture` + `compare_capture` split of `run_and_compare`, CorpusGuard,
+  abort/pending), `scheduler.rs` (task grouping + thread pool + proof modes).
+- **Persistent pinned pool (D8).** N long-lived `python -u oracle_server.py`
+  (`DSS_ORACLE_ENGINE=capi`) workers, ping-verified per process, dedicated
+  stdout-line + stderr-drain threads, one in-flight request each, per-request
+  deadline `DSS_ORACLE_TIMEOUT_SECS` (default 120) → kill/respawn/retry-once-then-
+  fail-case, recycle after 64 cases. Target-rev cases (`capi015`/`r3723`/`r4088`/
+  `r4133`) keep the ONE-SHOT `Oracle` path via `Channel::OneShot`.
+- **Scheduler (D7a + §3.3).** ONE `#[test]` `corpus_gate_all_cases_match_engines`
+  over the union of all four manifests (510 cases); task = case-dir group (cases
+  sequential inside → NO per-dir mutexes), longest-first static weight,
+  `AtomicUsize` cursor + `std::thread::scope`, T = `DSS_GATE_JOBS` |
+  `available_parallelism()` (16), per-channel pool `max(2,T/2)`. Per-case
+  `catch_unwind`; the one test fails iff any case failed and prints the COMPLETE
+  list (manifest order) — replaces the 4 abort-at-first tests
+  (`corpus_live_solvable_cases_match_oracle` + `{asymmetric,controls,modes}_cases_
+  match_oracle`). Structural manifest guards, `corpus_live_{classify,properties,
+  opendss}`, and the AD sweep are preserved (relocated, not changed).
+- **`isolate` (the one permitted early schema addition, §1.2).** Additive
+  `isolate: bool` (+ `note`, `isolate ⇒ note` enforced structurally); an isolate
+  case runs every execution on a throwaway one-shot worker. Default false; absent
+  everywhere until the contamination proof demanded it.
+
+**Contamination proof (§4 Phase B DONE bar).** Ran the full 510-case set three
+ways — (a) serial one-shot (`DSS_GATE_SERIAL=1`, T=1, fresh process per case), (b)
+persistent parallel, (c) persistent parallel shuffled (`DSS_GATE_SHUFFLE=1337`) —
+each dumping a label-sorted `{verdict, result}` artifact (`DSS_GATE_DUMP`). All
+three **bit-identical** on the gate-relevant CaseResult + verdicts.
+
+Two real persistent-worker contamination classes were found and root-caused
+(they pass one-shot, fail/pollute persistent) → `isolate: true` (19 cases):
+- **AutoAdd process-exit corruption** (`modes/autoadd/autoadd{,_cap}.dss`): the
+  documented AutoAdd solve corrupts the dss-python process, so the NEXT case on a
+  reused worker access-violates on `clear`. Isolated → the corruption dies with
+  the throwaway process.
+- **debugtrace held-open trace CSV** (17 solvable_now cases: 7 ckt24-mm masters +
+  EPRI/ADiakoptics ckt24 + DOCTechNote + NCIM + StorageTechNote): a `debugtrace`
+  RegControl/Storage keeps a fixed-name trace CSV open in the persistent worker,
+  so a different worker locks the file (`#303 being used by another process`) and
+  the CorpusGuard cannot delete it (pollution). Isolated → the handle releases at
+  process exit.
+
+The raw dump also carried a NON-contamination order difference: 114 cases differ
+only in `all_properties` `RMatrix`/`XMatrix` values — the upstream dss_capi
+`DoubleSymMatrixProperty` getter renders UNINITIALIZED heap memory (denormal
+garbage + prior-case heap residue), the documented UB that `harness::SKIP_PROPS`
+already excludes from the value compare (so verdicts are unaffected). Proven:
+excluding `all_properties`, parallel≡shuffled≡serial are byte-identical. The dump
+therefore strips that one UB field (documented in `write_gate_dump`); everything
+the gate asserts stays.
+
+**Wall-clock.**
+
+| mode | jobs | pool | wall-clock |
+|---|---|---|---|
+| serial one-shot (old cost model) | 1 | — | 392 s |
+| persistent parallel | 16 | 8 | 109 s (3.6× faster; 80 s without the dump write) |
+
+`tests/corpus` pristine after all runs; `cargo fmt/clippy/test` green in the worktree.
+
+---
+
 ## 1a. Archived — completed plan records (100% done)
 
 > Moved out of the active §1 frontier on 2026-07-17. These are the records of plans whose own work-package scope is closed and gate-green: the 1:1 FINAL ACCEPTANCE, JSON export (Stages A+B), DIAKOPTICS/PSTCALC **Part I**, and the full **UPGRADE** Rung 1 + Rung 2 (r4133 parity). A few carried a documented item forward to a successor plan that has **not** finished it yet (TODO(compat) sweep + HIDE_015X → DE_PASCALIZE Stage F; GICMvars export → Phase 9; JSON DynInit/Full-mode tail → a follow-up WP; IEEE118 NCIM → a future UPGRADE rung) — those open items are surfaced in §1's **Standing open follow-ups**, not buried here. Frozen history — superseded only by the code and tests. In-progress / not-started plans (DE_PASCALIZE, DIAKOPTICS Part II, RESONANCE, MULTITHREADING, WASM_USERMODELS) stay in the active §1 above.
