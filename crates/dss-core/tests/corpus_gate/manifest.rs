@@ -301,7 +301,7 @@ pub(crate) struct Family {
 
 /// Oracle-free structural guard shared by the families: deck dir ↔ manifest
 /// bijection, the pinned coverage floor, `wp` present on every pending case,
-/// valid `ad`/`oracle`/`isolate` fields, and the family's per-case invariant.
+/// valid `ad`/`engines`/`isolate` fields, and the family's per-case invariant.
 pub(crate) fn family_manifest_is_complete(fam: &Family) {
     let dir = family_dir(fam.name);
     assert!(

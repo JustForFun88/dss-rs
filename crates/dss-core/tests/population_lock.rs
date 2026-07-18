@@ -122,9 +122,11 @@ impl Case {
     /// unchanged, so the membership guard stays green), this string changes and the
     /// lock trips. Kept human-diffable so the reviewer sees *which* knob moved.
     ///
-    /// `ledger_tag` is the case's per-channel sorted ledger entry ids (§1.4): every
-    /// ledger add/widen/flip on this case changes the tag → a reviewed lock diff,
-    /// so an envelope can never grow (or a mask appear) without leaving a trail.
+    /// `ledger_tag` is the case's per-channel sorted `id@content-digest` ledger
+    /// entries (§1.4, [`ledger_tags`]): every ledger add/widen/flip on this case —
+    /// including an in-place envelope/scope edit of an existing entry — changes the
+    /// tag → a reviewed lock diff, so an envelope can never grow (or a mask appear)
+    /// without leaving a trail.
     fn rigor(&self, ledger_tag: &str) -> String {
         format!(
             "kind={} steps={} sel={} mm={} probes={} vars={} evlog={} ctrlq={} \
@@ -151,36 +153,53 @@ impl Case {
     }
 }
 
+/// FNV-1a 64-bit over a byte string — a tiny, dependency-free content digest for
+/// the ledger-entry fingerprint below.
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in bytes {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
 /// Load `tests/corpus/ledger.json` and map each case key (`<source>:<path>`) to a
-/// deterministic per-channel sorted-entry-id tag for the rigor fingerprint (§1.4):
-/// `capi_v0145:id1,id2;r4133:id3` (channels + ids sorted), empty for a case with
-/// no ledger entries. Every ledger add/widen/flip changes the affected case's tag,
-/// so it lands as the same reviewed lock diff as a manifest edit — the ledger can
-/// never become a silent soft-tolerance backdoor (§5 R3).
+/// deterministic per-channel sorted tag of `id@digest` pairs for the rigor
+/// fingerprint (§1.4): `capi_v0145:id1@a1b2…,id2@…;r4133:id3@…`, empty for a case
+/// with no ledger entries. The digest is FNV-1a64 over the entry's FULL serialized
+/// JSON (scopes, envelopes, steps, kind — everything), so not just adding/removing
+/// an entry but WIDENING an existing one (raising `max_rel`/`num_rel`, adding a
+/// scope, cutting `steps`) changes the case's tag → the same reviewed lock diff as
+/// a manifest edit (pre-E/F audit UGA-1: an id-only tag let envelope widening
+/// escape the lock). The ledger can never become a silent soft-tolerance backdoor
+/// (§5 R3).
 fn ledger_tags() -> BTreeMap<String, String> {
-    #[derive(Deserialize)]
-    struct RawLedger {
-        #[serde(default)]
-        entries: Vec<RawEntry>,
-    }
-    #[derive(Deserialize)]
-    struct RawEntry {
-        id: String,
-        case: String,
-        channel: String,
-    }
     let p = corpus_dir().join("ledger.json");
     let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
-    let raw: RawLedger =
+    let root: serde_json::Value =
         serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()));
+    let entries = root
+        .get("entries")
+        .and_then(|e| e.as_array())
+        .cloned()
+        .unwrap_or_default();
     let mut by_case: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
-    for e in raw.entries {
+    for e in entries {
+        let field = |k: &str| -> String {
+            e.get(k)
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| panic!("ledger entry missing string field {k:?}: {e}"))
+                .to_string()
+        };
+        let (id, case, channel) = (field("id"), field("case"), field("channel"));
+        let digest = fnv1a64(e.to_string().as_bytes());
         by_case
-            .entry(e.case)
+            .entry(case)
             .or_default()
-            .entry(e.channel)
+            .entry(channel)
             .or_default()
-            .push(e.id);
+            .push(format!("{id}@{digest:016x}"));
     }
     let mut out = BTreeMap::new();
     for (case, chans) in by_case {

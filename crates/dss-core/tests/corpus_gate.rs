@@ -4,8 +4,10 @@
 //! (`capi_v0145` channel, served by a persistent worker pool) — node order, full
 //! system Y, node voltages, every element's currents/powers/losses, YPrim blocks,
 //! injection, discrete control state, monitors/meters, and the opt-in element
-//! channels — per step, reusing `harness/mod.rs`. Target-rev cases (`capi015` /
-//! `r3723` / `r4088` / `r4133`) keep the one-shot Oracle path (UPGRADE_PLAN.md).
+//! channels — per step, reusing `harness/mod.rs`. The `r4133` channel is served
+//! by the in-house `dss-epri` bridge pool (`epri-worker`); `engines:"both"`
+//! cases gate on BOTH channels, partitioned by the divergence ledger (Phase C/D
+//! — the pre-Phase-C one-shot target-rev Oracle path is retired).
 //!
 //! Phase B (this file's module tree): the four pre-existing live-compare tests
 //! (`corpus_live_solvable_cases_match_oracle` + `{asymmetric,controls,modes}_

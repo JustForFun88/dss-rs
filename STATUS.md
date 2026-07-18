@@ -1196,6 +1196,117 @@ by loosening a tolerance:
   orphaned causes are the imported known_diffs class-prose kept as reference for the
   single-channel note cases — retained as documentation, no gating impact.
 
+## 1k. UNIFIED_GATE pre-E/F cross-phase audit (branch `ug-audit`, 2026-07-19)
+
+Two independent xhigh read-only audits (code-fidelity + verification-strength) of
+the WHOLE delivered range `pre-unified-gate` (`449c745`) .. post-Phase-D `update`
+(`a0ac274`), before Phases E/F run. **Per-phase verdicts: 0 PASS, A PASS, B PASS,
+C PASS, D PASS-at-settled-bar** — the delivered gate verifies MORE than the
+pre-range gate (whole-range `tests/harness` diff = one `fn`→`pub fn` visibility
+change; no tolerance/floor/assert weakened; lock membership 514/514 zero loss;
+corpus pristine). Both audits re-derived the shipped ledger from the live engines
+(r4133 renders `Storage.%stored` to 6 sig figs vs full-f64 pinned oracle, inside
+the `num_rel 1e-6` envelope; the #303 line-spacing crash reproduces live) — no
+entry papers over a fixable port bug. 16 findings (2 medium, rest low), settled
+here empirically; every fix is rigor-ADDING, no tolerance/envelope/assert loosened,
+no golden touched.
+
+**Fixed (this branch, canary-proven live):**
+- **UGA-1/T1 (medium) — envelope widening escaped the population lock**: the
+  lock's ledger tag was entry-id-only, so raising `max_rel`/`num_rel`, adding a
+  scope, or cutting `steps` on an EXISTING entry produced no lock diff —
+  contradicting plan §1.4/§5-R3 and the STATUS §1i claim. `ledger_tags()` now
+  fingerprints each entry as `id@FNV-1a64(full entry JSON)`; lock regenerated
+  (diff = exactly the 6 ledgered cases gaining `@digest`). Canary: widening
+  `r4133-gfm-micro-pctstored` `num_rel` 1e-6→1e-2 now FAILS `population_lock`
+  (proven, reverted).
+- **UGA-T2 (medium) — `property` ledger scope half-enforced §1.3**: no mandatory
+  `oracle` pin (a bare `name_re`-only scope masked with zero assertion), `rust`
+  pin ignored, `num_rel` ignored. `property_handled_keys` now mirrors the probe
+  path exactly (Phase-D F4/F5 parity): numeric-skeleton `num_rel` envelope
+  against the live Rust `?`-value + tier-floor staleness, non-numeric requires
+  the `oracle` pin + honors the `rust` pin; structurally a probe/property scope
+  now REQUIRES `oracle` or `num_rel`. Canary-proven on `vsource_asym`
+  (`Vsource.source.basekv`): wrong pin fails loudly ("oracle 12.47 != pinned
+  9999"), `num_rel` entry applies with 1 hit. (Unblocks the ORPHANED_GAPS §1.9
+  `line_spacing_asym` exact-pair-numeric retirement.)
+- **UGA-2 — latent skip full-bypass**: no rule prevented a case's ONLY gating
+  channel(s) from all being `skip`-ledgered (→ zero verification, not even the
+  Rust smoke). `assert_structural` now requires ≥1 non-skipped channel per
+  skip-bearing case (canary: a capi skip added to the r4133-skipped
+  `IEEE13_LineSpacing` fails structurally). All 3 shipped skips sit on
+  `engines:"both"` cases — latent only.
+- **UGA-T4 — no scope-field allowlist**: a typo'd or §1.3-but-unimplemented
+  field (`yprim`/`y_fingerprint`/`meter`/`global_result`) compiled fine and
+  silently never applied (masked inside a multi-scope entry by per-entry hit
+  accounting). `compile_scope` now rejects anything outside the 9 implemented
+  fields, loudly (canary-proven).
+- **UGA-T3 — `line_re` masks could never go stale on content-matched lines**:
+  `mask_line` marked exceeded unconditionally on regex match. It now records a
+  live divergence only when the trailing-whitespace artifact is actually present
+  (`line != line.trim_end()`), so a vanished artifact trips STALE. (Mask power
+  was always bounded to `trim_end`; 0 such entries ship.)
+- **UGA-T5 — `DSS_GATE_ONLY` matching nothing greened a 0/0 run** (and skipped
+  fail-on-stale): a leftover exported env var could silently neuter the gate.
+  The scheduler now panics on zero retained cases (canary-proven).
+  (`DSS_GATE_SEED_LEDGER` remains a deliberate, loudly-bannered report mode.)
+- **UGA-3/T8 — stale in-code docs** contradicting delivered mechanics:
+  `corpus_gate.rs`/`scheduler.rs` "target-rev cases keep the one-shot Oracle
+  path" (retired in Phase C), `engines.rs` EpriPool "recycle after 64 cases"
+  (default 1 since Phase D), `manifest.rs` "valid `oracle` field" (deleted in
+  Phase C). Corrected.
+- **UGA-4 — dangling follow-up ownership**: 5 manifest `wp` pointers still named
+  `WP-UG-D` (a COMPLETE phase that deliberately did not retire them). The 4
+  ledgerable-but-unretired defer_ledger cases (DynExp×2, `regcontrol_idle`,
+  `line_spacing_asym`) now point at **ORPHANED_GAPS §1.9** (new entry, full
+  retirement recipe); the solvable_now NCIM Xmission case now points at
+  **WP-U1.7** like its 3 NCIM siblings. (`wp` is not in the rigor fingerprint —
+  no lock impact.)
+- **UGA-T6 — ubuntu CI leg structurally red post-Phase-C/D**: the mandatory gate
+  spawns `epri-worker` (`#[cfg(windows)]`, exits 1 on Linux) for 439
+  r4133/both-gated cases. `ci.yml` matrix reduced to `windows-latest` with the
+  reason documented in place.
+
+**Deliberately NOT fixed (recorded with rationale):**
+- **UGA-5 — plan §2.2 all-properties enumeration sub-item not implemented** in
+  the bridge ("implement anyway for report tooling parity"): `capture.rs`
+  fail-louds on an `all_properties` request (verified — no fake-empty dump) and
+  the scheduler masks it off per-channel; gating is unaffected (property parity
+  is capi_v0145-only by plan). Recorded as an accepted §2.2 deviation: implement
+  only if report tooling ever needs it (`DSSPut_Command("? name.Like")` +
+  `DSSElementV`).
+- **UGA-6 — "Rust runs once per case" (§3.3/D7) violated for `engines:"both"`**:
+  `compare_with_result` re-runs the deterministic Rust engine per channel (2×).
+  Cost-only (~150 s full gate ≪ 10 min target), disclosed in the scheduler
+  comment; caching the capture across channels is not worth the seam. Accepted.
+- **UGA-7 — Phase D "≥90% both" target missed (342/514 = 66.5%)**: already
+  disclosed in §1i with the seeding-data proof that ~72% is the arithmetic
+  ceiling (97 r4133-only-feature cases can never be both; 75 capi-only
+  wholesale-divergent stay single-channel per plan). The fingerprintable ~21-case
+  flip set remains the follow-up. No action here.
+- **UGA-T7 — `skip` entries can never go stale by construction**: a crash cannot
+  be observed without sending the deck, and no channel would notice the crash
+  disappearing (unlike the old report mode). Inherent to the design; the audit
+  re-reproduced #303 live on 2026-07-19. Re-validation is manual:
+  `DSS_GATE_SEED_LEDGER=1 DSS_GATE_SEED_ONLY=<case>` sends the deck to r4133 and
+  reports. Accepted with this documented procedure.
+- **UGA-T9 — P5a `show_busflow_unknown_bus_errors` assert reshape** (exact
+  message equality → code 219 + `contains("not found")`): P5a is trusted context
+  with its own audit trail; the assert gained the numeric-code dimension and the
+  reshape is disclosed in the P5a record. The only text-weaker assert in the
+  whole range — noted for completeness, no action.
+
+**Phase E handoff (confirmed, NOT fixed here per brief):** `tools/opendss/*.py`
+report scripts still read the deleted `known_diffs.json` / reference
+`corpus_live_opendss` — they die in Phase E with the Oddie venv + `bin/r3723` +
+`bin/r4088` (junction-safe protocol, CLAUDE.md). Phase F additionally rewrites
+TESTING.md/CLAUDE.md (the in-code module docs were already fixed here).
+
+**Gate:** `cargo fmt --all --check` + `cargo clippy --workspace --all-targets
+-- -D warnings` + `cargo test --workspace` green at defaults (full BOTH corpus
+gate 514/514, all 6 ledger entries hit, fail-on-stale active); `tests/corpus`
+pristine; junctions intact.
+
 ## 1j. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
 
 `DE_PASCALIZE_PLAN.md` §P5a executed (P5b spans / P5c CLI presentation out of

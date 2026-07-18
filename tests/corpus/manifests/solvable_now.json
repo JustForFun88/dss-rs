@@ -583,7 +583,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "engines": "r4133",
-   "wp": "WP-UG-D (Unified Gate Phase D ledger)",
+   "wp": "ORPHANED_GAPS §1.9 (UNIFIED_GATE defer_ledger retirement)",
    "defer_ledger": "capi015-line DynamicExp D14 Exit-no-op (frozen state var seed): 0.14.5 swings, r4133-11.0 evaluates DynExp differently -> node V diverges ~1.5e-5 rel. Phase D: r4133 divergence envelope.",
    "note": "Flipped to oracle:capi015 by the DYNEXP WP (D14, upstream 2a8bdb78). This deck runs a full dynamics swing (fault at HT, cleared by opening a line, 5 s undamped swing) driven by a DynamicExp shaft model. D14 makes SolveEq a no-op evaluator, so the rotor stays frozen at its seed angle (theta 0.72907156 rad, speed 0) instead of swinging -- matching capi015 exactly, diverging from the 0.14.5 oracle (which swings). See DIVERGENCES.md §D14 and the generator_dynexp_dynamics_* unit gates. The steady-state-only sibling stays on the default oracle (never enters dynamics, so SolveEq is never called)."
   },
@@ -1211,7 +1211,7 @@
    "kind": "large",
    "n_steps": 1,
    "engines": "r4133",
-   "wp": "WP-UG-D (Unified Gate Phase D ledger)",
+   "wp": "WP-U1.7",
    "defer_ledger": "capi015-line NCIM solver (WP-U1.7): 0.14.5 lacks NCIM (Set algorithm=NCIM ignored; Export deltaf/deltaZ unknown #24713), r4133-11.0 NCIM converges to a different PV/Q operating point -> Vsource.source current diverges wholesale (sign+magnitude). Phase D: re-gate vs r4133 with an iteration/current envelope, or vs capi_v0145 once NCIM lands there.",
    "note": "T1 test-triage promotion (2026-07-17): was skipped_oracle_issue #24713 ('Unknown Export command: deltaf') -- STALE, the pinned 0.14.5 oracle predates NCIM and its deltaF/deltaZ/jacobian exports. Kundur two-area transmission network solved with `set algorithm=NCIM` (the 0.15.x-line solver). Flipped oracle:capi015 (the NCIM-owning dss_capi 0.15.0b4 / SVN r4103 line). Validated per UPGRADE_PLAN.md §1.7: (1) capi015 compiles+solves+converges (warm re-solve 1 iter); (2) bit-identical across two capi015 processes (y_fp nnz=99 frob=4352.558077818025 tr_re=2002.050898338095 tr_im=-7402.642529188686 identical); (3) feature-sensitive -- forcing `set algorithm=Normal` DIVERGES on capi015 (|V|~8e115, 200 iters), so NCIM cannot silently no-op. Whole-model live compare: Rust matches capi015 to 0 (all 33 nodes byte-identical, B1.1=11893.415545). Iteration policy Rust<=capi015: warm re-solve 1==1 (equal). The `export deltaF/deltaZ/jacobian` NCIM exports are ported (WP-U1.7); the port raises no errors."
   },
@@ -1961,7 +1961,7 @@
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "wp": "WP-UG-D (Unified Gate Phase D ledger)",
+   "wp": "ORPHANED_GAPS §1.9 (UNIFIED_GATE defer_ledger retirement)",
    "defer_ledger": "capi015-line DynamicExp D14 Exit-no-op (frozen state var seed): 0.14.5 swings, r4133-11.0 evaluates DynExp differently -> node V diverges ~1.5e-5 rel. Phase D: r4133 divergence envelope.",
    "note": "CF2-G migration; re-promoted from skipped_needs_investigation by the DYNEXP WP (D14 pulled ahead of WP-U1.6). GFL daily->dynamics DynamicExp/DynamicEq/DynOut variant of the GFL sibling. Double attribution off both mid-rung engines: (1) WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, DIVERGENCES.md #d7) moved it off the 0.14.5 oracle (witnessed 7.62e-4 > 7.41e-4 floor at entry 118); (2) the 0.15.x DynamicExp delta D14 (upstream 2a8bdb78) kept it off capi015 (witnessed 8.31e-3 > 7.40e-4 at entry 0). D14 ported: SolveEq now exits before evaluating the RHS (no-op evaluator; state-var derivative frozen at InitStateVars), so the DynExp path matches capi015 -- witnessed live: Generator dspeed=0/speed frozen vs 0.14.5 dspeed=-1.6e-6 (DIVERGENCES.md §D14). With D7 (landed) + D14 (this WP) both porting, the deck is capi015-green."
   },

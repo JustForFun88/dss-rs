@@ -1886,7 +1886,7 @@
     "*"
    ],
    "engines": "r4133",
-   "wp": "WP-UG-D (Unified Gate Phase D ledger)",
+   "wp": "ORPHANED_GAPS §1.9 (UNIFIED_GATE defer_ledger retirement)",
    "defer_ledger": "capi015-line RegControl `idle` property (0.15 feature): 0.14.5 rejects `idle` (#110), r4133-11.0 idle-regulator node V diverges ~7e-5 rel. Phase D: r4133 divergence envelope.",
    "pending": false,
    "probes": [
