@@ -3,7 +3,7 @@
  "cases": [
   {
    "path": "vsource/vsource_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -15,7 +15,7 @@
   },
   {
    "path": "reactor/reactor_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -30,7 +30,7 @@
   },
   {
    "path": "capacitor/capacitor_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -46,7 +46,7 @@
   },
   {
    "path": "line/line_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -115,7 +115,7 @@
   },
   {
    "path": "line/line_llc_harm_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -127,7 +127,7 @@
   },
   {
    "path": "line/line_ground_z_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -139,7 +139,7 @@
   },
   {
    "path": "line/line_fullcarson_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -151,7 +151,7 @@
   },
   {
    "path": "transformer/transformer_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -167,7 +167,7 @@
   },
   {
    "path": "transformer/transformer_wyedelta_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -179,7 +179,7 @@
   },
   {
    "path": "fault/fault_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -191,7 +191,7 @@
   },
   {
    "path": "load/load_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -208,7 +208,7 @@
   },
   {
    "path": "generator/generator_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -222,7 +222,7 @@
   },
   {
    "path": "generator/gen_currentlimited_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -235,7 +235,7 @@
   },
   {
    "path": "der/der_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -248,7 +248,7 @@
   },
   {
    "path": "der/der_state_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -273,7 +273,7 @@
   },
   {
    "path": "vccs/vccs_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -285,7 +285,7 @@
   },
   {
    "path": "upfc/upfc_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -297,7 +297,7 @@
   },
   {
    "path": "combo/combo_chain_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -354,7 +354,7 @@
   },
   {
    "path": "vsource/midi_vsource_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -364,7 +364,7 @@
   },
   {
    "path": "reactor/midi_reactor_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-divergent",
    "kind": "micro",
    "n_steps": 2,
@@ -374,7 +374,7 @@
   },
   {
    "path": "capacitor/midi_capacitor_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -384,7 +384,7 @@
   },
   {
    "path": "line/midi_line_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -394,7 +394,7 @@
   },
   {
    "path": "transformer/midi_transformer_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -404,7 +404,7 @@
   },
   {
    "path": "fault/midi_fault_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 2,
@@ -414,7 +414,7 @@
   },
   {
    "path": "load/midi_load_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -424,7 +424,7 @@
   },
   {
    "path": "load/midi_load_vregion_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -435,7 +435,7 @@
   },
   {
    "path": "generator/midi_generator_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -445,7 +445,7 @@
   },
   {
    "path": "der/midi_der_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -465,7 +465,7 @@
   },
   {
    "path": "vccs/midi_vccs_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 2,
@@ -475,7 +475,7 @@
   },
   {
    "path": "upfc/midi_upfc_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -485,7 +485,7 @@
   },
   {
    "path": "isource/isource_snap.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -497,7 +497,7 @@
   },
   {
    "path": "autotrans/autotrans_snap.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -526,7 +526,7 @@
   },
   {
    "path": "autotrans/autotrans_gic.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -539,7 +539,7 @@
   },
   {
    "path": "gic/gicline_gic.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -551,7 +551,7 @@
   },
   {
    "path": "gic/gictransformer_gic.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -563,7 +563,7 @@
   },
   {
    "path": "gic/gicsource_gic.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -590,7 +590,7 @@
   },
   {
    "path": "isource/midi_isource_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:too-small",
    "kind": "midi",
    "n_steps": 1,
@@ -602,7 +602,7 @@
   },
   {
    "path": "autotrans/midi_autotrans_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "midi",
    "n_steps": 1,
@@ -622,7 +622,7 @@
   },
   {
    "path": "gic/gic_midi.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "midi",
    "n_steps": 1,

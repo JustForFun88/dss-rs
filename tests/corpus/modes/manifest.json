@@ -3,7 +3,7 @@
  "cases": [
   {
    "path": "inputformat/shape_binfiles/shape_binfiles.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:save-roundtrip-relpath",
    "kind": "micro",
    "n_steps": 8,
@@ -315,7 +315,7 @@
   },
   {
    "path": "time/ld1.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 16,
@@ -328,7 +328,7 @@
   },
   {
    "path": "time/ld2.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 5,
@@ -341,7 +341,7 @@
   },
   {
    "path": "time/peakday.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -355,7 +355,7 @@
   },
   {
    "path": "time/direct.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -368,7 +368,7 @@
   },
   {
    "path": "montecarlo/monte1.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 5,
@@ -381,7 +381,7 @@
   },
   {
    "path": "montecarlo/monte2.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
@@ -394,7 +394,7 @@
   },
   {
    "path": "montecarlo/monte3.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 4,
@@ -407,7 +407,7 @@
   },
   {
    "path": "montecarlo/montefault.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 3,
@@ -420,7 +420,7 @@
   },
   {
    "path": "autoadd/autoadd.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "isolate": true,
    "ad": "pf",
    "kind": "micro",
@@ -448,7 +448,7 @@
   },
   {
    "path": "autoadd/autoadd_cap.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "isolate": true,
    "ad": "pf",
    "kind": "micro",
@@ -476,7 +476,7 @@
   },
   {
    "path": "newton/newton.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -489,7 +489,7 @@
   },
   {
    "path": "newton/newton_feeder.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -502,7 +502,7 @@
   },
   {
    "path": "harmonics/reactor_rlcurve.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -516,7 +516,7 @@
   },
   {
    "path": "inputformat/xycurve_files/xycurve_files.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:save-roundtrip-relpath",
    "kind": "micro",
    "n_steps": 3,
@@ -531,7 +531,7 @@
   },
   {
    "path": "harmonics/isource_harm.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -545,7 +545,7 @@
   },
   {
    "path": "batchedit/batchedit.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -618,7 +618,7 @@
   },
   {
    "path": "batchedit/midi_batchedit.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "midi",
    "n_steps": 1,
@@ -677,7 +677,7 @@
   },
   {
    "path": "reduce/reduce_dangling.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -703,7 +703,7 @@
   },
   {
    "path": "reduce/reduce_laterals.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -729,7 +729,7 @@
   },
   {
    "path": "reduce/reduce_breakloop.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 1,
@@ -774,7 +774,7 @@
    "selected_elements": [
     "*"
    ],
-   "engines": "r4133",
+   "engines": "both",
    "note": "UPGRADE_PLAN.md WP-U0 pilot: keeps the per-case target-rev oracle machinery (Oddie r4133 engine binding, ping pin check, iteration policy Rust<=oracle) exercised by every cargo test. Deliberately revision-insensitive deck; validated per the WP-U0 protocol (two-process determinism on the r4133 engine)."
   },
   {
@@ -825,7 +825,7 @@
   },
   {
    "path": "reduce/reduce_remove.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -848,7 +848,7 @@
   },
   {
    "path": "pstcalc/pstcalc_cmd.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -1117,7 +1117,7 @@
   },
   {
    "path": "time/daily.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
@@ -1139,7 +1139,7 @@
   },
   {
    "path": "time/daily_bigstep.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 12,
@@ -1153,7 +1153,7 @@
   },
   {
    "path": "time/yearly.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
@@ -1190,7 +1190,7 @@
   },
   {
    "path": "time/midi_duty_ctrl.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 20,
@@ -1206,7 +1206,7 @@
   },
   {
    "path": "harmonics/harmonic_hlist.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -1220,7 +1220,7 @@
   },
   {
    "path": "harmonics/harmonict.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -1234,7 +1234,7 @@
   },
   {
    "path": "reset/mode_reset.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -1379,7 +1379,8 @@
   "engines": "r4133",
   "pending": false,
   "wp": "WP-U1.6",
-  "note": "UPGRADE_PLAN WP-U1.6 row D13 (docs/upgrade/DIVERGENCES.md): LoadShape single-column csvfile= under MemoryMapping=Yes. dss_capi c4590d16 restored the missing `not` on the single-column CreateMMF guard (LoadShape.pas ~:1032) so the shape's P data loads; 0.14.5 exits on CreateMMF success -> empty shape -> the daily Solve raises #482 Division by zero. Gated capi015 (0.15.0b4), NOT 0.14.5: the deck CANNOT compile+solve on the pinned 0.14.5 oracle (it is the bug the fix removes), so §1.2 forbids a 0.14.5 gate. The Rust port's eager MMF reader (read_csv_file MMF branch) already matches the fixed behavior. Feature-sensitive (§1.7-3): the single-column MMF shape drives Load.ld over 8 daily steps to P/phase [20 40 70 110 160 130 90 50] kW (= 200 kW * [0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25]); a regression to an empty/1.0 shape moves per-step load power AND node voltages far above every live floor. Fixture mm8.csv is uniform 5-byte rows (aligned MMF byte stride; all bytes in accept-set [46,58)). Validated per §1.7 (two-process determinism on capi015: converged 2 iters, Vmag fingerprint 0ead40d7199b0781 bit-identical across two processes, 2026-07-16). Also unit-pinned by load_shape::tests::mmf_single_column_csvfile_loads_like_capi015."
+  "isolate": true,
+  "note": "UNIFIED_GATE Phase D isolate: a persistent r4133 worker intermittently misreads this deck's memory-mapped single-column loadshape (stale mmap handle across `clear`, ~2e-3 node-V), so it runs one-shot (fresh worker each engine execution) — same file-backed-loadshape class as shape_mmf/shape_filearr (R2/§3.3). UPGRADE_PLAN WP-U1.6 row D13 (docs/upgrade/DIVERGENCES.md): LoadShape single-column csvfile= under MemoryMapping=Yes. dss_capi c4590d16 restored the missing `not` on the single-column CreateMMF guard (LoadShape.pas ~:1032) so the shape's P data loads; 0.14.5 exits on CreateMMF success -> empty shape -> the daily Solve raises #482 Division by zero. Gated capi015 (0.15.0b4), NOT 0.14.5: the deck CANNOT compile+solve on the pinned 0.14.5 oracle (it is the bug the fix removes), so §1.2 forbids a 0.14.5 gate. The Rust port's eager MMF reader (read_csv_file MMF branch) already matches the fixed behavior. Feature-sensitive (§1.7-3): the single-column MMF shape drives Load.ld over 8 daily steps to P/phase [20 40 70 110 160 130 90 50] kW (= 200 kW * [0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25]); a regression to an empty/1.0 shape moves per-step load power AND node voltages far above every live floor. Fixture mm8.csv is uniform 5-byte rows (aligned MMF byte stride; all bytes in accept-set [46,58)). Validated per §1.7 (two-process determinism on capi015: converged 2 iters, Vmag fingerprint 0ead40d7199b0781 bit-identical across two processes, 2026-07-16). Also unit-pinned by load_shape::tests::mmf_single_column_csvfile_loads_like_capi015."
  },
  {
   "path": "ncim/ncim_pq.dss",
