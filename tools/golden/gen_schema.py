@@ -184,12 +184,13 @@ def main() -> None:
         if isinstance(value, dict) and "$dssFullEnum" in value:
             enum_defs[name] = render_and_check(value, f"$defs/{name}", 2, name)
 
-    # 3) Coverage bookkeeping: which class/enum defs the (deferred) walk owes.
+    # 3) Coverage bookkeeping: which class defs the (deferred) walk still owes.
+    # The 21 top-level (global) enum defs are ported above (emitted into
+    # `enum_defs`, byte-gated); the only enums still owed are class-LOCAL — they
+    # live inside a class def, never at top level, so they are covered by the
+    # deferred class walk, not enumerated here.
     def is_class_def(v) -> bool:
         return isinstance(v, dict) and v.get("type") == "object" and "properties" in v
-
-    def is_enum_def(v) -> bool:
-        return isinstance(v, dict) and "$dssFullEnum" in v
 
     class_def_names = [
         k
@@ -199,7 +200,6 @@ def main() -> None:
         and not k.endswith("Container")
         and is_class_def(v)
     ]
-    enum_def_names = [k for k, v in defs.items() if is_enum_def(v)]
 
     golden = collections.OrderedDict(
         [
@@ -215,11 +215,11 @@ def main() -> None:
             # The 21 global enum $defs, byte-exact (order + rendered bytes).
             ("enum_defs_order", list(enum_defs.keys())),
             ("enum_defs", enum_defs),
-            # Deferred-walk inventory (informational; not byte-gated).
+            # Deferred class-walk inventory (informational; not byte-gated). The
+            # 21 global enum defs are DONE (see `enum_defs`); only class defs +
+            # their class-local enums remain owed.
             ("deferred_class_def_count", len(class_def_names)),
-            ("deferred_enum_def_count", len(enum_def_names)),
             ("deferred_class_def_names", class_def_names),
-            ("deferred_enum_def_names", enum_def_names),
         ]
     )
 
@@ -229,7 +229,7 @@ def main() -> None:
     print(f"wrote {out_path.relative_to(REPO_ROOT)}")
     print(f"  static global defs: {len(global_defs)}  circuit head: {len(circuit_head)}")
     print(f"  global enum defs: {len(enum_defs)}")
-    print(f"  deferred class defs: {len(class_def_names)}  enum defs: {len(enum_def_names)}")
+    print(f"  deferred class defs: {len(class_def_names)}")
 
 
 if __name__ == "__main__":

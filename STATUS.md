@@ -235,6 +235,44 @@ large, self-contained data-entry effort (recorded in ORPHANED_GAPS §1.5). The
 `# Incomplete` caveat on `Dss::extract_schema_json` therefore stays until the class
 walk lands. No engine behavior changed.
 
+**Settlement (two audits, 2026-07-18).** Both audits confirmed the delivered
+enum surface is faithful, byte-exact vs the oracle (zero unexplained diffs, no
+loosened tolerance, no golden regenerated from Rust output), and that the scope
+shortfall is honestly disclosed, not hidden. Dispositions:
+- *DONE-bar completeness not met* (audit-code OG15b-1 / audit-tests F1, F2) —
+  **acknowledged, deferred.** The remaining bulk (49-class walk + 4 metadata
+  families + the expected-divergence inventory / full-document byte-compare) is a
+  large self-contained implementation, not a settlement fix; it stays open above
+  and in ORPHANED_GAPS §1.5. The `# Incomplete` caveat is retained deliberately.
+  For the *delivered* enum surface there is no divergence inventory because zero
+  divergences were observed — all 21 global enum `$defs` byte-match oracle 0.14.5
+  (stricter than an inventory: any diff fails `global_enum_defs_bytes_match_oracle`
+  at zero tolerance).
+- *Enum walk not wired into the runtime `extract_schema_json`* (OG15b-2 / F1) —
+  **won't-fix (deliberate), documented.** `global_enum_defs()` is verified
+  groundwork; the oracle `$defs` order is 10 static → 21 enums → class triples
+  (`CAPI_Schema.pas:1476-1502`), so the enums are spliced by the class walk that
+  assembles + byte-gates the full document. Wiring a standalone 10+21-def
+  intermediate now would surface an unverified integrated state the class walk
+  supersedes immediately; the skeleton stays the skeleton.
+- *Stale module doc* (OG15b-3) — **fixed.** `schema/mod.rs` no longer lists the
+  per-enum walk as "Deliberately NOT ported"; it now points at the `enums`
+  submodule and scopes the deferral to the per-class walk + class-local enums.
+- *Help-catalog provenance* (OG15b-4) — **acknowledged, deferred with the class
+  walk.** Confirmed empirically: the `.mo` is genuinely absent from the vendored
+  source, and `TDSSClass.GetPropertyHelp` → `DSSHelp` → `TMOFile('locale/en_US.mo')`
+  (`DSSClass.pas:1052`, `DSSGlobals.pas:724`) reads exactly that gettext catalog,
+  so sourcing from the pinned package's `properties-en-US.mo` is the engine's true
+  source, not oracle-JSON seeding. `extract_schema_help.py` is committed as an
+  unwired one-off; `help.rs` is neither generated-in-tree nor consumed. When the
+  class walk consumes it, re-derive from the `.po` at rev 0.14.5 in
+  `.inputs/dss_capi_with_git` for vendored provenance and re-scrutinize.
+- *Stale golden bookkeeping* (F3) — **fixed.** `gen_schema.py` no longer lists the
+  now-ported 21 global enums under `deferred_enum_def_*`; the golden was
+  regenerated with the pinned oracle (592679 bytes, deterministic across 2
+  processes) — a 24-line deletion of the two contradictory keys only, every
+  byte-gated fragment (`global_defs`/`enum_defs`/`circuit_head`) unchanged.
+
 ### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
 
 Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already
