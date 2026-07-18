@@ -29,6 +29,34 @@ fn offset_idx_steps_and_wraps() {
 }
 
 #[test]
+fn ringbuf_tap_reproduces_pascal_map_idx_order() {
+    // Fill a len-5 ring so slot k holds value k (slot 0 dead).
+    let len = 5usize;
+    let mut rb = RingBuf::alloc(len);
+    for k in 1..=len {
+        rb[k] = k as f64;
+    }
+    // The filter taps `iu - k + 1` for k = 1..=len at head iu = 1 must read the
+    // slots in the exact Pascal `MapIdx` order [1, 5, 4, 3, 2] — the same order
+    // `offset_idx_steps_and_wraps` pins for the raw index helper.
+    let iu = 1i64;
+    let taps: Vec<f64> = (1..=len).map(|k| rb.tap(iu - k as i64 + 1)).collect();
+    assert_eq!(taps, vec![1.0, 5.0, 4.0, 3.0, 2.0]);
+    // The wraparound contract, checked independently of `tap`'s body: for every
+    // raw index the filter can emit (negative `iu-k+1`, past-end), `tap` must
+    // fold into a live slot `1..=len` — never the dead slot 0, never out of
+    // bounds. With `buf[k] == k` the returned value equals the physical slot, so
+    // this pins the fold range without restating `self[map_idx(..)]`.
+    for idx in -(len as i64)..=(2 * len as i64) {
+        let v = rb.tap(idx);
+        assert!(
+            (1.0..=len as f64).contains(&v),
+            "tap({idx}) folded to slot {v}, outside 1..={len}"
+        );
+    }
+}
+
+#[test]
 fn recalc_sets_rated_quantities() {
     // 1-phase: Irated = Prated/Vrated/1, BaseVolt = Vrated, BaseCurr = Ppct%·Irated.
     let mut v = Vccs::new("v1");

@@ -31,28 +31,28 @@ impl LineConstants {
     /// `SetEpsR` — relative permittivity of the insulation (dimensionless).
     pub fn set_eps_r(&mut self, i: usize, value: f64) {
         if i < self.num_conds {
-            self.feps_r[i] = value;
+            self.cable_mut(i).eps_r = value;
         }
     }
 
     /// `SetInsLayer` — thickness of the insulation layer.
     pub fn set_ins_layer(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fins_layer[i] = value * LineUnits::from_code(units).to_meters();
+            self.cable_mut(i).ins_layer = value * LineUnits::from_code(units).to_meters();
         }
     }
 
     /// `SetDiaIns` — diameter over the insulation.
     pub fn set_dia_ins(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fdia_ins[i] = value * LineUnits::from_code(units).to_meters();
+            self.cable_mut(i).dia_ins = value * LineUnits::from_code(units).to_meters();
         }
     }
 
     /// `SetDiaCable` — diameter over the cable.
     pub fn set_dia_cable(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fdia_cable[i] = value * LineUnits::from_code(units).to_meters();
+            self.cable_mut(i).dia_cable = value * LineUnits::from_code(units).to_meters();
         }
     }
 
@@ -61,7 +61,7 @@ impl LineConstants {
     /// only calls `SetCondType` for `TCNDataObj`/`TTSDataObj` conductors.
     pub fn set_cond_type(&mut self, i: usize, value: ConductorType) {
         if i < self.num_conds {
-            self.fcond_type[i] = value;
+            self.cable_mut(i).cond_type = value;
         }
     }
 
@@ -70,7 +70,7 @@ impl LineConstants {
     /// formula); `false` selects the Synergi / Kersting no-semicon formula.
     pub fn set_semicon_layer(&mut self, i: usize, value: bool) {
         if i < self.num_conds {
-            self.fsemicon_layer[i] = value;
+            self.cable_mut(i).semicon_layer = value;
         }
     }
 
@@ -81,7 +81,9 @@ impl LineConstants {
     /// distance (0-based: conductor `k` is a phase iff `k < nphases`).
     fn cable_dij(&self, i: usize, j: usize) -> f64 {
         if !self.equivalent_spacing {
-            return ((self.fx[i] - self.fx[j]).powi(2) + (self.fy[i] - self.fy[j]).powi(2)).sqrt();
+            return ((self.cond[i].x - self.cond[j].x).powi(2)
+                + (self.cond[i].y - self.cond[j].y).powi(2))
+            .sqrt();
         }
         if j < self.nphases && i >= self.nphases {
             return self.eq_dist_ph_n;
@@ -124,21 +126,22 @@ impl LineConstants {
             let mut zi = self.get_zint(i, earth_model);
             let zspacing = if power_freq {
                 zi.im = 0.0;
-                lfactor * (1.0 / self.fgmr[i]).ln()
+                lfactor * (1.0 / self.cond[i].gmr).ln()
             } else {
-                lfactor * (1.0 / self.fradius[i]).ln()
+                lfactor * (1.0 / self.cond[i].radius).ln()
             };
             zmat.set(i, i, zi + zspacing + self.get_ze(i, i, earth_model));
         }
 
         // CN/TS self impedances (per conductor type).
         for i in 0..self.nphases {
-            match self.fcond_type[i] {
+            let cab = self.cable(i);
+            match cab.cond_type {
                 ConductorType::Cn => {
-                    let k = self.fk_strand[i] as f64;
-                    let res_cn = self.frstrand[i] / k;
-                    let rad_cn = 0.5 * (self.fdia_cable[i] - self.fdia_strand[i]);
-                    let gmr_cn = (self.fgmr_strand[i] * k * rad_cn.powf(k - 1.0)).powf(1.0 / k);
+                    let k = cab.k_strand as f64;
+                    let res_cn = cab.rstrand / k;
+                    let rad_cn = 0.5 * (cab.dia_cable - cab.dia_strand);
+                    let gmr_cn = (cab.gmr_strand * k * rad_cn.powf(k - 1.0)).powf(1.0 / k);
                     let zspacing = lfactor * (1.0 / gmr_cn).ln();
                     let zi = cmplx(res_cn, 0.0);
                     let idxi = i + self.num_conds;
@@ -146,11 +149,11 @@ impl LineConstants {
                 }
                 ConductorType::Ts => {
                     let res_ts = TS_RES_INV_PI * RHO_TS
-                        / (self.fdia_shield[i]
-                            * self.ftape_layer[i]
-                            * (50.0 / (100.0 - self.ftape_lap[i])).sqrt());
+                        / (cab.dia_shield
+                            * cab.tape_layer
+                            * (50.0 / (100.0 - cab.tape_lap)).sqrt());
                     // per Kersting, to center of the tape shield
-                    let gmr_ts = 0.5 * (self.fdia_shield[i] - self.ftape_layer[i]);
+                    let gmr_ts = 0.5 * (cab.dia_shield - cab.tape_layer);
                     let zspacing = lfactor * (1.0 / gmr_ts).ln();
                     let zi = cmplx(res_ts, 0.0);
                     let idxi = i + self.num_conds;
@@ -183,21 +186,21 @@ impl LineConstants {
             }
             for j in 0..self.num_conds {
                 // CN/TS to cores and bare neutrals
-                match self.fcond_type[i] {
+                match self.cable(i).cond_type {
                     ConductorType::Cn => {
-                        let rad_cn = 0.5 * (self.fdia_cable[i] - self.fdia_strand[i]);
+                        let rad_cn = 0.5 * (self.cable(i).dia_cable - self.cable(i).dia_strand);
                         if i == j {
                             // CN to its own phase core
                             dij = rad_cn;
                         } else {
                             // CN to another phase or bare neutral
                             let d = self.cable_dij(i, j);
-                            let k = self.fk_strand[i] as f64;
+                            let k = self.cable(i).k_strand as f64;
                             dij = (d.powf(k) - rad_cn.powf(k)).powf(1.0 / k);
                         }
                     }
                     ConductorType::Ts => {
-                        let gmr_ts = 0.5 * (self.fdia_shield[i] - self.ftape_layer[i]);
+                        let gmr_ts = 0.5 * (self.cable(i).dia_shield - self.cable(i).tape_layer);
                         if i == j {
                             // TS to its own phase core
                             dij = gmr_ts;
@@ -226,19 +229,20 @@ impl LineConstants {
         // function-level local: an INVALID/Bare phase reuses the previous value.
         let mut denom: f64 = 0.0;
         for i in 0..self.nphases {
-            let yfactor = TWOPI * E0 * self.feps_r[i] * self.fw; // includes f so C ⇒ Y
-            let rad_out = 0.5 * self.fdia_ins[i];
-            let rad_in = rad_out - self.fins_layer[i];
-            match self.fcond_type[i] {
+            let cab = self.cable(i);
+            let yfactor = TWOPI * E0 * cab.eps_r * self.fw; // includes f so C ⇒ Y
+            let rad_out = 0.5 * cab.dia_ins;
+            let rad_in = rad_out - cab.ins_layer;
+            match cab.cond_type {
                 ConductorType::Cn => {
-                    if self.fsemicon_layer[i] {
+                    if cab.semicon_layer {
                         // semicon layer (default)
                         denom = (rad_out / rad_in).ln();
                     } else {
                         // No semicon layer (Synergi and Kersting/Kerestes' book)
-                        let rad_cn = 0.5 * (self.fdia_cable[i] - self.fdia_strand[i]);
-                        let rad_strand = 0.5 * self.fdia_strand[i];
-                        let k = self.fk_strand[i] as f64;
+                        let rad_cn = 0.5 * (cab.dia_cable - cab.dia_strand);
+                        let rad_strand = 0.5 * cab.dia_strand;
+                        let k = cab.k_strand as f64;
                         denom = (rad_cn / rad_in).ln() - (1.0 / k) * (k * rad_strand / rad_cn).ln();
                     }
                 }
@@ -266,15 +270,15 @@ impl LineConstants {
         if self.equivalent_spacing {
             for i in 0..self.num_conds {
                 let ri = if i < self.nphases {
-                    self.fradius[i]
+                    self.cond[i].radius
                 } else {
-                    0.5 * self.fdia_cable[i]
+                    0.5 * self.cable(i).dia_cable
                 };
                 for j in (i + 1)..self.num_conds {
                     let rj = if j < self.nphases {
-                        self.fradius[j]
+                        self.cond[j].radius
                     } else {
-                        0.5 * self.fdia_cable[j]
+                        0.5 * self.cable(j).dia_cable
                     };
                     let dij = if i < self.nphases && j >= self.nphases {
                         self.eq_dist_ph_n
@@ -295,18 +299,19 @@ impl LineConstants {
 
         for i in 0..self.num_conds {
             let ri = if i < self.nphases {
-                self.fradius[i]
+                self.cond[i].radius
             } else {
-                0.5 * self.fdia_cable[i]
+                0.5 * self.cable(i).dia_cable
             };
             for j in (i + 1)..self.num_conds {
                 let rj = if j < self.nphases {
-                    self.fradius[j]
+                    self.cond[j].radius
                 } else {
-                    0.5 * self.fdia_cable[j]
+                    0.5 * self.cable(j).dia_cable
                 };
-                let dij =
-                    ((self.fx[i] - self.fx[j]).powi(2) + (self.fy[i] - self.fy[j]).powi(2)).sqrt();
+                let dij = ((self.cond[i].x - self.cond[j].x).powi(2)
+                    + (self.cond[i].y - self.cond[j].y).powi(2))
+                .sqrt();
                 if dij < (ri + rj) {
                     return Some(format!(
                         "Cable conductors {} and {} occupy the same space.",
