@@ -952,6 +952,132 @@ oracle in the worktree (not by argument).
   proof above for all 11. Each deferral is a Phase-D ledger seed; the ledger machinery
   (envelope/probe carve-out) lands the mechanical re-gate. Recorded, not masked.
 
+## 1i. UNIFIED_GATE Phase D — divergence ledger + seeding + engine flips (branch `ug-phase-d`)
+
+Lands the gating divergence ledger (`tests/corpus/ledger.json`) that replaces the
+report-only `known_diffs.json`, seeds it from a full both-channel measurement,
+flips the cleanly-dual-gateable cases to `engines:"both"`, deletes the retired
+Oddie/OpenDSS report path, and makes the both-channel gate **deterministic**. Base
+`ae4b4ef`.
+
+**Ledger machinery (`corpus_gate/ledger.rs`, 9d5852b + settle 35ad4e2).**
+`LedgerRuntime` loads/validates `ledger.json` (kinds `divergence`/`skip`/
+`exclusion`) and exposes per-(case,channel) `LedgerView`s that `compare_capture`
+consults to partition each comparison field: the untouched `harness` comparator
+runs the unscoped remainder; the ledger's envelope/exact-pair assert covers the
+scoped part and records the hit. §1.3 envelope: (a) selected values differ ≤
+envelope; (b) unselected meet the tier floor; (c) ≥1 selected value **exceeds the
+tier floor** else the entry is **stale → gate fails**. `exceeded_floor` is measured
+against the untouchable `harness` tier floor, NOT the entry's `max_rel` — so
+widening an envelope can never hide a shrinking divergence (a stronger
+fail-on-stale than the plan's phrasing). Structural test (oracle-free): unique ids,
+case∈manifest, channel∈engines, divergence⇒non-empty match, cause/cause_ref
+resolve, regexes compile, probe/property exact-pair-only.
+
+**Seeding (`DSS_GATE_SEED_LEDGER=1`).** Ran every Live/Deferred case against BOTH
+channels with no ledger → `tmp/ledger_candidates.json`: 510 cases ×2 = 1020
+measurements, 836 match / 157 diverge / 27 error. **Zero** currently-single-channel
+case matches on both channels — the inherited flip already captured every free
+flip; further `both` requires a hand-reviewed ledger entry per case.
+
+**Gate determinism — the R2 worker-state contamination, surfaced + fixed.** The
+both-flip widened the r4133 pool's exposure enough to surface plan R2 live:
+persistent pooled workers accumulate state that `clear` does NOT reset (`Set`
+options, memory-mapped loadshape handles), so a worker that had served, e.g., a
+relay / harmonics / IEEE13-geometry deck would *intermittently* hand the next deck
+a stale option/mmap → ~1e-3 divergences on **either** channel that vanish
+serial/one-shot (~1 flake per 6 full runs — the same deck matches cleanly in the
+seeding). Fixed systemically in `engines.rs`: **`recycle_after()` now defaults to 1
+(a fresh worker per case)** — every case sees a never-used worker, so no state is
+inherited; the persistent pool keeps only its amortized startup. Wall-clock is
+unchanged (respawns overlap across the pool). `DSS_GATE_RECYCLE_AFTER=<n>` raises it
+for a faster, non-deterministic dev loop. Complementary `isolate:true` (one-shot,
+process exits → releases handles) added for the file-handle-contention decks the
+recycle cannot cover within a case: `StoCtrl_SeasonTarget` (EnergyMeter DI CSV held
+open), plus defensive isolate on the IEEE13-geometry family + `mmf_singlecol` +
+`YgD-Test`. Determinism verified: **4/4** consecutive green full runs post-fix
+(after ~10 pre-fix runs that whack-a-mole isolation could not stabilise). `M1/
+Master_NoPV` kept **r4133-only** (its both-flip surfaced a real capi_v0145
+all-properties divergence — a Load renders `PF=1` on the port vs `0.9` on the 0.14.5
+oracle — NOT ledgered per R3; follow-up).
+
+**Deletions (same landing).** `tests/corpus/known_diffs.json`, the
+`corpus_live_opendss` test + `KnownDiff`/`load_known_diffs`, `Oracle::opendss` +
+`oddie_venv_python` + the ping `want_oddie` arm, and the `DSS_LIVE_OPENDSS*` knobs.
+`rg "known_diffs|DSS_LIVE_OPENDSS|Oracle::capi015|corpus_live_opendss" crates tests`
+is clean of live code (doc-comment prose only). The `tools/opendss/*.py` report
+scripts still reference the removed file — they die in **Phase E** per the brief.
+
+**Lock v2 ledger component (§1.4).** `population_lock.rs::rigor()` gains
+`ledger={sorted per-channel entry ids}` (`ledger_tags()`); every ledger add/widen/
+flip changes the case's tag → a reviewed lock diff (e.g. `ledger=r4133:r4133-
+binaryshape-303`), so the ledger cannot become a silent soft-tolerance backdoor.
+
+**Ledger contents.** 6 entries / 20 causes: 3 `skip` (binary/MMF GrowthShape #303,
+IEEE13 line-spacing + line-and-cable-spacing #303 on r4133) + 3 GFM r4133 probe
+`divergence` (`Storage.%stored` %.6g Delphi rounding, `num_rel` 1e-6) — the
+Phase-C seed, each hit + non-stale every run.
+
+**Canary (fail-on-stale, live, §6).** A temporary all-node voltage divergence entry
+on `vsource_asym` (which matches the oracle within the tier floor) was added: the
+full gate passed all 514 cases, recorded the entry as applied (9 hits) but
+never-exceeded-floor, and **FAILED** with `STALE — every selected value is now
+within the tier floor. Prune it.` Reverted immediately. Fail-on-stale proven live.
+
+**defer_ledger retirement — partial (honest).** GFM×3 retired in the Phase-C seed
+(r4133 probe ledger). Of the remaining **8**, disposition settled empirically
+(seed + focused probes) — the field REMAINS because 4 cases cannot be responsibly
+retired:
+- **NCIM×4** (`ncim_pq/pv_pq/midi`, `NCIM/Xmission`): capi 0.14.5 lacks NCIM
+  (errors); the Rust NCIM port (validated vs the now-retired capi015) converges to a
+  **wholesale-different op-point** than r4133 NCIM (Vsource source-current sign-flip
+  ~156 A, and the Rust source-bus voltage reads suspiciously exactly-nominal). Not
+  tightly fingerprintable (plan: stays single-channel) and possibly a port issue →
+  per R3 NOT ledgered; needs a rigorous WP-U1.7 NCIM re-validation. Kept
+  `defer_ledger` (Rust-smoke), note corrected.
+- **DynExp×2** — ledgerable but deferred for measurement: the port deliberately
+  adopts capi015's D14 evaluator (DIVERGENCES §D14, *settled*); the data confirms
+  **both** 0.14.5 AND r4133 agree with each other (179425.907) and the port differs
+  by ~1.5e-5 — a documented cross-line divergence, not a bug. Retirement needs a
+  measured both-channel voltage envelope (follow-up).
+- **RegControl idle×1** — capi rejects `idle` (#110); r4133 ~7e-5 regulator-tap
+  class. Ledgerable on r4133 with a measured envelope (follow-up).
+- **line_spacing_asym×1** — capi node-V ~7e-8 (line-impedance libm floor) +
+  `Line.normamps` 730-vs-230 (deliberate WP-U1.2 min-over-phase) + r4133 #303 skip.
+  Ledgerable capi voltage + property exact-pair (follow-up).
+
+**both% = 342/514 = 66.5%** (single-channel 172: capi_v0145 75, r4133 97). The
+plan's ≥90% target is **arithmetically unreachable**, proven by the seeding: 97
+cases are r4133-only 0.15/r4133 features 0.14.5 cannot run at all (WindGen, NCIM,
+LineConstants upgrades, MonitoredVoltage InvControl, relay-0.15, batchedit-where,
+MMF single-col …) → they can never be `both`; 75 are capi-only wholesale-divergent
+on r4133 (reduce/makeposseq reductions, Carson geometry/cable upgrades, IEEE_519
+harmonics, ckt24 conditioning …) which the plan explicitly keeps single-channel.
+Even flipping every fingerprintable candidate caps ~72%. The documented follow-up
+flip set (fingerprintable, cause-mapped, envelope-measurable): probe %.6g
+display-precision ×~16 (storage/pvsystem), injection-fpc-delphi-ulp ×4
+(indmach/combo asym), monitor-seq-magnitude-drift ×1 (`monitor_seqmag`).
+
+**Counts (bit-stable):** solvable_now 293, asymmetric 47, controls 105, modes 69,
+`.dss` bijection 915. isolate cases = 33.
+
+**Gate (three-command, green + deterministic).** fmt clean; clippy clean; `cargo
+test --workspace` green. Full BOTH gate ≈ 137–160 s at jobs=16 pool=8 recycle=1
+(≪ §3.4 ≤10 min). `tests/corpus` pristine.
+
+Wall-clock table row (plan §3.4 / §6):
+
+| point | mode | jobs | pool | recycle | corpus gate |
+|---|---|---|---|---|---|
+| Phase D (full BOTH gate, ledger active) | persistent-parallel | 16 | 8/ch | 1/case | ~150 s |
+
+**Open follow-ups (Phase D → later):** (1) retire the remaining `defer_ledger` —
+DynExp×2 / idle×1 / line_spacing×1 via measured envelopes; NCIM×4 needs a WP-U1.7
+NCIM op-point re-validation first. (2) The fingerprintable `both` flip set (~21
+cases) to push toward the ~72% ceiling. (3) `M1/Master_NoPV` Load `PF=1`-vs-`0.9`
+capi divergence — settle empirically (possible PF-parse bug). (4) `tools/opendss/
+*.py` report scripts still reference `known_diffs`/`corpus_live_opendss` → Phase E.
+
 ## 1a. Archived — completed plan records (100% done)
 
 > Moved out of the active §1 frontier on 2026-07-17. These are the records of plans whose own work-package scope is closed and gate-green: the 1:1 FINAL ACCEPTANCE, JSON export (Stages A+B), DIAKOPTICS/PSTCALC **Part I**, and the full **UPGRADE** Rung 1 + Rung 2 (r4133 parity). A few carried a documented item forward to a successor plan that has **not** finished it yet (TODO(compat) sweep + HIDE_015X → DE_PASCALIZE Stage F; GICMvars export → Phase 9; JSON DynInit/Full-mode tail → a follow-up WP; IEEE118 NCIM → a future UPGRADE rung) — those open items are surfaced in §1's **Standing open follow-ups**, not buried here. Frozen history — superseded only by the code and tests. In-progress / not-started plans (DE_PASCALIZE, DIAKOPTICS Part II, RESONANCE, MULTITHREADING, WASM_USERMODELS) stay in the active §1 above.

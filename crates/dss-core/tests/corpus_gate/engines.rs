@@ -12,8 +12,8 @@
 //!   [`EpriPool`]; serial/isolate cases use the one-shot [`EpriOneShot`].
 //!
 //! [`Oracle`] additionally backs the opt-in report tests (`corpus_live_classify`
-//! / `_properties` / `_opendss`) — `opendss(rev)` drives an original EPRI binary
-//! through the AltDSS Oddie bridge (report-only; Phase D deletes it).
+//! / `_properties`). The report-only EPRI/Oddie `opendss(rev)` path was retired in
+//! Phase D — the `r4133` channel now gates through the in-house bridge.
 //! [`Channel`] unifies all four transports for the scheduler.
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -175,42 +175,6 @@ impl Oracle {
         }
     }
 
-    /// An oracle over an ORIGINAL EPRI `OpenDSSDirect.dll` (AltDSS Oddie bridge).
-    pub(crate) fn opendss(rev: &str) -> Oracle {
-        Oracle {
-            python: Self::oddie_venv_python(),
-            server: oracle_server_path(),
-            envs: vec![
-                ("DSS_ORACLE_ENGINE", "oddie".to_string()),
-                ("DSS_OPENDSS_REV", rev.to_string()),
-            ],
-        }
-    }
-
-    fn oddie_venv_python() -> String {
-        std::env::var("DSS_OPENDSS_PYTHON").unwrap_or_else(|_| {
-            let venv: PathBuf = [
-                env!("CARGO_MANIFEST_DIR"),
-                "..",
-                "..",
-                "tools",
-                "opendss",
-                ".venv",
-                "Scripts",
-                "python.exe",
-            ]
-            .iter()
-            .collect();
-            assert!(
-                venv.is_file(),
-                "Oddie venv interpreter missing: {} — create it per \
-                 tools/opendss/README.md or set DSS_OPENDSS_PYTHON",
-                venv.display()
-            );
-            venv.to_string_lossy().into_owned()
-        })
-    }
-
     /// Construct **and ping-verify** the pinned `capi_v0145` one-shot oracle.
     /// `spec` must be `None` (the target-rev one-shot shim retired in Phase C —
     /// the `r4133` channel now gates through the [`EpriPool`]/[`EpriOneShot`]);
@@ -296,13 +260,13 @@ impl Oracle {
     }
 
     fn ping(&self) {
-        self.ping_engine(None);
+        self.ping_engine();
     }
 
-    /// Ping, and when `want_oddie = Some(rev)` assert the answering engine IS the
-    /// requested EPRI revision; otherwise assert the pinned-engine identity (no
-    /// `oddie`/`capi015` marker). Returns the server-reported engine version.
-    pub(crate) fn ping_engine(&self, want_oddie: Option<&str>) -> String {
+    /// Ping and assert the pinned-engine identity (no `oddie`/`capi015` marker —
+    /// the retired EPRI/target-rev engines must never re-bind the default pinned
+    /// 0.14.5 oracle). Returns the server-reported engine version.
+    pub(crate) fn ping_engine(&self) -> String {
         let r = self.call(&json!({"cmd": "ping"}));
         assert!(r.ok, "oracle ping failed: {:?}", r.error);
         let oracle = r
@@ -311,27 +275,14 @@ impl Oracle {
             .and_then(|v| v.get("oracle"))
             .cloned()
             .unwrap_or_default();
-        if let Some(rev) = want_oddie {
-            assert_eq!(
-                oracle.get("oddie").and_then(|v| v.as_bool()),
+        for flag in ["oddie", "capi015"] {
+            assert_ne!(
+                oracle.get(flag).and_then(|v| v.as_bool()),
                 Some(true),
-                "oracle is not the Oddie/EPRI engine: {oracle}"
+                "default oracle answered as a `{flag}` engine: {oracle} \
+                 (the pinned 0.14.5 oracle is required — check \
+                 DSS_ORACLE_PYTHON/DSS_ORACLE_ENGINE)"
             );
-            assert_eq!(
-                oracle.get("rev").and_then(|v| v.as_str()),
-                Some(rev),
-                "oracle answered for the wrong revision: {oracle}"
-            );
-        } else {
-            for flag in ["oddie", "capi015"] {
-                assert_ne!(
-                    oracle.get(flag).and_then(|v| v.as_bool()),
-                    Some(true),
-                    "default oracle answered as a `{flag}` engine: {oracle} \
-                     (the pinned 0.14.5 oracle is required — check \
-                     DSS_ORACLE_PYTHON/DSS_ORACLE_ENGINE)"
-                );
-            }
         }
         oracle
             .get("engine")
@@ -355,9 +306,30 @@ impl Oracle {
 // Persistent worker pool (pinned capi_v0145 channel only).
 // ---------------------------------------------------------------------------
 
-/// Recycle a worker after this many served cases (bounds any slow global-state
-/// drift a persistent `oracle_server.py` process might accumulate; §3.1).
-const RECYCLE_AFTER: usize = 64;
+/// Recycle a worker after this many served cases. **Default 1** (a fresh worker
+/// per case). Persistent `oracle_server.py` / `epri-worker` processes accumulate
+/// global state that `clear` does NOT fully reset — `Set` options and
+/// memory-mapped loadshape handles chief among them (the plan's R2 risk). The
+/// Phase D flip to `engines:"both"` widened the r4133 pool's exposure enough to
+/// surface this live as *intermittent* cross-deck contamination on BOTH channels
+/// (a pooled worker that had served, e.g., a relay/harmonics/geometry deck would
+/// occasionally hand the next deck a stale option/mmap → ~1e-3 divergences that
+/// vanish serial/one-shot). Recycling per case makes every case see a never-used
+/// worker, so the gate is **deterministic** (verified over consecutive full runs).
+/// The persistent-pool win is now only the amortized *startup* (workers are still
+/// spawned once up front); per-case respawn on check-in overlaps across the pool
+/// and keeps the full BOTH gate well under the §3.4 target. Raise via
+/// `DSS_GATE_RECYCLE_AFTER=<n>` for a faster, non-deterministic dev loop.
+fn recycle_after() -> usize {
+    static N: OnceLock<usize> = OnceLock::new();
+    *N.get_or_init(|| {
+        std::env::var("DSS_GATE_RECYCLE_AFTER")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .filter(|&n| n >= 1)
+            .unwrap_or(1)
+    })
+}
 
 /// One long-lived `oracle_server.py` process: request/response over stdin/stdout,
 /// stdout lines delivered by a reader thread, stderr drained by another.
@@ -523,7 +495,7 @@ impl WorkerPool {
     }
 
     fn checkin(&self, mut w: Worker) {
-        if w.broken || w.served >= RECYCLE_AFTER {
+        if w.broken || w.served >= recycle_after() {
             w.close();
             w = spawn_worker(&self.python, &self.server);
             assert_pinned(&mut w, self.timeout);
@@ -741,7 +713,7 @@ impl EpriPool {
     }
 
     fn checkin(&self, mut w: Worker) {
-        if w.broken || w.served >= RECYCLE_AFTER {
+        if w.broken || w.served >= recycle_after() {
             w.close();
             w = spawn_epri_worker(&self.bin);
             assert_epri(&mut w, self.timeout);

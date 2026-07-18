@@ -35,5 +35,75 @@
     "regcontrol-idle": "The RegControl `idle` property is a 0.15.x/r4133 feature the pinned dss_capi 0.14.5 rejects (#110 Unknown parameter 'idle') — so the capi_v0145 channel cannot gate the idle-regulator deck. On r4133 the idle regulator leaves the node V a small measured envelope away from the Rust port.",
     "linespacing-normamps": "Line built from LineSpacing+wiredata: dss_capi 0.14.5 reports Line.normamps=230 (the spacing default) where the port and the newer engines (capi015/r4133) report 730 (the wire NormAmps rating carried through) — a 0.14.5-era property-derivation the newer line-constants path fixed; the port follows the corrected value. r4133 additionally #303-crashes this deck (skip). Exact-pair property entry on capi_v0145."
   },
-  "entries": []
+  "entries": [
+    {
+      "id": "r4133-binaryshape-303",
+      "case": "modes:inputformat/shape_binfiles/shape_binfiles.dss",
+      "channel": "r4133",
+      "kind": "skip",
+      "cause_ref": "epri-303-crash",
+      "source": "UNIFIED_GATE Phase D seeding 2026-07-18 (r4133 #303 access violation on the binary/MMF GrowthShape deck (g4.csv)); capi_v0145 channel gates the deck fully."
+    },
+    {
+      "id": "r4133-linecablespacing-303",
+      "case": "solvable_now:Test/IEEE13_LineAndCableSpacing.dss",
+      "channel": "r4133",
+      "kind": "skip",
+      "cause_ref": "epri-303-crash",
+      "source": "UNIFIED_GATE Phase D seeding 2026-07-18 (r4133 #303 access violation on the spacing+cable Line (TSCables/Wires)); capi_v0145 channel gates the deck fully."
+    },
+    {
+      "id": "r4133-linespacing-303",
+      "case": "solvable_now:Test/IEEE13_LineSpacing.dss",
+      "channel": "r4133",
+      "kind": "skip",
+      "cause_ref": "epri-303-crash",
+      "source": "UNIFIED_GATE Phase D seeding 2026-07-18 (r4133 #303 access violation on the line-spacing deck (calcv)); capi_v0145 channel gates the deck fully."
+    },
+    {
+      "id": "r4133-gfm-micro-pctstored",
+      "case": "controls:gfm/gfm_micro.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage\\.batt\\.%stored$",
+          "num_rel": 1e-06
+        }
+      ],
+      "cause_ref": "gfm-pctstored-rounding",
+      "source": "UNIFIED_GATE Phase D seeding 2026-07-18 (r4133 Delphi renders Storage.%stored to 6 sig figs; port/pinned-oracle full f64) — num_rel envelope (per-step; %stored evolves over 6 steps)"
+    },
+    {
+      "id": "r4133-gfm-invcontrol-pctstored",
+      "case": "controls:gfm/gfm_invcontrol.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage\\.batt\\.%stored$",
+          "num_rel": 1e-06
+        }
+      ],
+      "cause_ref": "gfm-pctstored-rounding",
+      "source": "UNIFIED_GATE Phase D seeding 2026-07-18 (r4133 Delphi renders Storage.%stored to 6 sig figs; port/pinned-oracle full f64) — num_rel envelope (per-step; %stored evolves over 6 steps)"
+    },
+    {
+      "id": "r4133-gfm-dynamics-pctstored",
+      "case": "controls:gfm/gfm_dynamics.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage\\.batt\\.%stored$",
+          "num_rel": 1e-06
+        }
+      ],
+      "cause_ref": "gfm-pctstored-rounding",
+      "source": "UNIFIED_GATE Phase D seeding 2026-07-18 (r4133 Delphi renders Storage.%stored to 6 sig figs; port/pinned-oracle full f64) — num_rel envelope (per-step; %stored evolves over 6 steps)"
+    }
+  ]
 }
