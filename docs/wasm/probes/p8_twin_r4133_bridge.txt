@@ -1,0 +1,50 @@
+WP-WM.3 pre-round (ABI re-freeze to r4133, user decision 2026-07-19) - item 4:
+native r4133 twin loaded + driven THROUGH the r4133 engine via the in-house
+dss-epri/epri-worker bridge (NOT the Rust engine, NOT twin_probe.py ctypes).
+Date: 2026-07-19
+
+engine: Version 11.0.0.1 (64-bit build) - Charlottesville  [r4133]
+dll (bridge): tools/opendss/bin/r4133/OpenDSSDirect.dll
+twin: FPC 3.2.2 ppcrossx64 -Mdelphi -O2 build of r4133
+      Version8/Source/IndMach012a/IndMach012a.dpr (compiled vs r4133
+      GeneratorVars.pas, i.e. the 252-byte deltaQNom layout).
+deck: Generator.g1 model=6 UserModel=IndMach012a
+      UserData=(Rs=0.0053 Xs=0.106 Rr=0.007 Xr=0.12 Xm=4 MaxSlip=0.1)
+      (params + circuit from corpus indmachtest/m1/Generators.dss)
+
+=== LOAD PROOF: model=6 generator reports the IndMach012a user-model vars ===
+(a fallback / not-loaded model=6 generator has NONE of these; puRs..MaxSlip
+ being the exact UserData echoes proves the model's Edit parsed the string,
+ and Slip/Is1/Ir1/StatorLoss/HPshaft are model-COMPUTED)
+  snapshot solve: converged=True iterations=4
+    Slip         = -0.006406917346883325
+    puRs         = 0.0053
+    puXs         = 0.106
+    puRr         = 0.007
+    puXr         = 0.12
+    puXm         = 4.0
+    MaxSlip      = 0.1
+    Is1          = 191.35510200549103
+    Is2          = 1.8578357154193934
+    Ir1          = 179.5747186856012
+    Ir2          = 1.803723348851904
+    StatorLoss   = 22177.179943120766
+    RotorLoss    = 25795.364356528247
+    HPshaft      = -5431.048057753031
+
+=== DYNAMICS through the r4133 engine (mode=dynamics h=0.000166667, 10 steps) ===
+  all 10 steps converged; Monitor.mvars (mode=3) recorded 10 samples x 20 channels
+  Slip series      : -0.006406895, -0.006406850, -0.006406805, -0.006406759, -0.006406715, -0.006406670, -0.006406625, -0.006406580, -0.006406536, -0.006406491
+  Frequency series : 60.38441, 60.38441, 60.38441, 60.38441, 60.38440, 60.38440, 60.38440, 60.38440, 60.38439, 60.38439
+  g1 final Slip=-0.006406491165924189 Is1=191.46339348992808 HPshaft=-5769.580998951109
+
+=== VERDICT ===
+The r4133-compiled native twin LOADS and RUNS correctly in the r4133 engine
+via the committed bridge, in both power-flow (model=6) and dynamics mode.
+Engine and twin agree on the r4133 252-byte TGeneratorVars image (self-
+consistent: both compiled against r4133 GeneratorVars.pas). deltaQNom is
+engine-managed and never touched by the model. This is the authoritative
+re-derivation of the twin's numeric behavior through the r4133 channel; the
+bit-exact DLL-boundary lifecycle pin (twin_probe.py -> twin_expected.rs) is
+regenerated from the SAME r4133 twin and proven bit-identical to the r3723
+image (model math unchanged, p8_indmach012a_math_diff.txt).

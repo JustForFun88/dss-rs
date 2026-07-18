@@ -16,6 +16,16 @@ hand-chosen record images; the record layouts are the frozen ABI tables
 (docs/wasm/USERMODEL_ABI.md section 2, probe-verified with struct asserts
 below).
 
+ABI RE-FREEZE TO r4133 (user decision 2026-07-19): the twin is now the r4133
+build, whose TGeneratorVars carries the r4088+/NCIM `deltaQNom` dyn-array slot
+(offset 176, 244->252 B, tail +8 — probe docs/wasm/probes/p8_offsets_r4133.txt).
+The ctypes image below matches the r4133 NATIVE layout so New/Edit/Calc read
+each field at the correct offset. `deltaQNom` is an 8-byte Delphi-managed
+reference the model never reads (engine-only, NCIM); it stays nil here and
+never crosses the wasm boundary — so the wasm-side 244-B image is unchanged,
+and (the model math being byte-identical r3723->r4133) every recorded value is
+bit-identical to the r3723-derived pin.
+
 Usage:  python twin_probe.py <path-to-IndMach012a.dll> [--rust]
 """
 
@@ -76,6 +86,10 @@ class TGeneratorVars(ctypes.Structure):
         ("SpeedHistory", c_double),
         ("Pnominalperphase", c_double),
         ("Qnominalperphase", c_double),
+        # r4133 (r4088+/NCIM) insertion: Delphi `array of Double` = one 8-byte
+        # managed dyn-array reference. Model never touches it (engine-only);
+        # left nil. Shifts every field below by +8 vs the 0.14.5/r3723 layout.
+        ("deltaQNom", c_void_p),
         ("NumPhases", c_int32),
         ("NumConductors", c_int32),
         ("Conn", c_int32),
@@ -90,9 +104,11 @@ class TGeneratorVars(ctypes.Structure):
 
 
 assert ctypes.sizeof(TDynamicsRec) == 52
-assert ctypes.sizeof(TGeneratorVars) == 244
-assert TGeneratorVars.VthevMag.offset == 188
-assert TGeneratorVars.NumPhases.offset == 176
+# r4133 native layout (p8_offsets_r4133.txt): 252 B, deltaQNom@176, tail +8.
+assert ctypes.sizeof(TGeneratorVars) == 252
+assert TGeneratorVars.deltaQNom.offset == 176
+assert TGeneratorVars.NumPhases.offset == 184
+assert TGeneratorVars.VthevMag.offset == 196
 
 MSGCB = WINFUNCTYPE(None, c_char_p, c_uint32)
 
