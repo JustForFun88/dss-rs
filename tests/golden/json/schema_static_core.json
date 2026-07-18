@@ -90,7 +90,6 @@
     "PlotProfilePhases": "{\r\n  \"title\" : \"Plot: Profile Phases\",\r\n  \"oneOf\" : [\r\n    {\r\n      \"type\" : \"string\",\r\n      \"enum\" : [\r\n        \"Default\",\r\n        \"All\",\r\n        \"Primary\",\r\n        \"LL3Ph\",\r\n        \"LLAll\",\r\n        \"LLPrimary\"\r\n      ]\r\n    },\r\n    {\r\n      \"type\" : \"integer\",\r\n      \"minimum\" : 1\r\n    }\r\n  ],\r\n  \"$dssFullEnum\" : [\r\n    [\r\n      \"Default\",\r\n      \"Default\",\r\n      -1\r\n    ],\r\n    [\r\n      \"All\",\r\n      \"All\",\r\n      -2\r\n    ],\r\n    [\r\n      \"Primary\",\r\n      \"Primary\",\r\n      -3\r\n    ],\r\n    [\r\n      \"LL3Ph\",\r\n      \"LL3Ph\",\r\n      -4\r\n    ],\r\n    [\r\n      \"LLAll\",\r\n      \"LLAll\",\r\n      -5\r\n    ],\r\n    [\r\n      \"LLPrimary\",\r\n      \"LLPrimary\",\r\n      -6\r\n    ]\r\n  ]\r\n}"
   },
   "deferred_class_def_count": 49,
-  "deferred_enum_def_count": 21,
   "deferred_class_def_names": [
     "LineCode",
     "LoadShape",
@@ -141,28 +140,5 @@
     "Monitor",
     "EnergyMeter",
     "Sensor"
-  ],
-  "deferred_enum_def_names": [
-    "VisualizeQuantity",
-    "ReductionStrategy",
-    "EarthModel",
-    "LineType",
-    "LengthUnit",
-    "ScanType",
-    "SequenceType",
-    "Connection",
-    "CoreType",
-    "PhaseSequence",
-    "LoadSolutionModel",
-    "RandomType",
-    "ControlMode",
-    "InverterControlMode",
-    "SolutionMode",
-    "SolutionAlgorithm",
-    "CircuitModel",
-    "AutoAddDeviceType",
-    "LoadShapeClass",
-    "MonitoredPhase",
-    "PlotProfilePhases"
   ]
 }

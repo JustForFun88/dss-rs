@@ -18,18 +18,24 @@
 //! - the static head of `circuitProperties` — `Name`, `DefaultBaseFreq`,
 //!   `PreCommands`, `PostCommands`, `Bus` (`:1463-1474`).
 //!
+//! ## Also ported (see [`enums`]): the per-enum walk `prepareEnumJsonSchema`
+//! (`:111-162`) over the 21 global `DSS.Enums` (`DSSClass.pas:1058-1196`),
+//! exposed as [`global_enum_defs`] and byte-verified against the oracle
+//! (`golden_schema.rs::global_enum_defs_bytes_match_oracle`). It is verified
+//! groundwork, not yet spliced into [`schema_skeleton`] — the class walk that
+//! assembles + byte-gates the full runtime document owns that splice.
+//!
 //! ## Deliberately NOT ported here (blocked on unported metadata — see STATUS
-//! §OG-1.5): the per-class walk (`prepareClassJsonSchema`, `:325-1134`) and the
-//! per-enum walk (`prepareEnumJsonSchema`, `:111-162`), plus the
-//! `<Class>`/`<Class>List`/`<Class>Container` `$defs` triples and the per-class
-//! `circuitProperties` refs (`:1476-1502`). Those need per-property metadata the
-//! Rust port never carried: property **help/description** text
-//! (`GetPropertyHelp`; ~1109 strings), the class **`AltPropertyOrder`**
-//! (`$dssPropertyOrder`), the **`SpecSets`** (`oneOf`), the enum
-//! **`AltNames`/`JSONName`/`JSONUseNumbers`** JSON metadata, and ~28 of the ~30
-//! `Units_*` property flags (only `UNITS_HOUR`/`UNITS_OHM_PER_LENGTH` exist in
-//! [`PropFlags`](crate::obj::props::PropFlags)). Porting that database is a
-//! large, self-contained follow-up recorded in `ORPHANED_GAPS.md` §1.5.
+//! §OG-1.5b): the per-class walk (`prepareClassJsonSchema`, `:325-1134`), plus
+//! the `<Class>`/`<Class>List`/`<Class>Container` `$defs` triples, the per-class
+//! `circuitProperties` refs (`:1479-1502`), and the ~40 class-**local** enum
+//! defs. Those need per-property metadata the Rust port never carried: property
+//! **help/description** text (`GetPropertyHelp`; ~1109 strings), the class
+//! **`AltPropertyOrder`** (`$dssPropertyOrder`), the **`SpecSets`** (`oneOf`),
+//! the local enums' **`AltNames`/`JSONName`/`JSONUseNumbers`** metadata, and ~28
+//! of the ~30 `Units_*` property flags (only `UNITS_HOUR`/`UNITS_OHM_PER_LENGTH`
+//! exist in [`PropFlags`](crate::obj::props::PropFlags)). Porting that database
+//! is a large, self-contained follow-up recorded in `ORPHANED_GAPS.md` §1.5.
 
 use super::{Json, write_pretty};
 
