@@ -72,14 +72,21 @@ deferred.
   `golden_schema.rs::ported_class_defs_bytes_match_oracle`, with the committed
   expected-divergence inventory (`tests/golden/json/schema_divergences.json`,
   fail-on-stale) covering LineCode's 3 r4133 `deprecated` diffs.
-- **Remaining (batch + integration):** the other **43 class `$defs`** (each
-  needs its `Units_*`/`RequiredInSpecSet`/ordering flags on the `PropDef`s + its
-  `SpecSets` entry + any AltName-override locals, following the pilot pattern),
-  then the **full-document splice** — wiring the enum + class `$defs` and the
-  `<Class>List`/`<Class>Container` triples + `circuitProperties` refs into
-  `extract_schema_json` (removing its `# Incomplete` caveat) and byte-gating the
-  whole 49-class document. Oracle is reachable (`lib.DSS_ExtractSchema`); the
-  pattern is proven. **Priority: low.**
+- **FULL DOCUMENT — PORTED 2026-07-18/19** on `og15b-schema-full` — see STATUS
+  §OG-1.5c (batches B1–B6 + integration). All 49 oracle class `$defs` + the
+  port's 50th class WindGen are emitted; `Dss::extract_schema_json` now returns
+  the **whole** `DSS_ExtractSchema(jsonSchema=True)` document (the `# Incomplete`
+  caveat is gone) via `schema::assemble_full_document` over
+  `DSS_CLASS_LIST_ORDER` (the `<Class>List`/`<Class>Container` triples +
+  `circuitProperties` refs, `CAPI_Schema.pas:1479-1513`). Byte-gated three ways
+  in `golden_schema.rs`: 45 classes byte-exact vs the pinned 0.14.5 oracle after
+  the documented r4133/0.15.x divergences (`schema_divergences.json`,
+  fail-on-stale); the full document vs a pinned PORT golden
+  (`schema_full_port.json`) AND reconciled byte-for-byte against the verbatim
+  oracle document (`schema_full_oracle.json`); the 5 structural port-authored
+  classes (LineGeometry/Relay/Recloser/SwtControl/WindGen) inventoried
+  (`port_authored_classes`) with a fail-on-stale gated/authored split. **§1.5 is
+  CLOSED.**
 
 ### 1.6 IEEE118Bus NCIM `PV→PQ` r4133 switching cadence
 - **Deferred by:** UPGRADE_PLAN (parked to "a future rung" that has no plan).

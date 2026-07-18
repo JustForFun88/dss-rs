@@ -110,7 +110,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let mut defs = vec![
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", 2).flags(PropFlags::REQUIRED),
-        PropDef::object_ref_class("LineCode", "LineCode"),
+        PropDef::object_ref_class("LineCode", "LineCode").flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double("Length"),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         // The sym-component scalars are shown only while the sym model is
@@ -118,11 +118,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("R1").flags(
             PropFlags::SCALED_BY_FUNCTION
                 | PropFlags::CONDITIONAL_VALUE
+                | PropFlags::REQUIRED_IN_SPEC_SET
                 | PropFlags::UNITS_OHM_PER_LENGTH,
         ),
         PropDef::double("X1").flags(
             PropFlags::SCALED_BY_FUNCTION
                 | PropFlags::CONDITIONAL_VALUE
+                | PropFlags::REQUIRED_IN_SPEC_SET
                 | PropFlags::UNITS_OHM_PER_LENGTH,
         ),
         PropDef::double("R0").flags(
@@ -135,28 +137,53 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
                 | PropFlags::CONDITIONAL_VALUE
                 | PropFlags::UNITS_OHM_PER_LENGTH,
         ),
-        PropDef::double("C1").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
-        PropDef::double("C0").flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::CONDITIONAL_VALUE),
-        PropDef::sym_matrix_real("RMatrix", PHASES)
-            .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::UNITS_OHM_PER_LENGTH),
-        PropDef::sym_matrix_imag("XMatrix", PHASES)
-            .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::UNITS_OHM_PER_LENGTH),
-        PropDef::sym_matrix_imag("CMatrix", PHASES).flags(PropFlags::SCALED_BY_FUNCTION),
+        PropDef::double("C1").flags(
+            PropFlags::SCALED_BY_FUNCTION
+                | PropFlags::CONDITIONAL_VALUE
+                | PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::UNITS_NF_PER_LENGTH,
+        ),
+        PropDef::double("C0").flags(
+            PropFlags::SCALED_BY_FUNCTION
+                | PropFlags::CONDITIONAL_VALUE
+                | PropFlags::UNITS_NF_PER_LENGTH,
+        ),
+        PropDef::sym_matrix_real("RMatrix", PHASES).flags(
+            PropFlags::SCALED_BY_FUNCTION
+                | PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::NO_DEFAULT
+                | PropFlags::UNITS_OHM_PER_LENGTH,
+        ),
+        PropDef::sym_matrix_imag("XMatrix", PHASES).flags(
+            PropFlags::SCALED_BY_FUNCTION
+                | PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::NO_DEFAULT
+                | PropFlags::UNITS_OHM_PER_LENGTH,
+        ),
+        PropDef::sym_matrix_imag("CMatrix", PHASES)
+            .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::UNITS_NF_PER_LENGTH),
         PropDef::boolean("Switch").flags(PropFlags::ORDERING_FIRST),
         PropDef::double("Rg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("Xg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
-        PropDef::double("rho"),
-        PropDef::object_ref_class("LineGeometry", "Geometry"),
+        PropDef::double("rho").flags(PropFlags::UNITS_OHM_METER),
+        PropDef::object_ref_class("LineGeometry", "Geometry")
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::mapped_string_enum("Units", enums.units),
-        PropDef::object_ref_class("LineSpacing", "Spacing"),
+        PropDef::object_ref_class("LineSpacing", "Spacing").flags(PropFlags::REQUIRED_IN_SPEC_SET),
         // SVN r3902/r3913 (0.15.x): the conductor lists accept `none` entries
-        // (NIL slot) — `TPropertyFlag.AllowNoneItem`. WP-U1.1 item 3.
-        PropDef::object_ref_array("WireData", "Wires").flags(PropFlags::ALLOW_NONE_ITEM),
+        // (NIL slot) — `TPropertyFlag.AllowNoneItem`. WP-U1.1 item 3. `Wires`
+        // renders as the JSON key `Conductors` (see below) and is the required
+        // member of the "Spacing, Wires" spec set (Pascal `Line.pas:341`).
+        PropDef::object_ref_array("WireData", "Wires")
+            .flags(PropFlags::ALLOW_NONE_ITEM | PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::mapped_string_enum("EarthModel", enums.earth_model),
         PropDef::object_ref_array("CNData", "CNCables").flags(PropFlags::ALLOW_NONE_ITEM),
         PropDef::object_ref_array("TSData", "TSCables").flags(PropFlags::ALLOW_NONE_ITEM),
         PropDef::double("B1").flags(
-            PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | PropFlags::CONDITIONAL_VALUE,
+            PropFlags::SCALED_BY_FUNCTION
+                | PropFlags::REDUNDANT
+                | PropFlags::CONDITIONAL_VALUE
+                | PropFlags::REQUIRED_IN_SPEC_SET,
         ),
         PropDef::double("B0").flags(
             PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | PropFlags::CONDITIONAL_VALUE,
@@ -207,8 +234,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
-        // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        // TCktElementClass tail (`CktElementClass.pas:97`).
+        PropDef::double("BaseFreq").flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

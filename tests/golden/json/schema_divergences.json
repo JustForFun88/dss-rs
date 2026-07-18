@@ -1,5 +1,27 @@
 {
-  "_comment": "Expected AltDSS-schema divergences: fragments where the PORT's schema intentionally differs from the pinned 0.14.5 oracle because the port's engine adopted newer (dss_capi 0.15.x / OpenDSS r4133) behavior. Each entry is a `port_extra_line` the port emits that the 0.14.5 oracle does not; golden_schema.rs removes exactly `count` occurrences from the port's rendered class def before byte-comparing against the oracle golden, and FAILS if the count no longer matches (stale entry) or an unexplained diff remains. Only documented upstream causes are admissible here — this is NOT a tolerance. Regenerate the oracle side via tools/golden/gen_schema.py.",
+  "_comment": "Expected AltDSS-schema divergences: fragments where the PORT's schema intentionally differs from the pinned 0.14.5 oracle because the port's engine adopted newer (dss_capi 0.15.x / OpenDSS r4133) behavior. Each `divergences` entry is a per-property diff (port_extra_line / port_extra_property / port_hidden_property / port_changed_line) that golden_schema.rs applies to the port's rendered class def before byte-comparing against the oracle golden, FAILING if the count no longer matches (stale entry) or an unexplained diff remains. `port_authored_classes` lists whole classes whose port schema diverges STRUCTURALLY from 0.14.5 (r4133/0.15.x restructures or a new class) and are therefore NOT byte-gated vs the oracle — their port bytes are pinned by schema_full_port.json and full_document_matches_port_golden; the split is fail-on-stale (every DSS_CLASS_LIST_ORDER class must be in exactly one of SCHEMA_CLASSES or this list). Only documented upstream causes are admissible — this is NOT a tolerance. Regenerate the oracle side via tools/golden/gen_schema.py.",
+  "port_authored_classes": [
+    {
+      "class": "LineGeometry",
+      "cause": "The port's LineGeometry follows the newer dss_capi (0.15.x): the classic `Wires` prop becomes Redundant+SuppressJSON and a new `Conductors` object-ref-array (index 20) is the JSON member, plus the props straddle 0.14.5 via HIDE_015X. Its schema diverges structurally from the pinned 0.14.5 oracle (different property model), so it is pinned to the port's own bytes rather than byte-gated. See STATUS §OG-1.5c batch B1."
+    },
+    {
+      "class": "Relay",
+      "cause": "The port ports OpenDSS r4133-trunk Relay (75 props: PhCurve/OC_GndCurve/PhPickup renamed from the 0.14.5 PhaseCurve/GroundCurve/PhaseTrip, plus DOC_*/SinglePhTrip/Lock/RatedCurrent/InterruptingRating/per-phase Normal/State arrays), diverging structurally from the pinned 0.14.5 oracle (53 props, classic names). Pinned to the port's bytes. See STATUS §OG-1.5c batch B4."
+    },
+    {
+      "class": "Recloser",
+      "cause": "The port ports OpenDSS r4133-trunk Recloser (46 props: PhaseFast/PhaseDelayed/GroundFast/GroundDelayed/... renamed to PhFastCurve/PhSlowCurve/GndFastCurve/GndSlowCurve/... with classic names kept as deprecated aliases, plus MechanicalDelay/SinglePhTrip/Lock/Reset/RatedCurrent/InterruptingRating), diverging structurally from the pinned 0.14.5 oracle (24 props, classic names). Pinned to the port's bytes. See STATUS §OG-1.5c batch B5."
+    },
+    {
+      "class": "SwtControl",
+      "cause": "The port adopted the 0.15.x/r4133 SwtControl model (D12/WP-U1.6: Normal->NormalState, State->PresentState per-phase arrays instead of the shared 0.14.5 CurrentAction; the State GetState 'no controlled element -> CTRL_NONE' getter semantics), plus the r4133 RatedCurrent prop and the 0.15.x help catalog (deprecated Delay, per-phase Normal/State help). Its Normal/State schema defaults differ from the 0.14.5 oracle in getter semantics (not a clean line diff), so it is pinned to the port's bytes. See STATUS §OG-1.5c batch B5."
+    },
+    {
+      "class": "WindGen",
+      "cause": "WindGen is the port's 50th class (r4133-adopted; DSSClassDefs.pas registers it after Generator), absent from the pinned 0.14.5 oracle (49 classes) entirely. Its schema is port-authored (no 0.14.5 oracle to compare) and pinned to the port's own bytes; the metadata is sourced from the dss_capi 0.15.x line (windgen/mod.rs)."
+    }
+  ],
   "divergences": [
     {
       "class": "LineCode",
@@ -68,6 +90,54 @@
       "count": 1,
       "props": ["AvgNeutralHeight"],
       "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): average height of neutral conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
+    },
+    {
+      "class": "XfmrCode",
+      "kind": "port_extra_line",
+      "line": "          \"exclusiveMinimum\" : 0,",
+      "count": 3,
+      "props": ["X12", "X13", "X23"],
+      "cause": "dss_capi post-0.14.5 (git 69fca934 'Transformers: fix handling of X23 and X13 (trap zero wasnt triggering)') added TPropertyFlag.NonZero to XfmrCode X12/X13/X23; the 0.14.5 tag has [RequiredInSpecSet] only. The vendored .inputs/dss_capi carries the NonZero flag (byte-spec), so the port emits `exclusiveMinimum: 0` for the three impedances (each in the 'X12, X13, X23' oneOf); the pinned dss-python 0.15.7 backend (dss_capi 0.14.5) predates the flag and omits it. First tag containing 69fca934: 0.14.6a1."
+    },
+    {
+      "class": "Line",
+      "kind": "port_hidden_property",
+      "prop_key": "EpsRMedium",
+      "index": 31,
+      "order": 27,
+      "count": 0,
+      "props": ["EpsRMedium"],
+      "cause": "dss_capi 0.15.x (Line.pas r3902/r3913) adds EpsRMedium — the LineConstants medium relative permittivity. The port carries it as a HIDE_015X forward-compat prop (line/mod.rs, WP-U1.4): the schema/JSON dump hide it (build.rs, byte-exact vs the 0.14.5 goldens), but it occupies $dssPropertyIndex 31 / $dssPropertyOrder 27, shifting the following NormAmps..Enabled props down by one vs the oracle (whose Line TProp ends the general data before it)."
+    },
+    {
+      "class": "Line",
+      "kind": "port_hidden_property",
+      "prop_key": "HeightOffset",
+      "index": 32,
+      "order": 28,
+      "count": 0,
+      "props": ["HeightOffset"],
+      "cause": "dss_capi 0.15.x (Line.pas r3902/r3913) adds HeightOffset — a conductor height offset for the LineConstants Z build. HIDE_015X port-only prop (see EpsRMedium), $dssPropertyIndex 32 / $dssPropertyOrder 28, absent from the pinned 0.14.5 oracle."
+    },
+    {
+      "class": "Line",
+      "kind": "port_hidden_property",
+      "prop_key": "HeightUnit",
+      "index": 33,
+      "order": 29,
+      "count": 0,
+      "props": ["HeightUnit"],
+      "cause": "dss_capi 0.15.x (Line.pas r3902/r3913) adds HeightUnit — the LineUnits code HeightOffset is expressed in. HIDE_015X port-only prop (see EpsRMedium), $dssPropertyIndex 33 / $dssPropertyOrder 29, absent from the pinned 0.14.5 oracle."
+    },
+    {
+      "class": "Line",
+      "kind": "port_hidden_property",
+      "prop_key": "Conductors",
+      "index": 34,
+      "order": 30,
+      "count": 0,
+      "props": ["Conductors"],
+      "cause": "dss_capi 0.15.x (Line.pas:62,341-344) adds Conductors — the merged mixed wire/CN/TS object-reference-array (the 0.15.x spacing-spec-set member that replaced Wires). The port carries it as a HIDE_015X forward-compat prop (line/mod.rs); the 0.14.5 schema/JSON dump hide it and keep emitting the legacy Wires prop under the JSON key 'Conductors' (json_name masquerade). It occupies $dssPropertyIndex 34 / $dssPropertyOrder 30, the fourth of the four 0.15.x props shifting NormAmps..Enabled down; absent from the pinned 0.14.5 oracle. (The anchor is indent-precise so the Wires-as-Conductors oneOf member is not miscounted.)"
     },
     {
       "class": "Capacitor",

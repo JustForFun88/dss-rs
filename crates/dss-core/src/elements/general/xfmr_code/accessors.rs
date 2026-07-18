@@ -144,6 +144,13 @@ impl DssObject for XfmrCodeObj {
                 KVAS => w.kva,
                 TAPS => w.putap,
                 PCTRS => w.rpu,
+                // Per-winding scalars rendered as a JSON array under `ON_ARRAY`
+                // (DoubleOnStructArrayProperty; mirrors Transformer).
+                RNEUT => w.rneut,
+                XNEUT => w.xneut,
+                MAXTAP => w.max_tap,
+                MINTAP => w.min_tap,
+                RDCOHMS => w.rdcohms,
                 _ => unreachable!("XfmrCode has no struct array {idx}"),
             })
             .collect()
@@ -157,6 +164,12 @@ impl DssObject for XfmrCodeObj {
                 KVAS => w.kva = *v,
                 TAPS => w.putap = *v,
                 PCTRS => w.rpu = *v,
+                // JSON import twin of the per-winding `ON_ARRAY` scalars above.
+                RNEUT => w.rneut = *v,
+                XNEUT => w.xneut = *v,
+                MAXTAP => w.max_tap = *v,
+                MINTAP => w.min_tap = *v,
+                RDCOHMS => w.rdcohms = *v,
                 _ => unreachable!("XfmrCode has no struct array {idx}"),
             }
         }
@@ -167,6 +180,9 @@ impl DssObject for XfmrCodeObj {
     fn get_struct_i32_array(&self, idx: usize) -> Vec<i32> {
         match idx {
             prop::CONNS => self.windings.iter().map(|w| w.connection).collect(),
+            // NumTaps rendered as a JSON per-winding array under `ON_ARRAY`
+            // (IntegerOnStructArrayProperty; mirrors Transformer).
+            prop::NUMTAPS => self.windings.iter().map(|w| w.num_taps).collect(),
             _ => unreachable!("XfmrCode has no struct enum array {idx}"),
         }
     }
@@ -175,6 +191,11 @@ impl DssObject for XfmrCodeObj {
             prop::CONNS => {
                 for (w, v) in self.windings.iter_mut().zip(values) {
                     w.connection = *v;
+                }
+            }
+            prop::NUMTAPS => {
+                for (w, v) in self.windings.iter_mut().zip(values) {
+                    w.num_taps = *v;
                 }
             }
             _ => unreachable!("XfmrCode has no struct enum array {idx}"),

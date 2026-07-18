@@ -337,7 +337,13 @@ pub(crate) fn class_schema(
         // Skip redundant / suppressed / struct-index props (`:476-482`). A
         // `SUPPRESS_JSON_LATE` prop stays in `AltPropertyOrder` (occupies a
         // `$dssPropertyOrder` slot) but is excluded from the emitted properties.
+        // `hidden_from_full_enum()` (HIDE_015X / HIDE_R4133) props are the
+        // 0.15.x/r4133-deferred properties the sibling JSON dump also hides on
+        // this 0.14.5-pinned surface (`build.rs:92/111`) — the schema, like the
+        // dump, must not emit them (they still occupy an ordinal, shifting the
+        // following props' `$dssPropertyIndex`/`$dssPropertyOrder`; inventoried).
         if flags0.suppresses_json_output()
+            || flags0.hidden_from_full_enum()
             || flags0.contains(PropFlags::ALT_INDEX)
             || flags0.contains(PropFlags::INTEGER_STRUCT_INDEX)
             || flags0.contains(PropFlags::REDUNDANT)
