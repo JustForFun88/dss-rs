@@ -289,6 +289,49 @@ pub(super) fn spec_sets(class_name: &str) -> &'static [SpecSet] {
                 props: &["XSCArray", "kV"],
             },
         ],
+        // `Line.pas:302-320` — `SpecSetNames`/`SpecSets`. The 5th name
+        // (`Z0, Z1, B0, B1`) aborts: `B1`/`B0` are `Redundant`, so their
+        // `prop_json` is never built (matches the oracle's five `oneOf`). `Wires`
+        // is the spec-set member rendered under the JSON key `Conductors`.
+        "Line" => &[
+            SpecSet {
+                name: "LineCode",
+                props: &["LineCode", "Length"],
+            },
+            SpecSet {
+                name: "LineGeometry",
+                props: &["Geometry", "Length"],
+            },
+            SpecSet {
+                name: "Spacing, Wires",
+                props: &["Spacing", "Wires", "Length"],
+            },
+            SpecSet {
+                name: "Z0, Z1, C0, C1",
+                props: &["R1", "X1", "R0", "X0", "C1", "C0"],
+            },
+            SpecSet {
+                name: "Z0, Z1, B0, B1",
+                props: &["R1", "X1", "R0", "X0", "B1", "B0"],
+            },
+            SpecSet {
+                name: "ZMatrix, CMatrix",
+                props: &["RMatrix", "XMatrix", "CMatrix"],
+            },
+        ],
+        // `XfmrCode.pas:214-222` — `SpecSetNames`/`SpecSets` (`X12` is the
+        // `RequiredInSpecSet` member; mirrors the Transformer impedance sets
+        // without the `kV` member, which XfmrCode's set omits).
+        "XfmrCode" => &[
+            SpecSet {
+                name: "X12, X13, X23",
+                props: &["X12", "X13", "X23"],
+            },
+            SpecSet {
+                name: "XscArray",
+                props: &["XSCArray"],
+            },
+        ],
         // `Storage.pas:546-553` — `SpecSetNames`/`SpecSets`.
         "Storage" => &[
             SpecSet {

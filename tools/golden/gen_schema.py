@@ -70,11 +70,16 @@ SCHEMA_CLASSES = [
     "CNData",
     "TSData",
     "LineSpacing",
-    # --- Batch B2: sources + Load (byte-exact). XfmrCode/Line deferred: they need
-    # the scalar-on-struct-array schema infra (DoubleOnStructArray/IntegerOnStructArray
-    # /MappedStringEnumOnStruct render-as-array + $dssIterator + the array-alternative
-    # redirect on winding props), shared with Transformer/AutoTrans (batches B3/B6).
-    # See STATUS §OG-1.5c batch B2. ---
+    # LineGeometry: deferred to integration as a port-authored (0.15.x) class (see
+    # the note below the list). Not byte-gated vs the 0.14.5 oracle.
+    # --- Integration: XfmrCode + Line (byte-exact after the documented divergences
+    # in schema_divergences.json). XfmrCode uses the Transformer struct-array infra
+    # (array-alternative winding redirects + ON_ARRAY scalars + $dssIterator); Line
+    # gains its five spec sets + the HIDE_015X 0.15.x-prop hiding on the schema
+    # (matching the JSON dump), leaving only the r4133 index/order shift to inventory. ---
+    "XfmrCode",
+    "Line",
+    # --- Batch B2: sources + Load (byte-exact). ---
     "Vsource",
     "Isource",
     "VCCS",
@@ -375,6 +380,16 @@ def main() -> None:
     print(f"  static global defs: {len(global_defs)}  circuit head: {len(circuit_head)}")
     print(f"  global enum defs: {len(enum_defs)}")
     print(f"  ported class defs: {len(class_defs)}  deferred: {len(deferred)}")
+
+    # 5) The FULL oracle document, verbatim — the byte-reference for the
+    # full-document splice test (`golden_schema.rs::full_document_reconciles_with_oracle`).
+    # Written with the exact fpjson bytes (CRLF preserved) so the Rust slicer
+    # compares real oracle regions. This is the ORACLE golden (brief item 1);
+    # the PORT's own full document is pinned separately (schema_full_port.json,
+    # regenerated from the Rust engine).
+    full_path = OUT_DIR / "schema_full_oracle.json"
+    full_path.write_bytes(raw)
+    print(f"wrote {full_path.relative_to(REPO_ROOT)}  ({len(raw)} bytes, verbatim oracle)")
 
 
 if __name__ == "__main__":

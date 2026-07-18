@@ -24,7 +24,7 @@ mod dump;
 use crate::elements::pd::winding::Winding;
 use crate::obj::base::DssObjData;
 use crate::obj::dss_enum::EnumRegistry;
-use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 
 /// 1-based property ordinals (Pascal `TXfmrCodeProp`).
 pub mod prop {
@@ -80,12 +80,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // Winding definition (active winding selected by `Wdg=`).
         PropDef::integer("Wdg"),
         PropDef::mapped_string_enum("Conn", enums.connection),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
+        PropDef::double("kV")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
         PropDef::double("kVA"),
         PropDef::double("Tap"),
         PropDef::double("%R").scale(pct),
-        PropDef::double("RNeut"),
-        PropDef::double("XNeut"),
+        PropDef::double("RNeut").flags(PropFlags::UNITS_OHM),
+        PropDef::double("XNeut").flags(PropFlags::UNITS_OHM),
         // General data (plural array forms write every winding).
         PropDef::enum_array_on_struct("Conns", enums.connection, WINDINGS),
         PropDef::double_array_on_struct("kVs", WINDINGS),
@@ -94,25 +95,27 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("XHL").scale(pct).flags(PropFlags::NON_ZERO),
         PropDef::double("XHT").scale(pct).flags(PropFlags::NON_ZERO),
         PropDef::double("XLT").scale(pct).flags(PropFlags::NON_ZERO),
-        PropDef::double_v_array("XSCArray")
-            .scale(pct)
-            .flags(PropFlags::NON_ZERO | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Thermal"),
+        PropDef::double_v_array("XSCArray").scale(pct).flags(
+            PropFlags::NON_ZERO | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::DYNAMIC_DEFAULT,
+        ),
+        PropDef::double("Thermal").flags(PropFlags::UNITS_HOUR),
         PropDef::double("n"),
         PropDef::double("m"),
-        PropDef::double("FLRise"),
-        PropDef::double("HSRise"),
+        PropDef::double("FLRise").flags(PropFlags::UNITS_DEGC),
+        PropDef::double("HSRise").flags(PropFlags::UNITS_DEGC),
         PropDef::double("%LoadLoss"),
         PropDef::double("%NoLoadLoss"),
-        PropDef::double("NormHkVA"),
-        PropDef::double("EmergHkVA"),
+        PropDef::double("NormHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
+        PropDef::double("EmergHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
         PropDef::double("MaxTap"),
         PropDef::double("MinTap"),
         PropDef::integer("NumTaps"),
         PropDef::double("%IMag"),
         PropDef::double("ppm_Antifloat").scale(1.0e-6),
         PropDef::double_array_on_struct("%Rs", WINDINGS).scale(pct),
-        PropDef::double("X12").scale(pct).flags(PropFlags::NON_ZERO),
+        PropDef::double("X12")
+            .scale(pct)
+            .flags(PropFlags::NON_ZERO | PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double("X13").scale(pct).flags(PropFlags::NON_ZERO),
         PropDef::double("X23").scale(pct).flags(PropFlags::NON_ZERO),
         PropDef::double("RDCOhms"),
@@ -120,6 +123,47 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double_array("Ratings", SEASONS),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
+
+    // JSON/schema metadata (Pascal `XfmrCode.pas:225-384`), mirroring Transformer:
+    // the singular per-winding scalars carry an `array_alternative` to their plural
+    // array form (rendered as the full per-winding array; the plural is `REDUNDANT`
+    // and defers back), the scalars with no plural (RNeut/XNeut/Max/MinTap/RdcOhms/
+    // NumTaps) are `ON_ARRAY`, and XHL/XHT/XLT are `REDUNDANT` aliases of X12/X13/X23.
+    let mut defs = defs;
+    {
+        // (singular, plural) — bidirectional array_alternative / redundant_with.
+        for (single, plural) in [
+            ("kV", "kVs"),
+            ("kVA", "kVAs"),
+            ("Tap", "Taps"),
+            ("%R", "%Rs"),
+            ("Conn", "Conns"),
+        ] {
+            let si = prop_index(&defs, single);
+            let pi = prop_index(&defs, plural);
+            defs[si - 1].array_alternative = pi;
+            defs[pi - 1].flags |= PropFlags::REDUNDANT;
+            defs[pi - 1].redundant_with = si;
+        }
+        // kVs is additionally `Required` (Pascal `XfmrCode.pas:368`).
+        let kvs = prop_index(&defs, "kVs");
+        defs[kvs - 1].flags |= PropFlags::REQUIRED;
+        // XHL/XHT/XLT are redundant aliases of X12/X13/X23 (`:321-326`).
+        for (alias, canon) in [("XHL", "X12"), ("XHT", "X13"), ("XLT", "X23")] {
+            let ai = prop_index(&defs, alias);
+            let ci = prop_index(&defs, canon);
+            defs[ai - 1].flags |= PropFlags::REDUNDANT;
+            defs[ai - 1].redundant_with = ci;
+        }
+        // Per-winding scalars with no array alternative → ON_ARRAY.
+        for name in ["RNeut", "XNeut", "MaxTap", "MinTap", "RDCOhms", "NumTaps"] {
+            let i = prop_index(&defs, name);
+            defs[i - 1].flags |= PropFlags::ON_ARRAY;
+        }
+        // The active-winding selector is a struct index → skipped by the sweep.
+        let wdg = prop_index(&defs, "Wdg");
+        defs[wdg - 1].flags |= PropFlags::INTEGER_STRUCT_INDEX;
+    }
     ClassProps::new("XfmrCode", defs, true)
 }
 

@@ -40,12 +40,18 @@
 //! The port progresses class-batch by class-batch (the byte-gated set is
 //! `gen_schema.py::SCHEMA_CLASSES`); `ORPHANED_GAPS.md` §1.5 tracks the frontier.
 //!
-//! ## Still owed (integration): the **full-document splice** — the enum + class
-//! `$defs` and the `<Class>List`/`<Class>Container` triples + per-class
-//! `circuitProperties` refs (`:1479-1502`) are not yet assembled into
-//! [`schema_skeleton`]; [`Dss::extract_schema_json`](crate::exec::Dss::
-//! extract_schema_json) still returns the skeleton (its `# Incomplete` caveat
-//! stands until the splice + the whole 49-class set is byte-gated).
+//! ## Full-document assembly (OG-1.5c integration): [`assemble_full_document`]
+//! splices the schema envelope with the ten static `$defs`, the 21 global enum
+//! `$defs`, and — in [`DSS_CLASS_LIST_ORDER`] (Pascal `DSS.DSSClassList`) — each
+//! class's `$defs/<Class>` (from the class walk) plus its
+//! `<Class>List`/`<Class>Container` triple and its `circuitProperties` ref
+//! (`CAPI_Schema.pas:1479-1513`). [`Dss::extract_schema_json`](crate::exec::Dss::
+//! extract_schema_json) now emits this **full** document (the `# Incomplete`
+//! caveat is gone). The whole 49-class 0.14.5 set is byte-gated vs the oracle
+//! (after the documented r4133 divergences); the 50th class WindGen and the
+//! four r4133-restructured classes (Relay/Recloser/SwtControl/LineGeometry) are
+//! port-authored (no 0.14.5 oracle to compare) — see `golden_schema.rs` and
+//! `tests/golden/json/schema_divergences.json`.
 
 use super::{Json, write_pretty};
 
@@ -361,4 +367,133 @@ pub fn extract_schema_skeleton_json() -> String {
     let mut out = String::new();
     write_pretty(&schema_skeleton(), 0, &mut out);
     out
+}
+
+/// The class-walk order — Pascal `DSS.DSSClassList` (`DSSClassDefs.pas`), the
+/// order `DSS_ExtractJSONSchema` iterates classes in (`CAPI_Schema.pas:1479`).
+/// These are the 49 classes the pinned 0.14.5 oracle emits, in its exact
+/// `$defs` order, with the port's 50th class **WindGen** inserted after
+/// `Generator` (Pascal `DSSClassDefs.pas:187` registers WindGen right after
+/// Generator, before GenDispatcher). The names are the canonical `cls.Name`
+/// (== each class's [`ClassProps::class_name`](crate::obj::props::ClassProps::
+/// class_name)); the caller resolves each to its live class.
+pub const DSS_CLASS_LIST_ORDER: &[&str] = &[
+    "LineCode",
+    "LoadShape",
+    "TShape",
+    "PriceShape",
+    "XYcurve",
+    "GrowthShape",
+    "TCC_Curve",
+    "Spectrum",
+    "WireData",
+    "CNData",
+    "TSData",
+    "LineSpacing",
+    "LineGeometry",
+    "XfmrCode",
+    "Line",
+    "Vsource",
+    "Isource",
+    "VCCS",
+    "Load",
+    "Transformer",
+    "RegControl",
+    "Capacitor",
+    "Reactor",
+    "CapControl",
+    "Fault",
+    "DynamicExp",
+    "Generator",
+    "WindGen",
+    "GenDispatcher",
+    "Storage",
+    "StorageController",
+    "Relay",
+    "Recloser",
+    "Fuse",
+    "SwtControl",
+    "PVSystem",
+    "UPFC",
+    "UPFCControl",
+    "ESPVLControl",
+    "IndMach012",
+    "GICsource",
+    "AutoTrans",
+    "InvControl",
+    "ExpControl",
+    "GICLine",
+    "GICTransformer",
+    "VSConverter",
+    "Monitor",
+    "EnergyMeter",
+    "Sensor",
+];
+
+/// Assemble the FULL `DSS_ExtractSchema(jsonSchema=True)` document — a
+/// loop-for-loop port of `CAPI_Schema.pas:1479-1513`. `class_defs` is the
+/// ordered `(cls.Name, prepareClassJsonSchema(cls))` list in
+/// [`DSS_CLASS_LIST_ORDER`] (the caller builds each via the class walk). This
+/// splices, in Pascal insertion order:
+/// 1. the ten static global `$defs` ([`global_defs`], `:1270-1459`);
+/// 2. the 21 global enum `$defs` ([`global_enum_defs`], `:1476-1477`);
+/// 3. per class, in order: `$defs/<Class>`, `$defs/<Class>List`,
+///    `$defs/<Class>Container`, and the `circuitProperties.<Class>` container
+///    ref (`:1479-1502`) — with `VsourceList` carrying the extra `minLength: 1`
+///    appended after `items` (`:1497-1500`);
+/// 4. the schema envelope + `required: ["Vsource"]` (`:1504-1513`).
+pub fn assemble_full_document(class_defs: &[(String, Json)]) -> Json {
+    let mut defs: Vec<(String, Json)> = global_defs();
+    defs.extend(global_enum_defs());
+
+    let mut circuit_props: Vec<(String, Json)> = circuit_properties_head();
+
+    for (name, def) in class_defs {
+        // `$defs/<Class>` (`:1481`).
+        defs.push((name.clone(), def.clone()));
+
+        // `$defs/<Class>List` (`:1482-1487`); Vsource additionally gets the
+        // `minLength: 1` appended after `items` (`:1497-1500`, same object ref).
+        let mut list: Vec<(&str, Json)> = vec![
+            ("title", s(&format!("{name}List"))),
+            ("type", s("array")),
+            ("items", obj(vec![("$ref", s(&format!("#/$defs/{name}")))])),
+        ];
+        if name == "Vsource" {
+            list.push(("minLength", i(1)));
+        }
+        defs.push((format!("{name}List"), obj(list)));
+
+        // `$defs/<Class>Container` (`:1488-1496`).
+        defs.push((
+            format!("{name}Container"),
+            obj(vec![
+                ("default", Json::Arr(vec![])),
+                ("title", s(&format!("{name}Container"))),
+                (
+                    "oneOf",
+                    Json::Arr(vec![
+                        obj(vec![("$ref", s(&format!("#/$defs/{name}List")))]),
+                        obj(vec![("$ref", s("#/$defs/JSONFilePath"))]),
+                        obj(vec![("$ref", s("#/$defs/JSONLinesFilePath"))]),
+                    ]),
+                ),
+            ]),
+        ));
+
+        // `circuitProperties.<Class>` container ref (`:1501`).
+        circuit_props.push((
+            name.clone(),
+            obj(vec![("$ref", s(&format!("#/$defs/{name}Container")))]),
+        ));
+    }
+
+    obj(vec![
+        ("$schema", s(JSON_SCHEMA_DRAFT)),
+        ("$id", s(ALTDSS_SCHEMA_ID)),
+        ("$defs", Json::Obj(defs)),
+        ("type", s("object")),
+        ("properties", Json::Obj(circuit_props)),
+        ("required", Json::Arr(vec![s("Vsource")])),
+    ])
 }

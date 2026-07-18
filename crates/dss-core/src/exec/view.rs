@@ -463,23 +463,40 @@ impl Dss {
     }
 
     /// AltDSS JSON-schema export — Pascal `DSS_ExtractSchema(DSS,
-    /// jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`). Emits the JSON-Schema
-    /// (draft 2020-12) envelope with the reusable global `$defs` and the static
-    /// `circuitProperties` head.
+    /// jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`). Emits the full
+    /// JSON-Schema (draft 2020-12) document: the envelope, the ten reusable
+    /// global `$defs`, the 21 global enum `$defs`, and — in
+    /// [`schema::DSS_CLASS_LIST_ORDER`](crate::report::export::json::schema::
+    /// DSS_CLASS_LIST_ORDER) — every class's `$defs/<Class>` (via the per-class
+    /// walk [`Dss::schema_class_def`]) with its `<Class>List`/`<Class>Container`
+    /// triple and its `circuitProperties` container ref.
     ///
-    /// # Incomplete
-    /// This returns the **static core skeleton only**, not a usable AltDSS
-    /// schema: the per-class and per-enum `$defs` walk is NOT emitted, so the
-    /// envelope's `required: ["Vsource"]` and every `circuitProperties` ref
-    /// dangle (their class `$defs` are absent). It is blocked on per-property
-    /// metadata the Rust port never carried (help/description text,
-    /// `AltPropertyOrder`, `SpecSets`, enum JSON names, most `Units_*` flags).
-    /// See [`crate::report::export::json::schema`] and STATUS §OG-1.5. The
-    /// result is independent of circuit state (all constant), so it needs no
-    /// `&mut self` and no `New circuit`. Do not treat the output as a complete
-    /// schema until the class/enum walk is ported.
+    /// The document is byte-gated vs the pinned 0.14.5 oracle (49 classes) after
+    /// the documented r4133 divergences; the 50th class WindGen and the four
+    /// r4133-restructured classes (Relay/Recloser/SwtControl/LineGeometry) are
+    /// port-authored (`golden_schema.rs`). The result is independent of circuit
+    /// state (all constant), so it needs no `&mut self` and no `New circuit`.
     pub fn extract_schema_json(&self) -> String {
-        crate::report::export::json::schema::extract_schema_skeleton_json()
+        use crate::report::export::json::schema;
+        // Build the per-class `$defs/<Class>` list in `DSS.DSSClassList` order
+        // (Pascal `CAPI_Schema.pas:1479`), keyed by the class's canonical name.
+        let class_defs: Vec<(String, crate::report::export::json::Json)> =
+            schema::DSS_CLASS_LIST_ORDER
+                .iter()
+                .map(|&name| {
+                    let &ci = self
+                        .class_by_name
+                        .get(&name.to_ascii_lowercase())
+                        .unwrap_or_else(|| panic!("schema class `{name}` not registered"));
+                    let class = &self.classes[ci];
+                    let key = class.props.class_name().to_string();
+                    (key, self.schema_class_def(name).expect("class def"))
+                })
+                .collect();
+        let doc = schema::assemble_full_document(&class_defs);
+        let mut out = String::new();
+        crate::report::export::json::write_pretty(&doc, 0, &mut out);
+        out
     }
 
     /// The schema `$defs/<Class>` for one registered class — Pascal

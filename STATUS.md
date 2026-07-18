@@ -650,6 +650,53 @@ r4064 (dss_capi 90962ae8) GICharm BH-curve props the port carries `SUPPRESS_JSON
 (port-only, absent from 0.14.5), occupying `$dssPropertyIndex` 42-44 and shifting
 the following indices +3 (`$dssPropertyOrder` untouched). Three `port_hidden_property`.
 
+#### OG-1.5c integration — full-document splice + XfmrCode/Line + port-authored pins (2026-07-19)
+
+Closed §1.5. `Dss::extract_schema_json` now emits the **whole**
+`DSS_ExtractSchema(jsonSchema=True)` document (the `# Incomplete` caveat is gone):
+`schema::assemble_full_document` splices the 10 static + 21 enum `$defs`, then per
+class in `schema::DSS_CLASS_LIST_ORDER` (Pascal `DSS.DSSClassList`, 49 oracle
+classes + WindGen after Generator) the `$defs/<Class>` + `<Class>List`/
+`<Class>Container` triple + `circuitProperties` container ref, and the envelope
+(`CAPI_Schema.pas:1479-1513`). Byte-verified 181 `$defs` (10+21+50·3).
+
+**XfmrCode + Line finished byte-exact** (the two B2-deferred struct/spec-set
+classes; added to `SCHEMA_CLASSES` → 45 byte-gated):
+- **XfmrCode** — wired the Transformer winding pattern (array_alternative kV/kVA/
+  Tap/%R/Conn→plurals + `REDUNDANT`, `ON_ARRAY` on RNeut/XNeut/Max/MinTap/RDCOhms/
+  NumTaps + struct getters, `INTEGER_STRUCT_INDEX` on Wdg), units (kV/Ω/hour/°C/
+  kVA), `DYNAMIC_DEFAULT` on NormHkVA/EmergHkVA/XSCArray, the `X12,X13,X23`/`XscArray`
+  spec sets. 1 divergence: 3 `exclusiveMinimum` lines (X12/X13/X23 `NonZero` added
+  post-0.14.5, git `69fca934`, first in 0.14.6a1).
+- **Line** — 5 spec sets (LineCode/LineGeometry/"Spacing, Wires"/Z0Z1C0C1/ZMatrix,
+  the B0/B1 set auto-aborts) + `REQUIRED_IN_SPEC_SET` members, missing units
+  (rho Ωm, C0/C1/CMatrix nF), RMatrix/XMatrix `NO_DEFAULT`, BaseFreq
+  `DynamicDefault`+`Units_Hz`. **Walker fix** (`schema/classes.rs`): the schema now
+  skips `hidden_from_full_enum()` (HIDE_015X/HIDE_R4133) props, matching the JSON
+  dump (`build.rs`) — the 0.14.5-pinned schema must not emit 0.15.x/r4133 props.
+  4 divergences: EpsRMedium/HeightOffset/HeightUnit/Conductors are HIDE_015X (in
+  `AltPropertyOrder`), a new `port_hidden_property` variant carrying `order` renumbers
+  both `$dssPropertyIndex` and `$dssPropertyOrder` (+4 on the tail).
+
+**Port-authored classes (5, not byte-gated vs 0.14.5)** — pinned to the port's own
+bytes and inventoried (`schema_divergences.json::port_authored_classes`, cause-attributed):
+LineGeometry (0.15.x Conductors model), Relay/Recloser (r4133 renamed protection
+curves), SwtControl (0.15.x per-phase Normal/State getter semantics), WindGen (the
+50th class, absent from the 49-class 0.14.5 oracle).
+
+**Verification** (`golden_schema.rs`, 9 tests): `ported_class_defs_bytes_match_oracle`
+(45 classes after divergences); `full_document_matches_port_golden`
+(`schema_full_port.json`, regression); `full_document_reconciles_with_oracle`
+(vs the verbatim `schema_full_oracle.json` — scaffolding byte-identical, each class
+region == `schema_class_def`, byte-gated classes == oracle-after-divergences, WindGen
+scaffolding == the substituted-name formula); `every_class_is_gated_or_inventoried`
+(gated ⊕ port-authored split, fail-on-stale). Both fail-on-stale canaries proven
+(falsified divergence count → per-class fails; removed port-authored entry → split
+fails). **Divergence inventory total: 30 per-property (LineCode 1, CNData 1,
+LineSpacing 5, XfmrCode 1, Line 4, Capacitor 1, Transformer 3, AutoTrans 3,
+RegControl 5, Generator 2, Fuse 4) + 5 port-authored classes.**
+Full gate green; `tests/corpus` pristine.
+
 ### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
 
 Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already
