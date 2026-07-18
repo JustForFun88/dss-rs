@@ -205,11 +205,11 @@ histories (`z`/`whist`, tapped via the 1-based circular `MapIdx(iu-k+1, fl)` in
 the wraparound (calling the unchanged `map_idx`) and whose `Index`/`IndexMut`
 serve the direct head/snapshot access. `y2`/`zlast`/`wlast` stay `Vec` (never
 `MapIdx`-tapped). Same slots, same statement order. Proof: new
-`ringbuf_tap_reproduces_pascal_map_idx_order` unit test (asserts the
-`[1,5,4,3,2]` tap order + `tap == self[map_idx]` for all indices) + the 3
-oracle-gated Monitor-mode-3 dynamics-trajectory tests (`exec::tests::vccs`,
-waveform + RMS 1φ/3φ) all UNCHANGED. Full record:
-`docs/phase-records/depascalize-p13.md`.
+`ringbuf_tap_reproduces_pascal_map_idx_order` unit test (hardcoded `[1,5,4,3,2]`
+tap-order pin + an independent wraparound-range check that every raw index folds
+into a live slot `1..=len`) + the 3 oracle-gated Monitor-mode-3
+dynamics-trajectory tests (`exec::tests::vccs`, waveform + RMS 1φ/3φ) all
+UNCHANGED. Full record: `docs/phase-records/depascalize-p13.md`.
 
 ### DE_PASCALIZE P12 — `line_constants` `Vec<Conductor>` (wave 2, branch `wt-p1213-v2`)
 
@@ -223,6 +223,21 @@ same arithmetic, same order. FPC-compat helpers untouched. Salvaged the
 completed the remaining mod.rs + all cable/cn/ts sites, folded to one commit.
 Proof (all unchanged): 20 line-constants unit tests, `golden_line_constants`,
 `corpus_gate` checkpoint YPrims. Full record: `docs/phase-records/depascalize-p12.md`.
+
+**Settle (P12+P13 audit dispositions).** Two independent audits (code + tests)
+found the pair faithful and bit-neutral; three low-severity notes settled
+empirically: (1) a corpus-gate `iteration count differs` on `Test/YgD-Test.dss`
+seen once under parallel load, green on an identical re-run — that deck is a bare
+`New Line.Line1` (no geometry/linecode, no VCCS), so it touches neither the P12
+line_constants geometry kernel nor the P13 RingBuf; pre-existing harness/oracle
+parallel-load nondeterminism, NOT a P12/P13 regression, left as-is. (2) The new
+ringbuf unit test's second assertion loop restated `tap`'s own body
+(`tap(idx) == self[map_idx(idx,len)]`) and could never fail — replaced with an
+independent wraparound-range check (`tap` always folds into a live slot
+`1..=len`); the `[1,5,4,3,2]` order pin was and is the real behavioral baseline.
+(3) A "corpus_gate 11 passed" count in a transient audit-evidence message was a
+miscount (the target runs 25 tests) — it never appeared in any committed
+artifact (STATUS §gate already states 25), nothing to fix.
 
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
