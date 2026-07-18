@@ -316,6 +316,81 @@ Follow-ups: none blocking WM.1. `TStorageVars`/`TPVSystemVars`/
 `TCapControlVars` offset tables are frozen at their owning WPs (WM.4/WM.5) via
 the same probe kit (ABI doc §2.4 records this explicitly).
 
+### WASM-UM WP-WM.1 — the `dss-usermodel` crate (branch `wasm-wm1`, 2026-07-18)
+
+The wasmi host per plan §2.1–§2.3; template = the vendored typst plugin host
+(`.inputs/typst/.../plugin.rs`, cited in doc comments throughout). New leaf
+workspace crate `crates/dss-usermodel/` (`#![forbid(unsafe_code)]`; deps:
+`wasmi =1.0.9` pinned in `[workspace.dependencies]` per PIN.txt
+(`default-features=false`, `["simd"]`), `num-complex`, `dss-parser` (the owned
+AuxParser); dev-deps `wat` + `sha2`). No dss-core changes — the crate is not
+consumed yet (WM.3 wires it).
+
+- **`UserModelHost`** (`src/host.rs`): deterministic engine config (relaxed
+  SIMD off = typst `:271-272`; `consume_fuel(true)`), module compile, and
+  **load-time export-set validation** — `memory`, `dss_alloc`, then the
+  interface functions in the **Pascal binding order**
+  (`GenUserModel.pas:173-187` / `StoreUserModel.pas:336-348` /
+  `CapUserControl.pas:176-182`), so the first missing name is exactly what the
+  engine's 569/1569 path reports; present-but-wrong-signature = typed
+  `SignatureMismatch` (ABI §6 protocol violation). `InterfaceKind` carries the
+  five Pascal loader shapes (Gen15 `new(genvars,dynarec)`, Store15/PV15/Dyna13
+  `new(dynarec)`, Cap7 `new()`). `HostConfig`: per-call fuel budget (default
+  1e8 — the plan's <1%-of-budget calibration bar is verified against the real
+  fixture at WM.2) + 64 MiB memory cap.
+- **`UserModelInstance`/`CapControlInstance`** (`src/instance.rs`): one
+  `Store` per element binding (plan §2.7 — `Store` is `Send`, M3-safe); guest
+  buffers allocated once via `dss_alloc` (genvars 244 B / dynarec 52 B / V+I
+  `yorder`×16 / name scratch; grow-only edit + vars buffers) and range-checked
+  (`dss_alloc` returning 0 / out-of-range = typed error). Record shuttle =
+  `GeneratorVars`/`DynamicsRec` mirrors (`src/records.rs`) serialized
+  **field-by-field at the frozen ABI offsets** (never `#[repr(C)]` — the
+  packed unaligned tail; unit tests pin every offset against the ABI-doc
+  tables). Records written before and read back after **every** call (ABI
+  §2); Pascal wrapper quirks reproduced: `Edit` ignored while `FID=0`,
+  `Integrate` = `select(id)`+`integrate` (`GenUserModel.pas:123-138`),
+  `new`→0 = model-absent (`Get_Exists`), delete-guard on nonzero id.
+- **Callbacks** (`src/callbacks.rs` + `src/imports.rs`): the 32-slot
+  `TDSSCallBacks` vtable as module `dss_env`, tiered per ABI §4 — tier A
+  served from the per-call `Box<dyn Callbacks>` snapshot (default method
+  bodies mirror each Pascal nil path, incl. `Exit`-without-touching
+  semantics via `Option`), tier B = `Effect` queue (`Msg`,
+  `ControlQueuePush` with provisional handles `seed, seed+1, …` from
+  `control_queue_next_handle()` — exact Pascal handle sequence under
+  drain-in-order), tier C = owned `dss_parser::Parser` in `CallData`
+  reproducing `CallBackParser` semantics (`NextParam` returns the **value**
+  length and copies the **name**; `GetStrValue` serves `CB_Param` from the
+  last `NextParam` incl. the deterministic truncate-on-short-maxlen;
+  FPC-exception-on-conversion-error = UB upstream, defined port writes 0).
+  All 32 imports exist at link time; `do_dss_command`/`get_result_str`
+  (WM.6) and `get_active_element_ptr` (permanent) raise the loud attributed
+  `Unsupported` error when called — no silent no-ops (plan §2.9-5).
+- **Typed failure contract** (`src/error.rs`, ABI §6): faults recorded by
+  imports win (the typst `memory_error` take-pattern), then
+  `TrapCode::OutOfFuel` → `FuelExhausted`, `GrowthOperationLimited` (store
+  limiter with `trap_on_grow_failure`) → `MemoryCapExceeded`, else `Trap` —
+  every variant naming the model and function.
+- **Channel-2 protocol tests** (`tests/protocol.rs`, 23 tests, inline-WAT
+  guests via dev-dep `wat`): happy-path 15-function round trip (call
+  counters + V/I marshalling + records); record byte-exact round trip
+  (distinct bit patterns in every field → guest increments `Pshaft`/`t` →
+  only those change); tier A full-surface exerciser (all 22 snapshot reads
+  incl. copy-semantics counts) + the Pascal nil-path defaults; tier B order +
+  handle sequence; tier C parser round trip over the owned AuxParser;
+  missing export → exact name + binding-order-first + 13-vs-15-fn sets +
+  missing `memory`/`dss_alloc`; wrong signature; trap / fuel / import-OOB /
+  host-OOB / alloc-0 / memory-cap → the typed errors; unsupported-import
+  trio; CapControl 7-fn round trip; host-API misuse (`Usage`).
+  `tests/fixture_pin.rs` = the **hash-vs-PIN scaffold**, self-activating
+  (dormant pre-WM.2 state = no fixture + no `sha256(...)` line in PIN.txt;
+  any half-state is red; format documented for WM.2) — no `#[ignore]`.
+
+Workspace edits: members + `[workspace.dependencies].wasmi` +
+`[profile.dev.package.dss-usermodel]` opt-3 (safety knobs pinned) in the root
+`Cargo.toml`. Follow-ups for WM.2: commit the fixture + PIN hash line
+(activates the scaffold), verify the fuel-calibration bar (<1% of 1e8 per
+reference-model call).
+
 ### OG-1.5 `CAPI_Schema` JSON-schema export — static core ported (orphaned-gaps round, 2026-07-18)
 
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
