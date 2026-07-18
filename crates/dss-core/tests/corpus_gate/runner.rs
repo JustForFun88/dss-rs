@@ -383,24 +383,30 @@ pub(crate) fn compare_capture(
             rust_names.difference(&oracle_names).collect::<Vec<_>>(),
             oracle_names.difference(&rust_names).collect::<Vec<_>>(),
         );
-        // Elements a ledger element scope handles (enveloped or excluded) are
-        // skipped from the standard per-element compare; the name-set assertion
-        // above still runs (the set is unchanged).
-        let el_handled = ledger
-            .map(|v| v.element_handled_names(i, &snaps, &cp.elements, tol, &ctx))
+        // A ledger element scope neutralizes only its pinned sub-channels: it
+        // rewrites those to the Rust values (after re-asserting them inside their
+        // envelope) so the standard `compare_element` treats them as equal and
+        // still tier-checks the unscoped remainder (clause (b)). Elements with no
+        // scope are compared against the untouched oracle cap.
+        let el_rewrites = ledger
+            .map(|v| v.element_rewrites(i, &snaps, &cp.elements, tol, &ctx))
             .unwrap_or_default();
         for ec in &cp.elements {
-            if el_handled.contains(&ec.name.to_lowercase()) {
-                continue;
+            match el_rewrites.get(&ec.name.to_lowercase()) {
+                Some(rw) => compare_element(&snaps, rw, tol, &ctx),
+                None => compare_element(&snaps, ec, tol, &ctx),
             }
-            compare_element(&snaps, ec, tol, &ctx);
         }
 
         compare_discrete(dss, &cp.transformers, &cp.regcontrols, &cp.capacitors, &ctx);
 
+        // A ledger monitor scope neutralizes only its pinned channel_idx (rewrites
+        // it to the Rust samples after the envelope check); the header, sample
+        // count, and every other channel still go through the standard comparator.
         for m in &cp.monitors {
-            if !ledger.is_some_and(|v| v.monitor_handled(dss, m, tol, &ctx)) {
-                compare_monitor(dss, m, tol, &ctx);
+            match ledger.and_then(|v| v.monitor_rewrite(dss, m, tol, &ctx)) {
+                Some(rw) => compare_monitor(dss, &rw, tol, &ctx),
+                None => compare_monitor(dss, m, tol, &ctx),
             }
         }
         for m in &cp.meters {
@@ -477,7 +483,7 @@ pub(crate) fn compare_capture(
             // Rust `?`-surface value (the ledger already asserted the oracle value
             // equals its pin), so the standard compare treats it as equal.
             let prop_keys = ledger
-                .map(|v| v.property_handled_keys(&cp.all_properties, &ctx))
+                .map(|v| v.property_handled_keys(dss, &cp.all_properties, &ctx))
                 .unwrap_or_default();
             if prop_keys.is_empty() {
                 compare_all_properties(dss, &cp.all_properties, tol, &ctx);

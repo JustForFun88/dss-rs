@@ -997,9 +997,10 @@ recycle cannot cover within a case: `StoCtrl_SeasonTarget` (EnergyMeter DI CSV h
 open), plus defensive isolate on the IEEE13-geometry family + `mmf_singlecol` +
 `YgD-Test`. Determinism verified: **4/4** consecutive green full runs post-fix
 (after ~10 pre-fix runs that whack-a-mole isolation could not stabilise). `M1/
-Master_NoPV` kept **r4133-only** (its both-flip surfaced a real capi_v0145
+Master_NoPV` kept **r4133-only** (its both-flip surfaced a capi_v0145
 all-properties divergence — a Load renders `PF=1` on the port vs `0.9` on the 0.14.5
-oracle — NOT ledgered per R3; follow-up).
+oracle — **settled at Phase-D settlement, NOT a bug**: see the settlement addendum
+below).
 
 **Deletions (same landing).** `tests/corpus/known_diffs.json`, the
 `corpus_live_opendss` test + `KnownDiff`/`load_known_diffs`, `Oracle::opendss` +
@@ -1043,8 +1044,12 @@ retired:
 - **RegControl idle×1** — capi rejects `idle` (#110); r4133 ~7e-5 regulator-tap
   class. Ledgerable on r4133 with a measured envelope (follow-up).
 - **line_spacing_asym×1** — capi node-V ~7e-8 (line-impedance libm floor) +
-  `Line.normamps` 730-vs-230 (deliberate WP-U1.2 min-over-phase) + r4133 #303 skip.
-  Ledgerable capi voltage + property exact-pair (follow-up).
+  `Line.lsp.normamps`/`emergamps` **oracle 0.14.5 = 730/1095, port = 230/345**
+  (settled empirically 2026-07-18; the port's 230 min-over-phase is CORRECT per
+  r4133 LineGeometry.pas — earlier notes had the direction reversed, now fixed) +
+  r4133 #303 skip. Ledgerable capi voltage + property exact-pair, but the discrete
+  730→230 jump needs an exact-pair-numeric probe/property scope the current
+  machinery lacks (probe path only exact-pairs non-numeric values) → follow-up.
 
 **both% = 342/514 = 66.5%** (single-channel 172: capi_v0145 75, r4133 97). The
 plan's ≥90% target is **arithmetically unreachable**, proven by the seeding: 97
@@ -1072,11 +1077,82 @@ Wall-clock table row (plan §3.4 / §6):
 | Phase D (full BOTH gate, ledger active) | persistent-parallel | 16 | 8/ch | 1/case | ~150 s |
 
 **Open follow-ups (Phase D → later):** (1) retire the remaining `defer_ledger` —
-DynExp×2 / idle×1 / line_spacing×1 via measured envelopes; NCIM×4 needs a WP-U1.7
-NCIM op-point re-validation first. (2) The fingerprintable `both` flip set (~21
-cases) to push toward the ~72% ceiling. (3) `M1/Master_NoPV` Load `PF=1`-vs-`0.9`
-capi divergence — settle empirically (possible PF-parse bug). (4) `tools/opendss/
-*.py` report scripts still reference `known_diffs`/`corpus_live_opendss` → Phase E.
+DynExp×2 / idle×1 / line_spacing×1 via measured envelopes (line_spacing also needs
+the exact-pair-numeric probe scope, below); NCIM×4 needs a WP-U1.7 NCIM op-point
+re-validation first. (2) The fingerprintable `both` flip set (~21 cases) to push
+toward the ~72% ceiling. (3) `tools/opendss/*.py` report scripts still reference
+`known_diffs`/`corpus_live_opendss` → Phase E. (`M1/Master_NoPV` follow-up (3) is
+now settled — see addendum.)
+
+### Phase-D settlement (audit dispositions, 2026-07-18)
+
+Two independent xhigh audits (audit-code + audit-tests) of `ae4b4ef..e9a2502`.
+Dispositions, settled empirically (drive the live engines / read the Pascal), never
+by loosening a tolerance:
+
+- **F1 (both audits, HIGH) — element/monitor envelope only checked the SELECTED
+  sub-channels, dropping the unscoped remainder from all comparison** (a matching
+  `element`/`monitor` entry made the caller skip the *whole* element/monitor's
+  `compare_element`/`compare_monitor`; the in-code doc falsely claimed the rest was
+  "still tier-checked"). Latent (no such entries ship yet) but a real clause-(b)
+  hole exactly on the brief's R3 focus. **FIXED** by generalizing the `property`
+  rewrite pattern: `element_rewrites`/`monitor_rewrite` re-assert the pinned
+  sub-channels inside their envelope (clause a) then rewrite ONLY those to the Rust
+  values so the untouched `compare_element`/`compare_monitor` tier-checks every
+  unscoped channel (clause b). `runner.rs` now always runs the harness comparator.
+  False doc comments corrected.
+- **F4-code (MEDIUM) — a non-numeric probe scope with no `oracle` pin
+  self-certified (marked applied+exceeded, skipped all comparison).** **FIXED**:
+  the non-numeric branch now requires an exact `oracle` pin (else panics — discrete
+  state is exact-pair only, §1.3), asserts the live Rust value against an optional
+  `rust` pin, and marks `exceeded` only when Rust ≠ oracle (so it CAN go stale).
+- **F5-tests (MEDIUM) — exact-pair `property`/non-numeric-`probe` entries marked
+  `exceeded` unconditionally → fail-on-stale could never fire for them.** **FIXED**:
+  both now query the live Rust value and mark `exceeded` only when it still differs
+  from the oracle, so a vanished discrete divergence trips STALE. (`mask_line`
+  eventlog/ctrlqueue entries already self-detect via the NEVER-APPLIED path when the
+  artifact line disappears; `skip` entries are `Kind::Skip`, exempt from the
+  divergence-stale check by design.)
+- **F2-code (HIGH-ish factual) — the `linespacing-normamps` cause, the
+  `line_spacing_asym` defer_ledger note, and STATUS recorded the 730-vs-230
+  direction BACKWARDS.** **SETTLED empirically**: pinned dss-python 0.14.5 oracle =
+  `Line.lsp.normamps 730 / emergamps 1095` (first-wire ACSR_556 rating); the port =
+  `230 / 345` (MIN over phase conductors {556→730, 4-0→340, 1-0→230}=230), matching
+  r4133 V8 `LineGeometry.pas:1237-1239`. **The port's 230 is CORRECT** (WP-U1.2 D3
+  min-over-phase upgrade) — a wrong-fact-in-the-ledger, not a papered-over bug. Cause
+  text, manifest note, and this record corrected. The cause is currently unused (no
+  entry references it), so nothing was mis-gated live.
+- **F3-tests (MEDIUM) — `M1/Master_NoPV` Load `PF=1`-vs-`0.9`, flagged "possible
+  PF-parse bug".** **SETTLED empirically: NOT a bug.** The ~10 diverging loads
+  (`Loads_Only.dss`: `kW=0 kvar=0 pf=0.9`) hit the WP-U1.1 **L2 REPLACE_ZERO** clamp
+  (`kW`/`kVA` parsed in `(-1e-8,1e-8)` → `+1e-8`, the EPRI r4133 `DblValueNZ`
+  default the 0.14.5 oracle lacks; `prop_flags.rs REPLACE_ZERO`). On 0.14.5 `kW=0`
+  stays 0 so `LoadSpec kW_kvar` leaves `PFNominal=0.9`; on the port `kW=1e-8` makes
+  `kVA>0` so `PFNominal=kW/kVA=1`. The port correctly follows r4133 (which is why M1
+  gates cleanly on r4133). The delta touches every zero-load's kw/kva/pf strings —
+  **wholesale, not tightly fingerprintable** → per §4-D it stays r4133-only with a
+  corrected note cause, not a ledger entry. No code change; the port is right.
+- **F1-defer / F3-code (HIGH) — DONE-bar "11 ex-defer_ledger live-gated;
+  defer_ledger fully retired" is NOT met; 8 remain Rust-smoke-only.** Deliberately
+  **not force-retired** (rationale, per R3 "a ledger entry that papers over a fixable
+  bug is the worst outcome"): NCIM×4 is a suspected op-point port bug (needs WP-U1.7)
+  and DynExp×2 matches NEITHER surviving oracle — force-ledgering either would pin a
+  bug; idle×1 and line_spacing_asym×1 are settled upgrades but need machinery the
+  phase doesn't ship (r4133 voltage envelope resp. exact-pair-numeric probe). All 8
+  keep `defer_ledger` (Rust-smoke: solve + no-new-errors) with corrected notes and
+  the follow-ups above. The `defer_ledger` field is therefore RETAINED, honestly.
+- **F5-code/F6-tests (LOW) — both% 66.5% < 90% target.** Disclosed above and
+  data-backed (~72% seeding ceiling); the ≥90% target is arithmetically unreachable.
+  No action.
+- **F6-code (LOW) — `injection` envelopes the whole RHS vector (no node
+  sub-selector).** Acknowledged design (injection has no natural per-node selector);
+  the planned `injection-fpc-delphi-ulp` entries are whole-vector ulp floors, so
+  clause (b) being vacuous is acceptable. No change; noted for the follow-up author.
+- **F7-code/F4-tests (LOW) — `tools/opendss/*.py` read the deleted
+  `known_diffs.json`; ~18/20 ledger causes are referenced only by prose notes.**
+  The python scripts die in **Phase E** per the brief (out of scope here); the
+  orphaned causes are the imported known_diffs class-prose kept as reference for the
+  single-channel note cases — retained as documentation, no gating impact.
 
 ## 1a. Archived — completed plan records (100% done)
 

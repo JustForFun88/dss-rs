@@ -374,7 +374,7 @@
    "kind": "feeder",
    "n_steps": 1,
    "engines": "r4133",
-   "note": "UNIFIED_GATE Phase D: kept r4133-only — flipping to both surfaces a capi_v0145 all-properties divergence (a Load renders PF=1 on the port vs 0.9 on the pinned 0.14.5 oracle) NOT yet settled; per R3 do not ledger a possible PF-parse bug. Follow-up: settle empirically, then flip. Siblings J1/K1 gate capi cleanly."
+   "note": "UNIFIED_GATE Phase D: kept r4133-only — flipping to both surfaces a wholesale capi_v0145 all-properties divergence on the zero-power loads (Loads_Only.dss defines kW=0 kvar=0 pf=0.9). SETTLED empirically 2026-07-18: this is the WP-U1.1 L2 REPLACE_ZERO upgrade (kW/kVA parsed in (-1e-8,1e-8) clamp to +1e-8, EPRI r4133 DblValueNZ default; prop_flags.rs REPLACE_ZERO), NOT a port bug — the port correctly follows r4133 (which is why M1 gates cleanly on r4133). On the 0.14.5 oracle kW stays 0 so LoadSpec kW_kvar leaves PFNominal=0.9; on the port kW=1e-8 makes kVA>0 so PFNominal=kW/kVA=1. The delta touches every zero-load's kw/kva/pf property strings (wholesale, not tightly fingerprintable) so per §4-D it stays single-channel with note cause rather than a ledger entry. Siblings J1/K1 gate capi cleanly."
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS",
