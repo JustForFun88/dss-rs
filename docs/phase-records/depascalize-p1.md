@@ -93,10 +93,21 @@ entangled with an out-of-scope channel. None were partially touched.
 6. **DER `var_mode`** (`VARMODE_PF/KVAR`) — lives on the shared `InvBasedPceData`
    (PVSystem **and** Storage) and is set via `der_set_var_mode`/`pv_set_var_mode`
    env methods (`i32`). Cross-element + control-env ripple. Deferred.
-7. **Relay** `control_type` (gap at 2) + present/normal state; **CapControl**
-   `control_type` + states; **RegControl** action codes; **Generator**
-   `dispatch_mode`; **PVSystem** var-mode; **ExpControl** pending; **ESPVLControl**
-   `f_type`; **LoadShape** interp — not reached this wave; deferred.
+7. **Control trio — CLOSED by DE_PASCALIZE P1b** (`wt-p1b-v2`, salvaged from the
+   interrupted WIP `c842af0`): **Relay** `control_type` → `RelayControlType`
+   (`#[repr(i32)]`, discriminants `0,1,3,4,5,6,7,8,9` — the `2` ordinal stays
+   unused, `from_ordinal(2) = None`); **CapControl** `control_type` →
+   `CapControlType` (`0..5`; USERCONTROL=6 is not registered upstream and never
+   set by the port, so the `Sample` match is exhaustive); **RegControl** queue
+   action codes → `RegControlAction` (`TapChange=0`/`Reverse=1`, `i32` only at the
+   `ControlQueue` push/`DoPendingAction` boundary). Each ordinal proven vs Pascal
+   (`Relay.pas:323-331`, `CapControl.pas:92-100`, `RegControl.pas:246-247`) **and**
+   the DssEnum registry (`registry/control.rs` `relay_type`/`cap_control_type`).
+   The controls-corpus manifests (105 cases) + eventlog gate stay green unchanged.
+   *Still deferred* (not P1b scope): the Relay/CapControl present/normal **state**
+   ordinals (the shared `CTRL_*` `EControlAction` channel — R0 `control_elem.rs`);
+   **Generator** `dispatch_mode`; **PVSystem** var-mode; **ExpControl** pending;
+   **ESPVLControl** `f_type`; **LoadShape** interp — left for the main P1 pass.
 8. **Remaining bare-i32 DssEnum fields**: `reactor/capacitor.spec_type`,
    `vsource.{z_spec_type,scan_type,sequence_type}`, `vs_converter.f_mode`,
    `energymeter.ocp_device_type` (on the central `CktElementData`; the `== 0`
