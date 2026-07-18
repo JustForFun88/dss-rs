@@ -9,7 +9,7 @@ fn edit_and_dump(edits: &[(&str, &str)]) -> Vec<(String, String)> {
     let mut parser = Parser::new();
     let vars = ParserVars::new();
     let enums = EnumRegistry::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
@@ -58,7 +58,7 @@ fn build(edits: &[(&str, &str)]) -> SpectrumObj {
     let mut parser = Parser::new();
     let vars = ParserVars::new();
     let enums = EnumRegistry::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
@@ -116,7 +116,7 @@ fn get_mult_is_zero_before_end_edit() {
     let mut parser = Parser::new();
     let vars = ParserVars::new();
     let enums = EnumRegistry::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in [
         ("NumHarm", "1"),
         ("harmonic", "1"),

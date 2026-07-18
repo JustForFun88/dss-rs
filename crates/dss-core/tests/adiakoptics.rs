@@ -1769,7 +1769,7 @@ mod ckt24_driver {
             let msg = dss
                 .errors()
                 .get(base_errs)
-                .cloned()
+                .map(|e| e.text().to_string())
                 .unwrap_or_else(|| dss.result().to_string());
             return Err(format!("ad-init: {msg}"));
         }

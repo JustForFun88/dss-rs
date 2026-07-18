@@ -75,7 +75,7 @@ impl CktElement for MockLine {
 struct Scratch {
     queue: ControlQueue,
     events: EventLog,
-    errors: Vec<String>,
+    errors: crate::diag::ErrorLog,
     y_changed: bool,
     sys: SysCtx,
 }
@@ -84,7 +84,7 @@ impl Scratch {
         Self {
             queue: ControlQueue::new(),
             events: EventLog::new(),
-            errors: Vec::new(),
+            errors: crate::diag::ErrorLog::new(),
             y_changed: false,
             sys: test_sys(),
         }
@@ -119,7 +119,7 @@ fn build_tcc(npts: &str, c: &str, t: &str) -> TccCurveObj {
     let mut parser = Parser::new();
     let vars = ParserVars::new();
     let enums = EnumRegistry::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (n, v) in [("npts", npts), ("C_array", c), ("T_array", t)] {
         let idx = cls.property_index(n).unwrap();
         let mut eng = PropEngine {

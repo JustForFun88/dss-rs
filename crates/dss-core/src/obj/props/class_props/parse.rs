@@ -625,10 +625,13 @@ fn parse_conductor_proxy(
     // conductor array must already be sized (spacing/NConds set) → #402.
     let count = obj.array_size(idx);
     if count < 1 {
-        eng.errors.push(format!(
-            "{full}.{}: No objects are expected! Check if the order of property \
-             assignments is correct.",
-            pd.name
+        eng.errors.push(crate::diag::DssDiagnostic::msg(
+            format!(
+                "{full}.{}: No objects are expected! Check if the order of property \
+                 assignments is correct.",
+                pd.name
+            ),
+            Some(402),
         ));
         return Ok(0);
     }
@@ -656,10 +659,13 @@ fn parse_conductor_proxy(
             None => {
                 // No class prefix → error #10103.
                 let items = if allow_none { "valid items" } else { "items" };
-                eng.errors.push(format!(
-                    "{full}.{}: You must define the {proxy_name} class for all the \
-                     {items} in the array.",
-                    pd.name
+                eng.errors.push(crate::diag::DssDiagnostic::msg(
+                    format!(
+                        "{full}.{}: You must define the {proxy_name} class for all the \
+                         {items} in the array.",
+                        pd.name
+                    ),
+                    Some(10103),
                 ));
                 return Ok(0);
             }
@@ -670,10 +676,13 @@ fn parse_conductor_proxy(
         // structure but unreachable until the §6 sweep fixes the compare.
         let subcls = pd.object_classes.iter().find(|c| **c == class_tok).copied();
         let Some(subcls) = subcls else {
-            eng.errors.push(format!(
-                "{full}.{}: Invalid class ({class_tok}) for item. Valid classes: \
-                 {valid_classes}",
-                pd.name
+            eng.errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "{full}.{}: Invalid class ({class_tok}) for item. Valid classes: \
+                     {valid_classes}",
+                    pd.name
+                ),
+                Some(10103),
             ));
             return Ok(0);
         };

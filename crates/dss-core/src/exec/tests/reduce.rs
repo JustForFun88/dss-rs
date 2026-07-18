@@ -69,7 +69,7 @@ fn reduce_command_requires_energy_meter() {
     dss.command("New circuit.c1 basekv=12.47 bus1=src phases=3");
     dss.command("reduce");
     assert!(
-            dss.errors().iter().any(|e| e
+            dss.errors().iter().any(|e| e.text()
                 == "An energy meter is required to use this feature. Please check \
                     https://sourceforge.net/p/electricdss/code/HEAD/tree/trunk/Version8/Doc/Circuit%20Reduction%20for%20Version8.docx \
                     for examples."),
@@ -90,7 +90,7 @@ fn reduce_named_meter_not_found_is_262() {
     assert!(
         dss.errors()
             .iter()
-            .any(|e| e == "EnergyMeter \"NOPE\" not found."),
+            .any(|e| e.text() == "EnergyMeter \"NOPE\" not found."),
         "{:?}",
         dss.errors()
     );

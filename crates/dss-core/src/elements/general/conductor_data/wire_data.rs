@@ -92,7 +92,7 @@ impl DssObject for WireDataObj {
 
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
         let full = format!("WireData.{}", self.data.name());
-        let mut errs = Vec::new();
+        let mut errs = crate::diag::ErrorLog::new();
         self.cond.side_effects(idx, &full, &mut errs);
         for e in errs {
             self.data.push_error(e);

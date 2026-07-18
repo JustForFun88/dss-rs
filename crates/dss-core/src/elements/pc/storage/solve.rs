@@ -262,7 +262,7 @@ impl Storage {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         // Dynamics mode: delegate entirely to DoDynamicMode (Pascal dispatch order).
         if sys.is_dynamic_model {
@@ -379,7 +379,7 @@ impl Storage {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         if self.storage_obj_switch_open {
             self.cd.inj_current.fill(Complex64::ZERO);

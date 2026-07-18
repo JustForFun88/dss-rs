@@ -3,13 +3,13 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
 
-fn edited(edits: &[(&str, &str)]) -> (ClassProps, PriceShapeObj, Vec<String>) {
+fn edited(edits: &[(&str, &str)]) -> (ClassProps, PriceShapeObj, crate::diag::ErrorLog) {
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut obj = PriceShapeObj::new("d");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {

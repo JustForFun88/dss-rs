@@ -324,7 +324,10 @@ impl Dss {
         let outcome = match outcome {
             Ok(o) => o,
             Err(e) => {
-                self.errors.push(format!("Error Encountered in Solve: {e}"));
+                self.errors.push(crate::diag::DssDiagnostic::msg(
+                    format!("Error Encountered in Solve: {e}"),
+                    Some(482),
+                ));
                 if let Some(ckt) = self.circuit.as_mut() {
                     ckt.solution.solution_abort = true;
                 }
@@ -415,7 +418,10 @@ impl Dss {
                 errors,
             };
             if let Err(e) = solve_snap(ckt, &mut env) {
-                env.errors.push(format!("Error Encountered in Solve: {e}"));
+                env.errors.push(crate::diag::DssDiagnostic::msg(
+                    format!("Error Encountered in Solve: {e}"),
+                    Some(482),
+                ));
                 ckt.solution.solution_abort = true;
             }
         }

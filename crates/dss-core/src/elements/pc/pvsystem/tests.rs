@@ -26,7 +26,7 @@ fn build_shape(mult: &str) -> LoadShapeObj {
     let mut obj = LoadShapeObj::new("s");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in [("npts", "4"), ("interval", "1"), ("mult", mult)] {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
@@ -50,7 +50,7 @@ fn build_tshape(temp: &str) -> TShapeObj {
     let mut obj = TShapeObj::new("t");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in [("npts", "4"), ("interval", "1"), ("temp", temp)] {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
@@ -74,7 +74,7 @@ fn edit_pvsystem(edits: &[(&str, &str)]) -> PVSystem {
     let mut pv = PVSystem::new("pvz");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {

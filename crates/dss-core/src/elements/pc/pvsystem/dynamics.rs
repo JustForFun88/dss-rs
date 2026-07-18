@@ -374,7 +374,7 @@ impl PVSystem {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         if self.base.gfm_mode {
             // Pascal `TPVsystemObj.DoDynamicMode` GFM arm (PVsystem.pas l.1870-1876):
@@ -408,10 +408,15 @@ impl PVSystem {
             3 => {
                 // NOT_PORTED: VoltageModel=3 user-written DLL dynamics model.
                 // Pascal records error 5671 and sets SolutionAbort.
-                errors.push(format!(
-                    "PVSystem.{}: VoltageModel=3 user-written dynamics model is not \
-                     defined (NOT_PORTED — safe Rust).",
-                    self.cd.obj.name()
+                errors.push(crate::diag::DssDiagnostic::msg(
+                    format!(
+                        "PVSystem.{}: VoltageModel=3 user-written dynamics model is not \
+                         defined (NOT_PORTED — safe Rust).",
+                        self.cd.obj.name()
+                    ),
+                    // Pascal `DoSimpleMsg('Dynamics model missing for PVSystem.%s ', 5671)`
+                    // (PVsystem.pas:1889).
+                    Some(5671),
                 ));
                 return;
             }
@@ -543,9 +548,12 @@ impl PVSystem {
         // DynamicEqObj <> NIL: state variables are read-only — the equation drives
         // them (Pascal Set_Variable l.2498, msg 566).
         if self.base.dyneq.has_dynamic_eq() {
-            self.cd.obj.push_error(format!(
-                "PVSystem.{}: cannot set state variable when using DynamicEq.",
-                self.cd.obj.name()
+            self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "PVSystem.{}: cannot set state variable when using DynamicEq.",
+                    self.cd.obj.name()
+                ),
+                Some(566),
             ));
             return;
         }

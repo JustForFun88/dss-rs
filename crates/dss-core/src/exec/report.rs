@@ -831,7 +831,10 @@ impl Dss {
     fn export_monitors(&mut self, name: &str) {
         if name.is_empty() {
             // Pascal #251 `'Monitor name not specified. %s'`.
-            self.errors.push("Monitor name not specified.".to_string());
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                "Monitor name not specified.",
+                Some(251),
+            ));
             return;
         }
         let monitors = self
@@ -933,7 +936,10 @@ impl Dss {
     fn show_monitor(&mut self, name: &str) {
         if name.is_empty() {
             // Pascal #249 `'Monitor Name Not Specified. %s'`.
-            self.errors.push("Monitor Name Not Specified.".to_string());
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                "Monitor Name Not Specified.",
+                Some(249),
+            ));
             return;
         }
         let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
@@ -959,7 +965,10 @@ impl Dss {
             }
             None => {
                 // Pascal #248 `'Monitor "%s" not found. %s'`.
-                self.errors.push(format!("Monitor \"{name}\" not found."));
+                self.errors.push(crate::diag::DssDiagnostic::msg(
+                    format!("Monitor \"{name}\" not found."),
+                    Some(248),
+                ));
                 return;
             }
         };
@@ -1320,7 +1329,10 @@ impl Dss {
                 crate::report::export::export_y(n, &coords, ckt, triplet)
             }
             None => {
-                self.errors.push("Y Matrix not Built.".to_string());
+                self.errors.push(crate::diag::DssDiagnostic::msg(
+                    "Y Matrix not Built.",
+                    Some(222),
+                ));
                 return;
             }
         };
@@ -1495,8 +1507,10 @@ impl Dss {
         // the earlier "deferred keyword stays a silent no-op" behavior (all the
         // `solvable_now`/`corpus_live` decks use ported keywords, verified).
         if ptr == 0 {
-            self.errors
-                .push(format!("Error: Unknown Show Command:\"{param}\""));
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!("Error: Unknown Show Command:\"{param}\""),
+                Some(24700),
+            ));
             return;
         }
 
@@ -1802,7 +1816,10 @@ impl Dss {
                         show::show_y(n, &coords, ckt)
                     }
                     None => {
-                        self.errors.push("Y Matrix not Built.".to_string());
+                        self.errors.push(crate::diag::DssDiagnostic::msg(
+                            "Y Matrix not Built.",
+                            Some(222),
+                        ));
                         return;
                     }
                 };
@@ -1914,7 +1931,10 @@ impl Dss {
                 let fname = format!("ZoneOut_{param}.txt");
                 let content = if param.is_empty() {
                     // Pascal #221 `'Meter Name Not Specified. %s'`.
-                    self.errors.push("Meter Name Not Specified.".to_string());
+                    self.errors.push(crate::diag::DssDiagnostic::msg(
+                        "Meter Name Not Specified.",
+                        Some(221),
+                    ));
                     String::new()
                 } else {
                     let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
@@ -1928,8 +1948,10 @@ impl Dss {
                         Some(r) => show::show_meter_zone(&self.classes, r, &param),
                         None => {
                             // Pascal #220 `'EnergyMeter "%s" not found.'`.
-                            self.errors
-                                .push(format!("EnergyMeter \"{param}\" not found."));
+                            self.errors.push(crate::diag::DssDiagnostic::msg(
+                                format!("EnergyMeter \"{param}\" not found."),
+                                Some(220),
+                            ));
                             String::new()
                         }
                     }
@@ -1974,8 +1996,10 @@ impl Dss {
                     .find(&bus_name);
                 let Some(bus_idx) = bus_idx else {
                     // Pascal #219 `'Bus "%s" not found.'` (UPPERCASE bus name).
-                    self.errors
-                        .push(format!("Bus \"{}\" not found.", bus_name.to_uppercase()));
+                    self.errors.push(crate::diag::DssDiagnostic::msg(
+                        format!("Bus \"{}\" not found.", bus_name.to_uppercase()),
+                        Some(219),
+                    ));
                     return;
                 };
                 let content = {
@@ -2625,8 +2649,10 @@ impl Dss {
         // Exits with no file written (`dump all` takes this path — `all` parses as
         // an empty class + name `all`).
         let Some(&ci) = self.class_by_name.get(&obj_class.to_ascii_lowercase()) else {
-            self.errors
-                .push(format!("Error! Object Class \"{obj_class}\" not found. "));
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!("Error! Object Class \"{obj_class}\" not found. "),
+                Some(903),
+            ));
             return;
         };
 
@@ -2638,8 +2664,10 @@ impl Dss {
             match self.classes[ci].set_active(&obj_name) {
                 true => vec![self.classes[ci].active.expect("set_active set active")],
                 false => {
-                    self.errors
-                        .push(format!("Error! Object \"{obj_name}\" not found."));
+                    self.errors.push(crate::diag::DssDiagnostic::msg(
+                        format!("Error! Object \"{obj_name}\" not found."),
+                        Some(256),
+                    ));
                     return;
                 }
             }

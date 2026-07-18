@@ -99,7 +99,7 @@ impl ScalarShapeCore {
         result_tag: &'static str,
         full_name: &str,
         noun: &str,
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         let n = self.n();
         let Some(v) = self.values.as_ref() else {

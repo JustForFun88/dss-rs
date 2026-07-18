@@ -337,7 +337,7 @@ struct MockEnv {
     monitored_current: f64,
     fleet: Vec<MockStorage>,
     events: Vec<String>,
-    errors: Vec<String>,
+    errors: crate::diag::ErrorLog,
     pushes: Vec<i32>,
     release_inhibit_pushes: usize,
     loads_need_updating: bool,
@@ -360,7 +360,7 @@ impl MockEnv {
             monitored_current: 0.0,
             fleet,
             events: Vec::new(),
-            errors: Vec::new(),
+            errors: crate::diag::ErrorLog::new(),
             pushes: Vec::new(),
             release_inhibit_pushes: 0,
             loads_need_updating: false,
@@ -415,8 +415,8 @@ impl StorageDispatchEnv for MockEnv {
             .map(|(i, s)| (s.name.clone(), ElemRef { cls: 0, idx: i }))
             .collect()
     }
-    fn push_error(&mut self, msg: String) {
-        self.errors.push(msg);
+    fn push_error(&mut self, diag: crate::diag::DssDiagnostic) {
+        self.errors.push(diag);
     }
     fn snap(&self, r: ElemRef) -> StorageSnap {
         let s = &self.fleet[Self::idx(r)];

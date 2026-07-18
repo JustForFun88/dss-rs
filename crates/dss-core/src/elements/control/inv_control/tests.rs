@@ -240,7 +240,7 @@ mod dispatch {
     struct MockEnv {
         ders: Vec<MockDer>,
         pushes: Vec<i32>,
-        errors: Vec<String>,
+        errors: crate::diag::ErrorLog,
         control_iter: i32,
         /// Per-monitored-bus complex node voltages for the explicit-`MonBus` path:
         /// `mon_bus_v[j][node-1]` is the voltage at monitored bus `j`, node `node`.
@@ -251,7 +251,7 @@ mod dispatch {
             Self {
                 ders,
                 pushes: Vec::new(),
-                errors: Vec::new(),
+                errors: crate::diag::ErrorLog::new(),
                 control_iter: 1,
                 mon_bus_v: Vec::new(),
             }
@@ -291,8 +291,8 @@ mod dispatch {
         fn all_storages(&self) -> Vec<(String, ElemRef, bool)> {
             Vec::new()
         }
-        fn push_error(&mut self, msg: String) {
-            self.errors.push(msg);
+        fn push_error(&mut self, diag: crate::diag::DssDiagnostic) {
+            self.errors.push(diag);
         }
         fn der_snap(&self, r: ElemRef) -> DerSnap {
             let d = &self.ders[Self::idx(r)];

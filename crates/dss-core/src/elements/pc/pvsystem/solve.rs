@@ -253,7 +253,7 @@ impl PVSystem {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         self.cd.iterminal_updated = false;
 
@@ -380,7 +380,7 @@ impl PVSystem {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         if self.pv_system_obj_switch_open {
             self.cd.inj_current.fill(Complex64::ZERO);

@@ -23,7 +23,7 @@ fn edit_windgen(edits: &[(&str, &str)]) -> WindGen {
     let mut g = WindGen::new("w1");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
