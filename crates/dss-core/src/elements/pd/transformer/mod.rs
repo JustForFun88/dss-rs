@@ -113,7 +113,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Windings").flags(PropFlags::GREATER_THAN_ONE | PropFlags::SUPPRESS_JSON),
         // Winding definition (active winding selected by `Wdg=`).
         PropDef::integer("Wdg"),
-        PropDef::bus_on_struct("Bus"),
+        PropDef::bus_on_struct("Bus").flags(PropFlags::REQUIRED),
         PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
         PropDef::double("kVA"),
@@ -151,7 +151,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("ppm_Antifloat").scale(1.0e-6),
         PropDef::double_array_on_struct("%Rs", WINDINGS).scale(pct),
         PropDef::string("Bank"),
-        PropDef::object_ref_class("XfmrCode", "XfmrCode"),
+        PropDef::object_ref_class("XfmrCode", "XfmrCode").flags(PropFlags::ORDERING_FIRST),
         PropDef::boolean("XRConst"),
         PropDef::double("X12").scale(pct).trap_zero(7.0),
         PropDef::double("X13").scale(pct).trap_zero(35.0),
@@ -399,6 +399,14 @@ impl Transformer {
         };
         t.set_num_windings(2); // allocates windings, XSC, terminals, matrices
         t.active_winding = 1;
+        // Pascal `TTransfObj.Create` (Transformer.pas:845-849): `XHL := 0.07`
+        // then `SetAsNextSeq(XHL)` under the default (property-tracking) build.
+        // This marks the impedance in the set order at creation, so a
+        // transformer whose `XHL`/`X12` is never explicitly edited still exports
+        // its (redundant `XHL` → canonical `X12`) impedance — and a JSON-imported
+        // transformer, whose `X12` key marks `X12` late, still renders `X12`
+        // first because the constructor's low-seq `XHL` defers to it.
+        t.cd.obj.set_as_next_seq(prop::XHL);
 
         let kva1 = t.windings[0].kva;
         t.vabase = kva1 * 1000.0;

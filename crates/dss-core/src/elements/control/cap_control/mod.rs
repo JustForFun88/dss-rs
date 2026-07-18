@@ -86,7 +86,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_any("Element"),
         PropDef::integer("Terminal"),
         // Pascal flags CheckForVar + Required (both inert here).
-        PropDef::object_ref_class("Capacitor", "Capacitor"),
+        PropDef::object_ref_class("Capacitor", "Capacitor").flags(PropFlags::REQUIRED),
         PropDef::mapped_string_enum("Type", enums.cap_control_type),
         PropDef::double("PTRatio"),
         PropDef::double("CTRatio"),
