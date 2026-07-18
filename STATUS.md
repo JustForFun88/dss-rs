@@ -529,6 +529,73 @@ from the pinned 0.14.5 oracle (53 props, classic names). It cannot be byte-compa
 against 0.14.5 and needs a port-output reference; removed from `SCHEMA_CLASSES`
 with a deferral note in `gen_schema.py`.
 
+#### OG-1.5c batch B5 — protection + PV byte-exact; Recloser/SwtControl deferred (2026-07-18)
+
+Delivered **PVSystem, UPFC, UPFCControl, ESPVLControl, IndMach012** byte-exact vs
+the pinned 0.14.5 oracle, and **Fuse** byte-exact after 4 documented r4133
+divergences (all added to `SCHEMA_CLASSES`).
+
+**Per-class metadata fixes:**
+- **BaseFreq** gained the missing `DynamicDefault`+`Units_Hz` (`CktElementClass.pas:97`)
+  on all six B5 classes that lacked it (Recloser/Fuse/SwtControl/PVSystem/UPFC/
+  UPFCControl/ESPVLControl/IndMach012 — the deferred two keep it too).
+- **UPFC**: `PowerFactorLimits` (PF), `Units_Hz` (Frequency), `Units_kvar`
+  (kvarLimit) — schema-only flags that were deliberately omitted pre-schema
+  (`UPFC.pas:242-257`); `UPFC: Mode` enum override (`JSONUseNumbers` integer enum,
+  AltNames `VoltageRegulator`… strip spaces/parens, `UPFC.pas:188-193`).
+- **IndMach012**: `Units_kV` on kV, `Required` on kW/kVA (`IndMach012.pas:322-337`).
+- **ESPVLControl**: the three `*Weights` were mis-modeled as `DoubleVArray`
+  (`numberArray`); now `DoubleArray` + IndirectCount over the matching name-list
+  (`ESPVLControl.pas:203-219`) → `ArrayOrFilePath` + `$dssLength: <List>`, count via
+  new `get_i32(<List>)` = the list size.
+- **PVSystem**: `Units_kV` (kV), `PowerFactorLimits`+`RequiredInSpecSet` (PF),
+  `PVSystem: Model` enum override (integer, `ConstantP_PF`/`ConstantY`/`UserModel`),
+  the `PF`/`kvar` spec sets (`spec_sets.rs`, `PVsystem.pas:432-439`), an explicit
+  `json_name("PTCurve")` for `P-TCurve` (Pascal `PropertyNameJSON`, `PVsystem.pas:430`
+  — the default `-`→`__` map gave `P__TCurve`), and `READ_ONLY` (not
+  `SILENT_READ_ONLY`) on SafeMode so the schema is `readOnly`+no-default while the
+  text/JSON dump still reads the live Yes/No (cf. Storage.SafeMode).
+- **Fuse** (byte-exact after divergences): dropped-metadata bugs fixed — `Units_s`
+  on Delay and `Deprecated` on Action (both present in 0.14.5 and dss_capi HEAD,
+  `dss_capi_with_git` `src/PDElements/fuse.pas`).
+
+**Shared walker fix:** the `MappedStringEnumArray` default was read from the
+full fixed-`FUSEMAXDIM` buffer (Fuse/SwtControl rendered 6 `closed` states) —
+now truncated to `array_size(propIndex)` (`GetFuseStateSize`), exactly as the
+JSON dump already does (`class_props/json.rs:168` `.take(n)`), matching Pascal
+`GetIntegers`' `aDim[0]` count (`CAPI_Schema.pas:800`). Pilot/B1-B4 never hit
+this (Relay/Fuse/SwtControl were the first per-phase enum-array classes; Relay
+deferred).
+
+**Divergence inventory (+4, all Fuse):** the port ports OpenDSS **r4133** Fuse
+(WP-U2.1): `FuseCurve` default (`Tlink`→`none`) + help, `RatedCurrent`
+repurposed from the TCC divisor (default 1.0) to an informational rating
+(default 0.0) + help — two `port_changed_line` (default+description 2-line
+blocks, embedded-CRLF to disambiguate the shared `0.0` default) — plus the two
+new props `CurveMultiplier` (the new divisor) and `InterruptingRating`, two
+`port_extra_property` at ordinals 11/12. Cause = r4133 Version8 `Controls/fuse.pas`.
+
+**Recloser deferred** to integration as a **port-authored (r4133) class** (like
+Relay/LineGeometry): the port ports OpenDSS r4133-trunk Recloser (46 props —
+`PhaseFast`/`PhaseDelayed`/`GroundFast`/… renamed to `PhFastCurve`/`PhSlowCurve`/
+`GndFastCurve`/… with the classic names kept as deprecated aliases, plus
+`MechanicalDelay`/`SinglePhTrip`/`Lock`/`Reset`/`RatedCurrent`/`InterruptingRating`),
+diverging **structurally** from the pinned 0.14.5 oracle (24 props, classic
+names). Needs a port-output reference; removed from `SCHEMA_CLASSES`.
+
+**SwtControl deferred** to integration as a **port-authored (r4133/0.15.x)
+class**: the port adopted the 0.15.x property model (D12/WP-U1.6 — Normal→
+NormalState, State→PresentState instead of the shared 0.14.5 CurrentAction; the
+State `ReadByFunction=GetState` "no controlled element → CTRL_NONE" semantics
+are intentionally not modeled in the accessor), plus the OpenDSS r4133
+`RatedCurrent` prop and the 0.15.x help catalog (deprecated Delay, per-phase
+Normal/State help). Its Normal/State schema **defaults** therefore differ from
+the 0.14.5 oracle in getter semantics (not a clean line diff; State renders
+`closed` where both oracle versions render `null` via GetState), so it needs a
+port-output reference. The inert `Units_s` (Delay) + BaseFreq schema flags were
+still corrected in source; the behavioral `Reset` BooleanAction `writeOnly` and
+the State getter are left for the integration pin. Removed from `SCHEMA_CLASSES`.
+
 ### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
 
 Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already

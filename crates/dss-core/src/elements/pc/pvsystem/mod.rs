@@ -131,12 +131,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
+        PropDef::double("kV")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
         PropDef::double("Irradiance"),
         PropDef::double("Pmpp"),
         PropDef::double("%Pmpp").scale(0.01),
         PropDef::double("Temperature"),
-        PropDef::double("PF"),
+        PropDef::double("PF")
+            .flags(PropFlags::POWER_FACTOR_LIMITS | PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::mapped_string_enum("Conn", enums.connection),
         // `kvar`: read returns `kvar_out` (Pascal `Getkvar`), write stores
         // `kvarRequested`.
@@ -145,7 +147,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("%CutIn"),
         PropDef::double("%CutOut"),
         PropDef::object_ref_class("XYcurve", "EffCurve"),
-        PropDef::object_ref_class("XYcurve", "P-TCurve"),
+        // Pascal `PropertyNameJSON[P__TCurve] := 'PTCurve'` (PVsystem.pas:430):
+        // an explicit JSON-name override (the default `-`→`__` map would give
+        // `P__TCurve`).
+        PropDef::object_ref_class("XYcurve", "P-TCurve").json_name("PTCurve"),
         PropDef::double("%R"),
         PropDef::double("%X"),
         PropDef::mapped_int_enum("Model", enums.pvsystem_model),
@@ -178,7 +183,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("PITol").scale(1.0 / 100.0),
         PropDef::double("SafeVoltage"),
         // Read-only dynamics state (Pascal SilentReadOnly): the setter is a no-op.
-        PropDef::boolean("SafeMode"),
+        // Pascal `SilentReadOnly` (PVsystem.pas:516): schema `readOnly`, but the
+        // text/JSON dump still reads the live Yes/No value — the schema-only
+        // `READ_ONLY` flag (cf. Storage.SafeMode), NOT `SILENT_READ_ONLY` (which
+        // would suppress the dump read too).
+        PropDef::boolean("SafeMode").flags(PropFlags::READ_ONLY),
         PropDef::object_ref_class("DynamicExp", "DynamicEq"),
         PropDef::string_list("DynOut"),
         PropDef::mapped_string_enum("ControlMode", enums.inv_control_mode),
@@ -187,7 +196,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // PCClass tail:
         PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);

@@ -126,6 +126,12 @@ impl DssObject for EspvlControl {
         match idx {
             TERMINAL => self.ccd.element_terminal,
             TYP => self.f_type,
+            // Pascal `IndirectCount` reads the count from `PropertyOffset2`
+            // (`F*ListSize`); the Weights arrays' `size_prop` points at the
+            // matching name-list property, so schema/JSON length reads land here.
+            LOCAL_CONTROL_LIST => self.local_control_list_size,
+            PV_SYSTEM_LIST => self.pv_system_list_size,
+            STORAGE_LIST => self.storage_list_size,
             _ => unreachable!("ESPVLControl has no integer property {idx}"),
         }
     }

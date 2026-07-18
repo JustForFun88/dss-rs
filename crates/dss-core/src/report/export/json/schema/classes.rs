@@ -240,6 +240,23 @@ fn enum_overrides(name: &str) -> Option<(Vec<&'static str>, bool, bool)> {
             true,
             false,
         )),
+        // Pascal `PVsystem.pas:383-387` — an integer enum (`JSONUseNumbers`) whose
+        // AltNames strip the spaces/commas from the spaced Names.
+        "PVSystem: Model" => Some((vec!["ConstantP_PF", "ConstantY", "UserModel"], true, true)),
+        // Pascal `UPFC.pas:188-193` — an integer enum (`JSONUseNumbers`) whose
+        // AltNames strip the spaces/parens from the spaced Names.
+        "UPFC: Mode" => Some((
+            vec![
+                "Off",
+                "VoltageRegulator",
+                "PhaseAngleRegulator",
+                "DualRegulator",
+                "DoubleReference_Voltage",
+                "DoubleReference_Dual",
+            ],
+            true,
+            true,
+        )),
         // Pascal `Generator.pas:451-456` — an integer enum (`JSONUseNumbers`) whose
         // AltNames are the CamelCase forms of the spaced Names.
         "Generator: Model" => Some((
@@ -540,8 +557,20 @@ pub(crate) fn class_schema(
                 // plain `MappedStringEnumArray` (a per-phase state array, e.g. Relay/
                 // Fuse `Normal`/`State`) reads via `get_enum_array`.
                 if !(read_only || no_default) {
+                    // Pascal `obj.GetIntegers(propIndex, ..., aDim)` returns `aDim[0]`
+                    // elements (`CAPI_Schema.pas:800`). For a `MappedStringEnumArray`
+                    // that count is the function-sized `array_size` (e.g. Fuse/SwtControl
+                    // `Normal`/`State` → `GetFuseStateSize`), so the port's full-buffer
+                    // `get_enum_array` is truncated exactly as the JSON dump does
+                    // (`class_props/json.rs:168` `.take(n)`); `EnumArrayOnStruct` already
+                    // returns its per-winding count.
                     let vals = if pd.ptype == PropType::MappedStringEnumArray {
-                        sample.get_enum_array(prop_index)
+                        let n = sample.array_size(prop_index);
+                        sample
+                            .get_enum_array(prop_index)
+                            .into_iter()
+                            .take(n)
+                            .collect::<Vec<_>>()
                     } else {
                         sample.get_struct_i32_array(prop_index)
                     };

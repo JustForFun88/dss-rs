@@ -77,8 +77,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
-        PropDef::double("kW"),
+        PropDef::double("kV")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
+        PropDef::double("kW").flags(PropFlags::REQUIRED),
         // Pascal `pf` is `[SilentReadOnly, ReadByFunction]` → PowerFactor(Power[1]):
         // read-only (writes silently ignored in set_f64), and the text render is ""
         // always — upstream never sets PropertyOffset (stays -1), so the
@@ -86,7 +87,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // circuit (probe-proven; see SILENT_READ_ONLY).
         PropDef::double("PF").flags(PropFlags::SILENT_READ_ONLY),
         PropDef::mapped_string_enum("Conn", enums.connection),
-        PropDef::double("kVA"),
+        PropDef::double("kVA").flags(PropFlags::REQUIRED),
         PropDef::double("H"),
         PropDef::double("D"),
         PropDef::double("puRs"),
@@ -105,7 +106,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // PCClass tail:
         PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);

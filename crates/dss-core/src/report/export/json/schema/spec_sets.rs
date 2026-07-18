@@ -311,6 +311,18 @@ pub(super) fn spec_sets(class_name: &str) -> &'static [SpecSet] {
                 props: &["kW", "kvar"],
             },
         ],
+        // Pascal `PVsystem.pas:432-439` `SpecSetNames`/`SpecSets`: PF vs kvar
+        // control (each its own single-member set, required within the set).
+        "PVSystem" => &[
+            SpecSet {
+                name: "PF",
+                props: &["PF"],
+            },
+            SpecSet {
+                name: "kvar",
+                props: &["kvar"],
+            },
+        ],
         _ => &[],
     }
 }

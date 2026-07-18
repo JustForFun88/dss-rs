@@ -98,11 +98,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // Supersedes the WP-U1.1 item-4 capi015 no-op decision. Delta row D1/E3.
         PropDef::object_ref_class("TCC_Curve", "FuseCurve").flags(PropFlags::ALLOW_NONE_REF),
         PropDef::double("RatedCurrent"),
-        PropDef::double("Delay"),
+        PropDef::double("Delay").flags(PropFlags::UNITS_S),
         // Deprecated StringEnumActionProperty (close/open → DoAction); the getter
         // always dumps empty. (Pascal's `Deprecated` flag is JSON-schema only —
         // the property still parses and appears in the text dump.)
-        PropDef::action("Action", enums.fuse_action),
+        PropDef::action("Action", enums.fuse_action).flags(PropFlags::DEPRECATED),
         PropDef::mapped_string_enum_array("Normal", enums.fuse_state)
             .flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::mapped_string_enum_array("State", enums.fuse_state),
@@ -116,7 +116,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("CurveMultiplier"),
         PropDef::double("InterruptingRating"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
