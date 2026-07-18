@@ -2441,5 +2441,43 @@ is **async** (dispatches `SIMULATE` to the actor and returns), so `solve()` poll
   solvable_now + 43 asymmetric + 66 controls + 47 modes; #303 `skip` decks
   excluded identically both sides) through the Python/Oddie r4133 engine AND the
   Rust `epri-worker`, bit-diffing the raw `CaseResult` — twice, second pass
-  order-shuffled (seed 1337). Result: see the phase deliverable (empty diff).
+  order-shuffled (seed 1337). Result (settle re-run, ~4m50s wall): **396 matched
+  of 396** on pass 1 (manifest order) AND pass 2 (shuffled) → `XCHECK PASS: both
+  passes bit-identical over 396 cases`, exit 0. `diverged = ok_mismatch =
+  both_err = 0` (matched == universe). `tests/corpus` verified pristine after
+  (CorpusGuard on both sides).
 - fmt + clippy (`-D warnings`) clean on `dss-epri`.
+
+**Audit dispositions (two independent audits of the phase diff).**
+- **F1/A1 — `both_err` not gated in `xcheck_bridge.py` (real, FIXED).** The PASS
+  boolean was `clean = not diverged and not ok_mismatch`, so a case that errored
+  symmetrically on BOTH engines was silently absorbed — a latent fake-success
+  channel (arithmetically inert for the reported clean run, but a weaker guarantee
+  than the DONE bar). Strengthened to `... and not both_err`: the universe excludes
+  solve-abort/pending cases, so every case must yield a comparable `CaseResult` on
+  both engines; a symmetric error is a hole, not a pass. Empirically settled — the
+  full re-run above with the stricter gate still PASSES 396/396 (both_err = 0), so
+  the fix closes the channel without any false failure. Strengthening only; no
+  tolerance/assertion weakened.
+- **F2 — additive `clear` command in `oracle_server.py` (real deviation,
+  ACCEPTED, no change).** UNIFIED_GATE_PLAN D8/§3.2 noted "no protocol change
+  needed server-side." Phase A added a `clear` handler (release the circuit + any
+  held loadshape MMF handle so the two processes can compile the same case). It is
+  purely additive and non-breaking: `corpus_live.rs` never sends `clear`; `run`/
+  `ping`/`quit` are untouched; `oracle_server.py` is not in the brief §4 "untouched
+  consumers" list. Used only by the temporary `xcheck_bridge.py` (Phase E deletes
+  both the tool and its need for the command). Kept as a justified, harmless
+  deviation.
+- **F3 — universal leading-space strip on string-array element[0] (not a bug,
+  documented).** `decode_string_array` lstrips one leading space from element[0]
+  of every V-protocol string array. Settled empirically + by grammar, not by
+  universe coincidence: the other arrays (node order, element/register/variable
+  names, zone lists) are whitespace-delimited DSS identifiers that can never begin
+  with a space → the strip is a guaranteed no-op on them; the monitor CSV header
+  (the one array whose first token carries a leading space) is exactly the intended
+  target. Confirmed bit-for-bit against Oddie over all 396 cases. Doc comment
+  strengthened to record the grammar guarantee. No behavior change.
+
+Follow-ups (STATUS, non-blocking): none block Phase A. Phase E removes
+`xcheck_bridge.py` and, with it, the `oracle_server.py` `clear` handler's only
+consumer (drop the handler then).

@@ -240,7 +240,12 @@ def report(tag, matched, diverged, ok_mismatch, both_err) -> bool:
         print(f"  OK-MISMATCH {label}: oddie ok={o_ok} ({o_e[:120]}) / epri ok={e_ok} ({e_e[:120]})")
     for label, o_e, e_e in both_err:
         print(f"  both-errored {label}: oddie=({o_e[:80]}) epri=({e_e[:80]})")
-    clean = not diverged and not ok_mismatch
+    # `both_err` gates too: the universe excludes solve-abort/pending cases, so
+    # every case must yield a comparable CaseResult on BOTH engines. A symmetric
+    # both-engine error means no CaseResult was produced to bit-diff — a hole in
+    # the "empty diff over the full universe" proof, not a pass. Fail loudly so it
+    # is triaged, never silently absorbed.
+    clean = not diverged and not ok_mismatch and not both_err
     return clean
 
 
