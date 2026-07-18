@@ -34,7 +34,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::pd::transformer::CoreType;
 use crate::elements::pd::winding::Winding;
 use crate::obj::dss_enum::EnumRegistry;
-use crate::obj::props::{ClassProps, PropDef, PropFlags};
+use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
@@ -110,7 +110,7 @@ pub mod prop {
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let pct = 0.01;
-    let defs = vec![
+    let mut defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::integer("Windings")
             .flags(PropFlags::NON_ZERO | PropFlags::NON_NEGATIVE | PropFlags::SUPPRESS_JSON),
@@ -118,33 +118,41 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Wdg"),
         PropDef::bus_on_struct("Bus").flags(PropFlags::REQUIRED),
         PropDef::mapped_string_enum("Conn", enums.autotrans_connection),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
+        // `AutoTrans.pas:415` kV = Required + Units_kV + NonNegative.
+        PropDef::double("kV")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
         PropDef::double("kVA"),
         PropDef::double("Tap"),
         PropDef::double("%R").scale(pct),
         PropDef::double("RDCOhms"),
         PropDef::mapped_string_enum("Core", enums.core_type),
-        // General data (plural array forms write every winding).
-        PropDef::buses_on_struct("Buses", WINDINGS),
+        // General data (plural array forms write every winding). The plural forms
+        // are `REDUNDANT` (schema/JSON redirect to the singular) — wired below.
+        PropDef::buses_on_struct("Buses", WINDINGS)
+            .flags(PropFlags::REQUIRED | PropFlags::DYNAMIC_DEFAULT),
         PropDef::enum_array_on_struct("Conns", enums.autotrans_connection, WINDINGS),
-        PropDef::double_array_on_struct("kVs", WINDINGS).flags(PropFlags::NON_NEGATIVE),
+        PropDef::double_array_on_struct("kVs", WINDINGS)
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
         PropDef::double_array_on_struct("kVAs", WINDINGS),
         PropDef::double_array_on_struct("Taps", WINDINGS),
-        PropDef::double("XHX").scale(pct).trap_zero(7.0),
+        PropDef::double("XHX")
+            .scale(pct)
+            .trap_zero(7.0)
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double("XHT").scale(pct).trap_zero(35.0),
         PropDef::double("XXT").scale(pct).trap_zero(30.0),
         PropDef::double_v_array("XSCArray")
             .scale(pct)
-            .flags(PropFlags::NON_ZERO),
-        PropDef::double("Thermal"),
+            .flags(PropFlags::NON_ZERO | PropFlags::REQUIRED_IN_SPEC_SET),
+        PropDef::double("Thermal").flags(PropFlags::UNITS_HOUR),
         PropDef::double("n"),
         PropDef::double("m"),
-        PropDef::double("FLRise"),
-        PropDef::double("HSRise"),
+        PropDef::double("FLRise").flags(PropFlags::UNITS_DEGC),
+        PropDef::double("HSRise").flags(PropFlags::UNITS_DEGC),
         PropDef::double("%LoadLoss"),
         PropDef::double("%NoLoadLoss"),
-        PropDef::double("NormHkVA"),
-        PropDef::double("EmergHkVA"),
+        PropDef::double("NormHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
+        PropDef::double("EmergHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
         PropDef::boolean("Sub"),
         PropDef::double("MaxTap"),
         PropDef::double("MinTap"),
@@ -166,17 +174,54 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("BHPoints").flags(PropFlags::SUPPRESS_JSON | PropFlags::NON_NEGATIVE),
         PropDef::double_array("BHCurrent", BHPOINTS).flags(PropFlags::SUPPRESS_JSON),
         PropDef::double_array("BHFlux", BHPOINTS).flags(PropFlags::SUPPRESS_JSON),
-        // TPDClass tail:
-        PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),
+        // TPDClass tail. Unlike Transformer, AutoTrans does NOT flag NormAmps/
+        // EmergAmps `SuppressJSON` (`AutoTrans.pas` has no such override), so both
+        // are emitted in the schema/JSON exactly as the pinned oracle shows.
+        PropDef::double("NormAmps"),
+        PropDef::double("EmergAmps"),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
+
+    // JSON metadata (Pascal `AutoTrans.pas:439-557`). Each per-winding singular
+    // scalar carries an `array_alternative` to its plural array form (rendered as
+    // the full per-winding array in the JSON/schema sweep); the plural forms are
+    // `REDUNDANT` and defer back to the singular. Per-winding scalars with no
+    // plural (RDCOhms/MaxTap/MinTap/NumTaps) are `ON_ARRAY` (also render as the
+    // per-winding array under `preferArray`). `Wdg` is the struct-array index.
+    {
+        for (single, plural) in [
+            ("kV", "kVs"),
+            ("kVA", "kVAs"),
+            ("Tap", "Taps"),
+            ("%R", "%Rs"),
+            ("Bus", "Buses"),
+            ("Conn", "Conns"),
+        ] {
+            let si = prop_index(&defs, single);
+            let pi = prop_index(&defs, plural);
+            defs[si - 1].array_alternative = pi;
+            defs[pi - 1].flags |= PropFlags::REDUNDANT;
+            defs[pi - 1].redundant_with = si;
+        }
+        for name in ["RDCOhms", "MaxTap", "MinTap", "NumTaps"] {
+            let i = prop_index(&defs, name);
+            defs[i - 1].flags |= PropFlags::ON_ARRAY;
+        }
+        let wdg = prop_index(&defs, "Wdg");
+        defs[wdg - 1].flags |= PropFlags::INTEGER_STRUCT_INDEX;
+    }
+
     ClassProps::new("AutoTrans", defs, true)
 }
 

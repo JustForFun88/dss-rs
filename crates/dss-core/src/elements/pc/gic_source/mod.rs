@@ -48,19 +48,33 @@ pub fn class_props() -> ClassProps {
     use prop::*;
     let defs = vec![
         PropDef::double("Volts").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Angle"),
-        PropDef::double("Frequency").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("Angle").flags(PropFlags::UNITS_DEG),
+        PropDef::double("Frequency")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::UNITS_HZ),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("EN").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("EE").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Lat1").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Lon1").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Lat2").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Lon2").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
+        PropDef::double("EN").flags(
+            PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_V_PER_KM,
+        ),
+        PropDef::double("EE").flags(
+            PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_V_PER_KM,
+        ),
+        PropDef::double("Lat1")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_DEG),
+        PropDef::double("Lon1")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_DEG),
+        PropDef::double("Lat2")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_DEG),
+        PropDef::double("Lon2")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_DEG),
         // TPCClass tail (Spectrum is forced NIL — always empty):
         PropDef::object_ref("Spectrum"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

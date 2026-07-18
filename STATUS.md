@@ -596,6 +596,60 @@ port-output reference. The inert `Units_s` (Delay) + BaseFreq schema flags were
 still corrected in source; the behavioral `Reset` BooleanAction `writeOnly` and
 the State getter are left for the integration pin. Removed from `SCHEMA_CLASSES`.
 
+#### OG-1.5c batch B6 — GIC + inverter/converter controls + metering byte-exact (2026-07-18)
+
+Delivered all ten B6 classes byte-exact vs the pinned 0.14.5 oracle:
+**GICsource, InvControl, ExpControl, GICLine, GICTransformer, VSConverter,
+Monitor, EnergyMeter, Sensor** with zero divergences, and **AutoTrans** byte-exact
+after 3 documented r4064 BH-curve divergences (`port_hidden_property`, mirroring
+Transformer). All added to `SCHEMA_CLASSES`.
+
+**Per-class metadata fixes:**
+- **BaseFreq** gained the missing `DynamicDefault`+`Units_Hz`
+  (`CktElementClass.pas:97`) on all ten classes (they lacked it).
+- **AutoTrans** (the Transformer struct-array sibling): wired the per-winding
+  `array_alternative` redirects (kV/kVA/Tap/%R/Bus/Conn → their plurals) +
+  `REDUNDANT` plurals, `ON_ARRAY` on the no-plural scalars (RDCOhms/MaxTap/MinTap/
+  NumTaps) — with new struct-array getters in `accessors.rs` for those four (the
+  schema sweep reads them) — `INTEGER_STRUCT_INDEX` on Wdg, the `XHX,XHT,XXT` /
+  `XscArray` spec sets, units (kV/Thermal-hour/FLRise-HSRise-°C/NormHkVA-EmergHkVA-
+  kVA), `AutoTrans: Connection` enum override (`Wye`/`Delta`/`Series` AltNames), and
+  **removed the erroneous `SUPPRESS_JSON` from NormAmps/EmergAmps** (AutoTrans has
+  no such Pascal override, unlike Transformer). (`AutoTrans.pas:320-557`)
+- **InvControl**: `RoCEnum.JSONName` override (`InvControlRateOfChangeMode`),
+  `InvControl: Control Model` enum → `JSONUseNumbers` integer enum, `Units_s` on
+  LPFTau, and `VV_RefReactivePower` (Pascal `DeprecatedAndRemoved`) → `SUPPRESS_JSON`
+  (skips schema/JSON export + AltPropertyOrder while the `?` surface keeps '', like
+  Storage `%Idlingkvar`). (`InvControl.pas:444-449,525,571`)
+- **GICsource/GICLine**: the `Volts,Angle` / `EN,EE,Lat1,Lon1,Lat2,Lon2` spec sets
+  + units (deg/Hz/V·km⁻¹/V/Ω/µF); GICLine's Spectrum+BaseFreq are `SuppressJSON`
+  after inherited → `SUPPRESS_JSON_LATE` (`GICLine.pas:249-250`). GICLine Angle
+  carries no unit (unlike GICsource's).
+- **GICTransformer**: `R1,R2` / `pctR1,pctR2` spec sets + units (Ω/kV/MVA).
+- **VSConverter**: `Units_ohm` on RAC/XAC. **ExpControl**: `Units_s` on VRegTau.
+- **Sensor**: `kWs,kvars` / `currents` spec sets, `Clear` → `BOOLEAN_ACTION`
+  (writeOnly + ordering-last), `Units_kV` on kVBase. **Monitor**: Element default.
+- **EnergyMeter**: `Option` StringList default (`[E,R,C]`), `3PhaseLosses` →
+  `json_name("ThreePhaseLosses")`, SAIFI/SAIFIkW/SAIDI/CAIDI/CustInterrupts →
+  `READ_ONLY` (schema `readOnly`+no-default, props keeps stored value).
+
+**Monitor/EnergyMeter Element default = `Vsource.source`:** Pascal `Create`
+defaults the metered element to the first circuit element (the auto-source,
+`Monitor.pas:482`/`EnergyMeter.pas:959`); the oracle schema runs
+`new circuit.defaults` (`CAPI_Schema.pas:1264`) so the sample sees it. The port's
+constructors now default `element_full_name` to `"Vsource.source"` (every real
+deck overrides it via the Element property before solve; only the all-default
+sample's schema default observes it).
+
+**Shared walker fix:** `string_array_default` now handles `PropType::StringList`
+(EnergyMeter `Option`/`ZoneList`, InvControl `MonBus`) via `get_string_list` — the
+anticipated batch-owned extension (previously returned `None`).
+
+**Divergence inventory (+3, all AutoTrans):** BHPoints/BHCurrent/BHFlux — the
+r4064 (dss_capi 90962ae8) GICharm BH-curve props the port carries `SUPPRESS_JSON`
+(port-only, absent from 0.14.5), occupying `$dssPropertyIndex` 42-44 and shifting
+the following indices +3 (`$dssPropertyOrder` untouched). Three `port_hidden_property`.
+
 ### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
 
 Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already

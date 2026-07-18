@@ -133,6 +133,21 @@ SCHEMA_CLASSES = [
     "UPFCControl",
     "ESPVLControl",
     "IndMach012",
+    # --- Batch B6: GIC + inverter/converter controls + metering (byte-exact
+    # after the documented r4133 divergences in schema_divergences.json).
+    # AutoTrans is the struct-array sibling of Transformer; InvControl carries
+    # the largest class-local enum set (7 enums); VSConverter/Monitor/EnergyMeter
+    # carry object-refs + StringLists. ---
+    "GICsource",
+    "AutoTrans",
+    "InvControl",
+    "ExpControl",
+    "GICLine",
+    "GICTransformer",
+    "VSConverter",
+    "Monitor",
+    "EnergyMeter",
+    "Sensor",
 ]
 
 NL = "\r\n"

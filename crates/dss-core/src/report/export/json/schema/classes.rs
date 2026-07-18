@@ -121,7 +121,14 @@ struct EnumMeta {
 
 impl EnumMeta {
     fn json_name(&self) -> String {
-        enum_json_name(self.name)
+        // A handful of class-local enums carry an explicit Pascal `.JSONName :=`
+        // override that differs from the space/`-`/`:`-stripped default.
+        match self.name {
+            // `InvControl.pas:444` `RoCEnum.JSONName := 'InvControlRateOfChangeMode'`
+            // (the default strip yields `InvControlRateofchangeMode`).
+            "InvControl: Rate-of-change Mode" => "InvControlRateOfChangeMode".to_string(),
+            _ => enum_json_name(self.name),
+        }
     }
 
     fn render(&self) -> Json {
@@ -202,6 +209,9 @@ fn enum_overrides(name: &str) -> Option<(Vec<&'static str>, bool, bool)> {
         // (`Wye`) only via this override. Global enum: feeds default computation
         // only (the def is rendered by the global-enum walk).
         "Connection" => Some((vec!["Wye", "Delta", "", "", ""], true, false)),
+        // Pascal `AutoTrans.pas:320-323` — a sequential enum whose AltNames are
+        // `Wye`/`Delta`/`Series` (the `y`/`ln`/`ll` aliases carry empty AltNames).
+        "AutoTrans: Connection" => Some((vec!["Wye", "Delta", "Series", "", "", ""], true, false)),
         // Pascal `Load.pas:339-344` `LoadModelEnum`: `JSONUseNumbers := true`
         // (an integer enum) with distinct AltNames (`ConstantPQ`, …).
         "Load: Model" => Some((
@@ -257,6 +267,9 @@ fn enum_overrides(name: &str) -> Option<(Vec<&'static str>, bool, bool)> {
             true,
             true,
         )),
+        // Pascal `InvControl.pas:447-449` — an integer enum
+        // (`ControlModelEnum.JSONUseNumbers := true`); AltNames equal the Names.
+        "InvControl: Control Model" => Some((vec!["Linear", "Exponential"], true, true)),
         // Pascal `Generator.pas:451-456` — an integer enum (`JSONUseNumbers`) whose
         // AltNames are the CamelCase forms of the spaced Names.
         "Generator: Model" => Some((
@@ -1025,13 +1038,15 @@ fn int_array_default(pd: &PropDef, obj: &dyn DssObject, idx: usize) -> Option<Js
 
 /// The string-array default (`:645-668`): `GetStrings` then emit the whole array
 /// when non-empty (an empty/unset element renders as JSON `null`, matching the
-/// Pascal `TJSONNull`). The port's `GetStrings` for an object-reference array is
-/// [`DssObject::get_object_ref_names`] (the referenced object names); other
-/// string arrays (e.g. `StringListProperty`) are owned by the batch that ports
-/// their class and return `None` here until then.
+/// Pascal `TJSONNull`). The port splits the single Pascal `GetStrings` by array
+/// kind: an object-reference array reads the referenced object names via
+/// [`DssObject::get_object_ref_names`]; a `StringListProperty` (EnergyMeter
+/// `Option`/`ZoneList`, InvControl `MonBus`) reads its stored list via
+/// [`DssObject::get_string_list`].
 fn string_array_default(pd: &PropDef, obj: &dyn DssObject, idx: usize) -> Option<Json> {
     let names = match pd.ptype {
         PropType::ObjectRefArray => obj.get_object_ref_names(idx),
+        PropType::StringList => obj.get_string_list(idx),
         _ => return None,
     };
     if names.is_empty() {

@@ -73,7 +73,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("PPolar"),
         // CktElementClass tail:
         PropDef::double("BaseFreq").flags(
-            crate::obj::props::PropFlags::NON_NEGATIVE | crate::obj::props::PropFlags::NON_ZERO,
+            crate::obj::props::PropFlags::DYNAMIC_DEFAULT
+                | crate::obj::props::PropFlags::NON_NEGATIVE
+                | crate::obj::props::PropFlags::NON_ZERO
+                | crate::obj::props::PropFlags::UNITS_HZ,
         ),
         PropDef::enabled("Enabled"),
     ];
@@ -172,7 +175,13 @@ impl Monitor {
             include_residual: false,
             vi_polar: true,
             pp_polar: true,
-            element_full_name: String::new(),
+            // Pascal `TMonitorObj.Create` (`Monitor.pas:482`):
+            // `MeteredElement := ActiveCircuit.CktElements.Get(1)` — a fresh
+            // monitor defaults to the first circuit element, which is always the
+            // auto-created `Vsource.source`. Every real deck overrides this via
+            // the (positional or `element=`) Element property before solve; it is
+            // observable only as the all-default sample's schema default.
+            element_full_name: "Vsource.source".to_string(),
             mon_buffer: Vec::new(),
             record_size: 0,
             sample_count: 0,
