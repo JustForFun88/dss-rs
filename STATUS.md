@@ -380,6 +380,30 @@ half of §1.3.
   is internally consistent. Cannot appear in any oracle golden/live compare, so
   untestable and harmless — kept for sibling consistency (Generator/PVSystem/Storage).
 
+**Audit-settle round 2 (2026-07-18, post-merge on `update`).** Two further
+read-only audits returned findings; most were already remediated in-branch by
+38a5e67 (the pre-solve Full WdgCurrents no-op and the DynInit dedup — both re-flagged
+against the `afd8853` HEAD, RESOLVED above). One material gap survived and is fixed:
+- **[FIXED — major] AutoTrans `WdgCurrents` getter never verified nonzero.** The
+  §1.3 deliverable names *both* Transformer AND AutoTrans WdgCurrents. Transformer
+  is pinned nonzero by `transformer_solved`, but AutoTrans has its OWN distinct
+  series/common/delta getter (`TAutoTransObj.GetAllWindingCurrents`,
+  `auto_trans/yterminal.rs`), and every AutoTrans WdgCurrents golden was pre-solve
+  all-zeros — indistinguishable from a broken refresh. Added props scenario
+  **`autotrans_solved`** (`gen_props.py`): a solved 3-winding YNad1 auto (Series/
+  Common/Delta-tertiary, unit from corpus `autotrans_snap.dss` t1) fed on the series
+  winding, loads on the 161 kV common + 13.8 kV tertiary. The `?`-query path hits
+  `refresh_vterminal_if_marked` (`command.rs:1107`) → reloads Vterminal → runs the
+  auto's own getter. `props_roundtrip` now pins `WdgCurrents` NONZERO
+  (`549.4296, (-31.051), …`) vs the pinned 0.15.7 oracle; Rust matches numerically.
+  A broken refresh would emit all-zeros and fail. Closes the last un-verified §1.3
+  getter. (JSON-Full AutoTrans golden stays blocked by the plural/singular metadata
+  follow-up below; the props route needs no JSON metadata and closes the gap.)
+- **[deferred — minor] DynInit tail not gated under Full mode.** `dyneq_micro` is
+  `skip_full` (blocked by the ShaftModel/ShaftData NOT_PORTED Full-render gap,
+  already a follow-up). The DynInit append is sweep-independent code fully exercised
+  by the default sweep, so residual risk is low; kept as-is. Recorded, not dropped.
+
 ---
 
 ### Gate state (all green)

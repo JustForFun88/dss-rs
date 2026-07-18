@@ -615,6 +615,36 @@ SCENARIOS = [
             "New AutoTrans.a6 like=base buses=(h2, x2)",
         ],
     },
+    # A SOLVED 3-winding YNad1 auto (Series/Common/Delta-tertiary), fed on the
+    # series winding from the (re-based) circuit source, with loads on both the
+    # 161 kV common bus and the 13.8 kV delta tertiary. The point is to pin the
+    # `WdgCurrents` read-only property in a NON-ZERO solved state: it flags
+    # READS_VTERMINAL, so the `?` query reloads `Vterminal` from the solution
+    # (`refresh_vterminal_if_marked`) and runs `TAutoTransObj.GetAllWindingCurrents`
+    # — the autotransformer's OWN series/common/delta winding-current math, distinct
+    # from the two-winding Transformer getter. Every other AutoTrans WdgCurrents
+    # golden is captured pre-solve (deterministic all-zeros, indistinguishable from
+    # a broken refresh), so this is the only oracle verification of that getter's
+    # numbers. Unit follows the corpus `autotrans_snap.dss` t1 (bit-exact vs oracle
+    # in corpus_live). No `zero_garbage`: WdgCurrents is a real solved quantity here.
+    {
+        "name": "autotrans_solved",
+        "target": "AutoTrans.a7",
+        "commands": [
+            "Edit Vsource.source basekv=345 pu=1.0 mvasc3=30000 25000",
+            "New AutoTrans.a7 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 "
+            "%imag=0.0329 %noloadloss=0.02402",
+            "~ wdg=1 bus=sourcebus conn=s kV=345.0 kVA=330000 %r=0.0493",
+            "~ wdg=2 bus=low  conn=w kV=161.0 kVA=330000 %r=0.0556",
+            "~ wdg=3 bus=tert conn=d kV=13.8  kVA=72000  %r=1.4503",
+            "New Load.l161 bus1=low phases=3 kv=161 kw=250000 pf=0.88 model=1",
+            "New Load.l138 bus1=tert phases=3 kv=13.8 kw=30000 pf=0.95 model=1",
+            "set voltagebases=[345.0 161.0 13.8]",
+            "calcvoltagebases",
+            "set tolerance=1e-8",
+            "solve",
+        ],
+    },
     # --- Capacitor (WP4.5) ---
     # NOTE: the oracle's `DoubleSymMatrixProperty` getter for `Capacitor.CMatrix`
     # reads uninitialized memory (it returns denormal garbage even when
