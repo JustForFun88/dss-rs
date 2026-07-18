@@ -95,38 +95,40 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_two_classes("Transformer", "AutoTrans", "Transformer")
             .flags(PropFlags::REQUIRED),
         PropDef::integer("Winding"),
-        PropDef::double("VReg"),
+        PropDef::double("VReg").flags(PropFlags::UNITS_V),
         PropDef::double("Band"),
         PropDef::double("PTRatio"),
-        PropDef::double("CTPrim"),
+        PropDef::double("CTPrim").flags(PropFlags::UNITS_A),
         PropDef::double("R"),
         PropDef::double("X"),
         PropDef::string("Bus"),
-        PropDef::double("Delay"),
+        PropDef::double("Delay").flags(PropFlags::UNITS_S),
         PropDef::boolean("Reversible"),
         PropDef::double("RevVReg"),
         PropDef::double("RevBand"),
         PropDef::double("RevR"),
         PropDef::double("RevX"),
-        PropDef::double("TapDelay"),
+        PropDef::double("TapDelay").flags(PropFlags::UNITS_S),
         PropDef::boolean("DebugTrace"),
         PropDef::integer("MaxTapChange"),
         PropDef::boolean("InverseTime"),
-        PropDef::integer("TapWinding"),
-        PropDef::double("VLimit"),
+        PropDef::integer("TapWinding").flags(PropFlags::DYNAMIC_DEFAULT),
+        PropDef::double("VLimit").flags(PropFlags::UNITS_V),
         PropDef::mapped_string_enum("PTPhase", enums.reg_control_phase),
         // r4086 (8a898cba): RevThreshold now points at the signed W field with
         // a kW→W scale (Pascal `PropertyScale := 1000`), replacing the old
         // `kWRevPowerThreshold` field + the `*1000` side effect.
-        PropDef::double("RevThreshold").scale(1000.0),
-        PropDef::double("RevDelay"),
+        PropDef::double("RevThreshold")
+            .scale(1000.0)
+            .flags(PropFlags::UNITS_KW),
+        PropDef::double("RevDelay").flags(PropFlags::UNITS_S),
         PropDef::boolean("RevNeutral"),
         PropDef::boolean("EventLog"),
-        PropDef::double("RemotePTRatio"),
+        PropDef::double("RemotePTRatio").flags(PropFlags::DYNAMIC_DEFAULT),
         // Pascal: IntegerProperty with Read/WriteByFunction (Get_/Set_TapNum).
         PropDef::integer("TapNum"),
         // Pascal: BooleanActionProperty (DoReset); the getter is always 0.
-        PropDef::boolean("Reset"),
+        PropDef::boolean("Reset").flags(PropFlags::BOOLEAN_ACTION),
         PropDef::double("LDC_Z"),
         PropDef::double("Rev_Z"),
         PropDef::boolean("Cogen"),
@@ -138,7 +140,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("IdleForward"),
         PropDef::double("FwdThreshold").scale(1000.0),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

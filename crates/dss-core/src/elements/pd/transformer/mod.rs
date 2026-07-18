@@ -115,33 +115,36 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Wdg"),
         PropDef::bus_on_struct("Bus").flags(PropFlags::REQUIRED),
         PropDef::mapped_string_enum("Conn", enums.connection),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
+        PropDef::double("kV")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_KV | PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double("kVA"),
         PropDef::double("Tap"),
         PropDef::double("%R").scale(pct),
-        PropDef::double("RNeut"),
-        PropDef::double("XNeut"),
+        PropDef::double("RNeut").flags(PropFlags::UNITS_OHM),
+        PropDef::double("XNeut").flags(PropFlags::UNITS_OHM),
         // General data (plural array forms write every winding).
-        PropDef::buses_on_struct("Buses", WINDINGS),
+        PropDef::buses_on_struct("Buses", WINDINGS)
+            .flags(PropFlags::REQUIRED | PropFlags::DYNAMIC_DEFAULT),
         PropDef::enum_array_on_struct("Conns", enums.connection, WINDINGS),
-        PropDef::double_array_on_struct("kVs", WINDINGS).flags(PropFlags::NON_NEGATIVE),
+        PropDef::double_array_on_struct("kVs", WINDINGS)
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_KV | PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double_array_on_struct("kVAs", WINDINGS),
         PropDef::double_array_on_struct("Taps", WINDINGS),
         PropDef::double("XHL").scale(pct).trap_zero(7.0),
         PropDef::double("XHT").scale(pct).trap_zero(35.0),
         PropDef::double("XLT").scale(pct).trap_zero(30.0),
-        PropDef::double_v_array("XSCArray")
-            .scale(pct)
-            .flags(PropFlags::NON_ZERO),
-        PropDef::double("Thermal"),
+        PropDef::double_v_array("XSCArray").scale(pct).flags(
+            PropFlags::NON_ZERO | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::DYNAMIC_DEFAULT,
+        ),
+        PropDef::double("Thermal").flags(PropFlags::UNITS_HOUR),
         PropDef::double("n"),
         PropDef::double("m"),
-        PropDef::double("FLRise"),
-        PropDef::double("HSRise"),
+        PropDef::double("FLRise").flags(PropFlags::UNITS_DEGC),
+        PropDef::double("HSRise").flags(PropFlags::UNITS_DEGC),
         PropDef::double("%LoadLoss"),
         PropDef::double("%NoLoadLoss"),
-        PropDef::double("NormHkVA"),
-        PropDef::double("EmergHkVA"),
+        PropDef::double("NormHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
+        PropDef::double("EmergHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
         PropDef::boolean("Sub"),
         PropDef::double("MaxTap"),
         PropDef::double("MinTap"),
@@ -151,9 +154,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("ppm_Antifloat").scale(1.0e-6),
         PropDef::double_array_on_struct("%Rs", WINDINGS).scale(pct),
         PropDef::string("Bank"),
-        PropDef::object_ref_class("XfmrCode", "XfmrCode").flags(PropFlags::ORDERING_FIRST),
+        PropDef::object_ref_class("XfmrCode", "XfmrCode")
+            .flags(PropFlags::ORDERING_FIRST | PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::boolean("XRConst"),
-        PropDef::double("X12").scale(pct).trap_zero(7.0),
+        PropDef::double("X12")
+            .scale(pct)
+            .trap_zero(7.0)
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double("X13").scale(pct).trap_zero(35.0),
         PropDef::double("X23").scale(pct).trap_zero(30.0),
         PropDef::mapped_string_enum("LeadLag", enums.lead_lag),
@@ -174,14 +181,22 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("BHPoints").flags(PropFlags::SUPPRESS_JSON | PropFlags::NON_NEGATIVE),
         PropDef::double_array("BHCurrent", BHPOINTS).flags(PropFlags::SUPPRESS_JSON),
         PropDef::double_array("BHFlux", BHPOINTS).flags(PropFlags::SUPPRESS_JSON),
-        // TPDClass tail:
-        PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),
+        // TPDClass tail: Pascal sets `SuppressJSON` on these AFTER
+        // `inherited DefineProperties` (`Transformer.pas:605-606`), so they stay in
+        // `AltPropertyOrder` (occupy `$dssPropertyOrder` slots) but are excluded
+        // from the JSON/schema output — `SUPPRESS_JSON_LATE`.
+        PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
+        PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

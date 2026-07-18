@@ -26,7 +26,10 @@ use crate::obj::props::{PropDef, PropFlags, define_properties};
 
 define_properties! {
     class "DynamicExp", abbrev true, enums enums;
-    1 NVARIABLES => PropDef::integer("NVariables").flags(PropFlags::SUPPRESS_JSON);
+    // Pascal leaves NVariables un-flagged (`DynamicExp.pas:143` — the
+    // `Unused, SuppressJSON` flags are commented out), so it IS emitted in the
+    // JSON/schema (default 0).
+    1 NVARIABLES => PropDef::integer("NVariables");
     2 VARNAMES   => PropDef::string_list("VarNames").flags(PropFlags::TRANSFORM_LOWERCASE);
     3 VR         => PropDef::string("Var")
         .flags(PropFlags::TRANSFORM_LOWERCASE | PropFlags::SUPPRESS_JSON);

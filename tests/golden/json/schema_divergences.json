@@ -68,6 +68,90 @@
       "count": 1,
       "props": ["AvgNeutralHeight"],
       "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): average height of neutral conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
+    },
+    {
+      "class": "Capacitor",
+      "kind": "port_extra_line",
+      "line": "          \"units\" : \"kvar\",",
+      "count": 1,
+      "props": ["kvar"],
+      "cause": "The vendored dss_capi snapshot (newer than the pinned 0.14.5 oracle backend) adds Units_kvar to Capacitor.kvar — dss_capi commit 90c572e4 'AltDSS-Schema: More units' (verified: 0.14.5 tag has `[RequiredInSpecSet]`, the vendored .inputs/dss_capi has `[RequiredInSpecSet, Units_kvar]`). The port follows the vendored spec, so its schema emits `units: kvar`; the pinned dss-python 0.15.7 backend (dss_capi 0.14.5) predates it. (Reactor.kvar's Units_kvar predates 0.14.5, so its `units: kvar` is byte-exact — this diff is Capacitor-specific.)"
+    },
+    {
+      "class": "Transformer",
+      "kind": "port_hidden_property",
+      "prop_key": "BHPoints",
+      "index": 50,
+      "count": 0,
+      "props": ["BHPoints"],
+      "cause": "OpenDSS r4064 (dss_capi 90962ae8) GICharm BH-curve data: Transformer BHpoints/BHcurrent/BHflux, inserted after Ratings (ordinal 49) before the inherited PD/CktElement tail. The port carries them as SUPPRESS_JSON forward-compat parse targets (transformer/mod.rs), so they render no schema block but occupy $dssPropertyIndex 50-52, shifting every following prop's index +3 vs the 0.14.5 oracle (whose Transformer TProp ends at Ratings=49). $dssPropertyOrder is unaffected (SUPPRESS_JSON excludes them from AltPropertyOrder)."
+    },
+    {
+      "class": "Transformer",
+      "kind": "port_hidden_property",
+      "prop_key": "BHCurrent",
+      "index": 51,
+      "count": 0,
+      "props": ["BHCurrent"],
+      "cause": "OpenDSS r4064 (dss_capi 90962ae8) GICharm BH-curve data (see the BHPoints entry): Transformer BHcurrent, SUPPRESS_JSON port-only prop at $dssPropertyIndex 51, absent from the 0.14.5 oracle."
+    },
+    {
+      "class": "Transformer",
+      "kind": "port_hidden_property",
+      "prop_key": "BHFlux",
+      "index": 52,
+      "count": 0,
+      "props": ["BHFlux"],
+      "cause": "OpenDSS r4064 (dss_capi 90962ae8) GICharm BH-curve data (see the BHPoints entry): Transformer BHflux, SUPPRESS_JSON port-only prop at $dssPropertyIndex 52, absent from the 0.14.5 oracle."
+    },
+    {
+      "class": "RegControl",
+      "kind": "port_changed_line",
+      "from": "      \"default\" : -1.0000000000000000E+002,",
+      "to": "      \"default\" : 1.0000000000000000E+002,",
+      "count": 1,
+      "props": ["RevThreshold"],
+      "cause": "OpenDSS r4086 (dss_capi 8a898cba) replaced RegControl's kWRevPowerThreshold field (+100 kW default) with a signed RevPowerThreshold (W) field, Units_kW + PropertyScale 1000, defaulting to -100000 W = -100 kW (reg_control/mod.rs). The port adopted r4086, so its RevThreshold default is -100; the pinned 0.14.5 oracle emits +100."
+    },
+    {
+      "class": "RegControl",
+      "kind": "port_extra_property",
+      "prop_key": "Idle",
+      "index": 33,
+      "order": 33,
+      "count": 1,
+      "props": ["Idle"],
+      "cause": "OpenDSS r4086 (dss_capi 8a898cba) added RegControl idle-zone flags. Idle suppresses tap changes inside a power dead-band (reg_control/mod.rs); absent from the pinned 0.14.5 oracle (whose RegControl TProp ends at Cogen=32)."
+    },
+    {
+      "class": "RegControl",
+      "kind": "port_extra_property",
+      "prop_key": "IdleReverse",
+      "index": 34,
+      "order": 34,
+      "count": 1,
+      "props": ["IdleReverse"],
+      "cause": "OpenDSS r4086 (dss_capi 8a898cba) RegControl idle-zone flag IdleReverse (reg_control/mod.rs); absent from the pinned 0.14.5 oracle."
+    },
+    {
+      "class": "RegControl",
+      "kind": "port_extra_property",
+      "prop_key": "IdleForward",
+      "index": 35,
+      "order": 35,
+      "count": 1,
+      "props": ["IdleForward"],
+      "cause": "OpenDSS r4086 (dss_capi 8a898cba) RegControl idle-zone flag IdleForward (reg_control/mod.rs); absent from the pinned 0.14.5 oracle."
+    },
+    {
+      "class": "RegControl",
+      "kind": "port_extra_property",
+      "prop_key": "FwdThreshold",
+      "index": 36,
+      "order": 36,
+      "count": 1,
+      "props": ["FwdThreshold"],
+      "cause": "OpenDSS r4086 (dss_capi 8a898cba) added RegControl's forward-power threshold FwdPowerThreshold (W), Units_kW + scale 1000, default 100 kW (reg_control/mod.rs); absent from the pinned 0.14.5 oracle."
     }
   ]
 }

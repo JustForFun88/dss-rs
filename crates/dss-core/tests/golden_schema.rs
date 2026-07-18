@@ -257,6 +257,13 @@ fn renumber_field(s: &str, marker: &str, removed: &[i64]) -> String {
 ///   dss_capi; removed `count` times, after which the trailing
 ///   `$dssPropertyIndex`/`$dssPropertyOrder` ordinals are renumbered down (the
 ///   positional cascade the extra property causes).
+/// - `port_hidden_property`: a port-only property that is *also* `SUPPRESS_JSON`
+///   in the port (renders no block) but occupies a `$dssPropertyIndex` ordinal
+///   (`index`); only the following props' `$dssPropertyIndex` are renumbered down
+///   (it is absent from `AltPropertyOrder`, so `$dssPropertyOrder` is untouched).
+/// - `port_changed_line`: the port emits a different value for one line (`from`)
+///   than the oracle (`to`) — an r4133-adopted default/semantics change; each of
+///   `count` occurrences is rewritten to the oracle's line before comparing.
 #[test]
 fn ported_class_defs_bytes_match_oracle() {
     let g = load_golden();
@@ -314,11 +321,48 @@ fn ported_class_defs_bytes_match_oracle() {
                     removed_indices.push(d["index"].as_i64().expect("port_extra_property index"));
                     removed_orders.push(d["order"].as_i64().expect("port_extra_property order"));
                 }
+                Some("port_hidden_property") => {
+                    // A port-only (r4133-adopted) property that is `SUPPRESS_JSON`
+                    // in the port too — it renders NO block but occupies a
+                    // `$dssPropertyIndex` ordinal, shifting every following prop's
+                    // index (but NOT `$dssPropertyOrder`: it is absent from
+                    // `AltPropertyOrder`). Fail-on-stale: assert its block is indeed
+                    // absent; if a future change un-suppresses it, the count breaks.
+                    let key = d["prop_key"]
+                        .as_str()
+                        .expect("port_hidden_property prop_key");
+                    let anchor = format!("    \"{key}\" : {{");
+                    let found = rendered.matches(&anchor).count();
+                    assert_eq!(
+                        found, count,
+                        "stale port_hidden_property for {name}.{key}: expected {count} block(s), \
+                         found {found} — update schema_divergences.json"
+                    );
+                    removed_indices.push(d["index"].as_i64().expect("port_hidden_property index"));
+                }
+                Some("port_changed_line") => {
+                    // The port emits a different value for a line than the 0.14.5
+                    // oracle (an r4133-adopted default/semantics change): replace
+                    // exactly `count` of the port's `from` lines with the oracle's
+                    // `to` line before comparing. Fail-on-stale via the count.
+                    let from = d["from"].as_str().expect("port_changed_line from");
+                    let to = d["to"].as_str().expect("port_changed_line to");
+                    let pat = format!("{from}\r\n");
+                    let found = rendered.matches(&pat).count();
+                    assert_eq!(
+                        found, count,
+                        "stale port_changed_line for {name}: expected {count} occurrence(s) of \
+                         `{from}`, found {found} — update schema_divergences.json"
+                    );
+                    rendered = rendered.replace(&pat, &format!("{to}\r\n"));
+                }
                 other => panic!("unknown divergence kind {other:?} for {name}"),
             }
         }
         if !removed_indices.is_empty() {
             rendered = renumber_field(&rendered, "$dssPropertyIndex", &removed_indices);
+        }
+        if !removed_orders.is_empty() {
             rendered = renumber_field(&rendered, "$dssPropertyOrder", &removed_orders);
         }
 

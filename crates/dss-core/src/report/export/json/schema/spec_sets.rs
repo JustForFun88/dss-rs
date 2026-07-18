@@ -211,6 +211,84 @@ pub(super) fn spec_sets(class_name: &str) -> &'static [SpecSet] {
                 props: &["R0", "X0", "R1", "X1"],
             },
         ],
+        // `Capacitor.pas:208-217` — `SpecSetNames`/`SpecSets`. The `Cuf` member is
+        // the `Cuf` prop (Pascal `cuf`).
+        "Capacitor" => &[
+            SpecSet {
+                name: "kvar, kV",
+                props: &["kvar", "kV"],
+            },
+            SpecSet {
+                name: "cmatrix",
+                props: &["CMatrix"],
+            },
+            SpecSet {
+                name: "cuf, kV",
+                props: &["Cuf", "kV"],
+            },
+        ],
+        // `Reactor.pas:202-222` — note the **7 names vs 6 sets** offset: the
+        // `R, X, ...` and `R, LmH, ...` sets abort (their `R` member is `Redundant`,
+        // so its `prop_json` is never built), which shifts the surviving sets onto
+        // the *next* names — the last-two emitted sets carry the mismatched titles
+        // `R, LmH, Rcurve, Lcurve` (over Z0/Z1/Z2) and `Z0, Z1, Z2` (over
+        // RMatrix/XMatrix), exactly as the oracle shows. The `Rmatrix, Xmatrix`
+        // name (index 6) has no set and is dropped. Reproduced 1:1 by pairing each
+        // set with `SpecSetNames[j]`.
+        "Reactor" => &[
+            SpecSet {
+                name: "kV, kvar, Rcurve, Lcurve",
+                props: &["kV", "kvar", "RCurve", "LCurve"],
+            },
+            SpecSet {
+                name: "Z, Rcurve, Lcurve",
+                props: &["Z", "RCurve", "LCurve"],
+            },
+            SpecSet {
+                name: "R, Rcurve, Lcurve",
+                props: &["R", "X", "RCurve", "LCurve"],
+            },
+            SpecSet {
+                name: "R, X, Rcurve, Lcurve",
+                props: &["R", "LmH", "RCurve", "LCurve"],
+            },
+            SpecSet {
+                name: "R, LmH, Rcurve, Lcurve",
+                props: &["Z0", "Z1", "Z2"],
+            },
+            SpecSet {
+                name: "Z0, Z1, Z2",
+                props: &["RMatrix", "XMatrix"],
+            },
+        ],
+        // `Fault.pas:163-171` — `SpecSetNames`/`SpecSets`.
+        "Fault" => &[
+            SpecSet {
+                name: "r",
+                props: &["R"],
+            },
+            SpecSet {
+                name: "Gmatrix",
+                props: &["GMatrix"],
+            },
+        ],
+        // `Transformer.pas:379-388` — `SpecSetNames`/`SpecSets`. The `kV` member
+        // redirects (array_alternative) to `kVs`; the walker keeps the scalar name
+        // as the oneOf key.
+        "Transformer" => &[
+            SpecSet {
+                name: "XfmrCode",
+                props: &["XfmrCode"],
+            },
+            SpecSet {
+                name: "X12, X13, X23, kV",
+                props: &["X12", "X13", "X23", "kV"],
+            },
+            SpecSet {
+                name: "XscArray, kV",
+                props: &["XSCArray", "kV"],
+            },
+        ],
         _ => &[],
     }
 }
