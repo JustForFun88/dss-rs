@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/dss-cli", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse"]
+members = ["crates/dss-cli", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse", "crates/dss-usermodel"]
 
 [workspace.dependencies]
 num-complex = "0.4"
@@ -21,6 +21,11 @@ libloading = "0.8"
 # PHASE8_PLAN WP8.6 step 6). Random v4s are never oracle-pinnable; the goldens
 # preload every UUID via the `Uuids` command.
 uuid = { version = "1", features = ["v4"] }
+# WASM user-model host interpreter (WASM_USERMODELS_PLAN §2.1): pure-Rust wasmi,
+# pinned exactly per tools/wasm_usermodel/PIN.txt (the typst-verified release —
+# .inputs/typst/Cargo.toml). `default-features = false` + "simd" is the typst
+# feature set; the dependency closure is pure Rust (no C, no JIT — probe P4).
+wasmi = { version = "=1.0.9", default-features = false, features = ["simd"] }
 
 # Runtime speed for the mandatory gate: `cargo test` (dev/test profile) runs
 # the live corpus — including yearly/8500-node/`large` decks — through the
@@ -51,6 +56,14 @@ overflow-checks = true
 debug-assertions = true
 
 [profile.dev.package.dss-parser]
+opt-level = 3
+overflow-checks = true
+debug-assertions = true
+
+# The WASM user-model host: the wasmi interpreter executes guest models inside
+# the gate's tests (and, from WM.3, inside golden/corpus runs) — keep it
+# optimized like the engine crates. Safety knobs kept at dev defaults.
+[profile.dev.package.dss-usermodel]
 opt-level = 3
 overflow-checks = true
 debug-assertions = true
