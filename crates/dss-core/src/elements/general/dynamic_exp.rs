@@ -31,7 +31,7 @@ define_properties! {
     3 VR         => PropDef::string("Var")
         .flags(PropFlags::TRANSFORM_LOWERCASE | PropFlags::SUPPRESS_JSON);
     4 VARIDX     => PropDef::integer("VarIdx").flags(PropFlags::SUPPRESS_JSON);
-    5 EXPRESSION => PropDef::string("Expression");
+    5 EXPRESSION => PropDef::string("Expression").flags(PropFlags::REQUIRED);
     6 DOMAIN     => PropDef::mapped_string_enum("Domain", enums.dynamic_exp_domain);
 }
 

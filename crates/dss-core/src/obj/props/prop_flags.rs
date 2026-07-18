@@ -202,6 +202,16 @@ impl PropFlags {
     /// properties), so the JSON reader applies it after every other property —
     /// e.g. Load `PF`. Inert except in `alt_property_order`.
     pub const ORDERING_LAST: Self = Self(1 << 52);
+    /// Pascal `TPropertyFlag.Required` (`DSSClass.pas:210`): the property MUST be
+    /// present in the AltDSS JSON object; `FillObjFromJSON` raises
+    /// `JSON/<cls>/<name>: required property not provided: "<prop>"` when it is
+    /// absent (`DSSObjectHelper.pas:4955`). Consumed only by the JSON *import*
+    /// path ([`ClassProps::fill_from_json`](crate::obj::props::ClassProps));
+    /// inert on every other surface. The Redundant Required twins (Transformer/
+    /// AutoTrans/XfmrCode `buses`/`kVs`) are dropped from `alt_property_order`, so
+    /// only the non-redundant Required props are ever checked — flagging the
+    /// per-winding `bus`/`kV` (which the oracle always exports) suffices.
+    pub const REQUIRED: Self = Self(1 << 53);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

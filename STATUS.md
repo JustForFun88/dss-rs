@@ -68,6 +68,50 @@ on `og14-json-import` (branch based `883a656`). Closes `ORPHANED_GAPS.md` §1.4.
   need it); run with `DSS_OPENDSS_PYTHON` pointing at main's venv, else those cases
   abort on setup (environment, not a code failure).
 
+### OG-1.4 AltDSS JSON import — settle/fix round (2026-07-18)
+
+Settled two independent read-only audits of `og14-json-import`. Fixes (all
+oracle-probed, gate-green):
+
+- **`Required`-property validation (major, AUDIT-CODE):** ported the missing
+  `FillObjFromJSON` branch (`DSSObjectHelper.pas:4955`) — a missing `[Required]`
+  key now raises `JSON/<cls>/<name>: required property not provided: "<prop>"` and
+  aborts the load instead of silently importing an incomplete element. Added the
+  `PropFlags::REQUIRED` bit (absent before — only `RequiredInSpecSet` existed) and
+  the check in `class_props/json_set.rs`, then flagged the ~38 **non-redundant**
+  Pascal-`Required` props across 28 element tables (bus1/bus2, kV, per-winding
+  Bus, MonitoredObj/Element/transformer/capacitor refs, Sensor element+kvbase,
+  DynamicExp Expression, XfmrCode kV, VSource bus1+basekV). Redundant twins
+  (`buses`/`kVs`) are dropped from `AltPropertyOrder`, so only the exported keys
+  are checked — round-trip goldens stay green. Oracle-confirmed the exact message
+  on dss-python 0.15.7.
+- **Edited default DSS_OBJECT re-exported (major, AUDIT-TESTS):** `fill_active_from_json`
+  called `set_default_and_unedited(false)`, but Pascal `FillObjFromJSON` never
+  `BeginEdit`s (only `EndEdit`), so it never clears `DefaultAndUnedited`. Removed
+  the clear — a JSON-imported default (e.g. `spectrum.defaultload`) now stays
+  flagged and is dropped from the re-export, matching the oracle (whose own round
+  trip is lossy for edited defaults: J0 2328 B → J1 1458 B). New golden
+  `rt_edited_default` pins it.
+- **`busFromJSON` kVLN+kVLL conflict now aborts (minor, AUDIT-CODE/TESTS):**
+  `bus_from_json` returns `Result`; the conflict propagates as `Err` (oracle
+  aborts the whole load, error 20230919) instead of logging-and-continuing.
+- **Test coverage (AUDIT-TESTS):** restored the two dropped whole-circuit decks as
+  import goldens (`rt_positive_seq` = allowduplicates + cktmodel=positive;
+  `rt_edited_default`) and added `rt_generator` (Thevenin-DER). Tightened the
+  `unknown_class`/`missing_name` negatives to assert the positive/abort outcome,
+  and added `missing_required_property_errors` + `bus_kvln_kvll_conflict_aborts`.
+- **Rejected — DuplicatesAllowed (AUDIT-CODE, disproven):** `create_object_no_edit`
+  already honors it (`command.rs:987`, gated on `!duplicates_allowed`, not
+  unconditional as the audit read). Probe: oracle round trip of two duplicate
+  `load.l1` under `AllowDuplicates` → Rust import re-export **byte-identical** to
+  the oracle J1 (2 loads each).
+- **Deferred (recorded follow-up) — numeric-array length validation (minor,
+  AUDIT-CODE):** Pascal `SetObjPropertyJSONValue` rejects wrong-length int/double/
+  complex/sym-matrix arrays (`Expected an array of %d …`); the Rust renders to a
+  string and reparses without the `Norder` count check. Malformed-hand-authored-
+  input only (round-trip exports are always correct length). Left for a follow-up;
+  needs the per-type expected-count machinery in `set_json_value`.
+
 Last updated: 2026-07-17 (late evening) — **STATUS RESTRUCTURED + PLAN-COMPLETION AUDIT.** All 16 plan docs were re-verified against the codebase; the records of the *completed* plans (FINAL ACCEPTANCE, JSON export, DIAKOPTICS Part I, UPGRADE Rung 1+2) moved to the new **§1a archive**, and every item those plans handed to a still-unfinished successor is now explicit in **§Standing open follow-ups**. Prior same-day — **TEST-TRIAGE ROUND MERGED** (user-ordered
 backlog burn-down; six parallel worktree WPs, each gate-green + audited/verified,
 merged wt-t1→t2→t3→t4→t6; DE_PASCALIZE is PAUSED by user order after wave 1 —

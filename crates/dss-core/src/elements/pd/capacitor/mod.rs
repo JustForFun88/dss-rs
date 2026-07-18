@@ -69,7 +69,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let defs = vec![
         // Pascal flags bus1 `Required` (inert here — not enforced in Phase 4).
-        PropDef::bus("Bus1", 1),
+        PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", 2),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double_array("kvar", NUMSTEPS).flags(PropFlags::REQUIRED_IN_SPEC_SET),

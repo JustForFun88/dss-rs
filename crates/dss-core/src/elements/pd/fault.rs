@@ -74,7 +74,7 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let defs = vec![
         // Pascal flags bus1 `Required` (inert here — not enforced).
-        PropDef::bus("Bus1", 1),
+        PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", 2),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         // `r` stores its inverse `G` (Pascal `InverseValue`); the spec-set flags

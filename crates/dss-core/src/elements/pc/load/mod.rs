@@ -164,8 +164,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     // `save load` / dump serializers print them verbatim.
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::bus("Bus1", 1),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
+        PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
+        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
         PropDef::double("kW").flags(PropFlags::REPLACE_ZERO),
         PropDef::double("PF").flags(PropFlags::ORDERING_LAST),
         PropDef::mapped_int_enum("Model", enums.load_model),
