@@ -85,34 +85,50 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", 2),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("kvar").flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("kV").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE),
+        PropDef::double("kvar").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KVAR),
+        PropDef::double("kV")
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE | PropFlags::UNITS_KV),
         PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double_sym_matrix("RMatrix", PHASES),
         PropDef::double_sym_matrix("XMatrix", PHASES).flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::boolean("Parallel"),
-        PropDef::double("R").flags(PropFlags::REDUNDANT),
-        PropDef::double("X").flags(PropFlags::REDUNDANT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Rp"),
-        PropDef::complex("Z1"),
-        PropDef::complex("Z2"),
-        PropDef::complex("Z0"),
-        PropDef::complex("Z").flags(PropFlags::REQUIRED_IN_SPEC_SET),
+        PropDef::double("R")
+            .flags(PropFlags::REDUNDANT | PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM),
+        PropDef::double("X").flags(
+            PropFlags::REDUNDANT
+                | PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::NO_DEFAULT
+                | PropFlags::UNITS_OHM,
+        ),
+        PropDef::double("Rp").flags(PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM),
+        PropDef::complex("Z1").flags(PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM),
+        PropDef::complex("Z2").flags(PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM),
+        PropDef::complex("Z0")
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM),
+        PropDef::complex("Z")
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM),
         // RCurve/LCurve reference XYcurve (ported WP5.1); see the module note
         // for the harmonic-CalcYPrim consumer.
         PropDef::object_ref_class("XYcurve", "RCurve"),
         PropDef::object_ref_class("XYcurve", "LCurve"),
         PropDef::double("LmH")
             .scale(1.0e-3)
-            .flags(PropFlags::REDUNDANT | PropFlags::REQUIRED_IN_SPEC_SET),
-        // TPDClass tail:
-        PropDef::double("NormAmps"),
-        PropDef::double("EmergAmps"),
+            .flags(PropFlags::REDUNDANT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_MH),
+        // TPDClass tail: Pascal sets these AFTER `inherited DefineProperties` with
+        // `DynamicDefault + Units_A` (`Reactor.pas:310-311`) — emitted (no default),
+        // in `A`.
+        PropDef::double("NormAmps").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_A),
+        PropDef::double("EmergAmps").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_A),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

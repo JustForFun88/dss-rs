@@ -88,8 +88,7 @@ pub fn obj_to_json_data(
             // Skip Like, substructure index, suppressed, or 0.15.x/r4133-deferred
             // props.
             if pd.ptype == PropType::MakeLike
-                || (pd.flags.contains(PropFlags::SUPPRESS_JSON)
-                    && !pd.flags.contains(PropFlags::REDUNDANT))
+                || (pd.flags.suppresses_json_output() && !pd.flags.contains(PropFlags::REDUNDANT))
                 || pd.flags.hidden_from_full_enum()
                 || pd.flags.contains(PropFlags::ALT_INDEX)
                 || pd.flags.contains(PropFlags::INTEGER_STRUCT_INDEX)
@@ -108,7 +107,7 @@ pub fn obj_to_json_data(
             if opts.contains(JsonOpts::SKIP_REDUNDANT) && pd.flags.contains(PropFlags::REDUNDANT) {
                 continue;
             }
-            if pd.flags.contains(PropFlags::SUPPRESS_JSON)
+            if pd.flags.suppresses_json_output()
                 || pd.flags.hidden_from_full_enum()
                 || pd.flags.contains(PropFlags::ALT_INDEX)
                 || pd.flags.contains(PropFlags::INTEGER_STRUCT_INDEX)

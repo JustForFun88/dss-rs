@@ -269,8 +269,30 @@ impl PropFlags {
     /// (`zorderNextEnd`, with the other action props, `DSSClass.pas:1972-1976`).
     pub const BOOLEAN_ACTION: Self = Self(1 << 82);
 
+    /// Pascal `SuppressJSON` set **after** `inherited DefineProperties` has already
+    /// built `AltPropertyOrder` (the inherited PD-tail `NormAmps`/`EmergAmps` on
+    /// Transformer/Fault, `Transformer.pas:605-606`/`Fault.pas:215-216`). Unlike a
+    /// [`Self::SUPPRESS_JSON`] set in the class body (before the base
+    /// `DefineProperties`), such a property is **present in `AltPropertyOrder`** —
+    /// it occupies a `$dssPropertyOrder` slot and shifts the following props' order
+    /// — but is still excluded from the JSON/schema *output* like a normal
+    /// `SuppressJSON`. Distinguished from `SUPPRESS_JSON` so
+    /// [`ClassProps::alt_property_order`](crate::obj::props::ClassProps) keeps it
+    /// while the JSON dump ([`report::export::json`](crate::report::export::json))
+    /// and the schema walk skip it. Inert on the text dump / setters.
+    pub const SUPPRESS_JSON_LATE: Self = Self(1 << 83);
+
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
+    }
+
+    /// Whether the property is excluded from the JSON/schema **output** — a
+    /// [`Self::SUPPRESS_JSON`] (excluded from `AltPropertyOrder` too) or a
+    /// [`Self::SUPPRESS_JSON_LATE`] (kept in `AltPropertyOrder`, output-suppressed
+    /// only). The JSON dump and the schema walk gate on this; the order build
+    /// gates on `SUPPRESS_JSON` alone.
+    pub fn suppresses_json_output(self) -> bool {
+        self.contains(Self::SUPPRESS_JSON) || self.contains(Self::SUPPRESS_JSON_LATE)
     }
 
     /// Whether the property is deferred from the *full-enumeration* 0.14.5-pinned

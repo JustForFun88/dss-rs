@@ -94,10 +94,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("OffSetting"),
         PropDef::double("Delay"),
         PropDef::boolean("VoltOverride"),
-        PropDef::double("VMax"),
-        PropDef::double("VMin"),
-        PropDef::double("DelayOff"),
-        PropDef::double("DeadTime"),
+        PropDef::double("VMax").flags(PropFlags::UNITS_V),
+        PropDef::double("VMin").flags(PropFlags::UNITS_V),
+        PropDef::double("DelayOff").flags(PropFlags::UNITS_S),
+        PropDef::double("DeadTime").flags(PropFlags::UNITS_S),
         PropDef::mapped_string_enum("CTPhase", enums.mon_phase),
         PropDef::mapped_string_enum("PTPhase", enums.mon_phase),
         PropDef::string("VBus"),
@@ -108,14 +108,19 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::string("UserData").flags(PropFlags::NOT_PORTED),
         PropDef::double("pctMinkvar"),
         // Pascal: BooleanActionProperty (DoReset); the getter is always 0.
-        PropDef::boolean("Reset"),
+        PropDef::boolean("Reset").flags(PropFlags::BOOLEAN_ACTION),
         // `ctrlSignalShape` (`CapControl.pas` l.288): a LoadShape ref read by the
         // FOLLOWCONTROL arm of `Sample`. Bound to the LoadShape class
         // (`PropertyOffset2 := ptruint(DSS.LoadShapeClass)`); no WriteByFunction
         // in Pascal (the commented-out `CheckForVar` flag is also inert).
         PropDef::object_ref_class("LoadShape", "ControlSignal"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

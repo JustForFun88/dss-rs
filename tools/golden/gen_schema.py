@@ -79,6 +79,17 @@ SCHEMA_CLASSES = [
     "Isource",
     "VCCS",
     "Load",
+    # --- Batch B3: transformer + shunt + basic controls (byte-exact after the
+    # documented r4086/r4133 divergences in schema_divergences.json). Transformer
+    # is the struct-array pilot ($dssIterator + ON_ARRAY defaults + the redirect
+    # spec-set key fix, all in schema/classes.rs). ---
+    "Transformer",
+    "RegControl",
+    "Capacitor",
+    "Reactor",
+    "CapControl",
+    "Fault",
+    "DynamicExp",
     # LineGeometry: deferred to integration as a port-authored (0.15.x) class —
     # its property model follows the newer dss_capi (Wires -> Redundant+SuppressJSON,
     # new Conductors=20 object-ref-array) and straddles 0.14.5 via HIDE_015X, so its

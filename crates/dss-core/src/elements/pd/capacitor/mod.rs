@@ -72,15 +72,17 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", 2),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double_array("kvar", NUMSTEPS).flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("kV").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE),
+        PropDef::double_array("kvar", NUMSTEPS)
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KVAR),
+        PropDef::double("kV")
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE | PropFlags::UNITS_KV),
         PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double_sym_matrix("CMatrix", PHASES)
             .scale(1.0e-6)
-            .flags(PropFlags::REQUIRED_IN_SPEC_SET),
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_UF),
         PropDef::double_array("Cuf", NUMSTEPS)
             .scale(1.0e-6)
-            .flags(PropFlags::REQUIRED_IN_SPEC_SET),
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT | PropFlags::UNITS_UF),
         PropDef::double_array("R", NUMSTEPS),
         PropDef::double_array("XL", NUMSTEPS),
         PropDef::double_array("Harm", NUMSTEPS),
@@ -94,7 +96,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

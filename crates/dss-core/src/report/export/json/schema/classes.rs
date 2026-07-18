@@ -267,8 +267,10 @@ pub(crate) fn class_schema(
     for prop_index_ in 1..=n {
         let pd0 = props.prop(prop_index_);
         let flags0 = pd0.flags;
-        // Skip redundant / suppressed / struct-index props (`:476-482`).
-        if flags0.contains(PropFlags::SUPPRESS_JSON)
+        // Skip redundant / suppressed / struct-index props (`:476-482`). A
+        // `SUPPRESS_JSON_LATE` prop stays in `AltPropertyOrder` (occupies a
+        // `$dssPropertyOrder` slot) but is excluded from the emitted properties.
+        if flags0.suppresses_json_output()
             || flags0.contains(PropFlags::ALT_INDEX)
             || flags0.contains(PropFlags::INTEGER_STRUCT_INDEX)
             || flags0.contains(PropFlags::REDUNDANT)
@@ -296,7 +298,12 @@ pub(crate) fn class_schema(
         let flags = pd.flags;
 
         let units = extract_units(flags);
-        let read_only = flags.contains(PropFlags::SILENT_READ_ONLY);
+        // Pascal `readOnly := (SilentReadOnly in flags) or (StringSilentROFunctionProperty
+        // = ptype)` (`:500`). The port models the latter — a read-only live-result
+        // string (Transformer/AutoTrans `WdgCurrents`) — as a `String` carrying
+        // [`PropFlags::READS_VTERMINAL`], so both mark the schema `readOnly`.
+        let read_only = flags.contains(PropFlags::SILENT_READ_ONLY)
+            || flags.contains(PropFlags::READS_VTERMINAL);
         let no_default =
             flags.contains(PropFlags::NO_DEFAULT) || flags.contains(PropFlags::DYNAMIC_DEFAULT);
 
@@ -355,7 +362,7 @@ pub(crate) fn class_schema(
             if !(read_only || no_default) {
                 let def = match jtype_single {
                     "number" => array_default(pd, sample, prop_index, jtype_orig_is_matrix(pd)),
-                    "integer" => int_array_default(sample, prop_index),
+                    "integer" => int_array_default(pd, sample, prop_index),
                     "string" | "#/$defs/BusConnection" => {
                         string_array_default(pd, sample, prop_index)
                     }
@@ -486,7 +493,23 @@ pub(crate) fn class_schema(
             } else {
                 prop.push(("type", s("array")));
                 prop.push(("items", obj(vec![("$ref", s(&enum_path))])));
-                // (array enum defaults are struct-array specific; batch classes)
+                // Per-element enum default (`:797-814`): read the struct-array's
+                // per-entry ordinals (Pascal `obj.GetIntegers(propIndex)`) and map
+                // each through the enum's `OrdinalToJSONValue` (e.g. Transformer
+                // `Conns` → `["Wye", "Wye"]`).
+                if !(read_only || no_default) {
+                    let vals = sample.get_struct_i32_array(prop_index);
+                    if !vals.is_empty() {
+                        prop.push((
+                            "default",
+                            Json::Arr(
+                                vals.iter()
+                                    .map(|&v| meta.ordinal_to_json_value(v as i64))
+                                    .collect(),
+                            ),
+                        ));
+                    }
+                }
             }
         } else if pd.ptype == PropType::ObjectRef && !on_array {
             // Pascal `DSSObjectReferenceProperty` (`:818-895`): a scalar object
@@ -516,13 +539,29 @@ pub(crate) fn class_schema(
                 prop.push(("minItems", i(pd.size_prop as i64)));
                 prop.push(("maxItems", i(pd.size_prop as i64)));
             } else {
-                let length_prop = sizing_property_index(pd);
+                // Pascal `getSizePropertyIndex[propIndex]`, with the fallback to
+                // the *original* prop's sizing when the array-alternative's own is
+                // 0 (`:916-918`).
+                let mut length_prop = sizing_property_index(props, pd);
+                if prop_index != prop_index_ && length_prop == 0 {
+                    length_prop = sizing_property_index(props, props.prop(prop_index_));
+                }
                 if length_prop > 0 {
                     if jtype_orig_is_matrix(pd) {
                         let nm = props.prop(length_prop).json_key(false);
                         prop.push(("$dssShape", Json::Arr(vec![s(&nm), s(&nm)])));
                     } else {
+                        // `$dssLength` + `$dssIterator` (`:929-937`): the iterator
+                        // is the struct-array index prop (Transformer `Wdg`), with
+                        // the same original-prop fallback.
+                        let mut it = iterator_property_index(props, prop_index);
+                        if prop_index != prop_index_ && it == 0 {
+                            it = iterator_property_index(props, prop_index_);
+                        }
                         prop.push(("$dssLength", s(&props.prop(length_prop).json_key(false))));
+                        if it > 0 {
+                            prop.push(("$dssIterator", s(&props.prop(it).json_key(false))));
+                        }
                     }
                 }
                 if prop_index != prop_index_ {
@@ -568,7 +607,7 @@ pub(crate) fn class_schema(
 
         if flags.contains(PropFlags::IS_FILENAME) {
             prop.push(("format", s("file-path")));
-            let length_prop = sizing_property_index(pd);
+            let length_prop = sizing_property_index(props, pd);
             if length_prop > 0 {
                 prop.push(("$dssLength", s(&props.prop(length_prop).json_key(false))));
             }
@@ -598,10 +637,16 @@ pub(crate) fn class_schema(
             let mut required_in_spec: Vec<String> = Vec::new();
             let mut aborted = false;
             for &member in set.props {
-                let Some(mut pi) = props.property_index(member) else {
+                let Some(orig_pi) = props.property_index(member) else {
                     aborted = true;
                     break;
                 };
+                // Pascal `propNameJSON := PropertyNameJSON[propIndex_]` is captured
+                // BEFORE the array-alternative redirect (`:1043-1058`), so the
+                // oneOf member key + its `required` entry use the *original*
+                // (scalar) name — e.g. Transformer `kV`, not the resolved `kVs`.
+                let key = props.prop(orig_pi).json_key(false);
+                let mut pi = orig_pi;
                 if prop_json[pi].is_none() {
                     let apd = props.prop(pi);
                     if apd.array_alternative != 0 {
@@ -612,7 +657,6 @@ pub(crate) fn class_schema(
                     aborted = true;
                     break;
                 };
-                let key = props.prop(pi).json_key(false);
                 spec_props.push((key.clone(), built));
                 if !to_remove.contains(&key) {
                     to_remove.push(key.clone());
@@ -678,7 +722,7 @@ fn jtype_orig_is_matrix(pd: &PropDef) -> bool {
 /// Pascal `PropertySizingPropertyIndex[propIndex]` (`getSizePropertyIndex`) — the
 /// 1-based index of the integer property holding this array's length, or 0 if
 /// the length is computed by function (`SizeIsFunction`, e.g. `DoubleVArray`).
-fn sizing_property_index(pd: &PropDef) -> usize {
+fn sizing_property_index(props: &ClassProps, pd: &PropDef) -> usize {
     match pd.ptype {
         PropType::DoubleArray
         | PropType::IntegerArray
@@ -698,7 +742,74 @@ fn sizing_property_index(pd: &PropDef) -> usize {
         // a `String`/file property counted by the class's `NPts`. The port carries
         // that count index in `size_prop` (set on the shape classes' file props).
         _ if pd.flags.contains(PropFlags::GLOBAL_COUNT) => pd.size_prop,
+        // A scalar-per-struct property under `ON_ARRAY` (Pascal
+        // `Double`/`IntegerOnStructArrayProperty`, e.g. Transformer `RNeut`/`NumTaps`):
+        // Pascal resolves `PropertyStructArrayCountOffset` → the winding-count prop.
+        // The port carries that count ordinal on the plural struct props' `size_prop`.
+        _ if pd.flags.contains(PropFlags::ON_ARRAY) => struct_count_prop(props),
         _ => 0,
+    }
+}
+
+/// The struct-array element-count property index — Pascal
+/// `PropertyStructArrayCountOffset` resolved to its integer prop (Transformer
+/// `Windings`). The port carries that ordinal on every plural on-struct property's
+/// [`PropDef::size_prop`]; scan for the first one. `0` for a class with no
+/// struct-array (the caller only asks for `ON_ARRAY` props, which only such
+/// classes carry).
+fn struct_count_prop(props: &ClassProps) -> usize {
+    for idx in 1..=props.num_properties() {
+        let pd = props.prop(idx);
+        if matches!(
+            pd.ptype,
+            PropType::DoubleArrayOnStruct | PropType::EnumArrayOnStruct | PropType::BusesOnStruct
+        ) {
+            return pd.size_prop;
+        }
+    }
+    0
+}
+
+/// The struct-array index property index — Pascal `PropertyStructArrayIndexOffset`
+/// resolved to its integer prop (Transformer `Wdg`), the property flagged
+/// [`PropFlags::INTEGER_STRUCT_INDEX`]. `0` if the class has none.
+fn struct_index_prop(props: &ClassProps) -> usize {
+    for idx in 1..=props.num_properties() {
+        if props
+            .prop(idx)
+            .flags
+            .contains(PropFlags::INTEGER_STRUCT_INDEX)
+        {
+            return idx;
+        }
+    }
+    0
+}
+
+/// Pascal `PropertyIteratorPropertyIndex[propIndex]` (`getIteratorPropertyName`) —
+/// the struct-array index prop (`$dssIterator`) for an on-active-struct property,
+/// else 0. Pascal keys on the scalar on-struct types
+/// (`Bus`/`Double`/`Integer`/`MappedStringEnumOnStructArrayProperty`) + the
+/// `OnArray` flag; the port collapses the scalar on-struct doubles/ints/enums into
+/// `Double`/`Integer`/`MappedStringEnum` (marked `ON_ARRAY` or carrying an
+/// `array_alternative` to their plural), so here the plural on-struct types
+/// (`DoubleArrayOnStruct`/`EnumArrayOnStruct`/`BusesOnStruct`) — the walker's
+/// resolved index for a redirected scalar — plus `BusOnStruct` and the `ON_ARRAY`
+/// flag select the iterator. The walker's original-prop fallback covers the rest.
+fn iterator_property_index(props: &ClassProps, prop_index: usize) -> usize {
+    let pd = props.prop(prop_index);
+    let on_struct = pd.flags.contains(PropFlags::ON_ARRAY)
+        || matches!(
+            pd.ptype,
+            PropType::BusOnStruct
+                | PropType::BusesOnStruct
+                | PropType::DoubleArrayOnStruct
+                | PropType::EnumArrayOnStruct
+        );
+    if on_struct {
+        struct_index_prop(props)
+    } else {
+        0
     }
 }
 
@@ -741,6 +852,13 @@ fn array_default(pd: &PropDef, obj: &dyn DssObject, idx: usize, is_matrix: bool)
     } else {
         pd.scale
     };
+
+    // A scalar-per-struct double rendered as an array under `ON_ARRAY` (Pascal
+    // `DoubleOnStructArrayProperty`, e.g. Transformer `RNeut`/`MaxTap`): the
+    // per-winding values come from the struct getter, not a flat `get_f64_array`.
+    if pd.flags.contains(PropFlags::ON_ARRAY) {
+        return finite_array(obj.get_struct_f64_array(idx), scale);
+    }
 
     if is_matrix {
         // ComplexPartSymMatrix / DoubleSymMatrix: order×order, scaled. Rows are
@@ -797,9 +915,15 @@ fn array_default(pd: &PropDef, obj: &dyn DssObject, idx: usize, is_matrix: bool)
 }
 
 /// The integer-array default (`:612-633`): `GetIntegers` then emit the whole
-/// array when non-empty (integers carry no NaN/Inf guard). `None` on empty.
-fn int_array_default(obj: &dyn DssObject, idx: usize) -> Option<Json> {
-    let vals = obj.get_i32_array(idx)?;
+/// array when non-empty (integers carry no NaN/Inf guard). `None` on empty. A
+/// scalar-per-struct integer under `ON_ARRAY` (Pascal `IntegerOnStructArrayProperty`,
+/// e.g. Transformer `NumTaps`) reads the per-winding values from the struct getter.
+fn int_array_default(pd: &PropDef, obj: &dyn DssObject, idx: usize) -> Option<Json> {
+    let vals: Vec<i32> = if pd.flags.contains(PropFlags::ON_ARRAY) {
+        obj.get_struct_i32_array(idx)
+    } else {
+        obj.get_i32_array(idx)?.to_vec()
+    };
     if vals.is_empty() {
         return None;
     }

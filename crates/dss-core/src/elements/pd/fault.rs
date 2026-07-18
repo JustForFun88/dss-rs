@@ -77,23 +77,30 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", 2),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        // `r` stores its inverse `G` (Pascal `InverseValue`); the spec-set flags
-        // are inert metadata in this port.
-        PropDef::double("R").flags(PropFlags::INVERSE_VALUE | PropFlags::REQUIRED_IN_SPEC_SET),
+        // `r` stores its inverse `G` (Pascal `InverseValue`).
+        PropDef::double("R").flags(
+            PropFlags::INVERSE_VALUE | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_OHM,
+        ),
         PropDef::double("%StdDev").scale(0.01),
         PropDef::double_sym_matrix("GMatrix", PHASES).flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("OnTime"),
+        PropDef::double("OnTime").flags(PropFlags::UNITS_S),
         PropDef::boolean("Temporary"),
-        PropDef::double("MinAmps"),
-        // TPDClass tail (Pascal suppresses normamps/emergamps from JSON — inert
-        // here; the text dump still carries them).
-        PropDef::double("NormAmps"),
-        PropDef::double("EmergAmps"),
+        PropDef::double("MinAmps").flags(PropFlags::UNITS_A),
+        // TPDClass tail: Pascal sets `SuppressJSON` AFTER `inherited DefineProperties`
+        // (`Fault.pas:215-216`), so these stay in `AltPropertyOrder` (occupy
+        // `$dssPropertyOrder` slots) but are excluded from JSON/schema output.
+        PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
+        PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
