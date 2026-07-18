@@ -8,6 +8,66 @@
       "count": 3,
       "props": ["FaultRate", "PctPerm", "Repair"],
       "cause": "dss_capi 0.15.x / OpenDSS r4133 flags LineCode FaultRate/PctPerm/Repair as Deprecated+Unused (a LineCode never propagated them to its Lines; unused in the engine since 2014). The port follows the newer engine (UPGRADE WP-U1.4, prop_flags.rs::DEPRECATED), so its schema emits `deprecated: true`; the pinned dss-python 0.15.7 backend (dss_capi 0.14.5) predates the flag and omits it."
+    },
+    {
+      "class": "CNData",
+      "kind": "port_extra_property",
+      "prop_key": "SemiconLayer",
+      "index": 5,
+      "order": 6,
+      "count": 1,
+      "props": ["SemiconLayer"],
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 adds CNData.SemiconLayer (CNData.pas, `SemiconLayer = 5`): existence of a semicon layer between insulation and the concentric-neutral strands, affecting shunt self-admittances. The port adopted it (conductor_data/cn_data.rs, UPGRADE_PLAN.md WP-U1.4); the pinned dss_capi 0.14.5 backend (CNData `TProp` ends at RStrand=4) has no such property, so it is inserted at ordinal 5, shifting every following $dssPropertyIndex/$dssPropertyOrder down by one vs the oracle."
+    },
+    {
+      "class": "LineSpacing",
+      "kind": "port_extra_property",
+      "prop_key": "Detailed",
+      "index": 6,
+      "order": 6,
+      "count": 1,
+      "props": ["Detailed"],
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 adds the LineSpacing equivalent-spacing model (LineSpacing.pas): Detailed selects per-conductor coordinates (x/h arrays) vs the four equivalent-distance fields. The port adopted it (line_spacing/mod.rs, UPGRADE_PLAN.md WP-U1.4); pinned dss_capi 0.14.5 (LineSpacing `TProp` ends at units=5) lacks it."
+    },
+    {
+      "class": "LineSpacing",
+      "kind": "port_extra_property",
+      "prop_key": "EqDistPhPh",
+      "index": 7,
+      "order": 7,
+      "count": 1,
+      "props": ["EqDistPhPh"],
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): geometric-mean distance between phase conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
+    },
+    {
+      "class": "LineSpacing",
+      "kind": "port_extra_property",
+      "prop_key": "EqDistPhN",
+      "index": 8,
+      "order": 8,
+      "count": 1,
+      "props": ["EqDistPhN"],
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): geometric-mean distance between phase and neutral conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
+    },
+    {
+      "class": "LineSpacing",
+      "kind": "port_extra_property",
+      "prop_key": "AvgPhaseHeight",
+      "index": 9,
+      "order": 9,
+      "count": 1,
+      "props": ["AvgPhaseHeight"],
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): average height of phase conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
+    },
+    {
+      "class": "LineSpacing",
+      "kind": "port_extra_property",
+      "prop_key": "AvgNeutralHeight",
+      "index": 10,
+      "order": 10,
+      "count": 1,
+      "props": ["AvgNeutralHeight"],
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): average height of neutral conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
     }
   ]
 }
