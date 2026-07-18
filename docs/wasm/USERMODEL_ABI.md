@@ -3,6 +3,10 @@
 **Status: FROZEN at WP-WM.0 (2026-07-18).** Changes only by a recorded decision
 noted in this header and in `STATUS.md` §WASM-UM.
 
+Recorded decisions: **2026-07-19** — §4 row 17 `get_node_voltages` ground-slot
+indexing documented (settles audit finding WM-AUD-1; the WM.1 crate contract is
+unchanged, the doc had omitted the decision).
+
 This document is the single authority for the wire contract between the dss-rs
 engine (host, `crates/dss-usermodel` from WP-WM.1) and WASM user models
 (guests). The *behavioral* spec is the Pascal (units cited per section); the
@@ -218,7 +222,7 @@ its WM.6 deferral stands.
 | 14 | `GetActiveElementNodeRef` | `get_active_element_node_ref(maxsize, ptr)` | A | no |
 | 15 | `GetActiveElementBusRef` | `get_active_element_bus_ref(terminal) -> i32` | A | no |
 | 16 | `GetActiveElementTerminalInfo` | `get_active_element_terminal_info(nt_ptr, nc_ptr, np_ptr)` | A | no |
-| 17 | `GetPtrToSystemVarray` | `get_node_voltages(dest, max) -> i32` (copy, not a live pointer) | A | no |
+| 17 | `GetPtrToSystemVarray` | `get_node_voltages(dest, max) -> i32` (copy, not a live pointer; **ground slot excluded** — indexing note below) | A | no |
 | 18 | `GetActiveElementIndex` | `get_active_element_index() -> i32` | A | no |
 | 19 | `IsActiveElementEnabled` | `is_active_element_enabled() -> i32` | A | no |
 | 20 | `IsBusCoordinateDefined` | `is_bus_coordinate_defined(busref) -> i32` | A | no |
@@ -242,6 +246,25 @@ only observable at the next queue pop); **C**: owned-AuxParser block +
 the WM.6 re-entrancy pair. Boolean returns are i32 0/1. Every import exists at
 link time (so modules validate); unimplemented-by-design slots raise the loud
 attributed error of §6 when *called* — never a silent no-op (plan §2.9-5).
+
+**Row-17 indexing (recorded decision, 2026-07-19 — WM-AUD-1 settlement):** the
+native callback hands the model the raw `Solution.NodeV` pointer, whose
+offset-0 element IS the ground node (`TNodeVarray = array[0..1000] of Complex`,
+`Solution.pas:88`; `NodeV: pNodeVArray … allows NodeV[0]=0`, `:198`;
+`DSSCallBackRoutines.pas:307-311`), together with `iNumNodes = NumNodes` (the
+non-ground node count) — so a native model's natural 1-based access `V^[k]`
+reads node k. The wasm copy serves `NodeV[1..NumNodes]` **without** the ground
+slot: node k lives at `dest + (k-1)*16`, and the i32 return is the count
+copied, `min(NumNodes, max)` — keeping the native `iNumNodes` meaning.
+Rationale: a copy has no reason to spend a slot on the always-zero ground
+entry, and the returned count stays 1:1 with the native out-parameter.
+**Porting consequence (one-slot layout shift vs the native pointer):** a model
+that indexed the native array 1-based must shift by one slot — `V^[k]` becomes
+the Complex at `dest + (k-1)*16` (i.e. what was at pointer offset `k*16`
+natively). P3 census: no existing model uses this slot. The dss-core
+`Callbacks` implementation (lands at WM.3) must serve the slice
+ground-excluded, per the trait contract at
+`crates/dss-usermodel/src/callbacks.rs::node_voltages`.
 
 ## 5. Activation rule (plan §2.4 — the invariant that keeps every gate green)
 
