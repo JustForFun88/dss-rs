@@ -1,0 +1,15 @@
+# WASM user-model toolchain pin — WP-WM.0 P4 (initial; WM.2 appends the
+# committed-fixture hashes). Fixtures/goldens regenerate MANUALLY ONLY with
+# exactly these versions (plan §2.6/§2.9-4; evidence docs/wasm/probes/p4_toolchain.txt).
+#
+# host interpreter (product dependency, [workspace.dependencies] at WM.1)
+wasmi==1.0.9            # default-features = false, features = ["simd"]
+                        # pure-Rust closure: wasmi_core/wasmi_collections/wasmi_ir 1.1.0,
+                        # wasmparser 0.228.0, bitflags 2.13.1, libm 0.2.16, spin 0.9.9
+# guest fixture toolchain (tools/wasm_usermodel/models/*, WM.2)
+rustc==1.96.0           # stable (ac68faa20 2026-05-25), x86_64-pc-windows-msvc host
+target=wasm32-unknown-unknown
+profile=release         # exact flags recorded at WM.2 alongside the artifact SHA-256
+# native twin toolchain (plan A — vendored IndMach012a.dpr, oracle-side golden gen)
+fpc==3.2.2              # ppcrossx64 x86_64-win64 cross, -Mdelphi -O2
+# oracle (unchanged, tools/golden/PIN.txt governs): dss-python 0.15.7 / backend 0.14.5

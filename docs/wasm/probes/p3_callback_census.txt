@@ -1,0 +1,63 @@
+WP-WM.0 P3 - callback-usage census of the canonical example DLL
+Source: .inputs/electricdss-code-r3723-trunk/Version8/Source/IndMach012a/
+Method: exhaustive text scan for every dereference of the stored pDSSCallBacks
+        (field `CallBack` in IndMach012Model.pas) and every identifier matching a
+        TDSSCallBacks slot name; plus proof the model bundles its own parser.
+Date: 2026-07-18
+
+--- all lines mentioning CallBack (rg-equivalent, case-insensitive) ---
+IndMach012Model.pas:11: {$INCLUDE ..\Common\DSSCallBackStructDef.pas}
+IndMach012Model.pas:19: //   pTDynaCallBacks = ^TDynaCallBacks;
+IndMach012Model.pas:76:         CallBack: pDSSCallBacks;
+IndMach012Model.pas:90:      constructor Create(Var GenVars:TGeneratorVars; Var DynaVars:TDynamicsRec; Var CallBacks:TDSSCallBacks);
+IndMach012Model.pas:113: constructor TIndMach012Model.Create(Var GenVars:TGeneratorVars; Var DynaVars:TDynamicsRec; Var CallBacks:TDSSCallBacks);
+IndMach012Model.pas:127:       CallBack := @CallBacks;
+IndMach012Model.pas:159:  was written on the same platform as the DSS. Otherwise, one should use the Callbacks.}
+IndMach012Model.pas:474:     CallBack^.MsgCallBack(pAnsichar(AnsiHelpStr), Length(HelpStr));
+MainUnit.pas:16:     Function    New(Var GenVars:TGeneratorVars; Var DynaData:TDynamicsRec; Var CallBacks:TDSSCallBacks): Integer;  Stdcall; // Make a new instance
+MainUnit.pas:77: Function  New(Var GenVars:TGeneratorVars; Var DynaData:TDynamicsRec; Var CallBacks:TDSSCallBacks): Integer;  Stdcall;// Make a new instance
+MainUnit.pas:79:     ActiveModel := TIndMach012Model.Create(GenVars, DynaData, CallBacks);
+
+--- slot-name scan: which of the 32 TDSSCallBacks slots are invoked? ---
+INVOKED  MsgCallBack -> IndMach012Model.pas:474
+unused   GetIntValue
+unused   GetDblValue
+unused   GetStrValue
+unused   LoadParser
+unused   NextParam
+unused   DoDSSCommand
+unused   GetActiveElementBusNames
+unused   GetActiveElementVoltages
+unused   GetActiveElementCurrents
+unused   GetActiveElementLosses
+unused   GetActiveElementPower
+unused   GetActiveElementNumCust
+unused   GetActiveElementNodeRef
+unused   GetActiveElementBusRef
+unused   GetActiveElementTerminalInfo
+unused   GetPtrToSystemVarray
+unused   GetActiveElementIndex
+unused   IsActiveElementEnabled
+unused   IsBusCoordinateDefined
+unused   GetBusCoordinate
+unused   GetBuskVBase
+unused   GetBusDistFromMeter
+unused   GetDynamicsStruct
+unused   GetStepSize
+unused   GetTimeSec
+unused   GetTimeHr
+unused   GetPublicDataPtr
+unused   GetActiveElementName
+unused   GetActiveElementPtr
+unused   ControlQueuePush
+unused   GetResultStr
+
+--- own-parser proof (no LoadParser/NextParam/... host-parser callbacks needed) ---
+IndMach012Model.pas:79:      Procedure Edit;  // Uses ModelParser
+IndMach012Model.pas:98:    ModelParser:TParser;
+IndMach012Model.pas:162:      ParamName := ModelParser.NextParam;
+IndMach012Model.pas:163:      Param := ModelParser.StrValue;
+IndMach012Model.pas:172:             1: puRs := ModelParser.DblValue;
+IndMach012Model.pas:173:             2: puXs := ModelParser.DblValue;
+IndMach012Model.pas:174:             3: puRr := ModelParser.DblValue;
+IndMach012Model.pas:175:             4: puXr := ModelParser.DblValue;
