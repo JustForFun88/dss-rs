@@ -264,7 +264,7 @@ pub(crate) fn try_set_ad_option(
     ckt: &mut Circuit,
     param_name: &str,
     param: &str,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) -> bool {
     match param_name.to_ascii_lowercase().as_str() {
         "num_subcircuits" => {
@@ -568,7 +568,7 @@ impl Dss {
         // Deferred `get_Line_Bus` "Line not found" errors (Circuit.pas:1198,
         // 5008) — collected here and flushed after the loop so the honest error
         // surfaces for a non-Line link without a mid-loop `&mut self` borrow.
-        let mut line_errors: Vec<String> = Vec::new();
+        let mut line_errors: Vec<crate::diag::DssDiagnostic> = Vec::new();
 
         for (i, &loc) in locations.iter().enumerate() {
             if i == 0 {
@@ -619,7 +619,10 @@ impl Dss {
             let raw_bus = match line_bus(&self.classes, bare, 2) {
                 Some(b) => b,
                 None => {
-                    line_errors.push(format!("Line \"{bare}\" Not Found in Active Circuit."));
+                    line_errors.push(crate::diag::DssDiagnostic::msg(
+                        format!("Line \"{bare}\" Not Found in Active Circuit."),
+                        Some(5008),
+                    ));
                     String::new()
                 }
             };

@@ -86,19 +86,25 @@ impl StorageController {
     pub(super) fn recalc(&mut self) {
         let Some(mon) = self.mon_snap.clone() else {
             // Pascal `DoSimpleMsg('Monitored Element in %s is not set', 372)`.
-            self.ccd.cd.obj.push_error(format!(
-                "Monitored Element in StorageController.{} is not set",
-                self.ccd.cd.obj.name()
+            self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Monitored Element in StorageController.{} is not set",
+                    self.ccd.cd.obj.name()
+                ),
+                Some(372),
             ));
             return;
         };
 
         if self.ccd.element_terminal > mon.nterms as i32 {
             // Pascal `DoErrorMsg(... 'Terminal no. "%d" Does not exist.' 371)`.
-            self.ccd.cd.obj.push_error(format!(
-                "StorageController: \"{}\": Terminal no. \"{}\" Does not exist. Re-specify terminal no.",
-                self.ccd.cd.obj.name(),
-                self.ccd.element_terminal
+            self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "StorageController: \"{}\": Terminal no. \"{}\" Does not exist. Re-specify terminal no.",
+                    self.ccd.cd.obj.name(),
+                    self.ccd.element_terminal
+                ),
+                Some(371),
             ));
         } else {
             // Pascal: FNphases := MonitoredElement.Nphases; NConds := FNphases.
@@ -135,9 +141,12 @@ impl StorageController {
                     FleetFind::Found(r) => self.fleet.push(r),
                     FleetFind::Disabled => {} // Pascal silently skips a disabled member
                     FleetFind::NotFound => {
-                        env.push_error(format!(
-                            "Error: Storage Element \"{}\" not found.",
-                            self.storage_name_list[i]
+                        env.push_error(crate::diag::DssDiagnostic::msg(
+                            format!(
+                                "Error: Storage Element \"{}\" not found.",
+                                self.storage_name_list[i]
+                            ),
+                            Some(14403),
                         ));
                         return false; // FleetListChanged stays true (Pascal Exits)
                     }
@@ -299,7 +308,9 @@ impl StorageController {
             MODE_PEAKSHAVE => self.do_load_follow_mode(env),
             CURRENT_PEAKSHAVE => self.do_load_follow_mode(env),
             MODE_SCHEDULE => self.do_schedule_mode(env),
-            _ => env.push_error(format!("Invalid DisCharging Mode: {}", self.discharge_mode)),
+            _ => {
+                env.push_error(format!("Invalid DisCharging Mode: {}", self.discharge_mode).into())
+            }
         }
 
         if self.charging_allowed {
@@ -308,7 +319,7 @@ impl StorageController {
                 MODE_TIME => self.do_time_mode(env, 2),
                 MODE_PEAKSHAVELOW => self.do_peak_shave_mode_low(env),
                 CURRENT_PEAKSHAVE_LOW => self.do_peak_shave_mode_low(env),
-                _ => env.push_error(format!("Invalid Charging Mode: {}", self.charge_mode)),
+                _ => env.push_error(format!("Invalid Charging Mode: {}", self.charge_mode).into()),
             }
         }
     }

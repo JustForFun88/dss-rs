@@ -161,7 +161,7 @@ impl CktElement for PVSystem {
         if sys.loads_need_updating {
             self.set_nominal_der_output(sys);
         }
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
@@ -190,7 +190,7 @@ impl CktElement for PVSystem {
             && !self.pv_system_obj_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {
-            let mut errors = Vec::new();
+            let mut errors = crate::diag::ErrorLog::new();
             self.calc_pvsystem_model_contribution(sys, node_v, &mut errors);
         }
         if self.base.gfm_mode {

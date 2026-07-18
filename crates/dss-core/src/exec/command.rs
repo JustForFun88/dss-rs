@@ -126,10 +126,10 @@ impl Dss {
                 // defaults off and stays off in this port (arbitrary shell
                 // execution; the enabling API is deliberately not exposed) —
                 // the error #283 arm is the whole surface.
-                self.errors.push(
-                    "DOScmd is disabled. Enable it via API or set the environment variable DSS_CAPI_ALLOW_DOSCMD=1 before starting the process."
-                        .to_string(),
-                );
+                self.errors.push(crate::diag::DssDiagnostic::msg(
+                    "DOScmd is disabled. Enable it via API or set the environment variable DSS_CAPI_ALLOW_DOSCMD=1 before starting the process.",
+                    Some(283),
+                ));
                 return;
             }
             cmd::VAR => {
@@ -411,10 +411,10 @@ impl Dss {
         };
         let st = &mut ckt.solution.inc_matrix;
         let Some(inc_mat) = st.inc_mat.as_ref() else {
-            self.errors.push(
-                "Indidence matrix is not present. Please run either \"CalcIncMatrix\" or \"CalcIncMatrix_O\" first."
-                    .to_string(),
-            );
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                "Indidence matrix is not present. Please run either \"CalcIncMatrix\" or \"CalcIncMatrix_O\" first.",
+                Some(8877),
+            ));
             return;
         };
         let laplacian = inc_mat.transpose().multiply(inc_mat);
@@ -427,11 +427,15 @@ impl Dss {
         let param_name = self.parser.next_param(&self.vars).to_ascii_lowercase();
         let param = self.parser.make_string(&self.vars);
         if !param_name.is_empty() && !crate::util::compare_text_shortest_eq(&param_name, "object") {
-            // Pascal error 240: the `%s` argument is `CRLF + Parser.CmdString`
-            // (`sLineBreak`, rendered LF here like every other output line).
-            self.errors.push(format!(
-                "object=Class.Name expected as first parameter in command. \n{}",
-                self.parser.cmd_string()
+            // Pascal error 240 (ExecHelper.pas:219): the `%s` argument is
+            // `CRLF + Parser.CmdString` (`sLineBreak`, rendered LF here like
+            // every other output line).
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "object=Class.Name expected as first parameter in command. \n{}",
+                    self.parser.cmd_string()
+                ),
+                Some(240),
             ));
             return (String::new(), String::new());
         }
@@ -449,9 +453,12 @@ impl Dss {
     pub(super) fn set_object_class(&mut self, param: &str) {
         match self.class_by_name.get(&param.to_ascii_lowercase()).copied() {
             Some(ci) => self.active_class = Some(ci),
-            None => self.errors.push(format!(
-                "Error! Object Class \"{param}\" not found. \n{}",
-                self.parser.cmd_string()
+            None => self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Error! Object Class \"{param}\" not found. \n{}",
+                    self.parser.cmd_string()
+                ),
+                Some(903),
             )),
         }
     }
@@ -475,15 +482,20 @@ impl Dss {
         // Pascal `ActiveDSSClass := Get(LastClassReferenced)` = our `active_class`;
         // NIL (no class ever referenced) → #905 "Active object type/class is not set."
         let Some(ci) = self.active_class else {
-            self.errors
-                .push("Error! Active object type/class is not set.".to_string());
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                "Error! Active object type/class is not set.",
+                Some(905),
+            ));
             return false;
         };
         if !self.classes[ci].set_active(&name_part) {
             // Pascal #904: message uses the bare ObjName + the command string.
-            self.errors.push(format!(
-                "Error! Object \"{name_part}\" not found. \n{}",
-                self.parser.cmd_string()
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Error! Object \"{name_part}\" not found. \n{}",
+                    self.parser.cmd_string()
+                ),
+                Some(904),
             ));
             return false;
         }
@@ -745,14 +757,18 @@ impl Dss {
         // Pascal `ActiveDSSClass := Get(LastClassReferenced)` = our `active_class`;
         // `NIL` (no class ever referenced) → #246.
         let Some(ci) = self.active_class else {
-            self.errors
-                .push("Error! Active object type/class is not set.".to_string());
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                "Error! Active object type/class is not set.",
+                Some(246),
+            ));
             return;
         };
         if !self.classes[ci].set_active(&obj_name) {
             // Pascal #245.
-            self.errors
-                .push(format!("Error! Object \"{obj_name}\" not found. "));
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!("Error! Object \"{obj_name}\" not found. "),
+                Some(245),
+            ));
             return;
         }
         let idx = self.classes[ci]
@@ -1353,7 +1369,7 @@ impl Dss {
                     };
                     if let Err(e) = props.edit_property(objects[oi].as_mut(), idx, &param, &mut eng)
                     {
-                        errors.push(e.message().to_string());
+                        errors.push(e);
                     }
                 }
             }
@@ -1404,10 +1420,13 @@ impl Dss {
                     // Pascal `Set_Spectrum` resolves a `DSSObjectReferenceProperty`
                     // and raises error 401 on a missing name — surface it loudly
                     // (else the element would inject silent-zero harmonic current).
-                    errors.push(format!(
-                        "{}.{}.Spectrum: Spectrum object \"{name}\" not found.",
-                        props.class_name(),
-                        objects[oi].data().name()
+                    errors.push(crate::diag::DssDiagnostic::msg(
+                        format!(
+                            "{}.{}.Spectrum: Spectrum object \"{name}\" not found.",
+                            props.class_name(),
+                            objects[oi].data().name()
+                        ),
+                        Some(401),
                     ));
                 }
                 found
@@ -1705,7 +1724,7 @@ impl Dss {
 pub(super) fn apply_edit_signal_tail(
     classes: &mut [DssClass],
     circuit: &mut Option<Circuit>,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
     ci: usize,
     oi: usize,
 ) {
@@ -1835,7 +1854,7 @@ fn apply_generic_dbl_array_file(
     obj: &mut dyn crate::obj::base::DssObject,
     gf: &crate::obj::base::GenericDblArrayFile,
     bytes: &[u8],
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     use crate::obj::base::MmfKind;
     let max = obj.get_i32(gf.size_prop).max(0) as usize;
@@ -1847,9 +1866,12 @@ fn apply_generic_dbl_array_file(
             if let Some(row) = err_row {
                 // Pascal `DoSimpleMsg(#705)` then stop-and-shrink
                 // (`Utilities.pas:515-521`); `vals` already holds only `i-1`.
-                errors.push(format!(
-                    "{}: (#705) Error reading {row}-th numeric array value from file.",
-                    obj.data().name()
+                errors.push(crate::diag::DssDiagnostic::msg(
+                    format!(
+                        "{}: (#705) Error reading {row}-th numeric array value from file.",
+                        obj.data().name()
+                    ),
+                    Some(705),
                 ));
             }
             vals
@@ -1893,7 +1915,7 @@ fn write_shape_save(
     output_directory: &Path,
     last_result: &mut String,
     ss: &crate::obj::base::ShapeSave,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     let ext = if ss.sng { "sng" } else { "dbl" };
     let ftag = if ss.sng { "sngfile" } else { "dblfile" };

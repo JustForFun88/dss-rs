@@ -49,7 +49,7 @@ impl CktElement for EnergyMeter {
     }
 
     fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.recalc(&mut errors);
         for e in errors {
             self.med.cd.obj.push_error(e);
@@ -327,7 +327,7 @@ impl DssObject for EnergyMeter {
     /// Pascal `DoAction`: Clear → `ResetRegisters`; the others
     /// (Allocate/Reduce/Save/TakeSample/ZoneDump) need the live circuit and are
     /// driven from the executive / later work packages, so they no-op here.
-    fn do_action(&mut self, ordinal: i32, _errors: &mut Vec<String>) {
+    fn do_action(&mut self, ordinal: i32, _errors: &mut crate::diag::ErrorLog) {
         if ordinal == 1 {
             self.reset_registers();
         }
@@ -339,7 +339,7 @@ impl DssObject for EnergyMeter {
         if !self.needs_recalc {
             return;
         }
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.recalc(&mut errors);
         for e in errors {
             self.med.cd.obj.push_error(e);

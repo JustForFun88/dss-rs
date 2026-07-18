@@ -171,7 +171,7 @@ pub(crate) trait InvDispatchEnv {
     /// Pascal's "scan the whole circuit for every Storage".
     fn all_storages(&self) -> Vec<(String, ElemRef, bool)>;
     /// Pascal `DoSimpleMsg` sink (the 14403 named-missing error).
-    fn push_error(&mut self, msg: String);
+    fn push_error(&mut self, diag: crate::diag::DssDiagnostic);
 
     // --- per-DER read ---
     fn der_snap(&self, r: ElemRef) -> DerSnap;
@@ -357,8 +357,9 @@ impl InvControl {
                         FleetFind::Found(r) => self.fleet.push(r),
                         FleetFind::Disabled => {}
                         FleetFind::NotFound => {
-                            env.push_error(format!(
-                                "Error: PVSystem Element \"{entry}\" not found."
+                            env.push_error(crate::diag::DssDiagnostic::msg(
+                                format!("Error: PVSystem Element \"{entry}\" not found."),
+                                Some(14403),
                             ));
                             return false;
                         }
@@ -367,8 +368,9 @@ impl InvControl {
                         FleetFind::Found(r) => self.fleet.push(r),
                         FleetFind::Disabled => {}
                         FleetFind::NotFound => {
-                            env.push_error(format!(
-                                "Error: Storage Element \"{entry}\" not found."
+                            env.push_error(crate::diag::DssDiagnostic::msg(
+                                format!("Error: Storage Element \"{entry}\" not found."),
+                                Some(14403),
                             ));
                             return false;
                         }
@@ -490,10 +492,13 @@ impl InvControl {
                 // resolve to a real bus aborts the solve (#2024112) instead of
                 // silently reading the ground node's zero voltage.
                 if env.mon_bus_unresolved(j) {
-                    env.push_error(format!(
-                        "MonBus.InvControl.{}: Invalid bus \"{}\" found. Aborting.",
-                        self.ccd.cd.obj.name(),
-                        self.mon_buses[j]
+                    env.push_error(crate::diag::DssDiagnostic::msg(
+                        format!(
+                            "MonBus.InvControl.{}: Invalid bus \"{}\" found. Aborting.",
+                            self.ccd.cd.obj.name(),
+                            self.mon_buses[j]
+                        ),
+                        Some(2024112),
                     ));
                     env.request_solution_abort();
                     return 0.0;

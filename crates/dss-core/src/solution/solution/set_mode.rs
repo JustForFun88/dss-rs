@@ -10,7 +10,7 @@ use super::{ADMITTANCE, CONTROLSOFF, SolveMode, TIMEDRIVEN};
 /// can refuse). The caller (the executive) runs the Pascal `Set_Mode` reset
 /// tail afterwards — `MonitorClass.ResetAll`, `EnergyMeterClass.ResetAll`,
 /// `DoResetFaults`, `DoResetControls` (only when this returns `true`).
-pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut Vec<String>) -> bool {
+pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut crate::diag::ErrorLog) -> bool {
     let sol = &mut ckt.solution;
     sol.int_hour = 0;
     sol.t = 0.0;

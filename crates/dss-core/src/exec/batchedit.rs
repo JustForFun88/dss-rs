@@ -142,11 +142,15 @@ impl Dss {
             return; // Do nothing
         }
         let Some(&ci) = self.class_by_name.get(&obj_class.to_ascii_lowercase()) else {
-            // Pascal error 267 (the `%s` is `CRLF + Parser.CmdString`; LF here,
-            // same rendering as error 240 in `get_obj_class_and_name`).
-            self.errors.push(format!(
-                "BatchEdit Command: Object Type \"{obj_class}\" not found. \n{}",
-                self.parser.cmd_string()
+            // Pascal error 267 (ExecHelper.pas:313; the `%s` is
+            // `CRLF + Parser.CmdString`; LF here, same rendering as error 240
+            // in `get_obj_class_and_name`).
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "BatchEdit Command: Object Type \"{obj_class}\" not found. \n{}",
+                    self.parser.cmd_string()
+                ),
+                Some(267),
             ));
             self.last_result = "Elements edited: 0".to_string();
             return;

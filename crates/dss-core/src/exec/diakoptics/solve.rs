@@ -490,7 +490,10 @@ impl Dss {
             }
         };
         if let Err(e) = result {
-            self.errors.push(format!("Error Encountered in Solve: {e}"));
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!("Error Encountered in Solve: {e}"),
+                Some(482),
+            ));
             if let Some(ckt) = self.circuit.as_mut() {
                 ckt.solution.solution_abort = true;
             }

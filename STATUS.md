@@ -197,6 +197,48 @@ Records: `docs/phase-records/test-triage-{promotions,ad-classify,monitor-winding
 - Gate after merges: fmt/clippy clean, `cargo +stable test --workspace` exit 0;
   population.lock consistency re-proven by deliberate regen (no diff).
 
+### DE_PASCALIZE P13 — VCCS delay line → `RingBuf` (wave 2, branch `wt-p1213-v2`)
+
+Stratum **[A]** bit-neutral. The VCCS z-domain filter's two wrap-around
+histories (`z`/`whist`, tapped via the 1-based circular `MapIdx(iu-k+1, fl)` in
+`vccs/dynamics.rs`) become a `RingBuf` type whose `tap()` accessor encapsulates
+the wraparound (calling the unchanged `map_idx`) and whose `Index`/`IndexMut`
+serve the direct head/snapshot access. `y2`/`zlast`/`wlast` stay `Vec` (never
+`MapIdx`-tapped). Same slots, same statement order. Proof: new
+`ringbuf_tap_reproduces_pascal_map_idx_order` unit test (hardcoded `[1,5,4,3,2]`
+tap-order pin + an independent wraparound-range check that every raw index folds
+into a live slot `1..=len`) + the 3 oracle-gated Monitor-mode-3
+dynamics-trajectory tests (`exec::tests::vccs`, waveform + RMS 1φ/3φ) all
+UNCHANGED. Full record: `docs/phase-records/depascalize-p13.md`.
+
+### DE_PASCALIZE P12 — `line_constants` `Vec<Conductor>` (wave 2, branch `wt-p1213-v2`)
+
+Stratum **[A]** bit-neutral. The ~20 parallel per-conductor arrays on
+`LineConstants` collapse into one `cond: Vec<Conductor>`; the 11 cable-only
+arrays become each conductor's `cable: Option<CableData>` (the typed form of the
+Pascal "subclass arrays empty on overhead" trick). Carson/DERI/coaxial kernels
+in `mod.rs`/`cable.rs`/`cn.rs`/`ts.rs` read `cond[i].field` / `cable(i).field` —
+same arithmetic, same order. FPC-compat helpers untouched. Salvaged the
+`origin/wt-p1213` WIP `70cefbb` (mod.rs only, interrupted) by clean cherry-pick,
+completed the remaining mod.rs + all cable/cn/ts sites, folded to one commit.
+Proof (all unchanged): 20 line-constants unit tests, `golden_line_constants`,
+`corpus_gate` checkpoint YPrims. Full record: `docs/phase-records/depascalize-p12.md`.
+
+**Settle (P12+P13 audit dispositions).** Two independent audits (code + tests)
+found the pair faithful and bit-neutral; three low-severity notes settled
+empirically: (1) a corpus-gate `iteration count differs` on `Test/YgD-Test.dss`
+seen once under parallel load, green on an identical re-run — that deck is a bare
+`New Line.Line1` (no geometry/linecode, no VCCS), so it touches neither the P12
+line_constants geometry kernel nor the P13 RingBuf; pre-existing harness/oracle
+parallel-load nondeterminism, NOT a P12/P13 regression, left as-is. (2) The new
+ringbuf unit test's second assertion loop restated `tap`'s own body
+(`tap(idx) == self[map_idx(idx,len)]`) and could never fail — replaced with an
+independent wraparound-range check (`tap` always folds into a live slot
+`1..=len`); the `[1,5,4,3,2]` order pin was and is the real behavioral baseline.
+(3) A "corpus_gate 11 passed" count in a transient audit-evidence message was a
+miscount (the target runs 25 tests) — it never appeared in any committed
+artifact (STATUS §gate already states 25), nothing to fix.
+
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),
@@ -1153,6 +1195,67 @@ by loosening a tolerance:
   The python scripts die in **Phase E** per the brief (out of scope here); the
   orphaned causes are the imported known_diffs class-prose kept as reference for the
   single-channel note cases — retained as documentation, no gating impact.
+
+## 1j. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
+
+`DE_PASCALIZE_PLAN.md` §P5a executed (P5b spans / P5c CLI presentation out of
+scope). One `miette`-based diagnostic type now backs every engine error channel.
+
+- **`crates/dss-core/src/diag.rs`** (new): `DssDiagnostic { message, code:
+  Option<u32>, abort, span, src, help }` with a hand-written `miette::Diagnostic`
+  impl (`code()` → `dss::eNNN`, `severity()` flips on `abort`) + unit tests, per
+  the plan sketch. `miette = { version = "7", default-features = false }` (no
+  `fancy`) in the workspace + dss-core. A small `ErrorLog(Vec<DssDiagnostic>)`
+  newtype with `push(impl Into<DssDiagnostic>)` + `texts()` reduces churn: bare
+  `String`/`&str` pushes stay valid (→ `code: None`), numbered sites push
+  `DssDiagnostic::msg(text, Some(NNN))`. `DssDiagnostic: Deref<str>` so the
+  ubiquitous `errors().iter().any(|e| e.contains(..))` presence checks keep
+  working (text is a display convenience, not the error's identity — the code is).
+- **Central log** flipped: `Dss.errors: ErrorLog`; `Dss::errors() ->
+  &[DssDiagnostic]` + `Dss::error_texts() -> Vec<String>`. **Deferred channel**
+  (`obj/base/mod.rs`) → `Vec<DssDiagnostic>` keeping the separate `deferred_abort`
+  bool so the `exec/command.rs` drain order is byte-for-byte unchanged.
+- **Control-loop trait channels — policy = RETYPE (not wrap-at-sink).** The four
+  `fn push_error(&mut self, msg: String)` points (2 trait decls in
+  `inv_control`/`storage_controller`, their impls in `solution/controls/dispatch.rs`
+  + the two test envs) were retyped to `fn push_error(&mut self, diag:
+  DssDiagnostic)`. Reason: their own doc-comments name "the 14403 named-missing
+  error" — these sinks carry real Pascal codes (14403, 2024112) that wrap-at-sink
+  would drop. Concrete param keeps the traits object-safe (they are used `dyn`).
+- **Error codes** = ONLY Pascal `DoSimpleMsg`/`DoErrorMsg` numbers. Assigned to
+  every push site whose adjacent comment cites one (two `rg` passes incl.
+  multi-line receivers), each verified against `.inputs/dss_capi`, plus a few
+  exact-message matches found incidentally (8877, 99933/99934, 482, 566). ~80
+  sites carry codes; uncited/port-specific messages stay `None` (never invented).
+  NOT done: an exhaustive reverse Pascal lookup of every uncited message
+  (unbounded, mis-assignment-prone) — out of P5a scope.
+- **Settlement pass (audit-code F1/F2/F3, all fixed).** (F1) generator
+  `do_dynamic_mode` phases-else was mis-coded 5672 → corrected to **5671**
+  (generator.pas:1984 — the P5a comment had taken the number from the *different*
+  procedure `InitStateVars`, gen.pas:2357/code 5672, which is ported separately at
+  `init_state_vars_impl`). (F2) `interpret_time_step_size` S2-parse-failure arm
+  (and the empty-string guard, same `'Error in specification of StepSize: %s'`
+  message) was mis-coded 99934 → corrected to **99933** (ExecOptions.pas:335);
+  99934 is a *different* message (units-else, :346) and stays on the units arm.
+  (F3) completed the missed-code sweep — bare-string pushes carrying an
+  unambiguous single Pascal number were coded: 484 (Sampling, Solution.pas:1990),
+  131 (Load-Duration, ExecOptions.pas:484), 283/277 (EnergyMeter disabled/not
+  found, ExecHelper.pas:3157/3160), 718 (WriteClassFile ×2, Utilities.pas:1204),
+  240 (obj=Class.Name, ExecHelper.pas:219), 267 (BatchEdit, ExecHelper.pas:313),
+  721 (overwrite guard, ExecHelper.pas:3713), 567 (user-model missing ×3 —
+  gen/pv/storage). Deliberately left `None`: the three "Error opening file" /
+  "could not be opened" sites (`command.rs` 1657/1663/1680) merge two Pascal
+  branches with *different* codes (615/617, 613/58613, 70401/70501/70502) so no
+  single code is faithful; and the IterNumber/CtrlIterNumber/IntegrationFlag
+  read-only site (`set_cmd.rs`), whose old comment cited a phantom code
+  (25040103) absent from the Pascal source — comment corrected, code stays `None`.
+- **Text consumers re-baselined once:** `Export ErrorLog` now writes `[dss::eNNN]
+  message` (bare message when uncoded); frozen. The only error-log golden
+  (`export_errorlog.txt`) is an empty dump → byte-identical, no regeneration.
+  Numeric goldens untouched (`git status tests/golden` clean). The `#219`
+  show-busflow assert rewritten to `code == Some(219)` + substring.
+- `From<ParserError>`/`SparseError`/`SingularMatrix` for `DssDiagnostic` land in
+  `diag.rs`; the "Error Encountered in Solve: {e}" catch sites carry code 482.
 
 ## 1a. Archived — completed plan records (100% done)
 

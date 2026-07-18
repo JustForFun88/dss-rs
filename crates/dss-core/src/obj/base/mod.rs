@@ -31,7 +31,7 @@ pub struct DssObjData {
     /// `side_effects`/`end_edit` (which run without direct access to the
     /// engine error sink). The executive drains these right after the edit
     /// loop, so the message ordering within a command is preserved.
-    deferred_errors: Vec<String>,
+    deferred_errors: Vec<crate::diag::DssDiagnostic>,
     /// Set alongside a deferred message emitted via [`Self::push_error_abort`]
     /// (the Pascal `DoErrorMsg` path, which sets `DSS.SolutionAbort := True` —
     /// `DSSGlobals.pas:265`), as opposed to [`Self::push_error`] (the
@@ -131,8 +131,9 @@ impl DssObjData {
     }
 
     /// Queue a `DoSimpleMsg`-style message from inside a property hook; the
-    /// executive collects it after the active edit finishes.
-    pub fn push_error(&mut self, msg: impl Into<String>) {
+    /// executive collects it after the active edit finishes. Accepts a bare
+    /// `String`/`&str` (→ `code: None`) or a built [`crate::diag::DssDiagnostic`].
+    pub fn push_error(&mut self, msg: impl Into<crate::diag::DssDiagnostic>) {
         self.deferred_errors.push(msg.into());
     }
 
@@ -141,13 +142,15 @@ impl DssObjData {
     /// `DSS.SolutionAbort := True`, `DSSGlobals.pas:265`; `DoSimpleMsg` does
     /// not). The executive lifts the flag via [`Self::take_abort`] when it
     /// drains the deferred messages after the edit.
-    pub fn push_error_abort(&mut self, msg: impl Into<String>) {
-        self.deferred_errors.push(msg.into());
+    pub fn push_error_abort(&mut self, msg: impl Into<crate::diag::DssDiagnostic>) {
+        let mut diag = msg.into();
+        diag.abort = true;
+        self.deferred_errors.push(diag);
         self.deferred_abort = true;
     }
 
-    /// Drain the queued messages (Pascal would have already logged them).
-    pub fn take_errors(&mut self) -> Vec<String> {
+    /// Drain the queued diagnostics (Pascal would have already logged them).
+    pub fn take_errors(&mut self) -> Vec<crate::diag::DssDiagnostic> {
         std::mem::take(&mut self.deferred_errors)
     }
 
@@ -842,7 +845,7 @@ pub trait DssObject {
     /// `ordinal` (e.g. a LoadShape `Action=normalize` → `Normalize`). The action
     /// runs immediately during the property parse; `errors` collects any
     /// `DoSimpleMsg` (e.g. an unported save action). No-op by default.
-    fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
+    fn do_action(&mut self, ordinal: i32, errors: &mut crate::diag::ErrorLog) {
         let _ = (ordinal, errors);
     }
 
@@ -901,14 +904,19 @@ pub trait DssObject {
     /// Pascal reads the file *inline* at the `mult=` position, so `Normalize`
     /// naturally follows; our deferred read makes it run here instead). Called by
     /// the executive after the file loads and before `end_edit`. Default: no-op.
-    fn run_deferred_actions(&mut self, errors: &mut Vec<String>) {
+    fn run_deferred_actions(&mut self, errors: &mut crate::diag::ErrorLog) {
         let _ = errors;
     }
 
     /// Apply a resolved file's full contents to this object (the data side of a
     /// queued [`FileLoad`]). The object parses `content` per its own format.
     /// Default: ignore.
-    fn apply_file_load(&mut self, load: &FileLoad, content: &str, errors: &mut Vec<String>) {
+    fn apply_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &str,
+        errors: &mut crate::diag::ErrorLog,
+    ) {
         let _ = (load, content, errors);
     }
 
@@ -918,7 +926,7 @@ pub trait DssObject {
         &mut self,
         load: &FileLoad,
         content: &[u8],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         let _ = (load, content, errors);
     }

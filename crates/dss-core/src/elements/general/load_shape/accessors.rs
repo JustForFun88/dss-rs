@@ -221,7 +221,7 @@ impl DssObject for LoadShapeObj {
 
     /// Pascal `StringEnumActionProperty` for `Action` (`TLoadShapeAction`:
     /// Normalize=0, DblSave=1, SngSave=2 — `LoadShape.pas:264-267/326-336`).
-    fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
+    fn do_action(&mut self, ordinal: i32, errors: &mut crate::diag::ErrorLog) {
         match ordinal {
             // Normalize: Pascal runs it inline, right after the (inline) file
             // read. When a file directive is still pending (`mult=(file=…) ln`,
@@ -252,7 +252,7 @@ impl DssObject for LoadShapeObj {
     /// directive resolved (Pascal `Normalize` follows the inline `mult=(file=…)`
     /// read; our deferred read makes it run here, after the executive applied the
     /// file load).
-    fn run_deferred_actions(&mut self, errors: &mut Vec<String>) {
+    fn run_deferred_actions(&mut self, errors: &mut crate::diag::ErrorLog) {
         if std::mem::take(&mut self.pending_normalize) {
             self.normalize(errors);
         }
@@ -267,7 +267,12 @@ impl DssObject for LoadShapeObj {
     /// and record the `mmFileCmd` directive strings (`'file='+FileName`, and
     /// for PQ the overwritten `'file='+FileName+' column=2'`, `LoadShape.pas:
     /// 954-963`; `mmFileCmdQ` is never set for PQ, so QMult dumps `()`).
-    fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
+    fn apply_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &str,
+        _errors: &mut crate::diag::ErrorLog,
+    ) {
         // WPG.19 non-MM `mult=(file=…)`/`hour=(file=…)` directive.
         if let Some(il) = &load.interp {
             self.apply_interp_file(il, content.as_bytes());
@@ -297,7 +302,7 @@ impl DssObject for LoadShapeObj {
         &mut self,
         load: &FileLoad,
         content: &[u8],
-        _errors: &mut Vec<String>,
+        _errors: &mut crate::diag::ErrorLog,
     ) {
         if let Some(mmf) = &load.mmf {
             self.read_mmf_raw(content, mmf.kind, mmf.column, mmf.qside);

@@ -166,7 +166,12 @@ impl DssObject for XyCurveObj {
 
     /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`), then sync the first
     /// point (Pascal `XYcurve.pas:357-361`).
-    fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
+    fn apply_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &str,
+        _errors: &mut crate::diag::ErrorLog,
+    ) {
         if load.prop == CSVFILE {
             self.read_csv_file(content);
             self.sync_first_point();
@@ -179,7 +184,7 @@ impl DssObject for XyCurveObj {
         &mut self,
         load: &FileLoad,
         content: &[u8],
-        _errors: &mut Vec<String>,
+        _errors: &mut crate::diag::ErrorLog,
     ) {
         match load.prop {
             SNGFILE => self.read_sng_file(content),
