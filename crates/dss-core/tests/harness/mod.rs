@@ -1183,7 +1183,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     ("Fuse", "RatedCurrent"),
 ];
 
-fn skip_prop(class: &str, prop: &str) -> bool {
+pub fn skip_prop(class: &str, prop: &str) -> bool {
     SKIP_PROPS
         .iter()
         .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p))

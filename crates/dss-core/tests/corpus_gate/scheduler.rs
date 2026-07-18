@@ -110,6 +110,17 @@ fn make_case(
     abs: String,
     fam_props: bool,
 ) -> UnifiedCase {
+    // Structural guard carried over from the pre-Phase-B family gate
+    // (`family_cases_match_oracle`): `pending` (Rust must error loudly, oracle-free)
+    // and `expect_solve_abort` (both engines must abort the solve) are contradictory
+    // contracts. The classifier below resolves ties pending-first, so without this a
+    // both-flags manifest case would silently skip the stronger abort contract.
+    // Applied to EVERY source here (the old check was family-only) — strictly stronger.
+    assert!(
+        !(c.pending && c.expect_solve_abort.is_some()),
+        "{source}:{}: `pending` and `expect_solve_abort` are mutually exclusive",
+        c.path
+    );
     let class = if c.pending {
         CaseClass::Pending
     } else if c.expect_solve_abort.is_some() {
