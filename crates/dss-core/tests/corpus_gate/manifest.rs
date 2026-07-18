@@ -95,9 +95,11 @@ pub(crate) struct SolvableCase {
     /// / capi_v0145 within a pinned envelope). The value is the Phase-D-ledger
     /// seed cause (mandatory); `wp` names the follow-up. The Rust engine is still
     /// smoke-run (compile + solve, must converge with no new errors) so a Rust
-    /// regression never hides here. Membership is preserved — this NEVER drops a
-    /// case (the population lock records the `defer` flag). Mutually exclusive
-    /// with `pending` / `expect_solve_abort`.
+    /// *convergence/error* regression never hides here — but a *numeric* regression
+    /// that still converges is NOT caught (no physical value is compared; that
+    /// coverage returns with the Phase D ledger). Membership is preserved — this
+    /// NEVER drops a case (the population lock records the `defer` flag). Mutually
+    /// exclusive with `pending` / `expect_solve_abort`.
     #[serde(default)]
     pub(crate) defer_ledger: Option<String>,
     /// Non-fatal warnings this deck's compile deliberately produces, which the

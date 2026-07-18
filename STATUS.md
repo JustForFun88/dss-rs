@@ -803,9 +803,23 @@ Retires the target-rev one-shot Oracle/Oddie shim for the mandatory gate: the
 - **Re-validation (§4/§5 R9) — all 106 r4133 cases gated live against the epri
   bridge.** 95 pass green; **11 deferred** to Phase D (all were `oracle:capi015`,
   the retired 0.15.0b4 line, and reproduce on NEITHER surviving channel — proven by
-  flipping all 11 to `capi_v0145` and re-running: 0.14.5 also diverges). Every
-  `oracle:r4133`/`r3723`/`r4088` case (66) passed unchanged (epri == the outgoing
-  Oddie r4133 bit-for-bit, per the Phase A xcheck).
+  flipping all 11 to `capi_v0145` and re-running: 0.14.5 also diverges). The 99
+  live-gated cases split by their prior pin (base-commit `oracle` counts across
+  the four manifests: capi015 59, r4133 40, r3723 6, r4088 1):
+  - **40 were already `oracle:r4133`** → same revision, same value contract; the
+    only change is the *transport* (in-house `epri-worker` replaces the Oddie
+    one-shot). Phase A cross-validated epri-worker == Oddie **bit-for-bit on the
+    same r4133 DLL** over 396 cases, so these are unchanged by construction.
+  - **6 `oracle:r3723` + 1 `oracle:r4088` + 48 `oracle:capi015`** (55) → a genuine
+    **revision re-pin**: their value contract shifts from "matches r3723/r4088/
+    capi015-0.15.0b4" to "matches r4133". These are NOT covered by the Phase A
+    bit-for-bit proof (that proof is bridge-equivalence for one DLL, not
+    r3723≡r4133 or capi015≡r4133 behavior); the guarantee is the fresh green
+    re-validation that Rust == r4133 for each (D4/D5: r3723/r4088/capi015 retired
+    to r4133 as the single surviving EPRI line). All 55 gated green. Honest re-pins,
+    not no-ops — noted so the revision shift is not mistaken for pure transport.
+  - The remaining **11 capi015** cases could NOT re-pin to r4133 (both channels
+    diverge) → deferred (see below).
 - **`defer_ledger` — the Phase D ledger seam (§4 step c / §5 R9 last resort).** New
   optional field carrying the Phase-D-ledger-seed cause (+ mandatory `wp`, mutually
   exclusive with `pending`/`expect_solve_abort`). A deferred case is parked from live
@@ -848,15 +862,18 @@ modes 69, `.dss` bijection 915.
 --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` all pass
 (dss-core lib 1231 + corpus_gate 25 incl. the 514-case unified gate; 1 pre-existing
 `ckt24_graph_diagnostic` ignored). Corpus gate wall-clock **with the r4133 channel
-active = 64.5 s** (16 jobs, per-channel pool 8; full `cargo test --workspace` 182 s).
-`tests/corpus` pristine after runs (path-limited-cleaned the pre-existing
-CorpusGuard export-CWD pollution, STATUS §1g open follow-up).
+active = 64.5 s** at the Phase-C build; the settle re-run (audit-fix build, same
+machine) measured **67.4 s** for the `corpus_gate` target (main gate test 60+ s).
+`tests/corpus` pristine after runs (path-limited-cleaned 12 pre-existing CorpusGuard
+export-CWD leftovers — StorageControllerTechNote monitor CSVs + AutoTrans txt;
+STATUS §1g open follow-up, not introduced by Phase C).
 
 Wall-clock table row (plan §3.4 / §6):
 
 | point | mode | jobs | pool | corpus gate |
 |---|---|---|---|---|
 | Phase C (r4133 channel active) | persistent-parallel | 16 | 8 (per channel) | 64.5 s |
+| Phase C settle (audit-fix build) | persistent-parallel | default | default | 67.4 s |
 
 **Deviation from plan (justified).** The brief's ladder step (c) said `pending: true
 + wp`, but `pending` structurally asserts the Rust engine ERRORS (unported feature);
@@ -868,7 +885,72 @@ and it adds a Rust-side smoke net `pending` also lacks. Brief header said "76
 re-targeted"; the actual re-targeted (oracle-carrying) population is **106** (the
 brief's own parenthetical sums to 106); all 106 re-validated.
 
----
+### Phase C settle — audit dispositions + empirical deferral proof (2026-07-18)
+
+Two independent audits (audit-code, audit-tests) of `3ad37c8..b89b2d3` returned
+**four low-severity findings**, all about the 11 `defer_ledger` cases. Each settled
+**empirically** against the live r4133 `epri-worker` and the pinned dss-python 0.14.5
+oracle in the worktree (not by argument).
+
+**Re-validation table (106 target-rev cases, by prior pin → r4133 channel):**
+
+| prior `oracle` | count | outcome on r4133 channel |
+|---|---|---|
+| r4133 | 40 | green — transport-only (epri-worker == Oddie bit-for-bit, Phase A) |
+| r3723 | 6 | green — revision re-pin, Rust == r4133 |
+| r4088 | 1 | green — revision re-pin, Rust == r4133 |
+| capi015 | 48 | green — revision re-pin, Rust == r4133 |
+| capi015 | 11 | **deferred** — diverges on BOTH surviving channels (proof below) |
+
+**Empirical both-channels-diverge proof for the 11 deferrals** (settle probes, live):
+- **GFM ×3** (`gfm_micro`/`gfm_invcontrol`/`gfm_dynamics`): on r4133 the worker
+  returns `Storage.batt.%stored` = **"92.4321"** (property getter rounds to 4
+  decimals); capi 0.14.5 and Rust return the full-precision **"92.43206411636…"**.
+  The `micro` tier allows `1e-6 + 1e-9·|v| ≈ 1.09e-6`, but the string gap is
+  **3.59e-5** → the probe genuinely fails on r4133. On capi_v0145 the assembled
+  system-Y differs (B5 Isc1 ×1000, DIVERGENCES.md #b5 — Rust adopted the r4133 Isc1).
+  Both channels diverge. **Why the sibling `pv_gfm_dynamics` gates r4133 GREEN and
+  is NOT deferred** (the audit's specific question): it probes `PVSystem.pv`
+  `irradiance`/`pmpp`/`kva`, which the r4133 worker returns as the stable input
+  strings **"1"/"800"/"800"** (no state-integrated float, no getter rounding) — the
+  distinguishing probe is `%stored`, not the physics, which matches r4133 for all
+  four (Rust uses the r4133 Isc1). Verified with the worker on both decks.
+- **line_spacing_asym ×1**: the r4133 worker **aborts at compile with #303 access
+  violation** (`Error 303 Reported From OpenDSS Intrinsic Function`); capi 0.14.5
+  gives `Line.normamps=230` vs Rust/capi015 730. Both channels diverge (confirmed).
+- **RegControl idle ×1**: capi 0.14.5 **rejects `idle` with #110** ("Unknown
+  parameter idle") — a 0.15 feature; r4133 idle-regulator node V ~7e-5 rel. Both
+  diverge (capi side confirmed live).
+- **NCIM ×4**: capi 0.14.5 has **no NCIM** (`Solution.algorithm` unknown to the 0.14.5
+  API; `Set algorithm=NCIM` ignored) — confirmed; r4133 NCIM converges to a different
+  PV/Q op-point than the Rust NCIM port (WP-U1.7). Both diverge.
+- **DynExp ×2**: capi015 D14 `Exit`-no-op freezes the state-var seed; 0.14.5 swings,
+  r4133 evaluates differently (documented D14, DIVERGENCES.md; STATUS §UPGRADE).
+  Both diverge.
+
+**Audit dispositions:**
+- **C-1 (both audits) — FIXED.** The deferred-smoke doc comment (`runner.rs`) and
+  the `defer_ledger` field doc (`manifest.rs`) overclaimed "a Rust regression can
+  never hide behind the deferral." The smoke asserts only per-step convergence +
+  unchanged error count — it catches a *convergence/error-surfacing* regression but
+  **not** a *numeric-correctness* regression that still converges (no physical value
+  is compared). Both comments reworded to scope the guarantee accurately and note
+  that full numeric coverage returns with the Phase D ledger. No assertion changed.
+- **C-2 (audit-tests) — FIXED.** The re-validation prose conflated bridge-equivalence
+  (epri-worker == Oddie on the *same* r4133 DLL, Phase A) with revision-equivalence.
+  Reworded above to split the 40 transport-only r4133 cases from the 55 genuine
+  revision re-pins (6 r3723 + 1 r4088 + 48 capi015), whose contract shifted to
+  "matches r4133" and rests on the fresh green re-validation, not the bit-for-bit
+  proof.
+- **C-2 (audit-code) — RECORDED, deliberately NOT code-fixed.** `defer_ledger` has no
+  *mechanical* guard that the R9 ladder was exhausted (it enforces cause + `wp` +
+  mutual-exclusion only). A mechanical guard is infeasible in an oracle-free
+  structural test: proving both channels diverge requires running both live oracles,
+  which the structural `manifest.rs` tests deliberately do not. The interim controls
+  are (a) the reviewable population-lock diff (`defer=1` per case), (b) the mandatory
+  documented per-case cause, and (c) — added here — the live both-channels-diverge
+  proof above for all 11. Each deferral is a Phase-D ledger seed; the ledger machinery
+  (envelope/probe carve-out) lands the mechanical re-gate. Recorded, not masked.
 
 ## 1a. Archived — completed plan records (100% done)
 
