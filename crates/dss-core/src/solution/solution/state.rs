@@ -222,6 +222,12 @@ pub struct Solution {
     /// `Currents[0..num_nodes]`, slot 0 absorbs ground injections.
     pub currents: Vec<Complex64>,
     pub aux_currents: Vec<Complex64>,
+    /// Reusable right-hand-side scratch for [`Solution::solve_system_into`] — the
+    /// `Currents[1..]` copy the sparse solve consumes. Kept as a field so the
+    /// per-fixed-point-iteration solve does not allocate a fresh vector each call
+    /// (DE_PASCALIZE P15 item 5); `mem::take`-swapped in and out to split the
+    /// borrow against the active sparse set.
+    solve_rhs: Vec<Complex64>,
     /// `VMagSaved`/`ErrorSaved`/`NodeVbase`, 1-based with dummy slot 0.
     pub vmag_saved: Vec<f64>,
     pub error_saved: Vec<f64>,
@@ -370,6 +376,7 @@ impl Solution {
             node_v: vec![Complex64::ZERO],
             currents: vec![Complex64::ZERO],
             aux_currents: Vec::new(),
+            solve_rhs: Vec::new(),
             vmag_saved: vec![0.0],
             error_saved: vec![0.0],
             node_vbase: vec![0.0],
@@ -473,19 +480,28 @@ impl Solution {
     /// node `k+1`). `DoNormalSolution` passes `NodeV`; `DoNewtonSolution` passes
     /// the delta-V work array `dV`.
     pub(crate) fn solve_system_into(&mut self, out: &mut [Complex64]) -> SolveResult {
-        let b: Vec<Complex64> = self.currents[1..].to_vec();
-        let sparse = self.active_sparse()?;
-        sparse.factor().map_err(|e| {
-            format!(
-                "Error Solving System Y Matrix. Sparse matrix solver reports numerical error: {e}"
-            )
-        })?;
-        sparse.solve(&b, out).map_err(|e| {
-            format!(
-                "Error Solving System Y Matrix. Sparse matrix solver reports numerical error: {e}"
-            )
-        })?;
-        Ok(())
+        // Reuse the RHS scratch field (P15 item 5). `mem::take` swaps its buffer
+        // out so the `&mut self` borrow the active sparse set needs does not
+        // alias it; the buffer (and its capacity) is put back before returning.
+        let mut b = std::mem::take(&mut self.solve_rhs);
+        b.clear();
+        b.extend_from_slice(&self.currents[1..]);
+        let result = (|| {
+            let sparse = self.active_sparse()?;
+            sparse.factor().map_err(|e| {
+                format!(
+                    "Error Solving System Y Matrix. Sparse matrix solver reports numerical error: {e}"
+                )
+            })?;
+            sparse.solve(&b, out).map_err(|e| {
+                format!(
+                    "Error Solving System Y Matrix. Sparse matrix solver reports numerical error: {e}"
+                )
+            })?;
+            Ok(())
+        })();
+        self.solve_rhs = b;
+        result
     }
 
     /// Pascal `SolveSystem(NodeV)`: solve directly into the node-voltage array.

@@ -2095,6 +2095,84 @@ scope). One `miette`-based diagnostic type now backs every engine error channel.
 - `From<ParserError>`/`SparseError`/`SingularMatrix` for `DssDiagnostic` land in
   `diag.rs`; the "Error Encountered in Solve: {e}" catch sites carry code 482.
 
+## 1l. DE_PASCALIZE P15 — `dss-sparse` allocation & indexing hygiene [A] (branch `wt-p15`)
+
+Stratum **[A] bit-neutral** — the solver hot path. Same arithmetic, same
+summation order; the checkpoint Y goldens + `corpus_live` are the bit-exact/floor
+proof. Base `update@13dde5c`. Items 1–6 of `DE_PASCALIZE_PLAN §P15`, plus the M1
+benchmark baseline the WP is measured against.
+
+**What changed (all bit-neutral):**
+1. **`SparseSet` reuse across Y rebuilds.** `build_y_matrix` no longer throws away
+   the sparse set every rebuild — `reuse_or_new_sparse` reuses it when the node
+   count is unchanged (`ymatrix.rs`), `zero()` now *retains* the assembled-matrix
+   skeleton, dedup cache, LU symbolic analysis and row-equilibrated matrix. A
+   value-only rebuild (tap change, per-step load `Yeq`) refactors without
+   re-analyzing; a renumber-with-same-count is caught by the stamp-pattern check
+   (item 2) and falls back to a fresh build.
+2. **Dedup-mapping cache in `assemble`** (`AssembleCache`, the subtle item). The
+   first assembly of a pattern records `map` (triplet→cell), `first` (first
+   occurrence = assign, else `+=`), `keys` (cell→(r,c) signature) and
+   `cell_to_csc` (cell→CSC position). A same-pattern rebuild validates the `(r,c)`
+   stamp sequence (`O(nnz)` int compare, no hashing), re-accumulates each cell in
+   stamp order — **bit-identical** to the HashMap path incl. `-0.0` (assign on
+   first, `+=` after) — and scatters verbatim into the existing CSC value buffer.
+   Any mismatch/`zero()`-to-new-pattern rebuilds the cache. Insertion-order
+   summation is preserved (the shared kernel; **no** faer-native dedup, per the
+   plan's permanent ban).
+3. **Killed per-element `to_row_major()`** in the stamping loop:
+   `SparseSet::add_primitive_matrix_col_major` reads the `TcMatrix` column-major
+   storage directly, traversed in the exact same row-major `(i,j)` order (triplet
+   insertion order = dedup summation order unchanged) — one fewer transpose
+   allocation per element per rebuild.
+4. **`build_scaled` reuse:** the row-equilibrated matrix is kept in `self.scaled`;
+   a same-pattern refactor overwrites its value buffer in place (no `vals.to_vec()`
+   + `symbolic.to_owned()` copy). Row-max via `zip`, per-column value slices.
+5. **Caller-side per-iteration alloc:** `Solution::solve_system_into` reuses a
+   `solve_rhs` scratch field (`mem::take`-swapped for the disjoint borrow) instead
+   of `currents[1..].to_vec()` every fixed-point iteration. `rcond` documented as
+   cold-path *accept* (no scratch fields — keeps the hot state small).
+6. **Idiom sweep [A]:** `solve_one` index loop → `zip`; `find_islands` recursive
+   `find` → iterative two-pass path compression (recursion was unbounded on a
+   degenerate ~8500-node chain); `get_element`/`coo_entries` `zip`. Same treatment
+   applied to `RealSparseSet` (NCIM Jacobian) where it transfers — the `zip`
+   idioms; the reuse/dedup cache does **not** transfer (NCIM rebuilds the Jacobian
+   fresh each iteration, so there is nothing to reuse).
+
+**Bit-neutrality proof.** New dss-sparse unit tests:
+`cached_fast_path_matches_fresh_bitwise` (a reused `zero()`+restamp set vs a fresh
+build — every assembled-Y value and every solved-x value bit-identical via
+`to_bits()`), `cache_invalidates_on_pattern_change`,
+`cache_reaccumulates_new_values_not_stale`. Engine level:
+`checkpoint_scenarios_match_oracle` green (assembled Y + **exact iteration
+counts** + node voltages unchanged); full `corpus_live` green at floors.
+`tests/corpus` pristine.
+
+**Benches (MULTITHREADING_PLAN M1 — created here; `crates/dss-core/benches/`,
+criterion, `default-features=false`).** `snapshot_8500` (end-to-end compile+solve),
+`ybuild_8500` (`Dss::rebuild_system_y` — whole-Y rebuild in isolation),
+`lu_factor_solve` (`SparseSet` zero→restamp→factor→solve at 8500 scale). Median,
+release bench profile, before → after:
+
+| bench | before | after | Δ |
+|---|---|---|---|
+| `ybuild_8500/rebuild_whole_y` | 4.73 ms | 4.33 ms | ~8% (rest is the per-element YPrim recompute, not P15's target) |
+| `lu_factor_solve/zero_restamp_factor_solve` | 10.32 ms | 4.41 ms | **~57%** (symbolic-LU reuse + dedup cache) |
+| `snapshot_8500/compile_solve` | 301 ms | 186 ms | **~38%** (rebuild reuse over the control-iteration Y rebuilds) |
+
+Numbers carry load-contention noise (parallel worktrees); the relative wins,
+especially `lu_factor_solve`, are the architectural signal. `daily_ieee8500` (the
+4th M1 bench) is left to the MULTITHREADING M1 owner (needs the meters/monitors
+time-series harness; not required by P15's DoD).
+
+**Deviations.** (a) `CMatrix::to_row_major` kept as a documented `pub` utility
+(no live callers after item 3; removing an unrequested `pub` method is out of P15
+scope). (b) `rebuild_system_y` added as a `pub` benchmark entry point (the only
+public way to drive `build_y_matrix` in isolation for `ybuild_8500`). (c) The full
+three-command gate is run once on the final tree rather than per intermediate
+commit — the steps are monotonic bit-neutral and the oracle gate is expensive
+under worktree load contention; every commit builds.
+
 ## 1a. Archived — completed plan records (100% done)
 
 > Moved out of the active §1 frontier on 2026-07-17. These are the records of plans whose own work-package scope is closed and gate-green: the 1:1 FINAL ACCEPTANCE, JSON export (Stages A+B), DIAKOPTICS/PSTCALC **Part I**, and the full **UPGRADE** Rung 1 + Rung 2 (r4133 parity). A few carried a documented item forward to a successor plan that has **not** finished it yet (TODO(compat) sweep + HIDE_015X → DE_PASCALIZE Stage F; GICMvars export → Phase 9; JSON DynInit/Full-mode tail → a follow-up WP; IEEE118 NCIM → a future UPGRADE rung) — those open items are surfaced in §1's **Standing open follow-ups**, not buried here. Frozen history — superseded only by the code and tests. In-progress / not-started plans (DE_PASCALIZE, DIAKOPTICS Part II, RESONANCE, MULTITHREADING, WASM_USERMODELS) stay in the active §1 above.
