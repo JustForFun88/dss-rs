@@ -576,6 +576,21 @@ impl LoadShapeObj {
         }
     }
 
+    /// Pascal `TLoadShapeObj.Set_Mean` (`LoadShape.pas:2082`): override the
+    /// stored mean and mark the statistics as computed (`Set %mean=` on the
+    /// default daily shape).
+    pub(crate) fn set_mean(&mut self, value: f64) {
+        self.std_dev_calculated = true;
+        self.f_mean = value;
+    }
+
+    /// Pascal `TLoadShapeObj.Set_StdDev` (`LoadShape.pas:2088`): override the
+    /// stored standard deviation (`Set %stddev=`).
+    pub(crate) fn set_std_dev(&mut self, value: f64) {
+        self.std_dev_calculated = true;
+        self.f_std_dev = value;
+    }
+
     /// Pascal `TLoadShapeObj.ReadCSVFile` (double-precision, non-MMF path): one
     /// row per point, parsed with the comma/whitespace aux parser. For a fixed
     /// interval each row is a single P multiplier; for a variable interval

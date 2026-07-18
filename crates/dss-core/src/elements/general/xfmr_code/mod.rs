@@ -80,7 +80,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // Winding definition (active winding selected by `Wdg=`).
         PropDef::integer("Wdg"),
         PropDef::mapped_string_enum("Conn", enums.connection),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
+        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
         PropDef::double("kVA"),
         PropDef::double("Tap"),
         PropDef::double("%R").scale(pct),

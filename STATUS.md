@@ -7,6 +7,111 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### OG-1.4 AltDSS JSON import `Circuit_FromJSON` (orphaned-gaps round, 2026-07-18)
+
+Ported the whole-circuit AltDSS JSON **reader** — the inverse of the JSON export —
+on `og14-json-import` (branch based `883a656`). Closes `ORPHANED_GAPS.md` §1.4.
+
+- **What:** `Dss::circuit_from_json(&mut self, json) -> Result<(),String>`
+  (`exec/json_import.rs`) — a loop-for-loop port of `Obj_Circuit_FromJSON_` +
+  `loadClassFromJSON` + `busFromJSON` (`CAPI_Obj.pas:2674-2983`), wrapped like
+  `Circuit_FromJSON` (`CAPI_Circuit.pas`). Clear → DefaultBaseFreq → MakeNewCircuit
+  → PreCommands → per-class load (`PASCAL_CLASS_ORDER`) → ReprocessBusDefs → Bus
+  coords → PostCommands. Property application is `ClassProps::fill_from_json` /
+  `set_json_value` (`obj/props/class_props/json_set.rs`), the port of
+  `FillObjFromJSON` / `SetObjPropertyJSONValue`: walks the new **`AltPropertyOrder`**
+  (`class_props/mod.rs`, driven by two new flags `ORDERING_FIRST`/`ORDERING_LAST`
+  on LoadShape.MemoryMapping / Line.Switch / Transformer.XfmrCode / Load.PF),
+  redirects the `array_alternative` (singular per-winding key → plural array),
+  drives the typed struct setters for `ON_ARRAY` scalars, and renders every other
+  type to the string its existing `edit_property` parse path reads (a scalar
+  double round-trips bit-exactly via `f64::from_str`). A hand-rolled `parse_json`
+  (`report/export/json/read.rs`) is the text→`Json` front (no serde_json, same
+  reason as the writers).
+- **Why the re-export differs from J0:** the imported set-order becomes
+  `AltPropertyOrder` (not the original deck order), so `export(J0) != export(import(J0))`
+  in general — but the oracle round trip is **idempotent after one cycle**
+  (J1 == J2). The test therefore imports the oracle's J0 and requires the re-export
+  to equal the oracle's own re-export **J1 byte-for-byte** (oracle `Circuit_FromJSON`
+  is reachable on the pin), plus idempotency. Goldens `tests/golden/json_import/`
+  (`rt_micro` / `rt_transformer` / `rt_ieee13`), generator `tools/golden/gen_json_import.py`,
+  driver `tests/golden_json_import.rs` (+ negative tests: malformed/non-object/
+  unknown-class/unknown-prop/missing-Name).
+- **Bugs found + fixed in-scope (all gate-green):**
+  1. **Transformer constructor `SetAsNextSeq(XHL)`** (`Transformer.pas:848`) was
+     not reproduced — so a JSON-imported `X12` (or any never-edited transformer)
+     rendered its impedance at the wrong set-order position. Added; the low-seq
+     redundant `XHL` defers to canonical `X12`, so `X12` renders first. Safe for
+     existing goldens (an explicit `xhl=` overwrites the seq).
+  2. **Transformer `set_struct_f64_array`/`set_struct_i32_array`** only handled the
+     plural array props (kVs/kVAs/…); extended to the `ON_ARRAY` per-winding
+     scalars (RNeut/XNeut/MaxTap/MinTap/RDCOhms/NumTaps) for JSON import.
+     `RDCOhms` deliberately leaves `RdcSpecified` to the side effect (marks only
+     the *active/last* winding), so winding-1 Rdc is derived at recalc — matching
+     the oracle round trip 1:1.
+  3. **`add_object` split** into `create_object_no_edit` + `edit_active` so JSON
+     import creates an element without the empty pre-fill recalc (a RegControl's
+     `RecalcElementData` errors "transformer not set" if run before `FillObjFromJSON`
+     applies the ref). Pascal `obj_NewFromClass` does the same.
+  4. **`Set` command gaps** the export's PostCommands emit but the executive
+     lacked: `%mean`/`%stddev` (default daily shape Set_Mean/Set_StdDev) and
+     `genmult` (GenMultiplier). Ported (`set_cmd.rs`, `tables.rs`, LoadShape
+     `set_mean`/`set_std_dev`).
+- **Deferred (recorded):** the `DynInit` tail of `FillObjFromJSON` (ORPHANED_GAPS
+  §1.2, Generator/PVSystem/Storage `DynamicExp` init) — mirrors the export-side
+  `DynInit` deferral; not exercised by any covered deck. The public wrapper takes
+  no `joptions` (only the import-internal `DSSJSONOptions.Edit` bit matters and it
+  is applied internally).
+- **Gate:** fmt + clippy clean; `cargo test --workspace` green (all 27 live-corpus
+  cases match the oracle — the transformer/add_object changes cause no divergence).
+  NOTE: the worktree lacks the Oddie `tools/opendss/.venv` junction (4 corpus cases
+  need it); run with `DSS_OPENDSS_PYTHON` pointing at main's venv, else those cases
+  abort on setup (environment, not a code failure).
+
+### OG-1.4 AltDSS JSON import — settle/fix round (2026-07-18)
+
+Settled two independent read-only audits of `og14-json-import`. Fixes (all
+oracle-probed, gate-green):
+
+- **`Required`-property validation (major, AUDIT-CODE):** ported the missing
+  `FillObjFromJSON` branch (`DSSObjectHelper.pas:4955`) — a missing `[Required]`
+  key now raises `JSON/<cls>/<name>: required property not provided: "<prop>"` and
+  aborts the load instead of silently importing an incomplete element. Added the
+  `PropFlags::REQUIRED` bit (absent before — only `RequiredInSpecSet` existed) and
+  the check in `class_props/json_set.rs`, then flagged the ~38 **non-redundant**
+  Pascal-`Required` props across 28 element tables (bus1/bus2, kV, per-winding
+  Bus, MonitoredObj/Element/transformer/capacitor refs, Sensor element+kvbase,
+  DynamicExp Expression, XfmrCode kV, VSource bus1+basekV). Redundant twins
+  (`buses`/`kVs`) are dropped from `AltPropertyOrder`, so only the exported keys
+  are checked — round-trip goldens stay green. Oracle-confirmed the exact message
+  on dss-python 0.15.7.
+- **Edited default DSS_OBJECT re-exported (major, AUDIT-TESTS):** `fill_active_from_json`
+  called `set_default_and_unedited(false)`, but Pascal `FillObjFromJSON` never
+  `BeginEdit`s (only `EndEdit`), so it never clears `DefaultAndUnedited`. Removed
+  the clear — a JSON-imported default (e.g. `spectrum.defaultload`) now stays
+  flagged and is dropped from the re-export, matching the oracle (whose own round
+  trip is lossy for edited defaults: J0 2328 B → J1 1458 B). New golden
+  `rt_edited_default` pins it.
+- **`busFromJSON` kVLN+kVLL conflict now aborts (minor, AUDIT-CODE/TESTS):**
+  `bus_from_json` returns `Result`; the conflict propagates as `Err` (oracle
+  aborts the whole load, error 20230919) instead of logging-and-continuing.
+- **Test coverage (AUDIT-TESTS):** restored the two dropped whole-circuit decks as
+  import goldens (`rt_positive_seq` = allowduplicates + cktmodel=positive;
+  `rt_edited_default`) and added `rt_generator` (Thevenin-DER). Tightened the
+  `unknown_class`/`missing_name` negatives to assert the positive/abort outcome,
+  and added `missing_required_property_errors` + `bus_kvln_kvll_conflict_aborts`.
+- **Rejected — DuplicatesAllowed (AUDIT-CODE, disproven):** `create_object_no_edit`
+  already honors it (`command.rs:987`, gated on `!duplicates_allowed`, not
+  unconditional as the audit read). Probe: oracle round trip of two duplicate
+  `load.l1` under `AllowDuplicates` → Rust import re-export **byte-identical** to
+  the oracle J1 (2 loads each).
+- **Deferred (recorded follow-up) — numeric-array length validation (minor,
+  AUDIT-CODE):** Pascal `SetObjPropertyJSONValue` rejects wrong-length int/double/
+  complex/sym-matrix arrays (`Expected an array of %d …`); the Rust renders to a
+  string and reparses without the `Norder` count check. Malformed-hand-authored-
+  input only (round-trip exports are always correct length). Left for a follow-up;
+  needs the per-type expected-count machinery in `set_json_value`.
+
 Last updated: 2026-07-17 (late evening) — **STATUS RESTRUCTURED + PLAN-COMPLETION AUDIT.** All 16 plan docs were re-verified against the codebase; the records of the *completed* plans (FINAL ACCEPTANCE, JSON export, DIAKOPTICS Part I, UPGRADE Rung 1+2) moved to the new **§1a archive**, and every item those plans handed to a still-unfinished successor is now explicit in **§Standing open follow-ups**. Prior same-day — **TEST-TRIAGE ROUND MERGED** (user-ordered
 backlog burn-down; six parallel worktree WPs, each gate-green + audited/verified,
 merged wt-t1→t2→t3→t4→t6; DE_PASCALIZE is PAUSED by user order after wave 1 —
@@ -460,6 +565,30 @@ half of §1.3.
   WindGen IS a `TDynEqPCE`); it embeds a real `dyneq` field, so emitting DynInit
   is internally consistent. Cannot appear in any oracle golden/live compare, so
   untestable and harmless — kept for sibling consistency (Generator/PVSystem/Storage).
+
+**Audit-settle round 2 (2026-07-18, post-merge on `update`).** Two further
+read-only audits returned findings; most were already remediated in-branch by
+38a5e67 (the pre-solve Full WdgCurrents no-op and the DynInit dedup — both re-flagged
+against the `afd8853` HEAD, RESOLVED above). One material gap survived and is fixed:
+- **[FIXED — major] AutoTrans `WdgCurrents` getter never verified nonzero.** The
+  §1.3 deliverable names *both* Transformer AND AutoTrans WdgCurrents. Transformer
+  is pinned nonzero by `transformer_solved`, but AutoTrans has its OWN distinct
+  series/common/delta getter (`TAutoTransObj.GetAllWindingCurrents`,
+  `auto_trans/yterminal.rs`), and every AutoTrans WdgCurrents golden was pre-solve
+  all-zeros — indistinguishable from a broken refresh. Added props scenario
+  **`autotrans_solved`** (`gen_props.py`): a solved 3-winding YNad1 auto (Series/
+  Common/Delta-tertiary, unit from corpus `autotrans_snap.dss` t1) fed on the series
+  winding, loads on the 161 kV common + 13.8 kV tertiary. The `?`-query path hits
+  `refresh_vterminal_if_marked` (`command.rs:1107`) → reloads Vterminal → runs the
+  auto's own getter. `props_roundtrip` now pins `WdgCurrents` NONZERO
+  (`549.4296, (-31.051), …`) vs the pinned 0.15.7 oracle; Rust matches numerically.
+  A broken refresh would emit all-zeros and fail. Closes the last un-verified §1.3
+  getter. (JSON-Full AutoTrans golden stays blocked by the plural/singular metadata
+  follow-up below; the props route needs no JSON metadata and closes the gap.)
+- **[deferred — minor] DynInit tail not gated under Full mode.** `dyneq_micro` is
+  `skip_full` (blocked by the ShaftModel/ShaftData NOT_PORTED Full-render gap,
+  already a follow-up). The DynInit append is sweep-independent code fully exercised
+  by the default sweep, so residual risk is low; kept as-is. Recorded, not dropped.
 
 ---
 

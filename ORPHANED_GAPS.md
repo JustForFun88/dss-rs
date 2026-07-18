@@ -36,10 +36,11 @@ AutoTrans Full golden and a Generator/Storage Full golden are recorded in STATUS
 Standing follow-ups (AutoTrans JSON array-alt metadata; NOT_PORTED ShaftModel).
 
 ### 1.4 AltDSS JSON **import** (`Obj_Circuit_FromJSON_`)
-- **Deferred by:** JSON_EXPORT_PLAN §6 (out-of-scope sibling — export only was in scope).
-- **Spec:** `CAPI_Obj.pas:2674-end` (whole-circuit JSON → object graph).
-- **Current state:** not implemented; no import surface exists.
-- **To do:** port the JSON reader (mirrors the §1.2-1.4 export renderer inversely). **Priority: medium** (the GUI the JSON export was built for may need round-trip). Sizeable WP.
+**PORTED 2026-07-18** on `og14-json-import` — see STATUS §OG-1.4. `Dss::circuit_from_json`
+(+ hand-rolled `parse_json`, `ClassProps::fill_from_json`/`set_json_value`,
+`AltPropertyOrder`); oracle-backed byte round-trip goldens (rt_micro / rt_transformer /
+rt_ieee13) via `Circuit_FromJSON` reachable on the pin. `DynInit` tail (§1.2) still
+deferred.
 
 ### 1.5 `CAPI_Schema` JSON schema export
 - **STATIC CORE PORTED 2026-07-18** on `og15-capi-schema` — see STATUS §OG-1.5.
