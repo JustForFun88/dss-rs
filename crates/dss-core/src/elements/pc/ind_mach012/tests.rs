@@ -73,7 +73,7 @@ fn dynamics_loadshapeclass_selects_matching_curve() {
         let mut obj = LoadShapeObj::new("s");
         let mut parser = Parser::new();
         let vars = ParserVars::new();
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         for (name, value) in [("npts", "4"), ("interval", "1"), ("mult", mult)] {
             let idx = cls.property_index(name).expect("known property");
             let mut eng = PropEngine {

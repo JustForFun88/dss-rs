@@ -301,9 +301,12 @@ impl Fuse {
             if self.ccd.cd.nphases > FUSEMAXDIM {
                 // Pascal `fuse.pas` DoSimpleMsg 404 (a warning; the per-phase
                 // arrays are FUSEMAXDIM-capped — see `fuse_state_size`).
-                self.ccd.cd.obj.push_error(format!(
-                    "Warning: Fuse {}: Number of phases > Max fuse dimension.",
-                    self.ccd.cd.obj.name()
+                self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                    format!(
+                        "Warning: Fuse {}: Number of phases > Max fuse dimension.",
+                        self.ccd.cd.obj.name()
+                    ),
+                    Some(404),
                 ));
             }
             if self.monitored_element_terminal > mon.nterms as i32 {
@@ -325,9 +328,12 @@ impl Fuse {
 
         if self.ccd.controlled_element.is_none() {
             // Pascal DoErrorMsg 405.
-            self.ccd.cd.obj.push_error(format!(
+            self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
                 "Fuse: \"{}\": CktElement for SwitchedObj is not set. Element must be defined previously. (Error 405)",
                 self.ccd.cd.obj.name()
+                ),
+                Some(405),
             ));
             return;
         }

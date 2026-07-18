@@ -70,7 +70,7 @@ impl CktElement for MockSwitch {
 struct Scratch {
     queue: ControlQueue,
     events: EventLog,
-    errors: Vec<String>,
+    errors: crate::diag::ErrorLog,
     y_changed: bool,
     sys: SysCtx,
 }
@@ -79,7 +79,7 @@ impl Scratch {
         Self {
             queue: ControlQueue::new(),
             events: EventLog::new(),
-            errors: Vec::new(),
+            errors: crate::diag::ErrorLog::new(),
             y_changed: false,
             sys: test_sys(),
         }

@@ -5,11 +5,15 @@ use dss_parser::{Parser, ParserVars};
 
 /// Apply `edits` to `obj` through the property engine and return all
 /// errors (engine + deferred side-effect errors), like the executive does.
-fn apply(cls: &ClassProps, obj: &mut dyn DssObject, edits: &[(&str, &str)]) -> Vec<String> {
+fn apply(
+    cls: &ClassProps,
+    obj: &mut dyn DssObject,
+    edits: &[(&str, &str)],
+) -> crate::diag::ErrorLog {
     let enums = EnumRegistry::new();
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {

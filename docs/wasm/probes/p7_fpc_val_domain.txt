@@ -1,0 +1,73 @@
+# P7 — FPC 3.2.2 `Val(string, Double, code)` accepted domain
+# (settlement probe for audit finding WM-AUD-2, 2026-07-19)
+#
+# Question: does the fixture parser's `dbl_value` (`tools/wasm_usermodel/
+# models/indmach012a/src/parser.rs`, `s.trim().parse::<f64>()`) accept a wider
+# domain than the spec path, Pascal `TParser.MakeDouble` -> `Val`
+# (IndMach012a/ParserDel.pas:578-596, unquoted tokens)?
+# The finding's premise was that FPC `Val` rejects 'inf'/'NaN' and
+# whitespace-padded tokens (EParserProblem crash class).
+#
+# Toolchain: FPC 3.2.2 ppcrossx64 (C:\FPC\3.2.2\bin\i386-Win32\ppcrossx64.exe),
+# x86_64-win64 console exe, -O2 (same compiler that builds the native twin).
+#
+# Probe program (val_probe.pas):
+#
+#   program val_probe;
+#   {$MODE DELPHI}
+#   procedure Probe(const s: string);
+#   var d: Double; code: Integer;
+#   begin
+#     Val(s, d, code);
+#     if code = 0 then WriteLn('Val("', s, '") -> OK  value=', d)
+#     else WriteLn('Val("', s, '") -> ERROR at code=', code);
+#   end;
+#   begin
+#     Probe('1.5'); Probe(' 1.5'); Probe('1.5 '); Probe(#9'1.5');
+#     Probe('inf'); Probe('Inf'); Probe('INF'); Probe('+Inf'); Probe('-inf');
+#     Probe('nan'); Probe('NaN'); Probe('infinity'); Probe('1e999');
+#     Probe('0x10'); Probe('$10'); Probe('1.5e'); Probe('');
+#   end.
+#
+# Output (verbatim):
+
+Val("1.5") -> OK  value= 1.5000000000000000E+000
+Val(" 1.5") -> OK  value= 1.5000000000000000E+000
+Val("1.5 ") -> ERROR at code=4
+Val("	1.5") -> ERROR at code=1
+Val("inf") -> OK  value=                    +Inf
+Val("Inf") -> OK  value=                    +Inf
+Val("INF") -> OK  value=                    +Inf
+Val("+Inf") -> OK  value=                    +Inf
+Val("-inf") -> OK  value=                    -Inf
+Val("nan") -> OK  value=                     Nan
+Val("NaN") -> OK  value=                     Nan
+Val("infinity") -> ERROR at code=1
+Val("1e999") -> OK  value=                    +Inf
+Val("0x10") -> ERROR at code=2
+Val("$10") -> ERROR at code=1
+Val("1.5e") -> ERROR at code=5
+Val("") -> ERROR at code=1
+
+# Conclusion:
+# - FPC `Val` ACCEPTS 'inf'/'nan' in any case and leading SPACES, exactly like
+#   Rust `str::parse::<f64>()` — the finding's premise is disproven for those
+#   spellings; the fixture matches the spec there.
+# - Residual Rust-wider domain: 'infinity', trailing whitespace, tab padding
+#   (Rust `trim` + parse accepts; FPC `Val` errors). Reachability: the
+#   tokenizer (`GetToken` port) never yields whitespace-padded unquoted
+#   tokens (whitespace is a delimiter), quoted tokens go through the RPN
+#   branch upstream (whose own tokenizer skips whitespace — trim matches it),
+#   and no deck or twin scenario feeds the 'infinity' spelling. Divergence
+#   class on genuinely bad tokens is identical on both sides (deterministic
+#   panic/trap vs EParserProblem crash class).
+# - Disposition: deliberately NOT changed — fixing an unreachable cosmetic
+#   delta would force a fixture re-pin with zero behavioral coverage
+#   (plan §2.9-4: fixtures never regenerate to make a step pass).
+# - The fixture SOURCE is untouched too, and is effectively hash-frozen with
+#   the artifact: even a comment-only edit to parser.rs shifts the panic
+#   `core::panic::Location` line numbers embedded in the .wasm and changes
+#   the built hash (verified empirically during settlement: pristine source
+#   rebuild = the pinned 1849db0c...9b0ebd; a +10-line doc-comment edit =
+#   7da8ee46...8ade4). Source-level notes about the fixture therefore live
+#   here and in STATUS.md, not in the crate source.

@@ -15,7 +15,7 @@ pub struct PropEngine<'a> {
     pub parser: &'a mut Parser,
     pub vars: &'a ParserVars,
     pub enums: &'a EnumRegistry,
-    pub errors: &'a mut Vec<String>,
+    pub errors: &'a mut crate::diag::ErrorLog,
     /// Read view of every class except the one being edited, alive for the
     /// duration of an edit so `ObjectRef` properties can resolve immediately
     /// (Pascal resolves `cls.Find` mid-`Edit`; see [`ForeignClassesView`]).

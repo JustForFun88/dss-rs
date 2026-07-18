@@ -40,7 +40,7 @@ fn distribute_refuses_to_overwrite() {
     assert_eq!(dss.result(), "DistGenerators.dss");
     dss.command("distribute kw=100");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         &["File \"DistGenerators.dss\" was about to be overwritten. \
              Rename/remove the existing file and try again."
             .to_string()]
@@ -91,7 +91,7 @@ fn uuids_missing_file_errors_242() {
     let mut dss = distrib_fixture();
     dss.command("uuids file=no_such_uuids.csv");
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         &["UUIDs file: no_such_uuids.csv does not exist".to_string()]
     );
 }
@@ -152,7 +152,7 @@ fn uuids_malformed_uuid_on_existing_object_aborts_303() {
     // CRLF renders LF (the errors-240/267 convention); the trailing space
     // after the command comes from `SetCmdString`.
     assert_eq!(
-        dss.errors(),
+        dss.error_texts(),
         &[format!(
             "Error 303 Reported From OpenDSS Intrinsic Function: \n\
              ProcessCommand: Exception Raised While Processing DSS Command: \n\

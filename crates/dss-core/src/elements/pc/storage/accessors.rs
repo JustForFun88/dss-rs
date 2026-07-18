@@ -36,9 +36,12 @@ impl Storage {
             return; // Pascal Set_Name `Exit` on blank / 'none'
         }
         let full = format!("Storage.{}", self.cd.obj.name());
-        self.cd.obj.push_error(format!(
-            "Storage User-written Dynamics Model \"{name}\" Not Loaded (user-written model DLL \
-             loading is out of scope in safe Rust). {full} falls back to its built-in model."
+        self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+            format!(
+                "Storage User-written Dynamics Model \"{name}\" Not Loaded (user-written model DLL \
+                 loading is out of scope in safe Rust). {full} falls back to its built-in model."
+            ),
+            Some(1570),
         ));
     }
 
@@ -215,7 +218,7 @@ impl CktElement for Storage {
                 *ctx.system_y_changed = true;
             }
         }
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
@@ -244,7 +247,7 @@ impl CktElement for Storage {
             && !self.storage_obj_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {
-            let mut errors = Vec::new();
+            let mut errors = crate::diag::ErrorLog::new();
             self.calc_storage_model_contribution(sys, node_v, &mut errors);
         }
         if self.base.gfm_mode {

@@ -105,6 +105,17 @@ Dependencies: `num-complex`, `faer` (dss-sparse only), `thiserror`, `serde`/`ser
 (golden tests/exports), `csv`; dev: `proptest`, `criterion`. `#![forbid(unsafe_code)]`
 in every crate. `src/lazutf8` is irrelevant (Rust strings are UTF-8 natively).
 
+> **Scope of the `#![forbid(unsafe_code)]` rule — product crates only.** The rule
+> binds every *product* crate (`dss-core`, `dss-parser`, `dss-sparse`, `dss-cli`,
+> `dss-metis`): the shipped engine is pure safe Rust with no C bindings, ever. The
+> single exception is `crates/dss-epri` (UNIFIED_GATE_PLAN.md §2, Phase A) — a
+> `publish = false`, **test-only** crate that drives the official EPRI
+> `OpenDSSDirect.dll` (r4133) as a second live oracle over `libloading`. It cannot
+> be safe (reading a foreign C DLL is inherently `unsafe`), so in place of
+> `forbid` it carries `#![deny(unsafe_op_in_unsafe_fn)]`, `#[cfg(windows)]` gating,
+> and module-level `// SAFETY` docs on every FFI boundary; `cargo clippy
+> --workspace -- -D warnings` covers it. It ships in no product artifact.
+
 ## 2. Core Design Patterns (load-bearing decisions)
 
 ### 2.1 Class hierarchy → composition + traits + typed `Vec` arenas

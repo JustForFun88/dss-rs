@@ -1,0 +1,21 @@
+# dss-usermodel — the WASM user-model host (WASM_USERMODELS_PLAN §2.1).
+# Pure-Rust wasmi behind a GenUserModel-shaped API; the dss-sparse pattern
+# (pure-Rust dep behind a Pascal-shaped surface). Leaf crate: no dss-core.
+[package]
+name = "dss-usermodel"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+wasmi.workspace = true
+num-complex.workspace = true
+# Tier-C callbacks own an AuxParser (plan §2.3): the ported DSS parser is a
+# value type, fully usable with no engine access.
+dss-parser = { path = "../dss-parser" }
+
+[dev-dependencies]
+# Inline-WAT guests for the channel-2 protocol tests (plan §2.5).
+wat = "1"
+# SHA-256 for the fixture hash-vs-PIN scaffold (plan §2.6); pure Rust.
+sha2 = "0.10"

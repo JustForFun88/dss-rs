@@ -381,9 +381,12 @@ impl Generator {
             return; // Pascal Set_Name `Exit` on blank / 'none'
         }
         let full = format!("Generator.{}", self.cd.obj.name());
-        self.cd.obj.push_error(format!(
-            "Generator User Model {name} Not Loaded (user-written model DLL loading is out of \
-             scope in safe Rust). {full} falls back to its built-in model."
+        self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+            format!(
+                "Generator User Model {name} Not Loaded (user-written model DLL loading is out of \
+                 scope in safe Rust). {full} falls back to its built-in model."
+            ),
+            Some(570),
         ));
     }
 

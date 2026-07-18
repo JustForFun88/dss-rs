@@ -78,12 +78,18 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         // other mode is ported, so this arm is defensive-only; it keeps the
         // Pascal-exact `TSolutionObj.Solve` else-branch error (#481).
         SolveMode::AutoAdd => {
-            env.errors.push("Unknown solution mode.".to_string());
+            env.errors.push(crate::diag::DssDiagnostic::msg(
+                "Unknown solution mode.",
+                Some(481),
+            ));
             Ok(())
         }
     };
     if let Err(e) = &result {
-        env.errors.push(format!("Error Encountered in Solve: {e}"));
+        env.errors.push(crate::diag::DssDiagnostic::msg(
+            format!("Error Encountered in Solve: {e}"),
+            Some(482),
+        ));
         ckt.solution.solution_abort = true;
     }
     Ok(())

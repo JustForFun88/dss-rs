@@ -3,11 +3,15 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
 
-fn apply(cls: &ClassProps, obj: &mut dyn DssObject, edits: &[(&str, &str)]) -> Vec<String> {
+fn apply(
+    cls: &ClassProps,
+    obj: &mut dyn DssObject,
+    edits: &[(&str, &str)],
+) -> crate::diag::ErrorLog {
     let enums = EnumRegistry::new();
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {

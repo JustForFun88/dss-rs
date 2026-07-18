@@ -32,7 +32,7 @@ pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv)
     // subsequent `solve_dynamic` skips its steps instead of running the model
     // on a malformed terminal (which would over-read the terminal array).
     let mut aborted = false;
-    let mut errs: Vec<String> = Vec::new();
+    let mut errs = crate::diag::ErrorLog::new();
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
         if elem.cd().enabled {

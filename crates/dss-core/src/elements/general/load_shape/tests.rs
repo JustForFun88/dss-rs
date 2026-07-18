@@ -4,13 +4,13 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
 
-fn edited(edits: &[(&str, &str)]) -> (ClassProps, LoadShapeObj, Vec<String>) {
+fn edited(edits: &[(&str, &str)]) -> (ClassProps, LoadShapeObj, crate::diag::ErrorLog) {
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut obj = LoadShapeObj::new("d");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
@@ -759,7 +759,7 @@ fn action_save_mmf_queues_eager_read_values() {
         false,
     );
     obj.read_mmf_raw(&sng_bytes(&[0.1, 0.2, 0.3, 0.4]), MmfKind::Float32, 1, true);
-    let mut errs = Vec::new();
+    let mut errs = crate::diag::ErrorLog::new();
     obj.queue_shape_save(true, &mut errs);
     assert!(errs.is_empty(), "MMF save must not error: {errs:?}");
     let saves = obj.take_shape_saves();
@@ -788,7 +788,7 @@ fn action_save_mmf_queues_eager_read_values() {
         1,
         false,
     );
-    let mut errs = Vec::new();
+    let mut errs = crate::diag::ErrorLog::new();
     obj.queue_shape_save(false, &mut errs);
     assert!(errs.is_empty(), "{errs:?}");
     let saves = obj.take_shape_saves();

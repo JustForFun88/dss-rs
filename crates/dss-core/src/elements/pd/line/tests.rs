@@ -33,7 +33,7 @@ fn scalar(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, value: &str) {
     let enums = EnumRegistry::new();
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     let idx = cls.property_index(name).expect("known property");
     let mut eng = PropEngine {
         parser: &mut parser,
@@ -335,7 +335,7 @@ fn try_ref_array(
     obj: &mut dyn DssObject,
     name: &str,
     targets: &[&dyn DssObject],
-) -> Vec<String> {
+) -> crate::diag::ErrorLog {
     let idx = cls.property_index(name).expect("known property");
     let refs: Vec<crate::obj::base::ObjectRefArrayItem> = targets
         .iter()
@@ -344,7 +344,7 @@ fn try_ref_array(
     obj.set_object_ref_array(idx, &refs);
     obj.data_mut().set_as_next_seq(idx);
     obj.side_effects(idx, 0);
-    obj.data_mut().take_errors()
+    obj.data_mut().take_errors().into()
 }
 
 /// Assert two 3×3 complex matrices match entry-by-entry, plus a hardcoded oracle

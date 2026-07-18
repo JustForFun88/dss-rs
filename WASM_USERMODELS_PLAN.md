@@ -638,6 +638,9 @@ all §1.1 Generator call sites.
    `rg "TODO\(WM\)"` → zero; every callback slot accounted for in the ABI doc.
 2. Full gate + the goldens + the hash-vs-PIN test; re-verify the five
    `expect_warnings` decks byte-identical manifests (git diff proof in the record).
+   Also re-run the workspace-excluded fixture crates' `twin_parity` suites +
+   their fmt/clippy — they are outside the repo gate by design (§2.6), so the
+   exit sweep is their scheduled re-verification (audit WM-T1, 2026-07-19).
 3. `DSS_LIVE_CLASSIFY=1` pass — confirm no corpus deck changes classification
    (expected: none — no vendored deck ships a `.wasm`); `COVERAGE.md` note.
 4. Docs: STATUS §WASM-UM record finalized; `PORTING_PLAN.md` "never (DLLs)" lines

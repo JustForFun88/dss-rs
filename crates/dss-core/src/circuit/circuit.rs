@@ -627,7 +627,7 @@ impl Circuit {
         elem: &mut dyn CktElement,
         parser: &mut Parser,
         vars: &ParserVars,
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         let np = elem.cd().nphases;
         let ncond = elem.cd().nconds;
@@ -649,7 +649,7 @@ impl Circuit {
             let (bus_name, node_nums) = match parser.parse_as_bus_name(&current_bus, vars) {
                 Ok(v) => v,
                 Err(e) => {
-                    errors.push(e.message().to_string());
+                    errors.push(e);
                     continue;
                 }
             };
@@ -716,7 +716,7 @@ impl Circuit {
         store: &mut dyn ElemStore,
         parser: &mut Parser,
         vars: &ParserVars,
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         // Pascal `ReprocessBusDefs` (Circuit.pas l.2168): log under LogEvents.
         self.log_this_event("Reprocessing Bus Definitions");

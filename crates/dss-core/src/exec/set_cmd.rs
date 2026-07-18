@@ -30,7 +30,7 @@ fn apply_data_path(
     param: &str,
     current_dir: &mut PathBuf,
     output_directory: &mut PathBuf,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     if param.is_empty() {
         return;
@@ -208,7 +208,7 @@ impl Dss {
                                 ckt.solution.t = buf[1];
                                 ckt.solution.update_dbl_hour();
                             }
-                            Err(e) => errors.push(e.message().to_string()),
+                            Err(e) => errors.push(e),
                         }
                     }
                     opt::YEAR => {
@@ -509,7 +509,7 @@ impl Dss {
                                 buf.truncate(n.min(1000));
                                 ckt.legal_voltage_bases = buf;
                             }
-                            Err(e) => errors.push(e.message().to_string()),
+                            Err(e) => errors.push(e),
                         }
                     }
                     opt::ALGORITHM => {
@@ -558,7 +558,11 @@ impl Dss {
                         // on miss) first (`ExecOptions.pas` ordinal 27).
                         ckt.load_dur_curve_obj = find_load_shape(classes, &param);
                         if ckt.load_dur_curve_obj.is_none() {
-                            errors.push("Load-Duration Curve not found.".to_string());
+                            // Pascal `DoSimpleMsg(..., 131)` (ExecOptions.pas:484).
+                            errors.push(crate::diag::DssDiagnostic::msg(
+                                "Load-Duration Curve not found.",
+                                Some(131),
+                            ));
                         }
                     }
                     opt::CKT_MODEL => {
@@ -605,7 +609,7 @@ impl Dss {
                                     buf.truncate(n.min(100));
                                     ckt.solution.harmonic_list = buf;
                                 }
-                                Err(e) => errors.push(e.message().to_string()),
+                                Err(e) => errors.push(e),
                             }
                         }
                     }
@@ -881,7 +885,9 @@ impl Dss {
                         }
                     }
                     opt::ITER_NUMBER | opt::CTRL_ITER_NUMBER | opt::INTEGRATION_FLAG => {
-                        // Pascal: these are read-only (error 25040103) then `Exit`.
+                        // These solution counters are read-only. The Pascal
+                        // source cites no `DoSimpleMsg` number here, so the
+                        // diagnostic stays uncoded (`None`) — never invent one.
                         errors.push("This value is read-only.".to_string());
                         abort = true;
                     }

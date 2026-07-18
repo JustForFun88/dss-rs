@@ -129,9 +129,12 @@ impl Dss {
             }
         };
         if path.exists() {
-            // Pascal error 721: refuse to overwrite.
-            self.errors.push(format!(
-                "File \"{fname}\" was about to be overwritten. Rename/remove the existing file and try again."
+            // Pascal error 721 (ExecHelper.pas:3713): refuse to overwrite.
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "File \"{fname}\" was about to be overwritten. Rename/remove the existing file and try again."
+                ),
+                Some(721),
             ));
             return;
         }

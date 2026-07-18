@@ -378,11 +378,14 @@ impl CapControl {
 
         if self.ccd.element_terminal > eff.nterms as i32 {
             // DoErrorMsg 362.
-            self.ccd.cd.obj.push_error(format!(
+            self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
                 "CapControl.{}: Terminal number {} does not exist in \"{}\". Re-specify terminal number. (Error 362)",
                 self.ccd.cd.obj.name(),
                 self.ccd.element_terminal,
                 eff.full_name
+                ),
+                Some(362),
             ));
             return;
         }
