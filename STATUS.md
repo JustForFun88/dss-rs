@@ -337,12 +337,13 @@ corpus gate; no comparison, tolerance, golden, or `harness` change.
 
 **Contamination proof (§4 Phase B DONE bar).** Ran the full 510-case set three
 ways — (a) serial one-shot (`DSS_GATE_SERIAL=1`, T=1, fresh process per case), (b)
-persistent parallel, (c) persistent parallel shuffled (`DSS_GATE_SHUFFLE=1337`) —
+persistent parallel, (c) persistent parallel shuffled (`DSS_GATE_SHUFFLE=1234567`) —
 each dumping a label-sorted `{verdict, result}` artifact (`DSS_GATE_DUMP`). All
-three **bit-identical** on the gate-relevant CaseResult + verdicts.
+three **bit-identical** — sha256 `e041e018…08116` on all three 1.276 GB dumps,
+`diff -q` empty pairwise (settle re-run 2026-07-18).
 
-Two real persistent-worker contamination classes were found and root-caused
-(they pass one-shot, fail/pollute persistent) → `isolate: true` (19 cases):
+Three real persistent-worker contamination classes were found and root-caused
+(they pass one-shot, fail/pollute persistent) → `isolate: true` (22 cases):
 - **AutoAdd process-exit corruption** (`modes/autoadd/autoadd{,_cap}.dss`): the
   documented AutoAdd solve corrupts the dss-python process, so the NEXT case on a
   reused worker access-violates on `clear`. Isolated → the corruption dies with
@@ -353,24 +354,74 @@ Two real persistent-worker contamination classes were found and root-caused
   so a different worker locks the file (`#303 being used by another process`) and
   the CorpusGuard cannot delete it (pollution). Isolated → the handle releases at
   process exit.
+- **File-backed loadshape read drift** (3 `modes/inputformat` decks —
+  `shape_mmf`, `shape_filearr`, `shape_binfiles`; found during the settle gate
+  re-run, 2026-07-18). A pooled worker reused across many decks intermittently
+  (~1-in-3 full-workspace runs) misreads a deck's file-backed loadshape data
+  (binary `sng`/`dbl`, `csv`, `MemoryMapping=Yes`) after some prior deck, giving a
+  ~2e-3 step-0 node-voltage drift on the ORACLE side. Root-caused empirically: the
+  Rust value is bit-stable (`#![forbid(unsafe_code)]` ⇒ race-free; `load_shape`
+  has no shared/global mutable state, no mmap); the oracle value drifts only under
+  the pool. Never reproduced in 150+ one-shot / in-process-reuse / 12-way
+  concurrent-process / sibling-predecessor oracle solves (all correct), and the
+  pre-Phase-B one-shot gate + the serial proof run were green — so it is pooled
+  cross-deck worker-state contamination, not intrinsic per-process nondeterminism.
+  Isolated → a fresh dedicated oracle process per run (exactly the pre-Phase-B
+  execution these decks were validated under) removes all predecessor state;
+  7/7 consecutive full-workspace gates green post-isolate vs ~2/6 pre-isolate.
 
-The raw dump also carried a NON-contamination order difference: 114 cases differ
-only in `all_properties` `RMatrix`/`XMatrix` values — the upstream dss_capi
-`DoubleSymMatrixProperty` getter renders UNINITIALIZED heap memory (denormal
-garbage + prior-case heap residue), the documented UB that `harness::SKIP_PROPS`
-already excludes from the value compare (so verdicts are unaffected). Proven:
-excluding `all_properties`, parallel≡shuffled≡serial are byte-identical. The dump
-therefore strips that one UB field (documented in `write_gate_dump`); everything
-the gate asserts stays.
+`all_properties` heap-UB handling (settled 2026-07-18). The upstream dss_capi
+`DoubleSymMatrixProperty` getter (`RMatrix`/`XMatrix`/`CMatrix`/`GMatrix`) and the
+shunt-PD reliability inputs render UNINITIALIZED heap memory — order-dependent by
+construction (a reused worker's heap carries prior-case residue). Those pairs are
+exactly what `harness::skip_prop` (`SKIP_PROPS`) already excludes from the value
+compare, so verdicts are unaffected. `write_gate_dump` nulls ONLY those UB values
+(keeping the property name) and RETAINS every other property — so the three-way
+bit-diff independently re-proves the byte-stability of all 72 k+ gate-asserted
+property strings across reused/shuffled workers (2128 `all_properties` blocks
+present in the dump, still sha256-identical). This is the ONLY source of
+cross-process nondeterminism; every other property is a deterministic function of
+the deck.
 
-**Wall-clock.**
+**Audit dispositions (settle, 2026-07-18).**
+- **B1 — dropped `pending`⊕`expect_solve_abort` mutual-exclusivity assert** (both
+  audits, low). REAL, latent (0 manifest cases set both, empirically checked). The
+  old family-only `assert!` was not carried into the unified classifier, which
+  silently resolves the conflict pending-first. FIXED: restored the `assert!` in
+  `scheduler::make_case` — now applied to EVERY source (solvable_now + families),
+  strictly stronger than the family-only original.
+- **B2/B3 — dump stripped the whole `all_properties` block** (audit-code B2 /
+  audit-tests B3, low). REAL completeness gap: a within-tolerance oracle-property
+  drift on a reused worker could escape both the verdict channel
+  (`assert_value_matches_tol`) and a whole-block strip. FIXED: `strip_ub_properties`
+  now nulls only the `skip_prop` UB values, retaining all value-asserted properties;
+  the three-way bit-diff is still byte-identical (proof above), so the fix strictly
+  strengthens the artifact with no regression.
+- audit-tests B2 (stray `.claude_tmp_corpus_live_old.rs` leftover) — not present;
+  worktree clean, corpus pristine.
+
+**Wall-clock** (settle-run 2026-07-18, 16-core, incl. dump write).
 
 | mode | jobs | pool | wall-clock |
 |---|---|---|---|
-| serial one-shot (old cost model) | 1 | — | 392 s |
-| persistent parallel | 16 | 8 | 109 s (3.6× faster; 80 s without the dump write) |
+| serial one-shot (old cost model) | 1 | 2 | 341.9 s |
+| persistent parallel | 16 | 8 | 104.3 s (3.3× faster) |
+| persistent parallel shuffled | 16 | 8 | 78.1 s |
 
-`tests/corpus` pristine after all runs; `cargo fmt/clippy/test` green in the worktree.
+`tests/corpus` pristine after all runs (the vendored decks are untouched; the
+corpus_gate CorpusGuard restores its own case dirs). `cargo fmt/clippy/test` green
+in the worktree.
+
+**Open follow-up (pre-existing, non-blocking).** A full `cargo test --workspace`
+occasionally leaves a handful of untracked solver EXPORT outputs under
+`tests/corpus/electricdss-tst` (e.g. `Test/AutoTrans/Auto3bus_noload_power.txt`,
+IEEE8500/StorageControllerTechNote monitor/EXP CSVs). These are `Export`/monitor
+files a deck writes to a path the per-case `CorpusGuard` (which guards only the
+case's parent dir) does not sweep — a pre-existing CorpusGuard corner case
+independent of Phase B (the guard logic is byte-identical to the old gate) and of
+this settle's diff. They are untracked (never committed) and path-limited-cleaned
+before commit. A future CorpusGuard hardening (guard the export CWD too) would
+close it.
 
 ---
 

@@ -109,21 +109,55 @@ fn corpus_gate_all_cases_match_engines() {
 /// one-shot, persistent parallel, persistent parallel shuffled) must bit-diff
 /// EMPTY.
 ///
-/// The per-checkpoint `all_properties` field is dropped from `result` before
-/// dumping: its `RMatrix`/`XMatrix` (and the wider DoubleSymMatrix / shunt-PD
-/// reliability) property values render UNINITIALIZED heap memory in the upstream
-/// dss_capi getter — the documented UB that `harness::SKIP_PROPS` already
-/// excludes from the VALUE compare (so it never affects a verdict). A persistent
-/// worker's heap carries residue from prior cases where a fresh process's is
-/// zeroed, so those garbage bytes are order-dependent by construction; keeping
-/// them would make the bit-diff report the upstream UB, not real contamination.
-/// Every field the gate actually asserts stays in the dump.
+/// Only the `harness::skip_prop` (`SKIP_PROPS`) property VALUES are stripped from
+/// each checkpoint's `all_properties` before dumping — NOT the whole block. Those
+/// pairs (DoubleSymMatrix `RMatrix`/`XMatrix`/`CMatrix`/`GMatrix` and the shunt-PD
+/// reliability inputs) render UNINITIALIZED heap memory in the upstream dss_capi
+/// getter: a persistent worker's heap carries residue from prior cases where a
+/// fresh process's is zeroed, so those garbage bytes are order-dependent BY
+/// CONSTRUCTION — keeping them would make the bit-diff report the upstream UB, not
+/// real contamination (this is the ONLY source of cross-process nondeterminism;
+/// every other property is a deterministic function of the deck → byte-identical
+/// across processes). The stripped set is exactly what the gate excludes from its
+/// VALUE compare, so no gate-asserted property is dropped: every property the gate
+/// checks is RETAINED, and the three-way bit-diff independently re-proves its
+/// byte-stability across reused workers (closing the settle-B2/B3 completeness gap
+/// where a within-tolerance oracle-property drift could otherwise escape both the
+/// verdict channel and a whole-block strip). The property NAME is kept in all
+/// cases (only the value string is nulled), preserving the property-index shape.
 fn write_gate_dump(path: &str, run: &GateRun) {
     fn strip_ub_properties(v: &mut Value) {
         if let Some(cps) = v.get_mut("checkpoints").and_then(|c| c.as_array_mut()) {
             for cp in cps {
-                if let Some(obj) = cp.as_object_mut() {
-                    obj.remove("all_properties");
+                let Some(elems) = cp.get_mut("all_properties").and_then(|a| a.as_array_mut())
+                else {
+                    continue;
+                };
+                for el in elems {
+                    let class = el
+                        .get("element")
+                        .and_then(|e| e.as_str())
+                        .and_then(|s| s.split('.').next())
+                        .unwrap_or("")
+                        .to_string();
+                    let Some(props) = el.get_mut("props").and_then(|p| p.as_array_mut()) else {
+                        continue;
+                    };
+                    for pair in props {
+                        let Some(arr) = pair.as_array_mut() else {
+                            continue;
+                        };
+                        let name = arr
+                            .first()
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        // Null the VALUE (keep the name) for the UB heap-garbage
+                        // props the gate itself excludes from the value compare.
+                        if arr.len() >= 2 && harness::skip_prop(&class, &name) {
+                            arr[1] = Value::Null;
+                        }
+                    }
                 }
             }
         }
