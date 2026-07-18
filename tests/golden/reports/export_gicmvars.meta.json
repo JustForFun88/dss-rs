@@ -1,0 +1,24 @@
+{
+  "report": "gicmvars",
+  "fixture": "gaps_gict",
+  "suffix": "EXP_GIC_Mvar.csv",
+  "deck": [
+    "set defaultbasefrequency=60",
+    "new circuit.gaps_gict basekv=345 phases=3 bus1=b1 mvasc3=2000000 2000000",
+    "new gicline.gl12 bus1=b1 bus2=b2 R=3.5 Volts=100 Angle=0",
+    "new gicline.gl23 bus1=b2 bus2=b3 R=2.9 EN=1.0 EE=1.0",
+    "~ Lat1=33.613499 Lon1=-87.373673 Lat2=33.547885 Lon2=-86.074605",
+    "new gictransformer.tg1 busH=b1 busNH=b1.4.4.4 R1=0.12 type=GSU",
+    "new gictransformer.tg2 busH=b2 busNH=b2.4.4.4 busX=b2x busNX=b2.4.4.4 R1=0.2 R2=0.1 type=YY",
+    "new xycurve.vgic npts=3 xarray=(0 1 2) yarray=(0 0.6 1.0)",
+    "new gictransformer.tg3 busH=b3 busX=b3x busNX=b3.4.4.4 %R1=0.2 %R2=0.15",
+    "~ kvll1=345 kvll2=138 mva=300 varcurve=vgic type=Auto",
+    "new reactor.gg1 phases=1 bus1=b1.4 r=0.20 x=0",
+    "new reactor.gg2 phases=1 bus1=b2.4 r=0.15 x=0",
+    "new reactor.gg3 phases=1 bus1=b3.4 r=0.25 x=0",
+    "set voltagebases=[345 138]",
+    "calcvoltagebases",
+    "set frequency=0.1",
+    "solve"
+  ]
+}

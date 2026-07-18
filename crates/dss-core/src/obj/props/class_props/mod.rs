@@ -10,6 +10,7 @@
 //! (`get_value`) in [`value`].
 
 mod json;
+mod json_set;
 #[cfg(test)]
 mod json_tests;
 mod parse;
@@ -17,6 +18,7 @@ mod typed;
 mod value;
 
 use crate::obj::base::DssObject;
+use crate::obj::props::PropFlags;
 use crate::support::command_list::CommandList;
 use dss_parser::ParserError;
 
@@ -33,6 +35,12 @@ pub struct ClassProps {
     class_name: &'static str,
     props: Vec<PropDef>,
     command_list: CommandList,
+    /// Pascal `TDSSClass.AltPropertyOrder` (`DSSClass.pas:1957-2010`): the fixed
+    /// property-index order the JSON reader (`FillObjFromJSON`) walks — natural
+    /// (`TProp` ordinal) order with `Like` and `ORDERING_FIRST` props hoisted to
+    /// the front and the action / `ORDERING_LAST` props pushed to the back, minus
+    /// the redundant / suppressed / struct-index props. Precomputed once here.
+    alt_property_order: Vec<usize>,
 }
 
 impl ClassProps {
@@ -49,11 +57,20 @@ impl ClassProps {
         props.push(PropDef::base("", PropType::Integer)); // slot 0, never addressed
         props.extend(defs);
 
+        let alt_property_order = compute_alt_property_order(&props);
+
         Self {
             class_name,
             props,
             command_list,
+            alt_property_order,
         }
+    }
+
+    /// Pascal `TDSSClass.AltPropertyOrder`: the property-index sweep order the
+    /// JSON reader uses. See the [`ClassProps::alt_property_order`] field.
+    pub fn alt_property_order(&self) -> &[usize] {
+        &self.alt_property_order
     }
 
     pub fn class_name(&self) -> &'static str {
@@ -94,4 +111,46 @@ impl ClassProps {
         obj.side_effects(idx, prev_int);
         Ok(())
     }
+}
+
+/// Pascal `TDSSClass.DefineProperties`'s `AltPropertyOrder` build
+/// (`DSSClass.pas:1957-2010`): assign a `zorder` to every 1-based property
+/// (`Like` → -1000; `ORDERING_FIRST` → an increasing block from -999; the action
+/// / `ORDERING_LAST` props → an increasing block from 999; everything else keeps
+/// its ordinal), sort ascending, then drop the redundant / JSON-suppressed /
+/// struct-index / alt-index props. The result is the fixed order the JSON reader
+/// applies present keys in. Ordinals are all distinct, so the sort is a total
+/// order (no tie-break needed).
+fn compute_alt_property_order(props: &[PropDef]) -> Vec<usize> {
+    let n = props.len().saturating_sub(1); // props[0] is the unused slot 0
+    let mut zorder = vec![0i32; n + 1];
+    let mut next_start: i32 = -999;
+    let mut next_end: i32 = 999;
+    for (i, z) in zorder.iter_mut().enumerate().take(n + 1).skip(1) {
+        let pd = &props[i];
+        *z = if pd.ptype == PropType::MakeLike {
+            -1000
+        } else if pd.flags.contains(PropFlags::ORDERING_FIRST) {
+            let v = next_start;
+            next_start += 1;
+            v
+        } else if pd.ptype == PropType::Action || pd.flags.contains(PropFlags::ORDERING_LAST) {
+            let v = next_end;
+            next_end += 1;
+            v
+        } else {
+            i as i32
+        };
+    }
+
+    let mut order: Vec<usize> = (1..=n).collect();
+    order.sort_by_key(|&i| zorder[i]);
+    order.retain(|&i| {
+        let f = props[i].flags;
+        !(f.contains(PropFlags::SUPPRESS_JSON)
+            || f.contains(PropFlags::ALT_INDEX)
+            || f.contains(PropFlags::INTEGER_STRUCT_INDEX)
+            || f.contains(PropFlags::REDUNDANT))
+    });
+    order
 }

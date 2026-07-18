@@ -461,6 +461,10 @@ const CONTROLS_REQUIRED: &[&str] = &[
     "sensor/sensor_map.dss",
     "upfc/upfc_vreg.dss",
     "upfc/upfc_doubleref.dss",
+    // OG-1.7 orphaned-gaps: UPFC modes 2 (StatCOM) / 3 (Dual) / 5 (DoubleRef Dual).
+    "upfc/upfc_statcom.dss",
+    "upfc/upfc_dual.dss",
+    "upfc/upfc_doubleref_dual.dss",
     "combo/combo_protection.dss",
     "combo/combo_voltvar_asym.dss",
     "combo/combo_metering.dss",

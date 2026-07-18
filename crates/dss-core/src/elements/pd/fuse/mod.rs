@@ -85,7 +85,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         // Pascal `DSSObjectReferenceProperty` (offset2 = 0) + Required: any
         // circuit element by full name; the dump renders `Class.name`.
-        PropDef::object_ref_any("MonitoredObj"),
+        PropDef::object_ref_any("MonitoredObj").flags(PropFlags::REQUIRED),
         PropDef::integer("MonitoredTerm"),
         // SwitchedObj is WriteByFunction (`SetControlledElement`) in Pascal; the
         // behavior (store ref + snapshot) is identical to the generic path.

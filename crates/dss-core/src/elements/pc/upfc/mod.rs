@@ -81,8 +81,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     // established convention (cf. VSource `frequency`), only the behavioral
     // `DynamicDefault`/`NonNegative`/`NonZero` are carried.
     let defs = vec![
-        PropDef::bus("Bus1", 1),
-        PropDef::bus("Bus2", 2),
+        PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
+        PropDef::bus("Bus2", 2).flags(PropFlags::REQUIRED),
         PropDef::double("RefkV"),
         PropDef::double("PF"),
         PropDef::double("Frequency")

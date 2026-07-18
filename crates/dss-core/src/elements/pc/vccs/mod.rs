@@ -61,7 +61,7 @@ pub mod prop {
 /// classes for uniform registration.)
 pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
-        PropDef::bus("Bus1", 1),
+        PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double("PRated"),
         PropDef::double("VRated").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),

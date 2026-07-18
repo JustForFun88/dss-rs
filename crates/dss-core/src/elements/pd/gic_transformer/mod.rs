@@ -114,8 +114,8 @@ pub struct GicTransformer {
     /// `FMVARating`.
     mva_rating: f64,
     /// `VarCurve`: the referenced XYcurve name (dump round-trip) and a
-    /// snapshot clone (Pascal `FVarCurveObj`), consumed only by
-    /// `WriteVarOutputRecord` (`Export GICMvar`, not ported here).
+    /// snapshot clone (Pascal `FVarCurveObj`), consumed by `var_output_record`
+    /// (`Export GICMvars` — Pascal `WriteVarOutputRecord`, solve.rs).
     var_curve_name: String,
     var_curve: Option<XyCurveObj>,
     /// `FpctR1`/`FpctR2`: the %-on-base spec (Pascal derives G from these when
