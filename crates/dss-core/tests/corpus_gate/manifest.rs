@@ -1,10 +1,12 @@
 //! Manifest schema + loading for the unified corpus gate.
 //!
-//! Schema is UNCHANGED from the pre-Phase-B `corpus_live.rs` (`UNIFIED_GATE_PLAN.md`
-//! Phase B): the `oracle` target-rev field is still honored and `ORACLE_SPECS`
-//! stays. The only additive fields are `isolate` (the one permitted early Phase-B
-//! addition — run a case on a throwaway one-shot worker; §1.2/§4 Phase B) and
-//! `note` (read only to enforce `isolate ⇒ note`). Schema v2 (`engines`) is Phase C.
+//! Schema **v2** (`UNIFIED_GATE_PLAN.md` §1.2 / Phase C): the retired `oracle`
+//! target-rev field is replaced by `engines: "capi_v0145" | "r4133" | "both"`
+//! (default `"both"`) naming the gating channel(s). `capi_v0145` = the pinned
+//! dss-python 0.15.7 / dss_capi 0.14.5 oracle (`oracle_server.py`, persistent
+//! pool); `r4133` = the official EPRI `OpenDSSDirect.dll` via the in-house
+//! `epri-worker` bridge. `ORACLE_SPECS` is gone. `isolate` (throwaway one-shot
+//! worker; §1.2/§4 Phase B) and `note` (read to enforce `isolate ⇒ note`) remain.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -81,9 +83,23 @@ pub(crate) struct SolvableCase {
     /// `#485 Max Control Iterations Exceeded`). Mutually exclusive with `pending`.
     #[serde(default)]
     pub(crate) expect_solve_abort: Option<String>,
-    /// Work package that ports this case's feature. Mandatory while `pending`.
+    /// Work package that ports this case's feature. Mandatory while `pending`
+    /// or `defer_ledger`.
     #[serde(default)]
     pub(crate) wp: Option<String>,
+    /// Schema v2 (§4 Phase C ladder step c / §5 R9): this case's validated
+    /// behavior was pinned against the **retired capi015 (0.15.0b4)** engine line
+    /// and reproduces on NEITHER surviving channel (0.14.5 lacks the feature or
+    /// differs; r4133-11.0 diverges). It is PARKED from live oracle comparison
+    /// pending its **Phase D ledger** entry (which will re-gate it against r4133
+    /// / capi_v0145 within a pinned envelope). The value is the Phase-D-ledger
+    /// seed cause (mandatory); `wp` names the follow-up. The Rust engine is still
+    /// smoke-run (compile + solve, must converge with no new errors) so a Rust
+    /// regression never hides here. Membership is preserved — this NEVER drops a
+    /// case (the population lock records the `defer` flag). Mutually exclusive
+    /// with `pending` / `expect_solve_abort`.
+    #[serde(default)]
+    pub(crate) defer_ledger: Option<String>,
     /// Non-fatal warnings this deck's compile deliberately produces, which the
     /// port reproduces 1:1 (CF-C Port 2: a user-written model DLL that safe Rust
     /// cannot load). Each string is a substring an actual engine error must
@@ -91,12 +107,14 @@ pub(crate) struct SolvableCase {
     /// must actually appear. Empty ⇒ zero errors are tolerated.
     #[serde(default)]
     pub(crate) expect_warnings: Vec<String>,
-    /// Target oracle for this case's live compare (UPGRADE_PLAN.md): absent =
-    /// the pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle; `"capi015"` =
-    /// the dss_capi 0.15.x-line oracle; `"r3723"|"r4088"|"r4133"` = an
-    /// official EPRI `OpenDSSDirect.dll` via the Oddie bridge.
-    #[serde(default)]
-    pub(crate) oracle: Option<String>,
+    /// Schema v2 (UNIFIED_GATE_PLAN.md §1.2): which live channel(s) gate this
+    /// case. `"capi_v0145"` = the pinned dss-python 0.15.7 / dss_capi 0.14.5
+    /// oracle (persistent `oracle_server.py` pool); `"r4133"` = the official
+    /// EPRI `OpenDSSDirect.dll` r4133 via the in-house `epri-worker` bridge;
+    /// `"both"` (the default) gates on both channels (Phase D). Replaces the
+    /// retired `oracle` target-rev field.
+    #[serde(default = "default_engines")]
+    pub(crate) engines: String,
     /// WP-AD.4 A-Diakoptics disposition (mandatory on every family-manifest case).
     #[serde(default)]
     pub(crate) ad: Option<String>,
@@ -119,11 +137,59 @@ pub(crate) fn default_kind() -> String {
 pub(crate) fn default_steps() -> usize {
     1
 }
+pub(crate) fn default_engines() -> String {
+    "both".to_string()
+}
 
-/// Legal manifest `oracle` values for target-rev cases (UPGRADE_PLAN.md):
-/// the dss_capi 0.15.x-line oracle plus the three vendored EPRI revisions.
-/// `None`/absent = the pinned capi oracle.
-pub(crate) const ORACLE_SPECS: &[&str] = &["capi015", "r3723", "r4088", "r4133"];
+/// The three legal `engines` channel selectors (schema v2, §1.2).
+pub(crate) const ENGINES_SPECS: &[&str] = &["capi_v0145", "r4133", "both"];
+
+/// One live gating channel a case is compared against.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum EngineChannel {
+    /// Pinned dss-python 0.15.7 / dss_capi 0.14.5 via `oracle_server.py`.
+    CapiV0145,
+    /// Official EPRI `OpenDSSDirect.dll` r4133 via `epri-worker`.
+    R4133,
+}
+
+impl EngineChannel {
+    /// The eventlog-mask spec key for this channel (`harness::compare_eventlog`):
+    /// the pinned oracle needs no masking (`None`); r4133 selects its per-rev row.
+    pub(crate) fn eventlog_spec(self) -> Option<&'static str> {
+        match self {
+            EngineChannel::CapiV0145 => None,
+            EngineChannel::R4133 => Some("r4133"),
+        }
+    }
+    /// Iteration policy: the pinned oracle is an exact 1:1 contract; r4133 (a
+    /// different engine line) allows the port to converge in FEWER iterations —
+    /// never more (`rust_le_oracle`, the former target-rev precedent, §4 Phase C).
+    pub(crate) fn iterations_exact(self) -> bool {
+        matches!(self, EngineChannel::CapiV0145)
+    }
+}
+
+impl SolvableCase {
+    /// The live channel(s) this case gates against (schema v2 `engines`).
+    pub(crate) fn engine_channels(&self) -> Vec<EngineChannel> {
+        match self.engines.as_str() {
+            "capi_v0145" => vec![EngineChannel::CapiV0145],
+            "r4133" => vec![EngineChannel::R4133],
+            "both" => vec![EngineChannel::CapiV0145, EngineChannel::R4133],
+            other => panic!(
+                "{}: unknown engines spec {other:?} — expected one of {ENGINES_SPECS:?} (§1.2)",
+                self.path
+            ),
+        }
+    }
+    /// The single primary channel for weighting / property-forcing decisions
+    /// (a `"both"` case is capi-forced for property parity; §1.2 keeps
+    /// `compare_all_properties` on the capi_v0145 channel only).
+    pub(crate) fn gates_capi(&self) -> bool {
+        matches!(self.engines.as_str(), "capi_v0145" | "both")
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Path helpers.
@@ -273,14 +339,13 @@ pub(crate) fn family_manifest_is_complete(fam: &Family) {
                 c.path
             );
         }
-        if let Some(spec) = &c.oracle {
-            assert!(
-                ORACLE_SPECS.contains(&spec.as_str()),
-                "{}: unknown oracle spec {spec:?} — expected one of {ORACLE_SPECS:?} \
-                 (UPGRADE_PLAN.md target-rev gating)",
-                c.path
-            );
-        }
+        assert_defer_ledger_is_valid(&format!("{}:{}", fam.name, c.path), c);
+        assert!(
+            ENGINES_SPECS.contains(&c.engines.as_str()),
+            "{}: unknown engines spec {:?} — expected one of {ENGINES_SPECS:?} (§1.2)",
+            c.path,
+            c.engines
+        );
         assert_isolate_carries_note(&format!("{}:{}", fam.name, c.path), c);
         let ad = c.ad.as_deref().unwrap_or_else(|| {
             panic!(
@@ -296,6 +361,25 @@ pub(crate) fn family_manifest_is_complete(fam: &Family) {
             c.path
         );
         (fam.check_case)(c);
+    }
+}
+
+/// Schema v2 structural rule (§4 Phase C step c): a `defer_ledger` case carries a
+/// non-empty cause + a `wp`, and never also claims `pending`/`expect_solve_abort`.
+pub(crate) fn assert_defer_ledger_is_valid(label: &str, c: &SolvableCase) {
+    if let Some(cause) = &c.defer_ledger {
+        assert!(
+            !cause.trim().is_empty(),
+            "{label}: `defer_ledger` requires a non-empty Phase-D-ledger-seed cause (§4 Phase C)"
+        );
+        assert!(
+            c.wp.is_some(),
+            "{label}: `defer_ledger` requires a `wp` naming the Phase D follow-up"
+        );
+        assert!(
+            !c.pending && c.expect_solve_abort.is_none(),
+            "{label}: `defer_ledger` is mutually exclusive with `pending`/`expect_solve_abort`"
+        );
     }
 }
 
@@ -621,17 +705,16 @@ pub(crate) fn ad_disposition_is_valid(s: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn solvable_now_oracle_specs_are_valid() {
+fn solvable_now_engines_specs_are_valid() {
     for c in load_solvable() {
-        if let Some(spec) = &c.oracle {
-            assert!(
-                ORACLE_SPECS.contains(&spec.as_str()),
-                "{}: unknown oracle spec {spec:?} — expected one of {ORACLE_SPECS:?} \
-                 (UPGRADE_PLAN.md target-rev gating)",
-                c.path
-            );
-        }
+        assert!(
+            ENGINES_SPECS.contains(&c.engines.as_str()),
+            "{}: unknown engines spec {:?} — expected one of {ENGINES_SPECS:?} (§1.2)",
+            c.path,
+            c.engines
+        );
         assert_isolate_carries_note(&format!("solvable_now:{}", c.path), &c);
+        assert_defer_ledger_is_valid(&format!("solvable_now:{}", c.path), &c);
     }
 }
 

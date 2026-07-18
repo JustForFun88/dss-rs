@@ -3,6 +3,7 @@
  "cases": [
   {
    "path": "inputformat/shape_binfiles/shape_binfiles.dss",
+   "engines": "capi_v0145",
    "ad": "off:save-roundtrip-relpath",
    "kind": "micro",
    "n_steps": 8,
@@ -111,6 +112,7 @@
   },
   {
    "path": "inputformat/shape_mmf/shape_mmf.dss",
+   "engines": "capi_v0145",
    "ad": "off:save-roundtrip-relpath",
    "kind": "micro",
    "n_steps": 8,
@@ -161,6 +163,7 @@
   },
   {
    "path": "inputformat/shape_filearr/shape_filearr.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -246,6 +249,7 @@
   },
   {
    "path": "time/generaltime.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -267,6 +271,7 @@
   },
   {
    "path": "time/generaltime_yearly.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -288,6 +293,7 @@
   },
   {
    "path": "time/generaltime_duty.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -309,6 +315,7 @@
   },
   {
    "path": "time/ld1.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 16,
@@ -321,6 +328,7 @@
   },
   {
    "path": "time/ld2.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 5,
@@ -333,6 +341,7 @@
   },
   {
    "path": "time/peakday.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -346,6 +355,7 @@
   },
   {
    "path": "time/direct.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -358,6 +368,7 @@
   },
   {
    "path": "montecarlo/monte1.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 5,
@@ -370,6 +381,7 @@
   },
   {
    "path": "montecarlo/monte2.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
@@ -382,6 +394,7 @@
   },
   {
    "path": "montecarlo/monte3.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 4,
@@ -394,6 +407,7 @@
   },
   {
    "path": "montecarlo/montefault.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 3,
@@ -406,6 +420,7 @@
   },
   {
    "path": "autoadd/autoadd.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "ad": "pf",
    "kind": "micro",
@@ -433,6 +448,7 @@
   },
   {
    "path": "autoadd/autoadd_cap.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "ad": "pf",
    "kind": "micro",
@@ -460,6 +476,7 @@
   },
   {
    "path": "newton/newton.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -472,6 +489,7 @@
   },
   {
    "path": "newton/newton_feeder.dss",
+   "engines": "capi_v0145",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -484,6 +502,7 @@
   },
   {
    "path": "harmonics/reactor_rlcurve.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -497,6 +516,7 @@
   },
   {
    "path": "inputformat/xycurve_files/xycurve_files.dss",
+   "engines": "capi_v0145",
    "ad": "off:save-roundtrip-relpath",
    "kind": "micro",
    "n_steps": 3,
@@ -511,6 +531,7 @@
   },
   {
    "path": "harmonics/isource_harm.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -524,6 +545,7 @@
   },
   {
    "path": "batchedit/batchedit.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -560,7 +582,7 @@
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
-   "oracle": "r4133",
+   "engines": "r4133",
    "wp": "WP-U2.4",
    "selected_elements": [
     "*"
@@ -596,6 +618,7 @@
   },
   {
    "path": "batchedit/midi_batchedit.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "midi",
    "n_steps": 1,
@@ -628,6 +651,7 @@
   },
   {
    "path": "reduce/reduce_default.dss",
+   "engines": "capi_v0145",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -640,6 +664,7 @@
   },
   {
    "path": "reduce/reduce_shortlines.dss",
+   "engines": "capi_v0145",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -652,6 +677,7 @@
   },
   {
    "path": "reduce/reduce_dangling.dss",
+   "engines": "capi_v0145",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -664,6 +690,7 @@
   },
   {
    "path": "reduce/reduce_switches.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -676,6 +703,7 @@
   },
   {
    "path": "reduce/reduce_laterals.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -688,6 +716,7 @@
   },
   {
    "path": "reduce/reduce_mergeparallel.dss",
+   "engines": "capi_v0145",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -700,6 +729,7 @@
   },
   {
    "path": "reduce/reduce_breakloop.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 1,
@@ -712,6 +742,7 @@
   },
   {
    "path": "reduce/reduce_keeplist.dss",
+   "engines": "capi_v0145",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -724,6 +755,7 @@
   },
   {
    "path": "reduce/midi_reduce.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "midi",
    "n_steps": 1,
@@ -742,7 +774,7 @@
    "selected_elements": [
     "*"
    ],
-   "oracle": "r4133",
+   "engines": "r4133",
    "note": "UPGRADE_PLAN.md WP-U0 pilot: keeps the per-case target-rev oracle machinery (Oddie r4133 engine binding, ping pin check, iteration policy Rust<=oracle) exercised by every cargo test. Deliberately revision-insensitive deck; validated per the WP-U0 protocol (two-process determinism on the r4133 engine)."
   },
   {
@@ -753,7 +785,7 @@
    "selected_elements": [
     "*"
    ],
-   "oracle": "r4133",
+   "engines": "r4133",
    "pending": false,
    "probes": [
     {
@@ -787,12 +819,13 @@
    "selected_elements": [
     "load.lb"
    ],
-   "oracle": "capi015",
+   "engines": "r4133",
    "pending": false,
    "note": "UPGRADE_PLAN.md WP-U1.6 / row B3-r3723 (docs/upgrade/DIVERGENCES.md): Load.GrowthFactor at Year=0 with a GrowthShape tracks simulated hours (calcYear=dblHour/8760) instead of a flat 1.0. The rewrite is in the capi015 backend 0.15.0b4 (SVN r4103, carrying the r4088-era Load.pas GrowthFactor change). Feature sensitivity (§1.7-3): the growthshape's first year is 0, so a Year=0 snapshot takes GetMultIdx(1)=1.2 -- a 20% load lift that needs no >8760h run for a single-step witness. capi015 reports Load.lb at 120 kW total (B1 |V|=7198.164683 V), the pre-B3 flat-1.0 path 100 kW (B1 |V|=7198.397078 V); |dP|=20 kW and |dV|=0.23 V are far above every live floor, so a regression to the flat Year=0 factor fails the whole-model compare (load power AND node voltages). Gated capi015 (not 0.14.5): the r3723 baseline and capi015 DIVERGE here so it cannot gate against 0.14.5 (§1.2). Validated per §1.7 (two-process determinism on capi015: bit-identical Vmag fingerprint, probe_deck.py 2026-07-16). Exact per-branch values (GetMultIdx(1)=1.2, GetMult(2)=1.8) pinned by the Rust unit test growth_factor_year0_tracks_simulated_hours_with_growthshape."
   },
   {
    "path": "reduce/reduce_remove.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -815,6 +848,7 @@
   },
   {
    "path": "pstcalc/pstcalc_cmd.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -827,6 +861,7 @@
   },
   {
    "path": "makeposseq/makeposseq_line.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -872,6 +907,7 @@
   },
   {
    "path": "makeposseq/makeposseq_xfmr.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -917,6 +953,7 @@
   },
   {
    "path": "makeposseq/makeposseq_shunt.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -963,6 +1000,7 @@
   },
   {
    "path": "makeposseq/makeposseq_pc.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -1012,6 +1050,7 @@
   },
   {
    "path": "makeposseq/makeposseq_ctrl.dss",
+   "engines": "capi_v0145",
    "ad": "off:save-roundtrip-control",
    "kind": "micro",
    "n_steps": 1,
@@ -1047,6 +1086,7 @@
   },
   {
    "path": "makeposseq/makeposseq_report.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -1077,6 +1117,7 @@
   },
   {
    "path": "time/daily.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
@@ -1098,6 +1139,7 @@
   },
   {
    "path": "time/daily_bigstep.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 12,
@@ -1111,6 +1153,7 @@
   },
   {
    "path": "time/yearly.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
@@ -1124,6 +1167,7 @@
   },
   {
    "path": "time/duty.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
@@ -1146,6 +1190,7 @@
   },
   {
    "path": "time/midi_duty_ctrl.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 20,
@@ -1161,6 +1206,7 @@
   },
   {
    "path": "harmonics/harmonic_hlist.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -1174,6 +1220,7 @@
   },
   {
    "path": "harmonics/harmonict.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -1187,6 +1234,7 @@
   },
   {
    "path": "reset/mode_reset.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -1208,7 +1256,7 @@
   ],
   "pending": false,
   "wp": "WP-U1.8",
-  "oracle": "capi015",
+  "engines": "r4133",
   "note": "UPGRADE_PLAN WP-U1.8 (A2): WindGen snapshot power flow, wye. The aerodynamic steady-state Pm=0.5*rho*pi*Rad^2*vwind^3*Cp; at vwind=12 m/s the aero power (~2181 kW) curtails to kWBase=1500, so the WindGen injects -1500 kW at unity PF. Probed on capi015 (0.15.0b4): converged, w1 total P=-1500 kW; deterministic (pure power flow, no RNG). Feature-sensitive: the aero P(v^3) drives the whole injection, so any error in SetNominalGeneration moves the -1500 kW live compare far above the i_abs floor."
  },
  {
@@ -1221,7 +1269,7 @@
   ],
   "pending": false,
   "wp": "WP-U1.8",
-  "oracle": "capi015",
+  "engines": "r4133",
   "note": "UPGRADE_PLAN WP-U1.8 (A2): WindGen snapshot, DELTA connection, PF=0.9. Exercises the delta YPrim (Y/3) + delta model current (L-N Vmag) + the QMode=0 PF reactive dispatch. Probed on capi015: converged, w1 total S=-1500 kW, -0 kvar (PF at unity here because the aero cap makes kvarCalc saturate). Deterministic. Feature-sensitive vs the wye deck (delta stamping path)."
  },
  {
@@ -1234,7 +1282,7 @@
   ],
   "pending": false,
   "wp": "WP-U1.8",
-  "oracle": "capi015",
+  "engines": "r4133",
   "note": "UPGRADE_PLAN WP-U1.8 (A2): WindGen DAILY mode -- the load shape supplies the WIND SPEED (m/s), not a per-unit multiplier (CalcDailyMult). At hour 1 the shape reads 10 m/s -> aero ~1263 kW (uncapped below kWBase=3000); exercises the daily-mode dispatch + shape-as-wind-speed path (distinct from the snapshot deck's default vwind). SINGLE-STEP (n_steps=1) by necessity: dss_capi 0.15.x caches per-element el.Losses and WindGen does not invalidate it across daily steps (delta bucket F 'cached total losses' -- Currents/Powers ARE fresh, only Losses freezes at step 0), so the corpus_live full-model losses channel would diverge on a multi-step deck. The port computes losses correctly; the bucket-F caching quirk is out of scope (not reproduced). The full 6-point wind sweep + cut-in/cut-out is pinned offline by the unit test aerodynamic_wind_speed_sweep. Probed on capi015: converged, hour-1 w1 total P matches."
  },
  {
@@ -1250,7 +1298,7 @@
   ],
   "pending": false,
   "wp": "WP-U1.8",
-  "oracle": "capi015",
+  "engines": "r4133",
   "note": "UPGRADE_PLAN WP-U1.8 (A2/\u00a71.7): WindGen WTG3 dynamics (the 50 us trapezoidal sub-cycle). At 0.69 kV so the WTG3 per-unit measurement (ratedKVll) is not saturated. One dynamics solve = 20x1ms outer steps; each corrector runs the full controller stack (PLL, seq-current PI regs, LVPL/LVQL, MPPT/torque/pitch/inertia, swing) over ~21 x 50 us sub-steps. Gated with compare_variables on ALL 22 state vars. Probed on capi015: converged; Pgen 1.0022, Qgen -0.0063, Vmag 1.0152, WtAct 1.19999, thetaPitch 4.377, Pg 1584 (kWBase re-derived kVA*PF), s -0.1388. Deterministic (no RNG; pure f64 sub-cycle)."
  },
  {
@@ -1266,7 +1314,7 @@
   ],
   "pending": false,
   "wp": "WP-U1.8",
-  "oracle": "capi015",
+  "engines": "r4133",
   "note": "UPGRADE_PLAN WP-U1.8 (A2/\u00a71.7): WindGen WTG3 dynamics FAULT RIDE-THROUGH (LVPL/LVQL-sensitive). A sustained 3ph fault (Fault.f1 R=0.05) on the terminal depresses Vmag to ~0.90 pu through the run, engaging the low-voltage power-logic (LVPL curtailment) and reactive-logic (LVQL Iq limit). Probe-proven feature-sensitive on capi015: Vmag 0.898 (vs 1.015 healthy), Qgen +0.0712 (vs -0.0063 healthy -> reactive support), dOmg -0.081 (vs +0.010). 30x1ms steps; compare_variables all 22. Deterministic."
  },
  {
@@ -1279,7 +1327,7 @@
   ],
   "pending": false,
   "wp": "WP-U1.4",
-  "oracle": "capi015",
+  "engines": "r4133",
   "note": "UPGRADE_PLAN WP-U1.4 (B3/C1, LineSpacing.pas/LineConstants.pas): LineSpacing equivalent-spacing model. detailed=no supplies EqDistPhPh=2.5/EqDistPhN=4.272/AvgPhaseHeight=28/AvgNeutralHeight=24 (ft) instead of per-conductor X/H; the LineGeometry (nconds=4 nphases=3 reduce=y) Kron-reduces to a 3x3 phase Z. Probed on capi015 (0.15.0b4): converged (2 iters), reduced rmatrix diag 0.4105655/off 0.1095458, xmatrix diag 0.9883347/off 0.4265879 ohm/mi; bit-identical fingerprint across two capi015 processes. Feature-sensitive: the equivalent distances drive the whole Z/YPrim (also unit-pinned by line_geometry::tests::matrices_equivalent_spacing_match_capi015)."
  },
  {
@@ -1292,7 +1340,7 @@
   ],
   "pending": false,
   "wp": "WP-U1.4",
-  "oracle": "capi015",
+  "engines": "r4133",
   "note": "UPGRADE_PLAN WP-U1.4 (CableConstants.pas): merged TCableConstants per-conductor model. One LineGeometry mixes conductor kinds -- phase 1 CN, phase 2 TS, phase 3 CN, plus a bare wire neutral (cond 4), reduce=y -> 3x3 phase Z/YPrim. Impossible under the pre-0.15.x per-engine CN/TS kind (which forces every phase to one type). Probed on capi015 (0.15.0b4): converged (2 iters), reduced Z asymmetric (rmatrix diag 0.2043048/0.1649111/0.1936951 ohm/km), cmatrix diag 283.089 nF/km; bit-identical Vmag fingerprint across two capi015 processes. Feature-sensitive: a regression to a single whole-engine CN or TS kind changes the mixed Z (also unit-pinned by line_geometry::tests::matrices_mixed_cn_ts_wire_match_capi015)."
  },
  {
@@ -1305,7 +1353,7 @@
   ],
   "pending": false,
   "wp": "WP-U1.4",
-  "oracle": "capi015",
+  "engines": "r4133",
   "note": "UPGRADE_PLAN WP-U1.4 (CableConstants.pas/CNData.pas): CNData.SemiconLayer=no capacitance branch. The no-semicon formula Denom=ln(RadCN/RadIn)-(1/k)*ln(k*RadStrand/RadCN) yields a distinct shunt C (167.168 vs 283.089 nF/km for the semicon=yes default), moving the line YPrim shunt block; Z is unchanged. Probed on capi015 (0.15.0b4): converged (2 iters), cmatrix diag 167.168 nF/km; bit-identical Vmag fingerprint across two capi015 processes. Feature-sensitive: a regression to the default semicon formula changes the YPrim shunt (also unit-pinned by line_constants::tests::cn_cable_no_semicon_capacitance)."
  },
  {
@@ -1316,7 +1364,7 @@
   "selected_elements": [
    "*"
   ],
-  "oracle": "capi015",
+  "engines": "r4133",
   "pending": false,
   "note": "UPGRADE_PLAN WP-U1.9 (A3/A5, §1.7): PCE force hooks. After a baseline solve, `select load.ld; set InjCurrent=[80 0 80 0 80 0]` forces the load's injection currents (Flg.ForceInjCurrents); the harness re-solve injects them directly and settles at a new operating point. Gated oracle:capi015 -- these options do not exist in the 0.14.5 default oracle. Feature-sensitive: forcing moves b2 Vmag 7187.45 -> 7224.14 V (probed on capi015, bit-identical across two processes). Per-option contract (frozen Get InjCurrent/ITerminal, YPrim/StateVar/IterNumber, clear reset) is exec/tests/force_hooks.rs, pinned to the same probe."
  },
@@ -1328,7 +1376,7 @@
   "selected_elements": [
    "*"
   ],
-  "oracle": "capi015",
+  "engines": "r4133",
   "pending": false,
   "wp": "WP-U1.6",
   "note": "UPGRADE_PLAN WP-U1.6 row D13 (docs/upgrade/DIVERGENCES.md): LoadShape single-column csvfile= under MemoryMapping=Yes. dss_capi c4590d16 restored the missing `not` on the single-column CreateMMF guard (LoadShape.pas ~:1032) so the shape's P data loads; 0.14.5 exits on CreateMMF success -> empty shape -> the daily Solve raises #482 Division by zero. Gated capi015 (0.15.0b4), NOT 0.14.5: the deck CANNOT compile+solve on the pinned 0.14.5 oracle (it is the bug the fix removes), so §1.2 forbids a 0.14.5 gate. The Rust port's eager MMF reader (read_csv_file MMF branch) already matches the fixed behavior. Feature-sensitive (§1.7-3): the single-column MMF shape drives Load.ld over 8 daily steps to P/phase [20 40 70 110 160 130 90 50] kW (= 200 kW * [0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25]); a regression to an empty/1.0 shape moves per-step load power AND node voltages far above every live floor. Fixture mm8.csv is uniform 5-byte rows (aligned MMF byte stride; all bytes in accept-set [46,58)). Validated per §1.7 (two-process determinism on capi015: converged 2 iters, Vmag fingerprint 0ead40d7199b0781 bit-identical across two processes, 2026-07-16). Also unit-pinned by load_shape::tests::mmf_single_column_csvfile_loads_like_capi015."
@@ -1343,7 +1391,8 @@
   ],
   "pending": false,
   "wp": "WP-U1.7",
-  "oracle": "capi015",
+  "engines": "r4133",
+  "defer_ledger": "capi015-line NCIM solver (WP-U1.7): 0.14.5 lacks NCIM (Set algorithm=NCIM ignored; Export deltaf/deltaZ unknown #24713), r4133-11.0 NCIM converges to a different PV/Q operating point -> Vsource.source current diverges wholesale (sign+magnitude). Phase D: re-gate vs r4133 with an iteration/current envelope, or vs capi_v0145 once NCIM lands there.",
   "note": "UPGRADE_PLAN WP-U1.7 (NCIM solver, §1.7): micro PQ-only snapshot. Two-line radial feeder, all model-1 loads, Set algorithm=NCIM. Probed on capi015 (0.15.0b4): converged (3 iters, 9 nodes), bit-identical fingerprint across two capi015 processes. Feature-sensitive: NCIM holds the swing bus at the ideal EMF (no Thevenin droop) and reports the swing-source current via NCIM_CalcInjCurrAtBus -- both differ from the default fixed-point (unit-pinned in exec/tests/ncim.rs)."
  },
  {
@@ -1356,7 +1405,8 @@
   ],
   "pending": false,
   "wp": "WP-U1.7",
-  "oracle": "capi015",
+  "engines": "r4133",
+  "defer_ledger": "capi015-line NCIM solver (WP-U1.7): 0.14.5 lacks NCIM (Set algorithm=NCIM ignored; Export deltaf/deltaZ unknown #24713), r4133-11.0 NCIM converges to a different PV/Q operating point -> Vsource.source current diverges wholesale (sign+magnitude). Phase D: re-gate vs r4133 with an iteration/current envelope, or vs capi_v0145 once NCIM lands there.",
   "note": "UPGRADE_PLAN WP-U1.7 (NCIM solver, §1.7): PV bus hitting its +Q limit -> PV->PQ conversion. A model-3 regulating generator (vpu=1.01, +/-1500 kvar) demands more than +1500 kvar, so NCIM_UpdateGenQ clamps Q=1500 and switches the generator to model-4. Probed on capi015 (0.15.0b4): converged (8 iters, 6 nodes), bit-identical across two processes; iteration policy <= per §1.3-1. Feature-sensitive: the converted generator appears in Show PV2PQ_Conversions (gated in ncim_reports.rs); without the switch the generator over-injects reactive power."
  },
  {
@@ -1369,7 +1419,8 @@
   ],
   "pending": false,
   "wp": "WP-U1.7",
-  "oracle": "capi015",
+  "engines": "r4133",
+  "defer_ledger": "capi015-line NCIM solver (WP-U1.7): 0.14.5 lacks NCIM (Set algorithm=NCIM ignored; Export deltaf/deltaZ unknown #24713), r4133-11.0 NCIM converges to a different PV/Q operating point -> Vsource.source current diverges wholesale (sign+magnitude). Phase D: re-gate vs r4133 with an iteration/current envelope, or vs capi_v0145 once NCIM lands there.",
   "note": "UPGRADE_PLAN WP-U1.7 (NCIM solver, §1.7): midi 27-node IEEE123-class radial feeder re-solved under NCIM. 6-segment backbone + two laterals, mixed model-1/model-2 loads, a model-3 generator at b5 that hits its +400 kvar limit -> PV->PQ. Probed on capi015 (0.15.0b4): converged (8 iters, 27 nodes), bit-identical across two processes; iteration policy <= per §1.3-1. Exercises NCIM at scale (PDE-only Y over a linecode network, ConstZ ZBus stamping, and the PV->PQ Q-limit path in one solve)."
  },
   {
@@ -1382,7 +1433,7 @@
    ],
    "pending": false,
    "wp": "WP-U1.4",
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "UPGRADE_PLAN WP-U1.4 (Line.pas:428/2049, LineConstants.pas): Line-level EpsRMedium. A 3-cond OH LineGeometry line with EpsRMedium=2.3 divides the shunt-capacitance potential factor by the medium permittivity (Pfactor /= E0*epsR), moving Yc/YPrim while the series Z is unchanged; default EpsRMedium=1 is 0.14.5-exact (E0*1.0==E0). Probed on capi015 (0.15.0b4): converged, YPrim shifts vs the eps=1 baseline (maxdiff ~4.8e-6 S); bit-identical across two capi015 processes. Feature-sensitive: EpsRMedium drives the whole shunt branch."
   },
   {
@@ -1395,7 +1446,7 @@
    ],
    "pending": false,
    "wp": "WP-U1.4",
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "UPGRADE_PLAN WP-U1.4 (Line.pas:430/2113, LineConstants.pas): Line-level HeightOffset+HeightUnit. An equivalent-spacing line (LineSpacing detailed=no) whose HeightOffset=5 ft is folded into the average conductor heights in UpdateLineGeometryData's equivalent-spacing branch (SetHeightOffset via SetUserHeightUnit's meters re-conversion), shifting the Carson Z/Yc; HeightUnit=ft exercises the re-conversion quirk. (On the detailed-coordinate path HeightOffset is a no-op -- SetY re-sets FY from raw coordinates.) Probed on capi015 (0.15.0b4): converged, YPrim shifts vs offset=0 (maxdiff ~2.3e-5 S); bit-identical across two capi015 processes."
   },
   {
@@ -1428,7 +1479,7 @@
    ],
    "pending": false,
    "wp": "WP-U1.4",
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "UPGRADE_PLAN WP-U1.4 (DSSClass.pas:1071): LineType enum-width fix (match length 4 -> 5). The eight swt_* names share the 4-char prefix `swt_`, so a 5-char abbreviation like `swt_l` matched nothing and fell back to the default `oh` under the old width. capi015 (0.15.x): swt_l -> swt_ldbrk, swt_r -> swt_rec, swt_e -> swt_elbow (probed 2026-07-16, bit-identical across two processes). Gated oracle:capi015 -- the 0.14.5 default oracle renders these abbreviations as `oh`. Feature-sensitive: the LineType property differs between the two engines."
   },
   {
@@ -1450,7 +1501,7 @@
    ],
    "pending": false,
    "wp": "WP-U1.2",
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "UPGRADE_PLAN WP-U1.2 row D3 (LineGeometry.pas:1060-1064): spacing ratings from the MINIMUM over PHASE conductors, not conductor 1. Phase wires [big small big] have differing normamps and the neutral (neut, normamps=999) is excluded (index > FNphases). capi015 (0.15.x): Line.l1 normamps = min(600,400,600)=400, emergamps = the governing phase's 500 (probed 2026-07-16, bit-identical across two processes). 0.14.5 took conductor 1 (600/800). Ratings do not affect V/I/P, so the observable is probed on normamps/emergamps."
   }
  ]

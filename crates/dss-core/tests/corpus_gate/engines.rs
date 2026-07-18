@@ -1,28 +1,26 @@
-//! Oracle transport for the unified corpus gate.
+//! Live-oracle transport for the unified corpus gate (schema v2 — two gating
+//! channels). Every transport speaks the identical line-JSON protocol
+//! (`ping`/`run`/`quit`, one compact JSON object per line) and produces the
+//! byte-identical [`CaseResult`] shape, so `harness/mod.rs` comparators are
+//! untouched:
 //!
-//! Two shapes over the identical line-JSON protocol `tools/oracle/oracle_server.py`
-//! speaks (`ping`/`run`/`quit`, one compact JSON object per line):
+//! * `capi_v0145` channel — the pinned dss-python 0.15.7 / dss_capi 0.14.5
+//!   oracle via `tools/oracle/oracle_server.py`. Served by a persistent
+//!   [`WorkerPool`]; serial/isolate cases use the one-shot [`Oracle`].
+//! * `r4133` channel — the official EPRI `OpenDSSDirect.dll` r4133 via the
+//!   in-house `epri-worker` bridge (Phase A). Served by a persistent
+//!   [`EpriPool`]; serial/isolate cases use the one-shot [`EpriOneShot`].
 //!
-//! * [`Oracle`] — the historical ONE-SHOT path: spawn a fresh `oracle_server.py`
-//!   per request, write one line, close stdin, drain with a deadline. Kept for
-//!   the opt-in report tests (`corpus_live_classify` / `_properties` /
-//!   `_opendss`) and as the target-rev shim (`capi_v0145` is the only pooled
-//!   channel; `capi015`/`r3723`/`r4088`/`r4133` stay one-shot per plan §3.1).
-//! * [`WorkerPool`] — Phase B: N PERSISTENT `oracle_server.py` processes for the
-//!   PINNED engine, each with a dedicated stdout-line channel + stderr drain
-//!   thread, one in-flight request at a time, a per-request deadline
-//!   (`DSS_ORACLE_TIMEOUT_SECS`, default 120) → kill/respawn/retry-once-then-
-//!   fail-case, recycled after 64 cases.
-//!
-//! [`Channel`] unifies the two so the scheduler dispatches a case to whichever
-//! its `oracle` spec selects. Both produce the byte-identical [`CaseResult`]
-//! shape, so `harness/mod.rs` comparators are untouched.
+//! [`Oracle`] additionally backs the opt-in report tests (`corpus_live_classify`
+//! / `_properties` / `_opendss`) — `opendss(rev)` drives an original EPRI binary
+//! through the AltDSS Oddie bridge (report-only; Phase D deletes it).
+//! [`Channel`] unifies all four transports for the scheduler.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::sync::{Condvar, Mutex};
+use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -32,7 +30,7 @@ use crate::harness::{
     ElementCap, Injection, MeterCap, MonitorCap, ProbeCap, PropsCap, VariablesCap, YFingerprint,
     YMat, YPrim,
 };
-use crate::manifest::{ORACLE_SPECS, SolvableCase};
+use crate::manifest::SolvableCase;
 
 // ---------------------------------------------------------------------------
 // Response + per-case model (deserialized from the oracle's JSON; unchanged).
@@ -189,15 +187,6 @@ impl Oracle {
         }
     }
 
-    /// The dss_capi 0.15.x-line oracle (dss-python 0.16.0b2 from the Oddie venv).
-    pub(crate) fn capi015() -> Oracle {
-        Oracle {
-            python: Self::oddie_venv_python(),
-            server: oracle_server_path(),
-            envs: vec![("DSS_ORACLE_ENGINE", "capi015".to_string())],
-        }
-    }
-
     fn oddie_venv_python() -> String {
         std::env::var("DSS_OPENDSS_PYTHON").unwrap_or_else(|_| {
             let venv: PathBuf = [
@@ -222,31 +211,18 @@ impl Oracle {
         })
     }
 
-    /// Construct **and ping-verify** the oracle a case's manifest `oracle` spec
-    /// names. `None` = the pinned oracle, `"capi015"` = the 0.15.x-line oracle,
-    /// `"r3723"|"r4088"|"r4133"` = an official EPRI binary via Oddie.
+    /// Construct **and ping-verify** the pinned `capi_v0145` one-shot oracle.
+    /// `spec` must be `None` (the target-rev one-shot shim retired in Phase C —
+    /// the `r4133` channel now gates through the [`EpriPool`]/[`EpriOneShot`]);
+    /// a `Some(_)` is a caller bug.
     pub(crate) fn for_spec(spec: Option<&str>) -> Oracle {
-        match spec {
-            None => {
-                let o = Oracle::new();
-                o.ping();
-                o
-            }
-            Some("capi015") => {
-                let o = Oracle::capi015();
-                o.ping_capi015();
-                o
-            }
-            Some(rev) if ORACLE_SPECS.contains(&rev) => {
-                let o = Oracle::opendss(rev);
-                o.ping_engine(Some(rev));
-                o
-            }
-            Some(other) => panic!(
-                "unknown manifest oracle spec {other:?} — expected one of {ORACLE_SPECS:?} \
-                 (tools/opendss/README.md, UPGRADE_PLAN.md)"
-            ),
-        }
+        assert!(
+            spec.is_none(),
+            "Oracle::for_spec target-rev shim retired (§4 Phase C) — r4133 gates via the epri pool"
+        );
+        let o = Oracle::new();
+        o.ping();
+        o
     }
 
     /// One-shot request/response with a wall-clock timeout. stdout/stderr are
@@ -362,22 +338,6 @@ impl Oracle {
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string()
-    }
-
-    fn ping_capi015(&self) {
-        let r = self.call(&json!({"cmd": "ping"}));
-        assert!(r.ok, "oracle ping failed: {:?}", r.error);
-        let oracle = r
-            .result
-            .as_ref()
-            .and_then(|v| v.get("oracle"))
-            .cloned()
-            .unwrap_or_default();
-        assert_eq!(
-            oracle.get("capi015").and_then(|v| v.as_bool()),
-            Some(true),
-            "oracle is not the capi015 (dss_capi 0.15.x-line) engine: {oracle}"
-        );
     }
 
     /// Run one case and return the oracle's per-step model.
@@ -613,21 +573,276 @@ impl WorkerPool {
 }
 
 // ---------------------------------------------------------------------------
-// Channel: the scheduler's uniform handle over pool / one-shot oracles.
+// r4133 channel: the in-house `epri-worker` bridge (persistent pool + one-shot).
 // ---------------------------------------------------------------------------
 
-/// A comparison channel for one case: the pinned pool, or a one-shot oracle
-/// (pinned-isolated or a target-rev engine).
+/// Resolve the `epri-worker` binary (§3.1): `DSS_EPRI_WORKER` env override →
+/// `<workspace>/target/<profile>/epri-worker(.exe)` → OnceLock `cargo build`
+/// fallback (loud failure). Resolved once per test process.
+fn epri_worker_bin() -> PathBuf {
+    static RESOLVED: OnceLock<PathBuf> = OnceLock::new();
+    RESOLVED
+        .get_or_init(|| {
+            if let Ok(p) = std::env::var("DSS_EPRI_WORKER") {
+                let p = PathBuf::from(p);
+                assert!(
+                    p.is_file(),
+                    "DSS_EPRI_WORKER points at a missing file: {p:?}"
+                );
+                return p;
+            }
+            let profile = if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            };
+            let exe = if cfg!(windows) {
+                "epri-worker.exe"
+            } else {
+                "epri-worker"
+            };
+            let root: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect();
+            let candidate = root.join("target").join(profile).join(exe);
+            if candidate.is_file() {
+                return candidate;
+            }
+            // Fallback: build it once (covers `cargo test -p dss-core` invocations
+            // that did not build the whole workspace).
+            eprintln!("epri-worker not found at {candidate:?} — building it once…");
+            let mut cmd =
+                Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()));
+            cmd.arg("build")
+                .arg("-p")
+                .arg("dss-epri")
+                .arg("--bin")
+                .arg("epri-worker");
+            if profile == "release" {
+                cmd.arg("--release");
+            }
+            let status = cmd
+                .status()
+                .unwrap_or_else(|e| panic!("cannot run `cargo build -p dss-epri`: {e}"));
+            assert!(
+                status.success(),
+                "`cargo build -p dss-epri --bin epri-worker` failed — build it manually \
+                 (or set DSS_EPRI_WORKER) before running the corpus gate"
+            );
+            assert!(
+                candidate.is_file(),
+                "epri-worker still missing after build: {candidate:?}"
+            );
+            candidate
+        })
+        .clone()
+}
+
+/// Spawn a persistent `epri-worker` process with drain threads (mirrors
+/// [`spawn_worker`]; the worker resolves the r4133 DLL itself).
+fn spawn_epri_worker(bin: &std::path::Path) -> Worker {
+    let mut child = Command::new(bin)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("cannot spawn epri-worker ({}): {e}", bin.display()));
+    let stdin = child.stdin.take().expect("epri-worker stdin");
+    let stdout = child.stdout.take().expect("epri-worker stdout");
+    let stderr = child.stderr.take().expect("epri-worker stderr");
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            match line {
+                Ok(l) => {
+                    if tx.send(l).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines() {
+            if line.is_err() {
+                break;
+            }
+        }
+    });
+    Worker {
+        child,
+        stdin,
+        lines: rx,
+        served: 0,
+        broken: false,
+    }
+}
+
+/// Assert a freshly-spawned `epri-worker` is the r4133 EPRI engine (markers
+/// `{"epri":true,"rev":"r4133"}`) — a wrong/absent DLL must fail loudly.
+fn assert_epri(w: &mut Worker, timeout: Duration) {
+    let r = w
+        .request(&json!({"cmd": "ping"}), timeout)
+        .expect("epri-worker ping failed (spawn/DLL-load/timeout)");
+    assert!(r.ok, "epri-worker ping failed: {:?}", r.error);
+    let oracle = r
+        .result
+        .as_ref()
+        .and_then(|v| v.get("oracle"))
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(
+        oracle.get("epri").and_then(|v| v.as_bool()),
+        Some(true),
+        "epri-worker did not answer as the EPRI bridge: {oracle}"
+    );
+    assert_eq!(
+        oracle.get("rev").and_then(|v| v.as_str()),
+        Some("r4133"),
+        "epri-worker answered for the wrong revision: {oracle}"
+    );
+}
+
+/// A pool of N persistent `epri-worker` processes (r4133 channel), mirroring
+/// [`WorkerPool`]'s lifecycle: one in-flight request each, per-request deadline
+/// → kill/respawn/retry-once-then-fail-case, recycle after 64 cases. A DLL crash
+/// (`#303`, never sent — ledgered `skip` in Phase D) kills only that worker.
+pub(crate) struct EpriPool {
+    idle: Mutex<Vec<Worker>>,
+    cv: Condvar,
+    bin: PathBuf,
+    timeout: Duration,
+}
+
+impl EpriPool {
+    /// Spawn + ping-verify `size` persistent epri workers up front.
+    pub(crate) fn new(size: usize) -> EpriPool {
+        let bin = epri_worker_bin();
+        let timeout = oracle_timeout();
+        let mut v = Vec::with_capacity(size);
+        for _ in 0..size.max(1) {
+            let mut w = spawn_epri_worker(&bin);
+            assert_epri(&mut w, timeout);
+            v.push(w);
+        }
+        EpriPool {
+            idle: Mutex::new(v),
+            cv: Condvar::new(),
+            bin,
+            timeout,
+        }
+    }
+
+    fn checkout(&self) -> Worker {
+        let mut g = self.idle.lock().unwrap();
+        while g.is_empty() {
+            g = self.cv.wait(g).unwrap();
+        }
+        g.pop().unwrap()
+    }
+
+    fn checkin(&self, mut w: Worker) {
+        if w.broken || w.served >= RECYCLE_AFTER {
+            w.close();
+            w = spawn_epri_worker(&self.bin);
+            assert_epri(&mut w, self.timeout);
+        }
+        self.idle.lock().unwrap().push(w);
+        self.cv.notify_one();
+    }
+
+    /// Run one request on a checked-out worker; on a broken worker respawn +
+    /// retry once on a fresh worker, then fail the case.
+    pub(crate) fn call(&self, req: &Value) -> Resp {
+        let mut w = self.checkout();
+        w.served += 1;
+        match w.request(req, self.timeout) {
+            Some(r) => {
+                self.checkin(w);
+                r
+            }
+            None => {
+                w.close();
+                let mut w2 = spawn_epri_worker(&self.bin);
+                assert_epri(&mut w2, self.timeout);
+                w2.served += 1;
+                let out = match w2.request(req, self.timeout) {
+                    Some(r) => r,
+                    None => Resp {
+                        ok: false,
+                        error: Some(
+                            "epri-worker failed twice (timeout/DLL-crash) — case failed"
+                                .to_string(),
+                        ),
+                        result: None,
+                    },
+                };
+                self.checkin(w2);
+                out
+            }
+        }
+    }
+
+    /// Terminate every idle worker (call once, after the scheduler scope ends).
+    pub(crate) fn close(&self) {
+        for mut w in self.idle.lock().unwrap().drain(..) {
+            w.close();
+        }
+    }
+}
+
+/// A one-shot `epri-worker` transport: spawn a fresh process per request, ping,
+/// run, quit. Used for serial-mode and `isolate` r4133 cases (the throwaway
+/// worker the contamination proof / MMF discipline demands).
+pub(crate) struct EpriOneShot {
+    bin: PathBuf,
+    timeout: Duration,
+}
+
+impl EpriOneShot {
+    pub(crate) fn new() -> EpriOneShot {
+        EpriOneShot {
+            bin: epri_worker_bin(),
+            timeout: oracle_timeout(),
+        }
+    }
+
+    /// Spawn a fresh worker, ping-verify, run the request, quit.
+    pub(crate) fn call(&self, req: &Value) -> Resp {
+        let mut w = spawn_epri_worker(&self.bin);
+        assert_epri(&mut w, self.timeout);
+        let out = match w.request(req, self.timeout) {
+            Some(r) => r,
+            None => Resp {
+                ok: false,
+                error: Some("epri-worker one-shot failed (timeout/DLL-crash)".to_string()),
+                result: None,
+            },
+        };
+        w.close();
+        out
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Channel: the scheduler's uniform handle over the two channels' transports.
+// ---------------------------------------------------------------------------
+
+/// A comparison channel for one case: the pinned capi_v0145 pool or one-shot,
+/// or the r4133 epri pool or one-shot.
 pub(crate) enum Channel<'a> {
-    Pool(&'a WorkerPool),
-    OneShot(&'a Oracle),
+    CapiPool(&'a WorkerPool),
+    CapiOneShot(&'a Oracle),
+    EpriPool(&'a EpriPool),
+    EpriOneShot(&'a EpriOneShot),
 }
 
 impl Channel<'_> {
     pub(crate) fn call(&self, req: &Value) -> Resp {
         match self {
-            Channel::Pool(p) => p.call(req),
-            Channel::OneShot(o) => o.call(req),
+            Channel::CapiPool(p) => p.call(req),
+            Channel::CapiOneShot(o) => o.call(req),
+            Channel::EpriPool(p) => p.call(req),
+            Channel::EpriOneShot(e) => e.call(req),
         }
     }
 }

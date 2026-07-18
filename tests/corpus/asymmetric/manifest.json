@@ -3,6 +3,7 @@
  "cases": [
   {
    "path": "vsource/vsource_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -14,6 +15,7 @@
   },
   {
    "path": "reactor/reactor_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -28,6 +30,7 @@
   },
   {
    "path": "capacitor/capacitor_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -43,6 +46,7 @@
   },
   {
    "path": "line/line_asym.dss",
+   "engines": "capi_v0145",
    "ad": "pf",
    "kind": "micro",
    "n_steps": 1,
@@ -64,7 +68,7 @@
     "Line.lspur",
     "Line.llong"
    ],
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "Boundaries: LineGeometry+WireData Carson full-asym Z/Yc (Line.pas geometry path, reduce=y Kron), 1-phase reduced spur, and the SymComponentsModel-only LongLineCorrection sinh(gamma*l)/(gamma*l) branch (Line.pas:1199/1369). Oracle: converged 5 iters; bit-identical across 2 processes. Feature-sensitive: LongLineCorrection yes->no changes Line.llong YPrim; swapping cond=1 wire changes Line.lgeo YPrim. Flipped oracle:capi015 at the upgrade-rung1 sync merge: `Set EarthModel=Carson` puts Get_Ze on the SimpleCarson branch that WP-U1.2 B2/D1 moved (De 658.5 -> 658.8530451057239, DIVERGENCES.md #b2--d1); vs 0.14.5 the deck diverges ~1.7e-3 (witnessed at merge), vs capi015 it is at the live floors."
   },
   {
@@ -76,7 +80,7 @@
     "Line.lcn",
     "Line.lts"
    ],
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "Boundaries: CNData concentric-neutral and TSData tape-shield reduced-Y (distinct Kron neutral elimination CN vs TS), asymmetric underground burial. Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: CN strand count k 13->7 changes Line.lcn YPrim; TS TapeLayer 0.005->0.008 changes Line.lts YPrim. Flipped oracle:capi015 at the upgrade-rung1 sync merge: `Set EarthModel=Carson` -> SimpleCarson Get_Ze moved by WP-U1.2 B2/D1 (De 658.5 -> 658.8530451057239, DIVERGENCES.md #b2--d1)."
   },
   {
@@ -88,7 +92,9 @@
     "Line.lsp",
     "Line.lspc"
    ],
-   "oracle": "capi015",
+   "engines": "r4133",
+   "wp": "WP-UG-D (Unified Gate Phase D ledger)",
+   "defer_ledger": "capi015-line: r4133 raises #303 access violation at calcv (known linespacing crash), 0.14.5 gives Line.normamps=230 vs Rust/capi015 730 -> diverges on BOTH channels. Phase D: r4133 `skip` + capi_v0145 property ledger.",
    "probes": [
     {
      "element": "Line.lsp",
@@ -109,6 +115,7 @@
   },
   {
    "path": "line/line_llc_harm_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -120,6 +127,7 @@
   },
   {
    "path": "line/line_ground_z_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -131,6 +139,7 @@
   },
   {
    "path": "line/line_fullcarson_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -142,6 +151,7 @@
   },
   {
    "path": "transformer/transformer_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -157,6 +167,7 @@
   },
   {
    "path": "transformer/transformer_wyedelta_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -168,6 +179,7 @@
   },
   {
    "path": "fault/fault_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -179,6 +191,7 @@
   },
   {
    "path": "load/load_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -195,6 +208,7 @@
   },
   {
    "path": "generator/generator_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -208,6 +222,7 @@
   },
   {
    "path": "generator/gen_currentlimited_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -220,6 +235,7 @@
   },
   {
    "path": "der/der_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -232,6 +248,7 @@
   },
   {
    "path": "der/der_state_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -244,6 +261,7 @@
   },
   {
    "path": "indmach/indmach_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -255,6 +273,7 @@
   },
   {
    "path": "vccs/vccs_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -266,6 +285,7 @@
   },
   {
    "path": "upfc/upfc_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -277,6 +297,7 @@
   },
   {
    "path": "combo/combo_chain_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -294,6 +315,7 @@
   },
   {
    "path": "combo/midi_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -309,11 +331,12 @@
    "selected_elements": [
     "*"
    ],
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "Cross-element (midi): overhead Carson geometry -> CN cable -> delta-wye transformer -> unbalanced loads + TS 1-phase spur. Boundary: Carson/cable mutuals meet the transformer grounded-wye zero-sequence path across the assembled system Y (neutral-return coupling). Oracle: converged 3 iters; bit-identical across 2 processes. Feature-sensitive: adding a wdg-2 rneut/xneut ground impedance changes the whole-model fingerprint. Flipped oracle:capi015 at the upgrade-rung1 sync merge: `Set EarthModel=Carson` -> SimpleCarson Get_Ze moved by WP-U1.2 B2/D1 (De 658.5 -> 658.8530451057239, DIVERGENCES.md #b2--d1)."
   },
   {
    "path": "combo/combo_mesh_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -331,6 +354,7 @@
   },
   {
    "path": "vsource/midi_vsource_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -340,6 +364,7 @@
   },
   {
    "path": "reactor/midi_reactor_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-divergent",
    "kind": "micro",
    "n_steps": 2,
@@ -349,6 +374,7 @@
   },
   {
    "path": "capacitor/midi_capacitor_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -358,6 +384,7 @@
   },
   {
    "path": "line/midi_line_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -367,6 +394,7 @@
   },
   {
    "path": "transformer/midi_transformer_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -376,6 +404,7 @@
   },
   {
    "path": "fault/midi_fault_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 2,
@@ -385,6 +414,7 @@
   },
   {
    "path": "load/midi_load_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -394,6 +424,7 @@
   },
   {
    "path": "load/midi_load_vregion_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -404,6 +435,7 @@
   },
   {
    "path": "generator/midi_generator_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -413,6 +445,7 @@
   },
   {
    "path": "der/midi_der_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -422,6 +455,7 @@
   },
   {
    "path": "indmach/midi_indmach_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -431,6 +465,7 @@
   },
   {
    "path": "vccs/midi_vccs_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 2,
@@ -440,6 +475,7 @@
   },
   {
    "path": "upfc/midi_upfc_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -449,6 +485,7 @@
   },
   {
    "path": "isource/isource_snap.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -460,6 +497,7 @@
   },
   {
    "path": "autotrans/autotrans_snap.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -488,6 +526,7 @@
   },
   {
    "path": "autotrans/autotrans_gic.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
@@ -500,6 +539,7 @@
   },
   {
    "path": "gic/gicline_gic.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -511,6 +551,7 @@
   },
   {
    "path": "gic/gictransformer_gic.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -522,6 +563,7 @@
   },
   {
    "path": "gic/gicsource_gic.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -548,6 +590,7 @@
   },
   {
    "path": "isource/midi_isource_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:too-small",
    "kind": "midi",
    "n_steps": 1,
@@ -559,6 +602,7 @@
   },
   {
    "path": "autotrans/midi_autotrans_asym.dss",
+   "engines": "capi_v0145",
    "ad": "off:ad-nonconvergent",
    "kind": "midi",
    "n_steps": 1,
@@ -578,6 +622,7 @@
   },
   {
    "path": "gic/gic_midi.dss",
+   "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "midi",
    "n_steps": 1,

@@ -48,7 +48,7 @@ use dss_core::exec::Dss;
 
 use engines::Oracle;
 use manifest::{
-    AD_OFF_REASONS, FAMILIES, ORACLE_SPECS, SolvableCase, ad_disposition_is_valid, corpus_file,
+    AD_OFF_REASONS, EngineChannel, FAMILIES, SolvableCase, ad_disposition_is_valid, corpus_file,
     family_file, load_family, load_solvable, manifests_dir,
 };
 use runner::{CorpusGuard, panic_msg, run_and_compare};
@@ -292,10 +292,12 @@ fn corpus_live_properties() {
     }
     let oracle = Oracle::for_spec(None);
 
+    // The property-parity pilot runs against the PINNED oracle only → include
+    // just cases that gate the capi_v0145 channel (skip r4133-only cases).
     let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
     for fam in FAMILIES {
         for c in load_family(fam.name) {
-            if c.pending || c.oracle.is_some() || c.expect_solve_abort.is_some() {
+            if c.pending || !c.gates_capi() || c.expect_solve_abort.is_some() {
                 continue;
             }
             let abs = family_file(fam.name, &c.path);
@@ -303,7 +305,7 @@ fn corpus_live_properties() {
         }
     }
     for c in load_solvable() {
-        if c.oracle.is_some() || c.expect_solve_abort.is_some() {
+        if !c.gates_capi() || c.expect_solve_abort.is_some() {
             continue;
         }
         universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
@@ -501,10 +503,14 @@ fn corpus_live_opendss() {
     let engine = oracle.ping_engine(Some(&rev));
     eprintln!("opendss oracle ({rev}): {engine}");
 
+    // Exclude cases the mandatory gate already gates against r4133 (schema v2
+    // `engines` contains r4133) — this report-only channel inventories the
+    // remaining capi_v0145-only cases against the EPRI binary.
+    let gates_r4133 = |c: &SolvableCase| c.engine_channels().contains(&EngineChannel::R4133);
     let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
     let mut target_rev_excluded: Vec<String> = Vec::new();
     for c in load_solvable() {
-        if c.oracle.is_some() {
+        if gates_r4133(&c) {
             target_rev_excluded.push(format!("solvable_now:{}", c.path));
             continue;
         }
@@ -520,7 +526,7 @@ fn corpus_live_opendss() {
             if c.pending || c.expect_solve_abort.is_some() {
                 continue;
             }
-            if c.oracle.is_some() {
+            if gates_r4133(&c) {
                 target_rev_excluded.push(format!("{}:{}", fam.name, c.path));
                 continue;
             }
@@ -532,8 +538,8 @@ fn corpus_live_opendss() {
     }
     if !target_rev_excluded.is_empty() {
         eprintln!(
-            "opendss {rev}: {} target-rev case(s) excluded \
-             (gated in the mandatory gate against their own `oracle` target)",
+            "opendss {rev}: {} r4133-gated case(s) excluded \
+             (gated in the mandatory gate against the r4133 channel)",
             target_rev_excluded.len()
         );
     }
@@ -664,8 +670,6 @@ fn corpus_live_opendss() {
 struct AdSweepCase {
     path: String,
     ad: String,
-    #[serde(default)]
-    oracle: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1062,13 +1066,6 @@ fn ad_sweep_covers_solvable_now() {
             c.path,
             c.ad
         );
-        if let Some(spec) = &c.oracle {
-            assert!(
-                ORACLE_SPECS.contains(&spec.as_str()),
-                "{}: unknown oracle spec {spec:?}",
-                c.path
-            );
-        }
     }
     eprintln!(
         "ad_sweep.json: {} dispositions cover solvable_now exactly",
