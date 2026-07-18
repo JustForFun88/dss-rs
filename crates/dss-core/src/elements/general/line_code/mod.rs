@@ -113,19 +113,38 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     // (`PropertyOffset3 = @SymComponentsModel`, `ConditionalValue`).
     let conditional = PropFlags::CONDITIONAL_VALUE;
     let mut defs = vec![
-        PropDef::integer("NPhases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("R1").flags(conditional | PropFlags::UNITS_OHM_PER_LENGTH),
-        PropDef::double("X1").flags(conditional | PropFlags::UNITS_OHM_PER_LENGTH),
+        // Pascal `LineCode.pas` gives `NPhases` no validation flags — a
+        // non-positive value is accepted at parse and handled by the
+        // `Set_NumPhases` side effect (`.max(0)` in `compute.rs`). The port carried
+        // a spurious `NonNegative|NonZero` that both rejected `nphases<=0` (unlike
+        // the oracle) and leaked an `exclusiveMinimum:0` into the schema.
+        PropDef::integer("NPhases"),
+        PropDef::double("R1")
+            .flags(conditional | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_OHM_PER_LENGTH),
+        PropDef::double("X1")
+            .flags(conditional | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("R0").flags(conditional | PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("X0").flags(conditional | PropFlags::UNITS_OHM_PER_LENGTH),
-        PropDef::double("C1").scale(1.0e-9).flags(conditional),
-        PropDef::double("C0").scale(1.0e-9).flags(conditional),
+        PropDef::double("C1")
+            .scale(1.0e-9)
+            .flags(conditional | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_NF_PER_LENGTH),
+        PropDef::double("C0")
+            .scale(1.0e-9)
+            .flags(conditional | PropFlags::UNITS_NF_PER_LENGTH),
         PropDef::mapped_string_enum("Units", enums.units),
-        PropDef::sym_matrix_real("RMatrix", NPHASES).flags(PropFlags::UNITS_OHM_PER_LENGTH),
-        PropDef::sym_matrix_imag("XMatrix", NPHASES).flags(PropFlags::UNITS_OHM_PER_LENGTH),
+        PropDef::sym_matrix_real("RMatrix", NPHASES)
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_OHM_PER_LENGTH),
+        PropDef::sym_matrix_imag("XMatrix", NPHASES)
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_OHM_PER_LENGTH),
         // CMatrix stores susceptance; GetYCScale converts to/from nF on dump.
-        PropDef::sym_matrix_imag("CMatrix", NPHASES).flags(PropFlags::SCALED_BY_FUNCTION),
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::sym_matrix_imag("CMatrix", NPHASES)
+            .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::UNITS_NF_PER_LENGTH),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::double("NormAmps"),
         PropDef::double("EmergAmps"),
         // dss_capi 0.15.x (LineCode.pas:283-288): FaultRate/PctPerm/Repair are
@@ -138,14 +157,19 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("PctPerm").flags(PropFlags::DEPRECATED | PropFlags::UNUSED),
         PropDef::double("Repair").flags(PropFlags::DEPRECATED | PropFlags::UNUSED),
         // BooleanActionProperty: setting it `yes` runs DoKronReduction; the
-        // getter always reads back `No` (it stores no state).
-        PropDef::boolean("Kron"),
+        // getter always reads back `No` (it stores no state). The `BOOLEAN_ACTION`
+        // marker carries the Pascal `writeOnly` + end-ordering.
+        PropDef::boolean("Kron").flags(PropFlags::BOOLEAN_ACTION),
         PropDef::double("Rg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::double("Xg").flags(PropFlags::UNITS_OHM_PER_LENGTH),
-        PropDef::double("rho"),
+        PropDef::double("rho").flags(PropFlags::UNITS_OHM_METER),
         PropDef::integer("Neutral"),
-        PropDef::double("B1")
-            .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | conditional),
+        PropDef::double("B1").flags(
+            PropFlags::SCALED_BY_FUNCTION
+                | PropFlags::REDUNDANT
+                | PropFlags::REQUIRED_IN_SPEC_SET
+                | conditional,
+        ),
         PropDef::double("B0")
             .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | conditional),
         PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),

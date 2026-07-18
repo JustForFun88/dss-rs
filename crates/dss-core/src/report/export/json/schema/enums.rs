@@ -43,70 +43,94 @@ impl SchemaEnum {
     /// Pascal `JSONName` (`DSSClass.pas:2218-2221`): the `Name` with every space,
     /// `-`, and `:` removed. This is the `$defs` key.
     fn json_name(&self) -> String {
-        self.name.replace([' ', '-', ':'], "")
+        enum_json_name(self.name)
     }
 
     /// Port of `prepareEnumJsonSchema(e, enumIds, prefixPath)`
     /// (`CAPI_Schema.pas:111-162`) — builds the enum's schema object. The
     /// `enumIds` side effect (registering the id) is tracked by the caller.
     fn to_json(&self) -> Json {
-        // `:117-132`: build the `names`/`values` arrays and the `$dssFullEnum`
-        // mapping, skipping options whose AltName is empty.
-        let mut names = Vec::new();
-        let mut values = Vec::new();
-        let mut mapping = Vec::new();
-        for idx in 0..self.alt_names.len() {
-            let alt = self.alt_names[idx];
-            if alt.is_empty() {
-                continue;
-            }
-            let display = if self.alt_names_valid {
-                alt
-            } else {
-                self.names[idx]
-            };
-            names.push(s(display));
-            values.push(i(self.ordinals[idx]));
-            mapping.push(Json::Arr(vec![
-                s(alt),
-                s(self.names[idx]),
-                i(self.ordinals[idx]),
-            ]));
-        }
-
-        if self.json_use_numbers {
-            // `:134-144`
-            return obj(vec![
-                ("title", s(self.name)),
-                ("type", s("integer")),
-                ("enum", Json::Arr(values)),
-                ("$dssFullEnum", Json::Arr(mapping)),
-            ]);
-        }
-
-        if self.hybrid {
-            // `:146-154`
-            return obj(vec![
-                ("title", s(self.name)),
-                (
-                    "oneOf",
-                    Json::Arr(vec![
-                        obj(vec![("type", s("string")), ("enum", Json::Arr(names))]),
-                        obj(vec![("type", s("integer")), ("minimum", i(1))]),
-                    ]),
-                ),
-                ("$dssFullEnum", Json::Arr(mapping)),
-            ]);
-        }
-
-        // `:156-161`
-        obj(vec![
-            ("title", s(self.name)),
-            ("type", s("string")),
-            ("enum", Json::Arr(names)),
-            ("$dssFullEnum", Json::Arr(mapping)),
-        ])
+        render_enum(
+            self.name,
+            self.names,
+            self.ordinals,
+            self.alt_names,
+            self.alt_names_valid,
+            self.hybrid,
+            self.json_use_numbers,
+        )
     }
+}
+
+/// Pascal `TDSSEnum.JSONName` (`DSSClass.pas:2218-2221`): the enum `Name` with
+/// every space, `-`, and `:` removed — the `$defs` key. Shared by the global
+/// enum walk and the class-local walk (`schema/classes.rs`).
+pub(super) fn enum_json_name(name: &str) -> String {
+    name.replace([' ', '-', ':'], "")
+}
+
+/// The body of `prepareEnumJsonSchema` (`CAPI_Schema.pas:111-162`): build an
+/// enum's schema object from its `Names`/`Ordinals`/`AltNames` + the
+/// `AltNamesValid`/`Hybrid`/`JSONUseNumbers` metadata. `alt_names` must be the
+/// same length as `names`; an empty AltName drops that option (`:122-123`).
+/// Shared by [`SchemaEnum::to_json`] (the 21 globals) and the class-local walk.
+pub(super) fn render_enum(
+    name: &str,
+    names: &[&str],
+    ordinals: &[i64],
+    alt_names: &[&str],
+    alt_names_valid: bool,
+    hybrid: bool,
+    json_use_numbers: bool,
+) -> Json {
+    // `:117-132`: build the `names`/`values` arrays and the `$dssFullEnum`
+    // mapping, skipping options whose AltName is empty.
+    let mut enum_names = Vec::new();
+    let mut values = Vec::new();
+    let mut mapping = Vec::new();
+    for idx in 0..alt_names.len() {
+        let alt = alt_names[idx];
+        if alt.is_empty() {
+            continue;
+        }
+        let display = if alt_names_valid { alt } else { names[idx] };
+        enum_names.push(s(display));
+        values.push(i(ordinals[idx]));
+        mapping.push(Json::Arr(vec![s(alt), s(names[idx]), i(ordinals[idx])]));
+    }
+
+    if json_use_numbers {
+        // `:134-144`
+        return obj(vec![
+            ("title", s(name)),
+            ("type", s("integer")),
+            ("enum", Json::Arr(values)),
+            ("$dssFullEnum", Json::Arr(mapping)),
+        ]);
+    }
+
+    if hybrid {
+        // `:146-154`
+        return obj(vec![
+            ("title", s(name)),
+            (
+                "oneOf",
+                Json::Arr(vec![
+                    obj(vec![("type", s("string")), ("enum", Json::Arr(enum_names))]),
+                    obj(vec![("type", s("integer")), ("minimum", i(1))]),
+                ]),
+            ),
+            ("$dssFullEnum", Json::Arr(mapping)),
+        ]);
+    }
+
+    // `:156-161`
+    obj(vec![
+        ("title", s(name)),
+        ("type", s("string")),
+        ("enum", Json::Arr(enum_names)),
+        ("$dssFullEnum", Json::Arr(mapping)),
+    ])
 }
 
 /// Sugar: an enum whose `AltNames` default to `Names` (2-arg `TDSSEnum.Create`).
@@ -348,4 +372,13 @@ pub fn global_enum_defs() -> Vec<(String, Json)> {
         .into_iter()
         .map(|e| (e.json_name(), e.to_json()))
         .collect()
+}
+
+/// Whether `json_name` names one of the 21 top-level (`DSS.Enums`) global enums
+/// — the class walk's test for whether a mapped-enum property refs a global
+/// `$defs/<JSONName>` (registered in `enumIds` before the class loop) or emits a
+/// class-local `$defs`. Pascal `enumIds.Find(aenum.JSONName) <> 0`
+/// (`CAPI_Schema.pas:761-773`).
+pub(super) fn is_global_enum_json_name(json_name: &str) -> bool {
+    global_enums().iter().any(|e| e.json_name() == json_name)
 }

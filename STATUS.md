@@ -378,6 +378,58 @@ shortfall is honestly disclosed, not hidden. Dispositions:
   processes) — a 24-line deletion of the two contradictory keys only, every
   byte-gated fragment (`global_defs`/`enum_defs`/`circuit_head`) unchanged.
 
+### OG-1.5c `CAPI_Schema` per-class walk — infra + pilot (2026-07-18)
+
+Branch `og15b-schema-full` (continues OG-1.5b). Ported the per-class walk
+`prepareClassJsonSchema` (`CAPI_Schema.pas:325-1134`) loop-for-loop as
+`report/export/json/schema/classes.rs::class_schema`, exposed via
+`Dss::schema_class_def(class_name)`. This is the **infra stage** of a
+multi-agent rollout: all shared machinery is built and proven byte-exact on a
+6-class **pilot** (the first six `DSSClassList` classes: LineCode, LoadShape,
+TShape, PriceShape, XYcurve, GrowthShape); the remaining 43 classes are ported
+by sequential class-batch agents, then the full-document splice by an
+integration agent.
+
+Machinery built (all shared):
+- **`classes.rs`** — the walker: the `PropertyTypeJson` mapping reconstructed from
+  the port's merged `PropType`+flags (`pascal_jtype`), `extractUnits`
+  (`extract_units`), the scalar/array/matrix/enum/object-ref default extraction
+  with the exact Pascal elision rules, `$dssPropertyOrder` from the ported
+  `AltPropertyOrder` (`index_of_in`), `$dssLength`/`$dssShape`/`$dssPropertyIndex`,
+  the `SpecSets`→`oneOf`+`toRemove`+`RequiredInSpecSet` block (incl. the
+  redundant-member abort), and class-local enum `$defs`.
+- **`PropFlags`** widened to `u128`; the **`Units_*` family** completed (26 new,
+  all 28 now present), plus `PD_ELEMENT`/`POWER_FACTOR_LIMITS` and a port-only
+  **`BOOLEAN_ACTION`** marker (restores `BooleanActionProperty`'s `writeOnly` +
+  end-ordering, which the `PropType::Boolean` merge dropped — LineCode `Kron`).
+- **`spec_sets.rs`** — schema-side port of `TDSSClass.SpecSets`/`SpecSetNames`
+  (`RequiredInSpecSet` stays the per-`PropDef` flag, matching Pascal).
+- **`enums.rs`** — the enum rendering factored into a shared `render_enum` +
+  `enum_json_name` + `is_global_enum_json_name`, reused for class-local enums;
+  `EnumMeta` builds them from the port's `DssEnum` (+ an `enum_overrides` hook for
+  the AltName-dropping / renumbering / integer locals the batches need).
+- **help** reused from `report::help_catalog::dss_help` (`<Class>.<proplower>`) —
+  no duplicate table.
+- **`gen_schema.py`** captures each ported class's oracle fragment verbatim
+  (`SCHEMA_CLASSES`, `slice_class_def`); **`golden_schema.rs`
+  ::ported_class_defs_bytes_match_oracle** byte-compares Rust vs oracle **after**
+  applying the committed **expected-divergence inventory**
+  (`tests/golden/json/schema_divergences.json`) with **fail-on-stale** (a
+  divergence whose occurrence count no longer matches fails; canary-verified).
+
+Pilot result: 5/6 classes byte-exact; LineCode byte-exact **after** its 3
+documented r4133 divergences (FaultRate/PctPerm/Repair `deprecated:true` — the
+port follows dss_capi 0.15.x/r4133 per WP-U1.4; the pinned 0.14.5 oracle omits
+the flag). Two genuine port-metadata fixes made along the way: LineCode `NPhases`
+lost a spurious `NonNegative|NonZero` (Pascal has none — it validates in the
+`Set_NumPhases` side effect; the flag both over-rejected `nphases<=0` at parse
+and leaked `exclusiveMinimum:0` into the schema), and the shape classes' file
+props gained the `NPts` `size_prop` (`getSizePropertyIndex`'s `GlobalCount`
+branch → `$dssLength`). `extract_schema_json` still returns the skeleton (its
+`# Incomplete` caveat stands until the integration splice). Gate green
+(fmt/clippy/test); `tests/corpus` pristine. Pattern doc for the batch agents in
+the coordinator's scratchpad (`schema_pattern.md`).
+
 ### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
 
 Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already

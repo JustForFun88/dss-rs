@@ -482,6 +482,26 @@ impl Dss {
         crate::report::export::json::schema::extract_schema_skeleton_json()
     }
 
+    /// The schema `$defs/<Class>` for one registered class — Pascal
+    /// `prepareClassJsonSchema` (`CAPI_Schema.pas:325-1134`), built from the class
+    /// property table and a fresh all-default *sample object*
+    /// (`cls.NewObject('SAMPLE_FOR_DEFAULTS', ...)`). Returns `None` if the class
+    /// is not registered. Groundwork for the full-document assembly (the
+    /// `<Class>List`/`<Class>Container` triples + `circuitProperties` refs, and
+    /// the loop over `DSSClassList` order, are added by the caller); exercised
+    /// per-class by `golden_schema.rs`.
+    pub fn schema_class_def(&self, class_name: &str) -> Option<crate::report::export::json::Json> {
+        let &ci = self.class_by_name.get(&class_name.to_ascii_lowercase())?;
+        let class = &self.classes[ci];
+        let sample = (class.new_object)("sample_for_defaults");
+        Some(crate::report::export::json::schema::class_schema(
+            class.props.class_name(),
+            &class.props,
+            sample.as_ref(),
+            &self.enums,
+        ))
+    }
+
     /// AltDSS whole-circuit JSON dump — Pascal `Obj_Circuit_ToJSON_`
     /// (`CAPI_Obj.pas:2513-2672`). Returns `None` when no circuit exists
     /// (`New circuit.` has not run). The circuit is **always** serialized pretty

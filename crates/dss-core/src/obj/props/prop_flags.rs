@@ -7,7 +7,7 @@
 /// `GlobalCount`, ...) are recorded for fidelity but are inert in Phase 2 — they
 /// only matter to the JSON/alt-order machinery, which is not ported yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct PropFlags(u64);
+pub struct PropFlags(u128);
 
 impl PropFlags {
     pub const NONE: Self = Self(0);
@@ -212,6 +212,62 @@ impl PropFlags {
     /// only the non-redundant Required props are ever checked — flagging the
     /// per-winding `bus`/`kV` (which the oracle always exports) suffices.
     pub const REQUIRED: Self = Self(1 << 53);
+
+    // --- The `Units_*` property-flag family (schema metadata only) ---------
+    // Pascal `TPropertyFlag.Units_*` (`DSSClass.pas`): each documents a
+    // property's physical unit, consumed only by the CAPI JSON-schema export
+    // (`CAPI_Schema.pas:extractUnits`, checked in this exact order — the first
+    // set flag wins). Inert on the text dump and the property setters, like the
+    // pre-existing [`Self::UNITS_HOUR`] / [`Self::UNITS_OHM_PER_LENGTH`]. The two
+    // exceptions carried above keep their original bits (38 / 40); the remaining
+    // 26 are added here (`OG-1.5c`).
+    pub const UNITS_HZ: Self = Self(1 << 54);
+    pub const UNITS_PU_VOLTAGE: Self = Self(1 << 55);
+    pub const UNITS_PU_CURRENT: Self = Self(1 << 56);
+    pub const UNITS_PU_POWER: Self = Self(1 << 57);
+    pub const UNITS_PU_IMPEDANCE: Self = Self(1 << 58);
+    pub const UNITS_OHM_METER: Self = Self(1 << 59);
+    pub const UNITS_OHM: Self = Self(1 << 60);
+    pub const UNITS_NF_PER_LENGTH: Self = Self(1 << 61);
+    pub const UNITS_UF: Self = Self(1 << 62);
+    pub const UNITS_MH: Self = Self(1 << 63);
+    pub const UNITS_US_PER_LENGTH: Self = Self(1 << 64);
+    pub const UNITS_S: Self = Self(1 << 65);
+    /// Pascal `Units_ToD_hour`: a time-of-day hour. The schema renders it with
+    /// `minimum:0` / `exclusiveMaximum:24` and the unit string `hour`
+    /// (`CAPI_Schema.pas:1000-1006`).
+    pub const UNITS_TOD_HOUR: Self = Self(1 << 66);
+    pub const UNITS_MINUTE: Self = Self(1 << 67);
+    pub const UNITS_V: Self = Self(1 << 68);
+    pub const UNITS_W: Self = Self(1 << 69);
+    pub const UNITS_KW: Self = Self(1 << 70);
+    pub const UNITS_KVAR: Self = Self(1 << 71);
+    pub const UNITS_KVA: Self = Self(1 << 72);
+    pub const UNITS_MVA: Self = Self(1 << 73);
+    pub const UNITS_KWH: Self = Self(1 << 74);
+    pub const UNITS_V_PER_KM: Self = Self(1 << 75);
+    pub const UNITS_DEG: Self = Self(1 << 76);
+    pub const UNITS_DEGC: Self = Self(1 << 77);
+    pub const UNITS_A: Self = Self(1 << 78);
+    pub const UNITS_KV: Self = Self(1 << 79);
+
+    /// Pascal `TPropertyFlag.PDElement`: a `DSSObjectReference[Array]Property`
+    /// whose unqualified reference resolves against any PD element; the schema
+    /// labels it `PDElement` instead of `CktElement` (`CAPI_Schema.pas:824/895`).
+    /// Schema metadata only.
+    pub const PD_ELEMENT: Self = Self(1 << 80);
+    /// Pascal `TPropertyFlag.PowerFactorLimits`: a double constrained to the
+    /// `[-1, 1]` power-factor band; the schema emits `minimum:-1`/`maximum:1`
+    /// (`CAPI_Schema.pas:739-742`). Schema metadata only.
+    pub const POWER_FACTOR_LIMITS: Self = Self(1 << 81);
+    /// **Not a Pascal flag** — the port's marker for a Pascal
+    /// `BooleanActionProperty` (e.g. LineCode `Kron`): a boolean that, when set,
+    /// triggers an action and reads back false. The port models it as
+    /// [`PropType::Boolean`](crate::obj::props::PropType); this flag restores the
+    /// two `BooleanActionProperty`-specific behaviors the merge dropped — the JSON
+    /// schema's `writeOnly:true` and the alternate-order placement at the end
+    /// (`zorderNextEnd`, with the other action props, `DSSClass.pas:1972-1976`).
+    pub const BOOLEAN_ACTION: Self = Self(1 << 82);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0

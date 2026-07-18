@@ -52,7 +52,59 @@ STATIC_DEF_NAMES = [
 # The static head of circuitProperties (CAPI_Schema.pas:1463-1474).
 CIRCUIT_HEAD_NAMES = ["Name", "DefaultBaseFreq", "PreCommands", "PostCommands", "Bus"]
 
+# The classes whose per-class walk (`prepareClassJsonSchema`) is ported +
+# byte-gated, in `DSSClassList` order. The class batches append to this list as
+# they land; the oracle fragment for each is captured below and byte-compared
+# against the Rust `Dss::schema_class_def` output in `golden_schema.rs` (after the
+# expected r4133 divergences in `schema_divergences.json`).
+SCHEMA_CLASSES = [
+    "LineCode",
+    "LoadShape",
+    "TShape",
+    "PriceShape",
+    "XYcurve",
+    "GrowthShape",
+]
+
 NL = "\r\n"
+
+
+def slice_class_def(text: str, cls: str) -> str:
+    """Slice the exact `$defs/<cls>` object bytes from the oracle document and
+    dedent to indent 0 — the fpjson bytes the Rust `write_pretty(def, 0)` must
+    reproduce. Extracting the oracle bytes verbatim (rather than re-rendering)
+    preserves the fpjson float formatting of every default; it is trivially
+    self-validating (it *is* the oracle output)."""
+    key = f'{NL}    "{cls}" : {{'  # top-level $defs member (host indent 2 = 4 sp)
+    i = text.find(key)
+    if i < 0:
+        sys.exit(f"oracle schema missing class def {cls!r}")
+    start = text.index("{", i)
+    depth, instr, esc = 0, False, False
+    end = None
+    for j in range(start, len(text)):
+        c = text[j]
+        if instr:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                instr = False
+        elif c == '"':
+            instr = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                end = j + 1
+                break
+    if end is None:
+        sys.exit(f"unbalanced class def for {cls!r}")
+    lines = text[start:end].split(NL)
+    ded = [lines[0]] + [(ln[4:] if ln.startswith("    ") else ln) for ln in lines[1:]]
+    return NL.join(ded)
 
 
 def check_pin() -> None:
@@ -201,9 +253,14 @@ def main() -> None:
         and is_class_def(v)
     ]
 
+    # 4) The ported per-class walk fragments (byte-gated). Extract each ported
+    # class's oracle bytes at indent 0. `deferred` = class defs still owed.
+    class_defs = {cls: slice_class_def(text, cls) for cls in SCHEMA_CLASSES}
+    deferred = [k for k in class_def_names if k not in SCHEMA_CLASSES]
+
     golden = collections.OrderedDict(
         [
-            ("_comment", "AltDSS JSON-schema STATIC CORE goldens — see tools/golden/gen_schema.py"),
+            ("_comment", "AltDSS JSON-schema goldens (static core + enum defs + ported per-class defs) — see tools/golden/gen_schema.py"),
             ("schema_draft", doc["$schema"]),
             ("schema_id", doc["$id"]),
             ("required", doc["required"]),
@@ -215,11 +272,15 @@ def main() -> None:
             # The 21 global enum $defs, byte-exact (order + rendered bytes).
             ("enum_defs_order", list(enum_defs.keys())),
             ("enum_defs", enum_defs),
-            # Deferred class-walk inventory (informational; not byte-gated). The
-            # 21 global enum defs are DONE (see `enum_defs`); only class defs +
-            # their class-local enums remain owed.
-            ("deferred_class_def_count", len(class_def_names)),
-            ("deferred_class_def_names", class_def_names),
+            # The ported per-class walk fragments, byte-exact (in DSSClassList
+            # order). Byte-gated by `golden_schema.rs` after the expected r4133
+            # divergences (`schema_divergences.json`).
+            ("class_defs_order", list(class_defs.keys())),
+            ("class_defs", class_defs),
+            # Deferred class-walk inventory (informational; not byte-gated) — the
+            # class defs whose walk is not ported yet.
+            ("deferred_class_def_count", len(deferred)),
+            ("deferred_class_def_names", deferred),
         ]
     )
 
@@ -229,7 +290,7 @@ def main() -> None:
     print(f"wrote {out_path.relative_to(REPO_ROOT)}")
     print(f"  static global defs: {len(global_defs)}  circuit head: {len(circuit_head)}")
     print(f"  global enum defs: {len(enum_defs)}")
-    print(f"  deferred class defs: {len(class_def_names)}")
+    print(f"  ported class defs: {len(class_defs)}  deferred: {len(deferred)}")
 
 
 if __name__ == "__main__":
