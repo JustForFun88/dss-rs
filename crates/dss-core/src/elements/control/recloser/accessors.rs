@@ -235,7 +235,7 @@ impl DssObject for Recloser {
 
     /// `Action`'s `StringEnumActionProperty` (Pascal `DoAction`): ganged set +
     /// the `State` side effect.
-    fn do_action(&mut self, ordinal: i32, _errors: &mut Vec<String>) {
+    fn do_action(&mut self, ordinal: i32, _errors: &mut crate::diag::ErrorLog) {
         Recloser::do_action(self, ordinal);
     }
 

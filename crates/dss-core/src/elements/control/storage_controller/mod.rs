@@ -423,7 +423,7 @@ pub(crate) trait StorageDispatchEnv {
     /// (creation order); returns `(name, ref)` pairs.
     fn all_fleet_storage(&self) -> Vec<(String, ElemRef)>;
     /// Pascal `DoSimpleMsg` sink (the 14403 named-missing error).
-    fn push_error(&mut self, msg: String);
+    fn push_error(&mut self, diag: crate::diag::DssDiagnostic);
 
     // --- per-storage read / write ---
     /// Read the dispatch-relevant state of one fleet member.

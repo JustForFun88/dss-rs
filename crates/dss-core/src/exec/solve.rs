@@ -789,12 +789,19 @@ impl Dss {
                 if store.ckt_elem(r).cd().enabled {
                     crate::solution::meters::interpolate_coordinates(r, ckt, &mut store, errors);
                 } else {
-                    // Pascal error 283 (Param is the uppercased name).
-                    errors.push(format!("EnergyMeter \"{param}\" is disabled."));
+                    // Pascal error 283 (ExecHelper.pas:3157; Param is the
+                    // uppercased name).
+                    errors.push(crate::diag::DssDiagnostic::msg(
+                        format!("EnergyMeter \"{param}\" is disabled."),
+                        Some(283),
+                    ));
                 }
             }
-            // Pascal error 277.
-            Some(Err(())) => errors.push(format!("EnergyMeter \"{param}\" not found.")),
+            // Pascal error 277 (ExecHelper.pas:3160).
+            Some(Err(())) => errors.push(crate::diag::DssDiagnostic::msg(
+                format!("EnergyMeter \"{param}\" not found."),
+                Some(277),
+            )),
         }
     }
 

@@ -179,7 +179,7 @@ impl CktElement for WindGen {
         if sys.loads_need_updating {
             self.set_nominal_generation(sys, ctx.node_v);
         }
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
@@ -206,7 +206,7 @@ impl CktElement for WindGen {
             return;
         }
         if self.cd.iterminal_solution_count != sys.solution_count && !self.gen_switch_open {
-            let mut errors = Vec::new();
+            let mut errors = crate::diag::ErrorLog::new();
             self.calc_gen_model_contribution(sys, node_v, &mut errors);
         }
         if self.cd.iterminal_updated {

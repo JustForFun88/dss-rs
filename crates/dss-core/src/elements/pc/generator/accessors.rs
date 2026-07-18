@@ -176,7 +176,7 @@ impl CktElement for Generator {
         if sys.loads_need_updating {
             self.set_nominal_generation(sys);
         }
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
@@ -202,7 +202,7 @@ impl CktElement for Generator {
             && !self.gen_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {
-            let mut errors = Vec::new();
+            let mut errors = crate::diag::ErrorLog::new();
             self.calc_gen_model_contribution(sys, node_v, &mut errors);
         }
         if self.cd.iterminal_updated {

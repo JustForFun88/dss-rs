@@ -29,6 +29,8 @@ mod harness;
 // against `tests/` directly.
 #[path = "corpus_gate/engines.rs"]
 mod engines;
+#[path = "corpus_gate/ledger.rs"]
+mod ledger;
 #[path = "corpus_gate/manifest.rs"]
 mod manifest;
 #[path = "corpus_gate/runner.rs"]
@@ -48,8 +50,8 @@ use dss_core::exec::Dss;
 
 use engines::Oracle;
 use manifest::{
-    AD_OFF_REASONS, EngineChannel, FAMILIES, SolvableCase, ad_disposition_is_valid, corpus_file,
-    family_file, load_family, load_solvable, manifests_dir,
+    AD_OFF_REASONS, FAMILIES, SolvableCase, ad_disposition_is_valid, corpus_file, family_file,
+    load_family, load_solvable, manifests_dir,
 };
 use runner::{CorpusGuard, panic_msg, run_and_compare};
 use scheduler::{CaseOutcome, GateRun, run_gate};
@@ -63,6 +65,14 @@ use scheduler::{CaseOutcome, GateRun, run_gate};
 /// unchanged mandate. Fails iff any case failed, printing the complete list.
 #[test]
 fn corpus_gate_all_cases_match_engines() {
+    // Seeding report mode (§4 Phase D step 2): run every case against BOTH
+    // channels regardless of its `engines`, measure the raw divergence, and write
+    // candidate ledger entries — never asserting. Consumed by hand for triage.
+    if std::env::var("DSS_GATE_SEED_LEDGER").is_ok() {
+        scheduler::seed_ledger();
+        return;
+    }
+
     let run = run_gate();
 
     if let Ok(path) = std::env::var("DSS_GATE_DUMP") {
@@ -80,6 +90,18 @@ fn corpus_gate_all_cases_match_engines() {
         run.pool_size,
         run.elapsed.as_secs_f64(),
     );
+    // Ledger hit accounting (§1.3): report every entry with its hit count.
+    let hits = run.ledger.hit_report();
+    if !hits.is_empty() {
+        let total_hits: usize = hits.iter().map(|(_, _, _, n)| n).sum();
+        eprintln!(
+            "corpus_gate ledger: {} entry(ies), {total_hits} total hit(s):",
+            hits.len()
+        );
+        for (id, ch, kind, n) in &hits {
+            eprintln!("  {id} [{ch:?} {kind}]: {n} hit(s)");
+        }
+    }
     assert_eq!(
         run.outcomes.len(),
         run.total,
@@ -100,6 +122,17 @@ fn corpus_gate_all_cases_match_engines() {
             msg.push_str(&format!("  {}\n      {first}\n", f.label));
         }
         panic!("{msg}");
+    }
+    // Fail-on-stale (§1.3 runtime rule / §5 R3): every applicable ledger entry
+    // must have been hit within its envelope; a stale/unhit entry fails the gate.
+    // Only checked once all cases passed — a failing case may not have reached its
+    // ledger scope, which would produce misleading staleness noise. A partial run
+    // (`DSS_GATE_ONLY`, a dev filter — never the commit gate) skips the check: an
+    // unhit entry there only means its case was filtered out, not that it is stale.
+    if std::env::var("DSS_GATE_ONLY").is_err()
+        && let Err(stale) = run.ledger.assert_all_hit()
+    {
+        panic!("{stale}");
     }
 }
 
@@ -418,251 +451,6 @@ fn corpus_live_properties() {
 }
 
 // ===========================================================================
-// Opt-in A/B gate against ORIGINAL EPRI OpenDSS binaries (report-only).
-// ===========================================================================
-
-/// One triaged entry from `tests/corpus/known_diffs.json`.
-#[derive(serde::Deserialize)]
-struct KnownDiff {
-    id: String,
-    #[serde(default = "default_diff_kind")]
-    kind: String,
-    revs: Vec<String>,
-    case_contains: String,
-    #[serde(default)]
-    reason_contains: Vec<String>,
-    cause: String,
-    #[allow(dead_code)]
-    source: String,
-}
-
-fn default_diff_kind() -> String {
-    "diff".to_string()
-}
-
-fn load_known_diffs() -> Vec<KnownDiff> {
-    let path: PathBuf = [
-        env!("CARGO_MANIFEST_DIR"),
-        "..",
-        "..",
-        "tests",
-        "corpus",
-        "known_diffs.json",
-    ]
-    .iter()
-    .collect();
-    let text =
-        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    #[derive(serde::Deserialize)]
-    struct Catalog {
-        entries: Vec<KnownDiff>,
-    }
-    let cat: Catalog =
-        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
-    for e in &cat.entries {
-        assert!(
-            !e.cause.trim().is_empty(),
-            "known_diffs.json entry {:?}: `cause` is mandatory \
-             (triage inventory, not a mute button)",
-            e.id
-        );
-        match e.kind.as_str() {
-            "diff" => assert!(
-                !e.reason_contains.is_empty(),
-                "known_diffs.json entry {:?}: a `diff` entry needs `reason_contains`",
-                e.id
-            ),
-            "skip" => assert!(
-                !e.case_contains.is_empty(),
-                "known_diffs.json entry {:?}: a `skip` entry needs a non-empty \
-                 `case_contains` (it matches on the case alone)",
-                e.id
-            ),
-            k => panic!("known_diffs.json entry {:?}: unknown kind {k:?}", e.id),
-        }
-    }
-    cat.entries
-}
-
-#[test]
-fn corpus_live_opendss() {
-    let Ok(rev) = std::env::var("DSS_LIVE_OPENDSS") else {
-        eprintln!(
-            "SKIPPED: set DSS_LIVE_OPENDSS=r3723|r4088|r4133 to compare against EPRI OpenDSS"
-        );
-        return;
-    };
-    assert!(
-        matches!(rev.as_str(), "r3723" | "r4088" | "r4133"),
-        "DSS_LIVE_OPENDSS={rev:?} — expected r3723|r4088|r4133 (tools/opendss/revisions.json)"
-    );
-    let assert_mode = std::env::var("DSS_LIVE_OPENDSS_ASSERT")
-        .map(|v| v == "1")
-        .unwrap_or(false);
-    let oracle = Oracle::opendss(&rev);
-    let engine = oracle.ping_engine(Some(&rev));
-    eprintln!("opendss oracle ({rev}): {engine}");
-
-    // Exclude cases the mandatory gate already gates against r4133 (schema v2
-    // `engines` contains r4133) — this report-only channel inventories the
-    // remaining capi_v0145-only cases against the EPRI binary.
-    let gates_r4133 = |c: &SolvableCase| c.engine_channels().contains(&EngineChannel::R4133);
-    let mut universe: Vec<(String, String, SolvableCase)> = Vec::new();
-    let mut target_rev_excluded: Vec<String> = Vec::new();
-    for c in load_solvable() {
-        if gates_r4133(&c) {
-            target_rev_excluded.push(format!("solvable_now:{}", c.path));
-            continue;
-        }
-        if c.expect_solve_abort.is_some() {
-            continue;
-        }
-        let mut c = c;
-        c.compare_all_properties = false;
-        universe.push((format!("solvable_now:{}", c.path), corpus_file(&c.path), c));
-    }
-    for fam in FAMILIES {
-        for c in load_family(fam.name) {
-            if c.pending || c.expect_solve_abort.is_some() {
-                continue;
-            }
-            if gates_r4133(&c) {
-                target_rev_excluded.push(format!("{}:{}", fam.name, c.path));
-                continue;
-            }
-            let abs = family_file(fam.name, &c.path);
-            let mut c = c;
-            c.compare_all_properties = false;
-            universe.push((format!("{}:{}", fam.name, c.path), abs, c));
-        }
-    }
-    if !target_rev_excluded.is_empty() {
-        eprintln!(
-            "opendss {rev}: {} r4133-gated case(s) excluded \
-             (gated in the mandatory gate against the r4133 channel)",
-            target_rev_excluded.len()
-        );
-    }
-    if universe.is_empty() {
-        eprintln!(
-            "opendss {rev}: WARNING swept universe is EMPTY ({} case(s) excluded as \
-             target-rev) — the sweep is vacuous; rely on the mandatory gate",
-            target_rev_excluded.len()
-        );
-    }
-
-    let catalog = load_known_diffs();
-    let mut hits: Vec<(String, usize)> = catalog.iter().map(|e| (e.id.clone(), 0)).collect();
-
-    let mut matched: Vec<String> = Vec::new();
-    let mut diverged: Vec<(String, String)> = Vec::new();
-    let mut skipped: Vec<(String, String)> = Vec::new();
-    let total = universe.len();
-    for (i, (label, abs, c)) in universe.iter().enumerate() {
-        if let Some(pos) = catalog.iter().position(|e| {
-            e.kind == "skip" && e.revs.iter().any(|r| r == &rev) && label.contains(&e.case_contains)
-        }) {
-            hits[pos].1 += 1;
-            skipped.push((label.clone(), catalog[pos].id.clone()));
-            continue;
-        }
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_and_compare(&oracle, label, abs, c);
-        }));
-        match res {
-            Ok(()) => matched.push(label.clone()),
-            Err(e) => diverged.push((label.clone(), panic_msg(e))),
-        }
-        if (i + 1) % 25 == 0 {
-            eprintln!("opendss {rev}: {}/{total} compared", i + 1);
-        }
-    }
-
-    matched.sort();
-    diverged.sort();
-    skipped.sort();
-
-    let mut known: Vec<(String, String, String)> = Vec::new();
-    let mut fresh: Vec<(String, String)> = Vec::new();
-    for (label, reason) in &diverged {
-        let hit = catalog.iter().position(|e| {
-            e.kind == "diff"
-                && e.revs.iter().any(|r| r == &rev)
-                && label.contains(&e.case_contains)
-                && e.reason_contains.iter().all(|s| reason.contains(s))
-        });
-        match hit {
-            Some(i) => {
-                hits[i].1 += 1;
-                known.push((label.clone(), reason.clone(), catalog[i].id.clone()));
-            }
-            None => fresh.push((label.clone(), reason.clone())),
-        }
-    }
-    for (id, n) in &hits {
-        let applies = catalog
-            .iter()
-            .find(|e| &e.id == id)
-            .is_some_and(|e| e.revs.iter().any(|r| r == &rev));
-        if applies && *n == 0 {
-            eprintln!(
-                "opendss {rev}: WARNING known_diffs entry `{id}` had zero hits — \
-                 stale? prune it (or narrow its `revs`)"
-            );
-        }
-    }
-
-    let trunc = |r: &str| r.chars().take(400).collect::<String>();
-    let report = json!({
-        "rev": rev,
-        "engine": engine,
-        "total": total,
-        "matched": matched,
-        "known_diverged": known
-            .iter()
-            .map(|(label, r, id)| json!({ "path": label, "known": id, "reason": trunc(r) }))
-            .collect::<Vec<_>>(),
-        "diverged_new": fresh
-            .iter()
-            .map(|(label, r)| json!({ "path": label, "reason": trunc(r) }))
-            .collect::<Vec<_>>(),
-        "known_skipped": skipped
-            .iter()
-            .map(|(label, id)| json!({ "path": label, "known": id }))
-            .collect::<Vec<_>>(),
-        "known_hits": hits
-            .iter()
-            .map(|(id, n)| json!({ "id": id, "hits": n }))
-            .collect::<Vec<_>>(),
-        "target_rev_excluded": target_rev_excluded,
-    });
-    let rp: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "..", "tmp"]
-        .iter()
-        .collect::<PathBuf>()
-        .join(format!("opendss_report_{rev}.json"));
-    let _ = std::fs::create_dir_all(rp.parent().unwrap());
-    std::fs::write(&rp, serde_json::to_string_pretty(&report).unwrap())
-        .unwrap_or_else(|e| panic!("write {}: {e}", rp.display()));
-    eprintln!(
-        "opendss {rev}: {} matched, {} known-diverged, {} known-skipped, {} NEW (of {total}); \
-         report -> {}",
-        matched.len(),
-        known.len(),
-        skipped.len(),
-        fresh.len(),
-        rp.display()
-    );
-    if assert_mode && !fresh.is_empty() {
-        panic!(
-            "opendss {rev}: {} NEW divergence(s) from the EPRI engine not covered by \
-             tests/corpus/known_diffs.json (DSS_LIVE_OPENDSS_ASSERT=1); see {}",
-            fresh.len(),
-            rp.display()
-        );
-    }
-}
-
-// ===========================================================================
 // WP-AD.4 — the corpus-wide A-Diakoptics <-> normal sweep (rust-vs-rust).
 // ===========================================================================
 
@@ -769,7 +557,7 @@ fn ad_solve_ad(abs: &str, controls_off: bool) -> Result<Dss, String> {
         let msg = dss
             .errors()
             .get(base_errs)
-            .cloned()
+            .map(|e| e.text().to_string())
             .unwrap_or_else(|| dss.result().to_string());
         return Err(format!("ad-init: {msg}"));
     }

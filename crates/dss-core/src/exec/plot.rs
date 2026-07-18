@@ -198,13 +198,17 @@ impl Dss {
                     // #301 first — but the #24732 (unsolved) guard fires here.
                     match circuit.as_ref() {
                         None => {
-                            errors.push("No circuit created.".to_string());
+                            errors.push(crate::diag::DssDiagnostic::msg(
+                                "No circuit created.",
+                                Some(24731),
+                            ));
                             return None;
                         }
                         Some(c) if c.solution.node_v.len() <= 1 => {
-                            errors.push(
-                                "The circuit must be solved before you can do this.".to_string(),
-                            );
+                            errors.push(crate::diag::DssDiagnostic::msg(
+                                "The circuit must be solved before you can do this.",
+                                Some(24732),
+                            ));
                             return None;
                         }
                         Some(_) => {}
@@ -541,7 +545,7 @@ fn parse_phases(
     param: &str,
     parser: &mut Parser,
     vars: &ParserVars,
-    _errors: &mut [String],
+    _errors: &mut crate::diag::ErrorLog,
 ) {
     let cts = |name: &str| crate::util::compare_text_shortest_eq(param, name);
     p.phases_to_plot = plot_phases::THREE_PHASE; // the default
@@ -563,22 +567,22 @@ fn parse_phases(
 }
 
 /// `Parser.DblValue` of the current token, recording any conversion error.
-fn dbl(parser: &mut Parser, vars: &ParserVars, errors: &mut Vec<String>) -> f64 {
+fn dbl(parser: &mut Parser, vars: &ParserVars, errors: &mut crate::diag::ErrorLog) -> f64 {
     match parser.make_double(vars) {
         Ok(v) => v,
         Err(e) => {
-            errors.push(e.message().to_string());
+            errors.push(e);
             0.0
         }
     }
 }
 
 /// `Parser.IntValue` of the current token, recording any conversion error.
-fn int(parser: &mut Parser, vars: &ParserVars, errors: &mut Vec<String>) -> i32 {
+fn int(parser: &mut Parser, vars: &ParserVars, errors: &mut crate::diag::ErrorLog) -> i32 {
     match parser.make_integer(vars) {
         Ok(v) => v,
         Err(e) => {
-            errors.push(e.message().to_string());
+            errors.push(e);
             0
         }
     }
@@ -586,11 +590,14 @@ fn int(parser: &mut Parser, vars: &ParserVars, errors: &mut Vec<String>) -> i32 
 
 /// `InterpretColorName` with the Pascal error/fallback: an invalid spec pushes
 /// error #724 and returns `clBlue`.
-fn color(param: &str, errors: &mut Vec<String>) -> i32 {
+fn color(param: &str, errors: &mut crate::diag::ErrorLog) -> i32 {
     match interpret_color_name(param) {
         Some(c) => c,
         None => {
-            errors.push(format!("Invalid Color Specification: \"{param}\"."));
+            errors.push(crate::diag::DssDiagnostic::msg(
+                format!("Invalid Color Specification: \"{param}\"."),
+                Some(724),
+            ));
             crate::util::CL_BLUE_DEFAULT
         }
     }

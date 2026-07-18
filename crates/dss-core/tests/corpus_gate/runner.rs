@@ -183,7 +183,7 @@ fn assert_expected_warnings(dss: &Dss, expect: &[String], ctx: &str) {
         );
         return;
     }
-    let unexpected: Vec<&String> = errors
+    let unexpected: Vec<_> = errors
         .iter()
         .filter(|e| !expect.iter().any(|w| e.contains(w.as_str())))
         .collect();
@@ -219,7 +219,12 @@ pub(crate) fn run_rust_capture(label: &str, case_path: &str, c: &SolvableCase) -
 }
 
 /// Compare the (once-run) Rust engine against ONE channel's `CaseResult`, per
-/// step, in the fixed comparator order. Byte-identical to the pre-Phase-B loop.
+/// step, in the fixed comparator order. Byte-identical to the pre-Phase-B loop
+/// EXCEPT where a per-case-per-channel `ledger` scope partitions a field: the
+/// untouched `harness` comparator runs on the unscoped remainder while the
+/// ledger's envelope/exact-pair assert covers the scoped part and records the hit
+/// (§1.3). With `ledger = None` or an empty view every field takes the original
+/// path unchanged.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compare_capture(
     dss: &mut Dss,
@@ -230,9 +235,12 @@ pub(crate) fn compare_capture(
     c: &SolvableCase,
     tol: &Tolerances,
     channel: EngineChannel,
+    ledger: Option<&crate::ledger::LedgerView>,
 ) {
     let n_steps = c.n_steps;
     let star = c.selected_elements == ["*"];
+    // A view with no applicable entries behaves exactly like `None` (fast path).
+    let ledger = ledger.filter(|v| !v.is_empty());
 
     for (i, cp) in oc.checkpoints.iter().enumerate() {
         dss.command("solve");
@@ -260,25 +268,32 @@ pub(crate) fn compare_capture(
             );
             // Iteration policy (§4 Phase C): the pinned capi_v0145 channel is an
             // exact 1:1 contract; the r4133 channel (a different engine line)
-            // allows the port to converge in FEWER iterations — never more.
-            if channel.iterations_exact() {
-                assert_eq!(
-                    ckt.solution.iteration, cp.iterations,
-                    "{ctx}: iteration count differs"
-                );
-            } else {
-                assert!(
-                    ckt.solution.iteration <= cp.iterations,
-                    "{ctx}: Rust used MORE iterations than the r4133 oracle ({} > {})",
-                    ckt.solution.iteration,
-                    cp.iterations
-                );
-                if ckt.solution.iteration < cp.iterations {
-                    eprintln!(
-                        "{ctx}: NOTE Rust converged in {} iterations vs the r4133 \
-                         oracle's {} (allowed: <=; investigate if unexpected)",
-                        ckt.solution.iteration, cp.iterations
+            // allows the port to converge in FEWER iterations — never more. A
+            // ledger `iterations` scope overrides both (exact pair, or an explicit
+            // rust_le_oracle where a target-rev delta needs pinning).
+            let iters_ledgered = ledger.is_some_and(|v| {
+                v.iterations_handled(i, ckt.solution.iteration, cp.iterations, &ctx)
+            });
+            if !iters_ledgered {
+                if channel.iterations_exact() {
+                    assert_eq!(
+                        ckt.solution.iteration, cp.iterations,
+                        "{ctx}: iteration count differs"
                     );
+                } else {
+                    assert!(
+                        ckt.solution.iteration <= cp.iterations,
+                        "{ctx}: Rust used MORE iterations than the r4133 oracle ({} > {})",
+                        ckt.solution.iteration,
+                        cp.iterations
+                    );
+                    if ckt.solution.iteration < cp.iterations {
+                        eprintln!(
+                            "{ctx}: NOTE Rust converged in {} iterations vs the r4133 \
+                             oracle's {} (allowed: <=; investigate if unexpected)",
+                            ckt.solution.iteration, cp.iterations
+                        );
+                    }
                 }
             }
             let names: Vec<String> = (1..=ckt.num_nodes).map(|j| ckt.node_name(j)).collect();
@@ -294,7 +309,29 @@ pub(crate) fn compare_capture(
                 expected.push(*re);
                 expected.push(*im);
             }
-            harness::assert_complex_close(&actual, &expected, tol.v_rel, tol.v_abs, &ctx);
+            // A ledger voltage scope partitions the nodes: the scoped nodes are
+            // envelope-checked inside `voltage_keep_mask` (hit recorded), the
+            // unscoped remainder still meets the tier floor here.
+            match ledger
+                .and_then(|v| v.voltage_keep_mask(i, &oc.node_order, &actual, &expected, tol, &ctx))
+            {
+                Some(keep) => {
+                    let mut ra = Vec::with_capacity(actual.len());
+                    let mut re = Vec::with_capacity(expected.len());
+                    for (ni, k) in keep.iter().enumerate() {
+                        if *k {
+                            ra.push(actual[2 * ni]);
+                            ra.push(actual[2 * ni + 1]);
+                            re.push(expected[2 * ni]);
+                            re.push(expected[2 * ni + 1]);
+                        }
+                    }
+                    harness::assert_complex_close(&ra, &re, tol.v_rel, tol.v_abs, &ctx);
+                }
+                None => {
+                    harness::assert_complex_close(&actual, &expected, tol.v_rel, tol.v_abs, &ctx);
+                }
+            }
         }
 
         if let Some(y) = &cp.y {
@@ -331,7 +368,10 @@ pub(crate) fn compare_capture(
         for yp in &cp.yprims {
             compare_yprim(dss, yp, tol, &ctx);
         }
-        compare_injection(dss, &cp.injection, tol, &ctx);
+        // A ledger `injection` scope envelope-checks the whole RHS here.
+        if !ledger.is_some_and(|v| v.injection_handled(i, dss, &cp.injection, tol, &ctx)) {
+            compare_injection(dss, &cp.injection, tol, &ctx);
+        }
 
         let rust_names: BTreeSet<String> = snaps.iter().map(|s| s.name.to_lowercase()).collect();
         let oracle_names: BTreeSet<String> =
@@ -343,14 +383,31 @@ pub(crate) fn compare_capture(
             rust_names.difference(&oracle_names).collect::<Vec<_>>(),
             oracle_names.difference(&rust_names).collect::<Vec<_>>(),
         );
+        // A ledger element scope neutralizes only its pinned sub-channels: it
+        // rewrites those to the Rust values (after re-asserting them inside their
+        // envelope) so the standard `compare_element` treats them as equal and
+        // still tier-checks the unscoped remainder (clause (b)). Elements with no
+        // scope are compared against the untouched oracle cap.
+        let el_rewrites = ledger
+            .map(|v| v.element_rewrites(i, &snaps, &cp.elements, tol, &ctx))
+            .unwrap_or_default();
         for ec in &cp.elements {
-            compare_element(&snaps, ec, tol, &ctx);
+            match el_rewrites.get(&ec.name.to_lowercase()) {
+                Some(rw) => compare_element(&snaps, rw, tol, &ctx),
+                None => compare_element(&snaps, ec, tol, &ctx),
+            }
         }
 
         compare_discrete(dss, &cp.transformers, &cp.regcontrols, &cp.capacitors, &ctx);
 
+        // A ledger monitor scope neutralizes only its pinned channel_idx (rewrites
+        // it to the Rust samples after the envelope check); the header, sample
+        // count, and every other channel still go through the standard comparator.
         for m in &cp.monitors {
-            compare_monitor(dss, m, tol, &ctx);
+            match ledger.and_then(|v| v.monitor_rewrite(dss, m, tol, &ctx)) {
+                Some(rw) => compare_monitor(dss, &rw, tol, &ctx),
+                None => compare_monitor(dss, m, tol, &ctx),
+            }
         }
         for m in &cp.meters {
             compare_meter(dss, m, tol, &ctx);
@@ -362,7 +419,9 @@ pub(crate) fn compare_capture(
             "{ctx}: oracle probe count differs from the manifest spec"
         );
         for p in &cp.probes {
-            compare_probe(dss, p, tol, &ctx);
+            if !ledger.is_some_and(|v| v.probe_handled(dss, p, tol, &ctx)) {
+                compare_probe(dss, p, tol, &ctx);
+            }
         }
         assert_eq!(
             cp.variables.len(),
@@ -373,10 +432,33 @@ pub(crate) fn compare_capture(
             compare_variables(dss, v, tol, &ctx);
         }
         if c.compare_eventlog {
-            compare_eventlog(dss, &cp.eventlog, channel.eventlog_spec(), &ctx);
+            // A ledger eventlog `line_re` scope normalizes the diffing oracle line
+            // (e.g. trailing-whitespace artifact) before the compare; unmatched
+            // lines pass through unchanged.
+            match ledger {
+                Some(v) => {
+                    let masked: Vec<String> = cp
+                        .eventlog
+                        .iter()
+                        .map(|l| v.mask_line("eventlog", l))
+                        .collect();
+                    compare_eventlog(dss, &masked, channel.eventlog_spec(), &ctx);
+                }
+                None => compare_eventlog(dss, &cp.eventlog, channel.eventlog_spec(), &ctx),
+            }
         }
         if c.compare_ctrlqueue {
-            compare_ctrlqueue(dss, &cp.ctrlqueue, &ctx);
+            match ledger {
+                Some(v) => {
+                    let masked: Vec<String> = cp
+                        .ctrlqueue
+                        .iter()
+                        .map(|l| v.mask_line("ctrlqueue", l))
+                        .collect();
+                    compare_ctrlqueue(dss, &masked, &ctx);
+                }
+                None => compare_ctrlqueue(dss, &cp.ctrlqueue, &ctx),
+            }
         }
 
         if c.compare_global_result {
@@ -394,7 +476,43 @@ pub(crate) fn compare_capture(
                 "{ctx}: compare_all_properties set but the oracle returned no \
                  property dump (all_properties request not honored?)"
             );
-            compare_all_properties(dss, &cp.all_properties, tol, &ctx);
+            // A ledger `property` scope pins one (element, prop) oracle value
+            // exactly (discrete state — exact-pair only). To keep the monolithic
+            // `compare_all_properties` count/order contract intact while excluding
+            // that one pair from the value compare, rewrite its oracle value to the
+            // Rust `?`-surface value (the ledger already asserted the oracle value
+            // equals its pin), so the standard compare treats it as equal.
+            let prop_keys = ledger
+                .map(|v| v.property_handled_keys(dss, &cp.all_properties, &ctx))
+                .unwrap_or_default();
+            if prop_keys.is_empty() {
+                compare_all_properties(dss, &cp.all_properties, tol, &ctx);
+            } else {
+                let rewritten: Vec<harness::PropsCap> = cp
+                    .all_properties
+                    .iter()
+                    .map(|pc| {
+                        let el = pc.element.to_lowercase();
+                        let props = pc
+                            .props
+                            .iter()
+                            .map(|(name, val)| {
+                                if prop_keys.contains(&(el.clone(), name.to_lowercase())) {
+                                    dss.command(&format!("? {}.{}", pc.element, name));
+                                    (name.clone(), dss.result().to_string())
+                                } else {
+                                    (name.clone(), val.clone())
+                                }
+                            })
+                            .collect();
+                        harness::PropsCap {
+                            element: pc.element.clone(),
+                            props,
+                        }
+                    })
+                    .collect();
+                compare_all_properties(dss, &rewritten, tol, &ctx);
+            }
         }
     }
 
@@ -427,12 +545,14 @@ pub(crate) fn compare_capture(
 /// Assert the oracle step counts, run the Rust engine once, compare against the
 /// given `channel`'s capture (its iteration + eventlog-mask policy). No guard,
 /// no oracle fetch — the caller (scheduler or [`run_and_compare`]) owns those.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compare_with_result(
     oc: &CaseResult,
     label: &str,
     case_path: &str,
     c: &SolvableCase,
     channel: EngineChannel,
+    ledger: Option<&crate::ledger::LedgerView>,
 ) {
     assert_eq!(oc.n_steps, c.n_steps, "{label}: oracle step count");
     assert_eq!(
@@ -442,16 +562,18 @@ pub(crate) fn compare_with_result(
     );
     let tol = tol_for(&c.kind);
     let (mut dss, baseline) = run_rust_capture(label, case_path, c);
-    compare_capture(&mut dss, baseline, oc, label, case_path, c, &tol, channel);
+    compare_capture(
+        &mut dss, baseline, oc, label, case_path, c, &tol, channel, ledger,
+    );
 }
 
 /// One-shot convenience for the opt-in report tests: snapshot the case dir,
-/// fetch the pinned oracle model once, compare against the `capi_v0145` channel.
-/// (The mandatory gate uses the pools via the scheduler instead.)
+/// fetch the pinned oracle model once, compare against the `capi_v0145` channel
+/// (no ledger — the report tests predate it).
 pub(crate) fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCase) {
     let _guard = CorpusGuard::new(case_path);
     let oc = oracle.run_case(case_path, c);
-    compare_with_result(&oc, label, case_path, c, EngineChannel::CapiV0145);
+    compare_with_result(&oc, label, case_path, c, EngineChannel::CapiV0145, None);
 }
 
 // ---------------------------------------------------------------------------

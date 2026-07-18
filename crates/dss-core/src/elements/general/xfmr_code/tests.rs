@@ -12,7 +12,7 @@ fn edited(edits: &[(&str, &str)]) -> (ClassProps, XfmrCodeObj) {
     let mut obj = XfmrCodeObj::new("xc");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {

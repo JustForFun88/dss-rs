@@ -450,10 +450,13 @@ impl CktElement for Line {
             // that YPrim is discarded by the abort — so we model only the abort.
             // YPrim was already cleared above (Pascal `ClearYPrim`). Record the
             // message; the Y-build loop drains it and sets `solution_abort`.
-            self.cd.obj.push_error(format!(
-                "Matrix Inversion Error for Line \"{}\". \
-                 Invalid impedance specified. Aborting solution.",
-                self.cd.obj.name()
+            self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Matrix Inversion Error for Line \"{}\". \
+                     Invalid impedance specified. Aborting solution.",
+                    self.cd.obj.name()
+                ),
+                Some(183),
             ));
             return;
         }

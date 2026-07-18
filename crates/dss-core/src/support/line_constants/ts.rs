@@ -15,21 +15,21 @@ impl LineConstants {
     /// `SetDiaShield` — diameter over the tape shield.
     pub fn set_dia_shield(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fdia_shield[i] = value * LineUnits::from_code(units).to_meters();
+            self.cable_mut(i).dia_shield = value * LineUnits::from_code(units).to_meters();
         }
     }
 
     /// `SetTapeLayer` — thickness of the tape-shield layer.
     pub fn set_tape_layer(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.ftape_layer[i] = value * LineUnits::from_code(units).to_meters();
+            self.cable_mut(i).tape_layer = value * LineUnits::from_code(units).to_meters();
         }
     }
 
     /// `SetTapeLap` — tape-shield overlap, in percent (dimensionless).
     pub fn set_tape_lap(&mut self, i: usize, value: f64) {
         if i < self.num_conds {
-            self.ftape_lap[i] = value;
+            self.cable_mut(i).tape_lap = value;
         }
     }
 }

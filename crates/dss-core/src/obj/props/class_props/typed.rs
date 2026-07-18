@@ -159,7 +159,7 @@ mod tests {
     fn with_engine<F: FnOnce(&mut PropEngine)>(enums: &EnumRegistry, f: F) -> Vec<String> {
         let mut parser = Parser::new();
         let vars = ParserVars::new();
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         let mut eng = PropEngine {
             parser: &mut parser,
             vars: &vars,
@@ -168,7 +168,7 @@ mod tests {
             foreign: None,
         };
         f(&mut eng);
-        errors
+        errors.texts()
     }
 
     /// Parity: the typed `set_prop_f64` and the string `edit_property` must land

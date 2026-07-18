@@ -35,11 +35,11 @@ pub(crate) fn show_line_constants(
     rho: f64,
     earth_model: i32,
     earth_name: &str,
-) -> (String, String, Vec<String>) {
+) -> (String, String, Vec<crate::diag::DssDiagnostic>) {
     let units_str = LineUnits::from_code(units).as_str();
     let mut f = String::new(); // LineConstants.txt
     let mut f2 = String::new(); // LineConstantsCode.dss
-    let mut errors: Vec<String> = Vec::new();
+    let mut errors: Vec<crate::diag::DssDiagnostic> = Vec::new();
 
     f.push_str("LINE CONSTANTS\n");
     f.push_str(&format!(
@@ -86,8 +86,11 @@ pub(crate) fn show_line_constants(
             // unreachable for a validly-parsed geometry (those errors fire at parse).
             (z, y) => {
                 let msg = z.err().or_else(|| y.err()).unwrap_or_default();
-                errors.push(format!(
-                    "Error computing line constants for LineGeometry.{name}; Error message: {msg}"
+                errors.push(crate::diag::DssDiagnostic::msg(
+                    format!(
+                        "Error computing line constants for LineGeometry.{name}; Error message: {msg}"
+                    ),
+                    Some(9934),
                 ));
                 continue;
             }

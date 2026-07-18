@@ -309,19 +309,25 @@ impl EspvlControl {
     pub(super) fn recalc(&mut self) {
         let Some(mon) = self.mon_snap.clone() else {
             // Pascal `DoSimpleMsg('Monitored Element in %s is not set', 372)`.
-            self.ccd.cd.obj.push_error(format!(
-                "Monitored Element in ESPVLControl.{} is not set",
-                self.ccd.cd.obj.name()
+            self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Monitored Element in ESPVLControl.{} is not set",
+                    self.ccd.cd.obj.name()
+                ),
+                Some(372),
             ));
             return;
         };
 
         if self.ccd.element_terminal > mon.nterms as i32 {
             // Pascal `DoErrorMsg(... 'Terminal no. "%d" does not exist.' 371)`.
-            self.ccd.cd.obj.push_error(format!(
-                "ESPVLControl: \"{}\": Terminal no. \"{}\" does not exist. Re-specify terminal no.",
-                self.ccd.cd.obj.name(),
-                self.ccd.element_terminal
+            self.ccd.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "ESPVLControl: \"{}\": Terminal no. \"{}\" does not exist. Re-specify terminal no.",
+                    self.ccd.cd.obj.name(),
+                    self.ccd.element_terminal
+                ),
+                Some(371),
             ));
             return;
         }

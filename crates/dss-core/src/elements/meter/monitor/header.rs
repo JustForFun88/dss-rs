@@ -17,7 +17,7 @@ impl Monitor {
     /// Pascal `RecalcElementData`: validate the metered element against the
     /// mode, copy its phase/conductor counts, set the monitor's bus, and build
     /// the header (`ClearMonitorStream`).
-    pub fn recalc(&mut self, errors: &mut Vec<String>, is_harmonic: bool) {
+    pub fn recalc(&mut self, errors: &mut crate::diag::ErrorLog, is_harmonic: bool) {
         self.valid_monitor = false;
         let Some(snap) = self.med.metered_snap.clone() else {
             errors.push(format!(

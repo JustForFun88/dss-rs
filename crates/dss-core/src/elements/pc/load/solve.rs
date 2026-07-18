@@ -236,7 +236,7 @@ impl Load {
     /// The per-phase current of each load model at voltage `v` — the bodies
     /// of `DoConstantPQLoad` .. `DoZIPVModel`, factored on the shared
     /// "below VBaseLow → linear Yeq" / interpolation-zone scaffolding.
-    fn model_current(&self, v: Complex64, errors: &mut Vec<String>) -> Complex64 {
+    fn model_current(&self, v: Complex64, errors: &mut crate::diag::ErrorLog) -> Complex64 {
         let vmag = v.norm();
         match self.load_model {
             LoadModel::ConstPQ => {
@@ -408,7 +408,7 @@ impl Load {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         self.cd.iterminal_updated = false;
         // Pascal `CalcLoadModelContribution`: above the fundamental, harmonics
@@ -486,7 +486,7 @@ impl Load {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         if self.cd.all_conductors_closed() {
             self.calc_load_model_contribution(sys, node_v, errors);

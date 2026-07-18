@@ -3,13 +3,13 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::PropEngine;
 use dss_parser::{Parser, ParserVars};
 
-fn edited(edits: &[(&str, &str)]) -> (ClassProps, GrowthShapeObj, Vec<String>) {
+fn edited(edits: &[(&str, &str)]) -> (ClassProps, GrowthShapeObj, crate::diag::ErrorLog) {
     let cls = class_props();
     let mut obj = GrowthShapeObj::new("gs");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
     let enums = EnumRegistry::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {

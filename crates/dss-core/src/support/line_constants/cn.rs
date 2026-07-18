@@ -14,28 +14,28 @@ impl LineConstants {
     /// `SetkStrand` — number of concentric-neutral strands.
     pub fn set_k_strand(&mut self, i: usize, value: i32) {
         if i < self.num_conds {
-            self.fk_strand[i] = value;
+            self.cable_mut(i).k_strand = value;
         }
     }
 
     /// `SetDiaStrand` — diameter of a neutral strand.
     pub fn set_dia_strand(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fdia_strand[i] = value * LineUnits::from_code(units).to_meters();
+            self.cable_mut(i).dia_strand = value * LineUnits::from_code(units).to_meters();
         }
     }
 
     /// `SetGmrStrand` — GMR of a neutral strand.
     pub fn set_gmr_strand(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.fgmr_strand[i] = value * LineUnits::from_code(units).to_meters();
+            self.cable_mut(i).gmr_strand = value * LineUnits::from_code(units).to_meters();
         }
     }
 
     /// `SetRStrand` — AC resistance of a neutral strand.
     pub fn set_r_strand(&mut self, i: usize, units: i32, value: f64) {
         if i < self.num_conds {
-            self.frstrand[i] = value * LineUnits::from_code(units).to_per_meter();
+            self.cable_mut(i).rstrand = value * LineUnits::from_code(units).to_per_meter();
         }
     }
 }

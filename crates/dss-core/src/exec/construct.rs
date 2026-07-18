@@ -332,7 +332,7 @@ impl Dss {
             aux_parser: Parser::new(),
             vars: ParserVars::new(),
             enums,
-            errors: Vec::new(),
+            errors: crate::diag::ErrorLog::new(),
             active_class: None,
             active_ckt_element: None,
             last_result: String::new(),
