@@ -391,6 +391,72 @@ Workspace edits: members + `[workspace.dependencies].wasmi` +
 (activates the scaffold), verify the fuel-calibration bar (<1% of 1e8 per
 reference-model call).
 
+### WASM-UM WP-WM.2 items 1–3 — IndMach012a fixture port + pinned `.wasm` + native twin (branch `wasm-wm2`, 2026-07-18)
+
+Items 1–3 of plan §WP-WM.2 (+ the item-4 data pre-stage); item 4 (fixture
+self-gate through the `dss-usermodel` API) and item 5 (audits) belong to the
+integrator/workflow. Zero product-code changes — everything lives under
+`tools/wasm_usermodel/`, `tests/fixtures/wasm/`, `docs/wasm/probes/`.
+
+- **Item 1 — the port.** `tools/wasm_usermodel/models/indmach012a/`
+  (workspace-excluded crate, `[workspace]` opt-out, zero deps, cdylib+rlib):
+  loop-for-loop port of r3723 `IndMach012Model.pas` (machine math, slip
+  clamp, dSdP, dynamic/pflow currents, trapezoidal `Integrate`, 14-variable
+  surface — `model.rs`), `MainUnit.pas` (ModelList/ActiveModel semantics incl.
+  the delete-clears-active quirk and the guarded/unguarded nil-ActiveModel
+  split — `mainunit.rs`), the units the DLL links: `Ucomplex.pas` **as this
+  source defines it** (naive `CDIV`/`Cabs`, NOT dss-core's `cdiv_fpc` Smith
+  helpers — `cmath.rs`), `mathutil`/`Ucmatrix` sym-comp path with `Ap2s`
+  produced by a verbatim `TcMatrix.Invert` port at init (`symcomp.rs`), and a
+  minimal `ParserDel`/`Command`/`HashList` scanner (`parser.rs`; RPN-in-quotes
+  reduced to a loud trap — plan-§2.6-sanctioned, decks never use it). Boundary:
+  `records.rs` codecs at the frozen ABI offsets (never `#[repr(C)]`),
+  `wasm_exports.rs` = the 15 exports + `dss_alloc` over a safe allocation
+  registry; exactly ONE `unsafe` expression in the crate (the `dss_env.
+  msg_callback` import call). Pascal citations throughout.
+  `TODO(compat)`×3: truncated `0.866025403` (SetAMatrix), truncated `1.732`
+  (Compute_dSdP), and **a new find** — FPC folds the all-constant `3.0/746.0`
+  (HPshaft var 14) at *single* precision (both operands single-exact ⇒ FPC
+  lowest-common-precision constant folding), reproduced as
+  `(3.0f32/746.0f32) as f64` and proven by decomposition (plain f64 quotient
+  misses the twin by 2.6e-8 rel; every other value bit-exact).
+- **Item 2 — pinned artifact.** `tests/fixtures/wasm/indmach012a.wasm`
+  committed (79045 B; exports = the 15 + `memory` + `dss_alloc`, sole import
+  `dss_env.msg_callback` — verified by wasm section parse). Reproducible
+  build proven (clean rebuild ⇒ identical SHA-256):
+  `pwsh tools/wasm_usermodel/build_wasm.ps1` (stable rustc 1.96.0,
+  `--remap-path-prefix`, locked release profile). PIN.txt updated with the
+  exact command + `sha256=1849db0c…9b0ebd` (the WM.1 hash-vs-PIN test binds
+  to it at integration).
+- **Item 3 — native twin (plan A) + item-4 pre-stage.**
+  `build_native.ps1` builds the vendored `IndMach012a.dpr` on demand (FPC
+  3.2.2 ppcrossx64, exact P2 flags; `%TEMP%` output, never committed).
+  `twin_probe.py` (ctypes over the frozen packed layouts, struct-offset
+  asserts) drives the twin through a deterministic lifecycle — New →
+  var-name surface (incl. StrLCopy truncation + out-of-range no-write) →
+  initial vars → Edit (abbrev `maxs`, case `Xm`, `option=variableslip`,
+  slip→Speed write) → 5 pflow `Calc` iterations (slip fixed-point) → `Init`
+  → 3 dynamics steps × predictor/corrector `Calc`+`Integrate` → SetVariable
+  → GetAllVars → Select edges → `help` (MsgCallBack text) → second instance
+  + Delete — and records ~200 values bit-exactly:
+  `docs/wasm/probes/p6_twin_expected.txt` (evidence) + generated
+  `tests/twin_expected.rs` (`--rust` mode). `tests/twin_parity.rs` replays
+  the identical scenario on the Rust port and asserts **f64-bit-exact
+  equality on every value** — green (2/2; `cargo +stable test` in the crate).
+  The integrator pins the committed `.wasm` against the same values through
+  the WM.1 crate API (item 4).
+- **Hygiene:** `.gitignore` +`tools/wasm_usermodel/models/*/target/`;
+  fixture crate is fmt/clippy-clean on host and wasm targets (not part of
+  the repo gate — workspace-excluded by design). Machine-global additions:
+  none required beyond WM.0's pins (the stray `rustup target add` on the
+  default *nightly* toolchain during this session is additive-only; the
+  fixture builds with `+stable` per PIN).
+- Deviation note: plan §2.6 sketches the guest as "`#![no_std]`-lean"; the
+  crate uses std (wasm32 std = the allocator/panic machinery only — no WASI,
+  no imports beyond `dss_env`, verified in the artifact's import section).
+  Chosen to keep the boundary in safe Rust (registry over `Box<[u8]>`); the
+  sandbox/determinism contract is unaffected.
+
 ### OG-1.5 `CAPI_Schema` JSON-schema export — static core ported (orphaned-gaps round, 2026-07-18)
 
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
