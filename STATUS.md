@@ -192,6 +192,49 @@ HIDE_015X → Stage F, GICMvars → Phase 9, JSON DynInit/Full tail, AggregatePr
 AD Part II, user-model DLLs → WASM, IEEE118 NCIM → a future rung) are tracked in
 §Standing-open-follow-ups just below.
 
+### OG-1.5b `CAPI_Schema` per-enum walk + class-walk groundwork (orphaned-gaps round, 2026-07-18)
+
+Branch `og15b-schema-full`. Continues OG-1.5 (static core) toward the full
+`DSS_ExtractSchema(jsonSchema=True)` document. **Delivered, byte-exact:** the
+per-enum walk — `prepareEnumJsonSchema` (`CAPI_Schema.pas:111-162`) + the 21-entry
+`DSS.Enums` global list ported directly from `DSSClass.pas:1058-1196` (names /
+ordinals / alt-names, with the symbolic ordinals resolved from their Pascal enum
+declarations, never seeded from the oracle JSON).
+- New `report/export/json/schema/enums.rs` (`schema.rs` → `schema/mod.rs`
+  directory module). `global_enum_defs()` reproduces all 21 enum `$defs`
+  byte-for-byte incl. the AltNames-drop (LengthUnit/SolveMode), AltNamesValid=false
+  (CoreType), the `Wye/Delta` connection remap, and the `oneOf` hybrids
+  (MonitoredPhase, PlotProfilePhases).
+- `gen_schema.py` now captures the 21 enum `$defs` (self-validated by verbatim
+  containment in the 592 KB oracle output); `golden_schema.rs`
+  `global_enum_defs_bytes_match_oracle` byte-tests them. Gate green.
+
+**Groundwork for the class walk (not yet ported):** `tools/golden/extract_schema_help.py`
+extracts the property-help catalog from the dss_capi gettext resource
+`dss/messages/properties-en-US.mo` (the source `TDSSClass.GetPropertyHelp` reads,
+`DSSClass.pas:2166` — NOT the schema JSON, so faithful, not circular). Validated:
+that catalog reproduces **every** schema-emitted description (948 main + the
+specset clones) via `<Class>.<proplower>` leaf lookup + the array-alternative name
+redirect (Transformer/AutoTrans/XfmrCode Conn→Conns etc.); no class-parent
+fallback is ever needed (`DynamicExp.Like` correctly falls to the literal key). The
+`AltPropertyOrder`/`$dssPropertyOrder` computation is fully located
+(`DSSClass.pas:1830` `nextByZOrder` + `:1934-2010`; `zorderNextStart=-999`,
+`zorderNextEnd=999`, `MakeLike=-1000`; `Ordering_First/Last` used by only 4
+classes). Defaults are read from the port's live sample object (constructors
+compute them, e.g. Capacitor `norm_amps`), and the fpjson float formatter
+(`fpjson_float`) + `get_json_value` accessors are reused.
+
+**Still open (the remaining ~bulk of §1.5):** the per-class walk
+(`prepareClassJsonSchema`) — 49 class `$defs` + `List`/`Container` triples +
+`circuitProperties` refs + ~40 class-local enum defs. The dominant remaining cost
+is per-property metadata the port never carried: the `Units_*` `PropFlags` family
+(only 2 of ~30 exist; nearly every electrical class needs them), the
+`Required`/`Ordering_First`/`Ordering_Last`/`PowerFactorLimits`/`PDElement` flags,
+the 24 classes' `SpecSets`, and the local enums' `AltNames`/`JSONName`. This is a
+large, self-contained data-entry effort (recorded in ORPHANED_GAPS §1.5). The
+`# Incomplete` caveat on `Dss::extract_schema_json` therefore stays until the class
+walk lands. No engine behavior changed.
+
 ### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
 
 Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already

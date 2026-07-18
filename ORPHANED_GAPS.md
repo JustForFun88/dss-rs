@@ -47,15 +47,29 @@ Standing follow-ups (AutoTrans JSON array-alt metadata; NOT_PORTED ShaftModel).
   `circuitProperties` head are ported byte-exact vs the oracle
   (`report/export/json/schema.rs`, `Dss::extract_schema_json`, golden
   `tests/golden/json/schema_static_core.json` via `tools/golden/gen_schema.py`).
-- **Still orphaned (the bulk):** the per-class walk (`prepareClassJsonSchema`) +
-  per-enum walk (`prepareEnumJsonSchema`) — the **49 class + 21 global enum
-  `$defs`** (plus each class's `List`/`Container` defs and `circuitProperties`
-  ref). These are blocked on per-property metadata the Rust port never carried, a
-  large self-contained data-entry effort: property **help/description** text
-  (`GetPropertyHelp`, ~1109 strings), per-class **`AltPropertyOrder`**
-  (`$dssPropertyOrder`), **`SpecSets`** (`oneOf`), enum
-  **`AltNames`/`JSONName`/`JSONUseNumbers`**, and ~28 of ~30 `Units_*` `PropFlags`
-  (only `UNITS_HOUR`/`UNITS_OHM_PER_LENGTH` exist). Oracle is reachable
+- **PER-ENUM WALK PORTED 2026-07-18** on `og15b-schema-full` — see STATUS
+  §OG-1.5b. `prepareEnumJsonSchema` + the 21-entry `DSS.Enums` global list
+  (`DSSClass.pas:1058-1196`) are ported byte-exact vs the oracle
+  (`report/export/json/schema/enums.rs`, golden `enum_defs` in
+  `schema_static_core.json`, driver `golden_schema.rs`). Also groundworked: the
+  property-help catalog extraction (`tools/golden/extract_schema_help.py` reads
+  the dss_capi gettext resource `dss/messages/properties-en-US.mo` — validated to
+  reproduce every schema description by leaf key + array-alternative redirect,
+  no parent fallback needed), and the `AltPropertyOrder` computation is fully
+  located (`DSSClass.pas:1830/1934-2010`, `zorderNextStart=-999`/`End=999`,
+  `Ordering_First/Last` used by only 4 classes).
+- **Still orphaned (the remaining bulk):** the per-class walk
+  (`prepareClassJsonSchema`) — the **49 class `$defs`** (plus each class's
+  `List`/`Container` defs and `circuitProperties` ref) and their ~40 **class-local**
+  enum defs. Blocked on per-property metadata the Rust port never carried, a large
+  self-contained data-entry effort: per-class **`AltPropertyOrder`**
+  (`$dssPropertyOrder`, algorithm located), **`SpecSets`** (`oneOf`, 24 classes),
+  ~28 of ~30 `Units_*` `PropFlags` (only `UNITS_HOUR`/`UNITS_OHM_PER_LENGTH` exist —
+  needed on nearly every electrical class, the dominant data-entry cost),
+  `Required`/`Ordering_First`/`Ordering_Last`/`PowerFactorLimits`/`PDElement` flags
+  the port lacks, and the local enums' `AltNames`/`JSONName`/`JSONUseNumbers`.
+  Defaults come from the port's live sample object (constructors compute them);
+  help from the extraction script above. Oracle is reachable
   (`lib.DSS_ExtractSchema`) — the blocker is Rust-side metadata, not access.
   **Priority: low.**
 
