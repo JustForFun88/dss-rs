@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/dss-cli", "crates/dss-core", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse"]
+members = ["crates/dss-cli", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse"]
 
 [workspace.dependencies]
 num-complex = "0.4"
@@ -8,6 +8,11 @@ regex = "1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Test-only: the `dss-epri` bridge crate loads the official EPRI OpenDSSDirect.dll
+# (the r4133 live-oracle channel) via `libloading`. Product crates never depend on
+# this — `dss-epri` is `publish = false` and the sole `#![forbid(unsafe_code)]`
+# carve-out (UNIFIED_GATE_PLAN.md §2, Phase A).
+libloading = "0.8"
 # UUID v4 generation for the CIM UUID plumbing (Pascal `NamedObject.CreateUUID4`,
 # PHASE8_PLAN WP8.6 step 6). Random v4s are never oracle-pinnable; the goldens
 # preload every UUID via the `Uuids` command.
@@ -42,6 +47,14 @@ overflow-checks = true
 debug-assertions = true
 
 [profile.dev.package.dss-parser]
+opt-level = 3
+overflow-checks = true
+debug-assertions = true
+
+# The test-only EPRI bridge (UNIFIED_GATE_PLAN.md §7 Data/config): optimize it
+# with the engine crates so the `epri-worker` marshalling / ByteStream decode is
+# not opt-0 slow on the corpus sweep. Safety knobs kept at dev defaults.
+[profile.dev.package.dss-epri]
 opt-level = 3
 overflow-checks = true
 debug-assertions = true
