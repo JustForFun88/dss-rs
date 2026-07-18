@@ -441,7 +441,25 @@ pub(crate) fn run_gate() -> GateRun {
     let pool_size = (jobs / 2).max(2);
 
     let start = Instant::now();
-    let cases = build_unified_cases();
+    let mut cases = build_unified_cases();
+    // Optional case filter (`DSS_GATE_ONLY=<substr>[,<substr>...]`) for cheap
+    // targeted verification under load — the FULL gate (no filter) is the one that
+    // gates commits. When set, prints a loud banner so a filtered run is never
+    // mistaken for the full gate.
+    if let Ok(only) = std::env::var("DSS_GATE_ONLY") {
+        let subs: Vec<String> = only
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let before = cases.len();
+        cases.retain(|c| subs.iter().any(|s| c.label.contains(s)));
+        eprintln!(
+            "corpus_gate: DSS_GATE_ONLY filter kept {}/{before} case(s) — THIS IS A PARTIAL \
+             RUN, not the commit gate",
+            cases.len()
+        );
+    }
     let total = cases.len();
 
     // Which transports does the case set actually need? A case can gate the
@@ -575,7 +593,12 @@ pub(crate) fn seed_ledger() {
     // only matching labels, for cheap targeted re-measurement under load.
     let only: Vec<String> = std::env::var("DSS_GATE_SEED_ONLY")
         .ok()
-        .map(|s| s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
+        .map(|s| {
+            s.split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
 
     let cases = build_unified_cases();
