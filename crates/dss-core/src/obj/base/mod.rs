@@ -580,6 +580,14 @@ pub trait DssObject {
         None
     }
 
+    /// `TDynEqPCE` view (Pascal `obj is TDynEqPCE`). `Some` only for the
+    /// DynamicExp-capable PC elements (Generator/PVSystem/Storage); used by the
+    /// AltDSS JSON export to append the `"DynInit"` tail from `UserDynInit`
+    /// (`CAPI_Obj.pas:752-759`). `None` for every other object.
+    fn as_dyneq(&self) -> Option<&crate::elements::pc::dyneq_pce::DynEqPceData> {
+        None
+    }
+
     fn get_f64(&self, idx: usize) -> f64 {
         unreachable!("get_f64 not implemented for property {idx}")
     }

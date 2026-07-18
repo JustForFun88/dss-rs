@@ -1,0 +1,58 @@
+// UPFC mode 3 (Dual regulator) - DAILY multi-step deck exercising the Sr0/Sr1
+// shift-register cross-step persistence (UPFC.pas ll.81-82: Sr0/Sr1 are member
+// state, reallocated but never zeroed between solves - RecalcElementData l.444-445
+// Reallocmem preserves contents; the Rust port mirrors this with Vec::resize in
+// upfc/mod.rs recalc). GetOutputCurr mode 3 updates Sr0 and GetInputCurr mode 3
+// updates Sr1; both carry into the next time step. A 4-point daily loadshape ramps
+// the load each hour (0.7/1.0/1.25/0.9), so Vbin/Vbout move and the UPFC re-regulates
+// starting from the Sr0/Sr1 left by the previous step - the cross-step state channel
+// a snapshot deck cannot reach.
+//
+// Cross-step signature (probe-proven, pinned oracle): at step1 the dual-mode series
+// deadband does not re-fire, so Sr0 STAYS at the step0 value (79.40,-261.23) while
+// mode=1 on the SAME feeder moves Sr0 to (111.26,-328.50) at step1 - the persisted
+// Sr0 is exactly what makes the two modes diverge across steps. QIdeal walks per step
+// (5340/7727/9465/6885 var) as the load ramps. All 4 steps converge (22/16/26/24
+// iters, 3/2/3/3 control iters). Compared per step: full model + all 14 UPFC state
+// variables + mode/refkv/pf/element probes.
+//
+// Feature-sensitive (two-process bit-identical): mode=1 shares step0 Sr0 but QIdeal=0
+// every step AND diverges from step1 on (different cross-step Sr0 carry-over); mode=0
+// zeros Sr0/Sr1/QIdeal at every step.
+clear
+Set DefaultBaseFrequency=60
+
+New circuit.upfcdualdaily bus1=source_bus.1.0 phases=1 basekv=7.2 pu=1 angle=0
+~ mvasc3=2000000 mvasc1=20000000
+
+New xycurve.losses npts=3 xarray=[0.9 1 1.1] yarray=[1.0143 1.008 1.0143]
+
+New xfmrcode.1-ph50kva-2 phases=1 windings=2 ppm=0 xhl=2.04 %noloadloss=.02
+~ kvs=[7.2 0.24] kvas=[50 50] %rs=[0.9 0.9] conns=[wye wye]
+
+New xfmrcode.upfcinterface phases=1 windings=3 ppm=0 xhl=.0204 xht=.0204
+~ xlt=.0136 %noloadloss=.01 kvs=[0.24 0.12 0.12] kvas=[50 50 50]
+~ %rs=[0.006 .012 .012] conns=[wye wye wye]
+
+New transformer.service50kva xfmrcode=1-ph50kva-2 buses=[source_bus.1.0 upfc_input.1]
+
+New upfc.test phases=1 bus1=upfc_input.1 bus2=upfc_output.1 refkv=0.242 mode=3
+~ losscurve=losses tol1=0.005 xs=0.02 pf=0.99 kvarlim=20
+~ element=Transformer.service50kva
+
+New upfccontrol.myupfcctrl
+
+New transformer.tupfcout xfmrcode=upfcinterface
+~ buses=[upfc_output.1.0 load_bus.1.0 load_bus.0.2]
+
+New loadshape.dstep npts=4 interval=1 mult=(0.7 1.0 1.25 0.9)
+
+New load.load120a phases=1 model=1 bus1=load_bus.1.0 kv=0.12 kw=14.98 kvar=10.08 daily=dstep
+New load.load120b phases=1 model=1 bus1=load_bus.2.0 kv=0.12 kw=12.38 kvar=1.71 daily=dstep
+
+Set voltagebases=[12.47 .415 0.208]
+calcv
+Set tolerance=1e-12
+Set maxiterations=100
+Set maxcontroliter=30
+Set mode=daily stepsize=1h number=1

@@ -7,6 +7,138 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### UNIFIED_GATE Phase 0 — baseline recorded (2026-07-18)
+
+`UNIFIED_GATE_PLAN.md` execution started (parallel worktree agents; Phases
+A/B in flight on `ug-phase-a`/`ug-phase-b`, based `449c745`). Phase 0
+baseline, tag **`pre-unified-gate`** = `449c745`:
+
+- Full three-command gate wall-clock (measured 2026-07-18 01:52–02:00,
+  **under concurrent load** — the ORPHANED_GAPS session was merging og*
+  branches into `update` mid-run, so treat as an upper-bound baseline):
+  fmt 1.4 s; clippy 50.5 s; `cargo +stable test --workspace` 426.6 s, of
+  which the serial one-shot corpus_live suite = 292.6 s (27 tests; ~510
+  cases across the four manifests). dss-core lib 1223+ unit tests.
+- Populations at baseline: `solvable_now` 293 (oracle: 246 pinned /
+  30 capi015 / 10 r4133 / 6 r3723 / 1 r4088), families asymmetric 47 /
+  controls 101 / modes 69, `.dss` bijection 915, `known_diffs.json` 25
+  entries (the Phase D ledger seed).
+- The one red in the baseline run (`json_transformer_micro`) was an
+  artifact of compiling mid-merge of og1213 (BHCurrent/BHFlux emission
+  before its `SUPPRESS_JSON` fix landed) — not a unified-gate item;
+  re-verified at the next merge-window gate.
+
+Wall-clock table (rows appended per plan §6 at Phases B/D/F):
+
+| point | fmt | clippy | test (full) | corpus gate share |
+|---|---|---|---|---|
+| `pre-unified-gate` (449c745, loaded box) | 1.4 s | 50.5 s | 426.6 s | 292.6 s |
+
+### OG-1.4 AltDSS JSON import `Circuit_FromJSON` (orphaned-gaps round, 2026-07-18)
+
+Ported the whole-circuit AltDSS JSON **reader** — the inverse of the JSON export —
+on `og14-json-import` (branch based `883a656`). Closes `ORPHANED_GAPS.md` §1.4.
+
+- **What:** `Dss::circuit_from_json(&mut self, json) -> Result<(),String>`
+  (`exec/json_import.rs`) — a loop-for-loop port of `Obj_Circuit_FromJSON_` +
+  `loadClassFromJSON` + `busFromJSON` (`CAPI_Obj.pas:2674-2983`), wrapped like
+  `Circuit_FromJSON` (`CAPI_Circuit.pas`). Clear → DefaultBaseFreq → MakeNewCircuit
+  → PreCommands → per-class load (`PASCAL_CLASS_ORDER`) → ReprocessBusDefs → Bus
+  coords → PostCommands. Property application is `ClassProps::fill_from_json` /
+  `set_json_value` (`obj/props/class_props/json_set.rs`), the port of
+  `FillObjFromJSON` / `SetObjPropertyJSONValue`: walks the new **`AltPropertyOrder`**
+  (`class_props/mod.rs`, driven by two new flags `ORDERING_FIRST`/`ORDERING_LAST`
+  on LoadShape.MemoryMapping / Line.Switch / Transformer.XfmrCode / Load.PF),
+  redirects the `array_alternative` (singular per-winding key → plural array),
+  drives the typed struct setters for `ON_ARRAY` scalars, and renders every other
+  type to the string its existing `edit_property` parse path reads (a scalar
+  double round-trips bit-exactly via `f64::from_str`). A hand-rolled `parse_json`
+  (`report/export/json/read.rs`) is the text→`Json` front (no serde_json, same
+  reason as the writers).
+- **Why the re-export differs from J0:** the imported set-order becomes
+  `AltPropertyOrder` (not the original deck order), so `export(J0) != export(import(J0))`
+  in general — but the oracle round trip is **idempotent after one cycle**
+  (J1 == J2). The test therefore imports the oracle's J0 and requires the re-export
+  to equal the oracle's own re-export **J1 byte-for-byte** (oracle `Circuit_FromJSON`
+  is reachable on the pin), plus idempotency. Goldens `tests/golden/json_import/`
+  (`rt_micro` / `rt_transformer` / `rt_ieee13`), generator `tools/golden/gen_json_import.py`,
+  driver `tests/golden_json_import.rs` (+ negative tests: malformed/non-object/
+  unknown-class/unknown-prop/missing-Name).
+- **Bugs found + fixed in-scope (all gate-green):**
+  1. **Transformer constructor `SetAsNextSeq(XHL)`** (`Transformer.pas:848`) was
+     not reproduced — so a JSON-imported `X12` (or any never-edited transformer)
+     rendered its impedance at the wrong set-order position. Added; the low-seq
+     redundant `XHL` defers to canonical `X12`, so `X12` renders first. Safe for
+     existing goldens (an explicit `xhl=` overwrites the seq).
+  2. **Transformer `set_struct_f64_array`/`set_struct_i32_array`** only handled the
+     plural array props (kVs/kVAs/…); extended to the `ON_ARRAY` per-winding
+     scalars (RNeut/XNeut/MaxTap/MinTap/RDCOhms/NumTaps) for JSON import.
+     `RDCOhms` deliberately leaves `RdcSpecified` to the side effect (marks only
+     the *active/last* winding), so winding-1 Rdc is derived at recalc — matching
+     the oracle round trip 1:1.
+  3. **`add_object` split** into `create_object_no_edit` + `edit_active` so JSON
+     import creates an element without the empty pre-fill recalc (a RegControl's
+     `RecalcElementData` errors "transformer not set" if run before `FillObjFromJSON`
+     applies the ref). Pascal `obj_NewFromClass` does the same.
+  4. **`Set` command gaps** the export's PostCommands emit but the executive
+     lacked: `%mean`/`%stddev` (default daily shape Set_Mean/Set_StdDev) and
+     `genmult` (GenMultiplier). Ported (`set_cmd.rs`, `tables.rs`, LoadShape
+     `set_mean`/`set_std_dev`).
+- **Deferred (recorded):** the `DynInit` tail of `FillObjFromJSON` (ORPHANED_GAPS
+  §1.2, Generator/PVSystem/Storage `DynamicExp` init) — mirrors the export-side
+  `DynInit` deferral; not exercised by any covered deck. The public wrapper takes
+  no `joptions` (only the import-internal `DSSJSONOptions.Edit` bit matters and it
+  is applied internally).
+- **Gate:** fmt + clippy clean; `cargo test --workspace` green (all 27 live-corpus
+  cases match the oracle — the transformer/add_object changes cause no divergence).
+  NOTE: the worktree lacks the Oddie `tools/opendss/.venv` junction (4 corpus cases
+  need it); run with `DSS_OPENDSS_PYTHON` pointing at main's venv, else those cases
+  abort on setup (environment, not a code failure).
+
+### OG-1.4 AltDSS JSON import — settle/fix round (2026-07-18)
+
+Settled two independent read-only audits of `og14-json-import`. Fixes (all
+oracle-probed, gate-green):
+
+- **`Required`-property validation (major, AUDIT-CODE):** ported the missing
+  `FillObjFromJSON` branch (`DSSObjectHelper.pas:4955`) — a missing `[Required]`
+  key now raises `JSON/<cls>/<name>: required property not provided: "<prop>"` and
+  aborts the load instead of silently importing an incomplete element. Added the
+  `PropFlags::REQUIRED` bit (absent before — only `RequiredInSpecSet` existed) and
+  the check in `class_props/json_set.rs`, then flagged the ~38 **non-redundant**
+  Pascal-`Required` props across 28 element tables (bus1/bus2, kV, per-winding
+  Bus, MonitoredObj/Element/transformer/capacitor refs, Sensor element+kvbase,
+  DynamicExp Expression, XfmrCode kV, VSource bus1+basekV). Redundant twins
+  (`buses`/`kVs`) are dropped from `AltPropertyOrder`, so only the exported keys
+  are checked — round-trip goldens stay green. Oracle-confirmed the exact message
+  on dss-python 0.15.7.
+- **Edited default DSS_OBJECT re-exported (major, AUDIT-TESTS):** `fill_active_from_json`
+  called `set_default_and_unedited(false)`, but Pascal `FillObjFromJSON` never
+  `BeginEdit`s (only `EndEdit`), so it never clears `DefaultAndUnedited`. Removed
+  the clear — a JSON-imported default (e.g. `spectrum.defaultload`) now stays
+  flagged and is dropped from the re-export, matching the oracle (whose own round
+  trip is lossy for edited defaults: J0 2328 B → J1 1458 B). New golden
+  `rt_edited_default` pins it.
+- **`busFromJSON` kVLN+kVLL conflict now aborts (minor, AUDIT-CODE/TESTS):**
+  `bus_from_json` returns `Result`; the conflict propagates as `Err` (oracle
+  aborts the whole load, error 20230919) instead of logging-and-continuing.
+- **Test coverage (AUDIT-TESTS):** restored the two dropped whole-circuit decks as
+  import goldens (`rt_positive_seq` = allowduplicates + cktmodel=positive;
+  `rt_edited_default`) and added `rt_generator` (Thevenin-DER). Tightened the
+  `unknown_class`/`missing_name` negatives to assert the positive/abort outcome,
+  and added `missing_required_property_errors` + `bus_kvln_kvll_conflict_aborts`.
+- **Rejected — DuplicatesAllowed (AUDIT-CODE, disproven):** `create_object_no_edit`
+  already honors it (`command.rs:987`, gated on `!duplicates_allowed`, not
+  unconditional as the audit read). Probe: oracle round trip of two duplicate
+  `load.l1` under `AllowDuplicates` → Rust import re-export **byte-identical** to
+  the oracle J1 (2 loads each).
+- **Deferred (recorded follow-up) — numeric-array length validation (minor,
+  AUDIT-CODE):** Pascal `SetObjPropertyJSONValue` rejects wrong-length int/double/
+  complex/sym-matrix arrays (`Expected an array of %d …`); the Rust renders to a
+  string and reparses without the `Norder` count check. Malformed-hand-authored-
+  input only (round-trip exports are always correct length). Left for a follow-up;
+  needs the per-type expected-count machinery in `set_json_value`.
+
 Last updated: 2026-07-17 (late evening) — **STATUS RESTRUCTURED + PLAN-COMPLETION AUDIT.** All 16 plan docs were re-verified against the codebase; the records of the *completed* plans (FINAL ACCEPTANCE, JSON export, DIAKOPTICS Part I, UPGRADE Rung 1+2) moved to the new **§1a archive**, and every item those plans handed to a still-unfinished successor is now explicit in **§Standing open follow-ups**. Prior same-day — **TEST-TRIAGE ROUND MERGED** (user-ordered
 backlog burn-down; six parallel worktree WPs, each gate-green + audited/verified,
 merged wt-t1→t2→t3→t4→t6; DE_PASCALIZE is PAUSED by user order after wave 1 —
@@ -127,6 +259,57 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+### OG-1.5 `CAPI_Schema` JSON-schema export — static core ported (orphaned-gaps round, 2026-07-18)
+
+Branch `og15-capi-schema`. Ported the **static core** of Pascal
+`DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
+JSON-Schema (draft 2020-12) envelope (`$schema`/`$id`/`type`/`required`), the ten
+reusable global `$defs` (`Complex`, `PComplex`, `SymmetricMatrix`,
+`ArrayOrFilePath`, `StringArrayOrFilePath`, `JSONFilePath`, `JSONLinesFilePath`,
+`Bus`, `BusConnection`, `DynInitType`), and the static `circuitProperties` head
+(`Name`/`DefaultBaseFreq`/`PreCommands`/`PostCommands`/`Bus`).
+- New: `crates/dss-core/src/report/export/json/schema.rs` (reuses the existing
+  fpjson `Json` tree + `write_pretty`); public `Dss::extract_schema_json()` in
+  `exec/view.rs`.
+- Test surface: `tools/golden/gen_schema.py` (pin-checked; proves the oracle
+  bytes deterministic across two processes; self-validates each rendered fragment
+  by verbatim containment in the real 592 KB oracle output), golden
+  `tests/golden/json/schema_static_core.json`, driver
+  `crates/dss-core/tests/golden_schema.rs` — **byte-equality** on all 10 static
+  defs + the 5 head props + the `$id`/`required` envelope.
+
+**Deferred (genuinely orphaned, blocked on unported metadata):** the per-class
+walk (`prepareClassJsonSchema`) and per-enum walk (`prepareEnumJsonSchema`) —
+i.e. the `<Class>`/`<Class>List`/`<Class>Container` `$defs` triples (**49 class +
+21 global enum defs**) and their `circuitProperties` refs — need per-property
+metadata the Rust port never carried and which is a large, self-contained
+data-entry effort:
+- property **help/description** text (`GetPropertyHelp`; ~1109 strings in the
+  oracle document),
+- per-class **`AltPropertyOrder`** (`$dssPropertyOrder`, 1161 occurrences),
+- **`SpecSets`** / `SpecSetNames` / `RequiredInSpecSet` (the `oneOf` blocks, 78),
+- enum **`AltNames`/`JSONName`/`JSONUseNumbers`** JSON metadata (not on `DssEnum`),
+- ~28 of the ~30 `Units_*` property flags (only `UNITS_HOUR` /
+  `UNITS_OHM_PER_LENGTH` exist on `PropFlags` today).
+
+The mission-brief premise that these inputs "already sit inert, ready to feed the
+emitter" is only partly true (the `Units_*` family in particular is largely
+absent). Recorded as the remaining `ORPHANED_GAPS.md` §1.5 follow-up. Oracle IS
+reachable (`lib.DSS_ExtractSchema`) — the blocker is Rust-side metadata, not
+oracle access. Gate green (fmt/clippy/test).
+
+**Settle round (2026-07-18).** Two read-only audits reviewed the branch. The one
+Major finding (WP as literally briefed = ~90% deferred) is the honestly-disclosed
+partial documented above — not a defect; the deferral is empirically justified
+(only 2 of ~30 `Units_*` flags carried) and stays open in ORPHANED_GAPS §1.5. Two
+Minor findings fixed: (a) `extract_schema_json()` now carries a `# Incomplete`
+rustdoc header spelling out that the returned skeleton is not a usable schema
+(dangling `required:["Vsource"]` + `circuitProperties` refs whose class `$defs`
+are absent); (b) `skeleton_envelope_is_well_formed` gained a byte-level
+top-level-member-order assertion against the Pascal envelope order
+(`CAPI_Schema.pas:1504-1513`) — serde's object map ignored ordering, so an
+envelope reorder previously slipped all four tests.
+
 **Era: post-acceptance DE_PASCALIZE (PLAN_SEQUENCE stage 5).** The 1:1 port
 reached FINAL ACCEPTANCE (2026-07-11, referee ACCEPT); UPGRADE Rungs 1–2 are
 COMPLETE (2026-07-16/17 — engine behavior = OpenDSS 11.0.0.1 (r4133) except the
@@ -140,6 +323,55 @@ archived in **§1a**; their still-open carried-forward items (TODO(compat) sweep
 HIDE_015X → Stage F, GICMvars → Phase 9, JSON DynInit/Full tail, AggregateProfiles →
 AD Part II, user-model DLLs → WASM, IEEE118 NCIM → a future rung) are tracked in
 §Standing-open-follow-ups just below.
+
+### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
+
+Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already
+handled all six modes** (0..5) — `elements/pc/upfc/compute.rs`
+`get_output_curr`/`get_input_curr`/`check_status`/`calc_upfc_powers` are a
+loop-for-loop port of `UPFC.pas` and match the oracle to the printed precision on
+modes 2/3/5. The real gap was the **missing test surface**: no corpus deck
+exercised modes 2 (StatCOM shunt reactive), 3 (Dual = series V-reg + shunt PF),
+or 5 (DoubleRef Dual). Added three live decks under `tests/corpus/controls/upfc/`:
+- `upfc_statcom.dss` (mode 2): series path off (Sr0=0), shunt QIdeal ~3.1 kvar
+  drives the monitored service-transformer PF to pf=0.95; `element=` mandatory
+  (CheckStatus mode 2 = checkPF only); 16 iters.
+- `upfc_dual.dss` (mode 3): mode-1 series V-reg to refkV **plus** the synced shunt
+  reactive branch (QIdeal ~7570 var); `element=` required or it collapses onto
+  mode 1; 25 iters.
+- `upfc_doubleref_dual.dss` (mode 5): mode-4 two-band reference (lower band
+  engaged, Vbout→refkV2) **plus** the shunt PF branch (QIdeal ~7.8 kvar); 25 iters.
+
+Each GAPS §3-proven (pin solves+converges; two-process bit-identical fingerprint;
+feature-sensitive — mode 3 vs mode 1 and mode 5 vs mode 4 share the series Sr0 but
+QIdeal→0, isolating exactly the dual shunt branch; mode=0 zeros both). Registered
+in the controls `manifest.json` + `CONTROLS_REQUIRED` floor with
+`compare_variables:[UPFC.test]` (all 14 state vars) + mode/refkv/pf/element probes;
+`controls_cases_match_oracle` green (Rust == pinned dss-python 0.15.7 on full model
++ all UPFC variables + properties). Convergence needs a **reachable** PF target
+(pf=0.99 unclamped only with kvarLimit≥20; the kvarLimit clamp otherwise stalls
+checkPF at max-control-iterations) and tol1≥0.005 to settle both deadbands — the
+non-convergence the pre-existing `upfc_vreg` note warned about. No engine code
+changed.
+
+**Settle round (2026-07-18, two audits).** Both audits confirmed the engine port is
+faithful (all 6 modes loop-for-loop) with no regressions/simplifications and the
+decks feature-sensitive vs the pinned oracle. The single substantive finding (both
+audits, minor): the three new decks are all snapshot (`n_steps:1`), so the brief's
+"multi-step solve if the mode has temporal state" clause was not literally met even
+though UPFC carries genuine cross-step `Sr0/Sr1` shift-register state. **Closed** by
+adding a fourth deck `upfc_dual_daily.dss` (mode 3, `n_steps:4`, daily loadshape
+0.7/1.0/1.25/0.9): the load ramps each hour so the UPFC re-regulates from the
+`Sr0/Sr1` carried over from the prior step. The cross-step channel is proven — at
+step1 the dual series deadband does not re-fire so `Sr0` stays at the step0 value
+(79.40,-261.23) while mode=1 on the same feeder moves `Sr0` to (111.26,-328.50);
+the persisted `Sr0` is exactly the cross-step divergence a snapshot cannot reach.
+GAPS §3-proven (4 steps converge 22/16/26/24 iters; two-process bit-identical;
+mode 1/0 feature-sensitivity per step); `compare_variables:[UPFC.test]` all 14 vars
++ full model compared PER STEP; `controls_cases_match_oracle` green. Second finding
+(untracked `GFM_IEEE8500/IEEE8500u_VLN_Node.txt` solve byproduct) was a pre-declared
+unrelated GFM output, not part of this WP's diff — removed from the worktree to keep
+`tests/corpus` pristine; nothing to commit there.
 
 ### Standing open follow-ups (actionable)
 
@@ -159,12 +391,24 @@ open item is not buried in the §1a archive):
   r4133's newer cadence; parked `skipped_needs_investigation`, report-only in
   DIVERGENCES.md.
 - **GICMvars export (verb 36) / GICTransformer `WriteVarOutputRecord` → Phase 9 —
-  NOT started.** Still `NOT_PORTED` (GAPS WPG.16's only deferred piece; pinned by
-  `exec/tests/report.rs`).
-- **AltDSS JSON `DynInit` tail + Full-mode Transformer/AutoTrans WdgCurrents +
-  Capacitor CMatrix → a JSON-export follow-up WP — NOT started.**
-  `report/export/json/build.rs:123` `NOT_PORTED`; goldens exclude the Full path for
-  those classes.
+  ✅ PORTED 2026-07-18** (orphaned-gaps round OG-1.1, branch `og11-gicmvars`; see
+  §OG-1.1 below). Was GAPS WPG.16's only deferred piece.
+- **AltDSS JSON `DynInit` tail + Full-mode Transformer WdgCurrents — DONE
+  (og1213, 2026-07-18; see §OG-1.2+1.3).** Capacitor CMatrix = proven UB
+  non-port (uninitialized heap, nondeterministic across processes). New
+  sub-follow-ups surfaced (below).
+- **AutoTrans JSON array-alternative metadata → NOT started (og1213 discovery).**
+  `auto_trans/mod.rs` carries none of the singular/plural `array_alternative` +
+  `REDUNDANT` + `ON_ARRAY` JSON metadata the Transformer has, so its default JSON
+  sweep renders `Buses/Conns/kVs/kVAs` where the oracle renders `Bus/Conn/kV/kVA`.
+  Blocks an AutoTrans JSON golden (incl. Full WdgCurrents, which is *inferred* to
+  work via the class-agnostic refresh route — proven post-solve on Transformer,
+  but AutoTrans's own getter is not independently oracle-pinned). Out of §1.3 scope.
+- **Generator/PVSystem/Storage `ShaftModel`/`ShaftData` hidden under JSON Full →
+  NOT started (og1213 discovery).** They carry `PropFlags::NOT_PORTED` →
+  `hidden_from_full_enum()` skips them, but the 0.14.5 oracle emits them (`""`).
+  Blocks a Generator/Storage *Full* JSON golden; the DynInit tail is pinned in
+  default-family combos instead.
 - **A-Diakoptics `AggregateProfiles` command + D9(d) official-r3723 AD-replay →
   DIAKOPTICS Part II WP-AD.5 — partial.** `exec/command.rs:69` `NOT_PORTED`; WP-AD.6
   threaded children not started (needs MULTITHREADING M2).
@@ -175,7 +419,8 @@ open item is not buried in the §1a archive):
 **Residual floors / parked (documented, not bugs):**
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — ultra-switch
   conditioning floor (CF-D), watch on re-touch.
-- **UPFC modes 2/3/5**, `midi_relay_dist` deferred (budget); Kersting4wire #567
+- ~~**UPFC modes 2/3/5**~~ **CLOSED 2026-07-18 (OG-1.7)** — see §OG-1.7 record;
+  `midi_relay_dist` deferred (budget); Kersting4wire #567
   UserModel decks parked (no oracle channel tolerates the DoSimpleMsg).
 - **UTF-8-BOM edge cases** — GAPS follow-up. (`CapControl.ControlSignal` FOLLOW path
   is in fact *ported* and live in `cap_control` — the old "unported" note was stale
@@ -183,6 +428,113 @@ open item is not buried in the §1a archive):
 
 Retired (done): combo fuse-save restore (wt-combo); WP-U1.2 D3 / WP-U1.6 tail (all
 landed pre-rung-exit); Monitor modes 8/10/12 (test-triage wt-t3).
+
+### OG-1.1 GICMvars export (orphaned-gaps round, 2026-07-18)
+
+Ported `Export GICMvars` (report verb 36) — the last unported GIC surface
+(ORPHANED_GAPS §1.1; GAPS WPG.16's punt to a never-materialized "Phase 9").
+
+- **`WriteVarOutputRecord`** → `GicTransformer::var_output_record`
+  (`elements/pd/gic_transformer/solve.rs`): `ComputeIterminal`, sum the per-phase
+  terminal currents, `GICperPhase = |ΣI|/nphases`; Mvar on the K-factor path
+  (`FKfactor·FkV1·GICperPhase/1000`) or the VarCurve path
+  (`GetYValue(pu)·FMVArating/√2`, pu = GICperPhase/(MVA·1000/kV1/√3)).
+- **Driver** `ExportGICMvar` → `report/export/gic_mvars.rs::export_gic_mvars`:
+  walks the GICTransformer class ElementList (creation order, no Enabled filter);
+  header `Bus, Mvar, GIC Amps per phase`; `%.8g` cells. Verb 36 routed in
+  `exec/report.rs` (default file `EXP_GIC_Mvar.csv`; not solution-guarded, 1:1 with
+  Pascal `ExportOptions.pas`).
+- **Test surface:** new golden `export_gicmvars` (generator `gen_gic_mvars` in
+  `tools/golden/gen_reports.py`) over the GIC-study deck — all three types
+  (GSU/YY K-path + Auto VarCurve path); `golden_reports.rs::export_gicmvars_matches_oracle`
+  (rel 1e-7/abs 1e-8, the faer-vs-KLU GIC-current floor). Retired the
+  `exec/tests/report.rs` GICMvars NOT_PORTED assert → now pins `Estimation`(5) on a
+  solved circuit (all remaining unported verbs are solution-guarded).
+
+### OG-1.2+1.3 AltDSS JSON tails — DynInit + Full WdgCurrents (orphaned-gaps round, 2026-07-18)
+
+Branch `og1213-json-tails`. Closes `ORPHANED_GAPS.md` §1.2 and the WdgCurrents
+half of §1.3.
+
+- **§1.2 DynInit tail — PORTED.** `obj_to_json_data` now appends the Pascal
+  `TDynEqPCE` `"DynInit"` object (`CAPI_Obj.pas:752-759`) for any object whose
+  `UserDynInit` is non-empty (Generator/PVSystem/Storage, reached via a new
+  `DssObject::as_dyneq` accessor). `DynEqPceData.user_dyn_init` changed from
+  `Vec<(String,String)>` to `Vec<(String,DynInitValue)>` where `DynInitValue` is
+  `Number(f64)` | `Text(String)`: `parse_dyn_var` uses `make_double_ex` to
+  recover Pascal's `requiredRPN`, so a plain constant → JSON number, a
+  calc-value operand or RPN constant → JSON string (raw case). The `"DynInit"`
+  key is emitted literally (never lowercased, even under LowercaseKeys — matches
+  oracle). Golden `dyneq_micro` (Generator + Storage; default-family combos).
+- **§1.3 Full WdgCurrents — PORTED (refresh route).** Added
+  `Dss::obj_to_json_mut` / `class_batch_to_json_mut`: they run
+  `refresh_vterminal_if_marked` before the `&self` builder, so Full-mode
+  `READS_VTERMINAL` result strings (Transformer/AutoTrans `WdgCurrents`) render
+  from the current solution exactly as Pascal's self-refreshing getter does
+  (pre-solve = all-zero phasor list). Golden driver uses the `_mut` routes.
+  `transformer_micro` flipped off `skip_full` → Full WdgCurrents now pinned
+  byte-exact. Fixed en route: Transformer/AutoTrans `BHCurrent`/`BHFlux` (newer
+  r4064 props absent from the 0.14.5 oracle) leaked into Full JSON as `null` —
+  now `SUPPRESS_JSON` like their sibling `BHPoints`.
+- **§1.3 Capacitor CMatrix — proven UB, NOT reproduced.** The oracle renders
+  Capacitor `CMatrix` under Full from an uninitialized `pDoubleArray` (denormal
+  garbage: `2.1e-308`, `4.9e-318` …) that **differs across oracle processes**
+  (probed twice), for both kvar- and explicit-`cmatrix`-defined caps. Per the
+  UB/state-mutating-read rule it is not reproduced (like the multi-meter OOB
+  case); decks with capacitors stay `skip_full`.
+- Gate green (fmt + clippy + `cargo test --workspace`). Out-of-scope discoveries
+  recorded in Standing follow-ups (AutoTrans JSON array-alt metadata; Generator
+  ShaftModel/ShaftData hidden under Full).
+
+**Audit-settle round (2026-07-18).** Two read-only audits returned 6 findings
+(1 major, 5 minor); settled empirically against the pinned oracle:
+- **[FIXED — major] Full WdgCurrents pinned only pre-solve (a no-op).** The
+  pre-solve refresh recomputes zeros (NodeV=0), so `transformer_micro` alone
+  could not catch a refresh regression. Added golden **`transformer_solved`**:
+  the transformer primary is on the energized `sourcebus` feeding a 500 kW load,
+  the deck `solve`s, and Full `WdgCurrents` is now a NONZERO phasor list pinned
+  byte-exact (obj + batch × 4 Full combos). Verified Rust==oracle bit-for-bit;
+  byte-exact is valid post-solve because the getter formats at `%.7g`/`%.5g`
+  (Transformer.pas:362), far coarser than faer-vs-KLU last-ULP. Deleting the
+  `refresh_vterminal_if_marked` call now fails the gate.
+- **[FIXED — minor] DynInit dedup rewrite unpinned.** `dyneq_micro` now assigns
+  `Damp` twice (`= 0` number, then `= (1 2 +)` RPN string): pins the Pascal
+  `UserDynInit.Delete`+`Add` reorder — the rewrite changes the value type AND
+  moves `damp` to the tail. Oracle-confirmed and reproduced byte-exact.
+- **[disproven — minor] AutoTrans "proven byte-exact by analogy".** Overstated;
+  softened the `gen_json.py` NOTE to "inference, not verified". The refresh route
+  is class-agnostic (now proven post-solve via `transformer_solved`), but a
+  standalone AutoTrans byte-golden stays blocked by the plural/singular metadata
+  gap (already a follow-up below). Real, deferred — not silently dropped.
+- **[not-a-defect — minor] WindGen `as_dyneq` override.** `WindGen.pas` is absent
+  from the 0.14.5 pinned source (Rust-only forward-port from a newer engine where
+  WindGen IS a `TDynEqPCE`); it embeds a real `dyneq` field, so emitting DynInit
+  is internally consistent. Cannot appear in any oracle golden/live compare, so
+  untestable and harmless — kept for sibling consistency (Generator/PVSystem/Storage).
+
+**Audit-settle round 2 (2026-07-18, post-merge on `update`).** Two further
+read-only audits returned findings; most were already remediated in-branch by
+38a5e67 (the pre-solve Full WdgCurrents no-op and the DynInit dedup — both re-flagged
+against the `afd8853` HEAD, RESOLVED above). One material gap survived and is fixed:
+- **[FIXED — major] AutoTrans `WdgCurrents` getter never verified nonzero.** The
+  §1.3 deliverable names *both* Transformer AND AutoTrans WdgCurrents. Transformer
+  is pinned nonzero by `transformer_solved`, but AutoTrans has its OWN distinct
+  series/common/delta getter (`TAutoTransObj.GetAllWindingCurrents`,
+  `auto_trans/yterminal.rs`), and every AutoTrans WdgCurrents golden was pre-solve
+  all-zeros — indistinguishable from a broken refresh. Added props scenario
+  **`autotrans_solved`** (`gen_props.py`): a solved 3-winding YNad1 auto (Series/
+  Common/Delta-tertiary, unit from corpus `autotrans_snap.dss` t1) fed on the series
+  winding, loads on the 161 kV common + 13.8 kV tertiary. The `?`-query path hits
+  `refresh_vterminal_if_marked` (`command.rs:1107`) → reloads Vterminal → runs the
+  auto's own getter. `props_roundtrip` now pins `WdgCurrents` NONZERO
+  (`549.4296, (-31.051), …`) vs the pinned 0.15.7 oracle; Rust matches numerically.
+  A broken refresh would emit all-zeros and fail. Closes the last un-verified §1.3
+  getter. (JSON-Full AutoTrans golden stays blocked by the plural/singular metadata
+  follow-up below; the props route needs no JSON metadata and closes the gap.)
+- **[deferred — minor] DynInit tail not gated under Full mode.** `dyneq_micro` is
+  `skip_full` (blocked by the ShaftModel/ShaftData NOT_PORTED Full-render gap,
+  already a follow-up). The DynInit append is sweep-independent code fully exercised
+  by the default sweep, so residual risk is low; kept as-is. Recorded, not dropped.
 
 ---
 

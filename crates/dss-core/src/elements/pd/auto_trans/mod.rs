@@ -116,9 +116,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             .flags(PropFlags::NON_ZERO | PropFlags::NON_NEGATIVE | PropFlags::SUPPRESS_JSON),
         // Winding definition (active winding selected by `Wdg=`).
         PropDef::integer("Wdg"),
-        PropDef::bus_on_struct("Bus"),
+        PropDef::bus_on_struct("Bus").flags(PropFlags::REQUIRED),
         PropDef::mapped_string_enum("Conn", enums.autotrans_connection),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
+        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
         PropDef::double("kVA"),
         PropDef::double("Tap"),
         PropDef::double("%R").scale(pct),
@@ -160,10 +160,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // the live `cd.vterminal`, so the `?`/`Dump` surfaces refresh it first.
         PropDef::string("WdgCurrents").flags(PropFlags::READS_VTERMINAL),
         // GICharm BH-curve data (r4064, 90962ae8): `Unused` props — parsed and
-        // stored, never used in a solve (mirrors the Transformer port).
+        // stored, never used in a solve (mirrors the Transformer port). Absent
+        // from the pinned oracle (dss_capi 0.14.5), so all three carry
+        // `SUPPRESS_JSON` to keep the Full JSON dump byte-identical.
         PropDef::integer("BHPoints").flags(PropFlags::SUPPRESS_JSON | PropFlags::NON_NEGATIVE),
-        PropDef::double_array("BHCurrent", BHPOINTS),
-        PropDef::double_array("BHFlux", BHPOINTS),
+        PropDef::double_array("BHCurrent", BHPOINTS).flags(PropFlags::SUPPRESS_JSON),
+        PropDef::double_array("BHFlux", BHPOINTS).flags(PropFlags::SUPPRESS_JSON),
         // TPDClass tail:
         PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),

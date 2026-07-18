@@ -93,7 +93,7 @@ define_properties! {
     20 PQCSVFILE => PropDef::string("PQCSVFile").flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
-    21 MEMORYMAPPING => PropDef::boolean("MemoryMapping");
+    21 MEMORYMAPPING => PropDef::boolean("MemoryMapping").flags(PropFlags::ORDERING_FIRST);
     22 INTERPOLATION => PropDef::mapped_string_enum("Interpolation", enums.load_shape_interp);
 }
 

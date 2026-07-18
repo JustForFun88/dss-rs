@@ -94,7 +94,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // Pascal WriteByFunction(SetMonitoredElement) + Required, resolves against
         // any circuit class. The `Required` flag is inert in the port (same as the
         // other controls); a missing Element surfaces via RecalcElementData 372.
-        PropDef::object_ref_any("Element"),
+        PropDef::object_ref_any("Element").flags(PropFlags::REQUIRED),
         PropDef::integer("Terminal"),
         PropDef::mapped_string_enum("Type", enums.espvl_control_type),
         PropDef::double("kWBand"),

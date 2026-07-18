@@ -75,7 +75,7 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
         // Required: any circuit element by full name. (The Pascal `Required`
         // flag is inert here — not enforced in the port yet, same as the other
         // controls; a missing Element still surfaces via RecalcElementData 372.)
-        PropDef::object_ref_any("Element"),
+        PropDef::object_ref_any("Element").flags(PropFlags::REQUIRED),
         PropDef::integer("Terminal"),
         PropDef::double("kWLimit"),
         PropDef::double("kWBand"),

@@ -113,7 +113,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Windings").flags(PropFlags::GREATER_THAN_ONE | PropFlags::SUPPRESS_JSON),
         // Winding definition (active winding selected by `Wdg=`).
         PropDef::integer("Wdg"),
-        PropDef::bus_on_struct("Bus"),
+        PropDef::bus_on_struct("Bus").flags(PropFlags::REQUIRED),
         PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
         PropDef::double("kVA"),
@@ -151,7 +151,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("ppm_Antifloat").scale(1.0e-6),
         PropDef::double_array_on_struct("%Rs", WINDINGS).scale(pct),
         PropDef::string("Bank"),
-        PropDef::object_ref_class("XfmrCode", "XfmrCode"),
+        PropDef::object_ref_class("XfmrCode", "XfmrCode").flags(PropFlags::ORDERING_FIRST),
         PropDef::boolean("XRConst"),
         PropDef::double("X12").scale(pct).trap_zero(7.0),
         PropDef::double("X13").scale(pct).trap_zero(35.0),
@@ -166,10 +166,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double_array("Ratings", SEASONS),
         // GICharm BH-curve data (r4064, 90962ae8): `Unused` props — parsed and
         // stored, never used in a solve. `BHpoints` reallocates the two arrays
-        // (side effect below); `BHcurrent`/`BHflux` are `BHpoints`-sized.
+        // (side effect below); `BHcurrent`/`BHflux` are `BHpoints`-sized. These
+        // three properties do not exist in the pinned oracle (dss_capi 0.14.5,
+        // enum ends at Ratings=49), so all three carry `SUPPRESS_JSON` to keep
+        // the Full JSON dump byte-identical to the oracle (which emits no such
+        // keys); they are inert forward-compat parse targets only.
         PropDef::integer("BHPoints").flags(PropFlags::SUPPRESS_JSON | PropFlags::NON_NEGATIVE),
-        PropDef::double_array("BHCurrent", BHPOINTS),
-        PropDef::double_array("BHFlux", BHPOINTS),
+        PropDef::double_array("BHCurrent", BHPOINTS).flags(PropFlags::SUPPRESS_JSON),
+        PropDef::double_array("BHFlux", BHPOINTS).flags(PropFlags::SUPPRESS_JSON),
         // TPDClass tail:
         PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON),
@@ -395,6 +399,14 @@ impl Transformer {
         };
         t.set_num_windings(2); // allocates windings, XSC, terminals, matrices
         t.active_winding = 1;
+        // Pascal `TTransfObj.Create` (Transformer.pas:845-849): `XHL := 0.07`
+        // then `SetAsNextSeq(XHL)` under the default (property-tracking) build.
+        // This marks the impedance in the set order at creation, so a
+        // transformer whose `XHL`/`X12` is never explicitly edited still exports
+        // its (redundant `XHL` → canonical `X12`) impedance — and a JSON-imported
+        // transformer, whose `X12` key marks `X12` late, still renders `X12`
+        // first because the constructor's low-seq `XHL` defers to it.
+        t.cd.obj.set_as_next_seq(prop::XHL);
 
         let kva1 = t.windings[0].kva;
         t.vabase = kva1 * 1000.0;

@@ -375,12 +375,11 @@ impl Dss {
     /// the parsed model — safe before any solve. `Full` additionally renders
     /// read-only function properties; the handful flagged `READS_VTERMINAL`
     /// (Transformer/AutoTrans `WdgCurrents`) read the element's `Vterminal`
-    /// cache, so under `Full` after a solve they reflect whatever that cache last
-    /// held. Unlike [`Dss::element_properties`] this `&self` method cannot run the
-    /// `refresh_vterminal_if_marked` choke point; reproducing those solve-state
-    /// strings byte-exactly is deferred (the "Full transformer WdgCurrents JSON"
-    /// follow-up — the Stage-A goldens never render them, `skip_full`). No
-    /// default-mode output is affected.
+    /// cache. This `&self` method cannot run the `refresh_vterminal_if_marked`
+    /// choke point, so it renders those from whatever the cache last held; for a
+    /// `Full` dump that must reflect the current solution use
+    /// [`Dss::obj_to_json_mut`], which refreshes first. No default-mode output is
+    /// affected (no default-sweep property is `READS_VTERMINAL`).
     pub fn obj_to_json(&self, full_name: &str, opts: JsonOpts) -> Option<String> {
         let (class_name, name) = {
             let mut p = Parser::new();
@@ -390,6 +389,36 @@ impl Dss {
         let &oi = self.classes[ci]
             .name_to_idx
             .get(&name.to_ascii_lowercase())?;
+        let json = json_build::obj_to_json_data(
+            &self.classes[ci].props,
+            self.classes[ci].objects[oi].as_ref(),
+            &self.enums,
+            opts,
+        );
+        Some(json_serialize(&json, opts))
+    }
+
+    /// Like [`Dss::obj_to_json`] but refreshes the element's live-state caches
+    /// (`refresh_vterminal_if_marked`) before rendering, so `Full`-mode
+    /// `READS_VTERMINAL` result properties (Transformer/AutoTrans `WdgCurrents`)
+    /// render from the current solution exactly as Pascal's self-refreshing
+    /// getter does (`CAPI_Obj.pas` via `TTransfObj.GetAllWindingCurrents`). This
+    /// is the JSON counterpart of the `?`/`Dump` refresh at
+    /// [`Dss::element_properties`]. Pre-solve `Vterminal` is zeros, so the string
+    /// is the all-zero phasor list; after a solve it reflects the winding
+    /// currents. (Capacitor `CMatrix` under `Full` is *not* closed by this: the
+    /// oracle renders it from an uninitialized buffer — proven nondeterministic
+    /// across processes — so it is a UB non-port, not a refresh gap.)
+    pub fn obj_to_json_mut(&mut self, full_name: &str, opts: JsonOpts) -> Option<String> {
+        let (class_name, name) = {
+            let mut p = Parser::new();
+            parse_object_class_and_name(&mut p, &self.vars, full_name)
+        };
+        let &ci = self.class_by_name.get(&class_name.to_ascii_lowercase())?;
+        let &oi = self.classes[ci]
+            .name_to_idx
+            .get(&name.to_ascii_lowercase())?;
+        self.refresh_vterminal_if_marked(ci, oi, None);
         let json = json_build::obj_to_json_data(
             &self.classes[ci].props,
             self.classes[ci].objects[oi].as_ref(),
@@ -412,6 +441,45 @@ impl Dss {
             opts,
         );
         Some(json_serialize(&json, opts))
+    }
+
+    /// Like [`Dss::class_batch_to_json`] but refreshes every object's live-state
+    /// caches first (see [`Dss::obj_to_json_mut`]) so a `Full`-mode batch of a
+    /// `READS_VTERMINAL` class (Transformer/AutoTrans) renders `WdgCurrents` from
+    /// the current solution. A no-op for classes with no such property.
+    pub fn class_batch_to_json_mut(&mut self, class: &str, opts: JsonOpts) -> Option<String> {
+        let &ci = self.class_by_name.get(&class.to_ascii_lowercase())?;
+        let n = self.classes[ci].objects.len();
+        for oi in 0..n {
+            self.refresh_vterminal_if_marked(ci, oi, None);
+        }
+        let json = json_build::batch_to_json(
+            &self.classes[ci].props,
+            &self.classes[ci].objects,
+            &self.enums,
+            opts,
+        );
+        Some(json_serialize(&json, opts))
+    }
+
+    /// AltDSS JSON-schema export — Pascal `DSS_ExtractSchema(DSS,
+    /// jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`). Emits the JSON-Schema
+    /// (draft 2020-12) envelope with the reusable global `$defs` and the static
+    /// `circuitProperties` head.
+    ///
+    /// # Incomplete
+    /// This returns the **static core skeleton only**, not a usable AltDSS
+    /// schema: the per-class and per-enum `$defs` walk is NOT emitted, so the
+    /// envelope's `required: ["Vsource"]` and every `circuitProperties` ref
+    /// dangle (their class `$defs` are absent). It is blocked on per-property
+    /// metadata the Rust port never carried (help/description text,
+    /// `AltPropertyOrder`, `SpecSets`, enum JSON names, most `Units_*` flags).
+    /// See [`crate::report::export::json::schema`] and STATUS §OG-1.5. The
+    /// result is independent of circuit state (all constant), so it needs no
+    /// `&mut self` and no `New circuit`. Do not treat the output as a complete
+    /// schema until the class/enum walk is ported.
+    pub fn extract_schema_json(&self) -> String {
+        crate::report::export::json::schema::extract_schema_skeleton_json()
     }
 
     /// AltDSS whole-circuit JSON dump — Pascal `Obj_Circuit_ToJSON_`

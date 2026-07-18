@@ -146,9 +146,13 @@ DECKS = [
         # plural alternative: set here so the default sweep renders each as a
         # per-winding array — this pins the DoubleOnStructArray (`RDCOhms`…) and
         # IntegerOnStructArray (`NumTaps`) JSON arms against the oracle without
-        # needing Full mode. Full-family combos remain excluded: they add the
-        # WdgCurrents result string, which is solve-state the pre-solve Rust dump
-        # path does not surface (recorded deferral).
+        # needing Full mode. Full-family combos are INCLUDED: the Rust JSON path
+        # now refreshes Vterminal (`obj_to_json_mut`/`class_batch_to_json_mut`),
+        # so the `WdgCurrents` result string renders exactly as the oracle's
+        # self-refreshing getter does. This deck pins the PRE-SOLVE case (the
+        # all-zero phasor list); the `transformer_solved` deck pins the NONZERO
+        # post-solve case that actually exercises the refresh. Captured pre-solve,
+        # so `voltagebases`/`calcv` give a well-formed (zeroed) vector to refresh from.
         "commands": [
             "new circuit.probe basekv=12.47",
             "new transformer.t1 windings=2 buses=(probe, b2) "
@@ -156,8 +160,106 @@ DECKS = [
             "xhl=6 %rs=(0.5, 0.5) "
             "wdg=1 rdcohms=0.11 maxtap=1.1 mintap=0.9 numtaps=32 rneut=0.5 "
             "wdg=2 rdcohms=0.22 maxtap=1.2 mintap=0.8 numtaps=16 rneut=1.5",
+            "makebuslist",
+            "set voltagebases=[12.47,0.48]",
+            "calcv",
         ],
         "captures": [("obj", "transformer.t1"), ("batch", "Transformer")],
+    },
+    {
+        "name": "transformer_solved",
+        # POST-SOLVE companion to `transformer_micro`: the headline §1.3 deliverable
+        # is that the JSON-Full refresh route (`obj_to_json_mut`/`class_batch_to_json_mut`
+        # → `refresh_vterminal_if_marked`) transfers the *current solution's* Vterminal
+        # into the `WdgCurrents` string. Pre-solve the refresh is a proven no-op
+        # (NodeV=0 → all-zeros, same string with or without the refresh call), so
+        # `transformer_micro` alone cannot catch a refresh regression. Here the
+        # transformer primary is on the energized `sourcebus` feeding a 500 kW load
+        # and the deck `solve`s, so `WdgCurrents` is a NONZERO phasor list — a
+        # regression that dropped the refresh (or mis-indexed Y_term·Vterminal) now
+        # fails the gate. Byte-exact is valid despite the solve: the getter formats
+        # at Pascal `%.7g`/`%.5g` (Transformer.pas:362), far coarser than the
+        # faer-vs-KLU last-ULP, and Rust==oracle was verified bit-for-bit on this
+        # deck. Full-family combos only (WdgCurrents renders only under Full).
+        "commands": [
+            "new circuit.probe basekv=12.47 bus1=sourcebus",
+            "new transformer.t1 windings=2 buses=(sourcebus, b2) "
+            "conns=(delta, wye) kvs=(12.47, 0.48) kvas=(1000, 1000) "
+            "xhl=6 %rs=(0.5, 0.5) "
+            "wdg=1 rdcohms=0.11 maxtap=1.1 mintap=0.9 numtaps=32 rneut=0.5 "
+            "wdg=2 rdcohms=0.22 maxtap=1.2 mintap=0.8 numtaps=16 rneut=1.5",
+            "new load.ld bus1=b2 kv=0.48 kw=500 pf=0.95",
+            "set voltagebases=[12.47,0.48]",
+            "solve",
+        ],
+        "captures": [("obj", "transformer.t1"), ("batch", "Transformer")],
+        "combos": [
+            ("full", FULL),
+            ("full_pretty", FULL | PRETTY),
+            ("full_include_class", FULL | INCLUDE_DSS_CLASS),
+            ("full_skip_redundant", FULL | SKIP_REDUNDANT),
+        ],
+    },
+    # NOTE: an AutoTrans Full golden (the second WdgCurrents exerciser) is NOT
+    # added here. The JSON Vterminal-refresh route this WP adds is class-agnostic
+    # (proven post-solve byte-exact by `transformer_solved`), and AutoTrans
+    # `WdgCurrents` flows the identical READS_VTERMINAL + refresh path — but its
+    # own getter is NOT independently pinned against the oracle here, so this is an
+    # inference, not verified coverage. A standalone AutoTrans JSON golden is
+    # blocked by a SEPARATE, out-of-scope gap: AutoTrans carries none of the JSON
+    # array-alternative/redundant metadata the Transformer has, so even its default
+    # sweep renders `Buses/Conns/kVs/kVAs` where the oracle renders `Bus/Conn/kV/kVA`.
+    # Recorded as a STATUS follow-up (real, deferred).
+    {
+        "name": "dyneq_micro",
+        # The `TDynEqPCE` "DynInit" tail (CAPI_Obj.pas:752-759): a
+        # Generator/PVSystem/Storage carrying a DynamicExp with UserDynInit
+        # assignments appends a literal "DynInit" object after all properties.
+        # The assignment mix pins all three value renderings: a plain constant
+        # (Speed=0 / wp=7) → JSON number; a calc-value operand (PShaft=P0,
+        # Pterm=P, theta=Edp) → JSON string (case preserved); an RPN constant
+        # (Mass=(...), wq=(4 5 +)) → JSON string. Generator exercises the
+        # `self.dyneq` host, Storage the InvBasedPCE `base.dyneq` host. The
+        # literal "DynInit" key must survive LowercaseKeys unchanged, and the
+        # calc-value/RPN strings must be untouched by FullNames/EnumAsInt — so
+        # the full combo sweep is captured (obj + batch, both classes).
+        # `Damp` is assigned TWICE (first `= 0` → JSON number, then `= (1 2 +)`
+        # → RPN string): this pins the dedup rewrite (Pascal `UserDynInit.Delete`
+        # then `Add`, DynEqPCE.pas:161) — the second write both changes the value
+        # type (number→string) AND moves `damp` to the END of the tail, past the
+        # variables assigned once. (Speed=0 keeps a plain-number arm in the deck.)
+        "commands": [
+            "new circuit.dyn basekv=24 bus1=sourcebus",
+            "new DynamicExp.gde nvariables=6 "
+            "varnames=[Speed Mass PShaft Pterm Damp theta] "
+            "expression=[Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *;"
+            " theta dt = Speed]",
+            "new Generator.g1 Bus1=sourcebus kV=24 kW=100 kvar=50 Model=1 "
+            "DynamicEq=gde",
+            "~ Damp = 0 PShaft = P0 Pterm = P Speed = 0 theta = Edp "
+            "Mass = (3.5 2 * 2220000000 376.99112 / *)",
+            "~ Damp = (1 2 +)",
+            "~ DynOut = [Speed theta]",
+            "new DynamicExp.stde nvariables=2 varnames=[wp wq] "
+            "expression=[wp dt = 0; wq dt = 0]",
+            "new Storage.st1 phases=3 bus1=sourcebus kv=24 kwrated=100 "
+            "kwhrated=200 DynamicEq=stde",
+            "~ wp = 7 wq = (4 5 +)",
+            "set voltagebases=[24]",
+            "calcv",
+        ],
+        "captures": [
+            ("obj", "Generator.g1"),
+            ("obj", "Storage.st1"),
+            ("batch", "Generator"),
+            ("batch", "Storage"),
+        ],
+        # Default-family combos only: the DynInit tail is appended after both the
+        # default and Full sweeps by the same code, so the default sweep fully
+        # exercises it (number/string value split, the literal `"DynInit"` key
+        # surviving LowercaseKeys, calc-strings untouched by FullNames/EnumAsInt).
+        # Full mode is skipped here to avoid an unrelated Generator Full-render
+        # gap (ShaftModel/ShaftData hidden by NOT_PORTED) — a recorded follow-up.
         "skip_full": True,
     },
     {

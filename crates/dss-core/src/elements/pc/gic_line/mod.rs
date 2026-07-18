@@ -54,7 +54,7 @@ pub fn class_props() -> ClassProps {
     use prop::*;
     let defs = vec![
         // Pascal flags Bus1 `Required` (inert here — not enforced, like Reactor).
-        PropDef::bus("Bus1", BUS1),
+        PropDef::bus("Bus1", BUS1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", BUS2),
         PropDef::double("Volts").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double("Angle"),
