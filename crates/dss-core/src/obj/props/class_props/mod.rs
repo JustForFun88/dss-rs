@@ -134,7 +134,12 @@ fn compute_alt_property_order(props: &[PropDef]) -> Vec<usize> {
             let v = next_start;
             next_start += 1;
             v
-        } else if pd.ptype == PropType::Action || pd.flags.contains(PropFlags::ORDERING_LAST) {
+        } else if pd.ptype == PropType::Action
+            || pd.flags.contains(PropFlags::ORDERING_LAST)
+            || pd.flags.contains(PropFlags::BOOLEAN_ACTION)
+        {
+            // Pascal `BooleanActionProperty`/`StringEnumActionProperty` +
+            // `Ordering_Last` all sort to the `zorderNextEnd` block.
             let v = next_end;
             next_end += 1;
             v

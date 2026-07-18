@@ -1,0 +1,13 @@
+{
+  "_comment": "Expected AltDSS-schema divergences: fragments where the PORT's schema intentionally differs from the pinned 0.14.5 oracle because the port's engine adopted newer (dss_capi 0.15.x / OpenDSS r4133) behavior. Each entry is a `port_extra_line` the port emits that the 0.14.5 oracle does not; golden_schema.rs removes exactly `count` occurrences from the port's rendered class def before byte-comparing against the oracle golden, and FAILS if the count no longer matches (stale entry) or an unexplained diff remains. Only documented upstream causes are admissible here — this is NOT a tolerance. Regenerate the oracle side via tools/golden/gen_schema.py.",
+  "divergences": [
+    {
+      "class": "LineCode",
+      "kind": "port_extra_line",
+      "line": "      \"deprecated\" : true,",
+      "count": 3,
+      "props": ["FaultRate", "PctPerm", "Repair"],
+      "cause": "dss_capi 0.15.x / OpenDSS r4133 flags LineCode FaultRate/PctPerm/Repair as Deprecated+Unused (a LineCode never propagated them to its Lines; unused in the engine since 2014). The port follows the newer engine (UPGRADE WP-U1.4, prop_flags.rs::DEPRECATED), so its schema emits `deprecated: true`; the pinned dss-python 0.15.7 backend (dss_capi 0.14.5) predates the flag and omits it."
+    }
+  ]
+}

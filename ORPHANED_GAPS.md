@@ -59,20 +59,27 @@ deferred.
   no parent fallback needed), and the `AltPropertyOrder` computation is fully
   located (`DSSClass.pas:1830/1934-2010`, `zorderNextStart=-999`/`End=999`,
   `Ordering_First/Last` used by only 4 classes).
-- **Still orphaned (the remaining bulk):** the per-class walk
-  (`prepareClassJsonSchema`) — the **49 class `$defs`** (plus each class's
-  `List`/`Container` defs and `circuitProperties` ref) and their ~40 **class-local**
-  enum defs. Blocked on per-property metadata the Rust port never carried, a large
-  self-contained data-entry effort: per-class **`AltPropertyOrder`**
-  (`$dssPropertyOrder`, algorithm located), **`SpecSets`** (`oneOf`, 24 classes),
-  ~28 of ~30 `Units_*` `PropFlags` (only `UNITS_HOUR`/`UNITS_OHM_PER_LENGTH` exist —
-  needed on nearly every electrical class, the dominant data-entry cost),
-  `Required`/`Ordering_First`/`Ordering_Last`/`PowerFactorLimits`/`PDElement` flags
-  the port lacks, and the local enums' `AltNames`/`JSONName`/`JSONUseNumbers`.
-  Defaults come from the port's live sample object (constructors compute them);
-  help from the extraction script above. Oracle is reachable
-  (`lib.DSS_ExtractSchema`) — the blocker is Rust-side metadata, not access.
-  **Priority: low.**
+- **PER-CLASS WALK — INFRA + PILOT PORTED 2026-07-18** on `og15b-schema-full` —
+  see STATUS §OG-1.5c. `prepareClassJsonSchema` (`CAPI_Schema.pas:325-1134`) is
+  ported as `report/export/json/schema/classes.rs::class_schema`
+  (`Dss::schema_class_def`), with ALL shared machinery built: the complete
+  `Units_*` `PropFlags` family (`PropFlags` widened to `u128`), the `BOOLEAN_ACTION`
+  marker, schema-side `SpecSets` (`schema/spec_sets.rs`), class-local enum
+  rendering (shared `render_enum` + `EnumMeta` from `DssEnum` + `enum_overrides`),
+  `$dssPropertyOrder` from the ported `AltPropertyOrder`, and help via
+  `report::help_catalog`. Proven **byte-exact** on the 6-class pilot (first six
+  `DSSClassList` classes) via `gen_schema.py::SCHEMA_CLASSES` +
+  `golden_schema.rs::ported_class_defs_bytes_match_oracle`, with the committed
+  expected-divergence inventory (`tests/golden/json/schema_divergences.json`,
+  fail-on-stale) covering LineCode's 3 r4133 `deprecated` diffs.
+- **Remaining (batch + integration):** the other **43 class `$defs`** (each
+  needs its `Units_*`/`RequiredInSpecSet`/ordering flags on the `PropDef`s + its
+  `SpecSets` entry + any AltName-override locals, following the pilot pattern),
+  then the **full-document splice** — wiring the enum + class `$defs` and the
+  `<Class>List`/`<Class>Container` triples + `circuitProperties` refs into
+  `extract_schema_json` (removing its `# Incomplete` caveat) and byte-gating the
+  whole 49-class document. Oracle is reachable (`lib.DSS_ExtractSchema`); the
+  pattern is proven. **Priority: low.**
 
 ### 1.6 IEEE118Bus NCIM `PV→PQ` r4133 switching cadence
 - **Deferred by:** UPGRADE_PLAN (parked to "a future rung" that has no plan).

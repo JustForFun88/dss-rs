@@ -361,6 +361,17 @@ impl PropDef {
         self
     }
 
+    /// Set [`Self::size_prop`] — the 1-based index of the integer property that
+    /// counts this one's elements. The array/matrix constructors set it already;
+    /// this builder is for `GlobalCount`/`IndirectCount` string props (the shape
+    /// classes' `CSVFile`/`SngFile`/`DblFile`), whose Pascal
+    /// `PropertySizingPropertyIndex` (`getSizePropertyIndex`) resolves to the
+    /// class's `NPts`, driving the schema `$dssLength`.
+    pub fn size_prop(mut self, size_prop: usize) -> Self {
+        self.size_prop = size_prop;
+        self
+    }
+
     /// The JSON key for this property under option `lowercase`. Pascal
     /// `PropertyNameJSON` (the `%→pct` / `-→__` inverse of the modern name, or an
     /// explicit override) when not lowercase; `PropertyNameLowercase`

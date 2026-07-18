@@ -31,13 +31,13 @@ define_properties! {
         .flags(PropFlags::REQUIRED_IN_SPEC_SET);
     4  XARRAY  => PropDef::double_array("XArray", NPTS)
         .flags(PropFlags::REQUIRED_IN_SPEC_SET);
-    5  CSVFILE => PropDef::string("CSVFile").flags(
+    5  CSVFILE => PropDef::string("CSVFile").size_prop(NPTS).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
-    6  SNGFILE => PropDef::string("SngFile").flags(
+    6  SNGFILE => PropDef::string("SngFile").size_prop(NPTS).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
-    7  DBLFILE => PropDef::string("DblFile").flags(
+    7  DBLFILE => PropDef::string("DblFile").size_prop(NPTS).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     8  X       => PropDef::double("X").flags(PropFlags::SUPPRESS_JSON);

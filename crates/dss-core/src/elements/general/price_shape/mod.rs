@@ -29,15 +29,15 @@ define_properties! {
     2  INTERVAL  => PropDef::double("Interval").flags(PropFlags::REQUIRED_IN_SPEC_SET);
     3  PRICE     => PropDef::double_array("Price", NPTS).flags(PropFlags::REQUIRED_IN_SPEC_SET);
     4  HOUR      => PropDef::double_array("Hour", NPTS).flags(PropFlags::REQUIRED_IN_SPEC_SET);
-    5  MEAN      => PropDef::double("Mean");
-    6  STDDEV    => PropDef::double("StdDev");
-    7  CSVFILE   => PropDef::string("CSVFile").flags(
+    5  MEAN      => PropDef::double("Mean").flags(PropFlags::DYNAMIC_DEFAULT);
+    6  STDDEV    => PropDef::double("StdDev").flags(PropFlags::DYNAMIC_DEFAULT);
+    7  CSVFILE   => PropDef::string("CSVFile").size_prop(NPTS).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
-    8  SNGFILE   => PropDef::string("SngFile").flags(
+    8  SNGFILE   => PropDef::string("SngFile").size_prop(NPTS).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
-    9  DBLFILE   => PropDef::string("DblFile").flags(
+    9  DBLFILE   => PropDef::string("DblFile").size_prop(NPTS).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     10 SINTERVAL => PropDef::double("SInterval")

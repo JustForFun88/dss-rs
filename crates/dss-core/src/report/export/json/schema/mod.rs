@@ -25,22 +25,35 @@
 //! groundwork, not yet spliced into [`schema_skeleton`] — the class walk that
 //! assembles + byte-gates the full runtime document owns that splice.
 //!
-//! ## Deliberately NOT ported here (blocked on unported metadata — see STATUS
-//! §OG-1.5b): the per-class walk (`prepareClassJsonSchema`, `:325-1134`), plus
-//! the `<Class>`/`<Class>List`/`<Class>Container` `$defs` triples, the per-class
-//! `circuitProperties` refs (`:1479-1502`), and the ~40 class-**local** enum
-//! defs. Those need per-property metadata the Rust port never carried: property
-//! **help/description** text (`GetPropertyHelp`; ~1109 strings), the class
-//! **`AltPropertyOrder`** (`$dssPropertyOrder`), the **`SpecSets`** (`oneOf`),
-//! the local enums' **`AltNames`/`JSONName`/`JSONUseNumbers`** metadata, and ~28
-//! of the ~30 `Units_*` property flags (only `UNITS_HOUR`/`UNITS_OHM_PER_LENGTH`
-//! exist in [`PropFlags`](crate::obj::props::PropFlags)). Porting that database
-//! is a large, self-contained follow-up recorded in `ORPHANED_GAPS.md` §1.5.
+//! ## Also ported (see [`classes`], OG-1.5c): the per-class walk
+//! `prepareClassJsonSchema` (`:325-1134`) — [`class_schema`] builds one class's
+//! `$defs/<Class>` object (properties + `SpecSets`→`oneOf` + `required` +
+//! class-**local** enum `$defs`) from the port's `ClassProps` and a live
+//! all-default sample object, exposed as [`Dss::schema_class_def`](crate::exec::
+//! Dss::schema_class_def). It carries the metadata the port previously lacked:
+//! the `Units_*` [`PropFlags`](crate::obj::props::PropFlags) family, per-class
+//! [`spec_sets`], class-local enum rendering, `$dssPropertyOrder` (from the
+//! ported `AltPropertyOrder`), and help via
+//! [`crate::report::help_catalog`]. Each ported class def is byte-gated vs the
+//! oracle (`golden_schema.rs::ported_class_defs_bytes_match_oracle`) after the
+//! documented r4133 divergences (`tests/golden/json/schema_divergences.json`).
+//! The port progresses class-batch by class-batch (the byte-gated set is
+//! `gen_schema.py::SCHEMA_CLASSES`); `ORPHANED_GAPS.md` §1.5 tracks the frontier.
+//!
+//! ## Still owed (integration): the **full-document splice** — the enum + class
+//! `$defs` and the `<Class>List`/`<Class>Container` triples + per-class
+//! `circuitProperties` refs (`:1479-1502`) are not yet assembled into
+//! [`schema_skeleton`]; [`Dss::extract_schema_json`](crate::exec::Dss::
+//! extract_schema_json) still returns the skeleton (its `# Incomplete` caveat
+//! stands until the splice + the whole 49-class set is byte-gated).
 
 use super::{Json, write_pretty};
 
+mod classes;
 mod enums;
+mod spec_sets;
 
+pub(crate) use classes::class_schema;
 pub use enums::global_enum_defs;
 
 /// Pascal `ALTDSS_SCHEMA_ID` (`CAPI_Schema.pas:12`).

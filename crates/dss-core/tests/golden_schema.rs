@@ -150,6 +150,84 @@ fn circuit_properties_head_bytes_match_oracle() {
     }
 }
 
+/// Load the expected-divergence inventory (`schema_divergences.json`).
+fn load_divergences() -> Value {
+    let path: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "golden",
+        "json",
+        "schema_divergences.json",
+    ]
+    .iter()
+    .collect();
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+}
+
+/// The per-class walk (`prepareClassJsonSchema`): every ported class def is
+/// byte-exact vs the pinned 0.14.5 oracle **after** removing exactly the
+/// documented r4133 divergences (`schema_divergences.json`). Fails on any
+/// unexplained byte diff AND on a stale inventory entry (a `port_extra_line`
+/// whose occurrence count no longer matches — i.e. the divergence is gone, or
+/// spread further than recorded).
+#[test]
+fn ported_class_defs_bytes_match_oracle() {
+    let g = load_golden();
+    let want = g["class_defs"].as_object().expect("class_defs object");
+    let order: Vec<&str> = g["class_defs_order"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    let inv = load_divergences();
+    let divergences = inv["divergences"].as_array().expect("divergences array");
+
+    let dss = Dss::new();
+    assert!(!order.is_empty(), "golden carries no ported class defs");
+
+    for &name in &order {
+        let def = dss
+            .schema_class_def(name)
+            .unwrap_or_else(|| panic!("class {name} not registered"));
+        let mut rendered = render(&def);
+
+        // Apply exactly the documented divergences for this class.
+        for d in divergences {
+            if d["class"].as_str() != Some(name) {
+                continue;
+            }
+            assert_eq!(
+                d["kind"].as_str(),
+                Some("port_extra_line"),
+                "unknown divergence kind for {name}"
+            );
+            let line = d["line"].as_str().expect("divergence line");
+            let count = d["count"].as_u64().expect("divergence count") as usize;
+            let pat = format!("{line}\r\n");
+            let found = rendered.matches(&pat).count();
+            assert_eq!(
+                found, count,
+                "stale/incomplete divergence for {name}: expected {count} occurrence(s) of \
+                 `{line}`, found {found} — update schema_divergences.json"
+            );
+            rendered = rendered.replace(&pat, "");
+        }
+
+        let expected = want[name]
+            .as_str()
+            .unwrap_or_else(|| panic!("golden missing class_defs[{name}]"));
+        assert_eq!(
+            &rendered, expected,
+            "class `{name}` bytes differ from the oracle (after divergences)"
+        );
+    }
+}
+
 #[test]
 fn skeleton_envelope_is_well_formed() {
     // The public Dss surface returns the same static core, independent of any

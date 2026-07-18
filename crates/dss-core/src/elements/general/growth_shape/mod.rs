@@ -47,9 +47,9 @@ pub fn class_props() -> ClassProps {
         PropDef::double_array("Year", NPTS)
             .flags(PropFlags::APPLY_ROUND | PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double_array("Mult", NPTS).flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::string("CSVFile").flags(file_flags),
-        PropDef::string("SngFile").flags(file_flags),
-        PropDef::string("DblFile").flags(file_flags),
+        PropDef::string("CSVFile").size_prop(NPTS).flags(file_flags),
+        PropDef::string("SngFile").size_prop(NPTS).flags(file_flags),
+        PropDef::string("DblFile").size_prop(NPTS).flags(file_flags),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
     ClassProps::new("GrowthShape", defs, true)

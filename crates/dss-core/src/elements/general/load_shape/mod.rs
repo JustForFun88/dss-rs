@@ -58,27 +58,27 @@ define_properties! {
     class "LoadShape", abbrev true, enums enums;
     1  NPTS      => PropDef::integer("NPts").flags(PropFlags::SUPPRESS_JSON);
     2  INTERVAL  => PropDef::double("Interval")
-        .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED_IN_SPEC_SET);
+        .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_HOUR);
     3  MULT      => PropDef::double_array("Mult", NPTS)
         .flags(PropFlags::REDUNDANT)
         .redundant_with(PMULT);
     4  HOUR      => PropDef::double_array("Hour", NPTS).flags(PropFlags::REQUIRED_IN_SPEC_SET);
-    5  MEAN      => PropDef::double("Mean");
-    6  STDDEV    => PropDef::double("StdDev");
-    7  CSVFILE   => PropDef::string("CSVFile").flags(
+    5  MEAN      => PropDef::double("Mean").flags(PropFlags::DYNAMIC_DEFAULT);
+    6  STDDEV    => PropDef::double("StdDev").flags(PropFlags::DYNAMIC_DEFAULT);
+    7  CSVFILE   => PropDef::string("CSVFile").size_prop(NPTS).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
-    8  SNGFILE   => PropDef::string("SngFile").flags(
+    8  SNGFILE   => PropDef::string("SngFile").size_prop(NPTS).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
-    9  DBLFILE   => PropDef::string("DblFile").flags(
+    9  DBLFILE   => PropDef::string("DblFile").size_prop(NPTS).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     10 ACTION    => PropDef::action("Action", enums.load_shape_action);
     11 QMULT     => PropDef::double_array("QMult", NPTS);
     12 USEACTUAL => PropDef::boolean("UseActual");
-    13 PMAX      => PropDef::double("PMax");
-    14 QMAX      => PropDef::double("QMax");
+    13 PMAX      => PropDef::double("PMax").flags(PropFlags::UNITS_KW);
+    14 QMAX      => PropDef::double("QMax").flags(PropFlags::UNITS_KVAR);
     15 SINTERVAL => PropDef::double("SInterval")
         .scale(1.0 / 3600.0)
         .flags(PropFlags::REDUNDANT | PropFlags::NON_NEGATIVE)
@@ -87,10 +87,10 @@ define_properties! {
         .scale(1.0 / 60.0)
         .flags(PropFlags::REDUNDANT | PropFlags::NON_NEGATIVE)
         .redundant_with(INTERVAL);
-    17 PBASE     => PropDef::double("PBase");
-    18 QBASE     => PropDef::double("QBase");
+    17 PBASE     => PropDef::double("PBase").flags(PropFlags::UNITS_KW);
+    18 QBASE     => PropDef::double("QBase").flags(PropFlags::UNITS_KVAR);
     19 PMULT     => PropDef::double_array("PMult", NPTS).flags(PropFlags::REQUIRED_IN_SPEC_SET);
-    20 PQCSVFILE => PropDef::string("PQCSVFile").flags(
+    20 PQCSVFILE => PropDef::string("PQCSVFile").size_prop(NPTS).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
     21 MEMORYMAPPING => PropDef::boolean("MemoryMapping").flags(PropFlags::ORDERING_FIRST);
