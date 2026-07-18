@@ -33,6 +33,10 @@
 
 use super::{Json, write_pretty};
 
+mod enums;
+
+pub use enums::global_enum_defs;
+
 /// Pascal `ALTDSS_SCHEMA_ID` (`CAPI_Schema.pas:12`).
 pub const ALTDSS_SCHEMA_ID: &str =
     "https://dss-extensions.org/altdss-schema/2023-12-13.schema.json";

@@ -176,6 +176,14 @@ def main() -> None:
             sys.exit(f"oracle circuitProperties missing head prop {name!r}")
         circuit_head[name] = render_and_check(head[name], f"properties/{name}", 2, name)
 
+    # 2b) The 21 global enum $defs (top-level $defs entries carrying
+    # `$dssFullEnum`, in insertion order). Class-local enums live inside their
+    # class def, never at top level, so this set is exactly `DSS.Enums`.
+    enum_defs = {}
+    for name, value in defs.items():
+        if isinstance(value, dict) and "$dssFullEnum" in value:
+            enum_defs[name] = render_and_check(value, f"$defs/{name}", 2, name)
+
     # 3) Coverage bookkeeping: which class/enum defs the (deferred) walk owes.
     def is_class_def(v) -> bool:
         return isinstance(v, dict) and v.get("type") == "object" and "properties" in v
@@ -204,6 +212,9 @@ def main() -> None:
             ("global_defs", global_defs),
             ("circuit_head_order", list(circuit_head.keys())),
             ("circuit_head", circuit_head),
+            # The 21 global enum $defs, byte-exact (order + rendered bytes).
+            ("enum_defs_order", list(enum_defs.keys())),
+            ("enum_defs", enum_defs),
             # Deferred-walk inventory (informational; not byte-gated).
             ("deferred_class_def_count", len(class_def_names)),
             ("deferred_enum_def_count", len(enum_def_names)),
@@ -217,6 +228,7 @@ def main() -> None:
     out_path.write_text(json.dumps(golden, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {out_path.relative_to(REPO_ROOT)}")
     print(f"  static global defs: {len(global_defs)}  circuit head: {len(circuit_head)}")
+    print(f"  global enum defs: {len(enum_defs)}")
     print(f"  deferred class defs: {len(class_def_names)}  enum defs: {len(enum_def_names)}")
 
 
