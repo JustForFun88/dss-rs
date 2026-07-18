@@ -493,6 +493,22 @@ impl Dss {
                     (key, self.schema_class_def(name).expect("class def"))
                 })
                 .collect();
+        // Completeness guard. Pascal walks the *live* `DSS.DSSClassList`
+        // (`CAPI_Schema.pas:1479`); the port drives the walk from the pinned
+        // static `DSS_CLASS_LIST_ORDER`, so nothing structurally forces the list
+        // to stay in sync with the registry. Cross-check the two: every listed
+        // class is already proven registered above, so equal counts make the list
+        // ⊇ registry a bijection — a class registered without being added to the
+        // walk order (which would be silently omitted from the schema) trips this.
+        assert_eq!(
+            class_defs.len(),
+            self.classes.len(),
+            "schema walk order (DSS_CLASS_LIST_ORDER, {}) does not cover every \
+             registered class ({}): a class was registered without being added to \
+             DSS_CLASS_LIST_ORDER and would be silently omitted from the schema",
+            class_defs.len(),
+            self.classes.len(),
+        );
         let doc = schema::assemble_full_document(&class_defs);
         let mut out = String::new();
         crate::report::export::json::write_pretty(&doc, 0, &mut out);

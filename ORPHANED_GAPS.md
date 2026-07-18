@@ -87,6 +87,15 @@ deferred.
   classes (LineGeometry/Relay/Recloser/SwtControl/WindGen) inventoried
   (`port_authored_classes`) with a fail-on-stale gated/authored split. **§1.5 is
   CLOSED.**
+- **SETTLE 2026-07-19** (two audits, both green): added a registry-coverage assert
+  in `extract_schema_json` (the walk drove off the static `DSS_CLASS_LIST_ORDER`
+  only; the guard cross-checks it against the live registry so a future-registered
+  class can't be silently omitted). Accepted residuals (both low, plan-sanctioned):
+  the 4 oracle-present port-authored classes (LineGeometry/Relay/Recloser/SwtControl)
+  are pinned to the port golden only — empirically confirmed genuine structural
+  divergence (SwtControl's `$dssPropertyOrder` remap is not inventory-expressible);
+  and the `REGEN_SCHEMA_PORT` env-guard matches the repo's `DSS_REGEN_*` convention.
+  See STATUS §OG-1.5c settle round.
 
 ### 1.6 IEEE118Bus NCIM `PV→PQ` r4133 switching cadence
 - **Deferred by:** UPGRADE_PLAN (parked to "a future rung" that has no plan).

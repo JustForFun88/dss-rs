@@ -697,6 +697,39 @@ LineSpacing 5, XfmrCode 1, Line 4, Capacitor 1, Transformer 3, AutoTrans 3,
 RegControl 5, Generator 2, Fuse 4) + 5 port-authored classes.**
 Full gate green; `tests/corpus` pristine.
 
+**Settle round (2026-07-19, two audits).** Both audits confirmed the class walk is
+a faithful `prepareClassJsonSchema` port with no weakening: full-document equality
+is real byte equality, goldens are oracle-sourced (`gen_schema.py` pin-check +
+two-process determinism), and fail-on-stale is real (exact occurrence counts,
+gated ⊕ authored XOR). Three low findings, all settled empirically:
+- **Completeness guard (FIXED).** `extract_schema_json` drove the walk only from
+  the static `DSS_CLASS_LIST_ORDER`; a future-registered class not added to the
+  list would be silently omitted (Pascal walks the *live* `DSS.DSSClassList`).
+  Added a registry-coverage assert (`class_defs.len() == self.classes.len()`) at
+  the walk site — every listed class is already proven registered, so equal counts
+  make it a bijection. Exercised by every `extract_schema_json` call (the skeleton
+  + full-document tests). Confirmed 50 registered == 50 listed today.
+- **4 port-authored classes get no oracle content byte-gate (accepted).**
+  LineGeometry/Relay/Recloser/SwtControl exist in the 0.14.5 oracle but their
+  content is pinned only to `schema_full_port.json` (self-referential); WindGen is
+  the 50th class, absent from the oracle. Empirically confirmed genuine structural
+  divergence, not a lazy escape hatch: property-set deltas LineGeometry ±10, Relay
+  +22/−10 (renamed protection curves), Recloser +23. **SwtControl** — the audit's
+  specific worry — was verified in detail: beyond the extra `RatedCurrent` prop its
+  `$dssPropertyOrder` remaps non-monotonically (Reset 8→10 while others shift by the
+  insert), the oracle carries `writeOnly` on Reset that the port lacks, and Lock/
+  Delay/Normal/State help+defaults all changed (r4133 per-phase NormalState/
+  PresentState model). That order remap is **not expressible** in the per-property
+  divergence DSL (`renumber_field` only does a uniform decrement), so byte-gating
+  SwtControl would require weakening the DSL — port-authored is the honest call.
+  Left as an accepted residual per brief_schema item 3. Follow-up (non-blocking):
+  an independent r4133 `DSS_ExtractSchema` oracle (via the opt-in EPRI channel)
+  could byte-gate these four; not built (that channel never gates commits).
+- **`REGEN_SCHEMA_PORT` env-guard no-op (accepted).** The port-golden test
+  rewrites-and-returns when the var is set — identical to the established
+  `DSS_REGEN_AD_GOLDEN` pattern in `adiakoptics.rs`, a repo-wide convention, not a
+  new weakening; both oracle goldens remain pin-checked. No change.
+
 ### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
 
 Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already
