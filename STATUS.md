@@ -500,7 +500,57 @@ alone:
   if it recurs — a reproducible hit would need the CLAUDE.md prove-it
   discipline, not a shrug.
 
-### OG-1.5 `CAPI_Schema` JSON-schema export — static core ported (orphaned-gaps round, 2026-07-18)
+### WASM-UM WM.0–WM.2 settle — audit dispositions (branch `wasm-um`, 2026-07-19)
+
+Two independent `opus-xhigh` audits of `ae4b4ef..4051d833` (audit-code +
+audit-tests): **verdict faithful, zero Critical/Major**; both independently
+re-derived the ABI offsets, rebuilt the native twin AND the wasm fixture
+(byte-identical to the PIN), and re-ran the full gate. Findings settled
+empirically:
+
+- **WM-AUD-1 (Minor, FIXED — doc):** the frozen ABI doc omitted the
+  `get_node_voltages` ground-slot indexing decision (native
+  `GetPtrToSystemVarrayCallBack` returns the raw `Solution.NodeV` pointer
+  whose offset-0 element IS ground, `Solution.pas:88/:198`; the crate contract
+  serves `NodeV[1..NumNodes]` ground-excluded). Recorded via the doc's
+  recorded-decision mechanism (header note + §4 row 17 + indexing note with
+  the porting consequence) **before WM.3 wires the slot**; contract unchanged.
+- **WM-AUD-2 (Minor, premise DISPROVEN by probe; residual recorded):** FPC
+  3.2.2 `Val` was probed directly (ppcrossx64 x64 exe —
+  `docs/wasm/probes/p7_fpc_val_domain.txt`): it **accepts** `inf`/`nan` (any
+  case) and leading spaces, exactly like Rust `parse::<f64>()` — the fixture
+  matches the spec there. Residual Rust-wider domain (`infinity`,
+  trailing/tab whitespace via `trim`) is unreachable (tokenizer never yields
+  whitespace-padded unquoted tokens; quoted branch is RPN upstream, whose own
+  tokenizer skips whitespace; no deck feeds `infinity`). Deliberately NOT
+  changed. Lesson captured: the fixture **source is hash-frozen with the
+  artifact** — a comment-only parser.rs edit shifts panic-`Location` line
+  numbers and changes the built wasm hash (verified: pristine rebuild = the
+  pinned `1849db0c…`, +10-comment-lines rebuild = `7da8ee46…`), so fixture
+  notes live in probes/STATUS, never as source edits without a deliberate
+  re-pin.
+- **WM-T4 (Minor, FIXED):** `fixture_pin.rs`'s pre-WM.2 dormant arm
+  (no fixture + no PIN line = pass) retired — the fixture is permanent as of
+  WM.2, so both halves are now required unconditionally (simultaneous
+  deletion of fixture + PIN line is red). Strictly strengthens the gate.
+- **WM-T1 (Informational, ACCEPTED — plan-sanctioned):** the fixture crate's
+  `twin_parity` suite + fmt/clippy are workspace-excluded by design (plan
+  §2.6); the committed artifact IS gated every `cargo test` (self-gate ~200
+  bit pins + hash-vs-PIN). Follow-through: the plan's WM.7 exit sweep now
+  lists an explicit `twin_parity`+fmt/clippy re-run for the fixture crates.
+- **WM-T3 (Informational, ACCEPTED as designed):** twin scenarios S12/S14
+  (foreign-id select, two models in one guest) are single-shared-DLL
+  artifacts the per-element-instance design never exposes (plan §2.7);
+  crate-level surrogates pin the equivalent paths — already documented in the
+  self-gate header and the integration record.
+- **WM-AUD-4 / WM-T2 (watch item, STANDS):** the one non-reproducible
+  `corpus_gate` transient (isource_snap step-0, 3.6e-3 vs floor 8.2e-6; green
+  on 4 total re-runs across author+auditor) stays a recorded watch — a
+  reproducible hit gets the CLAUDE.md prove-it discipline.
+- **WM-AUD-3 (environmental):** a parallel session's corpus_gate run wrote
+  stray solver outputs into this worktree during the audit; the committed
+  range was verified clean at audit start. `tests/corpus` re-verified
+  pristine at settle.
 
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the

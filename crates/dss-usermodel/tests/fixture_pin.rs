@@ -3,12 +3,13 @@
 //! pinned toolchain; this test asserts the committed file's SHA-256 matches
 //! the hash recorded in `tools/wasm_usermodel/PIN.txt` — drift is red.
 //!
-//! Self-activating scaffold (WP-WM.1 item 3): WM.2 commits the fixture and
-//! appends its hash line to the PIN; until then neither exists and the test
-//! verifies exactly that dormant state (no `#[ignore]` — an inconsistent
-//! half-state, fixture without pin or pin without fixture, fails loudly).
+//! Originally a self-activating scaffold (WP-WM.1 item 3) with a dormant
+//! pre-WM.2 arm (no fixture + no pin = pass). WM.2 committed the fixture, so
+//! the artifact is now PERMANENT: both the fixture and its PIN line must
+//! exist — a simultaneous deletion of both is red, not a silent pass
+//! (audit finding WM-T4, settled 2026-07-19).
 //!
-//! Expected PIN line format (WM.2):
+//! PIN line format (WM.2):
 //! `sha256(tests/fixtures/wasm/indmach012a.wasm)=<64 hex digits>`
 
 use sha2::{Digest, Sha256};
@@ -50,30 +51,28 @@ fn committed_fixture_hash_matches_pin() {
         .unwrap_or_else(|e| panic!("PIN.txt must exist at {}: {e}", pin_path.display()));
     let pinned = pinned_hash(&pin_text, FIXTURE_NAME);
 
-    match (fixture.exists(), pinned) {
-        // Dormant state (pre-WM.2): no fixture, no pin — consistent.
-        (false, None) => {}
-        // Active state: byte hash must match the PIN exactly.
-        (true, Some(want)) => {
-            let bytes = std::fs::read(&fixture).expect("read committed fixture");
-            let got = format!("{:x}", Sha256::digest(&bytes));
-            assert_eq!(
-                got,
-                want,
-                "committed fixture {} does not match tools/wasm_usermodel/PIN.txt — \
-                 fixtures regenerate MANUALLY ONLY with the pinned toolchain (plan §2.6/§2.9-4)",
-                fixture.display()
-            );
-        }
-        (true, None) => panic!(
-            "fixture {} is committed but has no sha256 line in PIN.txt — pin it",
+    // The fixture is a permanent pinned artifact as of WM.2 (plan §2.6):
+    // BOTH halves must exist unconditionally (WM-T4 — no dormant arm).
+    let want = pinned.unwrap_or_else(|| {
+        panic!(
+            "PIN.txt has no sha256 line for {FIXTURE_NAME} — the fixture is a \
+             permanent pinned artifact (WM.2); restore the pin"
+        )
+    });
+    let bytes = std::fs::read(&fixture).unwrap_or_else(|e| {
+        panic!(
+            "committed fixture {} must exist (pinned at WM.2): {e}",
             fixture.display()
-        ),
-        (false, Some(_)) => panic!(
-            "PIN.txt pins {FIXTURE_NAME} but the fixture is missing at {}",
-            fixture.display()
-        ),
-    }
+        )
+    });
+    let got = format!("{:x}", Sha256::digest(&bytes));
+    assert_eq!(
+        got,
+        want,
+        "committed fixture {} does not match tools/wasm_usermodel/PIN.txt — \
+         fixtures regenerate MANUALLY ONLY with the pinned toolchain (plan §2.6/§2.9-4)",
+        fixture.display()
+    );
 }
 
 #[test]
