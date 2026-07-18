@@ -457,6 +457,49 @@ integrator/workflow. Zero product-code changes — everything lives under
   Chosen to keep the boundary in safe Rust (registry over `Box<[u8]>`); the
   sandbox/determinism contract is unaffected.
 
+### WASM-UM WM.1+WM.2 integration — merge + WM.2 item 4 fixture self-gate (branch `wasm-um`, 2026-07-19)
+
+Merged `wasm-wm1` (WM.1, fast-forward) then `wasm-wm2` (WM.2 items 1–3; sole
+conflict = STATUS.md section placement, resolved by union — both records kept
+in WP order). Workspace `Cargo.toml`/`Cargo.lock` merged clean (WM.2's fixture
+crate is workspace-excluded by design). Cross-WP items neither side could do
+alone:
+
+- **WM.2 item 4 — fixture self-gate:**
+  `crates/dss-usermodel/tests/fixture_self_gate.rs` drives the COMMITTED
+  `tests/fixtures/wasm/indmach012a.wasm` through the full crate API chain
+  (`UserModelHost::load` Gen15 export validation → `UserModelInstance` record
+  shuttle → guest math) with hand-fed V/records, replaying the
+  `twin_probe.py` scenario S1–S11+S13 and pinning every recorded value
+  **f64-bit-exact** against the native-twin constants (`twin_expected.rs`,
+  evidence `docs/wasm/probes/p6_twin_expected.txt`): ~200 pins — currents (5
+  pflow + 6 dynamics calc), slip fixed-point, all 14 vars at 6 checkpoints,
+  GenVars `Speed` write-backs (new/edit/init/setvar), var names, `help`
+  MsgCallBack text byte-identical through the `dss_env` effect queue. S12/S14
+  (foreign-id select, two models in one guest) are single-shared-DLL
+  artifacts the per-element-instance design deliberately does not expose
+  (plan §2.7); pinned instead: own-id select round-trip + a fresh-guest
+  second instance (id=1 again, post-Create pins verbatim) + delete clears
+  `exists`. GREEN — the committed binary and the WM.1 shuttle agree with the
+  FPC twin bit-for-bit.
+- **Hash-vs-PIN scaffold now ACTIVE:** with the fixture + PIN sha256 line
+  committed, `fixture_pin.rs::committed_fixture_hash_matches_pin` takes the
+  active branch and verifies `1849db0c…9b0ebd` — green.
+- **WM.1 fuel-calibration follow-up settled:** the plan's bar (<1% of the
+  1e8 default per reference-model call) is proven by a second self-gate run
+  under `fuel_per_call = DEFAULT/100` — the entire scenario (instantiation
+  included) completes with no `FuelExhausted`.
+- Fixture crate's own `twin_parity` suite re-verified green post-merge;
+  full three-command gate green at default settings; `tests/corpus` pristine
+  (stray solver outputs from an aborted run removed path-limited). One
+  transient on the first full-gate run: `corpus_gate` CapiV0145
+  `asymmetric:isource/isource_snap.dss` step-0 voltage off by 3.6e-3 (>floor
+  8.2e-6), NOT reproducible — same binary re-run green twice (513→514/514 and
+  the full workspace re-run), diff touches no dss-core code. Suspected
+  cross-session oracle-server contention (parallel workflows active); watch
+  if it recurs — a reproducible hit would need the CLAUDE.md prove-it
+  discipline, not a shrug.
+
 ### OG-1.5 `CAPI_Schema` JSON-schema export — static core ported (orphaned-gaps round, 2026-07-18)
 
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
@@ -611,8 +654,11 @@ open item is not buried in the §1a archive):
   DIAKOPTICS Part II WP-AD.5 — partial.** `exec/command.rs:69` `NOT_PORTED`; WP-AD.6
   threaded children not started (needs MULTITHREADING M2).
 - **User-model native DLLs (Gen/PVSystem/Storage/CapControl UserModel) →
-  WASM_USERMODELS — NOT started.** All still `PropFlags::NOT_PORTED`; the sandboxed
-  wasmi replacement is unbuilt (`#![forbid(unsafe_code)]` cannot load a DLL).
+  WASM_USERMODELS — infrastructure DONE (WM.0–WM.2, §WASM-UM records), element
+  wiring NOT started.** The six properties still carry `PropFlags::NOT_PORTED`
+  / warn-and-fallback; the sandboxed replacement now exists (`dss-usermodel`
+  wasmi host + pinned `indmach012a.wasm` fixture, twin-pinned bit-exact) and
+  WM.3+ flips the properties to the plan §2.4 uniform rule.
 
 **Residual floors / parked (documented, not bugs):**
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — ultra-switch
