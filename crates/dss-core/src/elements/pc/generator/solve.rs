@@ -400,7 +400,7 @@ impl Generator {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         self.cd.iterminal_updated = false;
         // Pascal `CalcGenModelContribution` dispatches `DoDynamicMode` first when
@@ -444,7 +444,7 @@ impl Generator {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         if self.gen_switch_open {
             self.cd.inj_current.fill(Complex64::ZERO);

@@ -10,7 +10,7 @@ impl EnergyMeter {
     /// element), check the terminal, and — when the element changed — adopt its
     /// phase/conductor counts, set the meter's bus and throw the branch list
     /// away (it is rebuilt by the next zone reset).
-    pub fn recalc(&mut self, errors: &mut Vec<String>) {
+    pub fn recalc(&mut self, errors: &mut crate::diag::ErrorLog) {
         // Pascal `RecalcElementData` clears NeedsRecalc before validating.
         self.needs_recalc = false;
         let Some(snap) = self.metered_snap.clone() else {

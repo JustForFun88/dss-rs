@@ -2181,7 +2181,7 @@ fn show_busflow_unknown_bus_errors() {
     assert!(
         dss.errors()
             .iter()
-            .any(|e| e == "Bus \"NOSUCHBUS\" not found."),
+            .any(|e| e.code == Some(219) && e.text().contains("not found")),
         "expected #219, got {:?}",
         dss.errors()
     );
@@ -5542,7 +5542,7 @@ fn query_indmach012_pf_empty_after_solve() {
     for c in deck {
         dss.command(c);
     }
-    assert_eq!(dss.errors(), &[] as &[String]);
+    assert!(dss.errors().is_empty());
     dss.command("? indmach012.m1.pf");
     assert_eq!(dss.result(), "");
 }

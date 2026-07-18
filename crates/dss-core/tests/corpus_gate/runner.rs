@@ -183,7 +183,7 @@ fn assert_expected_warnings(dss: &Dss, expect: &[String], ctx: &str) {
         );
         return;
     }
-    let unexpected: Vec<&String> = errors
+    let unexpected: Vec<_> = errors
         .iter()
         .filter(|e| !expect.iter().any(|w| e.contains(w.as_str())))
         .collect();

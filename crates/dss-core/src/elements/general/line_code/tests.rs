@@ -4,13 +4,13 @@ use crate::obj::props::PropEngine;
 use dss_parser::{Parser, ParserVars};
 
 /// Build a LineCode, apply edits, return (class, obj) for querying.
-fn edited(edits: &[(&str, &str)]) -> (ClassProps, LineCodeObj, Vec<String>) {
+fn edited(edits: &[(&str, &str)]) -> (ClassProps, LineCodeObj, crate::diag::ErrorLog) {
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut obj = LineCodeObj::new("lc");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {

@@ -51,7 +51,7 @@ pub struct CtrlCtx<'a> {
     /// `DSS.EventStrings`.
     pub events: &'a mut EventLog,
     /// `DoSimpleMsg` sink.
-    pub errors: &'a mut Vec<String>,
+    pub errors: &'a mut crate::diag::ErrorLog,
     /// Raised when an action invalidates Y (tap change / capacitor step); the
     /// control loop copies it into `Solution.SystemYChanged`.
     pub system_y_changed: &'a mut bool,

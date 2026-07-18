@@ -952,6 +952,47 @@ oracle in the worktree (not by argument).
   proof above for all 11. Each deferral is a Phase-D ledger seed; the ledger machinery
   (envelope/probe carve-out) lands the mechanical re-gate. Recorded, not masked.
 
+## 1i. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
+
+`DE_PASCALIZE_PLAN.md` §P5a executed (P5b spans / P5c CLI presentation out of
+scope). One `miette`-based diagnostic type now backs every engine error channel.
+
+- **`crates/dss-core/src/diag.rs`** (new): `DssDiagnostic { message, code:
+  Option<u32>, abort, span, src, help }` with a hand-written `miette::Diagnostic`
+  impl (`code()` → `dss::eNNN`, `severity()` flips on `abort`) + unit tests, per
+  the plan sketch. `miette = { version = "7", default-features = false }` (no
+  `fancy`) in the workspace + dss-core. A small `ErrorLog(Vec<DssDiagnostic>)`
+  newtype with `push(impl Into<DssDiagnostic>)` + `texts()` reduces churn: bare
+  `String`/`&str` pushes stay valid (→ `code: None`), numbered sites push
+  `DssDiagnostic::msg(text, Some(NNN))`. `DssDiagnostic: Deref<str>` so the
+  ubiquitous `errors().iter().any(|e| e.contains(..))` presence checks keep
+  working (text is a display convenience, not the error's identity — the code is).
+- **Central log** flipped: `Dss.errors: ErrorLog`; `Dss::errors() ->
+  &[DssDiagnostic]` + `Dss::error_texts() -> Vec<String>`. **Deferred channel**
+  (`obj/base/mod.rs`) → `Vec<DssDiagnostic>` keeping the separate `deferred_abort`
+  bool so the `exec/command.rs` drain order is byte-for-byte unchanged.
+- **Control-loop trait channels — policy = RETYPE (not wrap-at-sink).** The four
+  `fn push_error(&mut self, msg: String)` points (2 trait decls in
+  `inv_control`/`storage_controller`, their impls in `solution/controls/dispatch.rs`
+  + the two test envs) were retyped to `fn push_error(&mut self, diag:
+  DssDiagnostic)`. Reason: their own doc-comments name "the 14403 named-missing
+  error" — these sinks carry real Pascal codes (14403, 2024112) that wrap-at-sink
+  would drop. Concrete param keeps the traits object-safe (they are used `dyn`).
+- **Error codes** = ONLY Pascal `DoSimpleMsg`/`DoErrorMsg` numbers. Assigned to
+  every push site whose adjacent comment cites one (two `rg` passes incl.
+  multi-line receivers), each verified against `.inputs/dss_capi`, plus a few
+  exact-message matches found incidentally (8877, 99934, 482, 566). ~70 sites
+  carry codes; uncited/port-specific messages stay `None` (never invented). NOT
+  done: an exhaustive reverse Pascal lookup of every uncited message (unbounded,
+  mis-assignment-prone) — out of P5a scope.
+- **Text consumers re-baselined once:** `Export ErrorLog` now writes `[dss::eNNN]
+  message` (bare message when uncoded); frozen. The only error-log golden
+  (`export_errorlog.txt`) is an empty dump → byte-identical, no regeneration.
+  Numeric goldens untouched (`git status tests/golden` clean). The `#219`
+  show-busflow assert rewritten to `code == Some(219)` + substring.
+- `From<ParserError>`/`SparseError`/`SingularMatrix` for `DssDiagnostic` land in
+  `diag.rs`; the "Error Encountered in Solve: {e}" catch sites carry code 482.
+
 ## 1a. Archived — completed plan records (100% done)
 
 > Moved out of the active §1 frontier on 2026-07-17. These are the records of plans whose own work-package scope is closed and gate-green: the 1:1 FINAL ACCEPTANCE, JSON export (Stages A+B), DIAKOPTICS/PSTCALC **Part I**, and the full **UPGRADE** Rung 1 + Rung 2 (r4133 parity). A few carried a documented item forward to a successor plan that has **not** finished it yet (TODO(compat) sweep + HIDE_015X → DE_PASCALIZE Stage F; GICMvars export → Phase 9; JSON DynInit/Full-mode tail → a follow-up WP; IEEE118 NCIM → a future UPGRADE rung) — those open items are surfaced in §1's **Standing open follow-ups**, not buried here. Frozen history — superseded only by the code and tests. In-progress / not-started plans (DE_PASCALIZE, DIAKOPTICS Part II, RESONANCE, MULTITHREADING, WASM_USERMODELS) stay in the active §1 above.

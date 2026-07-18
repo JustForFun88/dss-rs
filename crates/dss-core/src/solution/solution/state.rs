@@ -144,7 +144,7 @@ pub struct SolveEnv<'a> {
     pub parser: &'a mut Parser,
     pub vars: &'a ParserVars,
     /// `DoSimpleMsg` sink.
-    pub errors: &'a mut Vec<String>,
+    pub errors: &'a mut crate::diag::ErrorLog,
 }
 
 /// `ESolveError`-style hard abort.

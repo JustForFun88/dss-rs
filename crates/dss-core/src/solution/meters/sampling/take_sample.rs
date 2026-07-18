@@ -26,7 +26,7 @@ pub(crate) fn reset_all_meters(
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
     output_directory: &std::path::Path,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     super::super::demand_interval::reset_all_di(ckt, store, output_directory, errors);
     let meters = ckt.energy_meters.clone();

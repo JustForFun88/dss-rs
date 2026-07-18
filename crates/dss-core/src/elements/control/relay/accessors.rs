@@ -277,7 +277,7 @@ impl DssObject for Relay {
 
     /// `Action`'s `StringEnumActionProperty` (Pascal ganged deprecated): set every
     /// phase's present state + the `State` side effect. Blocked while `Locked`.
-    fn do_action(&mut self, ordinal: i32, _errors: &mut Vec<String>) {
+    fn do_action(&mut self, ordinal: i32, _errors: &mut crate::diag::ErrorLog) {
         Relay::do_action(self, ordinal);
     }
 

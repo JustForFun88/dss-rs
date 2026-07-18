@@ -170,7 +170,7 @@ impl ConductorDataCore {
 
     /// `TConductorDataObj.PropertySideEffects` (relative ordinal). `full_name` is
     /// the object's `Class.name` (used by the radius-zero message).
-    fn side_effects(&mut self, rel: usize, full_name: &str, errors: &mut Vec<String>) {
+    fn side_effects(&mut self, rel: usize, full_name: &str, errors: &mut crate::diag::ErrorLog) {
         match rel {
             cd::RDC => {
                 if self.fr60 < 0.0 {
@@ -286,7 +286,7 @@ impl CableDataCore {
 
     /// `TCableDataObj.PropertySideEffects` — critical-error checks only. The
     /// messages use the bare object `name` (Pascal `[Name]`).
-    fn side_effects(&mut self, rel: usize, name: &str, errors: &mut Vec<String>) {
+    fn side_effects(&mut self, rel: usize, name: &str, errors: &mut crate::diag::ErrorLog) {
         match rel {
             cb::EPSR if self.feps_r < 1.0 => errors.push(format!(
                 "Error: Insulation permittivity must be greater than one for CableData {name}"

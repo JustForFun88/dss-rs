@@ -156,7 +156,7 @@ impl DssObject for TShapeObj {
     /// Pascal `StringEnumActionProperty` for `Action` (`TTShapeAction`:
     /// DblSave=0, SngSave=1 — `TempShape.pas:152-154`). Queues the binary write
     /// (Pascal `SaveToDblFile`/`SaveToSngFile`, `TempShape.pas:528/548`).
-    fn do_action(&mut self, ordinal: i32, errors: &mut Vec<String>) {
+    fn do_action(&mut self, ordinal: i32, errors: &mut crate::diag::ErrorLog) {
         let full_name = format!("TShape.{}", self.core.data.name());
         self.core
             .queue_shape_save(ordinal == 1, "Temp", &full_name, "Temperatures", errors);
@@ -171,7 +171,12 @@ impl DssObject for TShapeObj {
     }
 
     /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`).
-    fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
+    fn apply_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &str,
+        _errors: &mut crate::diag::ErrorLog,
+    ) {
         if load.prop == CSVFILE {
             self.core.read_csv_file(content);
         }
@@ -182,7 +187,7 @@ impl DssObject for TShapeObj {
         &mut self,
         load: &FileLoad,
         content: &[u8],
-        _errors: &mut Vec<String>,
+        _errors: &mut crate::diag::ErrorLog,
     ) {
         match load.prop {
             SNGFILE => self.core.read_sng_file(content),

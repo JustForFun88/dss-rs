@@ -124,12 +124,15 @@ impl Dss {
             // 697-701`): `DoErrorMsg(..., 303)` over the full command string.
             // CRLF renders LF (the errors-240/267 convention, `exec/command.rs`);
             // `cmd_string()` carries the trailing space `SetCmdString` appends.
-            self.errors.push(format!(
-                "Error 303 Reported From OpenDSS Intrinsic Function: \n\
-                 ProcessCommand: Exception Raised While Processing DSS Command: \n\
-                 {}\n\nError Description: \n{emsg}\n\nProbable Cause: \n\
-                 Error in command string or circuit data.",
-                self.parser.cmd_string()
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Error 303 Reported From OpenDSS Intrinsic Function: \n\
+                     ProcessCommand: Exception Raised While Processing DSS Command: \n\
+                     {}\n\nError Description: \n{emsg}\n\nProbable Cause: \n\
+                     Error in command string or circuit data.",
+                    self.parser.cmd_string()
+                ),
+                Some(303),
             ));
         }
     }

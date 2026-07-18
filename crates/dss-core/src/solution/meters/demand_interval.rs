@@ -73,7 +73,7 @@ impl MeterStream {
 
     /// Pascal `CloseMHandler`: flush the buffered text to `path` (always
     /// `fmCreate` — the append flags are dead upstream, see the module doc).
-    fn close_to(self, path: &Path, errors: &mut Vec<String>) {
+    fn close_to(self, path: &Path, errors: &mut crate::diag::ErrorLog) {
         if let Err(e) = std::fs::write(path, self.buf.as_bytes()) {
             errors.push(format!(
                 "Error Attempting to open file: \"{}\". {e}",
@@ -453,7 +453,7 @@ fn close_meter_di_file(
     meter_ref: crate::elements::traits::ElemRef,
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     let di_dir = ckt.em_di.di_dir.clone();
     let em = downcast_meter(store, meter_ref);
@@ -528,7 +528,7 @@ pub(crate) fn open_all_di_files(ckt: &mut Circuit, store: &mut dyn ElemStore) {
 pub(crate) fn close_all_di_files(
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     if !ckt.em_di.save_demand_interval {
         return;
@@ -593,7 +593,7 @@ pub(crate) fn close_all_di_files(
 /// `LastResultFile` to the bare CSV name; that bookkeeping is executive state
 /// the solve loop cannot reach and no gate observes it across a solve —
 /// deliberately not modeled (the next `Export` overwrites it regardless).
-fn system_meter_save(ckt: &mut Circuit, errors: &mut Vec<String>) {
+fn system_meter_save(ckt: &mut Circuit, errors: &mut crate::diag::ErrorLog) {
     let year = ckt.solution.year;
     let mut sm = MeterStream::new("Year, ");
     sm.write_str(
@@ -613,7 +613,7 @@ fn system_meter_save(ckt: &mut Circuit, errors: &mut Vec<String>) {
 
 /// Pascal `TEnergyMeter.WriteTotalsFile` (l.3573): sum every enabled meter's
 /// registers (× its `TotalsMask`) and write the one-row `Totals_1.csv`.
-fn write_totals_file(ckt: &mut Circuit, store: &dyn ElemStore, errors: &mut Vec<String>) {
+fn write_totals_file(ckt: &mut Circuit, store: &dyn ElemStore, errors: &mut crate::diag::ErrorLog) {
     let mut reg_sum = vec![0.0; NUM_EM_REGISTERS];
     for &r in &ckt.energy_meters {
         let em = store
@@ -959,7 +959,7 @@ pub(super) fn reset_all_di(
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
     output_directory: &Path,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     if ckt.em_di.di_files_are_open {
         close_all_di_files(ckt, store, errors);

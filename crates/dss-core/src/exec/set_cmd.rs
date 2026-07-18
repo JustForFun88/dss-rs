@@ -30,7 +30,7 @@ fn apply_data_path(
     param: &str,
     current_dir: &mut PathBuf,
     output_directory: &mut PathBuf,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     if param.is_empty() {
         return;
@@ -208,7 +208,7 @@ impl Dss {
                                 ckt.solution.t = buf[1];
                                 ckt.solution.update_dbl_hour();
                             }
-                            Err(e) => errors.push(e.message().to_string()),
+                            Err(e) => errors.push(e),
                         }
                     }
                     opt::YEAR => {
@@ -509,7 +509,7 @@ impl Dss {
                                 buf.truncate(n.min(1000));
                                 ckt.legal_voltage_bases = buf;
                             }
-                            Err(e) => errors.push(e.message().to_string()),
+                            Err(e) => errors.push(e),
                         }
                     }
                     opt::ALGORITHM => {
@@ -605,7 +605,7 @@ impl Dss {
                                     buf.truncate(n.min(100));
                                     ckt.solution.harmonic_list = buf;
                                 }
-                                Err(e) => errors.push(e.message().to_string()),
+                                Err(e) => errors.push(e),
                             }
                         }
                     }

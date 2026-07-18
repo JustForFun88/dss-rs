@@ -322,9 +322,12 @@ impl CapControl {
                     // remaining step on `solution_abort`), and the early return
                     // skips this control's arm/disarm block, exactly like `Exit`.
                     let Some(shape) = self.ctrl_signal_shape.as_mut() else {
-                        ctx.errors.push(format!(
-                            "CapControl.{}: Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
-                            self.ccd.cd.obj.name()
+                        ctx.errors.push(crate::diag::DssDiagnostic::msg(
+                            format!(
+                                "CapControl.{}: Type is set to \"Follow\", but not \"ControlSignal\" was provided. Aborting solution.",
+                                self.ccd.cd.obj.name()
+                            ),
+                            Some(10362),
                         ));
                         return true;
                     };

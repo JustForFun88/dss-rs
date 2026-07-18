@@ -360,7 +360,7 @@ impl Storage {
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
-        errors: &mut Vec<String>,
+        errors: &mut crate::diag::ErrorLog,
     ) {
         let _ = errors; // Storage DoDynamicMode has no error channel (no VoltageModel=3 here)
         // NOT_PORTED: DynaModel.Exists branch — user-written dynamics DLL, never ported.
@@ -702,9 +702,12 @@ impl Storage {
         // DynamicEqObj <> NIL: state variables are read-only — the equation drives
         // them (Pascal Set_Variable, msg 566).
         if self.base.dyneq.has_dynamic_eq() {
-            self.cd.obj.push_error(format!(
-                "Storage.{}: cannot set state variable when using DynamicEq.",
-                self.cd.obj.name()
+            self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Storage.{}: cannot set state variable when using DynamicEq.",
+                    self.cd.obj.name()
+                ),
+                Some(566),
             ));
             return;
         }

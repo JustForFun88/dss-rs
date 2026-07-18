@@ -106,7 +106,7 @@ impl CktElement for Load {
         if sys.loads_need_updating {
             self.set_nominal_load(sys);
         }
-        let mut errors = Vec::new();
+        let mut errors = crate::diag::ErrorLog::new();
         self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
@@ -150,7 +150,7 @@ impl CktElement for Load {
         if self.cd.iterminal_solution_count != sys.solution_count
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {
-            let mut errors = Vec::new();
+            let mut errors = crate::diag::ErrorLog::new();
             self.calc_load_model_contribution(sys, node_v, &mut errors);
         }
         // TPCElement.GetTerminalCurrents

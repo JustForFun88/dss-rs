@@ -187,7 +187,7 @@ pub(super) fn dispatch_control(
         (kind, full_name)
     };
 
-    let abort = |errors: &mut Vec<String>, full_name: &str, what: &str| -> String {
+    let abort = |errors: &mut crate::diag::ErrorLog, full_name: &str, what: &str| -> String {
         errors.push(format!(
             "Error Sampling Control Device \"{full_name}\". Error = {what}"
         ));
@@ -1357,7 +1357,7 @@ struct StorageDispEnv<'a> {
     storages: Vec<ElemRef>,
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
-    errors: &'a mut Vec<String>,
+    errors: &'a mut crate::diag::ErrorLog,
     loads_need_updating: &'a mut bool,
     system_y_changed: &'a mut bool,
     self_ref: ElemRef,
@@ -1521,8 +1521,8 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
             .collect()
     }
 
-    fn push_error(&mut self, msg: String) {
-        self.errors.push(msg);
+    fn push_error(&mut self, diag: crate::diag::DssDiagnostic) {
+        self.errors.push(diag);
     }
 
     fn snap(&self, r: ElemRef) -> StorageSnap {
@@ -1750,7 +1750,7 @@ struct InvDispEnv<'a> {
     mon_bus_refs: Vec<Vec<usize>>,
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
-    errors: &'a mut Vec<String>,
+    errors: &'a mut crate::diag::ErrorLog,
     self_ref: ElemRef,
     int_hour: i32,
     t: f64,
@@ -1799,8 +1799,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
     fn all_storages(&self) -> Vec<(String, ElemRef, bool)> {
         self.all_of("Storage", &self.storages)
     }
-    fn push_error(&mut self, msg: String) {
-        self.errors.push(msg);
+    fn push_error(&mut self, diag: crate::diag::DssDiagnostic) {
+        self.errors.push(diag);
     }
 
     fn der_snap(&self, r: ElemRef) -> DerSnap {

@@ -330,7 +330,12 @@ impl DssObject for GrowthShapeObj {
     }
 
     /// Apply a resolved `CSVFile` (Pascal `DoCSVFile`).
-    fn apply_file_load(&mut self, load: &FileLoad, content: &str, _errors: &mut Vec<String>) {
+    fn apply_file_load(
+        &mut self,
+        load: &FileLoad,
+        content: &str,
+        _errors: &mut crate::diag::ErrorLog,
+    ) {
         if load.prop == prop::CSVFILE {
             self.read_csv_file(content);
         }
@@ -341,7 +346,7 @@ impl DssObject for GrowthShapeObj {
         &mut self,
         load: &FileLoad,
         content: &[u8],
-        _errors: &mut Vec<String>,
+        _errors: &mut crate::diag::ErrorLog,
     ) {
         match load.prop {
             prop::SNGFILE => self.read_sng_file(content),

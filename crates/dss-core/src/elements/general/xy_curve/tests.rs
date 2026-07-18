@@ -4,13 +4,13 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
 
-fn edited(edits: &[(&str, &str)]) -> (ClassProps, XyCurveObj, Vec<String>) {
+fn edited(edits: &[(&str, &str)]) -> (ClassProps, XyCurveObj, crate::diag::ErrorLog) {
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut obj = XyCurveObj::new("c1");
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     for (name, value) in edits {
         let idx = cls.property_index(name).expect("known property");
         let mut eng = PropEngine {
@@ -91,7 +91,7 @@ fn x_setter_syncs_y_with_shift_and_scale() {
     let enums = EnumRegistry::new();
     let mut parser = Parser::new();
     let vars = ParserVars::new();
-    let mut errors = Vec::new();
+    let mut errors = crate::diag::ErrorLog::new();
     let idx = cls.property_index("x").unwrap();
     let mut eng = PropEngine {
         parser: &mut parser,

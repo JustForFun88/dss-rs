@@ -117,7 +117,7 @@ fn dynamic_mode_requires_a_solved_circuit() {
     dss.command("New circuit.dyn basekv=12.47 pu=1.0 phases=3 mvasc3=20000");
     dss.command("New Line.l1 bus1=sourcebus bus2=b2 length=1 units=km r1=0.1 x1=0.3");
     dss.command("Set mode=dynamic");
-    let errs = dss.errors().join("\n");
+    let errs = dss.error_texts().join("\n");
     assert!(
         errs.contains("must be solved in a non-dynamic mode"),
         "expected the OK_for_Dynamics guard error, got: {errs:?}"

@@ -154,14 +154,17 @@ impl DynEqPceData {
     /// variable indices via `DynamicExp.Get_Out_Idx`. Errors (no linked equation,
     /// or a name that is not a defined output) are returned for the host to push
     /// onto its object error list (Pascal `DoSimpleMsg` 50007/50008).
-    pub fn set_dyn_output_names(&mut self, names: &[String]) -> Vec<String> {
+    pub fn set_dyn_output_names(&mut self, names: &[String]) -> Vec<crate::diag::DssDiagnostic> {
         let mut errors = Vec::new();
         let Some(eq) = &self.dynamic_eq_obj else {
             // Pascal builds the list with a trailing comma per element.
             let list: String = names.iter().map(|n| format!("{n},")).collect();
-            errors.push(format!(
-                "A DynamicExp object needs to be assigned to this element before \
-                 this declaration: DynOut = [{list}]"
+            errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "A DynamicExp object needs to be assigned to this element before \
+                     this declaration: DynOut = [{list}]"
+                ),
+                Some(50007),
             ));
             return errors;
         };
@@ -172,9 +175,12 @@ impl DynEqPceData {
         for (idx, name) in names.iter().enumerate() {
             let var_idx = eq.get_out_idx(name);
             if var_idx < 0 {
-                errors.push(format!(
-                    "DynamicExp variable \"{}\" not found or not defined as an output.",
-                    name.to_lowercase()
+                errors.push(crate::diag::DssDiagnostic::msg(
+                    format!(
+                        "DynamicExp variable \"{}\" not found or not defined as an output.",
+                        name.to_lowercase()
+                    ),
+                    Some(50008),
                 ));
             } else {
                 self.dyn_out[idx] = var_idx as usize;

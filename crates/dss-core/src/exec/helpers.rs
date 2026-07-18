@@ -75,18 +75,28 @@ pub(crate) fn lookup_variable(elem: &dyn CktElement, name: &str) -> Option<usize
 /// Pascal `interpretTimeStepSize` (`ExecOptions.pas` l.315): plain number =
 /// seconds; otherwise a single-char `h`/`m`/`s` suffix. On error the step size
 /// is left unchanged.
-pub(crate) fn interpret_time_step_size(s: &str, current_h: f64, errors: &mut Vec<String>) -> f64 {
+pub(crate) fn interpret_time_step_size(
+    s: &str,
+    current_h: f64,
+    errors: &mut crate::diag::ErrorLog,
+) -> f64 {
     if let Ok(v) = s.parse::<f64>() {
         return v; // only a number was specified, so must be seconds
     }
     // Error occurred, so must have a units specifier (the last character).
     let Some(ch) = s.chars().last() else {
-        errors.push(format!("Error in specification of StepSize: {s}"));
+        errors.push(crate::diag::DssDiagnostic::msg(
+            format!("Error in specification of StepSize: {s}"),
+            Some(99934),
+        ));
         return current_h;
     };
     let s2 = &s[..s.len() - ch.len_utf8()];
     let Ok(v) = s2.parse::<f64>() else {
-        errors.push(format!("Error in specification of StepSize: {s}"));
+        errors.push(crate::diag::DssDiagnostic::msg(
+            format!("Error in specification of StepSize: {s}"),
+            Some(99934),
+        ));
         return current_h;
     };
     match ch {
@@ -94,8 +104,11 @@ pub(crate) fn interpret_time_step_size(s: &str, current_h: f64, errors: &mut Vec
         'm' => v * 60.0,
         's' => v,
         _ => {
-            errors.push(format!(
-                "Error in specification of StepSize: \"{s}\". Units can only be h, m, or s (single char only)"
+            errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Error in specification of StepSize: \"{s}\". Units can only be h, m, or s (single char only)"
+                ),
+                Some(99934),
             ));
             current_h
         }
@@ -137,12 +150,12 @@ pub(crate) fn find_price_shape(
 pub(crate) fn get_dbl(
     parser: &mut Parser,
     vars: &ParserVars,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) -> Option<f64> {
     match parser.make_double(vars) {
         Ok(v) => Some(v),
         Err(e) => {
-            errors.push(e.message().to_string());
+            errors.push(e);
             None
         }
     }
@@ -152,12 +165,12 @@ pub(crate) fn get_dbl(
 pub(crate) fn get_int(
     parser: &mut Parser,
     vars: &ParserVars,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) -> Option<i32> {
     match parser.make_integer(vars) {
         Ok(v) => Some(v),
         Err(e) => {
-            errors.push(e.message().to_string());
+            errors.push(e);
             None
         }
     }
@@ -169,12 +182,12 @@ pub(crate) fn enum_ord(
     enums: &EnumRegistry,
     id: EnumId,
     value: &str,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) -> Option<i32> {
     match enums.get(id).string_to_ordinal(&value.to_ascii_lowercase()) {
         Ok(v) => Some(v),
         Err(e) => {
-            errors.push(e.message().to_string());
+            errors.push(e);
             None
         }
     }
@@ -193,7 +206,7 @@ pub(crate) fn parse_int_array(
     aux_parser: &mut Parser,
     vars: &ParserVars,
     s: &str,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) -> Vec<i32> {
     // Pass 1: count the tokens (StrValue never raises).
     aux_parser.set_cmd_string(s);
@@ -217,7 +230,7 @@ pub(crate) fn parse_int_array(
         match aux_parser.make_integer(vars) {
             Ok(v) => *slot = v,
             Err(e) => {
-                errors.push(e.message().to_string());
+                errors.push(e);
                 break;
             }
         }
@@ -234,7 +247,7 @@ pub(crate) fn do_auto_add_bus_list(
     current_dir: &Path,
     s: &str,
     out: &mut Vec<String>,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     out.clear();
     aux_parser.set_cmd_string(s);
@@ -257,7 +270,10 @@ pub(crate) fn do_auto_add_bus_list(
             }
             // Pascal `DoSimpleMsg('Error trying to read bus list file: %s',
             // [E.message], 268)`.
-            Err(e) => errors.push(format!("Error trying to read bus list file: {e}")),
+            Err(e) => errors.push(crate::diag::DssDiagnostic::msg(
+                format!("Error trying to read bus list file: {e}"),
+                Some(268),
+            )),
         }
     } else {
         // Parse bus names off the inline array list.
@@ -281,7 +297,7 @@ pub(crate) fn do_keeper_bus_list(
     current_dir: &Path,
     s: &str,
     ckt: &mut Circuit,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
 ) {
     let mark = |ckt: &mut Circuit, name: &str| {
         if let Some(idx) = ckt.bus_list.find(&name.to_ascii_lowercase()) {
@@ -309,8 +325,9 @@ pub(crate) fn do_keeper_bus_list(
             }
             // Pascal `DoSimpleMsg('Error trying to read bus list file "%s": %s',
             // [param, E.message], 269)`.
-            Err(e) => errors.push(format!(
-                "Error trying to read bus list file \"{param}\": {e}"
+            Err(e) => errors.push(crate::diag::DssDiagnostic::msg(
+                format!("Error trying to read bus list file \"{param}\": {e}"),
+                Some(269),
             )),
         }
     } else {
@@ -329,7 +346,7 @@ pub(crate) fn do_keeper_bus_list(
 /// disambiguated Switch-vs-Shortlines by `CompareTextShortest(S, 'SWITCH')`.
 /// The stored strategy is consumed by the WP8.7 `ReduceZone` dispatch
 /// (`report/reduce.rs`).
-pub(crate) fn set_reduce_strategy(ckt: &mut Circuit, s: &str, errors: &mut Vec<String>) {
+pub(crate) fn set_reduce_strategy(ckt: &mut Circuit, s: &str, errors: &mut crate::diag::ErrorLog) {
     use crate::circuit::ReductionStrategy as Rs;
     ckt.reduction_strategy_string = s.to_string();
     ckt.reduction_strategy = Rs::Default;
@@ -394,7 +411,7 @@ pub(crate) fn make_like(
     name_to_idx: &HashMap<String, usize>,
     target: usize,
     source_name: &str,
-    errors: &mut Vec<String>,
+    errors: &mut crate::diag::ErrorLog,
     class_name: &str,
 ) {
     match name_to_idx.get(&source_name.to_ascii_lowercase()) {

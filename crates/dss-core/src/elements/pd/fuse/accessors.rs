@@ -161,7 +161,7 @@ impl DssObject for Fuse {
 
     /// `Action`'s `StringEnumActionProperty` (Pascal `DoAction`): set all phases
     /// then run the `State` side effect.
-    fn do_action(&mut self, ordinal: i32, _errors: &mut Vec<String>) {
+    fn do_action(&mut self, ordinal: i32, _errors: &mut crate::diag::ErrorLog) {
         self.do_fuse_action(ordinal);
     }
 
