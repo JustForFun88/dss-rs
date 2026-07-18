@@ -29,13 +29,15 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use crate::engines::{CaseResult, Channel, Oracle, WorkerPool, build_run_request};
+use crate::engines::{
+    CaseResult, Channel, EpriOneShot, EpriPool, Oracle, WorkerPool, build_run_request,
+};
 use crate::manifest::{
-    FAMILIES, ORACLE_SPECS, SolvableCase, corpus_file, family_file, load_family, load_solvable,
+    EngineChannel, FAMILIES, SolvableCase, corpus_file, family_file, load_family, load_solvable,
 };
 use crate::runner::{
-    CorpusGuard, assert_pending_errors_loudly, compare_with_result, panic_msg,
-    run_and_compare_abort,
+    CorpusGuard, assert_deferred_rust_smoke, assert_pending_errors_loudly, compare_with_result,
+    panic_msg, run_and_compare_abort,
 };
 
 // ---------------------------------------------------------------------------
@@ -47,6 +49,9 @@ enum CaseClass {
     Live,
     Abort,
     Pending,
+    /// `defer_ledger` — parked from live oracle comparison (Phase D ledger seed);
+    /// Rust-smoke only.
+    Deferred,
 }
 
 struct UnifiedCase {
@@ -86,17 +91,21 @@ fn dir_key_of(abs: &str) -> String {
         .to_lowercase()
 }
 
-/// Apply the (unchanged) per-source property-forcing rule to a live case.
+/// Apply the per-source property-forcing rule to a live case. `compare_all_
+/// properties` is a **capi_v0145-channel** feature (§1.2: property parity stays
+/// pinned to the capi oracle; the r4133 bridge has no all-properties capture),
+/// so it is forced only for cases that gate the capi channel; the r4133 request
+/// masks it off per-channel in [`run_one_case`].
 fn force_properties(source: &str, c: &mut SolvableCase, fam_props: bool) {
     match source {
         "solvable_now" => {
-            if c.oracle.is_none() && !c.kind.starts_with("large") {
+            if c.gates_capi() && !c.kind.starts_with("large") {
                 c.compare_all_properties = true;
             }
         }
         _ => {
             // family: fam_props is the family-level flag (true for all three).
-            c.compare_all_properties |= fam_props && c.oracle.is_none();
+            c.compare_all_properties |= fam_props && c.gates_capi();
         }
     }
 }
@@ -121,7 +130,10 @@ fn make_case(
         "{source}:{}: `pending` and `expect_solve_abort` are mutually exclusive",
         c.path
     );
-    let class = if c.pending {
+    crate::manifest::assert_defer_ledger_is_valid(&format!("{source}:{}", c.path), &c);
+    let class = if c.defer_ledger.is_some() {
+        CaseClass::Deferred
+    } else if c.pending {
         CaseClass::Pending
     } else if c.expect_solve_abort.is_some() {
         CaseClass::Abort
@@ -228,30 +240,44 @@ pub(crate) struct CaseOutcome {
 struct Ctx<'a> {
     serial: bool,
     dumping: bool,
-    pool: Option<&'a WorkerPool>,
-    pinned_oneshot: Option<&'a Oracle>,
-    target_oracles: &'a BTreeMap<String, Oracle>,
+    capi_pool: Option<&'a WorkerPool>,
+    capi_oneshot: Option<&'a Oracle>,
+    epri_pool: Option<&'a EpriPool>,
+    epri_oneshot: Option<&'a EpriOneShot>,
 }
 
 impl<'a> Ctx<'a> {
-    /// The channel a case's `oracle` spec + `isolate`/serial state selects.
-    fn channel(&self, uc: &UnifiedCase) -> Channel<'a> {
-        if let Some(spec) = &uc.case.oracle {
-            Channel::OneShot(
-                self.target_oracles
-                    .get(spec)
-                    .expect("target-rev oracle pre-created for every spec in the manifests"),
-            )
-        } else if uc.case.isolate || self.serial {
-            Channel::OneShot(
-                self.pinned_oneshot
-                    .expect("pinned one-shot oracle pre-created for serial/isolate cases"),
-            )
-        } else {
-            Channel::Pool(
-                self.pool
-                    .expect("worker pool pre-created for pinned pool cases"),
-            )
+    /// The transport for one (case, channel): the persistent pool normally, or a
+    /// throwaway one-shot for `isolate`/serial (both channels honor the flag).
+    fn channel(&self, uc: &UnifiedCase, ch: EngineChannel) -> Channel<'a> {
+        let one_shot = uc.case.isolate || self.serial;
+        match ch {
+            EngineChannel::CapiV0145 => {
+                if one_shot {
+                    Channel::CapiOneShot(
+                        self.capi_oneshot
+                            .expect("capi one-shot pre-created for serial/isolate capi cases"),
+                    )
+                } else {
+                    Channel::CapiPool(
+                        self.capi_pool
+                            .expect("capi pool pre-created for pooled capi cases"),
+                    )
+                }
+            }
+            EngineChannel::R4133 => {
+                if one_shot {
+                    Channel::EpriOneShot(
+                        self.epri_oneshot
+                            .expect("epri one-shot pre-created for serial/isolate r4133 cases"),
+                    )
+                } else {
+                    Channel::EpriPool(
+                        self.epri_pool
+                            .expect("epri pool pre-created for pooled r4133 cases"),
+                    )
+                }
+            }
         }
     }
 }
@@ -276,6 +302,7 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
 
     match uc.class {
         CaseClass::Pending => {
+            // Pending is oracle-free (Rust must error loudly) — no channel.
             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 assert_pending_errors_loudly(&uc.label, &uc.abs, &uc.case);
             }));
@@ -284,49 +311,81 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
                 Err(e) => fail_outcome(panic_msg(e), None),
             }
         }
-        CaseClass::Abort => {
-            let channel = ctx.channel(uc);
+        CaseClass::Deferred => {
+            // Parked from live compare (Phase D ledger seed); Rust-smoke only.
             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_and_compare_abort(&channel, &uc.label, &uc.abs, &uc.case);
+                assert_deferred_rust_smoke(&uc.label, &uc.abs, &uc.case);
             }));
             match res {
                 Ok(()) => ok_outcome(None),
                 Err(e) => fail_outcome(panic_msg(e), None),
             }
         }
+        CaseClass::Abort => {
+            // Abort against every gating channel (Phase C: exactly one).
+            for ch in uc.case.engine_channels() {
+                let channel = ctx.channel(uc, ch);
+                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    run_and_compare_abort(&channel, &uc.label, &uc.abs, &uc.case);
+                }));
+                if let Err(e) = res {
+                    return fail_outcome(format!("[{ch:?}] {}", panic_msg(e)), None);
+                }
+            }
+            ok_outcome(None)
+        }
         CaseClass::Live => {
-            let channel = ctx.channel(uc);
-            let req = build_run_request(&uc.abs, &uc.case);
-            // Fetch the oracle model (one-shot Oracle::call may panic on a
-            // protocol error — isolate it into a case failure, never a thread crash).
-            let resp =
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| channel.call(&req)))
-                {
+            // Live-compare against every gating channel (Phase C: exactly one).
+            // The Rust engine is re-run per channel inside `compare_with_result`;
+            // `both` (Phase D) thus runs it twice — the seam is intentional.
+            let mut dump_val: Option<Value> = None;
+            for ch in uc.case.engine_channels() {
+                let channel = ctx.channel(uc, ch);
+                // The r4133 bridge has no all-properties capture (§1.2 keeps it
+                // capi_v0145-only) — mask it off in both the request and compare.
+                let mut cc = uc.case.clone();
+                if ch == EngineChannel::R4133 {
+                    cc.compare_all_properties = false;
+                }
+                let req = build_run_request(&uc.abs, &cc);
+                let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    channel.call(&req)
+                })) {
                     Ok(r) => r,
                     Err(e) => {
                         return fail_outcome(
-                            format!("oracle fetch panicked: {}", panic_msg(e)),
-                            None,
+                            format!("[{ch:?}] oracle fetch panicked: {}", panic_msg(e)),
+                            dump_val,
                         );
                     }
                 };
-            if !resp.ok {
-                return fail_outcome(format!("oracle case failed: {:?}", resp.error), None);
+                if !resp.ok {
+                    return fail_outcome(
+                        format!("[{ch:?}] oracle case failed: {:?}", resp.error),
+                        dump_val,
+                    );
+                }
+                let Some(val) = resp.result else {
+                    return fail_outcome(
+                        format!("[{ch:?}] oracle ok response missing result"),
+                        dump_val,
+                    );
+                };
+                if ctx.dumping && dump_val.is_none() {
+                    dump_val = Some(val.clone());
+                }
+                let label = uc.label.clone();
+                let abs = uc.abs.clone();
+                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                    let oc: CaseResult = serde_json::from_value(val)
+                        .unwrap_or_else(|e| panic!("{label}: malformed CaseResult: {e}"));
+                    compare_with_result(&oc, &label, &abs, &cc, ch);
+                }));
+                if let Err(e) = res {
+                    return fail_outcome(format!("[{ch:?}] {}", panic_msg(e)), dump_val);
+                }
             }
-            let Some(val) = resp.result else {
-                return fail_outcome("oracle ok response missing result".to_string(), None);
-            };
-            let dump_val = if ctx.dumping { Some(val.clone()) } else { None };
-            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                let oc: CaseResult = serde_json::from_value(val).unwrap_or_else(|e| {
-                    panic!("{}: malformed CaseResult: {e}", uc.label);
-                });
-                compare_with_result(&oc, &uc.label, &uc.abs, &uc.case);
-            }));
-            match res {
-                Ok(()) => ok_outcome(dump_val),
-                Err(e) => fail_outcome(panic_msg(e), dump_val),
-            }
+            ok_outcome(dump_val)
         }
     }
 }
@@ -370,39 +429,42 @@ pub(crate) fn run_gate() -> GateRun {
     let cases = build_unified_cases();
     let total = cases.len();
 
-    // Which specs / one-shot engines do we actually need?
-    let needs_pinned_oneshot = serial
-        || cases
-            .iter()
-            .any(|c| c.case.oracle.is_none() && c.case.isolate);
-    let needs_pinned_pool = !serial
-        && cases
-            .iter()
-            .any(|c| c.case.oracle.is_none() && !c.case.isolate);
-    let target_specs: std::collections::BTreeSet<String> =
-        cases.iter().filter_map(|c| c.case.oracle.clone()).collect();
+    // Which transports does the case set actually need? A case can gate the
+    // capi_v0145 channel, the r4133 channel, or (Phase D) both; `isolate`/serial
+    // routes an engine run through a throwaway one-shot instead of the pool.
+    // Only Live/Abort cases actually drive an oracle channel (Pending is
+    // oracle-free; Deferred is Rust-smoke-only).
+    let any = |ch: EngineChannel, isolate: bool| {
+        cases.iter().any(|c| {
+            matches!(c.class, CaseClass::Live | CaseClass::Abort)
+                && c.case.engine_channels().contains(&ch)
+                && c.case.isolate == isolate
+        })
+    };
+    let has_capi = any(EngineChannel::CapiV0145, true) || any(EngineChannel::CapiV0145, false);
+    let has_epri = any(EngineChannel::R4133, true) || any(EngineChannel::R4133, false);
+    // In serial mode EVERY engine run uses a fresh one-shot process (the
+    // contamination-proof reference); otherwise only `isolate` cases do.
+    let needs_capi_oneshot = any(EngineChannel::CapiV0145, true) || (serial && has_capi);
+    let needs_capi_pool = !serial && any(EngineChannel::CapiV0145, false);
+    let needs_epri_oneshot = any(EngineChannel::R4133, true) || (serial && has_epri);
+    let needs_epri_pool = !serial && any(EngineChannel::R4133, false);
 
-    // Pre-create + ping-verify every one-shot engine up front (shared by ref).
-    let mut target_oracles: BTreeMap<String, Oracle> = BTreeMap::new();
-    for spec in &target_specs {
-        assert!(
-            ORACLE_SPECS.contains(&spec.as_str()),
-            "unknown oracle spec {spec:?} — expected one of {ORACLE_SPECS:?}"
-        );
-        target_oracles.insert(spec.clone(), Oracle::for_spec(Some(spec)));
-    }
-    // `for_spec(None)` constructs the pinned one-shot oracle AND ping-verifies it.
-    let pinned_oneshot: Option<Oracle> = needs_pinned_oneshot.then(|| Oracle::for_spec(None));
-
-    let pool: Option<WorkerPool> = needs_pinned_pool.then(|| WorkerPool::new(pool_size));
+    // `for_spec(None)` constructs the pinned one-shot oracle AND ping-verifies it;
+    // the pools/one-shots ping-verify their engine identity on spawn.
+    let capi_oneshot: Option<Oracle> = needs_capi_oneshot.then(|| Oracle::for_spec(None));
+    let capi_pool: Option<WorkerPool> = needs_capi_pool.then(|| WorkerPool::new(pool_size));
+    let epri_oneshot: Option<EpriOneShot> = needs_epri_oneshot.then(EpriOneShot::new);
+    let epri_pool: Option<EpriPool> = needs_epri_pool.then(|| EpriPool::new(pool_size));
 
     let tasks = build_tasks(cases, shuffle_seed);
     let ctx = Ctx {
         serial,
         dumping,
-        pool: pool.as_ref(),
-        pinned_oneshot: pinned_oneshot.as_ref(),
-        target_oracles: &target_oracles,
+        capi_pool: capi_pool.as_ref(),
+        capi_oneshot: capi_oneshot.as_ref(),
+        epri_pool: epri_pool.as_ref(),
+        epri_oneshot: epri_oneshot.as_ref(),
     };
 
     let cursor = AtomicUsize::new(0);
@@ -427,7 +489,10 @@ pub(crate) fn run_gate() -> GateRun {
         }
     });
 
-    if let Some(p) = &pool {
+    if let Some(p) = &capi_pool {
+        p.close();
+    }
+    if let Some(p) = &epri_pool {
         p.close();
     }
 

@@ -777,6 +777,99 @@ close it.
 
 ---
 
+## 1h. UNIFIED_GATE Phase C — manifest schema v2 (`engines`) + population lock v2 + r4133 channel wiring (branch `ug-phase-c`)
+
+`UNIFIED_GATE_PLAN.md` §4 Phase C (after the A+B integration merge, base `3ad37c8`).
+Retires the target-rev one-shot Oracle/Oddie shim for the mandatory gate: the
+`r4133` channel now gates through the in-house `epri-worker` pool (Phase A bridge).
+
+- **Schema v2 (§1.2).** `SolvableCase.oracle: Option<String>` → `engines: "capi_v0145"
+  | "r4133" | "both"` (default `"both"`; no case is `"both"` this phase). Migration
+  preserved semantics exactly: pinned (no `oracle`) → `capi_v0145` (246 solvable_now
+  + 162 family); every target-rev case (`capi015`/`r3723`/`r4088`/`r4133`) →
+  `r4133` (106 total = 47 solvable_now + 4/34/21 asym/controls/modes). `ORACLE_SPECS`
+  deleted; `EngineChannel {CapiV0145,R4133}` + `SolvableCase::engine_channels()`
+  replace it. `corpus_manifest.rs` untouched; `.dss` bijection 915 intact.
+- **r4133 worker pool (§3.1).** `engines.rs` gains `EpriPool` (persistent
+  `epri-worker` processes, mirroring the capi `WorkerPool` lifecycle: per-request
+  deadline → kill/respawn/retry-once/recycle-64, `{"epri":true,"rev":"r4133"}` ping
+  assert) + `EpriOneShot` (throwaway worker for serial/`isolate` r4133 cases).
+  Worker-binary resolution: `DSS_EPRI_WORKER` env → `target/<profile>/epri-worker` →
+  OnceLock `cargo build -p dss-epri` fallback. `Channel` now has four arms
+  (Capi/Epri × Pool/OneShot). Iteration policy is per-channel: capi_v0145 = exact
+  1:1; r4133 = `rust_le_oracle`. Eventlog masks keyed on the channel. The r4133
+  request masks `all_properties` off (capi_v0145-only per §1.2 — the bridge has no
+  all-props capture).
+- **Re-validation (§4/§5 R9) — all 106 r4133 cases gated live against the epri
+  bridge.** 95 pass green; **11 deferred** to Phase D (all were `oracle:capi015`,
+  the retired 0.15.0b4 line, and reproduce on NEITHER surviving channel — proven by
+  flipping all 11 to `capi_v0145` and re-running: 0.14.5 also diverges). Every
+  `oracle:r4133`/`r3723`/`r4088` case (66) passed unchanged (epri == the outgoing
+  Oddie r4133 bit-for-bit, per the Phase A xcheck).
+- **`defer_ledger` — the Phase D ledger seam (§4 step c / §5 R9 last resort).** New
+  optional field carrying the Phase-D-ledger-seed cause (+ mandatory `wp`, mutually
+  exclusive with `pending`/`expect_solve_abort`). A deferred case is parked from live
+  oracle comparison but still **Rust-smoke-run** (compile + solve every step must
+  converge, no new errors) so a Rust regression can never hide. Membership is
+  preserved (counts unchanged; the population lock records the `defer` flag) — the
+  plan's "membership never shrinks" holds. The 11 deferrals, by class:
+  - **NCIM ×4** (`NCIM/Xmission…Kundur2Area`, `modes/ncim/{ncim_pq,ncim_pv_pq,ncim_midi}`):
+    0.14.5 lacks NCIM (`Set algorithm=NCIM` ignored, `Export deltaf` #24713); r4133-11.0
+    NCIM converges to a different PV/Q op-point → `Vsource.source` current diverges
+    wholesale. wp `WP-U1.7`.
+  - **DynExp ×2** (`Dynamic_Expressions/Dynamic_KundurDynExp`, `IBRDynamics_Cases/GFL_IEEE123/
+    Run_IEEE123Bus_GFLDaily_DynExp`): capi015 D14 `Exit`-no-op (frozen state); 0.14.5
+    swings, r4133 differs → node V ~1.5e-5 rel.
+  - **GFM ×3** (`controls/gfm/{gfm_micro,gfm_invcontrol,gfm_dynamics}`): capi015 B5 Isc1
+    (drop ×1000) — 0.14.5 system-Y differs (9 entries); r4133 physics MATCHES but
+    `Storage.batt.%stored` property STRING is r4133-rounded (92.4320641163609 vs
+    92.4321). wp `WPG.10`/`WPG.13`.
+  - **RegControl idle ×1** (`controls/regcontrol/regcontrol_idle`): capi015 `idle`
+    property (0.15 feature) — 0.14.5 rejects `idle` (#110); r4133 node V ~7e-5 rel.
+  - **line_spacing_asym ×1**: r4133 raises **#303 access violation at calcv** (known
+    linespacing crash) AND 0.14.5 gives `Line.normamps=230` vs Rust/capi015 730 —
+    diverges on BOTH channels (Phase D: r4133 `skip` + capi_v0145 property ledger).
+- **Population lock v2 (§1.4).** `Case::rigor` drops `oracle=`, gains
+  `engines={…} isolate={…} defer={…}`; the documented asymmetry is fixed — the three
+  family manifests are now per-case rigor-covered (`family_rigor` replaces
+  `family_paths`). Regenerated via `DSS_UPDATE_POPULATION_LOCK`; reviewed diff =
+  field additions + **zero membership loss** (counts 293/47/105/69 bit-stable;
+  solvable_now + family key sets identical to base).
+- **Report channels kept compiling.** `corpus_live_opendss` + `known_diffs.json` +
+  `DSS_LIVE_OPENDSS*` retained (Phase D deletes them); their target-rev exclusion is
+  re-keyed on `engines` (contains r4133). `corpus_live_classify`/`_properties`
+  re-keyed on `gates_capi()`. `AdSweepCase.oracle` (unused; ad_sweep.json had 0
+  oracle values) dropped with its `ORACLE_SPECS` validation.
+
+**Counts (bit-stable at base):** solvable_now 293, asymmetric 47, controls 105,
+modes 69, `.dss` bijection 915.
+
+**Gate (three-command, green).** `cargo fmt --all --check` clean; `cargo clippy
+--workspace --all-targets -- -D warnings` clean; `cargo test --workspace` all pass
+(dss-core lib 1231 + corpus_gate 25 incl. the 514-case unified gate; 1 pre-existing
+`ckt24_graph_diagnostic` ignored). Corpus gate wall-clock **with the r4133 channel
+active = 64.5 s** (16 jobs, per-channel pool 8; full `cargo test --workspace` 182 s).
+`tests/corpus` pristine after runs (path-limited-cleaned the pre-existing
+CorpusGuard export-CWD pollution, STATUS §1g open follow-up).
+
+Wall-clock table row (plan §3.4 / §6):
+
+| point | mode | jobs | pool | corpus gate |
+|---|---|---|---|---|
+| Phase C (r4133 channel active) | persistent-parallel | 16 | 8 (per channel) | 64.5 s |
+
+**Deviation from plan (justified).** The brief's ladder step (c) said `pending: true
++ wp`, but `pending` structurally asserts the Rust engine ERRORS (unported feature);
+the 11 deferrals are PORTED features that solve cleanly — `pending` would fail the
+gate. Introduced `defer_ledger` instead (the plan's "leave a clear seam" for the
+Phase D ledger, §1.4): same intent (park from live compare, documented cause + wp,
+membership preserved, reviewed lock diff) without the false "must error" contract,
+and it adds a Rust-side smoke net `pending` also lacks. Brief header said "76
+re-targeted"; the actual re-targeted (oracle-carrying) population is **106** (the
+brief's own parenthetical sums to 106); all 106 re-validated.
+
+---
+
 ## 1a. Archived — completed plan records (100% done)
 
 > Moved out of the active §1 frontier on 2026-07-17. These are the records of plans whose own work-package scope is closed and gate-green: the 1:1 FINAL ACCEPTANCE, JSON export (Stages A+B), DIAKOPTICS/PSTCALC **Part I**, and the full **UPGRADE** Rung 1 + Rung 2 (r4133 parity). A few carried a documented item forward to a successor plan that has **not** finished it yet (TODO(compat) sweep + HIDE_015X → DE_PASCALIZE Stage F; GICMvars export → Phase 9; JSON DynInit/Full-mode tail → a follow-up WP; IEEE118 NCIM → a future UPGRADE rung) — those open items are surfaced in §1's **Standing open follow-ups**, not buried here. Frozen history — superseded only by the code and tests. In-progress / not-started plans (DE_PASCALIZE, DIAKOPTICS Part II, RESONANCE, MULTITHREADING, WASM_USERMODELS) stay in the active §1 above.

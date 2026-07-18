@@ -19,7 +19,7 @@ use crate::harness::{
     compare_injection, compare_meter, compare_monitor, compare_probe, compare_system_y,
     compare_variables, compare_yprim, tol_for,
 };
-use crate::manifest::SolvableCase;
+use crate::manifest::{EngineChannel, SolvableCase};
 
 // ---------------------------------------------------------------------------
 // Corpus guard (unchanged; keeps the vendored corpus pristine across both
@@ -229,6 +229,7 @@ pub(crate) fn compare_capture(
     case_path: &str,
     c: &SolvableCase,
     tol: &Tolerances,
+    channel: EngineChannel,
 ) {
     let n_steps = c.n_steps;
     let star = c.selected_elements == ["*"];
@@ -257,10 +258,10 @@ pub(crate) fn compare_capture(
                 ckt.solution.dbl_hour,
                 cp.dbl_hour
             );
-            // Iteration policy (UPGRADE_PLAN.md): exact vs the pinned 0.14.5
-            // oracle; for a target-rev case the port may converge in FEWER
-            // iterations — never more.
-            if c.oracle.is_none() {
+            // Iteration policy (§4 Phase C): the pinned capi_v0145 channel is an
+            // exact 1:1 contract; the r4133 channel (a different engine line)
+            // allows the port to converge in FEWER iterations — never more.
+            if channel.iterations_exact() {
                 assert_eq!(
                     ckt.solution.iteration, cp.iterations,
                     "{ctx}: iteration count differs"
@@ -268,13 +269,13 @@ pub(crate) fn compare_capture(
             } else {
                 assert!(
                     ckt.solution.iteration <= cp.iterations,
-                    "{ctx}: Rust used MORE iterations than the target oracle ({} > {})",
+                    "{ctx}: Rust used MORE iterations than the r4133 oracle ({} > {})",
                     ckt.solution.iteration,
                     cp.iterations
                 );
                 if ckt.solution.iteration < cp.iterations {
                     eprintln!(
-                        "{ctx}: NOTE Rust converged in {} iterations vs the target \
+                        "{ctx}: NOTE Rust converged in {} iterations vs the r4133 \
                          oracle's {} (allowed: <=; investigate if unexpected)",
                         ckt.solution.iteration, cp.iterations
                     );
@@ -372,7 +373,7 @@ pub(crate) fn compare_capture(
             compare_variables(dss, v, tol, &ctx);
         }
         if c.compare_eventlog {
-            compare_eventlog(dss, &cp.eventlog, c.oracle.as_deref(), &ctx);
+            compare_eventlog(dss, &cp.eventlog, channel.eventlog_spec(), &ctx);
         }
         if c.compare_ctrlqueue {
             compare_ctrlqueue(dss, &cp.ctrlqueue, &ctx);
@@ -423,9 +424,16 @@ pub(crate) fn compare_capture(
     let _ = n_steps;
 }
 
-/// Assert the oracle step counts, run the Rust engine once, compare. No guard,
+/// Assert the oracle step counts, run the Rust engine once, compare against the
+/// given `channel`'s capture (its iteration + eventlog-mask policy). No guard,
 /// no oracle fetch — the caller (scheduler or [`run_and_compare`]) owns those.
-pub(crate) fn compare_with_result(oc: &CaseResult, label: &str, case_path: &str, c: &SolvableCase) {
+pub(crate) fn compare_with_result(
+    oc: &CaseResult,
+    label: &str,
+    case_path: &str,
+    c: &SolvableCase,
+    channel: EngineChannel,
+) {
     assert_eq!(oc.n_steps, c.n_steps, "{label}: oracle step count");
     assert_eq!(
         oc.checkpoints.len(),
@@ -434,16 +442,16 @@ pub(crate) fn compare_with_result(oc: &CaseResult, label: &str, case_path: &str,
     );
     let tol = tol_for(&c.kind);
     let (mut dss, baseline) = run_rust_capture(label, case_path, c);
-    compare_capture(&mut dss, baseline, oc, label, case_path, c, &tol);
+    compare_capture(&mut dss, baseline, oc, label, case_path, c, &tol, channel);
 }
 
 /// One-shot convenience for the opt-in report tests: snapshot the case dir,
-/// fetch the oracle model once, compare. (The mandatory gate uses the pool via
-/// the scheduler instead.)
+/// fetch the pinned oracle model once, compare against the `capi_v0145` channel.
+/// (The mandatory gate uses the pools via the scheduler instead.)
 pub(crate) fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCase) {
     let _guard = CorpusGuard::new(case_path);
     let oc = oracle.run_case(case_path, c);
-    compare_with_result(&oc, label, case_path, c);
+    compare_with_result(&oc, label, case_path, c, EngineChannel::CapiV0145);
 }
 
 // ---------------------------------------------------------------------------
@@ -506,6 +514,30 @@ pub(crate) fn run_and_compare_abort(
         "{label}: Rust engine did not surface {expected:?}: {:?}",
         dss.errors()
     );
+}
+
+/// Schema v2 (§4 Phase C step c): a `defer_ledger` case is parked from live
+/// oracle comparison (its validated capi015 behavior reproduces on neither
+/// surviving channel; a Phase D ledger will re-gate it). It is still **smoke-run**
+/// on the Rust engine — compile + post + solve every step must converge with NO
+/// new engine errors — so a Rust regression can never hide behind the deferral.
+pub(crate) fn assert_deferred_rust_smoke(label: &str, case_path: &str, c: &SolvableCase) {
+    let (mut dss, baseline_errors) = run_rust_capture(label, case_path, c);
+    for i in 0..c.n_steps.max(1) {
+        dss.command("solve");
+        assert_eq!(
+            dss.errors().len(),
+            baseline_errors,
+            "{label} (deferred smoke) step {i}: new Rust engine errors: {:?}",
+            &dss.errors()[baseline_errors.min(dss.errors().len())..]
+        );
+        assert!(
+            dss.circuit().is_some_and(|ckt| ckt.is_solved),
+            "{label} (deferred smoke) step {i}: Rust did not converge — a deferred case \
+             must still SOLVE on the Rust engine (defer_ledger parks the ORACLE compare, \
+             not the Rust smoke)"
+        );
+    }
 }
 
 /// GAPS_PLAN.md §2.3 pending discipline: the unported feature must surface as an

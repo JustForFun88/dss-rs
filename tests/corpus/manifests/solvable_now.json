@@ -3,6 +3,7 @@
  "cases": [
   {
    "path": "Test/indmachtest/Master.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1,
    "expect_warnings": ["Not Loaded"],
@@ -10,6 +11,7 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Lagging.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1,
    "expect_warnings": ["Not Loaded"],
@@ -17,6 +19,7 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1,
    "expect_warnings": ["Not Loaded"],
@@ -24,6 +27,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1,
    "post": ["Set maxiterations=200"],
@@ -31,6 +35,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/Stevenson/StevensonPflow-3ph.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1,
    "post": ["Set maxiterations=200"],
@@ -38,6 +43,7 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1,
    "post": ["Set maxiterations=200"],
@@ -45,6 +51,7 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Master-unbal.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1,
    "post": ["Set maxiterations=200"],
@@ -52,6 +59,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1,
    "post": ["Set maxiterations=200"],
@@ -59,6 +67,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Master-unbal.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1,
    "post": ["Set maxiterations=200"],
@@ -66,31 +75,37 @@
   },
   {
    "path": "Test/AutoTrans/Auto1bus-step1.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Test/AutoTrans/Auto1bus.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Test/AutoTrans/Auto3bus.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Test/AutoTrans/AutoAuto.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Test/AutoTrans/AutoHLT.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Test/BundleDemo.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -98,16 +113,17 @@
    "path": "Test/CableParameters.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Test/Cable_constants.DSS",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Test/CapControlFollow.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "post": ["set stepsize=1h number=1"],
    "n_steps": 24,
@@ -118,7 +134,7 @@
   {
    "path": "Test/SimpleStorageTest.dss",
    "kind": "feeder",
-   "oracle": "r3723",
+   "engines": "r4133",
    "expect_warnings": ["Storage User-written Dynamics Model", "Not Loaded"],
    "n_steps": 1,
    "note": "CF-C Port 2: Storage.Store1 sets DynaDLL/DynaData for a user-written dynamics model DLL that is NOT vendored. Safe Rust never loads DLLs (loader out of scope), so the port warns (non-fatal, #1570-class) and falls back to the built-in model — exactly the official Direct DLL. The pinned oracle raises #1570 (fatal), so this gates vs r3723, which warns and solves. Rust iter 2 == r3723 iter 2 (T-A #19)."
@@ -126,184 +142,214 @@
   {
    "path": "Test/SimpleStorageTest-1ph.dss",
    "kind": "feeder",
-   "oracle": "r3723",
+   "engines": "r4133",
    "expect_warnings": ["Storage User-written Dynamics Model", "Not Loaded"],
    "n_steps": 1,
    "note": "CF-C Port 2: 1-phase twin of SimpleStorageTest — same DynaDLL/DynaData warn+fallback surface, gated vs r3723 (pinned raises #1570). Rust iter 2 == r3723 iter 2 (T-A #20)."
   },
   {
    "path": "Test/CapacitorConfigs.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/DistanceRelayTest.DSS",
-   "oracle": "r4133",
+   "engines": "r4133",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/Dynamic_Kundur.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/IEEE13_Assets.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/IEEE13_CDPSM.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Test/IEEE13_LineAndCableSpacing.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/IEEE13_LineGeometry.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/IEEE13_LineSpacing.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/IEEE13_SpacingGeometry.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/IEEELineGeometry.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/LoadTest.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/Master_TestCapInterface.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/MultiCircuitTest.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/ODRegTest.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/PVSystemTest-Duty.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/PVSystemTest.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/PVSystemTestHarm.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/REACTORTest.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/ReactorConfigs.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/ReverseDistanceRelayTest.DSS",
-   "oracle": "r4133",
+   "engines": "r4133",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/ReverseTD21RelayTest.DSS",
-   "oracle": "r4133",
+   "engines": "r4133",
    "kind": "feeder",
    "n_steps": 1,
    "compare_eventlog": true
   },
   {
    "path": "Test/Stevenson.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/TD21RelayTest.DSS",
-   "oracle": "r4133",
+   "engines": "r4133",
    "kind": "feeder",
    "n_steps": 1,
    "compare_eventlog": true
   },
   {
    "path": "Test/TestAuto.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/TestDDRegulator.dss",
+   "engines": "capi_v0145",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
   {
    "path": "Test/TextTsCable750MCM.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/TriplexLineCodeCalc.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/XYCurvetest.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/YgD-Test.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt5/Master_ckt5.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_noPV.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/J1/Master_withPV.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/K1/Master_NoPV.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -311,50 +357,59 @@
    "path": "Version8/Distrib/EPRITestCircuits/epri_dpv/M1/Master_NoPV.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "r4133"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master.DSS",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/Master_Interconnected.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt5-G/Torn_Circuit/zone_2/master.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master.DSS",
+   "engines": "capi_v0145",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/Master_Interconnected.dss",
+   "engines": "capi_v0145",
    "kind": "large_ultra_switch",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_2/master.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/EPRI_Ckt7-G/Torn_Circuit/zone_3/master.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "post": ["Solve"],
    "expect_solve_abort": "Max Control Iterations Exceeded",
@@ -362,36 +417,43 @@
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_3/master.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/Master_Interconnected.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/Torn_Circuit/zone_2/master.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/TnDSystem/Transmission/Torn_Circuit/zone_2/master.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -399,6 +461,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -406,57 +469,63 @@
   },
   {
    "path": "Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/zone_2/master.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/Auto1bus.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/Auto3bus.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/AutoAuto.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/AutoTrans/AutoHLT.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/DistanceRelayTest.DSS",
-   "oracle": "r4133",
+   "engines": "r4133",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/ReverseDistanceRelayTest.DSS",
-   "oracle": "r4133",
+   "engines": "r4133",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/ReverseTD21RelayTest.DSS",
-   "oracle": "r4133",
+   "engines": "r4133",
    "kind": "feeder",
    "n_steps": 1,
    "compare_eventlog": true
   },
   {
    "path": "Version8/Distrib/Examples/DistanceRelays/TD21RelayTest.DSS",
-   "oracle": "r4133",
+   "engines": "r4133",
    "kind": "feeder",
    "n_steps": 1,
    "compare_eventlog": true
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_1.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_floating_zeroseq",
@@ -464,6 +533,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/1_2.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_floating_zeroseq",
@@ -471,6 +541,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/2_1.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_floating_zeroseq",
@@ -478,6 +549,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/DOCTechNote/2_2.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_floating_zeroseq",
@@ -485,6 +557,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp-steady-state-only.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -492,71 +565,86 @@
    "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
+   "wp": "WP-UG-D (Unified Gate Phase D ledger)",
+   "defer_ledger": "capi015-line DynamicExp D14 Exit-no-op (frozen state var seed): 0.14.5 swings, r4133-11.0 evaluates DynExp differently -> node V diverges ~1.5e-5 rel. Phase D: r4133 divergence envelope.",
    "note": "Flipped to oracle:capi015 by the DYNEXP WP (D14, upstream 2a8bdb78). This deck runs a full dynamics swing (fault at HT, cleared by opening a line, 5 s undamped swing) driven by a DynamicExp shaft model. D14 makes SolveEq a no-op evaluator, so the rotor stays frozen at its seed angle (theta 0.72907156 rad, speed 0) instead of swinging -- matching capi015 exactly, diverging from the 0.14.5 oracle (which swings). See DIVERGENCES.md §D14 and the generator_dynexp_dynamics_* unit gates. The steady-state-only sibling stays on the default oracle (never enters dynamics, so SolveEq is never called)."
   },
   {
    "path": "Version8/Distrib/Examples/ExpControl/Master.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/FreqScan/Run_Scan.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/GICExample/GIC_Example.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_VV.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvar.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/CurrentkvarLimite/PV_currentkvarLimit_kvarNEG.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_avg-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_P-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kVAlimitation_Q-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/DRC/Daily_DRC_kvarlimitation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -564,445 +652,521 @@
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_2-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_average-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_max-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Local_voltage_min-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_avg_VVDRC-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_MAX_Mix_ravg-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_LL-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/MonitoredVoltage/Mon_voltage_average_Mix-2.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_avg-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_P-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kVAlimitation_Q-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_kvarlimitation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_DRC/Daily_VVDRC_ravg-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_VWnooperation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/Daily_voltvar_pctPmpp60-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_VWnooperation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varAval_PMPPPU_kvarlimit-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Ppriority-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_kVAlimitation_Qpriority-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/VV_VW/SnapShot_VVVW_varMax_PMPPPU_pctPmpp60-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_Standard-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_avg-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_ppriority-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_greater_kVA_qpriority-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_kvarlimit-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_pctPmpp60-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/Daily_voltvar_ravg-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_Standard_varaval_kvarlimitation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_ppriority-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_greater_kvA_qpriority-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-var/SnapShot_voltvar_pctPmpp60-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PCTPMPPPU-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PF-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/Daily_voltwatt_noOperation_PF-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_KVARATINGPU-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_PF-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PAVAILABLEPU_pctPmpp60-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PCTPMPPPU_PF-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PF-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kVAlimitation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_PFP_kvarlimitation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pctPmpp60_PF-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_pmpp_greater_kva-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_varP_kVAlimitation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_PMPPPU_wattP_kVAlimitation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_noOperation_PF-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/volt-watt/SnapShot_voltwatt_pf-2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattpf.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/InvControl/watt-pf_watt-var/dss/SnapShot_wattvar.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_Standard-PV2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kVAlimitation-PV2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_kvarlimitation-PV2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/ConstantPF/SnapShot_PFP_pctPmpplimitation-PV2.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvar.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterModels/PVSystem/NewFeatures/varCapability/PV_currentkvarLimit_kvarNEG.dss",
+   "engines": "capi_v0145",
    "kind": "large_near_ideal_source",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/ReactivePower/11_3_ReactivePowerViolation.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/kVA/11_1_kVAViolation.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/InverterTechNote/kWRated/11_2_kWRatedViolation.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Matlab/pst.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS",
+   "engines": "capi_v0145",
    "kind": "large_floating_delta",
    "n_steps": 1,
    "selected_elements": [
@@ -1014,11 +1178,13 @@
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/ISource/Master.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1027,111 +1193,134 @@
    "isolate": true,
    "kind": "large",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
+   "wp": "WP-UG-D (Unified Gate Phase D ledger)",
+   "defer_ledger": "capi015-line NCIM solver (WP-U1.7): 0.14.5 lacks NCIM (Set algorithm=NCIM ignored; Export deltaf/deltaZ unknown #24713), r4133-11.0 NCIM converges to a different PV/Q operating point -> Vsource.source current diverges wholesale (sign+magnitude). Phase D: re-gate vs r4133 with an iteration/current envelope, or vs capi_v0145 once NCIM lands there.",
    "note": "T1 test-triage promotion (2026-07-17): was skipped_oracle_issue #24713 ('Unknown Export command: deltaf') -- STALE, the pinned 0.14.5 oracle predates NCIM and its deltaF/deltaZ/jacobian exports. Kundur two-area transmission network solved with `set algorithm=NCIM` (the 0.15.x-line solver). Flipped oracle:capi015 (the NCIM-owning dss_capi 0.15.0b4 / SVN r4103 line). Validated per UPGRADE_PLAN.md §1.7: (1) capi015 compiles+solves+converges (warm re-solve 1 iter); (2) bit-identical across two capi015 processes (y_fp nnz=99 frob=4352.558077818025 tr_re=2002.050898338095 tr_im=-7402.642529188686 identical); (3) feature-sensitive -- forcing `set algorithm=Normal` DIVERGES on capi015 (|V|~8e115, 200 iters), so NCIM cannot silently no-op. Whole-model live compare: Rust matches capi015 to 0 (all 33 nodes byte-identical, B1.1=11893.415545). Iteration policy Rust<=capi015: warm re-solve 1==1 (equal). The `export deltaF/deltaZ/jacobian` NCIM exports are ported (WP-U1.7); the port raises no errors."
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/MASTER_RedeTeste13Barras.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Paulo_Example/DSSFiles/subestacao.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_large_1phase.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/IEEE-TIA-LV Model/master_small_1phase.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/LoadShape/LoadShapeRun.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveMonPhaseRun.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShave/PeakShaveRun.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Schedule/ScheduleRun.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Support/SupportRun.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Time/TimeRun.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_1_Default/Storage_default.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_2_Follow/Storage_follow.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "feeder",
@@ -1139,46 +1328,55 @@
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_4_External/Storage_external.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/ConstantPF_9_5_2/Storage_follow_PF.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/StorageTechNote/Example_9_5_ReactivePower/Constantkvar_9_5_1/Storage_follow_kvar.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/UPFC_Test/UPFC_test_3.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/HWDyn.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/HWPLL.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/HWPLL3.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/VCCS/HWtest.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1,
    "selected_elements": [
@@ -1188,11 +1386,13 @@
   },
   {
    "path": "Version8/Distrib/Examples/VSConverter/SG2012.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/WampServer/testcommandline.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1200,16 +1400,18 @@
    "path": "Version8/Distrib/Examples/civinlar model/civanlar.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "r4133",
+   "engines": "r4133",
    "note": "Flipped capi015 -> oracle:r4133 by WP-U2.4 D6 (SwtControl `Action` fix). SwtControl.5_11/7_16/10_14 are created `Action=c` then `edit action=o`; under D6 (r4133) the `action=o` opens the tie switches IMMEDIATELY at parse (the switch state forced like `State`), so the snapshot solve converges in 2 iterations to the open-tie topology. capi015 (Rung-1) instead armed a control-queue action that opened the ties during the solve's control loop (5 iterations, warm-started from the closed mesh), converging to a physically-equivalent-but-not-bit-identical point (node0 V differs 8e-4, above the feeder tier abs floor 1.3e-4 -- a solve-PATH difference, not conditioning). PROVEN the port matches r4133 exactly: r4133 also converges in 2 iters to node0 V=(13261.309423, -34.747502), bit-identical to the port; capi015's 5-iter path gives (13261.308840, -34.748053). All three ties open on every engine (|I|=0). Target-rev case -> no property-compare, so the D12 Normal/State readback (still pinned by the swtcontrol/swt_control unit tests) is moot here. See DIVERGENCES.md §D12 (SwtControl field mapping) + STATUS §WP-U2.4."
   },
   {
    "path": "Version8/Distrib/Examples/civinlar model/regulator.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Master.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "post": [
     "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
@@ -1320,41 +1522,49 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/IEEE123Switches.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_SolarRamp.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/P174_Run_VoltageProfile.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/RevRegTest.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/Run_IEEE123Bus.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "post": [
     "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
@@ -1389,6 +1599,7 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/37Bus/ieee37.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "post": [
     "New loadshape.day npts=24 interval=1 mult=(.30 .29 .28 .27 .27 .30 .36 .48 .60 .72 .85 .95 1.05 1.10 1.08 1.02 .96 .94 1.00 1.05 .95 .75 .55 .40)",
@@ -1440,16 +1651,17 @@
    "path": "Version8/Distrib/IEEETestCases/4Bus-DY-Bal/4Bus-DY-Bal.DSS",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-GrdYD-Bal/4Bus-GrdYD-Bal.DSS",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1457,22 +1669,23 @@
    "path": "Version8/Distrib/IEEETestCases/4Bus-YD-Bal/4Bus-YD-Bal.DSS",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YY-Bal/4Bus-YY-Bal.DSS",
    "kind": "feeder",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS",
    "kind": "large",
    "n_steps": 1,
-   "oracle": "capi015"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Master.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "post": [
     "Set Maxiterations=20"
@@ -1484,26 +1697,31 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_360kW_PV.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/P174_Run_Voltage_Profile.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_8500Node_Unbal.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "post": ["Solve"],
    "expect_solve_abort": "Max Control Iterations Exceeded",
@@ -1511,66 +1729,79 @@
   },
   {
    "path": "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss",
+   "engines": "capi_v0145",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Run_IEEE30.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss",
+   "engines": "capi_v0145",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss",
+   "engines": "capi_v0145",
    "kind": "large_floating_zeroseq",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Source/LineConstants.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LineCodes/IEEELineGeometry.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/NEVMASTER.DSS",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Run_NEV.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee34Mod2_SC_Case_II.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/ieee37_SC_Currents.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
   {
    "path": "Test/Source012Test.dss",
+   "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1
   },
@@ -1581,7 +1812,7 @@
     "set mode=snapshot"
    ],
    "n_steps": 1,
-   "oracle": "r3723"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
@@ -1590,44 +1821,46 @@
     "set mode=snapshot"
    ],
    "n_steps": 1,
-   "oracle": "r3723"
+   "engines": "r4133"
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS",
    "kind": "large",
    "n_steps": 1,
-   "oracle": "r4088",
+   "engines": "r4133",
    "note": "CF-B migration (T-A #29). The pinned oracle raises #303 on the deck's headless `Show` commands; the official EPRI engines treat them as non-fatal and solve through, matching Rust -- validated live through the harness via the Oddie bridge (full-model compare green). Rust compiles the whole deck (Show/Export/fileedit are headless no-ops) with zero errors; the gated final solve is the deck's Direct-mode SLG-fault-at-B2 (loads disabled) solve. Re-gated r3723 -> r4088 at the upgrade-rung1 sync merge: the deck is 4Bus Carson geometry, and WP-U1.2 B2/D1 (SimpleCarson De 658.5 -> 658.8530451057239, DIVERGENCES.md #b2--d1) moved Rust off the r3723-era constant (witnessed 5.7e-6 > 1.04e-6 floor); r4088 carries the corrected LineConstants (ledger: byte-identical across r4088/r4133) while keeping the non-fatal-Show behavior."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod1.dss",
    "kind": "large",
    "n_steps": 1,
-   "oracle": "r3723",
+   "engines": "r4133",
    "note": "CF-B migration (T-A #27). Pinned oracle raises #303 on headless `Show`; r3723 solves through, matching Rust -- validated live. The gated final state is the deck's SECOND `Compile ieee34Mod1.dss` run: forced regulator taps + `Set Controlmode=OFF`, i.e. a plain power flow with no control loop. Rust iterations == r3723 there (no fewer-iteration NOTE emitted). Iteration caveat reconciled: the triage's Rust-4-vs-r3723-2 was the FIRST (controlled) run's control-iteration count, NOT the like-for-like gated final solve the harness compares -- so the Rust<=oracle policy is not actually violated."
   },
   {
    "path": "Version8/Distrib/IEEETestCases/34Bus/Run_IEEE34Mod2.dss",
    "kind": "large",
    "n_steps": 1,
-   "oracle": "r3723",
+   "engines": "r4133",
    "note": "CF-B migration (T-A #28). Pinned oracle raises #2190 on headless `ShowCurrents`; r3723 solves through, matching Rust -- validated live. Gated final state = the deck's SECOND `Compile ieee34Mod2.dss` run (forced taps + `Set Controlmode=OFF`, maxcontroliter=300); Rust iterations == r3723 on that plain final solve. Same iteration reconciliation as Mod1: the 4-vs-2 caveat was the first controlled run, not the gated final solve."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMSnap.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot; floating-delta common-mode floor (precedent GFM_IEEE123/Run_IEEE123Bus_GFMSnap.DSS, TOLERANCE_NOTES section floating-delta). Flipped oracle:capi015 by the GFM WP: the snapshot leaves the GFM storage in discharging+GFM, so the B5 Isc1 change (drop *1000, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals (witnessed 0.14.5 vs capi015 rel 1.209e-1). Whole-model live compare green vs capi015 (op-point Isc1-invariant, only the Norton YPrim moves)."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-A.DSS",
+   "engines": "capi_v0145",
    "kind": "large_floating_delta",
    "n_steps": 1,
    "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant); floating-delta common-mode floor. Validated live green vs the pinned oracle."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-B.DSS",
+   "engines": "capi_v0145",
    "kind": "large_floating_delta",
    "n_steps": 1,
    "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant); floating-delta common-mode floor. Validated live green vs the pinned oracle."
@@ -1636,11 +1869,12 @@
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMSnap-C.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "CF-B migration (T-B U1a). Whole-IEEE123 GFM snapshot (step-by-step validation variant C); floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: variant C ends with the GFM storage discharging (variants A/B end idling/charging and stay 0.14.5-green), so the B5 Isc1 change (de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (witnessed rel 1.209e-1). Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDaily.DSS",
+   "engines": "capi_v0145",
    "kind": "large_floating_delta",
    "n_steps": 1,
    "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory (7 RegControls at maxtapchange=1 + Storage/PV GFM, AmpLimit); floating-delta common-mode floor. Validated live green vs the pinned oracle -- `compile` runs the full scripted daily trajectory, the gated solve captures the final converged state."
@@ -1649,11 +1883,12 @@
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_AmpsLimit_123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap (AmpLimit); floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: the SwapRef trajectory ends with the GFM storage discharging (its non-SwapRef GFMDaily sibling ends charging/GFL and stays 0.14.5-green), so the B5 Isc1 change (de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (witnessed rel 1.209e-1). Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
+   "engines": "capi_v0145",
    "kind": "large_floating_delta",
    "n_steps": 1,
    "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory (7 RegControls at maxtapchange=1 + Storage/PV GFM); floating-delta common-mode floor. Validated live green vs the pinned oracle."
@@ -1662,11 +1897,12 @@
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMDailySwapRef.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily trajectory with reference swap; floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: the SwapRef trajectory ends with the GFM storage discharging (its non-SwapRef GFMDaily sibling ends charging/GFL and stays 0.14.5-green), so the B5 Isc1 change (de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the StoBus mutual Y (witnessed rel 1.209e-1). Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE123/Run_IEEE123Bus_GFMWholeDaily.DSS",
+   "engines": "capi_v0145",
    "kind": "large_floating_delta",
    "n_steps": 1,
    "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM whole-day trajectory; floating-delta common-mode floor. Validated live green vs the pinned oracle."
@@ -1675,39 +1911,42 @@
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily_CannotPickUpLoad.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "CF-B migration (T-B U1b). Whole-IEEE123 GFM daily->dynamics trajectory (cannot-pick-up-load: Load.s103c.kW=400 collapses the island so the GFM storage cannot form voltage); floating-delta common-mode floor. Flipped oracle:capi015 by the GFM WP: its GFM storage reaches CalcGFMYprim in the discharging+GFM final state, so the B5 Isc1 change (drop *1000, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals (witnessed Y[STOBUS.2,STOBUS.1] 0.14.5 vs capi015 rel 1.209e-1). Contrary to the WP-U1.2 note that this deck 'stays 0.14.5-green', it moves like its GFMDaily sibling (the AmpLimit current limit is a separate axis and does not shield the YPrim). Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123/Run_IEEE123Bus_GFMDaily.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "GFM WP re-promotion (was parked upgrade_straddle_gfm_wp). Islanded GFM daily->dynamics deck (sw5 open, storage GFM discharge). The 0.15.x GFM Storage YPrim delta (B5: Isc1 drops the *1000 factor, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) is now ported, moving the assembled system Y at the StoBus mutuals to the capi015 value (witnessed Y[STOBUS.1,STOBUS.2] 0.14.5 vs capi015 rel 1.209e-1). Straddle-axis (1) WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW->FkVArating) is also resolved on capi015. Whole-model live compare (system Y + V/I/P per step) green vs capi015; the GFM power-flow op-point is Isc1-invariant (proven), so V/I/P did not move -- only the Norton YPrim did."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFM_IEEE123_AmpLimit/Run_IEEE123Bus_GFMDaily_CurrentLimit.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "GFM WP re-promotion (was parked upgrade_straddle_gfm_wp). Current-limited (AmpLimit=500) islanded GFM daily->dynamics deck; same class as its GFM_IEEE123/GFMDaily sibling. B5 (Isc1 drop *1000, de6a5a42/SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals to capi015 (witnessed rel 1.209e-1). The storage dynamics state var it[last] is an open-loop, non-injecting integration (only it[0] drives the GFM voltage source), so it drifts on the oscillating AC waveform over the long trajectory; it is not a gated quantity and does not affect node V, which stays pinned by the it[0]<->node-V fixpoint. Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "CF2-G migration. Whole-IEEE123 GFL daily→dynamics trajectory (Storage+PV, InvControl GFM monitor). Was ABOVE-BAND; root cause fixed: PVSystem InitStateVars/IntegrateStates ignored 'Set LoadShapeClass=daily' in dynamics (PanelkW 800 vs oracle 594.78), diverging node V ~16 V at the PV region. Fix honors ActiveLoadShapeClass in dynamics per PVsystem.pas l.2192/l.2281. Flipped oracle:capi015 at the upgrade-rung1 sync merge: WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, DIVERGENCES.md #d7) moves this deck -- the daily shape puts PanelkW (irradiance-scaled, ~594.78 kW) below FkVArating (800), so the dynamics current limit differs between the engines (U1.2's kVA=Pmpp snapshot no-op probe does not apply mid-shape); vs 0.14.5 the trajectory diverged 7.61e-4 > 7.44e-4 floor (witnessed at merge), vs capi015 it is within floors."
   },
   {
    "path": "Version8/Distrib/Examples/IBRDynamics_Cases/GFL_IEEE123/Run_IEEE123Bus_GFLDaily_DynExp.DSS",
    "kind": "large_floating_delta",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
+   "wp": "WP-UG-D (Unified Gate Phase D ledger)",
+   "defer_ledger": "capi015-line DynamicExp D14 Exit-no-op (frozen state var seed): 0.14.5 swings, r4133-11.0 evaluates DynExp differently -> node V diverges ~1.5e-5 rel. Phase D: r4133 divergence envelope.",
    "note": "CF2-G migration; re-promoted from skipped_needs_investigation by the DYNEXP WP (D14 pulled ahead of WP-U1.6). GFL daily->dynamics DynamicExp/DynamicEq/DynOut variant of the GFL sibling. Double attribution off both mid-rung engines: (1) WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, DIVERGENCES.md #d7) moved it off the 0.14.5 oracle (witnessed 7.62e-4 > 7.41e-4 floor at entry 118); (2) the 0.15.x DynamicExp delta D14 (upstream 2a8bdb78) kept it off capi015 (witnessed 8.31e-3 > 7.40e-4 at entry 0). D14 ported: SolveEq now exits before evaluating the RHS (no-op evaluator; state-var derivative frozen at InitStateVars), so the DynExp path matches capi015 -- witnessed live: Generator dspeed=0/speed frozen vs 0.14.5 dspeed=-1.6e-6 (DIVERGENCES.md §D14). With D7 (landed) + D14 (this WP) both porting, the deck is capi015-green."
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -1715,6 +1954,7 @@
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -1722,6 +1962,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -1729,6 +1970,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -1736,6 +1978,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -1743,6 +1986,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -1750,6 +1994,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -1757,6 +2002,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -1764,6 +2010,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
+   "engines": "capi_v0145",
    "isolate": true,
    "note": "UNIFIED_GATE Phase B: enables debugtrace (via redirect chain) -> a persistent oracle worker keeps the fixed-name trace CSV open across cases, causing cross-worker file locks and corpus pollution the CorpusGuard cannot clear. Proven by the Phase B contamination run (5 ckt24-mm FILE_LOCK failures + 2 held-open trace files). isolate=one-shot releases the handle at process exit, restoring the pre-Phase-B fresh-process semantics.",
    "kind": "large_ultra_switch",
@@ -1771,6 +2018,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
@@ -1778,21 +2026,24 @@
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",
    "kind": "large",
    "n_steps": 1,
-   "oracle": "capi015",
+   "engines": "r4133",
    "note": "Flipped oracle:capi015 by the GFM WP: the 8500-node GFM snapshot leaves its GFM storage discharging, so the B5 Isc1 change (drop *1000, dss_capi de6a5a42 = SVN r3865; DIVERGENCES.md #b5) moves the assembled system Y at the StoBus mutuals (witnessed 0.14.5 vs capi015 rel 1.172e-1). Its GFMDaily/GFMDailySmallerPV siblings end charging/GFL and stay 0.14.5-green. Whole-model live compare green vs capi015."
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDaily.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMDailySmallerPV.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
+   "engines": "capi_v0145",
    "kind": "large",
    "post": ["Solve"],
    "expect_solve_abort": "Max Control Iterations Exceeded",
@@ -1800,6 +2051,7 @@
   },
   {
    "path": "Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",
+   "engines": "capi_v0145",
    "kind": "large",
    "n_steps": 1
   }
