@@ -569,19 +569,28 @@ impl LedgerView<'_> {
 
     // --- elements (currents / powers / losses) ------------------------------
 
-    /// Names (lowercased) of elements fully or partially handled by an element
-    /// scope, with the per-channel envelope applied here. Returns the set of
-    /// element names the caller must NOT pass to the standard `compare_element`
-    /// (they are handled — either enveloped or excluded — inside).
-    pub(crate) fn element_handled_names(
+    /// Element caps rewritten so a divergence/exclusion scope's SELECTED
+    /// sub-channels (currents/powers/losses) equal the Rust snapshot. The caller
+    /// runs the untouched `compare_element` on the rewrite, so the selected
+    /// channels compare-equal (clause (a): already re-asserted inside their pinned
+    /// envelope here) while every UNSELECTED sub-channel is tier-checked by the
+    /// real comparator (clause (b): the untouched harness comparator on the
+    /// unscoped remainder). Returns a map keyed by lowercased element name;
+    /// elements with no matching scope are absent (caller compares the original).
+    ///
+    /// This mirrors the `property` rewrite pattern in `runner.rs`: we never drop a
+    /// value from comparison — we neutralize exactly the pinned sub-channels and
+    /// let the harness compare the rest at its own tier floor.
+    pub(crate) fn element_rewrites(
         &self,
         step: usize,
         snaps: &[dss_core::exec::ElementSnapshot],
         elements: &[ElementCap],
         tol: &Tolerances,
         ctx: &str,
-    ) -> BTreeSet<String> {
-        let mut handled = BTreeSet::new();
+    ) -> std::collections::BTreeMap<String, ElementCap> {
+        let mut rewrites: std::collections::BTreeMap<String, ElementCap> =
+            std::collections::BTreeMap::new();
         let scopes: Vec<(&Entry, &Scope)> = self
             .entries()
             .filter(|e| matches!(e.kind, Kind::Divergence | Kind::Exclusion))
@@ -593,7 +602,7 @@ impl LedgerView<'_> {
             })
             .collect();
         if scopes.is_empty() {
-            return handled;
+            return rewrites;
         }
         for ec in elements {
             let lname = ec.name.to_lowercase();
@@ -606,24 +615,30 @@ impl LedgerView<'_> {
                 if !m {
                     continue;
                 }
-                handled.insert(lname.clone());
-                if e.kind == Kind::Exclusion {
-                    Self::mark_applied(e);
-                    continue;
-                }
-                // divergence: envelope-check the selected channels against the
-                // Rust snapshot; the sub-channels named in `channels` are
-                // enveloped, the rest still tier-checked here.
                 let snap = snaps
                     .iter()
                     .find(|s| s.name.eq_ignore_ascii_case(&ec.name))
                     .unwrap_or_else(|| {
                         panic!("{ctx}: ledger `{}`: no Rust element {}", e.id, ec.name)
                     });
-                envelope_element(e, sc, snap, ec, tol, ctx);
+                if e.kind == Kind::Divergence {
+                    // clause (a): selected sub-channels within the pinned envelope,
+                    // recording floor-exceed for the staleness check.
+                    envelope_element(e, sc, snap, ec, tol, ctx);
+                } else {
+                    // exclusion: the scoped sub-channels are simply not compared.
+                    Self::mark_applied(e);
+                }
+                // Neutralize the selected sub-channels: overwrite them with the
+                // Rust values so `compare_element` treats them as equal and
+                // tier-checks the unscoped remainder (clause (b)).
+                let cap = rewrites
+                    .entry(lname.clone())
+                    .or_insert_with(|| clone_element_cap(ec));
+                rewrite_element_selected(cap, sc, snap);
             }
         }
-        handled
+        rewrites
     }
 
     // --- probes -------------------------------------------------------------
@@ -686,9 +701,32 @@ impl LedgerView<'_> {
                         Self::mark_exceeded(e);
                     }
                 } else {
-                    // non-numeric probe (enum/word): exact-pair semantics only.
+                    // non-numeric probe (enum/word): discrete state is ledgerable
+                    // only as an EXACT PAIR (§1.3). A bare scope here would compare
+                    // nothing (self-certifying hit) — require an explicit `oracle`
+                    // pin (asserted above against the capture) and assert the live
+                    // Rust value against its `rust` pin when given.
+                    assert!(
+                        sc.oracle.is_some(),
+                        "{ctx}: ledger `{}` probe {key}: non-numeric value {:?} needs an exact \
+                         `oracle` pin — discrete state is exact-pair only, never a bare scope (§1.3)",
+                        e.id,
+                        exp.value
+                    );
+                    if let Some(r) = &sc.rust {
+                        let rs = value_as_str(r);
+                        assert!(
+                            rust_val.trim().eq_ignore_ascii_case(rs.trim()),
+                            "{ctx}: ledger `{}` probe {key}: rust value {rust_val:?} != pinned rust {rs:?}",
+                            e.id
+                        );
+                    }
+                    // Stale-if-converged: the discrete divergence is gone once the
+                    // Rust value equals the oracle capture (§5 R3 fail-on-stale).
                     Self::mark_applied(e);
-                    Self::mark_exceeded(e);
+                    if !rust_val.trim().eq_ignore_ascii_case(exp.value.trim()) {
+                        Self::mark_exceeded(e);
+                    }
                 }
                 return true;
             }
@@ -703,6 +741,7 @@ impl LedgerView<'_> {
     /// standard `compare_all_properties`.
     pub(crate) fn property_handled_keys(
         &self,
+        dss: &mut dss_core::exec::Dss,
         props: &[PropsCap],
         ctx: &str,
     ) -> BTreeSet<(String, String)> {
@@ -743,7 +782,13 @@ impl LedgerView<'_> {
                     }
                     handled.insert((el.clone(), name.to_lowercase()));
                     Self::mark_applied(e);
-                    Self::mark_exceeded(e);
+                    // Stale-if-converged: this exact-pair divergence is gone once
+                    // the Rust `?`-surface equals the oracle value (§5 R3).
+                    dss.command(&format!("? {}.{}", pc.element, name));
+                    let rust_val = dss.result().to_string();
+                    if !rust_val.trim().eq_ignore_ascii_case(val.trim()) {
+                        Self::mark_exceeded(e);
+                    }
                 }
             }
         }
@@ -752,16 +797,21 @@ impl LedgerView<'_> {
 
     // --- monitors -----------------------------------------------------------
 
-    /// Returns `true` if a monitor scope fully handled this monitor's compare
-    /// (caller skips the standard `compare_monitor`). Envelopes the selected
-    /// channel (`channel_idx`) and tier-checks the rest.
-    pub(crate) fn monitor_handled(
+    /// The monitor capture rewritten so each pinned `channel_idx` equals the Rust
+    /// samples, or `None` if no scope matched. The caller runs the untouched
+    /// `compare_monitor` on the rewrite: the pinned channel(s) compare-equal
+    /// (clause (a): re-asserted inside their envelope here) while EVERY OTHER
+    /// channel is tier-checked by the real comparator (clause (b) — the header,
+    /// sample count and all unscoped channels go through the standard path). A
+    /// scope with no `channel_idx` matches nothing to neutralize, so the monitor
+    /// falls entirely through to the standard comparator.
+    pub(crate) fn monitor_rewrite(
         &self,
         dss: &dss_core::exec::Dss,
         exp: &MonitorCap,
         tol: &Tolerances,
         ctx: &str,
-    ) -> bool {
+    ) -> Option<MonitorCap> {
         let scopes: Vec<(&Entry, &Scope)> = self
             .entries()
             .filter(|e| e.kind == Kind::Divergence)
@@ -779,11 +829,13 @@ impl LedgerView<'_> {
             })
             .collect();
         if scopes.is_empty() {
-            return false;
+            return None;
         }
         let view = dss
             .monitor_view(&exp.name)
             .unwrap_or_else(|| panic!("{ctx}: ledger monitor {}: no Rust monitor", exp.name));
+        let mut channels = exp.channels.clone();
+        let mut any = false;
         for (e, sc) in &scopes {
             let Some(ci) = sc.channel_idx else { continue };
             let och = exp.channels.get(ci).unwrap_or_else(|| {
@@ -817,14 +869,25 @@ impl LedgerView<'_> {
             if exceeded {
                 Self::mark_exceeded(e);
             }
+            // Neutralize the pinned channel: overwrite it with the Rust samples so
+            // the standard comparator treats it as equal and tier-checks the rest.
+            for (k, a) in rch.iter().enumerate() {
+                if let Some(slot) = channels[ci].get_mut(k) {
+                    *slot = *a as f64;
+                }
+            }
+            any = true;
         }
-        // Any monitor channel NOT covered by a scope is still tier-checked by the
-        // caller (it re-runs the standard comparator only when no scope matched).
-        // Here every scope pins exactly one channel of a monitor known to drift on
-        // exactly that channel; if the deck ever needs multi-channel handling, add
-        // a scope per channel. We handled the monitor iff at least one scope had a
-        // channel_idx.
-        scopes.iter().any(|(_, sc)| sc.channel_idx.is_some())
+        if !any {
+            return None;
+        }
+        Some(MonitorCap {
+            name: exp.name.clone(),
+            header: exp.header.clone(),
+            sample_count: exp.sample_count,
+            channels,
+            skip_channels: exp.skip_channels.clone(),
+        })
     }
 
     // --- eventlog / ctrlqueue line masks ------------------------------------
@@ -901,6 +964,46 @@ fn envelope_element(
     LedgerView::mark_applied(e);
     if exceeded {
         LedgerView::mark_exceeded(e);
+    }
+}
+
+/// A value-copy of an oracle element capture (no `Clone` derive on the harness
+/// struct — we build a fresh cap so the rewrite never touches the harness type).
+fn clone_element_cap(ec: &ElementCap) -> ElementCap {
+    ElementCap {
+        name: ec.name.clone(),
+        i_re: ec.i_re.clone(),
+        i_im: ec.i_im.clone(),
+        p_kw: ec.p_kw.clone(),
+        p_kvar: ec.p_kvar.clone(),
+        loss_w: ec.loss_w.clone(),
+    }
+}
+
+/// Overwrite a cap's SELECTED sub-channels (per `sc.channels`; empty ⇒ all) with
+/// the Rust snapshot values, so the standard `compare_element` treats exactly the
+/// pinned channels as equal and tier-checks the unscoped remainder (clause (b)).
+fn rewrite_element_selected(
+    cap: &mut ElementCap,
+    sc: &Scope,
+    snap: &dss_core::exec::ElementSnapshot,
+) {
+    let want = |ch: &str| sc.channels.is_empty() || sc.channels.iter().any(|c| c == ch);
+    if want("currents") {
+        for k in 0..cap.i_re.len().min(cap.i_im.len()) {
+            cap.i_re[k] = snap.currents[2 * k];
+            cap.i_im[k] = snap.currents[2 * k + 1];
+        }
+    }
+    if want("powers") {
+        for k in 0..cap.p_kw.len().min(cap.p_kvar.len()) {
+            cap.p_kw[k] = snap.powers[2 * k];
+            cap.p_kvar[k] = snap.powers[2 * k + 1];
+        }
+    }
+    if want("losses") && cap.loss_w.len() == 2 {
+        cap.loss_w[0] = snap.loss_w.0;
+        cap.loss_w[1] = snap.loss_w.1;
     }
 }
 
