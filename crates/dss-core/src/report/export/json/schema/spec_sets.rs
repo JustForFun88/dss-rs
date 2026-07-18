@@ -323,6 +323,61 @@ pub(super) fn spec_sets(class_name: &str) -> &'static [SpecSet] {
                 props: &["kvar"],
             },
         ],
+        // `AutoTrans.pas:372-378` — `SpecSetNames`/`SpecSets`.
+        "AutoTrans" => &[
+            SpecSet {
+                name: "XHX, XHT, XXT",
+                props: &["XHX", "XHT", "XXT"],
+            },
+            SpecSet {
+                name: "XscArray",
+                props: &["XSCArray"],
+            },
+        ],
+        // `GICTransformer.pas:170-176` — `SpecSetNames`/`SpecSets`.
+        "GICTransformer" => &[
+            SpecSet {
+                name: "R1, R2",
+                props: &["R1", "R2"],
+            },
+            SpecSet {
+                name: "pctR1, pctR2",
+                props: &["%R1", "%R2"],
+            },
+        ],
+        // `Sensor.pas:203-209` — `SpecSetNames`/`SpecSets`.
+        "Sensor" => &[
+            SpecSet {
+                name: "kWs, kvars",
+                props: &["kWs", "kvars"],
+            },
+            SpecSet {
+                name: "currents",
+                props: &["Currents"],
+            },
+        ],
+        // `GICLine.pas:186-193` — same two spec sets as GICsource.
+        "GICLine" => &[
+            SpecSet {
+                name: "Volts, Angle",
+                props: &["Volts", "Angle"],
+            },
+            SpecSet {
+                name: "EN, EE, Lat1, Lon1, Lat2, Lon2",
+                props: &["EN", "EE", "Lat1", "Lon1", "Lat2", "Lon2"],
+            },
+        ],
+        // `GICsource.pas:152-159` — `SpecSetNames`/`SpecSets`.
+        "GICsource" => &[
+            SpecSet {
+                name: "Volts, Angle",
+                props: &["Volts", "Angle"],
+            },
+            SpecSet {
+                name: "EN, EE, Lat1, Lon1, Lat2, Lon2",
+                props: &["EN", "EE", "Lat1", "Lon1", "Lat2", "Lon2"],
+            },
+        ],
         _ => &[],
     }
 }

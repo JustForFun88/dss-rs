@@ -61,21 +61,28 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // `Required` (enforced by the recalc 666 message when nil).
         PropDef::object_ref_any("Element").flags(PropFlags::REQUIRED),
         PropDef::integer("Terminal"),
-        PropDef::double("kVBase").flags(PropFlags::REQUIRED),
-        // `BooleanActionProperty` over `DoClearSensor`: setting `yes` clears the
-        // spec flags; stores nothing, so the getter is always `No`.
-        PropDef::boolean("Clear"),
+        PropDef::double("kVBase").flags(PropFlags::REQUIRED | PropFlags::UNITS_KV),
+        // `BooleanActionProperty` over `DoClearSensor` (`Sensor.pas:252`): setting
+        // `yes` clears the spec flags; stores nothing, so the getter is always `No`.
+        // `BOOLEAN_ACTION` marks the schema `writeOnly` and pushes it to the end of
+        // `AltPropertyOrder` (Pascal action ordering).
+        PropDef::boolean("Clear").flags(PropFlags::BOOLEAN_ACTION),
         // `DoubleVArrayProperty`s over the per-phase measured arrays (Fnphases).
         PropDef::double_v_array("kVs"),
-        PropDef::double_v_array("Currents"),
-        PropDef::double_v_array("kWs"),
+        PropDef::double_v_array("Currents").flags(PropFlags::REQUIRED_IN_SPEC_SET),
+        PropDef::double_v_array("kWs").flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::double_v_array("kvars"),
         PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::integer("DeltaDirection"),
         PropDef::double("%Error"),
         PropDef::double("Weight"),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);

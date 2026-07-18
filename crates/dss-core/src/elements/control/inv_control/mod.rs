@@ -168,7 +168,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("VarChangeTolerance"),
         PropDef::mapped_string_enum("VoltWattYAxis", enums.invcontrol_voltwatt_yaxis),
         PropDef::mapped_string_enum("RateOfChangeMode", enums.invcontrol_roc),
-        PropDef::double("LPFTau"),
+        PropDef::double("LPFTau").flags(PropFlags::UNITS_S),
         PropDef::double("RiseFallLimit"),
         PropDef::double("DeltaP_Factor"),
         PropDef::boolean("EventLog"),
@@ -181,10 +181,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("XYCurve", "VoltWattCH_Curve"),
         PropDef::object_ref_class("XYCurve", "WattPF_Curve"),
         PropDef::object_ref_class("XYCurve", "WattVar_Curve"),
-        // Pascal DeprecatedAndRemoved — present in the table (occupies an
-        // ordinal) but its `?` getter renders '' and a write does nothing.
-        // Modeled as a read-only '' string, like Storage's `%Idlingkvar`.
-        PropDef::string("VV_RefReactivePower"),
+        // Pascal `DeprecatedAndRemoved` (`InvControl.pas:525`) — present in the
+        // table (occupies a `$dssPropertyIndex` ordinal) but its `?` getter renders
+        // '' and a write does nothing. Like Storage's `%Idlingkvar`, `SUPPRESS_JSON`
+        // excludes it from the JSON export, the schema walk, and `AltPropertyOrder`
+        // (Pascal `GetObjPropertyJSONValue` returns False for `DeprecatedAndRemoved`
+        // + `nextByZOrder` skips it, `DSSObjectHelper.pas:1517`/`DSSClass.pas:2003`)
+        // while the `?`/props surface still exposes the stored ''.
+        PropDef::string("VV_RefReactivePower").flags(PropFlags::SUPPRESS_JSON),
         // Pascal Redundant+Deprecated, PropertyOffset = @DERNameList (shares the
         // DERList backing): a write prepends "PVSystem." then re-runs the DERList
         // side effect.
@@ -192,7 +196,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("VSetPoint"),
         PropDef::mapped_int_enum("ControlModel", enums.invcontrol_model),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);

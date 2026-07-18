@@ -76,11 +76,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::mapped_string_enum("Type", enums.gic_transformer_type),
         // R1/R2 stored as conductances G1/G2 (InverseValue).
-        PropDef::double("R1").flags(PropFlags::INVERSE_VALUE | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("R2").flags(PropFlags::INVERSE_VALUE),
-        PropDef::double("kVLL1"),
-        PropDef::double("kVLL2"),
-        PropDef::double("MVA"),
+        PropDef::double("R1").flags(
+            PropFlags::INVERSE_VALUE | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_OHM,
+        ),
+        PropDef::double("R2").flags(PropFlags::INVERSE_VALUE | PropFlags::UNITS_OHM),
+        PropDef::double("kVLL1").flags(PropFlags::UNITS_KV),
+        PropDef::double("kVLL2").flags(PropFlags::UNITS_KV),
+        PropDef::double("MVA").flags(PropFlags::UNITS_MVA),
         PropDef::object_ref_class("XYcurve", "VarCurve"),
         // The `%R1`/`%R2` display spelling comes from Pascal's `pct` → `%`
         // rename in PopulatePropertyNames (§3 finding).
@@ -94,7 +96,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

@@ -56,23 +56,43 @@ pub fn class_props() -> ClassProps {
         // Pascal flags Bus1 `Required` (inert here — not enforced, like Reactor).
         PropDef::bus("Bus1", BUS1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", BUS2),
-        PropDef::double("Volts").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
+        PropDef::double("Volts")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_V),
+        // GICLine `Angle` carries no unit flag (unlike GICsource's, `GICLine.pas`).
         PropDef::double("Angle"),
-        PropDef::double("Frequency").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("Frequency")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::UNITS_HZ),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("R").flags(PropFlags::NO_DEFAULT),
-        PropDef::double("X"),
-        PropDef::double("C"),
-        PropDef::double("EN").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("EE").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Lat1").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Lon1").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Lat2").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("Lon2").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        // TPCClass tail (Spectrum is SuppressJSON upstream — text dump keeps it):
-        PropDef::object_ref("Spectrum"),
+        PropDef::double("R").flags(PropFlags::NO_DEFAULT | PropFlags::UNITS_OHM),
+        PropDef::double("X").flags(PropFlags::UNITS_OHM),
+        PropDef::double("C").flags(PropFlags::UNITS_UF),
+        PropDef::double("EN").flags(
+            PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_V_PER_KM,
+        ),
+        PropDef::double("EE").flags(
+            PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_V_PER_KM,
+        ),
+        PropDef::double("Lat1")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_DEG),
+        PropDef::double("Lon1")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_DEG),
+        PropDef::double("Lat2")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_DEG),
+        PropDef::double("Lon2")
+            .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_DEG),
+        // GICLine flags both Spectrum and BaseFreq `SuppressJSON` AFTER the
+        // inherited DefineProperties (`GICLine.pas:249-250`): they stay in
+        // `AltPropertyOrder` (occupy `$dssPropertyOrder` slots) but are excluded
+        // from the JSON/schema output — the port's `SUPPRESS_JSON_LATE`.
+        PropDef::object_ref("Spectrum").flags(PropFlags::SUPPRESS_JSON_LATE),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ
+                | PropFlags::SUPPRESS_JSON_LATE,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

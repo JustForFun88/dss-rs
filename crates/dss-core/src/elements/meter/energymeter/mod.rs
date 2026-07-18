@@ -137,20 +137,29 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("LineLosses"),
         PropDef::boolean("XfmrLosses"),
         PropDef::boolean("SeqLosses"),
-        PropDef::boolean("3PhaseLosses"),
+        // Pascal `PropertyNameJSON[__3PhaseLosses] := 'ThreePhaseLosses'`
+        // (`EnergyMeter.pas:631`) — the JSON/schema key spells out the leading digit.
+        PropDef::boolean("3PhaseLosses").json_name("ThreePhaseLosses"),
         PropDef::boolean("VBaseLosses"),
         PropDef::boolean("PhaseVoltageReport"),
         PropDef::double("Int_Rate"),
         PropDef::double("Int_Duration"),
-        // Read-only reliability props (Pascal `SilentReadOnly`); stored, never
-        // written by the gate scenarios.
-        PropDef::double("SAIFI"),
-        PropDef::double("SAIFIkW"),
-        PropDef::double("SAIDI"),
-        PropDef::double("CAIDI"),
-        PropDef::double("CustInterrupts"),
+        // Read-only reliability props (Pascal `SilentReadOnly` WITH a real
+        // `PropertyOffset`, `EnergyMeter.pas:670-676`): the port's `READ_ONLY`
+        // marks the schema `readOnly` + elides the default, while the `?`/props
+        // surface still returns the stored value.
+        PropDef::double("SAIFI").flags(PropFlags::READ_ONLY),
+        PropDef::double("SAIFIkW").flags(PropFlags::READ_ONLY),
+        PropDef::double("SAIDI").flags(PropFlags::READ_ONLY),
+        PropDef::double("CAIDI").flags(PropFlags::READ_ONLY),
+        PropDef::double("CustInterrupts").flags(PropFlags::READ_ONLY),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
@@ -351,7 +360,12 @@ impl EnergyMeter {
             vphase_min: vec![0.0; 3 * MAX_VBASE_COUNT],
             vphase_accum: vec![0.0; 3 * MAX_VBASE_COUNT],
             vphase_accum_count: vec![0; 3 * MAX_VBASE_COUNT],
-            element_full_name: String::new(),
+            // Pascal `TEnergyMeterObj.Create` (`EnergyMeter.pas:959`):
+            // `MeteredElement := ActiveCircuit.CktElements.Get(1)` — defaults to
+            // the first circuit element (the auto-created `Vsource.source`); every
+            // real deck overrides it via the `element=` property before solve, so
+            // it is observable only as the all-default sample's schema default.
+            element_full_name: "Vsource.source".to_string(),
             metered_snap: None,
             register_names: default_register_names(),
             registers: vec![0.0; NUM_EM_REGISTERS],

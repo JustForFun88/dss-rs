@@ -57,8 +57,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("kVDC"),
         PropDef::double("kW"),
         PropDef::integer("NDC"),
-        PropDef::double("RAC"),
-        PropDef::double("XAC"),
+        // Rac/Xac: Units_ohm (`VSConverter.pas:197,200`).
+        PropDef::double("RAC").flags(PropFlags::UNITS_OHM),
+        PropDef::double("XAC").flags(PropFlags::UNITS_OHM),
         PropDef::double("M0"),
         PropDef::double("d0"),
         PropDef::double("MMin"),
@@ -73,7 +74,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // PCClass tail:
         PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);

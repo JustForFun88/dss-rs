@@ -512,6 +512,12 @@ impl DssObject for AutoTrans {
                 KVAS => w.kva,
                 TAPS => w.putap,
                 PCTRS => w.rpu,
+                // `ON_ARRAY` per-winding scalars with no plural form (Pascal
+                // `DoubleOnStructArrayProperty`): the schema/JSON `preferArray`
+                // sweep renders the full per-winding array.
+                RDCOHMS => w.rdcohms,
+                MAXTAP => w.max_tap,
+                MINTAP => w.min_tap,
                 _ => unreachable!("AutoTrans has no struct array {idx}"),
             })
             .collect()
@@ -534,6 +540,10 @@ impl DssObject for AutoTrans {
     fn get_struct_i32_array(&self, idx: usize) -> Vec<i32> {
         match idx {
             prop::CONNS => self.windings.iter().map(|w| w.connection).collect(),
+            // `NumTaps` is an `ON_ARRAY` per-winding integer scalar (Pascal
+            // `IntegerOnStructArrayProperty`): the schema `preferArray` sweep
+            // reads the full per-winding array.
+            prop::NUMTAPS => self.windings.iter().map(|w| w.num_taps).collect(),
             _ => unreachable!("AutoTrans has no struct enum array {idx}"),
         }
     }

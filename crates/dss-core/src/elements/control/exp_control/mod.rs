@@ -83,8 +83,9 @@ pub fn class_props() -> ClassProps {
         // Slope → QVSlope (IgnoreInvalid + NonNegative + NonZero).
         PropDef::double("Slope")
             .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        // VregTau (IgnoreInvalid + NonNegative; Pascal Units_s is JSON-only).
-        PropDef::double("VRegTau").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
+        // VregTau (IgnoreInvalid + NonNegative + Units_s; `ExpControl.pas:225`).
+        PropDef::double("VRegTau")
+            .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::UNITS_S),
         PropDef::double("QBias"),
         PropDef::double("VRegMin").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
         PropDef::double("VRegMax").flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE),
@@ -99,7 +100,12 @@ pub fn class_props() -> ClassProps {
             .flags(PropFlags::IGNORE_INVALID | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::string_list("DERList"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
