@@ -90,6 +90,19 @@ SCHEMA_CLASSES = [
     "CapControl",
     "Fault",
     "DynamicExp",
+    # --- Batch B4: generation + storage (byte-exact after the documented
+    # r4133 divergences in schema_divergences.json). ---
+    "Generator",
+    "GenDispatcher",
+    "Storage",
+    "StorageController",
+    # Relay: deferred to integration as a port-authored (r4133) class — the port
+    # ports OpenDSS r4133-trunk Relay (75 props: PhCurve/OC_GndCurve/PhPickup
+    # renamed from the 0.14.5 PhaseCurve/GroundCurve/PhaseTrip, plus DOC_* /
+    # SinglePhTrip / Lock / RatedCurrent / InterruptingRating / per-phase
+    # Normal/State arrays), which diverges STRUCTURALLY from the pinned 0.14.5
+    # oracle (53 props, classic names). Like LineGeometry/WindGen it needs a
+    # port-output reference, not a 0.14.5 byte compare. See STATUS §OG-1.5c B4.
     # LineGeometry: deferred to integration as a port-authored (0.15.x) class —
     # its property model follows the newer dss_capi (Wires -> Redundant+SuppressJSON,
     # new Conductors=20 object-ref-array) and straddles 0.14.5 via HIDE_015X, so its

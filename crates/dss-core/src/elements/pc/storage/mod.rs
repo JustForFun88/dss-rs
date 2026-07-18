@@ -182,16 +182,23 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
+        // Pascal `[Required, Units_kV, NonNegative]` (`Storage.pas:697`).
+        PropDef::double("kV")
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
         PropDef::mapped_string_enum("Conn", enums.connection),
         // `kW`: read returns `kW_out` (the field), write goes through Set_kW
-        // (sets the state + %Discharge/%Charge).
-        PropDef::double("kW").flags(PropFlags::REPLACE_ZERO),
+        // (sets the state + %Discharge/%Charge). Pascal `[WriteByFunction, Units_kW]`
+        // (`Storage.pas:712`).
+        PropDef::double("kW").flags(PropFlags::REPLACE_ZERO | PropFlags::UNITS_KW),
         // `kvar`: read returns `kvar_out` (Pascal `Getkvar`), write stores
-        // `kvarRequested`.
-        PropDef::double("kvar").flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("PF").flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO),
+        // `kvarRequested`. Pascal `[ReadByFunction, RequiredInSpecSet, Units_kvar]`
+        // (`Storage.pas:701`).
+        PropDef::double("kvar").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KVAR),
+        // Pascal `[RequiredInSpecSet, PowerFactorLimits]` (`Storage.pas:691`).
+        PropDef::double("PF")
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::POWER_FACTOR_LIMITS),
+        // Pascal `[Units_kVA]` (`Storage.pas:694`).
+        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO | PropFlags::UNITS_KVA),
         PropDef::double("%CutIn"),
         PropDef::double("%CutOut"),
         PropDef::object_ref_class("XYcurve", "EffCurve"),
@@ -202,10 +209,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("PFPriority"),
         PropDef::double("%PMinNoVars"),
         PropDef::double("%PMinkvarMax"),
-        PropDef::double("kWRated").flags(PropFlags::REQUIRED_IN_SPEC_SET),
+        // Pascal `[Units_kW, RequiredInSpecSet]` (`Storage.pas:675`).
+        PropDef::double("kWRated").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KW),
         PropDef::double("%kWRated").scale(0.01),
-        PropDef::double("kWhRated"),
-        PropDef::double("kWhStored").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::NON_NEGATIVE),
+        // Pascal `[Units_kWh]` (`Storage.pas:678`).
+        PropDef::double("kWhRated").flags(PropFlags::UNITS_KWH),
+        // Pascal `[DynamicDefault, NonNegative, Units_kWh]` (`Storage.pas:681`).
+        PropDef::double("kWhStored")
+            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::NON_NEGATIVE | PropFlags::UNITS_KWH),
         // `%Stored`: read = kWhStored/kWhRating·100, write = kWhStored = %·kWhRating.
         PropDef::double("%Stored"),
         PropDef::double("%Reserve"),
@@ -215,11 +226,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("%EffCharge"),
         PropDef::double("%EffDischarge"),
         PropDef::double("%IdlingkW"),
-        // `%Idlingkvar`: Pascal DeprecatedAndRemoved — present in the table (it
-        // occupies an ordinal) but its `?` getter renders '' and a write does
-        // nothing. Modeled as a read-only '' string, like the StorageController
-        // fleet-aggregate readbacks.
-        PropDef::string("%Idlingkvar"),
+        // `%Idlingkvar`: Pascal `DeprecatedAndRemoved` ptype (`Storage.pas:656`) —
+        // present in the table (parses/`?`-queries as '' and writes do nothing) but
+        // the schema walk skips a `DeprecatedAndRemoved` property entirely, and it
+        // is NOT in `AltPropertyOrder` (so it occupies no `$dssPropertyOrder` slot).
+        // `SUPPRESS_JSON` reproduces both (excluded from the schema/JSON output AND
+        // from the order build); the text/`?`/props surfaces still expose it as ''.
+        PropDef::string("%Idlingkvar").flags(PropFlags::SUPPRESS_JSON),
         PropDef::double("%R"),
         PropDef::double("%X"),
         PropDef::integer("Model"),
@@ -233,7 +246,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("DispMode", enums.storage_dispatch_mode),
         PropDef::double("DischargeTrigger"),
         PropDef::double("ChargeTrigger"),
-        PropDef::double("TimeChargeTrig"),
+        // Pascal `[Units_ToD_hour]` (`Storage.pas:688`): time-of-day hour →
+        // schema `minimum:0`/`exclusiveMaximum:24`/`units:hour`.
+        PropDef::double("TimeChargeTrig").flags(PropFlags::UNITS_TOD_HOUR),
         PropDef::integer("Class"),
         // User-written model DLLs are never *loaded* in safe Rust (the loader is
         // permanently out of scope — forbid(unsafe_code)). CF-C Port 2 ports the
@@ -249,12 +264,18 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::string("UserModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
         PropDef::string("UserData").flags(PropFlags::NOT_PORTED),
         PropDef::boolean("DebugTrace"),
-        PropDef::double("kVDC").scale(1000.0),
+        // Pascal `[Units_kV]` (`Storage.pas:716`), scale 1000.
+        PropDef::double("kVDC")
+            .scale(1000.0)
+            .flags(PropFlags::UNITS_KV),
         PropDef::double("Kp").scale(1.0 / 1000.0),
         PropDef::double("PITol").scale(1.0 / 100.0),
         PropDef::double("SafeVoltage"),
-        // Read-only dynamics state (Pascal SilentReadOnly): the setter is a no-op.
-        PropDef::boolean("SafeMode"),
+        // Read-only dynamics state (Pascal `[SilentReadOnly]`, `Storage.pas:615`,
+        // with `PropertyOffset = @dynVars.SafeMode`): the setter is a no-op and the
+        // `?`/props read returns the stored yes/no (not '' — it is NOT function-only),
+        // so `READ_ONLY` (schema-only) marks it `readOnly` + elides the default.
+        PropDef::boolean("SafeMode").flags(PropFlags::READ_ONLY),
         PropDef::object_ref_class("DynamicExp", "DynamicEq"),
         PropDef::string_list("DynOut"),
         PropDef::mapped_string_enum("ControlMode", enums.inv_control_mode),
@@ -263,7 +284,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // PCClass tail:
         PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);

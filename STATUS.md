@@ -475,6 +475,60 @@ the `Wires`→`Conductors` JSON rename) needing inventory. Both are removed from
 `SCHEMA_CLASSES` (like LineGeometry) pending that struct-array build-out; the
 gate stays green.
 
+#### OG-1.5c batch B4 — generation + storage byte-exact; Relay deferred (2026-07-18)
+
+Delivered **Generator, GenDispatcher, Storage, StorageController** byte-exact vs
+the pinned 0.14.5 oracle (added to `SCHEMA_CLASSES`). Per-class metadata: the
+`Units_*` family (kV/kW/kVA/kvar/kWh/Hz/ToD-hour), `NoDefault`/`DynamicDefault`
+on the derived doubles (Generator Maxkvar/Minkvar/kVA/kvar, Storage
+kWhStored/AmpLimit), `PowerFactorLimits`+`RequiredInSpecSet` on the PF/kW/kvar
+spec-set members, plus `spec_sets.rs` for Generator (`kW,pf`/`kW,kvar`) and
+Storage (`kWRated,PF`/`kWRated,kvar`). Enum overrides: `Generator: Model`
+(`JSONUseNumbers` integer enum + `ConstantPQ`… AltNames) and the two
+`StorageController` mode enums (AltNames drop the `I-Peakshave`→`IPeakshave`
+hyphen, `StorageController.pas:292-299`). BaseFreq gained the missing
+`DynamicDefault`+`Units_Hz` (`CktElementClass.pas:96`) on all four classes.
+
+**Shared walker/infra fixes** (pilot never exercised these; every remaining
+batch benefits):
+- **`MappedStringEnumArray` default getter** — the enum-array default read only
+  `get_struct_i32_array` (on-struct-array enums, e.g. Transformer `Conns`); a
+  plain per-phase `MappedStringEnumArray` (Relay/Fuse `Normal`/`State`) reads via
+  `get_enum_array`. Split by `ptype` in `classes.rs`.
+- **`DynInit` synthetic property** — `TDynEqPCEClass` classes (Generator, Storage,
+  PVSystem) get a trailing `DynInit` (`$ref:DynInitType`, `$dssPropertyOrder =
+  maxZorder+1`), `CAPI_Schema.pas:1106-1113`. Detected by the two defining props
+  (`DynamicEq`+`DynOut`).
+- **`READ_ONLY` PropFlags** (new, schema-only) — a Pascal `SilentReadOnly` prop
+  with a *real* `PropertyOffset` (StorageController `kWNeed`, Storage `SafeMode`):
+  schema `readOnly`+no-default, yet still returns its value on `?`/props and is
+  kept in the JSON export (unlike function-only `SILENT_READ_ONLY` → `''`/omit).
+- **`DoubleArray` + IndirectCount** — GenDispatcher `Weights` (Pascal
+  `DoubleArrayProperty`) and StorageController `Weights` (`DoubleDArrayProperty`)
+  were mis-modeled as `DoubleVArray` (rendered `numberArray`); now `DoubleArray`
+  (renders `ArrayOrFilePath` + `$dssLength: GenList`/`ElementList`) with the count
+  resolved via `get_i32(<listProp>)` = FListSize/FleetSize. The four
+  StorageController fleet-aggregate readbacks became `Double`+`SILENT_READ_ONLY`
+  (were `String`); Storage `%Idlingkvar` (Pascal `DeprecatedAndRemoved`) became
+  `SUPPRESS_JSON` (skipped from schema + order, exactly as the walker skips a
+  DeprecatedAndRemoved ptype).
+
+**Divergence inventory (+2, both Generator):** `units:"kW"` (×2, in both spec
+sets) and `units:"kvar"` (×1) — dss_capi `90c572e4` "AltDSS-Schema: More units"
+added `Units_kW`/`Units_kvar` to Generator.kW/kvar *after* 0.14.5; the port
+follows the vendored source, so the oracle backend omits the unit (same wave as
+the existing Capacitor.kvar entry). Storage kW/kVA/kvar `Units_*` predate 0.14.5
+(oracle has them) → byte-exact, no inventory.
+
+**Relay deferred** to integration as a **port-authored (r4133) class** (like
+LineGeometry/WindGen): the port ports OpenDSS r4133-trunk Relay (75 props —
+`PhCurve`/`OC_GndCurve`/`PhPickup` renamed from the 0.14.5 `PhaseCurve`/
+`GroundCurve`/`PhaseTrip`, plus `DOC_*`/`SinglePhTrip`/`Lock`/`RatedCurrent`/
+`InterruptingRating`/per-phase `Normal`/`State` arrays), diverging **structurally**
+from the pinned 0.14.5 oracle (53 props, classic names). It cannot be byte-compared
+against 0.14.5 and needs a port-output reference; removed from `SCHEMA_CLASSES`
+with a deferral note in `gen_schema.py`.
+
 ### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
 
 Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already

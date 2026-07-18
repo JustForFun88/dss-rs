@@ -152,6 +152,22 @@
       "count": 1,
       "props": ["FwdThreshold"],
       "cause": "OpenDSS r4086 (dss_capi 8a898cba) added RegControl's forward-power threshold FwdPowerThreshold (W), Units_kW + scale 1000, default 100 kW (reg_control/mod.rs); absent from the pinned 0.14.5 oracle."
+    },
+    {
+      "class": "Generator",
+      "kind": "port_extra_line",
+      "line": "          \"units\" : \"kW\",",
+      "count": 2,
+      "props": ["kW"],
+      "cause": "dss_capi commit 90c572e4 'AltDSS-Schema: More units' adds Units_kW to Generator.kW ([RequiredInSpecSet] -> [RequiredInSpecSet, Units_kW]); the pinned dss-python 0.15.7 backend (dss_capi 0.14.5) predates it and omits the unit. The port follows the vendored source (generator/mod.rs). kW appears in both spec sets ('kW, pf' and 'kW, kvar'), so the line renders twice in the oneOf. (Same 'More units' wave as the Capacitor.kvar divergence.)"
+    },
+    {
+      "class": "Generator",
+      "kind": "port_extra_line",
+      "line": "          \"units\" : \"kvar\",",
+      "count": 1,
+      "props": ["kvar"],
+      "cause": "dss_capi commit 90c572e4 'AltDSS-Schema: More units' adds Units_kvar to Generator.kvar ([NoDefault, RequiredInSpecSet] -> [+ Units_kvar]); the pinned dss_capi 0.14.5 backend predates it. The port follows the vendored source (generator/mod.rs). kvar appears only in the 'kW, kvar' spec set, so the line renders once in the oneOf."
     }
   ]
 }

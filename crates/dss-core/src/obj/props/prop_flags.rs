@@ -282,6 +282,18 @@ impl PropFlags {
     /// and the schema walk skip it. Inert on the text dump / setters.
     pub const SUPPRESS_JSON_LATE: Self = Self(1 << 83);
 
+    /// **Not a Pascal flag** — the port's marker for a Pascal `SilentReadOnly`
+    /// property that still has a real `PropertyOffset` (so it is NOT function-only
+    /// like [`Self::SILENT_READ_ONLY`]). Pascal renders such a property `readOnly`
+    /// in the JSON schema and elides its default, yet still returns its stored
+    /// value on the `?`/props surfaces (`PropertyOffset[Index] <> -1`) and includes
+    /// it in the JSON *export* — i.e. exactly the opposite of `SILENT_READ_ONLY`'s
+    /// `''`/omit behaviour on those surfaces. Schema-only: consumed by the schema
+    /// walk's `readOnly` bit; inert on the text dump / setters / JSON export.
+    /// Carried by StorageController `kWNeed` (`StorageController.pas:426`,
+    /// `[SilentReadOnly]` with `PropertyOffset = @kWNeeded`).
+    pub const READ_ONLY: Self = Self(1 << 84);
+
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
     }

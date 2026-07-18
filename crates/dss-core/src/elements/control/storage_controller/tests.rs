@@ -38,9 +38,13 @@ fn prop_table_shape_matches_pascal() {
     // Spot-check a few key types.
     assert_eq!(cp.prop(prop::ELEMENT).ptype, PropType::ObjectRef);
     assert_eq!(cp.prop(prop::MON_PHASE).ptype, PropType::MappedStringEnum);
-    assert_eq!(cp.prop(prop::WEIGHTS).ptype, PropType::DoubleVArray);
+    // Pascal `DoubleDArrayProperty` + IndirectCount over ElementList: modeled as a
+    // `DoubleArray` (renders `ArrayOrFilePath` + `$dssLength: ElementList`), the
+    // count resolved via `get_i32(ELEMENT_LIST)` = FleetSize (OG-1.5c B4).
+    assert_eq!(cp.prop(prop::WEIGHTS).ptype, PropType::DoubleArray);
     assert_eq!(cp.prop(prop::SEASON_TARGETS).ptype, PropType::DoubleArray);
-    assert_eq!(cp.prop(prop::KWH_TOTAL).ptype, PropType::String);
+    // Pascal `[SilentReadOnly, ReadByFunction]` fleet-aggregate double (OG-1.5c B4).
+    assert_eq!(cp.prop(prop::KWH_TOTAL).ptype, PropType::Double);
 }
 
 #[test]

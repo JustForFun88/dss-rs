@@ -149,9 +149,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("%kWBandLow"),
         PropDef::double("kWBandLow").flags(PropFlags::REDUNDANT | PropFlags::DYNAMIC_DEFAULT),
         PropDef::string_list("ElementList"),
-        // Pascal DoubleDArray + IndirectCount over the ElementList: the element
-        // count is the storage-name-list length (see `array_size`).
-        PropDef::double_v_array("Weights"),
+        // Pascal `DoubleDArrayProperty` + `IndirectCount` over the ElementList
+        // (`StorageController.pas:409-413`, `PropertyOffset2 = @FleetSize`,
+        // `PropertyOffset3 = @FStorageNameList`): renders `ArrayOrFilePath` +
+        // `$dssLength: ElementList`. The element count is `FleetSize` (kept in
+        // sync with the storage-name-list length), exposed via `get_i32(ELEMENT_LIST)`.
+        PropDef::double_array("Weights", prop::ELEMENT_LIST),
         PropDef::mapped_string_enum("ModeDischarge", enums.storage_ctrl_discharge_mode),
         PropDef::mapped_string_enum("ModeCharge", enums.storage_ctrl_charge_mode),
         PropDef::double("TimeDischargeTrigger"),
@@ -159,15 +162,20 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("%RatekW"),
         PropDef::double("%RateCharge"),
         PropDef::double("%Reserve"),
-        // SilentReadOnly + ReadByFunction fleet aggregates: the `?` getter
-        // renders '' regardless of fleet contents (see module doc). Modeled as
-        // read-only strings → ''.
-        PropDef::string("kWhTotal"),
-        PropDef::string("kWTotal"),
-        PropDef::string("kWhActual"),
-        PropDef::string("kWActual"),
-        // SilentReadOnly plain double (dumps its value, not '').
-        PropDef::double("kWNeed"),
+        // Pascal `[SilentReadOnly, ReadByFunction]` fleet-aggregate doubles
+        // (`StorageController.pas:416-423`, read fns GetkWhTotal/…). Function-only
+        // (no PropertyOffset), so the `?`/props render is '' and the JSON export
+        // omits them (`SILENT_READ_ONLY`); the schema renders `type:number,
+        // readOnly:true` with no default.
+        PropDef::double("kWhTotal").flags(PropFlags::SILENT_READ_ONLY),
+        PropDef::double("kWTotal").flags(PropFlags::SILENT_READ_ONLY),
+        PropDef::double("kWhActual").flags(PropFlags::SILENT_READ_ONLY),
+        PropDef::double("kWActual").flags(PropFlags::SILENT_READ_ONLY),
+        // Pascal `[SilentReadOnly]` with `PropertyOffset = @kWNeeded`
+        // (`StorageController.pas:426-427`): a read-only double that still dumps
+        // its value ('?' → the stored kWNeeded). Schema-only `READ_ONLY` marks it
+        // `readOnly` + elides the default without the function-only '' behaviour.
+        PropDef::double("kWNeed").flags(PropFlags::READ_ONLY),
         PropDef::object_ref_class("LoadShape", "Yearly"),
         PropDef::object_ref_class("LoadShape", "Daily"),
         PropDef::object_ref_class("LoadShape", "Duty"),
@@ -185,7 +193,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double_array("SeasonTargets", prop::SEASONS),
         PropDef::double_array("SeasonTargetsLow", prop::SEASONS),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
