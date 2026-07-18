@@ -425,13 +425,16 @@ impl Generator {
             5 => self.do_fixed_qz_gen(sys, node_v),
             6 => {
                 // User-written model DLL — never ported. Pascal inits InjCurrent
-                // then records error 567.
+                // then records error 567 (generator.pas:1795).
                 self.calc_yprim_contribution(node_v);
-                errors.push(format!(
-                    "{}.{} model designated to use user-written model, but user-written \
-                     model is not defined.",
-                    "Generator",
-                    self.cd.obj.name()
+                errors.push(crate::diag::DssDiagnostic::msg(
+                    format!(
+                        "{}.{} model designated to use user-written model, but user-written \
+                         model is not defined.",
+                        "Generator",
+                        self.cd.obj.name()
+                    ),
+                    Some(567),
                 ));
             }
             7 => self.do_current_limited_pq(sys, node_v),

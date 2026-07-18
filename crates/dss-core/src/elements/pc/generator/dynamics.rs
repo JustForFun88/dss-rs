@@ -325,9 +325,12 @@ impl Generator {
                     }
                 }
                 _ => {
-                    // Pascal sets DSS.SolutionAbort := TRUE (msg 5672,
-                    // generator.pas:2357 — the CalcVthevDyn arm; the identical
-                    // message at generator.pas:1984 is a separate 5671 site).
+                    // Pascal sets DSS.SolutionAbort := TRUE (msg 5671,
+                    // generator.pas:1984 — this is the phases-else of
+                    // `DoDynamicMode`; the identical-text message at
+                    // generator.pas:2357 belongs to a *different* procedure,
+                    // `InitStateVars`, and carries the separate code 5672
+                    // (ported at `init_state_vars_impl`).
                     errors.push(crate::diag::DssDiagnostic::msg(
                         format!(
                             "Dynamics mode is implemented only for 1- or 3-phase Generators. \
@@ -336,7 +339,7 @@ impl Generator {
                             self.cd.obj.name(),
                             self.cd.nphases
                         ),
-                        Some(5672),
+                        Some(5671),
                     ));
                 }
             }

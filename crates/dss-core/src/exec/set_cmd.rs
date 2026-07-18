@@ -558,7 +558,11 @@ impl Dss {
                         // on miss) first (`ExecOptions.pas` ordinal 27).
                         ckt.load_dur_curve_obj = find_load_shape(classes, &param);
                         if ckt.load_dur_curve_obj.is_none() {
-                            errors.push("Load-Duration Curve not found.".to_string());
+                            // Pascal `DoSimpleMsg(..., 131)` (ExecOptions.pas:484).
+                            errors.push(crate::diag::DssDiagnostic::msg(
+                                "Load-Duration Curve not found.",
+                                Some(131),
+                            ));
                         }
                     }
                     opt::CKT_MODEL => {
@@ -881,7 +885,9 @@ impl Dss {
                         }
                     }
                     opt::ITER_NUMBER | opt::CTRL_ITER_NUMBER | opt::INTEGRATION_FLAG => {
-                        // Pascal: these are read-only (error 25040103) then `Exit`.
+                        // These solution counters are read-only. The Pascal
+                        // source cites no `DoSimpleMsg` number here, so the
+                        // diagnostic stays uncoded (`None`) — never invent one.
                         errors.push("This value is read-only.".to_string());
                         abort = true;
                     }

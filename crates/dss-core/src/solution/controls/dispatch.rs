@@ -188,8 +188,10 @@ pub(super) fn dispatch_control(
     };
 
     let abort = |errors: &mut crate::diag::ErrorLog, full_name: &str, what: &str| -> String {
-        errors.push(format!(
-            "Error Sampling Control Device \"{full_name}\". Error = {what}"
+        // Pascal `DoSimpleMsg(..., 484)` (Solution.pas:1990).
+        errors.push(crate::diag::DssDiagnostic::msg(
+            format!("Error Sampling Control Device \"{full_name}\". Error = {what}"),
+            Some(484),
         ));
         "Solution aborted.".to_string()
     };
