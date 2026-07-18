@@ -83,6 +83,12 @@ the controls manifest + `CONTROLS_REQUIRED` floor, gated vs the pinned oracle
 - **What:** the main BOM issues were fixed (CF-A redirect BOM strip; `capture_eventlog` → `utf-8-sig`). Residual: any not-yet-covered BOM/encoding edge on odd input paths.
 - **To do:** only if a real deck surfaces it — add the strip at the parse boundary + a fixture. **Priority: very low** (opportunistic).
 
+### 1.9 UNIFIED_GATE `defer_ledger` retirement — DynExp×2, RegControl idle, line_spacing_asym
+- **Deferred by:** UNIFIED_GATE Phase D (COMPLETE — it deliberately did not retire these; the manifests' `wp` pointers now name this entry, fixed at the pre-E/F audit).
+- **What:** 4 cases stay `defer_ledger` (Rust-smoke only, membership lock-pinned): `Dynamic_KundurDynExp` + `GFL_IEEE123 …DynExp` (port adopts the settled capi015 D14 evaluator; 0.14.5 AND r4133 agree with each other, port ~1.5e-5 away — needs a **measured both-channel voltage envelope**), `controls regcontrol_idle` (capi rejects `idle` #110; needs a measured **r4133 voltage envelope**, ~7e-5 regulator-tap class), `asymmetric line_spacing_asym` (needs a capi_v0145 voltage envelope + **exact-pair-numeric property entries** for normamps/emergamps 730→230 + the existing r4133 #303 skip; the `num_rel` property scope machinery landed at the pre-E/F audit, UGA-T2).
+- **To do:** re-measure each envelope live (seed mode `DSS_GATE_SEED_ONLY=<case>`), add the ledger entries with cause+source, drop `defer_ledger`, regen the population lock. The NCIM×4 defer cases are NOT here — they are owned by **WP-U1.7** (suspected op-point port issue; must not be ledgered before re-validation, R3).
+- **Where:** STATUS §1i "defer_ledger retirement — partial (honest)" has the full evidence. **Priority: medium** (restores numeric coverage on 4 real decks).
+
 ---
 
 ## 2. Owned deferrals — NOT orphans (a live plan tracks them; do not re-port here)

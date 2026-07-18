@@ -13,7 +13,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Windows-only since UNIFIED_GATE Phase C/D: the mandatory corpus gate
+        # drives the EPRI r4133 OpenDSSDirect.dll via `epri-worker` (the
+        # #[cfg(windows)] dss-epri bridge crate), so `cargo test --workspace`
+        # cannot pass on Linux (epri-worker exits 1 on non-Windows by design).
+        os: [windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

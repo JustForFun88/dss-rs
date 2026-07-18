@@ -476,14 +476,15 @@ pub(crate) fn compare_capture(
                 "{ctx}: compare_all_properties set but the oracle returned no \
                  property dump (all_properties request not honored?)"
             );
-            // A ledger `property` scope pins one (element, prop) oracle value
-            // exactly (discrete state — exact-pair only). To keep the monolithic
-            // `compare_all_properties` count/order contract intact while excluding
-            // that one pair from the value compare, rewrite its oracle value to the
-            // Rust `?`-surface value (the ledger already asserted the oracle value
-            // equals its pin), so the standard compare treats it as equal.
+            // A ledger `property` scope pins one (element, prop) pair — an exact
+            // `oracle` pin, or `num_rel` for numeric-skeleton values (§1.3; same
+            // contract as `probe`). To keep the monolithic `compare_all_properties`
+            // count/order contract intact while excluding that one pair from the
+            // value compare, rewrite its oracle value to the Rust `?`-surface value
+            // (the ledger already asserted the Rust value against the pin/envelope),
+            // so the standard compare treats it as equal.
             let prop_keys = ledger
-                .map(|v| v.property_handled_keys(dss, &cp.all_properties, &ctx))
+                .map(|v| v.property_handled_keys(dss, &cp.all_properties, tol, &ctx))
                 .unwrap_or_default();
             if prop_keys.is_empty() {
                 compare_all_properties(dss, &cp.all_properties, tol, &ctx);

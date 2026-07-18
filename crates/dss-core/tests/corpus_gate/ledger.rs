@@ -337,7 +337,32 @@ impl LedgerRuntime {
     }
 }
 
+/// Scope fields with a live runtime handler in [`LedgerView`]. The §1.3 schema
+/// also names `yprim` / `y_fingerprint` / `meter` / `global_result`, but NO
+/// handler exists for them yet — a scope naming one (or a typo'd field) would
+/// silently never apply, so loading rejects anything outside this list loudly
+/// (pre-E/F audit UGA-T4).
+const LEDGER_FIELDS: [&str; 9] = [
+    "iterations",
+    "voltages",
+    "injection",
+    "element",
+    "probe",
+    "property",
+    "monitor",
+    "eventlog",
+    "ctrlqueue",
+];
+
 fn compile_scope(id: &str, s: &RawScope) -> Scope {
+    assert!(
+        LEDGER_FIELDS.contains(&s.field.as_str()),
+        "ledger entry {id:?}: scope field {:?} has no runtime handler (implemented: \
+         {LEDGER_FIELDS:?}). The §1.3 fields yprim/y_fingerprint/meter/global_result \
+         need a handler implemented BEFORE they can be ledgered — an unhandled scope \
+         would silently never apply.",
+        s.field
+    );
     let mk = |re: &Option<String>| -> Option<Regex> {
         re.as_ref().map(|r| {
             Regex::new(r).unwrap_or_else(|e| panic!("ledger entry {id:?}: bad regex {r:?}: {e}"))
@@ -736,13 +761,19 @@ impl LedgerView<'_> {
 
     // --- properties (all_properties, capi channel) --------------------------
 
-    /// Element property-value pairs handled by a `property` scope (exact oracle
-    /// pin). Returns the set of `(element_lower, prop_lower)` keys to skip in the
+    /// Element property-value pairs handled by a `property` scope. Same contract
+    /// as [`Self::probe_handled`] (§1.3: probe/property are exact expected pairs,
+    /// or `num_rel` for numeric-skeleton values — pre-E/F audit UGA-T2 parity):
+    /// an exact `oracle` pin re-pins the upstream getter; a numeric value with
+    /// `num_rel` is envelope-checked against the live Rust `?`-value; a
+    /// non-numeric value REQUIRES the `oracle` pin and honors an optional `rust`
+    /// pin. Returns the set of `(element_lower, prop_lower)` keys to skip in the
     /// standard `compare_all_properties`.
     pub(crate) fn property_handled_keys(
         &self,
         dss: &mut dss_core::exec::Dss,
         props: &[PropsCap],
+        tol: &Tolerances,
         ctx: &str,
     ) -> BTreeSet<(String, String)> {
         let mut handled = BTreeSet::new();
@@ -776,19 +807,59 @@ impl LedgerView<'_> {
                         let os = value_as_str(o);
                         assert!(
                             val.eq_ignore_ascii_case(&os),
-                            "{ctx}: ledger `{}` property {key}: oracle value {val:?} != pinned {os:?}",
+                            "{ctx}: ledger `{}` property {key}: oracle value {val:?} != pinned {os:?} — \
+                             the upstream getter changed; re-measure",
                             e.id
                         );
                     }
-                    handled.insert((el.clone(), name.to_lowercase()));
-                    Self::mark_applied(e);
-                    // Stale-if-converged: this exact-pair divergence is gone once
-                    // the Rust `?`-surface equals the oracle value (§5 R3).
                     dss.command(&format!("? {}.{}", pc.element, name));
                     let rust_val = dss.result().to_string();
-                    if !rust_val.trim().eq_ignore_ascii_case(val.trim()) {
-                        Self::mark_exceeded(e);
+                    let (rn, on) = (parse_leading_f64(&rust_val), parse_leading_f64(val));
+                    if let (Some(rv), Some(ov)) = (rn, on) {
+                        // Numeric-skeleton path (mirrors `probe_handled`): the Rust
+                        // value must agree with the oracle value within `num_rel`.
+                        let num_rel = sc.num_rel.unwrap_or(0.0);
+                        let base = ov.abs();
+                        let diff = (rv - ov).abs();
+                        let env = num_rel * base + tol.i_abs;
+                        assert!(
+                            diff <= env,
+                            "{ctx}: ledger `{}` property {key}: |{rv} - {ov}| = {diff:.3e} exceeds \
+                             num_rel envelope {env:.3e}",
+                            e.id
+                        );
+                        Self::mark_applied(e);
+                        if diff > tol.i_abs + tol.i_rel * base {
+                            Self::mark_exceeded(e);
+                        }
+                    } else {
+                        // Non-numeric property: exact-pair only (§1.3). A bare scope
+                        // would let ANY Rust value pass — require the `oracle` pin
+                        // (asserted above) and honor an optional `rust` pin (the F4
+                        // probe fix, ported here).
+                        assert!(
+                            sc.oracle.is_some(),
+                            "{ctx}: ledger `{}` property {key}: non-numeric value {val:?} needs an \
+                             exact `oracle` pin — discrete state is exact-pair only, never a bare \
+                             scope (§1.3)",
+                            e.id
+                        );
+                        if let Some(r) = &sc.rust {
+                            let rs = value_as_str(r);
+                            assert!(
+                                rust_val.trim().eq_ignore_ascii_case(rs.trim()),
+                                "{ctx}: ledger `{}` property {key}: rust value {rust_val:?} != pinned rust {rs:?}",
+                                e.id
+                            );
+                        }
+                        // Stale-if-converged: this exact-pair divergence is gone once
+                        // the Rust `?`-surface equals the oracle value (§5 R3).
+                        Self::mark_applied(e);
+                        if !rust_val.trim().eq_ignore_ascii_case(val.trim()) {
+                            Self::mark_exceeded(e);
+                        }
                     }
+                    handled.insert((el.clone(), name.to_lowercase()));
                 }
             }
         }
@@ -895,6 +966,12 @@ impl LedgerView<'_> {
     /// Mask a single event-log/ctrlqueue line: if a `line_re` scope matches it,
     /// record the hit and return a normalized form (trailing-whitespace-trimmed)
     /// so the caller's compare treats the masked artifact as equal.
+    ///
+    /// Fail-on-stale (pre-E/F audit UGA-T3): the mask's entire power is
+    /// `trim_end()`, so a live divergence is recorded only when the trailing-
+    /// whitespace artifact is actually PRESENT on the matched line. If upstream
+    /// stops emitting it, the entry stays applied-but-never-exceeded and trips
+    /// STALE (§5 R3) instead of masking forever.
     pub(crate) fn mask_line(&self, field: &str, line: &str) -> String {
         for e in self.entries() {
             if e.kind != Kind::Divergence {
@@ -908,7 +985,9 @@ impl LedgerView<'_> {
                     && re.is_match(line)
                 {
                     Self::mark_applied(e);
-                    Self::mark_exceeded(e);
+                    if line != line.trim_end() {
+                        Self::mark_exceeded(e);
+                    }
                     return line.trim_end().to_string();
                 }
             }
@@ -1096,17 +1175,51 @@ pub(crate) fn assert_structural(
         // discrete-state guard: probe/property scopes must be exact pairs, never
         // envelopes (§1.3 — discrete state is ledgerable only as exact pairs).
         for sc in &e.match_scopes {
-            if matches!(sc.field.as_str(), "probe" | "property")
-                && sc.oracle.is_none()
-                && (sc.max_rel.is_some() || sc.max_abs.is_some())
-            {
-                panic!(
+            if matches!(sc.field.as_str(), "probe" | "property") {
+                assert!(
+                    !(sc.oracle.is_none() && (sc.max_rel.is_some() || sc.max_abs.is_some())),
                     "ledger entry {:?}: {} scope must pin an exact `oracle` value, \
                      never an envelope (discrete state is exact-only, §1.3)",
-                    e.id, sc.field
+                    e.id,
+                    sc.field
+                );
+                // A bare selector-only scope would mask the value with no assertion
+                // at all (pre-E/F audit UGA-T2): §1.3 allows exactly two forms —
+                // an exact expected pair, or `num_rel` for numeric-skeleton values.
+                assert!(
+                    sc.oracle.is_some() || sc.num_rel.is_some(),
+                    "ledger entry {:?}: {} scope needs an exact `oracle` pin or a \
+                     `num_rel` numeric-skeleton envelope — a bare selector-only scope \
+                     asserts nothing (§1.3)",
+                    e.id,
+                    sc.field
                 );
             }
         }
+    }
+
+    // Full-bypass guard (pre-E/F audit UGA-2): a `skip` entry drops its channel
+    // entirely, so at least one of the case's gating channels must remain
+    // non-skipped — otherwise the case would pass with ZERO verification (not
+    // even the Rust smoke runs on the Live path). §1.3 `skip`: "the other
+    // channel still gates the case".
+    let mut skip_channels: std::collections::BTreeMap<&str, Vec<EngineChannel>> =
+        std::collections::BTreeMap::new();
+    for e in raw.entries.iter().filter(|e| e.kind == "skip") {
+        let ch = parse_channel(&e.channel).expect("channel validated above");
+        let v = skip_channels.entry(&e.case).or_default();
+        if !v.contains(&ch) {
+            v.push(ch);
+        }
+    }
+    for (case, skipped) in &skip_channels {
+        let engines = manifest_engines(case).expect("case validated above");
+        assert!(
+            engines.iter().any(|ch| !skipped.contains(ch)),
+            "ledger: EVERY gating channel of case {case:?} is `skip`-ledgered \
+             ({skipped:?}) — the case would pass with zero verification. A skip \
+             entry requires at least one non-skipped channel to keep gating (§1.3)."
+        );
     }
 }
 

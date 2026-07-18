@@ -93,7 +93,7 @@
     "Line.lspc"
    ],
    "engines": "r4133",
-   "wp": "WP-UG-D (Unified Gate Phase D ledger)",
+   "wp": "ORPHANED_GAPS §1.9 (UNIFIED_GATE defer_ledger retirement)",
    "defer_ledger": "capi015-line: r4133 raises #303 access violation at calcv (known linespacing crash); 0.14.5 gives Line.lsp.normamps=730/emergamps=1095 (first-wire rating) vs port/0.15.x 230/345 (min-over-phase, WP-U1.2 D3) -> diverges on BOTH channels (settled empirically 2026-07-18: port=230 is CORRECT per r4133 LineGeometry.pas min-over-phase; earlier note had the 730/230 direction reversed). Retirement to r4133 `skip` + capi_v0145 exact-pair property ledger needs an exact-pair-numeric probe/property scope (the discrete 730->230 jump is not a display-precision envelope); deferred to a follow-up ledger WP (see STATUS Phase D).",
    "probes": [
     {

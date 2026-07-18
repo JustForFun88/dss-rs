@@ -676,8 +676,10 @@ fn assert_epri(w: &mut Worker, timeout: Duration) {
 
 /// A pool of N persistent `epri-worker` processes (r4133 channel), mirroring
 /// [`WorkerPool`]'s lifecycle: one in-flight request each, per-request deadline
-/// → kill/respawn/retry-once-then-fail-case, recycle after 64 cases. A DLL crash
-/// (`#303`, never sent — ledgered `skip` in Phase D) kills only that worker.
+/// → kill/respawn/retry-once-then-fail-case, recycled per [`recycle_after`]
+/// (default 1 — a fresh worker per case, the Phase-D determinism fix; see its
+/// doc). A DLL crash (`#303`, never sent — ledgered `skip` in Phase D) kills
+/// only that worker.
 pub(crate) struct EpriPool {
     idle: Mutex<Vec<Worker>>,
     cv: Condvar,

@@ -9,10 +9,12 @@
 //! NOT rayon/tokio (tasks block on oracle subprocess I/O; the global rayon pool
 //! belongs to faer inside the solves).
 //!
-//! The pinned `capi_v0145` channel is served by a persistent [`WorkerPool`];
-//! target-rev cases (`capi015`/`r3723`/`r4088`/`r4133`) keep the ONE-SHOT
-//! [`Oracle`] path. Each case is `catch_unwind`-wrapped; the test fails iff any
-//! case failed, printing the COMPLETE failure list in manifest order.
+//! The pinned `capi_v0145` channel is served by a persistent [`WorkerPool`]; the
+//! `r4133` channel by a persistent [`EpriPool`] of `epri-worker` bridge processes
+//! (Phase C/D — the pre-Phase-C one-shot target-rev `Oracle` shim is retired;
+//! one-shots remain only for `isolate`/serial runs). Each case is
+//! `catch_unwind`-wrapped; the test fails iff any case failed, printing the
+//! COMPLETE failure list in manifest order.
 //!
 //! Contamination-proof knobs (§4 Phase B DONE bar):
 //! * `DSS_GATE_SERIAL=1` — T=1 and the pinned channel uses a FRESH one-shot
@@ -458,6 +460,14 @@ pub(crate) fn run_gate() -> GateRun {
             "corpus_gate: DSS_GATE_ONLY filter kept {}/{before} case(s) — THIS IS A PARTIAL \
              RUN, not the commit gate",
             cases.len()
+        );
+        // A filter matching NOTHING must fail loudly, never green a 0/0 run (a
+        // leftover exported env var would otherwise silently neuter the gate —
+        // pre-E/F audit UGA-T5).
+        assert!(
+            !cases.is_empty(),
+            "DSS_GATE_ONLY={only:?} matched no case labels — refusing to green a \
+             zero-case gate run; fix or unset the filter"
         );
     }
     let total = cases.len();
