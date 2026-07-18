@@ -92,7 +92,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // Pascal `Transf_Or_AutoTrans_ProxyClass` (`RegControl.pas:264`):
         // `transformer=` resolves against Transformer first, then AutoTrans.
         // Pascal also flags `CheckForVar` + `Required` (both inert here).
-        PropDef::object_ref_two_classes("Transformer", "AutoTrans", "Transformer"),
+        PropDef::object_ref_two_classes("Transformer", "AutoTrans", "Transformer")
+            .flags(PropFlags::REQUIRED),
         PropDef::integer("Winding"),
         PropDef::double("VReg"),
         PropDef::double("Band"),
