@@ -197,6 +197,20 @@ Records: `docs/phase-records/test-triage-{promotions,ad-classify,monitor-winding
 - Gate after merges: fmt/clippy clean, `cargo +stable test --workspace` exit 0;
   population.lock consistency re-proven by deliberate regen (no diff).
 
+### DE_PASCALIZE P13 — VCCS delay line → `RingBuf` (wave 2, branch `wt-p1213-v2`)
+
+Stratum **[A]** bit-neutral. The VCCS z-domain filter's two wrap-around
+histories (`z`/`whist`, tapped via the 1-based circular `MapIdx(iu-k+1, fl)` in
+`vccs/dynamics.rs`) become a `RingBuf` type whose `tap()` accessor encapsulates
+the wraparound (calling the unchanged `map_idx`) and whose `Index`/`IndexMut`
+serve the direct head/snapshot access. `y2`/`zlast`/`wlast` stay `Vec` (never
+`MapIdx`-tapped). Same slots, same statement order. Proof: new
+`ringbuf_tap_reproduces_pascal_map_idx_order` unit test (asserts the
+`[1,5,4,3,2]` tap order + `tap == self[map_idx]` for all indices) + the 3
+oracle-gated Monitor-mode-3 dynamics-trajectory tests (`exec::tests::vccs`,
+waveform + RMS 1φ/3φ) all UNCHANGED. Full record:
+`docs/phase-records/depascalize-p13.md`.
+
 ### DE_PASCALIZE P12 — `line_constants` `Vec<Conductor>` (wave 2, branch `wt-p1213-v2`)
 
 Stratum **[A]** bit-neutral. The ~20 parallel per-conductor arrays on

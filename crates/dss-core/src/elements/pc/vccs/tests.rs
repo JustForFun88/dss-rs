@@ -29,6 +29,27 @@ fn offset_idx_steps_and_wraps() {
 }
 
 #[test]
+fn ringbuf_tap_reproduces_pascal_map_idx_order() {
+    // Fill a len-5 ring so slot k holds value k (slot 0 dead).
+    let len = 5usize;
+    let mut rb = RingBuf::alloc(len);
+    for k in 1..=len {
+        rb[k] = k as f64;
+    }
+    // The filter taps `iu - k + 1` for k = 1..=len at head iu = 1 must read the
+    // slots in the exact Pascal `MapIdx` order [1, 5, 4, 3, 2] — the same order
+    // `offset_idx_steps_and_wraps` pins for the raw index helper.
+    let iu = 1i64;
+    let taps: Vec<f64> = (1..=len).map(|k| rb.tap(iu - k as i64 + 1)).collect();
+    assert_eq!(taps, vec![1.0, 5.0, 4.0, 3.0, 2.0]);
+    // `tap(idx)` is `self[map_idx(idx, len)]` for every input (incl. negative /
+    // past-end), so wrapping the raw indexing in the accessor is bit-neutral.
+    for idx in -(len as i64)..=(2 * len as i64) {
+        assert_eq!(rb.tap(idx), rb[map_idx(idx, len as i64)]);
+    }
+}
+
+#[test]
 fn recalc_sets_rated_quantities() {
     // 1-phase: Irated = Prated/Vrated/1, BaseVolt = Vrated, BaseCurr = Ppct%·Irated.
     let mut v = Vccs::new("v1");
