@@ -75,18 +75,20 @@ pub mod prop {
 
 /// `TUPFC.DefineProperties`.
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
-    // The Pascal `Required` (bus1/bus2), `PowerFactorLimits` (PF), `Units_Hz`
-    // (Frequency) and `Units_kvar` (kvarLimit) flags are all JSON-schema-only
-    // (CAPI_Schema.pas) — inert for the text parse/dump path — so, per the
-    // established convention (cf. VSource `frequency`), only the behavioral
-    // `DynamicDefault`/`NonNegative`/`NonZero` are carried.
+    // Pascal `UPFC.pas:242-257`: PF is `PowerFactorLimits`, Frequency is
+    // `Units_Hz`, kvarLimit is `Units_kvar` — schema-only flags (inert for the
+    // text parse/dump path) now carried so the JSON schema walk renders them.
     let defs = vec![
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", 2).flags(PropFlags::REQUIRED),
         PropDef::double("RefkV"),
-        PropDef::double("PF"),
-        PropDef::double("Frequency")
-            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("PF").flags(PropFlags::POWER_FACTOR_LIMITS),
+        PropDef::double("Frequency").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double("Xs"),
         PropDef::double("Tol1"),
@@ -97,14 +99,19 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("VLLimit"),
         PropDef::double("CLimit"),
         PropDef::double("refkV2"),
-        PropDef::double("kvarLimit"),
+        PropDef::double("kvarLimit").flags(PropFlags::UNITS_KVAR),
         // Pascal `PropertyOffset2 = 0` + PDElement flag: a monitored element by
         // full name (used only by the PF compensation modes).
         PropDef::object_ref_any("Element"),
         // PCClass tail:
         PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);

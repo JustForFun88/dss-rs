@@ -75,7 +75,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // ConditionalReadOnly flag).
         PropDef::mapped_string_enum("Action", enums.swt_control_action).flags(PropFlags::REDUNDANT),
         PropDef::boolean("Lock"),
-        PropDef::double("Delay"),
+        PropDef::double("Delay").flags(PropFlags::UNITS_S),
         PropDef::mapped_string_enum("Normal", enums.swt_control_state)
             .flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::mapped_string_enum("State", enums.swt_control_state).flags(PropFlags::NO_DEFAULT),
@@ -89,7 +89,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // it from the 0.14.5 property-table walk via the name-based PROPS_015X row.
         PropDef::double("RatedCurrent"),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);

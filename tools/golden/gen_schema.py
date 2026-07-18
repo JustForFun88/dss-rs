@@ -108,6 +108,31 @@ SCHEMA_CLASSES = [
     # new Conductors=20 object-ref-array) and straddles 0.14.5 via HIDE_015X, so its
     # schema diverges structurally from the pinned 0.14.5 oracle and needs a
     # port-output reference (like WindGen). See STATUS §OG-1.5c batch B1.
+    # --- Batch B5: protection + PV (byte-exact after the documented r4133
+    # divergences in schema_divergences.json). ---
+    # Recloser: deferred to integration as a port-authored (r4133) class — the
+    # port ports OpenDSS r4133-trunk Recloser (46 props: PhaseFast/PhaseDelayed/
+    # GroundFast/GroundDelayed/PhaseTrip/... renamed to PhFastCurve/PhSlowCurve/
+    # GndFastCurve/GndSlowCurve/PhFastPickup/... with the classic names kept as
+    # deprecated aliases, plus MechanicalDelay/SinglePhTrip/Lock/Reset/
+    # RatedCurrent/InterruptingRating), which diverges STRUCTURALLY from the
+    # pinned 0.14.5 oracle (24 props, classic names). Like Relay/LineGeometry it
+    # needs a port-output reference, not a 0.14.5 byte compare. See STATUS §OG-1.5c B5.
+    "Fuse",
+    # SwtControl: deferred to integration as a port-authored (r4133/0.15.x) class —
+    # the port adopted the 0.15.x property model (D12/WP-U1.6: Normal→NormalState,
+    # State→PresentState instead of the shared 0.14.5 CurrentAction; the State
+    # ReadByFunction=GetState "no controlled element → CTRL_NONE" semantics are
+    # intentionally not modelled in the accessor) plus the OpenDSS r4133
+    # RatedCurrent prop and the 0.15.x help catalog (deprecated Delay, per-phase
+    # Normal/State help). Its Normal/State schema defaults therefore differ from the
+    # 0.14.5 oracle in getter semantics (not a clean line diff), so it needs a
+    # port-output reference. See STATUS §OG-1.5c B5.
+    "PVSystem",
+    "UPFC",
+    "UPFCControl",
+    "ESPVLControl",
+    "IndMach012",
 ]
 
 NL = "\r\n"

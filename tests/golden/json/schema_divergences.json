@@ -168,6 +168,44 @@
       "count": 1,
       "props": ["kvar"],
       "cause": "dss_capi commit 90c572e4 'AltDSS-Schema: More units' adds Units_kvar to Generator.kvar ([NoDefault, RequiredInSpecSet] -> [+ Units_kvar]); the pinned dss_capi 0.14.5 backend predates it. The port follows the vendored source (generator/mod.rs). kvar appears only in the 'kW, kvar' spec set, so the line renders once in the oneOf."
+    },
+    {
+      "class": "Fuse",
+      "kind": "port_changed_line",
+      "from": "      \"default\" : \"none\",\r\n      \"description\" : \"Name of the TCC Curve object that determines the fuse blowing.  Must have been previously defined as a TCC_Curve object or specified as \\\"none\\\" (ignored). If \\\"none\\\", fuse sampling will be skipped and device will not blow for any current level. Default is \\\"none\\\". Multiplying the current values in the curve by the \\\"CurveMultiplier\\\" value gives the actual current.\",",
+      "to": "      \"default\" : \"tlink\",\r\n      \"description\" : \"Name of the TCC Curve object that determines the fuse blowing.  Must have been previously defined as a TCC_Curve object. Default is \\\"Tlink\\\". Multiplying the current values in the curve by the \\\"RatedCurrent\\\" value gives the actual current.\",",
+      "count": 1,
+      "props": ["FuseCurve"],
+      "cause": "OpenDSS r4133 (WP-U2.1, Version8 Controls/fuse.pas) repurposed the Fuse TCC model: FuseCurve defaults to \"none\" (was \"Tlink\") and its help names \"CurveMultiplier\" as the divisor instead of \"RatedCurrent\". The port ported r4133 (elements/pd/fuse); the pinned dss_capi 0.14.5 oracle keeps the classic default/help."
+    },
+    {
+      "class": "Fuse",
+      "kind": "port_changed_line",
+      "from": "      \"default\" : 0.0000000000000000E+000,\r\n      \"description\" : \"Fuse continuous rated current in Amps. Defaults to 0. Not used internally for either power flow or reporting.\",",
+      "to": "      \"default\" : 1.0000000000000000E+000,\r\n      \"description\" : \"Multiplier or actual phase amps for the phase TCC curve.  Defaults to 1.0.\",",
+      "count": 1,
+      "props": ["RatedCurrent"],
+      "cause": "OpenDSS r4133 (WP-U2.1, Version8 Controls/fuse.pas:393) repurposed Fuse.RatedCurrent from the TCC divisor (default 1.0, 'Multiplier or actual phase amps') to a purely informational continuous rating (default 0.0, 'Fuse continuous rated current in Amps'); the new CurveMultiplier prop took over the divisor role. The port ported r4133; the pinned dss_capi 0.14.5 oracle keeps the old RatedCurrent semantics."
+    },
+    {
+      "class": "Fuse",
+      "kind": "port_extra_property",
+      "prop_key": "CurveMultiplier",
+      "index": 11,
+      "order": 11,
+      "count": 1,
+      "props": ["CurveMultiplier"],
+      "cause": "OpenDSS r4133 (WP-U2.1, Version8 Controls/fuse.pas:191 CurveMultiplier) added the Fuse TCC-curve current multiplier (GetTCCTime(Cmag/CurveMultiplier)), default 1.0, taking over the divisor role RatedCurrent had in 0.14.5. The port adopted it (elements/pd/fuse/mod.rs); the pinned dss_capi 0.14.5 oracle (Fuse TProp ends at State=10) lacks it, inserted at ordinal 11, shifting the following BaseFreq/Enabled/Like $dssPropertyIndex/$dssPropertyOrder down."
+    },
+    {
+      "class": "Fuse",
+      "kind": "port_extra_property",
+      "prop_key": "InterruptingRating",
+      "index": 12,
+      "order": 12,
+      "count": 1,
+      "props": ["InterruptingRating"],
+      "cause": "OpenDSS r4133 (WP-U2.1, Version8 Controls/fuse.pas:192 InterruptingRating) added the informational Fuse rated interrupting current (default 0.0, not used internally). The port adopted it (elements/pd/fuse/mod.rs); absent from the pinned dss_capi 0.14.5 oracle, inserted at ordinal 12."
     }
   ]
 }

@@ -103,13 +103,23 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // `LocalControlList` is read by `Sample`; PVSystem/Storage are dead (they
         // round-trip but are never dispatched — faithful to Pascal).
         PropDef::string_list("LocalControlList"),
-        PropDef::double_v_array("LocalControlWeights"),
+        // Pascal `DoubleArrayProperty` + `IndirectCount` over the corresponding
+        // name-list (`ESPVLControl.pas:203-219`, `PropertyOffset2 = @F*ListSize`,
+        // `PropertyOffset3 = @F*NameList`): renders `ArrayOrFilePath` +
+        // `$dssLength: <List>`. The element count comes from the list size, exposed
+        // via `get_i32(<List>)`.
+        PropDef::double_array("LocalControlWeights", prop::LOCAL_CONTROL_LIST),
         PropDef::string_list("PVSystemList"),
-        PropDef::double_v_array("PVSystemWeights"),
+        PropDef::double_array("PVSystemWeights", prop::PV_SYSTEM_LIST),
         PropDef::string_list("StorageList"),
-        PropDef::double_v_array("StorageWeights"),
+        PropDef::double_array("StorageWeights", prop::STORAGE_LIST),
         // TCktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), prop::NUM_PROPS - 1);
