@@ -520,7 +520,13 @@ pub(crate) fn run_and_compare_abort(
 /// oracle comparison (its validated capi015 behavior reproduces on neither
 /// surviving channel; a Phase D ledger will re-gate it). It is still **smoke-run**
 /// on the Rust engine — compile + post + solve every step must converge with NO
-/// new engine errors — so a Rust regression can never hide behind the deferral.
+/// new engine errors. This catches a *convergence or error-surfacing* regression
+/// (a deferred case that stops solving, NaNs out, or starts erroring); it does
+/// **not** catch a *numeric-correctness* regression that still converges — no
+/// physical value is compared against any reference here. Full numeric coverage
+/// on these cases returns with the Phase D ledger. This is strictly stronger than
+/// the plan's `pending` fallback (which asserts an error) and membership is
+/// preserved, but it is a bounded, temporary reduction in verification depth.
 pub(crate) fn assert_deferred_rust_smoke(label: &str, case_path: &str, c: &SolvableCase) {
     let (mut dss, baseline_errors) = run_rust_capture(label, case_path, c);
     for i in 0..c.n_steps.max(1) {
