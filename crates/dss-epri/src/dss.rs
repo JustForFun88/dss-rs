@@ -650,8 +650,16 @@ pub struct Ycsc {
 /// C-strings until it is consumed (token count == number of `\0`). Empirically
 /// (`tools/opendss/xcheck_bridge.py` ground truth): drop exactly one trailing
 /// `\0`, split on `\0`, and lstrip a single leading space from element 0 (the
-/// monitor-header first-column artifact — no other array's element 0 carries a
-/// leading space, so applying it universally is a no-op there).
+/// monitor-header first-column artifact — `[' V1', ...] → ['V1', ...]`).
+///
+/// Applying the strip to element 0 of EVERY string array is safe, not by
+/// coincidence of the current universe but by DSS grammar: the other V-protocol
+/// string arrays (node order, element/register/variable names, zone lists) are
+/// whitespace-delimited DSS identifiers, which can never begin with a space, so
+/// the strip is a guaranteed no-op on them. The monitor CSV header — the one
+/// array whose first token carries a leading space — is exactly the intended
+/// target. Cross-checked bit-for-bit against Oddie over the full r4133 universe
+/// (`xcheck_bridge.py`).
 pub fn decode_string_array(bytes: &[u8]) -> Vec<String> {
     if bytes.is_empty() {
         return Vec::new();
