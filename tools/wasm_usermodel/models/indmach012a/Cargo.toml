@@ -1,0 +1,27 @@
+# WASM user-model reference fixture — IndMach012a (WASM_USERMODELS_PLAN WP-WM.2).
+# Workspace-EXCLUDED tooling crate (plan §2.6): builds the committed golden-class
+# artifact tests/fixtures/wasm/indmach012a.wasm via tools/wasm_usermodel/build_wasm.ps1
+# with the toolchain pinned in tools/wasm_usermodel/PIN.txt. Zero dependencies.
+[package]
+name = "indmach012a"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# cdylib -> the .wasm module; rlib -> host-target unit tests (tests/twin_parity.rs)
+# that pin the ported machine math against the native FPC twin's probed values.
+crate-type = ["cdylib", "rlib"]
+
+# Opt out of the dss-rs workspace: this crate must never join the product
+# workspace (plan §2.6 — fixture toolchain is pinned separately from the gate).
+[workspace]
+
+# Locked release profile — recorded in tools/wasm_usermodel/PIN.txt; the
+# committed .wasm regenerates MANUALLY ONLY with exactly these settings.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
