@@ -427,11 +427,15 @@ impl Dss {
         let param_name = self.parser.next_param(&self.vars).to_ascii_lowercase();
         let param = self.parser.make_string(&self.vars);
         if !param_name.is_empty() && !crate::util::compare_text_shortest_eq(&param_name, "object") {
-            // Pascal error 240: the `%s` argument is `CRLF + Parser.CmdString`
-            // (`sLineBreak`, rendered LF here like every other output line).
-            self.errors.push(format!(
-                "object=Class.Name expected as first parameter in command. \n{}",
-                self.parser.cmd_string()
+            // Pascal error 240 (ExecHelper.pas:219): the `%s` argument is
+            // `CRLF + Parser.CmdString` (`sLineBreak`, rendered LF here like
+            // every other output line).
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "object=Class.Name expected as first parameter in command. \n{}",
+                    self.parser.cmd_string()
+                ),
+                Some(240),
             ));
             return (String::new(), String::new());
         }

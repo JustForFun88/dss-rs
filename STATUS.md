@@ -981,10 +981,30 @@ scope). One `miette`-based diagnostic type now backs every engine error channel.
 - **Error codes** = ONLY Pascal `DoSimpleMsg`/`DoErrorMsg` numbers. Assigned to
   every push site whose adjacent comment cites one (two `rg` passes incl.
   multi-line receivers), each verified against `.inputs/dss_capi`, plus a few
-  exact-message matches found incidentally (8877, 99934, 482, 566). ~70 sites
-  carry codes; uncited/port-specific messages stay `None` (never invented). NOT
-  done: an exhaustive reverse Pascal lookup of every uncited message (unbounded,
-  mis-assignment-prone) — out of P5a scope.
+  exact-message matches found incidentally (8877, 99933/99934, 482, 566). ~80
+  sites carry codes; uncited/port-specific messages stay `None` (never invented).
+  NOT done: an exhaustive reverse Pascal lookup of every uncited message
+  (unbounded, mis-assignment-prone) — out of P5a scope.
+- **Settlement pass (audit-code F1/F2/F3, all fixed).** (F1) generator
+  `do_dynamic_mode` phases-else was mis-coded 5672 → corrected to **5671**
+  (generator.pas:1984 — the P5a comment had taken the number from the *different*
+  procedure `InitStateVars`, gen.pas:2357/code 5672, which is ported separately at
+  `init_state_vars_impl`). (F2) `interpret_time_step_size` S2-parse-failure arm
+  (and the empty-string guard, same `'Error in specification of StepSize: %s'`
+  message) was mis-coded 99934 → corrected to **99933** (ExecOptions.pas:335);
+  99934 is a *different* message (units-else, :346) and stays on the units arm.
+  (F3) completed the missed-code sweep — bare-string pushes carrying an
+  unambiguous single Pascal number were coded: 484 (Sampling, Solution.pas:1990),
+  131 (Load-Duration, ExecOptions.pas:484), 283/277 (EnergyMeter disabled/not
+  found, ExecHelper.pas:3157/3160), 718 (WriteClassFile ×2, Utilities.pas:1204),
+  240 (obj=Class.Name, ExecHelper.pas:219), 267 (BatchEdit, ExecHelper.pas:313),
+  721 (overwrite guard, ExecHelper.pas:3713), 567 (user-model missing ×3 —
+  gen/pv/storage). Deliberately left `None`: the three "Error opening file" /
+  "could not be opened" sites (`command.rs` 1657/1663/1680) merge two Pascal
+  branches with *different* codes (615/617, 613/58613, 70401/70501/70502) so no
+  single code is faithful; and the IterNumber/CtrlIterNumber/IntegrationFlag
+  read-only site (`set_cmd.rs`), whose old comment cited a phantom code
+  (25040103) absent from the Pascal source — comment corrected, code stays `None`.
 - **Text consumers re-baselined once:** `Export ErrorLog` now writes `[dss::eNNN]
   message` (bare message when uncoded); frozen. The only error-log golden
   (`export_errorlog.txt`) is an empty dump → byte-identical, no regeneration.

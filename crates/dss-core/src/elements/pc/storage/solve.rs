@@ -286,12 +286,15 @@ impl Storage {
             2 => self.do_constant_z(sys, node_v),
             3 => {
                 // User-written DLL model — never ported. Pascal inits InjCurrent
-                // then records error 567.
+                // then records error 567 (Storage.pas:2115).
                 self.calc_yprim_contribution(node_v);
-                errors.push(format!(
-                    "Storage.{} model designated to use user-written model, but \
-                     user-written model is not defined.",
-                    self.cd.obj.name()
+                errors.push(crate::diag::DssDiagnostic::msg(
+                    format!(
+                        "Storage.{} model designated to use user-written model, but \
+                         user-written model is not defined.",
+                        self.cd.obj.name()
+                    ),
+                    Some(567),
                 ));
             }
             _ => self.do_constant_pq(sys, node_v),

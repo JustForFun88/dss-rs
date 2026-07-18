@@ -84,10 +84,14 @@ pub(crate) fn interpret_time_step_size(
         return v; // only a number was specified, so must be seconds
     }
     // Error occurred, so must have a units specifier (the last character).
+    // Both the empty-string guard and the number-parse failure below map to
+    // Pascal's `if Code > 0` arm (ExecOptions.pas:335, code 99933) — the
+    // `'Error in specification of StepSize: %s'` message. Code 99934 is a
+    // *different* message (the units-else at ExecOptions.pas:346).
     let Some(ch) = s.chars().last() else {
         errors.push(crate::diag::DssDiagnostic::msg(
             format!("Error in specification of StepSize: {s}"),
-            Some(99934),
+            Some(99933),
         ));
         return current_h;
     };
@@ -95,7 +99,7 @@ pub(crate) fn interpret_time_step_size(
     let Ok(v) = s2.parse::<f64>() else {
         errors.push(crate::diag::DssDiagnostic::msg(
             format!("Error in specification of StepSize: {s}"),
-            Some(99934),
+            Some(99933),
         ));
         return current_h;
     };

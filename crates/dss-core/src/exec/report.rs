@@ -2471,7 +2471,11 @@ impl Dss {
         let mut f = match std::fs::File::create(path) {
             Ok(f) => f,
             Err(e) => {
-                self.errors.push(format!("WriteClassFile Error: {e}"));
+                // Pascal `DoSimpleMsg(..., 718)` (Utilities.pas:1204).
+                self.errors.push(crate::diag::DssDiagnostic::msg(
+                    format!("WriteClassFile Error: {e}"),
+                    Some(718),
+                ));
                 return;
             }
         };
@@ -2480,7 +2484,11 @@ impl Dss {
             crate::report::save::save::class_file_text(&mut classes[ci], enums, false);
         use std::io::Write;
         if let Err(e) = f.write_all(text.as_bytes()) {
-            self.errors.push(format!("WriteClassFile Error: {e}"));
+            // Pascal `DoSimpleMsg(..., 718)` (Utilities.pas:1204).
+            self.errors.push(crate::diag::DssDiagnostic::msg(
+                format!("WriteClassFile Error: {e}"),
+                Some(718),
+            ));
         }
         drop(f);
         if nrecords == 0 {
