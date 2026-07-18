@@ -53,6 +53,20 @@ impl ClassProps {
             let pd = &self.props[idx];
             let key = pd.json_key(false);
             let Some(&jval) = lookup.get(key.as_str()) else {
+                // Pascal `FillObjFromJSON` (`DSSObjectHelper.pas:4955`): a missing
+                // `Required` property is a loud error that aborts the load
+                // (`raise` → `loadClassFromJSON`'s `except` → DoSimpleMsg 5021).
+                // We push it and stop applying further properties; the caller
+                // aborts the whole import on a non-empty error list.
+                if pd.flags.contains(PropFlags::REQUIRED) {
+                    eng.errors.push(format!(
+                        "JSON/{}/{}: required property not provided: \"{}\".",
+                        self.class_name(),
+                        obj.data().name(),
+                        key
+                    ));
+                    return;
+                }
                 continue;
             };
             // Pascal: a silent read-only property is ignored on load.

@@ -105,7 +105,11 @@ impl Dss {
             };
             for item in items.clone() {
                 if let Json::Obj(members) = item {
-                    self.bus_from_json(&members);
+                    // Pascal `busFromJSON` raises on the `kVLN`+`kVLL` conflict;
+                    // with no `try/except` in `Obj_Circuit_FromJSON_` it propagates
+                    // to the C wrapper `Circuit_FromJSON`, aborting the whole load
+                    // (not just skipping the bus). Mirror that abort here.
+                    self.bus_from_json(&members)?;
                 } else {
                     return Err("\"Bus[]\" must be a bus object.".to_string());
                 }
@@ -220,7 +224,13 @@ impl Dss {
                 split: ci,
             };
             let DssClass { props, objects, .. } = active_class;
-            objects[oi].data_mut().set_default_and_unedited(false);
+            // Unlike the script edit path (`edit_active_inner`), Pascal
+            // `FillObjFromJSON` does NOT call `BeginEdit` — only `EndEdit` — so it
+            // never clears `DefaultAndUnedited` (`DSSClass.pas:1598`). A default
+            // DSS_OBJECT (e.g. `spectrum.defaultload`) rebuilt from JSON therefore
+            // stays flagged and is omitted from the re-export, matching the oracle
+            // (its own round trip drops such objects too). We must NOT clear the
+            // flag here.
             objects[oi].data_mut().begin_edit_boundary();
             {
                 let mut eng = PropEngine {
@@ -242,16 +252,17 @@ impl Dss {
 
     /// Pascal `busFromJSON` (`CAPI_Obj.pas:2865`): apply one `Bus` array entry's
     /// coordinates / base-kV / keep flag to the named bus. An unknown bus is
-    /// silently skipped (`busIdx = 0 → Exit`).
-    fn bus_from_json(&mut self, members: &[(String, Json)]) {
+    /// silently skipped (`busIdx = 0 → Exit`). The `kVLN`+`kVLL` conflict raises,
+    /// which upstream aborts the whole load — returned here as `Err`.
+    fn bus_from_json(&mut self, members: &[(String, Json)]) -> Result<(), String> {
         let Some(ckt) = self.circuit.as_mut() else {
-            return;
+            return Ok(());
         };
         let Some(name) = obj_find(members, "Name").and_then(json_str) else {
-            return;
+            return Ok(());
         };
         let Some(idx) = ckt.bus_list.find(&name) else {
-            return; // TODO: error? (Pascal leaves it silent)
+            return Ok(()); // Pascal leaves an unknown bus silent (`busIdx = 0 → Exit`).
         };
         let bus = &mut ckt.buses[idx];
         let mut kv_done = false;
@@ -272,12 +283,11 @@ impl Dss {
         }
         if let Some(v) = obj_find(members, "kVLL") {
             if kv_done {
-                self.errors
-                    .push("Both \"kVLN\" and \"kVLL\" were specified.".to_string());
-            } else {
-                ckt.buses[idx].kv_base = json_f64(v) / SQRT3;
+                return Err("Both \"kVLN\" and \"kVLL\" were specified.".to_string());
             }
+            ckt.buses[idx].kv_base = json_f64(v) / SQRT3;
         }
+        Ok(())
     }
 }
 

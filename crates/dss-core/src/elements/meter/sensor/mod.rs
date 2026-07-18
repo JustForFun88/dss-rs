@@ -59,9 +59,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         // `DSSObjectReferenceProperty` with `PropertyOffset2 = 0` (any class) +
         // `Required` (enforced by the recalc 666 message when nil).
-        PropDef::object_ref_any("Element"),
+        PropDef::object_ref_any("Element").flags(PropFlags::REQUIRED),
         PropDef::integer("Terminal"),
-        PropDef::double("kVBase"),
+        PropDef::double("kVBase").flags(PropFlags::REQUIRED),
         // `BooleanActionProperty` over `DoClearSensor`: setting `yes` clears the
         // spec flags; stores nothing, so the getter is always `No`.
         PropDef::boolean("Clear"),

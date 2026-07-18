@@ -127,6 +127,26 @@ fn json_import_rt_ieee13() {
     run_deck("rt_ieee13");
 }
 
+#[test]
+fn json_import_rt_edited_default() {
+    // Default DSS_OBJECT edit path: the re-export must DROP the JSON-edited
+    // `spectrum.defaultload` (the oracle does — `FillObjFromJSON` never clears
+    // `DefaultAndUnedited`). Guards the `set_default_and_unedited` regression.
+    run_deck("rt_edited_default");
+}
+
+#[test]
+fn json_import_rt_positive_seq() {
+    // AllowDuplicates + `Set CktModel=positive` PreCommand round trip.
+    run_deck("rt_positive_seq");
+}
+
+#[test]
+fn json_import_rt_generator() {
+    // Thevenin-DER (Generator) import — widens the gate beyond PD/Vsource.
+    run_deck("rt_generator");
+}
+
 // --- Negative / edge-case tests (error paths, mirroring the Pascal) ---
 
 /// A tiny valid whole-circuit JSON to mutate for the negative cases.
@@ -201,11 +221,18 @@ fn unknown_class_key_is_ignored() {
         "unknown class key must not log an error: {:?}",
         dss.errors()
     );
+    // The real Load must still have imported (not aborted by the bogus key).
+    let j1 = dss.circuit_to_json(opts()).expect("circuit after import");
+    assert!(
+        j1.contains("\"l1\""),
+        "the real load still imported alongside the ignored class"
+    );
 }
 
 #[test]
 fn missing_name_errors() {
-    // Pascal `loadSingleObj`: no "Name"/"name" → raise "missing \"Name\"".
+    // Pascal `loadSingleObj`: no "Name"/"name" → raise "missing \"Name\"", caught
+    // → ErrorNumber set → `Obj_Circuit_FromJSON_` Exits (aborts the Load load).
     let j0 = tiny_circuit_json();
     let injected = j0.replace("\"Name\" : \"l1\",", "");
     assert_ne!(injected, j0, "injection point exists");
@@ -215,5 +242,54 @@ fn missing_name_errors() {
         dss.errors().iter().any(|e| e.contains("Name")),
         "a missing element Name is a loud error: {:?}",
         dss.errors()
+    );
+    // The build aborted at the offending item: the Load class never imported.
+    let j1 = dss.circuit_to_json(opts()).expect("circuit exists");
+    assert!(
+        !j1.contains("\"Load\""),
+        "a name-less Load item aborts the class load, not a silent import: {j1}"
+    );
+}
+
+#[test]
+fn missing_required_property_errors() {
+    // Pascal `FillObjFromJSON` (DSSObjectHelper.pas:4955): a missing `Required`
+    // property raises `JSON/<cls>/<name>: required property not provided:
+    // "<prop>"`. Oracle-confirmed (dss-python 0.15.7) by dropping a Load's Bus1.
+    let j0 = tiny_circuit_json();
+    // Drop only the Load's Bus1 (the Vsource keeps its own).
+    let injected = j0.replace(
+        "\"Name\" : \"l1\",\r\n      \"Bus1\" : \"sourcebus\",\r\n",
+        "\"Name\" : \"l1\",\r\n",
+    );
+    assert_ne!(injected, j0, "injection point exists");
+    let mut dss = Dss::new();
+    let _ = dss.circuit_from_json(&injected);
+    assert!(
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("required property not provided") && e.contains("Bus1")),
+        "a missing Required property is a loud error, not a silent partial import: {:?}",
+        dss.errors()
+    );
+}
+
+#[test]
+fn bus_kvln_kvll_conflict_aborts() {
+    // Pascal `busFromJSON` raises `Both "kVLN" and "kVLL" were specified.`; with
+    // no try/except in `Obj_Circuit_FromJSON_` it aborts the whole load via the C
+    // wrapper. Oracle-confirmed (error 20230919). Must abort, not skip-and-continue.
+    let j0 = tiny_circuit_json();
+    let injected = j0.replace(
+        "\"Name\" : \"sourcebus\"\r\n    }",
+        "\"Name\" : \"sourcebus\",\r\n      \"kVLN\" : 7.2,\r\n      \"kVLL\" : 12.47\r\n    }",
+    );
+    assert_ne!(injected, j0, "injection point exists");
+    let mut dss = Dss::new();
+    let r = dss.circuit_from_json(&injected);
+    assert!(
+        r.as_ref()
+            .is_err_and(|e| e.contains("Both \"kVLN\" and \"kVLL\" were specified.")),
+        "the kVLN+kVLL conflict aborts the load: {r:?}"
     );
 }

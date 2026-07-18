@@ -76,6 +76,44 @@ DECKS = [
         "name": "rt_ieee13",
         "master": "Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
     },
+    {
+        # Default DSS_OBJECT edit path: `edit spectrum.defaultload` marks the
+        # default spectrum edited, so J0 carries it. `FillObjFromJSON` never
+        # BeginEdit's, so the flag is NOT re-cleared on import and the re-export
+        # (J1) DROPS it -- the oracle round trip is lossy for edited defaults.
+        # Guards the `set_default_and_unedited` regression.
+        "name": "rt_edited_default",
+        "commands": [
+            "new circuit.probe basekv=12.47",
+            "edit spectrum.defaultload %mag=(100 1.5 20 14 1 9 7)",
+            "makebuslist",
+        ],
+    },
+    {
+        # AllowDuplicates + positive-sequence model: exercises the dupsAllowed
+        # create branch and the `Set CktModel=positive` PreCommand emission.
+        "name": "rt_positive_seq",
+        "commands": [
+            "new circuit.probe basekv=12.47",
+            "set cktmodel=positive",
+            "set allowduplicates=yes",
+            "set longlinecorrection=yes",
+            "set ueweight=0.125",
+            "set lossweight=2.675",
+            "makebuslist",
+        ],
+    },
+    {
+        # Thevenin-DER coverage: a Generator (bus1/kV Required) widens the import
+        # gate beyond the Vsource/Line/Load/Capacitor/Transformer/RegControl set.
+        "name": "rt_generator",
+        "commands": [
+            "new circuit.probe basekv=12.47 bus1=sourcebus",
+            "new generator.g1 bus1=sourcebus kv=12.47 kw=500 pf=0.9 model=1",
+            "new load.l1 bus1=sourcebus kv=12.47 kw=100 pf=0.95",
+            "makebuslist",
+        ],
+    },
 ]
 
 

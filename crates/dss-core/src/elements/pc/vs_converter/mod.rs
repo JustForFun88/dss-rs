@@ -52,7 +52,7 @@ pub mod prop {
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::bus("Bus1", 1),
+        PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::double("kVAC"),
         PropDef::double("kVDC"),
         PropDef::double("kW"),

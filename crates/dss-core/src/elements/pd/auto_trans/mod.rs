@@ -116,9 +116,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             .flags(PropFlags::NON_ZERO | PropFlags::NON_NEGATIVE | PropFlags::SUPPRESS_JSON),
         // Winding definition (active winding selected by `Wdg=`).
         PropDef::integer("Wdg"),
-        PropDef::bus_on_struct("Bus"),
+        PropDef::bus_on_struct("Bus").flags(PropFlags::REQUIRED),
         PropDef::mapped_string_enum("Conn", enums.autotrans_connection),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
+        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
         PropDef::double("kVA"),
         PropDef::double("Tap"),
         PropDef::double("%R").scale(pct),

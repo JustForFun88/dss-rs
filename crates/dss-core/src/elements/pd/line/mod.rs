@@ -108,8 +108,8 @@ pub mod prop {
 pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     use prop::*;
     let mut defs = vec![
-        PropDef::bus("Bus1", 1),
-        PropDef::bus("Bus2", 2),
+        PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
+        PropDef::bus("Bus2", 2).flags(PropFlags::REQUIRED),
         PropDef::object_ref_class("LineCode", "LineCode"),
         PropDef::double("Length"),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),

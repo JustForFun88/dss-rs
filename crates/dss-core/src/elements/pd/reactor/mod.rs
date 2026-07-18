@@ -82,7 +82,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     // canonical spelling is pinned by the `dump_reactor` golden (WP8.5 step 1).
     let defs = vec![
         // Pascal flags bus1 `Required` (inert here — not enforced in Phase 4).
-        PropDef::bus("Bus1", 1),
+        PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::bus("Bus2", 2),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double("kvar").flags(PropFlags::REQUIRED_IN_SPEC_SET),
