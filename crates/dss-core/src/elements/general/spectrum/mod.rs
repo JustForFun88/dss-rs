@@ -30,7 +30,7 @@ define_properties! {
         .flags(PropFlags::REQUIRED_IN_SPEC_SET);
     4 ANGLE    => PropDef::double_array("Angle", NUM_HARM)
         .flags(PropFlags::REQUIRED_IN_SPEC_SET);
-    5 CSV_FILE => PropDef::string("CSVFile").flags(
+    5 CSV_FILE => PropDef::string("CSVFile").size_prop(NUM_HARM).flags(
         PropFlags::IS_FILENAME | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::GLOBAL_COUNT,
     );
 }

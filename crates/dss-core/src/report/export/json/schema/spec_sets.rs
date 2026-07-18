@@ -131,6 +131,19 @@ pub(super) fn spec_sets(class_name: &str) -> &'static [SpecSet] {
                 props: &["DblFile"],
             },
         ],
+        // `Spectrum.pas:144-150` — `SpecSetNames`/`SpecSets`. Member names are
+        // the Pascal `PropertyName` forms (`%Mag` resolves to the `pctMag` prop;
+        // the walker emits its `json_key` = `pctMag`).
+        "Spectrum" => &[
+            SpecSet {
+                name: "Harmonic, Angle, pctMag",
+                props: &["Harmonic", "Angle", "%Mag"],
+            },
+            SpecSet {
+                name: "CSVFile",
+                props: &["CSVFile"],
+            },
+        ],
         "GrowthShape" => &[
             SpecSet {
                 name: "Year, Mult",

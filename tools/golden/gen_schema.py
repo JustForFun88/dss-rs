@@ -64,6 +64,17 @@ SCHEMA_CLASSES = [
     "PriceShape",
     "XYcurve",
     "GrowthShape",
+    "TCC_Curve",
+    "Spectrum",
+    "WireData",
+    "CNData",
+    "TSData",
+    "LineSpacing",
+    # LineGeometry: deferred to integration as a port-authored (0.15.x) class —
+    # its property model follows the newer dss_capi (Wires -> Redundant+SuppressJSON,
+    # new Conductors=20 object-ref-array) and straddles 0.14.5 via HIDE_015X, so its
+    # schema diverges structurally from the pinned 0.14.5 oracle and needs a
+    # port-output reference (like WindGen). See STATUS §OG-1.5c batch B1.
 ]
 
 NL = "\r\n"

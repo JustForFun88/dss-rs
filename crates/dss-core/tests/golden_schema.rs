@@ -168,12 +168,95 @@ fn load_divergences() -> Value {
     serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
 }
 
+/// Remove every top-level (4-space-indented) `"<key>" : { … }` property block
+/// from a rendered class def, returning how many were removed. Used to strip a
+/// port-only (r4133-adopted) property before byte-comparing against the 0.14.5
+/// oracle. Brace-matched (string-aware) so nested objects don't confuse it; the
+/// block's trailing `,\r\n` (or bare `\r\n` if it were the last member) goes too.
+fn remove_property_blocks(s: &mut String, key: &str) -> usize {
+    let anchor = format!("    \"{key}\" : {{");
+    let mut count = 0;
+    while let Some(pos) = s.find(&anchor) {
+        let bytes = s.as_bytes();
+        let brace = pos + anchor.len() - 1; // the opening '{'
+        let (mut depth, mut in_str, mut esc) = (0i32, false, false);
+        let mut end = None;
+        let mut i = brace;
+        while i < bytes.len() {
+            let c = bytes[i] as char;
+            if in_str {
+                if esc {
+                    esc = false;
+                } else if c == '\\' {
+                    esc = true;
+                } else if c == '"' {
+                    in_str = false;
+                }
+            } else if c == '"' {
+                in_str = true;
+            } else if c == '{' {
+                depth += 1;
+            } else if c == '}' {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(i);
+                    break;
+                }
+            }
+            i += 1;
+        }
+        let mut tail = end.expect("unbalanced property block") + 1;
+        if s[tail..].starts_with(",\r\n") {
+            tail += 3;
+        } else if s[tail..].starts_with("\r\n") {
+            tail += 2;
+        }
+        s.replace_range(pos..tail, "");
+        count += 1;
+    }
+    count
+}
+
+/// Decrement a `"<marker>" : N` field's value by the number of `removed` values
+/// strictly less than `N`, on every line that carries it — the positional
+/// renumbering the oracle would show after the port's extra properties are
+/// dropped (`$dssPropertyIndex`/`$dssPropertyOrder` are dense ordinal ranks, so
+/// removing a prop at ordinal `r` shifts every higher ordinal down by one).
+fn renumber_field(s: &str, marker: &str, removed: &[i64]) -> String {
+    let key = format!("\"{marker}\" : ");
+    let mut out = String::with_capacity(s.len());
+    for line in s.split_inclusive("\r\n") {
+        if let Some(kpos) = line.find(&key) {
+            let after = &line[kpos + key.len()..];
+            let numend = after
+                .find(|c: char| !c.is_ascii_digit() && c != '-')
+                .unwrap_or(after.len());
+            if let Ok(v) = after[..numend].parse::<i64>() {
+                let shift = removed.iter().filter(|&&r| r < v).count() as i64;
+                out.push_str(&line[..kpos + key.len()]);
+                out.push_str(&(v - shift).to_string());
+                out.push_str(&after[numend..]);
+                continue;
+            }
+        }
+        out.push_str(line);
+    }
+    out
+}
+
 /// The per-class walk (`prepareClassJsonSchema`): every ported class def is
 /// byte-exact vs the pinned 0.14.5 oracle **after** removing exactly the
 /// documented r4133 divergences (`schema_divergences.json`). Fails on any
-/// unexplained byte diff AND on a stale inventory entry (a `port_extra_line`
-/// whose occurrence count no longer matches — i.e. the divergence is gone, or
-/// spread further than recorded).
+/// unexplained byte diff AND on a stale inventory entry (a divergence whose
+/// occurrence count no longer matches — i.e. the divergence is gone, or spread
+/// further than recorded). Two divergence `kind`s are understood:
+/// - `port_extra_line`: a single line (or embedded-CRLF block) the port emits
+///   that the 0.14.5 oracle lacks; removed `count` times.
+/// - `port_extra_property`: a whole port-only property block (keyed by
+///   `prop_key`, at ordinal `index`/`order`) the port adopted from newer
+///   dss_capi; removed `count` times, after which the trailing
+///   `$dssPropertyIndex`/`$dssPropertyOrder` ordinals are renumbered down (the
+///   positional cascade the extra property causes).
 #[test]
 fn ported_class_defs_bytes_match_oracle() {
     let g = load_golden();
@@ -196,26 +279,47 @@ fn ported_class_defs_bytes_match_oracle() {
             .unwrap_or_else(|| panic!("class {name} not registered"));
         let mut rendered = render(&def);
 
-        // Apply exactly the documented divergences for this class.
+        // Apply exactly the documented divergences for this class. Extra
+        // properties are collected first (all blocks removed) so the ordinal
+        // renumbering sees the full set of removed ranks in one pass.
+        let mut removed_indices: Vec<i64> = Vec::new();
+        let mut removed_orders: Vec<i64> = Vec::new();
         for d in divergences {
             if d["class"].as_str() != Some(name) {
                 continue;
             }
-            assert_eq!(
-                d["kind"].as_str(),
-                Some("port_extra_line"),
-                "unknown divergence kind for {name}"
-            );
-            let line = d["line"].as_str().expect("divergence line");
             let count = d["count"].as_u64().expect("divergence count") as usize;
-            let pat = format!("{line}\r\n");
-            let found = rendered.matches(&pat).count();
-            assert_eq!(
-                found, count,
-                "stale/incomplete divergence for {name}: expected {count} occurrence(s) of \
-                 `{line}`, found {found} — update schema_divergences.json"
-            );
-            rendered = rendered.replace(&pat, "");
+            match d["kind"].as_str() {
+                Some("port_extra_line") => {
+                    let line = d["line"].as_str().expect("divergence line");
+                    let pat = format!("{line}\r\n");
+                    let found = rendered.matches(&pat).count();
+                    assert_eq!(
+                        found, count,
+                        "stale/incomplete divergence for {name}: expected {count} occurrence(s) \
+                         of `{line}`, found {found} — update schema_divergences.json"
+                    );
+                    rendered = rendered.replace(&pat, "");
+                }
+                Some("port_extra_property") => {
+                    let key = d["prop_key"]
+                        .as_str()
+                        .expect("port_extra_property prop_key");
+                    let found = remove_property_blocks(&mut rendered, key);
+                    assert_eq!(
+                        found, count,
+                        "stale port_extra_property for {name}.{key}: expected {count} block(s), \
+                         found {found} — update schema_divergences.json"
+                    );
+                    removed_indices.push(d["index"].as_i64().expect("port_extra_property index"));
+                    removed_orders.push(d["order"].as_i64().expect("port_extra_property order"));
+                }
+                other => panic!("unknown divergence kind {other:?} for {name}"),
+            }
+        }
+        if !removed_indices.is_empty() {
+            rendered = renumber_field(&rendered, "$dssPropertyIndex", &removed_indices);
+            rendered = renumber_field(&rendered, "$dssPropertyOrder", &removed_orders);
         }
 
         let expected = want[name]

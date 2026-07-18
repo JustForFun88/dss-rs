@@ -326,10 +326,22 @@ pub(crate) fn class_schema(
                 prop.push(("items", obj(subprop)));
             }
 
-            if !(read_only || no_default)
-                && let Some(def) = array_default(pd, sample, prop_index, jtype_orig_is_matrix(pd))
-            {
-                prop.push(("default", def));
+            // Defaults, split by element type exactly as Pascal (`:561-668`):
+            // `number` reads `GetDoubles`, `integer` `GetIntegers`, `string`/
+            // `BusConnection` `GetStrings` (an array of booleans is unsupported
+            // upstream, so it is skipped here too).
+            if !(read_only || no_default) {
+                let def = match jtype_single {
+                    "number" => array_default(pd, sample, prop_index, jtype_orig_is_matrix(pd)),
+                    "integer" => int_array_default(sample, prop_index),
+                    "string" | "#/$defs/BusConnection" => {
+                        string_array_default(pd, sample, prop_index)
+                    }
+                    _ => None,
+                };
+                if let Some(def) = def {
+                    prop.push(("default", def));
+                }
             }
         } else if jtype != "-" {
             // ---- scalar-valued property (`:672-747`) -----------------------
@@ -631,6 +643,12 @@ fn sizing_property_index(pd: &PropDef) -> usize {
         | PropType::DoubleArrayOnStruct
         | PropType::EnumArrayOnStruct
         | PropType::BusesOnStruct => pd.size_prop,
+        // `DoubleVArrayProperty`: Pascal `getSizePropertyIndex` resolves its count
+        // via `PropertyOffset2` (the port carries that count-prop ordinal in
+        // `size_prop`). `ArrayMaxSize` arrays instead store the max element count
+        // in `size_prop` (not a prop ordinal) and are handled by the batch owning
+        // them, so they are excluded here (matches Pascal's per-array wiring).
+        PropType::DoubleVArray if !pd.flags.contains(PropFlags::ARRAY_MAX_SIZE) => pd.size_prop,
         // Pascal `getSizePropertyIndex`'s `GlobalCount`/`IndirectCount` branches:
         // a `String`/file property counted by the class's `NPts`. The port carries
         // that count index in `size_prop` (set on the shape classes' file props).
@@ -731,6 +749,38 @@ fn array_default(pd: &PropDef, obj: &dyn DssObject, idx: usize, is_matrix: bool)
     let vals = obj.get_f64_array(idx)?;
     let slice: Vec<f64> = vals.iter().take(count).copied().collect();
     finite_array(slice, scale)
+}
+
+/// The integer-array default (`:612-633`): `GetIntegers` then emit the whole
+/// array when non-empty (integers carry no NaN/Inf guard). `None` on empty.
+fn int_array_default(obj: &dyn DssObject, idx: usize) -> Option<Json> {
+    let vals = obj.get_i32_array(idx)?;
+    if vals.is_empty() {
+        return None;
+    }
+    Some(Json::Arr(vals.iter().map(|&v| i(v as i64)).collect()))
+}
+
+/// The string-array default (`:645-668`): `GetStrings` then emit the whole array
+/// when non-empty (an empty/unset element renders as JSON `null`, matching the
+/// Pascal `TJSONNull`). The port's `GetStrings` for an object-reference array is
+/// [`DssObject::get_object_ref_names`] (the referenced object names); other
+/// string arrays (e.g. `StringListProperty`) are owned by the batch that ports
+/// their class and return `None` here until then.
+fn string_array_default(pd: &PropDef, obj: &dyn DssObject, idx: usize) -> Option<Json> {
+    let names = match pd.ptype {
+        PropType::ObjectRefArray => obj.get_object_ref_names(idx),
+        _ => return None,
+    };
+    if names.is_empty() {
+        return None;
+    }
+    Some(Json::Arr(
+        names
+            .into_iter()
+            .map(|n| if n.is_empty() { Json::Null } else { s(&n) })
+            .collect(),
+    ))
 }
 
 /// Build a JSON number array from `vals`, or `None` if empty or any value is

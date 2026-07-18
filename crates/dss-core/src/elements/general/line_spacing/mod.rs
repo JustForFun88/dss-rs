@@ -23,8 +23,8 @@ define_properties! {
     class "LineSpacing", abbrev true, enums enums;
     1 NCONDS  => PropDef::integer("NConds").flags(PropFlags::SUPPRESS_JSON);
     2 NPHASES => PropDef::integer("NPhases");
-    3 X       => PropDef::double_v_array("X");
-    4 H       => PropDef::double_v_array("H");
+    3 X       => PropDef::double_v_array("X").size_prop(NCONDS);
+    4 H       => PropDef::double_v_array("H").size_prop(NCONDS);
     5 UNITS   => PropDef::mapped_string_enum("Units", enums.units);
     // dss_capi 0.15.x additions (LineSpacing.pas): the equivalent-spacing model.
     // `Detailed` (default true) selects per-conductor coordinates; when false the
