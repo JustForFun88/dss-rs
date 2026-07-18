@@ -430,6 +430,51 @@ branch → `$dssLength`). `extract_schema_json` still returns the skeleton (its
 (fmt/clippy/test); `tests/corpus` pristine. Pattern doc for the batch agents in
 the coordinator's scratchpad (`schema_pattern.md`).
 
+#### OG-1.5c batch B2 — sources + Load byte-exact; XfmrCode/Line deferred (2026-07-18)
+
+Delivered **Vsource, Isource, VCCS, Load** byte-exact vs the pinned 0.14.5
+oracle (added to `SCHEMA_CLASSES`; `ported_class_defs_bytes_match_oracle`
+covers them). Zero divergence-inventory entries. Work was per-class metadata
+(the `Units_*`/`NonNegative`/`NoDefault`/`DynamicDefault`/`RequiredInSpecSet`/
+`PowerFactorLimits` flags from each `DefineProperties`) plus `spec_sets.rs`
+entries for Vsource (4 `oneOf`; the 5th `R0,X0,R1,X1` set auto-aborts on the
+Redundant members) and Load (5 `oneOf`).
+
+Two **shared walker-infra gaps** the pilot never exercised were fixed in
+`classes.rs` (both needed by every remaining batch):
+- **scalar `Bus` default** — the walker read `get_string(propIndex)` for a
+  `#/$defs/BusConnection` prop; a Bus value is the terminal's bus name
+  (`class_props/json.rs:101`, `obj.GetBus(PropertyOffset)`), so it now reads
+  `get_bus_name(pd.size_prop)` (matches Pascal; unset ⇒ elided).
+- **scalar `DSSObjectReferenceProperty`** — the enum/object-ref chain handled
+  mapped enums but not scalar object refs, so `LineCode`/`Yearly`/`Spectrum`/
+  `BP1`… emitted no `type`. Added the `:818-895` arm: `type:string`
+  (+`minLength`/`maxLength` for a fixed-class ref, `object_class != Some("")`),
+  default = the referenced object's name when set (e.g. `Spectrum:"default"`).
+
+`enum_overrides` gained two arms (the port's runtime `DssEnum` carries no
+AltNames/`JSONUseNumbers` — schema-only): **`Connection`** (`Wye`/`Delta`
+AltNames, so a sequential `Conn` default renders `"Wye"`) and **`Load: Model`**
+(`JSONUseNumbers=true` integer enum + `ConstantPQ`… AltNames, matching
+`Load.pas:339`). Note: Load `kW`/`kvar`/`kVA` carry **no** `Units_*` flag — the
+pinned 0.14.5 oracle backend has none; the vendored source added them
+post-0.14.5 (`dss_capi 90c572e4` "AltDSS-Schema: More units"), an engine-inert
+schema-only change the port has not adopted (kept byte-exact vs the oracle,
+zero inventory).
+
+**Deferred: XfmrCode + Line.** Both are winding/conductor struct-array classes
+whose winding props (`kV`/`kVA`/`Tap`/`%R`/`Conn` with array-alternative to the
+plural `kVs`/…, and `RNeut`/`XNeut`/`MaxTap`/`MinTap`/`NumTaps`/`RDCOhms` as
+direct `DoubleOnStructArray`/`IntegerOnStructArray`) render as **per-winding
+arrays** with `$dssIterator:"Wdg"`. The port models them as plain scalars, so
+the schema needs scalar-on-struct-array render-as-array support + the
+`$dssIterator` metadata (`PropertyIteratorPropertyIndex`, `CAPI_Schema.pas:929`)
+— shared infra with Transformer/AutoTrans (batches B3/B6). Line additionally
+carries r4133 divergences (the `Conductors`/`EpsRMedium`/`HeightOffset` adds,
+the `Wires`→`Conductors` JSON rename) needing inventory. Both are removed from
+`SCHEMA_CLASSES` (like LineGeometry) pending that struct-array build-out; the
+gate stays green.
+
 ### OG-1.7 UPFC modes 2/3/5 (orphaned-gaps round, 2026-07-18)
 
 Branch `og17-upfc-modes`. `ORPHANED_GAPS.md` §1.7. **The engine code already

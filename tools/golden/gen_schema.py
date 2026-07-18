@@ -70,6 +70,15 @@ SCHEMA_CLASSES = [
     "CNData",
     "TSData",
     "LineSpacing",
+    # --- Batch B2: sources + Load (byte-exact). XfmrCode/Line deferred: they need
+    # the scalar-on-struct-array schema infra (DoubleOnStructArray/IntegerOnStructArray
+    # /MappedStringEnumOnStruct render-as-array + $dssIterator + the array-alternative
+    # redirect on winding props), shared with Transformer/AutoTrans (batches B3/B6).
+    # See STATUS §OG-1.5c batch B2. ---
+    "Vsource",
+    "Isource",
+    "VCCS",
+    "Load",
     # LineGeometry: deferred to integration as a port-authored (0.15.x) class —
     # its property model follows the newer dss_capi (Wires -> Redundant+SuppressJSON,
     # new Conductors=20 object-ref-array) and straddles 0.14.5 via HIDE_015X, so its

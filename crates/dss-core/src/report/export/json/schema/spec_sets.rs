@@ -162,6 +162,55 @@ pub(super) fn spec_sets(class_name: &str) -> &'static [SpecSet] {
                 props: &["DblFile"],
             },
         ],
+        // `Load.pas:368-381` — the load specification sets.
+        "Load" => &[
+            SpecSet {
+                name: "kW, PF",
+                props: &["kW", "PF"],
+            },
+            SpecSet {
+                name: "kW, kvar",
+                props: &["kW", "kvar"],
+            },
+            SpecSet {
+                name: "kVA, PF",
+                props: &["kVA", "PF"],
+            },
+            SpecSet {
+                name: "xfkVA, AllocationFactor, PF",
+                props: &["XfkVA", "AllocationFactor", "PF"],
+            },
+            SpecSet {
+                name: "kWh, kWhDays, CFactor, PF",
+                props: &["kWh", "PF", "kWhDays", "CFactor"],
+            },
+        ],
+        // `Vsource.pas:228-241` — the source-impedance specification sets. The
+        // 5th set (`R0, X0, R1, X1`) aborts in the walker: those props are
+        // `Redundant`, so their `prop_json` is never built (matches the oracle,
+        // which emits only four `oneOf`).
+        "Vsource" => &[
+            SpecSet {
+                name: "MVAsc3, MVAsc1, x1r1, x0r0",
+                props: &["MVASC3", "MVASC1", "X1R1", "X0R0"],
+            },
+            SpecSet {
+                name: "Isc3, Isc1, x1r1, x0r0",
+                props: &["Isc3", "Isc1", "X1R1", "X0R0"],
+            },
+            SpecSet {
+                name: "BaseMVA, puZ0, puZ1, puZ2",
+                props: &["BaseMVA", "puZ0", "puZ1", "puZ2"],
+            },
+            SpecSet {
+                name: "Z0, Z1, Z2",
+                props: &["Z0", "Z1", "Z2"],
+            },
+            SpecSet {
+                name: "R0, X0, R1, X1",
+                props: &["R0", "X0", "R1", "X1"],
+            },
+        ],
         _ => &[],
     }
 }

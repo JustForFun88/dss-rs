@@ -79,14 +79,20 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("BasekV").flags(PropFlags::REQUIRED),
         PropDef::double("pu"),
         PropDef::double("Angle"),
-        PropDef::double("Frequency").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("Frequency").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::double("MVASC3"),
-        PropDef::double("MVASC1"),
+        PropDef::double("MVASC3").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_MVA),
+        PropDef::double("MVASC1").flags(PropFlags::UNITS_MVA),
         PropDef::double("X1R1"),
         PropDef::double("X0R0"),
-        PropDef::double("Isc3"),
-        PropDef::double("Isc1"),
+        PropDef::double("Isc3")
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT | PropFlags::UNITS_A),
+        PropDef::double("Isc1").flags(PropFlags::NO_DEFAULT | PropFlags::UNITS_A),
         PropDef::double("R1").flags(PropFlags::REDUNDANT),
         PropDef::double("X1").flags(PropFlags::REDUNDANT),
         PropDef::double("R0").flags(PropFlags::REDUNDANT),
@@ -94,13 +100,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("ScanType", enums.scan_type),
         PropDef::mapped_string_enum("Sequence", enums.sequence),
         PropDef::bus("Bus2", 2),
-        PropDef::complex("Z1"),
-        PropDef::complex("Z0"),
-        PropDef::complex("Z2"),
-        PropDef::complex("puZ1"),
+        PropDef::complex("Z1").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_OHM),
+        PropDef::complex("Z0").flags(PropFlags::UNITS_OHM),
+        PropDef::complex("Z2").flags(PropFlags::UNITS_OHM),
+        PropDef::complex("puZ1").flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::complex("puZ0"),
         PropDef::complex("puZ2"),
-        PropDef::double("BaseMVA"),
+        PropDef::double("BaseMVA").flags(PropFlags::REQUIRED_IN_SPEC_SET),
         PropDef::object_ref_class("LoadShape", "Yearly"),
         PropDef::object_ref_class("LoadShape", "Daily"),
         PropDef::object_ref_class("LoadShape", "Duty"),
@@ -109,7 +115,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // PCClass tail:
         PropDef::object_ref("Spectrum"),
         // CktElementClass tail:
-        PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
+        PropDef::double("BaseFreq").flags(
+            PropFlags::DYNAMIC_DEFAULT
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_HZ,
+        ),
         PropDef::enabled("Enabled"),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
