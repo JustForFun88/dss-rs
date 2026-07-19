@@ -15,7 +15,8 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = (Resolve-Path (Join-Path $here '..\..\..')).Path
 $capi = Join-Path $root '.inputs\dss_capi\src'
 $r3723 = Join-Path $root '.inputs\electricdss-code-r3723-trunk\Version8\Source'
-foreach ($p in $capi, $r3723) {
+$r4133 = Join-Path $root '.inputs\electricdss-code-r4133-trunk\Version8\Source'
+foreach ($p in $capi, $r3723, $r4133) {
     if (-not (Test-Path $p)) { throw "vendored source missing: $p — re-vendor, do not guess" }
 }
 
@@ -37,6 +38,14 @@ $b = Join-Path $OutDir 'build_capi'; New-Item -ItemType Directory -Force $b | Ou
 $b = Join-Path $OutDir 'build_r3723'; New-Item -ItemType Directory -Force $b | Out-Null
 & $Fpc -Mdelphi -O3 -CF64 "-Fu$r3723\Shared" "-Fu$r3723\PCElements" "-Fi$r3723\Common" "-FU$b" "-FE$b" (Join-Path $here 'abi_probe_r3723.pas')
 & (Join-Path $b 'abi_probe_r3723.exe') | Tee-Object (Join-Path $OutDir 'p2_offsets_r3723.txt')
+
+# 2b. P8 — r4133 record-layout probe (ABI re-freeze to r4133, user decision
+# 2026-07-19): the headers the r4133 example DLL / native twin compile against.
+# Result: TDynamicsRec 52 B / TDSSCallBacks 256 B UNCHANGED; TGeneratorVars
+# 244 -> 252 B (deltaQNom at 176, tail +8). → docs/wasm/probes/p8_offsets_r4133.txt
+$b = Join-Path $OutDir 'build_r4133'; New-Item -ItemType Directory -Force $b | Out-Null
+& $Fpc -Mdelphi -O3 -CF64 "-Fu$r4133\Shared" "-Fu$r4133\PCElements" "-Fi$r4133\Common" "-FU$b" "-FE$b" (Join-Path $here 'abi_probe_r4133.pas')
+& (Join-Path $b 'abi_probe_r4133.exe') | Tee-Object (Join-Path $OutDir 'p8_offsets_r4133.txt')
 
 # 3. P1 — 15-export stub DLL + pinned-oracle load probe
 $b = Join-Path $OutDir 'build_stub'; New-Item -ItemType Directory -Force $b | Out-Null

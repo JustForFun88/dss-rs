@@ -625,6 +625,82 @@ empirically:
   range was verified clean at audit start. `tests/corpus` re-verified
   pristine at settle.
 
+### WASM-UM ABI re-freeze to r4133 (pre-WM.3, branch `wasm-r4133`, 2026-07-19)
+
+User decision 2026-07-19: the project gates on the in-house **r4133** bridge
+(`crates/dss-epri`), so the frozen user-model ABI + native twin move from the
+0.14.5/r3723 layout to r4133. Executed as the ABI doc's own recorded-decision
+procedure (header entry (b) + updated §2.2 + Appendix A). **Probe, not assume:**
+
+- **P8 r4133 offsets** (`abi_probe_r4133.pas` → `docs/wasm/probes/p8_offsets_r4133.txt`):
+  FPC `-Mdelphi` probe of the r4133 headers. `TDynamicsRec` 52 B and
+  `TDSSCallBacks` 256 B **byte-identical** r3723→r4133; `TGeneratorVars`
+  **244→252 B** — `deltaQNom` (`array of Double`, 8-B managed ref, NCIM-only)
+  at offset 176, tail shifted +8 (`NumPhases` 176→184, `VthevMag` 188→196,
+  `XRdp` 236→244).
+- **P8 model-math diff** (`p8_indmach012a_math_diff.txt`): the IndMach012a
+  example dir (`IndMach012Model.pas`/`MainUnit.pas`/`ParserDel.pas`/`.dpr`) is
+  **byte-identical** r3723→r4133 (sha256s); the sole delta is
+  `GeneratorVars.pas`. **Model math UNCHANGED.**
+- **P8 twin-in-r4133-engine** (`p8_twin_r4133_bridge.txt`): the twin rebuilt
+  from r4133 (252-B layout) **loads + runs in the r4133 engine via the
+  `epri-worker` bridge** — model=6 power-flow converged with the 14 IndMach012a
+  machine vars live (Slip=−0.006407, puRs/puXm/MaxSlip echoing UserData,
+  Is1/Ir1/StatorLoss/HPshaft computed) + 10 dynamics steps (Monitor mode=3
+  Slip/Freq series). This is the authoritative re-derivation through the r4133
+  channel (never Rust-vs-Rust).
+
+**Decision:** the frozen **native** `TGeneratorVars` is now r4133 (252 B,
+§2.2a). The **wasm marshaled image is UNCHANGED at 244 B** (§2.2b): `deltaQNom`
+is engine-only and a managed reference has no wasm-linear-memory meaning, so it
+**never crosses** the boundary; the +8 shift is native-side only. Consequently
+**zero wasm-side bytes changed** — proven empirically:
+
+- `twin_probe.py` ctypes image updated to the r4133 252-B layout (`deltaQNom`
+  slot, nil); driving the r4133 twin re-derives `twin_expected.rs` +
+  `p6_twin_expected.txt` **bit-identical** to the r3723 pins (193 constants,
+  all value lines byte-equal).
+- committed `tests/fixtures/wasm/indmach012a.wasm` **unchanged** (PIN hash
+  `1849db0c…` holds); the fixture self-gate
+  (`committed_fixture_matches_native_twin_bit_exact`) stays **bit-exact green**.
+- `crates/dss-usermodel::records::GeneratorVars` stays 244 B — **doc-comment +
+  §2.2b framing only**, no code change; the offset-pin tests still assert
+  176/188/236.
+
+`build_native.ps1` retargeted r3723→r4133; `build_probes.ps1` gained the P8
+step. Full three-command gate green at defaults; `tests/corpus` pristine
+(deck driven from an isolated scratch dir, never the corpus). Out of scope
+(unchanged): WM.3 element integration, any dss-core/manifest/dss-epri code.
+
+**Settlement (two independent audits, 2026-07-19).** The code audit returned
+empty (faithful; wasm side is doc + pin only, native re-freeze backed by
+reproduced probe evidence). The test audit raised two **low, by-design**
+observations, both settled empirically and **deliberately not "fixed"** (there
+is no regression to fix):
+
+- *WM3-1 — the r4133 re-derivation is gated by nothing new in the suite (it
+  verifies the old pins, which are identical).* Settled: the IndMach012a model
+  units (`IndMach012Model`/`MainUnit`/`ParserDel`/`.dpr`) were re-hashed here and
+  are **byte-identical r3723→r4133** (sha256 match p8); the sole delta is the
+  engine-only `deltaQNom` in `GeneratorVars.pas`, which never reaches the model.
+  Identical math ⇒ identical twin outputs, so the unchanged `twin_expected.rs`,
+  unchanged `.wasm`, and bit-exact-green self-gate ARE the correct, sufficient
+  verification; the r4133 bridge run (`p8_twin_r4133_bridge.txt`) confirms the
+  r4133-compiled twin loads + runs in the r4133 engine. FPC/wasm cannot rebuild
+  in CI — this is inherent golden discipline, not a coverage gap; adding a CI
+  gate is impossible and unnecessary.
+- *WM3-2 — the new native 252-B offsets are asserted only in the ungated
+  `twin_probe.py`; the gated `records.rs` test asserts the 244-B wasm image.*
+  Settled: the r4133 offset probe (`abi_probe_r4133.pas`) was **re-compiled and
+  re-run here** — output byte-identical to `p8_offsets_r4133.txt`
+  (`TGeneratorVars` 252 B, `deltaQNom`@176, `NumPhases`@184, `VthevMag`@196),
+  matching `twin_probe.py`'s ctypes asserts. The native record has **no host
+  codec** in `dss-usermodel` and **never crosses the wasm boundary**, so there
+  is nothing in the product to gate it against; the manual twin tool — which
+  must match the native DLL byte-for-byte — is its correct and only home. The
+  gated `records.rs` pin covers exactly what crosses (the 244-B wasm image). By
+  design, not a regression.
+
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
 JSON-Schema (draft 2020-12) envelope (`$schema`/`$id`/`type`/`required`), the ten

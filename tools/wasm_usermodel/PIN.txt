@@ -13,6 +13,18 @@ profile=release         # locked in the fixture crate Cargo.toml: opt-level=3,
                         # lto=true, codegen-units=1, panic=abort, strip=debuginfo
 # native twin toolchain (plan A — vendored IndMach012a.dpr, oracle-side golden gen)
 fpc==3.2.2              # ppcrossx64 x86_64-win64 cross, -Mdelphi -O2
+# twin source: ABI RE-FREEZE TO r4133 (user decision 2026-07-19) — build_native.ps1
+#   now compiles .inputs/electricdss-code-r4133-trunk/Version8/Source/IndMach012a/
+#   IndMach012a.dpr (was r3723). The IndMach012a example dir is byte-identical
+#   r3723->r4133 (docs/wasm/probes/p8_indmach012a_math_diff.txt); the only delta is
+#   GeneratorVars.pas (deltaQNom => 252-B native TGeneratorVars, p8_offsets_r4133.txt).
+#   The r4133 twin LOADS + RUNS in the r4133 engine via the dss-epri/epri-worker
+#   bridge (p8_twin_r4133_bridge.txt). twin_probe.py drives it with the 252-B ctypes
+#   image; every recorded value is BIT-IDENTICAL to the r3723 image (model math
+#   unchanged, deltaQNom engine-only), so twin_expected.rs and the committed .wasm
+#   are UNCHANGED (fixture self-gate stays bit-exact green).
+# EPRI r4133 bridge DLL (twin-load oracle): tools/opendss/bin/r4133/OpenDSSDirect.dll
+#   Version 11.0.0.1 (64-bit) - Charlottesville (tools/opendss/revisions.json)
 # oracle (unchanged, tools/golden/PIN.txt governs): dss-python 0.15.7 / backend 0.14.5
 #
 # ---- committed fixture artifacts (WM.2) — regenerate MANUALLY ONLY ----
