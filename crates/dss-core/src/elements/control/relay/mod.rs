@@ -86,18 +86,48 @@ const ARR: usize = RCMAX + 2;
 /// detected by the Distance characteristic.
 const MIN_DISTANCE_REACTANCE: f64 = -1.0e-8;
 
-/// `ControlType` ordinals (Pascal `Relay.pas` consts; the `RelayTypeEnum` maps
-/// the `Type=` spellings onto them — note the `2` ordinal is unused upstream).
-pub mod ctype {
-    pub const CURRENT: i32 = 0;
-    pub const VOLTAGE: i32 = 1;
-    pub const REVPOWER: i32 = 3;
-    pub const NEGCURRENT: i32 = 4;
-    pub const NEGVOLTAGE: i32 = 5;
-    pub const GENERIC: i32 = 6;
-    pub const DISTANCE: i32 = 7;
-    pub const TD21: i32 = 8;
-    pub const DOC: i32 = 9;
+/// Relay `ControlType` (Pascal `Relay.pas` consts; the `RelayTypeEnum` maps the
+/// `Type=` spellings onto them — the `2` ordinal is deliberately unused
+/// upstream, so `from_ordinal(2)` is `None`). Discriminants are user-visible and
+/// frozen (round-trip through the `DssEnum` registry); `i32` survives only at the
+/// property parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum RelayControlType {
+    #[default]
+    Current = 0,
+    Voltage = 1,
+    RevPower = 3,
+    NegCurrent = 4,
+    NegVoltage = 5,
+    Generic = 6,
+    Distance = 7,
+    Td21 = 8,
+    Doc = 9,
+}
+
+impl RelayControlType {
+    /// The `RelayTypeEnum` ordinal (`Type=`/`?`/dump boundary value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry ordinal; the unused `2` (and any out-of-range
+    /// value) yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Current),
+            1 => Some(Self::Voltage),
+            3 => Some(Self::RevPower),
+            4 => Some(Self::NegCurrent),
+            5 => Some(Self::NegVoltage),
+            6 => Some(Self::Generic),
+            7 => Some(Self::Distance),
+            8 => Some(Self::Td21),
+            9 => Some(Self::Doc),
+            _ => None,
+        }
+    }
 }
 
 /// 1-based property ordinals in **display order** (the r4133
@@ -288,8 +318,8 @@ pub struct Relay {
     /// `MonitoredElementTerminal`.
     monitored_element_terminal: i32,
 
-    /// `ControlType` (see [`ctype`]).
-    control_type: i32,
+    /// `ControlType` (see [`RelayControlType`]).
+    control_type: RelayControlType,
 
     // --- TCC curves (overcurrent / voltage / DOC inner): dump name + clone ---
     phase_curve_name: String,
@@ -433,7 +463,7 @@ impl Relay {
             mon_snap: None,
             ctrl_snap: None,
             monitored_element_terminal: 1,
-            control_type: ctype::CURRENT, // RelayTypeEnum DefaultValue = 0
+            control_type: RelayControlType::Current, // RelayTypeEnum DefaultValue = 0
             phase_curve_name: "none".to_string(),
             ground_curve_name: "none".to_string(),
             ov_curve_name: "none".to_string(),
@@ -637,20 +667,20 @@ impl Relay {
     /// (RUNG2-COMMON: oddie:r4133 is authoritative for this rung).
     fn type_side_effect(&mut self) {
         self.definite_time_delay = match self.control_type {
-            ctype::REVPOWER
-            | ctype::NEGCURRENT
-            | ctype::NEGVOLTAGE
-            | ctype::GENERIC
-            | ctype::DISTANCE
-            | ctype::TD21 => 0.1,
+            RelayControlType::RevPower
+            | RelayControlType::NegCurrent
+            | RelayControlType::NegVoltage
+            | RelayControlType::Generic
+            | RelayControlType::Distance
+            | RelayControlType::Td21 => 0.1,
             _ => 0.0, // CURRENT / VOLTAGE / DOC / else
         };
-        if self.control_type == ctype::DOC {
+        if self.control_type == RelayControlType::Doc {
             self.num_reclose = 0;
         }
         // Pascal `Edit` CASE 5 side effect: any non-overcurrent type disables the
         // single-phase modes (`SinglePhTrip`/`SinglePhLockout := FALSE`).
-        if self.control_type != ctype::CURRENT {
+        if self.control_type != RelayControlType::Current {
             self.single_ph_trip = false;
             self.single_ph_lockout = false;
         }
@@ -709,7 +739,7 @@ impl Relay {
                 };
                 self.ccd.cd.set_bus(1, &bus);
 
-                if self.control_type == ctype::GENERIC {
+                if self.control_type == RelayControlType::Generic {
                     self.monitor_var_index =
                         Self::lookup_variable(&self.monitor_var_names, &self.monitor_variable);
                     if self.monitor_var_index < 1 {
@@ -756,7 +786,9 @@ impl Relay {
         };
         self.pickup_volts47 = self.vbase * self.pct_pickup47 * 0.01;
 
-        if self.control_type == ctype::DISTANCE || self.control_type == ctype::TD21 {
+        if self.control_type == RelayControlType::Distance
+            || self.control_type == RelayControlType::Td21
+        {
             self.dist_z1 = crate::support::complexutil::pclx(self.z1mag, self.z1ang.to_radians());
             self.dist_z0 = crate::support::complexutil::pclx(self.z0mag, self.z0ang.to_radians());
             self.dist_k0 = ((self.dist_z0 - self.dist_z1) / 3.0) / self.dist_z1;
@@ -806,16 +838,15 @@ impl Relay {
         }
 
         match self.control_type {
-            ctype::CURRENT => self.overcurrent_logic(mon, ctx),
-            ctype::VOLTAGE => self.voltage_logic(mon, ctx),
-            ctype::REVPOWER => self.rev_power_logic(mon, ctx),
-            ctype::NEGCURRENT => self.neg_seq46_logic(mon, ctx),
-            ctype::NEGVOLTAGE => self.neg_seq47_logic(mon, ctx),
-            ctype::GENERIC => self.generic_logic(mon, ctx),
-            ctype::DISTANCE => self.distance_logic(mon, ctx),
-            ctype::TD21 => return self.td21_logic(mon, ctx),
-            ctype::DOC => self.directional_overcurrent_logic(mon, ctx),
-            _ => {}
+            RelayControlType::Current => self.overcurrent_logic(mon, ctx),
+            RelayControlType::Voltage => self.voltage_logic(mon, ctx),
+            RelayControlType::RevPower => self.rev_power_logic(mon, ctx),
+            RelayControlType::NegCurrent => self.neg_seq46_logic(mon, ctx),
+            RelayControlType::NegVoltage => self.neg_seq47_logic(mon, ctx),
+            RelayControlType::Generic => self.generic_logic(mon, ctx),
+            RelayControlType::Distance => self.distance_logic(mon, ctx),
+            RelayControlType::Td21 => return self.td21_logic(mon, ctx),
+            RelayControlType::Doc => self.directional_overcurrent_logic(mon, ctx),
         }
         false
     }
@@ -947,7 +978,7 @@ impl Relay {
                     }
                     self.armed_for_close[ph_idx] = false;
                     self.operation_count[ph_idx] += 1;
-                    if self.control_type == ctype::TD21 {
+                    if self.control_type == RelayControlType::Td21 {
                         self.td21_quiet = self.td21_pt / 2;
                     }
                 }
@@ -981,7 +1012,7 @@ impl Relay {
                     }
                     if self.armed_for_reset[ph_idx]
                         && !self.locked_out[ph_idx]
-                        && self.control_type == ctype::TD21
+                        && self.control_type == RelayControlType::Td21
                     {
                         self.td21_quiet = self.td21_pt / 2;
                     }
@@ -1079,7 +1110,7 @@ impl Relay {
             }
         }
         self.armed_for_open[ph_idx] = false;
-        if self.control_type == ctype::TD21 {
+        if self.control_type == RelayControlType::Td21 {
             self.td21_quiet = self.td21_pt + 1;
         }
     }
