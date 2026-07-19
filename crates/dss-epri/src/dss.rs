@@ -14,7 +14,8 @@
 use std::ffi::{c_char, c_void};
 use std::path::Path;
 
-use crate::ffi::{Dll, DllFns, FnV, cstr_to_string, to_cstring};
+use crate::families::{Family, FamilyTable, VData, decode_v, encode_v_set, vset_len};
+use crate::ffi::{Dll, DllFns, FnV, YMatrixFns, cstr_to_string, to_cstring};
 
 /// An untolerated engine error (mirrors dss-python raising on `Error.Number != 0`).
 #[derive(Debug, Clone)]
@@ -45,6 +46,35 @@ impl std::error::Error for EngineError {}
 /// Powers, Currents, Losses (each flat `[re, im, ...]`) for one element.
 pub type Pcl = (Vec<f64>, Vec<f64>, Vec<f64>);
 
+/// One generic C-API call request for [`Engine::ffi_dispatch`]. `kind` selects
+/// the ABI shape (`"i"`/`"f"`/`"s"`/`"v"`); only the matching scalar
+/// (`iarg`/`farg`/`sarg`) is used. `vset` (V only) drives an array-SET mode.
+#[derive(Debug, Clone, Default)]
+pub struct FfiCall<'a> {
+    pub family: &'a str,
+    pub kind: &'a str,
+    pub mode: i32,
+    pub iarg: i32,
+    pub farg: f64,
+    pub sarg: &'a str,
+    pub vset: Option<VData>,
+}
+
+/// The result of a generic [`Engine::ffi_dispatch`] call, by ABI shape.
+#[derive(Debug, Clone)]
+pub enum FfiOut {
+    /// `XxxI` — integer scalar.
+    I(i32),
+    /// `XxxF` — float scalar.
+    F(f64),
+    /// `XxxS` — string.
+    S(String),
+    /// `XxxV` getter — a decoded, type-tagged array.
+    V(VData),
+    /// `XxxV` setter — the element count the DLL accepted (`mySize` out).
+    VSet(i32),
+}
+
 /// Compile-time tolerated non-fatal errno the official engine solves through
 /// (`oracle_server._TOLERATED_COMPILE_ERRNOS`): a `? Export monitor <undef>`.
 const TOLERATED_COMPILE: &[i32] = &[250];
@@ -65,6 +95,8 @@ const USER_MODEL: &[i32] = &[567, 570, 1570];
 /// the OS reclaims cleanly.
 pub struct Engine {
     dll: DllFns,
+    ymatrix: YMatrixFns,
+    families: FamilyTable,
     version: String,
     dll_path: String,
 }
@@ -75,10 +107,10 @@ impl Engine {
     /// → read Version. All subsequent DLL calls happen on this same thread.
     pub fn new(dll_path: &Path) -> Result<Engine, EngineError> {
         let dll = Dll::load(dll_path).map_err(EngineError::Other)?;
-        let fns = dll.fns;
         // Never `FreeLibrary`: dropping the DLL deadlocks in its finalization
-        // (see the `Engine` doc). Leak the loaded `Library` for the session.
-        dll.leak();
+        // (see the `Engine` doc). Leak the loaded `Library` for the session and
+        // take its bound entry points (gate path + capability channels).
+        let (fns, ymatrix, families) = dll.leak_into_parts();
         // SAFETY: `DSSI(8, 0)` sets NoFormsAllowed := TRUE (DDSS.pas mode 8).
         unsafe { (fns.dss_i)(8, 0) };
         // SAFETY: `DSSS(1, "")` returns the version string (borrowed, copied now).
@@ -86,6 +118,8 @@ impl Engine {
         let version = unsafe { cstr_to_string((fns.dss_s)(1, vc.as_ptr())) };
         let eng = Engine {
             dll: fns,
+            ymatrix,
+            families,
             version,
             dll_path: dll_path.display().to_string(),
         };
@@ -697,6 +731,196 @@ impl Engine {
 
     pub fn ctrl_queue(&self) -> Vec<String> {
         self.v_strings(self.dll.ctrl_queue_v, 0)
+    }
+
+    // ---- generic FFI capability channel (EPRI Round 2) --------------------
+    //
+    // Every DDLL family is a uniform `XxxI/F/S/V(mode, arg)` quartet; dispatching
+    // `(family, kind, mode, arg)` reaches every mode of every family (see
+    // `crate::families`). All FFI happens here (behind the module SAFETY doc);
+    // `crate::script::handle_ffi` only parses/serializes JSON around it.
+
+    /// Look up a family's entry points by (case-insensitive) name.
+    pub fn family(&self, name: &str) -> Option<&Family> {
+        self.families.get(name)
+    }
+
+    /// `(family, present-kinds)` pairs for the `caps` handshake.
+    pub fn family_manifest(&self) -> Vec<(&'static str, String)> {
+        self.families.manifest()
+    }
+
+    /// Number of registered families.
+    pub fn family_count(&self) -> usize {
+        self.families.family_count()
+    }
+
+    /// Total bound family entry points.
+    pub fn family_entry_points(&self) -> usize {
+        self.families.entry_point_count()
+    }
+
+    /// Dispatch one generic C-API call ([`FfiCall`]). For a `"v"` call,
+    /// `vset = None` reads the array getter for `mode`; `vset = Some(_)` drives the
+    /// SET mode, handing the array in via `myPointer`. The caller polls
+    /// [`Engine::poll_error`] afterwards for the structured errno surface.
+    pub fn ffi_dispatch(&self, call: FfiCall) -> Result<FfiOut, EngineError> {
+        let FfiCall {
+            family,
+            kind,
+            mode,
+            iarg,
+            farg,
+            sarg,
+            vset,
+        } = call;
+        let fam = self
+            .families
+            .get(family)
+            .ok_or_else(|| EngineError::Other(format!("unknown FFI family {family:?}")))?;
+        let missing =
+            |k: &str| EngineError::Other(format!("family {family} has no {k} entry point"));
+        match kind {
+            "i" => {
+                let f = fam.i.ok_or_else(|| missing("I"))?;
+                // SAFETY: `f` is a transcribed `XxxI(mode, arg): longint` cdecl.
+                Ok(FfiOut::I(unsafe { f(mode, iarg) }))
+            }
+            "f" => {
+                let f = fam.f.ok_or_else(|| missing("F"))?;
+                // SAFETY: `f` is a transcribed `XxxF(mode, arg): double` cdecl.
+                Ok(FfiOut::F(unsafe { f(mode, farg) }))
+            }
+            "s" => {
+                let f = fam.s.ok_or_else(|| missing("S"))?;
+                let a = to_cstring(sarg);
+                // SAFETY: `a` is a live NUL-terminated buffer for the call; the
+                // returned pointer is DLL-owned and copied out immediately.
+                let p = unsafe { f(mode, a.as_ptr()) };
+                Ok(FfiOut::S(unsafe { cstr_to_string(p) }))
+            }
+            "v" => {
+                let f = fam.v.ok_or_else(|| missing("V"))?;
+                match vset {
+                    None => {
+                        let (tag, bytes) = self.call_v(f, mode);
+                        Ok(FfiOut::V(decode_v(tag, &bytes)))
+                    }
+                    Some(data) => Ok(FfiOut::VSet(self.call_v_set(f, mode, &data))),
+                }
+            }
+            other => Err(EngineError::Other(format!("unknown FFI kind {other:?}"))),
+        }
+    }
+
+    /// Drive a V-protocol **SET** mode: hand the caller's array in via
+    /// `myPointer` + `mySize` and return the element count the DLL accepted
+    /// (`mySize` out, per `DLoadShape.pas` `mySize := k - 1`).
+    ///
+    /// `mySize` is an **element (point) count**, not a byte count: the SET path
+    /// clamps `LoopLimit := min(mySize, NumPoints)` and steps `myPointer` one
+    /// element per iteration ([`vset_len`]).
+    fn call_v_set(&self, f: FnV, mode: i32, data: &VData) -> i32 {
+        let elems = vset_len(data);
+        let (tag, mut bytes) = encode_v_set(data);
+        let mut ptr: *mut c_void = bytes.as_mut_ptr() as *mut c_void;
+        let mut ty = tag;
+        let mut size = elems;
+        // SAFETY: `bytes` holds `elems` elements and outlives the call. The SET
+        // path reads at most `min(size, NumPoints)` elements; with `size ==
+        // elems` it never steps past `bytes`. A few setters (e.g. `DXYCurves`
+        // XArray) ignore `mySize` and read the object's full `NumPoints`, so the
+        // caller must supply an array of at least the target's point count (the
+        // same contract the Python/Oddie bridge required). `ptr` may be
+        // repointed by the DLL and is not read afterwards; the accepted element
+        // count is written back into `size`.
+        unsafe { f(mode, &mut ptr, &mut ty, &mut size) };
+        size
+    }
+
+    // ---- Y-matrix / injection helpers (capability channel) ----------------
+
+    /// `SystemYChanged(mode, arg)` — read (mode 0) / write (mode 1) the flag.
+    pub fn ym_system_y_changed(&self, mode: i32, arg: i32) -> i32 {
+        // SAFETY: `SystemYChanged` is a plain `(mode, arg): longint` cdecl.
+        unsafe { (self.ymatrix.system_y_changed)(mode, arg) }
+    }
+
+    /// `UseAuxCurrents(mode, arg)` — read/write the aux-currents flag.
+    pub fn ym_use_aux_currents(&self, mode: i32, arg: i32) -> i32 {
+        // SAFETY: plain `(mode, arg): longint` cdecl.
+        unsafe { (self.ymatrix.use_aux_currents)(mode, arg) }
+    }
+
+    /// `BuildYMatrixD(BuildOps, AllocateVI)` — rebuild the system Y matrix.
+    pub fn ym_build_y(&self, build_ops: i32, allocate_vi: i32) {
+        // SAFETY: plain `(longint, longint)` cdecl; no out-params.
+        unsafe { (self.ymatrix.build_y_matrix_d)(build_ops, allocate_vi) }
+    }
+
+    /// `ZeroInjCurr` — zero the injection-current vector.
+    pub fn ym_zero_inj(&self) {
+        // SAFETY: parameterless cdecl.
+        unsafe { (self.ymatrix.zero_inj_curr)() }
+    }
+
+    /// `GetSourceInjCurrents` — stamp source injection currents.
+    pub fn ym_get_source_inj(&self) {
+        // SAFETY: parameterless cdecl.
+        unsafe { (self.ymatrix.get_source_inj_currents)() }
+    }
+
+    /// `GetPCInjCurr` — stamp PC-element injection currents.
+    pub fn ym_get_pc_inj(&self) {
+        // SAFETY: parameterless cdecl.
+        unsafe { (self.ymatrix.get_pc_inj_curr)() }
+    }
+
+    /// `AddInAuxCurrents(SType)` — fold auxiliary currents into the injection.
+    pub fn ym_add_aux(&self, stype: i32) {
+        // SAFETY: plain `(integer)` cdecl.
+        unsafe { (self.ymatrix.add_in_aux_currents)(stype) }
+    }
+
+    /// `getVpointer` — node-voltage vector (`Solution.NodeV`), flat `[re, im, ...]`
+    /// of length `2*(NumNodes+1)`, slot 0 = ground.
+    pub fn v_pointer(&self, num_nodes: i32) -> Vec<f64> {
+        let mut p: *mut f64 = std::ptr::null_mut();
+        // SAFETY: `getVpointer` sets `p` to `Solution.NodeV`; the length is a
+        // function of NumNodes. Copied out immediately (byte-view, align 1).
+        unsafe { (self.ymatrix.get_v_pointer)(&mut p) };
+        if p.is_null() {
+            return Vec::new();
+        }
+        copy_f64(p, 2 * (num_nodes as usize + 1))
+    }
+
+    /// `InitAndGetYparams` — factor Y and report `(nBus, nNZ)`; `None` if Y is
+    /// not built (no circuit).
+    pub fn y_dims(&self) -> Option<(u32, u32)> {
+        let mut hy: u64 = 0;
+        let mut n_bus: u32 = 0;
+        let mut n_nz: u32 = 0;
+        // SAFETY: out-params are valid locals; the call factors Y and reports dims.
+        let ok = unsafe { (self.dll.init_and_get_yparams)(&mut hy, &mut n_bus, &mut n_nz) };
+        if ok == 0 || n_bus == 0 {
+            None
+        } else {
+            Some((n_bus, n_nz))
+        }
+    }
+
+    /// `SolveSystem` — back-substitute `Y·V = I` (present injection currents) into
+    /// a fresh caller-owned `NodeV` buffer of `2*(NumNodes+1)` doubles; returns the
+    /// KLU status. Non-destructive to `Solution.NodeV` (writes only the caller
+    /// buffer, which is discarded — this proves the external-solve entry is live).
+    pub fn solve_system(&self, num_nodes: i32) -> i32 {
+        let mut buf = vec![0.0f64; 2 * (num_nodes as usize + 1)];
+        let mut p: *mut f64 = buf.as_mut_ptr();
+        // SAFETY: `solve_system` takes `var NodeV` (**double); it back-substitutes
+        // into the array `p` points at (our `buf`, sized `2*(NumNodes+1)` doubles).
+        // `buf` outlives the call; we ignore any repointed `p`.
+        unsafe { (self.ymatrix.solve_system)(&mut p) }
     }
 
     /// Escalate any read error accumulated during a capture block.

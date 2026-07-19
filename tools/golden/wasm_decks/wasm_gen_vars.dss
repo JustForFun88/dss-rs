@@ -1,0 +1,21 @@
+! WASM_USERMODELS WM.3 — Generator GenModel=6 STATE-VARIABLE surface gate.
+! Same induction machine as wasm_gen_pflow, at a second operating point (a small
+! resistive load on the generator bus shifts the machine slip), so the captured
+! state-variable surface (num_vars / get_all_vars / get_var_name, plus the
+! per-variable `? Generator.g1.<var>` query path) is exercised at an independent
+! point. The `? Generator.g1.<var>` probe lines drive the single-variable query
+! path (Pascal Get_Variable, generator.pas:2618) during the run; the committed
+! golden pins the full surface (the Rust replay additionally spot-checks the `?`
+! queries against it). `@FIXTURE@` = the `.dll` twin (oracle) / `.wasm` (Rust).
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.wasm_gen basekv=13.8 phases=3 bus1=sourcebus pu=1.00 R1=0.05 X1=0.15 R0=0.05 X0=0.15
+New Line.feeder phases=3 bus1=sourcebus bus2=b3 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
+New Generator.g1 bus1=b3 phases=3 conn=delta kv=13.8 kW=4000 kVA=5000 Xdp=.27 Xdpp=0.2 H=1 pf=1 model=6 Balanced=No UserModel=@FIXTURE@ UserData=(Rs=0.0053 Xs=0.106 Rr=0.007 Xr=0.12 Xm=4 MaxSlip=0.1)
+New Load.aux bus1=b3 phases=3 conn=delta kv=13.8 kW=800 pf=0.98 model=1
+Set voltagebases=[13.8]
+CalcVoltageBases
+Solve
+? Generator.g1.Slip
+? Generator.g1.puRs
+? Generator.g1.MaxSlip

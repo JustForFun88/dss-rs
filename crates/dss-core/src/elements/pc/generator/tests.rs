@@ -395,18 +395,32 @@ fn edit_gen_prop(g: &mut Generator, name: &str, value: &str) -> crate::diag::Err
     msgs
 }
 
-/// `UserModel=<dll>` parses (no longer a hard NOT_PORTED error), stores the name
-/// for the dump, and warns that the DLL is not loaded (safe-Rust fallback).
+/// `UserModel=<name>` (WASM_USERMODELS WM.3): the property set stores the name
+/// for the dump and QUEUES a deferred load (§2.4) — the property hook cannot
+/// reach the filesystem, so it does NOT warn at set time. Resolving the queued
+/// load for a native-DLL name (no `.wasm` file → `wasm = None`) is the path that
+/// warns "Not Loaded" (Pascal 570) and falls back to the built-in model.
 #[test]
 fn user_model_stores_and_warns_not_loaded() {
     let mut g = gen_3ph();
     let msgs = edit_gen_prop(&mut g, "UserModel", "Indmach012a");
     assert_eq!(g.user_model_name, "Indmach012a");
     assert_eq!(g.get_string(prop::USERMODEL), "Indmach012a"); // dump parity
-    assert_eq!(msgs.len(), 1, "exactly one warning: {msgs:?}");
-    assert!(msgs[0].contains("Not Loaded"));
-    assert!(msgs[0].contains("Indmach012a"));
-    assert!(msgs[0].contains("built-in model"));
+    assert!(
+        msgs.is_empty(),
+        "property set must not warn (load is deferred): {msgs:?}"
+    );
+
+    // Drain + resolve the deferred load the way the executive does for a
+    // native-DLL name (not a `.wasm` file, so `wasm = None`).
+    let loads = g.take_user_model_loads();
+    assert_eq!(loads.len(), 1, "one deferred UserModel load: {loads:?}");
+    let mut errors = crate::diag::ErrorLog::new();
+    g.apply_user_model_load(&loads[0], None, &mut errors);
+    assert_eq!(errors.len(), 1, "exactly one warning: {errors:?}");
+    assert!(errors[0].contains("Not Loaded"));
+    assert!(errors[0].contains("Indmach012a"));
+    assert!(errors[0].contains("built-in model"));
 }
 
 /// `UserData` stores (for the dump) and — since no user model exists — is a

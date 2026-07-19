@@ -89,6 +89,8 @@ pub(super) fn get_source_inj_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
         node_v: &sol.node_v,
         currents: &mut sol.currents,
         system_y_changed: &mut sol.system_y_changed,
+        errors: &mut *env.errors,
+        solution_abort: &mut sol.solution_abort,
     };
     for &r in &ckt.sources {
         let elem = env.store.ckt_elem_mut(r);
@@ -116,6 +118,8 @@ fn get_pc_inj_curr_filtered(ckt: &mut Circuit, env: &mut SolveEnv, gfm_only: boo
         node_v: &sol.node_v,
         currents: &mut sol.currents,
         system_y_changed: &mut sol.system_y_changed,
+        errors: &mut *env.errors,
+        solution_abort: &mut sol.solution_abort,
     };
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
