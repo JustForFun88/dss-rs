@@ -5,6 +5,27 @@ noted in this header and in `STATUS.md` §WASM-UM.
 
 Recorded decisions:
 
+- **2026-07-20 (d) — WP-WM.5 CapControl round 2 (build): a native `TCapUserControl`
+  twin CANNOT be the gate oracle → the r4133 BUILT-IN VOLTAGE control is
+  (fixture/gate-design, NOT a wire-ABI change).** Round 1 proved `get_public_data`
+  un-gatable for CapControl; round 2 proves the *same* for `control_queue_push`
+  from a native twin, so **no native CapUserControl twin can drive the r4133
+  control queue at all.** Source-definitive: the 7-fn `New(var CallBacks)` hands
+  the model ONLY the callback vtable (`CapUserControl.pas:36`) — no owning-element
+  pointer; neither `SampleControlDevices` (r4133 `Solution.pas:3611-3621`) nor
+  `CapControl.Sample` (USERCONTROL arm `:1054-1069`) sets `ActiveCktElement` to the
+  CapControl; and `ControlQueue.Push` stores its `Owner` as the `ControlElement`
+  whose `DoPendingAction` runs on pop (`ControlQueue.pas:145,193`). A twin can only
+  pass `Owner := GetActiveElementPtr()` (the wrong element) — empirically this
+  **hangs the r4133 engine** (a corrupt control-queue pop, observed 2026-07-20).
+  Resolution (within fixture/gate authority — the wire ABI is UNCHANGED: the 7-fn
+  shape, `get_node_voltages`, `get_dynamics_rec`, `control_queue_push` are all as
+  frozen): the reference `capuserctl` fixture's deadband logic is made **identical
+  to the built-in VOLTAGE control** (`vlow`/`vhigh` = `OnSetting`/`OffSetting`), so
+  the r4133 **built-in** VOLTAGE control is a sound cross-engine oracle for the
+  Rust USERCONTROL wiring (the gate matches its switch sequence + final cap state +
+  node voltages at the faer-vs-KLU floor, worst rel 2.5e-15). See §2.5 + STATUS
+  §WASM-UM WP-WM.5 round 2.
 - **2026-07-19 (c) — WP-WM.5 CapControl: `TCapControlVars` image frozen (r4133
   layout) + the `get_public_data` asymmetry finding → the reference fixture uses
   `get_node_voltages` (§2.5).** The CapControl `get_public_data` image is frozen
@@ -304,10 +325,28 @@ the authored fixture chooses the channel it can gate).
 | 176 | `ControlActionHandle` | i32 | — |
 | 180 | `CondOffset` | i32 | — |
 
-**Decision signalling — `control_queue_push`, a plain queue push on both sides.**
-A model signals its switch decision through `control_queue_push(hour, sec, code,
+**Decision signalling — `control_queue_push`, a plain queue push.** A model
+signals its switch decision through `control_queue_push(hour, sec, code,
 proxy_hdl)` — a plain push onto the control queue (Effect tier B), forwarded to
-`ControlQueue.Push` (`DSSCallBackRoutines.pas:444`).
+`ControlQueue.Push` (`DSSCallBackRoutines.pas:444`). On the **dss-rs** side the
+host supplies the owning CapControl as the queue action's owner, so the pop
+routes `DoPendingAction` back to it correctly.
+
+> **Round-2 finding (2026-07-20 — header decision (d)): a NATIVE `TCapUserControl`
+> twin cannot use this channel as a gate oracle.** `ControlQueue.Push` stores its
+> `Owner` as the `ControlElement` whose `DoPendingAction` runs on pop
+> (`ControlQueue.pas:145,193`), but the 7-fn `New(var CallBacks)` gives a native
+> model NO owning-element pointer (`CapUserControl.pas:36`) and neither
+> `SampleControlDevices` (r4133 `Solution.pas:3611-3621`) nor `CapControl.Sample`
+> (USERCONTROL arm `:1054-1069`) sets `ActiveCktElement` to the CapControl — so a
+> twin can only pass `Owner := GetActiveElementPtr()` (the wrong element), which
+> **hangs/corrupts the r4133 engine** (observed). This extends round 1's
+> `get_public_data` asymmetry: no native CapUserControl twin can drive the r4133
+> control queue at all. The reference fixture therefore gates against the r4133
+> **built-in VOLTAGE** control (its deadband made identical to `OnSetting`/
+> `OffSetting`), not a twin. The dss-rs `control_queue_push` wiring itself is
+> correct and gated (it owns the queue owner host-side); only a *native twin* lacks
+> the owner. See STATUS §WASM-UM WP-WM.5 round 2.
 
 Note this deliberately **diverges from the native USERCONTROL timing path.** In
 Pascal, `CapControl.Sample`'s `USERCONTROL` arm calls `UserModel.Sample` "Sets the

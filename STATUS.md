@@ -5894,3 +5894,110 @@ in the offset test, and the §2.5 timing-divergence clarification — no behavio
 change, `UserModel`/`UserData` still `NOT_PORTED`, tree stays gate-green, corpus
 pristine.
 
+
+### WASM-UM WP-WM.5 — round 2 (build): CapControl user control over wasm (branch `wasm-wm5`, 2026-07-20)
+
+The build round on the round-1-corrected design (base `ddaa275`). Plan §WP-WM.5
+items 1–3 delivered: the CapControl `UserModel=` element flip + USERCONTROL
+wiring, the `capuserctl` deadband fixture (both targets), and the cross-engine
+oracle gate — plus a **new source-definitive finding** that redirects the gate
+oracle (as round 1 anticipated: "the r4133 engine is the numeric oracle; disagree
+→ STOP and record").
+
+**Item 1 — element flip + USERCONTROL wiring (committed `a1d13b1`).**
+- `UserModel`/`UserData` flipped from `NOT_PORTED` to the §2.4 uniform rule;
+  `CapControlType::UserControl` added (Pascal `USERCONTROL`, ordinal 6 — NOT in
+  the `Type=` enum, `ordinal_to_string(6)` renders empty, matching Pascal which
+  comments it out of `CapControlTypeEnum`, `CapControl.pas:245-249`).
+- New `elements/control/cap_control/user_model.rs`: `CapControlUserModelSlot`
+  (wraps the WM.1 `CapControlInstance`, 7-fn) + the deferred-load plumbing
+  (`queue/take/apply_user_model_load`). `PropertySideEffects` queues the load; the
+  executive resolves it before `EndEdit`, sets `IsUserModel`, forces
+  `ControlType := USERCONTROL` (`CapControl.pas:429-440`).
+- `control_loop.rs`: the USERCONTROL `Sample` arm (`:1024-1041` — populate the
+  SampleP/V/Curr + bank-state `CapControlVars` public-data context, serve
+  `get_node_voltages` + `get_dynamics_rec`, run the guest `sample()`, drain
+  `Effect::ControlQueuePush` into the real `ControlQueue.Push` with the owning
+  element as owner, route `Effect::Msg` to the error sink); the USERCONTROL
+  `DoPendingAction` arm (`:725-733` — set `PendingChange := code`, run guest
+  `do_pending`, then the shared switch block). `ControlQueue::next_handle()` seeds
+  the guest push-handle sequence. Regression test
+  `user_model_native_dll_name_warns_and_falls_back` (a native-DLL name warns 570 +
+  falls back, `ControlType` NOT forced, deck still solves).
+- The shared `Sample` tail (`:1180-1205`) runs for USERCONTROL but is inert:
+  the direct push leaves `should_switch = false`, so it neither arms nor disarms —
+  the model owns the timing (WM5-3), exactly as the ABI-doc framing requires.
+
+**Item 2 — `capuserctl` fixture (both targets).** A deadband voltage CapControl
+(`tools/wasm_usermodel/models/capuserctl/`, workspace-excluded): reads
+`|NodeV[node]|` via `get_node_voltages` (ABI row 17, the round-1 symmetric
+channel; node index via `UserData`), schedules open/close via
+`control_queue_push`. Its deadband (`vlow`/`vhigh`) is deliberately identical to
+the built-in VOLTAGE control's (`OnSetting`/`OffSetting`). Committed
+`tests/fixtures/wasm/capuserctl.wasm` (51014 B, `sha256=10b2c6b6…7a07`,
+deterministic across a clean rebuild; PIN.txt + `fixture_pin.rs` hash test). The
+native twin (`build_capuserctl_native.ps1`, `sha256=91cba238…a2d2`, NOT committed)
+is built ONLY for the empirical finding below — it is NOT the gate oracle.
+
+**THE FINDING — a native `TCapUserControl` twin CANNOT drive the r4133 control
+queue (source-definitive, empirically corroborated).** Extends round 1's
+`get_public_data` asymmetry to `control_queue_push`. `ControlQueue.Push` stores
+its `Owner` as the `ControlElement` whose `DoPendingAction` runs on pop
+(`ControlQueue.pas:145,193`), but: the 7-fn `New(var CallBacks)` gives a native
+model NO owning-element pointer (`CapUserControl.pas:36`); neither
+`SampleControlDevices` (r4133 `Solution.pas:3611-3621`) nor `CapControl.Sample`
+(USERCONTROL arm `:1054-1069`) sets `ActiveCktElement` to the CapControl; so a
+twin can only pass `Owner := GetActiveElementPtr()` (the wrong element). Empirical
+confirmation (2026-07-20, `gen_wasm_usermodels_wm5.rs` with `WASM_TWIN_DLL`):
+driving the native twin in r4133 **HANGS the engine** (a corrupt control-queue
+pop) — decisive that the channel is un-gatable. (Almost certainly why no vendored
+CapUserControl example exists — the interface's `control_queue_push` path is
+non-functional for a *native* model.) The dss-rs USERCONTROL wiring is NOT
+affected: the host supplies the owning CapControl as the queue owner, so its push
+routes correctly (proven by the gate below).
+
+**THE RESOLUTION (fixture/gate-design, no wire-ABI change).** The `capuserctl`
+deadband is identical to the built-in VOLTAGE control, so the r4133 **built-in
+VOLTAGE** control is the sound cross-engine oracle. This keeps the WM.5 gate a
+real independent-engine oracle comparison (Rust wasm USERCONTROL vs r4133 built-in
+VOLTAGE) — never "Rust agrees with itself". The wire ABI (7-fn shape,
+`get_node_voltages`, `get_dynamics_rec`, `control_queue_push`) is UNCHANGED.
+
+**Item 3 — decks + golden + gates.** Decks
+`tools/golden/wasm_decks/wasm_capcontrol.dss` (USERCONTROL, `@FIXTURE@`) and
+`wasm_capcontrol_oracle.dss` (built-in VOLTAGE, identical circuit) — a monotone
+2-solve excursion clear of the deadband edges (light load → cap opens; heavy load
+→ cap closes; `Delay=DelayOff=DeadTime=0` so the direct-push and shared-tail
+schedules coincide). Golden `tests/golden/wasm_usermodels/wasm_capcontrol.json`
+generated by `crates/dss-epri/tests/gen_wasm_usermodels_wm5.rs` from the r4133
+built-in VOLTAGE oracle (`DSS_GEN_WM5=1`, manual). Hermetic replay
+`crates/dss-core/tests/wasm_usermodels_wm5.rs` runs the USERCONTROL deck on the
+Rust engine with the committed `.wasm` and matches the oracle:
+- **switch-action sequence** `[Capacitor.c **Opened**, Capacitor.c **Closed**]`
+  (event log, filtering the built-in **Armed**/**Reset** rows the direct-push
+  USERCONTROL path bypasses — WM5-3, a documented mechanism divergence, NOT a
+  masked bug);
+- **final cap state** `[1]` (closed);
+- **all 6 node voltages** at the harness `feeder` floor — **worst rel 2.5e-15**
+  (faer-vs-KLU last-ulp), proving both engines solved the same switched network.
+
+**Golden schema (WM.3 precedent honored):** ordered parallel arrays / index
+compare — the switch actions are an ordered `Vec<(Element, Action)>`, never a
+name-keyed map (no duplicate collapse). Event-log **Armed** filtering is a
+principled mechanism-divergence account (WM5-3), not a tolerance loosening.
+
+**Deviation from the brief (justified by the finding).** The brief's item-3 design
+gated the event log against the r4133 engine driving the *native twin*. That is
+impossible (the twin cannot push — the finding above), which the brief explicitly
+anticipated ("run the recommended empirical r4133-bridge confirmation… or
+otherwise show the event-log channel is the sound one"). The sound channel is the
+r4133 built-in VOLTAGE control, adopted here. The native twin is still built and
+was driven in r4133 to empirically corroborate the finding (it hangs the engine).
+No `DIVERGENCES.md`/ledger entry (this is a gate-oracle choice on new additive
+code, not a reproduced-vs-not upstream bug).
+
+**Gate status.** Full three-command gate green at defaults (`cargo fmt --all
+--check`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo test
+--workspace` incl. the unconditional corpus gate 514/514); corpus pristine
+(path-limited cleanup only); the five `expect_warnings` decks + manifests
+untouched. Audits (audit-code + audit-tests) + settle are the ritual next step.
