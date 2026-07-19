@@ -705,12 +705,28 @@ impl Generator {
     /// Pascal `InitStateVars` GenModel=6 tail (`generator.pas:2446-2452`):
     /// `UserModel.FInit(Vterminal, Iterminal)` then
     /// `ShaftModel.FInit(Vterminal, Iterminal)`, each seeding the model from the
-    /// present terminal V/I. No-op when neither model exists.
+    /// terminal V/I *left in the buffers* by the preceding power-flow solve.
+    ///
+    /// `Vterminal` is deliberately NOT recomputed here: Pascal `InitStateVars`
+    /// runs only `ComputeIterminal` (`generator.pas:2393`) — never
+    /// `ComputeVterminal` — before `FInit`, so the user model is seeded from the
+    /// STALE `Vterminal` buffer, i.e. the node voltage of the power-flow's
+    /// *last injection iteration* (`V_{n-1}`, one network re-solve behind the
+    /// converged `NodeV`), not the final `V_n`. That pre-final voltage is the
+    /// h-independent "projection" onto the dynamic operating point: seeding from
+    /// it gives `E1 = V_{n-1} - I·Zsp`, which differs from `V_n - I·Zsp` by the
+    /// last-iteration voltage step, and this is what drives the machine to
+    /// `|Is1|=189.207` (not the power-flow `189.10`) at the first dynamics step.
+    /// Refreshing `Vterminal` to `V_n` here (the earlier port) left the machine at
+    /// the power-flow point and was the WM.3 D2 sub-bug #2 divergence
+    /// (STATUS §"D2 sub-bug #2 — FIXED"). The built-in-shaft `Edp` path
+    /// (`generator.pas:2409-2413`) reads a *fresh local* `Vabc := NodeV[NodeRef]`
+    /// and is unaffected — only the Model=6 user-model seed uses the buffer.
+    /// `Iterminal` was refreshed by `init_state_vars`' `ComputeIterminal`.
     pub(super) fn user_model_finit(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         if !(self.user_model_exists() || self.shaft_model_exists()) {
             return;
         }
-        self.cd.compute_vterminal(node_v);
         let mut errs = ErrorLog::new();
         self.finit_slot(UserModelSlot::User, sys, node_v, &mut errs);
         self.finit_slot(UserModelSlot::Shaft, sys, node_v, &mut errs);
