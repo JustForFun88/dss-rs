@@ -1055,13 +1055,77 @@ gate green. Findings settled empirically:
   the numeric gate (and any numeric bound) is explicitly gated on fixing sub-bug #2 —
   done then, at proven floors, never a fudge band now. No tolerance loosened.
 
-**Open follow-up (carry forward):** WM.3 **D2 sub-bug #2** — Model=6 dynamic-current
-fixpoint off ~5e-4 from step 1 (slip matched) — is a PROVEN, OPEN Generator-dynamics
-port bug (NOT a version divergence, NOT resolved). Fix requires guest-internal
-`e1`/`t0p` tracing = an instrumented rebuild of the WM.4-frozen fixture `.wasm`;
-unblocks after WM.4 releases the fixture crates. On fixing it: re-measure D2 and flip
-`wasm_gen_dyn` to `numeric=true` at proven floors (adds the missing regression guard
-for both sub-bugs). `wasm_usermodels.rs:352` stays `false` until then.
+**Open follow-up (carry forward):** superseded by the D2 sub-bug #2 trace below
+(branch `d2-subbug2`) — the guest-internal `e1` tracing was DONE and the bug is
+narrowed to the engine flow, but NOT yet fixed; `wasm_usermodels.rs` stays
+`gate_deck("wasm_gen_dyn", false)`.
+
+### WM.3 D2 sub-bug #2 trace — the divergence is ENGINE-FLOW, guest is bit-exact (branch `d2-subbug2`)
+
+The mandated guest-internal `e1`/`t0p` trace (fixture instrumentation lifted for
+this WP; reverted at landing — committed `.wasm`/PIN untouched). It DISPROVES two
+candidate localizations and narrows the PROVEN port bug to the Generator Model=6
+dynamics ENGINE FLOW. Reproducible probes committed: `tools/wasm_usermodel/
+d2_twin_direct.py` (direct DLL drive), `d2_guesttrace_0145.py` (guest DebugTrace),
+`d2_recon_e1.py` (full-f64 E1 reconstruction). Instrumented artifacts stayed in the
+session scratchpad.
+
+**First divergence (single-instance UserModel, no shaft, wasm_gen_dyn base).**
+Step 0 (snapshot) A==B bit-identical (slip `-6.18230011826962e-3`, |Is1|
+`189.1007524589`). Step 1: slip matches ~2e-6, but the guest flux `E1` and hence
+|Is1| diverge — Rust E1 stays at the **power-flow point** `(7252.814, 1530.375)`
+(|Is1| 189.102, |E1| 7412.513); the 0.14.5 oracle jumps to the **dynamic operating
+point** `(7252.279, 1531.158)` (|Is1| 189.207, |E1| 7412.152) and holds. The
+offset `(-0.535, +0.783)` is established entirely in step 1 and persists (steps 2+
+move identically). Conn=wye and conn=delta behave identically (not a delta bug).
+
+**The jump is h-INDEPENDENT.** Oracle |E1|@step1 is `7412.152` for h ∈ {1e-9, 1e-7,
+1.67e-4} (varies < 5e-4). A trapezoidal integrate step scales with h; an
+h-independent move to the dynamic point is an algebraic/network effect, NOT the
+integrator. (`d2_recon_e1.py` with `H=…`; `d2_guesttrace_0145.py` with `H=1e-9`.)
+
+**The GUEST is bit-exact — the bug is NOT the WASM transport nor the guest Init.**
+`d2_twin_direct.py` drives the r3723 244-B twin DLL DIRECTLY (ctypes, no OpenDSS
+engine) through the exact lifecycle New→Edit→CalcPFlow→Init→CalcDynamic with the
+deck's converged snapshot V/I: it returns |Is1| = **189.1007524589, BIT-IDENTICAL
+to the Rust engine**. So the twin's Init+CalcDynamic gives the power-flow point,
+exactly like Rust. Corroborated: Init inputs (Vterminal + Iterminal, all 3 phases)
+are bit-exact host-side (13 sig figs, `D2HOST` host trace); post-Init guest `is1`
+(var 8) = 189.10 (pflow) on BOTH — no pre-Init CalcDynamic. So the ~5e-4 D2 gap
+lives ENTIRELY in how the OpenDSS **engine** drives the machine to the dynamic
+operating point at the first dynamics step; Rust's engine leaves it at the
+power-flow point (consistent with the guest's own math).
+
+**What is missing (genuine block, per mandate item 6 — NOT hand-waved).** The
+oracle's step-1 predictor CalcDynamic already shows E1 moved with a recomputed
+`dE1dt≈3.66e-12` (≈0), i.e. a nonzero effective `dE1dtn` that is h-independent
+(∝1/h). The guest only mutates `E1` via Init (proven = pflow point) or the
+trapezoidal Integrate (h-dependent); neither produces an h-independent jump alone.
+Reproducing the OpenDSS engine's first-step behaviour requires observing its
+actual call sequence to the (compiled) twin — instrumentation the FPC binary does
+not permit. The remaining unknown is the specific Generator dynamics engine-flow
+step (the first-step coupled E1↔network solve / initial-derivative handling) that
+projects the machine onto the dynamic operating point; candidates ruled OUT:
+guest math (bit-exact), guest Init current (bit-exact inputs → pflow point on
+both), WASM transport, delta vs wye, extra/missing integrate calls (host trace
+shows exactly 2 per step, correct iteration flags), an implicit mode-entry solve
+(none — `Solution.Seconds` advances by one h per Solve), `IncrementTime`
+`SolutionCount` bump (Pascal `IncrementTime` does not touch it).
+
+**Gate unchanged (no fudge).** `wasm_usermodels.rs` stays
+`gate_deck("wasm_gen_dyn", false)`; no tolerance/golden/ledger touched;
+DIVERGENCES.md untouched (port bug, not a version divergence). Flipping to numeric
+now would require a forbidden ~1e-1 band. The sub-bug #1 dSpeed trajectory guard
+stays DEFERRED (a proper guard needs the numeric-gateable trajectory that only
+lands with the sub-bug #2 fix). Full three-command gate green; corpus pristine.
+
+**Open follow-up (carry forward):** D2 sub-bug #2 is a PROVEN, OPEN, **engine-flow**
+Generator-dynamics port bug (NOT the guest, NOT the WASM transport, NOT a version
+divergence). The fix must reproduce OpenDSS's first-dynamics-step projection of the
+Model=6+user-model machine onto the dynamic operating point (|Is1| 189.10→189.207,
+h-independent). On fixing it: re-measure D2 and flip `wasm_gen_dyn` to
+`numeric=true` at proven floors (adds the missing regression guard for both
+sub-bugs).
 
 ### WASM-UM WP-WM.4 — Storage (DynaDLL + UserModel) + PVSystem (UserModel) (branch `wasm-wm4`, 2026-07-19)
 
