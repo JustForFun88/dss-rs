@@ -6390,3 +6390,33 @@ and live-gate.
   r4133 source lines + probe numbers; `tools/golden/gen_ncim_reports.py` header marks
   the capi015 venv retired and `tests/golden/ncim/` frozen/unregenerable (goldens
   byte-untouched — solver internals unaffected by the swing-report path).
+
+**Settle (2026-07-20).** Two independent read-only audits (audit-code + audit-tests)
+over `d0b59a9..853edff`. Audit-code verdict FAITHFUL, audit-tests verdict verification
+STRENGTHENED — both re-derived the four mandate items from r4133 `VSource.pas` and each
+ran its OWN `epri-worker` r4133 probe (`Version 11.0.0.1 (64-bit build) - Charlottesville`)
+that reproduced the new `ncim_vsource_reported_currents_match_oracle` pins bit-for-bit
+(independent solve, not port self-agreement). Settlement re-verified the load-bearing
+invariants: `tests/golden/ncim/` byte-untouched (empty diff vs base); `ledger.json` has
+NO new/widened structural row (only the documentary `ncim-oppoint` cause prose changed —
+no `id`/`channel`/`case`/`max_rel`/`num_rel` edit → no disguised tolerance loosening);
+`population.lock.json` diff is exactly the four `defer=1→0` flips on the NCIM fingerprints
+and nothing else. Full three-command gate green at defaults; corpus pristine; 186 `.pas`
+under `.inputs/dss_capi`.
+
+Finding dispositions:
+
+- **`ncim-deck-comment-stale-name` (audit-code, low) → DELIBERATE NON-FIX.**
+  Reproduced: `git grep NCIM_CalcInjCurrAtBus` (excluding append-only STATUS history)
+  leaves exactly one live hit — `tests/corpus/modes/ncim/ncim_pq.dss:7`, a DSS `!`
+  comment still naming the retired capi015 `NCIM_CalcInjCurrAtBus` rather than the
+  r4133 `CalcInjCurrAtBus` the port now targets. Proven inert: it is a comment line
+  (not parsed — the deck solves identically), and `population_lock.rs` fingerprints
+  only manifest fields + ledger entries, never deck bytes, so the stale name touches
+  no gate, pin, or lock. Every *behavioral* citation is already r4133 (`view.rs` doc +
+  comments, `exec/tests/ncim.rs`, `DIVERGENCES.md`, `ledger.json`, `modes/manifest.json`
+  note). Not fixed because the settlement mandate constrains the corpus to path-limited
+  cleanup only and the `.dss` deck fixtures were outside this WP's declared edit surface
+  by design; editing a corpus deck comment is neither. Left as a one-line follow-up for
+  a future corpus-touching pass to re-cite. No behavior/gate/pin impact either way.
+- **audit-tests: no findings.**
