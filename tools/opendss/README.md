@@ -41,6 +41,21 @@ and that EPRI's CSC export is solution-neutral (`YNodeVarray` bit-identical
 before/after `getYSparse`). Run `epri-worker --smoke` for the same checks via the
 worker binary.
 
+## A-Diakoptics reference regen (no tool ships anymore)
+
+The committed A-Diakoptics trusted baseline
+(`crates/dss-core/tests/data/adiakoptics/r3723_ref/{ieee13,ieee123}/`, consumed by
+`crates/dss-core/tests/ad_reference.rs`) was harvested by the retired
+`gen_ad_reference.py`, which drove the r3723 EPRI DLL through the deleted
+Oddie/dss-python channel and was removed with the rest of the Python EPRI stack
+(`UNIFIED_GATE_PLAN.md` §4-E). The `PROVENANCE.txt` in each ref dir still cites it
+as the historical source of record. **There is no regen tool anymore:** the
+baseline is frozen and treated as a trusted external oracle. If it ever needs to be
+regenerated, the harvester must be **reimplemented over `epri-worker`** (the
+`crates/dss-epri` bridge) — reading `ZLL`/`ZCC`/`Y4` and post-AD solved node
+voltages from the DLL via the line-JSON protocol — since the old dss-python path no
+longer exists.
+
 ## Rules & caveats
 
 - **The engine chdirs the process on `Compile`** — never rely on relative paths

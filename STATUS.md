@@ -2302,9 +2302,34 @@ assertions in `corpus_gate/engines.rs` that assert the pinned ping never reports
 the coordinator removes that empty dir in MAIN separately (junction-safe, CLAUDE.md).
 This worktree's `.venv` is a junction — not touched.
 
-**Gate:** `cargo fmt --all --check` + `cargo clippy --workspace --all-targets
--- -D warnings` + `cargo test --workspace` green at defaults (both oracle channels
-prove they still work); `tests/corpus` pristine; junctions intact.
+**Settlement (two audits, `ae3e6bd..c060c0b`):** five low-severity findings, all
+non-gating; three fixed, two recorded non-fixes:
+- *Fixed* — `tools/opendss/README.md`: added the plan-required (§1.1) note that
+  the frozen A-Diakoptics baseline (`tests/data/adiakoptics/r3723_ref/`, consumed
+  by `ad_reference.rs`) has no regen tool anymore and must be reimplemented over
+  `epri-worker` if ever re-run (harvester `gen_ad_reference.py` was deleted).
+- *Fixed* — `tools/oracle/README.md`: this KEPT live doc still described the
+  retired `DSS_ORACLE_ENGINE=oddie` rebind, the "EPRI/Oddie channel", and the
+  renamed `corpus_live.rs`/`corpus_live_opendss`; rewritten to match the pruned
+  `oracle_server.py` (capi-only, exits non-zero on any other engine).
+- *Fixed* — Gate paragraph below now carries exact counts/exit-codes/wall-clock.
+- *Non-fix (recorded)* — `tools/golden/gen_checkpoints.py`'s `capi015` regen arm
+  (`_read_pin_opendss`) still references the deleted `tools/opendss/PIN_OPENDSS.txt`.
+  Left UNTOUCHED per the binding gate rule (golden generators `tools/golden/gen_*.py`
+  are frozen): it is a **dead path** — reachable only via `DSS_ORACLE_ENGINE=capi015`,
+  whose engine (dss-python 0.16.0b2) was retired here, and the four `"oracle":"capi015"`
+  goldens are frozen. The live `capi` gate path never touches it. No gate impact.
+- *Non-fix (deferred)* — `CLAUDE.md` + `TESTING.md` still describe the retired
+  opt-in channel as live. Plan §4-F explicitly defers rewriting both to **Phase F**
+  (survivor class (b) below); a forward-deferral to verify Phase F completes, not a
+  Phase E defect.
+
+**Gate** (defaults, worktree `wtE` @ settlement, both oracle channels live):
+- `cargo fmt --all --check` → exit 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` → exit 0.
+- `cargo test --workspace` → exit 0: 1893 passed, 0 failed, 2 ignored across
+  58 test binaries; wall-clock ~172 s.
+`tests/corpus` pristine (`git status tests/corpus` clean); junctions intact.
 
 ## 1j. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
 
