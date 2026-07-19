@@ -157,21 +157,21 @@ impl DynamicExpObj {
 
     /// Pascal `Get_Out_Idx`: the index of `var_name` if it is a state variable
     /// *and* an output (its slot is immediately followed by an [`EQ_MARK`] in
-    /// `cmds`), or -1.
-    ///
-    /// 0.15.x (`2a8bdb78`) rewrites the inner scan as `for CmdIdx := 0 to
-    /// High(Cmds) - 1` and drops the old `CmdIdx < High(Cmds)` guard. That is
-    /// **form-only**: the shortened bound already keeps `Cmds[CmdIdx + 1]` in
-    /// range, so it selects exactly the same outputs as the guarded 0.14.5 loop.
+    /// `cmds`), or -1. Ported loop-for-loop from the vendored 0.14.5
+    /// `Get_Out_Idx` (`DynamicExp.pas:314`), byte-identical in structure to the
+    /// EPRI r4133 `Get_Out_Idx` (`DynamicExp.pas:411`): scan `cmds` for `var`'s
+    /// slot that has an `EQ_MARK` in the next cell (`CmdIdx < High(Cmds)` guard).
     pub fn get_out_idx(&self, var_name: &str) -> i32 {
         let lower = var_name.to_ascii_lowercase();
         for (idx, name) in self.var_names.iter().enumerate() {
             if *name != lower {
                 continue;
             }
-            // `0 to High(Cmds) - 1` == `0..cmds.len()-1`; idx+1 always in range.
-            for cmd_idx in 0..self.cmds.len().saturating_sub(1) {
-                if self.cmds[cmd_idx] == idx as i32 && self.cmds[cmd_idx + 1] == EQ_MARK {
+            for cmd_idx in 0..self.cmds.len() {
+                if self.cmds[cmd_idx] == idx as i32
+                    && cmd_idx + 1 < self.cmds.len()
+                    && self.cmds[cmd_idx + 1] == EQ_MARK
+                {
                     return idx as i32;
                 }
             }
@@ -230,55 +230,54 @@ impl DynamicExpObj {
         self.var_names.len()
     }
 
-    /// Pascal `SolveEq` (0.15.x form, upstream `2a8bdb78` "DynamicExp: reuse RPN,
-    /// fix index bug"). Two coupled deltas vs the 0.14.5 evaluator:
+    /// Pascal `TDynamicExpObj.SolveEq` — evaluate every compiled equation over
+    /// `mem_space`, writing each output variable's derivative into column 1 of
+    /// its row. Ported loop-for-loop from the vendored 0.14.5 `SolveEq`
+    /// (`DynamicExp.pas:377`), byte-identical in structure to the EPRI r4133
+    /// `SolveEq` (`DynamicExp.pas:497`). Both gating oracles evaluate the RHS and
+    /// integrate, so a `DynExp`-driven rotor/inverter state genuinely swings.
     ///
-    /// * the loop bound `for idx := 0 to High(Cmds)` becomes `High(Cmds) - 1`,
-    ///   which drops the 0.14.5 out-of-bounds `Cmds[idx + 1]` read at the final
-    ///   index; and
-    /// * an `Exit` is added right after the first equation's output index is
-    ///   latched.
+    /// The compiled `cmds` stream is a run of equations, each laid out as
+    /// `[outIdx, EQ_MARK, <RHS tokens...>]`. Walking it: at an `[outIdx, EQ_MARK]`
+    /// boundary latch the *previous* equation's RPN result into its output slot
+    /// and start the new one (the guard is false at the first marker); otherwise
+    /// push the operand / apply the operator. After the loop the final equation's
+    /// result is uploaded.
     ///
-    /// The `Exit` means the RHS is **never evaluated**: a well-formed cmd stream
-    /// always starts `[outIdx, EQ_MARK, ...]`, so the loop hits that marker at
-    /// idx 0 and returns immediately — leaving every derivative slot exactly as
-    /// the host set it. `SolveEq` is therefore a no-op evaluator in practice and
-    /// the state variable's derivative stays frozen at its `InitStateVars` value.
-    /// Confirmed live vs the `capi015` oracle (dss_capi 0.15.x): a Generator with
-    /// `DynamicEq=myDiffEq` reports `dspeed = 0` / `speed` frozen where the 0.14.5
-    /// engine integrated `dspeed = -1.6e-6`. This is the D14 upgrade behavior
-    /// (see `docs/upgrade/DIVERGENCES.md` §D14), not a quirk to gate around.
+    /// Pascal reads `Cmds[idx + 1]` unguarded, so at the final index it is a
+    /// benign out-of-bounds read (an FPC dynamic array over-reads adjacent
+    /// memory, which "happens not to alias -50", so the last RHS token is
+    /// processed rather than mistaken for a boundary). The safe
+    /// `cmds.get(idx + 1)` reproduces that exactly: past the end there is no
+    /// `EQ_MARK`.
     ///
-    /// The RPN calculator is a reused member field upstream (create-once/reuse
-    /// instead of per-call create/free); with the `Exit` it is never stepped for
-    /// a well-formed stream, so the reuse has no observable effect — **form-only**,
-    /// and we keep a local instance. The op-dispatch arms below are likewise
-    /// dynamically dead for well-formed streams but retained 1:1 with the Pascal
-    /// `case` (they still run for a malformed, marker-less cmd stream).
+    /// NOTE: dss_capi 0.15.x (upstream `2a8bdb78`, "DynamicExp: reuse RPN, fix
+    /// index bug") adds an `Exit` right after the first output marker, turning
+    /// `SolveEq` into a no-op that freezes the derivative at its `InitStateVars`
+    /// seed. That regression is in NEITHER gating oracle (pinned dss_capi 0.14.5
+    /// AND EPRI r4133 both still integrate), so the port must NOT adopt it. An
+    /// earlier "D14" WP ported the no-op against the non-gating `capi015`
+    /// reference and the port then matched neither oracle — reverted here (see
+    /// `docs/upgrade/DIVERGENCES.md` §D14).
     ///
     /// `mem_space` must have at least [`Self::num_state_vars`] rows.
-    #[allow(unused_assignments)] // dead `out_idx` store mirrors Pascal (see below)
     pub fn solve_eq(&self, mem_space: &mut [[f64; DYN_SLOT_LENGTH]]) {
         let mut rpn = RPNCalculator::new();
         let mut out_idx: i32 = -1;
-        // `0 to High(Cmds) - 1` == `0..cmds.len()-1`; empty for len <= 1.
-        for idx in 0..self.cmds.len().saturating_sub(1) {
-            // idx+1 is always in bounds now (idx <= len-2): the 0.15.x bound
-            // removed the 0.14.5 OOB read of `Cmds[idx + 1]` at the last index.
-            let next_is_mark = self.cmds[idx + 1] == EQ_MARK;
+        for idx in 0..self.cmds.len() {
+            // The start of a new equation is `[outVar, EQ_MARK, ...]`: detect it
+            // by the slot immediately preceding an EQ_MARK, or the EQ_MARK itself.
+            // (Pascal reads `Cmds[idx + 1]` unguarded; past the end there is no
+            // EQ_MARK, so the guarded `.get` reproduces the intent without the UB.)
+            let next_is_mark = self.cmds.get(idx + 1) == Some(&EQ_MARK);
             if next_is_mark || self.cmds[idx] == EQ_MARK {
                 if self.cmds[idx] != EQ_MARK {
                     // It's the output-variable index of a new equation: upload the
-                    // *previous* equation's result (the guard is false at the first
-                    // marker), latch this output, then `Exit` — the 0.15.x fix.
-                    // `out_idx = ...` right before the return is a dead store (as it
-                    // is in the Pascal `OutIdx := Cmds[idx]; Exit;`) but kept for a
-                    // 1:1 structure; hence the scoped `unused_assignments` allow.
+                    // previous equation's result, then latch this output.
                     if out_idx >= 0 {
                         mem_space[out_idx as usize][1] = rpn.get_x();
                     }
                     out_idx = self.cmds[idx];
-                    return;
                 }
                 continue;
             }
