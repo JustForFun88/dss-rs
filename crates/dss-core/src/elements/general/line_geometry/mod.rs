@@ -74,14 +74,15 @@ define_properties! {
     17 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
     18 RATINGS   => PropDef::double_array("Ratings", SEASONS);
     19 LINETYPE  => PropDef::mapped_string_enum("LineType", enums.line_type);
-    // dss_capi 0.15.x (LineGeometry.pas:80,287-291): `Conductors` — the merged
-    // mixed wire/CN/TS object-reference-array over the 3-class proxy
-    // `(WireData|CNData|TSData)` (`fullNames=True`, proxy `.Name = "Conductor"`).
-    // HIDE_015X keeps the byte-exact 0.14.5 Dump/`Dump commands` goldens green
-    // (no LineGeometry JSON golden defines conductors). Text parse is
-    // upstream-broken (proxy `GetDSSClass` case bug: any real item errors #10103;
-    // an all-`none` list errors "At least one valid conductor") — see
-    // `parse_conductor_proxy` and the `Conductors` side effect.
+    // EPRI r4133 (LineGeometry.pas prop 20, parse :410-540): `Conductors` — the
+    // merged mixed wire/CN/TS object-reference-array. HIDE_015X keeps the
+    // byte-exact 0.14.5 Dump/`Dump commands` goldens green (no LineGeometry JSON
+    // golden defines conductors). Text parse resolves class-prefixed items by a
+    // CASE-INSENSITIVE class match (r4133 `LowerCase(CondClass)`; the port dropped
+    // the reproduced capi015 `GetDSSClass` case bug in the 0.15.x-adoption sweep —
+    // see `parse_conductor_proxy`). An all-`none` list keeps the port's clean "At
+    // least one valid conductor" reject (r4133 #303 AV on this input — UB, not
+    // reproduced).
     20 CONDUCTORS => PropDef::object_ref_array_proxy("Conductors", CONDUCTOR_PROXY_NAME, &CONDUCTOR_PROXY_CLASSES)
         .flags(PropFlags::FULL_NAME_AS_ARRAY | PropFlags::FULL_NAME_AS_JSON_ARRAY | PropFlags::ALLOW_NONE_ITEM | PropFlags::HIDE_015X);
 }

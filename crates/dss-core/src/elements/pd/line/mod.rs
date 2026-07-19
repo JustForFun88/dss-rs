@@ -211,11 +211,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // `(WireData|CNData|TSData)` (`fullNames=True`, proxy `.Name = "Conductor"`).
         // The spacing-spec-set required member (0.15.x replaced `Wires` with
         // `Conductors` in `'Spacing, Conductors'`). HIDE_015X keeps the byte-exact
-        // 0.14.5 Dump/JSON/`Dump commands` goldens green (the flip to capi015 is
-        // disproportionate — `gen_json.py` is 0.14.5-pinned; DIVERGENCES.md §Line
-        // Conductors). Text parse is upstream-broken (the proxy `GetDSSClass` case
-        // bug: any real item errors #10103) — see `parse_conductor_proxy`; the JSON
-        // "Conductors" key is still emitted via the `Wires` masquerade below.
+        // 0.14.5 Dump/JSON/`Dump commands` goldens green (`gen_json.py` is
+        // 0.14.5-pinned; DIVERGENCES.md §Line Conductors). Text parse resolves
+        // class-prefixed items by a CASE-INSENSITIVE class match (r4133
+        // `LowerCase(CondClass)`; the reproduced capi015 `GetDSSClass` case bug was
+        // dropped in the 0.15.x-adoption sweep) — see `parse_conductor_proxy`; the
+        // JSON "Conductors" key is still emitted via the `Wires` masquerade below.
         PropDef::object_ref_array_proxy(
             "Conductors",
             CONDUCTOR_PROXY_NAME,

@@ -1195,46 +1195,48 @@ ohm/m), `C` diag `283.089` nF/km; a CN cable `SemiconLayer=no` → `C` diag
   *property*) — LANDED (wt-u14cond).** See §"Line/LineGeometry Conductors (text
   upstream-broken)" below.
 
-## Line/LineGeometry Conductors (text upstream-broken) — SETTLED (WP-U1.4 wt-u14cond, reproduce 1:1)
+## Line/LineGeometry Conductors — SETTLED (WP-U1.4 plumbing; text parse re-decided to r4133 by the 0.15.x-adoption sweep — capi015-broken, r4133-working)
 
-**Observable.** The 0.15.x `Conductors` property — Line prop 34 (`Line.pas:62`),
+**Observable.** The `Conductors` property — Line prop 34 (`Line.pas:62`),
 LineGeometry prop 20 (`LineGeometry.pas:80`) — a mixed
-`WireData|CNData|TSData` object-reference-array over a `TProxyClass` created with
-`fullNames=True` and `.Name = "Conductor"` (`DSSClass.pas:2603`;
-`LineGeometry.pas:159`). Replaces `Spacing, Wires` with `Spacing, Conductors` in
-the spacing spec-set; `Wires`/`CNCables`/`TSCables` become `RedundantWith(Conductors)`.
+`WireData|CNData|TSData` object-reference-array. Replaces `Spacing, Wires` with
+`Spacing, Conductors` in the spacing spec-set; `Wires`/`CNCables`/`TSCables`
+become `RedundantWith(Conductors)`.
 
-**Empirical capi015 behavior (0.15.0b4, probed 2026-07-17) — the text property is
-BROKEN.** Every `Conductors=[…]` with a real item errors and never populates the
-array:
-- A class-prefixed item (`Conductors=[WireData.w1, …]`, ANY case) → `#10103
-  "…Conductors: Invalid class (wiredata) for item. Valid classes:
-  (WireData|CNData|TSData)"`. **Root cause: a deterministic upstream bug** —
-  `TProxyClass.GetDSSClass` (`DSSClass.pas:2644`) compares the parser's
-  `AnsiLowerCase`d class token (`ValidateObjectItem`, `DSSObjectHelper.pas:6462`)
-  against the *original-case* `TargetClassNames` (`'WireData'`…), never satisfiable
-  (the parallel `TargetClassNamesLower` array is never consulted).
-- A bare item (`Conductors=[w1, …]`) → `#10103 "…Conductors: You must define the
-  Conductor class for all the valid items in the array."` (`FullNameAsArray`
-  requires a class prefix).
-- `Conductors=` before the spacing / `NConds` (array count `< 1`) → `#402
-  "…Conductors: No objects are expected! …"` (checked before item validation).
-- All-`none` → **Line** parses (all NIL slots, model → spacing, `phaseChoice =
-  Overhead`; err#0); **LineGeometry** rejects it → `#10103 "…Conductors: At least
-  one valid conductor must be provided."`.
-- `? <elem>.Conductors` (the text getter) → **Access Violation (#303)** in capi015
-  — a getter UB, NOT reproduced (safe name list instead).
+**The text parse is capi015-BROKEN, EPRI r4133-WORKING (0.15.x-adoption sweep,
+own probes).** dss_capi 0.15.x routed `conductors=` through a `TProxyClass` whose
+`GetDSSClass` (`DSSClass.pas:2644`) compared the parser's `AnsiLowerCase`d class
+token against the *original-case* `TargetClassNames` (`'WireData'`…) — never
+satisfiable, so every class-prefixed item errored #10103 "Invalid class". EPRI
+r4133 has NO `TProxyClass` (0 Pascal-source hits): it parses `conductors=`
+NATIVELY (LineGeometry.pas prop 20 :410-540 / Line.pas prop 34) with a
+CASE-INSENSITIVE `LowerCase(CondClass) = 'wiredata'/'cndata'/'tsdata'` dispatch
+AND solves. The port reproduced the capi015 breakage; the sweep re-decided to
+r4133 (CLAUDE.md 0.15.x rule). **Own r4133 probes (epri-worker):**
+- Class-prefixed (any case) `Conductors=[WireData.w wiredata.w]` on a 2-wire/
+  1-phase spacing → **converged**, Line.l1 I1=(21.801759, 0.027069); the port now
+  resolves + solves, matching to a faer-vs-KLU floor.
+- Bare item → r4133 rejects too (`dotpos = 0`: LineGeometry #10103, Line #181023);
+  the port keeps its single generic-list #10103 for both (behaviour matches =
+  reject; per-class code/wording is a cosmetic difference).
+- `Conductors=` before the spacing → the port's clean #402; **r4133 #303 Access
+  Violation** (UB) — NOT reproduced.
+- All-`none` → **Line** parses on both (degenerate, non-converging); **LineGeometry**
+  keeps the port's clean #10103 "At least one valid conductor" — **r4133 #303
+  Access Violation** on that input (own probe), UB, NOT reproduced.
+- `? <elem>.Conductors` (text getter) → #303 AV in capi015 — getter UB, NOT
+  reproduced (safe name list).
 
-So text `Conductors=` can only ever be all-`none` (a no-op) or an error; the
-property is otherwise reachable only through the JSON export/import round-trip.
-
-**Decision — reproduce 1:1 (`TODO(compat)`), keep the JSON masquerade + HIDE_015X.**
-- The proxy resolution + the four diagnostics are reproduced exactly in
-  `parse_conductor_proxy` (`obj/props/class_props/parse.rs`), with a
-  `TODO(compat)` on the `GetDSSClass` case bug (the clean fix — compare the
-  lowercased token against lowercased class names — lands in the §6 shim sweep;
-  the golden/unit pins hold it until then). The `#303` getter crash is UB → not
-  reproduced.
+**Decision — adopt r4133 case-insensitive class match; keep the JSON masquerade +
+HIDE_015X.**
+- `parse_conductor_proxy` (`obj/props/class_props/parse.rs`) now resolves a
+  class-prefixed item by `eq_ignore_ascii_case` against the target class names
+  (r4133 `LowerCase(CondClass)` dispatch), routing the resolved refs into the
+  already-verified `set_conductors`/`apply_conductors` storage path; the NIL
+  slots a `none` leaves are compacted out at solve time by `LoadSpacingAndWires`
+  (see §AllowNoneItem). The reproduced capi015 `GetDSSClass` case-bug `TODO(compat)`
+  is dropped. The bare-name #10103, the clean count-`<1` #402, and the not-reproduced
+  #303 getter/all-none/before-spacing AVs stay.
 - **JSON export is unchanged.** dss_capi already emits `"Conductors":[FullName…]`
   with each conductor's *actual* class; the Rust port has emitted the same bytes
   since wt-u14props via the `Line.Wires → "Conductors"` `json_name` masquerade
@@ -1253,14 +1255,16 @@ property is otherwise reachable only through the JSON export/import round-trip.
   masquerade renders a *mixed* conductor list (e.g. `cncables=cn1 wires=wn`) with
   a single `WireData.` prefix, where capi015 renders each conductor's real class;
   no golden/deck exercises a mixed-conductor Line's JSON, so this is inert until
-  the §6 sweep flips the surface and drops the masquerade.
+  a later sweep flips the surface and drops the masquerade.
 
 **Gate.** `PROPS_015X += ("Line", …+"Conductors")` and `("LineGeometry",
 ["Conductors"])` (the inserted props excluded from the 0.14.5 property-table
-walk); `tests/upgrade_conductors.rs` pins all four capi015 diagnostics + the
-all-`none` split (Line parses / LineGeometry rejects). The net-new
-**resolved-ref** fill (unreachable via the broken text parse; the path the
-§6-fixed parser and a JSON-import round-trip take) is gated by whitebox
+walk); `tests/upgrade_conductors.rs` now pins the r4133 semantics — a
+class-prefixed item resolves + solves (`conductors_full_name_items_resolve_and_solve`,
+pinned to the own r4133 probe currents), bare-name/#402/all-none-geometry stay
+rejected (per-channel-scoped: the port's clean errors vs r4133's #181023/#303-AV).
+The **resolved-ref** fill (the path the text parser AND a JSON-import round-trip
+now take) is gated by whitebox
 equivalence tests that drive `set_object_ref_array(CONDUCTORS)` + the side
 effect directly — `line::tests::conductors_array_matches_buried_neutral_and_oracle`
 / `conductors_array_overhead_matches_wires_and_oracle` /
