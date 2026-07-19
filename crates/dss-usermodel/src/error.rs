@@ -97,10 +97,12 @@ pub enum UserModelError {
         /// The interface function that was executing.
         func: String,
     },
-    /// The guest called a `dss_env` import that is not (yet) supported over
-    /// WASM: `do_dss_command`/`get_result_str` until WP-WM.6, and
-    /// `get_active_element_ptr` permanently (ABI doc §4 rows 7/30/32).
-    /// Loud and attributed — never a silent no-op (plan §2.9-5).
+    /// The guest called a `dss_env` import the host does not support:
+    /// `get_active_element_ptr` permanently (a raw host pointer has no wasm
+    /// meaning), and the WP-WM.6 deferred pair `do_dss_command`/`get_result_str`
+    /// when the host has not opted into the deferred-command mechanism via
+    /// [`crate::UserModelInstance::enable_dss_commands`] (ABI doc §4 rows
+    /// 7/30/32). Loud and attributed — never a silent no-op (plan §2.9-5).
     Unsupported {
         /// Model attribution.
         model: String,
