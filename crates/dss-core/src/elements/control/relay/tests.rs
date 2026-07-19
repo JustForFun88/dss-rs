@@ -793,8 +793,10 @@ fn voltage_ov_uses_closed_phase_extrema_b2() {
 /// The no-trip outcome is NOT self-pinned: on the r4133 engine itself the deck's
 /// own `Relay.State` property reads `[closed, closed, closed, ]` (byte-identical
 /// to the `render_state_array()` asserted below) and Line.line1 still carries
-/// ~1381 A. Reproduce via `tools/opendss/probe_59n.py` (exits 0 iff r4133 reads
-/// all-closed / no trip).
+/// ~1381 A. Reproduce via `tools/opendss/probe_59n.py`, which drives the official
+/// r4133 DLL through the in-house `epri-worker` bridge (crates/dss-epri; the
+/// original Oddie/dss-python probe was retired with that channel) — exits 0 iff
+/// r4133 reads all-closed / no trip. Re-verified through the bridge 2026-07-19.
 #[test]
 fn voltage_relay_open_point_sizes_state_by_controlled_nphases_59n() {
     let mut r = armed_relay(); // ctrl_snap = 3-phase line

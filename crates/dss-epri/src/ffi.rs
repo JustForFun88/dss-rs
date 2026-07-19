@@ -74,6 +74,16 @@ pub struct DllFns {
 
     pub solution_i: FnI,
     pub solution_f: FnF,
+    /// `SolutionV` — mode 0 returns `Solution.EventLog` (`DSolution.pas`): the raw
+    /// `EventStrings[ActiveActor]` lines (`Hour=…, Sec=…, ControlIter=…, Element=…,
+    /// Action=…`), each followed by a `\0`; an empty log writes the bare `None`
+    /// placeholder **without** a terminator. Backs the golden-regen parity surface
+    /// (the retired Oddie `sol.EventLog` read the same entry point).
+    pub solution_v: FnV,
+
+    /// `BUSF` — mode 0 returns `Bus.kVBase` for the active bus (`DBus.pas`; select
+    /// the bus first via `CircuitS(4)` SetActiveBus). Regen-driver parity surface.
+    pub bus_f: FnF,
 
     pub monitors_i: FnI,
     pub monitors_s: FnS,
@@ -190,6 +200,8 @@ impl Dll {
                 dss_element_v: sym(&lib, b"DSSElementV\0")?,
                 solution_i: sym(&lib, b"SolutionI\0")?,
                 solution_f: sym(&lib, b"SolutionF\0")?,
+                solution_v: sym(&lib, b"SolutionV\0")?,
+                bus_f: sym(&lib, b"BUSF\0")?,
                 monitors_i: sym(&lib, b"MonitorsI\0")?,
                 monitors_s: sym(&lib, b"MonitorsS\0")?,
                 monitors_v: sym(&lib, b"MonitorsV\0")?,

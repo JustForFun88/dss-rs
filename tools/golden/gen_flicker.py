@@ -10,12 +10,22 @@ Process()` of a mode-4 monitor (probe-verified 2026-07-11: hard segfault). The
 **official** Delphi engine keeps `Terminals` 1-based (`pTerminalList`), so it runs
 the flicker calc correctly.
 
-Therefore this golden is captured from the **official EPRI r3723 binary** through
-the Oddie bridge (the D9 reference channel), NOT the pinned oracle. It pins the
-ported `flicker_meter` (support/flicker.rs) which is bit-exact vs r3723
-(f64-arithmetic / f32-storage model). Run with the Oddie venv:
+The committed golden (`tests/golden/flicker/pst_demo.json`) is the FROZEN
+capture from the official EPRI **r3723** binary via the retired Oddie bridge
+(its `oracle` block records that provenance). Both the r3723 binary and the
+Oddie/dss-python channel are gone (UNIFIED_GATE Phase E); the regeneration path
+now drives the official EPRI **r4133** binary — the only vendored official
+revision — through the in-house Rust bridge (`epri-worker`, crates/dss-epri,
+auto-built if missing):
 
-    tools/opendss/.venv/Scripts/python.exe tools/golden/gen_flicker.py
+    python tools/golden/gen_flicker.py
+
+Cross-revision parity is byte-proven (STATUS "EPRI bridge parity round",
+2026-07-19): the r4133 regen reproduces the committed r3723 payload — raw f32
+magnitudes, flicker + Pst channels, kvbase — byte-identically (the engine's
+flicker meter and this trivial deck's power flow are revision-stable), so only
+the `oracle` provenance block differs. `DSS_GOLDEN_OUT` redirects the output
+dir (scratch parity runs).
 
 The Rust replay (`crates/dss-core/tests/golden_flicker.rs`) is solve-decoupled: it
 feeds the captured raw per-phase magnitudes straight into `flicker_meter` and
@@ -24,12 +34,13 @@ compares the flicker + Pst channels **f32-exact**, so no power-flow floor enters
 
 import json
 import os
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-DLL = REPO / "tools" / "opendss" / "bin" / "r3723" / "OpenDSSDirect.dll"
 DEMO = REPO / "tests/corpus/electricdss-tst/Version8/Distrib/Examples/Matlab"
-OUT = REPO / "tests" / "golden" / "flicker" / "pst_demo.json"
+OUT_DIR = Path(os.environ.get("DSS_GOLDEN_OUT", REPO / "tests" / "golden" / "flicker"))
+OUT = OUT_DIR / "pst_demo.json"
 
 # The upstream flicker demo (Examples/Matlab/pst.dss): a stiff source + isource +
 # a model=2 load driven by the vendored WindRmsV.csv duty shape, monitored mode 4.
@@ -50,37 +61,33 @@ DECK = [
 
 
 def main() -> None:
-    from dss import IOddieDSS  # Oddie venv only
+    sys.path.insert(0, str(REPO / "tools" / "opendss"))
+    from epri_worker import EpriWorker
 
-    d = IOddieDSS(library_path=str(DLL))
-    d.AllowForms = False
-    try:
-        d.AllowEditor = False
-    except Exception:
-        pass
+    w = EpriWorker()  # loads bin/r4133, asserts the revisions.json pin
 
-    os.chdir(DEMO)  # File=WindRmsV.csv is relative to the deck
+    w.chdir(DEMO)  # File=WindRmsV.csv is relative to the deck
     for c in DECK:
-        d.Text.Command = c
+        w.exec(c)
 
-    ckt = d.ActiveCircuit
-    mon = ckt.Monitors
-    mon.Name = "pst"
-    n = int(mon.SampleCount)
-    nph = int(mon.NumChannels) // 2
+    w.read("monitor_select", name="pst")
+    n = int(w.read("monitor_sample_count"))
+    nph = int(w.read("monitor_num_channels")) // 2
 
     # Raw per-phase RMS magnitudes (odd data channels) BEFORE export — the exact
     # f32 inputs DoFlickerCalculations feeds into FlickerMeter.
-    raw_mag = [[float(x) for x in mon.Channel(2 * p + 1)] for p in range(nph)]
+    raw_mag = [w.read("monitor_channel", index=2 * p + 1) for p in range(nph)]
 
-    ckt.SetActiveBus("PCC")
-    kvbase = float(ckt.ActiveBus.kVBase)
+    kvbase = float(w.read("bus_kvbase", name="PCC"))
 
     # Export triggers the official DoFlickerCalculations, rewriting the stream in
-    # place; read the post-processed channels back at full f32 precision.
-    d.Text.Command = "export monitor pst"
-    flk = [[float(x) for x in mon.Channel(2 * p + 1)] for p in range(nph)]
-    pst = [[float(x) for x in mon.Channel(2 * p + 2)] for p in range(nph)]
+    # place; read the post-processed channels back at full f32 precision. (The
+    # official engine writes the CSV into its own output directory, not the
+    # corpus — the reply names the path; the file itself is not part of the
+    # golden.)
+    w.exec("export monitor pst")
+    flk = [w.read("monitor_channel", index=2 * p + 1) for p in range(nph)]
+    pst = [w.read("monitor_channel", index=2 * p + 2) for p in range(nph)]
 
     # Absolute sample times (uniform 10 s duty step): t[i] = 10*(i+1) s.
     times = [10.0 * (i + 1) for i in range(n)]
@@ -88,10 +95,12 @@ def main() -> None:
     data = {
         "schema": 1,
         "oracle": {
-            "engine": "official-EPRI-r3723 (Oddie)",
-            "version": str(d.Version),
+            "engine": "official-EPRI-r4133 (epri-worker)",
+            "version": w.version,
             "note": "pinned dss_capi oracle crashes on mode-4 export (Terminals OOB); "
-            "official r3723 is the correct reference (D9 channel).",
+            "the official engine is the correct reference. Originally captured on "
+            "r3723 via the retired Oddie bridge; the r4133/epri-worker regen is "
+            "payload-byte-identical (see gen_flicker.py).",
         },
         "deck": DECK,
         "n": n,
@@ -105,7 +114,8 @@ def main() -> None:
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(data))
-    print(f"wrote {OUT} (N={n}, nphases={nph}, engine={d.Version})")
+    print(f"wrote {OUT} (N={n}, nphases={nph}, engine={w.version})")
+    w.close()
 
 
 if __name__ == "__main__":

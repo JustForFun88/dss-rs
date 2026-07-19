@@ -11,6 +11,12 @@
 //!   stdin until EOF / `quit`. One bad case returns `{"ok":false,...}` rather
 //!   than killing the worker; a hard DLL crash (`#303`, never sent — ledgered as
 //!   `skip`) dies the process, and the dispatcher respawns.
+//!
+//! Besides the gate's `ping`/`run`/`clear`/`quit`, the worker serves the
+//! `exec`/`read`/`chdir` scripting commands (`dss_epri::script`) used by the
+//! manual regen drivers and probes (`tools/opendss/epri_worker.py`) — the
+//! functional-parity replacement for the retired Oddie bridge. The gate never
+//! sends them.
 
 #[cfg(windows)]
 fn main() {
@@ -125,6 +131,36 @@ fn main() {
             Some("ping") => {
                 reply(serde_json::json!({"ok": true, "result": {"pong": true, "oracle": oracle}}));
             }
+            // ---- scripting surface (regen drivers / probes; never sent by the
+            // gate — see `dss_epri::script`) --------------------------------
+            Some("exec") => {
+                let Some(text) = req.get("text").and_then(|t| t.as_str()) else {
+                    reply(serde_json::json!({"ok": false, "error": "exec: missing `text`"}));
+                    continue;
+                };
+                match engine.exec_wait(text) {
+                    Ok(r) => reply(serde_json::json!({"ok": true, "result": {"reply": r}})),
+                    Err(e) => reply(serde_json::json!({"ok": false, "error": e.to_string()})),
+                }
+            }
+            Some("chdir") => {
+                let Some(dir) = req.get("dir").and_then(|d| d.as_str()) else {
+                    reply(serde_json::json!({"ok": false, "error": "chdir: missing `dir`"}));
+                    continue;
+                };
+                match std::env::set_current_dir(dir) {
+                    Ok(()) => reply(serde_json::json!({"ok": true, "result": {"cwd": dir}})),
+                    Err(e) => {
+                        reply(
+                            serde_json::json!({"ok": false, "error": format!("chdir {dir}: {e}")}),
+                        );
+                    }
+                }
+            }
+            Some("read") => match dss_epri::script::handle_read(&engine, &req) {
+                Ok(v) => reply(serde_json::json!({"ok": true, "result": v})),
+                Err(e) => reply(serde_json::json!({"ok": false, "error": e.to_string()})),
+            },
             Some("clear") => {
                 // Release the circuit (and any held loadshape memory-mapped file
                 // handles) so a second process can compile the same case without a
