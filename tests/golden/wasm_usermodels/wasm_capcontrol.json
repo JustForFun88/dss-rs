@@ -1,0 +1,47 @@
+{
+  "capacitor_states": {
+    "Capacitor.c": [
+      1
+    ]
+  },
+  "converged": true,
+  "deck": "wasm_capcontrol",
+  "engine": "Version 11.0.0.1 (64-bit build) - Charlottesville; License Status: Open ",
+  "node_voltages": {
+    "CBUS.1": [
+      6862.609771795975,
+      -513.0069152697489
+    ],
+    "CBUS.2": [
+      -3875.581907479404,
+      -5686.6909405631
+    ],
+    "CBUS.3": [
+      -2987.027863560239,
+      6199.697856942621
+    ],
+    "SRC.1": [
+      7098.4009277618425,
+      -190.1535170640382
+    ],
+    "SRC.2": [
+      -3713.8782409592563,
+      -6052.318770738317
+    ],
+    "SRC.3": [
+      -3384.5226860778134,
+      6242.472288983479
+    ]
+  },
+  "oracle": "r4133 built-in VOLTAGE CapControl (native CapUserControl twin cannot drive the control queue — WM.5 round-2 finding)",
+  "switch_actions": [
+    [
+      "Capacitor.c",
+      "**OPENED**"
+    ],
+    [
+      "Capacitor.c",
+      "**CLOSED**"
+    ]
+  ]
+}

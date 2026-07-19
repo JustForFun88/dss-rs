@@ -1,0 +1,29 @@
+! WASM_USERMODELS WM.5 — CapControl user-control gate deck (the Rust side).
+! A deadband voltage CapControl implemented as a WASM user model (capuserctl):
+! `@FIXTURE@` is the committed tests/fixtures/wasm/capuserctl.wasm on the Rust
+! engine (hermetic replay) and the native twin .dll for the empirical
+! twin-cannot-push confirmation.
+!
+! The monitored node is CBUS.1 = node index 4 (SRC.1..3 = nodes 1..3, CBUS.1..3 =
+! 4..6 in creation order); the deadband (vlow=7000, vhigh=7250 V L-N) maps onto
+! the built-in VOLTAGE control's (OnSetting, OffSetting), so the r4133 built-in
+! VOLTAGE control (wasm_capcontrol_oracle.dss) is the cross-engine oracle for the
+! switching sequence (a native CapUserControl twin cannot drive the control queue
+! — STATUS WM.5 round 2). Delays are 0 so the direct-push USERCONTROL schedule and
+! the built-in shared-tail schedule coincide (WM5-3).
+!
+! Scenario (a monotone excursion clear of the deadband edges, no straddle):
+!   solve 1 (light load, cap closed) -> V above vhigh -> **Opened**
+!   solve 2 (heavy load, cap open)   -> V below vlow  -> **Closed**
+clear
+new circuit.wm5cap basekv=12.47 phases=3 bus1=src R1=0.4 X1=1.2 R0=0.4 X0=1.2
+new line.feed phases=3 bus1=src bus2=cbus length=3 units=km r1=0.35 x1=0.7 r0=0.35 x0=0.7 c1=0 c0=0
+new load.ld phases=3 bus1=cbus kv=12.47 kw=500 pf=0.9 model=1
+new capacitor.c bus1=cbus phases=3 kv=12.47 kvar=1500
+new capcontrol.cc element=line.feed terminal=2 capacitor=c UserModel=@FIXTURE@ UserData="node=4 vlow=7000 vhigh=7250" Delay=0 DelayOff=0 DeadTime=0 eventlog=yes
+set voltagebases=[12.47]
+calcvoltagebases
+set controlmode=static
+solve
+edit load.ld kw=3500
+solve

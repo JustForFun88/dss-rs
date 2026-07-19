@@ -1,0 +1,38 @@
+# WASM user-model reference fixture — capuserctl (WASM_USERMODELS_PLAN WP-WM.5).
+# A small, physically-plausible CapControl user model (no vendored upstream
+# example exists — plan §WP-WM.5.2; the CapUserControl callback path has no
+# working owner channel, see the STATUS WM.5 round-2 finding): a deadband voltage
+# control that reads |NodeV[node]| via the get_node_voltages callback (ABI row 17,
+# the symmetric channel of round 1) and schedules an open/close via
+# control_queue_push. Its deadband logic is deliberately identical to the built-in
+# VOLTAGE CapControl (OnSetting=vlow / OffSetting=vhigh), so the r4133 built-in
+# control is a sound cross-engine oracle for the Rust USERCONTROL wiring.
+#
+# Workspace-EXCLUDED tooling crate (plan §2.6): builds the committed golden-class
+# artifact tests/fixtures/wasm/capuserctl.wasm (wasm32) AND, on the host target,
+# the native twin DLL (used ONLY to empirically confirm the un-pushable-twin
+# finding — NOT for gating; the native FFI shims are cfg-gated off the wasm build
+# and live outside the product's forbid(unsafe_code) scope).
+[package]
+name = "capuserctl"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# cdylib -> the .wasm module (wasm32) and the native twin .dll (host target);
+# rlib -> host-target unit tests that pin the deadband decision logic.
+crate-type = ["cdylib", "rlib"]
+
+# Opt out of the dss-rs workspace: this crate must never join the product
+# workspace (plan §2.6 — fixture toolchain is pinned separately from the gate).
+[workspace]
+
+# Locked release profile — recorded in tools/wasm_usermodel/PIN.txt; the
+# committed .wasm regenerates MANUALLY ONLY with exactly these settings.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
