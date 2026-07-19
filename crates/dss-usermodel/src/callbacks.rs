@@ -230,8 +230,9 @@ pub(crate) enum Fault {
 
 /// Per-instance store state: the pre-call context snapshot, the owned
 /// AuxParser (tier C — Pascal `CallBackParser`, a plain `TDSSParser`
-/// instance, `DSSCallBackRoutines.pas:90/:493`), the tier-B effect queue and
-/// the host-fault slot (plan §2.3).
+/// instance, `DSSCallBackRoutines.pas:90/:493`), the tier-B effect queue, the
+/// tier-C deferred DSS-command mechanism (WP-WM.6) and the host-fault slot
+/// (plan §2.3).
 pub(crate) struct CallData {
     /// The tier-A context snapshot for the current call.
     pub(crate) ctx: Box<dyn Callbacks>,
@@ -245,6 +246,30 @@ pub(crate) struct CallData {
     pub(crate) last_param_value: String,
     /// Tier-B effects queued during the current call, in order.
     pub(crate) effects: Vec<Effect>,
+    /// WP-WM.6 tier-C deferred DSS-command mechanism
+    /// (`DoDSSCommand`/`GetResultStr`, `DSSCallBackRoutines.pas:150-154/:449-452`).
+    /// **Opt-in** (default `false`): `do_dss_command`/`get_result_str` raise the
+    /// loud [`Fault::Unsupported`] (the pre-WM.6 behavior — never a silent
+    /// no-op) unless a host that can re-enter the executive between calls opts
+    /// in via [`crate::UserModelInstance::enable_dss_commands`]. The dss-rs
+    /// element call sites hold a disjoint borrow and cannot reach the executive
+    /// (`Dss::command`), so they leave it disabled; the mechanism is exercised
+    /// by the channel-2 protocol tests, which act as the re-entrant host. See
+    /// ABI doc §4 rows 7/32 + the ordering note.
+    pub(crate) dss_commands_enabled: bool,
+    /// Commands queued by `do_dss_command` during the current call, drained by
+    /// the host **after** the call returns and run through the executive
+    /// (Pascal `DoDSSCommandCallBack` → `DSSExecutive.ParseCommand`,
+    /// `:153`). Order preserved.
+    pub(crate) pending_commands: Vec<String>,
+    /// The last `GlobalResult` captured by the host after it ran a drained
+    /// command, served verbatim by `get_result_str` (Pascal
+    /// `GetResultStrCallBack` → `StrLCopy(GlobalResult)`, `:451`). Persists
+    /// across calls (set via [`crate::UserModelInstance::set_result_str`]); it
+    /// is deliberately **not** cleared by `set_context`, so a `get_result_str`
+    /// on the call *after* a `do_dss_command` sees the result — the one
+    /// observable ordering difference from Pascal's synchronous call (ABI §4).
+    pub(crate) last_result: String,
     /// Typed fault recorded by an import before trapping.
     pub(crate) fault: Option<Fault>,
     /// Store resource limits (linear-memory cap; `trap_on_grow_failure` so a
@@ -262,6 +287,9 @@ impl CallData {
             parser_vars: dss_parser::ParserVars::new(),
             last_param_value: String::new(),
             effects: Vec::new(),
+            dss_commands_enabled: false,
+            pending_commands: Vec::new(),
+            last_result: String::new(),
             fault: None,
             limits: wasmi::StoreLimitsBuilder::new()
                 .memory_size(memory_cap_bytes)

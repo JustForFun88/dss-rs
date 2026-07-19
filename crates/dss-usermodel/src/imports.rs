@@ -2,10 +2,15 @@
 //! vtable (`Common/DSSCallBackRoutines.pas:19-67`) as wasm host functions,
 //! one per slot, tiered per `docs/wasm/USERMODEL_ABI.md` §4.
 //!
-//! Every import exists at link time so modules validate; the
-//! unimplemented-by-design slots (`do_dss_command`/`get_result_str` until
-//! WP-WM.6, `get_active_element_ptr` permanently) raise the loud attributed
-//! [`Fault::Unsupported`] when *called* — never a silent no-op (plan §2.9-5).
+//! Every import exists at link time so modules validate. `get_active_element_ptr`
+//! is permanently unimplemented (a raw host pointer has no wasm meaning) and
+//! raises the loud attributed [`Fault::Unsupported`] when *called*. The WP-WM.6
+//! deferred-command pair (`do_dss_command`/`get_result_str`) is implemented as
+//! an opt-in tier-C mechanism: enabled, `do_dss_command` queues the command for
+//! the host to run through the executive and `get_result_str` serves the last
+//! captured `GlobalResult`; disabled (the default, e.g. the dss-rs element call
+//! sites that cannot re-enter the executive) both raise the same loud
+//! `Fault::Unsupported` — never a silent no-op (plan §2.9-5).
 //!
 //! Marshalling template: the vendored typst plugin host
 //! (`.inputs/typst/crates/typst-library/src/foundations/plugin.rs:576-612`) —
@@ -258,12 +263,24 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
     )
     .expect("duplicate dss_env import");
 
-    // --- Slot 7, tier C: DoDSSCommand — deferred to WP-WM.6 (ABI doc §4). ---
+    // --- Slot 7, tier C: DoDSSCommand (Pascal `DoDSSCommandCallBack`,
+    // `:150-154`: `SolutionAbort := FALSE; DSSExecutive.ParseCommand(S)`).
+    // WP-WM.6 deferred-drain design: queue the command; the host runs it
+    // through the executive after this call returns and before the next call
+    // on the same instance (ABI doc §4 + ordering note). Opt-in — a host that
+    // cannot re-enter the executive (the dss-rs element call sites) leaves the
+    // mechanism disabled and the import raises the loud `Fault::Unsupported`
+    // (never a silent no-op, plan §2.9-5). ---
     l.func_wrap(
         "dss_env",
         "do_dss_command",
-        |mut caller: Caller<'_, CallData>, _ptr: i32, _len: i32| -> Result<(), wasmi::Error> {
-            Err(unsupported(&mut caller, "do_dss_command"))
+        |mut caller: Caller<'_, CallData>, ptr: i32, len: i32| -> Result<(), wasmi::Error> {
+            if !caller.data().dss_commands_enabled {
+                return Err(unsupported(&mut caller, "do_dss_command"));
+            }
+            let cmd = read_str(&mut caller, "do_dss_command", ptr, len)?;
+            caller.data_mut().pending_commands.push(cmd);
+            Ok(())
         },
     )
     .expect("duplicate dss_env import");
@@ -631,13 +648,21 @@ pub(crate) fn register_all(linker: &mut Linker<CallData>) {
     )
     .expect("duplicate dss_env import");
 
-    // --- Slot 32, tier C: GetResultStr — paired with `do_dss_command`,
-    // deferred to WP-WM.6 (ABI doc §4 row 32). ---
+    // --- Slot 32, tier C: GetResultStr (Pascal `GetResultStrCallBack`,
+    // `:449-452`: `StrLCopy(S, GlobalResult, Maxlen)`). WP-WM.6: serve the
+    // last `GlobalResult` the host captured after running a drained
+    // `do_dss_command` (persisted across calls — the ordering note, ABI §4).
+    // Opt-in / loud-by-default, paired with `do_dss_command`. ---
     l.func_wrap(
         "dss_env",
         "get_result_str",
-        |mut caller: Caller<'_, CallData>, _ptr: i32, _maxlen: i32| -> Result<(), wasmi::Error> {
-            Err(unsupported(&mut caller, "get_result_str"))
+        |mut caller: Caller<'_, CallData>, ptr: i32, maxlen: i32| -> Result<(), wasmi::Error> {
+            if !caller.data().dss_commands_enabled {
+                return Err(unsupported(&mut caller, "get_result_str"));
+            }
+            let result = caller.data().last_result.clone();
+            str_lcopy(&mut caller, "get_result_str", ptr, maxlen, &result)?;
+            Ok(())
         },
     )
     .expect("duplicate dss_env import");

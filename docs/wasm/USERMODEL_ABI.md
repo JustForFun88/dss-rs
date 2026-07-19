@@ -5,6 +5,27 @@ noted in this header and in `STATUS.md` §WASM-UM.
 
 Recorded decisions:
 
+- **2026-07-20 (e) — WP-WM.6 callback tail: `DoDSSCommand`/`GetResultStr`
+  implemented as an opt-in deferred-drain mechanism; the callback table is now
+  complete (no wire-ABI change).** The two re-entrant slots (7/32) leave the
+  "loud unsupported until WM.6" state. `do_dss_command(ptr, len)` **queues** the
+  command in the instance context; `get_result_str(ptr, maxlen)` serves the last
+  captured `GlobalResult`. A host that can re-enter the executive between calls
+  opts in (`UserModelInstance::enable_dss_commands`), then after each guest call
+  drains the queue (`drain_dss_commands`), runs each command through the
+  executive, and feeds the result back (`set_result_str`) — so the guest's
+  **next** call sees it. **The one observable ordering difference from Pascal's
+  synchronous `DoDSSCommand`→`GetResultStr`** (documented at §4): a
+  `GetResultStr` in the *same* guest call as its `DoDSSCommand` sees the
+  *previous* result, not the just-run one. **The dss-rs element call sites do
+  NOT opt in**: they hold a disjoint borrow and cannot reach `Dss::command`, and
+  inventing a re-entrant `&mut` scheme is forbidden (plan §WP-WM.6); with the
+  mechanism disabled both callbacks raise the loud `Fault::Unsupported` (never a
+  silent drop). No reference model needs it — P3 census, `IndMach012a` bundles
+  its own parser. The mechanism is exercised by the channel-2 protocol tests
+  (which act as the re-entrant host). Additive; the 15/13/7 shapes and every
+  record/callback contract are unchanged. See §4 rows 7/32 + STATUS §WASM-UM
+  WP-WM.6.
 - **2026-07-20 (d) — WP-WM.5 CapControl round 2 (build): a native `TCapUserControl`
   twin CANNOT be the gate oracle → the r4133 BUILT-IN VOLTAGE control is
   (fixture/gate-design, NOT a wire-ABI change).** Round 1 proved `get_public_data`
@@ -417,7 +438,11 @@ P3 census (probe `p3_callback_census.txt`): the canonical example invokes
 exactly one slot — `MsgCallBack` (`IndMach012Model.pas:474`); it bundles its
 own parser (`ModelParser: TParser`), so the parser callbacks are exercised by
 protocol tests (WM.1), not by the reference fixture. `DoDSSCommand` unused ⇒
-its WM.6 deferral stands.
+its WM.6 treatment is the opt-in deferred-drain mechanism below (no model needs
+the executive re-entry). **The table is complete as of WP-WM.6**: all 32 slots
+are either implemented (tier A/B/C) or a permanent loud attributed error (slot
+30), and each is covered by a channel-2 protocol test (WM.1 tier-A/B/C sweeps +
+`missing_export…`/`unsupported_imports…`/`wm6_deferred_…`).
 
 | # | Slot (Pascal) | wasm import (dss_env) | Tier | Used by IndMach012a |
 |---|---|---|---|---|
@@ -427,7 +452,7 @@ its WM.6 deferral stands.
 | 4 | `GetStrValue` | `get_str_value(ptr, maxlen)` | C | no |
 | 5 | `LoadParser` | `load_parser(ptr, len)` | C | no |
 | 6 | `NextParam` | `next_param(name_ptr, maxlen) -> i32` | C | no |
-| 7 | `DoDSSCommand` | `do_dss_command(ptr, len)` | C — **WM.6**; until then a loud "not yet supported over WASM" error | no (census-verified) |
+| 7 | `DoDSSCommand` | `do_dss_command(ptr, len)` | C — **WM.6**: enabled → queues the command for the host to run through the executive after the call (deferred drain, ordering note below); disabled (default) → loud `Unsupported` | no (census-verified) |
 | 8 | `GetActiveElementBusNames` | `get_active_element_bus_names(p1, l1, p2, l2)` | A | no |
 | 9 | `GetActiveElementVoltages` | `get_active_element_voltages(num_ptr, v_ptr)` | A | no |
 | 10 | `GetActiveElementCurrents` | `get_active_element_currents(num_ptr, i_ptr)` | A | no |
@@ -452,15 +477,70 @@ its WM.6 deferral stands.
 | 29 | `GetActiveElementName` | `get_active_element_name(ptr, maxlen) -> i32` | A | no |
 | 30 | `GetActiveElementPtr` | **not importable** — a raw host pointer has no wasm meaning; calling the import raises the loud unsupported error (documented policy; upstream models that need element internals use `get_public_data`) | — | no |
 | 31 | `ControlQueuePush` | `control_queue_push(hour: i32, sec: f64, code: i32, proxy_hdl: i32) -> i32` | B (queued; drained in order after the call returns; `Owner` = the owning element's registry handle, host-side) | no |
-| 32 | `GetResultStr` | `get_result_str(ptr, maxlen)` | C (paired with `do_dss_command`, WM.6) | no |
+| 32 | `GetResultStr` | `get_result_str(ptr, maxlen)` | C — **WM.6**: enabled → StrLCopy of the last captured `GlobalResult` (persists across calls); disabled (default) → loud `Unsupported`. Paired with `do_dss_command` | no |
 
 Tier meanings — **A**: pure read served from the pre-call context snapshot;
 **B**: mutation recorded in the effect queue, applied by the host after the
 wasm call returns (order preserved; semantically identical where effects are
 only observable at the next queue pop); **C**: owned-AuxParser block +
-the WM.6 re-entrancy pair. Boolean returns are i32 0/1. Every import exists at
-link time (so modules validate); unimplemented-by-design slots raise the loud
-attributed error of §6 when *called* — never a silent no-op (plan §2.9-5).
+the WM.6 deferred-command pair (below). Boolean returns are i32 0/1. Every
+import exists at link time (so modules validate); the permanently-unsupported
+slot 30 and the not-opted-in WM.6 pair raise the loud attributed error of §6
+when *called* — never a silent no-op (plan §2.9-5).
+
+**Tier reconciliation vs plan §2.3.** Plan §2.3 provisionally listed
+`GetResultStr` among the tier-A "pure reads served from the pre-call context
+snapshot". This frozen ABI doc reclassifies it to **tier C**, paired with
+`DoDSSCommand` (row 7), because `GlobalResult` is *produced by* a `DoDSSCommand`
+run, not a snapshot the host captures before the call — the two share one
+opt-in mechanism and one ordering note. This is the recorded WM.6 decision (e);
+the ABI doc is the authoritative artifact where the plan and it differ.
+
+**Slots 7 + 32 — `DoDSSCommand`/`GetResultStr`, the deferred-drain re-entrancy
+pair (WP-WM.6, header decision (e)).** Upstream `DoDSSCommandCallBack`
+(`DSSCallBackRoutines.pas:150-154`) runs `DSSExecutive.ParseCommand(S)`
+**synchronously mid-model-call**, mutating engine state, and
+`GetResultStrCallBack` (`:449-452`) then `StrLCopy`s `GlobalResult`. A wasmi
+host function sees only the `Store` data, never the live `&mut Dss`, so the
+synchronous form is impossible; the design is an **immediate deferred drain**:
+
+- `do_dss_command(ptr, len)` copies the command string and **queues** it in the
+  instance's `CallData` (order preserved). It does **not** run mid-call.
+- After the guest call returns, a host holding the executive
+  (`UserModelInstance::drain_dss_commands`) runs each queued command through
+  `Dss::command` (= `ParseCommand`) and captures the resulting `GlobalResult`
+  back into the instance (`set_result_str`) — **before the next guest call on
+  the same instance**. To stay Pascal-faithful the host must clear
+  `SolutionAbort` **before** each `ParseCommand`: `DoDSSCommandCallBack`
+  (`DSSCallBackRoutines.pas:152-153`) does `DSSPrime.SolutionAbort := FALSE;`
+  then `ParseCommand` — so a queued command runs even if the in-progress solve
+  had raised the abort flag. The ordering difference below is thus **not** the
+  only semantic a real executive host reproduces; the abort-flag reset is the
+  second (both are the future host's responsibility, `Dss`-side, since the
+  drain API has no `&mut Dss`).
+- `get_result_str(ptr, maxlen)` serves that captured `GlobalResult` (persists
+  across calls; `StrLCopy` semantics).
+
+**The one observable ordering difference from Pascal** (accepted, documented,
+not a `TODO(compat)` — it is a new WASM-only mechanism with no upstream
+byte-golden): a `GetResultStr` issued in the **same** guest call as its
+`DoDSSCommand` sees the *previous* result (the command has only been queued, not
+yet run), whereas Pascal's synchronous call would see the just-run result. A
+`GetResultStr` on the **next** call sees it. No reference model exercises this
+pair (P3 census).
+
+**Opt-in / not enabled by default.** Running a queued command needs a host that
+holds `&mut Dss`. The dss-rs element call sites (`DoUserModel`, CapControl
+`Sample`, …) hold a *disjoint* borrow of the circuit — they cannot reach
+`Dss::command`, and inventing a re-entrant `&mut` scheme is forbidden (plan
+§WP-WM.6). So the elements leave the mechanism **disabled**, and both callbacks
+raise the loud `Unsupported` error (§6) — never a silent drop. The mechanism
+(`enable_dss_commands` + `drain_dss_commands`/`set_result_str`) is complete and
+gated by the channel-2 protocol tests, which act as the re-entrant executive
+host; a future integration point that holds the executive (or a hardened
+re-entrancy design) can opt in without any wire-ABI change. Because no
+reference model needs the executive re-entry, this leaves no gated feeder
+behavior unported.
 
 **Row-17 indexing (recorded decision, 2026-07-19 — WM-AUD-1 settlement):** the
 native callback hands the model the raw `Solution.NodeV` pointer, whose
@@ -524,7 +604,7 @@ surface (plan §2.9-7); the guest is a pure function of its inputs.
 | P1 oracle-loads-DLL | **PASS all 5 asserts** — pinned dss-python 0.15.7/0.14.5 loads a native 15-export stub, vars surface + `edit` + Model=6 solve + V/I marshalling verified (currents bit-exact) ⇒ **§2.5 channel 1 CONFIRMED**, r3723 fallback not engaged | `p1_oracle_load.txt` |
 | P2 layouts | packed; TDynamicsRec 52 B / TGeneratorVars 244 B / TDSSCallBacks 256 B; dss_capi 0.14.5 ≡ r3723 byte-identical | `p2_offsets_dss_capi.txt`, `p2_offsets_r3723.txt` |
 | P2 twin decision | **Plan A** — FPC 3.2.2 `-Mdelphi` builds the vendored `IndMach012a.dpr` **as-is** (search paths only, zero source edits, `{$R *.RES}` linked); the DLL loads + solves under the pinned oracle (all 14 machine vars live, converged) | `p2_indmach_fpc_build.txt` |
-| P3 callback census | `MsgCallBack` only; `DoDSSCommand` unused ⇒ WM.6 deferral stands; own parser bundled | `p3_callback_census.txt` |
+| P3 callback census | `MsgCallBack` only; `DoDSSCommand` unused ⇒ its WM.6 treatment is the opt-in deferred-drain pair (header decision (e)); own parser bundled | `p3_callback_census.txt` |
 | P4 toolchain | stable rustc 1.96.0, `wasm32-unknown-unknown` added; `wasmi =1.0.9` `default-features=false`+`simd` compiles pure-Rust; fuel/limiter APIs verified (`instantiate_and_start` is the 1.x spelling) | `p4_toolchain.txt`, `tools/wasm_usermodel/PIN.txt` |
 | §2.7 upgrade check | loader units: contract unchanged 0.14.5→0.15.x and r3723→r4133; `TGeneratorVars` gains `deltaQNom` in 0.15.x/r4088+ (see §2.2 caution) | `p5_upgrade_diff.txt` |
 
@@ -548,14 +628,123 @@ DLL + oracle driver + build script; `abi_probe_r4133.pas` + the P8 step,
 native-twin channel is `tools/wasm_usermodel/build_native.ps1` (r4133) +
 `twin_probe.py`.
 
-## 8. Porting your Delphi/C user model to WASM (skeleton — WM.6 completes)
+## 8. Porting your Delphi/C user model to WASM (worked example)
 
-The 15 exports keep their meaning; what changes is transport: your model reads
-its inputs from the guest-memory record images (§2) refreshed before each
-call, and host services arrive as `dss_env` imports (§4) instead of a callback
-struct. A worked start-to-finish example (the IndMach012a fixture,
-`tools/wasm_usermodel/models/indmach012a/`) lands at WM.2; the narrative
-walkthrough, limits/trap policy recap and PIN workflow land at WM.6.
+The exports keep their meaning; what changes is **transport**. A native DLL
+retained live host pointers from `New` and read/wrote them during every call; a
+WASM guest has its own disjoint linear memory, so the host **copies the record
+images into guest buffers before each call and reads them back after** (§2), and
+the `TDSSCallBacks` struct becomes a set of `dss_env` host **imports** (§4). The
+worked example below is the committed reference fixture
+`tools/wasm_usermodel/models/indmach012a/` — a loop-for-loop port of the
+vendored `IndMach012a` Delphi DLL — which compiles to
+`tests/fixtures/wasm/indmach012a.wasm` and is gated bit-exact against the native
+twin (`models/indmach012a/tests/twin_parity.rs`) and the r4133 oracle
+(`crates/dss-core/tests/wasm_usermodels.rs`). Every step here is a real part of
+that crate; read its module docs for the full detail.
+
+**Step 1 — pick the interface and export the required set (§1).** Generator
+`UserModel=`/`ShaftModel=`, Storage `UserModel=`, PVSystem `UserModel=` are the
+**15-function** form; Storage `DynaDLL=` is the **13-function** form (no
+`save`/`restore`); CapControl `UserModel=` is the **7-function** form. Export
+`memory`, `dss_alloc`, and the interface functions with the *exact* wasm names
+and signatures of §1 — a missing/mis-typed export is the 569/1569
+"Does Not Have Required Function" load rejection. IndMach012a is a Generator, so
+it exports the 15-function set with `new(genvars: i32, dynarec: i32) -> i32`
+(`src/wasm_exports.rs`).
+
+**Step 2 — provide the guest allocator (§1, common infra).** The host calls
+`dss_alloc(size) -> ptr` once per instance to carve out each shuttle buffer
+(genvars/dynarec/V/I/name scratch); return a pointer into your linear memory or
+0 to signal failure (a protocol violation, §6). A bump/registry allocator is
+enough — the fixture keeps a `BTreeMap<addr, Box<[u8]>>` so a stray pointer
+traps instead of corrupting memory:
+
+```rust
+#[no_mangle]
+pub extern "C" fn dss_alloc(size: i32) -> i32 {
+    if size <= 0 { return 0; }
+    with_guest(|g| {
+        let buf = vec![0u8; size as usize].into_boxed_slice();
+        let addr = buf.as_ptr() as usize as u32;
+        g.allocs.insert(addr, buf);       // registry: pointer -> owned bytes
+        addr as i32
+    })
+}
+```
+
+**Step 3 — decode/encode the record images (§2).** The pointers the host passes
+to `new`/`calc`/… address the packed, little-endian record images at the frozen
+offsets (§2.1 `TDynamicsRec`, §2.2b the 244-byte wasm `TGeneratorVars`; complex
+= re then im f64; arrays 1-based, element k at `(k-1)*16`). Decode from the
+buffer, compute, and — for `GenVars`/`DynaVars` — write back **unconditionally**
+(the contract lets the model mutate both, e.g. dynamics sets `Pshaft`/`Speed`).
+Never use `#[repr(C)]`: the tail is deliberately unaligned — assemble
+field-by-field at the documented offsets.
+
+**Step 4 — implement the lifecycle (§3).** `new` captures the buffer pointers
+and returns a nonzero id (0 ⇒ model absent); `edit(ptr, len)` receives the
+NUL-terminated `UserData=`/`DynaData=` string; `calc(v, i)` reads `Vterminal`,
+dispatches on the refreshed `TDynamicsRec.SolutionMode` (power-flow vs dynamics),
+and writes the terminal currents (the host applies the Pascal sign convention at
+its call site); `init`/`integrate` run the dynamics state; `num_vars` /
+`get_all_vars` / `get_variable` / `set_variable` / `get_var_name` are the
+monitoring surface (1-based user indices). The fixture's `calc`:
+
+```rust
+#[no_mangle]
+pub extern "C" fn calc(v: i32, i: i32) {
+    with_guest(|g| {
+        let Some((gv_ptr, dyn_ptr)) = active_ptrs(g) else { return };
+        let varr = read_v3(g, v);                 // decode 3 complex from guest mem
+        let dyna = read_dynarec(g, dyn_ptr);      // refreshed TDynamicsRec image
+        let mut gv = read_genvars(g, gv_ptr);
+        let mut iarr = [CZERO; 3];
+        if mainunit::calc(&mut g.main, &varr, &mut iarr, &mut gv, &dyna) {
+            write_i3(g, i, &iarr);                // currents back to the host
+        }
+        write_genvars(g, gv_ptr, &gv);            // read-back is unconditional
+    });
+}
+```
+
+**Step 5 — host services are `dss_env` imports (§4).** Declare only what you use
+(`#[link(wasm_import_module = "dss_env")]`). IndMach012a needs exactly one —
+`msg_callback` (P3 census) — and bundles its own parser, so it touches none of
+the tier-C parser slots. Tier-A reads (voltages, dynamics time, public data, …)
+return the owning element's state; tier-B `control_queue_push`/`msg_callback`
+are queued and applied after your call returns; the deferred pair
+`do_dss_command`/`get_result_str` (slots 7/32) works only when the host opts in
+(§4) — a command you issue runs **after** the call, so a `get_result_str` in the
+same call sees the previous result. `get_active_element_ptr` (slot 30) is never
+importable. Calling an unsupported/not-opted-in slot is a loud attributed error
+(§6), never a silent no-op.
+
+**Step 6 — build, PIN, gate (§2.6, the goldens rule for binaries).** Build for
+`wasm32-unknown-unknown`, release, with the locked flags in the crate
+`Cargo.toml` (`opt-level=3, lto=true, codegen-units=1, panic=abort`), commit the
+`.wasm`, and record its SHA-256 in `tools/wasm_usermodel/PIN.txt`. Regenerate
+**manually only** — never to make a test pass. For the reference fixture:
+
+```powershell
+pwsh tools/wasm_usermodel/build_wasm.ps1     # rebuilds the .wasm, prints its SHA-256
+# then update the sha256(...) line in tools/wasm_usermodel/PIN.txt
+```
+
+A unit test (`crates/dss-usermodel/tests/fixture_pin.rs`) asserts the committed
+file's hash matches the PIN, so drift is red in every `cargo test`; the numeric
+gate compares the guest against the native twin / r4133 oracle at the calibrated
+harness floors (`tools/wasm_usermodel/README.md` has the full chain).
+
+**Limits & trap policy (§6 recap).** The sandbox is deterministic: relaxed SIMD
+off, no WASI, no clock/random/filesystem — `dss_env` is the entire import
+surface, so the guest is a pure function of its inputs. Each call has a fuel
+budget (default generous; the fixture uses <1%) and a linear-memory cap (default
+64 MiB); a trap, protocol violation (bad pointer/OOB, `dss_alloc` returning 0),
+fuel exhaustion, or memory-cap breach is a hard engine error naming your model
+and function — there is **no** mid-run fallback to the built-in model (that
+would silently change numerics). Only *load-time* failures (not a `.wasm` /
+missing file / missing export) follow Pascal's warn-and-fall-back (§5).
 
 ## Appendix A — historical 0.14.5 / r3723 `TGeneratorVars` (244 bytes)
 

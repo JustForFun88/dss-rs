@@ -1231,8 +1231,12 @@ fn import_write_out_of_bounds_is_typed_oob() {
     }
 }
 
-/// The unimplemented-by-design imports are loud attributed errors when
-/// called (ABI doc §4 rows 7/30/32) — never a silent no-op.
+/// The unsupported imports are loud attributed errors when called (ABI doc §4
+/// rows 7/30/32) — never a silent no-op. `get_active_element_ptr` is permanent;
+/// `do_dss_command`/`get_result_str` are loud here because this instance did
+/// **not** opt into the WP-WM.6 deferred-command mechanism
+/// (`enable_dss_commands` — the dss-rs element call sites likewise do not opt
+/// in, so a real deck model hits this loud path rather than a silent drop).
 #[test]
 fn unsupported_imports_raise_loud_attributed_errors() {
     let cases: [(&str, &str, &str); 3] = [
@@ -1279,6 +1283,214 @@ fn unsupported_imports_raise_loud_attributed_errors() {
             "expected Unsupported({import_name}), got {err:?}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Callback tier C: the WP-WM.6 deferred DSS-command pair
+// (do_dss_command / get_result_str)
+// ---------------------------------------------------------------------------
+
+/// The WP-WM.6 deferred-drain cycle end-to-end, with the test acting as the
+/// re-entrant executive host (which the dss-rs element call sites cannot be —
+/// ABI §4 rows 7/32):
+///  1. the guest `calc` calls `do_dss_command("? Load.L1.kW")` then reads
+///     `get_result_str` into a buffer (checksummed into slot 21);
+///  2. the host `drain_dss_commands()` gets the command in order, "runs" it,
+///     and `set_result_str(...)` captures the `GlobalResult`;
+///  3. on the guest's *next* call the `get_result_str` serves that result —
+///     the one observable ordering difference from Pascal's synchronous call
+///     (the first call sees the pre-drain empty result).
+#[test]
+fn wm6_deferred_dss_command_cycle() {
+    let imports = r#"
+  (import "dss_env" "do_dss_command" (func $do_cmd (param i32 i32)))
+  (import "dss_env" "get_result_str" (func $get_result (param i32 i32)))
+"#;
+    // "? Load.L1.kW" is 12 bytes at offset 400; the result buffer is at 512.
+    let data = r#"(data (i32.const 400) "? Load.L1.kW")"#;
+    let calc_extra = r#"
+    (call $do_cmd (i32.const 400) (i32.const 12))
+    (call $get_result (i32.const 512) (i32.const 63))
+    (call $set_slot (i32.const 21) (f64.convert_i32_s (call $cksum (i32.const 512))))
+"#;
+    let bytes = guest_15(imports, data, calc_extra);
+    let host = UserModelHost::load(
+        "wm6cmd.wasm",
+        &bytes,
+        InterfaceKind::GenUserModel,
+        HostConfig::default(),
+    )
+    .expect("load");
+
+    let mut gvars = distinct_gen_vars();
+    let mut dyn_rec = distinct_dyn_rec();
+    let mut inst =
+        UserModelInstance::new(&host, 1, sh!(&mut gvars, &mut dyn_rec)).expect("instance");
+    inst.enable_dss_commands();
+
+    let v = [Complex64::new(1.0, 0.0)];
+    let mut i = [Complex64::new(0.0, 0.0)];
+
+    // Call 1: the command is queued; get_result_str sees the empty pre-drain
+    // result (the documented ordering difference).
+    inst.calc(&v, &mut i, sh!(&mut gvars, &mut dyn_rec))
+        .expect("calc 1");
+    let cmds = inst.drain_dss_commands();
+    assert_eq!(
+        cmds,
+        vec!["? Load.L1.kW".to_string()],
+        "the guest command is queued verbatim, in order"
+    );
+    let mut all = [0f64; 64];
+    inst.get_all_vars(&mut all, sh!(&mut gvars, &mut dyn_rec))
+        .expect("get_all_vars 1");
+    assert_eq!(
+        all[20], 0.0,
+        "get_result_str is empty before any command result is captured"
+    );
+
+    // The host runs the drained command through the executive and captures the
+    // resulting GlobalResult.
+    inst.set_result_str("3.25");
+
+    // Call 2: get_result_str now serves the captured result.
+    inst.calc(&v, &mut i, sh!(&mut gvars, &mut dyn_rec))
+        .expect("calc 2");
+    assert_eq!(
+        inst.drain_dss_commands(),
+        vec!["? Load.L1.kW".to_string()],
+        "call 2 queues the command again"
+    );
+    inst.get_all_vars(&mut all, sh!(&mut gvars, &mut dyn_rec))
+        .expect("get_all_vars 2");
+    assert_eq!(
+        all[20],
+        "3.25".bytes().map(u32::from).sum::<u32>() as f64,
+        "get_result_str serves the captured GlobalResult on the next call"
+    );
+    // Draining twice yields nothing (the queue was emptied).
+    assert!(inst.drain_dss_commands().is_empty());
+}
+
+/// Multiple `do_dss_command` calls in one guest call queue in order, and the
+/// `CapControlInstance` shares the same mechanism.
+#[test]
+fn wm6_deferred_commands_queue_in_order_on_cap_control() {
+    let wat = r#"(module
+  (import "dss_env" "do_dss_command" (func $do_cmd (param i32 i32)))
+  (import "dss_env" "get_result_str" (func $get_result (param i32 i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "open capacitor.c")
+  (data (i32.const 200) "? capacitor.c.states")
+  (global $heap (mut i32) (i32.const 4096))
+  (func (export "dss_alloc") (param $size i32) (result i32)
+    (local $ptr i32)
+    (local.set $ptr (global.get $heap))
+    (global.set $heap (i32.add (global.get $heap) (local.get $size)))
+    (local.get $ptr))
+  (func (export "new") (result i32) (i32.const 4))
+  (func (export "select") (param $id i32) (result i32) (local.get $id))
+  (func (export "sample")
+    (call $do_cmd (i32.const 100) (i32.const 16))
+    (call $do_cmd (i32.const 200) (i32.const 20)))
+  ;; do_pending serves the captured result into 512, then checksums the
+  ;; NUL-terminated bytes and traps on any mismatch (including an empty serve)
+  ;; — so a passing do_pending is a real value assertion on the CapControl
+  ;; serve path, not a smoke check.
+  (func (export "do_pending") (param i32 i32)
+    (local $p i32) (local $sum i32) (local $b i32)
+    (call $get_result (i32.const 512) (i32.const 63))
+    (local.set $p (i32.const 512))
+    (block $done
+      (loop $l
+        (local.set $b (i32.load8_u (local.get $p)))
+        (br_if $done (i32.eqz (local.get $b)))
+        (local.set $sum (i32.add (local.get $sum) (local.get $b)))
+        (local.set $p (i32.add (local.get $p) (i32.const 1)))
+        (br $l)))
+    (if (i32.ne (local.get $sum) (i32.const 211)) ;; sum("1 1 1") = 211
+      (then (unreachable))))
+  (func (export "edit") (param i32 i32))
+  (func (export "update_model"))
+  (func (export "delete") (param i32)))"#;
+    let bytes = wat::parse_str(wat).expect("wat");
+    let host = UserModelHost::load(
+        "wm6cap.wasm",
+        &bytes,
+        InterfaceKind::CapUserControl,
+        HostConfig::default(),
+    )
+    .expect("load");
+
+    let mut inst = CapControlInstance::new(&host, Box::new(NoCallbacks)).expect("instance");
+    inst.enable_dss_commands();
+
+    // Without opting in, the same guest would trap loudly; with it enabled the
+    // two commands queue in order.
+    inst.sample(Box::new(NoCallbacks)).expect("sample");
+    assert_eq!(
+        inst.drain_dss_commands(),
+        vec![
+            "open capacitor.c".to_string(),
+            "? capacitor.c.states".to_string(),
+        ],
+        "both commands queued in order"
+    );
+
+    // do_pending reads the result the host captured after running them. The
+    // guest checksums the served bytes and traps on mismatch, so a successful
+    // do_pending asserts the CapControl serve path delivered "1 1 1" verbatim
+    // (the CapControlInstance exposes no var surface to read back host-side).
+    inst.set_result_str("1 1 1");
+    inst.do_pending(0, 0, Box::new(NoCallbacks))
+        .expect("do_pending serves the captured result (guest traps on mismatch)");
+
+    // Negative control: a wrong captured result makes the same guest trap,
+    // proving the assertion above is load-bearing (not a serve that ignores
+    // its input).
+    inst.set_result_str("9 9 9");
+    let err = inst
+        .do_pending(0, 0, Box::new(NoCallbacks))
+        .expect_err("mismatched served result must trap the guest checksum");
+    assert!(
+        matches!(&err, UserModelError::Trap { func, .. } if func == "do_pending"),
+        "got {err:?}"
+    );
+}
+
+/// With the mechanism NOT enabled, a `CapControlInstance` guest that calls
+/// `do_dss_command` fails loudly (parity with the Generator not-opted-in path).
+#[test]
+fn wm6_cap_control_do_dss_command_loud_without_opt_in() {
+    let wat = r#"(module
+  (import "dss_env" "do_dss_command" (func $do_cmd (param i32 i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "clear")
+  (func (export "dss_alloc") (param i32) (result i32) (i32.const 64))
+  (func (export "new") (result i32) (i32.const 1))
+  (func (export "select") (param i32) (result i32) (i32.const 1))
+  (func (export "sample") (call $do_cmd (i32.const 100) (i32.const 5)))
+  (func (export "do_pending") (param i32 i32))
+  (func (export "edit") (param i32 i32))
+  (func (export "update_model"))
+  (func (export "delete") (param i32)))"#;
+    let bytes = wat::parse_str(wat).expect("wat");
+    let host = UserModelHost::load(
+        "wm6caploud.wasm",
+        &bytes,
+        InterfaceKind::CapUserControl,
+        HostConfig::default(),
+    )
+    .expect("load");
+    let mut inst = CapControlInstance::new(&host, Box::new(NoCallbacks)).expect("instance");
+    let err = inst
+        .sample(Box::new(NoCallbacks))
+        .expect_err("do_dss_command must be loud without opt-in");
+    assert!(
+        matches!(&err, UserModelError::Unsupported { import, .. } if import == "do_dss_command"),
+        "got {err:?}"
+    );
+    assert!(inst.drain_dss_commands().is_empty(), "nothing queued");
 }
 
 // ---------------------------------------------------------------------------

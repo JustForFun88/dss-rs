@@ -214,6 +214,25 @@ impl Sandbox {
         std::mem::take(&mut self.store.data_mut().effects)
     }
 
+    /// Enable the WP-WM.6 deferred DSS-command mechanism
+    /// (`do_dss_command`/`get_result_str`) — only a host that can run the
+    /// drained commands through the executive should opt in (ABI §4 rows 7/32).
+    fn enable_dss_commands(&mut self) {
+        self.store.data_mut().dss_commands_enabled = true;
+    }
+
+    /// Take the DSS commands queued by `do_dss_command` since the last drain,
+    /// in order (Pascal `DSSExecutive.ParseCommand` inputs).
+    fn drain_commands(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.store.data_mut().pending_commands)
+    }
+
+    /// Store the `GlobalResult` served by the next `get_result_str` (Pascal
+    /// `GlobalResult`, `DSSCallBackRoutines.pas:451`).
+    fn set_result(&mut self, result: String) {
+        self.store.data_mut().last_result = result;
+    }
+
     fn usage(&self, detail: impl Into<String>) -> UserModelError {
         UserModelError::Usage {
             model: self.model.clone(),
@@ -474,6 +493,36 @@ impl UserModelInstance {
     /// (the engine applies them immediately after each call — plan §2.3).
     pub fn drain_effects(&mut self) -> Vec<Effect> {
         self.sandbox.drain_effects()
+    }
+
+    /// Opt into the WP-WM.6 deferred DSS-command mechanism
+    /// (`do_dss_command`/`get_result_str`, ABI §4 rows 7/32). Only a host that
+    /// can run [`Self::drain_dss_commands`] through the executive and feed the
+    /// result back via [`Self::set_result_str`] before the next guest call
+    /// should enable it. Left disabled, both callbacks raise the loud
+    /// [`UserModelError::Unsupported`] (the dss-rs element call sites cannot
+    /// re-enter the executive, so they do not opt in — never a silent no-op).
+    pub fn enable_dss_commands(&mut self) {
+        self.sandbox.enable_dss_commands();
+    }
+
+    /// Take the DSS commands the guest queued via `do_dss_command` since the
+    /// last drain, in order — the host runs each through the executive after
+    /// the guest call returns (Pascal `DoDSSCommandCallBack`, `:150-154`). To
+    /// stay Pascal-faithful the host must clear `SolutionAbort` *before* each
+    /// `ParseCommand` (the callback does `DSSPrime.SolutionAbort := FALSE;`
+    /// then `ParseCommand`, `:152-153`) — that reset is `Dss`-side, outside
+    /// this drain API's reach.
+    pub fn drain_dss_commands(&mut self) -> Vec<String> {
+        self.sandbox.drain_commands()
+    }
+
+    /// Store the `GlobalResult` the next `get_result_str` will serve (Pascal
+    /// `GetResultStrCallBack`, `:449-452`): the host sets this from the
+    /// executive after it runs a drained command, so the guest sees the result
+    /// on its *next* call (the ordering note, ABI §4).
+    pub fn set_result_str(&mut self, result: impl Into<String>) {
+        self.sandbox.set_result(result.into());
     }
 
     /// Write the records + context in, refuel (start of every call).
@@ -833,6 +882,24 @@ impl CapControlInstance {
     /// the last drain.
     pub fn drain_effects(&mut self) -> Vec<Effect> {
         self.sandbox.drain_effects()
+    }
+
+    /// Opt into the WP-WM.6 deferred DSS-command mechanism (see
+    /// [`UserModelInstance::enable_dss_commands`]).
+    pub fn enable_dss_commands(&mut self) {
+        self.sandbox.enable_dss_commands();
+    }
+
+    /// Take the DSS commands the guest queued via `do_dss_command` since the
+    /// last drain, in order (see [`UserModelInstance::drain_dss_commands`]).
+    pub fn drain_dss_commands(&mut self) -> Vec<String> {
+        self.sandbox.drain_commands()
+    }
+
+    /// Store the `GlobalResult` the next `get_result_str` will serve (see
+    /// [`UserModelInstance::set_result_str`]).
+    pub fn set_result_str(&mut self, result: impl Into<String>) {
+        self.sandbox.set_result(result.into());
     }
 
     fn call(
