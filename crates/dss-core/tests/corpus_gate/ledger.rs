@@ -694,7 +694,8 @@ impl LedgerView<'_> {
     /// pins `oracle`+`rust` with NO `num_rel` — exact-pair-numeric (§1.3 discrete):
     /// the Rust value must equal the pinned `rust` exactly (an envelope would mask
     /// real drift), stale once it converges to the oracle. A non-numeric value
-    /// (enum/word) is exact-pair via the `oracle` string.
+    /// (enum/word) is exact-pair via the `oracle`+`rust` strings (both mandatory
+    /// — §1.3 drift-safety, Phase F re-review RR-1).
     pub(crate) fn probe_handled(
         &self,
         dss: &mut dss_core::exec::Dss,
@@ -789,14 +790,24 @@ impl LedgerView<'_> {
                     // non-numeric probe (enum/word): discrete state is ledgerable
                     // only as an EXACT PAIR (§1.3). A bare scope here would compare
                     // nothing (self-certifying hit) — require an explicit `oracle`
-                    // pin (asserted above against the capture) and assert the live
-                    // Rust value against its `rust` pin when given.
+                    // pin (asserted above against the capture) AND a `rust` pin
+                    // (Phase F re-review RR-1: with only `oracle`, staleness fires
+                    // on rust != oracle, so a port drift to any THIRD value would
+                    // pass silently — the same hole the fix-round F1/F2 closed for
+                    // the numeric arm).
                     assert!(
                         sc.oracle.is_some(),
                         "{ctx}: ledger `{}` probe {key}: non-numeric value {:?} needs an exact \
                          `oracle` pin — discrete state is exact-pair only, never a bare scope (§1.3)",
                         e.id,
                         exp.value
+                    );
+                    assert!(
+                        sc.rust.is_some(),
+                        "{ctx}: ledger `{}` probe {key}: non-numeric exact-pair scope must pin an \
+                         exact `rust` value — with only `oracle`, a port drift to a third value \
+                         != oracle passes silently (§1.3 discrete drift-safety)",
+                        e.id
                     );
                     if let Some(r) = &sc.rust {
                         let rs = value_as_str(r);
@@ -825,10 +836,11 @@ impl LedgerView<'_> {
     /// as [`Self::probe_handled`] (§1.3: probe/property are exact expected pairs,
     /// or `num_rel` for numeric-skeleton values — pre-E/F audit UGA-T2 parity):
     /// an exact `oracle` pin re-pins the upstream getter; a numeric value with
-    /// `num_rel` is envelope-checked against the live Rust `?`-value; a
-    /// non-numeric value REQUIRES the `oracle` pin and honors an optional `rust`
-    /// pin. Returns the set of `(element_lower, prop_lower)` keys to skip in the
-    /// standard `compare_all_properties`.
+    /// `num_rel` is envelope-checked against the live Rust `?`-value; an
+    /// exact-pair value (numeric or not) REQUIRES both the `oracle` and `rust`
+    /// pins (drift-safety — fix-round F1/F2 + Phase F re-review RR-1). Returns
+    /// the set of `(element_lower, prop_lower)` keys to skip in the standard
+    /// `compare_all_properties`.
     pub(crate) fn property_handled_keys(
         &self,
         dss: &mut dss_core::exec::Dss,
@@ -923,13 +935,21 @@ impl LedgerView<'_> {
                     } else {
                         // Non-numeric property: exact-pair only (§1.3). A bare scope
                         // would let ANY Rust value pass — require the `oracle` pin
-                        // (asserted above) and honor an optional `rust` pin (the F4
-                        // probe fix, ported here).
+                        // (asserted above) AND the `rust` pin (Phase F re-review
+                        // RR-1, mirrors the probe arm: an oracle-only pin lets a
+                        // third-value port drift pass as legitimately non-stale).
                         assert!(
                             sc.oracle.is_some(),
                             "{ctx}: ledger `{}` property {key}: non-numeric value {val:?} needs an \
                              exact `oracle` pin — discrete state is exact-pair only, never a bare \
                              scope (§1.3)",
+                            e.id
+                        );
+                        assert!(
+                            sc.rust.is_some(),
+                            "{ctx}: ledger `{}` property {key}: non-numeric exact-pair scope must \
+                             pin an exact `rust` value — with only `oracle`, a port drift to a \
+                             third value != oracle passes silently (§1.3 discrete drift-safety)",
                             e.id
                         );
                         if let Some(r) = &sc.rust {
@@ -1283,6 +1303,19 @@ pub(crate) fn assert_structural(
                     "ledger entry {:?}: {} scope needs an exact `oracle` pin or a \
                      `num_rel` numeric-skeleton envelope — a bare selector-only scope \
                      asserts nothing (§1.3)",
+                    e.id,
+                    sc.field
+                );
+                // Exact-pair drift-safety (fix-round F1/F2 + Phase F re-review
+                // RR-1): a scope with no `num_rel` is an exact pair, and an
+                // oracle-only pin lets a port drift to a THIRD value (!= oracle)
+                // pass as legitimately non-stale — the `rust` pin is mandatory
+                // for both the numeric and non-numeric arms.
+                assert!(
+                    sc.num_rel.is_some() || sc.rust.is_some(),
+                    "ledger entry {:?}: {} exact-pair scope (no `num_rel`) must pin \
+                     an exact `rust` value alongside `oracle` — an oracle-only pin \
+                     passes third-value port drift silently (§1.3 drift-safety)",
                     e.id,
                     sc.field
                 );

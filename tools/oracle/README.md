@@ -1,20 +1,23 @@
 # tools/oracle — the live pinned-oracle server
 
-The subprocess the always-on live gate (`crates/dss-core/tests/corpus_live.rs`)
-calls at test time to compare the Rust engine against the pinned dss-python
-oracle (`tools/golden/PIN.txt`).
+The subprocess the unified corpus gate (`crates/dss-core/tests/corpus_gate.rs`,
+the `capi_v0145` channel) calls at test time to compare the Rust engine against
+the pinned dss-python oracle (`tools/golden/PIN.txt`).
 
-- **`oracle_server.py`** — one-shot line-delimited-JSON server: reads a case
+- **`oracle_server.py`** — persistent line-delimited-JSON server: reads a case
   request, compiles + solves on the pinned engine, returns the full captured
   model (node order, system Y, YPrim, injection, element powers/currents,
-  discrete state, monitors/meters, probes). `DSS_ORACLE_ENGINE=oddie` rebinds
-  it to an EPRI DLL for the opt-in channel (`tools/opendss/`).
-  The opt-in `"all_properties": true` request field adds `capture_all_properties`
+  discrete state, monitors/meters, probes). This server drives **only** the
+  pinned dss-python `capi` engine; `DSS_ORACLE_ENGINE` accepts only `"capi"`
+  (the default) and exits non-zero on anything else. The old opt-in EPRI channel
+  (`DSS_ORACLE_ENGINE=oddie` / `capi015`, an EPRI DLL via the AltDSS Oddie
+  bridge) was retired with the Python EPRI stack (`UNIFIED_GATE_PLAN.md` §4-E);
+  the `r4133` channel is now the in-house `crates/dss-epri` Rust bridge
+  (`tools/opendss/`), not this server.
+  The `"all_properties": true` request field adds `capture_all_properties`
   (WP8.5b): every `AllElementNames` element's every property, `[[prop, Val]]` in
-  `AllPropertyNames` order, read via `? name.prop` (the WPG.1-safe probe path).
-  It is **suppressed on the EPRI/Oddie channel** (`corpus_live_opendss` forces it
-  off) — different engine revisions render property strings differently (the
-  known bracket/echo class), so property parity is gated only against pinned capi.
+  `AllPropertyNames` order, read via `? name.prop` (the WPG.1-safe probe path) —
+  property parity is gated only against this pinned capi oracle.
 - **`corpus_guard.py`** — restores the vendored corpus tree after a run (the
   engine writes reports/DI files next to each deck); the Rust side has a mirror
   `CorpusGuard`.

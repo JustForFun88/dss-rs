@@ -2388,6 +2388,275 @@ engines, code path, gating topology), no tolerance/envelope loosened:
   (`LNK2019` anon.llvm/serde_json symbols, unrelated to the edits) by clearing
   `target/debug/incremental` and rebuilding with `CARGO_INCREMENTAL=0` — green.
 
+## 1m. UNIFIED_GATE Phase E — retire the Python EPRI stack + r3723/r4088 (branch `ug-phase-e`)
+
+`UNIFIED_GATE_PLAN.md` §4-E / §6-E executed: the retired opt-in EPRI-python
+channel (Oddie bridge, dss-python 0.16.0b2/backend wheels, r3723/r4088 binaries)
+is gone. The unified gate's two live oracles are unchanged — `capi_v0145`
+(pinned dss-python via `tools/oracle/oracle_server.py`) and `r4133` (in-house
+`crates/dss-epri` bridge over the git-tracked `bin/r4133` DLL).
+
+**Deleted (git rm, 27 files):** `tools/opendss/` scripts
+`ab_compare.py`, `smoke.py`, `dsspy_crosscheck.py`, `gen_ad_reference.py`,
+`probe_59n.py`, `sweep_modes_isolated.py`, `sweep_merge.py`, `xcheck_bridge.py`;
+`dsspy_validation/` (5 files); `wheels/` (2 beta wheels + SHA256SUMS);
+`PIN_OPENDSS.txt`; `bin/r3723/**` (5) + `bin/r4088/**` (5).
+
+**Pruned to r4133-only:** `revisions.json`, `bin/SHA256SUMS` (verified
+`sha256sum -c` OK), `bin/README.md`, `vendor_binaries.py` (REVISIONS dict +
+README template), `README.md` (rewritten: r4133 artifact + Rust `epri-worker`
+bridge + re-vendor procedure). `oracle_server.py` pruned to the `capi` engine
+only — removed the `capi015`/`oddie` `make_engine` arms, `_oddie_get_y_sparse`,
+`_read_pin_opendss`, `OPENDSS_DIR`/`REPO_ROOT`, the Oddie `capture_eventlog`
+export-CSV branch, and the `clear` cmd (only the deleted `xcheck_bridge.py` used
+it); `DSS_ORACLE_ENGINE` now accepts only `capi` (anything else exits non-zero,
+no silent pass). Stale comments referencing the deleted harness fixed in
+`corpus_guard.py` and `epri-worker.rs`.
+
+**rg sweep verdict** (`rg -i "oddie|capi015|r3723|r4088|dss_python_backend|0.16.0b2"`):
+no LIVE code/config wiring to the retired channel remains — no manifest carries an
+`oracle:"r3723|r4088|capi015"` field (all gating is via `engines`, values
+`both`/`capi_v0145`/`r4133`); no executable reference (import/spawn/config) to any
+deleted script survives; CI/`Cargo.toml`/`.gitignore` clean. All remaining matches
+are legitimate-survivor classes: (a) historical docs (STATUS, `docs/plans-archive`,
+`docs/upgrade/*`, `docs/phase-records/*`, `docs/wasm/*`) and root plan files
+(`*_PLAN.md`, `PLAN_SEQUENCE.md`, `README.md`); (b) `CLAUDE.md`/`TESTING.md` (Phase
+F rewrites these); (c) behavioral-spec / oracle-provenance citations in
+`crates/dss-core/src/**` and test docs (which oracle calibrated a value —
+`capi015`/`oddie:r4133`/`r4088`, analogous to STATUS records, not live wiring);
+(d) golden generators `tools/golden/gen_*.py` (UNTOUCHED per the gate rules; frozen
+manual tooling. NB — corrected at Phase F settle per re-review finding F2: the
+original "gen_protection.py … still valid" wording here was overstated. The r4133
+`ODDIE_SCENARIOS` arm of `gen_protection.py` and ALL of `gen_flicker.py` need
+`from dss import IOddieDSS`, absent in pinned 0.15.7, and their environment —
+Oddie venv, 0.16.0b2 wheels, `PIN_OPENDSS.txt`, r3723 binaries — was deleted in
+this phase: they are frozen dead paths; regen would need a git-history restore.
+Goldens are frozen so the gate is unaffected. See TESTING.md §Frozen historical
+generator arms);
+(e) frozen corpus fixtures — `.dss` deck comments + manifest `note`/`ledger` cause
+provenance; (f) committed AD trusted-baseline data `tests/data/adiakoptics/r3723_ref/`
++ its PROVENANCE.txt; (g) WASM/FPC ABI lineage (`tools/fpc/usermodel_abi`,
+`docs/wasm`, `WASM_USERMODELS_PLAN.md`) referencing the vendored SOURCE tree
+`electricdss-code-r3723-trunk`, not the retired binary channel; (h) retirement-guard
+assertions in `corpus_gate/engines.rs` that assert the pinned ping never reports an
+`oddie`/`capi015` marker (they enforce the retirement and stay green).
+
+**venv:** `tools/opendss/.venv` in main is already empty (2026-07-19 incident);
+the coordinator removes that empty dir in MAIN separately (junction-safe, CLAUDE.md).
+This worktree's `.venv` is a junction — not touched.
+
+**Settlement (two audits, `ae3e6bd..c060c0b`):** five low-severity findings, all
+non-gating; three fixed, two recorded non-fixes:
+- *Fixed* — `tools/opendss/README.md`: added the plan-required (§1.1) note that
+  the frozen A-Diakoptics baseline (`tests/data/adiakoptics/r3723_ref/`, consumed
+  by `ad_reference.rs`) has no regen tool anymore and must be reimplemented over
+  `epri-worker` if ever re-run (harvester `gen_ad_reference.py` was deleted).
+- *Fixed* — `tools/oracle/README.md`: this KEPT live doc still described the
+  retired `DSS_ORACLE_ENGINE=oddie` rebind, the "EPRI/Oddie channel", and the
+  renamed `corpus_live.rs`/`corpus_live_opendss`; rewritten to match the pruned
+  `oracle_server.py` (capi-only, exits non-zero on any other engine).
+- *Fixed* — Gate paragraph below now carries exact counts/exit-codes/wall-clock.
+- *Non-fix (recorded)* — `tools/golden/gen_checkpoints.py`'s `capi015` regen arm
+  (`_read_pin_opendss`) still references the deleted `tools/opendss/PIN_OPENDSS.txt`.
+  Left UNTOUCHED per the binding gate rule (golden generators `tools/golden/gen_*.py`
+  are frozen): it is a **dead path** — reachable only via `DSS_ORACLE_ENGINE=capi015`,
+  whose engine (dss-python 0.16.0b2) was retired here, and the four `"oracle":"capi015"`
+  goldens are frozen. The live `capi` gate path never touches it. No gate impact.
+- *Non-fix (deferred)* — `CLAUDE.md` + `TESTING.md` still describe the retired
+  opt-in channel as live. Plan §4-F explicitly defers rewriting both to **Phase F**
+  (survivor class (b) below); a forward-deferral to verify Phase F completes, not a
+  Phase E defect.
+
+**Gate** (defaults, worktree `wtE` @ settlement, both oracle channels live):
+- `cargo fmt --all --check` → exit 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` → exit 0.
+- `cargo test --workspace` → exit 0: 1893 passed, 0 failed, 2 ignored across
+  58 test binaries; wall-clock ~172 s.
+`tests/corpus` pristine (`git status tests/corpus` clean); junctions intact.
+
+## 1n. UNIFIED_GATE Phase F — docs + final acceptance (branch `ug-phase-f`)
+
+`UNIFIED_GATE_PLAN.md` §4-F Scope A (docs) + §6 final acceptance (clean-clone
+gate) executed. The fix-round re-review (Phase F brief Scope B) ran as an
+independent parallel audit — its findings settle in its own record, not here.
+Base `20d03f7`.
+
+**Docs rewritten — every claim re-verified against the live code, none copied
+from stale prose:**
+
+- **TESTING.md** (full rewrite): layer map = unit / golden / **unified corpus
+  gate** / corpus hygiene (the opt-in EPRI row is gone); new sections for the
+  gate architecture (one `#[test]`, 514 cases = 293+47+105+69, `engines`
+  both=360 / r4133=96 / capi_v0145=58, `defer_ledger`×7, `isolate`×33, module
+  tree, per-case worker recycle default 1) and the divergence ledger (3 kinds,
+  the a/b/c envelope clauses, exact-pair pins incl. the mandatory `rust` pin
+  on exact-pair-numeric, the 9 implemented scope fields, fail-on-stale +
+  never-applied + hit accounting, lock `id@digest` tags, manual `skip`
+  re-validation); procedures rewritten/added: add-a-corpus-case (`engines`
+  discipline), **triage-a-divergence-into-the-ledger** (R3 rules: prove
+  not-a-port-bug first, measure with the seed report / `DSS_LEDGER_MEASURE`,
+  commit ledger + lock together), **re-vendor the r4133 binary**, **run the
+  seeding report**; env-var table re-verified knob-by-knob against
+  `corpus_gate/{scheduler,engines,ledger}.rs` + `oracle_server.py` (NB: no
+  `DSS_GATE_POOL` exists — pool size is derived `max(2, jobs/2)`, documented
+  as such); frozen historical generator arms documented (`gen_checkpoints.py`
+  capi015 arm referencing the deleted `PIN_OPENDSS.txt` — the Phase E recorded
+  non-fix, now documented instead of edited — plus `gen_bh_capi015`/
+  `gen_regcontrol_capi015`/`gen_fuse_r4133`); golden-family table refreshed
+  (`json_import/`, `gen_schema.py` rows added).
+- **CLAUDE.md**: project identity reframed — the 1:1 port is the FINISHED
+  stage (final acceptance 2026-07-11); direction = pure idiomatic Rust / wasm
+  user models / new methods & models / r4133-and-beyond, with PORTING_PLAN.md
+  as the historical record; the invariant list updated: the `dss-epri` unsafe
+  carve-out is the sole `forbid(unsafe_code)` exception (matches
+  PORTING_PLAN.md §scope note + `dss-epri/src/lib.rs`); the stale
+  opt-in-Oddie bullet replaced by the two-channel unified gate + ledger; the
+  gate section now describes `corpus_gate.rs`
+  (`corpus_gate_all_cases_match_engines`, both oracles mandatory,
+  Windows-only r4133 bridge, ledger fail-on-stale); the TODO(compat) wipe
+  pointer retargeted to DE_PASCALIZE Stage F. Ritual step-0, the (freshly
+  hardened) worktree junction protocol, conventions, and the MCP section
+  untouched.
+- **tools/opendss/README.md** (Phase E rewrite reviewed; gaps fixed): the
+  "editor/registry suppression inside the bridge" claim was FALSE against the
+  code (`rg RegistryUpdate|rundll32` over `dss-epri` = no match; that pair
+  belonged to the retired Oddie `make_engine` and survives only in the frozen
+  `gen_protection.py`) — replaced with the real mechanism (`DSSI(8,0)` ⇒
+  `NoFormsAllowed`, `dss.rs`); added the never-`FreeLibrary` rule (the Phase A
+  deadlock root-cause) and a "Gate wiring" section (worker resolution order,
+  ping markers, ledger pointer, all-properties = capability-only).
+- **Surgical de-staling of other live docs still naming retired machinery**
+  (small justified scope addition): root `README.md` (deleted
+  `known_diffs.json` → gating ledger; `corpus_live.rs` → `corpus_gate.rs`;
+  opt-in-channel paragraph → two-oracle gate; forbid-scope wording),
+  `tests/TOLERANCE_NOTES.md` (the plan-§7 "**ledger is not a tolerance**"
+  paragraph added; `corpus_live`→`corpus_gate` renames; the Oddie-eventlog
+  paragraph rewritten to the `dss-epri` CSV/BOM capture; EVENTLOG_MASKS keying
+  updated to channels), `tests/corpus/README.md` + `COVERAGE.md`,
+  `tools/oracle/{oracle_server,corpus_guard}.py` comment renames. Golden
+  generators, goldens, tolerances, ledger entries, manifests: UNTOUCHED.
+
+**Wall-clock before/after (plan §3.4 / §6 — consolidated from the phase
+records):**
+
+| point | mode | corpus-gate share | full `cargo test` |
+|---|---|---|---|
+| Phase 0 baseline (`pre-unified-gate` 449c745, loaded box) | serial one-shot, 1 channel | 292.6 s | 426.6 s |
+| Phase B settle (capi_v0145 only; incl. dump write; serial ref 341.9 s) | persistent parallel, jobs 16 / pool 8 | 104.3 s | — |
+| Phase C (r4133 channel live, 514 single-channel cases) | persistent parallel, jobs 16 / pool 8 | 64.5 s (settle build 67.4 s) | — |
+| Phase D (full BOTH gate + ledger) | persistent parallel, recycle=1 | ~150 s (137–160) | — |
+| Phase E settlement (warm build) | defaults | — | ~172 s (1893 pass / 2 ignored / 58 binaries) |
+| Phase F worktree `wtF` (cold build; warm re-run 162 s) | defaults | — | 365 s (fmt 2 s, clippy 51 s) |
+| Phase F clean clone (cold build, the §6 acceptance run) | defaults | — | 303 s (fmt 5 s, clippy 50 s) |
+
+Net: from a 292.6 s serial single-channel corpus pass to a ~150 s
+**two-channel** (BOTH-gated, ledger-checked) pass — roughly double the oracle
+coverage at half the wall-clock, ≪ the plan's ≤10 min target.
+
+**Clean-clone gate (plan §6 final acceptance) — GREEN.** `git clone --branch
+ug-phase-f --single-branch e:/RustProject/dss-rs <Temp>\claude\dss-clean` at
+head `cacb388`; clean checkout, **no `.inputs`, no venv** — the git-tracked
+r4133 DLL + the system-python pinned oracle (verified `dss-python 0.15.7`) are
+the only external deps, which IS the plan's proof. Three-command gate at
+defaults: fmt exit 0 (5 s) / clippy `-D warnings` exit 0 (50 s) / `cargo
++stable test --workspace` exit 0 (303 s, both oracle channels live). The only
+residue was the known §1g CorpusGuard export-CWD corner (untracked
+StorageControllerTechNote CSVs, throwaway clone). NB a first attempt cloned
+under the deep per-session scratchpad and **failed at checkout on Windows
+MAX_PATH** (121-char root + the 166-char longest corpus path = 287 > 260;
+`core.longpaths` is unset by default, and the Delphi DLL's file I/O is not
+long-path-aware anyway) — a clean clone must sit at a short root, as a normal
+user clone does.
+
+**Tooling note:** the TortoiseSVN CLI tools were installed machine-globally on
+2026-07-19 for the `.inputs` re-vendor (svn peg-revision checkouts of the EPRI
+SVN source trees after the second junction-wipe incident).
+
+**Gate (worktree `wtF`, defaults, both channels live):** fmt exit 0 (2 s);
+clippy `-D warnings` exit 0 (51 s); `cargo +stable test --workspace` exit 0
+(365 s, cold build). `tests/corpus` pristine after runs (path-limited clean of
+the known §1g export-CWD leftovers); junctions intact. The `unified-gate-v1`
+tag is created at settle on the final integrated head (deliberately not in
+this record).
+
+### Phase F settle — three audits + the Scope B re-review (2026-07-19)
+
+Three independent reviews returned: **audit-code** (docs, 4 findings),
+**audit-tests** (acceptance, 4 findings), and the **user-mandated fable
+re-review of the opus fix round** (Scope B — the "independent parallel audit"
+the record above pointed at; it materialized, verdict below). Both doc audits
+independently re-verified essentially every TESTING.md/CLAUDE.md claim against
+the live code and found the rewrites honest; audit-tests additionally
+corroborated the clean-clone acceptance in a second fresh clone (fmt/clippy
+exit 0 reproduced; its `cargo test` was still running clean at report cutoff —
+the phase's own clean-clone run above is the §6 acceptance evidence).
+
+**Scope B re-review verdict: PASS, nothing gating.** 11 of ~19 new ledger
+envelopes plus the gfm class re-derived from the LIVE engines with an
+independent protocol driver: every envelope is a measured upstream divergence
+(Delphi 6-sig-fig display rendering, whole-model fpc-vs-delphi transcendental
+ulp, seq-transform drift, the discrete normamps min-over-phase jump, hard #303
+crashes); measured provenance values reproduce digit-for-digit (4.900e-06,
+1.313e-06, 4.05e-06, 5.95e-04, 1.62e-06 …); the storage-display 1e-5 vs gfm
+1e-6 split is empirically justified (mantissa-class ceilings 4.95e-6 vs
+8.8e-7; the capi channel strict-gates the same probes at full f64); the two
+R3-critical non-retirements are correct — regcontrol_idle is a genuine ~8.8 %
+/ 620 V wholesale divergence (r4133 taps to 15 despite `idle=yes`; the port
+holds tap 1.0 = the retired capi015 semantics — the follow-up WP should check
+the dss_capi-0.15-vs-EPRI idle delta before assuming a port tap-init bug), and
+Kundur DynExp is matches-neither (the two oracles agree to 4.8e-10 while the
+port is 1.52e-5 off BOTH — ledgering it would have hidden a potential port-side
+DynExp-evaluator bug). Eventlog stay-capi divergences verified real on live
+r4133 (actor-suffix `StorageController1.`, STORAGE/DER wording). All-props
+confirmed capability-only (scheduler masks it off every r4133 request; FFI
+copies immediately, SAFETY-documented). Informational: 13 of 20 ledger causes
+are channel-narrowing documentation with no current entry (Phase D heritage).
+
+**Finding dispositions (all settled empirically at settle, in this commit):**
+
+- *PF-1 / F-PHF-1 (Scope D silently dropped) — CONFIRMED, fixed.* The phase
+  agent skipped brief Scope D; all four items are now done: **F1**
+  `tools/corpus/README.md` no longer claims `dsspy_crosscheck.py` "moved"
+  (deleted, Phase E); **F2** TESTING.md's frozen-arms list now includes
+  `gen_flicker.py` (entirely Oddie/r3723) and `gen_protection.py`'s
+  `ODDIE_SCENARIOS` arm, the regen procedure scopes itself to capi arms, and
+  the §1m survivor-class (d) overstatement is corrected in place; **F3** the
+  `probe_59n.py` reproducibility regression is recorded (TESTING.md §Retired
+  probe scripts — the relay/tests.rs + skipped-manifest citations are
+  historical; manifest/test text untouched per the brief); **F4** the five
+  remaining stale `xcheck_bridge.py` present-tense comments in `dss-epri`
+  (epri-worker.rs, lib.rs, capture.rs, dss.rs ×2) now say the cross-check was
+  retired with its stack.
+- *PF-2 — CONFIRMED, fixed* (the F2 items above).
+- *PF-3 / F-PHF-2 (Scope B existence) — resolved:* the re-review ran and its
+  record is this section.
+- *PF-4 (env table incomplete) — CONFIRMED, fixed:* `DSS_EPRI_ACTOR_TIMEOUT_SECS`
+  (default 300, `dss.rs::wait_for_actor`), `DSS_EPRI_DLL`, `DSS_EPRI_EXPECT`
+  (smoke overrides) added to the TESTING.md table.
+- *F-PHF-3 (tag) — done at settle:* annotated `unified-gate-v1` created on the
+  final head as the last act (plan §6).
+- *F-PHF-4 — noted:* the audit's corroboration clone was cleaned up; its gate
+  was green through fmt/clippy and mid-`cargo test` (zero failures observed)
+  at cutoff.
+- *RR-1 (non-numeric exact-pair oracle-only pin hole) — CONFIRMED, fixed
+  (tightening, latent — no live entry exercises the path):* the `rust` pin is
+  now MANDATORY in the non-numeric probe/property arms of
+  `corpus_gate/ledger.rs` (mirroring the fix-round F1/F2 numeric fix), and
+  `assert_structural` now statically rejects any exact-pair scope (no
+  `num_rel`) without a `rust` pin — the drift hole is closed in both arms and
+  at load time.
+- *RR-2 (skip provenance text) — CONFIRMED, fixed:* the
+  `r4133-linespacing-asym-303` ledger `source` now records the live-re-derived
+  crash site (compile of the `tscables=[…]` line, offset 41CE5E — not calcv,
+  which is the IEEE13_LineSpacing sibling). Free-text-only change; the skip
+  itself was re-derived correct. `population.lock.json` regenerated via the
+  sanctioned `DSS_UPDATE_POPULATION_LOCK=1` path (the entry digest covers the
+  full serialized entry by design); diff verified to touch only that case's
+  ledger tag.
+
+Settle gate + the `unified-gate-v1` tag: recorded in the commit that carries
+this section (gate results in the final report).
+
 ## 1j. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
 
 `DE_PASCALIZE_PLAN.md` §P5a executed (P5b spans / P5c CLI presentation out of
@@ -4785,3 +5054,134 @@ is **async** (dispatches `SIMULATE` to the actor and returns), so `solve()` poll
 Follow-ups (STATUS, non-blocking): none block Phase A. Phase E removes
 `xcheck_bridge.py` and, with it, the `oracle_server.py` `clear` handler's only
 consumer (drop the handler then).
+
+## EPRI bridge parity round — `dss-epri` covers every retired-Oddie task (branch `epri-parity`, 2026-07-19)
+
+User mandate: FULL functional parity — every task the retired Oddie/dss-python
+bridge ever did must be doable through the in-house Rust bridge
+(`crates/dss-epri` drives the same official r4133 engine natively). Closes the
+Phase-E re-review findings F2 (dead golden-regen r4133 arms) and F3 (lost
+`probe_59n` reproduction).
+
+### Consumer inventory (everything the Oddie bridge ever served, at `ae3e6bd^`)
+
+| consumer (pre-Phase-E) | task | disposition |
+|---|---|---|
+| `ab_compare.py` | corpus A/B divergence reports between engine revisions | retired-by-design — the unified two-channel gate (`capi_v0145` + `r4133` in `corpus_gate.rs`) replaced the reporting channel |
+| `sweep_modes_isolated.py` / `sweep_merge.py` | WP-U0.2 `ab_compare` crash-isolation + merge helpers | retired-by-design — `ab_compare` consumers; the sweep reports are frozen in `docs/upgrade` |
+| `dsspy_validation/` + `wheels/` + venv | vendored dss-python full-API crosscheck | retired-by-design — one-time Rung-1 validation, superseded by the permanent gate |
+| `dsspy_crosscheck.py` | classifier-manifest crosscheck vs DSS-Python's validation list (textual, engine-free) | retired-by-design — one-time promotion audit; results absorbed into the manifests |
+| `smoke.py` | binary self-smoke | parity restored in Phase A — `epri-worker --smoke` / `crates/dss-epri/src/smoke.rs` + `tests/smoke.rs` |
+| `xcheck_bridge.py` | Oddie-vs-Rust-bridge bit-diff | retired-by-design — self-obsoleting Phase-A fidelity proof (its PASS licensed the retirement) |
+| `gen_ad_reference.py` | A-Diakoptics matrix reference harvest (r3723) | retired-by-design with documented contingency — baseline frozen (`r3723_ref/` + PROVENANCE); `tools/opendss/README.md` mandates reimplementation over `epri-worker` if ever re-run |
+| `oracle_server.py` oddie/capi015 arms | opt-in oracle engines for the live test | retired-by-design — the gate channels replaced them |
+| `gen_protection.py` r4133 arm (`make_oddie`; fuse_blow, swt_manual) | golden regeneration | **parity restored (this round)** — `make_epri` drives `epri-worker` via the `IOddieDSS`-shaped shim; payload byte-parity proven below |
+| `gen_flicker.py` (r3723) | flicker golden regeneration | **parity restored (this round)** — rewritten over `epri-worker` on r4133 (the only vendored official revision); cross-revision payload byte-parity proven below |
+| `probe_59n.py` | 59N artifact reproduction (WP-U2.6) | **parity restored (this round)** — recreated over `epri-worker`; artifact reproduced verbatim |
+| *(adjacent, not Oddie)* `gen_bh_capi015.py` / `gen_regcontrol_capi015.py` / `gen_ncim_reports.py` / `gen_der_lines_harmonics.py` capi015 runs / `gen_checkpoints.check_pin` capi015 arm / `gen_reports.py` capi015-gated seasonal arm | capi015 (dss-python 0.16.0b2 / dss_capi 0.15.0b4) golden generation | outside the mandate — capi015 was the *Python-engine* beta channel, not the official-binary Oddie bridge; the Rust bridge cannot (different binary) and should not drive it. Goldens frozen; the capi015 arms fail loudly (missing `PIN_OPENDSS.txt`), no silent pass. |
+| `gen_fuse_r4133.py` / `r4133_help.py` | derived golden (`git show` overlay) / frozen r4133 `PropertyHelp` data — no engine | unaffected — engine-free; their `oddie:r4133` provenance markers are historical (original Oddie captures, recorded in their notes); neither imports `IOddieDSS` |
+
+### Protocol extension (gate-neutral)
+
+New `epri-worker` commands `exec` / `read` / `chdir`
+(`crates/dss-epri/src/script.rs`) — the generic scripting surface replacing
+Oddie's `Text.Command` + per-property reads; one `read` = one DLL accessor +
+per-call error poll (dss-python raise-on-error parity), `exec` = strict errno +
+actor-idle barrier (the async-solve race fix applies to scripted `solve`/inline
+solves too). New FFI: `SolutionV` (mode 0 EventLog — the raw `EventStrings`
+`Hour=…, Sec=…` lines; the empty-log `None` placeholder is written WITHOUT a
+terminator and normalizes to `[]`, matching the retired Oddie decode — pinned by
+the committed `swt_manual` golden; deliberately a separate decode from the
+gate's `decode_string_array`) and `BUSF(0)` kVBase; plus `CircuitS(4)`
+SetActiveBus and `MonitorsS(2)` monitor-select on existing entry points. Gate
+paths untouched: `run`/`ping`/`clear`/`quit` handlers, `capture.rs`,
+comparators, scheduler are byte-unchanged and the gate never sends the new
+commands. SAFETY rules upheld (immediate copies, `deny(unsafe_op_in_unsafe_fn)`,
+per-boundary SAFETY docs). Worker-level smoke:
+`crates/dss-epri/tests/protocol.rs` spawns the real binary and pins the exact
+event-log line format the committed protection goldens store
+(`Hour=0, Sec=0.2, ControlIter=1, Element=Fault.f, Action=**APPLIED**`), the
+read shapes (solution scalars, node arrays, element powers/currents, variables,
+monitor channels, bus kVBase), the empty-log `[]` normalization, and the
+error path (`ok:false`, worker stays alive).
+
+Python client `tools/opendss/epri_worker.py`: `EpriWorker` (spawn + line-JSON,
+binary resolution mirroring the gate's `epri_worker_bin`: env override →
+target/{release,debug} → one cargo build) and `EpriEngine`, an
+`IOddieDSS`-shaped shim so `gen_protection.build()` + `capture_element()` run
+unchanged and issue the same per-property DLL call sequence Oddie did.
+
+### Parity proof (committed goldens UNTOUCHED — scratch regen + byte-compare)
+
+| golden | committed capture | regen path | verdict |
+|---|---|---|---|
+| `protection/fuse_blow.json` | Oddie r4133 | epri-worker r4133 | `scenario` payload **byte-identical** (7 071 serialized bytes: per-step voltages, event log, final elements); diff confined to the `oracle` provenance block (the raw DLL version string lacks the retired wrapper's `\nDSS-Python version: 0.16.0b2` suffix) |
+| `protection/swt_manual.json` | Oddie r4133 | epri-worker r4133 | `scenario` payload **byte-identical** (8 255 bytes); same provenance-only diff (the committed block also carries the older `oddie:r4133` marker shape from its original capture flow, which even the old generator would no longer emit) |
+| `flicker/pst_demo.json` | Oddie **r3723** | epri-worker **r4133** | every payload key **byte-identical** across engine revisions — `raw_mag` (494 142 serialized bytes), `flk` (588 324), `pst` (547 074), `kvbase`, `times`, `deck`, `n`/`nphases`/`fbase`; only `oracle` differs. The official flicker meter + this deck's power flow are revision-stable; the committed golden stays the frozen r3723 capture. |
+
+Zero committed-file changes (`git status tests/golden` clean); corpus pristine
+after all runs (enforced for the flicker regen by the settle round's DataPath
+redirect — see below). `DSS_GOLDEN_OUT` env (new) redirects both generators'
+output for scratch parity runs; default remains the committed tree.
+
+### F3 — probe_59n reproduction restored
+
+`tools/opendss/probe_59n.py` recreated over `epri-worker`; run 2026-07-19
+reproduces the documented artifact verbatim: `Relay.State =
+'[closed, closed, closed, ]'` (byte-equal to the port's `render_state_array()`),
+`Line.line1 |I|max = 1381.156 A` (the "~1381 A" cited in `relay/tests.rs`),
+`f = 78.88 Hz` at t=1.0 s, wander `[67.16, 115.00] Hz` over the next 15 s →
+`PROBE OK`, exit 0. `relay/tests.rs` doc comment updated to cite the bridge
+driver (comment-only); `skipped_needs_investigation.json` untouched.
+
+Docs: `tools/opendss/README.md` layout rows for `epri_worker.py`/`probe_59n.py`;
+`tools/golden/README.md` generator-exceptions note. `TESTING.md`/`CLAUDE.md`
+deliberately untouched (Phase F owns them; its one stale F2 sentence reconciles
+after both merge).
+
+### Settle (2026-07-19) — two opus xhigh audit dispositions
+
+Both audits independently re-derived the acceptance (scratch regen through the
+real `epri-worker` + byte-compare, probe_59n rerun, protocol smoke) and
+confirmed it: payload byte-parity holds for all three goldens, zero committed
+bytes changed, gate semantics untouched. Findings settled:
+
+- **Flicker-regen corpus leak (audit-code fp-1 low / audit-tests PARITY-1
+  medium) — CONFIRMED, FIXED in the driver.** A standalone
+  `python tools/golden/gen_flicker.py` left an untracked 730 KB
+  `pst_Mon_pst_1.csv` inside `tests/corpus/.../Examples/Scripts/`
+  (reproduced), falsifying the original "corpus pristine" evidence and the
+  generator's own comment. Root cause (settled against the r4133 Pascal): the
+  DLL initializes `DataDirectory`/`OutputDirectory` from the
+  registry-persisted `DataPath` (`HKCU\Software\OpenDSS\MainSect`,
+  `ReadDSS_Registry`) = the directory of the last deck ANY local run
+  `Compile`d (probe_59n's 59NRelayDemo → `Examples/Scripts/`); this deck is
+  exec'd line-by-line, so nothing re-pointed it, and `export monitor` wrote
+  there. A `CorpusGuard` over the deck dir could NOT cover it (the leak lands
+  in a different, run-history-dependent corpus dir), so the fix is a
+  deterministic `set DataPath="<temp>/dss_rs_flicker_export"` before the
+  export (`Set DataPath` also ChDirs the worker — harmless post-deck;
+  `DSSGlobals.SetDataPath`, r4133 line 934). Re-verified: standalone regen
+  leaves `git status` clean, the CSV lands in the temp dir, and every payload
+  key of the regen is STILL byte-identical to the committed golden AND to the
+  pre-fix regen (the redirect changes zero payload bytes). Golden untouched.
+- **Flicker byte-count figures (audit-code fp-2 low) — CONFIRMED, FIXED.**
+  The parity-table row overstated the serialized sizes; re-measured from the
+  committed golden (`json.dumps` per key): `raw_mag` 494 142, `flk` 588 324,
+  `pst` 547 074 (table corrected above). The parity VERDICT itself was
+  independently re-verified byte-true by both audits and by the settle rerun.
+- **Inventory enumeration (audit-tests PARITY-2 low) — CONFIRMED, FIXED.**
+  `gen_reports.py`'s capi015-gated seasonal arm and `r4133_help.py` (frozen
+  r4133 PropertyHelp data) carry `oddie:r4133`/oddie-venv provenance mentions
+  but import no `IOddieDSS`; added to their existing inventory classes
+  (capi015 Python-engine row / engine-free frozen-data row). No parity target
+  was missed — all 7 actual `IOddieDSS` importers were already dispositioned.
+
+Settle gate: fmt/clippy/test all exit 0 (`cargo test --workspace` 7 min 05 s,
+0 failures across all binaries; corpus-live 25/25). One settle-gate run left
+six deck-authored export leftovers (`Test/AutoTrans/auto3bus_*`,
+`GFM_IEEE8500/IEEE8500u_EXP_*`) in `tests/corpus` — the pre-existing
+corpus-guard parallel-run race (`corpus_guard.py` docstring: incomplete
+snapshot = never delete; end-of-run `git status tests/corpus` + path-limited
+clean is the documented recovery, applied). Not introduced by this round (gate
+capture paths byte-unchanged); open follow-up for the gate-hygiene backlog.

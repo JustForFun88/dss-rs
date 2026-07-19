@@ -1,9 +1,9 @@
-"""Corpus-hygiene guard shared by the oracle server and the DSS-Python
-validation harness (tools/opendss/dsspy_validation/).
+"""Corpus-hygiene guard used by the oracle server (`oracle_server.py`).
 
-Lifted move-only from oracle_server.py so both consumers use the identical,
-empirically-hardened implementation (see the class docstring for the
-snapshot-failure war story). The snapshot is RECURSIVE (WP8.8): run-created
+Lifted move-only from oracle_server.py into its own module (a Rust port,
+`crates/dss-epri/src/guard.rs`, guards the r4133 bridge) — see the class
+docstring for the snapshot-failure war story. The snapshot is RECURSIVE (WP8.8):
+run-created
 files inside pre-existing subdirectories and run-created directory trees (the
 `<CircuitName>/DI_yr_*` demand-interval tree) are both detected and removed.
 Writes OUTSIDE the case-dir tree (e.g. a manual `dss-cli` run from elsewhere)
@@ -26,7 +26,7 @@ class CorpusGuard:
     (> `_RESTORE_MAX`) are not buffered — OpenDSS only writes small text reports,
     never the multi-MiB data files (loadshape CSVs, etc.).
 
-    `_snapshot_ok` mirrors the Rust `CorpusGuard` (corpus_live.rs): if the
+    `_snapshot_ok` mirrors the Rust `CorpusGuard` (corpus_gate.rs): if the
     pre-run snapshot fails or is cut short, `__exit__` must not delete anything —
     a truncated `names` set would classify pre-existing corpus files as
     run-created and delete them (empirically demonstrated: a transient lock on

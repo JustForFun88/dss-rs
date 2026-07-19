@@ -38,7 +38,16 @@ Scenarios (one file each under tests/golden/protection/):
 Usage:
     python tools/golden/gen_protection.py              # regenerate all
     python tools/golden/gen_protection.py recloser_perm  # one scenario
-Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
+Regeneration is manual; the capi scenarios must use the exact versions in
+tools/golden/PIN.txt. The r4133 scenarios (`EPRI_SCENARIOS`) drive the official
+EPRI engine through the in-house Rust bridge (`epri-worker`, crates/dss-epri —
+auto-built if missing); the retired Oddie/dss-python channel is gone. Parity of
+the bridge path with the committed Oddie-era captures is byte-proven (STATUS
+"EPRI bridge parity round", 2026-07-19): the `scenario` payload regenerates
+byte-identically; only the top-level `oracle` provenance block differs (the raw
+DLL version string no longer carries the retired wrapper's "DSS-Python
+version:" suffix). `DSS_GOLDEN_OUT` redirects the output dir (scratch parity
+runs); default is the committed tests/golden/protection/.
 """
 
 from __future__ import annotations
@@ -52,7 +61,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_checkpoints import capture_element, check_pin  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT_DIR = REPO_ROOT / "tests" / "golden" / "protection"
+OUT_DIR = Path(os.environ.get("DSS_GOLDEN_OUT", REPO_ROOT / "tests" / "golden" / "protection"))
 SCHEMA = 1
 
 
@@ -136,7 +145,7 @@ def deck_swt_manual() -> dict:
         DUTY,
     ]
     # Mirror the corpus `edit swtcontrol.x action=o`: a mid-run open before step 5.
-    # Captured on r4133 (WP-U2.4 D6, see ODDIE_SCENARIOS): the `Action` forces the
+    # Captured on r4133 (WP-U2.4 D6, see EPRI_SCENARIOS): the `Action` forces the
     # switch open immediately (no `delay` queue), so the switch is open from step 5
     # and the event log is empty.
     return {
@@ -196,32 +205,39 @@ def build(d, spec: dict) -> dict:
     }
 
 
-# Scenarios captured on an EPRI Oddie engine instead of the pinned capi oracle,
-# because their behavior is r4133-specific (WP-U2.1: the fuse overhaul — default
-# curve `none`, `CurveMultiplier` divisor — exists only in r4133; WP-U2.4: the
-# SwtControl D6 `Action`-forces-actual-state fix). `fuse_blow`'s blow trajectory
-# is numerically identical to the retired 0.14.5 capture (the curve/divisor are
-# pinned to reproduce it), but it must be captured on the engine whose fuse
-# semantics the port now targets.
-ODDIE_SCENARIOS = {"fuse_blow": "r4133", "swt_manual": "r4133"}
+# Scenarios captured on the official EPRI r4133 engine instead of the pinned
+# capi oracle, because their behavior is r4133-specific (WP-U2.1: the fuse
+# overhaul — default curve `none`, `CurveMultiplier` divisor — exists only in
+# r4133; WP-U2.4: the SwtControl D6 `Action`-forces-actual-state fix).
+# `fuse_blow`'s blow trajectory is numerically identical to the retired 0.14.5
+# capture (the curve/divisor are pinned to reproduce it), but it must be
+# captured on the engine whose fuse semantics the port now targets. Originally
+# captured through the retired Oddie bridge; regenerated through `epri-worker`
+# (same engine revision, payload byte-parity proven).
+EPRI_SCENARIOS = {"fuse_blow": "r4133", "swt_manual": "r4133"}
 
 
-def make_oddie(rev: str):
-    """Build an official EPRI `OpenDSSDirect.dll` engine (Oddie bridge) for `rev`
-    and return `(engine, oracle_provenance)`."""
-    from dss import IOddieDSS
+def make_epri(rev: str):
+    """Drive the official EPRI `OpenDSSDirect.dll` engine for `rev` through the
+    in-house Rust bridge (`epri-worker`) and return `(engine, oracle_provenance)`.
+
+    The `EpriEngine` shim exposes the same API shape the retired `IOddieDSS`
+    did, so `build()` and `capture_element()` run unchanged and issue the same
+    per-property DLL read sequence. The worker itself loads the vendored DLL
+    and asserts the `revisions.json` pin; the re-assert here keeps this
+    generator loud about which engine it captured.
+    """
+    sys.path.insert(0, str(REPO_ROOT / "tools" / "opendss"))
+    from epri_worker import EpriEngine
 
     revs = json.loads((REPO_ROOT / "tools" / "opendss" / "revisions.json").read_text())
     if rev not in revs:
         sys.exit(f"unknown opendss rev {rev!r}; known: {sorted(revs)}")
-    dll = str((REPO_ROOT / revs[rev]["dll"]).resolve())
     expect = revs[rev].get("expect_version", "")
-    os.add_dll_directory(str(Path(dll).parent))
-    d = IOddieDSS(library_path=dll)
+    d = EpriEngine()
     ver = str(d.Version)
     if expect and expect not in ver:
         sys.exit(f"engine {ver!r} does not contain expected {expect!r} (rev={rev})")
-    d.AllowForms = False
     d.Text.Command = "Set RegistryUpdate=No"
     d.Text.Command = "Set Editor=rundll32.exe"
     return d, {"engine_spec": rev, "engine": ver}
@@ -235,8 +251,8 @@ def main() -> None:
     names = [n for n in SCENARIOS if not wanted or n in wanted]
 
     # The capi oracle (check_pin: dss-python 0.15.7) is bound lazily — an
-    # oddie-only run (e.g. `gen_protection.py fuse_blow` under the Oddie venv,
-    # dss-python 0.16.0b2) must not trip the capi pin.
+    # r4133-only run (e.g. `gen_protection.py fuse_blow`, which needs only the
+    # epri-worker bridge) must not trip the capi pin.
     capi = None
 
     def get_capi():
@@ -248,14 +264,14 @@ def main() -> None:
             capi = (dcapi, oracle)
         return capi
 
-    oddie_cache: dict[str, tuple] = {}
+    epri_cache: dict[str, tuple] = {}
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for name in names:
-        if name in ODDIE_SCENARIOS:
-            rev = ODDIE_SCENARIOS[name]
-            if rev not in oddie_cache:
-                oddie_cache[rev] = make_oddie(rev)
-            eng, sc_oracle = oddie_cache[rev]
+        if name in EPRI_SCENARIOS:
+            rev = EPRI_SCENARIOS[name]
+            if rev not in epri_cache:
+                epri_cache[rev] = make_epri(rev)
+            eng, sc_oracle = epri_cache[rev]
         else:
             eng, sc_oracle = get_capi()
         sc = build(eng, SCENARIOS[name]())
@@ -263,13 +279,14 @@ def main() -> None:
         path.write_text(
             json.dumps({"schema": SCHEMA, "oracle": sc_oracle, "scenario": sc}, indent=1) + "\n"
         )
-        print(f"wrote {path.relative_to(REPO_ROOT)} ({len(sc['event_log'])} event-log lines)")
+        shown = path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
+        print(f"wrote {shown} ({len(sc['event_log'])} event-log lines)")
 
     if not wanted:
         for p in OUT_DIR.glob("*.json"):
             if p.stem not in SCENARIOS:
                 p.unlink()
-                print(f"removed stale {p.relative_to(REPO_ROOT)}")
+                print(f"removed stale {p}")
 
 
 if __name__ == "__main__":
