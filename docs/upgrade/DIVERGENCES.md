@@ -979,26 +979,52 @@ early return, final upload after the loop; `get_out_idx` restored to the guarded
 `Flg.ForceInjCurrents`/`Flg.ForceYPrim` — the pyControl co-simulation engine
 hooks (the `pyControl` component + `Set PyPath=` stay `NOT_PORTED`, §0).
 
-**Source-tree note (important for future WPs).** These options do **not** exist
-in the vendored working tree `.inputs/dss_capi_with_git` — it is checked out at
-`master` (`f5728aec`), a commit *after* `0.15.0b4` where the pyControl hooks were
-**removed** upstream. But the **capi015 oracle** the plan pins to is
-`0.15.0b4` (tag `e936d210`), which **does** carry them (`get InjCurrent` returns
-a value; `git show 0.15.0b4:src/Executive/ExecOptions.pas` shows the enum tail
-`…StateVar, PyPath, IterNumber, CtrlIterNumber, InjCurrent, ITerminal, YPrim,
-IntegrationFlag, …`). The spec for this WP was therefore read via
-`git show 0.15.0b4:`, not the working tree. `delta_capi_0145_015x.md` A3 also
-wrongly listed `SampleControlDevices` as a new hook — it is present already in
-`0.14.5` (`Solution.pas:1974`) and was ported long ago
+**Source-tree note (corrected by the 0.15.x-adoption sweep — the hooks EXIST in
+EPRI).** The force hooks originated at **EPRI**: EPRI r4088 AND r4133 Version8
+carry them (`ExecOptions.pas` `ExecOption[141..148]` StateVar/pyPath/IterNumber/
+CtrlIterNumber/InjCurrent/ITerminal/Yprim/IntegrationFlag; `TPCElement.
+ForceInjCurr`/`ForceY`; honored in `Ymatrix.pas` ReCalc skips and in each of the
+six flag-checking PCE `InjCurrents`/`GetTerminalCurrents`), and the **gating
+r4133 DLL is built from Version8**, so the hooks are live in the r4133 channel —
+`modes/upgrade_forcehooks.dss` is manifest-gated `engines=r4133` and passes. They
+are absent only from the vendored dss_capi **working tree** `.inputs/
+dss_capi_with_git` (checked out at `master` `f5728aec`, a commit *after* `0.15.0b4`
+where dss_capi *removed* them), so the capi015 spec was read via `git show
+0.15.0b4:` (tag `e936d210`); the pinned `capi_v0145` oracle (backend 0.14.5)
+predates the hooks and cannot gate them (`Set InjCurrent` → `#130 Unknown
+parameter`) — `engines=r4133` is the correct channel. `delta_capi_0145_015x.md`
+A3 also wrongly listed `SampleControlDevices` as a new hook — it is present
+already in `0.14.5` (`Solution.pas:1974`) and was ported long ago
 (`solution/controls/sampling.rs`); not a delta.
 
-**Decision — adopt the capi015 (=0.15.0b4) behavior.** `ElemFlags::FORCE_YPRIM`/
-`FORCE_INJ_CURRENTS`, honored in the injection loop
-(`solution/solution/power_flow.rs::get_pc_inj_curr_filtered` injects the stored
-`InjCurrent` directly, per `TPCElement.InjCurrents`) and in `ReCalcAllYPrims`
-(`solution/ymatrix.rs` skips `CalcYPrim` for a `ForceYPrim` element); the five
-PCE `GetTerminalCurrents` skip the model recompute when forced (Load/Generator/
-PVsystem/Storage/IndMach012). The option set/get is in `exec/set_cmd.rs`/
+**Decision — adopt the behavior (confirmed against 0.15.0b4 AND EPRI r4088/r4133
+AND a live r4133 probe).** `ElemFlags::FORCE_YPRIM`/`FORCE_INJ_CURRENTS`, honored
+per the Pascal per-class shape — the `ForceInjCurr` check lives **inside** each
+flag-checking class's `inj_currents` (`if not ForceInjCurr then
+CalcInjCurrentArray`), skipping only the model recompute while the unconditional
+set-nominal preamble and the inherited add-into-Currents still run
+(`solution/solution/power_flow.rs::get_pc_inj_curr_filtered` just calls each
+element's `inj_currents`) — and in `ReCalcAllYPrims` (`solution/ymatrix.rs` skips
+`CalcYPrim` for a `ForceYPrim` element). The **six** flag-checking PCE
+`GetTerminalCurrents`/`InjCurrents` skip the recompute when forced (Load/
+Generator/PVsystem/Storage/IndMach012/**WindGen**); the non-flag-checking
+overrides VCCS/UPFC/VSConverter recompute unconditionally, so a force on those is
+inert on both the port and both oracles (0 `ForceInjCurr` hits in the r4133
+sources). The 0.15.x-adoption sweep found and fixed three port fidelity gaps: the
+WindGen `get_currents` guard was missing — the only one of the six flag-checking
+classes without it — so its reported terminal currents recomputed at the forced
+operating point where r4133 freezes. **Own r4133 probe** (epri-worker, weak
+source + `set InjCurrent=[400 0 400 0 400 0]` + re-solve, `ActiveCktElement.
+Currents`): r4133 reports the frozen `[-89.231224, -11.202775, 34.913725,
+82.877894, 54.317500, -71.675120]`; the port matches it to a faer-vs-KLU floor
+with the guard, but recomputes `[-86.039, -58.979, …]` (imag −11.20 → −58.98,
+a ≈48 A miss) without it — pinned + guard-toggle-verified by
+`windgen_force_inj_freezes_iterminal` (reads the currents through the corpus
+`snapshot_elements`/`GetCurrents` path, not the guard-blind `Get ITerminal`
+cache). An earlier central force-branch in the injection loop dropped the
+set-nominal preamble (a forced element's Yeq would freeze in a varying-loadshape
+time series), and it honored the flag for every PCE (freezing VCCS/UPFC/
+VSConverter where both oracles recompute). The option set/get is in `exec/set_cmd.rs`/
 `exec/get_cmd.rs`; the parser gained `make_complex`/`parse_as_complex_vector`/
 `parse_as_complex_matrix` (`ParserDel.pas`). `Set IterNumber`/`CtrlIterNumber`/
 `IntegrationFlag` are read-only (error 25040103); `Set PyPath=` is a loud
@@ -1044,9 +1070,11 @@ NOT_PORTED.
   80 0 80 0]` on the b2 load shifts b2 Vmag 7187.45 → 7224.14 V; whole-model
   live compare green. Feature-sensitive (a broken injection-loop honor → 7187 vs
   capi015 7224, ≫ floor).
-- **capi015-pinned Rust unit suite** `exec/tests/force_hooks.rs` (12 tests):
+- **capi015-pinned Rust unit suite** `exec/tests/force_hooks.rs` (13 tests):
   forced Vmag 7224.143523 (1e-6), frozen `Get InjCurrent`/`ITerminal` (Load) +
-  frozen Generator `ITerminal` (2nd PCE force-skip), `Set ITerminal` freeze
+  frozen Generator `ITerminal` (2nd PCE force-skip) + frozen WindGen `ITerminal`
+  (`windgen_force_inj_freezes_iterminal`, the 6th flag-checking class the sweep
+  fixed), `Set ITerminal` freeze
   (base 23.175527 → forced `[10,0,10]`), `Get IterNumber`/`IntegrationFlag`,
   read-only `Set` (aborts the loop), `Set PyPath` NOT_PORTED, `Set YPrim`
   survives a rebuild + oversize-row `#3004`, `Get StateVar` read + natural-syntax

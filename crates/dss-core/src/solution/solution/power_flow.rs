@@ -6,7 +6,6 @@
 use num_complex::Complex64;
 
 use crate::circuit::{AddType, Circuit};
-use crate::elements::ckt::ElemFlags;
 use crate::elements::pc::generator::Generator;
 use crate::elements::traits::{ElemRef, InjCtx};
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
@@ -125,22 +124,20 @@ fn get_pc_inj_curr_filtered(ckt: &mut Circuit, env: &mut SolveEnv, gfm_only: boo
         let elem = env.store.ckt_elem_mut(r);
         let on_gfm = elem.is_gfm();
         if !(gfm_only ^ on_gfm) && elem.cd().enabled {
-            // Pascal per-PCE `InjCurrents` (Load/Generator/PVsystem/Storage/
-            // IndMach012 @ 0.15.0b4): `if not (Flg.ForceInjCurrents in Flags)
-            // then Calc…; Result := inherited InjCurrents`. When the injection
-            // is forced from the DSS language (`Set InjCurrent=…`/`Set
-            // ITerminal=…`, WP-U1.9) the model recompute is skipped and the
-            // stored `InjCurrent` is added straight into the global Currents
-            // array — exactly what `TPCElement.InjCurrents` does. Handling it
-            // here honors the flag uniformly for every PC element.
-            if elem.cd().flags.contains(ElemFlags::FORCE_INJ_CURRENTS) {
-                let cd = elem.cd();
-                for i in 0..cd.yorder {
-                    ctx.currents[cd.node_ref[i]] += cd.inj_current[i];
-                }
-            } else {
-                elem.inj_currents(&sys, &mut ctx);
-            }
+            // Pascal `T<PCE>Obj.InjCurrents` (r4133 Load.pas:1922 / Generator.pas /
+            // PVsystem.pas:2173 / Storage.pas:2879 / IndMach012.pas / WindGen.pas):
+            // `If LoadsNeedUpdating Then SetNominal…; if not ForceInjCurr then
+            // CalcInjCurrentArray; Result := inherited InjCurrents`. The
+            // `ForceInjCurrents` check lives INSIDE each flag-checking class's
+            // `inj_currents` — it skips only the model recompute, keeping the
+            // unconditional set-nominal preamble (so a forced element's Yeq still
+            // rescales in a varying-loadshape time series) and the inherited
+            // add-into-Currents. The non-flag-checking overrides (VCCS/UPFC/
+            // VSConverter) recompute unconditionally, so a force on those is inert
+            // upstream and here. (0.15.x-adoption sweep a3a5(b,c); an earlier
+            // central force-branch here lost the preamble and honored the flag for
+            // every PCE.)
+            elem.inj_currents(&sys, &mut ctx);
         }
     }
 }

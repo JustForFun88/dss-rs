@@ -183,8 +183,14 @@ impl CktElement for PVSystem {
         if sys.loads_need_updating {
             self.set_nominal_der_output(sys);
         }
+        // r4133 `TPVsystemObj.InjCurrents` (PVsystem.pas:2173): `if not ForceInjCurr
+        // then CalcInjCurrentArray` — skip only the model recompute when the
+        // injection is forced; the set-nominal preamble and the inherited add stay
+        // unconditional.
         let mut errors = crate::diag::ErrorLog::new();
-        self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
+        if !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS) {
+            self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
+        }
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
         }
