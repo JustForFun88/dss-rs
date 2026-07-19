@@ -552,7 +552,7 @@
       "channel": "r4133",
       "kind": "skip",
       "cause_ref": "epri-303-crash",
-      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 #303 access violation at calcv on the LineSpacing+wiredata deck; capi_v0145 gates it (exact-pair property above)."
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 #303 access violation during compile, at the `new line.lspc ... tscables=[TS_1-0] wires=[CU_1-0]` command (offset 41CE5E in ProcessCommand; re-derived live 2026-07-19 Phase F re-review — NOT at calcv, that is the IEEE13_LineSpacing sibling); capi_v0145 gates it (exact-pair property above)."
     }
   ]
 }

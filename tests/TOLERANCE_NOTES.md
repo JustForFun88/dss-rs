@@ -12,9 +12,21 @@ outputs compare by numeric skeleton (structure exact, numbers with tolerance).
 > proof (and tighten far more often than they loosen); they are never relaxed to
 > mask a divergence. (CLAUDE.md, §"conditioning".)
 
+> **The divergence ledger is not a tolerance.** `tests/corpus/ledger.json`
+> (TESTING.md §"The divergence ledger") pins *specific, measured upstream
+> divergences* per case / per channel / per scope — it never widens a floor:
+> everything a ledger entry does not explicitly scope is still held to the
+> tiers below by the untouched `harness` comparators, at least one scoped value
+> must still **exceed** its tier floor every run (else the entry is stale and
+> the gate fails), and every entry change is fingerprinted into the population
+> lock. Ledger envelopes are sized to live measurements (`DSS_LEDGER_MEASURE`),
+> require a documented cause + source, and may be added only after the
+> divergence is proven not to be a port bug. Tier floors are structurally
+> unreachable from ledger code.
+
 ## Tolerance classes (`harness::tol_for`)
 
-The assembled-model gate (`golden_checkpoints.rs` + the live `corpus_live.rs`)
+The assembled-model gate (`golden_checkpoints.rs` + the live `corpus_gate.rs`)
 tiers tolerances by **conditioning**, not size:
 
 - **micro** — tiny synthetic circuits.
@@ -397,7 +409,7 @@ cannot close the family gap below KLU's own junk (residual parity, leg 3), so
 the tier is permanent until the oracle itself is re-pinned.
 
 **Maintenance:** a new corpus case defaults to `large`; promote it to `feeder`
-only after `corpus_live` confirms it holds the tighter floor. Golden tests that
+only after `corpus_gate` confirms it holds the tighter floor. Golden tests that
 drive a stiff network (`golden_ieee8500`, harmonics/protection/meter scenarios in
 `golden_metering_monitors` / the DER/harmonics/protection scenarios) pass `"large"` explicitly.
 
@@ -536,7 +548,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   documented below. If a new straddle ever fires (a regolden, a new fixture),
   prove it by decomposition first (both engines' f64 bracketing the print
   boundary), then add the narrowest floor. The split of duties is unchanged:
-  `corpus_live.rs` gates the engine physics (1e-8 rel on the live complex
+  `corpus_gate.rs` gates the engine physics (1e-8 rel on the live complex
   model); the goldens gate the report-layer transform and its layout.
   The remaining non-exact floors, all **observed** on the current goldens:
   - `P_byphase` (kVA form): one `%10.3f` last-digit straddle (−1342.212↔.213)
@@ -559,7 +571,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   - `Summary`/`8500 Summary`: the wall-clock `DateTime` column masked.
 - **WP8.2 sub-step 2a — the aggregate PD/PC power exports** (`Powers`/`Losses`/
   `P_byphase` on solved IEEE13, both kVA and MVA). All columns are real (kW/kvar/W
-  or MW/Mvar); the engine V/I/P is pinned to 1e-8 by `corpus_live`.
+  or MW/Mvar); the engine V/I/P is pinned to 1e-8 by `corpus_gate`.
   - `Powers` (both forms) — every `%11.1f` value renders byte-identical → **exact**
     (`rel = 0, abs = 0`).
   - `P_byphase` — values are `%10.3f`; the kVA form has an **observed** one-ULP
@@ -578,7 +590,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
 
 - **WP8.2 sub-step 2b — the symmetrical-component exports** (`SeqVoltages`/
   `SeqCurrents`/`SeqPowers` on solved IEEE13). Again a *report-layout* gate; the
-  underlying V/I are pinned to 1e-8 by `corpus_live`. Column structure: the
+  underlying V/I are pinned to 1e-8 by `corpus_gate`. Column structure: the
   magnitude columns (`V1`/`V2`/`V0`/`Vresidual`, `I1`/`I2`/`I0`/`Iresidual`) are
   `%10.6g` (6 sig); the ratio/unbalance columns (`%V2/V1`, `%V0/V1`, `%NEMA`,
   `%Normal`, `%Emergency`, `%I2/I1`, `%I0/I1`) are `%8.4g` (4 sig).
@@ -635,7 +647,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
 - **WP8.2 sub-step 2c — the per-terminal/per-conductor element exports**
   (`Currents`/`ElemCurrents`/`ElemVoltages`/`ElemPowers`/`NodeOrder`/`Taps` on
   solved IEEE13). Report-layout gate again; the engine V/I are pinned to 1e-8 by
-  `corpus_live`. These are magnitude (`%10.6g`, 6 sig) + angle (`%8.2f`, 2 dec)
+  `corpus_gate`. These are magnitude (`%10.6g`, 6 sig) + angle (`%8.2f`, 2 dec)
   reports; `ElemPowers` is kW/kvar (`%10.6g`), `NodeOrder`/`Taps` are exact.
   - **Magnitudes** are pinned at `rel = 0` (real cells byte-identical); the `abs`
     floor covers only the near-zero cancellation residuals, at the **measured**
@@ -672,7 +684,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
     records *why* the order is inverted from the Pascal source text.
   - **`Taps`** is exact (`rel = 0, abs = 0`): the tap value is the discrete
     `mid + position·increment`, so both engines print the identical value once they
-    converge to the same integer tap position (pinned by `corpus_live` + the
+    converge to the same integer tap position (pinned by `corpus_gate` + the
     feeder-controls gate); a tap-position divergence (≥ 0.00625) fails loudly.
   - **`NodeOrder` guard:** `WriteNodeList`/`WriteElem*` error 222001 per element on
     an unsolved circuit and exit early (header-only file). The formatter reproduces
@@ -687,7 +699,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
 
 - **WP8.2 sub-step 3 — the matrix/summary exports** (`Yprims`/`Y`/`SeqZ`/`Summary`/
   `Result`). Report-layout gates; the underlying quantities are already pinned
-  entry-by-entry by `corpus_live` / the checkpoint gate / `fault_study.rs`.
+  entry-by-entry by `corpus_gate` / the checkpoint gate / `fault_study.rs`.
   - **`Y`/`Yprims` — exact** (`rel = 0, abs = 0`). The assembled system Y and each
     element's primitive Y are **exact deterministic stamps** — no faer solve enters
     them — byte-identical at 10 sig (`%.10g`). The `Y` golden pins the
@@ -750,11 +762,11 @@ with **no discrete-state signature**, the exactly-pinned taps/banks + exact
 iteration count are what keep the gate strong: a real regulator/cap/element
 regression moves a tap, a bank, or the profile by far more than 3e-4 and fails,
 while the 3e-4 band absorbs only the proven, oracle-reproduced Save-precision floor.
-The pre-save solve is *independently* oracle-pinned by `corpus_live` (8500-Node
+The pre-save solve is *independently* oracle-pinned by `corpus_gate` (8500-Node
 `Master.dss` is in `solvable_now` at the tight `large` floors, ~300× under 3e-4), so
 the operating point itself is gated far tighter than this round-trip band.
 
-## Live corpus gate (`corpus_live.rs`)
+## Live corpus gate (`corpus_gate.rs`)
 
 Reuses the same comparators and classes verbatim. Differences from the checkpoint
 goldens: the **full** assembled Y is compared every case (nothing is stored, so
@@ -778,8 +790,10 @@ substitutions applied to **both** the Rust and the oracle line before the
 skeleton comparison. A mask only folds a cosmetic text delta — it never drops or
 reorders a line (masks are applied *after* the length/order gate, and a
 line-dropping "mask" would be a real divergence to fix in the port, not a format
-delta). Rows are keyed by the case's `oracle` manifest spec (`r4133`, …); the
-default 0.14.5 oracle (`oracle` absent) is never masked.
+delta). Rows are keyed by the comparison **channel** (`r4133`, …); the pinned
+0.14.5 `capi_v0145` channel is never masked. Content-level wording deltas
+(actor suffixes, `DER`-vs-`PVSYSTEM OUTPUT` phrasing) are NOT maskable — such
+cases stay single-channel with a `note` cause (see the fix-round record).
 
 **The shipped `r4133` table is EMPTY.** The WP-U2.2 Recloser per-phase rewrite
 reproduces the r4133 event-log wording byte-for-byte — proven against the
@@ -790,13 +804,13 @@ The mechanism (and its self-tests in `harness::eventlog_mask_tests`) exists so
 WP-U2.3 (Relay) and later revs can add documented rows without restructuring —
 one row per delta, `note` citing the delta row this file references.
 
-**Oddie event-log capture (`tools/oracle/oracle_server.py`):** the AltDSS Oddie
-bridge over the official EPRI DLL does **not** populate the `Solution.EventLog`
-accessor (it always returns empty), though the engine records events and `export
-eventlog` writes the real CSV. WP-U2.2 taught `capture_eventlog` to read that CSV
-for the Oddie engine (the pinned dss-python `capi*` engines keep the direct
-`Solution.EventLog` read); without this fix no `oracle: "r4133"` deck could
-compare its event log at all.
+**r4133 event-log capture (`crates/dss-epri/src/capture.rs`):** the official
+EPRI DLL has no populated `Solution.EventLog`-style accessor, so the `dss-epri`
+bridge captures the log via `export eventlog` and reads back the CSV, stripping
+the UTF-8 BOM per line (the r4133 DLL writes BOM-prefixed CSVs — the WP-U2.2/
+U2.5-era discovery, carried into the bridge). The pinned dss-python
+`capi_v0145` oracle keeps the direct `Solution.EventLog` read in
+`oracle_server.py`.
 
 ## WP8.5b property parity (`harness::compare_all_properties` / `SKIP_PROPS`)
 

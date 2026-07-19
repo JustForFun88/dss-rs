@@ -25,9 +25,10 @@
 //! `PAnsiChar`/pointer+type+size out-params — no OLE Variants, no COM), so Rust
 //! reads it natively. This drops the entire dss-extensions stack (two beta
 //! wheels) and the ~1.5–2.5 s Python startup per call, and unifies the harness
-//! language. The bridge is fidelity-proven by bit-for-bit cross-validation
+//! language. The bridge was fidelity-proven by bit-for-bit cross-validation
 //! against the outgoing Python/Oddie path over the full corpus universe
-//! (`tools/opendss/xcheck_bridge.py`) before anything Python is retired.
+//! (`tools/opendss/xcheck_bridge.py`) before that Python stack — the
+//! cross-check script included — was retired in UNIFIED_GATE Phase E.
 //!
 //! ## Layout
 //! - [`ffi`] — raw `extern "C"` signatures + `libloading` load of the DLL with
@@ -39,6 +40,9 @@
 //!   `tools/oracle/oracle_server.py` + `tools/golden/gen_checkpoints.py`.
 //! - [`guard`] — a Rust port of `tools/oracle/corpus_guard.py` (recursive
 //!   snapshot / restore of the case directory).
+//! - [`script`] — the generic `exec`/`read`/`chdir` scripting surface for the
+//!   manual regen drivers + probes (functional parity with the retired Oddie
+//!   bridge's ad-hoc `Text.Command` + property reads; never used by the gate).
 //!
 //! The `epri-worker` binary (`src/bin/epri-worker.rs`) drives all of the above
 //! over the persistent line-JSON `ping`/`run`/`quit` protocol, byte-compatible
@@ -54,6 +58,8 @@ pub mod dss;
 pub mod ffi;
 #[cfg(windows)]
 pub mod guard;
+#[cfg(windows)]
+pub mod script;
 #[cfg(windows)]
 pub mod smoke;
 

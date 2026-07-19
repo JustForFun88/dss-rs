@@ -2,7 +2,7 @@
 //! polling, the V-protocol decode, and the individual accessors used to build a
 //! `CaseResult`. Everything here mirrors what dss-python's `IOddieDSS` returns
 //! for the *same* engine memory, so the captures are byte-for-byte comparable
-//! (verified by `tools/opendss/xcheck_bridge.py`).
+//! (verified by `tools/opendss/xcheck_bridge.py` before its Phase E retirement).
 //!
 //! # SAFETY
 //! All FFI calls go through `self.dll`'s function pointers, whose validity is
@@ -224,6 +224,18 @@ impl Engine {
         Ok(reply)
     }
 
+    /// Run one executive command exactly like the retired Oddie bridge's
+    /// `Text.Command` setter (the golden-regen / probe parity surface): escalate
+    /// any non-zero errno (dss-python raises per command), then block until the
+    /// solver actor is idle — a command may dispatch an asynchronous solve
+    /// (`solve`, a `Compile` of a deck with an inline solve tail), and any
+    /// following read must not race it (see [`Engine::solve`]).
+    pub fn exec_wait(&self, cmd: &str) -> Result<String, EngineError> {
+        let reply = self.command_strict(cmd, "exec")?;
+        self.wait_for_actor()?;
+        Ok(reply)
+    }
+
     /// `ParallelV(1)` = `ActorStatus[]` (0 = busy, 1 = done).
     fn actor_status(&self) -> Vec<i32> {
         self.v_i32s(self.dll.parallel_v, 1)
@@ -312,6 +324,14 @@ impl Engine {
         let _ = unsafe { f(mode, a.as_ptr()) };
     }
 
+    fn call_s_arg(&self, f: crate::ffi::FnS, mode: i32, arg: &str) -> String {
+        let a = to_cstring(arg);
+        // SAFETY: `a` is a live NUL-terminated buffer; the returned pointer is
+        // DLL-owned and copied out immediately.
+        let p = unsafe { f(mode, a.as_ptr()) };
+        unsafe { cstr_to_string(p) }
+    }
+
     fn call_i(&self, f: crate::ffi::FnI, mode: i32, arg: i32) -> i32 {
         // SAFETY: plain integer scalar entry point.
         unsafe { f(mode, arg) }
@@ -349,6 +369,21 @@ impl Engine {
     /// Active circuit name (`CircuitS(0)`).
     pub fn circuit_name(&self) -> String {
         self.call_s(self.dll.circuit_s, 0)
+    }
+
+    /// `Circuit.SetActiveBus` (`CircuitS(4)`, `DCircuit.pas`): activate a bus by
+    /// name and return its 0-based index, or `-1` if not found / no circuit.
+    pub fn set_active_bus(&self, name: &str) -> i32 {
+        self.call_s_arg(self.dll.circuit_s, 4, name)
+            .trim()
+            .parse()
+            .unwrap_or(-1)
+    }
+
+    /// `Bus.kVBase` (`BUSF(0)`, `DBus.pas`) of the active bus (select it first
+    /// via [`Engine::set_active_bus`]).
+    pub fn bus_kvbase(&self) -> f64 {
+        self.call_f(self.dll.bus_f, 0, 0.0)
     }
 
     // ---- element accessors (active element) ------------------------------
@@ -427,6 +462,30 @@ impl Engine {
 
     pub fn dbl_hour(&self) -> f64 {
         self.call_f(self.dll.solution_f, 20, 0.0)
+    }
+
+    /// `Solution.EventLog` (`SolutionV(0)`, `DSolution.pas`): the raw
+    /// `EventStrings` lines (`Hour=…, Sec=…, ControlIter=…, Element=…, Action=…`).
+    ///
+    /// Decode parity with the retired Oddie `sol.EventLog` (the committed
+    /// protection goldens are the empirical anchor): only **NUL-terminated**
+    /// segments count as strings. The Pascal writes each real event line followed
+    /// by a `Char(0)`, but the empty-log placeholder is a bare `None` with **no**
+    /// terminator (mode 0), which Oddie decoded to zero complete strings — `[]`,
+    /// exactly what the `swt_manual` golden pins. (Deliberately NOT
+    /// [`decode_string_array`], whose trailing-segment handling serves the gate's
+    /// V-protocol arrays and must stay untouched.)
+    pub fn eventlog(&self) -> Vec<String> {
+        let (_ty, bytes) = self.call_v(self.dll.solution_v, 0);
+        let mut out = Vec::new();
+        let mut start = 0usize;
+        for (i, &b) in bytes.iter().enumerate() {
+            if b == 0 {
+                out.push(String::from_utf8_lossy(&bytes[start..i]).into_owned());
+                start = i + 1;
+            }
+        }
+        out
     }
 
     // ---- system Y (CSC) + injection --------------------------------------
@@ -513,6 +572,11 @@ impl Engine {
     }
     pub fn monitor_name(&self) -> String {
         self.call_s(self.dll.monitors_s, 1)
+    }
+    /// `Monitors.Name` write (`MonitorsS(2)`): activate a monitor by name (an
+    /// unknown name raises a DSS error — poll after).
+    pub fn monitor_select(&self, name: &str) {
+        self.set_s(self.dll.monitors_s, 2, name);
     }
     pub fn monitor_num_channels(&self) -> i32 {
         self.call_i(self.dll.monitors_i, 17, 0)
@@ -656,7 +720,7 @@ pub struct Ycsc {
 /// The Pascal writes `name\0` per element (so the buffer ends with `\0`), and the
 /// header path writes one extra `\0`. Oddie reads the buffer as NUL-terminated
 /// C-strings until it is consumed (token count == number of `\0`). Empirically
-/// (`tools/opendss/xcheck_bridge.py` ground truth): drop exactly one trailing
+/// (ground truth = the since-retired `tools/opendss/xcheck_bridge.py`): drop exactly one trailing
 /// `\0`, split on `\0`, and lstrip a single leading space from element 0 (the
 /// monitor-header first-column artifact — `[' V1', ...] → ['V1', ...]`).
 ///

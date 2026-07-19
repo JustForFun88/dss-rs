@@ -8,3 +8,5 @@ __pycache__/
 /tmp
 .claude
 *SavedVoltages.dbl
+# Added by code-review-graph
+.code-review-graph/

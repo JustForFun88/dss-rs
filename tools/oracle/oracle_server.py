@@ -1,6 +1,6 @@
 """Live oracle server for the corpus comparison gate (CORPUS_TEST_PLAN.md §3).
 
-A persistent process the Rust harness (`corpus_live.rs`) drives at test time:
+A persistent process the Rust harness (`corpus_gate.rs`) drives at test time:
 read one JSON request per line on stdin, run it through the pinned dss-python
 oracle, write one JSON response per line on stdout. This is the *live* oracle —
 no goldens are written; both engines compile the **same** copied `.dss` file and
@@ -27,12 +27,10 @@ Rust side restarting the process and recording the case as a failure.
 Startup hard-asserts the pin in tools/golden/PIN.txt (dss-python 0.15.7); a wrong
 oracle version exits non-zero, never a silent pass.
 
-Engine selection (`make_engine`): `DSS_ORACLE_ENGINE=capi` (default, the pinned
-dss-python oracle above) or `oddie` — an official EPRI `OpenDSSDirect.dll`
-(`DSS_OPENDSS_REV` -> tools/opendss/revisions.json) driven through the AltDSS
-Oddie bridge from the separate venv pinned in tools/opendss/PIN_OPENDSS.txt.
-See tools/opendss/README.md. The capture surface is identical; `ping` echoes
-`{"oddie":true,"rev":...}` so the caller can verify which engine answered.
+This server drives the pinned dss-python oracle only (the `capi_v0145` channel of
+the unified corpus gate). The official EPRI `OpenDSSDirect.dll` (r4133) channel is
+driven by the in-house `crates/dss-epri` Rust bridge (`epri-worker`), not this
+server.
 
 Usage (normally spawned by the Rust gate; manual smoke test):
     echo {"cmd":"ping"} | python tools/oracle/oracle_server.py
@@ -52,13 +50,6 @@ from pathlib import Path
 GOLDEN = Path(__file__).resolve().parent.parent / "golden"
 sys.path.insert(0, str(GOLDEN))
 import gen_checkpoints as gc  # noqa: E402
-
-# Resolved at import time — the EPRI engine chdirs the process on Compile
-# (`AllowChangeDir` is not settable through Oddie), so nothing may rely on
-# relative paths after the first `run` request.
-OPENDSS_DIR = Path(__file__).resolve().parent.parent / "opendss"
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
 
 def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
@@ -107,43 +98,8 @@ def capture_all_elements(ckt, tolerate_user_model: bool = False) -> list:
 
 
 def capture_eventlog(d, ckt) -> list:
-    """The cumulative event log (`DSS.EventStrings`), as a list of lines.
-
-    The AltDSS **Oddie** bridge (official EPRI DLL) does NOT populate the
-    `Solution.EventLog` COM accessor — it always returns empty — even though the
-    engine records events (protection trips/recloses/etc.) and `export eventlog`
-    writes the real CSV. So for the Oddie engine we capture via that export and
-    read the CSV back; the pinned dss-python (`capi*`) engines keep the direct
-    `Solution.EventLog` read (bit-identical lines). WP-U2.2.
-    """
-    if type(d).__name__ == "IOddieDSS":
-        d.Text.Command = "export eventlog"
-        path = str(d.Text.Result).strip().lstrip("﻿")
-        try:
-            # `utf-8-sig` strips a leading UTF-8 BOM: the official r4133 DLL writes
-            # its `export eventlog` CSV with a BOM, so a plain-`utf-8` read would
-            # (a) glue `﻿` onto the first event line and (b) turn an EMPTY log
-            # into a spurious one-line `['﻿']` (the BOM is not `str.isspace()`,
-            # so `if ln.strip()` keeps it). WP-U2.5.
-            with open(path, encoding="utf-8-sig", errors="replace") as f:
-                # The CSV has no header row — each line is a full event record
-                # ("Hour=…, Sec=…, ControlIter=…, Element=…, Action=…"). Delphi's
-                # file writer prefixes the file with a UTF-8 BOM (U+FEFF); strip
-                # it per line so (a) an EMPTY event log (which exports as a lone
-                # BOM) reads back as [] rather than ["﻿"], and (b) the first
-                # record is not BOM-glued — matching the Rust `event_log()` and
-                # the capi engines' `Solution.EventLog`, both BOM-free. Without
-                # this an empty step trips the length assert (0 vs 1) and a
-                # non-empty first line trips the numeric-skeleton comparator on
-                # the multi-byte BOM. WP-U2.1 restore.
-                out = []
-                for ln in f:
-                    ln = ln.lstrip("﻿").rstrip("\r\n")
-                    if ln.strip():
-                        out.append(ln)
-                return out
-        except OSError:
-            return []
+    """The cumulative event log (`DSS.EventStrings`), as a list of lines — the
+    pinned dss-python `Solution.EventLog` read (BOM-free)."""
     return [str(s) for s in ckt.Solution.EventLog]
 
 
@@ -233,7 +189,7 @@ def capture_all_monitors(ckt) -> list:
 
     Mirrors the phase6 monitor golden capture (`Header`/`SampleCount`/
     `Channel(i)`); empty when the case defines no monitors. Channels are the
-    growing per-sample arrays — compared per step by `corpus_live.rs`.
+    growing per-sample arrays — compared per step by `corpus_gate.rs`.
     """
     out = []
     mon = ckt.Monitors
@@ -264,11 +220,9 @@ def capture_all_meters(ckt) -> list:
     while i:
         # An EMPTY string-array comes back as the C-API placeholder ['NONE']
         # (DefaultResult, like CtrlQueue's 'No events') — filter it so an empty
-        # zone list compares as empty, not as a phantom one-element list. The
-        # official-EPRI (Oddie) engine additionally renders these string arrays
-        # with a trailing empty element (`['load.a', …, '']` — the same Delphi
-        # trailing-separator artifact as the monitor CSV header), so drop
-        # empty/whitespace-only entries too; an element name is never empty.
+        # zone list compares as empty, not as a phantom one-element list. Also
+        # drop any empty/whitespace-only entries (a Delphi trailing-separator
+        # artifact); an element name is never empty.
         def _lst(v):
             xs = [s for s in (str(s).strip() for s in v) if s]
             return [] if xs == ["NONE"] else xs
@@ -301,9 +255,8 @@ def capture_all_meters(ckt) -> list:
 # the in-memory model, so those files are pure pollution of the vendored corpus.
 # Setting `DataPath` before `Compile` does NOT help — `Compile` resets it to the
 # case dir. So snapshot the case dir and restore it after each run instead.
-# Lifted move-only into corpus_guard.py (2026-07-07) so the DSS-Python
-# validation harness (tools/opendss/dsspy_validation/) shares the identical,
-# empirically-hardened implementation.
+# Lifted move-only into corpus_guard.py (2026-07-07) so any consumer shares the
+# identical, empirically-hardened implementation.
 from corpus_guard import CorpusGuard as _CorpusGuard  # noqa: E402
 
 
@@ -354,9 +307,8 @@ _USER_MODEL_ERRNOS = {567, 570, 1570}
 
 
 def _set_early_abort(d, val) -> bool:
-    """Best-effort `DSS.Error.EarlyAbort = val`. Returns True on success. The
-    Oddie bridge does not implement `Error_Set_EarlyAbort` (raises #2), but the
-    raw Direct DLL already warns-and-continues, so a failure here is harmless."""
+    """Best-effort `DSS.Error.EarlyAbort = val`. Returns True on success; a
+    failure is harmless (the engine warns-and-continues regardless)."""
     try:
         d.Error.EarlyAbort = val
         return True
@@ -365,8 +317,8 @@ def _set_early_abort(d, val) -> bool:
 
 
 def _get_early_abort(d):
-    """Current `DSS.Error.EarlyAbort`, or None if the engine does not expose it
-    (Oddie) — in which case there is nothing to save/restore."""
+    """Current `DSS.Error.EarlyAbort`, or None if the engine does not expose it —
+    in which case there is nothing to save/restore."""
     try:
         return bool(d.Error.EarlyAbort)
     except Exception:
@@ -375,7 +327,7 @@ def _get_early_abort(d):
 
 def run_case(d, req: dict) -> dict:
     """Compile one copied `.dss` case, run `n_steps` solves, return the full
-    per-step model (the shape `harness::*` / corpus_live.rs deserialize)."""
+    per-step model (the shape `harness::*` / corpus_gate.rs deserialize)."""
     import dss as _dss  # module already loaded by make_engine; for DSSException
 
     case_path = req["case_path"]
@@ -533,128 +485,25 @@ def run_case(d, req: dict) -> dict:
     }
 
 
-def _oddie_get_y_sparse(d):
-    """Oddie-mode replacement for `gc._get_y_sparse`: the fastdss dss-python
-    (0.16.0b2) `getYSparse()` takes no `factor` argument (Oddie ignores the
-    flag; EPRI's `InitAndGetYparams` ALWAYS factors before the CSC export —
-    proven solution-neutral by `tools/opendss/smoke.py`'s bit-identical
-    YNodeVarray check). Same `BuildY` retry as the capi original."""
-    r = d.YMatrix.getYSparse()
-    if r is None:
-        d.Text.Command = "BuildY"
-        r = d.YMatrix.getYSparse()
-    if r is None:
-        raise RuntimeError("YMatrix.getYSparse returned None even after a BuildY retry")
-    return r
-
-
-def _read_pin_opendss() -> dict:
-    pins = {}
-    for line in (OPENDSS_DIR / "PIN_OPENDSS.txt").read_text().splitlines():
-        line = line.split("#", 1)[0].strip()
-        if "==" in line:
-            k, v = line.split("==", 1)
-            pins[k.strip()] = v.strip()
-    return pins
-
-
 def make_engine():
-    """Bind the oracle engine from `DSS_ORACLE_ENGINE`:
+    """Bind the pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle (`gc.check_pin()`
+    hard-asserts the pin) and return `(dss.DSS singleton, provenance)`. This is the
+    only engine this server drives — the `capi_v0145` channel of the unified gate.
 
-    - "capi" (default) — the pinned dss-python 0.15.7 / dss_capi 0.14.5 oracle,
-      exactly as before (`gc.check_pin()` + the `dss.DSS` singleton);
-    - "capi015" — the dss_capi 0.15.x-line oracle: dss-python 0.16.0b2 (fastdss)
-      from the SAME separate venv the Oddie bridge uses (pinned in
-      tools/opendss/PIN_OPENDSS.txt), driving its own bundled dss_capi
-      0.15.0b4 backend (based on OpenDSS SVN r4103 — the 0.15.x/r4088 line).
-      This is the scriptable r4088-line oracle for the UPGRADE_PLAN target-rev
-      gates; `ping` echoes `{"capi015": true}` so the caller can verify.
-    - "oddie" — an OFFICIAL EPRI `OpenDSSDirect.dll` loaded by absolute path
-      through the AltDSS Oddie bridge (dss-python 0.16.0b2 `IOddieDSS`, the
-      separate venv pinned in tools/opendss/PIN_OPENDSS.txt). The revision
-      comes from `DSS_OPENDSS_REV` (looked up in tools/opendss/revisions.json,
-      whose `expect_version` must be non-empty — no silent pass), or a direct
-      `DSS_OPENDSS_DLL` path override (+ optional `DSS_OPENDSS_EXPECT`
-      version-substring check).
-    """
+    `DSS_ORACLE_ENGINE` is honored only as an explicit `"capi"` (the default); any
+    other value exits non-zero (the retired `capi015`/`oddie` EPRI arms were removed
+    with the Python EPRI stack — the r4133 channel now runs through the in-house
+    `crates/dss-epri` Rust bridge). Never a silent pass to the wrong engine."""
     engine = os.environ.get("DSS_ORACLE_ENGINE", "capi")
-    if engine == "capi":
-        oracle = gc.check_pin()  # hard-asserts dss-python 0.15.7 / engine 0.14.5
-        from dss import DSS as d
-
-        return d, oracle
-    if engine == "capi015":
-        import dss
-
-        pin = _read_pin_opendss()
-        if dss.__version__ != pin["dss-python"]:
-            sys.exit(
-                f"dss-python {dss.__version__} != pinned {pin['dss-python']} "
-                "(tools/opendss/PIN_OPENDSS.txt — is DSS_ORACLE_PYTHON the Oddie venv?)"
-            )
-        from dss import DSS as d
-
-        ver = str(d.Version)
-        backend = pin.get("dss-python-backend", "")
-        if not backend:
-            sys.exit("PIN_OPENDSS.txt has no dss-python-backend pin (no silent pass)")
-        if backend not in ver:
-            sys.exit(f"engine {ver!r} does not contain pinned backend {backend!r}")
-        # fastdss getYSparse() drops the `factor` argument (same as Oddie).
-        gc._get_y_sparse = _oddie_get_y_sparse
-        return d, {"engine": ver, "capi015": True}
-    if engine != "oddie":
+    if engine != "capi":
         sys.exit(
-            f"unknown DSS_ORACLE_ENGINE={engine!r} (expected 'capi', 'capi015' or 'oddie')"
+            f"unknown DSS_ORACLE_ENGINE={engine!r} (only 'capi' is supported; "
+            "the EPRI r4133 channel runs through crates/dss-epri, not this server)"
         )
+    oracle = gc.check_pin()  # hard-asserts dss-python 0.15.7 / engine 0.14.5
+    from dss import DSS as d
 
-    import dss
-
-    pin = _read_pin_opendss()
-    if dss.__version__ != pin["dss-python"]:
-        sys.exit(
-            f"dss-python {dss.__version__} != pinned {pin['dss-python']} "
-            "(tools/opendss/PIN_OPENDSS.txt — is DSS_ORACLE_PYTHON the Oddie venv?)"
-        )
-    rev = os.environ.get("DSS_OPENDSS_REV", "")
-    dll = os.environ.get("DSS_OPENDSS_DLL", "")
-    expect = os.environ.get("DSS_OPENDSS_EXPECT", "")
-    if not dll:
-        revs = json.loads((OPENDSS_DIR / "revisions.json").read_text())
-        if rev not in revs:
-            sys.exit(f"DSS_OPENDSS_REV={rev!r} not in revisions.json ({sorted(revs)})")
-        dll = str((REPO_ROOT / revs[rev]["dll"]).resolve())
-        expect = expect or revs[rev].get("expect_version", "")
-        if not expect:
-            sys.exit(
-                f"revisions.json expect_version for {rev} is empty — "
-                "run tools/opendss/smoke.py and pin it (no silent pass)"
-            )
-    from dss import IOddieDSS
-
-    d = IOddieDSS(library_path=dll)
-    ver = str(d.Version)
-    if expect and expect not in ver:
-        sys.exit(f"engine {ver!r} does not contain pinned {expect!r} (rev={rev!r})")
-    # Suppress dialogs BEFORE any Text command — an engine error message while
-    # forms are still allowed pops a modal dialog (main() sets this again;
-    # harmless).
-    d.AllowForms = False
-    # EPRI's Delphi `FireOffEditor` (Utilities.pas) ShellExecutes `DefaultEditor`
-    # on every `Show`/`Export` UNCONDITIONALLY — it has no NoFormsAllowed check,
-    # and `AllowEditor` is not settable through Oddie, so a corpus sweep would
-    # open hundreds of Notepads (empirically did). Point the editor at
-    # rundll32.exe — a GUI-subsystem no-op (no DLL entry point given -> exits
-    # silently, no window) — and stop the engine from persisting that override
-    # into the user's OpenDSS registry settings on dispose (`Set RegistryUpdate`,
-    # ExecOption[102] — the option name differs from the Pascal variable
-    # `UpdateRegistry`; identical in r3723/r4088/r4133).
-    d.Text.Command = "Set RegistryUpdate=No"
-    d.Text.Command = "Set Editor=rundll32.exe"
-    # fastdss getYSparse() signature differs; capture_system_y/capture_fingerprint
-    # route through gc._get_y_sparse, so rebind it for this process.
-    gc._get_y_sparse = _oddie_get_y_sparse
-    return d, {"engine": ver, "oddie": True, "rev": rev, "dll": dll}
+    return d, oracle
 
 
 def main() -> None:
@@ -691,16 +540,6 @@ def main() -> None:
             break
         if cmd == "ping":
             reply({"ok": True, "result": {"pong": True, "oracle": oracle}})
-            continue
-        if cmd == "clear":
-            # Release the active circuit (and any held loadshape memory-mapped
-            # file handle) so another process can compile the same case without a
-            # concurrent-mapping conflict. Used only by tools/opendss/xcheck_bridge.py.
-            try:
-                d.Text.Command = "clear"
-                reply({"ok": True, "result": {"cleared": True}})
-            except Exception as e:  # never kill the server on a clear
-                reply({"ok": False, "error": f"{type(e).__name__}: {e}"})
             continue
         if cmd != "run":
             reply({"ok": False, "error": f"unknown cmd {cmd!r}"})

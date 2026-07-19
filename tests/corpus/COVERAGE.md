@@ -4,7 +4,7 @@ _Generated 2026-07-16 20:53:52 UTC by
 `tools/corpus/coverage_report.py`. Do not edit by hand._
 
 Live oracle-comparison coverage of the vendored `electricdss-tst` corpus
-(`crates/dss-core/tests/corpus_live.rs`). Every `.dss` is accounted for in exactly
+(`crates/dss-core/tests/corpus_gate.rs`). Every `.dss` is accounted for in exactly
 one manifest (enforced by `corpus_manifest.rs`).
 
 | manifest | `.dss` files |
