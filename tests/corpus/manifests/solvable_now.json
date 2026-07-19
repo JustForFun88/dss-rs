@@ -582,10 +582,8 @@
    "path": "Version8/Distrib/Examples/Dynamic_Expressions/Dynamic_KundurDynExp.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "engines": "r4133",
-   "wp": "ORPHANED_GAPS §1.9 (UNIFIED_GATE defer_ledger retirement)",
-   "defer_ledger": "capi015-line DynamicExp: the port's DynExp state-var evaluation matches NEITHER surviving oracle -- re-measured 2026-07-19 (UNIFIED_GATE fix round, full seed): the pinned 0.14.5 AND EPRI r4133 AGREE with each other and the port differs from BOTH by ~1.5e-5 rel (node V entry 0). Per R3 this may NOT be ledgered -- a divergence the port shares against both oracles would pin a port-side DynExp bug, not an upstream difference; it needs a WP investigation of the DynExp evaluator, not a ledger entry. Kept defer_ledger (Rust-smoke).",
-   "note": "Flipped to oracle:capi015 by the DYNEXP WP (D14, upstream 2a8bdb78). This deck runs a full dynamics swing (fault at HT, cleared by opening a line, 5 s undamped swing) driven by a DynamicExp shaft model. D14 makes SolveEq a no-op evaluator, so the rotor stays frozen at its seed angle (theta 0.72907156 rad, speed 0) instead of swinging -- matching capi015 exactly, diverging from the 0.14.5 oracle (which swings). See DIVERGENCES.md §D14 and the generator_dynexp_dynamics_* unit gates. The steady-state-only sibling stays on the default oracle (never enters dynamics, so SolveEq is never called)."
+   "engines": "both",
+   "note": "Full DynamicExp dynamics swing (fault at HT, cleared by opening a line, 5 s undamped swing) driven by a DynamicExp shaft model. The BUG WP DynExp fix (reverted D14: SolveEq is the full RHS evaluator, matching the vendored 0.14.5 AND r4133 Pascal, not the retired capi015 0.15.x no-op) makes the port swing and match BOTH gating oracles: the generator rotor swings to theta 2.0362 rad / speed 0.6255 like the 0.14.5 oracle (was frozen at 0.72907 under D14). Gates on BOTH channels at the feeder tier floor with no ledger entry (the two oracles agree to ~4.8e-10; the port matches both). See DIVERGENCES.md §D14 and the generator_dynexp_dynamics_* unit gates."
   },
   {
    "path": "Version8/Distrib/Examples/ExpControl/Master.dss",
@@ -1961,9 +1959,7 @@
    "kind": "large_floating_delta",
    "n_steps": 1,
    "engines": "r4133",
-   "wp": "ORPHANED_GAPS §1.9 (UNIFIED_GATE defer_ledger retirement)",
-   "defer_ledger": "capi015-line DynamicExp: the port's DynExp state-var evaluation matches NEITHER surviving oracle -- re-measured 2026-07-19 (UNIFIED_GATE fix round, full seed): the pinned 0.14.5 AND EPRI r4133 AGREE with each other and the port differs from BOTH by ~1.5e-5 rel (node V entry 0). Per R3 this may NOT be ledgered -- a divergence the port shares against both oracles would pin a port-side DynExp bug, not an upstream difference; it needs a WP investigation of the DynExp evaluator, not a ledger entry. Kept defer_ledger (Rust-smoke).",
-   "note": "CF2-G migration; re-promoted from skipped_needs_investigation by the DYNEXP WP (D14 pulled ahead of WP-U1.6). GFL daily->dynamics DynamicExp/DynamicEq/DynOut variant of the GFL sibling. Double attribution off both mid-rung engines: (1) WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, DIVERGENCES.md #d7) moved it off the 0.14.5 oracle (witnessed 7.62e-4 > 7.41e-4 floor at entry 118); (2) the 0.15.x DynamicExp delta D14 (upstream 2a8bdb78) kept it off capi015 (witnessed 8.31e-3 > 7.40e-4 at entry 0). D14 ported: SolveEq now exits before evaluating the RHS (no-op evaluator; state-var derivative frozen at InitStateVars), so the DynExp path matches capi015 -- witnessed live: Generator dspeed=0/speed frozen vs 0.14.5 dspeed=-1.6e-6 (DIVERGENCES.md §D14). With D7 (landed) + D14 (this WP) both porting, the deck is capi015-green."
+   "note": "CF2-G migration. GFL daily->dynamics DynamicExp/DynamicEq/DynOut variant of the GFL sibling. Gates on r4133 for the SAME reason as its non-DynExp sibling: WP-U1.2 D7 (PVSystem dynamics iMaxPPhase PanelkW -> FkVArating, DIVERGENCES.md #d7) moves it off the 0.14.5 oracle (the daily shape puts PanelkW below FkVArating, so the dynamics current limit differs; witnessed 7.62e-4 > 7.41e-4 floor at entry 118). The BUG WP DynExp fix (reverted D14: SolveEq is the full RHS evaluator, matching r4133's full evaluator, not the retired capi015 0.15.x no-op) makes the DynExp state integrate; the deck now matches r4133 at the tier floor (no ledger entry) instead of the D14-frozen no-op. See DIVERGENCES.md §D14."
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",

@@ -332,6 +332,40 @@ stable) mis-fires that lint on the byte-faithful `match prop { CONST => if cond
 
 ## 1. Where we are
 
+### BUG WP DynExp — reverted the D14 `SolveEq` no-op; port swings, matches both oracles (branch `bug-dynexp`, 2026-07-19)
+
+The DynExp decks' `defer_ledger` said the port matched **neither** surviving
+oracle (0.14.5 and r4133 agree; port off both). Root cause: the earlier **D14**
+work adopted upstream `2a8bdb78`'s no-op `SolveEq` (an `Exit` before the RHS is
+evaluated) to match the retired **non-gating** capi015 (dss_capi 0.15.x), which
+**froze** the DynExp state at its `InitStateVars` seed. Both *gating* oracles run
+the full evaluator: vendored **0.14.5** `SolveEq` (`DynamicExp.pas:377`) and EPRI
+**r4133** `SolveEq` (`:497`) are byte-identical in structure and integrate — the
+rotor swings.
+
+- **First divergence** (Kundur DynExp, 1 dynamics substep): the DynExp derivative
+  slot `dspeed` — both oracles compute **-1.6169543e-6**; the D14 no-op port left
+  it at **0**. It compounds via the trapezoidal integrator; by the deck's 5 s
+  endpoint the port's node V diverged catastrophically at the deep nodes (HT.1:
+  oracle 122713 V @ 69.1° vs D14-frozen 193725 V @ 24.8°), while the quasi-ideal
+  source bus barely moved (~2.6 V, 1.5e-5 — the misleading "entry 0").
+- **Fix**: reverted `dynamic_exp.rs::solve_eq` to the full 0.14.5/r4133 evaluator
+  (full `0..cmds.len()` loop, safe `cmds.get(idx+1)` for the benign OOB read, no
+  early return, final upload after the loop); restored `get_out_idx`; fixed the
+  `dyneq_pce.rs` doc. Cited to `DynamicExp.pas:377`/`:497`.
+- **After** (measured live): the reverted port reproduces the oracle's step-1
+  `dspeed` -1.6169543e-6 to the f32 monitor floor, and the 5 s endpoint matches
+  (rotor `theta` 2.036 rad / `speed` 0.626; node V matches 0.14.5).
+- **Gating**: both `Dynamic_KundurDynExp.dss` and `GFLDaily_DynExp` had their
+  `defer_ledger` removed. Kundur gates on **both** channels at the feeder floor
+  (no ledger entry — the two oracles agree ~4.8e-10, the port matches both). GFL
+  gates on **r4133** (off `capi_v0145` for the separate D7 PVSystem-dynamics
+  reason, like its non-DynExp sibling). The pre-staged `dynexp-d14` ledger cause
+  is removed (no envelope needed).
+- **Tests**: the 7 `exec/tests/dynamics.rs` DynExp gates + the `dynamic_exp` unit
+  tests restored to their pre-D14 swinging-oracle pins (now guard against
+  re-introducing the no-op). All 34 dynexp/dynamics unit tests green.
+
 ### WASM-UM WP-WM.0 — ABI freeze + probes (branch `wasm-um`, 2026-07-18)
 
 `WASM_USERMODELS_PLAN.md` execution started (WM.0→WM.2 authorized for this
@@ -2745,15 +2779,14 @@ pristine. New unit tests pin the accessors:
 
 **Late-UPGRADE work records (historical — all landed; kept for the §UPGRADE
 cross-refs).**
-- **D14 (DynamicExp RPN "index-bug fix") — landed, pulled ahead of WP-U1.6** (branch
-  `dynexp-d14`). Upstream `2a8bdb78` adds an `Exit` to `SolveEq` that returns before
-  evaluating the RHS, making it a no-op evaluator: DynExp state variables freeze at
-  their `InitStateVars` seed (no rotor swing / inverter ramp). Ported 1:1
-  (`dynamic_exp.rs::solve_eq`), matching capi015 to the f32 floor (probed: generator
-  `speed`/`theta` frozen vs 0.14.5 swing). Unstraddled the parked
-  `GFLDaily_DynExp` deck (re-promoted `oracle:capi015`); flipped `Dynamic_KundurDynExp`
-  to capi015; re-pinned 7 `exec/tests/dynamics.rs` DynExp gates to the frozen values
-  (now D14 regression guards). See DIVERGENCES.md §D14.
+- **D14 (DynamicExp RPN "index-bug fix") — REVERTED 2026-07-19 (BUG WP DynExp).**
+  ~~landed, pulled ahead of WP-U1.6~~ Superseded: adopting the 0.15.x `2a8bdb78`
+  no-op `SolveEq` was a mistake — it targeted the retired **non-gating** capi015
+  and the port matched neither surviving oracle. Both gating channels (pinned
+  0.14.5 `DynamicExp.pas:377` AND EPRI r4133 `:497`) run the full RHS evaluator
+  and integrate. `solve_eq` is restored to that full evaluator and the DynExp
+  gates re-pinned to the swinging-oracle values. See the **BUG WP DynExp** record
+  in §1 and DIVERGENCES.md §D14.
 - **WP-U1.8 (WindGen + WTG3 dynamics) — LANDED** on branch `wp-u18` (new PC element +
   the general dynamics-entry Y-rebuild fix + the `micro_wtg3_dynamics` floor tier).
   See the UPGRADE record below.
