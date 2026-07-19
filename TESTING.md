@@ -96,17 +96,38 @@ names were retired 2026-07-07 — see the STATUS.md rename map):
 | `adiakoptics/` | in-test (`DSS_REGEN_AD_GOLDEN=1`) | `adiakoptics.rs` | A-Diakoptics init/solve matrices (ZLL/ZCC/Y4) |
 | `ieee*.json`, `slice`, `allocation`, `autoadd_reduce`, `gendispatcher`, `ieee8500`, `reliability`, `parser` | `generate.py` / `gen_<name>.py` | `golden_smoke.rs`, `golden_feeders_controls.rs`, `golden_slice.rs`, … | named feeders / features |
 
-**Frozen historical generator arms.** A few generators targeted the retired
-Oddie/EPRI-python engines and can no longer run: `gen_bh_capi015.py`,
-`gen_regcontrol_capi015.py`, `gen_fuse_r4133.py` (individual `props/` captures
-against the deleted Oddie venv) and `gen_checkpoints.py`'s
-`DSS_ORACLE_ENGINE=capi015` arm (reads the deleted
-`tools/opendss/PIN_OPENDSS.txt`). They are **dead paths kept as provenance**:
-the goldens they produced are pinned and frozen, the live `capi` regen arm is
-unaffected, and golden generators are never edited (gate rule). The frozen
-A-Diakoptics trusted baseline (`crates/dss-core/tests/data/adiakoptics/
-r3723_ref/`, gated by `ad_reference.rs`) similarly lost its harvester — see
+**Frozen historical generator arms.** A few generators (or arms of them)
+targeted the retired Oddie/EPRI-python engines and can no longer run:
+`gen_bh_capi015.py`, `gen_regcontrol_capi015.py`, `gen_fuse_r4133.py`
+(individual `props/` captures against the deleted Oddie venv),
+`gen_checkpoints.py`'s `DSS_ORACLE_ENGINE=capi015` arm (reads the deleted
+`tools/opendss/PIN_OPENDSS.txt`), **`gen_flicker.py` in its entirety** (the
+`flicker/` golden was captured from the official EPRI **r3723** binary through
+the Oddie venv — `from dss import IOddieDSS` — because the pinned 0.15.7
+oracle segfaults on any mode-4 monitor read; both the r3723 DLL and the venv
+were deleted in Phase E), and **`gen_protection.py`'s `ODDIE_SCENARIOS` arm**
+(`fuse_blow`/`swt_manual`, captured on r4133 via `IOddieDSS`; its plain-capi
+scenarios still regenerate with the pinned oracle). They are **dead paths kept
+as provenance**: the goldens they produced are pinned and frozen, the live
+`capi` regen arms are unaffected, and golden generators are never edited (gate
+rule). Regenerating any of the frozen goldens would require restoring the
+non-pinned environment (Oddie venv, 0.16.0b2 wheels, `PIN_OPENDSS.txt`,
+r3723 binaries) from git history — or reimplementing the capture over the
+`epri-worker` bridge. The frozen A-Diakoptics trusted baseline
+(`crates/dss-core/tests/data/adiakoptics/r3723_ref/`, gated by
+`ad_reference.rs`) similarly lost its harvester — see
 `tools/opendss/README.md`.
+
+**Retired probe scripts.** The Phase E retirement also deleted the one-off
+oracle probes `tools/opendss/probe_59n.py`, `sweep_modes_isolated.py`,
+`sweep_merge.py`, `ab_compare.py`. NB `probe_59n.py` was the checked-in
+reproduction artifact for the 59N relay chaotic-dynamics floor (2026-07-17
+reproducibility remediation): the citations at
+`crates/dss-core/src/elements/control/relay/tests.rs` and
+`tests/corpus/manifests/skipped_needs_investigation.json` are now
+**historical** — re-running that oracle read requires restoring the script
+from git history and re-hosting it on the `epri-worker` bridge (the r4133 DLL
+it drove is still vendored; the Python bridge it used is not).
 
 The three `der_controls` / `line_constants` / `harmonics` gates share one
 replay engine, `tests/harness/scenario.rs::check_family`.
@@ -293,6 +314,9 @@ All verified against the consumers named. The `DSS_GATE_*` knobs live in
 | `DSS_ORACLE_PYTHON` | corpus_gate | interpreter for the **pinned** oracle (default `python`) |
 | `DSS_ORACLE_TIMEOUT_SECS` | corpus_gate | per-request worker deadline in seconds (default 120; CI uses 600) |
 | `DSS_EPRI_WORKER` | corpus_gate | path of the `epri-worker` binary (default `target/<profile>/epri-worker`, auto-built via `cargo build -p dss-epri` if missing) |
+| `DSS_EPRI_ACTOR_TIMEOUT_SECS` | dss-epri (`dss.rs::wait_for_actor`) | deadline for a wedged r4133 solve-actor (default 300); on expiry the case fails instead of hanging the worker |
+| `DSS_EPRI_DLL` | dss-epri (`smoke.rs::dll_path`) | override the r4133 DLL path (default the git-tracked `tools/opendss/bin/r4133/OpenDSSDirect.dll`) |
+| `DSS_EPRI_EXPECT` | dss-epri (`smoke.rs::expect_version`) | override the version-pin substring (default read from `tools/opendss/revisions.json`) |
 | `DSS_GATE_JOBS` | corpus_gate | scheduler thread count (default `available_parallelism()`; per-channel worker pools size to `max(2, jobs/2)`) |
 | `DSS_GATE_RECYCLE_AFTER` | corpus_gate | cases served per worker before respawn. **Default 1** (fresh worker per case = deterministic); raise for a faster, non-deterministic dev loop |
 | `DSS_GATE_ONLY` | corpus_gate | comma-separated substring filter over case labels — a loud PARTIAL run for triage; **panics if nothing matches** |
@@ -323,9 +347,12 @@ invocation, or the known export-CWD corner) is uncoverable —
 **Regenerate a golden** (manual, deliberate — never in CI): install the pinned
 venv from `tools/golden/PIN.txt`, then run the matching `tools/golden/gen_*.py`.
 Goldens pin intentional upstream inexactnesses (`TODO(compat)`), so improved
-precision reads as a porting bug — do not regenerate to "fix" a diff. The
-capi015/r4133-arm generators are frozen dead paths (see "Frozen historical
-generator arms" above).
+precision reads as a porting bug — do not regenerate to "fix" a diff. This
+procedure covers the **pinned-oracle (capi) arms only**: the
+capi015/r4133/r3723-arm generators — including all of `gen_flicker.py` and
+`gen_protection.py`'s `ODDIE_SCENARIOS` — are frozen dead paths whose
+environment no longer exists (see "Frozen historical generator arms" above);
+their goldens stay pinned as-is.
 
 **Re-vendor the corpus** — `python tools/corpus/vendor.py --force`, then review
 the `tests/corpus/SHA256SUMS` diff.

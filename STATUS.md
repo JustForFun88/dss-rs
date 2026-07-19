@@ -2289,7 +2289,14 @@ F rewrites these); (c) behavioral-spec / oracle-provenance citations in
 `crates/dss-core/src/**` and test docs (which oracle calibrated a value —
 `capi015`/`oddie:r4133`/`r4088`, analogous to STATUS records, not live wiring);
 (d) golden generators `tools/golden/gen_*.py` (UNTOUCHED per the gate rules; frozen
-manual tooling — `gen_protection.py` reads r4133 from `revisions.json`, still valid);
+manual tooling. NB — corrected at Phase F settle per re-review finding F2: the
+original "gen_protection.py … still valid" wording here was overstated. The r4133
+`ODDIE_SCENARIOS` arm of `gen_protection.py` and ALL of `gen_flicker.py` need
+`from dss import IOddieDSS`, absent in pinned 0.15.7, and their environment —
+Oddie venv, 0.16.0b2 wheels, `PIN_OPENDSS.txt`, r3723 binaries — was deleted in
+this phase: they are frozen dead paths; regen would need a git-history restore.
+Goldens are frozen so the gate is unaffected. See TESTING.md §Frozen historical
+generator arms);
 (e) frozen corpus fixtures — `.dss` deck comments + manifest `note`/`ledger` cause
 provenance; (f) committed AD trusted-baseline data `tests/data/adiakoptics/r3723_ref/`
 + its PROVENANCE.txt; (g) WASM/FPC ABI lineage (`tools/fpc/usermodel_abi`,
@@ -2435,6 +2442,84 @@ clippy `-D warnings` exit 0 (51 s); `cargo +stable test --workspace` exit 0
 the known §1g export-CWD leftovers); junctions intact. The `unified-gate-v1`
 tag is created at settle on the final integrated head (deliberately not in
 this record).
+
+### Phase F settle — three audits + the Scope B re-review (2026-07-19)
+
+Three independent reviews returned: **audit-code** (docs, 4 findings),
+**audit-tests** (acceptance, 4 findings), and the **user-mandated fable
+re-review of the opus fix round** (Scope B — the "independent parallel audit"
+the record above pointed at; it materialized, verdict below). Both doc audits
+independently re-verified essentially every TESTING.md/CLAUDE.md claim against
+the live code and found the rewrites honest; audit-tests additionally
+corroborated the clean-clone acceptance in a second fresh clone (fmt/clippy
+exit 0 reproduced; its `cargo test` was still running clean at report cutoff —
+the phase's own clean-clone run above is the §6 acceptance evidence).
+
+**Scope B re-review verdict: PASS, nothing gating.** 11 of ~19 new ledger
+envelopes plus the gfm class re-derived from the LIVE engines with an
+independent protocol driver: every envelope is a measured upstream divergence
+(Delphi 6-sig-fig display rendering, whole-model fpc-vs-delphi transcendental
+ulp, seq-transform drift, the discrete normamps min-over-phase jump, hard #303
+crashes); measured provenance values reproduce digit-for-digit (4.900e-06,
+1.313e-06, 4.05e-06, 5.95e-04, 1.62e-06 …); the storage-display 1e-5 vs gfm
+1e-6 split is empirically justified (mantissa-class ceilings 4.95e-6 vs
+8.8e-7; the capi channel strict-gates the same probes at full f64); the two
+R3-critical non-retirements are correct — regcontrol_idle is a genuine ~8.8 %
+/ 620 V wholesale divergence (r4133 taps to 15 despite `idle=yes`; the port
+holds tap 1.0 = the retired capi015 semantics — the follow-up WP should check
+the dss_capi-0.15-vs-EPRI idle delta before assuming a port tap-init bug), and
+Kundur DynExp is matches-neither (the two oracles agree to 4.8e-10 while the
+port is 1.52e-5 off BOTH — ledgering it would have hidden a potential port-side
+DynExp-evaluator bug). Eventlog stay-capi divergences verified real on live
+r4133 (actor-suffix `StorageController1.`, STORAGE/DER wording). All-props
+confirmed capability-only (scheduler masks it off every r4133 request; FFI
+copies immediately, SAFETY-documented). Informational: 13 of 20 ledger causes
+are channel-narrowing documentation with no current entry (Phase D heritage).
+
+**Finding dispositions (all settled empirically at settle, in this commit):**
+
+- *PF-1 / F-PHF-1 (Scope D silently dropped) — CONFIRMED, fixed.* The phase
+  agent skipped brief Scope D; all four items are now done: **F1**
+  `tools/corpus/README.md` no longer claims `dsspy_crosscheck.py` "moved"
+  (deleted, Phase E); **F2** TESTING.md's frozen-arms list now includes
+  `gen_flicker.py` (entirely Oddie/r3723) and `gen_protection.py`'s
+  `ODDIE_SCENARIOS` arm, the regen procedure scopes itself to capi arms, and
+  the §1m survivor-class (d) overstatement is corrected in place; **F3** the
+  `probe_59n.py` reproducibility regression is recorded (TESTING.md §Retired
+  probe scripts — the relay/tests.rs + skipped-manifest citations are
+  historical; manifest/test text untouched per the brief); **F4** the five
+  remaining stale `xcheck_bridge.py` present-tense comments in `dss-epri`
+  (epri-worker.rs, lib.rs, capture.rs, dss.rs ×2) now say the cross-check was
+  retired with its stack.
+- *PF-2 — CONFIRMED, fixed* (the F2 items above).
+- *PF-3 / F-PHF-2 (Scope B existence) — resolved:* the re-review ran and its
+  record is this section.
+- *PF-4 (env table incomplete) — CONFIRMED, fixed:* `DSS_EPRI_ACTOR_TIMEOUT_SECS`
+  (default 300, `dss.rs::wait_for_actor`), `DSS_EPRI_DLL`, `DSS_EPRI_EXPECT`
+  (smoke overrides) added to the TESTING.md table.
+- *F-PHF-3 (tag) — done at settle:* annotated `unified-gate-v1` created on the
+  final head as the last act (plan §6).
+- *F-PHF-4 — noted:* the audit's corroboration clone was cleaned up; its gate
+  was green through fmt/clippy and mid-`cargo test` (zero failures observed)
+  at cutoff.
+- *RR-1 (non-numeric exact-pair oracle-only pin hole) — CONFIRMED, fixed
+  (tightening, latent — no live entry exercises the path):* the `rust` pin is
+  now MANDATORY in the non-numeric probe/property arms of
+  `corpus_gate/ledger.rs` (mirroring the fix-round F1/F2 numeric fix), and
+  `assert_structural` now statically rejects any exact-pair scope (no
+  `num_rel`) without a `rust` pin — the drift hole is closed in both arms and
+  at load time.
+- *RR-2 (skip provenance text) — CONFIRMED, fixed:* the
+  `r4133-linespacing-asym-303` ledger `source` now records the live-re-derived
+  crash site (compile of the `tscables=[…]` line, offset 41CE5E — not calcv,
+  which is the IEEE13_LineSpacing sibling). Free-text-only change; the skip
+  itself was re-derived correct. `population.lock.json` regenerated via the
+  sanctioned `DSS_UPDATE_POPULATION_LOCK=1` path (the entry digest covers the
+  full serialized entry by design); diff verified to touch only that case's
+  ledger tag.
+
+Settle gate + the `unified-gate-v1` tag: recorded in the commit that carries
+this section (gate results in the final report).
 
 ## 1j. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
 
