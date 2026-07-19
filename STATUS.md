@@ -5716,3 +5716,121 @@ Smoke now: `cargo test -p dss-epri` = 4 lib unit tests + `protocol.rs`'s 3
 end-to-end tests (`scripting_surface_end_to_end`,
 `capability_surface_end_to_end`, `ymatrix_before_compile_is_guarded_not_a_crash`)
 all green against the real r4133 DLL. Nothing deliberately left unfixed.
+
+### WASM-UM WP-WM.5 — CapControl user control: ABI probe + the `get_public_data` asymmetry finding (branch `wasm-wm5`, 2026-07-19)
+
+Plan §WP-WM.5 (CapControl `UserModel=`/`UserData=` over WASM, the 7-function
+`CapControlInstance`). This round lands the **probe-frozen ABI foundation** plus a
+**proven design finding** that redirects the fixture/golden design before the
+element wiring is built. The finding was reached by the brief's binding rule
+("the r4133 engine is the numeric oracle; disagree → STOP and record (probe
+both)") — probing BOTH the 0.14.5 wiring spec and the r4133 oracle source.
+
+**Correction of an earlier draft of this record (both engines re-probed):** the
+earlier claim "dss_capi 0.14.5 never sets `PublicDataStruct`, so the CapUserControl
+interface is inert on 0.14.5 and works only on r4133" is **wrong**. BOTH engines
+set `PublicDataStruct := @ControlVars` ("So User-written models can access" —
+0.14.5 `CapControl.pas:535`, r4133 `:518`). The real 0.14.5-vs-r4133 difference is
+only the **record layout** (Boolean/no-`{$Z4}` — items (ii)/(iii) below).
+
+**Landed (foundation, gate-green):**
+1. **P9 FPC probe of r4133 `TCapControlVars`** — `tools/fpc/usermodel_abi/
+   abi_probe_capcontrolvars.pas` compiles the REAL vendored r4133 unit
+   `Version8/Source/Controls/CapControlVars.pas` (`-dUSER_DLL` variant, no engine
+   closure). Evidence `docs/wasm/probes/p9_offsets_capcontrolvars_r4133.txt`; P9
+   step in `build_probes.ps1`. **184 B; `EControlAction` 1 B (no `{$Z4}`);
+   `Voverride` Boolean (1 B); `SampleV`@132, `FPendingChange`@111,
+   `ShouldSwitch`@112, `PresentState`@114, `AvailableSteps`@152.**
+2. **`crates/dss-usermodel::records::CapControlVars`** — the dss-rs
+   `get_public_data` codec at the r4133 layout (the `Sample` context + bank state;
+   the rest of the 184 B stays zero on the wasm side). 1-byte
+   `EControlAction`/`Boolean` slots via `put_i8`/`get_i8`; round-trip test
+   `cap_control_vars_offsets_match_probe`. Exported. Kept as documented dss-rs
+   `get_public_data` infra (see the finding), NOT consumed by the reference
+   fixture.
+3. **ABI doc corrections** (`docs/wasm/USERMODEL_ABI.md` header decision (c) +
+   §2.5): the true layout facts + the `get_public_data` asymmetry finding + the
+   `get_node_voltages` resolution; the decision-signalling note rewritten to the
+   plain-push `control_queue_push` design.
+
+**THE FINDING — `get_public_data` is NOT oracle-gatable for CapControl (proven,
+both engines):** a wasm CapControl model's natural context channel is
+`get_public_data` (the model's `sample()` takes no args). On the **dss-rs** side
+`get_public_data` binds to the *owning* element (plan §2.3/§4), so it reliably
+returns the owning CapControl's `@ControlVars`. On the **native** (r4133) side the
+`GetPublicDataPtr` callback returns `ActiveCircuit.ActiveCktElement.PublicDataStruct`
+— the **global** active element — and **neither engine sets `ActiveCktElement` to
+the CapControl during control sampling**: `SampleControlDevices` iterates
+`DSSControls` without touching it (0.14.5 `Solution.pas`; r4133
+`Solution.pas:3606`), and `CapControl.Sample` sets only
+`ControlledElement.ActiveTerminalIdx` (r4133 `:909`), as do
+`MonitoredElement.Power[]`/`.GetCurrents` (`CktElement.pas`, only `ActiveTerminalIdx`).
+So a **native twin's `GetPublicDataPtr` does NOT return `@ControlVars`** and cannot
+reproduce the dss-rs owning-element-bound payload — the same holds for every
+`GetActiveElement*` tier-A read during `Sample`. (Almost certainly why no vendored
+CapUserControl example exists.) A `get_public_data`-based fixture would therefore be
+un-gatable ("Rust agrees with itself"), which the brief forbids. Note this
+contradicts the plan §2.3 "no observable divergence vs the single-context oracle"
+claim for the CapControl case — the divergence is not about context (single vs
+multi) but about which *element* is active, which upstream leaves indeterminate at
+`Sample` time.
+
+**THE RESOLUTION (within settle authority — no ABI change):** the reference
+`capuserctl` fixture reads its control voltage through the **symmetric**
+`get_node_voltages` (`GetPtrToSystemVarray` → converged `Solution.NodeV`, ABI row
+17) channel — identical on both engines after convergence — with the monitored
+node index supplied via `UserData`. The guest signals its decision via
+`control_queue_push(hour, sec, code, proxy_hdl)`, a **plain queue push** matching
+the native twin's `CallBacks.ControlQueuePush` (→ `ControlQueue.Push` directly,
+`DSSCallBackRoutines.pas:444`; ShouldSwitch/engine-arming NOT used on either side);
+when the queue pops, `DoPendingAction` sets `PendingChange = Code` and the shared
+switch block acts. This keeps the WM.5 gate a real r4133-native-twin oracle check.
+This is a fixture-design choice (`get_node_voltages` is already a frozen ABI slot),
+not a recorded-decision ABI change.
+
+**Record-layout divergences (ii)/(iii)** — additive to the WASM path (no corpus
+deck loads a `.wasm` CapControl); r4133 frozen (WM.3 re-freeze precedent):
+(ii) `Voverride` r4133 `Boolean` (1 B) vs 0.14.5 `LongBool` (4 B); (iii)
+`EControlAction` r4133 no `{$Z4}` (1 B) vs 0.14.5 int32. `DIVERGENCES.md` gets no
+entry (feature-enabling engine-version choice on new additive code, not a
+reproduced-vs-not upstream bug).
+
+**Settled design for the remaining wiring (redirected to `get_node_voltages`):**
+- **Element flip.** `UserModel`/`UserData` flip from `NOT_PORTED`
+  (`cap_control/mod.rs:132-133`) to the §2.4 uniform rule (parse+store+warn/load);
+  add `CapControlType::UserControl` (Pascal `USERCONTROL`); `PropertySideEffects`
+  sets it when the model exists (`CapControl.pas:439-440`).
+- **Sample** (`control_loop.rs` USERCONTROL arm, `CapControl.pas:1054-1069`): serve
+  the guest `get_node_voltages` (converged `node_v`) + `get_dynamics_rec` (time)
+  snapshot, run `sample()`, drain `Effect::ControlQueuePush` into the real control
+  queue (plain push), route `Effect::Msg` into the error sink (WM.3
+  no-silent-fallback). No engine-side arming for USERCONTROL. `get_public_data` may
+  also be served (owning CapControlVars) for completeness, but the fixture uses
+  `get_node_voltages`.
+- **DoPendingAction** (`CapControl.pas:725-733`): set `pending_change = code`, call
+  guest `do_pending(code, proxy)`, run the existing switch block on `pending_change`.
+- **Fixture `capuserctl`** (both targets, one shared decide core, WM.4 pattern):
+  deadband on `|node_v[node]|` (node from `UserData`) → `control_queue_push`. The
+  native twin's `New(var CallBacks)` captures `TDSSCallBacks` and calls
+  `GetPtrToSystemVarray`@128 + `ControlQueuePush`@240 + `GetDynamicsStruct`@184
+  (r3723=r4133 vtable, `p2_offsets_r3723.txt`). Deck
+  `tools/golden/wasm_decks/wasm_capcontrol.dss`; a load step drives a monotone
+  voltage excursion comfortably clear of the deadband edges (no threshold-straddle,
+  so the faer-vs-KLU floor cannot flip a decision).
+- **Golden** — NEW event-log schema (ordered switch rows `**Opened**`/`**Closed**`/
+  `**Step Up/Down**` + hour/sec + `Msg` lines) + final cap state + node voltages;
+  `crates/dss-epri/tests/gen_wasm_usermodels_wm5.rs` (r4133 bridge + native twin,
+  env-gated) → replayed by `crates/dss-core/tests/wasm_usermodels_wm5.rs`. Ordered
+  parallel arrays + index compare (WM.3 schema precedent — never a name-keyed map).
+
+**Remaining scope (NOT in this round).** The element wiring, the `capuserctl`
+fixture (both targets) + wasm build + PIN, the native-twin callback FFI
+(`GetPtrToSystemVarray`/`ControlQueuePush`), the event-log golden gen + hermetic
+gate, and the two audits + settle. This round stops at the probe/ABI/codec
+foundation + the redirected design: the earlier draft was heading toward a
+`get_public_data` fixture that the finding proves is un-gatable, so locking the
+correct channel first prevents building an un-oracle-able fixture. Escape protocol
+honored — tree gate-green, no half-wired engine path (`CapControlVars` is
+documented leaf infra like WM.1's `CapControlInstance`); `UserModel`/`UserData`
+stay `NOT_PORTED` until the element flip lands.
+

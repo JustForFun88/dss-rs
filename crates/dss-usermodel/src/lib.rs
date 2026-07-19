@@ -49,4 +49,4 @@ pub use callbacks::{Callbacks, Effect, NoCallbacks};
 pub use error::UserModelError;
 pub use host::{HostConfig, InterfaceKind, UserModelHost};
 pub use instance::{CapControlInstance, Shuttle, UserModelInstance};
-pub use records::{DynamicsRec, GeneratorVars};
+pub use records::{CapControlVars, DynamicsRec, GeneratorVars};

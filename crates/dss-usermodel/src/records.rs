@@ -35,6 +35,19 @@ macro_rules! get_i32 {
         i32::from_le_bytes($buf[$off..$off + 4].try_into().expect("4-byte slice"))
     };
 }
+/// One-byte fields: Pascal `EControlAction` (r4133 has NO `{$Z4}`, so the
+/// Delphi-mode default is 1 byte — probe `p9_offsets_capcontrolvars_r4133.txt`)
+/// and `Boolean` (1 byte). Stored as `i8`/`u8` in the image.
+macro_rules! put_i8 {
+    ($buf:expr, $off:expr, $v:expr) => {
+        $buf[$off] = ($v as i8) as u8
+    };
+}
+macro_rules! get_i8 {
+    ($buf:expr, $off:expr) => {
+        $buf[$off] as i8 as i32
+    };
+}
 
 /// Pascal `TDynamicsRec` (`Shared/Dynamics.pas:42-52`) — the dynamics record
 /// shared with the model by reference; the model reads mode/step and may
@@ -250,6 +263,112 @@ impl GeneratorVars {
     }
 }
 
+/// Pascal `TCapControlVars` — the CapControl's `PublicDataStruct := @ControlVars`
+/// record (`CapControl.pas:518` r4133 / `:535` dss_capi 0.14.5, "So User-written
+/// models can access"). This is the dss-rs `get_public_data` payload for a
+/// CapControl instance: on the dss-rs side the host writes the *owning*
+/// CapControl's `Sample` context (`SampleP/V/Curr`, bank state) here before
+/// `sample()` and the guest reads it back. It is frozen from the P9 probe of the
+/// r4133 engine record (`docs/wasm/probes/p9_offsets_capcontrolvars_r4133.txt`;
+/// ABI doc §2.5).
+///
+/// **Layout is the r4133 engine image — 184 bytes packed.** BOTH engines set
+/// `PublicDataStruct := @ControlVars` (0.14.5 `:535` and r4133 `:518` — the
+/// earlier "0.14.5 never sets it" note was wrong). What differs is the **record
+/// layout**: r4133 `Voverride` is **Boolean (1 B)** vs 0.14.5 `LongBool (4 B)`,
+/// and r4133 `EControlAction` is **1 B** (no `{$Z4}`) vs 0.14.5's int32 — so the
+/// whole tail from `Voverride` on is packed tighter than the 0.14.5 record. The
+/// r4133 layout is chosen because the WM.5 gate oracle is the r4133 bridge
+/// (WM.3 re-freeze precedent).
+///
+/// Only the fields a CapControl model interacts with are mapped (the `Sample`
+/// context + the bank state); the remaining bytes of the 184-byte image are the
+/// CapControl's other public data the model never reads and stay zero on the wasm
+/// side (the native engine populates the whole record). Assembled field-by-field
+/// at the probed offsets, never via `#[repr(C)]` (the record is deliberately
+/// unaligned — `Vmax` at 95, `SampleP` at 116).
+///
+/// **NOT oracle-gatable via a native twin (proven — ABI doc §2.5).** A *native*
+/// CapControl model reads this record via the `GetPublicDataPtr` callback, which
+/// returns `ActiveCircuit.ActiveCktElement.PublicDataStruct` — the *global* active
+/// element. Neither engine sets `ActiveCktElement` to the CapControl during
+/// control sampling (`SampleControlDevices` does not; `CapControl.Sample` does not
+/// — 0.14.5 `Solution.pas` / r4133 `CapControl.pas:909`), so `GetPublicDataPtr`
+/// does NOT return `@ControlVars` and a native twin cannot reproduce the dss-rs
+/// `get_public_data` (owning-element-bound) payload. This image is therefore the
+/// dss-rs-side `get_public_data` contract only; the reference `capuserctl` fixture
+/// reads its control voltage through the **symmetric** `get_node_voltages`
+/// (`GetPtrToSystemVarray` → converged `Solution.NodeV`) channel instead, so it
+/// IS oracle-gatable against the r4133 native twin. The guest signals its decision
+/// through `control_queue_push` (a plain queue push matching the native twin's
+/// `CallBacks.ControlQueuePush`); the pushed `code` becomes the `PendingChange`
+/// that `DoPendingAction` acts on.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct CapControlVars {
+    /// `FPendingChange: EControlAction` (offset 111, 1 byte) — the desired
+    /// action (CTRL_NONE/OPEN/CLOSE…). In the native contract a model writes it
+    /// via `@ControlVars`; over WASM the guest signals via `control_queue_push`
+    /// (see the type note) and the host sets `PendingChange` from the pushed code.
+    pub pending_change: i32,
+    /// `ShouldSwitch: Boolean` (offset 112, 1 byte) — an action is pending.
+    pub should_switch: bool,
+    /// `PresentState: EControlAction` (offset 114, 1 byte) — the bank's current
+    /// open/closed state (read by the model to pick a direction).
+    pub present_state: i32,
+    /// `SampleP: Complex` (offsets 116 re / 124 im) — monitored terminal power,
+    /// kW + j·kvar (`CapControl.pas:1057`).
+    pub sample_p: (f64, f64),
+    /// `SampleV: Double` (offset 132) — the control voltage (PT-ratio + phase
+    /// selection applied, `CapControl.pas:1060`).
+    pub sample_v: f64,
+    /// `SampleCurr: Double` (offset 140) — the control current
+    /// (`CapControl.pas:1063`).
+    pub sample_curr: f64,
+    /// `NumCapSteps: Integer` (offset 148).
+    pub num_cap_steps: i32,
+    /// `AvailableSteps: Integer` (offset 152).
+    pub available_steps: i32,
+    /// `LastStepInService: Integer` (offset 156).
+    pub last_step_in_service: i32,
+}
+
+impl CapControlVars {
+    /// Size of the packed r4133 image (probe: `SizeOf(TCapControlVars) = 184`).
+    pub const SIZE: usize = 184;
+
+    /// Serialize to the packed little-endian image at the r4133 offsets. Fields
+    /// not modeled here stay zero (the model never reads them on the wasm side).
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+        let mut b = [0u8; Self::SIZE];
+        put_i8!(b, 111, self.pending_change);
+        put_i8!(b, 112, i32::from(self.should_switch));
+        put_i8!(b, 114, self.present_state);
+        put_f64!(b, 116, self.sample_p.0);
+        put_f64!(b, 124, self.sample_p.1);
+        put_f64!(b, 132, self.sample_v);
+        put_f64!(b, 140, self.sample_curr);
+        put_i32!(b, 148, self.num_cap_steps);
+        put_i32!(b, 152, self.available_steps);
+        put_i32!(b, 156, self.last_step_in_service);
+        b
+    }
+
+    /// Deserialize the modeled fields from the packed little-endian image.
+    pub fn from_bytes(b: &[u8; Self::SIZE]) -> Self {
+        Self {
+            pending_change: get_i8!(b, 111),
+            should_switch: b[112] != 0,
+            present_state: get_i8!(b, 114),
+            sample_p: (get_f64!(b, 116), get_f64!(b, 124)),
+            sample_v: get_f64!(b, 132),
+            sample_curr: get_f64!(b, 140),
+            num_cap_steps: get_i32!(b, 148),
+            available_steps: get_i32!(b, 152),
+            last_step_in_service: get_i32!(b, 156),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,6 +437,39 @@ mod tests {
         assert_eq!(f64::from_le_bytes(b[228..236].try_into().unwrap()), 0.9);
         assert_eq!(f64::from_le_bytes(b[236..244].try_into().unwrap()), 20.0);
         assert_eq!(GeneratorVars::from_bytes(&b), g);
+    }
+
+    /// `CapControlVars` fields sit at their probe-frozen r4133 offsets
+    /// (`p9_offsets_capcontrolvars_r4133.txt`), incl. the 1-byte `EControlAction`
+    /// / `Boolean` slots and the unaligned `SampleP` complex at 116.
+    #[test]
+    fn cap_control_vars_offsets_match_probe() {
+        let cv = CapControlVars {
+            pending_change: 2, // CTRL_CLOSE
+            should_switch: true,
+            present_state: 1, // CTRL_OPEN
+            sample_p: (123.0, -45.0),
+            sample_v: 122.5,
+            sample_curr: 300.0,
+            num_cap_steps: 4,
+            available_steps: 3,
+            last_step_in_service: 2,
+        };
+        let b = cv.to_bytes();
+        assert_eq!(b.len(), 184);
+        assert_eq!(b[111] as i8 as i32, 2);
+        assert_eq!(b[112], 1);
+        assert_eq!(b[114] as i8 as i32, 1);
+        assert_eq!(f64::from_le_bytes(b[116..124].try_into().unwrap()), 123.0);
+        assert_eq!(f64::from_le_bytes(b[124..132].try_into().unwrap()), -45.0);
+        assert_eq!(f64::from_le_bytes(b[132..140].try_into().unwrap()), 122.5);
+        assert_eq!(f64::from_le_bytes(b[140..148].try_into().unwrap()), 300.0);
+        assert_eq!(i32::from_le_bytes(b[148..152].try_into().unwrap()), 4);
+        assert_eq!(i32::from_le_bytes(b[152..156].try_into().unwrap()), 3);
+        assert_eq!(i32::from_le_bytes(b[156..160].try_into().unwrap()), 2);
+        assert_eq!(CapControlVars::from_bytes(&b), cv);
+        // Unmodeled bytes stay zero (the model reads none of them on wasm).
+        assert!(b[0..111].iter().all(|&x| x == 0));
     }
 
     /// Byte-exact round trip with every field holding a distinct bit pattern.

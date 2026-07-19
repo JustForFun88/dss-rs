@@ -5,6 +5,31 @@ noted in this header and in `STATUS.md` §WASM-UM.
 
 Recorded decisions:
 
+- **2026-07-19 (c) — WP-WM.5 CapControl: `TCapControlVars` image frozen (r4133
+  layout) + the `get_public_data` asymmetry finding → the reference fixture uses
+  `get_node_voltages` (§2.5).** The CapControl `get_public_data` image is frozen
+  from the FPC probe of the **r4133** engine record
+  (`docs/wasm/probes/p9_offsets_capcontrolvars_r4133.txt` — 184 B,
+  `EControlAction` 1 B, `Voverride` Boolean). Corrections to an earlier draft of
+  this decision (both settled from source, both engines probed):
+  (i) **BOTH engines set `PublicDataStruct := @ControlVars`** ("So User-written
+  models can access" — 0.14.5 `CapControl.pas:535`, r4133 `:518`); the earlier
+  "0.14.5 never sets it / interface inert on 0.14.5" claim was wrong. The real
+  0.14.5-vs-r4133 difference is the **record layout**: (ii) r4133 `Voverride`
+  `Boolean` (1 B) vs 0.14.5 `LongBool` (4 B); (iii) r4133 `EControlAction` no
+  `{$Z4}` (Delphi-default 1 B) vs 0.14.5's int32 — shifting the whole tail. The
+  r4133 layout is frozen (WM.3 re-freeze precedent — decision (b)). **Key
+  finding:** `get_public_data` (`GetPublicDataPtr`) is **NOT oracle-gatable** for
+  CapControl — it returns the *global* `ActiveCktElement`, which neither engine
+  sets to the CapControl during control sampling
+  (`SampleControlDevices`/`CapControl.Sample` on both), so a native twin cannot
+  reproduce the dss-rs owning-element-bound `get_public_data` payload. The
+  reference `capuserctl` fixture therefore reads its control voltage through the
+  **symmetric** `get_node_voltages` (`GetPtrToSystemVarray` → converged
+  `Solution.NodeV`) channel instead — that IS reproducible on the r4133 native
+  twin, keeping the WM.5 gate a real cross-engine oracle check. All additive to
+  the WASM path (no corpus deck loads a `.wasm` CapControl). See §2.5 + STATUS
+  §WASM-UM WP-WM.5.
 - **2026-07-19 (a)** — §4 row 17 `get_node_voltages` ground-slot indexing
   documented (settles audit finding WM-AUD-1; the WM.1 crate contract is
   unchanged, the doc had omitted the decision).
@@ -195,13 +220,106 @@ GenModel=6 dynamics takes `Iterminal` as returned, `:1900`; Storage
 the native contract end-to-end: converged Model=6 terminal currents equal the
 model's `Calc` output exactly.
 
-### 2.4 Storage / PVSystem / CapControl records
+### 2.4 Storage / PVSystem records
 
-`TStorageVars` / `TPVSystemVars` / `TCapControlVars` images are frozen the same
-way at their owning WPs (WM.4/WM.5) with a probe extension — same
-extraction+probe machinery (`tools/fpc/usermodel_abi/`), same packed rule. The
-15/13/7 function shapes and the `TDynamicsRec`/callback contracts above do not
-depend on them.
+`TStorageVars` / `TPVSystemVars` images would be frozen the same way at their
+owning WP with a probe extension — but WM.4 did **not** need them: the authored
+Storage/PVSystem fixtures read only `V` + `TDynamicsRec` (no `get_public_data`),
+so no StorageVars/PVSystemVars image crosses the boundary (STATUS §WM.4
+deviation (a)). `TCapControlVars` is documented as the dss-rs `get_public_data`
+payload at §2.5, but the reference CapControl fixture likewise avoids it — it
+reads voltage via the symmetric `get_node_voltages` because `get_public_data` is
+not oracle-gatable for CapControl (the asymmetry finding at §2.5).
+
+### 2.5 `TCapControlVars` — the CapControl public-data image + the `get_public_data` asymmetry (WP-WM.5)
+
+Unlike the 15/13-function interfaces (which receive `V`/`TDynamicsRec` as explicit
+`calc`/`new` pointer arguments), the 7-function CapControl `sample()` takes **no
+arguments**. **Both** engines set `PublicDataStruct := @ControlVars` ("So
+User-written models can access" — 0.14.5 `CapControl.pas:535`, r4133 `:518`), so
+`get_public_data` is the dss-rs channel that carries a CapControl's `Sample`
+context (`SampleP`/`SampleV`/`SampleCurr`) + bank state to a wasm model. This
+image is that record.
+
+**Layout is the r4133 engine image — 184 bytes packed** (probe
+`docs/wasm/probes/p9_offsets_capcontrolvars_r4133.txt`; the gate's oracle is the
+r4133 bridge, so r4133 is authoritative — header decision (c)). `EControlAction`
+is **1 byte** (r4133 has no `{$Z4}`) and `Voverride` is **Boolean (1 byte)**;
+both differ from dss_capi 0.14.5 (int32 / `LongBool`), which shifts every field
+from `Voverride` onward — the reason the whole record must be probe-derived, not
+hand-derived. The Rust host codec is
+`crates/dss-usermodel::records::CapControlVars` (the fields a model interacts
+with; the rest of the 184 B is other public data the model never reads and stays
+zero on the wasm side).
+
+**The `get_public_data` asymmetry — why the reference fixture does NOT use it
+(proven, both engines).** On the **dss-rs** side `get_public_data` is bound to the
+*owning* element (plan §2.3 / §4), so it reliably returns the owning CapControl's
+`@ControlVars`. On the **native** side `GetPublicDataPtr` returns
+`ActiveCircuit.ActiveCktElement.PublicDataStruct` — the *global* active element —
+and **neither engine sets `ActiveCktElement` to the CapControl during control
+sampling**: `SampleControlDevices` iterates `DSSControls` without touching it
+(0.14.5 `Solution.pas`, r4133 `Solution.pas:3606`), and `CapControl.Sample` sets
+only `ControlledElement.ActiveTerminalIdx` (r4133 `:909`), while
+`MonitoredElement.Power[]`/`.GetCurrents` set only `ActiveTerminalIdx`
+(`CktElement.pas`). So a **native twin's `GetPublicDataPtr` does NOT return
+`@ControlVars`** and cannot reproduce the dss-rs payload — the same holds for
+every `GetActiveElement*` tier-A read during `Sample`. (This is almost certainly
+why no vendored CapUserControl example exists.) Consequence: a wasm CapControl
+model that reads `get_public_data` works on dss-rs but is **not oracle-gatable**.
+
+The reference **`capuserctl` fixture therefore reads its control voltage through
+`get_node_voltages`** (`GetPtrToSystemVarray` → converged `Solution.NodeV`, row
+17), a **symmetric** channel identical on both engines after convergence, with the
+monitored node index supplied via `UserData`. This keeps the WM.5 gate a real
+cross-engine oracle comparison. The `CapControlVars` codec above stays as the
+documented dss-rs `get_public_data` contract for models that opt into it (with the
+un-gatable caveat), mirroring WM.4's `TStorageVars`/`TPVSystemVars` decision (§2.4:
+the authored fixture chooses the channel it can gate).
+
+| Offset | Field | Type | Role |
+|---|---|---|---|
+| 0 | `FCTPhase` | i32 | — |
+| 4 | `FPTPhase` | i32 | — |
+| 8…80 | `ON_Value`…`LastOpenTime` | 10× f64 | — |
+| 88 | `Voverride` | Boolean (1 B) | — |
+| 89 | `VoverrideEvent` | Boolean (1 B) | — |
+| 90 | `VoverrideBusSpecified` | Boolean (1 B) | — |
+| 91 | `VOverrideBusIndex` | i32 | — |
+| 95 | `Vmax` | f64 (unaligned) | — |
+| 103 | `Vmin` | f64 | — |
+| **111** | **`FPendingChange`** | EControlAction (1 B) | model's desired action (native write-back) |
+| **112** | **`ShouldSwitch`** | Boolean (1 B) | action pending (native write-back) |
+| 113 | `Armed` | Boolean (1 B) | — |
+| **114** | **`PresentState`** | EControlAction (1 B) | bank open/closed (model reads) |
+| 115 | `InitialState` | EControlAction (1 B) | — |
+| **116** | **`SampleP`** | Complex (re 116 / im 124) | monitored terminal power kW+jkvar (`:1057`) |
+| **132** | **`SampleV`** | f64 | control voltage, PT-ratio+phase applied (`:1060`) |
+| **140** | **`SampleCurr`** | f64 | control current (`:1063`) |
+| **148** | **`NumCapSteps`** | i32 | (`:1067` in dss_capi 0.14.5) |
+| **152** | **`AvailableSteps`** | i32 | (`:1068`) |
+| **156** | **`LastStepInService`** | i32 | (`:1069`) |
+| 160 | `VOverrideBusName` | String (8 B ref) | — |
+| 168 | `CapacitorName` | String (8 B ref) | — |
+| 176 | `ControlActionHandle` | i32 | — |
+| 180 | `CondOffset` | i32 | — |
+
+**Decision signalling — `control_queue_push`, a plain queue push on both sides.**
+A model signals its switch decision through `control_queue_push(hour, sec, code,
+proxy_hdl)` — a plain push onto the control queue (Effect tier B). This is exactly
+what a native twin does through `CallBacks.ControlQueuePush` (which the native
+engine forwards straight to `ControlQueue.Push`, `DSSCallBackRoutines.pas:444`);
+the twin does NOT set `ShouldSwitch`, so the engine's built-in `Sample`-tail
+arm/disarm block is skipped on both engines — the model owns the timing. When the
+queue pops, `DoPendingAction(Code, ProxyHdl)` runs: the host sets `PendingChange =
+Code`, calls the guest `do_pending`, and the shared switch block acts on
+`PendingChange`. (The alternative — writing `FPendingChange`/`ShouldSwitch` back
+into the public-data record so the engine's own arming logic fires — is NOT used:
+it needs a public-data write-back the frozen ABI does not have, AND a native twin
+cannot even read/write `@ControlVars` reliably per the asymmetry above.) This is a
+WP-WM.5 element-wiring decision recorded in STATUS §WASM-UM WP-WM.5, not an ABI
+change. The 15/13/7 function shapes and the `TDynamicsRec`/callback contracts
+above do not depend on the `get_public_data` image.
 
 ## 3. Call ordering (the lifecycle contract WM.3–WM.5 reproduce)
 
@@ -364,10 +482,17 @@ Re-freeze to r4133 (WM.3 pre-round, 2026-07-19 — header decision (b)):
 | P8 model-math diff | IndMach012a example dir (`IndMach012Model`/`MainUnit`/`ParserDel`/`.dpr`) **byte-identical** r3723→r4133 (sha256s); the sole delta is `GeneratorVars.pas` `deltaQNom` ⇒ model math UNCHANGED | `p8_indmach012a_math_diff.txt` |
 | P8 twin-in-r4133-engine | native twin rebuilt from r4133 (252-B layout) **loads + runs** in the r4133 engine via the `dss-epri`/`epri-worker` bridge — model=6 power-flow (converged, 14 machine vars: Slip/Is1/Ir1/StatorLoss/HPshaft) + 10 dynamics steps (Monitor mode=3 series). Bit-exact DLL-boundary pin (`twin_probe.py`→`twin_expected.rs`) re-derived from the SAME twin, **byte-identical** to the r3723 image | `p8_twin_r4133_bridge.txt` |
 
+CapControl public-data image (WP-WM.5, 2026-07-19 — header decision (c)):
+
+| Probe | Result | Evidence |
+|---|---|---|
+| P9 `TCapControlVars` (r4133) | FPC `-Mdelphi -dUSER_DLL` compile of the REAL vendored `Version8/Source/Controls/CapControlVars.pas`: **184 B**; `EControlAction` **1 B** (no `{$Z4}`), `Voverride` **Boolean 1 B** — both differ from 0.14.5 (int32 / `LongBool`); `SampleP`@116, `SampleV`@132, `FPendingChange`@111, `ShouldSwitch`@112, `PresentState`@114 (§2.5) | `p9_offsets_capcontrolvars_r4133.txt` |
+
 Probe sources: `tools/fpc/usermodel_abi/` (extraction script + probes + stub
-DLL + oracle driver + build script; `abi_probe_r4133.pas` + the P8 step of
-`build_probes.ps1`). The native-twin channel is
-`tools/wasm_usermodel/build_native.ps1` (r4133) + `twin_probe.py`.
+DLL + oracle driver + build script; `abi_probe_r4133.pas` + the P8 step,
+`abi_probe_capcontrolvars.pas` + the P9 step, of `build_probes.ps1`). The
+native-twin channel is `tools/wasm_usermodel/build_native.ps1` (r4133) +
+`twin_probe.py`.
 
 ## 8. Porting your Delphi/C user model to WASM (skeleton — WM.6 completes)
 
