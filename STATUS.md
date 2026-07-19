@@ -5289,8 +5289,8 @@ Four additive `epri-worker` commands (`src/bin/epri-worker.rs`):
 
 ### Smoke evidence
 
-- `cargo test -p dss-epri --lib`: 3 `families` unit tests green (decode-by-tag,
-  raw string split, `encode`↔`decode` round-trip).
+- `cargo test -p dss-epri --lib`: 4 `families` unit tests green (decode-by-tag,
+  raw string split, `encode`↔`decode` round-trip, `vset_len` element-count).
 - `crates/dss-epri/tests/protocol.rs::capability_surface_end_to_end` (new, drives
   the REAL r4133 DLL): `caps` (42 families / 147 entry points / proto 2 / commands
   present / family-shape spot-checks), `batch` build, `ffi` i/s/v getters
@@ -5307,3 +5307,45 @@ Gate: fmt/clippy/`cargo test --workspace` all green at defaults (corpus pristine
 after runs; a StorageControllerTechNote guard-race leftover was path-limited
 cleaned — same standing gate-hygiene backlog item as Round 1, not introduced
 here). Base `09d03e5`.
+
+### Settle (two opus-xhigh audits, 2026-07-19)
+
+Two independent xhigh audits of the round; export table re-derived independently
+(164 exports = 147 family + 6 gate-path + 9 Y-helpers + 2 Delphi debug — zero
+unclassified, headline confirmed). Both audits agreed the binding is faithful
+and gate-neutral. Findings settled empirically (drove the worker + live DLL):
+
+- **F1 (high, FFI-safety — the round's #1 focus): FIXED.** The generic V-set
+  `call_v_set` passed the array's **byte** length as `mySize`, but the r4133 SET
+  path treats `mySize` as an **element (point)** count — it clamps `LoopLimit :=
+  min(mySize, NumPoints)` and steps `myPointer` one element per iteration
+  (`DLoadShape.pas` PMult write; `DXYCurves.pas` XArray write). A byte count (8×
+  for doubles) defeats the clamp, so the DLL over-reads the Rust buffer whenever
+  the supplied array is shorter than the target's point count — a real OOB read.
+  Fix: new `families::vset_len` passes the element count; `call_v_set`'s SAFETY
+  note now states the true invariant (reads ≤ `min(size, NumPoints)` elements)
+  and the caller-supplies-full-array contract for the setters (`DXYCurves`) that
+  ignore `mySize` entirely. New tests prove element-count semantics: a 3-element
+  write into a **5-point** LoadShape fills points 1..3 and clamps there
+  (`[10,20,30,2,2]`, `written == 3`) — the exact `len < NumPoints` case the old
+  byte-count code would have over-read; plus a `vset_len` unit test.
+- **F2 (low, robustness): FIXED.** Seven DYMatrix ops
+  (`system_y_changed`/`use_aux_currents`/`build_y`/`add_aux`/`vpointer`/
+  `ipointer`/`solve_system`) hit unguarded `ActiveCircuit.Solution` in the DLL,
+  so sending them before a circuit is compiled nil-derefs and kills the worker.
+  `handle_ymatrix` now rejects the crash set with a clean error when
+  `circuit_name()` is empty (`CircuitS(0)` is nil-guarded → `""` with no
+  circuit). New test `ymatrix_before_compile_is_guarded_not_a_crash` drives all
+  seven on a fresh worker: each returns `ok:false` and the worker stays alive.
+- **Test-coverage holes (audit-tests, all closed):** batch **stop-on-first-error**
+  path (bad middle command → `ran == 2`, `failed_at == 1`, trailing command not
+  run); generic **`f`-kind getter happy path** (`Solution.Frequency` mode 0 ==
+  60); the 7 previously-unexercised **ymatrix ops** (`use_aux_currents`,
+  `build_y`, `zero_inj`, `get_source_inj`, `get_pc_inj`, `add_aux`, `ipointer`);
+  and `system_y_changed` upgraded from a presence-only check to a real
+  **read/write round-trip** (set-true→reads 1, set-false→reads 0).
+
+Smoke now: `cargo test -p dss-epri` = 4 lib unit tests + `protocol.rs`'s 3
+end-to-end tests (`scripting_surface_end_to_end`,
+`capability_surface_end_to_end`, `ymatrix_before_compile_is_guarded_not_a_crash`)
+all green against the real r4133 DLL. Nothing deliberately left unfixed.

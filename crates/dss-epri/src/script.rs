@@ -145,6 +145,26 @@ pub fn handle_ymatrix(engine: &Engine, req: &Value) -> Result<Value, EngineError
         .get("op")
         .and_then(|v| v.as_str())
         .ok_or_else(|| EngineError::Other("ymatrix: missing `op`".to_string()))?;
+    // Several DYMatrix ops deref `ActiveCircuit[ActiveActor].Solution` with no
+    // nil check in the DLL (`SystemYChanged`/`UseAuxCurrents`/`AddInAuxCurrents`/
+    // `BuildYMatrixD`/`getVpointer`/`getIpointer`/`SolveSystem`), so invoking
+    // them before a circuit is compiled would nil-deref and crash the worker.
+    // Guard the crash set here (the Rust engine is safe; the DLL is not).
+    let needs_circuit = matches!(
+        op,
+        "system_y_changed"
+            | "use_aux_currents"
+            | "build_y"
+            | "add_aux"
+            | "vpointer"
+            | "ipointer"
+            | "solve_system"
+    );
+    if needs_circuit && engine.circuit_name().is_empty() {
+        return Err(EngineError::Other(format!(
+            "ymatrix {op:?}: no circuit compiled"
+        )));
+    }
     let iarg = |k: &str| req.get(k).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
     let v = match op {
         "system_y_changed" => json!(engine.ym_system_y_changed(iarg("mode"), iarg("arg"))),
