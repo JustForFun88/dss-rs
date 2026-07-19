@@ -20,6 +20,9 @@ mod tests;
 
 mod accessors;
 mod control_loop;
+mod user_model;
+
+pub use user_model::CapControlUserModelSlot;
 
 use num_complex::Complex64;
 
@@ -44,6 +47,12 @@ pub enum CapControlType {
     Time = 3,
     Pf = 4,
     Follow = 5,
+    /// `USERCONTROL` (`CapControl.pas:99`): NOT a user-selectable `Type=` value
+    /// (upstream comments it out of `CapControlTypeEnum`, `:245-249`) — set
+    /// internally by `PropertySideEffects` when a `UserModel=` loads
+    /// (`:439-440`). `ordinal_to_string(6)` renders empty (the enum table stops
+    /// at Follow), matching Pascal's `OrdinalToString` of an unmapped ordinal.
+    UserControl = 6,
 }
 
 impl CapControlType {
@@ -52,7 +61,9 @@ impl CapControlType {
         self as i32
     }
 
-    /// From the enum-registry ordinal; out-of-range yields `None`.
+    /// From the enum-registry ordinal; out-of-range yields `None`. `6`
+    /// (`USERCONTROL`) is accepted so a stored control-type round-trips even
+    /// though it is never reachable through the `Type=` enum (set internally).
     pub fn from_ordinal(value: i32) -> Option<Self> {
         match value {
             0 => Some(Self::Current),
@@ -61,6 +72,7 @@ impl CapControlType {
             3 => Some(Self::Time),
             4 => Some(Self::Pf),
             5 => Some(Self::Follow),
+            6 => Some(Self::UserControl),
             _ => None,
         }
     }
@@ -127,10 +139,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("PTPhase", enums.mon_phase),
         PropDef::string("VBus"),
         PropDef::boolean("EventLog"),
-        // User-written control DLLs are never ported (no DLL loading in safe
-        // Rust — PHASE4_PLAN §5); setting them is a hard error.
-        PropDef::string("UserModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
-        PropDef::string("UserData").flags(PropFlags::NOT_PORTED),
+        // WASM_USERMODELS WM.5 — the §2.4 uniform activation rule: a `.wasm`
+        // path loads the sandboxed 7-fn CapControl model; a native-DLL name /
+        // missing file warns "Not Loaded" (570) and the built-in control solves
+        // (`CapUserControl.pas`, `CapControl.pas:429-440`).
+        PropDef::string("UserModel").flags(PropFlags::IS_FILENAME),
+        PropDef::string("UserData"),
         PropDef::double("pctMinkvar"),
         // Pascal: BooleanActionProperty (DoReset); the getter is always 0.
         PropDef::boolean("Reset").flags(PropFlags::BOOLEAN_ACTION),
@@ -206,6 +220,23 @@ pub struct CapControl {
     voverride_event: bool,
     /// `ControlActionHandle` (the queue handle to delete when disarming).
     control_action_handle: i32,
+
+    // WASM_USERMODELS WM.5 — the 7-function CapControl user model
+    // (`UserModel:TCapUserControl`, `CapControl.pas:165-166`):
+    /// `UserModelNameStr` — the `.wasm` path exactly as written.
+    user_model_name: String,
+    /// `UserModelEditStr` — the last `UserData=` string.
+    user_model_edit: String,
+    /// `IsUserModel` — set true once the model loads (`:432`); forces
+    /// `ControlType := USERCONTROL` (`:439-440`).
+    is_user_model: bool,
+    /// The bound sandboxed model (Pascal `UserModel`). `None` = absent (built-in
+    /// control solves). Re-created lazily after a `MakeLike` clone.
+    user_model: Option<Box<user_model::CapControlUserModelSlot>>,
+    /// Deferred `UserModel=`/`UserData=` load/edit requests queued by the
+    /// property side effects, resolved by the executive before `EndEdit`
+    /// (`WASM_USERMODELS` §2.4; the setter cannot reach the filesystem).
+    pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
 }
 
 impl CapControl {
@@ -252,6 +283,11 @@ impl CapControl {
             initial_state: CTRL_CLOSE,
             voverride_event: false,
             control_action_handle: 0,
+            user_model_name: String::new(),
+            user_model_edit: String::new(),
+            is_user_model: false,
+            user_model: None,
+            pending_user_model_loads: Vec::new(),
         }
     }
 

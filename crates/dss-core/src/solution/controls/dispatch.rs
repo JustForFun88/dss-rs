@@ -1043,8 +1043,10 @@ pub(super) fn dispatch_control(
                         solution_abort_requested = cc.sample(cap, mon_elem, &mut ctx);
                     }
                 }
-                ControlOp::Action { .. } => {
-                    // CapControl ignores the action code; PendingChange rules.
+                ControlOp::Action { code, proxy } => {
+                    // The built-in control types ignore the code (PendingChange
+                    // rules); USERCONTROL sets PendingChange := code and runs the
+                    // guest `do_pending(code, proxy)` (`CapControl.pas:725-733`).
                     let (cobj, capobj) = store.pair_mut(r, target);
                     let cc = cobj
                         .as_any_mut()
@@ -1057,7 +1059,7 @@ pub(super) fn dispatch_control(
                             "Controlled element is not a Capacitor",
                         ));
                     };
-                    cc.do_pending_action(cap, &mut ctx);
+                    cc.do_pending_action(code, proxy, cap, &mut ctx);
                 }
                 ControlOp::Reset => {
                     let (cobj, capobj) = store.pair_mut(r, target);

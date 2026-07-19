@@ -164,6 +164,14 @@ impl ControlQueue {
         self.action_list.len()
     }
 
+    /// The handle the next [`Self::push`] will assign (`ctrl_handle + 1`).
+    /// Seeds the provisional handle a WASM CapControl model's
+    /// `control_queue_push` returns so it reproduces the engine's real queue
+    /// handle sequence (WASM_USERMODELS ABI doc §4 row 31 / §2.5).
+    pub fn next_handle(&self) -> i32 {
+        self.ctrl_handle + 1
+    }
+
     /// The queued actions for the `Show controlqueue` report (Pascal
     /// `TControlQueue.WriteQueue`, which walks `ActionList` in list order): each
     /// record's `(handle, hour, sec, action_code, proxy_handle, control ref)`.
