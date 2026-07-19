@@ -1387,7 +1387,7 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
 
 `known_diffs.json`: none of these had a prior Rust↔EPRI entry — nothing to retire.
 
-## WP-U1.6 C5 — RegControl signed thresholds + idle zones — SETTLED (adopt capi015 = r4086)
+## WP-U1.6 C5 — RegControl signed thresholds + idle zones — SETTLED (signed-threshold framework = r4086; abs fallback re-decided to r4133 + idle no-load zone bounded-AND, both by the 0.15.x-adoption sweep fix round)
 
 `8a898cba` (SVN r4086, in capi015 0.15.0b4) reworks RegControl's reverse-power
 surface and adds an idle-zone family:
@@ -1397,15 +1397,33 @@ surface and adds an idle-zone family:
   the forward edge. The reverse-power detection sign moved from the *comparison*
   into the *stored value* (`FwdPower < RevPowerThreshold`, no unary `−`), so a
   legacy deck that sets only `revThreshold=X (X>0)` is **behavior-identical**:
-  `EndEdit`'s compat fallback sets `Fwd:=abs(Rev); Rev:=−Fwd`, restoring the old
-  symmetric ±X band. The fallback is per-edit (tracked via a new `PrpSequence`
-  BeginEdit boundary), so a later rev-only edit re-symmetrizes and clobbers an
-  earlier `FwdThreshold` — reproduced 1:1 (capi015-probed, 2026-07-16).
+  `EndEdit`'s rev-only fall-back restores the old band around 0 kW. **EPRI r4133
+  RegControl.pas:499-507 is sign-preserving — `Fwd:=Rev; Rev:=−Rev` (no abs).**
+  dss_capi 0.15.x `8a898cba:428-435` added an `abs` (`Fwd:=abs(Rev); Rev:=−Fwd`)
+  with its own comment calling it a "fix" — a capi015-only deviation, NOT in
+  r4086/r4133. For a positive `X>0` the two are identical (the symmetric ±X band);
+  for a **negative** rev-only edit the abs inverts the band, diverging from BOTH
+  gating oracles (**own live probe, revThreshold=−500 rev-only, reversible=yes,
+  50 kW forward load**: r4133 → Rev=+500 kW/Fwd=−500 kW → reverse ping-pong →
+  `#485 Max Control Iterations Exceeded`; pinned 0.14.5 → identical `#485`; port
+  with the abs → converged) — the D14 signature. The port now follows r4133
+  (dropping the abs simultaneously restores 0.14.5-legacy equivalence) — after the
+  fix the port likewise hits `Max Control Iterations Exceeded` on that deck,
+  matching both oracles — pinned by
+  `reg_control::tests::rev_only_edit_fallback_is_sign_preserving`. The fallback is
+  per-edit (tracked via a new `PrpSequence` BeginEdit boundary), so a later
+  rev-only edit re-derives the band and clobbers an earlier `FwdThreshold` —
+  reproduced 1:1.
 - New `Idle`/`IdleReverse`/`IdleForward` flags suppress a pending tap when the
-  through-power sits in a dead-band. Ported verbatim, **including** the no-load
-  test's `(FwdPower>=Rev) or (FwdPower<=Fwd)` — with the default −100/+100 kW band
-  that OR spans the whole axis, so an idling reversible reg never taps. Not
-  "corrected" to AND (would diverge from the oracle).
+  through-power sits in a dead-band. The no-load test is EPRI r4133/r4088's
+  **bounded AND** — `(FwdPower ≤ FwdPowerThreshold) and (FwdPower ≥
+  RevPowerThreshold)` (`control_loop.rs:319`): with the default −100/+100 kW band
+  an idling reversible reg idles only inside the finite ±100 kW no-load zone and
+  still taps once the through-power leaves it. dss_capi 0.15.x wrote this as an
+  **OR** (`(FwdPower≥Rev) or (FwdPower≤Fwd)`), a tautology under the default band
+  that makes the reg never tap — proven wrong on 2026-07-19 vs r4088/r4133 +
+  physics and re-decided to the bounded-AND (CLAUDE.md 0.15.x rule; pinned by
+  `idle_no_load_zone_{suppresses_out_of_band_tap,still_taps_when_power_out_of_band}`).
 
 Gate: capi015 props golden re-baseline (`tests/golden/props/regcontrol.json`,
 `gen_regcontrol_capi015.py`) pinning the signed defaults + the two-edit fallback;

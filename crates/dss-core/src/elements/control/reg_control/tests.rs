@@ -372,6 +372,31 @@ fn defaults_are_signed_thresholds() {
 }
 
 #[test]
+fn rev_only_edit_fallback_is_sign_preserving() {
+    // EPRI r4133 RegControl.pas:499-507: a rev-only edit falls back to the band
+    // around 0 kW with `Fwd := Rev; Rev := -Rev` — SIGN-PRESERVING (no abs).
+    // A NEGATIVE revThreshold=-500 kW must give Fwd=-500 kW, Rev=+500 kW (the
+    // inverted band both gating oracles produce). dss_capi 0.15.x `8a898cba`'s
+    // `abs` would instead give Fwd=+500 kW, Rev=-500 kW — the D14 divergence the
+    // 0.15.x-adoption sweep fixed (DIVERGENCES C5).
+    let mut rc = RegControl::new("r1");
+    rc.rev_power_threshold = -500_000.0; // -500 kW (scale already applied)
+    rc.ccd.cd.obj.set_as_next_seq(prop::REVTHRESHOLD); // edited this edit; Fwd not
+    rc.end_edit();
+    assert_eq!(rc.fwd_power_threshold, -500_000.0);
+    assert_eq!(rc.rev_power_threshold, 500_000.0);
+
+    // A POSITIVE rev-only edit is unchanged by dropping the abs (all corpus
+    // decks use positive revThresholds): revThreshold=+800 kW → Fwd=+800, Rev=-800.
+    let mut rc2 = RegControl::new("r2");
+    rc2.rev_power_threshold = 800_000.0;
+    rc2.ccd.cd.obj.set_as_next_seq(prop::REVTHRESHOLD);
+    rc2.end_edit();
+    assert_eq!(rc2.fwd_power_threshold, 800_000.0);
+    assert_eq!(rc2.rev_power_threshold, -800_000.0);
+}
+
+#[test]
 fn idle_no_load_zone_suppresses_out_of_band_tap() {
     // Out-of-band high (125 vs 120±1.5) would arm a downward tap, but idle=yes
     // on a reversible reg drops it: FwdPower 0 lies inside the bounded
