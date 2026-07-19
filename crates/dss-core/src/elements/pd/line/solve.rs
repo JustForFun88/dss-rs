@@ -145,6 +145,22 @@ impl Line {
                 h_unit,
             )?;
         }
+        // r4133 Line.pas:2213-2219: after `LoadSpacingAndWires` compacts out the
+        // `none` slots, the geometry's phase count may drop below the Line's
+        // `phases=` (a `none` at a phase position removed a phase conductor). r4133
+        // (and 0.14.5) raise #181021 and abort rather than silently re-phasing —
+        // reproduce (both gating oracles reject; the user must set `phases=`
+        // explicitly). A `none` in a NEUTRAL position leaves the phase count intact
+        // and solves (the compaction path above).
+        if self.cd.nphases as i32 != pgeo.nphases() {
+            return Err(format!(
+                "The number of valid phase conductors (not \"None\") in Line.{} is different \
+                 than the number defined in its spacing. In this case, you must set the phases \
+                 parameter of the line to the correct number (phases={}).",
+                self.cd.obj.name(),
+                pgeo.nphases()
+            ));
+        }
         // A `rho=` on the Line overrides the geometry's earth resistivity.
         if self.cd.obj.prp_specified(prop::RHO) {
             pgeo.set_rho_earth(self.rho);

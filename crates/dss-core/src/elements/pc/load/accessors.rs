@@ -106,8 +106,14 @@ impl CktElement for Load {
         if sys.loads_need_updating {
             self.set_nominal_load(sys);
         }
+        // r4133 `TLoadObj.InjCurrents` (Load.pas:1922): `if not ForceInjCurr then
+        // CalcInjCurrentArray` — a forced injection (`Set InjCurrent=`/`ITerminal=`)
+        // keeps its stored `inj_current` while the set-nominal preamble above still
+        // runs; the inherited add-into-Currents is unconditional.
         let mut errors = crate::diag::ErrorLog::new();
-        self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
+        if !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS) {
+            self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
+        }
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
         }

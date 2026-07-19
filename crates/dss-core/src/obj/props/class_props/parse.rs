@@ -596,19 +596,20 @@ impl ClassProps {
 ///  * count `< 1` (spacing/`NConds` not yet set) → #402 "No objects are
 ///    expected!", checked **before** any item;
 ///  * a bare item (no `Class.` prefix) → #10103 "You must define the `<Proxy>`
-///    class for all the valid items in the array." (`AllowNoneItem` → "valid");
-///  * a class-prefixed item → #10103 "Invalid class (`<lowercased>`) for item.
-///    Valid classes: (`WireData|CNData|TSData`)".
+///    class for all the valid items in the array." (`AllowNoneItem` → "valid"; the
+///    r4133 `dotpos = 0` arm, LineGeometry.pas:476-479);
+///  * a class-prefixed item resolves by a **case-insensitive** class match
+///    (r4133 `LowerCase(CondClass)` dispatch), else #10103 "Invalid class
+///    (`<lowercased>`) for item. Valid classes: (`WireData|CNData|TSData`)".
 ///
-/// TODO(compat): the "Invalid class" branch is reached for **every** prefixed
-/// item, because Pascal `TProxyClass.GetDSSClass` compares the parser's
-/// `AnsiLowerCase`d class token against the *original-case* `TargetClassNames`
-/// (`'WireData'`…), a mismatch that is never satisfiable. So a `Conductors=` list
-/// can only ever be all-`none` (a no-op that leaves NIL slots) or an error —
-/// probe-confirmed on capi015 (0.15.0b4). The property is otherwise reachable
-/// only through the JSON export/import round-trip. The clean fix (compare against
-/// `TargetClassNamesLower`) lands with the §6 compat-shim sweep; the golden/unit
-/// pins reproduce the broken behavior until then.
+/// The class match was case-*sensitive* until the 0.15.x-adoption sweep: dss_capi
+/// 0.15.x's `TProxyClass.GetDSSClass` compared the `AnsiLowerCase`d token against
+/// the original-case `TargetClassNames`, so every prefixed item errored #10103 —
+/// a capi015-only breakage the port reproduced. r4133 has no `TProxyClass`; it
+/// parses `conductors=` natively with a `LowerCase` compare AND solves (own
+/// r4133 probe, DIVERGENCES §"Line/LineGeometry Conductors"), so the port adopts
+/// r4133. The count-`< 1` #402 and bare-name #10103 arms are unchanged (the port
+/// keeps its clean #402 rather than r4133's conductors-before-spacing #303 AV).
 fn parse_conductor_proxy(
     obj: &mut dyn DssObject,
     idx: usize,
@@ -670,11 +671,19 @@ fn parse_conductor_proxy(
                 return Ok(0);
             }
         };
-        // Pascal `TProxyClass.GetDSSClass`: TODO(compat) case bug — the lowercased
-        // token never matches the original-case target names, so `subcls` is
-        // always NIL → #10103 "Invalid class". The resolve arm below is faithful
-        // structure but unreachable until the §6 sweep fixes the compare.
-        let subcls = pd.object_classes.iter().find(|c| **c == class_tok).copied();
+        // r4133 native `conductors=` parse (LineGeometry.pas:485-503 / Line.pas):
+        // `LowerCase(CondClass) = 'wiredata'/'cndata'/'tsdata'` — a
+        // CASE-INSENSITIVE class match. (dss_capi 0.15.x routed this through a
+        // `TProxyClass.GetDSSClass` that compared the lowercased token against the
+        // original-case target names — a mismatch never satisfiable, so EVERY
+        // class-prefixed item errored #10103 "Invalid class". The port reproduced
+        // that capi015-only breakage; the 0.15.x-adoption sweep proved r4133
+        // parses it natively and solves, so the port adopts r4133.)
+        let subcls = pd
+            .object_classes
+            .iter()
+            .find(|c| c.eq_ignore_ascii_case(class_tok))
+            .copied();
         let Some(subcls) = subcls else {
             eng.errors.push(crate::diag::DssDiagnostic::msg(
                 format!(

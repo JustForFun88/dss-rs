@@ -59,22 +59,30 @@ define_properties! {
     9  EMERGAMPS => PropDef::double("EmergAmps");
     10 REDUCE    => PropDef::boolean("Reduce");
     11 SPACING   => PropDef::object_ref_class("LineSpacing", "Spacing");
-    12 WIRES     => PropDef::object_ref_array("WireData", "Wires").flags(PropFlags::ALLOW_NONE_ITEM);
+    // r4133 LineGeometry.pas:346-396 (props 12/15/16): the direct `wires`/
+    // `cncables`/`tscables` arms have NO `none` branch — a `none` token drives
+    // `WireDataClass.Code := 'none'` → #10103 "not defined". BOTH gating oracles
+    // reject a geometry-level `none` (0.14.5 #40303, r4133 #10103); only the
+    // Line-level lists (compacted before the Carson calc) and the new `conductors`
+    // prop accept it. So NO ALLOW_NONE_ITEM here (0.15.x-adoption sweep — the flag
+    // was justified from dss_capi's side only).
+    12 WIRES     => PropDef::object_ref_array("WireData", "Wires");
     13 CNCABLE   => PropDef::object_ref_class("CNData", "CNCable");
     14 TSCABLE   => PropDef::object_ref_class("TSData", "TSCable");
-    15 CNCABLES  => PropDef::object_ref_array("CNData", "CNCables").flags(PropFlags::ALLOW_NONE_ITEM);
-    16 TSCABLES  => PropDef::object_ref_array("TSData", "TSCables").flags(PropFlags::ALLOW_NONE_ITEM);
+    15 CNCABLES  => PropDef::object_ref_array("CNData", "CNCables");
+    16 TSCABLES  => PropDef::object_ref_array("TSData", "TSCables");
     17 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
     18 RATINGS   => PropDef::double_array("Ratings", SEASONS);
     19 LINETYPE  => PropDef::mapped_string_enum("LineType", enums.line_type);
-    // dss_capi 0.15.x (LineGeometry.pas:80,287-291): `Conductors` — the merged
-    // mixed wire/CN/TS object-reference-array over the 3-class proxy
-    // `(WireData|CNData|TSData)` (`fullNames=True`, proxy `.Name = "Conductor"`).
-    // HIDE_015X keeps the byte-exact 0.14.5 Dump/`Dump commands` goldens green
-    // (no LineGeometry JSON golden defines conductors). Text parse is
-    // upstream-broken (proxy `GetDSSClass` case bug: any real item errors #10103;
-    // an all-`none` list errors "At least one valid conductor") — see
-    // `parse_conductor_proxy` and the `Conductors` side effect.
+    // EPRI r4133 (LineGeometry.pas prop 20, parse :410-540): `Conductors` — the
+    // merged mixed wire/CN/TS object-reference-array. HIDE_015X keeps the
+    // byte-exact 0.14.5 Dump/`Dump commands` goldens green (no LineGeometry JSON
+    // golden defines conductors). Text parse resolves class-prefixed items by a
+    // CASE-INSENSITIVE class match (r4133 `LowerCase(CondClass)`; the port dropped
+    // the reproduced capi015 `GetDSSClass` case bug in the 0.15.x-adoption sweep —
+    // see `parse_conductor_proxy`). An all-`none` list keeps the port's clean "At
+    // least one valid conductor" reject (r4133 #303 AV on this input — UB, not
+    // reproduced).
     20 CONDUCTORS => PropDef::object_ref_array_proxy("Conductors", CONDUCTOR_PROXY_NAME, &CONDUCTOR_PROXY_CLASSES)
         .flags(PropFlags::FULL_NAME_AS_ARRAY | PropFlags::FULL_NAME_AS_JSON_ARRAY | PropFlags::ALLOW_NONE_ITEM | PropFlags::HIDE_015X);
 }
@@ -239,6 +247,13 @@ impl LineGeometryObj {
         } else {
             self.fnconds
         }
+    }
+
+    /// Pascal `LineGeometryObj.FNphases` — the (post-compaction) count of PHASE
+    /// conductors actually present. The Line's `FMakeZFromSpacing` compares this
+    /// against its own `Nphases` to catch a `none`-removed phase (#181021).
+    pub fn nphases(&self) -> i32 {
+        self.fnphases
     }
 
     /// Pascal `LineGeometryObj.NormAmps` (seeded from the first conductor unless

@@ -193,58 +193,57 @@ plan's r4133 end-target (§1.4 default "EPRI r4133 wins").
   both zero-filled, matching each other at r3723); adopting the reject makes Rust
   match r4133 — nothing to retire.
 
-## AllowNoneItem — `none` in conductor lists — SETTLED (WP-U1.1 item 3, adopt capi015)
+## AllowNoneItem — `none` in conductor lists — SETTLED (WP-U1.1 plumbing; scope + compaction re-decided to r4133 by the 0.15.x-adoption sweep)
 
 **Observable.** A `none` entry inside a `DSSObjectReferenceArrayProperty` — the
 conductor lists `Wires`/`CNCables`/`TSCables` on Line and LineGeometry (SVN
 r3902/r3913, `TPropertyFlag.AllowNoneItem`).
 
-**Probe** (`probe_nonewire.py`, 2026-07-12; `new linegeometry.g nconds=2
-nphases=2 ~ wires=(w none)`):
+**Where `none` is legal — Line-level ONLY (re-verified against r4133 + both
+oracles).** r4133 `Line.pas` FetchWireList/FetchCNCableList/FetchTSCableList
+(:1866-1975) treat `CompareText(…,'None')=0` as a **NIL slot**; `LineGeometry.pas`
+:346-396 (the direct `wires`/`cncables`/`tscables` arms, props 12/15/16) have **no
+`none` branch** — the token drives `WireDataClass.Code := 'none'` → #10103. So a
+**geometry-level** `none` is rejected by BOTH gating oracles, while a
+**Line-level** `none` is accepted and (after compaction) SOLVES.
 
-| engine | `wires=(w none)` |
-|---|---|
-| capi 0.14.5 (default) | **error #40303** "WireData object `none` not found" |
-| capi015 (0.15.0b4) | **accepted** — NIL slot, no error |
+**Own probes** (epri-worker r4133 + pinned 0.14.5):
 
-**Decision — adopt the capi015 accept-`none`.** Added `PropFlags::ALLOW_NONE_ITEM`
-(Pascal `AllowNoneItem`, distinct from the single-ref/`DoubleVArray` `AllowNone`),
-set on Line + LineGeometry `Wires`/`CNCables`/`TSCables`. The `ObjectRefArray`
-parse arm now resolves a `none` token (when the flag is set) to a **`None`
-slot** instead of the "not found" error; the storage chain
-(`set_object_ref_array` → `set_wires`/`set_cables`) threads
-`ObjectRefArrayItem = Option<(name, ElemRef, view)>` and leaves a `None` slot NIL
-(both `line_wire_data`/`fwiredata` are already `Vec<Option<…>>`). Also exposed
-`Parser::is_quoted()` (item 3 "WasQuoted plumbing" — the parser already tracked
-`IsQuotedString`; WP-U2's per-phase state arrays will consume it).
+| deck | 0.14.5 | r4133 | port |
+|---|---|---|---|
+| `new linegeometry.g nconds=2 nphases=2 wires=(w none)` | #40303 reject | #10103 reject | **reject** (ALLOW_NONE_ITEM dropped) |
+| `line.l1 phases=1 spacing=sp(nc=2,np=1) wires=(w none)` + load | (feature n/a) | **converged, I1=(21.802597,−0.001427)** | **converged, matches to faer-vs-KLU floor** |
 
-**Scope split with WP-U1.4.** This item is the **parser/storage plumbing** only.
-The mixed-conductor-list *numerics* that actually consume a NIL conductor (the
-new `Conductors` property, EqDist spacing, CN/TS mixing) are **WP-U1.4**. A
-`none` conductor in isolation is degenerate — capi015 accepts the parse but then
-`#303`s on the incomplete geometry (probed), so there is no solvable standalone
-`none` deck; §1.7's "solves on target oracle" is unattainable until U1.4.
+**Decision — Line-level accept + compact (r4133), geometry-level reject
+(r4133).** `PropFlags::ALLOW_NONE_ITEM` stays on the three **Line** lists +
+`Conductors`, and is **dropped** from the three **LineGeometry** lists
+(`line_geometry/mod.rs`). The `none` NIL slot is now consumed: `LoadSpacingAndWires`
+(`line_geometry/matrix.rs`, r4133 LineGeometry.pas:1190-1262) recounts the
+conductors actually present (`actualNConds`/`actualNPhases`), sizes the throwaway
+geometry to the compacted count, and copies the non-NIL wires into contiguous
+positions with their ORIGINAL spacing coordinates; `FMakeZFromSpacing`
+(`line/solve.rs`, r4133 Line.pas:2213-2219) raises **#181021** and aborts when a
+`none` at a PHASE position drops the phase count below the Line's `phases=` (both
+oracles do). A `none` in a NEUTRAL position leaves the phases intact and solves.
+
+**The earlier "no solvable standalone `none` deck" claim is DISPROVEN.** The
+capi015-side probe that `#303`'d was a standalone LineGeometry (no consumer); the
+Line+spacing `wires=(w none)` deck solves on r4133 (own probe above), and now on
+the port — the WP-U1.4 mixed-list compaction that "closed without landing" is
+landed here.
 
 **Gate consequence.**
 - **Gate-safe:** no corpus deck puts `none` in a conductor list (scanned — 0
-  hits), so no default-oracle case moves; the `Option`-threading kept the
-  non-`none` path byte-identical (the whole line/line_geometry unit suites +
-  full workspace gate stay green).
-- **Pinned by feature-sensitive unit tests** (no live oracle, per above):
-  `dss-core` `line_fetch::conductor_list_accepts_none_entry` (`wires=(w none)`
-  yields a NIL slot with no error, while a non-`none` missing name — `nope` —
-  still errors "not found"), + `dss-parser`
-  `is_quoted_reflects_the_last_token_quote_state`.
-- **Readback of a NIL-slot list is UB on the oracle (settle 2026-07-12,
-  `probe_wires2.py`) — not reproduced.** `? linegeometry.g.wires` on a list
-  containing a `none` slot raises a capi015 **Access Violation** (#303 "Access
-  violation": the FPC readback dereferences the NIL wire pointer). There is thus
-  no defined oracle readback STRING to pin against; per the project UB rule the
-  port does NOT reproduce the crash — it renders `[w, ]` deterministically (NIL →
-  `""`, consistent with the probed single-ref cleared-ref `""` rendering). The
-  `conductor_list_accepts_none_entry` assertion documents this.
-- known_diffs: nothing to retire (0.14.5 errored, the port errored — no prior
-  Rust↔EPRI entry).
+  hits); the compaction is byte-identical to the old index-aligned copy for any
+  list with no NIL (`actualNConds == NWires`, `j == i`), so every spacing line
+  (IEEE13 …) is unchanged — full line/line_geometry/line_constants unit suites +
+  the 514-case corpus gate stay green.
+- **Pinned by** `line_fetch::conductor_none_geometry_rejects_but_line_accepts_and_solves`
+  (geometry-level `none` rejects; Line-level `none` compacts + solves, currents
+  pinned to the own r4133 probe; a non-`none` missing name — `nope` — still
+  errors), + `dss-parser` `is_quoted_reflects_the_last_token_quote_state`.
+- known_diffs: nothing to retire (both oracles + port now reject the geometry
+  case and accept+solve the Line case — no Rust↔EPRI divergence, no ledger row).
 
 ## TCC_Curve `none` (rejection + AllowNone-single-ref) — SETTLED (WP-U1.1 item 4)
 
@@ -271,22 +270,20 @@ default oracle, did NOT reject — but no corpus deck defines `TCC_Curve.none`, 
 no gate case moves.) Gated by the `tcc_curve_none_is_reserved` unit test
 (feature-sensitive: the object stays absent).
 
-**(b) AllowNone-single-ref — NOT ported (capi015 no-op quirk).** The C7 feature
-is **observably a no-op in capi015**: its AllowNone branch sets `otherObj := NIL`
-(l.862) but the *unconditional* `if otherObj = NIL then DoSimpleMsg(… 401)`
-immediately below (l.867) fires the "not found" error anyway — so `fusecurve=none`
-on capi015 clears the ref AND logs #401, bit-identical to the plain not-found path
-the port ALREADY reproduces. Adding a silent AllowNone clear in Rust would
-**diverge** from capi015. So the port sets NO `ALLOW_NONE` flag on these refs;
-`fusecurve=none` clears + logs #401 through the existing path. Pinned by
-`fuse_curve_none_clears_with_error_like_capi015`.
-- **r4133 divergence (Rung-2 note, not adopted here):** r4133 stores the literal
-  `none` as the ref name (readback `none`, no #401) instead of clearing to `''`.
-  The functional effect (no curve at runtime) is the same across all three; only
-  the readback + error-log differ. Recorded for a Rung-2 revisit; no Rung-1
-  action. No live oracle gates (b): capi015 raises the #401 in dss-python
-  (early-abort), r4133 renders a different readback — the divergence is unit-test
-  pinned, same rationale as §ParseAsSymMatrix.
+**(b) AllowNone-single-ref — SUPERSEDED by WP-U2.1 (now silent-clear, r4133-aligned).**
+The WP-U1.1 decision recorded below reproduced the capi015 no-op quirk
+(`fusecurve=none` clears the ref AND logs #401, since capi015's AllowNone branch
+sets `otherObj := NIL` at l.862 but the unconditional `if otherObj = NIL then
+DoSimpleMsg(… 401)` at l.867 fires anyway). **WP-U2.1 later re-decided this to the
+r4133 behavior:** `fusecurve=none` **clears the ref SILENTLY** (no #401), pinned by
+`lifecycle::fuse_curve_none_clears_silently_like_r4133` (the old
+`_clears_with_error_like_capi015` name is retired). So the paragraph below is the
+historical WP-U1.1 record; the live behavior is r4133 silent-clear.
+- **(historical WP-U1.1 record.)** The C7 feature is observably a no-op in capi015
+  (clears + logs #401, the plain not-found path); r4133 clears silently. WP-U1.1
+  first kept the capi015 #401; WP-U2.1 flipped to the r4133 silent clear (no live
+  oracle gates (b): capi015 raises the #401 in dss-python early-abort, r4133 renders
+  the silent clear — unit-test pinned, same rationale as §ParseAsSymMatrix).
 
 ## Class-command activation (C11 / SVN r3875) — SETTLED (WP-U1.1 item 5)
 
@@ -598,31 +595,39 @@ by the feature-sensitive unit test
 `transformer::tests::three_winding_x13_x23_trap_zero_to_default` (XHT=0 → 35,
 XLT=0 → 30). `known_diffs`: nothing to retire.
 
-## B1 — Capacitor Cmatrix YPrim diagonal ×1.000001 before inversion — SETTLED (WP-U1.2, adopt capi015)
+## B1 — Capacitor Cmatrix YPrim diagonal ×1.000001 before inversion — SETTLED (WP-U1.2; keep code on physics — the perturbation is capi015-ONLY, NOT r4088/r4133; attribution corrected by the 0.15.x-adoption sweep)
 
 **Observable.** The YPrim of a `Cmatrix` (SpecType=3) capacitor that also carries
 a **series filter reactance** (`R`/`XL` > 0 ⇒ `has_zl`) — the only config that
 reaches `MakeYprimWork`'s SpecType-3 inversion path.
 
-**dss_capi 0.14.5 (default).** The SpecType-3 branch inverts the C-admittance
-work matrix directly. **0.15.x (capi015) / EPRI r4088+.** Each work-matrix
-diagonal is first multiplied by `1.000001` ("Add a little bit to each phase so it
-will invert", `Capacitor.pas` `MakeYprimWork`) — the same perturbation the Delta
-1|2 branch already used — so a (near-)singular C matrix still inverts.
+**dss_capi 0.14.5 (default) AND EPRI r4088 AND r4133.** The SpecType-3 branch
+inverts the C-admittance work matrix directly, with NO diagonal perturbation —
+**re-verified against the r4133 source** (`Capacitor.pas` `MakeYprimWork`: the
+`×1.000001` "add a little bit so it will invert" loop is in the `1,2` Line-Line
+`HasZL` arm ONLY; the `3:` CMatrix arm is bare `Invert; add ZL; Invert`). r4088 is
+byte-identical. **The `×1.000001` on SpecType-3 is a capi015-ONLY change** (added
+in 0.15.0b4, `git show 0.15.0b4:src/PDElements/Capacitor.pas` `3:` arm) — the
+earlier "EPRI r4088+" attribution here was FALSE (the regcontrol_idle false-EPRI
+class).
 
-**Decision — adopt** (`capacitor/solve.rs`, the SpecType-3 `_ =>` arm gains the
-×1.000001 diagonal loop before `invert()`).
+**Own live r4133 probe** (epri-worker, `Capacitor.f1 conn=wye
+cmatrix=(1.5|0.2 1.5|0.2 0.2 1.5) R=0.5 XL=3` on a stiff 12.47 kV source,
+`ActiveCktElement.Powers`): with `R/XL` r4133 reports **Q ≈ +1.4e-15 kvar** (the
+bank vanishes — a structurally-singular invert, garbage) == 0.14.5; WITHOUT `R/XL`
+r4133 reports **-25.4 kvar/phase (-76.2 total)**. Physics: series `ZL = 0.5+j3 Ω`
+against `1/ωC ≈ 1768 Ω` must leave `Q ≈ -76 kvar` nearly unchanged, so capi015/
+port (`Y[0,0] = (1.661774199e-07, 5.664824416e-04)`, real ≈ R/|Z|²) is physically
+correct; both gating oracles' ≈0 is not.
 
-**Probe** (`/tmp/probe_capfull.py`, 2026-07-12; `Capacitor.f1 conn=wye
-cmatrix=(1.5|0.2 1.5|0.2 0.2 1.5) R=0.5 XL=3`, `? Yprim`):
-
-| engine | `Y[0,0]` (phase self) |
-|---|---|
-| capi 0.14.5 (default) | `(-5.29e-23, -1.08e-19)` — **garbage** (singular invert) |
-| capi015 (0.15.0b4) | `(1.661774199e-07, 5.664824416e-04)` — **finite** |
-
-Strongly revision-**sensitive** (garbage → finite) and feature-sensitive (without
-`R`/`XL` the SpecType-3 invert path is never reached).
+**Decision — KEEP the capi015 behavior on physics + the VSConverter precedent**
+(`capacitor/solve.rs`, the SpecType-3 `_ =>` arm keeps the ×1.000001 diagonal loop
+before `invert()`). Adopting r4133 here would mean reproducing a
+structurally-singular-matrix garbage invert — the exact class the project does NOT
+reproduce (VSConverter `GetCurrents`). Only the false EPRI attribution is
+corrected; the code stands. (The 0.14.5/capi015 `Y[0,0]` probe table — 0.14.5
+garbage `(-5.29e-23, -1.08e-19)` vs capi015 finite `(1.661774199e-07,
+5.664824416e-04)` — is retained in the unit-test pin below.)
 
 **Gate consequence.**
 - **No corpus/live witness.** No vendored deck defines a Cmatrix capacitor with a
@@ -633,9 +638,14 @@ Strongly revision-**sensitive** (garbage → finite) and feature-sensitive (with
   (`capacitor::tests::cmatrix_with_series_reactance_yprim_matches_capi015`): the
   Rust YPrim phase block equals the capi015 probe reference to 1e-11/1e-12; the
   0.14.5 garbage (~1e-23) fails the `5.66e-4` diagonal assertion, so it is
-  feature-sensitive to the ×1.000001. (A live capi015 deck was prepared but the
-  modes manifest's mixed manual unicode-escaping/CRLF blocks a clean append; the
-  unit test carries the exact capi015 numbers instead — same oracle, offline.)
+  feature-sensitive to the ×1.000001.
+- **Pre-registered ledger policy (no witness today).** The port's finite physical
+  YPrim diverges from BOTH gating channels (`capi_v0145` garbage ≈0 kvar AND r4133
+  garbage ≈0 kvar). If a future deck ever introduces a SpecType-3 + `R/XL`
+  capacitor, it must carry a divergence ledger row **per channel** (`capi_v0145`
+  and `r4133`) with exact-pair pins citing this entry (the port is the physically
+  correct side; both oracles' singular-invert garbage is not reproduced) — NOT a
+  tolerance loosening.
 - `known_diffs`: none matched — nothing to retire.
 
 ## D6 — Transformer seasonal AmpRatings drop the `1.1 *` factor — SETTLED (WP-U1.2, adopt capi015; unit-pinned, no live witness yet)
@@ -802,8 +812,10 @@ controlled DER (PVSystem/Storage `conn=delta`).
 **dss_capi 0.14.5.** `cBuffer[j] := DERElem.Vterminal[j]` — the line-neutral
 magnitudes, even for a delta DER. **0.15.x (capi015) / r4133.** `case
 DERElem.Connection of Delta: cBuffer[j] := Vterminal[j] −
-Vterminal[NextDeltaPhase(j)]` — **line-to-line** (`InvControl.pas` l.1647-1652,
-r3822; `NextDeltaPhase(iphs)=iphs+1`, wraps to 1 past `NCondsDER`).
+Vterminal[NextDeltaPhase(j)]` — **line-to-line** (capi015 `InvControl.pas`
+l.1647-1652, r3822; **re-verified in EPRI r4133 `InvControl.pas:2184`** — the
+line-cite label above is capi015's, the substance is r4133's;
+`NextDeltaPhase(iphs)=iphs+1`, wraps to 1 past `NCondsDER`).
 
 **Probe** (`scratch_probe_d4.py`, 2026-07-12; one delta PVSystem, VOLTVAR):
 
@@ -892,9 +904,13 @@ candidate for a coordinated flip once U1.5/U1.6 land. No deck moves; the
   generic `#482`.
 
 These are capi015-specific messages (they diverge from r4133's silent-accept /
-generic-abort), but they only fire on **malformed** input (0 corpus decks use
-`MonBus` — scanned), never in a valid deck; the *sequence* (both engines abort on
-an invalid bus) is preserved. Pinned by the feature-sensitive unit tests
+generic-abort), but they only fire on **malformed** input, never in a valid deck;
+the *sequence* (both engines abort on an invalid bus) is preserved. (Corpus note,
+0.15.x-adoption sweep: `controls/invcontrol/invcontrol_monbus.dss` DOES use a
+`MonBus` — a single-DER, **valid** deck — so the earlier "0 corpus decks use
+MonBus" claim is stale; but its input is well-formed, so it exercises neither the
+#2024111 nor the #2024112 malformed-input guard, and no observable is witnessed on
+either channel by that deck.) Pinned by the feature-sensitive unit tests
 `c8_monbus_missing_nodes_errors_2024111` and `c8_monbus_invalid_bus_aborts_2024112`.
 `known_diffs`: nothing to retire.
 
@@ -979,26 +995,52 @@ early return, final upload after the loop; `get_out_idx` restored to the guarded
 `Flg.ForceInjCurrents`/`Flg.ForceYPrim` — the pyControl co-simulation engine
 hooks (the `pyControl` component + `Set PyPath=` stay `NOT_PORTED`, §0).
 
-**Source-tree note (important for future WPs).** These options do **not** exist
-in the vendored working tree `.inputs/dss_capi_with_git` — it is checked out at
-`master` (`f5728aec`), a commit *after* `0.15.0b4` where the pyControl hooks were
-**removed** upstream. But the **capi015 oracle** the plan pins to is
-`0.15.0b4` (tag `e936d210`), which **does** carry them (`get InjCurrent` returns
-a value; `git show 0.15.0b4:src/Executive/ExecOptions.pas` shows the enum tail
-`…StateVar, PyPath, IterNumber, CtrlIterNumber, InjCurrent, ITerminal, YPrim,
-IntegrationFlag, …`). The spec for this WP was therefore read via
-`git show 0.15.0b4:`, not the working tree. `delta_capi_0145_015x.md` A3 also
-wrongly listed `SampleControlDevices` as a new hook — it is present already in
-`0.14.5` (`Solution.pas:1974`) and was ported long ago
+**Source-tree note (corrected by the 0.15.x-adoption sweep — the hooks EXIST in
+EPRI).** The force hooks originated at **EPRI**: EPRI r4088 AND r4133 Version8
+carry them (`ExecOptions.pas` `ExecOption[141..148]` StateVar/pyPath/IterNumber/
+CtrlIterNumber/InjCurrent/ITerminal/Yprim/IntegrationFlag; `TPCElement.
+ForceInjCurr`/`ForceY`; honored in `Ymatrix.pas` ReCalc skips and in each of the
+six flag-checking PCE `InjCurrents`/`GetTerminalCurrents`), and the **gating
+r4133 DLL is built from Version8**, so the hooks are live in the r4133 channel —
+`modes/upgrade_forcehooks.dss` is manifest-gated `engines=r4133` and passes. They
+are absent only from the vendored dss_capi **working tree** `.inputs/
+dss_capi_with_git` (checked out at `master` `f5728aec`, a commit *after* `0.15.0b4`
+where dss_capi *removed* them), so the capi015 spec was read via `git show
+0.15.0b4:` (tag `e936d210`); the pinned `capi_v0145` oracle (backend 0.14.5)
+predates the hooks and cannot gate them (`Set InjCurrent` → `#130 Unknown
+parameter`) — `engines=r4133` is the correct channel. `delta_capi_0145_015x.md`
+A3 also wrongly listed `SampleControlDevices` as a new hook — it is present
+already in `0.14.5` (`Solution.pas:1974`) and was ported long ago
 (`solution/controls/sampling.rs`); not a delta.
 
-**Decision — adopt the capi015 (=0.15.0b4) behavior.** `ElemFlags::FORCE_YPRIM`/
-`FORCE_INJ_CURRENTS`, honored in the injection loop
-(`solution/solution/power_flow.rs::get_pc_inj_curr_filtered` injects the stored
-`InjCurrent` directly, per `TPCElement.InjCurrents`) and in `ReCalcAllYPrims`
-(`solution/ymatrix.rs` skips `CalcYPrim` for a `ForceYPrim` element); the five
-PCE `GetTerminalCurrents` skip the model recompute when forced (Load/Generator/
-PVsystem/Storage/IndMach012). The option set/get is in `exec/set_cmd.rs`/
+**Decision — adopt the behavior (confirmed against 0.15.0b4 AND EPRI r4088/r4133
+AND a live r4133 probe).** `ElemFlags::FORCE_YPRIM`/`FORCE_INJ_CURRENTS`, honored
+per the Pascal per-class shape — the `ForceInjCurr` check lives **inside** each
+flag-checking class's `inj_currents` (`if not ForceInjCurr then
+CalcInjCurrentArray`), skipping only the model recompute while the unconditional
+set-nominal preamble and the inherited add-into-Currents still run
+(`solution/solution/power_flow.rs::get_pc_inj_curr_filtered` just calls each
+element's `inj_currents`) — and in `ReCalcAllYPrims` (`solution/ymatrix.rs` skips
+`CalcYPrim` for a `ForceYPrim` element). The **six** flag-checking PCE
+`GetTerminalCurrents`/`InjCurrents` skip the recompute when forced (Load/
+Generator/PVsystem/Storage/IndMach012/**WindGen**); the non-flag-checking
+overrides VCCS/UPFC/VSConverter recompute unconditionally, so a force on those is
+inert on both the port and both oracles (0 `ForceInjCurr` hits in the r4133
+sources). The 0.15.x-adoption sweep found and fixed three port fidelity gaps: the
+WindGen `get_currents` guard was missing — the only one of the six flag-checking
+classes without it — so its reported terminal currents recomputed at the forced
+operating point where r4133 freezes. **Own r4133 probe** (epri-worker, weak
+source + `set InjCurrent=[400 0 400 0 400 0]` + re-solve, `ActiveCktElement.
+Currents`): r4133 reports the frozen `[-89.231224, -11.202775, 34.913725,
+82.877894, 54.317500, -71.675120]`; the port matches it to a faer-vs-KLU floor
+with the guard, but recomputes `[-86.039, -58.979, …]` (imag −11.20 → −58.98,
+a ≈48 A miss) without it — pinned + guard-toggle-verified by
+`windgen_force_inj_freezes_iterminal` (reads the currents through the corpus
+`snapshot_elements`/`GetCurrents` path, not the guard-blind `Get ITerminal`
+cache). An earlier central force-branch in the injection loop dropped the
+set-nominal preamble (a forced element's Yeq would freeze in a varying-loadshape
+time series), and it honored the flag for every PCE (freezing VCCS/UPFC/
+VSConverter where both oracles recompute). The option set/get is in `exec/set_cmd.rs`/
 `exec/get_cmd.rs`; the parser gained `make_complex`/`parse_as_complex_vector`/
 `parse_as_complex_matrix` (`ParserDel.pas`). `Set IterNumber`/`CtrlIterNumber`/
 `IntegrationFlag` are read-only (error 25040103); `Set PyPath=` is a loud
@@ -1044,9 +1086,11 @@ NOT_PORTED.
   80 0 80 0]` on the b2 load shifts b2 Vmag 7187.45 → 7224.14 V; whole-model
   live compare green. Feature-sensitive (a broken injection-loop honor → 7187 vs
   capi015 7224, ≫ floor).
-- **capi015-pinned Rust unit suite** `exec/tests/force_hooks.rs` (12 tests):
+- **capi015-pinned Rust unit suite** `exec/tests/force_hooks.rs` (13 tests):
   forced Vmag 7224.143523 (1e-6), frozen `Get InjCurrent`/`ITerminal` (Load) +
-  frozen Generator `ITerminal` (2nd PCE force-skip), `Set ITerminal` freeze
+  frozen Generator `ITerminal` (2nd PCE force-skip) + frozen WindGen `ITerminal`
+  (`windgen_force_inj_freezes_iterminal`, the 6th flag-checking class the sweep
+  fixed), `Set ITerminal` freeze
   (base 23.175527 → forced `[10,0,10]`), `Get IterNumber`/`IntegrationFlag`,
   read-only `Set` (aborts the loop), `Set PyPath` NOT_PORTED, `Set YPrim`
   survives a rebuild + oversize-row `#3004`, `Get StateVar` read + natural-syntax
@@ -1168,46 +1212,48 @@ ohm/m), `C` diag `283.089` nF/km; a CN cable `SemiconLayer=no` → `C` diag
   *property*) — LANDED (wt-u14cond).** See §"Line/LineGeometry Conductors (text
   upstream-broken)" below.
 
-## Line/LineGeometry Conductors (text upstream-broken) — SETTLED (WP-U1.4 wt-u14cond, reproduce 1:1)
+## Line/LineGeometry Conductors — SETTLED (WP-U1.4 plumbing; text parse re-decided to r4133 by the 0.15.x-adoption sweep — capi015-broken, r4133-working)
 
-**Observable.** The 0.15.x `Conductors` property — Line prop 34 (`Line.pas:62`),
+**Observable.** The `Conductors` property — Line prop 34 (`Line.pas:62`),
 LineGeometry prop 20 (`LineGeometry.pas:80`) — a mixed
-`WireData|CNData|TSData` object-reference-array over a `TProxyClass` created with
-`fullNames=True` and `.Name = "Conductor"` (`DSSClass.pas:2603`;
-`LineGeometry.pas:159`). Replaces `Spacing, Wires` with `Spacing, Conductors` in
-the spacing spec-set; `Wires`/`CNCables`/`TSCables` become `RedundantWith(Conductors)`.
+`WireData|CNData|TSData` object-reference-array. Replaces `Spacing, Wires` with
+`Spacing, Conductors` in the spacing spec-set; `Wires`/`CNCables`/`TSCables`
+become `RedundantWith(Conductors)`.
 
-**Empirical capi015 behavior (0.15.0b4, probed 2026-07-17) — the text property is
-BROKEN.** Every `Conductors=[…]` with a real item errors and never populates the
-array:
-- A class-prefixed item (`Conductors=[WireData.w1, …]`, ANY case) → `#10103
-  "…Conductors: Invalid class (wiredata) for item. Valid classes:
-  (WireData|CNData|TSData)"`. **Root cause: a deterministic upstream bug** —
-  `TProxyClass.GetDSSClass` (`DSSClass.pas:2644`) compares the parser's
-  `AnsiLowerCase`d class token (`ValidateObjectItem`, `DSSObjectHelper.pas:6462`)
-  against the *original-case* `TargetClassNames` (`'WireData'`…), never satisfiable
-  (the parallel `TargetClassNamesLower` array is never consulted).
-- A bare item (`Conductors=[w1, …]`) → `#10103 "…Conductors: You must define the
-  Conductor class for all the valid items in the array."` (`FullNameAsArray`
-  requires a class prefix).
-- `Conductors=` before the spacing / `NConds` (array count `< 1`) → `#402
-  "…Conductors: No objects are expected! …"` (checked before item validation).
-- All-`none` → **Line** parses (all NIL slots, model → spacing, `phaseChoice =
-  Overhead`; err#0); **LineGeometry** rejects it → `#10103 "…Conductors: At least
-  one valid conductor must be provided."`.
-- `? <elem>.Conductors` (the text getter) → **Access Violation (#303)** in capi015
-  — a getter UB, NOT reproduced (safe name list instead).
+**The text parse is capi015-BROKEN, EPRI r4133-WORKING (0.15.x-adoption sweep,
+own probes).** dss_capi 0.15.x routed `conductors=` through a `TProxyClass` whose
+`GetDSSClass` (`DSSClass.pas:2644`) compared the parser's `AnsiLowerCase`d class
+token against the *original-case* `TargetClassNames` (`'WireData'`…) — never
+satisfiable, so every class-prefixed item errored #10103 "Invalid class". EPRI
+r4133 has NO `TProxyClass` (0 Pascal-source hits): it parses `conductors=`
+NATIVELY (LineGeometry.pas prop 20 :410-540 / Line.pas prop 34) with a
+CASE-INSENSITIVE `LowerCase(CondClass) = 'wiredata'/'cndata'/'tsdata'` dispatch
+AND solves. The port reproduced the capi015 breakage; the sweep re-decided to
+r4133 (CLAUDE.md 0.15.x rule). **Own r4133 probes (epri-worker):**
+- Class-prefixed (any case) `Conductors=[WireData.w wiredata.w]` on a 2-wire/
+  1-phase spacing → **converged**, Line.l1 I1=(21.801759, 0.027069); the port now
+  resolves + solves, matching to a faer-vs-KLU floor.
+- Bare item → r4133 rejects too (`dotpos = 0`: LineGeometry #10103, Line #181023);
+  the port keeps its single generic-list #10103 for both (behaviour matches =
+  reject; per-class code/wording is a cosmetic difference).
+- `Conductors=` before the spacing → the port's clean #402; **r4133 #303 Access
+  Violation** (UB) — NOT reproduced.
+- All-`none` → **Line** parses on both (degenerate, non-converging); **LineGeometry**
+  keeps the port's clean #10103 "At least one valid conductor" — **r4133 #303
+  Access Violation** on that input (own probe), UB, NOT reproduced.
+- `? <elem>.Conductors` (text getter) → #303 AV in capi015 — getter UB, NOT
+  reproduced (safe name list).
 
-So text `Conductors=` can only ever be all-`none` (a no-op) or an error; the
-property is otherwise reachable only through the JSON export/import round-trip.
-
-**Decision — reproduce 1:1 (`TODO(compat)`), keep the JSON masquerade + HIDE_015X.**
-- The proxy resolution + the four diagnostics are reproduced exactly in
-  `parse_conductor_proxy` (`obj/props/class_props/parse.rs`), with a
-  `TODO(compat)` on the `GetDSSClass` case bug (the clean fix — compare the
-  lowercased token against lowercased class names — lands in the §6 shim sweep;
-  the golden/unit pins hold it until then). The `#303` getter crash is UB → not
-  reproduced.
+**Decision — adopt r4133 case-insensitive class match; keep the JSON masquerade +
+HIDE_015X.**
+- `parse_conductor_proxy` (`obj/props/class_props/parse.rs`) now resolves a
+  class-prefixed item by `eq_ignore_ascii_case` against the target class names
+  (r4133 `LowerCase(CondClass)` dispatch), routing the resolved refs into the
+  already-verified `set_conductors`/`apply_conductors` storage path; the NIL
+  slots a `none` leaves are compacted out at solve time by `LoadSpacingAndWires`
+  (see §AllowNoneItem). The reproduced capi015 `GetDSSClass` case-bug `TODO(compat)`
+  is dropped. The bare-name #10103, the clean count-`<1` #402, and the not-reproduced
+  #303 getter/all-none/before-spacing AVs stay.
 - **JSON export is unchanged.** dss_capi already emits `"Conductors":[FullName…]`
   with each conductor's *actual* class; the Rust port has emitted the same bytes
   since wt-u14props via the `Line.Wires → "Conductors"` `json_name` masquerade
@@ -1226,14 +1272,16 @@ property is otherwise reachable only through the JSON export/import round-trip.
   masquerade renders a *mixed* conductor list (e.g. `cncables=cn1 wires=wn`) with
   a single `WireData.` prefix, where capi015 renders each conductor's real class;
   no golden/deck exercises a mixed-conductor Line's JSON, so this is inert until
-  the §6 sweep flips the surface and drops the masquerade.
+  a later sweep flips the surface and drops the masquerade.
 
 **Gate.** `PROPS_015X += ("Line", …+"Conductors")` and `("LineGeometry",
 ["Conductors"])` (the inserted props excluded from the 0.14.5 property-table
-walk); `tests/upgrade_conductors.rs` pins all four capi015 diagnostics + the
-all-`none` split (Line parses / LineGeometry rejects). The net-new
-**resolved-ref** fill (unreachable via the broken text parse; the path the
-§6-fixed parser and a JSON-import round-trip take) is gated by whitebox
+walk); `tests/upgrade_conductors.rs` now pins the r4133 semantics — a
+class-prefixed item resolves + solves (`conductors_full_name_items_resolve_and_solve`,
+pinned to the own r4133 probe currents), bare-name/#402/all-none-geometry stay
+rejected (per-channel-scoped: the port's clean errors vs r4133's #181023/#303-AV).
+The **resolved-ref** fill (the path the text parser AND a JSON-import round-trip
+now take) is gated by whitebox
 equivalence tests that drive `set_object_ref_array(CONDUCTORS)` + the side
 effect directly — `line::tests::conductors_array_matches_buried_neutral_and_oracle`
 / `conductors_array_overhead_matches_wires_and_oracle` /
@@ -1322,7 +1370,12 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   0.14.5/r4133, unit-pinned `locked_ignores_action_write` /
   `locked_ignores_normal_and_state_writes`). Feature-sensitivity: unit
   `d12_normal_and_state_readbacks_are_independent` (0.14.5 conflated both onto
-  `CurrentAction`).
+  `CurrentAction`). **Gating note (0.15.x-adoption sweep):** the "flipped to
+  capi015" phrasing above is historical — all three moved decks (`swtcontrol_time`,
+  `midi_swtcontrol`, `civanlar`) are now gated **`engines=r4133`** with empty
+  ledgers, and the D12 Normal/State mapping was live-verified against r4133 (which
+  agrees with capi015 here) per WP-U2.4 D6; the re-baselined capi015 props golden
+  stays the offline pin.
 - **D15** `LookupVariable` case-insensitivity (`4366b126`) — not-a-delta: the
   port's only equivalent (relay) already matches the fixed side.
 - **A7-r3723** GenController deregistration — not-a-delta: never registered in the
@@ -1369,11 +1422,13 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   ALREADY loads. **Probe** (single-column `npts=8 MemoryMapping=Yes csvfile=`, 8
   daily steps): 0.14.5 aborts `#482 Division by zero` (Pmult=`[0.0]`); capi015
   (0.15.0b4) drives the load to P/phase `[20 40 70 110 160 130 90 50]` kW
-  (= 200·`[0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25]`). **Gate:** new capi015 live
-  deck `modes/upgrade/mmf_singlecol/mmf_singlecol.dss` (`oracle:"capi015"`,
-  `n_steps=8`, whole-model per-step compare; cannot gate 0.14.5 — the deck is the
-  bug the fix removes, §1.2; §1.7 two-process determinism confirmed, fingerprint
-  `0ead40d7199b0781`) + unit `mmf_single_column_csvfile_loads_like_capi015`. The
+  (= 200·`[0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25]`). **Gate:** live deck
+  `modes/upgrade/mmf_singlecol/mmf_singlecol.dss` (now gated **`engines=r4133`**
+  in the manifest — the "`oracle:"capi015"`" wording here is stale; the single-
+  column-MMF fix is present in r4133 too, `n_steps=8`, whole-model per-step
+  compare; cannot gate 0.14.5 — the deck is the bug the fix removes, §1.2; §1.7
+  two-process determinism confirmed, fingerprint `0ead40d7199b0781`) + unit
+  `mmf_single_column_csvfile_loads_like_capi015`. The
   existing `inputformat/shape_mmf` deck stays 0.14.5 (it uses `sngfile`/`dblfile`/
   `pqcsvfile`, not the single-column path). **Vendored-spec caveat.** The `#482`
   claim above is against the pinned 0.14.5 oracle **binary** (tag `0.14.5`, which
@@ -1387,7 +1442,7 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
 
 `known_diffs.json`: none of these had a prior Rust↔EPRI entry — nothing to retire.
 
-## WP-U1.6 C5 — RegControl signed thresholds + idle zones — SETTLED (adopt capi015 = r4086)
+## WP-U1.6 C5 — RegControl signed thresholds + idle zones — SETTLED (signed-threshold framework = r4086; abs fallback re-decided to r4133 + idle no-load zone bounded-AND, both by the 0.15.x-adoption sweep fix round)
 
 `8a898cba` (SVN r4086, in capi015 0.15.0b4) reworks RegControl's reverse-power
 surface and adds an idle-zone family:
@@ -1397,15 +1452,33 @@ surface and adds an idle-zone family:
   the forward edge. The reverse-power detection sign moved from the *comparison*
   into the *stored value* (`FwdPower < RevPowerThreshold`, no unary `−`), so a
   legacy deck that sets only `revThreshold=X (X>0)` is **behavior-identical**:
-  `EndEdit`'s compat fallback sets `Fwd:=abs(Rev); Rev:=−Fwd`, restoring the old
-  symmetric ±X band. The fallback is per-edit (tracked via a new `PrpSequence`
-  BeginEdit boundary), so a later rev-only edit re-symmetrizes and clobbers an
-  earlier `FwdThreshold` — reproduced 1:1 (capi015-probed, 2026-07-16).
+  `EndEdit`'s rev-only fall-back restores the old band around 0 kW. **EPRI r4133
+  RegControl.pas:499-507 is sign-preserving — `Fwd:=Rev; Rev:=−Rev` (no abs).**
+  dss_capi 0.15.x `8a898cba:428-435` added an `abs` (`Fwd:=abs(Rev); Rev:=−Fwd`)
+  with its own comment calling it a "fix" — a capi015-only deviation, NOT in
+  r4086/r4133. For a positive `X>0` the two are identical (the symmetric ±X band);
+  for a **negative** rev-only edit the abs inverts the band, diverging from BOTH
+  gating oracles (**own live probe, revThreshold=−500 rev-only, reversible=yes,
+  50 kW forward load**: r4133 → Rev=+500 kW/Fwd=−500 kW → reverse ping-pong →
+  `#485 Max Control Iterations Exceeded`; pinned 0.14.5 → identical `#485`; port
+  with the abs → converged) — the D14 signature. The port now follows r4133
+  (dropping the abs simultaneously restores 0.14.5-legacy equivalence) — after the
+  fix the port likewise hits `Max Control Iterations Exceeded` on that deck,
+  matching both oracles — pinned by
+  `reg_control::tests::rev_only_edit_fallback_is_sign_preserving`. The fallback is
+  per-edit (tracked via a new `PrpSequence` BeginEdit boundary), so a later
+  rev-only edit re-derives the band and clobbers an earlier `FwdThreshold` —
+  reproduced 1:1.
 - New `Idle`/`IdleReverse`/`IdleForward` flags suppress a pending tap when the
-  through-power sits in a dead-band. Ported verbatim, **including** the no-load
-  test's `(FwdPower>=Rev) or (FwdPower<=Fwd)` — with the default −100/+100 kW band
-  that OR spans the whole axis, so an idling reversible reg never taps. Not
-  "corrected" to AND (would diverge from the oracle).
+  through-power sits in a dead-band. The no-load test is EPRI r4133/r4088's
+  **bounded AND** — `(FwdPower ≤ FwdPowerThreshold) and (FwdPower ≥
+  RevPowerThreshold)` (`control_loop.rs:319`): with the default −100/+100 kW band
+  an idling reversible reg idles only inside the finite ±100 kW no-load zone and
+  still taps once the through-power leaves it. dss_capi 0.15.x wrote this as an
+  **OR** (`(FwdPower≥Rev) or (FwdPower≤Fwd)`), a tautology under the default band
+  that makes the reg never tap — proven wrong on 2026-07-19 vs r4088/r4133 +
+  physics and re-decided to the bounded-AND (CLAUDE.md 0.15.x rule; pinned by
+  `idle_no_load_zone_{suppresses_out_of_band_tap,still_taps_when_power_out_of_band}`).
 
 Gate: capi015 props golden re-baseline (`tests/golden/props/regcontrol.json`,
 `gen_regcontrol_capi015.py`) pinning the signed defaults + the two-edit fallback;
@@ -1451,7 +1524,16 @@ binding oracle. No allowlist row (the tables are equal), no golden change. Pinne
 by the guard `no_mode_prop_interpolation_stays_at_22` (fails if a stray `Mode`
 ever lands). No `known_diffs.json` entry existed.
 
-## L4, E2 — SeasonalRating reimplementation (global `SeasonalRatingIdx`) — SETTLED (WP-U1.5, adopt capi015 = r4133)
+**Forward-note (0.15.x-adoption sweep) — r4133 DOES add `Mode@22`.** Unlike
+dss_capi (which declines it), EPRI **r4133 `LoadShape.pas:246-247`** carries
+`PropertyName[22] := 'Mode'` with `Interpolation` shifted to **23** (parse arm at
+:624). So against the r4133 channel the port is one property short (23 vs r4133's
+24, `Interpolation` at a different index). It is a real **UPGRADE Rung-2 parity
+gap** (LoadShape `Mode` property + its sparse-shape interpolation-mode effect),
+correctly deferred — added to the Rung-2 list for a later WP; no Rung-1 action
+(the pinned `capi_v0145` oracle has no `Mode`, so no gate moves today).
+
+## L4, E2 — SeasonalRating reimplementation (global `SeasonalRatingIdx`) — SETTLED (WP-U1.5 multi-season core = capi015 = r4133; single-season guard re-decided to r4133 by the 0.15.x-adoption sweep fix round)
 
 **Observable.** The per-PDElement norm/emerg current ratings used by the overload
 report paths — `Export Overloads` (`ExportOverloads`), `Export Capacity`
@@ -1506,18 +1588,28 @@ the seasonal ratings for the overload test + reported values, exactly as 0.15.x
 `DSS.SeasonalRating := FALSE`-on-miss read is NOT reproduced (CLAUDE.md known-bug
 policy) — the precomputed index removes it.
 
-**capi015 ≠ r4133 on SINGLE-season elements (adopt capi015, the binding
-oracle).** The `55400a29` `GetRatings` guard is `(idx >= 0) and (idx <
-NumAmpRatings)` — it **dropped** the pre-refactor/r4133 `(RatingIdx <=
-NumAmpRatings) and (NumAmpRatings > 1)` guard. So under an active signal at idx 0
-a **single-season** PDElement (`NumAmpRatings = 1`, the default) takes
-`AmpRatings[0]` for BOTH norm and emerg on capi015, whereas r4133 keeps the base
-`(NormAmps, EmergAmps)`. Verified on the pinned capi015 oracle (0.15.0b4 / SVN
-4103, newer than `55400a29`): a default single-season Line under `SeasonRating`
-at idx 0 reports `%Normal == %Emergency` (both use `AmpRatings[0]`), i.e. the
-no-`>1`-guard behavior. The port follows **capi015** (the goldens' oracle);
-the earlier "capi015 == r4133 bit-identical" claim above holds only for the
-multi-season fixtures (`Seasons=4`), which is all the goldens exercise.
+**capi015 ≠ r4133 on SINGLE-season elements — the port follows r4133 (fixed by
+the 0.15.x-adoption sweep, 2026-07-19).** The `55400a29` `GetRatings` guard is
+`(idx >= 0) and (idx < NumAmpRatings)` — it **dropped** the pre-refactor/r4133
+`(RatingIdx <= NumAmpRatings) and (NumAmpRatings > 1)` guard. So under an active
+signal at idx 0 a **single-season** PDElement (`NumAmpRatings = 1`, the default)
+takes the stale constructor default `AmpRatings[0]` for BOTH norm and emerg on
+capi015 — silently discarding a user-set `normamps`/`emergamps` in the overload/
+capacity reports — whereas r4133 keeps the base `(NormAmps, EmergAmps)`. Under
+the new CLAUDE.md rule (0.15.x is not an authority) the sweep proved capi015 wrong
+here vs BOTH r4133 (source read: PDElement.pas l.351 guard present) AND physics
+(the drop hides real overloads), and the earlier "adopt capi015 the binding
+oracle" rationale was self-referential — the seasonal goldens contain only
+`Seasons=4` fixtures, so nothing bound the single-season path. **Own r4133 vs
+port probe** (single-season `Line.L1 normamps=100 emergamps=120`, I1≈139.77 A at
+idx 0, `Export Overloads`): r4133 `%Normal=139.8 %Emergency=116.5` (overload row
+present); port BEFORE the fix — **no overload row at all** (rated at the stale
+`AmpRatings[0]`); port AFTER the fix (add `&& num_amp_ratings() > 1` at
+`traits.rs::get_ratings`, keeping the memory-safe `0 <= idx < NumAmpRatings`
+bound — r4133's own `<= NumAmpRatings` off-end read is UB, not reproduced) —
+`%Normal=139.8 %Emergency=116.5`, **bit-identical to r4133**. Zero goldens move
+(all `Seasons=4`); the earlier "capi015 == r4133 bit-identical" claim holds only
+for those multi-season fixtures.
 
 **Gate consequence.**
 - **New capi015 goldens** `tests/golden/reports/export_overloads_seasonal.txt` +
@@ -1529,7 +1621,8 @@ multi-season fixtures (`Seasons=4`), which is all the goldens exercise.
   validated bit-identical on capi015 and oddie:r4133 (§1.7).
 - **Feature-sensitive unit tests** `line::tests::get_ratings_applies_seasonal_index`
   + `transformer::tests::get_ratings_applies_seasonal_index_on_transformer` (pin the
-  `AmpRatings[idx]` override + the `idx<NumAmpRatings`/`-1` guard, no `>1`), plus
+  `AmpRatings[idx]` override + the `NumAmpRatings > 1` and `idx<NumAmpRatings`/`-1`
+  guards — a single-season element keeps its base ratings, per r4133), plus
   `golden_reports.rs::{set_commands_resync_seasonal_rating_idx,
   di_overloads_applies_seasonal_rating}` (the set-command re-sync and the DI-path
   seasonal wiring).

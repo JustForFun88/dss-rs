@@ -323,6 +323,130 @@ fn generator_force_inj_freezes_iterminal() {
     );
 }
 
+/// The sixth flag-checking class: a WindGen's `GetTerminalCurrents` also honors
+/// `Flg.ForceInjCurrents` (r4133 WindGen.pas:2148 `and (not ForceInjCurr)`; the
+/// 0.15.x-adoption sweep found the port's WindGen `get_currents` was the only one
+/// of the six missing the guard, so it recomputed at the new operating point
+/// where r4133 freezes). The observable is the reported *terminal currents*
+/// (`ActiveCktElement.Currents` → `GetCurrents`, the port's `snapshot_elements`
+/// path) — NOT the `Get ITerminal` executive readback, which serves the cached
+/// buffer and is guard-blind. Once `InjCurrent` is forced, the reported currents
+/// must stay frozen at the pre-force operating point (the model recompute at the
+/// forced operating point is skipped).
+///
+/// Discriminating + r4133-cross-validated: a weak source + a large `[400,0,400]`
+/// A force pulls the recompute far from the frozen value. **Own r4133 probe**
+/// (epri-worker, this exact deck, `set InjCurrent=[400 0 400 0 400 0]` + re-solve,
+/// `ActiveCktElement.Currents`) reports the frozen
+/// `[-89.231224, -11.202775, 34.913725, 82.877894, 54.317500, -71.675120]` — the
+/// port matches it to a faer-vs-KLU floor. Dropping the guard makes the port
+/// recompute `[-86.039, -58.979, …]` (imag −11.20 → −58.98, a ≈48 A miss), so
+/// this assertion fails without the fix (verified by toggling the guard).
+#[test]
+fn windgen_force_inj_freezes_iterminal() {
+    let mut dss = Dss::new();
+    dss.command("new circuit.wg basekv=12.47 phases=3 bus1=sb");
+    dss.command("edit vsource.source r1=2 x1=8 r0=2 x0=8");
+    dss.command(
+        "new line.l1 phases=3 bus1=sb bus2=wbus r1=1.0 x1=2.0 r0=1.5 x0=3.0 c1=0 c0=0 length=1",
+    );
+    dss.command("new windgen.w1 bus1=wbus phases=3 kv=12.47 kw=2000 pf=0.95 conn=wye model=1");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcv");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Force the injection currents (weak source ⇒ the recompute is far from the
+    // frozen value) and re-solve.
+    dss.command("select windgen.w1");
+    dss.command("set InjCurrent=[400 0 400 0 400 0]");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("solve");
+
+    // Read the terminal currents the corpus gate compares (GetCurrents path).
+    let snap = dss.snapshot_elements();
+    let wg = snap
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("WindGen.w1"))
+        .expect("WindGen.w1 in snapshot");
+    // r4133 epri-worker frozen currents (own probe); the port must match, and
+    // WITHOUT the guard it recomputes [-86.039, -58.979, …] (fails here).
+    let r4133 = [
+        -89.231_224_458_194_29,
+        -11.202_774_501_306_344,
+        34.913_724_927_561_354,
+        82.877_894_438_227_46,
+        54.317_499_523_801_17,
+        -71.675_119_953_123_74,
+    ];
+    for (k, &want) in r4133.iter().enumerate() {
+        assert!(
+            (wg.currents[k] - want).abs() < 1e-6,
+            "WindGen forced current[{k}] {} must stay frozen at the r4133 value {want} \
+             (dropping the ForceInjCurr guard recomputes it ≈48 A off)",
+            wg.currents[k]
+        );
+    }
+}
+
+/// Sub-fix (c) regression pin (0.15.x-adoption sweep item 3): the forced-injection
+/// honor is **inert** for the three PCE classes that recompute their injection
+/// unconditionally in BOTH oracles — VCCS/UPFC/VSConverter (0 `ForceInjCurr` hits
+/// in r4133 and 0.15.0b4). The fix moved the force check INSIDE each of the six
+/// flag-checking classes' `inj_currents` and removed the central force-branch from
+/// `power_flow.rs`, so forcing one of these three must NOT move the solve. A
+/// regression that re-added a central force-branch (or wired a force check into
+/// VSConverter/VCCS/UPFC) would freeze the injection and shift every node voltage —
+/// this pin catches it. The ≈5 kA forced vector on the stiff `src` bus (|Z|≈0.051 Ω)
+/// would move `src` by ≈255 V if honored; when inert the forced re-solve only drifts
+/// by the fixpoint-convergence floor (≈2e-5 V here), so the 1e-2 V gate is
+/// discriminating (4 orders below the honored signal, 2 orders above the floor).
+#[test]
+fn force_inj_current_is_inert_for_vsconverter() {
+    let node_v = |dss: &Dss| dss.circuit().unwrap().solution.node_v.clone();
+    let mut dss = Dss::new();
+    dss.command("Set DefaultBaseFrequency=60");
+    dss.command(
+        "New Circuit.t basekv=0.48 phases=3 bus1=src pu=1.0 r1=0.01 x1=0.05 r0=0.01 x0=0.05",
+    );
+    dss.command("New Vsource.dc bus1=src.4 basekv=1.0 pu=1.0 phases=1 r1=0.001 x1=0.0");
+    dss.command(
+        "New VSConverter.v1 phases=4 Ndc=1 bus1=src.1.2.3.4 kVac=0.48 kVdc=1.0 kW=50 \
+         Rac=0.05 Xac=0.2 m0=0.5 d0=0",
+    );
+    dss.command("Set voltagebases=[0.48, 1.0]");
+    dss.command("calcv");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "vsc solve: {:?}", dss.errors());
+
+    // Converged reference operating point.
+    let v0 = node_v(&dss);
+
+    // Force the VSConverter's injection and re-solve from the converged state.
+    dss.command("select vsconverter.v1");
+    dss.command("set InjCurrent=[5000 0 5000 0 5000 0 5000 0]");
+    assert!(
+        dss.errors().is_empty(),
+        "set InjCurrent on a VSConverter: {:?}",
+        dss.errors()
+    );
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let v1 = node_v(&dss);
+
+    let drift = v0
+        .iter()
+        .zip(&v1)
+        .map(|(a, b)| (a - b).norm())
+        .fold(0.0_f64, f64::max);
+    assert!(
+        drift < 1e-2,
+        "forcing a VSConverter's InjCurrent must be inert (0 ForceInjCurr in r4133 / \
+         0.15.0b4); node V moved by {drift:.3e} V — a re-added central force-branch would \
+         honor the ≈5 kA force and shift src by ≈255 V"
+    );
+}
+
 /// `Set/Get AllowForms`/`AllowProgressBar` are accepted no-ops that round-trip
 /// (capi015 silently accepts them; a headless engine has no console forms, so
 /// the default is `No`). Erroring — the pre-fix behavior — diverged from

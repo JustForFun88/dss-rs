@@ -157,11 +157,11 @@ impl LineGeometryObj {
     /// `true` when at least one conductor was valid (the caller flags
     /// `data_changed`; Pascal `Exit`s before the `dataChanged` block on rejection).
     ///
-    /// Reachable via text only as an all-`none` list — every real item errors in
-    /// `parse_conductor_proxy` (the upstream `GetDSSClass` case bug) — so the
-    /// rejection path is the live one via text; the per-conductor dispatch (the
-    /// path the parser calls after the §6 compat fix, and the JSON-import
-    /// round-trip) is gated by the whitebox equivalence tests
+    /// Since the 0.15.x-adoption sweep, class-prefixed text items resolve
+    /// case-insensitively (`parse_conductor_proxy`, r4133 parity), so this
+    /// per-conductor dispatch is now the live text path AND the JSON-import path;
+    /// the all-`none` reject path stays live too (r4133 #303-AVs on that input —
+    /// UB, not reproduced). Both are gated by the whitebox equivalence tests
     /// `tests::conductors_array_matches_mixed_capi015` /
     /// `conductors_array_defaults_ratings_from_first_valid`, which drive the
     /// resolved-ref entry point directly against the capi015 references.
