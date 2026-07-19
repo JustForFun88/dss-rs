@@ -35,6 +35,7 @@ compares the flicker + Pst channels **f32-exact**, so no power-flow floor enters
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -81,10 +82,23 @@ def main() -> None:
     kvbase = float(w.read("bus_kvbase", name="PCC"))
 
     # Export triggers the official DoFlickerCalculations, rewriting the stream in
-    # place; read the post-processed channels back at full f32 precision. (The
-    # official engine writes the CSV into its own output directory, not the
-    # corpus — the reply names the path; the file itself is not part of the
-    # golden.)
+    # place; read the post-processed channels back at full f32 precision.
+    #
+    # The export ALSO writes `pst_Mon_pst_1.csv` into the engine's
+    # OutputDirectory. The DLL initializes that from the registry-persisted
+    # DataPath (`HKCU\Software\OpenDSS\MainSect`, r4133 `ReadDSS_Registry`) =
+    # the directory of the last deck ANY local run Compiled — typically inside
+    # tests/corpus (empirically `Examples/Scripts/` after a probe_59n run; this
+    # deck is exec'd line-by-line, so nothing here re-points it). Redirect
+    # DataPath to a stable scratch dir first so the CSV never lands in the
+    # corpus. `Set DataPath` also ChDirs the worker there (r4133
+    # `DSSGlobals.SetDataPath`) — fine, WindRmsV.csv was already resolved
+    # during the deck run — and a stable (never-deleted) dir keeps the
+    # registry-persisted path valid for later engine loads. The CSV path does
+    # not enter the golden; the channels are read from the in-memory stream.
+    export_dir = Path(tempfile.gettempdir()) / "dss_rs_flicker_export"
+    export_dir.mkdir(exist_ok=True)
+    w.exec(f'set DataPath="{export_dir}"')
     w.exec("export monitor pst")
     flk = [w.read("monitor_channel", index=2 * p + 1) for p in range(nph)]
     pst = [w.read("monitor_channel", index=2 * p + 2) for p in range(nph)]
