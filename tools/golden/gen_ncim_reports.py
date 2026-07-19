@@ -1,14 +1,25 @@
 """Generate the NCIM report goldens from the **capi015** oracle (UPGRADE_PLAN
 WP-U1.7 tail).
 
+*** FROZEN / UNREGENERABLE (NCIM RE-GATE WP, 2026-07-20). ***
+The capi015 probe venv (`tools/opendss/.venv`, dss-python 0.16.0b2 / dss_capi
+0.15.0b4) is RETIRED — it no longer exists on disk — so this script CANNOT be
+re-run and the goldens in `tests/golden/ncim/` are frozen. Do NOT touch those
+bytes. They pin solver INTERNALS (`Export Jacobian`, `Show PV2PQ_Conversions`)
+that are unaffected by the swing-source-report path, so they survive the
+oracle-of-record flip capi015→r4133 (NCIM is now LIVE-gated against r4133 via
+`epri-worker`; see `docs/upgrade/DIVERGENCES.md` and
+`exec/tests/ncim.rs::ncim_vsource_reported_currents_match_oracle`). This header is
+kept for provenance only.
+
 Pins the files the oracle writes for `Export Jacobian` / `Export deltaF` /
 `Export deltaZ` / `Show PV2PQ_Conversions` after a `Set Algorithm=NCIM` solve.
 The pinned 0.15.7 gate oracle (tools/golden/PIN.txt) has **no NCIM**, so — like
 the embedded numerics in `crates/dss-core/src/exec/tests/ncim.rs` — these goldens
-come from the capi015 line (dss-python 0.16.0b2 / dss_capi 0.15.0b4, OpenDSS SVN
-r4103) in tools/opendss/.venv.
+came from the capi015 line (dss-python 0.16.0b2 / dss_capi 0.15.0b4, OpenDSS SVN
+r4103) in tools/opendss/.venv (now retired).
 
-    tools/opendss/.venv/Scripts/python tools/golden/gen_ncim_reports.py
+    tools/opendss/.venv/Scripts/python tools/golden/gen_ncim_reports.py   # RETIRED venv
 
 Each fixture writes a self-contained `<stem>.meta.json` (the exact deck) plus the
 oracle report bytes:
@@ -17,7 +28,8 @@ oracle report bytes:
 `deltaF`/`deltaZ` are the converged mismatch/correction, i.e. at the ~1e-11
 faer-vs-KLU floor: their per-line VALUES are noise, so the Rust driver gates them
 structurally (line count, six leading swing zeros, converged magnitude) rather
-than value-pinning them. Regeneration is manual and MUST use the capi015 venv.
+than value-pinning them. Regeneration WAS manual and required the (now retired)
+capi015 venv.
 """
 
 from __future__ import annotations
