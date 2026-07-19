@@ -148,39 +148,30 @@ fn check(
 ///   These prove the WASM `calc`/`edit` transport is numerically bit-exact vs the
 ///   r4133 oracle (they pass at ~1e-14).
 ///
-/// - `false` (the GenModel=6 + ShaftModel DYNAMICS deck `wasm_gen_dyn`): a
-///   STRUCTURAL comparison — convergence, error-free (no WASM trap/protocol fault
-///   through any of the user *and* shaft dynamics call sites — `FInit`/
-///   `FIntegrate`/`FCalc`), and the full ordered 34-variable surface (names +
-///   count) matched to the oracle (proving `NumVariables` totals user ++ shaft,
-///   `FGetVarName` for both, and the `GetAllVariables` plumbing). The multi-step
-///   dynamics *trajectory* values/voltages are NOT floor-compared here because a
-///   PROVEN, still-OPEN engine-flow PORT BUG corrupts the multi-step trajectory
-///   (STATUS §"WM.3 D2 sub-bug #2"). Two effects were separated: (1) the Generator
-///   swing damping default IS a genuine dss_capi-0.14.5-vs-r4133 divergence —
-///   dss_capi/`generator.pas:1006` `Dpu:=1.0` (D≈13263) vs r4133/`generator.pas:968`
-///   sets `D:=1.0` in the ctor but never `Dpu`, so `InitStateVars` recomputes
-///   `D:=Dpu*kVArating*1000/w0=0` — which is why the deck pins `D=1` on both; (2)
-///   with D matched a residual trajectory gap survives, and the WM.3 D2 follow-up
-///   DISPROVED the "version divergence" hypothesis: the three-way experiment
-///   (A = Rust+wasm, B = pinned 0.14.5 + 244-B twin, C = r4133 + twin) measured
-///   **B == C to ≤1.06e-13 on every quantity** while **A diverges from BOTH** by the
-///   same amounts (Is1/Ir1 ~5e-4, losses ~1e-3, Slip ~1e-4, node V up to ~5e-4,
-///   dSpeed ~3e-2). Rust disagrees with its OWN pinned 0.14.5 spec, not just r4133,
-///   so this is a Rust PORT bug, NOT an engine-version divergence — 4–6 ORDERS above
-///   the faer-vs-KLU floor (1e-8), and a numeric flip would need a forbidden ~1e-1
-///   band, so the deck stays STRUCTURAL until the port bug is fixed (never a fudge).
-///   LOCALIZATION (empirically settled, D2 sub-bug #2 trace + settle): the guest
-///   math is exonerated — the Model=6 SNAPSHOT `wasm_gen_pflow` matches at ~1e-14,
-///   the guest is bit-exact to the native twin (`fixture_self_gate`), and driving
-///   the twin DLL directly through a full dynamics step with the terminal voltage
-///   HELD FIXED keeps |Is1| at the pflow point (189.10) at h→0 while the oracle
-///   ENGINE reaches the dynamic point (189.207) h-INDEPENDENTLY. The jump is
-///   therefore driven ENTIRELY by the engine's per-step network re-solve feeding
-///   different V/currents back to the guest — inspectable host code (the dynamics
-///   Generator↔network coupling), not the guest and not the WASM transport. Pinning
-///   the exact host line and flipping this gate to numeric at proven floors is the
-///   OPEN follow-up (STATUS §"WM.3 D2 sub-bug #2").
+/// - `true` also now covers the GenModel=6 + ShaftModel DYNAMICS deck
+///   `wasm_gen_dyn` (D2 sub-bug #2 FIXED, round 2): the full 34-variable surface
+///   AND all node voltages match the r4133 oracle at the same tier floors, worst
+///   ~7e-7 REL only on the near-zero quadrature currents Is2/Ir2 (~4.3e-7 value,
+///   ~3e-13 abs — the documented cancellation floor, bounded by `var_abs`). The
+///   macro quantities (Is1/Ir1/StatorLoss/RotorLoss/Slip/dSpeed/HPshaft, all node
+///   V) match to ≤~1e-13. The historical ~5e-4 divergence was a Rust PORT bug in
+///   the dynamics-entry seed: Pascal `InitStateVars` (`generator.pas:2393-2449`)
+///   runs only `ComputeIterminal` — never `ComputeVterminal` — before
+///   `UserModel.FInit`, so the model is seeded from the STALE `Vterminal` buffer
+///   (the power-flow's last-injection voltage `V_{n-1}`, one network re-solve
+///   behind the converged `NodeV`). The earlier port refreshed `Vterminal` to
+///   `V_n` in `user_model_finit`, seeding `E1 = V_n - I·Zsp` (the power-flow
+///   point, |Is1|=189.10) instead of `V_{n-1} - I·Zsp` (the dynamic operating
+///   point, |Is1|=189.207 — the oracle's h-independent first-step projection).
+///   Dropping that refresh reproduces the oracle's step-1 projection AND the whole
+///   trajectory (STATUS §"D2 sub-bug #2 — FIXED (round 2)"). The swing-damping
+///   default note stands: dss_capi/`generator.pas:1006` `Dpu:=1.0` (D≈13263) vs
+///   r4133/`generator.pas:968` sets `D:=1.0` in the ctor but never `Dpu`, so
+///   `InitStateVars` recomputes `D:=Dpu*kVArating*1000/w0=0` — a genuine version
+///   divergence the deck neutralizes by pinning `D=1` on both. Three-way
+///   (A=Rust+wasm, B=pinned 0.14.5+244-B twin, C=r4133+twin): now A==B==C to the
+///   floors (was A diverging from B==C by ~5e-4). The step-1 dSpeed sub-bug #1
+///   guard is `wasm_gen_dyn_step1_trajectory_matches_oracle` below.
 fn gate_deck(deck: &str, numeric: bool) {
     let g = load_golden(deck);
     let mut dss = run_deck(deck);
@@ -351,7 +342,105 @@ fn wasm_gen_pflow_matches_r4133_oracle() {
 
 #[test]
 fn wasm_gen_dyn_matches_r4133_oracle() {
-    gate_deck("wasm_gen_dyn", false);
+    gate_deck("wasm_gen_dyn", true);
+}
+
+/// Step-1 dynamics trajectory guard for the `wasm_gen_dyn` (Model=6 UserModel +
+/// ShaftModel) deck — the targeted regression pin for BOTH D2 sub-bugs at the
+/// FIRST dynamics step, where they first appear (the `gate_deck` numeric flip
+/// above pins the 21-step END state, this pins the entry).
+///
+/// * sub-bug #2 (the dynamics-entry seed, FIXED round 2): step-1 `Is1` jumps
+///   h-independently from the power-flow point (189.10) to the dynamic operating
+///   point (189.207) — the projection driven by seeding `FInit` from the stale
+///   `Vterminal` (`user_model.rs::user_model_finit`). If that seed regressed to
+///   the converged `V_n`, `Is1` would stay at 189.10 (a ~5e-4 gap).
+/// * sub-bug #1 (the shaft `FCalc` `Iterminal` write-back, FIXED earlier): step-1
+///   `dSpeed` is −89.24; without the write-back `IntegrateStates`' `TracePower`
+///   reads the USER model's currents instead of the SHAFT model's and `dSpeed`
+///   drifts to ≈−80.1 (a ~1e-1 gap that the end-state gate also catches, but this
+///   is the direct signal).
+///
+/// The pinned values are the FIRST-STEP oracle trajectory, measured on BOTH
+/// channels (pinned dss-python 0.14.5 + 244-B twin AND r4133 + 252-B twin), which
+/// agree bit-for-bit (`tools/wasm_usermodel/d2_step_0145.py`) — a real
+/// cross-engine oracle, not a Rust self-capture. Floors are the same as the gate
+/// (`var_rel = 1e-8`, `var_abs = 1e-12`); dSpeed sits ~4e-12 abs off (the
+/// documented dSpeed near-cancellation floor, well inside `1e-8·|dSpeed|`).
+#[test]
+fn wasm_gen_dyn_step1_trajectory_matches_oracle() {
+    // Oracle first dynamics step (h=0.000166667), both channels identical.
+    const ORACLE_SLIP: f64 = -6.99965569103890e-03;
+    const ORACLE_DSPEED: f64 = -8.92447042285687e+01;
+    const ORACLE_IS1_USER: f64 = 1.89227562665269e+02; // var 13
+    const ORACLE_IS1_SHAFT: f64 = 1.89227368125410e+02; // var 27
+    let (var_rel, var_abs) = (1e-8, 1e-12);
+
+    let fixture = workspace_root()
+        .join(FIXTURE_REL)
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("canonicalize fixture: {e}"))
+        .to_string_lossy()
+        .trim_start_matches(r"\\?\")
+        .replace('\\', "/");
+    let template = workspace_root().join("tools/golden/wasm_decks/wasm_gen_dyn.dss");
+    let deck_text = std::fs::read_to_string(&template)
+        .unwrap_or_else(|e| panic!("read deck {}: {e}", template.display()))
+        .replace("@FIXTURE@", &fixture);
+
+    let mut dss = Dss::new();
+    dss.command("clear");
+    // Feed the deck up to and including the snapshot `Solve`, then stop (the deck's
+    // own dynamics steps are 1 + 20; we drive exactly ONE step here).
+    for line in deck_text.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('!') || t.starts_with("//") {
+            continue;
+        }
+        if t.eq_ignore_ascii_case("solve") {
+            dss.command(t);
+            break; // snapshot done; ignore the deck's trailing dynamics solves
+        }
+        dss.command(t);
+    }
+    dss.command("Set mode=dynamics number=1 h=0.000166667");
+    dss.command("Solve");
+    assert!(
+        dss.errors().is_empty(),
+        "step-1 guard: unexpected engine errors: {:?}",
+        dss.errors()
+    );
+    assert!(
+        dss.circuit().expect("circuit built").is_solved,
+        "step-1 guard: Rust engine did not converge"
+    );
+
+    let v = dss
+        .element_variables("Generator.g1")
+        .expect("Generator.g1 has variables");
+    let mut worst = (0.0_f64, String::from("(none)"));
+    let mut fails: Vec<String> = Vec::new();
+    for (label, idx, oracle) in [
+        ("Slip", 6usize, ORACLE_SLIP),
+        ("dSpeed", 4, ORACLE_DSPEED),
+        ("Is1(user)", 13, ORACLE_IS1_USER),
+        ("Is1(shaft)", 27, ORACLE_IS1_SHAFT),
+    ] {
+        check(
+            &format!("wasm_gen_dyn step1 {label}"),
+            v[idx],
+            oracle,
+            var_rel,
+            var_abs,
+            &mut worst,
+            &mut fails,
+        );
+    }
+    assert!(
+        fails.is_empty(),
+        "wasm_gen_dyn step-1 trajectory out of tolerance:\n  {}",
+        fails.join("\n  ")
+    );
 }
 
 #[test]
