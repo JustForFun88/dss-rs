@@ -327,6 +327,28 @@ impl Dss {
         None
     }
 
+    /// The 1-based variable NAMES of a circuit element — the dss-python
+    /// `ActiveCktElement.AllVariableNames` surface (`TPCElement.VariableName`),
+    /// aligned index-for-index with [`Dss::element_variables`]. `None` if no such
+    /// element exists; an empty vec for elements with no variables. Used by the
+    /// WASM user-model gate (`wasm_usermodels.rs`) to compare the state-variable
+    /// surface by name against the r4133-oracle golden.
+    pub fn element_variable_names(&mut self, name: &str) -> Option<Vec<String>> {
+        let Dss { classes, .. } = self;
+        for class in classes.iter_mut() {
+            let cn = class.props.class_name();
+            for obj in class.objects.iter_mut() {
+                let full = format!("{}.{}", cn, obj.data().name());
+                if full.eq_ignore_ascii_case(name) {
+                    let elem = obj.as_ckt_element_mut()?;
+                    let n = elem.num_variables();
+                    return Some((1..=n).map(|i| elem.variable_name(i)).collect());
+                }
+            }
+        }
+        None
+    }
+
     /// WP8.5b corpus property parity: every property of the named element,
     /// rendered EXACTLY as the `?` executive query does (the choke-point
     /// `refresh_vterminal_if_marked` then [`ClassProps::get_value`] — the

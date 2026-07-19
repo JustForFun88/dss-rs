@@ -9,7 +9,7 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
@@ -123,24 +123,68 @@ impl CktElement for Generator {
         self.integrate_states_impl(sys, node_v);
     }
 
-    /// Pascal `TGeneratorObj.NumVariables`: the linked `DynamicExp` count first,
-    /// else the classic GenVars count.
+    /// Pascal `TGeneratorObj.NumVariables` (`generator.pas:2717-2726`): the
+    /// linked `DynamicExp` count first, else the classic GenVars count plus the
+    /// existing `UserModel`/`ShaftModel` variable counts (WASM_USERMODELS WM.3).
     fn num_variables(&self) -> usize {
         let n = self.dyneq.num_variables();
-        if n != 0 { n } else { self.num_gen_variables() }
+        if n != 0 {
+            return n;
+        }
+        let mut total = self.num_gen_variables();
+        if let Some(um) = self.user_model.as_ref().filter(|s| s.exists()) {
+            total += um.num_vars();
+        }
+        if let Some(sm) = self.shaft_model.as_ref().filter(|s| s.exists()) {
+            total += sm.num_vars();
+        }
+        total
     }
 
-    /// Pascal `TGeneratorObj.VariableName`: the `DynamicExp` name first, else the
-    /// classic name table.
+    /// Pascal `TGeneratorObj.VariableName` (`generator.pas:2728-2786`): the
+    /// `DynamicExp` name first, then the classic table (1..6), then the
+    /// `UserModel` names (`k = i - NumGenVariables`), then the `ShaftModel` names.
+    ///
+    /// TODO(compat): Pascal's ShaftModel branch (`:2780`) calls
+    /// `UserModel.FGetVarName` — a genuine upstream bug (should be
+    /// `ShaftModel.FGetVarName`); with no UserModel loaded it dereferences a nil
+    /// function pointer (an access violation), and out of the UserModel's range
+    /// it reads an uninitialized stack buffer. Per the CLAUDE.md rule (UB /
+    /// uninitialized-read bugs are NOT reproduced), the port does the correct
+    /// thing and queries the `ShaftModel` names; the gate is designed not to
+    /// compare shaft variable *names*.
     fn variable_name(&self, i: usize) -> String {
         if let Some(name) = self.dyneq.variable_name(i) {
             return name;
         }
-        self.gen_variable_name(i)
+        let base = self.num_gen_variables();
+        if (1..=base).contains(&i) {
+            return self.gen_variable_name(i);
+        }
+        let un = self
+            .user_model
+            .as_ref()
+            .filter(|s| s.exists())
+            .map_or(0, |s| s.num_vars());
+        if i > base
+            && i <= base + un
+            && let Some(um) = self.user_model.as_ref()
+        {
+            return um.var_name(i - base).unwrap_or_default().to_string();
+        }
+        if let Some(sm) = self.shaft_model.as_ref().filter(|s| s.exists())
+            && i > base + un
+            && i <= base + un + sm.num_vars()
+        {
+            return sm.var_name(i - base - un).unwrap_or_default().to_string();
+        }
+        self.gen_variable_name(i) // Pascal seeds Result := 'ERROR' for out-of-range
     }
 
-    /// Pascal `TGeneratorObj.GetAllVariables`: the `DynamicExp` memory dump first,
-    /// else the classic GenVars.
+    /// Pascal `TGeneratorObj.GetAllVariables` (`generator.pas:2689-2715`): the
+    /// `DynamicExp` memory dump first, else the classic GenVars (`States[0..6]`)
+    /// followed by the `UserModel` values (`@States[NumGenVariables]`) and the
+    /// `ShaftModel` values (`@States[NumGenVariables + N]`) — WASM_USERMODELS WM.3.
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
         if self.dyneq.has_dynamic_eq() {
             for (i, s) in states
@@ -152,8 +196,42 @@ impl CktElement for Generator {
             }
             return;
         }
-        let _ = (sys, node_v);
         self.get_gen_variables(states);
+        let base = self.num_gen_variables();
+        let un = self
+            .user_model
+            .as_ref()
+            .filter(|s| s.exists())
+            .map_or(0, |s| s.num_vars());
+        if un > 0 {
+            let end = (base + un).min(states.len());
+            if base < end {
+                self.get_all_vars_slot(UserModelSlot::User, &mut states[base..end], sys, node_v);
+            }
+        }
+        let sn = self
+            .shaft_model
+            .as_ref()
+            .filter(|s| s.exists())
+            .map_or(0, |s| s.num_vars());
+        if sn > 0 {
+            let start = base + un;
+            let end = (start + sn).min(states.len());
+            if start < end {
+                self.get_all_vars_slot(UserModelSlot::Shaft, &mut states[start..end], sys, node_v);
+            }
+        }
+    }
+
+    /// Pascal `TGeneratorObj.Set_Variable` (`generator.pas:2634-2687`), WM.3
+    /// scope: route a 1-based state-variable write to the `UserModel` /
+    /// `ShaftModel`. The classic 1..6 setters stay unported (the pre-WM.3 state:
+    /// no external caller); a DynamicEq generator rejects writes (Pascal #566).
+    fn set_variable(&mut self, i: usize, value: f64) {
+        if i < 1 || self.dyneq.has_dynamic_eq() {
+            return;
+        }
+        self.set_user_model_variable(i, value);
     }
 
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
@@ -525,18 +603,20 @@ impl DssObject for Generator {
             // Pascal `TProp.DynamicEq` side effect: size the DynamicEqVals memory
             // to the linked DynamicExp's NVariables (a nil ref leaves it empty).
             DYNAMICEQ => self.dyneq.on_dynamic_eq_set(),
-            // Pascal `TProp.UserModel` side effect (Generator.pas l.752):
-            // `UserModel.Name := UserModelNameStr` → `TGenUserModel.Set_Name`.
-            // Safe Rust never loads the DLL (forbid(unsafe_code); the loader is
-            // permanently out of scope). `Set_Name` bails silently on an empty /
-            // "none" name; any other name means the `LoadLibrary` "fails", so it
-            // hits `DoSimpleMsg(... 'Not Loaded' ..., 570)` and `Exists` stays
-            // false — the generator falls back to the built-in model (CF-C Port 2).
-            // This mirrors the official Direct DLL's non-fatal warn-and-solve.
-            USERMODEL => self.warn_user_model_not_loaded(),
-            // `TProp.UserData` (l.754): `if UserModel.Exists then UserModel.Edit`.
-            // The model never exists here, so — exactly like Pascal — this is a
-            // no-op beyond storing the string for the dump.
+            // WASM_USERMODELS WM.3 — the `EndEdit` dispatch order
+            // (`generator.pas:767-775`): `UserModel.Name` (load) before
+            // `UserData` (edit), `ShaftModel.Name` before `ShaftData`. The
+            // filesystem/current-dir are unreachable from the property hook, so
+            // each records a deferred request the executive resolves before
+            // `end_edit` (§2.4 activation rule).
+            USERMODEL => {
+                self.queue_user_model_load(UserModelSlot::User, self.user_model_name.clone())
+            }
+            USERDATA => self.queue_user_model_edit(UserModelSlot::User, self.user_data.clone()),
+            SHAFTMODEL => {
+                self.queue_user_model_load(UserModelSlot::Shaft, self.shaft_model_name.clone())
+            }
+            SHAFTDATA => self.queue_user_model_edit(UserModelSlot::Shaft, self.shaft_data.clone()),
             _ => {}
         }
     }
@@ -608,8 +688,18 @@ impl DssObject for Generator {
         self.fuel_kwh = other.fuel_kwh;
         self.pct_fuel = other.pct_fuel;
         self.pct_reserve = other.pct_reserve;
+        // User models: Pascal `UserModel.Name := Other.UserModel.Name` re-`New`s
+        // a fresh instance from the same module (`generator.pas:893-894`). The
+        // slot's `Clone` drops the live wasmi instance and re-creates it lazily
+        // on first use (with the same spec + last `UserData`), which is a benign
+        // superset of the Pascal fresh-`New` (no deck exercises `like=` on a
+        // user-model generator).
         self.user_model_name = other.user_model_name.clone();
+        self.user_data = other.user_data.clone();
         self.shaft_model_name = other.shaft_model_name.clone();
+        self.shaft_data = other.shaft_data.clone();
+        self.user_model = other.user_model.clone();
+        self.shaft_model = other.shaft_model.clone();
         self.spectrum = other.spectrum.clone();
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
@@ -624,6 +714,25 @@ impl DssObject for Generator {
         vars: &dss_parser::ParserVars,
     ) -> bool {
         self.dyneq.parse_dyn_var(variable, value, vars)
+    }
+
+    /// Drain the deferred user-model load/edit requests queued by the
+    /// `UserModel=`/`UserData=`/`ShaftModel=`/`ShaftData=` side effects (the
+    /// executive resolves each path against `current_dir` — WASM_USERMODELS
+    /// WM.3, §2.4).
+    fn take_user_model_loads(&mut self) -> Vec<UserModelLoad> {
+        std::mem::take(&mut self.pending_user_model_loads)
+    }
+
+    /// Apply a resolved user-model load/edit (`wasm` is `Some` iff a `.wasm`
+    /// file was found + read; `None` → warn-and-fallback, Pascal 570).
+    fn apply_user_model_load(
+        &mut self,
+        load: &UserModelLoad,
+        wasm: Option<&[u8]>,
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        self.apply_user_model_load_impl(load, wasm, errors);
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

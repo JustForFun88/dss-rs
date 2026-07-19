@@ -143,7 +143,11 @@ impl Generator {
         self.speed = 0.0; // relative to synchronous speed
         self.dspeed = 0.0;
 
-        // NOT_PORTED: GenModel = 6 UserModel/ShaftModel FInit (user-written DLLs).
+        // Init user-written models (Pascal `InitStateVars` GenModel=6 tail,
+        // generator.pas:2446-2452): `UserModel.FInit`/`ShaftModel.FInit`.
+        if self.gen_model == 6 {
+            self.user_model_finit(sys, node_v);
+        }
     }
 
     /// Pascal `TGeneratorObj.IntegrateStates` — advance the shaft state by one
@@ -221,8 +225,12 @@ impl Generator {
         self.speed = self.speed_history + 0.5 * h * self.dspeed;
         self.theta = self.theta_history + 0.5 * h * self.dtheta;
 
-        // NOT_PORTED: DebugTrace trace record; GenModel = 6 UserModel/ShaftModel
-        // Integrate (user-written DLLs).
+        // Integrate user-written models (Pascal `IntegrateStates` GenModel=6
+        // tail, generator.pas:2531-2537): `UserModel.Integrate` /
+        // `ShaftModel.Integrate`. (NOT_PORTED: the DebugTrace CSV record.)
+        if self.gen_model == 6 {
+            self.user_model_fintegrate(sys, node_v);
+        }
     }
 
     /// Pascal `TGeneratorObj.DoDynamicMode` — total dynamic current into the
@@ -237,26 +245,25 @@ impl Generator {
         self.calc_yprim_contribution(node_v);
 
         if self.gen_model == 6 {
-            // NOT_PORTED: user-written dynamics model DLL. Pascal sets
-            // `DSS.SolutionAbort := TRUE` (msg 5671); this records the error
-            // best-effort, exactly like the model-6 *power-flow* path
-            // (`calc_gen_model_contribution`), but the generator's `inj_currents`
-            // drops its local `errors` vec, so the abort is not surfaced. A bare
-            // `Model=6` generator in dynamics is unreachable in the vendored corpus
-            // (no UserModel can be configured — the prop is NOT_PORTED). On-demand
-            // (retagged at the WP8.8 sweep): surface as a loud abort if a corpus
-            // case ever needs it.
-            errors.push(crate::diag::DssDiagnostic::msg(
-                format!(
-                    "{}.{} model designated to use user-written dynamics model, but \
-                     user-written model is not defined.",
-                    "Generator",
-                    self.cd.obj.name()
-                ),
-                // Pascal `DoSimpleMsg('Dynamics model missing for %s ', 5671)`
-                // (generator.pas:1904).
-                Some(5671),
-            ));
+            // Pascal `DoDynamicMode` GenModel=6 (generator.pas:1937-1944): the
+            // WASM user model returns the terminal currents in Iterminal
+            // (`UserModel.FCalc(Vterminal, Iterminal)`). A missing model records
+            // #5671 and falls back to the Yprim contribution. Pascal additionally
+            // sets `DSS.SolutionAbort := TRUE`; the surrounding
+            // `inj_currents`/`get_currents` callers drop their local error log,
+            // so this stays a best-effort diagnostic — the same limitation as the
+            // sibling >3-phase dynamics aborts (`:328`), and unreachable in the
+            // vendored corpus (no missing-model dynamics deck).
+            if !self.user_model_fcalc(sys, node_v, errors) {
+                errors.push(crate::diag::DssDiagnostic::msg(
+                    format!(
+                        "Generator.{} model designated to use user-written dynamics model, but \
+                         user-written model is not defined.",
+                        self.cd.obj.name()
+                    ),
+                    Some(5671),
+                ));
+            }
         } else {
             let sc = SymComp::default();
             match self.cd.nphases {
@@ -359,7 +366,13 @@ impl Generator {
             self.cd.inj_current[i] -= self.cd.iterminal[i];
         }
 
-        // NOT_PORTED: GenModel = 6 ShaftModel FCalc (mech power to shaft).
+        // Pascal `DoDynamicMode` shaft path (generator.pas:2036-2039):
+        // `if (GenModel = 6) and ShaftModel.Exists then ShaftModel.FCalc(...)`
+        // — the shaft model computes the mechanical power to the shaft
+        // (`TGeneratorVars.Pshaft`, applied back onto the element).
+        if self.gen_model == 6 {
+            self.shaft_model_fcalc(sys, node_v, errors);
+        }
     }
 
     /// Pascal `TDSSCktElement.Get_PCE_Value(1, ValType)` (CktElement.pas l.828):
@@ -418,9 +431,10 @@ impl Generator {
         self.model7_last_angle = angle;
     }
 
-    /// Pascal `TGeneratorObj.NumVariables` (`= NumGenVariables`, the classic
-    /// path; inherited DynamicExp `NumVariables` returns 0 here, and the
-    /// UserModel/ShaftModel contributions are NOT_PORTED).
+    /// Pascal `NumGenVariables` (`generator.pas`): the count of the classic
+    /// built-in Generator state variables (the 6 named below). The public
+    /// `num_variables()` accessor adds the `UserModel`/`ShaftModel` counts on top
+    /// (WASM_USERMODELS WM.3, `accessors.rs`).
     pub(super) fn num_gen_variables(&self) -> usize {
         6
     }
