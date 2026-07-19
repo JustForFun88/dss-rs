@@ -2173,6 +2173,36 @@ three-command gate is run once on the final tree rather than per intermediate
 commit — the steps are monotonic bit-neutral and the oracle gate is expensive
 under worktree load contention; every commit builds.
 
+**Audit settlement (two independent audits over `13dde5c..cb2311c`).** Both
+returned ACCEPT with only low/medium *coverage* notes — no bit-neutrality,
+correctness, or tolerance findings (the col-major traversal was independently
+re-derived bit-identical to `add_primitive_matrix(&to_row_major())` by
+construction). The three coverage gaps are closed with targeted gating unit tests
+in `crates/dss-sparse/src/tests.rs`:
+- **T1 (medium) — `find_islands` untested + zero callers.** Added
+  `find_islands_components_and_deep_chain`: verifies component labels on a mixed
+  two-island + isolated-node case, and runs the iterative path-compression on a
+  degenerate 20 000-node chain (the stated stack-safety motive) — completes
+  without overflow and returns one island. `find_islands` remains a
+  caller-less public `KLUSolve FindIslands` mirror (kept as API surface, not
+  removed — out of P15 scope); it is now *exercised*, not only reasoned.
+- **T2 (low) — no gating test asserted the fast path was taken.** Added
+  `same_pattern_rebuild_takes_fast_path`: asserts the `pattern_reused` fast-path
+  sentinel is set on a same-pattern value-only rebuild and *cleared* on the
+  first build and on a `(r,c)`-sequence change. A silent fallback to the slow
+  path (a pure perf regression the bit-neutral tests miss) now fails `cargo test`.
+- **T3 (low) — item 3's live `add_primitive_matrix_col_major` had no direct
+  test.** Added `col_major_stamp_matches_row_major_transpose_bitwise`: a
+  bit-for-bit differential between the column-major read and the row-major
+  transpose fed through the old path, incl. a ground node to exercise the skip.
+
+Code-audit lows are process/observation, not defects: **P15-1** (engine-level
+fast-path coverage depends on value-only corpus rebuilds) is evidenced by the
+`snapshot_8500` ~38% win, which comes precisely from the control-iteration Y
+rebuilds hitting the reuse path on a real 8500-node deck; **P15-2** (gate run
+once on the final tree) is discharged here — the full three-command gate was
+re-run green at defaults on the settled tree. dss-sparse unit tests: 18 → 21.
+
 ## 1a. Archived — completed plan records (100% done)
 
 > Moved out of the active §1 frontier on 2026-07-17. These are the records of plans whose own work-package scope is closed and gate-green: the 1:1 FINAL ACCEPTANCE, JSON export (Stages A+B), DIAKOPTICS/PSTCALC **Part I**, and the full **UPGRADE** Rung 1 + Rung 2 (r4133 parity). A few carried a documented item forward to a successor plan that has **not** finished it yet (TODO(compat) sweep + HIDE_015X → DE_PASCALIZE Stage F; GICMvars export → Phase 9; JSON DynInit/Full-mode tail → a follow-up WP; IEEE118 NCIM → a future UPGRADE rung) — those open items are surfaced in §1's **Standing open follow-ups**, not buried here. Frozen history — superseded only by the code and tests. In-progress / not-started plans (DE_PASCALIZE, DIAKOPTICS Part II, RESONANCE, MULTITHREADING, WASM_USERMODELS) stay in the active §1 above.
