@@ -2,10 +2,17 @@
 //! their byte codecs at the frozen ABI offsets.
 //!
 //! Layouts are the **probe-frozen** tables of `docs/wasm/USERMODEL_ABI.md` §2
-//! (transcribed from FPC probe output, `docs/wasm/probes/p2_offsets_dss_capi.txt`)
 //! — little-endian, packed, no padding anywhere. Per the ABI doc §2.2 note, the
 //! images are assembled **field-by-field at explicit offsets**, never via
 //! `#[repr(C)]` (which would pad the unaligned `TGeneratorVars` tail).
+//!
+//! These are the **wasm marshaled images** (ABI doc §2.2b), i.e. the fields that
+//! cross the host↔guest boundary. The ABI re-freeze to r4133 (2026-07-19) moved
+//! the *native* `TGeneratorVars` to 252 bytes (`deltaQNom` at 176, §2.2a), but
+//! that field is engine-only (NCIM) and never crosses, so these wasm images are
+//! **unchanged** — `GeneratorVars` stays the 244-byte compact subset (identical
+//! to the historical 0.14.5/r3723 layout, ABI Appendix A). `DynamicsRec` (52 B)
+//! and the callback vtable (256 B) were byte-identical r3723→r4133 to begin with.
 
 /// Little-endian field writers/readers over a fixed-size image.
 macro_rules! put_f64 {
@@ -86,12 +93,17 @@ impl DynamicsRec {
     }
 }
 
-/// Pascal `TGeneratorVars` (`PCElements/generator.pas:178-214`, dss_capi
-/// 0.14.5; byte-identical to r3723 `GeneratorVars.pas`) — the Generator's
+/// Pascal `TGeneratorVars` (`PCElements/GeneratorVars.pas`) — the Generator's
 /// public data record. The model **mutates** it (e.g. sets `Pshaft`, `Speed`,
-/// `dSpeed`); the host reads it back after every call. Image: 244 bytes packed
-/// (ABI doc §2.2), including the deliberately unaligned tail (`vthev_mag` at
-/// 188 after the three i32s).
+/// `dSpeed`); the host reads it back after every call.
+///
+/// This is the **wasm marshaled image**: 244 bytes packed (ABI doc §2.2b),
+/// the crossing-fields subset, including the deliberately unaligned tail
+/// (`vthev_mag` at 188 after the three i32s). The native r4133 record is 252 B
+/// with `deltaQNom` at 176 shifting the tail +8 (ABI §2.2a); that slot is
+/// engine-only (NCIM) and never crosses the boundary, so this image keeps the
+/// 0.14.5/r3723 offsets (ABI Appendix A) after the re-freeze — `num_phases`
+/// at 176, `vthev_mag` at 188, `xrdp` at 236 (asserted below).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct GeneratorVars {
     /// Offset 0.
@@ -275,8 +287,9 @@ mod tests {
         assert_eq!(DynamicsRec::from_bytes(&b), r);
     }
 
-    /// Spot-checks of the `TGeneratorVars` layout against the frozen ABI-doc
-    /// §2.2 table, including the packed unaligned tail after the three i32s.
+    /// Spot-checks of the `TGeneratorVars` **wasm image** against the frozen
+    /// ABI-doc §2.2b table (244-byte crossing subset, unchanged by the r4133
+    /// re-freeze), including the packed unaligned tail after the three i32s.
     #[test]
     fn generator_vars_offsets_match_abi_doc() {
         let g = GeneratorVars {

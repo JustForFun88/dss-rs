@@ -13,6 +13,17 @@
 //! Run: `cargo +stable test` in `tools/wasm_usermodel/models/indmach012a`
 //! (host target; the crate is workspace-excluded so the repo gate does not
 //! run it — the committed artifact is gated via WM.1/WM.3).
+//!
+//! ABI re-freeze to r4133 (user decision 2026-07-19): the native twin is now
+//! the r4133 build (`build_native.ps1`). Its `TGeneratorVars` grew the
+//! r4088+/NCIM `deltaQNom` slot (244->252 B, native side only). Because the
+//! IndMach012a model math is byte-identical r3723->r4133 and `deltaQNom` never
+//! reaches the model, EVERY value in `twin_expected.rs` is bit-identical to the
+//! r3723 image (re-derived + diffed; evidence `p8_twin_r4133_bridge.txt` +
+//! `p8_indmach012a_math_diff.txt`). The **wasm-side** record round-tripped by
+//! `record_codec_round_trip` below stays the compact 244-B image (NumPhases@176,
+//! VthevMag@188) — `deltaQNom` is host-managed and never crosses the boundary,
+//! so the wasm layout is unchanged (ABI doc §2.2).
 
 #[allow(dead_code)]
 mod expected {
