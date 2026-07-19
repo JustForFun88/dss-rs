@@ -5812,3 +5812,70 @@ warnings`; `cargo test --workspace` — dss-core lib 1251 tests, corpus
 `corpus_gate_all_cases_match_engines` ok on all 514 cases, ~150-300s wall). Corpus
 kept pristine (path-limited cleanup only). No tolerance loosened; no new ledger
 row (item 8 blocker left open, not ledgered).
+
+### Settle round (two independent read-only audits, code + tests)
+
+Every finding reproduced empirically before disposition; no tolerance loosened,
+corpus pristine, `#8` NCIM blocker re-derived from the exact golden-generating
+oracle build.
+
+- **NCIM swing-current "suspected port bug" → PROVEN a faithful capi015
+  reproduction, NOT a port bug (audit-code F3, audit-tests F1, medium).** Read the
+  exact oracle build the NCIM goldens/pins were generated from — dss_capi
+  **0.15.0b4 (e936d210, SVN 4103)**, not the standard pinned 0.14.5 (which has no
+  NCIM at all). Its `NCIM_CalcInjCurrAtBus` fills `ce.GetCurrents(ElmCurrents)` at
+  index 0 then reads `ElmCurrents[j]` (`j:=1..NPhases`) — a one-conductor shift.
+  The port's `+1` in `exec/view.rs::ncim_swing_source_currents` reproduces this
+  0.15.0b4 shift **exactly** (unit test `ncim_vsource_reported_currents_match_oracle`
+  green). r4133 VSource.pas:1123 FIXED the shift (`GetCurrents(@(ElmCurrents[1]))`,
+  an offset write) — so the port matches capi015 and diverges from r4133, a
+  determinate, defined capi015-vs-r4133 upstream divergence (known-bug policy,
+  already a documented `TODO(compat)`). Disposition: **corrected** the 4 NCIM
+  defer_ledger texts + `ledger.json ncim-oppoint` cause + the `view.rs` comment to
+  state the proven cause (dropped the false "suspected port bug / phase-indexing
+  quirk / UNDER INVESTIGATION" framing); re-gate **kept deferred** (a genuine,
+  now-proven blocker — the swing-current channel differs by the upstream fix; a
+  live r4133 re-gate needs a per-channel ledger row scoping `Vsource.source`
+  reported currents, never a tolerance loosening — recorded as the re-gate recipe).
+  Text-only edits: population-lock safe (defer_ledger boolean-hashed
+  `population_lock.rs:150`, `ledger_tags` digests only `entries`) — lock green.
+- **line_fetch geometry-reject assertions loosened to bare smoke checks
+  (audit-tests F3, low) → FIXED.** Restored discriminating message assertions in
+  `conductor_none_geometry_rejects_but_line_accepts_and_solves`: geometry-level
+  `none` now asserts the port's `WireData object "none" not found.` (mirrors 0.14.5
+  #40303 / r4133 #10103) and the `nope` control asserts `object "nope" not found`
+  — a future unrelated parse failure no longer greens the pin.
+- **Force sub-fix (c) — VCCS/UPFC/VSConverter force-inertness untested
+  (audit-tests F2, low) → FIXED.** Added `force_inj_current_is_inert_for_vsconverter`
+  (`force_hooks.rs`): forcing a VSConverter's `InjCurrent` with a ≈5 kA vector must
+  not move the solve (0 `ForceInjCurr` in r4133/0.15.0b4; the central force-branch
+  was removed). Discriminating — honoring the force would shift the stiff `src`
+  (|Z|≈0.051 Ω) by ≈255 V; the inert re-solve drifts only by the fixpoint floor
+  (≈2e-5 V), gated at 1e-2 V.
+- **Force sub-fix (b) — time-series set_nominal preamble untested (audit-tests F2,
+  low) → deliberate documented non-fix.** The unconditional `set_nominal_*` preamble
+  is structurally preserved: the restructure moved the force check INSIDE each
+  flag-checking class's `inj_currents` (skipping only `calc_inj_current_array`), so
+  the preamble always runs before the skip — verified by source (audit + re-read of
+  `load/accessors.rs`). A black-box time-series observable that isolates
+  preamble-runs-vs-skipped from the frozen injection is not cleanly separable (the
+  channel is the nominal `Yeq`, swamped by the forced injection); the per-class
+  code shape is the guarantee. Tracked follow-up if a Yeq-freeze probe is later
+  built.
+- **>2-conductor `none` compaction untested (audit-code F2, low) → FIXED
+  (coverage).** Added `line_none_conductor_compaction_over_two_conductors_matches_
+  explicit`: the audit's exact flagged case (4-conductor spacing, `wires=(w w w
+  none)`) is compacted (skip-NIL copy, actualNConds 4→3, original-position coords)
+  and its solve is bit-identical (<1e-6 V) to the explicit 3-conductor spacing at
+  the same phase coordinates — whose path is oracle-validated by
+  `line_spacing_specified_resolves_and_solves`. Confirms the larger-compaction path
+  the port's FReduce-based sizing handles without the literal Pascal `NPhases :=
+  pGeo.Nconds` reestablishment.
+- **Two `TODO(compat)` deleted in `parse.rs` outside Stage F (audit-code F1, low)
+  → deliberate non-fix, convention exception intended.** Brief item 5 authorized it
+  and it is r4133-justified: the removed sites reproduced the capi015-ONLY
+  `TProxyClass.GetDSSClass` case-bug that r4133 does not have (r4133 parses
+  `conductors=` natively via `LowerCase` dispatch and solves). Removing a
+  `TODO(compat)` whose behavior is being **corrected toward r4133** (not a precision
+  improvement, no golden — HIDE_015X) is the right move; the Stage-F rule guards
+  golden-pinned precision compat, not a capi015-only breakage being fixed.

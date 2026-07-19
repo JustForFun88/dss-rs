@@ -389,6 +389,64 @@ fn windgen_force_inj_freezes_iterminal() {
     }
 }
 
+/// Sub-fix (c) regression pin (0.15.x-adoption sweep item 3): the forced-injection
+/// honor is **inert** for the three PCE classes that recompute their injection
+/// unconditionally in BOTH oracles — VCCS/UPFC/VSConverter (0 `ForceInjCurr` hits
+/// in r4133 and 0.15.0b4). The fix moved the force check INSIDE each of the six
+/// flag-checking classes' `inj_currents` and removed the central force-branch from
+/// `power_flow.rs`, so forcing one of these three must NOT move the solve. A
+/// regression that re-added a central force-branch (or wired a force check into
+/// VSConverter/VCCS/UPFC) would freeze the injection and shift every node voltage —
+/// this pin catches it. The ≈5 kA forced vector on the stiff `src` bus (|Z|≈0.051 Ω)
+/// would move `src` by ≈255 V if honored; when inert the forced re-solve only drifts
+/// by the fixpoint-convergence floor (≈2e-5 V here), so the 1e-2 V gate is
+/// discriminating (4 orders below the honored signal, 2 orders above the floor).
+#[test]
+fn force_inj_current_is_inert_for_vsconverter() {
+    let node_v = |dss: &Dss| dss.circuit().unwrap().solution.node_v.clone();
+    let mut dss = Dss::new();
+    dss.command("Set DefaultBaseFrequency=60");
+    dss.command(
+        "New Circuit.t basekv=0.48 phases=3 bus1=src pu=1.0 r1=0.01 x1=0.05 r0=0.01 x0=0.05",
+    );
+    dss.command("New Vsource.dc bus1=src.4 basekv=1.0 pu=1.0 phases=1 r1=0.001 x1=0.0");
+    dss.command(
+        "New VSConverter.v1 phases=4 Ndc=1 bus1=src.1.2.3.4 kVac=0.48 kVdc=1.0 kW=50 \
+         Rac=0.05 Xac=0.2 m0=0.5 d0=0",
+    );
+    dss.command("Set voltagebases=[0.48, 1.0]");
+    dss.command("calcv");
+    dss.command("Solve");
+    assert!(dss.errors().is_empty(), "vsc solve: {:?}", dss.errors());
+
+    // Converged reference operating point.
+    let v0 = node_v(&dss);
+
+    // Force the VSConverter's injection and re-solve from the converged state.
+    dss.command("select vsconverter.v1");
+    dss.command("set InjCurrent=[5000 0 5000 0 5000 0 5000 0]");
+    assert!(
+        dss.errors().is_empty(),
+        "set InjCurrent on a VSConverter: {:?}",
+        dss.errors()
+    );
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let v1 = node_v(&dss);
+
+    let drift = v0
+        .iter()
+        .zip(&v1)
+        .map(|(a, b)| (a - b).norm())
+        .fold(0.0_f64, f64::max);
+    assert!(
+        drift < 1e-2,
+        "forcing a VSConverter's InjCurrent must be inert (0 ForceInjCurr in r4133 / \
+         0.15.0b4); node V moved by {drift:.3e} V — a re-added central force-branch would \
+         honor the ≈5 kA force and shift src by ≈255 V"
+    );
+}
+
 /// `Set/Get AllowForms`/`AllowProgressBar` are accepted no-ops that round-trip
 /// (capi015 silently accepts them; a headless engine has no console forms, so
 /// the default is `No`). Erroring — the pre-fix behavior — diverged from

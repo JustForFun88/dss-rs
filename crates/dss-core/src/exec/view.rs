@@ -1119,9 +1119,15 @@ fn ncim_swing_source_currents(
     // unwritten, zero-initialized tail slot). It is deterministic and in-range
     // (never OOB — `SetLength(ElmCurrents, Yorder+1)`), so — per CLAUDE.md — it is
     // reproduced 1:1 (the `.get(..).map` returns 0 for the tail slot the port's
-    // `Yorder`-length `iterminal` lacks, matching the zero slot). Clean fix: drop
-    // the `+ 1`. NCIM affects only the *reported* swing-source current; node
-    // voltages are unaffected.
+    // `Yorder`-length `iterminal` lacks, matching the zero slot). The capi015 oracle
+    // is 0.15.0b4 (e936d210), whose `ce.GetCurrents(ElmCurrents)` writes conductor 1
+    // to index 0; r4133 VSource.pas:1123 FIXED the shift via
+    // `GetCurrents(@(ElmCurrents[1]))` (an offset write), so its read is unshifted.
+    // This pin therefore matches capi015 and *diverges from r4133* — a proven,
+    // determinate capi015-vs-r4133 upstream divergence (NOT a port bug), and the
+    // documented reason the 4 NCIM corpus cases stay deferred from live r4133 gating.
+    // Clean fix (when r4133 becomes the sole oracle): drop the `+ 1`. NCIM affects
+    // only the *reported* swing-source current; node voltages are unaffected.
     let clip = |v: Option<&num_complex::Complex64>| v.copied().unwrap_or(Complex64::ZERO);
 
     // PD elements (+ faults) at the bus: subtract their terminal currents. Pascal
