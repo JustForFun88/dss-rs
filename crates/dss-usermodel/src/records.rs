@@ -288,6 +288,18 @@ impl GeneratorVars {
 /// at the probed offsets, never via `#[repr(C)]` (the record is deliberately
 /// unaligned — `Vmax` at 95, `SampleP` at 116).
 ///
+/// **PARTIAL CODEC — control thresholds are NOT serialized (stay zero).** The
+/// native record's control set-points — `ON_Value`/`OFF_Value`/`PFON_Value`/
+/// `PFOFF_Value`/`CTRatio`/`PTRatio` (offsets 8…80), `Vmax` (95), `Vmin` (103) —
+/// are populated at edit/`RecalcElementData`, NOT in the `Sample` branch a wasm
+/// model runs, and the reference `capuserctl` fixture reads its thresholds from
+/// `UserData` instead, so they are omitted here (mirrors WM.4's
+/// `TStorageVars`/`TPVSystemVars` "interacted-fields only" codecs). **Successor
+/// trap:** if `get_public_data` is ever wired to serve a real control model whose
+/// decision logic reads these set-points, the zeros are a live bug — extend
+/// `to_bytes`/`from_bytes` (and the offset test) with the threshold offsets from
+/// the P9 probe before doing so. (Un-gatable regardless — see the asymmetry note.)
+///
 /// **NOT oracle-gatable via a native twin (proven — ABI doc §2.5).** A *native*
 /// CapControl model reads this record via the `GetPublicDataPtr` callback, which
 /// returns `ActiveCircuit.ActiveCktElement.PublicDataStruct` — the *global* active
@@ -468,8 +480,15 @@ mod tests {
         assert_eq!(i32::from_le_bytes(b[152..156].try_into().unwrap()), 3);
         assert_eq!(i32::from_le_bytes(b[156..160].try_into().unwrap()), 2);
         assert_eq!(CapControlVars::from_bytes(&b), cv);
-        // Unmodeled bytes stay zero (the model reads none of them on wasm).
+        // Every unmodeled byte stays zero — the full complement of the written
+        // set {111,112,114, 116..160}: the leading thresholds [0..111), the two
+        // gap bytes `Armed`@113 / `InitialState`@115, and the trailing region
+        // [160..184) (`VOverrideBusName`/`CapacitorName`/`ControlActionHandle`/
+        // `CondOffset`). This pins the codec to touch nothing outside its fields.
         assert!(b[0..111].iter().all(|&x| x == 0));
+        assert_eq!(b[113], 0);
+        assert_eq!(b[115], 0);
+        assert!(b[160..184].iter().all(|&x| x == 0));
     }
 
     /// Byte-exact round trip with every field holding a distinct bit pattern.
