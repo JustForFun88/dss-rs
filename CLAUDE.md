@@ -114,13 +114,23 @@ empties the shared target on the first worktree, then keeps going.
 worktree, drop the junction *reparse points only* (never descend into them),
 then remove the worktree:
 
-1. List reparse points without following them:
-   `Get-ChildItem -LiteralPath <wt> -Force | ? { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }`
+1. List reparse points without following them (recurse — a junction may sit
+   below the top level, e.g. `tools/opendss/.venv`):
+   `Get-ChildItem -LiteralPath <wt> -Recurse -Force | ? { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }`
 2. Remove the **link only** — `$_.Delete()` on the `DirectoryInfo`
    (or `cmd /c rmdir "<path>"` **without** `/s`). Both drop the junction and
    leave the target untouched. Never use `Remove-Item -Recurse` / `rmdir /s` on
    a junction — they recurse through it into main.
-3. Only now `git worktree remove --force <wt>`, then `git worktree prune`.
+   **PowerShell ONLY — never the Bash tool.** Under Git Bash, MSYS
+   path-converts the `/c` in `cmd /c …`, cmd starts an interactive session,
+   executes NOTHING, and exits 0 — the junction silently survives. This exact
+   false-success wiped `.inputs` the second time (2026-07-19).
+3. **Prove every link is gone before touching git:** `Test-Path '<wt>\.inputs'`
+   and `Test-Path '<wt>\tools\opendss\.venv'` must both be **False**.
+   Checking that main's target still has its items is NOT sufficient — it
+   stays intact exactly while an un-dropped junction still exists, and dies
+   on the next step.
+4. Only now `git worktree remove --force <wt>`, then `git worktree prune`.
 
 After each removal verify the shared target survived — `(gci .inputs -Force |
 measure).Count` must be unchanged. Delete the merged per-agent branches
@@ -179,3 +189,42 @@ branch deletion never touches `.inputs`.
   needed, 1–3 short bullets — not half a page. State *what changed and why* in a
   sentence or two; the detailed rationale belongs in `STATUS.md`/code comments, not
   the commit body. Don't restate the diff.
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+| ------ | ---------- |
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.
