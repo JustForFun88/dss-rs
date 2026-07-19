@@ -343,7 +343,7 @@ fn do_pending_open_single_step_opens_bank() {
     cc.armed = true;
     let mut cap = MockCap::one_step(true);
     let mut sc = Scratch::new();
-    cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
     assert!(!cap.closed);
     assert_eq!(cap.last_step, 0);
     assert_eq!(cc.present_state, CTRL_OPEN);
@@ -359,7 +359,7 @@ fn do_pending_close_single_step_closes_bank() {
     cc.armed = true;
     let mut cap = MockCap::one_step(false);
     let mut sc = Scratch::new();
-    cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
     assert!(cap.closed);
     assert_eq!(cap.last_step, 1);
     assert_eq!(cc.present_state, CTRL_CLOSE);
@@ -380,11 +380,98 @@ fn do_pending_open_multistep_steps_down() {
         closed: true,
     };
     let mut sc = Scratch::new();
-    cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
     // One step down: still partly closed, bank stays Closed.
     assert_eq!(cap.last_step, 3);
     assert!(cap.closed);
     assert_eq!(cc.present_state, CTRL_CLOSE);
+    assert!(sc.y_changed);
+}
+
+// --- USERCONTROL wiring (WM.5): Sample-context packing + DoPendingAction ---
+
+/// WM5-C4/wm5-1: the host-side `@ControlVars` `Sample`-context packing (which
+/// sensed quantity/unit lands in which `CapControlVars` slot) is served to the
+/// guest via `get_public_data`, which is un-gatable over wasm (ABI §2.5) — so the
+/// end-to-end gate never asserts it. Pin the field assignment directly:
+/// `SampleP` in kW+jkvar (×0.001), `SampleV`/`SampleCurr` PT/CT-scaled, and
+/// `LastStepInService = NumSteps − AvailableSteps` (Pascal `CapControl.pas:1057-1069`).
+#[test]
+fn user_control_builds_sample_context_in_pascal_units() {
+    let mut cc = CapControl::new("cc");
+    cc.pt_ratio = 1.0;
+    cc.ct_ratio = 1.0;
+    cc.fpt_phase = 1; // single-phase branch: cbuffer[0]/pt_ratio
+    cc.fct_phase = 1; // single-phase branch: cbuffer[0]/ct_ratio
+    cc.present_state = CTRL_OPEN;
+    cc.set_pending_change(CTRL_NONE);
+    let cap = MockCap {
+        name: "cc".into(),
+        num_steps: 4,
+        last_step: 1, // available = 3 → last-in-service = 4 − 3 = 1
+        total_kvar: 1200.0,
+        conn: 0,
+        closed: true,
+    };
+    let mut mon = MockMon::new(3);
+    mon.power = Complex64::new(200_000.0, 100_000.0); // 200 kW + j100 kvar
+    mon.voltages = vec![Complex64::new(7200.0, 0.0); 3];
+    mon.currents = vec![Complex64::new(50.0, 0.0); 3];
+    let mut sc = Scratch::new();
+    let cv = cc.build_sample_context(&cap, &mut mon, &mut sc.ctx(0, 0, 0.0), 0, 3);
+
+    assert_eq!(cv.sample_p, (200.0, 100.0)); // ×0.001 → kW+jkvar
+    assert!((cv.sample_v - 7200.0).abs() < 1e-9); // PT-ratio 1.0, phase-1
+    assert!((cv.sample_curr - 50.0).abs() < 1e-9); // CT-ratio 1.0, phase-1
+    assert_eq!(cv.num_cap_steps, 4);
+    assert_eq!(cv.available_steps, 3);
+    assert_eq!(cv.last_step_in_service, 1); // NumSteps − AvailableSteps
+    assert_eq!(cv.present_state, CTRL_OPEN);
+    assert_eq!(cv.pending_change, CTRL_NONE);
+    assert!(!cv.should_switch);
+}
+
+/// WM5-C1 / wm5-2: the USERCONTROL `DoPendingAction` path sets `PendingChange :=
+/// code` (the guest scheduled `code` via `control_queue_push`; no `@ControlVars`
+/// write-back over wasm) and the shared switch block acts on it — the `proxy`
+/// argument is accepted and forwarded to the guest but does not itself drive the
+/// built-in switch (`CapControl.pas:725-733`, ABI §2.5). With no loaded model the
+/// guest step is skipped and no trap is raised (no abort).
+#[test]
+fn user_control_do_pending_applies_code_not_preset_pending() {
+    let mut cc = CapControl::new("cc");
+    cc.control_type = CapControlType::UserControl;
+    cc.present_state = CTRL_OPEN;
+    cc.set_pending_change(CTRL_OPEN); // sentinel: the popped `code`, not this, rules
+    let mut cap = MockCap::one_step(false);
+    let mut sc = Scratch::new();
+    let abort = cc.do_pending_action(CTRL_CLOSE, 7, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    assert!(!abort, "no loaded model → no trap → no abort");
+    assert_eq!(cc.pending_change, CTRL_CLOSE); // host set PendingChange := code
+    assert!(cap.closed);
+    assert_eq!(cc.present_state, CTRL_CLOSE);
+    assert!(sc.y_changed);
+}
+
+/// WM.5 USERCONTROL multi-step: a `code = CTRL_CLOSE` on a partly-closed bank
+/// steps up one (the shared switch block, reached via the USERCONTROL `code`).
+#[test]
+fn user_control_do_pending_multistep_steps_up() {
+    let mut cc = CapControl::new("cc");
+    cc.control_type = CapControlType::UserControl;
+    cc.present_state = CTRL_CLOSE;
+    let mut cap = MockCap {
+        name: "cc".into(),
+        num_steps: 4,
+        last_step: 2,
+        total_kvar: 1200.0,
+        conn: 0,
+        closed: true,
+    };
+    let mut sc = Scratch::new();
+    let abort = cc.do_pending_action(CTRL_CLOSE, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    assert!(!abort);
+    assert_eq!(cap.last_step, 3); // stepped up
     assert!(sc.y_changed);
 }
 
@@ -428,7 +515,7 @@ fn event_log_records_close_when_enabled() {
     cc.set_pending_change(CTRL_CLOSE);
     let mut cap = MockCap::one_step(false);
     let mut sc = Scratch::new();
-    cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
     assert_eq!(sc.events.len(), 1);
     let line = &sc.events.entries()[0];
     assert!(line.contains("Element=Capacitor.cc"));

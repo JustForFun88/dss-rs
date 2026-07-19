@@ -177,8 +177,18 @@ fn generate_wm5_capcontrol_golden() {
         let deck_path = scratch.join("wasm_capcontrol_twin.dss");
         std::fs::write(&deck_path, &deck_text).unwrap();
 
+        eprintln!(
+            "[twin] EXPECTED TO HANG: OBSERVED 2026-07-20 the compile below does NOT return — the \
+             twin pushes with Owner := GetActiveElementPtr() (the wrong element), so the control- \
+             queue pop dereferences a garbage TControlElem and corrupts the r4133 engine. A hang \
+             (not a clean empty log) is itself the decisive corroboration that the native-twin \
+             channel is un-gatable; the definitive proof is the source reading in the module doc. \
+             If this call ever DOES return (engine hardened), the event log should be empty (no \
+             correctly-routed switch)."
+        );
         engine.clear().unwrap();
         let compile_res = engine.compile(&deck_path.to_string_lossy().replace('\\', "/"), true);
+        // Only reached if the engine did NOT hang (see the warning above).
         eprintln!("[twin] compile result: {compile_res:?}");
         let twin_log = engine.eventlog();
         let twin_actions = switch_actions(&twin_log);
@@ -187,11 +197,8 @@ fn generate_wm5_capcontrol_golden() {
             eprintln!("    {l}");
         }
         eprintln!(
-            "[twin] EMPIRICAL CONFIRMATION — switch actions via the native twin: {twin_actions:?}"
-        );
-        eprintln!(
-            "[twin] EXPECTED EMPTY: a native CapUserControl twin has no owner pointer to push a \
-             correctly-routed control action, so the r4133 engine executes no CapControl switch."
+            "[twin] EMPIRICAL CONFIRMATION (only if it returned) — switch actions via the native \
+             twin: {twin_actions:?}"
         );
     } else {
         eprintln!(

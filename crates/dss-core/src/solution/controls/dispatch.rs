@@ -1059,7 +1059,7 @@ pub(super) fn dispatch_control(
                             "Controlled element is not a Capacitor",
                         ));
                     };
-                    cc.do_pending_action(code, proxy, cap, &mut ctx);
+                    solution_abort_requested = cc.do_pending_action(code, proxy, cap, &mut ctx);
                 }
                 ControlOp::Reset => {
                     let (cobj, capobj) = store.pair_mut(r, target);

@@ -6001,3 +6001,59 @@ code, not a reproduced-vs-not upstream bug).
 --workspace` incl. the unconditional corpus gate 514/514); corpus pristine
 (path-limited cleanup only); the five `expect_warnings` decks + manifests
 untouched. Audits (audit-code + audit-tests) + settle are the ritual next step.
+
+**Settle (round-2 audits, 2026-07-20).** Two independent read-only audits
+(audit-code, audit-tests) over `ddaa275..099def5` found no High/Medium; seven LOW
+findings, each reproduced then settled empirically.
+
+- **WM5-C1 (do_pending trap non-abort, asymmetric with the sample abort) — FIXED.**
+  `do_pending_action` now returns `bool` and, on a guest `do_pending`
+  trap/fault, pushes `DssDiagnostic::abort(569)` and `return`s early (skipping the
+  switch block) instead of `msg(569)`+continue. The dispatcher lifts it to
+  `solution_abort` (`dispatch.rs` Cap `ControlOp::Action` arm), giving full ABI-§6
+  parity with `sample_user_control` — a faulted guest no longer switches the bank
+  on its `code` mid-run. `#[must_use]`; the 4 built-in `do_pending_action` unit
+  call-sites take `let _ =` (they never trap → never abort).
+- **WM5-C4 / wm5-1 (the `get_public_data` `CapControlVars` Sample-context packing
+  is served but asserted by no test — un-gatable over wasm) — FIXED.** Extracted
+  the host-side field assignment into `CapControl::build_sample_context` and pinned
+  it with `user_control_builds_sample_context_in_pascal_units`: `SampleP` in
+  kW+jkvar (×0.001), `SampleV`/`SampleCurr` PT/CT+phase-scaled, `LastStepInService
+  = NumSteps − AvailableSteps`, and the state fields — the brief's "Sample context
+  units" hunt item, now covered end-to-host independent of the existing codec
+  offset test (`dss_usermodel::records::cap_control_vars_offsets_match_probe`,
+  which already pins the 184-B r4133 byte layout at offsets 111/112/114/116/…/156).
+- **wm5-2 (thin USERCONTROL scenario: only the open/close code dimension gated) —
+  PARTIALLY CLOSED.** Added `user_control_do_pending_applies_code_not_preset_pending`
+  (USERCONTROL `DoPendingAction` sets `PendingChange := code`, not a pre-set
+  pending; the `proxy` arg is accepted) and `user_control_do_pending_multistep_steps_up`
+  (multi-step step-up via the USERCONTROL `code`). The direct-push
+  timing/dead-time dimension is NOT gated by design: per the ABI §2.5 successor
+  caveat the model owns the timing and the gate deck keeps `Delay=DelayOff=DeadTime=0`,
+  so the Rust host merely forwards the guest's `(hour, sec)` to `ControlQueue.Push`
+  — there is no Rust-side timing surface to regress, and no in-gate oracle for a
+  nonzero-delay USERCONTROL schedule (a native twin cannot push — the finding above).
+- **WM5-C2 / wm5-3 (gen test prints "EXPECTED EMPTY" while the module doc/STATUS/ABI
+  say the twin HANGS) — FIXED (doc).** Rewrote the `gen_wasm_usermodels_wm5.rs`
+  twin-confirmation `eprintln`s to state the compile is EXPECTED TO HANG (OBSERVED
+  2026-07-20, corrupt control-queue pop) and only falls through to an empty log if
+  the engine is ever hardened — consistent with the module doc; no longer misleads
+  a re-runner. Manual/env-gated path only, never in the gate.
+- **WM5-C3 (`from_ordinal(6) → Some(UserControl)` widens `set_i32(TYPE,6)`) —
+  VERIFIED, deliberate non-fix.** Reproduced empirically: `cap_control_type` is a
+  **non-hybrid** enum with `default_value = NO_DEFAULT`
+  (`registry/control.rs`), so `Type=6` in a deck goes through `string_to_ordinal`,
+  fails to prefix-match any name, and (non-hybrid + NO_DEFAULT) returns an
+  `Err("Could not match enum")` — `set_i32(prop::TYPE, 6)` is **never reachable
+  from a deck**. The only callers of `from_ordinal(6)` are the internal
+  dump/restore round-trip and typed setters — exactly what the change enables (a
+  stored USERCONTROL control-type must survive a `get_i32`→`set_i32` cycle; the
+  prior keep-old behavior silently corrupted it). Even a forced `set_i32(TYPE,6)`
+  with no model is benign (`sample_user_control` finds no model → returns false →
+  no switch). The `Type=` string enum still omits USERCONTROL (`CapControl.pas:245-249`).
+  Pinned by `cap_control_type_pins_enum_ordinals` (round-trip) +
+  `set_i32_type_keeps_value_on_unregistered_ordinal` (ordinal 99 keep-old).
+
+Post-settle gate green at defaults (fmt/clippy/test, corpus gate 514/514 +
+cap_control 30 unit tests incl. the 3 new); corpus pristine; goldens/manifests/
+ledger untouched. Head `099def5` → settle commit.
