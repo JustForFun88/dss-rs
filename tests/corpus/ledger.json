@@ -32,7 +32,7 @@
     "ncim-oppoint": "NCIM (Newton-Current-Injection) is a 0.15.x/r4133 solver the pinned dss_capi 0.14.5 lacks entirely (Set algorithm=NCIM ignored, Export deltaf #24713) — so the capi_v0145 channel cannot gate an NCIM deck. On r4133 the NCIM iteration converges to a slightly different PV/Q operating point than the Rust NCIM port (WP-U1.7), so node V / injection / source current / iteration count differ within a measured envelope.",
     "dynexp-d14": "Dynamic-expression (DynExp) decks: the retired capi015 (0.15.0b4) froze the state-var seed via a D14 Exit-no-op; the pinned 0.14.5 and the port swing, and EPRI r4133 evaluates the dynamic expression a few ulp differently, so node V drifts within a measured envelope on r4133 (D14; DIVERGENCES.md; STATUS UPGRADE).",
     "gfm-pctstored-rounding": "Grid-forming (GFM) storage decks: the r4133 physics matches the port (the port adopted the r4133 Isc1 default, DIVERGENCES.md #b5) EXCEPT the Storage.%stored property getter STRING, which r4133's Delphi rounds to ~4-6 decimals (e.g. 92.4321) where the port/pinned-oracle return full f64 (92.4320641163609) — a getter rendering difference, exact-pair only. On the capi_v0145 channel the deck cannot gate: 0.14.5's different Isc1 default makes the assembled system-Y differ wholesale (x1000), a deliberate model default the port follows r4133 on.",
-    "regcontrol-idle": "The RegControl `idle` property is a 0.15.x/r4133 feature the pinned dss_capi 0.14.5 rejects (#110 Unknown parameter 'idle') — so the capi_v0145 channel cannot gate the idle-regulator deck. On r4133 the idle regulator leaves the node V a small measured envelope away from the Rust port.",
+    "regcontrol-idle": "RegControl `idle` is a 0.15.x/r4133 feature the pinned dss_capi 0.14.5 rejects (#110 Unknown parameter 'idle'), so only the r4133 channel gates the idle-regulator deck. BUG WP regcontrol_idle (2026-07-19): the port adopted r4133's no-load-zone AND semantics (idle when the through-power is inside the BOUNDED [RevPowerThreshold, FwdPowerThreshold] band; r4133 RegControl.pas:1218). dss_capi 0.15.x wrote it as an `or` (8a898cba, still OR at the 0.15.x tip) — a tautology under the default symmetric band that made an idling reg never tap; the port previously reproduced it (MV.1 8.8% low). After adoption the idle tap/voltage match r4133 exactly (tapnum 15, tap 1.09375, MV.1=7650.08 V; probe D: widening fwdThreshold to bracket the load makes r4133 idle to the old 7030.24 V, proving the bounded-AND mechanism). The only residual is a getter-convention difference on revThreshold/fwdThreshold: r4133's getter returns the InitPropertyValues display strings (revThreshold '100' = band half-width, RegControl.pas:1448; fwdThreshold unset '') decoupled from the signed internal, while the port reports the signed effective thresholds in kW (rev -100, fwd +100). Definitional, not physics — exact-pair.",
     "linespacing-normamps": "Line built from LineSpacing+wiredata: dss_capi 0.14.5 reports Line.lsp.normamps=730/emergamps=1095 (the FIRST wire's NormAmps rating, ACSR_556) where the port and the newer engines (0.15.x/r4133) report 230/345 — the MINIMUM NormAmps over the phase conductors (min{556->730, 4-0->340, 1-0->230}=230; r4133 V8 LineGeometry.pas:1237-1239, WP-U1.2 D3). The port follows the corrected 0.15.x min-over-phase derivation, so on capi_v0145 it intentionally diverges from 0.14.5 (settled empirically 2026-07-18: port=230/345, oracle 0.14.5=730/1095 — the port value matches the r4133 source and is CORRECT). r4133 additionally #303-crashes this deck (skip). Exact-pair property entry on capi_v0145."
   },
   "entries": [
@@ -553,6 +553,31 @@
       "kind": "skip",
       "cause_ref": "epri-303-crash",
       "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 #303 access violation during compile, at the `new line.lspc ... tscables=[TS_1-0] wires=[CU_1-0]` command (offset 41CE5E in ProcessCommand; re-derived live 2026-07-19 Phase F re-review — NOT at calcv, that is the IEEE13_LineSpacing sibling); capi_v0145 gates it (exact-pair property above)."
+    },
+    {
+      "id": "r4133-regcontrol-idle-threshold-display",
+      "case": "controls:regcontrol/regcontrol_idle.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^regcontrol\\.rg\\.revthreshold$",
+          "oracle": "100",
+          "rust": "-100"
+        },
+        {
+          "field": "probe",
+          "name_re": "(?i)^regcontrol\\.rg\\.fwdthreshold$",
+          "oracle": "",
+          "rust": "100"
+        }
+      ],
+      "cause_ref": "regcontrol-idle",
+      "source": "BUG WP regcontrol_idle 2026-07-19: idle no-load-zone physics adopted from r4133 (bounded-AND, control_loop.rs) so tap/voltage now match r4133 exactly. Residual = the revThreshold/fwdThreshold GETTER convention: r4133 returns the display default strings (revThreshold '100' band half-width, RegControl.pas:1448 InitPropertyValues; fwdThreshold unset '') while the port returns the signed effective thresholds in kW (rev -100, fwd +100). Definitional getter difference, not physics (full-model live compare matches). Exact-pair.",
+      "measured": {
+        "date": "2026-07-19"
+      }
     }
   ]
 }
