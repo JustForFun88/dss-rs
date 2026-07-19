@@ -1,6 +1,6 @@
 """Live oracle server for the corpus comparison gate (CORPUS_TEST_PLAN.md §3).
 
-A persistent process the Rust harness (`corpus_live.rs`) drives at test time:
+A persistent process the Rust harness (`corpus_gate.rs`) drives at test time:
 read one JSON request per line on stdin, run it through the pinned dss-python
 oracle, write one JSON response per line on stdout. This is the *live* oracle —
 no goldens are written; both engines compile the **same** copied `.dss` file and
@@ -189,7 +189,7 @@ def capture_all_monitors(ckt) -> list:
 
     Mirrors the phase6 monitor golden capture (`Header`/`SampleCount`/
     `Channel(i)`); empty when the case defines no monitors. Channels are the
-    growing per-sample arrays — compared per step by `corpus_live.rs`.
+    growing per-sample arrays — compared per step by `corpus_gate.rs`.
     """
     out = []
     mon = ckt.Monitors
@@ -327,7 +327,7 @@ def _get_early_abort(d):
 
 def run_case(d, req: dict) -> dict:
     """Compile one copied `.dss` case, run `n_steps` solves, return the full
-    per-step model (the shape `harness::*` / corpus_live.rs deserialize)."""
+    per-step model (the shape `harness::*` / corpus_gate.rs deserialize)."""
     import dss as _dss  # module already loaded by make_engine; for DSSException
 
     case_path = req["case_path"]

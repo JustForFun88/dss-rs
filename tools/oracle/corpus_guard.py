@@ -26,7 +26,7 @@ class CorpusGuard:
     (> `_RESTORE_MAX`) are not buffered — OpenDSS only writes small text reports,
     never the multi-MiB data files (loadshape CSVs, etc.).
 
-    `_snapshot_ok` mirrors the Rust `CorpusGuard` (corpus_live.rs): if the
+    `_snapshot_ok` mirrors the Rust `CorpusGuard` (corpus_gate.rs): if the
     pre-run snapshot fails or is cut short, `__exit__` must not delete anything —
     a truncated `names` set would classify pre-existing corpus files as
     run-created and delete them (empirically demonstrated: a transient lock on
