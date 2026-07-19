@@ -96,7 +96,7 @@ impl PvUserModelSlot {
             num_vars: 0,
             var_names: Vec::new(),
         };
-        slot.refresh_var_cache();
+        slot.refresh_var_cache()?;
         Ok(slot)
     }
 
@@ -134,7 +134,7 @@ impl PvUserModelSlot {
         if !self.data.is_empty() {
             self.edit_impl(&self.data.clone(), p, sys, node_v)?;
         }
-        self.refresh_var_cache();
+        self.refresh_var_cache()?;
         Ok(())
     }
 
@@ -151,7 +151,7 @@ impl PvUserModelSlot {
             return Ok(());
         }
         self.edit_impl(data, p, sys, node_v)?;
-        self.refresh_var_cache();
+        self.refresh_var_cache()?;
         Ok(())
     }
 
@@ -184,7 +184,7 @@ impl PvUserModelSlot {
             let sh = Shuttle::without_gen_vars(&mut dr, Box::new(ctx));
             live.update_model(sh)?;
         }
-        self.refresh_var_cache();
+        self.refresh_var_cache()?;
         Ok(())
     }
 
@@ -233,6 +233,24 @@ impl PvUserModelSlot {
         live.get_all_vars(out, sh)
     }
 
+    /// Pascal `FGetVariable(k)` (1-based, `PVsystem.pas:2459`).
+    pub fn get_variable(
+        &mut self,
+        k: usize,
+        p: &PVSystem,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> Result<f64, UserModelError> {
+        let mut dr = dyn_rec_from(sys);
+        let ctx = PvCallbacks::snapshot(p, sys, node_v);
+        let live = self
+            .live
+            .as_mut()
+            .expect("get_variable requires a live model");
+        let sh = Shuttle::without_gen_vars(&mut dr, Box::new(ctx));
+        live.get_variable(k as i32, sh)
+    }
+
     /// Pascal `FSetVariable(k, value)` (1-based, `PVsystem.pas:2540`).
     pub fn set_variable(
         &mut self,
@@ -271,23 +289,28 @@ impl PvUserModelSlot {
         }
     }
 
-    fn refresh_var_cache(&mut self) {
+    /// Refresh the cached `num_vars` + names from the live model. A guest trap in
+    /// `num_vars`/`get_var_name` is surfaced (propagated), never swallowed to a
+    /// silent `num_vars=0` that would drop the model's state-var tail (plan
+    /// §2.9-5 loud-error policy; WM.4 settle T-WM4-3 — the caller drains it).
+    fn refresh_var_cache(&mut self) -> LiveResult {
         let Some(live) = self.live.as_mut() else {
-            return;
+            return Ok(());
         };
         let mut dr = DynamicsRec::default();
         let n = {
             let sh = Shuttle::without_gen_vars(&mut dr, Box::new(NoCallbacks));
-            live.num_vars(sh).unwrap_or(0).max(0) as usize
+            live.num_vars(sh)?.max(0) as usize
         };
         let mut names = Vec::with_capacity(n);
         for k in 1..=n {
             let mut dr2 = DynamicsRec::default();
             let sh = Shuttle::without_gen_vars(&mut dr2, Box::new(NoCallbacks));
-            names.push(live.get_var_name(k as i32, sh).unwrap_or_default());
+            names.push(live.get_var_name(k as i32, sh)?);
         }
         self.num_vars = n;
         self.var_names = names;
+        Ok(())
     }
 }
 
@@ -501,6 +524,46 @@ impl PVSystem {
         for d in errs.into_vec() {
             self.cd.obj.push_error(d);
         }
+    }
+
+    /// Pascal `Get_Variable` UserModel tail (`PVsystem.pas:2453-2461`): resolve a
+    /// 1-based index above the classic `NumPVSystemVariables` base to a `UserModel`
+    /// value (`None` when no loaded model / index out of range). Mirrors the
+    /// Storage sibling's `get_user_model_variable` (WM.4 settle T-WM4-2).
+    pub(super) fn get_user_model_variable(
+        &mut self,
+        i: usize,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+    ) -> Option<f64> {
+        let base = self.num_pv_variables();
+        if i <= base {
+            return None;
+        }
+        let k = i - base;
+        let mut s = self.user_model.take()?;
+        if !(s.exists() && k <= s.num_vars()) {
+            self.user_model = Some(s);
+            return None;
+        }
+        let name = self.cd.obj.name().to_string();
+        let mut errs = ErrorLog::new();
+        let val = match s.get_variable(k, self, sys, node_v) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                errs.push(DssDiagnostic::msg(
+                    format!("PVSystem.{name}: user model `get_variable` failed: {e}"),
+                    Some(1569),
+                ));
+                Some(-9999.99)
+            }
+        };
+        s.drain_effects(&name, &mut errs);
+        self.user_model = Some(s);
+        for d in errs.into_vec() {
+            self.cd.obj.push_error(d);
+        }
+        val
     }
 
     /// Pascal `Set_Variable` UserModel tail (`PVsystem.pas:2534-2541`). Returns

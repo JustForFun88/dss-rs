@@ -118,7 +118,7 @@ impl StorageUserModelSlot {
             num_vars: 0,
             var_names: Vec::new(),
         };
-        slot.refresh_var_cache();
+        slot.refresh_var_cache()?;
         Ok(slot)
     }
 
@@ -157,7 +157,7 @@ impl StorageUserModelSlot {
         if !self.data.is_empty() {
             self.edit_impl(&self.data.clone(), s, sys, node_v)?;
         }
-        self.refresh_var_cache();
+        self.refresh_var_cache()?;
         Ok(())
     }
 
@@ -175,7 +175,7 @@ impl StorageUserModelSlot {
             return Ok(());
         }
         self.edit_impl(data, s, sys, node_v)?;
-        self.refresh_var_cache();
+        self.refresh_var_cache()?;
         Ok(())
     }
 
@@ -209,7 +209,7 @@ impl StorageUserModelSlot {
             let sh = Shuttle::without_gen_vars(&mut dr, Box::new(ctx));
             live.update_model(sh)?;
         }
-        self.refresh_var_cache();
+        self.refresh_var_cache()?;
         Ok(())
     }
 
@@ -344,24 +344,28 @@ impl StorageUserModelSlot {
     }
 
     /// Refresh the cached `num_vars` + names from the live model (a read-only
-    /// snapshot suffices — these calls never touch element state).
-    fn refresh_var_cache(&mut self) {
+    /// snapshot suffices — these calls never touch element state). A guest trap in
+    /// `num_vars`/`get_var_name` is surfaced (propagated), never swallowed to a
+    /// silent `num_vars=0` that would drop the model's state-var tail (plan
+    /// §2.9-5 loud-error policy; WM.4 settle T-WM4-3 — the caller drains it).
+    fn refresh_var_cache(&mut self) -> LiveResult {
         let Some(live) = self.live.as_mut() else {
-            return;
+            return Ok(());
         };
         let mut dr = DynamicsRec::default();
         let n = {
             let sh = Shuttle::without_gen_vars(&mut dr, Box::new(NoCallbacks));
-            live.num_vars(sh).unwrap_or(0).max(0) as usize
+            live.num_vars(sh)?.max(0) as usize
         };
         let mut names = Vec::with_capacity(n);
         for k in 1..=n {
             let mut dr2 = DynamicsRec::default();
             let sh = Shuttle::without_gen_vars(&mut dr2, Box::new(NoCallbacks));
-            names.push(live.get_var_name(k as i32, sh).unwrap_or_default());
+            names.push(live.get_var_name(k as i32, sh)?);
         }
         self.num_vars = n;
         self.var_names = names;
+        Ok(())
     }
 }
 

@@ -138,7 +138,7 @@ impl CktElement for PVSystem {
             }
             return;
         }
-        self.get_all_pv_variables(states);
+        self.get_all_pv_variables(sys, node_v, states);
         let base = self.num_pv_variables();
         let un = self.num_user_model_variables();
         if un > 0 {

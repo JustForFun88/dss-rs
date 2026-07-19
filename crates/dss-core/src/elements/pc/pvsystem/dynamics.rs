@@ -501,8 +501,10 @@ impl PVSystem {
     }
 
     /// Pascal `TPVsystemObj.Get_Variable` (l.2397) (1-based).
-    /// Returns -9999.99 for out-of-range `i`.
-    pub(super) fn get_pv_variable(&self, i: usize) -> f64 {
+    /// Returns -9999.99 for out-of-range `i`; `i > NumPVSystemVariables` routes to
+    /// the `UserModel` tail (Pascal l.2453, WM.4 settle T-WM4-2 — matching the
+    /// Storage sibling; `&mut self` because the guest read may drain effects).
+    pub(super) fn get_pv_variable(&mut self, i: usize, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
         let nphases = self.cd.nphases;
         // DynamicEqObj <> NIL: read the equation memory directly (Pascal l.2409).
         // The `1..=` guard avoids the `i = 0` underflow Pascal leaves as UB; an
@@ -533,7 +535,11 @@ impl PVSystem {
                 .base
                 .dyn_vars
                 .get_inv_dyn_value(i - NUM_BASE_PV_VARS - 1, nphases),
-            _ => -9999.99,
+            // WASM_USERMODELS WM.4 — i > NumPVSystemVariables reads the `UserModel`
+            // state variable (Pascal PVsystem.pas:2453-2461).
+            _ => self
+                .get_user_model_variable(i, sys, node_v)
+                .unwrap_or(-9999.99),
         }
     }
 
@@ -541,10 +547,15 @@ impl PVSystem {
     /// (0-based) with `Variable[1..22]` (1-based). The `DynamicEqObj` memory dump is
     /// handled by the `get_all_variables` accessor short-circuit; the UserModel
     /// values are appended there (WM.4).
-    pub(super) fn get_all_pv_variables(&self, states: &mut [f64]) {
+    pub(super) fn get_all_pv_variables(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        states: &mut [f64],
+    ) {
         for i in 1..=NUM_PV_VARS {
             if i - 1 < states.len() {
-                states[i - 1] = self.get_pv_variable(i);
+                states[i - 1] = self.get_pv_variable(i, sys, node_v);
             }
         }
     }
