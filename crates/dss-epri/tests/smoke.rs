@@ -31,6 +31,11 @@ fn epri_r4133_smoke() {
         "missing injection-shape check: {:?}",
         rep.lines
     );
+    assert!(
+        rep.lines.iter().any(|l| l.contains("all_properties OK")),
+        "missing all-properties round-trip check: {:?}",
+        rep.lines
+    );
 }
 
 #[cfg(not(windows))]

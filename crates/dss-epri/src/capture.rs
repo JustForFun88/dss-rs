@@ -107,7 +107,7 @@ struct Checkpoint {
     variables: Vec<VariablesCap>,
     eventlog: Vec<String>,
     ctrlqueue: Vec<String>,
-    all_properties: Vec<serde_json::Value>,
+    all_properties: Vec<PropsCap>,
     global_result: String,
 }
 
@@ -188,22 +188,23 @@ struct VariablesCap {
     values: Vec<f64>,
 }
 
+/// One element's every-property dump (§2.2 all-properties parity, report tooling
+/// only — NOT a gating channel). Serializes to the exact shape
+/// `oracle_server.capture_all_properties` emits and `harness::PropsCap`
+/// deserializes: `{"element": name, "props": [[prop, value], ...]}` in
+/// `AllPropertyNames` (property-index) order.
+#[derive(Serialize)]
+pub struct PropsCap {
+    pub element: String,
+    pub props: Vec<(String, String)>,
+}
+
 // ---------------------------------------------------------------------------
 // The run.
 // ---------------------------------------------------------------------------
 
 /// Compile one deck, solve `n_steps` times, capture the full per-step model.
 pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineError> {
-    if req.all_properties {
-        // Not implemented on this channel (capi_v0145 gates property parity — the
-        // r4133 0.15.x-shaped tables are a known bracket/echo class). Fail loudly
-        // rather than emit a fake-empty dump.
-        return Err(EngineError::Other(
-            "all_properties capture is not implemented in the r4133 bridge \
-             (capi_v0145-only; UNIFIED_GATE_PLAN.md §1.2)"
-                .to_string(),
-        ));
-    }
     let warn = req.warn_and_continue;
     let star = req.selected_elements == ["*"];
 
@@ -300,6 +301,14 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             } else {
                 Vec::new()
             };
+            // Read LAST (after every other capture), like `oracle_server.run_case`:
+            // the `? name.Like`/`? name.prop` sweep perturbs the active-element
+            // cursor, so it must not run before any other read (§2.2).
+            let all_properties = if req.all_properties {
+                capture_all_properties(engine)?
+            } else {
+                Vec::new()
+            };
 
             let _ = step;
             checkpoints.push(Checkpoint {
@@ -322,7 +331,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 variables,
                 eventlog,
                 ctrlqueue,
-                all_properties: Vec::new(),
+                all_properties,
                 global_result,
             });
         }
@@ -604,6 +613,60 @@ fn capture_probes(engine: &Engine, specs: &[ProbeSpec]) -> Result<Vec<ProbeCap>,
         }
     }
     Ok(out)
+}
+
+/// Every circuit element's every property value (§2.2 all-properties parity),
+/// a byte-for-byte port of `oracle_server.capture_all_properties`: for each
+/// `AllElementNames` entry, activate it with `? name.Like` (the WPG.1-safe query
+/// path — activates `DSS_OBJECT`s too, unlike `SetActiveElement`), read the
+/// class's `AllPropertyNames` off the now-active object (`DSSElementV` mode 0),
+/// then read each value via `? name.prop` in property-index order.
+///
+/// Report-tooling only: this channel is NOT compared for gating (property parity
+/// stays capi_v0145-only per the plan; the scheduler masks `all_properties` off
+/// on the r4133 request). Any non-zero errno on a read escalates, exactly like
+/// [`capture_probes`] (matching dss-python's raise-on-error).
+fn capture_all_properties(engine: &Engine) -> Result<Vec<PropsCap>, EngineError> {
+    let mut out = Vec::new();
+    for name in engine.all_element_names() {
+        // Activate via the query path (side-effect: sets ActiveDSSObject), then
+        // read the property-name list off the active object.
+        engine.raw_command(&format!("? {name}.Like"));
+        let (errno, desc) = engine.poll_error();
+        if errno != 0 {
+            return Err(EngineError::Dss {
+                errno,
+                desc,
+                ctx: format!("all_properties activate {name}"),
+            });
+        }
+        let prop_names = engine.element_all_property_names();
+        let mut props = Vec::with_capacity(prop_names.len());
+        for p in &prop_names {
+            let value = engine.raw_command(&format!("? {name}.{p}"));
+            let (errno, desc) = engine.poll_error();
+            if errno != 0 {
+                return Err(EngineError::Dss {
+                    errno,
+                    desc,
+                    ctx: format!("all_properties {name}.{p}"),
+                });
+            }
+            props.push((p.clone(), value));
+        }
+        out.push(PropsCap {
+            element: name,
+            props,
+        });
+    }
+    Ok(out)
+}
+
+/// Oracle-free smoke hook (§2.4): dump every element's every property for the
+/// currently-compiled circuit, so `smoke.rs` can prove the `DSSElementV`
+/// enumeration + `? name.prop` value read round-trips without an oracle.
+pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError> {
+    capture_all_properties(engine)
 }
 
 fn capture_variables(engine: &Engine, names: &[String]) -> Result<Vec<VariablesCap>, EngineError> {
