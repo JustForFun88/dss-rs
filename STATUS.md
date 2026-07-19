@@ -6220,3 +6220,77 @@ findings, each reproduced then settled empirically.
 Post-settle gate green at defaults (fmt/clippy/test, corpus gate 514/514 +
 cap_control 30 unit tests incl. the 3 new); corpus pristine; goldens/manifests/
 ledger untouched. Head `099def5` → settle commit.
+
+### WASM-UM WP-WM.6 — callback tail (DoDSSCommand/GetResultStr) + callback-table sweep + SDK doc (branch `wasm-wm6`, 2026-07-20)
+
+Plan §WP-WM.6 items 1–3. The last two re-entrant callback slots leave their
+"loud unsupported until WM.6" state; the 32-slot callback table is proven
+complete; the `USERMODEL_ABI.md` porting guide is finished with a worked example.
+**No wire-ABI change** (the 15/13/7 shapes + every record/callback contract are
+frozen-unchanged); additive only. ABI-doc header decision (e).
+
+**Item 1 — `DoDSSCommand`/`GetResultStr` as an opt-in deferred-drain mechanism
+(`crates/dss-usermodel`).** Pascal runs `DoDSSCommand` synchronously mid-call
+(`DSSCallBackRoutines.pas:150-154` → `DSSExecutive.ParseCommand`) and
+`GetResultStr` copies `GlobalResult` (`:449-452`). A wasmi host function sees only
+`Store` data, never `&mut Dss`, so the synchronous form is impossible. Design
+(the plan's immediate-drain): `do_dss_command(ptr, len)` **queues** the command
+in `CallData.pending_commands`; a host that holds the executive drains it
+(`UserModelInstance::drain_dss_commands`) after the guest call, runs each through
+`Dss::command`, and captures `GlobalResult` back via `set_result_str`;
+`get_result_str` serves that captured string (persists across `set_context`).
+- **The one observable ordering difference** (documented, ABI §4, not a
+  `TODO(compat)` — a new WASM-only mechanism with no upstream byte-golden): a
+  `GetResultStr` in the *same* guest call as its `DoDSSCommand` sees the
+  *previous* result; the next call sees the just-run one.
+- **Opt-in / loud-by-default.** Running a queued command needs `&mut Dss`. Every
+  dss-rs user-model call site (`DoUserModel`, CapControl `Sample`, the deferred
+  load/edit resolution) holds a **disjoint** borrow and cannot reach
+  `Dss::command`; inventing a re-entrant `&mut` scheme is forbidden (plan
+  §WP-WM.6). So the elements leave the mechanism **disabled**
+  (`CallData.dss_commands_enabled = false`) and both callbacks raise the loud
+  `Fault::Unsupported`/`UserModelError::Unsupported` — never a silent drop, so no
+  dss-core drain-glue change was needed and the generator files (owned by the
+  parallel D2 workflow) are untouched. No reference model needs the re-entry
+  (P3 census). The mechanism is complete and gated by the channel-2 protocol
+  tests, which act as the re-entrant executive host; a future integration point
+  that holds the executive can opt in with no wire-ABI change.
+- **Not a new `Effect` variant** (deliberate): `DoDSSCommand` is plan tier C, not
+  the tier-B `Effect` queue (`ControlQueuePush`/`Msg`); a separate
+  `pending_commands` queue keeps the tier-B `Effect` match sites (incl. the
+  off-limits generator drain) exhaustive-and-unchanged.
+
+**Item 2 — callback-table sweep.** All 32 `TDSSCallBacks` slots are now either
+implemented (tier A ×22, tier B ×2, tier C ×5, WM.6 pair ×2) or a permanent loud
+attributed error (slot 30 `GetActiveElementPtr`), and **each is covered by a
+channel-2 protocol test**: tier-A sweep (`tier_a_callbacks_serve_the_context_snapshot`,
+all 22), tier-B (`tier_b_effects_queue_in_order…`), tier-C parser
+(`tier_c_parser_callbacks…`), slot 30 + not-opted-in 7/32
+(`unsupported_imports_raise_loud_attributed_errors`), and the new WM.6 tests:
+`wm6_deferred_dss_command_cycle` (the full enabled queue→run→result cycle + the
+ordering assertion), `wm6_deferred_commands_queue_in_order_on_cap_control`
+(multi-command order + the `CapControlInstance` API), and
+`wm6_cap_control_do_dss_command_loud_without_opt_in` (loud-by-default parity).
+ABI §4 census note + tier legend updated ("the table is complete as of WP-WM.6").
+
+**Item 3 — `USERMODEL_ABI.md` §8 finished.** A start-to-finish "porting your
+Delphi/C user model to WASM" walkthrough narrated over the committed IndMach012a
+fixture (the real, gated crate): the 6 steps (pick interface + exports → guest
+`dss_alloc` → decode/encode the record images → the lifecycle → `dss_env`
+services incl. the deferred pair → build/PIN/gate), a limits/trap-policy recap
+(§6), and the manual PIN workflow (`build_wasm.ps1` + `fixture_pin.rs` hash test).
+The code excerpts are verbatim from `models/indmach012a/src/wasm_exports.rs`, so
+the worked example is a faithful narration of a compiling, gated fixture.
+
+**Gate.** Full three-command gate green at defaults (`cargo fmt --all --check`;
+`cargo clippy --workspace --all-targets -- -D warnings`; `cargo test --workspace`
+incl. the unconditional corpus gate); corpus pristine (path-limited cleanup
+only); goldens/manifests/ledger + the five `expect_warnings` decks untouched.
+`dss-usermodel` protocol suite 26 tests (23 prior + 3 new WM.6). Audits
+(audit-code + audit-tests) + settle are the ritual next step.
+
+**Follow-up.** If a future host gains executive access at a user-model call site
+(or a hardened re-entrancy design lands), it can `enable_dss_commands()` to make
+`DoDSSCommand` run end-to-end in production without touching the wire ABI. The
+generator's user-model drain (D2-owned) needs no change for WM.6 (the pair stays
+loud there too, since the generator does not opt in).
