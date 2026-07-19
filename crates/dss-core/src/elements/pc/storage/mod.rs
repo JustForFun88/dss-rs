@@ -21,10 +21,9 @@
 //! (`DoGFM_Mode`/`CalcGFMYprim`), the harmonic injection
 //! (`DoHarmonicMode`/`InitHarmonics`), the dynamics state machinery
 //! (`DoDynamicMode`/`InitStateVars`/`IntegrateStates` + the state-variable
-//! interface `NumVariables`/`Get_Variable`/`VariableName`), the user-written DLL
-//! models (`UserModel`/`DynaModel`, never ported) are deferred to WP7.6/7.7
-//! (harmonics/dynamics), matching the PVSystem deferrals. `MakePosSequence` is
-//! in `accessors` (WPG.21).
+//! interface `NumVariables`/`Get_Variable`/`VariableName`), and the user-written
+//! `UserModel`/`DynaModel` (`user_model.rs`, the WASM host, WASM_USERMODELS WM.4)
+//! are all ported. `MakePosSequence` is in `accessors` (WPG.21).
 //!
 //! Split into submodules (this file holds the metadata, struct and `Create`):
 //! - [`nominal`]: shape multipliers, the state machine
@@ -55,6 +54,9 @@ mod dynamics;
 mod nominal;
 mod registers;
 mod solve;
+mod user_model;
+
+pub use user_model::StorageUserModelSlot;
 
 /// Pascal `varMode` values.
 pub(crate) const VARMODE_PF: i32 = 0;
@@ -259,10 +261,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // not the pinned oracle (which raises #1570).
         PropDef::string("DynaDLL").flags(PropFlags::IS_FILENAME),
         PropDef::string("DynaData"),
-        // Storage UserModel/UserData: no owned deck exercises them; the DLL
-        // loader is still out of scope, so they remain a hard error for now.
-        PropDef::string("UserModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
-        PropDef::string("UserData").flags(PropFlags::NOT_PORTED),
+        // WASM_USERMODELS WM.4: `UserModel=`/`UserData=` follow the §2.4 uniform
+        // rule (parse + store + load-`.wasm`-or-warn) — never a parse error;
+        // upstream never errors on these properties (Storage.pas:851-858).
+        PropDef::string("UserModel").flags(PropFlags::IS_FILENAME),
+        PropDef::string("UserData"),
         PropDef::boolean("DebugTrace"),
         // Pascal `[Units_kV]` (`Storage.pas:716`), scale 1000.
         PropDef::double("kVDC")
@@ -428,10 +431,19 @@ pub struct Storage {
     /// Resolved harmonic spectrum, snapshot-cloned in at edit-completion (only
     /// when an explicit `spectrum=` is given — Create forces `SpectrumObj := NIL`).
     pub spectrum_obj: Option<SpectrumObj>,
-    /// `DynaModelNameStr` — user dynamics DLL name (NOT_PORTED; stored only).
+    /// `DynaModelNameStr` — user dynamics DLL/`.wasm` name (WASM_USERMODELS WM.4).
     pub dyna_model_name: String,
-    /// `DynaModelEditStr` (NOT_PORTED).
+    /// `DynaModelEditStr` — the `DynaData=` string.
     pub dyna_model_edit: String,
+
+    /// Pascal `UserModel: TStoreUserModel` (`Storage.pas:281`) — the 15-fn
+    /// `UserModel=` slot (WASM_USERMODELS WM.4). `None` until a `.wasm` loads.
+    pub user_model: Option<Box<StorageUserModelSlot>>,
+    /// Pascal `DynaModel: TStoreDynaModel` (`:282`) — the 13-fn `DynaDLL=` slot.
+    pub dyna_model: Option<Box<StorageUserModelSlot>>,
+    /// Deferred `UserModel=`/`UserData=`/`DynaDLL=`/`DynaData=` load/edit
+    /// requests, drained + resolved by the executive (§2.4 activation rule).
+    pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
 }
 
 /// Pascal `SetNcondsForConnection`.
@@ -554,6 +566,9 @@ impl Storage {
             spectrum_obj: None,
             dyna_model_name: String::new(),
             dyna_model_edit: String::new(),
+            user_model: None,
+            dyna_model: None,
+            pending_user_model_loads: Vec::new(),
         };
         // Pascal seeds PrpSequence with PF.
         st.cd.obj.set_as_next_seq(prop::PF);

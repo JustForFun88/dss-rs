@@ -498,7 +498,7 @@ fn makeposseq_storage_single_phase() {
     );
 }
 
-// --- CF-C Port 2: DynaDLL/DynaData property surface (warn + fallback) ---
+// --- WASM_USERMODELS WM.4: DynaDLL/DynaData/UserModel/UserData property surface ---
 
 /// Edit one property through the real property engine, returning any messages
 /// the side effect queued on the object.
@@ -522,18 +522,50 @@ fn edit_storage_prop(st: &mut Storage, name: &str, value: &str) -> crate::diag::
     msgs
 }
 
-/// `DynaDLL=<dll>` parses (no longer a hard NOT_PORTED error), stores the name
-/// for the dump, and warns the dynamics model is not loaded (safe-Rust fallback).
+/// `DynaDLL=<dll>` parses (no longer a hard NOT_PORTED error) and stores the
+/// name for the dump; the load is DEFERRED to the executive (like a FileLoad),
+/// so the property set does NOT warn. Resolving the queued load for a native-DLL
+/// name (no `.wasm` → `wasm = None`) is the path that warns "Not Loaded" (Pascal
+/// 1570) and falls back to the built-in dynamics model (WASM_USERMODELS WM.4).
 #[test]
 fn dyna_dll_stores_and_warns_not_loaded() {
+    use crate::obj::base::DssObject;
     let mut st = Storage::new("s1");
     let msgs = edit_storage_prop(&mut st, "DynaDLL", "Dess1.DLL");
     assert_eq!(st.dyna_model_name, "Dess1.DLL");
     assert_eq!(st.get_string(prop::DYNA_DLL), "Dess1.DLL"); // dump parity
-    assert_eq!(msgs.len(), 1, "exactly one warning: {msgs:?}");
-    assert!(msgs[0].contains("Not Loaded"));
-    assert!(msgs[0].contains("Dess1.DLL"));
-    assert!(msgs[0].contains("built-in model"));
+    assert!(
+        msgs.is_empty(),
+        "property set must not warn (load is deferred): {msgs:?}"
+    );
+
+    let loads = st.take_user_model_loads();
+    assert_eq!(loads.len(), 1, "one deferred DynaDLL load: {loads:?}");
+    let mut errors = crate::diag::ErrorLog::new();
+    st.apply_user_model_load(&loads[0], None, &mut errors);
+    assert_eq!(errors.len(), 1, "exactly one warning: {errors:?}");
+    assert!(errors[0].contains("Not Loaded"));
+    assert!(errors[0].contains("Dess1.DLL"));
+    assert!(errors[0].contains("built-in model"));
+}
+
+/// `UserModel=<dll>` (15-fn `TStoreUserModel`) — same deferred warn+fallback for
+/// a native-DLL name (Pascal Storage.pas:851-854, 1570).
+#[test]
+fn storage_user_model_stores_and_warns_not_loaded() {
+    use crate::obj::base::DssObject;
+    let mut st = Storage::new("s1");
+    let msgs = edit_storage_prop(&mut st, "UserModel", "Dess1.DLL");
+    assert_eq!(st.base.user_model_name, "Dess1.DLL");
+    assert!(msgs.is_empty(), "property set must not warn: {msgs:?}");
+
+    let loads = st.take_user_model_loads();
+    assert_eq!(loads.len(), 1, "one deferred UserModel load: {loads:?}");
+    let mut errors = crate::diag::ErrorLog::new();
+    st.apply_user_model_load(&loads[0], None, &mut errors);
+    assert_eq!(errors.len(), 1, "exactly one warning: {errors:?}");
+    assert!(errors[0].contains("Not Loaded"));
+    assert!(errors[0].contains("built-in model"));
 }
 
 /// `DynaData` stores (for the dump) and — no dynamics model exists — is a

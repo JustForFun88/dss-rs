@@ -432,6 +432,10 @@ impl PVSystem {
 
         // Initialise InjCurrent to zero (defaults to a PQ PVSystem element).
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+
+        // Pascal `RecalcElementData` tail (PVsystem.pas:1146-1147):
+        // `UserModel.FUpdateModel` on the existing model (WASM_USERMODELS WM.4).
+        self.update_user_models(sys);
     }
 
     /// The L-N `VBase` update (Pascal `TProp.conn`/`TProp.kV` side effects):

@@ -14,7 +14,7 @@ use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
@@ -24,27 +24,6 @@ use super::{
 };
 
 impl Storage {
-    /// CF-C Port 2 — the `DynaDLL` side effect (Pascal `TStoreDynaModel.Set_Name`,
-    /// StoreUserModel.pas l.329). Emits the non-fatal `#1570` "Not Loaded"
-    /// diagnostic (warn severity, matching the official Direct DLL — not the
-    /// pinned oracle's hard raise) and falls back to the built-in dynamics model.
-    /// The DLL loader is permanently out of scope (forbid(unsafe_code)); the
-    /// `DSS Directory = ...` tail is omitted (unreachable from a side effect).
-    fn warn_dyna_model_not_loaded(&mut self) {
-        let name = self.dyna_model_name.trim().to_string();
-        if name.is_empty() || name.eq_ignore_ascii_case("none") {
-            return; // Pascal Set_Name `Exit` on blank / 'none'
-        }
-        let full = format!("Storage.{}", self.cd.obj.name());
-        self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
-            format!(
-                "Storage User-written Dynamics Model \"{name}\" Not Loaded (user-written model DLL \
-                 loading is out of scope in safe Rust). {full} falls back to its built-in model."
-            ),
-            Some(1570),
-        ));
-    }
-
     /// Pascal `Set_kW`: set the state + the dispatch percentage from a signed kW.
     /// `pub(crate)` so the StorageController fleet dispatch can drive `obj.kW`.
     pub(crate) fn set_kw(&mut self, value: f64) {
@@ -145,28 +124,39 @@ impl CktElement for Storage {
         self.integrate_states_impl(sys, node_v);
     }
 
-    /// Pascal `TStorageObj.NumVariables` — the linked `DynamicExp` count first
-    /// (inherited `TDynEqPCE.NumVariables`), else 34 (25 base + 9 InvDynVars).
+    /// Pascal `TStorageObj.NumVariables` (`Storage.pas:3208-3223`) — the linked
+    /// `DynamicExp` count first (inherited `TDynEqPCE.NumVariables`), else 34
+    /// (25 base + 9 InvDynVars) plus the existing `UserModel`/`DynaModel`
+    /// variable counts (WASM_USERMODELS WM.4).
     fn num_variables(&self) -> usize {
         let n = self.base.dyneq.num_variables();
         if n != 0 {
-            n
-        } else {
-            self.num_storage_variables()
+            return n;
         }
+        self.num_storage_variables()
+            + self.num_user_model_variables()
+            + self.num_dyna_model_variables()
     }
 
-    /// Pascal `TStorageObj.VariableName` (1-based): the `DynamicExp` memory-slot
-    /// name first (inherited), else the classic name table.
+    /// Pascal `TStorageObj.VariableName` (1-based, `Storage.pas:3225-3323`): the
+    /// `DynamicExp` memory-slot name first (inherited), then the classic name
+    /// table, then the `UserModel`/`DynaModel` names.
     fn variable_name(&self, i: usize) -> String {
         if let Some(name) = self.base.dyneq.variable_name(i) {
+            return name;
+        }
+        if i > self.num_storage_variables()
+            && let Some(name) = self.user_model_variable_name(i)
+        {
             return name;
         }
         self.storage_variable_name(i)
     }
 
-    /// Pascal `TStorageObj.GetAllVariables`: the `DynamicExp` memory dump first
-    /// (Pascal l.3176), else the classic 34 variables.
+    /// Pascal `TStorageObj.GetAllVariables` (`Storage.pas:3181-3206`): the
+    /// `DynamicExp` memory dump first, else the classic 34 followed by the
+    /// `UserModel` then `DynaModel` values (each written at `@States[base]`,
+    /// faithful to Pascal — with one model bound this is unambiguous).
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
         if self.base.dyneq.has_dynamic_eq() {
             for (i, s) in states
@@ -179,6 +169,21 @@ impl CktElement for Storage {
             return;
         }
         self.get_all_storage_variables(sys, node_v, states);
+        let base = self.num_storage_variables();
+        let un = self.num_user_model_variables();
+        if un > 0 {
+            let end = (base + un).min(states.len());
+            if base < end {
+                self.get_all_vars_slot(UserModelSlot::User, &mut states[base..end], sys, node_v);
+            }
+        }
+        let dn = self.num_dyna_model_variables();
+        if dn > 0 {
+            let end = (base + dn).min(states.len());
+            if base < end {
+                self.get_all_vars_slot(UserModelSlot::Dyna, &mut states[base..end], sys, node_v);
+            }
+        }
     }
 
     fn set_variable(&mut self, i: usize, value: f64) {
@@ -501,8 +506,8 @@ impl DssObject for Storage {
     fn set_string(&mut self, idx: usize, value: String) {
         use prop::*;
         match idx {
-            // The NOT_PORTED string props error in the parser before reaching
-            // here; the setters exist for completeness/MakeLike.
+            // `UserModel=`/`DynaDLL=` store the name; the deferred load is queued
+            // by `side_effects` and resolved by the executive (WM.4 §2.4).
             DYNA_DLL => self.dyna_model_name = value,
             DYNA_DATA => self.dyna_model_edit = value,
             USERMODEL => self.base.user_model_name = value,
@@ -648,16 +653,25 @@ impl DssObject for Storage {
             // Pascal `TProp.DynamicEq` side effect: size the DynamicEqVals memory
             // to the linked DynamicExp's NVariables (a nil ref leaves it empty).
             DYNAMIC_EQ => self.base.dyneq.on_dynamic_eq_set(),
-            // Pascal `TProp.DynaDLL` side effect (Storage.pas l.864-867):
-            // `DynaModel.Name := DynaModelNameStr` → `TStoreDynaModel.Set_Name`.
-            // Safe Rust never loads the DLL (loader out of scope). Set_Name bails
-            // on empty / "none"; any real name "fails" LoadLibrary, so it emits
-            // `DoSimpleMsg(... 'Not Loaded' ..., 1570)` and `Exists` stays false —
-            // the storage element falls back to the built-in dynamics model
-            // (CF-C Port 2). Non-fatal, matching the official Direct DLL.
-            DYNA_DLL => self.warn_dyna_model_not_loaded(),
-            // `TProp.DynaData` (l.869): `if DynaModel.Exists then Edit`. The model
-            // never exists, so this only stores the string for the dump.
+            // WASM_USERMODELS WM.4 — the §2.4 uniform activation rule. The Pascal
+            // edit dispatch (Storage.pas:851-866): `UserModel.Name` (load) then
+            // `UserData` (edit); `DynaModel.Name` (load) then `DynaData` (edit).
+            // The filesystem/current-dir are unreachable from the property hook,
+            // so each records a deferred request the executive resolves before
+            // `end_edit` (a `.wasm` loads; a native-DLL name / missing file warns
+            // "Not Loaded" 1570 and falls back).
+            USERMODEL => {
+                self.queue_user_model_load(UserModelSlot::User, self.base.user_model_name.clone())
+            }
+            USERDATA => {
+                self.queue_user_model_edit(UserModelSlot::User, self.base.user_model_edit.clone())
+            }
+            DYNA_DLL => {
+                self.queue_user_model_load(UserModelSlot::Dyna, self.dyna_model_name.clone())
+            }
+            DYNA_DATA => {
+                self.queue_user_model_edit(UserModelSlot::Dyna, self.dyna_model_edit.clone())
+            }
             _ => {}
         }
     }
@@ -742,8 +756,16 @@ impl DssObject for Storage {
         self.base.wp_mode = other.base.wp_mode;
         self.base.wv_mode = other.base.wv_mode;
         self.base.avr_mode = other.base.avr_mode;
+        // User models: Pascal `UserModel.Name := Other.UserModel.Name` re-`New`s
+        // a fresh instance from the same module (`Storage.pas:995-996`); the
+        // slot's `Clone` drops the live wasmi instance and re-creates it lazily
+        // (WM.4, the WM.3 generator precedent).
         self.base.user_model_name = other.base.user_model_name.clone();
+        self.base.user_model_edit = other.base.user_model_edit.clone();
         self.dyna_model_name = other.dyna_model_name.clone();
+        self.dyna_model_edit = other.dyna_model_edit.clone();
+        self.user_model = other.user_model.clone();
+        self.dyna_model = other.dyna_model.clone();
         self.base.dyn_vars.rated_vdc = other.base.dyn_vars.rated_vdc;
         self.base.dyn_vars.sm_threshold = other.base.dyn_vars.sm_threshold;
         self.base.dyn_vars.safe_mode = other.base.dyn_vars.safe_mode;
@@ -766,6 +788,23 @@ impl DssObject for Storage {
         vars: &dss_parser::ParserVars,
     ) -> bool {
         self.base.dyneq.parse_dyn_var(variable, value, vars)
+    }
+
+    /// Drain the deferred `UserModel=`/`UserData=`/`DynaDLL=`/`DynaData=`
+    /// requests queued by the property side effects (WASM_USERMODELS WM.4, §2.4).
+    fn take_user_model_loads(&mut self) -> Vec<UserModelLoad> {
+        std::mem::take(&mut self.pending_user_model_loads)
+    }
+
+    /// Apply a resolved user-model load/edit (`wasm` is `Some` iff a `.wasm`
+    /// file was found + read; `None` → warn-and-fallback, Pascal 1570).
+    fn apply_user_model_load(
+        &mut self,
+        load: &UserModelLoad,
+        wasm: Option<&[u8]>,
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        self.apply_user_model_load_impl(load, wasm, errors);
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

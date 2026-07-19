@@ -503,11 +503,14 @@ impl FileLoad {
 /// `ShaftModel=`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserModelSlot {
-    /// The primary model: Generator/Storage/PVSystem `UserModel=`, Storage
-    /// `DynaDLL=`, CapControl `UserModel=`.
+    /// The primary model: Generator/Storage/PVSystem `UserModel=`,
+    /// CapControl `UserModel=`.
     User,
     /// The Generator shaft model (`ShaftModel=`).
     Shaft,
+    /// The Storage dynamics-only model (`DynaDLL=`, Pascal `TStoreDynaModel`,
+    /// the 13-function interface — WASM_USERMODELS WM.4).
+    Dyna,
 }
 
 /// A [`UserModelLoad`] action — (re)load the named model, or send it an edit

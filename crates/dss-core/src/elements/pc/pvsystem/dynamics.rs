@@ -12,8 +12,9 @@
 //! (WPG.17 — `it := 0` init, the `IMaxPPhase`/`ISPDelta`/`FixPhaseAngle` ramp,
 //! and the `DoDynamicMode` internal-voltage-source injection), and the external
 //! `DynamicEqObj` / `DynamicExp` integration (WP7.7 step 3b — the user equation
-//! replaces `SolveDynamicStep`). The user-written DLL model (`UserModel`,
-//! VoltageModel=3) is NOT_PORTED — see the guard below.
+//! replaces `SolveDynamicStep`). The user-written model (`UserModel`,
+//! VoltageModel=3) is the WASM host (`user_model.rs`, WM.4): `DoDynamicMode`
+//! `FCalc` (`:1885`) and `IntegrateStates` `Integrate` (`:2280`).
 
 use num_complex::Complex64;
 
@@ -57,9 +58,10 @@ impl PVSystem {
         }
     }
 
-    /// Pascal `TPVsystemObj.InitStateVars` (l.2170) — seed the GFL inverter
+    /// Pascal `TPVsystemObj.InitStateVars` (l.2174) — seed the GFL inverter
     /// state from the present power-flow operating point (+ the `DynamicEqObj <> NIL`
-    /// derivative zero-out at the tail). `UserModel.Exists` is NOT_PORTED.
+    /// derivative zero-out at the tail). PVSystem `InitStateVars` has NO user-model
+    /// call (unlike Generator/Storage — Pascal never calls `UserModel.FInit` here).
     pub(super) fn init_state_vars_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.cd.yprim_invalid = true; // force rebuild of YPrims
 
@@ -174,12 +176,16 @@ impl PVSystem {
 
     /// Pascal `TPVsystemObj.IntegrateStates` (l.2264) — advance the GFL
     /// inverter state by one trapezoidal half-step (dispatching to
-    /// `integrate_dyn_eq_phase` per phase when a `DynamicExp` is linked). The
-    /// `UserModel.Exists` / non-GFM-only restrictions stay NOT_PORTED.
+    /// `integrate_dyn_eq_phase` per phase when a `DynamicExp` is linked). A loaded
+    /// `UserModel=` integrates itself first via `user_model_fintegrate` (WM.4).
     pub(super) fn integrate_states_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.compute_iterminal(sys, node_v);
 
-        // NOT_PORTED: UserModel.Exists branch — user-written DLL never ported.
+        // Pascal IntegrateStates UserModel branch (PVsystem.pas:2278-2282): a
+        // loaded `UserModel=` integrates its own state and returns (WM.4).
+        if self.user_model_fintegrate(sys, node_v) {
+            return;
+        }
 
         // Pascal PVsystem.pas l.2281-2299: recompute the panel power each dynamics
         // step, honoring `Set LoadShapeClass=` (the same `case ActiveLoadShapeClass`
@@ -406,18 +412,20 @@ impl PVSystem {
 
         match self.base.voltage_model {
             3 => {
-                // NOT_PORTED: VoltageModel=3 user-written DLL dynamics model.
-                // Pascal records error 5671 and sets SolutionAbort.
-                errors.push(crate::diag::DssDiagnostic::msg(
-                    format!(
-                        "PVSystem.{}: VoltageModel=3 user-written dynamics model is not \
-                         defined (NOT_PORTED — safe Rust).",
-                        self.cd.obj.name()
-                    ),
-                    // Pascal `DoSimpleMsg('Dynamics model missing for PVSystem.%s ', 5671)`
-                    // (PVsystem.pas:1889).
-                    Some(5671),
-                ));
+                // Pascal `DoDynamicMode` VoltageModel=3 (PVsystem.pas:1884-1895):
+                // `UserModel.FCalc(Vterminal, Iterminal)` (then the shared tail
+                // negates into InjCurrent — done inside `user_model_fcalc`); a
+                // missing model records #5671 + SolutionAbort (WASM_USERMODELS
+                // WM.4).
+                if !self.user_model_fcalc(sys, node_v, errors) {
+                    errors.push(crate::diag::DssDiagnostic::abort(
+                        format!(
+                            "Dynamics model missing for PVSystem.{} ",
+                            self.cd.obj.name()
+                        ),
+                        Some(5671),
+                    ));
+                }
                 return;
             }
             _ => {
@@ -462,7 +470,8 @@ impl PVSystem {
 
     /// Pascal `TPVsystemObj.NumVariables` (l.2562) — the 22 classic variables
     /// (13 base + 9 InvDynVars). The linked-`DynamicExp` count is dispatched ahead
-    /// of this in the `num_variables` accessor; `UserModel.FNumVars` is NOT_PORTED.
+    /// of this in the `num_variables` accessor; the `UserModel` count is added
+    /// there too (WM.4).
     pub(super) fn num_pv_variables(&self) -> usize {
         NUM_PV_VARS // = 22
     }
@@ -530,8 +539,8 @@ impl PVSystem {
 
     /// Pascal `TPVsystemObj.GetAllVariables` (l.2543): fill `states[0..21]`
     /// (0-based) with `Variable[1..22]` (1-based). The `DynamicEqObj` memory dump is
-    /// handled by the `get_all_variables` accessor short-circuit; UserModel is
-    /// NOT_PORTED.
+    /// handled by the `get_all_variables` accessor short-circuit; the UserModel
+    /// values are appended there (WM.4).
     pub(super) fn get_all_pv_variables(&self, states: &mut [f64]) {
         for i in 1..=NUM_PV_VARS {
             if i - 1 < states.len() {
@@ -543,7 +552,8 @@ impl PVSystem {
     /// Pascal `TPVsystemObj.Set_Variable` (l.2489) (1-based). The write side of
     /// the state-variable interface, reached via the `set_variable` trait method.
     /// A linked `DynamicExp` makes every state variable read-only (msg 566, below);
-    /// UserModel is NOT_PORTED.
+    /// i > NumPVSystemVariables routes to the UserModel setter (WM.4, in the
+    /// `set_variable` accessor).
     pub(super) fn set_pv_variable(&mut self, i: usize, value: f64) {
         // DynamicEqObj <> NIL: state variables are read-only — the equation drives
         // them (Pascal Set_Variable l.2498, msg 566).
