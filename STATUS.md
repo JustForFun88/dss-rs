@@ -750,15 +750,26 @@ both, per the brief's "if the two disagree, STOP and record"):
   oracle `DebugTrace` (predictor dSpeed +0.0025 with D≈0 vs −1.165 with D≈13263).
   The dyn deck now sets `D=1` explicitly (both engines agree); recorded in
   `DIVERGENCES.md` L5.
-- **D2 — residual dynamics flux-transient gap ~5e-4.** With D matched, a residual
-  ~5e-4 in the machine currents/losses survives (dSpeed amplifies it via the
-  `Pshaft+TracePower` near-cancellation). Localized to the dynamics solve: the
-  SNAPSHOT terminal current / Is1 / slip are **bit-identical** to the oracle
-  (`−168.055734,−86.696972`), so it is NOT the WASM handoff (which is exact); the
-  dynamics loop, machine fixture, and init state are identical, so the gap is in
-  the multi-step dynamics solve/coupling (either a subtle dss_capi-0.14.5-vs-r4133
-  dynamics-entry difference or a stiff-Norton cross-solver amplification). **Not
-  root-caused; OPEN follow-up.**
+- **D2 — residual dynamics trajectory gap.** With D matched, a residual survives,
+  MEASURED at the deck's end state (settlement flipped `numeric=true` transiently
+  to quantify): ~5e-4 rel on machine currents (Is1/Ir1), ~1e-3 on losses
+  (StatorLoss/RotorLoss/HPshaft), ~1e-4 on Slip, up to ~5e-4 on node voltages,
+  dSpeed ~3e-2 (the `Pshaft+TracePower` near-cancellation amplifies the current
+  gap). These are **4–6 orders above the faer-vs-KLU floor (1e-8)** — an
+  engine-behavior difference, not solver rounding, so a numeric gate is impossible
+  without a ~1e-1 band = forbidden fudging. **DECOMPOSITION (settlement, per
+  CLAUDE.md prove-by-decomposition):** WM.3's NEW code is exonerated — the WASM
+  `FCalc` handoff is bit-exact (Model=6 SNAPSHOT `wasm_gen_pflow` matches r4133 at
+  ~1e-14 incl. Is1/slip) and the guest math is bit-exact to the native twin (WM.2
+  `fixture_self_gate`). So the gap lives in the **shared multi-step Generator
+  dynamics coupling** (dynamics-Norton/Zthev entry + the per-step network re-solve
+  feeding Vterminal back to the identical guest), the SAME code family the proven
+  D1 `Dpu` divergence sits in — not the new user-model transport. Independent
+  corroboration that Rust's Generator dynamics tracks its 0.14.5 spec oracle:
+  `exec/tests/dynamics.rs` (Kundur steady + fault) matches pinned dss-python 0.15.7
+  to the f32 monitor floor. Pinning the single r4133 source line (like D1's) needs
+  the 0.14.5-ABI twin DLL → the OPEN follow-up (deviation (a)); **not a Rust bug on
+  the WM.3 surface, not a tolerance-loosening candidate.**
 
 **Gate design consequence.** Rust ports dss_capi 0.14.5 (its pinned oracle);
 forcing its dynamics to match r4133 would DIVERGE from the spec, and loosening
@@ -770,12 +781,61 @@ NumVars/GetAllVars/GetVarName plumbing) — and does NOT floor-compare the
 confounded dynamics trajectory (`gate_deck(.., numeric=false)`). pflow/vars/edit
 remain full-numeric (~1e-14), proving the WASM `calc`/`edit`/state-var transport.
 
-**Deviations / open items.** (a) D2 unresolved (above) — root-cause is the main
-follow-up. (b) Channel-3 diagnostic (IndMach012a-over-WASM vs the built-in
-IndMach012 element) NOT implemented — deferred (the channel-1 gate is the WP's
-oracle proof; channel 3 is a reported non-gating nicety). (c) The pinned
-dss-python 0.14.5 secondary channel skipped (needs the r3723-built twin — the
-recorded decision permits skipping if not cheap).
+**Deviations / open items.** (a) D2's single-line r4133 root-cause is the OPEN
+follow-up (the gap is decomposed and scoped OUT of the WM.3 surface — see D2
+above); needs the 0.14.5-ABI twin DLL. (b) Channel-3 diagnostic (IndMach012a-over-
+WASM vs the built-in IndMach012 element) NOT implemented — deferred (the channel-1
+gate is the WP's oracle proof; channel 3 is a reported non-gating nicety, and the
+two elements' different host coupling makes it a loose visual diagnostic, not a
+clean comparison — kept deferred rather than adding a meaningless assertion). (c)
+The pinned dss-python 0.14.5 secondary channel skipped (needs the r3723-built twin
+— the recorded decision permits skipping if not cheap).
+
+**Settlement (post-audit, two xhigh audits, 2026-07-19).** Five findings settled
+empirically:
+- **WM3-1 (HIGH, silent fallback on trap) — FIXED.** The inject path built the
+  trap / missing-Model=6 diagnostics in a LOCAL `ErrorLog` and dropped them (the
+  `inj_currents` trait method has no `Result`). Added `errors`+`solution_abort`
+  channels to `InjCtx` (traits.rs); `Generator::inj_currents` drains them into the
+  solution `ErrorLog` (= `Dss::errors()`) and lifts `SolutionAbort` from any
+  `abort`-flagged diagnostic. A wasm `calc` **trap** is now a hard `abort` (ABI
+  §6); the missing dynamics model (#5671) aborts (Pascal `generator.pas:1944`); the
+  power-flow #567 surfaces non-abort (Pascal `DoSimpleMsg`). `get_currents`'
+  recompute routes to the element deferred-error log instead of dropping. Guarded
+  so a NATIVE-DLL `UserModel=` the wasm host cannot load (already loud via #570
+  "Not Loaded, falls back") does NOT also spew #567/#5671 — that keeps the corpus
+  gate green (indmachtest / Kersting4wire `UserModel=Indmach012a`). New regression
+  test `model6_without_usermodel_surfaces_diagnostic`.
+- **WM3-3 (GenVars read-back was a 9-field whitelist) — FIXED.** `apply_gen_vars`
+  now writes back the FULL 244-B image's mapped f64/Complex fields (the ABI §2
+  "unconditional read-back" contract), not a state-only subset; only the structural
+  ints (`num_phases`/`num_conductors`/`conn`) stay element-owned (documented).
+  Behaviour-neutral for the fixture (it mutates only `Speed`; untouched fields
+  round-trip bit-exact) — gate stays green while the frozen contract is honoured.
+- **WM3-4 (`set_variable` 1..6 was a silent no-op) — FIXED.** Ported the classic
+  GenVars setters (`generator.pas:2650-2663`): Speed/Theta/PShaft/dSpeed/dTheta with
+  the unit conversions, index-3 read-only #564, i<1 #565, DynamicEq #566. Reachable
+  via the capi015 `set StateVar=x <elem> <var> <value>` form (the natural positional
+  syntax is the upstream-broken misroute already reproduced in
+  `force_hooks.rs`). New regression test `set_statevar_classic_genvars_mutates`.
+- **WM3-5 / audit-tests-2 (state-var floor 1e-6/1e-5 uncalibrated) — RECALIBRATED
+  (tightened).** The comment falsely claimed "1e-6 measured"; measuring shows every
+  macro state var agrees to <1e-13 rel and only the near-zero quadrature currents
+  Is2/Ir2 (~4.3e-7, |abs| gap ~1.4e-13) are loose. New floor `(1e-8 rel, 1e-12
+  abs)`: rel = the `feeder` voltage class the machine vars inherit, abs = the
+  measured near-zero floor + ~7x margin — **100x tighter (rel) / 1e7x tighter (abs)**
+  than before, never loosened. Now Is2/Ir2 are constrained by an abs band instead
+  of an 1e-5 band 8 orders above the signal.
+- **audit-code WM3-5 (doc inaccuracy) — FIXED.** The `variable_name` comment
+  claimed "the gate is designed not to compare shaft names"; corrected to state the
+  gate DOES compare all 34 names and why the (correct, non-reproduced-UB) shaft
+  names coincide with the buggy upstream `FGetVarName` read.
+- **WM3-2 / audit-tests-1 (dynamics numeric gate) — settled by decomposition, no
+  code change.** See D2 above: the trajectory gap is proven OUT of the WM.3 surface
+  and is a version-divergence family, so structural-only gating is correct; a
+  numeric r4133 gate would require forbidden loosening. Monitor mode-1/3 capture is
+  subsumed by the same confound (the mode-3 channel IS the 34-var surface, already
+  gated).
 
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the

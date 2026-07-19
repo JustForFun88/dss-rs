@@ -450,7 +450,10 @@ impl Generator {
             for i in 0..nconds {
                 self.cd.inj_current[i] -= self.cd.iterminal[i];
             }
-        } else {
+        } else if self.user_model_name.is_empty() {
+            // A genuine `model=user`/`GenModel=6` with NO `UserModel=` source —
+            // Pascal's #567 (`generator.pas:1834`), surfaced loudly through the
+            // inject-path caller.
             errors.push(crate::diag::DssDiagnostic::msg(
                 format!(
                     "Generator.{} model designated to use user-written model, but user-written \
@@ -460,6 +463,15 @@ impl Generator {
                 Some(567),
             ));
         }
+        // else: a `UserModel=` source WAS designated but is not loaded — for the
+        // port that means a NATIVE-DLL name (or a missing file) the wasm-only host
+        // cannot load, already surfaced ONCE at load time as the loud #570/#569
+        // ("… Not Loaded, falls back to its built-in model"). The oracle loads such
+        // a DLL, so re-emitting #567 every iteration here would be redundant AND a
+        // spurious Rust-only divergence on the vendored corpus (e.g. indmachtest /
+        // Kersting4wire, `UserModel=Indmach012a`): the #570 is the correct single
+        // diagnostic for the native-DLL fallback, and the generator injects its
+        // Yprim contribution — the documented built-in fallback.
     }
 
     /// Pascal `CalcInjCurrentArray`.

@@ -25,8 +25,8 @@ use super::{Connection, Generator};
 // alternative on the line above is commented out there). NOT a TODO(compat):
 // the truncated `57.29577951` lives only in `DSSUcomplex` (`cdang`/`pdeg`),
 // which `Get_Variable` does not use.
-const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
-const RADIANS_TO_DEGREES: f64 = 180.0 / std::f64::consts::PI;
+pub(super) const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
+pub(super) const RADIANS_TO_DEGREES: f64 = 180.0 / std::f64::consts::PI;
 
 impl Generator {
     /// Pascal `TGeneratorObj.InitStateVars` — seed the shaft/Thevenin state from
@@ -248,14 +248,17 @@ impl Generator {
             // Pascal `DoDynamicMode` GenModel=6 (generator.pas:1937-1944): the
             // WASM user model returns the terminal currents in Iterminal
             // (`UserModel.FCalc(Vterminal, Iterminal)`). A missing model records
-            // #5671 and falls back to the Yprim contribution. Pascal additionally
-            // sets `DSS.SolutionAbort := TRUE`; the surrounding
-            // `inj_currents`/`get_currents` callers drop their local error log,
-            // so this stays a best-effort diagnostic — the same limitation as the
-            // sibling >3-phase dynamics aborts (`:328`), and unreachable in the
-            // vendored corpus (no missing-model dynamics deck).
-            if !self.user_model_fcalc(sys, node_v, errors) {
-                errors.push(crate::diag::DssDiagnostic::msg(
+            // #5671 and sets `DSS.SolutionAbort := TRUE`. Both are surfaced: the
+            // `inj_currents` caller drains `errors` into the solution ErrorLog and
+            // lifts the `abort` flag onto `SolutionAbort` — a loud typed error, not
+            // a silent fallback (§2.9-5).
+            if !self.user_model_fcalc(sys, node_v, errors) && self.user_model_name.is_empty() {
+                // Genuine GenModel=6 dynamics with NO `UserModel=` source. When a
+                // source WAS designated but is not loaded (native-DLL name the
+                // wasm-only host cannot load) the #570/#569 already surfaced at load
+                // time — same suppression as the power-flow `do_user_model`, so the
+                // vendored native-DLL decks do not spuriously abort.
+                errors.push(crate::diag::DssDiagnostic::abort(
                     format!(
                         "Generator.{} model designated to use user-written dynamics model, but \
                          user-written model is not defined.",
@@ -337,8 +340,9 @@ impl Generator {
                     // `DoDynamicMode`; the identical-text message at
                     // generator.pas:2357 belongs to a *different* procedure,
                     // `InitStateVars`, and carries the separate code 5672
-                    // (ported at `init_state_vars_impl`).
-                    errors.push(crate::diag::DssDiagnostic::msg(
+                    // (ported at `init_state_vars_impl`). Abort-flagged so the
+                    // `inj_currents` caller lifts `SolutionAbort`.
+                    errors.push(crate::diag::DssDiagnostic::abort(
                         format!(
                             "Dynamics mode is implemented only for 1- or 3-phase Generators. \
                              {}.{} has {} phases.",

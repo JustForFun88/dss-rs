@@ -151,8 +151,12 @@ impl CktElement for Generator {
     /// function pointer (an access violation), and out of the UserModel's range
     /// it reads an uninitialized stack buffer. Per the CLAUDE.md rule (UB /
     /// uninitialized-read bugs are NOT reproduced), the port does the correct
-    /// thing and queries the `ShaftModel` names; the gate is designed not to
-    /// compare shaft variable *names*.
+    /// thing and queries the `ShaftModel` names. The dyn gate binds the SAME model
+    /// as `UserModel=` and `ShaftModel=`, so its 14 shaft names DUPLICATE the user
+    /// names — the (correct) ShaftModel names the port returns coincide with what
+    /// the buggy upstream `FGetVarName` would read from the UserModel, so comparing
+    /// the full ordered 34-name surface (`wasm_usermodels.rs`) neither masks nor
+    /// trips over the upstream bug.
     fn variable_name(&self, i: usize) -> String {
         if let Some(name) = self.dyneq.variable_name(i) {
             return name;
@@ -223,15 +227,50 @@ impl CktElement for Generator {
         }
     }
 
-    /// Pascal `TGeneratorObj.Set_Variable` (`generator.pas:2634-2687`), WM.3
-    /// scope: route a 1-based state-variable write to the `UserModel` /
-    /// `ShaftModel`. The classic 1..6 setters stay unported (the pre-WM.3 state:
-    /// no external caller); a DynamicEq generator rejects writes (Pascal #566).
+    /// Pascal `TGeneratorObj.Set_Variable` (`generator.pas:2634-2687`): route a
+    /// 1-based state-variable write to the classic GenVars table (1..6), then the
+    /// `UserModel` / `ShaftModel`. `i < 1` → `#565`; a DynamicEq generator rejects
+    /// writes → `#566`; index 3 (`Vd`) is read-only → `#564`. The diagnostics have
+    /// no direct return channel here, so they queue on the element's deferred-error
+    /// log (drained by the executive after the `Set StateVar` command).
     fn set_variable(&mut self, i: usize, value: f64) {
-        if i < 1 || self.dyneq.has_dynamic_eq() {
+        use super::dynamics::{RADIANS_TO_DEGREES, TWO_PI};
+        if i < 1 {
+            self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Generator.{}: invalid variable index {i}.",
+                    self.cd.obj.name()
+                ),
+                Some(565),
+            ));
             return;
         }
-        self.set_user_model_variable(i, value);
+        if self.dyneq.has_dynamic_eq() {
+            self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Generator.{}: cannot set state variable when using DynamicEq.",
+                    self.cd.obj.name()
+                ),
+                Some(566),
+            ));
+            return;
+        }
+        // Classic GenVars setters (`generator.pas:2650-2663`).
+        match i {
+            1 => self.speed = (value - self.w0) * TWO_PI, // Frequency (Hz) → Speed
+            2 => self.theta = value / RADIANS_TO_DEGREES, // deg → rad
+            3 => self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Generator.{}: variable index {i} is read-only.",
+                    self.cd.obj.name()
+                ),
+                Some(564),
+            )),
+            4 => self.p_shaft = value,
+            5 => self.dspeed = value / RADIANS_TO_DEGREES,
+            6 => self.dtheta = value,
+            _ => self.set_user_model_variable(i, value),
+        }
     }
 
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
@@ -259,6 +298,17 @@ impl CktElement for Generator {
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
         }
+        // Surface any user-model trap / missing Model=6 diagnostic through the
+        // solution ErrorLog — never a silent fallback on a trapping `.wasm`
+        // (WASM_USERMODELS plan §2.9-5). An `abort`-flagged fault (the missing
+        // dynamics model, `generator.pas:1944`) lifts `SolutionAbort` so the solve
+        // stops instead of iterating on a best-effort stale terminal current.
+        for d in errors.into_vec() {
+            if d.abort {
+                *ctx.solution_abort = true;
+            }
+            ctx.errors.push(d);
+        }
     }
 
     /// Pascal `TGeneratorObj.GetTerminalCurrents` + `TPCElement` base.
@@ -280,8 +330,17 @@ impl CktElement for Generator {
             && !self.gen_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {
+            // `GetTerminalCurrents` has no solve-context error channel, so a
+            // user-model trap / missing Model=6 diagnostic recomputed here is
+            // queued on the element's deferred-error log (drained by the executive)
+            // rather than dropped — never a silent fallback on trap (§2.9-5). The
+            // loud path is `inj_currents` during the solve; this query recompute is
+            // the fallback surfacing.
             let mut errors = crate::diag::ErrorLog::new();
             self.calc_gen_model_contribution(sys, node_v, &mut errors);
+            for d in errors.into_vec() {
+                self.cd.obj.push_error(d);
+            }
         }
         if self.cd.iterminal_updated {
             curr.copy_from_slice(&self.cd.iterminal[..curr.len()]);

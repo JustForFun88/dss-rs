@@ -160,12 +160,25 @@ fn check(
 ///   damping default differs — dss_capi/`generator.pas:1006` `Dpu:=1.0` (D≈13263)
 ///   vs r4133/`generator.pas:968` sets `D:=1.0` in the ctor but never `Dpu`, so
 ///   `InitStateVars` recomputes `D:=Dpu*kVArating*1000/w0=0`; (2) with D matched
-///   (D=1 on both) a residual ~5e-4 flux-transient gap remains, localized to the
-///   dynamics solve (the snapshot terminal current/Is1/slip are bit-identical, so
-///   it is not the WASM handoff). Rust ports dss_capi 0.14.5 (its pinned oracle),
-///   so forcing a match to r4133's dynamics would DIVERGE from the spec — per the
-///   brief's "if the two disagree, STOP and record" rule, it is recorded, never
-///   masked by a loosened tolerance.
+///   (D=1 on both) a residual trajectory gap survives — MEASURED at the deck's end
+///   state: ~5e-4 rel on the machine currents (Is1/Ir1), ~1e-3 on the losses
+///   (StatorLoss/RotorLoss/HPshaft), ~1e-4 on Slip, up to ~5e-4 on the node
+///   voltages, and dSpeed ~3e-2 (the `Pshaft+TracePower` near-cancellation
+///   amplifies the current gap). These are 4–6 ORDERS above the faer-vs-KLU floor
+///   (1e-8), so they are an engine-behavior difference, NOT solver rounding — a
+///   loosened numeric gate would need a ~1e-1 band = forbidden fudging.
+///   DECOMPOSITION: WM.3's NEW code is exonerated — the WASM `FCalc` handoff is
+///   bit-exact (the Model=6 SNAPSHOT `wasm_gen_pflow` matches r4133 at ~1e-14,
+///   incl. Is1/slip) and the guest math is bit-exact to the native twin (WM.2
+///   `fixture_self_gate`). So the gap lives in the SHARED multi-step Generator
+///   dynamics coupling (the dynamics-Norton/Zthev entry + the network re-solve
+///   feeding Vterminal back to the identical guest each step), the same code
+///   family the proven D1 `Dpu` divergence sits in — not the new user-model
+///   transport. Rust ports dss_capi 0.14.5 (its pinned oracle), so forcing a match
+///   to r4133's dynamics would DIVERGE from the spec; per the brief's "if the two
+///   disagree, STOP and record" rule it is recorded, never masked. Pinning the
+///   single r4133 source line (like D1's) needs the 0.14.5-ABI twin DLL and is the
+///   OPEN follow-up (STATUS deviation (a)).
 fn gate_deck(deck: &str, numeric: bool) {
     let g = load_golden(deck);
     let mut dss = run_deck(deck);
@@ -200,10 +213,22 @@ fn gate_deck(deck: &str, numeric: bool) {
     // (empirically calibrated, see the assertion report below; NOT loosened to
     // pass — CLAUDE.md).
     let vtol = tol_for("feeder");
-    // State-variable floor: the slip fixpoint amplifies the ~1e-8 terminal-voltage
-    // floor into the machine currents/losses; 1e-6 rel / 1e-5 abs is the measured
-    // faer-vs-KLU class here (calibration printed on any failure).
-    let (var_rel, var_abs) = (1e-6, 1e-5);
+    // State-variable floor, calibrated to the MEASURED faer-vs-KLU gap on these
+    // decks (not a defensive round number): tightening the floor to (1e-13, 1e-14)
+    // leaves exactly two offenders — the near-zero quadrature currents Is2/Ir2
+    // (value ~4.3e-7, |abs| gap ~1.4e-13, so ~3e-7 REL purely from the tiny
+    // denominator); every other state variable (macro currents, StatorLoss/
+    // RotorLoss/HPshaft, slip, ...) matches to <1e-13 rel / <1e-14 abs. So:
+    //   * `var_rel = 1e-8` — the machine state vars are functions of the terminal
+    //     voltages, which are gated at the `feeder` class (`v_rel = 1e-8`); the
+    //     slip fixpoint can propagate that voltage floor into a var, so 1e-8 is the
+    //     principled REL ceiling (the observed macro-var gap is far tighter, ~1e-13).
+    //   * `var_abs = 1e-12` — covers the near-zero Is2/Ir2 absolute floor (~1.4e-13)
+    //     with ~7x margin, so those currents are constrained by an ABS band instead
+    //     of an unconstrained ~1e-5 (a floor 8 orders above the signal, WM3 audit).
+    // NOT loosened to pass — this is 100x tighter (rel) / 1e7x tighter (abs) than the
+    // pre-settlement 1e-6/1e-5; calibration is printed on any failure.
+    let (var_rel, var_abs) = (1e-8, 1e-12);
 
     let mut worst = (0.0_f64, String::from("(none)"));
     let mut fails: Vec<String> = Vec::new();
@@ -364,7 +389,9 @@ fn wasm_gen_vars_matches_r4133_oracle() {
         });
         let exp = golden_of(probe);
         let diff = (got - exp).abs();
-        let allowed = 1e-5 + 1e-6 * exp.abs();
+        // Slip/puRs/MaxSlip are macro (non-near-zero) vars; same calibrated floor
+        // as the surface comparison (1e-8 rel = feeder voltage class, 1e-12 abs).
+        let allowed = 1e-12 + 1e-8 * exp.abs();
         assert!(
             diff <= allowed,
             "Get StateVar Generator.g1 {probe}: {got} vs oracle {exp} (|diff|={diff:.3e} > {allowed:.3e})"
@@ -375,6 +402,81 @@ fn wasm_gen_vars_matches_r4133_oracle() {
 #[test]
 fn wasm_gen_edit_matches_r4133_oracle() {
     gate_deck("wasm_gen_edit", true);
+}
+
+/// WM.3 hunt item (silent fallback on trap → loud typed errors): a `Model=6`
+/// (user-written) Generator with **no** `UserModel=` must SURFACE the
+/// missing-model diagnostic (#567, `generator.pas:1834`) through the solution
+/// error log. The power-flow `inj_currents` path previously built the #567 in a
+/// LOCAL `ErrorLog` and dropped it (WM3-1 audit); it now drains into
+/// `SolveEnv.errors` = `Dss::errors()`. Needs no `.wasm` fixture — the point is
+/// the surfacing channel, not the model math.
+#[test]
+fn model6_without_usermodel_surfaces_diagnostic() {
+    let deck = "\
+clear
+new circuit.nomodel basekv=13.8 phases=3 bus1=sb pu=1.0 R1=0.05 X1=0.15 R0=0.05 X0=0.15
+new line.f phases=3 bus1=sb bus2=b3 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
+new generator.g1 bus1=b3 phases=3 conn=delta kv=13.8 kW=4000 kVA=5000 model=6
+set voltagebases=[13.8]
+calcvoltagebases
+solve";
+    let mut dss = Dss::new();
+    for line in deck.lines() {
+        let t = line.trim();
+        if !t.is_empty() {
+            dss.command(t);
+        }
+    }
+    assert!(
+        dss.errors().iter().any(|d| d.code == Some(567)),
+        "Model=6 with no UserModel must surface the #567 missing-model diagnostic \
+         (not a silent fallback); got {:?}",
+        dss.error_texts()
+    );
+}
+
+/// WM.3 hunt item (state-var off-by-one / 1-based Pascal arrays): the classic
+/// GenVars setters `Set_Variable` i=1..6 (`generator.pas:2650-2663`) are ported —
+/// `Set StateVar` on a built-in GenVars field mutates the element. Previously
+/// every index routed to the user-model setter and 1..6 was a silent no-op (WM3-4
+/// audit). `PShaft` (index 4) round-trips through `Get StateVar` with no unit
+/// conversion, so it is the cleanest witness. The write uses the capi015 `=x`
+/// form (`set StateVar=x <elem> <var> <value>`) because the natural positional
+/// `set StateVar <elem> …` is an upstream-broken misroute — faithfully reproduced
+/// and covered in `exec/tests/force_hooks.rs`.
+#[test]
+fn set_statevar_classic_genvars_mutates() {
+    let deck = "\
+clear
+new circuit.sv basekv=13.8 phases=3 bus1=sb pu=1.0 R1=0.05 X1=0.15 R0=0.05 X0=0.15
+new generator.g1 bus1=sb phases=3 kv=13.8 kW=4000 kVA=5000 model=1
+set voltagebases=[13.8]
+calcvoltagebases
+solve";
+    let mut dss = Dss::new();
+    for line in deck.lines() {
+        let t = line.trim();
+        if !t.is_empty() {
+            dss.command(t);
+        }
+    }
+    dss.command("set StateVar=x Generator.g1 PShaft 123456");
+    assert!(
+        dss.errors().is_empty(),
+        "Set StateVar PShaft: {:?}",
+        dss.error_texts()
+    );
+    dss.command("Get StateVar Generator.g1 PShaft");
+    let got: f64 = dss
+        .result()
+        .trim()
+        .parse()
+        .unwrap_or_else(|e| panic!("Get StateVar PShaft = {:?}: {e}", dss.result()));
+    assert!(
+        (got - 123456.0).abs() < 1e-6,
+        "classic GenVars setter no-op: PShaft = {got}, expected 123456"
+    );
 }
 
 /// Every committed golden parses, has index-aligned name/value arrays (never a

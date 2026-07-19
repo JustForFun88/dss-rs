@@ -171,6 +171,21 @@ pub struct InjCtx<'a> {
     /// `GetPCInjCurr` (Solution.pas l.895). Reproduce that side effect by letting
     /// the element raise this flag.
     pub system_y_changed: &'a mut bool,
+    /// `DoSimpleMsg` sink for a solve-time model fault surfaced from inside
+    /// `inj_currents` — a WASM user-model **trap**/protocol fault, or a `Model=6`
+    /// Generator with no user model (`#567`/`#5671`, `generator.pas:1834/1943`).
+    /// The inject loop drains this into the solution `ErrorLog`, so the fault is a
+    /// loud typed error, **never a silent fallback** (WASM_USERMODELS plan §2.9-5):
+    /// the terminal-sink `inj_currents` trait method has no `Result`, so this is
+    /// the channel that carries the diagnostic out.
+    pub errors: &'a mut crate::diag::ErrorLog,
+    /// `Solution.SolutionAbort`. A hard model fault raised from `inj_currents`
+    /// (Pascal `DoErrorMsg` / `DSS.SolutionAbort := TRUE`) — e.g. the missing
+    /// dynamics model (`#5671`, `generator.pas:1944`) or >3-phase dynamics
+    /// (`:2023`). Set from an `abort`-flagged diagnostic when the loop drains
+    /// [`Self::errors`], so the surrounding solve stops instead of iterating on a
+    /// best-effort stale current.
+    pub solution_abort: &'a mut bool,
 }
 
 /// Per-element reliability inputs returned by [`CktElement::reliability_data`]

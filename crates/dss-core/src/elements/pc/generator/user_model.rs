@@ -623,8 +623,13 @@ impl Generator {
         let mut it = self.cd.iterminal.clone();
         match um.calc(&v, &mut it, self, sys, node_v) {
             Ok(()) => self.cd.iterminal.copy_from_slice(&it),
-            Err(e) => errors.push(DssDiagnostic::msg(
-                format!("Generator.{name}: user model `calc` failed: {e}"),
+            // A wasm-only hard failure (trap / protocol fault / fuel / memory cap)
+            // has no Pascal analogue: ABI §6 makes it a HARD, loud engine error, not
+            // a silent mid-run fallback (which would silently change numerics). Flag
+            // `abort` so the inject-path caller lifts `SolutionAbort` rather than
+            // converging on the stale terminal current.
+            Err(e) => errors.push(DssDiagnostic::abort(
+                format!("Generator.{name}: user model `calc` trapped/faulted: {e}"),
                 Some(567),
             )),
         }
@@ -655,8 +660,9 @@ impl Generator {
         let v = self.cd.vterminal.clone();
         let mut it = self.cd.iterminal.clone(); // scratch — result discarded
         if let Err(e) = sm.calc(&v, &mut it, self, sys, node_v) {
-            errors.push(DssDiagnostic::msg(
-                format!("Generator.{name}: shaft model `calc` failed: {e}"),
+            // ABI §6 wasm hard failure — abort, never a silent mid-run fallback.
+            errors.push(DssDiagnostic::abort(
+                format!("Generator.{name}: shaft model `calc` trapped/faulted: {e}"),
                 Some(567),
             ));
         }
@@ -899,22 +905,50 @@ pub(super) fn gen_vars_from(g: &Generator) -> GeneratorVars {
 }
 
 /// Apply the mutated `TGeneratorVars` back onto the Generator after a guest
-/// call (the Pascal contract shares the record live — the shaft model "Returns
-/// pshaft at least", `generator.pas:2038`; the user model drives the swing
-/// state). Only the state/parameter fields a model may legitimately drive are
-/// written back; the structural ints (`num_phases`/`num_conductors`/`conn`)
-/// stay owned by the element. f64 round-trips are bit-exact, so writing back an
-/// untouched field is a no-op.
+/// call. ABI doc §2 freezes the read-back as **unconditional** — a native DLL
+/// shares the record live (retained pointer), so *any* field the model writes
+/// persists; the wasm host reproduces that by copying the full image back, not a
+/// state-only subset (a whitelist would silently drop a legitimate mutation of,
+/// e.g., `Pnominalperphase`/`Mmass`/`kVArating`, diverging from the native
+/// contract — WM.3 audit). Every mapped f64/Complex field of the 244-byte image
+/// (`gen_vars_from`) is written back. f64 round-trips are bit-exact, so a field
+/// the model did not touch is a no-op; the reference fixture writes only `Speed`.
+///
+/// The structural ints (`num_phases`/`num_conductors`/`conn`) are the ONE
+/// exception: they stay element-owned and are never read back — they define the
+/// terminal/YPrim shape the host allocated the buffers and node map against, so a
+/// guest write to them cannot be honored mid-solve without corrupting the element
+/// (a native model that mutated them would equally corrupt the engine; no model
+/// does). The `deltaQNom` NCIM slot never crosses the wasm boundary at all (§2.2b).
 pub(super) fn apply_gen_vars(g: &mut Generator, gv: &GeneratorVars) {
     g.theta = gv.theta;
     g.p_shaft = gv.pshaft;
     g.speed = gv.speed;
+    g.w0 = gv.w0;
+    g.h_mass = gv.hmass;
+    g.m_mass = gv.mmass;
+    g.d_damping = gv.d;
+    g.dpu = gv.dpu;
+    g.kva_rating = gv.kva_rating;
+    g.kv_generator_base = gv.kv_generator_base;
+    g.xd = gv.xd;
+    g.xdp = gv.xdp;
+    g.xdpp = gv.xdpp;
+    g.pu_xd = gv.pu_xd;
+    g.pu_xdp = gv.pu_xdp;
+    g.pu_xdpp = gv.pu_xdpp;
     g.dtheta = gv.dtheta;
     g.dspeed = gv.dspeed;
     g.theta_history = gv.theta_history;
     g.speed_history = gv.speed_history;
+    g.p_nominal_per_phase = gv.pnominalperphase;
+    g.q_nominal_per_phase = gv.qnominalperphase;
     g.v_thev_mag = gv.vthev_mag;
+    g.v_thev_harm = gv.vthev_harm;
+    g.theta_harm = gv.theta_harm;
     g.v_target = gv.vtarget;
+    g.zthev = num_complex::Complex64::new(gv.zthev.0, gv.zthev.1);
+    g.xrdp = gv.xrdp;
 }
 
 /// Build the packed `TDynamicsRec` image from the solution context (ABI doc
