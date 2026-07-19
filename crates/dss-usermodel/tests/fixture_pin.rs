@@ -81,6 +81,12 @@ fn committed_wm4model_fixture_hash_matches_pin() {
 }
 
 #[test]
+fn committed_capuserctl_fixture_hash_matches_pin() {
+    // WM.5 capuserctl (CapControl UserModel — deadband voltage control).
+    assert_fixture_matches_pin("capuserctl.wasm");
+}
+
+#[test]
 fn pinned_hash_parser_reads_the_wm2_line_format() {
     let text = "\
 # comment sha256(tests/fixtures/wasm/indmach012a.wasm)=0000000000000000000000000000000000000000000000000000000000000000

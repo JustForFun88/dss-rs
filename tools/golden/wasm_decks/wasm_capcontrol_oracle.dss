@@ -1,0 +1,24 @@
+! WASM_USERMODELS WM.5 — CapControl user-control gate deck (the r4133 ORACLE).
+! IDENTICAL to wasm_capcontrol.dss except the CapControl is the built-in VOLTAGE
+! control with (OnSetting, OffSetting) = the fixture's (vlow, vhigh). Because a
+! native CapUserControl twin cannot drive the r4133 control queue (it has no
+! owner pointer — STATUS WM.5 round 2), the built-in VOLTAGE control is the sound
+! cross-engine oracle for the switching sequence + final states + node voltages.
+!
+! The only expected event-log difference vs the USERCONTROL side is the built-in
+! **Armed** rows (the shared arm/disarm tail the direct-push USERCONTROL bypasses,
+! WM5-3); the gate compares only the ordered SWITCH actions
+! (**Opened**/**Closed**/**Step Up/Down**), the final cap state and the node
+! voltages, which are identical.
+clear
+new circuit.wm5cap basekv=12.47 phases=3 bus1=src R1=0.4 X1=1.2 R0=0.4 X0=1.2
+new line.feed phases=3 bus1=src bus2=cbus length=3 units=km r1=0.35 x1=0.7 r0=0.35 x0=0.7 c1=0 c0=0
+new load.ld phases=3 bus1=cbus kv=12.47 kw=500 pf=0.9 model=1
+new capacitor.c bus1=cbus phases=3 kv=12.47 kvar=1500
+new capcontrol.cc element=line.feed terminal=2 capacitor=c type=voltage PTRatio=1 PTPhase=1 OnSetting=7000 OffSetting=7250 Delay=0 DelayOff=0 DeadTime=0 eventlog=yes
+set voltagebases=[12.47]
+calcvoltagebases
+set controlmode=static
+solve
+edit load.ld kw=3500
+solve
