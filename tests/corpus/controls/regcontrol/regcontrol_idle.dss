@@ -1,20 +1,25 @@
-// RegControl idle-zone suppression (dss_capi 0.15.x r4086, commit 8a898cba,
-// WP-U1.6 C5). `idle=yes` on a reversible regulator makes `Sample` read the
-// through-power and, when it lands in the no-load dead-band, drop the pending
-// tap change ("idle in no-load zone"). With the default −100/+100 kW band the
-// zone spans the whole power axis (the upstream `>=`/`<=` OR), so an idling
-// regulator never taps.
+// RegControl idle-zone suppression, EPRI r4133 semantics (BUG WP
+// regcontrol_idle, 2026-07-19). `idle=yes` on a reversible regulator makes
+// `Sample` read the through-power and, when it lands in the BOUNDED no-load
+// band [RevPowerThreshold, FwdPowerThreshold] (default −100/+100 kW), drop the
+// pending tap change ("idle in no-load zone"). r4133 RegControl.pas:1218 tests
+// this with an `and` — idle only when the through-power is SMALL. (dss_capi
+// 0.15.x wrote the same test as an `or`, a tautology under the symmetric band
+// that made an idling reg never tap; the port previously reproduced that and
+// diverged 8.8% from r4133. The WP adopted r4133's `and`; see STATUS
+// "BUG WP regcontrol_idle".)
 //
-// Feature sensitivity (UPGRADE_PLAN §1.7-3): the load pulls the regulated bus
-// far below the 128 V target, so a NON-idle regulator taps all the way up
-// (tapnum 15, tap 1.09375, |V|≈0.939 pu). With idle=yes the tap stays at
-// neutral (tapnum 0, tap 1.0) and the bus droops to |V|≈0.864 pu — a ~0.075 pu
-// gap, far above every live-compare floor. `idle` is a 0.15.x-only property
-// (0.14.5 rejects it), so this deck is inherently capi015 and cannot gate
-// against 0.14.5 (§1.2). Probed idle=yes vs idle=no on capi015 2026-07-16.
+// Feature sensitivity: the load pulls the regulated bus far below the 128 V
+// target, so the through-power is LARGE (well outside ±100 kW). It therefore
+// falls OUTSIDE the no-load band, idle does NOT suppress, and the regulator
+// taps all the way up — tapnum 15, tap 1.09375, MV.1 ≈ 7650.08 V, |V| ≈ 0.939
+// pu, identical to idle=no. `idle` is a 0.15.x/r4133-only property (0.14.5
+// rejects it with #110), so this deck gates on the r4133 channel only. The
+// revThreshold/fwdThreshold getter-convention residual is pinned as an
+// exact-pair ledger divergence (r4133-regcontrol-idle-threshold-display); the
+// tap/voltage physics gate live.
 //
-// Oracle: capi015 (backend 0.15.0b4 = SVN r4103). Validated per §1.7
-// (two-process determinism on the capi015 engine).
+// Gating oracle: EPRI r4133 (engines: r4133) via epri-worker.
 clear
 Set DefaultBaseFrequency=60
 
@@ -28,8 +33,9 @@ New line.l1 phases=3 bus1=mv bus2=ld r1=0.4 x1=0.7 c1=0 length=4 units=km
 
 New load.ld bus1=ld phases=3 conn=wye model=1 kv=12.47 kw=7000 pf=0.95
 
-// Reversible regulator with idle=yes: it senses the deep under-voltage but
-// idles in the no-load zone instead of tapping up.
+// Reversible regulator with idle=yes: the deep under-voltage drives a large
+// through-power (outside the ±100 kW no-load band), so idle does NOT suppress
+// and the regulator taps up (r4133 bounded-AND semantics).
 New regcontrol.rg transformer=tr winding=2 vreg=128 band=1 ptratio=60
 ~ reversible=yes idle=yes
 

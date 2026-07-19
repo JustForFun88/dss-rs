@@ -299,16 +299,24 @@ impl RegControl {
         };
         let mut tap_change_needed = (vreg_test - vactual).abs() > band_test / 2.0;
 
-        // r4086 (8a898cba): idle dead-band zones suppress the pending tap change.
-        // Ordered exactly as Pascal `Sample` — they run *before* the VLimit
-        // re-check below, so a live VLimit violation still forces a tap. The
-        // DebugTrace log lines are omitted (the port never opens the trace file).
+        // Idle dead-band zones suppress the pending tap change (RegControl
+        // `Sample`, EPRI r4133). Ordered exactly as Pascal — they run *before*
+        // the VLimit re-check below, so a live VLimit violation still forces a
+        // tap. The DebugTrace log lines are omitted (the port never opens the
+        // trace file).
         if tap_change_needed && self.idle_enabled && (self.cogen_enabled || self.is_reversible) {
             let fwd_power = -tr.power_into_re(element_terminal, ctx.node_v, ctx.sys);
-            // Ported verbatim from Pascal: the `>=`/`<=` OR is upstream's exact
-            // no-load-zone test (with the default −100/+100 kW band it spans the
-            // whole axis; asymmetric thresholds narrow it). Not "fixed" to AND.
-            if fwd_power >= self.rev_power_threshold || fwd_power <= self.fwd_power_threshold {
+            // No-load zone = the BOUNDED interval [RevPowerThreshold,
+            // FwdPowerThreshold] (default −100/+100 kW): idle only when the
+            // through-power is small. EPRI r4133 RegControl.pas:1218 —
+            //   (FwdPower <= FwdPowerThreshold) and (FwdPower >= RevPowerThreshold)
+            // dss_capi 0.15.x (8a898cba "port SVN r4086", still OR at the 0.15.x
+            // branch tip) wrote this as an `or`, which is a tautology under the
+            // default symmetric band (every value is ≥ −100 kW OR ≤ +100 kW), so
+            // an idling reg NEVER tapped for any load. We adopt r4133's AND
+            // (r4133-and-beyond direction; idle is 0.15-only, no pinned 0.14.5
+            // golden uses it). See STATUS "BUG WP regcontrol_idle".
+            if fwd_power <= self.fwd_power_threshold && fwd_power >= self.rev_power_threshold {
                 tap_change_needed = false; // idle in no-load zone
             }
         }
