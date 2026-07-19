@@ -758,6 +758,20 @@ impl LedgerView<'_> {
                         // NOT a display rounding — an envelope would mask real
                         // drift, so pin the exact `rust` value. `oracle` is pinned
                         // (asserted above vs the capture); stale once rust==oracle.
+                        //
+                        // The `rust` pin is MANDATORY (fix-round audit F1/F2): with
+                        // only an oracle pin, staleness fires on `rv != ov`, so a
+                        // port regression that moved the value to any THIRD value
+                        // (still != oracle) would neither trip the assert nor mark
+                        // the entry stale — a silent drift. Requiring `rust` closes
+                        // the last soft spot in the exact-pair-numeric machinery.
+                        assert!(
+                            sc.rust.is_some(),
+                            "{ctx}: ledger `{}` probe {key}: exact-pair-numeric scope must pin an \
+                             exact `rust` value — with only `oracle`, a port drift to a third \
+                             value != oracle passes silently (§1.3 discrete drift-safety)",
+                            e.id
+                        );
                         if let Some(r) = &sc.rust {
                             let rp = parse_leading_f64(&value_as_str(r));
                             assert!(
@@ -883,6 +897,16 @@ impl LedgerView<'_> {
                         } else {
                             // exact-pair-NUMERIC (§1.3 discrete, mirrors
                             // `probe_handled`): a genuine value jump, pinned exactly.
+                            // `rust` is MANDATORY (fix-round audit F1/F2): with only
+                            // an oracle pin, a port drift to a third value != oracle
+                            // would pass silently (staleness fires only on rv==ov).
+                            assert!(
+                                sc.rust.is_some(),
+                                "{ctx}: ledger `{}` property {key}: exact-pair-numeric scope must pin \
+                                 an exact `rust` value — with only `oracle`, a port drift to a third \
+                                 value != oracle passes silently (§1.3 discrete drift-safety)",
+                                e.id
+                            );
                             if let Some(r) = &sc.rust {
                                 let rp = parse_leading_f64(&value_as_str(r));
                                 assert!(
