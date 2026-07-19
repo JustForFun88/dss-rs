@@ -129,21 +129,68 @@ pub struct DllFns {
 // to the calling thread is sound because the DLL stays loaded for the session.
 unsafe impl Send for DllFns {}
 
+/// The standalone Y-matrix / injection helper exports that are **not** part of the
+/// uniform `XxxI/F/S/V` family shape (`DYMatrix.pas`). Bound for capability
+/// completeness (dss-python's `YMatrix.*`); reached via the worker `ymatrix`
+/// command. `InitAndGetYparams` / `GetCompressedYMatrix` / `getIpointer` stay in
+/// [`DllFns`] (the gate's CSC + injection capture path). `Copy`/`Send`: bare fn
+/// pointers.
+#[derive(Clone, Copy)]
+pub struct YMatrixFns {
+    /// `ZeroInjCurr` — zero the solution injection-current vector.
+    pub zero_inj_curr: unsafe extern "C" fn(),
+    /// `GetSourceInjCurrents` — stamp source injection currents into the vector.
+    pub get_source_inj_currents: unsafe extern "C" fn(),
+    /// `GetPCInjCurr` — stamp PC-element injection currents into the vector.
+    pub get_pc_inj_curr: unsafe extern "C" fn(),
+    /// `SystemYChanged(mode, arg): longint` — read (mode 0) / write (mode 1) the
+    /// "Y needs rebuild" flag. Same ABI as [`FnI`].
+    pub system_y_changed: FnI,
+    /// `BuildYMatrixD(BuildOps, AllocateVI)` — rebuild the system Y matrix.
+    pub build_y_matrix_d: unsafe extern "C" fn(i32, i32),
+    /// `UseAuxCurrents(mode, arg): longint` — read/write the aux-currents flag.
+    pub use_aux_currents: FnI,
+    /// `AddInAuxCurrents(SType)` — fold auxiliary currents into the injection.
+    pub add_in_aux_currents: unsafe extern "C" fn(i32),
+    /// `getVpointer(var VvectorPtr)` — borrowed pointer to the node-voltage vector
+    /// (`Solution.NodeV`, length `2*(NumNodes+1)` doubles, slot 0 = ground).
+    pub get_v_pointer: unsafe extern "C" fn(*mut *mut f64),
+    /// `SolveSystem(var NodeV): integer` — back-substitute `Y·V = I` into a
+    /// caller-provided `NodeV` buffer (pointer-to-pointer), returning KLU status.
+    pub solve_system: unsafe extern "C" fn(*mut *mut f64) -> i32,
+}
+
+// SAFETY: only bare function pointers; sound to send for the same reason as
+// `DllFns` (the DLL stays loaded for the session).
+unsafe impl Send for YMatrixFns {}
+
 /// The loaded r4133 DLL: the entry points ([`DllFns`]) plus the owning
 /// [`Library`]. Dropping this `FreeLibrary`s the DLL — which deadlocks in the
 /// r4133 finalization (see [`crate::dss::Engine`]); use [`Dll::leak`] to keep it
 /// loaded for the session instead.
 pub struct Dll {
     pub fns: DllFns,
+    /// The standalone Y-matrix helper exports (capability channel).
+    pub ymatrix: YMatrixFns,
+    /// The full uniform-family registry (generic `ffi` capability channel).
+    pub families: crate::families::FamilyTable,
     lib: Library,
 }
 
 impl Dll {
-    /// Leak the loaded library so it is never `FreeLibrary`'d (the entry points in
-    /// [`Dll::fns`] stay valid for the rest of the process — see the [`Dll`] and
-    /// [`crate::dss::Engine`] docs for why unloading must be avoided).
-    pub fn leak(self) {
-        std::mem::forget(self.lib);
+    /// Leak the loaded library (never `FreeLibrary`'d — unloading deadlocks in
+    /// r4133 finalization, see [`crate::dss::Engine`]) and hand back its bound
+    /// entry points. The library stays mapped for the rest of the process, so all
+    /// returned pointers stay valid.
+    pub fn leak_into_parts(self) -> (DllFns, YMatrixFns, crate::families::FamilyTable) {
+        let Dll {
+            fns,
+            ymatrix,
+            families,
+            lib,
+        } = self;
+        std::mem::forget(lib);
+        (fns, ymatrix, families)
     }
 }
 
@@ -153,7 +200,7 @@ impl Dll {
 /// The named symbol must have exactly the ABI/signature of `T` (verified against
 /// the Pascal `interface`), and the returned value is only valid while `lib`
 /// stays loaded — which [`Dll`] guarantees by owning `lib`.
-unsafe fn sym<T: Copy>(lib: &Library, name: &[u8]) -> Result<T, String> {
+pub(crate) unsafe fn sym<T: Copy>(lib: &Library, name: &[u8]) -> Result<T, String> {
     // SAFETY: `name` is a NUL-terminated symbol name; `T` matches the exported
     // signature (documented per field in `Dll`). `*s` copies the bare fn pointer
     // out of the borrowing `Symbol` wrapper.
@@ -223,7 +270,32 @@ impl Dll {
                 get_i_pointer: sym(&lib, b"getIpointer\0")?,
             }
         };
-        Ok(Dll { fns, lib })
+
+        // SAFETY: each Y-helper signature is transcribed 1:1 from `DYMatrix.pas`.
+        let ymatrix = unsafe {
+            YMatrixFns {
+                zero_inj_curr: sym(&lib, b"ZeroInjCurr\0")?,
+                get_source_inj_currents: sym(&lib, b"GetSourceInjCurrents\0")?,
+                get_pc_inj_curr: sym(&lib, b"GetPCInjCurr\0")?,
+                system_y_changed: sym(&lib, b"SystemYChanged\0")?,
+                build_y_matrix_d: sym(&lib, b"BuildYMatrixD\0")?,
+                use_aux_currents: sym(&lib, b"UseAuxCurrents\0")?,
+                add_in_aux_currents: sym(&lib, b"AddInAuxCurrents\0")?,
+                get_v_pointer: sym(&lib, b"getVpointer\0")?,
+                solve_system: sym(&lib, b"SolveSystem\0")?,
+            }
+        };
+
+        // SAFETY: the family symbols are the r4133 export table (verified by the
+        // export dump), each an `XxxI/F/S/V(mode, arg)` cdecl.
+        let families = unsafe { crate::families::FamilyTable::load(&lib)? };
+
+        Ok(Dll {
+            fns,
+            ymatrix,
+            families,
+            lib,
+        })
     }
 }
 

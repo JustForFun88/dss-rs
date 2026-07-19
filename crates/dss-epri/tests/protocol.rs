@@ -79,6 +79,11 @@ impl WorkerProc {
         self.ok(json!({"cmd": "read", "what": what, "name": name}))
     }
 
+    /// Generic FFI dispatch (EPRI Round 2 capability channel).
+    fn ffi(&mut self, req: Value) -> Value {
+        self.ok(req)
+    }
+
     fn quit(mut self) {
         let _ = writeln!(self.stdin, "{}", json!({"cmd": "quit"}));
         let _ = self.stdin.flush();
@@ -219,6 +224,170 @@ fn scripting_surface_end_to_end() {
     );
     let pong = w.ok(json!({"cmd": "ping"}));
     assert_eq!(pong["pong"], true, "worker died after error: {pong}");
+
+    w.quit();
+}
+
+/// A tiny inline feeder for the capability smoke — its own subject set.
+const CAP_DECK: &[&str] = &[
+    "clear",
+    "new circuit.captest basekv=12.47 phases=3 bus1=src",
+    "new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi",
+    "new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi",
+    "new load.l bus1=mid phases=3 kv=12.47 kw=500 pf=0.95 model=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+];
+
+/// EPRI capability Round 2: the generic `caps`/`ffi`/`ymatrix`/`batch` surface
+/// that covers everything the Oddie/dss-python bridge could reach over the same
+/// engine, plus the "beyond" (structured errno, batched exec, capability
+/// handshake). Drives the REAL r4133 DLL end-to-end. Gate-neutral: the
+/// `run`/`ping`/`clear` capture path is untouched; the scheduler never sends any
+/// of these commands.
+#[test]
+fn capability_surface_end_to_end() {
+    let mut w = WorkerProc::spawn();
+
+    // ---- 1. Structured capability handshake (beyond the Python bridge) -----
+    let caps = w.ok(json!({"cmd": "caps"}));
+    assert_eq!(caps["protocol_version"], 2, "caps proto drift: {caps}");
+    assert_eq!(
+        caps["family_count"], 42,
+        "family registry drifted from the r4133 export table: {caps}"
+    );
+    assert_eq!(
+        caps["family_entry_points"], 147,
+        "family entry-point count drifted: {caps}"
+    );
+    let cmds: Vec<&str> = caps["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c.as_str().unwrap())
+        .collect();
+    for want in ["ffi", "ymatrix", "caps", "batch", "run"] {
+        assert!(cmds.contains(&want), "caps missing command {want}: {caps}");
+    }
+    // A few family shapes: full quartet, an F-less family, and a bare-S family.
+    let fam_kinds = |name: &str| -> String {
+        caps["families"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["name"] == name)
+            .unwrap_or_else(|| panic!("family {name} missing from caps: {caps}"))["kinds"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(fam_kinds("Circuit"), "ifsv");
+    assert_eq!(fam_kinds("Monitors"), "isv", "Monitors has no F export");
+    assert_eq!(fam_kinds("DSSProperties"), "s");
+
+    // ---- 2. Batched multi-command exec in ONE round-trip (beyond) ----------
+    let batch = w.ok(json!({"cmd": "batch", "exec": CAP_DECK}));
+    assert_eq!(
+        batch["ran"].as_u64().unwrap(),
+        CAP_DECK.len() as u64,
+        "batch did not run every command: {batch}"
+    );
+    assert!(batch["failed_at"].is_null(), "batch had a failure: {batch}");
+    // solve as a follow-up single exec.
+    w.exec("solve");
+
+    // ---- 3. Structured errno surface (no active LoadShape -> #61001) -------
+    // Read PMult with no loadshape defined: the DLL sets a non-fatal errno,
+    // surfaced structurally (the Python bridge never exposed this per-call).
+    let err = w.ffi(json!({"cmd": "ffi", "family": "LoadShape", "kind": "v", "mode": 1}));
+    assert_eq!(
+        err["errno"].as_i64(),
+        Some(61001),
+        "expected #61001 for no-active-loadshape: {err}"
+    );
+    assert!(
+        err["error"].as_str().unwrap().contains("Loadshape"),
+        "errno desc not surfaced: {err}"
+    );
+
+    // ---- 4. Generic FFI == typed channel (I/S/V getters cross-check) -------
+    // Circuit NumNodes (I mode 2) must equal the typed node-order length.
+    let order = w.read("ynode_order");
+    let n_nodes = order.as_array().unwrap().len() as i64;
+    let ni = w.ffi(json!({"cmd": "ffi", "family": "Circuit", "kind": "i", "mode": 2}));
+    assert_eq!(ni["kind"], "i");
+    assert_eq!(
+        ni["value"].as_i64(),
+        Some(n_nodes),
+        "NumNodes mismatch: {ni}"
+    );
+    assert_eq!(ni["errno"], 0);
+    // Circuit Name (S mode 0).
+    let nm = w.ffi(json!({"cmd": "ffi", "family": "Circuit", "kind": "s", "mode": 0}));
+    assert_eq!(nm["value"], "captest", "circuit name: {nm}");
+    // AllElementNames (V mode 6, type 4) must equal the typed read.
+    let ve = w.ffi(json!({"cmd": "ffi", "family": "Circuit", "kind": "v", "mode": 6}));
+    assert_eq!(ve["type"], 4, "AllElementNames not a string array: {ve}");
+    assert_eq!(
+        ve["data"],
+        w.read("all_element_names"),
+        "generic V getter diverged from the typed channel: {ve}"
+    );
+
+    // ---- 5. Generic FFI array SET round-trip (V setter) --------------------
+    w.exec("new loadshape.ls npts=3 interval=1 mult=(1 1 1)");
+    w.ffi(json!({"cmd": "ffi", "family": "LoadShape", "kind": "s", "mode": 1, "sarg": "ls"}));
+    let pre = w.ffi(json!({"cmd": "ffi", "family": "LoadShape", "kind": "v", "mode": 1}));
+    assert_eq!(pre["data"], json!([1.0, 1.0, 1.0]), "PMult pre-set: {pre}");
+    let set = w.ffi(json!({
+        "cmd": "ffi", "family": "LoadShape", "kind": "v", "mode": 2,
+        "vset": {"type": 2, "data": [5.0, 6.0, 7.0]}
+    }));
+    assert_eq!(set["set"], true, "vset not acknowledged: {set}");
+    assert_eq!(set["written"].as_i64(), Some(3), "vset count: {set}");
+    let post = w.ffi(json!({"cmd": "ffi", "family": "LoadShape", "kind": "v", "mode": 1}));
+    assert_eq!(
+        post["data"],
+        json!([5.0, 6.0, 7.0]),
+        "V-protocol array SET did not stick: {post}"
+    );
+
+    // ---- 6. Y-matrix / injection helpers (ymatrix command) -----------------
+    let dims = w.ok(json!({"cmd": "ymatrix", "op": "y_dims"}));
+    assert_eq!(
+        dims["result"]["n_bus"].as_i64(),
+        Some(n_nodes),
+        "y_dims n_bus != NumNodes: {dims}"
+    );
+    let vptr = w.ok(json!({"cmd": "ymatrix", "op": "vpointer"}));
+    assert_eq!(
+        vptr["result"].as_array().unwrap().len() as i64,
+        2 * (n_nodes + 1),
+        "getVpointer shape != 2*(NumNodes+1): {vptr}"
+    );
+    // SystemYChanged read (mode 0) is a clean bool-ish int; the entry is live.
+    let syc = w.ok(json!({"cmd": "ymatrix", "op": "system_y_changed", "mode": 0}));
+    assert!(
+        syc["result"].is_i64(),
+        "system_y_changed not readable: {syc}"
+    );
+    // SolveSystem: the external back-substitution entry is live and returns a status.
+    let ss = w.ok(json!({"cmd": "ymatrix", "op": "solve_system"}));
+    assert!(
+        ss["result"]["status"].is_i64(),
+        "solve_system did not return a status: {ss}"
+    );
+
+    // ---- 7. Error paths keep the worker alive ------------------------------
+    let bad_fam = w.request(json!({"cmd": "ffi", "family": "Nope", "kind": "i", "mode": 0}));
+    assert_eq!(bad_fam["ok"], false, "unknown family must fail: {bad_fam}");
+    let bad_kind = w.request(json!({"cmd": "ffi", "family": "Circuit", "kind": "z", "mode": 0}));
+    assert_eq!(bad_kind["ok"], false, "unknown kind must fail: {bad_kind}");
+    // Missing-shape family (Monitors has no F).
+    let no_f = w.request(json!({"cmd": "ffi", "family": "Monitors", "kind": "f", "mode": 0}));
+    assert_eq!(no_f["ok"], false, "absent ABI shape must fail: {no_f}");
+    let pong = w.ok(json!({"cmd": "ping"}));
+    assert_eq!(pong["pong"], true, "worker died after error paths: {pong}");
 
     w.quit();
 }
