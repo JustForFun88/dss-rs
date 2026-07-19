@@ -270,22 +270,20 @@ default oracle, did NOT reject — but no corpus deck defines `TCC_Curve.none`, 
 no gate case moves.) Gated by the `tcc_curve_none_is_reserved` unit test
 (feature-sensitive: the object stays absent).
 
-**(b) AllowNone-single-ref — NOT ported (capi015 no-op quirk).** The C7 feature
-is **observably a no-op in capi015**: its AllowNone branch sets `otherObj := NIL`
-(l.862) but the *unconditional* `if otherObj = NIL then DoSimpleMsg(… 401)`
-immediately below (l.867) fires the "not found" error anyway — so `fusecurve=none`
-on capi015 clears the ref AND logs #401, bit-identical to the plain not-found path
-the port ALREADY reproduces. Adding a silent AllowNone clear in Rust would
-**diverge** from capi015. So the port sets NO `ALLOW_NONE` flag on these refs;
-`fusecurve=none` clears + logs #401 through the existing path. Pinned by
-`fuse_curve_none_clears_with_error_like_capi015`.
-- **r4133 divergence (Rung-2 note, not adopted here):** r4133 stores the literal
-  `none` as the ref name (readback `none`, no #401) instead of clearing to `''`.
-  The functional effect (no curve at runtime) is the same across all three; only
-  the readback + error-log differ. Recorded for a Rung-2 revisit; no Rung-1
-  action. No live oracle gates (b): capi015 raises the #401 in dss-python
-  (early-abort), r4133 renders a different readback — the divergence is unit-test
-  pinned, same rationale as §ParseAsSymMatrix.
+**(b) AllowNone-single-ref — SUPERSEDED by WP-U2.1 (now silent-clear, r4133-aligned).**
+The WP-U1.1 decision recorded below reproduced the capi015 no-op quirk
+(`fusecurve=none` clears the ref AND logs #401, since capi015's AllowNone branch
+sets `otherObj := NIL` at l.862 but the unconditional `if otherObj = NIL then
+DoSimpleMsg(… 401)` at l.867 fires anyway). **WP-U2.1 later re-decided this to the
+r4133 behavior:** `fusecurve=none` **clears the ref SILENTLY** (no #401), pinned by
+`lifecycle::fuse_curve_none_clears_silently_like_r4133` (the old
+`_clears_with_error_like_capi015` name is retired). So the paragraph below is the
+historical WP-U1.1 record; the live behavior is r4133 silent-clear.
+- **(historical WP-U1.1 record.)** The C7 feature is observably a no-op in capi015
+  (clears + logs #401, the plain not-found path); r4133 clears silently. WP-U1.1
+  first kept the capi015 #401; WP-U2.1 flipped to the r4133 silent clear (no live
+  oracle gates (b): capi015 raises the #401 in dss-python early-abort, r4133 renders
+  the silent clear — unit-test pinned, same rationale as §ParseAsSymMatrix).
 
 ## Class-command activation (C11 / SVN r3875) — SETTLED (WP-U1.1 item 5)
 
@@ -597,31 +595,39 @@ by the feature-sensitive unit test
 `transformer::tests::three_winding_x13_x23_trap_zero_to_default` (XHT=0 → 35,
 XLT=0 → 30). `known_diffs`: nothing to retire.
 
-## B1 — Capacitor Cmatrix YPrim diagonal ×1.000001 before inversion — SETTLED (WP-U1.2, adopt capi015)
+## B1 — Capacitor Cmatrix YPrim diagonal ×1.000001 before inversion — SETTLED (WP-U1.2; keep code on physics — the perturbation is capi015-ONLY, NOT r4088/r4133; attribution corrected by the 0.15.x-adoption sweep)
 
 **Observable.** The YPrim of a `Cmatrix` (SpecType=3) capacitor that also carries
 a **series filter reactance** (`R`/`XL` > 0 ⇒ `has_zl`) — the only config that
 reaches `MakeYprimWork`'s SpecType-3 inversion path.
 
-**dss_capi 0.14.5 (default).** The SpecType-3 branch inverts the C-admittance
-work matrix directly. **0.15.x (capi015) / EPRI r4088+.** Each work-matrix
-diagonal is first multiplied by `1.000001` ("Add a little bit to each phase so it
-will invert", `Capacitor.pas` `MakeYprimWork`) — the same perturbation the Delta
-1|2 branch already used — so a (near-)singular C matrix still inverts.
+**dss_capi 0.14.5 (default) AND EPRI r4088 AND r4133.** The SpecType-3 branch
+inverts the C-admittance work matrix directly, with NO diagonal perturbation —
+**re-verified against the r4133 source** (`Capacitor.pas` `MakeYprimWork`: the
+`×1.000001` "add a little bit so it will invert" loop is in the `1,2` Line-Line
+`HasZL` arm ONLY; the `3:` CMatrix arm is bare `Invert; add ZL; Invert`). r4088 is
+byte-identical. **The `×1.000001` on SpecType-3 is a capi015-ONLY change** (added
+in 0.15.0b4, `git show 0.15.0b4:src/PDElements/Capacitor.pas` `3:` arm) — the
+earlier "EPRI r4088+" attribution here was FALSE (the regcontrol_idle false-EPRI
+class).
 
-**Decision — adopt** (`capacitor/solve.rs`, the SpecType-3 `_ =>` arm gains the
-×1.000001 diagonal loop before `invert()`).
+**Own live r4133 probe** (epri-worker, `Capacitor.f1 conn=wye
+cmatrix=(1.5|0.2 1.5|0.2 0.2 1.5) R=0.5 XL=3` on a stiff 12.47 kV source,
+`ActiveCktElement.Powers`): with `R/XL` r4133 reports **Q ≈ +1.4e-15 kvar** (the
+bank vanishes — a structurally-singular invert, garbage) == 0.14.5; WITHOUT `R/XL`
+r4133 reports **-25.4 kvar/phase (-76.2 total)**. Physics: series `ZL = 0.5+j3 Ω`
+against `1/ωC ≈ 1768 Ω` must leave `Q ≈ -76 kvar` nearly unchanged, so capi015/
+port (`Y[0,0] = (1.661774199e-07, 5.664824416e-04)`, real ≈ R/|Z|²) is physically
+correct; both gating oracles' ≈0 is not.
 
-**Probe** (`/tmp/probe_capfull.py`, 2026-07-12; `Capacitor.f1 conn=wye
-cmatrix=(1.5|0.2 1.5|0.2 0.2 1.5) R=0.5 XL=3`, `? Yprim`):
-
-| engine | `Y[0,0]` (phase self) |
-|---|---|
-| capi 0.14.5 (default) | `(-5.29e-23, -1.08e-19)` — **garbage** (singular invert) |
-| capi015 (0.15.0b4) | `(1.661774199e-07, 5.664824416e-04)` — **finite** |
-
-Strongly revision-**sensitive** (garbage → finite) and feature-sensitive (without
-`R`/`XL` the SpecType-3 invert path is never reached).
+**Decision — KEEP the capi015 behavior on physics + the VSConverter precedent**
+(`capacitor/solve.rs`, the SpecType-3 `_ =>` arm keeps the ×1.000001 diagonal loop
+before `invert()`). Adopting r4133 here would mean reproducing a
+structurally-singular-matrix garbage invert — the exact class the project does NOT
+reproduce (VSConverter `GetCurrents`). Only the false EPRI attribution is
+corrected; the code stands. (The 0.14.5/capi015 `Y[0,0]` probe table — 0.14.5
+garbage `(-5.29e-23, -1.08e-19)` vs capi015 finite `(1.661774199e-07,
+5.664824416e-04)` — is retained in the unit-test pin below.)
 
 **Gate consequence.**
 - **No corpus/live witness.** No vendored deck defines a Cmatrix capacitor with a
@@ -632,9 +638,14 @@ Strongly revision-**sensitive** (garbage → finite) and feature-sensitive (with
   (`capacitor::tests::cmatrix_with_series_reactance_yprim_matches_capi015`): the
   Rust YPrim phase block equals the capi015 probe reference to 1e-11/1e-12; the
   0.14.5 garbage (~1e-23) fails the `5.66e-4` diagonal assertion, so it is
-  feature-sensitive to the ×1.000001. (A live capi015 deck was prepared but the
-  modes manifest's mixed manual unicode-escaping/CRLF blocks a clean append; the
-  unit test carries the exact capi015 numbers instead — same oracle, offline.)
+  feature-sensitive to the ×1.000001.
+- **Pre-registered ledger policy (no witness today).** The port's finite physical
+  YPrim diverges from BOTH gating channels (`capi_v0145` garbage ≈0 kvar AND r4133
+  garbage ≈0 kvar). If a future deck ever introduces a SpecType-3 + `R/XL`
+  capacitor, it must carry a divergence ledger row **per channel** (`capi_v0145`
+  and `r4133`) with exact-pair pins citing this entry (the port is the physically
+  correct side; both oracles' singular-invert garbage is not reproduced) — NOT a
+  tolerance loosening.
 - `known_diffs`: none matched — nothing to retire.
 
 ## D6 — Transformer seasonal AmpRatings drop the `1.1 *` factor — SETTLED (WP-U1.2, adopt capi015; unit-pinned, no live witness yet)
@@ -801,8 +812,10 @@ controlled DER (PVSystem/Storage `conn=delta`).
 **dss_capi 0.14.5.** `cBuffer[j] := DERElem.Vterminal[j]` — the line-neutral
 magnitudes, even for a delta DER. **0.15.x (capi015) / r4133.** `case
 DERElem.Connection of Delta: cBuffer[j] := Vterminal[j] −
-Vterminal[NextDeltaPhase(j)]` — **line-to-line** (`InvControl.pas` l.1647-1652,
-r3822; `NextDeltaPhase(iphs)=iphs+1`, wraps to 1 past `NCondsDER`).
+Vterminal[NextDeltaPhase(j)]` — **line-to-line** (capi015 `InvControl.pas`
+l.1647-1652, r3822; **re-verified in EPRI r4133 `InvControl.pas:2184`** — the
+line-cite label above is capi015's, the substance is r4133's;
+`NextDeltaPhase(iphs)=iphs+1`, wraps to 1 past `NCondsDER`).
 
 **Probe** (`scratch_probe_d4.py`, 2026-07-12; one delta PVSystem, VOLTVAR):
 
@@ -891,9 +904,13 @@ candidate for a coordinated flip once U1.5/U1.6 land. No deck moves; the
   generic `#482`.
 
 These are capi015-specific messages (they diverge from r4133's silent-accept /
-generic-abort), but they only fire on **malformed** input (0 corpus decks use
-`MonBus` — scanned), never in a valid deck; the *sequence* (both engines abort on
-an invalid bus) is preserved. Pinned by the feature-sensitive unit tests
+generic-abort), but they only fire on **malformed** input, never in a valid deck;
+the *sequence* (both engines abort on an invalid bus) is preserved. (Corpus note,
+0.15.x-adoption sweep: `controls/invcontrol/invcontrol_monbus.dss` DOES use a
+`MonBus` — a single-DER, **valid** deck — so the earlier "0 corpus decks use
+MonBus" claim is stale; but its input is well-formed, so it exercises neither the
+#2024111 nor the #2024112 malformed-input guard, and no observable is witnessed on
+either channel by that deck.) Pinned by the feature-sensitive unit tests
 `c8_monbus_missing_nodes_errors_2024111` and `c8_monbus_invalid_bus_aborts_2024112`.
 `known_diffs`: nothing to retire.
 
@@ -1353,7 +1370,12 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   0.14.5/r4133, unit-pinned `locked_ignores_action_write` /
   `locked_ignores_normal_and_state_writes`). Feature-sensitivity: unit
   `d12_normal_and_state_readbacks_are_independent` (0.14.5 conflated both onto
-  `CurrentAction`).
+  `CurrentAction`). **Gating note (0.15.x-adoption sweep):** the "flipped to
+  capi015" phrasing above is historical — all three moved decks (`swtcontrol_time`,
+  `midi_swtcontrol`, `civanlar`) are now gated **`engines=r4133`** with empty
+  ledgers, and the D12 Normal/State mapping was live-verified against r4133 (which
+  agrees with capi015 here) per WP-U2.4 D6; the re-baselined capi015 props golden
+  stays the offline pin.
 - **D15** `LookupVariable` case-insensitivity (`4366b126`) — not-a-delta: the
   port's only equivalent (relay) already matches the fixed side.
 - **A7-r3723** GenController deregistration — not-a-delta: never registered in the
@@ -1400,11 +1422,13 @@ oracle** and are directly oracle-validatable (probed below) — they do NOT
   ALREADY loads. **Probe** (single-column `npts=8 MemoryMapping=Yes csvfile=`, 8
   daily steps): 0.14.5 aborts `#482 Division by zero` (Pmult=`[0.0]`); capi015
   (0.15.0b4) drives the load to P/phase `[20 40 70 110 160 130 90 50]` kW
-  (= 200·`[0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25]`). **Gate:** new capi015 live
-  deck `modes/upgrade/mmf_singlecol/mmf_singlecol.dss` (`oracle:"capi015"`,
-  `n_steps=8`, whole-model per-step compare; cannot gate 0.14.5 — the deck is the
-  bug the fix removes, §1.2; §1.7 two-process determinism confirmed, fingerprint
-  `0ead40d7199b0781`) + unit `mmf_single_column_csvfile_loads_like_capi015`. The
+  (= 200·`[0.10 0.20 0.35 0.55 0.80 0.65 0.45 0.25]`). **Gate:** live deck
+  `modes/upgrade/mmf_singlecol/mmf_singlecol.dss` (now gated **`engines=r4133`**
+  in the manifest — the "`oracle:"capi015"`" wording here is stale; the single-
+  column-MMF fix is present in r4133 too, `n_steps=8`, whole-model per-step
+  compare; cannot gate 0.14.5 — the deck is the bug the fix removes, §1.2; §1.7
+  two-process determinism confirmed, fingerprint `0ead40d7199b0781`) + unit
+  `mmf_single_column_csvfile_loads_like_capi015`. The
   existing `inputformat/shape_mmf` deck stays 0.14.5 (it uses `sngfile`/`dblfile`/
   `pqcsvfile`, not the single-column path). **Vendored-spec caveat.** The `#482`
   claim above is against the pinned 0.14.5 oracle **binary** (tag `0.14.5`, which
@@ -1499,6 +1523,15 @@ adding `Mode` would break every LoadShape deck's property-count parity against t
 binding oracle. No allowlist row (the tables are equal), no golden change. Pinned
 by the guard `no_mode_prop_interpolation_stays_at_22` (fails if a stray `Mode`
 ever lands). No `known_diffs.json` entry existed.
+
+**Forward-note (0.15.x-adoption sweep) — r4133 DOES add `Mode@22`.** Unlike
+dss_capi (which declines it), EPRI **r4133 `LoadShape.pas:246-247`** carries
+`PropertyName[22] := 'Mode'` with `Interpolation` shifted to **23** (parse arm at
+:624). So against the r4133 channel the port is one property short (23 vs r4133's
+24, `Interpolation` at a different index). It is a real **UPGRADE Rung-2 parity
+gap** (LoadShape `Mode` property + its sparse-shape interpolation-mode effect),
+correctly deferred — added to the Rung-2 list for a later WP; no Rung-1 action
+(the pinned `capi_v0145` oracle has no `Mode`, so no gate moves today).
 
 ## L4, E2 — SeasonalRating reimplementation (global `SeasonalRatingIdx`) — SETTLED (WP-U1.5 multi-season core = capi015 = r4133; single-season guard re-decided to r4133 by the 0.15.x-adoption sweep fix round)
 
