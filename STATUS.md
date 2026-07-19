@@ -954,6 +954,15 @@ bridge (recorded decision — not pinned dss-python).
    re-verified green with ZERO manifest edits (`git status tests/corpus/manifests`
    clean; full `cargo test --workspace` green — corpus gate 514/514).
 
+**No silent fallback (WM.3 precedent, WM3-1) — settled.** Storage/PVSystem
+`inj_currents` built the user/dyna-model diagnostics in a LOCAL `ErrorLog` and
+DROPPED them (the same drop the WM.3 generator fix repaired). Fixed: `inj_currents`
+drains into `ctx.errors` + lifts `ctx.solution_abort` for `abort`-flagged wasm
+traps (ABI §6); `get_currents` routes to the element deferred-error log. New
+regression tests `storage/pvsystem_model3_without_usermodel_surfaces_diagnostic`
+(#567). Guarded so a native-DLL `UserModel=` name (already warned #1570 at load,
+`user_model_name` non-empty) does NOT re-spew #567 — keeps the corpus gate green.
+
 **Both gates are FULL NUMERIC vs the r4133 oracle (no version-divergence
 concession, unlike WM.3 D2):**
 - `wasm_pv_pflow` (PVSystem UserModel, VoltageModel=3, snapshot): node voltages +
