@@ -310,6 +310,61 @@ fn wasm_storage_dyn_matches_r4133_oracle() {
     gate_deck("wasm_storage_dyn", true);
 }
 
+/// WM.3 precedent (no silent fallback): a `model=3` (UserModel) Storage with NO
+/// `UserModel=` must SURFACE the missing-model diagnostic (#567) through the
+/// solution error log — the inject path drains into `Dss::errors()` (never a
+/// silent drop, plan §2.9-5).
+#[test]
+fn storage_model3_without_usermodel_surfaces_diagnostic() {
+    let deck = "\
+clear
+new circuit.nostm basekv=13.8 phases=3 bus1=sb pu=1.0 R1=0.05 X1=0.15 R0=0.05 X0=0.15
+new line.f phases=3 bus1=sb bus2=b3 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
+new storage.s1 bus1=b3 phases=3 conn=delta kv=13.8 kWrated=5000 kWhrated=10000 model=3
+set voltagebases=[13.8]
+calcvoltagebases
+solve";
+    let mut dss = Dss::new();
+    for line in deck.lines() {
+        let t = line.trim();
+        if !t.is_empty() {
+            dss.command(t);
+        }
+    }
+    assert!(
+        dss.errors().iter().any(|d| d.code == Some(567)),
+        "Storage model=3 with no UserModel must surface #567 (not a silent fallback); got {:?}",
+        dss.error_texts()
+    );
+}
+
+/// WM.3 precedent (no silent fallback): a `model=3` (UserModel) PVSystem with NO
+/// `UserModel=` must SURFACE the missing-model diagnostic (#567) through the
+/// solution error log.
+#[test]
+fn pvsystem_model3_without_usermodel_surfaces_diagnostic() {
+    let deck = "\
+clear
+new circuit.nopv basekv=13.8 phases=3 bus1=sb pu=1.0 R1=0.05 X1=0.15 R0=0.05 X0=0.15
+new line.f phases=3 bus1=sb bus2=b3 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
+new pvsystem.pv1 bus1=b3 phases=3 conn=delta kv=13.8 kVA=5000 Pmpp=4000 irradiance=1 model=3
+set voltagebases=[13.8]
+calcvoltagebases
+solve";
+    let mut dss = Dss::new();
+    for line in deck.lines() {
+        let t = line.trim();
+        if !t.is_empty() {
+            dss.command(t);
+        }
+    }
+    assert!(
+        dss.errors().iter().any(|d| d.code == Some(567)),
+        "PVSystem model=3 with no UserModel must surface #567 (not a silent fallback); got {:?}",
+        dss.error_texts()
+    );
+}
+
 /// Every committed WM.4 golden parses, has index-aligned name/value arrays, and
 /// its deck template exists.
 #[test]

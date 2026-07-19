@@ -228,6 +228,17 @@ impl CktElement for Storage {
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
         }
+        // Surface any user/dyna-model trap / missing-model diagnostic through the
+        // solution ErrorLog — never a silent fallback on a trapping `.wasm`
+        // (WASM_USERMODELS plan §2.9-5, WM.3 precedent). An `abort`-flagged fault
+        // (a wasm trap, ABI §6) lifts `SolutionAbort` so the solve stops instead
+        // of iterating on a best-effort stale terminal current.
+        for d in errors.into_vec() {
+            if d.abort {
+                *ctx.solution_abort = true;
+            }
+            ctx.errors.push(d);
+        }
     }
 
     /// Pascal `TStorageObj.GetTerminalCurrents` + `TPCElement` base.
@@ -254,6 +265,12 @@ impl CktElement for Storage {
         {
             let mut errors = crate::diag::ErrorLog::new();
             self.calc_storage_model_contribution(sys, node_v, &mut errors);
+            // Route the recompute's user/dyna-model diagnostics to the element's
+            // deferred-error log (drained by the executive) instead of dropping
+            // them (WASM_USERMODELS plan §2.9-5, WM.3 precedent).
+            for d in errors.into_vec() {
+                self.cd.obj.push_error(d);
+            }
         }
         if self.base.gfm_mode {
             // Pascal `TInvBasedPCE.GetCurrents` (GFM override, InvBasedPCE.pas
