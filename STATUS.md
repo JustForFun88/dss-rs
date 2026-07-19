@@ -1055,10 +1055,11 @@ gate green. Findings settled empirically:
   the numeric gate (and any numeric bound) is explicitly gated on fixing sub-bug #2 —
   done then, at proven floors, never a fudge band now. No tolerance loosened.
 
-**Open follow-up (carry forward):** superseded by the D2 sub-bug #2 trace below
-(branch `d2-subbug2`) — the guest-internal `e1` tracing was DONE and the bug is
-narrowed to the engine flow, but NOT yet fixed; `wasm_usermodels.rs` stays
-`gate_deck("wasm_gen_dyn", false)`.
+**Open follow-up — RESOLVED.** Traced (branch `d2-subbug2`) then FIXED (branch
+`d2-subbug2-r2`, §"D2 sub-bug #2 — FIXED (round 2)" at the end of this file): the
+dynamics-entry `FInit` seed used the refreshed `V_n` instead of Pascal's stale
+`Vterminal` (`V_{n-1}`). `wasm_usermodels.rs` now
+`gate_deck("wasm_gen_dyn", true)` + a step-1 trajectory guard.
 
 ### WM.3 D2 sub-bug #2 trace — the divergence is ENGINE-FLOW, guest is bit-exact (branch `d2-subbug2`)
 
@@ -1185,16 +1186,14 @@ full three-command gate green.
   the gap is expected/fine — it is labelled a proven, open port bug. No tolerance
   touched.
 
-**Open follow-up (carry forward):** D2 sub-bug #2 is a PROVEN, OPEN, **engine-flow**
-Generator-dynamics port bug (guest EXONERATED on the divergent path — the
-`d2_twin_step.py` fixed-V experiment; NOT the WASM transport; NOT a version
-divergence). The fix must reproduce OpenDSS's first-dynamics-step operating point
-for the Model=6+user-model machine (|Is1| 189.10→189.207, h-independent) — the
-remaining suspect is the Rust host's per-step dynamics network coupling (the
-DoDynamicMode injection / Vterminal feed / user↔shaft two-instance interaction),
-which is inspectable (NOT an un-instrumentable-binary block). On fixing it:
-re-measure D2 and flip `wasm_gen_dyn` to `numeric=true` at proven floors (adds the
-missing regression guard for both sub-bugs).
+**Open follow-up — RESOLVED (see §"D2 sub-bug #2 — FIXED (round 2)" at the end of
+this file).** The engine-flow suspect was pinned to the exact host line: the
+dynamics-entry `Vterminal` FEED. Pascal `InitStateVars` seeds `UserModel.FInit`
+from the STALE `Vterminal` (the power-flow's last-injection voltage `V_{n-1}`,
+never `ComputeVterminal`-refreshed); the port refreshed it to the converged `V_n`,
+seeding the power-flow point. Dropping the refresh reproduces the h-independent
+projection (|Is1| 189.10→189.207) and the whole trajectory; `wasm_gen_dyn` is now a
+full numeric gate + a step-1 guard for both sub-bugs.
 
 ### WASM-UM WP-WM.4 — Storage (DynaDLL + UserModel) + PVSystem (UserModel) (branch `wasm-wm4`, 2026-07-19)
 
@@ -6553,3 +6552,91 @@ Finding dispositions:
   by design; editing a corpus deck comment is neither. Left as a one-line follow-up for
   a future corpus-touching pass to re-cite. No behavior/gate/pin impact either way.
 - **audit-tests: no findings.**
+
+### D2 sub-bug #2 — FIXED (round 2): the dynamics-entry FInit seed used the wrong Vterminal (branch `d2-subbug2-r2`)
+
+The round-1 trace (landed on `update`: ee238e3/3c7503f/71a5be4) proved the ~5e-4
+`wasm_gen_dyn` divergence is a Rust PORT bug in the Generator Model=6 dynamics
+*engine flow* (guest bit-exact on the divergent path) but did NOT pin the line.
+Round 2 pinned and fixed it.
+
+**First-divergence trace (single-instance deck, h=1e-9 to isolate the algebraic
+projection from the h-scaled integrator).** Instrumented the Rust host
+(`do_dynamic_mode`/`init_state_vars`) to mirror the guest's own `IndMach012_Trace`
+columns, and — decisively — rebuilt the 244-B FPC twin from a **scratch copy** of
+the r3723 `IndMach012Model.pas` (`.inputs` untouched, 186 `.pas`) with a one-line
+dump in `Init`, driven through the pinned 0.14.5 engine
+(`tools/wasm_usermodel/d2_finit_probe.py`).
+
+- Snapshot A==B==C bit-identical (|Is1|=189.1008, slip −6.18230e-3, E1=(7252.814,
+  1530.375)). Step 1 (h=1e-9): oracle |Is1|=**189.20691** (h-independent — same at
+  1e-9/1e-7); Rust |Is1|=**189.10206** (stuck at the power-flow point). The offset
+  is entirely in the guest flux `E1`: oracle E1=(7252.279,1531.159) |E1|=7412.152
+  vs Rust E1=(7252.814,1530.375) |E1|=7412.513.
+- **The oracle's `FInit` receives V012[1]=(7953.090, 89.425)** (|V1|=7953.593) with
+  the pflow current I012[1]=189.10 → E1=7412.152. That V is NOT the converged node
+  voltage (7953.625, 88.641 → |V1|=7954.119). The current is the SAME on both. So
+  it is the **voltage** fed to `FInit`, not the current, that differs.
+- Rust's STALE `Vterminal` buffer (as left by the power-flow solve, before the
+  erroneous refresh) is (7953.090, 89.425) → E1=7412.152 — **bit-identical (6+
+  sig figs) to the oracle's `FInit` input**. Rust's refreshed `Vterminal` (the bug)
+  is the converged (7953.625, 88.641) → E1=7412.513 (power-flow point).
+
+**Root cause + fix (Pascal-cited).** Pascal `TGeneratorObj.InitStateVars`
+(`generator.pas:2393-2449`) runs only `ComputeIterminal` — **never
+`ComputeVterminal`** — before `UserModel.FInit(Vterminal, Iterminal)`, so the model
+is seeded from the STALE `Vterminal` buffer = the node voltage of the power-flow's
+**last injection iteration** (`V_{n-1}`, one network re-solve behind the converged
+`NodeV`). That pre-final voltage IS the oracle's h-independent "projection" onto the
+dynamic operating point: `E1 = V_{n-1} − I·Zsp` differs from `V_n − I·Zsp` by the
+last-iteration voltage step, which drives the machine to 189.207 (not 189.10) at
+step 1. The port's `user_model_finit` called `self.cd.compute_vterminal(node_v)`,
+refreshing `Vterminal` to `V_n` and seeding the power-flow point. **Fix: drop that
+refresh** (`generator/user_model.rs::user_model_finit`); `Vterminal` is left exactly
+as `init_state_vars`' `ComputeIterminal` left it (stale on a cache hit, model-fresh
+on a cache miss — both matching Pascal). The built-in-shaft `Edp` path
+(`generator.pas:2409-2413`) reads a *fresh local* `Vabc`, so only the Model=6
+user-model seed is affected — zero corpus impact (no corpus deck uses a wasm model).
+
+**Post-fix three-way (real dual-instance `wasm_gen_dyn`, 21 dynamics steps).**
+| quantity | before (Rust, round 1) | after (Rust) | r4133 | 0.14.5 | after-gap |
+| --- | --- | --- | --- | --- | --- |
+| Is1 (user) | ~189.94 (~5e-4 off) | 190.031383684055 | 190.031383684 | 190.031383684 | ≤1e-13 |
+| Ir1 (user) | ~5e-4 off | 183.339580104762 | 183.339580105 | 183.339580105 | ≤1e-13 |
+| StatorLoss | ~1e-3 off | 21869.353971380 | 21869.3539714 | 21869.3539714 | ≤1e-13 |
+| RotorLoss | ~1e-3 off | 26885.612069344 | 26885.6120693 | 26885.6120693 | ≤1e-13 |
+| Slip | ~1e-4 off | −6.983873874e-3 | −6.983873874e-3 | −6.983873874e-3 | ≤1e-13 |
+| dSpeed | ~3e-2 off | −122.550595947 | −122.550595947 | −122.550595947 | ~1e-13 |
+
+`r4133 == 0.14.5` to ≤1.06e-13 (round-1 B==C re-confirmed); **Rust now == both** to
+the faer-vs-KLU floor. Only the near-zero quadrature currents Is2/Ir2 (~4.3e-7 value)
+sit at ~7e-7 REL / ~3e-13 abs — the documented cancellation floor, bounded by
+`var_abs=1e-12`. Step-1 per-step (both channels bit-identical): Slip −6.99966e-3,
+dSpeed −89.2447, Is1u 189.2276, Is1s 189.2274 — Rust matches all to ≤4e-12 (the
+dSpeed near-cancellation floor).
+
+**Gate design change (numeric flip + step-1 guard — TIGHTENS, no fudge).**
+- `wasm_usermodels.rs`: `gate_deck("wasm_gen_dyn", …)` flipped `false → true`. The
+  full 34-variable surface + all node voltages now floor-compare vs the (unchanged)
+  r4133 golden at the SAME floors as the pflow decks (`var_rel=1e-8`, `var_abs=1e-12`,
+  `feeder` voltages) — no golden regen (the fix moves Rust to the already-correct
+  r4133 golden), no tolerance touched.
+- New `wasm_gen_dyn_step1_trajectory_matches_oracle`: pins the FIRST dynamics step
+  (Slip/dSpeed/Is1(user)/Is1(shaft)) to the oracle values measured on BOTH channels
+  (bit-identical). This is the targeted regression guard for BOTH sub-bugs at their
+  point of first appearance — sub-bug #2 (step-1 Is1 189.10→189.207) and the
+  deferred **sub-bug #1** dSpeed guard (step-1 dSpeed −89.24; a reverted shaft
+  `FCalc` write-back drifts it to −80.1 AND fails 18 end-state quantities — verified).
+  This closes the round-1 audit-tests D2-1 deferral.
+
+DIVERGENCES.md untouched (a Rust port bug, not a version divergence). New reusable
+probe committed: `tools/wasm_usermodel/d2_finit_probe.py`. Full three-command gate
+green; `tests/corpus` pristine (path-limited cleanup only); 186 `.pas` under
+`.inputs/dss_capi`.
+
+**Closes the open follow-ups.** The round-1 "Open follow-up (carry forward): D2
+sub-bug #2 is a PROVEN, OPEN engine-flow port bug…" and the WM.3 D2 "Open follow-up"
+paragraphs above are now RESOLVED: the exact host line is pinned
+(`user_model_finit`'s `compute_vterminal` refresh), the fix reproduces the oracle's
+first-step operating point (|Is1| 189.10→189.207, h-independent) and the whole
+trajectory, and `wasm_gen_dyn` is a full numeric gate.

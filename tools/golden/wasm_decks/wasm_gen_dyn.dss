@@ -12,13 +12,14 @@
 ! (`generator.pas:968` sets `D:=1.0` in the ctor but never `Dpu`, so
 ! `InitStateVars` recomputes `D:=Dpu*kVArating*1000/w0=0`). Pinning `D=1` makes
 ! both engines agree on the damping (that default IS a real dss_capi-vs-r4133
-! divergence, recorded in STATUS §WASM-UM WM.3). The dyn deck gates the STRUCTURAL
-! surface (see wasm_usermodels.rs `gate_deck(.., numeric=false)`), not the
-! multi-step trajectory values: with D matched a residual ~5e-4 gap survives that
-! is a PROVEN, OPEN engine-flow PORT bug — Rust diverges from BOTH the pinned
-! 0.14.5 spec AND r4133 (which agree to ≤1e-13), so it is NOT a version divergence
-! (STATUS §"WM.3 D2 sub-bug #2"). Recorded, never masked; gate flips to numeric on
-! the fix.
+! divergence, recorded in STATUS §WASM-UM WM.3). The dyn deck gates the FULL
+! NUMERIC surface (see wasm_usermodels.rs `gate_deck(.., numeric=true)` +
+! `wasm_gen_dyn_step1_trajectory_matches_oracle`): with D matched, the whole
+! 21-step trajectory now matches BOTH the pinned 0.14.5 spec AND r4133 (which
+! agree to ≤1e-13) at the faer-vs-KLU floors. The former ~5e-4 gap was a PROVEN
+! Rust PORT bug in the dynamics-entry seed (FInit fed the converged V_n instead of
+! the stale power-flow V_{n-1}); fixed in `user_model.rs::user_model_finit`
+! (STATUS §"D2 sub-bug #2 — FIXED").
 Clear
 Set DefaultBaseFrequency=60
 New Circuit.wasm_gen basekv=13.8 phases=3 bus1=sourcebus pu=1.00 R1=0.05 X1=0.15 R0=0.05 X0=0.15
