@@ -377,6 +377,14 @@ impl Engine {
         self.v_strings(self.dll.ckt_element_v, 15)
     }
 
+    /// The active DSS object's `ParentClass.AllPropertyNames`, in property-index
+    /// order (`DSSElementV` mode 0 — `DDSSElement.pas`). Read after activating the
+    /// object with `? name.Like`; empty class ⇒ `["None"]` (Pascal placeholder).
+    /// Backs [`crate::capture`]'s all-properties enumeration (§2.2).
+    pub fn element_all_property_names(&self) -> Vec<String> {
+        self.v_strings(self.dll.dss_element_v, 0)
+    }
+
     pub fn element_variable_values(&self) -> Vec<f64> {
         self.v_f64s(self.dll.ckt_element_v, 16)
     }

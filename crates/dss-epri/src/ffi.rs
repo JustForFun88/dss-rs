@@ -65,6 +65,13 @@ pub struct DllFns {
     pub ckt_element_s: FnS,
     pub ckt_element_v: FnV,
 
+    /// `DSSElementV` — mode 0 returns the active DSS object's
+    /// `ParentClass.AllPropertyNames` (`DDSSElement.pas` line 63, type tag 4,
+    /// `\0`-separated). Backs the all-properties enumeration (§2.2, report-tooling
+    /// parity): `? name.Like` activates the object, then this reads its property
+    /// list — the WPG.1-safe path that covers terminal-less `DSS_OBJECT`s too.
+    pub dss_element_v: FnV,
+
     pub solution_i: FnI,
     pub solution_f: FnF,
 
@@ -180,6 +187,7 @@ impl Dll {
                 ckt_element_i: sym(&lib, b"CktElementI\0")?,
                 ckt_element_s: sym(&lib, b"CktElementS\0")?,
                 ckt_element_v: sym(&lib, b"CktElementV\0")?,
+                dss_element_v: sym(&lib, b"DSSElementV\0")?,
                 solution_i: sym(&lib, b"SolutionI\0")?,
                 solution_f: sym(&lib, b"SolutionF\0")?,
                 monitors_i: sym(&lib, b"MonitorsI\0")?,
