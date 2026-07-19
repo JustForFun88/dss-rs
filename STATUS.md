@@ -5185,3 +5185,125 @@ corpus-guard parallel-run race (`corpus_guard.py` docstring: incomplete
 snapshot = never delete; end-of-run `git status tests/corpus` + path-limited
 clean is the documented recovery, applied). Not introduced by this round (gate
 capture paths byte-unchanged); open follow-up for the gate-hygiene backlog.
+
+## EPRI capability round (Round 2) — `dss-epri` covers everything the Oddie bridge COULD DO, and beyond (branch `epri-capability`, 2026-07-19)
+
+User mandate: **"the Rust FFI bridge must cover everything the python Oddie
+bridge COULD DO — and beyond."** Round 1 (above) closed *usage* parity (every
+retired-Oddie task doable through the bridge). This round closes **capability**
+parity: the full API surface the Oddie/dss-python bridge exposed over the same
+r4133 engine, mapped and bound — plus cheap "beyond" items. Additive and
+gate-neutral: the `run`/`ping`/`clear` capture path, `capture.rs`, the
+comparators and the `corpus_gate` scheduler are byte-untouched; the new commands
+are never sent by the gate.
+
+### Coverage table — zero unclassified exports
+
+The r4133 `OpenDSSDirect.dll` export table was dumped with a throwaway stdlib
+PE-export parser (no new deps) and cross-checked against the `exports` clause of
+`Version8/Source/DDLL/OpenDSSDirect.dpr`. **164 exports, all classified:**
+
+| class | count | reached via | binding status |
+|---|---|---|---|
+| uniform family entry points (42 families × present `I`/`F`/`S`/`V`) | 147 | generic `ffi` `(family, kind, mode, arg)` dispatch (`src/families.rs`) | 29 already typed (gate capture) + **118 newly reachable**; all 147 now generic |
+| standalone gate-path exports | 6 | typed `Engine` methods | bound pre-R2 (Phase A / R1): `DSSPut_Command`, `ErrorCode`, `ErrorDesc`, `InitAndGetYparams`, `GetCompressedYMatrix`, `getIpointer` |
+| Y-matrix / injection helpers | 9 | `ymatrix` command | **newly bound (R2)**: `ZeroInjCurr`, `GetSourceInjCurrents`, `GetPCInjCurr`, `SystemYChanged`, `BuildYMatrixD`, `UseAuxCurrents`, `AddInAuxCurrents`, `getVpointer`, `SolveSystem` |
+| Delphi RTL debug symbols | 2 | — | **skip-by-design (non-API)**: `__dbk_fcall_wrapper`, `dbkFCallWrapperAddr` (madExcept/debug hooks, not engine surface) |
+
+The 42 families and the ABI shapes each exports (a `None` marks a shape the
+family lacks — the registry spells out every real export symbol, since names are
+not always `NameX`: `Bus`→`BUSI…`, `Loads`→`DSSLoads…`, `DSSProperties` is a
+bare `S`):
+
+`ActiveClass isv · Bus ifsv · CapControls ifsv · Capacitors ifsv · Circuit ifsv
+· CktElement ifsv · CmathLib fv · CtrlQueue iv · DSS isv · DSSElement isv ·
+DSSExecutive is · DSSProgress is · DSSProperties s · Fuses ifsv · GICSources
+ifsv · Generators ifsv · Isource ifsv · LineCodes ifsv · Lines ifsv · Loads ifsv
+· LoadShape ifsv · Meters ifsv · Monitors isv · PDElements ifs · PVsystems ifsv
+· Parallel iv · Parser ifsv · Reactors ifsv · Reclosers ifsv · ReduceCkt ifs ·
+RegControls ifsv · Relays isv · Sensors ifsv · Settings ifsv · Solution ifsv ·
+Storages ifsv · SwtControls ifsv · Topology isv · Transformers ifsv · Vsources
+ifsv · WindGens ifsv · XYCurves ifsv` = 147 entry points.
+
+Skip-by-design detail: **`DSSProgress` (I,S)** is a headless progress-form
+no-op — it IS bound in the family table (so the bridge literally covers
+everything Oddie could call), but there is no observable engine state to assert
+on, so no dedicated smoke drives it. The r4133 DDLL exports **no** plotting /
+DSSGraph / registry / file-dialog symbols at all (the `Forms`/`Plot` units
+compile in but export nothing), so the skip list stays limited to `DSSProgress`
++ the two Delphi debug symbols — the whole rest of the surface is bound.
+
+### Systematic binding (`crates/dss-epri`, SAFETY rules upheld)
+
+- **`src/families.rs`** (new): the 42-family registry + generic dispatch. `FnI/F/S/V`
+  symbols loaded per family into a `FamilyTable` (case-insensitive lookup); one
+  `Engine::ffi_dispatch(FfiCall)` reaches every mode of every family. Decodes the
+  V-protocol by `myType` (1=int / 2=double / 3=complex re/im / 4=string / 5=bytes)
+  with a **raw** string split (no gate-path monitor-header space strip — the gate's
+  `decode_string_array` is untouched), and supports V **setters** (array-in via
+  `myPointer`, e.g. `LoadShapeV(2)` PMult write). Unit-tested (`decode_v` by tag,
+  raw string split, `encode_v_set`→`decode_v` round-trip).
+- **`ffi.rs`**: `YMatrixFns` (the 9 standalone Y-helpers, transcribed 1:1 from
+  `DYMatrix.pas`) + the family table, loaded in `Dll::load` and handed to `Engine`
+  via `leak_into_parts`. `sym` is now `pub(crate)`. All FFI stays behind
+  `deny(unsafe_op_in_unsafe_fn)` + per-boundary `// SAFETY`; DLL still never
+  `FreeLibrary`'d; NoFormsAllowed stays set; V-buffers copied out immediately.
+- **`dss.rs`**: `ffi_dispatch` + `ym_*`/`v_pointer`/`y_dims`/`solve_system` typed
+  wrappers (each with a SAFETY note); `FfiCall`/`FfiOut` types.
+- **`script.rs`**: `handle_ffi` + `handle_ymatrix` (parse/serialize only; all FFI
+  is in `dss.rs`).
+
+### New worker protocol surface (gate-neutral)
+
+Four additive `epri-worker` commands (`src/bin/epri-worker.rs`):
+
+- **`ffi`** — generic `{family, kind, mode, iarg|farg|sarg, vset?}` → kind-tagged
+  reply `{kind, value|data, type, n, errno, error}`. Reaches every DDLL family
+  mode: scalar get/set (i/f/s), array get (v getter), array set (v setter via
+  `vset:{type,data}`).
+- **`ymatrix`** — the standalone Y-matrix/injection helpers by op name
+  (`y_dims`, `vpointer`, `ipointer`, `solve_system`, `system_y_changed`,
+  `use_aux_currents`, `build_y`, `zero_inj`, `get_source_inj`, `get_pc_inj`,
+  `add_aux`).
+- **`caps`** — structured capability handshake: `protocol_version`, oracle
+  identity, the family manifest (name + kinds), `family_count`,
+  `family_entry_points`, the command list, and the `ymatrix` op list.
+- **`batch`** — many `exec` commands in one round-trip (stop-on-first-error;
+  `{replies, ran, failed_at}`).
+
+### Beyond (what the Python/Oddie bridge never had)
+
+1. **Per-call structured errno surface** — every `ffi`/`ymatrix` reply carries the
+   `ErrorCode`/`ErrorDesc` polled *right after* the call (`{errno, error}`),
+   non-fatally. dss-python only raised/aggregated; here the caller sees the exact
+   engine errno per call (smoked: no-active-LoadShape read → `#61001` surfaced).
+2. **Batched multi-command exec** (`batch`) — compile+build+solve in one
+   round-trip instead of one command per line.
+3. **Structured version/capability handshake** (`caps`) — the whole reachable
+   surface introspectable in one message.
+4. **Worker-pool crash isolation + recycling** (already in the gate's `EpriPool`,
+   `crates/dss-core/tests/corpus_gate/engines.rs`, untouched here) — a per-request
+   deadline → kill/respawn/retry-once, recycle-after-N, one-shot per case for
+   serial/isolate. The single-process Oddie/dss-python host had none of this;
+   documented as the standing "beyond" the transport already provides.
+
+### Smoke evidence
+
+- `cargo test -p dss-epri --lib`: 3 `families` unit tests green (decode-by-tag,
+  raw string split, `encode`↔`decode` round-trip).
+- `crates/dss-epri/tests/protocol.rs::capability_surface_end_to_end` (new, drives
+  the REAL r4133 DLL): `caps` (42 families / 147 entry points / proto 2 / commands
+  present / family-shape spot-checks), `batch` build, `ffi` i/s/v getters
+  **cross-checked equal to the typed channel** (`Circuit` NumNodes == node-order
+  len; `AllElementNames` == typed read), `ffi` V-set **round-trip** (LoadShape
+  PMult `[1,1,1]`→set→`[5,6,7]`), `ymatrix` (`y_dims.n_bus`==NumNodes, `vpointer`
+  shape `2*(N+1)`, `system_y_changed`, `solve_system` == KLU success 1 — the
+  engine's own `Solution.pas` `IF SolveSystem(...) = 1` success test), structured errno
+  `#61001`, and error paths (unknown family / unknown kind / absent ABI shape all
+  `ok:false`, worker survives). The pre-existing `scripting_surface_end_to_end`
+  smoke is byte-untouched.
+
+Gate: fmt/clippy/`cargo test --workspace` all green at defaults (corpus pristine
+after runs; a StorageControllerTechNote guard-race leftover was path-limited
+cleaned — same standing gate-hygiene backlog item as Round 1, not introduced
+here). Base `09d03e5`.
