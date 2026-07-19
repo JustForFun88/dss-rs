@@ -3,9 +3,26 @@
 **Status: FROZEN at WP-WM.0 (2026-07-18).** Changes only by a recorded decision
 noted in this header and in `STATUS.md` §WASM-UM.
 
-Recorded decisions: **2026-07-19** — §4 row 17 `get_node_voltages` ground-slot
-indexing documented (settles audit finding WM-AUD-1; the WM.1 crate contract is
-unchanged, the doc had omitted the decision).
+Recorded decisions:
+
+- **2026-07-19 (a)** — §4 row 17 `get_node_voltages` ground-slot indexing
+  documented (settles audit finding WM-AUD-1; the WM.1 crate contract is
+  unchanged, the doc had omitted the decision).
+- **2026-07-19 (b) — ABI re-freeze to r4133 (native side).** The frozen
+  **native** `TGeneratorVars` layout moves from the 0.14.5/r3723 image to the
+  **r4133** image (§2.2): r4088+/NCIM inserts `deltaQNom: array of Double` at
+  offset 176, growing the record 244→**252 B** with the whole tail shifted +8
+  (probe `docs/wasm/probes/p8_offsets_r4133.txt`). *Rationale:* the WM.0 freeze
+  chose the 0.14.5 image because the only oracle channel then was pinned
+  dss-python 0.14.5 (§2.5-1); the project is now post-acceptance and gates on
+  the in-house **r4133** bridge (`crates/dss-epri`), which is the channel the
+  native twin loads into (proven — `p8_twin_r4133_bridge.txt`), so the native
+  record must match r4133. *The **wasm** marshaled image is UNCHANGED* — 244 B —
+  because `deltaQNom` is engine-only (NCIM Q update), a managed reference with no
+  wasm-linear-memory meaning, and never crosses the boundary as data; the +8
+  shift affects only the native side (`TDynamicsRec` 52 B and `TDSSCallBacks`
+  256 B are byte-identical r3723→r4133 — probe-confirmed). The 0.14.5/r3723
+  244-B table is retained as Appendix A with its caveat inverted.
 
 This document is the single authority for the wire contract between the dss-rs
 engine (host, `crates/dss-usermodel` from WP-WM.1) and WASM user models
@@ -102,12 +119,23 @@ Pascal `Shared/Dynamics.pas:42-52` (dss_capi 0.14.5); byte-identical in r3723.
 | 40 | 4 | `intHour` | i32 |
 | 44 | 8 | `dblHour` | f64 |
 
-### 2.2 `TGeneratorVars` — 244 bytes (probe: `SizeOf(TGeneratorVars) = 244`)
+### 2.2 `TGeneratorVars`
 
-Pascal `PCElements/generator.pas:178-214` (dss_capi 0.14.5); byte-identical to
-r3723 `PCElements/GeneratorVars.pas` (the headers the canonical example DLL
-compiles against). This is also the Generator's `PublicDataStruct` image served
-by the `get_public_data` import (§4).
+Two images, one contract (re-freeze 2026-07-19, header decision (b)):
+
+- the **frozen native image is r4133 — 252 bytes** (the twin + the r4133 engine
+  bridge share it);
+- the **wasm marshaled image is 244 bytes, UNCHANGED** (the WM.0 compact subset
+  — `deltaQNom` never crosses).
+
+#### 2.2a Native (frozen) — r4133, 252 bytes (probe: `SizeOf(TGeneratorVars) = 252`)
+
+Pascal `PCElements/GeneratorVars.pas` (OpenDSS r4088+/NCIM era; r4133 vendored
+at `.inputs/electricdss-code-r4133-trunk`). Transcribed from FPC probe output
+`docs/wasm/probes/p8_offsets_r4133.txt` (cross-checked +8-shift vs
+`p2_offsets_r3723.txt`). This is the Generator's `PublicDataStruct` the native
+twin's `New` receives from the r4133 engine and the `get_public_data` import
+would serve on the native side.
 
 | Offset | Field | | Offset | Field |
 |---|---|---|---|---|
@@ -117,29 +145,44 @@ by the `get_public_data` import (§4).
 | 24 | `w0` f64 | | 152 | `SpeedHistory` f64 |
 | 32 | `Hmass` f64 | | 160 | `Pnominalperphase` f64 |
 | 40 | `Mmass` f64 | | 168 | `Qnominalperphase` f64 |
-| 48 | `D` f64 | | 176 | `NumPhases` i32 |
-| 56 | `Dpu` f64 | | 180 | `NumConductors` i32 |
-| 64 | `kVArating` f64 | | 184 | `Conn` i32 (0 wye, 1 delta) |
-| 72 | `kVGeneratorBase` f64 | | 188 | `VthevMag` f64 |
-| 80 | `Xd` f64 | | 196 | `VThevHarm` f64 |
-| 88 | `Xdp` f64 | | 204 | `ThetaHarm` f64 |
-| 96 | `Xdpp` f64 | | 212 | `VTarget` f64 |
-| 104 | `puXd` f64 | | 220 | `Zthev` Complex (re 220, im 228) |
-| 112 | `puXdp` f64 | | 236 | `XRdp` f64 |
-| 120 | `puXdpp` f64 | | | |
+| 48 | `D` f64 | | **176** | **`deltaQNom` — `array of Double`, 8-byte managed ref (NCIM-only)** |
+| 56 | `Dpu` f64 | | 184 | `NumPhases` i32 |
+| 64 | `kVArating` f64 | | 188 | `NumConductors` i32 |
+| 72 | `kVGeneratorBase` f64 | | 192 | `Conn` i32 (0 wye, 1 delta) |
+| 80 | `Xd` f64 | | 196 | `VthevMag` f64 |
+| 88 | `Xdp` f64 | | 204 | `VThevHarm` f64 |
+| 96 | `Xdpp` f64 | | 212 | `ThetaHarm` f64 |
+| 104 | `puXd` f64 | | 220 | `VTarget` f64 |
+| 112 | `puXdp` f64 | | 228 | `Zthev` Complex (re 228, im 236) |
+| 120 | `puXdpp` f64 | | 244 | `XRdp` f64 |
 
-Note the deliberately unaligned tail (`VthevMag` at 188 after the three i32s) —
-packed layout, no padding anywhere; a Rust-side mirror must be assembled
-field-by-field at these offsets, never via `#[repr(C)]` (which would pad).
+`deltaQNom` at 176 is a Delphi-managed dynamic-array reference used **only** by
+the engine's NCIM Q-update; the reference model (IndMach012a) never reads or
+writes it. Its 8 bytes shift every field from `NumPhases` onward by +8 vs the
+0.14.5/r3723 layout (Appendix A). The tail is still packed and deliberately
+unaligned (`VthevMag` at 196 after the three i32s) — a Rust-side native mirror
+must be assembled field-by-field at these offsets, never via `#[repr(C)]`.
 
-**Version caution (§2.7 check, probe `p5_upgrade_diff.txt`):** dss_capi 0.15.x
-and OpenDSS r4088+ insert `deltaQNom: array of Double` (an 8-byte managed
-reference) between `Qnominalperphase` and `NumPhases`, shifting the tail by +8.
-The frozen ABI is the **pinned 0.14.5 / r3723 layout above**. Never drive a
-DLL compiled against ≤r3723/0.14.5 headers through the r4088/r4133 EPRI
-binaries or vice versa; a future engine upgrade to 0.15.x semantics must
-revisit this table by a recorded decision (the field is host-managed and can
-never cross the wasm boundary as data regardless).
+#### 2.2b Wasm marshaled image — 244 bytes, UNCHANGED
+
+The host writes the guest a **compact 244-byte image** holding only the fields
+the model reads — the crossing fields packed with **no `deltaQNom` hole** — so
+`NumPhases` sits at 176, `VthevMag` at 188, `XRdp` at 236: field-for-field the
+historical 0.14.5/r3723 layout of **Appendix A**. This is deliberate and
+load-bearing: `deltaQNom` is engine-only and a managed reference has no meaning
+in the guest's disjoint linear memory, so it never crosses as data; excluding it
+keeps the wasm image (and its codecs) **identical to WM.0**. Consequently
+`crates/dss-usermodel::records::GeneratorVars` (§3 host codec) and the fixture
+guest decoder stay 244 bytes with the Appendix-A offsets — the re-freeze changed
+**zero** wasm-side bytes, proven by the fixture self-gate staying bit-exact green
+against the r4133-rebuilt twin (`p8_twin_r4133_bridge.txt`,
+`p8_indmach012a_math_diff.txt`).
+
+> **Caveat (inverted from WM.0):** never drive a DLL compiled against
+> r4088+/r4133/0.15.x headers (the current native twin) through 0.14.5/r3723
+> binaries, and never drive a ≤r3723/0.14.5 DLL through r4088/r4133 binaries —
+> the two native images differ by the `deltaQNom` slot (252 vs 244 B). The wasm
+> boundary is immune either way: it carries the 244-byte crossing subset only.
 
 ### 2.3 V/I buffers
 
@@ -313,8 +356,18 @@ surface (plan §2.9-7); the guest is a pure function of its inputs.
 | P4 toolchain | stable rustc 1.96.0, `wasm32-unknown-unknown` added; `wasmi =1.0.9` `default-features=false`+`simd` compiles pure-Rust; fuel/limiter APIs verified (`instantiate_and_start` is the 1.x spelling) | `p4_toolchain.txt`, `tools/wasm_usermodel/PIN.txt` |
 | §2.7 upgrade check | loader units: contract unchanged 0.14.5→0.15.x and r3723→r4133; `TGeneratorVars` gains `deltaQNom` in 0.15.x/r4088+ (see §2.2 caution) | `p5_upgrade_diff.txt` |
 
-Probe sources: `tools/fpc/usermodel_abi/` (extraction script + probes +
-stub DLL + oracle driver + build script).
+Re-freeze to r4133 (WM.3 pre-round, 2026-07-19 — header decision (b)):
+
+| Probe | Result | Evidence |
+|---|---|---|
+| P8 r4133 layouts | FPC `-Mdelphi` probe of the r4133 headers: `TDynamicsRec` 52 B and `TDSSCallBacks` 256 B **unchanged**; `TGeneratorVars` **252 B** with `deltaQNom` at 176 and the tail +8 (§2.2a) | `p8_offsets_r4133.txt` |
+| P8 model-math diff | IndMach012a example dir (`IndMach012Model`/`MainUnit`/`ParserDel`/`.dpr`) **byte-identical** r3723→r4133 (sha256s); the sole delta is `GeneratorVars.pas` `deltaQNom` ⇒ model math UNCHANGED | `p8_indmach012a_math_diff.txt` |
+| P8 twin-in-r4133-engine | native twin rebuilt from r4133 (252-B layout) **loads + runs** in the r4133 engine via the `dss-epri`/`epri-worker` bridge — model=6 power-flow (converged, 14 machine vars: Slip/Is1/Ir1/StatorLoss/HPshaft) + 10 dynamics steps (Monitor mode=3 series). Bit-exact DLL-boundary pin (`twin_probe.py`→`twin_expected.rs`) re-derived from the SAME twin, **byte-identical** to the r3723 image | `p8_twin_r4133_bridge.txt` |
+
+Probe sources: `tools/fpc/usermodel_abi/` (extraction script + probes + stub
+DLL + oracle driver + build script; `abi_probe_r4133.pas` + the P8 step of
+`build_probes.ps1`). The native-twin channel is
+`tools/wasm_usermodel/build_native.ps1` (r4133) + `twin_probe.py`.
 
 ## 8. Porting your Delphi/C user model to WASM (skeleton — WM.6 completes)
 
@@ -324,3 +377,33 @@ call, and host services arrive as `dss_env` imports (§4) instead of a callback
 struct. A worked start-to-finish example (the IndMach012a fixture,
 `tools/wasm_usermodel/models/indmach012a/`) lands at WM.2; the narrative
 walkthrough, limits/trap policy recap and PIN workflow land at WM.6.
+
+## Appendix A — historical 0.14.5 / r3723 `TGeneratorVars` (244 bytes)
+
+The WM.0 frozen native layout, superseded on the native side by §2.2a (re-freeze
+2026-07-19). Retained because it is **exactly the wasm marshaled image of §2.2b**
+(the crossing subset with no `deltaQNom` hole), and because it documents what a
+≤r3723/0.14.5-compiled DLL expects. Probe `p2_offsets_dss_capi.txt` (dss_capi
+0.14.5) ≡ `p2_offsets_r3723.txt`, byte-identical.
+
+| Offset | Field | | Offset | Field |
+|---|---|---|---|---|
+| 0 | `Theta` f64 | | 128 | `dTheta` f64 |
+| 8 | `Pshaft` f64 | | 136 | `dSpeed` f64 |
+| 16 | `Speed` f64 | | 144 | `ThetaHistory` f64 |
+| 24 | `w0` f64 | | 152 | `SpeedHistory` f64 |
+| 32 | `Hmass` f64 | | 160 | `Pnominalperphase` f64 |
+| 40 | `Mmass` f64 | | 168 | `Qnominalperphase` f64 |
+| 48 | `D` f64 | | 176 | `NumPhases` i32 |
+| 56 | `Dpu` f64 | | 180 | `NumConductors` i32 |
+| 64 | `kVArating` f64 | | 184 | `Conn` i32 (0 wye, 1 delta) |
+| 72 | `kVGeneratorBase` f64 | | 188 | `VthevMag` f64 |
+| 80 | `Xd` f64 | | 196 | `VThevHarm` f64 |
+| 88 | `Xdp` f64 | | 204 | `ThetaHarm` f64 |
+| 96 | `Xdpp` f64 | | 212 | `VTarget` f64 |
+| 104 | `puXd` f64 | | 220 | `Zthev` Complex (re 220, im 228) |
+| 112 | `puXdp` f64 | | 236 | `XRdp` f64 |
+| 120 | `puXdpp` f64 | | | |
+
+Never drive this-layout DLL through r4088/r4133 binaries, or an r4133-layout DLL
+(the current native twin) through 0.14.5/r3723 binaries (§2.2b caveat).

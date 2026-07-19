@@ -13,6 +13,7 @@ the Pascal or from memory.
 | `dss_capi_defs.inc` | Generated — do not edit. `TGeneratorVars`, `TDSSCallBacks` + support aliases. `TDynamicsRec` is NOT here: probes compile the real vendored `src/Shared/Dynamics.pas` unit directly. |
 | `abi_probe.pas` | P2: prints `SizeOf` + every field offset of `TDynamicsRec`/`TGeneratorVars`/`TDSSCallBacks`, compiled with release parity (`-Mdelphi`, packing define unset ⇒ packed). → `p2_offsets_dss_capi.txt` |
 | `abi_probe_r3723.pas` | P2 twin: same tables from the **r3723** headers the canonical example DLL compiles against (real vendored units + the verbatim `DSSCallBackStructDef.pas` include). → `p2_offsets_r3723.txt`. Result: byte-identical to dss_capi 0.14.5. |
+| `abi_probe_r4133.pas` | **P8** (ABI re-freeze to r4133, 2026-07-19): same tables from the **r4133** headers (the twin's compile target now). → `p8_offsets_r4133.txt`. Result: `TDynamicsRec` 52 B / `TDSSCallBacks` 256 B **unchanged**; `TGeneratorVars` **252 B** with `deltaQNom` at 176 and the tail +8. |
 | `genstub.pas` | P1: minimal 15-export Generator user-model stub DLL with recognizable `Calc` output. |
 | `probe_oracle_load.py` | P1: drives `genstub.dll` through the pinned dss-python oracle (`Generator.UserModel=`, vars surface, `UserData=`→`Edit`, Model=6 solve, V/I marshalling). → `p1_oracle_load.txt` |
 | `build_probes.ps1` | Reproduces every build + run with the exact flags (FPC 3.2.2 `ppcrossx64`, x86_64-win64). Also builds the **vendored `IndMach012a.dpr` as-is** (plan-A twin check). |
@@ -38,6 +39,12 @@ the Pascal or from memory.
   r3723→r4133; **but** 0.15.x/r4088+ insert `deltaQNom: array of Double` into
   `TGeneratorVars` (layout shift). Our frozen ABI = the pinned 0.14.5/r3723
   layout (`p5_upgrade_diff.txt`).
+- **P8 (2026-07-19, ABI re-freeze to r4133)** — `abi_probe_r4133.pas` probes
+  the r4133 headers empirically: `TGeneratorVars` **252 B** (`deltaQNom` @176,
+  tail +8); `TDynamicsRec` 52 B / `TDSSCallBacks` 256 B unchanged
+  (`p8_offsets_r4133.txt`). The **frozen native** layout is now r4133; the wasm
+  marshaled image stays the 244-B subset (`deltaQNom` never crosses). See
+  `docs/wasm/USERMODEL_ABI.md` §2.2 + Appendix A.
 
 ## Regenerating
 

@@ -16,3 +16,21 @@ uuid.workspace = true
 
 [dev-dependencies]
 serde.workspace = true
+# MULTITHREADING_PLAN M1 benchmark baseline (also the measured proof for
+# DE_PASCALIZE P15 dss-sparse allocation hygiene). `default-features = false`
+# drops the html/plotters report stack — only the timing core is needed.
+criterion = { version = "0.5", default-features = false }
+dss-sparse = { path = "../dss-sparse" }
+num-complex.workspace = true
+
+[[bench]]
+name = "snapshot_8500"
+harness = false
+
+[[bench]]
+name = "ybuild_8500"
+harness = false
+
+[[bench]]
+name = "lu_factor_solve"
+harness = false

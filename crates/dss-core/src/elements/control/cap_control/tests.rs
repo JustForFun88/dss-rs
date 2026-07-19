@@ -12,7 +12,7 @@ fn default_shape_is_3ph_1term() {
     assert_eq!(cc.ccd.cd.nphases, 3);
     assert_eq!(cc.ccd.cd.nconds, 3);
     assert_eq!(cc.ccd.cd.nterms, 1);
-    assert_eq!(cc.control_type, 0); // Current
+    assert_eq!(cc.control_type, CapControlType::Current);
     assert_eq!(cc.pt_ratio, 60.0);
     assert_eq!(cc.ct_ratio, 60.0);
     assert_eq!(cc.on_value, 300.0);
@@ -44,7 +44,7 @@ fn time_control_requires_monitored_element() {
         nterms: 2,
         buses: vec!["b2.1.2.3".into(), "b2.0.0.0".into()],
     });
-    cc.control_type = ctrl_type::TIME;
+    cc.control_type = CapControlType::Time;
     cc.ccd.element_terminal = 2;
     cc.recalc();
     let errs = cc.ccd.cd.obj.take_errors();
@@ -73,7 +73,7 @@ fn time_control_uses_monitored_element_terminal() {
         nterms: 2,
         buses: vec!["sb.1.2.3".into(), "b2.1.2.3".into()],
     });
-    cc.control_type = ctrl_type::TIME;
+    cc.control_type = CapControlType::Time;
     cc.ccd.element_terminal = 2;
     cc.recalc();
     assert_eq!(cc.ccd.element_terminal, 2);
@@ -86,7 +86,7 @@ fn pf_mode_translates_on_off_settings() {
     // Probed: type=pf onsetting=0.97 offsetting=-0.99 keeps the raw dump
     // values; internally PFON=0.97, PFOFF=2-0.99=1.01.
     let mut cc = CapControl::new("cc1");
-    cc.control_type = ctrl_type::PF;
+    cc.control_type = CapControlType::Pf;
     cc.side_effects(prop::TYPE, 0);
     assert_eq!(cc.pfon_value, 0.95);
     assert_eq!(cc.pfoff_value, 1.05);
@@ -287,7 +287,7 @@ impl Scratch {
 #[test]
 fn kvar_open_arms_close_above_onsetting() {
     let mut cc = CapControl::new("cc");
-    cc.control_type = ctrl_type::KVAR;
+    cc.control_type = CapControlType::Kvar;
     cc.on_value = 150.0;
     cc.off_value = -225.0;
     let mut cap = MockCap::one_step(false); // bank open → PresentState OPEN
@@ -306,7 +306,7 @@ fn kvar_open_arms_close_above_onsetting() {
 #[test]
 fn kvar_closed_arms_open_below_offsetting() {
     let mut cc = CapControl::new("cc");
-    cc.control_type = ctrl_type::KVAR;
+    cc.control_type = CapControlType::Kvar;
     cc.on_value = 150.0;
     cc.off_value = -225.0;
     let mut cap = MockCap::one_step(true); // bank closed → PresentState CLOSE
@@ -322,7 +322,7 @@ fn kvar_closed_arms_open_below_offsetting() {
 #[test]
 fn kvar_in_band_does_not_switch() {
     let mut cc = CapControl::new("cc");
-    cc.control_type = ctrl_type::KVAR;
+    cc.control_type = CapControlType::Kvar;
     cc.on_value = 150.0;
     cc.off_value = -225.0;
     let mut cap = MockCap::one_step(true);
@@ -391,7 +391,7 @@ fn do_pending_open_multistep_steps_down() {
 #[test]
 fn time_control_closes_inside_window() {
     let mut cc = CapControl::new("cc");
-    cc.control_type = ctrl_type::TIME;
+    cc.control_type = CapControlType::Time;
     cc.on_value = 6.0;
     cc.off_value = 21.0;
     let mut cap = MockCap::one_step(false); // open at start
@@ -406,7 +406,7 @@ fn time_control_closes_inside_window() {
 #[test]
 fn pf_control_closes_when_leading_room_remains() {
     let mut cc = CapControl::new("cc");
-    cc.control_type = ctrl_type::PF;
+    cc.control_type = CapControlType::Pf;
     cc.pfon_value = 0.95;
     cc.fpct_minkvar = 50.0;
     let mut cap = MockCap::one_step(false); // open
@@ -445,7 +445,7 @@ use crate::elements::general::load_shape::LoadShapeObj;
 #[test]
 fn follow_without_control_signal_requests_abort() {
     let mut cc = CapControl::new("cc");
-    cc.control_type = ctrl_type::FOLLOW;
+    cc.control_type = CapControlType::Follow;
     cc.ctrl_signal_shape = None;
     let mut cap = MockCap::one_step(true);
     let mut mon = MockMon::new(3);
@@ -462,7 +462,7 @@ fn follow_without_control_signal_requests_abort() {
 #[test]
 fn follow_signal_on_arms_close_when_open() {
     let mut cc = CapControl::new("cc");
-    cc.control_type = ctrl_type::FOLLOW;
+    cc.control_type = CapControlType::Follow;
     cc.ctrl_signal_shape = Some(LoadShapeObj::fixed_interval_for_test("s", 1.0, vec![1.0]));
     let mut cap = MockCap::one_step(false); // bank open → PresentState OPEN
     let mut mon = MockMon::new(3);
@@ -479,7 +479,7 @@ fn follow_signal_on_arms_close_when_open() {
 #[test]
 fn follow_signal_off_arms_open_when_closed() {
     let mut cc = CapControl::new("cc");
-    cc.control_type = ctrl_type::FOLLOW;
+    cc.control_type = CapControlType::Follow;
     cc.ctrl_signal_shape = Some(LoadShapeObj::fixed_interval_for_test("s", 1.0, vec![0.0]));
     let mut cap = MockCap::one_step(true); // bank closed → PresentState CLOSE
     let mut mon = MockMon::new(3);
@@ -497,7 +497,7 @@ fn follow_signal_off_arms_open_when_closed() {
 #[test]
 fn follow_signal_matching_state_leaves_pending_untouched() {
     let mut cc = CapControl::new("cc");
-    cc.control_type = ctrl_type::FOLLOW;
+    cc.control_type = CapControlType::Follow;
     cc.ctrl_signal_shape = Some(LoadShapeObj::fixed_interval_for_test("s", 1.0, vec![1.0]));
     cc.set_pending_change(CTRL_CLOSE); // sentinel that the FOLLOW arm must not clear
     let mut cap = MockCap::one_step(true); // closed; signal wants ON → no switch
@@ -657,4 +657,34 @@ mod make_pos_seq_tests {
         assert_eq!(cc.ccd.element_terminal, 1); // forced to 1
         assert_eq!(cc.get_bus_name(1), "cbus"); // controlled GetBus(1)
     }
+}
+
+#[test]
+fn cap_control_type_pins_enum_ordinals() {
+    for (variant, ord) in [
+        (CapControlType::Current, 0),
+        (CapControlType::Voltage, 1),
+        (CapControlType::Kvar, 2),
+        (CapControlType::Time, 3),
+        (CapControlType::Pf, 4),
+        (CapControlType::Follow, 5),
+    ] {
+        assert_eq!(variant.ordinal(), ord);
+        assert_eq!(CapControlType::from_ordinal(ord), Some(variant));
+    }
+    assert_eq!(CapControlType::from_ordinal(6), None);
+    assert_eq!(CapControlType::from_ordinal(-1), None);
+}
+
+#[test]
+fn set_i32_type_keeps_value_on_unregistered_ordinal() {
+    // USERCONTROL=6 is unregistered (only reached via a user-model DLL, which is
+    // NOT_PORTED), so the setter can never see it; pin the deliberate keep-old
+    // fallback `from_ordinal(value).unwrap_or(self.control_type)` regardless.
+    let mut cc = CapControl::new("cc1");
+    cc.set_i32(prop::TYPE, CapControlType::Kvar.ordinal()); // 2 -> Kvar
+    assert_eq!(cc.control_type, CapControlType::Kvar);
+    cc.set_i32(prop::TYPE, 6); // unregistered USERCONTROL ordinal -> keep Kvar
+    assert_eq!(cc.control_type, CapControlType::Kvar);
+    assert_eq!(cc.get_i32(prop::TYPE), 2);
 }
