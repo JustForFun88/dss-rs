@@ -14,7 +14,7 @@
 use std::ffi::{c_char, c_void};
 use std::path::Path;
 
-use crate::families::{Family, FamilyTable, VData, decode_v, encode_v_set};
+use crate::families::{Family, FamilyTable, VData, decode_v, encode_v_set, vset_len};
 use crate::ffi::{Dll, DllFns, FnV, YMatrixFns, cstr_to_string, to_cstring};
 
 /// An untolerated engine error (mirrors dss-python raising on `Error.Number != 0`).
@@ -814,17 +814,26 @@ impl Engine {
     }
 
     /// Drive a V-protocol **SET** mode: hand the caller's array in via
-    /// `myPointer` + `mySize` (bytes) and return the element count the DLL
-    /// accepted (`mySize` out, per `DLoadShape.pas` `mySize := k - 1`).
+    /// `myPointer` + `mySize` and return the element count the DLL accepted
+    /// (`mySize` out, per `DLoadShape.pas` `mySize := k - 1`).
+    ///
+    /// `mySize` is an **element (point) count**, not a byte count: the SET path
+    /// clamps `LoopLimit := min(mySize, NumPoints)` and steps `myPointer` one
+    /// element per iteration ([`vset_len`]).
     fn call_v_set(&self, f: FnV, mode: i32, data: &VData) -> i32 {
+        let elems = vset_len(data);
         let (tag, mut bytes) = encode_v_set(data);
         let mut ptr: *mut c_void = bytes.as_mut_ptr() as *mut c_void;
         let mut ty = tag;
-        let mut size = bytes.len() as i32;
-        // SAFETY: `bytes` is a live buffer of `size` bytes owned for the whole
-        // call; the SET mode reads exactly `size` bytes from `ptr` and writes the
-        // accepted element count back into `size`. `ptr` is not read afterwards
-        // (the DLL may repoint it); `bytes` outlives the call.
+        let mut size = elems;
+        // SAFETY: `bytes` holds `elems` elements and outlives the call. The SET
+        // path reads at most `min(size, NumPoints)` elements; with `size ==
+        // elems` it never steps past `bytes`. A few setters (e.g. `DXYCurves`
+        // XArray) ignore `mySize` and read the object's full `NumPoints`, so the
+        // caller must supply an array of at least the target's point count (the
+        // same contract the Python/Oddie bridge required). `ptr` may be
+        // repointed by the DLL and is not read afterwards; the accepted element
+        // count is written back into `size`.
         unsafe { f(mode, &mut ptr, &mut ty, &mut size) };
         size
     }

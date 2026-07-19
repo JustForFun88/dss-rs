@@ -293,6 +293,38 @@ fn capability_surface_end_to_end() {
         "batch did not run every command: {batch}"
     );
     assert!(batch["failed_at"].is_null(), "batch had a failure: {batch}");
+
+    // Stop-on-first-error semantics: a bad middle command aborts the batch — the
+    // trailing command must NOT run, and `failed_at` pins the exact index.
+    let bad_batch = w.request(json!({"cmd": "batch", "exec": [
+        "new load.probe bus1=mid phases=3 kv=12.47 kw=1",
+        "bogus_command_xyz 1",
+        "solve",
+    ]}));
+    assert_eq!(
+        bad_batch["ok"], false,
+        "failing batch must report ok:false: {bad_batch}"
+    );
+    let br = &bad_batch["result"];
+    assert_eq!(
+        br["ran"].as_u64(),
+        Some(2),
+        "batch must stop after the failure: {bad_batch}"
+    );
+    assert_eq!(
+        br["failed_at"].as_u64(),
+        Some(1),
+        "failed_at must pin the bad index: {bad_batch}"
+    );
+    assert_eq!(
+        br["replies"][0]["ok"], true,
+        "first item should have run: {bad_batch}"
+    );
+    assert_eq!(
+        br["replies"][1]["ok"], false,
+        "second item is the failure: {bad_batch}"
+    );
+
     // solve as a follow-up single exec.
     w.exec("solve");
 
@@ -325,6 +357,15 @@ fn capability_surface_end_to_end() {
     // Circuit Name (S mode 0).
     let nm = w.ffi(json!({"cmd": "ffi", "family": "Circuit", "kind": "s", "mode": 0}));
     assert_eq!(nm["value"], "captest", "circuit name: {nm}");
+    // F getter happy path: Solution.Frequency (F mode 0) == base frequency 60.
+    let fr = w.ffi(json!({"cmd": "ffi", "family": "Solution", "kind": "f", "mode": 0}));
+    assert_eq!(fr["kind"], "f", "F getter kind: {fr}");
+    assert_eq!(
+        fr["value"].as_f64(),
+        Some(60.0),
+        "Solution.Frequency != 60: {fr}"
+    );
+    assert_eq!(fr["errno"], 0, "F getter errno: {fr}");
     // AllElementNames (V mode 6, type 4) must equal the typed read.
     let ve = w.ffi(json!({"cmd": "ffi", "family": "Circuit", "kind": "v", "mode": 6}));
     assert_eq!(ve["type"], 4, "AllElementNames not a string array: {ve}");
@@ -352,6 +393,30 @@ fn capability_surface_end_to_end() {
         "V-protocol array SET did not stick: {post}"
     );
 
+    // Partial SET (`len < NumPoints`): `mySize` is an ELEMENT count, so a
+    // 3-element write into a 5-point shape must fill points 1..3 and clamp there
+    // (`LoopLimit = mySize`, not NumPoints), leaving points 4..5 untouched. Under
+    // the old byte-count bug this passed `mySize = 24 > 5`, defeating the clamp
+    // and over-reading the 3-double buffer — a memory-safety violation this case
+    // guards against.
+    w.exec("new loadshape.ls5 npts=5 interval=1 mult=(2 2 2 2 2)");
+    w.ffi(json!({"cmd": "ffi", "family": "LoadShape", "kind": "s", "mode": 1, "sarg": "ls5"}));
+    let set5 = w.ffi(json!({
+        "cmd": "ffi", "family": "LoadShape", "kind": "v", "mode": 2,
+        "vset": {"type": 2, "data": [10.0, 20.0, 30.0]}
+    }));
+    assert_eq!(
+        set5["written"].as_i64(),
+        Some(3),
+        "partial vset must accept exactly the 3 supplied elements: {set5}"
+    );
+    let post5 = w.ffi(json!({"cmd": "ffi", "family": "LoadShape", "kind": "v", "mode": 1}));
+    assert_eq!(
+        post5["data"],
+        json!([10.0, 20.0, 30.0, 2.0, 2.0]),
+        "partial SET must fill points 1..3 and leave 4..5 intact: {post5}"
+    );
+
     // ---- 6. Y-matrix / injection helpers (ymatrix command) -----------------
     let dims = w.ok(json!({"cmd": "ymatrix", "op": "y_dims"}));
     assert_eq!(
@@ -365,11 +430,53 @@ fn capability_surface_end_to_end() {
         2 * (n_nodes + 1),
         "getVpointer shape != 2*(NumNodes+1): {vptr}"
     );
-    // SystemYChanged read (mode 0) is a clean bool-ish int; the entry is live.
-    let syc = w.ok(json!({"cmd": "ymatrix", "op": "system_y_changed", "mode": 0}));
-    assert!(
-        syc["result"].is_i64(),
-        "system_y_changed not readable: {syc}"
+    // SystemYChanged read/write round-trip (mode 1 writes `arg`, mode 0 reads):
+    // set the flag TRUE then FALSE and confirm the read tracks the write.
+    w.ok(json!({"cmd": "ymatrix", "op": "system_y_changed", "mode": 1, "arg": 1}));
+    assert_eq!(
+        w.ok(json!({"cmd": "ymatrix", "op": "system_y_changed", "mode": 0}))["result"].as_i64(),
+        Some(1),
+        "SystemYChanged should read back 1 after set-true"
+    );
+    w.ok(json!({"cmd": "ymatrix", "op": "system_y_changed", "mode": 1, "arg": 0}));
+    assert_eq!(
+        w.ok(json!({"cmd": "ymatrix", "op": "system_y_changed", "mode": 0}))["result"].as_i64(),
+        Some(0),
+        "SystemYChanged should read back 0 after set-false"
+    );
+    // UseAuxCurrents read/write round-trip (same DYMatrix flag shape).
+    w.ok(json!({"cmd": "ymatrix", "op": "use_aux_currents", "mode": 1, "arg": 1}));
+    assert_eq!(
+        w.ok(json!({"cmd": "ymatrix", "op": "use_aux_currents", "mode": 0}))["result"].as_i64(),
+        Some(1),
+        "UseAuxCurrents should read back 1 after set-true"
+    );
+    w.ok(json!({"cmd": "ymatrix", "op": "use_aux_currents", "mode": 1, "arg": 0}));
+    // Injection / build ops: exercise every remaining ymatrix arm against the
+    // live DLL (they mutate Solution vectors in place — assert the ack shape).
+    assert_eq!(
+        w.ok(json!({"cmd": "ymatrix", "op": "build_y", "build_ops": 1, "allocate_vi": 1}))["result"]
+            ["built"],
+        json!(true),
+        "build_y ack"
+    );
+    for op in ["zero_inj", "get_source_inj", "get_pc_inj"] {
+        assert_eq!(
+            w.ok(json!({"cmd": "ymatrix", "op": op}))["result"]["done"],
+            json!(true),
+            "{op} ack"
+        );
+    }
+    assert_eq!(
+        w.ok(json!({"cmd": "ymatrix", "op": "add_aux", "stype": 0}))["result"]["done"],
+        json!(true),
+        "add_aux ack"
+    );
+    let iptr = w.ok(json!({"cmd": "ymatrix", "op": "ipointer"}));
+    assert_eq!(
+        iptr["result"].as_array().unwrap().len() as i64,
+        2 * (n_nodes + 1),
+        "getIpointer shape != 2*(NumNodes+1): {iptr}"
     );
     // SolveSystem: the external back-substitution entry is live and SUCCEEDS —
     // KLU `SolveSparseSet` returns 1 on success (the engine's own success test,
@@ -392,5 +499,36 @@ fn capability_surface_end_to_end() {
     let pong = w.ok(json!({"cmd": "ping"}));
     assert_eq!(pong["pong"], true, "worker died after error paths: {pong}");
 
+    w.quit();
+}
+
+/// F2 guard: the DYMatrix ops that deref `ActiveCircuit.Solution` without a nil
+/// check in the DLL must be rejected with a clean error before any circuit is
+/// compiled — NOT forwarded to the DLL (which would nil-deref and kill the
+/// worker). Drive them on a fresh worker with no `compile`/`new circuit`.
+#[test]
+fn ymatrix_before_compile_is_guarded_not_a_crash() {
+    let mut w = WorkerProc::spawn();
+    for op in [
+        "solve_system",
+        "vpointer",
+        "ipointer",
+        "system_y_changed",
+        "use_aux_currents",
+        "build_y",
+        "add_aux",
+    ] {
+        let r = w.request(json!({"cmd": "ymatrix", "op": op}));
+        assert_eq!(
+            r["ok"], false,
+            "ymatrix {op:?} before compile must fail cleanly, not crash: {r}"
+        );
+    }
+    // The worker survived every unguarded op — the guard held.
+    let pong = w.ok(json!({"cmd": "ping"}));
+    assert_eq!(
+        pong["pong"], true,
+        "worker died on a pre-compile ymatrix op"
+    );
     w.quit();
 }

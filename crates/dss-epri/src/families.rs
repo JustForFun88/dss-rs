@@ -540,6 +540,25 @@ pub fn encode_v_set(data: &VData) -> (i32, Vec<u8>) {
     }
 }
 
+/// The `mySize` value a V-protocol **SET** must pass in: an **element (point)
+/// count**, not a byte count. The r4133 SET path clamps `LoopLimit :=
+/// min(mySize, NumPoints)` and advances `myPointer` one element per iteration
+/// (`DLoadShape.pas` PMult write, `DXYCurves.pas`), so a byte count (8× for
+/// doubles) defeats the clamp and makes the DLL over-read the buffer whenever
+/// the supplied array is shorter than the target's point count. `Complex`
+/// counts logical points (re/im pairs); `Bytes` has no numeric element and
+/// falls back to its byte length.
+pub fn vset_len(data: &VData) -> i32 {
+    let n = match data {
+        VData::Ints(v) => v.len(),
+        VData::Doubles(v) => v.len(),
+        VData::Complex(v) => v.len() / 2,
+        VData::Strings(v) => v.len(),
+        VData::Bytes(v) => v.len(),
+    };
+    n as i32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -596,5 +615,15 @@ mod tests {
             decode_v(tag, &bytes),
             VData::Strings(vec!["a".into(), "bb".into()])
         );
+    }
+
+    #[test]
+    fn vset_len_is_an_element_count_not_a_byte_count() {
+        // Doubles/Ints: one element each (NOT 8x / 4x the byte length).
+        assert_eq!(vset_len(&VData::Doubles(vec![5.0, 6.0, 7.0])), 3);
+        assert_eq!(vset_len(&VData::Ints(vec![4, 5, 6, 7])), 4);
+        // Complex: logical points (re/im pairs).
+        assert_eq!(vset_len(&VData::Complex(vec![1.0, 2.0, 3.0, 4.0])), 2);
+        assert_eq!(vset_len(&VData::Strings(vec!["a".into(), "bb".into()])), 2);
     }
 }
