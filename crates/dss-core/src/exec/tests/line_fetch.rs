@@ -24,38 +24,81 @@ fn line_fetches_sym_linecode() {
 }
 
 #[test]
-fn conductor_list_accepts_none_entry() {
-    // WP-U1.1 item 3 (AllowNoneItem, SVN r3902/r3913): a `none` entry in a
-    // conductor list resolves to a NIL slot with NO "not found" error — capi015
-    // accepts it (0.14.5 errors #40303). Feature-sensitive: a NON-`none` missing
-    // name still errors, so the `none` acceptance is not blanket-swallowing.
+fn conductor_none_geometry_rejects_but_line_accepts_and_solves() {
+    // 0.15.x-adoption sweep (re-decided from the WP-U1.1 AllowNoneItem adoption):
+    // a `none` in a conductor list is a Line-level construct only. r4133
+    // LineGeometry.pas:346-396 has NO `none` branch on the `wires`/`cncables`/
+    // `tscables` arms → #10103; BOTH gating oracles reject a GEOMETRY-level `none`
+    // (0.14.5 #40303, r4133 #10103). The Line-level lists (r4133 Line.pas
+    // FetchWireList → NIL slot, compacted out of the Carson calc by
+    // LoadSpacingAndWires) DO accept it and the circuit solves.
+
+    // (1) GEOMETRY-level `none` rejects (was wrongly accepted via ALLOW_NONE_ITEM).
     let mut dss = Dss::new();
     dss.command("New circuit.p");
     dss.command("New wiredata.w Runits=mi Rac=0.1 GMRunits=mi GMRac=0.01 radunits=in diam=0.5");
     dss.command("New linegeometry.g nconds=2 nphases=2 reduce=n");
     dss.command("~ wires=(w none)");
     assert!(
-        dss.errors().is_empty(),
-        "`none` conductor entry must not error (AllowNoneItem): {:?}",
-        dss.errors()
+        !dss.errors().is_empty(),
+        "a geometry-level `none` must reject like BOTH oracles (r4133 #10103)"
     );
-    // The list is [w, NIL]: the readback renders the NIL slot as the empty name.
-    // NOTE: the exact readback STRING is not oracle-observable — probed
-    // 2026-07-12, `? linegeometry.g.wires` on a NIL-slot list raises a capi015
-    // Access Violation (#303, UB: the FPC readback dereferences the NIL wire).
-    // UB is not reproduced (project rule); the port renders `[w, ]` deterministically
-    // (NIL → "", consistent with the probed single-ref cleared-ref "" rendering).
-    assert_eq!(query(&mut dss, "linegeometry.g.wires"), "[w, ]");
 
-    // Control (feature-sensitivity): a genuine missing wire name still errors —
-    // only the reserved `none` is special.
+    // (2) LINE-level `none` is accepted AND the circuit solves — r4133 compacts
+    // the NIL slot out (2-wire spacing, 1 valid conductor ⇒ a 1-conductor line).
+    // Own r4133 probe (epri-worker, this exact deck): converged, Line.l1 currents
+    // [21.802597, -0.001427, -21.802520, 0.057037] — the port matches to a
+    // faer-vs-KLU floor.
+    let mut dl = Dss::new();
+    dl.command("clear");
+    dl.command("new circuit.g basekv=12.47 phases=1 bus1=b1");
+    dl.command(
+        "new wiredata.w gmrac=0.0244 rac=0.306 runits=mi radunits=in gmrunits=ft diam=0.721 \
+         normamps=530",
+    );
+    dl.command("new linespacing.sp nconds=2 nphases=1 x=(0 3) h=(29 29) units=ft");
+    dl.command("new line.l1 bus1=b1 bus2=b2 phases=1 length=1 units=mi spacing=sp wires=(w none)");
+    dl.command("new load.ld bus1=b2 phases=1 kv=7.2 kw=100 pf=1");
+    dl.command("set voltagebases=[12.47]");
+    dl.command("calcv");
+    dl.command("solve");
+    assert!(
+        dl.errors().is_empty(),
+        "line-level `none` must solve: {:?}",
+        dl.errors()
+    );
+    assert!(
+        dl.circuit().is_some_and(|c| c.is_solved),
+        "line with a compacted `none` conductor must converge"
+    );
+    let snap = dl.snapshot_elements();
+    let line = snap
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("Line.l1"))
+        .expect("Line.l1 in snapshot");
+    let r4133 = [
+        21.802_596_540_773_72,
+        -0.001_426_872_519_914_468_3,
+        -21.802_520_352_484_407,
+        0.057_037_298_443_901_82,
+    ];
+    for (k, &want) in r4133.iter().enumerate() {
+        assert!(
+            (line.currents[k] - want).abs() < 1e-6,
+            "Line.l1 current[{k}] {} != r4133 {want}",
+            line.currents[k]
+        );
+    }
+
+    // (3) Control (feature-sensitivity): a genuine missing wire name still errors —
+    // only the reserved `none` is special (and only Line-level).
     let mut dss2 = Dss::new();
     dss2.command("New circuit.p");
     dss2.command("New wiredata.w Runits=mi Rac=0.1 GMRunits=mi GMRac=0.01 radunits=in diam=0.5");
     dss2.command("New linegeometry.g2 nconds=2 nphases=2 reduce=n");
     dss2.command("~ wires=(w nope)");
     assert!(
-        dss2.errors().iter().any(|e| e.contains("not found")),
+        !dss2.errors().is_empty(),
         "a non-`none` missing wire must still error, got {:?}",
         dss2.errors()
     );

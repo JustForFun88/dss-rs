@@ -193,58 +193,57 @@ plan's r4133 end-target (§1.4 default "EPRI r4133 wins").
   both zero-filled, matching each other at r3723); adopting the reject makes Rust
   match r4133 — nothing to retire.
 
-## AllowNoneItem — `none` in conductor lists — SETTLED (WP-U1.1 item 3, adopt capi015)
+## AllowNoneItem — `none` in conductor lists — SETTLED (WP-U1.1 plumbing; scope + compaction re-decided to r4133 by the 0.15.x-adoption sweep)
 
 **Observable.** A `none` entry inside a `DSSObjectReferenceArrayProperty` — the
 conductor lists `Wires`/`CNCables`/`TSCables` on Line and LineGeometry (SVN
 r3902/r3913, `TPropertyFlag.AllowNoneItem`).
 
-**Probe** (`probe_nonewire.py`, 2026-07-12; `new linegeometry.g nconds=2
-nphases=2 ~ wires=(w none)`):
+**Where `none` is legal — Line-level ONLY (re-verified against r4133 + both
+oracles).** r4133 `Line.pas` FetchWireList/FetchCNCableList/FetchTSCableList
+(:1866-1975) treat `CompareText(…,'None')=0` as a **NIL slot**; `LineGeometry.pas`
+:346-396 (the direct `wires`/`cncables`/`tscables` arms, props 12/15/16) have **no
+`none` branch** — the token drives `WireDataClass.Code := 'none'` → #10103. So a
+**geometry-level** `none` is rejected by BOTH gating oracles, while a
+**Line-level** `none` is accepted and (after compaction) SOLVES.
 
-| engine | `wires=(w none)` |
-|---|---|
-| capi 0.14.5 (default) | **error #40303** "WireData object `none` not found" |
-| capi015 (0.15.0b4) | **accepted** — NIL slot, no error |
+**Own probes** (epri-worker r4133 + pinned 0.14.5):
 
-**Decision — adopt the capi015 accept-`none`.** Added `PropFlags::ALLOW_NONE_ITEM`
-(Pascal `AllowNoneItem`, distinct from the single-ref/`DoubleVArray` `AllowNone`),
-set on Line + LineGeometry `Wires`/`CNCables`/`TSCables`. The `ObjectRefArray`
-parse arm now resolves a `none` token (when the flag is set) to a **`None`
-slot** instead of the "not found" error; the storage chain
-(`set_object_ref_array` → `set_wires`/`set_cables`) threads
-`ObjectRefArrayItem = Option<(name, ElemRef, view)>` and leaves a `None` slot NIL
-(both `line_wire_data`/`fwiredata` are already `Vec<Option<…>>`). Also exposed
-`Parser::is_quoted()` (item 3 "WasQuoted plumbing" — the parser already tracked
-`IsQuotedString`; WP-U2's per-phase state arrays will consume it).
+| deck | 0.14.5 | r4133 | port |
+|---|---|---|---|
+| `new linegeometry.g nconds=2 nphases=2 wires=(w none)` | #40303 reject | #10103 reject | **reject** (ALLOW_NONE_ITEM dropped) |
+| `line.l1 phases=1 spacing=sp(nc=2,np=1) wires=(w none)` + load | (feature n/a) | **converged, I1=(21.802597,−0.001427)** | **converged, matches to faer-vs-KLU floor** |
 
-**Scope split with WP-U1.4.** This item is the **parser/storage plumbing** only.
-The mixed-conductor-list *numerics* that actually consume a NIL conductor (the
-new `Conductors` property, EqDist spacing, CN/TS mixing) are **WP-U1.4**. A
-`none` conductor in isolation is degenerate — capi015 accepts the parse but then
-`#303`s on the incomplete geometry (probed), so there is no solvable standalone
-`none` deck; §1.7's "solves on target oracle" is unattainable until U1.4.
+**Decision — Line-level accept + compact (r4133), geometry-level reject
+(r4133).** `PropFlags::ALLOW_NONE_ITEM` stays on the three **Line** lists +
+`Conductors`, and is **dropped** from the three **LineGeometry** lists
+(`line_geometry/mod.rs`). The `none` NIL slot is now consumed: `LoadSpacingAndWires`
+(`line_geometry/matrix.rs`, r4133 LineGeometry.pas:1190-1262) recounts the
+conductors actually present (`actualNConds`/`actualNPhases`), sizes the throwaway
+geometry to the compacted count, and copies the non-NIL wires into contiguous
+positions with their ORIGINAL spacing coordinates; `FMakeZFromSpacing`
+(`line/solve.rs`, r4133 Line.pas:2213-2219) raises **#181021** and aborts when a
+`none` at a PHASE position drops the phase count below the Line's `phases=` (both
+oracles do). A `none` in a NEUTRAL position leaves the phases intact and solves.
+
+**The earlier "no solvable standalone `none` deck" claim is DISPROVEN.** The
+capi015-side probe that `#303`'d was a standalone LineGeometry (no consumer); the
+Line+spacing `wires=(w none)` deck solves on r4133 (own probe above), and now on
+the port — the WP-U1.4 mixed-list compaction that "closed without landing" is
+landed here.
 
 **Gate consequence.**
 - **Gate-safe:** no corpus deck puts `none` in a conductor list (scanned — 0
-  hits), so no default-oracle case moves; the `Option`-threading kept the
-  non-`none` path byte-identical (the whole line/line_geometry unit suites +
-  full workspace gate stay green).
-- **Pinned by feature-sensitive unit tests** (no live oracle, per above):
-  `dss-core` `line_fetch::conductor_list_accepts_none_entry` (`wires=(w none)`
-  yields a NIL slot with no error, while a non-`none` missing name — `nope` —
-  still errors "not found"), + `dss-parser`
-  `is_quoted_reflects_the_last_token_quote_state`.
-- **Readback of a NIL-slot list is UB on the oracle (settle 2026-07-12,
-  `probe_wires2.py`) — not reproduced.** `? linegeometry.g.wires` on a list
-  containing a `none` slot raises a capi015 **Access Violation** (#303 "Access
-  violation": the FPC readback dereferences the NIL wire pointer). There is thus
-  no defined oracle readback STRING to pin against; per the project UB rule the
-  port does NOT reproduce the crash — it renders `[w, ]` deterministically (NIL →
-  `""`, consistent with the probed single-ref cleared-ref `""` rendering). The
-  `conductor_list_accepts_none_entry` assertion documents this.
-- known_diffs: nothing to retire (0.14.5 errored, the port errored — no prior
-  Rust↔EPRI entry).
+  hits); the compaction is byte-identical to the old index-aligned copy for any
+  list with no NIL (`actualNConds == NWires`, `j == i`), so every spacing line
+  (IEEE13 …) is unchanged — full line/line_geometry/line_constants unit suites +
+  the 514-case corpus gate stay green.
+- **Pinned by** `line_fetch::conductor_none_geometry_rejects_but_line_accepts_and_solves`
+  (geometry-level `none` rejects; Line-level `none` compacts + solves, currents
+  pinned to the own r4133 probe; a non-`none` missing name — `nope` — still
+  errors), + `dss-parser` `is_quoted_reflects_the_last_token_quote_state`.
+- known_diffs: nothing to retire (both oracles + port now reject the geometry
+  case and accept+solve the Line case — no Rust↔EPRI divergence, no ledger row).
 
 ## TCC_Curve `none` (rejection + AllowNone-single-ref) — SETTLED (WP-U1.1 item 4)
 
