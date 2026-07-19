@@ -641,6 +641,35 @@ step. Full three-command gate green at defaults; `tests/corpus` pristine
 (deck driven from an isolated scratch dir, never the corpus). Out of scope
 (unchanged): WM.3 element integration, any dss-core/manifest/dss-epri code.
 
+**Settlement (two independent audits, 2026-07-19).** The code audit returned
+empty (faithful; wasm side is doc + pin only, native re-freeze backed by
+reproduced probe evidence). The test audit raised two **low, by-design**
+observations, both settled empirically and **deliberately not "fixed"** (there
+is no regression to fix):
+
+- *WM3-1 — the r4133 re-derivation is gated by nothing new in the suite (it
+  verifies the old pins, which are identical).* Settled: the IndMach012a model
+  units (`IndMach012Model`/`MainUnit`/`ParserDel`/`.dpr`) were re-hashed here and
+  are **byte-identical r3723→r4133** (sha256 match p8); the sole delta is the
+  engine-only `deltaQNom` in `GeneratorVars.pas`, which never reaches the model.
+  Identical math ⇒ identical twin outputs, so the unchanged `twin_expected.rs`,
+  unchanged `.wasm`, and bit-exact-green self-gate ARE the correct, sufficient
+  verification; the r4133 bridge run (`p8_twin_r4133_bridge.txt`) confirms the
+  r4133-compiled twin loads + runs in the r4133 engine. FPC/wasm cannot rebuild
+  in CI — this is inherent golden discipline, not a coverage gap; adding a CI
+  gate is impossible and unnecessary.
+- *WM3-2 — the new native 252-B offsets are asserted only in the ungated
+  `twin_probe.py`; the gated `records.rs` test asserts the 244-B wasm image.*
+  Settled: the r4133 offset probe (`abi_probe_r4133.pas`) was **re-compiled and
+  re-run here** — output byte-identical to `p8_offsets_r4133.txt`
+  (`TGeneratorVars` 252 B, `deltaQNom`@176, `NumPhases`@184, `VthevMag`@196),
+  matching `twin_probe.py`'s ctypes asserts. The native record has **no host
+  codec** in `dss-usermodel` and **never crosses the wasm boundary**, so there
+  is nothing in the product to gate it against; the manual twin tool — which
+  must match the native DLL byte-for-byte — is its correct and only home. The
+  gated `records.rs` pin covers exactly what crosses (the 244-B wasm image). By
+  design, not a regression.
+
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
 JSON-Schema (draft 2020-12) envelope (`$schema`/`$id`/`type`/`required`), the ten
