@@ -6,13 +6,16 @@ the wasm_gen_dyn machine params + the deck's converged snapshot terminal V/I,
 running the exact guest lifecycle New -> Edit -> CalcPFlow -> Init -> CalcDynamic
 (and optionally the engine's per-step Integrate/Calc order). Reads |Is1| (var 8).
 
-Purpose: isolate the GUEST MODEL MATH from the OpenDSS ENGINE FLOW. The result is
-the CROWN finding of the D2 trace — the twin's Init+CalcDynamic gives |Is1| =
-189.10 (the power-flow point), BIT-IDENTICAL to the Rust engine + wasm fixture.
-So the guest math is not the bug; the ~5e-4 D2 divergence lives entirely in how
-the OpenDSS engine drives the machine to the dynamic operating point (|Is1| =
-189.207) at the first dynamics step — a h-independent jump the guest's own
-Init/Integrate math (proven here) does not produce on its own.
+Purpose: isolate the GUEST MODEL MATH from the OpenDSS ENGINE FLOW. This probe
+covers Init+CalcDynamic only (it does NOT call `Integrate` — that path is
+exercised by the companion `d2_twin_step.py`, which drives a full step with V
+held fixed and calls `dll.Integrate()`). Here the twin's Init+CalcDynamic gives
+|Is1| = 189.10 (the power-flow point), BIT-IDENTICAL to the Rust engine + wasm
+fixture. Together with `d2_twin_step.py` (guest keeps 189.10 at h=1e-9 with V
+fixed) this shows the guest math is not the bug; the ~5e-4 D2 divergence lives
+entirely in how the OpenDSS engine drives the machine to the dynamic operating
+point (|Is1| = 189.207) at the first dynamics step — an h-independent jump the
+guest's own Init/Integrate does not produce with fixed inputs.
 
 Usage:  python d2_twin_direct.py <path-to-244B-IndMach012a.dll>
 Env:    PNOM (Pnominalperphase, default -1333333.333), PREINIT=1 (run a
