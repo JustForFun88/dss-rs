@@ -109,9 +109,9 @@ fn check(
     }
 }
 
-/// The replay comparison for one deck. Both WM.4 decks gate `numeric = true` —
-/// the FULL floor comparison: iteration count, the user-model state-variable
-/// tail, and every node voltage matched to the harness tier floors.
+/// The replay comparison for one deck — the FULL floor comparison: iteration
+/// count, the user-model state-variable tail, EVERY non-sentinel base element
+/// variable, and every node voltage matched to the harness tier floors.
 ///
 /// - `wasm_pv_pflow` (PVSystem `UserModel=`, VoltageModel=3): a power-flow
 ///   snapshot — the user model is a pure function of the converged terminal
@@ -122,16 +122,17 @@ fn check(
 ///   Zthev-Norton coupling), the Storage `DoDynaModel` is a **pure per-phase
 ///   current injection** (`StickCurrInTerminalArray(-DESSCurr)`, no swing damping,
 ///   no Zthev) — there is no cross-version coupling to diverge, so the multi-step
-///   trajectory is gated numerically too. (The `numeric` parameter is retained
-///   for a future dynamics deck that DOES surface a version divergence — it would
-///   then gate structurally, per the WM.3 D2 precedent.)
+///   trajectory (base storage vars included) gates numerically too.
 ///
-/// The base element variable surface (indices 0..base) is the ENGINE's own — its
-/// InvDynVars are a base-surface version divergence (the r4133 oracle sentinels
-/// them with an EMPTY name + `-9999.99` outside dynamics, while the dss_capi-
-/// 0.14.5 Rust port names/computes them) — NOT the WM.4 subject, so base var
-/// values are not compared and base names only where the oracle is non-empty.
-fn gate_deck(deck: &str, numeric: bool) {
+/// The base element variable surface (indices 0..base) is the ENGINE's own. Its
+/// non-sentinel vars (physical quantities + the `9999`/`0` operation flags) match
+/// the r4133 oracle at f64-floor — MEASURED worst rel 4.4e-16 across both decks
+/// (WM.4 settle T-WM4-1: base var VALUES ARE now floor-gated). The ONLY excluded
+/// base vars are the empty-named `-9999.99` InvDynVar sentinels: a genuine base-
+/// surface version divergence (the r4133 oracle sentinels them outside dynamics,
+/// while the dss_capi-0.14.5 Rust port names/computes them) — NOT the WM.4
+/// subject, so those are skipped in both name and value.
+fn gate_deck(deck: &str) {
     let g = load_golden(deck);
     let mut dss = run_deck(deck);
 
@@ -150,20 +151,16 @@ fn gate_deck(deck: &str, numeric: bool) {
     };
     assert!(g.converged, "{deck}: oracle golden did not converge");
     assert!(is_solved, "{deck}: Rust engine did not converge");
-    if numeric {
-        assert_eq!(
-            iteration as u32, g.iterations,
-            "{deck}: final-solve iteration count differs (Rust {iteration} vs oracle {})",
-            g.iterations
-        );
-    }
+    assert_eq!(
+        iteration as u32, g.iterations,
+        "{deck}: final-solve iteration count differs (Rust {iteration} vs oracle {})",
+        g.iterations
+    );
 
     let vtol = tol_for("feeder");
     // State-variable floor: 1e-8 rel (the feeder voltage class the model vars
     // inherit through the current computation) / 1e-12 abs (near-zero floor).
-    // NOT loosened to pass (CLAUDE.md); on the DynaModel dynamics deck only the
-    // DynaModel's OWN four vars are gated numerically (the base-storage
-    // trajectory is the version-divergence confound — see the doc above).
+    // NOT loosened to pass (CLAUDE.md).
     let (var_rel, var_abs) = (1e-8, 1e-12);
 
     let mut worst = (0.0_f64, String::from("(none)"));
@@ -189,26 +186,24 @@ fn gate_deck(deck: &str, numeric: bool) {
         let av = actual_v
             .get(&key)
             .unwrap_or_else(|| panic!("{deck}: Rust missing node {name}"));
-        if numeric {
-            check(
-                &format!("{deck} V[{name}].re"),
-                av.re,
-                ev[0],
-                vtol.v_rel,
-                vtol.v_abs,
-                &mut worst,
-                &mut fails,
-            );
-            check(
-                &format!("{deck} V[{name}].im"),
-                av.im,
-                ev[1],
-                vtol.v_rel,
-                vtol.v_abs,
-                &mut worst,
-                &mut fails,
-            );
-        }
+        check(
+            &format!("{deck} V[{name}].re"),
+            av.re,
+            ev[0],
+            vtol.v_rel,
+            vtol.v_abs,
+            &mut worst,
+            &mut fails,
+        );
+        check(
+            &format!("{deck} V[{name}].im"),
+            av.im,
+            ev[1],
+            vtol.v_rel,
+            vtol.v_abs,
+            &mut worst,
+            &mut fails,
+        );
     }
 
     // --- Element state-variable surface (ordered, index-aligned) ---
@@ -232,20 +227,12 @@ fn gate_deck(deck: &str, numeric: bool) {
     );
     // The user-model tail is the last 4 vars: `Iout1` (computed), then the three
     // static params `G`/`B`/`Tau` (echoing `UserData`, so version-independent
-    // witnesses that `edit` reached the guest). The base element variable surface
-    // (indices 0..base) is the ENGINE's own — and its InvDynVars are a base-
-    // surface version divergence (the r4133 oracle sentinels them with an EMPTY
-    // name + `-9999.99` outside dynamics, while the dss_capi-0.14.5 Rust port
-    // names/computes them): NOT the WM.4 subject. So base var VALUES are not
-    // floor-compared; base var NAMES are asserted only where the oracle reports a
-    // non-empty name (the stable base names — proving the surface structure — and
-    // the user tail), skipping the empty-named InvDynVars.
-    let user_tail_start = g.variable_names.len().saturating_sub(4);
-    // Iout1 (the first tail var) is a computed current: version-independent for
-    // the PV pflow SNAPSHOT (a pure function of the converged voltage), but a
-    // dynamics-trajectory quantity for the Storage DynaModel run (downstream of
-    // the multi-step coupling — the recorded divergence). So it is floor-gated
-    // only on the numeric (snapshot) deck; the static params G/B/Tau always.
+    // witnesses that `edit` reached the guest). Every var is floor-gated EXCEPT
+    // the empty-named `-9999.99` InvDynVar sentinels: those are a base-surface
+    // version divergence (the r4133 oracle sentinels them outside dynamics while
+    // the dss_capi-0.14.5 Rust port names/computes them). Base var NAMES are
+    // asserted only where the oracle reports a non-empty name.
+    const SENTINEL: f64 = -9999.99;
     for (k, (name, &ev)) in g
         .variable_names
         .iter()
@@ -259,29 +246,27 @@ fn gate_deck(deck: &str, numeric: bool) {
                 var_names[k]
             );
         }
-        let is_user_tail = k >= user_tail_start;
-        let is_static_param = is_user_tail && k > user_tail_start; // G/B/Tau
-        if (is_user_tail && numeric) || is_static_param {
-            check(
-                &format!("{deck} var[{k}:{name}]"),
-                var_values[k],
-                ev,
-                var_rel,
-                var_abs,
-                &mut worst,
-                &mut fails,
-            );
+        // Skip only the empty-named InvDynVar sentinels (the base-surface version
+        // divergence); every other var — base physical/flag vars AND the 4-var
+        // user tail — is floor-compared (WM.4 settle T-WM4-1).
+        if name.is_empty() || ev == SENTINEL {
+            continue;
         }
+        check(
+            &format!("{deck} var[{k}:{name}]"),
+            var_values[k],
+            ev,
+            var_rel,
+            var_abs,
+            &mut worst,
+            &mut fails,
+        );
     }
 
     eprintln!(
-        "[wasm_usermodels_wm4] {deck}: {} vars ({}) + {} nodes; worst rel gap = {}",
+        "[wasm_usermodels_wm4] {deck}: {} vars (base non-sentinel + user tail + voltages \
+         @floor) + {} nodes; worst rel gap = {}",
         g.variable_names.len(),
-        if numeric {
-            "user tail + voltages @floor"
-        } else {
-            "static params @floor; trajectory recorded, not gated"
-        },
         g.node_voltages.len(),
         worst.1
     );
@@ -299,7 +284,7 @@ fn gate_deck(deck: &str, numeric: bool) {
 /// new 15-function user-model transport).
 #[test]
 fn wasm_pv_pflow_matches_r4133_oracle() {
-    gate_deck("wasm_pv_pflow", true);
+    gate_deck("wasm_pv_pflow");
 }
 
 /// Storage `DynaDLL=` (TStoreDynaModel, 13-fn) 2-step dynamics: full numeric gate
@@ -307,7 +292,7 @@ fn wasm_pv_pflow_matches_r4133_oracle() {
 /// (no swing-damping/Zthev coupling to diverge, unlike WM.3's Generator dynamics).
 #[test]
 fn wasm_storage_dyn_matches_r4133_oracle() {
-    gate_deck("wasm_storage_dyn", true);
+    gate_deck("wasm_storage_dyn");
 }
 
 /// WM.3 precedent (no silent fallback): a `model=3` (UserModel) Storage with NO

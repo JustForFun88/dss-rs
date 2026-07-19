@@ -993,6 +993,60 @@ carry the PV pflow case, halving the fixture surface with no loss of coverage
 (both the 13-fn DynaDLL and the 15-fn UserModel export sets + call sites are
 exercised end-to-end vs the oracle).
 
+**Settle round (2026-07-19).** Two read-only audits (code + tests) reviewed the
+branch; every finding was reproduced then settled. No high/medium findings; all
+six were low.
+
+- **T-WM4-1 (tests, base var values not gated) — FIXED (strengthened).** Ran
+  both decks and dumped Rust-vs-oracle for every base var: ALL non-sentinel base
+  vars (physical quantities + the `9999`/`0` operation flags — kWh, kWOut,
+  kvarOut, kWTotalLosses, …) match the r4133 oracle at **f64-floor, worst rel
+  4.4e-16** — including the Storage 2-step dynamics trajectory (the old doc's
+  "trajectory version-divergence confound" is empirically false for these vars).
+  `gate_deck` now floor-compares every var except the empty-named `-9999.99`
+  InvDynVar sentinels (the real base-surface version divergence). Strictly
+  stronger, no tolerance touched. Still green (worst gap unchanged: node voltages
+  2.7e-13 / 4.3e-13, the faer-vs-KLU last-ulp signature).
+- **T-WM4-2 (tests, dead `numeric=false` branch) — FIXED (removed).** With the
+  Storage dynamics trajectory proven to match numerically (T-WM4-1), the
+  structural-only path had no live use and no coverage. Removed the `numeric`
+  parameter; `gate_deck` is now unconditionally the full-numeric gate.
+- **T-WM4-3 (tests, oracle twin shares the model core) — accepted, no fix.**
+  Inherent to authored fixtures (no vendored Storage/PVSystem user-model example
+  exists) and the sanctioned WM.3 pattern; the cross-engine check is genuine at
+  the ENGINE/ABI level (the ~1e-13 faer-vs-KLU voltage gap proves r4133 solved it
+  independently, and the goldens carry r4133-only `-9999.99` sentinels the Rust
+  port does not emit). Disclosed in `gen_wasm_usermodels_wm4.rs` and above.
+- **C-WM4-2 (code, PVSystem scalar `get_pv_variable` lacked the UserModel tail)
+  — FIXED.** Threaded `&mut self, sys, node_v` through `get_pv_variable` /
+  `get_all_pv_variables` (+ the one accessor caller) and added the
+  `i > NumPVSystemVariables → get_user_model_variable` route + `PvUserModelSlot::
+  get_variable`, mirroring the Storage sibling and Pascal `PVsystem.pas:2453-2461`.
+  (Functionally the user tail was already surfaced via the plural `get_all_variables`
+  append; this removes the scalar-helper inconsistency.)
+- **C-WM4-3 (code, `refresh_var_cache` swallowed guest traps) — FIXED.**
+  `refresh_var_cache` (Storage + PVSystem) now returns `LiveResult` and propagates
+  a trapping `num_vars`/`get_var_name` via `?` instead of `.unwrap_or(0)` /
+  `.unwrap_or_default()`; the callers (`new`/`edit`/`update_model`/…) already
+  drain it, so a trap is surfaced loudly (plan §2.9-5) rather than silently
+  dropping the model's state-var tail.
+- **C-WM4-1 (code, `#567` suppressed for a named-but-unloaded model) — accepted,
+  no fix.** Reproduced: the VoltageModel=3 `DoUserModel` path guards `#567` behind
+  `user_model_name.is_empty()`, so a named-but-unloaded model (native-DLL name or
+  a bad `.wasm`) does not emit the per-solve `#567` Pascal produces on
+  `not UserModel.Exists`. Kept deliberately: (1) the failed-load state is already
+  **surfaced loudly** once via `#1570` at load (satisfies plan §2.4 rule-4); (2)
+  for the dominant wasm case — a native-DLL name — Pascal would LOAD the DLL
+  (`Exists=true`, zero `#567`), so per-solve `#567` would diverge *further* from
+  Pascal, not less; (3) diagnostic-only (both paths inject Yprim-only, numerically
+  identical); (4) empirically UNEXERCISED — no corpus deck sets Storage/PVSystem
+  `UserModel=`+VoltageModel=3 (SimpleStorageTest uses `DynaDLL=` with the default
+  voltage model in snapshot mode, so `DoUserModel` is never reached). The primary
+  intent — `#567` for a genuine no-model VoltageModel=3 — is enforced and tested
+  (`{storage,pvsystem}_model3_without_usermodel_surfaces_diagnostic`).
+- **SimpleStorageTest invariant re-verified** (settle): `git status tests/corpus`
+  clean; `SimpleStorageTest*` decks green under the full `cargo test --workspace`.
+
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
 JSON-Schema (draft 2020-12) envelope (`$schema`/`$id`/`type`/`required`), the ten
