@@ -2034,6 +2034,79 @@ TESTING.md/CLAUDE.md (the in-code module docs were already fixed here).
 gate 514/514, all 6 ledger entries hit, fail-on-stale active); `tests/corpus`
 pristine; junctions intact.
 
+## 1l. UNIFIED_GATE post-audit fix round (branch `ug-fixround`, 2026-07-19)
+
+Closes the three actionable "deliberately not fixed" items from the §1k pre-E/F
+audit triage. Every envelope MEASURED live on both engines (full 510-case ×2 seed +
+`DSS_LEDGER_MEASURE` gate runs); R3 discipline throughout — no ledger entry papers
+over a fixable port bug.
+
+**Item 1 — fingerprintable follow-up flip set → `engines:"both"`.** Seeded all live
+cases ×2 channels, triaged each single-channel case by first-divergence class.
+**18 flipped** (both% 342→360 = 66.5%→**70.0%**, near the seeding-proven ~72%
+ceiling); 4 measured NOT tightly fingerprintable stay `capi_v0145` (`note` cause):
+- **storage/PVSystem 6-sig-fig display** ×12 — r4133 Delphi renders
+  kw/kwhstored/%stored/kvar/kwtarget + PVSystem kvar to 6 sig figs, port+pinned-0.14.5
+  full f64. `probe` `num_rel` **1e-5** (= 2× the 6-sig-fig class ceiling 5e-6; corpus
+  max 4.9e-6 @ peakshave). storagectrl_{peakshave,support,ipeakshave,loadshape,
+  chargelow}, midi_storagectrl, invcontrol_storage_vw, expcontrol_basic +
+  modes time/{duty,generaltime,generaltime_duty,generaltime_yearly}.
+- **injection+element fpc-delphi-ulp** ×4 (IndMach asymmetric) — `injection`
+  whole-vector (max_abs 1e-5; seen 4e-6) + `element` currents/powers/losses
+  (max_abs 2e-5 incl. a Line loss near-cancellation 9e-6; max_rel 1e-8);
+  voltages/yprim/discrete tier-clean. combo/{combo_mesh,midi}_asym,
+  indmach/{indmach,midi_indmach}_asym.
+- **monitor seq-magnitude drift** ×1 (monitor_seqmag) — 3 `monitor` channel scopes:
+  mseq ch4 (V2 mag, max_abs 5e-6, seen 2.4e-6), mseq ch5 (V2 angle, max_abs 1e-3 =
+  angular image of the mag floor, seen 5.95e-4), mseqmag ch2 (|V|3, 5e-6). NB the
+  ledger `channel_idx` is 0-based (the harness "channel N" display is 1-based).
+- **stayed capi_v0145** (measured, not fingerprintable): storagectrl_{time,follow},
+  invcontrol_storage_vv_vw, invcontrol_expmodel — r4133 event-log CONTENT differences
+  (parallel-build `StorageController1` actor-suffix; `DER`-vs-`PVSYSTEM/STORAGE OUTPUT`
+  wording) the trailing-whitespace-only eventlog mask (UGA-T3) cannot normalize.
+
+**Item 2 — defer_ledger retirement (ORPHANED_GAPS §1.9).** 1 of 4 retired; 3
+confirmed NOT ledgerable per R3, reasons sharpened. defer_ledger remaining: **7**
+(regcontrol_idle + DynExp×2 + NCIM×4 [WP-U1.7]).
+- **line_spacing_asym RETIRED** → `engines:"both"`: capi_v0145 exact-pair-NUMERIC
+  property+probe scopes (Line.lsp.normamps 730→230, emergamps 1095→345 — the
+  min-over-phase D3 upgrade, port CORRECT per r4133 LineGeometry.pas) + r4133 `#303`
+  skip. Needed the exact-pair-numeric machinery §1i said was lacking — ADDED to
+  `probe_handled`/`property_handled` (num_rel absent + oracle/rust pins ⇒ exact float
+  pin, not an envelope). Line.lspc D3-invariant (165/247.5, no divergence).
+- **regcontrol_idle STAYS** defer_ledger: the earlier "~7e-5 sub-tap" note was WRONG —
+  the live r4133 idle regulator settles MV.1 **~8.7% (623 V)** off the port, WHOLESALE.
+  Per R3 an 8.7% gap at the regulated bus smells like a port idle-RegControl bug
+  (tap init), not an upstream ulp difference → NOT ledgered; needs a WP.
+- **DynExp×2 STAY** defer_ledger (Dynamic_KundurDynExp, GFL_IEEE123 DynExp):
+  re-measured — port matches NEITHER oracle (0.14.5 AND r4133 agree with each other,
+  port ~1.5e-5 off BOTH). Force-ledgering would pin a port-side DynExp-evaluator bug.
+
+**Item 3 — plan §2.2 all-properties enumeration in dss-epri** (audit UGA-5, dropped
+without deviation). Implemented: `DSSElementV` FFI binding (mode 0 = AllPropertyNames)
++ `capture_all_properties` (byte-faithful port of
+`oracle_server.capture_all_properties`: `? name.Like` activate → property list →
+`? name.prop` values; read LAST per step). The run_case fail-loud is gone. Smoke
+`#[test]` proves the round-trip (IEEE13: 38 elements, 1628 property values).
+**Gating semantics UNCHANGED**: the scheduler still masks `all_properties` off on the
+r4133 request (property parity stays capi_v0145-only per plan) — the r4133 all-props
+path is capability-only (report tooling). Unsafe stays inside dss-epri (SAFETY comment;
+V-protocol copied immediately).
+
+**Ledger measurement aid.** `DSS_LEDGER_MEASURE=1` makes the numeric handlers print
+the live divergence per scope (env-gated stderr, NO gating-semantics change) so
+envelopes are sized to the measured max — the "every envelope measured live" (R3)
+operation, repeatable.
+
+**Ledger:** 25 entries (was 6): +12 storage/pv display, +4 injection-ulp, +1 monitor,
++1 line_spacing exact-pair (capi) + 1 skip (r4133). Structural test green; every entry
+HIT (1041 total hits) and non-stale in the full gate.
+
+**Gate (three-command, defaults, green):** fmt clean; clippy clean; `cargo test
+--workspace` green — corpus gate 514/514, 25 ledger entries all hit, fail-on-stale
+active, population lock regenerated (diff = 18 engine flips + 18 ledger tags), dss-epri
+smoke green (all_properties round-trip). `tests/corpus` pristine; junctions intact.
+
 ## 1j. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
 
 `DE_PASCALIZE_PLAN.md` §P5a executed (P5b spans / P5c CLI presentation out of

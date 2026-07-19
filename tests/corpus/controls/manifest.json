@@ -215,7 +215,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_peakshave.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 24,
@@ -258,6 +258,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_time.dss",
+   "note": "r4133 event log names the control 'StorageController1.sc' (parallel-build actor-index suffix) where the port/0.14.5 name it 'StorageController.sc' -- an r4133 eventlog RENDERING artifact (measured 2026-07-19), not a port bug, but a content difference the trailing-whitespace eventlog mask cannot normalize. Stays capi_v0145 (physics + storage display gate there); flipping to both needs an eventlog content-normalization mask the machinery deliberately lacks (audit UGA-T3).",
    "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
@@ -1107,7 +1108,7 @@
   },
   {
    "path": "storagecontroller/midi_storagectrl.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:save-roundtrip-control",
    "kind": "micro",
    "n_steps": 24,
@@ -1450,11 +1451,11 @@
    "compare_eventlog": true,
    "pending": false,
    "wp": "WPG.9",
-   "note": "ControlModel accepts only the ordinal (ControlModel=1); the enum name is rejected by the upstream text parser (probe-proven). WPG.9 ports the TPICtrl PI controller (Exponential ControlModel) in the VV/AVR/DRC/VV_DRC var-calc paths; live-compared here (kvar probe = the controller-driven var output + event log; the full-model compare covers the PV's P/Q each step). PVSystem exposes no `kW` property (probe-proven: `? PVSystem.pv.kW` = 'Property Unknown' on both engines), so the var trajectory is observed via `kvar`."
+   "note": "r4133 event log wording 'REQUESTED PVSYSTEM OUTPUT' + spacing differs from the port's 'REQUESTED DER OUTPUT' (measured 2026-07-19; same action, KVAR=0 on both) -- an r4133 eventlog terminology/rendering artifact, not maskable with the trailing-whitespace-only mask (UGA-T3). Stays capi_v0145 (PVSystem display gates there)."
   },
   {
    "path": "invcontrol/invcontrol_storage_vw.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 6,
@@ -1478,6 +1479,7 @@
   },
   {
    "path": "invcontrol/invcontrol_storage_vv_vw.dss",
+   "note": "r4133 event log wording 'REQUESTED STORAGE OUTPUT' differs from the port's 'REQUESTED DER OUTPUT' (measured 2026-07-19; same action, KVAR=-800.6 on both) -- an r4133 eventlog terminology/rendering artifact, not maskable with the trailing-whitespace-only eventlog mask (UGA-T3). Stays capi_v0145 (Storage display gates there).",
    "engines": "capi_v0145",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
@@ -1879,6 +1881,7 @@
   },
   {
    "path": "regcontrol/regcontrol_idle.dss",
+   "defer_ledger": "capi015-line RegControl idle: 0.14.5 rejects idle (#110) so capi cannot gate; on r4133 the idle regulator settles the regulated MV bus ~8.7% away (623 V at MV.1) from the port -- a WHOLESALE divergence, re-measured 2026-07-19 (UNIFIED_GATE fix round, full seed + live gate), NOT the ~7e-5 sub-tap class the earlier note assumed. Per R3 this may NOT be ledgered: an 8.7% gap at the regulated bus smells like a port idle-RegControl bug (tap initialization / idle handling), not an upstream ulp difference; it needs a WP to investigate the idle regulator, not a ledger entry. Kept defer_ledger (Rust-smoke).",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -1887,7 +1890,6 @@
    ],
    "engines": "r4133",
    "wp": "ORPHANED_GAPS §1.9 (UNIFIED_GATE defer_ledger retirement)",
-   "defer_ledger": "capi015-line RegControl `idle` property (0.15 feature): 0.14.5 rejects `idle` (#110), r4133-11.0 idle-regulator node V diverges ~7e-5 rel. Phase D: r4133 divergence envelope.",
    "pending": false,
    "probes": [
     {
@@ -2273,11 +2275,11 @@
     "Storage.sa"
    ],
    "compare_eventlog": true,
-   "note": "Follow discharge (MODE_FOLLOW): TimeDischargeTrigger latches kWTarget=max(kWThreshold,load) then holds; RELEASE_INHIBIT differs. Feature-sensitive: modedis=peakshave changes dispatch (probe-proven)."
+   "note": "r4133 event log names the control 'StorageController1.sc' (parallel-build actor-index suffix) vs port 'StorageController.sc' -- an r4133 eventlog RENDERING artifact (measured 2026-07-19), not tightly fingerprintable with the trailing-whitespace-only eventlog mask (UGA-T3). Stays capi_v0145."
   },
   {
    "path": "storagecontroller/storagectrl_support.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
@@ -2311,7 +2313,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_ipeakshave.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
@@ -2345,7 +2347,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_loadshape.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
@@ -2379,7 +2381,7 @@
   },
   {
    "path": "storagecontroller/storagectrl_chargelow.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 24,
@@ -2780,7 +2782,7 @@
   },
   {
    "path": "monitor/monitor_seqmag.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 12,
@@ -2815,7 +2817,7 @@
   },
   {
    "path": "expcontrol/expcontrol_basic.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 10,

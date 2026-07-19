@@ -354,8 +354,9 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
                     continue;
                 }
                 let channel = ctx.channel(uc, ch);
-                // The r4133 bridge has no all-properties capture (§1.2 keeps it
-                // capi_v0145-only) — mask it off in both the request and compare.
+                // The r4133 bridge's all-properties capture is capability-only
+                // (report tooling; §2.2) — §1.2 keeps property PARITY capi_v0145-only,
+                // so mask it off in both the request and compare on r4133.
                 let mut cc = uc.case.clone();
                 if ch == EngineChannel::R4133 {
                     cc.compare_all_properties = false;

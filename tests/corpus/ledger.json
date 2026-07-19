@@ -104,6 +104,455 @@
       ],
       "cause_ref": "gfm-pctstored-rounding",
       "source": "UNIFIED_GATE Phase D seeding 2026-07-18 (r4133 Delphi renders Storage.%stored to 6 sig figs; port/pinned-oracle full f64) — num_rel envelope (per-step; %stored evolves over 6 steps)"
+    },
+    {
+      "id": "r4133-peakshave-storage-display",
+      "case": "controls:storagecontroller/storagectrl_peakshave.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 4.9e-06,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-support-storage-display",
+      "case": "controls:storagecontroller/storagectrl_support.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 2.35e-06,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-ipeakshave-storage-display",
+      "case": "controls:storagecontroller/storagectrl_ipeakshave.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 3.81e-06,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-loadshape-storage-display",
+      "case": "controls:storagecontroller/storagectrl_loadshape.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 1.31e-06,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-chargelow-storage-display",
+      "case": "controls:storagecontroller/storagectrl_chargelow.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 4.16e-06,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-midi-storage-display",
+      "case": "controls:storagecontroller/midi_storagectrl.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 1.62e-06,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-invvw-storage-display",
+      "case": "controls:invcontrol/invcontrol_storage_vw.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 6.56e-07,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-duty-storage-display",
+      "case": "modes:time/duty.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 7.68e-07,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-gt-storage-display",
+      "case": "modes:time/generaltime.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 1.19e-06,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-gtduty-storage-display",
+      "case": "modes:time/generaltime_duty.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 1.12e-06,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-gtyearly-storage-display",
+      "case": "modes:time/generaltime_yearly.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^storage(controller)?\\.[^.]+\\.(kw|kva|kvar|kwhstored|%stored|kwtarget|kwtargetlow)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "storage-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders Storage kw/kwhstored/%stored to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope, per-step over the dispatch.",
+      "measured": {
+        "max_rel_seen": 1.48e-06,
+        "envelope_note": "6-sig-fig Delphi display; class ceiling rel 5e-6 at mantissa->1, num_rel 1e-5 = 2x ceiling; corpus max ~4.9e-6 (peakshave)",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-expcontrol-pv-display",
+      "case": "controls:expcontrol/expcontrol_basic.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^pvsystem\\.[^.]+\\.(kvar|kva)$",
+          "num_rel": 1e-05
+        }
+      ],
+      "cause_ref": "pvsystem-display-precision",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 Delphi renders PVSystem kvar/kva to 6 sig figs; port/pinned-0.14.5-oracle full f64 -- num_rel envelope.",
+      "measured": {
+        "max_rel_seen": 1.313e-06,
+        "envelope_note": "6-sig-fig Delphi display; num_rel 1e-5 = 2x the 5e-6 ceiling",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-combomesh-injection-ulp",
+      "case": "asymmetric:combo/combo_mesh_asym.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "injection",
+          "max_abs": 1e-05,
+          "max_rel": 0.0
+        },
+        {
+          "field": "element",
+          "name_re": ".*",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ],
+          "max_abs": 2e-05,
+          "max_rel": 1e-08
+        }
+      ],
+      "cause_ref": "injection-fpc-delphi-ulp",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): injection RHS entries a small factor above the faer-vs-KLU floor on IndMach-bearing asymmetric decks (Delphi-vs-FPC transcendental last-ulp amplified by the machine model). Port matches pinned 0.14.5 exactly on capi_v0145.",
+      "measured": {
+        "injection_max_abs_seen": 4.05e-06,
+        "element_max_abs_seen": 9.09e-06,
+        "note": "whole-model fpc-delphi-ulp on the current/power channels + loss near-cancellation; voltages/yprim/discrete tier-clean",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-combomidi-injection-ulp",
+      "case": "asymmetric:combo/midi_asym.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "injection",
+          "max_abs": 1e-05,
+          "max_rel": 0.0
+        },
+        {
+          "field": "element",
+          "name_re": ".*",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ],
+          "max_abs": 2e-05,
+          "max_rel": 1e-08
+        }
+      ],
+      "cause_ref": "injection-fpc-delphi-ulp",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): injection RHS entries a small factor above the faer-vs-KLU floor on IndMach-bearing asymmetric decks (Delphi-vs-FPC transcendental last-ulp amplified by the machine model). Port matches pinned 0.14.5 exactly on capi_v0145.",
+      "measured": {
+        "injection_max_abs_seen": 4.05e-06,
+        "element_max_abs_seen": 9.09e-06,
+        "note": "whole-model fpc-delphi-ulp on the current/power channels + loss near-cancellation; voltages/yprim/discrete tier-clean",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-indmach-injection-ulp",
+      "case": "asymmetric:indmach/indmach_asym.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "injection",
+          "max_abs": 1e-05,
+          "max_rel": 0.0
+        },
+        {
+          "field": "element",
+          "name_re": ".*",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ],
+          "max_abs": 2e-05,
+          "max_rel": 1e-08
+        }
+      ],
+      "cause_ref": "injection-fpc-delphi-ulp",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): injection RHS entries a small factor above the faer-vs-KLU floor on IndMach-bearing asymmetric decks (Delphi-vs-FPC transcendental last-ulp amplified by the machine model). Port matches pinned 0.14.5 exactly on capi_v0145.",
+      "measured": {
+        "injection_max_abs_seen": 4.05e-06,
+        "element_max_abs_seen": 9.09e-06,
+        "note": "whole-model fpc-delphi-ulp on the current/power channels + loss near-cancellation; voltages/yprim/discrete tier-clean",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-indmachmidi-injection-ulp",
+      "case": "asymmetric:indmach/midi_indmach_asym.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "injection",
+          "max_abs": 1e-05,
+          "max_rel": 0.0
+        },
+        {
+          "field": "element",
+          "name_re": ".*",
+          "channels": [
+            "currents",
+            "powers",
+            "losses"
+          ],
+          "max_abs": 2e-05,
+          "max_rel": 1e-08
+        }
+      ],
+      "cause_ref": "injection-fpc-delphi-ulp",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): injection RHS entries a small factor above the faer-vs-KLU floor on IndMach-bearing asymmetric decks (Delphi-vs-FPC transcendental last-ulp amplified by the machine model). Port matches pinned 0.14.5 exactly on capi_v0145.",
+      "measured": {
+        "injection_max_abs_seen": 4.05e-06,
+        "element_max_abs_seen": 9.09e-06,
+        "note": "whole-model fpc-delphi-ulp on the current/power channels + loss near-cancellation; voltages/yprim/discrete tier-clean",
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-monitorseqmag-v2",
+      "case": "controls:monitor/monitor_seqmag.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "monitor",
+          "name_re": "(?i)^mseq$",
+          "channel_idx": 4,
+          "max_abs": 5e-06,
+          "max_rel": 0.0
+        },
+        {
+          "field": "monitor",
+          "name_re": "(?i)^mseq$",
+          "channel_idx": 5,
+          "max_abs": 0.001,
+          "max_rel": 0.0
+        },
+        {
+          "field": "monitor",
+          "name_re": "(?i)^mseqmag$",
+          "channel_idx": 2,
+          "max_abs": 5e-06,
+          "max_rel": 0.0
+        }
+      ],
+      "cause_ref": "monitor-seq-magnitude-drift",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): mseq mode-16 sequence-voltage magnitude channel (V2) drifts above the 1e-6 monitor abs floor; symmetrical-component transform amplifies Delphi-vs-FPC transcendental last-ulp. Port matches pinned 0.14.5.",
+      "measured": {
+        "mag_max_abs_seen": 2.44e-06,
+        "angle_max_abs_seen": 0.000595,
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "capi-linespacing-normamps",
+      "case": "asymmetric:line/line_spacing_asym.dss",
+      "channel": "capi_v0145",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^line\\.lsp\\.normamps$",
+          "oracle": "730",
+          "rust": "230"
+        },
+        {
+          "field": "probe",
+          "name_re": "(?i)^line\\.lsp\\.emergamps$",
+          "oracle": "1095",
+          "rust": "345"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^line\\.lsp\\.normamps$",
+          "oracle": "730",
+          "rust": "230"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^line\\.lsp\\.emergamps$",
+          "oracle": "1095",
+          "rust": "345"
+        }
+      ],
+      "cause_ref": "linespacing-normamps",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): port min-over-phase (230/345, WP-U1.2 D3, r4133 LineGeometry.pas) vs 0.14.5 first-wire (730/1095). Exact-pair-numeric (discrete jump, not display). r4133 #303-crashes this deck (skip below).",
+      "measured": {
+        "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-linespacing-asym-303",
+      "case": "asymmetric:line/line_spacing_asym.dss",
+      "channel": "r4133",
+      "kind": "skip",
+      "cause_ref": "epri-303-crash",
+      "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): r4133 #303 access violation at calcv on the LineSpacing+wiredata deck; capi_v0145 gates it (exact-pair property above)."
     }
   ]
 }

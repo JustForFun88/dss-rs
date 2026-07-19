@@ -249,7 +249,7 @@
   },
   {
    "path": "time/generaltime.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -271,7 +271,7 @@
   },
   {
    "path": "time/generaltime_yearly.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -293,7 +293,7 @@
   },
   {
    "path": "time/generaltime_duty.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 8,
@@ -1167,7 +1167,7 @@
   },
   {
    "path": "time/duty.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 8,
