@@ -1054,12 +1054,13 @@ fn long_line_correction_changes_the_long_line_yprim() {
     );
 }
 
-/// WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): `TPDElement.GetRatings` overrides
-/// the (norm, emerg) ratings with `AmpRatings[SeasonalRatingIdx]` for ANY
-/// PDElement when the global season index is in `[0, NumAmpRatings)`; both norm
-/// and emerg take the same seasonal value. Feature-sensitive: the `-1`/
-/// out-of-range guard must fall back to the base ratings (a regression that
-/// dropped the guard would index the array).
+/// WP-U1.5 E2 / 0.15.x-adoption sweep (EPRI r4133 PDElement.pas l.351):
+/// `TPDElement.GetRatings` overrides the (norm, emerg) ratings with
+/// `AmpRatings[SeasonalRatingIdx]` for ANY PDElement (0.14.5's `DI_Overloads`
+/// path restricted this to lines) — but ONLY when the element carries more than
+/// one season (`NumAmpRatings > 1`). Both norm and emerg take the same seasonal
+/// value. Feature-sensitive: the `-1`/out-of-range guard must fall back to the
+/// base ratings (a regression that dropped the guard would index the array).
 #[test]
 fn get_ratings_applies_seasonal_index() {
     let mut line = Line::new("l1");
@@ -1073,15 +1074,15 @@ fn get_ratings_applies_seasonal_index() {
     // Inactive (-1) or out of range → base NormAmps/EmergAmps.
     assert_eq!(line.get_ratings(-1), (100.0, 120.0));
     assert_eq!(line.get_ratings(4), (100.0, 120.0));
-    // The `55400a29` guard is `0 <= idx < NumAmpRatings` — it DROPPED the
-    // pre-refactor/r4133 `NumAmpRatings > 1` guard (see DIVERGENCES L4/E2). So a
-    // single-rating element at idx 0 still applies `AmpRatings[0]` (a no-op when
-    // `amp_ratings[0]` == `norm_amps`, as it is for a normally-initialized
-    // element). This matches the pinned capi015 oracle (0.15.0b4/SVN4103, probed:
-    // a single-season Line at idx 0 reports `%Normal == %Emergency`), NOT r4133.
-    // Any idx >= 1 is out of range → base ratings.
+    // r4133's guard is `(RatingIdx <= NumAmpRatings) and (NumAmpRatings > 1)`.
+    // A SINGLE-season element (`NumAmpRatings == 1`, the default) keeps its base
+    // `(NormAmps, EmergAmps)` at every index — it never binds `AmpRatings[0]`.
+    // dss_capi 0.15.x `55400a29` dropped the `> 1` guard (a single-season element
+    // would silently take the stale constructor default `AmpRatings[0]` for BOTH
+    // norm and emerg, hiding real overloads) — proven a bug vs r4133 + physics
+    // (0.15.x-adoption sweep, DIVERGENCES L4/E2); the port follows r4133.
     line.num_amp_ratings = 1;
-    line.amp_ratings = vec![100.0];
-    assert_eq!(line.get_ratings(0), (100.0, 100.0));
+    line.amp_ratings = vec![50.0];
+    assert_eq!(line.get_ratings(0), (100.0, 120.0));
     assert_eq!(line.get_ratings(1), (100.0, 120.0));
 }

@@ -1451,7 +1451,7 @@ binding oracle. No allowlist row (the tables are equal), no golden change. Pinne
 by the guard `no_mode_prop_interpolation_stays_at_22` (fails if a stray `Mode`
 ever lands). No `known_diffs.json` entry existed.
 
-## L4, E2 — SeasonalRating reimplementation (global `SeasonalRatingIdx`) — SETTLED (WP-U1.5, adopt capi015 = r4133)
+## L4, E2 — SeasonalRating reimplementation (global `SeasonalRatingIdx`) — SETTLED (WP-U1.5 multi-season core = capi015 = r4133; single-season guard re-decided to r4133 by the 0.15.x-adoption sweep fix round)
 
 **Observable.** The per-PDElement norm/emerg current ratings used by the overload
 report paths — `Export Overloads` (`ExportOverloads`), `Export Capacity`
@@ -1506,18 +1506,28 @@ the seasonal ratings for the overload test + reported values, exactly as 0.15.x
 `DSS.SeasonalRating := FALSE`-on-miss read is NOT reproduced (CLAUDE.md known-bug
 policy) — the precomputed index removes it.
 
-**capi015 ≠ r4133 on SINGLE-season elements (adopt capi015, the binding
-oracle).** The `55400a29` `GetRatings` guard is `(idx >= 0) and (idx <
-NumAmpRatings)` — it **dropped** the pre-refactor/r4133 `(RatingIdx <=
-NumAmpRatings) and (NumAmpRatings > 1)` guard. So under an active signal at idx 0
-a **single-season** PDElement (`NumAmpRatings = 1`, the default) takes
-`AmpRatings[0]` for BOTH norm and emerg on capi015, whereas r4133 keeps the base
-`(NormAmps, EmergAmps)`. Verified on the pinned capi015 oracle (0.15.0b4 / SVN
-4103, newer than `55400a29`): a default single-season Line under `SeasonRating`
-at idx 0 reports `%Normal == %Emergency` (both use `AmpRatings[0]`), i.e. the
-no-`>1`-guard behavior. The port follows **capi015** (the goldens' oracle);
-the earlier "capi015 == r4133 bit-identical" claim above holds only for the
-multi-season fixtures (`Seasons=4`), which is all the goldens exercise.
+**capi015 ≠ r4133 on SINGLE-season elements — the port follows r4133 (fixed by
+the 0.15.x-adoption sweep, 2026-07-19).** The `55400a29` `GetRatings` guard is
+`(idx >= 0) and (idx < NumAmpRatings)` — it **dropped** the pre-refactor/r4133
+`(RatingIdx <= NumAmpRatings) and (NumAmpRatings > 1)` guard. So under an active
+signal at idx 0 a **single-season** PDElement (`NumAmpRatings = 1`, the default)
+takes the stale constructor default `AmpRatings[0]` for BOTH norm and emerg on
+capi015 — silently discarding a user-set `normamps`/`emergamps` in the overload/
+capacity reports — whereas r4133 keeps the base `(NormAmps, EmergAmps)`. Under
+the new CLAUDE.md rule (0.15.x is not an authority) the sweep proved capi015 wrong
+here vs BOTH r4133 (source read: PDElement.pas l.351 guard present) AND physics
+(the drop hides real overloads), and the earlier "adopt capi015 the binding
+oracle" rationale was self-referential — the seasonal goldens contain only
+`Seasons=4` fixtures, so nothing bound the single-season path. **Own r4133 vs
+port probe** (single-season `Line.L1 normamps=100 emergamps=120`, I1≈139.77 A at
+idx 0, `Export Overloads`): r4133 `%Normal=139.8 %Emergency=116.5` (overload row
+present); port BEFORE the fix — **no overload row at all** (rated at the stale
+`AmpRatings[0]`); port AFTER the fix (add `&& num_amp_ratings() > 1` at
+`traits.rs::get_ratings`, keeping the memory-safe `0 <= idx < NumAmpRatings`
+bound — r4133's own `<= NumAmpRatings` off-end read is UB, not reproduced) —
+`%Normal=139.8 %Emergency=116.5`, **bit-identical to r4133**. Zero goldens move
+(all `Seasons=4`); the earlier "capi015 == r4133 bit-identical" claim holds only
+for those multi-season fixtures.
 
 **Gate consequence.**
 - **New capi015 goldens** `tests/golden/reports/export_overloads_seasonal.txt` +
@@ -1529,7 +1539,8 @@ multi-season fixtures (`Seasons=4`), which is all the goldens exercise.
   validated bit-identical on capi015 and oddie:r4133 (§1.7).
 - **Feature-sensitive unit tests** `line::tests::get_ratings_applies_seasonal_index`
   + `transformer::tests::get_ratings_applies_seasonal_index_on_transformer` (pin the
-  `AmpRatings[idx]` override + the `idx<NumAmpRatings`/`-1` guard, no `>1`), plus
+  `AmpRatings[idx]` override + the `NumAmpRatings > 1` and `idx<NumAmpRatings`/`-1`
+  guards — a single-season element keeps its base ratings, per r4133), plus
   `golden_reports.rs::{set_commands_resync_seasonal_rating_idx,
   di_overloads_applies_seasonal_rating}` (the set-command re-sync and the DI-path
   seasonal wiring).
