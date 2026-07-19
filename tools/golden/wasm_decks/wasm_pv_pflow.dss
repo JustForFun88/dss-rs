@@ -1,0 +1,15 @@
+! WASM_USERMODELS WM.4 — PVSystem Model=UserModel (VoltageModel=3) power-flow gate.
+! A stiff source, a short feeder line and a single 3-phase DELTA PVSystem running
+! the wm4model constant-admittance user model over the 15-function interface.
+! Snapshot solve, so the user model is a pure function of the converged terminal
+! voltage (bit-exact across engines, like the WM.3 pflow deck). DELTA (nconds=3)
+! so every model-written phase current is consumed by the negate-into-InjCurrent
+! loop. The `@FIXTURE@` token is substituted by the harness with the native `.dll`
+! twin (r4133 oracle) or the committed `.wasm` fixture (Rust engine).
+Clear
+New Circuit.wasm_pv basekv=13.8 phases=3 bus1=sourcebus pu=1.00 R1=0.05 X1=0.15 R0=0.05 X0=0.15
+New Line.feeder phases=3 bus1=sourcebus bus2=b3 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
+New PVSystem.pv1 bus1=b3 phases=3 conn=delta kv=13.8 kVA=5000 Pmpp=4000 irradiance=1 model=3 UserModel=@FIXTURE@ UserData=(g=0.0025 b=-0.0007)
+Set voltagebases=[13.8]
+CalcVoltageBases
+Solve
