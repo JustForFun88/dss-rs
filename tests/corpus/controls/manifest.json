@@ -1881,7 +1881,6 @@
   },
   {
    "path": "regcontrol/regcontrol_idle.dss",
-   "defer_ledger": "capi015-line RegControl idle: 0.14.5 rejects idle (#110) so capi cannot gate; on r4133 the idle regulator settles the regulated MV bus ~8.7% away (623 V at MV.1) from the port -- a WHOLESALE divergence, re-measured 2026-07-19 (UNIFIED_GATE fix round, full seed + live gate), NOT the ~7e-5 sub-tap class the earlier note assumed. Per R3 this may NOT be ledgered: an 8.7% gap at the regulated bus smells like a port idle-RegControl bug (tap initialization / idle handling), not an upstream ulp difference; it needs a WP to investigate the idle regulator, not a ledger entry. Kept defer_ledger (Rust-smoke).",
    "ad": "off:unclassified-new-deck",
    "kind": "micro",
    "n_steps": 1,
@@ -1889,7 +1888,6 @@
     "*"
    ],
    "engines": "r4133",
-   "wp": "ORPHANED_GAPS §1.9 (UNIFIED_GATE defer_ledger retirement)",
    "pending": false,
    "probes": [
     {
@@ -1909,7 +1907,7 @@
      ]
     }
    ],
-   "note": "WP-U1.6 C5 (r4086, 8a898cba): RegControl idle-zone no-load suppression. idle=yes on a reversible regulator drops the pending tap when through-power lands in the default -100/+100 kW dead-band (which spans the whole axis, upstream >=/<= OR), so it never taps: a NON-idle reg taps up to 1.09375 (tapnum 15, |V|~0.939 pu) but idle=yes holds tap 1.0 (tapnum 0, |V|~0.864 pu) -- ~0.075 pu gap, far above every live floor. idle is 0.15.x-only (0.14.5 rejects it), so gated capi015 not 0.14.5 (section 1.2). Validated per section 1.7 (two-process determinism on capi015). Probed idle=yes vs idle=no 2026-07-16."
+   "note": "RegControl idle no-load-zone suppression, gated live on r4133 (idle is 0.15.x-only; 0.14.5 rejects it #110). BUG WP regcontrol_idle (2026-07-19): the no-load zone is the BOUNDED interval [RevPowerThreshold, FwdPowerThreshold] (default -100/+100 kW) tested with AND (r4133 RegControl.pas:1218). The through-power here (~7438 kW) is far outside the band, so idle=yes taps identically to idle=no -- tapnum 15, tap 1.09375, MV.1=7650.08 V (probed live on r4133). The port formerly reproduced dss_capi 0.15.x's `or` (8a898cba, still OR at the 0.15.x tip), a tautology under the default symmetric band that made an idling reg never tap (held tap 1.0, MV.1=7030.24 V); adopted r4133's AND per the r4133-and-beyond direction. Live probe D: widening fwdThreshold to 1e6 kW brackets the load and r4133 then idles to exactly MV.1=7030.24 V, proving the bounded-AND mechanism."
   },
   {
    "path": "regcontrol/regcontrol_remotebus.dss",
