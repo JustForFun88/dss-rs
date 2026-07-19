@@ -134,10 +134,13 @@ impl Storage {
     pub fn update_storage(&mut self, sys: &SysCtx, node_v: &[Complex64], interval_hrs: f64) {
         self.kwh_before_update = self.kwh_stored; // keep for the "kWh Chng" variable
 
-        // Pascal: `if IsDynamicModel and IsUserModel then Exit`.
-        // `IsUserModel` (DynaModel.Exists) is NOT_PORTED (always false), so the
-        // SOC update runs in dynamics mode too (GFL inverter delivers real power).
-        // Do not skip here.
+        // Pascal: `if IsDynamicModel and IsUserModel then Exit` (Storage.pas:2502).
+        // `IsUserModel` = `UserModel.Exists or DynaModel.Exists` (`:854`/`:862`);
+        // in dynamics mode with a loaded user model the model owns the state, so
+        // the built-in SOC update is skipped (WASM_USERMODELS WM.4).
+        if sys.is_dynamic_model && (self.user_model_exists() || self.dyna_model_exists()) {
+            return;
+        }
 
         match self.f_state {
             STORE_DISCHARGING => {

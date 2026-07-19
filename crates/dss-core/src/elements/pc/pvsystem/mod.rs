@@ -17,10 +17,10 @@
 //! `TakeSample`. The grid-forming mode (`DoGFM_Mode`/`CalcGFMYprim`), the
 //! harmonic injection (`DoHarmonicMode`/`InitHarmonics`), the dynamics state
 //! machinery (`DoDynamicMode`/`InitStateVars`/`IntegrateStates` + the
-//! state-variable interface `NumVariables`/`Get_Variable`/`VariableName`), the
-//! user-written DLL model (`DoUserModel`, model 3 — never ported) are deferred
-//! to WP7.6/7.7 (harmonics/dynamics) per PHASE7_PLAN §2.4/§2.5, matching the
-//! Generator deferrals. `MakePosSequence` is in `accessors` (WPG.21).
+//! state-variable interface `NumVariables`/`Get_Variable`/`VariableName`), and
+//! the user-written model (`DoUserModel`, VoltageModel=3 — `user_model.rs`, the
+//! WASM host, WASM_USERMODELS WM.4) are ported. `MakePosSequence` is in
+//! `accessors` (WPG.21).
 //!
 //! Split into submodules (this file holds the metadata, struct and `Create`):
 //! - [`nominal`]: shape/temperature multipliers, `ComputePanelPower` /
@@ -53,6 +53,9 @@ mod dynamics;
 mod nominal;
 mod registers;
 mod solve;
+mod user_model;
+
+pub use user_model::PvUserModelSlot;
 
 /// Pascal `varMode` values.
 pub(crate) const VARMODE_PF: i32 = 0;
@@ -165,10 +168,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("TShape", "TDaily"),
         PropDef::object_ref_class("TShape", "TDuty"),
         PropDef::integer("Class"),
-        // User-written model DLLs are never ported (safe-Rust); stored + dumped
-        // but setting one is a hard error.
-        PropDef::string("UserModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
-        PropDef::string("UserData").flags(PropFlags::NOT_PORTED),
+        // WASM_USERMODELS WM.4: `UserModel=`/`UserData=` follow the §2.4 uniform
+        // rule (parse + store + load-`.wasm`-or-warn); upstream never errors on
+        // these properties (PVsystem.pas:628-632).
+        PropDef::string("UserModel").flags(PropFlags::IS_FILENAME),
+        PropDef::string("UserData"),
         PropDef::boolean("DebugTrace"),
         PropDef::boolean("VarFollowInverter"),
         PropDef::double("DutyStart").flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_HOUR),
@@ -313,6 +317,13 @@ pub struct PVSystem {
     pub power_temp_curve: String,
     pub power_temp_curve_obj: Option<XyCurveObj>,
     pub power_temp_curve_ref: Option<ElemRef>,
+
+    /// Pascal `UserModel: TPVsystemUserModel` (`PVsystem.pas:228`) — the 15-fn
+    /// `UserModel=` slot (WASM_USERMODELS WM.4). `None` until a `.wasm` loads.
+    pub user_model: Option<Box<PvUserModelSlot>>,
+    /// Deferred `UserModel=`/`UserData=` load/edit requests, drained + resolved
+    /// by the executive (§2.4 activation rule).
+    pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
 }
 
 /// Pascal `SetNcondsForConnection`.
@@ -421,6 +432,8 @@ impl PVSystem {
             power_temp_curve: String::new(),
             power_temp_curve_obj: None,
             power_temp_curve_ref: None,
+            user_model: None,
+            pending_user_model_loads: Vec::new(),
         };
         // Pascal seeds PrpSequence with PF.
         pv.cd.obj.set_as_next_seq(prop::PF);

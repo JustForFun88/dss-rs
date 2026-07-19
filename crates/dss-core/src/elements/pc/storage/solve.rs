@@ -115,7 +115,7 @@ impl Storage {
 
     /// Pascal `StickCurrInTerminalArray` routed into `ITerminal` or `InjCurrent`,
     /// reusing the shared inverter base routine.
-    fn stick_curr(&mut self, into_iterminal: bool, curr: Complex64, i: usize) {
+    pub(super) fn stick_curr(&mut self, into_iterminal: bool, curr: Complex64, i: usize) {
         let nconds = self.cd.nconds;
         if into_iterminal {
             self.base
@@ -285,17 +285,26 @@ impl Storage {
             1 => self.do_constant_pq(sys, node_v),
             2 => self.do_constant_z(sys, node_v),
             3 => {
-                // User-written DLL model — never ported. Pascal inits InjCurrent
-                // then records error 567 (Storage.pas:2115).
+                // Pascal `TStorageObj.DoUserModel` (Storage.pas:2103-2122):
+                // CalcYPrimContribution(InjCurrent) then, if UserModel.Exists,
+                // FCalc + negate into InjCurrent (done inside `user_model_fcalc`);
+                // else #567 (WASM_USERMODELS WM.4).
                 self.calc_yprim_contribution(node_v);
-                errors.push(crate::diag::DssDiagnostic::msg(
-                    format!(
-                        "Storage.{} model designated to use user-written model, but \
-                         user-written model is not defined.",
-                        self.cd.obj.name()
-                    ),
-                    Some(567),
-                ));
+                if !self.user_model_fcalc(sys, node_v, errors)
+                    && self.base.user_model_name.trim().is_empty()
+                {
+                    // A genuine VoltageModel=3 with NO `UserModel=` source. A
+                    // native-DLL name (already warned #1570 at load) is NOT
+                    // re-flagged here — the built-in Yprim fallback stands.
+                    errors.push(crate::diag::DssDiagnostic::msg(
+                        format!(
+                            "Storage.{} model designated to use user-written model, but \
+                             user-written model is not defined.",
+                            self.cd.obj.name()
+                        ),
+                        Some(567),
+                    ));
+                }
             }
             _ => self.do_constant_pq(sys, node_v),
         }

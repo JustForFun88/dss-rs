@@ -622,6 +622,11 @@ impl Storage {
 
         // Initialise InjCurrent to zero (defaults to a PQ Storage element).
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+
+        // Pascal `RecalcElementData` tail (Storage.pas:1286-1289):
+        // `UserModel.FUpdateModel` / `DynaModel.FUpdateModel` on each existing
+        // model (WASM_USERMODELS WM.4).
+        self.update_user_models(sys);
     }
 
     /// The L-N `VBase` update (Pascal `TProp.conn`/`TProp.kV` side effects):

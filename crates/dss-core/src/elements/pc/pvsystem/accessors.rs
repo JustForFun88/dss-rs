@@ -14,7 +14,7 @@ use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::{DssObjData, DssObject, UserModelLoad};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
@@ -103,20 +103,30 @@ impl CktElement for PVSystem {
     /// (inherited `TDynEqPCE.NumVariables`), else 22 (13 base + 9 InvDynVars).
     fn num_variables(&self) -> usize {
         let n = self.base.dyneq.num_variables();
-        if n != 0 { n } else { self.num_pv_variables() }
+        if n != 0 {
+            return n;
+        }
+        self.num_pv_variables() + self.num_user_model_variables()
     }
 
-    /// Pascal `TPVsystemObj.VariableName` (1-based): the `DynamicExp` memory-slot
-    /// name first (inherited), else the classic name table.
+    /// Pascal `TPVsystemObj.VariableName` (1-based, `PVsystem.pas:2591-2640`): the
+    /// `DynamicExp` memory-slot name first (inherited), then the classic name
+    /// table, then the `UserModel` names.
     fn variable_name(&self, i: usize) -> String {
         if let Some(name) = self.base.dyneq.variable_name(i) {
+            return name;
+        }
+        if i > self.num_pv_variables()
+            && let Some(name) = self.user_model_variable_name(i)
+        {
             return name;
         }
         self.pv_variable_name(i)
     }
 
-    /// Pascal `TPVsystemObj.GetAllVariables`: the `DynamicExp` memory dump first
-    /// (Pascal l.2543), else the classic 22 variables.
+    /// Pascal `TPVsystemObj.GetAllVariables` (`PVsystem.pas:2552-2564`): the
+    /// `DynamicExp` memory dump first, else the classic 22 followed by the
+    /// `UserModel` values (`@States[NumPVSystemVariables]`).
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
         if self.base.dyneq.has_dynamic_eq() {
             for (i, s) in states
@@ -128,11 +138,23 @@ impl CktElement for PVSystem {
             }
             return;
         }
-        let _ = (sys, node_v);
         self.get_all_pv_variables(states);
+        let base = self.num_pv_variables();
+        let un = self.num_user_model_variables();
+        if un > 0 {
+            let end = (base + un).min(states.len());
+            if base < end {
+                self.get_all_vars_slot(&mut states[base..end], sys, node_v);
+            }
+        }
     }
 
     fn set_variable(&mut self, i: usize, value: f64) {
+        // Pascal `Set_Variable` routes i > NumPVSystemVariables to the UserModel
+        // (`PVsystem.pas:2534-2541`, WASM_USERMODELS WM.4).
+        if i > self.num_pv_variables() && self.set_user_model_variable(i, value) {
+            return;
+        }
         self.set_pv_variable(i, value);
     }
 
@@ -413,8 +435,8 @@ impl DssObject for PVSystem {
     fn set_string(&mut self, idx: usize, value: String) {
         use prop::*;
         match idx {
-            // The NOT_PORTED string props error in the parser before reaching
-            // here; the setters exist for completeness/MakeLike.
+            // `UserModel=` stores the name; the deferred load is queued by
+            // `side_effects` and resolved by the executive (WM.4 §2.4).
             USERMODEL => self.base.user_model_name = value,
             USERDATA => self.base.user_model_edit = value,
             SPECTRUM => self.spectrum = value,
@@ -570,6 +592,13 @@ impl DssObject for PVSystem {
             // Pascal `TProp.DynamicEq` side effect: size the DynamicEqVals memory
             // to the linked DynamicExp's NVariables (a nil ref leaves it empty).
             DYNAMIC_EQ => self.base.dyneq.on_dynamic_eq_set(),
+            // WASM_USERMODELS WM.4 — the §2.4 uniform activation rule. Pascal edit
+            // dispatch (PVsystem.pas:628-632): `UserModel.Name` (load) then
+            // `UserData` (edit). The filesystem is unreachable from the property
+            // hook, so each records a deferred request the executive resolves
+            // before `end_edit`.
+            USERMODEL => self.queue_user_model_load(self.base.user_model_name.clone()),
+            USERDATA => self.queue_user_model_edit(self.base.user_model_edit.clone()),
             _ => {}
         }
     }
@@ -650,7 +679,12 @@ impl DssObject for PVSystem {
         self.base.wv_mode = other.base.wv_mode;
         self.base.drc_mode = other.base.drc_mode;
         self.base.avr_mode = other.base.avr_mode;
+        // User model: Pascal re-`New`s a fresh instance from the same module
+        // (`PVsystem.pas:820`); the slot's `Clone` drops the live wasmi instance
+        // and re-creates it lazily (WM.4, the WM.3 generator precedent).
         self.base.user_model_name = other.base.user_model_name.clone();
+        self.base.user_model_edit = other.base.user_model_edit.clone();
+        self.user_model = other.user_model.clone();
         self.spectrum = other.spectrum.clone();
         self.base.force_balanced = other.base.force_balanced;
         self.base.current_limited = other.base.current_limited;
@@ -667,6 +701,23 @@ impl DssObject for PVSystem {
         vars: &dss_parser::ParserVars,
     ) -> bool {
         self.base.dyneq.parse_dyn_var(variable, value, vars)
+    }
+
+    /// Drain the deferred `UserModel=`/`UserData=` requests queued by the
+    /// property side effects (WASM_USERMODELS WM.4, §2.4).
+    fn take_user_model_loads(&mut self) -> Vec<UserModelLoad> {
+        std::mem::take(&mut self.pending_user_model_loads)
+    }
+
+    /// Apply a resolved user-model load/edit (`wasm` is `Some` iff a `.wasm`
+    /// file was found + read; `None` → warn-and-fallback, Pascal 1570).
+    fn apply_user_model_load(
+        &mut self,
+        load: &UserModelLoad,
+        wasm: Option<&[u8]>,
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        self.apply_user_model_load_impl(load, wasm, errors);
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

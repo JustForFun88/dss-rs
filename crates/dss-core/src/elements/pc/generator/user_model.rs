@@ -520,6 +520,8 @@ impl Generator {
         match slot {
             UserModelSlot::User => self.user_model.take(),
             UserModelSlot::Shaft => self.shaft_model.take(),
+            // The Generator has no Dyna slot (Storage `DynaDLL=` only, WM.4).
+            UserModelSlot::Dyna => None,
         }
     }
 
@@ -527,6 +529,7 @@ impl Generator {
         match slot {
             UserModelSlot::User => self.user_model = Some(s),
             UserModelSlot::Shaft => self.shaft_model = Some(s),
+            UserModelSlot::Dyna => {}
         }
     }
 
@@ -534,6 +537,7 @@ impl Generator {
         match slot {
             UserModelSlot::User => self.user_model = None,
             UserModelSlot::Shaft => self.shaft_model = None,
+            UserModelSlot::Dyna => {}
         }
     }
 

@@ -278,17 +278,25 @@ impl PVSystem {
             1 => self.do_constant_pq(sys, node_v),
             2 => self.do_constant_z(sys, node_v),
             3 => {
-                // User-written DLL model — never ported. Pascal inits InjCurrent
-                // then records error 567 (PVsystem.pas:1835).
+                // Pascal `TPVsystemObj.DoUserModel` (PVsystem.pas:1822-1840):
+                // CalcYPrimContribution(InjCurrent) then, if UserModel.Exists,
+                // FCalc + negate into InjCurrent (inside `user_model_fcalc`);
+                // else #567 (WASM_USERMODELS WM.4).
                 self.calc_yprim_contribution(node_v);
-                errors.push(crate::diag::DssDiagnostic::msg(
-                    format!(
-                        "PVSystem.{} model designated to use user-written model, but \
-                         user-written model is not defined.",
-                        self.cd.obj.name()
-                    ),
-                    Some(567),
-                ));
+                if !self.user_model_fcalc(sys, node_v, errors)
+                    && self.base.user_model_name.trim().is_empty()
+                {
+                    // A native-DLL name (already warned #1570 at load) is NOT
+                    // re-flagged here — the built-in Yprim fallback stands.
+                    errors.push(crate::diag::DssDiagnostic::msg(
+                        format!(
+                            "PVSystem.{} model designated to use user-written model, but \
+                             user-written model is not defined.",
+                            self.cd.obj.name()
+                        ),
+                        Some(567),
+                    ));
+                }
             }
             _ => self.do_constant_pq(sys, node_v),
         }
