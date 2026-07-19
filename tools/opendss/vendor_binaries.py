@@ -1,8 +1,8 @@
-"""Vendor the official EPRI OpenDSS binaries used by the Oddie oracle bridge.
+"""Vendor the official EPRI OpenDSS r4133 binary used by the in-house `dss-epri`
+Rust bridge (the r4133 channel of the unified corpus gate).
 
-Copies, per SVN revision, exactly the files needed to load the engine through
-AltDSS Oddie (`dss.Oddie.IOddieDSS` loading `OpenDSSDirect.dll` by absolute
-path):
+Copies exactly the files needed to load the engine (`OpenDSSDirect.dll` by
+absolute path):
 
   - `OpenDSSDirect.dll` — the flat "Direct DLL" build of the official engine;
   - `KLUSolve.dll`      — its only non-system import (resolved from the same
@@ -40,14 +40,6 @@ BIN_DIR = Path(__file__).resolve().parent / "bin"
 
 # rev -> (source Distrib/x64 dir, human description)
 REVISIONS: dict[str, tuple[Path, str]] = {
-    "r3723": (
-        REPO_ROOT / ".inputs" / "electricdss-code-r3723-trunk" / "Version8" / "Distrib" / "x64",
-        "OpenDSS SVN r3723 — the base of dss_capi 0.14.x (the port's pinned oracle line)",
-    ),
-    "r4088": (
-        REPO_ROOT / ".inputs" / "electricdss-code-r4088-trunk" / "Version8" / "Distrib" / "x64",
-        "OpenDSS SVN r4088 — the base of dss_capi 0.15.x (pre-release line)",
-    ),
     "r4133": (
         REPO_ROOT / ".inputs" / "electricdss-code-r4133-trunk" / "Version8" / "Distrib" / "x64",
         "OpenDSS SVN r4133 — latest official release, Version 11.0.0.1 (no dss_capi yet)",
@@ -93,12 +85,12 @@ def main() -> None:
         for rev, (src, desc) in REVISIONS.items()
     )
     table = "\n".join(["| file | bytes | build date (UTC) |", "|---|---|---|", *rows])
-    readme = f"""# Vendored official EPRI OpenDSS binaries (Oddie oracle bridge)
+    readme = f"""# Vendored official EPRI OpenDSS binary (r4133)
 
-Official EPRI OpenDSS `OpenDSSDirect.dll` builds (+ `KLUSolve.dll`,
+Official EPRI OpenDSS `OpenDSSDirect.dll` (+ `KLUSolve.dll`,
 `kmetis.exe`/`pmetis.exe` for A-Diakoptics tearing, `License.txt`),
-one directory per OpenDSS SVN revision, loaded by absolute path through the
-AltDSS Oddie bridge (`dss.Oddie.IOddieDSS`) — see `tools/opendss/README.md`.
+loaded by absolute path through the in-house `dss-epri` Rust bridge
+(`epri-worker`) — see `tools/opendss/README.md`.
 
 **Do not edit by hand.** Re-vendor with `python tools/opendss/vendor_binaries.py
 --force` and review the `SHA256SUMS` diff. Verify from this directory with

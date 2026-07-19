@@ -1,9 +1,9 @@
-"""Corpus-hygiene guard shared by the oracle server and the DSS-Python
-validation harness (tools/opendss/dsspy_validation/).
+"""Corpus-hygiene guard used by the oracle server (`oracle_server.py`).
 
-Lifted move-only from oracle_server.py so both consumers use the identical,
-empirically-hardened implementation (see the class docstring for the
-snapshot-failure war story). The snapshot is RECURSIVE (WP8.8): run-created
+Lifted move-only from oracle_server.py into its own module (a Rust port,
+`crates/dss-epri/src/guard.rs`, guards the r4133 bridge) — see the class
+docstring for the snapshot-failure war story. The snapshot is RECURSIVE (WP8.8):
+run-created
 files inside pre-existing subdirectories and run-created directory trees (the
 `<CircuitName>/DI_yr_*` demand-interval tree) are both detected and removed.
 Writes OUTSIDE the case-dir tree (e.g. a manual `dss-cli` run from elsewhere)

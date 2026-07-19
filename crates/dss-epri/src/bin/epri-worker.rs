@@ -128,7 +128,7 @@ fn main() {
             Some("clear") => {
                 // Release the circuit (and any held loadshape memory-mapped file
                 // handles) so a second process can compile the same case without a
-                // concurrent-mapping conflict. Used by `xcheck_bridge.py`.
+                // concurrent-mapping conflict (protocol convenience).
                 let ok = engine.clear().is_ok();
                 reply(serde_json::json!({"ok": ok, "result": {"cleared": ok}}));
             }
