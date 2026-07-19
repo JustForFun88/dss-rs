@@ -454,35 +454,10 @@ impl CapControl {
             return false;
         }
 
-        let element_terminal = self.ccd.element_terminal as usize;
-        let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
-
-        // `SampleP := MonitoredElement.Power[ElementTerminal] * 0.001` (kW+jkvar).
-        let s = mon.terminal_power(ctx.sys, ctx.node_v, element_terminal);
-        let sample_p = (s.re * 0.001, s.im * 0.001);
-        // `GetControlVoltage(SampleV)` from the monitored terminal voltages.
-        mon.get_term_voltages(element_terminal, ctx.node_v, &mut cbuffer);
-        let sample_v = self.get_control_voltage(&cbuffer, mon_nphases, cap.connection());
-        // `GetControlCurrent(SampleCurr)` from the monitored terminal currents.
-        mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
-        let sample_curr = self.get_control_current(&cbuffer, cond_offset);
-
-        // Bank state (Pascal `LastStepInService := NumSteps − AvailableSteps`).
-        let num_cap_steps = cap.num_steps();
-        let available_steps = cap.available_steps();
-        let public_data = CapControlVars {
-            pending_change: self.pending_change,
-            should_switch: self.should_switch,
-            present_state: self.present_state,
-            sample_p,
-            sample_v,
-            sample_curr,
-            num_cap_steps,
-            available_steps,
-            last_step_in_service: num_cap_steps - available_steps,
-        }
-        .to_bytes()
-        .to_vec();
+        let public_data = self
+            .build_sample_context(cap, mon, ctx, cond_offset, mon_nphases)
+            .to_bytes()
+            .to_vec();
 
         let dyn_rec = DynamicsRec {
             h: ctx.sys.dyna_h,
@@ -533,6 +508,51 @@ impl CapControl {
         }
         self.user_model = Some(um);
         abort
+    }
+
+    /// Build the `@ControlVars` `Sample` context image the guest reads through
+    /// `get_public_data` (Pascal `CapControl.pas:1057-1069`): sense the monitored
+    /// terminal's power/voltage/current in Pascal units and snapshot the bank
+    /// state. Factored out of [`Self::sample_user_control`] so the host-side field
+    /// assignment (which quantity/unit lands in which `CapControlVars` slot — the
+    /// `get_public_data` channel is un-gatable over wasm, ABI §2.5) is directly
+    /// unit-testable, independent of the codec offset test in
+    /// `dss_usermodel::records`.
+    pub(super) fn build_sample_context(
+        &self,
+        cap: &dyn ControlledCapacitor,
+        mon: &mut dyn CktElement,
+        ctx: &mut CtrlCtx,
+        cond_offset: usize,
+        mon_nphases: usize,
+    ) -> CapControlVars {
+        let element_terminal = self.ccd.element_terminal as usize;
+        let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
+
+        // `SampleP := MonitoredElement.Power[ElementTerminal] * 0.001` (kW+jkvar).
+        let s = mon.terminal_power(ctx.sys, ctx.node_v, element_terminal);
+        let sample_p = (s.re * 0.001, s.im * 0.001);
+        // `GetControlVoltage(SampleV)` from the monitored terminal voltages.
+        mon.get_term_voltages(element_terminal, ctx.node_v, &mut cbuffer);
+        let sample_v = self.get_control_voltage(&cbuffer, mon_nphases, cap.connection());
+        // `GetControlCurrent(SampleCurr)` from the monitored terminal currents.
+        mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
+        let sample_curr = self.get_control_current(&cbuffer, cond_offset);
+
+        // Bank state (Pascal `LastStepInService := NumSteps − AvailableSteps`).
+        let num_cap_steps = cap.num_steps();
+        let available_steps = cap.available_steps();
+        CapControlVars {
+            pending_change: self.pending_change,
+            should_switch: self.should_switch,
+            present_state: self.present_state,
+            sample_p,
+            sample_v,
+            sample_curr,
+            num_cap_steps,
+            available_steps,
+            last_step_in_service: num_cap_steps - available_steps,
+        }
     }
 
     /// Pascal `Sample`'s `TIMECONTROL` branch (factored out for readability):
@@ -596,33 +616,54 @@ impl CapControl {
     /// `control_queue_push` and there is no `@ControlVars` write-back, so the
     /// host sets `PendingChange := code`, runs the guest `do_pending(code,
     /// proxy)`, and the shared switch block below acts on it (ABI §2.5).
+    ///
+    /// Returns `true` iff the guest `do_pending` trapped/faulted, which aborts
+    /// the solve (ABI §6 hard error, symmetric with [`Self::sample_user_control`]
+    /// — never a silent mid-run continue that would still switch the bank on a
+    /// faulted guest's `code`). The dispatcher lifts the request to
+    /// `solution_abort` after the borrow of the control ends.
+    #[must_use]
     pub(crate) fn do_pending_action(
         &mut self,
         code: i32,
         proxy: i32,
         cap: &mut dyn ControlledCapacitor,
         ctx: &mut CtrlCtx,
-    ) {
+    ) -> bool {
         // ControlledElement.ActiveTerminalIdx := 1 (terminal 1 is implicit).
         // Pascal `case ControlType of USERCONTROL: ... UserModel.DoPending`
         // (`CapControl.pas:725-733`).
         if self.control_type == CapControlType::UserControl {
             self.set_pending_change(code);
             if let Some(mut um) = self.user_model.take() {
+                let mut abort = false;
                 if um.exists() {
                     let name = self.ccd.cd.obj.name().to_string();
                     if let Err(e) = um.do_pending(code, proxy, Box::new(dss_usermodel::NoCallbacks))
                     {
-                        ctx.errors.push(DssDiagnostic::msg(
-                            format!("CapControl.{name}: user model `do_pending` failed: {e}"),
+                        // ABI §6: a wasm-only hard failure (trap/protocol/fuel/
+                        // memory) has no Pascal analogue — surface it loudly AND
+                        // abort, exactly like the `sample` trap path. Continuing
+                        // would still switch the bank on the faulted guest's
+                        // `code` (a mid-run numeric change §6 forbids).
+                        ctx.errors.push(DssDiagnostic::abort(
+                            format!(
+                                "CapControl.{name}: user model `do_pending` trapped/faulted: {e}"
+                            ),
                             Some(569),
                         ));
+                        abort = true;
                     }
                     for eff in um.drain_effects() {
                         route_non_queue_effect(&name, eff, ctx.errors);
                     }
                 }
                 self.user_model = Some(um);
+                if abort {
+                    // Skip the switch block, aborting the solve (parity with
+                    // `sample_user_control`'s early `return true` on trap).
+                    return true;
+                }
             }
         }
         match self.pending_change {
@@ -704,5 +745,8 @@ impl CapControl {
         self.voverride_event = false;
         self.should_switch = false;
         self.armed = false;
+
+        // No abort (only a USERCONTROL `do_pending` trap aborts, above).
+        false
     }
 }
