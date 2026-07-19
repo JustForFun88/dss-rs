@@ -670,12 +670,11 @@ fn cncables_without_spacing_errors() {
 
 // --- WP-U1.4 (wt-u14cond) — the 0.15.x `Conductors=` array (Line prop 34) -----
 //
-// The text `Conductors=` parse is upstream-broken (the `parse_conductor_proxy`
-// `GetDSSClass` case bug), so a real mixed list can only ever reach the object
-// via the resolved-refs entry point `set_object_ref_array(CONDUCTORS)` + the
-// `CONDUCTORS` side effect — exactly the path the parser would call after the §6
-// compat fix (and the JSON-import round-trip). These whitebox tests drive that
-// entry point directly (the established `wires=`/`cncables=` test precedent),
+// A real mixed `Conductors=` list reaches the object via the resolved-refs entry
+// point `set_object_ref_array(CONDUCTORS)` + the `CONDUCTORS` side effect —
+// exactly the path the (now r4133-parity, case-insensitive) text parser AND the
+// JSON-import round-trip call. These whitebox tests drive that entry point
+// directly (the established `wires=`/`cncables=` test precedent),
 // gating `set_conductors` / `conductors_phase_choice` / `conductor_choice_of` /
 // the `CONDUCTORS` side effect that were otherwise unreachable end-to-end.
 

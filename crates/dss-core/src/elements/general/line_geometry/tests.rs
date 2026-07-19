@@ -900,14 +900,13 @@ fn matrices_mixed_cn_ts_wire_match_capi015() {
 
 #[test]
 fn conductors_array_matches_mixed_capi015() {
-    // WP-U1.4 (wt-u14cond): the 0.15.x `Conductors=` array (prop 20). The text
-    // parse is upstream-broken (the `parse_conductor_proxy` `GetDSSClass` case
-    // bug), so a real mixed list reaches the object only through the resolved-ref
-    // entry point `set_object_ref_array(CONDUCTORS)` + the `CONDUCTORS` side
-    // effect — the path the parser calls after the §6 compat fix (and JSON
-    // import). This drives that entry point directly (the `wires=` test
-    // precedent), gating `apply_conductors` / per-conductor
-    // `change_line_constants_type` / `default_amps_from` / `conductor_choice_of`.
+    // WP-U1.4 (wt-u14cond): the `Conductors=` array (prop 20). A real mixed list
+    // reaches the object via the resolved-ref entry point
+    // `set_object_ref_array(CONDUCTORS)` + the `CONDUCTORS` side effect — the path
+    // the (now r4133-parity, case-insensitive) text parser AND JSON import call.
+    // This drives that entry point directly (the `wires=` test precedent), gating
+    // `apply_conductors` / per-conductor `change_line_constants_type` /
+    // `default_amps_from` / `conductor_choice_of`.
     //
     // The identical MIXED geometry as `matrices_mixed_cn_ts_wire_match_capi015`
     // (phase-1 CN, phase-2 TS, phase-3 CN, cond-4 bare wire), but the per-
