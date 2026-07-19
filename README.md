@@ -3,8 +3,10 @@
 A 1:1 behavioral port of the Free Pascal **DSS C-API** engine (the
 [dss-extensions](https://github.com/dss-extensions) build of EPRI's
 [OpenDSS](https://www.epri.com/pages/sa/opendss) distribution-system simulator)
-to **pure, safe Rust** — `#![forbid(unsafe_code)]` in every crate, no C
-bindings, ever. The product is a Rust-native library (`dss-core`) plus a CLI;
+to **pure, safe Rust** — `#![forbid(unsafe_code)]` in every product crate, no C
+bindings in the shipped engine, ever (the sole exception is the test-only
+`crates/dss-epri` oracle bridge, which drives the official EPRI DLL as a second
+live test oracle). The product is a Rust-native library (`dss-core`) plus a CLI;
 the sparse solver is pure-Rust [faer](https://github.com/sarah-quinones/faer-rs)
 wrapped in `dss-sparse` behind a KLUSolve-shaped API.
 
@@ -28,9 +30,10 @@ current official release in two independently-gated rungs
 
 Every deliberate divergence from r4133 (an FPC-vs-Delphi last-ulp / display
 floor, a dss_capi property-format difference, or a proven upstream bug we do or
-don't reproduce) is catalogued in **`docs/upgrade/DIVERGENCES.md`** and
-**`tests/corpus/known_diffs.json`**. There are **no "not yet ported" gaps**
-against r4133.
+don't reproduce) is catalogued in **`docs/upgrade/DIVERGENCES.md`** and pinned,
+case-by-case with measured envelopes, in the **gating divergence ledger
+`tests/corpus/ledger.json`**. There are **no "not yet ported" gaps** against
+r4133.
 
 ## Test gate
 
@@ -42,13 +45,14 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-`cargo test` includes the always-on live oracle-comparison gate
-(`crates/dss-core/tests/corpus_live.rs`), which compiles + solves the vendored
-corpus on both the Rust engine and the pinned dss-python oracle and compares the
-full assembled model live, so the pinned oracle (`tools/golden/PIN.txt`) must be
-installed. A second, **opt-in** channel drives the official EPRI binaries
-(r3723 / r4088 / r4133) via the AltDSS Oddie bridge (`tools/opendss/`) for
-upstream inventorying and the per-rung exit sweeps.
+`cargo test` includes the always-on unified live corpus gate
+(`crates/dss-core/tests/corpus_gate.rs`), which compiles + solves 514 manifest
+cases on the Rust engine and live-compares the full assembled model against
+**two oracles**: the pinned dss-python (`tools/golden/PIN.txt`, must be
+installed) and the official EPRI r4133 `OpenDSSDirect.dll` (git-tracked at
+`tools/opendss/bin/r4133/`, driven by the in-house `crates/dss-epri` bridge —
+Windows-only). Measured upstream divergences are pinned in the gating ledger
+`tests/corpus/ledger.json`, which fails the gate when stale. See `TESTING.md`.
 
 ## Where to read next
 

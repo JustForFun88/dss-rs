@@ -2,10 +2,11 @@
 //! `tools/oracle/oracle_server.py::run_case` (+ the `capture_*` helpers it shares
 //! with `tools/golden/gen_checkpoints.py`) against the raw r4133 DLL.
 //!
-//! The response is JSON-shape-identical to today's Oddie oracle
+//! The response is JSON-shape-identical to the retired Oddie oracle's
 //! (`CaseResult { node_order, n_steps, checkpoints, autoadd_log }`), so the Rust
-//! gate's `serde` deserialize and the `xcheck_bridge.py` bit-diff both accept it
-//! unchanged. Read order within a step matches `oracle_server` exactly (notably
+//! gate's `serde` deserialize accepts it unchanged (bit-diff-proven against the
+//! Python path by `xcheck_bridge.py`, itself retired with that stack in Phase
+//! E). Read order within a step matches `oracle_server` exactly (notably
 //! Powers-before-Currents in the element capture — the harmonics stale-`Iterminal`
 //! ordering, CLAUDE.md).
 

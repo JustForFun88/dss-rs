@@ -1,4 +1,4 @@
-# dss-rs — Pascal → Rust port of DSS C-API (OpenDSS engine)
+# dss-rs — pure-Rust OpenDSS engine (ported 1:1 from the Pascal DSS C-API)
 
 > **Ritual step 0 — source-integrity gate (every session, every plan, before anything
 > else — even before the model-tier check).** The Pascal at `.inputs/dss_capi` (186
@@ -10,11 +10,21 @@
 > unverifiable fabrication — far worse than stopping. (Canonical placement: `PLAN_SEQUENCE.md`
 > §Model-tier protocol, ahead of the tier/refuse check — binding for every plan.)
 
-1:1 behavioral port of the Free Pascal "DSS C-API" engine (vendored at
-`.inputs/dss_capi`) to pure safe Rust. **Read `PORTING_PLAN.md` first** — it is the
-authoritative roadmap and encodes binding decisions:
+The **1:1 behavioral port** of the Free Pascal "DSS C-API" engine (vendored at
+`.inputs/dss_capi`) to pure safe Rust is **finished** — final acceptance
+(PORTING_PLAN.md §6) executed and referee-certified 2026-07-11. `PORTING_PLAN.md`
+stays as the historical record of the binding porting decisions; the project's
+direction is now **post-acceptance**: pure idiomatic Rust (`DE_PASCALIZE_PLAN.md`),
+wasm-sandboxed user models (`WASM_USERMODELS_PLAN.md`), new methods and models,
+and r4133-and-beyond upstream semantics (`UPGRADE_PLAN` line, `PLAN_SEQUENCE.md`
+orders it all). Never argue from "we are a 1:1 port" — that stage is done; the
+binding invariants that survive it are:
 
-- `#![forbid(unsafe_code)]` in every crate; no C bindings ever.
+- `#![forbid(unsafe_code)]` in every **product** crate; no C bindings in the
+  shipped engine ever. The **sole exception** is the test-only oracle bridge
+  `crates/dss-epri` (`publish = false`): it drives the official EPRI
+  `OpenDSSDirect.dll` via `libloading` under `#![deny(unsafe_op_in_unsafe_fn)]`,
+  `#[cfg(windows)]`, and module-level `// SAFETY` docs, and never ships.
 - Sparse solver is pure-Rust **faer**, wrapped in `dss-sparse` behind a
   KLUSolve-shaped API.
 - No C-API export layer; the product is a Rust-native library (`dss-core`) + CLI.
@@ -22,13 +32,14 @@ authoritative roadmap and encodes binding decisions:
   (0.15.7, backend = dss_capi 0.14.5 — the exact vendored Pascal source).
   Goldens live in `tests/golden/`; regenerate only manually, with the pinned
   versions, via `tools/golden/*.py`.
-- A second, **opt-in** oracle channel drives official EPRI OpenDSS binaries
-  (r3723 / r4088 / r4133) via the AltDSS Oddie bridge — `tools/opendss/`
-  (separate venv, `PIN_OPENDSS.txt`). It never gates commits: divergence
-  **reports** only (`DSS_LIVE_OPENDSS=<rev>` test, `ab_compare.py` A/B diff),
-  for inventorying upstream changes ahead of porting newer engine behavior.
-  See `tools/opendss/README.md`.
-- Later phases may freely refactor earlier code; passing tests are the only contract.
+- A second **gating** oracle channel drives the official EPRI OpenDSS r4133
+  binary (git-tracked at `tools/opendss/bin/r4133/`) through the in-house
+  `crates/dss-epri` bridge (`epri-worker`). The unified corpus gate is
+  manifest-driven: each case declares `engines: "capi_v0145" | "r4133" |
+  "both"`, and measured upstream divergences are pinned per-case/per-channel in
+  the gating divergence ledger `tests/corpus/ledger.json` (fail-on-stale — see
+  TESTING.md). See `tools/opendss/README.md` for the artifact + bridge.
+- Any phase may freely refactor earlier code; passing tests are the only contract.
 
 ## `TODO(compat)` convention (see PORTING_PLAN.md §4.1)
 
@@ -41,8 +52,9 @@ marked `TODO(compat):` with an explanation and the intended clean fix.
   indistinguishable from a porting bug in the gates.
 - Do not use the `TODO(compat)` tag for anything else; it must stay greppable
   (`rg "TODO\(compat\)"`).
-- They are all wiped out in one dedicated pass after the 1:1 port reaches final
-  acceptance (PORTING_PLAN.md §6), regenerating goldens deliberately.
+- They are all absorbed in one dedicated pass — `DE_PASCALIZE_PLAN.md` Stage F
+  (the `oracle-parity` feature split; the Part IV dual-kernel table is the
+  closed inventory). Never delete a `TODO(compat)` site outside that pass.
 
 ## Known upstream bugs (`investigations/`)
 
@@ -85,19 +97,27 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Those three commands are the mandatory gate. The live oracle-comparison gate
-(`crates/dss-core/tests/corpus_live.rs`) is now part of `cargo test` and runs
-**unconditionally** (no `DSS_LIVE_ORACLE` env gate): it compiles + solves the
-vendored corpus `tests/corpus/electricdss-tst` on both the Rust engine and the
-pinned oracle and compares the full model live. The pinned dss-python oracle
-(`tools/golden/PIN.txt`) must therefore be installed to run `cargo test` — without
-it `corpus_live_solvable_cases_match_oracle` fails rather than skipping. New tests
-read feeders from that vendored corpus, never from `.inputs/` at runtime.
+Those three commands are the mandatory gate. The unified live corpus gate
+(`crates/dss-core/tests/corpus_gate.rs`, successor of `corpus_live.rs`) is part
+of `cargo test` and runs **unconditionally**: one scheduler-driven test
+(`corpus_gate_all_cases_match_engines`) compiles + solves all 514 manifest cases
+(vendored `tests/corpus/electricdss-tst` decks + the three synthetic families)
+on the Rust engine and live-compares the full model against each case's gating
+channel(s) — the pinned dss-python oracle (`capi_v0145`) and/or the EPRI r4133
+DLL (`r4133`), partitioned by the divergence ledger `tests/corpus/ledger.json`
+(every entry must be hit; stale entries fail the gate). Prerequisites: the
+pinned dss-python (`tools/golden/PIN.txt`) must be installed — without it the
+gate fails rather than skipping; the r4133 DLL is git-tracked and its
+`epri-worker` bridge is built by `cargo test` itself (Windows-only —
+`crates/dss-epri` is `#[cfg(windows)]`). New tests read feeders from the
+vendored corpus, never from `.inputs/` at runtime.
 
 **`TESTING.md`** is the map of the whole test infrastructure — the layers (unit
-/ golden / live oracle / corpus hygiene / opt-in EPRI channel), the env-var
-knobs, and the procedures (regenerate goldens, add a corpus deck, triage an
-EPRI divergence). Read it to find where a given kind of test lives.
+/ golden / unified corpus gate / corpus hygiene), the env-var knobs
+(`DSS_GATE_*`, `DSS_ORACLE_*`, …), and the procedures (regenerate goldens, add
+a corpus case, triage a divergence into the ledger, re-vendor the r4133
+binary, run the seeding report). Read it to find where a given kind of test
+lives.
 
 ## Git worktrees — safe deletion (`.inputs`/`.venv` junction hazard)
 

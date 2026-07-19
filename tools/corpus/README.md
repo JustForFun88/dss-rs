@@ -11,6 +11,7 @@ manifests (the "no silent omission" bijection enforced by `corpus_manifest.rs`).
   turns a `DSS_LIVE_CLASSIFY=1` report into manifest moves.
 - **`coverage_report.py`** — corpus coverage summary (`tests/corpus/COVERAGE.md`).
 - **`gen_gaps_binshapes.py`** moved to `tools/decks/gen_shape_fixtures.py`;
-  `dsspy_crosscheck.py` moved to `tools/opendss/` (EPRI-channel concern).
+  `dsspy_crosscheck.py` was retired with the Python EPRI stack (UNIFIED_GATE
+  Phase E, 2026-07-19 — recoverable from git history if ever needed).
 
 See `CORPUS_TEST_PLAN.md` and `TESTING.md`.
