@@ -423,22 +423,42 @@ impl Generator {
             3 => self.do_pv_type_gen(sys, node_v),
             4 => self.do_fixed_q_gen(sys, node_v),
             5 => self.do_fixed_qz_gen(sys, node_v),
-            6 => {
-                // User-written model DLL — never ported. Pascal inits InjCurrent
-                // then records error 567 (generator.pas:1795).
-                self.calc_yprim_contribution(node_v);
-                errors.push(crate::diag::DssDiagnostic::msg(
-                    format!(
-                        "{}.{} model designated to use user-written model, but user-written \
-                         model is not defined.",
-                        "Generator",
-                        self.cd.obj.name()
-                    ),
-                    Some(567),
-                ));
-            }
+            6 => self.do_user_model(sys, node_v, errors),
             7 => self.do_current_limited_pq(sys, node_v),
             _ => self.do_constant_pq_gen(sys, node_v),
+        }
+    }
+
+    /// Pascal `TGeneratorObj.DoUserModel` (`generator.pas:1816-1835`): the
+    /// power-flow terminal current from a `Model=User` (`GenModel=6`) WASM user
+    /// model. Init `InjCurrent` from Yprim, run `UserModel.FCalc(Vterminal,
+    /// Iterminal)`, and negate the returned terminal currents into `InjCurrent`.
+    /// A missing model records #567 and falls back to Yprim only.
+    pub(super) fn do_user_model(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        self.calc_yprim_contribution(node_v); // init InjCurrent + Vterminal
+        if self.user_model_fcalc(sys, node_v, errors) {
+            // Pascal `IterminalUpdated := TRUE` (the setter also stamps
+            // `IterminalSolutionCount`, as in `DoDynamicMode`).
+            self.cd.iterminal_updated = true;
+            self.cd.iterminal_solution_count = sys.solution_count;
+            let nconds = self.cd.nconds;
+            for i in 0..nconds {
+                self.cd.inj_current[i] -= self.cd.iterminal[i];
+            }
+        } else {
+            errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Generator.{} model designated to use user-written model, but user-written \
+                     model is not defined.",
+                    self.cd.obj.name()
+                ),
+                Some(567),
+            ));
         }
     }
 
