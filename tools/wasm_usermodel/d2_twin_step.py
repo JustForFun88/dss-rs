@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""d2_twin_direct.py — WM.3 D2 sub-bug #2 investigation.
+"""d2_twin_step.py — WM.3 D2 sub-bug #2 DECISIVE twin-Integrate experiment.
 
-Drive the r3723 244-B native twin DLL DIRECTLY (ctypes, no OpenDSS engine) with
-the wasm_gen_dyn machine params + the deck's converged snapshot terminal V/I,
-running the exact guest lifecycle New -> Edit -> CalcPFlow -> Init -> CalcDynamic
-(and optionally the engine's per-step Integrate/Calc order). Reads |Is1| (var 8).
+Settles audit-code D2F-1/D2F-2: the earlier `d2_twin_direct.py` stopped at
+Init+CalcDynamic (the STEP-0/pflow point everyone already agrees on) and never
+called `dll.Integrate()` — so "guest Integrate is bit-exact on the divergent
+path" was asserted on a path never exercised. This probe drives the SAME 244-B
+twin DLL through a full manual dynamics step:
 
-Purpose: isolate the GUEST MODEL MATH from the OpenDSS ENGINE FLOW. This probe
-covers Init+CalcDynamic only (it does NOT call `Integrate` — that path is
-exercised by the companion `d2_twin_step.py`, which drives a full step with V
-held fixed and calls `dll.Integrate()`). Here the twin's Init+CalcDynamic gives
-|Is1| = 189.10 (the power-flow point), BIT-IDENTICAL to the Rust engine + wasm
-fixture. Together with `d2_twin_step.py` (guest keeps 189.10 at h=1e-9 with V
-fixed) this shows the guest math is not the bug; the ~5e-4 D2 divergence lives
-entirely in how the OpenDSS engine drives the machine to the dynamic operating
-point (|Is1| = 189.207) at the first dynamics step — an h-independent jump the
-guest's own Init/Integrate does not produce with fixed inputs.
+    Init(Vsnap, Ipf)
+    predictor:  Calc(Vsnap)  Integrate(flag=0)
+    corrector:  Calc(Vsnap)  Integrate(flag=1)
 
-Usage:  python d2_twin_direct.py <path-to-244B-IndMach012a.dll>
-Env:    PNOM (Pnominalperphase, default -1333333.333), PREINIT=1 (run a
-        dynamics-mode CalcDynamic with E1=0 before Init — disproven hypothesis,
-        kept for reproducibility).
+with the terminal voltage HELD FIXED at the converged pflow snapshot, reading
+|Is1| (var 8) after every sub-call. If the guest keeps |Is1| at the pflow point
+(189.10) with V fixed, then the guest Integrate CANNOT produce the oracle's
+h-independent jump to the dynamic operating point (189.207) on its own — the
+jump is therefore driven by the ENGINE's per-step network re-solve (the V fed
+back to the guest), i.e. host/engine flow, not the guest math. This is the
+direct, in-isolation test of the divergent path.
+
+Usage:  python d2_twin_step.py <path-to-244B-IndMach012a.dll>
+Env:    PNOM (Pnominalperphase), H (step, default 1.67e-4; also try 1e-9).
 """
 import ctypes
 import os
@@ -29,8 +29,6 @@ from ctypes import (POINTER, WINFUNCTYPE, c_char_p, c_double, c_int32, c_uint32,
                     c_void_p)
 
 
-# 244-B r3723/0.14.5 TGeneratorVars (NO deltaQNom — the ABI the pinned
-# dss-python 0.14.5 passes; see USERMODEL_ABI.md Appendix A).
 class TGeneratorVars(ctypes.Structure):
     _pack_ = 1
     _fields_ = [(n, c_double) for n in (
@@ -63,14 +61,13 @@ class TDSSCallBacks(ctypes.Structure):
 
 
 W0 = 376.99111843077515
-# wasm_gen_dyn snapshot terminal V (node voltages) + converged pflow I (phase),
-# read from the pinned 0.14.5 oracle (Generator.g1 elem.Voltages / .Currents).
 V_SNAP = [(7953.625204515, 88.64099508475),
           (-3900.047249411, -6932.361976063),
           (-4053.577954327, 6843.720982325)]
 I_PF = [(-168.0557335539, -86.69697178087),
         (8.946086099594, 188.889020314),
         (159.1096474543, -102.1920485331)]
+DYNAMICMODE = 14
 
 
 def main():
@@ -101,7 +98,8 @@ def main():
     gen.NumConductors = 3
     gen.Conn = 1
     dyn = TDynamicsRec()
-    dyn.h = 0.000166667
+    h = float(os.environ.get("H", "0.000166667"))
+    dyn.h = h
     dyn.SolutionMode = 0
     dll.New(ctypes.byref(gen), ctypes.byref(dyn), ctypes.byref(cb))
     dll.Edit(b"Rs=0.0053 Xs=0.106 Rr=0.007 Xr=0.12 Xm=4 MaxSlip=0.1", 100)
@@ -118,23 +116,34 @@ def main():
 
     vin = mk(V_SNAP)
     iout = arr6(*([0.0] * 6))
-    for _ in range(20):
+    # converge power flow (SolutionMode = 0 => CalcPflow)
+    for _ in range(30):
         dll.Calc(ctypes.byref(vin), ctypes.byref(iout))
-    print(f"after pflow: slip(var1)={gv(1):.14e} |Is1|(var8)={gv(8):.10f}")
+    print(f"pflow converged:            slip={gv(1):.12e}  |Is1|={gv(8):.10f}")
 
-    dyn.SolutionMode = 14
-    dyn.h = 0.000166667
-    if os.environ.get("PREINIT") == "1":
-        dyn.IterationFlag = 0
-        dll.Calc(ctypes.byref(vin), ctypes.byref(iout))
-        print(f"pre-Init CalcDyn(E1=0): |Is1|(var8)={gv(8):.10f}")
+    # enter dynamics: Init at the pflow operating point
+    dyn.SolutionMode = DYNAMICMODE
     dll.Init(ctypes.byref(vin), ctypes.byref(mk(I_PF)))
-    print(f"after Init: |Is1|(var8)={gv(8):.10f}")
+    print(f"after Init:                 slip={gv(1):.12e}  |Is1|={gv(8):.10f}")
+
+    # ---- one FULL dynamics step, V held FIXED at the pflow snapshot ----
+    # predictor
     dyn.IterationFlag = 0
     dll.Calc(ctypes.byref(vin), ctypes.byref(iout))
-    print(f"after Init+CalcDyn(Vsnap): |Is1|(var8)={gv(8):.10f}")
-    print("  -> 189.10 => guest gives the PFLOW point (== Rust engine, guest is bit-exact)")
-    print("  -> the engine drives it to 189.207 (dynamic point): the D2 bug is engine-flow")
+    print(f"pred Calc  (V fixed):       slip={gv(1):.12e}  |Is1|={gv(8):.10f}")
+    dll.Integrate()
+    dll.Calc(ctypes.byref(vin), ctypes.byref(iout))
+    print(f"pred Integrate+Calc:        slip={gv(1):.12e}  |Is1|={gv(8):.10f}")
+    # corrector
+    dyn.IterationFlag = 1
+    dll.Calc(ctypes.byref(vin), ctypes.byref(iout))
+    print(f"corr Calc  (V fixed):       slip={gv(1):.12e}  |Is1|={gv(8):.10f}")
+    dll.Integrate()
+    dll.Calc(ctypes.byref(vin), ctypes.byref(iout))
+    print(f"corr Integrate+Calc:        slip={gv(1):.12e}  |Is1|={gv(8):.10f}")
+    print(f"  h={h:g}. pflow point |Is1|=189.10; oracle engine reaches 189.207 h-INDEP.")
+    print("  If |Is1| stays ~189.10 with V fixed => the guest Integrate does NOT")
+    print("  produce the jump; it is the engine's V-feed / network re-solve.")
 
 
 if __name__ == "__main__":
