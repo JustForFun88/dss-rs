@@ -25,9 +25,10 @@
 //! `PAnsiChar`/pointer+type+size out-params — no OLE Variants, no COM), so Rust
 //! reads it natively. This drops the entire dss-extensions stack (two beta
 //! wheels) and the ~1.5–2.5 s Python startup per call, and unifies the harness
-//! language. The bridge is fidelity-proven by bit-for-bit cross-validation
+//! language. The bridge was fidelity-proven by bit-for-bit cross-validation
 //! against the outgoing Python/Oddie path over the full corpus universe
-//! (`tools/opendss/xcheck_bridge.py`) before anything Python is retired.
+//! (`tools/opendss/xcheck_bridge.py`) before that Python stack — the
+//! cross-check script included — was retired in UNIFIED_GATE Phase E.
 //!
 //! ## Layout
 //! - [`ffi`] — raw `extern "C"` signatures + `libloading` load of the DLL with

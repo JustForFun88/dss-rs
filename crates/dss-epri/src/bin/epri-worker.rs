@@ -1,8 +1,10 @@
 //! `epri-worker` — the persistent r4133 bridge worker (UNIFIED_GATE_PLAN.md
 //! §3.2). Speaks the same line-JSON `ping`/`run`/`quit` protocol as
 //! `tools/oracle/oracle_server.py`, producing byte-compatible `CaseResult`
-//! responses so `harness/mod.rs` comparators and `xcheck_bridge.py` accept it
-//! unchanged.
+//! responses so the `harness/mod.rs` comparators accept it unchanged
+//! (bit-compat vs the outgoing Python/Oddie path was proven by
+//! `xcheck_bridge.py` before that whole stack — script included — was
+//! retired in UNIFIED_GATE Phase E).
 //!
 //! Modes:
 //! - `--smoke` — run the oracle-free self-smoke and exit (replaces

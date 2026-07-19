@@ -2,7 +2,7 @@
 //! polling, the V-protocol decode, and the individual accessors used to build a
 //! `CaseResult`. Everything here mirrors what dss-python's `IOddieDSS` returns
 //! for the *same* engine memory, so the captures are byte-for-byte comparable
-//! (verified by `tools/opendss/xcheck_bridge.py`).
+//! (verified by `tools/opendss/xcheck_bridge.py` before its Phase E retirement).
 //!
 //! # SAFETY
 //! All FFI calls go through `self.dll`'s function pointers, whose validity is
@@ -656,7 +656,7 @@ pub struct Ycsc {
 /// The Pascal writes `name\0` per element (so the buffer ends with `\0`), and the
 /// header path writes one extra `\0`. Oddie reads the buffer as NUL-terminated
 /// C-strings until it is consumed (token count == number of `\0`). Empirically
-/// (`tools/opendss/xcheck_bridge.py` ground truth): drop exactly one trailing
+/// (ground truth = the since-retired `tools/opendss/xcheck_bridge.py`): drop exactly one trailing
 /// `\0`, split on `\0`, and lstrip a single leading space from element 0 (the
 /// monitor-header first-column artifact — `[' V1', ...] → ['V1', ...]`).
 ///
