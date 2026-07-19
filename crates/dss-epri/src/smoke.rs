@@ -123,9 +123,14 @@ pub fn run_smoke() -> Result<SmokeReport, String> {
         inj.len()
     ));
 
-    // 5. all-properties enumeration round-trips (§2.2 report-tooling parity):
-    // `DSSElementV` (AllPropertyNames) + `? name.prop` value reads. Re-reading the
-    // first element's first property directly must equal the dumped value.
+    // 5. all-properties enumeration is readable + deterministic (§2.2
+    // report-tooling parity, capability-only — NOT a gating channel): `DSSElementV`
+    // (AllPropertyNames) + `? name.prop` value reads. Re-reading the first element's
+    // first property directly must equal the dumped value. This proves the
+    // enumeration is non-empty and the getter is deterministic (same code path both
+    // times) — it is NOT a value-correctness check against an independent baseline
+    // (fix-round audit F1: the r4133 all-props capture is report tooling; the pinned
+    // capi oracle, not this smoke, gates property correctness).
     let dump = crate::capture::all_properties_dump(&engine).map_err(|e| e.to_string())?;
     if dump.is_empty() {
         return Err("all_properties dump is empty (no elements enumerated)".to_string());
@@ -144,7 +149,7 @@ pub fn run_smoke() -> Result<SmokeReport, String> {
     }
     let total: usize = dump.iter().map(|p| p.props.len()).sum();
     lines.push(format!(
-        "all_properties OK: {} elements, {total} property values, round-trip verified",
+        "all_properties OK: {} elements, {total} property values, dump non-empty + getter re-read consistent",
         dump.len()
     ));
 

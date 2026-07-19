@@ -2107,6 +2107,44 @@ HIT (1041 total hits) and non-stale in the full gate.
 active, population lock regenerated (diff = 18 engine flips + 18 ledger tags), dss-epri
 smoke green (all_properties round-trip). `tests/corpus` pristine; junctions intact.
 
+**Post-audit settlement (2026-07-19).** Two independent audits (audit-code, audit-tests)
+of the fix round returned FOUR low-severity findings; each settled empirically (live
+engines, code path, gating topology), no tolerance/envelope loosened:
+- **exact-pair-numeric drift-safety (audit-code F1 / audit-tests F2) — FIXED.** The
+  exact-pair-NUMERIC branch only marked stale on `rust==oracle`, so a port regression to
+  a THIRD value (still `!= oracle`) with no `rust` pin would pass silently. Added a
+  MANDATORY `assert!(sc.rust.is_some(), …)` to both `probe_handled` and
+  `property_handled` (mirrors the non-numeric path's mandatory `oracle` guard).
+  Strengthening only; the sole live exact-pair-numeric entry (`capi-linespacing-normamps`)
+  pins `rust`=230/345, so the gate stays green. Closes the last soft spot in the new
+  machinery.
+- **all_properties smoke wording (audit-tests F1) — FIXED (wording).** The smoke check
+  re-reads the same `? name.prop` getter that built the dump (proves enumeration
+  non-empty + getter determinism, NOT value correctness vs an independent baseline).
+  Reworded "round-trip verified" → "dump non-empty + getter re-read consistent" and
+  expanded the comment: capability-only report tooling per §2.2; the pinned capi oracle,
+  not this smoke, gates property correctness.
+- **storage-display 1e-5 vs gfm 1e-6 for %stored (audit-tests F3) — NO CHANGE (no
+  defect), rationale recorded.** Not an arbitrary looseness: storagecontroller cases are
+  `engines=both`, so the **capi channel strict-gates `Storage.%stored` at full f64** via
+  `compare_all_properties` (the r4133 storage-display scopes are `probe`, which never
+  remove %stored from the capi all-properties compare) — a real port %stored drift is
+  caught there. The r4133 `num_rel`=1e-5 only absorbs Delphi's 6-sig-fig display across
+  the whole Storage class (incl. large-mantissa kw/kwhstored, ceiling 5e-6). gfm cases
+  are `engines=r4133`-only (0.14.5's Isc1 default shifts system-Y ×1000 → capi cannot
+  gate), so their 1e-6 is the SOLE %stored check and must be tight. Different gating
+  topology, no masking.
+- **line_spacing property scopes "inert" (audit-tests F4) — NO CHANGE (not a defect),
+  scopes retained.** The finding reads the static lock `props=0`, but `force_properties`
+  sets `compare_all_properties=true` at RUNTIME for asymmetric-family Live capi cases
+  (`ASYMMETRIC.compare_all_properties=true`; `line_spacing_asym` `engines=both` →
+  `gates_capi`). So on the capi channel the deck DOES capture all_properties and both
+  `property` scopes (Line.lsp.normamps/emergamps) run and are pinned — confirmed by the
+  green gate now that the mandatory-`rust` guard above is active on them.
+- Gate re-run recovered from a transient Windows incremental-compilation linker flake
+  (`LNK2019` anon.llvm/serde_json symbols, unrelated to the edits) by clearing
+  `target/debug/incremental` and rebuilding with `CARGO_INCREMENTAL=0` — green.
+
 ## 1j. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
 
 `DE_PASCALIZE_PLAN.md` §P5a executed (P5b spans / P5c CLI presentation out of
