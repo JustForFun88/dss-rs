@@ -2252,6 +2252,60 @@ engines, code path, gating topology), no tolerance/envelope loosened:
   (`LNK2019` anon.llvm/serde_json symbols, unrelated to the edits) by clearing
   `target/debug/incremental` and rebuilding with `CARGO_INCREMENTAL=0` — green.
 
+## 1m. UNIFIED_GATE Phase E — retire the Python EPRI stack + r3723/r4088 (branch `ug-phase-e`)
+
+`UNIFIED_GATE_PLAN.md` §4-E / §6-E executed: the retired opt-in EPRI-python
+channel (Oddie bridge, dss-python 0.16.0b2/backend wheels, r3723/r4088 binaries)
+is gone. The unified gate's two live oracles are unchanged — `capi_v0145`
+(pinned dss-python via `tools/oracle/oracle_server.py`) and `r4133` (in-house
+`crates/dss-epri` bridge over the git-tracked `bin/r4133` DLL).
+
+**Deleted (git rm, 27 files):** `tools/opendss/` scripts
+`ab_compare.py`, `smoke.py`, `dsspy_crosscheck.py`, `gen_ad_reference.py`,
+`probe_59n.py`, `sweep_modes_isolated.py`, `sweep_merge.py`, `xcheck_bridge.py`;
+`dsspy_validation/` (5 files); `wheels/` (2 beta wheels + SHA256SUMS);
+`PIN_OPENDSS.txt`; `bin/r3723/**` (5) + `bin/r4088/**` (5).
+
+**Pruned to r4133-only:** `revisions.json`, `bin/SHA256SUMS` (verified
+`sha256sum -c` OK), `bin/README.md`, `vendor_binaries.py` (REVISIONS dict +
+README template), `README.md` (rewritten: r4133 artifact + Rust `epri-worker`
+bridge + re-vendor procedure). `oracle_server.py` pruned to the `capi` engine
+only — removed the `capi015`/`oddie` `make_engine` arms, `_oddie_get_y_sparse`,
+`_read_pin_opendss`, `OPENDSS_DIR`/`REPO_ROOT`, the Oddie `capture_eventlog`
+export-CSV branch, and the `clear` cmd (only the deleted `xcheck_bridge.py` used
+it); `DSS_ORACLE_ENGINE` now accepts only `capi` (anything else exits non-zero,
+no silent pass). Stale comments referencing the deleted harness fixed in
+`corpus_guard.py` and `epri-worker.rs`.
+
+**rg sweep verdict** (`rg -i "oddie|capi015|r3723|r4088|dss_python_backend|0.16.0b2"`):
+no LIVE code/config wiring to the retired channel remains — no manifest carries an
+`oracle:"r3723|r4088|capi015"` field (all gating is via `engines`, values
+`both`/`capi_v0145`/`r4133`); no executable reference (import/spawn/config) to any
+deleted script survives; CI/`Cargo.toml`/`.gitignore` clean. All remaining matches
+are legitimate-survivor classes: (a) historical docs (STATUS, `docs/plans-archive`,
+`docs/upgrade/*`, `docs/phase-records/*`, `docs/wasm/*`) and root plan files
+(`*_PLAN.md`, `PLAN_SEQUENCE.md`, `README.md`); (b) `CLAUDE.md`/`TESTING.md` (Phase
+F rewrites these); (c) behavioral-spec / oracle-provenance citations in
+`crates/dss-core/src/**` and test docs (which oracle calibrated a value —
+`capi015`/`oddie:r4133`/`r4088`, analogous to STATUS records, not live wiring);
+(d) golden generators `tools/golden/gen_*.py` (UNTOUCHED per the gate rules; frozen
+manual tooling — `gen_protection.py` reads r4133 from `revisions.json`, still valid);
+(e) frozen corpus fixtures — `.dss` deck comments + manifest `note`/`ledger` cause
+provenance; (f) committed AD trusted-baseline data `tests/data/adiakoptics/r3723_ref/`
++ its PROVENANCE.txt; (g) WASM/FPC ABI lineage (`tools/fpc/usermodel_abi`,
+`docs/wasm`, `WASM_USERMODELS_PLAN.md`) referencing the vendored SOURCE tree
+`electricdss-code-r3723-trunk`, not the retired binary channel; (h) retirement-guard
+assertions in `corpus_gate/engines.rs` that assert the pinned ping never reports an
+`oddie`/`capi015` marker (they enforce the retirement and stay green).
+
+**venv:** `tools/opendss/.venv` in main is already empty (2026-07-19 incident);
+the coordinator removes that empty dir in MAIN separately (junction-safe, CLAUDE.md).
+This worktree's `.venv` is a junction — not touched.
+
+**Gate:** `cargo fmt --all --check` + `cargo clippy --workspace --all-targets
+-- -D warnings` + `cargo test --workspace` green at defaults (both oracle channels
+prove they still work); `tests/corpus` pristine; junctions intact.
+
 ## 1j. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
 
 `DE_PASCALIZE_PLAN.md` §P5a executed (P5b spans / P5c CLI presentation out of
