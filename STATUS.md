@@ -7,6 +7,46 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### BUG WP regcontrol_idle — idle no-load zone: adopt r4133 bounded-AND (2026-07-19)
+
+Root-caused and resolved the `controls/regcontrol/regcontrol_idle.dss`
+`defer_ledger` occurrence (ORPHANED_GAPS §1.9). The 8.8 % MV-bus divergence
+(port MV.1 = 7030.24 V / tapnum 0 vs r4133 7650.08 V / tapnum 15) was a **port
+bug relative to r4133**, not a ledgerable divergence.
+
+- **Cause.** The port faithfully reproduced dss_capi 0.15.x's idle no-load-zone
+  test written as an **OR** — `(FwdPower ≥ RevThr) or (FwdPower ≤ FwdThr)` — a
+  **tautology** under the default symmetric ±100 kW band (every value is
+  ≥ −100 kW OR ≤ +100 kW), so an idling reg NEVER taps for any load. EPRI
+  r4088/r4133 use the correct **bounded AND** (`RegControl.pas:1218`):
+  `(FwdPower ≤ FwdThr) and (FwdPower ≥ RevThr)` — idle only when the
+  through-power is *inside* [RevThr, FwdThr].
+- **Dated** (git `.inputs/dss_capi_with_git`): the OR is `8a898cba` "port SVN
+  r4086" and is STILL OR at the 0.15.x branch tip (`e936d210`); r4088 & r4133
+  have AND; r3723 & 0.14.5 have no idle feature.
+- **Live r4133 probes** (`epri-worker`): with the default band idle=yes taps
+  identically to idle=no (tapnum 15, MV.1 7650.08 V — FwdPower ≈ 7438 kW, far
+  outside the band). Widening `fwdThreshold` to 1e6 kW so the bounded zone
+  brackets the ~7.03e6 W throughput makes r4133 *idle* to exactly the port's old
+  MV.1 7030.24 V (probe D) — a direct proof of the bounded-AND mechanism.
+- **Resolution (verdict b — adopt r4133).** `idle` is 0.15-only (0.14.5 rejects
+  #110; the one pinned idle golden `props/regcontrol.json::regcontrol_idlezones`
+  pins property readback only, no no-load-zone solve). The port adopts r4133's
+  AND (`reg_control/control_loop.rs`) + a regression unit test pinning the
+  high-power (out-of-band) tap. Flipped the case from `defer_ledger` to live
+  `engines:"r4133"` gating — tap/voltage/full-model now match r4133 exactly.
+- **Residual ledgered.** The revThreshold/fwdThreshold **getter convention**
+  differs: r4133 returns the `InitPropertyValues` display strings
+  (revThreshold '100', fwdThreshold '') decoupled from the signed internal,
+  while the port reports the signed effective thresholds in kW (−100 / +100 —
+  which matches dss_capi 0.15.x, pinned by `regcontrol_idlezones`). Definitional,
+  not physics → exact-pair `probe` divergence
+  `r4133-regcontrol-idle-threshold-display` (cause `regcontrol-idle` rewritten).
+  Population lock regenerated (one-digest diff: defer 1→0 + ledger digest).
+- **Gate green** (`cargo fmt`/`clippy`/`test --workspace`, wall ≈ 340 s;
+  dss-core lib 1247 + corpus_gate 25 incl. the full unified gate). Corpus
+  pristine.
+
 ### UNIFIED_GATE Phase 0 — baseline recorded (2026-07-18)
 
 `UNIFIED_GATE_PLAN.md` execution started (parallel worktree agents; Phases
