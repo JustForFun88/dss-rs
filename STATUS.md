@@ -7,6 +7,76 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### BUG WP regcontrol_idle — idle no-load zone: adopt r4133 bounded-AND (2026-07-19)
+
+Root-caused and resolved the `controls/regcontrol/regcontrol_idle.dss`
+`defer_ledger` occurrence (ORPHANED_GAPS §1.9). The 8.8 % MV-bus divergence
+(port MV.1 = 7030.24 V / tapnum 0 vs r4133 7650.08 V / tapnum 15) was a **port
+bug relative to r4133**, not a ledgerable divergence.
+
+- **Cause.** The port faithfully reproduced dss_capi 0.15.x's idle no-load-zone
+  test written as an **OR** — `(FwdPower ≥ RevThr) or (FwdPower ≤ FwdThr)` — a
+  **tautology** under the default symmetric ±100 kW band (every value is
+  ≥ −100 kW OR ≤ +100 kW), so an idling reg NEVER taps for any load. EPRI
+  r4088/r4133 use the correct **bounded AND** (`RegControl.pas:1218`):
+  `(FwdPower ≤ FwdThr) and (FwdPower ≥ RevThr)` — idle only when the
+  through-power is *inside* [RevThr, FwdThr].
+- **Dated** (git `.inputs/dss_capi_with_git`): the OR is `8a898cba` "port SVN
+  r4086" and is STILL OR at the 0.15.x branch tip (`e936d210`); r4088 & r4133
+  have AND; r3723 & 0.14.5 have no idle feature.
+- **Live r4133 probes** (`epri-worker`): with the default band idle=yes taps
+  identically to idle=no (tapnum 15, MV.1 7650.08 V — FwdPower ≈ 7438 kW, far
+  outside the band). Widening `fwdThreshold` to 1e6 kW so the bounded zone
+  brackets the ~7.03e6 W throughput makes r4133 *idle* to exactly the port's old
+  MV.1 7030.24 V (probe D) — a direct proof of the bounded-AND mechanism.
+- **Resolution (verdict b — adopt r4133).** `idle` is 0.15-only (0.14.5 rejects
+  #110; the one pinned idle golden `props/regcontrol.json::regcontrol_idlezones`
+  pins property readback only, no no-load-zone solve). The port adopts r4133's
+  AND (`reg_control/control_loop.rs`) + a regression unit test pinning the
+  high-power (out-of-band) tap. Flipped the case from `defer_ledger` to live
+  `engines:"r4133"` gating — tap/voltage/full-model now match r4133 exactly.
+- **Residual ledgered.** The revThreshold/fwdThreshold **getter convention**
+  differs: r4133 returns the `InitPropertyValues` display strings
+  (revThreshold '100', fwdThreshold '') decoupled from the signed internal,
+  while the port reports the signed effective thresholds in kW (−100 / +100 —
+  which matches dss_capi 0.15.x, pinned by `regcontrol_idlezones`). Definitional,
+  not physics → exact-pair `probe` divergence
+  `r4133-regcontrol-idle-threshold-display` (cause `regcontrol-idle` rewritten).
+  Population lock regenerated (one-digest diff: defer 1→0 + ledger digest).
+- **Gate green** (`cargo fmt`/`clippy`/`test --workspace`, wall ≈ 340 s;
+  dss-core lib 1247 + corpus_gate 25 incl. the full unified gate). Corpus
+  pristine.
+- **Audit settle (2 opus xhigh audits, both PASS — no weakening).** Three low
+  findings settled:
+  - *(F1, both audits — fixed)* The `regcontrol_idle.dss` header comment still
+    described the removed OR behavior ("tap stays at neutral, |V|≈0.864 pu").
+    Rewritten to the adopted r4133 bounded-AND semantics (deep under-voltage →
+    large through-power → outside the ±100 kW no-load band → taps to tapnum 15 /
+    MV.1 ≈ 7650.08 V, identical to idle=no). Comment-only; solver ignores it.
+  - *(F2, audit-tests — fixed)* `TESTING.md` ledger count was stale (25→26
+    entries; the r4133 divergence sub-count 20→21). Updated; the "20 documented
+    causes" line is unchanged (the new entry reuses the pre-existing
+    `regcontrol-idle` cause_ref, present in the causes dict at both base and head).
+  - *(F2, audit-code — deliberate NON-fix, rationale recorded)* `end_edit`
+    (`accessors.rs:347-348`) mirrors the RevThreshold-only legacy band with
+    `Fwd := abs(Rev); Rev := -Fwd`, faithfully porting **dss_capi 0.15.x**
+    (`8a898cba` — whose own comment states *"'abs' added to ensure correct
+    behavior (RevPowerThreshold < FwdPowerThreshold)"*, an intentional fix of
+    EPRI's inverted-band quirk). r4133 `RegControl.pas:503-506` instead does
+    plain `kWFwd := kWRev; kWRev := -kWRev`. **Kept the abs**, NOT changed to
+    r4133's negate: (1) pre-existing, not touched by this WP (out of scope — the
+    WP adopted r4133 only for the no-load *zone* AND); (2) the two conventions
+    are behaviorally **identical** on every existing test — all pinned goldens
+    (`props/regcontrol.json`) use positive-revThreshold-only or both-set inputs
+    where abs≡negate; they diverge only on an untested NEGATIVE-revThreshold-only
+    input, which no deck or golden exercises; (3) the port's abs matches the
+    capi015-probed `regcontrol_idlezones` props golden convention (RevThreshold
+    signed display), so adopting r4133's negate would REINTRODUCE the inverted/
+    empty band that dss_capi deliberately fixed and create an unpinned, ungated
+    behavior. Verified empirically: filtered gate (`DSS_GATE_ONLY=
+    regcontrol/regcontrol_idle`) green, port matches r4133 live, ledger entry
+    hit 2×.
+
 ### UNIFIED_GATE Phase 0 — baseline recorded (2026-07-18)
 
 `UNIFIED_GATE_PLAN.md` execution started (parallel worktree agents; Phases
@@ -753,6 +823,142 @@ is no regression to fix):
   must match the native DLL byte-for-byte — is its correct and only home. The
   gated `records.rs` pin covers exactly what crosses (the 244-B wasm image). By
   design, not a regression.
+
+### WASM-UM WP-WM.3 — Generator integration + oracle gate (branch `wasm-wm3`, 2026-07-19)
+
+The flagship WP: Generator `UserModel=`/`UserData=`/`ShaftModel=`/`ShaftData=`
+over WASM, all `generator.pas` §1.1 call sites, first end-to-end oracle gate
+through the r4133 bridge (recorded decision — not pinned dss-python).
+
+**Landed (plan §WP-WM.3 items 1–6):**
+1. **Element wiring** — `ShaftModel`/`ShaftData` flip from `NOT_PORTED` to the
+   §2.4 uniform rule; `EndEdit` dispatch order (UserModel→UserData,
+   ShaftModel→ShaftData) queues a *deferred* load resolved by the executive
+   (`exec/command.rs`, path → `.wasm` bytes or `None`); `update_model` after
+   `RecalcElementData` (`nominal.rs`). New `generator/user_model.rs`:
+   `GenUserModelSlot` (Pascal `TGenUserModel`) wrapping `dss-usermodel`.
+2. **Call sites** — `DoUserModel` power-flow (`solve.rs::do_user_model`, negate
+   into `InjCurrent`), GenModel=6 dynamics + shaft `FCalc` (`dynamics.rs`),
+   `InitStateVars`/`IntegrateStates` FInit/FIntegrate for both models, the
+   state-variable surface (`num_variables`/`variable_name`/`get_all_variables`/
+   `set_variable` concatenate built-in ++ UserModel ++ ShaftModel). The dropped
+   model-6 dynamics error (`dynamics.rs:239-254`) is now a surfaced #5671.
+3. **Decks** `tools/golden/wasm_decks/wasm_gen_{pflow,dyn,vars,edit}.dss`
+   (`@FIXTURE@` twin form), oracle-validated.
+4. **Gate** — `crates/dss-core/tests/wasm_usermodels.rs` (channel 1, hermetic:
+   committed `.wasm` vs committed r4133-oracle goldens); goldens generated by
+   `crates/dss-epri/tests/gen_wasm_usermodels.rs` (env-gated `WASM_TWIN_DLL`,
+   manual only). **pflow/vars/edit match the r4133 oracle at ~1e-14** (feeder
+   floor); the `Get StateVar` single-variable path matches too.
+5. **Invariant** — the five `expect_warnings` corpus decks + `solvable_now.json`
+   manifest byte-unchanged; corpus_live gate green (see item-5 line below).
+6. Audits pending (workflow spawns them).
+
+**Golden schema fix (real bug in the WIP).** The golden keyed `variables` by
+name in a JSON **map**, which SILENTLY COLLAPSED the dyn deck's 34-var surface to
+20 (binding the same IndMach012a as both `UserModel=` and `ShaftModel=` gives 6
+built-in + 14 + 14, the 14 ShaftModel names duplicating the UserModel's). The
+prior run misread this collapse as "oracle reports 20 vs Rust 34" and got stuck
+on a non-existent asymmetry. Fixed: order-preserving parallel `variable_names`/
+`variable_values` arrays; a live r4133 probe confirms the oracle reports **34**
+(Rust = Pascal `NumVariables` = oracle). Added `all_wasm_decks_have_consistent_goldens`.
+
+**Two MEASURED dss_capi-0.14.5-vs-r4133 divergences (Generator DYNAMICS).** The
+dyn deck is the first dynamics comparison against r4133 and exposed them (probed
+both, per the brief's "if the two disagree, STOP and record"):
+- **D1 — swing-damping default.** dss_capi 0.14.5 `generator.pas:1006` sets
+  `Dpu:=1.0` (→ `D=Dpu*kVArating*1000/w0≈13263`); r4133 `generator.pas:968` sets
+  `D:=1.0` in the ctor but **never `Dpu`**, so `InitStateVars` recomputes
+  `D:=Dpu*…=0`. Rust ports dss_capi (D≈13263), r4133 default D=0. Proven by the
+  oracle `DebugTrace` (predictor dSpeed +0.0025 with D≈0 vs −1.165 with D≈13263).
+  The dyn deck now sets `D=1` explicitly (both engines agree); recorded in
+  `DIVERGENCES.md` L5.
+- **D2 — residual dynamics trajectory gap.** With D matched, a residual survives,
+  MEASURED at the deck's end state (settlement flipped `numeric=true` transiently
+  to quantify): ~5e-4 rel on machine currents (Is1/Ir1), ~1e-3 on losses
+  (StatorLoss/RotorLoss/HPshaft), ~1e-4 on Slip, up to ~5e-4 on node voltages,
+  dSpeed ~3e-2 (the `Pshaft+TracePower` near-cancellation amplifies the current
+  gap). These are **4–6 orders above the faer-vs-KLU floor (1e-8)** — an
+  engine-behavior difference, not solver rounding, so a numeric gate is impossible
+  without a ~1e-1 band = forbidden fudging. **DECOMPOSITION (settlement, per
+  CLAUDE.md prove-by-decomposition):** WM.3's NEW code is exonerated — the WASM
+  `FCalc` handoff is bit-exact (Model=6 SNAPSHOT `wasm_gen_pflow` matches r4133 at
+  ~1e-14 incl. Is1/slip) and the guest math is bit-exact to the native twin (WM.2
+  `fixture_self_gate`). So the gap lives in the **shared multi-step Generator
+  dynamics coupling** (dynamics-Norton/Zthev entry + the per-step network re-solve
+  feeding Vterminal back to the identical guest), the SAME code family the proven
+  D1 `Dpu` divergence sits in — not the new user-model transport. Independent
+  corroboration that Rust's Generator dynamics tracks its 0.14.5 spec oracle:
+  `exec/tests/dynamics.rs` (Kundur steady + fault) matches pinned dss-python 0.15.7
+  to the f32 monitor floor. Pinning the single r4133 source line (like D1's) needs
+  the 0.14.5-ABI twin DLL → the OPEN follow-up (deviation (a)); **not a Rust bug on
+  the WM.3 surface, not a tolerance-loosening candidate.**
+
+**Gate design consequence.** Rust ports dss_capi 0.14.5 (its pinned oracle);
+forcing its dynamics to match r4133 would DIVERGE from the spec, and loosening
+the harness floor is forbidden. So the dyn deck gates the **version-independent**
+facts robustly — convergence, error-free (no WASM trap/protocol fault through the
+user *and* shaft FInit/FIntegrate/FCalc), and the full ordered **34-variable
+surface (names + count)** vs the oracle (proving the shaft loaded and the
+NumVars/GetAllVars/GetVarName plumbing) — and does NOT floor-compare the
+confounded dynamics trajectory (`gate_deck(.., numeric=false)`). pflow/vars/edit
+remain full-numeric (~1e-14), proving the WASM `calc`/`edit`/state-var transport.
+
+**Deviations / open items.** (a) D2's single-line r4133 root-cause is the OPEN
+follow-up (the gap is decomposed and scoped OUT of the WM.3 surface — see D2
+above); needs the 0.14.5-ABI twin DLL. (b) Channel-3 diagnostic (IndMach012a-over-
+WASM vs the built-in IndMach012 element) NOT implemented — deferred (the channel-1
+gate is the WP's oracle proof; channel 3 is a reported non-gating nicety, and the
+two elements' different host coupling makes it a loose visual diagnostic, not a
+clean comparison — kept deferred rather than adding a meaningless assertion). (c)
+The pinned dss-python 0.14.5 secondary channel skipped (needs the r3723-built twin
+— the recorded decision permits skipping if not cheap).
+
+**Settlement (post-audit, two xhigh audits, 2026-07-19).** Five findings settled
+empirically:
+- **WM3-1 (HIGH, silent fallback on trap) — FIXED.** The inject path built the
+  trap / missing-Model=6 diagnostics in a LOCAL `ErrorLog` and dropped them (the
+  `inj_currents` trait method has no `Result`). Added `errors`+`solution_abort`
+  channels to `InjCtx` (traits.rs); `Generator::inj_currents` drains them into the
+  solution `ErrorLog` (= `Dss::errors()`) and lifts `SolutionAbort` from any
+  `abort`-flagged diagnostic. A wasm `calc` **trap** is now a hard `abort` (ABI
+  §6); the missing dynamics model (#5671) aborts (Pascal `generator.pas:1944`); the
+  power-flow #567 surfaces non-abort (Pascal `DoSimpleMsg`). `get_currents`'
+  recompute routes to the element deferred-error log instead of dropping. Guarded
+  so a NATIVE-DLL `UserModel=` the wasm host cannot load (already loud via #570
+  "Not Loaded, falls back") does NOT also spew #567/#5671 — that keeps the corpus
+  gate green (indmachtest / Kersting4wire `UserModel=Indmach012a`). New regression
+  test `model6_without_usermodel_surfaces_diagnostic`.
+- **WM3-3 (GenVars read-back was a 9-field whitelist) — FIXED.** `apply_gen_vars`
+  now writes back the FULL 244-B image's mapped f64/Complex fields (the ABI §2
+  "unconditional read-back" contract), not a state-only subset; only the structural
+  ints (`num_phases`/`num_conductors`/`conn`) stay element-owned (documented).
+  Behaviour-neutral for the fixture (it mutates only `Speed`; untouched fields
+  round-trip bit-exact) — gate stays green while the frozen contract is honoured.
+- **WM3-4 (`set_variable` 1..6 was a silent no-op) — FIXED.** Ported the classic
+  GenVars setters (`generator.pas:2650-2663`): Speed/Theta/PShaft/dSpeed/dTheta with
+  the unit conversions, index-3 read-only #564, i<1 #565, DynamicEq #566. Reachable
+  via the capi015 `set StateVar=x <elem> <var> <value>` form (the natural positional
+  syntax is the upstream-broken misroute already reproduced in
+  `force_hooks.rs`). New regression test `set_statevar_classic_genvars_mutates`.
+- **WM3-5 / audit-tests-2 (state-var floor 1e-6/1e-5 uncalibrated) — RECALIBRATED
+  (tightened).** The comment falsely claimed "1e-6 measured"; measuring shows every
+  macro state var agrees to <1e-13 rel and only the near-zero quadrature currents
+  Is2/Ir2 (~4.3e-7, |abs| gap ~1.4e-13) are loose. New floor `(1e-8 rel, 1e-12
+  abs)`: rel = the `feeder` voltage class the machine vars inherit, abs = the
+  measured near-zero floor + ~7x margin — **100x tighter (rel) / 1e7x tighter (abs)**
+  than before, never loosened. Now Is2/Ir2 are constrained by an abs band instead
+  of an 1e-5 band 8 orders above the signal.
+- **audit-code WM3-5 (doc inaccuracy) — FIXED.** The `variable_name` comment
+  claimed "the gate is designed not to compare shaft names"; corrected to state the
+  gate DOES compare all 34 names and why the (correct, non-reproduced-UB) shaft
+  names coincide with the buggy upstream `FGetVarName` read.
+- **WM3-2 / audit-tests-1 (dynamics numeric gate) — settled by decomposition, no
+  code change.** See D2 above: the trajectory gap is proven OUT of the WM.3 surface
+  and is a version-divergence family, so structural-only gating is correct; a
+  numeric r4133 gate would require forbidden loosening. Monitor mode-1/3 capture is
+  subsumed by the same confound (the mode-3 channel IS the 34-var surface, already
+  gated).
 
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
@@ -5101,3 +5307,167 @@ corpus-guard parallel-run race (`corpus_guard.py` docstring: incomplete
 snapshot = never delete; end-of-run `git status tests/corpus` + path-limited
 clean is the documented recovery, applied). Not introduced by this round (gate
 capture paths byte-unchanged); open follow-up for the gate-hygiene backlog.
+
+## EPRI capability round (Round 2) — `dss-epri` covers everything the Oddie bridge COULD DO, and beyond (branch `epri-capability`, 2026-07-19)
+
+User mandate: **"the Rust FFI bridge must cover everything the python Oddie
+bridge COULD DO — and beyond."** Round 1 (above) closed *usage* parity (every
+retired-Oddie task doable through the bridge). This round closes **capability**
+parity: the full API surface the Oddie/dss-python bridge exposed over the same
+r4133 engine, mapped and bound — plus cheap "beyond" items. Additive and
+gate-neutral: the `run`/`ping`/`clear` capture path, `capture.rs`, the
+comparators and the `corpus_gate` scheduler are byte-untouched; the new commands
+are never sent by the gate.
+
+### Coverage table — zero unclassified exports
+
+The r4133 `OpenDSSDirect.dll` export table was dumped with a throwaway stdlib
+PE-export parser (no new deps) and cross-checked against the `exports` clause of
+`Version8/Source/DDLL/OpenDSSDirect.dpr`. **164 exports, all classified:**
+
+| class | count | reached via | binding status |
+|---|---|---|---|
+| uniform family entry points (42 families × present `I`/`F`/`S`/`V`) | 147 | generic `ffi` `(family, kind, mode, arg)` dispatch (`src/families.rs`) | 29 already typed (gate capture) + **118 newly reachable**; all 147 now generic |
+| standalone gate-path exports | 6 | typed `Engine` methods | bound pre-R2 (Phase A / R1): `DSSPut_Command`, `ErrorCode`, `ErrorDesc`, `InitAndGetYparams`, `GetCompressedYMatrix`, `getIpointer` |
+| Y-matrix / injection helpers | 9 | `ymatrix` command | **newly bound (R2)**: `ZeroInjCurr`, `GetSourceInjCurrents`, `GetPCInjCurr`, `SystemYChanged`, `BuildYMatrixD`, `UseAuxCurrents`, `AddInAuxCurrents`, `getVpointer`, `SolveSystem` |
+| Delphi RTL debug symbols | 2 | — | **skip-by-design (non-API)**: `__dbk_fcall_wrapper`, `dbkFCallWrapperAddr` (madExcept/debug hooks, not engine surface) |
+
+The 42 families and the ABI shapes each exports (a `None` marks a shape the
+family lacks — the registry spells out every real export symbol, since names are
+not always `NameX`: `Bus`→`BUSI…`, `Loads`→`DSSLoads…`, `DSSProperties` is a
+bare `S`):
+
+`ActiveClass isv · Bus ifsv · CapControls ifsv · Capacitors ifsv · Circuit ifsv
+· CktElement ifsv · CmathLib fv · CtrlQueue iv · DSS isv · DSSElement isv ·
+DSSExecutive is · DSSProgress is · DSSProperties s · Fuses ifsv · GICSources
+ifsv · Generators ifsv · Isource ifsv · LineCodes ifsv · Lines ifsv · Loads ifsv
+· LoadShape ifsv · Meters ifsv · Monitors isv · PDElements ifs · PVsystems ifsv
+· Parallel iv · Parser ifsv · Reactors ifsv · Reclosers ifsv · ReduceCkt ifs ·
+RegControls ifsv · Relays isv · Sensors ifsv · Settings ifsv · Solution ifsv ·
+Storages ifsv · SwtControls ifsv · Topology isv · Transformers ifsv · Vsources
+ifsv · WindGens ifsv · XYCurves ifsv` = 147 entry points.
+
+Skip-by-design detail: **`DSSProgress` (I,S)** is a headless progress-form
+no-op — it IS bound in the family table (so the bridge literally covers
+everything Oddie could call), but there is no observable engine state to assert
+on, so no dedicated smoke drives it. The r4133 DDLL exports **no** plotting /
+DSSGraph / registry / file-dialog symbols at all (the `Forms`/`Plot` units
+compile in but export nothing), so the skip list stays limited to `DSSProgress`
++ the two Delphi debug symbols — the whole rest of the surface is bound.
+
+### Systematic binding (`crates/dss-epri`, SAFETY rules upheld)
+
+- **`src/families.rs`** (new): the 42-family registry + generic dispatch. `FnI/F/S/V`
+  symbols loaded per family into a `FamilyTable` (case-insensitive lookup); one
+  `Engine::ffi_dispatch(FfiCall)` reaches every mode of every family. Decodes the
+  V-protocol by `myType` (1=int / 2=double / 3=complex re/im / 4=string / 5=bytes)
+  with a **raw** string split (no gate-path monitor-header space strip — the gate's
+  `decode_string_array` is untouched), and supports V **setters** (array-in via
+  `myPointer`, e.g. `LoadShapeV(2)` PMult write). Unit-tested (`decode_v` by tag,
+  raw string split, `encode_v_set`→`decode_v` round-trip).
+- **`ffi.rs`**: `YMatrixFns` (the 9 standalone Y-helpers, transcribed 1:1 from
+  `DYMatrix.pas`) + the family table, loaded in `Dll::load` and handed to `Engine`
+  via `leak_into_parts`. `sym` is now `pub(crate)`. All FFI stays behind
+  `deny(unsafe_op_in_unsafe_fn)` + per-boundary `// SAFETY`; DLL still never
+  `FreeLibrary`'d; NoFormsAllowed stays set; V-buffers copied out immediately.
+- **`dss.rs`**: `ffi_dispatch` + `ym_*`/`v_pointer`/`y_dims`/`solve_system` typed
+  wrappers (each with a SAFETY note); `FfiCall`/`FfiOut` types.
+- **`script.rs`**: `handle_ffi` + `handle_ymatrix` (parse/serialize only; all FFI
+  is in `dss.rs`).
+
+### New worker protocol surface (gate-neutral)
+
+Four additive `epri-worker` commands (`src/bin/epri-worker.rs`):
+
+- **`ffi`** — generic `{family, kind, mode, iarg|farg|sarg, vset?}` → kind-tagged
+  reply `{kind, value|data, type, n, errno, error}`. Reaches every DDLL family
+  mode: scalar get/set (i/f/s), array get (v getter), array set (v setter via
+  `vset:{type,data}`).
+- **`ymatrix`** — the standalone Y-matrix/injection helpers by op name
+  (`y_dims`, `vpointer`, `ipointer`, `solve_system`, `system_y_changed`,
+  `use_aux_currents`, `build_y`, `zero_inj`, `get_source_inj`, `get_pc_inj`,
+  `add_aux`).
+- **`caps`** — structured capability handshake: `protocol_version`, oracle
+  identity, the family manifest (name + kinds), `family_count`,
+  `family_entry_points`, the command list, and the `ymatrix` op list.
+- **`batch`** — many `exec` commands in one round-trip (stop-on-first-error;
+  `{replies, ran, failed_at}`).
+
+### Beyond (what the Python/Oddie bridge never had)
+
+1. **Per-call structured errno surface** — every `ffi`/`ymatrix` reply carries the
+   `ErrorCode`/`ErrorDesc` polled *right after* the call (`{errno, error}`),
+   non-fatally. dss-python only raised/aggregated; here the caller sees the exact
+   engine errno per call (smoked: no-active-LoadShape read → `#61001` surfaced).
+2. **Batched multi-command exec** (`batch`) — compile+build+solve in one
+   round-trip instead of one command per line.
+3. **Structured version/capability handshake** (`caps`) — the whole reachable
+   surface introspectable in one message.
+4. **Worker-pool crash isolation + recycling** (already in the gate's `EpriPool`,
+   `crates/dss-core/tests/corpus_gate/engines.rs`, untouched here) — a per-request
+   deadline → kill/respawn/retry-once, recycle-after-N, one-shot per case for
+   serial/isolate. The single-process Oddie/dss-python host had none of this;
+   documented as the standing "beyond" the transport already provides.
+
+### Smoke evidence
+
+- `cargo test -p dss-epri --lib`: 4 `families` unit tests green (decode-by-tag,
+  raw string split, `encode`↔`decode` round-trip, `vset_len` element-count).
+- `crates/dss-epri/tests/protocol.rs::capability_surface_end_to_end` (new, drives
+  the REAL r4133 DLL): `caps` (42 families / 147 entry points / proto 2 / commands
+  present / family-shape spot-checks), `batch` build, `ffi` i/s/v getters
+  **cross-checked equal to the typed channel** (`Circuit` NumNodes == node-order
+  len; `AllElementNames` == typed read), `ffi` V-set **round-trip** (LoadShape
+  PMult `[1,1,1]`→set→`[5,6,7]`), `ymatrix` (`y_dims.n_bus`==NumNodes, `vpointer`
+  shape `2*(N+1)`, `system_y_changed`, `solve_system` == KLU success 1 — the
+  engine's own `Solution.pas` `IF SolveSystem(...) = 1` success test), structured errno
+  `#61001`, and error paths (unknown family / unknown kind / absent ABI shape all
+  `ok:false`, worker survives). The pre-existing `scripting_surface_end_to_end`
+  smoke is byte-untouched.
+
+Gate: fmt/clippy/`cargo test --workspace` all green at defaults (corpus pristine
+after runs; a StorageControllerTechNote guard-race leftover was path-limited
+cleaned — same standing gate-hygiene backlog item as Round 1, not introduced
+here). Base `09d03e5`.
+
+### Settle (two opus-xhigh audits, 2026-07-19)
+
+Two independent xhigh audits of the round; export table re-derived independently
+(164 exports = 147 family + 6 gate-path + 9 Y-helpers + 2 Delphi debug — zero
+unclassified, headline confirmed). Both audits agreed the binding is faithful
+and gate-neutral. Findings settled empirically (drove the worker + live DLL):
+
+- **F1 (high, FFI-safety — the round's #1 focus): FIXED.** The generic V-set
+  `call_v_set` passed the array's **byte** length as `mySize`, but the r4133 SET
+  path treats `mySize` as an **element (point)** count — it clamps `LoopLimit :=
+  min(mySize, NumPoints)` and steps `myPointer` one element per iteration
+  (`DLoadShape.pas` PMult write; `DXYCurves.pas` XArray write). A byte count (8×
+  for doubles) defeats the clamp, so the DLL over-reads the Rust buffer whenever
+  the supplied array is shorter than the target's point count — a real OOB read.
+  Fix: new `families::vset_len` passes the element count; `call_v_set`'s SAFETY
+  note now states the true invariant (reads ≤ `min(size, NumPoints)` elements)
+  and the caller-supplies-full-array contract for the setters (`DXYCurves`) that
+  ignore `mySize` entirely. New tests prove element-count semantics: a 3-element
+  write into a **5-point** LoadShape fills points 1..3 and clamps there
+  (`[10,20,30,2,2]`, `written == 3`) — the exact `len < NumPoints` case the old
+  byte-count code would have over-read; plus a `vset_len` unit test.
+- **F2 (low, robustness): FIXED.** Seven DYMatrix ops
+  (`system_y_changed`/`use_aux_currents`/`build_y`/`add_aux`/`vpointer`/
+  `ipointer`/`solve_system`) hit unguarded `ActiveCircuit.Solution` in the DLL,
+  so sending them before a circuit is compiled nil-derefs and kills the worker.
+  `handle_ymatrix` now rejects the crash set with a clean error when
+  `circuit_name()` is empty (`CircuitS(0)` is nil-guarded → `""` with no
+  circuit). New test `ymatrix_before_compile_is_guarded_not_a_crash` drives all
+  seven on a fresh worker: each returns `ok:false` and the worker stays alive.
+- **Test-coverage holes (audit-tests, all closed):** batch **stop-on-first-error**
+  path (bad middle command → `ran == 2`, `failed_at == 1`, trailing command not
+  run); generic **`f`-kind getter happy path** (`Solution.Frequency` mode 0 ==
+  60); the 7 previously-unexercised **ymatrix ops** (`use_aux_currents`,
+  `build_y`, `zero_inj`, `get_source_inj`, `get_pc_inj`, `add_aux`, `ipointer`);
+  and `system_y_changed` upgraded from a presence-only check to a real
+  **read/write round-trip** (set-true→reads 1, set-false→reads 0).
+
+Smoke now: `cargo test -p dss-epri` = 4 lib unit tests + `protocol.rs`'s 3
+end-to-end tests (`scripting_surface_end_to_end`,
+`capability_surface_end_to_end`, `ymatrix_before_compile_is_guarded_not_a_crash`)
+all green against the real r4133 DLL. Nothing deliberately left unfixed.

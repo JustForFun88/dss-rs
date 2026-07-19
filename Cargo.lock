@@ -306,6 +306,7 @@ dependencies = [
  "dss-metis",
  "dss-parser",
  "dss-sparse",
+ "dss-usermodel",
  "miette",
  "num-complex",
  "regex",

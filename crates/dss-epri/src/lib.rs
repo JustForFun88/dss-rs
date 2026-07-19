@@ -55,6 +55,8 @@ pub mod capture;
 #[cfg(windows)]
 pub mod dss;
 #[cfg(windows)]
+pub mod families;
+#[cfg(windows)]
 pub mod ffi;
 #[cfg(windows)]
 pub mod guard;

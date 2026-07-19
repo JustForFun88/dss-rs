@@ -374,8 +374,8 @@ fn defaults_are_signed_thresholds() {
 #[test]
 fn idle_no_load_zone_suppresses_out_of_band_tap() {
     // Out-of-band high (125 vs 120±1.5) would arm a downward tap, but idle=yes
-    // on a reversible reg drops it: with FwdPower 0 in the default −100/+100 kW
-    // band the no-load OR test is true → "idle in no-load zone".
+    // on a reversible reg drops it: FwdPower 0 lies inside the bounded
+    // −100/+100 kW no-load zone (r4133 AND) → "idle in no-load zone".
     let mut rc = RegControl::new("r1");
     rc.pt_ratio = 1.0;
     rc.ccd.cd.nphases = 1;
@@ -387,6 +387,26 @@ fn idle_no_load_zone_suppresses_out_of_band_tap() {
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(!rc.armed);
     assert!(sc.queue.is_empty());
+}
+
+#[test]
+fn idle_no_load_zone_still_taps_when_power_out_of_band() {
+    // r4133 AND: the no-load zone is BOUNDED. FwdPower +200 kW is above
+    // FwdPowerThreshold (+100 kW), so idle=yes does NOT suppress — the
+    // out-of-band reg arms just like the non-idle case. This is the exact
+    // regression the OR tautology hid (STATUS "BUG WP regcontrol_idle"): under
+    // the old `or` this armed nothing for ANY load.
+    let mut rc = RegControl::new("r1");
+    rc.pt_ratio = 1.0;
+    rc.ccd.cd.nphases = 1;
+    rc.is_reversible = true;
+    rc.idle_enabled = true;
+    // FwdPower = -power_re = +200 kW ⇒ power_re = -200 kW (deep import).
+    let mut tr = MockTransformer::wye_2wdg(125.0).with_power(-200_000.0);
+    let mut sc = Scratch::new();
+    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
+    assert!(rc.armed);
 }
 
 #[test]

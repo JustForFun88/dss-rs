@@ -135,7 +135,7 @@
       "recloser/recloser_temp.dss": "kind=micro steps=12 sel=1 mm=0 probes=1 vars=0 evlog=1 ctrlq=1 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=r4133 isolate=0 defer=0 ledger=",
       "regcontrol/midi_regcontrol.dss": "kind=micro steps=24 sel=1 mm=0 probes=4 vars=0 evlog=1 ctrlq=1 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "regcontrol/regcontrol_asym.dss": "kind=micro steps=12 sel=1 mm=0 probes=3 vars=0 evlog=1 ctrlq=1 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
-      "regcontrol/regcontrol_idle.dss": "kind=micro steps=1 sel=1 mm=0 probes=2 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=r4133 isolate=0 defer=1 ledger=",
+      "regcontrol/regcontrol_idle.dss": "kind=micro steps=1 sel=1 mm=0 probes=2 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=r4133 isolate=0 defer=0 ledger=r4133:r4133-regcontrol-idle-threshold-display@6a294796b14fe36c",
       "regcontrol/regcontrol_inversetime.dss": "kind=micro steps=40 sel=1 mm=0 probes=2 vars=0 evlog=1 ctrlq=1 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "regcontrol/regcontrol_ldc.dss": "kind=micro steps=24 sel=1 mm=0 probes=2 vars=0 evlog=1 ctrlq=1 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
       "regcontrol/regcontrol_remotebus.dss": "kind=micro steps=24 sel=1 mm=0 probes=2 vars=0 evlog=1 ctrlq=1 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",

@@ -1669,6 +1669,34 @@ impl Dss {
             }
         }
 
+        // Deferred user-model (WASM) loads (WASM_USERMODELS WM.3+). Like the file
+        // loads above, the `UserModel=`/`UserData=`/`ShaftModel=`/`ShaftData=`
+        // property hook cannot reach the filesystem or the current directory, so
+        // it queued the request; resolve the path here (literal → `current_dir`,
+        // mirroring the Pascal `LoadLibrary(Value)` / `LoadLibrary(DSSDirectory +
+        // Value)` order) and hand back the `.wasm` bytes — or `None`, which makes
+        // the element warn "… Not Loaded" and fall back to the built-in model
+        // (never "Error opening file", unlike a `FileLoad` miss). Runs before
+        // `end_edit` so `RecalcElementData` sees the loaded model.
+        let user_model_loads = objects[oi].take_user_model_loads();
+        for uml in &user_model_loads {
+            let wasm: Option<Vec<u8>> = match &uml.action {
+                crate::obj::base::UserModelAction::Load(name) => {
+                    let path = resolve(name);
+                    let is_wasm = path
+                        .extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("wasm"));
+                    if is_wasm && path.is_file() {
+                        std::fs::read(&path).ok()
+                    } else {
+                        None
+                    }
+                }
+                crate::obj::base::UserModelAction::Edit(_) => None,
+            };
+            objects[oi].apply_user_model_load(uml, wasm.as_deref(), errors);
+        }
+
         // WPG.19: generic file-backed numeric-array directives (`%mag=(file=…)`,
         // `Yarray=(sngfile=…)`) queued by the generic double-array property path
         // (Pascal `DSSObjectHelper.pas:616-636`). Read the file and apply the

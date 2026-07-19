@@ -19,6 +19,18 @@
 //! manual regen drivers and probes (`tools/opendss/epri_worker.py`) — the
 //! functional-parity replacement for the retired Oddie bridge. The gate never
 //! sends them.
+//!
+//! The EPRI capability round (Round 2) adds the process-isolated **capability**
+//! surface that covers everything the Oddie/dss-python bridge could reach over the
+//! same engine, plus the "beyond":
+//! - `ffi` — generic `(family, kind, mode, arg)` dispatch reaching every mode of
+//!   every DDLL family (`dss_epri::families`), including array get/set, with a
+//!   structured per-call errno surface.
+//! - `ymatrix` — the standalone Y-matrix / injection helpers (`YMatrix.*`).
+//! - `caps` — a structured version/capability handshake (families + commands).
+//! - `batch` — many `exec` commands in one round-trip (stop-on-first-error).
+//!
+//! The gate never sends any of these; the comparators/scheduler stay untouched.
 
 #[cfg(windows)]
 fn main() {
@@ -163,6 +175,76 @@ fn main() {
                 Ok(v) => reply(serde_json::json!({"ok": true, "result": v})),
                 Err(e) => reply(serde_json::json!({"ok": false, "error": e.to_string()})),
             },
+            // ---- generic FFI capability channel (EPRI Round 2): reaches every
+            // mode of every DDLL family + the Y-matrix helpers -----------------
+            Some("ffi") => match dss_epri::script::handle_ffi(&engine, &req) {
+                Ok(v) => reply(serde_json::json!({"ok": true, "result": v})),
+                Err(e) => reply(serde_json::json!({"ok": false, "error": e.to_string()})),
+            },
+            Some("ymatrix") => match dss_epri::script::handle_ymatrix(&engine, &req) {
+                Ok(v) => reply(serde_json::json!({"ok": true, "result": v})),
+                Err(e) => reply(serde_json::json!({"ok": false, "error": e.to_string()})),
+            },
+            // Structured version/capability handshake (beyond the Python bridge):
+            // the whole reachable surface in one round-trip.
+            Some("caps") => {
+                let families: Vec<serde_json::Value> = engine
+                    .family_manifest()
+                    .into_iter()
+                    .map(|(n, k)| serde_json::json!({"name": n, "kinds": k}))
+                    .collect();
+                reply(serde_json::json!({"ok": true, "result": {
+                    "protocol_version": 2,
+                    "oracle": oracle,
+                    "families": families,
+                    "family_count": engine.family_count(),
+                    "family_entry_points": engine.family_entry_points(),
+                    "commands": [
+                        "ping", "caps", "run", "clear", "exec", "batch",
+                        "read", "ffi", "ymatrix", "chdir", "quit"
+                    ],
+                    "ymatrix_ops": [
+                        "system_y_changed", "use_aux_currents", "build_y", "zero_inj",
+                        "get_source_inj", "get_pc_inj", "add_aux", "y_dims",
+                        "vpointer", "ipointer", "solve_system"
+                    ],
+                }}));
+            }
+            // Batched multi-command exec in ONE round-trip (beyond the Python
+            // bridge's one-command-per-call scripting): stop-on-first-error, each
+            // reply carried back with its index.
+            Some("batch") => {
+                let Some(items) = req.get("exec").and_then(|v| v.as_array()) else {
+                    reply(serde_json::json!({"ok": false, "error": "batch: missing `exec` array"}));
+                    continue;
+                };
+                let mut replies = Vec::with_capacity(items.len());
+                let mut all_ok = true;
+                let mut failed_at: Option<usize> = None;
+                for (i, item) in items.iter().enumerate() {
+                    let Some(text) = item.as_str() else {
+                        replies.push(serde_json::json!({"ok": false, "error": "batch: non-string exec item"}));
+                        all_ok = false;
+                        failed_at = Some(i);
+                        break;
+                    };
+                    match engine.exec_wait(text) {
+                        Ok(r) => replies.push(serde_json::json!({"ok": true, "reply": r})),
+                        Err(e) => {
+                            replies.push(serde_json::json!({"ok": false, "error": e.to_string()}));
+                            all_ok = false;
+                            failed_at = Some(i);
+                            break;
+                        }
+                    }
+                }
+                let ran = replies.len();
+                reply(serde_json::json!({"ok": all_ok, "result": {
+                    "replies": replies,
+                    "ran": ran,
+                    "failed_at": failed_at,
+                }}));
+            }
             Some("clear") => {
                 // Release the circuit (and any held loadshape memory-mapped file
                 // handles) so a second process can compile the same case without a

@@ -1,0 +1,14 @@
+! WASM_USERMODELS WM.3 — Generator Model=User (GenModel=6) power-flow gate deck.
+! Self-contained induction-machine deck: a stiff source, a short feeder line and
+! a single delta-connected Generator running the IndMach012a machine model over
+! the user-model interface. The `@FIXTURE@` token is substituted by the harness
+! with the absolute path of the native `.dll` twin (r4133 oracle) or the
+! committed `.wasm` fixture (Rust engine) — the plan's `@FIXTURES@` twin form.
+! The machine parameters match the vendored Test/indmachtest/m1/Generators.dss.
+Clear
+New Circuit.wasm_gen basekv=13.8 phases=3 bus1=sourcebus pu=1.00 R1=0.05 X1=0.15 R0=0.05 X0=0.15
+New Line.feeder phases=3 bus1=sourcebus bus2=b3 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
+New Generator.g1 bus1=b3 phases=3 conn=delta kv=13.8 kW=4000 kVA=5000 Xdp=.27 Xdpp=0.2 H=1 pf=1 model=6 Balanced=No UserModel=@FIXTURE@ UserData=(Rs=0.0053 Xs=0.106 Rr=0.007 Xr=0.12 Xm=4 MaxSlip=0.1)
+Set voltagebases=[13.8]
+CalcVoltageBases
+Solve

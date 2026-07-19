@@ -240,12 +240,14 @@ resolvable `cause`/`cause_ref`, compiling regexes. Every entry is fingerprinted
 into the population lock as `id@FNV-1a64(entry JSON)` per channel — adding,
 widening, or re-scoping an entry is always a reviewable lock diff.
 
-Current contents: 25 entries over 20 documented causes — 4 r4133 `skip`
-(#303 crash decks), 20 r4133 `divergence` (Delphi 6-sig-fig display-precision
+Current contents: 26 entries over 20 documented causes — 4 r4133 `skip`
+(#303 crash decks), 21 r4133 `divergence` (Delphi 6-sig-fig display-precision
 probes on Storage/PVSystem, FPC-vs-Delphi injection/element ulp floors on the
 IndMach asymmetric decks, one monitor sequence-magnitude drift, the GFM
-`%stored` rounding class), 1 capi_v0145 `divergence` (the `line_spacing_asym`
-exact-pair-numeric `normamps`/`emergamps` upgrade pin).
+`%stored` rounding class, and the RegControl `idle`
+revThreshold/fwdThreshold getter-convention exact-pair), 1 capi_v0145
+`divergence` (the `line_spacing_asym` exact-pair-numeric
+`normamps`/`emergamps` upgrade pin).
 
 **The ledger is not a tolerance.** Envelopes are per-case, per-channel,
 per-scope **measured facts** (size them with `DSS_LEDGER_MEASURE=1`, record

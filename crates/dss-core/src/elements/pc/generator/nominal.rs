@@ -256,5 +256,10 @@ impl Generator {
 
         self.dqdv = self.dqdv_saved; // for Model 3
         self.delta_q_max = (self.var_max - self.var_min) * 0.10; // limit to 10% of range
+
+        // Update any user-written models (Pascal `RecalcElementData` tail,
+        // `generator.pas:1305-1307`: `UserModel.FUpdateModel` /
+        // `ShaftModel.FUpdateModel`).
+        self.update_user_models(sys);
     }
 }
