@@ -202,7 +202,7 @@ impl DssObject for Relay {
         match idx {
             MONITORED_TERM => self.monitored_element_terminal,
             SWITCHED_TERM => self.ccd.element_terminal,
-            TYP => self.control_type,
+            TYP => self.control_type.ordinal(),
             SHOTS => self.num_reclose, // dump subtracts the -1 value offset
             _ => unreachable!("Relay has no integer property {idx}"),
         }
@@ -212,7 +212,10 @@ impl DssObject for Relay {
         match idx {
             MONITORED_TERM => self.monitored_element_terminal = value,
             SWITCHED_TERM => self.ccd.element_terminal = value,
-            TYP => self.control_type = value,
+            TYP => {
+                self.control_type =
+                    super::RelayControlType::from_ordinal(value).unwrap_or(self.control_type)
+            }
             SHOTS => self.num_reclose = value,
             _ => unreachable!("Relay has no integer property {idx}"),
         }

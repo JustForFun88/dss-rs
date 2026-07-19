@@ -197,6 +197,37 @@ Records: `docs/phase-records/test-triage-{promotions,ad-classify,monitor-winding
 - Gate after merges: fmt/clippy clean, `cargo +stable test --workspace` exit 0;
   population.lock consistency re-proven by deliberate regen (no diff).
 
+### DE_PASCALIZE P1b — control-trio integer families → enums (wave 2, branch `wt-p1b-v2`)
+
+Stratum **[A]** bit-neutral. Closes the P1 wave-1 control-trio deferral
+(`docs/phase-records/depascalize-p1.md` #Deferred item 7). Salvaged the
+interrupted WIP `c842af0` (origin/wt-p1b) by clean cherry-pick onto the
+post-classwalk `update` tree; it compiled as-is (only two `cargo fmt` line-wraps
+needed), and every discriminant was re-proven before finalizing:
+- **Relay** `control_type` → `RelayControlType` (`#[repr(i32)]`, `0,1,3,4,5,6,7,8,9`
+  — the `2` ordinal stays unused, `from_ordinal(2)=None`).
+- **CapControl** `control_type` → `CapControlType` (`0..5`; USERCONTROL=6 is not
+  registered upstream and never set by the port, so the `Sample` match drops its
+  `_ => {}` and is exhaustive).
+- **RegControl** queue action codes → `RegControlAction` (`TapChange=0`/`Reverse=1`;
+  `i32` survives only at the `ControlQueue` push / `DoPendingAction` boundary).
+
+Each ordinal proven against Pascal (`Relay.pas:323-331`, `CapControl.pas:92-100`,
+`RegControl.pas:246-247`) **and** the DssEnum registry (`registry/control.rs`
+`relay_type`=[0,1,3,4,5,6,7,8,9], `cap_control_type`=[0,1,2,3,4,5]). `i32` remains
+at the property parse/report + CIM-export accessors only. Proof (all unchanged):
+3 new ordinal-round-trip pin tests + the controls-corpus manifests (105 cases) +
+eventlog gate. MonPhase sentinels + the shared `CTRL_*` state channel were not
+required and stay deferred (item 7 residue / R0 `control_elem.rs`).
+
+Audit settlement (two independent auditors, no regression): 2 `low` notes.
+(1) setter keep-old fallback was not directly exercised → closed with two additive
+`set_i32_type_keeps_value_on_unregistered_ordinal` pin tests (relay + cap_control),
+no golden/tolerance touched. (2) `relay_type` DssEnum omitting Pascal's
+`DefaultValue := 0` → confirmed pre-existing (registry file untouched in-range) and
+a string-parse-fallback matter orthogonal to this `[A]` storage-type conversion;
+deferred to a registry-fidelity pass (rationale in `depascalize-p1.md`).
+
 ### DE_PASCALIZE P13 — VCCS delay line → `RingBuf` (wave 2, branch `wt-p1213-v2`)
 
 Stratum **[A]** bit-neutral. The VCCS z-domain filter's two wrap-around

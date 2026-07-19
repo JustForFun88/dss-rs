@@ -32,9 +32,32 @@ use crate::obj::base::RefAction;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
-/// `RegControl.pas` action codes (distinct from the `EControlAction` enum).
-const ACTION_TAPCHANGE: i32 = 0;
-const ACTION_REVERSE: i32 = 1;
+/// `RegControl.pas` queued-action codes (distinct from the `EControlAction`
+/// enum). These ride the generic i32 `ControlQueue` action channel; the enum
+/// survives inside RegControl only — `ordinal()` at the queue push,
+/// `from_ordinal()` at `DoPendingAction`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum RegControlAction {
+    TapChange = 0,
+    Reverse = 1,
+}
+
+impl RegControlAction {
+    /// The queue action-code value.
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From a queue action code; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::TapChange),
+            1 => Some(Self::Reverse),
+            _ => None,
+        }
+    }
+}
 
 /// `RegControl.pas` PTphase pseudo-phases (the hybrid enum's `max`/`min`).
 const MAXPHASE: i32 = -2;
