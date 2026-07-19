@@ -6279,8 +6279,11 @@ fixture (the real, gated crate): the 6 steps (pick interface + exports → guest
 `dss_alloc` → decode/encode the record images → the lifecycle → `dss_env`
 services incl. the deferred pair → build/PIN/gate), a limits/trap-policy recap
 (§6), and the manual PIN workflow (`build_wasm.ps1` + `fixture_pin.rs` hash test).
-The code excerpts are verbatim from `models/indmach012a/src/wasm_exports.rs`, so
-the worked example is a faithful narration of a compiling, gated fixture.
+The code excerpts are drawn from `models/indmach012a/src/wasm_exports.rs` — the
+`dss_alloc` block is verbatim (one teaching comment added); the `calc` block is
+lightly abridged (the fixture's `let wrote = mainunit::calc(…); if wrote {…}`
+inlined to `if mainunit::calc(…) {…}`, semantically identical) — so the worked
+example is a faithful narration of a compiling, gated fixture.
 
 **Gate.** Full three-command gate green at defaults (`cargo fmt --all --check`;
 `cargo clippy --workspace --all-targets -- -D warnings`; `cargo test --workspace`
@@ -6294,3 +6297,55 @@ only); goldens/manifests/ledger + the five `expect_warnings` decks untouched.
 `DoDSSCommand` run end-to-end in production without touching the wire ABI. The
 generator's user-model drain (D2-owned) needs no change for WM.6 (the pair stays
 loud there too, since the generator does not opt in).
+
+**Settle (two independent read-only audits — audit-code + audit-tests, both
+opus-high+).** Both audits certified the change sound: no regression, no wire-ABI
+change, no tolerance touched, corpus/goldens/manifests/ledger pristine, all 32
+callback slots covered. Every finding was low-severity awareness/accuracy;
+settled empirically:
+
+- **WM6-1 (code + tests) — item-1 mechanism dormant in production; no call site
+  opts in; end-to-end command→GlobalResult unverified.** *Reproduced:* `grep`
+  confirms zero `enable_dss_commands`/`drain_dss_commands`/`set_result_str`
+  callers outside `crates/dss-usermodel`. *Disposition: deliberate non-fix
+  (plan-sanctioned).* A genuine production opt-in is architecturally impossible
+  here — the dss-rs element call sites hold a disjoint circuit borrow and cannot
+  reach `Dss::command`, and the plan §WP-WM.6 forbids inventing a re-entrant
+  `&mut` scheme; a true end-to-end test cannot live in `dss-usermodel` either (a
+  leaf crate that must not depend on `dss-core`, plan §2.1). The mechanism is
+  complete and gated by the channel-2 protocol tests acting as the re-entrant
+  host; it is a zero-regression change (the loud-default path real decks hit is
+  unchanged from pre-WM.6, covered by `unsupported_imports_raise_loud_attributed_errors`).
+  This is the honest state already documented (ABI §4 opt-in subsection, the
+  Follow-up above).
+- **WM6-2 (code) — the drain doc omits Pascal's `SolutionAbort := FALSE` reset a
+  faithful future host must reproduce; "only difference is ordering" is
+  incomplete.** *Reproduced:* `DSSCallBackRoutines.pas:152-153` does
+  `DSSPrime.SolutionAbort := FALSE;` then `ParseCommand`. *Disposition: fixed
+  (doc).* ABI §4 drain design + `instance.rs::drain_dss_commands` doc now state
+  the host must clear `SolutionAbort` before each `ParseCommand`, called out as
+  the second `Dss`-side semantic beyond the ordering note.
+- **WM6-3 (code) — STATUS called the §8 excerpts "verbatim"; the `calc` excerpt
+  is inlined.** *Reproduced:* fixture `wasm_exports.rs` uses
+  `let wrote = mainunit::calc(…); if wrote {…}`; the doc uses `if mainunit::calc(…) {…}`
+  (the `dss_alloc` excerpt IS verbatim). *Disposition: fixed (wording).* The
+  STATUS "verbatim" sentence now distinguishes the verbatim `dss_alloc` block
+  from the lightly-abridged `calc` block.
+- **WM6-4 (code) — GetResultStr is tier A in plan §2.3 but tier C in ABI row
+  32, unreconciled.** *Reproduced:* plan §2.3 line 310 lists it under tier A;
+  ABI row 32 marks it tier C. *Disposition: fixed (reconciled).* The
+  reclassification is correct (GlobalResult is produced by DoDSSCommand, not a
+  pre-call snapshot; recorded decision (e)). Added a reconciliation note to the
+  ABI §4 tier legend and a forward pointer in plan §2.3 so a reader from either
+  side sees the mapping.
+- **WM6-2 (tests) — the CapControl `get_result_str` serve path was smoke-only
+  ("does not crash"), the only serve value-assertion living on the Generator
+  instance.** *Reproduced:* `wm6_deferred_commands_queue_in_order_on_cap_control`
+  read the served result but asserted nothing. *Disposition: fixed (coverage).*
+  The guest `do_pending` now checksums the NUL-terminated served bytes and traps
+  on mismatch (incl. an empty serve), so a passing `do_pending` is a real value
+  assertion; a negative-control `set_result_str("9 9 9")` proves the guest
+  checksum is load-bearing (expects a `Trap`).
+
+Post-settle gate green at defaults; `dss-usermodel` protocol suite still 26
+tests (the CapControl test gained an in-test negative control, no new test fn).

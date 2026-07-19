@@ -488,6 +488,14 @@ import exists at link time (so modules validate); the permanently-unsupported
 slot 30 and the not-opted-in WM.6 pair raise the loud attributed error of §6
 when *called* — never a silent no-op (plan §2.9-5).
 
+**Tier reconciliation vs plan §2.3.** Plan §2.3 provisionally listed
+`GetResultStr` among the tier-A "pure reads served from the pre-call context
+snapshot". This frozen ABI doc reclassifies it to **tier C**, paired with
+`DoDSSCommand` (row 7), because `GlobalResult` is *produced by* a `DoDSSCommand`
+run, not a snapshot the host captures before the call — the two share one
+opt-in mechanism and one ordering note. This is the recorded WM.6 decision (e);
+the ABI doc is the authoritative artifact where the plan and it differ.
+
 **Slots 7 + 32 — `DoDSSCommand`/`GetResultStr`, the deferred-drain re-entrancy
 pair (WP-WM.6, header decision (e)).** Upstream `DoDSSCommandCallBack`
 (`DSSCallBackRoutines.pas:150-154`) runs `DSSExecutive.ParseCommand(S)`
@@ -502,7 +510,14 @@ synchronous form is impossible; the design is an **immediate deferred drain**:
   (`UserModelInstance::drain_dss_commands`) runs each queued command through
   `Dss::command` (= `ParseCommand`) and captures the resulting `GlobalResult`
   back into the instance (`set_result_str`) — **before the next guest call on
-  the same instance**.
+  the same instance**. To stay Pascal-faithful the host must clear
+  `SolutionAbort` **before** each `ParseCommand`: `DoDSSCommandCallBack`
+  (`DSSCallBackRoutines.pas:152-153`) does `DSSPrime.SolutionAbort := FALSE;`
+  then `ParseCommand` — so a queued command runs even if the in-progress solve
+  had raised the abort flag. The ordering difference below is thus **not** the
+  only semantic a real executive host reproduces; the abort-flag reset is the
+  second (both are the future host's responsibility, `Dss`-side, since the
+  drain API has no `&mut Dss`).
 - `get_result_str(ptr, maxlen)` serves that captured `GlobalResult` (persists
   across calls; `StrLCopy` semantics).
 
