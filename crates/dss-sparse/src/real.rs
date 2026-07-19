@@ -146,9 +146,9 @@ impl RealSparseSet {
         let m = self.matrix.as_ref().expect("assembled above");
         let row_idx = m.row_idx_of_col_raw(col);
         let vals = m.val_of_col(col);
-        for (k, &r) in row_idx.iter().enumerate() {
+        for (&r, &v) in row_idx.iter().zip(vals) {
             if r == row {
-                return Ok(vals[k]);
+                return Ok(v);
             }
         }
         Ok(0.0)
@@ -167,10 +167,10 @@ impl RealSparseSet {
         for col in 0..self.n {
             let row_idx = m.row_idx_of_col_raw(col);
             let col_vals = m.val_of_col(col);
-            for (k, &r) in row_idx.iter().enumerate() {
+            for (&r, &v) in row_idx.iter().zip(col_vals) {
                 rows.push(r);
                 cols.push(col);
-                vals.push(col_vals[k]);
+                vals.push(v);
             }
         }
         Ok((rows, cols, vals))
@@ -217,8 +217,8 @@ impl RealSparseSet {
         for col in 0..self.n {
             let rows = matrix.row_idx_of_col_raw(col);
             let vals = matrix.val_of_col(col);
-            for (k, &r) in rows.iter().enumerate() {
-                let a = vals[k].abs();
+            for (&r, v) in rows.iter().zip(vals) {
+                let a = v.abs();
                 if a > row_max[r] {
                     row_max[r] = a;
                 }
@@ -275,8 +275,8 @@ impl RealSparseSet {
     }
 
     fn solve_one(&self, b: &[f64], x: &mut [f64]) -> Result<(), SparseError> {
-        for i in 0..self.n {
-            x[i] = b[i] * self.row_scale[i];
+        for ((xi, &bi), &s) in x.iter_mut().zip(b).zip(&self.row_scale) {
+            *xi = bi * s;
         }
         let rhs = MatMut::from_column_major_slice_mut(x, self.n, 1);
         self.factors

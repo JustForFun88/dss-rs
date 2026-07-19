@@ -285,7 +285,11 @@ fn ctrlstatic_action_applies_at_least_one_tap_and_marks_y() {
 
     // CTRLSTATIC moves 70% of the pending change, at least one tap:
     // trunc(0.7*0.05/0.00625) = trunc(5.6) = 5 taps down → −0.03125.
-    rc.do_pending_action(ACTION_TAPCHANGE, &mut tr, &mut sc.ctx(CTRLSTATIC));
+    rc.do_pending_action(
+        RegControlAction::TapChange.ordinal(),
+        &mut tr,
+        &mut sc.ctx(CTRLSTATIC),
+    );
     assert_eq!(rc.last_change, -5);
     assert!((tr.present_tap(1) - 0.96875).abs() < 1e-12);
     assert!(sc.y_changed);
@@ -302,7 +306,11 @@ fn eventdriven_action_moves_one_tap_and_repushes() {
     let mut sc = Scratch::new();
     // Pretend two taps are pending downward.
     rc.set_pending_tap_change(-2.0 * 0.00625);
-    rc.do_pending_action(ACTION_TAPCHANGE, &mut tr, &mut sc.ctx(EVENTDRIVEN));
+    rc.do_pending_action(
+        RegControlAction::TapChange.ordinal(),
+        &mut tr,
+        &mut sc.ctx(EVENTDRIVEN),
+    );
     assert_eq!(rc.last_change, -1); // one tap toward the change
     assert!((tr.present_tap(1) - (1.0 - 0.00625)).abs() < 1e-12);
     assert!((rc.pending_tap_change - (-0.00625)).abs() < 1e-12); // remainder
@@ -318,7 +326,11 @@ fn event_log_records_tap_change_when_enabled() {
     rc.set_pending_tap_change(-0.05);
     let mut tr = MockTransformer::wye_2wdg(125.0);
     let mut sc = Scratch::new();
-    rc.do_pending_action(ACTION_TAPCHANGE, &mut tr, &mut sc.ctx(CTRLSTATIC));
+    rc.do_pending_action(
+        RegControlAction::TapChange.ordinal(),
+        &mut tr,
+        &mut sc.ctx(CTRLSTATIC),
+    );
     assert_eq!(sc.events.len(), 1);
     let line = &sc.events.entries()[0];
     assert!(line.contains("Element=Regulator.reg1"));
@@ -479,4 +491,19 @@ mod make_pos_seq_tests {
         assert_eq!(rc.ccd.cd.nconds, 1);
         assert_eq!(rc.get_bus_name(1), "remotebus");
     }
+}
+
+#[test]
+fn reg_control_action_pins_queue_codes() {
+    assert_eq!(RegControlAction::TapChange.ordinal(), 0);
+    assert_eq!(RegControlAction::Reverse.ordinal(), 1);
+    assert_eq!(
+        RegControlAction::from_ordinal(0),
+        Some(RegControlAction::TapChange)
+    );
+    assert_eq!(
+        RegControlAction::from_ordinal(1),
+        Some(RegControlAction::Reverse)
+    );
+    assert_eq!(RegControlAction::from_ordinal(2), None);
 }

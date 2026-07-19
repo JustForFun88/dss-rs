@@ -22,6 +22,20 @@ pub enum BuildOption {
     PdeOnly,
 }
 
+/// Reuse the existing sparse set when the matrix order is unchanged: `zero()`
+/// keeps the dedup / symbolic / row-equilibration skeletons, so a value-only Y
+/// rebuild (a tap change, the per-step load `Yeq` restamp) refactors without
+/// re-hashing the dedup map or re-analyzing the symbolic factorization
+/// (DE_PASCALIZE P15 item 1). A node-count change (a bus redefinition)
+/// allocates a fresh set; a renumbering that keeps the count is caught by the
+/// stamp-pattern check inside [`dss_sparse::SparseSet`], which then rebuilds.
+fn reuse_or_new_sparse(slot: &mut Option<SparseSet>, n: usize) {
+    match slot {
+        Some(s) if s.size() == n => s.zero(),
+        _ => *slot = Some(SparseSet::new(n)),
+    }
+}
+
 /// `DSS.LogThisEvent` with the solution's clock/iteration fields (callers
 /// gate on `ckt.LogEvents`, like the Pascal call sites in `Ymatrix.pas`).
 fn log_event(ckt: &mut Circuit, name: &str) {
@@ -111,11 +125,11 @@ pub fn build_y_matrix(
     let y_matrix_size = ckt.num_nodes;
     match option {
         BuildOption::WholeMatrix => {
-            ckt.solution.y_system = Some(SparseSet::new(y_matrix_size));
+            reuse_or_new_sparse(&mut ckt.solution.y_system, y_matrix_size);
             ckt.solution.active_y = ActiveY::System;
         }
         BuildOption::SeriesOnly | BuildOption::PdeOnly => {
-            ckt.solution.y_series = Some(SparseSet::new(y_matrix_size));
+            reuse_or_new_sparse(&mut ckt.solution.y_series, y_matrix_size);
             ckt.solution.active_y = ActiveY::Series;
         }
     }
@@ -230,7 +244,11 @@ pub fn build_y_matrix(
                         cd.obj.name()
                     ));
                 }
-                sparse.add_primitive_matrix(&cd.node_ref[..cd.yorder], &m.to_row_major());
+                // Read the `TcMatrix` column-major storage directly, traversed
+                // in the same row-major `(i,j)` order (so triplet insertion — and
+                // thus dedup summation — order is unchanged): no per-element
+                // `to_row_major` transpose copy (DE_PASCALIZE P15 item 3).
+                sparse.add_primitive_matrix_col_major(&cd.node_ref[..cd.yorder], m.values());
             }
         }
     }
