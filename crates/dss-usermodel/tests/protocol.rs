@@ -1393,8 +1393,23 @@ fn wm6_deferred_commands_queue_in_order_on_cap_control() {
   (func (export "sample")
     (call $do_cmd (i32.const 100) (i32.const 16))
     (call $do_cmd (i32.const 200) (i32.const 20)))
+  ;; do_pending serves the captured result into 512, then checksums the
+  ;; NUL-terminated bytes and traps on any mismatch (including an empty serve)
+  ;; — so a passing do_pending is a real value assertion on the CapControl
+  ;; serve path, not a smoke check.
   (func (export "do_pending") (param i32 i32)
-    (call $get_result (i32.const 512) (i32.const 63)))
+    (local $p i32) (local $sum i32) (local $b i32)
+    (call $get_result (i32.const 512) (i32.const 63))
+    (local.set $p (i32.const 512))
+    (block $done
+      (loop $l
+        (local.set $b (i32.load8_u (local.get $p)))
+        (br_if $done (i32.eqz (local.get $b)))
+        (local.set $sum (i32.add (local.get $sum) (local.get $b)))
+        (local.set $p (i32.add (local.get $p) (i32.const 1)))
+        (br $l)))
+    (if (i32.ne (local.get $sum) (i32.const 211)) ;; sum("1 1 1") = 211
+      (then (unreachable))))
   (func (export "edit") (param i32 i32))
   (func (export "update_model"))
   (func (export "delete") (param i32)))"#;
@@ -1422,12 +1437,25 @@ fn wm6_deferred_commands_queue_in_order_on_cap_control() {
         "both commands queued in order"
     );
 
-    // do_pending reads the result the host captured after running them.
+    // do_pending reads the result the host captured after running them. The
+    // guest checksums the served bytes and traps on mismatch, so a successful
+    // do_pending asserts the CapControl serve path delivered "1 1 1" verbatim
+    // (the CapControlInstance exposes no var surface to read back host-side).
     inst.set_result_str("1 1 1");
     inst.do_pending(0, 0, Box::new(NoCallbacks))
-        .expect("do_pending");
-    // (No assertion on guest memory here — the CapControlInstance exposes no
-    // var surface; the queue/serve wiring is covered by the Generator test.)
+        .expect("do_pending serves the captured result (guest traps on mismatch)");
+
+    // Negative control: a wrong captured result makes the same guest trap,
+    // proving the assertion above is load-bearing (not a serve that ignores
+    // its input).
+    inst.set_result_str("9 9 9");
+    let err = inst
+        .do_pending(0, 0, Box::new(NoCallbacks))
+        .expect_err("mismatched served result must trap the guest checksum");
+    assert!(
+        matches!(&err, UserModelError::Trap { func, .. } if func == "do_pending"),
+        "got {err:?}"
+    );
 }
 
 /// With the mechanism NOT enabled, a `CapControlInstance` guest that calls

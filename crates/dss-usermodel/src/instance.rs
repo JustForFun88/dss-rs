@@ -508,7 +508,11 @@ impl UserModelInstance {
 
     /// Take the DSS commands the guest queued via `do_dss_command` since the
     /// last drain, in order — the host runs each through the executive after
-    /// the guest call returns (Pascal `DoDSSCommandCallBack`, `:150-154`).
+    /// the guest call returns (Pascal `DoDSSCommandCallBack`, `:150-154`). To
+    /// stay Pascal-faithful the host must clear `SolutionAbort` *before* each
+    /// `ParseCommand` (the callback does `DSSPrime.SolutionAbort := FALSE;`
+    /// then `ParseCommand`, `:152-153`) — that reset is `Dss`-side, outside
+    /// this drain API's reach.
     pub fn drain_dss_commands(&mut self) -> Vec<String> {
         self.sandbox.drain_commands()
     }
