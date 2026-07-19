@@ -1014,6 +1014,55 @@ hypothesis is DISPROVEN — VERDICT (b), PORT BUG.** Evidence
   tolerance/golden/ledger touched. **DIVERGENCES.md gets NO entry** — D2 is a port
   bug, not a version divergence (an entry would misrepresent the finding).
 
+**Settle (two independent read-only audits of `1d94256..cbdff5c`; per-finding
+dispositions).** Both audits verified the change does NOT weaken behavior/coverage
+(no test/harness/golden/tolerance/ledger/corpus file touched; the fix is
+Pascal-faithful; verdict logic is anti-rationalizing — PORT BUG, not a version
+hand-wave). Corpus pristine, 186 `.pas` under `.inputs/dss_capi`, full three-command
+gate green. Findings settled empirically:
+
+- **AUDIT-CODE D2-1 (medium) — mandate verdict-(b) "fix it" only partly met; the
+  DOMINANT sub-bug #2 left OPEN → REGISTER-AS-OPEN (deliberate deferral, not
+  resolved).** Reproduced: `p_d2_threeway_portbug.txt:98-111` + gate line
+  `wasm_usermodels.rs:352` `gate_deck("wasm_gen_dyn", false)` both stand; sub-bug #2
+  is a PROVEN, dominant, still-OPEN port bug. Not fixed here because a line-level pin
+  needs guest-internal `e1`/`t0p` tracing, which requires rebuilding the fixture
+  `.wasm` — and the fixture crates are frozen by the live parallel **WM.4** workflow
+  (`.claude/worktrees/wtWM4`, branch `wasm-wm4`, confirmed active). A fix without that
+  trace would violate CLAUDE.md prove-cause discipline (guessing). Disposition: D2 is
+  recorded as a **proven-and-open port bug**, NOT a resolved one — see Open
+  follow-ups below; the coordinator must carry it forward.
+- **AUDIT-CODE D2-2 (low) — `d2_step_0145.py` docstring said "21 dynamics steps" but
+  the loop is `range(1, 6)` = 5 → FIXED.** Docstring corrected to state the first 5
+  steps (`range(1, 6)`) and that step 1 already exposes the divergence, with the full
+  end-state captured by `d2_probe_0145.py`. Cosmetic; no behavior/verdict effect.
+- **AUDIT-TESTS D2-1 (low) — shaft-FCalc fix has no numeric regression guard →
+  DEFERRED to the sub-bug #2 fix (deliberate).** Reproduced and sharpened: the fix's
+  ONLY observable signal is step-1 `dSpeed` (−75.66→−84.80); the deck END-STATE (`Is1`
+  unchanged) does not move because sub-bug #2 dominates. So neither the structural
+  gate NOR an end-state numeric golden could pin this fix — a guard would need
+  per-step (step-1) oracle capture, i.e. new golden infra bound to the WM.4-frozen
+  fixtures. The proper trajectory guard therefore arrives WITH the sub-bug #2 fix,
+  when the whole trajectory becomes numerically gateable at proven floors. No
+  tolerance touched.
+- **AUDIT-TESTS D2-2 (low) — structural gate cannot detect worsening of the ~5e-4
+  bug; interim known-bad band suggested → interim band DECLINED, DEFERRED (deliberate).**
+  An end-state "known-bad-within-N%" band was considered and declined: the trajectory
+  quantities span orders (Is1 ~5e-4 … dSpeed ~3.4e-2), so a hand-picked band is
+  miscalibration/flake-prone; it would institutionalize a bug we intend to FIX (per
+  mandate 3(b) the gate flips to numeric ON the fix, not around it); and the shared
+  driver `wasm_usermodels.rs` is also live under WM.4 (conflict risk). Per the mandate
+  the numeric gate (and any numeric bound) is explicitly gated on fixing sub-bug #2 —
+  done then, at proven floors, never a fudge band now. No tolerance loosened.
+
+**Open follow-up (carry forward):** WM.3 **D2 sub-bug #2** — Model=6 dynamic-current
+fixpoint off ~5e-4 from step 1 (slip matched) — is a PROVEN, OPEN Generator-dynamics
+port bug (NOT a version divergence, NOT resolved). Fix requires guest-internal
+`e1`/`t0p` tracing = an instrumented rebuild of the WM.4-frozen fixture `.wasm`;
+unblocks after WM.4 releases the fixture crates. On fixing it: re-measure D2 and flip
+`wasm_gen_dyn` to `numeric=true` at proven floors (adds the missing regression guard
+for both sub-bugs). `wasm_usermodels.rs:352` stays `false` until then.
+
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
 JSON-Schema (draft 2020-12) envelope (`$schema`/`$id`/`type`/`required`), the ten

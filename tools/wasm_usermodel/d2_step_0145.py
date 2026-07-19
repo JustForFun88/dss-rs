@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Per-step dynamics trajectory of wasm_gen_dyn on the pinned 0.14.5 oracle +
-r3723 244B twin. Emits Slip/Is1/Ir1/PShaft/dSpeed/Frequency after the snapshot
-(step 0) and after each of the 21 dynamics steps, to find the first divergence
-vs the Rust engine. Usage: python d2_step_0145.py <twin.dll>"""
+r3723 244B twin. Emits Slip/dSpeed/Is1u/Is1s/Freq after the snapshot (step 0)
+and after each of the first 5 dynamics steps (range(1, 6)), to find the first
+divergence vs the Rust engine — step 1 already exposes it, so a short run
+suffices; the full end-state is captured separately by d2_probe_0145.py.
+Usage: python d2_step_0145.py <twin.dll>"""
 import os
 import sys
 from dss import dss
