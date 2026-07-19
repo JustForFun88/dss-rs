@@ -2234,6 +2234,55 @@ rebuilds hitting the reuse path on a real 8500-node deck; **P15-2** (gate run
 once on the final tree) is discharged here — the full three-command gate was
 re-run green at defaults on the settled tree. dss-sparse unit tests: 18 → 21.
 
+## 1m. DE_PASCALIZE P9 — `CMatrix` ergonomics [A] (branch `wt-p9`)
+
+Stratum **[A] bit-neutral** — `support/cmatrix/mod.rs`. Base `update@afba752`
+(post-P15: the sparse assemble reads CMatrix column-major storage directly via
+`add_primitive_matrix_col_major`). Goal: replace the repeated raw column-major
+`idx` closure / `j*n+i` offset pattern with typed accessors, without changing any
+arithmetic or statement order.
+
+**Added accessors.** `Index<(usize,usize)>` / `IndexMut<(usize,usize)>` (element
+access `m[(i,j)]`, resolving the offset through the one private `idx` helper);
+`col(j)`/`col_mut(j)` (a whole column is one contiguous span in column-major
+storage); `columns()` (column-slice iterator); `row(i)`/`row_mut(i)` (strided row
+iterators).
+
+**Internals rewritten on them (bit-neutral):** `set`/`add`/`get` →
+`self[(i,j)]`; `is_col_row_zero` → `row(n).chain(col(n))`; `zero_row` →
+`row_mut`; `zero_col` → `col_mut`; `avg_diagonal`/`avg_off_diagonal`/`mv_mult` →
+`self[(i,j)]`; `invert` → the local `idx` closure removed, every `a[idx(i,j)]` →
+`self[(i,j)]` (identical offset `j*l+i == col*n+row`), trailing negation loop →
+`self.negate()` (verbatim `for v in &mut self.values { *v = -*v }`);
+`mtrx_mult` → the per-column copy scratch dropped, feeds `b.col(j)` straight into
+`mv_mult`. The `cdiv_fpc` Smith-division cross-term and the no-row-exchange
+Gauss-Jordan pivot sequence are untouched (algorithm identity → Stage F).
+
+**Statement-order proof.** The `invert`/`mv_mult` diff is a pure index-notation
+swap: `git diff` shows every kernel statement byte-identical except
+`a[idx(i,j)]`→`self[(i,j)]`, which the `idx` method proves compute the same flat
+offset. Pinning tests green **unchanged**: `cdiv_fpc_matches_fpc_smith_not_naive`
+(bit-exact Smith division, both branches), `invert_*` round-trips, the checkpoint
+per-element YPrim goldens, `transformer_yprim_bitexact`, line-constants, and the
+P15 seam differential `col_major_stamp_matches_row_major_transpose_bitwise`
+(traversal order load-bearing). Full `corpus_live` green at floors; `tests/corpus`
+pristine. New unit tests pin the accessors:
+`index_ops_match_get_set_and_column_major_layout`,
+`col_and_row_iterators_walk_the_expected_entries`.
+
+**Deviations / left in place (documented, not defects):**
+- `mathutil::etk_invert` keeps its own local `idx` closure — it operates on a raw
+  `&mut [f64]` slice (real-matrix Gauss-Jordan), not `CMatrix`; a separate kernel
+  outside P9's file scope, statement order owned by Stage F.
+- `diakoptics/matrices.rs` link-prim extraction keeps its flat 1-based `cValues`
+  k-stride walk over `yprim.values()` — a bespoke Pascal-faithful stride
+  reproduction (with defensive `.get()` out-of-range skips), not the `(i,j)` idx
+  pattern; converting it risks a behavior change and is out of P9 scope.
+- `CMatrix::to_row_major` kept (unchanged `pub` utility, as under P15).
+- External `mv_mult`/`get`/`set`/whole-slice `values_mut` call sites already use
+  the ergonomic public API; the only manual `j*order+i` offsets elsewhere index
+  raw parse/JSON buffers, not `CMatrix` storage — out of scope.
+
 ## 1a. Archived — completed plan records (100% done)
 
 > Moved out of the active §1 frontier on 2026-07-17. These are the records of plans whose own work-package scope is closed and gate-green: the 1:1 FINAL ACCEPTANCE, JSON export (Stages A+B), DIAKOPTICS/PSTCALC **Part I**, and the full **UPGRADE** Rung 1 + Rung 2 (r4133 parity). A few carried a documented item forward to a successor plan that has **not** finished it yet (TODO(compat) sweep + HIDE_015X → DE_PASCALIZE Stage F; GICMvars export → Phase 9; JSON DynInit/Full-mode tail → a follow-up WP; IEEE118 NCIM → a future UPGRADE rung) — those open items are surfaced in §1's **Standing open follow-ups**, not buried here. Frozen history — superseded only by the code and tests. In-progress / not-started plans (DE_PASCALIZE, DIAKOPTICS Part II, RESONANCE, MULTITHREADING, WASM_USERMODELS) stay in the active §1 above.
