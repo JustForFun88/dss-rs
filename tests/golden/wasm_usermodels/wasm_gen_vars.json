@@ -1,0 +1,77 @@
+{
+  "converged": true,
+  "deck": "wasm_gen_vars",
+  "engine": "Version 11.0.0.1 (64-bit build) - Charlottesville; License Status: Open ",
+  "iterations": 2,
+  "node_voltages": {
+    "B3.1": [
+      7945.810884341097,
+      74.59645835798624
+    ],
+    "B3.2": [
+      -3908.3030149131255,
+      -6918.572307916028
+    ],
+    "B3.3": [
+      -4037.507868650535,
+      6843.975850904591
+    ],
+    "SOURCEBUS.1": [
+      7960.226104658258,
+      24.865487914730295
+    ],
+    "SOURCEBUS.2": [
+      -3958.5789088734114,
+      -6906.19076990381
+    ],
+    "SOURCEBUS.3": [
+      -4001.647195007411,
+      6881.325283335632
+    ]
+  },
+  "oracle": "r4133 bridge (dss-epri) + FPC-built IndMach012a.dll twin",
+  "variable_names": [
+    "Frequency",
+    "Theta (Deg)",
+    "Vd",
+    "PShaft",
+    "dSpeed (Deg/sec)",
+    "dTheta (Deg)",
+    "Slip",
+    "puRs",
+    "puXs",
+    "puRr",
+    "puXr",
+    "puXm",
+    "MaxSlip",
+    "Is1",
+    "Is2",
+    "Ir1",
+    "Ir2",
+    "StatorLoss",
+    "RotorLoss",
+    "HPshaft"
+  ],
+  "variable_values": [
+    60.42,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    -0.00619627242490904,
+    0.0053,
+    0.106,
+    0.007,
+    0.12,
+    4.0,
+    0.1,
+    189.2904125690006,
+    4.346482497012067e-7,
+    177.2349898483909,
+    4.2198844061282896e-7,
+    21699.140327264282,
+    25125.018640520146,
+    -5469.148988216517
+  ]
+}

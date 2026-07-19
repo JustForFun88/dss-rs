@@ -498,6 +498,59 @@ impl FileLoad {
     }
 }
 
+/// Which user-model slot on the owning element a [`UserModelLoad`] targets
+/// (an element may own more than one — e.g. the Generator's `UserModel=` and
+/// `ShaftModel=`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserModelSlot {
+    /// The primary model: Generator/Storage/PVSystem `UserModel=`, Storage
+    /// `DynaDLL=`, CapControl `UserModel=`.
+    User,
+    /// The Generator shaft model (`ShaftModel=`).
+    Shaft,
+}
+
+/// A [`UserModelLoad`] action — (re)load the named model, or send it an edit
+/// string.
+#[derive(Debug, Clone)]
+pub enum UserModelAction {
+    /// `UserModel=` / `ShaftModel=`: (re)load the model named by this string.
+    /// A blank / `none` name unloads the slot; the setter clears it in place
+    /// and does **not** queue a request, so a queued `Load` always names a
+    /// non-blank model (Pascal `TGenUserModel.Set_Name`, `GenUserModel.pas:140`).
+    Load(String),
+    /// `UserData=` / `ShaftData=`: send the edit string to the model if it
+    /// exists (Pascal `if UserModel.Exists then UserModel.Edit(...)`,
+    /// `generator.pas:769-770`).
+    Edit(String),
+}
+
+/// A deferred user-model (WASM) load/edit request queued by a `UserModel=` /
+/// `UserData=` / `ShaftModel=` / `ShaftData=` property setter (WASM_USERMODELS
+/// WM.3+). Like [`FileLoad`], the setter cannot reach the filesystem or the
+/// script's current directory, so it records the request; the executive
+/// resolves the model path (literal → `current_dir`, mirroring the Pascal
+/// `LoadLibrary(Value)` / `LoadLibrary(DSSDirectory + Value)` order,
+/// `GenUserModel.pas:159-163`) and hands the outcome back via
+/// [`DssObject::apply_user_model_load`] — *before* `end_edit`, so
+/// `RecalcElementData` sees the loaded model.
+///
+/// Unlike a [`FileLoad`], a **missing** file is NOT an "Error opening file":
+/// the activation rule (plan §2.4 / ABI doc §5) warns non-fatally
+/// ("… Not Loaded. …") and falls back to the built-in model. The executive
+/// passes the resolved `.wasm` bytes when (and only when) a file that exists
+/// **and** ends in `.wasm` was found; `None` otherwise (a missing file or a
+/// native-DLL name — every existing corpus deck) — the element then warns and
+/// falls back. An [`UserModelAction::Edit`] request carries no file (the
+/// executive always passes `None`).
+#[derive(Debug, Clone)]
+pub struct UserModelLoad {
+    /// Which model slot on the owning element the request targets.
+    pub slot: UserModelSlot,
+    /// The action: (re)load the named model, or send an edit string to it.
+    pub action: UserModelAction,
+}
+
 /// A queued binary shape-save action — the `SngSave`/`DblSave` `Action` of
 /// LoadShape and its TShape/PriceShape siblings (Pascal `SaveToDblFile` /
 /// `SaveToSngFile`, `LoadShape.pas:1880/1939`, `TempShape.pas:528/548`,
@@ -929,6 +982,28 @@ pub trait DssObject {
         errors: &mut crate::diag::ErrorLog,
     ) {
         let _ = (load, content, errors);
+    }
+
+    /// Drain the [`UserModelLoad`]s queued during the last edit (WASM_USERMODELS
+    /// WM.3+). The executive resolves each `Load` path and reads the `.wasm`
+    /// bytes (or `None`), then calls [`DssObject::apply_user_model_load`]
+    /// *before* `end_edit`. Default empty.
+    fn take_user_model_loads(&mut self) -> Vec<UserModelLoad> {
+        Vec::new()
+    }
+
+    /// Apply a resolved user-model load/edit (the data side of a queued
+    /// [`UserModelLoad`]). For an [`UserModelAction::Load`], `wasm` is
+    /// `Some(bytes)` iff a `.wasm` file was found and read, else `None` (the
+    /// element warns "… Not Loaded" and falls back to the built-in model). For
+    /// an [`UserModelAction::Edit`], `wasm` is always `None`. Default: ignore.
+    fn apply_user_model_load(
+        &mut self,
+        load: &UserModelLoad,
+        wasm: Option<&[u8]>,
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        let _ = (load, wasm, errors);
     }
 
     /// Apply a [`RefAction`] addressed to this object (the target side of the
