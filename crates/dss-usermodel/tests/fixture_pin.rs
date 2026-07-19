@@ -36,35 +36,28 @@ fn pinned_hash(pin_text: &str, fixture_name: &str) -> Option<String> {
     None
 }
 
-#[test]
-fn committed_fixture_hash_matches_pin() {
-    const FIXTURE_NAME: &str = "indmach012a.wasm";
+/// Assert a committed `.wasm` fixture's SHA-256 matches its `PIN.txt` line
+/// (both halves must exist — WM-T4). A permanent pinned artifact (plan §2.6).
+fn assert_fixture_matches_pin(fixture_name: &str) {
     let root = repo_root();
     let fixture = root
         .join("tests")
         .join("fixtures")
         .join("wasm")
-        .join(FIXTURE_NAME);
+        .join(fixture_name);
     let pin_path = root.join("tools").join("wasm_usermodel").join("PIN.txt");
 
     let pin_text = std::fs::read_to_string(&pin_path)
         .unwrap_or_else(|e| panic!("PIN.txt must exist at {}: {e}", pin_path.display()));
-    let pinned = pinned_hash(&pin_text, FIXTURE_NAME);
 
-    // The fixture is a permanent pinned artifact as of WM.2 (plan §2.6):
-    // BOTH halves must exist unconditionally (WM-T4 — no dormant arm).
-    let want = pinned.unwrap_or_else(|| {
+    let want = pinned_hash(&pin_text, fixture_name).unwrap_or_else(|| {
         panic!(
-            "PIN.txt has no sha256 line for {FIXTURE_NAME} — the fixture is a \
-             permanent pinned artifact (WM.2); restore the pin"
+            "PIN.txt has no sha256 line for {fixture_name} — the fixture is a \
+             permanent pinned artifact; restore the pin"
         )
     });
-    let bytes = std::fs::read(&fixture).unwrap_or_else(|e| {
-        panic!(
-            "committed fixture {} must exist (pinned at WM.2): {e}",
-            fixture.display()
-        )
-    });
+    let bytes = std::fs::read(&fixture)
+        .unwrap_or_else(|e| panic!("committed fixture {} must exist: {e}", fixture.display()));
     let got = format!("{:x}", Sha256::digest(&bytes));
     assert_eq!(
         got,
@@ -73,6 +66,18 @@ fn committed_fixture_hash_matches_pin() {
          fixtures regenerate MANUALLY ONLY with the pinned toolchain (plan §2.6/§2.9-4)",
         fixture.display()
     );
+}
+
+#[test]
+fn committed_fixture_hash_matches_pin() {
+    // WM.2 IndMach012a (Generator user model).
+    assert_fixture_matches_pin("indmach012a.wasm");
+}
+
+#[test]
+fn committed_wm4model_fixture_hash_matches_pin() {
+    // WM.4 wm4model (Storage DynaDLL + PVSystem UserModel).
+    assert_fixture_matches_pin("wm4model.wasm");
 }
 
 #[test]

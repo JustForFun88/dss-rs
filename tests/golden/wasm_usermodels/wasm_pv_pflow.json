@@ -1,0 +1,90 @@
+{
+  "converged": true,
+  "deck": "wasm_pv_pflow",
+  "element": "PVSystem.pv1",
+  "engine": "Version 11.0.0.1 (64-bit build) - Charlottesville; License Status: Open ",
+  "iterations": 2,
+  "node_voltages": {
+    "B3.1": [
+      7961.9315464108395,
+      -8.11560702503248
+    ],
+    "B3.2": [
+      -3987.994095831449,
+      -6891.177178423487
+    ],
+    "B3.3": [
+      -3973.937449800014,
+      6899.292786791052
+    ],
+    "SOURCEBUS.1": [
+      7965.599658681383,
+      -2.7052005460211
+    ],
+    "SOURCEBUS.2": [
+      -3985.1426025129754,
+      -6897.05906007271
+    ],
+    "SOURCEBUS.3": [
+      -3980.4570553906933,
+      6899.764261964707
+    ]
+  },
+  "oracle": "r4133 bridge (dss-epri) + wm4model.dll native twin",
+  "variable_names": [
+    "Irradiance",
+    "PanelkW",
+    "P_TFactor",
+    "Efficiency",
+    "Vreg",
+    "Vavg (DRC)",
+    "volt-var",
+    "volt-watt",
+    "DRC",
+    "VV_DRC",
+    "watt-pf",
+    "watt-var",
+    "kW_out_desired",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Iout1",
+    "G",
+    "B",
+    "Tau"
+  ],
+  "variable_values": [
+    1.0,
+    4000.0,
+    1.0,
+    1.0,
+    9999.0,
+    9999.0,
+    9999.0,
+    9999.0,
+    9999.0,
+    9999.0,
+    9999.0,
+    9999.0,
+    4000.0,
+    -9999.99,
+    -9999.99,
+    -9999.99,
+    -9999.99,
+    -9999.99,
+    -9999.99,
+    -9999.99,
+    -9999.99,
+    -9999.99,
+    20.670485483241404,
+    0.0025,
+    -0.0007,
+    0.05
+  ]
+}

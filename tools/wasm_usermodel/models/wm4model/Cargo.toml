@@ -1,0 +1,35 @@
+# WASM user-model reference fixture — wm4model (WASM_USERMODELS_PLAN WP-WM.4).
+# A small, physically-plausible 3-phase inverter model (no vendored upstream
+# example exists for Storage/PVSystem user models — plan §WP-WM.4.3): a constant
+# admittance in power flow, a first-order current lag in dynamics, dispatched on
+# TDynamicsRec.SolutionMode exactly like IndMach012a's Calc. One module serves
+# BOTH the PVSystem `UserModel=` (15-fn) and Storage `DynaDLL=` (13-fn) gates.
+#
+# Workspace-EXCLUDED tooling crate (plan §2.6): builds the committed golden-class
+# artifact tests/fixtures/wasm/wm4model.wasm (wasm32) AND, on the host target, the
+# native twin DLL (the oracle side of the r4133 gate — plan §2.6 plan B: the same
+# Rust model core compiled as a native cdylib; the native FFI shims are cfg-gated
+# off the wasm build and live outside the product's forbid(unsafe_code) scope).
+[package]
+name = "wm4model"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# cdylib -> the .wasm module (wasm32) and the native twin .dll (host target);
+# rlib -> host-target unit tests that pin the ported math against the twin.
+crate-type = ["cdylib", "rlib"]
+
+# Opt out of the dss-rs workspace: this crate must never join the product
+# workspace (plan §2.6 — fixture toolchain is pinned separately from the gate).
+[workspace]
+
+# Locked release profile — recorded in tools/wasm_usermodel/PIN.txt; the
+# committed .wasm regenerates MANUALLY ONLY with exactly these settings.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"

@@ -1,0 +1,18 @@
+! WASM_USERMODELS WM.4 — Storage DynaDLL (TStoreDynaModel, 13-fn) dynamics gate.
+! A stiff source, a short feeder line and a single 3-phase WYE Storage running the
+! wm4model first-order current-lag dynamics model over the dynamics-only interface
+! (DynaDLL=). The Storage `DoDynamicMode` delegates to `DoDynaModel` whenever the
+! dynamics model exists; `InitStateVars`/`IntegrateStates` seed + integrate it.
+! WYE (nconds=4): `StickCurrInTerminalArray` maps the 3 model-written phase
+! currents into the 4-conductor terminal array (the engine handles the neutral).
+! Short 2-step dynamics run. The `@FIXTURE@` token is substituted by the harness
+! with the native `.dll` twin (r4133 oracle) or the committed `.wasm` (Rust).
+Clear
+New Circuit.wasm_st basekv=13.8 phases=3 bus1=sourcebus pu=1.00 R1=0.05 X1=0.15 R0=0.05 X0=0.15
+New Line.feeder phases=3 bus1=sourcebus bus2=b3 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
+New Storage.s1 bus1=b3 phases=3 conn=wye kv=13.8 kWrated=5000 kWhrated=10000 %stored=50 State=DISCHARGING %Discharge=80 DynaDLL=@FIXTURE@ DynaData=(g=0.0025 b=-0.0007 tau=0.05)
+Set voltagebases=[13.8]
+CalcVoltageBases
+Solve
+Set mode=dynamics stepsize=0.001 number=2
+Solve
