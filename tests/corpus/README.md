@@ -1,8 +1,8 @@
 # Vendored `electricdss-tst` corpus
 
-Verbatim copy of the OpenDSS test corpus, used by the live oracle-comparison gate
-(`crates/dss-core/tests/corpus_live.rs`) and as the in-repo replacement for the
-temporary `.inputs/electricdss-tst`. See `CORPUS_TEST_PLAN.md`.
+Verbatim copy of the OpenDSS test corpus, used by the unified live corpus gate
+(`crates/dss-core/tests/corpus_gate.rs`) and as the in-repo replacement for the
+temporary `.inputs/electricdss-tst`. See `CORPUS_TEST_PLAN.md` + `TESTING.md`.
 
 **Do not edit these files by hand.** Re-vendor with `python tools/corpus/vendor.py
 --force` and review the `SHA256SUMS` diff.
@@ -35,9 +35,10 @@ Every `.dss` file here is accounted for in exactly one manifest under
 ## Synthetic deck families (siblings of the vendored tree)
 
 Besides the vendored `electricdss-tst/` mirror, three **hand-written /
-generated** deck families live here, each with its own `manifest.json` and a
-`<family>_manifest_is_complete` + `<family>_cases_match_oracle` gate pair in
-`crates/dss-core/tests/corpus_live.rs`:
+generated** deck families live here, each with its own `manifest.json`, a
+structural `<family>_manifest_is_complete` gate, and live comparison inside the
+unified `corpus_gate_all_cases_match_engines` test
+(`crates/dss-core/tests/corpus_gate.rs`):
 
 - `asymmetric/` — static/snapshot element coverage in deliberately
   asymmetric configurations (the transposed-YPrim-stamp class);

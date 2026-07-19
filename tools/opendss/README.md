@@ -41,6 +41,20 @@ and that EPRI's CSC export is solution-neutral (`YNodeVarray` bit-identical
 before/after `getYSparse`). Run `epri-worker --smoke` for the same checks via the
 worker binary.
 
+## Gate wiring
+
+The channel is consumed by `crates/dss-core/tests/corpus_gate/engines.rs`
+(`EpriPool`/`EpriOneShot`): it resolves the worker binary via `DSS_EPRI_WORKER`
+→ `target/<profile>/epri-worker` → a one-time `cargo build -p dss-epri`
+fallback, ping-asserts `{"epri": true, "rev": "r4133"}`, and recycles the
+worker per case by default (determinism). Which cases gate on this channel is
+the manifests' `engines` field; measured r4133 divergences are pinned in the
+gating ledger `tests/corpus/ledger.json` (kinds, envelopes, and the triage
+procedure: `TESTING.md`). The r4133 request masks `all_properties` off —
+property parity is a `capi_v0145`-channel check (`PROPS_015X` exists precisely
+because r4133 renders 0.15.x-shaped tables); the bridge's own
+`capture_all_properties` is capability-only report tooling.
+
 ## A-Diakoptics reference regen (no tool ships anymore)
 
 The committed A-Diakoptics trusted baseline
@@ -63,9 +77,16 @@ longer exists.
   (`crates/dss-epri/src/guard.rs`, a port of `tools/oracle/corpus_guard.py`)
   snapshots + restores the case dir so `Show`/`Export`/`Save` writes never
   pollute the vendored corpus (`git status tests/corpus` must stay clean).
-- **Editor / registry suppression** is handled inside the bridge (`Set
-  RegistryUpdate=No`, `Set Editor=rundll32.exe`) so a corpus sweep opens no
-  Notepad windows and never persists an override into the user's OpenDSS
-  registry settings.
+- **UI suppression**: the bridge's init sequence calls `DSSI(8, 0)`, which sets
+  the engine's `NoFormsAllowed := TRUE` (`DDSS.pas` mode 8 — note the inverted
+  argument), so a corpus sweep opens no forms/popups. (The old Oddie python
+  channel additionally issued `Set RegistryUpdate=No` / `Set
+  Editor=rundll32.exe`; the Rust bridge issues no such commands — that pair
+  survives only in the frozen `tools/golden/gen_protection.py` generator.)
+- **The DLL is never `FreeLibrary`'d** (`Dll::leak()`): the r4133 unit
+  finalization tears down its Delphi solver actor thread through a
+  message-pumping `TThread.WaitFor` that deadlocks in a headless process. The
+  worker leaks the library and lets process exit reclaim it (root-caused by
+  minidump, STATUS "UNIFIED_GATE Phase A"). Do not "fix" this by unloading.
 - The binaries are © EPRI, distributed under the BSD-style license in each
   `bin/r4133/License.txt`.
