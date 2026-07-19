@@ -1718,7 +1718,7 @@ change** (ledger L3). The port's monitor header is compared token-wise
 padding — a deliberate KEPT divergence vs the EPRI oddie binaries) **stays** — E1
 confirms keeping it, it is not retired.
 
-## NCIM PV→PQ Q-limit iteration count — SETTLED (WP-U1.7 cross-check, capi015 pinned; r4088 differs, report-only)
+## NCIM PV→PQ Q-limit iteration count — SETTLED (WP-U1.7 cross-check, capi015 pinned; r4088 differs, report-only) → RE-GATED to r4133 (NCIM RE-GATE WP, 2026-07-20)
 
 **Observable.** The NCIM (`Set algorithm=NCIM`) iteration count to converge a deck
 that hits a generator Q-limit → PV→PQ conversion (`NCIM_UpdateGenQ` switching).
@@ -1755,6 +1755,59 @@ converges the same fixpoint in fewer passes would not fail the gate.
 end-target (§1.4). No `known_diffs.json` entry (NCIM is a 0.15.x-line feature with
 no 0.14.5 baseline; the port matches capi015, its spec). If a later rung retargets
 NCIM to r4133, the switching cadence (not the fixpoint) is the item to revisit.
+
+### UPDATE — oracle-of-record flip capi015→r4133 (NCIM RE-GATE WP, 2026-07-20)
+
+**Decision (user-approved 2026-07-20): r4133 is the oracle-of-record for NCIM.**
+The capi015 0.15.0b4 probe venv is retired (gone from disk), so capi015 can never
+again be a live oracle; the only live NCIM-capable channel is r4133 via
+`epri-worker`. The 4 NCIM corpus decks (`modes/ncim/ncim_pq`, `ncim_pv_pq`,
+`ncim_midi` + `solvable_now Xmission_System_Kundur2Area`) are flipped from
+`defer_ledger` Rust-smoke to **live r4133 gating** with **NO ledger entry** — the
+whole-model compare (node V, system Y, the Vsource swing current/power/loss, the
+NCIM generators, and the warm-resolve iteration count) is within the tier floor on
+every case.
+
+**Swing-source current — the capi015 off-by-one is FIXED in r4133 (source
+evidence).** `TVsourceObj.CalcInjCurrAtBus` (r4133 `PCElements/VSource.pas` l.1085,
+reached from `GetCurrents` l.1194-1195 under `Algorithm=NCIMSOLVE`) fills a
+`Yorder+1` `ElmCurrents` with an **offset write** `GetCurrents(@(ElmCurrents[1]))`
+(l.1123 PD / l.1158 PC) — conductor 1 → `ElmCurrents[1]` — then reads
+`ElmCurrents[(myTerm*stride)+j]`, `j:=1..NPhases` (l.1135 / l.1169): a 1-based read
+of the offset-written array is **unshifted**. capi015 0.15.0b4 (e936d210) instead
+wrote `ce.GetCurrents(ElmCurrents)` at index 0 and read `ElmCurrents[j]` 1-based — a
+one-conductor shift. The port dropped the `+1` in
+`exec/view.rs::ncim_swing_source_currents` (the `TODO(compat)` removed) and now
+reproduces r4133's unshifted read.
+
+**Live r4133 probe evidence** (own `epri-worker` run, r4133 = `Version 11.0.0.1
+(64-bit build) - Charlottesville`, 2026-07-20; `ncim_pq` = the `pq_circuit(1)` unit
+deck). `Vsource.source` reported terminal current, conductors 0..2 (A):
+
+| conductor | capi015 (shifted, old pin) | r4133 (unshifted, new pin) |
+|---|---|---|
+| 0 | `70.71692 + 55.78569i` | `-83.67029 + 33.34980i` |
+| 1 | `12.95337 - 89.13549i` | ` 70.71692 + 55.78569i` |
+| 2 | `83.67022 - 33.36820i` | ` 12.95337 - 89.13549i` |
+
+r4133 per-conductor power = `-602.38906 - 240.10383i` kVA (×3), losses
+`-1807167.18 - 720311.50i` (W/var). The Rust port matches these to the micro tier
+floor (unit-pinned, `exec/tests/ncim.rs::ncim_vsource_reported_currents_match_oracle`).
+
+**Iterations + node V.** Converged node V is DIGIT-IDENTICAL r4133-vs-port (~1e-12,
+faer-vs-KLU). The gate compares the **warm re-solve** count (compile runs the deck's
+own solve, the gate re-solves once); r4133's warm-resolve counts are `ncim_pq=2`,
+`ncim_pv_pq=2`, `ncim_midi=2`, `Kundur2Area=1`, and the port matches each **exactly**
+(no `rust<oracle` NOTE fired). The cold-solve cadence divergence documented above
+(capi015 8 vs r4088 4 on the PV→PQ decks) is never observed by the gate and needs no
+ledger row.
+
+**Gate consequence.** The 4 decks now gate LIVE on r4133 (`engines:"r4133"`,
+`defer_ledger` removed, population-lock `defer=1→0`); no ledger entry, no tolerance
+change. The `ncim-oppoint` ledger cause is rewritten to the resolved reality
+(documentary, referenced by no entry). The frozen goldens `tests/golden/ncim/`
+(capi015-captured solver internals) are UNREGENERABLE (retired venv) and untouched —
+they pin internals unaffected by the swing-report path.
 
 ---
 
