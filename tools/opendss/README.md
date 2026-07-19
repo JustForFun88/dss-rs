@@ -22,6 +22,8 @@ were removed with the Python EPRI stack (`UNIFIED_GATE_PLAN.md` §4-E).
 | `bin/README.md` | binary provenance (sizes, build dates, source tree). |
 | `revisions.json` | `r4133` → `dll` path + `expect_version` (the substring `crates/dss-epri/src/smoke.rs` and `tools/golden/gen_protection.py` assert against — never empty, no silent pass). |
 | `vendor_binaries.py` | re-vendors `bin/r4133/` from `.inputs/electricdss-code-r4133-trunk/Version8/Distrib/x64` and rewrites `SHA256SUMS` + `bin/README.md`. |
+| `epri_worker.py` | Python client for the worker's `exec`/`read`/`chdir` scripting surface (`crates/dss-epri/src/script.rs`) + an `IOddieDSS`-shaped shim — the functional-parity replacement for the retired Oddie bridge's ad-hoc scripting. Used by the manual golden regen (`tools/golden/gen_protection.py` r4133 arm, `tools/golden/gen_flicker.py`) and probes; never by the gate. Auto-builds `epri-worker` on first use. |
+| `probe_59n.py` | re-runnable 59NRelayDemo oracle read on r4133 (WP-U2.6 no-trip + chaotic pole-slip classification; see `relay/tests.rs` and `skipped_needs_investigation.json`), driven through `epri_worker.py`. |
 
 The DLLs are **git-tracked**, so worktrees need no junction for the bridge and
 the gate has no external download step. `DSSProgress.exe` is deliberately not

@@ -39,6 +39,9 @@
 //!   `tools/oracle/oracle_server.py` + `tools/golden/gen_checkpoints.py`.
 //! - [`guard`] — a Rust port of `tools/oracle/corpus_guard.py` (recursive
 //!   snapshot / restore of the case directory).
+//! - [`script`] — the generic `exec`/`read`/`chdir` scripting surface for the
+//!   manual regen drivers + probes (functional parity with the retired Oddie
+//!   bridge's ad-hoc `Text.Command` + property reads; never used by the gate).
 //!
 //! The `epri-worker` binary (`src/bin/epri-worker.rs`) drives all of the above
 //! over the persistent line-JSON `ping`/`run`/`quit` protocol, byte-compatible
@@ -54,6 +57,8 @@ pub mod dss;
 pub mod ffi;
 #[cfg(windows)]
 pub mod guard;
+#[cfg(windows)]
+pub mod script;
 #[cfg(windows)]
 pub mod smoke;
 

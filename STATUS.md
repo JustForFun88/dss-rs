@@ -4728,3 +4728,86 @@ is **async** (dispatches `SIMULATE` to the actor and returns), so `solve()` poll
 Follow-ups (STATUS, non-blocking): none block Phase A. Phase E removes
 `xcheck_bridge.py` and, with it, the `oracle_server.py` `clear` handler's only
 consumer (drop the handler then).
+
+## EPRI bridge parity round — `dss-epri` covers every retired-Oddie task (branch `epri-parity`, 2026-07-19)
+
+User mandate: FULL functional parity — every task the retired Oddie/dss-python
+bridge ever did must be doable through the in-house Rust bridge
+(`crates/dss-epri` drives the same official r4133 engine natively). Closes the
+Phase-E re-review findings F2 (dead golden-regen r4133 arms) and F3 (lost
+`probe_59n` reproduction).
+
+### Consumer inventory (everything the Oddie bridge ever served, at `ae3e6bd^`)
+
+| consumer (pre-Phase-E) | task | disposition |
+|---|---|---|
+| `ab_compare.py` | corpus A/B divergence reports between engine revisions | retired-by-design — the unified two-channel gate (`capi_v0145` + `r4133` in `corpus_gate.rs`) replaced the reporting channel |
+| `sweep_modes_isolated.py` / `sweep_merge.py` | WP-U0.2 `ab_compare` crash-isolation + merge helpers | retired-by-design — `ab_compare` consumers; the sweep reports are frozen in `docs/upgrade` |
+| `dsspy_validation/` + `wheels/` + venv | vendored dss-python full-API crosscheck | retired-by-design — one-time Rung-1 validation, superseded by the permanent gate |
+| `dsspy_crosscheck.py` | classifier-manifest crosscheck vs DSS-Python's validation list (textual, engine-free) | retired-by-design — one-time promotion audit; results absorbed into the manifests |
+| `smoke.py` | binary self-smoke | parity restored in Phase A — `epri-worker --smoke` / `crates/dss-epri/src/smoke.rs` + `tests/smoke.rs` |
+| `xcheck_bridge.py` | Oddie-vs-Rust-bridge bit-diff | retired-by-design — self-obsoleting Phase-A fidelity proof (its PASS licensed the retirement) |
+| `gen_ad_reference.py` | A-Diakoptics matrix reference harvest (r3723) | retired-by-design with documented contingency — baseline frozen (`r3723_ref/` + PROVENANCE); `tools/opendss/README.md` mandates reimplementation over `epri-worker` if ever re-run |
+| `oracle_server.py` oddie/capi015 arms | opt-in oracle engines for the live test | retired-by-design — the gate channels replaced them |
+| `gen_protection.py` r4133 arm (`make_oddie`; fuse_blow, swt_manual) | golden regeneration | **parity restored (this round)** — `make_epri` drives `epri-worker` via the `IOddieDSS`-shaped shim; payload byte-parity proven below |
+| `gen_flicker.py` (r3723) | flicker golden regeneration | **parity restored (this round)** — rewritten over `epri-worker` on r4133 (the only vendored official revision); cross-revision payload byte-parity proven below |
+| `probe_59n.py` | 59N artifact reproduction (WP-U2.6) | **parity restored (this round)** — recreated over `epri-worker`; artifact reproduced verbatim |
+| *(adjacent, not Oddie)* `gen_bh_capi015.py` / `gen_regcontrol_capi015.py` / `gen_ncim_reports.py` / `gen_der_lines_harmonics.py` capi015 runs / `gen_checkpoints.check_pin` capi015 arm | capi015 (dss-python 0.16.0b2 / dss_capi 0.15.0b4) golden generation | outside the mandate — capi015 was the *Python-engine* beta channel, not the official-binary Oddie bridge; the Rust bridge cannot (different binary) and should not drive it. Goldens frozen; the capi015 arms fail loudly (missing `PIN_OPENDSS.txt`), no silent pass. |
+| `gen_fuse_r4133.py` | derived golden (`git show` overlay, no engine) | unaffected — engine-free; its r4133 value provenance is historical (Oddie capture, recorded in its note) |
+
+### Protocol extension (gate-neutral)
+
+New `epri-worker` commands `exec` / `read` / `chdir`
+(`crates/dss-epri/src/script.rs`) — the generic scripting surface replacing
+Oddie's `Text.Command` + per-property reads; one `read` = one DLL accessor +
+per-call error poll (dss-python raise-on-error parity), `exec` = strict errno +
+actor-idle barrier (the async-solve race fix applies to scripted `solve`/inline
+solves too). New FFI: `SolutionV` (mode 0 EventLog — the raw `EventStrings`
+`Hour=…, Sec=…` lines; the empty-log `None` placeholder is written WITHOUT a
+terminator and normalizes to `[]`, matching the retired Oddie decode — pinned by
+the committed `swt_manual` golden; deliberately a separate decode from the
+gate's `decode_string_array`) and `BUSF(0)` kVBase; plus `CircuitS(4)`
+SetActiveBus and `MonitorsS(2)` monitor-select on existing entry points. Gate
+paths untouched: `run`/`ping`/`clear`/`quit` handlers, `capture.rs`,
+comparators, scheduler are byte-unchanged and the gate never sends the new
+commands. SAFETY rules upheld (immediate copies, `deny(unsafe_op_in_unsafe_fn)`,
+per-boundary SAFETY docs). Worker-level smoke:
+`crates/dss-epri/tests/protocol.rs` spawns the real binary and pins the exact
+event-log line format the committed protection goldens store
+(`Hour=0, Sec=0.2, ControlIter=1, Element=Fault.f, Action=**APPLIED**`), the
+read shapes (solution scalars, node arrays, element powers/currents, variables,
+monitor channels, bus kVBase), the empty-log `[]` normalization, and the
+error path (`ok:false`, worker stays alive).
+
+Python client `tools/opendss/epri_worker.py`: `EpriWorker` (spawn + line-JSON,
+binary resolution mirroring the gate's `epri_worker_bin`: env override →
+target/{release,debug} → one cargo build) and `EpriEngine`, an
+`IOddieDSS`-shaped shim so `gen_protection.build()` + `capture_element()` run
+unchanged and issue the same per-property DLL call sequence Oddie did.
+
+### Parity proof (committed goldens UNTOUCHED — scratch regen + byte-compare)
+
+| golden | committed capture | regen path | verdict |
+|---|---|---|---|
+| `protection/fuse_blow.json` | Oddie r4133 | epri-worker r4133 | `scenario` payload **byte-identical** (7 071 serialized bytes: per-step voltages, event log, final elements); diff confined to the `oracle` provenance block (the raw DLL version string lacks the retired wrapper's `\nDSS-Python version: 0.16.0b2` suffix) |
+| `protection/swt_manual.json` | Oddie r4133 | epri-worker r4133 | `scenario` payload **byte-identical** (8 255 bytes); same provenance-only diff (the committed block also carries the older `oddie:r4133` marker shape from its original capture flow, which even the old generator would no longer emit) |
+| `flicker/pst_demo.json` | Oddie **r3723** | epri-worker **r4133** | every payload key **byte-identical** across engine revisions — `raw_mag` (545 996 serialized bytes), `flk` (640 178), `pst` (598 928), `kvbase`, `times`, `deck`, `n`/`nphases`/`fbase`; only `oracle` differs. The official flicker meter + this deck's power flow are revision-stable; the committed golden stays the frozen r3723 capture. |
+
+Zero committed-file changes (`git status tests/golden` clean); corpus pristine
+after all runs. `DSS_GOLDEN_OUT` env (new) redirects both generators' output for
+scratch parity runs; default remains the committed tree.
+
+### F3 — probe_59n reproduction restored
+
+`tools/opendss/probe_59n.py` recreated over `epri-worker`; run 2026-07-19
+reproduces the documented artifact verbatim: `Relay.State =
+'[closed, closed, closed, ]'` (byte-equal to the port's `render_state_array()`),
+`Line.line1 |I|max = 1381.156 A` (the "~1381 A" cited in `relay/tests.rs`),
+`f = 78.88 Hz` at t=1.0 s, wander `[67.16, 115.00] Hz` over the next 15 s →
+`PROBE OK`, exit 0. `relay/tests.rs` doc comment updated to cite the bridge
+driver (comment-only); `skipped_needs_investigation.json` untouched.
+
+Docs: `tools/opendss/README.md` layout rows for `epri_worker.py`/`probe_59n.py`;
+`tools/golden/README.md` generator-exceptions note. `TESTING.md`/`CLAUDE.md`
+deliberately untouched (Phase F owns them; its one stale F2 sentence reconciles
+after both merge).
