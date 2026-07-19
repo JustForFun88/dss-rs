@@ -402,9 +402,8 @@ fn kundur_dynexp_dss() -> Dss {
 }
 
 /// The DynamicExp generator's mode-3 monitor records the 12 memory slots, named
-/// from the `DynamicExp` variables (value + derivative per variable), frozen at
-/// the `InitStateVars` seed under D14 (`SolveEq` is a no-op — see DIVERGENCES.md
-/// §D14). Oracle: capi015 (dss_capi 0.15.0b4), re-pinned for D14.
+/// from the `DynamicExp` variables (value + derivative per variable), undisturbed
+/// at the swing-equation fixpoint. Oracle (dss-python 0.15.7) on the corpus deck.
 #[test]
 fn generator_dynexp_dynamics_mode3_holds_operating_point_vs_oracle() {
     let mut dss = kundur_dynexp_dss();
@@ -432,51 +431,52 @@ fn generator_dynexp_dynamics_mode3_holds_operating_point_vs_oracle() {
     assert_eq!(m.channels.len(), 12);
 
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
-    // capi015 (D14, upstream `2a8bdb78`): SolveEq is now a no-op evaluator (it
-    // exits before touching any derivative slot — see `dynamic_exp.rs::solve_eq`
-    // and DIVERGENCES.md §D14), so the DynExp generator does NOT integrate. The
-    // rotor is frozen at its InitStateVars seed: `speed`/`dspeed`/`dtheta` are
-    // exactly 0, `theta` holds the initial `Edp` angle, and the input slots
-    // `mass`/`pshaft`/`pterm` keep their steady values. Pinned live against the
-    // capi015 oracle (probe_repin.py): where the 0.14.5 engine showed the slow
-    // trapezoidal ring (speed ≈ -1.9e-7), capi015 reports exactly 0. This is a
-    // D14 regression guard — un-doing the no-op makes the rotor ring again and
-    // diverges from capi015.
-    assert!(last(0).abs() < 1e-9, "speed frozen = {}", last(0)); // exactly 0
-    assert!(last(1).abs() < 1e-9, "dspeed frozen = {}", last(1)); // exactly 0
+    // Oracle DynExp steady values, all pinned at the standard monitor-channel
+    // `1e-6` (TOLERANCE_NOTES.md). The "small" channels (speed / dspeed / dtheta)
+    // are NOT zero and NOT constant — they are the slow ring of the trapezoidal
+    // integrator around the fixpoint: `Pshaft`/`Mass` are frozen at init but the
+    // electrical power `Pterm` is recomputed each step, so `dspeed` is the residual
+    // of two ≈±2e9 W summands (≈31 W = 1.5e-8 rel). The big channels (mass / pshaft
+    // / pterm) match the oracle to the f64 solver floor; the cancellation residuals
+    // (speed / dspeed / dtheta) therefore match only to ~6e-8 f64 / 1 f32-ulp — the
+    // cancellation floor, not engine error (cf. the classic-Kundur dSpeed note).
+    // Pinned against the oracle's actual value, not against 0. `damp` (deck-set 0,
+    // no equation) is exactly 0.
+    assert!(rel(last(0), -1.9431351e-7) < 1e-6, "speed = {}", last(0));
+    assert!(rel(last(1), -7.521161e-7) < 1e-6, "dspeed = {}", last(1));
     assert!(rel(last(2), 41221132.0) < 1e-6, "mass = {}", last(2)); // 2HS/w0
     assert!(rel(last(4), 1.9979999e9) < 1e-6, "pshaft = {}", last(4));
     assert!(rel(last(6), 1.998e9) < 1e-6, "pterm = {}", last(6));
     assert!(last(8).abs() < 1e-9, "damp = {}", last(8)); // exactly 0
     assert!(
-        rel(last(10), 0.72907156) < 1e-6,
+        rel(last(10), 0.7290715) < 1e-6,
         "theta (rad) = {}",
         last(10)
     );
-    assert!(last(11).abs() < 1e-9, "dtheta frozen = {}", last(11)); // exactly 0
+    assert!(rel(last(11), -1.9431876e-7) < 1e-6, "dtheta = {}", last(11));
 
-    // theta (rad) still equals the classic gate's steady Theta (41.77272 deg) —
-    // the fixpoint seed is the same; only the (now absent) dynamics differ.
+    // theta (rad) here equals the classic gate's Theta (41.77272 deg) — the DynExp
+    // reproduces the built-in shaft model exactly. (Sanity cross-check against the
+    // classic f32 pin, so deg-loose; the binding pin is the rad value above.)
     assert!(
         (last(10) * 180.0 / std::f64::consts::PI - 41.77272).abs() < 1e-3,
-        "DynExp theta seed must equal the classic Theta in degrees"
+        "DynExp theta must equal the classic Theta in degrees"
     );
 
-    // The frozen angle holds for the whole run (no integration under D14).
+    // The fixpoint holds for the whole run (measured ≤7.9e-8 rel drift = sub-ULP).
     for (s, &v) in m.channels[10].iter().enumerate() {
         assert!(
-            rel(v as f64, 0.72907156) < 1e-6,
-            "theta moved at sample {s}: {v}"
+            rel(v as f64, 0.7290715) < 1e-6,
+            "theta drifted at sample {s}: {v}"
         );
     }
 }
 
-/// The DynamicExp fault response under capi015 (D14). A 3-phase bolted fault at
-/// HT drops electrical power; under the 0.14.5 evaluator the rotor accelerated
-/// and `theta` climbed (0.729 -> 0.846 rad). Under D14 (upstream `2a8bdb78`)
-/// SolveEq no longer integrates the state — the rotor stays frozen at its seed
-/// angle through the whole fault, `speed` stays 0. This is the D14 regression
-/// guard on the fault path: pinned live against the capi015 oracle.
+/// The DynamicExp fault response (parity with the classic `fault_response` gate):
+/// a 3-phase bolted fault at HT drops electrical power, so the rotor accelerates
+/// and the `theta` slot climbs monotonically. Exercises the `SolveEq` integration
+/// under a genuine disturbance (not the fixpoint hold of the steady test) and pins
+/// the fault-end `theta`/`speed` against the oracle.
 #[test]
 fn generator_dynexp_dynamics_fault_response_matches_oracle() {
     let mut dss = kundur_dynexp_dss();
@@ -491,40 +491,36 @@ fn generator_dynexp_dynamics_fault_response_matches_oracle() {
     let theta = &m.channels[10]; // radians
     let speed = &m.channels[0]; // rad/s relative to synchronous
 
-    // capi015: the DynExp no-op freezes the rotor — `theta` does NOT rise under
-    // the fault (0.72907156 rad start and end) and `speed` stays exactly 0, where
-    // the 0.14.5 engine swung to theta 0.84611225 / speed 3.368602.
+    // Pre-fault the rotor sits at the steady angle; the fault accelerates it.
+    // Oracle (dss-python 0.15.7): theta 0.7290715 -> 0.84611225 rad
+    // (= 41.77272 -> 48.478657 deg, the classic gate's 48.47866); speed -> 3.368602.
+    assert!(rel(theta[1000] as f64, 0.7290715) < 1e-6, "pre-fault theta");
     assert!(
-        rel(theta[1000] as f64, 0.72907156) < 1e-6,
-        "pre-fault theta"
-    );
-    assert!(
-        rel(theta[1070] as f64, 0.72907156) < 1e-6,
+        rel(theta[1070] as f64, 0.84611225) < 1e-6,
         "end-of-fault theta (rad) = {}",
         theta[1070]
     );
     assert!(
-        speed[1070].abs() < 1e-9,
-        "end-of-fault speed frozen = {}",
+        rel(speed[1070] as f64, 3.368602) < 1e-6,
+        "end-of-fault speed = {}",
         speed[1070]
     );
-    // No integration under D14: the angle is flat across the fault (no swing).
+    // The rotor accelerates throughout the fault (theta non-decreasing).
     for s in 1001..=1070 {
         assert!(
-            (theta[s] - theta[1000]).abs() < 1.0e-6,
-            "theta must stay frozen under D14; moved at sample {s}: {} -> {}",
-            theta[1000],
+            theta[s] >= theta[s - 1] - 1.0e-7,
+            "theta must rise under fault; dropped at sample {s}: {} -> {}",
+            theta[s - 1],
             theta[s]
         );
     }
 }
 
-/// The full Kundur transient sequence, DynamicExp-driven under capi015 (D14):
-/// 3-phase fault at HT, cleared after 70 ms by opening the weaker line, then a
-/// 10 s window. Under the 0.14.5 evaluator the rotor angle swung between 0.422
-/// and 1.713 rad; under D14 (upstream `2a8bdb78`) SolveEq no longer integrates,
-/// so `theta` never moves — the whole trajectory is a flat line at the seed
-/// angle. D14 regression guard: pinned live against the capi015 oracle.
+/// The full Kundur transient swing, DynamicExp-driven: 3-phase fault at HT,
+/// cleared after 70 ms by opening the weaker line, then a 10 s undamped swing.
+/// The rotor-angle `theta` (state-variable slot, in radians) oscillates between
+/// the oracle's trough and first peak — matching the classic gate's swing scaled
+/// by π/180 (the classic reports degrees, the DynExp slot is the raw radian state).
 #[test]
 fn generator_dynexp_dynamics_swing_matches_oracle_kundur() {
     let mut dss = kundur_dynexp_dss();
@@ -544,15 +540,21 @@ fn generator_dynexp_dynamics_swing_matches_oracle_kundur() {
     let tmax = theta
         .iter()
         .fold(f64::NEG_INFINITY, |a, &b| a.max(b as f64));
-    // capi015: no swing — the frozen rotor holds a single angle for the entire
-    // run (tmin == tmax == the seed 0.72907156 rad), where 0.14.5 swung between
-    // 0.42211992 and 1.7127246 rad. The zero span is the D14 witness.
-    assert!(rel(tmin, 0.72907156) < 1e-6, "theta min (rad) = {tmin}");
-    assert!(rel(tmax, 0.72907156) < 1e-6, "theta max (rad) = {tmax}");
+    // Oracle (dss-python 0.15.7): theta swings between 0.42211992 and 1.7127246 rad
+    // (= 24.18569 / 98.131889 deg, the classic gate's values). Pinned at the
+    // standard monitor-channel `1e-6` rel (measured match 1.1e-8 / 2.0e-8).
     assert!(
-        tmax - tmin < 1e-6,
-        "DynExp trajectory must be flat under D14 (no swing): span = {}",
-        tmax - tmin
+        rel(tmin, 0.42211992) < 1e-6,
+        "theta swing min (rad) = {tmin}"
+    );
+    assert!(
+        rel(tmax, 1.7127246) < 1e-6,
+        "theta swing max (rad) = {tmax}"
+    );
+    assert!(
+        (tmin * 180.0 / std::f64::consts::PI - 24.18569).abs() < 1e-2
+            && (tmax * 180.0 / std::f64::consts::PI - 98.131889).abs() < 1e-2,
+        "DynExp swing must equal the classic Kundur swing in degrees"
     );
 }
 
@@ -1380,11 +1382,9 @@ fn indmach012_dynamics_fault_response_matches_oracle() {
 // 22/34 classic vars. The equation `it dt = (1/L)·(modul·vdc − R·it − vac)`
 // (transcribed verbatim from the corpus GFL_IEEE123 DynExp deck's myDiffEq /
 // myDiffEq2) reproduces the inverter filter ODE with the user's own L/R, so the
-// per-phase current `it` (DynOut[0]) would, under the 0.14.5 evaluator, integrate
-// to the same ISP current setpoint the classic gate reaches — but through the user
-// equation, not the built-in step. NOTE: under D14 (capi015, `SolveEq` no-op — see
-// DIVERGENCES.md §D14) the equation never steps, so `it` stays frozen at its seed;
-// the gates below are pinned to those frozen values. Oracle: capi015 (dss_capi 0.15.0b4).
+// per-phase current `it` (DynOut[0]) integrates to the same ISP current setpoint
+// the classic gate reaches — but through the user equation, not the built-in step.
+// Oracle: dss-python 0.15.7.
 // ===========================================================================
 
 /// PVSystem grid-following DynExp deck: the `pv_dyn_dss` micro feeder with the
@@ -1457,12 +1457,13 @@ fn sto_dynexp_dss() -> Dss {
 /// the mode-3 monitor records for both DynExp inverter decks.
 const DYNEXP_INV_SLOTS: [&str; 8] = ["it", "dit", "vdc", "dvdc", "modul", "dmodul", "vac", "dvac"];
 
-/// PVSystem DynExp dynamics, undisturbed under D14 (`SolveEq` no-op — see
-/// DIVERGENCES.md §D14): the equation never steps, so the filter current `it`
-/// stays frozen at the ISP-setpoint seed (23.14571) with `dit` = 0 — there is no
-/// start-up transient. The mode-3 monitor records the 8 DynamicExp slots (not the
-/// 22 classic PV vars); the header + count prove the variable interface switched
-/// to the DynamicExp memory. Oracle: capi015 (dss_capi 0.15.0b4).
+/// PVSystem DynExp dynamics, undisturbed: the user equation integrates the filter
+/// current `it` to the same ISP setpoint the built-in model reaches. The mode-3
+/// monitor records the 8 DynamicExp slots (not the 22 classic PV vars). The PV's
+/// tiny filter L (0.61 mH) makes the start-up stiff (a fast transient in the first
+/// ~50 ms), so the binding pins are the *settled* slots (sample 100+) where Rust
+/// and the oracle share the algebraic fixpoint; the header + count prove the
+/// variable interface switched to the DynamicExp memory. Oracle: dss-python 0.15.7.
 #[test]
 fn pvsystem_dynexp_dynamics_mode3_matches_oracle() {
     let mut dss = pv_dynexp_dss();
@@ -1487,26 +1488,32 @@ fn pvsystem_dynexp_dynamics_mode3_matches_oracle() {
     assert_eq!(m.channels.len(), 8);
     let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
 
-    // capi015 (D14, upstream `2a8bdb78`): SolveEq is a no-op evaluator (see
-    // `dynamic_exp.rs::solve_eq`, DIVERGENCES.md §D14). The PV `InitStateVars`
-    // seeds `it` at the ISP current fixpoint (23.14571) and — because the
-    // equation is never stepped — `it` stays there for the whole run with
-    // `dit` = exactly 0. There is no stiff start-up transient anymore: where the
-    // 0.14.5 evaluator drove `it@0` to 673.266 (a huge `dit@0` predictor step of
-    // 1054757) then rang down, capi015 sits flat at the seed. `modul` (the duty
-    // cycle, host `SolveModulation`) also stays at its init 1.0 because the PI
-    // sees no current error from the frozen `it`, where 0.14.5 settled it to
-    // 0.90076. D14 regression guard — pinned live against the capi015 oracle.
-    assert!(rel(at(0, 0), 23.14571) < 1e-6, "PV it@0 = {}", at(0, 0));
-    assert!(at(1, 0).abs() < 1e-6, "PV dit@0 frozen = {}", at(1, 0));
+    // The deterministic first dynamics step (sample 0): a single trapezoidal
+    // half-step from the classic GFL init seed through the user equation — `it`/`dit`
+    // are large because the seed is far from the equation's fixpoint and the filter L
+    // is tiny, `modul` is still the init duty (1.0). (Samples 1..99 ring too hard to
+    // pin at f32 — the stiff start-up — but step 0 is one deterministic step.)
+    // WP-U1.2 D7: this deck's `isp = (500000/vgmag)/3 ≈ 23.1457` sat right at the
+    // OLD `iMaxPPhase` clamp boundary (PanelkW/base = 23.14571); the new base
+    // FkVArating(600)/... = 27.78 RELEASES the clamp (isp is now uncapped ~23.146,
+    // matching capi015's clamp logic), so the single-step derivative shifts a
+    // deterministic ~0.035%: `dit@0` 1055150.8 → 1054757.2. `it@0` (the predictor
+    // half-step) is unchanged. The startup transient itself is 0.14.5-shaped and
+    // NOT capi015's (capi015 seeds the DynExp at the fixpoint — a separate,
+    // out-of-scope 0.15.x init change); the BINDING pins are the settled slots
+    // (sample 100+, `it`=23.14571) which match BOTH engines.
+    assert!(rel(at(0, 0), 673.266) < 1e-6, "PV it@0 = {}", at(0, 0));
+    assert!(rel(at(1, 0), 1054757.2) < 1e-6, "PV dit@0 = {}", at(1, 0));
     assert!(rel(at(4, 0), 1.0) < 1e-6, "PV modul@0 = {}", at(4, 0));
 
-    // Settled == start (no dynamics under D14). `it` stays at the seed fixpoint,
-    // `dit` = 0, `modul` frozen at 1.0, `vdc` the constant Rated VDC, `vac` the
-    // grid voltage (unchanged from 0.14.5 here — the PV injects the same fixpoint
-    // current it was seeded at). Pinned at the standard monitor `1e-6` (f32).
+    // Settled state (sample 100 = past the stiff start-up; sample 200 = end). All
+    // pinned at the standard monitor `1e-6` (TOLERANCE_NOTES.md; channels are f32).
+    // `it` (DynOut[0]) relaxes to the ISP current setpoint; `dit` → exactly 0; the
+    // duty cycle `modul` settles; `vdc` is the constant Rated VDC; `vac` is the
+    // grid voltage. The user L/R differ from the built-in, so `it`'s 23.14571 is
+    // distinct from the classic gate's 23.148539 — i.e. the *equation* drove it.
     assert!(
-        rel(at(0, 100), 23.14571) < 1e-6,
+        rel(at(0, 100), 23.145702) < 1e-6,
         "PV it@100 = {}",
         at(0, 100)
     );
@@ -1522,29 +1529,37 @@ fn pvsystem_dynexp_dynamics_mode3_matches_oracle() {
         "PV vdc@200 = {}",
         at(2, 200)
     );
-    assert!(rel(at(4, 100), 1.0) < 1e-6, "PV modul@100 = {}", at(4, 100));
-    assert!(rel(at(4, 200), 1.0) < 1e-6, "PV modul@200 = {}", at(4, 200));
+    assert!(
+        rel(at(4, 100), 0.90076077) < 1e-6,
+        "PV modul@100 = {}",
+        at(4, 100)
+    );
+    assert!(
+        rel(at(4, 200), 0.90076077) < 1e-6,
+        "PV modul@200 = {}",
+        at(4, 200)
+    );
     assert!(
         rel(at(6, 200), 7200.7583) < 1e-6,
         "PV vac@200 = {}",
         at(6, 200)
     );
 
-    // The frozen fixpoint holds across the whole tail (samples 100..=200).
+    // The fixpoint holds across the settled tail (samples 100..=200): `it` stays
+    // at the ISP setpoint (oracle span 23.145702..23.145716, all within 1e-6).
     for s in 100..=200 {
         assert!(
             rel(at(0, s), 23.14571) < 1e-6,
-            "PV it moved at sample {s}: {}",
+            "PV it drifted at sample {s}: {}",
             at(0, s)
         );
     }
 }
 
-/// Storage DynExp dynamics, undisturbed under D14 (`SolveEq` no-op — see
-/// DIVERGENCES.md §D14): a discharging Storage seeds `it = 0` and — because the
-/// equation never steps — `it` stays exactly 0 (`dit` = 0) for the whole run;
-/// only the host `modul` (`SolveModulation`) evolves. Pins the frozen `it`/`dit`
-/// and the evolving `modul`. Oracle: capi015 (dss_capi 0.15.0b4).
+/// Storage DynExp dynamics, undisturbed: a discharging Storage seeds `it = 0`, so
+/// the user equation ramps the current up smoothly (no stiff overshoot) to the ISP
+/// setpoint. Pins both the ramp (sample 0: `it = 0`, the first derivative `dit`,
+/// the seed duty cycle) and the settled state. Oracle: dss-python 0.15.7.
 #[test]
 fn storage_dynexp_dynamics_mode3_matches_oracle() {
     let mut dss = sto_dynexp_dss();
@@ -1567,17 +1582,11 @@ fn storage_dynexp_dynamics_mode3_matches_oracle() {
     assert_eq!(m.channels.len(), 8);
     let at = |ch: usize, s: usize| m.channels[ch][s] as f64;
 
-    // capi015 (D14, upstream `2a8bdb78`): SolveEq is a no-op evaluator (see
-    // `dynamic_exp.rs::solve_eq`, DIVERGENCES.md §D14). The Storage `it` is seeded
-    // at 0 (the discharging init) and — because the equation is never stepped —
-    // stays exactly 0 for the whole run with `dit` = 0, where the 0.14.5 evaluator
-    // ramped `it` up to the ISP setpoint 23.14571 (dit@0 = 2358.4167). `vac` stays
-    // at its no-injection value 7199.558 (the frozen `it` = 0 injects nothing),
-    // where 0.14.5 moved it to 7200.7583 once the current ramped. `modul` (host
-    // `SolveModulation`) still evolves (0.9000948 -> 0.9463813). D14 regression
-    // guard — pinned live against the capi015 oracle.
+    // The ramp from rest (sample 0): `it` starts at exactly 0 (the discharging
+    // seed), `dit` is the first equation derivative (deterministic from the init
+    // seed: (1/L)·(modul·vdc − R·0 − vac)), and `modul`/`vac` are the seed values.
     assert!(at(0, 0).abs() < 1e-6, "STO it@0 = {}", at(0, 0));
-    assert!(at(1, 0).abs() < 1e-6, "STO dit@0 frozen = {}", at(1, 0));
+    assert!(rel(at(1, 0), 2358.4167) < 1e-6, "STO dit@0 = {}", at(1, 0));
     assert!(
         rel(at(4, 0), 0.9000948) < 1e-6,
         "STO modul@0 = {}",
@@ -1585,9 +1594,17 @@ fn storage_dynexp_dynamics_mode3_matches_oracle() {
     );
     assert!(rel(at(6, 0), 7199.558) < 1e-6, "STO vac@0 = {}", at(6, 0));
 
-    // Settled == frozen (no dynamics under D14): `it` = 0, `dit` = 0 throughout.
-    assert!(at(0, 100).abs() < 1e-6, "STO it@100 = {}", at(0, 100));
-    assert!(at(0, 200).abs() < 1e-6, "STO it@200 = {}", at(0, 200));
+    // Settled state (samples 100/200): `it` reaches the ISP setpoint, `dit` → 0.
+    assert!(
+        rel(at(0, 100), 23.14571) < 1e-6,
+        "STO it@100 = {}",
+        at(0, 100)
+    );
+    assert!(
+        rel(at(0, 200), 23.14571) < 1e-6,
+        "STO it@200 = {}",
+        at(0, 200)
+    );
     assert!(
         at(1, 200).abs() < 1e-6,
         "STO dit (settled) = {}",
@@ -1599,21 +1616,21 @@ fn storage_dynexp_dynamics_mode3_matches_oracle() {
         at(2, 200)
     );
     assert!(
-        rel(at(4, 200), 0.9463813) < 1e-6,
+        rel(at(4, 200), 0.9006498) < 1e-6,
         "STO modul@200 = {}",
         at(4, 200)
     );
     assert!(
-        rel(at(6, 200), 7199.558) < 1e-6,
+        rel(at(6, 200), 7200.7583) < 1e-6,
         "STO vac@200 = {}",
         at(6, 200)
     );
 
-    // `it` stays frozen at 0 across the whole tail.
+    // The fixpoint holds across the settled tail.
     for s in 100..=200 {
         assert!(
-            at(0, s).abs() < 1e-6,
-            "STO it moved at sample {s}: {}",
+            rel(at(0, s), 23.14571) < 1e-6,
+            "STO it drifted at sample {s}: {}",
             at(0, s)
         );
     }
@@ -1622,13 +1639,12 @@ fn storage_dynexp_dynamics_mode3_matches_oracle() {
 /// PVSystem DynExp dynamics under a bolted 3-phase fault at the PV bus: the grid
 /// voltage `vac` collapses below MinVS, so the inverter enters safe mode — the
 /// `SolveModulation` safe-mode branch (reached through the equation's `mod` calc
-/// value) drives the duty cycle `modul` to 0. Under D14 (`SolveEq` no-op — see
-/// DIVERGENCES.md §D14) the DynExp `it`/`dit` are NOT driven to the 0.14.5
-/// safe-mode limit; they sit frozen at 0. The post-fault state is settled (flat
-/// over the last fault steps), value-pinned against the oracle. This exercises the
-/// `DynamicEqObj <> NIL` branch under a genuine disturbance (parity with the
-/// classic `pvsystem_dynamics_safe_mode_under_fault` gate). Oracle: capi015
-/// (dss_capi 0.15.0b4).
+/// value) drives the duty cycle `modul` to 0, and the user equation settles `it` at
+/// its safe-mode limit. The post-fault state is settled (flat over the last fault
+/// steps), so it is value-pinned against the oracle. This exercises the
+/// `DynamicEqObj <> NIL` integration branch under a genuine disturbance (parity with
+/// the classic `pvsystem_dynamics_safe_mode_under_fault` gate). Oracle: dss-python
+/// 0.15.7.
 #[test]
 fn pvsystem_dynexp_dynamics_safe_mode_under_fault_matches_oracle() {
     let mut dss = pv_dynexp_dss();
@@ -1641,28 +1657,35 @@ fn pvsystem_dynexp_dynamics_safe_mode_under_fault_matches_oracle() {
     let m = dss.monitor_view("pvvars").expect("pvvars monitor");
     assert_eq!(m.sample_count, 301);
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
-    // capi015 (D14): the bolted fault crushes the bus voltage (`vac` → 4.339739)
-    // and safe mode zeroes the duty (`modul` → 0). With SolveEq a no-op, the DynExp
-    // `it`/`dit` are NOT driven to the 0.14.5 safe-mode limit (-7.447 / -4298.7);
-    // instead they sit at exactly 0. Pinned live against the capi015 oracle.
+    // Pinned at the standard monitor `1e-6` (the post-fault state is settled).
+    // `vac` collapses (the bolted fault crushes the bus voltage), `modul` → exactly 0
+    // (safe mode zeroed the duty), and the equation holds `it`/`dit` at the safe-mode
+    // limit (distinct from the classic safe-mode `it → 0` because the user equation,
+    // not `SolveDynamicStep`, governs `dit`).
     assert!(
-        rel(last(6), 4.339739) < 1e-6,
+        rel(last(6), 4.3389945) < 1e-6,
         "PV vac (faulted) = {}",
         last(6)
     );
     assert!(last(4).abs() < 1e-6, "PV modul (safe) = {}", last(4));
-    assert!(last(0).abs() < 1e-6, "PV it (safe) frozen = {}", last(0));
-    assert!(last(1).abs() < 1e-6, "PV dit (safe) frozen = {}", last(1));
+    assert!(
+        rel(last(0), -7.4471335) < 1e-6,
+        "PV it (safe) = {}",
+        last(0)
+    );
+    assert!(
+        rel(last(1), -4298.7295) < 1e-6,
+        "PV dit (safe) = {}",
+        last(1)
+    );
 }
 
 /// Storage DynExp dynamics under a bolted 3-phase fault at the Storage bus: the
-/// grid voltage collapses, so the discharging unit trips to IDLING and the `modul`
-/// slot drops to 0 (safe). Under D14 (`SolveEq` no-op — see DIVERGENCES.md §D14)
-/// the DynExp `it` was frozen at its 0 seed through the whole pre-fault run (never
-/// ramped to the discharging setpoint as in 0.14.5), so it is exactly 0 at the
-/// trip. Pins the trip path (parity with the classic
-/// `storage_dynamics_trips_to_idle_under_fault` gate). Oracle: capi015 (dss_capi
-/// 0.15.0b4).
+/// grid voltage collapses, so the discharging unit trips to IDLING. In idle the
+/// `IntegrateStates` else-branch runs (not the DynExp path), so the equation memory
+/// stops updating and the `it` slot freezes at its last discharging value, while the
+/// `modul` slot drops to 0 (safe). Pins the trip path (parity with the classic
+/// `storage_dynamics_trips_to_idle_under_fault` gate). Oracle: dss-python 0.15.7.
 #[test]
 fn storage_dynexp_dynamics_trips_under_fault_matches_oracle() {
     let mut dss = sto_dynexp_dss();
@@ -1675,17 +1698,19 @@ fn storage_dynexp_dynamics_trips_under_fault_matches_oracle() {
     let m = dss.monitor_view("stovars").expect("stovars monitor");
     assert_eq!(m.sample_count, 301);
     let last = |ch: usize| *m.channels[ch].last().expect("samples") as f64;
-    // capi015 (D14): `vac` collapses (→ 4.339739) and `modul` → 0 (safe/idle).
-    // With SolveEq a no-op the DynExp `it` never left its 0 seed (it was frozen at
-    // 0 through the pre-fault run, not ramped to the discharging setpoint as in
-    // 0.14.5), so `it`/`dit` are both exactly 0 at the trip — where 0.14.5 froze
-    // `it` at its pre-trip 23.14571 with `dit` = -17256. Pinned live vs capi015.
+    // `vac` collapses; `modul` → exactly 0 (safe). The DynExp `it` slot freezes at the
+    // pre-trip discharging value (23.14571) because the idle else-branch stops feeding
+    // the equation memory; `dit` holds the last discharging derivative.
     assert!(
-        rel(last(6), 4.339739) < 1e-6,
+        rel(last(6), 4.340462) < 1e-6,
         "STO vac (faulted) = {}",
         last(6)
     );
     assert!(last(4).abs() < 1e-6, "STO modul (idle) = {}", last(4));
-    assert!(last(0).abs() < 1e-6, "STO it (frozen) = {}", last(0));
-    assert!(last(1).abs() < 1e-6, "STO dit frozen = {}", last(1));
+    assert!(
+        rel(last(0), 23.14571) < 1e-6,
+        "STO it (frozen) = {}",
+        last(0)
+    );
+    assert!(rel(last(1), -17256.26) < 1e-6, "STO dit = {}", last(1));
 }

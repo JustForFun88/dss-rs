@@ -230,10 +230,11 @@ impl DynEqPceData {
         DynamicExpObj::get_dynamic_eq_val(i, &self.dynamic_eq_vals)
     }
 
-    /// Pascal `DynamicEqObj.SolveEq(DynamicEqVals)`. Since the D14 upgrade
-    /// (upstream `2a8bdb78`) this is a no-op evaluator — it exits before touching
-    /// any derivative slot, so the memory is left as the host set it; see
-    /// [`DynamicExpObj::solve_eq`] and DIVERGENCES.md §D14.
+    /// Pascal `DynamicEqObj.SolveEq(DynamicEqVals)` — evaluate the linked
+    /// equation's RHS and write the state-variable derivatives back into the
+    /// memory space, so the host's trapezoidal integrator advances the state
+    /// (both gating oracles integrate; see [`DynamicExpObj::solve_eq`] and
+    /// DIVERGENCES.md §D14).
     /// (Disjoint-field borrow: the read-only equation and the mutable memory are
     /// separate fields, so no per-step clone of the expression is needed.)
     pub fn solve_eq(&mut self) {
