@@ -960,6 +960,60 @@ empirically:
   subsumed by the same confound (the mode-3 channel IS the 34-var surface, already
   gated).
 
+### WM.3 D2 follow-up — the ~5e-4 gap is a PORT BUG, not a version divergence (branch `wm3-d2`)
+
+The WM.3 settlement HYPOTHESISED D2 (the residual ~5e-4 `wasm_gen_dyn`
+Rust-vs-r4133 trajectory gap) is a dss_capi-0.14.5-vs-r4133 engine-version
+divergence (D1 family) and gated the deck structurally. The follow-up built the
+**0.14.5-ABI twin** and ran the disambiguation the settlement deferred. **That
+hypothesis is DISPROVEN — VERDICT (b), PORT BUG.** Evidence
+`docs/wasm/probes/p_d2_threeway_portbug.txt`.
+
+- **ABI check (empirical, source-level).** dss_capi 0.14.5 `TGeneratorVars` = 244 B
+  (== r3723 GeneratorVars.pas, byte-identical); r4133 inserts `deltaQNom`@176 →
+  252 B. The ABI **differs**, so the committed 252-B twin can't drive the pinned
+  dss-python 0.14.5. Built the **0.14.5-ABI twin** from r3723 V8 IndMach012a
+  (`tools/wasm_usermodel/build_native_r3723.ps1`; model files sha256-identical to
+  the r4133 twin — only GeneratorVars differs, so the sole controlled variable is
+  the engine version). sha256 `090393…89E0A`, loads + solves the full deck on
+  pinned dss-python 0.15.7/0.14.5.
+- **Three-way (end-state).** A = Rust+wasm, B = 0.14.5+244B-twin, C = r4133 golden.
+  **B vs C ≤ 1.06e-13 on every quantity** (slip/Is1/Ir1/losses/HPshaft/dSpeed/node
+  V) — the two engine VERSIONS agree to the faer-vs-KLU floor; there is **no**
+  0.14.5-vs-r4133 divergence here. **A vs C == A vs B** (Is1 5.3e-4, Ir1 5.3e-4,
+  losses ~1.1e-3, dSpeed 3.4e-2, node-V.im 5.1e-4, slip 9.8e-5) — Rust diverges
+  from BOTH oracles, incl. its own pinned 0.14.5 spec, by the identical amount. So
+  it is Rust's port that is wrong, not r4133.
+- **First divergence.** Step 0 (snapshot, `calc_pflow`) is BIT-IDENTICAL A==B==C
+  (1e-14). Step 1 (first dynamics step) already diverges: **Slip matches (2.4e-6)
+  but Is1 is off 5.5e-4** for both the user and shaft model instances (which agree
+  with each other to ~2e-6, as in the oracle). `is1 = (v1-e1)/zsp` with slip and
+  zsp (snapshot) matched → the divergence is in the dynamic flux `e1`/terminal
+  voltage `v1` of the Model=6 dynamics network solve.
+- **NOT conditioning.** `Set tolerance=1e-12 maxiterations=1000` on both engines
+  leaves the ~5e-4 gap intact (each engine's own value moves <7e-6) — they
+  converge tightly to DIFFERENT fixpoints (per CLAUDE.md's tighten-the-loop rule),
+  a genuine state divergence, not a Norton/Zthev convergence-band artifact.
+- **Sub-bug #1 FIXED (`generator/user_model.rs::shaft_model_fcalc`).** Pascal
+  `DoDynamicMode:2038` `ShaftModel.FCalc(Vterminal, Iterminal)` OVERWRITES the live
+  `Iterminal` (last write), which `IntegrateStates`' `ComputeIterminal` then reuses
+  → `TracePower` reads the SHAFT model's currents. Rust discarded them into a
+  scratch buffer (kept the user currents). Fixed to write back (Pascal-cited).
+  Step-1 `dSpeed` −75.66→−84.80 toward oracle −89.24; **end-state effect negligible
+  (Is1 unchanged)** because sub-bug #2 dominates. Contained to Model=6+ShaftModel
+  (only `wasm_gen_dyn`; no corpus case); full gate green.
+- **Sub-bug #2 OPEN (dominant).** The Model=6 dynamic-current fixpoint is off ~5e-4
+  from step 1 with slip matched. Guest math is bit-exact to the twin
+  (`fixture_self_gate`), so the dss-core Generator dynamics host feeds the guest
+  state differing from what Pascal feeds the twin (checked-and-matched: snapshot
+  1e-14, slip, Vterminal mag+angle, w0/Mmass/D/Pshaft). Line-level pin needs
+  guest-internal `e1`/`t0p` tracing = rebuilding the WM.4-constraint-frozen fixture
+  `.wasm`, out of scope here. **Left as the OPEN follow-up port bug.**
+- **Gate design.** The dyn deck stays STRUCTURAL (`numeric=false`) until sub-bug #2
+  is fixed — flipping it to numeric now would need a forbidden ~1e-1 band. No
+  tolerance/golden/ledger touched. **DIVERGENCES.md gets NO entry** — D2 is a port
+  bug, not a version divergence (an entry would misrepresent the finding).
+
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
 JSON-Schema (draft 2020-12) envelope (`$schema`/`$id`/`type`/`required`), the ten
