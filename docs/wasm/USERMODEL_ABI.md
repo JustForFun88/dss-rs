@@ -306,19 +306,34 @@ the authored fixture chooses the channel it can gate).
 
 **Decision signalling — `control_queue_push`, a plain queue push on both sides.**
 A model signals its switch decision through `control_queue_push(hour, sec, code,
-proxy_hdl)` — a plain push onto the control queue (Effect tier B). This is exactly
-what a native twin does through `CallBacks.ControlQueuePush` (which the native
-engine forwards straight to `ControlQueue.Push`, `DSSCallBackRoutines.pas:444`);
-the twin does NOT set `ShouldSwitch`, so the engine's built-in `Sample`-tail
-arm/disarm block is skipped on both engines — the model owns the timing. When the
-queue pops, `DoPendingAction(Code, ProxyHdl)` runs: the host sets `PendingChange =
-Code`, calls the guest `do_pending`, and the shared switch block acts on
-`PendingChange`. (The alternative — writing `FPendingChange`/`ShouldSwitch` back
-into the public-data record so the engine's own arming logic fires — is NOT used:
-it needs a public-data write-back the frozen ABI does not have, AND a native twin
-cannot even read/write `@ControlVars` reliably per the asymmetry above.) This is a
-WP-WM.5 element-wiring decision recorded in STATUS §WASM-UM WP-WM.5, not an ABI
-change. The 15/13/7 function shapes and the `TDynamicsRec`/callback contracts
+proxy_hdl)` — a plain push onto the control queue (Effect tier B), forwarded to
+`ControlQueue.Push` (`DSSCallBackRoutines.pas:444`).
+
+Note this deliberately **diverges from the native USERCONTROL timing path.** In
+Pascal, `CapControl.Sample`'s `USERCONTROL` arm calls `UserModel.Sample` "Sets the
+switching flags" (`CapControl.pas:1069`) — the model writes `ShouldSwitch`/
+`PendingChange` into `@ControlVars` — and then the **shared `Sample` tail**
+(`CapControl.pas:1180-1205`) computes `TimeDelay` from `DeadTime`/`ONDelay`/
+`OFFDelay`, does `ControlQueue.Push`, arms (`Armed := TRUE`), and disarms on
+`PendingChange = CTRL_NONE`. The WM.5 gate twin cannot use that path: it needs a
+public-data write-back the frozen ABI does not have, AND — per the asymmetry above
+— a native twin cannot even read/write `@ControlVars` reliably. So the twin (and
+the wasm guest) instead pushes the queue **directly**, meaning the engine's
+`DeadTime`/`ONDelay`/`OFFDelay` arm/disarm tail is bypassed and **the model owns
+the timing**. When the queue pops, `DoPendingAction(Code, ProxyHdl)` runs: the
+host sets `PendingChange = Code`, calls the guest `do_pending`, and the shared
+switch block acts on `PendingChange`.
+
+**Successor caveat (deferred to the element-wiring build round):** because the
+direct push skips the shared-tail timing, the `capuserctl` deck must keep
+`ONDelay`/`OFFDelay`/`DeadTime` at values (e.g. 0) where the engine tail would add
+no delay, so the direct-push schedule and any Pascal-faithful shared-tail schedule
+coincide and the r4133 twin and Rust engine cannot diverge on action *time*. The
+dss-rs `USERCONTROL` wiring must choose the push channel **deliberately** (direct
+push, matching the gate twin) rather than fall into it — do not route the guest's
+decision through the shared arm/disarm tail without also reconciling the twin.
+This is a WP-WM.5 element-wiring decision recorded in STATUS §WASM-UM WP-WM.5, not
+an ABI change. The 15/13/7 function shapes and the `TDynamicsRec`/callback contracts
 above do not depend on the `get_public_data` image.
 
 ## 3. Call ordering (the lifecycle contract WM.3–WM.5 reproduce)

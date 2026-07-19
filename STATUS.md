@@ -5834,3 +5834,63 @@ honored — tree gate-green, no half-wired engine path (`CapControlVars` is
 documented leaf infra like WM.1's `CapControlInstance`); `UserModel`/`UserData`
 stay `NOT_PORTED` until the element flip lands.
 
+**Settle (two independent read-only audits: audit-code + audit-tests).** Both
+audits returned NO high-severity findings and confirmed the delivered
+probe/codec/doc round is correct, honestly documented, and free of hidden
+regression, silent fallback, or test weakening. The linchpin `get_public_data`
+un-gatable finding was re-verified from the r4133 source by the settle agent
+independently of both reports (`DSSCallBackRoutines.pas:384` `GetPublicDataPtr`
+returns the global `ActiveCktElement.PublicDataStruct`; `Solution.pas:3606`
+`SampleControlDevices` iterates `DSSControls` without setting `ActiveCktElement`;
+`CapControl.pas:908` `Sample` sets only `ControlledElement.ActiveTerminalIdx`;
+`:415` `ControlQueuePush` forwards straight to `ControlQueue.Push`) — CONFIRMED,
+so the deferral's justification stands. Per-finding dispositions:
+
+- **WM5-1 (medium, audit-code) / wm5-behavioral-verification-absent (medium,
+  audit-tests) — plan items 1–3 (element wiring + fixture/deck/event-log golden +
+  the two audits) not delivered:** NON-FIX, deliberate. This is a disclosed,
+  justified settle-before-build round, not hidden under-delivery — the tree is
+  gate-green with no half-wired path, `UserModel`/`UserData` stay `NOT_PORTED`,
+  and building the full feature here would both exceed a settle round and violate
+  the plan's own "two independent audits" ritual (a settle agent self-auditing its
+  own build). The successor build round carries items 1–3 (element flip, the
+  `capuserctl` fixture + wasm/native-twin build + PIN, the r4133-oracle event-log
+  gate, and its fresh two-audit ritual). Recorded, no code change.
+- **WM5-2 (low, audit-code) — the codec zeroes the control thresholds
+  (`ON_Value`…`PTRatio`@8–80, `Vmax`@95, `Vmin`@103) yet is named for the full
+  record:** FIXED (doc hardening). The partial codec is kept (precedent-consistent
+  with WM.4's interacted-fields-only `TStorageVars`/`TPVSystemVars`, and the
+  thresholds are un-gatable regardless), but `records.rs` now carries an explicit
+  "PARTIAL CODEC — control thresholds NOT serialized" warning naming every omitted
+  set-point and the exact successor step (extend `to_bytes`/`from_bytes` + the
+  offset test from the P9 probe) needed before `get_public_data` is ever served to
+  a real control model. Removes the latent successor trap.
+- **WM5-3 (low, audit-code) — direct `control_queue_push` diverges from the native
+  arm/disarm timing:** FIXED (doc hardening) + verified. The settle agent
+  confirmed from Pascal that the shared `Sample` tail (`CapControl.pas:1180-1205`)
+  DOES run for `USERCONTROL` (`UserModel.Sample` sets `ShouldSwitch`/
+  `PendingChange`; the tail computes `TimeDelay` from `DeadTime`/`ONDelay`/
+  `OFFDelay`, pushes, arms, disarms). The gate twin cannot use that path (no ABI
+  write-back + the `@ControlVars` asymmetry), so it pushes directly and owns the
+  timing. `USERMODEL_ABI.md` §2.5 now states this divergence explicitly and adds a
+  successor caveat: the `capuserctl` deck must hold `ONDelay`/`OFFDelay`/`DeadTime`
+  where the engine tail adds no delay so direct-push and any shared-tail schedule
+  coincide (no action-*time* divergence), and the dss-rs `USERCONTROL` wiring must
+  choose the direct-push channel deliberately, not by omission.
+- **codec-offset-freeze-not-runtime-checked (low, audit-tests) — offsets
+  hardcoded (not read from the probe file) and the zero-check only covers
+  `[0..111)`:** PARTIAL-FIX. The offset-freeze (hardcoded offsets mirroring the
+  codec) is kept — it is the established `DynamicsRec`/`GeneratorVars` precedent,
+  the P9 probe baseline was re-verified field-by-field against the vendored
+  `CapControlVars.pas`, and the test is fail-capable on any codec-side offset
+  error. The zero-region gap IS fixed: `cap_control_vars_offsets_match_probe` now
+  also asserts the two gap bytes (`Armed`@113, `InitialState`@115) and the entire
+  trailing region `[160..184)` stay zero, pinning the codec to touch nothing
+  outside its declared fields.
+
+Net delivered change over the audited head: doc-only hardening in `records.rs`
+(the `CapControlVars` partial-codec warning), a strengthened zero-region assertion
+in the offset test, and the §2.5 timing-divergence clarification — no behavior
+change, `UserModel`/`UserData` still `NOT_PORTED`, tree stays gate-green, corpus
+pristine.
+
