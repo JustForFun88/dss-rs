@@ -10,7 +10,7 @@ use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_NONE, CTRL_OPEN, C
 use crate::elements::pd::capacitor::ControlledCapacitor;
 use crate::elements::traits::CktElement;
 
-use super::{AVGPHASES, CapControl, MAXPHASE, MINPHASE, ctrl_type, pf_1to2};
+use super::{AVGPHASES, CapControl, CapControlType, MAXPHASE, MINPHASE, pf_1to2};
 
 impl CapControl {
     /// Pascal `TSolutionObj.TimeOfDay(useEpsilon = true)`: normalize the
@@ -138,7 +138,7 @@ impl CapControl {
         let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
 
         // First, voltage override (skipped for VOLTAGECONTROL).
-        if self.voverride && self.control_type != ctrl_type::VOLTAGE {
+        if self.voverride && self.control_type != CapControlType::Voltage {
             // VoverrideBusSpecified is always reverted at parse (the bus list
             // does not yet exist — PHASE4 §WP4.7), so the GetBusVoltages variant
             // is unreachable here; sense the monitored terminal instead.
@@ -193,7 +193,7 @@ impl CapControl {
 
         if !self.should_switch {
             match self.control_type {
-                ctrl_type::CURRENT => {
+                CapControlType::Current => {
                     mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
                     let curr_test = self.get_control_current(&cbuffer, cond_offset);
                     match self.present_state {
@@ -221,7 +221,7 @@ impl CapControl {
                         _ => {}
                     }
                 }
-                ctrl_type::VOLTAGE => {
+                CapControlType::Voltage => {
                     mon.get_term_voltages(element_terminal, ctx.node_v, &mut cbuffer);
                     let vtest = self.get_control_voltage(&cbuffer, mon_nphases, cap.connection());
                     match self.present_state {
@@ -246,7 +246,7 @@ impl CapControl {
                         _ => {}
                     }
                 }
-                ctrl_type::KVAR => {
+                CapControlType::Kvar => {
                     let s = mon.terminal_power(ctx.sys, ctx.node_v, element_terminal);
                     let q = s.im * 0.001; // kvar
                     match self.present_state {
@@ -274,11 +274,11 @@ impl CapControl {
                         _ => {}
                     }
                 }
-                ctrl_type::TIME => {
+                CapControlType::Time => {
                     let normalized_time = Self::time_of_day_eps(ctx.int_hour, ctx.t);
                     self.sample_time_control(normalized_time, cap.available_steps());
                 }
-                ctrl_type::PF => {
+                CapControlType::Pf => {
                     let s = mon.terminal_power(ctx.sys, ctx.node_v, element_terminal);
                     let pf = pf_1to2(s);
                     match self.present_state {
@@ -312,7 +312,7 @@ impl CapControl {
                         _ => {}
                     }
                 }
-                ctrl_type::FOLLOW => {
+                CapControlType::Follow => {
                     // Pascal `Sample`'s FOLLOWCONTROL arm (`CapControl.pas`
                     // l.1151-1169). `ctrlSignalShape = NIL` does
                     // `DoSimpleMsg(...,10362)`, **`DSS.SolutionAbort := TRUE`**,
@@ -352,7 +352,6 @@ impl CapControl {
                     // (not reset to `CTRL_NONE`) — faithfully mirrored by
                     // simply not touching `pending_change` in that case.
                 }
-                _ => {}
             }
         }
 

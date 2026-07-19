@@ -93,10 +93,21 @@ entangled with an out-of-scope channel. None were partially touched.
 6. **DER `var_mode`** (`VARMODE_PF/KVAR`) — lives on the shared `InvBasedPceData`
    (PVSystem **and** Storage) and is set via `der_set_var_mode`/`pv_set_var_mode`
    env methods (`i32`). Cross-element + control-env ripple. Deferred.
-7. **Relay** `control_type` (gap at 2) + present/normal state; **CapControl**
-   `control_type` + states; **RegControl** action codes; **Generator**
-   `dispatch_mode`; **PVSystem** var-mode; **ExpControl** pending; **ESPVLControl**
-   `f_type`; **LoadShape** interp — not reached this wave; deferred.
+7. **Control trio — CLOSED by DE_PASCALIZE P1b** (`wt-p1b-v2`, salvaged from the
+   interrupted WIP `c842af0`): **Relay** `control_type` → `RelayControlType`
+   (`#[repr(i32)]`, discriminants `0,1,3,4,5,6,7,8,9` — the `2` ordinal stays
+   unused, `from_ordinal(2) = None`); **CapControl** `control_type` →
+   `CapControlType` (`0..5`; USERCONTROL=6 is not registered upstream and never
+   set by the port, so the `Sample` match is exhaustive); **RegControl** queue
+   action codes → `RegControlAction` (`TapChange=0`/`Reverse=1`, `i32` only at the
+   `ControlQueue` push/`DoPendingAction` boundary). Each ordinal proven vs Pascal
+   (`Relay.pas:323-331`, `CapControl.pas:92-100`, `RegControl.pas:246-247`) **and**
+   the DssEnum registry (`registry/control.rs` `relay_type`/`cap_control_type`).
+   The controls-corpus manifests (105 cases) + eventlog gate stay green unchanged.
+   *Still deferred* (not P1b scope): the Relay/CapControl present/normal **state**
+   ordinals (the shared `CTRL_*` `EControlAction` channel — R0 `control_elem.rs`);
+   **Generator** `dispatch_mode`; **PVSystem** var-mode; **ExpControl** pending;
+   **ESPVLControl** `f_type`; **LoadShape** interp — left for the main P1 pass.
 8. **Remaining bare-i32 DssEnum fields**: `reactor/capacitor.spec_type`,
    `vsource.{z_spec_type,scan_type,sequence_type}`, `vs_converter.f_mode`,
    `energymeter.ocp_device_type` (on the central `CktElementData`; the `== 0`
@@ -172,3 +183,33 @@ could swallow out-of-range inputs the old `= value` stored: all 7 backing DssEnu
 are non-hybrid, so the parse/`Set` path only ever yields in-set ordinals (or an
 error both old and new code skip identically) and the `unwrap_or` fallback is
 provably dead. No action needed.
+
+## P1b audit settlement (wave 2, control trio)
+
+Two independent auditors of the P1b range (`3c9c9dc`+`ff16d65`) reported **no
+regression** — the trio conversion is faithful (both auditors independently
+re-derived every discriminant from Pascal and the DssEnum registry and confirmed
+agreement). Two `low` notes, each settled empirically:
+
+- **(audit-tests) setter keep-old fallback not behaviorally exercised**
+  (`from_ordinal(value).unwrap_or(self.control_type)` at `relay/accessors.rs:215`,
+  `cap_control/accessors.rs:166`) — *closed by adding two purely-additive pin
+  tests* (`set_i32_type_keeps_value_on_unregistered_ordinal` in relay/cap_control
+  `tests.rs`): they drive `set_i32(TYP, <unregistered ordinal>)` and assert the
+  prior value is kept and round-trips back through `get_i32`. The branch stays
+  provably dead for real inputs (the RelayTypeEnum/CapControlType parse never
+  yields the gap ordinal `2` / the unregistered `6`), so this only locks the
+  deliberate keep-old intent — no behavior change, no golden/tolerance touched.
+- **(audit-code) `relay_type` DssEnum omits Pascal's `RelayTypeEnum.DefaultValue
+  := 0`** (`registry/control.rs:166`, `Relay.pas:352`) — *not fixed in P1b; recorded
+  for a later registry-fidelity pass.* Verified out of scope and not a P1b
+  regression: `git diff <range> -- registry/control.rs` is empty (the registry is
+  untouched by the enum conversion), and the divergence is a **string-parse
+  fallback** concern, orthogonal to P1b's `[A]` bit-neutral in-engine storage-type
+  change. Effect is confined to an unreachable-in-corpus edge (an unmatched
+  `Type=<garbage>` string errors in Rust vs would silently resolve to `Current=0`
+  in Pascal *if* Pascal's DefaultValue applies to unmatched parses — itself
+  unverified against the oracle). Touching the parse fallback here would be a
+  behavior change beyond the P1b mandate and blind to the unproven Pascal
+  semantics; deferred to the main-P1 / registry-fidelity pass alongside the
+  `relay_action`/`relay_state` `default_value = CTRL_STATE_KEEP` family.
