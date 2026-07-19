@@ -2331,6 +2331,111 @@ non-gating; three fixed, two recorded non-fixes:
   58 test binaries; wall-clock ~172 s.
 `tests/corpus` pristine (`git status tests/corpus` clean); junctions intact.
 
+## 1n. UNIFIED_GATE Phase F — docs + final acceptance (branch `ug-phase-f`)
+
+`UNIFIED_GATE_PLAN.md` §4-F Scope A (docs) + §6 final acceptance (clean-clone
+gate) executed. The fix-round re-review (Phase F brief Scope B) ran as an
+independent parallel audit — its findings settle in its own record, not here.
+Base `20d03f7`.
+
+**Docs rewritten — every claim re-verified against the live code, none copied
+from stale prose:**
+
+- **TESTING.md** (full rewrite): layer map = unit / golden / **unified corpus
+  gate** / corpus hygiene (the opt-in EPRI row is gone); new sections for the
+  gate architecture (one `#[test]`, 514 cases = 293+47+105+69, `engines`
+  both=360 / r4133=96 / capi_v0145=58, `defer_ledger`×7, `isolate`×33, module
+  tree, per-case worker recycle default 1) and the divergence ledger (3 kinds,
+  the a/b/c envelope clauses, exact-pair pins incl. the mandatory `rust` pin
+  on exact-pair-numeric, the 9 implemented scope fields, fail-on-stale +
+  never-applied + hit accounting, lock `id@digest` tags, manual `skip`
+  re-validation); procedures rewritten/added: add-a-corpus-case (`engines`
+  discipline), **triage-a-divergence-into-the-ledger** (R3 rules: prove
+  not-a-port-bug first, measure with the seed report / `DSS_LEDGER_MEASURE`,
+  commit ledger + lock together), **re-vendor the r4133 binary**, **run the
+  seeding report**; env-var table re-verified knob-by-knob against
+  `corpus_gate/{scheduler,engines,ledger}.rs` + `oracle_server.py` (NB: no
+  `DSS_GATE_POOL` exists — pool size is derived `max(2, jobs/2)`, documented
+  as such); frozen historical generator arms documented (`gen_checkpoints.py`
+  capi015 arm referencing the deleted `PIN_OPENDSS.txt` — the Phase E recorded
+  non-fix, now documented instead of edited — plus `gen_bh_capi015`/
+  `gen_regcontrol_capi015`/`gen_fuse_r4133`); golden-family table refreshed
+  (`json_import/`, `gen_schema.py` rows added).
+- **CLAUDE.md**: project identity reframed — the 1:1 port is the FINISHED
+  stage (final acceptance 2026-07-11); direction = pure idiomatic Rust / wasm
+  user models / new methods & models / r4133-and-beyond, with PORTING_PLAN.md
+  as the historical record; the invariant list updated: the `dss-epri` unsafe
+  carve-out is the sole `forbid(unsafe_code)` exception (matches
+  PORTING_PLAN.md §scope note + `dss-epri/src/lib.rs`); the stale
+  opt-in-Oddie bullet replaced by the two-channel unified gate + ledger; the
+  gate section now describes `corpus_gate.rs`
+  (`corpus_gate_all_cases_match_engines`, both oracles mandatory,
+  Windows-only r4133 bridge, ledger fail-on-stale); the TODO(compat) wipe
+  pointer retargeted to DE_PASCALIZE Stage F. Ritual step-0, the (freshly
+  hardened) worktree junction protocol, conventions, and the MCP section
+  untouched.
+- **tools/opendss/README.md** (Phase E rewrite reviewed; gaps fixed): the
+  "editor/registry suppression inside the bridge" claim was FALSE against the
+  code (`rg RegistryUpdate|rundll32` over `dss-epri` = no match; that pair
+  belonged to the retired Oddie `make_engine` and survives only in the frozen
+  `gen_protection.py`) — replaced with the real mechanism (`DSSI(8,0)` ⇒
+  `NoFormsAllowed`, `dss.rs`); added the never-`FreeLibrary` rule (the Phase A
+  deadlock root-cause) and a "Gate wiring" section (worker resolution order,
+  ping markers, ledger pointer, all-properties = capability-only).
+- **Surgical de-staling of other live docs still naming retired machinery**
+  (small justified scope addition): root `README.md` (deleted
+  `known_diffs.json` → gating ledger; `corpus_live.rs` → `corpus_gate.rs`;
+  opt-in-channel paragraph → two-oracle gate; forbid-scope wording),
+  `tests/TOLERANCE_NOTES.md` (the plan-§7 "**ledger is not a tolerance**"
+  paragraph added; `corpus_live`→`corpus_gate` renames; the Oddie-eventlog
+  paragraph rewritten to the `dss-epri` CSV/BOM capture; EVENTLOG_MASKS keying
+  updated to channels), `tests/corpus/README.md` + `COVERAGE.md`,
+  `tools/oracle/{oracle_server,corpus_guard}.py` comment renames. Golden
+  generators, goldens, tolerances, ledger entries, manifests: UNTOUCHED.
+
+**Wall-clock before/after (plan §3.4 / §6 — consolidated from the phase
+records):**
+
+| point | mode | corpus-gate share | full `cargo test` |
+|---|---|---|---|
+| Phase 0 baseline (`pre-unified-gate` 449c745, loaded box) | serial one-shot, 1 channel | 292.6 s | 426.6 s |
+| Phase B settle (capi_v0145 only; incl. dump write; serial ref 341.9 s) | persistent parallel, jobs 16 / pool 8 | 104.3 s | — |
+| Phase C (r4133 channel live, 514 single-channel cases) | persistent parallel, jobs 16 / pool 8 | 64.5 s (settle build 67.4 s) | — |
+| Phase D (full BOTH gate + ledger) | persistent parallel, recycle=1 | ~150 s (137–160) | — |
+| Phase E settlement (warm build) | defaults | — | ~172 s (1893 pass / 2 ignored / 58 binaries) |
+| Phase F worktree `wtF` (cold build; warm re-run 162 s) | defaults | — | 365 s (fmt 2 s, clippy 51 s) |
+| Phase F clean clone (cold build, the §6 acceptance run) | defaults | — | 303 s (fmt 5 s, clippy 50 s) |
+
+Net: from a 292.6 s serial single-channel corpus pass to a ~150 s
+**two-channel** (BOTH-gated, ledger-checked) pass — roughly double the oracle
+coverage at half the wall-clock, ≪ the plan's ≤10 min target.
+
+**Clean-clone gate (plan §6 final acceptance) — GREEN.** `git clone --branch
+ug-phase-f --single-branch e:/RustProject/dss-rs <Temp>\claude\dss-clean` at
+head `cacb388`; clean checkout, **no `.inputs`, no venv** — the git-tracked
+r4133 DLL + the system-python pinned oracle (verified `dss-python 0.15.7`) are
+the only external deps, which IS the plan's proof. Three-command gate at
+defaults: fmt exit 0 (5 s) / clippy `-D warnings` exit 0 (50 s) / `cargo
++stable test --workspace` exit 0 (303 s, both oracle channels live). The only
+residue was the known §1g CorpusGuard export-CWD corner (untracked
+StorageControllerTechNote CSVs, throwaway clone). NB a first attempt cloned
+under the deep per-session scratchpad and **failed at checkout on Windows
+MAX_PATH** (121-char root + the 166-char longest corpus path = 287 > 260;
+`core.longpaths` is unset by default, and the Delphi DLL's file I/O is not
+long-path-aware anyway) — a clean clone must sit at a short root, as a normal
+user clone does.
+
+**Tooling note:** the TortoiseSVN CLI tools were installed machine-globally on
+2026-07-19 for the `.inputs` re-vendor (svn peg-revision checkouts of the EPRI
+SVN source trees after the second junction-wipe incident).
+
+**Gate (worktree `wtF`, defaults, both channels live):** fmt exit 0 (2 s);
+clippy `-D warnings` exit 0 (51 s); `cargo +stable test --workspace` exit 0
+(365 s, cold build). `tests/corpus` pristine after runs (path-limited clean of
+the known §1g export-CWD leftovers); junctions intact. The `unified-gate-v1`
+tag is created at settle on the final integrated head (deliberately not in
+this record).
+
 ## 1j. DE_PASCALIZE P5a — miette diagnostics: the type + both channels (branch `wt-p5a-v2`)
 
 `DE_PASCALIZE_PLAN.md` §P5a executed (P5b spans / P5c CLI presentation out of
