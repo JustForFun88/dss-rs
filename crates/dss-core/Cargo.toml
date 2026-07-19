@@ -7,6 +7,10 @@ edition = "2024"
 dss-metis = { path = "../dss-metis" }
 dss-parser = { path = "../dss-parser" }
 dss-sparse = { path = "../dss-sparse" }
+# WASM user-model host (WASM_USERMODELS_PLAN §2.1): the sandboxed wasmi
+# replacement for the upstream user-written-DLL loader. Consumed by the
+# Generator (WM.3) / Storage / PVSystem / CapControl (WM.4/WM.5) call sites.
+dss-usermodel = { path = "../dss-usermodel" }
 miette.workspace = true
 num-complex.workspace = true
 regex.workspace = true

@@ -423,23 +423,55 @@ impl Generator {
             3 => self.do_pv_type_gen(sys, node_v),
             4 => self.do_fixed_q_gen(sys, node_v),
             5 => self.do_fixed_qz_gen(sys, node_v),
-            6 => {
-                // User-written model DLL — never ported. Pascal inits InjCurrent
-                // then records error 567 (generator.pas:1795).
-                self.calc_yprim_contribution(node_v);
-                errors.push(crate::diag::DssDiagnostic::msg(
-                    format!(
-                        "{}.{} model designated to use user-written model, but user-written \
-                         model is not defined.",
-                        "Generator",
-                        self.cd.obj.name()
-                    ),
-                    Some(567),
-                ));
-            }
+            6 => self.do_user_model(sys, node_v, errors),
             7 => self.do_current_limited_pq(sys, node_v),
             _ => self.do_constant_pq_gen(sys, node_v),
         }
+    }
+
+    /// Pascal `TGeneratorObj.DoUserModel` (`generator.pas:1816-1835`): the
+    /// power-flow terminal current from a `Model=User` (`GenModel=6`) WASM user
+    /// model. Init `InjCurrent` from Yprim, run `UserModel.FCalc(Vterminal,
+    /// Iterminal)`, and negate the returned terminal currents into `InjCurrent`.
+    /// A missing model records #567 and falls back to Yprim only.
+    pub(super) fn do_user_model(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        self.calc_yprim_contribution(node_v); // init InjCurrent + Vterminal
+        if self.user_model_fcalc(sys, node_v, errors) {
+            // Pascal `IterminalUpdated := TRUE` (the setter also stamps
+            // `IterminalSolutionCount`, as in `DoDynamicMode`).
+            self.cd.iterminal_updated = true;
+            self.cd.iterminal_solution_count = sys.solution_count;
+            let nconds = self.cd.nconds;
+            for i in 0..nconds {
+                self.cd.inj_current[i] -= self.cd.iterminal[i];
+            }
+        } else if self.user_model_name.is_empty() {
+            // A genuine `model=user`/`GenModel=6` with NO `UserModel=` source —
+            // Pascal's #567 (`generator.pas:1834`), surfaced loudly through the
+            // inject-path caller.
+            errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "Generator.{} model designated to use user-written model, but user-written \
+                     model is not defined.",
+                    self.cd.obj.name()
+                ),
+                Some(567),
+            ));
+        }
+        // else: a `UserModel=` source WAS designated but is not loaded — for the
+        // port that means a NATIVE-DLL name (or a missing file) the wasm-only host
+        // cannot load, already surfaced ONCE at load time as the loud #570/#569
+        // ("… Not Loaded, falls back to its built-in model"). The oracle loads such
+        // a DLL, so re-emitting #567 every iteration here would be redundant AND a
+        // spurious Rust-only divergence on the vendored corpus (e.g. indmachtest /
+        // Kersting4wire, `UserModel=Indmach012a`): the #570 is the correct single
+        // diagnostic for the native-DLL fallback, and the generator injects its
+        // Yprim contribution — the documented built-in fallback.
     }
 
     /// Pascal `CalcInjCurrentArray`.

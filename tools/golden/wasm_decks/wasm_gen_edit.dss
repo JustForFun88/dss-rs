@@ -1,0 +1,18 @@
+! WASM_USERMODELS WM.3 — Generator GenModel=6 mid-script `UserData=` RE-EDIT gate.
+! Same induction machine as wasm_gen_pflow; after the first snapshot solve the
+! deck re-edits `UserData=` in place (rotor resistance Rr 0.007 -> 0.014), which
+! reaches the loaded model through the `edit` call site (Pascal
+! `if UserModel.Exists then UserModel.Edit`, generator.pas:769-770) and shifts
+! the converged machine solution. The committed golden pins the post-re-edit
+! state, so the gate proves the edit string is delivered to the live guest and
+! re-solved. `@FIXTURE@` = the `.dll` twin (oracle) / the `.wasm` fixture (Rust).
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.wasm_gen basekv=13.8 phases=3 bus1=sourcebus pu=1.00 R1=0.05 X1=0.15 R0=0.05 X0=0.15
+New Line.feeder phases=3 bus1=sourcebus bus2=b3 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
+New Generator.g1 bus1=b3 phases=3 conn=delta kv=13.8 kW=4000 kVA=5000 Xdp=.27 Xdpp=0.2 H=1 pf=1 model=6 Balanced=No UserModel=@FIXTURE@ UserData=(Rs=0.0053 Xs=0.106 Rr=0.007 Xr=0.12 Xm=4 MaxSlip=0.1)
+Set voltagebases=[13.8]
+CalcVoltageBases
+Solve
+Edit Generator.g1 UserData=(Rs=0.0053 Xs=0.106 Rr=0.014 Xr=0.12 Xm=4 MaxSlip=0.1)
+Solve

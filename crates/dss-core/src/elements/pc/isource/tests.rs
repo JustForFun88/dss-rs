@@ -119,11 +119,15 @@ fn snapshot_injection_matches_pdeg_and_opposes_on_terminal2() {
     isrc.calc_yprim(&sys);
     let mut currents = vec![Complex64::ZERO; 7]; // node 0 = ground
     let mut sys_y_changed = false;
+    let mut inj_errs = crate::diag::ErrorLog::new();
+    let mut inj_abort = false;
     isrc.cd.node_ref = vec![1, 2, 3, 0, 0, 0]; // 3 phases in, grounded return
     let mut ctx = InjCtx {
         node_v: &[],
         currents: &mut currents,
         system_y_changed: &mut sys_y_changed,
+        errors: &mut inj_errs,
+        solution_abort: &mut inj_abort,
     };
     isrc.inj_currents(&sys, &mut ctx);
 
@@ -164,10 +168,14 @@ fn dynamics_loadshapeclass_scales_injection() {
     isrc.calc_yprim(&sys);
     let mut currents = vec![Complex64::ZERO; 7];
     let mut sys_y_changed = false;
+    let mut inj_errs = crate::diag::ErrorLog::new();
+    let mut inj_abort = false;
     let mut ctx = InjCtx {
         node_v: &[],
         currents: &mut currents,
         system_y_changed: &mut sys_y_changed,
+        errors: &mut inj_errs,
+        solution_abort: &mut inj_abort,
     };
     isrc.inj_currents(&sys, &mut ctx);
     assert!(
@@ -180,10 +188,14 @@ fn dynamics_loadshapeclass_scales_injection() {
     let sys = dyn_ctx(crate::solution::USENONE);
     let mut currents = vec![Complex64::ZERO; 7];
     let mut sys_y_changed = false;
+    let mut inj_errs = crate::diag::ErrorLog::new();
+    let mut inj_abort = false;
     let mut ctx = InjCtx {
         node_v: &[],
         currents: &mut currents,
         system_y_changed: &mut sys_y_changed,
+        errors: &mut inj_errs,
+        solution_abort: &mut inj_abort,
     };
     isrc.inj_currents(&sys, &mut ctx);
     assert!(
@@ -203,10 +215,14 @@ fn off_frequency_snapshot_injects_zero() {
     isrc.cd.node_ref = vec![1, 2, 3, 0, 0, 0];
     let mut currents = vec![Complex64::ZERO; 4];
     let mut sys_y_changed = false;
+    let mut inj_errs = crate::diag::ErrorLog::new();
+    let mut inj_abort = false;
     let mut ctx = InjCtx {
         node_v: &[],
         currents: &mut currents,
         system_y_changed: &mut sys_y_changed,
+        errors: &mut inj_errs,
+        solution_abort: &mut inj_abort,
     };
     isrc.inj_currents(&sys, &mut ctx);
     for c in &isrc.cd.inj_current {

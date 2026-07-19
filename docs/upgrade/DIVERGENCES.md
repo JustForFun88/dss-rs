@@ -1778,3 +1778,38 @@ r4133-applicable: 19 (15 `diff` + 4 `skip`). r4088-applicable: 19. r3723-applica
 19. No divergence decision lives only in a commit message; the entry-by-entry
 Rung-2 burn-down is in `docs/upgrade/known_diffs_burndown.md`. **Engine behavior =
 OpenDSS 11.0.0.1 (r4133) except this documented ledger.**
+
+---
+
+## L5 — Generator swing-damping default (`Dpu`) — MEASURED (WASM-UM WP-WM.3, 2026-07-19)
+
+**Observable.** A dynamics-mode `Generator` (`model=6` or the classic
+swing-integrated models) with no explicit `D=` property: the swing-equation
+damping term `D*Speed` in `dSpeed := (Pshaft + TracePower.re − D*Speed)/Mmass`
+(`generator.pas` `IntegrateStates`).
+
+**dss_capi 0.14.5 (dss-rs spec / pinned oracle).** The constructor sets
+`GenVars.Dpu := 1.0` (`generator.pas:1006`); `InitStateVars` derives
+`D := Dpu*kVArating*1000/w0` (`:2437`) ⇒ for `kVA=5000, w0=2π·60`, **D≈13263**
+(heavy damping). dss-rs reproduces this (default `Dpu=1.0`).
+
+**EPRI r4133.** The constructor sets `D := 1.0` **directly** (`generator.pas:968`)
+but **never initialises `Dpu`**, so the managed record field defaults to `0`; the
+same `InitStateVars` line (`:2710`) then recomputes `D := Dpu*kVArating*1000/w0 =
+0` ⇒ **D=0** (undamped). The `:968` `D:=1.0` is dead (immediately overwritten).
+
+**Probe** (WM.3 dyn deck, native twin via the r4133 bridge; oracle `DebugTrace`
+`GEN_g1.CSV`): first predictor `dSpeed`: **r4133 default = +0.0025** (D≈0) vs
+**Rust/dss_capi = −1.165** (D≈13263 dominating). Setting `D=1` explicitly on both
+makes r4133 report the damped `dSpeed=−71.3` matching Rust's class.
+
+**Decision — record, do not "fix".** dss-rs is a 1:1 port of dss_capi 0.14.5 and
+gates on the pinned dss-python 0.14.5 oracle everywhere else; changing the
+Generator default to r4133's `Dpu=0` would regress that entire (green) gate. The
+WM.3 dyn deck pins `D=1` explicitly so both engines agree (removing the confound).
+
+**Gate consequence.** WASM-UM `wasm_gen_dyn` gates the version-independent
+state-variable surface + convergence (not the damping-dependent trajectory —
+`wasm_usermodels.rs` `gate_deck(.., numeric=false)`; STATUS §WASM-UM WM.3). A
+future UPGRADE-to-r4133-dynamics rung must revisit this default (and the residual
+~5e-4 flux-transient gap D2 that survives even with D matched — see STATUS).

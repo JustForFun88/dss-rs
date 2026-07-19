@@ -38,6 +38,9 @@ mod dynamics;
 mod nominal;
 mod registers;
 mod solve;
+mod user_model;
+
+pub use user_model::GenUserModelSlot;
 
 /// Pascal dispatch modes (`LOADMODE = 1`, `PRICEMODE = 2`; 0 = default).
 const LOADMODE: i32 = 1;
@@ -162,19 +165,18 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("Xdpp"),
         PropDef::double("H"),
         PropDef::double("D"),
-        // User-written model DLLs are never *loaded* in safe Rust (the loader is
-        // permanently out of scope — forbid(unsafe_code)). CF-C Port 2 ports the
-        // property SURFACE: `UserModel`/`UserData` parse, store, and dump; the
-        // `UserModel` side effect emits a non-fatal "Not Loaded" diagnostic and
-        // falls back to the built-in model — matching the official Direct DLL
-        // (Generator.pas TGenUserModel.Set_Name l.166, DoSimpleMsg 570), which
-        // warns and solves through, not the pinned oracle (which raises #570).
+        // User-written models over WASM (WASM_USERMODELS WM.3): `UserModel=`/
+        // `UserData=`/`ShaftModel=`/`ShaftData=` follow the plan §2.4 uniform
+        // activation rule — a value resolving to an existing `.wasm` file loads
+        // through `dss-usermodel` (sandboxed wasmi); anything else (native-DLL
+        // names, missing files) warns non-fatally ("… Not Loaded", #570) and
+        // falls back to the built-in model, matching the official Direct DLL
+        // (Generator.pas TGenUserModel.Set_Name l.166). Never a parse error —
+        // upstream never errors on these properties.
         PropDef::string("UserModel").flags(PropFlags::IS_FILENAME),
         PropDef::string("UserData"),
-        // ShaftModel/ShaftData: no owned deck exercises them; the DLL loader is
-        // still out of scope, so they remain a hard error until a deck needs them.
-        PropDef::string("ShaftModel").flags(PropFlags::NOT_PORTED | PropFlags::IS_FILENAME),
-        PropDef::string("ShaftData").flags(PropFlags::NOT_PORTED),
+        PropDef::string("ShaftModel").flags(PropFlags::IS_FILENAME),
+        PropDef::string("ShaftData"),
         // Pascal `[Units_hour]` (`Generator.pas:608`).
         PropDef::double("DutyStart").flags(PropFlags::UNITS_HOUR),
         PropDef::boolean("DebugTrace"),
@@ -330,11 +332,20 @@ pub struct Generator {
     pub derivatives: [f64; NUM_GEN_REGISTERS],
     pub first_sample_after_reset: bool,
 
-    // Strings (NOT_PORTED DLL references, stored for the dump).
+    // User-model property strings (stored for the dump / MakeLike).
     pub user_model_name: String,
     pub user_data: String,
     pub shaft_model_name: String,
     pub shaft_data: String,
+    /// The bound `UserModel=` WASM model (Pascal `UserModel: TGenUserModel`),
+    /// `None` until a `.wasm` loads (WASM_USERMODELS WM.3).
+    pub user_model: Option<Box<GenUserModelSlot>>,
+    /// The bound `ShaftModel=` WASM model (Pascal `ShaftModel: TGenUserModel`).
+    pub shaft_model: Option<Box<GenUserModelSlot>>,
+    /// Deferred user-model load/edit requests queued during the last edit, for
+    /// the executive to resolve (paths need `current_dir` — Pascal defers the
+    /// `LoadLibrary`/`Edit` to the property hook, which has the DSS context).
+    pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
     /// `DynEqPCE` base: the linked `DynamicExp` + its dynamics memory (WP7.7 step 3b).
     pub dyneq: DynEqPceData,
     pub spectrum: String,
@@ -365,31 +376,6 @@ fn nconds_for_connection(connection: Connection, nphases: usize) -> usize {
 }
 
 impl Generator {
-    /// CF-C Port 2 — the `UserModel` side effect (Pascal
-    /// `TGenUserModel.Set_Name`, Generator.pas/GenUserModel.pas l.140-166).
-    /// Safe Rust never loads the DLL, so the load always "fails". `Set_Name`
-    /// bails silently on an empty / `none` name; for any real name it emits the
-    /// non-fatal `DoSimpleMsg(... 'Not Loaded' ..., 570)` and leaves `Exists`
-    /// false, so the generator keeps using its built-in model. The message is a
-    /// warn-level diagnostic (matching the official Direct DLL's severity, NOT
-    /// the pinned oracle's hard raise); the `DSS Directory = ...` tail is
-    /// omitted (environment-dependent and unreachable from a property side
-    /// effect). The DLL loader is permanently out of scope, documented here.
-    fn warn_user_model_not_loaded(&mut self) {
-        let name = self.user_model_name.trim().to_string();
-        if name.is_empty() || name.eq_ignore_ascii_case("none") {
-            return; // Pascal Set_Name `Exit` on blank / 'none'
-        }
-        let full = format!("Generator.{}", self.cd.obj.name());
-        self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
-            format!(
-                "Generator User Model {name} Not Loaded (user-written model DLL loading is out of \
-                 scope in safe Rust). {full} falls back to its built-in model."
-            ),
-            Some(570),
-        ));
-    }
-
     /// Pascal `TGeneratorObj.Create`.
     pub fn new(name: &str) -> Self {
         let mut cd = CktElementData::new(name, prop::NUM_PROPS);
@@ -507,6 +493,9 @@ impl Generator {
             user_data: String::new(),
             shaft_model_name: String::new(),
             shaft_data: String::new(),
+            user_model: None,
+            shaft_model: None,
+            pending_user_model_loads: Vec::new(),
             dyneq: DynEqPceData::new(),
             spectrum: "defaultgen".to_string(),
             spectrum_obj: None,
