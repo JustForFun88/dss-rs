@@ -237,9 +237,9 @@ impl Dss {
         }
         // Under NCIM the swing source's reported terminal currents are the KCL
         // sum at its bus, not `YPrim·V - Iinj` (Pascal `TVsourceObj.GetCurrents`
-        // takes the `NCIM_CalcInjCurrAtBus` branch when `Algorithm = NCIMSOLVE`
-        // and `NodeRef[1] = 1`). Every connected element's `Iterminal` is now
-        // fresh (refreshed in the loop above), so recompute the swing source's
+        // takes the `CalcInjCurrAtBus` branch when `Algorithm = NCIMSOLVE` and
+        // `NodeRef[1] = 1` — r4133 `VSource.pas` l.1194). Every connected element's
+        // `Iterminal` is now fresh (refreshed in the loop above), so recompute the swing source's
         // currents/powers/losses from those and overwrite its snapshot entry.
         //
         // The generator overrides are needed for the same reason: after NCIM
@@ -1052,20 +1052,22 @@ impl Dss {
     }
 }
 
-/// Pascal `TVsourceObj.NCIM_CalcInjCurrAtBus` (`PCElements/vsource.pas` l.1225):
-/// the swing source's NCIM-reported terminal currents. NCIM holds the swing bus
-/// at the ideal EMF, so `YPrim·V - Iinj` is ~0 there; instead the source's
-/// terminal current is the Kirchhoff sum at its bus — **minus** every connected
-/// PD-element terminal current, **plus** every other connected PC-element terminal
-/// current. Returns `(swing-source ElemRef, its yorder-long terminal-current
+/// Pascal `TVsourceObj.CalcInjCurrAtBus` (r4133 `PCElements/VSource.pas` l.1085),
+/// reached from `TVsourceObj.GetCurrents` (l.1194-1195) when `Algorithm =
+/// NCIMSOLVE` and `NodeRef[1] = 1`: the swing source's NCIM-reported terminal
+/// currents. NCIM holds the swing bus at the ideal EMF, so `YPrim·V - Iinj` is ~0
+/// there; instead the source's terminal current is the Kirchhoff sum at its bus —
+/// **minus** every connected PD-element terminal current (the PD loop, l.1113-1138)
+/// — **plus** every other connected PC-element terminal current (the PC loop,
+/// l.1148-1173). Returns `(swing-source ElemRef, its yorder-long terminal-current
 /// vector)` — the swing source is the [`VSource`] whose first node is the global
 /// slack (`NodeRef[0] == 1`) — or `None` if there is none.
 ///
 /// Reads each connected element's `Iterminal` cache, which
 /// [`Dss::snapshot_elements`] has just refreshed at the converged `NodeV` (Pascal
 /// recomputes each `ce.GetCurrents` fresh; the values are identical). PD elements
-/// use the Pascal `Round(Yorder/2)` conductors-per-terminal stride (its 2-terminal
-/// assumption); PC elements use `NPhases`.
+/// use the Pascal `Round(Yorder/2)` conductors-per-terminal stride (l.1135, its
+/// 2-terminal assumption); PC elements use `NPhases` (l.1169).
 fn ncim_swing_source_currents(
     classes: &[DssClass],
     ckt: &Circuit,
@@ -1095,39 +1097,37 @@ fn ncim_swing_source_currents(
     // `BusName = StripExtension(ce.GetBus(j))`).
     //
     // NON-reproduced quirk (deliberate, per CLAUDE.md "do not reproduce UB"):
-    // Pascal computes `myTerm` fresh per element only in the **PD** loop
-    // (`myTerm := 0` inside `for ce in ceList`, l.1247). In the **PC** loop
-    // (l.1268) `myTerm := 0` is set ONCE before the loop and never reset, so its
-    // terminal-finder `inc(myTerm)` accumulates across PCEs at the bus — a stateful
-    // cross-element index. That accumulation is inert whenever each PCE connects at
-    // its first terminal (`inc` never fires → myTerm stays 0), which is the only
+    // r4133 computes `myTerm` fresh per element only in the **PD** loop
+    // (`myTerm := 0` inside `for idx in myList`, VSource.pas l.1119). In the **PC**
+    // loop (l.1148) `myTerm := 0` is set ONCE before the loop (l.1146) and never
+    // reset, so its terminal-finder `inc(myTerm)` accumulates across PCEs at the bus
+    // — a stateful cross-element index (r4133 STILL has this; it is unrelated to the
+    // off-by-one r4133 fixed). That accumulation is inert whenever each PCE connects
+    // at its first terminal (`inc` never fires → myTerm stays 0), which is the only
     // deterministic in-range case; with a PCE bonded at a non-first terminal it can
-    // run the `ElmCurrents[(myTerm*NPhases)+j]` index past `SetLength(…, Yorder+1)`
-    // into an OOB heap read. We compute `my_term` fresh per element for both loops:
-    // identical to Pascal on the defined path, and refusing to reproduce the OOB.
+    // run the `ElmCurrents[(myTerm*NPhases)+j]` index (l.1169) past
+    // `SetLength(…, Yorder+1)` (l.1157) into an OOB heap read. We compute `my_term`
+    // fresh per element for both loops: identical to r4133 on the defined path, and
+    // refusing to reproduce the OOB.
     let my_term = |cd: &crate::elements::ckt::CktElementData| -> Option<usize> {
         (0..cd.nterms).find(|&t| cd.terminals.get(t).map(|x| x.bus_ref) == Some(src_bus))
     };
 
-    // TODO(compat): the `+ 1` on every `iterminal` index below reproduces an
-    // upstream off-by-one. Pascal `NCIM_CalcInjCurrAtBus` fills a **0-based**
-    // dynamic `ElmCurrents: array of Complex` via `ce.GetCurrents`, then indexes
-    // it as `ElmCurrents[(myTerm*stride) + j]` with `j := 1..NPhases` — a 1-based
-    // index into a 0-based array, so it reads each connected element's conductor
-    // shifted by one (the swing source's reported phase-A current is actually the
-    // negated phase-B branch current, etc.; the last read lands on the array's
-    // unwritten, zero-initialized tail slot). It is deterministic and in-range
-    // (never OOB — `SetLength(ElmCurrents, Yorder+1)`), so — per CLAUDE.md — it is
-    // reproduced 1:1 (the `.get(..).map` returns 0 for the tail slot the port's
-    // `Yorder`-length `iterminal` lacks, matching the zero slot). The capi015 oracle
-    // is 0.15.0b4 (e936d210), whose `ce.GetCurrents(ElmCurrents)` writes conductor 1
-    // to index 0; r4133 VSource.pas:1123 FIXED the shift via
-    // `GetCurrents(@(ElmCurrents[1]))` (an offset write), so its read is unshifted.
-    // This pin therefore matches capi015 and *diverges from r4133* — a proven,
-    // determinate capi015-vs-r4133 upstream divergence (NOT a port bug), and the
-    // documented reason the 4 NCIM corpus cases stay deferred from live r4133 gating.
-    // Clean fix (when r4133 becomes the sole oracle): drop the `+ 1`. NCIM affects
-    // only the *reported* swing-source current; node voltages are unaffected.
+    // r4133 fills a length-`Yorder+1` dynamic `ElmCurrents` with an **offset write**
+    // — `ActivePDE.GetCurrents(@(ElmCurrents[1]))` (VSource.pas l.1123; the PC loop
+    // l.1158) writes conductor 1 into `ElmCurrents[1]`, leaving slot 0 unused — then
+    // reads `ElmCurrents[(myTerm*stride)+j]` with `j := 1..NPhases` (l.1135 PD /
+    // l.1169 PC). That 1-based read of the offset-written array is UNSHIFTED: `j=1`
+    // reads conductor 1. The port's `iterminal` is 0-based (`iterminal[0]` =
+    // conductor 1 = r4133 `ElmCurrents[1]`), so the faithful index is `t*stride + i`
+    // with `i := 0..nphases-1` (no `+1`). This aligns the port with r4133, the sole
+    // live NCIM oracle (the retired capi015 0.15.0b4 (e936d210) wrote
+    // `ce.GetCurrents(ElmCurrents)` at index 0 then read `ElmCurrents[j]` 1-based —
+    // a one-conductor shift; the port formerly reproduced that shift as a documented
+    // compat pin, dropped in the oracle-of-record flip capi015→r4133, own r4133
+    // epri-worker probes 2026-07-20, `docs/upgrade/DIVERGENCES.md`). The read is
+    // in-range by construction (`SetLength(ElmCurrents, Yorder+1)`); the defensive
+    // `.get` returns 0 only for a degenerate multi-terminal stride overrun.
     let clip = |v: Option<&num_complex::Complex64>| v.copied().unwrap_or(Complex64::ZERO);
 
     // PD elements (+ faults) at the bus: subtract their terminal currents. Pascal
@@ -1143,7 +1143,7 @@ fn ncim_swing_source_currents(
         let Some(t) = my_term(cd) else { continue };
         let stride = ((cd.yorder as f64) / 2.0).round() as usize;
         for (i, c) in curr.iter_mut().enumerate().take(nphases) {
-            *c -= clip(cd.iterminal.get(t * stride + i + 1));
+            *c -= clip(cd.iterminal.get(t * stride + i));
         }
     }
     // PC elements (+ other sources) at the bus, excluding the source itself: add
@@ -1161,7 +1161,7 @@ fn ncim_swing_source_currents(
         }
         let Some(t) = my_term(cd) else { continue };
         for (i, c) in curr.iter_mut().enumerate().take(nphases) {
-            *c += clip(cd.iterminal.get(t * cd.nphases + i + 1));
+            *c += clip(cd.iterminal.get(t * cd.nphases + i));
         }
     }
     Some((src_ref, curr))
