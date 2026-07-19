@@ -52,6 +52,16 @@ $b = Join-Path $OutDir 'build_stub'; New-Item -ItemType Directory -Force $b | Ou
 & $Fpc -Mdelphi -O2 -CF64 "-Fu$capi\Shared" "-Fi$here" "-FU$b" "-FE$b" (Join-Path $here 'genstub.pas')
 python (Join-Path $here 'probe_oracle_load.py') (Join-Path $b 'genstub.dll') | Tee-Object (Join-Path $OutDir 'p1_oracle_load.txt')
 
+# 2c. P9 — r4133 TCapControlVars layout probe (WP-WM.5): compiles the REAL
+# vendored r4133 unit Version8/Source/Controls/CapControlVars.pas in its
+# -dUSER_DLL variant (uses only ucomplex + ControlActionDefs.txt, no engine
+# closure) — the byte-identical record the engine assembles for the CapControl
+# PublicDataStruct (CapControl.pas:518). Result: 184 B; EControlAction 1 B (no
+# {$Z4}); Voverride Boolean (1 B). → docs/wasm/probes/p9_offsets_capcontrolvars_r4133.txt
+$b = Join-Path $OutDir 'build_ccvars'; New-Item -ItemType Directory -Force $b | Out-Null
+& $Fpc -Mdelphi -O3 -CF64 -dUSER_DLL "-Fu$r4133\Controls" "-Fu$r4133\Shared" "-Fi$r4133\Controls" "-FU$b" "-FE$b" (Join-Path $here 'abi_probe_capcontrolvars.pas')
+& (Join-Path $b 'abi_probe_capcontrolvars.exe') | Tee-Object (Join-Path $OutDir 'p9_offsets_capcontrolvars_r4133.txt')
+
 # 4. P2 plan-A check — the VENDORED IndMach012a.dpr, as-is (zero source edits)
 $b = Join-Path $OutDir 'build_indmach'; New-Item -ItemType Directory -Force $b | Out-Null
 & $Fpc -Mdelphi -O2 "-Fu$r3723\IndMach012a" "-Fu$r3723\Shared" "-Fu$r3723\Parser" "-Fu$r3723\PCElements" "-Fi$r3723\Common" "-FU$b" "-FE$b" (Join-Path $r3723 'IndMach012a\IndMach012a.dpr')
