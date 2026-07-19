@@ -183,7 +183,7 @@ fn build_tcc(npts: &str, c: &str, t: &str) -> TccCurveObj {
 /// `PhPickup=1`, controlled element a 3-phase line, event log on.
 fn armed_relay() -> Relay {
     let mut r = Relay::new("r1");
-    r.control_type = ctype::CURRENT;
+    r.control_type = RelayControlType::Current;
     r.phase_curve = Some(build_tcc("2", "1 10", "1 0.1"));
     r.phase_trip = 1.0;
     r.ccd.show_event_log = true;
@@ -217,7 +217,7 @@ fn default_is_3ph_closed_relay() {
     assert_eq!(r.ccd.cd.nphases, 3);
     assert_eq!(r.ccd.cd.nconds, 3);
     assert_eq!(r.ccd.cd.nterms, 1);
-    assert_eq!(r.control_type, ctype::CURRENT);
+    assert_eq!(r.control_type, RelayControlType::Current);
     assert_eq!(r.phase_trip, 1.0);
     assert_eq!(r.num_reclose, 3); // Shots default 4
     assert_eq!(r.reset_time, 15.0);
@@ -657,7 +657,7 @@ fn reset_with_partial_open_terminal_still_forces_rebuild() {
 #[test]
 fn rev_power_trips_on_reverse_locks_out() {
     let mut r = armed_relay();
-    r.control_type = ctype::REVPOWER;
+    r.control_type = RelayControlType::RevPower;
     r.phase_inst = 1.0;
     let mut ctrl = MockElem::new(3);
     let mut mon = MockElem::new(3);
@@ -672,7 +672,7 @@ fn rev_power_trips_on_reverse_locks_out() {
 #[test]
 fn rev_power_forward_no_trip() {
     let mut r = armed_relay();
-    r.control_type = ctype::REVPOWER;
+    r.control_type = RelayControlType::RevPower;
     r.phase_inst = 1.0;
     let mut ctrl = MockElem::new(3);
     let mut mon = MockElem::new(3);
@@ -686,7 +686,7 @@ fn rev_power_forward_no_trip() {
 #[test]
 fn neg_seq46_trips_on_unbalanced_current() {
     let mut r = armed_relay();
-    r.control_type = ctype::NEGCURRENT;
+    r.control_type = RelayControlType::NegCurrent;
     let mut ctrl = MockElem::new(3);
     let mut mon = MockElem::new(3);
     mon.iph = vec![Complex64::new(100.0, 0.0), Complex64::ZERO, Complex64::ZERO];
@@ -700,7 +700,7 @@ fn neg_seq46_trips_on_unbalanced_current() {
 #[test]
 fn neg_seq47_trips_on_unbalanced_voltage() {
     let mut r = armed_relay();
-    r.control_type = ctype::NEGVOLTAGE;
+    r.control_type = RelayControlType::NegVoltage;
     r.pickup_volts47 = 100.0;
     let mut ctrl = MockElem::new(3);
     let mut mon = MockElem::new(3);
@@ -721,7 +721,7 @@ fn neg_seq47_trips_on_unbalanced_voltage() {
 #[test]
 fn voltage_over_voltage_trips() {
     let mut r = armed_relay();
-    r.control_type = ctype::VOLTAGE;
+    r.control_type = RelayControlType::Voltage;
     r.vbase = 1000.0;
     r.ov_curve = Some(build_tcc("2", "1.1 1.5", "5 0.1"));
     r.uv_curve = Some(build_tcc("2", "0.5 0.9", "0.1 5"));
@@ -738,7 +738,7 @@ fn voltage_over_voltage_trips() {
 #[test]
 fn voltage_under_voltage_trips() {
     let mut r = armed_relay();
-    r.control_type = ctype::VOLTAGE;
+    r.control_type = RelayControlType::Voltage;
     r.vbase = 1000.0;
     r.ov_curve = Some(build_tcc("2", "1.1 1.5", "5 0.1"));
     r.uv_curve = Some(build_tcc("2", "0.5 0.9", "0.1 5"));
@@ -756,7 +756,7 @@ fn voltage_under_voltage_trips() {
 #[test]
 fn voltage_ov_uses_closed_phase_extrema_b2() {
     let mut r = armed_relay();
-    r.control_type = ctype::VOLTAGE;
+    r.control_type = RelayControlType::Voltage;
     r.vbase = 1000.0;
     r.ov_curve = Some(build_tcc("2", "1.1 1.5", "5 0.1"));
     let mut ctrl = MockElem::new(3);
@@ -798,7 +798,7 @@ fn voltage_ov_uses_closed_phase_extrema_b2() {
 #[test]
 fn voltage_relay_open_point_sizes_state_by_controlled_nphases_59n() {
     let mut r = armed_relay(); // ctrl_snap = 3-phase line
-    r.control_type = ctype::VOLTAGE;
+    r.control_type = RelayControlType::Voltage;
     r.vbase = 277.0; // kvbase 0.277 kV, 1-phase ⇒ line-neutral
     r.ov_curve = Some(build_tcc("1", ".3", ".1")); // 3V0: trip above 0.3 pu
     // Pascal RecalcElementData: relay's own Nphases := MonitoredElement.NPhases.
@@ -870,7 +870,7 @@ fn make_like_copies_state_by_controlled_nphases() {
 #[test]
 fn voltage_recloses_when_voltage_recovers() {
     let mut r = armed_relay();
-    r.control_type = ctype::VOLTAGE;
+    r.control_type = RelayControlType::Voltage;
     r.vbase = 1000.0;
     r.operation_count[G] = 1;
     let mut ctrl = MockElem::new(3);
@@ -889,7 +889,7 @@ fn voltage_recloses_when_voltage_recovers() {
 #[test]
 fn doc_phase_time_test_directional_split() {
     let mut r = Relay::new("r1");
-    r.control_type = ctype::DOC;
+    r.control_type = RelayControlType::Doc;
     r.doc_tilt_angle_low = 95.0;
     r.doc_trip_set_low = 3500.0;
     r.definite_time_delay = 0.0;
@@ -902,7 +902,7 @@ fn doc_phase_time_test_directional_split() {
 #[test]
 fn doc_p1_blocking_blocks_on_forward_power() {
     let mut r = armed_relay();
-    r.control_type = ctype::DOC;
+    r.control_type = RelayControlType::Doc;
     r.doc_p1_blocking = true;
     let mut ctrl = MockElem::new(3);
     let mut mon = MockElem::new(1);
@@ -916,7 +916,7 @@ fn doc_p1_blocking_blocks_on_forward_power() {
 #[test]
 fn doc_reverse_power_trips_through_full_sample() {
     let mut r = Relay::new("r1");
-    r.control_type = ctype::DOC;
+    r.control_type = RelayControlType::Doc;
     r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
     let mut ctrl = MockElem::new(3);
     let mut mon = MockElem::new(3);
@@ -936,7 +936,7 @@ fn doc_reverse_power_trips_through_full_sample() {
 #[test]
 fn doc_three_phase_forward_power_blocks() {
     let mut r = Relay::new("r1");
-    r.control_type = ctype::DOC;
+    r.control_type = RelayControlType::Doc;
     r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
     let mut ctrl = MockElem::new(3);
     let mut mon = MockElem::new(3);
@@ -953,7 +953,7 @@ fn doc_three_phase_forward_power_blocks() {
 
 fn distance_relay() -> Relay {
     let mut r = Relay::new("r1");
-    r.control_type = ctype::DISTANCE;
+    r.control_type = RelayControlType::Distance;
     r.dist_z1 = Complex64::new(1.0, 0.0);
     r.dist_z0 = Complex64::new(1.0, 0.0);
     r.dist_k0 = Complex64::ZERO;
@@ -1020,7 +1020,7 @@ fn lookup_variable_prefix_match() {
 
 fn generic_relay() -> Relay {
     let mut r = Relay::new("g1");
-    r.control_type = ctype::GENERIC;
+    r.control_type = RelayControlType::Generic;
     r.monitor_var_index = 1;
     r.over_trip = 1.2;
     r.under_trip = 0.8;
@@ -1065,7 +1065,7 @@ fn generic_no_trip_within_band() {
 #[test]
 fn generic_recalc_resolves_and_errors_on_missing_var() {
     let mut r = Relay::new("g1");
-    r.control_type = ctype::GENERIC;
+    r.control_type = RelayControlType::Generic;
     r.monitor_variable = "vd".to_string();
     r.monitor_var_names = vec!["Frequency".into(), "Vd".into()];
     r.mon_snap = Some(RefSnapshot {
@@ -1079,7 +1079,7 @@ fn generic_recalc_resolves_and_errors_on_missing_var() {
     assert_eq!(r.monitor_var_index, 2);
 
     let mut r2 = Relay::new("g2");
-    r2.control_type = ctype::GENERIC;
+    r2.control_type = RelayControlType::Generic;
     r2.monitor_variable = "nosuch".to_string();
     r2.monitor_var_names = vec!["Frequency".into()];
     r2.mon_snap = Some(RefSnapshot {
@@ -1126,7 +1126,7 @@ fn recalc_missing_switched_element_errors_387_and_requests_abort() {
 
 fn td21_relay() -> Relay {
     let mut r = Relay::new("t1");
-    r.control_type = ctype::TD21;
+    r.control_type = RelayControlType::Td21;
     r.dist_z1 = Complex64::new(1.0, 0.0);
     r.dist_k0 = Complex64::ZERO;
     r.mground = 1.0;
@@ -1234,7 +1234,7 @@ fn td21_reverse_does_not_trip_forward_fault() {
 #[test]
 fn make_like_copies_settings_including_delay_and_mech() {
     let mut base = Relay::new("base");
-    base.control_type = ctype::DISTANCE;
+    base.control_type = RelayControlType::Distance;
     base.phase_trip = 700.0;
     base.reset_time = 22.0;
     base.num_reclose = 2;
@@ -1250,7 +1250,7 @@ fn make_like_copies_settings_including_delay_and_mech() {
 
     let mut r = Relay::new("r1");
     r.make_like(&base);
-    assert_eq!(r.control_type, ctype::DISTANCE);
+    assert_eq!(r.control_type, RelayControlType::Distance);
     assert_eq!(r.phase_trip, 700.0);
     assert_eq!(r.reset_time, 22.0);
     assert_eq!(r.num_reclose, 2);
@@ -1477,7 +1477,7 @@ mod make_pos_seq_tests {
         r.monitored_element_terminal = 1;
         r.kv_base = 12.47;
         r.pct_pickup47 = 2.0;
-        r.control_type = ctype::DISTANCE;
+        r.control_type = RelayControlType::Distance;
         let ctx = PosSeqCtx {
             monitored: Some(PosSeqElemInfo {
                 nphases: 1,
@@ -1507,4 +1507,39 @@ mod make_pos_seq_tests {
         assert!((r.vbase - expected).abs() < 1e-9);
         assert!((r.pickup_volts47 - expected * 2.0 * 0.01).abs() < 1e-9);
     }
+}
+
+#[test]
+fn relay_control_type_pins_enum_ordinals() {
+    // RelayTypeEnum ordinals (Relay.pas): the `2` ordinal is deliberately unused
+    // upstream, so `from_ordinal(2)` is None (kept-value fallback at the setter).
+    for (variant, ord) in [
+        (RelayControlType::Current, 0),
+        (RelayControlType::Voltage, 1),
+        (RelayControlType::RevPower, 3),
+        (RelayControlType::NegCurrent, 4),
+        (RelayControlType::NegVoltage, 5),
+        (RelayControlType::Generic, 6),
+        (RelayControlType::Distance, 7),
+        (RelayControlType::Td21, 8),
+        (RelayControlType::Doc, 9),
+    ] {
+        assert_eq!(variant.ordinal(), ord);
+        assert_eq!(RelayControlType::from_ordinal(ord), Some(variant));
+    }
+    assert_eq!(RelayControlType::from_ordinal(2), None);
+    assert_eq!(RelayControlType::from_ordinal(10), None);
+}
+
+#[test]
+fn set_i32_type_keeps_value_on_unregistered_ordinal() {
+    // The `2` (and any out-of-range) ordinal is never produced by the
+    // RelayTypeEnum parse, but pin the deliberate keep-old fallback at the
+    // setter: `from_ordinal(value).unwrap_or(self.control_type)`.
+    let mut r = Relay::new("r1");
+    r.set_i32(prop::TYP, RelayControlType::Distance.ordinal()); // 7 -> Distance
+    assert_eq!(r.control_type, RelayControlType::Distance);
+    r.set_i32(prop::TYP, 2); // unregistered gap ordinal -> keep Distance
+    assert_eq!(r.control_type, RelayControlType::Distance);
+    assert_eq!(r.get_i32(prop::TYP), 7);
 }

@@ -31,14 +31,39 @@ use crate::elements::pd::capacitor::ControlledCapacitor;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
-/// `ECapControlType` ordinals.
-mod ctrl_type {
-    pub const CURRENT: i32 = 0;
-    pub const VOLTAGE: i32 = 1;
-    pub const KVAR: i32 = 2;
-    pub const TIME: i32 = 3;
-    pub const PF: i32 = 4;
-    pub const FOLLOW: i32 = 5;
+/// `ECapControlType` (`CapControl.pas` TypeEnum). Discriminants are user-visible
+/// and frozen (round-trip through the `DssEnum` registry); `i32` survives only at
+/// the property parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum CapControlType {
+    #[default]
+    Current = 0,
+    Voltage = 1,
+    Kvar = 2,
+    Time = 3,
+    Pf = 4,
+    Follow = 5,
+}
+
+impl CapControlType {
+    /// The `CapControlTypeEnum` ordinal (`Type=`/`?`/dump boundary value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry ordinal; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Current),
+            1 => Some(Self::Voltage),
+            2 => Some(Self::Kvar),
+            3 => Some(Self::Time),
+            4 => Some(Self::Pf),
+            5 => Some(Self::Follow),
+            _ => None,
+        }
+    }
 }
 
 /// `CapControl.pas` monitored-phase pseudo-phases (the `mon_phase` hybrid enum's
@@ -146,8 +171,8 @@ pub struct CapControl {
     /// FOLLOWCONTROL arm of `Sample`.
     ctrl_signal_shape: Option<LoadShapeObj>,
 
-    /// `ECapControlType` ordinal (0=Current ... 5=Follow).
-    control_type: i32,
+    /// `ECapControlType` (0=Current ... 5=Follow).
+    control_type: CapControlType,
     fct_phase: i32,
     fpt_phase: i32,
     pt_ratio: f64,
@@ -201,7 +226,7 @@ impl CapControl {
             mon_snap: None,
             control_signal_name: String::new(),
             ctrl_signal_shape: None, // Pascal `ctrlSignalShape := NIL;`
-            control_type: ctrl_type::CURRENT,
+            control_type: CapControlType::Current,
             fct_phase: 1,
             fpt_phase: 1,
             pt_ratio: 60.0,
@@ -235,7 +260,7 @@ impl CapControl {
     /// Read-only accessor for the CIM export (`RegulatingControlEnum`, GAPS_PLAN
     /// WPG.18 Stage D).
     pub fn control_type(&self) -> i32 {
-        self.control_type
+        self.control_type.ordinal()
     }
 
     /// Pascal `TCapControlObj.PTPhase` (property `CapControl.pas:207` =
@@ -361,7 +386,7 @@ impl CapControl {
         // part of a separate cross-class error-quoting change we do not adopt
         // here — no deck gates the exact string (substring-checked, default
         // oracle stays 0.14.5).
-        let eff = if self.control_type != ctrl_type::FOLLOW {
+        let eff = if self.control_type != CapControlType::Follow {
             if self.mon_snap.is_none() {
                 self.ccd.cd.obj.push_error(format!(
                     "CapControl.{}: Element is not set, aborting.",

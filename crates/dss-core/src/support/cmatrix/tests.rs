@@ -214,6 +214,44 @@ fn averages_zero_rows_and_negate() {
 }
 
 #[test]
+fn index_ops_match_get_set_and_column_major_layout() {
+    let mut m = CMatrix::new(3);
+    m[(0, 1)] = c(1.0, 2.0);
+    m[(2, 0)] = c(-3.0, 0.5);
+    // Index agrees with get, and both resolve the column-major offset.
+    assert_eq!(m[(0, 1)], m.get(0, 1));
+    assert_eq!(m[(2, 0)], c(-3.0, 0.5));
+    // (row i, col j) lives at values[j*n + i]; here (0,1) -> 1*3 + 0 = 3.
+    assert_eq!(m.values()[3], c(1.0, 2.0));
+    m[(0, 1)] += c(0.0, -2.0);
+    assert_eq!(m[(0, 1)], c(1.0, 0.0));
+}
+
+#[test]
+fn col_and_row_iterators_walk_the_expected_entries() {
+    let mut m = CMatrix::new(3);
+    for i in 0..3 {
+        for j in 0..3 {
+            m.set(i, j, c(i as f64, j as f64));
+        }
+    }
+    // Column 2 is a contiguous span [(0,2),(1,2),(2,2)].
+    assert_eq!(m.col(2), &[c(0.0, 2.0), c(1.0, 2.0), c(2.0, 2.0)]);
+    // Row 1 walks [(1,0),(1,1),(1,2)] with the column stride.
+    let row1: Vec<_> = m.row(1).copied().collect();
+    assert_eq!(row1, vec![c(1.0, 0.0), c(1.0, 1.0), c(1.0, 2.0)]);
+    // The column iterator yields every column in order.
+    let ncols = m.columns().count();
+    assert_eq!(ncols, 3);
+    for e in m.row_mut(0) {
+        *e = Complex64::ZERO;
+    }
+    assert!(!m.is_col_row_zero(0)); // column 0 still has (1,0),(2,0)
+    m.zero_col(0);
+    assert!(m.is_col_row_zero(0));
+}
+
+#[test]
 fn copy_from_and_add_from_respect_order() {
     let mut a = CMatrix::new(2);
     a.set(0, 0, c(1.0, 0.0));

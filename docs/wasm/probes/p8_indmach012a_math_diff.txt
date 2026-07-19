@@ -1,0 +1,30 @@
+WP-WM.3 pre-round (ABI re-freeze to r4133, user decision 2026-07-19) — item 1:
+does the IndMach012a reference user-model MATH change r3723 -> r4133?
+Date: 2026-07-19
+
+=== IndMach012a example dir: byte-for-byte r3723 vs r4133 ===
+cmd: diff -rq <r3723>/IndMach012a <r4133>/IndMach012a
+(no differences reported — directories byte-identical)
+
+per-file sha256 (the model-math + dispatch + parser + project surfaces):
+  IDENTICAL IndMach012Model.pas    cbacaea8f7349f77dab16632933e81c079dd6484268157e252fd6af91afaf74f
+  IDENTICAL MainUnit.pas           56845e13e054e90a19a1e7ebe707e0ebdd981c1355b1cf8492985a679ceee776
+  IDENTICAL ParserDel.pas          c60def0ae5d35aceca4d68343b16c31ad655b5a8cda2097503082a4f24af7390
+  IDENTICAL IndMach012a.dpr        de4d5d8a82639ee21cfcfe42bb01d662295bbdf2403e7ad150182dfcf99483f5
+
+=== the ONLY user-model-contract change: PCElements/GeneratorVars.pas ===
+cmd: diff <r3723>/PCElements/GeneratorVars.pas <r4133>/PCElements/GeneratorVars.pas
+40a41
+>         deltaQNom         : Array of Double;  // Used for updating Q when using NCIM algorithm
+
+=== VERDICT ===
+IndMach012Model.pas (the model math: IndMach012Model / symmetrical-component
+solve / dynamics Integrate), MainUnit.pas (the 15-export dispatch table) and
+ParserDel.pas (the bundled parser) are ALL byte-identical r3723 -> r4133.
+=> The reference user-model MATH IS UNCHANGED. The single r4133 delta is the
+   record LAYOUT: GeneratorVars.pas inserts 'deltaQNom: Array of Double'
+   between Qnominalperphase and NumPhases (an 8-byte managed dyn-array ref,
+   used only by the engine's NCIM algorithm, never by the model), shifting
+   TGeneratorVars 244 -> 252 B with the tail +8 (see p8_offsets_r4133.txt).
+   Confirms p5_upgrade_diff.txt's loader-contract-unchanged finding at the
+   MODEL level: same wasm-fixture math, only the native record image grows.

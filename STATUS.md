@@ -197,6 +197,37 @@ Records: `docs/phase-records/test-triage-{promotions,ad-classify,monitor-winding
 - Gate after merges: fmt/clippy clean, `cargo +stable test --workspace` exit 0;
   population.lock consistency re-proven by deliberate regen (no diff).
 
+### DE_PASCALIZE P1b — control-trio integer families → enums (wave 2, branch `wt-p1b-v2`)
+
+Stratum **[A]** bit-neutral. Closes the P1 wave-1 control-trio deferral
+(`docs/phase-records/depascalize-p1.md` #Deferred item 7). Salvaged the
+interrupted WIP `c842af0` (origin/wt-p1b) by clean cherry-pick onto the
+post-classwalk `update` tree; it compiled as-is (only two `cargo fmt` line-wraps
+needed), and every discriminant was re-proven before finalizing:
+- **Relay** `control_type` → `RelayControlType` (`#[repr(i32)]`, `0,1,3,4,5,6,7,8,9`
+  — the `2` ordinal stays unused, `from_ordinal(2)=None`).
+- **CapControl** `control_type` → `CapControlType` (`0..5`; USERCONTROL=6 is not
+  registered upstream and never set by the port, so the `Sample` match drops its
+  `_ => {}` and is exhaustive).
+- **RegControl** queue action codes → `RegControlAction` (`TapChange=0`/`Reverse=1`;
+  `i32` survives only at the `ControlQueue` push / `DoPendingAction` boundary).
+
+Each ordinal proven against Pascal (`Relay.pas:323-331`, `CapControl.pas:92-100`,
+`RegControl.pas:246-247`) **and** the DssEnum registry (`registry/control.rs`
+`relay_type`=[0,1,3,4,5,6,7,8,9], `cap_control_type`=[0,1,2,3,4,5]). `i32` remains
+at the property parse/report + CIM-export accessors only. Proof (all unchanged):
+3 new ordinal-round-trip pin tests + the controls-corpus manifests (105 cases) +
+eventlog gate. MonPhase sentinels + the shared `CTRL_*` state channel were not
+required and stay deferred (item 7 residue / R0 `control_elem.rs`).
+
+Audit settlement (two independent auditors, no regression): 2 `low` notes.
+(1) setter keep-old fallback was not directly exercised → closed with two additive
+`set_i32_type_keeps_value_on_unregistered_ordinal` pin tests (relay + cap_control),
+no golden/tolerance touched. (2) `relay_type` DssEnum omitting Pascal's
+`DefaultValue := 0` → confirmed pre-existing (registry file untouched in-range) and
+a string-parse-fallback matter orthogonal to this `[A]` storage-type conversion;
+deferred to a registry-fidelity pass (rationale in `depascalize-p1.md`).
+
 ### DE_PASCALIZE P13 — VCCS delay line → `RingBuf` (wave 2, branch `wt-p1213-v2`)
 
 Stratum **[A]** bit-neutral. The VCCS z-domain filter's two wrap-around
@@ -593,6 +624,82 @@ empirically:
   stray solver outputs into this worktree during the audit; the committed
   range was verified clean at audit start. `tests/corpus` re-verified
   pristine at settle.
+
+### WASM-UM ABI re-freeze to r4133 (pre-WM.3, branch `wasm-r4133`, 2026-07-19)
+
+User decision 2026-07-19: the project gates on the in-house **r4133** bridge
+(`crates/dss-epri`), so the frozen user-model ABI + native twin move from the
+0.14.5/r3723 layout to r4133. Executed as the ABI doc's own recorded-decision
+procedure (header entry (b) + updated §2.2 + Appendix A). **Probe, not assume:**
+
+- **P8 r4133 offsets** (`abi_probe_r4133.pas` → `docs/wasm/probes/p8_offsets_r4133.txt`):
+  FPC `-Mdelphi` probe of the r4133 headers. `TDynamicsRec` 52 B and
+  `TDSSCallBacks` 256 B **byte-identical** r3723→r4133; `TGeneratorVars`
+  **244→252 B** — `deltaQNom` (`array of Double`, 8-B managed ref, NCIM-only)
+  at offset 176, tail shifted +8 (`NumPhases` 176→184, `VthevMag` 188→196,
+  `XRdp` 236→244).
+- **P8 model-math diff** (`p8_indmach012a_math_diff.txt`): the IndMach012a
+  example dir (`IndMach012Model.pas`/`MainUnit.pas`/`ParserDel.pas`/`.dpr`) is
+  **byte-identical** r3723→r4133 (sha256s); the sole delta is
+  `GeneratorVars.pas`. **Model math UNCHANGED.**
+- **P8 twin-in-r4133-engine** (`p8_twin_r4133_bridge.txt`): the twin rebuilt
+  from r4133 (252-B layout) **loads + runs in the r4133 engine via the
+  `epri-worker` bridge** — model=6 power-flow converged with the 14 IndMach012a
+  machine vars live (Slip=−0.006407, puRs/puXm/MaxSlip echoing UserData,
+  Is1/Ir1/StatorLoss/HPshaft computed) + 10 dynamics steps (Monitor mode=3
+  Slip/Freq series). This is the authoritative re-derivation through the r4133
+  channel (never Rust-vs-Rust).
+
+**Decision:** the frozen **native** `TGeneratorVars` is now r4133 (252 B,
+§2.2a). The **wasm marshaled image is UNCHANGED at 244 B** (§2.2b): `deltaQNom`
+is engine-only and a managed reference has no wasm-linear-memory meaning, so it
+**never crosses** the boundary; the +8 shift is native-side only. Consequently
+**zero wasm-side bytes changed** — proven empirically:
+
+- `twin_probe.py` ctypes image updated to the r4133 252-B layout (`deltaQNom`
+  slot, nil); driving the r4133 twin re-derives `twin_expected.rs` +
+  `p6_twin_expected.txt` **bit-identical** to the r3723 pins (193 constants,
+  all value lines byte-equal).
+- committed `tests/fixtures/wasm/indmach012a.wasm` **unchanged** (PIN hash
+  `1849db0c…` holds); the fixture self-gate
+  (`committed_fixture_matches_native_twin_bit_exact`) stays **bit-exact green**.
+- `crates/dss-usermodel::records::GeneratorVars` stays 244 B — **doc-comment +
+  §2.2b framing only**, no code change; the offset-pin tests still assert
+  176/188/236.
+
+`build_native.ps1` retargeted r3723→r4133; `build_probes.ps1` gained the P8
+step. Full three-command gate green at defaults; `tests/corpus` pristine
+(deck driven from an isolated scratch dir, never the corpus). Out of scope
+(unchanged): WM.3 element integration, any dss-core/manifest/dss-epri code.
+
+**Settlement (two independent audits, 2026-07-19).** The code audit returned
+empty (faithful; wasm side is doc + pin only, native re-freeze backed by
+reproduced probe evidence). The test audit raised two **low, by-design**
+observations, both settled empirically and **deliberately not "fixed"** (there
+is no regression to fix):
+
+- *WM3-1 — the r4133 re-derivation is gated by nothing new in the suite (it
+  verifies the old pins, which are identical).* Settled: the IndMach012a model
+  units (`IndMach012Model`/`MainUnit`/`ParserDel`/`.dpr`) were re-hashed here and
+  are **byte-identical r3723→r4133** (sha256 match p8); the sole delta is the
+  engine-only `deltaQNom` in `GeneratorVars.pas`, which never reaches the model.
+  Identical math ⇒ identical twin outputs, so the unchanged `twin_expected.rs`,
+  unchanged `.wasm`, and bit-exact-green self-gate ARE the correct, sufficient
+  verification; the r4133 bridge run (`p8_twin_r4133_bridge.txt`) confirms the
+  r4133-compiled twin loads + runs in the r4133 engine. FPC/wasm cannot rebuild
+  in CI — this is inherent golden discipline, not a coverage gap; adding a CI
+  gate is impossible and unnecessary.
+- *WM3-2 — the new native 252-B offsets are asserted only in the ungated
+  `twin_probe.py`; the gated `records.rs` test asserts the 244-B wasm image.*
+  Settled: the r4133 offset probe (`abi_probe_r4133.pas`) was **re-compiled and
+  re-run here** — output byte-identical to `p8_offsets_r4133.txt`
+  (`TGeneratorVars` 252 B, `deltaQNom`@176, `NumPhases`@184, `VthevMag`@196),
+  matching `twin_probe.py`'s ctypes asserts. The native record has **no host
+  codec** in `dss-usermodel` and **never crosses the wasm boundary**, so there
+  is nothing in the product to gate it against; the manual twin tool — which
+  must match the native DLL byte-for-byte — is its correct and only home. The
+  gated `records.rs` pin covers exactly what crosses (the 244-B wasm image). By
+  design, not a regression.
 
 Branch `og15-capi-schema`. Ported the **static core** of Pascal
 `DSS_ExtractSchema(DSS, jsonSchema=True)` (`CAPI_Schema.pas:1252-1521`): the
@@ -2205,6 +2312,163 @@ scope). One `miette`-based diagnostic type now backs every engine error channel.
   show-busflow assert rewritten to `code == Some(219)` + substring.
 - `From<ParserError>`/`SparseError`/`SingularMatrix` for `DssDiagnostic` land in
   `diag.rs`; the "Error Encountered in Solve: {e}" catch sites carry code 482.
+
+## 1l. DE_PASCALIZE P15 — `dss-sparse` allocation & indexing hygiene [A] (branch `wt-p15`)
+
+Stratum **[A] bit-neutral** — the solver hot path. Same arithmetic, same
+summation order; the checkpoint Y goldens + `corpus_live` are the bit-exact/floor
+proof. Base `update@13dde5c`. Items 1–6 of `DE_PASCALIZE_PLAN §P15`, plus the M1
+benchmark baseline the WP is measured against.
+
+**What changed (all bit-neutral):**
+1. **`SparseSet` reuse across Y rebuilds.** `build_y_matrix` no longer throws away
+   the sparse set every rebuild — `reuse_or_new_sparse` reuses it when the node
+   count is unchanged (`ymatrix.rs`), `zero()` now *retains* the assembled-matrix
+   skeleton, dedup cache, LU symbolic analysis and row-equilibrated matrix. A
+   value-only rebuild (tap change, per-step load `Yeq`) refactors without
+   re-analyzing; a renumber-with-same-count is caught by the stamp-pattern check
+   (item 2) and falls back to a fresh build.
+2. **Dedup-mapping cache in `assemble`** (`AssembleCache`, the subtle item). The
+   first assembly of a pattern records `map` (triplet→cell), `first` (first
+   occurrence = assign, else `+=`), `keys` (cell→(r,c) signature) and
+   `cell_to_csc` (cell→CSC position). A same-pattern rebuild validates the `(r,c)`
+   stamp sequence (`O(nnz)` int compare, no hashing), re-accumulates each cell in
+   stamp order — **bit-identical** to the HashMap path incl. `-0.0` (assign on
+   first, `+=` after) — and scatters verbatim into the existing CSC value buffer.
+   Any mismatch/`zero()`-to-new-pattern rebuilds the cache. Insertion-order
+   summation is preserved (the shared kernel; **no** faer-native dedup, per the
+   plan's permanent ban).
+3. **Killed per-element `to_row_major()`** in the stamping loop:
+   `SparseSet::add_primitive_matrix_col_major` reads the `TcMatrix` column-major
+   storage directly, traversed in the exact same row-major `(i,j)` order (triplet
+   insertion order = dedup summation order unchanged) — one fewer transpose
+   allocation per element per rebuild.
+4. **`build_scaled` reuse:** the row-equilibrated matrix is kept in `self.scaled`;
+   a same-pattern refactor overwrites its value buffer in place (no `vals.to_vec()`
+   + `symbolic.to_owned()` copy). Row-max via `zip`, per-column value slices.
+5. **Caller-side per-iteration alloc:** `Solution::solve_system_into` reuses a
+   `solve_rhs` scratch field (`mem::take`-swapped for the disjoint borrow) instead
+   of `currents[1..].to_vec()` every fixed-point iteration. `rcond` documented as
+   cold-path *accept* (no scratch fields — keeps the hot state small).
+6. **Idiom sweep [A]:** `solve_one` index loop → `zip`; `find_islands` recursive
+   `find` → iterative two-pass path compression (recursion was unbounded on a
+   degenerate ~8500-node chain); `get_element`/`coo_entries` `zip`. Same treatment
+   applied to `RealSparseSet` (NCIM Jacobian) where it transfers — the `zip`
+   idioms; the reuse/dedup cache does **not** transfer (NCIM rebuilds the Jacobian
+   fresh each iteration, so there is nothing to reuse).
+
+**Bit-neutrality proof.** New dss-sparse unit tests:
+`cached_fast_path_matches_fresh_bitwise` (a reused `zero()`+restamp set vs a fresh
+build — every assembled-Y value and every solved-x value bit-identical via
+`to_bits()`), `cache_invalidates_on_pattern_change`,
+`cache_reaccumulates_new_values_not_stale`. Engine level:
+`checkpoint_scenarios_match_oracle` green (assembled Y + **exact iteration
+counts** + node voltages unchanged); full `corpus_live` green at floors.
+`tests/corpus` pristine.
+
+**Benches (MULTITHREADING_PLAN M1 — created here; `crates/dss-core/benches/`,
+criterion, `default-features=false`).** `snapshot_8500` (end-to-end compile+solve),
+`ybuild_8500` (`Dss::rebuild_system_y` — whole-Y rebuild in isolation),
+`lu_factor_solve` (`SparseSet` zero→restamp→factor→solve at 8500 scale). Median,
+release bench profile, before → after:
+
+| bench | before | after | Δ |
+|---|---|---|---|
+| `ybuild_8500/rebuild_whole_y` | 4.73 ms | 4.33 ms | ~8% (rest is the per-element YPrim recompute, not P15's target) |
+| `lu_factor_solve/zero_restamp_factor_solve` | 10.32 ms | 4.41 ms | **~57%** (symbolic-LU reuse + dedup cache) |
+| `snapshot_8500/compile_solve` | 301 ms | 186 ms | **~38%** (rebuild reuse over the control-iteration Y rebuilds) |
+
+Numbers carry load-contention noise (parallel worktrees); the relative wins,
+especially `lu_factor_solve`, are the architectural signal. `daily_ieee8500` (the
+4th M1 bench) is left to the MULTITHREADING M1 owner (needs the meters/monitors
+time-series harness; not required by P15's DoD).
+
+**Deviations.** (a) `CMatrix::to_row_major` kept as a documented `pub` utility
+(no live callers after item 3; removing an unrequested `pub` method is out of P15
+scope). (b) `rebuild_system_y` added as a `pub` benchmark entry point (the only
+public way to drive `build_y_matrix` in isolation for `ybuild_8500`). (c) The full
+three-command gate is run once on the final tree rather than per intermediate
+commit — the steps are monotonic bit-neutral and the oracle gate is expensive
+under worktree load contention; every commit builds.
+
+**Audit settlement (two independent audits over `13dde5c..cb2311c`).** Both
+returned ACCEPT with only low/medium *coverage* notes — no bit-neutrality,
+correctness, or tolerance findings (the col-major traversal was independently
+re-derived bit-identical to `add_primitive_matrix(&to_row_major())` by
+construction). The three coverage gaps are closed with targeted gating unit tests
+in `crates/dss-sparse/src/tests.rs`:
+- **T1 (medium) — `find_islands` untested + zero callers.** Added
+  `find_islands_components_and_deep_chain`: verifies component labels on a mixed
+  two-island + isolated-node case, and runs the iterative path-compression on a
+  degenerate 20 000-node chain (the stated stack-safety motive) — completes
+  without overflow and returns one island. `find_islands` remains a
+  caller-less public `KLUSolve FindIslands` mirror (kept as API surface, not
+  removed — out of P15 scope); it is now *exercised*, not only reasoned.
+- **T2 (low) — no gating test asserted the fast path was taken.** Added
+  `same_pattern_rebuild_takes_fast_path`: asserts the `pattern_reused` fast-path
+  sentinel is set on a same-pattern value-only rebuild and *cleared* on the
+  first build and on a `(r,c)`-sequence change. A silent fallback to the slow
+  path (a pure perf regression the bit-neutral tests miss) now fails `cargo test`.
+- **T3 (low) — item 3's live `add_primitive_matrix_col_major` had no direct
+  test.** Added `col_major_stamp_matches_row_major_transpose_bitwise`: a
+  bit-for-bit differential between the column-major read and the row-major
+  transpose fed through the old path, incl. a ground node to exercise the skip.
+
+Code-audit lows are process/observation, not defects: **P15-1** (engine-level
+fast-path coverage depends on value-only corpus rebuilds) is evidenced by the
+`snapshot_8500` ~38% win, which comes precisely from the control-iteration Y
+rebuilds hitting the reuse path on a real 8500-node deck; **P15-2** (gate run
+once on the final tree) is discharged here — the full three-command gate was
+re-run green at defaults on the settled tree. dss-sparse unit tests: 18 → 21.
+
+## 1m. DE_PASCALIZE P9 — `CMatrix` ergonomics [A] (branch `wt-p9`)
+
+Stratum **[A] bit-neutral** — `support/cmatrix/mod.rs`. Base `update@afba752`
+(post-P15: the sparse assemble reads CMatrix column-major storage directly via
+`add_primitive_matrix_col_major`). Goal: replace the repeated raw column-major
+`idx` closure / `j*n+i` offset pattern with typed accessors, without changing any
+arithmetic or statement order.
+
+**Added accessors.** `Index<(usize,usize)>` / `IndexMut<(usize,usize)>` (element
+access `m[(i,j)]`, resolving the offset through the one private `idx` helper);
+`col(j)`/`col_mut(j)` (a whole column is one contiguous span in column-major
+storage); `columns()` (column-slice iterator); `row(i)`/`row_mut(i)` (strided row
+iterators).
+
+**Internals rewritten on them (bit-neutral):** `set`/`add`/`get` →
+`self[(i,j)]`; `is_col_row_zero` → `row(n).chain(col(n))`; `zero_row` →
+`row_mut`; `zero_col` → `col_mut`; `avg_diagonal`/`avg_off_diagonal`/`mv_mult` →
+`self[(i,j)]`; `invert` → the local `idx` closure removed, every `a[idx(i,j)]` →
+`self[(i,j)]` (identical offset `j*l+i == col*n+row`), trailing negation loop →
+`self.negate()` (verbatim `for v in &mut self.values { *v = -*v }`);
+`mtrx_mult` → the per-column copy scratch dropped, feeds `b.col(j)` straight into
+`mv_mult`. The `cdiv_fpc` Smith-division cross-term and the no-row-exchange
+Gauss-Jordan pivot sequence are untouched (algorithm identity → Stage F).
+
+**Statement-order proof.** The `invert`/`mv_mult` diff is a pure index-notation
+swap: `git diff` shows every kernel statement byte-identical except
+`a[idx(i,j)]`→`self[(i,j)]`, which the `idx` method proves compute the same flat
+offset. Pinning tests green **unchanged**: `cdiv_fpc_matches_fpc_smith_not_naive`
+(bit-exact Smith division, both branches), `invert_*` round-trips, the checkpoint
+per-element YPrim goldens, `transformer_yprim_bitexact`, line-constants, and the
+P15 seam differential `col_major_stamp_matches_row_major_transpose_bitwise`
+(traversal order load-bearing). Full `corpus_live` green at floors; `tests/corpus`
+pristine. New unit tests pin the accessors:
+`index_ops_match_get_set_and_column_major_layout`,
+`col_and_row_iterators_walk_the_expected_entries`.
+
+**Deviations / left in place (documented, not defects):**
+- `mathutil::etk_invert` keeps its own local `idx` closure — it operates on a raw
+  `&mut [f64]` slice (real-matrix Gauss-Jordan), not `CMatrix`; a separate kernel
+  outside P9's file scope, statement order owned by Stage F.
+- `diakoptics/matrices.rs` link-prim extraction keeps its flat 1-based `cValues`
+  k-stride walk over `yprim.values()` — a bespoke Pascal-faithful stride
+  reproduction (with defensive `.get()` out-of-range skips), not the `(i,j)` idx
+  pattern; converting it risks a behavior change and is out of P9 scope.
+- `CMatrix::to_row_major` kept (unchanged `pub` utility, as under P15).
+- External `mv_mult`/`get`/`set`/whole-slice `values_mut` call sites already use
+  the ergonomic public API; the only manual `j*order+i` offsets elsewhere index
+  raw parse/JSON buffers, not `CMatrix` storage — out of scope.
 
 ## 1a. Archived — completed plan records (100% done)
 

@@ -10,7 +10,7 @@ use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
-use super::{CapControl, ctrl_type};
+use super::{CapControl, CapControlType};
 
 impl CktElement for CapControl {
     fn cd(&self) -> &crate::elements::ckt::CktElementData {
@@ -152,7 +152,7 @@ impl DssObject for CapControl {
         use super::prop::*;
         match idx {
             TERMINAL => self.ccd.element_terminal,
-            TYPE => self.control_type,
+            TYPE => self.control_type.ordinal(),
             CTPHASE => self.fct_phase,
             PTPHASE => self.fpt_phase,
             _ => unreachable!("CapControl has no integer property {idx}"),
@@ -162,7 +162,10 @@ impl DssObject for CapControl {
         use super::prop::*;
         match idx {
             TERMINAL => self.ccd.element_terminal = value,
-            TYPE => self.control_type = value,
+            TYPE => {
+                self.control_type =
+                    super::CapControlType::from_ordinal(value).unwrap_or(self.control_type)
+            }
             CTPHASE => self.fct_phase = value,
             PTPHASE => self.fpt_phase = value,
             _ => unreachable!("CapControl has no integer property {idx}"),
@@ -288,7 +291,7 @@ impl DssObject for CapControl {
         use super::prop::*;
         // PF Controller changes (the type has already been written when the
         // `typ` side effect runs, so this covers "switched to PF" too).
-        if self.control_type == ctrl_type::PF {
+        if self.control_type == CapControlType::Pf {
             match idx {
                 TYPE => {
                     self.pfon_value = 0.95; // defaults

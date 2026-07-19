@@ -1,5 +1,10 @@
-p6 — native-twin expected values (WP-WM.2 item 3/4 pre-stage)
-dll: C:\Users\Admin\AppData\Local\Temp\indmach012a_native_twin\IndMach012a.dll
+p6 — native-twin expected values (WP-WM.2 item 3/4; r4133 re-freeze 2026-07-19)
+provenance: r4133 native twin — FPC 3.2.2 ppcrossx64 -Mdelphi -O2 of r4133 IndMach012a.dpr
+            (vs r4133 GeneratorVars.pas: 252-B deltaQNom layout, p8_offsets_r4133.txt).
+            Every value below is BIT-IDENTICAL to the WM.2 r3723 image — the model
+            math is byte-identical r3723->r4133 (p8_indmach012a_math_diff.txt);
+            deltaQNom is engine-only and never reaches the model.
+dll: %TEMP%\indmach012a_native_twin\IndMach012a.dll  (build_native.ps1, r4133)
 scenario: see tools/wasm_usermodel/twin_probe.py (fixed inputs)
 w0=376.99111843077515 V_PF=[(277.13, 0.0), (-140.02, -239.51), (-137.11, 240.05)] V_DYN=[(276.4, 3.1), (-141.0, -238.2), (-135.9, 239.9)] h_dyn=0.0002
 edit='rs=0.048 xs=0.075 rr=0.018 xr=0.12 Xm=3.8 maxs=0.1 option=variableslip slip=-0.02'
