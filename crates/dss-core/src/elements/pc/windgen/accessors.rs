@@ -4,7 +4,7 @@
 
 use num_complex::Complex64;
 
-use crate::elements::ckt::CktElementData;
+use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::dynamic_exp::DynamicExpObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
@@ -179,8 +179,14 @@ impl CktElement for WindGen {
         if sys.loads_need_updating {
             self.set_nominal_generation(sys, ctx.node_v);
         }
+        // r4133 `TWindGenObj.InjCurrents` (WindGen.pas): `if not ForceInjCurr then
+        // CalcInjCurrentArray` — skip only the model recompute when the injection
+        // is forced; the set-nominal preamble and the inherited add stay
+        // unconditional.
         let mut errors = crate::diag::ErrorLog::new();
-        self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
+        if !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS) {
+            self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
+        }
         for i in 0..self.cd.yorder {
             ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
         }
@@ -205,7 +211,17 @@ impl CktElement for WindGen {
             self.cd.calc_yprim_contribution(node_v, curr);
             return;
         }
-        if self.cd.iterminal_solution_count != sys.solution_count && !self.gen_switch_open {
+        // Pascal `TWindGenObj.GetTerminalCurrents` (r4133 WindGen.pas:2148 / 0.15.0b4
+        // WindGen.pas:1693): `and (not ForceInjCurr)` — skip the model recompute and
+        // report the frozen `Iterminal` (via the `inherited` YPrim·V path) when the
+        // currents are forced from the DSS language (`Set InjCurrent=`/`ITerminal=`),
+        // mirroring the other five flag-checking classes (WP-U1.9 / 0.15.x-adoption
+        // sweep a3a5). Without this the port recomputes at the new operating point
+        // where r4133 freezes.
+        if self.cd.iterminal_solution_count != sys.solution_count
+            && !self.gen_switch_open
+            && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
+        {
             let mut errors = crate::diag::ErrorLog::new();
             self.calc_gen_model_contribution(sys, node_v, &mut errors);
         }

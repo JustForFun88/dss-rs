@@ -335,17 +335,27 @@ impl DssObject for RegControl {
         }
     }
 
-    /// Pascal `TRegControl.EndEdit` (r4086, 8a898cba). Legacy-compat band: if
-    /// `RevThreshold` was set in *this* edit but `FwdThreshold` was not, mirror
-    /// the old symmetric-around-0 behavior — `Fwd := abs(Rev); Rev := -Fwd`
-    /// (`abs` keeps `Rev < Fwd`). Then the base `RecalcElementData`.
+    /// Pascal `TRegControl.EndEdit` (EPRI r4133 RegControl.pas:499-507). Legacy
+    /// fall-back band: if `RevThreshold` was set in *this* edit but `FwdThreshold`
+    /// was not, restore the pre-existing behavior where `revThreshold` defined the
+    /// band around 0 kW — `Fwd := Rev; Rev := -Rev` (**sign-preserving, NO abs**).
+    /// Then the base `RecalcElementData`.
+    ///
+    /// dss_capi 0.15.x `8a898cba` added an `abs` here (`Fwd := abs(Rev)`) — a
+    /// self-declared "fix" absent from EPRI. For a positive `Rev` it is a no-op,
+    /// but for a **negative** rev-only edit it inverts the band relative to BOTH
+    /// gating oracles (r4133 AND 0.14.5-legacy both abort `#485` on a reverse
+    /// ping-pong; capi015/port-with-abs converged) — the D14 signature. The port
+    /// follows r4133 (dropping the abs also restores 0.14.5-legacy equivalence);
+    /// the resulting negative-rev behavior is deterministic and reproduced 1:1
+    /// (0.15.x-adoption sweep, DIVERGENCES C5).
     fn end_edit(&mut self) {
         let obj = &self.ccd.cd.obj;
         if obj.prop_edited_since_boundary(prop::REVTHRESHOLD)
             && !obj.prop_edited_since_boundary(prop::FWDTHRESHOLD)
         {
-            self.fwd_power_threshold = self.rev_power_threshold.abs();
-            self.rev_power_threshold = -self.fwd_power_threshold;
+            self.fwd_power_threshold = self.rev_power_threshold;
+            self.rev_power_threshold = -self.rev_power_threshold;
         }
         self.recalc();
     }

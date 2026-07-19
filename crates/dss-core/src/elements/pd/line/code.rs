@@ -286,15 +286,16 @@ impl Line {
         self.cd.obj.set_as_next_seq(prop::EMERGAMPS);
     }
 
-    /// Pascal generic `DSSObjectReferenceArrayProperty` fill for the 0.15.x
-    /// `Conductors=` form (`Line.pas:341-344`, the 3-class proxy): write each
+    /// Pascal generic `DSSObjectReferenceArrayProperty` fill for the r4133
+    /// `Conductors=` form (`Line.pas:341-344`, the 3-class list): write each
     /// resolved conductor / NIL straight into `LineWireData` from slot 0. The
     /// conductor *model* (`FPhaseChoice`) and ratings are computed by the side
-    /// effect (`Line.pas:750-865`), matching upstream's split. In practice the
-    /// text proxy only ever delivers an all-`none` list (real items error in
-    /// `parse_conductor_proxy`, the upstream `GetDSSClass` case bug), so this
-    /// mostly writes NIL slots; the real-conductor fill (for the §6-fixed parser
-    /// and JSON import) is gated by the whitebox equivalence test
+    /// effect (`Line.pas:750-865`), matching upstream's split. Class-prefixed text
+    /// items resolve via the CASE-INSENSITIVE `parse_conductor_proxy` (r4133
+    /// `LowerCase(CondClass)`; the capi015 `GetDSSClass` case bug was dropped in
+    /// the 0.15.x-adoption sweep), and a `none` slot writes NIL (compacted out at
+    /// solve time by `LoadSpacingAndWires`); the real-conductor fill is also gated
+    /// by the whitebox equivalence test
     /// `tests::conductors_array_matches_buried_neutral_and_oracle`.
     pub(super) fn set_conductors(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
         for (i, r) in refs.iter().enumerate() {

@@ -34,21 +34,43 @@ impl LineGeometryObj {
         height_offset: f64,
         height_units: i32,
     ) -> Result<(), String> {
-        // `NConds := Spc.NWires` runs the nconds side effect (full reset/realloc).
-        self.fnconds = spc.nwires();
+        // r4133 `LoadSpacingAndWires` (LineGeometry.pas:1190-1262): before
+        // allocating, recount the conductors actually present. A Line-level
+        // `wires=(w none)` (a documented r4088+/r4133 pattern, accepted by BOTH
+        // gating oracles) leaves NIL slots; the geometry is sized to the compacted
+        // count (`actualNConds`), and only the non-NIL wires are copied — into
+        // CONTIGUOUS positions but with their ORIGINAL spacing coordinates
+        // (`FX^[j] := Spc.Xcoord[i]`). `actualNPhases` counts the non-NIL wires
+        // whose ORIGINAL index is a phase position. (The pre-fix code sized to
+        // `Spc.NWires` and copied index-aligned, so a NIL slot reached the Carson
+        // calc and aborted "WireData is not correctly initialized".) For a list
+        // with no NIL this is byte-identical to the old path (`actualNConds ==
+        // NWires`, `j == i`).
+        let nwires = spc.nwires().max(0) as usize;
+        let spc_nphases = spc.nphases();
+        let mut actual_nconds = 0i32;
+        let mut actual_nphases = 0i32;
+        for (i, o) in wires.iter().take(nwires).enumerate() {
+            if o.is_some() {
+                actual_nconds += 1;
+                if (i as i32) < spc_nphases {
+                    actual_nphases += 1;
+                }
+            }
+        }
+        self.fnconds = actual_nconds;
         self.realloc_conductors();
-        self.fnphases = spc.nphases();
+        self.fnphases = actual_nphases;
         self.line_spacing_obj = Some(Box::new(spc.clone()));
         if self.fnconds > self.fnphases {
             self.freduce = true;
         }
 
-        let n = self.fnconds.max(0) as usize;
         // Pick the conductor model: any CN ⇒ ConcentricNeutral, any TS ⇒
         // TapeShield (TS wins if both present, mirroring Pascal's sequential ifs),
-        // else Overhead.
+        // else Overhead. Over the non-NIL wires.
         let mut new_choice = ConductorChoice::Overhead;
-        for o in wires.iter().take(n).flatten() {
+        for o in wires.iter().take(nwires).flatten() {
             // Sequential ifs in Pascal: TS wins if both a CN and a TS are
             // present. Preserve that by not resetting on a plain Wire.
             match o.as_conductor().map(|c| c.conductor_kind()) {
@@ -70,37 +92,35 @@ impl LineGeometryObj {
             self.flast_unit = spc.spacing_units();
         }
 
+        // Skip-NIL copy (r4133 :1220-1242): contiguous conductor `j`, spacing
+        // coordinates indexed by the ORIGINAL position `i`. NormAmps/EmergAmps are
+        // the running MINIMUM over the PHASE conductors (dss_capi 0.15.x D3 /
+        // r4133 :1235-1239, `j <= FNPhases`) — a phase with a lower rating governs
+        // the line; conductor 1's rating no longer wins by default.
         let units = spc.spacing_units();
         let xs = spc.xcoord();
         let hs = spc.ycoord();
-        for i in 0..n {
-            self.fwiredata[i] = wires[i].as_ref().map(|o| o.clone_box());
-            if !self.equivalent_spacing {
-                self.fx[i] = xs[i];
-                self.fy[i] = hs[i];
-                self.funits[i] = units;
-            }
-        }
-        self.data_changed = true;
-        // dss_capi 0.15.x (WP-U1.2 D3, LineGeometry.pas:1060-1064): NormAmps/
-        // EmergAmps are the *minimum* over the PHASE conductors (the running
-        // `j <= FNPhases` guard), not conductor 1's — a phase with a lower rating
-        // now governs the line. `j` counts only non-NIL conductors (Pascal skips
-        // the `continue`d slots); the NIL/`actualNConds` sizing itself is the
-        // sibling wt-u14cnts mixed-list row (0-count decks here have no NILs).
         let nph = self.fnphases.max(0) as usize;
         self.norm_amps = 0.0;
         self.emerg_amps = 0.0;
-        let mut j = 0usize; // 1-based phase counter over non-NIL conductors
-        for o in wires.iter().take(n) {
+        let mut j = 0usize; // 0-based contiguous conductor index (Pascal 1-based)
+        for (i, o) in wires.iter().take(nwires).enumerate() {
             let Some(o) = o.as_ref() else { continue };
-            j += 1;
+            self.fwiredata[j] = Some(o.clone_box());
+            if !self.equivalent_spacing {
+                self.fx[j] = xs[i];
+                self.fy[j] = hs[i];
+                self.funits[j] = units;
+            }
             let (cn, ce) = conductor_norm_emerg(o.as_ref());
-            if (cn < self.norm_amps || self.norm_amps == 0.0) && j <= nph {
+            // 0-based `j < nph` == Pascal 1-based `(j+1) <= FNPhases`.
+            if (cn < self.norm_amps || self.norm_amps == 0.0) && j < nph {
                 self.norm_amps = cn;
                 self.emerg_amps = ce;
             }
+            j += 1;
         }
+        self.data_changed = true;
 
         // dss_capi 0.15.x (Line.pas:2111-2113): apply the consuming Line's
         // EpsRMedium/HeightOffset/HeightUnit to the engine *before* the Carson

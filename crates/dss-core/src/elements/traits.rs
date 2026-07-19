@@ -506,18 +506,25 @@ pub trait CktElement {
         &[]
     }
 
-    /// Pascal `TPDElement.GetRatings` (dss_capi 0.15.x `55400a29`, PDElement.pas
-    /// l.330): the (norm, emerg) current ratings, overridden by the seasonal
-    /// rating `AmpRatings[seasonal_idx]` when the global season index is in range
-    /// (`0 <= seasonal_idx < NumAmpRatings`) — applied to ANY PDElement (0.14.5's
-    /// `DI_Overloads` path restricted this to lines). `55400a29` dropped the
-    /// pre-refactor/r4133 `NumAmpRatings > 1` guard, so a single-season element
-    /// (`NumAmpRatings == 1`) at idx 0 also takes `AmpRatings[0]`. Both norm and
+    /// Pascal `TPDElement.GetRatings` (EPRI r4133 PDElement.pas l.351): the
+    /// (norm, emerg) current ratings, overridden by the seasonal rating
+    /// `AmpRatings[seasonal_idx]` when the global season index is in range AND the
+    /// element carries more than one season. r4133's guard is
+    /// `(RatingIdx <= NumAmpRatings) and (NumAmpRatings > 1)`; a single-season
+    /// element (`NumAmpRatings == 1`) keeps its base `(NormAmps, EmergAmps)`.
+    /// dss_capi 0.15.x `55400a29` DROPPED the `NumAmpRatings > 1` guard, so on
+    /// capi015 a single-season element at idx 0 silently replaces its user-set
+    /// ratings with the stale constructor default `AmpRatings[0]` — proven a bug
+    /// vs r4133 + physics (0.15.x-adoption sweep, DIVERGENCES L4/E2), so the port
+    /// follows r4133 and keeps the `> 1` guard. We keep the memory-safe
+    /// `0 <= idx < NumAmpRatings` bound (r4133's own `<= NumAmpRatings` is an
+    /// off-the-end dynamic-array read — a UB defect not reproduced). Both norm and
     /// emerg take the same seasonal value.
     fn get_ratings(&self, seasonal_idx: i32) -> (f64, f64) {
         let norm = self.norm_amps();
         let emerg = self.emerg_amps();
-        if seasonal_idx >= 0 && seasonal_idx < self.num_amp_ratings() {
+        if self.num_amp_ratings() > 1 && seasonal_idx >= 0 && seasonal_idx < self.num_amp_ratings()
+        {
             let r = self
                 .amp_ratings()
                 .get(seasonal_idx as usize)
