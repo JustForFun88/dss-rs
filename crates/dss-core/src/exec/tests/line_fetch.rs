@@ -39,9 +39,19 @@ fn conductor_none_geometry_rejects_but_line_accepts_and_solves() {
     dss.command("New wiredata.w Runits=mi Rac=0.1 GMRunits=mi GMRac=0.01 radunits=in diam=0.5");
     dss.command("New linegeometry.g nconds=2 nphases=2 reduce=n");
     dss.command("~ wires=(w none)");
+    // Assert the SPECIFIC not-found message (not a bare error-exists smoke check):
+    // the geometry `wires` arm no longer allows `none` (ALLOW_NONE_ITEM dropped), so
+    // the token resolves as a WireData reference and misses — the port's
+    // `WireData object "none" not found.` mirrors 0.14.5 #40303 (r4133 #10103
+    // "not defined"). A discriminating pin: a future parser regression that errored
+    // for an unrelated reason would not carry this message.
     assert!(
-        !dss.errors().is_empty(),
-        "a geometry-level `none` must reject like BOTH oracles (r4133 #10103)"
+        dss.errors()
+            .iter()
+            .any(|e| e.contains("object \"none\" not found")),
+        "a geometry-level `none` must reject with the WireData not-found message \
+         (r4133 #10103), got {:?}",
+        dss.errors()
     );
 
     // (2) LINE-level `none` is accepted AND the circuit solves — r4133 compacts
@@ -98,9 +108,70 @@ fn conductor_none_geometry_rejects_but_line_accepts_and_solves() {
     dss2.command("New linegeometry.g2 nconds=2 nphases=2 reduce=n");
     dss2.command("~ wires=(w nope)");
     assert!(
-        !dss2.errors().is_empty(),
-        "a non-`none` missing wire must still error, got {:?}",
         dss2.errors()
+            .iter()
+            .any(|e| e.contains("object \"nope\" not found")),
+        "a non-`none` missing wire must still error with the not-found message, got {:?}",
+        dss2.errors()
+    );
+}
+
+/// 0.15.x-adoption sweep item 4, coverage follow-up (settle round): the existing
+/// `none`-compaction tests only exercise a **≤2-conductor** list (a 2-slot spacing,
+/// 1 valid). This pins the audit-flagged **>2-conductor** compaction (a 4-conductor
+/// spacing with `wires=(w w w none)`): the `none` at the neutral position must be
+/// compacted out (r4133 `LoadSpacingAndWires`, actualNConds 4→3, spacing coords by
+/// ORIGINAL position), leaving a 3-phase line whose Carson `Z` is bit-identical to
+/// the explicit 3-conductor spacing built from the same phase-position coordinates.
+/// The explicit path is itself oracle-validated (`line_spacing_specified_resolves_
+/// and_solves`), so a compaction that mis-indexed the coordinates or mis-sized the
+/// larger geometry would diverge here.
+#[test]
+fn line_none_conductor_compaction_over_two_conductors_matches_explicit() {
+    let node_v = |dss: &Dss| dss.circuit().unwrap().solution.node_v.clone();
+    let build = |spacing: &str, wires: &str| {
+        let mut dss = Dss::new();
+        dss.command("new circuit.g basekv=12.47 phases=3 bus1=src");
+        dss.command(
+            "new wiredata.w gmrac=0.0244 rac=0.306 runits=mi radunits=in gmrunits=ft \
+             diam=0.721 normamps=530",
+        );
+        dss.command(spacing);
+        dss.command(&format!(
+            "new line.l1 bus1=src bus2=b2 phases=3 length=1 units=mi spacing=sp wires={wires}"
+        ));
+        dss.command("new load.ld bus1=b2 phases=3 kv=12.47 kw=900 pf=0.95 model=1");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcv");
+        dss.command("solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert!(dss.circuit().is_some_and(|c| c.is_solved), "must converge");
+        dss
+    };
+
+    // Compaction path: 4-conductor spacing (3 phase + 1 neutral), the neutral noned
+    // out — exercises the >2-conductor skip-NIL copy + actualNConds recount.
+    let compact = build(
+        "new linespacing.sp nconds=4 nphases=3 x=(0 3 6 1.5) h=(29 29 29 35) units=ft",
+        "(w w w none)",
+    );
+    // Explicit equivalent: a 3-conductor spacing at the SAME phase-position coords.
+    let explicit = build(
+        "new linespacing.sp nconds=3 nphases=3 x=(0 3 6) h=(29 29 29) units=ft",
+        "(w w w)",
+    );
+
+    let (vc, ve) = (node_v(&compact), node_v(&explicit));
+    assert_eq!(vc.len(), ve.len(), "same node count");
+    let drift = vc
+        .iter()
+        .zip(&ve)
+        .map(|(a, b)| (a - b).norm())
+        .fold(0.0_f64, f64::max);
+    assert!(
+        drift < 1e-6,
+        "a >2-conductor `none` compaction must yield the same solve as the explicit \
+         3-conductor spacing; node V diverged by {drift:.3e} V"
     );
 }
 
