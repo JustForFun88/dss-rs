@@ -154,31 +154,33 @@ fn check(
 ///   `FIntegrate`/`FCalc`), and the full ordered 34-variable surface (names +
 ///   count) matched to the oracle (proving `NumVariables` totals user ++ shaft,
 ///   `FGetVarName` for both, and the `GetAllVariables` plumbing). The multi-step
-///   dynamics *trajectory* values/voltages are NOT floor-compared here because
-///   they are a MEASURED dss_capi-0.14.5-vs-r4133 divergence, not a WASM-transport
-///   effect (see the module note + STATUS §WASM-UM WM.3): (1) the Generator swing
-///   damping default differs — dss_capi/`generator.pas:1006` `Dpu:=1.0` (D≈13263)
-///   vs r4133/`generator.pas:968` sets `D:=1.0` in the ctor but never `Dpu`, so
-///   `InitStateVars` recomputes `D:=Dpu*kVArating*1000/w0=0`; (2) with D matched
-///   (D=1 on both) a residual trajectory gap survives — MEASURED at the deck's end
-///   state: ~5e-4 rel on the machine currents (Is1/Ir1), ~1e-3 on the losses
-///   (StatorLoss/RotorLoss/HPshaft), ~1e-4 on Slip, up to ~5e-4 on the node
-///   voltages, and dSpeed ~3e-2 (the `Pshaft+TracePower` near-cancellation
-///   amplifies the current gap). These are 4–6 ORDERS above the faer-vs-KLU floor
-///   (1e-8), so they are an engine-behavior difference, NOT solver rounding — a
-///   loosened numeric gate would need a ~1e-1 band = forbidden fudging.
-///   DECOMPOSITION: WM.3's NEW code is exonerated — the WASM `FCalc` handoff is
-///   bit-exact (the Model=6 SNAPSHOT `wasm_gen_pflow` matches r4133 at ~1e-14,
-///   incl. Is1/slip) and the guest math is bit-exact to the native twin (WM.2
-///   `fixture_self_gate`). So the gap lives in the SHARED multi-step Generator
-///   dynamics coupling (the dynamics-Norton/Zthev entry + the network re-solve
-///   feeding Vterminal back to the identical guest each step), the same code
-///   family the proven D1 `Dpu` divergence sits in — not the new user-model
-///   transport. Rust ports dss_capi 0.14.5 (its pinned oracle), so forcing a match
-///   to r4133's dynamics would DIVERGE from the spec; per the brief's "if the two
-///   disagree, STOP and record" rule it is recorded, never masked. Pinning the
-///   single r4133 source line (like D1's) needs the 0.14.5-ABI twin DLL and is the
-///   OPEN follow-up (STATUS deviation (a)).
+///   dynamics *trajectory* values/voltages are NOT floor-compared here because a
+///   PROVEN, still-OPEN engine-flow PORT BUG corrupts the multi-step trajectory
+///   (STATUS §"WM.3 D2 sub-bug #2"). Two effects were separated: (1) the Generator
+///   swing damping default IS a genuine dss_capi-0.14.5-vs-r4133 divergence —
+///   dss_capi/`generator.pas:1006` `Dpu:=1.0` (D≈13263) vs r4133/`generator.pas:968`
+///   sets `D:=1.0` in the ctor but never `Dpu`, so `InitStateVars` recomputes
+///   `D:=Dpu*kVArating*1000/w0=0` — which is why the deck pins `D=1` on both; (2)
+///   with D matched a residual trajectory gap survives, and the WM.3 D2 follow-up
+///   DISPROVED the "version divergence" hypothesis: the three-way experiment
+///   (A = Rust+wasm, B = pinned 0.14.5 + 244-B twin, C = r4133 + twin) measured
+///   **B == C to ≤1.06e-13 on every quantity** while **A diverges from BOTH** by the
+///   same amounts (Is1/Ir1 ~5e-4, losses ~1e-3, Slip ~1e-4, node V up to ~5e-4,
+///   dSpeed ~3e-2). Rust disagrees with its OWN pinned 0.14.5 spec, not just r4133,
+///   so this is a Rust PORT bug, NOT an engine-version divergence — 4–6 ORDERS above
+///   the faer-vs-KLU floor (1e-8), and a numeric flip would need a forbidden ~1e-1
+///   band, so the deck stays STRUCTURAL until the port bug is fixed (never a fudge).
+///   LOCALIZATION (empirically settled, D2 sub-bug #2 trace + settle): the guest
+///   math is exonerated — the Model=6 SNAPSHOT `wasm_gen_pflow` matches at ~1e-14,
+///   the guest is bit-exact to the native twin (`fixture_self_gate`), and driving
+///   the twin DLL directly through a full dynamics step with the terminal voltage
+///   HELD FIXED keeps |Is1| at the pflow point (189.10) at h→0 while the oracle
+///   ENGINE reaches the dynamic point (189.207) h-INDEPENDENTLY. The jump is
+///   therefore driven ENTIRELY by the engine's per-step network re-solve feeding
+///   different V/currents back to the guest — inspectable host code (the dynamics
+///   Generator↔network coupling), not the guest and not the WASM transport. Pinning
+///   the exact host line and flipping this gate to numeric at proven floors is the
+///   OPEN follow-up (STATUS §"WM.3 D2 sub-bug #2").
 fn gate_deck(deck: &str, numeric: bool) {
     let g = load_golden(deck);
     let mut dss = run_deck(deck);
