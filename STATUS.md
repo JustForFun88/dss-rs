@@ -46,6 +46,36 @@ bug relative to r4133**, not a ledgerable divergence.
 - **Gate green** (`cargo fmt`/`clippy`/`test --workspace`, wall ≈ 340 s;
   dss-core lib 1247 + corpus_gate 25 incl. the full unified gate). Corpus
   pristine.
+- **Audit settle (2 opus xhigh audits, both PASS — no weakening).** Three low
+  findings settled:
+  - *(F1, both audits — fixed)* The `regcontrol_idle.dss` header comment still
+    described the removed OR behavior ("tap stays at neutral, |V|≈0.864 pu").
+    Rewritten to the adopted r4133 bounded-AND semantics (deep under-voltage →
+    large through-power → outside the ±100 kW no-load band → taps to tapnum 15 /
+    MV.1 ≈ 7650.08 V, identical to idle=no). Comment-only; solver ignores it.
+  - *(F2, audit-tests — fixed)* `TESTING.md` ledger count was stale (25→26
+    entries; the r4133 divergence sub-count 20→21). Updated; the "20 documented
+    causes" line is unchanged (the new entry reuses the pre-existing
+    `regcontrol-idle` cause_ref, present in the causes dict at both base and head).
+  - *(F2, audit-code — deliberate NON-fix, rationale recorded)* `end_edit`
+    (`accessors.rs:347-348`) mirrors the RevThreshold-only legacy band with
+    `Fwd := abs(Rev); Rev := -Fwd`, faithfully porting **dss_capi 0.15.x**
+    (`8a898cba` — whose own comment states *"'abs' added to ensure correct
+    behavior (RevPowerThreshold < FwdPowerThreshold)"*, an intentional fix of
+    EPRI's inverted-band quirk). r4133 `RegControl.pas:503-506` instead does
+    plain `kWFwd := kWRev; kWRev := -kWRev`. **Kept the abs**, NOT changed to
+    r4133's negate: (1) pre-existing, not touched by this WP (out of scope — the
+    WP adopted r4133 only for the no-load *zone* AND); (2) the two conventions
+    are behaviorally **identical** on every existing test — all pinned goldens
+    (`props/regcontrol.json`) use positive-revThreshold-only or both-set inputs
+    where abs≡negate; they diverge only on an untested NEGATIVE-revThreshold-only
+    input, which no deck or golden exercises; (3) the port's abs matches the
+    capi015-probed `regcontrol_idlezones` props golden convention (RevThreshold
+    signed display), so adopting r4133's negate would REINTRODUCE the inverted/
+    empty band that dss_capi deliberately fixed and create an unpinned, ungated
+    behavior. Verified empirically: filtered gate (`DSS_GATE_ONLY=
+    regcontrol/regcontrol_idle`) green, port matches r4133 live, ledger entry
+    hit 2×.
 
 ### UNIFIED_GATE Phase 0 — baseline recorded (2026-07-18)
 
