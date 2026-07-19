@@ -4850,3 +4850,12 @@ bytes changed, gate semantics untouched. Findings settled:
   but import no `IOddieDSS`; added to their existing inventory classes
   (capi015 Python-engine row / engine-free frozen-data row). No parity target
   was missed — all 7 actual `IOddieDSS` importers were already dispositioned.
+
+Settle gate: fmt/clippy/test all exit 0 (`cargo test --workspace` 7 min 05 s,
+0 failures across all binaries; corpus-live 25/25). One settle-gate run left
+six deck-authored export leftovers (`Test/AutoTrans/auto3bus_*`,
+`GFM_IEEE8500/IEEE8500u_EXP_*`) in `tests/corpus` — the pre-existing
+corpus-guard parallel-run race (`corpus_guard.py` docstring: incomplete
+snapshot = never delete; end-of-run `git status tests/corpus` + path-limited
+clean is the documented recovery, applied). Not introduced by this round (gate
+capture paths byte-unchanged); open follow-up for the gate-hygiene backlog.
