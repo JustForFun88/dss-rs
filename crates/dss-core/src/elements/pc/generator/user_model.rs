@@ -643,10 +643,15 @@ impl Generator {
     }
 
     /// Pascal `ShaftModel.FCalc(Vterminal, Iterminal)` — "Returns pshaft at
-    /// least" (`generator.pas:2038`). Runs the shaft model into a scratch
-    /// current buffer (the result is discarded — only the mutated
-    /// `TGeneratorVars.Pshaft`, applied back onto the element, is used). No-op
-    /// when the shaft model is absent.
+    /// least" (`generator.pas:2038`). The shaft model's primary product is the
+    /// mutated `TGeneratorVars.Pshaft` (applied back onto the element), but
+    /// Pascal passes the element's *live* `Iterminal` and the shaft model
+    /// OVERWRITES it (last write in `DoDynamicMode`). Since `DoDynamicMode` then
+    /// stamps `IterminalUpdated`/`IterminalSolutionCount`, `IntegrateStates`'
+    /// `ComputeIterminal` reuses that cached value — so `TracePower =
+    /// TerminalPowerIn(Vterminal, Iterminal)` reads the SHAFT model's currents,
+    /// not the user model's. Faithfully write the shaft currents back so the
+    /// shaft-dynamics `dSpeed` matches the oracle (WM.3 D2 port-bug fix).
     pub(super) fn shaft_model_fcalc(
         &mut self,
         sys: &SysCtx,
@@ -662,13 +667,15 @@ impl Generator {
         }
         let name = self.cd.obj.name().to_string();
         let v = self.cd.vterminal.clone();
-        let mut it = self.cd.iterminal.clone(); // scratch — result discarded
-        if let Err(e) = sm.calc(&v, &mut it, self, sys, node_v) {
+        let mut it = self.cd.iterminal.clone();
+        match sm.calc(&v, &mut it, self, sys, node_v) {
+            // Pascal leaves the shaft model's currents in the element's Iterminal.
+            Ok(()) => self.cd.iterminal.copy_from_slice(&it),
             // ABI §6 wasm hard failure — abort, never a silent mid-run fallback.
-            errors.push(DssDiagnostic::abort(
+            Err(e) => errors.push(DssDiagnostic::abort(
                 format!("Generator.{name}: shaft model `calc` trapped/faulted: {e}"),
                 Some(567),
-            ));
+            )),
         }
         sm.drain_effects(&name, errors);
         self.shaft_model = Some(sm);

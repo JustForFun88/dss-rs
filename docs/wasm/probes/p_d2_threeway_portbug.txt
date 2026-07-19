@@ -1,0 +1,119 @@
+WM.3 D2 follow-up — three-way disambiguation of the ~5e-4 Generator-dynamics gap
+================================================================================
+Question (STATUS §WASM-UM WP-WM.3, D2): on wasm_gen_dyn (Generator Model=6 +
+ShaftModel, IndMach012a, 21 dynamics steps, explicit D=1) a residual ~5e-4 gap
+vs r4133 survives. The WM.3 settlement HYPOTHESISED this is a dss_capi-0.14.5-
+vs-r4133 engine-version divergence (same family as the proven D1 Dpu diff) and
+gated the deck structurally (numeric=false). This follow-up disambiguates
+version-divergence vs port-bug with the 0.14.5-ABI twin.
+
+ABI-difference check (empirical, source-level)
+----------------------------------------------
+dss_capi 0.14.5 `generator.pas` TGeneratorVars: 22 doubles => NumPhases@176,
+total 244 B  ==  r3723 Version7/Version8 GeneratorVars.pas (byte-identical).
+r4133 Version8 GeneratorVars.pas inserts `deltaQNom: Array of Double` @176 =>
+252 B. So the native user-model ABI DOES differ (244 vs 252). The committed
+native twin is the r4133/252-B build, which is ABI-incompatible with the pinned
+dss-python 0.14.5 (passes a 244-B record). => a 0.14.5-ABI twin is required.
+
+0.14.5-ABI twin provenance
+--------------------------
+build: tools/wasm_usermodel/build_native_r3723.ps1  (sibling of build_native.ps1)
+src  : .inputs/electricdss-code-r3723-trunk/Version8/Source/IndMach012a/IndMach012a.dpr
+       FPC 3.2.2 ppcrossx64 -Mdelphi -O2 (PIN.txt toolchain), 244-B GeneratorVars.
+model math IDENTICAL to the r4133 twin: sha256(IndMach012Model.pas / MainUnit.pas /
+       ParserDel.pas / IndMach012a.dpr) are byte-identical r3723 V8 == r4133 V8
+       (USERMODEL_ABI.md P8). Sole controlled variable = the engine version.
+DLL  : IndMach012a.dll  318976 bytes
+       sha256 090393331085A2307BB2CFE31AD1146279BC8A2123EB0C386CCD4367C8E89E0A
+load : loads + runs the full wasm_gen_dyn deck on pinned dss-python 0.15.7 /
+       dss_capi 0.14.5 (tools/wasm_usermodel/d2_probe_0145.py), converged,
+       34-var surface + node voltages read (AllVariableValues f64).
+
+Three channels (wasm_gen_dyn end-state, step 21)
+------------------------------------------------
+A = Rust engine + committed .wasm fixture
+B = pinned dss-python 0.14.5 + r3723 244-B twin   (d2_probe_0145.py)
+C = r4133 bridge + r4133 252-B twin               (committed golden, tests/golden/wasm_usermodels/wasm_gen_dyn.json)
+
+quantity        A vs C      A vs B      B vs C     floor (harness)
+slip          9.82e-05    9.82e-05    9.94e-16    1e-8 rel (feeder/machine)
+dSpeed        3.45e-02    3.45e-02    1.06e-13    (near-cancellation amplified)
+Is1           5.28e-04    5.28e-04    7.48e-16    1e-8 rel / 1e-12 abs (machine)
+Ir1           5.35e-04    5.35e-04    6.20e-16    "
+StatorLoss    1.06e-03    1.06e-03    1.33e-15    "
+RotorLoss     1.07e-03    1.07e-03    1.22e-15    "
+HPshaft       1.17e-03    1.17e-03    2.28e-15    "
+B3.1.re       1.94e-06    1.94e-06    1.14e-16    1e-8 rel (feeder)
+B3.1.im       5.14e-04    5.14e-04    1.39e-14    "
+
+=> B vs C <= 1.06e-13 EVERYWHERE: the two engine VERSIONS agree to the faer-vs-KLU
+   solver floor. There is NO 0.14.5-vs-r4133 divergence in this trajectory.
+   A vs C == A vs B: Rust diverges from BOTH oracles, incl. its own pinned 0.14.5
+   spec, by the identical ~5e-4. => VERDICT (b): PORT BUG, not a version divergence.
+   The WM.3 "version-divergence family" hypothesis is DISPROVEN.
+
+First-divergence trajectory (per dynamics step; d2_step_0145.py + oracle DebugTrace)
+-----------------------------------------------------------------------------------
+step 0 (snapshot, calc_pflow): Slip/Is1 BIT-IDENTICAL A==B==C (1e-14). The Model=6
+       power-flow transport is exonerated (also wasm_gen_pflow @1e-14).
+step 1 (first dynamics step) already diverges:
+       Slip:  A -6.99967e-3  vs  B/C -6.99966e-3      -> rel 2.4e-6  (MATCHES)
+       Is1u:  A 189.1228     vs  B/C 189.2276         -> rel 5.5e-4  (OFF)
+       Is1s:  A 189.1226     vs  B/C 189.2274         -> rel 5.5e-4  (OFF)
+       => slip matches, but the machine-current FIXPOINT is off from step 1.
+       is1 = (v1 - e1)/zsp with slip and zsp matched (snapshot-proven) => the
+       divergence is in the dynamic flux e1 / terminal-voltage v1 coupling of the
+       Model=6 dynamics network solve, established at the first step (the shared
+       multi-step coupling, per the WM.3 decomposition — but it is Rust's port that
+       is wrong, not r4133).
+
+Oracle DebugTrace (0.14.5+twin, GEN_g1.csv, step 1) — d2_trace_0145.py:
+   Flag=0 (predictor)  Speed=2.6388  dSpeed=-1.317   P(TracePower.re)=-4.0329E6
+   Flag=1 (corrector)  Speed=2.6388  dSpeed=-1.5498  P(TracePower.re)=-4.0391E6
+Rust used the USER-model currents for TracePower at the corrector (P ~ -4.0330E6,
+dSpeed unchanged) => sub-bug #1 (below).
+
+Conditioning ruled OUT (CLAUDE.md "tighten the loop tolerance")
+---------------------------------------------------------------
+Set tolerance=1e-12 maxiterations=1000 on BOTH engines (D2TIGHT=1): the ~5e-4
+step-1 gap PERSISTS (Is1 A 189.1228 vs B 189.2276; each engine's own value moves
+< 7e-6). The engines converge TIGHTLY to DIFFERENT fixpoints => a genuine
+state/computation divergence, NOT a Norton/Zthev convergence-band artifact.
+
+Sub-bug #1 (found + fixed) — shaft FCalc discarded the Iterminal it must leave
+------------------------------------------------------------------------------
+Pascal DoDynamicMode (generator.pas:2038) `ShaftModel.FCalc(Vterminal, Iterminal)`
+passes the LIVE Iterminal; the shaft model OVERWRITES it (last write), and the
+trailing `IterminalUpdated`/`IterminalSolutionCount` make IntegrateStates'
+ComputeIterminal reuse it — so TracePower = TerminalPowerIn(Vterminal, Iterminal)
+reads the SHAFT model's currents. Rust ran the shaft model into a SCRATCH buffer
+and discarded the currents (TracePower kept the USER currents). FIXED
+(generator/user_model.rs::shaft_model_fcalc writes the shaft currents back).
+Effect: step-1 dSpeed -75.66 -> -84.80 deg/s toward the oracle -89.24; but the
+END-STATE effect is negligible (Is1 5.28e-4 unchanged) because the dominant
+sub-bug #2 (below) confounds it. Pascal-cited, contained to Model=6+ShaftModel
+(only wasm_gen_dyn; no corpus case), gate green.
+
+Sub-bug #2 (OPEN) — Model=6 dynamic-current fixpoint off ~5e-4
+-------------------------------------------------------------
+With slip matching (2.4e-6) and zsp snapshot-proven, is1 = (v1-e1)/zsp is off
+5.5e-4 from step 1 for BOTH the user and shaft model instances (they agree with
+each other to ~2e-6, as in the oracle — so it is NOT a user-vs-shaft mixup). The
+divergence is in the dynamic flux e1 (FInit/Integrate) or the terminal voltage v1
+of the Model=6 dynamics network solve. Guest math is bit-exact to the twin
+(WM.2 fixture_self_gate), so the host (dss-core Generator dynamics) must feed the
+guest state that differs from what Pascal feeds the twin. Checked-and-matched:
+snapshot state (1e-14), slip, Vterminal magnitude+angle, w0, Mmass, D, Pshaft.
+Line-level pin needs guest-internal e1/t0p tracing, which requires rebuilding the
+CONSTRAINT-FROZEN fixture .wasm (WM.4 parallel-workflow forbids touching the
+fixture crates). Left as the OPEN follow-up port-bug; the dyn-deck gate stays
+STRUCTURAL (numeric=false) until it is fixed (do NOT loosen any tolerance).
+
+Reproduce
+---------
+pwsh tools/wasm_usermodel/build_native_r3723.ps1
+python tools/wasm_usermodel/d2_probe_0145.py wasm_gen_dyn <twin.dll>   # channel B end-state
+python tools/wasm_usermodel/d2_step_0145.py <twin.dll>                 # oracle first-divergence
+D2TIGHT=1 python tools/wasm_usermodel/d2_step_0145.py <twin.dll>       # tolerance-invariance
+python tools/wasm_usermodel/d2_trace_0145.py <twin.dll> <outdir>       # oracle GEN_g1.csv DebugTrace

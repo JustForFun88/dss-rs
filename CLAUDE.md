@@ -174,6 +174,17 @@ branch deletion never touches `.inputs`.
 - Case-insensitive identifiers via lowercase-normalized keys (THashList semantics).
 - New behavior questions are settled empirically against the oracle (see
   `tools/golden/probe_val.py` for the pattern), not by guessing FPC semantics.
+- **The dss_capi 0.15.x branch is NOT an unconditional authority — every
+  "improvement" taken from it must be verified against the EPRI r4133 source
+  AND physics (live probe where observable) before adoption.** "capi015 does
+  it" alone is never sufficient evidence. Two of its changes were proven wrong
+  on 2026-07-19: the RegControl idle no-load-zone test written as an OR (a
+  tautology under the default ±100 kW band — EPRI r4088/r4133 use the correct
+  bounded AND; adopted r4133) and the DynExp SolveEq "index-bug fix" (an early
+  `Exit` that makes the evaluator a no-op — both gating oracles evaluate the
+  full RHS; reverted, `DIVERGENCES.md` §D14). New `DIVERGENCES.md` decisions
+  must cite r4133 evidence (source lines and/or an epri-worker probe), not
+  just the 0.15.x side.
 - **Never wave off a Rust↔oracle divergence as "conditioning / not a bug" without
   empirical proof.** That label has hidden real port bugs (e.g. a missing per-step
   state reset in `InvControl.update_inv_control` that latched `FFlagVWOperates`
