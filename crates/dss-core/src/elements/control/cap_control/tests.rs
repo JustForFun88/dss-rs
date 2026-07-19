@@ -343,7 +343,7 @@ fn do_pending_open_single_step_opens_bank() {
     cc.armed = true;
     let mut cap = MockCap::one_step(true);
     let mut sc = Scratch::new();
-    cc.do_pending_action(&mut cap, &mut sc.ctx(0, 0, 0.0));
+    cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
     assert!(!cap.closed);
     assert_eq!(cap.last_step, 0);
     assert_eq!(cc.present_state, CTRL_OPEN);
@@ -359,7 +359,7 @@ fn do_pending_close_single_step_closes_bank() {
     cc.armed = true;
     let mut cap = MockCap::one_step(false);
     let mut sc = Scratch::new();
-    cc.do_pending_action(&mut cap, &mut sc.ctx(0, 0, 0.0));
+    cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
     assert!(cap.closed);
     assert_eq!(cap.last_step, 1);
     assert_eq!(cc.present_state, CTRL_CLOSE);
@@ -380,7 +380,7 @@ fn do_pending_open_multistep_steps_down() {
         closed: true,
     };
     let mut sc = Scratch::new();
-    cc.do_pending_action(&mut cap, &mut sc.ctx(0, 0, 0.0));
+    cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
     // One step down: still partly closed, bank stays Closed.
     assert_eq!(cap.last_step, 3);
     assert!(cap.closed);
@@ -428,7 +428,7 @@ fn event_log_records_close_when_enabled() {
     cc.set_pending_change(CTRL_CLOSE);
     let mut cap = MockCap::one_step(false);
     let mut sc = Scratch::new();
-    cc.do_pending_action(&mut cap, &mut sc.ctx(0, 0, 0.0));
+    cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
     assert_eq!(sc.events.len(), 1);
     let line = &sc.events.entries()[0];
     assert!(line.contains("Element=Capacitor.cc"));
@@ -668,23 +668,61 @@ fn cap_control_type_pins_enum_ordinals() {
         (CapControlType::Time, 3),
         (CapControlType::Pf, 4),
         (CapControlType::Follow, 5),
+        // USERCONTROL (6) is set internally when a `UserModel=` loads (WM.5); it
+        // is NOT in the `Type=` enum table (`CapControl.pas:245-249` comments it
+        // out), so `ordinal_to_string(6)` renders empty — but the ordinal must
+        // round-trip so a stored control-type survives.
+        (CapControlType::UserControl, 6),
     ] {
         assert_eq!(variant.ordinal(), ord);
         assert_eq!(CapControlType::from_ordinal(ord), Some(variant));
     }
-    assert_eq!(CapControlType::from_ordinal(6), None);
+    assert_eq!(CapControlType::from_ordinal(7), None);
     assert_eq!(CapControlType::from_ordinal(-1), None);
 }
 
 #[test]
 fn set_i32_type_keeps_value_on_unregistered_ordinal() {
-    // USERCONTROL=6 is unregistered (only reached via a user-model DLL, which is
-    // NOT_PORTED), so the setter can never see it; pin the deliberate keep-old
-    // fallback `from_ordinal(value).unwrap_or(self.control_type)` regardless.
+    // A truly out-of-range ordinal (>6) can never come from the `Type=` enum
+    // (which stops at Follow=5) nor the internal USERCONTROL=6; pin the
+    // deliberate keep-old fallback `from_ordinal(value).unwrap_or(...)`.
     let mut cc = CapControl::new("cc1");
     cc.set_i32(prop::TYPE, CapControlType::Kvar.ordinal()); // 2 -> Kvar
     assert_eq!(cc.control_type, CapControlType::Kvar);
-    cc.set_i32(prop::TYPE, 6); // unregistered USERCONTROL ordinal -> keep Kvar
+    cc.set_i32(prop::TYPE, 99); // out-of-range ordinal -> keep Kvar
     assert_eq!(cc.control_type, CapControlType::Kvar);
     assert_eq!(cc.get_i32(prop::TYPE), 2);
+}
+
+/// WM.5 element flip: a `UserModel=` naming a **native DLL** (not a `.wasm`)
+/// warns "Not Loaded" (570) and falls back to the built-in control — the model
+/// stays absent, `ControlType` is NOT forced to USERCONTROL, and the deck still
+/// solves (the §2.4 activation rule, `CapUserControl.pas` / `CapControl.pas:429-440`).
+#[test]
+fn user_model_native_dll_name_warns_and_falls_back() {
+    use crate::exec::Dss;
+    let deck = "\
+clear
+new circuit.t basekv=12.47 phases=3 bus1=sb R1=0.01 X1=0.03 R0=0.01 X0=0.03
+new line.l phases=3 bus1=sb bus2=b1 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
+new capacitor.c bus1=b1 phases=3 kv=12.47 kvar=600
+new capcontrol.cc element=line.l terminal=1 capacitor=c type=current UserModel=notreal.dll UserData=x=1
+set voltagebases=[12.47]
+calcvoltagebases
+solve";
+    let mut dss = Dss::new();
+    for line in deck.lines() {
+        let t = line.trim();
+        if !t.is_empty() {
+            dss.command(t);
+        }
+    }
+    assert!(
+        dss.errors().iter().any(|d| d.code == Some(570)),
+        "native-DLL UserModel must warn 570 Not Loaded; got {:?}",
+        dss.error_texts()
+    );
+    // The `?` dump round-trips the stored strings (WM.5 get_string).
+    dss.command("? capcontrol.cc.UserModel");
+    assert_eq!(dss.result().trim(), "notreal.dll");
 }

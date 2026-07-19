@@ -207,14 +207,21 @@ impl DssObject for CapControl {
             CAPACITOR => self.controlled_name.clone(),
             VBUS => self.voverride_bus_name.clone(),
             CONTROLSIGNAL => self.control_signal_name.clone(),
-            // NOT_PORTED user-model slots dump as empty (NIL).
-            USERMODEL | USERDATA => String::new(),
+            // WM.5 — the `.wasm` path / `UserData=` string exactly as written.
+            USERMODEL => self.user_model_name.clone(),
+            USERDATA => self.user_model_edit.clone(),
             _ => unreachable!("CapControl has no string property {idx}"),
         }
     }
     fn set_string(&mut self, idx: usize, value: String) {
+        use super::prop::*;
         match idx {
-            super::prop::VBUS => self.voverride_bus_name = value,
+            VBUS => self.voverride_bus_name = value,
+            // `UserModel=`/`UserData=` store the string; the deferred load/edit
+            // is queued by `side_effects` and resolved by the executive (WM.5
+            // §2.4).
+            USERMODEL => self.user_model_name = value,
+            USERDATA => self.user_model_edit = value,
             _ => unreachable!("CapControl has no string property {idx}"),
         }
     }
@@ -354,15 +361,51 @@ impl DssObject for CapControl {
                 self.voverride_bus_name = self.voverride_bus_name.to_ascii_lowercase();
                 self.voverride_bus_specified = true;
             }
-            // USERMODEL/USERDATA are NOT_PORTED (hard parse error upstream of
-            // this hook), so the user-model wiring never runs.
+            // WM.5 — the §2.4 uniform activation rule. Pascal
+            // `PropertySideEffects` (`CapControl.pas:429-436`): `UserModel.Name`
+            // (load) then `UserData` (edit). The filesystem/current-dir are
+            // unreachable from the property hook, so each records a deferred
+            // request the executive resolves before `EndEdit` (a `.wasm` loads
+            // and sets `IsUserModel`; a native-DLL name / missing file warns
+            // "Not Loaded" 570 and falls back — `apply_user_model_load_impl`).
+            USERMODEL => self.queue_user_model_load(self.user_model_name.clone()),
+            USERDATA => self.queue_user_model_edit(self.user_model_edit.clone()),
             _ => {}
+        }
+
+        // Pascal `if IsUserModel then ControlType := USERCONTROL` runs at the end
+        // of every `PropertySideEffects` (`:439-440`): once a model is loaded,
+        // any later property edit re-forces USERCONTROL. `IsUserModel` is set
+        // when the deferred load resolves (`apply_user_model_load_impl`); a
+        // same-batch `UserModel=` load forces the type there, so this trailing
+        // re-force only matters for edits after the model already exists.
+        if self.is_user_model {
+            self.control_type = CapControlType::UserControl;
         }
     }
 
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
     fn end_edit(&mut self) {
         self.recalc();
+    }
+
+    /// Drain the deferred `UserModel=`/`UserData=` requests queued by the
+    /// property side effects (WASM_USERMODELS WM.5, §2.4). The executive
+    /// resolves each `Load` path and reads the `.wasm` bytes (or `None`), then
+    /// calls [`Self::apply_user_model_load`] before `end_edit`.
+    fn take_user_model_loads(&mut self) -> Vec<crate::obj::base::UserModelLoad> {
+        self.take_user_model_loads()
+    }
+
+    /// Apply a resolved user-model load/edit (the data side of a queued
+    /// `UserModelLoad`) — WASM_USERMODELS WM.5 §2.4.
+    fn apply_user_model_load(
+        &mut self,
+        load: &crate::obj::base::UserModelLoad,
+        wasm: Option<&[u8]>,
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        self.apply_user_model_load_impl(load, wasm, errors);
     }
 
     /// Pascal `TCapControlObj.MakeLike`.
@@ -406,6 +449,13 @@ impl DssObject for CapControl {
         self.voverride_bus_name = other.voverride_bus_name.clone();
         self.fpct_minkvar = other.fpct_minkvar;
         self.ccd.show_event_log = other.ccd.show_event_log;
+        // WM.5 — Pascal `MakeLike` (`CapControl.pas:481-484`): `UserModel.Name :=
+        // Other.UserModel.Name` re-`New`s a fresh instance (the clone drops the
+        // live wasmi instance and re-creates it lazily on the next control call).
+        self.user_model_name = other.user_model_name.clone();
+        self.user_model_edit = other.user_model_edit.clone();
+        self.is_user_model = other.is_user_model;
+        self.user_model = other.user_model.clone();
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

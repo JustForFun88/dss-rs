@@ -6,10 +6,15 @@
 
 use num_complex::Complex64;
 
+use dss_usermodel::{CapControlVars, DynamicsRec, Effect};
+
+use crate::diag::DssDiagnostic;
 use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_NONE, CTRL_OPEN, CtrlCtx};
 use crate::elements::pd::capacitor::ControlledCapacitor;
 use crate::elements::traits::CktElement;
+use crate::support::dynamics::IterationFlag;
 
+use super::user_model::{CapCallbacks, route_non_queue_effect};
 use super::{AVGPHASES, CapControl, CapControlType, MAXPHASE, MINPHASE, pf_1to2};
 
 impl CapControl {
@@ -352,6 +357,21 @@ impl CapControl {
                     // (not reset to `CTRL_NONE`) — faithfully mirrored by
                     // simply not touching `pending_change` in that case.
                 }
+                CapControlType::UserControl => {
+                    // Pascal `Sample`'s USERCONTROL arm (`CapControl.pas:1024-1041`):
+                    // populate the `@ControlVars` Sample context then run the
+                    // guest `sample()`, which "Sets the switching flags". Over
+                    // WASM the guest cannot write `ShouldSwitch`/`PendingChange`
+                    // back through `@ControlVars` (no write-back channel, and the
+                    // native twin's `GetPublicDataPtr` is un-gatable — ABI §2.5),
+                    // so it schedules its decision through `control_queue_push`
+                    // directly (a plain queue push). `should_switch` therefore
+                    // stays FALSE here, so the shared arm/disarm tail below is
+                    // inert for USERCONTROL — the model owns the timing (WM5-3).
+                    if self.sample_user_control(cap, mon, ctx, cond_offset, mon_nphases) {
+                        return true; // a wasm trap aborts (ABI §6), skipping the tail
+                    }
+                }
             }
         }
 
@@ -410,6 +430,111 @@ impl CapControl {
         false
     }
 
+    /// Pascal `Sample`'s `USERCONTROL` arm (`CapControl.pas:1024-1041`): load the
+    /// monitored `Sample` context into the `@ControlVars` image, run the guest
+    /// `sample()`, and drain its scheduled control-queue pushes into the real
+    /// control queue (a plain push — the guest owns the timing, WM5-3). Returns
+    /// `true` iff the guest trapped/faulted, which aborts the solve (ABI §6 hard
+    /// error — never a silent mid-run fallback).
+    #[must_use]
+    fn sample_user_control(
+        &mut self,
+        cap: &mut dyn ControlledCapacitor,
+        mon: &mut dyn CktElement,
+        ctx: &mut CtrlCtx,
+        cond_offset: usize,
+        mon_nphases: usize,
+    ) -> bool {
+        // Pascal `if UserModel.Exists` — nothing to do without a loaded model.
+        let Some(mut um) = self.user_model.take() else {
+            return false;
+        };
+        if !um.exists() {
+            self.user_model = Some(um);
+            return false;
+        }
+
+        let element_terminal = self.ccd.element_terminal as usize;
+        let mut cbuffer = vec![Complex64::ZERO; mon.cd().yorder.max(1)];
+
+        // `SampleP := MonitoredElement.Power[ElementTerminal] * 0.001` (kW+jkvar).
+        let s = mon.terminal_power(ctx.sys, ctx.node_v, element_terminal);
+        let sample_p = (s.re * 0.001, s.im * 0.001);
+        // `GetControlVoltage(SampleV)` from the monitored terminal voltages.
+        mon.get_term_voltages(element_terminal, ctx.node_v, &mut cbuffer);
+        let sample_v = self.get_control_voltage(&cbuffer, mon_nphases, cap.connection());
+        // `GetControlCurrent(SampleCurr)` from the monitored terminal currents.
+        mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
+        let sample_curr = self.get_control_current(&cbuffer, cond_offset);
+
+        // Bank state (Pascal `LastStepInService := NumSteps − AvailableSteps`).
+        let num_cap_steps = cap.num_steps();
+        let available_steps = cap.available_steps();
+        let public_data = CapControlVars {
+            pending_change: self.pending_change,
+            should_switch: self.should_switch,
+            present_state: self.present_state,
+            sample_p,
+            sample_v,
+            sample_curr,
+            num_cap_steps,
+            available_steps,
+            last_step_in_service: num_cap_steps - available_steps,
+        }
+        .to_bytes()
+        .to_vec();
+
+        let dyn_rec = DynamicsRec {
+            h: ctx.sys.dyna_h,
+            t: ctx.t,
+            tstart: 0.0,
+            tstop: 0.0,
+            iteration_flag: match ctx.sys.iteration_flag {
+                IterationFlag::NewTimeStep => 0,
+                IterationFlag::SameTimeStep => 1,
+            },
+            solution_mode: ctx.sys.mode.ordinal(),
+            int_hour: ctx.int_hour,
+            dbl_hour: ctx.dbl_hour,
+        };
+        let snapshot =
+            CapCallbacks::snapshot(ctx.node_v, dyn_rec, public_data, ctx.queue.next_handle());
+
+        let name = self.ccd.cd.obj.name().to_string();
+        let mut abort = false;
+        if let Err(e) = um.sample(Box::new(snapshot)) {
+            // ABI §6: a wasm-only hard failure (trap/protocol/fuel/memory) has no
+            // Pascal analogue — surface it loudly and abort (never a silent
+            // mid-run fallback, which would change numerics).
+            ctx.errors.push(DssDiagnostic::abort(
+                format!("CapControl.{name}: user model `sample` trapped/faulted: {e}"),
+                Some(569),
+            ));
+            abort = true;
+        }
+        // Drain the tier-B effects: a scheduled action goes onto the real control
+        // queue (plain `ControlQueue.Push`, `DSSCallBackRoutines.pas:444`); a
+        // message routes into the error sink (WM.3 no-silent-fallback).
+        for eff in um.drain_effects() {
+            match eff {
+                Effect::ControlQueuePush {
+                    hour,
+                    sec,
+                    code,
+                    proxy_hdl,
+                    ..
+                } => {
+                    ctx.queue.push(hour, sec, code, proxy_hdl, ctx.self_ref);
+                }
+                Effect::Msg(text) => {
+                    ctx.errors.push(DssDiagnostic::msg(text, Some(9000)));
+                }
+            }
+        }
+        self.user_model = Some(um);
+        abort
+    }
+
     /// Pascal `Sample`'s `TIMECONTROL` branch (factored out for readability):
     /// compare the time-of-day against the on/off window.
     fn sample_time_control(&mut self, normalized_time: f64, available_steps: i32) {
@@ -464,12 +589,42 @@ impl CapControl {
     /// Pascal `TCapControlObj.DoPendingAction` — switch the controlled bank when
     /// the queued action's time arrives (open/close or step up/down), then
     /// disarm. Marks `system_y_changed` whenever the bank's admittance changes.
+    ///
+    /// `code`/`proxy` are the popped action's parameters. For every built-in
+    /// control type they are IGNORED — `PendingChange` (set during `Sample`)
+    /// rules. For `USERCONTROL` the guest scheduled `code` via
+    /// `control_queue_push` and there is no `@ControlVars` write-back, so the
+    /// host sets `PendingChange := code`, runs the guest `do_pending(code,
+    /// proxy)`, and the shared switch block below acts on it (ABI §2.5).
     pub(crate) fn do_pending_action(
         &mut self,
+        code: i32,
+        proxy: i32,
         cap: &mut dyn ControlledCapacitor,
         ctx: &mut CtrlCtx,
     ) {
         // ControlledElement.ActiveTerminalIdx := 1 (terminal 1 is implicit).
+        // Pascal `case ControlType of USERCONTROL: ... UserModel.DoPending`
+        // (`CapControl.pas:725-733`).
+        if self.control_type == CapControlType::UserControl {
+            self.set_pending_change(code);
+            if let Some(mut um) = self.user_model.take() {
+                if um.exists() {
+                    let name = self.ccd.cd.obj.name().to_string();
+                    if let Err(e) = um.do_pending(code, proxy, Box::new(dss_usermodel::NoCallbacks))
+                    {
+                        ctx.errors.push(DssDiagnostic::msg(
+                            format!("CapControl.{name}: user model `do_pending` failed: {e}"),
+                            Some(569),
+                        ));
+                    }
+                    for eff in um.drain_effects() {
+                        route_non_queue_effect(&name, eff, ctx.errors);
+                    }
+                }
+                self.user_model = Some(um);
+            }
+        }
         match self.pending_change {
             CTRL_OPEN => {
                 if cap.num_steps() == 1 {
