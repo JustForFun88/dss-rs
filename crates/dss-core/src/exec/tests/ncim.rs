@@ -1,13 +1,20 @@
 //! NCIM solver (`Set Algorithm=NCIM`) integration tests.
 //!
-//! Every electrical assertion here is pinned against the **capi015** NCIM oracle
-//! — dss_capi 0.15.0b4, OpenDSS SVN r4103, the 0.15.x engine line that owns NCIM
-//! (the port's pinned 0.14.5 gate oracle has no NCIM at all, so these expected
-//! values were captured 2026-07-16 from `tools/opendss/.venv`
-//! (`DSS_ORACLE_ENGINE=capi015`) and embedded as constants, golden-style). The
-//! Rust port reproduces them to <5e-11 V — faer-vs-KLU last-ulp — so the 1e-6 V
-//! band below is ~4 orders above the cross-solver floor yet still ~7 orders
-//! *tighter* than any physically-meaningful voltage error.
+//! The node-voltage / regulation / warm-restart assertions here were captured
+//! 2026-07-16 from the **capi015** NCIM oracle (dss_capi 0.15.0b4, OpenDSS SVN
+//! r4103 — the 0.15.x engine line that owns NCIM) and embedded as constants,
+//! golden-style; the port's pinned 0.14.5 gate oracle has no NCIM at all. Those
+//! capi015-captured node voltages are DIGIT-IDENTICAL to the live r4133 oracle
+//! (own probes, ~1e-12) — the Rust port reproduces them to <5e-11 V (faer-vs-KLU
+//! last-ulp), so the 1e-6 V band below is ~4 orders above the cross-solver floor
+//! yet still ~7 orders *tighter* than any physically-meaningful voltage error.
+//!
+//! The **swing-source reported-current** assertion
+//! ([`ncim_vsource_reported_currents_match_oracle`]) is instead pinned against the
+//! **live r4133** oracle (EPRI `OpenDSSDirect.dll` r4133 via `epri-worker`): r4133
+//! fixed the capi015 0.15.0b4 one-conductor shift in `CalcInjCurrAtBus`, and the
+//! capi015 probe venv is retired, so r4133 is the oracle-of-record for NCIM
+//! (oracle-of-record flip capi015→r4133, 2026-07-20; `docs/upgrade/DIVERGENCES.md`).
 //!
 //! **NCIM does not converge to the same node voltages as the default fixed-point
 //! (`Normal`).** NCIM holds the swing (source) bus at the ideal EMF with *no*
@@ -302,13 +309,17 @@ fn ncim_resolve_is_stable() {
     assert!(drift < 1e-9, "NCIM re-solve drifted by {drift:.2e}");
 }
 
-/// Swing-source **reported currents** under NCIM (`VSource.NCIM_CalcInjCurrAtBus`,
-/// `vsource.pas` l.1225): NCIM holds the swing bus at the ideal EMF, so the normal
-/// `YPrim·V - Iinj` path reports ~0 there; the source's terminal current is instead
-/// the KCL sum at its bus. Pinned vs capi015 `Vsource.source.Currents/Powers/Losses`
-/// — including the reproduced upstream off-by-one (see the `TODO(compat)` in
-/// `exec/view.rs::ncim_swing_source_currents`: the reported phase-A current is the
-/// negated phase-**B** branch current, etc.).
+/// Swing-source **reported currents** under NCIM (`VSource.CalcInjCurrAtBus`,
+/// r4133 `VSource.pas` l.1085): NCIM holds the swing bus at the ideal EMF, so the
+/// normal `YPrim·V - Iinj` path reports ~0 there; the source's terminal current is
+/// instead the KCL sum at its bus. Pinned vs the **live r4133** oracle
+/// (`Vsource.source.Currents/Powers/Losses`, EPRI OpenDSSDirect.dll r4133 "Version
+/// 11.0.0.1 (64-bit build)" via `epri-worker`, own probe 2026-07-20). r4133's
+/// offset-write `GetCurrents(@(ElmCurrents[1]))` (l.1123) reads the connected
+/// element's conductors UNSHIFTED — phase-A of the source is the negated phase-A
+/// branch current. This replaces the retired capi015 0.15.0b4 one-conductor shift
+/// (oracle-of-record flip capi015→r4133; `docs/upgrade/DIVERGENCES.md`,
+/// `ncim_swing_source_currents`).
 #[test]
 fn ncim_vsource_reported_currents_match_oracle() {
     let mut dss = solve_ncim(&pq_circuit(1));
@@ -318,13 +329,13 @@ fn ncim_vsource_reported_currents_match_oracle() {
         .find(|s| s.name.eq_ignore_ascii_case("Vsource.source"))
         .expect("Vsource.source");
 
-    // capi015 `Vsource.source` terminal currents (A), first three conductors
-    // (the second terminal is grounded → 0). The phase order is the upstream
-    // off-by-one shift.
+    // r4133 `Vsource.source` terminal currents (A), first three conductors (the
+    // second terminal is grounded → 0). Unshifted: conductor k = negated Line.l1
+    // terminal-1 conductor k.
     let exp_i = [
-        cx(70.71691867579602, 55.78569119895437),
-        cx(12.95336640806454, -89.1354936500793),
-        cx(83.6702202736991, -33.368203132757344),
+        cx(-83.6702850838671, 33.349802451121946),
+        cx(70.71691867579727, 55.785691198952236),
+        cx(12.953366408072725, -89.13549365007475),
         ZERO,
         ZERO,
         ZERO,
@@ -333,27 +344,27 @@ fn ncim_vsource_reported_currents_match_oracle() {
         let got = cx(snap.currents[2 * k], snap.currents[2 * k + 1]);
         assert!(
             (got - e).norm() < 1e-6,
-            "source current[{k}]: {got:?} vs capi015 {e:?}"
+            "source current[{k}]: {got:?} vs r4133 {e:?}"
         );
     }
-    // capi015 per-conductor powers (kW/kvar) and total losses (W/var).
+    // r4133 per-conductor powers (kW/kvar) and total losses (W/var).
     let exp_p = [
-        (509.13054746, -401.63231137),
-        (509.13054746, -401.63231137),
-        (-509.24504241, 401.56566889),
+        (-602.3890583558023, -240.10383225952395),
+        (-602.3890583557892, -240.10383225952782),
+        (-602.3890583558059, -240.10383225949838),
     ];
     for (k, (pr, pi)) in exp_p.iter().enumerate() {
         assert!(
             (snap.powers[2 * k] - pr).abs() < 1e-4 && (snap.powers[2 * k + 1] - pi).abs() < 1e-4,
-            "source power[{k}]: ({}, {}) vs capi015 ({pr}, {pi})",
+            "source power[{k}]: ({}, {}) vs r4133 ({pr}, {pi})",
             snap.powers[2 * k],
             snap.powers[2 * k + 1]
         );
     }
     assert!(
-        (snap.loss_w.0 - 509016.05251295).abs() < 1e-2
-            && (snap.loss_w.1 - (-401698.95384555)).abs() < 1e-2,
-        "source losses: {:?} vs capi015 (509016.05, -401698.95)",
+        (snap.loss_w.0 - (-1807167.1750673973)).abs() < 1e-2
+            && (snap.loss_w.1 - (-720311.4967785501)).abs() < 1e-2,
+        "source losses: {:?} vs r4133 (-1807167.18, -720311.50)",
         snap.loss_w
     );
 }
