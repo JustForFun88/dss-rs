@@ -145,6 +145,21 @@ impl Scope {
     }
 }
 
+/// Measurement aid (§5-R3 "every envelope is a per-case MEASURED fact"): when
+/// `DSS_LEDGER_MEASURE` is set, each numeric handler prints the live divergence it
+/// observes for its scope, so an envelope can be sized to the measured max and the
+/// `measured.max_*_seen` provenance recorded. Pure stderr side-effect gated on the
+/// env var — it changes NO gating semantics (asserts + hit accounting untouched).
+fn measure_note(id: &str, field: &str, diff: f64, base: f64, floor: f64) {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ON.get_or_init(|| std::env::var("DSS_LEDGER_MEASURE").is_ok()) {
+        let rel = if base > 0.0 { diff / base } else { diff };
+        eprintln!(
+            "LEDGER_MEASURE {id} {field}: diff={diff:.6e} base={base:.6e} rel={rel:.3e} floor={floor:.3e}"
+        );
+    }
+}
+
 struct Entry {
     id: String,
     case: String,
@@ -536,6 +551,7 @@ impl LedgerView<'_> {
                     sc.max_abs
                 );
                 Self::mark_applied(e);
+                measure_note(&e.id, "voltages", diff, base, floor);
                 if diff > floor {
                     Self::mark_exceeded(e);
                 }
@@ -584,7 +600,9 @@ impl LedgerView<'_> {
                  the pinned envelope {env:.3e}",
                 e.id
             );
-            if diff > tol.i_abs + tol.i_rel * base {
+            let floor = tol.i_abs + tol.i_rel * base;
+            measure_note(&e.id, "injection", diff, base, floor);
+            if diff > floor {
                 Self::mark_exceeded(e);
             }
         }
@@ -672,7 +690,11 @@ impl LedgerView<'_> {
     /// standard `compare_probe`). A display-precision divergence pins `num_rel`:
     /// the Rust `?`-value and the (low-precision-rendered) oracle value must agree
     /// numerically within `num_rel`, and the raw gap must exceed the tier floor
-    /// (else stale). An optional exact `oracle` string re-pins the upstream getter.
+    /// (else stale). A genuine discrete VALUE jump (e.g. `normamps` 730-vs-230)
+    /// pins `oracle`+`rust` with NO `num_rel` — exact-pair-numeric (§1.3 discrete):
+    /// the Rust value must equal the pinned `rust` exactly (an envelope would mask
+    /// real drift), stale once it converges to the oracle. A non-numeric value
+    /// (enum/word) is exact-pair via the `oracle` string.
     pub(crate) fn probe_handled(
         &self,
         dss: &mut dss_core::exec::Dss,
@@ -711,19 +733,43 @@ impl LedgerView<'_> {
                 let rust_val = dss.result().to_string();
                 let (rn, on) = (parse_leading_f64(&rust_val), parse_leading_f64(&exp.value));
                 if let (Some(rv), Some(ov)) = (rn, on) {
-                    let num_rel = sc.num_rel.unwrap_or(0.0);
-                    let base = ov.abs();
-                    let diff = (rv - ov).abs();
-                    let env = num_rel * base + tol.i_abs;
-                    assert!(
-                        diff <= env,
-                        "{ctx}: ledger `{}` probe {key}: |{rv} - {ov}| = {diff:.3e} exceeds \
-                         num_rel envelope {env:.3e}",
-                        e.id
-                    );
-                    Self::mark_applied(e);
-                    if diff > tol.i_abs + tol.i_rel * base {
-                        Self::mark_exceeded(e);
+                    if let Some(num_rel) = sc.num_rel {
+                        // numeric-skeleton (display-precision) envelope: the Rust
+                        // value and the low-precision-rendered oracle value agree
+                        // numerically within `num_rel`.
+                        let base = ov.abs();
+                        let diff = (rv - ov).abs();
+                        let env = num_rel * base + tol.i_abs;
+                        assert!(
+                            diff <= env,
+                            "{ctx}: ledger `{}` probe {key}: |{rv} - {ov}| = {diff:.3e} exceeds \
+                             num_rel envelope {env:.3e}",
+                            e.id
+                        );
+                        Self::mark_applied(e);
+                        let floor = tol.i_abs + tol.i_rel * base;
+                        measure_note(&e.id, "probe", diff, base, floor);
+                        if diff > floor {
+                            Self::mark_exceeded(e);
+                        }
+                    } else {
+                        // exact-pair-NUMERIC (§1.3 discrete): a genuine value jump
+                        // (e.g. normamps 730-vs-230 first-wire-vs-min-over-phase),
+                        // NOT a display rounding — an envelope would mask real
+                        // drift, so pin the exact `rust` value. `oracle` is pinned
+                        // (asserted above vs the capture); stale once rust==oracle.
+                        if let Some(r) = &sc.rust {
+                            let rp = parse_leading_f64(&value_as_str(r));
+                            assert!(
+                                rp == Some(rv),
+                                "{ctx}: ledger `{}` probe {key}: rust value {rv} != pinned rust {rp:?}",
+                                e.id
+                            );
+                        }
+                        Self::mark_applied(e);
+                        if rv != ov {
+                            Self::mark_exceeded(e);
+                        }
                     }
                 } else {
                     // non-numeric probe (enum/word): discrete state is ledgerable
@@ -816,21 +862,39 @@ impl LedgerView<'_> {
                     let rust_val = dss.result().to_string();
                     let (rn, on) = (parse_leading_f64(&rust_val), parse_leading_f64(val));
                     if let (Some(rv), Some(ov)) = (rn, on) {
-                        // Numeric-skeleton path (mirrors `probe_handled`): the Rust
-                        // value must agree with the oracle value within `num_rel`.
-                        let num_rel = sc.num_rel.unwrap_or(0.0);
-                        let base = ov.abs();
-                        let diff = (rv - ov).abs();
-                        let env = num_rel * base + tol.i_abs;
-                        assert!(
-                            diff <= env,
-                            "{ctx}: ledger `{}` property {key}: |{rv} - {ov}| = {diff:.3e} exceeds \
-                             num_rel envelope {env:.3e}",
-                            e.id
-                        );
-                        Self::mark_applied(e);
-                        if diff > tol.i_abs + tol.i_rel * base {
-                            Self::mark_exceeded(e);
+                        if let Some(num_rel) = sc.num_rel {
+                            // Numeric-skeleton path (mirrors `probe_handled`): the
+                            // Rust value agrees with the oracle within `num_rel`.
+                            let base = ov.abs();
+                            let diff = (rv - ov).abs();
+                            let env = num_rel * base + tol.i_abs;
+                            assert!(
+                                diff <= env,
+                                "{ctx}: ledger `{}` property {key}: |{rv} - {ov}| = {diff:.3e} exceeds \
+                                 num_rel envelope {env:.3e}",
+                                e.id
+                            );
+                            Self::mark_applied(e);
+                            let floor = tol.i_abs + tol.i_rel * base;
+                            measure_note(&e.id, "property", diff, base, floor);
+                            if diff > floor {
+                                Self::mark_exceeded(e);
+                            }
+                        } else {
+                            // exact-pair-NUMERIC (§1.3 discrete, mirrors
+                            // `probe_handled`): a genuine value jump, pinned exactly.
+                            if let Some(r) = &sc.rust {
+                                let rp = parse_leading_f64(&value_as_str(r));
+                                assert!(
+                                    rp == Some(rv),
+                                    "{ctx}: ledger `{}` property {key}: rust value {rv} != pinned rust {rp:?}",
+                                    e.id
+                                );
+                            }
+                            Self::mark_applied(e);
+                            if rv != ov {
+                                Self::mark_exceeded(e);
+                            }
                         }
                     } else {
                         // Non-numeric property: exact-pair only (§1.3). A bare scope
@@ -932,7 +996,9 @@ impl LedgerView<'_> {
                     e.id,
                     exp.name
                 );
-                if diff > tol.i_abs + tol.i_rel * base {
+                let floor = tol.i_abs + tol.i_rel * base;
+                measure_note(&e.id, "monitor", diff, base, floor);
+                if diff > floor {
                     exceeded = true;
                 }
             }
@@ -1020,7 +1086,9 @@ fn envelope_element(
             e.id,
             ec.name
         );
-        if diff > tol.i_abs + tol.i_rel * base {
+        let floor = tol.i_abs + tol.i_rel * base;
+        measure_note(&e.id, "element", diff, base, floor);
+        if diff > floor {
             exceeded = true;
         }
     };

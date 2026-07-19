@@ -92,9 +92,7 @@
     "Line.lsp",
     "Line.lspc"
    ],
-   "engines": "r4133",
-   "wp": "ORPHANED_GAPS §1.9 (UNIFIED_GATE defer_ledger retirement)",
-   "defer_ledger": "capi015-line: r4133 raises #303 access violation at calcv (known linespacing crash); 0.14.5 gives Line.lsp.normamps=730/emergamps=1095 (first-wire rating) vs port/0.15.x 230/345 (min-over-phase, WP-U1.2 D3) -> diverges on BOTH channels (settled empirically 2026-07-18: port=230 is CORRECT per r4133 LineGeometry.pas min-over-phase; earlier note had the 730/230 direction reversed). Retirement to r4133 `skip` + capi_v0145 exact-pair property ledger needs an exact-pair-numeric probe/property scope (the discrete 730->230 jump is not a display-precision envelope); deferred to a follow-up ledger WP (see STATUS Phase D).",
+   "engines": "both",
    "probes": [
     {
      "element": "Line.lsp",
@@ -261,7 +259,7 @@
   },
   {
    "path": "indmach/indmach_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -315,7 +313,7 @@
   },
   {
    "path": "combo/midi_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
@@ -336,7 +334,7 @@
   },
   {
    "path": "combo/combo_mesh_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:non-3ph-cut-only",
    "kind": "micro",
    "n_steps": 1,
@@ -455,7 +453,7 @@
   },
   {
    "path": "indmach/midi_indmach_asym.dss",
-   "engines": "capi_v0145",
+   "engines": "both",
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
