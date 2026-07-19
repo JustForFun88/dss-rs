@@ -307,8 +307,10 @@ instance's `CallData`:
   `IsBusCoordinateDefined`, `GetBusCoordinate`, `GetBuskVBase`, `GetBusDistFromMeter`,
   `GetPtrToSystemVarray`→`get_node_voltages(dest, max) -> count` (copy, not a live
   pointer), `GetPublicDataPtr`→`get_public_data(dest, max) -> bytes` (the GenVars
-  image for a Generator), `GetResultStr`. "Active element" = the element that owns
-  the instance (see the multi-context note below).
+  image for a Generator), `GetResultStr` (reclassified to **tier C** at WM.6 —
+  `GlobalResult` is produced by a `DoDSSCommand` run, not a pre-call snapshot;
+  see `docs/wasm/USERMODEL_ABI.md` §4 row 32). "Active element" = the element
+  that owns the instance (see the multi-context note below).
 - **Tier B — mutations applied by the host after the call returns:**
   `ControlQueuePush(hour, sec, code, proxy_hdl) -> handle` — queued in `CallData`,
   drained into the real control queue immediately after the wasm call, order
