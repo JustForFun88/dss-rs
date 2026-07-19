@@ -371,11 +371,14 @@ fn capability_surface_end_to_end() {
         syc["result"].is_i64(),
         "system_y_changed not readable: {syc}"
     );
-    // SolveSystem: the external back-substitution entry is live and returns a status.
+    // SolveSystem: the external back-substitution entry is live and SUCCEEDS —
+    // KLU `SolveSparseSet` returns 1 on success (the engine's own success test,
+    // `Solution.pas` `IF SolveSystem(...) = 1`), so a solved circuit must give 1.
     let ss = w.ok(json!({"cmd": "ymatrix", "op": "solve_system"}));
-    assert!(
-        ss["result"]["status"].is_i64(),
-        "solve_system did not return a status: {ss}"
+    assert_eq!(
+        ss["result"]["status"].as_i64(),
+        Some(1),
+        "solve_system did not report KLU success (1): {ss}"
     );
 
     // ---- 7. Error paths keep the worker alive ------------------------------
