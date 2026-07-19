@@ -4752,8 +4752,8 @@ Phase-E re-review findings F2 (dead golden-regen r4133 arms) and F3 (lost
 | `gen_protection.py` r4133 arm (`make_oddie`; fuse_blow, swt_manual) | golden regeneration | **parity restored (this round)** — `make_epri` drives `epri-worker` via the `IOddieDSS`-shaped shim; payload byte-parity proven below |
 | `gen_flicker.py` (r3723) | flicker golden regeneration | **parity restored (this round)** — rewritten over `epri-worker` on r4133 (the only vendored official revision); cross-revision payload byte-parity proven below |
 | `probe_59n.py` | 59N artifact reproduction (WP-U2.6) | **parity restored (this round)** — recreated over `epri-worker`; artifact reproduced verbatim |
-| *(adjacent, not Oddie)* `gen_bh_capi015.py` / `gen_regcontrol_capi015.py` / `gen_ncim_reports.py` / `gen_der_lines_harmonics.py` capi015 runs / `gen_checkpoints.check_pin` capi015 arm | capi015 (dss-python 0.16.0b2 / dss_capi 0.15.0b4) golden generation | outside the mandate — capi015 was the *Python-engine* beta channel, not the official-binary Oddie bridge; the Rust bridge cannot (different binary) and should not drive it. Goldens frozen; the capi015 arms fail loudly (missing `PIN_OPENDSS.txt`), no silent pass. |
-| `gen_fuse_r4133.py` | derived golden (`git show` overlay, no engine) | unaffected — engine-free; its r4133 value provenance is historical (Oddie capture, recorded in its note) |
+| *(adjacent, not Oddie)* `gen_bh_capi015.py` / `gen_regcontrol_capi015.py` / `gen_ncim_reports.py` / `gen_der_lines_harmonics.py` capi015 runs / `gen_checkpoints.check_pin` capi015 arm / `gen_reports.py` capi015-gated seasonal arm | capi015 (dss-python 0.16.0b2 / dss_capi 0.15.0b4) golden generation | outside the mandate — capi015 was the *Python-engine* beta channel, not the official-binary Oddie bridge; the Rust bridge cannot (different binary) and should not drive it. Goldens frozen; the capi015 arms fail loudly (missing `PIN_OPENDSS.txt`), no silent pass. |
+| `gen_fuse_r4133.py` / `r4133_help.py` | derived golden (`git show` overlay) / frozen r4133 `PropertyHelp` data — no engine | unaffected — engine-free; their `oddie:r4133` provenance markers are historical (original Oddie captures, recorded in their notes); neither imports `IOddieDSS` |
 
 ### Protocol extension (gate-neutral)
 
@@ -4791,11 +4791,12 @@ unchanged and issue the same per-property DLL call sequence Oddie did.
 |---|---|---|---|
 | `protection/fuse_blow.json` | Oddie r4133 | epri-worker r4133 | `scenario` payload **byte-identical** (7 071 serialized bytes: per-step voltages, event log, final elements); diff confined to the `oracle` provenance block (the raw DLL version string lacks the retired wrapper's `\nDSS-Python version: 0.16.0b2` suffix) |
 | `protection/swt_manual.json` | Oddie r4133 | epri-worker r4133 | `scenario` payload **byte-identical** (8 255 bytes); same provenance-only diff (the committed block also carries the older `oddie:r4133` marker shape from its original capture flow, which even the old generator would no longer emit) |
-| `flicker/pst_demo.json` | Oddie **r3723** | epri-worker **r4133** | every payload key **byte-identical** across engine revisions — `raw_mag` (545 996 serialized bytes), `flk` (640 178), `pst` (598 928), `kvbase`, `times`, `deck`, `n`/`nphases`/`fbase`; only `oracle` differs. The official flicker meter + this deck's power flow are revision-stable; the committed golden stays the frozen r3723 capture. |
+| `flicker/pst_demo.json` | Oddie **r3723** | epri-worker **r4133** | every payload key **byte-identical** across engine revisions — `raw_mag` (494 142 serialized bytes), `flk` (588 324), `pst` (547 074), `kvbase`, `times`, `deck`, `n`/`nphases`/`fbase`; only `oracle` differs. The official flicker meter + this deck's power flow are revision-stable; the committed golden stays the frozen r3723 capture. |
 
 Zero committed-file changes (`git status tests/golden` clean); corpus pristine
-after all runs. `DSS_GOLDEN_OUT` env (new) redirects both generators' output for
-scratch parity runs; default remains the committed tree.
+after all runs (enforced for the flicker regen by the settle round's DataPath
+redirect — see below). `DSS_GOLDEN_OUT` env (new) redirects both generators'
+output for scratch parity runs; default remains the committed tree.
 
 ### F3 — probe_59n reproduction restored
 
@@ -4811,3 +4812,41 @@ Docs: `tools/opendss/README.md` layout rows for `epri_worker.py`/`probe_59n.py`;
 `tools/golden/README.md` generator-exceptions note. `TESTING.md`/`CLAUDE.md`
 deliberately untouched (Phase F owns them; its one stale F2 sentence reconciles
 after both merge).
+
+### Settle (2026-07-19) — two opus xhigh audit dispositions
+
+Both audits independently re-derived the acceptance (scratch regen through the
+real `epri-worker` + byte-compare, probe_59n rerun, protocol smoke) and
+confirmed it: payload byte-parity holds for all three goldens, zero committed
+bytes changed, gate semantics untouched. Findings settled:
+
+- **Flicker-regen corpus leak (audit-code fp-1 low / audit-tests PARITY-1
+  medium) — CONFIRMED, FIXED in the driver.** A standalone
+  `python tools/golden/gen_flicker.py` left an untracked 730 KB
+  `pst_Mon_pst_1.csv` inside `tests/corpus/.../Examples/Scripts/`
+  (reproduced), falsifying the original "corpus pristine" evidence and the
+  generator's own comment. Root cause (settled against the r4133 Pascal): the
+  DLL initializes `DataDirectory`/`OutputDirectory` from the
+  registry-persisted `DataPath` (`HKCU\Software\OpenDSS\MainSect`,
+  `ReadDSS_Registry`) = the directory of the last deck ANY local run
+  `Compile`d (probe_59n's 59NRelayDemo → `Examples/Scripts/`); this deck is
+  exec'd line-by-line, so nothing re-pointed it, and `export monitor` wrote
+  there. A `CorpusGuard` over the deck dir could NOT cover it (the leak lands
+  in a different, run-history-dependent corpus dir), so the fix is a
+  deterministic `set DataPath="<temp>/dss_rs_flicker_export"` before the
+  export (`Set DataPath` also ChDirs the worker — harmless post-deck;
+  `DSSGlobals.SetDataPath`, r4133 line 934). Re-verified: standalone regen
+  leaves `git status` clean, the CSV lands in the temp dir, and every payload
+  key of the regen is STILL byte-identical to the committed golden AND to the
+  pre-fix regen (the redirect changes zero payload bytes). Golden untouched.
+- **Flicker byte-count figures (audit-code fp-2 low) — CONFIRMED, FIXED.**
+  The parity-table row overstated the serialized sizes; re-measured from the
+  committed golden (`json.dumps` per key): `raw_mag` 494 142, `flk` 588 324,
+  `pst` 547 074 (table corrected above). The parity VERDICT itself was
+  independently re-verified byte-true by both audits and by the settle rerun.
+- **Inventory enumeration (audit-tests PARITY-2 low) — CONFIRMED, FIXED.**
+  `gen_reports.py`'s capi015-gated seasonal arm and `r4133_help.py` (frozen
+  r4133 PropertyHelp data) carry `oddie:r4133`/oddie-venv provenance mentions
+  but import no `IOddieDSS`; added to their existing inventory classes
+  (capi015 Python-engine row / engine-free frozen-data row). No parity target
+  was missed — all 7 actual `IOddieDSS` importers were already dispositioned.
