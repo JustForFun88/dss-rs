@@ -365,6 +365,25 @@ rotor swings.
 - **Tests**: the 7 `exec/tests/dynamics.rs` DynExp gates + the `dynamic_exp` unit
   tests restored to their pre-D14 swinging-oracle pins (now guard against
   re-introducing the no-op). All 34 dynexp/dynamics unit tests green.
+- **Settled** (two independent opus xhigh audits, `19e0890..5a6c6d4`): audit-code
+  returned zero findings (faithful, Pascal-cited semantics correction). audit-tests
+  raised two **low/INFO** notes, both settled empirically as *strengthenings, not
+  weaknesses* — neither warrants a code change:
+  - *GFL DynExp deck is r4133-only, not both.* Verified: its non-DynExp sibling
+    `Run_IEEE123Bus_GFLDaily.DSS` is likewise `engines:r4133` for the pre-existing
+    WP-U1.2 D7 reason (daily-shape `PanelkW` < `FkVArating` shifts the dynamics
+    current limit off 0.14.5). The 0.14.5-side DynExp evaluator proof therefore
+    lives in the **Kundur** deck, which gates on **both** channels — the filtered
+    corpus gate (`DSS_GATE_ONLY=DynExp`, 3/3 pass) engages `capi_v0145`+`r4133`
+    there. So the r4133-only GFL leaves no DynExp channel unverified.
+  - *`dynamic_exp` interpreter unit values are hand-derived, not oracle-captured.*
+    Matches the pre-D14 state and is the correct comparator for a
+    compile/`SolveEq` path the oracle does not expose outside a dynamics solve.
+    `kundur_expression_evaluates` computes `d(speed) = -1/mass·(pterm+damp·speed
+    −pshaft)` to `1e-15` — which the D14 no-op leaves at 0, so the test is a real
+    anti-no-op guard. It is backstopped end-to-end by the oracle-anchored exec
+    swing gate (θ 0.42211992/1.7127246 rad = 24.18569/98.131889 deg) and the live
+    corpus gate on both channels. No tolerance touched; goldens/harness untouched.
 
 ### WASM-UM WP-WM.0 — ABI freeze + probes (branch `wasm-um`, 2026-07-18)
 
