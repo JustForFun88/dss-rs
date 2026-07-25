@@ -91,39 +91,35 @@ every finding settled empirically:
   (4) The five deep-dive reports cover nuanced dispositions (not-reproduced / UB /
   gated-around); Monitor 60.0 is a plain hardcoded constant with one fully-traced
   consumer and does not rise to that threshold.
-- **Environmental build gotcha (fixed for the session, noted for future).** A
-  toolchain update (rustc 1.97.0 "Rev1") invalidated all fingerprints, forcing a
-  full rebuild that then linked the GNU rustc via **Strawberry Perl's `gcc`** (first
-  on PATH) instead of the matching `C:\msys64\mingw64\bin\gcc` → 0xC0000005 crashes
-  in every freshly-linked build-script exe. Fix: prepend `C:\msys64\mingw64\bin` to
-  PATH so the mingw rustc uses its matching gcc/ld (proven: crashing exe → working).
-  No code impact; same GNU toolchain the project builds with.
-- **One toolchain-drift golden (NOT a WP defect, NOT masked).** On the same rustc
-  "Rev1" (LLVM 22.1.8), `golden_reports::dump3_debug_matches_oracle` fails on a
-  single field at line 1072: oracle `-2.53510362191938E-12` vs rust
-  `-2.53510362198004E-12` — the **imaginary part** of a physically-real value
-  (mag 0.015, angle −180°), i.e. numerical zero-noise. Settled empirically: (1)
-  deterministic across 4 reruns (not flaky); (2) structural — the drifting quantity
-  is the near-cancellation imaginary residual of a real number, agreeing to 10 sig
-  figs (~1e-22 abs); (3) isolated — 1 field among 500+ byte-exact + 519 corpus
-  comparisons, all else bit-identical; (4) the *same HEAD production code* passed
-  this golden at the audits' (pre-"Rev1") toolchain and fails now → the toolchain
-  shifted HEAD's last bit. The WP is exonerated (settler changes are test+docs;
-  the implementer's change is recalc-*timing* that `calc_yprim` overwrites with the
-  live ctx before any solve, so post-solve dumps are structurally unaffected). Per
-  CLAUDE.md this floor must NOT be "fixed" (the golden is the stable dss-python
-  oracle; forcing/regenerating would pin toolchain-noise). It is a project-wide
-  fragility (byte-exact golden on a zero-noise field under an unpinned Rust
-  toolchain) — fix belongs to the project: pin the Rust toolchain
-  (`rust-toolchain.toml`) or give that dump field a numeric tolerance. Every other
-  gate command is green.
+- **Environmental incident (RESOLVED 2026-07-25 — shadowed compiler, no repo
+  change needed).** Mid-WP, an *adjacent session's* provisioning script ran
+  `pacman -Sy --noconfirm ... mingw-w64-x86_64-rust`, dropping a GNU rustc/cargo
+  1.97.0 (LLVM 22.1.8) into `C:\msys64\mingw64\bin` — which precedes
+  `C:\Users\Admin\.cargo\bin` in the user PATH. Bare `cargo` silently switched
+  from the project's real toolchain (**rustup nightly-x86_64-pc-windows-msvc**)
+  to the MSYS2 GNU one. Three symptoms, all environmental: (1)
+  `golden_reports::dump3_debug_matches_oracle` failed on ONE field — the
+  near-cancellation imaginary residual of a real value (~1e-22 abs, 10 sig figs
+  agreement) — GNU/LLVM-22 codegen vs MSVC last-ULP, proven by the same HEAD
+  passing pre-install and failing post-install; (2) the dss-core merged-doctest
+  runner crashed silently (incompatible runtime DLLs from PATH); (3) fresh
+  build-script exes hit 0xC0000005 (GNU rustc linked via Strawberry Perl's gcc).
+  The settler triaged this mid-incident as a "toolchain update" and its notes
+  (commit `5a22e5f`) recommended pinning/tolerance — superseded by this record:
+  the MSYS2 rust package was removed the same day, `cargo` reverted to rustup
+  nightly MSVC, and the **full gate went green with zero repo changes**
+  (golden_reports 207/207 incl. dump3, doctests ok). The WP itself was already
+  exonerated (audits ran green pre-incident on the real toolchain). Standing
+  guard: before trusting a gate run, `(Get-Command cargo).Source` must be
+  `C:\Users\Admin\.cargo\bin\cargo.exe`; never regenerate goldens under a
+  shadowed compiler.
 
-Gate after the settler edits: `cargo fmt --all --check` green, `cargo clippy
---workspace --all-targets -D warnings` green, `cargo test --workspace` green
-**except** the one `dump3_debug` toolchain-drift golden above (corpus_gate 25/25
+Gate after the settler edits, re-run on the restored rustup MSVC toolchain
+(2026-07-25, coordinator): `cargo fmt --all --check` green, `cargo clippy
+--workspace --all-targets -- -D warnings` green, `cargo test --workspace` green
+**in full** — golden_reports 207/207 (incl. `dump3_debug`), corpus_gate 25/25
 both channels, lib 1269 incl. the new `live_ctx` guards, golden_schema 9,
-wasm_usermodels 18 — all green). On the project's original toolchain the full gate
-is green (audit-verified). Corpus pristine; source-integrity 186 `.pas`.
+wasm_usermodels 18, doctests ok. Corpus pristine; source-integrity 186 `.pas`.
 
 
 
