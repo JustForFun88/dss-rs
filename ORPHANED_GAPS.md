@@ -6,7 +6,8 @@ handed to a successor that **does not exist** or **will never reach them** — t
 **orphans**: real, self-contained work that falls through the cracks unless someone
 deliberately schedules it. A fresh agent can pick up any §1 item standalone.
 
-Audited 2026-07-18 against the tree (branch `update`). Everything here is **outside**
+Audited 2026-07-18 against the tree (branch `update`); statuses refreshed 2026-07-25
+(§1.9 closed by BUG WP DynExp + NCIM re-gate; §2 owner statuses). Everything here is **outside**
 the parity gate — the mandatory `cargo test` stays green without them; they are missing
 *features*, not bugs. Read `PORTING_PLAN.md` §0 first (source-integrity gate + Pascal =
 spec), then `CLAUDE.md` (conventions). Each entry cites the Pascal spec + the current
@@ -121,12 +122,19 @@ the controls manifest + `CONTROLS_REQUIRED` floor, gated vs the pinned oracle
 - **To do:** only if a real deck surfaces it — add the strip at the parse boundary + a fixture. **Priority: very low** (opportunistic).
 
 ### 1.9 UNIFIED_GATE `defer_ledger` retirement — DynExp×2, RegControl idle, line_spacing_asym
-- **Deferred by:** UNIFIED_GATE Phase D; **worked by the post-audit fix round (STATUS §1l, 2026-07-19)** + **BUG WP regcontrol_idle (2026-07-19).** Of the 4 owned here, **2 retired** (line_spacing_asym + regcontrol_idle), 2 confirmed NOT ledgerable (DynExp×2, R3 — re-measured live).
+**CLOSED 2026-07-20 — defer_ledger remaining: 0.** All four owned here retired
+(line_spacing_asym + regcontrol_idle below), plus the two follow-up WPs landed:
+**DynExp×2** retired by **BUG WP DynExp** (2026-07-19, STATUS §BUG WP DynExp) —
+the D14 `SolveEq` no-op was the port-side bug; reverted to the full 0.14.5/r4133
+evaluator, both decks live-gate with no ledger entry. **NCIM×4** retired by the
+**NCIM re-gate** (2026-07-20, STATUS §NCIM re-gate) — oracle-of-record flipped to
+r4133, all 4 cases live-gated, no ledger entries. Historical detail below.
+- **Deferred by:** UNIFIED_GATE Phase D; **worked by the post-audit fix round (STATUS §1l, 2026-07-19)** + **BUG WP regcontrol_idle (2026-07-19).**
 - **RETIRED — `asymmetric line_spacing_asym`** → `engines:"both"`: capi_v0145 exact-pair-NUMERIC property+probe entries (Line.lsp.normamps 730→230, emergamps 1095→345; the min-over-phase D3 upgrade, port CORRECT) + r4133 `#303` skip. This required the exact-pair-numeric probe/property machinery §1i said was lacking — it was ADDED this round (num_rel absent + oracle/rust pins ⇒ exact float pin). Line.lspc is D3-invariant (165/247.5, no divergence). Done.
 - **RETIRED — `controls regcontrol_idle`** → `engines:"r4133"` (BUG WP regcontrol_idle, STATUS record, 2026-07-19): the 8.8% MV-bus gap was a **port bug relative to r4133**, not a ledgerable divergence. The port faithfully reproduced dss_capi 0.15.x's idle no-load-zone test written as an **OR** — `(FwdPower ≥ RevThr) or (FwdPower ≤ FwdThr)`, a tautology under the default ±100 kW band that makes an idling reg never tap (MV.1 held 7030.24 V, tapnum 0); EPRI r4088/r4133 use the correct **bounded AND** (RegControl.pas:1218), so idle=yes taps identically to idle=no when the through-power (~7438 kW) is outside the band. Dated: OR is in `8a898cba` "port SVN r4086", still OR at the 0.15.x tip; r3723/0.14.5 have no idle. Live r4133 probe D (widen fwdThreshold to bracket the load → r4133 idles to the port's old 7030.24 V) proved the mechanism. Adopted r4133's AND (`reg_control/control_loop.rs`, r4133-and-beyond direction; idle is 0.15-only, no pinned golden exercises the no-load physics — the one idle golden pins property readback only); tap/voltage/full-model now match r4133 exactly. Residual = the revThreshold/fwdThreshold getter convention (r4133 display strings '100'/'' vs port signed kW −100/+100) ledgered exact-pair (`r4133-regcontrol-idle-threshold-display`). Done.
-- **STAYS (R3, matches neither oracle) — `Dynamic_KundurDynExp` + `GFL_IEEE123 …DynExp`:** re-measured — the port matches NEITHER surviving oracle (pinned 0.14.5 AND EPRI r4133 agree with each other; the port differs from BOTH by ~1.5e-5 rel). Force-ledgering would pin a port-side DynExp-evaluator bug. **Needs a WP** on the DynExp evaluator; kept `defer_ledger`.
-- **NCIM×4** (not here) — owned by **WP-U1.7** (suspected op-point port issue; must not be ledgered before re-validation, R3).
-- **defer_ledger remaining after this round: 6** (DynExp×2 + NCIM×4). **Where:** STATUS §1l has the full evidence. **Priority: low** (the open items are now WP-scoped investigations, not envelope measurements).
+- **RETIRED — `Dynamic_KundurDynExp` + `GFL_IEEE123 …DynExp`** (BUG WP DynExp, 2026-07-19): the "matches neither oracle" signal was a port-side bug — the D14-adopted no-op `SolveEq` (early `Exit` from retired capi015) froze the DynExp state at its seed. Reverted to the full 0.14.5/r4133 evaluator; the port now swings with both oracles (step-1 `dspeed` -1.6169543e-6 to the f32 floor). Both decks live-gate, no ledger entry. Done.
+- **RETIRED — NCIM×4** (NCIM re-gate, 2026-07-20): r4133 declared oracle-of-record for NCIM (capi015 probe venv retired); the swing-report `+1` shift dropped, 4 cases (`ncim_pq`/`ncim_pv_pq`/`ncim_midi`/`Kundur2Area`) live-gated on r4133, warm-resolve iteration counts match exactly, no ledger entries. Done.
+- **defer_ledger remaining: 0.**
 
 ---
 
@@ -134,9 +142,9 @@ the controls manifest + `CONTROLS_REQUIRED` floor, gated vs the pinned oracle
 
 | Deferred item | Owner plan (status) |
 |---|---|
-| `TODO(compat)` ×123 wipe + `HIDE_015X` ×15 → the oracle-parity feature split | **DE_PASCALIZE Stage F** (paused after wave 1) |
+| `TODO(compat)` wipe (×123 audited 2026-07-17; +stale-Vterminal FInit 2026-07-25) + `HIDE_015X` ×15 → the oracle-parity feature split | **DE_PASCALIZE Stage F** (plan in flight: waves 1–3 merged, wave 4 running; Stage F is the final stage) |
 | A-Diakoptics `AggregateProfiles` + D9(d) r3723 AD-replay + WP-AD.6 threaded children | **DIAKOPTICS_PSTCALC Part II** (partial) |
-| User-model native DLLs (Gen/PVSystem/Storage/CapControl `UserModel`) | **WASM_USERMODELS** (not started) |
+| User-model native DLLs (Gen/PVSystem/Storage/CapControl `UserModel`) | **WASM_USERMODELS** (**COMPLETE 2026-07-25** — WM.0–WM.7 merged; DLLs re-homed to wasmi-sandboxed models, r4133 oracle-of-record) |
 | Actor / parallel-machine (`DSS_CAPI_PM`) mode | **MULTITHREADING M2** (not started) |
 | Near-singular / floating-delta tolerance retighten (SubXFMR, GFM common-mode) | **RESONANCE WP-R1/R2** (not started) |
 
