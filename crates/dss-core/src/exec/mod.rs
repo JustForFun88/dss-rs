@@ -82,8 +82,11 @@ pub use view::{ElementSnapshot, MeterZoneView, MonitorView, SystemYCsc};
 
 /// The plot/visualize callback (`DSS.DSSPlotCallback`): given the assembled
 /// `plotParams` JSON string, returns an `i32` (Pascal ignores it; kept for
-/// signature parity). Boxed so a GUI consumer can capture state.
-type PlotCallback = Box<dyn FnMut(&str) -> i32>;
+/// signature parity). Boxed so a GUI consumer can capture state. `+ Send` is
+/// the P7 thread-readiness rider (DE_PASCALIZE R1): it keeps `Dss: Send` (see
+/// `lib.rs` `assert_send::<Dss>()`) — a GUI hook captured for a threaded engine
+/// is `Send` in practice.
+type PlotCallback = Box<dyn FnMut(&str) -> i32 + Send>;
 
 /// The DSS engine context (`TDSSContext`).
 pub struct Dss {
@@ -218,7 +221,7 @@ impl Dss {
     /// stays NOT_PORTED. With no callback, `Plot` is a total no-op and
     /// `Visualize` runs its guards but emits no JSON, exactly like the pinned
     /// oracle.
-    pub fn register_plot_callback(&mut self, cb: impl FnMut(&str) -> i32 + 'static) {
+    pub fn register_plot_callback(&mut self, cb: impl FnMut(&str) -> i32 + Send + 'static) {
         self.plot_callback = Some(Box::new(cb));
     }
 
@@ -231,6 +234,14 @@ impl Dss {
     /// The most recent query/`Get` result (`DSS.GlobalResult`).
     pub fn result(&self) -> &str {
         &self.last_result
+    }
+
+    /// The registered class names, in `construct.rs` registration order — the
+    /// oracle the typed-arena ordering test (`obj::arena::tests`) compares
+    /// `ElemId::CLASS_NAMES` and the `ClassArena` layout against.
+    #[cfg(test)]
+    pub(crate) fn registered_class_names(&self) -> Vec<&'static str> {
+        self.classes.iter().map(|c| c.props.class_name()).collect()
     }
 
     /// The active circuit, if `New circuit.` has run.

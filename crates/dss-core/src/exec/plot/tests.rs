@@ -3,22 +3,26 @@
 //! oracle-pinned byte content of the payload is gated by the golden capture
 //! (`tests/golden_plot_callback.rs` / `tools/golden/gen_plot_callback.py`).
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
 use crate::exec::Dss;
 
-/// A capturing plot callback backed by a shared `Vec<String>`.
-type Cap = Rc<RefCell<Vec<String>>>;
+/// A capturing plot callback backed by a shared `Vec<String>`. `Arc<Mutex>`
+/// (not the pre-R1 `Rc<RefCell>`) so the registered closure is `Send` — the
+/// engine is now `Send` (P7 rider, `assert_send::<Dss>()`), so the plot-callback
+/// bound is `+ Send`. This is a test-only sink: it swaps the `Rc`/`RefCell` the
+/// P7 grep gate targets out for `Arc`/`Mutex` (outside that pattern) and adds no
+/// ambient engine state.
+type Cap = Arc<Mutex<Vec<String>>>;
 
 fn dss_with_capture() -> (Dss, Cap) {
     let mut dss = Dss::new();
-    let cap: Cap = Rc::new(RefCell::new(Vec::new()));
+    let cap: Cap = Arc::new(Mutex::new(Vec::new()));
     let sink = cap.clone();
     dss.register_plot_callback(move |json| {
-        sink.borrow_mut().push(json.to_string());
+        sink.lock().unwrap().push(json.to_string());
         0
     });
     (dss, cap)
@@ -42,7 +46,7 @@ fn solved_circuit(dss: &mut Dss) {
 
 /// Parse the single captured payload into a JSON `Value`.
 fn only_payload(cap: &Cap) -> Value {
-    let g = cap.borrow();
+    let g = cap.lock().unwrap();
     assert_eq!(g.len(), 1, "expected exactly one payload, got {}", g.len());
     serde_json::from_str(&g[0]).expect("payload is valid JSON")
 }
@@ -75,7 +79,7 @@ fn register_then_unregister_gates_the_callback() {
     solved_circuit(&mut dss);
     dss.command("plot type=circuit");
     assert_eq!(
-        cap.borrow().len(),
+        cap.lock().unwrap().len(),
         1,
         "registered callback should fire once"
     );
@@ -83,7 +87,7 @@ fn register_then_unregister_gates_the_callback() {
     dss.unregister_plot_callback();
     dss.command("plot type=circuit");
     assert_eq!(
-        cap.borrow().len(),
+        cap.lock().unwrap().len(),
         1,
         "unregistered callback must be silent"
     );
@@ -91,11 +95,15 @@ fn register_then_unregister_gates_the_callback() {
     // Re-registering works.
     let sink = cap.clone();
     dss.register_plot_callback(move |json| {
-        sink.borrow_mut().push(json.to_string());
+        sink.lock().unwrap().push(json.to_string());
         0
     });
     dss.command("plot type=circuit");
-    assert_eq!(cap.borrow().len(), 2, "re-registered callback should fire");
+    assert_eq!(
+        cap.lock().unwrap().len(),
+        2,
+        "re-registered callback should fire"
+    );
 }
 
 #[test]
@@ -106,7 +114,7 @@ fn unsolved_guard_suppresses_callback() {
     dss.command("new line.l1 bus1=src bus2=b");
     dss.command("plot type=circuit");
     assert!(
-        cap.borrow().is_empty(),
+        cap.lock().unwrap().is_empty(),
         "unsolved guard must fire, no callback"
     );
     assert!(
@@ -169,20 +177,20 @@ fn profile_phases_and_type_variants() {
     dss.command("plot type=profile phases=all");
     assert_eq!(only_payload(&cap)["PhasesToPlot"], -2);
     assert_eq!(only_payload(&cap)["PlotType"], "Profile");
-    cap.borrow_mut().clear();
+    cap.lock().unwrap().clear();
 
     dss.command("plot type=profile phases=primary");
     assert_eq!(only_payload(&cap)["PhasesToPlot"], -3);
-    cap.borrow_mut().clear();
+    cap.lock().unwrap().clear();
 
     dss.command("plot type=daisy");
     assert_eq!(only_payload(&cap)["PlotType"], "Daisy");
-    cap.borrow_mut().clear();
+    cap.lock().unwrap().clear();
 
     // The `type=Losses → LoadShape` quirk (letter L maps unconditionally).
     dss.command("plot type=Losses");
     assert_eq!(only_payload(&cap)["PlotType"], "LoadShape");
-    cap.borrow_mut().clear();
+    cap.lock().unwrap().clear();
 
     // Monitor + channels/bases vectors.
     dss.command("plot type=monitor object=m1 channels=(1,3,5,7) base=[7200 7200 7200 7200]");
@@ -207,7 +215,7 @@ fn add_and_clear_bus_markers() {
         v["BusMarkers"],
         serde_json::json!([{"Name": "b", "Color": "#FF0000", "Code": 5, "Size": 3}])
     );
-    cap.borrow_mut().clear();
+    cap.lock().unwrap().clear();
 
     dss.command("ClearBusMarkers");
     dss.command("plot type=circuit");
@@ -224,20 +232,20 @@ fn visualize_payload_and_guards() {
     assert_eq!(v["ElementName"], "l1");
     assert_eq!(v["ElementType"], "Line");
     assert_eq!(v["Quantity"], "Power");
-    cap.borrow_mut().clear();
+    cap.lock().unwrap().clear();
 
     // `visualize voltage`/`current` map the quantity by first letter.
     dss.command("visualize current Line.l1");
     assert_eq!(only_payload(&cap)["Quantity"], "Current");
-    cap.borrow_mut().clear();
+    cap.lock().unwrap().clear();
     dss.command("visualize voltage Line.l1");
     assert_eq!(only_payload(&cap)["Quantity"], "Voltage");
-    cap.borrow_mut().clear();
+    cap.lock().unwrap().clear();
 
     // Element-not-found: #282-equivalent error, no callback.
     dss.command("visualize powers Line.nope");
     assert!(
-        cap.borrow().is_empty(),
+        cap.lock().unwrap().is_empty(),
         "not-found must suppress the callback"
     );
     assert!(
@@ -253,7 +261,10 @@ fn visualize_unsolved_guard() {
     dss.command("new circuit.t basekv=12.47 bus1=src");
     dss.command("new line.l1 bus1=src bus2=b");
     dss.command("visualize powers Line.l1");
-    assert!(cap.borrow().is_empty(), "unsolved visualize must not fire");
+    assert!(
+        cap.lock().unwrap().is_empty(),
+        "unsolved visualize must not fire"
+    );
     assert!(
         dss.errors()
             .iter()
@@ -276,7 +287,7 @@ fn unsolved_guard_covers_all_guarded_types() {
         dss.command("new line.l1 bus1=src bus2=b");
         dss.command(&format!("plot type={ty}"));
         assert!(
-            cap.borrow().is_empty(),
+            cap.lock().unwrap().is_empty(),
             "type={ty}: unsolved guard must suppress the callback"
         );
         assert!(
@@ -305,9 +316,9 @@ fn channels_cap_and_negative_wrap() {
     let ch = v["Channels"].as_array().expect("Channels array");
     assert_eq!(ch.len(), 51, "channel list caps at 51");
 
-    cap.borrow_mut().clear();
+    cap.lock().unwrap().clear();
     dss.command("plot type=monitor object=m1 channels=(1,-2,3)");
-    let g = cap.borrow();
+    let g = cap.lock().unwrap();
     let v: serde_json::Value = serde_json::from_str(&g[0]).unwrap();
     let ch = v["Channels"].as_array().unwrap();
     assert_eq!(ch[1].as_u64(), Some(4294967294), "-2 wraps modulo 2^32");

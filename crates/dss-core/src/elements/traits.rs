@@ -22,7 +22,9 @@ pub struct ElemRef {
 
 /// Element storage the solver walks — implemented by the executive's class
 /// registry. Replaces Pascal's `TDSSPointerList` of `TDSSCktElement`.
-pub trait ElemStore {
+///
+/// `: Send` is the P7 thread-readiness rider (DE_PASCALIZE Part V / R1).
+pub trait ElemStore: Send {
     fn ckt_elem(&self, r: ElemRef) -> &dyn CktElement;
     fn ckt_elem_mut(&mut self, r: ElemRef) -> &mut dyn CktElement;
 
@@ -201,7 +203,9 @@ pub struct ReliabilityData {
 }
 
 /// Pascal `TDSSCktElement` virtual surface (Phase 3 subset).
-pub trait CktElement {
+///
+/// `: Send` is the P7 thread-readiness rider (DE_PASCALIZE Part V / R1).
+pub trait CktElement: Send {
     fn cd(&self) -> &CktElementData;
     fn cd_mut(&mut self) -> &mut CktElementData;
 
