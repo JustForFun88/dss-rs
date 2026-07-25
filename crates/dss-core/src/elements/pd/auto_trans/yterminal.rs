@@ -6,6 +6,7 @@
 
 use num_complex::Complex64;
 
+use crate::elements::pd::winding::{Connection, TermRef, WdgTerms};
 use crate::support::cmatrix::CMatrix;
 use crate::util::{EPSILON, inv_sqrt3_x1000, sqrt3};
 
@@ -25,7 +26,7 @@ impl AutoTrans {
         // Determine Delta Direction (the Series arm is `Auto` → 1).
         if self.windings[0].connection == self.windings[1].connection {
             self.delta_direction = 1;
-        } else if self.windings[0].connection == 2 {
+        } else if self.windings[0].connection == Connection::Series {
             self.delta_direction = 1; // Auto
         } else {
             let ihv = if self.windings[0].kvll >= self.windings[1].kvll {
@@ -34,9 +35,9 @@ impl AutoTrans {
                 2
             };
             match self.windings[ihv - 1].connection {
-                0 => self.delta_direction = if self.hv_leads_lv { -1 } else { 1 },
-                1 => self.delta_direction = if self.hv_leads_lv { 1 } else { -1 },
-                _ => {}
+                Connection::Wye => self.delta_direction = if self.hv_leads_lv { -1 } else { 1 },
+                Connection::Delta => self.delta_direction = if self.hv_leads_lv { 1 } else { -1 },
+                Connection::Series => {}
             }
         }
 
@@ -71,7 +72,7 @@ impl AutoTrans {
         let mut kv_series = self.kv_series;
         for w in &mut self.windings {
             match w.connection {
-                0 => {
+                Connection::Wye => {
                     // Wye — assume 3-phase for the 2-phase designation.
                     w.vbase = if np == 2 || np == 3 {
                         w.kvll * inv_sqrt3_x1000()
@@ -79,8 +80,8 @@ impl AutoTrans {
                         w.kvll * 1000.0
                     };
                 }
-                1 => w.vbase = w.kvll * 1000.0, // Delta
-                2 => {
+                Connection::Delta => w.vbase = w.kvll * 1000.0,
+                Connection::Series => {
                     // Series winding for the auto (should be winding 1).
                     kv_series = if np == 2 || np == 3 {
                         (w.kvll - w2_kvll) / sqrt3()
@@ -92,7 +93,6 @@ impl AutoTrans {
                     }
                     w.vbase = kv_series * 1000.0;
                 }
-                _ => {}
             }
         }
         self.kv_series = kv_series;
@@ -120,14 +120,13 @@ impl AutoTrans {
         // Normal/Emergency terminal current rating (UE check).
         let w1 = &self.windings[0];
         let vfactor = match w1.connection {
-            0 => w1.vbase * 0.001, // wye
-            1 => match np {
+            Connection::Wye => w1.vbase * 0.001,
+            Connection::Delta => match np {
                 1 => w1.vbase * 0.001,
                 2 | 3 => w1.vbase * 0.001 / sqrt3(),
                 _ => w1.vbase * 0.001 * 0.5 / (std::f64::consts::PI / np as f64).sin(),
             },
-            2 => w1.vbase * 0.001, // series
-            _ => 1.0,
+            Connection::Series => w1.vbase * 0.001,
         };
         self.norm_amps = self.norm_max_hkva / np as f64 / vfactor;
         self.emerg_amps = self.emerg_max_hkva / np as f64 / vfactor;
@@ -190,19 +189,19 @@ impl AutoTrans {
             };
             zb.set(i, i, v);
         }
-        // Off diagonals (running XSC index `k`, Pascal starts at NumWindings).
-        let mut k = nw - 1;
-        for i in 0..nw - 1 {
-            for j in (i + 1)..(nw - 1) {
-                let term = Complex64::new(
-                    rmult * (self.windings[i + 1].rpu + self.windings[j + 1].rpu),
-                    freq_mult * self.xsc[k],
-                ) * zbase;
-                let v = (zb.get(i, i) + zb.get(j, j) - term) * 0.5;
-                zb.set(i, j, v);
-                zb.set(j, i, v);
-                k += 1;
-            }
+        // Off diagonals: the upper triangle of the `nw-1` block, one XSC entry
+        // per (i, j) pair in row-major order. Pascal's running index starts at
+        // `XSC[NumWindings]` → 0-based `xsc[nw-1]`, so pair `t` reads
+        // `xsc[nw-1+t]` (same (i, j, k) sequence as the old running `k`).
+        let off_pairs = (0..nw - 1).flat_map(|i| ((i + 1)..(nw - 1)).map(move |j| (i, j)));
+        for (t, (i, j)) in off_pairs.enumerate() {
+            let term = Complex64::new(
+                rmult * (self.windings[i + 1].rpu + self.windings[j + 1].rpu),
+                freq_mult * self.xsc[nw - 1 + t],
+            ) * zbase;
+            let v = (zb.get(i, i) + zb.get(j, j) - term) * 0.5;
+            zb.set(i, j, v);
+            zb.set(j, i, v);
         }
 
         if zb.invert().is_err() {
@@ -258,10 +257,11 @@ impl AutoTrans {
         let mut yterm = CMatrix::new(n2);
         let mut yterm_nl = CMatrix::new(n2);
         let mut at2 = CMatrix::new(n2);
-        for i in 1..=nw {
-            let denom = self.windings[i - 1].vbase * zero_tap_fix(self.windings[i - 1].putap);
-            at2.set(2 * i - 2, i - 1, Complex64::new(1.0 / denom, 0.0));
-            at2.set(2 * i - 1, i - 1, Complex64::new(-1.0 / denom, 0.0));
+        for (iwind, w) in self.windings.iter().enumerate() {
+            let denom = w.vbase * zero_tap_fix(w.putap);
+            let wt = WdgTerms::of(iwind);
+            at2.set(wt.plus, iwind, Complex64::new(1.0 / denom, 0.0));
+            at2.set(wt.minus, iwind, Complex64::new(-1.0 / denom, 0.0));
         }
         let mut av = vec![Complex64::ZERO; n2];
         let mut s1 = vec![Complex64::ZERO; n2];
@@ -301,11 +301,11 @@ impl AutoTrans {
         // Anti-float adders: a small admittance on both conductors of each
         // winding so the matrix always inverts even without a voltage ref.
         if self.ppm_float_factor != 0.0 {
-            for i in 1..=nw {
-                let yadder = Complex64::new(0.0, self.windings[i - 1].y_ppm);
-                for j in (2 * i - 1)..=(2 * i) {
-                    yterm.add(j - 1, j - 1, yadder);
-                }
+            for (iwind, w) in self.windings.iter().enumerate() {
+                let yadder = Complex64::new(0.0, w.y_ppm);
+                let wt = WdgTerms::of(iwind);
+                yterm.add(wt.plus, wt.plus, yadder);
+                yterm.add(wt.minus, wt.minus, yadder);
             }
         }
 
@@ -328,23 +328,23 @@ impl AutoTrans {
         let mut yterm = CMatrix::new(n2);
         let yterm_nl = CMatrix::new(n2);
 
-        for i in 1..=nw {
-            let yr = Complex64::new(1.0 / self.windings[i - 1].rdcohms, 0.0); // Siemens
-            let idx = 2 * i - 2; // 0-based (Pascal 1-based `2*i - 1`)
-            yterm.set(idx, idx, yr);
-            yterm.set(idx + 1, idx + 1, yr);
-            yterm.set(idx, idx + 1, -yr);
-            yterm.set(idx + 1, idx, -yr);
+        for (iwind, w) in self.windings.iter().enumerate() {
+            let yr = Complex64::new(1.0 / w.rdcohms, 0.0); // Siemens
+            let wt = WdgTerms::of(iwind);
+            yterm.set(wt.plus, wt.plus, yr);
+            yterm.set(wt.minus, wt.minus, yr);
+            yterm.set(wt.plus, wt.minus, -yr);
+            yterm.set(wt.minus, wt.plus, -yr);
         }
 
         // Anti-float as a real conductance so the matrix inverts even without a
         // voltage reference on all sides.
         if self.ppm_float_factor != 0.0 {
-            for i in 1..=nw {
-                let yadder = Complex64::new(-self.windings[i - 1].y_ppm, 0.0); // G + j0
-                for j in (2 * i - 1)..=(2 * i) {
-                    yterm.add(j - 1, j - 1, yadder);
-                }
+            for (iwind, w) in self.windings.iter().enumerate() {
+                let yadder = Complex64::new(-w.y_ppm, 0.0); // G + j0
+                let wt = WdgTerms::of(iwind);
+                yterm.add(wt.plus, wt.plus, yadder);
+                yterm.add(wt.minus, wt.minus, yadder);
             }
         }
 
@@ -358,18 +358,27 @@ impl AutoTrans {
     pub(super) fn build_yprim_component(
         yp: &mut CMatrix,
         yt: &CMatrix,
-        term_ref: &[usize],
+        term_ref: &TermRef,
         nw: usize,
         np: usize,
     ) {
-        let nw2 = 2 * nw;
-        for i in 1..=nw2 {
-            for j in 1..=i {
-                let value = yt.get(i - 1, j - 1);
-                for kk in 0..np {
-                    let r = term_ref[i + kk * nw2];
-                    let c = term_ref[j + kk * nw2];
-                    yp.add_sym(r - 1, c - 1, value);
+        // Walk the lower triangle of the `2·nw` `Y_Terminal` as (winding, side)
+        // pairs — identical to the Transformer's, in the same `(i, j, phase)`
+        // `add_sym` order as the flat Pascal `TermRef` stamping.
+        for wi in 0..nw {
+            for side_i in 0..2 {
+                let i = 2 * wi + side_i;
+                for wj in 0..=wi {
+                    let side_j_max = if wj == wi { side_i } else { 1 };
+                    for side_j in 0..=side_j_max {
+                        let j = 2 * wj + side_j;
+                        let value = yt.get(i, j);
+                        for kk in 0..np {
+                            let r = term_ref.pair(kk, wi, nw)[side_i];
+                            let c = term_ref.pair(kk, wj, nw)[side_j];
+                            yp.add_sym(r, c, value);
+                        }
+                    }
                 }
             }
         }
@@ -403,14 +412,13 @@ impl AutoTrans {
         let conn = self.windings[iwind - 1].connection;
         for i in 0..nphases {
             match conn {
-                0 => vbuffer[i] = vt[i + k] - vt[neut], // Wye
-                1 => {
+                Connection::Wye => vbuffer[i] = vt[i + k] - vt[neut],
+                Connection::Delta => {
                     // Delta: next phase in sequence (rotate_phases is 1-based).
                     let ii = self.rotate_phases(i + 1) - 1;
                     vbuffer[i] = vt[i + k] - vt[ii + k];
                 }
-                2 => vbuffer[i] = vt[i + k] - vt[i + nconds], // Series (winding 1)
-                _ => {}
+                Connection::Series => vbuffer[i] = vt[i + k] - vt[i + nconds], // winding 1
             }
         }
     }
@@ -435,27 +443,25 @@ impl AutoTrans {
         let mut iterm_nl = vec![Complex64::ZERO; 2 * nw];
         let mut kk = 0usize;
         for iphase in 1..=np {
-            for iwind in 1..=nw {
-                let i = 2 * iwind - 1; // 1-based into vterm
-                let base = iphase + (iwind - 1) * nconds; // 1-based Vterminal index
-                match self.windings[iwind - 1].connection {
-                    0 => {
+            for (iwind, w) in self.windings.iter().enumerate() {
+                let wt = WdgTerms::of(iwind);
+                let base = iphase + iwind * nconds - 1; // 0-based Vterminal phase conductor
+                match w.connection {
+                    Connection::Wye => {
                         // Wye (common winding usually)
-                        vterm[i - 1] = vterminal[base - 1];
-                        vterm[i] = vterminal[base + np - 1];
+                        vterm[wt.plus] = vterminal[base];
+                        vterm[wt.minus] = vterminal[base + np];
                     }
-                    1 => {
-                        // Delta
+                    Connection::Delta => {
                         let jphase = self.rotate_phases(iphase);
-                        vterm[i - 1] = vterminal[base - 1];
-                        vterm[i] = vterminal[jphase + (iwind - 1) * nconds - 1];
+                        vterm[wt.plus] = vterminal[base];
+                        vterm[wt.minus] = vterminal[jphase + iwind * nconds - 1];
                     }
-                    2 => {
-                        // Series winding
-                        vterm[i - 1] = vterminal[base - 1];
-                        vterm[i] = vterminal[iphase + np - 1];
+                    Connection::Series => {
+                        // Series winding straddles the H/X terminals.
+                        vterm[wt.plus] = vterminal[base];
+                        vterm[wt.minus] = vterminal[iphase + np - 1];
                     }
-                    _ => {}
                 }
             }
             self.y_term.mv_mult(&mut iterm, &vterm);

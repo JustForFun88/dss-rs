@@ -7,6 +7,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::pd::transformer::{ControlledTransformer, CoreType};
+use crate::elements::pd::winding::Connection;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
@@ -114,7 +115,7 @@ impl CktElement for AutoTrans {
     /// reproduced 1:1 — `NodeRef` 1-based, `TermNodeRef` 0-based).
     fn set_node_ref(&mut self, iterm: usize, node_ref_array: &[usize]) {
         self.cd.set_node_ref(iterm, node_ref_array);
-        if iterm == 2 && self.windings[0].connection == 2 {
+        if iterm == 2 && self.windings[0].connection == Connection::Series {
             let np = self.cd.nphases;
             let nconds = self.cd.nconds;
             for i in 1..=np {
@@ -232,7 +233,7 @@ impl CktElement for AutoTrans {
             .take(nw)
             .map(|w| {
                 // Pascal: (NPhases > 1) or (Connection <> TAutoTransConnection.Wye)
-                if nphases > 1 || w.connection != 0 {
+                if nphases > 1 || w.connection != Connection::Wye {
                     Some(w.kvll / sqrt3())
                 } else {
                     Some(w.kvll)
@@ -340,7 +341,7 @@ impl DssObject for AutoTrans {
             PHASES => self.cd.nphases as i32,
             WINDINGS => self.num_windings,
             WDG => self.active_winding,
-            CONN => self.windings[self.aw()].connection,
+            CONN => self.windings[self.aw()].connection.ordinal(),
             NUMTAPS => self.windings[self.aw()].num_taps,
             LEADLAG => self.hv_leads_lv as i32,
             CORE => self.core_type.ordinal(),
@@ -356,7 +357,9 @@ impl DssObject for AutoTrans {
             WDG => self.active_winding = value,
             CONN => {
                 let w = self.aw();
-                self.windings[w].connection = value;
+                if let Some(c) = Connection::from_ordinal(value) {
+                    self.windings[w].connection = c;
+                }
             }
             NUMTAPS => {
                 let w = self.aw();
@@ -539,7 +542,11 @@ impl DssObject for AutoTrans {
 
     fn get_struct_i32_array(&self, idx: usize) -> Vec<i32> {
         match idx {
-            prop::CONNS => self.windings.iter().map(|w| w.connection).collect(),
+            prop::CONNS => self
+                .windings
+                .iter()
+                .map(|w| w.connection.ordinal())
+                .collect(),
             // `NumTaps` is an `ON_ARRAY` per-winding integer scalar (Pascal
             // `IntegerOnStructArrayProperty`): the schema `preferArray` sweep
             // reads the full per-winding array.
@@ -551,7 +558,9 @@ impl DssObject for AutoTrans {
         match idx {
             prop::CONNS => {
                 for (w, v) in self.windings.iter_mut().zip(values) {
-                    w.connection = *v;
+                    if let Some(c) = Connection::from_ordinal(*v) {
+                        w.connection = c;
+                    }
                 }
             }
             _ => unreachable!("AutoTrans has no struct enum array {idx}"),
@@ -593,8 +602,8 @@ impl DssObject for AutoTrans {
             CONN => {
                 // Force winding 1 = Series, winding 2 = Wye regardless of input.
                 match self.active_winding {
-                    1 => self.windings[0].connection = 2,
-                    2 => self.windings[1].connection = 0,
+                    1 => self.windings[0].connection = Connection::Series,
+                    2 => self.windings[1].connection = Connection::Wye,
                     _ => {}
                 }
                 self.cd.yorder = self.cd.nconds * self.cd.nterms;
@@ -602,8 +611,8 @@ impl DssObject for AutoTrans {
             CONNS => {
                 for i in 1..=self.num_windings.max(0) as usize {
                     match i {
-                        1 => self.windings[0].connection = 2,
-                        2 => self.windings[1].connection = 0,
+                        1 => self.windings[0].connection = Connection::Series,
+                        2 => self.windings[1].connection = Connection::Wye,
                         _ => {}
                     }
                 }

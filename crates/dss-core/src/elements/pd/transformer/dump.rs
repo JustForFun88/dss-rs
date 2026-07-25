@@ -13,6 +13,7 @@ use crate::report::save::dump::{self, DumpCtx};
 use crate::support::cmatrix::CMatrix;
 
 use super::{Transformer, prop};
+use crate::elements::pd::winding::Connection;
 
 impl Transformer {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
@@ -29,9 +30,9 @@ impl Transformer {
             // i's bus name).
             out.push_str(&format!("~ Wdg={i} bus={}\n", self.cd.get_bus(i)));
             match w.connection {
-                0 => out.push_str("~ conn=wye\n"),
-                1 => out.push_str("~ conn=delta\n"),
-                _ => {}
+                Connection::Wye => out.push_str("~ conn=wye\n"),
+                Connection::Delta => out.push_str("~ conn=delta\n"),
+                Connection::Series => {}
             }
             out.push_str(&format!("~ kv={}\n", fixed(w.kvll, 2)));
             out.push_str(&format!("~ kVA={}\n", fixed(w.kva, 1)));
@@ -99,10 +100,16 @@ impl Transformer {
             write_lower_tri(out, &self.y_term, 2 * nw, |v| fixed(v, 4));
             out.push('\n');
             out.push_str("TermRef= ");
-            let n = 2 * nw * self.cd.nphases;
-            for i in 1..=n {
-                out.push_str(&self.term_ref[i].to_string());
-                out.push(' ');
+            // Pascal dumps the flat 1-based `TermRef`; walk the pairs in the same
+            // phase-major, winding-major, [plus, minus] order (1-based values).
+            for phase in 0..self.cd.nphases {
+                for wind in 0..nw {
+                    let [plus, minus] = self.term_ref.pair(phase, wind, nw);
+                    out.push_str(&(plus + 1).to_string());
+                    out.push(' ');
+                    out.push_str(&(minus + 1).to_string());
+                    out.push(' ');
+                }
             }
             out.push('\n');
         }
