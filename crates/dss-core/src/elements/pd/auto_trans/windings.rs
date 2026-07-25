@@ -3,6 +3,7 @@
 //! surface (`present_tap`/`set_present_tap`/…) and the winding readouts land with
 //! the RegControl integration in WPG.15 Stage C.
 
+use crate::elements::pd::winding::Connection;
 use crate::support::cmatrix::CMatrix;
 
 use super::{AutoTrans, auto_winding_init, xsc_size};
@@ -61,7 +62,7 @@ impl AutoTrans {
     /// (0 = wye, 1 = delta, 2 = series). RegControl's regulated-bus path.
     pub fn wdg_connection(&self, i: usize) -> i32 {
         if i >= 1 && i <= self.num_windings.max(0) as usize {
-            self.windings[i - 1].connection
+            self.windings[i - 1].connection.ordinal()
         } else {
             0
         }
@@ -241,25 +242,23 @@ impl AutoTrans {
                 for j in 1..=nw {
                     k += 1;
                     match self.windings[j - 1].connection {
-                        0 => {
-                            // Wye
+                        Connection::Wye => {
                             self.term_ref[k] = (j - 1) * nconds + i;
                             k += 1;
                             self.term_ref[k] = self.term_ref[k - 1] + np;
                         }
-                        1 => {
+                        Connection::Delta => {
                             // Delta — second conductor connects to the next phase
                             self.term_ref[k] = (j - 1) * nconds + i;
                             k += 1;
                             self.term_ref[k] = (j - 1) * nconds + self.rotate_phases(i);
                         }
-                        2 => {
+                        Connection::Series => {
                             // Series winding for the autotransformer
                             self.term_ref[k] = i;
                             k += 1;
                             self.term_ref[k] = i + np;
                         }
-                        _ => {}
                     }
                 }
             }

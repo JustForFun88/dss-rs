@@ -3,6 +3,7 @@
 //! `EndEdit` and `MakeLike`. Split out of `xfmr_code/mod.rs` (no behavioral
 //! change).
 
+use crate::elements::pd::winding::Connection;
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{XfmrCodeObj, prop, xsc_size};
@@ -27,7 +28,7 @@ impl DssObject for XfmrCodeObj {
             PHASES => self.fnphases,
             WINDINGS => self.num_windings,
             WDG => self.active_winding,
-            CONN => self.windings[self.aw()].connection,
+            CONN => self.windings[self.aw()].connection.ordinal(),
             NUMTAPS => self.windings[self.aw()].num_taps,
             SEASONS => self.num_kva_ratings,
             _ => unreachable!("XfmrCode has no integer property {idx}"),
@@ -41,7 +42,9 @@ impl DssObject for XfmrCodeObj {
             WDG => self.active_winding = value,
             CONN => {
                 let w = self.aw();
-                self.windings[w].connection = value;
+                if let Some(c) = Connection::from_ordinal(value) {
+                    self.windings[w].connection = c;
+                }
             }
             NUMTAPS => {
                 let w = self.aw();
@@ -179,7 +182,11 @@ impl DssObject for XfmrCodeObj {
 
     fn get_struct_i32_array(&self, idx: usize) -> Vec<i32> {
         match idx {
-            prop::CONNS => self.windings.iter().map(|w| w.connection).collect(),
+            prop::CONNS => self
+                .windings
+                .iter()
+                .map(|w| w.connection.ordinal())
+                .collect(),
             // NumTaps rendered as a JSON per-winding array under `ON_ARRAY`
             // (IntegerOnStructArrayProperty; mirrors Transformer).
             prop::NUMTAPS => self.windings.iter().map(|w| w.num_taps).collect(),
@@ -190,7 +197,9 @@ impl DssObject for XfmrCodeObj {
         match idx {
             prop::CONNS => {
                 for (w, v) in self.windings.iter_mut().zip(values) {
-                    w.connection = *v;
+                    if let Some(c) = Connection::from_ordinal(*v) {
+                        w.connection = c;
+                    }
                 }
             }
             prop::NUMTAPS => {

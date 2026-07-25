@@ -6,6 +6,7 @@
 
 use num_complex::Complex64;
 
+use crate::elements::pd::winding::Connection;
 use crate::support::cmatrix::CMatrix;
 use crate::util::{EPSILON, inv_sqrt3_x1000, sqrt3};
 
@@ -25,7 +26,7 @@ impl AutoTrans {
         // Determine Delta Direction (the Series arm is `Auto` → 1).
         if self.windings[0].connection == self.windings[1].connection {
             self.delta_direction = 1;
-        } else if self.windings[0].connection == 2 {
+        } else if self.windings[0].connection == Connection::Series {
             self.delta_direction = 1; // Auto
         } else {
             let ihv = if self.windings[0].kvll >= self.windings[1].kvll {
@@ -34,9 +35,9 @@ impl AutoTrans {
                 2
             };
             match self.windings[ihv - 1].connection {
-                0 => self.delta_direction = if self.hv_leads_lv { -1 } else { 1 },
-                1 => self.delta_direction = if self.hv_leads_lv { 1 } else { -1 },
-                _ => {}
+                Connection::Wye => self.delta_direction = if self.hv_leads_lv { -1 } else { 1 },
+                Connection::Delta => self.delta_direction = if self.hv_leads_lv { 1 } else { -1 },
+                Connection::Series => {}
             }
         }
 
@@ -71,7 +72,7 @@ impl AutoTrans {
         let mut kv_series = self.kv_series;
         for w in &mut self.windings {
             match w.connection {
-                0 => {
+                Connection::Wye => {
                     // Wye — assume 3-phase for the 2-phase designation.
                     w.vbase = if np == 2 || np == 3 {
                         w.kvll * inv_sqrt3_x1000()
@@ -79,8 +80,8 @@ impl AutoTrans {
                         w.kvll * 1000.0
                     };
                 }
-                1 => w.vbase = w.kvll * 1000.0, // Delta
-                2 => {
+                Connection::Delta => w.vbase = w.kvll * 1000.0,
+                Connection::Series => {
                     // Series winding for the auto (should be winding 1).
                     kv_series = if np == 2 || np == 3 {
                         (w.kvll - w2_kvll) / sqrt3()
@@ -92,7 +93,6 @@ impl AutoTrans {
                     }
                     w.vbase = kv_series * 1000.0;
                 }
-                _ => {}
             }
         }
         self.kv_series = kv_series;
@@ -120,14 +120,13 @@ impl AutoTrans {
         // Normal/Emergency terminal current rating (UE check).
         let w1 = &self.windings[0];
         let vfactor = match w1.connection {
-            0 => w1.vbase * 0.001, // wye
-            1 => match np {
+            Connection::Wye => w1.vbase * 0.001,
+            Connection::Delta => match np {
                 1 => w1.vbase * 0.001,
                 2 | 3 => w1.vbase * 0.001 / sqrt3(),
                 _ => w1.vbase * 0.001 * 0.5 / (std::f64::consts::PI / np as f64).sin(),
             },
-            2 => w1.vbase * 0.001, // series
-            _ => 1.0,
+            Connection::Series => w1.vbase * 0.001,
         };
         self.norm_amps = self.norm_max_hkva / np as f64 / vfactor;
         self.emerg_amps = self.emerg_max_hkva / np as f64 / vfactor;
@@ -403,14 +402,13 @@ impl AutoTrans {
         let conn = self.windings[iwind - 1].connection;
         for i in 0..nphases {
             match conn {
-                0 => vbuffer[i] = vt[i + k] - vt[neut], // Wye
-                1 => {
+                Connection::Wye => vbuffer[i] = vt[i + k] - vt[neut],
+                Connection::Delta => {
                     // Delta: next phase in sequence (rotate_phases is 1-based).
                     let ii = self.rotate_phases(i + 1) - 1;
                     vbuffer[i] = vt[i + k] - vt[ii + k];
                 }
-                2 => vbuffer[i] = vt[i + k] - vt[i + nconds], // Series (winding 1)
-                _ => {}
+                Connection::Series => vbuffer[i] = vt[i + k] - vt[i + nconds], // winding 1
             }
         }
     }
@@ -439,23 +437,21 @@ impl AutoTrans {
                 let i = 2 * iwind - 1; // 1-based into vterm
                 let base = iphase + (iwind - 1) * nconds; // 1-based Vterminal index
                 match self.windings[iwind - 1].connection {
-                    0 => {
+                    Connection::Wye => {
                         // Wye (common winding usually)
                         vterm[i - 1] = vterminal[base - 1];
                         vterm[i] = vterminal[base + np - 1];
                     }
-                    1 => {
-                        // Delta
+                    Connection::Delta => {
                         let jphase = self.rotate_phases(iphase);
                         vterm[i - 1] = vterminal[base - 1];
                         vterm[i] = vterminal[jphase + (iwind - 1) * nconds - 1];
                     }
-                    2 => {
+                    Connection::Series => {
                         // Series winding
                         vterm[i - 1] = vterminal[base - 1];
                         vterm[i] = vterminal[iphase + np - 1];
                     }
-                    _ => {}
                 }
             }
             self.y_term.mv_mult(&mut iterm, &vterm);

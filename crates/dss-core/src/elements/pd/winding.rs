@@ -6,12 +6,43 @@
 
 use crate::util::sqrt3;
 
+/// Pascal transformer/autotransformer winding connection code. `Wye`/`Delta`
+/// are the general set (`Transformer`, `XfmrCode`); `Series` (2) is
+/// autotransformer-only (`AutoTrans.pas` `AutoTransConnectionEnum`). The
+/// discriminants are user-visible and frozen — they round-trip through the
+/// `DssEnum` registry (`Set conn=`/`?`/dump) — so `i32` survives only at the
+/// property parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum Connection {
+    Wye = 0,
+    Delta = 1,
+    Series = 2,
+}
+
+impl Connection {
+    /// The connection ordinal (the property `?`/dump boundary value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// `TWinding.Connection(ordinal)`; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Wye),
+            1 => Some(Self::Delta),
+            2 => Some(Self::Series),
+            _ => None,
+        }
+    }
+}
+
 /// Pascal `TWinding`. Fields keep the Pascal names (snake-cased); 0-based here
 /// only in that the owning array is 0-based — the winding's own data is flat.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Winding {
-    /// Pascal `Connection` (0 = wye, 1 = delta).
-    pub connection: i32,
+    /// Pascal `Connection` (0 = wye, 1 = delta, 2 = series [auto only]).
+    pub connection: Connection,
     /// Pascal `kVLL` — for 2- and 3-phase always kV line-line, else actual kV.
     pub kvll: f64,
     /// Pascal `VBase` — base winding voltage (volts), derived from `kVLL`.
@@ -55,7 +86,7 @@ impl Winding {
         let rdcpu = rpu * 0.85;
         let vbase = kvll / sqrt3() * 1000.0;
         let mut w = Self {
-            connection: 0,
+            connection: Connection::Wye,
             kvll,
             vbase,
             kva,
@@ -93,7 +124,7 @@ mod tests {
     #[test]
     fn init_defaults_match_pascal() {
         let w = Winding::new();
-        assert_eq!(w.connection, 0);
+        assert_eq!(w.connection, Connection::Wye);
         assert_eq!(w.kvll, 12.47);
         assert!((w.vbase - 12.47 / 3.0_f64.sqrt() * 1000.0).abs() < 1e-9);
         assert_eq!(w.kva, 1000.0);

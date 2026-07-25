@@ -22,7 +22,7 @@ use crate::elements::control::reg_control::RegControl;
 use crate::elements::general::xfmr_code::XfmrCodeObj;
 use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::transformer::Transformer;
-use crate::elements::pd::winding::Winding;
+use crate::elements::pd::winding::{Connection, Winding};
 use crate::elements::traits::CktElement;
 use crate::exec::registry::DssClass;
 
@@ -98,7 +98,7 @@ impl CimBank {
             if w.phase_str.contains('C') {
                 self.phase_c[i - 1] = 1;
             }
-            self.connections[i - 1] = w.w.connection;
+            self.connections[i - 1] = w.w.connection.ordinal();
             if self.connections[i - 1] != self.connections[0] {
                 self.angles[i - 1] = 1;
             }
@@ -347,7 +347,7 @@ fn write_xfmr_code(buf: &mut writer::Writer, cim: &mut CimExporter, code: &XfmrC
                 clock,
             );
         } else {
-            if w.connection == 1 {
+            if w.connection == Connection::Delta {
                 writer::winding_connection_enum(buf, ProfileChoice::Cat, "D");
             } else if w.rneut > 0.0 || w.xneut > 0.0 {
                 writer::winding_connection_enum(buf, ProfileChoice::Cat, "Yn");
@@ -534,7 +534,7 @@ fn xfmr_tank_phases_and_ground(buf: &mut writer::Writer, w: &WdgData) {
     let mut reverse_ground = false;
     let mut wye_ground = false;
     let mut wye_unground = false;
-    if w.w.connection == 1 {
+    if w.w.connection == Connection::Delta {
         // delta
         writer::boolean_node(buf, ProfileChoice::Fun, "TransformerEnd.grounded", false);
     } else if w.node_j2 == 0 {
@@ -1225,7 +1225,7 @@ pub(crate) fn write_transformers(
                     "PowerTransformerEnd.r",
                     zbase * w.w.rpu,
                 );
-                if w.w.connection == 1 {
+                if w.w.connection == Connection::Delta {
                     writer::winding_connection_kind_node(buf, ProfileChoice::Fun, "D");
                 } else if w.w.rneut > 0.0 || w.w.xneut > 0.0 {
                     writer::winding_connection_kind_node(buf, ProfileChoice::Fun, "Yn");
@@ -1243,7 +1243,7 @@ pub(crate) fn write_transformers(
                     "PowerTransformerEnd.phaseAngleClock",
                     clock,
                 );
-                if w.w.connection == 1 {
+                if w.w.connection == Connection::Delta {
                     writer::boolean_node(buf, ProfileChoice::Fun, "TransformerEnd.grounded", false);
                 } else if w.node_j2 == 0 {
                     writer::boolean_node(buf, ProfileChoice::Fun, "TransformerEnd.grounded", true);

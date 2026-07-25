@@ -5,7 +5,7 @@
 use num_complex::Complex64;
 
 use crate::elements::general::xfmr_code::XfmrCodeObj;
-use crate::elements::pd::winding::Winding;
+use crate::elements::pd::winding::{Connection, Winding};
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::support::cmatrix::CMatrix;
 
@@ -68,7 +68,7 @@ impl Transformer {
     /// (0 = wye, 1 = delta). Used by RegControl's regulated-bus path.
     pub fn wdg_connection(&self, i: usize) -> i32 {
         if i >= 1 && i <= self.num_windings.max(0) as usize {
-            self.windings[i - 1].connection
+            self.windings[i - 1].connection.ordinal()
         } else {
             0
         }
@@ -231,13 +231,13 @@ impl Transformer {
         let conn = self.windings[iwind - 1].connection;
         for i in 0..nphases {
             match conn {
-                0 => vbuffer[i] = vt[i + k] - vt[neut], // Wye
-                1 => {
+                Connection::Wye => vbuffer[i] = vt[i + k] - vt[neut],
+                Connection::Delta => {
                     // Delta: next phase in sequence (rotate_phases is 1-based).
                     let ii = self.rotate_phases(i + 1) - 1;
                     vbuffer[i] = vt[i + k] - vt[ii + k];
                 }
-                _ => {}
+                Connection::Series => {}
             }
         }
     }
@@ -333,19 +333,18 @@ impl Transformer {
                 for j in 1..=nw {
                     k += 1;
                     match self.windings[j - 1].connection {
-                        0 => {
-                            // Wye
+                        Connection::Wye => {
                             self.term_ref[k] = (j - 1) * nconds + i;
                             k += 1;
                             self.term_ref[k] = j * nconds;
                         }
-                        1 => {
+                        Connection::Delta => {
                             // Delta — second conductor connects to the next phase
                             self.term_ref[k] = (j - 1) * nconds + i;
                             k += 1;
                             self.term_ref[k] = (j - 1) * nconds + self.rotate_phases(i);
                         }
-                        _ => {}
+                        Connection::Series => {}
                     }
                 }
             }

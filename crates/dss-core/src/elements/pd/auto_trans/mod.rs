@@ -32,7 +32,7 @@ mod tests;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::pd::transformer::CoreType;
-use crate::elements::pd::winding::Winding;
+use crate::elements::pd::winding::{Connection, Winding};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
@@ -301,9 +301,9 @@ fn xsc_size(num_windings: i32) -> usize {
 /// is no brought-out neutral impedance).
 fn auto_winding_init(iwinding: usize) -> Winding {
     let (connection, kvll) = if iwinding == 1 {
-        (2, 115.0)
+        (Connection::Series, 115.0)
     } else {
-        (0, 12.47)
+        (Connection::Wye, 12.47)
     };
     let kva = 1000.0;
     let rpu = 0.002;

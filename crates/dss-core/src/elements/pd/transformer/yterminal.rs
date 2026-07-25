@@ -5,7 +5,7 @@
 
 use num_complex::Complex64;
 
-use crate::elements::pd::winding::Winding;
+use crate::elements::pd::winding::{Connection, Winding};
 use crate::support::cmatrix::CMatrix;
 use crate::util::{EPSILON, inv_sqrt3_x1000, sqrt3};
 
@@ -31,9 +31,9 @@ impl Transformer {
                 2
             };
             match self.windings[ihv - 1].connection {
-                0 => self.delta_direction = if self.hv_leads_lv { -1 } else { 1 },
-                1 => self.delta_direction = if self.hv_leads_lv { 1 } else { -1 },
-                _ => {}
+                Connection::Wye => self.delta_direction = if self.hv_leads_lv { -1 } else { 1 },
+                Connection::Delta => self.delta_direction = if self.hv_leads_lv { 1 } else { -1 },
+                Connection::Series => {}
             }
         }
 
@@ -62,15 +62,15 @@ impl Transformer {
         let np = self.cd.nphases;
         for w in &mut self.windings {
             match w.connection {
-                0 => {
+                Connection::Wye => {
                     w.vbase = if np == 2 || np == 3 {
                         w.kvll * inv_sqrt3_x1000()
                     } else {
                         w.kvll * 1000.0
                     };
                 }
-                1 => w.vbase = w.kvll * 1000.0,
-                _ => {}
+                Connection::Delta => w.vbase = w.kvll * 1000.0,
+                Connection::Series => {}
             }
         }
 
@@ -96,13 +96,13 @@ impl Transformer {
         // Normal/Emergency terminal current rating (UE check).
         let w1 = &self.windings[0];
         let vfactor = match w1.connection {
-            0 => w1.vbase * 0.001, // wye
-            1 => match np {
+            Connection::Wye => w1.vbase * 0.001,
+            Connection::Delta => match np {
                 1 => w1.vbase * 0.001,
                 2 | 3 => w1.vbase * 0.001 / sqrt3(),
                 _ => w1.vbase * 0.001 * 0.5 / (std::f64::consts::PI / np as f64).sin(),
             },
-            _ => 1.0,
+            Connection::Series => 1.0,
         };
         self.norm_amps = self.norm_max_hkva / np as f64 / vfactor;
         self.emerg_amps = self.emerg_max_hkva / np as f64 / vfactor;
@@ -299,7 +299,7 @@ impl Transformer {
         freq_mult: f64,
     ) {
         for (i, w) in windings.iter().enumerate() {
-            if w.connection != 0 {
+            if w.connection != Connection::Wye {
                 continue; // wye only (ignore delta and open wye)
             }
             let j = (i + 1) * nconds;
@@ -345,16 +345,16 @@ impl Transformer {
                 let neut_term = iwind * nconds;
                 let i = 2 * iwind - 1; // 1-based into vterm
                 match self.windings[iwind - 1].connection {
-                    0 => {
+                    Connection::Wye => {
                         vterm[i - 1] = vterminal[iphase + (iwind - 1) * nconds - 1];
                         vterm[i] = vterminal[neut_term - 1];
                     }
-                    1 => {
+                    Connection::Delta => {
                         let jphase = self.rotate_phases(iphase);
                         vterm[i - 1] = vterminal[iphase + (iwind - 1) * nconds - 1];
                         vterm[i] = vterminal[jphase + (iwind - 1) * nconds - 1];
                     }
-                    _ => {}
+                    Connection::Series => {}
                 }
             }
             self.y_term.mv_mult(&mut iterm, &vterm);

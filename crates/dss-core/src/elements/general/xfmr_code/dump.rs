@@ -10,6 +10,7 @@ use crate::report::format::{fixed, g};
 use crate::report::save::dump::{self, DumpCtx};
 
 use super::{XfmrCodeObj, prop};
+use crate::elements::pd::winding::Connection;
 
 impl XfmrCodeObj {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, _complete: bool) {
@@ -23,9 +24,9 @@ impl XfmrCodeObj {
             let w = &self.windings[i - 1];
             out.push_str(&format!("~ Wdg={i}\n"));
             match w.connection {
-                0 => out.push_str("~ conn=wye\n"),
-                1 => out.push_str("~ conn=delta\n"),
-                _ => {}
+                Connection::Wye => out.push_str("~ conn=wye\n"),
+                Connection::Delta => out.push_str("~ conn=delta\n"),
+                Connection::Series => {}
             }
             out.push_str(&format!("~ kV={}\n", fixed(w.kvll, 2)));
             out.push_str(&format!("~ kVA={}\n", fixed(w.kva, 1)));
