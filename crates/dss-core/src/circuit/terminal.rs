@@ -8,8 +8,9 @@
 /// Pascal: `TPowerTerminal` (value object)
 #[derive(Debug, Clone)]
 pub struct Terminal {
-    /// Index into the circuit's `Buses` list, or `usize::MAX` if unset.
-    pub bus_ref: usize,
+    /// Index into the circuit's `Buses` list, or `None` if unset (Pascal's
+    /// `BusRef = 0`, our former `usize::MAX` sentinel).
+    pub bus_ref: Option<usize>,
     /// Per-conductor global node references (1-based, 0 = ground).
     pub term_node_ref: Vec<usize>,
     /// Per-conductor closed/open state.
@@ -23,7 +24,7 @@ impl Terminal {
     /// Pascal: `TPowerTerminal.Init`
     pub fn init(ncond: usize) -> Self {
         Self {
-            bus_ref: usize::MAX,
+            bus_ref: None,
             term_node_ref: vec![0; ncond],
             conductors_closed: vec![true; ncond],
             active_conductor: 1,
@@ -32,7 +33,16 @@ impl Terminal {
 
     /// Set the bus reference (circuit Buses index).
     pub fn set_bus(&mut self, bus_idx: usize) {
-        self.bus_ref = bus_idx;
+        self.bus_ref = Some(bus_idx);
+    }
+
+    /// The resolved bus index for a terminal known to be wired (the circuit's
+    /// bus definitions have been processed by `ReprocessBusDefs`). Panics on an
+    /// unwired terminal — the same failure the former `usize::MAX` sentinel
+    /// produced the moment it was used to index `Circuit.buses`.
+    pub fn bus_idx(&self) -> usize {
+        self.bus_ref
+            .expect("terminal bus reference resolved (ReprocessBusDefs ran)")
     }
 
     /// Set the active conductor (1-based, bounds-checked).

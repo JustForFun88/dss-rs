@@ -59,12 +59,9 @@ pub(crate) fn export_currents(
         let cd = elem.cd();
         let (nterms, nconds) = (cd.nterms, cd.nconds);
         s.push_str(&format::upper_elem_name(name));
-        let mut k = 0usize;
-        for _j in 1..=nterms {
+        for term in cd.terminals_i() {
             let mut iresid = Complex64::ZERO;
-            for _i in 1..=nconds {
-                let c = cd.iterminal[k];
-                k += 1;
+            for &c in term {
                 s.push_str(&pair(c));
                 iresid += c;
             }

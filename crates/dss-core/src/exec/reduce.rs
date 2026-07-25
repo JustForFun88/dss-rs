@@ -174,8 +174,8 @@ impl Dss {
         let l = self.red_as_line(r).expect("red_line_snap on a non-line");
         let terms = &l.cd.terminals;
         let bus_refs = [
-            terms.first().map(|t| t.bus_ref).unwrap_or(usize::MAX),
-            terms.get(1).map(|t| t.bus_ref).unwrap_or(usize::MAX),
+            terms.first().and_then(|t| t.bus_ref).unwrap_or(usize::MAX),
+            terms.get(1).and_then(|t| t.bus_ref).unwrap_or(usize::MAX),
         ];
         let bus_names = [l.cd.get_bus(1).to_string(), l.cd.get_bus(2).to_string()];
         LineSnap {

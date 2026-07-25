@@ -224,18 +224,17 @@ impl Transformer {
             return;
         }
         self.cd.compute_vterminal(node_v);
-        let vt = &self.cd.vterminal;
-        let nconds = self.cd.nconds;
-        let k = (iwind - 1) * nconds; // offset for winding (0-based)
-        let neut = nphases + k; // Pascal NeutTerm = Fnphases + k + 1 (1-based)
+        // Winding `iwind` is terminal `iwind-1`; `vt` is that terminal's
+        // conductor slice, so phase `i` is `vt[i]` and the neutral is `vt[nphases]`.
+        let vt = self.cd.term_v(iwind - 1);
         let conn = self.windings[iwind - 1].connection;
         for i in 0..nphases {
             match conn {
-                Connection::Wye => vbuffer[i] = vt[i + k] - vt[neut],
+                Connection::Wye => vbuffer[i] = vt[i] - vt[nphases],
                 Connection::Delta => {
                     // Delta: next phase in sequence (rotate_phases is 1-based).
                     let ii = self.rotate_phases(i + 1) - 1;
-                    vbuffer[i] = vt[i + k] - vt[ii + k];
+                    vbuffer[i] = vt[i] - vt[ii];
                 }
                 Connection::Series => {}
             }
@@ -251,13 +250,15 @@ impl Transformer {
             return Complex64::ZERO;
         }
         self.compute_iterminal(sys, node_v);
-        let nconds = self.cd.nconds;
-        let k = (term - 1) * nconds;
         let mut result = Complex64::ZERO;
-        for i in 0..nconds {
-            let n = self.cd.node_ref[k + i];
+        for (&n, &ci) in self
+            .cd
+            .term_nodes(term - 1)
+            .iter()
+            .zip(self.cd.term_i(term - 1))
+        {
             if n > 0 {
-                result += node_v[n] * self.cd.iterminal[k + i].conj();
+                result += node_v[n] * ci.conj();
             }
         }
         if sys.positive_sequence {
@@ -328,14 +329,15 @@ impl Transformer {
                 pairs.push([j * nconds, (j + 1) * nconds - 1]);
             }
         } else {
-            for i in 1..=np {
-                for j in 1..=nw {
-                    let base = (j - 1) * nconds; // winding j's 0-based conductor base
-                    let plus = base + i - 1; // phase conductor i (0-based)
-                    let pair = match self.windings[j - 1].connection {
-                        Connection::Wye => [plus, j * nconds - 1],
-                        // Delta — second conductor is the next phase in sequence.
-                        Connection::Delta => [plus, base + self.rotate_phases(i) - 1],
+            for i in 0..np {
+                for j in 0..nw {
+                    let base = j * nconds; // winding j's 0-based conductor base
+                    let plus = base + i; // phase conductor i (0-based)
+                    let pair = match self.windings[j].connection {
+                        Connection::Wye => [plus, (j + 1) * nconds - 1],
+                        // Delta — second conductor is the next phase in sequence
+                        // (`rotate_phases` speaks the 1-based phase language).
+                        Connection::Delta => [plus, base + self.rotate_phases(i + 1) - 1],
                         // Series never occurs on a Transformer (auto-only); keep
                         // a benign self-pair to stay exhaustive.
                         Connection::Series => [plus, plus],

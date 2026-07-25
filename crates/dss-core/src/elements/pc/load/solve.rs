@@ -432,7 +432,7 @@ impl Load {
 
             self.stick_curr(true, -curr, i); // into ITerminal
             self.cd.iterminal_updated = true;
-            self.cd.iterminal_solution_count = sys.solution_count;
+            self.cd.mark_iterminal_solved(sys.solution_count);
             self.stick_curr(false, curr, i); // into InjCurrent
         }
     }
@@ -478,7 +478,7 @@ impl Load {
         // `IterminalSolutionCount := SolutionCount` so a post-solve read reuses the
         // cached terminal current instead of recomputing (mirrors the PF models).
         self.cd.iterminal_updated = true;
-        self.cd.iterminal_solution_count = sys.solution_count;
+        self.cd.mark_iterminal_solved(sys.solution_count);
     }
 
     /// Pascal `CalcInjCurrentArray`.

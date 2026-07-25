@@ -322,9 +322,9 @@ fn write_element_voltages(
     for j in 0..nterm {
         // Terminal bus name (`StripExtension(FirstBus/NextBus)`, uppercased at
         // print). The stored bus name is already the stripped, lowercased name.
-        let bus_name = ckt
-            .buses
-            .get(cd.terminals[j].bus_ref)
+        let bus_name = cd.terminals[j]
+            .bus_ref
+            .and_then(|b| ckt.buses.get(b))
             .map(|b| b.name.as_str())
             .unwrap_or("");
         let bus_name = format::pad(bus_name, mbnl).to_uppercase();

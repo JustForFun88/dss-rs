@@ -39,7 +39,6 @@ pub(crate) fn export_seq_powers(
     let mut calc = |name: &str, elem: &mut dyn CktElement, is_pd: bool| {
         elem.compute_iterminal(sys, node_v);
         let nterm = elem.cd().nterms;
-        let ncond = elem.cd().nconds;
         let nphases = elem.cd().nphases;
         // PD excess kVA (terminal 1) — captured before the immutable `cd` borrow.
         let (exc_norm, exc_emerg) = if is_pd {
@@ -55,10 +54,9 @@ pub(crate) fn export_seq_powers(
         for j in 1..=nterm {
             let mut iph = [Complex64::ZERO; 3];
             let mut vph = [Complex64::ZERO; 3];
-            for i in 0..nphases.min(3) {
-                let k = (j - 1) * ncond + i;
-                iph[i] = cd.iterminal[k];
-                vph[i] = node_v[cd.node_ref[k]];
+            for (i, (ci, nref)) in cd.term_phases(j - 1).iter().enumerate() {
+                iph[i] = ci;
+                vph[i] = node_v[nref];
             }
 
             let mut v012 = [Complex64::ZERO; 3];

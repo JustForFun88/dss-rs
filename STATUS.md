@@ -551,6 +551,156 @@ corrupted `term_ref`); (2) the transformer `Connection::Series` self-pair
 `[plus, plus]` in `set_term_ref` is unreachable (transformer DssEnum has no
 series) and benign, documented in code.
 
+### DE_PASCALIZE P8 — terminal×conductor views over flat buffers [A] (branch `depas-p8p14`)
+
+Stratum **[A]** bit-neutral, base `update@6c99b8f`. The highest-leverage cut: the
+flat `yorder` (`nterms*nconds`) buffers on `CktElementData`
+(`vterminal`/`iterminal`/`complex_buffer`/`inj_current`/`node_ref`) were indexed
+`(t-1)*nconds + c` in every consumer. New accessors on `CktElementData` are now
+the **only** site of that offset arithmetic (`ckt.rs`): `term_v(t)`/`term_i(t)`
+(0-based conductor slice of terminal `t`), `term_nodes(t)` (its `node_ref`
+slice), `terminals_i()` (`chunks_exact(nconds)` iterator), and `term_phases(t)`
+→ `Phases<'_>` yielding `(Iterminal, NodeRef)` over the first `min(nphases,3)`
+conductors — the shared seq-quantity walk.
+
+Rewrote all in-scope consumers: exports
+`seq_currents`/`seq_powers`/`currents`/`voltages_elements`;
+`report/show/{currents,powers,bus_powers}` (`get_i0i1i2` now takes a terminal
+slice, not `(buf, koff)`); `traits.rs::{get_term_voltages,terminal_power,losses}`;
+`transformer/windings.rs::{get_winding_voltages,power_into}`;
+`auto_trans/{windings.rs::power_into, yterminal.rs::get_winding_voltages}`;
+`solution/controls/dispatch.rs::{control_power,control_current}`;
+`cim/power_xfmr.rs` winding node refs; `report/show/delta_v.rs`
+(`term_nodes(0)`/`term_nodes(1)`) and `auto_trans/accessors.rs::losses`
+(per-terminal `term_nodes(t)`/`term_i(t)` slices, first `nphases` of each — the
+`nconds = 2·nphases` layout makes `[np..]` the skipped second-half). Same
+arithmetic, same statement order — byte goldens (exports/show dumps), checkpoint
+captures and the full corpus gate all unchanged.
+
+**Settle (audit dispositions):** the audit flagged two remaining flat-offset
+consumers not in the first cut — `delta_v.rs` (`node_ref[i-1]`/`[i-1+ncond]`) and
+`auto_trans::losses` (`k += np` terminal skip). Both mapped cleanly to the
+accessors and were folded in above (bit-neutral, gate re-run green), so the
+"offset lives only in accessors" metric now holds for the whole in-scope set. The
+audit's CIM `[Question]` (the `term_nodes(i-1)` slice narrows the old
+`node_ref.get().unwrap_or(0)`) is a **deliberate non-fix**: `set_node_ref`
+(`ckt.rs`) resizes `node_ref` to `yorder` on first population, so it is always
+empty-or-full — the `is_empty()` guard covers empty and the full-length case
+makes the slice safe; the panic the auditor described is unreachable in every
+solved/pre-solve state, so behavior is preserved. The tests-audit's corpus-gate
+flakiness note (r4133-channel `windgen_dyn` `WindGen.Ps`, `ncim_*`,
+`mmf_singlecol`) is **P8-independent** — those readouts flow through
+`exec/view.rs::snapshot_elements`, which P8 escaped and did not modify; the gate
+ran **green** on this settle run. Left for a separate flakiness investigation.
+
+**Deliberately NOT touched (documented, not a miss):** the `seq_currents`
+Iresidual `TODO(compat)` loop (reproduces the terminal-1 upstream bug — a flat
+terminal-0 read, no `(t-1)*nconds` form, kept verbatim); the `dispatch`
+specific-phase quirk `cBuffer[FMonPhase]` (flat/absolute by upstream design);
+monitor `mode 12`'s `np*k` stride (an **nphases** stride, not nconds — using a
+`nconds`-strided view would change the arithmetic and break the golden);
+terminal-0 flat reads with no offset (`fault.rs:208`, `control_loop.rs`,
+monitor/sensor `node_ref[i]`); and element-owned scratch buffers with the same
+layout but which are **not** `CktElementData` targets
+(`meter_element.calculated_current`, relay `cbuffer` — its offset is already
+centralized in `mon_offset`).
+
+**ESCAPED (leave-green, recorded):** `exec/view.rs` COM-style interleaved re/im
+`Vec<f64>` → `Vec<Complex64>` conversion (`ElementSnapshot.powers`/`.currents`).
+Its blast radius is the **gate-critical** oracle comparator
+(`tests/harness::compare_element`/`compare_interleaved` and
+`corpus_gate/runner.rs`, which both compare against dss-python/EPRI **interleaved
+f64** arrays) plus ~40 in-crate test sites reading `.powers[2*k]`/`.step_by(2)`.
+This is a re/im-packing cleanup **orthogonal** to the `(t-1)*nconds` metric —
+`view.rs::snapshot_elements` has zero terminal-offset forms (it is a flat
+`0..yorder` loop). Deferred to a focused follow-up (one boundary interleave
+adapter + comparator + test-site sweep) so the gate stays green here.
+
+### DE_PASCALIZE P14 — 0-basing + sentinel sweep [A] (branch `depas-p8p14`)
+
+Stratum **[A]** bit-neutral, on top of P8 (`94d27ae`). 1-based loops and magic
+sentinels retreat to the true user boundary; property parsing + report text keep
+`wdg`/`terminal`/`phase` as the user's 1-based language.
+
+**0-basing (the success metric — `for … in 1..=` gone from the P10-scoped files).**
+The `for i in 1..=np { for j in 1..=nw { …[i-1]…[j-1] } }` remnants P10 left in
+`transformer/windings.rs`, `auto_trans/windings.rs` (`set_term_ref`) and both
+`yterminal.rs` (`calc`'s `y1`/`yterm` column builders + `get_all_winding_currents`
+phase loops) went 0-based; the delta arm keeps a 1-based `rotate_phases(i+1)` call
+because phase rotation *is* 1-based phase math. `auto_trans/accessors.rs::set_node_ref`
+series-alias loop 0-based. `ckt.rs::set_node_ref` hoists the 1→0 conversion once
+(`let t = iterm - 1`). All index arithmetic and matrix column-fill order identical
+→ byte-neutral (transformer/auto_trans YPrim + winding-current goldens + corpus gate
+unchanged). The two `av[kp]`-indexed loops became `av.iter_mut().zip(windings)` to
+clear the `needless_range_loop` I introduced (same values, same order).
+
+**Sentinels → `Option` (four of five).**
+- `CktElementData.iterminal_solution_count: i32 = -1` → `Option<u32>` (None = never
+  computed = the lazy-cache/thread-readiness state made explicit). Two helpers
+  localize the `i32→u32` cast: `iterminal_solved_for(count)` / `mark_iterminal_solved(count)`.
+  ~40 sites across the PC-element accessors/solve/dynamics/user_model. `-1 != count`
+  ≡ `None != Some(count)` → bit-neutral.
+- `CktElementData.handle: usize = 0` → `Option<u32>` (None = not in circuit). Only
+  written (`circuit.rs` `Some(len as u32)`), never read → representational only.
+- `CktElementData.from_terminal`/`to_terminal: usize` → `Option<usize>` **0-based**
+  (`from` default `Some(0)` = Pascal `FromTerminal:=1`; `to` default `None` = Pascal
+  `0`/unset). The reliability sweeps' `if from_t == 2 {1} else {2}` (1-based) became
+  `if from_t == 1 {0} else {1}` (0-based) with `expect` at the guaranteed-set reads;
+  set sites in `zones/build.rs` store `Some(k-1)`.
+- `Terminal::bus_ref: usize` (`usize::MAX` = unset) → `Option<usize>` (~60 real
+  sites). New `Terminal::bus_idx()` resolves the assume-wired index sites (panics
+  identically to the old `buses[MAX]` OOB); genuinely-optional sites use
+  `.and_then(|b| buses.get(b))` / `== Some(x)` / `.unwrap_or(usize::MAX)` where a
+  local `usize` sentinel is still threaded (reduce `LineSnap.bus_refs`, zone-build
+  `test_bus`, topology walk `bus`). `dump.rs` `-1`-render and `ieee1547`/`dispatch`
+  graceful-`get` paths preserved. `NodeBus.bus_ref` (a different field) untouched.
+
+**ESCAPED (leave-green, recorded): `ckt_tree::NO_BUS` → `Option<usize>`.** The
+`TreeNode.from_bus` field is one strand of a `usize`/`NO_BUS`(=`usize::MAX`) sentinel
+web that also spans `ZoneEndsList.ends: Vec<(usize, usize)>`, the zone-build walk
+locals (`test_bus`, `node_from_bus`, `add_new_child(bus_ref: usize)`), the topology
+walk `bus`, and the coordinate-interpolation locals (`first_coord_ref`/
+`second_coord_ref` in `interpolate.rs`), where `NO_BUS` is *load-bearing* in a UB
+guard (`coord_defined` treats it as "no coordinate", never reproducing the Pascal
+`buses[0]` OOB). Converting only the field forces `Option↔NO_BUS` bridging at every
+read — a net **increase** in sentinel surface, not the plan's elimination — and a
+clean conversion means the whole walk web at once (beyond P14's "tree nodes" scope
+and higher-risk than reward). Deferred to a focused zone-walk-wide follow-up.
+
+**Deviation (documented):** the metric line "`for … in 1..=` in `elements` →
+boundary accessors only" is met **for the P10-scoped files**; the broad remainder
+(dump/save report text, `1..=nphases`/`1..=nw`/channel-count loops, Pascal 1-based
+state arrays like vccs filters and storage/pv var tables) are 1-based *by design*
+(user's language / documented STAYS) and out of P14's explicitly-named scope.
+
+Proof (all UNCHANGED): full golden suite (transformer/auto_trans YPrim +
+winding-current + checkpoint byte goldens, reliability/branch-reliability exports,
+show voltages/currents/powers/elements, dumps) + the unconditional corpus gate.
+`STAYS` untouched: `NodeRef==0` ground, `rneut<0` open neutral, parser `-1` node
+sentinel, `ckt_tree` node `from_terminal` (separate 1-based field).
+
+**Audit settle (empirical, no code change).** Two Minor audit findings, both
+dispositioned won't-fix (documented deviations above):
+- *Success-metric grep not fully green (106 `for … in 1..=` in `elements`).* Verified
+  by hand: none are internal `[i-1]` storage remnants outside P14's named files
+  (`windings.rs`/`yterminal.rs`/`set_node_ref`, all clean). The remainder is
+  report/dump text where `i` is the printed 1-based `Wdg=`/`terminal` (e.g.
+  `transformer/dump.rs:27` `Wdg={i}` with `windings[i-1]`), 1-based user-API variable/
+  conductor numbering (`pvsystem`/`storage/dynamics` `get_*_variable(i)`,
+  `conductor_closed(term,i)`), and Pascal 1-based state/filter arrays (vccs filters,
+  relay/recloser `present_state[i]`, capacitor step states) — all `STAYS` by design,
+  out of P14's named scope. The broad grep is aspirational; the plan *body* (§P14 first
+  bullet) scopes the concrete `[i-1]` work to the three named files, which is done.
+- *`ckt_tree::NO_BUS`→`Option` deferred.* Entanglement confirmed real: `NO_BUS` threads
+  `exec/reduce.rs:520`, `report.rs`, `interpolate.rs` (load-bearing UB guard vs Pascal
+  `buses[0]` OOB), `take_sample.rs:386`, `zones/build.rs`, `topology.rs`. Converting only
+  `TreeNode.from_bus` forces `Option↔NO_BUS` bridging at every consumer = net sentinel
+  *increase*; a clean fix is the whole zone-walk web at once (out of "tree nodes" scope).
+  Deferred to a focused zone-walk-wide follow-up, as recorded above.
+
+Corpus cleaned of run artifacts (11 untracked `Export`/`Mon_*`/`EventLog` files under
+`Test/AutoTrans` + `StorageControllerTechNote/Schedule`) — tests/corpus pristine.
+
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),

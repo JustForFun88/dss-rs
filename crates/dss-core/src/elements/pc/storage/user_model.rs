@@ -521,7 +521,7 @@ impl Storage {
             Ok(()) => {
                 self.cd.iterminal.copy_from_slice(&it);
                 self.cd.iterminal_updated = true;
-                self.cd.iterminal_solution_count = sys.solution_count;
+                self.cd.mark_iterminal_solved(sys.solution_count);
                 // Negate the user-model currents into InjCurrent (Pascal
                 // `InjCurrent[i] -= Iterminal[i]`, `:2115-2116`).
                 for i in 0..self.cd.nconds {
@@ -585,7 +585,7 @@ impl Storage {
                     // StickCurrInTerminalArray(InjCurrent, DESSCurr[i], i) (`:2228-2233`).
                     self.stick_curr(true, -curr, i);
                     self.cd.iterminal_updated = true;
-                    self.cd.iterminal_solution_count = sys.solution_count;
+                    self.cd.mark_iterminal_solved(sys.solution_count);
                     self.stick_curr(false, curr, i);
                 }
             }

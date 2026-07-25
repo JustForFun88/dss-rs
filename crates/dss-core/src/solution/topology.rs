@@ -47,7 +47,7 @@ fn get_sources_connected_to_bus(
             (
                 cd.enabled,
                 cd.flags.contains(ElemFlags::CHECKED),
-                cd.terminals.first().map(|t| t.bus_ref) == Some(bus_num),
+                cd.terminals.first().and_then(|t| t.bus_ref) == Some(bus_num),
             )
         };
         if !enabled {
@@ -165,7 +165,7 @@ fn find_all_child_branches(
         }
         let nterms = store.ckt_elem(p).cd().nterms;
         for j in 1..=nterms {
-            let on_bus = store.ckt_elem(p).cd().terminals[j - 1].bus_ref == bus_num;
+            let on_bus = store.ckt_elem(p).cd().terminals[j - 1].bus_ref == Some(bus_num);
             if !on_bus {
                 continue;
             }
@@ -236,7 +236,8 @@ pub(crate) fn get_isolated_sub_area(
                 let cd = store.ckt_elem(branch).cd();
                 (
                     cd.terminals_checked[iterm - 1],
-                    cd.terminals[iterm - 1].bus_ref,
+                    // Unwired terminal → the `NO_BUS` sentinel the walk skips below.
+                    cd.terminals[iterm - 1].bus_ref.unwrap_or(NO_BUS),
                 )
             };
             if checked {

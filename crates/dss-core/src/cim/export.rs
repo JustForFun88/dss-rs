@@ -2519,7 +2519,7 @@ pub(crate) fn export_cdpsm(
         if !vsrc.cd.enabled {
             continue;
         }
-        let bus_ref = vsrc.cd.terminals[0].bus_ref;
+        let bus_ref = vsrc.cd.terminals[0].bus_idx();
         let bus_name = ckt.buses[bus_ref].name.clone();
         let swing_geo_uuid = cim.get_dev_uuid(UuidChoice::Topo, &bus_name, 1);
         writer::start_instance(
@@ -2588,7 +2588,7 @@ pub(crate) fn export_cdpsm(
                 kva_rating: g.kva_rating,
                 nterm: g.cd.nterms,
                 bus_specs: g.cd.bus_names.clone(),
-                bus_refs: g.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+                bus_refs: g.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
                 daily: nm(g.daily_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
                 duty: nm(g.duty_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
                 yearly: nm(g.yearly_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
@@ -2750,7 +2750,7 @@ pub(crate) fn export_cdpsm(
                 kvar_limit_neg_set: pv.base.kvar_limit_neg_set,
                 nterm: pv.cd.nterms,
                 bus_specs: pv.cd.bus_names.clone(),
-                bus_refs: pv.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+                bus_refs: pv.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
                 daily: nm(pv
                     .base
                     .daily_shape_obj
@@ -3001,7 +3001,7 @@ pub(crate) fn export_cdpsm(
                 fkvar_limit_neg: st.f_kvar_limit_neg,
                 nterm: st.cd.nterms,
                 bus_specs: st.cd.bus_names.clone(),
-                bus_refs: st.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+                bus_refs: st.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
                 daily: nm(st
                     .base
                     .daily_shape_obj
@@ -3228,7 +3228,7 @@ pub(crate) fn export_cdpsm(
                 vsrc.cd
                     .terminals
                     .iter()
-                    .map(|t| t.bus_ref)
+                    .map(|t| t.bus_idx())
                     .collect::<Vec<_>>(),
             )
         };
@@ -3357,7 +3357,7 @@ pub(crate) fn export_cdpsm(
                 norm_amps: cap.norm_amps(),
                 emerg_amps: cap.emerg_amps(),
                 bus_specs: cap.cd.bus_names.clone(),
-                bus_refs: cap.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+                bus_refs: cap.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
             }
         };
         if !snap.enabled {
@@ -3596,7 +3596,7 @@ pub(crate) fn export_cdpsm(
                 mon_obj_type: cktelem_dss_obj_type(classes[mon_ref.cls].props.class_name()),
                 mon_nphases: mon_cd.nphases,
                 mon_bus_spec0: mon_cd.bus_names[0].clone(),
-                mon_bus_kvbase0: ckt.buses[mon_cd.terminals[0].bus_ref].kv_base,
+                mon_bus_kvbase0: ckt.buses[mon_cd.terminals[0].bus_idx()].kv_base,
                 element_terminal: cc.ccd.element_terminal,
                 pt_phase: cc.pt_phase(),
                 control_type: cc.control_type(),
@@ -3780,7 +3780,7 @@ pub(crate) fn export_cdpsm(
                 norm_amps: reac.norm_amps(),
                 emerg_amps: reac.emerg_amps(),
                 bus_specs: reac.cd.bus_names.clone(),
-                bus_refs: reac.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+                bus_refs: reac.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
             }
         };
         if !snap.enabled {
@@ -3871,7 +3871,7 @@ pub(crate) fn export_cdpsm(
             if !line.cd.enabled {
                 continue;
             }
-            let bus_refs: Vec<usize> = line.cd.terminals.iter().map(|t| t.bus_ref).collect();
+            let bus_refs: Vec<usize> = line.cd.terminals.iter().map(|t| t.bus_idx()).collect();
             let bus_kvbases: Vec<f64> = bus_refs.iter().map(|&b| ckt.buses[b].kv_base).collect();
             let has_line_code = line.line_code_ref.is_some();
             let has_geometry = line.geometry_obj.is_some();
@@ -4383,7 +4383,7 @@ pub(crate) fn export_cdpsm(
                 name: load.cd.obj.name().to_string(),
                 nterm: load.cd.nterms,
                 bus_specs: load.cd.bus_names.clone(),
-                bus_refs: load.cd.terminals.iter().map(|t| t.bus_ref).collect(),
+                bus_refs: load.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
                 daily: shape_name(load.daily_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
                 duty: shape_name(load.duty_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
                 growth: shape_name(load.growth_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
