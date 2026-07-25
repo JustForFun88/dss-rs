@@ -570,9 +570,28 @@ slice, not `(buf, koff)`); `traits.rs::{get_term_voltages,terminal_power,losses}
 `transformer/windings.rs::{get_winding_voltages,power_into}`;
 `auto_trans/{windings.rs::power_into, yterminal.rs::get_winding_voltages}`;
 `solution/controls/dispatch.rs::{control_power,control_current}`;
-`cim/power_xfmr.rs` winding node refs. Same arithmetic, same statement order —
-byte goldens (exports/show dumps), checkpoint captures and the full corpus gate
-all unchanged.
+`cim/power_xfmr.rs` winding node refs; `report/show/delta_v.rs`
+(`term_nodes(0)`/`term_nodes(1)`) and `auto_trans/accessors.rs::losses`
+(per-terminal `term_nodes(t)`/`term_i(t)` slices, first `nphases` of each — the
+`nconds = 2·nphases` layout makes `[np..]` the skipped second-half). Same
+arithmetic, same statement order — byte goldens (exports/show dumps), checkpoint
+captures and the full corpus gate all unchanged.
+
+**Settle (audit dispositions):** the audit flagged two remaining flat-offset
+consumers not in the first cut — `delta_v.rs` (`node_ref[i-1]`/`[i-1+ncond]`) and
+`auto_trans::losses` (`k += np` terminal skip). Both mapped cleanly to the
+accessors and were folded in above (bit-neutral, gate re-run green), so the
+"offset lives only in accessors" metric now holds for the whole in-scope set. The
+audit's CIM `[Question]` (the `term_nodes(i-1)` slice narrows the old
+`node_ref.get().unwrap_or(0)`) is a **deliberate non-fix**: `set_node_ref`
+(`ckt.rs`) resizes `node_ref` to `yorder` on first population, so it is always
+empty-or-full — the `is_empty()` guard covers empty and the full-length case
+makes the slice safe; the panic the auditor described is unreachable in every
+solved/pre-solve state, so behavior is preserved. The tests-audit's corpus-gate
+flakiness note (r4133-channel `windgen_dyn` `WindGen.Ps`, `ncim_*`,
+`mmf_singlecol`) is **P8-independent** — those readouts flow through
+`exec/view.rs::snapshot_elements`, which P8 escaped and did not modify; the gate
+ran **green** on this settle run. Left for a separate flakiness investigation.
 
 **Deliberately NOT touched (documented, not a miss):** the `seq_currents`
 Iresidual `TODO(compat)` loop (reproduces the terminal-1 upstream bug — a flat
