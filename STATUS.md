@@ -6824,3 +6824,14 @@ files). Two non-code observations, both dispositioned:
   bites deterministically. A second deck (different topology / phase count) would require
   a fresh r4133 golden and likely a new `.wasm` fixture (frozen this pass by the binding
   rule) — a coverage-strengthening WP, not a settle-scope fix. Recorded, not done.
+
+**Post-merge convention fix (user-flagged, 2026-07-25).** The stale-`Vterminal`
+FInit seed is a *deliberate reproduction of an upstream inconsistency* (fresh
+`Iterminal` at converged `V_n` paired with stale `Vterminal` = `V_{n-1}`, while
+upstream's own built-in model seeds from fresh `NodeV`) — the PORTING_PLAN §4.1
+convention requires such a site to carry a greppable `TODO(compat)` marker, which
+the fix's doc comment lacked. Added at `generator/user_model.rs::user_model_finit`
+(explanation + intended clean fix: a self-consistent `(V_n, I(V_n))` seed, below
+the ~1e-4 pu convergence tolerance in effect, breaks bit-parity with both oracle
+channels → Stage F default-lane candidate; parity lane keeps the stale seed).
+Comment-only; gate re-run green.

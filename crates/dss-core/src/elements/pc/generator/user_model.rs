@@ -723,6 +723,17 @@ impl Generator {
     /// (`generator.pas:2409-2413`) reads a *fresh local* `Vabc := NodeV[NodeRef]`
     /// and is unaffected — only the Model=6 user-model seed uses the buffer.
     /// `Iterminal` was refreshed by `init_state_vars`' `ComputeIterminal`.
+    ///
+    /// TODO(compat): this deliberately reproduces an upstream inconsistency —
+    /// `FInit` receives a mixed-generation pair (fresh `Iterminal` computed at
+    /// the converged `V_n`, stale `Vterminal` = `V_{n-1}`), while upstream's own
+    /// built-in model seeds from the fresh `NodeV` (`:2409-2413`). Deterministic
+    /// and defined in BOTH oracle channels (0.14.5 == r4133 to ≤1e-13, the D2
+    /// three-way experiment), pinned by the `wasm_gen_dyn` numeric golden. The
+    /// clean fix — a self-consistent `(V_n, I(V_n))` seed — shifts the initial
+    /// state by less than the power-flow convergence tolerance (~1e-4 pu) but
+    /// breaks bit-parity with both oracles; decide at DE_PASCALIZE Stage F
+    /// (default-lane candidate, parity lane keeps the stale seed).
     pub(super) fn user_model_finit(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         if !(self.user_model_exists() || self.shaft_model_exists()) {
             return;
