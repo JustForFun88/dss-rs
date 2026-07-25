@@ -21,9 +21,8 @@
 //! ## Also ported (see [`enums`]): the per-enum walk `prepareEnumJsonSchema`
 //! (`:111-162`) over the 21 global `DSS.Enums` (`DSSClass.pas:1058-1196`),
 //! exposed as [`global_enum_defs`] and byte-verified against the oracle
-//! (`golden_schema.rs::global_enum_defs_bytes_match_oracle`). It is verified
-//! groundwork, not yet spliced into [`schema_skeleton`] — the class walk that
-//! assembles + byte-gates the full runtime document owns that splice.
+//! (`golden_schema.rs::global_enum_defs_bytes_match_oracle`). It is spliced into
+//! the full runtime document by [`assemble_full_document`] (below).
 //!
 //! ## Also ported (see [`classes`], OG-1.5c): the per-class walk
 //! `prepareClassJsonSchema` (`:325-1134`) — [`class_schema`] builds one class's
@@ -307,7 +306,8 @@ pub fn global_defs() -> Vec<(String, Json)> {
 }
 
 /// The static head of `circuitProperties` — `CAPI_Schema.pas:1463-1474`. The
-/// per-class refs (`:1501`) are appended by the (unported) class walk.
+/// per-class refs (`:1501`) are appended by [`assemble_full_document`] via the
+/// ported class walk.
 pub fn circuit_properties_head() -> Vec<(String, Json)> {
     let str_array = || obj(vec![("type", s("array")), ("items", typ("string"))]);
     vec![
@@ -345,8 +345,12 @@ pub fn circuit_properties_head() -> Vec<(String, Json)> {
 /// Assemble the schema **envelope** with the static `$defs` and the static
 /// `circuitProperties` head — the ported portion of `DSS_ExtractJSONSchema`
 /// (`CAPI_Schema.pas:1504-1513`). The per-class/enum `$defs` entries and the
-/// per-class `circuitProperties` refs are NOT emitted (see the module doc):
-/// this is the schema skeleton, not the full model dump.
+/// per-class `circuitProperties` refs are NOT emitted: this is the schema
+/// skeleton, not the full model dump.
+///
+/// Superseded by [`assemble_full_document`] (the full runtime schema); this
+/// skeleton and its sole caller [`extract_schema_skeleton_json`] have no live
+/// callers — R3 dead-code candidate (do not delete outside that pass).
 pub fn schema_skeleton() -> Json {
     obj(vec![
         ("$schema", s(JSON_SCHEMA_DRAFT)),
@@ -354,8 +358,6 @@ pub fn schema_skeleton() -> Json {
         ("$defs", Json::Obj(global_defs())),
         ("type", s("object")),
         ("properties", Json::Obj(circuit_properties_head())),
-        // Pascal `'required', TJSONArray.Create(['Vsource'])` (`:1512`). The
-        // `Vsource` class def + ref are part of the deferred class walk.
         ("required", Json::Arr(vec![s("Vsource")])),
     ])
 }

@@ -14,8 +14,9 @@
 //! 6 (capacitor steps), 7 (Storage), 8 (transformer winding currents), 9
 //! (losses), 10 (transformer winding voltages), 11 (all terminal V&I), 12
 //! (line-to-line terminal voltages + currents) — plus the ±16/±32/±64
-//! modifiers, residual, VIpolar/Ppolar. File save/`TranslateToCSV` is Phase 8;
-//! the mode-4 flicker post-process (`DoFlickerCalculations`) is in `post.rs`.
+//! modifiers, residual, VIpolar/Ppolar. `TranslateToCSV` is ported as `to_csv`;
+//! only the raw binary `.mon` Save (Monitor.pas:1118) is deferred. The mode-4
+//! flicker post-process (`DoFlickerCalculations`) is in `post.rs`.
 //!
 //! Split into submodules mirroring `load/`, `generator/`, `vsource/`:
 //! - this `mod.rs` — property ordinals, `class_props`, the `Monitor` struct,
