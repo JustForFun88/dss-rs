@@ -418,14 +418,27 @@ fn wasm_gen_dyn_step1_trajectory_matches_oracle() {
     let v = dss
         .element_variables("Generator.g1")
         .expect("Generator.g1 has variables");
+    // Re-assert the surface at each pinned index INSIDE the guard: the positional
+    // indices below (Slip=6, dSpeed=4, Is1[user]=13, Is1[shaft]=27) are only
+    // meaningful while the 34-var surface order holds. The sibling `gate_deck`
+    // name-order gate also catches a reorder, but this makes the guard fail on its
+    // own terms rather than pin the wrong quantity if that gate ever regressed.
+    let names = dss
+        .element_variable_names("Generator.g1")
+        .expect("Generator.g1 has variable names");
     let mut worst = (0.0_f64, String::from("(none)"));
     let mut fails: Vec<String> = Vec::new();
-    for (label, idx, oracle) in [
-        ("Slip", 6usize, ORACLE_SLIP),
-        ("dSpeed", 4, ORACLE_DSPEED),
-        ("Is1(user)", 13, ORACLE_IS1_USER),
-        ("Is1(shaft)", 27, ORACLE_IS1_SHAFT),
+    for (label, idx, expect_name, oracle) in [
+        ("Slip", 6usize, "Slip", ORACLE_SLIP),
+        ("dSpeed", 4, "dSpeed (Deg/sec)", ORACLE_DSPEED),
+        ("Is1(user)", 13, "Is1", ORACLE_IS1_USER),
+        ("Is1(shaft)", 27, "Is1", ORACLE_IS1_SHAFT),
     ] {
+        assert!(
+            names[idx].eq_ignore_ascii_case(expect_name),
+            "step-1 guard: variable[{idx}] is `{}`, expected `{expect_name}` — 34-var surface order regressed; the pinned index no longer names {label}",
+            names[idx]
+        );
         check(
             &format!("wasm_gen_dyn step1 {label}"),
             v[idx],
