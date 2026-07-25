@@ -69,7 +69,29 @@ Five related holes in the `< 0.51 Hz` GIC gate and the pos-seq collapse, all on
 - **R3 candidate (noted, not touched):** `CktElement::recalc_element_data(sys)` is
   never dispatched by the executive for these classes (dead code).
 
-### BUG WP regcontrol_idle — idle no-load zone: adopt r4133 bounded-AND (2026-07-19)
+- **Settler pass (2026-07-25, both audits settled empirically — no code defect).**
+  audit-code + audit-tests raised four items; all disposed non-defect / intentional,
+  none a tolerance change:
+  - *Transient revert seen by audit-code (Question):* the sibling audit-tests agent
+    ran fix-revert experiments in this shared worktree; it restored clean. HEAD
+    `a6a3d44` is stable — `git status` clean, `grep -c gic_build_y_terminal
+    transformer/yterminal.rs = 4`, `cargo check -p dss-core` clean (a reverted tree
+    would not compile: `command.rs` calls the reverted-away `set_live_frequency`).
+    Environmental, not a HEAD defect.
+  - *Dead code left in place (Minor):* `recalc_element_data`, `schema_skeleton`,
+    `extract_schema_skeleton_json` — brief directs flag-for-R3, not delete; already
+    recorded above.
+  - *`autotrans_gic_edit.dss` gates no new Hole-2 regression (Minor):* confirmed —
+    the recalc-path frequency is masked (CalcYPrim always rebuilds Y_Term at the
+    solve frequency), so reverting the Hole-2 fix leaves this deck green (auditor's
+    revert experiment). Kept deliberately: it is a valid converging, two-process
+    bit-identical case that exercises the Edit→RecalcElementData→calc_y_terminal
+    edit-at-GIC path (distinct from the fresh-CalcYPrim path in `autotrans_gic.dss`)
+    and is feature-sensitive on rdcohms. The deck header + Hole-2 bullet already
+    state it does not isolate the gate — honest coverage, not a fake gate.
+  - *r4133 channel (Question):* re-ran the FULL gate here — both `capi_v0145` and
+    `r4133` legs green on all five new decks (corpus gate compiles + solves the full
+    manifest against each case's channels; epri-worker built by `cargo test`).
 
 Root-caused and resolved the `controls/regcontrol/regcontrol_idle.dss`
 `defer_ledger` occurrence (ORPHANED_GAPS §1.9). The 8.8 % MV-bus divergence
