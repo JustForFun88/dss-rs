@@ -54,13 +54,10 @@ fn term_ref_series_maps_h_and_x() {
     // conductor 2 → phase i+nphases; winding 2 (Wye) conductor 1 → phase, 2 →
     // phase+nphases within its block. Pins the Series arm of SetTermRef.
     let t = AutoTrans::new("a1");
-    // TermRef is 1-based (slot 0 unused), length 2·nw·nphases + 1 = 13.
-    // Phase 1: [1] series c1=1, [2] series c2=1+3=4, [3] wye c1=(2-1)*6+1=7,
-    // [4] wye c2=7+3=10.
-    assert_eq!(t.term_ref[1], 1);
-    assert_eq!(t.term_ref[2], 4);
-    assert_eq!(t.term_ref[3], 7);
-    assert_eq!(t.term_ref[4], 10);
+    // 0-based [plus, minus] conductor pairs (Pascal 1-based `1,4 | 7,10` minus one).
+    // phase 0: winding 0 (Series) c1=0, c2=0+3=3; winding 1 (Wye) c1=6, c2=6+3=9.
+    assert_eq!(t.term_ref.pair(0, 0, 2), [0, 3]);
+    assert_eq!(t.term_ref.pair(0, 1, 2), [6, 9]);
 }
 
 // --- WPG.21 — TAutoTransObj.MakePosSequence (AutoTrans.pas:1724-1791) ---------

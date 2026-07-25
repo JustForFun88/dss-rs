@@ -5,7 +5,7 @@
 use num_complex::Complex64;
 
 use crate::elements::general::xfmr_code::XfmrCodeObj;
-use crate::elements::pd::winding::{Connection, Winding};
+use crate::elements::pd::winding::{Connection, TermRef, Winding};
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::support::cmatrix::CMatrix;
 
@@ -319,36 +319,32 @@ impl Transformer {
         let nw = self.num_windings.max(0) as usize;
         let np = self.cd.nphases;
         let nconds = self.cd.nconds;
-        self.term_ref = vec![0; 2 * nw * np + 1];
-        let mut k = 0usize;
+        // One 0-based [plus, minus] conductor pair per (phase, winding),
+        // phase-major. Pascal fills the flat array in this same visiting order.
+        let mut pairs: Vec<[usize; 2]> = Vec::with_capacity(np.max(1) * nw);
         if np == 1 {
-            for j in 1..=nw {
-                k += 1;
-                self.term_ref[k] = (j - 1) * nconds + 1;
-                k += 1;
-                self.term_ref[k] = j * nconds;
+            for j in 0..nw {
+                // Pascal: c1 = (j-1)*nconds+1, c2 = j*nconds (1-based).
+                pairs.push([j * nconds, (j + 1) * nconds - 1]);
             }
         } else {
             for i in 1..=np {
                 for j in 1..=nw {
-                    k += 1;
-                    match self.windings[j - 1].connection {
-                        Connection::Wye => {
-                            self.term_ref[k] = (j - 1) * nconds + i;
-                            k += 1;
-                            self.term_ref[k] = j * nconds;
-                        }
-                        Connection::Delta => {
-                            // Delta — second conductor connects to the next phase
-                            self.term_ref[k] = (j - 1) * nconds + i;
-                            k += 1;
-                            self.term_ref[k] = (j - 1) * nconds + self.rotate_phases(i);
-                        }
-                        Connection::Series => {}
-                    }
+                    let base = (j - 1) * nconds; // winding j's 0-based conductor base
+                    let plus = base + i - 1; // phase conductor i (0-based)
+                    let pair = match self.windings[j - 1].connection {
+                        Connection::Wye => [plus, j * nconds - 1],
+                        // Delta — second conductor is the next phase in sequence.
+                        Connection::Delta => [plus, base + self.rotate_phases(i) - 1],
+                        // Series never occurs on a Transformer (auto-only); keep
+                        // a benign self-pair to stay exhaustive.
+                        Connection::Series => [plus, plus],
+                    };
+                    pairs.push(pair);
                 }
             }
         }
+        self.term_ref = TermRef(pairs);
     }
 
     /// Pascal `TTransfObj.FetchXfmrCode`: copy the resolved `XfmrCode`'s whole

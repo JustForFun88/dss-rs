@@ -66,14 +66,18 @@ fn set_term_ref_3ph_wye_wye() {
     // 3-phase 2-winding wye-wye: nconds = 4. Each phase i maps winding j's
     // phase conductor `(j-1)*4 + i` and its neutral `j*4`.
     let t = edited(&[("phases", "3"), ("windings", "2"), ("conns", "wye, wye")]);
-    // TermRef is 1-based with slot 0 unused. Layout: per phase i (1..3),
-    // per winding j (1..2): [phaseCond, neutCond].
-    // phase 1: w1 -> (1, 4), w2 -> (5, 8)
-    assert_eq!(&t.term_ref[1..=4], &[1, 4, 5, 8]);
-    // phase 2: w1 -> (2, 4), w2 -> (6, 8)
-    assert_eq!(&t.term_ref[5..=8], &[2, 4, 6, 8]);
-    // phase 3: w1 -> (3, 4), w2 -> (7, 8)
-    assert_eq!(&t.term_ref[9..=12], &[3, 4, 7, 8]);
+    // TermRef holds one 0-based [plus, minus] conductor pair per (phase, winding),
+    // phase-major. Same mapping as the 1-based Pascal `[1,4,5,8 | 2,4,6,8 |
+    // 3,4,7,8]`, minus one.
+    // phase 0: w0 -> (0, 3), w1 -> (4, 7)
+    assert_eq!(t.term_ref.pair(0, 0, 2), [0, 3]);
+    assert_eq!(t.term_ref.pair(0, 1, 2), [4, 7]);
+    // phase 1: w0 -> (1, 3), w1 -> (5, 7)
+    assert_eq!(t.term_ref.pair(1, 0, 2), [1, 3]);
+    assert_eq!(t.term_ref.pair(1, 1, 2), [5, 7]);
+    // phase 2: w0 -> (2, 3), w1 -> (6, 7)
+    assert_eq!(t.term_ref.pair(2, 0, 2), [2, 3]);
+    assert_eq!(t.term_ref.pair(2, 1, 2), [6, 7]);
 }
 
 #[test]
@@ -87,13 +91,16 @@ fn set_term_ref_3ph_wye_delta() {
         ("conns", "wye, delta"),
     ]);
     // HV (winding 1) is wye → DeltaDirection = +1, so phase i delta maps to
-    // phase i+1 (wrapping 3→1).
-    // phase 1: w1 wye -> (1, 4), w2 delta -> (5, 6)   [(2-1)*4 + rot(1)=2]
-    assert_eq!(&t.term_ref[1..=4], &[1, 4, 5, 6]);
-    // phase 2: w1 -> (2, 4), w2 delta -> (6, 7)
-    assert_eq!(&t.term_ref[5..=8], &[2, 4, 6, 7]);
-    // phase 3: w1 -> (3, 4), w2 delta -> (7, 5)  [rot(3)=1 → (2-1)*4+1=5]
-    assert_eq!(&t.term_ref[9..=12], &[3, 4, 7, 5]);
+    // phase i+1 (wrapping 3→1). 0-based pairs (Pascal values minus one).
+    // phase 0: w0 wye -> (0, 3), w1 delta -> (4, 5)
+    assert_eq!(t.term_ref.pair(0, 0, 2), [0, 3]);
+    assert_eq!(t.term_ref.pair(0, 1, 2), [4, 5]);
+    // phase 1: w0 -> (1, 3), w1 delta -> (5, 6)
+    assert_eq!(t.term_ref.pair(1, 0, 2), [1, 3]);
+    assert_eq!(t.term_ref.pair(1, 1, 2), [5, 6]);
+    // phase 2: w0 -> (2, 3), w1 delta -> (6, 4)  [rot(3)=1]
+    assert_eq!(t.term_ref.pair(2, 0, 2), [2, 3]);
+    assert_eq!(t.term_ref.pair(2, 1, 2), [6, 4]);
 }
 
 #[test]

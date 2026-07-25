@@ -6,7 +6,7 @@
 
 use num_complex::Complex64;
 
-use crate::elements::pd::winding::Connection;
+use crate::elements::pd::winding::{Connection, TermRef, WdgTerms};
 use crate::support::cmatrix::CMatrix;
 use crate::util::{EPSILON, inv_sqrt3_x1000, sqrt3};
 
@@ -257,10 +257,11 @@ impl AutoTrans {
         let mut yterm = CMatrix::new(n2);
         let mut yterm_nl = CMatrix::new(n2);
         let mut at2 = CMatrix::new(n2);
-        for i in 1..=nw {
-            let denom = self.windings[i - 1].vbase * zero_tap_fix(self.windings[i - 1].putap);
-            at2.set(2 * i - 2, i - 1, Complex64::new(1.0 / denom, 0.0));
-            at2.set(2 * i - 1, i - 1, Complex64::new(-1.0 / denom, 0.0));
+        for (iwind, w) in self.windings.iter().enumerate() {
+            let denom = w.vbase * zero_tap_fix(w.putap);
+            let wt = WdgTerms::of(iwind);
+            at2.set(wt.plus, iwind, Complex64::new(1.0 / denom, 0.0));
+            at2.set(wt.minus, iwind, Complex64::new(-1.0 / denom, 0.0));
         }
         let mut av = vec![Complex64::ZERO; n2];
         let mut s1 = vec![Complex64::ZERO; n2];
@@ -300,11 +301,11 @@ impl AutoTrans {
         // Anti-float adders: a small admittance on both conductors of each
         // winding so the matrix always inverts even without a voltage ref.
         if self.ppm_float_factor != 0.0 {
-            for i in 1..=nw {
-                let yadder = Complex64::new(0.0, self.windings[i - 1].y_ppm);
-                for j in (2 * i - 1)..=(2 * i) {
-                    yterm.add(j - 1, j - 1, yadder);
-                }
+            for (iwind, w) in self.windings.iter().enumerate() {
+                let yadder = Complex64::new(0.0, w.y_ppm);
+                let wt = WdgTerms::of(iwind);
+                yterm.add(wt.plus, wt.plus, yadder);
+                yterm.add(wt.minus, wt.minus, yadder);
             }
         }
 
@@ -327,23 +328,23 @@ impl AutoTrans {
         let mut yterm = CMatrix::new(n2);
         let yterm_nl = CMatrix::new(n2);
 
-        for i in 1..=nw {
-            let yr = Complex64::new(1.0 / self.windings[i - 1].rdcohms, 0.0); // Siemens
-            let idx = 2 * i - 2; // 0-based (Pascal 1-based `2*i - 1`)
-            yterm.set(idx, idx, yr);
-            yterm.set(idx + 1, idx + 1, yr);
-            yterm.set(idx, idx + 1, -yr);
-            yterm.set(idx + 1, idx, -yr);
+        for (iwind, w) in self.windings.iter().enumerate() {
+            let yr = Complex64::new(1.0 / w.rdcohms, 0.0); // Siemens
+            let wt = WdgTerms::of(iwind);
+            yterm.set(wt.plus, wt.plus, yr);
+            yterm.set(wt.minus, wt.minus, yr);
+            yterm.set(wt.plus, wt.minus, -yr);
+            yterm.set(wt.minus, wt.plus, -yr);
         }
 
         // Anti-float as a real conductance so the matrix inverts even without a
         // voltage reference on all sides.
         if self.ppm_float_factor != 0.0 {
-            for i in 1..=nw {
-                let yadder = Complex64::new(-self.windings[i - 1].y_ppm, 0.0); // G + j0
-                for j in (2 * i - 1)..=(2 * i) {
-                    yterm.add(j - 1, j - 1, yadder);
-                }
+            for (iwind, w) in self.windings.iter().enumerate() {
+                let yadder = Complex64::new(-w.y_ppm, 0.0); // G + j0
+                let wt = WdgTerms::of(iwind);
+                yterm.add(wt.plus, wt.plus, yadder);
+                yterm.add(wt.minus, wt.minus, yadder);
             }
         }
 
@@ -357,18 +358,27 @@ impl AutoTrans {
     pub(super) fn build_yprim_component(
         yp: &mut CMatrix,
         yt: &CMatrix,
-        term_ref: &[usize],
+        term_ref: &TermRef,
         nw: usize,
         np: usize,
     ) {
-        let nw2 = 2 * nw;
-        for i in 1..=nw2 {
-            for j in 1..=i {
-                let value = yt.get(i - 1, j - 1);
-                for kk in 0..np {
-                    let r = term_ref[i + kk * nw2];
-                    let c = term_ref[j + kk * nw2];
-                    yp.add_sym(r - 1, c - 1, value);
+        // Walk the lower triangle of the `2·nw` `Y_Terminal` as (winding, side)
+        // pairs — identical to the Transformer's, in the same `(i, j, phase)`
+        // `add_sym` order as the flat Pascal `TermRef` stamping.
+        for wi in 0..nw {
+            for side_i in 0..2 {
+                let i = 2 * wi + side_i;
+                for wj in 0..=wi {
+                    let side_j_max = if wj == wi { side_i } else { 1 };
+                    for side_j in 0..=side_j_max {
+                        let j = 2 * wj + side_j;
+                        let value = yt.get(i, j);
+                        for kk in 0..np {
+                            let r = term_ref.pair(kk, wi, nw)[side_i];
+                            let c = term_ref.pair(kk, wj, nw)[side_j];
+                            yp.add_sym(r, c, value);
+                        }
+                    }
                 }
             }
         }
@@ -433,24 +443,24 @@ impl AutoTrans {
         let mut iterm_nl = vec![Complex64::ZERO; 2 * nw];
         let mut kk = 0usize;
         for iphase in 1..=np {
-            for iwind in 1..=nw {
-                let i = 2 * iwind - 1; // 1-based into vterm
-                let base = iphase + (iwind - 1) * nconds; // 1-based Vterminal index
-                match self.windings[iwind - 1].connection {
+            for (iwind, w) in self.windings.iter().enumerate() {
+                let wt = WdgTerms::of(iwind);
+                let base = iphase + iwind * nconds - 1; // 0-based Vterminal phase conductor
+                match w.connection {
                     Connection::Wye => {
                         // Wye (common winding usually)
-                        vterm[i - 1] = vterminal[base - 1];
-                        vterm[i] = vterminal[base + np - 1];
+                        vterm[wt.plus] = vterminal[base];
+                        vterm[wt.minus] = vterminal[base + np];
                     }
                     Connection::Delta => {
                         let jphase = self.rotate_phases(iphase);
-                        vterm[i - 1] = vterminal[base - 1];
-                        vterm[i] = vterminal[jphase + (iwind - 1) * nconds - 1];
+                        vterm[wt.plus] = vterminal[base];
+                        vterm[wt.minus] = vterminal[jphase + iwind * nconds - 1];
                     }
                     Connection::Series => {
-                        // Series winding
-                        vterm[i - 1] = vterminal[base - 1];
-                        vterm[i] = vterminal[iphase + np - 1];
+                        // Series winding straddles the H/X terminals.
+                        vterm[wt.plus] = vterminal[base];
+                        vterm[wt.minus] = vterminal[iphase + np - 1];
                     }
                 }
             }

@@ -24,7 +24,7 @@ mod tests;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::pd::winding::Winding;
+use crate::elements::pd::winding::{TermRef, Winding};
 use crate::elements::traits::{ElemRef, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
@@ -292,9 +292,9 @@ pub struct Transformer {
     windings: Vec<Winding>,
     /// Pascal `XSC` — per-unit short-circuit reactances (`x12 x13 x23 …`).
     xsc: Vec<f64>,
-    /// Pascal `TermRef`: winding-conductor → terminal-conductor map, 1-based
-    /// with slot 0 unused; values are 1-based conductor indices into `YPrim`.
-    term_ref: Vec<usize>,
+    /// Pascal `TermRef`: winding-conductor → terminal-conductor map, one 0-based
+    /// `[plus, minus]` pair per phase × winding (phase-major).
+    term_ref: TermRef,
     /// Short-circuit / one-volt / terminal admittance matrices (Pascal `ZB`,
     /// `Y_1Volt`, `Y_1Volt_NL`, `Y_Term`, `Y_Term_NL`).
     zb: CMatrix,
@@ -367,7 +367,7 @@ impl Transformer {
             max_windings: 0,
             windings: Vec::new(),
             xsc: Vec::new(),
-            term_ref: vec![0],
+            term_ref: TermRef::default(),
             zb: CMatrix::new(0),
             y_1volt: CMatrix::new(0),
             y_1volt_nl: CMatrix::new(0),

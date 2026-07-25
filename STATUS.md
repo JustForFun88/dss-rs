@@ -340,6 +340,39 @@ independent wraparound-range check (`tap` always folds into a live slot
 miscount (the target runs 25 tests) — it never appeared in any committed
 artifact (STATUS §gate already states 25), nothing to fix.
 
+### DE_PASCALIZE P10 — transformer terminal core [A] (branch `depas-p10`)
+
+Stratum **[A]** bit-neutral. The densest index math in the tree: the transformer
++ autotransformer `TermRef`/`Y_Terminal` machinery. Two commits.
+
+- **P1 prep (own commit).** `Winding.connection: i32` → `Connection { Wye=0,
+  Delta=1, Series=2 }` (`#[repr(i32)]`, `ordinal`/`from_ordinal`; `winding.rs`).
+  Series is autotransformer-only; the enum is shared because `Winding` is shared
+  (Transformer/AutoTrans/XfmrCode). `i32` survives only at the DssEnum property
+  parse/report + CIM-export boundary. Every match on `0/1/2` literals in the four
+  files (+ `cim/power_xfmr.rs`) reads as `Connection::…`.
+- **P10 core.** `term_ref: Vec<usize>` (flat 1-based, dead slot 0) →
+  `TermRef(Vec<[usize; 2]>)`: one 0-based `[plus, minus]` conductor pair per
+  (phase, winding), phase-major (`winding.rs`). `set_term_ref` builds the pairs
+  matching on `Connection` (both transformer wye/delta and auto wye/delta/series
+  arms). `build_yprim_component` walks the `2·nw` `Y_Terminal` lower triangle as
+  `(winding, side)` pairs, yielding the **exact** `(i, j, phase)` `add_sym`
+  order of the old flat stamp. The `2·i-1`/`2·i` pairs in
+  `calc_y_terminal`/`gic_build_y_terminal`/`get_all_winding_currents` →
+  `WdgTerms::of(iwind)` (0-based `[plus, minus]`), derived once per winding via
+  `windings.iter().enumerate()`. The `TermRef=` dump walks the pairs and re-emits
+  the identical 1-based sequence. Matrix products keep their exact call order —
+  indexing reshaped, linear algebra untouched.
+
+Applied identically to `transformer/{windings,yterminal,dump}.rs` and the
+UPGRADE-added sibling `auto_trans/{windings,yterminal,dump}.rs`. Proof (all
+unchanged): `transformer_yprim_bitexact`, `golden_checkpoints` (per-element
+YPrim), the `WdgCurrents`/dump goldens, the two `set_term_ref` + `term_ref_series`
+unit pins (rewritten to assert the new pairs = old values − 1). Note: the source
+worktree checkout timed out mid-`git worktree add`, leaving 684 files (tests/
++ tools/) unwritten — restored from HEAD before any commit; `git status
+tests/corpus` clean.
+
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),

@@ -92,10 +92,16 @@ impl AutoTrans {
             write_lower_tri(out, &self.y_term, 2 * nw, |v| fixed(v, 4));
             out.push('\n');
             out.push_str("TermRef= ");
-            let n = 2 * nw * self.cd.nphases;
-            for i in 1..=n {
-                out.push_str(&self.term_ref[i].to_string());
-                out.push(' ');
+            // Pascal dumps the flat 1-based `TermRef`; walk the pairs in the same
+            // phase-major, winding-major, [plus, minus] order (1-based values).
+            for phase in 0..self.cd.nphases {
+                for wind in 0..nw {
+                    let [plus, minus] = self.term_ref.pair(phase, wind, nw);
+                    out.push_str(&(plus + 1).to_string());
+                    out.push(' ');
+                    out.push_str(&(minus + 1).to_string());
+                    out.push(' ');
+                }
             }
             out.push('\n');
         }
