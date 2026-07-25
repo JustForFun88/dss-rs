@@ -1900,8 +1900,12 @@ impl InvDispatchEnv for InvDispEnv<'_> {
 
     fn der_bus_vbase(&self, r: ElemRef) -> f64 {
         let cd = self.store.ckt_elem(r).cd();
-        let bus_ref = cd.terminals[0].bus_ref;
-        self.bus_kvbase.get(bus_ref).copied().unwrap_or(0.0) * 1000.0
+        cd.terminals[0]
+            .bus_ref
+            .and_then(|b| self.bus_kvbase.get(b))
+            .copied()
+            .unwrap_or(0.0)
+            * 1000.0
     }
 
     fn mon_bus_node_v(&self, j: usize, node: i32) -> Complex64 {
@@ -2371,6 +2375,10 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
     fn pv_snap(&self, r: ElemRef) -> PvSnap {
         let pv = Self::pvsystem(self.store, r);
         let bus_ref = pv.cd.terminals[0].bus_ref;
+        let bus_kvbase = bus_ref
+            .and_then(|b| self.bus_kvbase.get(b))
+            .copied()
+            .unwrap_or(0.0);
         PvSnap {
             name: pv.cd.obj.name().to_string(),
             nphases: pv.cd.nphases,
@@ -2379,7 +2387,7 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
             kva_rating: pv.f_kva_rating,
             kvar_limit: pv.f_kvar_limit,
             pmpp: pv.f_pmpp,
-            bus_kvbase: self.bus_kvbase.get(bus_ref).copied().unwrap_or(0.0),
+            bus_kvbase,
         }
     }
     fn pv_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {

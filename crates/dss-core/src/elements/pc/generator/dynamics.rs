@@ -365,7 +365,7 @@ impl Generator {
         // `ComputeIterminal`/`GetCurrents` reuses the cached terminal current instead
         // of recomputing the model (mirrors `put_curr` and Storage/PVSystem dynamics).
         self.cd.iterminal_updated = true;
-        self.cd.iterminal_solution_count = sys.solution_count;
+        self.cd.mark_iterminal_solved(sys.solution_count);
 
         // Add it into the inj current array.
         let nconds = self.cd.nconds;

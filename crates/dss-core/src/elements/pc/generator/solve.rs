@@ -391,7 +391,7 @@ impl Generator {
     fn put_curr(&mut self, sys: &SysCtx, curr: Complex64, i: usize) {
         self.stick_curr(true, -curr, i); // into ITerminal
         self.cd.iterminal_updated = true;
-        self.cd.iterminal_solution_count = sys.solution_count;
+        self.cd.mark_iterminal_solved(sys.solution_count);
         self.stick_curr(false, curr, i); // into InjCurrent
     }
 
@@ -445,7 +445,7 @@ impl Generator {
             // Pascal `IterminalUpdated := TRUE` (the setter also stamps
             // `IterminalSolutionCount`, as in `DoDynamicMode`).
             self.cd.iterminal_updated = true;
-            self.cd.iterminal_solution_count = sys.solution_count;
+            self.cd.mark_iterminal_solved(sys.solution_count);
             let nconds = self.cd.nconds;
             for i in 0..nconds {
                 self.cd.inj_current[i] -= self.cd.iterminal[i];

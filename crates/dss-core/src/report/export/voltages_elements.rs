@@ -80,9 +80,9 @@ fn write_element_voltages(
         s.push_str(&format!("{ncond},{nphases},")); // NumConductors,NPhases
         // Bus = the terminal's bus name, uppercased (Pascal `StripExtension` of
         // `FirstBus`/`NextBus` + `AnsiUpperCase`).
-        let bus_name = ckt
-            .buses
-            .get(cd.terminals[j].bus_ref)
+        let bus_name = cd.terminals[j]
+            .bus_ref
+            .and_then(|b| ckt.buses.get(b))
             .map(|b| b.name.to_uppercase())
             .unwrap_or_default();
         s.push_str(&format!("{bus_name},"));

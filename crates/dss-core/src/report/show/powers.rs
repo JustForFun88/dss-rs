@@ -392,9 +392,9 @@ fn write_powers_element(
         ncond
     };
     let bus_pad = |t: usize| {
-        let b = ckt
-            .buses
-            .get(cd.terminals[t].bus_ref)
+        let b = cd.terminals[t]
+            .bus_ref
+            .and_then(|b| ckt.buses.get(b))
             .map(|x| x.name.as_str())
             .unwrap_or("");
         format::pad(b, mbnl).to_uppercase()

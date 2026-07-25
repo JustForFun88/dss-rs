@@ -168,9 +168,9 @@ fn write_element_record(
     let mut s = format::pad(&format::enclose_quotes(name), mdnl + 2);
     s.push(' ');
     for j in 0..cd.nterms {
-        let bus = ckt
-            .buses
-            .get(cd.terminals[j].bus_ref)
+        let bus = cd.terminals[j]
+            .bus_ref
+            .and_then(|b| ckt.buses.get(b))
             .map(|b| b.name.as_str())
             .unwrap_or("");
         s.push_str(&format::pad(bus, mbnl).to_uppercase());

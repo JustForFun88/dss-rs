@@ -28,7 +28,7 @@ use super::voltages::{bus_voltage_block, seq_voltage_row};
 /// `bus_idx`, or `None`. Matches Pascal's `Terminals[i-1].BusRef = BusReference`.
 fn check_bus_reference(elem: &dyn CktElement, bus_idx: usize) -> Option<usize> {
     let cd = elem.cd();
-    (0..cd.nterms).find_map(|i| (cd.terminals[i].bus_ref == bus_idx).then_some(i + 1))
+    (0..cd.nterms).find_map(|i| (cd.terminals[i].bus_ref == Some(bus_idx)).then_some(i + 1))
 }
 
 /// Build the `Show busflow` text. `bus_idx` is the 0-based bus index (already
@@ -266,9 +266,9 @@ fn write_terminal_power(
 ) {
     elem.compute_iterminal(sys, node_v);
     let cd = elem.cd();
-    let from_bus = ckt
-        .buses
-        .get(cd.terminals[jterm - 1].bus_ref)
+    let from_bus = cd.terminals[jterm - 1]
+        .bus_ref
+        .and_then(|b| ckt.buses.get(b))
         .map(|b| b.name.as_str())
         .unwrap_or("");
     let from_bus = format::pad(from_bus, 12).to_uppercase();

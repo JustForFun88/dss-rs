@@ -488,7 +488,7 @@ fn direct_shortcut_selects_yprim_currents() {
         g.cd.yprim = Some(yp);
         g.cd.set_node_ref(1, &[1, 2, 3, 0]);
         g.cd.inj_current = vec![inj; n];
-        g.cd.iterminal_solution_count = 0; // == solution_count → skip model recompute
+        g.cd.iterminal_solution_count = Some(0); // == solution_count → skip model recompute
         g
     };
 

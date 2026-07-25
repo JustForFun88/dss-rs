@@ -148,7 +148,7 @@ impl PVSystem {
     fn put_curr(&mut self, sys: &SysCtx, curr: Complex64, i: usize) {
         self.stick_curr(true, -curr, i); // into ITerminal
         self.cd.iterminal_updated = true;
-        self.cd.iterminal_solution_count = sys.solution_count;
+        self.cd.mark_iterminal_solved(sys.solution_count);
         self.stick_curr(false, curr, i); // into InjCurrent
     }
 

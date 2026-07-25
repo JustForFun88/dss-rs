@@ -165,7 +165,8 @@ pub(super) fn make_meter_zone_lists(
         let cd = store.ckt_elem_mut(metered).cd_mut();
         cd.sensor_obj = Some(meter_ref);
         cd.meter_obj = Some(meter_ref);
-        cd.from_terminal = metered_terminal;
+        // `metered_terminal` is 1-based; `from_terminal` stores it 0-based.
+        cd.from_terminal = Some(metered_terminal - 1);
         cd.flags.include(ElemFlags::CHECKED);
         cd.flags.exclude(ElemFlags::IS_ISOLATED);
         if metered_terminal >= 1 && metered_terminal <= cd.terminals.len() {
@@ -173,7 +174,7 @@ pub(super) fn make_meter_zone_lists(
         }
         cd.terminals
             .get(metered_terminal - 1)
-            .map(|t| t.bus_ref)
+            .and_then(|t| t.bus_ref)
             .unwrap_or(usize::MAX)
     };
     if from_bus != usize::MAX && from_bus < ckt.buses.len() {
@@ -218,7 +219,10 @@ pub(super) fn make_meter_zone_lists(
             let line_len = elem.line_length_km();
             (
                 cd.nterms,
-                cd.terminals.iter().map(|t| t.bus_ref).collect::<Vec<_>>(),
+                cd.terminals
+                    .iter()
+                    .map(|t| t.bus_ref.unwrap_or(usize::MAX))
+                    .collect::<Vec<_>>(),
                 cd.terminals_checked.clone(),
                 line_len.is_some(),
                 line_len.unwrap_or(0.0),
@@ -305,7 +309,10 @@ pub(super) fn make_meter_zone_lists(
                         let cd = store.ckt_elem(test_ref).cd();
                         (
                             cd.nterms,
-                            cd.terminals.iter().map(|t| t.bus_ref).collect::<Vec<_>>(),
+                            cd.terminals
+                                .iter()
+                                .map(|t| t.bus_ref.unwrap_or(usize::MAX))
+                                .collect::<Vec<_>>(),
                         )
                     };
                     for j in 1..=test_nterms {
@@ -336,7 +343,8 @@ pub(super) fn make_meter_zone_lists(
                             if j <= cd.terminals_checked.len() {
                                 cd.terminals_checked[j - 1] = true;
                             }
-                            cd.from_terminal = j;
+                            // `j` is the 1-based terminal; store it 0-based.
+                            cd.from_terminal = Some(j - 1);
                             cd.flags.include(ElemFlags::CHECKED);
                             cd.flags.exclude(ElemFlags::IS_ISOLATED);
                             if !cd.flags.contains(ElemFlags::HAS_SENSOR_OBJ) {
@@ -375,7 +383,9 @@ pub(super) fn make_meter_zone_lists(
                                 // 0.14.5 baseline passed `(0, 0)` (unset from-bus,
                                 // terminal 0), leaving the manual-zonelist branch's
                                 // `FromBusReference`/`FromTerminal` wrong for reports.
-                                let from_bus = store.ckt_elem(test_ref).cd().terminals[0].bus_ref;
+                                let from_bus = store.ckt_elem(test_ref).cd().terminals[0]
+                                    .bus_ref
+                                    .unwrap_or(usize::MAX);
                                 tree.add_new_child(test_ref, from_bus, 1);
                             }
                             break;

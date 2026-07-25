@@ -287,9 +287,9 @@ pub(crate) fn write_terminal_currents(
     let mut k = 0usize;
     for j in 0..nterm {
         // From-bus per terminal (`StripExtension(FirstBus/NextBus)`, uppercased).
-        let from_bus = ckt
-            .buses
-            .get(cd.terminals[j].bus_ref)
+        let from_bus = cd.terminals[j]
+            .bus_ref
+            .and_then(|b| ckt.buses.get(b))
             .map(|b| b.name.as_str())
             .unwrap_or("");
         let from_bus = format::pad(from_bus, mbnl).to_uppercase();

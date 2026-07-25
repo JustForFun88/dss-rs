@@ -329,14 +329,15 @@ impl Transformer {
                 pairs.push([j * nconds, (j + 1) * nconds - 1]);
             }
         } else {
-            for i in 1..=np {
-                for j in 1..=nw {
-                    let base = (j - 1) * nconds; // winding j's 0-based conductor base
-                    let plus = base + i - 1; // phase conductor i (0-based)
-                    let pair = match self.windings[j - 1].connection {
-                        Connection::Wye => [plus, j * nconds - 1],
-                        // Delta — second conductor is the next phase in sequence.
-                        Connection::Delta => [plus, base + self.rotate_phases(i) - 1],
+            for i in 0..np {
+                for j in 0..nw {
+                    let base = j * nconds; // winding j's 0-based conductor base
+                    let plus = base + i; // phase conductor i (0-based)
+                    let pair = match self.windings[j].connection {
+                        Connection::Wye => [plus, (j + 1) * nconds - 1],
+                        // Delta — second conductor is the next phase in sequence
+                        // (`rotate_phases` speaks the 1-based phase language).
+                        Connection::Delta => [plus, base + self.rotate_phases(i + 1) - 1],
                         // Series never occurs on a Transformer (auto-only); keep
                         // a benign self-pair to stay exhaustive.
                         Connection::Series => [plus, plus],

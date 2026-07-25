@@ -1039,7 +1039,10 @@ fn check_signal_match(
         return false;
     }
     let bus_ref = ce.cd().terminals[seq - 1].bus_ref;
-    let kvbase = ckt.buses.get(bus_ref).map(|b| b.kv_base).unwrap_or(0.0);
+    let kvbase = bus_ref
+        .and_then(|b| ckt.buses.get(b))
+        .map(|b| b.kv_base)
+        .unwrap_or(0.0);
     let elm_phases = phase_string(ce.cd().get_bus(seq), ce.cd().nphases, kvbase, true);
     if elm_phases.contains(&sig.phase) {
         sig.trm = seq as i32;
