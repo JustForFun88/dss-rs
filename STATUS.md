@@ -7,6 +7,108 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R2b sub-step (d) — `as_ckt_element` removal: arena ckt/data tag primitive landed; trait-method removal escape-recorded (blocked on the escaped store flip) (branch `depas-r2b`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base = the (c) tip `6c40830` (on `update` @ `5a416ee`).
+Brief step (d): tag the arena macro ckt-vs-data so `ClassArena` upcasts
+`&dyn CktElement` directly (no `Any` round-trip); convert the ~50 external
+`.as_ckt_element()/.as_ckt_element_mut()` call sites; then remove
+`as_ckt_element`/`as_ckt_element_mut` from `DssObject` + delete the 35 boilerplate
+impls. Brief fallback (binding): "If some call sites cannot be converted without
+the typed store pieces that escaped earlier, escape-record them and leave the trait
+methods in place (all-or-nothing per method: only remove a trait method when its
+caller count is zero)."
+
+**Verdict: both trait methods are BLOCKED — neither's caller count can reach zero
+without the escaped store flip / Categories A/B/D/E.** So (d) lands the genuinely-
+additive **enabling primitive** (the arena ckt/data tag, exactly parallel to how
+(a) landed the `from_ref` primitive and escaped the flip) and escape-records the
+trait-method removal + external-site conversion with a precise blocked inventory.
+The R2 record's earlier estimate that "`as_ckt_element` removal is tractable-but-
+large standalone" was optimistic — it counted only the ~50 `arena[r.idx]` sites and
+did **not** enumerate the Category-B/D bare-object readers that also call the
+immutable method (corrected here with evidence, per the "verify forward-handoffs"
+rule).
+
+**Landed — the arena ckt/data tag primitive (arena.rs only, +150/−66).**
+- `with_all_classes!` gains a 4th column per class: `ckt` (the 35 circuit classes
+  whose concrete `T: CktElement`) / `data` (the 15 `DSS_OBJECT` general classes
+  that do not). Two inner dispatch macros `ckt_view_ref!`/`ckt_view_mut!` emit the
+  **direct** `Some(&v[idx] as &dyn CktElement)` upcast for `ckt` variants and
+  `None` for `data` variants (the cast is never generated for a non-`CktElement`
+  type).
+- New `ClassArena::try_ckt_elem(idx) -> Option<&dyn CktElement>` /
+  `try_ckt_elem_mut(idx)` — the fallible twin of `ckt_elem`/`ckt_elem_mut`, tag-
+  driven, **no `Any` round-trip**. Named `try_ckt_elem*` (not `as_ckt_element*`) so
+  the arena accessor is distinct from the trait method and does not pollute the
+  `as_ckt_element` grep metric.
+- Arena internals **rerouted off the trait method onto the tag**: `ckt_elem`/
+  `ckt_elem_mut` now delegate to `try_ckt_elem*().expect(...)` (same panic message,
+  bit-identical), and `for_each_ckt_elem_mut` is an index loop over
+  `try_ckt_elem_mut(idx)` (same 0..len order, same `ElemRef`, same data-skip).
+  The arena no longer depends on `DssObject::as_ckt_element*` in production.
+- New test `arena_tag_matches_trait_ckt_view`: for **every** registered class,
+  `push_new` one object and assert `try_ckt_elem(0).is_some()` /
+  `try_ckt_elem_mut(0).is_some()` equal the still-present `obj(0).as_ckt_element()`
+  trait method object-for-object, and pin the circuit-class count at 35. Proves the
+  tag is correct against the oracle it will eventually replace. All 6 `obj::arena`
+  tests pass.
+
+**Escaped — the trait-method removal + external-site conversion (recorded per
+escape protocol; old code untouched, gate green). Both methods have nonzero
+callers rooted in the escaped store-flip categories:**
+- **`as_ckt_element_mut` (65 call sites) — blocked by Category A + E.** Control
+  dispatch (`solution/controls/dispatch.rs`, 21 `_mut` sites) obtains the
+  controlled/monitored element as a bare `&mut dyn DssObject` from
+  `store.pair_mut(r, target)` / `triple_mut(...)` (`store: &mut dyn ElemStore`) and
+  calls `tobj/mobj.as_ckt_element_mut()`; a typed `&mut dyn CktElement` from a
+  disjoint borrow needs the typed-arena pair getters (Category A, escaped in (b),
+  plan-scheduled with item-1 flip) — reachable only by bolting new
+  `pair_mut_ckt`-style methods onto the generic `ElemStore` trait, an improvised
+  stopgap the escape protocol forbids. Plus `mon_clone.as_ckt_element_mut()` (self-
+  monitoring): `mon_clone` is an owned `Box<dyn DssObject>` from `clone_box`; its
+  ckt view needs a **typed clone from the arena** (Category E), escaped.
+- **`as_ckt_element` (109 call sites) — blocked by Category D + B.** Category-D
+  `set_object_ref(resolved: Option<(ElemRef, &dyn DssObject)>)` (reg_control:319,
+  cap_control:295/315) and the `capture_metered(obj: &dyn DssObject)` /
+  sensor `capture(obj)` readers it feeds (energymeter/accessors.rs:19 ← :325,
+  monitor/accessors.rs:269 ← :208, sensor/accessors.rs:18) take a **bare
+  `&dyn DssObject` with no store/arena in scope** and read `cd()` via
+  `as_ckt_element()`. Feeding a ckt view means changing the shared resolved-object
+  tuple type across all 29 `set_object_ref` files — the escaped Category-D typed-
+  handle redesign ("Preserve resolve-time snapshot timing"). Monitor `sample.rs`
+  reads (`metered.as_ckt_element()` :60/:96) are on a `&mut dyn DssObject` disjoint-
+  borrow param (Category B) — the same disjoint-borrow wall as dispatch.
+- **The ~90 remaining `arena[r.idx].as_ckt_element()` sites** (report/exec/solution/
+  diakoptics/cim) ARE mechanically convertible to `arena.try_ckt_elem(r.idx)`, but
+  converting them does **not** remove either trait method (the blocked sites above
+  keep both alive), and the plan sequences the full conversion **with** the store
+  flip (item 1) — so per the escape protocol (leave old code, gate green) and the
+  (a)/(b) precedent (land the primitive, don't churn a blocked category early),
+  they are left for the flip WP. `try_ckt_elem*` are ready for that mechanical pass.
+
+**Metrics (HEAD vs (c) base `6c40830`).** Only `crates/dss-core/src/obj/arena.rs`
+changed. Trait-method caller counts **unchanged**: `.as_ckt_element()` 109,
+`.as_ckt_element_mut()` 65 — zero external sites converted, neither trait method
+removed, 35 impls intact. `as_any|as_ckt_element` 712 → **716** (+4 = the doc/test
+references to the *unchanged* trait method in arena.rs, incl. the equivalence-test
+oracle call `obj(0).as_ckt_element()`; no new trait-method call sites).
+`downcast_ref|downcast_mut` **369** (unchanged). `TODO(compat)` **117** (unchanged).
+`ElemRef` 937 (unchanged). Zero golden / ledger / tolerance churn.
+
+**Deviations disclosed.** (1) (d) removed neither trait method — blocked on the
+escaped store flip (same wall as (b)); landed the additive tag primitive instead.
+(2) Named the arena accessors `try_ckt_elem*` (not `as_ckt_element*`) to keep the
+grep metric honest and disambiguate from the trait method. (3) Did not convert the
+~90 convertible external sites (churn for zero removal; plan-sequenced with the
+flip) — `try_ckt_elem*` are staged for that pass.
+
+**Gate.** Toolchain guard first (`cargo = .cargo\bin`, 186 `.pas`). `cargo fmt
+--all --check` ok; `cargo clippy --workspace --all-targets -- -D warnings` ok;
+`cargo test --workspace` (corpus gate inside, both channels capi_v0145 + r4133, run
+solo) — exit 0, all suites green incl. the 6 `obj::arena` tests. Tree clean; corpus
+run-artifacts removed by exact name.
+
 ### DE_PASCALIZE R2b sub-step (c) — Category E `make_like`: trait method → inherent typed fn (50 classes) landed, trait method removed (branch `depas-r2b`, commit `5a6a41c`, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Base for this sub-step = the (a)+(b) tip `c32a2cb`
