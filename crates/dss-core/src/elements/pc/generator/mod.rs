@@ -5,8 +5,10 @@
 //! per-phase model current), but the model-current signs are reversed
 //! (`StickCurrInTerminalArray` negates the opposite way) because the generator
 //! pushes power into the node. Six power-flow models are ported
-//! (`DoConstantPQGen` .. `DoCurrentLimitedPQ`); dynamics/harmonics/user-model
-//! DLLs are Phase 7 / never (PHASE6_PLAN §2.5).
+//! (`DoConstantPQGen` .. `DoCurrentLimitedPQ`); dynamics and harmonics are
+//! ported (see [`dynamics`]), and the `UserModel`/`ShaftModel` surface is ported
+//! over the sandboxed WASM ABI (`WASM_USERMODELS_PLAN.md` §WP-WM.3) — native-DLL
+//! names warn-and-fall-back per §2.4; native DLL loading stays out of scope.
 //!
 //! Split into submodules (this file holds the metadata, struct and `Create`):
 //! - [`nominal`]: dispatch/shape multipliers, `SetNominalGeneration` and

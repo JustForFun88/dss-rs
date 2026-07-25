@@ -1912,22 +1912,28 @@ open item is not buried in the §1a archive):
   Blocks an AutoTrans JSON golden (incl. Full WdgCurrents, which is *inferred* to
   work via the class-agnostic refresh route — proven post-solve on Transformer,
   but AutoTrans's own getter is not independently oracle-pinned). Out of §1.3 scope.
-- **Generator/PVSystem/Storage `ShaftModel`/`ShaftData` hidden under JSON Full →
-  NOT started (og1213 discovery).** They carry `PropFlags::NOT_PORTED` →
-  `hidden_from_full_enum()` skips them, but the 0.14.5 oracle emits them (`""`).
-  Blocks a Generator/Storage *Full* JSON golden; the DynInit tail is pinned in
-  default-family combos instead.
+- **Generator/PVSystem/Storage `ShaftModel`/`ShaftData` under JSON Full →
+  re-triage (og1213 discovery; mechanism note stale post-WM.3).** The original
+  gap was that these carried `PropFlags::NOT_PORTED` and were skipped from Full
+  while the 0.14.5 oracle emits them (`""`). **WM.3/WM.4 removed those NOT_PORTED
+  flags** (they are now full ported properties) and `hidden_from_full_enum()` no
+  longer checks NOT_PORTED at all (only `HIDE_015X`/`HIDE_R4133`), so the stated
+  cause no longer holds — the Generator/Storage *Full* JSON golden needs a fresh
+  triage to confirm the properties now emit and match the oracle. (The DynInit
+  tail stays pinned in default-family combos meanwhile.)
 - **A-Diakoptics `AggregateProfiles` command + D9(d) official-r3723 AD-replay →
   DIAKOPTICS Part II WP-AD.5 — partial.** `exec/command.rs:69` `NOT_PORTED`; WP-AD.6
   threaded children not started (needs MULTITHREADING M2).
 - **User-model native DLLs (Gen/PVSystem/Storage/CapControl UserModel) →
-  WASM_USERMODELS — Generator (WM.3), Storage + PVSystem (WM.4) DONE;
-  CapControl (WM.5) remaining.** Infrastructure (WM.0–WM.2) + Generator
-  `UserModel`/`ShaftModel` (WM.3) + Storage `UserModel`/`DynaDLL` and PVSystem
-  `UserModel` (WM.4) all follow the plan §2.4 uniform rule (WASM `.wasm` loads;
-  a native-DLL name warns + falls back), gated bit-exact vs the r4133 oracle
-  (`indmach012a.wasm` + `wm4model.wasm` fixtures, twin-pinned). Only CapControl
-  `UserModel` still carries `PropFlags::NOT_PORTED` → WM.5.
+  WASM_USERMODELS COMPLETE (WM.0–WM.7 all done, 2026-07-25).** All six properties
+  × four elements (Generator `UserModel`/`ShaftModel` WM.3; Storage
+  `UserModel`/`DynaDLL` + PVSystem `UserModel` WM.4; CapControl `UserModel` WM.5;
+  callback tail WM.6; exit sweep WM.7) follow the plan §2.4 uniform rule (a
+  `.wasm` loads through the sandboxed `dss-usermodel` ABI; a native-DLL name warns
+  #570/#1570 + falls back to built-in), gated bit-exact vs the r4133 oracle
+  (`indmach012a` + `wm4model` + `capuserctl` twin-pinned `.wasm` fixtures). **Zero
+  live `PropFlags::NOT_PORTED`** on any user-model property. `PLAN_SEQUENCE.md`
+  stage 9 COMPLETE.
 
 **Residual floors / parked (documented, not bugs):**
 - **ckt24 RegControl/LDC `SubXFMR`** ~4.7e-5 rel tap-current — ultra-switch
@@ -6566,8 +6572,10 @@ property surfaces (Generator UserModel/UserData/ShaftModel/ShaftData, Storage
 UserModel/UserData/DynaDLL/DynaData, PVSystem UserModel/UserData, CapControl
 UserModel/UserData) → **zero live `NOT_PORTED` flags** (none of the four
 elements' `PropDef`s carry `PropFlags::NOT_PORTED`; all six resolve via the §2.4
-uniform rule). Five **stale/misleading doc comments** that still claimed these
-were NOT_PORTED were corrected to reflect the WASM port:
+uniform rule). Seven **stale/misleading doc comments** that still claimed these
+were NOT_PORTED / never-loaded / out-of-scope were corrected to reflect the WASM
+port (five in the initial sweep; two more found by the settle audit — see the
+settle note below):
 - `generator/dynamics.rs:9` module doc ("UserModel/ShaftModel DLLs are
   NOT_PORTED (never)") → now describes the WASM ABI port (§WP-WM.3).
 - `generator/dynamics.rs` `get_gen_variables` doc ("UserModel/ShaftModel
@@ -6581,6 +6589,15 @@ were NOT_PORTED were corrected to reflect the WASM port:
   `queue_user_model_load`/`_edit` (§WP-WM.4).
 - `exec/tests/dynamics.rs` `sto_dyn_dss` doc ("user models are NOT_PORTED") →
   "this deck loads no user model, so the built-in dynamics integrate".
+- `storage/mod.rs` `DynaDLL`/`DynaData` PropDef comment ("User-written model DLLs
+  are never *loaded* … loader permanently out of scope … falls back to the
+  built-in model") — false post-WM.4: `DYNA_DLL` now queues a real WASM load
+  (`accessors.rs:692` → `queue_user_model_load(UserModelSlot::Dyna, …)`). Rewritten
+  to the §2.4 uniform rule (a `.wasm` loads; native-DLL name / missing file warns
+  1570 and falls back). *(settle-audit miss)*
+- `generator/mod.rs:9` module doc ("dynamics/harmonics/user-model DLLs are Phase 7
+  / never") — dynamics and harmonics are ported and the user-model surface is
+  WASM-ported; rewritten to point at [`dynamics`] and §WP-WM.3. *(settle-audit miss)*
 
 Two remaining `NOT_PORTED` hits confirmed **unrelated** and left untouched:
 `generator/dynamics.rs:233` (the DebugTrace CSV record — a genuinely-different
@@ -6646,3 +6663,22 @@ stage 9 marked COMPLETE (item 4c); `docs/wasm/USERMODEL_ABI.md` verified complet
 **Stuck items: none.** Every finding was a mechanical doc/format cleanup; the
 tree is left green. Merge (item 5) is the coordinator's per the standing
 convention.
+
+**Settle (audit dispositions, 2026-07-25).** Two independent audits reviewed the
+sweep. Audit-tests: nothing real — corpus byte-identity, hash-vs-PIN pins, and
+the marker sweep all confirmed clean; no coverage removed, no assertion loosened.
+Audit-code: verdict inert-and-correct, but flagged that item-1 missed **two**
+same-meaning stale claims the literal `rg NOT_PORTED` grep could not catch —
+`storage/mod.rs` `DynaDLL`/`DynaData` ("never loaded / out of scope", the more
+material since it misdescribes live property behavior) and `generator/mod.rs:9`
+("Phase 7 / never"). Both **REAL doc-only misses, now fixed** (see the two
+*(settle-audit miss)* entries above); doc-only, no runtime effect. A broader
+grep (`never.*load|out of scope|property SURFACE|Phase 7 / never`) across
+`src/elements` confirmed no other user-model stale claims survive — remaining
+hits are legitimate module-doc "property surface" descriptions or correct
+"native DLL loading out of scope" statements. `cap_control/mod.rs:2` ("Phase 4
+ports the parse-time surface only") is a phased-porting-history note (lines 11–16
+correctly point to `control_loop` for the ported solve-time machinery), not a
+user-model-DLL claim — out of WM.7's chartered six-property scope, left as-is.
+Full gate re-run after the two fixes: fmt ✅, clippy ✅, `cargo test --workspace`
+✅ (corpus gate 25/25, 224s), `tests/corpus` pristine.
