@@ -164,7 +164,16 @@ impl Dss {
         // Not a command: it could be a property of the active circuit element.
         if pointer == 0 {
             if param_name.is_empty() || param_name.eq_ignore_ascii_case("command") {
+                let from = self.errors.len();
                 self.errors.push(format!("Unknown Command: \"{param}\""));
+                // P5b: underline the unknown command name (the value token).
+                attach_source(
+                    &mut self.errors,
+                    from,
+                    self.parser.token_span(),
+                    &self.cmd_origin,
+                    self.parser.cmd_string(),
+                );
             } else {
                 let (obj_name, prop_name) = parse_obj_name(&param_name);
                 if !obj_name.is_empty() && !self.set_object(&obj_name) {
@@ -1303,6 +1312,7 @@ impl Dss {
             output_directory,
             last_result,
             last_result_file,
+            cmd_origin,
             ..
         } = self;
         // Split the registry so the active class is borrowed mutably for the
@@ -1360,17 +1370,35 @@ impl Dss {
                 if active_arena[oi].parse_dyn_var(&param_name, &param, vars) {
                     // Consumed as a DynamicExp state-variable initializer.
                 } else if param_name.is_empty() {
+                    let from = errors.len();
                     errors.push(format!(
                         "Unknown parameter for value \"{param}\" in object \"{}.{}\"",
                         props.class_name(),
                         active_arena[oi].data().name()
                     ));
+                    // P5b: underline the stray value token.
+                    attach_source(
+                        errors,
+                        from,
+                        parser.token_span(),
+                        cmd_origin,
+                        parser.cmd_string(),
+                    );
                 } else {
+                    let from = errors.len();
                     errors.push(format!(
                         "Unknown parameter \"{param_name}\" (value \"{param}\") for object \"{}.{}\"",
                         props.class_name(),
                         active_arena[oi].data().name()
                     ));
+                    // P5b: underline the unknown parameter *name* token.
+                    attach_source(
+                        errors,
+                        from,
+                        parser.param_name_span(),
+                        cmd_origin,
+                        parser.cmd_string(),
+                    );
                 }
             } else {
                 let idx = param_pointer as usize;
@@ -1386,6 +1414,7 @@ impl Dss {
                     active_arena[oi].data_mut().set_as_next_seq(idx);
                     active_arena[oi].side_effects(idx, 0);
                 } else {
+                    let from = errors.len();
                     let mut eng = PropEngine {
                         parser: aux_parser,
                         vars,
@@ -1398,6 +1427,17 @@ impl Dss {
                     {
                         errors.push(e);
                     }
+                    // P5b: every diagnostic this property edit produced — the
+                    // bubbled conversion `Err` and any `DoSimpleMsg`-and-continue
+                    // range/sign message pushed deep in `set_obj_*` — concerns the
+                    // current value token; underline it against the command line.
+                    attach_source(
+                        errors,
+                        from,
+                        parser.token_span(),
+                        cmd_origin,
+                        parser.cmd_string(),
+                    );
                 }
             }
 
@@ -1768,6 +1808,30 @@ impl Dss {
         // active-class borrows above are dead by here (last used at `end_edit`),
         // so the full `classes` slice is free for the ref-action targets.
         apply_edit_signal_tail(classes, circuit, errors, ci, oi);
+    }
+}
+
+/// P5b: attach the executing command line as a diagnostic source, underlining
+/// `span`, to every diagnostic pushed since `from` that has no source yet.
+///
+/// The executive owns the source origin (`"<command>"` or `"<file>:<line-no>"`)
+/// and the offending token's byte range in the *main* command parser, so it is
+/// authoritative: any span the property parser recorded on its scratch `(value)`
+/// buffer is meaningless against this source and is overwritten. Diagnostics
+/// that already carry a `src` (none do today) are left untouched. miette renders
+/// the underline only when both `source_code()` and `labels()` are present.
+fn attach_source(
+    errors: &mut crate::diag::ErrorLog,
+    from: usize,
+    span: std::ops::Range<usize>,
+    origin: &str,
+    source: &str,
+) {
+    for d in errors.iter_mut().skip(from) {
+        if d.src.is_none() {
+            d.span = Some((span.start, span.len()).into());
+            d.src = Some(miette::NamedSource::new(origin, source.to_string()));
+        }
     }
 }
 

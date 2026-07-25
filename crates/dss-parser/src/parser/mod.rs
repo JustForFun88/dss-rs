@@ -26,6 +26,8 @@
 #[cfg(test)]
 mod tests;
 
+use std::ops::Range;
+
 use crate::rpn::RPNCalculator;
 
 mod convert;
@@ -58,6 +60,16 @@ pub struct Parser {
     auto_increment: bool,
     convert_error: bool,
     is_quoted_string: bool,
+    /// P5b span raw material: the byte range in the scanned buffer of the token
+    /// [`get_token_at`](Self::get_token_at) most recently produced.
+    tok_start: usize,
+    tok_end: usize,
+    /// The byte range of the current value token (`token_buffer`) in
+    /// `cmd_buffer`, and of the parameter *name* token in a `name=value` pair —
+    /// both recorded by [`next_param`](Self::next_param). Diagnostics attach
+    /// these to underline the offending token in the source line (P5b).
+    value_span: Range<usize>,
+    param_span: Range<usize>,
     rpn: RPNCalculator,
 }
 
@@ -77,6 +89,10 @@ impl Parser {
             auto_increment: false,
             convert_error: false,
             is_quoted_string: false,
+            tok_start: 0,
+            tok_end: 0,
+            value_span: 0..0,
+            param_span: 0..0,
             rpn: RPNCalculator::new(),
         }
     }
@@ -153,6 +169,29 @@ impl Parser {
     /// Replace the current token (Pascal `Token` property write).
     pub fn set_token(&mut self, token: &str) {
         self.token_buffer = token.to_string();
+    }
+
+    /// Byte range of the current value token (`token`) in [`cmd_string`], for
+    /// underlining the offending value in a diagnostic (P5b). After a
+    /// `name=value` [`next_param`] this is the *value*; after a bare token it is
+    /// the token itself. `@variable` substitution changes `token` but not this
+    /// span — it still points at the original source text (`@var`), which is
+    /// what a jump-to-source diagnostic wants.
+    ///
+    /// [`cmd_string`]: Self::cmd_string
+    /// [`next_param`]: Self::next_param
+    pub fn token_span(&self) -> Range<usize> {
+        self.value_span.clone()
+    }
+
+    /// Byte range of the parameter *name* token in a `name=value` pair (Pascal
+    /// `ParamName`) in [`cmd_string`], for underlining an unknown property /
+    /// parameter name. For a bare token this equals [`token_span`]. (P5b.)
+    ///
+    /// [`cmd_string`]: Self::cmd_string
+    /// [`token_span`]: Self::token_span
+    pub fn param_name_span(&self) -> Range<usize> {
+        self.param_span.clone()
     }
 
     /// Scan position, for save/restore (Pascal `Position`); a 0-based byte

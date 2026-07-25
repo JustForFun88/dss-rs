@@ -3435,6 +3435,47 @@ scope). One `miette`-based diagnostic type now backs every engine error channel.
 - `From<ParserError>`/`SparseError`/`SingularMatrix` for `DssDiagnostic` land in
   `diag.rs`; the "Error Encountered in Solve: {e}" catch sites carry code 482.
 
+## 1jb. DE_PASCALIZE P5b — source spans ("beautiful errors") [A] (branch `depas-p5bc`)
+
+`DE_PASCALIZE_PLAN.md` §P5b executed. Diagnostics now underline the offending
+token against the command-line source. Base `update@6c99b8f`. Numeric goldens
+byte-identical; no tolerance/golden changes (text-only P5 exception unused here).
+
+- **`dss-parser` token spans.** `get_token_at` (scanner.rs) records the byte
+  range of every token it produces (`tok_start/tok_end`, zero-width default for
+  the end-of-line empty token). `next_param` copies those into `value_span` (the
+  current value token) and `param_span` (the parameter *name* in a `name=value`
+  pair; equals the value span for a bare token). New public accessors
+  `Parser::token_span()` / `param_name_span() -> Range<usize>` next to `token()`.
+  Spans point at the ORIGINAL source text — `@variable` substitution changes the
+  token but not the span (correct for jump-to-source).
+- **`ParserError` gains `span: Option<Range<usize>>`** + `with_span`/`span()`;
+  the conversion/inline-math raisers (`make_integer`/`make_double_ex`) populate it
+  from `value_span`. `From<ParserError> for DssDiagnostic` (dss-core `diag.rs`)
+  carries it into `DssDiagnostic.span` (no `src` — see below). dss-parser stays
+  miette-free (`std::ops::Range`, not `SourceSpan`).
+- **The executive is the source authority.** `exec/command.rs::attach_source`
+  stamps the executing command line (`parser.cmd_string()`) + a token span onto
+  every diagnostic pushed during a unit of work whose `src` is still `None` — so a
+  span the property parser recorded against its scratch `(value)` buffer is
+  overwritten with the correct main-source offset. Wired at the three highest-value
+  sites: unknown command (token span of the name), unknown parameter (name-token
+  span), and property edit (value-token span, covering both the bubbled conversion
+  `Err` and any deep `DoSimpleMsg`-and-continue range/sign message).
+- **Scope rule v1 (one command line = one source).** New `Dss.cmd_origin` field:
+  `"<command>"` interactively, set to `"<file>:<line-no>"` per line by
+  `do_redirect` (saved/restored around the loop so nested Redirect/Compile report
+  their own origin). No whole-file offset maps. Long-tail solve-time sites and the
+  post-edit deferred-channel drain stay span-less (final, per plan).
+- **Render is test-only.** miette `fancy-no-backtrace` is a dss-core **dev-dep**
+  (shipped lib stays protocol-only); `tests/diag_render.rs` snapshots the graphical
+  render (`GraphicalTheme::unicode_nocolor`, width 80 → ANSI-free, deterministic)
+  for the three DoD cases: bad property value (underlines `abc`), unknown command
+  (underlines the name), mid-script Redirect (origin `broken.dss:3`). Note: a
+  non-numeric integer value is `(...)`-wrapped and RPN-parsed, so its message is
+  "Invalid inline math entry" (pre-existing text, preserved) — the span still
+  underlines the real value token. 6 parser unit tests pin the span byte ranges.
+
 ## 1l. DE_PASCALIZE P15 — `dss-sparse` allocation & indexing hygiene [A] (branch `wt-p15`)
 
 Stratum **[A] bit-neutral** — the solver hot path. Same arithmetic, same

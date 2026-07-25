@@ -153,11 +153,17 @@ impl From<&String> for DssDiagnostic {
 }
 
 /// The parser's conversion/inline-math failure (Pascal `EParserProblem`) wrapped
-/// at its catch sites — the message text is preserved, the code stays `None`
-/// (P5b will carry the offending token's span through `ParserError`).
+/// at its catch sites — the message text is preserved, the code stays `None`.
+/// P5b carries the offending token's byte range through `ParserError::span`; the
+/// `src` is still `None` here (the executive attaches the command-line source
+/// where it knows the origin), so a bare span never renders a source snippet on
+/// its own — miette needs both `source_code()` and `labels()`.
 impl From<dss_parser::ParserError> for DssDiagnostic {
     fn from(e: dss_parser::ParserError) -> Self {
-        Self::msg(e.message().to_string(), None)
+        let span = e.span();
+        let mut d = Self::msg(e.message().to_string(), None);
+        d.span = span.map(|r| (r.start, r.len()).into());
+        d
     }
 }
 

@@ -166,6 +166,12 @@ pub struct Dss {
     /// `DSS.In_Redirect` / `DSS.Redirect_Abort`.
     in_redirect: bool,
     redirect_abort: bool,
+    /// P5b diagnostic-source origin for the command line currently executing —
+    /// the `NamedSource` name a span-carrying diagnostic renders. `"<command>"`
+    /// for interactive/API commands; `"<file>:<line-no>"` while `do_redirect`
+    /// drives a `Redirect`/`Compile` deck (scope rule v1: one command line = one
+    /// source). Restored around each redirect so nested decks report correctly.
+    cmd_origin: String,
     /// `DSS.CIMExporter`: the persistent hashed-UUID list state (WP8.6 step 6;
     /// GAPS_PLAN WPG.18 adds the CIM XML exporters on top).
     cim: crate::cim::CimExporter,

@@ -526,3 +526,67 @@ fn unterminated_quote_runs_to_end_of_line() {
     // Pascal scans to the end (the appended space is the last char)
     assert_eq!(p.token(), "1 2");
 }
+
+// ---- P5b token spans -------------------------------------------------------
+
+/// The byte range `token_span`/`param_name_span` report must index the exact
+/// substring of `cmd_string` (which carries the appended trailing space).
+#[test]
+fn spans_index_the_offending_token() {
+    let (mut p, vars) = parser_with("New Load.x phases=abc");
+    // "New"
+    p.next_param(&vars);
+    assert_eq!(&p.cmd_string()[p.token_span()], "New");
+    // "Load.x"
+    p.next_param(&vars);
+    assert_eq!(&p.cmd_string()[p.token_span()], "Load.x");
+    // "phases=abc": value span underlines "abc", name span underlines "phases"
+    assert_eq!(p.next_param(&vars), "phases");
+    assert_eq!(&p.cmd_string()[p.token_span()], "abc");
+    assert_eq!(&p.cmd_string()[p.param_name_span()], "phases");
+}
+
+#[test]
+fn bare_token_name_span_equals_value_span() {
+    let (mut p, vars) = parser_with("solve mode=snap");
+    p.next_param(&vars);
+    // A bare token has no `name=`, so both spans point at the token itself.
+    assert_eq!(&p.cmd_string()[p.token_span()], "solve");
+    assert_eq!(p.token_span(), p.param_name_span());
+}
+
+#[test]
+fn quoted_value_span_covers_inner_content() {
+    let (mut p, vars) = parser_with("file=\"a b.dss\"");
+    assert_eq!(p.next_param(&vars), "file");
+    // The span underlines the quoted content, not the surrounding quotes.
+    assert_eq!(&p.cmd_string()[p.token_span()], "a b.dss");
+}
+
+#[test]
+fn spaced_equals_value_span() {
+    let (mut p, vars) = parser_with("kv = 12.47");
+    assert_eq!(p.next_param(&vars), "kv");
+    assert_eq!(&p.cmd_string()[p.token_span()], "12.47");
+    assert_eq!(&p.cmd_string()[p.param_name_span()], "kv");
+}
+
+#[test]
+fn conversion_error_carries_the_value_span() {
+    let (mut p, vars) = parser_with("phases=abc");
+    assert_eq!(p.next_param(&vars), "phases");
+    let err = p.make_integer(&vars).unwrap_err();
+    let span = err.span().expect("conversion error carries a span");
+    assert_eq!(&p.cmd_string()[span], "abc");
+}
+
+#[test]
+fn empty_token_span_is_zero_width_at_cursor() {
+    let (mut p, vars) = parser_with("only");
+    p.next_param(&vars); // "only"
+    p.next_param(&vars); // past end -> empty
+    assert_eq!(p.token(), "");
+    let span = p.token_span();
+    assert_eq!(span.start, span.end); // zero-width, valid index
+    assert_eq!(&p.cmd_string()[span], "");
+}
