@@ -38,6 +38,19 @@ pub(crate) fn cdiv_fpc(num: Complex64, den: Complex64) -> Complex64 {
     }
 }
 
+/// Which bottom-left cell a two-terminal block stamp writes (see
+/// [`CMatrix::stamp_two_terminal_block`]): the symmetric convention `(j+n, i)`
+/// or the direct convention `(i+n, j)`. They coincide for a symmetric primitive;
+/// the asymmetric sym-components reactor stamp (`SpecType=4`, Z1≠Z2) needs
+/// `Direct` (see `Reactor::stamp_series`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StampBl {
+    /// bottom-left block at `(j + n, i)`
+    Transposed,
+    /// bottom-left block at `(i + n, j)`
+    Direct,
+}
+
 /// Error from [`CMatrix::invert`]. Pascal reported this through the
 /// `InvertError` field: 1 = allocation failure (impossible here), 2 = singular.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +131,69 @@ impl CMatrix {
         self.add(row, col, value);
         if row != col {
             self.add(col, row, value);
+        }
+    }
+
+    /// Stamp an `n`×`n` primitive block into the four quadrants of a two-terminal
+    /// (order ≥ 2·`n`) YPrim: the two diagonal quadrants get `+value(i,j)`, the
+    /// top-right quadrant `-value`, and the bottom-left quadrant `-value` placed
+    /// per `bl`. This is the shared `CalcYPrim` stamping loop every 2-terminal PD
+    /// element re-derives (`Line`, `Reactor`, `Capacitor`, `Fault`):
+    /// `YPrim[i,j] := V; YPrim[i+n,j+n] := V; YPrim[i,j+n] := -V; …`. Each of the
+    /// four quadrants is disjoint, so every cell is written exactly once (`set`
+    /// overwrites — no accumulation-order dependence).
+    pub fn stamp_two_terminal_block<F>(&mut self, n: usize, bl: StampBl, mut value: F)
+    where
+        F: FnMut(usize, usize) -> Complex64,
+    {
+        for i in 0..n {
+            for j in 0..n {
+                let v = value(i, j);
+                self.set(i, j, v);
+                self.set(i + n, j + n, v);
+                self.set(i, j + n, -v);
+                match bl {
+                    StampBl::Transposed => self.set(j + n, i, -v),
+                    StampBl::Direct => self.set(i + n, j, -v),
+                }
+            }
+        }
+    }
+
+    /// Stamp a diagonal (no cross-phase coupling) two-terminal primitive: for
+    /// each of `count` conductors `i`, the diagonals `(i,i)` and `(i+off,i+off)`
+    /// get `+value` and the couplings `(i,i+off)`/`(i+off,i)` get `-value`. `off`
+    /// is the inter-terminal conductor offset (usually the element's `nconds`).
+    /// Mirrors the wye `CalcYPrim` loop (`Reactor`/`Capacitor`/`Fault`/
+    /// `VSConverter`). `value` is a single scalar shared by every conductor.
+    pub fn stamp_two_terminal_diag(&mut self, count: usize, off: usize, value: Complex64) {
+        let nvalue = -value;
+        for i in 0..count {
+            self.set(i, i, value);
+            self.set(i + off, i + off, value);
+            self.set(i, i + off, nvalue);
+            self.set(i + off, i, nvalue);
+        }
+    }
+
+    /// Stamp a single-terminal delta (line-line) primitive by accumulation: for
+    /// each phase `i` (1-based `1..=nphases`), couple it to the next conductor `j`
+    /// (wrapping to 1 past `nconds`), adding `+value` to the two diagonals and
+    /// `-value` to the two couplings. Uses `add` (Pascal `AddElement`), so
+    /// overlapping cells accumulate in loop order — replicated exactly to keep the
+    /// floating-point sum bit-identical. Mirrors the delta `CalcYPrim` loop
+    /// (`Reactor`/`Capacitor`).
+    pub fn stamp_delta_series(&mut self, nphases: usize, nconds: usize, value: Complex64) {
+        let value2 = -value;
+        for i in 1..=nphases {
+            let mut j = i + 1;
+            if j > nconds {
+                j = 1;
+            }
+            self.add(i - 1, i - 1, value);
+            self.add(j - 1, j - 1, value);
+            self.add(i - 1, j - 1, value2);
+            self.add(j - 1, i - 1, value2);
         }
     }
 

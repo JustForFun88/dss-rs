@@ -7,7 +7,7 @@ use super::Reactor;
 use crate::elements::ckt::CktElementData;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
-use crate::support::cmatrix::CMatrix;
+use crate::support::cmatrix::{CMatrix, StampBl};
 use crate::support::mathutil::etk_invert;
 use crate::util::{EPSILON, sqrt3};
 
@@ -107,22 +107,14 @@ impl Reactor {
                 zmat.set(i, i, Complex64::new(EPSILON, 0.0));
             }
         }
-        for i in 0..nphases {
-            for j in 0..nphases {
-                let value = zmat.get(i, j);
-                work.set(i, j, value);
-                work.set(i + nphases, j + nphases, value);
-                work.set(i, j + nphases, -value);
-                // Pascal `YPrimTemp[i + Fnphases, j] := -Value` (`Reactor.pas:936`,
-                // the SpecType-3/4 stamp) — the bottom-left block is `(i+n, j)`, NOT
-                // `(j+n, i)`. For a **symmetric** series Y (R+X, R/X matrices) the two
-                // coincide; the **asymmetric** sym-components Y (`SpecType=4`, Z1≠Z2 —
-                // the induction-motor model) is transposed by `(j+n, i)`, corrupting
-                // the bottom-left YPrim block (invisible to a balanced solve, wrong
-                // under unbalance). Pinned by `dump_reactor_symcomp`.
-                work.set(i + nphases, j, -value);
-            }
-        }
+        // `StampBl::Direct` places the bottom-left block at `(i+n, j)`, NOT
+        // `(j+n, i)` (Pascal `YPrimTemp[i + Fnphases, j] := -Value`,
+        // `Reactor.pas:936`, the SpecType-3/4 stamp). For a **symmetric** series Y
+        // (R+X, R/X matrices) the two coincide; the **asymmetric** sym-components Y
+        // (`SpecType=4`, Z1≠Z2 — the induction-motor model) is transposed by
+        // `(j+n, i)`, corrupting the bottom-left YPrim block (invisible to a
+        // balanced solve, wrong under unbalance). Pinned by `dump_reactor_symcomp`.
+        work.stamp_two_terminal_block(nphases, StampBl::Direct, |i, j| zmat.get(i, j));
     }
 }
 
@@ -233,29 +225,13 @@ impl CktElement for Reactor {
                 if self.rp_specified {
                     value += self.gp;
                 }
-                let value2 = -value;
 
                 if self.connection == 1 {
                     // Delta (line-line); AddElement accumulates.
-                    for i in 1..=nphases {
-                        let mut j = i + 1;
-                        if j > nconds {
-                            j = 1;
-                        }
-                        work.add(i - 1, i - 1, value);
-                        work.add(j - 1, j - 1, value);
-                        work.add(i - 1, j - 1, value2);
-                        work.add(j - 1, i - 1, value2);
-                    }
+                    work.stamp_delta_series(nphases, nconds, value);
                 } else {
                     // Wye: elements only on the diagonals.
-                    for i in 1..=nphases {
-                        let j = i + nphases;
-                        work.set(i - 1, i - 1, value);
-                        work.set(j - 1, j - 1, value);
-                        work.set(i - 1, j - 1, value2);
-                        work.set(j - 1, i - 1, value2);
-                    }
+                    work.stamp_two_terminal_diag(nphases, nphases, value);
                 }
             }
             3 => {
@@ -269,20 +245,16 @@ impl CktElement for Reactor {
                         .bmatrix
                         .as_ref()
                         .expect("parallel SpecType 3 has Bmatrix");
-                    for i in 1..=nphases {
-                        for j in 1..=nphases {
-                            let idx = (j - 1) * nphases + (i - 1);
-                            let value = if freq_multiplier > 0.0 {
-                                Complex64::new(g[idx], b[idx] / freq_multiplier)
-                            } else {
-                                Complex64::new(g[idx], 0.0)
-                            };
-                            work.set(i - 1, j - 1, value);
-                            work.set(i - 1 + nphases, j - 1 + nphases, value);
-                            work.set(i - 1, j - 1 + nphases, -value);
-                            work.set(j - 1 + nphases, i - 1, -value);
+                    work.stamp_two_terminal_block(nphases, StampBl::Transposed, |i, j| {
+                        // Pascal reads the transposed source index
+                        // `Gmatrix[(j-1)*Fnphases + (i-1)]`.
+                        let idx = j * nphases + i;
+                        if freq_multiplier > 0.0 {
+                            Complex64::new(g[idx], b[idx] / freq_multiplier)
+                        } else {
+                            Complex64::new(g[idx], 0.0)
                         }
-                    }
+                    });
                 } else {
                     // Series R and X: build Z, invert, stamp.
                     let rm = self.rmatrix.as_ref().expect("SpecType 3 has Rmatrix");

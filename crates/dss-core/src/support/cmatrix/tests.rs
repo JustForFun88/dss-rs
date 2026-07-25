@@ -43,6 +43,73 @@ fn is_zero_and_col_row_zero() {
 }
 
 #[test]
+fn stamp_two_terminal_block_quadrants_transposed_vs_direct() {
+    // A non-symmetric 2×2 primitive so Transposed and Direct differ observably.
+    let prim = |i: usize, j: usize| c((i * 10 + j) as f64, 0.0);
+
+    // Transposed: bottom-left at (j+n, i) → block is −primᵀ.
+    let mut t = CMatrix::new(4);
+    t.stamp_two_terminal_block(2, StampBl::Transposed, prim);
+    for i in 0..2 {
+        for j in 0..2 {
+            let v = prim(i, j);
+            assert_eq!(t.get(i, j), v); // top-left
+            assert_eq!(t.get(i + 2, j + 2), v); // bottom-right
+            assert_eq!(t.get(i, j + 2), -v); // top-right
+            assert_eq!(t.get(j + 2, i), -v); // bottom-left transposed
+        }
+    }
+
+    // Direct: bottom-left at (i+n, j) → block is −prim.
+    let mut d = CMatrix::new(4);
+    d.stamp_two_terminal_block(2, StampBl::Direct, prim);
+    for i in 0..2 {
+        for j in 0..2 {
+            assert_eq!(d.get(i + 2, j), -prim(i, j)); // bottom-left direct
+        }
+    }
+    // The two conventions disagree exactly on the off-diagonal bottom-left cell.
+    assert_ne!(t.get(3, 0), d.get(3, 0));
+}
+
+#[test]
+fn stamp_two_terminal_diag_only_touches_the_four_cells() {
+    // count < off (the VSConverter shape: AC block narrower than the terminal).
+    let mut m = CMatrix::new(6); // off = 3, count = 2
+    let value = c(2.0, -3.0);
+    m.stamp_two_terminal_diag(2, 3, value);
+    for i in 0..2 {
+        assert_eq!(m.get(i, i), value);
+        assert_eq!(m.get(i + 3, i + 3), value);
+        assert_eq!(m.get(i, i + 3), -value);
+        assert_eq!(m.get(i + 3, i), -value);
+    }
+    // No cross-phase coupling and nothing stamped for the skipped conductor 2.
+    assert_eq!(m.get(0, 1), Complex64::ZERO);
+    assert_eq!(m.get(2, 2), Complex64::ZERO);
+    assert_eq!(m.get(2, 5), Complex64::ZERO);
+}
+
+#[test]
+fn stamp_delta_series_accumulates_with_wraparound() {
+    // 3-phase delta, nconds = 3: wraps 3→1. Diagonals get +value twice
+    // (accumulated), the ring couplings get −value.
+    let mut m = CMatrix::new(6);
+    let value = c(0.0, 4.0);
+    m.stamp_delta_series(3, 3, value);
+    for i in 0..3 {
+        assert_eq!(m.get(i, i), value + value, "diagonal {i} accumulates twice");
+    }
+    // Couplings (i,j) for the ring 0-1, 1-2, 2-0.
+    assert_eq!(m.get(0, 1), -value);
+    assert_eq!(m.get(1, 0), -value);
+    assert_eq!(m.get(1, 2), -value);
+    assert_eq!(m.get(2, 0), -value);
+    // No stamping into the second-terminal quadrant.
+    assert_eq!(m.get(3, 3), Complex64::ZERO);
+}
+
+#[test]
 fn mv_mult_matches_hand_computation() {
     // A = [1+j 2; 3 4-j], x = [1; j]
     let mut a = CMatrix::new(2);
