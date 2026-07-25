@@ -180,6 +180,25 @@ pub struct CktElementData {
     pub ocp_device_type: i32,
 }
 
+/// The first `min(nphases, 3)` conductors of one terminal — the "phase window"
+/// the symmetrical-component exports/shows iterate ([`CktElementData::term_phases`]).
+/// Yields `(Iterminal, NodeRef)` per phase in conductor order.
+pub struct Phases<'a> {
+    curr: &'a [Complex64],
+    nodes: &'a [usize],
+    n: usize,
+}
+
+impl Phases<'_> {
+    /// `(Iterminal, NodeRef)` for the first `min(nphases, 3)` phases, in order.
+    pub fn iter(&self) -> impl Iterator<Item = (Complex64, usize)> + '_ {
+        self.curr[..self.n]
+            .iter()
+            .copied()
+            .zip(self.nodes[..self.n].iter().copied())
+    }
+}
+
 impl CktElementData {
     /// Base construction; concrete classes set phases/conds/terms right after
     /// (the Pascal constructors assign `FNphases`/`Fnconds`/`Nterms`).
@@ -337,6 +356,47 @@ impl CktElementData {
         self.compute_vterminal(node_v);
         if let Some(yprim) = &self.yprim {
             yprim.mv_mult(curr, &self.vterminal);
+        }
+    }
+
+    // --- Terminal × conductor views over the flat `yorder` buffers (P8) ---
+    // `vterminal`/`iterminal`/`inj_current`/`complex_buffer` are flat
+    // `nterms * nconds` vectors and `node_ref` is the same shape; all are laid
+    // out terminal-major (`t * nconds + c`). These accessors are the ONLY place
+    // that offset arithmetic lives — every consumer takes a per-terminal slice.
+
+    /// Conductor slice of terminal `t` (0-based) into `vterminal`.
+    pub fn term_v(&self, t: usize) -> &[Complex64] {
+        let base = t * self.nconds;
+        &self.vterminal[base..base + self.nconds]
+    }
+
+    /// Conductor slice of terminal `t` (0-based) into `iterminal`.
+    pub fn term_i(&self, t: usize) -> &[Complex64] {
+        let base = t * self.nconds;
+        &self.iterminal[base..base + self.nconds]
+    }
+
+    /// Per-terminal conductor slices of `iterminal`, terminal `0..nterms`.
+    pub fn terminals_i(&self) -> impl Iterator<Item = &[Complex64]> {
+        self.iterminal.chunks_exact(self.nconds)
+    }
+
+    /// Global node-reference slice of terminal `t` (0-based) into `node_ref`
+    /// (requires `SetNodeRef` to have populated `node_ref`).
+    pub fn term_nodes(&self, t: usize) -> &[usize] {
+        let base = t * self.nconds;
+        &self.node_ref[base..base + self.nconds]
+    }
+
+    /// The symmetrical-component "phase window" of terminal `t` (0-based): the
+    /// first `min(nphases, 3)` conductors' terminal current and global node
+    /// reference — the walk the seq-quantity exports/shows share.
+    pub fn term_phases(&self, t: usize) -> Phases<'_> {
+        Phases {
+            curr: self.term_i(t),
+            nodes: self.term_nodes(t),
+            n: self.nphases.min(3),
         }
     }
 

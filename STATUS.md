@@ -551,6 +551,52 @@ corrupted `term_ref`); (2) the transformer `Connection::Series` self-pair
 `[plus, plus]` in `set_term_ref` is unreachable (transformer DssEnum has no
 series) and benign, documented in code.
 
+### DE_PASCALIZE P8 — terminal×conductor views over flat buffers [A] (branch `depas-p8p14`)
+
+Stratum **[A]** bit-neutral, base `update@6c99b8f`. The highest-leverage cut: the
+flat `yorder` (`nterms*nconds`) buffers on `CktElementData`
+(`vterminal`/`iterminal`/`complex_buffer`/`inj_current`/`node_ref`) were indexed
+`(t-1)*nconds + c` in every consumer. New accessors on `CktElementData` are now
+the **only** site of that offset arithmetic (`ckt.rs`): `term_v(t)`/`term_i(t)`
+(0-based conductor slice of terminal `t`), `term_nodes(t)` (its `node_ref`
+slice), `terminals_i()` (`chunks_exact(nconds)` iterator), and `term_phases(t)`
+→ `Phases<'_>` yielding `(Iterminal, NodeRef)` over the first `min(nphases,3)`
+conductors — the shared seq-quantity walk.
+
+Rewrote all in-scope consumers: exports
+`seq_currents`/`seq_powers`/`currents`/`voltages_elements`;
+`report/show/{currents,powers,bus_powers}` (`get_i0i1i2` now takes a terminal
+slice, not `(buf, koff)`); `traits.rs::{get_term_voltages,terminal_power,losses}`;
+`transformer/windings.rs::{get_winding_voltages,power_into}`;
+`auto_trans/{windings.rs::power_into, yterminal.rs::get_winding_voltages}`;
+`solution/controls/dispatch.rs::{control_power,control_current}`;
+`cim/power_xfmr.rs` winding node refs. Same arithmetic, same statement order —
+byte goldens (exports/show dumps), checkpoint captures and the full corpus gate
+all unchanged.
+
+**Deliberately NOT touched (documented, not a miss):** the `seq_currents`
+Iresidual `TODO(compat)` loop (reproduces the terminal-1 upstream bug — a flat
+terminal-0 read, no `(t-1)*nconds` form, kept verbatim); the `dispatch`
+specific-phase quirk `cBuffer[FMonPhase]` (flat/absolute by upstream design);
+monitor `mode 12`'s `np*k` stride (an **nphases** stride, not nconds — using a
+`nconds`-strided view would change the arithmetic and break the golden);
+terminal-0 flat reads with no offset (`fault.rs:208`, `control_loop.rs`,
+monitor/sensor `node_ref[i]`); and element-owned scratch buffers with the same
+layout but which are **not** `CktElementData` targets
+(`meter_element.calculated_current`, relay `cbuffer` — its offset is already
+centralized in `mon_offset`).
+
+**ESCAPED (leave-green, recorded):** `exec/view.rs` COM-style interleaved re/im
+`Vec<f64>` → `Vec<Complex64>` conversion (`ElementSnapshot.powers`/`.currents`).
+Its blast radius is the **gate-critical** oracle comparator
+(`tests/harness::compare_element`/`compare_interleaved` and
+`corpus_gate/runner.rs`, which both compare against dss-python/EPRI **interleaved
+f64** arrays) plus ~40 in-crate test sites reading `.powers[2*k]`/`.step_by(2)`.
+This is a re/im-packing cleanup **orthogonal** to the `(t-1)*nconds` metric —
+`view.rs::snapshot_elements` has zero terminal-offset forms (it is a flat
+`0..yorder` loop). Deferred to a focused follow-up (one boundary interleave
+adapter + comparator + test-site sweep) so the gate stays green here.
+
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),

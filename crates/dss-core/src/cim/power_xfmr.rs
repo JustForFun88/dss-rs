@@ -706,7 +706,6 @@ pub(crate) fn write_transformers(
                 continue;
             }
             let nphases = t.cd.nphases;
-            let nconds = t.cd.nconds;
             let nw = t.num_windings().max(0) as usize;
             let mut wdgs = Vec::with_capacity(nw);
             for i in 1..=nw {
@@ -714,8 +713,18 @@ pub(crate) fn write_transformers(
                 let kvbase = ckt.buses[bus_ref].kv_base;
                 let cim_id = get_or_create_uuid(&mut ckt.buses[bus_ref].uuid).to_cim_string();
                 let bus_spec = &t.cd.bus_names[i - 1];
-                let j1 = (i - 1) * nconds; // Pascal NodeRef[j1] (0-based)
-                let j2 = (i - 1) * nconds + nphases; // Pascal NodeRef[j2]
+                // Winding `i` is terminal `i-1`; its NodeRef slice gives the phase-1
+                // node (`node_j1`) and the neutral node at conductor `nphases`
+                // (`node_j2`). `node_ref` may be empty pre-solve → 0 for both.
+                let (node_j1, node_j2) = if t.cd.node_ref.is_empty() {
+                    (0, 0)
+                } else {
+                    let nodes = t.cd.term_nodes(i - 1);
+                    (
+                        nodes.first().copied().unwrap_or(0),
+                        nodes.get(nphases).copied().unwrap_or(0),
+                    )
+                };
                 wdgs.push(WdgData {
                     w: t.windings()[i - 1],
                     phase_str: phase_string(bus_spec, nphases, kvbase, true),
@@ -723,8 +732,8 @@ pub(crate) fn write_transformers(
                     term_bus_ref: bus_ref,
                     term_bus_kvbase: kvbase,
                     term_bus_cim_id: cim_id,
-                    node_j1: t.cd.node_ref.get(j1).copied().unwrap_or(0),
-                    node_j2: t.cd.node_ref.get(j2).copied().unwrap_or(0),
+                    node_j1,
+                    node_j2,
                 });
             }
             XfSnap {

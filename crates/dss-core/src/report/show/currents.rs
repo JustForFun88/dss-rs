@@ -44,7 +44,6 @@ pub(crate) fn show_currents(
     let mut calc = |name: &str, elem: &mut dyn CktElement, do_ratings: bool| {
         elem.compute_iterminal(sys, node_v);
         let nterm = elem.cd().nterms;
-        let ncond = elem.cd().nconds;
         let nphases = elem.cd().nphases;
         let norm_amps = elem.norm_amps();
         let emerg_amps = elem.emerg_amps();
@@ -66,13 +65,9 @@ pub(crate) fn show_currents(
         for j in 1..=nterm {
             // `GetI0I1I2`: Cmax = max phase magnitude (>=3 phases) then sym-comp;
             // <3 phases → I1 = |first-phase current| UNCONDITIONALLY (Cmax = I1).
-            let koff = (j - 1) * ncond;
+            let it = cd.term_i(j - 1);
             let (i0, i1, i2, cmax) = if nphases >= 3 {
-                let iph = [
-                    cd.iterminal[koff],
-                    cd.iterminal[koff + 1],
-                    cd.iterminal[koff + 2],
-                ];
+                let iph = [it[0], it[1], it[2]];
                 let cmax = iph.iter().map(|c| c.norm()).fold(0.0, f64::max);
                 let mut i012 = [Complex64::ZERO; 3];
                 sc.phase_to_sym(&iph, &mut i012);
@@ -80,7 +75,7 @@ pub(crate) fn show_currents(
             } else {
                 // Show's <3-phase branch is NOT `PositiveSequence`-gated (unlike
                 // `ExportSeqCurrents`): I1 = |first-phase current| unconditionally.
-                let i1 = cd.iterminal[koff].norm();
+                let i1 = it[0].norm();
                 (0.0, i1, 0.0, i1)
             };
 
@@ -184,24 +179,20 @@ pub(crate) fn show_currents_elements(
     s
 }
 
-/// Pascal `GetI0I1I2(I0, I1, I2, Cmax, Nphases, koff, cBuffer)`: over terminal
-/// conductors `koff..koff+min(3,nphases)` of `iterminal`, the sym-comp magnitudes
-/// `(I0, I1, I2)` and `Cmax` = the max phase magnitude. For `< 3` phases, `I1 =
-/// |first-phase current|` unconditionally (`Cmax = I1`), `I0 = I2 = 0`. Shared by
-/// `Show busflow`'s per-element seq-current section.
-pub(crate) fn get_i0i1i2(
-    iterminal: &[Complex64],
-    koff: usize,
-    nphases: usize,
-) -> (f64, f64, f64, f64) {
+/// Pascal `GetI0I1I2(I0, I1, I2, Cmax, Nphases, koff, cBuffer)`: over the first
+/// `min(3, nphases)` conductors of terminal current slice `term_i`, the sym-comp
+/// magnitudes `(I0, I1, I2)` and `Cmax` = the max phase magnitude. For `< 3`
+/// phases, `I1 = |first-phase current|` unconditionally (`Cmax = I1`),
+/// `I0 = I2 = 0`. Shared by `Show busflow`'s per-element seq-current section.
+pub(crate) fn get_i0i1i2(term_i: &[Complex64], nphases: usize) -> (f64, f64, f64, f64) {
     if nphases >= 3 {
-        let iph = [iterminal[koff], iterminal[koff + 1], iterminal[koff + 2]];
+        let iph = [term_i[0], term_i[1], term_i[2]];
         let cmax = iph.iter().map(|c| c.norm()).fold(0.0, f64::max);
         let mut i012 = [Complex64::ZERO; 3];
         SymComp::default().phase_to_sym(&iph, &mut i012);
         (i012[0].norm(), i012[1].norm(), i012[2].norm(), cmax)
     } else {
-        let i1 = iterminal[koff].norm();
+        let i1 = term_i[0].norm();
         (0.0, i1, 0.0, i1)
     }
 }

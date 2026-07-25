@@ -405,20 +405,20 @@ impl AutoTrans {
             return;
         }
         self.cd.compute_vterminal(node_v);
-        let vt = &self.cd.vterminal;
-        let nconds = self.cd.nconds;
-        let k = (iwind - 1) * nconds; // offset for winding (0-based)
-        let neut = nphases + k; // Pascal NeutTerm = Fnphases + k + 1 (1-based)
+        // Winding `iwind` is terminal `iwind-1`; `vt` is that terminal's
+        // conductor slice (phase `i` = `vt[i]`, neutral = `vt[nphases]`). The
+        // Series arm subtracts terminal 1's phase `i` (the auto's X terminal).
+        let vt = self.cd.term_v(iwind - 1);
         let conn = self.windings[iwind - 1].connection;
         for i in 0..nphases {
             match conn {
-                Connection::Wye => vbuffer[i] = vt[i + k] - vt[neut],
+                Connection::Wye => vbuffer[i] = vt[i] - vt[nphases],
                 Connection::Delta => {
                     // Delta: next phase in sequence (rotate_phases is 1-based).
                     let ii = self.rotate_phases(i + 1) - 1;
-                    vbuffer[i] = vt[i + k] - vt[ii + k];
+                    vbuffer[i] = vt[i] - vt[ii];
                 }
-                Connection::Series => vbuffer[i] = vt[i + k] - vt[i + nconds], // winding 1
+                Connection::Series => vbuffer[i] = vt[i] - self.cd.term_v(1)[i], // winding 1
             }
         }
     }

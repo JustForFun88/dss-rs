@@ -126,7 +126,7 @@ fn write_seq_current_rows(
         return;
     }
     elem.compute_iterminal(sys, node_v);
-    let (nterm, ncond, nphases) = (elem.cd().nterms, elem.cd().nconds, elem.cd().nphases);
+    let (nterm, nphases) = (elem.cd().nterms, elem.cd().nphases);
     let is_cap = name
         .split('.')
         .next()
@@ -135,7 +135,7 @@ fn write_seq_current_rows(
     let padded = format::pad_dots(&format::enclose_quotes(name), mdnl + 2);
     let cd = elem.cd();
     for jj in 1..=nterm {
-        let (i0, i1, i2, cmax) = get_i0i1i2(&cd.iterminal, (jj - 1) * ncond, nphases);
+        let (i0, i1, i2, cmax) = get_i0i1i2(cd.term_i(jj - 1), nphases);
         // Pascal passes NormAmps = EmergAmps = 0 here (no overload columns).
         write_seq_currents(s, &padded, i0, i1, i2, cmax, 0.0, 0.0, jj, is_cap);
     }
@@ -265,7 +265,6 @@ fn write_terminal_power(
     mdnl: usize,
 ) {
     elem.compute_iterminal(sys, node_v);
-    let ncond = elem.cd().nconds;
     let cd = elem.cd();
     let from_bus = ckt
         .buses
@@ -278,9 +277,8 @@ fn write_terminal_power(
         format::pad(&format::enclose_quotes(name), mdnl + 2)
     ));
     let mut saccum = Complex64::ZERO;
-    for i in 0..ncond {
-        let k = (jterm - 1) * ncond + i;
-        let mut sp = node_v[cd.node_ref[k]] * cd.iterminal[k].conj();
+    for (&nref, &ci) in cd.term_nodes(jterm - 1).iter().zip(cd.term_i(jterm - 1)) {
+        let mut sp = node_v[nref] * ci.conj();
         if sys.positive_sequence {
             sp *= 3.0;
         }
@@ -292,7 +290,7 @@ fn write_terminal_power(
         s.push_str(&format!(
             "{} {} {} +j {}    {}    {}\n",
             from_bus,
-            format::fixed_w_int(ckt.map_node_to_bus[cd.node_ref[k]].node_num as i64, 4),
+            format::fixed_w_int(ckt.map_node_to_bus[nref].node_num as i64, 4),
             format::g_w(sp.re / 1000.0, 10, 5),
             format::g_w(sp.im / 1000.0, 10, 5),
             format::g_w(sp.norm() / 1000.0, 10, 5),
