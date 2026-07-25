@@ -32,7 +32,7 @@ mod tests;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::pd::transformer::CoreType;
-use crate::elements::pd::winding::Winding;
+use crate::elements::pd::winding::{Connection, TermRef, Winding};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
@@ -236,9 +236,9 @@ pub struct AutoTrans {
     windings: Vec<Winding>,
     /// Pascal `puXSC` — per-unit short-circuit reactances (`xhx xht xxt …`).
     xsc: Vec<f64>,
-    /// Pascal `TermRef`: winding-conductor → terminal-conductor map, 1-based
-    /// with slot 0 unused; values are 1-based conductor indices into `YPrim`.
-    term_ref: Vec<usize>,
+    /// Pascal `TermRef`: winding-conductor → terminal-conductor map, one 0-based
+    /// `[plus, minus]` pair per phase × winding (phase-major).
+    term_ref: TermRef,
     /// Short-circuit / one-volt / terminal admittance matrices (Pascal `ZB`,
     /// `Y_1Volt`, `Y_1Volt_NL`, `Y_Term`, `Y_Term_NL`).
     zb: CMatrix,
@@ -301,9 +301,9 @@ fn xsc_size(num_windings: i32) -> usize {
 /// is no brought-out neutral impedance).
 fn auto_winding_init(iwinding: usize) -> Winding {
     let (connection, kvll) = if iwinding == 1 {
-        (2, 115.0)
+        (Connection::Series, 115.0)
     } else {
-        (0, 12.47)
+        (Connection::Wye, 12.47)
     };
     let kva = 1000.0;
     let rpu = 0.002;
@@ -348,7 +348,7 @@ impl AutoTrans {
             max_windings: 0,
             windings: Vec::new(),
             xsc: Vec::new(),
-            term_ref: vec![0],
+            term_ref: TermRef::default(),
             zb: CMatrix::new(0),
             y_1volt: CMatrix::new(0),
             y_1volt_nl: CMatrix::new(0),

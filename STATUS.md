@@ -340,6 +340,57 @@ independent wraparound-range check (`tap` always folds into a live slot
 miscount (the target runs 25 tests) — it never appeared in any committed
 artifact (STATUS §gate already states 25), nothing to fix.
 
+### DE_PASCALIZE P10 — transformer terminal core [A] (branch `depas-p10`)
+
+Stratum **[A]** bit-neutral. The densest index math in the tree: the transformer
++ autotransformer `TermRef`/`Y_Terminal` machinery. Two commits.
+
+- **P1 prep (own commit).** `Winding.connection: i32` → `Connection { Wye=0,
+  Delta=1, Series=2 }` (`#[repr(i32)]`, `ordinal`/`from_ordinal`; `winding.rs`).
+  Series is autotransformer-only; the enum is shared because `Winding` is shared
+  (Transformer/AutoTrans/XfmrCode). `i32` survives only at the DssEnum property
+  parse/report + CIM-export boundary. Every match on `0/1/2` literals in the four
+  files (+ `cim/power_xfmr.rs`) reads as `Connection::…`.
+- **P10 core.** `term_ref: Vec<usize>` (flat 1-based, dead slot 0) →
+  `TermRef(Vec<[usize; 2]>)`: one 0-based `[plus, minus]` conductor pair per
+  (phase, winding), phase-major (`winding.rs`). `set_term_ref` builds the pairs
+  matching on `Connection` (both transformer wye/delta and auto wye/delta/series
+  arms). `build_yprim_component` walks the `2·nw` `Y_Terminal` lower triangle as
+  `(winding, side)` pairs, yielding the **exact** `(i, j, phase)` `add_sym`
+  order of the old flat stamp. The `2·i-1`/`2·i` pairs in
+  `calc_y_terminal`/`gic_build_y_terminal`/`get_all_winding_currents` →
+  `WdgTerms::of(iwind)` (0-based `[plus, minus]`), derived once per winding via
+  `windings.iter().enumerate()`. The `TermRef=` dump walks the pairs and re-emits
+  the identical 1-based sequence. Matrix products keep their exact call order —
+  indexing reshaped, linear algebra untouched.
+
+Applied identically to `transformer/{windings,yterminal,dump}.rs` and the
+UPGRADE-added sibling `auto_trans/{windings,yterminal,dump}.rs`. Proof (all
+unchanged): `transformer_yprim_bitexact`, `golden_checkpoints` (per-element
+YPrim), the `WdgCurrents`/dump goldens, the two `set_term_ref` + `term_ref_series`
+unit pins (rewritten to assert the new pairs = old values − 1). Note: the source
+worktree checkout timed out mid-`git worktree add`, leaving 684 files (tests/
++ tools/) unwritten — restored from HEAD before any commit; `git status
+tests/corpus` clean.
+
+**Audit settle (opus high).** Two independent audits (code + tests): the change
+is bit-neutral, no golden/tolerance churn, no test weakening. One real gap fixed:
+the **XSC off-diagonal running-`k` walk** in both `transformer/yterminal.rs` and
+`auto_trans/yterminal.rs` — explicitly named in the P10 Fix (plan line 786-788)
+but left as the Pascal `let mut k = nw-1; … k += 1` idiom (the initial report's
+"None escaped" was inaccurate). Rewritten to an explicit upper-triangle pair
+iterator `(0..nw-1).flat_map(…).enumerate()` reading `xsc[nw-1+t]`, yielding the
+identical `(i, j, k)` sequence and arithmetic → bit-exact (goldens unchanged,
+gate green). The remaining `for i in 1..=nw`/`1..=n2` loops in these files are
+P14 scope (plan line 833), not a P10 miss. Two non-defects recorded, no change:
+(1) the new `Connection::from_ordinal` setters silently keep the default (Wye) on
+an out-of-range `Conns` instead of storing garbage — the string parser rejects
+unknown conns before the setter, so the path is dead for real input; via malformed
+JSON the new behavior is strictly *safer* (valid YPrim vs the old flat code's
+corrupted `term_ref`); (2) the transformer `Connection::Series` self-pair
+`[plus, plus]` in `set_term_ref` is unreachable (transformer DssEnum has no
+series) and benign, documented in code.
+
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),

@@ -6,12 +6,81 @@
 
 use crate::util::sqrt3;
 
+/// Pascal transformer/autotransformer winding connection code. `Wye`/`Delta`
+/// are the general set (`Transformer`, `XfmrCode`); `Series` (2) is
+/// autotransformer-only (`AutoTrans.pas` `AutoTransConnectionEnum`). The
+/// discriminants are user-visible and frozen — they round-trip through the
+/// `DssEnum` registry (`Set conn=`/`?`/dump) — so `i32` survives only at the
+/// property parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum Connection {
+    Wye = 0,
+    Delta = 1,
+    Series = 2,
+}
+
+impl Connection {
+    /// The connection ordinal (the property `?`/dump boundary value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// `TWinding.Connection(ordinal)`; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Wye),
+            1 => Some(Self::Delta),
+            2 => Some(Self::Series),
+            _ => None,
+        }
+    }
+}
+
+/// Pascal `TransfObj.TermRef`/`AutoTransObj.TermRef`: the `(phase, winding) →
+/// conductor pair` map. Replaces the Pascal flat 1-based `array of Integer`
+/// (dead slot 0) with one 0-based `[plus, minus]` conductor-index pair per
+/// phase × winding, laid out **phase-major** (`pairs[phase * nw + wind]`) — the
+/// same visiting order `SetTermRef` fills and `BuildYPrimComponent` / the
+/// `TermRef=` dump walk.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TermRef(pub Vec<[usize; 2]>);
+
+impl TermRef {
+    /// The `[plus, minus]` 0-based conductor pair for 0-based `phase`, `wind`
+    /// (`nw` = number of windings; phase-major layout).
+    #[inline]
+    pub fn pair(&self, phase: usize, wind: usize, nw: usize) -> [usize; 2] {
+        self.0[phase * nw + wind]
+    }
+}
+
+/// One winding's two `Y_Terminal` rows (the Pascal `2·iWind-1`/`2·iWind` pair),
+/// 0-based. Derived once per winding.
+#[derive(Debug, Clone, Copy)]
+pub struct WdgTerms {
+    pub plus: usize,
+    pub minus: usize,
+}
+
+impl WdgTerms {
+    /// The two `Y_Terminal` rows for 0-based winding `iwind` (Pascal
+    /// `2·iWind-1`/`2·iWind`, 1-based → `2·iwind`/`2·iwind+1`, 0-based).
+    #[inline]
+    pub fn of(iwind: usize) -> Self {
+        Self {
+            plus: 2 * iwind,
+            minus: 2 * iwind + 1,
+        }
+    }
+}
+
 /// Pascal `TWinding`. Fields keep the Pascal names (snake-cased); 0-based here
 /// only in that the owning array is 0-based — the winding's own data is flat.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Winding {
-    /// Pascal `Connection` (0 = wye, 1 = delta).
-    pub connection: i32,
+    /// Pascal `Connection` (0 = wye, 1 = delta, 2 = series [auto only]).
+    pub connection: Connection,
     /// Pascal `kVLL` — for 2- and 3-phase always kV line-line, else actual kV.
     pub kvll: f64,
     /// Pascal `VBase` — base winding voltage (volts), derived from `kVLL`.
@@ -55,7 +124,7 @@ impl Winding {
         let rdcpu = rpu * 0.85;
         let vbase = kvll / sqrt3() * 1000.0;
         let mut w = Self {
-            connection: 0,
+            connection: Connection::Wye,
             kvll,
             vbase,
             kva,
@@ -93,7 +162,7 @@ mod tests {
     #[test]
     fn init_defaults_match_pascal() {
         let w = Winding::new();
-        assert_eq!(w.connection, 0);
+        assert_eq!(w.connection, Connection::Wye);
         assert_eq!(w.kvll, 12.47);
         assert!((w.vbase - 12.47 / 3.0_f64.sqrt() * 1000.0).abs() < 1e-9);
         assert_eq!(w.kva, 1000.0);
