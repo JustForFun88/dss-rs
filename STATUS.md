@@ -98,9 +98,32 @@ every finding settled empirically:
   in every freshly-linked build-script exe. Fix: prepend `C:\msys64\mingw64\bin` to
   PATH so the mingw rustc uses its matching gcc/ld (proven: crashing exe → working).
   No code impact; same GNU toolchain the project builds with.
+- **One toolchain-drift golden (NOT a WP defect, NOT masked).** On the same rustc
+  "Rev1" (LLVM 22.1.8), `golden_reports::dump3_debug_matches_oracle` fails on a
+  single field at line 1072: oracle `-2.53510362191938E-12` vs rust
+  `-2.53510362198004E-12` — the **imaginary part** of a physically-real value
+  (mag 0.015, angle −180°), i.e. numerical zero-noise. Settled empirically: (1)
+  deterministic across 4 reruns (not flaky); (2) structural — the drifting quantity
+  is the near-cancellation imaginary residual of a real number, agreeing to 10 sig
+  figs (~1e-22 abs); (3) isolated — 1 field among 500+ byte-exact + 519 corpus
+  comparisons, all else bit-identical; (4) the *same HEAD production code* passed
+  this golden at the audits' (pre-"Rev1") toolchain and fails now → the toolchain
+  shifted HEAD's last bit. The WP is exonerated (settler changes are test+docs;
+  the implementer's change is recalc-*timing* that `calc_yprim` overwrites with the
+  live ctx before any solve, so post-solve dumps are structurally unaffected). Per
+  CLAUDE.md this floor must NOT be "fixed" (the golden is the stable dss-python
+  oracle; forcing/regenerating would pin toolchain-noise). It is a project-wide
+  fragility (byte-exact golden on a zero-noise field under an unpinned Rust
+  toolchain) — fix belongs to the project: pin the Rust toolchain
+  (`rust-toolchain.toml`) or give that dump field a numeric tolerance. Every other
+  gate command is green.
 
-Gate re-verified green after the settler edits (fmt/clippy/`cargo test --workspace`
-incl. corpus_gate both channels); corpus pristine; source-integrity 186 `.pas`.
+Gate after the settler edits: `cargo fmt --all --check` green, `cargo clippy
+--workspace --all-targets -D warnings` green, `cargo test --workspace` green
+**except** the one `dump3_debug` toolchain-drift golden above (corpus_gate 25/25
+both channels, lib 1269 incl. the new `live_ctx` guards, golden_schema 9,
+wasm_usermodels 18 — all green). On the project's original toolchain the full gate
+is green (audit-verified). Corpus pristine; source-integrity 186 `.pas`.
 
 
 
