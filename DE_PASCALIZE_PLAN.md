@@ -1204,12 +1204,31 @@ Part I–III work — it is M3/M4, gated on M1 baselines.
 |---|---|---|
 | Injection (fixed-point, direct, dynamics & harmonics injections all flow through it) | `power_flow.rs::{get_source_inj_currents, get_pc_inj_curr_filtered}` | **seam DONE** (R2, `2ed12d3`): `compute_inj_currents` → `cd.inj_current`, caller scatter + OR in list order |
 | Newton residual | `power_flow.rs::sum_all_currents` | **already seam-shaped**: `compute_iterminal` → `cd.iterminal` (lazy per-solution cache), caller scatter in `ckt_elements` order — no Part-I work left |
-| Y rebuild | `ymatrix.rs::build_y_matrix` | **already two-phase**: phase A `calc_yprim(&sys)` → `cd.yprim` per element (recomputes ALL elements every build — the whole set is the parallel work item, M3a); the per-element `take_errors` drain is order-observable and stays sequential; phase B ordered stamping = sequential forever (IV.1) |
+| Y rebuild | `ymatrix.rs::build_y_matrix` | **already two-phase**: phase A `calc_yprim(&sys)` → `cd.yprim` per element (recomputes ALL elements every build — the whole set is the parallel work item, M3a); the per-element `take_errors` drain is order-observable and stays sequential; phase B ordered stamping = sequential forever (IV.1; de-tag recipe: materialized stamp list, below) |
 | Dynamics init/integrate, harmonics init | `dynamics.rs::{calc_initial_machine_states, integrate_pc_states}`, `harmonics.rs::initialize_for_harmonics` | **pure per-element compute** into element-owned state from `&node_v` snapshots; shared writes are OR-flags + the ordered error/abort drain — no seam needed |
 | Meter/monitor sampling | `meters/sampling/*` | NOT seam-shaped (samples call `&mut` getters on shared zone elements) — M3d's two-phase problem, assessed there, not here |
 
 Any further phase discovered mid-WP that fuses heavy per-element compute with an ordered
 shared write: cut the seam under the rule above, record it in STATUS and in this table.
+
+**The commit side can drop its per-element tag too — materialized stamp/gather lists
+(ready recipe, gated on M1).** The ordered commits never call element *behavior* — they
+read a few plain `cd` fields (phase-B stamping: `enabled` + `node_ref[..yorder]` + the
+`yprim` values, `ymatrix.rs::build_y_matrix`; injection/Newton scatters: `node_ref` +
+`cd.inj_current`/`cd.iterminal`). So the runtime tag is removable **without touching visit
+order**: during the (per-class, monomorphic) compute phase each element writes a plain
+descriptor — node-ref slice + value-buffer handle — into a dense `Vec<StampEntry>` at its
+**precomputed slot** (slot = its position in `ckt_elements`/`pc_elements`/`sources`); the
+commit then walks the flat vector with zero dispatch and sequential prefetch. Triplet
+insertion / FP accumulation order is byte-identical by construction (slots are ordered as
+the lists), hence [A]-legal — the same compute/commit pattern with the commit's *inputs*
+materialized. Do NOT land it before M1 shows the commit loops matter: per element the
+commit already does `yorder²` triplet inserts (stamp) or `yorder` complex adds (scatter)
+against ONE indirect deref — single-digit percent of a phase that is itself dwarfed by
+factorization. The far end of this axis — splitting `CktElementData` out of the elements
+into hot/cold columnar arenas (full SoA/ECS decomposition: dispatch-free commits,
+structural borrow-split, native M4 `par_iter`) — is explicitly NOT a Part I–III or M-plan
+item; if M4 scaling ever demands it, it is its own plan.
 
 **Costs (reasoned now, measured at M1 — do not pre-optimize).** Class-grouped iteration
 visits all 50 arenas; an empty arena costs one `len == 0` check — ~50 well-predicted checks
