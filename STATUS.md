@@ -7,6 +7,101 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R2b — SETTLER PASS (two audits both PASS / zero findings; all verified empirically; final gate green) (branch `depas-r2b`, HEAD after this record, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base `update` @ `5a416ee`; code tip = the (e) STATUS
+tip `868cd1e` (last production code = the (d) commit `107d7d5`; (a)+(c)+(d) are the
+only production changes — see the sub-step records below). Ritual 0 held at start
+**and** end: 186 `.pas` under `.inputs/dss_capi` (PowerShell recursion; bash glob
+false-zeros on the junction, expected — never deleted through it); `cargo` =
+`C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Both fresh audits returned PASS with zero production findings.** There was
+therefore **no defect to fix** — the settler duty was to (1) re-derive every metric
+and equivalence claim independently, (2) reconcile the two counting discrepancies
+the audits surfaced, (3) run the full workspace gate solo (neither auditor did — the
+code auditor ran none by instruction, the test auditor ran only `-p dss-core --lib`
++ `corpus_gate`). All done; results below.
+
+**Disposition of every audit conclusion (settled empirically, not by argument):**
+
+| # | audit conclusion | settler disposition (experiment) |
+|---|---|---|
+| C-a | order/iteration preserved; spine flip really escaped (`circuit.rs`/`find_ckt_element` byte-identical) | **CONFIRMED.** `git diff 5a416ee..HEAD` touches 55 files; `circuit.rs`, `exec/registry.rs` not among them. |
+| C-b | no hidden downcast/unsafe/reorder; `try_ckt_elem` removes Any round-trip; downcast net 416→369 | **CONFIRMED.** Diff has **47 removed** `downcast_*` lines, **0 added** → exactly the make_like guards; measured HEAD downcast = **369**. |
+| C-c | Category-D resolve-time snapshot untouched (escaped) | **CONFIRMED.** `dispatch.rs`, reg/cap resolve, `set_object_ref` producers not in diff. |
+| C-d | 50/50 make_like moved byte-identically; dispatch = typed `clone()`+inherent | **CONFIRMED** (independent of the auditor): downcast delta −47 = 50 impls − 3 no-downcast; `make_like` gone from trait (`obj/base/mod.rs` −8), only `arena.rs::make_like_within` in production. |
+| C-e | escaped sites left on OLD code (no half-flip); ElemRef +10 all in `arena.rs`; trait methods present | **CONFIRMED.** ElemRef +/- lines outside `arena.rs` = only one moved comment (net zero); `as_any`/`as_any_mut`/`as_ckt_element`/`as_ckt_element_mut`/`clone_box` all still in the trait; `make_like` removed. |
+| C-f | M3b seam / live-ctx / FP-order untouched; `TODO(compat)` 117 | **CONFIRMED.** `TODO(compat)` = **117** (base 117); M3b/live-ctx files not in diff. |
+| T-a | zero golden/ledger/tolerance/corpus-deck churn | **CONFIRMED.** `git diff --name-only 5a416ee..HEAD \| grep -Ei 'golden\|ledger\|population.lock\|tests/corpus\|\.csv\|tolerance\|\.toml\|\.json'` = empty. |
+| T-b | test edits mechanical (2 files: relay/recloser); no weakened/removed/ignored cases | **CONFIRMED.** Only `relay/tests.rs` + `recloser/tests.rs` in diff; **no `#[ignore]` added/removed** anywhere in the diff. |
+| T-c | R1 invariants live (`arena_order_matches_registry`, `find_ckt_element_tie_breaks_by_registration_order`, bridge tests); coverage grew | **CONFIRMED** by the full-suite run (all green, below). |
+| T-d | P1/P2 perturbations both FAIL under mutation, clean revert | **CONFIRMED.** Tree was clean at session start (`git status --porcelain` empty at `868cd1e`) — no perturbation residue. |
+| T-e | corpus gate green solo (25) | **SUPERSEDED** by the settler full-workspace solo run (below). |
+
+**Two reconciliations (the audits' only numeric caveats), both settled:**
+- *ElemRef "952 vs 937."* Counting method only: **937 matching lines** (`rg -c`
+  summed — the STATUS convention) vs **952 occurrences** (`rg -o` — the test
+  auditor's figure). Same code; non-material. STATUS keeps the line-count 937.
+- *ElemId "31→34" — CORRECTED (verify-forward-handoffs).* Independent measure:
+  base `5a416ee` = **20** occurrences (`git grep -o`), HEAD = **34**; delta **+14**,
+  confined to `arena.rs` (the `from_ref` 50-ordinal match + `From` impls + (a)/(d)
+  tests) plus the one pre-existing `exec/mod.rs` ref. The prior (a)/(e) records'
+  base "31" was a mis-measure; the true base is 20. Not a success metric (ElemId is
+  new R3 scaffolding); recorded accurately here.
+
+**Final grep metrics (settler-measured, `rg … crates/dss-core/src`):**
+
+| metric | base `5a416ee` | HEAD | delta | note |
+|---|---|---|---|---|
+| `ElemRef` (lines) | 927 / 130 f | **937 / 130 f** | +10 | R3-staged `from_ref`/`From` bridges + tests, all in `arena.rs` |
+| `ElemRef` (occurrences) | — | 952 | — | `rg -o`; = the "952" the test auditor cited |
+| `as_any\|as_ckt_element` | 759 / 134 f | **716 / 134 f** | −43 | make_like guard removal net of (d)'s +4 doc/test refs |
+| `downcast_ref\|downcast_mut` | 416 / 100 f | **369 / 73 f** | −47 | all from make_like (50 impls − 3 no-downcast); 47 removed / 0 added in diff |
+| `TODO(compat)` | 117 / 68 f | **117 / 68 f** | **0** | invariant held |
+| `ElemId` (occurrences) | 20 / 2 f | **34 / 2 f** | +14 | R3 scaffolding in `arena.rs` (base corrected from the "31" in prior records) |
+| `fn as_any` / `fn as_any_mut` defs | 52 / 52 | **52 / 52** | 0 | the R3 removal target (unblocked by the store flip) |
+
+**Final gate (settler, SOLO, toolchain guard first — `cargo` = `.cargo\bin`):**
+`cargo fmt --all --check` exit 0; `cargo clippy --workspace --all-targets -- -D
+warnings` exit 0; `cargo test --workspace` exit 0 — **66 `test result: ok` groups,
+1985 passed, 0 failed, 5 ignored** (the 5 are pre-existing, not R2b — zero
+`#[ignore]` churn in the diff), `corpus_gate_all_cases_match_engines … ok` (both
+channels capi_v0145 + r4133), run solo (no parallel corpus gate). Corpus left
+pristine: 12 run-artifacts (6 `AutoTrans/*.txt` + 6 `GFM_IEEE8500/IEEE8500_Mon_*.csv`)
+removed by exact name — no wide `git clean`. Tree CLEAN (`git status --porcelain`
+empty).
+
+**R3 handoff (single prerequisite: the item-1 store flip).** R2b is closed as a→e
+executed. Landed production: (a) `ElemId::from_ref` + `From` bridges; (c) Category E
+`make_like` in full (trait method removed, byte-identical, the only downcast
+reduction 416→369); (d) the arena ckt/data tag (`try_ckt_elem`). R3, one
+multi-session WP, in sequence:
+1. **Store flip** `ElemRef → ElemId` (the escaped (a) 5-step remainder): `circuit.rs`
+   per-kind lists → `Vec<ElemId>` (measured **427** all-or-nothing consumer sites,
+   ~55 files, no cascade into the access layer) → `RefAction.target` → cross-refs
+   (`controlled_element`/`monitored_element`) → statically-known shape refs as
+   `Idx<T>` → the access layer (`ElemStore` + `find_*` + the control_queue/ckt_tree/
+   gic_source siblings), which removes the `.to_ref()` bridges.
+2. **Typed arena accessors** `ClassArena::get::<T>(id)`/`get_mut::<T>` (concrete ref,
+   no `Any`) + **Category-A** typed pair/triple getters (`(&mut RegControl, &mut
+   Transformer)` / `(&mut CapControl, &mut Capacitor)`; Transformer|AutoTrans via
+   `ControlledTransformer`) + the **Category-D** typed resolved-object handle
+   (retype the shared `set_object_ref` tuple across ~29 files, preserving resolve-
+   time snapshot timing) + the `generator_mut`/`storage_mut`/`pvsystem_mut`/
+   `espvl_mut`/`upfc_mut` family → typed matches.
+3. With 1+2 in place the **364 production downcasts** (214 typed-arena reads / 28
+   Category-A disjoint borrows / 119 Category-B/D bare-`&dyn` params — file-by-file
+   map in the (e) record) and the **~174 `as_ckt_element*`** sites collapse
+   mechanically; then remove `as_any`/`as_any_mut` (52+52 defs) **and**
+   `as_ckt_element`/`as_ckt_element_mut` from `DssObject` together, and retire the
+   `from_ref`/`to_ref`/`try_ckt_elem` bridges. `clone_box` stays (17 live sites).
+
+**Net R2b delta from base `5a416ee`:** `downcast_ref|downcast_mut` 416→369 (−47,
+all make_like); `as_any|as_ckt_element` 759→716 (−43); `ElemRef` 927→937 (+10 R3
+bridges); `ElemId` 20→34 (+14 R3 scaffolding); `TODO(compat)` **117 unchanged**;
+**zero golden / ledger / tolerance / corpus-deck churn** across all five sub-steps.
+
 ### DE_PASCALIZE R2b — CLOSING SUMMARY (a→e complete; store flip = the single R3 prerequisite) (branch `depas-r2b`, 2026-07-26)
 
 R2b executed the R2-escaped block as five sub-steps. **Landed (production
