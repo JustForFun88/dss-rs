@@ -6640,3 +6640,34 @@ paragraphs above are now RESOLVED: the exact host line is pinned
 (`user_model_finit`'s `compute_vterminal` refresh), the fix reproduces the oracle's
 first-step operating point (|Is1| 189.10→189.207, h-independent) and the whole
 trajectory, and `wasm_gen_dyn` is a full numeric gate.
+
+**Settle (two independent read-only audits — audit-code + audit-tests, range
+`16f12e0..caa14e4`).** audit-code returned CLEAN (no findings): the fix is
+Pascal-faithful (verified against vendored `generator.pas:2356-2481` — `InitStateVars`
+runs `ComputeIterminal` only, never `ComputeVterminal`, before `UserModel.FInit`), the
+stale-buffer premise is structural (power-flow's last `compute_vterminal` write leaves
+`V_{n-1}`; the `Set mode=dynamics` handler does not solve, so `compute_iterminal` is a
+cache hit and does not refresh), the change is contained to the Model=6 user-model seed
+(no leak to non-Model=6 / PVSystem / Storage / IndMach012), and the numeric flip
+tightens without loosening any tolerance. audit-tests returned two LOW findings, both
+explicitly flagged by the auditor as traceability notes, not real holes; both settled:
+
+- **D2R2-T1 (FIXED)** — the step-1 guard read its 4 pinned variables by hardcoded
+  positional index (`v[6]/v[4]/v[13]/v[27]`) without re-asserting the variable name at
+  each index inside the guard. Mitigated already (the sibling `gate_deck` name-order
+  gate + the count=34 pin catch a surface reorder in the same binary), but made the
+  guard self-defending: it now fetches `element_variable_names("Generator.g1")` and
+  asserts `names[idx]` equals the expected name (`Slip`/`dSpeed (Deg/sec)`/`Is1`/`Is1`)
+  before each numeric check, so a 34-var surface-order regression fails the guard on its
+  own terms rather than silently pinning the wrong quantity. Verified: guard still
+  passes; names at the pinned indices match the golden surface.
+- **D2R2-T2 (deliberate non-fix, rationale)** — the 4 step-1 oracle constants
+  (`ORACLE_SLIP/DSPEED/IS1_USER/IS1_SHAFT`) are inline `const` literals, not a
+  regenerable golden artifact. Kept as-is by design: the values ARE oracle-sourced — the
+  committed driver `tools/wasm_usermodel/d2_step_0145.py` reads the pinned-0.14.5 oracle
+  + 244-B twin via `ActiveCktElement.AllVariableValues` at the identical indices
+  (`v[6]/v[4]/v[13]/v[27]`), so provenance is committed and re-runnable, not a Rust
+  self-capture — and the end-state numeric gate independently verifies Rust == r4133
+  golden at step 21. A separate regenerable JSON artifact for 4 targeted regression-pin
+  values would be disproportionate; the provenance comment citing the committed driver is
+  the correct weight for this pin. No change.
