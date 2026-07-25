@@ -136,6 +136,26 @@ r4133, all 4 cases live-gated, no ledger entries. Historical detail below.
 - **RETIRED — NCIM×4** (NCIM re-gate, 2026-07-20): r4133 declared oracle-of-record for NCIM (capi015 probe venv retired); the swing-report `+1` shift dropped, 4 cases (`ncim_pq`/`ncim_pv_pq`/`ncim_midi`/`Kundur2Area`) live-gated on r4133, warm-resolve iteration counts match exactly, no ledger entries. Done.
 - **defer_ledger remaining: 0.**
 
+### 1.10 `Export Estimation` (export verb 5) — functional exporter never ported
+- **Found:** 2026-07-25, assumption-gap sweep (strict re-verification flipped it from
+  "benign_documented" to real gap — visible-error deferral, but real lost functionality).
+- **Spec:** `ExportOptions.pas:452` → `ExportEstimation` (`ExportResults.pas:1652+`):
+  writes `EXP_ESTIMATION.csv` — EnergyMeter `SensorCurrent`/`CalculatedCurrent` rows +
+  Sensor target/calculated voltage & current + WLS `%err` columns. Reachable directly
+  (`Export Estimation`) and via `ExecHelper.pas:4225` (`Estimate` command tail).
+- **Current Rust:** `exec/report.rs:484-489` default arm errors
+  `Export "Estimation" is not ported yet (Phase 8).` and writes no file. The "(Phase 8)"
+  label is stale (Phase 8 complete). Not silent — the caller sees an error — but the
+  export itself is genuinely missing and ungated (Export decks sit in `skipped_unsupported`).
+- **Rider (error-text fidelity, same file):** CDPSM verbs 22/28-31 are *removed upstream*
+  (Pascal errors `"<X> export no longer supported; use Export CIM100"`, code 252,
+  `ExportOptions.pas:543-561`); Rust routes them to the same generic "not ported yet
+  (Phase 8)" placeholder. Give them their own arms echoing Pascal's exact message + drop
+  the stale Phase-8 wording from the default arm.
+- **To do:** port `ExportEstimation` loop-for-loop + oracle-gated golden (needs a deck
+  with EnergyMeter sensors/`Estimate`); do the CDPSM/label rider alongside. **Priority:
+  low** (state estimation is a rarely-used subsystem; no corpus deck exercises it).
+
 ---
 
 ## 2. Owned deferrals — NOT orphans (a live plan tracks them; do not re-port here)
