@@ -345,12 +345,12 @@ pub trait CktElement: Send {
 
     /// `ComputeIterminal`: cache-aware terminal-current refresh.
     fn compute_iterminal(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
-        if self.cd().iterminal_solution_count != sys.solution_count {
+        if !self.cd().iterminal_solved_for(sys.solution_count) {
             let mut curr = vec![Complex64::ZERO; self.cd().yorder];
             self.get_currents(sys, node_v, &mut curr);
             let cd = self.cd_mut();
             cd.iterminal.copy_from_slice(&curr);
-            cd.iterminal_solution_count = sys.solution_count;
+            cd.mark_iterminal_solved(sys.solution_count);
         }
     }
 
@@ -370,7 +370,7 @@ pub trait CktElement: Send {
         self.get_currents(sys, node_v, &mut curr);
         let cd = self.cd_mut();
         cd.iterminal.copy_from_slice(&curr);
-        cd.iterminal_solution_count = sys.solution_count;
+        cd.mark_iterminal_solved(sys.solution_count);
     }
 
     /// Pascal `TPDElement.IsShunt`: true for shunt-connected capacitors and
@@ -436,9 +436,8 @@ pub trait CktElement: Send {
             }
             return;
         }
-        let k = (iterm - 1) * ncond;
-        for i in 0..ncond {
-            vbuffer[i] = node_v[cd.node_ref[k + i]];
+        for (vb, &n) in vbuffer.iter_mut().zip(cd.term_nodes(iterm - 1)) {
+            *vb = node_v[n];
         }
     }
 
@@ -451,13 +450,14 @@ pub trait CktElement: Send {
         }
         self.compute_iterminal(sys, node_v);
         let cd = self.cd();
-        let nconds = cd.nconds;
-        let k = (idx_term - 1) * nconds;
         let mut result = Complex64::ZERO;
-        for i in 0..nconds {
-            let n = cd.node_ref[k + i];
+        for (&n, &ci) in cd
+            .term_nodes(idx_term - 1)
+            .iter()
+            .zip(cd.term_i(idx_term - 1))
+        {
             if n > 0 {
-                result += node_v[n] * cd.iterminal[k + i].conj();
+                result += node_v[n] * ci.conj();
             }
         }
         if sys.positive_sequence {
@@ -475,10 +475,9 @@ pub trait CktElement: Send {
         self.compute_iterminal(sys, node_v);
         let cd = self.cd();
         let mut result = Complex64::ZERO;
-        for k in 0..cd.yorder {
-            let n = cd.node_ref[k];
+        for (&n, &ci) in cd.node_ref.iter().zip(&cd.iterminal) {
             if n > 0 {
-                result += node_v[n] * cd.iterminal[k].conj();
+                result += node_v[n] * ci.conj();
             }
         }
         if sys.positive_sequence {

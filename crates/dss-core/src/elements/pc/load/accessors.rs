@@ -153,7 +153,7 @@ impl CktElement for Load {
         // model contribution unless the terminal currents were forced from the
         // DSS language (`Set InjCurrent=`/`Set ITerminal=`, `Flg.ForceInjCurrents`,
         // WP-U1.9) — then the stored/forced `ITerminal` is used as-is.
-        if self.cd.iterminal_solution_count != sys.solution_count
+        if !self.cd.iterminal_solved_for(sys.solution_count)
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {
             let mut errors = crate::diag::ErrorLog::new();
@@ -172,7 +172,7 @@ impl CktElement for Load {
             }
             cd.iterminal_updated = true;
         }
-        self.cd.iterminal_solution_count = sys.solution_count;
+        self.cd.mark_iterminal_solved(sys.solution_count);
     }
 }
 

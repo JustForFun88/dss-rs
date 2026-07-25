@@ -117,12 +117,16 @@ pub struct CktElementData {
     pub terminals_checked: Vec<bool>,
     /// Active terminal, 0-based (`FActiveTerminal`).
     pub active_terminal: usize,
-    /// Pascal `IterminalSolutionCount`.
-    pub iterminal_solution_count: i32,
+    /// Pascal `IterminalSolutionCount`: the solution count for which the cached
+    /// `Iterminal` is current. `None` (Pascal's `-1` sentinel) = never computed,
+    /// so the lazy cache always recomputes on first use; it doubles as the
+    /// thread-readiness flag of the terminal-current cache.
+    pub iterminal_solution_count: Option<u32>,
     /// Pascal `ITerminalUpdated` (TPCElement).
     pub iterminal_updated: bool,
-    /// `CktElements` handle (1-based position; 0 = not in circuit).
-    pub handle: usize,
+    /// `CktElements` handle: `Some(1-based position)` once added to the circuit,
+    /// `None` (Pascal's `0`) while not in any circuit.
+    pub handle: Option<u32>,
     /// Signal to the executive: a bus name / conductor count / enabled state
     /// changed, so the circuit must set `BusNameRedefined` (which in Pascal
     /// happens immediately through the `ActiveCircuit` global).
@@ -139,10 +143,12 @@ pub struct CktElementData {
     // --- `sensor_obj` also on `TPCElement`). Written by the EnergyMeter
     // --- zone build (`MakeMeterZoneLists`); meaningful for PD elements and
     // --- (the refs) for zone PC elements, inert otherwise.
-    /// `FromTerminal`: terminal (1-based) facing the meter on a radial feeder.
-    pub from_terminal: usize,
-    /// `ToTerminal`: set by the reliability sweep from `from_terminal`.
-    pub to_terminal: usize,
+    /// `FromTerminal`: 0-based terminal facing the meter on a radial feeder
+    /// (Pascal's 1-based `FromTerminal`, default 1 → `Some(0)`; `None` = unset).
+    pub from_terminal: Option<usize>,
+    /// `ToTerminal`: the other end, 0-based; `None` (Pascal's `0`) until the
+    /// reliability sweep sets it from `from_terminal`.
+    pub to_terminal: Option<usize>,
     /// `ParentPDElement`: the upline branch in the meter zone.
     pub parent_pd: Option<ElemRef>,
     /// `MeterObj`: upline EnergyMeter.
@@ -180,6 +186,25 @@ pub struct CktElementData {
     pub ocp_device_type: i32,
 }
 
+/// The first `min(nphases, 3)` conductors of one terminal — the "phase window"
+/// the symmetrical-component exports/shows iterate ([`CktElementData::term_phases`]).
+/// Yields `(Iterminal, NodeRef)` per phase in conductor order.
+pub struct Phases<'a> {
+    curr: &'a [Complex64],
+    nodes: &'a [usize],
+    n: usize,
+}
+
+impl Phases<'_> {
+    /// `(Iterminal, NodeRef)` for the first `min(nphases, 3)` phases, in order.
+    pub fn iter(&self) -> impl Iterator<Item = (Complex64, usize)> + '_ {
+        self.curr[..self.n]
+            .iter()
+            .copied()
+            .zip(self.nodes[..self.n].iter().copied())
+    }
+}
+
 impl CktElementData {
     /// Base construction; concrete classes set phases/conds/terms right after
     /// (the Pascal constructors assign `FNphases`/`Fnconds`/`Nterms`).
@@ -206,15 +231,15 @@ impl CktElementData {
             terminals: Vec::new(),
             terminals_checked: Vec::new(),
             active_terminal: 0,
-            iterminal_solution_count: -1,
+            iterminal_solution_count: None,
             iterminal_updated: false,
-            handle: 0,
+            handle: None,
             signal_bus_name_redefined: false,
             signal_reset_solution_initialized: false,
             flags: ElemFlags::NONE,
-            // Pascal `TPDElement.Create`: `FromTerminal := 1`.
-            from_terminal: 1,
-            to_terminal: 0,
+            // Pascal `TPDElement.Create`: `FromTerminal := 1` (0-based terminal 0).
+            from_terminal: Some(0),
+            to_terminal: None,
             parent_pd: None,
             meter_obj: None,
             sensor_obj: None,
@@ -306,10 +331,13 @@ impl CktElementData {
     /// into the flat array and the terminal record, growing storage to
     /// `yorder` like the `ReallocMem` calls.
     pub fn set_node_ref(&mut self, iterm: usize, node_ref_array: &[usize]) {
+        // Convert the 1-based terminal boundary value once; the offset math and
+        // terminal record below are 0-based.
+        let t = iterm - 1;
         self.node_ref.resize(self.yorder, 0);
-        let offset = (iterm - 1) * self.nconds;
+        let offset = t * self.nconds;
         self.node_ref[offset..offset + self.nconds].copy_from_slice(&node_ref_array[..self.nconds]);
-        self.terminals[iterm - 1].term_node_ref[..self.nconds]
+        self.terminals[t].term_node_ref[..self.nconds]
             .copy_from_slice(&node_ref_array[..self.nconds]);
         self.vterminal.resize(self.yorder, Complex64::ZERO);
         self.iterminal.resize(self.yorder, Complex64::ZERO);
@@ -338,6 +366,61 @@ impl CktElementData {
         if let Some(yprim) = &self.yprim {
             yprim.mv_mult(curr, &self.vterminal);
         }
+    }
+
+    // --- Terminal × conductor views over the flat `yorder` buffers (P8) ---
+    // `vterminal`/`iterminal`/`inj_current`/`complex_buffer` are flat
+    // `nterms * nconds` vectors and `node_ref` is the same shape; all are laid
+    // out terminal-major (`t * nconds + c`). These accessors are the ONLY place
+    // that offset arithmetic lives — every consumer takes a per-terminal slice.
+
+    /// Conductor slice of terminal `t` (0-based) into `vterminal`.
+    pub fn term_v(&self, t: usize) -> &[Complex64] {
+        let base = t * self.nconds;
+        &self.vterminal[base..base + self.nconds]
+    }
+
+    /// Conductor slice of terminal `t` (0-based) into `iterminal`.
+    pub fn term_i(&self, t: usize) -> &[Complex64] {
+        let base = t * self.nconds;
+        &self.iterminal[base..base + self.nconds]
+    }
+
+    /// Per-terminal conductor slices of `iterminal`, terminal `0..nterms`.
+    pub fn terminals_i(&self) -> impl Iterator<Item = &[Complex64]> {
+        self.iterminal.chunks_exact(self.nconds)
+    }
+
+    /// Global node-reference slice of terminal `t` (0-based) into `node_ref`
+    /// (requires `SetNodeRef` to have populated `node_ref`).
+    pub fn term_nodes(&self, t: usize) -> &[usize] {
+        let base = t * self.nconds;
+        &self.node_ref[base..base + self.nconds]
+    }
+
+    /// The symmetrical-component "phase window" of terminal `t` (0-based): the
+    /// first `min(nphases, 3)` conductors' terminal current and global node
+    /// reference — the walk the seq-quantity exports/shows share.
+    pub fn term_phases(&self, t: usize) -> Phases<'_> {
+        Phases {
+            curr: self.term_i(t),
+            nodes: self.term_nodes(t),
+            n: self.nphases.min(3),
+        }
+    }
+
+    /// Whether the cached `Iterminal` is current for `solution_count` (Pascal
+    /// `IterminalSolutionCount = ActiveCircuit.Solution.SolutionCount`). `None`
+    /// (never computed) never matches, so first use always recomputes. The
+    /// `solution_count` argument is the solver's non-negative running count.
+    pub fn iterminal_solved_for(&self, solution_count: i32) -> bool {
+        self.iterminal_solution_count == Some(solution_count as u32)
+    }
+
+    /// Mark the cached `Iterminal` current as of `solution_count` (Pascal
+    /// `IterminalSolutionCount := ActiveCircuit.Solution.SolutionCount`).
+    pub fn mark_iterminal_solved(&mut self, solution_count: i32) {
+        self.iterminal_solution_count = Some(solution_count as u32);
     }
 
     /// Pascal `ZeroITerminal`.

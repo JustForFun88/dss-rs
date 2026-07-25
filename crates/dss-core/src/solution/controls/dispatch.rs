@@ -1416,24 +1416,25 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                 .ckt_elem_mut(m)
                 .compute_iterminal(self.sys, self.node_v);
             let cd = self.store.ckt_elem(m).cd();
-            let nconds = cd.nconds;
-            let cond_offset = (self.element_terminal - 1) * nconds;
-            // Per-conductor power cBuffer[i] = V[i]·conj(I[i]) (0-based).
-            let pw = |i0: usize| -> Complex64 {
-                let n = cd.node_ref[i0];
+            // Per-conductor power V[c]·conj(I[c]) over the monitored terminal's
+            // conductor slices (0-based).
+            let term_nodes = cd.term_nodes(self.element_terminal - 1);
+            let term_i = cd.term_i(self.element_terminal - 1);
+            let pw = |c: usize| -> Complex64 {
+                let n = term_nodes[c];
                 if n > 0 {
-                    self.node_v[n] * cd.iterminal[i0].conj()
+                    self.node_v[n] * term_i[c].conj()
                 } else {
                     Complex64::ZERO
                 }
             };
             match mon_phase {
-                AVG => (0..nconds).map(|i| pw(cond_offset + i)).sum(),
+                AVG => (0..term_i.len()).map(pw).sum(),
                 MAXPHASE => {
                     // Abs-max of the terminal's conductors, scaled by Fnphases.
                     let mut cp = Complex64::ZERO;
-                    for i in 0..nconds {
-                        let c = pw(cond_offset + i);
+                    for i in 0..term_i.len() {
+                        let c = pw(i);
                         if c.re.abs() > cp.re.abs() {
                             cp = c;
                         }
@@ -1442,8 +1443,8 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                 }
                 MINPHASE => {
                     let mut cp = Complex64::new(1.0e50, 1.0e50);
-                    for i in 0..nconds {
-                        let c = pw(cond_offset + i);
+                    for i in 0..term_i.len() {
+                        let c = pw(i);
                         if c.re.abs() < cp.re.abs() {
                             cp = c;
                         }
@@ -1451,8 +1452,18 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                     cp * fnphases as f64
                 }
                 // A specific phase: Pascal uses `cBuffer[FMonPhase]` (1-based, no
-                // CondOffset — an upstream quirk), scaled by Fnphases.
-                _ => pw((mon_phase - 1) as usize) * fnphases as f64,
+                // CondOffset — an upstream quirk), so this indexes the flat buffer
+                // from terminal 1, scaled by Fnphases.
+                _ => {
+                    let i0 = (mon_phase - 1) as usize;
+                    let n = cd.node_ref[i0];
+                    let c = if n > 0 {
+                        self.node_v[n] * cd.iterminal[i0].conj()
+                    } else {
+                        Complex64::ZERO
+                    };
+                    c * fnphases as f64
+                }
             }
         };
         if self.sys.positive_sequence {
@@ -1470,21 +1481,16 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
             .ckt_elem_mut(m)
             .compute_iterminal(self.sys, self.node_v);
         let cd = self.store.ckt_elem(m).cd();
-        let nconds = cd.nconds;
-        let cond_offset = (self.element_terminal - 1) * nconds;
+        let term_i = cd.term_i(self.element_terminal - 1);
         match mon_phase {
             AVG => {
-                let sum: f64 = (0..nconds)
-                    .map(|i| cd.iterminal[cond_offset + i].norm())
-                    .sum();
+                let sum: f64 = term_i.iter().map(|c| c.norm()).sum();
                 sum / fnphases as f64
             }
-            MAXPHASE => (0..nconds)
-                .map(|i| cd.iterminal[cond_offset + i].norm())
-                .fold(0.0, f64::max),
-            MINPHASE => (0..nconds)
-                .map(|i| cd.iterminal[cond_offset + i].norm())
-                .fold(1.0e50, f64::min),
+            MAXPHASE => term_i.iter().map(|c| c.norm()).fold(0.0, f64::max),
+            MINPHASE => term_i.iter().map(|c| c.norm()).fold(1.0e50, f64::min),
+            // Specific phase: Pascal's flat `cBuffer[FMonPhase]` (1-based, no
+            // CondOffset — an upstream quirk), indexed from terminal 1.
             _ => cd.iterminal[(mon_phase - 1) as usize].norm(),
         }
     }
@@ -1894,8 +1900,12 @@ impl InvDispatchEnv for InvDispEnv<'_> {
 
     fn der_bus_vbase(&self, r: ElemRef) -> f64 {
         let cd = self.store.ckt_elem(r).cd();
-        let bus_ref = cd.terminals[0].bus_ref;
-        self.bus_kvbase.get(bus_ref).copied().unwrap_or(0.0) * 1000.0
+        cd.terminals[0]
+            .bus_ref
+            .and_then(|b| self.bus_kvbase.get(b))
+            .copied()
+            .unwrap_or(0.0)
+            * 1000.0
     }
 
     fn mon_bus_node_v(&self, j: usize, node: i32) -> Complex64 {
@@ -2365,6 +2375,10 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
     fn pv_snap(&self, r: ElemRef) -> PvSnap {
         let pv = Self::pvsystem(self.store, r);
         let bus_ref = pv.cd.terminals[0].bus_ref;
+        let bus_kvbase = bus_ref
+            .and_then(|b| self.bus_kvbase.get(b))
+            .copied()
+            .unwrap_or(0.0);
         PvSnap {
             name: pv.cd.obj.name().to_string(),
             nphases: pv.cd.nphases,
@@ -2373,7 +2387,7 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
             kva_rating: pv.f_kva_rating,
             kvar_limit: pv.f_kvar_limit,
             pmpp: pv.f_pmpp,
-            bus_kvbase: self.bus_kvbase.get(bus_ref).copied().unwrap_or(0.0),
+            bus_kvbase,
         }
     }
     fn pv_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {

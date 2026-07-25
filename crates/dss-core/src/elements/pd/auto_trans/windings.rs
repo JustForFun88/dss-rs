@@ -156,13 +156,14 @@ impl AutoTrans {
             return num_complex::Complex64::ZERO;
         }
         self.compute_iterminal(sys, node_v);
-        let nconds = self.cd.nconds;
-        let k = (term - 1) * nconds;
+        // Auto's `Get_Power` reads the terminal's own `TermNodeRef` (the auto's
+        // `SetNodeRef` magic rewrites terminal 2's, distinct from the flat
+        // `NodeRef`) against the terminal's `Iterminal` conductor slice.
         let tref = &self.cd.terminals[term - 1].term_node_ref;
         let mut result = num_complex::Complex64::ZERO;
-        for (i, &n) in tref.iter().enumerate().take(nconds) {
+        for (&n, &ci) in tref.iter().zip(self.cd.term_i(term - 1)) {
             if n > 0 {
-                result += node_v[n] * self.cd.iterminal[k + i].conj();
+                result += node_v[n] * ci.conj();
             }
         }
         if sys.positive_sequence {
@@ -237,18 +238,19 @@ impl AutoTrans {
                 pairs.push([j * nconds, (j + 1) * nconds - 1]);
             }
         } else {
-            for i in 1..=np {
-                for j in 1..=nw {
-                    let base = (j - 1) * nconds; // winding j's 0-based conductor base
-                    let plus = base + i - 1; // phase conductor i (0-based)
-                    let pair = match self.windings[j - 1].connection {
+            for i in 0..np {
+                for j in 0..nw {
+                    let base = j * nconds; // winding j's 0-based conductor base
+                    let plus = base + i; // phase conductor i (0-based)
+                    let pair = match self.windings[j].connection {
                         // Wye — second conductor is the winding neutral (`plus + np`).
                         Connection::Wye => [plus, plus + np],
-                        // Delta — second conductor is the next phase in sequence.
-                        Connection::Delta => [plus, base + self.rotate_phases(i) - 1],
+                        // Delta — second conductor is the next phase in sequence
+                        // (`rotate_phases` speaks the 1-based phase language).
+                        Connection::Delta => [plus, base + self.rotate_phases(i + 1) - 1],
                         // Series straddles the H/X terminals: c1 → phase i, c2 →
                         // phase i + Fnphases (both in the shared terminal block).
-                        Connection::Series => [i - 1, i + np - 1],
+                        Connection::Series => [i, i + np],
                     };
                     pairs.push(pair);
                 }

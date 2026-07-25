@@ -109,8 +109,8 @@ pub(crate) fn export_profile(classes: &[DssClass], ckt: &Circuit, phases_to_plot
                 continue;
             };
             let cd = &line.cd;
-            let bus1 = &ckt.buses[cd.terminals[0].bus_ref];
-            let bus2 = &ckt.buses[cd.terminals[1].bus_ref];
+            let bus1 = &ckt.buses[cd.terminals[0].bus_idx()];
+            let bus2 = &ckt.buses[cd.terminals[1].bus_idx()];
             if !(bus1.kv_base > 0.0 && bus2.kv_base > 0.0) {
                 continue;
             }

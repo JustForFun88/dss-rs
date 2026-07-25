@@ -49,7 +49,6 @@ pub(crate) fn show_powers(
     let mut body = |name: &str, elem: &mut dyn CktElement, do_excess: bool| {
         elem.compute_iterminal(sys, node_v);
         let nterm = elem.cd().nterms;
-        let ncond = elem.cd().nconds;
         let nphases = elem.cd().nphases;
         // Terminal-1 excess power (PD only), captured before releasing `&mut`.
         let (exc_norm, exc_emerg) = if do_excess {
@@ -66,10 +65,9 @@ pub(crate) fn show_powers(
             // Named-phase Iph/Vph over the first min(3, nphases) conductors.
             let mut iph = [Complex64::ZERO; 3];
             let mut vph = [Complex64::ZERO; 3];
-            for i in 0..nphases.min(3) {
-                let k = (j - 1) * ncond + i;
-                iph[i] = cd.iterminal[k];
-                vph[i] = node_v[cd.node_ref[k]];
+            for (i, (ci, nref)) in cd.term_phases(j - 1).iter().enumerate() {
+                iph[i] = ci;
+                vph[i] = node_v[nref];
             }
             let (mut i012, mut v012) = ([Complex64::ZERO; 3], [Complex64::ZERO; 3]);
             if nphases >= 3 {
@@ -275,15 +273,13 @@ pub(crate) fn write_terminal_power_seq(
     mdnl: usize,
 ) {
     elem.compute_iterminal(sys, node_v);
-    let ncond = elem.cd().nconds;
     let nphases = elem.cd().nphases;
     let cd = elem.cd();
     let mut vph = [Complex64::ZERO; 3];
     let mut iph = [Complex64::ZERO; 3];
-    for i in 0..nphases.min(3) {
-        let k = (j - 1) * ncond + i;
-        vph[i] = node_v[cd.node_ref[k]];
-        iph[i] = cd.iterminal[k];
+    for (i, (ci, nref)) in cd.term_phases(j - 1).iter().enumerate() {
+        vph[i] = node_v[nref];
+        iph[i] = ci;
     }
     // Sym-comp for >=3 phases; else only the positive sequence (pos-seq model),
     // zero-seq/neg-seq stay 0 (Pascal V012[1]/V012[3] := CZERO; 0-based [0]/[2]).
@@ -396,9 +392,9 @@ fn write_powers_element(
         ncond
     };
     let bus_pad = |t: usize| {
-        let b = ckt
-            .buses
-            .get(cd.terminals[t].bus_ref)
+        let b = cd.terminals[t]
+            .bus_ref
+            .and_then(|b| ckt.buses.get(b))
             .map(|x| x.name.as_str())
             .unwrap_or("");
         format::pad(b, mbnl).to_uppercase()

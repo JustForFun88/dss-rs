@@ -235,7 +235,7 @@ impl IndMach012 {
         // one step past the oracle's operating point (~5e-4 in P). Mirror the
         // Generator/Load/PVSystem/Storage `put_curr` bookkeeping exactly.
         self.cd.iterminal_updated = true;
-        self.cd.iterminal_solution_count = sys.solution_count;
+        self.cd.mark_iterminal_solved(sys.solution_count);
         for i in 0..self.cd.nphases {
             self.cd.inj_current[i] -= self.cd.iterminal[i];
         }

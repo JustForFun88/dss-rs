@@ -38,12 +38,9 @@ pub(crate) fn export_seq_currents(
         let cd = elem.cd();
 
         for j in 1..=nterm {
+            let it = cd.term_i(j - 1);
             let (i0, i1, i2, i_nema) = if nphases >= 3 {
-                let iph = [
-                    cd.iterminal[(j - 1) * ncond],
-                    cd.iterminal[(j - 1) * ncond + 1],
-                    cd.iterminal[(j - 1) * ncond + 2],
-                ];
+                let iph = [it[0], it[1], it[2]];
                 let mut i012 = [Complex64::ZERO; 3];
                 sc.phase_to_sym(&iph, &mut i012);
                 (
@@ -55,7 +52,7 @@ pub(crate) fn export_seq_currents(
             } else {
                 // `PositiveSequence` uses phase 1 only; else all zero.
                 let i1 = if sys.positive_sequence {
-                    cd.iterminal[(j - 1) * ncond].norm()
+                    it[0].norm()
                 } else {
                     0.0
                 };

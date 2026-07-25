@@ -243,7 +243,7 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
             classes[r.cls].props.class_name(),
             obj.data().name()
         );
-        let bus_ref = l.cd.terminals[0].bus_ref;
+        let bus_ref = l.cd.terminals[0].bus_idx();
         let bus_kv = ckt.buses[bus_ref].kv_base;
         let bus_name = ckt.bus_list.name(bus_ref).unwrap_or("");
         if bus_kv == 0.0 {
@@ -301,7 +301,7 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
             classes[r.cls].props.class_name(),
             obj.data().name()
         );
-        let bus_ref = g.cd.terminals[0].bus_ref;
+        let bus_ref = g.cd.terminals[0].bus_idx();
         let bus_kv = ckt.buses[bus_ref].kv_base;
         let bus_name = ckt.bus_list.name(bus_ref).unwrap_or("");
         if bus_kv == 0.0 {

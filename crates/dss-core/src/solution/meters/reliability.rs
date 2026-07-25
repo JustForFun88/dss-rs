@@ -16,7 +16,10 @@ use super::downcast_meter;
 /// FROM bus (0-based index into `ckt.buses`) of a PD element's metered terminal.
 fn pd_from_bus(store: &dyn ElemStore, r: ElemRef) -> usize {
     let cd = store.ckt_elem(r).cd();
-    cd.terminals[cd.from_terminal - 1].bus_ref
+    cd.terminals[cd
+        .from_terminal
+        .expect("zone PD element has a metered terminal")]
+    .bus_idx()
 }
 
 /// Pascal `TExecHelper.DoLambdaCalcs` (ExecHelper.pas l.4847): zero every bus's
@@ -89,12 +92,15 @@ fn calc_reliability_indices(
         let rel = store.ckt_elem(r).reliability_data();
         let (from_t, from_bus, to_bus, branch_total, has_ocp) = {
             let cd = store.ckt_elem(r).cd();
-            let from_t = cd.from_terminal;
-            let to_t = if from_t == 2 { 1 } else { 2 };
+            // `from_t`/`to_t` are 0-based terminal indices.
+            let from_t = cd
+                .from_terminal
+                .expect("zone PD element has a metered terminal");
+            let to_t = if from_t == 1 { 0 } else { 1 };
             (
                 from_t,
-                cd.terminals[from_t - 1].bus_ref,
-                cd.terminals[to_t - 1].bus_ref,
+                cd.terminals[from_t].bus_idx(),
+                cd.terminals[to_t].bus_idx(),
                 cd.branch_total_customers,
                 cd.flags.contains(ElemFlags::HAS_OCP_DEVICE),
             )
@@ -103,7 +109,7 @@ fn calc_reliability_indices(
         let accumulated_miles = ckt.buses[to_bus].bus_total_miles + rel.miles_this_line;
         {
             let cd = store.ckt_elem_mut(r).cd_mut();
-            cd.to_terminal = if from_t == 2 { 1 } else { 2 };
+            cd.to_terminal = Some(if from_t == 1 { 0 } else { 1 });
             cd.branch_flt_rate = rel.branch_flt_rate;
             cd.accumulated_br_flt_rate = accumulated_br;
             cd.accumulated_miles_downstream = accumulated_miles;
@@ -121,7 +127,10 @@ fn calc_reliability_indices(
     {
         let first = seq[0];
         let cd = store.ckt_elem(first).cd();
-        let from_bus = cd.terminals[cd.from_terminal - 1].bus_ref;
+        let from_bus = cd.terminals[cd
+            .from_terminal
+            .expect("zone PD element has a metered terminal")]
+        .bus_idx();
         let pbus = &mut ckt.buses[from_bus];
         pbus.bus_num_interrupt = source_num_int;
         pbus.bus_cust_interrupts = source_num_int * pbus.bus_total_num_customers as f64;
@@ -131,12 +140,15 @@ fn calc_reliability_indices(
     for &r in &seq {
         let (from_t, from_bus, to_bus, accumulated_br, has_ocp, has_auto) = {
             let cd = store.ckt_elem(r).cd();
-            let from_t = cd.from_terminal;
-            let to_t = if from_t == 2 { 1 } else { 2 };
+            // `from_t`/`to_t` are 0-based terminal indices.
+            let from_t = cd
+                .from_terminal
+                .expect("zone PD element has a metered terminal");
+            let to_t = if from_t == 1 { 0 } else { 1 };
             (
                 from_t,
-                cd.terminals[from_t - 1].bus_ref,
-                cd.terminals[to_t - 1].bus_ref,
+                cd.terminals[from_t].bus_idx(),
+                cd.terminals[to_t].bus_idx(),
                 cd.accumulated_br_flt_rate,
                 cd.flags.contains(ElemFlags::HAS_OCP_DEVICE),
                 cd.flags.contains(ElemFlags::HAS_AUTO_OCP_DEVICE),
@@ -159,7 +171,7 @@ fn calc_reliability_indices(
         }
         let section_id = ckt.buses[to_bus].bus_section_id;
         let cd = store.ckt_elem_mut(r).cd_mut();
-        cd.to_terminal = if from_t == 2 { 1 } else { 2 };
+        cd.to_terminal = Some(if from_t == 1 { 0 } else { 1 });
         cd.branch_section_id = section_id;
     }
 
@@ -198,8 +210,11 @@ fn calc_reliability_indices(
         ) = {
             let cd = store.ckt_elem(r).cd();
             (
-                cd.terminals[cd.from_terminal - 1].bus_ref,
-                cd.to_terminal,
+                cd.terminals[cd
+                    .from_terminal
+                    .expect("zone PD element has a metered terminal")]
+                .bus_idx(),
+                cd.to_terminal.expect("reliability sweep set to_terminal"),
                 cd.branch_section_id,
                 cd.branch_flt_rate,
                 cd.branch_num_customers,
@@ -216,7 +231,7 @@ fn calc_reliability_indices(
         if branch_section_id <= 0 {
             continue;
         }
-        let to_bus = store.ckt_elem(r).cd().terminals[to_t - 1].bus_ref;
+        let to_bus = store.ckt_elem(r).cd().terminals[to_t].bus_idx();
         let to_num_int = ckt.buses[to_bus].bus_num_interrupt;
         let s = &mut sections[branch_section_id as usize];
         s.n_customers += branch_num;
@@ -283,7 +298,7 @@ fn calc_reliability_indices(
                 load.num_customers as f64,
                 load.rel_weighting,
                 load.kw_base,
-                load.cd().terminals[0].bus_ref,
+                load.cd().terminals[0].bus_idx(),
             )
         };
         let bus_num_int = ckt.buses[pbus].bus_num_interrupt;
