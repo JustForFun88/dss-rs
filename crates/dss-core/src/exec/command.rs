@@ -505,7 +505,7 @@ impl Dss {
         let idx = self.classes[ci]
             .active
             .expect("set_active set the active index");
-        if self.classes[ci].objects[idx].as_ckt_element().is_some() {
+        if self.classes[ci].arena.obj(idx).as_ckt_element().is_some() {
             self.active_ckt_element = Some((ci, idx));
         }
         true
@@ -591,8 +591,8 @@ impl Dss {
         }
         if obj_name == "*" {
             let mut any_changed = false;
-            for obj in &mut self.classes[ci].objects {
-                if let Some(elem) = obj.as_ckt_element_mut() {
+            for oi in 0..self.classes[ci].arena.len() {
+                if let Some(elem) = self.classes[ci].arena.obj_mut(oi).as_ckt_element_mut() {
                     let cd = elem.cd_mut();
                     cd.set_enabled(enable);
                     if cd.signal_bus_name_redefined {
@@ -659,7 +659,9 @@ impl Dss {
             .active
             .expect("set_active set the active index");
         let dirty = {
-            let cd = self.classes[ci].objects[idx]
+            let cd = self.classes[ci]
+                .arena
+                .obj_mut(idx)
                 .as_ckt_element_mut()
                 .expect("set_active_ckt_element returned a circuit element")
                 .cd_mut();
@@ -711,7 +713,7 @@ impl Dss {
         let idx = self.classes[ci]
             .active
             .expect("set_active set the active index");
-        if self.classes[ci].objects[idx].as_ckt_element().is_none() {
+        if self.classes[ci].arena.obj(idx).as_ckt_element().is_none() {
             self.errors.push(format!(
                 "Error in {verb}: Object not a circuit Element. {obj_class}.{obj_name}"
             ));
@@ -776,7 +778,7 @@ impl Dss {
             .expect("set_active set the active index");
         // Only circuit elements become the `ActiveCktElement` (Pascal: a general
         // `DSS_OBJECT` does nothing here).
-        if self.classes[ci].objects[idx].as_ckt_element().is_some() {
+        if self.classes[ci].arena.obj(idx).as_ckt_element().is_some() {
             self.active_ckt_element = Some((ci, idx));
             // Active terminal (Pascal `if Length(Param)>0 then ActiveTerminalIdx :=
             // IntValue else 1`): an **absent** param selects terminal 1; a
@@ -789,7 +791,9 @@ impl Dss {
             } else {
                 Some(self.parser.make_integer(&self.vars).unwrap_or(0))
             };
-            let cd = self.classes[ci].objects[idx]
+            let cd = self.classes[ci]
+                .arena
+                .obj_mut(idx)
                 .as_ckt_element_mut()
                 .expect("just checked it is a circuit element")
                 .cd_mut();
@@ -905,7 +909,7 @@ impl Dss {
             .get(&obj_str.to_ascii_lowercase())
             .copied()
             .expect("found confirmed the object exists");
-        let element_name = self.classes[ci].objects[oi].data().name().to_string();
+        let element_name = self.classes[ci].arena.obj(oi).data().name().to_string();
         let element_type = self.classes[ci].props.class_name().to_string();
         self.fire_visualize_callback(&element_name, &element_type, quantity);
     }
@@ -972,12 +976,10 @@ impl Dss {
             }
             // DSS_OBJECT path: duplicates become edits.
             if !self.classes[ci].set_active(name) {
-                let cls = &mut self.classes[ci];
-                let obj = (cls.new_object)(name);
-                let idx = cls.objects.len();
-                cls.name_to_idx.insert(obj.data().name().to_string(), idx);
-                cls.objects.push(obj);
-                cls.active = Some(idx);
+                let idx = self.classes[ci].arena.push_new(name);
+                let obj_name = self.classes[ci].arena.obj(idx).data().name().to_string();
+                self.classes[ci].name_to_idx.insert(obj_name, idx);
+                self.classes[ci].active = Some(idx);
                 // Pascal `TLineCodeObj.Create`: `BaseFrequency :=
                 // ActiveCircuit.Fundamental` (LineCode.pas:493). The LineCode is
                 // the one DSS_OBJECT carrying a base frequency; it inherits the
@@ -985,7 +987,9 @@ impl Dss {
                 // computed at 50 Hz (propagated to lines via `FetchLineCode`).
                 // `edit_active`'s `EndEdit` recomputes the matrices at this freq.
                 if let Some(fund) = self.circuit.as_ref().map(|c| c.fundamental)
-                    && let Some(lc) = self.classes[ci].objects[idx]
+                    && let Some(lc) = self.classes[ci]
+                        .arena
+                        .obj_mut(idx)
                         .as_any_mut()
                         .downcast_mut::<line_code::LineCodeObj>()
                 {
@@ -1010,12 +1014,10 @@ impl Dss {
             return false;
         }
 
-        let cls = &mut self.classes[ci];
-        let obj = (cls.new_object)(name);
-        let idx = cls.objects.len();
-        cls.name_to_idx.insert(obj.data().name().to_string(), idx);
-        cls.objects.push(obj);
-        cls.active = Some(idx);
+        let idx = self.classes[ci].arena.push_new(name);
+        let obj_name = self.classes[ci].arena.obj(idx).data().name().to_string();
+        self.classes[ci].name_to_idx.insert(obj_name, idx);
+        self.classes[ci].active = Some(idx);
 
         // Pascal `TDSSCktElement.Create`: `BaseFrequency := ActiveCircuit.Fundamental`
         // (CktElement.pas:203). Every circuit element inherits the circuit's base
@@ -1030,11 +1032,15 @@ impl Dss {
         // monitor reports 60). Reproduce that override here. (EnergyMeter/Sensor do
         // NOT override — they inherit the fundamental like everything else.)
         let fundamental = self.circuit.as_ref().expect("checked above").fundamental;
-        let is_monitor = self.classes[ci].objects[idx]
+        let is_monitor = self.classes[ci]
+            .arena
+            .obj_mut(idx)
             .as_any_mut()
             .downcast_mut::<monitor::Monitor>()
             .is_some();
-        self.classes[ci].objects[idx]
+        self.classes[ci]
+            .arena
+            .obj_mut(idx)
             .as_ckt_element_mut()
             .expect("circuit element class builds circuit elements")
             .cd_mut()
@@ -1046,12 +1052,16 @@ impl Dss {
         // this a 50 Hz feeder's VSource keeps SrcFrequency=60, so the frequency
         // mismatch check (`VSource.pas:1071`) zeroes Vmag and the whole feeder dies.
         // A later `frequency=` edit still wins (applied in `edit_active`).
-        if let Some(vs) = self.classes[ci].objects[idx]
+        if let Some(vs) = self.classes[ci]
+            .arena
+            .obj_mut(idx)
             .as_any_mut()
             .downcast_mut::<vsource::VSource>()
         {
             vs.src_frequency = fundamental;
-        } else if let Some(is) = self.classes[ci].objects[idx]
+        } else if let Some(is) = self.classes[ci]
+            .arena
+            .obj_mut(idx)
             .as_any_mut()
             .downcast_mut::<isource::Isource>()
         {
@@ -1061,19 +1071,20 @@ impl Dss {
         // Pascal `TLineObj.Create` copies the context default earth model into
         // `FEarthModel` (Line.pas:998); a later `EarthModel=` edit can override
         // it. Applied before `edit_active` so the property still wins.
-        if let Some(line) = self.classes[ci].objects[idx]
+        if let Some(line) = self.classes[ci]
+            .arena
+            .obj_mut(idx)
             .as_any_mut()
             .downcast_mut::<line::Line>()
         {
             line.earth_model = self.default_earth_model;
         }
 
-        let cls = &mut self.classes[ci];
-        let kind = cls.kind.expect("circuit element class has a kind");
+        let kind = self.classes[ci]
+            .kind
+            .expect("circuit element class has a kind");
         let ckt = self.circuit.as_mut().expect("checked above");
-        let elem = self.classes[ci].objects[idx]
-            .as_ckt_element_mut()
-            .expect("circuit element class builds circuit elements");
+        let elem = self.classes[ci].arena.ckt_elem_mut(idx);
         ckt.add_ckt_element(ElemRef { cls: ci, idx }, kind, elem);
 
         true
@@ -1091,8 +1102,11 @@ impl Dss {
         {
             self.do_close_di_cmd();
         }
+        // Drop every element together (Pascal `Clear` resets the whole registry
+        // — the `Idx<T>` stability invariant: arenas are only ever reset as a
+        // set, never individually deleted).
         for cls in &mut self.classes {
-            cls.objects.clear();
+            cls.arena.clear();
             cls.name_to_idx.clear();
             cls.active = None;
         }
@@ -1137,11 +1151,10 @@ impl Dss {
         let oi = self.classes[ci].active.expect("just set active");
         if let Some(idx) = self.classes[ci].props.property_index(&prop_name) {
             self.refresh_vterminal_if_marked(ci, oi, Some(idx));
-            self.last_result = self.classes[ci].props.get_value(
-                self.classes[ci].objects[oi].as_ref(),
-                idx,
-                &self.enums,
-            );
+            self.last_result =
+                self.classes[ci]
+                    .props
+                    .get_value(self.classes[ci].arena.obj(oi), idx, &self.enums);
         }
     }
 
@@ -1175,7 +1188,7 @@ impl Dss {
         };
         if marked
             && let Some(node_v) = self.circuit.as_ref().map(|c| c.solution.node_v.clone())
-            && let Some(elem) = self.classes[ci].objects[oi].as_ckt_element_mut()
+            && let Some(elem) = self.classes[ci].arena.obj_mut(oi).as_ckt_element_mut()
             // Pascal reloads Vterminal INSIDE the getter, after its
             // `if (not Enabled) or (NodeRef = NIL) or (NodeV = NIL) then Exit`
             // guard (e.g. `TTransfObj.GetAllWindingCurrents`, Transformer.pas:1530).
@@ -1198,7 +1211,9 @@ impl Dss {
             None => true,
         };
         if touches_tapnum
-            && let Some(tref) = self.classes[ci].objects[oi]
+            && let Some(tref) = self.classes[ci]
+                .arena
+                .obj(oi)
                 .as_any()
                 .downcast_ref::<reg_control::RegControl>()
                 .and_then(|rc| rc.controlled_ref())
@@ -1238,7 +1253,9 @@ impl Dss {
         let Some(oi) = self.classes[ci].active else {
             return;
         };
-        if !self.classes[ci].objects[oi]
+        if !self.classes[ci]
+            .arena
+            .obj(oi)
             .as_any()
             .is::<crate::elements::control::storage_controller::StorageController>()
             || self.circuit.is_none()
@@ -1291,7 +1308,9 @@ impl Dss {
         // Split the registry so the active class is borrowed mutably for the
         // edit while every *other* class is a read view for ObjectRef
         // resolution (PHASE4_PLAN §3.1). `split_at_mut` + `split_first_mut`
-        // keep the three regions provably disjoint with no unsafe.
+        // keep the three regions provably disjoint with no unsafe. The active
+        // class's objects (`active_arena`) come with it (R1: objects live in
+        // `DssClass::arena`), so no separate arena split is needed.
         let (left, rest) = classes.split_at_mut(ci);
         let (active_class, right) = rest.split_first_mut().expect("ci is in range");
         let foreign = ForeignClasses {
@@ -1301,7 +1320,7 @@ impl Dss {
         };
         let DssClass {
             props,
-            objects,
+            arena: active_arena,
             name_to_idx,
             active,
             ..
@@ -1315,11 +1334,11 @@ impl Dss {
         // `DefaultAndUnedited` flag, so an edited default object rejoins the
         // whole-circuit JSON dump. Harmless on the initial `New` of the default
         // items themselves (the flag is set afterwards by `CreateDefaultDSSItems`).
-        objects[oi].data_mut().set_default_and_unedited(false);
+        active_arena[oi].data_mut().set_default_and_unedited(false);
         // Pascal `BeginEdit` (DSSClass.pas:1666, r4086): capture the set-order
         // counter so `end_edit` knows which props this edit touched (RegControl's
         // signed-threshold legacy fallback needs it).
-        objects[oi].data_mut().begin_edit_boundary();
+        active_arena[oi].data_mut().begin_edit_boundary();
 
         let mut param_pointer: i64 = 0;
         let mut param_name = parser.next_param(vars);
@@ -1338,27 +1357,34 @@ impl Dss {
                 // Not a class property, but may still be a dynamic-equation
                 // variable for some classes (Pascal `DSSClass.Edit` l.1656 →
                 // `Obj.ParseDynVar`).
-                if objects[oi].parse_dyn_var(&param_name, &param, vars) {
+                if active_arena[oi].parse_dyn_var(&param_name, &param, vars) {
                     // Consumed as a DynamicExp state-variable initializer.
                 } else if param_name.is_empty() {
                     errors.push(format!(
                         "Unknown parameter for value \"{param}\" in object \"{}.{}\"",
                         props.class_name(),
-                        objects[oi].data().name()
+                        active_arena[oi].data().name()
                     ));
                 } else {
                     errors.push(format!(
                         "Unknown parameter \"{param_name}\" (value \"{param}\") for object \"{}.{}\"",
                         props.class_name(),
-                        objects[oi].data().name()
+                        active_arena[oi].data().name()
                     ));
                 }
             } else {
                 let idx = param_pointer as usize;
                 if props.prop(idx).ptype == PropType::MakeLike {
-                    make_like(objects, name_to_idx, oi, &param, errors, props.class_name());
-                    objects[oi].data_mut().set_as_next_seq(idx);
-                    objects[oi].side_effects(idx, 0);
+                    make_like(
+                        active_arena,
+                        name_to_idx,
+                        oi,
+                        &param,
+                        errors,
+                        props.class_name(),
+                    );
+                    active_arena[oi].data_mut().set_as_next_seq(idx);
+                    active_arena[oi].side_effects(idx, 0);
                 } else {
                     let mut eng = PropEngine {
                         parser: aux_parser,
@@ -1367,7 +1393,8 @@ impl Dss {
                         errors,
                         foreign: Some(&foreign),
                     };
-                    if let Err(e) = props.edit_property(objects[oi].as_mut(), idx, &param, &mut eng)
+                    if let Err(e) =
+                        props.edit_property(&mut active_arena[oi], idx, &param, &mut eng)
                     {
                         errors.push(e);
                     }
@@ -1382,7 +1409,7 @@ impl Dss {
         // constructor; our constructor cannot reach the registry, so resolve the
         // (default or explicit) curve name here through the same foreign view the
         // property edits use, cloning it into the Fuse for solve-time GetTCCTime.
-        if let Some(name) = objects[oi]
+        if let Some(name) = active_arena[oi]
             .as_any()
             .downcast_ref::<fuse::Fuse>()
             .map(|f| f.fuse_curve_name().to_string())
@@ -1394,7 +1421,7 @@ impl Dss {
                     })
                 })
                 .flatten();
-            if let Some(f) = objects[oi].as_any_mut().downcast_mut::<fuse::Fuse>() {
+            if let Some(f) = active_arena[oi].as_any_mut().downcast_mut::<fuse::Fuse>() {
                 f.set_fuse_curve_obj(curve);
             }
         }
@@ -1405,7 +1432,7 @@ impl Dss {
         // `spectrum=` name; we clone the resolved `SpectrumObj` (its `MultArray`
         // is already built by the spectrum's `EndEdit`) in for the harmonic
         // injection path. Same foreign-view pattern as the Fuse curve above.
-        let spectrum_name = objects[oi]
+        let spectrum_name = active_arena[oi]
             .as_ckt_element()
             .and_then(|ce| ce.harmonic_spectrum_name())
             .map(str::to_string);
@@ -1424,14 +1451,14 @@ impl Dss {
                         format!(
                             "{}.{}.Spectrum: Spectrum object \"{name}\" not found.",
                             props.class_name(),
-                            objects[oi].data().name()
+                            active_arena[oi].data().name()
                         ),
                         Some(401),
                     ));
                 }
                 found
             };
-            if let Some(ce) = objects[oi].as_ckt_element_mut() {
+            if let Some(ce) = active_arena[oi].as_ckt_element_mut() {
                 ce.set_harmonic_spectrum(resolved);
             }
         }
@@ -1440,7 +1467,7 @@ impl Dss {
         // default to the built-in `a`/`d` in the constructor, which cannot reach
         // the registry): resolve every non-empty name through the foreign view and
         // clone the curves in for solve-time GetTCCTime.
-        if let Some(names) = objects[oi]
+        if let Some(names) = active_arena[oi]
             .as_any()
             .downcast_ref::<recloser::Recloser>()
             .map(|r| r.curve_names())
@@ -1460,7 +1487,7 @@ impl Dss {
                 resolve(&names[2]),
                 resolve(&names[3]),
             ];
-            if let Some(r) = objects[oi]
+            if let Some(r) = active_arena[oi]
                 .as_any_mut()
                 .downcast_mut::<recloser::Recloser>()
             {
@@ -1472,7 +1499,7 @@ impl Dss {
         // / OvervoltCurve / UndervoltCurve / DOC_PhaseCurveInner — all default to
         // NIL, but any `…curve=` parse names one): resolve through the foreign
         // view and clone in for solve-time GetTCCTime / GetOVtime / GetUVtime.
-        if let Some(names) = objects[oi]
+        if let Some(names) = active_arena[oi]
             .as_any()
             .downcast_ref::<relay::Relay>()
             .map(|r| r.curve_names())
@@ -1493,7 +1520,7 @@ impl Dss {
                 resolve(&names[3]),
                 resolve(&names[4]),
             ];
-            if let Some(r) = objects[oi].as_any_mut().downcast_mut::<relay::Relay>() {
+            if let Some(r) = active_arena[oi].as_any_mut().downcast_mut::<relay::Relay>() {
                 r.set_resolved_curves(curves);
             }
         }
@@ -1506,8 +1533,8 @@ impl Dss {
         // terminal. A named DERList resolves its first entry; an empty list scans
         // every PVSystem then Storage for the first enabled one (matching
         // `MakeDERList`'s empty-list branch).
-        if objects[oi].as_any().is::<inv_control::InvControl>() {
-            let der_names: Vec<String> = objects[oi]
+        if active_arena[oi].as_any().is::<inv_control::InvControl>() {
+            let der_names: Vec<String> = active_arena[oi]
                 .as_any()
                 .downcast_ref::<inv_control::InvControl>()
                 .map(|ic| ic.der_name_list().to_vec())
@@ -1551,7 +1578,7 @@ impl Dss {
                 }
             };
             if let Some((bus, nphases)) = info
-                && let Some(ic) = objects[oi]
+                && let Some(ic) = active_arena[oi]
                     .as_any_mut()
                     .downcast_mut::<inv_control::InvControl>()
             {
@@ -1565,8 +1592,8 @@ impl Dss {
         // bus + phase count here (no store access in `recalc_element_data`). A named
         // list resolves its first *enabled* entry; an empty list scans every
         // PVSystem for the first enabled one (matching `MakePVSystemList`).
-        if objects[oi].as_any().is::<exp_control::ExpControl>() {
-            let pv_names: Vec<String> = objects[oi]
+        if active_arena[oi].as_any().is::<exp_control::ExpControl>() {
+            let pv_names: Vec<String> = active_arena[oi]
                 .as_any()
                 .downcast_ref::<exp_control::ExpControl>()
                 .map(|ec| ec.pvsystem_name_list().to_vec())
@@ -1602,7 +1629,7 @@ impl Dss {
                 }
             };
             if let Some((bus, nphases)) = info
-                && let Some(ec) = objects[oi]
+                && let Some(ec) = active_arena[oi]
                     .as_any_mut()
                     .downcast_mut::<exp_control::ExpControl>()
             {
@@ -1617,13 +1644,13 @@ impl Dss {
         // through the foreign view here and hand it — with the Line's present
         // Bus2 — to the source; `end_edit` → `recalc` then decides whether to
         // splice and queues the Line Bus2 rewrite as a deferred RefAction.
-        if objects[oi].as_any().is::<gic_source::GicSource>() {
-            let name = objects[oi].data().name().to_string();
+        if active_arena[oi].as_any().is::<gic_source::GicSource>() {
+            let name = active_arena[oi].data().name().to_string();
             let resolved = foreign.find("Line", &name).and_then(|(r, o)| {
                 o.as_ckt_element()
                     .map(|e| (r, e.cd().get_bus(2).to_string()))
             });
-            if let Some(gs) = objects[oi]
+            if let Some(gs) = active_arena[oi]
                 .as_any_mut()
                 .downcast_mut::<gic_source::GicSource>()
             {
@@ -1651,18 +1678,18 @@ impl Dss {
                 current_dir.join(name)
             }
         };
-        let file_loads = objects[oi].take_file_loads();
+        let file_loads = active_arena[oi].take_file_loads();
         for fl in &file_loads {
             let path = resolve(&fl.filename);
             if fl.binary {
                 match std::fs::read(&path) {
-                    Ok(bytes) => objects[oi].apply_binary_file_load(fl, &bytes, errors),
+                    Ok(bytes) => active_arena[oi].apply_binary_file_load(fl, &bytes, errors),
                     // Pascal error 615/617 (SngFile/DblFile "Error opening file").
                     Err(_) => errors.push(format!("Error opening file: \"{}\"", fl.filename)),
                 }
             } else {
                 match std::fs::read_to_string(&path) {
-                    Ok(content) => objects[oi].apply_file_load(fl, &content, errors),
+                    Ok(content) => active_arena[oi].apply_file_load(fl, &content, errors),
                     // Pascal error 613/58613 (CSVFile/PQCSVFile "Error opening file").
                     Err(_) => errors.push(format!("Error opening file: \"{}\"", fl.filename)),
                 }
@@ -1678,7 +1705,7 @@ impl Dss {
         // the element warn "… Not Loaded" and fall back to the built-in model
         // (never "Error opening file", unlike a `FileLoad` miss). Runs before
         // `end_edit` so `RecalcElementData` sees the loaded model.
-        let user_model_loads = objects[oi].take_user_model_loads();
+        let user_model_loads = active_arena[oi].take_user_model_loads();
         for uml in &user_model_loads {
             let wasm: Option<Vec<u8>> = match &uml.action {
                 crate::obj::base::UserModelAction::Load(name) => {
@@ -1694,7 +1721,7 @@ impl Dss {
                 }
                 crate::obj::base::UserModelAction::Edit(_) => None,
             };
-            objects[oi].apply_user_model_load(uml, wasm.as_deref(), errors);
+            active_arena[oi].apply_user_model_load(uml, wasm.as_deref(), errors);
         }
 
         // WPG.19: generic file-backed numeric-array directives (`%mag=(file=…)`,
@@ -1702,11 +1729,13 @@ impl Dss {
         // (Pascal `DSSObjectHelper.pas:616-636`). Read the file and apply the
         // `InterpretDblArray` grammar (short-file shrink + `Round`/scale/non-zero)
         // through the object's typed accessors.
-        let generic_files = objects[oi].take_generic_dbl_array_files();
+        let generic_files = active_arena[oi].take_generic_dbl_array_files();
         for gf in &generic_files {
             let path = resolve(&gf.filename);
             match std::fs::read(&path) {
-                Ok(bytes) => apply_generic_dbl_array_file(&mut *objects[oi], gf, &bytes, errors),
+                Ok(bytes) => {
+                    apply_generic_dbl_array_file(&mut active_arena[oi], gf, &bytes, errors)
+                }
                 // Pascal error 70401 (`InterpretDblArray`: "CSV file could not be
                 // opened") / 70501 / 70502.
                 Err(_) => errors.push(format!("File \"{}\" could not be opened.", gf.filename)),
@@ -1717,7 +1746,7 @@ impl Dss {
         // (LoadShape `action=normalize`/`ln`; Pascal runs it inline right after
         // the file read). Run before `end_edit` so `SetMaxPandQ` sees normalized
         // data.
-        objects[oi].run_deferred_actions(errors);
+        active_arena[oi].run_deferred_actions(errors);
 
         // Deferred binary shape saves (LoadShape/TShape/PriceShape
         // `Action=SngSave/DblSave`): the `Action` property hook cannot reach
@@ -1725,12 +1754,12 @@ impl Dss {
         // `SaveToDblFile`/`SaveToSngFile`). Perform it now, after `output_directory`
         // is reachable. Writes are pure little-endian IEEE-754 streams into the
         // output directory, exactly like Pascal `GetOutputStreamEx(FName, fmCreate)`.
-        let shape_saves = objects[oi].take_shape_saves();
+        let shape_saves = active_arena[oi].take_shape_saves();
         for ss in &shape_saves {
             write_shape_save(output_directory, last_result, ss, errors);
         }
 
-        objects[oi].end_edit();
+        active_arena[oi].end_edit();
 
         // The post-`end_edit` signal tail (deferred errors/abort, circuit
         // signal-flag propagation, deferred ref-actions). Shared verbatim with
@@ -1748,7 +1777,8 @@ impl Dss {
 /// Factored out of [`Dss::edit_active_inner`] so the MakePosSequence applier
 /// (`exec/make_pos_seq.rs`) runs the byte-identical tail after replaying an
 /// element's [`PosSeqPlan`] — no duplicated logic. `ci`/`oi` name the class /
-/// object just edited; `classes` is the full registry (for ref-action targets).
+/// object just edited; `classes` is the full registry (for ref-action targets),
+/// each class reaching its objects through `class.arena` (R1 ownership flip).
 pub(super) fn apply_edit_signal_tail(
     classes: &mut [DssClass],
     circuit: &mut Option<Circuit>,
@@ -1758,7 +1788,7 @@ pub(super) fn apply_edit_signal_tail(
 ) {
     // Drain any `DoSimpleMsg`/`DoErrorMsg` queued by the property hooks
     // (e.g. `LineCode.Kron` on a 1-phase code) into the engine error log.
-    let deferred = classes[ci].objects[oi].data_mut().take_errors();
+    let deferred = classes[ci].arena[oi].data_mut().take_errors();
     errors.extend(deferred);
 
     // A `DoErrorMsg`-class deferred message (e.g. Relay error 384, a
@@ -1766,7 +1796,7 @@ pub(super) fn apply_edit_signal_tail(
     // Pascal; lift that request into the solution so the next solve halts.
     // `take_abort` always runs (clears the per-object flag); `DoSimpleMsg`
     // messages (errors 385/386) never set it.
-    if classes[ci].objects[oi].data_mut().take_abort()
+    if classes[ci].arena[oi].data_mut().take_abort()
         && let Some(ckt) = circuit.as_mut()
     {
         ckt.solution.solution_abort = true;
@@ -1776,13 +1806,13 @@ pub(super) fn apply_edit_signal_tail(
     // live pointer mid-parse, e.g. RegControl `TapNum` → the transformer's
     // PresentTap; nothing reads the target in between, so applying after
     // the edit is equivalent).
-    let ref_actions = classes[ci].objects[oi].take_ref_actions();
+    let ref_actions = classes[ci].arena[oi].take_ref_actions();
 
     // Signal-flag propagation (Pascal `Set_Bus`/`Set_Enabled` write the
     // circuit globals immediately; `Set_YprimInvalid` raises
     // `SystemYChanged` for enabled elements).
     if let Some(ckt) = circuit.as_mut()
-        && let Some(elem) = classes[ci].objects[oi].as_ckt_element_mut()
+        && let Some(elem) = classes[ci].arena[oi].as_ckt_element_mut()
     {
         let cd = elem.cd_mut();
         if cd.signal_bus_name_redefined {
@@ -1800,7 +1830,7 @@ pub(super) fn apply_edit_signal_tail(
 
     for action in &ref_actions {
         let target = action.target();
-        let tgt = &mut classes[target.cls].objects[target.idx];
+        let tgt = &mut classes[target.cls].arena[target.idx];
         // `SetSwitchClosed`/`SetConductorsClosed` act on the generic
         // CktElement base (any switched element), so they are applied here
         // rather than through the per-class `apply_ref_action`; the

@@ -2,18 +2,30 @@
 //! stand-ins for `TDSSClass` (`DssClass`), the `ElemStore` adapter
 //! (`ClassStore`), and the mid-edit foreign-class view (`ForeignClasses`).
 //! Split out of `exec/mod.rs`.
+//!
+//! DE_PASCALIZE R1 (ownership flip): the class's *objects* now live in a typed
+//! per-class arena ([`ClassArena`], `DssClass::arena`) — the boxed-trait
+//! `Vec<Box<dyn DssObject>>` is gone. `DssClass` still owns them (as one typed
+//! `Vec<T>` per class, indexed by object position), which keeps every
+//! `classes: &[DssClass]` view and the `ClassStore`/`ForeignClasses` split
+//! unchanged; the objects are reached through `class.arena` instead of
+//! `class.objects`.
 
 use super::*;
+use crate::obj::arena::ClassArena;
 
 /// A class constructor: build a fresh, all-default object of the class.
 pub(crate) type NewObjectFn = fn(&str) -> Box<dyn DssObject>;
 
 /// One registered class plus its live objects — the Rust stand-in for a
-/// `TDSSClass` together with its `ElementList`/`ElementNameList`.
+/// `TDSSClass` with its `ElementNameList`. Objects live in [`Self::arena`], a
+/// typed per-class `Vec<T>` behind the [`ClassArena`] enum (R1 ownership flip;
+/// `PORTING_PLAN §2.1`), replacing the pre-R1 `Vec<Box<dyn DssObject>>`.
 pub(crate) struct DssClass {
     pub(crate) props: ClassProps,
     pub(crate) new_object: NewObjectFn,
-    pub(crate) objects: Vec<Box<dyn DssObject>>,
+    /// This class's live objects — one typed `Vec<T>` (Pascal `ElementList`).
+    pub(crate) arena: ClassArena,
     /// Lowercased object name → index (Pascal `ElementNameList`, THashList).
     pub(crate) name_to_idx: HashMap<String, usize>,
     /// Active object index (`ActiveElement`).
@@ -26,10 +38,12 @@ pub(crate) struct DssClass {
 
 impl DssClass {
     pub(crate) fn dss_object(props: ClassProps, new_object: NewObjectFn) -> Self {
+        let arena = ClassArena::empty_for(props.class_name())
+            .expect("every registered class has an arena variant");
         Self {
             props,
             new_object,
-            objects: Vec::new(),
+            arena,
             name_to_idx: HashMap::new(),
             active: None,
             requires_circuit: false,
@@ -38,10 +52,12 @@ impl DssClass {
     }
 
     pub(crate) fn ckt_class(props: ClassProps, new_object: NewObjectFn, kind: ElemKind) -> Self {
+        let arena = ClassArena::empty_for(props.class_name())
+            .expect("every registered class has an arena variant");
         Self {
             props,
             new_object,
-            objects: Vec::new(),
+            arena,
             name_to_idx: HashMap::new(),
             active: None,
             requires_circuit: true,
@@ -63,25 +79,22 @@ impl DssClass {
 }
 
 /// [`ElemStore`] view over the class registry — the bridge the solution
-/// machinery walks instead of Pascal's pointer lists.
+/// machinery walks instead of Pascal's pointer lists. Objects are reached
+/// through each class's typed [`ClassArena`] (`classes[r.cls].arena`).
 pub(crate) struct ClassStore<'a> {
     pub(crate) classes: &'a mut [DssClass],
 }
 
 impl ElemStore for ClassStore<'_> {
     fn ckt_elem(&self, r: ElemRef) -> &dyn CktElement {
-        self.classes[r.cls].objects[r.idx]
-            .as_ckt_element()
-            .expect("ElemRef must point at a circuit element")
+        self.classes[r.cls].arena.ckt_elem(r.idx)
     }
     fn ckt_elem_mut(&mut self, r: ElemRef) -> &mut dyn CktElement {
-        self.classes[r.cls].objects[r.idx]
-            .as_ckt_element_mut()
-            .expect("ElemRef must point at a circuit element")
+        self.classes[r.cls].arena.ckt_elem_mut(r.idx)
     }
 
     fn obj(&self, r: ElemRef) -> &dyn DssObject {
-        self.classes[r.cls].objects[r.idx].as_ref()
+        self.classes[r.cls].arena.obj(r.idx)
     }
 
     fn kind(&self, r: ElemRef) -> ElemKind {
@@ -127,23 +140,19 @@ impl ElemStore for ClassStore<'_> {
     }
 
     fn obj_mut(&mut self, r: ElemRef) -> &mut dyn DssObject {
-        self.classes[r.cls].objects[r.idx].as_mut()
+        self.classes[r.cls].arena.obj_mut(r.idx)
     }
 
     fn pair_mut(&mut self, a: ElemRef, b: ElemRef) -> (&mut dyn DssObject, &mut dyn DssObject) {
         assert_ne!((a.cls, a.idx), (b.cls, b.idx), "pair_mut: aliasing refs");
         if a.cls == b.cls {
-            let objs = &mut self.classes[a.cls].objects;
-            let [oa, ob] = objs
-                .get_disjoint_mut([a.idx, b.idx])
-                .expect("pair_mut: object index out of range");
-            (oa.as_mut(), ob.as_mut())
+            self.classes[a.cls].arena.pair_mut_same(a.idx, b.idx)
         } else {
             let [ca, cb] = self
                 .classes
                 .get_disjoint_mut([a.cls, b.cls])
                 .expect("pair_mut: class index out of range");
-            (ca.objects[a.idx].as_mut(), cb.objects[b.idx].as_mut())
+            (ca.arena.obj_mut(a.idx), cb.arena.obj_mut(b.idx))
         }
     }
 
@@ -158,52 +167,40 @@ impl ElemStore for ClassStore<'_> {
             key(a) != key(b) && key(a) != key(c) && key(b) != key(c),
             "triple_mut: aliasing refs"
         );
-        // Split per distinct class first, then per object inside a shared class.
         if a.cls == b.cls && b.cls == c.cls {
-            let objs = &mut self.classes[a.cls].objects;
-            let [oa, ob, oc] = objs
-                .get_disjoint_mut([a.idx, b.idx, c.idx])
-                .expect("triple_mut: object index out of range");
-            (oa.as_mut(), ob.as_mut(), oc.as_mut())
+            self.classes[a.cls]
+                .arena
+                .triple_mut_same(a.idx, b.idx, c.idx)
         } else if a.cls == b.cls {
             let [cab, cc] = self
                 .classes
                 .get_disjoint_mut([a.cls, c.cls])
                 .expect("triple_mut: class index out of range");
-            let [oa, ob] = cab
-                .objects
-                .get_disjoint_mut([a.idx, b.idx])
-                .expect("triple_mut: object index out of range");
-            (oa.as_mut(), ob.as_mut(), cc.objects[c.idx].as_mut())
+            let (oa, ob) = cab.arena.pair_mut_same(a.idx, b.idx);
+            (oa, ob, cc.arena.obj_mut(c.idx))
         } else if a.cls == c.cls {
             let [cac, cb] = self
                 .classes
                 .get_disjoint_mut([a.cls, b.cls])
                 .expect("triple_mut: class index out of range");
-            let [oa, oc] = cac
-                .objects
-                .get_disjoint_mut([a.idx, c.idx])
-                .expect("triple_mut: object index out of range");
-            (oa.as_mut(), cb.objects[b.idx].as_mut(), oc.as_mut())
+            let (oa, oc) = cac.arena.pair_mut_same(a.idx, c.idx);
+            (oa, cb.arena.obj_mut(b.idx), oc)
         } else if b.cls == c.cls {
             let [ca, cbc] = self
                 .classes
                 .get_disjoint_mut([a.cls, b.cls])
                 .expect("triple_mut: class index out of range");
-            let [ob, oc] = cbc
-                .objects
-                .get_disjoint_mut([b.idx, c.idx])
-                .expect("triple_mut: object index out of range");
-            (ca.objects[a.idx].as_mut(), ob.as_mut(), oc.as_mut())
+            let (ob, oc) = cbc.arena.pair_mut_same(b.idx, c.idx);
+            (ca.arena.obj_mut(a.idx), ob, oc)
         } else {
             let [ca, cb, cc] = self
                 .classes
                 .get_disjoint_mut([a.cls, b.cls, c.cls])
                 .expect("triple_mut: class index out of range");
             (
-                ca.objects[a.idx].as_mut(),
-                cb.objects[b.idx].as_mut(),
-                cc.objects[c.idx].as_mut(),
+                ca.arena.obj_mut(a.idx),
+                cb.arena.obj_mut(b.idx),
+                cc.arena.obj_mut(c.idx),
             )
         }
     }
@@ -212,6 +209,7 @@ impl ElemStore for ClassStore<'_> {
 /// A read view of every class *except* the one being edited (the active class
 /// is the excluded middle element), the [`ForeignClassesView`] the property
 /// engine uses to resolve `ObjectRef` values mid-edit (PHASE4_PLAN §3.1).
+/// Objects are reached through each `DssClass`'s [`ClassArena`].
 pub(crate) struct ForeignClasses<'a> {
     /// `classes[..ci]` — global class index == slice index.
     pub(crate) left: &'a [DssClass],
@@ -227,9 +225,8 @@ impl<'a> ForeignClasses<'a> {
     /// Returns the resolved object so callers can read its bus / phase count.
     pub(crate) fn first_enabled(&self, class: &str) -> Option<&'a dyn DssObject> {
         let scan = |c: &'a DssClass| -> Option<&'a dyn DssObject> {
-            c.objects
-                .iter()
-                .map(|o| o.as_ref())
+            (0..c.arena.len())
+                .map(|i| c.arena.obj(i))
                 .find(|o| o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false))
         };
         for c in self.left.iter().chain(self.right.iter()) {
@@ -247,10 +244,9 @@ impl<'a> ForeignClasses<'a> {
     /// member (the `MonitoredElement`/bus stays the first).
     pub(crate) fn last_enabled(&self, class: &str) -> Option<&'a dyn DssObject> {
         let scan = |c: &'a DssClass| -> Option<&'a dyn DssObject> {
-            c.objects
-                .iter()
+            (0..c.arena.len())
                 .rev()
-                .map(|o| o.as_ref())
+                .map(|i| c.arena.obj(i))
                 .find(|o| o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false))
         };
         for c in self.left.iter().chain(self.right.iter()) {
@@ -268,7 +264,7 @@ impl<'a> ForeignClasses<'a> {
         let find_in = |c: &'a DssClass, cls: usize| {
             c.name_to_idx
                 .get(name_l)
-                .map(|&idx| (ElemRef { cls, idx }, c.objects[idx].as_ref()))
+                .map(|&idx| (ElemRef { cls, idx }, c.arena.obj(idx)))
         };
         let left = self.left;
         for (k, c) in left.iter().enumerate() {
@@ -309,5 +305,47 @@ impl<'a> ForeignClassesView<'a> for ForeignClasses<'a> {
             obj,
             format!("{}.{}", cls.props.class_name(), obj.data().name()),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::exec::Dss;
+
+    /// R1 Risks-section guard: a bare-name `find_ckt_element` on an object name
+    /// shared across classes must still resolve to the **first-registered**
+    /// class (registration-order tie-break) after the ownership flip — the arena
+    /// layout preserves `construct.rs` order, so `Line` (registered before
+    /// `Load`) wins over a same-named `Load`.
+    #[test]
+    fn find_ckt_element_tie_breaks_by_registration_order() {
+        let mut dss = Dss::new();
+        for c in [
+            "new circuit.tie basekv=12.47 bus1=src",
+            "new line.same bus1=src bus2=b",
+            "new load.same bus1=b kv=12.47 kw=1",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "setup errors: {:?}", dss.errors());
+
+        let line_ci = dss.class_by_name["line"];
+        let load_ci = dss.class_by_name["load"];
+        assert!(
+            line_ci < load_ci,
+            "Line must register before Load (construct.rs order)"
+        );
+
+        let store = ClassStore {
+            classes: &mut dss.classes,
+        };
+        let r = store
+            .find_ckt_element("same")
+            .expect("bare name resolves to a circuit element");
+        assert_eq!(
+            r.cls, line_ci,
+            "bare-name find must return the first-registered class (Line), not Load"
+        );
     }
 }

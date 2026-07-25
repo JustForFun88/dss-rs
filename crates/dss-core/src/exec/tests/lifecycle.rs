@@ -132,7 +132,7 @@ fn make_like_copies_prp_sequence() {
 
     let cls = &dss.classes[0];
     let oi = cls.name_to_idx["b"];
-    let data = cls.objects[oi].data();
+    let data = cls.arena[oi].data();
     assert_eq!(data.next_property_set(None), Some(1)); // NPts
     assert_eq!(data.next_property_set(Some(1)), Some(2)); // C_Array
     assert_eq!(data.next_property_set(Some(2)), Some(3)); // T_Array

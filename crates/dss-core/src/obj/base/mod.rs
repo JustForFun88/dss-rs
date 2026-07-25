@@ -594,8 +594,12 @@ pub type ObjectRefArrayItem<'a> =
 /// uses; the defaults panic so a wrong dispatch surfaces as an obvious bug
 /// rather than silent data corruption (this mirrors the Pascal base
 /// `CustomSetRaw` "base ... reached" guard).
+// `: Send` is the P7 thread-readiness rider (DE_PASCALIZE Part V / R1): every
+// concrete element is plain owned data, so the bound is vacuous today but makes
+// `Box<dyn DssObject>` (hence `Dss`) `Send` and guards against a future
+// non-`Send` field. See `lib.rs` `assert_send::<Dss>()`.
 #[allow(unused_variables)]
-pub trait DssObject {
+pub trait DssObject: Send {
     fn data(&self) -> &DssObjData;
     fn data_mut(&mut self) -> &mut DssObjData;
 

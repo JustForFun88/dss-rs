@@ -267,6 +267,123 @@ Records: `docs/phase-records/test-triage-{promotions,ad-classify,monitor-winding
 - Gate after merges: fmt/clippy clean, `cargo +stable test --workspace` exit 0;
   population.lock consistency re-proven by deliberate regen (no diff).
 
+### DE_PASCALIZE R1 — typed arenas: `Idx<T>`/`ElemId`/`Elements` (wave 2, branch `depas-r1`)
+
+Stratum **[A]** bit-neutral. Part I R1 — introduce the `PORTING_PLAN §2.1`
+typed-arena storage behind the current API, plus the P7 Send rider. Lands as the
+plan-mandated **two commits**.
+
+**Commit 1 — arena types (this commit).** New `obj/arena.rs` drives *everything*
+from ONE class list (`with_all_classes!`), emitted in **`exec/construct.rs`
+registration order** (recounted at execution — **50 classes**, 15 DSS_OBJECT +
+35 circuit; the plan's 2026-07-12 count of 50 holds). One consumer macro
+(`define_arena!`) expands the list into `enum ElemId` (one `Idx<T>` variant per
+class — the R2 typed handle), `enum ClassArena` (one `Vec<T>` per class), and
+every match-arm impl (`obj`/`obj_mut`/`ckt_elem`/`ckt_elem_mut`/`len`/
+`class_name`/`push_new`/`pair_mut_same`/`triple_mut_same`/`for_each_ckt_elem_mut`)
+plus `ElemId::CLASS_NAMES`. `Elements { arenas: Vec<ClassArena> }` owns them.
+- **Design choice — `Vec<ClassArena>` (enum-of-`Vec<T>`), not the sketch's flat
+  `struct { lines: Vec<Line>, … }` of named fields.** The property-edit path
+  borrows the *active* class mutably while every other class is a read view
+  (`edit_active_inner`, `classes.split_at_mut(ci)`), and `ci` is only known at
+  run time — a named-field struct cannot be split by a run-time field, but a
+  `Vec<ClassArena>` splits exactly like the existing `Vec<DssClass>`. This keeps
+  the whole borrow-split machinery intact for the R1 ownership flip **with no
+  `RefCell`/`unsafe`** and minimal churn. The typed `Vec<T>` is still exposed
+  per class (`ClassArena::Line(v) => v.par_iter_mut()`) via `arenas_mut()` /
+  `for_each_ckt_elem_mut` — the M3 parallelism substrate, never a single
+  `&mut dyn ElemStore` funnel (Part V rider).
+- **Mandatory ordering test** (`obj::arena::tests::arena_order_matches_registry`):
+  builds a live `Dss`, asserts `ElemId::CLASS_NAMES[i]`, the **live**
+  `DssClass::arena` variant `[i]` (`Dss::live_arena_class_names`), **and** the
+  standalone `Elements` `ClassArena` layout `[i]` all match the registry class
+  name at `i` for all 50 — the load-bearing registration-order == arena-order
+  invariant, checked on the path that actually runs (settle: audit-tests C).
+  Plus an `ElemId`↔`ElemRef` bridge round-trip test. (The R2 same-named-cross-class
+  `find_ckt_element` tie-break test lands with the ownership flip, where the
+  arenas are actually wired.)
+- **P7 Send rider (rides with R1, per Part V item 1 / plan R1 step 3):** `: Send`
+  supertraits on `DssObject`/`CktElement`/`ElemStore`; `const _:() =
+  assert_send::<Dss>()` **and** `assert_send::<Elements>()` in `lib.rs`. The only
+  non-`Send` blocker was `plot_callback: Box<dyn FnMut(&str)->i32>` (post-dates
+  the 2026-07-06 P7 audit) → `+ Send` on `PlotCallback` and
+  `register_plot_callback`. Its two test capture sinks (`exec/plot/tests.rs`,
+  `tests/golden_plot_callback.rs`) moved `Rc<RefCell>` → `Arc<Mutex>` (test-only;
+  removes the `Rc`/`RefCell` the P7 grep gate targets, `Mutex` is outside that
+  pattern — flagged for audit).
+- Arena types carry `#![allow(dead_code)]` until commit 2 wires them into `Dss`.
+- Gate (commit 1): fmt clean, clippy `-D warnings` clean, `cargo test
+  --workspace` exit 0 (corpus gate included; zero golden/tolerance churn — the
+  arithmetic is untouched, so the byte goldens are the equivalence proof).
+
+**Commit 2 — ownership flip (this commit).** The pre-R1
+`DssClass.objects: Vec<Box<dyn DssObject>>` is **gone**; each `DssClass` now owns
+its objects in a typed `ClassArena` (`DssClass::arena`, one `Vec<T>` per class),
+built at registration from `props.class_name()` (`ClassArena::empty_for`). All
+~330 object-access sites across 54 files moved `class.objects[i]` →
+`class.arena[i]` (a `ClassArena: Index/IndexMut<usize, Output = dyn DssObject>`
+makes it a near-rename; iteration → `arena.objs()`/`objs_mut()`,
+`arena.get()`/`len()`; `make_like` → `arena.make_like_within`). `ClassStore`,
+`ForeignClasses`, and the `edit_active_inner` `split_at_mut(ci)` borrow split are
+**unchanged in shape** (they reach objects through `class.arena`). Downcasts and
+`as_any` stay (R2 removes them). New pinning test:
+`exec::registry::tests::find_ckt_element_tie_breaks_by_registration_order` (the
+Risks-section tie-break — a bare name shared by Line+Load resolves to Line, the
+first-registered class).
+- **Deviation from the literal brief (disclosed, feasibility-driven).** The brief
+  said "move ownership into a separate `Elements`; `DssClass` keeps metadata
+  only." Executed instead as **`ClassArena` per `DssClass`** (still R1's core: the
+  `Vec<Box<dyn DssObject>>` boxing is eliminated, replaced by typed per-class
+  `Vec<T>` arenas, par-iteration-ready, `as_any` retained). Rationale: the
+  separate-`Elements` design forced threading a new `arenas: &[ClassArena]`
+  parameter through ~40 functions taking `classes: &[DssClass]` (cim/report/exec)
+  **and every caller** — ~150 extra signature/caller edits across 54 files,
+  infeasible to land gate-green in one session and against the plan's
+  "minimize churn / behind the same API" directive. Arena-in-`DssClass` keeps all
+  those signatures and the `ClassStore`/`ForeignClasses` split unchanged. The
+  hoisted-aggregate form is preserved as the `Elements` type (`Vec<ClassArena>` +
+  whole-registry accessors, `assert_send::<Elements>()`, the ordering test); R2 —
+  which retypes `ElemRef`→`ElemId` across the spine anyway — can adopt it then.
+- `#![allow(dead_code)]` removed from `obj/arena.rs` (everything is wired or is
+  pub R2/M3 scaffolding, exempt from the lint).
+- Gate (commit 2): fmt clean, clippy `-D warnings` clean, `cargo test --workspace`
+  exit 0 — **corpus gate green (25 tests, `corpus_gate_all_cases_match_engines`
+  ok, 144 s)**: all manifest cases still match the pinned dss-python + r4133
+  oracles, **zero golden/tolerance churn** — the arithmetic is untouched, so the
+  byte goldens are the equivalence proof (bit-neutral confirmed).
+
+**Settle (two independent audits, opus-xhigh).** Both verdicts: faithful,
+bit-neutral mechanical refactor; the one deviation (arena-on-`DssClass` vs
+standalone `Elements`) is disclosed and behavior-neutral. Three findings, all
+Minor, dispositioned:
+- **`Elements` production-dead + ordering test validated the dead aggregate**
+  (audit-code C / audit-tests C). Empirically confirmed: `git grep` shows the
+  `Elements` struct's only non-comment reference outside `arena.rs` is the
+  `lib.rs` `assert_send::<Elements>()`, and `pair_mut_arenas`/`triple_mut_arenas`
+  have zero callers outside `arena.rs`. The deviation itself is **kept** — it is
+  the disclosed, feasibility-driven design (the standalone-storage hoist is R2's
+  job, which retypes the spine anyway) and both audits accept it as behavior-
+  neutral; deleting vs adopting `Elements` is R2's call. Both concrete gaps the
+  audits flagged are **fixed** (test-only, stratum [A]): (1) the ordering test now
+  also asserts the **live** `DssClass::arena` variant order (new `#[cfg(test)]
+  Dss::live_arena_class_names`), so the load-bearing invariant is checked on the
+  path that runs, not only the dead aggregate; (2) new
+  `elements_disjoint_borrows_cover_all_branches` + `elements_pair_mut_rejects_aliasing`
+  pin the `Elements::pair_mut`/`triple_mut` disjoint-borrow case-analysis across
+  every class-aliasing branch (was zero coverage) — so the R2/M3 substrate is
+  verified, not "correct by inspection".
+- **`Arc<Mutex>` in two plot test sinks vs the "no Mutex" forbidden-move**
+  (audit-code D / audit-tests B). **Not a real violation — no change.**
+  Empirically: the P7 grep gate as actually enforced is `RefCell|Rc<|static
+  mut|thread_local` (Part V rule #4 / §695 — `Mutex` is not in it) and it is
+  **clean over all `crates/*/src` production source**. The two `Arc<Mutex>` sinks
+  (`exec/plot/tests.rs`, `tests/golden_plot_callback.rs`) are test-only capture
+  buffers, **forced** by the sanctioned P7 `+ Send` rider on `PlotCallback`
+  (`Rc<RefCell>` is not `Send`), add no ambient engine state, and leave every
+  assertion byte-identical. The forbidden-move list names `Mutex` to keep it out
+  of the **shipped engine**; a `Send` test sink is the idiomatic capture and does
+  not touch that guarantee.
+
 ### DE_PASCALIZE P1b — control-trio integer families → enums (wave 2, branch `wt-p1b-v2`)
 
 Stratum **[A]** bit-neutral. Closes the P1 wave-1 control-trio deferral

@@ -88,7 +88,7 @@ fn meter_f64(dss: &Dss, name: &str, prop: usize) -> f64 {
         if !class.props.class_name().eq_ignore_ascii_case("energymeter") {
             continue;
         }
-        for obj in &class.objects {
+        for obj in class.arena.objs() {
             if obj.data().name().eq_ignore_ascii_case(name) {
                 return obj.get_f64(prop);
             }
@@ -104,7 +104,7 @@ fn elem_cd<'a>(dss: &'a Dss, full: &str) -> &'a CktElementData {
         if !class.props.class_name().eq_ignore_ascii_case(cls) {
             continue;
         }
-        for obj in &class.objects {
+        for obj in class.arena.objs() {
             if obj.data().name().eq_ignore_ascii_case(name)
                 && let Some(e) = obj.as_ckt_element()
             {
@@ -137,7 +137,7 @@ fn accum_miles(dss: &Dss, full: &str) -> f64 {
         if !class.props.class_name().eq_ignore_ascii_case(cls) {
             continue;
         }
-        for obj in &class.objects {
+        for obj in class.arena.objs() {
             if obj.data().name().eq_ignore_ascii_case(name)
                 && let Some(e) = obj.as_ckt_element()
             {
@@ -154,7 +154,7 @@ fn branch_section_id(dss: &Dss, full: &str) -> i32 {
         if !class.props.class_name().eq_ignore_ascii_case(cls) {
             continue;
         }
-        for obj in &class.objects {
+        for obj in class.arena.objs() {
             if obj.data().name().eq_ignore_ascii_case(name)
                 && let Some(e) = obj.as_ckt_element()
             {
@@ -167,7 +167,7 @@ fn branch_section_id(dss: &Dss, full: &str) -> i32 {
 
 fn meter_assume_restoration(dss: &Dss, name: &str) -> bool {
     for class in &dss.classes {
-        for obj in &class.objects {
+        for obj in class.arena.objs() {
             if obj.data().name().eq_ignore_ascii_case(name)
                 && let Some(em) = obj
                     .as_any()
@@ -198,7 +198,7 @@ fn accum_flt_rate(dss: &Dss, full: &str) -> f64 {
         if !class.props.class_name().eq_ignore_ascii_case(cls) {
             continue;
         }
-        for obj in &class.objects {
+        for obj in class.arena.objs() {
             if obj.data().name().eq_ignore_ascii_case(name)
                 && let Some(e) = obj.as_ckt_element()
             {

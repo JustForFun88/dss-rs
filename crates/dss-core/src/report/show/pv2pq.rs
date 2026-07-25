@@ -22,7 +22,7 @@ pub(crate) fn show_pv2pq_gen(classes: &[DssClass], ckt: &Circuit) -> String {
     let title = "LIST OF GENERATORS CONVERTED FROM PV TO PQ BUS DURING THE LAST SOLUTION (NCIM)";
     let mut s = format!("{RULE}\n{title}\n{RULE}\n\n\n");
     for &r in &ckt.generators {
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
             continue;
         };

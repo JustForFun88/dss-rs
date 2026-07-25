@@ -39,7 +39,7 @@ pub(crate) fn show_elements(
             disabled.push_str(&format!(
                 "All DISABLED Elements in Class \"{class_name}\"\n\n"
             ));
-            for obj in &classes[ci].objects {
+            for obj in classes[ci].arena.objs() {
                 let uname = obj.data().name().to_uppercase();
                 // Pascal `(DSSClassType and BASECLASSMASK) > 0` = a circuit element:
                 // route by `Enabled`. A non-CktElement object always goes to `main`.
@@ -142,7 +142,7 @@ fn write_records(
 ) {
     for &r in refs {
         let class_name = classes[r.cls].props.class_name();
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         let name = format!("{}.{}", class_name, obj.data().name());
         if let Some(elem) = obj.as_ckt_element() {
             let rec = write_element_record(ckt, &name, elem, mbnl, mdnl);

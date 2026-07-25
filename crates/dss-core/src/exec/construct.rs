@@ -400,8 +400,12 @@ impl Dss {
         // At this point only the built-in defaults exist in these classes.
         for class_name in ["loadshape", "growthshape", "spectrum", "tcc_curve"] {
             if let Some(&ci) = self.class_by_name.get(class_name) {
-                for obj in &mut self.classes[ci].objects {
-                    obj.data_mut().set_default_and_unedited(true);
+                for i in 0..self.classes[ci].arena.len() {
+                    self.classes[ci]
+                        .arena
+                        .obj_mut(i)
+                        .data_mut()
+                        .set_default_and_unedited(true);
                 }
             }
         }

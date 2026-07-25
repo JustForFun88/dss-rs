@@ -60,7 +60,7 @@ pub(crate) fn export_branch_reliability(classes: &[DssClass], ckt: &Circuit) -> 
     // Pass 1: `MaxCustomers` over all enabled PDElements (for `Cust-Miles`).
     let mut max_customers = 0i32;
     for &r in &ckt.pd_elements {
-        if let Some(elem) = classes[r.cls].objects[r.idx].as_ckt_element()
+        if let Some(elem) = classes[r.cls].arena[r.idx].as_ckt_element()
             && elem.cd().enabled
         {
             let ntot = from_bus(elem.cd()).bus_total_num_customers;
@@ -73,7 +73,7 @@ pub(crate) fn export_branch_reliability(classes: &[DssClass], ckt: &Circuit) -> 
     // Pass 2: write the per-branch report (PDELEMENTS only).
     for &r in &ckt.pd_elements {
         let class_name = classes[r.cls].props.class_name();
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         let Some(elem) = obj.as_ckt_element() else {
             continue;
         };
