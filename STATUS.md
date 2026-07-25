@@ -3476,6 +3476,21 @@ byte-identical; no tolerance/golden changes (text-only P5 exception unused here)
   "Invalid inline math entry" (pre-existing text, preserved) — the span still
   underlines the real value token. 6 parser unit tests pin the span byte ranges.
 
+## 1jc. DE_PASCALIZE P5c — CLI diagnostic presentation [A] (branch `depas-p5bc`)
+
+`DE_PASCALIZE_PLAN.md` §P5c executed. Presentation is a **binary-only** concern.
+
+- **`dss-cli`** gains `miette = { features = ["fancy-no-backtrace"] }` (the only
+  product crate that ever enables the graphical handler; the libraries stay
+  protocol-only). New `--diag=pretty|plain` switch (default **plain**): pretty
+  installs the miette hook (`MietteHandlerOpts`) once and prints each engine
+  diagnostic via `Report::new(e.clone())` (source underline + `<file>:<line>`
+  origin); plain keeps the byte-identical `error: <message>` line so drivers,
+  scripts, `?`/GlobalResult, and the goldens see no change unless they opt in.
+- Verified end-to-end on a broken deck: plain output unchanged; pretty renders
+  the graphical diagnostic underlining the offending token. No library code
+  touched — the corpus gate and numeric goldens are unaffected.
+
 ## 1l. DE_PASCALIZE P15 — `dss-sparse` allocation & indexing hygiene [A] (branch `wt-p15`)
 
 Stratum **[A] bit-neutral** — the solver hot path. Same arithmetic, same
