@@ -69,6 +69,16 @@ impl TShapeObj {
     }
 }
 
+impl TShapeObj {
+    /// Pascal `TTShapeObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        let o = other;
+        {
+            self.core.make_like_from(&o.core);
+        }
+    }
+}
+
 impl DssObject for TShapeObj {
     fn data(&self) -> &crate::obj::base::DssObjData {
         &self.core.data
@@ -222,13 +232,6 @@ impl DssObject for TShapeObj {
                     .push(FileLoad::binary(DBLFILE, self.core.dblfile.clone()));
             }
             _ => {}
-        }
-    }
-
-    /// Pascal `TTShapeObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        if let Some(o) = other.as_any().downcast_ref::<TShapeObj>() {
-            self.core.make_like_from(&o.core);
         }
     }
 

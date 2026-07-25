@@ -368,6 +368,82 @@ impl CktElement for Generator {
     }
 }
 
+impl Generator {
+    /// Pascal `TGeneratorObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            self.cd.set_nconds(self.cd.nphases); // Pascal: NConds := Fnphases
+            self.cd.yprim_invalid = true;
+        }
+        self.v_base = other.v_base;
+        self.vminpu = other.vminpu;
+        self.vmaxpu = other.vmaxpu;
+        self.v_base95 = other.v_base95;
+        self.v_base105 = other.v_base105;
+        self.kw_base = other.kw_base;
+        self.kvar_base = other.kvar_base;
+        // GenVars (the machine record) — copied wholesale by Pascal.
+        self.kv_generator_base = other.kv_generator_base;
+        self.kva_rating = other.kva_rating;
+        self.pu_xd = other.pu_xd;
+        self.pu_xdp = other.pu_xdp;
+        self.pu_xdpp = other.pu_xdpp;
+        self.xd = other.xd;
+        self.xdp = other.xdp;
+        self.xdpp = other.xdpp;
+        self.h_mass = other.h_mass;
+        self.dpu = other.dpu;
+        self.xrdp = other.xrdp;
+        self.v_target = other.v_target;
+        self.p_nominal_per_phase = other.p_nominal_per_phase;
+        self.q_nominal_per_phase = other.q_nominal_per_phase;
+        self.pf_nominal = other.pf_nominal;
+        self.var_min = other.var_min;
+        self.var_max = other.var_max;
+        self.connection = other.connection;
+        self.yearly_shape = other.yearly_shape.clone();
+        self.daily_shape = other.daily_shape.clone();
+        self.duty_shape = other.duty_shape.clone();
+        self.yearly_shape_obj = other.yearly_shape_obj.clone();
+        self.daily_shape_obj = other.daily_shape_obj.clone();
+        self.duty_shape_obj = other.duty_shape_obj.clone();
+        self.yearly_shape_ref = other.yearly_shape_ref;
+        self.daily_shape_ref = other.daily_shape_ref;
+        self.duty_shape_ref = other.duty_shape_ref;
+        self.duty_start = other.duty_start;
+        self.dispatch_mode = other.dispatch_mode;
+        self.dispatch_value = other.dispatch_value;
+        self.gen_class = other.gen_class;
+        self.gen_model = other.gen_model;
+        self.is_fixed = other.is_fixed;
+        self.vpu = other.vpu;
+        self.kvar_max = other.kvar_max;
+        self.kvar_min = other.kvar_min;
+        self.forced_on = other.forced_on;
+        self.kva_not_set = other.kva_not_set;
+        self.use_fuel = other.use_fuel;
+        self.fuel_kwh = other.fuel_kwh;
+        self.pct_fuel = other.pct_fuel;
+        self.pct_reserve = other.pct_reserve;
+        // User models: Pascal `UserModel.Name := Other.UserModel.Name` re-`New`s
+        // a fresh instance from the same module (`generator.pas:893-894`). The
+        // slot's `Clone` drops the live wasmi instance and re-creates it lazily
+        // on first use (with the same spec + last `UserData`), which is a benign
+        // superset of the Pascal fresh-`New` (no deck exercises `like=` on a
+        // user-model generator).
+        self.user_model_name = other.user_model_name.clone();
+        self.user_data = other.user_data.clone();
+        self.shaft_model_name = other.shaft_model_name.clone();
+        self.shaft_data = other.shaft_data.clone();
+        self.user_model = other.user_model.clone();
+        self.shaft_model = other.shaft_model.clone();
+        self.spectrum = other.spectrum.clone();
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+    }
+}
+
 impl DssObject for Generator {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -697,83 +773,6 @@ impl DssObject for Generator {
     fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
         self.recalc(sys);
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TGeneratorObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Generator>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            self.cd.set_nconds(self.cd.nphases); // Pascal: NConds := Fnphases
-            self.cd.yprim_invalid = true;
-        }
-        self.v_base = other.v_base;
-        self.vminpu = other.vminpu;
-        self.vmaxpu = other.vmaxpu;
-        self.v_base95 = other.v_base95;
-        self.v_base105 = other.v_base105;
-        self.kw_base = other.kw_base;
-        self.kvar_base = other.kvar_base;
-        // GenVars (the machine record) — copied wholesale by Pascal.
-        self.kv_generator_base = other.kv_generator_base;
-        self.kva_rating = other.kva_rating;
-        self.pu_xd = other.pu_xd;
-        self.pu_xdp = other.pu_xdp;
-        self.pu_xdpp = other.pu_xdpp;
-        self.xd = other.xd;
-        self.xdp = other.xdp;
-        self.xdpp = other.xdpp;
-        self.h_mass = other.h_mass;
-        self.dpu = other.dpu;
-        self.xrdp = other.xrdp;
-        self.v_target = other.v_target;
-        self.p_nominal_per_phase = other.p_nominal_per_phase;
-        self.q_nominal_per_phase = other.q_nominal_per_phase;
-        self.pf_nominal = other.pf_nominal;
-        self.var_min = other.var_min;
-        self.var_max = other.var_max;
-        self.connection = other.connection;
-        self.yearly_shape = other.yearly_shape.clone();
-        self.daily_shape = other.daily_shape.clone();
-        self.duty_shape = other.duty_shape.clone();
-        self.yearly_shape_obj = other.yearly_shape_obj.clone();
-        self.daily_shape_obj = other.daily_shape_obj.clone();
-        self.duty_shape_obj = other.duty_shape_obj.clone();
-        self.yearly_shape_ref = other.yearly_shape_ref;
-        self.daily_shape_ref = other.daily_shape_ref;
-        self.duty_shape_ref = other.duty_shape_ref;
-        self.duty_start = other.duty_start;
-        self.dispatch_mode = other.dispatch_mode;
-        self.dispatch_value = other.dispatch_value;
-        self.gen_class = other.gen_class;
-        self.gen_model = other.gen_model;
-        self.is_fixed = other.is_fixed;
-        self.vpu = other.vpu;
-        self.kvar_max = other.kvar_max;
-        self.kvar_min = other.kvar_min;
-        self.forced_on = other.forced_on;
-        self.kva_not_set = other.kva_not_set;
-        self.use_fuel = other.use_fuel;
-        self.fuel_kwh = other.fuel_kwh;
-        self.pct_fuel = other.pct_fuel;
-        self.pct_reserve = other.pct_reserve;
-        // User models: Pascal `UserModel.Name := Other.UserModel.Name` re-`New`s
-        // a fresh instance from the same module (`generator.pas:893-894`). The
-        // slot's `Clone` drops the live wasmi instance and re-creates it lazily
-        // on first use (with the same spec + last `UserData`), which is a benign
-        // superset of the Pascal fresh-`New` (no deck exercises `like=` on a
-        // user-model generator).
-        self.user_model_name = other.user_model_name.clone();
-        self.user_data = other.user_data.clone();
-        self.shaft_model_name = other.shaft_model_name.clone();
-        self.shaft_data = other.shaft_data.clone();
-        self.user_model = other.user_model.clone();
-        self.shaft_model = other.shaft_model.clone();
-        self.spectrum = other.spectrum.clone();
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     /// Pascal `TDynEqPCE.ParseDynVar`: a `name=value` whose `name` is a state

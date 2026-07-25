@@ -71,6 +71,65 @@ impl CktElement for StorageController {
     }
 }
 
+impl StorageController {
+    /// Pascal `TStorageControllerObj.MakeLike` — copies essentially every
+    /// dispatch setting (unlike GenDispatcher's terminal-only copy).
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
+
+        self.ccd.monitored_element = other.ccd.monitored_element;
+        self.monitored_full_name = other.monitored_full_name.clone();
+        self.mon_snap = other.mon_snap.clone();
+        self.ccd.element_terminal = other.ccd.element_terminal;
+        self.f_mon_phase = other.f_mon_phase;
+
+        self.f_kw_target = other.f_kw_target;
+        self.f_kw_target_low = other.f_kw_target_low;
+        self.f_kw_threshold = other.f_kw_threshold;
+        self.disp_factor = other.disp_factor;
+        self.f_pct_kw_band = other.f_pct_kw_band;
+        self.f_kw_band = other.f_kw_band;
+        self.f_pct_kw_band_low = other.f_pct_kw_band_low;
+        self.f_kw_band_low = other.f_kw_band_low;
+        self.reset_level = other.reset_level;
+        self.f_kw_band_specified = other.f_kw_band_specified;
+
+        self.storage_name_list = other.storage_name_list.clone();
+        self.fleet_size = self.storage_name_list.len() as i32;
+        if self.fleet_size > 0 {
+            self.weights = other.weights.clone();
+        }
+
+        self.discharge_mode = other.discharge_mode;
+        self.charge_mode = other.charge_mode;
+        self.discharge_trigger_time = other.discharge_trigger_time;
+        self.charge_trigger_time = other.charge_trigger_time;
+        self.pct_kw_rate = other.pct_kw_rate;
+        self.pct_charge_rate = other.pct_charge_rate;
+        self.pct_fleet_reserve = other.pct_fleet_reserve;
+        self.yearly_shape = other.yearly_shape.clone();
+        self.daily_shape = other.daily_shape.clone();
+        self.duty_shape = other.duty_shape.clone();
+        self.yearly_shape_obj = other.yearly_shape_obj.clone();
+        self.daily_shape_obj = other.daily_shape_obj.clone();
+        self.duty_shape_obj = other.duty_shape_obj.clone();
+        self.ccd.show_event_log = other.ccd.show_event_log;
+        self.inhibit_hrs = other.inhibit_hrs;
+        self.up_ramp_time = other.up_ramp_time;
+        self.flat_time = other.flat_time;
+        self.dn_ramp_time = other.dn_ramp_time;
+
+        self.seasons = other.seasons;
+        if self.seasons > 1 {
+            self.season_targets = other.season_targets.clone();
+            self.season_targets_low = other.season_targets_low.clone();
+        }
+    }
+}
+
 impl DssObject for StorageController {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -407,66 +466,6 @@ impl DssObject for StorageController {
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    /// Pascal `TStorageControllerObj.MakeLike` — copies essentially every
-    /// dispatch setting (unlike GenDispatcher's terminal-only copy).
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<StorageController>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
-
-        self.ccd.monitored_element = other.ccd.monitored_element;
-        self.monitored_full_name = other.monitored_full_name.clone();
-        self.mon_snap = other.mon_snap.clone();
-        self.ccd.element_terminal = other.ccd.element_terminal;
-        self.f_mon_phase = other.f_mon_phase;
-
-        self.f_kw_target = other.f_kw_target;
-        self.f_kw_target_low = other.f_kw_target_low;
-        self.f_kw_threshold = other.f_kw_threshold;
-        self.disp_factor = other.disp_factor;
-        self.f_pct_kw_band = other.f_pct_kw_band;
-        self.f_kw_band = other.f_kw_band;
-        self.f_pct_kw_band_low = other.f_pct_kw_band_low;
-        self.f_kw_band_low = other.f_kw_band_low;
-        self.reset_level = other.reset_level;
-        self.f_kw_band_specified = other.f_kw_band_specified;
-
-        self.storage_name_list = other.storage_name_list.clone();
-        self.fleet_size = self.storage_name_list.len() as i32;
-        if self.fleet_size > 0 {
-            self.weights = other.weights.clone();
-        }
-
-        self.discharge_mode = other.discharge_mode;
-        self.charge_mode = other.charge_mode;
-        self.discharge_trigger_time = other.discharge_trigger_time;
-        self.charge_trigger_time = other.charge_trigger_time;
-        self.pct_kw_rate = other.pct_kw_rate;
-        self.pct_charge_rate = other.pct_charge_rate;
-        self.pct_fleet_reserve = other.pct_fleet_reserve;
-        self.yearly_shape = other.yearly_shape.clone();
-        self.daily_shape = other.daily_shape.clone();
-        self.duty_shape = other.duty_shape.clone();
-        self.yearly_shape_obj = other.yearly_shape_obj.clone();
-        self.daily_shape_obj = other.daily_shape_obj.clone();
-        self.duty_shape_obj = other.duty_shape_obj.clone();
-        self.ccd.show_event_log = other.ccd.show_event_log;
-        self.inhibit_hrs = other.inhibit_hrs;
-        self.up_ramp_time = other.up_ramp_time;
-        self.flat_time = other.flat_time;
-        self.dn_ramp_time = other.dn_ramp_time;
-
-        self.seasons = other.seasons;
-        if self.seasons > 1 {
-            self.season_targets = other.season_targets.clone();
-            self.season_targets_low = other.season_targets_low.clone();
-        }
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

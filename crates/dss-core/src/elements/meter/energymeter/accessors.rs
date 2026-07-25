@@ -99,6 +99,34 @@ impl CktElement for EnergyMeter {
     }
 }
 
+impl EnergyMeter {
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        let o = other;
+        self.med.cd.make_like_base(&o.med.cd);
+        self.med.cd.nphases = o.med.cd.nphases;
+        self.med.cd.set_nconds(o.med.cd.nconds);
+        self.med.metered_element = o.med.metered_element;
+        self.med.metered_terminal = o.med.metered_terminal;
+        self.metered_snap = o.metered_snap.clone();
+        self.element_full_name = o.element_full_name.clone();
+        self.excess_flag = o.excess_flag;
+        self.max_zone_kva_norm = o.max_zone_kva_norm;
+        self.max_zone_kva_emerg = o.max_zone_kva_emerg;
+        self.source_num_interruptions = o.source_num_interruptions;
+        self.source_int_duration = o.source_int_duration;
+        self.defined_zone_list = o.defined_zone_list.clone();
+        self.local_only = o.local_only;
+        self.voltage_ue_only = o.voltage_ue_only;
+        self.f_losses = o.f_losses;
+        self.f_line_losses = o.f_line_losses;
+        self.f_xfmr_losses = o.f_xfmr_losses;
+        self.f_seq_losses = o.f_seq_losses;
+        self.f_3phase_losses = o.f_3phase_losses;
+        self.f_vbase_losses = o.f_vbase_losses;
+        self.f_phase_voltage_report = o.f_phase_voltage_report;
+    }
+}
+
 impl DssObject for EnergyMeter {
     fn data(&self) -> &DssObjData {
         &self.med.cd.obj
@@ -344,34 +372,6 @@ impl DssObject for EnergyMeter {
         for e in errors {
             self.med.cd.obj.push_error(e);
         }
-    }
-
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(o) = other.as_any().downcast_ref::<EnergyMeter>() else {
-            return;
-        };
-        self.med.cd.make_like_base(&o.med.cd);
-        self.med.cd.nphases = o.med.cd.nphases;
-        self.med.cd.set_nconds(o.med.cd.nconds);
-        self.med.metered_element = o.med.metered_element;
-        self.med.metered_terminal = o.med.metered_terminal;
-        self.metered_snap = o.metered_snap.clone();
-        self.element_full_name = o.element_full_name.clone();
-        self.excess_flag = o.excess_flag;
-        self.max_zone_kva_norm = o.max_zone_kva_norm;
-        self.max_zone_kva_emerg = o.max_zone_kva_emerg;
-        self.source_num_interruptions = o.source_num_interruptions;
-        self.source_int_duration = o.source_int_duration;
-        self.defined_zone_list = o.defined_zone_list.clone();
-        self.local_only = o.local_only;
-        self.voltage_ue_only = o.voltage_ue_only;
-        self.f_losses = o.f_losses;
-        self.f_line_losses = o.f_line_losses;
-        self.f_xfmr_losses = o.f_xfmr_losses;
-        self.f_seq_losses = o.f_seq_losses;
-        self.f_3phase_losses = o.f_3phase_losses;
-        self.f_vbase_losses = o.f_vbase_losses;
-        self.f_phase_voltage_report = o.f_phase_voltage_report;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

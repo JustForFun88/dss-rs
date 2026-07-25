@@ -212,6 +212,22 @@ fn calc_log_points(x: Option<&[f64]>, n: usize) -> Option<Vec<f64>> {
     )
 }
 
+impl TccCurveObj {
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        // Pascal `TTCC_CurveObj.MakeLike`: `inherited MakeLike` (copy the
+        // PrpSequence), then copy Npts and the point arrays and rebuild the
+        // log tables. Read through the typed accessors so we don't need a
+        // concrete downcast.
+        self.data.copy_prp_sequence_from(other.data());
+        self.npts = other.get_i32(NPTS);
+        let n = self.npts.max(0) as usize;
+        self.c_values = other.get_f64_array(C_ARRAY).map(<[f64]>::to_vec);
+        self.t_values = other.get_f64_array(T_ARRAY).map(<[f64]>::to_vec);
+        self.log_c = calc_log_points(self.c_values.as_deref(), n);
+        self.log_t = calc_log_points(self.t_values.as_deref(), n);
+    }
+}
+
 impl DssObject for TccCurveObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -271,20 +287,6 @@ impl DssObject for TccCurveObj {
             }
             _ => {}
         }
-    }
-
-    fn make_like(&mut self, other: &dyn DssObject) {
-        // Pascal `TTCC_CurveObj.MakeLike`: `inherited MakeLike` (copy the
-        // PrpSequence), then copy Npts and the point arrays and rebuild the
-        // log tables. Read through the typed accessors so we don't need a
-        // concrete downcast.
-        self.data.copy_prp_sequence_from(other.data());
-        self.npts = other.get_i32(NPTS);
-        let n = self.npts.max(0) as usize;
-        self.c_values = other.get_f64_array(C_ARRAY).map(<[f64]>::to_vec);
-        self.t_values = other.get_f64_array(T_ARRAY).map(<[f64]>::to_vec);
-        self.log_c = calc_log_points(self.c_values.as_deref(), n);
-        self.log_t = calc_log_points(self.t_values.as_deref(), n);
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

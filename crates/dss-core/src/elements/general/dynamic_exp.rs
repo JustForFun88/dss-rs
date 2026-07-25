@@ -420,6 +420,16 @@ impl DynamicExpObj {
     }
 }
 
+impl DynamicExpObj {
+    pub(crate) fn make_like(&mut self, _other: &Self) {
+        // Pascal `TDynamicExpObj.MakeLike` only logs an error — it copies
+        // nothing (not even the base PrpSequence), so a `like=` object keeps its
+        // constructor defaults.
+        self.data
+            .push_error("\"Like\" is not implemented for DynamicExp.");
+    }
+}
+
 impl DssObject for DynamicExpObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -499,14 +509,6 @@ impl DssObject for DynamicExpObj {
             }
             _ => {}
         }
-    }
-
-    fn make_like(&mut self, _other: &dyn DssObject) {
-        // Pascal `TDynamicExpObj.MakeLike` only logs an error — it copies
-        // nothing (not even the base PrpSequence), so a `like=` object keeps its
-        // constructor defaults.
-        self.data
-            .push_error("\"Like\" is not implemented for DynamicExp.");
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

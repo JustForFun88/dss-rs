@@ -250,6 +250,59 @@ impl ControlledTransformer for Transformer {
     }
 }
 
+impl Transformer {
+    /// Pascal `TTransfObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        let o = other;
+        self.cd.make_like_base(&o.cd);
+        self.cd.nphases = o.cd.nphases;
+        self.set_num_windings(o.num_windings);
+        let nc = self.cd.nphases + 1;
+        self.cd.set_nconds(nc); // forces terminal/conductor reallocation
+        self.cd.yprim_invalid = true;
+
+        self.windings.clone_from(&o.windings);
+        self.set_term_ref();
+
+        self.xhl = o.xhl;
+        self.xht = o.xht;
+        self.xlt = o.xlt;
+        let n = xsc_size(self.num_windings);
+        for i in 0..n {
+            self.xsc[i] = o.xsc[i];
+        }
+        self.zb = o.zb.clone();
+        self.y_1volt = o.y_1volt.clone();
+        self.y_term = o.y_term.clone();
+        self.y_1volt_nl = o.y_1volt_nl.clone();
+        self.y_term_nl = o.y_term_nl.clone();
+
+        self.thermal_time_const = o.thermal_time_const;
+        self.n_thermal = o.n_thermal;
+        self.m_thermal = o.m_thermal;
+        self.flrise = o.flrise;
+        self.hsrise = o.hsrise;
+        self.pct_load_loss = o.pct_load_loss;
+        self.pct_no_load_loss = o.pct_no_load_loss;
+        self.norm_max_hkva = o.norm_max_hkva;
+        self.emerg_max_hkva = o.emerg_max_hkva;
+        self.xrconst = o.xrconst;
+
+        self.xfmr_bank = o.xfmr_bank.clone();
+        self.xfmr_code_name = o.xfmr_code_name.clone();
+        self.xfmr_code_ref = o.xfmr_code_ref;
+
+        self.num_amp_ratings = o.num_amp_ratings;
+        self.kva_ratings.clone_from(&o.kva_ratings);
+
+        // r4064 (90962ae8): TControlledTransformerObj.MakeLike copies BHpoints
+        // and the two BH arrays.
+        self.bh_points = o.bh_points;
+        self.bh_current.clone_from(&o.bh_current);
+        self.bh_flux.clone_from(&o.bh_flux);
+    }
+}
+
 impl DssObject for Transformer {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -680,59 +733,6 @@ impl DssObject for Transformer {
     /// override `EndEdit`, unlike Line).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    /// Pascal `TTransfObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(o) = other.as_any().downcast_ref::<Transformer>() else {
-            return;
-        };
-        self.cd.make_like_base(&o.cd);
-        self.cd.nphases = o.cd.nphases;
-        self.set_num_windings(o.num_windings);
-        let nc = self.cd.nphases + 1;
-        self.cd.set_nconds(nc); // forces terminal/conductor reallocation
-        self.cd.yprim_invalid = true;
-
-        self.windings.clone_from(&o.windings);
-        self.set_term_ref();
-
-        self.xhl = o.xhl;
-        self.xht = o.xht;
-        self.xlt = o.xlt;
-        let n = xsc_size(self.num_windings);
-        for i in 0..n {
-            self.xsc[i] = o.xsc[i];
-        }
-        self.zb = o.zb.clone();
-        self.y_1volt = o.y_1volt.clone();
-        self.y_term = o.y_term.clone();
-        self.y_1volt_nl = o.y_1volt_nl.clone();
-        self.y_term_nl = o.y_term_nl.clone();
-
-        self.thermal_time_const = o.thermal_time_const;
-        self.n_thermal = o.n_thermal;
-        self.m_thermal = o.m_thermal;
-        self.flrise = o.flrise;
-        self.hsrise = o.hsrise;
-        self.pct_load_loss = o.pct_load_loss;
-        self.pct_no_load_loss = o.pct_no_load_loss;
-        self.norm_max_hkva = o.norm_max_hkva;
-        self.emerg_max_hkva = o.emerg_max_hkva;
-        self.xrconst = o.xrconst;
-
-        self.xfmr_bank = o.xfmr_bank.clone();
-        self.xfmr_code_name = o.xfmr_code_name.clone();
-        self.xfmr_code_ref = o.xfmr_code_ref;
-
-        self.num_amp_ratings = o.num_amp_ratings;
-        self.kva_ratings.clone_from(&o.kva_ratings);
-
-        // r4064 (90962ae8): TControlledTransformerObj.MakeLike copies BHpoints
-        // and the two BH arrays.
-        self.bh_points = o.bh_points;
-        self.bh_current.clone_from(&o.bh_current);
-        self.bh_flux.clone_from(&o.bh_flux);
     }
 
     /// Target side of RegControl's deferred `TapNum` write (Pascal

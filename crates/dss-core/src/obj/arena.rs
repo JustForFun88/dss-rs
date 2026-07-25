@@ -334,14 +334,14 @@ macro_rules! define_arena {
             }
 
             /// Pascal `MakeLike`: copy `source`'s state into `target`, both in
-            /// this (same) class. `clone_box` snapshots the source first so the
-            /// target can be borrowed mutably afterwards (works even if
-            /// `source == target`).
+            /// this (same) class. The typed `clone` snapshots the source first so
+            /// the target can be borrowed mutably afterwards (works even if
+            /// `source == target`), then the inherent typed `make_like` copies it.
             pub fn make_like_within(&mut self, target: usize, source: usize) {
                 match self {
                     $( ClassArena::$variant(v) => {
-                        let src = v[source].clone_box();
-                        v[target].make_like(src.as_ref());
+                        let src = v[source].clone();
+                        v[target].make_like(&src);
                     } )*
                 }
             }

@@ -216,6 +216,65 @@ impl CktElement for InvControl {
     }
 }
 
+impl InvControl {
+    /// Pascal `TInvControlObj.MakeLike` — copies the parse-time control settings
+    /// (incl. the parsed `FMonBuses`/`FMonBusesNodes` arrays). The per-DER fleet
+    /// state (`ControlledElement`/`CtrlVars`) is step-2b runtime state; Pascal
+    /// notably does **not** copy `DERNameList`, `MonBusesNameList`,
+    /// `FReacPower_ref`, `Fv_setpoint`, `CtrlModel`, or `ShowEventLog`, so those
+    /// keep the derived object's ctor defaults.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
+
+        self.control_mode = other.control_mode;
+        self.combi_mode = other.combi_mode;
+        self.f_list_size = other.f_list_size;
+        self.vvc_curve_name = other.vvc_curve_name.clone();
+        self.vvc_curve = other.vvc_curve.clone();
+        self.vvc_curve_offset = other.vvc_curve_offset;
+        self.voltage_curvex_ref = other.voltage_curvex_ref;
+        self.voltwatt_curve_name = other.voltwatt_curve_name.clone();
+        self.voltwatt_curve = other.voltwatt_curve.clone();
+        self.voltwattch_curve_name = other.voltwattch_curve_name.clone();
+        self.voltwattch_curve = other.voltwattch_curve.clone();
+        self.wattpf_curve_name = other.wattpf_curve_name.clone();
+        self.wattpf_curve = other.wattpf_curve.clone();
+        self.wattvar_curve_name = other.wattvar_curve_name.clone();
+        self.wattvar_curve = other.wattvar_curve.clone();
+        self.dbv_min = other.dbv_min;
+        self.pf_wp_nominal = other.pf_wp_nominal;
+        self.dbv_max = other.dbv_max;
+        self.ar_gra_low_v = other.ar_gra_low_v;
+        self.ar_gra_hi_v = other.ar_gra_hi_v;
+        self.roll_avg_window_length = other.roll_avg_window_length;
+        self.drc_roll_avg_window_length = other.drc_roll_avg_window_length;
+        self.active_p_change_tolerance = other.active_p_change_tolerance;
+        self.delta_q_factor = other.delta_q_factor;
+        self.delta_p_factor = other.delta_p_factor;
+        self.voltage_change_tolerance = other.voltage_change_tolerance;
+        self.var_change_tolerance = other.var_change_tolerance;
+        self.voltwatt_yaxis = other.voltwatt_yaxis;
+        self.rate_of_change_mode = other.rate_of_change_mode;
+        self.lpf_tau = other.lpf_tau;
+        self.rise_fall_limit = other.rise_fall_limit;
+        self.mon_buses_phase = other.mon_buses_phase;
+        self.mon_buses = other.mon_buses.clone();
+        self.mon_buses_nodes = other.mon_buses_nodes.clone();
+
+        // Pascal copies FMonBusesVbase up to *this* object's MonBusesNameList
+        // count (not the source's) — an upstream quirk; the derived object's
+        // name list is unset (MakeLike does not copy it), so this copies 0
+        // unless MonBus was set on the derived object first.
+        let n = self.mon_buses_name_list.len();
+        self.mon_buses_vbase = other.mon_buses_vbase.iter().take(n).copied().collect();
+
+        self.ccd.time_delay = other.ccd.time_delay;
+    }
+}
+
 impl DssObject for InvControl {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -514,66 +573,6 @@ impl DssObject for InvControl {
     /// deferred to the first `Sample`).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    /// Pascal `TInvControlObj.MakeLike` — copies the parse-time control settings
-    /// (incl. the parsed `FMonBuses`/`FMonBusesNodes` arrays). The per-DER fleet
-    /// state (`ControlledElement`/`CtrlVars`) is step-2b runtime state; Pascal
-    /// notably does **not** copy `DERNameList`, `MonBusesNameList`,
-    /// `FReacPower_ref`, `Fv_setpoint`, `CtrlModel`, or `ShowEventLog`, so those
-    /// keep the derived object's ctor defaults.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<InvControl>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
-
-        self.control_mode = other.control_mode;
-        self.combi_mode = other.combi_mode;
-        self.f_list_size = other.f_list_size;
-        self.vvc_curve_name = other.vvc_curve_name.clone();
-        self.vvc_curve = other.vvc_curve.clone();
-        self.vvc_curve_offset = other.vvc_curve_offset;
-        self.voltage_curvex_ref = other.voltage_curvex_ref;
-        self.voltwatt_curve_name = other.voltwatt_curve_name.clone();
-        self.voltwatt_curve = other.voltwatt_curve.clone();
-        self.voltwattch_curve_name = other.voltwattch_curve_name.clone();
-        self.voltwattch_curve = other.voltwattch_curve.clone();
-        self.wattpf_curve_name = other.wattpf_curve_name.clone();
-        self.wattpf_curve = other.wattpf_curve.clone();
-        self.wattvar_curve_name = other.wattvar_curve_name.clone();
-        self.wattvar_curve = other.wattvar_curve.clone();
-        self.dbv_min = other.dbv_min;
-        self.pf_wp_nominal = other.pf_wp_nominal;
-        self.dbv_max = other.dbv_max;
-        self.ar_gra_low_v = other.ar_gra_low_v;
-        self.ar_gra_hi_v = other.ar_gra_hi_v;
-        self.roll_avg_window_length = other.roll_avg_window_length;
-        self.drc_roll_avg_window_length = other.drc_roll_avg_window_length;
-        self.active_p_change_tolerance = other.active_p_change_tolerance;
-        self.delta_q_factor = other.delta_q_factor;
-        self.delta_p_factor = other.delta_p_factor;
-        self.voltage_change_tolerance = other.voltage_change_tolerance;
-        self.var_change_tolerance = other.var_change_tolerance;
-        self.voltwatt_yaxis = other.voltwatt_yaxis;
-        self.rate_of_change_mode = other.rate_of_change_mode;
-        self.lpf_tau = other.lpf_tau;
-        self.rise_fall_limit = other.rise_fall_limit;
-        self.mon_buses_phase = other.mon_buses_phase;
-        self.mon_buses = other.mon_buses.clone();
-        self.mon_buses_nodes = other.mon_buses_nodes.clone();
-
-        // Pascal copies FMonBusesVbase up to *this* object's MonBusesNameList
-        // count (not the source's) — an upstream quirk; the derived object's
-        // name list is unset (MakeLike does not copy it), so this copies 0
-        // unless MonBus was set on the derived object first.
-        let n = self.mon_buses_name_list.len();
-        self.mon_buses_vbase = other.mon_buses_vbase.iter().take(n).copied().collect();
-
-        self.ccd.time_delay = other.ccd.time_delay;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

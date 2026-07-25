@@ -177,6 +177,73 @@ impl CktElement for Load {
     }
 }
 
+impl Load {
+    /// Pascal `TLoadObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        self.connection = other.connection;
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            let n = nconds_for_connection(self.connection, self.cd.nphases);
+            self.cd.set_nconds(n);
+            self.cd.yprim_invalid = true;
+        }
+        self.kv_load_base = other.kv_load_base;
+        self.v_base = other.v_base;
+        self.vlowpu = other.vlowpu;
+        self.vminpu = other.vminpu;
+        self.vmaxpu = other.vmaxpu;
+        self.v_base_low = other.v_base_low;
+        self.v_base95 = other.v_base95;
+        self.v_base105 = other.v_base105;
+        self.kw_base = other.kw_base;
+        self.kva_base = other.kva_base;
+        self.kvar_base = other.kvar_base;
+        self.load_spec_type = other.load_spec_type;
+        self.w_nominal = other.w_nominal;
+        self.pf_nominal = other.pf_nominal;
+        self.var_nominal = other.var_nominal;
+        self.rneut = other.rneut;
+        self.xneut = other.xneut;
+        self.cvr_shape = other.cvr_shape.clone();
+        self.daily_shape = other.daily_shape.clone();
+        self.duty_shape = other.duty_shape.clone();
+        self.yearly_shape = other.yearly_shape.clone();
+        self.growth_shape = other.growth_shape.clone();
+        self.spectrum = other.spectrum.clone();
+        // Pascal copies the resolved shape pointers (CVR/Daily/Duty/Yearly/
+        // Growth) and the spectrum; here that is the snapshot clone + its ElemRef.
+        self.spectrum_obj = other.spectrum_obj.clone();
+        self.cvr_shape_obj = other.cvr_shape_obj.clone();
+        self.daily_shape_obj = other.daily_shape_obj.clone();
+        self.duty_shape_obj = other.duty_shape_obj.clone();
+        self.yearly_shape_obj = other.yearly_shape_obj.clone();
+        self.growth_shape_obj = other.growth_shape_obj.clone();
+        self.cvr_shape_ref = other.cvr_shape_ref;
+        self.daily_shape_ref = other.daily_shape_ref;
+        self.duty_shape_ref = other.duty_shape_ref;
+        self.yearly_shape_ref = other.yearly_shape_ref;
+        self.growth_shape_ref = other.growth_shape_ref;
+        self.load_class = other.load_class;
+        self.num_customers = other.num_customers;
+        self.load_model = other.load_model;
+        self.status = other.status;
+        self.kva_allocation_factor = other.kva_allocation_factor;
+        self.connected_kva = other.connected_kva;
+        self.cvr_watt_factor = other.cvr_watt_factor;
+        self.cvr_var_factor = other.cvr_var_factor;
+        self.shape_is_actual = other.shape_is_actual;
+        self.pu_series_rl = other.pu_series_rl;
+        self.rel_weighting = other.rel_weighting;
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+        self.phase_curr = vec![Complex64::ZERO; self.cd.nphases];
+        self.zipv_set = other.zipv_set;
+        if self.zipv_set {
+            self.zipv = other.zipv;
+        }
+    }
+}
+
 impl DssObject for Load {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -562,74 +629,6 @@ impl DssObject for Load {
     fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
         self.recalc(sys);
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TLoadObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Load>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        self.connection = other.connection;
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = nconds_for_connection(self.connection, self.cd.nphases);
-            self.cd.set_nconds(n);
-            self.cd.yprim_invalid = true;
-        }
-        self.kv_load_base = other.kv_load_base;
-        self.v_base = other.v_base;
-        self.vlowpu = other.vlowpu;
-        self.vminpu = other.vminpu;
-        self.vmaxpu = other.vmaxpu;
-        self.v_base_low = other.v_base_low;
-        self.v_base95 = other.v_base95;
-        self.v_base105 = other.v_base105;
-        self.kw_base = other.kw_base;
-        self.kva_base = other.kva_base;
-        self.kvar_base = other.kvar_base;
-        self.load_spec_type = other.load_spec_type;
-        self.w_nominal = other.w_nominal;
-        self.pf_nominal = other.pf_nominal;
-        self.var_nominal = other.var_nominal;
-        self.rneut = other.rneut;
-        self.xneut = other.xneut;
-        self.cvr_shape = other.cvr_shape.clone();
-        self.daily_shape = other.daily_shape.clone();
-        self.duty_shape = other.duty_shape.clone();
-        self.yearly_shape = other.yearly_shape.clone();
-        self.growth_shape = other.growth_shape.clone();
-        self.spectrum = other.spectrum.clone();
-        // Pascal copies the resolved shape pointers (CVR/Daily/Duty/Yearly/
-        // Growth) and the spectrum; here that is the snapshot clone + its ElemRef.
-        self.spectrum_obj = other.spectrum_obj.clone();
-        self.cvr_shape_obj = other.cvr_shape_obj.clone();
-        self.daily_shape_obj = other.daily_shape_obj.clone();
-        self.duty_shape_obj = other.duty_shape_obj.clone();
-        self.yearly_shape_obj = other.yearly_shape_obj.clone();
-        self.growth_shape_obj = other.growth_shape_obj.clone();
-        self.cvr_shape_ref = other.cvr_shape_ref;
-        self.daily_shape_ref = other.daily_shape_ref;
-        self.duty_shape_ref = other.duty_shape_ref;
-        self.yearly_shape_ref = other.yearly_shape_ref;
-        self.growth_shape_ref = other.growth_shape_ref;
-        self.load_class = other.load_class;
-        self.num_customers = other.num_customers;
-        self.load_model = other.load_model;
-        self.status = other.status;
-        self.kva_allocation_factor = other.kva_allocation_factor;
-        self.connected_kva = other.connected_kva;
-        self.cvr_watt_factor = other.cvr_watt_factor;
-        self.cvr_var_factor = other.cvr_var_factor;
-        self.shape_is_actual = other.shape_is_actual;
-        self.pu_series_rl = other.pu_series_rl;
-        self.rel_weighting = other.rel_weighting;
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
-        self.phase_curr = vec![Complex64::ZERO; self.cd.nphases];
-        self.zipv_set = other.zipv_set;
-        if self.zipv_set {
-            self.zipv = other.zipv;
-        }
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

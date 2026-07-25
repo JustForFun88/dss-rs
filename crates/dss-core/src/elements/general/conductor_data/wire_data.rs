@@ -52,6 +52,16 @@ impl WireDataObj {
     }
 }
 
+impl WireDataObj {
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.data.copy_prp_sequence_from(other.data());
+        let o = other;
+        {
+            self.cond.make_like_from(&o.cond);
+        }
+    }
+}
+
 impl DssObject for WireDataObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -96,13 +106,6 @@ impl DssObject for WireDataObj {
         self.cond.side_effects(idx, &full, &mut errs);
         for e in errs {
             self.data.push_error(e);
-        }
-    }
-
-    fn make_like(&mut self, other: &dyn DssObject) {
-        self.data.copy_prp_sequence_from(other.data());
-        if let Some(o) = other.as_any().downcast_ref::<WireDataObj>() {
-            self.cond.make_like_from(&o.cond);
         }
     }
 
