@@ -49,7 +49,7 @@ pub(crate) fn export_sections(
         None => ckt.energy_meters.clone(),
     };
     for r in targets {
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         let meter_name = obj.data().name().to_string();
         let em = obj
             .as_any()
@@ -66,7 +66,7 @@ pub(crate) fn export_sections(
             let head_full = format!(
                 "{}.{}",
                 classes[head.cls].props.class_name(),
-                classes[head.cls].objects[head.idx].data().name()
+                classes[head.cls].arena[head.idx].data().name()
             );
             s.push_str(&format!(
                 "{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, \"{}\"\n",

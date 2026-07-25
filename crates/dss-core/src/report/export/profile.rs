@@ -97,13 +97,13 @@ pub(crate) fn export_profile(classes: &[DssClass], ckt: &Circuit, phases_to_plot
     };
 
     for &m in &ckt.energy_meters {
-        let em = classes[m.cls].objects[m.idx]
+        let em = classes[m.cls].arena[m.idx]
             .as_any()
             .downcast_ref::<EnergyMeter>()
             .expect("energy_meters holds EnergyMeter objects");
         // `BranchList.First`/`GoForward` == the persisted `SequenceList` order.
         for &r in em.sequence_list() {
-            let obj = &classes[r.cls].objects[r.idx];
+            let obj = &classes[r.cls].arena[r.idx];
             // Pascal `IslineElement(PresentCktElement)`.
             let Some(line) = obj.as_any().downcast_ref::<Line>() else {
                 continue;

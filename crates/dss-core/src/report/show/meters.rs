@@ -15,7 +15,7 @@ use crate::report::format;
 
 /// Downcast an `ckt.energy_meters` ref to its concrete [`EnergyMeter`].
 fn as_meter(classes: &[DssClass], r: ElemRef) -> &EnergyMeter {
-    classes[r.cls].objects[r.idx]
+    classes[r.cls].arena[r.idx]
         .as_any()
         .downcast_ref::<EnergyMeter>()
         .expect("energy_meters holds EnergyMeter")
@@ -65,10 +65,7 @@ pub(crate) fn show_meters(classes: &[DssClass], ckt: &Circuit) -> String {
     for &r in meters {
         let m = as_meter(classes, r);
         if m.enabled() {
-            s.push_str(&format::pad(
-                classes[r.cls].objects[r.idx].data().name(),
-                12,
-            ));
+            s.push_str(&format::pad(classes[r.cls].arena[r.idx].data().name(), 12));
             for &v in m.registers() {
                 // Pascal `Format('%10.0f ', [Register])` — width 10, 0 decimals,
                 // trailing space inside the format literal.
@@ -106,15 +103,12 @@ pub(crate) fn show_gen_meters(classes: &[DssClass], ckt: &Circuit) -> String {
     s.push('\n');
 
     for &r in &ckt.generators {
-        let g = classes[r.cls].objects[r.idx]
+        let g = classes[r.cls].arena[r.idx]
             .as_any()
             .downcast_ref::<Generator>()
             .expect("generators holds Generator");
         if g.cd.enabled {
-            s.push_str(&format::pad(
-                classes[r.cls].objects[r.idx].data().name(),
-                12,
-            ));
+            s.push_str(&format::pad(classes[r.cls].arena[r.idx].data().name(), 12));
             for &v in &g.registers {
                 s.push_str(&format::fixed_w(v, 10, 0));
                 s.push(' ');

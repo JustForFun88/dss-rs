@@ -41,10 +41,7 @@ pub(crate) fn allocation_factors(classes: &[DssClass], ckt: &crate::circuit::Cir
     use crate::elements::pc::load::{Load, LoadSpec};
     let mut s = String::new();
     for &r in &ckt.loads {
-        let Some(load) = classes[r.cls].objects[r.idx]
-            .as_any()
-            .downcast_ref::<Load>()
-        else {
+        let Some(load) = classes[r.cls].arena[r.idx].as_any().downcast_ref::<Load>() else {
             continue;
         };
         match load.load_spec_type {
@@ -92,13 +89,13 @@ pub(crate) fn energy_meter_branch_list(classes: &[DssClass], em: &EnergyMeter) -
     };
     for (i, &br) in em.sequence_list().iter().enumerate() {
         let node = tree.node(em.sequence_nodes()[i]);
-        let name = classes[br.cls].objects[br.idx].data().name();
+        let name = classes[br.cls].arena[br.idx].data().name();
         s.push_str(&format!("Circuit Element = {name}\n"));
         for &shunt in &node.shunts {
             let full = format!(
                 "{}.{}",
                 classes[shunt.cls].props.class_name(),
-                classes[shunt.cls].objects[shunt.idx].data().name()
+                classes[shunt.cls].arena[shunt.idx].data().name()
             );
             s.push_str(&format!("   Shunt Element = {full}\n"));
         }

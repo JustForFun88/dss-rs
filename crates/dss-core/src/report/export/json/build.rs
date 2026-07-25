@@ -7,6 +7,7 @@
 //! from [`ClassProps::get_json_value`](crate::obj::props::class_props).
 
 use crate::elements::pc::dyneq_pce::DynInitValue;
+use crate::obj::arena::ClassArena;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropFlags, PropType};
@@ -157,26 +158,26 @@ pub fn obj_to_json_data(
 /// edited and always included.
 pub fn batch_to_json(
     cls: &ClassProps,
-    objects: &[Box<dyn DssObject>],
+    arena: &ClassArena,
     enums: &EnumRegistry,
     opts: JsonOpts,
 ) -> Json {
     let exclude_disabled = opts.contains(JsonOpts::EXCLUDE_DISABLED);
     // Pascal branches on whether the FIRST element is a TDSSCktElement.
-    let is_ckt = objects
-        .first()
+    let is_ckt = arena
+        .get(0)
         .map(|o| o.as_ckt_element().is_some())
         .unwrap_or(false);
 
-    let mut arr = Vec::with_capacity(objects.len());
+    let mut arr = Vec::with_capacity(arena.len());
     if !exclude_disabled || !is_ckt {
-        for o in objects {
-            arr.push(obj_to_json_data(cls, o.as_ref(), enums, opts));
+        for o in arena.objs() {
+            arr.push(obj_to_json_data(cls, o, enums, opts));
         }
     } else {
-        for o in objects {
+        for o in arena.objs() {
             if o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false) {
-                arr.push(obj_to_json_data(cls, o.as_ref(), enums, opts));
+                arr.push(obj_to_json_data(cls, o, enums, opts));
             }
         }
     }

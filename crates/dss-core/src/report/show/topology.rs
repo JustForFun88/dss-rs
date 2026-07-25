@@ -20,7 +20,7 @@ fn full_name(classes: &[DssClass], r: ElemRef) -> String {
     format!(
         "{}.{}",
         classes[r.cls].props.class_name(),
-        classes[r.cls].objects[r.idx].data().name()
+        classes[r.cls].arena[r.idx].data().name()
     )
 }
 
@@ -43,7 +43,7 @@ fn controls_of(classes: &[DssClass], ckt: &Circuit, r: ElemRef) -> Vec<ElemRef> 
         .iter()
         .copied()
         .filter(|&cr| {
-            classes[cr.cls].objects[cr.idx]
+            classes[cr.cls].arena[cr.idx]
                 .as_ckt_element()
                 .and_then(|ce| ce.controlled_element())
                 == Some(r)
@@ -54,16 +54,14 @@ fn controls_of(classes: &[DssClass], ckt: &Circuit, r: ElemRef) -> Vec<ElemRef> 
 /// Whether the control at `cr` is a SwtControl (Pascal `(DSSObjType and CLASSMASK) =
 /// SWT_CONTROL`), counted into `nSwitches`.
 fn is_swt_control(classes: &[DssClass], cr: ElemRef) -> bool {
-    classes[cr.cls].objects[cr.idx].as_any().is::<SwtControl>()
+    classes[cr.cls].arena[cr.idx].as_any().is::<SwtControl>()
 }
 
 /// The `(Sensor: …)` / `(Control: …)` / `(Meter: …)` annotations shared by the
 /// branch and shunt writers; increments `n_switches` per SwtControl. Returns the
 /// annotation string.
 fn annotations(classes: &[DssClass], ckt: &Circuit, r: ElemRef, n_switches: &mut i32) -> String {
-    let cd = classes[r.cls].objects[r.idx]
-        .as_ckt_element()
-        .map(|e| e.cd());
+    let cd = classes[r.cls].arena[r.idx].as_ckt_element().map(|e| e.cd());
     let mut s = String::new();
     if let Some(cd) = cd {
         if cd.flags.contains(ElemFlags::HAS_SENSOR_OBJ)
@@ -84,7 +82,7 @@ fn annotations(classes: &[DssClass], ckt: &Circuit, r: ElemRef, n_switches: &mut
         {
             s.push_str(&format!(
                 " (Meter: {}) ",
-                classes[mo.cls].objects[mo.idx].data().name()
+                classes[mo.cls].arena[mo.idx].data().name()
             ));
         }
     }
@@ -122,7 +120,7 @@ pub(crate) fn show_topology(classes: &mut [DssClass], ckt: &mut Circuit) -> (Str
         ftree.push_str(&format!(
             "{}.{}",
             classes[pd_ref.cls].props.class_name(),
-            classes[pd_ref.cls].objects[pd_ref.idx].data().name()
+            classes[pd_ref.cls].arena[pd_ref.idx].data().name()
         ));
         // PresentBranch loop/parallel flags.
         let (is_parallel, is_looped, loop_elem) = {
@@ -151,7 +149,7 @@ pub(crate) fn show_topology(classes: &mut [DssClass], ckt: &mut Circuit) -> (Str
             ftree.push_str(&format!(
                 "{}.{}",
                 classes[load_ref.cls].props.class_name(),
-                classes[load_ref.cls].objects[load_ref.idx].data().name()
+                classes[load_ref.cls].arena[load_ref.idx].data().name()
             ));
             ftree.push_str(&annotations(classes, ckt, load_ref, &mut n_switches));
             ftree.push('\n');
@@ -162,7 +160,7 @@ pub(crate) fn show_topology(classes: &mut [DssClass], ckt: &mut Circuit) -> (Str
 
     // Isolated PD elements (Pascal walks `PDElements`, `Flg.IsIsolated`).
     for &pd_ref in &ckt.pd_elements {
-        let isolated = classes[pd_ref.cls].objects[pd_ref.idx]
+        let isolated = classes[pd_ref.cls].arena[pd_ref.idx]
             .as_ckt_element()
             .is_some_and(|e| e.cd().flags.contains(ElemFlags::IS_ISOLATED));
         if isolated {

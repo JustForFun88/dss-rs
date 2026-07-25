@@ -43,6 +43,7 @@ pub(crate) use crate::elements::pd::{
     auto_trans, capacitor, fault, fuse, gic_transformer, line, reactor, transformer,
 };
 pub(crate) use crate::elements::traits::{CktElement, ElemRef, ElemStore};
+pub(crate) use crate::obj::arena::ClassArena;
 pub(crate) use crate::obj::base::DssObject;
 pub(crate) use crate::obj::dss_enum::{EnumId, EnumRegistry};
 pub(crate) use crate::obj::props::{ClassProps, ForeignClassesView, PropEngine, PropType};
@@ -90,6 +91,9 @@ type PlotCallback = Box<dyn FnMut(&str) -> i32 + Send>;
 
 /// The DSS engine context (`TDSSContext`).
 pub struct Dss {
+    /// The registered classes, each owning its objects in a typed
+    /// [`ClassArena`] (`class.arena`) — DE_PASCALIZE R1 ownership flip off the
+    /// pre-R1 `Vec<Box<dyn DssObject>>` (`PORTING_PLAN §2.1`).
     classes: Vec<DssClass>,
     /// Lowercased class name → index (Pascal `ClassNames`).
     class_by_name: HashMap<String, usize>,

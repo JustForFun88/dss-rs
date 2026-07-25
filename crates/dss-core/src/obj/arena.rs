@@ -1,13 +1,20 @@
 //! Typed element arenas — the `PORTING_PLAN.md §2.1` storage design the port
 //! originally shortcut with a heterogeneous `Vec<Box<dyn DssObject>>` per class.
 //!
-//! This is DE_PASCALIZE **R1**: introduce the typed-arena types behind the
-//! current API. Each registered class gets its own `Vec<T>` of the concrete
-//! element type, held inside a [`ClassArena`] enum variant, and the whole
-//! registry's objects live in one [`Elements`] value (`arenas[class_index]`).
+//! This is DE_PASCALIZE **R1**: the typed-arena storage. Each registered class
+//! gets its own `Vec<T>` of the concrete element type, held inside a
+//! [`ClassArena`] enum variant. The ownership flip (R1 commit 2) puts one
+//! `ClassArena` on each `DssClass` (`DssClass::arena`), replacing the pre-R1
+//! `Vec<Box<dyn DssObject>>` — this keeps every `classes: &[DssClass]` view and
+//! the `ClassStore`/`ForeignClasses` borrow split unchanged (objects reached via
+//! `class.arena` instead of `class.objects`).
+//!
 //! An [`ElemId`] enum (one `Idx<T>` variant per class) is the R2 typed handle
 //! that will replace the `{cls, idx}` [`ElemRef`] tag across the spine; R1 only
 //! introduces it (plus the ordering proof) and keeps the spine on `ElemRef`.
+//! [`Elements`] is the corresponding hoisted aggregate (`Vec<ClassArena>` +
+//! whole-registry accessors) that R2 can adopt once the spine is retyped; today
+//! it backs the [`tests`] ordering proof and the `Send` assertions.
 //!
 //! **The single most important invariant:** the arena/variant order is exactly
 //! the `exec/construct.rs` class-registration order. Bare-name
@@ -17,30 +24,20 @@
 //! from ONE class list in that order; [`tests`] proves it against the live
 //! registry.
 //!
-//! Why `Vec<ClassArena>` (enum-of-`Vec<T>`) and not a flat
-//! `struct Elements { lines: Vec<Line>, … }` of named fields: the property-edit
-//! path borrows the *active* class mutably while every *other* class is a
-//! read view (`command.rs` `edit_active_inner`, via `classes.split_at_mut(ci)`),
-//! and `ci` is only known at run time. A `Vec<ClassArena>` is
-//! `split_at_mut`-able by the run-time `ci` exactly like the existing
-//! `Vec<DssClass>`, so the whole borrow-split machinery (edit, `ClassStore`,
-//! `ForeignClasses`) keeps its shape with no `RefCell`/`unsafe`. The typed
-//! `Vec<T>` is still right there inside each variant — the parallelism substrate
-//! `MULTITHREADING_PLAN.md` M3 needs (`ClassArena::Line(v) => v.par_iter_mut()`),
-//! exposed via [`Elements::arenas_mut`] / [`Elements::for_each_ckt_elem_mut`],
-//! never funnelled through a single `&mut dyn ElemStore`.
+//! The typed `Vec<T>` inside each variant is the parallelism substrate
+//! `MULTITHREADING_PLAN.md` M3 needs (`ClassArena::Line(v) => v.par_iter_mut()`);
+//! it is exposed directly (`ClassArena`'s variants / [`ClassArena::objs_mut`],
+//! [`Elements::arenas_mut`] / [`Elements::for_each_ckt_elem_mut`]), never
+//! funnelled through a single `&mut dyn ElemStore` (Part V thread-readiness).
 //!
 //! `Idx<T>` is stable for the whole life of a circuit: OpenDSS never deletes an
 //! individual element mid-script (`Clear` drops the entire circuit and resets
 //! every arena together), so an index never dangles or shifts.
 
-// R1 lands the arena *types*; they are wired into `Dss` in the second R1 commit
-// (the ownership flip). Until then the accessors have no in-tree caller.
-#![allow(dead_code)]
-
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::ops::{Index, IndexMut};
 
 use crate::elements::traits::{CktElement, ElemRef};
 use crate::obj::base::DssObject;
@@ -212,6 +209,26 @@ macro_rules! define_arena {
         }
 
         impl ClassArena {
+            /// An empty arena for the class named `cname` (case-insensitive) —
+            /// how [`DssClass`] builds its arena at registration, keyed off its
+            /// own `props.class_name()`.
+            ///
+            /// [`DssClass`]: crate::exec::registry::DssClass
+            pub fn empty_for(cname: &str) -> Option<Self> {
+                $( if cname.eq_ignore_ascii_case($cname) {
+                    return Some(ClassArena::$variant(Vec::new()));
+                } )*
+                None
+            }
+
+            /// Drop every object (Pascal `Clear`; the whole arena resets at
+            /// once — the `Idx<T>` stability invariant).
+            pub fn clear(&mut self) {
+                match self {
+                    $( ClassArena::$variant(v) => v.clear(), )*
+                }
+            }
+
             /// This arena's class name (Pascal `TDSSClass.Name`).
             pub fn class_name(&self) -> &'static str {
                 match self {
@@ -230,17 +247,49 @@ macro_rules! define_arena {
                 self.len() == 0
             }
 
-            /// Read view of object `idx` as `&dyn DssObject`.
-            pub fn obj(&self, idx: usize) -> &dyn DssObject {
+            /// Read view of object `idx` as `&dyn DssObject`. The `+ 'static`
+            /// object bound holds (every concrete element type owns its data,
+            /// no borrows) and lets [`ClassArena`]'s `Index` use it directly.
+            pub fn obj(&self, idx: usize) -> &(dyn DssObject + 'static) {
                 match self {
                     $( ClassArena::$variant(v) => &v[idx], )*
                 }
             }
 
             /// Mutable view of object `idx` as `&mut dyn DssObject`.
-            pub fn obj_mut(&mut self, idx: usize) -> &mut dyn DssObject {
+            pub fn obj_mut(&mut self, idx: usize) -> &mut (dyn DssObject + 'static) {
                 match self {
                     $( ClassArena::$variant(v) => &mut v[idx], )*
+                }
+            }
+
+            /// Bounds-checked read view of object `idx` (the typed twin of the
+            /// old `objects.get(idx)`).
+            pub fn get(&self, idx: usize) -> Option<&(dyn DssObject + 'static)> {
+                (idx < self.len()).then(|| self.obj(idx))
+            }
+
+            /// Iterate every object as `&dyn DssObject`, in creation order (the
+            /// typed twin of `objects.iter()`). Boxed because each variant's
+            /// concrete `Vec<T>` iterator has its own type; only report/admin
+            /// paths use it, never the solve hot loop.
+            pub fn objs(&self) -> Box<dyn Iterator<Item = &(dyn DssObject + 'static)> + '_> {
+                match self {
+                    $( ClassArena::$variant(v) => {
+                        Box::new(v.iter().map(|o| o as &(dyn DssObject + 'static)))
+                    } )*
+                }
+            }
+
+            /// Iterate every object as `&mut dyn DssObject`, in creation order
+            /// (the typed twin of `objects.iter_mut()`).
+            pub fn objs_mut(
+                &mut self,
+            ) -> Box<dyn Iterator<Item = &mut (dyn DssObject + 'static)> + '_> {
+                match self {
+                    $( ClassArena::$variant(v) => {
+                        Box::new(v.iter_mut().map(|o| o as &mut (dyn DssObject + 'static)))
+                    } )*
                 }
             }
 
@@ -271,8 +320,21 @@ macro_rules! define_arena {
                 }
             }
 
+            /// Pascal `MakeLike`: copy `source`'s state into `target`, both in
+            /// this (same) class. `clone_box` snapshots the source first so the
+            /// target can be borrowed mutably afterwards (works even if
+            /// `source == target`).
+            pub fn make_like_within(&mut self, target: usize, source: usize) {
+                match self {
+                    $( ClassArena::$variant(v) => {
+                        let src = v[source].clone_box();
+                        v[target].make_like(src.as_ref());
+                    } )*
+                }
+            }
+
             /// Two distinct objects of *this* arena, borrowed mutably at once.
-            fn pair_mut_same(
+            pub(crate) fn pair_mut_same(
                 &mut self,
                 i: usize,
                 j: usize,
@@ -288,7 +350,7 @@ macro_rules! define_arena {
             }
 
             /// Three distinct objects of *this* arena, borrowed mutably at once.
-            fn triple_mut_same(
+            pub(crate) fn triple_mut_same(
                 &mut self,
                 i: usize,
                 j: usize,
@@ -350,6 +412,22 @@ macro_rules! define_arena {
 }
 
 with_all_classes!(define_arena);
+
+// Index a `ClassArena` by object position, yielding `dyn DssObject` — the
+// drop-in shape for the pre-R1 `objects[idx]` place expression (so the ownership
+// flip is a near-rename of `<class>.objects[i]` → `<arena>[i]`, `IndexMut`
+// auto-selecting when a `&mut` is needed).
+impl Index<usize> for ClassArena {
+    type Output = dyn DssObject;
+    fn index(&self, idx: usize) -> &(dyn DssObject + 'static) {
+        self.obj(idx)
+    }
+}
+impl IndexMut<usize> for ClassArena {
+    fn index_mut(&mut self, idx: usize) -> &mut (dyn DssObject + 'static) {
+        self.obj_mut(idx)
+    }
+}
 
 /// The whole registry's live objects: one [`ClassArena`] per registered class,
 /// `arenas[class_index]` (Pascal's per-`TDSSClass` `ElementList`, collected).
@@ -475,11 +553,7 @@ pub(crate) fn triple_mut_arenas(
     a: ElemRef,
     b: ElemRef,
     c: ElemRef,
-) -> (
-    &mut dyn DssObject,
-    &mut dyn DssObject,
-    &mut dyn DssObject,
-) {
+) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
     let key = |r: ElemRef| (r.cls, r.idx);
     assert!(
         key(a) != key(b) && key(a) != key(c) && key(b) != key(c),

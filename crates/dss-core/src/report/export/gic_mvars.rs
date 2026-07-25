@@ -28,8 +28,8 @@ pub(crate) fn export_gic_mvars(
     else {
         return s;
     };
-    for idx in 0..classes[ci].objects.len() {
-        let Some(gt) = classes[ci].objects[idx]
+    for idx in 0..classes[ci].arena.len() {
+        let Some(gt) = classes[ci].arena[idx]
             .as_any_mut()
             .downcast_mut::<GicTransformer>()
         else {
