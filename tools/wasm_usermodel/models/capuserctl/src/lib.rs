@@ -218,10 +218,10 @@ mod tests {
         // Above high → open, once.
         assert_eq!(m.decide(7400.0), Some(CTRL_OPEN));
         assert_eq!(m.decide(7400.0), None); // already open — no re-push
-        // Below low → close, once.
+                                            // Below low → close, once.
         assert_eq!(m.decide(6900.0), Some(CTRL_CLOSE));
         assert_eq!(m.decide(6900.0), None); // already closed — no re-push
-        // Back above → open again.
+                                            // Back above → open again.
         assert_eq!(m.decide(7400.0), Some(CTRL_OPEN));
     }
 

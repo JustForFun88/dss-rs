@@ -312,7 +312,9 @@ when such a file exists it supersedes the summary here for execution purposes.
 ### Phase 6 — Meters, monitors, topology, Generator; large-feeder gate (~12%)
 - Scope: `MeterElement`, `EnergyMeter.pas` (zones, registers, SAIFI/SAIDI),
   `Monitor.pas`, `Sensor.pas`, `CktTree.pas` + circuit topology, `ReduceAlgs` (basic),
-  `Generator.pas` (user-model DLL loading stubbed — out of scope per safe-Rust),
+  `Generator.pas` (user-model DLL loading stubbed — out of scope per safe-Rust)
+  [post-acceptance: no longer stubbed — the user-model surface is ported over a
+  sandboxed WASM ABI, see `WASM_USERMODELS_PLAN.md` (stage 9, COMPLETE 2026-07-25)],
   `AutoAdd.pas`, `GenDispatcher`, `StorageController` skeleton.
 - **Gate**: `golden_ieee8500.rs` — 8500-node converges with matching iteration count,
   voltages 1e-6, energymeter registers 1e-4 rel after a daily run; monitor channels match

@@ -6553,3 +6553,96 @@ Finding dispositions:
   by design; editing a corpus deck comment is neither. Left as a one-line follow-up for
   a future corpus-touching pass to re-cite. No behavior/gate/pin impact either way.
 - **audit-tests: no findings.**
+
+### WASM-UM WP-WM.7 — exit sweep (branch `wasm-wm7`, 2026-07-25)
+
+Plan §WP-WM.7 items 1–4 (item 5 = merge is the coordinator's). Docs + marker
+cleanup only — **no engine behavior change, no wire-ABI change, no tolerance
+touched, corpus decks/manifests/ledger pristine**. Closes the WASM_USERMODELS
+plan; `PLAN_SEQUENCE.md` stage 9 marked COMPLETE.
+
+**Item 1 — marker sweep clean.** `rg NOT_PORTED` over the six user-model
+property surfaces (Generator UserModel/UserData/ShaftModel/ShaftData, Storage
+UserModel/UserData/DynaDLL/DynaData, PVSystem UserModel/UserData, CapControl
+UserModel/UserData) → **zero live `NOT_PORTED` flags** (none of the four
+elements' `PropDef`s carry `PropFlags::NOT_PORTED`; all six resolve via the §2.4
+uniform rule). Five **stale/misleading doc comments** that still claimed these
+were NOT_PORTED were corrected to reflect the WASM port:
+- `generator/dynamics.rs:9` module doc ("UserModel/ShaftModel DLLs are
+  NOT_PORTED (never)") → now describes the WASM ABI port (§WP-WM.3).
+- `generator/dynamics.rs` `get_gen_variables` doc ("UserModel/ShaftModel
+  variables are NOT_PORTED") → user/shaft model vars are appended by
+  `get_all_variables` from the loaded WASM slots.
+- `generator/accessors.rs` `set_string` comment ("NOT_PORTED string props error
+  in the parser before reaching here") → the props store here + queue the
+  deferred WASM (re)load; never a parse error.
+- `inv_based_pce.rs` `user_model_name`/`user_model_edit` field docs ("NOT_PORTED
+  in safe Rust") → the shared PVSystem/Storage base fields that drive
+  `queue_user_model_load`/`_edit` (§WP-WM.4).
+- `exec/tests/dynamics.rs` `sto_dyn_dss` doc ("user models are NOT_PORTED") →
+  "this deck loads no user model, so the built-in dynamics integrate".
+
+Two remaining `NOT_PORTED` hits confirmed **unrelated** and left untouched:
+`generator/dynamics.rs:233` (the DebugTrace CSV record — a genuinely-different
+unported detail) and `storage/tests.rs:525` (a test doc that *accurately*
+describes `DynaDLL=` as "no longer a hard NOT_PORTED error"). `rg "TODO(WM)"`
+across `crates/ tools/ docs/` → **zero**. Every callback slot is accounted for
+in `docs/wasm/USERMODEL_ABI.md` §4 (the 32-slot table, complete as of WM.6).
+
+**Item 2 — hermetic gate + fixture pins, all green.** Full three-command gate at
+defaults: `cargo fmt --all --check` ✅; `cargo clippy --workspace --all-targets
+-- -D warnings` ✅; `cargo test --workspace` ✅ — **1961 passed / 0 failed / 5
+ignored** (the 5 ignored = the `gen_wasm_usermodels{,_wm4,_wm5}` manual golden
+generators + 2 others, `#[ignore]` by design), exit 0, wall ~178s on a warm
+build. The unconditional corpus gate ran inside it:
+`corpus_gate_all_cases_match_engines ... ok` (514 cases, capi_v0145 + r4133
+channels), corpus_gate binary 25 tests / 153.48s. WASM-specific suites green:
+channel-1 goldens `wasm_usermodels` 17, `wasm_usermodels_wm4` 15,
+`wasm_usermodels_wm5` 12; `dss-usermodel` unit 4 + channel-2 protocol suite 26;
+hash-vs-PIN `fixture_pin` 4 + `fixture_self_gate` 2.
+- **Five `expect_warnings` user-model decks — byte-identical, zero manifest
+  edits.** A filtered `DSS_GATE_ONLY` run (5/514 kept) with `DSS_GATE_DUMP`
+  verdicts, all `ok`:
+  - `solvable_now:Test/indmachtest/Master.DSS` -> ok
+  - `solvable_now:Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Lagging.dss` -> ok
+  - `solvable_now:Version8/Distrib/IEEETestCases/4wire-Delta/Kersting4wire_Leading.dss` -> ok
+  - `solvable_now:Test/SimpleStorageTest.dss` -> ok
+  - `solvable_now:Test/SimpleStorageTest-1ph.dss` -> ok
+  `git status tests/corpus` clean after every live run (path-limited
+  `git clean -fd tests/corpus` of the export-CWD-corner output artifacts; no
+  tracked deck/manifest touched).
+- **Workspace-excluded fixture crates re-verified (audit WM-T1).** `indmach012a`:
+  fmt ✅, clippy ✅, `twin_parity` **2/2** (`record_codec_round_trip`,
+  `twin_parity_scenario`). `wm4model`: fmt ✅, clippy ✅ (no test suite).
+  `capuserctl`: fmt found cosmetic drift (comment alignment in a `#[cfg(test)]`
+  block + long-line wrapping of `transmute` calls in the native twin) →
+  **`cargo fmt` applied** (`src/lib.rs`, `src/native_exports.rs`), source-only
+  and semantically inert, so the committed `.wasm`/PIN are unaffected; clippy ✅.
+
+**Item 3 — classification unchanged.** `DSS_LIVE_CLASSIFY=1 corpus_live_classify`
+probed all `skipped_needs_investigation` candidates against the oracle:
+**0 solvable, 13 failed of 13** — no deck reclassifies (the `solvable` set is
+identical to the prior baseline: both empty). The one WASM-relevant candidate,
+`Kersting4wireIndMotor.dss`, stays skipped with the expected
+`#570 Generator User Model IndMach012a Not Loaded` (a native-DLL name — no
+vendored deck ships a `.wasm`, so none activates the WASM path). **Coverage
+note recorded here in STATUS, not in `COVERAGE.md`:** `tests/corpus/COVERAGE.md`
+is auto-generated (`tools/corpus/coverage_report.py`, banner "Do not edit by
+hand"), tracks vendored-corpus per-manifest `.dss` counts (not WASM-UM fixture
+coverage), and lives in the keep-pristine corpus tree — so the WASM-UM coverage
+line belongs here. **WASM-UM coverage:** all six properties × four elements live
+end-to-end over the WASM ABI; channel-1 numeric goldens (44 replays across
+WM.3/WM.4/WM.5) vs the native twin loaded in the pinned oracle; channel-2
+protocol suite (26) exercising all 32 callback slots; hash-vs-PIN (6) pinning
+the committed `.wasm` fixtures; three reference fixture crates (indmach012a
+Generator, wm4model Storage/PVSystem, capuserctl CapControl).
+
+**Item 4 — docs.** This STATUS record (item 4a); `PORTING_PLAN.md` Phase-6
+"user-model DLL loading stubbed" line annotated with a bracketed pointer to
+`WASM_USERMODELS_PLAN.md` (historical text unchanged, item 4b); `PLAN_SEQUENCE.md`
+stage 9 marked COMPLETE (item 4c); `docs/wasm/USERMODEL_ABI.md` verified complete
+— the 32-slot table + §8 worked porting example (finished in WM.6) present (4d).
+
+**Stuck items: none.** Every finding was a mechanical doc/format cleanup; the
+tree is left green. Merge (item 5) is the coordinator's per the standing
+convention.

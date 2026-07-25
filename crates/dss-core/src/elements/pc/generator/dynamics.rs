@@ -4,11 +4,14 @@
 //! magnitude/angle (the Thevenin `Vthev`) is driven by the shaft swing equation,
 //! integrated by the trapezoidal predictor/corrector in `SolveDynamic`.
 //!
-//! Scope: the built-in shaft model (`DynamicEqObj = NIL`) and the external
-//! `DynamicExp` integration (`DynamicEqObj <> NIL`, WP7.7 step 3b). The
-//! user-written `UserModel`/`ShaftModel` DLLs are NOT_PORTED (never). The
-//! synchronous Generator has no grid-forming mode — GFM is an inverter-based
-//! (PVSystem/Storage) feature (`generator.pas` carries no GFM code, WPG.13).
+//! Scope: the built-in shaft model (`DynamicEqObj = NIL`), the external
+//! `DynamicExp` integration (`DynamicEqObj <> NIL`, WP7.7 step 3b), and the
+//! user-written `UserModel`/`ShaftModel` models, which are now ported over the
+//! sandboxed WASM ABI (`WASM_USERMODELS_PLAN.md` §WP-WM.3 — a `.wasm` resolved
+//! from `UserModel=`/`ShaftModel=` runs through `dss-usermodel`; native-DLL
+//! names still warn-and-fall-back per §2.4). The synchronous Generator has no
+//! grid-forming mode — GFM is an inverter-based (PVSystem/Storage) feature
+//! (`generator.pas` carries no GFM code, WPG.13).
 
 use num_complex::Complex64;
 
@@ -463,7 +466,8 @@ impl Generator {
     /// Pascal `TGeneratorObj.Get_Variable` for the 6 classic GenVars, filled into
     /// `states[0..6]` (the `GetAllVariables` loop). The `DynamicEqObj` memory dump is
     /// handled by the `get_all_variables` accessor short-circuit; UserModel/ShaftModel
-    /// variables are NOT_PORTED.
+    /// variables are appended by that accessor from the loaded WASM slots (see
+    /// `accessors.rs::get_all_variables`, WASM_USERMODELS §WP-WM.3).
     pub(super) fn get_gen_variables(&mut self, states: &mut [f64]) {
         states[0] = (self.w0 + self.speed) / TWO_PI; // Frequency, Hz
         states[1] = self.theta * RADIANS_TO_DEGREES; // Theta, deg

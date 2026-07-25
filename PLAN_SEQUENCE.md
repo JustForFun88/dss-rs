@@ -71,7 +71,10 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               deliberately outside final acceptance. Early-start:
                               may begin as soon as MULTITHREADING **M2** lands
                               (M3/M4 are not prerequisites).
- 9. WASM_USERMODELS_PLAN.md   WP-WM.0–WM.7: replace the user-written-DLL mechanism
+ 9. WASM_USERMODELS_PLAN.md   COMPLETE (2026-07-25) — WP-WM.0–WM.7 all done
+                              (WM.7 exit sweep: markers clean, gate green, five
+                              expect_warnings decks byte-identical; branch wasm-wm7).
+                              WP-WM.0–WM.7: replace the user-written-DLL mechanism
                               (GenUserModel/StoreUserModel/PVSystemUserModel/
                               CapUserControl — the one surface every prior plan
                               listed as "never: safe Rust") with sandboxed
