@@ -8,6 +8,34 @@ use crate::support::cmatrix::CMatrix;
 
 use super::{LineCodeObj, LineType, TWO_PI, prop};
 
+impl LineCodeObj {
+    /// Pascal `TLineCodeObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.data.copy_prp_sequence_from(other.data());
+        let o = other;
+        self.fnphases = o.fnphases;
+        self.z = o.z.clone();
+        self.zinv = o.zinv.clone();
+        self.yc = o.yc.clone();
+        self.base_frequency = o.base_frequency;
+        self.r1 = o.r1;
+        self.x1 = o.x1;
+        self.r0 = o.r0;
+        self.x0 = o.x0;
+        self.c1 = o.c1;
+        self.c0 = o.c0;
+        self.rg = o.rg;
+        self.xg = o.xg;
+        self.rho = o.rho;
+        self.fneutral_conductor = o.fneutral_conductor;
+        self.norm_amps = o.norm_amps;
+        self.emerg_amps = o.emerg_amps;
+        self.fault_rate = o.fault_rate;
+        self.pct_perm = o.pct_perm;
+        self.hrs_to_repair = o.hrs_to_repair;
+    }
+}
+
 impl DssObject for LineCodeObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -227,34 +255,6 @@ impl DssObject for LineCodeObj {
                 self.zinv = Some(zinv);
             }
         }
-    }
-
-    /// Pascal `TLineCodeObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        self.data.copy_prp_sequence_from(other.data());
-        let Some(o) = other.as_any().downcast_ref::<LineCodeObj>() else {
-            return;
-        };
-        self.fnphases = o.fnphases;
-        self.z = o.z.clone();
-        self.zinv = o.zinv.clone();
-        self.yc = o.yc.clone();
-        self.base_frequency = o.base_frequency;
-        self.r1 = o.r1;
-        self.x1 = o.x1;
-        self.r0 = o.r0;
-        self.x0 = o.x0;
-        self.c1 = o.c1;
-        self.c0 = o.c0;
-        self.rg = o.rg;
-        self.xg = o.xg;
-        self.rho = o.rho;
-        self.fneutral_conductor = o.fneutral_conductor;
-        self.norm_amps = o.norm_amps;
-        self.emerg_amps = o.emerg_amps;
-        self.fault_rate = o.fault_rate;
-        self.pct_perm = o.pct_perm;
-        self.hrs_to_repair = o.hrs_to_repair;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

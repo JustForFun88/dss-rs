@@ -90,6 +90,106 @@ impl CktElement for Relay {
     }
 }
 
+impl Relay {
+    /// Pascal `TRelayObj.MakeLike` (r4133).
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc);
+        self.ccd.show_event_log = other.ccd.show_event_log; // but leave DebugTrace off
+
+        self.ccd.element_terminal = other.ccd.element_terminal;
+        self.ccd.controlled_element = other.ccd.controlled_element;
+        self.ccd.monitored_element = other.ccd.monitored_element;
+        self.monitored_element_terminal = other.monitored_element_terminal;
+        self.monitored_full_name = other.monitored_full_name.clone();
+        self.switched_full_name = other.switched_full_name.clone();
+        self.mon_snap = other.mon_snap.clone();
+        self.ctrl_snap = other.ctrl_snap.clone();
+
+        self.phase_curve_name = other.phase_curve_name.clone();
+        self.ground_curve_name = other.ground_curve_name.clone();
+        self.ov_curve_name = other.ov_curve_name.clone();
+        self.uv_curve_name = other.uv_curve_name.clone();
+        self.doc_phase_curve_inner_name = other.doc_phase_curve_inner_name.clone();
+        self.phase_curve = other.phase_curve.clone();
+        self.ground_curve = other.ground_curve.clone();
+        self.ov_curve = other.ov_curve.clone();
+        self.uv_curve = other.uv_curve.clone();
+        self.doc_phase_curve_inner = other.doc_phase_curve_inner.clone();
+
+        self.phase_trip = other.phase_trip;
+        self.ground_trip = other.ground_trip;
+        self.td_phase = other.td_phase;
+        self.td_ground = other.td_ground;
+        self.phase_inst = other.phase_inst;
+        self.ground_inst = other.ground_inst;
+        self.reset_time = other.reset_time;
+        self.num_reclose = other.num_reclose;
+        self.definite_time_delay = other.definite_time_delay;
+        self.mechanical_delay = other.mechanical_delay;
+        self.single_ph_trip = other.single_ph_trip;
+        self.single_ph_lockout = other.single_ph_lockout;
+        self.rated_current = other.rated_current;
+        self.interrupting_rating = other.interrupting_rating;
+        self.reclose_intervals = other.reclose_intervals;
+
+        self.kv_base = other.kv_base;
+        self.f_locked = other.f_locked;
+        self.locked_out = other.locked_out;
+
+        // Per-phase state (Pascal MakeLike Relay.pas:683 copies
+        // FPresentState/FNormalState over `Min(RELAYCONTROLMAXDIM,
+        // ControlledElement.Nphases)`, NOT the relay's own FNPhases). `ctrl_snap`
+        // was copied from `other` above, so `state_size()` yields the same
+        // controlled-element phase count Pascal loops here.
+        let n = self.state_size();
+        for i in 1..=n {
+            self.present_state[i] = other.present_state[i];
+            self.normal_state[i] = other.normal_state[i];
+        }
+        self.normal_state_set = other.normal_state_set;
+
+        self.control_type = other.control_type;
+
+        // 46 / 47.
+        self.pickup_amps46 = other.pickup_amps46;
+        self.pct_pickup46 = other.pct_pickup46;
+        self.base_amps46 = other.base_amps46;
+        self.isqt46 = other.isqt46;
+        self.pickup_volts47 = other.pickup_volts47;
+        self.pct_pickup47 = other.pct_pickup47;
+
+        // Generic.
+        self.monitor_variable = other.monitor_variable.clone();
+        self.monitor_var_index = other.monitor_var_index;
+        self.monitor_var_names = other.monitor_var_names.clone();
+        self.over_trip = other.over_trip;
+        self.under_trip = other.under_trip;
+
+        // Distance.
+        self.z1mag = other.z1mag;
+        self.z1ang = other.z1ang;
+        self.z0mag = other.z0mag;
+        self.z0ang = other.z0ang;
+        self.mphase = other.mphase;
+        self.mground = other.mground;
+        self.dist_reverse = other.dist_reverse;
+
+        // Directional overcurrent.
+        self.doc_tilt_angle_low = other.doc_tilt_angle_low;
+        self.doc_tilt_angle_high = other.doc_tilt_angle_high;
+        self.doc_trip_set_low = other.doc_trip_set_low;
+        self.doc_trip_set_high = other.doc_trip_set_high;
+        self.doc_trip_set_mag = other.doc_trip_set_mag;
+        self.doc_delay_inner = other.doc_delay_inner;
+        self.doc_phase_trip_inner = other.doc_phase_trip_inner;
+        self.doc_td_phase_inner = other.doc_td_phase_inner;
+        self.doc_p1_blocking = other.doc_p1_blocking;
+    }
+}
+
 impl DssObject for Relay {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -453,107 +553,6 @@ impl DssObject for Relay {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_ref_actions)
-    }
-
-    /// Pascal `TRelayObj.MakeLike` (r4133).
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Relay>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc);
-        self.ccd.show_event_log = other.ccd.show_event_log; // but leave DebugTrace off
-
-        self.ccd.element_terminal = other.ccd.element_terminal;
-        self.ccd.controlled_element = other.ccd.controlled_element;
-        self.ccd.monitored_element = other.ccd.monitored_element;
-        self.monitored_element_terminal = other.monitored_element_terminal;
-        self.monitored_full_name = other.monitored_full_name.clone();
-        self.switched_full_name = other.switched_full_name.clone();
-        self.mon_snap = other.mon_snap.clone();
-        self.ctrl_snap = other.ctrl_snap.clone();
-
-        self.phase_curve_name = other.phase_curve_name.clone();
-        self.ground_curve_name = other.ground_curve_name.clone();
-        self.ov_curve_name = other.ov_curve_name.clone();
-        self.uv_curve_name = other.uv_curve_name.clone();
-        self.doc_phase_curve_inner_name = other.doc_phase_curve_inner_name.clone();
-        self.phase_curve = other.phase_curve.clone();
-        self.ground_curve = other.ground_curve.clone();
-        self.ov_curve = other.ov_curve.clone();
-        self.uv_curve = other.uv_curve.clone();
-        self.doc_phase_curve_inner = other.doc_phase_curve_inner.clone();
-
-        self.phase_trip = other.phase_trip;
-        self.ground_trip = other.ground_trip;
-        self.td_phase = other.td_phase;
-        self.td_ground = other.td_ground;
-        self.phase_inst = other.phase_inst;
-        self.ground_inst = other.ground_inst;
-        self.reset_time = other.reset_time;
-        self.num_reclose = other.num_reclose;
-        self.definite_time_delay = other.definite_time_delay;
-        self.mechanical_delay = other.mechanical_delay;
-        self.single_ph_trip = other.single_ph_trip;
-        self.single_ph_lockout = other.single_ph_lockout;
-        self.rated_current = other.rated_current;
-        self.interrupting_rating = other.interrupting_rating;
-        self.reclose_intervals = other.reclose_intervals;
-
-        self.kv_base = other.kv_base;
-        self.f_locked = other.f_locked;
-        self.locked_out = other.locked_out;
-
-        // Per-phase state (Pascal MakeLike Relay.pas:683 copies
-        // FPresentState/FNormalState over `Min(RELAYCONTROLMAXDIM,
-        // ControlledElement.Nphases)`, NOT the relay's own FNPhases). `ctrl_snap`
-        // was copied from `other` above, so `state_size()` yields the same
-        // controlled-element phase count Pascal loops here.
-        let n = self.state_size();
-        for i in 1..=n {
-            self.present_state[i] = other.present_state[i];
-            self.normal_state[i] = other.normal_state[i];
-        }
-        self.normal_state_set = other.normal_state_set;
-
-        self.control_type = other.control_type;
-
-        // 46 / 47.
-        self.pickup_amps46 = other.pickup_amps46;
-        self.pct_pickup46 = other.pct_pickup46;
-        self.base_amps46 = other.base_amps46;
-        self.isqt46 = other.isqt46;
-        self.pickup_volts47 = other.pickup_volts47;
-        self.pct_pickup47 = other.pct_pickup47;
-
-        // Generic.
-        self.monitor_variable = other.monitor_variable.clone();
-        self.monitor_var_index = other.monitor_var_index;
-        self.monitor_var_names = other.monitor_var_names.clone();
-        self.over_trip = other.over_trip;
-        self.under_trip = other.under_trip;
-
-        // Distance.
-        self.z1mag = other.z1mag;
-        self.z1ang = other.z1ang;
-        self.z0mag = other.z0mag;
-        self.z0ang = other.z0ang;
-        self.mphase = other.mphase;
-        self.mground = other.mground;
-        self.dist_reverse = other.dist_reverse;
-
-        // Directional overcurrent.
-        self.doc_tilt_angle_low = other.doc_tilt_angle_low;
-        self.doc_tilt_angle_high = other.doc_tilt_angle_high;
-        self.doc_trip_set_low = other.doc_trip_set_low;
-        self.doc_trip_set_high = other.doc_trip_set_high;
-        self.doc_trip_set_mag = other.doc_trip_set_mag;
-        self.doc_delay_inner = other.doc_delay_inner;
-        self.doc_phase_trip_inner = other.doc_phase_trip_inner;
-        self.doc_td_phase_inner = other.doc_td_phase_inner;
-        self.doc_p1_blocking = other.doc_p1_blocking;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

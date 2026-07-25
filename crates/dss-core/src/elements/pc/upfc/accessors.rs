@@ -133,6 +133,42 @@ impl CktElement for Upfc {
     }
 }
 
+impl Upfc {
+    /// Pascal `TUPFCObj.MakeLike` (+ inherited `TPCElement.MakeLike`, which copies
+    /// the spectrum). Faithful reproduction includes the upstream
+    /// `UPFCLossCurveObj := UPFCLossCurveObj` self-assignment **bug** — the loss
+    /// curve is *not* copied from the source, so a `like=` UPFC keeps its own
+    /// (default-empty) curve.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            self.cd.set_nconds(self.cd.nphases); // Forces reallocation of terminal stuff
+            self.cd.yprim_invalid = true;
+        }
+        self.v_ref = other.v_ref;
+        self.pf = other.pf;
+        self.xs = other.xs;
+        self.tol1 = other.tol1;
+        self.freq = other.freq;
+        self.mode_upfc = other.mode_upfc;
+        self.vpqmax = other.vpqmax;
+        // UPFCLossCurveObj := UPFCLossCurveObj (upstream self-assignment no-op).
+        self.vh_limit = other.vh_limit;
+        self.vl_limit = other.vl_limit;
+        self.c_limit = other.c_limit;
+        self.v_ref2 = other.v_ref2;
+        self.kvar_lim = other.kvar_lim;
+        self.mon_elm = other.mon_elm;
+        self.mon_elm_name = other.mon_elm_name.clone();
+        // Inherited TPCElement.MakeLike: the spectrum.
+        self.spectrum = other.spectrum.clone();
+        self.spectrum_obj = other.spectrum_obj.clone();
+        self.cd.base_frequency = other.cd.base_frequency;
+        self.recalc();
+    }
+}
+
 impl DssObject for Upfc {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -283,43 +319,6 @@ impl DssObject for Upfc {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TUPFCObj.MakeLike` (+ inherited `TPCElement.MakeLike`, which copies
-    /// the spectrum). Faithful reproduction includes the upstream
-    /// `UPFCLossCurveObj := UPFCLossCurveObj` self-assignment **bug** — the loss
-    /// curve is *not* copied from the source, so a `like=` UPFC keeps its own
-    /// (default-empty) curve.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Upfc>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            self.cd.set_nconds(self.cd.nphases); // Forces reallocation of terminal stuff
-            self.cd.yprim_invalid = true;
-        }
-        self.v_ref = other.v_ref;
-        self.pf = other.pf;
-        self.xs = other.xs;
-        self.tol1 = other.tol1;
-        self.freq = other.freq;
-        self.mode_upfc = other.mode_upfc;
-        self.vpqmax = other.vpqmax;
-        // UPFCLossCurveObj := UPFCLossCurveObj (upstream self-assignment no-op).
-        self.vh_limit = other.vh_limit;
-        self.vl_limit = other.vl_limit;
-        self.c_limit = other.c_limit;
-        self.v_ref2 = other.v_ref2;
-        self.kvar_lim = other.kvar_lim;
-        self.mon_elm = other.mon_elm;
-        self.mon_elm_name = other.mon_elm_name.clone();
-        // Inherited TPCElement.MakeLike: the spectrum.
-        self.spectrum = other.spectrum.clone();
-        self.spectrum_obj = other.spectrum_obj.clone();
-        self.cd.base_frequency = other.cd.base_frequency;
-        self.recalc();
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

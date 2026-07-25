@@ -7,7 +7,6 @@ use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, 
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::{CktElement, ElemRef, SysCtx};
 use crate::exec::Dss;
-use crate::obj::base::DssObject;
 use crate::solution::control_queue::TimeRec;
 use crate::solution::{ControlQueue, EventLog, SolveMode};
 

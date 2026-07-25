@@ -7,6 +7,48 @@ use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 
 use super::{ConductorChoice, LineGeometryObj, LineType, prop};
 
+impl LineGeometryObj {
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.data.copy_prp_sequence_from(other.data());
+        let o = other;
+        {
+            // Pascal `MakeLike`: `NConds := Other.NWires` runs the nconds side
+            // effect (full reset), then every per-conductor array is copied.
+            self.fnconds = o.fnconds;
+            self.realloc_conductors();
+            self.fnphases = o.fnphases;
+            self.line_spacing_obj = o.line_spacing_obj.as_ref().map(|b| b.clone_box());
+            // dss_capi 0.15.x `MakeLike` copies the equivalent-spacing fields.
+            self.eq_dist_ph_ph = o.eq_dist_ph_ph;
+            self.eq_dist_ph_n = o.eq_dist_ph_n;
+            self.avg_phase_height = o.avg_phase_height;
+            self.avg_neutral_height = o.avg_neutral_height;
+            self.equivalent_spacing = o.equivalent_spacing;
+            self.fline_type = o.fline_type;
+            self.fphase_choice.clone_from(&o.fphase_choice);
+            self.fwiredata = o
+                .fwiredata
+                .iter()
+                .map(|c| c.as_ref().map(|b| b.clone_box()))
+                .collect();
+            self.fx.clone_from(&o.fx);
+            self.fy.clone_from(&o.fy);
+            self.funits.clone_from(&o.funits);
+            self.data_changed = true;
+            self.norm_amps = o.norm_amps;
+            self.emerg_amps = o.emerg_amps;
+            self.freduce = o.freduce;
+            // Pascal's `NConds := Other.NWires` rebuilds an *overhead* engine via
+            // the nconds side effect and then runs `UpdateLineGeometryData`; for a
+            // cable source that trailing update raises `EInvalidCast` (FLineData is
+            // overhead but the conductors are CN/TS). We instead clone the source
+            // engine so the kind matches the copied conductors and defer the
+            // recompute (`data_changed = true` keeps it stale until first use).
+            self.fline_data = o.fline_data.clone();
+        }
+    }
+}
+
 impl DssObject for LineGeometryObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -285,45 +327,6 @@ impl DssObject for LineGeometryObj {
                 | prop::TSCABLES
         ) {
             self.data_changed = true;
-        }
-    }
-
-    fn make_like(&mut self, other: &dyn DssObject) {
-        self.data.copy_prp_sequence_from(other.data());
-        if let Some(o) = other.as_any().downcast_ref::<LineGeometryObj>() {
-            // Pascal `MakeLike`: `NConds := Other.NWires` runs the nconds side
-            // effect (full reset), then every per-conductor array is copied.
-            self.fnconds = o.fnconds;
-            self.realloc_conductors();
-            self.fnphases = o.fnphases;
-            self.line_spacing_obj = o.line_spacing_obj.as_ref().map(|b| b.clone_box());
-            // dss_capi 0.15.x `MakeLike` copies the equivalent-spacing fields.
-            self.eq_dist_ph_ph = o.eq_dist_ph_ph;
-            self.eq_dist_ph_n = o.eq_dist_ph_n;
-            self.avg_phase_height = o.avg_phase_height;
-            self.avg_neutral_height = o.avg_neutral_height;
-            self.equivalent_spacing = o.equivalent_spacing;
-            self.fline_type = o.fline_type;
-            self.fphase_choice.clone_from(&o.fphase_choice);
-            self.fwiredata = o
-                .fwiredata
-                .iter()
-                .map(|c| c.as_ref().map(|b| b.clone_box()))
-                .collect();
-            self.fx.clone_from(&o.fx);
-            self.fy.clone_from(&o.fy);
-            self.funits.clone_from(&o.funits);
-            self.data_changed = true;
-            self.norm_amps = o.norm_amps;
-            self.emerg_amps = o.emerg_amps;
-            self.freduce = o.freduce;
-            // Pascal's `NConds := Other.NWires` rebuilds an *overhead* engine via
-            // the nconds side effect and then runs `UpdateLineGeometryData`; for a
-            // cable source that trailing update raises `EInvalidCast` (FLineData is
-            // overhead but the conductors are CN/TS). We instead clone the source
-            // engine so the kind matches the copied conductors and defer the
-            // recompute (`data_changed = true` keeps it stale until first use).
-            self.fline_data = o.fline_data.clone();
         }
     }
 

@@ -82,6 +82,62 @@ impl CktElement for RegControl {
     }
 }
 
+impl RegControl {
+    /// Pascal `TRegControlObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force reallocation of terminal stuff
+
+        // ControlledElement := Other.ControlledElement (pointer copy; the
+        // Pascal HasControl/ControlElementList bookkeeping only matters for
+        // element deletion, which is not supported).
+        self.ccd.controlled_element = other.ccd.controlled_element;
+        self.ccd.monitored_element = other.ccd.monitored_element;
+        self.controlled_name = other.controlled_name.clone();
+        self.snapshot = other.snapshot.clone();
+        self.tap_snap = other.tap_snap.clone();
+
+        self.ccd.element_terminal = other.ccd.element_terminal;
+        self.vreg = other.vreg;
+        self.bandwidth = other.bandwidth;
+        self.pt_ratio = other.pt_ratio;
+        self.remote_pt_ratio = other.remote_pt_ratio;
+        self.ct_rating = other.ct_rating;
+        self.r = other.r;
+        self.x = other.x;
+        self.regulated_bus = other.regulated_bus.clone();
+        self.ccd.time_delay = other.ccd.time_delay;
+        self.is_reversible = other.is_reversible;
+        self.rev_vreg = other.rev_vreg;
+        self.rev_bandwidth = other.rev_bandwidth;
+        self.rev_r = other.rev_r;
+        self.rev_x = other.rev_x;
+        self.tap_delay = other.tap_delay;
+        self.tap_winding = other.tap_winding;
+        self.inverse_time = other.inverse_time;
+        self.tap_limit_per_change = other.tap_limit_per_change;
+        self.rev_power_threshold = other.rev_power_threshold;
+        self.fwd_power_threshold = other.fwd_power_threshold;
+        self.rev_delay = other.rev_delay;
+        self.reverse_neutral = other.reverse_neutral;
+        self.ccd.show_event_log = other.ccd.show_event_log;
+        // DebugTrace := Other.DebugTrace;  Always default to NO
+        self.fpt_phase = other.fpt_phase;
+        // TapNum := Other.TapNum — runs the property setter, repositioning the
+        // (copied) controlled transformer's tap; with untouched taps this is a
+        // no-op write of the mid-tap.
+        self.set_tap_num(other.get_tap_num());
+        self.cogen_enabled = other.cogen_enabled;
+        self.idle_enabled = other.idle_enabled;
+        self.idle_reverse_enabled = other.idle_reverse_enabled;
+        self.idle_forward_enabled = other.idle_forward_enabled;
+        self.ldc_z = other.ldc_z;
+        self.rev_ldc_z = other.rev_ldc_z;
+    }
+}
+
 impl DssObject for RegControl {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -362,63 +418,6 @@ impl DssObject for RegControl {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_actions)
-    }
-
-    /// Pascal `TRegControlObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<RegControl>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc); // Force reallocation of terminal stuff
-
-        // ControlledElement := Other.ControlledElement (pointer copy; the
-        // Pascal HasControl/ControlElementList bookkeeping only matters for
-        // element deletion, which is not supported).
-        self.ccd.controlled_element = other.ccd.controlled_element;
-        self.ccd.monitored_element = other.ccd.monitored_element;
-        self.controlled_name = other.controlled_name.clone();
-        self.snapshot = other.snapshot.clone();
-        self.tap_snap = other.tap_snap.clone();
-
-        self.ccd.element_terminal = other.ccd.element_terminal;
-        self.vreg = other.vreg;
-        self.bandwidth = other.bandwidth;
-        self.pt_ratio = other.pt_ratio;
-        self.remote_pt_ratio = other.remote_pt_ratio;
-        self.ct_rating = other.ct_rating;
-        self.r = other.r;
-        self.x = other.x;
-        self.regulated_bus = other.regulated_bus.clone();
-        self.ccd.time_delay = other.ccd.time_delay;
-        self.is_reversible = other.is_reversible;
-        self.rev_vreg = other.rev_vreg;
-        self.rev_bandwidth = other.rev_bandwidth;
-        self.rev_r = other.rev_r;
-        self.rev_x = other.rev_x;
-        self.tap_delay = other.tap_delay;
-        self.tap_winding = other.tap_winding;
-        self.inverse_time = other.inverse_time;
-        self.tap_limit_per_change = other.tap_limit_per_change;
-        self.rev_power_threshold = other.rev_power_threshold;
-        self.fwd_power_threshold = other.fwd_power_threshold;
-        self.rev_delay = other.rev_delay;
-        self.reverse_neutral = other.reverse_neutral;
-        self.ccd.show_event_log = other.ccd.show_event_log;
-        // DebugTrace := Other.DebugTrace;  Always default to NO
-        self.fpt_phase = other.fpt_phase;
-        // TapNum := Other.TapNum — runs the property setter, repositioning the
-        // (copied) controlled transformer's tap; with untouched taps this is a
-        // no-op write of the mid-tap.
-        self.set_tap_num(other.get_tap_num());
-        self.cogen_enabled = other.cogen_enabled;
-        self.idle_enabled = other.idle_enabled;
-        self.idle_reverse_enabled = other.idle_reverse_enabled;
-        self.idle_forward_enabled = other.idle_forward_enabled;
-        self.ldc_z = other.ldc_z;
-        self.rev_ldc_z = other.rev_ldc_z;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

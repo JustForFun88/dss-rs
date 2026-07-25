@@ -9,6 +9,66 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::traits::{CktElement, ElemRef};
 use crate::obj::base::{DssObjData, DssObject};
 
+impl VSource {
+    /// Pascal `TVsourceObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            let n = other.cd.nphases;
+            self.cd.set_nconds(n);
+            self.cd.yprim_invalid = true;
+        }
+        self.z = other.z.clone();
+        self.vmag = other.vmag;
+        self.kv_base = other.kv_base;
+        self.base_mva = other.base_mva;
+        self.per_unit = other.per_unit;
+        self.angle = other.angle;
+        self.mva_sc3 = other.mva_sc3;
+        self.mva_sc1 = other.mva_sc1;
+        self.scan_type = other.scan_type;
+        self.sequence_type = other.sequence_type;
+        self.src_frequency = other.src_frequency;
+        self.z_spec_type = other.z_spec_type;
+        self.r1 = other.r1;
+        self.x1 = other.x1;
+        self.r2 = other.r2;
+        self.x2 = other.x2;
+        self.r0 = other.r0;
+        self.x0 = other.x0;
+        self.x1r1 = other.x1r1;
+        self.x0r0 = other.x0r0;
+        self.pu_z1 = other.pu_z1;
+        self.pu_z0 = other.pu_z0;
+        self.pu_z2 = other.pu_z2;
+        self.z_base = other.z_base;
+        self.bus2_defined = other.bus2_defined;
+        self.z1_specified = other.z1_specified;
+        self.z2_specified = other.z2_specified;
+        self.z0_specified = other.z0_specified;
+        self.pu_z0_specified = other.pu_z0_specified;
+        self.pu_z1_specified = other.pu_z1_specified;
+        self.pu_z2_specified = other.pu_z2_specified;
+        self.is_quasi_ideal = other.is_quasi_ideal;
+        self.pu_z_ideal = other.pu_z_ideal;
+        self.yearly_shape = other.yearly_shape.clone();
+        self.daily_shape = other.daily_shape.clone();
+        self.duty_shape = other.duty_shape.clone();
+        self.spectrum = other.spectrum.clone();
+        // Pascal copies the resolved shape/spectrum pointers (generic MakeLike).
+        self.spectrum_obj = other.spectrum_obj.clone();
+        self.yearly_shape_obj = other.yearly_shape_obj.clone();
+        self.daily_shape_obj = other.daily_shape_obj.clone();
+        self.duty_shape_obj = other.duty_shape_obj.clone();
+        self.yearly_shape_ref = other.yearly_shape_ref;
+        self.daily_shape_ref = other.daily_shape_ref;
+        self.duty_shape_ref = other.duty_shape_ref;
+        self.shape_is_actual = other.shape_is_actual;
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+    }
+}
+
 impl DssObject for VSource {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -310,67 +370,6 @@ impl DssObject for VSource {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TVsourceObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<VSource>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = other.cd.nphases;
-            self.cd.set_nconds(n);
-            self.cd.yprim_invalid = true;
-        }
-        self.z = other.z.clone();
-        self.vmag = other.vmag;
-        self.kv_base = other.kv_base;
-        self.base_mva = other.base_mva;
-        self.per_unit = other.per_unit;
-        self.angle = other.angle;
-        self.mva_sc3 = other.mva_sc3;
-        self.mva_sc1 = other.mva_sc1;
-        self.scan_type = other.scan_type;
-        self.sequence_type = other.sequence_type;
-        self.src_frequency = other.src_frequency;
-        self.z_spec_type = other.z_spec_type;
-        self.r1 = other.r1;
-        self.x1 = other.x1;
-        self.r2 = other.r2;
-        self.x2 = other.x2;
-        self.r0 = other.r0;
-        self.x0 = other.x0;
-        self.x1r1 = other.x1r1;
-        self.x0r0 = other.x0r0;
-        self.pu_z1 = other.pu_z1;
-        self.pu_z0 = other.pu_z0;
-        self.pu_z2 = other.pu_z2;
-        self.z_base = other.z_base;
-        self.bus2_defined = other.bus2_defined;
-        self.z1_specified = other.z1_specified;
-        self.z2_specified = other.z2_specified;
-        self.z0_specified = other.z0_specified;
-        self.pu_z0_specified = other.pu_z0_specified;
-        self.pu_z1_specified = other.pu_z1_specified;
-        self.pu_z2_specified = other.pu_z2_specified;
-        self.is_quasi_ideal = other.is_quasi_ideal;
-        self.pu_z_ideal = other.pu_z_ideal;
-        self.yearly_shape = other.yearly_shape.clone();
-        self.daily_shape = other.daily_shape.clone();
-        self.duty_shape = other.duty_shape.clone();
-        self.spectrum = other.spectrum.clone();
-        // Pascal copies the resolved shape/spectrum pointers (generic MakeLike).
-        self.spectrum_obj = other.spectrum_obj.clone();
-        self.yearly_shape_obj = other.yearly_shape_obj.clone();
-        self.daily_shape_obj = other.daily_shape_obj.clone();
-        self.duty_shape_obj = other.duty_shape_obj.clone();
-        self.yearly_shape_ref = other.yearly_shape_ref;
-        self.daily_shape_ref = other.daily_shape_ref;
-        self.duty_shape_ref = other.duty_shape_ref;
-        self.shape_is_actual = other.shape_is_actual;
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

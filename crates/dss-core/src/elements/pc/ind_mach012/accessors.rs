@@ -150,6 +150,48 @@ impl CktElement for IndMach012 {
     }
 }
 
+impl IndMach012 {
+    /// Pascal `TIndMach012Obj.MakeLike` (+ the inherited `TPCElement.MakeLike`,
+    /// which copies the spectrum). Note Pascal copies the whole `MachineData`
+    /// record but **not** `Connection`/`S1`/`FixedSlip`/the dispatch shapes.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            self.cd.set_nconds(self.cd.nphases); // Pascal: NConds := Fnphases
+            self.cd.yprim_invalid = true;
+        }
+        // MachineData (the TGeneratorVars record) — copied wholesale.
+        self.kv_generator_base = other.kv_generator_base;
+        self.kva_rating = other.kva_rating;
+        self.h_mass = other.h_mass;
+        self.d = other.d;
+        self.dpu = other.dpu;
+        self.w0 = other.w0;
+        self.speed = other.speed;
+        self.dspeed = other.dspeed;
+        self.theta = other.theta;
+        self.dtheta = other.dtheta;
+        self.p_shaft = other.p_shaft;
+        self.m_mass = other.m_mass;
+        self.speed_history = other.speed_history;
+        self.theta_history = other.theta_history;
+        self.p_nominal_per_phase = other.p_nominal_per_phase;
+        self.v_base = other.v_base;
+        self.kw_base = other.kw_base;
+        self.pu_rs = other.pu_rs;
+        self.pu_rr = other.pu_rr;
+        self.pu_xr = other.pu_xr;
+        self.pu_xm = other.pu_xm;
+        self.pu_xs = other.pu_xs;
+        self.max_slip = other.max_slip;
+        // Inherited TPCElement.MakeLike: SpectrumObj.
+        self.spectrum = other.spectrum.clone();
+        self.spectrum_obj = other.spectrum_obj.clone();
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+    }
+}
+
 impl DssObject for IndMach012 {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -371,49 +413,6 @@ impl DssObject for IndMach012 {
     fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
         self.recalc(sys);
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TIndMach012Obj.MakeLike` (+ the inherited `TPCElement.MakeLike`,
-    /// which copies the spectrum). Note Pascal copies the whole `MachineData`
-    /// record but **not** `Connection`/`S1`/`FixedSlip`/the dispatch shapes.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<IndMach012>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            self.cd.set_nconds(self.cd.nphases); // Pascal: NConds := Fnphases
-            self.cd.yprim_invalid = true;
-        }
-        // MachineData (the TGeneratorVars record) — copied wholesale.
-        self.kv_generator_base = other.kv_generator_base;
-        self.kva_rating = other.kva_rating;
-        self.h_mass = other.h_mass;
-        self.d = other.d;
-        self.dpu = other.dpu;
-        self.w0 = other.w0;
-        self.speed = other.speed;
-        self.dspeed = other.dspeed;
-        self.theta = other.theta;
-        self.dtheta = other.dtheta;
-        self.p_shaft = other.p_shaft;
-        self.m_mass = other.m_mass;
-        self.speed_history = other.speed_history;
-        self.theta_history = other.theta_history;
-        self.p_nominal_per_phase = other.p_nominal_per_phase;
-        self.v_base = other.v_base;
-        self.kw_base = other.kw_base;
-        self.pu_rs = other.pu_rs;
-        self.pu_rr = other.pu_rr;
-        self.pu_xr = other.pu_xr;
-        self.pu_xm = other.pu_xm;
-        self.pu_xs = other.pu_xs;
-        self.max_slip = other.max_slip;
-        // Inherited TPCElement.MakeLike: SpectrumObj.
-        self.spectrum = other.spectrum.clone();
-        self.spectrum_obj = other.spectrum_obj.clone();
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

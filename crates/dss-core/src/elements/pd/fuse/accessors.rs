@@ -54,6 +54,40 @@ impl CktElement for Fuse {
     }
 }
 
+impl Fuse {
+    /// Pascal `TFuseObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
+
+        self.ccd.element_terminal = other.ccd.element_terminal;
+        self.ccd.controlled_element = other.ccd.controlled_element;
+        self.ccd.monitored_element = other.ccd.monitored_element;
+        self.monitored_element_terminal = other.monitored_element_terminal;
+        self.monitored_full_name = other.monitored_full_name.clone();
+        self.switched_full_name = other.switched_full_name.clone();
+        self.mon_snap = other.mon_snap.clone();
+        self.ctrl_snap = other.ctrl_snap.clone();
+
+        self.fuse_curve_name = other.fuse_curve_name.clone();
+        self.fuse_curve_obj = other.fuse_curve_obj.clone();
+        self.rated_current = other.rated_current;
+        // r4133 (WP-U2.1): MakeLike copies the new divisor + interrupting rating.
+        self.curve_multiplier = other.curve_multiplier;
+        self.interrupting_rating = other.interrupting_rating;
+
+        // Pascal copies the first `min(FUSEMAXDIM, ControlledElement.NPhases)`
+        // per-phase states; with no controlled element it copies none.
+        let n = other.controlled_nphases();
+        self.present_state[..n].copy_from_slice(&other.present_state[..n]);
+        self.normal_state[..n].copy_from_slice(&other.normal_state[..n]);
+        // Pascal `MakeLike` does not copy `NormalStateSet` (stays at the Create
+        // default), so neither do we.
+    }
+}
+
 impl DssObject for Fuse {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -270,41 +304,6 @@ impl DssObject for Fuse {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_ref_actions)
-    }
-
-    /// Pascal `TFuseObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Fuse>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
-
-        self.ccd.element_terminal = other.ccd.element_terminal;
-        self.ccd.controlled_element = other.ccd.controlled_element;
-        self.ccd.monitored_element = other.ccd.monitored_element;
-        self.monitored_element_terminal = other.monitored_element_terminal;
-        self.monitored_full_name = other.monitored_full_name.clone();
-        self.switched_full_name = other.switched_full_name.clone();
-        self.mon_snap = other.mon_snap.clone();
-        self.ctrl_snap = other.ctrl_snap.clone();
-
-        self.fuse_curve_name = other.fuse_curve_name.clone();
-        self.fuse_curve_obj = other.fuse_curve_obj.clone();
-        self.rated_current = other.rated_current;
-        // r4133 (WP-U2.1): MakeLike copies the new divisor + interrupting rating.
-        self.curve_multiplier = other.curve_multiplier;
-        self.interrupting_rating = other.interrupting_rating;
-
-        // Pascal copies the first `min(FUSEMAXDIM, ControlledElement.NPhases)`
-        // per-phase states; with no controlled element it copies none.
-        let n = other.controlled_nphases();
-        self.present_state[..n].copy_from_slice(&other.present_state[..n]);
-        self.normal_state[..n].copy_from_slice(&other.normal_state[..n]);
-        // Pascal `MakeLike` does not copy `NormalStateSet` (stays at the Create
-        // default), so neither do we.
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

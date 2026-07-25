@@ -122,6 +122,34 @@ impl CktElement for ExpControl {
     }
 }
 
+impl ExpControl {
+    /// Pascal `TExpControlObj.MakeLike` — copies the parse-time control settings
+    /// and the phase count. Pascal notably does **not** copy `Tresponse`/`FOpenTau`,
+    /// `ShowEventLog`, `TimeDelay`, or the name lists (`FPVSystemNameList`/
+    /// `DERNameList`), so those keep the derived object's ctor defaults; the per-DER
+    /// fleet state (`ControlledElement`/`CtrlVars`) is step-3 runtime state.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
+
+        self.f_list_size = other.f_list_size;
+        self.f_voltage_change_tolerance = other.f_voltage_change_tolerance;
+        self.f_var_change_tolerance = other.f_var_change_tolerance;
+        self.f_vreg_init = other.f_vreg_init;
+        self.q_v_slope = other.q_v_slope;
+        self.vreg_tau = other.vreg_tau;
+        self.f_qbias = other.f_qbias;
+        self.vreg_min = other.vreg_min;
+        self.vreg_max = other.vreg_max;
+        self.qmax_lead = other.qmax_lead;
+        self.qmax_lag = other.qmax_lag;
+        self.f_delta_q_factor = other.f_delta_q_factor;
+        self.f_prefer_q = other.f_prefer_q;
+    }
+}
+
 impl DssObject for ExpControl {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -256,35 +284,6 @@ impl DssObject for ExpControl {
     /// build is deferred to the first `Sample`).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    /// Pascal `TExpControlObj.MakeLike` — copies the parse-time control settings
-    /// and the phase count. Pascal notably does **not** copy `Tresponse`/`FOpenTau`,
-    /// `ShowEventLog`, `TimeDelay`, or the name lists (`FPVSystemNameList`/
-    /// `DERNameList`), so those keep the derived object's ctor defaults; the per-DER
-    /// fleet state (`ControlledElement`/`CtrlVars`) is step-3 runtime state.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<ExpControl>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
-
-        self.f_list_size = other.f_list_size;
-        self.f_voltage_change_tolerance = other.f_voltage_change_tolerance;
-        self.f_var_change_tolerance = other.f_var_change_tolerance;
-        self.f_vreg_init = other.f_vreg_init;
-        self.q_v_slope = other.q_v_slope;
-        self.vreg_tau = other.vreg_tau;
-        self.f_qbias = other.f_qbias;
-        self.vreg_min = other.vreg_min;
-        self.vreg_max = other.vreg_max;
-        self.qmax_lead = other.qmax_lead;
-        self.qmax_lag = other.qmax_lag;
-        self.f_delta_q_factor = other.f_delta_q_factor;
-        self.f_prefer_q = other.f_prefer_q;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

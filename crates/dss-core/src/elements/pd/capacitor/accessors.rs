@@ -5,6 +5,41 @@ use super::Capacitor;
 use crate::elements::traits::CktElement;
 use crate::obj::base::{DssObjData, DssObject};
 
+impl Capacitor {
+    /// Pascal `TCapacitorObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            let n = other.cd.nphases;
+            self.cd.set_nconds(n); // force reallocation of terminals/conductors
+            self.cd.yorder = self.cd.nconds * self.cd.nterms;
+            self.cd.yprim_invalid = true;
+        }
+
+        self.set_num_steps(other.fnumsteps);
+        let n = self.n_steps();
+        self.fc[..n].copy_from_slice(&other.fc[..n]);
+        self.fkvarrating[..n].copy_from_slice(&other.fkvarrating[..n]);
+        self.fr[..n].copy_from_slice(&other.fr[..n]);
+        self.fxl[..n].copy_from_slice(&other.fxl[..n]);
+        self.fharm[..n].copy_from_slice(&other.fharm[..n]);
+        self.fstates[..n].copy_from_slice(&other.fstates[..n]);
+
+        self.kvrating = other.kvrating;
+        self.connection = other.connection;
+        self.spec_type = other.spec_type;
+        self.cmatrix = other.cmatrix.clone();
+
+        // TPDElement.MakeLike copies the rating fields.
+        self.norm_amps = other.norm_amps;
+        self.emerg_amps = other.emerg_amps;
+        self.fault_rate = other.fault_rate;
+        self.pct_perm = other.pct_perm;
+        self.hrs_to_repair = other.hrs_to_repair;
+    }
+}
+
 impl DssObject for Capacitor {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -247,42 +282,6 @@ impl DssObject for Capacitor {
     /// Pascal base `EndEdit` → `RecalcElementData` (Capacitor does not override).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    /// Pascal `TCapacitorObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Capacitor>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = other.cd.nphases;
-            self.cd.set_nconds(n); // force reallocation of terminals/conductors
-            self.cd.yorder = self.cd.nconds * self.cd.nterms;
-            self.cd.yprim_invalid = true;
-        }
-
-        self.set_num_steps(other.fnumsteps);
-        let n = self.n_steps();
-        self.fc[..n].copy_from_slice(&other.fc[..n]);
-        self.fkvarrating[..n].copy_from_slice(&other.fkvarrating[..n]);
-        self.fr[..n].copy_from_slice(&other.fr[..n]);
-        self.fxl[..n].copy_from_slice(&other.fxl[..n]);
-        self.fharm[..n].copy_from_slice(&other.fharm[..n]);
-        self.fstates[..n].copy_from_slice(&other.fstates[..n]);
-
-        self.kvrating = other.kvrating;
-        self.connection = other.connection;
-        self.spec_type = other.spec_type;
-        self.cmatrix = other.cmatrix.clone();
-
-        // TPDElement.MakeLike copies the rating fields.
-        self.norm_amps = other.norm_amps;
-        self.emerg_amps = other.emerg_amps;
-        self.fault_rate = other.fault_rate;
-        self.pct_perm = other.pct_perm;
-        self.hrs_to_repair = other.hrs_to_repair;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

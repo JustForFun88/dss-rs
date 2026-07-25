@@ -90,6 +90,23 @@ impl CktElement for Sensor {
     }
 }
 
+impl Sensor {
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        let o = other;
+        // Pascal `TSensorObj.MakeLike` copies **only** the shape/metered fields
+        // and the base frequency — kVBase/conn/%Error/Weight/DeltaDirection and
+        // the measured arrays stay at the new object's ctor defaults / NIL.
+        self.med.cd.make_like_base(&o.med.cd);
+        self.med.cd.nphases = o.med.cd.nphases;
+        self.med.cd.set_nconds(o.med.cd.nconds);
+        self.med.metered_element = o.med.metered_element;
+        self.med.metered_terminal = o.med.metered_terminal;
+        self.med.metered_snap = o.med.metered_snap.clone();
+        self.element_full_name = o.element_full_name.clone();
+        self.med.cd.base_frequency = o.med.cd.base_frequency;
+    }
+}
+
 impl DssObject for Sensor {
     fn data(&self) -> &DssObjData {
         &self.med.cd.obj
@@ -287,23 +304,6 @@ impl DssObject for Sensor {
         for e in errors {
             self.med.cd.obj.push_error(e);
         }
-    }
-
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(o) = other.as_any().downcast_ref::<Sensor>() else {
-            return;
-        };
-        // Pascal `TSensorObj.MakeLike` copies **only** the shape/metered fields
-        // and the base frequency — kVBase/conn/%Error/Weight/DeltaDirection and
-        // the measured arrays stay at the new object's ctor defaults / NIL.
-        self.med.cd.make_like_base(&o.med.cd);
-        self.med.cd.nphases = o.med.cd.nphases;
-        self.med.cd.set_nconds(o.med.cd.nconds);
-        self.med.metered_element = o.med.metered_element;
-        self.med.metered_terminal = o.med.metered_terminal;
-        self.med.metered_snap = o.med.metered_snap.clone();
-        self.element_full_name = o.element_full_name.clone();
-        self.med.cd.base_frequency = o.med.cd.base_frequency;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

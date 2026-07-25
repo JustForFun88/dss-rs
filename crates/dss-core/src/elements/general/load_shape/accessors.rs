@@ -12,6 +12,40 @@ use super::prop::{
 };
 use super::{LoadShapeObj, store_array};
 
+impl LoadShapeObj {
+    /// Pascal `TLoadShapeObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.data.copy_prp_sequence_from(other.data());
+        let o = other;
+        self.num_points = o.num_points;
+        self.interval = o.interval;
+        self.p_mult = o.p_mult.clone();
+        self.q_mult = o.q_mult.clone();
+        // With a fixed interval the hour array is dropped (Pascal frees dH).
+        self.hour = if self.interval > 0.0 {
+            None
+        } else {
+            o.hour.clone()
+        };
+        // Pascal `LoadShape.pas:887-913`: single-precision storage is copied
+        // as singles (the widened views above already hold identical values);
+        // like `dH`, `sH` is dropped for a fixed interval.
+        self.s_p = o.s_p.clone();
+        self.s_h = if self.interval > 0.0 {
+            None
+        } else {
+            o.s_h.clone()
+        };
+        self.use_actual = o.use_actual;
+        self.use_mmf = o.use_mmf;
+        self.mm_file_cmd = o.mm_file_cmd.clone();
+        self.mm_file_cmd_q = o.mm_file_cmd_q.clone();
+        self.base_p = o.base_p;
+        self.base_q = o.base_q;
+        self.set_max_p_and_q();
+    }
+}
+
 impl DssObject for LoadShapeObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -384,40 +418,6 @@ impl DssObject for LoadShapeObj {
         if self.p_mult.is_some() {
             self.set_max_p_and_q();
         }
-    }
-
-    /// Pascal `TLoadShapeObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        self.data.copy_prp_sequence_from(other.data());
-        let Some(o) = other.as_any().downcast_ref::<LoadShapeObj>() else {
-            return;
-        };
-        self.num_points = o.num_points;
-        self.interval = o.interval;
-        self.p_mult = o.p_mult.clone();
-        self.q_mult = o.q_mult.clone();
-        // With a fixed interval the hour array is dropped (Pascal frees dH).
-        self.hour = if self.interval > 0.0 {
-            None
-        } else {
-            o.hour.clone()
-        };
-        // Pascal `LoadShape.pas:887-913`: single-precision storage is copied
-        // as singles (the widened views above already hold identical values);
-        // like `dH`, `sH` is dropped for a fixed interval.
-        self.s_p = o.s_p.clone();
-        self.s_h = if self.interval > 0.0 {
-            None
-        } else {
-            o.s_h.clone()
-        };
-        self.use_actual = o.use_actual;
-        self.use_mmf = o.use_mmf;
-        self.mm_file_cmd = o.mm_file_cmd.clone();
-        self.mm_file_cmd_q = o.mm_file_cmd_q.clone();
-        self.base_p = o.base_p;
-        self.base_q = o.base_q;
-        self.set_max_p_and_q();
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

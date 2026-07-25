@@ -100,6 +100,22 @@ impl CnDataObj {
     }
 }
 
+impl CnDataObj {
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.data.copy_prp_sequence_from(other.data());
+        let o = other;
+        {
+            self.cond.make_like_from(&o.cond);
+            self.cable.make_like_from(&o.cable);
+            self.fk_strand = o.fk_strand;
+            self.fdia_strand = o.fdia_strand;
+            self.fgmr_strand = o.fgmr_strand;
+            self.fr_strand = o.fr_strand;
+            self.fsemicon_layer = o.fsemicon_layer;
+        }
+    }
+}
+
 impl DssObject for CnDataObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -206,19 +222,6 @@ impl DssObject for CnDataObj {
         }
         for e in errs {
             self.data.push_error(e);
-        }
-    }
-
-    fn make_like(&mut self, other: &dyn DssObject) {
-        self.data.copy_prp_sequence_from(other.data());
-        if let Some(o) = other.as_any().downcast_ref::<CnDataObj>() {
-            self.cond.make_like_from(&o.cond);
-            self.cable.make_like_from(&o.cable);
-            self.fk_strand = o.fk_strand;
-            self.fdia_strand = o.fdia_strand;
-            self.fgmr_strand = o.fgmr_strand;
-            self.fr_strand = o.fr_strand;
-            self.fsemicon_layer = o.fsemicon_layer;
         }
     }
 

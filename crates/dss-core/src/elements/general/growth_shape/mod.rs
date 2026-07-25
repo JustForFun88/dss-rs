@@ -266,6 +266,17 @@ impl GrowthShapeObj {
     }
 }
 
+impl GrowthShapeObj {
+    /// Pascal `TGrowthShapeObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.data.copy_prp_sequence_from(other.data());
+        let o = other;
+        self.npts = o.npts;
+        self.multiplier = o.multiplier.clone();
+        self.year = o.year.clone();
+    }
+}
+
 impl DssObject for GrowthShapeObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -381,17 +392,6 @@ impl DssObject for GrowthShapeObj {
     /// Pascal `TGrowthShape.EndEdit` → `ReCalcYearMult`.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc_year_mult();
-    }
-
-    /// Pascal `TGrowthShapeObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        self.data.copy_prp_sequence_from(other.data());
-        let Some(o) = other.as_any().downcast_ref::<GrowthShapeObj>() else {
-            return;
-        };
-        self.npts = o.npts;
-        self.multiplier = o.multiplier.clone();
-        self.year = o.year.clone();
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

@@ -74,6 +74,23 @@ impl CktElement for EspvlControl {
     }
 }
 
+impl EspvlControl {
+    /// Pascal `TESPVLControlObj.MakeLike` — copies *only* the phase count,
+    /// monitored element, and terminal (plus the base `PrpSequence`); `Type`, the
+    /// bands, and every list are deliberately **not** copied, so a `like=` control
+    /// keeps the ctor defaults for them (oracle-proven, like GenDispatcher).
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
+        self.ccd.monitored_element = other.ccd.monitored_element;
+        self.monitored_full_name = other.monitored_full_name.clone();
+        self.mon_snap = other.mon_snap.clone();
+        self.ccd.element_terminal = other.ccd.element_terminal;
+    }
+}
+
 impl DssObject for EspvlControl {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -293,24 +310,6 @@ impl DssObject for EspvlControl {
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    /// Pascal `TESPVLControlObj.MakeLike` — copies *only* the phase count,
-    /// monitored element, and terminal (plus the base `PrpSequence`); `Type`, the
-    /// bands, and every list are deliberately **not** copied, so a `like=` control
-    /// keeps the ctor defaults for them (oracle-proven, like GenDispatcher).
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<EspvlControl>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
-        self.ccd.monitored_element = other.ccd.monitored_element;
-        self.monitored_full_name = other.monitored_full_name.clone();
-        self.mon_snap = other.mon_snap.clone();
-        self.ccd.element_terminal = other.ccd.element_terminal;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {
