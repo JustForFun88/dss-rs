@@ -156,13 +156,14 @@ impl AutoTrans {
             return num_complex::Complex64::ZERO;
         }
         self.compute_iterminal(sys, node_v);
-        let nconds = self.cd.nconds;
-        let k = (term - 1) * nconds;
+        // Auto's `Get_Power` reads the terminal's own `TermNodeRef` (the auto's
+        // `SetNodeRef` magic rewrites terminal 2's, distinct from the flat
+        // `NodeRef`) against the terminal's `Iterminal` conductor slice.
         let tref = &self.cd.terminals[term - 1].term_node_ref;
         let mut result = num_complex::Complex64::ZERO;
-        for (i, &n) in tref.iter().enumerate().take(nconds) {
+        for (&n, &ci) in tref.iter().zip(self.cd.term_i(term - 1)) {
             if n > 0 {
-                result += node_v[n] * self.cd.iterminal[k + i].conj();
+                result += node_v[n] * ci.conj();
             }
         }
         if sys.positive_sequence {
