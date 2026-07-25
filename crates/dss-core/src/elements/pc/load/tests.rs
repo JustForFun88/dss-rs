@@ -30,7 +30,7 @@ fn build_shape(edits: &[(&str, &str)]) -> LoadShapeObj {
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert!(errors.is_empty(), "{errors:?}");
     obj
 }
@@ -57,7 +57,7 @@ fn build_growth_shape(
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert!(errors.is_empty(), "{errors:?}");
     obj
 }

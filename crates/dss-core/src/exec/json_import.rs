@@ -246,7 +246,13 @@ impl Dss {
                 };
                 props.fill_from_json(&mut objects[oi], members, &mut eng);
             }
-            objects[oi].end_edit();
+            // Pascal `RecalcElementData` (run by `EndEdit`) reads the live
+            // `ActiveCircuit.Solution` globals; thread that snapshot in.
+            let live_sys = circuit
+                .as_ref()
+                .map(crate::solution::solution::sys_ctx)
+                .unwrap_or_else(crate::elements::traits::SysCtx::parse_default);
+            objects[oi].end_edit(&live_sys);
         }
         // The split borrows are dead here; the shared post-edit tail (deferred
         // errors/abort, bus-name-redefined + Yprim signal propagation,

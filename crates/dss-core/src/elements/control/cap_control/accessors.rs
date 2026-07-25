@@ -385,7 +385,7 @@ impl DssObject for CapControl {
     }
 
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
     }
 
@@ -403,8 +403,11 @@ impl DssObject for CapControl {
         &mut self,
         load: &crate::obj::base::UserModelLoad,
         wasm: Option<&[u8]>,
+        _sys: &crate::elements::traits::SysCtx,
         errors: &mut crate::diag::ErrorLog,
     ) {
+        // CapControl's user model is a control model; its recalc reads no live
+        // `ActiveCircuit.Solution` globals, so the live snapshot is ignored.
         self.apply_user_model_load_impl(load, wasm, errors);
     }
 

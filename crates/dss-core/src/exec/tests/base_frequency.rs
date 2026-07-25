@@ -89,6 +89,37 @@ fn all_elements_inherit_the_50hz_base_frequency() {
     );
 }
 
+/// Dedicated pin for the reproduced UPSTREAM Monitor BaseFrequency bug (the
+/// `TODO(compat)` at `create_object_no_edit`): `TMonitorObj.Create` hard-pins
+/// `Basefrequency := 60.0` (Monitor.pas:472 == r4133:552), overriding the
+/// base-class `BaseFrequency := ActiveCircuit.Fundamental`. Under `Set
+/// DefaultBaseFrequency=50` every other element reads 50, but the monitor reads
+/// 60 — and that value is the `fBase` a mode-4 monitor feeds into `FlickerMeter`,
+/// where `fBase = 50.0` would select the IEC 61000-4-15 230V/50 Hz lamp curve.
+/// So a 50 Hz mode-4 monitor computes Pst with the wrong (60 Hz) lamp curve
+/// unless `basefreq=50` is set. Both gating oracles pin 60.0; a "clean" inherit
+/// would break parity — hence reproduced, not fixed (until Stage F).
+#[test]
+fn monitor_basefreq_pins_60hz_upstream_bug() {
+    let mut dss = Dss::new();
+    dss.command("Set DefaultBaseFrequency=50");
+    dss.command("New circuit.euro basekv=11");
+    dss.command("New Line.l1 bus1=sourcebus bus2=b2 length=1 r1=0.1 x1=0.1 c1=0 c0=0");
+    dss.command("New Monitor.m1 element=line.l1 terminal=1 mode=4");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    // The circuit fundamental is 50, but the monitor is hard-pinned to 60.
+    assert_eq!(dss.circuit().unwrap().fundamental, 50.0);
+    assert_eq!(
+        query_f64(&mut dss, "monitor.m1.basefreq"),
+        60.0,
+        "monitor basefreq must reproduce the upstream 60.0 override (Monitor.pas:472)"
+    );
+    // An explicit `basefreq=` still lets the user correct it (flows into
+    // FlickerMeter correctly on both engines).
+    dss.command("Edit monitor.m1 basefreq=50");
+    assert_eq!(query_f64(&mut dss, "monitor.m1.basefreq"), 50.0);
+}
+
 /// A LineCode (a DSS_OBJECT) created after `New circuit` at 50 Hz inherits the
 /// fundamental and computes its shunt admittance at 50 Hz. A `basefreq=` on the
 /// element still overrides.

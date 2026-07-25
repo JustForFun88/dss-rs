@@ -260,7 +260,7 @@ impl DssObject for XfmrCodeObj {
 
     /// Pascal `TXfmrCode.EndEdit`: copy `XHL/XHT/XLT` into the leading `XSC`
     /// slots when a reactance property was edited (≤ 3 windings).
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         if !self.needs_recalc {
             return;
         }

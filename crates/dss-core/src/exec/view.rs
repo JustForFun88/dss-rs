@@ -549,7 +549,16 @@ impl Dss {
     pub fn schema_class_def(&self, class_name: &str) -> Option<crate::report::export::json::Json> {
         let &ci = self.class_by_name.get(&class_name.to_ascii_lowercase())?;
         let class = &self.classes[ci];
-        let sample = (class.new_object)("sample_for_defaults");
+        let mut sample = (class.new_object)("sample_for_defaults");
+        // Pascal `cls.NewObject('SAMPLE_FOR_DEFAULTS')` runs `RecalcElementData` in
+        // Create (reading the fresh `ActiveCircuit.Solution` — the parse-time
+        // default here, no circuit exists in this defaults-introspection path), so
+        // the sampled property defaults match the oracle. The PC `new` no longer
+        // recalcs, so seed the sample the same way the executive does at create.
+        super::command::recalc_pc_create(
+            sample.as_mut(),
+            &crate::elements::traits::SysCtx::parse_default(),
+        );
         Some(crate::report::export::json::schema::class_schema(
             class.props.class_name(),
             &class.props,

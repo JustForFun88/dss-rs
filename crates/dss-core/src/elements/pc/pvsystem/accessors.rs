@@ -149,10 +149,10 @@ impl CktElement for PVSystem {
         }
     }
 
-    fn set_variable(&mut self, i: usize, value: f64) {
+    fn set_variable(&mut self, i: usize, value: f64, sys: &crate::elements::traits::SysCtx) {
         // Pascal `Set_Variable` routes i > NumPVSystemVariables to the UserModel
         // (`PVsystem.pas:2534-2541`, WASM_USERMODELS WM.4).
-        if i > self.num_pv_variables() && self.set_user_model_variable(i, value) {
+        if i > self.num_pv_variables() && self.set_user_model_variable(i, value, sys) {
             return;
         }
         self.set_pv_variable(i, value);
@@ -626,9 +626,10 @@ impl DssObject for PVSystem {
         }
     }
 
-    /// Pascal `TPVsystem.EndEdit`: `RecalcElementData` + Yprim invalidation.
-    fn end_edit(&mut self) {
-        self.recalc(&crate::elements::pc::generator::default_recalc_ctx());
+    /// Pascal `TPVsystem.EndEdit`: `RecalcElementData` + Yprim invalidation. `sys`
+    /// is the LIVE circuit/solution the executive holds at the edit site.
+    fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
+        self.recalc(sys);
         self.cd.yprim_invalid = true;
     }
 
@@ -738,9 +739,10 @@ impl DssObject for PVSystem {
         &mut self,
         load: &UserModelLoad,
         wasm: Option<&[u8]>,
+        sys: &crate::elements::traits::SysCtx,
         errors: &mut crate::diag::ErrorLog,
     ) {
-        self.apply_user_model_load_impl(load, wasm, errors);
+        self.apply_user_model_load_impl(load, wasm, sys, errors);
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

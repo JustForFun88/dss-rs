@@ -158,6 +158,42 @@ impl SysCtx {
     pub fn pc_direct_shortcut(&self) -> bool {
         self.last_solution_was_direct && !(self.is_dynamic_model || self.is_harmonic_model)
     }
+
+    /// The fresh-circuit parse-time snapshot: the state a brand-new circuit is in
+    /// before any solve (60 Hz fundamental, `Mode=Snapshot`, unit multipliers,
+    /// `dblHour=0`, `ActiveLoadShapeClass=USENONE`). It is the correct **fallback**
+    /// only where no live circuit exists yet (a `DSS_OBJECT` edit before `New
+    /// circuit`, whose `end_edit` ignores the context anyway); every circuit-element
+    /// path threads the LIVE [`sys_ctx`](crate::solution::solution::sys_ctx) instead.
+    /// Unit-test fixtures also use it as their default context.
+    pub fn parse_default() -> Self {
+        SysCtx {
+            frequency: 60.0,
+            fundamental: 60.0,
+            is_harmonic_model: false,
+            is_dynamic_model: false,
+            load_model: crate::solution::POWERFLOW,
+            mode: SolveMode::Snapshot,
+            active_load_shape_class: crate::solution::USENONE,
+            load_multiplier: 1.0,
+            gen_multiplier: 1.0,
+            generator_dispatch_reference: 0.0,
+            price_signal: 25.0,
+            default_growth_factor: 1.0,
+            year: 0,
+            dbl_hour: 0.0,
+            solution_count: 0,
+            loads_need_updating: true,
+            neglect_load_y: false,
+            long_line_correction: false,
+            positive_sequence: false,
+            time_of_day: 0.0,
+            dyna_h: 0.0,
+            dyna_t: 0.0,
+            iteration_flag: IterationFlag::NewTimeStep,
+            last_solution_was_direct: false,
+        }
+    }
 }
 
 /// Mutable solve-state view for current injection: the node voltage vector
@@ -292,10 +328,12 @@ pub trait CktElement: Send {
     /// state variable `i` (1-based). The write side of the variable interface
     /// (`num_variables`/`variable_name`/`get_all_variables`), mirroring the
     /// `TPCElement` virtual. Default no-op — only machines with settable state
-    /// respond. (No external caller yet — the Rust-native variable-set API that
-    /// replaces the C-API `DSSElement_Set_*` is a later phase.)
-    fn set_variable(&mut self, i: usize, value: f64) {
-        let _ = (i, value);
+    /// respond. `sys` is the LIVE circuit/solution snapshot (the `Set` command
+    /// site holds it): a write routed to a WASM user model feeds it into the guest
+    /// callbacks exactly as Pascal hands the model live `ActiveCircuit.Solution`
+    /// pointers; the built-in setters ignore it.
+    fn set_variable(&mut self, i: usize, value: f64, sys: &SysCtx) {
+        let _ = (i, value, sys);
     }
 
     /// Pascal `SpectrumObj`: the harmonic spectrum this element injects from, if

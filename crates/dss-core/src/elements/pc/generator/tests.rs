@@ -32,7 +32,7 @@ fn build_shape(mult: &str) -> LoadShapeObj {
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert!(errors.is_empty(), "{errors:?}");
     obj
 }
@@ -416,7 +416,12 @@ fn user_model_stores_and_warns_not_loaded() {
     let loads = g.take_user_model_loads();
     assert_eq!(loads.len(), 1, "one deferred UserModel load: {loads:?}");
     let mut errors = crate::diag::ErrorLog::new();
-    g.apply_user_model_load(&loads[0], None, &mut errors);
+    g.apply_user_model_load(
+        &loads[0],
+        None,
+        &crate::elements::traits::SysCtx::parse_default(),
+        &mut errors,
+    );
     assert_eq!(errors.len(), 1, "exactly one warning: {errors:?}");
     assert!(errors[0].contains("Not Loaded"));
     assert!(errors[0].contains("Indmach012a"));

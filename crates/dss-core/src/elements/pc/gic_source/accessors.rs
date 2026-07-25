@@ -125,7 +125,7 @@ impl DssObject for GicSource {
 
     /// Pascal `TGICsource.EndEdit` (GICsource.pas:232): `RecalcElementData`
     /// (updates Volts + splices the Line) then `YPrimInvalid := TRUE`.
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
     }

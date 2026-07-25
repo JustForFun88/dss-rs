@@ -31,7 +31,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::pc::generator::{Connection, default_recalc_ctx};
+use crate::elements::pc::generator::Connection;
 use crate::elements::traits::{ElemRef, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -321,7 +321,10 @@ impl IndMach012 {
         m.speed = m.w0 * (-m.s1); // PropertySideEffects(slip)
 
         m.cd.inj_current = vec![Complex64::ZERO; m.cd.yorder];
-        m.recalc(&default_recalc_ctx());
+        // Pascal `TIndMach012Obj.Create` ends with `RecalcElementData` (live
+        // `ActiveCircuit.Solution`). `new` has no circuit; the executive runs that
+        // live recalc after construction (`create_object_no_edit`) and at
+        // `end_edit`. Direct-construction unit tests recalc explicitly.
         m
     }
 
@@ -350,7 +353,7 @@ impl IndMach012 {
     }
 
     /// Pascal `TIndMach012Obj.RecalcElementData`.
-    pub(super) fn recalc(&mut self, sys: &SysCtx) {
+    pub fn recalc(&mut self, sys: &SysCtx) {
         let z_base = self.kv_generator_base.powi(2) / self.kva_rating * 1000.0;
 
         let rs = self.pu_rs * z_base;

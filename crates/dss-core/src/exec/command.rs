@@ -4,6 +4,29 @@
 
 use super::*;
 
+/// Run `RecalcElementData` against `sys` for the PC classes whose recalc consumes
+/// the live `ActiveCircuit.Solution` globals (Load/Generator/WindGen/Storage/
+/// PVSystem/IndMach012). Pascal `T<PC>Obj.Create` ends with this recalc; it is
+/// the Rust equivalent of "Create reads the live solution", invoked by the
+/// executive right after construction (it has the circuit; the PC `new` does not).
+/// No-op for every other class. Reads only own props + `sys` (never another
+/// element), so it is safe on the JSON pre-fill and on the defaults sample.
+pub(super) fn recalc_pc_create(obj: &mut dyn DssObject, sys: &crate::elements::traits::SysCtx) {
+    if let Some(e) = obj.as_any_mut().downcast_mut::<load::Load>() {
+        e.recalc(sys);
+    } else if let Some(e) = obj.as_any_mut().downcast_mut::<generator::Generator>() {
+        e.recalc(sys);
+    } else if let Some(e) = obj.as_any_mut().downcast_mut::<windgen::WindGen>() {
+        e.recalc(sys);
+    } else if let Some(e) = obj.as_any_mut().downcast_mut::<storage::Storage>() {
+        e.recalc(sys);
+    } else if let Some(e) = obj.as_any_mut().downcast_mut::<pvsystem::PVSystem>() {
+        e.recalc(sys);
+    } else if let Some(e) = obj.as_any_mut().downcast_mut::<ind_mach012::IndMach012>() {
+        e.recalc(sys);
+    }
+}
+
 impl Dss {
     /// Process one command line (Pascal `ProcessCommand`). Errors are recorded
     /// in [`Dss::errors`] (record-and-continue); query results land in
@@ -1040,6 +1063,21 @@ impl Dss {
         // `Set DefaultBaseFrequency=50` every element reports basefreq=50 but the
         // monitor reports 60). Reproduce that override here. (EnergyMeter/Sensor do
         // NOT override — they inherit the fundamental like everything else.)
+        //
+        // TODO(compat): this hardcoded 60.0 is a proven UPSTREAM BUG, not just
+        // cosmetic. `TMonitorObj.Create` overrides `Basefrequency := 60.0` with no
+        // comment, identically in dss_capi 0.14.5 (Monitor.pas:472) and the r4133
+        // trunk (:552), overriding the correct base-class inherit
+        // (`BaseFrequency := ActiveCircuit.Fundamental`, r4133 CktElement.pas:233).
+        // Monitor.BaseFrequency has ONE physical consumer — mode-4 flicker: it is
+        // passed as `fBase` into `FlickerMeter` (Monitor.pas:1657 -> Pstcalc.pas:594),
+        // where `if fBase = 50.0` selects the IEC 61000-4-15 230V/50Hz lamp
+        // weighting coefficients vs the 120V/60Hz set (Pstcalc.pas:609-626). So a
+        // mode-4 monitor in a 50 Hz circuit computes Pst with the WRONG (60 Hz) lamp
+        // curve unless the user sets `basefreq=50` explicitly. Reproduced 1:1
+        // (deterministic, defined, not state-poisoning; both gating oracles pin
+        // 60.0 — deviating breaks parity). Clean fix for the DE_PASCALIZE Stage F
+        // default lane: inherit `Fundamental` like every other element.
         let fundamental = self.circuit.as_ref().expect("checked above").fundamental;
         let is_monitor = self.classes[ci]
             .arena
@@ -1103,6 +1141,18 @@ impl Dss {
                 line.recalc_pos_seq();
             }
         }
+
+        // Pascal `T<PC>Obj.Create` ends with `RecalcElementData`, which reads the
+        // live `ActiveCircuit.Solution` globals (Mode / DynaVars / GenMultiplier /
+        // LoadMultiplier / ActiveLoadShapeClass / PositiveSequence). Run that live
+        // recalc now for the PC classes whose recalc consumes those globals, so a
+        // property setter or `add_ckt_element` reading a recalc-derived field
+        // during the edit block sees Pascal's Create-time value (`end_edit` re-runs
+        // it after the edit). Consistent with the JSON "create, no recalc" split:
+        // unlike RegControl, these recalcs read only own props + the live snapshot
+        // (never another element).
+        let sys = crate::solution::solution::sys_ctx(self.circuit.as_ref().expect("checked above"));
+        recalc_pc_create(self.classes[ci].arena.obj_mut(idx), &sys);
 
         let kind = self.classes[ci]
             .kind
@@ -1781,6 +1831,15 @@ impl Dss {
         // the element warn "… Not Loaded" and fall back to the built-in model
         // (never "Error opening file", unlike a `FileLoad` miss). Runs before
         // `end_edit` so `RecalcElementData` sees the loaded model.
+        // Pascal `RecalcElementData` and the user-model callbacks read the live
+        // `ActiveCircuit.Solution` globals; snapshot them once for the user-model
+        // load/edit below and the trailing `end_edit`. DSS_OBJECT edits (no circuit
+        // yet) fall back to the fresh-circuit snapshot; those `end_edit`s ignore it.
+        let live_sys = circuit
+            .as_ref()
+            .map(crate::solution::solution::sys_ctx)
+            .unwrap_or_else(crate::elements::traits::SysCtx::parse_default);
+
         let user_model_loads = active_arena[oi].take_user_model_loads();
         for uml in &user_model_loads {
             let wasm: Option<Vec<u8>> = match &uml.action {
@@ -1797,7 +1856,7 @@ impl Dss {
                 }
                 crate::obj::base::UserModelAction::Edit(_) => None,
             };
-            active_arena[oi].apply_user_model_load(uml, wasm.as_deref(), errors);
+            active_arena[oi].apply_user_model_load(uml, wasm.as_deref(), &live_sys, errors);
         }
 
         // WPG.19: generic file-backed numeric-array directives (`%mag=(file=…)`,
@@ -1835,7 +1894,9 @@ impl Dss {
             write_shape_save(output_directory, last_result, ss, errors);
         }
 
-        active_arena[oi].end_edit();
+        // Thread the live snapshot (built above) into `end_edit` so the
+        // side-effect `RecalcElementData` runs against the current circuit state.
+        active_arena[oi].end_edit(&live_sys);
 
         // The post-`end_edit` signal tail (deferred errors/abort, circuit
         // signal-flag propagation, deferred ref-actions). Shared verbatim with

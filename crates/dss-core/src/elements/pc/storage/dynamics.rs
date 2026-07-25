@@ -719,7 +719,7 @@ impl Storage {
     /// state-variable interface, reached via the `set_variable` trait method.
     /// A linked `DynamicExp` makes every state variable read-only (msg 566, below);
     /// i > NumStorageVariables routes to the UserModel/DynaModel setters (WM.4).
-    pub(super) fn set_storage_variable(&mut self, i: usize, value: f64) {
+    pub(super) fn set_storage_variable(&mut self, i: usize, value: f64, sys: &SysCtx) {
         // DynamicEqObj <> NIL: state variables are read-only — the equation drives
         // them (Pascal Set_Variable, msg 566).
         if self.base.dyneq.has_dynamic_eq() {
@@ -752,7 +752,7 @@ impl Storage {
             // `UserModel`/`DynaModel` state-variable setters (Pascal
             // Storage.pas:3158-3177).
             _ => {
-                self.set_user_model_variable(i, value);
+                self.set_user_model_variable(i, value, sys);
             }
         }
     }

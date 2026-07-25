@@ -41,7 +41,10 @@ fn set_local_slip_clamps_outside_dynamics() {
 
 #[test]
 fn recalc_sets_impedances() {
-    let m = IndMach012::new("m1");
+    // `new` no longer recalcs (no live ctx at construction); the executive runs
+    // the live recalc. Direct construction seeds it with the parse-time default.
+    let mut m = IndMach012::new("m1");
+    m.recalc(&SysCtx::parse_default());
     // ZBase = kV²/kVA·1000 = 12.47²/1200·1000.
     let z_base = 12.47_f64.powi(2) / 1200.0 * 1000.0;
     assert!((m.zs.re - m.pu_rs * z_base).abs() < 1e-9);
@@ -85,7 +88,7 @@ fn dynamics_loadshapeclass_selects_matching_curve() {
             };
             cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
         }
-        obj.end_edit();
+        obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
         assert!(errors.is_empty(), "{errors:?}");
         obj
     }
@@ -100,7 +103,7 @@ fn dynamics_loadshapeclass_selects_matching_curve() {
         is_dynamic_model: true,
         active_load_shape_class: class,
         dbl_hour: 2.0,
-        ..default_recalc_ctx()
+        ..SysCtx::parse_default()
     };
 
     m.set_nominal_power(&dyn_ctx(USEDAILY));

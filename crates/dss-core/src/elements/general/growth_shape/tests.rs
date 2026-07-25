@@ -21,7 +21,7 @@ fn edited(edits: &[(&str, &str)]) -> (ClassProps, GrowthShapeObj, crate::diag::E
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     errors.extend(obj.data_mut().take_errors());
     (cls, obj, errors)
 }
@@ -81,7 +81,7 @@ fn read_csv_file_keeps_fractional_years_and_shrinks_npts() {
     // 2010.7]` while the same values via SngFile round to `[2001 2005 2011]`.
     let (cls, mut obj, _) = edited(&[("npts", "5")]);
     obj.read_csv_file("1999.4, 1.10\n2000.6, 1.07\n2001, 1.05\n");
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "NPts"), "3");
     assert_eq!(get(&cls, &obj, "Year"), "[ 1999.4 2000.6 2001]");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 1.1 1.07 1.05]");
@@ -98,7 +98,7 @@ fn read_sng_and_dbl_file_round_trip() {
         bytes.extend_from_slice(&m.to_le_bytes());
     }
     obj.read_sng_file(&bytes);
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "Year"), "[ 2000 2005 2010]");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 1.25 1.5 1]");
 
@@ -109,7 +109,7 @@ fn read_sng_and_dbl_file_round_trip() {
         bytes.extend_from_slice(&m.to_le_bytes());
     }
     obj.read_dbl_file(&bytes);
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "Year"), "[ 2000 2010]");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 1.05 1]");
 }

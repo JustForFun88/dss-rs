@@ -254,7 +254,7 @@ impl DssObject for ExpControl {
     /// Pascal `TCktElementClass.EndEdit` → `RecalcElementData`: derive `FOpenTau`
     /// and attach the terminal to the resolved first-DER bus (the fleet *dispatch*
     /// build is deferred to the first `Sample`).
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
     }
 

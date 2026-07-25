@@ -34,8 +34,6 @@ use crate::elements::pc::dyneq_pce::DynEqPceData;
 use crate::elements::traits::{ElemRef, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
-use crate::solution::SolveMode;
-use crate::support::dynamics::IterationFlag;
 
 use wtg3::Wtg3Model;
 
@@ -385,38 +383,17 @@ impl WindGen {
             loss_curve_ref: None,
         };
         g.cd.inj_current = vec![Complex64::ZERO; g.cd.yorder];
-        g.recalc(&default_recalc_ctx());
+        // Pascal `TWindGenObj.Create` ends with `RecalcElementData` (live
+        // `ActiveCircuit.Solution`). `new` has no circuit; the executive runs that
+        // live recalc after construction (`create_object_no_edit`) and at
+        // `end_edit`. Direct-construction unit tests recalc explicitly.
         g
     }
 }
 
-/// The snapshot defaults the executive uses for `RecalcElementData` at parse
-/// time (every derived value is recomputed in `CalcYPrim` before use).
+/// Unit-test fixture: the fresh-circuit parse-time snapshot (see
+/// [`SysCtx::parse_default`]). Production paths thread the LIVE `sys_ctx` — this
+/// remains only as the default context for the class's `#[cfg(test)]` fixtures.
 pub fn default_recalc_ctx() -> SysCtx {
-    SysCtx {
-        frequency: 60.0,
-        fundamental: 60.0,
-        is_harmonic_model: false,
-        is_dynamic_model: false,
-        load_model: crate::solution::POWERFLOW,
-        mode: SolveMode::Snapshot,
-        active_load_shape_class: crate::solution::USENONE,
-        load_multiplier: 1.0,
-        gen_multiplier: 1.0,
-        generator_dispatch_reference: 0.0,
-        price_signal: 25.0,
-        default_growth_factor: 1.0,
-        year: 0,
-        dbl_hour: 0.0,
-        solution_count: 0,
-        loads_need_updating: true,
-        neglect_load_y: false,
-        long_line_correction: false,
-        positive_sequence: false,
-        time_of_day: 0.0,
-        dyna_h: 0.0,
-        dyna_t: 0.0,
-        iteration_flag: IterationFlag::NewTimeStep,
-        last_solution_was_direct: false,
-    }
+    SysCtx::parse_default()
 }

@@ -310,7 +310,7 @@ impl Wtg3Model {
     /// which `Initialize` calls last (here folded into `new`).
     pub fn new() -> Self {
         let rated_kva = 3600.0;
-        let mut m = Self {
+        let m = Self {
             delt0: 0.000050,
             rated_hz: 60.0,
             rated_kva,
@@ -552,12 +552,14 @@ impl Wtg3Model {
             pgen: 0.0,
             qgen: 0.0,
         };
-        // Pascal `Initialize` ends by calling `ReCalcElementData`, but there is no
-        // active solution at construction; the WindGen owner re-invokes it (with
-        // the live `h`/`t`) from its own `RecalcElementData`. Call it here with
-        // `h = t = 0` (matching the construction-time DynaVars) to seed the
-        // derived ratings/curve fields.
-        m.recalc_element_data(0.0, 0.0);
+        // Pascal `TGE_WTG3_Model.Create` ends with `ReCalcElementData`, which reads
+        // the LIVE `DynaData^.h`/`t` — `DynaData` points at
+        // `ActiveCircuit.Solution.DynaVars` (WindGen.pas:1018), so Create reads the
+        // solution's live step size / time. `new` has no solution; the WindGen
+        // owner runs that live recalc via its own `RecalcElementData`
+        // (`recalc_element_data(sys.dyna_h, sys.dyna_t)`), which the executive
+        // invokes at create (`create_object_no_edit`) and at `end_edit`.
+        // Direct-construction unit tests seed it explicitly.
         m
     }
 

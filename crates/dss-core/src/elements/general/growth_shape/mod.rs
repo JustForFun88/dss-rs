@@ -379,7 +379,7 @@ impl DssObject for GrowthShapeObj {
     }
 
     /// Pascal `TGrowthShape.EndEdit` → `ReCalcYearMult`.
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc_year_mult();
     }
 

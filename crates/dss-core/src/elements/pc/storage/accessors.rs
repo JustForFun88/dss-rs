@@ -186,8 +186,8 @@ impl CktElement for Storage {
         }
     }
 
-    fn set_variable(&mut self, i: usize, value: f64) {
-        self.set_storage_variable(i, value);
+    fn set_variable(&mut self, i: usize, value: f64, sys: &crate::elements::traits::SysCtx) {
+        self.set_storage_variable(i, value, sys);
     }
 
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
@@ -699,9 +699,10 @@ impl DssObject for Storage {
         }
     }
 
-    /// Pascal `TStorage.EndEdit`: `RecalcElementData` + Yprim invalidation.
-    fn end_edit(&mut self) {
-        self.recalc(&crate::elements::pc::generator::default_recalc_ctx());
+    /// Pascal `TStorage.EndEdit`: `RecalcElementData` + Yprim invalidation. `sys`
+    /// is the LIVE circuit/solution the executive holds at the edit site.
+    fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
+        self.recalc(sys);
         self.cd.yprim_invalid = true;
     }
 
@@ -825,9 +826,10 @@ impl DssObject for Storage {
         &mut self,
         load: &UserModelLoad,
         wasm: Option<&[u8]>,
+        sys: &crate::elements::traits::SysCtx,
         errors: &mut crate::diag::ErrorLog,
     ) {
-        self.apply_user_model_load_impl(load, wasm, errors);
+        self.apply_user_model_load_impl(load, wasm, sys, errors);
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

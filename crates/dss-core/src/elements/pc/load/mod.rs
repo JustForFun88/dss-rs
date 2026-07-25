@@ -31,7 +31,6 @@ use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::traits::{ElemRef, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
-use crate::solution::SolveMode;
 use crate::support::cmatrix::CMatrix;
 use crate::util::CDOUBLEONE;
 
@@ -459,39 +458,17 @@ impl Load {
             load_fundamental: 0.0,
         };
         load.cd.inj_current = vec![Complex64::ZERO; load.cd.yorder];
-        load.recalc(&default_recalc_ctx());
+        // Pascal `TLoadObj.Create` ends with `RecalcElementData` (live
+        // `ActiveCircuit.Solution`). `new` has no circuit; the executive runs that
+        // live recalc after construction (`create_object_no_edit`) and at
+        // `end_edit`. Direct-construction unit tests recalc explicitly.
         load
     }
 }
 
-/// The snapshot defaults the executive uses for `RecalcElementData` at parse
-/// time (Pascal reads live `ActiveCircuit` state there, but every derived
-/// value is recomputed inside `CalcYPrim` before it is consumed).
+/// Unit-test fixture: the fresh-circuit parse-time snapshot (see
+/// [`SysCtx::parse_default`]). Production paths thread the LIVE `sys_ctx` — this
+/// remains only as the default context for the class's `#[cfg(test)]` fixtures.
 pub fn default_recalc_ctx() -> SysCtx {
-    SysCtx {
-        frequency: 60.0,
-        fundamental: 60.0,
-        is_harmonic_model: false,
-        is_dynamic_model: false,
-        load_model: crate::solution::POWERFLOW,
-        mode: SolveMode::Snapshot,
-        active_load_shape_class: crate::solution::USENONE,
-        load_multiplier: 1.0,
-        gen_multiplier: 1.0,
-        generator_dispatch_reference: 0.0,
-        price_signal: 25.0,
-        default_growth_factor: 1.0,
-        year: 0,
-        dbl_hour: 0.0,
-        solution_count: 0,
-        loads_need_updating: true,
-        neglect_load_y: false,
-        long_line_correction: false,
-        positive_sequence: false,
-        time_of_day: 0.0,
-        dyna_h: 0.0,
-        dyna_t: 0.0,
-        iteration_flag: crate::support::dynamics::IterationFlag::NewTimeStep,
-        last_solution_was_direct: false,
-    }
+    SysCtx::parse_default()
 }

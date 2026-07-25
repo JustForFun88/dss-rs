@@ -438,7 +438,10 @@ impl PVSystem {
         // Pascal seeds PrpSequence with PF.
         pv.cd.obj.set_as_next_seq(prop::PF);
         pv.cd.inj_current = vec![Complex64::ZERO; pv.cd.yorder];
-        pv.recalc(&crate::elements::pc::generator::default_recalc_ctx());
+        // Pascal `TPVsystemObj.Create` ends with `RecalcElementData` (live
+        // `ActiveCircuit.Solution`). `new` has no circuit; the executive runs that
+        // live recalc after construction (`create_object_no_edit`) and at
+        // `end_edit`. Direct-construction unit tests recalc explicitly.
         pv
     }
 }

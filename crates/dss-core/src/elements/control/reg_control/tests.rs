@@ -84,7 +84,7 @@ fn tapnum_maps_tap_to_integer_and_back() {
 #[test]
 fn recalc_without_transformer_records_error_124() {
     let mut rc = RegControl::new("r1");
-    rc.end_edit();
+    rc.end_edit(&crate::elements::traits::SysCtx::parse_default());
     let errs = rc.ccd.cd.obj.take_errors();
     assert_eq!(errs.len(), 1);
     assert!(errs[0].contains("Transformer Element is not set"));
@@ -382,7 +382,7 @@ fn rev_only_edit_fallback_is_sign_preserving() {
     let mut rc = RegControl::new("r1");
     rc.rev_power_threshold = -500_000.0; // -500 kW (scale already applied)
     rc.ccd.cd.obj.set_as_next_seq(prop::REVTHRESHOLD); // edited this edit; Fwd not
-    rc.end_edit();
+    rc.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(rc.fwd_power_threshold, -500_000.0);
     assert_eq!(rc.rev_power_threshold, 500_000.0);
 
@@ -391,7 +391,7 @@ fn rev_only_edit_fallback_is_sign_preserving() {
     let mut rc2 = RegControl::new("r2");
     rc2.rev_power_threshold = 800_000.0;
     rc2.ccd.cd.obj.set_as_next_seq(prop::REVTHRESHOLD);
-    rc2.end_edit();
+    rc2.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(rc2.fwd_power_threshold, 800_000.0);
     assert_eq!(rc2.rev_power_threshold, -800_000.0);
 }

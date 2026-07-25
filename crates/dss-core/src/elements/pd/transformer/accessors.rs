@@ -678,7 +678,7 @@ impl DssObject for Transformer {
 
     /// Pascal base `EndEdit` → `RecalcElementData` (Transformer does not
     /// override `EndEdit`, unlike Line).
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
     }
 

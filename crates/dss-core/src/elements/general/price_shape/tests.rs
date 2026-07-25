@@ -21,7 +21,7 @@ fn edited(edits: &[(&str, &str)]) -> (ClassProps, PriceShapeObj, crate::diag::Er
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     errors.extend(obj.data_mut().take_errors());
     (cls, obj, errors)
 }
@@ -110,7 +110,7 @@ fn make_like_copies() {
     assert!(errs.is_empty(), "{errs:?}");
     let mut obj = PriceShapeObj::new("d");
     obj.make_like(&base);
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "NPts"), "3");
     assert_eq!(get(&cls, &obj, "Interval"), "2");
     assert_eq!(get(&cls, &obj, "Price"), "[ 11 22 33]");
@@ -137,7 +137,7 @@ fn read_sng_file_fixed_interval() {
         bytes.extend_from_slice(&v.to_le_bytes());
     }
     obj.core.read_sng_file(&bytes);
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "NPts"), "4");
     assert_eq!(get(&cls, &obj, "Price"), "[ 32 30.5 41 55.5]");
 }
@@ -151,7 +151,7 @@ fn read_dbl_file_variable_interval() {
         bytes.extend_from_slice(&v.to_le_bytes());
     }
     obj.core.read_dbl_file(&bytes);
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "Hour"), "[ 0 3]");
     assert_eq!(get(&cls, &obj, "Price"), "[ 32 55.5]");
 }

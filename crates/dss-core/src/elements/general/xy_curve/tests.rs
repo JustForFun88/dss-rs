@@ -22,7 +22,7 @@ fn edited(edits: &[(&str, &str)]) -> (ClassProps, XyCurveObj, crate::diag::Error
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     errors.extend(obj.data_mut().take_errors());
     (cls, obj, errors)
 }

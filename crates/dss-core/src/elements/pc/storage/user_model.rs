@@ -101,11 +101,11 @@ impl StorageUserModelSlot {
         kind: InterfaceKind,
         yorder: usize,
         s: &Storage,
+        sys: &SysCtx,
     ) -> Result<Self, UserModelError> {
         let host = UserModelHost::load(model, wasm, kind, HostConfig::default())?;
-        let mut dr = dyn_rec_from(&super::super::generator::default_recalc_ctx());
-        let ctx =
-            StorageCallbacks::snapshot(s, &super::super::generator::default_recalc_ctx(), &[]);
+        let mut dr = dyn_rec_from(sys);
+        let ctx = StorageCallbacks::snapshot(s, sys, &[]);
         let sh = Shuttle::without_gen_vars(&mut dr, Box::new(ctx));
         let instance = UserModelInstance::new(&host, yorder.max(1), sh)?;
         let mut slot = Self {
@@ -434,6 +434,7 @@ impl Storage {
         &mut self,
         load: &UserModelLoad,
         wasm: Option<&[u8]>,
+        sys: &SysCtx,
         errors: &mut ErrorLog,
     ) {
         let name = self.cd.obj.name().to_string();
@@ -446,7 +447,8 @@ impl Storage {
                     Some(bytes) => {
                         let yorder = self.cd.yorder;
                         let kind = Self::slot_kind(load.slot);
-                        match StorageUserModelSlot::load(model_name, bytes, kind, yorder, self) {
+                        match StorageUserModelSlot::load(model_name, bytes, kind, yorder, self, sys)
+                        {
                             Ok(slot) => self.put_slot(load.slot, Box::new(slot)),
                             Err(e) => push_load_failure(&name, model_name, is_dyna, &e, errors),
                         }
@@ -465,12 +467,7 @@ impl Storage {
                     return; // Pascal: `if UserModel.Exists then Edit`.
                 };
                 let mut errs = ErrorLog::new();
-                if let Err(e) = s.edit(
-                    data,
-                    self,
-                    &super::super::generator::default_recalc_ctx(),
-                    &[],
-                ) {
+                if let Err(e) = s.edit(data, self, sys, &[]) {
                     errs.push(DssDiagnostic::msg(e.to_string(), Some(1569)));
                 }
                 s.drain_effects(&name, &mut errs);
@@ -793,13 +790,12 @@ impl Storage {
 
     /// Pascal `Set_Variable` user/dyna tail (`Storage.pas:3158-3177`).
     /// Returns `true` iff a user/dyna model handled the write.
-    pub(super) fn set_user_model_variable(&mut self, i: usize, value: f64) -> bool {
+    pub(super) fn set_user_model_variable(&mut self, i: usize, value: f64, sys: &SysCtx) -> bool {
         let base = self.num_storage_variables();
         if i <= base {
             return false;
         }
         let k = i - base;
-        let ctx = super::super::generator::default_recalc_ctx();
         for slot in [UserModelSlot::User, UserModelSlot::Dyna] {
             let Some(mut s) = self.take_slot(slot) else {
                 continue;
@@ -807,7 +803,7 @@ impl Storage {
             if s.exists() && k <= s.num_vars() {
                 let name = self.cd.obj.name().to_string();
                 let mut errs = ErrorLog::new();
-                if let Err(e) = s.set_variable(k, value, self, &ctx, &[]) {
+                if let Err(e) = s.set_variable(k, value, self, sys, &[]) {
                     errs.push(DssDiagnostic::msg(
                         format!("Storage.{name}: user model `set_variable` failed: {e}"),
                         Some(1569),
