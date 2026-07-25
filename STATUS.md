@@ -267,6 +267,58 @@ Records: `docs/phase-records/test-triage-{promotions,ad-classify,monitor-winding
 - Gate after merges: fmt/clippy clean, `cargo +stable test --workspace` exit 0;
   population.lock consistency re-proven by deliberate regen (no diff).
 
+### DE_PASCALIZE R1 — typed arenas: `Idx<T>`/`ElemId`/`Elements` (wave 2, branch `depas-r1`)
+
+Stratum **[A]** bit-neutral. Part I R1 — introduce the `PORTING_PLAN §2.1`
+typed-arena storage behind the current API, plus the P7 Send rider. Lands as the
+plan-mandated **two commits**.
+
+**Commit 1 — arena types (this commit).** New `obj/arena.rs` drives *everything*
+from ONE class list (`with_all_classes!`), emitted in **`exec/construct.rs`
+registration order** (recounted at execution — **50 classes**, 15 DSS_OBJECT +
+35 circuit; the plan's 2026-07-12 count of 50 holds). One consumer macro
+(`define_arena!`) expands the list into `enum ElemId` (one `Idx<T>` variant per
+class — the R2 typed handle), `enum ClassArena` (one `Vec<T>` per class), and
+every match-arm impl (`obj`/`obj_mut`/`ckt_elem`/`ckt_elem_mut`/`len`/
+`class_name`/`push_new`/`pair_mut_same`/`triple_mut_same`/`for_each_ckt_elem_mut`)
+plus `ElemId::CLASS_NAMES`. `Elements { arenas: Vec<ClassArena> }` owns them.
+- **Design choice — `Vec<ClassArena>` (enum-of-`Vec<T>`), not the sketch's flat
+  `struct { lines: Vec<Line>, … }` of named fields.** The property-edit path
+  borrows the *active* class mutably while every other class is a read view
+  (`edit_active_inner`, `classes.split_at_mut(ci)`), and `ci` is only known at
+  run time — a named-field struct cannot be split by a run-time field, but a
+  `Vec<ClassArena>` splits exactly like the existing `Vec<DssClass>`. This keeps
+  the whole borrow-split machinery intact for the R1 ownership flip **with no
+  `RefCell`/`unsafe`** and minimal churn. The typed `Vec<T>` is still exposed
+  per class (`ClassArena::Line(v) => v.par_iter_mut()`) via `arenas_mut()` /
+  `for_each_ckt_elem_mut` — the M3 parallelism substrate, never a single
+  `&mut dyn ElemStore` funnel (Part V rider).
+- **Mandatory ordering test** (`obj::arena::tests::arena_order_matches_registry`):
+  builds a live `Dss`, asserts `ElemId::CLASS_NAMES[i]` **and** `ClassArena`
+  layout `[i]` match the registry class name at `i` for all 50 — the load-bearing
+  registration-order == arena-order invariant. Plus an `ElemId`↔`ElemRef` bridge
+  round-trip test. (The R2 same-named-cross-class `find_ckt_element` tie-break
+  test lands with the ownership flip, where the arenas are actually wired.)
+- **P7 Send rider (rides with R1, per Part V item 1 / plan R1 step 3):** `: Send`
+  supertraits on `DssObject`/`CktElement`/`ElemStore`; `const _:() =
+  assert_send::<Dss>()` **and** `assert_send::<Elements>()` in `lib.rs`. The only
+  non-`Send` blocker was `plot_callback: Box<dyn FnMut(&str)->i32>` (post-dates
+  the 2026-07-06 P7 audit) → `+ Send` on `PlotCallback` and
+  `register_plot_callback`. Its two test capture sinks (`exec/plot/tests.rs`,
+  `tests/golden_plot_callback.rs`) moved `Rc<RefCell>` → `Arc<Mutex>` (test-only;
+  removes the `Rc`/`RefCell` the P7 grep gate targets, `Mutex` is outside that
+  pattern — flagged for audit).
+- Arena types carry `#![allow(dead_code)]` until commit 2 wires them into `Dss`.
+- Gate (commit 1): fmt clean, clippy `-D warnings` clean, `cargo test
+  --workspace` exit 0 (corpus gate included; zero golden/tolerance churn — the
+  arithmetic is untouched, so the byte goldens are the equivalence proof).
+
+**Commit 2 — ownership flip (next).** Move object ownership from
+`DssClass.objects: Vec<Box<dyn DssObject>>` into `Dss.elements: Elements`;
+`DssClass` keeps metadata only; `ClassStore`/`ForeignClasses`/`edit_active_inner`
+gain the parallel `arenas` split; the ~285 `classes[ci].objects[oi]` sites move
+to `elements` accessors. Downcasts and `as_any` stay (R2 removes them).
+
 ### DE_PASCALIZE P1b — control-trio integer families → enums (wave 2, branch `wt-p1b-v2`)
 
 Stratum **[A]** bit-neutral. Closes the P1 wave-1 control-trio deferral
