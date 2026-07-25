@@ -349,6 +349,9 @@ still a strict improvement.
   shared `system_y_changed: &mut bool` in `InjCtx` with a per-element return flag OR-ed by the
   caller. Behavior identical (same order, same sums); this is the exact seam
   `MULTITHREADING_PLAN.md` M3b parallelizes later. Do it in R2 so signatures churn once.
+  **(LANDED 2026-07-25, commit `2ed12d3` — the delivered slice of the first R2 session; see
+  Part V §"Per-class arena iteration" for the seam-state inventory and the rule for cutting
+  further seams.)**
 
 **R3 — delete dead code + verify.** Remove the `ClassStore` boxing adapter, the downcast
 `.expect()` assertions, `ControlKind` remnants, and unused helpers (`clone_box` if now unused).
@@ -1157,13 +1160,68 @@ Phase-9 parallelism:
 3. **Context structs stay snapshot-shaped.** `SysCtx` (immutable scalars) + explicit mutable
    outputs is already the right shape for fork-join. R2's rider (split
    `compute_inj_currents` from the scatter; per-element `system_y_changed` return instead of
-   the shared `&mut bool` in `InjCtx`) creates the two seams M3 parallelizes.
+   the shared `&mut bool` in `InjCtx`) creates the two seams M3 parallelizes
+   *(landed 2026-07-25, commit `2ed12d3` — see the design note below)*.
 4. **No new ambient state.** Zero `Rc`/`RefCell`/statics today; P7's CI grep keeps it that
    way. Randomness, when it arrives, goes on `Solution`, not a global.
 5. **Order is sacred where semantic** (Part IV list). Any future parallel pattern must be
    "parallel compute into element-owned storage → **sequential ordered commit**" (float
    addition is non-associative; a parallel reduction over shared sums diverges from the live
    oracle by construction).
+
+## Per-class arena iteration — the dispatch endgame (design note + scoping rule, 2026-07-26)
+
+Settles the recurring question "can the solve loops drop `dyn` without an enum match?" and
+scopes which part of the answer belongs to Part I. Execution (rayon conversion, benchmarks,
+thread-count gates) is `MULTITHREADING_PLAN.md` M3a/M3b/M3d/M4 — nothing below duplicates it.
+
+**The constraint (fundamental, not a style choice).** Any walk over an *interleaved
+runtime-ordered* element list (`ckt_elements`, `pc_elements`, `sources` — creation order
+across classes) needs a runtime tag at every step: vtable (`&dyn`), `ElemId` match (enum
+dispatch), and fn-pointer tables are isomorphic forms of the same data-driven branch, and no
+type-system construct removes it. Per-element dispatch is eliminable **only** by
+restructuring the walk into per-class homogeneous loops (macro-generated over the class
+list, or the generic-method visitor `Elements::for_each…`/`par_for_each` of item 1 — the
+`dyn`-free formulation), which changes visit order from interleaved to class-grouped —
+legal **only where order is unobservable**. Where order is observable it is pinned forever
+(Part IV.1: scatter/stamp FP accumulation, report/export row order, bare-name lookup,
+control queue, error-log drain order); those walks keep the runtime tag and don't care —
+they are gathers/commits/IO whose dispatch cost is noise against the work they trigger.
+
+**The seam pattern — the piece Part I owns.** Split each heavy phase into (i) **order-free
+compute**: per-element into element-owned state (`cd.*` buffers), reading shared state only
+through `&`-snapshots (`SysCtx`, `&node_v`) — later convertible to per-class monomorphic
+loops / `par_iter_mut` without touching results; and (ii) a minimal **order-pinned
+sequential commit** (scatter / stamp / drain) that preserves today's interleaved order
+bit-exactly (forbidden move 3). **Scoping rule (binding):** cutting such a seam is
+[A]-legal and *encouraged* whenever a phase's signatures are already churning in a Part I–III
+WP (that is how R2 landed the injection seam); converting loop shape to per-class is **never**
+Part I–III work — it is M3/M4, gated on M1 baselines.
+
+**Seam-state inventory (verified against the tree, 2026-07-26):**
+
+| Phase | Where | State |
+|---|---|---|
+| Injection (fixed-point, direct, dynamics & harmonics injections all flow through it) | `power_flow.rs::{get_source_inj_currents, get_pc_inj_curr_filtered}` | **seam DONE** (R2, `2ed12d3`): `compute_inj_currents` → `cd.inj_current`, caller scatter + OR in list order |
+| Newton residual | `power_flow.rs::sum_all_currents` | **already seam-shaped**: `compute_iterminal` → `cd.iterminal` (lazy per-solution cache), caller scatter in `ckt_elements` order — no Part-I work left |
+| Y rebuild | `ymatrix.rs::build_y_matrix` | **already two-phase**: phase A `calc_yprim(&sys)` → `cd.yprim` per element (recomputes ALL elements every build — the whole set is the parallel work item, M3a); the per-element `take_errors` drain is order-observable and stays sequential; phase B ordered stamping = sequential forever (IV.1) |
+| Dynamics init/integrate, harmonics init | `dynamics.rs::{calc_initial_machine_states, integrate_pc_states}`, `harmonics.rs::initialize_for_harmonics` | **pure per-element compute** into element-owned state from `&node_v` snapshots; shared writes are OR-flags + the ordered error/abort drain — no seam needed |
+| Meter/monitor sampling | `meters/sampling/*` | NOT seam-shaped (samples call `&mut` getters on shared zone elements) — M3d's two-phase problem, assessed there, not here |
+
+Any further phase discovered mid-WP that fuses heavy per-element compute with an ordered
+shared write: cut the seam under the rule above, record it in STATUS and in this table.
+
+**Costs (reasoned now, measured at M1 — do not pre-optimize).** Class-grouped iteration
+visits all 50 arenas; an empty arena costs one `len == 0` check — ~50 well-predicted checks
+per pass, cheaper than a single cache miss, amortized to nothing on real circuits. Never add
+"non-empty class" side-lists preemptively. The real cost is **code size**: each converted
+phase monomorphizes its loop body ×50 (icache pressure) — which is exactly why loop-shape
+conversion waits for M1 benchmarks instead of landing on faith.
+
+**What this does NOT change.** `&dyn CktElement`/`&dyn DssObject` *views* remain the correct
+form for the genuinely heterogeneous ordered walks (parser property editing, reports,
+Save/Dump). Part I eliminates boxed *ownership* and downcasts; view-typed virtual dispatch
+on behavior traits is the target architecture, not a leftover.
 
 ---
 
