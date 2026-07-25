@@ -7,6 +7,55 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R2b sub-step (c) — Category E `make_like`: trait method → inherent typed fn (50 classes) landed, trait method removed (branch `depas-r2b`, commit `5a6a41c`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base for this sub-step = the (a)+(b) tip `c32a2cb`
+(itself on `update` @ `5a416ee`). Executes plan §Category E (`DE_PASCALIZE_PLAN.md`
+R2, brief step (c)) **standalone** — it does NOT depend on the escaped store flip
+(item 1), so unlike (b) it was fully executable now.
+
+**What landed (commit `5a6a41c`, 54 files, +1844/−1856).**
+- All **50** per-class `make_like` bodies moved out of `impl DssObject for X` into
+  an inherent `impl X { pub(crate) fn make_like(&mut self, other: &Self) { … } }`
+  block placed immediately above the trait impl. The downcast guard
+  (`let Some(o) = other.as_any().downcast_ref::<X>() else { return; }` /
+  `if let Some(o) = … {`) is dropped; the body is **byte-identical** (mechanically
+  copied, not retyped — see proof below). Guard-bound name preserved via a
+  `let o = other;` alias where the body used `o`; `if let` bodies kept inside a
+  bare `{ }` block (zero body-byte change, clippy-clean). The 3 no-downcast impls
+  (Spectrum, TccCurve, DynamicExp — read via typed `DssObject` accessors) moved
+  sig-only. DynamicExp keeps its error-only no-op (`_other: &Self`).
+- Production dispatch = the single site `ClassArena::make_like_within` (arena.rs):
+  now `let src = v[source].clone(); v[target].make_like(&src);` (typed `Clone` +
+  inherent call) instead of `clone_box()` + trait dispatch. Source-snapshot-before-
+  mutable-borrow (the `source == target` aliasing safety) preserved; `clone()`
+  yields the same value as `clone_box()` (which is `Box::new(self.clone())`).
+- `fn make_like` **removed from the `DssObject` trait** (base/mod.rs) — all callers
+  converted (only `make_like_within` in production; unit tests call the concrete
+  type). Two test-only touch-ups: `relay/tests.rs` `&src as &dyn DssObject` → `&src`;
+  `recloser/tests.rs` dropped the now-unused `use …DssObject`.
+- `clone_box` **kept** (still live: moved line_geometry conductor snapshots +
+  line/dispatch sites) — not deleted, per brief.
+
+**Byte-neutrality proof.** A scratch script line-diffed each of the 50 bodies
+base(`5a416ee`)→HEAD after stripping only sig/guard/alias/bare-block: **0
+differences across all 50**. Metrics: `TODO(compat)` = **117** (unchanged);
+`downcast_ref|downcast_mut` **416 → 369** (−47 = 50 impls minus the 3 no-downcast
+classes); `as_any|as_ckt_element` **759 → 712** (−47); zero golden / ledger /
+tolerance churn (`git show --stat`: only src + 2 test files).
+
+**Gate (full, solo).** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` clean; `cargo test --workspace` exit 0 — corpus gate
+`corpus_gate_all_cases_match_engines … ok` (25 passed, 148 s, both channels
+capi_v0145 + r4133). Corpus tree left pristine (19 run-artifacts removed by exact
+name, no wide clean). Two fresh audits (code + tests) both PASS/no-findings.
+
+**Deviations disclosed.** (1) `if let` guards became `let o = other; { … }` bare
+blocks rather than de-indented bodies — chosen to keep body bytes identical (zero
+retype risk); clippy-clean. (2) Ritual audits found nothing to settle empirically
+(pure mechanical move proven byte-identical + gate-green), so no probe experiments
+were needed beyond the body-equivalence diff.
+
 ### DE_PASCALIZE R2b sub-step (a) — spine flip: `ElemId::from_ref` primitive landed; full `ElemRef → ElemId` flip escape-recorded (branch `depas-r2b`, 2026-07-25)
 
 Stratum **[A]** bit-neutral. Base `update` @ `5a416ee` (R2 item-7 M3b seam
