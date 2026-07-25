@@ -903,10 +903,15 @@ impl Dss {
         self.redirect_abort = false;
         let save_in_redirect = self.in_redirect; // nested Redirects stay "inside"
         self.in_redirect = true;
+        // P5b: diagnostics raised inside the deck point at "<file>:<line-no>"
+        // (scope rule v1: one command line = one source). Saved/restored so a
+        // nested Redirect/Compile does not leak its origin back to the parent.
+        let save_origin = std::mem::take(&mut self.cmd_origin);
+        let origin_path = path.to_string_lossy().to_string();
 
         let mut in_block_comment = false;
         let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
-        for input_line in &lines {
+        for (line_idx, input_line) in lines.iter().enumerate() {
             if self.redirect_abort {
                 break;
             }
@@ -922,6 +927,7 @@ impl Dss {
                     .as_ref()
                     .is_some_and(|c| c.solution.solution_abort);
                 if !solution_abort {
+                    self.cmd_origin = format!("{origin_path}:{}", line_idx + 1);
                     self.command(input_line);
                 } else {
                     self.redirect_abort = true; // Abort file if solution was aborted
@@ -932,6 +938,7 @@ impl Dss {
             }
         }
 
+        self.cmd_origin = save_origin;
         self.in_redirect = save_in_redirect;
         let path_str = path.to_string_lossy().to_string();
         self.vars.add("@lastfile", &path_str);

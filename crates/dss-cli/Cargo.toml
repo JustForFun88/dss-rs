@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 dss-core = { path = "../dss-core" }
+# P5c: the binary owns diagnostic presentation. `fancy-no-backtrace` is the
+# graphical (miette) render handler — enabled ONLY here, never in the library
+# crates (which stay protocol-only). `--diag=pretty` renders through it.
+miette = { workspace = true, features = ["fancy-no-backtrace"] }
