@@ -58,6 +58,50 @@ sites.
   is set. Reproduced 1:1 (both oracles pin 60.0); dedicated pin test
   `monitor_basefreq_pins_60hz_upstream_bug`. Clean fix deferred to Stage F.
 
+**Settler pass (2026-07-25).** Both audits (code + tests) returned ACCEPT-clean;
+every finding settled empirically:
+
+- **Masks (D), empirical enumeration.** The audits' mask-safety proof was
+  coverage-based (corpus + goldens bit-neutral); confirmed structurally for all
+  six PC classes: `calc_yprim(sys)` re-runs `set_nominal_*(sys)` at the top for
+  Generator/Load/Storage/PVSystem/WindGen, and IndMach012 (by design, matching
+  Pascal `CalcYPrim` which does *not* self-recalc) re-derives via `inj_currents →
+  set_nominal_power(sys)` when `loads_need_updating`. So an `end_edit`-derived
+  nominal/`yeq*` is always overwritten by the LIVE ctx before any Y/current read —
+  no leaky reader beyond the one already found+fixed (JSON `sample_for_defaults`,
+  which uses the sanctioned no-circuit `SysCtx::parse_default()`, not
+  `default_recalc_ctx`). Masks real; no corpus pin.
+- **Positive divergent-ctx guard added (settles both audits' lone finding).** The
+  behavioral delta was asserted nowhere — a bit-neutral revert to
+  `default_recalc_ctx()` at any PC create/edit site would pass the whole suite. New
+  `exec/tests/live_ctx.rs`: move the live `GenMultiplier` off 1.0, then `New` /
+  `Edit` a Generator and read the create-/edit-time `p_nominal_per_phase` before any
+  solve. Guards the executive threading at both `recalc_pc_create` and `end_edit`;
+  a re-substituted default ctx now fails a test, not just the `rg` metric.
+- **PVSystem (audit-code minor).** Accepted — its 4 sites were production and the
+  success metric requires them; extension correct.
+- **Monitor 60.0 investigations decision (brief-E).** Settled: NO separate
+  `investigations/` report; `TODO(compat)` + pin + STATUS + the CLAUDE.md
+  Known-upstream-bugs list is the durable record. Rationale: (1) `investigations/`
+  is **gitignored/local-only** (not even present in a worktree) — an untracked note
+  is lost on worktree removal and never ships; the git-tracked canonical index is
+  CLAUDE.md, now updated Five→Six with the Monitor bullet. (2) The reproduced-1:1
+  rule prescribes exactly `TODO(compat)` + golden/pin, which is done. (3) The full
+  source+physics verification already lives inline in the greppable `TODO(compat)`.
+  (4) The five deep-dive reports cover nuanced dispositions (not-reproduced / UB /
+  gated-around); Monitor 60.0 is a plain hardcoded constant with one fully-traced
+  consumer and does not rise to that threshold.
+- **Environmental build gotcha (fixed for the session, noted for future).** A
+  toolchain update (rustc 1.97.0 "Rev1") invalidated all fingerprints, forcing a
+  full rebuild that then linked the GNU rustc via **Strawberry Perl's `gcc`** (first
+  on PATH) instead of the matching `C:\msys64\mingw64\bin\gcc` → 0xC0000005 crashes
+  in every freshly-linked build-script exe. Fix: prepend `C:\msys64\mingw64\bin` to
+  PATH so the mingw rustc uses its matching gcc/ld (proven: crashing exe → working).
+  No code impact; same GNU toolchain the project builds with.
+
+Gate re-verified green after the settler edits (fmt/clippy/`cargo test --workspace`
+incl. corpus_gate both channels); corpus pristine; source-integrity 186 `.pas`.
+
 
 
 Five related holes in the `< 0.51 Hz` GIC gate and the pos-seq collapse, all on

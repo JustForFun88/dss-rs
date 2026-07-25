@@ -58,8 +58,11 @@ marked `TODO(compat):` with an explanation and the intended clean fix.
 
 ## Known upstream bugs (`investigations/`)
 
-Five proven dss_capi/OpenDSS engine bugs, each with a full report in
-`investigations/`. Check there before chasing a divergence in these areas. Rule:
+Six proven dss_capi/OpenDSS engine bugs. The first five each have a full deep-dive
+report in the (gitignored, local-only) `investigations/` folder — check there
+before chasing a divergence in those areas. The sixth (Monitor BaseFrequency) is a
+plain hardcoded-constant bug with a single fully-traced consumer, so it is
+documented inline (`TODO(compat)` + pin) rather than in a separate report. Rule:
 a *deterministic, defined* upstream bug is reproduced 1:1 (`TODO(compat)` +
 golden); UB or state-mutating-read bugs are NOT reproduced — document and gate
 around them.
@@ -88,6 +91,18 @@ around them.
   defined, not state-poisoning → reproduced (`TODO(compat)` in
   `exec/view.rs::snapshot_elements`); it is the only channel distinguishing
   Newton from the normal fixed-point on the `newton*` gates.
+- **Monitor `BaseFrequency` 60.0** — `TMonitorObj.Create` hard-pins
+  `Basefrequency := 60.0` (Monitor.pas:472 == r4133:552), overriding the base-class
+  `BaseFrequency := ActiveCircuit.Fundamental` (CktElement.pas:233) that every other
+  element inherits. Its one physical consumer is mode-4 flicker: it is passed as
+  `fBase` into `FlickerMeter` (Monitor.pas:1657 → Pstcalc.pas:594), where `fBase =
+  50.0` selects the IEC 61000-4-15 230V/50Hz lamp weighting coefficients vs the
+  120V/60Hz set (Pstcalc.pas:609-626) — so a mode-4 monitor in a 50 Hz circuit
+  computes Pst with the wrong (60 Hz) lamp curve unless the user sets `basefreq=50`.
+  Deterministic, defined, not state-poisoning → reproduced (`TODO(compat)` in
+  `exec/command.rs::create_object_no_edit`, pin `monitor_basefreq_pins_60hz_upstream_bug`);
+  both gating oracles pin 60.0. Clean fix (inherit `Fundamental`) deferred to
+  DE_PASCALIZE Stage F.
 
 ## Gate (must be green before any commit)
 

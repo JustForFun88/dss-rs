@@ -23,6 +23,7 @@ mod force_hooks;
 mod harmonics;
 mod lifecycle;
 mod line_fetch;
+mod live_ctx;
 mod make_pos_seq;
 mod monitors;
 mod ncim;
