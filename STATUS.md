@@ -3491,6 +3491,25 @@ byte-identical; no tolerance/golden changes (text-only P5 exception unused here)
   the graphical diagnostic underlining the offending token. No library code
   touched — the corpus gate and numeric goldens are unaffected.
 
+**Settle (audit dispositions, no code change).** Both audits (code + tests)
+returned zero real defects; the three flagged items are deliberate non-fixes,
+each re-verified empirically here:
+- *fancy dev-dep in dss-core* — the shipped library installs no render hook
+  (`src/diag.rs` mentions "fancy" only in a doc comment; `GraphicalReportHandler`
+  lives solely in `tests/diag_render.rs` and `dss-cli/main.rs`). The dev-dep is
+  required by the plan's own P5b DoD snapshot test; release builds compile no
+  dev-deps. The plan's real constraint (presentation in the binary) holds; the
+  "only in dss-cli" wording is about the *product* handler. Kept.
+- *"Invalid inline math entry" property-value text* — proven pre-existing:
+  string is in base `value.rs:46` at `6c99b8f`; P5bc's diff there is purely
+  additive `.map_err(|e| e.with_span(...))`, no text line removed. P5b is spans,
+  not text; the span correctly underlines the value token. Kept.
+- *spans stamped at the executive `attach_source`, not `setters.rs`* — strictly
+  more correct than the plan sketch: setters parse values through a scratch
+  `(value)` buffer whose offsets don't map to the command line, so the
+  library-authoritative overwrite of the scratch span is the right behavior.
+  Kept.
+
 ## 1l. DE_PASCALIZE P15 — `dss-sparse` allocation & indexing hygiene [A] (branch `wt-p15`)
 
 Stratum **[A] bit-neutral** — the solver hot path. Same arithmetic, same
