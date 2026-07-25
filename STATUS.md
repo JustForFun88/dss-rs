@@ -331,6 +331,16 @@ wraparound-accumulate). Left as-is (recorded, not escaped): Generator YPrim
 VSConverter's `compute_inj_currents`/`get_currents` `needless_range_loop` allows
 (injection/MVMult loops, not stamps → P14 de-indexing territory).
 
+Audit dispositions (2 audits): audit-code found nothing real (bit-neutral, all
+pins green). audit-tests raised one Minor·B — the delta-series unit test asserts
+`get(i,i) == value + value`, order-blind because `value+value` is FP-exact. Not
+fixed, by design: `stamp_delta_series` takes a single scalar, so every diagonal
+receives the *identical* `value` twice → there is no in-call accumulation order
+to perturb (distinct-magnitude summands are impossible through the API). The
+load-bearing property IS pinned — `add` double-accumulates (`2v`) where a `set`
+would give `v`; cross-element accumulation order is pinned byte-exact by
+`golden_checkpoints` + `corpus_gate`. Audit concurred (optional/not-required).
+
 ### DE_PASCALIZE P13 — VCCS delay line → `RingBuf` (wave 2, branch `wt-p1213-v2`)
 
 Stratum **[A]** bit-neutral. The VCCS z-domain filter's two wrap-around
