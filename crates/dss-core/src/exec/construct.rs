@@ -348,6 +348,7 @@ impl Dss {
             last_result_file: String::new(),
             in_redirect: false,
             redirect_abort: false,
+            cmd_origin: "<command>".to_string(),
             cim: crate::cim::CimExporter::default(),
             dss_objs: Vec::new(),
             daisy_size: 1.0, // DSSClass.pas:1283

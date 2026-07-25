@@ -20,6 +20,11 @@ uuid.workspace = true
 
 [dev-dependencies]
 serde.workspace = true
+# P5b diagnostic-render snapshots: the graphical (miette `fancy`) handler is a
+# TEST-ONLY dependency — the shipped library stays protocol-only (the release
+# build compiles no dev-deps), matching the nushell layering. `dss-cli` (P5c)
+# enables it as a real dependency for the binary.
+miette = { workspace = true, features = ["fancy-no-backtrace"] }
 # MULTITHREADING_PLAN M1 benchmark baseline (also the measured proof for
 # DE_PASCALIZE P15 dss-sparse allocation hygiene). `default-features = false`
 # drops the html/plotters report stack — only the timing core is needed.
