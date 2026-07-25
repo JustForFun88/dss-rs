@@ -250,7 +250,7 @@ fn branch_customers(dss: &Dss, full: &str) -> (i32, i32) {
         if !class.props.class_name().eq_ignore_ascii_case(cls) {
             continue;
         }
-        for obj in &class.objects {
+        for obj in class.arena.objs() {
             if obj.data().name().eq_ignore_ascii_case(name)
                 && let Some(e) = obj.as_ckt_element()
             {

@@ -16,7 +16,7 @@ use crate::exec::registry::DssClass;
 
 /// Downcast a `ckt.energy_meters` ref to its concrete [`EnergyMeter`].
 fn as_meter(classes: &[DssClass], r: ElemRef) -> &EnergyMeter {
-    classes[r.cls].objects[r.idx]
+    classes[r.cls].arena[r.idx]
         .as_any()
         .downcast_ref::<EnergyMeter>()
         .expect("energy_meters holds EnergyMeter")
@@ -27,7 +27,7 @@ fn full_name(classes: &[DssClass], r: ElemRef) -> String {
     format!(
         "{}.{}",
         classes[r.cls].props.class_name(),
-        classes[r.cls].objects[r.idx].data().name()
+        classes[r.cls].arena[r.idx].data().name()
     )
 }
 
@@ -56,12 +56,12 @@ pub(crate) fn show_loops(classes: &[DssClass], ckt: &Circuit) -> String {
         let Some(tree) = m.branch_list() else {
             continue;
         };
-        let mtr_name = classes[mr.cls].objects[mr.idx].data().name().to_string();
+        let mtr_name = classes[mr.cls].arena[mr.idx].data().name().to_string();
         for (i, &br) in m.sequence_list().iter().enumerate() {
             let node = tree.node(m.sequence_nodes()[i]);
             // Pascal `Format('… %s.%s …', [ParentClass.Name, AnsiUpperCase(Name)])`.
             let cls = classes[br.cls].props.class_name();
-            let name_up = classes[br.cls].objects[br.idx].data().name().to_uppercase();
+            let name_up = classes[br.cls].arena[br.idx].data().name().to_uppercase();
             if node.is_parallel {
                 let partner = node
                     .loop_elem
@@ -120,12 +120,12 @@ pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemRef, param: &str)
         s.push_str(&format!(
             "{}.{}",
             classes[br.cls].props.class_name(),
-            classes[br.cls].objects[br.idx].data().name()
+            classes[br.cls].arena[br.idx].data().name()
         ));
         // PARALLEL uses `LoopLineObj.Name` (bare name); LOOP uses `.FullName`.
         if node.is_parallel {
             let partner = node.loop_elem.map_or_else(String::new, |r| {
-                classes[r.cls].objects[r.idx].data().name().to_string()
+                classes[r.cls].arena[r.idx].data().name().to_string()
             });
             s.push_str(&format!("(PARALLEL:{partner})"));
         }
@@ -135,7 +135,7 @@ pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemRef, param: &str)
                 .map_or_else(String::new, |r| full_name(classes, r));
             s.push_str(&format!("(LOOP:{partner})"));
         }
-        let branch_sensor = classes[br.cls].objects[br.idx]
+        let branch_sensor = classes[br.cls].arena[br.idx]
             .as_ckt_element()
             .and_then(|e| e.cd().sensor_obj);
         s.push_str(&sensor_note(classes, branch_sensor));
@@ -150,9 +150,9 @@ pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemRef, param: &str)
             s.push_str(&format!(
                 "{}.{}",
                 classes[shunt.cls].props.class_name(),
-                classes[shunt.cls].objects[shunt.idx].data().name()
+                classes[shunt.cls].arena[shunt.idx].data().name()
             ));
-            let shunt_sensor = classes[shunt.cls].objects[shunt.idx]
+            let shunt_sensor = classes[shunt.cls].arena[shunt.idx]
                 .as_ckt_element()
                 .and_then(|e| e.cd().sensor_obj);
             s.push_str(&sensor_note(classes, shunt_sensor));

@@ -470,17 +470,17 @@ impl Dss {
                             errors.push(format!(
                                 "Object \"{}.{}\" is not a valid PC element.",
                                 classes[ci].props.class_name(),
-                                classes[ci].objects[oi].data().name()
+                                classes[ci].arena[oi].data().name()
                             ));
                             abort = true;
                         }
                         Some((ci, oi)) => {
-                            let nvars = classes[ci].objects[oi]
+                            let nvars = classes[ci].arena[oi]
                                 .as_ckt_element()
                                 .map(|e| e.num_variables())
                                 .unwrap_or(0);
                             let found = (1..=nvars).find(|&i| {
-                                classes[ci].objects[oi]
+                                classes[ci].arena[oi]
                                     .as_ckt_element()
                                     .expect("ckt element")
                                     .variable_name(i)
@@ -497,7 +497,7 @@ impl Dss {
                                 let sys = sys_ctx(ckt);
                                 let node_v = ckt.solution.node_v.clone();
                                 let mut states = vec![0.0; nvars];
-                                classes[ci].objects[oi]
+                                classes[ci].arena[oi]
                                     .as_ckt_element_mut()
                                     .expect("ckt element")
                                     .get_all_variables(&sys, &node_v, &mut states);
@@ -507,7 +507,7 @@ impl Dss {
                                     "State variable \"{}\" not found in \"{}.{}\".",
                                     var_name.to_lowercase(),
                                     classes[ci].props.class_name(),
-                                    classes[ci].objects[oi].data().name()
+                                    classes[ci].arena[oi].data().name()
                                 ));
                                 abort = true;
                             }

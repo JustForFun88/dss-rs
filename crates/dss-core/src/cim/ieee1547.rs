@@ -620,28 +620,28 @@ impl Ieee1547Controller {
             // is load-bearing). Unlike the named-DER branch below, which emits
             // regardless (Pascal `SetElementActive` + unconditional `RefNode`).
             for &r in &ckt.storages.clone() {
-                let enabled = classes[r.cls].objects[r.idx]
+                let enabled = classes[r.cls].arena[r.idx]
                     .as_any()
                     .downcast_ref::<Storage>()
                     .is_some_and(|s| s.cd.enabled);
                 if !enabled {
                     continue;
                 }
-                let uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+                let uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
                 if let Some(plate) = storage_plate(classes, r) {
                     writer::ref_node(buf, prf, "DERDynamics.PowerElectronicsConnection", uuid);
                     self.set_storage_nameplate(&plate);
                 }
             }
             for &r in &ckt.pv_systems.clone() {
-                let enabled = classes[r.cls].objects[r.idx]
+                let enabled = classes[r.cls].arena[r.idx]
                     .as_any()
                     .downcast_ref::<PVSystem>()
                     .is_some_and(|p| p.cd.enabled);
                 if !enabled {
                     continue;
                 }
-                let uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+                let uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
                 if let Some(plate) = pv_plate(classes, r) {
                     writer::ref_node(buf, prf, "DERDynamics.PowerElectronicsConnection", uuid);
                     self.set_photovoltaic_nameplate(&plate);
@@ -652,7 +652,7 @@ impl Ieee1547Controller {
                 let Some(r) = find_elem(classes, name) else {
                     continue;
                 };
-                let uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+                let uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
                 writer::ref_node(buf, prf, "DERDynamics.PowerElectronicsConnection", uuid);
                 self.set_element_nameplate(classes, r);
             }
@@ -942,7 +942,7 @@ struct StoragePlate {
 }
 
 fn pv_plate(classes: &[DssClass], r: ElemRef) -> Option<PvPlate> {
-    let pv = classes[r.cls].objects[r.idx]
+    let pv = classes[r.cls].arena[r.idx]
         .as_any()
         .downcast_ref::<PVSystem>()?;
     Some(PvPlate {
@@ -959,7 +959,7 @@ fn pv_plate(classes: &[DssClass], r: ElemRef) -> Option<PvPlate> {
 }
 
 fn storage_plate(classes: &[DssClass], r: ElemRef) -> Option<StoragePlate> {
-    let st = classes[r.cls].objects[r.idx]
+    let st = classes[r.cls].arena[r.idx]
         .as_any()
         .downcast_ref::<Storage>()?;
     Some(StoragePlate {
@@ -981,8 +981,8 @@ fn find_elem(classes: &[DssClass], full_name: &str) -> Option<ElemRef> {
         .iter()
         .position(|c| c.props.class_name().eq_ignore_ascii_case(cls_name))?;
     let idx = classes[cls]
-        .objects
-        .iter()
+        .arena
+        .objs()
         .position(|o| o.data().name().eq_ignore_ascii_case(obj_name))?;
     Some(ElemRef { cls, idx })
 }
@@ -992,7 +992,7 @@ fn signal_terminal_uuid(cim: &mut CimExporter, classes: &[DssClass], sig: &Remot
     let Some(r) = sig.elem else {
         return Uuid::nil();
     };
-    let ce = classes[r.cls].objects[r.idx]
+    let ce = classes[r.cls].arena[r.idx]
         .as_ckt_element()
         .expect("signal element");
     let class_name = classes[r.cls].props.class_name();
@@ -1011,7 +1011,7 @@ fn scan_bus_for_signal(
     pd: bool,
 ) -> bool {
     for r in elements_at_bus(ckt, classes, bus_idx, pd) {
-        let Some(ce) = classes[r.cls].objects[r.idx].as_ckt_element() else {
+        let Some(ce) = classes[r.cls].arena[r.idx].as_ckt_element() else {
             continue;
         };
         for k in 1..=ce.cd().nterms {
@@ -1075,7 +1075,7 @@ fn elements_at_bus(ckt: &Circuit, classes: &[DssClass], bus_idx: usize, pd: bool
     };
     let mut out = Vec::new();
     for &r in list {
-        let Some(ce) = classes[r.cls].objects[r.idx].as_ckt_element() else {
+        let Some(ce) = classes[r.cls].arena[r.idx].as_ckt_element() else {
             continue;
         };
         let b1 = strip(ce.cd().get_bus(1));
@@ -1110,7 +1110,7 @@ pub(super) fn write_ieee1547_controllers(
         let Some(snap) = inv_snap(classes, r) else {
             continue;
         };
-        let uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+        let uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
         ctrl.pull_from_inv_control(&snap, uuid);
         ctrl.write_cim(buf, cim, ckt, classes);
     }
@@ -1118,7 +1118,7 @@ pub(super) fn write_ieee1547_controllers(
         let Some(snap) = exp_snap(classes, r) else {
             continue;
         };
-        let uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+        let uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
         ctrl.pull_from_exp_control(&snap, uuid);
         ctrl.write_cim(buf, cim, ckt, classes);
     }
@@ -1130,7 +1130,7 @@ fn class_refs(classes: &[DssClass], name: &str) -> Vec<ElemRef> {
         .iter()
         .position(|c| c.props.class_name().eq_ignore_ascii_case(name))
         .map(|cls| {
-            (0..classes[cls].objects.len())
+            (0..classes[cls].arena.len())
                 .map(|idx| ElemRef { cls, idx })
                 .collect()
         })
@@ -1140,7 +1140,7 @@ fn class_refs(classes: &[DssClass], name: &str) -> Vec<ElemRef> {
 /// Snapshot an enabled `InvControl`'s CIM inputs (`None` if disabled).
 fn inv_snap(classes: &[DssClass], r: ElemRef) -> Option<InvSnap> {
     use crate::elements::control::inv_control::InvControl;
-    let inv = classes[r.cls].objects[r.idx]
+    let inv = classes[r.cls].arena[r.idx]
         .as_any()
         .downcast_ref::<InvControl>()?;
     if !inv.cd().enabled {
@@ -1175,7 +1175,7 @@ fn inv_snap(classes: &[DssClass], r: ElemRef) -> Option<InvSnap> {
 /// Snapshot an enabled `ExpControl`'s CIM inputs (`None` if disabled).
 fn exp_snap(classes: &[DssClass], r: ElemRef) -> Option<ExpSnap> {
     use crate::elements::control::exp_control::ExpControl;
-    let exp = classes[r.cls].objects[r.idx]
+    let exp = classes[r.cls].arena[r.idx]
         .as_any()
         .downcast_ref::<ExpControl>()?;
     if !exp.cd().enabled {

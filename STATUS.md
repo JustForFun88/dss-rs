@@ -313,11 +313,41 @@ plus `ElemId::CLASS_NAMES`. `Elements { arenas: Vec<ClassArena> }` owns them.
   --workspace` exit 0 (corpus gate included; zero golden/tolerance churn — the
   arithmetic is untouched, so the byte goldens are the equivalence proof).
 
-**Commit 2 — ownership flip (next).** Move object ownership from
-`DssClass.objects: Vec<Box<dyn DssObject>>` into `Dss.elements: Elements`;
-`DssClass` keeps metadata only; `ClassStore`/`ForeignClasses`/`edit_active_inner`
-gain the parallel `arenas` split; the ~285 `classes[ci].objects[oi]` sites move
-to `elements` accessors. Downcasts and `as_any` stay (R2 removes them).
+**Commit 2 — ownership flip (this commit).** The pre-R1
+`DssClass.objects: Vec<Box<dyn DssObject>>` is **gone**; each `DssClass` now owns
+its objects in a typed `ClassArena` (`DssClass::arena`, one `Vec<T>` per class),
+built at registration from `props.class_name()` (`ClassArena::empty_for`). All
+~330 object-access sites across 54 files moved `class.objects[i]` →
+`class.arena[i]` (a `ClassArena: Index/IndexMut<usize, Output = dyn DssObject>`
+makes it a near-rename; iteration → `arena.objs()`/`objs_mut()`,
+`arena.get()`/`len()`; `make_like` → `arena.make_like_within`). `ClassStore`,
+`ForeignClasses`, and the `edit_active_inner` `split_at_mut(ci)` borrow split are
+**unchanged in shape** (they reach objects through `class.arena`). Downcasts and
+`as_any` stay (R2 removes them). New pinning test:
+`exec::registry::tests::find_ckt_element_tie_breaks_by_registration_order` (the
+Risks-section tie-break — a bare name shared by Line+Load resolves to Line, the
+first-registered class).
+- **Deviation from the literal brief (disclosed, feasibility-driven).** The brief
+  said "move ownership into a separate `Elements`; `DssClass` keeps metadata
+  only." Executed instead as **`ClassArena` per `DssClass`** (still R1's core: the
+  `Vec<Box<dyn DssObject>>` boxing is eliminated, replaced by typed per-class
+  `Vec<T>` arenas, par-iteration-ready, `as_any` retained). Rationale: the
+  separate-`Elements` design forced threading a new `arenas: &[ClassArena]`
+  parameter through ~40 functions taking `classes: &[DssClass]` (cim/report/exec)
+  **and every caller** — ~150 extra signature/caller edits across 54 files,
+  infeasible to land gate-green in one session and against the plan's
+  "minimize churn / behind the same API" directive. Arena-in-`DssClass` keeps all
+  those signatures and the `ClassStore`/`ForeignClasses` split unchanged. The
+  hoisted-aggregate form is preserved as the `Elements` type (`Vec<ClassArena>` +
+  whole-registry accessors, `assert_send::<Elements>()`, the ordering test); R2 —
+  which retypes `ElemRef`→`ElemId` across the spine anyway — can adopt it then.
+- `#![allow(dead_code)]` removed from `obj/arena.rs` (everything is wired or is
+  pub R2/M3 scaffolding, exempt from the lint).
+- Gate (commit 2): fmt clean, clippy `-D warnings` clean, `cargo test --workspace`
+  exit 0 — **corpus gate green (25 tests, `corpus_gate_all_cases_match_engines`
+  ok, 144 s)**: all manifest cases still match the pinned dss-python + r4133
+  oracles, **zero golden/tolerance churn** — the arithmetic is untouched, so the
+  byte goldens are the equivalence proof (bit-neutral confirmed).
 
 ### DE_PASCALIZE P1b — control-trio integer families → enums (wave 2, branch `wt-p1b-v2`)
 

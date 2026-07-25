@@ -53,7 +53,7 @@ fn walk(
 ) {
     for &r in refs {
         let class_name = classes[r.cls].props.class_name();
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         let Some(elem) = obj.as_ckt_element() else {
             continue;
         };

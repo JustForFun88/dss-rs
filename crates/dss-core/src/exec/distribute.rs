@@ -199,8 +199,8 @@ impl Dss {
             return Vec::new();
         };
         self.classes[ci]
-            .objects
-            .iter()
+            .arena
+            .objs()
             .enumerate()
             .map(|(i, obj)| {
                 let l = obj

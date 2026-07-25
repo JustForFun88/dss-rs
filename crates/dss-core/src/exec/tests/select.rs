@@ -18,7 +18,7 @@ fn build(dss: &mut Dss) {
 /// The active terminal (0-based) of the currently-selected circuit element.
 fn active_terminal(dss: &Dss) -> usize {
     let (ci, idx) = dss.active_ckt_element.expect("an element is selected");
-    dss.classes[ci].objects[idx]
+    dss.classes[ci].arena[idx]
         .as_ckt_element()
         .expect("selected object is a circuit element")
         .cd()
@@ -88,7 +88,7 @@ fn select_unknown_class_903_and_fallback() {
     // Fell back to the Line class and found l2.
     let (ci, idx) = dss.active_ckt_element.expect("l2 selected via fallback");
     assert!(
-        dss.classes[ci].objects[idx]
+        dss.classes[ci].arena[idx]
             .data()
             .name()
             .eq_ignore_ascii_case("l2"),

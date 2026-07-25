@@ -107,7 +107,7 @@ impl Dss {
                 if self.classes[ci].set_active(&dev_name) {
                     let oi = self.classes[ci].active.expect("just set active");
                     match Uuid::parse(&uuid_val) {
-                        Some(u) => self.classes[ci].objects[oi].data_mut().set_uuid(u),
+                        Some(u) => self.classes[ci].arena[oi].data_mut().set_uuid(u),
                         None => {
                             convert_error = Some(econvert(&uuid_val));
                             break;
@@ -182,7 +182,7 @@ impl Dss {
             .clone();
         for r in elems {
             let class_name = self.classes[r.cls].props.class_name().to_string();
-            let obj = self.classes[r.cls].objects[r.idx].data_mut();
+            let obj = self.classes[r.cls].arena[r.idx].data_mut();
             let id = obj.uuid();
             out.push_str(&format!(
                 "{}.{} {}\n",
@@ -205,8 +205,8 @@ impl Dss {
                 continue;
             };
             let class_name = self.classes[ci].props.class_name().to_string();
-            for obj in self.classes[ci].objects.iter_mut() {
-                let data = obj.data_mut();
+            for oi in 0..self.classes[ci].arena.len() {
+                let data = self.classes[ci].arena.obj_mut(oi).data_mut();
                 let id = data.uuid();
                 out.push_str(&format!(
                     "{}.{} {}\n",

@@ -18,7 +18,7 @@ pub(crate) fn export_loads(classes: &[DssClass], refs: &[ElemRef]) -> String {
     let mut out =
         String::from("Load, Connected KVA, Allocation Factor, Phases, kW, kvar, PF, Model\n");
     for &r in refs {
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         if let Some(load) = obj.as_any().downcast_ref::<Load>()
             && load.cd.enabled
         {

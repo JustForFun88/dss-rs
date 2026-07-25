@@ -40,7 +40,7 @@ impl Dss {
 
         for r in refs {
             let ctx = self.build_pos_seq_ctx(r);
-            let plan = match self.classes[r.cls].objects[r.idx].as_ckt_element_mut() {
+            let plan = match self.classes[r.cls].arena[r.idx].as_ckt_element_mut() {
                 Some(elem) => elem.make_pos_sequence(&ctx),
                 None => continue, // every `CktElements` entry is a circuit element
             };
@@ -57,7 +57,7 @@ impl Dss {
         // refs up front, so the AuxParser (and the foreign-element reads) do
         // not alias the element borrow.
         let (bus_strs, mon_ref, ctrl_ref) = {
-            let elem = self.classes[r.cls].objects[r.idx]
+            let elem = self.classes[r.cls].arena[r.idx]
                 .as_ckt_element()
                 .expect("CktElements entry is a circuit element");
             let cd = elem.cd();
@@ -99,7 +99,7 @@ impl Dss {
         let elem = self
             .classes
             .get(r.cls)?
-            .objects
+            .arena
             .get(r.idx)?
             .as_ckt_element()?;
         let cd = elem.cd();
@@ -122,7 +122,7 @@ impl Dss {
         // `inherited MakePosSequence` → the base `TDSSCktElement.MakePosSequence`
         // bus rename (strip node extensions; keep a ground bus's `.0`).
         if plan.run_base
-            && let Some(elem) = self.classes[r.cls].objects[r.idx].as_ckt_element_mut()
+            && let Some(elem) = self.classes[r.cls].arena[r.idx].as_ckt_element_mut()
         {
             elem.cd_mut().make_pos_sequence_base();
         }
@@ -162,8 +162,8 @@ impl Dss {
             errors,
             ..
         } = self;
-        let DssClass { props, objects, .. } = &mut classes[r.cls];
-        let obj: &mut dyn DssObject = objects[r.idx].as_mut();
+        let DssClass { props, arena, .. } = &mut classes[r.cls];
+        let obj: &mut dyn DssObject = arena.obj_mut(r.idx);
         // None: no MakePosSequence typed setter resolves an object-reference
         // property, so the foreign class view is never consulted here.
         let mut eng = PropEngine {

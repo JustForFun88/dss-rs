@@ -40,7 +40,7 @@ pub(crate) fn show_ratings(classes: &[DssClass], ckt: &Circuit) -> String {
     let mut s = String::from("Power Delivery Elements Normal and Emergency (max) Ratings\n\n");
     for &r in &ckt.pd_elements {
         let class_name = classes[r.cls].props.class_name();
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         if let Some(elem) = obj.as_ckt_element() {
             let name = format!("{}.{}", class_name, obj.data().name());
             s.push_str(&format!(
@@ -234,7 +234,7 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
         s.push('\n');
     }
     for &r in &ckt.loads {
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         let Some(l) = obj.as_any().downcast_ref::<Load>() else {
             continue;
         };
@@ -292,7 +292,7 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
         s.push('\n');
     }
     for &r in &ckt.generators {
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
             continue;
         };
@@ -378,7 +378,7 @@ fn queue_row_line(handle: i32, hour: i32, sec: f64, code: i32, proxy: i32, name:
 
 /// The bare object name of a control element (Pascal `ControlElement.Name`).
 fn device_name(classes: &[DssClass], r: ElemRef) -> String {
-    classes[r.cls].objects[r.idx].data().name().to_string()
+    classes[r.cls].arena[r.idx].data().name().to_string()
 }
 
 #[cfg(test)]

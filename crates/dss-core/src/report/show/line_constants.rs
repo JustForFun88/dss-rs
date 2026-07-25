@@ -65,9 +65,9 @@ pub(crate) fn show_line_constants(
         return (f, f2, errors); // no geometries → header-only files
     };
 
-    for oi in 0..classes[ci].objects.len() {
-        let name = classes[ci].objects[oi].data().name().to_string();
-        let Some(geom) = classes[ci].objects[oi]
+    for oi in 0..classes[ci].arena.len() {
+        let name = classes[ci].arena[oi].data().name().to_string();
+        let Some(geom) = classes[ci].arena[oi]
             .as_any_mut()
             .downcast_mut::<LineGeometryObj>()
         else {
