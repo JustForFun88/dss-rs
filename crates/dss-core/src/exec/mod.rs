@@ -248,6 +248,16 @@ impl Dss {
         self.classes.iter().map(|c| c.props.class_name()).collect()
     }
 
+    /// The **live** per-`DssClass` arena's class name at each registration slot
+    /// (`c.arena.class_name()`, the actual runtime storage) — the load-bearing
+    /// twin of [`Self::registered_class_names`] for the ordering test: it proves
+    /// `ClassArena::empty_for` selected the correct variant for every class in
+    /// registration order, not just that the standalone `Elements` aggregate does.
+    #[cfg(test)]
+    pub(crate) fn live_arena_class_names(&self) -> Vec<&'static str> {
+        self.classes.iter().map(|c| c.arena.class_name()).collect()
+    }
+
     /// The active circuit, if `New circuit.` has run.
     pub fn circuit(&self) -> Option<&Circuit> {
         self.circuit.as_ref()

@@ -294,11 +294,14 @@ plus `ElemId::CLASS_NAMES`. `Elements { arenas: Vec<ClassArena> }` owns them.
   `for_each_ckt_elem_mut` — the M3 parallelism substrate, never a single
   `&mut dyn ElemStore` funnel (Part V rider).
 - **Mandatory ordering test** (`obj::arena::tests::arena_order_matches_registry`):
-  builds a live `Dss`, asserts `ElemId::CLASS_NAMES[i]` **and** `ClassArena`
-  layout `[i]` match the registry class name at `i` for all 50 — the load-bearing
-  registration-order == arena-order invariant. Plus an `ElemId`↔`ElemRef` bridge
-  round-trip test. (The R2 same-named-cross-class `find_ckt_element` tie-break
-  test lands with the ownership flip, where the arenas are actually wired.)
+  builds a live `Dss`, asserts `ElemId::CLASS_NAMES[i]`, the **live**
+  `DssClass::arena` variant `[i]` (`Dss::live_arena_class_names`), **and** the
+  standalone `Elements` `ClassArena` layout `[i]` all match the registry class
+  name at `i` for all 50 — the load-bearing registration-order == arena-order
+  invariant, checked on the path that actually runs (settle: audit-tests C).
+  Plus an `ElemId`↔`ElemRef` bridge round-trip test. (The R2 same-named-cross-class
+  `find_ckt_element` tie-break test lands with the ownership flip, where the
+  arenas are actually wired.)
 - **P7 Send rider (rides with R1, per Part V item 1 / plan R1 step 3):** `: Send`
   supertraits on `DssObject`/`CktElement`/`ElemStore`; `const _:() =
   assert_send::<Dss>()` **and** `assert_send::<Elements>()` in `lib.rs`. The only
@@ -348,6 +351,38 @@ first-registered class).
   ok, 144 s)**: all manifest cases still match the pinned dss-python + r4133
   oracles, **zero golden/tolerance churn** — the arithmetic is untouched, so the
   byte goldens are the equivalence proof (bit-neutral confirmed).
+
+**Settle (two independent audits, opus-xhigh).** Both verdicts: faithful,
+bit-neutral mechanical refactor; the one deviation (arena-on-`DssClass` vs
+standalone `Elements`) is disclosed and behavior-neutral. Three findings, all
+Minor, dispositioned:
+- **`Elements` production-dead + ordering test validated the dead aggregate**
+  (audit-code C / audit-tests C). Empirically confirmed: `git grep` shows the
+  `Elements` struct's only non-comment reference outside `arena.rs` is the
+  `lib.rs` `assert_send::<Elements>()`, and `pair_mut_arenas`/`triple_mut_arenas`
+  have zero callers outside `arena.rs`. The deviation itself is **kept** — it is
+  the disclosed, feasibility-driven design (the standalone-storage hoist is R2's
+  job, which retypes the spine anyway) and both audits accept it as behavior-
+  neutral; deleting vs adopting `Elements` is R2's call. Both concrete gaps the
+  audits flagged are **fixed** (test-only, stratum [A]): (1) the ordering test now
+  also asserts the **live** `DssClass::arena` variant order (new `#[cfg(test)]
+  Dss::live_arena_class_names`), so the load-bearing invariant is checked on the
+  path that runs, not only the dead aggregate; (2) new
+  `elements_disjoint_borrows_cover_all_branches` + `elements_pair_mut_rejects_aliasing`
+  pin the `Elements::pair_mut`/`triple_mut` disjoint-borrow case-analysis across
+  every class-aliasing branch (was zero coverage) — so the R2/M3 substrate is
+  verified, not "correct by inspection".
+- **`Arc<Mutex>` in two plot test sinks vs the "no Mutex" forbidden-move**
+  (audit-code D / audit-tests B). **Not a real violation — no change.**
+  Empirically: the P7 grep gate as actually enforced is `RefCell|Rc<|static
+  mut|thread_local` (Part V rule #4 / §695 — `Mutex` is not in it) and it is
+  **clean over all `crates/*/src` production source**. The two `Arc<Mutex>` sinks
+  (`exec/plot/tests.rs`, `tests/golden_plot_callback.rs`) are test-only capture
+  buffers, **forced** by the sanctioned P7 `+ Send` rider on `PlotCallback`
+  (`Rc<RefCell>` is not `Send`), add no ambient engine state, and leave every
+  assertion byte-identical. The forbidden-move list names `Mutex` to keep it out
+  of the **shipped engine**; a `Send` test sink is the idiomatic capture and does
+  not touch that guarantee.
 
 ### DE_PASCALIZE P1b — control-trio integer families → enums (wave 2, branch `wt-p1b-v2`)
 

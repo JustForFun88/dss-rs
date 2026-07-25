@@ -599,12 +599,22 @@ mod tests {
     fn arena_order_matches_registry() {
         let dss = Dss::new();
         let names = dss.registered_class_names();
+        // The LIVE runtime storage: each `DssClass::arena`'s selected variant, in
+        // registration order — the path that actually runs (the standalone
+        // `Elements` is R2 scaffolding, so it alone would not prove the live
+        // arenas are correctly ordered).
+        let live = dss.live_arena_class_names();
         let elems = Elements::new();
 
         assert_eq!(
             ElemId::CLASS_NAMES.len(),
             names.len(),
             "ElemId covers a different class count than the registry"
+        );
+        assert_eq!(
+            live.len(),
+            names.len(),
+            "live DssClass::arena count differs from the registry"
         );
         assert_eq!(
             elems.arenas.len(),
@@ -618,12 +628,111 @@ mod tests {
                 "class {i}: ElemId::CLASS_NAMES = {:?} but registry = {reg:?}",
                 ElemId::CLASS_NAMES[i]
             );
+            // Load-bearing: the live per-`DssClass` arena variant at slot `i`.
+            assert!(
+                live[i].eq_ignore_ascii_case(reg),
+                "class {i}: live DssClass::arena = {:?} but registry = {reg:?}",
+                live[i]
+            );
             assert!(
                 elems.arenas[i].class_name().eq_ignore_ascii_case(reg),
-                "class {i}: arena = {:?} but registry = {reg:?}",
+                "class {i}: Elements arena = {:?} but registry = {reg:?}",
                 elems.arenas[i].class_name()
             );
         }
+    }
+
+    /// The `Elements` aggregate's disjoint mutable-borrow helpers
+    /// (`pair_mut`/`triple_mut`, the R2/M3 substrate) across **every**
+    /// class-aliasing branch. R1 leaves `Elements` production-dead (the ownership
+    /// flip lives on `DssClass::arena`); this pins the borrow case-analysis so it
+    /// is verified, not "correct by inspection", before R2 adopts it. Object
+    /// identity is checked by name (`push_new` stores the lowercased name).
+    #[test]
+    fn elements_disjoint_borrows_cover_all_branches() {
+        let cls = |name: &str| {
+            ElemId::CLASS_NAMES
+                .iter()
+                .position(|n| n.eq_ignore_ascii_case(name))
+                .unwrap_or_else(|| panic!("{name} not registered"))
+        };
+        let line = cls("Line");
+        let load = cls("Load");
+        let cap = cls("Capacitor");
+        let r = |cls: usize, idx: usize| ElemRef { cls, idx };
+
+        let mut e = Elements::new();
+        assert_eq!(e.push_new(line, "l0"), 0);
+        assert_eq!(e.push_new(line, "l1"), 1);
+        assert_eq!(e.push_new(line, "l2"), 2);
+        assert_eq!(e.push_new(load, "d0"), 0);
+        assert_eq!(e.push_new(cap, "c0"), 0);
+
+        // pair — same class.
+        {
+            let (a, b) = e.pair_mut(r(line, 0), r(line, 1));
+            assert_eq!((a.data().name(), b.data().name()), ("l0", "l1"));
+        }
+        // pair — cross class.
+        {
+            let (a, b) = e.pair_mut(r(line, 0), r(load, 0));
+            assert_eq!((a.data().name(), b.data().name()), ("l0", "d0"));
+        }
+        // triple — all same class.
+        {
+            let (a, b, c) = e.triple_mut(r(line, 0), r(line, 1), r(line, 2));
+            assert_eq!(
+                (a.data().name(), b.data().name(), c.data().name()),
+                ("l0", "l1", "l2")
+            );
+        }
+        // triple — a.cls == b.cls, c distinct.
+        {
+            let (a, b, c) = e.triple_mut(r(line, 0), r(line, 1), r(load, 0));
+            assert_eq!(
+                (a.data().name(), b.data().name(), c.data().name()),
+                ("l0", "l1", "d0")
+            );
+        }
+        // triple — a.cls == c.cls, b distinct.
+        {
+            let (a, b, c) = e.triple_mut(r(line, 0), r(load, 0), r(line, 1));
+            assert_eq!(
+                (a.data().name(), b.data().name(), c.data().name()),
+                ("l0", "d0", "l1")
+            );
+        }
+        // triple — b.cls == c.cls, a distinct.
+        {
+            let (a, b, c) = e.triple_mut(r(load, 0), r(line, 0), r(line, 1));
+            assert_eq!(
+                (a.data().name(), b.data().name(), c.data().name()),
+                ("d0", "l0", "l1")
+            );
+        }
+        // triple — all three classes distinct.
+        {
+            let (a, b, c) = e.triple_mut(r(line, 0), r(load, 0), r(cap, 0));
+            assert_eq!(
+                (a.data().name(), b.data().name(), c.data().name()),
+                ("l0", "d0", "c0")
+            );
+        }
+    }
+
+    /// The aliasing guard fires (Pascal has no equivalent — this is the R2/M3
+    /// safety net that a control loop never hands the same object twice).
+    #[test]
+    #[should_panic(expected = "aliasing refs")]
+    fn elements_pair_mut_rejects_aliasing() {
+        let line = ElemId::CLASS_NAMES
+            .iter()
+            .position(|n| n.eq_ignore_ascii_case("Line"))
+            .unwrap();
+        let mut e = Elements::new();
+        e.push_new(line, "l0");
+        let a = ElemRef { cls: line, idx: 0 };
+        let _ = e.pair_mut(a, a);
     }
 
     /// `Idx<T>` and the `to_ref`/`class_ord` bridge round-trip a `{cls, idx}`.
