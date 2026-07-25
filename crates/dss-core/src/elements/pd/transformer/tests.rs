@@ -414,6 +414,75 @@ fn bh_points_realloc_zeroes_arrays() {
 }
 
 #[test]
+fn gic_build_y_terminal_rdc_only_below_051hz() {
+    // Pascal `TTransfObj.GICBuildYTerminal` (Transformer.pas:1823): below 0.51 Hz
+    // `Y_Term` is a resistance-only `2·NumWindings` matrix — `1/RdcOhms` on both
+    // diagonal entries of each winding, `-1/RdcOhms` across its two conductors,
+    // NO inter-winding coupling, plus the anti-float adder (`-Y_PPM`, a real
+    // conductance) on both diagonal entries; `Y_Term_NL` is empty.
+    let mut t = edited(&[
+        ("phases", "1"),
+        ("windings", "2"),
+        ("buses", "a.1.0, b.1.0"),
+        ("conns", "wye, wye"),
+        ("kvs", "7.2, 0.24"),
+        ("kvas", "25, 25"),
+        ("xhl", "2"),
+        ("%r", "0.5"),
+        ("wdg", "1"),
+        ("rdcohms", "2.5"),
+        ("wdg", "2"),
+        ("rdcohms", "0.9"),
+    ]);
+    // GIC/dc: Solution.Frequency < 0.51 Hz.
+    let mut sys = test_sys();
+    sys.frequency = 0.1;
+    t.calc_yprim(&sys);
+
+    let yt = &t.y_term;
+    assert_eq!(yt.order(), 4); // 2 * NumWindings
+
+    let rdc0 = t.windings[0].rdcohms;
+    let rdc1 = t.windings[1].rdcohms;
+    assert_eq!(rdc0, 2.5);
+    assert_eq!(rdc1, 0.9);
+    let yppm0 = t.windings[0].y_ppm;
+    let yppm1 = t.windings[1].y_ppm;
+    // Y_PPM = -ppm_factor / (vbase²/vabase_1ph) / 2 (negative); the adder is
+    // `-Y_PPM` so it raises the diagonal by |Y_PPM|.
+    assert!(
+        yppm0 < 0.0 && yppm1 < 0.0,
+        "anti-float Y_PPM must be active (ppm_float_factor != 0)"
+    );
+    let tol = 1e-12;
+
+    // Winding 0 (conductors 0,1): diag = 1/Rdc - Y_PPM (real), off = -1/Rdc.
+    assert!((yt.get(0, 0).re - (1.0 / rdc0 - yppm0)).abs() < tol);
+    assert!(yt.get(0, 0).im.abs() < tol);
+    assert!((yt.get(1, 1).re - (1.0 / rdc0 - yppm0)).abs() < tol);
+    assert!((yt.get(0, 1).re + 1.0 / rdc0).abs() < tol);
+    assert!((yt.get(1, 0).re + 1.0 / rdc0).abs() < tol);
+    // Winding 1 (conductors 2,3).
+    assert!((yt.get(2, 2).re - (1.0 / rdc1 - yppm1)).abs() < tol);
+    assert!((yt.get(3, 3).re - (1.0 / rdc1 - yppm1)).abs() < tol);
+    assert!((yt.get(2, 3).re + 1.0 / rdc1).abs() < tol);
+    assert!((yt.get(3, 2).re + 1.0 / rdc1).abs() < tol);
+    // NO inter-winding coupling.
+    for (i, j) in [(0, 2), (0, 3), (1, 2), (1, 3), (2, 0), (3, 1)] {
+        assert!(
+            yt.get(i, j).norm() < tol,
+            "unexpected inter-winding coupling at ({i},{j})"
+        );
+    }
+    // Y_Term_NL is empty (no magnetizing branch at dc).
+    for i in 0..4 {
+        for j in 0..4 {
+            assert!(t.y_term_nl.get(i, j).norm() < tol);
+        }
+    }
+}
+
+#[test]
 fn core_type_pins_noncontiguous_enum_ordinals() {
     use super::CoreType;
     assert_eq!(CoreType::Shell.ordinal(), 0);

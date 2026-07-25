@@ -1,0 +1,19 @@
+! GAPS deck: Line positive-sequence collapse at a PHASES EDIT (Pascal
+! TLineObj.PropertySideEffects phases branch -> RecalcElementData,
+! Line.pas:628, reading the live ActiveCircuit.PositiveSequence, Line.pas:1085).
+! The line is created 3-phase in a NON-PS circuit (keeps R0 0.5 <> R1 0.1),
+! solved, then CktModel is flipped to Positive and `phases=2` is edited: the
+! phases side effect fires RecalcElementData, which collapses R0:=R1, X0:=X1,
+! C0:=C1 AT EDIT TIME -- visible on readback (probed vs the pinned oracle
+! 2026-07-25) and in the YPrim. Feature-sensitive: without the CktModel flip
+! the phases edit leaves R0 0.5 <> R1 0.1 (mutual Zm <> 0).
+Clear
+New Circuit.gaps_lps_ph basekv=12.47 phases=3
+New Line.lph bus1=sourcebus bus2=b1 phases=3 length=1 r1=0.1 x1=0.2 c1=3.0 r0=0.5 x0=0.9 c0=1.2 units=kft
+New Load.ld bus1=b1.1.2 phases=2 kv=7.2 kw=800 pf=0.95
+Set voltagebases=[12.47]
+Calcvoltagebases
+Solve
+Set CktModel=Positive
+Edit Line.lph phases=2
+Solve

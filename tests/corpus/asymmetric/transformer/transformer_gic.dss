@@ -1,0 +1,27 @@
+! GAPS deck: Transformer at GIC frequency -- the Solution.Frequency < 0.51 Hz
+! branch (Pascal Transformer.pas GICBuildYTerminal:1823): resistance-only
+! Y_Term from 1/RdcOhms per winding, NO inter-winding coupling, ppm float adder
+! as a real conductance, and an EMPTY Y_Term_NL (no magnetizing branch at dc).
+! Twin of asymmetric/autotrans/autotrans_gic.dss (Transformer instead of
+! AutoTrans). RdcOhms declared explicitly per winding. Single snapshot at
+! Set frequency=0.1. The switch line ALSO pins the Line GIC branch
+! (ConvertZinvToPosSeqR, Line.pas:1297): below 0.51 Hz the series Zinv collapses
+! to the diagonal positive-sequence resistance so cross-phase coupling vanishes.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.gaps_xfmrgic basekv=345.0 phases=3 mvasc3=2000000 2000000
+New Line.line1 bus1=sourcebus bus2=high switch=yes r1=1e-6 r0=1e-6 x1=0 x0=0 c1=0 c0=0
+New Transformer.t1 phases=3 windings=3 xhl=7.23 xht=24.45 xlt=28.45 %imag=0.0329
+~ wdg=1 bus=high conn=w kV=345.0 kVA=330000 %r=0.0493 rdcohms=2.5
+~ wdg=2 bus=low  conn=w kV=161.0 kVA=330000 %r=0.0556 rdcohms=0.9
+~ wdg=3 bus=tert conn=d kV=13.8  kVA=72000  %r=1.4503 rdcohms=0.05
+New Transformer.t2 phases=3 windings=2 xhl=8.5
+~ wdg=1 bus=low  conn=w kV=161 kVA=50000 %r=0.08 rdcohms=0.9
+~ wdg=2 bus=mid2 conn=w kV=69  kVA=50000 %r=0.09 rdcohms=0.5
+! Grounding-path reactors (pure R) so a DC loop exists at 0.1 Hz.
+New Reactor.g_high phases=3 bus1=high r=0.15 x=0
+New Reactor.g_mid2 phases=3 bus1=mid2 r=0.25 x=0
+Set voltagebases=[345.0 161.0 69.0 13.8]
+Calcvoltagebases
+Set frequency=0.1
+Solve

@@ -399,10 +399,14 @@ impl DssObject for Line {
                     if self.geometry_obj.is_none() && self.sym_components_model {
                         let n = self.cd.nphases;
                         self.cd.set_nconds(n); // force reallocation of terminal info
-                        // Note: Pascal reads ActiveCircuit.PositiveSequence
-                        // here; at parse time we use the multiphase default
-                        // (positive-sequence circuits revisit in CalcYPrim).
-                        self.recalc(false);
+                        // Pascal `TLineObj.RecalcElementData` reads the live
+                        // `ActiveCircuit.PositiveSequence` (`Line.pas:1085`)
+                        // whenever it runs — here, immediately in the `phases=`
+                        // side effect (`Line.pas:628`). In a `CktModel=Positive`
+                        // circuit it collapses r0/x0/c0 into r1/x1/c1 AT EDIT TIME
+                        // (readback-observable, probe-proven), so recalc with the
+                        // executive-synced live flag rather than deferring.
+                        self.recalc(self.positive_sequence);
                     } else {
                         // Pascal (Line.pas:639-644): changing the phase count is
                         // illegal for a matrix or geometry model — revert

@@ -7,6 +7,68 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### BUG WP gicfix — Transformer GIC port + true-frequency gate + Line pos-seq trio (2026-07-25)
+
+Five related holes in the `< 0.51 Hz` GIC gate and the pos-seq collapse, all on
+`bug-posseq-gic`. Empirically settled against the pinned oracle (dss-python
+0.15.7) and the r4133 DLL; full gate green; corpus pristine.
+
+- **Hole 1 (real gap): Transformer GIC branch was never ported.** `TTransfObj.
+  CalcY_Terminal` (`Transformer.pas:1879`) builds a resistance-only Y_Terminal
+  below 0.51 Hz via `GICBuildYTerminal` (`:1823`) — `1/RdcOhms` per winding, no
+  inter-winding coupling, empty `Y_Term_NL`, anti-float adder as a real
+  conductance (`-Y_PPM`). The port had NO `<0.51` branch. Ported loop-for-loop
+  (`transformer/yterminal.rs::gic_build_y_terminal`, twin of the working
+  AutoTrans one). `CalcYPrim` still stamps the empty `Y_Term_NL` and runs
+  `AddNeutralToY` unconditionally — matches Pascal `:1202-1204`. New corpus deck
+  `asymmetric/transformer/transformer_gic.dss` (twin of `autotrans_gic.dss`,
+  engines=both) + unit test `gic_build_y_terminal_rdc_only_below_051hz`. Oracle
+  feature-check: rdcohms 2.5→YPrim 0.4 (=1/2.5), 5.0→0.2.
+
+- **Hole 2 (documented benign divergence — now eliminated).** The gate had been
+  reconstructed as `freq_mult·base_frequency < 0.51` (the true `Solution.
+  Frequency` was out of scope), exact on the CalcYPrim path but diverging on the
+  `RecalcElementData → calc_y_terminal(1.0)` path (rebuilt at 60 Hz, not the live
+  frequency). This closes out the WPG.15 finding-1 "documented benign divergence"
+  (the long comment at `auto_trans/yterminal.rs:144-156`, audited 2026-07-09):
+  the comment is removed and `calc_y_terminal(freq_mult, frequency)` now takes the
+  frequency explicitly — CalcYPrim passes `sys.frequency`, RecalcElementData passes
+  a cached `live_frequency` synced by the executive at New/Edit and refreshed by
+  CalcYPrim each solve (the Rust stand-in for the Pascal global). Bit-neutral on
+  every `≥0.51 Hz` path (all existing goldens/corpus green). The recalc-path
+  frequency itself stays observationally masked (CalcYPrim always rebuilds Y_Term
+  at the solve frequency); bonus deck `asymmetric/autotrans/autotrans_gic_edit.dss`
+  pins the AutoTrans edit-at-GIC path but does not isolate the gate.
+
+- **Holes 3/4/5 (real, observable): Line pos-seq collapse faked `false` at the
+  three edit-time recalc sites.** `TLineObj.RecalcElementData` reads the live
+  `ActiveCircuit.PositiveSequence` (`Line.pas:1085`) and collapses R0:=R1, X0:=X1,
+  C0:=C1 whenever it runs — immediately in the `phases=` side effect (`:628`, Hole
+  3), `FetchLineCode` (`:572`, Hole 4) and `Create` (`:1001`, Hole 5). All three
+  Rust sites called `recalc(false)`. **Settled empirically first** (oracle probe,
+  a `CktModel=Positive` circuit): the collapse is VISIBLE on `? Line.x.r0`
+  readback *immediately* after each trigger — so the fix must be edit/parse/create
+  time, NOT a deferred `sym_components_changed` revisit (which would leave r0
+  un-collapsed until solve). `recalc` keeps its `bool` parameter; the three sites
+  now pass a cached `Line.positive_sequence`, the executive-synced stand-in for the
+  global (set at edit_active start and at construction; the defaults case re-runs
+  the collapse post-construct via `recalc_pos_seq`). Rust readback now matches the
+  oracle exactly (phases/linecode 0.1/0.2/3; ctor r0=r1=0.058; non-PS keeps
+  r0=0.5). Three corpus decks `asymmetric/line/line_posseq_{ctor,linecode,phases}_asym.dss`
+  (engines=both) with `r0/x0/c0` probes pin the readback on both channels; the
+  full-model YPrim compare pins the effect. `TLine.EndEdit` (`:782`) confirms Line
+  never recalcs on impedance edits, so that path (already `sym_components_changed`)
+  is consistent — NOT a fourth hole.
+
+- **Rider (doc-only, separate commit): stale "Phase 7/8/unported" comments** wiped
+  where the sweep proved them false: `monitor/sample.rs`, `capacitor/mod.rs`,
+  `transformer/{mod.rs,yterminal.rs}` (also removed by Hole 1), `exec/construct.rs`,
+  `json/schema/mod.rs`, `monitor/mod.rs`. `schema_skeleton`/`extract_schema_skeleton_json`
+  (zero callers) flagged for an R3 dead-code pass, not deleted here.
+
+- **R3 candidate (noted, not touched):** `CktElement::recalc_element_data(sys)` is
+  never dispatched by the executive for these classes (dead code).
+
 ### BUG WP regcontrol_idle — idle no-load zone: adopt r4133 bounded-AND (2026-07-19)
 
 Root-caused and resolved the `controls/regcontrol/regcontrol_idle.dss`

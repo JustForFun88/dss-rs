@@ -119,13 +119,23 @@ impl Transformer {
             .map(|r| r / np as f64 / vfactor)
             .collect();
 
-        self.calc_y_terminal(1.0);
+        self.calc_y_terminal(1.0, self.live_frequency);
     }
 
-    /// Pascal `TTransfObj.CalcY_Terminal`: build the `2·NumWindings` terminal
-    /// admittance (`Y_Term`) and its no-load companion (`Y_Term_NL`) at the
-    /// given frequency multiplier. GIC (`frequency < 0.51`) is Phase 7.
-    pub(super) fn calc_y_terminal(&mut self, freq_mult: f64) {
+    /// Pascal `TTransfObj.CalcY_Terminal` (`Transformer.pas:1857`): build the
+    /// `2·NumWindings` terminal admittance (`Y_Term`) and its no-load companion
+    /// (`Y_Term_NL`) at the given frequency multiplier. Below `0.51 Hz` (the
+    /// GIC/dc branch) it delegates to [`Self::gic_build_y_terminal`]; `frequency`
+    /// is the live `ActiveCircuit.Solution.Frequency` Pascal reads for that gate.
+    pub(super) fn calc_y_terminal(&mut self, freq_mult: f64, frequency: f64) {
+        // Pascal `Transformer.pas:1879`: below 0.51 Hz build the GIC/dc
+        // resistance-only Y_Terminal (no inter-winding coupling) and return.
+        if frequency < 0.51 {
+            self.gic_build_y_terminal();
+            self.y_terminal_freqmult = freq_mult;
+            return;
+        }
+
         let nw = self.num_windings.max(0) as usize;
         let rmult = if self.xrconst { freq_mult } else { 1.0 };
 
@@ -266,6 +276,44 @@ impl Transformer {
         self.y_term_nl = yterm_nl;
         self.zbase = zbase;
         self.y_terminal_freqmult = freq_mult;
+    }
+
+    /// Pascal `TTransfObj.GICBuildYTerminal` (`Transformer.pas:1823`): the
+    /// `Frequency < 0.51 Hz` (dc/GIC) build — a resistance-only `Y_Term` from
+    /// `1/RdcOhms` per winding, with **no inter-winding coupling** and an empty
+    /// `Y_Term_NL` (no magnetizing branch at dc), plus the anti-float adder added
+    /// as a real *conductance* (`-Y_PPM`, `G + j0`). Identical to the AutoTrans
+    /// twin (`auto_trans/yterminal.rs::gic_build_y_terminal`). `CalcYPrim` still
+    /// stamps the (empty) `Y_Term_NL` into the shunt and runs `AddNeutralToY`
+    /// unconditionally, matching Pascal `CalcYPrim` (`Transformer.pas:1202-1204`).
+    fn gic_build_y_terminal(&mut self) {
+        let nw = self.num_windings.max(0) as usize;
+        let n2 = 2 * nw;
+        let mut yterm = CMatrix::new(n2);
+        let yterm_nl = CMatrix::new(n2);
+
+        for (iwind, w) in self.windings.iter().enumerate() {
+            let yr = Complex64::new(1.0 / w.rdcohms, 0.0); // Siemens
+            let wt = WdgTerms::of(iwind);
+            yterm.set(wt.plus, wt.plus, yr);
+            yterm.set(wt.minus, wt.minus, yr);
+            yterm.set(wt.plus, wt.minus, -yr);
+            yterm.set(wt.minus, wt.plus, -yr);
+        }
+
+        // Anti-float as a real conductance so the matrix inverts even without a
+        // voltage reference on all sides.
+        if self.ppm_float_factor != 0.0 {
+            for (iwind, w) in self.windings.iter().enumerate() {
+                let yadder = Complex64::new(-w.y_ppm, 0.0); // G + j0
+                let wt = WdgTerms::of(iwind);
+                yterm.add(wt.plus, wt.plus, yadder);
+                yterm.add(wt.minus, wt.minus, yadder);
+            }
+        }
+
+        self.y_term = yterm;
+        self.y_term_nl = yterm_nl;
     }
 
     /// Pascal `BuildYPrimComponent`: stamp `Y_Terminal` into the phase-expanded
