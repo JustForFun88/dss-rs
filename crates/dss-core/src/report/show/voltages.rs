@@ -290,7 +290,7 @@ fn walk_element_voltages(
 ) {
     for &r in refs {
         let class_name = classes[r.cls].props.class_name();
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         if let Some(elem) = obj.as_ckt_element() {
             if elem.cd().enabled {
                 let name = format!("{}.{}", class_name, obj.data().name());

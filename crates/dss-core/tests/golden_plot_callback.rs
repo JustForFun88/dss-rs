@@ -15,9 +15,8 @@
 //!
 //! Regenerate only manually: `python tools/golden/gen_plot_callback.py`.
 
-use std::cell::RefCell;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use dss_core::exec::Dss;
 use serde::Deserialize;
@@ -98,11 +97,13 @@ fn plot_callback_payloads_match_oracle() {
     .expect("parse plot meta.json");
 
     for variant in &meta.variants {
-        let cap: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+        // `Arc<Mutex>` (test-only sink) so the registered closure is `Send` —
+        // the engine is `Send` (P7 rider), so the callback bound is `+ Send`.
+        let cap: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let mut dss = Dss::new();
         let sink = cap.clone();
         dss.register_plot_callback(move |json| {
-            sink.borrow_mut().push(json.to_string());
+            sink.lock().unwrap().push(json.to_string());
             0
         });
 
@@ -119,7 +120,7 @@ fn plot_callback_payloads_match_oracle() {
             dss.command(c);
         }
 
-        let captured = cap.borrow();
+        let captured = cap.lock().unwrap();
         assert_eq!(
             captured.len(),
             1,

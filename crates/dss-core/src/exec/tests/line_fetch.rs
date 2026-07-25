@@ -203,7 +203,7 @@ fn incomplete_double_sym_matrix_rejected_keeps_default() {
     let oi = dss.classes[ci].name_to_idx["rr"];
     let ridx = dss.classes[ci].props.property_index("RMatrix").unwrap();
     assert!(
-        dss.classes[ci].objects[oi].get_f64_array(ridx).is_none(),
+        dss.classes[ci].arena[oi].get_f64_array(ridx).is_none(),
         "incomplete rmatrix must be rejected (unset), not zero-filled"
     );
 
@@ -222,7 +222,7 @@ fn incomplete_double_sym_matrix_rejected_keeps_default() {
     let ci2 = dss2.class_by_name["reactor"];
     let oi2 = dss2.classes[ci2].name_to_idx["ok"];
     let ridx2 = dss2.classes[ci2].props.property_index("RMatrix").unwrap();
-    let stored = dss2.classes[ci2].objects[oi2]
+    let stored = dss2.classes[ci2].arena[oi2]
         .get_f64_array(ridx2)
         .expect("a complete DoubleSymMatrix must be accepted and stored");
     assert!(

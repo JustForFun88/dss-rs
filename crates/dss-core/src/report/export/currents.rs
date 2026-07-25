@@ -29,7 +29,7 @@ pub(crate) fn export_currents(
     let mut max_cond = 1usize;
     let mut max_term = 2usize;
     for &r in &ckt.ckt_elements {
-        if let Some(elem) = classes[r.cls].objects[r.idx].as_ckt_element() {
+        if let Some(elem) = classes[r.cls].arena[r.idx].as_ckt_element() {
             max_term = max_term.max(elem.cd().nterms);
             max_cond = max_cond.max(elem.cd().nconds);
         }

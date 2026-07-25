@@ -17,7 +17,7 @@ use crate::report::format;
 pub(crate) fn export_alloc_factors(classes: &[DssClass], ckt: &Circuit) -> String {
     let mut s = String::new();
     for &r in &ckt.loads {
-        let obj = &classes[r.cls].objects[r.idx];
+        let obj = &classes[r.cls].arena[r.idx];
         let Some(load) = obj.as_any().downcast_ref::<Load>() else {
             continue;
         };

@@ -43,6 +43,7 @@ pub(crate) use crate::elements::pd::{
     auto_trans, capacitor, fault, fuse, gic_transformer, line, reactor, transformer,
 };
 pub(crate) use crate::elements::traits::{CktElement, ElemRef, ElemStore};
+pub(crate) use crate::obj::arena::ClassArena;
 pub(crate) use crate::obj::base::DssObject;
 pub(crate) use crate::obj::dss_enum::{EnumId, EnumRegistry};
 pub(crate) use crate::obj::props::{ClassProps, ForeignClassesView, PropEngine, PropType};
@@ -82,11 +83,17 @@ pub use view::{ElementSnapshot, MeterZoneView, MonitorView, SystemYCsc};
 
 /// The plot/visualize callback (`DSS.DSSPlotCallback`): given the assembled
 /// `plotParams` JSON string, returns an `i32` (Pascal ignores it; kept for
-/// signature parity). Boxed so a GUI consumer can capture state.
-type PlotCallback = Box<dyn FnMut(&str) -> i32>;
+/// signature parity). Boxed so a GUI consumer can capture state. `+ Send` is
+/// the P7 thread-readiness rider (DE_PASCALIZE R1): it keeps `Dss: Send` (see
+/// `lib.rs` `assert_send::<Dss>()`) — a GUI hook captured for a threaded engine
+/// is `Send` in practice.
+type PlotCallback = Box<dyn FnMut(&str) -> i32 + Send>;
 
 /// The DSS engine context (`TDSSContext`).
 pub struct Dss {
+    /// The registered classes, each owning its objects in a typed
+    /// [`ClassArena`] (`class.arena`) — DE_PASCALIZE R1 ownership flip off the
+    /// pre-R1 `Vec<Box<dyn DssObject>>` (`PORTING_PLAN §2.1`).
     classes: Vec<DssClass>,
     /// Lowercased class name → index (Pascal `ClassNames`).
     class_by_name: HashMap<String, usize>,
@@ -218,7 +225,7 @@ impl Dss {
     /// stays NOT_PORTED. With no callback, `Plot` is a total no-op and
     /// `Visualize` runs its guards but emits no JSON, exactly like the pinned
     /// oracle.
-    pub fn register_plot_callback(&mut self, cb: impl FnMut(&str) -> i32 + 'static) {
+    pub fn register_plot_callback(&mut self, cb: impl FnMut(&str) -> i32 + Send + 'static) {
         self.plot_callback = Some(Box::new(cb));
     }
 
@@ -231,6 +238,24 @@ impl Dss {
     /// The most recent query/`Get` result (`DSS.GlobalResult`).
     pub fn result(&self) -> &str {
         &self.last_result
+    }
+
+    /// The registered class names, in `construct.rs` registration order — the
+    /// oracle the typed-arena ordering test (`obj::arena::tests`) compares
+    /// `ElemId::CLASS_NAMES` and the `ClassArena` layout against.
+    #[cfg(test)]
+    pub(crate) fn registered_class_names(&self) -> Vec<&'static str> {
+        self.classes.iter().map(|c| c.props.class_name()).collect()
+    }
+
+    /// The **live** per-`DssClass` arena's class name at each registration slot
+    /// (`c.arena.class_name()`, the actual runtime storage) — the load-bearing
+    /// twin of [`Self::registered_class_names`] for the ordering test: it proves
+    /// `ClassArena::empty_for` selected the correct variant for every class in
+    /// registration order, not just that the standalone `Elements` aggregate does.
+    #[cfg(test)]
+    pub(crate) fn live_arena_class_names(&self) -> Vec<&'static str> {
+        self.classes.iter().map(|c| c.arena.class_name()).collect()
     }
 
     /// The active circuit, if `New circuit.` has run.

@@ -122,18 +122,18 @@ pub(crate) fn class_file_text(
     enums: &EnumRegistry,
     is_ckt_element: bool,
 ) -> (String, usize) {
-    let DssClass { props, objects, .. } = cls;
+    let DssClass { props, arena, .. } = cls;
     let cx = SaveCtx { cls: props, enums };
     let mut out = String::new();
     let mut nrecords = 0usize;
-    for obj in objects.iter_mut() {
+    for obj in arena.objs_mut() {
         if is_ckt_element && obj.as_ckt_element().is_some_and(|e| !e.cd().enabled) {
             continue;
         }
         if obj.data().has_been_saved() {
             continue;
         }
-        write_dss_object(&mut out, &cx, obj.as_mut(), "New");
+        write_dss_object(&mut out, &cx, obj, "New");
         nrecords += 1;
     }
     (out, nrecords)

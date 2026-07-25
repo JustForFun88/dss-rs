@@ -118,7 +118,7 @@ pub(crate) fn for_each_enabled_elem<F: FnMut(&str, &mut dyn CktElement)>(
 ) {
     for &r in refs {
         let class_name = classes[r.cls].props.class_name();
-        let obj = &mut classes[r.cls].objects[r.idx];
+        let obj = &mut classes[r.cls].arena[r.idx];
         let name = format!("{}.{}", class_name, obj.data().name());
         if let Some(elem) = obj.as_ckt_element_mut()
             && elem.cd().enabled

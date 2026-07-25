@@ -33,7 +33,7 @@ fn full_name(classes: &[DssClass], r: ElemRef) -> String {
     format!(
         "{}.{}",
         classes[r.cls].props.class_name(),
-        classes[r.cls].objects[r.idx].data().name()
+        classes[r.cls].arena[r.idx].data().name()
     )
 }
 
@@ -159,9 +159,7 @@ pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> Stri
     s.push_str("***********  THE FOLLOWING ENABLED ELEMENTS ARE ISOLATED ************\n");
     s.push('\n');
     for &r in &isolated_elems {
-        let cd = classes[r.cls].objects[r.idx]
-            .as_ckt_element()
-            .map(|e| e.cd());
+        let cd = classes[r.cls].arena[r.idx].as_ckt_element().map(|e| e.cd());
         if let Some(cd) = cd {
             s.push('"');
             s.push_str(&full_name(classes, r));

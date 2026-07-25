@@ -90,9 +90,9 @@ fn write_object(
     out: &mut String,
     new_or_edit: &str,
 ) {
-    let DssClass { props, objects, .. } = &mut classes[r.cls];
+    let DssClass { props, arena, .. } = &mut classes[r.cls];
     let cx = SaveCtx { cls: props, enums };
-    write_dss_object(out, &cx, objects[r.idx].as_mut(), new_or_edit);
+    write_dss_object(out, &cx, arena.obj_mut(r.idx), new_or_edit);
 }
 
 impl Dss {
@@ -160,7 +160,7 @@ impl Dss {
         // `Exclude(Flg.HasBeenSaved)` on every object (Pascal clears both the
         // `DSSObjs` and `CktElements` lists — every object here).
         for cls in &mut self.classes {
-            for obj in &mut cls.objects {
+            for obj in cls.arena.objs_mut() {
                 obj.data_mut().set_has_been_saved(false);
             }
         }
@@ -217,7 +217,7 @@ impl Dss {
         saved_files: &mut Vec<PathBuf>,
     ) {
         // `if DSS_Class.ElementCount() = 0 then Exit` (no file, Saved untouched).
-        if self.classes[ci].objects.is_empty() {
+        if self.classes[ci].arena.is_empty() {
             return;
         }
         let filename = format!("{}.dss", self.classes[ci].props.class_name());
@@ -250,14 +250,14 @@ impl Dss {
         let Some(&ci) = self.class_by_name.get("vsource") else {
             return;
         };
-        if self.classes[ci].objects.is_empty() {
+        if self.classes[ci].arena.is_empty() {
             return; // `if DSS_Class.ElementCount() = 0 then Exit` (no Saved set).
         }
         let filename = format!("{}.dss", self.classes[ci].props.class_name());
         let path = self.current_dir.join(&filename);
 
         let mut out = String::new();
-        let n = self.classes[ci].objects.len();
+        let n = self.classes[ci].arena.len();
         let Dss { classes, enums, .. } = self;
         for i in 0..n {
             let r = ElemRef { cls: ci, idx: i };
@@ -266,10 +266,10 @@ impl Dss {
                 write_object(classes, enums, r, &mut out, "Edit");
                 continue;
             }
-            if classes[ci].objects[i].data().has_been_saved() {
+            if classes[ci].arena[i].data().has_been_saved() {
                 continue;
             }
-            if classes[ci].objects[i]
+            if classes[ci].arena[i]
                 .as_ckt_element()
                 .is_some_and(|e| !e.cd().enabled)
             {
@@ -317,7 +317,7 @@ impl Dss {
         for mr in meters {
             // Only active meters (Pascal `if not Meter.Enabled then continue`).
             let (enabled, name) = {
-                let obj = &self.classes[mr.cls].objects[mr.idx];
+                let obj = &self.classes[mr.cls].arena[mr.idx];
                 let en = obj
                     .as_any()
                     .downcast_ref::<crate::elements::meter::EnergyMeter>()
@@ -369,7 +369,7 @@ impl Dss {
         // Snapshot the branch walk (branch ref + its shunt refs) so the meter's
         // immutable tree borrow is released before we mutate objects/classes.
         let branches: Vec<(ElemRef, Vec<ElemRef>)> = {
-            let m = match self.classes[meter.cls].objects[meter.idx]
+            let m = match self.classes[meter.cls].arena[meter.idx]
                 .as_any()
                 .downcast_ref::<crate::elements::meter::EnergyMeter>()
             {
@@ -410,7 +410,7 @@ impl Dss {
                 continue;
             }
             // Branch → Transformers.dss (XFMR_ELEMENT) else Branches.dss.
-            let is_xfmr = self.classes[branch.cls].objects[branch.idx]
+            let is_xfmr = self.classes[branch.cls].arena[branch.idx]
                 .as_any()
                 .downcast_ref::<crate::elements::pd::transformer::Transformer>()
                 .is_some();
@@ -484,7 +484,7 @@ impl Dss {
         shunts_txt: &mut String,
         n_shunts: &mut usize,
     ) {
-        let any = self.classes[shunt.cls].objects[shunt.idx].as_any();
+        let any = self.classes[shunt.cls].arena[shunt.idx].as_any();
         let is_load = any
             .downcast_ref::<crate::elements::pc::load::Load>()
             .is_some();
@@ -498,13 +498,13 @@ impl Dss {
         if is_load {
             // Pascal: if the load was allocated, force the allocationfactor
             // property to render (`PropertySideEffects` + `SetAsNextSeq`).
-            let allocated = self.classes[shunt.cls].objects[shunt.idx]
+            let allocated = self.classes[shunt.cls].arena[shunt.idx]
                 .as_any()
                 .downcast_ref::<crate::elements::pc::load::Load>()
                 .is_some_and(|l| l.has_been_allocated);
             if allocated {
                 use crate::elements::pc::load::prop::ALLOCATIONFACTOR;
-                let obj = self.classes[shunt.cls].objects[shunt.idx].as_mut();
+                let obj = self.classes[shunt.cls].arena.obj_mut(shunt.idx);
                 obj.side_effects(ALLOCATIONFACTOR, 0);
                 obj.data_mut().set_as_next_seq(ALLOCATIONFACTOR);
             }
@@ -536,7 +536,7 @@ impl Dss {
             .iter()
             .copied()
             .filter(|&cr| {
-                self.classes[cr.cls].objects[cr.idx]
+                self.classes[cr.cls].arena[cr.idx]
                     .as_ckt_element()
                     .and_then(|ce| ce.controlled_element())
                     == Some(elem)
@@ -550,7 +550,7 @@ impl Dss {
 
     /// Whether the circuit element at `r` is enabled.
     fn elem_enabled(&self, r: ElemRef) -> bool {
-        self.classes[r.cls].objects[r.idx]
+        self.classes[r.cls].arena[r.idx]
             .as_ckt_element()
             .is_some_and(|e| e.cd().enabled)
     }

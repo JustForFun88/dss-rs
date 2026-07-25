@@ -10,7 +10,7 @@ fn full_name(classes: &[DssClass], r: ElemRef) -> String {
     format!(
         "{}.{}",
         classes[r.cls].props.class_name(),
-        classes[r.cls].objects[r.idx].data().name()
+        classes[r.cls].arena[r.idx].data().name()
     )
 }
 
@@ -39,7 +39,7 @@ pub(crate) fn show_controlled(classes: &[DssClass], ckt: &Circuit) -> String {
             .iter()
             .copied()
             .filter(|&cr| {
-                classes[cr.cls].objects[cr.idx]
+                classes[cr.cls].arena[cr.idx]
                     .as_ckt_element()
                     .and_then(|ce| ce.controlled_element())
                     == Some(pd)

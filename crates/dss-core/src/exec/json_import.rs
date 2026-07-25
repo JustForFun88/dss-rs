@@ -223,7 +223,11 @@ impl Dss {
                 right,
                 split: ci,
             };
-            let DssClass { props, objects, .. } = active_class;
+            let DssClass {
+                props,
+                arena: objects,
+                ..
+            } = active_class;
             // Unlike the script edit path (`edit_active_inner`), Pascal
             // `FillObjFromJSON` does NOT call `BeginEdit` — only `EndEdit` — so it
             // never clears `DefaultAndUnedited` (`DSSClass.pas:1598`). A default
@@ -240,7 +244,7 @@ impl Dss {
                     errors,
                     foreign: Some(&foreign),
                 };
-                props.fill_from_json(objects[oi].as_mut(), members, &mut eng);
+                props.fill_from_json(&mut objects[oi], members, &mut eng);
             }
             objects[oi].end_edit();
         }

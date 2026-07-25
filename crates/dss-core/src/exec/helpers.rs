@@ -14,14 +14,14 @@ pub(crate) fn active_pce<'a>(
 ) -> Result<&'a mut dyn CktElement, String> {
     match active {
         Some((ci, oi)) if ckt.pc_elements.contains(&ElemRef { cls: ci, idx: oi }) => {
-            Ok(classes[ci].objects[oi]
+            Ok(classes[ci].arena[oi]
                 .as_ckt_element_mut()
                 .expect("pc_elements entry is a circuit element"))
         }
         Some((ci, oi)) => Err(format!(
             "{}.{}",
             classes[ci].props.class_name(),
-            classes[ci].objects[oi].data().name()
+            classes[ci].arena[oi].data().name()
         )),
         None => Err("NIL".to_string()),
     }
@@ -47,7 +47,7 @@ pub(crate) fn resolve_ckt_element(
     if !cls.is_empty() {
         let ci = *class_by_name.get(&cls.to_ascii_lowercase())?;
         if classes[ci].set_active(&name)
-            && classes[ci].objects[classes[ci].active?]
+            && classes[ci].arena[classes[ci].active?]
                 .as_ckt_element()
                 .is_some()
         {
@@ -58,7 +58,7 @@ pub(crate) fn resolve_ckt_element(
     for (ci, class) in classes.iter_mut().enumerate() {
         if class.set_active(&name)
             && let Some(oi) = class.active
-            && class.objects[oi].as_ckt_element().is_some()
+            && class.arena[oi].as_ckt_element().is_some()
         {
             return Some((ci, oi));
         }
@@ -129,7 +129,7 @@ pub(crate) fn find_load_shape(
         .iter()
         .find(|c| c.props.class_name().eq_ignore_ascii_case("LoadShape"))?;
     let &idx = cls.name_to_idx.get(&name.to_ascii_lowercase())?;
-    cls.objects[idx]
+    cls.arena[idx]
         .as_any()
         .downcast_ref::<load_shape::LoadShapeObj>()
         .cloned()
@@ -144,7 +144,7 @@ pub(crate) fn find_price_shape(
         .iter()
         .find(|c| c.props.class_name().eq_ignore_ascii_case("PriceShape"))?;
     let &idx = cls.name_to_idx.get(&name.to_ascii_lowercase())?;
-    cls.objects[idx]
+    cls.arena[idx]
         .as_any()
         .downcast_ref::<price_shape::PriceShapeObj>()
         .cloned()
@@ -411,7 +411,7 @@ pub(crate) fn int_array_to_string(arr: &[i32]) -> String {
 /// Pascal `MakeLikeProperty` set path: find the source object by name in the
 /// same class, clone it, and copy its state onto the target.
 pub(crate) fn make_like(
-    objects: &mut [Box<dyn DssObject>],
+    arena: &mut ClassArena,
     name_to_idx: &HashMap<String, usize>,
     target: usize,
     source_name: &str,
@@ -419,10 +419,7 @@ pub(crate) fn make_like(
     class_name: &str,
 ) {
     match name_to_idx.get(&source_name.to_ascii_lowercase()) {
-        Some(&si) => {
-            let src = objects[si].clone_box();
-            objects[target].make_like(src.as_ref());
-        }
+        Some(&si) => arena.make_like_within(target, si),
         None => {
             errors.push(format!(
                 "Error in {class_name} MakeLike: \"{source_name}\" not found."

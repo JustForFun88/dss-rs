@@ -216,7 +216,7 @@ impl Dss {
         // visited (active), the edit runs only on a regex match AND (if present) a
         // satisfied conditional.
         let mut count = 0usize;
-        for oi in 0..self.classes[ci].objects.len() {
+        for oi in 0..self.classes[ci].arena.len() {
             self.classes[ci].active = Some(oi);
             let apply = match &conditionals {
                 None => true,
@@ -232,7 +232,7 @@ impl Dss {
             if !apply {
                 continue;
             }
-            let name = self.classes[ci].objects[oi].data().name().to_string();
+            let name = self.classes[ci].arena[oi].data().name().to_string();
             if re.is_match(&name) {
                 self.parser.set_position(edit_pos);
                 self.edit_active();
@@ -256,7 +256,7 @@ impl Dss {
         conds: &BatchConditionals,
     ) -> Result<bool, String> {
         let cls = &self.classes[ci];
-        let obj = cls.objects[oi].as_ref();
+        let obj = cls.arena.obj(oi);
         let mut results: Vec<bool> = Vec::with_capacity(conds.operators.len());
         for i in 0..conds.operators.len() {
             let name = &conds.arguments[i * 2];

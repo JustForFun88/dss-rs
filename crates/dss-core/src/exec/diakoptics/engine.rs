@@ -97,7 +97,7 @@ impl Dss {
                 continue;
             }
             if let Some(&oi) = class.name_to_idx.get(name)
-                && let Some(ce) = class.objects[oi].as_ckt_element_mut()
+                && let Some(ce) = class.arena[oi].as_ckt_element_mut()
             {
                 ce.cd_mut().set_enabled(enabled);
                 if let Some(ckt) = self.circuit.as_mut() {
@@ -116,10 +116,9 @@ impl Dss {
             None => return,
         };
         for r in meters {
-            if let Some(ce) = self.classes[r.cls].objects[r.idx].as_ckt_element() {
+            if let Some(ce) = self.classes[r.cls].arena[r.idx].as_ckt_element() {
                 let is_zone = ce.cd().obj.name().to_ascii_lowercase().contains("zone_");
-                if is_zone && let Some(ce) = self.classes[r.cls].objects[r.idx].as_ckt_element_mut()
-                {
+                if is_zone && let Some(ce) = self.classes[r.cls].arena[r.idx].as_ckt_element_mut() {
                     ce.cd_mut().set_enabled(false);
                 }
             }

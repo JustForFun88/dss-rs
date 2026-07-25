@@ -379,7 +379,7 @@ impl Dss {
         } = self;
         let ckt = circuit.as_mut().expect("gated in command()");
         for &r in &ckt.pc_elements {
-            if let Some(elem) = classes[r.cls].objects[r.idx].as_ckt_element_mut() {
+            if let Some(elem) = classes[r.cls].arena[r.idx].as_ckt_element_mut() {
                 let cd = elem.cd_mut();
                 cd.yprim_invalid = true;
                 if cd.enabled {
@@ -596,7 +596,7 @@ impl Dss {
         let ckt = circuit.as_ref().expect("gated in command()");
         let sys = crate::solution::solution::sys_ctx(ckt);
         let node_v = &ckt.solution.node_v;
-        let Some(elem) = classes[ci].objects[oi].as_ckt_element_mut() else {
+        let Some(elem) = classes[ci].arena[oi].as_ckt_element_mut() else {
             return;
         };
         let loss = elem.losses(&sys, node_v);

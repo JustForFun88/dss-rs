@@ -633,7 +633,7 @@ pub(crate) fn write_transformers(
     // transformers). Only regular transformers widen it (autos are ≤ 3).
     let mut max_wdg = 3usize;
     for &r in &ckt.transformers.clone() {
-        let Some(t) = classes[r.cls].objects[r.idx]
+        let Some(t) = classes[r.cls].arena[r.idx]
             .as_any()
             .downcast_ref::<Transformer>()
         else {
@@ -652,7 +652,7 @@ pub(crate) fn write_transformers(
     let mut autos: Vec<AutoSnap> = Vec::new();
     for r in &auto_refs {
         let snap = {
-            let obj = &classes[r.cls].objects[r.idx];
+            let obj = &classes[r.cls].arena[r.idx];
             let Some(au) = obj.as_any().downcast_ref::<AutoTrans>() else {
                 continue;
             };
@@ -698,7 +698,7 @@ pub(crate) fn write_transformers(
     let mut xfs: Vec<XfSnap> = Vec::new();
     for r in &xf_refs {
         let snap = {
-            let obj = &classes[r.cls].objects[r.idx];
+            let obj = &classes[r.cls].arena[r.idx];
             let Some(t) = obj.as_any().downcast_ref::<Transformer>() else {
                 continue;
             };
@@ -746,21 +746,21 @@ pub(crate) fn write_transformers(
             }
         };
         let mut snap = snap;
-        snap.uuid = classes[r.cls].objects[r.idx].data_mut().uuid();
+        snap.uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
         // Resolve the XfmrCode object UUID (case 2) if `xfmrcode=` resolved (and
         // it really resolves to an `XfmrCode` object — else treated as no code).
-        let code_ref = classes[r.cls].objects[r.idx]
+        let code_ref = classes[r.cls].arena[r.idx]
             .as_any()
             .downcast_ref::<Transformer>()
             .and_then(|t| t.xfmr_code_ref());
         snap.code_uuid = match code_ref {
             Some(cr)
-                if classes[cr.cls].objects[cr.idx]
+                if classes[cr.cls].arena[cr.idx]
                     .as_any()
                     .downcast_ref::<XfmrCodeObj>()
                     .is_some() =>
             {
-                Some(classes[cr.cls].objects[cr.idx].data_mut().uuid())
+                Some(classes[cr.cls].arena[cr.idx].data_mut().uuid())
             }
             _ => None,
         };
@@ -989,10 +989,10 @@ pub(crate) fn write_transformers(
     // `CIMXfmrCode_<name>` codes (transformer order) — matching Pascal's
     // `clsXfCd.ElementList` after the pre-pass appends the synthesized ones.
     if let Some(ci) = class_index(classes, "xfmrcode") {
-        let n = classes[ci].objects.len();
+        let n = classes[ci].arena.len();
         for k in 0..n {
             let code = {
-                let obj = &classes[ci].objects[k];
+                let obj = &classes[ci].arena[k];
                 let Some(c) = obj.as_any().downcast_ref::<XfmrCodeObj>() else {
                     continue;
                 };
@@ -1010,7 +1010,7 @@ pub(crate) fn write_transformers(
                 }
             };
             let mut code = code;
-            code.tank_info_uuid = classes[ci].objects[k].data_mut().uuid();
+            code.tank_info_uuid = classes[ci].arena[k].data_mut().uuid();
             write_xfmr_code(buf, cim, &code);
         }
     }
@@ -1380,7 +1380,7 @@ pub(crate) fn write_reg_controls(
     for cr in &ckt.controls.clone() {
         // Snapshot the RegControl + its controlled transformer.
         let snap = {
-            let obj = &classes[cr.cls].objects[cr.idx];
+            let obj = &classes[cr.cls].arena[cr.idx];
             let Some(reg) = obj.as_any().downcast_ref::<RegControl>() else {
                 continue;
             };
@@ -1389,7 +1389,7 @@ pub(crate) fn write_reg_controls(
             };
             // Skip if the controlled element is not a plain Transformer
             // (AutoTrans-RegControl skipped upstream, `4202`).
-            let Some(tr) = classes[tref.cls].objects[tref.idx]
+            let Some(tr) = classes[tref.cls].arena[tref.idx]
                 .as_any()
                 .downcast_ref::<Transformer>()
             else {
@@ -1442,7 +1442,7 @@ pub(crate) fn write_reg_controls(
                 tap_num,
             }
         };
-        let reg_uuid = classes[cr.cls].objects[cr.idx].data_mut().uuid();
+        let reg_uuid = classes[cr.cls].arena[cr.idx].data_mut().uuid();
         write_one_reg_control(buf, cim, &snap, reg_uuid);
     }
 }

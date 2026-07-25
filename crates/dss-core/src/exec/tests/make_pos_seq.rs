@@ -192,7 +192,7 @@ fn makeposseq_control_after_target_sees_converted_target() {
 fn control_nphases(dss: &Dss, name: &str) -> Option<usize> {
     for cls in &dss.classes {
         if let Some(&i) = cls.name_to_idx.get(name)
-            && let Some(e) = cls.objects[i].as_ckt_element()
+            && let Some(e) = cls.arena[i].as_ckt_element()
         {
             return Some(e.cd().nphases);
         }

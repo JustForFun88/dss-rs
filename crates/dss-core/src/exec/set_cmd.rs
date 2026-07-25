@@ -855,12 +855,12 @@ impl Dss {
                                 errors.push(format!(
                                     "Object \"{}.{}\" is not a valid PC element.",
                                     classes[ci].props.class_name(),
-                                    classes[ci].objects[oi].data().name()
+                                    classes[ci].arena[oi].data().name()
                                 ));
                                 abort = true;
                             }
                             Some((ci, oi)) => {
-                                let elem = classes[ci].objects[oi]
+                                let elem = classes[ci].arena[oi]
                                     .as_ckt_element_mut()
                                     .expect("resolved circuit element");
                                 if elem.num_variables() == 0 {
@@ -877,7 +877,7 @@ impl Dss {
                                         "State variable \"{}\" not found in \"{}.{}\".",
                                         var_name.to_ascii_lowercase(),
                                         classes[ci].props.class_name(),
-                                        classes[ci].objects[oi].data().name()
+                                        classes[ci].arena[oi].data().name()
                                     ));
                                     abort = true;
                                 }
