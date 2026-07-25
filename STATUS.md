@@ -679,6 +679,28 @@ show voltages/currents/powers/elements, dumps) + the unconditional corpus gate.
 `STAYS` untouched: `NodeRef==0` ground, `rneut<0` open neutral, parser `-1` node
 sentinel, `ckt_tree` node `from_terminal` (separate 1-based field).
 
+**Audit settle (empirical, no code change).** Two Minor audit findings, both
+dispositioned won't-fix (documented deviations above):
+- *Success-metric grep not fully green (106 `for … in 1..=` in `elements`).* Verified
+  by hand: none are internal `[i-1]` storage remnants outside P14's named files
+  (`windings.rs`/`yterminal.rs`/`set_node_ref`, all clean). The remainder is
+  report/dump text where `i` is the printed 1-based `Wdg=`/`terminal` (e.g.
+  `transformer/dump.rs:27` `Wdg={i}` with `windings[i-1]`), 1-based user-API variable/
+  conductor numbering (`pvsystem`/`storage/dynamics` `get_*_variable(i)`,
+  `conductor_closed(term,i)`), and Pascal 1-based state/filter arrays (vccs filters,
+  relay/recloser `present_state[i]`, capacitor step states) — all `STAYS` by design,
+  out of P14's named scope. The broad grep is aspirational; the plan *body* (§P14 first
+  bullet) scopes the concrete `[i-1]` work to the three named files, which is done.
+- *`ckt_tree::NO_BUS`→`Option` deferred.* Entanglement confirmed real: `NO_BUS` threads
+  `exec/reduce.rs:520`, `report.rs`, `interpolate.rs` (load-bearing UB guard vs Pascal
+  `buses[0]` OOB), `take_sample.rs:386`, `zones/build.rs`, `topology.rs`. Converting only
+  `TreeNode.from_bus` forces `Option↔NO_BUS` bridging at every consumer = net sentinel
+  *increase*; a clean fix is the whole zone-walk web at once (out of "tree nodes" scope).
+  Deferred to a focused zone-walk-wide follow-up, as recorded above.
+
+Corpus cleaned of run artifacts (11 untracked `Export`/`Mon_*`/`EventLog` files under
+`Test/AutoTrans` + `StorageControllerTechNote/Schedule`) — tests/corpus pristine.
+
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),
