@@ -3,7 +3,7 @@
 //! surface (`present_tap`/`set_present_tap`/…) and the winding readouts land with
 //! the RegControl integration in WPG.15 Stage C.
 
-use crate::elements::pd::winding::Connection;
+use crate::elements::pd::winding::{Connection, TermRef};
 use crate::support::cmatrix::CMatrix;
 
 use super::{AutoTrans, auto_winding_init, xsc_size};
@@ -228,41 +228,33 @@ impl AutoTrans {
         let nw = self.num_windings.max(0) as usize;
         let np = self.cd.nphases;
         let nconds = self.cd.nconds;
-        self.term_ref = vec![0; 2 * nw * np + 1];
-        let mut k = 0usize;
+        // One 0-based [plus, minus] conductor pair per (phase, winding),
+        // phase-major — the same visiting order the flat Pascal array fills.
+        let mut pairs: Vec<[usize; 2]> = Vec::with_capacity(np.max(1) * nw);
         if np == 1 {
-            for j in 1..=nw {
-                k += 1;
-                self.term_ref[k] = (j - 1) * nconds + 1;
-                k += 1;
-                self.term_ref[k] = j * nconds;
+            for j in 0..nw {
+                // Pascal: c1 = (j-1)*nconds+1, c2 = j*nconds (1-based).
+                pairs.push([j * nconds, (j + 1) * nconds - 1]);
             }
         } else {
             for i in 1..=np {
                 for j in 1..=nw {
-                    k += 1;
-                    match self.windings[j - 1].connection {
-                        Connection::Wye => {
-                            self.term_ref[k] = (j - 1) * nconds + i;
-                            k += 1;
-                            self.term_ref[k] = self.term_ref[k - 1] + np;
-                        }
-                        Connection::Delta => {
-                            // Delta — second conductor connects to the next phase
-                            self.term_ref[k] = (j - 1) * nconds + i;
-                            k += 1;
-                            self.term_ref[k] = (j - 1) * nconds + self.rotate_phases(i);
-                        }
-                        Connection::Series => {
-                            // Series winding for the autotransformer
-                            self.term_ref[k] = i;
-                            k += 1;
-                            self.term_ref[k] = i + np;
-                        }
-                    }
+                    let base = (j - 1) * nconds; // winding j's 0-based conductor base
+                    let plus = base + i - 1; // phase conductor i (0-based)
+                    let pair = match self.windings[j - 1].connection {
+                        // Wye — second conductor is the winding neutral (`plus + np`).
+                        Connection::Wye => [plus, plus + np],
+                        // Delta — second conductor is the next phase in sequence.
+                        Connection::Delta => [plus, base + self.rotate_phases(i) - 1],
+                        // Series straddles the H/X terminals: c1 → phase i, c2 →
+                        // phase i + Fnphases (both in the shared terminal block).
+                        Connection::Series => [i - 1, i + np - 1],
+                    };
+                    pairs.push(pair);
                 }
             }
         }
+        self.term_ref = TermRef(pairs);
     }
 
     /// Pascal `TAutoTransObj.SetBus` override (`AutoTrans.pas:721`): for winding

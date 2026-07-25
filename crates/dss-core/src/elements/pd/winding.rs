@@ -37,6 +37,44 @@ impl Connection {
     }
 }
 
+/// Pascal `TransfObj.TermRef`/`AutoTransObj.TermRef`: the `(phase, winding) →
+/// conductor pair` map. Replaces the Pascal flat 1-based `array of Integer`
+/// (dead slot 0) with one 0-based `[plus, minus]` conductor-index pair per
+/// phase × winding, laid out **phase-major** (`pairs[phase * nw + wind]`) — the
+/// same visiting order `SetTermRef` fills and `BuildYPrimComponent` / the
+/// `TermRef=` dump walk.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TermRef(pub Vec<[usize; 2]>);
+
+impl TermRef {
+    /// The `[plus, minus]` 0-based conductor pair for 0-based `phase`, `wind`
+    /// (`nw` = number of windings; phase-major layout).
+    #[inline]
+    pub fn pair(&self, phase: usize, wind: usize, nw: usize) -> [usize; 2] {
+        self.0[phase * nw + wind]
+    }
+}
+
+/// One winding's two `Y_Terminal` rows (the Pascal `2·iWind-1`/`2·iWind` pair),
+/// 0-based. Derived once per winding.
+#[derive(Debug, Clone, Copy)]
+pub struct WdgTerms {
+    pub plus: usize,
+    pub minus: usize,
+}
+
+impl WdgTerms {
+    /// The two `Y_Terminal` rows for 0-based winding `iwind` (Pascal
+    /// `2·iWind-1`/`2·iWind`, 1-based → `2·iwind`/`2·iwind+1`, 0-based).
+    #[inline]
+    pub fn of(iwind: usize) -> Self {
+        Self {
+            plus: 2 * iwind,
+            minus: 2 * iwind + 1,
+        }
+    }
+}
+
 /// Pascal `TWinding`. Fields keep the Pascal names (snake-cased); 0-based here
 /// only in that the owning array is 0-based — the winding's own data is flat.
 #[derive(Debug, Clone, Copy, PartialEq)]
