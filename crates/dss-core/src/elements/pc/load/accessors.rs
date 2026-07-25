@@ -10,7 +10,7 @@ use crate::elements::general::growth_shape::GrowthShapeObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
+use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -95,10 +95,16 @@ impl CktElement for Load {
         self.cd.apply_yprim_open_conductor_calcs();
     }
 
-    /// Pascal `TLoadObj.InjCurrents` + `TPCElement.InjCurrents`.
-    fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
+    /// Pascal `TLoadObj.InjCurrents` + `TPCElement.InjCurrents` (M3b compute
+    /// half; the caller scatters `cd.inj_current`).
+    fn compute_inj_currents(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        _ctx: &mut InjComputeCtx,
+    ) -> bool {
         if !self.cd.enabled {
-            return;
+            return false;
         }
         if sys.loads_need_updating {
             self.set_nominal_load(sys);
@@ -106,14 +112,12 @@ impl CktElement for Load {
         // r4133 `TLoadObj.InjCurrents` (Load.pas:1922): `if not ForceInjCurr then
         // CalcInjCurrentArray` — a forced injection (`Set InjCurrent=`/`ITerminal=`)
         // keeps its stored `inj_current` while the set-nominal preamble above still
-        // runs; the inherited add-into-Currents is unconditional.
+        // runs; the inherited add-into-Currents is unconditional (caller scatter).
         let mut errors = crate::diag::ErrorLog::new();
         if !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS) {
-            self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
+            self.calc_inj_current_array(sys, node_v, &mut errors);
         }
-        for i in 0..self.cd.yorder {
-            ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
-        }
+        false
     }
 
     fn init_harmonics(&mut self, sys: &SysCtx, _node_v: &[Complex64]) {

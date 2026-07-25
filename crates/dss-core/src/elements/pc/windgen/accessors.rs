@@ -11,7 +11,7 @@ use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::dyneq_pce::{DynEqPce, DynEqPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
+use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -171,25 +171,29 @@ impl CktElement for WindGen {
         self.spectrum_obj = spectrum;
     }
 
-    /// Pascal `TWindGenObj.InjCurrents` + `TPCElement.InjCurrents`.
-    fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
+    /// Pascal `TWindGenObj.InjCurrents` + `TPCElement.InjCurrents` (M3b compute
+    /// half; the caller scatters `cd.inj_current`).
+    fn compute_inj_currents(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        _ctx: &mut InjComputeCtx,
+    ) -> bool {
         if !self.cd.enabled {
-            return;
+            return false;
         }
         if sys.loads_need_updating {
-            self.set_nominal_generation(sys, ctx.node_v);
+            self.set_nominal_generation(sys, node_v);
         }
         // r4133 `TWindGenObj.InjCurrents` (WindGen.pas): `if not ForceInjCurr then
         // CalcInjCurrentArray` — skip only the model recompute when the injection
         // is forced; the set-nominal preamble and the inherited add stay
-        // unconditional.
+        // unconditional (caller scatter).
         let mut errors = crate::diag::ErrorLog::new();
         if !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS) {
-            self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
+            self.calc_inj_current_array(sys, node_v, &mut errors);
         }
-        for i in 0..self.cd.yorder {
-            ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
-        }
+        false
     }
 
     /// Pascal `TWindGenObj.GetTerminalCurrents` + `TPCElement` base.

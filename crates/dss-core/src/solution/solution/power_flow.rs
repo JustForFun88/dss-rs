@@ -7,7 +7,7 @@ use num_complex::Complex64;
 
 use crate::circuit::{AddType, Circuit};
 use crate::elements::pc::generator::Generator;
-use crate::elements::traits::{ElemRef, InjCtx};
+use crate::elements::traits::{ElemRef, InjComputeCtx};
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
 use crate::support::sparse_math::SparseComplex;
 
@@ -84,17 +84,23 @@ fn log_event(ckt: &mut Circuit, name: &str) {
 pub(super) fn get_source_inj_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let sol = &mut ckt.solution;
-    let mut ctx = InjCtx {
-        node_v: &sol.node_v,
-        currents: &mut sol.currents,
-        system_y_changed: &mut sol.system_y_changed,
+    // M3b seam: each element fills its own `cd.inj_current` and returns the
+    // y-changed flag; the caller scatters into `Currents` and ORs the flag,
+    // sequentially in `sources` order — so the sums stay bit-identical to the old
+    // fused `InjCurrents` (`errors`/`solution_abort` remain shared for now).
+    let mut cctx = InjComputeCtx {
         errors: &mut *env.errors,
         solution_abort: &mut sol.solution_abort,
     };
     for &r in &ckt.sources {
         let elem = env.store.ckt_elem_mut(r);
         if elem.cd().enabled {
-            elem.inj_currents(&sys, &mut ctx);
+            let y_changed = elem.compute_inj_currents(&sys, &sol.node_v, &mut cctx);
+            sol.system_y_changed |= y_changed;
+            let cd = elem.cd();
+            for i in 0..cd.yorder {
+                sol.currents[cd.node_ref[i]] += cd.inj_current[i];
+            }
         }
     }
     // Adds GFM PCE as well.
@@ -113,10 +119,9 @@ fn get_pc_inj_curr(ckt: &mut Circuit, env: &mut SolveEnv) {
 fn get_pc_inj_curr_filtered(ckt: &mut Circuit, env: &mut SolveEnv, gfm_only: bool) {
     let sys = sys_ctx(ckt);
     let sol = &mut ckt.solution;
-    let mut ctx = InjCtx {
-        node_v: &sol.node_v,
-        currents: &mut sol.currents,
-        system_y_changed: &mut sol.system_y_changed,
+    // M3b seam — see `get_source_inj_currents`: element-owned compute + caller
+    // scatter/OR, sequentially in `pc_elements` order (bit-identical sums).
+    let mut cctx = InjComputeCtx {
         errors: &mut *env.errors,
         solution_abort: &mut sol.solution_abort,
     };
@@ -129,15 +134,20 @@ fn get_pc_inj_curr_filtered(ckt: &mut Circuit, env: &mut SolveEnv, gfm_only: boo
             // `If LoadsNeedUpdating Then SetNominal…; if not ForceInjCurr then
             // CalcInjCurrentArray; Result := inherited InjCurrents`. The
             // `ForceInjCurrents` check lives INSIDE each flag-checking class's
-            // `inj_currents` — it skips only the model recompute, keeping the
-            // unconditional set-nominal preamble (so a forced element's Yeq still
-            // rescales in a varying-loadshape time series) and the inherited
-            // add-into-Currents. The non-flag-checking overrides (VCCS/UPFC/
-            // VSConverter) recompute unconditionally, so a force on those is inert
-            // upstream and here. (0.15.x-adoption sweep a3a5(b,c); an earlier
-            // central force-branch here lost the preamble and honored the flag for
-            // every PCE.)
-            elem.inj_currents(&sys, &mut ctx);
+            // `compute_inj_currents` — it skips only the model recompute, keeping
+            // the unconditional set-nominal preamble (so a forced element's Yeq
+            // still rescales in a varying-loadshape time series) and the inherited
+            // add-into-Currents (now the caller scatter below). The non-flag-checking
+            // overrides (VCCS/UPFC/VSConverter) recompute unconditionally, so a
+            // force on those is inert upstream and here. (0.15.x-adoption sweep
+            // a3a5(b,c); an earlier central force-branch here lost the preamble and
+            // honored the flag for every PCE.)
+            let y_changed = elem.compute_inj_currents(&sys, &sol.node_v, &mut cctx);
+            sol.system_y_changed |= y_changed;
+            let cd = elem.cd();
+            for i in 0..cd.yorder {
+                sol.currents[cd.node_ref[i]] += cd.inj_current[i];
+            }
         }
     }
 }

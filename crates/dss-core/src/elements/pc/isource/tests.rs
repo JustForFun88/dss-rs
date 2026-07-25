@@ -1,7 +1,7 @@
 use super::*;
 use crate::elements::general::load_shape::{self, LoadShapeObj};
 use crate::elements::pc::load::default_recalc_ctx;
-use crate::elements::traits::{CktElement, InjCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::PropEngine;
@@ -117,19 +117,14 @@ fn snapshot_injection_matches_pdeg_and_opposes_on_terminal2() {
     isrc.angle = 0.0;
     let sys = mode_ctx(SolveMode::Snapshot, 60.0);
     isrc.calc_yprim(&sys);
-    let mut currents = vec![Complex64::ZERO; 7]; // node 0 = ground
-    let mut sys_y_changed = false;
     let mut inj_errs = crate::diag::ErrorLog::new();
     let mut inj_abort = false;
     isrc.cd.node_ref = vec![1, 2, 3, 0, 0, 0]; // 3 phases in, grounded return
-    let mut ctx = InjCtx {
-        node_v: &[],
-        currents: &mut currents,
-        system_y_changed: &mut sys_y_changed,
+    let mut ctx = InjComputeCtx {
         errors: &mut inj_errs,
         solution_abort: &mut inj_abort,
     };
-    isrc.inj_currents(&sys, &mut ctx);
+    isrc.compute_inj_currents(&sys, &[], &mut ctx);
 
     // Phase 1 (index 0) has no rotation applied: BaseCurr = 10∠0.
     assert!((isrc.cd.inj_current[0] - Complex64::new(10.0, 0.0)).norm() < 1e-9);
@@ -166,18 +161,13 @@ fn dynamics_loadshapeclass_scales_injection() {
 
     let sys = dyn_ctx(crate::solution::USEDAILY);
     isrc.calc_yprim(&sys);
-    let mut currents = vec![Complex64::ZERO; 7];
-    let mut sys_y_changed = false;
     let mut inj_errs = crate::diag::ErrorLog::new();
     let mut inj_abort = false;
-    let mut ctx = InjCtx {
-        node_v: &[],
-        currents: &mut currents,
-        system_y_changed: &mut sys_y_changed,
+    let mut ctx = InjComputeCtx {
         errors: &mut inj_errs,
         solution_abort: &mut inj_abort,
     };
-    isrc.inj_currents(&sys, &mut ctx);
+    isrc.compute_inj_currents(&sys, &[], &mut ctx);
     assert!(
         (isrc.cd.inj_current[0] - Complex64::new(5.0, 0.0)).norm() < 1e-9,
         "USEDAILY mult 0.5 must halve the injection: {}",
@@ -186,18 +176,13 @@ fn dynamics_loadshapeclass_scales_injection() {
 
     // Default USENONE: ShapeFactor := 1+j0 → the full 10 A.
     let sys = dyn_ctx(crate::solution::USENONE);
-    let mut currents = vec![Complex64::ZERO; 7];
-    let mut sys_y_changed = false;
     let mut inj_errs = crate::diag::ErrorLog::new();
     let mut inj_abort = false;
-    let mut ctx = InjCtx {
-        node_v: &[],
-        currents: &mut currents,
-        system_y_changed: &mut sys_y_changed,
+    let mut ctx = InjComputeCtx {
         errors: &mut inj_errs,
         solution_abort: &mut inj_abort,
     };
-    isrc.inj_currents(&sys, &mut ctx);
+    isrc.compute_inj_currents(&sys, &[], &mut ctx);
     assert!(
         (isrc.cd.inj_current[0] - Complex64::new(10.0, 0.0)).norm() < 1e-9,
         "USENONE must inject the full amps: {}",
@@ -213,18 +198,13 @@ fn off_frequency_snapshot_injects_zero() {
     let sys = mode_ctx(SolveMode::Snapshot, 50.0); // solution at 50 Hz, source at 60 Hz
     isrc.calc_yprim(&sys);
     isrc.cd.node_ref = vec![1, 2, 3, 0, 0, 0];
-    let mut currents = vec![Complex64::ZERO; 4];
-    let mut sys_y_changed = false;
     let mut inj_errs = crate::diag::ErrorLog::new();
     let mut inj_abort = false;
-    let mut ctx = InjCtx {
-        node_v: &[],
-        currents: &mut currents,
-        system_y_changed: &mut sys_y_changed,
+    let mut ctx = InjComputeCtx {
         errors: &mut inj_errs,
         solution_abort: &mut inj_abort,
     };
-    isrc.inj_currents(&sys, &mut ctx);
+    isrc.compute_inj_currents(&sys, &[], &mut ctx);
     for c in &isrc.cd.inj_current {
         assert_eq!(*c, Complex64::ZERO);
     }

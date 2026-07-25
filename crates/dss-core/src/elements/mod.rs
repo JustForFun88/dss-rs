@@ -9,4 +9,4 @@ pub mod traits;
 
 pub use ckt::CktElementData;
 pub use pos_seq::{PosSeqAction, PosSeqCtx, PosSeqElemInfo, PosSeqPlan};
-pub use traits::{CktElement, ElemRef, ElemStore, InjCtx, SysCtx};
+pub use traits::{CktElement, ElemRef, ElemStore, InjComputeCtx, SysCtx};

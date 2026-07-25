@@ -8,7 +8,7 @@ use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
+use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -285,10 +285,16 @@ impl CktElement for Generator {
         self.spectrum_obj = spectrum;
     }
 
-    /// Pascal `TGeneratorObj.InjCurrents` + `TPCElement.InjCurrents`.
-    fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
+    /// Pascal `TGeneratorObj.InjCurrents` + `TPCElement.InjCurrents` (M3b compute
+    /// half; the caller scatters `cd.inj_current`).
+    fn compute_inj_currents(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        ctx: &mut InjComputeCtx,
+    ) -> bool {
         if !self.cd.enabled {
-            return;
+            return false;
         }
         if sys.loads_need_updating {
             self.set_nominal_generation(sys);
@@ -296,13 +302,10 @@ impl CktElement for Generator {
         // r4133 `TGeneratorObj.InjCurrents`: `if not ForceInjCurr then
         // CalcInjCurrentArray` — skip only the model recompute when the injection
         // is forced (`Set InjCurrent=`/`ITerminal=`); the set-nominal preamble and
-        // the inherited add-into-Currents stay unconditional.
+        // the inherited add-into-Currents stay unconditional (caller scatter).
         let mut errors = crate::diag::ErrorLog::new();
         if !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS) {
-            self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
-        }
-        for i in 0..self.cd.yorder {
-            ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
+            self.calc_inj_current_array(sys, node_v, &mut errors);
         }
         // Surface any user-model trap / missing Model=6 diagnostic through the
         // solution ErrorLog — never a silent fallback on a trapping `.wasm`
@@ -315,6 +318,7 @@ impl CktElement for Generator {
             }
             ctx.errors.push(d);
         }
+        false
     }
 
     /// Pascal `TGeneratorObj.GetTerminalCurrents` + `TPCElement` base.
