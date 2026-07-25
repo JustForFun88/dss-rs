@@ -598,7 +598,8 @@ fn pv_dyn_dss() -> Dss {
 /// feeder, solved to steady and ready to enter dynamics. A mode-3 monitor
 /// `stovars` records the 34 Storage state variables (incl. the SOC `kWh`, which
 /// must integrate during the dynamics run — Pascal `UpdateStorage` exits early
-/// only for `IsDynamicModel AND IsUserModel`, and user models are NOT_PORTED).
+/// only for `IsDynamicModel AND IsUserModel`, and this deck loads no user model,
+/// so the built-in dynamics integrate).
 fn sto_dyn_dss() -> Dss {
     let mut dss = Dss::new();
     dss.command("Set DefaultBaseFrequency=60");
