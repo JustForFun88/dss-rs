@@ -92,10 +92,13 @@ impl Line {
             self.z = code.z().cloned();
             self.yc = code.yc().cloned();
         } else {
-            // Compute matrices from the copied sym components. Pascal reads
-            // ActiveCircuit.PositiveSequence; at parse time we use the
-            // multiphase default, exactly as the `phases=` side effect does.
-            self.recalc(false);
+            // Compute matrices from the copied sym components. Pascal
+            // `FetchLineCode` calls `RecalcElementData` (`Line.pas:572`), which
+            // reads the live `ActiveCircuit.PositiveSequence` (`Line.pas:1085`) —
+            // in a `CktModel=Positive` circuit it collapses r0/x0/c0 into
+            // r1/x1/c1 at fetch time (readback-observable, probe-proven). Use the
+            // executive-synced live flag.
+            self.recalc(self.positive_sequence);
         }
 
         // NConds := Fnphases; forces reallocation of terminal info + Yorder.

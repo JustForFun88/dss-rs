@@ -1,0 +1,16 @@
+! GAPS deck: Line positive-sequence collapse at LINECODE FETCH (Pascal
+! TLineObj.FetchLineCode -> RecalcElementData, Line.pas:572, reading the live
+! ActiveCircuit.PositiveSequence, Line.pas:1085). With CktModel=Positive set
+! BEFORE `linecode=`, the code's asymmetric sequence data (r1<>r0 etc.)
+! collapses R0:=R1, X0:=X1, C0:=C1 at fetch time -- visible on readback
+! (probed vs the pinned oracle 2026-07-25) and in the YPrim. Feature-sensitive:
+! without `Set CktModel=Positive` the line keeps the code's R0 0.5 <> R1 0.1.
+Clear
+New Circuit.gaps_lps_lc basekv=12.47 phases=3
+Set CktModel=Positive
+New LineCode.lcps nphases=3 r1=0.1 x1=0.2 c1=3.0 r0=0.5 x0=0.9 c0=1.2 units=kft
+New Line.llc bus1=sourcebus bus2=b1 length=1 linecode=lcps
+New Load.ld bus1=b1 phases=3 kv=12.47 kw=1200 pf=0.95
+Set voltagebases=[12.47]
+Calcvoltagebases
+Solve

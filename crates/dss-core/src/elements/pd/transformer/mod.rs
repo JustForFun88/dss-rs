@@ -5,9 +5,10 @@
 //! the short-circuit reactance matrix `ZB`, the winding-ratio incidence and the
 //! magnetizing branch), stamped phase-by-phase into `YPrim` through `TermRef`.
 //!
-//! GIC (`frequency < 0.51`) and harmonics interplay are deferred (Phase 7); the
-//! 60 Hz power-flow path is complete. Per-winding data lives in the shared
-//! [`Winding`] record (`Transformer.pas` `TWinding`).
+//! Below `0.51 Hz` `CalcY_Terminal` builds the GIC/dc resistance-only branch
+//! (`GICBuildYTerminal`); the 60 Hz power-flow path is the normal `ZB` build.
+//! Per-winding data lives in the shared [`Winding`] record (`Transformer.pas`
+//! `TWinding`).
 //!
 //! Split into submodules (this file holds the metadata, struct, `Create` and the
 //! [`ControlledTransformer`] trait):
@@ -303,6 +304,13 @@ pub struct Transformer {
     y_term: CMatrix,
     y_term_nl: CMatrix,
     y_terminal_freqmult: f64,
+    /// The Rust stand-in for Pascal's global `ActiveCircuit.Solution.Frequency`,
+    /// which `TTransfObj.CalcY_Terminal` reads for the `< 0.51 Hz` GIC/dc gate
+    /// (`Transformer.pas:1879`). Refreshed by `CalcYPrim` at every solve and by
+    /// the executive at each New/Edit boundary, so the `RecalcElementData`
+    /// (`calc_y_terminal(1.0, ..)`) path reads the live frequency instead of
+    /// reconstructing the base frequency. Default `60` (the DSS base frequency).
+    live_frequency: f64,
     delta_direction: i32,
     hv_leads_lv: bool,
     xrconst: bool,
@@ -374,6 +382,7 @@ impl Transformer {
             y_term: CMatrix::new(0),
             y_term_nl: CMatrix::new(0),
             y_terminal_freqmult: 0.0,
+            live_frequency: 60.0,
             delta_direction: 1,
             hv_leads_lv: false,
             xrconst: false,
@@ -440,6 +449,14 @@ impl Transformer {
 
         t.recalc();
         t
+    }
+
+    /// Sync the cached live `ActiveCircuit.Solution.Frequency` (Pascal reads the
+    /// global directly in `CalcY_Terminal` for the `< 0.51 Hz` GIC gate). The
+    /// executive calls this at each New/Edit boundary; `CalcYPrim` refreshes it
+    /// again per solve.
+    pub fn set_live_frequency(&mut self, frequency: f64) {
+        self.live_frequency = frequency;
     }
 }
 

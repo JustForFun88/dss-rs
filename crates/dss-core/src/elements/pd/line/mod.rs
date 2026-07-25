@@ -296,6 +296,16 @@ pub struct Line {
     pub is_switch: bool,
     pub sym_components_model: bool,
     pub sym_components_changed: bool,
+    /// The Rust stand-in for Pascal's global `ActiveCircuit.PositiveSequence`
+    /// (`Line.pas:1085`), which `TLineObj.RecalcElementData` reads whenever it
+    /// runs. The executive syncs it from the live circuit at every New/Edit
+    /// boundary, so the three edit-time recalc sites — the constructor
+    /// (`Line.pas:1001`), the `phases=` side effect (`Line.pas:628`) and
+    /// `FetchLineCode` (`Line.pas:572`) — collapse zero-sequence into positive-
+    /// sequence *at edit time* exactly as upstream (readback-observable,
+    /// probe-proven 2026-07-25). The solve path passes `sys.positive_sequence`
+    /// directly (`solve.rs`).
+    pub positive_sequence: bool,
     pub cap_specified: bool,
     pub rg: f64,
     pub xg: f64,
@@ -380,6 +390,7 @@ impl Clone for Line {
             is_switch: self.is_switch,
             sym_components_model: self.sym_components_model,
             sym_components_changed: self.sym_components_changed,
+            positive_sequence: self.positive_sequence,
             cap_specified: self.cap_specified,
             rg: self.rg,
             xg: self.xg,
@@ -460,6 +471,7 @@ impl Line {
             is_switch: false,
             sym_components_model: true,
             sym_components_changed: false,
+            positive_sequence: false,
             cap_specified: false,
             rg: 0.01805, // ohms per 1000 ft
             xg,
@@ -494,7 +506,24 @@ impl Line {
         for p in [prop::R1, prop::X1, prop::R0, prop::X0, prop::C1, prop::C0] {
             line.cd.obj.set_as_next_seq(p);
         }
-        line.recalc(false);
+        line.recalc(line.positive_sequence);
         line
+    }
+
+    /// Sync the cached live `ActiveCircuit.PositiveSequence` (Pascal reads the
+    /// global directly in `RecalcElementData`). The executive calls this at each
+    /// New/Edit boundary; the edit-time recalc sites then read `positive_sequence`.
+    pub fn set_positive_sequence(&mut self, positive_sequence: bool) {
+        self.positive_sequence = positive_sequence;
+    }
+
+    /// Re-run `RecalcElementData` with the cached live positive-sequence flag —
+    /// the executive calls this right after constructing a Line in a
+    /// `CktModel=Positive` circuit so a defaults-only `New Line` collapses
+    /// r0/x0/c0 at create time (the constructor's own recalc ran before the flag
+    /// was known). Pascal's `TLineObj.Create` ends with `RecalcElementData`
+    /// (`Line.pas:1001`), which reads the live global there.
+    pub fn recalc_pos_seq(&mut self) {
+        self.recalc(self.positive_sequence);
     }
 }

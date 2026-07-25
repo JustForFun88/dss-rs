@@ -1,0 +1,16 @@
+! GAPS deck: Line positive-sequence collapse at CONSTRUCTION (Pascal
+! TLineObj.Create -> RecalcElementData, Line.pas:1001, reading the live
+! ActiveCircuit.PositiveSequence, Line.pas:1085). With CktModel=Positive set
+! BEFORE the line is created, the default (un-edited) sequence impedances
+! collapse R0:=R1, X0:=X1, C0:=C1 at create time -- visible IMMEDIATELY on
+! property readback (probed vs the pinned oracle 2026-07-25) and in the YPrim.
+! Feature-sensitive: without `Set CktModel=Positive` the defaults keep
+! R0 0.1784 <> R1 0.058 (mutual Zm <> 0).
+Clear
+New Circuit.gaps_lps_ctor basekv=12.47 phases=3
+Set CktModel=Positive
+New Line.lctor bus1=sourcebus bus2=b1 length=1
+New Load.ld bus1=b1 phases=3 kv=12.47 kw=1200 pf=0.95
+Set voltagebases=[12.47]
+Calcvoltagebases
+Solve

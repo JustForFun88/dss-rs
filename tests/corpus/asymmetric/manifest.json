@@ -148,6 +148,72 @@
    "note": "Boundary: FullCarson EarthModel at SOLVE level (FLineConstants.Calc dispatch). Overhead geometry (reduce=y Kron, full-asym) under Set EarthModel=fullcarson — the only EarthModel with no prior live-solve deck (SimpleCarson=line_geometry/cable_asym, DERI=default). U1.2-INVARIANT control: U1.2 moves SimpleCarson Get_Ze 658.5->658.853 ONLY, FullCarson Get_Ze is unchanged, so this YPrim must NOT move (do NOT flip to capi015 — the complement of the Carson decks U1.2 flips). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: EarthModel fullcarson->Carson changes both lfc/lfcspur YPrims."
   },
   {
+   "path": "line/line_posseq_ctor_asym.dss",
+   "engines": "both",
+   "ad": "off:too-small",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lctor"
+   ],
+   "probes": [
+    {
+     "element": "Line.lctor",
+     "props": [
+      "r0",
+      "x0",
+      "c0"
+     ]
+    }
+   ],
+   "wp": "depas-gicfix",
+   "note": "Hole 5: Line positive-sequence collapse at CONSTRUCTION (TLineObj.Create -> RecalcElementData reading the live ActiveCircuit.PositiveSequence, Line.pas:1001/1085). Set CktModel=Positive BEFORE `New Line.lctor` -> the default sequence impedances collapse R0:=R1/X0:=X1/C0:=C1 at create time; the r0/x0/c0 probes pin the readback (collapsed == r1/x1/c1) and the YPrim pins the effect, both channels. Oracle: converged; bit-identical across 2 processes. Feature-sensitive: dropping `Set CktModel=Positive` keeps R0 0.1784 <> R1 0.058 (probe-proven 2026-07-25)."
+  },
+  {
+   "path": "line/line_posseq_linecode_asym.dss",
+   "engines": "both",
+   "ad": "off:too-small",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.llc"
+   ],
+   "probes": [
+    {
+     "element": "Line.llc",
+     "props": [
+      "r0",
+      "x0",
+      "c0"
+     ]
+    }
+   ],
+   "wp": "depas-gicfix",
+   "note": "Hole 4: Line positive-sequence collapse at LINECODE FETCH (TLineObj.FetchLineCode -> RecalcElementData reading the live PositiveSequence, Line.pas:572/1085). Set CktModel=Positive BEFORE `linecode=lcps` -> the code's r1<>r0 data collapses at fetch time; the r0/x0/c0 probes pin the readback (0.1/0.2/3) both channels. Oracle: converged; bit-identical across 2 processes. Feature-sensitive: dropping `Set CktModel=Positive` keeps R0 0.5 <> R1 0.1 (probe-proven 2026-07-25)."
+  },
+  {
+   "path": "line/line_posseq_phases_asym.dss",
+   "engines": "both",
+   "ad": "off:too-small",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "Line.lph"
+   ],
+   "probes": [
+    {
+     "element": "Line.lph",
+     "props": [
+      "r0",
+      "x0",
+      "c0"
+     ]
+    }
+   ],
+   "wp": "depas-gicfix",
+   "note": "Hole 3: Line positive-sequence collapse at a PHASES EDIT (TLineObj.PropertySideEffects phases branch -> RecalcElementData reading the live PositiveSequence, Line.pas:628/1085). Line created 3-phase in a NON-PS circuit (R0 0.5 <> R1 0.1), solved, then CktModel flipped to Positive and `phases=2` edited -> the phases side effect collapses r0/x0/c0 AT EDIT TIME; the probes pin the readback (0.1/0.2/3) both channels. Oracle: converged; bit-identical across 2 processes. Feature-sensitive: without the CktModel flip the phases edit leaves R0 0.5 <> R1 0.1 (probe-proven 2026-07-25)."
+  },
+  {
    "path": "transformer/transformer_asym.dss",
    "engines": "both",
    "ad": "off:too-small",
@@ -174,6 +240,18 @@
     "Transformer.tdd"
    ],
    "note": "Boundaries: wye-delta step-up (delta-lead +30deg phase shift, opposite of transformer_asym.tdy's delta-wye lag) and delta-delta (both terminals ungrounded, common mode held by ppm_antifloat + a small wye cap pin per the family floor rule). Oracle: converged 2 iters; bit-identical across 2 processes. Feature-sensitive: twd conns wye-delta->wye-wye changes both YPrims."
+  },
+  {
+   "path": "transformer/transformer_gic.dss",
+   "engines": "both",
+   "ad": "off:too-small",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "wp": "depas-gicfix",
+   "note": "Hole 1: Set frequency=0.1 snapshot pinning Transformer GICBuildYTerminal (the Solution.Frequency < 0.51 Hz resistance-only Y_Term branch: 1/RdcOhms diagonal, NO inter-winding coupling, empty Y_Term_NL, ppm float adder as a real conductance) AND the Line GIC branch (ConvertZinvToPosSeqR, Line.pas:1297). Twin of autotrans/autotrans_gic.dss (Transformer instead of AutoTrans). Zero-current at 0.1 Hz so every YPrim pins at micro tier. Oracle: converged; bit-identical across 2 processes. Feature-sensitive: t1 wdg=1 rdcohms changes the Transformer YPrim diagonal (1/Rdc, probe-proven 2026-07-25)."
   },
   {
    "path": "fault/fault_asym.dss",
@@ -534,6 +612,18 @@
    "pending": false,
    "wp": "WPG.15",
    "note": "Set frequency=0.1 snapshot - pins AutoTrans GICBuildYTerminal (the Solution.Frequency < 0.51 Hz resistance-only Y_Term branch) AND the Line GIC branch (ConvertZinvToPosSeqR, Line.pas:1297 - the near-ideal-source switch line is deliberate: at 0.1 Hz the deck state is zero-current, so no cancellation floor exists and every YPrim pins at micro tier). WPG.15: live-green."
+  },
+  {
+   "path": "autotrans/autotrans_gic_edit.dss",
+   "engines": "both",
+   "ad": "off:too-small",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "wp": "depas-gicfix",
+   "note": "Hole 2 edit path: AutoTrans EDITED (t2 wdg=2 rdcohms) between two Set frequency=0.1 solves. Exercises the recalc-at-GIC edit path (the executive-synced live frequency stays 0.1 Hz across the edit); the second solve rebuilds Y_Term from the new 1/RdcOhms. The Hole-2 recalc-path gate is itself observationally MASKED (CalcYPrim always rebuilds Y_Term at the solve frequency), so this deck pins the AutoTrans edit-at-GIC path, not the intermediate gate. Oracle: converged; bit-identical across 2 processes. Feature-sensitive: t2 wdg=2 rdcohms changes the AutoTrans YPrim diagonal."
   },
   {
    "path": "gic/gicline_gic.dss",

@@ -1,0 +1,28 @@
+! GAPS deck: AutoTrans EDITED between two GIC-frequency solves. After the first
+! Set frequency=0.1 solve the executive-synced live frequency is 0.1 Hz; a
+! winding `rdcohms=` edit then re-runs RecalcElementData (Pascal reads the live
+! ActiveCircuit.Solution.Frequency in CalcY_Terminal, Transformer.pas:1879 /
+! AutoTrans.pas) and the second solve rebuilds Y_Term from the new 1/RdcOhms.
+! Exercises the recalc-at-GIC edit path; feature-sensitive on t2 wdg=2 rdcohms.
+! (The Hole-2 recalc-path frequency is itself observationally masked — CalcYPrim
+! always rebuilds Y_Term at the solve frequency — so this deck pins the edit path,
+! not the intermediate recalc gate.)
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.gaps_autogic_e basekv=345.0 phases=3 mvasc3=2000000 2000000
+New Line.line1 bus1=sourcebus bus2=high switch=yes r1=1e-6 r0=1e-6 x1=0 x0=0 c1=0 c0=0
+New AutoTrans.t1 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 %imag=0.0329
+~ wdg=1 bus=high conn=s kV=345.0 kVA=330000 %r=0.0493
+~ wdg=2 bus=low  conn=w kV=161.0 kVA=330000 %r=0.0556
+~ wdg=3 bus=tert conn=d kV=13.8  kVA=72000  %r=1.4503
+New AutoTrans.t2 phases=3 windings=2 xhx=8.5
+~ wdg=1 bus=low  conn=s kV=161 kVA=50000 %r=0.08 rdcohms=0.9
+~ wdg=2 bus=mid2 conn=w kV=69  kVA=50000 %r=0.09 rdcohms=0.5
+New Reactor.g_high phases=3 bus1=high r=0.15 x=0
+New Reactor.g_mid2 phases=3 bus1=mid2 r=0.25 x=0
+Set voltagebases=[345.0 161.0 69.0 13.8]
+Calcvoltagebases
+Set frequency=0.1
+Solve
+Edit AutoTrans.t2 wdg=2 rdcohms=0.7
+Solve

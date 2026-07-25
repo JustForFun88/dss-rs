@@ -170,9 +170,13 @@ impl CktElement for AutoTrans {
         let mut yprim = CMatrix::new(yorder);
 
         self.cd.yprim_freq = sys.frequency;
+        // Pascal `CalcY_Terminal` reads the global `Solution.Frequency` for the
+        // GIC gate; refresh the executive-synced copy so the (possible) rebuild
+        // below and any later `RecalcElementData` see the live frequency.
+        self.live_frequency = sys.frequency;
         let freq_mult = sys.frequency / self.cd.base_frequency;
         if freq_mult != self.y_terminal_freqmult {
-            self.calc_y_terminal(freq_mult);
+            self.calc_y_terminal(freq_mult, sys.frequency);
         }
 
         Self::build_yprim_component(&mut yp_series, &self.y_term, &self.term_ref, nw, np);

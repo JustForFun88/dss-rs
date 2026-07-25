@@ -1080,6 +1080,17 @@ impl Dss {
         // Pascal `TLineObj.Create` copies the context default earth model into
         // `FEarthModel` (Line.pas:998); a later `EarthModel=` edit can override
         // it. Applied before `edit_active` so the property still wins.
+        //
+        // Pascal `TLineObj.Create` also ends with `RecalcElementData`
+        // (Line.pas:1001), which reads the live `ActiveCircuit.PositiveSequence`
+        // (Line.pas:1085). Sync the flag and, in a `CktModel=Positive` circuit,
+        // re-run the collapse so a defaults-only `New Line` shows collapsed
+        // r0/x0/c0 at create time (readback-observable; probe-proven).
+        let positive_sequence = self
+            .circuit
+            .as_ref()
+            .expect("checked above")
+            .positive_sequence;
         if let Some(line) = self.classes[ci]
             .arena
             .obj_mut(idx)
@@ -1087,6 +1098,10 @@ impl Dss {
             .downcast_mut::<line::Line>()
         {
             line.earth_model = self.default_earth_model;
+            line.set_positive_sequence(positive_sequence);
+            if positive_sequence {
+                line.recalc_pos_seq();
+            }
         }
 
         let kind = self.classes[ci]
@@ -1339,6 +1354,27 @@ impl Dss {
             errors.push("There is no active element to edit.".to_string());
             return;
         };
+
+        // Sync the live circuit context Pascal reads as globals inside
+        // `RecalcElementData` / `CalcY_Terminal` (the pos-seq edit-time collapse
+        // and the GIC `< 0.51 Hz` gate), so the side-effect recalcs run in this
+        // edit see the current flag/frequency exactly as upstream. `New` also
+        // routes here (create → edit_active), covering both parse and edit paths.
+        let live_positive_sequence = circuit.as_ref().is_some_and(|c| c.positive_sequence);
+        let live_frequency = circuit.as_ref().map_or(60.0, |c| c.solution.frequency);
+        if let Some(line) = active_arena[oi].as_any_mut().downcast_mut::<line::Line>() {
+            line.set_positive_sequence(live_positive_sequence);
+        } else if let Some(t) = active_arena[oi]
+            .as_any_mut()
+            .downcast_mut::<transformer::Transformer>()
+        {
+            t.set_live_frequency(live_frequency);
+        } else if let Some(a) = active_arena[oi]
+            .as_any_mut()
+            .downcast_mut::<auto_trans::AutoTrans>()
+        {
+            a.set_live_frequency(live_frequency);
+        }
 
         // Pascal `TDSSClass.BeginEdit` (`DSSClass.pas:1598`): any edit clears the
         // `DefaultAndUnedited` flag, so an edited default object rejoins the
