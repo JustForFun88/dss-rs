@@ -200,6 +200,19 @@ macro_rules! define_arena {
             pub fn to_ref(self) -> ElemRef {
                 ElemRef { cls: self.class_ord(), idx: self.index() }
             }
+
+            /// Build the typed handle from a `{cls, idx}` [`ElemRef`] — the R2
+            /// spine-flip bridge, the inverse of [`Self::to_ref`]. `r.cls` is the
+            /// 0-based registration ordinal, so the class name at that slot in
+            /// [`Self::CLASS_NAMES`] selects the variant (all names are distinct);
+            /// `r.idx` becomes the typed [`Idx<T>`]. Panics if `r.cls` is out of
+            /// range (an invalid ref is a construction bug, never a valid state).
+            pub fn from_ref(r: ElemRef) -> ElemId {
+                match Self::CLASS_NAMES[r.cls] {
+                    $( $cname => ElemId::$variant(Idx::new(r.idx)), )*
+                    other => unreachable!("from_ref: unknown class name {other:?} at ordinal {}", r.cls),
+                }
+            }
         }
 
         /// One class's live objects — a typed `Vec<T>` of the concrete element
@@ -412,6 +425,22 @@ macro_rules! define_arena {
 }
 
 with_all_classes!(define_arena);
+
+// The R2 spine-flip bridges: `ElemRef` ⇄ `ElemId`. Producers that still speak
+// `ElemRef` (`add_ckt_element`, `find_ckt_element`, the property object-ref
+// resolution) feed `.into()`; consumers that still call the `ElemRef`-typed
+// `ElemStore`/`CktElement` access layer feed `id.to_ref()` / `.into()`. Both are
+// removed once the access layer itself is retyped (later R2 clusters / R3).
+impl From<ElemRef> for ElemId {
+    fn from(r: ElemRef) -> Self {
+        ElemId::from_ref(r)
+    }
+}
+impl From<ElemId> for ElemRef {
+    fn from(id: ElemId) -> Self {
+        id.to_ref()
+    }
+}
 
 // Index a `ClassArena` by object position, yielding `dyn DssObject` — the
 // drop-in shape for the pre-R1 `objects[idx]` place expression (so the ownership
@@ -755,5 +784,32 @@ mod tests {
                 idx: 7
             }
         );
+        // `from_ref` is the R2 inverse of `to_ref`, and the `From` bridges
+        // delegate to both — round-trip in both directions.
+        assert_eq!(ElemId::from_ref(id.to_ref()), id);
+        assert_eq!(ElemId::from(id.to_ref()), id);
+        assert_eq!(ElemRef::from(id), id.to_ref());
+    }
+
+    /// `from_ref` selects the correct variant for **every** registered class
+    /// ordinal (the full match the spine flip rests on), and round-trips through
+    /// `to_ref` back to the same `{cls, idx}` — checked against the live registry
+    /// so any drift in the class list or registration order is caught.
+    #[test]
+    fn from_ref_covers_every_class_and_round_trips() {
+        let names = Dss::new().registered_class_names();
+        assert_eq!(names.len(), ElemId::CLASS_NAMES.len());
+        for (cls, reg) in names.iter().enumerate() {
+            let r = ElemRef { cls, idx: 3 };
+            let id = ElemId::from_ref(r);
+            assert!(
+                id.class_name().eq_ignore_ascii_case(reg),
+                "class {cls}: from_ref → {:?} but registry = {reg:?}",
+                id.class_name()
+            );
+            assert_eq!(id.class_ord(), cls);
+            assert_eq!(id.index(), 3);
+            assert_eq!(id.to_ref(), r, "class {cls}: from_ref/to_ref not inverse");
+        }
     }
 }
