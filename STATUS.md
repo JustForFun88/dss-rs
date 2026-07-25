@@ -6800,3 +6800,27 @@ explicitly flagged by the auditor as traceability notes, not real holes; both se
   golden at step 21. A separate regenerable JSON artifact for 4 targeted regression-pin
   values would be disproportionate; the provenance comment citing the committed driver is
   the correct weight for this pin. No change.
+
+**Final re-audit (settle round 2, range `update..d2-subbug2-r2` — covers the settle
+commit + `update` merge).** Two further independent xhigh audits (audit-code +
+audit-tests) re-reviewed the whole branch and returned NO new real findings. The fix
+is Pascal-faithful and load-bearing — re-proven here by a deterministic counterfactual:
+reintroducing the dropped `compute_vterminal(node_v)` in `user_model_finit` fails BOTH
+dyn tests (step-1 `Is1` rel 5.54e-4 = 189.12 vs oracle 189.227; end-state 32 quantities
+out of tolerance, worst `dSpeed` rel 3.4e-2), exactly the documented regression
+signature; removed again, both pass. No tolerance loosened;
+golden/corpus/fixtures/PIN/`.wasm`/ledger untouched (net-changed set = the same 5
+files). Two non-code observations, both dispositioned:
+- **Environment hygiene (audit-code, `[Minor]` — NOT a defect in the change).** The
+  prior audit session left the worktree dirty with a reintroduced-regression probe line
+  that a parallel process then rolled back; the committed HEAD is and was clean. Verified
+  at this settle: `git status` clean + stable across the session, and the committed
+  `user_model_finit` carries no `compute_vterminal`. No effect on the change; nothing to
+  fix in-tree.
+- **Second dynamics-user-model deck (both audits, enhancement — declined with
+  rationale).** Generality is already structural: the stale `Vterminal = V_{n-1}` premise
+  is a property of ANY converged power-flow (the last-injection voltage the solve leaves
+  in the buffer), not specific to `wasm_gen_dyn`, and the single deck's counterfactual
+  bites deterministically. A second deck (different topology / phase count) would require
+  a fresh r4133 golden and likely a new `.wasm` fixture (frozen this pass by the binding
+  rule) — a coverage-strengthening WP, not a settle-scope fix. Recorded, not done.
