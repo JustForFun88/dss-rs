@@ -373,6 +373,24 @@ worktree checkout timed out mid-`git worktree add`, leaving 684 files (tests/
 + tools/) unwritten — restored from HEAD before any commit; `git status
 tests/corpus` clean.
 
+**Audit settle (opus high).** Two independent audits (code + tests): the change
+is bit-neutral, no golden/tolerance churn, no test weakening. One real gap fixed:
+the **XSC off-diagonal running-`k` walk** in both `transformer/yterminal.rs` and
+`auto_trans/yterminal.rs` — explicitly named in the P10 Fix (plan line 786-788)
+but left as the Pascal `let mut k = nw-1; … k += 1` idiom (the initial report's
+"None escaped" was inaccurate). Rewritten to an explicit upper-triangle pair
+iterator `(0..nw-1).flat_map(…).enumerate()` reading `xsc[nw-1+t]`, yielding the
+identical `(i, j, k)` sequence and arithmetic → bit-exact (goldens unchanged,
+gate green). The remaining `for i in 1..=nw`/`1..=n2` loops in these files are
+P14 scope (plan line 833), not a P10 miss. Two non-defects recorded, no change:
+(1) the new `Connection::from_ordinal` setters silently keep the default (Wye) on
+an out-of-range `Conns` instead of storing garbage — the string parser rejects
+unknown conns before the setter, so the path is dead for real input; via malformed
+JSON the new behavior is strictly *safer* (valid YPrim vs the old flat code's
+corrupted `term_ref`); (2) the transformer `Connection::Series` self-pair
+`[plus, plus]` in `set_term_ref` is unreachable (transformer DssEnum has no
+series) and benign, documented in code.
+
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),

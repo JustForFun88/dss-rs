@@ -139,19 +139,19 @@ impl Transformer {
             ) * zbase;
             zb.set(i, i, v);
         }
-        // Off diagonals (running XSC index `k`, Pascal starts at NumWindings).
-        let mut k = nw - 1;
-        for i in 0..nw - 1 {
-            for j in (i + 1)..(nw - 1) {
-                let term = Complex64::new(
-                    rmult * (self.windings[i + 1].rpu + self.windings[j + 1].rpu),
-                    freq_mult * self.xsc[k],
-                ) * zbase;
-                let v = (zb.get(i, i) + zb.get(j, j) - term) * 0.5;
-                zb.set(i, j, v);
-                zb.set(j, i, v);
-                k += 1;
-            }
+        // Off diagonals: the upper triangle of the `nw-1` block, one XSC entry
+        // per (i, j) pair in row-major order. Pascal's running index starts at
+        // `XSC[NumWindings]` → 0-based `xsc[nw-1]`, so pair `t` reads
+        // `xsc[nw-1+t]` (same (i, j, k) sequence as the old running `k`).
+        let off_pairs = (0..nw - 1).flat_map(|i| ((i + 1)..(nw - 1)).map(move |j| (i, j)));
+        for (t, (i, j)) in off_pairs.enumerate() {
+            let term = Complex64::new(
+                rmult * (self.windings[i + 1].rpu + self.windings[j + 1].rpu),
+                freq_mult * self.xsc[nw - 1 + t],
+            ) * zbase;
+            let v = (zb.get(i, i) + zb.get(j, j) - term) * 0.5;
+            zb.set(i, j, v);
+            zb.set(j, i, v);
         }
 
         if zb.invert().is_err() {
