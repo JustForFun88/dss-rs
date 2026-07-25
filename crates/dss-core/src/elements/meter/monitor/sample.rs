@@ -65,7 +65,7 @@ impl Monitor {
         let fnphases = self.med.cd.nphases;
         let fnconds = self.med.cd.nconds;
 
-        // Time stamp (frequency/harmonic in harmonic mode — Phase 7 path).
+        // Time stamp (frequency/harmonic in harmonic mode).
         if sol.is_harmonic {
             self.add_dbl(sol.frequency);
             self.add_dbl(sol.harmonic);

@@ -149,7 +149,7 @@ impl Dss {
                 ElemKind::Control,
             ),
             // StorageController follows GenDispatcher (Pascal DSSClassDefs.pas:237;
-            // the Storage element at :234 is Phase 7, so it is skipped here).
+            // the Storage element at :234 is a PC element, registered above).
             DssClass::ckt_class(
                 storage_controller::class_props(&enums),
                 |name| Box::new(storage_controller::StorageController::new(name)),

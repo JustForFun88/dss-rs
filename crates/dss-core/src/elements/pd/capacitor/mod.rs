@@ -8,9 +8,9 @@
 //! grounded-zero node of Bus1, giving a shunt bank; specifying Bus2 with
 //! matching nodes makes a series capacitor.
 //!
-//! The harmonic-filter recomputation (`Harm`) is ported for fidelity; the
-//! harmonic *solution* itself is Phase 7. [`MakePosSequence`] (WPG.21) collapses
-//! the bank to its positive-sequence single-phase form in [`solve`].
+//! The harmonic-filter recomputation (`Harm`) is ported for fidelity.
+//! [`MakePosSequence`] (WPG.21) collapses the bank to its positive-sequence
+//! single-phase form in [`solve`].
 //!
 //! [`MakePosSequence`]: crate::elements::traits::CktElement::make_pos_sequence
 //!
