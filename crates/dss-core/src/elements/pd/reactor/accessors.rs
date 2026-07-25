@@ -27,6 +27,47 @@ impl Reactor {
     }
 }
 
+impl Reactor {
+    /// Pascal `TReactorObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            let n = other.cd.nphases;
+            self.cd.set_nconds(n); // force reallocation of terminals/conductors
+            self.cd.yorder = self.cd.nconds * self.cd.nterms;
+            self.cd.yprim_invalid = true;
+        }
+
+        self.rp = other.rp;
+        self.rp_specified = other.rp_specified;
+        self.is_parallel = other.is_parallel;
+        self.kvarrating = other.kvarrating;
+        self.kvrating = other.kvrating;
+        self.connection = other.connection;
+        self.spec_type = other.spec_type;
+        self.z = other.z;
+        self.z1 = other.z1;
+        self.z2 = other.z2;
+        self.z0 = other.z0;
+        self.z2_specified = other.z2_specified;
+        self.z0_specified = other.z0_specified;
+        self.rmatrix = other.rmatrix.clone();
+        self.xmatrix = other.xmatrix.clone();
+        self.r_curve_name = other.r_curve_name.clone();
+        self.r_curve = other.r_curve.clone();
+        self.l_curve_name = other.l_curve_name.clone();
+        self.l_curve = other.l_curve.clone();
+
+        // TPDElement.MakeLike copies the rating fields.
+        self.norm_amps = other.norm_amps;
+        self.emerg_amps = other.emerg_amps;
+        self.fault_rate = other.fault_rate;
+        self.pct_perm = other.pct_perm;
+        self.hrs_to_repair = other.hrs_to_repair;
+    }
+}
+
 impl DssObject for Reactor {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -314,48 +355,6 @@ impl DssObject for Reactor {
     /// Pascal base `EndEdit` → `RecalcElementData` (Reactor does not override).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    /// Pascal `TReactorObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Reactor>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = other.cd.nphases;
-            self.cd.set_nconds(n); // force reallocation of terminals/conductors
-            self.cd.yorder = self.cd.nconds * self.cd.nterms;
-            self.cd.yprim_invalid = true;
-        }
-
-        self.rp = other.rp;
-        self.rp_specified = other.rp_specified;
-        self.is_parallel = other.is_parallel;
-        self.kvarrating = other.kvarrating;
-        self.kvrating = other.kvrating;
-        self.connection = other.connection;
-        self.spec_type = other.spec_type;
-        self.z = other.z;
-        self.z1 = other.z1;
-        self.z2 = other.z2;
-        self.z0 = other.z0;
-        self.z2_specified = other.z2_specified;
-        self.z0_specified = other.z0_specified;
-        self.rmatrix = other.rmatrix.clone();
-        self.xmatrix = other.xmatrix.clone();
-        self.r_curve_name = other.r_curve_name.clone();
-        self.r_curve = other.r_curve.clone();
-        self.l_curve_name = other.l_curve_name.clone();
-        self.l_curve = other.l_curve.clone();
-
-        // TPDElement.MakeLike copies the rating fields.
-        self.norm_amps = other.norm_amps;
-        self.emerg_amps = other.emerg_amps;
-        self.fault_rate = other.fault_rate;
-        self.pct_perm = other.pct_perm;
-        self.hrs_to_repair = other.hrs_to_repair;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

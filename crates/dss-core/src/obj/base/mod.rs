@@ -1026,14 +1026,6 @@ pub trait DssObject: Send {
         let _ = action;
     }
 
-    /// Pascal `TDSSObject.MakeLike`: copy `other`'s field state onto `self`
-    /// (the name is *not* copied). Default is a no-op; classes override it.
-    /// `other` is the same concrete class as `self`, so the implementation can
-    /// read it through the typed accessors.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let _ = other;
-    }
-
     /// Clone this object behind the trait object, so the executive can copy a
     /// `MakeLike` source out of its arena without aliasing the target.
     fn clone_box(&self) -> Box<dyn DssObject>;

@@ -245,6 +245,56 @@ impl CktElement for WindGen {
     }
 }
 
+impl WindGen {
+    /// Pascal `TWindGenObj.MakeLike`. Copies the machine/shape record; the
+    /// aerodynamic parameters and the WTG3 dynamics model are **not** copied
+    /// (matching upstream — they keep the new object's Create defaults).
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            self.cd.set_nconds(self.cd.nphases);
+            self.cd.yprim_invalid = true;
+        }
+        self.kv_windgen_base = other.kv_windgen_base;
+        self.v_base = other.v_base;
+        self.vminpu = other.vminpu;
+        self.vmaxpu = other.vmaxpu;
+        self.v_base95 = other.v_base95;
+        self.v_base105 = other.v_base105;
+        self.kw_base = other.kw_base;
+        self.kvar_base = other.kvar_base;
+        self.p_nominal_per_phase = other.p_nominal_per_phase;
+        self.pf_nominal = other.pf_nominal;
+        self.q_nominal_per_phase = other.q_nominal_per_phase;
+        self.connection = other.connection;
+        self.yearly_shape = other.yearly_shape.clone();
+        self.daily_shape = other.daily_shape.clone();
+        self.duty_shape = other.duty_shape.clone();
+        self.yearly_shape_obj = other.yearly_shape_obj.clone();
+        self.daily_shape_obj = other.daily_shape_obj.clone();
+        self.duty_shape_obj = other.duty_shape_obj.clone();
+        self.yearly_shape_ref = other.yearly_shape_ref;
+        self.daily_shape_ref = other.daily_shape_ref;
+        self.duty_shape_ref = other.duty_shape_ref;
+        self.duty_start = other.duty_start;
+        self.gen_class = other.gen_class;
+        self.gen_model = other.gen_model;
+        self.forced_on = other.forced_on;
+        self.kva_not_set = other.kva_not_set;
+        self.kva_rating = other.kva_rating;
+        self.h_mass = other.h_mass;
+        self.theta = other.theta;
+        self.speed = other.speed;
+        self.w0 = other.w0;
+        self.dspeed = other.dspeed;
+        self.d_damping = other.d_damping;
+        self.dpu = other.dpu;
+        self.xrdp = other.xrdp;
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+    }
+}
+
 impl DssObject for WindGen {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -535,57 +585,6 @@ impl DssObject for WindGen {
     fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
         self.recalc(sys);
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TWindGenObj.MakeLike`. Copies the machine/shape record; the
-    /// aerodynamic parameters and the WTG3 dynamics model are **not** copied
-    /// (matching upstream — they keep the new object's Create defaults).
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<WindGen>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            self.cd.set_nconds(self.cd.nphases);
-            self.cd.yprim_invalid = true;
-        }
-        self.kv_windgen_base = other.kv_windgen_base;
-        self.v_base = other.v_base;
-        self.vminpu = other.vminpu;
-        self.vmaxpu = other.vmaxpu;
-        self.v_base95 = other.v_base95;
-        self.v_base105 = other.v_base105;
-        self.kw_base = other.kw_base;
-        self.kvar_base = other.kvar_base;
-        self.p_nominal_per_phase = other.p_nominal_per_phase;
-        self.pf_nominal = other.pf_nominal;
-        self.q_nominal_per_phase = other.q_nominal_per_phase;
-        self.connection = other.connection;
-        self.yearly_shape = other.yearly_shape.clone();
-        self.daily_shape = other.daily_shape.clone();
-        self.duty_shape = other.duty_shape.clone();
-        self.yearly_shape_obj = other.yearly_shape_obj.clone();
-        self.daily_shape_obj = other.daily_shape_obj.clone();
-        self.duty_shape_obj = other.duty_shape_obj.clone();
-        self.yearly_shape_ref = other.yearly_shape_ref;
-        self.daily_shape_ref = other.daily_shape_ref;
-        self.duty_shape_ref = other.duty_shape_ref;
-        self.duty_start = other.duty_start;
-        self.gen_class = other.gen_class;
-        self.gen_model = other.gen_model;
-        self.forced_on = other.forced_on;
-        self.kva_not_set = other.kva_not_set;
-        self.kva_rating = other.kva_rating;
-        self.h_mass = other.h_mass;
-        self.theta = other.theta;
-        self.speed = other.speed;
-        self.w0 = other.w0;
-        self.dspeed = other.dspeed;
-        self.d_damping = other.d_damping;
-        self.dpu = other.dpu;
-        self.xrdp = other.xrdp;
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     fn parse_dyn_var(

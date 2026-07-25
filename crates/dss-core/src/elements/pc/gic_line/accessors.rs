@@ -7,6 +7,39 @@ use super::GicLine;
 use crate::elements::traits::CktElement;
 use crate::obj::base::{DssObjData, DssObject};
 
+impl GicLine {
+    /// Pascal `TGICLineObj.MakeLike` (GICLine.pas:312). Copies ONLY Z/R/X/C/
+    /// Volts/Angle/SrcFrequency/Scan/Sequence (plus the inherited spectrum);
+    /// the geodesy (`EN/EE/Lat/Lon`) and `VoltsSpecified` are NOT copied, so the
+    /// derived object keeps its Create defaults and its `EndEdit`
+    /// `RecalcElementData` recomputes `Volts` from the default geodesy (proven
+    /// against the oracle 2026-07: derived Volts = default 113.32, geodesy =
+    /// defaults, even when the base sets custom values).
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            let n = other.cd.nphases;
+            self.cd.set_nconds(n); // forces reallocation of terminal stuff
+            self.cd.yorder = self.cd.nconds * self.cd.nterms;
+            self.cd.yprim_invalid = true;
+        }
+        self.z = other.z.clone(); // Z.CopyFrom(Other.Z)
+        self.r = other.r;
+        self.x = other.x;
+        self.c = other.c;
+        self.volts = other.volts;
+        self.angle = other.angle;
+        self.src_frequency = other.src_frequency;
+        self.scan_type = other.scan_type;
+        self.sequence_type = other.sequence_type;
+        // Inherited TPCElement.MakeLike carries the spectrum reference.
+        self.spectrum = other.spectrum.clone();
+        self.spectrum_obj = other.spectrum_obj.clone();
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+    }
+}
+
 impl DssObject for GicLine {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -140,40 +173,6 @@ impl DssObject for GicLine {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TGICLineObj.MakeLike` (GICLine.pas:312). Copies ONLY Z/R/X/C/
-    /// Volts/Angle/SrcFrequency/Scan/Sequence (plus the inherited spectrum);
-    /// the geodesy (`EN/EE/Lat/Lon`) and `VoltsSpecified` are NOT copied, so the
-    /// derived object keeps its Create defaults and its `EndEdit`
-    /// `RecalcElementData` recomputes `Volts` from the default geodesy (proven
-    /// against the oracle 2026-07: derived Volts = default 113.32, geodesy =
-    /// defaults, even when the base sets custom values).
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<GicLine>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = other.cd.nphases;
-            self.cd.set_nconds(n); // forces reallocation of terminal stuff
-            self.cd.yorder = self.cd.nconds * self.cd.nterms;
-            self.cd.yprim_invalid = true;
-        }
-        self.z = other.z.clone(); // Z.CopyFrom(Other.Z)
-        self.r = other.r;
-        self.x = other.x;
-        self.c = other.c;
-        self.volts = other.volts;
-        self.angle = other.angle;
-        self.src_frequency = other.src_frequency;
-        self.scan_type = other.scan_type;
-        self.sequence_type = other.sequence_type;
-        // Inherited TPCElement.MakeLike carries the spectrum reference.
-        self.spectrum = other.spectrum.clone();
-        self.spectrum_obj = other.spectrum_obj.clone();
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

@@ -374,6 +374,35 @@ impl CktElement for Fault {
     }
 }
 
+impl Fault {
+    /// Pascal `TFaultObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            let n = other.cd.nphases;
+            self.cd.set_nconds(n); // force reallocation of terminals/conductors
+            self.cd.yorder = self.cd.nconds * self.cd.nterms;
+            self.cd.yprim_invalid = true;
+        }
+        self.g = other.g;
+        self.spec_type = other.spec_type;
+        self.min_amps = other.min_amps;
+        self.is_temporary = other.is_temporary;
+        self.cleared = other.cleared;
+        self.is_on = other.is_on;
+        self.on_time = other.on_time;
+        self.gmatrix = other.gmatrix.clone();
+
+        // TPDElement.MakeLike copies the rating fields.
+        self.norm_amps = other.norm_amps;
+        self.emerg_amps = other.emerg_amps;
+        self.fault_rate = other.fault_rate;
+        self.pct_perm = other.pct_perm;
+        self.hrs_to_repair = other.hrs_to_repair;
+    }
+}
+
 impl DssObject for Fault {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -544,36 +573,6 @@ impl DssObject for Fault {
 
     /// Pascal base `EndEdit` → `RecalcElementData` (Fault's is a no-op).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
-
-    /// Pascal `TFaultObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Fault>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = other.cd.nphases;
-            self.cd.set_nconds(n); // force reallocation of terminals/conductors
-            self.cd.yorder = self.cd.nconds * self.cd.nterms;
-            self.cd.yprim_invalid = true;
-        }
-        self.g = other.g;
-        self.spec_type = other.spec_type;
-        self.min_amps = other.min_amps;
-        self.is_temporary = other.is_temporary;
-        self.cleared = other.cleared;
-        self.is_on = other.is_on;
-        self.on_time = other.on_time;
-        self.gmatrix = other.gmatrix.clone();
-
-        // TPDElement.MakeLike copies the rating fields.
-        self.norm_amps = other.norm_amps;
-        self.emerg_amps = other.emerg_amps;
-        self.fault_rate = other.fault_rate;
-        self.pct_perm = other.pct_perm;
-        self.hrs_to_repair = other.hrs_to_repair;
-    }
 
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())

@@ -336,6 +336,101 @@ impl InvBasedPce for Storage {
     }
 }
 
+impl Storage {
+    /// Pascal `TStorageObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            self.cd.set_nconds(self.cd.nphases); // Pascal: NConds := Fnphases
+            self.cd.yprim_invalid = true;
+        }
+        self.kv_storage_base = other.kv_storage_base;
+        self.base.v_base = other.base.v_base;
+        self.base.vminpu = other.base.vminpu;
+        self.base.vmaxpu = other.base.vmaxpu;
+        self.base.v_base_min = other.base.v_base_min;
+        self.base.v_base_max = other.base.v_base_max;
+        self.base.kw_out = other.base.kw_out;
+        self.base.kvar_out = other.base.kvar_out;
+        self.base.p_nominal_per_phase = other.base.p_nominal_per_phase;
+        self.base.pf_nominal = other.base.pf_nominal;
+        self.base.q_nominal_per_phase = other.base.q_nominal_per_phase;
+        self.base.connection = other.base.connection;
+        self.base.yearly_shape = other.base.yearly_shape.clone();
+        self.base.daily_shape = other.base.daily_shape.clone();
+        self.base.duty_shape = other.base.duty_shape.clone();
+        self.base.yearly_shape_obj = other.base.yearly_shape_obj.clone();
+        self.base.daily_shape_obj = other.base.daily_shape_obj.clone();
+        self.base.duty_shape_obj = other.base.duty_shape_obj.clone();
+        self.base.yearly_shape_ref = other.base.yearly_shape_ref;
+        self.base.daily_shape_ref = other.base.daily_shape_ref;
+        self.base.duty_shape_ref = other.base.duty_shape_ref;
+        self.dispatch_mode = other.dispatch_mode;
+        self.base.inverter_curve = other.base.inverter_curve.clone();
+        self.base.inverter_curve_obj = other.base.inverter_curve_obj.clone();
+        self.base.inverter_curve_ref = other.base.inverter_curve_ref;
+        self.storage_class = other.storage_class;
+        self.base.voltage_model = other.base.voltage_model;
+        self.f_state = other.f_state;
+        self.state_changed = other.state_changed;
+        self.base.kvar_limit_set = other.base.kvar_limit_set;
+        self.base.kvar_limit_neg_set = other.base.kvar_limit_neg_set;
+        self.base.fpct_cut_in = other.base.fpct_cut_in;
+        self.base.fpct_cut_out = other.base.fpct_cut_out;
+        self.base.var_follow_inverter = other.base.var_follow_inverter;
+        self.f_kvar_limit = other.f_kvar_limit;
+        self.f_kvar_limit_neg = other.f_kvar_limit_neg;
+        self.f_kva_rating = other.f_kva_rating;
+        self.base.fpct_pmin_no_vars = other.base.fpct_pmin_no_vars;
+        self.base.fpct_pmin_kvar_limit = other.base.fpct_pmin_kvar_limit;
+        self.kw_out_idling = other.kw_out_idling;
+        self.kw_rating = other.kw_rating;
+        self.kwh_rating = other.kwh_rating;
+        self.kwh_stored = other.kwh_stored;
+        self.kwh_reserve = other.kwh_reserve;
+        self.kwh_before_update = other.kwh_before_update;
+        self.pct_reserve = other.pct_reserve;
+        self.discharge_trigger = other.discharge_trigger;
+        self.charge_trigger = other.charge_trigger;
+        self.pct_charge_eff = other.pct_charge_eff;
+        self.pct_discharge_eff = other.pct_discharge_eff;
+        self.pct_kw_out = other.pct_kw_out;
+        self.pct_kw_in = other.pct_kw_in;
+        self.pct_idle_kw = other.pct_idle_kw;
+        self.pct_idle_kvar = other.pct_idle_kvar;
+        self.charge_time = other.charge_time;
+        self.base.pct_r = other.base.pct_r;
+        self.base.pct_x = other.base.pct_x;
+        self.base.vw_mode = other.base.vw_mode;
+        self.base.vv_mode = other.base.vv_mode;
+        self.base.drc_mode = other.base.drc_mode;
+        self.base.wp_mode = other.base.wp_mode;
+        self.base.wv_mode = other.base.wv_mode;
+        self.base.avr_mode = other.base.avr_mode;
+        // User models: Pascal `UserModel.Name := Other.UserModel.Name` re-`New`s
+        // a fresh instance from the same module (`Storage.pas:995-996`); the
+        // slot's `Clone` drops the live wasmi instance and re-creates it lazily
+        // (WM.4, the WM.3 generator precedent).
+        self.base.user_model_name = other.base.user_model_name.clone();
+        self.base.user_model_edit = other.base.user_model_edit.clone();
+        self.dyna_model_name = other.dyna_model_name.clone();
+        self.dyna_model_edit = other.dyna_model_edit.clone();
+        self.user_model = other.user_model.clone();
+        self.dyna_model = other.dyna_model.clone();
+        self.base.dyn_vars.rated_vdc = other.base.dyn_vars.rated_vdc;
+        self.base.dyn_vars.sm_threshold = other.base.dyn_vars.sm_threshold;
+        self.base.dyn_vars.safe_mode = other.base.dyn_vars.safe_mode;
+        self.base.dyn_vars.kp = other.base.dyn_vars.kp;
+        self.base.dyn_vars.reset_ibr = other.base.dyn_vars.reset_ibr;
+        self.base.gfm_mode = other.base.gfm_mode;
+        self.base.force_balanced = other.base.force_balanced;
+        self.base.current_limited = other.base.current_limited;
+        self.spectrum = other.spectrum.clone();
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+    }
+}
+
 impl DssObject for Storage {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -710,102 +805,6 @@ impl DssObject for Storage {
     fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
         self.recalc(sys);
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TStorageObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Storage>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            self.cd.set_nconds(self.cd.nphases); // Pascal: NConds := Fnphases
-            self.cd.yprim_invalid = true;
-        }
-        self.kv_storage_base = other.kv_storage_base;
-        self.base.v_base = other.base.v_base;
-        self.base.vminpu = other.base.vminpu;
-        self.base.vmaxpu = other.base.vmaxpu;
-        self.base.v_base_min = other.base.v_base_min;
-        self.base.v_base_max = other.base.v_base_max;
-        self.base.kw_out = other.base.kw_out;
-        self.base.kvar_out = other.base.kvar_out;
-        self.base.p_nominal_per_phase = other.base.p_nominal_per_phase;
-        self.base.pf_nominal = other.base.pf_nominal;
-        self.base.q_nominal_per_phase = other.base.q_nominal_per_phase;
-        self.base.connection = other.base.connection;
-        self.base.yearly_shape = other.base.yearly_shape.clone();
-        self.base.daily_shape = other.base.daily_shape.clone();
-        self.base.duty_shape = other.base.duty_shape.clone();
-        self.base.yearly_shape_obj = other.base.yearly_shape_obj.clone();
-        self.base.daily_shape_obj = other.base.daily_shape_obj.clone();
-        self.base.duty_shape_obj = other.base.duty_shape_obj.clone();
-        self.base.yearly_shape_ref = other.base.yearly_shape_ref;
-        self.base.daily_shape_ref = other.base.daily_shape_ref;
-        self.base.duty_shape_ref = other.base.duty_shape_ref;
-        self.dispatch_mode = other.dispatch_mode;
-        self.base.inverter_curve = other.base.inverter_curve.clone();
-        self.base.inverter_curve_obj = other.base.inverter_curve_obj.clone();
-        self.base.inverter_curve_ref = other.base.inverter_curve_ref;
-        self.storage_class = other.storage_class;
-        self.base.voltage_model = other.base.voltage_model;
-        self.f_state = other.f_state;
-        self.state_changed = other.state_changed;
-        self.base.kvar_limit_set = other.base.kvar_limit_set;
-        self.base.kvar_limit_neg_set = other.base.kvar_limit_neg_set;
-        self.base.fpct_cut_in = other.base.fpct_cut_in;
-        self.base.fpct_cut_out = other.base.fpct_cut_out;
-        self.base.var_follow_inverter = other.base.var_follow_inverter;
-        self.f_kvar_limit = other.f_kvar_limit;
-        self.f_kvar_limit_neg = other.f_kvar_limit_neg;
-        self.f_kva_rating = other.f_kva_rating;
-        self.base.fpct_pmin_no_vars = other.base.fpct_pmin_no_vars;
-        self.base.fpct_pmin_kvar_limit = other.base.fpct_pmin_kvar_limit;
-        self.kw_out_idling = other.kw_out_idling;
-        self.kw_rating = other.kw_rating;
-        self.kwh_rating = other.kwh_rating;
-        self.kwh_stored = other.kwh_stored;
-        self.kwh_reserve = other.kwh_reserve;
-        self.kwh_before_update = other.kwh_before_update;
-        self.pct_reserve = other.pct_reserve;
-        self.discharge_trigger = other.discharge_trigger;
-        self.charge_trigger = other.charge_trigger;
-        self.pct_charge_eff = other.pct_charge_eff;
-        self.pct_discharge_eff = other.pct_discharge_eff;
-        self.pct_kw_out = other.pct_kw_out;
-        self.pct_kw_in = other.pct_kw_in;
-        self.pct_idle_kw = other.pct_idle_kw;
-        self.pct_idle_kvar = other.pct_idle_kvar;
-        self.charge_time = other.charge_time;
-        self.base.pct_r = other.base.pct_r;
-        self.base.pct_x = other.base.pct_x;
-        self.base.vw_mode = other.base.vw_mode;
-        self.base.vv_mode = other.base.vv_mode;
-        self.base.drc_mode = other.base.drc_mode;
-        self.base.wp_mode = other.base.wp_mode;
-        self.base.wv_mode = other.base.wv_mode;
-        self.base.avr_mode = other.base.avr_mode;
-        // User models: Pascal `UserModel.Name := Other.UserModel.Name` re-`New`s
-        // a fresh instance from the same module (`Storage.pas:995-996`); the
-        // slot's `Clone` drops the live wasmi instance and re-creates it lazily
-        // (WM.4, the WM.3 generator precedent).
-        self.base.user_model_name = other.base.user_model_name.clone();
-        self.base.user_model_edit = other.base.user_model_edit.clone();
-        self.dyna_model_name = other.dyna_model_name.clone();
-        self.dyna_model_edit = other.dyna_model_edit.clone();
-        self.user_model = other.user_model.clone();
-        self.dyna_model = other.dyna_model.clone();
-        self.base.dyn_vars.rated_vdc = other.base.dyn_vars.rated_vdc;
-        self.base.dyn_vars.sm_threshold = other.base.dyn_vars.sm_threshold;
-        self.base.dyn_vars.safe_mode = other.base.dyn_vars.safe_mode;
-        self.base.dyn_vars.kp = other.base.dyn_vars.kp;
-        self.base.dyn_vars.reset_ibr = other.base.dyn_vars.reset_ibr;
-        self.base.gfm_mode = other.base.gfm_mode;
-        self.base.force_balanced = other.base.force_balanced;
-        self.base.current_limited = other.base.current_limited;
-        self.spectrum = other.spectrum.clone();
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     /// Pascal `TDynEqPCE.ParseDynVar`: a `name=value` whose `name` is a state

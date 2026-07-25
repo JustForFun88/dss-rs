@@ -8,6 +8,35 @@ use crate::obj::base::{DssObjData, DssObject};
 
 use super::{XfmrCodeObj, prop, xsc_size};
 
+impl XfmrCodeObj {
+    /// Pascal `TXfmrCodeObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.data.copy_prp_sequence_from(other.data());
+        let o = other;
+        self.fnphases = o.fnphases;
+        self.set_num_windings(o.num_windings);
+        self.windings.clone_from(&o.windings);
+        self.xhl = o.xhl;
+        self.xht = o.xht;
+        self.xlt = o.xlt;
+        let n = xsc_size(self.num_windings);
+        for i in 0..n {
+            self.xsc[i] = o.xsc[i];
+        }
+        self.thermal_time_const = o.thermal_time_const;
+        self.n_thermal = o.n_thermal;
+        self.m_thermal = o.m_thermal;
+        self.flrise = o.flrise;
+        self.hsrise = o.hsrise;
+        self.pct_load_loss = o.pct_load_loss;
+        self.pct_no_load_loss = o.pct_no_load_loss;
+        self.norm_max_hkva = o.norm_max_hkva;
+        self.emerg_max_hkva = o.emerg_max_hkva;
+        self.num_kva_ratings = o.num_kva_ratings;
+        self.kva_ratings.clone_from(&o.kva_ratings);
+    }
+}
+
 impl DssObject for XfmrCodeObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -271,35 +300,6 @@ impl DssObject for XfmrCodeObj {
                 *slot = v;
             }
         }
-    }
-
-    /// Pascal `TXfmrCodeObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        self.data.copy_prp_sequence_from(other.data());
-        let Some(o) = other.as_any().downcast_ref::<XfmrCodeObj>() else {
-            return;
-        };
-        self.fnphases = o.fnphases;
-        self.set_num_windings(o.num_windings);
-        self.windings.clone_from(&o.windings);
-        self.xhl = o.xhl;
-        self.xht = o.xht;
-        self.xlt = o.xlt;
-        let n = xsc_size(self.num_windings);
-        for i in 0..n {
-            self.xsc[i] = o.xsc[i];
-        }
-        self.thermal_time_const = o.thermal_time_const;
-        self.n_thermal = o.n_thermal;
-        self.m_thermal = o.m_thermal;
-        self.flrise = o.flrise;
-        self.hsrise = o.hsrise;
-        self.pct_load_loss = o.pct_load_loss;
-        self.pct_no_load_loss = o.pct_no_load_loss;
-        self.norm_max_hkva = o.norm_max_hkva;
-        self.emerg_max_hkva = o.emerg_max_hkva;
-        self.num_kva_ratings = o.num_kva_ratings;
-        self.kva_ratings.clone_from(&o.kva_ratings);
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

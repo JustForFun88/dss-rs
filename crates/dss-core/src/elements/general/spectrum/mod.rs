@@ -190,6 +190,19 @@ impl SpectrumObj {
     }
 }
 
+impl SpectrumObj {
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        // Pascal `TSpectrumObj.MakeLike`: `inherited MakeLike` (copy the
+        // PrpSequence), then copy the fields.
+        self.data.copy_prp_sequence_from(other.data());
+        self.num_harm = other.get_i32(NUM_HARM);
+        self.harm_array = other.get_f64_array(HARMONIC).map(<[f64]>::to_vec);
+        self.pu_mag_array = other.get_f64_array(PCT_MAG).map(<[f64]>::to_vec);
+        self.angle_array = other.get_f64_array(ANGLE).map(<[f64]>::to_vec);
+        self.csvfile = other.get_string(CSV_FILE);
+    }
+}
+
 impl DssObject for SpectrumObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -302,17 +315,6 @@ impl DssObject for SpectrumObj {
         if self.pu_mag_array.is_some() && self.angle_array.is_some() {
             self.set_mult_array();
         }
-    }
-
-    fn make_like(&mut self, other: &dyn DssObject) {
-        // Pascal `TSpectrumObj.MakeLike`: `inherited MakeLike` (copy the
-        // PrpSequence), then copy the fields.
-        self.data.copy_prp_sequence_from(other.data());
-        self.num_harm = other.get_i32(NUM_HARM);
-        self.harm_array = other.get_f64_array(HARMONIC).map(<[f64]>::to_vec);
-        self.pu_mag_array = other.get_f64_array(PCT_MAG).map(<[f64]>::to_vec);
-        self.angle_array = other.get_f64_array(ANGLE).map(<[f64]>::to_vec);
-        self.csvfile = other.get_string(CSV_FILE);
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {
