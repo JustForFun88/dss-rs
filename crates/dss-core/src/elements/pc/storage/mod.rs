@@ -252,13 +252,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // schema `minimum:0`/`exclusiveMaximum:24`/`units:hour`.
         PropDef::double("TimeChargeTrig").flags(PropFlags::UNITS_TOD_HOUR),
         PropDef::integer("Class"),
-        // User-written model DLLs are never *loaded* in safe Rust (the loader is
-        // permanently out of scope — forbid(unsafe_code)). CF-C Port 2 ports the
-        // `DynaDLL`/`DynaData` property SURFACE (parse, store, dump); the
-        // `DynaDLL` side effect emits a non-fatal "Not Loaded" diagnostic and
-        // falls back to the built-in model — matching the official Direct DLL
-        // (Storage.pas l.866, StoreUserModel Set_Name l.329, DoSimpleMsg 1570),
-        // not the pinned oracle (which raises #1570).
+        // WASM_USERMODELS WM.4: `DynaDLL`/`DynaData` follow the §2.4 uniform rule
+        // (parse + store + load-`.wasm`-or-warn), same as `UserModel`/`UserData`
+        // below. The Pascal edit dispatch (Storage.pas:866) loads `DynaModel`; the
+        // property hook queues a deferred request the executive resolves before
+        // `end_edit` — a `.wasm` loads through the sandboxed ABI, a native-DLL name
+        // / missing file emits a non-fatal "Not Loaded" 1570 and falls back to the
+        // built-in model. Native DLL loading stays out of scope (forbid(unsafe_code)).
         PropDef::string("DynaDLL").flags(PropFlags::IS_FILENAME),
         PropDef::string("DynaData"),
         // WASM_USERMODELS WM.4: `UserModel=`/`UserData=` follow the §2.4 uniform
