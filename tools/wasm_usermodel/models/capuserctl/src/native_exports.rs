@@ -137,7 +137,8 @@ pub extern "system" fn sample_() {
 
         // Time (GetDynamicsStruct → 52-byte TDynamicsRec).
         // SAFETY: `cb` is the vtable; the slot is the engine's GetDynamicsStruct.
-        let get_dyn: GetDynamicsStructFn = unsafe { std::mem::transmute(slot(cb, OFF_GET_DYNAMICS_STRUCT)) };
+        let get_dyn: GetDynamicsStructFn =
+            unsafe { std::mem::transmute(slot(cb, OFF_GET_DYNAMICS_STRUCT)) };
         let mut dyn_ptr: *const u8 = std::ptr::null();
         unsafe { get_dyn(&mut dyn_ptr) };
         let (int_hour, t) = if dyn_ptr.is_null() {
@@ -151,7 +152,8 @@ pub extern "system" fn sample_() {
 
         // Node voltage (GetPtrToSystemVarray → &NodeV[0], ground at index 0).
         // SAFETY: the slot is the engine's GetPtrToSystemVarray.
-        let get_v: GetPtrToSystemVarrayFn = unsafe { std::mem::transmute(slot(cb, OFF_GET_PTR_TO_SYSTEM_VARRAY)) };
+        let get_v: GetPtrToSystemVarrayFn =
+            unsafe { std::mem::transmute(slot(cb, OFF_GET_PTR_TO_SYSTEM_VARRAY)) };
         let mut v_ptr: *const u8 = std::ptr::null();
         let mut n_nodes: i32 = 0;
         unsafe { get_v(&mut v_ptr, &mut n_nodes) };
@@ -168,10 +170,12 @@ pub extern "system" fn sample_() {
         if let Some(code) = decision {
             // The only element pointer the model can obtain — NOT the CapControl.
             // SAFETY: the slot is the engine's GetActiveElementPtr.
-            let get_elem: GetActiveElementPtrFn = unsafe { std::mem::transmute(slot(cb, OFF_GET_ACTIVE_ELEMENT_PTR)) };
+            let get_elem: GetActiveElementPtrFn =
+                unsafe { std::mem::transmute(slot(cb, OFF_GET_ACTIVE_ELEMENT_PTR)) };
             let owner = unsafe { get_elem() };
             // SAFETY: the slot is the engine's ControlQueuePush.
-            let push: ControlQueuePushFn = unsafe { std::mem::transmute(slot(cb, OFF_CONTROL_QUEUE_PUSH)) };
+            let push: ControlQueuePushFn =
+                unsafe { std::mem::transmute(slot(cb, OFF_CONTROL_QUEUE_PUSH)) };
             unsafe {
                 push(int_hour, t, code, 0, owner);
             }

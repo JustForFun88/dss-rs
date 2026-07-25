@@ -526,8 +526,9 @@ impl DssObject for Generator {
     fn set_string(&mut self, idx: usize, value: String) {
         use prop::*;
         match idx {
-            // The NOT_PORTED string props error in the parser before reaching
-            // here; the setters exist for completeness/MakeLike. (DynamicEq is an
+            // UserModel/UserData/ShaftModel/ShaftData store the value here; the
+            // per-property side effect (below) queues the deferred WASM (re)load
+            // per WASM_USERMODELS §2.4 — never a parse error. (DynamicEq is an
             // object ref → set_object_ref; DynOut is a string list →
             // set_string_list.)
             USERMODEL => self.user_model_name = value,
