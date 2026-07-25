@@ -78,10 +78,12 @@ fn write_element_delta_voltages(
     let node_v = &ckt.solution.node_v;
     // Pascal `Pad(dssclassname + '.' + AnsiUpperCase(Name), MaxDeviceNameLength)`.
     let elem_name = format::pad(&format::upper_elem_name(name), mdnl);
-    // Pascal conductors are 1-based; `Node1 = NodeRef[i]`, `Node2 = NodeRef[i+NCond]`.
+    // Pascal conductors are 1-based; `Node1 = NodeRef[i]`, `Node2 = NodeRef[i+NCond]`
+    // — the terminal-0 and terminal-1 conductor slices over the flat `node_ref`.
+    let (t0_nodes, t1_nodes) = (cd.term_nodes(0), cd.term_nodes(1));
     for i in 1..=ncond {
-        let n1 = cd.node_ref[i - 1];
-        let n2 = cd.node_ref[i - 1 + ncond];
+        let n1 = t0_nodes[i - 1];
+        let n2 = t1_nodes[i - 1];
         // Ground node (0) → bus 0 (Pascal `if NodeN > 0 then … else Bus := 0`).
         let bus1 = if n1 > 0 {
             ckt.map_node_to_bus[n1].bus_ref

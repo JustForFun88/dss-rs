@@ -64,16 +64,17 @@ impl CktElement for AutoTrans {
         let cd = self.cd();
         let np = cd.nphases;
         let mut result = Complex64::ZERO;
-        let mut k = 0usize;
-        for _ in 0..cd.nterms {
-            for _ in 0..np {
-                let n = cd.node_ref[k];
+        // Sum into only the first `Nphases` conductors of each terminal; `nconds =
+        // 2·nphases`, so `[np..]` of each per-terminal slice is the skipped
+        // second-half (return) conductors (`Inc(k, Nphases)`).
+        for t in 0..cd.nterms {
+            let (nodes, curr) = (cd.term_nodes(t), cd.term_i(t));
+            for c in 0..np {
+                let n = nodes[c];
                 if n > 0 {
-                    result += node_v[n] * cd.iterminal[k].conj();
+                    result += node_v[n] * curr[c].conj();
                 }
-                k += 1;
             }
-            k += np; // skip the second-half (return) conductors of this terminal
         }
         if sys.positive_sequence {
             result *= 3.0;
