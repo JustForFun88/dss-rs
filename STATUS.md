@@ -7,6 +7,206 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R2b sub-step (a) — spine flip: `ElemId::from_ref` primitive landed; full `ElemRef → ElemId` flip escape-recorded (branch `depas-r2b`, 2026-07-25)
+
+Stratum **[A]** bit-neutral. Base `update` @ `5a416ee` (R2 item-7 M3b seam
+merged). R2b's brief split the escaped Part-I flip into sub-steps (a)…(e); this
+session is **(a) the spine flip**. Ground truth: the R2 record below already
+established the flip is **one-session-infeasible gate-green** (927 `ElemRef` hits
+/ 130 files; `ElemRef` and `ElemId` are different types, so a half-flipped tree
+does not compile). This session confirmed that empirically and landed the
+**enabling primitive** both the brief and the R2 record flagged as "missing and
+needed first," then escape-recorded the flip with **measured** metrics that make
+the remainder estimable and sequenceable.
+
+**Landed — the `from_ref` primitive (commit `3c976a3`).** `obj/arena.rs` only
+(+56 lines; `git diff 5a416ee..HEAD --stat` = one file):
+- `ElemId::from_ref(ElemRef) -> ElemId` — a `match` over all 50 class ordinals
+  via `Self::CLASS_NAMES[r.cls]` (registration order; names are distinct), the
+  inverse of the pre-existing `to_ref`. `unreachable!` on an out-of-range/unknown
+  ordinal (an invalid ref is a construction bug, never a valid state).
+- `impl From<ElemRef> for ElemId` / `impl From<ElemId> for ElemRef` — the R2
+  spine-flip bridges (producers still speaking `ElemRef` feed `.into()`;
+  consumers still calling the `ElemRef`-typed access layer feed `id.to_ref()` /
+  `.into()`). Both removed once the access layer is retyped (later R2 / R3).
+- Tests: extended `elemid_ref_bridge_round_trips` (both `From` directions) +
+  new `from_ref_covers_every_class_and_round_trips` (asserts `from_ref` selects
+  the correct variant for **every** registered class ordinal against the live
+  registry, and `from_ref`/`to_ref` are mutual inverses). All 5 `obj::arena`
+  tests pass.
+
+**Escaped — the field/reference/access-layer flip (recorded per escape protocol;
+NOT started, old code untouched, gate stays green).** The flip cannot be landed
+as a partial gate-green prefix: a Rust field type is global, so flipping any one
+storage field-group breaks **all** its consumers at once, and there is **no
+gate-green landing state between "primitive only" and "the whole field-group +
+every consumer bridged."** Measured this session by actually performing the
+first field-group flip (`circuit.rs` per-kind lists `Vec<ElemRef>` → `Vec<ElemId>`
++ producer `add_ckt_element` + the `ReprocessBusDefs` clone) and running
+`cargo check` — then reverting cleanly (`git checkout`, tree restored to
+`3c976a3`):
+- **`circuit.rs` per-kind lists alone → 427 distinct primary compile-error sites
+  across ~55 files** (E0308 type-mismatch 227 / E0609 `.cls`|`.idx`-on-`ElemId`
+  196 / E0277 `.collect::<Vec<ElemRef>>()` 4). **No cascade into the access
+  layer** — `elements/traits.rs` (`ElemStore`/`CktElement`) appears only in
+  cited "expected because of this" *notes*, never as a primary error; the flip is
+  contained to consumers.
+- The sites are **uniformly mechanical** (three bridge patterns: `id.to_ref()`
+  at loop tops or arg sites; `.class_ord()`/`.index()` for scattered `.cls`/`.idx`
+  field access; `.map(|id| id.to_ref()).collect()` for the 4 `collect`s) but
+  **scattered, not loop-collapsible** — e.g. `cim/export.rs` = 47 sites spread
+  across lines 1197…4400 in many distinct functions (30 distinct lines, most
+  carrying two `.cls`+`.idx` errors). Top consumer files: `cim/export.rs` 47,
+  `exec/report.rs` 33, `exec/view.rs` 26, `controls/dispatch.rs` 22,
+  `cim/power_xfmr.rs` 14, `cim/ieee1547.rs` 13, `solution/inc_matrix.rs` 12,
+  `report/show/diagnostics.rs` 11, `meters/sampling/take_sample.rs` 10,
+  `meters/demand_interval.rs` 10, then a long tail of report/show + report/export
+  + solution + exec files.
+- **Cascade boundaries mapped (all containable via `.to_ref()` bridges, no forced
+  co-flip):** three sibling structures also store `ElemRef` and would be bridged
+  at their push/read boundary, not co-flipped in this cluster —
+  `solution/control_queue/mod.rs` (`ActionRecord`/`PoppedAction.control: ElemRef`),
+  `circuit/ckt_tree/mod.rs` (node `elem`/`shunts`/`loop_elem: ElemRef`),
+  `elements/pc/gic_source/mod.rs` (`set_resolved_line(Option<(ElemRef,String)>)`).
+
+**Sequenced remainder for the (a)-continuation / (b) (do these as their own
+sessions/commits, each `cargo check`-green cluster-by-cluster):**
+1. `circuit.rs` per-kind lists → `Vec<ElemId>` + bridge the 427 consumer sites
+   (the measured cluster above). Largest single cluster; ~55 files.
+2. `RefAction.target` (`obj/base/mod.rs`, 5 variants) → `ElemId`; bridge the ~5
+   control-accessor producers + the `apply_ref_action` applier.
+3. Cross-references: the stored `controlled_element`/`monitored_element` fields
+   (in `ControlElemData`/meter data) → `ElemId`, and the trait getters
+   `CktElement::controlled_element`/`monitored_element_ref` (flipping the getter
+   signature touches every override + caller — all-or-nothing per getter).
+4. Shape/object refs where the class is statically known → typed `Idx<T>` (e.g.
+   Load `daily: Option<Idx<LoadShapeObj>>`) — couples to the typed-store reads of
+   sub-step (b) (Category D), so best done with (b).
+5. The access layer itself — `ElemStore` trait methods + `find_ckt_element`/
+   `find_general` returns + the sibling structures (control_queue/ckt_tree/
+   gic_source) → `ElemId`; this removes the `.to_ref()` bridges. All-or-nothing
+   big-bang (one impl of `ElemStore`, but every caller flips together).
+
+**Deviations disclosed.** (1) Sub-step (a) did **not** flip any storage/reference
+field (the R2 record's item-1); only the primitive landed. Reason: the escape
+protocol forbids a rushed stopgap, and the flip has no committable partial
+gate-green state (427 all-or-nothing sites for the first field-group alone,
+several × that for the full spine). The primitive is the genuinely-additive,
+zero-risk, unblocking piece; the field flips are handed on with a measured map.
+(2) `ElemRef` count rose 927 → 937 / files unchanged 130 (the 10 new hits are the
+`from_ref`/`From` bridges + their test in `arena.rs`) — expected; the flip that
+reduces the count is the escaped remainder. `ElemId` 31 hits. `TODO(compat)`
+unchanged (117). Zero golden/tolerance/ledger churn (no non-test production path
+edited).
+
+**Gate.** Toolchain guard first (`cargo = .cargo\bin`, 186 `.pas`). `cargo fmt
+--all --check` ok; `cargo clippy --workspace --all-targets -- -D warnings` ok;
+`cargo test --workspace` (corpus gate inside, both channels capi_v0145 + r4133,
+run solo) — exit 0, all workspace suites green (corpus gate
+`corpus_gate_all_cases_match_engines` ok inside the 26-test dss-core integration
+binary). Tree clean; corpus run-artifacts removed by exact name.
+
+### DE_PASCALIZE R2b sub-step (b) — typed-store categories: all escape-recorded (blocked on the un-flipped store) (branch `depas-r2b`, 2026-07-25)
+
+Stratum **[A]** bit-neutral. Base = sub-step (a)'s HEAD `3c976a3` (`from_ref`
+primitive only). The brief specifies (b) is executed **"on the flipped store"**:
+Category A pair getters (`(&mut RegControl,&mut Transformer)` /
+`(&mut CapControl,&mut Capacitor)` by `ElemId` match), Category B meter reads,
+Category D typed handle in resolved object-ref tuples, and the
+`generator_mut`/`storage_mut`/`pvsystem_mut`/`espvl_mut`/`upfc_mut` helpers →
+typed arena matches. **The flipped store does not exist yet:** sub-step (a)
+landed only the `from_ref` primitive and escape-recorded the field/reference/
+access-layer flip (its "sequenced remainder" steps 1–5, ~427 all-or-nothing
+sites for the first field-group alone). Verified independently this session —
+`ElemStore` is still `dyn` with `obj_mut(r) -> &mut dyn DssObject` as its sole
+typed path; `circuit.rs` per-kind lists are still `Vec<ElemRef>`; measured
+populations unchanged from (a): `ElemRef` 937 / 130, `as_any|as_ckt_element`
+759 / 134, `downcast_ref|downcast_mut` 416 / 100, `TODO(compat)` 117.
+
+**Plan-sequencing confirms the block.** `DE_PASCALIZE_PLAN.md` R2 (l.334–345)
+orders "Replace `ElemRef` with `ElemId` in `circuit.rs` (all per-kind lists),
+every cross-reference, `RefAction`, and `solution/` Y-build" **first**, and only
+*then* "Add typed arena pair getters so `dispatch.rs` gets `(&mut RegControl,
+&mut Transformer)` … by `ElemId` match — emptying Category A" and "Finish
+Categories D (typed handle in resolved object-ref tuple; per-class
+`set_object_ref` match; concrete clone pulled from the typed arena)." The
+category table (l.229–232) puts the A pair borrows, the Cat-B "rest via arena",
+and Cat D all in Stage **R2**, downstream of the flip. Every category assigned to
+(b) is therefore plan-blocked until the flip lands. Per the escape protocol +
+the coordinator's explicit "if the typed store is not available for a given
+site, escape-record rather than improvising downcasts," all of (b) is escaped
+(old code untouched, gate stays green). No forbidden stopgap (concrete-typed
+methods bolted onto the storage-agnostic `ElemStore` trait) was introduced.
+
+**Per-category disposition (precise site inventory):**
+- **Category A pair getters — ESCAPED.** `controls/dispatch.rs` reg→transformer
+  L954–970 (RegControl + `ControlledTransformer`, with the `Transformer` vs
+  `AutoTrans` branch at L958–964) and cap→capacitor L1011–1070 (4 sub-sites,
+  each `CapControl` + `Capacitor`). Today reached via `store.triple_mut/pair_mut`
+  → `(&mut dyn DssObject,…)` then `as_any_mut().downcast_mut::<T>()`. Typed
+  `(&mut RegControl,&mut Transformer)` needs an `ElemId`/`ClassArena` match over a
+  concrete-typed store (plan l.339–340) — not reachable through `dyn ElemStore`.
+- **`generator_mut`-family helpers — ESCAPED.** `controls/dispatch.rs`
+  `generator_mut` L1115, `espvl_mut` L1181, `upfc_mut` L1242, `storage_mut`
+  L1385, `pvsystem_mut` L2343 — all `store: &mut dyn ElemStore` +
+  `obj_mut(r).as_any_mut().downcast_mut::<T>()`. "→ typed arena matches"
+  requires the typed store; same blocker as Category A.
+- **Category B meter reads — R0 part DONE, remainder ESCAPED.** Already
+  converted by R0 (verified in-tree, no work needed): the type-guards in
+  `solution/meters/zones/build.rs` (L16/26/43 `matches!(store.kind(r), …)`) and
+  `solution/meters/sampling/take_sample.rs` (L138/139/296/297 `store.kind`),
+  plus the small typed `CktElement` reads (`line_length_km`, `load_num_customers`,
+  `present_tap`). **Remaining, escaped:** the type-classification cascades in
+  `elements/meter/energymeter/accessors.rs::capture_metered` `is_pd` (L25–32,
+  Line/Transformer/AutoTrans/Capacitor/Reactor) and
+  `elements/meter/monitor/accessors.rs` snapshot `MeteredKind` (L274–324), plus
+  the concrete rich reads in `elements/meter/monitor/sample.rs` (L135 Capacitor
+  `states()`, L177 Storage monitor vars, L227 Transformer
+  `get_all_winding_currents`, L251 winding voltages). All take a bare
+  `&dyn DssObject`/`&mut dyn DssObject` with **no `ElemRef`/store in scope**, so
+  `store.kind` is unusable here. These are the plan's "concrete reads → typed
+  arena reads (R2)" bucket (l.230, l.342–343); clean end-state is an `ElemId`
+  match on the flipped store. Virtualizing the rich monitor reads as new narrow
+  `CktElement` trait methods would create monitor-specific throwaway surface the
+  flip tears out again (escape-protocol-forbidden stopgap); reshaping the
+  classification cascades in isolation carries a bit-neutrality risk (the
+  hand-enumerated PD / `MeteredKind` sets must be preserved exactly). Deferred to
+  the coherent flipped-store Category B pass.
+- **Category D typed handle in resolved object-ref tuples — ESCAPED.**
+  `fn set_object_ref` lives across 29 element accessor files (the plan names
+  `{load,line,vsource,generator}/accessors.rs`, l.232). The fix carries a typed
+  handle (`ElemId`/`Idx<T>`) in the resolved object-ref tuple so each
+  `set_object_ref` matches the expected variant and clones the concrete object
+  from the typed arena (l.232, l.342). Resolution today yields a bare `ElemRef`/
+  `&dyn DssObject` and the whole reference plumbing is `ElemRef`-typed; a typed
+  handle needs the reference/store retype (sub-step (a)'s remainder steps 3–5).
+  The brief's hard requirement to **preserve resolve-time snapshot timing
+  exactly** cannot be guaranteed by an isolated conversion without the typed
+  store, so escaped.
+
+**Deviations disclosed.** (1) (b) produced **zero production code** — it is
+entirely blocked on the un-done store flip; this STATUS record is the only
+change. Metrics unchanged from (a) (`ElemRef` 937, `downcast` 416, `as_any` 759,
+`TODO(compat)` 117); zero golden/tolerance/ledger churn. (2) The brief's premise
+("on the flipped store") was not met because sub-step (a) delivered only the
+enabling primitive, not item-1 (the flip). This is disclosed, not worked around.
+
+**Recommendation for the coordinator.** (b) is not independently executable. Its
+four categories become mechanical `ElemId`-match conversions **only after** the
+(a)-continuation lands step-a's sequenced remainder — step 1 (`circuit.rs`
+per-kind lists → `Vec<ElemId>`, ~427 consumer sites) through step 5 (access-layer
+retype: `ElemStore` trait + `find_*` returns + the control_queue/ckt_tree/
+gic_source siblings, which removes the `.to_ref()` bridges). Suggest folding
+(b) into the flip WP (do A/D/generator-family/rich-B as the flip retypes each
+site) rather than scheduling it as a standalone sub-step.
+
+**Gate.** Toolchain guard (`cargo = .cargo\bin`, 186 `.pas`). `cargo fmt --all
+--check` ok; `cargo clippy --workspace --all-targets -- -D warnings` ok;
+`cargo test --workspace` (corpus gate inside, both channels capi_v0145 + r4133,
+run solo) — exit 0, all workspace suites green (corpus gate
+`corpus_gate_all_cases_match_engines` ok, 26-test dss-core integration binary).
+Tree clean; corpus run-artifacts removed by exact name.
+
 ### BUG WP livectx — thread the live ctx into every recalc; kill `default_recalc_ctx` substitution (2026-07-25)
 
 Follow-up to gicfix, on `bug-livectx` (base `update` @ gicfix merge). User
