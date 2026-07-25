@@ -6,6 +6,43 @@ use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::traits::{CktElement, ElemRef};
 use crate::obj::base::{DssObjData, DssObject};
 
+impl GicTransformer {
+    /// Pascal `TGICTransformerObj.MakeLike` (GICTransformer.pas:352).
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            self.cd.nterms = other.cd.nterms;
+            let n = other.cd.nphases;
+            self.cd.set_nconds(n); // force reallocation of terminals and conductors
+            self.cd.yorder = self.cd.nconds * self.cd.nterms;
+            self.cd.yprim_invalid = true;
+        }
+        self.cd.base_frequency = other.cd.base_frequency;
+        self.g1 = other.g1;
+        self.g2 = other.g2;
+        self.spec_type = other.spec_type;
+        self.mva_rating = other.mva_rating;
+        self.var_curve_name = other.var_curve_name.clone();
+        self.var_curve = other.var_curve.clone();
+        self.kv1 = other.kv1;
+        self.kv2 = other.kv2;
+        self.pct_r1 = other.pct_r1;
+        self.pct_r2 = other.pct_r2;
+        self.pct_r_specified = other.pct_r_specified;
+        self.z_base1 = other.z_base1;
+        self.z_base2 = other.z_base2;
+        self.k_factor = other.k_factor;
+        self.k_specified = other.k_specified;
+        // TPDElement.MakeLike copies the rating fields.
+        self.norm_amps = other.norm_amps;
+        self.emerg_amps = other.emerg_amps;
+        self.fault_rate = other.fault_rate;
+        self.pct_perm = other.pct_perm;
+        self.hrs_to_repair = other.hrs_to_repair;
+    }
+}
+
 impl DssObject for GicTransformer {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -210,44 +247,6 @@ impl DssObject for GicTransformer {
     /// (GICTransformer does not override EndEdit).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    /// Pascal `TGICTransformerObj.MakeLike` (GICTransformer.pas:352).
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<GicTransformer>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            self.cd.nterms = other.cd.nterms;
-            let n = other.cd.nphases;
-            self.cd.set_nconds(n); // force reallocation of terminals and conductors
-            self.cd.yorder = self.cd.nconds * self.cd.nterms;
-            self.cd.yprim_invalid = true;
-        }
-        self.cd.base_frequency = other.cd.base_frequency;
-        self.g1 = other.g1;
-        self.g2 = other.g2;
-        self.spec_type = other.spec_type;
-        self.mva_rating = other.mva_rating;
-        self.var_curve_name = other.var_curve_name.clone();
-        self.var_curve = other.var_curve.clone();
-        self.kv1 = other.kv1;
-        self.kv2 = other.kv2;
-        self.pct_r1 = other.pct_r1;
-        self.pct_r2 = other.pct_r2;
-        self.pct_r_specified = other.pct_r_specified;
-        self.z_base1 = other.z_base1;
-        self.z_base2 = other.z_base2;
-        self.k_factor = other.k_factor;
-        self.k_specified = other.k_specified;
-        // TPDElement.MakeLike copies the rating fields.
-        self.norm_amps = other.norm_amps;
-        self.emerg_amps = other.emerg_amps;
-        self.fault_rate = other.fault_rate;
-        self.pct_perm = other.pct_perm;
-        self.hrs_to_repair = other.hrs_to_repair;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

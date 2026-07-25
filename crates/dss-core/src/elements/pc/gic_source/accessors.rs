@@ -7,6 +7,39 @@ use super::GicSource;
 use crate::elements::traits::CktElement;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
+impl GicSource {
+    /// Pascal `TGICsourceObj.MakeLike` (GICsource.pas:243).
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            let n = other.cd.nphases;
+            self.cd.set_nconds(n); // Forces reallocation of terminal stuff
+            self.cd.yorder = self.cd.nconds * self.cd.nterms;
+            self.cd.yprim_invalid = true;
+        }
+        self.volts = other.volts;
+        self.angle = other.angle;
+        self.src_frequency = other.src_frequency;
+        // Pascal copies pLineElem (the base's Line pointer); the executive
+        // re-resolves it by the derived name before end_edit, so it is
+        // effectively transient.
+        self.line_ref = other.line_ref;
+        self.line_bus2 = other.line_bus2.clone();
+        self.e_north = other.e_north;
+        self.e_east = other.e_east;
+        self.lat1 = other.lat1;
+        self.lon1 = other.lon1;
+        self.lat2 = other.lat2;
+        self.lon2 = other.lon2;
+        self.bus2_defined = other.bus2_defined;
+        // Spectrum not allowed (forced NIL).
+        self.spectrum = String::new();
+        self.spectrum_obj = None;
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+    }
+}
+
 impl DssObject for GicSource {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -132,40 +165,6 @@ impl DssObject for GicSource {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_actions)
-    }
-
-    /// Pascal `TGICsourceObj.MakeLike` (GICsource.pas:243).
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<GicSource>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = other.cd.nphases;
-            self.cd.set_nconds(n); // Forces reallocation of terminal stuff
-            self.cd.yorder = self.cd.nconds * self.cd.nterms;
-            self.cd.yprim_invalid = true;
-        }
-        self.volts = other.volts;
-        self.angle = other.angle;
-        self.src_frequency = other.src_frequency;
-        // Pascal copies pLineElem (the base's Line pointer); the executive
-        // re-resolves it by the derived name before end_edit, so it is
-        // effectively transient.
-        self.line_ref = other.line_ref;
-        self.line_bus2 = other.line_bus2.clone();
-        self.e_north = other.e_north;
-        self.e_east = other.e_east;
-        self.lat1 = other.lat1;
-        self.lon1 = other.lon1;
-        self.lat2 = other.lat2;
-        self.lon2 = other.lon2;
-        self.bus2_defined = other.bus2_defined;
-        // Spectrum not allowed (forced NIL).
-        self.spectrum = String::new();
-        self.spectrum_obj = None;
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

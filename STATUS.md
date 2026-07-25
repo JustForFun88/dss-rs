@@ -7,6 +7,605 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R2b — SETTLER PASS (two audits both PASS / zero findings; all verified empirically; final gate green) (branch `depas-r2b`, HEAD after this record, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base `update` @ `5a416ee`; code tip = the (e) STATUS
+tip `868cd1e` (last production code = the (d) commit `107d7d5`; (a)+(c)+(d) are the
+only production changes — see the sub-step records below). Ritual 0 held at start
+**and** end: 186 `.pas` under `.inputs/dss_capi` (PowerShell recursion; bash glob
+false-zeros on the junction, expected — never deleted through it); `cargo` =
+`C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Both fresh audits returned PASS with zero production findings.** There was
+therefore **no defect to fix** — the settler duty was to (1) re-derive every metric
+and equivalence claim independently, (2) reconcile the two counting discrepancies
+the audits surfaced, (3) run the full workspace gate solo (neither auditor did — the
+code auditor ran none by instruction, the test auditor ran only `-p dss-core --lib`
++ `corpus_gate`). All done; results below.
+
+**Disposition of every audit conclusion (settled empirically, not by argument):**
+
+| # | audit conclusion | settler disposition (experiment) |
+|---|---|---|
+| C-a | order/iteration preserved; spine flip really escaped (`circuit.rs`/`find_ckt_element` byte-identical) | **CONFIRMED.** `git diff 5a416ee..HEAD` touches 55 files; `circuit.rs`, `exec/registry.rs` not among them. |
+| C-b | no hidden downcast/unsafe/reorder; `try_ckt_elem` removes Any round-trip; downcast net 416→369 | **CONFIRMED.** Diff has **47 removed** `downcast_*` lines, **0 added** → exactly the make_like guards; measured HEAD downcast = **369**. |
+| C-c | Category-D resolve-time snapshot untouched (escaped) | **CONFIRMED.** `dispatch.rs`, reg/cap resolve, `set_object_ref` producers not in diff. |
+| C-d | 50/50 make_like moved byte-identically; dispatch = typed `clone()`+inherent | **CONFIRMED** (independent of the auditor): downcast delta −47 = 50 impls − 3 no-downcast; `make_like` gone from trait (`obj/base/mod.rs` −8), only `arena.rs::make_like_within` in production. |
+| C-e | escaped sites left on OLD code (no half-flip); ElemRef +10 all in `arena.rs`; trait methods present | **CONFIRMED.** ElemRef +/- lines outside `arena.rs` = only one moved comment (net zero); `as_any`/`as_any_mut`/`as_ckt_element`/`as_ckt_element_mut`/`clone_box` all still in the trait; `make_like` removed. |
+| C-f | M3b seam / live-ctx / FP-order untouched; `TODO(compat)` 117 | **CONFIRMED.** `TODO(compat)` = **117** (base 117); M3b/live-ctx files not in diff. |
+| T-a | zero golden/ledger/tolerance/corpus-deck churn | **CONFIRMED.** `git diff --name-only 5a416ee..HEAD \| grep -Ei 'golden\|ledger\|population.lock\|tests/corpus\|\.csv\|tolerance\|\.toml\|\.json'` = empty. |
+| T-b | test edits mechanical (2 files: relay/recloser); no weakened/removed/ignored cases | **CONFIRMED.** Only `relay/tests.rs` + `recloser/tests.rs` in diff; **no `#[ignore]` added/removed** anywhere in the diff. |
+| T-c | R1 invariants live (`arena_order_matches_registry`, `find_ckt_element_tie_breaks_by_registration_order`, bridge tests); coverage grew | **CONFIRMED** by the full-suite run (all green, below). |
+| T-d | P1/P2 perturbations both FAIL under mutation, clean revert | **CONFIRMED.** Tree was clean at session start (`git status --porcelain` empty at `868cd1e`) — no perturbation residue. |
+| T-e | corpus gate green solo (25) | **SUPERSEDED** by the settler full-workspace solo run (below). |
+
+**Two reconciliations (the audits' only numeric caveats), both settled:**
+- *ElemRef "952 vs 937."* Counting method only: **937 matching lines** (`rg -c`
+  summed — the STATUS convention) vs **952 occurrences** (`rg -o` — the test
+  auditor's figure). Same code; non-material. STATUS keeps the line-count 937.
+- *ElemId "31→34" — CORRECTED (verify-forward-handoffs).* Independent measure:
+  base `5a416ee` = **20** occurrences (`git grep -o`), HEAD = **34**; delta **+14**,
+  confined to `arena.rs` (the `from_ref` 50-ordinal match + `From` impls + (a)/(d)
+  tests) plus the one pre-existing `exec/mod.rs` ref. The prior (a)/(e) records'
+  base "31" was a mis-measure; the true base is 20. Not a success metric (ElemId is
+  new R3 scaffolding); recorded accurately here.
+
+**Final grep metrics (settler-measured, `rg … crates/dss-core/src`):**
+
+| metric | base `5a416ee` | HEAD | delta | note |
+|---|---|---|---|---|
+| `ElemRef` (lines) | 927 / 130 f | **937 / 130 f** | +10 | R3-staged `from_ref`/`From` bridges + tests, all in `arena.rs` |
+| `ElemRef` (occurrences) | — | 952 | — | `rg -o`; = the "952" the test auditor cited |
+| `as_any\|as_ckt_element` | 759 / 134 f | **716 / 134 f** | −43 | make_like guard removal net of (d)'s +4 doc/test refs |
+| `downcast_ref\|downcast_mut` | 416 / 100 f | **369 / 73 f** | −47 | all from make_like (50 impls − 3 no-downcast); 47 removed / 0 added in diff |
+| `TODO(compat)` | 117 / 68 f | **117 / 68 f** | **0** | invariant held |
+| `ElemId` (occurrences) | 20 / 2 f | **34 / 2 f** | +14 | R3 scaffolding in `arena.rs` (base corrected from the "31" in prior records) |
+| `fn as_any` / `fn as_any_mut` defs | 52 / 52 | **52 / 52** | 0 | the R3 removal target (unblocked by the store flip) |
+
+**Final gate (settler, SOLO, toolchain guard first — `cargo` = `.cargo\bin`):**
+`cargo fmt --all --check` exit 0; `cargo clippy --workspace --all-targets -- -D
+warnings` exit 0; `cargo test --workspace` exit 0 — **66 `test result: ok` groups,
+1985 passed, 0 failed, 5 ignored** (the 5 are pre-existing, not R2b — zero
+`#[ignore]` churn in the diff), `corpus_gate_all_cases_match_engines … ok` (both
+channels capi_v0145 + r4133), run solo (no parallel corpus gate). Corpus left
+pristine: 12 run-artifacts (6 `AutoTrans/*.txt` + 6 `GFM_IEEE8500/IEEE8500_Mon_*.csv`)
+removed by exact name — no wide `git clean`. Tree CLEAN (`git status --porcelain`
+empty).
+
+**R3 handoff (single prerequisite: the item-1 store flip).** R2b is closed as a→e
+executed. Landed production: (a) `ElemId::from_ref` + `From` bridges; (c) Category E
+`make_like` in full (trait method removed, byte-identical, the only downcast
+reduction 416→369); (d) the arena ckt/data tag (`try_ckt_elem`). R3, one
+multi-session WP, in sequence:
+1. **Store flip** `ElemRef → ElemId` (the escaped (a) 5-step remainder): `circuit.rs`
+   per-kind lists → `Vec<ElemId>` (measured **427** all-or-nothing consumer sites,
+   ~55 files, no cascade into the access layer) → `RefAction.target` → cross-refs
+   (`controlled_element`/`monitored_element`) → statically-known shape refs as
+   `Idx<T>` → the access layer (`ElemStore` + `find_*` + the control_queue/ckt_tree/
+   gic_source siblings), which removes the `.to_ref()` bridges.
+2. **Typed arena accessors** `ClassArena::get::<T>(id)`/`get_mut::<T>` (concrete ref,
+   no `Any`) + **Category-A** typed pair/triple getters (`(&mut RegControl, &mut
+   Transformer)` / `(&mut CapControl, &mut Capacitor)`; Transformer|AutoTrans via
+   `ControlledTransformer`) + the **Category-D** typed resolved-object handle
+   (retype the shared `set_object_ref` tuple across ~29 files, preserving resolve-
+   time snapshot timing) + the `generator_mut`/`storage_mut`/`pvsystem_mut`/
+   `espvl_mut`/`upfc_mut` family → typed matches.
+3. With 1+2 in place the **364 production downcasts** (214 typed-arena reads / 28
+   Category-A disjoint borrows / 119 Category-B/D bare-`&dyn` params — file-by-file
+   map in the (e) record) and the **~174 `as_ckt_element*`** sites collapse
+   mechanically; then remove `as_any`/`as_any_mut` (52+52 defs) **and**
+   `as_ckt_element`/`as_ckt_element_mut` from `DssObject` together, and retire the
+   `from_ref`/`to_ref`/`try_ckt_elem` bridges. `clone_box` stays (17 live sites).
+
+**Net R2b delta from base `5a416ee`:** `downcast_ref|downcast_mut` 416→369 (−47,
+all make_like); `as_any|as_ckt_element` 759→716 (−43); `ElemRef` 927→937 (+10 R3
+bridges); `ElemId` 20→34 (+14 R3 scaffolding); `TODO(compat)` **117 unchanged**;
+**zero golden / ledger / tolerance / corpus-deck churn** across all five sub-steps.
+
+### DE_PASCALIZE R2b — CLOSING SUMMARY (a→e complete; store flip = the single R3 prerequisite) (branch `depas-r2b`, 2026-07-26)
+
+R2b executed the R2-escaped block as five sub-steps. **Landed (production
+code):** (a) `ElemId::from_ref` + the `ElemRef`↔`ElemId` `From` bridges (the flip
+enabling primitive); (c) **Category E `make_like` in full** — 50 per-class bodies
+moved `impl DssObject`→inherent `impl X { fn make_like(&mut self, &Self) }`,
+byte-identical, `make_like` **removed from the `DssObject` trait**, dispatch
+narrowed to the single `ClassArena::make_like_within` typed-clone site (this is the
+only sub-step that reduced downcasts: 416→369); (d) the arena **ckt/data tag
+primitive** (`try_ckt_elem`/`try_ckt_elem_mut`, no `Any` round-trip) with arena
+internals rerouted off `as_ckt_element*` onto the tag. **Escaped → R3 (all rooted
+in one blocker):** (a) the `ElemRef`→`ElemId` **spine flip** (427-site first
+field-group cluster + the 5-step sequenced remainder in the (a) record); (b)
+Categories **A** (typed pair/triple getters) / **B** (meter disjoint-borrow reads)
+/ **D** (typed resolved-object handle) + the `generator_mut`/`storage_mut`/
+`pvsystem_mut`/`espvl_mut`/`upfc_mut` family; (d) removal of
+`as_ckt_element`/`as_ckt_element_mut` from `DssObject` + its ~50 external sites;
+(e) removal of `as_any`/`as_any_mut` from `DssObject` + the **364 production
+downcasts** (see the (e) record below for the file-by-file blocker map). **Root
+cause of every escape is a single item:** the item-1 store flip has **no
+gate-green partial state** (a Rust field type is global, so the first field-group
+flip alone breaks 427 all-or-nothing consumer sites, several × that for the whole
+spine) and is the sole prerequisite that then unblocks A/B/D and *both* trait-
+method removals. **R3 shape:** land the store flip as its own multi-session WP
+(the 5-step sequence), add the typed arena accessors (`get::<T>`/`get_mut::<T>`
+returning a concrete ref, no `Any`) + Category-A typed pair/triple getters + the
+Category-D typed resolved-object handle; then the 364 `downcast_*` sites and the
+~174 `as_ckt_element*` sites collapse mechanically and both trait-method families
+are removed together. **Net R2b delta from base `update`@`5a416ee`:** `downcast_ref|
+downcast_mut` 416→369 (−47, all from make_like); `as_any|as_ckt_element` 759→716;
+`ElemRef` 927→937 (+10 = the R3-staged `from_ref`/`From` bridges + their tests);
+`ElemId` 31→34; `TODO(compat)` **117 unchanged**; **zero golden / ledger /
+tolerance churn** across all five sub-steps.
+
+### DE_PASCALIZE R2b sub-step (e) — `as_any` removal: BLOCKED (364 production downcasts, no typed store to zero them); definitive R3 handoff produced (branch `depas-r2b`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base = the (d) tip `5c8d9a5` (on `update`
+@ `5a416ee`). Brief step (e): remove `as_any`/`as_any_mut` from `DssObject` + delete
+the boilerplate impls **only if** the production `downcast_*` count is actually
+zero (test-only downcasts may be restructured or kept, least-churn, disclosed);
+**all-or-nothing per method.** Brief fallback (binding): "If production downcasts
+remain (escaped from b/c/d), do NOT remove the trait methods; instead produce the
+definitive named list (file:line + blocker) as the R3 handoff."
+
+**Verdict: BLOCKED — production downcasts = 364, not zero, and the typed store that
+would zero them was escaped in (a)/(b).** So (e) removes **nothing** (zero
+production code) and lands the definitive R3 handoff below. This is the same
+store-flip wall that blocked (b) and (d): every remaining downcast resolves a
+`&dyn DssObject`/`&mut dyn DssObject` to a **concrete** type, which fundamentally
+needs a typed store/arena or a typed handle — the escaped item-1 flip. The (d)
+`try_ckt_elem` tag cannot help: it yields `&dyn CktElement`, never a concrete `T`.
+
+**Measured downcast population (verified independently this session,
+`crates/dss-core/src`).** Total `downcast_ref|downcast_mut` = **369** =
+**364 production** (69 files) + **3 inline `#[cfg(test)]`** (`elements/pd/transformer/
+mod.rs:506,509`; `solution/inc_matrix.rs:187`) + **2 test-path**
+(`exec/tests/live_ctx.rs`, `exec/tests/reliability.rs`). The 5 test-context sites
+are left as-is (least-churn; they restructure trivially only alongside the R3
+removal). Removal target if unblocked: `fn as_any`/`fn as_any_mut` defs = **52 each**
+(50 per-class boilerplate impls + the trait decl + the base helper).
+
+**Definitive R3 handoff — the 364 production downcasts by blocker** (classifier over
+the source expression feeding each `downcast_*`; 361 auto-classified, ~3
+window-misses fold into the arena buckets). Three blocker families, all gated on
+the item-1 store flip:
+
+- **(1) Typed-arena reads — 214 sites — mechanical once the flip lands a typed
+  accessor `ClassArena::get::<T>(id) -> Option<&T>` / `get_mut::<T>(id)` (concrete
+  ref, no `Any`):**
+  - `store.obj_mut(r).as_any_mut().downcast_mut::<T>()` — **85**: `controls/
+    dispatch.rs` 52, `meters/sampling/take_sample.rs` 9, `exec/command.rs` 5,
+    `solution/ncim.rs` 5, `solution/monte_carlo.rs` 3, `solution/faults.rs` 2,
+    `meters/mod.rs` 2, `solution/monitors.rs` 2, then `exec/set_cmd.rs`,
+    `meters/sampling/allocate.rs`, `solution/{fault_study,power_flow,time_series}.rs` ×1.
+  - `classes[c].arena[i].as_any().downcast_ref::<T>()` (direct arena index) — **77**:
+    `cim/export.rs` 16, `exec/report.rs` 10, `cim/power_xfmr.rs` 8, `cim/ieee1547.rs`
+    6, `exec/reduce.rs` 6, `exec/save_circuit.rs` 6, `exec/view.rs` 5,
+    `exec/helpers.rs` 2, `report/export/profile.rs` 2, `report/show/{diagnostics,
+    meters}.rs` 2 each, then a report/{export,show} + `report/save/dump.rs` tail ×1.
+  - `store.obj(r).as_any().downcast_ref::<T>()` — **52**: `controls/dispatch.rs` 31,
+    `meters/demand_interval.rs` 5, `meters/sampling/allocate.rs` 3, `circuit/
+    auto_add.rs` 2, `meters/zones/flags.rs` 2, `solution/ncim.rs` 2, then
+    `exec/command.rs`, `meters/{reliability,zones/build,sampling/take_sample}.rs`,
+    `solution/{monitors,power_flow,topology}.rs` ×1.
+- **(2) Category A disjoint borrows — 28 sites — need typed pair/triple getters
+  `(&mut RegControl, &mut Transformer)` / `(&mut CapControl, &mut Capacitor)` by
+  ElemId (mind Transformer|AutoTrans via `ControlledTransformer`):** `pair_mut` **23**
+  + `triple_mut` **5**, almost all in `controls/dispatch.rs` — reg→xfmr cluster
+  (`pair_mut` at :603/622/703/719/749/792/814/855/904/926/952), cap→cap cluster
+  (:1009/1050/1065), and self-monitoring `triple_mut` (:680/766/875/1024 + one),
+  plus 5 stragglers (`meters/sampling/allocate.rs` 2, `exec/command.rs` 1,
+  `exec/view.rs` 1, `solution/monitors.rs` 1). The `mon_clone.as_ckt_element_mut()`
+  self-monitor path also needs a typed clone from the arena (touches Category E's
+  `clone_box` consumer, still live).
+- **(3) Category B/D bare `&dyn`/`&mut dyn` params — 119 sites — need the Category-D
+  typed resolved-object handle (change the shared `set_object_ref(resolved:
+  Option<(ElemRef, &dyn DssObject)>)` tuple type across the ~29 `set_object_ref`
+  files — producers `reg_control` accessors:319, `cap_control`:295/315 — and the
+  bare-`obj` readers they feed: `capture_metered(obj: &dyn DssObject)` at
+  `meter/monitor/accessors.rs:267` and `meter/energymeter/accessors.rs:17`) + the
+  Category-B disjoint-borrow meter reads (`meter/monitor/sample.rs`):**
+  `exec/command.rs` 24 (the `edit_*_class` object dispatch, `obj.as_any_mut().
+  downcast_mut::<T>()` at :15-25), `report/save/dump/overrides.rs` 18,
+  `meter/monitor/accessors.rs` 10, `exec/view.rs` 6, `meter/energymeter/
+  accessors.rs` 5, `meter/monitor/sample.rs` 4, `pc/pvsystem/accessors.rs` 4,
+  `report/save/save.rs` 4, `controls/dispatch.rs` 4, `cim/export.rs` 3 (the
+  `conductor_geom_amps(o: &dyn DssObject)` helper :1577), `pc/{storage,windgen}/
+  accessors.rs` 3 each, `pd/line/accessors.rs` 3, then a long tail of per-class
+  `accessors.rs` (`reg_control`, `generator`, `load` ×2; `cap_control`,
+  `inv_control`, `storage_controller`, `ind_mach012`, `isource`, `upfc`, `vccs`,
+  `vsource`, `gic_transformer`, `reactor`, `transformer` ×1) + `control_elem.rs`,
+  `general/line_geometry/edit.rs`, `elements/traits.rs`, `exec/{distribute,reduce,
+  save_circuit}.rs`, `solution/{meters/demand_interval,ncim,meters/sampling/
+  allocate}.rs` ×1-2.
+
+**`from_ref`/`to_ref` bridge sweep (brief item).** Swept the whole tree:
+`from_ref`, `to_ref`, `From<ElemRef>`, `From<ElemId>` have **zero external call
+sites** — they live only in `obj/arena.rs` (the definitions + the (a) self-tests
+`from_ref_covers_every_class_and_round_trips` / `elemid_ref_bridge_round_trips`).
+The flip never started (escaped in a/b), so no call site "became typed"; there is
+nothing to remove. The bridges are the R3 enabling primitive (exactly as (a)
+landed them and (d) landed `try_ckt_elem`) — **KEPT and flagged for R3**. They are
+`pub`, so no dead-code warning; the gate stays green.
+
+**Metrics (HEAD `5c8d9a5`; (e) is zero-code, so identical to the (d) tip).**
+
+| metric (`rg … crates/dss-core/src`) | count | note |
+|---|---|---|
+| `ElemRef` | **937** | +10 vs base = R3-staged `from_ref`/`From` bridges + tests |
+| `as_any\|as_ckt_element` | **716** | −43 vs base 759 (make_like extraction, net of (d)'s +4 doc/test refs) |
+| `downcast_ref\|downcast_mut` | **369** | 364 prod + 3 inline-test + 2 test-path (−47 vs base 416, all make_like) |
+| `TODO(compat)` | **117** | **unchanged** (base = 117) |
+| `ElemId` | **34** | +3 vs (a) = (d) `try_ckt_elem` test refs |
+| `fn as_any` / `fn as_any_mut` defs | **52 / 52** | the removal target R3 unblocks |
+
+Zero golden / ledger / tolerance churn (no production path edited this sub-step).
+
+**Deviations disclosed.** (1) (e) landed **zero production code** — the trait
+removal is all-or-nothing and the production downcast count is 364, not zero;
+blocked on the same escaped store flip as (b)/(d). (2) No boilerplate impls
+deleted, no trait method removed — correct per the brief's zero-count gate. (3)
+Ritual "two fresh independent audits (code/tests)" not run — there is **no
+production diff to audit** (STATUS-only commit); nothing changed to regress. (4)
+The 3 inline-test + 2 test-path downcasts left in place (least-churn; they only
+restructure alongside the R3 trait removal).
+
+**Gate.** Toolchain guard first (`cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`;
+186 `.pas` under `.inputs/dss_capi`). `cargo fmt --all --check` ok; `cargo clippy
+--workspace --all-targets -- -D warnings` ok; `cargo test --workspace` exit 0 — 66
+`test result: ok` lines, 0 failures, `corpus_gate_all_cases_match_engines … ok`
+(both channels capi_v0145 + r4133), run **solo**. Tree clean; no corpus
+run-artifacts left.
+
+### DE_PASCALIZE R2b sub-step (d) — `as_ckt_element` removal: arena ckt/data tag primitive landed; trait-method removal escape-recorded (blocked on the escaped store flip) (branch `depas-r2b`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base = the (c) tip `6c40830` (on `update` @ `5a416ee`).
+Brief step (d): tag the arena macro ckt-vs-data so `ClassArena` upcasts
+`&dyn CktElement` directly (no `Any` round-trip); convert the ~50 external
+`.as_ckt_element()/.as_ckt_element_mut()` call sites; then remove
+`as_ckt_element`/`as_ckt_element_mut` from `DssObject` + delete the 35 boilerplate
+impls. Brief fallback (binding): "If some call sites cannot be converted without
+the typed store pieces that escaped earlier, escape-record them and leave the trait
+methods in place (all-or-nothing per method: only remove a trait method when its
+caller count is zero)."
+
+**Verdict: both trait methods are BLOCKED — neither's caller count can reach zero
+without the escaped store flip / Categories A/B/D/E.** So (d) lands the genuinely-
+additive **enabling primitive** (the arena ckt/data tag, exactly parallel to how
+(a) landed the `from_ref` primitive and escaped the flip) and escape-records the
+trait-method removal + external-site conversion with a precise blocked inventory.
+The R2 record's earlier estimate that "`as_ckt_element` removal is tractable-but-
+large standalone" was optimistic — it counted only the ~50 `arena[r.idx]` sites and
+did **not** enumerate the Category-B/D bare-object readers that also call the
+immutable method (corrected here with evidence, per the "verify forward-handoffs"
+rule).
+
+**Landed — the arena ckt/data tag primitive (arena.rs only, +150/−66).**
+- `with_all_classes!` gains a 4th column per class: `ckt` (the 35 circuit classes
+  whose concrete `T: CktElement`) / `data` (the 15 `DSS_OBJECT` general classes
+  that do not). Two inner dispatch macros `ckt_view_ref!`/`ckt_view_mut!` emit the
+  **direct** `Some(&v[idx] as &dyn CktElement)` upcast for `ckt` variants and
+  `None` for `data` variants (the cast is never generated for a non-`CktElement`
+  type).
+- New `ClassArena::try_ckt_elem(idx) -> Option<&dyn CktElement>` /
+  `try_ckt_elem_mut(idx)` — the fallible twin of `ckt_elem`/`ckt_elem_mut`, tag-
+  driven, **no `Any` round-trip**. Named `try_ckt_elem*` (not `as_ckt_element*`) so
+  the arena accessor is distinct from the trait method and does not pollute the
+  `as_ckt_element` grep metric.
+- Arena internals **rerouted off the trait method onto the tag**: `ckt_elem`/
+  `ckt_elem_mut` now delegate to `try_ckt_elem*().expect(...)` (same panic message,
+  bit-identical), and `for_each_ckt_elem_mut` is an index loop over
+  `try_ckt_elem_mut(idx)` (same 0..len order, same `ElemRef`, same data-skip).
+  The arena no longer depends on `DssObject::as_ckt_element*` in production.
+- New test `arena_tag_matches_trait_ckt_view`: for **every** registered class,
+  `push_new` one object and assert `try_ckt_elem(0).is_some()` /
+  `try_ckt_elem_mut(0).is_some()` equal the still-present `obj(0).as_ckt_element()`
+  trait method object-for-object, and pin the circuit-class count at 35. Proves the
+  tag is correct against the oracle it will eventually replace. All 6 `obj::arena`
+  tests pass.
+
+**Escaped — the trait-method removal + external-site conversion (recorded per
+escape protocol; old code untouched, gate green). Both methods have nonzero
+callers rooted in the escaped store-flip categories:**
+- **`as_ckt_element_mut` (65 call sites) — blocked by Category A + E.** Control
+  dispatch (`solution/controls/dispatch.rs`, 21 `_mut` sites) obtains the
+  controlled/monitored element as a bare `&mut dyn DssObject` from
+  `store.pair_mut(r, target)` / `triple_mut(...)` (`store: &mut dyn ElemStore`) and
+  calls `tobj/mobj.as_ckt_element_mut()`; a typed `&mut dyn CktElement` from a
+  disjoint borrow needs the typed-arena pair getters (Category A, escaped in (b),
+  plan-scheduled with item-1 flip) — reachable only by bolting new
+  `pair_mut_ckt`-style methods onto the generic `ElemStore` trait, an improvised
+  stopgap the escape protocol forbids. Plus `mon_clone.as_ckt_element_mut()` (self-
+  monitoring): `mon_clone` is an owned `Box<dyn DssObject>` from `clone_box`; its
+  ckt view needs a **typed clone from the arena** (Category E), escaped.
+- **`as_ckt_element` (109 call sites) — blocked by Category D + B.** Category-D
+  `set_object_ref(resolved: Option<(ElemRef, &dyn DssObject)>)` (reg_control:319,
+  cap_control:295/315) and the `capture_metered(obj: &dyn DssObject)` /
+  sensor `capture(obj)` readers it feeds (energymeter/accessors.rs:19 ← :325,
+  monitor/accessors.rs:269 ← :208, sensor/accessors.rs:18) take a **bare
+  `&dyn DssObject` with no store/arena in scope** and read `cd()` via
+  `as_ckt_element()`. Feeding a ckt view means changing the shared resolved-object
+  tuple type across all 29 `set_object_ref` files — the escaped Category-D typed-
+  handle redesign ("Preserve resolve-time snapshot timing"). Monitor `sample.rs`
+  reads (`metered.as_ckt_element()` :60/:96) are on a `&mut dyn DssObject` disjoint-
+  borrow param (Category B) — the same disjoint-borrow wall as dispatch.
+- **The ~90 remaining `arena[r.idx].as_ckt_element()` sites** (report/exec/solution/
+  diakoptics/cim) ARE mechanically convertible to `arena.try_ckt_elem(r.idx)`, but
+  converting them does **not** remove either trait method (the blocked sites above
+  keep both alive), and the plan sequences the full conversion **with** the store
+  flip (item 1) — so per the escape protocol (leave old code, gate green) and the
+  (a)/(b) precedent (land the primitive, don't churn a blocked category early),
+  they are left for the flip WP. `try_ckt_elem*` are ready for that mechanical pass.
+
+**Metrics (HEAD vs (c) base `6c40830`).** Only `crates/dss-core/src/obj/arena.rs`
+changed. Trait-method caller counts **unchanged**: `.as_ckt_element()` 109,
+`.as_ckt_element_mut()` 65 — zero external sites converted, neither trait method
+removed, 35 impls intact. `as_any|as_ckt_element` 712 → **716** (+4 = the doc/test
+references to the *unchanged* trait method in arena.rs, incl. the equivalence-test
+oracle call `obj(0).as_ckt_element()`; no new trait-method call sites).
+`downcast_ref|downcast_mut` **369** (unchanged). `TODO(compat)` **117** (unchanged).
+`ElemRef` 937 (unchanged). Zero golden / ledger / tolerance churn.
+
+**Deviations disclosed.** (1) (d) removed neither trait method — blocked on the
+escaped store flip (same wall as (b)); landed the additive tag primitive instead.
+(2) Named the arena accessors `try_ckt_elem*` (not `as_ckt_element*`) to keep the
+grep metric honest and disambiguate from the trait method. (3) Did not convert the
+~90 convertible external sites (churn for zero removal; plan-sequenced with the
+flip) — `try_ckt_elem*` are staged for that pass.
+
+**Gate.** Toolchain guard first (`cargo = .cargo\bin`, 186 `.pas`). `cargo fmt
+--all --check` ok; `cargo clippy --workspace --all-targets -- -D warnings` ok;
+`cargo test --workspace` (corpus gate inside, both channels capi_v0145 + r4133, run
+solo) — exit 0, all suites green incl. the 6 `obj::arena` tests. Tree clean; corpus
+run-artifacts removed by exact name.
+
+### DE_PASCALIZE R2b sub-step (c) — Category E `make_like`: trait method → inherent typed fn (50 classes) landed, trait method removed (branch `depas-r2b`, commit `5a6a41c`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base for this sub-step = the (a)+(b) tip `c32a2cb`
+(itself on `update` @ `5a416ee`). Executes plan §Category E (`DE_PASCALIZE_PLAN.md`
+R2, brief step (c)) **standalone** — it does NOT depend on the escaped store flip
+(item 1), so unlike (b) it was fully executable now.
+
+**What landed (commit `5a6a41c`, 54 files, +1844/−1856).**
+- All **50** per-class `make_like` bodies moved out of `impl DssObject for X` into
+  an inherent `impl X { pub(crate) fn make_like(&mut self, other: &Self) { … } }`
+  block placed immediately above the trait impl. The downcast guard
+  (`let Some(o) = other.as_any().downcast_ref::<X>() else { return; }` /
+  `if let Some(o) = … {`) is dropped; the body is **byte-identical** (mechanically
+  copied, not retyped — see proof below). Guard-bound name preserved via a
+  `let o = other;` alias where the body used `o`; `if let` bodies kept inside a
+  bare `{ }` block (zero body-byte change, clippy-clean). The 3 no-downcast impls
+  (Spectrum, TccCurve, DynamicExp — read via typed `DssObject` accessors) moved
+  sig-only. DynamicExp keeps its error-only no-op (`_other: &Self`).
+- Production dispatch = the single site `ClassArena::make_like_within` (arena.rs):
+  now `let src = v[source].clone(); v[target].make_like(&src);` (typed `Clone` +
+  inherent call) instead of `clone_box()` + trait dispatch. Source-snapshot-before-
+  mutable-borrow (the `source == target` aliasing safety) preserved; `clone()`
+  yields the same value as `clone_box()` (which is `Box::new(self.clone())`).
+- `fn make_like` **removed from the `DssObject` trait** (base/mod.rs) — all callers
+  converted (only `make_like_within` in production; unit tests call the concrete
+  type). Two test-only touch-ups: `relay/tests.rs` `&src as &dyn DssObject` → `&src`;
+  `recloser/tests.rs` dropped the now-unused `use …DssObject`.
+- `clone_box` **kept** (still live: moved line_geometry conductor snapshots +
+  line/dispatch sites) — not deleted, per brief.
+
+**Byte-neutrality proof.** A scratch script line-diffed each of the 50 bodies
+base(`5a416ee`)→HEAD after stripping only sig/guard/alias/bare-block: **0
+differences across all 50**. Metrics: `TODO(compat)` = **117** (unchanged);
+`downcast_ref|downcast_mut` **416 → 369** (−47 = 50 impls minus the 3 no-downcast
+classes); `as_any|as_ckt_element` **759 → 712** (−47); zero golden / ledger /
+tolerance churn (`git show --stat`: only src + 2 test files).
+
+**Gate (full, solo).** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` clean; `cargo test --workspace` exit 0 — corpus gate
+`corpus_gate_all_cases_match_engines … ok` (25 passed, 148 s, both channels
+capi_v0145 + r4133). Corpus tree left pristine (19 run-artifacts removed by exact
+name, no wide clean). Two fresh audits (code + tests) both PASS/no-findings.
+
+**Deviations disclosed.** (1) `if let` guards became `let o = other; { … }` bare
+blocks rather than de-indented bodies — chosen to keep body bytes identical (zero
+retype risk); clippy-clean. (2) Ritual audits found nothing to settle empirically
+(pure mechanical move proven byte-identical + gate-green), so no probe experiments
+were needed beyond the body-equivalence diff.
+
+### DE_PASCALIZE R2b sub-step (a) — spine flip: `ElemId::from_ref` primitive landed; full `ElemRef → ElemId` flip escape-recorded (branch `depas-r2b`, 2026-07-25)
+
+Stratum **[A]** bit-neutral. Base `update` @ `5a416ee` (R2 item-7 M3b seam
+merged). R2b's brief split the escaped Part-I flip into sub-steps (a)…(e); this
+session is **(a) the spine flip**. Ground truth: the R2 record below already
+established the flip is **one-session-infeasible gate-green** (927 `ElemRef` hits
+/ 130 files; `ElemRef` and `ElemId` are different types, so a half-flipped tree
+does not compile). This session confirmed that empirically and landed the
+**enabling primitive** both the brief and the R2 record flagged as "missing and
+needed first," then escape-recorded the flip with **measured** metrics that make
+the remainder estimable and sequenceable.
+
+**Landed — the `from_ref` primitive (commit `3c976a3`).** `obj/arena.rs` only
+(+56 lines; `git diff 5a416ee..HEAD --stat` = one file):
+- `ElemId::from_ref(ElemRef) -> ElemId` — a `match` over all 50 class ordinals
+  via `Self::CLASS_NAMES[r.cls]` (registration order; names are distinct), the
+  inverse of the pre-existing `to_ref`. `unreachable!` on an out-of-range/unknown
+  ordinal (an invalid ref is a construction bug, never a valid state).
+- `impl From<ElemRef> for ElemId` / `impl From<ElemId> for ElemRef` — the R2
+  spine-flip bridges (producers still speaking `ElemRef` feed `.into()`;
+  consumers still calling the `ElemRef`-typed access layer feed `id.to_ref()` /
+  `.into()`). Both removed once the access layer is retyped (later R2 / R3).
+- Tests: extended `elemid_ref_bridge_round_trips` (both `From` directions) +
+  new `from_ref_covers_every_class_and_round_trips` (asserts `from_ref` selects
+  the correct variant for **every** registered class ordinal against the live
+  registry, and `from_ref`/`to_ref` are mutual inverses). All 5 `obj::arena`
+  tests pass.
+
+**Escaped — the field/reference/access-layer flip (recorded per escape protocol;
+NOT started, old code untouched, gate stays green).** The flip cannot be landed
+as a partial gate-green prefix: a Rust field type is global, so flipping any one
+storage field-group breaks **all** its consumers at once, and there is **no
+gate-green landing state between "primitive only" and "the whole field-group +
+every consumer bridged."** Measured this session by actually performing the
+first field-group flip (`circuit.rs` per-kind lists `Vec<ElemRef>` → `Vec<ElemId>`
++ producer `add_ckt_element` + the `ReprocessBusDefs` clone) and running
+`cargo check` — then reverting cleanly (`git checkout`, tree restored to
+`3c976a3`):
+- **`circuit.rs` per-kind lists alone → 427 distinct primary compile-error sites
+  across ~55 files** (E0308 type-mismatch 227 / E0609 `.cls`|`.idx`-on-`ElemId`
+  196 / E0277 `.collect::<Vec<ElemRef>>()` 4). **No cascade into the access
+  layer** — `elements/traits.rs` (`ElemStore`/`CktElement`) appears only in
+  cited "expected because of this" *notes*, never as a primary error; the flip is
+  contained to consumers.
+- The sites are **uniformly mechanical** (three bridge patterns: `id.to_ref()`
+  at loop tops or arg sites; `.class_ord()`/`.index()` for scattered `.cls`/`.idx`
+  field access; `.map(|id| id.to_ref()).collect()` for the 4 `collect`s) but
+  **scattered, not loop-collapsible** — e.g. `cim/export.rs` = 47 sites spread
+  across lines 1197…4400 in many distinct functions (30 distinct lines, most
+  carrying two `.cls`+`.idx` errors). Top consumer files: `cim/export.rs` 47,
+  `exec/report.rs` 33, `exec/view.rs` 26, `controls/dispatch.rs` 22,
+  `cim/power_xfmr.rs` 14, `cim/ieee1547.rs` 13, `solution/inc_matrix.rs` 12,
+  `report/show/diagnostics.rs` 11, `meters/sampling/take_sample.rs` 10,
+  `meters/demand_interval.rs` 10, then a long tail of report/show + report/export
+  + solution + exec files.
+- **Cascade boundaries mapped (all containable via `.to_ref()` bridges, no forced
+  co-flip):** three sibling structures also store `ElemRef` and would be bridged
+  at their push/read boundary, not co-flipped in this cluster —
+  `solution/control_queue/mod.rs` (`ActionRecord`/`PoppedAction.control: ElemRef`),
+  `circuit/ckt_tree/mod.rs` (node `elem`/`shunts`/`loop_elem: ElemRef`),
+  `elements/pc/gic_source/mod.rs` (`set_resolved_line(Option<(ElemRef,String)>)`).
+
+**Sequenced remainder for the (a)-continuation / (b) (do these as their own
+sessions/commits, each `cargo check`-green cluster-by-cluster):**
+1. `circuit.rs` per-kind lists → `Vec<ElemId>` + bridge the 427 consumer sites
+   (the measured cluster above). Largest single cluster; ~55 files.
+2. `RefAction.target` (`obj/base/mod.rs`, 5 variants) → `ElemId`; bridge the ~5
+   control-accessor producers + the `apply_ref_action` applier.
+3. Cross-references: the stored `controlled_element`/`monitored_element` fields
+   (in `ControlElemData`/meter data) → `ElemId`, and the trait getters
+   `CktElement::controlled_element`/`monitored_element_ref` (flipping the getter
+   signature touches every override + caller — all-or-nothing per getter).
+4. Shape/object refs where the class is statically known → typed `Idx<T>` (e.g.
+   Load `daily: Option<Idx<LoadShapeObj>>`) — couples to the typed-store reads of
+   sub-step (b) (Category D), so best done with (b).
+5. The access layer itself — `ElemStore` trait methods + `find_ckt_element`/
+   `find_general` returns + the sibling structures (control_queue/ckt_tree/
+   gic_source) → `ElemId`; this removes the `.to_ref()` bridges. All-or-nothing
+   big-bang (one impl of `ElemStore`, but every caller flips together).
+
+**Deviations disclosed.** (1) Sub-step (a) did **not** flip any storage/reference
+field (the R2 record's item-1); only the primitive landed. Reason: the escape
+protocol forbids a rushed stopgap, and the flip has no committable partial
+gate-green state (427 all-or-nothing sites for the first field-group alone,
+several × that for the full spine). The primitive is the genuinely-additive,
+zero-risk, unblocking piece; the field flips are handed on with a measured map.
+(2) `ElemRef` count rose 927 → 937 / files unchanged 130 (the 10 new hits are the
+`from_ref`/`From` bridges + their test in `arena.rs`) — expected; the flip that
+reduces the count is the escaped remainder. `ElemId` 31 hits. `TODO(compat)`
+unchanged (117). Zero golden/tolerance/ledger churn (no non-test production path
+edited).
+
+**Gate.** Toolchain guard first (`cargo = .cargo\bin`, 186 `.pas`). `cargo fmt
+--all --check` ok; `cargo clippy --workspace --all-targets -- -D warnings` ok;
+`cargo test --workspace` (corpus gate inside, both channels capi_v0145 + r4133,
+run solo) — exit 0, all workspace suites green (corpus gate
+`corpus_gate_all_cases_match_engines` ok inside the 26-test dss-core integration
+binary). Tree clean; corpus run-artifacts removed by exact name.
+
+### DE_PASCALIZE R2b sub-step (b) — typed-store categories: all escape-recorded (blocked on the un-flipped store) (branch `depas-r2b`, 2026-07-25)
+
+Stratum **[A]** bit-neutral. Base = sub-step (a)'s HEAD `3c976a3` (`from_ref`
+primitive only). The brief specifies (b) is executed **"on the flipped store"**:
+Category A pair getters (`(&mut RegControl,&mut Transformer)` /
+`(&mut CapControl,&mut Capacitor)` by `ElemId` match), Category B meter reads,
+Category D typed handle in resolved object-ref tuples, and the
+`generator_mut`/`storage_mut`/`pvsystem_mut`/`espvl_mut`/`upfc_mut` helpers →
+typed arena matches. **The flipped store does not exist yet:** sub-step (a)
+landed only the `from_ref` primitive and escape-recorded the field/reference/
+access-layer flip (its "sequenced remainder" steps 1–5, ~427 all-or-nothing
+sites for the first field-group alone). Verified independently this session —
+`ElemStore` is still `dyn` with `obj_mut(r) -> &mut dyn DssObject` as its sole
+typed path; `circuit.rs` per-kind lists are still `Vec<ElemRef>`; measured
+populations unchanged from (a): `ElemRef` 937 / 130, `as_any|as_ckt_element`
+759 / 134, `downcast_ref|downcast_mut` 416 / 100, `TODO(compat)` 117.
+
+**Plan-sequencing confirms the block.** `DE_PASCALIZE_PLAN.md` R2 (l.334–345)
+orders "Replace `ElemRef` with `ElemId` in `circuit.rs` (all per-kind lists),
+every cross-reference, `RefAction`, and `solution/` Y-build" **first**, and only
+*then* "Add typed arena pair getters so `dispatch.rs` gets `(&mut RegControl,
+&mut Transformer)` … by `ElemId` match — emptying Category A" and "Finish
+Categories D (typed handle in resolved object-ref tuple; per-class
+`set_object_ref` match; concrete clone pulled from the typed arena)." The
+category table (l.229–232) puts the A pair borrows, the Cat-B "rest via arena",
+and Cat D all in Stage **R2**, downstream of the flip. Every category assigned to
+(b) is therefore plan-blocked until the flip lands. Per the escape protocol +
+the coordinator's explicit "if the typed store is not available for a given
+site, escape-record rather than improvising downcasts," all of (b) is escaped
+(old code untouched, gate stays green). No forbidden stopgap (concrete-typed
+methods bolted onto the storage-agnostic `ElemStore` trait) was introduced.
+
+**Per-category disposition (precise site inventory):**
+- **Category A pair getters — ESCAPED.** `controls/dispatch.rs` reg→transformer
+  L954–970 (RegControl + `ControlledTransformer`, with the `Transformer` vs
+  `AutoTrans` branch at L958–964) and cap→capacitor L1011–1070 (4 sub-sites,
+  each `CapControl` + `Capacitor`). Today reached via `store.triple_mut/pair_mut`
+  → `(&mut dyn DssObject,…)` then `as_any_mut().downcast_mut::<T>()`. Typed
+  `(&mut RegControl,&mut Transformer)` needs an `ElemId`/`ClassArena` match over a
+  concrete-typed store (plan l.339–340) — not reachable through `dyn ElemStore`.
+- **`generator_mut`-family helpers — ESCAPED.** `controls/dispatch.rs`
+  `generator_mut` L1115, `espvl_mut` L1181, `upfc_mut` L1242, `storage_mut`
+  L1385, `pvsystem_mut` L2343 — all `store: &mut dyn ElemStore` +
+  `obj_mut(r).as_any_mut().downcast_mut::<T>()`. "→ typed arena matches"
+  requires the typed store; same blocker as Category A.
+- **Category B meter reads — R0 part DONE, remainder ESCAPED.** Already
+  converted by R0 (verified in-tree, no work needed): the type-guards in
+  `solution/meters/zones/build.rs` (L16/26/43 `matches!(store.kind(r), …)`) and
+  `solution/meters/sampling/take_sample.rs` (L138/139/296/297 `store.kind`),
+  plus the small typed `CktElement` reads (`line_length_km`, `load_num_customers`,
+  `present_tap`). **Remaining, escaped:** the type-classification cascades in
+  `elements/meter/energymeter/accessors.rs::capture_metered` `is_pd` (L25–32,
+  Line/Transformer/AutoTrans/Capacitor/Reactor) and
+  `elements/meter/monitor/accessors.rs` snapshot `MeteredKind` (L274–324), plus
+  the concrete rich reads in `elements/meter/monitor/sample.rs` (L135 Capacitor
+  `states()`, L177 Storage monitor vars, L227 Transformer
+  `get_all_winding_currents`, L251 winding voltages). All take a bare
+  `&dyn DssObject`/`&mut dyn DssObject` with **no `ElemRef`/store in scope**, so
+  `store.kind` is unusable here. These are the plan's "concrete reads → typed
+  arena reads (R2)" bucket (l.230, l.342–343); clean end-state is an `ElemId`
+  match on the flipped store. Virtualizing the rich monitor reads as new narrow
+  `CktElement` trait methods would create monitor-specific throwaway surface the
+  flip tears out again (escape-protocol-forbidden stopgap); reshaping the
+  classification cascades in isolation carries a bit-neutrality risk (the
+  hand-enumerated PD / `MeteredKind` sets must be preserved exactly). Deferred to
+  the coherent flipped-store Category B pass.
+- **Category D typed handle in resolved object-ref tuples — ESCAPED.**
+  `fn set_object_ref` lives across 29 element accessor files (the plan names
+  `{load,line,vsource,generator}/accessors.rs`, l.232). The fix carries a typed
+  handle (`ElemId`/`Idx<T>`) in the resolved object-ref tuple so each
+  `set_object_ref` matches the expected variant and clones the concrete object
+  from the typed arena (l.232, l.342). Resolution today yields a bare `ElemRef`/
+  `&dyn DssObject` and the whole reference plumbing is `ElemRef`-typed; a typed
+  handle needs the reference/store retype (sub-step (a)'s remainder steps 3–5).
+  The brief's hard requirement to **preserve resolve-time snapshot timing
+  exactly** cannot be guaranteed by an isolated conversion without the typed
+  store, so escaped.
+
+**Deviations disclosed.** (1) (b) produced **zero production code** — it is
+entirely blocked on the un-done store flip; this STATUS record is the only
+change. Metrics unchanged from (a) (`ElemRef` 937, `downcast` 416, `as_any` 759,
+`TODO(compat)` 117); zero golden/tolerance/ledger churn. (2) The brief's premise
+("on the flipped store") was not met because sub-step (a) delivered only the
+enabling primitive, not item-1 (the flip). This is disclosed, not worked around.
+
+**Recommendation for the coordinator.** (b) is not independently executable. Its
+four categories become mechanical `ElemId`-match conversions **only after** the
+(a)-continuation lands step-a's sequenced remainder — step 1 (`circuit.rs`
+per-kind lists → `Vec<ElemId>`, ~427 consumer sites) through step 5 (access-layer
+retype: `ElemStore` trait + `find_*` returns + the control_queue/ckt_tree/
+gic_source siblings, which removes the `.to_ref()` bridges). Suggest folding
+(b) into the flip WP (do A/D/generator-family/rich-B as the flip retypes each
+site) rather than scheduling it as a standalone sub-step.
+
+**Gate.** Toolchain guard (`cargo = .cargo\bin`, 186 `.pas`). `cargo fmt --all
+--check` ok; `cargo clippy --workspace --all-targets -- -D warnings` ok;
+`cargo test --workspace` (corpus gate inside, both channels capi_v0145 + r4133,
+run solo) — exit 0, all workspace suites green (corpus gate
+`corpus_gate_all_cases_match_engines` ok, 26-test dss-core integration binary).
+Tree clean; corpus run-artifacts removed by exact name.
+
 ### BUG WP livectx — thread the live ctx into every recalc; kill `default_recalc_ctx` substitution (2026-07-25)
 
 Follow-up to gicfix, on `bug-livectx` (base `update` @ gicfix merge). User

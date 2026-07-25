@@ -9,6 +9,21 @@ use super::prop::{
 };
 use super::{XyCurveObj, prop};
 
+impl XyCurveObj {
+    /// Pascal `TXYcurveObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.data.copy_prp_sequence_from(other.data());
+        let o = other;
+        self.npts = o.npts;
+        self.x_values = o.x_values.clone();
+        self.y_values = o.y_values.clone();
+        self.fx_shift = o.fx_shift;
+        self.fy_shift = o.fy_shift;
+        self.fx_scale = o.fx_scale;
+        self.fy_scale = o.fy_scale;
+    }
+}
+
 impl DssObject for XyCurveObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -192,21 +207,6 @@ impl DssObject for XyCurveObj {
             _ => return,
         }
         self.sync_first_point();
-    }
-
-    /// Pascal `TXYcurveObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        self.data.copy_prp_sequence_from(other.data());
-        let Some(o) = other.as_any().downcast_ref::<XyCurveObj>() else {
-            return;
-        };
-        self.npts = o.npts;
-        self.x_values = o.x_values.clone();
-        self.y_values = o.y_values.clone();
-        self.fx_shift = o.fx_shift;
-        self.fy_shift = o.fy_shift;
-        self.fx_scale = o.fx_scale;
-        self.fy_scale = o.fy_scale;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

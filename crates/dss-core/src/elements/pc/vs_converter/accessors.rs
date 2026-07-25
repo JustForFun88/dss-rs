@@ -110,6 +110,42 @@ impl CktElement for VsConverter {
     }
 }
 
+impl VsConverter {
+    /// Pascal `TVSConverterObj.MakeLike` (+ inherited `TPCElement.MakeLike`,
+    /// which copies the spectrum).
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            self.cd.set_nterms(other.cd.nterms);
+            self.cd.set_nconds(self.cd.nphases); // NConds := Fnphases
+            self.cd.yprim_invalid = true;
+        }
+        self.ndc = other.ndc;
+        self.f_kvac = other.f_kvac;
+        self.f_kvdc = other.f_kvdc;
+        self.f_kw = other.f_kw;
+        self.f_rac = other.f_rac;
+        self.f_xac = other.f_xac;
+        self.fm = other.fm;
+        self.fd = other.fd;
+        self.f_min_m = other.f_min_m;
+        self.f_max_m = other.f_max_m;
+        self.f_max_iac = other.f_max_iac;
+        self.f_max_idc = other.f_max_idc;
+        self.f_ref_vac = other.f_ref_vac;
+        self.f_ref_pac = other.f_ref_pac;
+        self.f_ref_qac = other.f_ref_qac;
+        self.f_ref_vdc = other.f_ref_vdc;
+        self.f_mode = other.f_mode;
+        self.spectrum = other.spectrum.clone();
+        self.spectrum_obj = other.spectrum_obj.clone();
+        self.cd.base_frequency = other.cd.base_frequency;
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+        self.last_currents = vec![Complex64::ZERO; self.cd.yorder];
+    }
+}
+
 impl DssObject for VsConverter {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -261,43 +297,6 @@ impl DssObject for VsConverter {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TVSConverterObj.MakeLike` (+ inherited `TPCElement.MakeLike`,
-    /// which copies the spectrum).
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<VsConverter>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            self.cd.set_nterms(other.cd.nterms);
-            self.cd.set_nconds(self.cd.nphases); // NConds := Fnphases
-            self.cd.yprim_invalid = true;
-        }
-        self.ndc = other.ndc;
-        self.f_kvac = other.f_kvac;
-        self.f_kvdc = other.f_kvdc;
-        self.f_kw = other.f_kw;
-        self.f_rac = other.f_rac;
-        self.f_xac = other.f_xac;
-        self.fm = other.fm;
-        self.fd = other.fd;
-        self.f_min_m = other.f_min_m;
-        self.f_max_m = other.f_max_m;
-        self.f_max_iac = other.f_max_iac;
-        self.f_max_idc = other.f_max_idc;
-        self.f_ref_vac = other.f_ref_vac;
-        self.f_ref_pac = other.f_ref_pac;
-        self.f_ref_qac = other.f_ref_qac;
-        self.f_ref_vdc = other.f_ref_vdc;
-        self.f_mode = other.f_mode;
-        self.spectrum = other.spectrum.clone();
-        self.spectrum_obj = other.spectrum_obj.clone();
-        self.cd.base_frequency = other.cd.base_frequency;
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
-        self.last_currents = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     fn set_object_ref(

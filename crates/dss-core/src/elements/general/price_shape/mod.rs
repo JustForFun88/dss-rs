@@ -79,6 +79,16 @@ impl PriceShapeObj {
     }
 }
 
+impl PriceShapeObj {
+    /// Pascal `TPriceShapeObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        let o = other;
+        {
+            self.core.make_like_from(&o.core);
+        }
+    }
+}
+
 impl DssObject for PriceShapeObj {
     fn data(&self) -> &crate::obj::base::DssObjData {
         &self.core.data
@@ -241,13 +251,6 @@ impl DssObject for PriceShapeObj {
             // the setters; kept for fidelity).
             MEAN | STDDEV => self.core.std_dev_calculated = true,
             _ => {}
-        }
-    }
-
-    /// Pascal `TPriceShapeObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        if let Some(o) = other.as_any().downcast_ref::<PriceShapeObj>() {
-            self.core.make_like_from(&o.core);
         }
     }
 

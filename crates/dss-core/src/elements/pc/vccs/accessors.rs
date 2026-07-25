@@ -120,6 +120,40 @@ impl CktElement for Vccs {
     }
 }
 
+impl Vccs {
+    /// Pascal `TVCCSObj.MakeLike` (+ inherited `TPCElement.MakeLike`, which copies
+    /// the spectrum). The curve **references** are copied (their names too, so the
+    /// derived object's dump shows the same curve names); `RecalcElementData` then
+    /// re-sizes the ring buffers from the copied filter (`end_edit`).
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            self.cd.set_nconds(self.cd.nphases); // NConds := Fnphases
+            self.cd.yprim_invalid = true;
+        }
+        self.prated = other.prated;
+        self.vrated = other.vrated;
+        self.ppct = other.ppct;
+        self.bp1_name = other.bp1_name.clone();
+        self.bp2_name = other.bp2_name.clone();
+        self.filter_name = other.filter_name.clone();
+        self.fbp1 = other.fbp1.clone();
+        self.fbp2 = other.fbp2.clone();
+        self.ffilter = other.ffilter.clone();
+        self.fsample_freq = other.fsample_freq;
+        self.frms_mode = other.frms_mode;
+        self.fmax_ipu = other.fmax_ipu;
+        self.fvrms_tau = other.fvrms_tau;
+        self.firms_tau = other.firms_tau;
+        // Inherited TPCElement.MakeLike: the spectrum.
+        self.spectrum = other.spectrum.clone();
+        self.spectrum_obj = other.spectrum_obj.clone();
+        self.cd.base_frequency = other.cd.base_frequency;
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+    }
+}
+
 impl DssObject for Vccs {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -267,41 +301,6 @@ impl DssObject for Vccs {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TVCCSObj.MakeLike` (+ inherited `TPCElement.MakeLike`, which copies
-    /// the spectrum). The curve **references** are copied (their names too, so the
-    /// derived object's dump shows the same curve names); `RecalcElementData` then
-    /// re-sizes the ring buffers from the copied filter (`end_edit`).
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Vccs>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            self.cd.set_nconds(self.cd.nphases); // NConds := Fnphases
-            self.cd.yprim_invalid = true;
-        }
-        self.prated = other.prated;
-        self.vrated = other.vrated;
-        self.ppct = other.ppct;
-        self.bp1_name = other.bp1_name.clone();
-        self.bp2_name = other.bp2_name.clone();
-        self.filter_name = other.filter_name.clone();
-        self.fbp1 = other.fbp1.clone();
-        self.fbp2 = other.fbp2.clone();
-        self.ffilter = other.ffilter.clone();
-        self.fsample_freq = other.fsample_freq;
-        self.frms_mode = other.frms_mode;
-        self.fmax_ipu = other.fmax_ipu;
-        self.fvrms_tau = other.fvrms_tau;
-        self.firms_tau = other.firms_tau;
-        // Inherited TPCElement.MakeLike: the spectrum.
-        self.spectrum = other.spectrum.clone();
-        self.spectrum_obj = other.spectrum_obj.clone();
-        self.cd.base_frequency = other.cd.base_frequency;
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

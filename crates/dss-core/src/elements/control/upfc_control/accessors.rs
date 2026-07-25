@@ -73,6 +73,22 @@ impl CktElement for UpfcControl {
     }
 }
 
+impl UpfcControl {
+    /// Pascal `TUPFCControlObj.MakeLike` — copies only the phase count, terminal,
+    /// and controlled/monitored element refs (plus the base `PrpSequence`); the
+    /// UPFC list/weights are **not** copied, so a `like=` control keeps the ctor
+    /// defaults for them. Reproduced verbatim.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
+        self.ccd.controlled_element = other.ccd.controlled_element;
+        self.ccd.monitored_element = other.ccd.monitored_element;
+        self.ccd.element_terminal = other.ccd.element_terminal;
+    }
+}
+
 impl DssObject for UpfcControl {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -152,23 +168,6 @@ impl DssObject for UpfcControl {
 
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData` (a no-op).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
-
-    /// Pascal `TUPFCControlObj.MakeLike` — copies only the phase count, terminal,
-    /// and controlled/monitored element refs (plus the base `PrpSequence`); the
-    /// UPFC list/weights are **not** copied, so a `like=` control keeps the ctor
-    /// defaults for them. Reproduced verbatim.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<UpfcControl>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
-        self.ccd.controlled_element = other.ccd.controlled_element;
-        self.ccd.monitored_element = other.ccd.monitored_element;
-        self.ccd.element_terminal = other.ccd.element_terminal;
-    }
 
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())

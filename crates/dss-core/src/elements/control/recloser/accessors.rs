@@ -80,6 +80,61 @@ impl CktElement for Recloser {
     }
 }
 
+impl Recloser {
+    /// Pascal `TRecloserObj.MakeLike` (r4133).
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc);
+        self.ccd.show_event_log = other.ccd.show_event_log; // but leave DebugTrace off
+
+        self.ccd.element_terminal = other.ccd.element_terminal;
+        self.ccd.controlled_element = other.ccd.controlled_element;
+        self.ccd.monitored_element = other.ccd.monitored_element;
+        self.monitored_element_terminal = other.monitored_element_terminal;
+        self.monitored_full_name = other.monitored_full_name.clone();
+        self.switched_full_name = other.switched_full_name.clone();
+        self.mon_snap = other.mon_snap.clone();
+        self.ctrl_snap = other.ctrl_snap.clone();
+
+        self.ph_fast_name = other.ph_fast_name.clone();
+        self.ph_slow_name = other.ph_slow_name.clone();
+        self.gnd_fast_name = other.gnd_fast_name.clone();
+        self.gnd_slow_name = other.gnd_slow_name.clone();
+        self.ph_fast = other.ph_fast.clone();
+        self.ph_slow = other.ph_slow.clone();
+        self.gnd_fast = other.gnd_fast.clone();
+        self.gnd_slow = other.gnd_slow.clone();
+
+        self.ph_fast_pickup = other.ph_fast_pickup;
+        self.gnd_fast_pickup = other.gnd_fast_pickup;
+        self.ph_slow_pickup = other.ph_slow_pickup;
+        self.gnd_slow_pickup = other.gnd_slow_pickup;
+        self.ph_inst = other.ph_inst;
+        self.gnd_inst = other.gnd_inst;
+        self.reset_time = other.reset_time;
+        self.mechanical_delay = other.mechanical_delay;
+        self.num_reclose = other.num_reclose;
+        self.num_fast = other.num_fast;
+        self.single_ph_trip = other.single_ph_trip;
+        self.single_ph_lockout = other.single_ph_lockout;
+        self.rated_current = other.rated_current;
+        self.interrupting_rating = other.interrupting_rating;
+        self.reclose_intervals = other.reclose_intervals;
+        self.f_locked = other.f_locked;
+
+        // Per-phase state (Pascal copies FPresentState/FNormalState over the
+        // controlled element's phases).
+        let n = RCMAX.min(other.ccd.cd.nphases.max(1));
+        for i in 1..=n {
+            self.present_state[i] = other.present_state[i];
+            self.normal_state[i] = other.normal_state[i];
+        }
+        // Pascal MakeLike does NOT copy the TD* time dials → Create defaults.
+    }
+}
+
 impl DssObject for Recloser {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -391,62 +446,6 @@ impl DssObject for Recloser {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_ref_actions)
-    }
-
-    /// Pascal `TRecloserObj.MakeLike` (r4133).
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Recloser>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc);
-        self.ccd.show_event_log = other.ccd.show_event_log; // but leave DebugTrace off
-
-        self.ccd.element_terminal = other.ccd.element_terminal;
-        self.ccd.controlled_element = other.ccd.controlled_element;
-        self.ccd.monitored_element = other.ccd.monitored_element;
-        self.monitored_element_terminal = other.monitored_element_terminal;
-        self.monitored_full_name = other.monitored_full_name.clone();
-        self.switched_full_name = other.switched_full_name.clone();
-        self.mon_snap = other.mon_snap.clone();
-        self.ctrl_snap = other.ctrl_snap.clone();
-
-        self.ph_fast_name = other.ph_fast_name.clone();
-        self.ph_slow_name = other.ph_slow_name.clone();
-        self.gnd_fast_name = other.gnd_fast_name.clone();
-        self.gnd_slow_name = other.gnd_slow_name.clone();
-        self.ph_fast = other.ph_fast.clone();
-        self.ph_slow = other.ph_slow.clone();
-        self.gnd_fast = other.gnd_fast.clone();
-        self.gnd_slow = other.gnd_slow.clone();
-
-        self.ph_fast_pickup = other.ph_fast_pickup;
-        self.gnd_fast_pickup = other.gnd_fast_pickup;
-        self.ph_slow_pickup = other.ph_slow_pickup;
-        self.gnd_slow_pickup = other.gnd_slow_pickup;
-        self.ph_inst = other.ph_inst;
-        self.gnd_inst = other.gnd_inst;
-        self.reset_time = other.reset_time;
-        self.mechanical_delay = other.mechanical_delay;
-        self.num_reclose = other.num_reclose;
-        self.num_fast = other.num_fast;
-        self.single_ph_trip = other.single_ph_trip;
-        self.single_ph_lockout = other.single_ph_lockout;
-        self.rated_current = other.rated_current;
-        self.interrupting_rating = other.interrupting_rating;
-        self.reclose_intervals = other.reclose_intervals;
-        self.f_locked = other.f_locked;
-
-        // Per-phase state (Pascal copies FPresentState/FNormalState over the
-        // controlled element's phases).
-        let n = RCMAX.min(other.ccd.cd.nphases.max(1));
-        for i in 1..=n {
-            self.present_state[i] = other.present_state[i];
-            self.normal_state[i] = other.normal_state[i];
-        }
-        // Pascal MakeLike does NOT copy the TD* time dials → Create defaults.
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

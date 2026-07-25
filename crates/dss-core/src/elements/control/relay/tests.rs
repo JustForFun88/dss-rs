@@ -851,7 +851,7 @@ fn make_like_copies_state_by_controlled_nphases() {
     src.normal_state[3] = CTRL_OPEN;
 
     let mut dst = Relay::new("r2");
-    dst.make_like(&src as &dyn DssObject);
+    dst.make_like(&src);
 
     assert_eq!(
         dst.state_size(),

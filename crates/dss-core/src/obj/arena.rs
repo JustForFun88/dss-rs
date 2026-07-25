@@ -89,7 +89,14 @@ impl<T> fmt::Debug for Idx<T> {
 
 /// The one class list, in `exec/construct.rs` registration order (the invariant
 /// the whole module rests on). Columns: canonical class name (as the registry
-/// reports it), `ElemId`/`ClassArena` variant, concrete element type.
+/// reports it), `ElemId`/`ClassArena` variant, concrete element type, and the
+/// circuit-element tag (`ckt` if the concrete type `impl CktElement`, `data` for
+/// a plain `DSS_OBJECT` general class that does not). The tag drives
+/// [`ClassArena::try_ckt_elem`]'s direct `&dyn CktElement` upcast without the
+/// `DssObject::as_ckt_element` `Any`-round-trip; the two must agree, pinned by
+/// [`tests::arena_tag_matches_trait_ckt_view`]. The 15 `data` classes are exactly
+/// the `DSS_OBJECT` ones (no `as_ckt_element` impl); the 35 `ckt` classes each
+/// carry one.
 ///
 /// Any new class must be appended here in the same position it is registered in
 /// `construct.rs` — [`tests::arena_order_matches_registry`] fails otherwise.
@@ -97,67 +104,93 @@ macro_rules! with_all_classes {
     ($m:ident) => {
         $m! {
             // ── DSS_OBJECT (general / data) classes ──
-            "TCC_Curve"         TccCurve          crate::elements::general::tcc_curve::TccCurveObj;
-            "Spectrum"          Spectrum          crate::elements::general::spectrum::SpectrumObj;
-            "LineCode"          LineCode          crate::elements::general::line_code::LineCodeObj;
-            "GrowthShape"       GrowthShape       crate::elements::general::growth_shape::GrowthShapeObj;
-            "XfmrCode"          XfmrCode          crate::elements::general::xfmr_code::XfmrCodeObj;
-            "XYcurve"           XyCurve           crate::elements::general::xy_curve::XyCurveObj;
-            "LoadShape"         LoadShape         crate::elements::general::load_shape::LoadShapeObj;
-            "TShape"            TShape            crate::elements::general::temp_shape::TShapeObj;
-            "PriceShape"        PriceShape        crate::elements::general::price_shape::PriceShapeObj;
-            "WireData"          WireData          crate::elements::general::conductor_data::WireDataObj;
-            "CNData"            CnData            crate::elements::general::conductor_data::CnDataObj;
-            "TSData"            TsData            crate::elements::general::conductor_data::TsDataObj;
-            "LineSpacing"       LineSpacing       crate::elements::general::line_spacing::LineSpacingObj;
-            "LineGeometry"      LineGeometry      crate::elements::general::line_geometry::LineGeometryObj;
-            "DynamicExp"        DynamicExp        crate::elements::general::dynamic_exp::DynamicExpObj;
+            "TCC_Curve"         TccCurve          crate::elements::general::tcc_curve::TccCurveObj, data;
+            "Spectrum"          Spectrum          crate::elements::general::spectrum::SpectrumObj, data;
+            "LineCode"          LineCode          crate::elements::general::line_code::LineCodeObj, data;
+            "GrowthShape"       GrowthShape       crate::elements::general::growth_shape::GrowthShapeObj, data;
+            "XfmrCode"          XfmrCode          crate::elements::general::xfmr_code::XfmrCodeObj, data;
+            "XYcurve"           XyCurve           crate::elements::general::xy_curve::XyCurveObj, data;
+            "LoadShape"         LoadShape         crate::elements::general::load_shape::LoadShapeObj, data;
+            "TShape"            TShape            crate::elements::general::temp_shape::TShapeObj, data;
+            "PriceShape"        PriceShape        crate::elements::general::price_shape::PriceShapeObj, data;
+            "WireData"          WireData          crate::elements::general::conductor_data::WireDataObj, data;
+            "CNData"            CnData            crate::elements::general::conductor_data::CnDataObj, data;
+            "TSData"            TsData            crate::elements::general::conductor_data::TsDataObj, data;
+            "LineSpacing"       LineSpacing       crate::elements::general::line_spacing::LineSpacingObj, data;
+            "LineGeometry"      LineGeometry      crate::elements::general::line_geometry::LineGeometryObj, data;
+            "DynamicExp"        DynamicExp        crate::elements::general::dynamic_exp::DynamicExpObj, data;
             // ── circuit-element classes ──
-            "Vsource"           Vsource           crate::elements::pc::vsource::VSource;
-            "Isource"           Isource           crate::elements::pc::isource::Isource;
-            "Line"              Line              crate::elements::pd::line::Line;
-            "Load"              Load              crate::elements::pc::load::Load;
-            "Transformer"       Transformer       crate::elements::pd::transformer::Transformer;
-            "Capacitor"         Capacitor         crate::elements::pd::capacitor::Capacitor;
-            "Reactor"           Reactor           crate::elements::pd::reactor::Reactor;
-            "Fault"             Fault             crate::elements::pd::fault::Fault;
-            "RegControl"        RegControl        crate::elements::control::reg_control::RegControl;
-            "CapControl"        CapControl        crate::elements::control::cap_control::CapControl;
-            "Generator"         Generator         crate::elements::pc::generator::Generator;
-            "WindGen"           WindGen           crate::elements::pc::windgen::WindGen;
-            "GenDispatcher"     GenDispatcher     crate::elements::control::gen_dispatcher::GenDispatcher;
-            "StorageController" StorageController  crate::elements::control::storage_controller::StorageController;
-            "Relay"             Relay             crate::elements::control::relay::Relay;
-            "Recloser"          Recloser          crate::elements::control::recloser::Recloser;
-            "Fuse"              Fuse              crate::elements::pd::fuse::Fuse;
-            "SwtControl"        SwtControl        crate::elements::control::swt_control::SwtControl;
-            "Storage"           Storage           crate::elements::pc::storage::Storage;
-            "PVSystem"          PVSystem          crate::elements::pc::pvsystem::PVSystem;
-            "UPFC"              Upfc              crate::elements::pc::upfc::Upfc;
-            "UPFCControl"       UpfcControl       crate::elements::control::upfc_control::UpfcControl;
-            "ESPVLControl"      EspvlControl      crate::elements::control::espvl_control::EspvlControl;
-            "IndMach012"        IndMach012        crate::elements::pc::ind_mach012::IndMach012;
-            "GICsource"         GicSource         crate::elements::pc::gic_source::GicSource;
-            "AutoTrans"         AutoTrans         crate::elements::pd::auto_trans::AutoTrans;
-            "VSConverter"       VsConverter       crate::elements::pc::vs_converter::VsConverter;
-            "VCCS"              Vccs              crate::elements::pc::vccs::Vccs;
-            "InvControl"        InvControl        crate::elements::control::inv_control::InvControl;
-            "ExpControl"        ExpControl        crate::elements::control::exp_control::ExpControl;
-            "GICLine"           GicLine           crate::elements::pc::gic_line::GicLine;
-            "GICTransformer"    GicTransformer    crate::elements::pd::gic_transformer::GicTransformer;
-            "Monitor"           Monitor           crate::elements::meter::monitor::Monitor;
-            "EnergyMeter"       EnergyMeter       crate::elements::meter::energymeter::EnergyMeter;
-            "Sensor"            Sensor            crate::elements::meter::sensor::Sensor;
+            "Vsource"           Vsource           crate::elements::pc::vsource::VSource, ckt;
+            "Isource"           Isource           crate::elements::pc::isource::Isource, ckt;
+            "Line"              Line              crate::elements::pd::line::Line, ckt;
+            "Load"              Load              crate::elements::pc::load::Load, ckt;
+            "Transformer"       Transformer       crate::elements::pd::transformer::Transformer, ckt;
+            "Capacitor"         Capacitor         crate::elements::pd::capacitor::Capacitor, ckt;
+            "Reactor"           Reactor           crate::elements::pd::reactor::Reactor, ckt;
+            "Fault"             Fault             crate::elements::pd::fault::Fault, ckt;
+            "RegControl"        RegControl        crate::elements::control::reg_control::RegControl, ckt;
+            "CapControl"        CapControl        crate::elements::control::cap_control::CapControl, ckt;
+            "Generator"         Generator         crate::elements::pc::generator::Generator, ckt;
+            "WindGen"           WindGen           crate::elements::pc::windgen::WindGen, ckt;
+            "GenDispatcher"     GenDispatcher     crate::elements::control::gen_dispatcher::GenDispatcher, ckt;
+            "StorageController" StorageController  crate::elements::control::storage_controller::StorageController, ckt;
+            "Relay"             Relay             crate::elements::control::relay::Relay, ckt;
+            "Recloser"          Recloser          crate::elements::control::recloser::Recloser, ckt;
+            "Fuse"              Fuse              crate::elements::pd::fuse::Fuse, ckt;
+            "SwtControl"        SwtControl        crate::elements::control::swt_control::SwtControl, ckt;
+            "Storage"           Storage           crate::elements::pc::storage::Storage, ckt;
+            "PVSystem"          PVSystem          crate::elements::pc::pvsystem::PVSystem, ckt;
+            "UPFC"              Upfc              crate::elements::pc::upfc::Upfc, ckt;
+            "UPFCControl"       UpfcControl       crate::elements::control::upfc_control::UpfcControl, ckt;
+            "ESPVLControl"      EspvlControl      crate::elements::control::espvl_control::EspvlControl, ckt;
+            "IndMach012"        IndMach012        crate::elements::pc::ind_mach012::IndMach012, ckt;
+            "GICsource"         GicSource         crate::elements::pc::gic_source::GicSource, ckt;
+            "AutoTrans"         AutoTrans         crate::elements::pd::auto_trans::AutoTrans, ckt;
+            "VSConverter"       VsConverter       crate::elements::pc::vs_converter::VsConverter, ckt;
+            "VCCS"              Vccs              crate::elements::pc::vccs::Vccs, ckt;
+            "InvControl"        InvControl        crate::elements::control::inv_control::InvControl, ckt;
+            "ExpControl"        ExpControl        crate::elements::control::exp_control::ExpControl, ckt;
+            "GICLine"           GicLine           crate::elements::pc::gic_line::GicLine, ckt;
+            "GICTransformer"    GicTransformer    crate::elements::pd::gic_transformer::GicTransformer, ckt;
+            "Monitor"           Monitor           crate::elements::meter::monitor::Monitor, ckt;
+            "EnergyMeter"       EnergyMeter       crate::elements::meter::energymeter::EnergyMeter, ckt;
+            "Sensor"            Sensor            crate::elements::meter::sensor::Sensor, ckt;
         }
     };
 }
 
+/// Per-class dispatch on the [`with_all_classes!`] `ckt`/`data` tag: emit the
+/// direct `&dyn CktElement` upcast for a circuit-element class, or `None` for a
+/// plain `DSS_OBJECT` data class (whose concrete type does not `impl
+/// CktElement`, so the cast must never be generated for it). This is what lets
+/// [`ClassArena::try_ckt_elem`] replace the `DssObject::as_ckt_element`
+/// `Any`-round-trip.
+macro_rules! ckt_view_ref {
+    (ckt, $v:ident, $idx:ident) => {
+        Some(&$v[$idx] as &dyn CktElement)
+    };
+    (data, $v:ident, $idx:ident) => {{
+        let _ = ($v.len(), $idx);
+        None
+    }};
+}
+macro_rules! ckt_view_mut {
+    (ckt, $v:ident, $idx:ident) => {
+        Some(&mut $v[$idx] as &mut dyn CktElement)
+    };
+    (data, $v:ident, $idx:ident) => {{
+        let _ = ($v.len(), $idx);
+        None
+    }};
+}
+
 /// The one consumer macro: expands the class list into `enum ElemId`,
 /// `enum ClassArena`, and their per-variant match-arm impls (`obj`/`obj_mut`/
-/// `ckt_elem`/`ckt_elem_mut`/`len`/`class_name`/`push_new`/`pair_mut_same`/
-/// `triple_mut_same`/`for_each_ckt_elem_mut`) plus `ElemId::CLASS_NAMES`.
+/// `try_ckt_elem`/`try_ckt_elem_mut`/`ckt_elem`/`ckt_elem_mut`/`len`/
+/// `class_name`/`push_new`/`pair_mut_same`/`triple_mut_same`/
+/// `for_each_ckt_elem_mut`) plus `ElemId::CLASS_NAMES`.
 macro_rules! define_arena {
-    ( $( $cname:literal $variant:ident $ty:ty ; )* ) => {
+    ( $( $cname:literal $variant:ident $ty:ty , $kind:ident ; )* ) => {
         /// The R2 typed element handle: one variant per registered class, each
         /// carrying a typed [`Idx<T>`]. Variant order == registration order (see
         /// module docs); [`ElemId::CLASS_NAMES`] pins it against the registry.
@@ -199,6 +232,19 @@ macro_rules! define_arena {
             /// transition bridge — the spine still speaks `ElemRef`).
             pub fn to_ref(self) -> ElemRef {
                 ElemRef { cls: self.class_ord(), idx: self.index() }
+            }
+
+            /// Build the typed handle from a `{cls, idx}` [`ElemRef`] — the R2
+            /// spine-flip bridge, the inverse of [`Self::to_ref`]. `r.cls` is the
+            /// 0-based registration ordinal, so the class name at that slot in
+            /// [`Self::CLASS_NAMES`] selects the variant (all names are distinct);
+            /// `r.idx` becomes the typed [`Idx<T>`]. Panics if `r.cls` is out of
+            /// range (an invalid ref is a construction bug, never a valid state).
+            pub fn from_ref(r: ElemRef) -> ElemId {
+                match Self::CLASS_NAMES[r.cls] {
+                    $( $cname => ElemId::$variant(Idx::new(r.idx)), )*
+                    other => unreachable!("from_ref: unknown class name {other:?} at ordinal {}", r.cls),
+                }
             }
         }
 
@@ -293,18 +339,38 @@ macro_rules! define_arena {
                 }
             }
 
+            /// Circuit-element read view of object `idx`, or `None` for a general
+            /// (`DSS_OBJECT`) data class — the fallible twin of [`Self::ckt_elem`].
+            /// Unlike the `DssObject::as_ckt_element` trait method this upcasts the
+            /// concrete `&T` directly (`T: CktElement` for every `ckt` variant),
+            /// with **no `Any` round-trip** — the arena's `ckt`/`data` tag
+            /// ([`with_all_classes!`]) decides per variant. Equivalent to the trait
+            /// method object-for-object ([`tests::arena_tag_matches_trait_ckt_view`]);
+            /// the R2b step (d) primitive the eventual `as_ckt_element` trait-method
+            /// removal builds on.
+            pub fn try_ckt_elem(&self, idx: usize) -> Option<&dyn CktElement> {
+                match self {
+                    $( ClassArena::$variant(v) => ckt_view_ref!($kind, v, idx), )*
+                }
+            }
+
+            /// Mutable [`Self::try_ckt_elem`].
+            pub fn try_ckt_elem_mut(&mut self, idx: usize) -> Option<&mut dyn CktElement> {
+                match self {
+                    $( ClassArena::$variant(v) => ckt_view_mut!($kind, v, idx), )*
+                }
+            }
+
             /// Circuit-element read view of object `idx`; panics for a general
             /// (`DSS_OBJECT`) class, mirroring the old `ClassStore` `.expect`.
             pub fn ckt_elem(&self, idx: usize) -> &dyn CktElement {
-                self.obj(idx)
-                    .as_ckt_element()
+                self.try_ckt_elem(idx)
                     .expect("ElemRef must point at a circuit element")
             }
 
             /// Circuit-element mutable view of object `idx`.
             pub fn ckt_elem_mut(&mut self, idx: usize) -> &mut dyn CktElement {
-                self.obj_mut(idx)
-                    .as_ckt_element_mut()
+                self.try_ckt_elem_mut(idx)
                     .expect("ElemRef must point at a circuit element")
             }
 
@@ -321,14 +387,14 @@ macro_rules! define_arena {
             }
 
             /// Pascal `MakeLike`: copy `source`'s state into `target`, both in
-            /// this (same) class. `clone_box` snapshots the source first so the
-            /// target can be borrowed mutably afterwards (works even if
-            /// `source == target`).
+            /// this (same) class. The typed `clone` snapshots the source first so
+            /// the target can be borrowed mutably afterwards (works even if
+            /// `source == target`), then the inherent typed `make_like` copies it.
             pub fn make_like_within(&mut self, target: usize, source: usize) {
                 match self {
                     $( ClassArena::$variant(v) => {
-                        let src = v[source].clone_box();
-                        v[target].make_like(src.as_ref());
+                        let src = v[source].clone();
+                        v[target].make_like(&src);
                     } )*
                 }
             }
@@ -391,14 +457,10 @@ macro_rules! define_arena {
                 cls: usize,
                 f: &mut dyn FnMut(ElemRef, &mut dyn CktElement),
             ) {
-                match self {
-                    $( ClassArena::$variant(v) => {
-                        for (idx, o) in v.iter_mut().enumerate() {
-                            if let Some(ce) = o.as_ckt_element_mut() {
-                                f(ElemRef { cls, idx }, ce);
-                            }
-                        }
-                    } )*
+                for idx in 0..self.len() {
+                    if let Some(ce) = self.try_ckt_elem_mut(idx) {
+                        f(ElemRef { cls, idx }, ce);
+                    }
                 }
             }
         }
@@ -412,6 +474,22 @@ macro_rules! define_arena {
 }
 
 with_all_classes!(define_arena);
+
+// The R2 spine-flip bridges: `ElemRef` ⇄ `ElemId`. Producers that still speak
+// `ElemRef` (`add_ckt_element`, `find_ckt_element`, the property object-ref
+// resolution) feed `.into()`; consumers that still call the `ElemRef`-typed
+// `ElemStore`/`CktElement` access layer feed `id.to_ref()` / `.into()`. Both are
+// removed once the access layer itself is retyped (later R2 clusters / R3).
+impl From<ElemRef> for ElemId {
+    fn from(r: ElemRef) -> Self {
+        ElemId::from_ref(r)
+    }
+}
+impl From<ElemId> for ElemRef {
+    fn from(id: ElemId) -> Self {
+        id.to_ref()
+    }
+}
 
 // Index a `ClassArena` by object position, yielding `dyn DssObject` — the
 // drop-in shape for the pre-R1 `objects[idx]` place expression (so the ownership
@@ -755,5 +833,67 @@ mod tests {
                 idx: 7
             }
         );
+        // `from_ref` is the R2 inverse of `to_ref`, and the `From` bridges
+        // delegate to both — round-trip in both directions.
+        assert_eq!(ElemId::from_ref(id.to_ref()), id);
+        assert_eq!(ElemId::from(id.to_ref()), id);
+        assert_eq!(ElemRef::from(id), id.to_ref());
+    }
+
+    /// `from_ref` selects the correct variant for **every** registered class
+    /// ordinal (the full match the spine flip rests on), and round-trips through
+    /// `to_ref` back to the same `{cls, idx}` — checked against the live registry
+    /// so any drift in the class list or registration order is caught.
+    #[test]
+    fn from_ref_covers_every_class_and_round_trips() {
+        let names = Dss::new().registered_class_names();
+        assert_eq!(names.len(), ElemId::CLASS_NAMES.len());
+        for (cls, reg) in names.iter().enumerate() {
+            let r = ElemRef { cls, idx: 3 };
+            let id = ElemId::from_ref(r);
+            assert!(
+                id.class_name().eq_ignore_ascii_case(reg),
+                "class {cls}: from_ref → {:?} but registry = {reg:?}",
+                id.class_name()
+            );
+            assert_eq!(id.class_ord(), cls);
+            assert_eq!(id.index(), 3);
+            assert_eq!(id.to_ref(), r, "class {cls}: from_ref/to_ref not inverse");
+        }
+    }
+
+    /// The `ckt`/`data` tag drives [`ClassArena::try_ckt_elem`]'s direct upcast;
+    /// it MUST agree with the `DssObject::as_ckt_element` trait method
+    /// object-for-object (the equivalence that lets the tag replace the `Any`
+    /// round-trip). Checked against the still-present trait method for **every**
+    /// registered class, so a mis-tagged column is caught; also pins the count of
+    /// circuit-element classes at 35 (the 15 `DSS_OBJECT` classes are `data`).
+    #[test]
+    fn arena_tag_matches_trait_ckt_view() {
+        let n = ElemId::CLASS_NAMES.len();
+        let mut ckt_count = 0;
+        for cls in 0..n {
+            let mut e = Elements::new();
+            e.push_new(cls, "x");
+            let arena = &mut e.arenas[cls];
+            // The still-present trait method is the oracle.
+            let trait_is_ckt = arena.obj(0).as_ckt_element().is_some();
+            if trait_is_ckt {
+                ckt_count += 1;
+            }
+            assert_eq!(
+                arena.try_ckt_elem(0).is_some(),
+                trait_is_ckt,
+                "class {cls} ({}): tag try_ckt_elem disagrees with trait",
+                ElemId::CLASS_NAMES[cls]
+            );
+            assert_eq!(
+                arena.try_ckt_elem_mut(0).is_some(),
+                trait_is_ckt,
+                "class {cls} ({}): tag try_ckt_elem_mut disagrees with trait",
+                ElemId::CLASS_NAMES[cls]
+            );
+        }
+        assert_eq!(ckt_count, 35, "expected exactly 35 circuit-element classes");
     }
 }

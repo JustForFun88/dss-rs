@@ -12,6 +12,62 @@ use crate::support::line_units::{LineUnits, convert_line_units};
 
 use super::{ConductorChoice, Line};
 
+impl Line {
+    /// Pascal `TLineObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            let n = other.cd.nphases;
+            self.cd.set_nconds(n);
+            self.cd.yprim_invalid = true;
+        }
+        self.z = other.z.clone();
+        self.yc = other.yc.clone();
+        self.r1 = other.r1;
+        self.x1 = other.x1;
+        self.r0 = other.r0;
+        self.x0 = other.x0;
+        self.c1 = other.c1;
+        self.c0 = other.c0;
+        self.len = other.len;
+        self.length_units = other.length_units;
+        self.user_length_units = other.user_length_units;
+        self.line_code_units = other.line_code_units;
+        self.units_convert = other.units_convert;
+        self.line_code_ref = other.line_code_ref;
+        self.line_code_name = other.line_code_name.clone();
+        self.is_switch = other.is_switch;
+        self.sym_components_model = other.sym_components_model;
+        self.sym_components_changed = other.sym_components_changed;
+        self.cap_specified = other.cap_specified;
+        self.rg = other.rg;
+        self.xg = other.xg;
+        self.kxg = other.kxg;
+        self.rho = other.rho;
+        self.earth_model = other.earth_model;
+        self.line_type = other.line_type;
+        self.geometry_obj = other.geometry_obj.clone();
+        self.geometry_name = other.geometry_name.clone();
+        self.fz_frequency = other.fz_frequency;
+        self.line_spacing_obj = other.line_spacing_obj.clone();
+        self.line_wire_data = other
+            .line_wire_data
+            .iter()
+            .map(|o| o.as_ref().map(|b| b.clone_box()))
+            .collect();
+        self.fphase_choice = other.fphase_choice;
+        self.got_ratings_after_spacing_conds = other.got_ratings_after_spacing_conds;
+        self.norm_amps = other.norm_amps;
+        self.emerg_amps = other.emerg_amps;
+        self.fault_rate = other.fault_rate;
+        self.pct_perm = other.pct_perm;
+        self.hrs_to_repair = other.hrs_to_repair;
+        self.num_amp_ratings = other.num_amp_ratings;
+        self.amp_ratings = other.amp_ratings.clone();
+    }
+}
+
 impl DssObject for Line {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -592,63 +648,6 @@ impl DssObject for Line {
 
     /// Pascal `TLine.EndEdit`: Line does *not* call RecalcElementData here.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
-
-    /// Pascal `TLineObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Line>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = other.cd.nphases;
-            self.cd.set_nconds(n);
-            self.cd.yprim_invalid = true;
-        }
-        self.z = other.z.clone();
-        self.yc = other.yc.clone();
-        self.r1 = other.r1;
-        self.x1 = other.x1;
-        self.r0 = other.r0;
-        self.x0 = other.x0;
-        self.c1 = other.c1;
-        self.c0 = other.c0;
-        self.len = other.len;
-        self.length_units = other.length_units;
-        self.user_length_units = other.user_length_units;
-        self.line_code_units = other.line_code_units;
-        self.units_convert = other.units_convert;
-        self.line_code_ref = other.line_code_ref;
-        self.line_code_name = other.line_code_name.clone();
-        self.is_switch = other.is_switch;
-        self.sym_components_model = other.sym_components_model;
-        self.sym_components_changed = other.sym_components_changed;
-        self.cap_specified = other.cap_specified;
-        self.rg = other.rg;
-        self.xg = other.xg;
-        self.kxg = other.kxg;
-        self.rho = other.rho;
-        self.earth_model = other.earth_model;
-        self.line_type = other.line_type;
-        self.geometry_obj = other.geometry_obj.clone();
-        self.geometry_name = other.geometry_name.clone();
-        self.fz_frequency = other.fz_frequency;
-        self.line_spacing_obj = other.line_spacing_obj.clone();
-        self.line_wire_data = other
-            .line_wire_data
-            .iter()
-            .map(|o| o.as_ref().map(|b| b.clone_box()))
-            .collect();
-        self.fphase_choice = other.fphase_choice;
-        self.got_ratings_after_spacing_conds = other.got_ratings_after_spacing_conds;
-        self.norm_amps = other.norm_amps;
-        self.emerg_amps = other.emerg_amps;
-        self.fault_rate = other.fault_rate;
-        self.pct_perm = other.pct_perm;
-        self.hrs_to_repair = other.hrs_to_repair;
-        self.num_amp_ratings = other.num_amp_ratings;
-        self.amp_ratings = other.amp_ratings.clone();
-    }
 
     fn clone_box(&self) -> Box<dyn DssObject> {
         Box::new(self.clone())

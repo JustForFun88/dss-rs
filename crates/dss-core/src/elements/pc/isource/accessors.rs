@@ -9,6 +9,43 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::traits::{CktElement, ElemRef};
 use crate::obj::base::{DssObjData, DssObject};
 
+impl Isource {
+    /// Pascal `TIsourceObj.MakeLike`. Note: like the Pascal source, this does
+    /// **not** recompute `phase_shift` from the (possibly just-copied)
+    /// `nphases`, and does not copy `per_unit` — neither is touched by
+    /// `Isource.pas:275-303` either.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.cd.make_like_base(&other.cd);
+        if self.cd.nphases != other.cd.nphases {
+            self.cd.nphases = other.cd.nphases;
+            let n = other.cd.nphases;
+            self.cd.set_nconds(n);
+            self.cd.yprim_invalid = true;
+        }
+        self.amps = other.amps;
+        self.angle = other.angle;
+        self.src_frequency = other.src_frequency;
+        self.scan_type = other.scan_type;
+        self.sequence_type = other.sequence_type;
+        self.shape_is_actual = other.shape_is_actual;
+        self.daily_shape = other.daily_shape.clone();
+        self.duty_shape = other.duty_shape.clone();
+        self.yearly_shape = other.yearly_shape.clone();
+        self.daily_shape_obj = other.daily_shape_obj.clone();
+        self.duty_shape_obj = other.duty_shape_obj.clone();
+        self.yearly_shape_obj = other.yearly_shape_obj.clone();
+        self.daily_shape_ref = other.daily_shape_ref;
+        self.duty_shape_ref = other.duty_shape_ref;
+        self.yearly_shape_ref = other.yearly_shape_ref;
+        self.bus2_defined = other.bus2_defined;
+        // Pascal `MakeLike` (inherited) also copies spectrum via the generic
+        // path; mirrored here for the same reason VSource/Load do.
+        self.spectrum = other.spectrum.clone();
+        self.spectrum_obj = other.spectrum_obj.clone();
+        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+    }
+}
+
 impl DssObject for Isource {
     fn data(&self) -> &DssObjData {
         &self.cd.obj
@@ -189,44 +226,6 @@ impl DssObject for Isource {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
-    }
-
-    /// Pascal `TIsourceObj.MakeLike`. Note: like the Pascal source, this does
-    /// **not** recompute `phase_shift` from the (possibly just-copied)
-    /// `nphases`, and does not copy `per_unit` — neither is touched by
-    /// `Isource.pas:275-303` either.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<Isource>() else {
-            return;
-        };
-        self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = other.cd.nphases;
-            self.cd.set_nconds(n);
-            self.cd.yprim_invalid = true;
-        }
-        self.amps = other.amps;
-        self.angle = other.angle;
-        self.src_frequency = other.src_frequency;
-        self.scan_type = other.scan_type;
-        self.sequence_type = other.sequence_type;
-        self.shape_is_actual = other.shape_is_actual;
-        self.daily_shape = other.daily_shape.clone();
-        self.duty_shape = other.duty_shape.clone();
-        self.yearly_shape = other.yearly_shape.clone();
-        self.daily_shape_obj = other.daily_shape_obj.clone();
-        self.duty_shape_obj = other.duty_shape_obj.clone();
-        self.yearly_shape_obj = other.yearly_shape_obj.clone();
-        self.daily_shape_ref = other.daily_shape_ref;
-        self.duty_shape_ref = other.duty_shape_ref;
-        self.yearly_shape_ref = other.yearly_shape_ref;
-        self.bus2_defined = other.bus2_defined;
-        // Pascal `MakeLike` (inherited) also copies spectrum via the generic
-        // path; mirrored here for the same reason VSource/Load do.
-        self.spectrum = other.spectrum.clone();
-        self.spectrum_obj = other.spectrum_obj.clone();
-        self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

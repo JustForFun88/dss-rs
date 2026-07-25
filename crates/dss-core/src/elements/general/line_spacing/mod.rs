@@ -134,6 +134,31 @@ impl LineSpacingObj {
     }
 }
 
+impl LineSpacingObj {
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.data.copy_prp_sequence_from(other.data());
+        let o = other;
+        {
+            // Pascal `MakeLike`: copy FNConds, run the `nconds` side effect
+            // (resize + Units := ft), copy NPhases, then the X/Y arrays, and
+            // finally `Units := Other.Units` (overriding the side effect).
+            self.fnconds = o.fnconds;
+            self.realloc_conductors();
+            self.nphases = o.nphases;
+            let n = self.fnconds.max(0) as usize;
+            self.fx[..n].copy_from_slice(&o.fx[..n]);
+            self.fy[..n].copy_from_slice(&o.fy[..n]);
+            self.units = o.units;
+            // TODO(compat): dss_capi 0.15.x `TLineSpacingObj.MakeLike` does NOT
+            // copy `detailed`/`eqDistPhPh`/`eqDistPhN`/`avgPhaseHeight`/
+            // `avgNeutralHeight` (only NConds/NPhases/FX/FY/Units), so a `like=`
+            // spacing keeps its `Create` defaults for the equivalent-spacing
+            // fields while its PrpSequence (copied by the base) may still mark
+            // them set. Reproduced 1:1; the clean fix copies them post-port.
+        }
+    }
+}
+
 impl DssObject for LineSpacingObj {
     fn data(&self) -> &DssObjData {
         &self.data
@@ -257,28 +282,6 @@ impl DssObject for LineSpacingObj {
                 }
             }
             _ => {}
-        }
-    }
-
-    fn make_like(&mut self, other: &dyn DssObject) {
-        self.data.copy_prp_sequence_from(other.data());
-        if let Some(o) = other.as_any().downcast_ref::<LineSpacingObj>() {
-            // Pascal `MakeLike`: copy FNConds, run the `nconds` side effect
-            // (resize + Units := ft), copy NPhases, then the X/Y arrays, and
-            // finally `Units := Other.Units` (overriding the side effect).
-            self.fnconds = o.fnconds;
-            self.realloc_conductors();
-            self.nphases = o.nphases;
-            let n = self.fnconds.max(0) as usize;
-            self.fx[..n].copy_from_slice(&o.fx[..n]);
-            self.fy[..n].copy_from_slice(&o.fy[..n]);
-            self.units = o.units;
-            // TODO(compat): dss_capi 0.15.x `TLineSpacingObj.MakeLike` does NOT
-            // copy `detailed`/`eqDistPhPh`/`eqDistPhN`/`avgPhaseHeight`/
-            // `avgNeutralHeight` (only NConds/NPhases/FX/FY/Units), so a `like=`
-            // spacing keeps its `Create` defaults for the equivalent-spacing
-            // fields while its PrpSequence (copied by the base) may still mark
-            // them set. Reproduced 1:1; the clean fix copies them post-port.
         }
     }
 

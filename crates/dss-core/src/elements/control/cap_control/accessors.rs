@@ -85,6 +85,55 @@ impl CktElement for CapControl {
     }
 }
 
+impl CapControl {
+    /// Pascal `TCapControlObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
+
+        self.ccd.controlled_element = other.ccd.controlled_element;
+        self.ccd.monitored_element = other.ccd.monitored_element;
+        self.controlled_name = other.controlled_name.clone();
+        self.monitored_full_name = other.monitored_full_name.clone();
+        self.ctrl_snap = other.ctrl_snap.clone();
+        self.mon_snap = other.mon_snap.clone();
+        // TODO(compat): Pascal `TCapControlObj.MakeLike` (`CapControl.pas`
+        // l.446-490) never copies `ctrlSignalShape`/its name — `Like` on a
+        // Follow-type CapControl silently drops the ControlSignal reference on
+        // the new object (every other reference/field is copied). Reproduced
+        // verbatim: `control_signal_name`/`ctrl_signal_shape` are deliberately
+        // left at their `new()` defaults here. Clean fix (post-1:1-port
+        // sweep): also copy them like `ctrl_snap`/`mon_snap` above.
+
+        self.ccd.element_terminal = other.ccd.element_terminal;
+        self.pt_ratio = other.pt_ratio;
+        self.ct_ratio = other.ct_ratio;
+        self.control_type = other.control_type;
+        self.present_state = other.present_state;
+        self.should_switch = other.should_switch;
+        self.on_value = other.on_value;
+        self.off_value = other.off_value;
+        self.pfon_value = other.pfon_value;
+        self.pfoff_value = other.pfoff_value;
+        self.fct_phase = other.fct_phase;
+        self.fpt_phase = other.fpt_phase;
+        self.voverride = other.voverride;
+        self.voverride_bus_specified = other.voverride_bus_specified;
+        self.voverride_bus_name = other.voverride_bus_name.clone();
+        self.fpct_minkvar = other.fpct_minkvar;
+        self.ccd.show_event_log = other.ccd.show_event_log;
+        // WM.5 — Pascal `MakeLike` (`CapControl.pas:481-484`): `UserModel.Name :=
+        // Other.UserModel.Name` re-`New`s a fresh instance (the clone drops the
+        // live wasmi instance and re-creates it lazily on the next control call).
+        self.user_model_name = other.user_model_name.clone();
+        self.user_model_edit = other.user_model_edit.clone();
+        self.is_user_model = other.is_user_model;
+        self.user_model = other.user_model.clone();
+    }
+}
+
 impl DssObject for CapControl {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -409,56 +458,6 @@ impl DssObject for CapControl {
         // CapControl's user model is a control model; its recalc reads no live
         // `ActiveCircuit.Solution` globals, so the live snapshot is ignored.
         self.apply_user_model_load_impl(load, wasm, errors);
-    }
-
-    /// Pascal `TCapControlObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<CapControl>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
-
-        self.ccd.controlled_element = other.ccd.controlled_element;
-        self.ccd.monitored_element = other.ccd.monitored_element;
-        self.controlled_name = other.controlled_name.clone();
-        self.monitored_full_name = other.monitored_full_name.clone();
-        self.ctrl_snap = other.ctrl_snap.clone();
-        self.mon_snap = other.mon_snap.clone();
-        // TODO(compat): Pascal `TCapControlObj.MakeLike` (`CapControl.pas`
-        // l.446-490) never copies `ctrlSignalShape`/its name — `Like` on a
-        // Follow-type CapControl silently drops the ControlSignal reference on
-        // the new object (every other reference/field is copied). Reproduced
-        // verbatim: `control_signal_name`/`ctrl_signal_shape` are deliberately
-        // left at their `new()` defaults here. Clean fix (post-1:1-port
-        // sweep): also copy them like `ctrl_snap`/`mon_snap` above.
-
-        self.ccd.element_terminal = other.ccd.element_terminal;
-        self.pt_ratio = other.pt_ratio;
-        self.ct_ratio = other.ct_ratio;
-        self.control_type = other.control_type;
-        self.present_state = other.present_state;
-        self.should_switch = other.should_switch;
-        self.on_value = other.on_value;
-        self.off_value = other.off_value;
-        self.pfon_value = other.pfon_value;
-        self.pfoff_value = other.pfoff_value;
-        self.fct_phase = other.fct_phase;
-        self.fpt_phase = other.fpt_phase;
-        self.voverride = other.voverride;
-        self.voverride_bus_specified = other.voverride_bus_specified;
-        self.voverride_bus_name = other.voverride_bus_name.clone();
-        self.fpct_minkvar = other.fpct_minkvar;
-        self.ccd.show_event_log = other.ccd.show_event_log;
-        // WM.5 — Pascal `MakeLike` (`CapControl.pas:481-484`): `UserModel.Name :=
-        // Other.UserModel.Name` re-`New`s a fresh instance (the clone drops the
-        // live wasmi instance and re-creates it lazily on the next control call).
-        self.user_model_name = other.user_model_name.clone();
-        self.user_model_edit = other.user_model_edit.clone();
-        self.is_user_model = other.is_user_model;
-        self.user_model = other.user_model.clone();
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

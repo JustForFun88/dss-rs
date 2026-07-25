@@ -62,6 +62,29 @@ impl CktElement for SwtControl {
     }
 }
 
+impl SwtControl {
+    /// Pascal `TSwtControlObj.MakeLike`.
+    pub(crate) fn make_like(&mut self, other: &Self) {
+        self.ccd.cd.make_like_base(&other.ccd.cd);
+        self.ccd.cd.nphases = other.ccd.cd.nphases;
+        let nc = other.ccd.cd.nconds;
+        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
+
+        self.ccd.element_terminal = other.ccd.element_terminal;
+        self.ccd.controlled_element = other.ccd.controlled_element;
+        self.switched_full_name = other.switched_full_name.clone();
+        self.ctrl_snap = other.ctrl_snap.clone();
+
+        self.ccd.time_delay = other.ccd.time_delay;
+        self.locked = other.locked;
+        self.present_state = other.present_state;
+        self.normal_state = other.normal_state;
+        self.current_action = other.current_action;
+        // r4133 `MakeLike`: `RatedCurrent := OtherSwtControl.RatedCurrent`.
+        self.rated_current = other.rated_current;
+    }
+}
+
 impl DssObject for SwtControl {
     fn data(&self) -> &DssObjData {
         &self.ccd.cd.obj
@@ -307,30 +330,6 @@ impl DssObject for SwtControl {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_ref_actions)
-    }
-
-    /// Pascal `TSwtControlObj.MakeLike`.
-    fn make_like(&mut self, other: &dyn DssObject) {
-        let Some(other) = other.as_any().downcast_ref::<SwtControl>() else {
-            return;
-        };
-        self.ccd.cd.make_like_base(&other.ccd.cd);
-        self.ccd.cd.nphases = other.ccd.cd.nphases;
-        let nc = other.ccd.cd.nconds;
-        self.ccd.cd.set_nconds(nc); // Force Reallocation of terminal stuff
-
-        self.ccd.element_terminal = other.ccd.element_terminal;
-        self.ccd.controlled_element = other.ccd.controlled_element;
-        self.switched_full_name = other.switched_full_name.clone();
-        self.ctrl_snap = other.ctrl_snap.clone();
-
-        self.ccd.time_delay = other.ccd.time_delay;
-        self.locked = other.locked;
-        self.present_state = other.present_state;
-        self.normal_state = other.normal_state;
-        self.current_action = other.current_action;
-        // r4133 `MakeLike`: `RatedCurrent := OtherSwtControl.RatedCurrent`.
-        self.rated_current = other.rated_current;
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {
