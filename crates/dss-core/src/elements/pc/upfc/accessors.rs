@@ -115,7 +115,7 @@ impl CktElement for Upfc {
     fn get_all_variables(&mut self, _sys: &SysCtx, _node_v: &[Complex64], states: &mut [f64]) {
         self.get_all_variables_impl(states);
     }
-    fn set_variable(&mut self, i: usize, value: f64) {
+    fn set_variable(&mut self, i: usize, value: f64, _sys: &crate::elements::traits::SysCtx) {
         self.set_variable_impl(i, value);
     }
 
@@ -277,7 +277,7 @@ impl DssObject for Upfc {
     }
 
     /// Pascal `TUPFC.EndEdit`: `RecalcElementData` + Yprim invalidation.
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
     }

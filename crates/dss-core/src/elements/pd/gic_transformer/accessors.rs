@@ -208,7 +208,7 @@ impl DssObject for GicTransformer {
 
     /// Pascal base `TCktElementClass.EndEdit` → `RecalcElementData`
     /// (GICTransformer does not override EndEdit).
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
     }
 

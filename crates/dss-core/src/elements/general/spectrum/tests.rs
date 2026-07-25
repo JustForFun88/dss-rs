@@ -71,7 +71,7 @@ fn build(edits: &[(&str, &str)]) -> SpectrumObj {
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
     assert!(errors.is_empty(), "unexpected errors: {errors:?}");
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     obj
 }
 
@@ -144,7 +144,7 @@ fn read_csv_file_parses_and_shrinks_num_harm() {
     let mut s = build(&[("NumHarm", "4")]);
     // Only 3 rows in the file (fewer than NumHarm=4) — mixed separators.
     s.read_csv_file("1, 100, 30\n3 50 90\n5, 20, 0\n");
-    s.end_edit(); // builds MultArray from the loaded arrays
+    s.end_edit(&crate::elements::traits::SysCtx::parse_default()); // builds MultArray from the loaded arrays
     assert_eq!(s.num_harm, 3);
     assert_eq!(s.harmonics(), Some(&[1.0, 3.0, 5.0][..]));
     // %Mag stored per-unit; fundamental rotated to zero phase.

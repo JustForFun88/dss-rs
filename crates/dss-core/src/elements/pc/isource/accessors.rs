@@ -186,7 +186,7 @@ impl DssObject for Isource {
     }
 
     /// Pascal `TIsource.EndEdit`.
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
     }

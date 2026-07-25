@@ -573,7 +573,10 @@ impl Storage {
         // Pascal seeds PrpSequence with PF.
         st.cd.obj.set_as_next_seq(prop::PF);
         st.cd.inj_current = vec![Complex64::ZERO; st.cd.yorder];
-        st.recalc(&crate::elements::pc::generator::default_recalc_ctx());
+        // Pascal `TStorageObj.Create` ends with `RecalcElementData` (live
+        // `ActiveCircuit.Solution`). `new` has no circuit; the executive runs that
+        // live recalc after construction (`create_object_no_edit`) and at
+        // `end_edit`. Direct-construction unit tests recalc explicitly.
         st
     }
 }

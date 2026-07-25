@@ -151,7 +151,7 @@ impl DssObject for UpfcControl {
     }
 
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData` (a no-op).
-    fn end_edit(&mut self) {}
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
 
     /// Pascal `TUPFCControlObj.MakeLike` — copies only the phase count, terminal,
     /// and controlled/monitored element refs (plus the base `PrpSequence`); the

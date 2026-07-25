@@ -215,7 +215,7 @@ impl DssObject for LineCodeObj {
     }
 
     /// Pascal `TLineCode.EndEdit`.
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         if self.sym_components_model {
             self.calc_matrices_from_z1z0();
         }

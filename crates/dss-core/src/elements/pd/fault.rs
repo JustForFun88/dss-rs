@@ -543,7 +543,7 @@ impl DssObject for Fault {
     }
 
     /// Pascal base `EndEdit` → `RecalcElementData` (Fault's is a no-op).
-    fn end_edit(&mut self) {}
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
 
     /// Pascal `TFaultObj.MakeLike`.
     fn make_like(&mut self, other: &dyn DssObject) {

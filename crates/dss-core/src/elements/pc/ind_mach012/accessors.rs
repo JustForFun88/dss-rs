@@ -7,7 +7,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::pc::generator::{Connection, default_recalc_ctx};
+use crate::elements::pc::generator::Connection;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
@@ -73,7 +73,7 @@ impl CktElement for IndMach012 {
     }
 
     /// Pascal `TIndMach012Obj.Set_Variable`.
-    fn set_variable(&mut self, i: usize, value: f64) {
+    fn set_variable(&mut self, i: usize, value: f64, _sys: &crate::elements::traits::SysCtx) {
         self.set_variable_impl(i, value);
     }
 
@@ -363,8 +363,9 @@ impl DssObject for IndMach012 {
     }
 
     /// Pascal `TIndMach012.EndEdit`: `RecalcElementData` + Yprim invalidation.
-    fn end_edit(&mut self) {
-        self.recalc(&default_recalc_ctx());
+    /// `sys` is the LIVE circuit/solution the executive holds at the edit site.
+    fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
+        self.recalc(sys);
         self.cd.yprim_invalid = true;
     }
 

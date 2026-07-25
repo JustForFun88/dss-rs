@@ -137,7 +137,7 @@ impl DssObject for GicLine {
 
     /// Pascal `TGICLine.EndEdit` (GICLine.pas:301): `RecalcElementData` then
     /// `YPrimInvalid := TRUE`.
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
     }

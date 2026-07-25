@@ -380,7 +380,7 @@ impl DssObject for LoadShapeObj {
     }
 
     /// Pascal `TLoadShape.EndEdit`: recompute peaks once data exists.
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         if self.p_mult.is_some() {
             self.set_max_p_and_q();
         }

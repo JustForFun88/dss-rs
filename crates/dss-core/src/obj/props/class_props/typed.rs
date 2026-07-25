@@ -185,14 +185,14 @@ mod tests {
         with_engine(&enums, |eng| {
             cls.edit_property(&mut a, idx, "3.4", eng).unwrap();
         });
-        a.end_edit();
+        a.end_edit(&crate::elements::traits::SysCtx::parse_default());
 
         // Typed path: `set_prop_f64(idx, 3.4)`.
         let mut b = LineCodeObj::new("lc_b");
         with_engine(&enums, |eng| {
             cls.set_prop_f64(&mut b, idx, 3.4, eng);
         });
-        b.end_edit();
+        b.end_edit(&crate::elements::traits::SysCtx::parse_default());
 
         // Stored raw value: scale applied once, identically.
         assert_eq!(a.get_f64(prop::C1), b.get_f64(prop::C1));
@@ -252,13 +252,13 @@ mod tests {
         with_engine(&enums, |eng| {
             cls.edit_property(&mut a, idx, "1", eng).unwrap();
         });
-        a.end_edit();
+        a.end_edit(&crate::elements::traits::SysCtx::parse_default());
 
         let mut b = LineCodeObj::new("lc_b");
         with_engine(&enums, |eng| {
             cls.set_prop_i32(&mut b, idx, 1, eng);
         });
-        b.end_edit();
+        b.end_edit(&crate::elements::traits::SysCtx::parse_default());
 
         assert_eq!(a.get_i32(idx), b.get_i32(idx));
         assert_eq!(a.get_i32(idx), 1);

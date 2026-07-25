@@ -15,10 +15,7 @@ use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
-use super::{
-    Connection, Load, LoadModel, LoadSpec, LoadStatus, default_recalc_ctx, nconds_for_connection,
-    prop,
-};
+use super::{Connection, Load, LoadModel, LoadSpec, LoadStatus, nconds_for_connection, prop};
 
 impl CktElement for Load {
     fn cd(&self) -> &CktElementData {
@@ -555,9 +552,11 @@ impl DssObject for Load {
         }
     }
 
-    /// Pascal `TLoad.EndEdit`: `RecalcElementData` + Yprim invalidation.
-    fn end_edit(&mut self) {
-        self.recalc(&default_recalc_ctx());
+    /// Pascal `TLoad.EndEdit`: `RecalcElementData` + Yprim invalidation. `sys` is
+    /// the LIVE circuit/solution the executive holds at the edit site (Pascal
+    /// `SetNominalLoad` reads `ActiveCircuit.Solution` globals).
+    fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
+        self.recalc(sys);
         self.cd.yprim_invalid = true;
     }
 

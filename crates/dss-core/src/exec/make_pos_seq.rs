@@ -154,6 +154,14 @@ impl Dss {
     /// - `Disable` action → `Enabled := FALSE` through the (default) `Set_Enabled`
     ///   path: flag off + `BusNameRedefined` (no recalc, no `inherited`).
     fn apply_pos_seq_actions(&mut self, r: ElemRef, actions: &[PosSeqAction]) {
+        // Pascal `RecalcElementData` (run by the replayed `EndEdit`) reads the
+        // live `ActiveCircuit.Solution` globals; snapshot them once before the
+        // split borrow. MakePosSequence always runs with a circuit present.
+        let live_sys = self
+            .circuit
+            .as_ref()
+            .map(crate::solution::solution::sys_ctx)
+            .unwrap_or_else(crate::elements::traits::SysCtx::parse_default);
         let Dss {
             classes,
             aux_parser,
@@ -179,37 +187,37 @@ impl Dss {
             match action {
                 PosSeqAction::BeginEdit => editing_active = true,
                 PosSeqAction::EndEdit => {
-                    obj.end_edit();
+                    obj.end_edit(&live_sys);
                     editing_active = false;
                 }
                 PosSeqAction::SetF64(idx, v) => {
                     props.set_prop_f64(obj, *idx, *v, &mut eng);
                     if !editing_active {
-                        obj.end_edit();
+                        obj.end_edit(&live_sys);
                     }
                 }
                 PosSeqAction::SetI32(idx, v) => {
                     props.set_prop_i32(obj, *idx, *v, &mut eng);
                     if !editing_active {
-                        obj.end_edit();
+                        obj.end_edit(&live_sys);
                     }
                 }
                 PosSeqAction::SetStructF64s(idx, vals) => {
                     props.set_prop_struct_f64s(obj, *idx, vals, &mut eng);
                     if !editing_active {
-                        obj.end_edit();
+                        obj.end_edit(&live_sys);
                     }
                 }
                 PosSeqAction::SetStructI32s(idx, vals) => {
                     props.set_prop_struct_i32s(obj, *idx, vals, &mut eng);
                     if !editing_active {
-                        obj.end_edit();
+                        obj.end_edit(&live_sys);
                     }
                 }
                 PosSeqAction::SetStructBuses(names) => {
                     props.set_prop_struct_buses(obj, names, &mut eng);
                     if !editing_active {
-                        obj.end_edit();
+                        obj.end_edit(&live_sys);
                     }
                 }
                 PosSeqAction::Disable => {

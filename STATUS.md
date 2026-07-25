@@ -7,7 +7,58 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-### BUG WP gicfix — Transformer GIC port + true-frequency gate + Line pos-seq trio (2026-07-25)
+### BUG WP livectx — thread the live ctx into every recalc; kill `default_recalc_ctx` substitution (2026-07-25)
+
+Follow-up to gicfix, on `bug-livectx` (base `update` @ gicfix merge). User
+directive: "всё замаскированное надо пофиксить — неправильно, значит неправильно."
+Every production site that fed a synthetic `default_recalc_ctx()` snapshot into a
+routine whose Pascal twin reads the live `ActiveCircuit.Solution` now threads the
+live `sys_ctx`. Full gate green; corpus + goldens bit-neutral (the masks were
+real). Success metric met: `rg default_recalc_ctx crates/dss-core/src --glob
+'!*tests*'` shows only the 3 (now test-only) definitions — zero production call
+sites.
+
+- **A — `end_edit(&mut self, sys: &SysCtx)`.** Widened the `DssObject::end_edit`
+  trait method (all ~40 impls; the 6 PC classes Load/Generator/WindGen/Storage/
+  PVSystem/IndMach012 consume it as `self.recalc(sys)`, every other class ignores
+  it). The executive builds the live snapshot from `circuit` (same `sys_ctx`
+  source the gicfix pos-seq/frequency sync uses — no parallel mechanism) at
+  command.rs (New/Edit), make_pos_seq, and json_import. The 6 PC constructors no
+  longer call `recalc(&default_recalc_ctx())`; the executive runs the Create-time
+  live recalc in `create_object_no_edit` via the shared `recalc_pc_create` helper
+  (Pascal `T<PC>Obj.Create → RecalcElementData`), so a property setter / reader
+  during the edit block sees Pascal's live value.
+- **B — user-model plumbing.** Threaded the live `sys` through `apply_user_model_load`
+  (load/edit) and `set_variable` (both trait methods widened) into the WASM
+  callbacks + `dyn_rec_from`/`snapshot` for Generator/Storage/PVSystem, matching
+  Pascal handing the guest live `ActiveCircuit.Solution` pointers. All 18 WASM
+  twin gates (`wasm_usermodels.rs`, r4133 oracle-of-record) stay green — the gates
+  parse at a fresh circuit where live == parse-default, so bit-neutral.
+- **C — WindGen WTG3 seed.** Dropped the hardcoded `recalc_element_data(0.0, 0.0)`
+  seed in `Wtg3Model::new`. Pascal `TGE_WTG3_Model.Create` reads live
+  `DynaData^.h/t` = `ActiveCircuit.Solution.DynaVars` (WindGen.pas:1018); the
+  WindGen owner's `recalc(sys)` re-seeds with `sys.dyna_h/dyna_t`, which the
+  executive runs at create/end_edit.
+- **D — mask re-verification.** The corpus gate (514 cases, both channels) +
+  byte-exact goldens are bit-neutral → the recalc-derived fields (yeq*/pnominal/
+  zs/…) have no runtime reader between end_edit and the next live recalc for any
+  of the 6 classes (masks real; no corpus pin needed). The lone default-value
+  observable that surfaced — the JSON `sample_for_defaults` object, which the
+  defaults-introspection path builds via the factory and never routes through the
+  executive — is fixed by recalc'ing the sample with the parse-time default in
+  `schema_class_def`, exactly as Pascal `cls.NewObject` Create does; restores the
+  byte-exact schema goldens.
+- **E — Monitor BaseFrequency 60.0 (6th proven upstream bug).** Added a
+  `TODO(compat)` at the Monitor override in `create_object_no_edit`:
+  `TMonitorObj.Create` hard-pins `Basefrequency := 60.0` (Monitor.pas:472 ==
+  r4133:552), overriding the base-class `Fundamental` inherit. Physical
+  consequence documented: a mode-4 monitor in a 50 Hz circuit feeds 60 into
+  `FlickerMeter` (`fBase`), selecting the wrong IEC 61000-4-15 120V/60Hz lamp
+  curve instead of the 230V/50Hz set (Pstcalc.pas:609-626) unless `basefreq=50`
+  is set. Reproduced 1:1 (both oracles pin 60.0); dedicated pin test
+  `monitor_basefreq_pins_60hz_upstream_bug`. Clean fix deferred to Stage F.
+
+
 
 Five related holes in the `< 0.51 Hz` GIC gate and the pos-seq collapse, all on
 `bug-posseq-gic`. Empirically settled against the pinned oracle (dss-python

@@ -385,7 +385,7 @@ impl DssObject for Recloser {
     }
 
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
     }
 

@@ -929,7 +929,13 @@ pub trait DssObject: Send {
 
     /// Pascal per-class `EndEdit`: recompute derived state once an edit block
     /// finishes (e.g. `ReCalcYearMult`, `SetMultArray`). No-op by default.
-    fn end_edit(&mut self) {}
+    ///
+    /// `sys` is the LIVE circuit/solution snapshot the executive holds at the
+    /// New/Edit site (Pascal `RecalcElementData` reads `ActiveCircuit.Solution`
+    /// globals). Only the PC classes whose `RecalcElementData` consumes those
+    /// globals (Load/Generator/WindGen/Storage/PVSystem/IndMach012) use it; every
+    /// other class ignores it.
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
 
     /// Drain the [`RefAction`]s queued during the last edit (see `RefAction`).
     /// The executive applies them right after `end_edit`.
@@ -1008,9 +1014,10 @@ pub trait DssObject: Send {
         &mut self,
         load: &UserModelLoad,
         wasm: Option<&[u8]>,
+        sys: &crate::elements::traits::SysCtx,
         errors: &mut crate::diag::ErrorLog,
     ) {
-        let _ = (load, wasm, errors);
+        let _ = (load, wasm, sys, errors);
     }
 
     /// Apply a [`RefAction`] addressed to this object (the target side of the

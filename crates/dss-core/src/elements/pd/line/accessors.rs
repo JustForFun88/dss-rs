@@ -591,7 +591,7 @@ impl DssObject for Line {
     }
 
     /// Pascal `TLine.EndEdit`: Line does *not* call RecalcElementData here.
-    fn end_edit(&mut self) {}
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
 
     /// Pascal `TLineObj.MakeLike`.
     fn make_like(&mut self, other: &dyn DssObject) {

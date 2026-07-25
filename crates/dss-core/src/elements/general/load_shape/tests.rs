@@ -22,7 +22,7 @@ fn edited(edits: &[(&str, &str)]) -> (ClassProps, LoadShapeObj, crate::diag::Err
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     errors.extend(obj.data_mut().take_errors());
     (cls, obj, errors)
 }
@@ -258,7 +258,7 @@ fn make_like_copies_and_recomputes() {
     assert!(errs.is_empty(), "{errs:?}");
     let mut obj = LoadShapeObj::new("d");
     obj.make_like(&base);
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "NPts"), "3");
     assert_eq!(get(&cls, &obj, "Interval"), "2");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 1 2 3]");
@@ -298,7 +298,7 @@ fn read_sng_file_fixed_interval() {
         bytes.extend_from_slice(&v.to_le_bytes());
     }
     obj.read_sng_file(&bytes);
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "NPts"), "4");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 0.25 0.5 0.75 1]");
 }
@@ -314,7 +314,7 @@ fn read_sng_file_variable_interval_pairs_and_shrinks() {
         bytes.extend_from_slice(&m.to_le_bytes());
     }
     obj.read_sng_file(&bytes);
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "NPts"), "3");
     assert_eq!(get(&cls, &obj, "Hour"), "[ 0 1 2]");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 0.25 0.5 0.75]");
@@ -328,7 +328,7 @@ fn read_dbl_file_fixed_and_variable_interval() {
         bytes.extend_from_slice(&v.to_le_bytes());
     }
     obj.read_dbl_file(&bytes);
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5 0.9]");
 
     let (cls, mut obj, _) = edited(&[("npts", "2"), ("interval", "0")]);
@@ -338,7 +338,7 @@ fn read_dbl_file_fixed_and_variable_interval() {
         bytes.extend_from_slice(&m.to_le_bytes());
     }
     obj.read_dbl_file(&bytes);
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "Hour"), "[ 0 2]");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 0.4 0.8]");
 }
@@ -347,13 +347,13 @@ fn read_dbl_file_fixed_and_variable_interval() {
 fn read_pq_csv_file_fixed_and_variable_interval() {
     let (cls, mut obj, _) = edited(&[("npts", "3"), ("interval", "1")]);
     obj.read_pq_csv_file("0.3, 0.2\n0.5, 0.4\n0.9, 0.7\n");
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5 0.9]");
     assert_eq!(get(&cls, &obj, "QMult"), "[ 0.2 0.4 0.7]");
 
     let (cls, mut obj, _) = edited(&[("npts", "2"), ("interval", "0")]);
     obj.read_pq_csv_file("0, 0.3, 0.2\n1, 0.5, 0.4\n");
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "Hour"), "[ 0 1]");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5]");
     assert_eq!(get(&cls, &obj, "QMult"), "[ 0.2 0.4]");
@@ -377,7 +377,7 @@ fn read_csv_file_fixed_and_variable_interval() {
     // Fixed interval: one mult per row; oracle Mult=[0.3 0.5 0.9 1 0.7 0.4].
     let (cls, mut obj, _) = edited(&[("npts", "6"), ("interval", "1")]);
     obj.read_csv_file("0.3\n0.5\n0.9\n1.0\n0.7\n0.4\n");
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "NPts"), "6");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5 0.9 1 0.7 0.4]");
     assert_eq!(get(&cls, &obj, "PMax"), "1");
@@ -385,7 +385,7 @@ fn read_csv_file_fixed_and_variable_interval() {
     // Variable interval: `hour, mult` per row; oracle Hour=[0 2 5 9].
     let (cls, mut obj, _) = edited(&[("npts", "4"), ("interval", "0")]);
     obj.read_csv_file("0,0.30\n2,0.55\n5,0.95\n9,0.60\n");
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "Hour"), "[ 0 2 5 9]");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.55 0.95 0.6]");
     assert_eq!(get(&cls, &obj, "PMax"), "0.95");
@@ -396,7 +396,7 @@ fn read_csv_file_shrinks_npts_to_lines_read() {
     // Oracle: npts=10 but only 6 rows in the file → NumPoints becomes 6.
     let (cls, mut obj, _) = edited(&[("npts", "10"), ("interval", "1")]);
     obj.read_csv_file("0.3\n0.5\n0.9\n1.0\n0.7\n0.4\n");
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(get(&cls, &obj, "NPts"), "6");
     assert_eq!(get(&cls, &obj, "Mult"), "[ 0.3 0.5 0.9 1 0.7 0.4]");
 }

@@ -35,14 +35,18 @@ fn edit_windgen(edits: &[(&str, &str)]) -> WindGen {
         };
         cls.edit_property(&mut g, idx, value, &mut eng).unwrap();
     }
-    g.end_edit();
+    g.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert!(errors.is_empty(), "{errors:?}");
     g
 }
 
 #[test]
 fn create_defaults_match_pascal() {
-    let g = WindGen::new("w1");
+    // `new` no longer recalcs (no live ctx at construction); recalc explicitly
+    // with the parse-time default (dyna_h=dyna_t=0), exactly as the executive does
+    // at create — this re-derives kVArating and seeds the WTG3 model.
+    let mut g = WindGen::new("w1");
+    g.recalc(&crate::elements::traits::SysCtx::parse_default());
     assert_eq!(g.cd.nphases, 3);
     assert_eq!(g.cd.nconds, 4);
     assert_eq!(g.kw_base, 1000.0);
@@ -308,7 +312,13 @@ fn wtg3_dynamics_deterministic_and_finite() {
         // Step a few outer time steps (corrector iterations advance the sub-cycle).
         for step in 1..=5 {
             let t = step as f64 * 0.001;
-            m.calc_dynamic(&v, &mut i, 0.001, t, IterationFlag::SameTimeStep);
+            m.calc_dynamic(
+                &v,
+                &mut i,
+                0.001,
+                t,
+                crate::support::dynamics::IterationFlag::SameTimeStep,
+            );
         }
         (i, m.pgen, m.wt)
     }

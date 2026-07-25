@@ -76,6 +76,7 @@ impl PvUserModelSlot {
         wasm: &[u8],
         yorder: usize,
         p: &PVSystem,
+        sys: &SysCtx,
     ) -> Result<Self, UserModelError> {
         let host = UserModelHost::load(
             model,
@@ -83,8 +84,8 @@ impl PvUserModelSlot {
             InterfaceKind::PvSystemUserModel,
             HostConfig::default(),
         )?;
-        let mut dr = dyn_rec_from(&super::super::generator::default_recalc_ctx());
-        let ctx = PvCallbacks::snapshot(p, &super::super::generator::default_recalc_ctx(), &[]);
+        let mut dr = dyn_rec_from(sys);
+        let ctx = PvCallbacks::snapshot(p, sys, &[]);
         let sh = Shuttle::without_gen_vars(&mut dr, Box::new(ctx));
         let instance = UserModelInstance::new(&host, yorder.max(1), sh)?;
         let mut slot = Self {
@@ -341,6 +342,7 @@ impl PVSystem {
         &mut self,
         load: &UserModelLoad,
         wasm: Option<&[u8]>,
+        sys: &SysCtx,
         errors: &mut ErrorLog,
     ) {
         let name = self.cd.obj.name().to_string();
@@ -350,7 +352,7 @@ impl PVSystem {
                 match wasm {
                     Some(bytes) => {
                         let yorder = self.cd.yorder;
-                        match PvUserModelSlot::load(model_name, bytes, yorder, self) {
+                        match PvUserModelSlot::load(model_name, bytes, yorder, self, sys) {
                             Ok(slot) => self.user_model = Some(Box::new(slot)),
                             Err(e) => push_load_failure(&name, model_name, &e, errors),
                         }
@@ -366,12 +368,7 @@ impl PVSystem {
                     return; // Pascal: `if UserModel.Exists then Edit`.
                 };
                 let mut errs = ErrorLog::new();
-                if let Err(e) = s.edit(
-                    data,
-                    self,
-                    &super::super::generator::default_recalc_ctx(),
-                    &[],
-                ) {
+                if let Err(e) = s.edit(data, self, sys, &[]) {
                     errs.push(DssDiagnostic::msg(e.to_string(), Some(1569)));
                 }
                 s.drain_effects(&name, &mut errs);
@@ -568,7 +565,7 @@ impl PVSystem {
 
     /// Pascal `Set_Variable` UserModel tail (`PVsystem.pas:2534-2541`). Returns
     /// `true` iff the user model handled the write.
-    pub(super) fn set_user_model_variable(&mut self, i: usize, value: f64) -> bool {
+    pub(super) fn set_user_model_variable(&mut self, i: usize, value: f64, sys: &SysCtx) -> bool {
         let base = self.num_pv_variables();
         if i <= base {
             return false;
@@ -582,9 +579,8 @@ impl PVSystem {
             return false;
         }
         let name = self.cd.obj.name().to_string();
-        let ctx = super::super::generator::default_recalc_ctx();
         let mut errs = ErrorLog::new();
-        if let Err(e) = s.set_variable(k, value, self, &ctx, &[]) {
+        if let Err(e) = s.set_variable(k, value, self, sys, &[]) {
             errs.push(DssDiagnostic::msg(
                 format!("PVSystem.{name}: user model `set_variable` failed: {e}"),
                 Some(1569),

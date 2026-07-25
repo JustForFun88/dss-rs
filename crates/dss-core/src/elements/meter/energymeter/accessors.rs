@@ -333,7 +333,7 @@ impl DssObject for EnergyMeter {
         }
     }
 
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         // Pascal `EndEdit`: only recalc when a basic datum (element/terminal)
         // changed, so editing e.g. `kVANormal` alone doesn't re-run validation.
         if !self.needs_recalc {

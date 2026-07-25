@@ -512,7 +512,7 @@ impl DssObject for InvControl {
     /// Pascal `TCktElementClass.EndEdit` → `RecalcElementData`: attach the
     /// terminal to the resolved first-DER bus (the fleet *dispatch* build is
     /// deferred to the first `Sample`).
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
     }
 

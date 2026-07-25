@@ -286,7 +286,7 @@ impl DssObject for SpectrumObj {
         }
     }
 
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         // Pascal `TSpectrum.EndEdit`: only act once `HarmArray` is allocated.
         // A zero harmonic is rejected (DoSimpleMsg 65001) and `MultArray` is left
         // unbuilt; otherwise, with all three input arrays present, build the

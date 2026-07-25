@@ -245,7 +245,7 @@ impl DssObject for Capacitor {
     }
 
     /// Pascal base `EndEdit` → `RecalcElementData` (Capacitor does not override).
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
     }
 

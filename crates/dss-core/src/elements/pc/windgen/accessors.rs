@@ -16,7 +16,7 @@ use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
-use super::{Connection, WindGen, default_recalc_ctx, nconds_for_connection, prop};
+use super::{Connection, WindGen, nconds_for_connection, prop};
 
 impl CktElement for WindGen {
     fn cd(&self) -> &CktElementData {
@@ -145,7 +145,7 @@ impl CktElement for WindGen {
     }
 
     /// Pascal `TWindGenObj.SetVariable`.
-    fn set_variable(&mut self, i: usize, value: f64) {
+    fn set_variable(&mut self, i: usize, value: f64, _sys: &crate::elements::traits::SysCtx) {
         if i < 1 {
             return;
         }
@@ -526,9 +526,10 @@ impl DssObject for WindGen {
         }
     }
 
-    /// Pascal `TWindGen.EndEdit`: `RecalcElementData` + Yprim invalidation.
-    fn end_edit(&mut self) {
-        self.recalc(&default_recalc_ctx());
+    /// Pascal `TWindGen.EndEdit`: `RecalcElementData` + Yprim invalidation. `sys`
+    /// is the LIVE circuit/solution the executive holds at the edit site.
+    fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
+        self.recalc(sys);
         self.cd.yprim_invalid = true;
     }
 

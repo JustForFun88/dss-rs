@@ -860,6 +860,11 @@ impl Dss {
                                 abort = true;
                             }
                             Some((ci, oi)) => {
+                                // Pascal `Set_Variable` on a user-model PCE reads
+                                // the live `ActiveCircuit.Solution` via the model
+                                // callbacks; snapshot it before the mutable elem
+                                // borrow (disjoint fields: `circuit` vs `classes`).
+                                let sys = crate::solution::solution::sys_ctx(ckt);
                                 let elem = classes[ci].arena[oi]
                                     .as_ckt_element_mut()
                                     .expect("resolved circuit element");
@@ -871,7 +876,7 @@ impl Dss {
                                     ));
                                     abort = true;
                                 } else if let Some(i) = lookup_variable(elem, &var_name) {
-                                    elem.set_variable(i, value);
+                                    elem.set_variable(i, value, &sys);
                                 } else {
                                     errors.push(format!(
                                         "State variable \"{}\" not found in \"{}.{}\".",

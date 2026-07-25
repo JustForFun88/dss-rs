@@ -349,7 +349,7 @@ impl DssObject for RegControl {
     /// follows r4133 (dropping the abs also restores 0.14.5-legacy equivalence);
     /// the resulting negative-rev behavior is deterministic and reproduced 1:1
     /// (0.15.x-adoption sweep, DIVERGENCES C5).
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         let obj = &self.ccd.cd.obj;
         if obj.prop_edited_since_boundary(prop::REVTHRESHOLD)
             && !obj.prop_edited_since_boundary(prop::FWDTHRESHOLD)

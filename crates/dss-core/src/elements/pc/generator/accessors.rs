@@ -13,7 +13,7 @@ use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
-use super::{Connection, Generator, default_recalc_ctx, nconds_for_connection, prop};
+use super::{Connection, Generator, nconds_for_connection, prop};
 
 impl CktElement for Generator {
     fn cd(&self) -> &CktElementData {
@@ -233,7 +233,7 @@ impl CktElement for Generator {
     /// writes → `#566`; index 3 (`Vd`) is read-only → `#564`. The diagnostics have
     /// no direct return channel here, so they queue on the element's deferred-error
     /// log (drained by the executive after the `Set StateVar` command).
-    fn set_variable(&mut self, i: usize, value: f64) {
+    fn set_variable(&mut self, i: usize, value: f64, sys: &crate::elements::traits::SysCtx) {
         use super::dynamics::{RADIANS_TO_DEGREES, TWO_PI};
         if i < 1 {
             self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
@@ -269,7 +269,7 @@ impl CktElement for Generator {
             4 => self.p_shaft = value,
             5 => self.dspeed = value / RADIANS_TO_DEGREES,
             6 => self.dtheta = value,
-            _ => self.set_user_model_variable(i, value),
+            _ => self.set_user_model_variable(i, value, sys),
         }
     }
 
@@ -688,8 +688,10 @@ impl DssObject for Generator {
     }
 
     /// Pascal `TGenerator.EndEdit`: `RecalcElementData` + Yprim invalidation.
-    fn end_edit(&mut self) {
-        self.recalc(&default_recalc_ctx());
+    /// `sys` is the LIVE circuit/solution the executive holds at the edit site
+    /// (Pascal `SetNominalGeneration` reads `ActiveCircuit.Solution` globals).
+    fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
+        self.recalc(sys);
         self.cd.yprim_invalid = true;
     }
 
@@ -796,9 +798,10 @@ impl DssObject for Generator {
         &mut self,
         load: &UserModelLoad,
         wasm: Option<&[u8]>,
+        sys: &crate::elements::traits::SysCtx,
         errors: &mut crate::diag::ErrorLog,
     ) {
-        self.apply_user_model_load_impl(load, wasm, errors);
+        self.apply_user_model_load_impl(load, wasm, sys, errors);
     }
 
     fn clone_box(&self) -> Box<dyn DssObject> {

@@ -23,7 +23,7 @@ fn apply(
         };
         cls.edit_property(obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     errors.extend(obj.data_mut().take_errors());
     errors
 }

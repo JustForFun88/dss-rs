@@ -85,7 +85,7 @@ fn build_shape(mult: &str) -> LoadShapeObj {
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert!(errors.is_empty(), "{errors:?}");
     obj
 }
@@ -179,7 +179,10 @@ fn harmonic_yprim_is_thevenin_admittance_not_powerflow() {
 /// Pascal `TStorageObj.Create` defaults.
 #[test]
 fn create_defaults() {
-    let st = Storage::new("s1");
+    // `new` no longer recalcs (no live ctx at construction); recalc explicitly
+    // with the parse-time default so the derived P_idling/kw_out_idling are set.
+    let mut st = Storage::new("s1");
+    st.recalc(&SysCtx::parse_default());
     assert_eq!(st.cd.nphases, 3);
     assert_eq!(st.cd.nconds, 4); // wye
     assert_eq!(st.base.connection, Connection::Wye);
@@ -225,7 +228,8 @@ fn create_defaults() {
 /// `kW_out = −kWOutIdling = −0.25`, matching the oracle `? kW` = −0.25.
 #[test]
 fn idle_draws_only_idling_losses() {
-    let st = Storage::new("s1");
+    let mut st = Storage::new("s1");
+    st.recalc(&SysCtx::parse_default());
     assert_eq!(st.f_state, STORE_IDLING);
     assert!((st.base.kw_out + 0.25).abs() < 1e-12);
     assert!((st.present_kw() + 0.25).abs() < 1e-9);
@@ -542,7 +546,12 @@ fn dyna_dll_stores_and_warns_not_loaded() {
     let loads = st.take_user_model_loads();
     assert_eq!(loads.len(), 1, "one deferred DynaDLL load: {loads:?}");
     let mut errors = crate::diag::ErrorLog::new();
-    st.apply_user_model_load(&loads[0], None, &mut errors);
+    st.apply_user_model_load(
+        &loads[0],
+        None,
+        &crate::elements::traits::SysCtx::parse_default(),
+        &mut errors,
+    );
     assert_eq!(errors.len(), 1, "exactly one warning: {errors:?}");
     assert!(errors[0].contains("Not Loaded"));
     assert!(errors[0].contains("Dess1.DLL"));
@@ -562,7 +571,12 @@ fn storage_user_model_stores_and_warns_not_loaded() {
     let loads = st.take_user_model_loads();
     assert_eq!(loads.len(), 1, "one deferred UserModel load: {loads:?}");
     let mut errors = crate::diag::ErrorLog::new();
-    st.apply_user_model_load(&loads[0], None, &mut errors);
+    st.apply_user_model_load(
+        &loads[0],
+        None,
+        &crate::elements::traits::SysCtx::parse_default(),
+        &mut errors,
+    );
     assert_eq!(errors.len(), 1, "exactly one warning: {errors:?}");
     assert!(errors[0].contains("Not Loaded"));
     assert!(errors[0].contains("built-in model"));

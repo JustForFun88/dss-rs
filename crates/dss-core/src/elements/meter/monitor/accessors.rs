@@ -222,7 +222,7 @@ impl DssObject for Monitor {
         }
     }
 
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         // Pascal `RecalcElementData` reads the live `IsHarmonicModel`, but the
         // `DssObject` edit surface carries no solution state, so the header is
         // built with the fundamental `hour`/`t(sec)` labels here. The harmonic

@@ -38,7 +38,7 @@ fn build_shape(mult: &str) -> LoadShapeObj {
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     assert!(errors.is_empty(), "{errors:?}");
     obj
 }
@@ -62,7 +62,7 @@ fn build_tshape(temp: &str) -> TShapeObj {
         };
         cls.edit_property(&mut obj, idx, value, &mut eng).unwrap();
     }
-    obj.end_edit();
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
     obj
 }
 
@@ -337,7 +337,10 @@ fn create_defaults() {
 /// kvar_out = 0, and YEQ = (P − jQ)/Vbase² with Q = 0.
 #[test]
 fn default_recalc_yields_full_kw_unity_pf() {
-    let pv = PVSystem::new("pv1");
+    // `new` no longer recalcs (no live ctx at construction); recalc explicitly
+    // with the parse-time default, exactly as the executive does at create.
+    let mut pv = PVSystem::new("pv1");
+    pv.recalc(&SysCtx::parse_default());
     // Panel kW = irradiance(1) · shape(1) · Pmpp(500) · tempfactor(1) = 500.
     assert_eq!(pv.panel_kw, 500.0);
     assert_eq!(pv.base.kw_out, 500.0);
@@ -356,7 +359,8 @@ fn default_recalc_yields_full_kw_unity_pf() {
 /// `Get_PresentkW` = Pnominalperphase · 0.001 · nphases (= the nominal kW).
 #[test]
 fn present_kw_kvar_round_trip() {
-    let pv = PVSystem::new("pv1");
+    let mut pv = PVSystem::new("pv1");
+    pv.recalc(&SysCtx::parse_default());
     assert!((pv.present_kw() - 500.0).abs() < 1e-9);
     assert_eq!(pv.present_kvar(), 0.0);
 }

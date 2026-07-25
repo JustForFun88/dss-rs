@@ -108,6 +108,7 @@ impl GenUserModelSlot {
         wasm: &[u8],
         yorder: usize,
         g: &mut Generator,
+        sys: &SysCtx,
     ) -> Result<Self, UserModelError> {
         let host = UserModelHost::load(
             model,
@@ -116,8 +117,8 @@ impl GenUserModelSlot {
             HostConfig::default(),
         )?;
         let mut gv = gen_vars_from(g);
-        let mut dr = dyn_rec_from(&super::default_recalc_ctx());
-        let ctx = GenCallbacks::snapshot(g, &super::default_recalc_ctx(), &[], &gv);
+        let mut dr = dyn_rec_from(sys);
+        let ctx = GenCallbacks::snapshot(g, sys, &[], &gv);
         let sh = Shuttle {
             gen_vars: Some(&mut gv),
             dyn_rec: &mut dr,
@@ -547,6 +548,7 @@ impl Generator {
         &mut self,
         load: &UserModelLoad,
         wasm: Option<&[u8]>,
+        sys: &SysCtx,
         errors: &mut ErrorLog,
     ) {
         let name = self.cd.obj.name().to_string();
@@ -557,7 +559,7 @@ impl Generator {
                 match wasm {
                     Some(bytes) => {
                         let yorder = self.cd.yorder;
-                        match GenUserModelSlot::load(model_name, bytes, yorder, self) {
+                        match GenUserModelSlot::load(model_name, bytes, yorder, self, sys) {
                             Ok(slot) => self.put_slot(load.slot, Box::new(slot)),
                             Err(e) => push_load_failure(&name, model_name, &e, errors),
                         }
@@ -578,7 +580,7 @@ impl Generator {
                     return; // Pascal: `if UserModel.Exists then Edit`.
                 };
                 let mut errs = ErrorLog::new();
-                if let Err(e) = s.edit(data, self, &super::default_recalc_ctx(), &[]) {
+                if let Err(e) = s.edit(data, self, sys, &[]) {
                     errs.push(DssDiagnostic::msg(e.to_string(), Some(569)));
                 }
                 s.drain_effects(&name, &mut errs);
@@ -851,7 +853,7 @@ impl Generator {
     /// a 1-based state-variable write to the user model (`k = i -
     /// NumGenVariables`, if `k <= N`) or the shaft model (`k = i -
     /// (NumGenVariables + N)`), matching the classic index arithmetic.
-    pub(super) fn set_user_model_variable(&mut self, i: usize, value: f64) {
+    pub(super) fn set_user_model_variable(&mut self, i: usize, value: f64, sys: &SysCtx) {
         let base = self.num_gen_variables();
         let un = if self.user_model_exists() {
             self.user_model.as_ref().map_or(0, |s| s.num_vars())
@@ -870,7 +872,7 @@ impl Generator {
         };
         let name = self.cd.obj.name().to_string();
         let mut errs = ErrorLog::new();
-        if let Err(e) = s.set_variable(k, value, self, &super::default_recalc_ctx(), &[]) {
+        if let Err(e) = s.set_variable(k, value, self, sys, &[]) {
             errs.push(DssDiagnostic::msg(
                 format!("Generator.{name}: user model `set_variable` failed: {e}"),
                 Some(567),

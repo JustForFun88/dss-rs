@@ -277,7 +277,7 @@ impl DssObject for Sensor {
         }
     }
 
-    fn end_edit(&mut self) {
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         // Pascal `EndEdit`: recalc only when a recalc-triggering datum changed.
         if !self.needs_recalc {
             return;
