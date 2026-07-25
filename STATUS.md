@@ -465,6 +465,116 @@ Records: `docs/phase-records/test-triage-{promotions,ad-classify,monitor-winding
 - Gate after merges: fmt/clippy clean, `cargo +stable test --workspace` exit 0;
   population.lock consistency re-proven by deliberate regen (no diff).
 
+### DE_PASCALIZE R2 — PARTIAL: M3b injection seam landed; flip + downcast categories ESCAPED (branch `depas-r2`)
+
+Stratum **[A]** bit-neutral. Base `update` @ `1f0b768`. R2's brief was the full
+Part I finish: (1) flip `ElemRef → ElemId` across the spine; (2) Category A pair
+getters; (3) Category B meter reads; (4) Category D typed object-ref handle; (5)
+Category E `make_like`; (6) remove `as_any`/`as_ckt_element` from `DssObject`; (7)
+the thread-readiness (M3b) injection-seam rider; (8) flag R3 candidates. **Only
+item 7 landed this session** — a complete, gate-green, committed cluster. Items
+1–6 are escaped-and-recorded (below) because they are **interlocked and
+one-session-infeasible gate-green**, and the disciplined path (plan §"escape
+protocol": leave old code, gate green, record, keep going — never improvise a new
+design) forbids a rushed stopgap. Disclosed in full so R2b can execute faster.
+
+**Landed — item 7, the M3b PC-injection seam (commit `2ed12d3`).** The
+`MULTITHREADING_PLAN.md` M3b seam the plan wants cut "in R2 so signatures churn
+once." Done exactly as specified:
+- `CktElement::inj_currents(&mut self, sys, ctx: &mut InjCtx)` →
+  `compute_inj_currents(&mut self, sys, node_v, ctx: &mut InjComputeCtx) -> bool`.
+  The element fills its own element-owned `cd.inj_current` buffer and **returns**
+  the `SystemYChanged` flag; it performs no shared `Currents` write.
+- `InjCtx` (node_v + currents + system_y_changed + errors + solution_abort) →
+  `InjComputeCtx` (errors + solution_abort only). `node_v` is now a read-only
+  parameter; `currents` and `system_y_changed` are gone from the per-element ctx.
+- The **caller** (`solution/solution/power_flow.rs` `get_source_inj_currents`
+  and `get_pc_inj_curr_filtered`) scatters `cd.inj_current` into `sol.currents`
+  through `NodeRef` and ORs the returned flag into `sol.system_y_changed`,
+  **sequentially in `sources`/`pc_elements` order** — identical element order,
+  identical per-conductor `0..yorder` order, so the FP sums are bit-identical to
+  the old fused `InjCurrents` (forbidden-move #3 respected: no accumulation
+  reorder). All 14 PC/source impls converted (load, storage, generator, pvsystem,
+  windgen, ind_mach012, vsource, isource, vs_converter, vccs, upfc, gic_line,
+  gic_source; isource's private `compute_inj_currents(sys)->Vec` renamed
+  `base_inj_currents` to free the trait-method name).
+- **Disclosed deviation from the literal plan signature.** The plan sketched
+  `compute_inj_currents(&mut self, sys, node_v)` with no ctx. The solve-time fault
+  channels (`errors`/`solution_abort`, used by generator/storage/pvsystem for a
+  user-model trap / missing-dynamics-model abort — WASM_USERMODELS §2.9-5) have no
+  other home, so they stay in the reduced `InjComputeCtx`. Only `currents` +
+  `system_y_changed` were removed (exactly what the plan asked). `errors`/`abort`
+  remain a shared `&mut` for now; their per-element collection is M3b's own later
+  step (noted in the `InjComputeCtx` doc). Behavior identical.
+- Gate: fmt clean, clippy `-D warnings` clean, `cargo test --workspace` exit 0 —
+  **corpus gate green (25 tests, `corpus_gate_all_cases_match_engines` ok,
+  142 s)**, both channels (capi_v0145 + r4133), zero golden/tolerance/ledger churn.
+
+**Escaped — items 1, 2, 4, 5, 6 (recorded per escape protocol; NOT started, old
+code untouched, gate stays green).** Root cause of the escape: R2's items form one
+tightly-coupled block, not independent clusters.
+- **Item 1 (flip `ElemRef → ElemId`)** is the spine: `rg ElemRef crates/dss-core/src`
+  = **927 hits across 130 files** (measured this session). `ElemRef {cls,idx}` and
+  `ElemId` are *different types* — a half-flipped tree does not compile (a
+  `Vec<ElemId>` cannot pass where `Vec<ElemRef>` is expected), so it cannot be
+  landed one-cluster-at-a-time gate-green in a single session; it needs its own
+  multi-session WP with `From`/`Into` bridging or a big-bang flip. R1 already
+  provides the machinery (`ElemId::to_ref`, the bridge round-trip test); what is
+  missing and must be added first is an `ElemId::from_ref(ElemRef) -> ElemId` (a
+  match over all 50 class ordinals) for every runtime-class construction site.
+- **Items 2/4/5/6 depend on item 1's typed store.** The concrete-borrow sites
+  (`controls/dispatch.rs` reg→transformer / cap→capacitor, the `generator_mut`/
+  `storage_mut`/`pvsystem_mut`/`espvl_mut`/`upfc_mut` helpers, meter reads, GET
+  paths) all reach elements through `store: &mut dyn ElemStore`, whose only typed
+  path today is `obj_mut(r).as_any_mut().downcast_mut::<T>()`. Getting a typed
+  `&mut RegControl`/`&mut Capacitor` **without** a downcast requires the caller to
+  hold a *concrete-typed* store (the `Elements` aggregate or `&mut ClassStore`)
+  and match on `ElemId`/`ClassArena` variants — which is item 1's store-retyping.
+  The only way to do items 2/4/5/6 *before* item 1 is to bolt ~10 concrete-typed
+  methods (`reg_transformer_pair`, `cap_capacitor_pair`, `generator_mut`, …) onto
+  the generic `ElemStore` trait — an improvised stopgap the escape protocol
+  forbids (it couples the storage-agnostic trait to specific element classes and
+  would be torn out again by item 1). So they wait for item 1.
+- **Item 6 (remove `as_any`/`as_any_mut`/`as_ckt_element`/`as_ckt_element_mut`
+  from `DssObject`)** is all-or-nothing: the trait method cannot be removed while
+  any caller remains. Current populations (measured this session, unchanged by the
+  item-7 landing): `rg "as_any|as_ckt_element" crates/dss-core/src` = **759 hits /
+  134 files** (≈170 are the per-class boilerplate impls, the rest call sites);
+  `rg "downcast_ref|downcast_mut" crates/dss-core/src` = **416 hits / 100 files**.
+  Removing `as_ckt_element` alone is tractable-but-large (make the arena macro tag
+  ckt vs data classes so `ClassArena::ckt_elem` upcasts `&v[idx] as &dyn
+  CktElement` directly, then convert the ~50 external `.as_ckt_element()` call
+  sites) and is a good standalone R2b sub-WP; removing `as_any` is the full
+  downcast-elimination job (all 416 sites) and belongs to the item-1 flip.
+- **Category E `make_like`** was scoped and is *ready to execute* but not started:
+  it is 50 per-file structural extractions (`fn make_like(&mut self, other: &dyn
+  DssObject)` inside `impl DssObject for X`, with a leading `other.as_any().
+  downcast_ref::<X>()` guard, → an inherent `pub(crate) fn make_like(&mut self,
+  other: &Self)` in an `impl X` block; production dispatch is the single site
+  `ClassArena::make_like_within`, which would clone the typed source and call the
+  inherent method — every element type is already `Clone`, its `clone_box` is
+  `Box::new(self.clone())`). Low numerical risk, zero corpus impact, but ~50 files
+  of body-moving edits; deferred to R2b as its own commit. NOTE: `clone_box` is
+  **not** dead (item 8 candidate withdrawn) — beyond `make_like_within` it backs
+  the `line_geometry` conductor-snapshot storage (`fwiredata`/`line_spacing_obj`
+  clone `Box<dyn DssObject>`) and the `dispatch.rs` self-monitoring `mon_clone`
+  (3 sites); keep it.
+
+**R3 candidates flagged (item 8; NOT deleted).** `clone_box` — withdrawn, still
+live (see above). The others named in the brief (`schema_skeleton`/
+`extract_schema_skeleton_json`, `CktElement::recalc_element_data` in line/solve.rs,
+`ClassStore` adapter, `ControlKind` remnants) were not re-examined this session and
+remain for R3.
+
+**R2b sub-plan (recommended split for the follow-up).** (a) `ElemId::from_ref` +
+flip `ElemStore`/`circuit.rs` lists/`RefAction`/cross-refs `ElemRef → ElemId`
+(item 1, its own session; typed `Idx<T>` where the class is statically known —
+Load `daily: Option<Idx<LoadShapeObj>>` etc.); (b) on the now-typed store,
+Categories A/B/D/E + the `generator_mut`-family helpers → typed arena matches;
+(c) Category E `make_like` (50-file inherent-method extraction, standalone commit);
+(d) `as_ckt_element` removal (arena macro ckt/data tag) as a separable sub-WP;
+(e) finally remove `as_any` once (b)+(c)+(d) zero the 416 downcast sites.
+
 ### DE_PASCALIZE R1 — typed arenas: `Idx<T>`/`ElemId`/`Elements` (wave 2, branch `depas-r1`)
 
 Stratum **[A]** bit-neutral. Part I R1 — introduce the `PORTING_PLAN §2.1`
