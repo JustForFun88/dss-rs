@@ -223,22 +223,22 @@ impl AutoTrans {
         let mut a = vec![Complex64::ZERO; nw];
         let mut t1 = vec![Complex64::ZERO; nw];
         let mut t2 = vec![Complex64::ZERO; nw];
-        for i in 1..=nw {
+        for i in 0..nw {
             for v in a.iter_mut() {
                 *v = Complex64::ZERO;
             }
-            if i == 1 {
+            if i == 0 {
                 for v in a.iter_mut().take(nw - 1) {
                     *v = Complex64::new(-1.0, 0.0);
                 }
             } else {
-                a[i - 2] = Complex64::new(1.0, 0.0);
+                a[i - 1] = Complex64::new(1.0, 0.0);
             }
             zb.mv_mult(&mut t1, &a); // ZB⁻¹ · A (order nw-1)
             t1[nw - 1] = Complex64::ZERO; // Pascal ctemparray1[NumWindings] := 0
             at.mv_mult(&mut t2, &t1); // AT · result (order nw)
             for (j, &val) in t2.iter().enumerate().take(nw) {
-                y1.set(j, i - 1, val);
+                y1.set(j, i, val);
             }
         }
 
@@ -266,16 +266,16 @@ impl AutoTrans {
         let mut av = vec![Complex64::ZERO; n2];
         let mut s1 = vec![Complex64::ZERO; n2];
         let mut s2 = vec![Complex64::ZERO; n2];
-        for i in 1..=n2 {
+        for i in 0..n2 {
             for v in av.iter_mut() {
                 *v = Complex64::ZERO;
             }
-            for kp in 1..=nw {
-                let denom = self.windings[kp - 1].vbase * zero_tap_fix(self.windings[kp - 1].putap);
-                if i == 2 * kp - 1 {
-                    av[kp - 1] = Complex64::new(1.0 / denom, 0.0);
-                } else if i == 2 * kp {
-                    av[kp - 1] = Complex64::new(-1.0 / denom, 0.0);
+            for (kp, (av_kp, w)) in av.iter_mut().zip(self.windings.iter()).enumerate() {
+                let denom = w.vbase * zero_tap_fix(w.putap);
+                if i == 2 * kp {
+                    *av_kp = Complex64::new(1.0 / denom, 0.0);
+                } else if i == 2 * kp + 1 {
+                    *av_kp = Complex64::new(-1.0 / denom, 0.0);
                 }
             }
             // Main autotransformer part.
@@ -285,7 +285,7 @@ impl AutoTrans {
             }
             at2.mv_mult(&mut s2, &s1); // order n2
             for (j, &val) in s2.iter().enumerate().take(n2) {
-                yterm.set(j, i - 1, val);
+                yterm.set(j, i, val);
             }
             // No-load part.
             y1nl.mv_mult(&mut s1, &av);
@@ -294,7 +294,7 @@ impl AutoTrans {
             }
             at2.mv_mult(&mut s2, &s1);
             for (j, &val) in s2.iter().enumerate().take(n2) {
-                yterm_nl.set(j, i - 1, val);
+                yterm_nl.set(j, i, val);
             }
         }
 
@@ -442,10 +442,10 @@ impl AutoTrans {
         let mut iterm = vec![Complex64::ZERO; 2 * nw];
         let mut iterm_nl = vec![Complex64::ZERO; 2 * nw];
         let mut kk = 0usize;
-        for iphase in 1..=np {
+        for iphase in 0..np {
             for (iwind, w) in self.windings.iter().enumerate() {
                 let wt = WdgTerms::of(iwind);
-                let base = iphase + iwind * nconds - 1; // 0-based Vterminal phase conductor
+                let base = iphase + iwind * nconds; // 0-based Vterminal phase conductor
                 match w.connection {
                     Connection::Wye => {
                         // Wye (common winding usually)
@@ -453,14 +453,15 @@ impl AutoTrans {
                         vterm[wt.minus] = vterminal[base + np];
                     }
                     Connection::Delta => {
-                        let jphase = self.rotate_phases(iphase);
+                        // `rotate_phases` speaks the 1-based phase language.
+                        let jphase = self.rotate_phases(iphase + 1);
                         vterm[wt.plus] = vterminal[base];
                         vterm[wt.minus] = vterminal[jphase + iwind * nconds - 1];
                     }
                     Connection::Series => {
                         // Series winding straddles the H/X terminals.
                         vterm[wt.plus] = vterminal[base];
-                        vterm[wt.minus] = vterminal[iphase + np - 1];
+                        vterm[wt.minus] = vterminal[iphase + np];
                     }
                 }
             }

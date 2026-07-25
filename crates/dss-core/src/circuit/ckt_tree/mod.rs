@@ -336,11 +336,11 @@ pub fn build_active_bus_adjacency_lists(ckt: &Circuit, store: &dyn ElemStore) ->
 
     for &r in &ckt.pc_elements {
         let elem = store.ckt_elem(r);
-        if elem.cd().enabled {
-            let i = elem.cd().terminals[0].bus_ref;
-            if i < n_bus {
-                adj.pc[i].push(r);
-            }
+        if elem.cd().enabled
+            && let Some(i) = elem.cd().terminals[0].bus_ref
+            && i < n_bus
+        {
+            adj.pc[i].push(r);
         }
     }
 
@@ -352,14 +352,16 @@ pub fn build_active_bus_adjacency_lists(ckt: &Circuit, store: &dyn ElemStore) ->
         }
         if elem.is_shunt() {
             // Shunt capacitors/reactors go on the PC list (terminal 1).
-            let i = elem.cd().terminals[0].bus_ref;
-            if i < n_bus {
+            if let Some(i) = elem.cd().terminals[0].bus_ref
+                && i < n_bus
+            {
                 adj.pc[i].push(r);
             }
         } else if all_terminals_closed(elem) {
             for term in &elem.cd().terminals {
-                let i = term.bus_ref;
-                if i < n_bus {
+                if let Some(i) = term.bus_ref
+                    && i < n_bus
+                {
                     adj.pd[i].push(r);
                 }
             }

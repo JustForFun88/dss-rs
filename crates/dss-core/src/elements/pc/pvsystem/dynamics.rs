@@ -458,7 +458,7 @@ impl PVSystem {
         // post-solve `ComputeIterminal`/`GetCurrents` reuses the cached terminal
         // current instead of recomputing the model (mirrors `put_curr`).
         self.cd.iterminal_updated = true;
-        self.cd.iterminal_solution_count = sys.solution_count;
+        self.cd.mark_iterminal_solved(sys.solution_count);
 
         // Add into inj current array (`InjCurrent[i] -= Iterminal[i]`).
         let nconds = self.cd.nconds;

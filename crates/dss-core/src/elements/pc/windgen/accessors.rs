@@ -218,7 +218,7 @@ impl CktElement for WindGen {
         // mirroring the other five flag-checking classes (WP-U1.9 / 0.15.x-adoption
         // sweep a3a5). Without this the port recomputes at the new operating point
         // where r4133 freezes.
-        if self.cd.iterminal_solution_count != sys.solution_count
+        if !self.cd.iterminal_solved_for(sys.solution_count)
             && !self.gen_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {
@@ -237,7 +237,7 @@ impl CktElement for WindGen {
             }
             cd.iterminal_updated = true;
         }
-        self.cd.iterminal_solution_count = sys.solution_count;
+        self.cd.mark_iterminal_solved(sys.solution_count);
     }
 }
 

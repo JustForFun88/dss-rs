@@ -258,11 +258,12 @@ impl Dss {
         let store = ClassStore { classes };
         for r in refs {
             let elem = store.ckt_elem(r);
-            if elem.is_shunt() && elem.cd().enabled {
-                let bus = elem.cd().terminals[0].bus_ref;
-                if let Some(b) = ckt.buses.get_mut(bus) {
-                    b.keep = true;
-                }
+            if elem.is_shunt()
+                && elem.cd().enabled
+                && let Some(bus) = elem.cd().terminals[0].bus_ref
+                && let Some(b) = ckt.buses.get_mut(bus)
+            {
+                b.keep = true;
             }
         }
     }

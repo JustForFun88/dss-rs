@@ -1107,7 +1107,7 @@ fn ncim_swing_source_currents(
     // fresh per element for both loops: identical to r4133 on the defined path, and
     // refusing to reproduce the OOB.
     let my_term = |cd: &crate::elements::ckt::CktElementData| -> Option<usize> {
-        (0..cd.nterms).find(|&t| cd.terminals.get(t).map(|x| x.bus_ref) == Some(src_bus))
+        (0..cd.nterms).find(|&t| cd.terminals.get(t).and_then(|x| x.bus_ref) == src_bus)
     };
 
     // r4133 fills a length-`Yorder+1` dynamic `ElmCurrents` with an **offset write**

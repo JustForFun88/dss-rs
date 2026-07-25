@@ -265,7 +265,7 @@ impl CktElement for Storage {
         // Pascal `TStorageObj.GetTerminalCurrents` (@ 0.15.0b4): `and (not
         // (Flg.ForceInjCurrents in Flags))` — skip the model recompute when the
         // currents are forced from the DSS language (WP-U1.9).
-        if self.cd.iterminal_solution_count != sys.solution_count
+        if !self.cd.iterminal_solved_for(sys.solution_count)
             && !self.storage_obj_switch_open
             && !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS)
         {
@@ -294,7 +294,7 @@ impl CktElement for Storage {
                 *c -= cd.inj_current[i];
             }
             self.cd.iterminal_updated = true;
-            self.cd.iterminal_solution_count = sys.solution_count;
+            self.cd.mark_iterminal_solved(sys.solution_count);
             return;
         }
         if self.cd.iterminal_updated {
@@ -309,7 +309,7 @@ impl CktElement for Storage {
             }
             cd.iterminal_updated = true;
         }
-        self.cd.iterminal_solution_count = sys.solution_count;
+        self.cd.mark_iterminal_solved(sys.solution_count);
     }
 }
 

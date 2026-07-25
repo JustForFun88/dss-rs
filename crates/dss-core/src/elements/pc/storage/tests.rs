@@ -385,7 +385,7 @@ fn direct_shortcut_excluded_in_gfm_mode() {
         st.cd.yprim = Some(yp);
         st.cd.set_node_ref(1, &[1, 2, 3, 0]);
         st.cd.inj_current = vec![inj; n];
-        st.cd.iterminal_solution_count = 0; // == solution_count → skip model recompute
+        st.cd.iterminal_solution_count = Some(0); // == solution_count → skip model recompute
         st
     };
 

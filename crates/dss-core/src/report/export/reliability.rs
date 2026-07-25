@@ -52,9 +52,10 @@ pub(crate) fn export_branch_reliability(classes: &[DssClass], ckt: &Circuit) -> 
     );
 
     // The FROM bus of a PD element's metered terminal (Pascal
-    // `Buses^[Terminals[FromTerminal - 1].BusRef]`).
+    // `Buses^[Terminals[FromTerminal - 1].BusRef]`; `from_terminal` is 0-based).
     let from_bus = |cd: &crate::elements::ckt::CktElementData| {
-        &ckt.buses[cd.terminals[cd.from_terminal - 1].bus_ref]
+        &ckt.buses
+            [cd.terminals[cd.from_terminal.expect("PD element has a metered terminal")].bus_idx()]
     };
 
     // Pass 1: `MaxCustomers` over all enabled PDElements (for `Cust-Miles`).

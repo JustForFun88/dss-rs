@@ -616,6 +616,69 @@ This is a re/im-packing cleanup **orthogonal** to the `(t-1)*nconds` metric —
 `0..yorder` loop). Deferred to a focused follow-up (one boundary interleave
 adapter + comparator + test-site sweep) so the gate stays green here.
 
+### DE_PASCALIZE P14 — 0-basing + sentinel sweep [A] (branch `depas-p8p14`)
+
+Stratum **[A]** bit-neutral, on top of P8 (`94d27ae`). 1-based loops and magic
+sentinels retreat to the true user boundary; property parsing + report text keep
+`wdg`/`terminal`/`phase` as the user's 1-based language.
+
+**0-basing (the success metric — `for … in 1..=` gone from the P10-scoped files).**
+The `for i in 1..=np { for j in 1..=nw { …[i-1]…[j-1] } }` remnants P10 left in
+`transformer/windings.rs`, `auto_trans/windings.rs` (`set_term_ref`) and both
+`yterminal.rs` (`calc`'s `y1`/`yterm` column builders + `get_all_winding_currents`
+phase loops) went 0-based; the delta arm keeps a 1-based `rotate_phases(i+1)` call
+because phase rotation *is* 1-based phase math. `auto_trans/accessors.rs::set_node_ref`
+series-alias loop 0-based. `ckt.rs::set_node_ref` hoists the 1→0 conversion once
+(`let t = iterm - 1`). All index arithmetic and matrix column-fill order identical
+→ byte-neutral (transformer/auto_trans YPrim + winding-current goldens + corpus gate
+unchanged). The two `av[kp]`-indexed loops became `av.iter_mut().zip(windings)` to
+clear the `needless_range_loop` I introduced (same values, same order).
+
+**Sentinels → `Option` (four of five).**
+- `CktElementData.iterminal_solution_count: i32 = -1` → `Option<u32>` (None = never
+  computed = the lazy-cache/thread-readiness state made explicit). Two helpers
+  localize the `i32→u32` cast: `iterminal_solved_for(count)` / `mark_iterminal_solved(count)`.
+  ~40 sites across the PC-element accessors/solve/dynamics/user_model. `-1 != count`
+  ≡ `None != Some(count)` → bit-neutral.
+- `CktElementData.handle: usize = 0` → `Option<u32>` (None = not in circuit). Only
+  written (`circuit.rs` `Some(len as u32)`), never read → representational only.
+- `CktElementData.from_terminal`/`to_terminal: usize` → `Option<usize>` **0-based**
+  (`from` default `Some(0)` = Pascal `FromTerminal:=1`; `to` default `None` = Pascal
+  `0`/unset). The reliability sweeps' `if from_t == 2 {1} else {2}` (1-based) became
+  `if from_t == 1 {0} else {1}` (0-based) with `expect` at the guaranteed-set reads;
+  set sites in `zones/build.rs` store `Some(k-1)`.
+- `Terminal::bus_ref: usize` (`usize::MAX` = unset) → `Option<usize>` (~60 real
+  sites). New `Terminal::bus_idx()` resolves the assume-wired index sites (panics
+  identically to the old `buses[MAX]` OOB); genuinely-optional sites use
+  `.and_then(|b| buses.get(b))` / `== Some(x)` / `.unwrap_or(usize::MAX)` where a
+  local `usize` sentinel is still threaded (reduce `LineSnap.bus_refs`, zone-build
+  `test_bus`, topology walk `bus`). `dump.rs` `-1`-render and `ieee1547`/`dispatch`
+  graceful-`get` paths preserved. `NodeBus.bus_ref` (a different field) untouched.
+
+**ESCAPED (leave-green, recorded): `ckt_tree::NO_BUS` → `Option<usize>`.** The
+`TreeNode.from_bus` field is one strand of a `usize`/`NO_BUS`(=`usize::MAX`) sentinel
+web that also spans `ZoneEndsList.ends: Vec<(usize, usize)>`, the zone-build walk
+locals (`test_bus`, `node_from_bus`, `add_new_child(bus_ref: usize)`), the topology
+walk `bus`, and the coordinate-interpolation locals (`first_coord_ref`/
+`second_coord_ref` in `interpolate.rs`), where `NO_BUS` is *load-bearing* in a UB
+guard (`coord_defined` treats it as "no coordinate", never reproducing the Pascal
+`buses[0]` OOB). Converting only the field forces `Option↔NO_BUS` bridging at every
+read — a net **increase** in sentinel surface, not the plan's elimination — and a
+clean conversion means the whole walk web at once (beyond P14's "tree nodes" scope
+and higher-risk than reward). Deferred to a focused zone-walk-wide follow-up.
+
+**Deviation (documented):** the metric line "`for … in 1..=` in `elements` →
+boundary accessors only" is met **for the P10-scoped files**; the broad remainder
+(dump/save report text, `1..=nphases`/`1..=nw`/channel-count loops, Pascal 1-based
+state arrays like vccs filters and storage/pv var tables) are 1-based *by design*
+(user's language / documented STAYS) and out of P14's explicitly-named scope.
+
+Proof (all UNCHANGED): full golden suite (transformer/auto_trans YPrim +
+winding-current + checkpoint byte goldens, reliability/branch-reliability exports,
+show voltages/currents/powers/elements, dumps) + the unconditional corpus gate.
+`STAYS` untouched: `NodeRef==0` ground, `rneut<0` open neutral, parser `-1` node
+sentinel, `ckt_tree` node `from_terminal` (separate 1-based field).
+
 **Prior — DE_PASCALIZE wave 1 MERGED (stage 5 opens): R0 +
 P1(partial) + P2 + P6**, executed as four parallel port→audit→fix worktrees
 (wt-r0 / wt-p1 / wt-p2 / wt-p6, each independently gate-green + opus-audited),

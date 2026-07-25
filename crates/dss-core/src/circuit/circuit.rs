@@ -568,7 +568,7 @@ impl Circuit {
             ElemKind::EnergyMeter => self.energy_meters.push(r),
             ElemKind::Sensor => self.sensors.push(r),
         }
-        elem.cd_mut().handle = self.ckt_elements.len();
+        elem.cd_mut().handle = Some(self.ckt_elements.len() as u32);
     }
 
     /// Pascal `AddBus`: find-or-create the bus, then allocate global node
@@ -670,7 +670,7 @@ impl Circuit {
 
             // AddBus replaces node_buffer values with global references.
             if let Some(bus_idx) = self.add_bus(&bus_name, ncond) {
-                elem.cd_mut().terminals[iterm - 1].bus_ref = bus_idx;
+                elem.cd_mut().terminals[iterm - 1].set_bus(bus_idx);
                 let refs: Vec<usize> = self.node_buffer[..ncond]
                     .iter()
                     .map(|&n| n.max(0) as usize)

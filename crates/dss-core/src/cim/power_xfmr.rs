@@ -662,7 +662,7 @@ pub(crate) fn write_transformers(
             let nw = au.num_windings().max(0) as usize;
             let mut wdgs = Vec::with_capacity(nw);
             for i in 1..=nw {
-                let bus_ref = au.cd.terminals[i - 1].bus_ref;
+                let bus_ref = au.cd.terminals[i - 1].bus_idx();
                 let kvbase = ckt.buses[bus_ref].kv_base;
                 let cim_id = get_or_create_uuid(&mut ckt.buses[bus_ref].uuid).to_cim_string();
                 wdgs.push(AutoWdg {
@@ -709,7 +709,7 @@ pub(crate) fn write_transformers(
             let nw = t.num_windings().max(0) as usize;
             let mut wdgs = Vec::with_capacity(nw);
             for i in 1..=nw {
-                let bus_ref = t.cd.terminals[i - 1].bus_ref;
+                let bus_ref = t.cd.terminals[i - 1].bus_idx();
                 let kvbase = ckt.buses[bus_ref].kv_base;
                 let cim_id = get_or_create_uuid(&mut ckt.buses[bus_ref].uuid).to_cim_string();
                 let bus_spec = &t.cd.bus_names[i - 1];
@@ -1413,7 +1413,7 @@ pub(crate) fn write_reg_controls(
             let phs = phase_string(
                 &tr.cd.bus_names[wi],
                 tr.cd.nphases,
-                ckt.buses[tr.cd.terminals[wi].bus_ref].kv_base,
+                ckt.buses[tr.cd.terminals[wi].bus_idx()].kv_base,
                 true,
             );
             let first_phase = phs.chars().next().unwrap_or('A').to_string();

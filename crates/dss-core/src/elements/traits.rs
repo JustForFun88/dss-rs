@@ -345,12 +345,12 @@ pub trait CktElement: Send {
 
     /// `ComputeIterminal`: cache-aware terminal-current refresh.
     fn compute_iterminal(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
-        if self.cd().iterminal_solution_count != sys.solution_count {
+        if !self.cd().iterminal_solved_for(sys.solution_count) {
             let mut curr = vec![Complex64::ZERO; self.cd().yorder];
             self.get_currents(sys, node_v, &mut curr);
             let cd = self.cd_mut();
             cd.iterminal.copy_from_slice(&curr);
-            cd.iterminal_solution_count = sys.solution_count;
+            cd.mark_iterminal_solved(sys.solution_count);
         }
     }
 
@@ -370,7 +370,7 @@ pub trait CktElement: Send {
         self.get_currents(sys, node_v, &mut curr);
         let cd = self.cd_mut();
         cd.iterminal.copy_from_slice(&curr);
-        cd.iterminal_solution_count = sys.solution_count;
+        cd.mark_iterminal_solved(sys.solution_count);
     }
 
     /// Pascal `TPDElement.IsShunt`: true for shunt-connected capacitors and

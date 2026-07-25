@@ -119,10 +119,10 @@ impl CktElement for AutoTrans {
         if iterm == 2 && self.windings[0].connection == Connection::Series {
             let np = self.cd.nphases;
             let nconds = self.cd.nconds;
-            for i in 1..=np {
-                let src = self.cd.node_ref[nconds + i - 1];
-                self.cd.node_ref[np + i - 1] = src;
-                self.cd.terminals[iterm - 1].term_node_ref[np + i - 1] = src;
+            for i in 0..np {
+                let src = self.cd.node_ref[nconds + i];
+                self.cd.node_ref[np + i] = src;
+                self.cd.terminals[iterm - 1].term_node_ref[np + i] = src;
             }
         }
     }
