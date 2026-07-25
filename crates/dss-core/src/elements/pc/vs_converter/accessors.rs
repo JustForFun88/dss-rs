@@ -6,7 +6,7 @@ use super::{VsConverter, prop};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
+use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 
@@ -64,12 +64,16 @@ impl CktElement for VsConverter {
         self.cd.yprim_invalid = false;
     }
 
-    /// Pascal `TVSConverterObj.InjCurrents`.
-    fn inj_currents(&mut self, _sys: &SysCtx, ctx: &mut InjCtx) {
-        self.get_inj_currents(ctx.node_v);
-        for i in 0..self.cd.yorder {
-            ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
-        }
+    /// Pascal `TVSConverterObj.InjCurrents` (M3b compute half; the caller
+    /// scatters `cd.inj_current`).
+    fn compute_inj_currents(
+        &mut self,
+        _sys: &SysCtx,
+        node_v: &[Complex64],
+        _ctx: &mut InjComputeCtx,
+    ) -> bool {
+        self.get_inj_currents(node_v);
+        false
     }
 
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {

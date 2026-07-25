@@ -9,7 +9,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
+use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 
@@ -95,13 +95,17 @@ impl CktElement for Vccs {
         self.spectrum_obj = spectrum;
     }
 
-    /// Pascal `TVCCSObj.InjCurrents` + `TPCElement.InjCurrents`: fill `inj_current`
-    /// then accumulate it into the system array through `node_ref`.
-    fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
-        self.get_inj_currents(sys, ctx.node_v);
-        for i in 0..self.cd.yorder {
-            ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
-        }
+    /// Pascal `TVCCSObj.InjCurrents` + `TPCElement.InjCurrents` (M3b compute half):
+    /// fill `cd.inj_current`; the caller accumulates it into the system array
+    /// through `node_ref`.
+    fn compute_inj_currents(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        _ctx: &mut InjComputeCtx,
+    ) -> bool {
+        self.get_inj_currents(sys, node_v);
+        false
     }
 
     /// Pascal `TVCCSObj.GetCurrents`: `Curr = -InjCurrent` (since `YPrim = 0`,

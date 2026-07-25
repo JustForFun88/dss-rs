@@ -8,7 +8,7 @@ use super::Isource;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, InjCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::support::cmatrix::CMatrix;
 use crate::support::complexutil::{pdeg_to_complex, rotate_phasor_deg};
@@ -109,7 +109,7 @@ impl Isource {
     /// per-terminal injection array — `+BaseCurr` on terminal 1, `-BaseCurr`
     /// on terminal 2, each phase after the first rotated in place by the
     /// scan-type (harmonic) or sequence-type (fundamental) rule.
-    fn compute_inj_currents(&mut self, sys: &SysCtx) -> Vec<Complex64> {
+    fn base_inj_currents(&mut self, sys: &SysCtx) -> Vec<Complex64> {
         let nphases = self.cd.nphases;
         let mut base_curr = self.get_base_curr(sys); // applies spectrum if needed
         let mut curr = vec![Complex64::ZERO; self.cd.yorder];
@@ -179,12 +179,16 @@ impl CktElement for Isource {
         self.cd.yprim_invalid = false;
     }
 
-    /// Pascal `TIsourceObj.InjCurrents` + `TPCElement.InjCurrents`.
-    fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
-        self.cd.inj_current = self.compute_inj_currents(sys);
-        for i in 0..self.cd.yorder {
-            ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
-        }
+    /// Pascal `TIsourceObj.InjCurrents` + `TPCElement.InjCurrents` (M3b compute
+    /// half; the caller scatters `cd.inj_current`).
+    fn compute_inj_currents(
+        &mut self,
+        sys: &SysCtx,
+        _node_v: &[Complex64],
+        _ctx: &mut InjComputeCtx,
+    ) -> bool {
+        self.cd.inj_current = self.base_inj_currents(sys);
+        false
     }
 
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {
@@ -210,7 +214,7 @@ impl CktElement for Isource {
     /// `Yprim·V` term; `node_v` is unused, matching the Pascal signature that
     /// never reads it either).
     fn get_currents(&mut self, sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
-        let inj = self.compute_inj_currents(sys); // present value of inj currents
+        let inj = self.base_inj_currents(sys); // present value of inj currents
         for i in 0..self.cd.yorder {
             curr[i] = -inj[i];
         }

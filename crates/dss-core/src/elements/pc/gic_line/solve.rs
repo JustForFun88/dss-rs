@@ -8,7 +8,7 @@ use super::GicLine;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, InjCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::util::EPSILON;
 
@@ -131,12 +131,16 @@ impl CktElement for GicLine {
         self.cd.yprim_invalid = false;
     }
 
-    /// Pascal `TGICLineObj.InjCurrents` + `TPCElement.InjCurrents`.
-    fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
+    /// Pascal `TGICLineObj.InjCurrents` + `TPCElement.InjCurrents` (M3b compute
+    /// half; the caller scatters `cd.inj_current`).
+    fn compute_inj_currents(
+        &mut self,
+        sys: &SysCtx,
+        _node_v: &[Complex64],
+        _ctx: &mut InjComputeCtx,
+    ) -> bool {
         self.get_inj_currents(sys);
-        for i in 0..self.cd.yorder {
-            ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
-        }
+        false
     }
 
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {

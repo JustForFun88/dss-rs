@@ -196,33 +196,32 @@ impl SysCtx {
     }
 }
 
-/// Mutable solve-state view for current injection: the node voltage vector
-/// and the system injection-current accumulator (`Solution.NodeV` /
-/// `Solution.Currents`, both with the slot-0 ground convention).
-pub struct InjCtx<'a> {
-    pub node_v: &'a [Complex64],
-    pub currents: &'a mut [Complex64],
-    /// `Solution.SystemYChanged`. A PC element that re-derives its nominal here
-    /// (Storage/PVSystem when `LoadsNeedUpdating`) can invalidate its own YPrim;
-    /// Pascal's `CktElement.set_YprimInvalid` raises `SystemYChanged` as a side
-    /// effect (CktElement.pas l.245), so the snapshot loop rebuilds Y right after
-    /// `GetPCInjCurr` (Solution.pas l.895). Reproduce that side effect by letting
-    /// the element raise this flag.
-    pub system_y_changed: &'a mut bool,
+/// Mutable solve-state the [`CktElement::compute_inj_currents`] fault path needs
+/// *beyond* the (read-only) node-voltage vector, which is passed as a separate
+/// parameter: the solve-time error sink and the abort flag. The current-injection
+/// accumulator (`Solution.Currents`) and `SystemYChanged` are **gone** from this
+/// context — each element fills its own element-owned `cd.inj_current` buffer and
+/// returns the y-changed flag, and the caller scatters `cd.inj_current` into
+/// `Solution.Currents` and ORs the flag sequentially. This is the
+/// `MULTITHREADING_PLAN.md` M3b seam: the per-element compute performs no shared
+/// `Currents` write, so the elements can later compute in parallel into their own
+/// buffers. (`errors`/`solution_abort` remain a shared `&mut` for now — the
+/// per-element collection of those is M3b's own step, DE_PASCALIZE R2 rider note.)
+pub struct InjComputeCtx<'a> {
     /// `DoSimpleMsg` sink for a solve-time model fault surfaced from inside
-    /// `inj_currents` — a WASM user-model **trap**/protocol fault, or a `Model=6`
-    /// Generator with no user model (`#567`/`#5671`, `generator.pas:1834/1943`).
-    /// The inject loop drains this into the solution `ErrorLog`, so the fault is a
-    /// loud typed error, **never a silent fallback** (WASM_USERMODELS plan §2.9-5):
-    /// the terminal-sink `inj_currents` trait method has no `Result`, so this is
-    /// the channel that carries the diagnostic out.
+    /// `compute_inj_currents` — a WASM user-model **trap**/protocol fault, or a
+    /// `Model=6` Generator with no user model (`#567`/`#5671`,
+    /// `generator.pas:1834/1943`). The inject loop drains this into the solution
+    /// `ErrorLog`, so the fault is a loud typed error, **never a silent fallback**
+    /// (WASM_USERMODELS plan §2.9-5): the terminal-sink compute method has no
+    /// `Result`, so this is the channel that carries the diagnostic out.
     pub errors: &'a mut crate::diag::ErrorLog,
-    /// `Solution.SolutionAbort`. A hard model fault raised from `inj_currents`
-    /// (Pascal `DoErrorMsg` / `DSS.SolutionAbort := TRUE`) — e.g. the missing
-    /// dynamics model (`#5671`, `generator.pas:1944`) or >3-phase dynamics
-    /// (`:2023`). Set from an `abort`-flagged diagnostic when the loop drains
-    /// [`Self::errors`], so the surrounding solve stops instead of iterating on a
-    /// best-effort stale current.
+    /// `Solution.SolutionAbort`. A hard model fault raised from
+    /// `compute_inj_currents` (Pascal `DoErrorMsg` / `DSS.SolutionAbort := TRUE`) —
+    /// e.g. the missing dynamics model (`#5671`, `generator.pas:1944`) or >3-phase
+    /// dynamics (`:2023`). Set from an `abort`-flagged diagnostic when the loop
+    /// drains [`Self::errors`], so the surrounding solve stops instead of iterating
+    /// on a best-effort stale current.
     pub solution_abort: &'a mut bool,
 }
 
@@ -261,11 +260,23 @@ pub trait CktElement: Send {
     /// `CalcYPrim` (abstract): rebuild the primitive Y matrices.
     fn calc_yprim(&mut self, sys: &SysCtx);
 
-    /// `InjCurrents` (sources and PC elements): add this element's injection
-    /// into `ctx.currents` through `NodeRef` (slot 0 absorbs ground).
-    /// The base class raises error 753; PD elements never get called.
-    fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
-        let _ = (sys, ctx);
+    /// `InjCurrents` minus the scatter — the `MULTITHREADING_PLAN.md` M3b seam
+    /// (sources and PC elements). Compute this element's injection into its own
+    /// element-owned `cd.inj_current` buffer and return whether it invalidated its
+    /// own YPrim (Pascal `set_YprimInvalid` raising `Solution.SystemYChanged`,
+    /// `CktElement.pas` l.245). The **caller** then scatters `cd.inj_current` into
+    /// `Solution.Currents` through `NodeRef` (slot 0 absorbs ground) and ORs the
+    /// returned flag into `Solution.SystemYChanged`, sequentially and in element
+    /// order — so the sums are bit-identical to the old fused `InjCurrents`, while
+    /// the per-element compute itself performs no shared `Currents` write. The base
+    /// class raises the Pascal "Improper call" error; PD elements never get called.
+    fn compute_inj_currents(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        ctx: &mut InjComputeCtx,
+    ) -> bool {
+        let _ = (sys, node_v, ctx);
         unreachable!(
             "Improper call to InjCurrents for Element: \"{}\"",
             self.cd().obj.name()

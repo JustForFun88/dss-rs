@@ -13,7 +13,7 @@ use crate::elements::general::temp_shape::TShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjCtx, SysCtx};
+use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, UserModelLoad};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -175,10 +175,16 @@ impl CktElement for PVSystem {
         self.base.gfm_mode
     }
 
-    /// Pascal `TPVsystemObj.InjCurrents` + `TPCElement.InjCurrents`.
-    fn inj_currents(&mut self, sys: &SysCtx, ctx: &mut InjCtx) {
+    /// Pascal `TPVsystemObj.InjCurrents` + `TPCElement.InjCurrents` (M3b compute
+    /// half; the caller scatters `cd.inj_current`).
+    fn compute_inj_currents(
+        &mut self,
+        sys: &SysCtx,
+        node_v: &[Complex64],
+        ctx: &mut InjComputeCtx,
+    ) -> bool {
         if !self.cd.enabled {
-            return;
+            return false;
         }
         if sys.loads_need_updating {
             self.set_nominal_der_output(sys);
@@ -186,13 +192,10 @@ impl CktElement for PVSystem {
         // r4133 `TPVsystemObj.InjCurrents` (PVsystem.pas:2173): `if not ForceInjCurr
         // then CalcInjCurrentArray` — skip only the model recompute when the
         // injection is forced; the set-nominal preamble and the inherited add stay
-        // unconditional.
+        // unconditional (caller scatter).
         let mut errors = crate::diag::ErrorLog::new();
         if !self.cd.flags.contains(ElemFlags::FORCE_INJ_CURRENTS) {
-            self.calc_inj_current_array(sys, ctx.node_v, &mut errors);
-        }
-        for i in 0..self.cd.yorder {
-            ctx.currents[self.cd.node_ref[i]] += self.cd.inj_current[i];
+            self.calc_inj_current_array(sys, node_v, &mut errors);
         }
         // Surface any user-model trap / missing-model diagnostic through the
         // solution ErrorLog — never a silent fallback on a trapping `.wasm`
@@ -205,6 +208,7 @@ impl CktElement for PVSystem {
             }
             ctx.errors.push(d);
         }
+        false
     }
 
     /// Pascal `TPVsystemObj.GetTerminalCurrents` + `TPCElement` base.
