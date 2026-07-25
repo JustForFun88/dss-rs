@@ -96,6 +96,15 @@ multi-session WP, in sequence:
    mechanically; then remove `as_any`/`as_any_mut` (52+52 defs) **and**
    `as_ckt_element`/`as_ckt_element_mut` from `DssObject` together, and retire the
    `from_ref`/`to_ref`/`try_ckt_elem` bridges. `clone_box` stays (17 live sites).
+4. **Category C leftover (coordinator check at R2b merge, 2026-07-26): conductor
+   snapshot storage is still `dyn`-owned** — `line_geometry/mod.rs:113`
+   `fwiredata: Vec<Option<Box<dyn DssObject>>>`, `:134` `line_spacing_obj:
+   Option<Box<dyn DssObject>>`, and `line/accessors.rs` `line_wire_data` (same
+   shape). The R0 `ConductorData` trait landed but the storage retype did not.
+   R3 must retype these to typed snapshots (the ~11 conductor-snapshot
+   `clone_box` call sites then become typed `Clone`, leaving only the dispatch
+   `mon_clone` ×3 consumers of `clone_box`). Without this the Part I grep gate
+   (`Box<dyn DssObject>` owned storage = zero) cannot close.
 
 **Net R2b delta from base `5a416ee`:** `downcast_ref|downcast_mut` 416→369 (−47,
 all make_like); `as_any|as_ckt_element` 759→716 (−43); `ElemRef` 927→937 (+10 R3
