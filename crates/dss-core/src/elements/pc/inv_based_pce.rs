@@ -509,10 +509,12 @@ pub struct InvBasedPceData {
     /// `CurrentLimited`.
     pub current_limited: bool,
 
-    /// `UserModelNameStr` — user-DLL model name (NOT_PORTED in safe Rust; stored
-    /// only for the dump).
+    /// `UserModelNameStr` — user model name; a `.wasm` value loads through the
+    /// sandboxed WASM ABI (`WASM_USERMODELS_PLAN.md` §WP-WM.4, §2.4), a native-DLL
+    /// name warns-and-falls-back. Stored for the dump + deferred load.
     pub user_model_name: String,
-    /// `UserModelEditStr` — user-DLL model edit string (NOT_PORTED).
+    /// `UserModelEditStr` — user model edit string, forwarded to the loaded WASM
+    /// model's `edit` (WASM_USERMODELS §WP-WM.4).
     pub user_model_edit: String,
 
     /// `FirstSampleAfterReset`.
