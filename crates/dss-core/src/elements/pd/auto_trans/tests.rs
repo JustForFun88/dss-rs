@@ -3,6 +3,7 @@
 //! 2026-07-08). No solve — the auto YPrim/solve path is WPG.15 Stage B.
 
 use super::*;
+use crate::elements::pd::winding::Connection;
 
 #[test]
 fn create_defaults_match_oracle() {
@@ -14,9 +15,9 @@ fn create_defaults_match_oracle() {
     assert_eq!(t.num_windings, 2);
     assert_eq!(t.cd.nterms, 2);
     // Winding 1 = Series/115 kV, winding 2 = Wye/12.47 kV.
-    assert_eq!(t.windings[0].connection, 2);
+    assert_eq!(t.windings[0].connection, Connection::Series);
     assert_eq!(t.windings[0].kvll, 115.0);
-    assert_eq!(t.windings[1].connection, 0);
+    assert_eq!(t.windings[1].connection, Connection::Wye);
     assert_eq!(t.windings[1].kvll, 12.47);
     // Default reactances: XHX=10 % (puXHX=0.10), XHT=35 %, XXT=30 %.
     assert!((t.puxhx - 0.10).abs() < 1e-15);
@@ -79,10 +80,10 @@ fn unwrap_f64s(a: &PosSeqAction) -> Vec<f64> {
 #[test]
 fn make_pos_sequence_3ph_two_winding() {
     let mut t = AutoTrans::new("at");
-    t.windings[0].connection = 2; // series
+    t.windings[0].connection = Connection::Series;
     t.windings[0].kvll = 4.16;
     t.windings[0].kva = 2000.0;
-    t.windings[1].connection = 0; // common/wye
+    t.windings[1].connection = Connection::Wye;
     t.windings[1].kvll = 12.47;
     t.windings[1].kva = 2000.0;
     t.cd.set_bus(1, "b4");

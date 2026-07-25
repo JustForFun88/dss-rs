@@ -13,6 +13,7 @@ use crate::report::save::dump::{self, DumpCtx};
 use crate::support::cmatrix::CMatrix;
 
 use super::{Transformer, prop};
+use crate::elements::pd::winding::Connection;
 
 impl Transformer {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
@@ -29,9 +30,9 @@ impl Transformer {
             // i's bus name).
             out.push_str(&format!("~ Wdg={i} bus={}\n", self.cd.get_bus(i)));
             match w.connection {
-                0 => out.push_str("~ conn=wye\n"),
-                1 => out.push_str("~ conn=delta\n"),
-                _ => {}
+                Connection::Wye => out.push_str("~ conn=wye\n"),
+                Connection::Delta => out.push_str("~ conn=delta\n"),
+                Connection::Series => {}
             }
             out.push_str(&format!("~ kv={}\n", fixed(w.kvll, 2)));
             out.push_str(&format!("~ kVA={}\n", fixed(w.kva, 1)));

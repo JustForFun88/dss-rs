@@ -6,6 +6,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::xfmr_code::XfmrCodeObj;
+use crate::elements::pd::winding::Connection;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemRef, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
@@ -163,7 +164,7 @@ impl CktElement for Transformer {
             .iter()
             .take(nw)
             .map(|w| {
-                if nphases > 1 || w.connection != 0 {
+                if nphases > 1 || w.connection != Connection::Wye {
                     Some(w.kvll / sqrt3())
                 } else {
                     Some(w.kvll)
@@ -271,7 +272,7 @@ impl DssObject for Transformer {
             PHASES => self.cd.nphases as i32,
             WINDINGS => self.num_windings,
             WDG => self.active_winding,
-            CONN => self.windings[self.aw()].connection,
+            CONN => self.windings[self.aw()].connection.ordinal(),
             NUMTAPS => self.windings[self.aw()].num_taps,
             LEADLAG => self.hv_leads_lv as i32,
             CORE => self.core_type.ordinal(),
@@ -288,7 +289,9 @@ impl DssObject for Transformer {
             WDG => self.active_winding = value,
             CONN => {
                 let w = self.aw();
-                self.windings[w].connection = value;
+                if let Some(c) = Connection::from_ordinal(value) {
+                    self.windings[w].connection = c;
+                }
             }
             NUMTAPS => {
                 let w = self.aw();
@@ -493,7 +496,11 @@ impl DssObject for Transformer {
 
     fn get_struct_i32_array(&self, idx: usize) -> Vec<i32> {
         match idx {
-            prop::CONNS => self.windings.iter().map(|w| w.connection).collect(),
+            prop::CONNS => self
+                .windings
+                .iter()
+                .map(|w| w.connection.ordinal())
+                .collect(),
             // NumTaps rendered as a JSON per-winding array under `ON_ARRAY`
             // (IntegerOnStructArrayProperty; DSSObjectHelper.pas:1054).
             prop::NUMTAPS => self.windings.iter().map(|w| w.num_taps).collect(),
@@ -504,7 +511,9 @@ impl DssObject for Transformer {
         match idx {
             prop::CONNS => {
                 for (w, v) in self.windings.iter_mut().zip(values) {
-                    w.connection = *v;
+                    if let Some(c) = Connection::from_ordinal(*v) {
+                        w.connection = c;
+                    }
                 }
             }
             // JSON import of the per-winding `NumTaps` `ON_ARRAY` scalar
