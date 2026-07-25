@@ -575,6 +575,49 @@ Categories A/B/D/E + the `generator_mut`-family helpers → typed arena matches;
 (d) `as_ckt_element` removal (arena macro ckt/data tag) as a separable sub-WP;
 (e) finally remove `as_any` once (b)+(c)+(d) zero the 416 downcast sites.
 
+**Settler pass (two fresh audits: code + tests, both PASS/ACCEPT of the delivered
+item 7; every finding settled empirically).** Ritual held (186 `.pas`, cargo =
+`.cargo\bin`). Dispositions:
+- *Escaped-site integrity (items 1–6) — CONFIRMED intact.* HEAD grep metrics are
+  byte-identical to base `1f0b768`: `ElemRef` 927/130, `as_any|as_ckt_element`
+  759/134, `downcast_ref|downcast_mut` 416/100. The whole diff `base..HEAD` touches
+  only the 17 seam files + STATUS — no escaped path edited. Blocker records verified:
+  the 5 `*_mut(store: &mut dyn ElemStore) -> &mut T` helpers, dispatch.rs
+  reg→transformer (~955, via `ControlledTransformer`) and cap→capacitor (~1012–1077)
+  downcast sites (dispatch.rs downcast count 113 == base), 50 `make_like(&dyn
+  DssObject)` impls — all present. Records accurate.
+- *Item-7 seam bit-neutrality — CONFIRMED by inspection + oracle.* The scatter loop
+  moved verbatim to the caller (`for i in 0..cd.yorder { sol.currents[cd.node_ref[i]]
+  += cd.inj_current[i] }`) in identical `sources`/`pc_elements` element order and
+  identical `0..yorder` bound → FP sums bit-identical. `system_y_changed`: the ONLY
+  injection-side raiser at base was `storage/accessors.rs` (guarded by
+  `yprim_invalid`); it now returns the flag, caller ORs it — all other PC elements
+  return `false` (matches base; the other `*ctx.system_y_changed=true` hits are
+  control/PD ctx, unrelated, unchanged). Both gating oracles agree (below).
+- *Audit-code Question (caller-scatter has no dedicated unit test) — DISMISSED,
+  non-defect.* Empirical probe: a +1% multiplicative perturbation of the caller
+  scatter breaks **54 dss-core lib oracle tests** (energymeter, dynamics, monitors,
+  solve, storage, upfc, vs_converter, vccs, force_hooks, espvl, …). Probe reverted,
+  no residue. The path is heavily guarded; a dedicated unit test is unnecessary.
+- *Audit-code/tests Note (`clone_box` withdrawn from the R3-dead list) — CONFIRMED
+  correct.* Live at 17 call sites / 9 files (line_geometry & line conductor
+  snapshots, `arena.rs::make_like_within`, dispatch `mon_clone` ×3). Not dead.
+- *Audit-code Minor / audit disclosure (scope 7/8, items 1–6 escaped) — NOTED,
+  deferred to R2b (a→e above).* Not a code defect; a planning matter, fully recorded.
+- *Audit-tests Note (corpus_gate is not concurrency-safe inside a shared worktree —
+  two parallel gate runs race shared EnergyMeter DI / debugtrace output dirs → os
+  error 3 / "Error 303 … being used by another process") — RECORDED as
+  test-infra fragility, out of R2 scope.* Empirically confirmed a contention
+  artifact, not a seam defect: solo `corpus_gate` = **25 passed / 0 failed, 135 s,
+  both channels (capi_v0145 + r4133)**; the injection split cannot affect external
+  file opens. Flagged for a future test-infra WP (serialize corpus runtime output
+  per worktree, or a per-run scratch dir).
+- *Final gate (settler, solo — toolchain guard first):* `cargo fmt --all --check`
+  ok; `cargo clippy --workspace --all-targets -- -D warnings` ok; `cargo test
+  --workspace` = **0 failed** across 66 result groups (no panics/compile errors).
+  Zero golden/tolerance/ledger/`TODO(compat)` churn. Corpus tree pristine
+  (untracked run-artifacts removed by exact name). Tree clean.
+
 ### DE_PASCALIZE R1 — typed arenas: `Idx<T>`/`ElemId`/`Elements` (wave 2, branch `depas-r1`)
 
 Stratum **[A]** bit-neutral. Part I R1 — introduce the `PORTING_PLAN §2.1`
