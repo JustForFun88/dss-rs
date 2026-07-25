@@ -417,51 +417,57 @@ impl CktElementData {
     /// conductors out of `ymatrix`, then zero them and pin a tiny epsilon on
     /// the diagonal; finally add epsilon to all remaining diagonals so no bus
     /// is left hanging. (Indices here are 0-based.)
-    #[allow(clippy::needless_range_loop)] // loop-for-loop Pascal port
     pub fn do_yprim_calcs(&self, ymatrix: &mut CMatrix) {
         let yorder = self.yorder;
         let mut element_open = false;
         let mut row_eliminated: Vec<bool> = Vec::new();
         let c_epsilon = Complex64::new(EPSILON, 0.0);
 
-        let mut k = 0usize;
-        for term in &self.terminals {
-            for j in 0..self.nconds {
-                if !term.conductors_closed[j] {
-                    if !element_open {
-                        row_eliminated = vec![false; yorder];
-                        element_open = true;
-                    }
-                    // Kron reduction of the eliminated row.
-                    let elim = j + k;
-                    let mut ynn = ymatrix.get(elim, elim);
-                    if ynn.norm() == 0.0 {
-                        ynn.re = EPSILON;
-                    }
-                    row_eliminated[elim] = true;
-                    for ii in 0..yorder {
-                        if !row_eliminated[ii] {
-                            let yin = ymatrix.get(ii, elim);
-                            for jj in ii..yorder {
-                                if !row_eliminated[jj] {
-                                    let yij = ymatrix.get(ii, jj);
-                                    let ynj = ymatrix.get(elim, jj);
-                                    // FPC ucomplex `/` (Smith), as Pascal
-                                    // `DoYPrimCalcs` uses — same cancellation-
-                                    // sensitive Kron term as `CMatrix::kron`.
-                                    let v = yij - cdiv_fpc(yin * ynj, ynn);
-                                    ymatrix.set(ii, jj, v);
-                                    ymatrix.set(jj, ii, v);
-                                }
-                            }
-                        }
-                    }
-                    ymatrix.zero_row(elim);
-                    ymatrix.zero_col(elim);
-                    ymatrix.set(elim, elim, c_epsilon);
+        // Each terminal owns conductors `[base, base + nconds)` of the YPrim; the
+        // 0-based `base` replaces the old running `k += nconds` offset.
+        for (term_idx, term) in self.terminals.iter().enumerate() {
+            let base = term_idx * self.nconds;
+            for (j, &closed) in term.conductors_closed.iter().take(self.nconds).enumerate() {
+                if closed {
+                    continue;
                 }
+                if !element_open {
+                    row_eliminated = vec![false; yorder];
+                    element_open = true;
+                }
+                // Kron reduction of the eliminated row/column `elim`.
+                let elim = base + j;
+                let mut ynn = ymatrix.get(elim, elim);
+                if ynn.norm() == 0.0 {
+                    ynn.re = EPSILON;
+                }
+                row_eliminated[elim] = true;
+                // Walk the still-live rows/columns; the upper-triangle sweep
+                // (`jj` starting at `ii`) with the symmetric write preserves the
+                // Pascal accumulation order exactly.
+                for (ii, &ii_gone) in row_eliminated.iter().enumerate() {
+                    if ii_gone {
+                        continue;
+                    }
+                    let yin = ymatrix.get(ii, elim);
+                    for (jj, &jj_gone) in row_eliminated.iter().enumerate().skip(ii) {
+                        if jj_gone {
+                            continue;
+                        }
+                        let yij = ymatrix.get(ii, jj);
+                        let ynj = ymatrix.get(elim, jj);
+                        // FPC ucomplex `/` (Smith), as Pascal `DoYPrimCalcs`
+                        // uses — same cancellation-sensitive Kron term as
+                        // `CMatrix::kron`.
+                        let v = yij - cdiv_fpc(yin * ynj, ynn);
+                        ymatrix.set(ii, jj, v);
+                        ymatrix.set(jj, ii, v);
+                    }
+                }
+                ymatrix.zero_row(elim);
+                ymatrix.zero_col(elim);
+                ymatrix.set(elim, elim, c_epsilon);
             }
-            k += self.nconds;
         }
 
         if element_open {

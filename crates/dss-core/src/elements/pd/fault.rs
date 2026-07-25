@@ -42,7 +42,7 @@ use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::solution::event_log::EventLog;
 use crate::solution::solution::{EVENTDRIVEN, MULTIRATE, SolveMode, TIMEDRIVEN};
-use crate::support::cmatrix::CMatrix;
+use crate::support::cmatrix::{CMatrix, StampBl};
 use crate::support::mathutil::FpcRng;
 
 /// 1-based property ordinals (Pascal `TFaultProp` + the TPDClass/TCktElementClass
@@ -332,20 +332,14 @@ impl CktElement for Fault {
             2 => {
                 // Gmatrix specified.
                 let gm = self.gmatrix.as_ref().expect("SpecType 2 has Gmatrix");
-                for i in 0..nphases {
-                    let ioffset = i * nphases;
-                    for j in 0..nphases {
-                        let value = if self.is_on {
-                            Complex64::new(gm[ioffset + j] / random_mult, 0.0)
-                        } else {
-                            Complex64::ZERO
-                        };
-                        work.set(i, j, value);
-                        work.set(i + nphases, j + nphases, value);
-                        work.set(i, j + nphases, -value);
-                        work.set(j + nphases, i, -value);
+                let is_on = self.is_on;
+                work.stamp_two_terminal_block(nphases, StampBl::Transposed, |i, j| {
+                    if is_on {
+                        Complex64::new(gm[i * nphases + j] / random_mult, 0.0)
+                    } else {
+                        Complex64::ZERO
                     }
-                }
+                });
             }
             _ => {
                 // Single G per phase (SpecType 1): diagonal only.
@@ -354,12 +348,7 @@ impl CktElement for Fault {
                 } else {
                     Complex64::ZERO
                 };
-                for i in 0..nphases {
-                    work.set(i, i, value);
-                    work.set(i + nphases, i + nphases, value);
-                    work.set(i, i + nphases, -value);
-                    work.set(i + nphases, i, -value);
-                }
+                work.stamp_two_terminal_diag(nphases, nphases, value);
             }
         }
 

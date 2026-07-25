@@ -9,7 +9,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
-use crate::support::cmatrix::{CMatrix, cdiv_fpc};
+use crate::support::cmatrix::{CMatrix, StampBl, cdiv_fpc};
 use crate::support::line_constants::csqrt_fpc;
 use crate::support::line_units::{LineUnits, convert_line_units};
 use crate::support::mathutil::SymComp;
@@ -513,15 +513,7 @@ impl CktElement for Line {
             }
         }
 
-        for i in 0..nphases {
-            for j in 0..nphases {
-                let value = zinv.get(i, j);
-                yp_series.set(i, j, value);
-                yp_series.set(i + nphases, j + nphases, value);
-                yp_series.set(i, j + nphases, -value);
-                yp_series.set(j + nphases, i, -value);
-            }
-        }
+        yp_series.stamp_two_terminal_block(nphases, StampBl::Transposed, |i, j| zinv.get(i, j));
 
         yprim.copy_from(&yp_series); // initialize YPrim for series impedances
 

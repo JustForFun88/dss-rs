@@ -50,12 +50,9 @@ impl CktElement for VsConverter {
         let value = Complex64::new(self.f_rac, self.f_xac * freq_multiplier).inv();
 
         let mut yp_series = CMatrix::new(yorder);
-        for i in 0..(nphases - self.ndc) {
-            yp_series.set(i, i, value);
-            yp_series.set(i + nphases, i + nphases, value);
-            yp_series.set(i, i + nphases, -value);
-            yp_series.set(i + nphases, i, -value);
-        }
+        // AC block only: the first `phases − Ndc` conductors, with the two
+        // terminals `nphases` conductors apart.
+        yp_series.stamp_two_terminal_diag(nphases - self.ndc, nphases, value);
 
         let mut yprim = CMatrix::new(yorder);
         yprim.copy_from(&yp_series);

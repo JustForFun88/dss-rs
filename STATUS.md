@@ -298,6 +298,39 @@ no golden/tolerance touched. (2) `relay_type` DssEnum omitting Pascal's
 a string-parse-fallback matter orthogonal to this `[A]` storage-type conversion;
 deferred to a registry-fidelity pass (rationale in `depascalize-p1.md`).
 
+### DE_PASCALIZE P11 — Kron reduction & stamping loops (branch `depas-p11`)
+
+Stratum **[A]** bit-neutral. Two moves:
+
+- **Shared YPrim stamps.** Extracted the three `CalcYPrim` stamping loops every
+  2-terminal element re-derived into `CMatrix` methods:
+  `stamp_two_terminal_block(n, StampBl, value_fn)` (the four-quadrant `(i-1)*nphases`
+  block, `StampBl::Transposed` `(j+n,i)` vs `Direct` `(i+n,j)` bottom-left —
+  the latter preserves Reactor's intentional asymmetric SpecType-3/4 stamp),
+  `stamp_two_terminal_diag(count, off, value)` (the wye diagonal), and
+  `stamp_delta_series(nphases, nconds, value)` (the accumulating delta ring).
+  Applied at 9 sites: Line series, Reactor `stamp_series`/parallel-SpecType3/wye/
+  delta, Capacitor CMatrix/wye/delta, Fault SpecType-2/1, VSConverter AC block.
+  Same cells, same values, same order (`set` quadrants are disjoint; the delta
+  `add` order is replicated exactly).
+- **Kron elimination on named offsets.** `ckt.rs::do_yprim_calcs` now walks
+  terminals via `enumerate()` with `base = term_idx * nconds` instead of the
+  running `k += nconds` offset, and the two inner Kron sweeps iterate
+  `row_eliminated` (skip-eliminated) instead of `0..yorder` range-indexing — the
+  upper-triangle `jj.skip(ii)` + symmetric write keeps the accumulation order
+  identical. The `#[allow(clippy::needless_range_loop)]` is gone.
+
+Diff confined to `do_yprim_calcs` + the new helper (P8/P14 also touch `ckt.rs`).
+Proof (all UNCHANGED): per-element YPrim oracle unit tests (capacitor/reactor/
+line/fault/vs_converter, incl. `asymmetric_sym_components_reactor_unbalanced_solve`
+pinning the `Direct` bottom-left), byte-exact `golden_checkpoints` (11) +
+`transformer_yprim_bitexact`, full `corpus_gate`. New `cmatrix` unit tests pin the
+three helpers (quadrant layout Transposed≠Direct, diag narrow-block, delta
+wraparound-accumulate). Left as-is (recorded, not escaped): Generator YPrim
+(single-terminal wye+neutral / delta — not the terminal-pair pattern) and
+VSConverter's `compute_inj_currents`/`get_currents` `needless_range_loop` allows
+(injection/MVMult loops, not stamps → P14 de-indexing territory).
+
 ### DE_PASCALIZE P13 — VCCS delay line → `RingBuf` (wave 2, branch `wt-p1213-v2`)
 
 Stratum **[A]** bit-neutral. The VCCS z-domain filter's two wrap-around
