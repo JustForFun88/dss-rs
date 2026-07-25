@@ -7,7 +7,7 @@ use super::Capacitor;
 use crate::elements::ckt::CktElementData;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
-use crate::support::cmatrix::CMatrix;
+use crate::support::cmatrix::{CMatrix, StampBl};
 use crate::util::sqrt3;
 
 impl Capacitor {
@@ -98,46 +98,21 @@ impl Capacitor {
                 let mut value = Complex64::new(0.0, self.fc[i_step] * w);
                 if self.connection == 1 {
                     // Delta (line-line); AddElement accumulates.
-                    let value2 = -value;
-                    for i in 1..=nphases {
-                        let mut j = i + 1;
-                        if j > nconds {
-                            j = 1;
-                        }
-                        ywork.add(i - 1, i - 1, value);
-                        ywork.add(j - 1, j - 1, value);
-                        ywork.add(i - 1, j - 1, value2);
-                        ywork.add(j - 1, i - 1, value2);
-                    }
+                    ywork.stamp_delta_series(nphases, nconds, value);
                 } else {
                     // Wye; assignment overwrites.
                     if has_zl {
                         value = (zl + value.inv()).inv(); // add in ZL
                     }
-                    let value2 = -value;
-                    for i in 1..=nphases {
-                        let j = i + nphases;
-                        ywork.set(i - 1, i - 1, value);
-                        ywork.set(j - 1, j - 1, value);
-                        ywork.set(i - 1, j - 1, value2);
-                        ywork.set(j - 1, i - 1, value2);
-                    }
+                    ywork.stamp_two_terminal_diag(nphases, nphases, value);
                 }
             }
             _ => {
                 // CMatrix.
                 let cm = self.cmatrix.as_ref().expect("SpecType 3 has a CMatrix");
-                for i in 1..=nphases {
-                    let ioffset = (i - 1) * nphases;
-                    for j in 1..=nphases {
-                        let value = Complex64::new(0.0, cm[ioffset + (j - 1)] * w);
-                        ywork.set(i - 1, j - 1, value);
-                        ywork.set(i - 1 + nphases, j - 1 + nphases, value);
-                        let nvalue = -value;
-                        ywork.set(i - 1, j - 1 + nphases, nvalue);
-                        ywork.set(j - 1 + nphases, i - 1, nvalue);
-                    }
-                }
+                ywork.stamp_two_terminal_block(nphases, StampBl::Transposed, |i, j| {
+                    Complex64::new(0.0, cm[i * nphases + j] * w)
+                });
             }
         }
 
