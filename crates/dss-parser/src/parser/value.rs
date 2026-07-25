@@ -112,9 +112,15 @@ impl Parser {
             let buf = std::mem::take(&mut self.cmd_buffer);
             let mut pos = self.position;
             self.token_buffer = self.get_token_at(&buf, &mut pos);
+            // P5b: `get_token_at` recorded this token's span in `tok_*`.
+            self.param_span = self.tok_start..self.tok_end;
+            self.value_span = self.param_span.clone();
             if self.last_delimiter == b'=' {
+                // The token just read was the parameter *name*; the next one is
+                // the value. `param_span` keeps the name, `value_span` the value.
                 self.parameter_buffer = std::mem::take(&mut self.token_buffer);
                 self.token_buffer = self.get_token_at(&buf, &mut pos);
+                self.value_span = self.tok_start..self.tok_end;
             } else {
                 self.parameter_buffer.clear();
             }
@@ -123,6 +129,8 @@ impl Parser {
         } else {
             self.parameter_buffer.clear();
             self.token_buffer.clear();
+            self.value_span = self.position..self.position;
+            self.param_span = self.value_span.clone();
         }
         self.check_for_var(vars);
         self.parameter_buffer.clone()
@@ -148,7 +156,10 @@ impl Parser {
             return Ok(0);
         }
         if self.is_quoted_string {
-            let (value, _) = self.interpret_rpn_string(vars)?;
+            let span = self.value_span.clone();
+            let (value, _) = self
+                .interpret_rpn_string(vars)
+                .map_err(|e| e.with_span(span))?;
             return Ok(pascal_round_to_i32(value));
         }
         if let Some(value) = val_i32(&self.token_buffer) {
@@ -161,7 +172,8 @@ impl Parser {
         Err(ParserError::new(format!(
             "Integer number conversion error for string: \"{}\"",
             self.token_buffer
-        )))
+        ))
+        .with_span(self.value_span.clone()))
     }
 
     /// Current token as a double (Pascal `MakeDouble`/`DblValue`). Quoted
@@ -183,7 +195,10 @@ impl Parser {
             return Ok((0.0, false));
         }
         if self.is_quoted_string {
-            return self.interpret_rpn_string(vars);
+            let span = self.value_span.clone();
+            return self
+                .interpret_rpn_string(vars)
+                .map_err(|e| e.with_span(span));
         }
         match val_f64(&self.token_buffer) {
             Some(value) => Ok((value, false)),
@@ -192,7 +207,8 @@ impl Parser {
                 Err(ParserError::new(format!(
                     "Floating point number conversion error for string: \"{}\"",
                     self.token_buffer
-                )))
+                ))
+                .with_span(self.value_span.clone()))
             }
         }
     }
