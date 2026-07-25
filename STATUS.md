@@ -7,6 +7,159 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R2b — CLOSING SUMMARY (a→e complete; store flip = the single R3 prerequisite) (branch `depas-r2b`, 2026-07-26)
+
+R2b executed the R2-escaped block as five sub-steps. **Landed (production
+code):** (a) `ElemId::from_ref` + the `ElemRef`↔`ElemId` `From` bridges (the flip
+enabling primitive); (c) **Category E `make_like` in full** — 50 per-class bodies
+moved `impl DssObject`→inherent `impl X { fn make_like(&mut self, &Self) }`,
+byte-identical, `make_like` **removed from the `DssObject` trait**, dispatch
+narrowed to the single `ClassArena::make_like_within` typed-clone site (this is the
+only sub-step that reduced downcasts: 416→369); (d) the arena **ckt/data tag
+primitive** (`try_ckt_elem`/`try_ckt_elem_mut`, no `Any` round-trip) with arena
+internals rerouted off `as_ckt_element*` onto the tag. **Escaped → R3 (all rooted
+in one blocker):** (a) the `ElemRef`→`ElemId` **spine flip** (427-site first
+field-group cluster + the 5-step sequenced remainder in the (a) record); (b)
+Categories **A** (typed pair/triple getters) / **B** (meter disjoint-borrow reads)
+/ **D** (typed resolved-object handle) + the `generator_mut`/`storage_mut`/
+`pvsystem_mut`/`espvl_mut`/`upfc_mut` family; (d) removal of
+`as_ckt_element`/`as_ckt_element_mut` from `DssObject` + its ~50 external sites;
+(e) removal of `as_any`/`as_any_mut` from `DssObject` + the **364 production
+downcasts** (see the (e) record below for the file-by-file blocker map). **Root
+cause of every escape is a single item:** the item-1 store flip has **no
+gate-green partial state** (a Rust field type is global, so the first field-group
+flip alone breaks 427 all-or-nothing consumer sites, several × that for the whole
+spine) and is the sole prerequisite that then unblocks A/B/D and *both* trait-
+method removals. **R3 shape:** land the store flip as its own multi-session WP
+(the 5-step sequence), add the typed arena accessors (`get::<T>`/`get_mut::<T>`
+returning a concrete ref, no `Any`) + Category-A typed pair/triple getters + the
+Category-D typed resolved-object handle; then the 364 `downcast_*` sites and the
+~174 `as_ckt_element*` sites collapse mechanically and both trait-method families
+are removed together. **Net R2b delta from base `update`@`5a416ee`:** `downcast_ref|
+downcast_mut` 416→369 (−47, all from make_like); `as_any|as_ckt_element` 759→716;
+`ElemRef` 927→937 (+10 = the R3-staged `from_ref`/`From` bridges + their tests);
+`ElemId` 31→34; `TODO(compat)` **117 unchanged**; **zero golden / ledger /
+tolerance churn** across all five sub-steps.
+
+### DE_PASCALIZE R2b sub-step (e) — `as_any` removal: BLOCKED (364 production downcasts, no typed store to zero them); definitive R3 handoff produced (branch `depas-r2b`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base = the (d) tip `5c8d9a5` (on `update`
+@ `5a416ee`). Brief step (e): remove `as_any`/`as_any_mut` from `DssObject` + delete
+the boilerplate impls **only if** the production `downcast_*` count is actually
+zero (test-only downcasts may be restructured or kept, least-churn, disclosed);
+**all-or-nothing per method.** Brief fallback (binding): "If production downcasts
+remain (escaped from b/c/d), do NOT remove the trait methods; instead produce the
+definitive named list (file:line + blocker) as the R3 handoff."
+
+**Verdict: BLOCKED — production downcasts = 364, not zero, and the typed store that
+would zero them was escaped in (a)/(b).** So (e) removes **nothing** (zero
+production code) and lands the definitive R3 handoff below. This is the same
+store-flip wall that blocked (b) and (d): every remaining downcast resolves a
+`&dyn DssObject`/`&mut dyn DssObject` to a **concrete** type, which fundamentally
+needs a typed store/arena or a typed handle — the escaped item-1 flip. The (d)
+`try_ckt_elem` tag cannot help: it yields `&dyn CktElement`, never a concrete `T`.
+
+**Measured downcast population (verified independently this session,
+`crates/dss-core/src`).** Total `downcast_ref|downcast_mut` = **369** =
+**364 production** (69 files) + **3 inline `#[cfg(test)]`** (`elements/pd/transformer/
+mod.rs:506,509`; `solution/inc_matrix.rs:187`) + **2 test-path**
+(`exec/tests/live_ctx.rs`, `exec/tests/reliability.rs`). The 5 test-context sites
+are left as-is (least-churn; they restructure trivially only alongside the R3
+removal). Removal target if unblocked: `fn as_any`/`fn as_any_mut` defs = **52 each**
+(50 per-class boilerplate impls + the trait decl + the base helper).
+
+**Definitive R3 handoff — the 364 production downcasts by blocker** (classifier over
+the source expression feeding each `downcast_*`; 361 auto-classified, ~3
+window-misses fold into the arena buckets). Three blocker families, all gated on
+the item-1 store flip:
+
+- **(1) Typed-arena reads — 214 sites — mechanical once the flip lands a typed
+  accessor `ClassArena::get::<T>(id) -> Option<&T>` / `get_mut::<T>(id)` (concrete
+  ref, no `Any`):**
+  - `store.obj_mut(r).as_any_mut().downcast_mut::<T>()` — **85**: `controls/
+    dispatch.rs` 52, `meters/sampling/take_sample.rs` 9, `exec/command.rs` 5,
+    `solution/ncim.rs` 5, `solution/monte_carlo.rs` 3, `solution/faults.rs` 2,
+    `meters/mod.rs` 2, `solution/monitors.rs` 2, then `exec/set_cmd.rs`,
+    `meters/sampling/allocate.rs`, `solution/{fault_study,power_flow,time_series}.rs` ×1.
+  - `classes[c].arena[i].as_any().downcast_ref::<T>()` (direct arena index) — **77**:
+    `cim/export.rs` 16, `exec/report.rs` 10, `cim/power_xfmr.rs` 8, `cim/ieee1547.rs`
+    6, `exec/reduce.rs` 6, `exec/save_circuit.rs` 6, `exec/view.rs` 5,
+    `exec/helpers.rs` 2, `report/export/profile.rs` 2, `report/show/{diagnostics,
+    meters}.rs` 2 each, then a report/{export,show} + `report/save/dump.rs` tail ×1.
+  - `store.obj(r).as_any().downcast_ref::<T>()` — **52**: `controls/dispatch.rs` 31,
+    `meters/demand_interval.rs` 5, `meters/sampling/allocate.rs` 3, `circuit/
+    auto_add.rs` 2, `meters/zones/flags.rs` 2, `solution/ncim.rs` 2, then
+    `exec/command.rs`, `meters/{reliability,zones/build,sampling/take_sample}.rs`,
+    `solution/{monitors,power_flow,topology}.rs` ×1.
+- **(2) Category A disjoint borrows — 28 sites — need typed pair/triple getters
+  `(&mut RegControl, &mut Transformer)` / `(&mut CapControl, &mut Capacitor)` by
+  ElemId (mind Transformer|AutoTrans via `ControlledTransformer`):** `pair_mut` **23**
+  + `triple_mut` **5**, almost all in `controls/dispatch.rs` — reg→xfmr cluster
+  (`pair_mut` at :603/622/703/719/749/792/814/855/904/926/952), cap→cap cluster
+  (:1009/1050/1065), and self-monitoring `triple_mut` (:680/766/875/1024 + one),
+  plus 5 stragglers (`meters/sampling/allocate.rs` 2, `exec/command.rs` 1,
+  `exec/view.rs` 1, `solution/monitors.rs` 1). The `mon_clone.as_ckt_element_mut()`
+  self-monitor path also needs a typed clone from the arena (touches Category E's
+  `clone_box` consumer, still live).
+- **(3) Category B/D bare `&dyn`/`&mut dyn` params — 119 sites — need the Category-D
+  typed resolved-object handle (change the shared `set_object_ref(resolved:
+  Option<(ElemRef, &dyn DssObject)>)` tuple type across the ~29 `set_object_ref`
+  files — producers `reg_control` accessors:319, `cap_control`:295/315 — and the
+  bare-`obj` readers they feed: `capture_metered(obj: &dyn DssObject)` at
+  `meter/monitor/accessors.rs:267` and `meter/energymeter/accessors.rs:17`) + the
+  Category-B disjoint-borrow meter reads (`meter/monitor/sample.rs`):**
+  `exec/command.rs` 24 (the `edit_*_class` object dispatch, `obj.as_any_mut().
+  downcast_mut::<T>()` at :15-25), `report/save/dump/overrides.rs` 18,
+  `meter/monitor/accessors.rs` 10, `exec/view.rs` 6, `meter/energymeter/
+  accessors.rs` 5, `meter/monitor/sample.rs` 4, `pc/pvsystem/accessors.rs` 4,
+  `report/save/save.rs` 4, `controls/dispatch.rs` 4, `cim/export.rs` 3 (the
+  `conductor_geom_amps(o: &dyn DssObject)` helper :1577), `pc/{storage,windgen}/
+  accessors.rs` 3 each, `pd/line/accessors.rs` 3, then a long tail of per-class
+  `accessors.rs` (`reg_control`, `generator`, `load` ×2; `cap_control`,
+  `inv_control`, `storage_controller`, `ind_mach012`, `isource`, `upfc`, `vccs`,
+  `vsource`, `gic_transformer`, `reactor`, `transformer` ×1) + `control_elem.rs`,
+  `general/line_geometry/edit.rs`, `elements/traits.rs`, `exec/{distribute,reduce,
+  save_circuit}.rs`, `solution/{meters/demand_interval,ncim,meters/sampling/
+  allocate}.rs` ×1-2.
+
+**`from_ref`/`to_ref` bridge sweep (brief item).** Swept the whole tree:
+`from_ref`, `to_ref`, `From<ElemRef>`, `From<ElemId>` have **zero external call
+sites** — they live only in `obj/arena.rs` (the definitions + the (a) self-tests
+`from_ref_covers_every_class_and_round_trips` / `elemid_ref_bridge_round_trips`).
+The flip never started (escaped in a/b), so no call site "became typed"; there is
+nothing to remove. The bridges are the R3 enabling primitive (exactly as (a)
+landed them and (d) landed `try_ckt_elem`) — **KEPT and flagged for R3**. They are
+`pub`, so no dead-code warning; the gate stays green.
+
+**Metrics (HEAD `5c8d9a5`; (e) is zero-code, so identical to the (d) tip).**
+
+| metric (`rg … crates/dss-core/src`) | count | note |
+|---|---|---|
+| `ElemRef` | **937** | +10 vs base = R3-staged `from_ref`/`From` bridges + tests |
+| `as_any\|as_ckt_element` | **716** | −43 vs base 759 (make_like extraction, net of (d)'s +4 doc/test refs) |
+| `downcast_ref\|downcast_mut` | **369** | 364 prod + 3 inline-test + 2 test-path (−47 vs base 416, all make_like) |
+| `TODO(compat)` | **117** | **unchanged** (base = 117) |
+| `ElemId` | **34** | +3 vs (a) = (d) `try_ckt_elem` test refs |
+| `fn as_any` / `fn as_any_mut` defs | **52 / 52** | the removal target R3 unblocks |
+
+Zero golden / ledger / tolerance churn (no production path edited this sub-step).
+
+**Deviations disclosed.** (1) (e) landed **zero production code** — the trait
+removal is all-or-nothing and the production downcast count is 364, not zero;
+blocked on the same escaped store flip as (b)/(d). (2) No boilerplate impls
+deleted, no trait method removed — correct per the brief's zero-count gate. (3)
+Ritual "two fresh independent audits (code/tests)" not run — there is **no
+production diff to audit** (STATUS-only commit); nothing changed to regress. (4)
+The 3 inline-test + 2 test-path downcasts left in place (least-churn; they only
+restructure alongside the R3 trait removal).
+
+**Gate.** Toolchain guard first (`cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`;
+186 `.pas` under `.inputs/dss_capi`). `cargo fmt --all --check` ok; `cargo clippy
+--workspace --all-targets -- -D warnings` ok; `cargo test --workspace` exit 0 — 66
+`test result: ok` lines, 0 failures, `corpus_gate_all_cases_match_engines … ok`
+(both channels capi_v0145 + r4133), run **solo**. Tree clean; no corpus
+run-artifacts left.
+
 ### DE_PASCALIZE R2b sub-step (d) — `as_ckt_element` removal: arena ckt/data tag primitive landed; trait-method removal escape-recorded (blocked on the escaped store flip) (branch `depas-r2b`, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Base = the (c) tip `6c40830` (on `update` @ `5a416ee`).
