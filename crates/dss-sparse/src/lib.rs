@@ -12,6 +12,8 @@
 #[cfg(test)]
 mod tests;
 
+pub mod compat;
+
 mod real;
 pub use real::RealSparseSet;
 
@@ -458,8 +460,9 @@ impl SparseSet {
         // own order, which differs in the last ULP on cells fed by several
         // elements (the diagonal/mutual sums). Pre-summing here keeps the
         // assembled system Y bit-identical to the Pascal oracle — whose
-        // element YPrims we already match after `cdiv_fpc` — since the engine
-        // stamps elements in creation order, exactly like the reference.
+        // element YPrims we already match after the FPC-Smith complex-division
+        // kernel (`dss-core` `compat::cdiv`) — since the engine stamps elements
+        // in creation order, exactly like the reference.
         //
         // The dedup mapping is cached (`AssembleCache`) so subsequent rebuilds of
         // the same pattern take the fast path above.

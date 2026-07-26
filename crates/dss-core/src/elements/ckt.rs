@@ -10,10 +10,11 @@
 use num_complex::Complex64;
 
 use crate::circuit::Terminal;
+use crate::compat;
 use crate::elements::traits::ElemId;
 use crate::obj::base::DssObjData;
 use crate::report::format::strip_extension;
-use crate::support::cmatrix::{CMatrix, cdiv_fpc};
+use crate::support::cmatrix::CMatrix;
 use crate::util::EPSILON;
 
 /// Element status flags — the element-level subset of Pascal
@@ -586,7 +587,7 @@ impl CktElementData {
                         // FPC ucomplex `/` (Smith), as Pascal `DoYPrimCalcs`
                         // uses — same cancellation-sensitive Kron term as
                         // `CMatrix::kron`.
-                        let v = yij - cdiv_fpc(yin * ynj, ynn);
+                        let v = yij - compat::cdiv(yin * ynj, ynn);
                         ymatrix.set(ii, jj, v);
                         ymatrix.set(jj, ii, v);
                     }

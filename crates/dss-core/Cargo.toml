@@ -3,6 +3,16 @@ name = "dss-core"
 version = "0.1.0"
 edition = "2024"
 
+# Stage F lane split (DE_PASCALIZE Part IV.2). `oracle-parity` is **additive**:
+# it selects the bit-compat kernels (`src/compat.rs`) that keep every existing
+# oracle gate — byte goldens, checkpoint Y, corpus floors, iteration counts —
+# green forever. The default build is the idiomatic-Rust product lane. Enabling
+# it here propagates to the two other crates that carry compat kernels, so
+# `cargo test --workspace --features dss-core/oracle-parity` builds one
+# consistent parity workspace.
+[features]
+oracle-parity = ["dss-parser/oracle-parity", "dss-sparse/oracle-parity"]
+
 [dependencies]
 dss-metis = { path = "../dss-metis" }
 dss-parser = { path = "../dss-parser" }

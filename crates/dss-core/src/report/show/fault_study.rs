@@ -19,8 +19,9 @@
 use num_complex::Complex64;
 
 use crate::circuit::Circuit;
+use crate::compat;
 use crate::report::format;
-use crate::support::cmatrix::{CMatrix, cdiv_fpc};
+use crate::support::cmatrix::CMatrix;
 use crate::support::mathutil::get_xr;
 
 /// Build the `Show Faults` text (Pascal `ShowFaultStudy`). Reads the precomputed
@@ -66,7 +67,7 @@ pub(crate) fn show_fault_study(ckt: &Circuit) -> String {
             s.push_str(&bus.get_num(i).to_string());
             s.push_str(&format::fixed_w(curr_mag, 15, 0));
             if curr_mag > 0.0 {
-                let zbus = cdiv_fpc(bus.vbus[i], bus.bus_current[i]);
+                let zbus = compat::cdiv(bus.vbus[i], bus.bus_current[i]);
                 s.push(' ');
                 s.push_str(&format::fixed_w(get_xr(zbus), 5, 1));
             } else {
@@ -92,7 +93,7 @@ pub(crate) fn show_fault_study(ckt: &Circuit) -> String {
         let padded = format::pad(&format::enclose_quotes(&bus.name.to_uppercase()), mbnl + 2);
         for iphs in 0..n {
             // `IFault := VBus[iphs] / Zsc[iphs,iphs]` (FPC `ucomplex` `/`).
-            let ifault = cdiv_fpc(bus.vbus[iphs], zsc.get(iphs, iphs));
+            let ifault = compat::cdiv(bus.vbus[iphs], zsc.get(iphs, iphs));
             // `Format('%s %4u %12.0f ', …)` then `'   '`.
             s.push_str(&padded);
             s.push(' ');

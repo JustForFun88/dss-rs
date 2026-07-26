@@ -198,7 +198,7 @@ fn deri_full_3cond() {
 /// form), and `ln(cmod)+j·atan2`. The Carson DERI and cable earth terms call
 /// these; `num_complex`'s `.sqrt()`/`.ln()` round the last bit differently,
 /// which surfaced as a 1-ULP gap in the earth-return resistance part — the same
-/// class of bug as the `cdiv_fpc` division mismatch. Bits captured from the
+/// class of bug as the `compat::cdiv` division mismatch. Bits captured from the
 /// x86_64 FPC `ucomplex` RTL.
 #[test]
 fn fpc_complex_primitives_match_ucomplex_not_num_complex() {
@@ -237,7 +237,7 @@ fn fpc_complex_primitives_match_ucomplex_not_num_complex() {
 
 /// DERI overhead per-meter `Z` is **bit-for-bit** to the oracle wherever the
 /// remaining libm floor doesn't bite: the diagonal (Bessel skin-effect `Zint` +
-/// earth `Ze`, via `csqrt_fpc`/`cln_fpc`/`cdiv_fpc`) and the distance-2 mutual.
+/// earth `Ze`, via `csqrt_fpc`/`cln_fpc`/`compat::cdiv`) and the distance-2 mutual.
 /// The adjacent mutual's *real* part keeps a proven 1-ULP `arctan2` (`carg`)
 /// floor — `Fme`/`Cinv`/`hterm`/`Csqrt`/`ln(cmod)` are all bit-exact, only the
 /// final `arctan2` in `Cln`'s imag differs (the same external-libm last-bit

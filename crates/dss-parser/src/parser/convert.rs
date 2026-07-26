@@ -42,20 +42,9 @@ pub fn val_i32(s: &str) -> Option<i32> {
     i32::try_from(value).ok()
 }
 
-/// FPC `Round`: round-to-nearest-even to Int64 (x87/SSE default mode; out of
-/// range and non-finite give the "integer indefinite" `i64::MIN`), then
-/// truncated to i32 like the Pascal `Integer := Round(...)` assignment.
-///
-/// TODO(compat): the integer-indefinite path (`inf`/`nan`/overflow → wrapped
-/// `i64::MIN`, e.g. "inf" → 0) reproduces an FPC/x86 implementation artifact
-/// verified via probe_val.py; make it a proper error once the 1:1 port is
-/// complete.
+/// `Round(x)` assigned to a Pascal `Integer`, through the Stage F lane seam:
+/// the parity kernel reproduces FPC's integer-indefinite artifact, the default
+/// kernel saturates — see [`crate::compat::round_i32`].
 pub(super) fn pascal_round_to_i32(x: f64) -> i32 {
-    let r = x.round_ties_even();
-    let wide = if r >= -(2f64.powi(63)) && r < 2f64.powi(63) {
-        r as i64 // r is finite here: NaN comparisons are false
-    } else {
-        i64::MIN
-    };
-    wide as i32
+    crate::compat::round_i32(x)
 }

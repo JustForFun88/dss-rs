@@ -1,4 +1,5 @@
-//! Regression guard for the complex-division port bug (cmatrix `cdiv_fpc`).
+//! Regression guard for the complex-division port bug (the parity kernel
+//! `compat::cdiv`, formerly `cmatrix::cdiv_fpc`).
 //!
 //! The Gauss-Jordan inversion in `TcMatrix.Invert` divides by the pivot with
 //! FPC `ucomplex`'s `/` operator, which is **Smith's overflow-safe abs-ratio**
