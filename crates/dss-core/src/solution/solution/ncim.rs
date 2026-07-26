@@ -1,5 +1,17 @@
-//! Port of `Common/NCIMSolutionHelper.pas`: the Newton Current-Injection Method
-//! (NCIM) power-flow solver (`Set Algorithm=NCIM`).
+//! The Newton Current-Injection Method (NCIM) power-flow solver
+//! (`Set Algorithm=NCIM`).
+//!
+//! **Spec of record: EPRI r4133 `Version8/Source/Common/Solution.pas`**, where
+//! NCIM lives inline (`DoNCIMSolution` l.1095, `GetNCIMPowers` l.1256,
+//! `DoPVBusNCIM`/`DoPQBusNCIM`/`DoZBusNCIM` l.1364/1459/1514, `InitNCIM` l.1771,
+//! `CalcInjCurr` l.1847, `GetNumGenerators` l.1884, `UpdateGenQ` l.1993,
+//! `BuildJacobian` l.2326). The `NCIM_*` names and `NCIMSolutionHelper.pas`
+//! line numbers in the per-function docs below are the *retired* capi015 r4103
+//! refactor this file was originally ported from (that file exists in no
+//! vendored tree); every routine was re-verified against the r4133 source, and
+//! the one behavioral difference — the PV↔PQ switching cadence in
+//! [`ncim_update_gen_q`] — is now r4133's (ORPHANED_GAPS §1.6,
+//! `docs/upgrade/DIVERGENCES.md`).
 //!
 //! NCIM is a full Newton power flow in **rectangular current-injection form**.
 //! The state is the real/imaginary parts of every node voltage; the mismatch is
@@ -517,9 +529,16 @@ fn ncim_init_pq_gen(ckt: &mut Circuit, env: &mut SolveEnv) {
     }
 }
 
-/// Pascal `NCIM_UpdateGenQ` (l.682): update every generator's reactive-power delta
-/// from the solved `NCIM_deltaZ` gen-section, enforce Q-limits with automatic
-/// PV↔PQ (model 3↔4) switching, and refresh the reported terminal currents.
+/// Pascal `TSolutionObj.UpdateGenQ` (**r4133** `Common/Solution.pas` l.1993-2322;
+/// byte-identical in r4088 apart from commented-out debug I/O): update every
+/// generator's reactive-power delta from the solved `NCIM_deltaZ` gen-section,
+/// enforce Q-limits with automatic PV↔PQ (model 3↔4) switching, and refresh the
+/// reported terminal currents.
+///
+/// The `if GenModel = 3 … else …` split (r4133 l.2059/l.2166) is the **switching
+/// cadence**: PV→PQ and PQ→PV conversions are mutually exclusive within one
+/// Newton pass. Adopting it (ORPHANED_GAPS §1.6) is what makes IEEE118Bus
+/// converge; the retired capi015 r4103 form ran both tests every pass.
 fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
     if ckt.generators.is_empty() {
         return;
@@ -595,60 +614,79 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
                 } else {
                     (0.0, 0.0)
                 };
-                let sign = gobj.delta_q_nom[0] >= 0.0;
-                for q in gobj.delta_q_nom.iter_mut().take(nphases) {
-                    *q = if sign { qmax } else { qmin };
-                }
-            }
-        }
-
-        if gobj.gen_model == 4 && gobj.kvar_max != 0.0 && gobj.kvar_min != 0.0 {
-            let mut pq_ok = true;
-            let bidx = q_node_ref_pq.iter().position(|&b| b == node_refs[0]);
-            if bidx.is_none() {
-                let checked = pq_checked.iter().any(|&b| b == node_refs[0]);
-                if !checked {
-                    let my_vmax = gobj.v_base * gobj.vpu;
-                    for &nr in &node_refs {
-                        let vnode = ckt.solution.node_v[nr].norm();
-                        if gobj.delta_q_nom[0] > 0.0 {
-                            pq_ok = pq_ok && (vnode <= my_vmax);
-                        } else {
-                            pq_ok = pq_ok && (vnode >= my_vmax);
-                        }
-                        pq_checked.push(nr);
-                    }
-                }
-            } else {
-                pq_ok = false;
-            }
-            if !pq_ok {
-                gobj.gen_model = 3;
-                let sign = gobj.delta_q_nom[0] >= 0.0;
-                for (j, &nr) in node_refs.iter().enumerate() {
-                    let (qmax, qmin) = if bidx.is_none() {
-                        q_node_ref_pq.push(nr);
-                        (
-                            ckt.solution.ncim_node_limits[nr].re,
-                            ckt.solution.ncim_node_limits[nr].im,
-                        )
+                // r4133 l.2148-2156: the sign test re-reads `deltaQNom[0]` on
+                // every phase, so phase 0's own overwrite feeds the later phases
+                // (identical for the usual `qMax >= 0 > qMin`, faithful when not).
+                for j in 0..nphases {
+                    gobj.delta_q_nom[j] = if gobj.delta_q_nom[0] >= 0.0 {
+                        qmax
                     } else {
-                        (0.0, 0.0)
+                        qmin
                     };
-                    gobj.delta_q_nom[j] = if sign { qmax } else { qmin };
                 }
-                gobj.ncim_expv = false;
             }
-        }
+        } else {
+            // r4133 l.2166-2309 — the ELSE arm. A generator that entered this
+            // pass as model 3 is NOT re-examined here even after the branch above
+            // converted it to model 4: the PQ→PV test only ever sees generators
+            // that were already PQ when the pass began. (The retired capi015
+            // r4103 loop ran this block unconditionally, so a just-converted
+            // PV→PQ generator could be flipped straight back to PV in the same
+            // pass — the PV↔PQ chatter that stalls IEEE118Bus at 100 iterations
+            // while r4088/r4133 converge. See ORPHANED_GAPS §1.6 / DIVERGENCES.)
+            if gobj.gen_model == 4 && gobj.kvar_max != 0.0 && gobj.kvar_min != 0.0 {
+                let mut pq_ok = true;
+                let bidx = q_node_ref_pq.iter().position(|&b| b == node_refs[0]);
+                if bidx.is_none() {
+                    let checked = pq_checked.iter().any(|&b| b == node_refs[0]);
+                    if !checked {
+                        let my_vmax = gobj.v_base * gobj.vpu;
+                        for &nr in &node_refs {
+                            let vnode = ckt.solution.node_v[nr].norm();
+                            if gobj.delta_q_nom[0] > 0.0 {
+                                pq_ok = pq_ok && (vnode <= my_vmax);
+                            } else {
+                                pq_ok = pq_ok && (vnode >= my_vmax);
+                            }
+                            pq_checked.push(nr);
+                        }
+                    }
+                } else {
+                    pq_ok = false;
+                }
+                if !pq_ok {
+                    gobj.gen_model = 3;
+                    for (j, &nr) in node_refs.iter().enumerate() {
+                        let (qmax, qmin) = if bidx.is_none() {
+                            q_node_ref_pq.push(nr);
+                            (
+                                ckt.solution.ncim_node_limits[nr].re,
+                                ckt.solution.ncim_node_limits[nr].im,
+                            )
+                        } else {
+                            (0.0, 0.0)
+                        };
+                        // r4133 l.2253: `deltaQNom[0]` re-read per phase (as above).
+                        gobj.delta_q_nom[j] = if gobj.delta_q_nom[0] >= 0.0 {
+                            qmax
+                        } else {
+                            qmin
+                        };
+                    }
+                    gobj.ncim_expv = false;
+                }
+            }
 
-        // Update the reported terminal currents for every generator model
-        // (Pascal l.772: `Iterminal[j+1] := -cong(cmplx(Pnom, deltaQNom[j])/V)`).
-        if !gobj.delta_q_nom.is_empty() {
-            let q0 = gobj.delta_q_nom[0];
-            let p = gobj.p_nominal_per_phase;
-            for (j, &nr) in node_refs.iter().enumerate() {
-                let volt = ckt.solution.node_v[nr];
-                gobj.cd.iterminal[j] = -(Complex64::new(p, q0) / volt).conj();
+            // r4133 l.2300-2307 "Update currents for all the other gen models" —
+            // inside the ELSE arm too: a model-3 generator's `Iterminal` was
+            // already stamped per phase (`deltaQNom[j]`) in the PV branch above.
+            if !gobj.delta_q_nom.is_empty() {
+                let q0 = gobj.delta_q_nom[0];
+                let p = gobj.p_nominal_per_phase;
+                for (j, &nr) in node_refs.iter().enumerate() {
+                    let volt = ckt.solution.node_v[nr];
+                    gobj.cd.iterminal[j] = -(Complex64::new(p, q0) / volt).conj();
+                }
             }
         }
     }

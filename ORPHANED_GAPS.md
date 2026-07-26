@@ -115,11 +115,23 @@ deferred.
   See STATUS §OG-1.5c settle round.
 
 ### 1.6 IEEE118Bus NCIM `PV→PQ` r4133 switching cadence
-- **Deferred by:** UPGRADE_PLAN (parked to "a future rung" that has no plan).
-- **What:** the port's NCIM matches its `capi015` oracle loop-for-loop **including non-convergence** (both stall at byte-identical voltages, 100 iters); EPRI r4088/r4133 converge in 2 iters via a newer NCIM PV→PQ switching cadence the port has not adopted.
-- **Spec:** the r4133 `Common/NCIMSolutionHelper.pas` diff vs the ported `r4103` version (needs the newer vendored source).
-- **Current state:** parked in `tests/corpus/manifests/skipped_needs_investigation.json` (tag `ncim_pv_pq_switching_divergence`); report-only in `docs/upgrade/DIVERGENCES.md`.
-- **To do:** port the newer cadence, then promote `IEEE118Bus`. **This is genuinely a new UPGRADE rung** (adopting a behavior *past* r4133-as-shipped). **Priority: low**, and note it moves the parity target.
+**ADOPTED 2026-07-26** on `depas-og2` — see STATUS §OG-1.6. The r4133 cadence is
+one structural difference, not a solver restructure: `UpdateGenQ`'s
+`if GenModel = 3 … else …` (r4133 `Version8/Source/Common/Solution.pas` l.2059 /
+l.2166; byte-identical in r4088) makes PV→PQ and PQ→PV **mutually exclusive
+within one Newton pass**, while the ported capi015 r4103 form ran the PQ→PV test
+unconditionally — so a generator converted PV→PQ could be flipped straight back
+in the same pass. That chatter (around `|V| = VTarget`) was the whole
+non-convergence: IEEE118Bus now converges in **exactly r4133's 9 cold iterations**
+at the same voltages, `Xmission_System_Kundur2Area` + the three `modes/ncim/*`
+decks keep their exact iteration counts, and the frozen capi015 report goldens
+(`tests/golden/ncim/`) still pass unchanged. `IEEE118Bus/master_file.dss` is
+promoted to `solvable_now` with `engines:"r4133"`, no ledger entry; the two unit
+pins that encoded capi015 cadence artifacts (`pv_qlimit` 8 iters; the `vpu=1.02`
+"shared non-convergence") are re-pinned to live r4133 probe values (4 iters,
+converged). Note: r4133's `PV2PQList` bookkeeping needs no port — the port's
+`Generator.ncim_expv` flag already is it (same set/clear events), and r4133's own
+`ReversePQ2PV`/`DistGenClusters` consumers are dead code.
 
 ### 1.7 UPFC control modes 2/3/5
 **PORTED 2026-07-18** on `og17-upfc-modes` — see STATUS. The mode dispatch
