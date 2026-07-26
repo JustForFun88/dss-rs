@@ -99,20 +99,31 @@ the resolve-time `_ref` companions of the Category-D snapshot clones —
 `load/mod.rs:325-329` `yearly`/`daily`/`duty`/`cvr`/`growth_shape_ref`,
 `inv_based_pce.rs:447-454` `yearly`/`daily`/`duty_shape_ref` +
 `inverter_curve_ref` (shared by PVSystem/Storage), `pd/line/mod.rs:294` `line_code_ref`, `pd/transformer/mod.rs:321`
-`xfmr_code_ref`, and the sibling per-class `*_ref: Option<ElemId>` fields. **Blocker:
-they are written by exactly one producer — the shared `DssObject::set_object_ref(idx,
-name, resolved: Option<(ElemId, &dyn DssObject)>)` tuple**, which is class-agnostic
-by construction and lives in ~29 element accessor files. Narrowing a *stored* field
-to `Idx<LoadShapeObj>` therefore requires retyping that shared tuple per expected
-variant first — which **is** the plan's Category-D typed resolved-object handle,
-explicitly scheduled as **R3 item 2** (`DE_PASCALIZE_PLAN.md` R2 l.342: "typed handle
-in resolved object-ref tuple; per-class `set_object_ref` match"), and the (a) record
-itself notes step 4 "couples to the typed-store reads of sub-step (b) (Category D),
-so best done with (b)". Doing it here would mean either bolting a per-class
-`set_object_ref_typed` beside the existing one (a stopgap the escape protocol
-forbids) or landing Category D early and out of sequence. **Recommendation: fold
-(iv) into R3 item 2**, where the same tuple is retyped once and each field falls out
-typed for free.
+`xfmr_code_ref`, and their siblings: **34 field declarations, 16 distinct names,
+~14 classes** (`*_shape_ref` → LoadShape, `*_t_shape_ref` → TShape,
+`growth_shape_ref` → GrowthShape, `line_code_ref` → LineCode, `xfmr_code_ref` →
+XfmrCode, `inverter_curve`/`loss_curve`/`power_temp_curve`/`vv_curve_ref` → XYcurve,
+`dynamic_eq_ref` → DynamicExp, `gic_source.line_ref` → Line).
+
+**Blocker — measured on the readers, not the writers.** The *write* side is easy
+(the shared `DssObject::set_object_ref(idx, name, resolved: Option<(ElemId, &dyn
+DssObject)>)` already carries an `ElemId`, so each class could narrow it with a
+one-variant match). The *read* side is what blocks: `Idx<T>` deliberately drops the
+class ordinal, and every non-trivial consumer of these fields still needs it —
+e.g. `cim/power_xfmr.rs:761-775` does `classes[cr.class_ord()].arena[cr.index()]
+.as_any().downcast_ref::<XfmrCodeObj>()` on `Transformer::xfmr_code_ref()`.
+Dereferencing an `Idx<XfmrCodeObj>` requires the typed arena accessor
+`ClassArena::get::<T>(idx) -> Option<&T>` (concrete ref, no `Any`) — which is
+**R3 item 2**, and which simultaneously *removes* that downcast (item 3). Landing
+(iv) alone would leave 34 fields that nothing can dereference until item 2 exists,
+and would either need a per-class `set_object_ref_typed` bolted beside the existing
+one (a stopgap the escape protocol forbids) or Category D pulled in early. This
+matches the plan (`DE_PASCALIZE_PLAN.md` R2 l.342, "typed handle in resolved
+object-ref tuple; per-class `set_object_ref` match") and the R2b (a) record's own
+note that step 4 "couples to the typed-store reads of sub-step (b) (Category D), so
+best done with (b)". **Recommendation: fold (iv) into R3 item 2**, where the typed
+accessor, the per-class `set_object_ref` match and these 34 fields all land in one
+coherent pass.
 
 **Deviations disclosed.** (1) Sub-steps (i)/(ii)/(iii)/(v) grouped into one commit —
 rationale + measurement above; they are inseparable in the zero-bridge form. (2)
