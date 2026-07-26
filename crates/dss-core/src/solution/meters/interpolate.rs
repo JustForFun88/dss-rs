@@ -14,11 +14,12 @@ use crate::elements::traits::{ElemId, ElemStore};
 use super::meter_mut;
 
 /// Safe read of `buses[i].CoordDefined`. Pascal indexes `buses[BusRef]`
-/// unguarded; a node with no from-bus (`NO_BUS`, Pascal `0`) would read
+/// unguarded; a node with no from-bus (`None`, Pascal `0`) would read
 /// `buses[0]` — out of the 1-based array, an undefined heap read. UB is never
 /// reproduced (CLAUDE.md known-bug rule): treat it as "no coordinate".
-fn coord_defined(ckt: &Circuit, bus: usize) -> bool {
-    ckt.buses.get(bus).is_some_and(|b| b.coord_defined)
+fn coord_defined(ckt: &Circuit, bus: Option<usize>) -> bool {
+    bus.and_then(|b| ckt.buses.get(b))
+        .is_some_and(|b| b.coord_defined)
 }
 
 /// Pascal `TEnergyMeterObj.InterpolateCoordinates` (`EnergyMeter.pas:2298`):
@@ -42,11 +43,13 @@ pub(crate) fn interpolate_coordinates(
         let (end_node, bus_ref) = tree.zone_ends.ends[i];
         let mut present: Option<usize> = Some(end_node);
 
-        let mut first_coord_ref = bus_ref;
+        // `zone_ends` only ever records a real, in-range bus (`zones::build`
+        // guards it), so the end anchor starts as `Some`.
+        let mut first_coord_ref = Some(bus_ref);
         let mut second_coord_ref = first_coord_ref; // Pascal: "so compiler won't issue stupid warning"
 
         // Find a bus with a coordinate.
-        if !coord_defined(ckt, bus_ref) {
+        if !coord_defined(ckt, Some(bus_ref)) {
             while let Some(p) = present {
                 if coord_defined(ckt, tree.node(p).from_bus) {
                     break;
@@ -122,8 +125,8 @@ pub(crate) fn interpolate_coordinates(
 fn calc_bus_coordinates(
     tree: &CktTree,
     start_branch: usize,
-    first_coord_ref: usize,
-    second_coord_ref: usize,
+    first_coord_ref: Option<usize>,
+    second_coord_ref: Option<usize>,
     mut line_count: usize,
     ckt: &mut Circuit,
 ) {
@@ -132,12 +135,12 @@ fn calc_bus_coordinates(
     }
 
     // Pascal reads `Buses^[FirstCoordRef]`/`[SecondCoordRef]` unguarded; a
-    // stale `first_coord_ref` from a prior iteration can be `NO_BUS`
-    // (`usize::MAX`, a from-terminal with no bus) — an OOB heap read upstream,
-    // never reproduced (CLAUDE.md UB rule): no-op instead.
+    // stale `first_coord_ref` from a prior iteration can be unset (`None`, a
+    // from-terminal with no bus) — an OOB heap read upstream, never reproduced
+    // (CLAUDE.md UB rule): no-op instead.
     let (Some(b1), Some(b2)) = (
-        ckt.buses.get(first_coord_ref),
-        ckt.buses.get(second_coord_ref),
+        first_coord_ref.and_then(|b| ckt.buses.get(b)),
+        second_coord_ref.and_then(|b| ckt.buses.get(b)),
     ) else {
         return;
     };
@@ -155,7 +158,11 @@ fn calc_bus_coordinates(
         // Start with "to" end.
         x -= xinc;
         y -= yinc;
-        if let Some(bus) = ckt.buses.get_mut(tree.node(branch).from_bus) {
+        if let Some(bus) = tree
+            .node(branch)
+            .from_bus
+            .and_then(|b| ckt.buses.get_mut(b))
+        {
             bus.x = x;
             bus.y = y;
             bus.coord_defined = true;
@@ -173,7 +180,11 @@ fn calc_bus_coordinates(
             .node(branch)
             .parent()
             .expect("segment parent visited by the interpolation scan");
-        if let Some(bus) = ckt.buses.get_mut(tree.node(branch).from_bus) {
+        if let Some(bus) = tree
+            .node(branch)
+            .from_bus
+            .and_then(|b| ckt.buses.get_mut(b))
+        {
             bus.x = x;
             bus.y = y;
             bus.coord_defined = true;

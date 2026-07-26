@@ -99,10 +99,12 @@ impl Dss {
             .unwrap_or(false)
     }
 
-    fn red_bus_keep(&self, bus: usize) -> bool {
+    /// `bus = None` (no such bus recorded / cursor exhausted) is "not kept",
+    /// exactly as an out-of-range index was.
+    fn red_bus_keep(&self, bus: Option<usize>) -> bool {
         self.circuit
             .as_ref()
-            .and_then(|c| c.buses.get(bus))
+            .and_then(|c| bus.and_then(|b| c.buses.get(b)))
             .is_some_and(|b| b.keep)
     }
 
@@ -523,16 +525,18 @@ impl Dss {
                 if tree.node(present).is_dangling {
                     // Only access ToBusReference once (Pascal comment); the
                     // `if ToBusRef > 0` guard (`:111`) rejects an invalid
-                    // to-bus — mirrored by requiring a REAL bus index (a
-                    // `Some(NO_BUS)` sentinel must not fall through to the
+                    // to-bus — mirrored by requiring a REAL bus index (an
+                    // unset/out-of-range entry must not fall through to the
                     // keep-check, whose miss would disable the line).
-                    let to_bus = tree.node_mut(present).next_to_bus_reference();
+                    // `.flatten()`: an exhausted cursor and a recorded no-bus
+                    // terminal are both "nothing to check here".
+                    let to_bus = tree.node_mut(present).next_to_bus_reference().flatten();
                     if let Some(bus) = to_bus
                         && self
                             .circuit
                             .as_ref()
                             .is_some_and(|c| c.buses.get(bus).is_some())
-                        && !self.red_bus_keep(bus)
+                        && !self.red_bus_keep(to_bus)
                     {
                         self.red_disable(r);
                     }
@@ -621,10 +625,7 @@ impl Dss {
         let present = tree.present.expect("present set after go_forward");
         let num_children = tree.node(present).num_child_branches();
         let num_shunts = tree.node(present).num_shunt_objects();
-        let to_bus = tree
-            .node_mut(present)
-            .next_to_bus_reference()
-            .unwrap_or(usize::MAX);
+        let to_bus = tree.node_mut(present).next_to_bus_reference().flatten();
         let to_keep = self.red_bus_keep(to_bus);
 
         if num_children == 0 && num_shunts == 0 && !to_keep {
@@ -716,10 +717,7 @@ impl Dss {
                     }
                     1 => {
                         if tree.node(present).num_shunt_objects() == 0 {
-                            let to_bus = tree
-                                .node_mut(present)
-                                .next_to_bus_reference()
-                                .unwrap_or(usize::MAX);
+                            let to_bus = tree.node_mut(present).next_to_bus_reference().flatten();
                             if !self.red_bus_keep(to_bus) {
                                 let child = tree.node(present).children()[0];
                                 let line_elem2 = tree.node(child).elem;
@@ -751,10 +749,7 @@ impl Dss {
                 if tree.node(present).num_child_branches() == 1
                     && tree.node(present).num_shunt_objects() == 0
                 {
-                    let to_bus = tree
-                        .node_mut(present)
-                        .next_to_bus_reference()
-                        .unwrap_or(usize::MAX);
+                    let to_bus = tree.node_mut(present).next_to_bus_reference().flatten();
                     if !self.red_bus_keep(to_bus) {
                         let child = tree.node(present).children()[0];
                         let line_elem2 = tree.node(child).elem;
@@ -785,7 +780,7 @@ impl Dss {
                 .unwrap_or(0);
             if nphases == 1 {
                 let present = tree.present.expect("present set");
-                let to_bus = tree.node_mut(present).next_to_bus_reference();
+                let to_bus = tree.node_mut(present).next_to_bus_reference().flatten();
                 let one_node = to_bus
                     .and_then(|b| self.circuit.as_ref().and_then(|c| c.buses.get(b)))
                     .map(|b| b.num_nodes_this_bus() == 1)
@@ -913,10 +908,10 @@ impl Dss {
     // Shared helpers for the strategies
     // ------------------------------------------------------------------
 
-    fn red_bus_name(&self, bus: usize) -> String {
+    fn red_bus_name(&self, bus: Option<usize>) -> String {
         self.circuit
             .as_ref()
-            .and_then(|c| c.buses.get(bus))
+            .and_then(|c| bus.and_then(|b| c.buses.get(b)))
             .map(|b| b.name.clone())
             .unwrap_or_default()
     }
@@ -965,11 +960,11 @@ impl Dss {
     /// dereference — nondeterministic upstream UB, NOT reproduced (CLAUDE.md
     /// rule). The port reads the live `NodeV[RefNo[1]]` directly, which is
     /// exactly the refreshed-`VBus` value in the well-defined case.
-    fn red_head_base_kv(&mut self, from_bus: usize) -> f64 {
+    fn red_head_base_kv(&mut self, from_bus: Option<usize>) -> f64 {
         let Some(ckt) = self.circuit.as_ref() else {
             return 1.0;
         };
-        let Some(bus) = ckt.buses.get(from_bus) else {
+        let Some(bus) = from_bus.and_then(|b| ckt.buses.get(b)) else {
             return 1.0;
         };
         if bus.kv_base > 0.0 {
@@ -984,7 +979,7 @@ impl Dss {
 
     /// Pascal load kV base for the branch removal (ReduceAlgs.pas:407): the
     /// from-bus `kVBase` (or the `|VBus[1]|·0.001` fallback), ×√3 when NPhases>1.
-    fn red_load_base_kv(&mut self, from_bus: usize, nphases: usize) -> f64 {
+    fn red_load_base_kv(&mut self, from_bus: Option<usize>, nphases: usize) -> f64 {
         let base = self.red_head_base_kv(from_bus);
         if nphases > 1 {
             base * 3f64.sqrt()
