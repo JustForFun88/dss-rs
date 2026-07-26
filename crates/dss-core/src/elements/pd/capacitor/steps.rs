@@ -2,7 +2,7 @@
 //! [`ControlledCapacitor`] surface CapControl drives (Pascal `TCapacitorObj`
 //! switching methods). Step indices are 1-based as in Pascal.
 
-use super::Capacitor;
+use super::{Capacitor, CapacitorSpecType};
 
 impl Capacitor {
     /// Per-step switch states (`States[1..NumSteps]`, 0=open/1=closed). Read by
@@ -96,22 +96,24 @@ impl Capacitor {
 
         if prev_int == 1 {
             match self.spec_type {
-                1 => {
+                CapacitorSpecType::Kvar => {
                     let step_size = self.ftotalkvar / self.fnumsteps as f64;
                     for v in self.fkvarrating.iter_mut() {
                         *v = step_size;
                     }
                 }
-                2 => {
+                CapacitorSpecType::Cuf => {
                     let c0 = self.fc[0];
                     for v in self.fc.iter_mut().skip(1) {
                         *v = c0;
                     }
                 }
-                _ => {}
+                // Pascal's `3:` arm is empty ("Nothing to do since all will be
+                // the same", `Capacitor.pas:427-430`).
+                CapacitorSpecType::CMatrix => {}
             }
             match self.spec_type {
-                1 => {
+                CapacitorSpecType::Kvar => {
                     for v in self.fr.iter_mut() {
                         *v = rstep;
                     }
@@ -119,7 +121,7 @@ impl Capacitor {
                         *v = xlstep;
                     }
                 }
-                2 | 3 => {
+                CapacitorSpecType::Cuf | CapacitorSpecType::CMatrix => {
                     let (r0, xl0) = (self.fr[0], self.fxl[0]);
                     for v in self.fr.iter_mut().skip(1) {
                         *v = r0;
@@ -128,7 +130,6 @@ impl Capacitor {
                         *v = xl0;
                     }
                 }
-                _ => {}
             }
             for v in self.fstates.iter_mut() {
                 *v = 1; // turn 'em all ON

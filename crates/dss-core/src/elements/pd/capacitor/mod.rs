@@ -37,6 +37,49 @@ mod steps;
 
 pub use steps::ControlledCapacitor;
 
+/// Pascal `TCapacitorObj.SpecType` (`Capacitor.pas:116`, `Integer`).
+///
+/// A *derived* code, like the reactor's: no property writes it, so it has no
+/// `DssEnum` registry entry. Three property side effects set it
+/// (`Capacitor.pas:375-386`) and `Create` seeds `Kvar` (`:584`, whose comment
+/// `1=kvar, 2=Cuf, 3=Cmatrix` is the legend).
+///
+/// | value | set by | `Capacitor.pas` |
+/// |---|---|---|
+/// | 1 `Kvar` | `kvar=` | `:377` (and `Create`, `:584`) |
+/// | 2 `Cuf` | `cuf=` | `:385` |
+/// | 3 `CMatrix` | `cmatrix=` | `:381` |
+///
+/// Unlike the reactor's, this ordinal **is** user-visible: `DumpProperties`
+/// with `Complete` writes `SpecType=<int>` (`:764`, golden `dump_capacitor*`),
+/// which is what [`Self::ordinal`] feeds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapacitorSpecType {
+    /// 1 — C computed from the `kvar`/`kV` ratings.
+    Kvar = 1,
+    /// 2 — `Cuf` µF per phase.
+    Cuf = 2,
+    /// 3 — a nodal `CMatrix` (µF).
+    CMatrix = 3,
+}
+
+impl CapacitorSpecType {
+    /// The raw Pascal `SpecType` integer (the `SpecType=` dump line).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the raw Pascal `SpecType` integer; `None` outside 1..=3.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            1 => Some(Self::Kvar),
+            2 => Some(Self::Cuf),
+            3 => Some(Self::CMatrix),
+            _ => None,
+        }
+    }
+}
+
 /// 1-based property ordinals (Pascal `TCapacitorProp` + class tails).
 pub mod prop {
     pub const BUS1: usize = 1;
@@ -130,8 +173,8 @@ pub struct Capacitor {
     cmatrix: Option<Vec<f64>>,
     do_harmonic_recalc: bool,
     bus2_defined: bool,
-    /// 1 = kvar+kV, 2 = Cuf+kV, 3 = CMatrix.
-    spec_type: i32,
+    /// How the capacitance was specified (see [`CapacitorSpecType`]).
+    spec_type: CapacitorSpecType,
     num_term: i32,
     is_shunt: bool,
     connection: i32,
@@ -185,7 +228,7 @@ impl Capacitor {
             cmatrix: None,
             do_harmonic_recalc: false,
             bus2_defined: false,
-            spec_type: 1, // kvar
+            spec_type: CapacitorSpecType::Kvar,
             num_term: 1,
             is_shunt: true,
             connection: 0,                                // wye

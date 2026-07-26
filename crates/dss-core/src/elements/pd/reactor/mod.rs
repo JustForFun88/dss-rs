@@ -40,6 +40,54 @@ mod accessors;
 mod dump;
 mod solve;
 
+/// Pascal `TReactorObj.SpecType` (`Reactor.pas:131-132`, declared `Integer`
+/// with the upstream `//TODO: Use enum for ReactorObj.SpecType` right above it).
+///
+/// A *derived* code: no property writes it, so it has no `DssEnum` registry
+/// entry. It is set by six property side effects (`Reactor.pas:380-491`) and
+/// zero-initialized to [`Self::Kvar`] in `Create` (`:601` — whose trailing
+/// comment `1=kvar, 2=Cuf, 3=Cmatrix` is a copy-paste from Capacitor; the
+/// authoritative legend is the field declaration at `:132`).
+///
+/// | value | set by | `Reactor.pas` |
+/// |---|---|---|
+/// | 1 `Kvar` | `kvar=` | `:382` (and `Create`, `:601`) |
+/// | 2 `RplusJx` | `X=`, `Z=`, `LmH=` | `:434`, `:474`, `:478` |
+/// | 3 `Matrices` | `RMatrix=`, `XMatrix=` | `:419` |
+/// | 4 `SymComponents` | `Z1=` | `:451` |
+///
+/// The value set is therefore closed at 1..=4, which is what makes the three
+/// `match`es in `solve.rs` exhaustive without a fall-through arm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReactorSpecType {
+    /// 1 — X computed from the `kvar`/`kV` ratings.
+    Kvar = 1,
+    /// 2 — series `R` + `X` ohms (also `Z` and `LmH`).
+    RplusJx = 2,
+    /// 3 — `RMatrix`/`XMatrix` ohms.
+    Matrices = 3,
+    /// 4 — symmetrical components `Z1`/`Z2`/`Z0`.
+    SymComponents = 4,
+}
+
+impl ReactorSpecType {
+    /// The raw Pascal `SpecType` integer.
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the raw Pascal `SpecType` integer; `None` outside 1..=4.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            1 => Some(Self::Kvar),
+            2 => Some(Self::RplusJx),
+            3 => Some(Self::Matrices),
+            4 => Some(Self::SymComponents),
+            _ => None,
+        }
+    }
+}
+
 /// 1-based property ordinals (Pascal `TReactorProp` + class tails).
 pub mod prop {
     pub const BUS1: usize = 1;
@@ -168,8 +216,8 @@ pub struct Reactor {
     l_curve: Option<XyCurveObj>,
     /// 0 = wye (default), 1 = delta.
     connection: i32,
-    /// 1 = kvar, 2 = R+jX, 3 = R/X matrices, 4 = symmetrical components.
-    spec_type: i32,
+    /// How the reactance was specified (see [`ReactorSpecType`]).
+    spec_type: ReactorSpecType,
     is_parallel: bool,
     rp_specified: bool,
     bus2_defined: bool,
@@ -222,7 +270,7 @@ impl Reactor {
             l_curve_name: String::new(),
             l_curve: None,
             connection: 0, // wye
-            spec_type: 1,  // kvar
+            spec_type: ReactorSpecType::Kvar,
             is_parallel: false,
             rp_specified: false,
             bus2_defined: false,
