@@ -161,9 +161,9 @@ impl ClassProps {
                         // Dumps render the resolved object's FullName (NIL → "").
                         let name = resolved
                             .as_ref()
-                            .map(|(_, _, full_name)| full_name.clone())
+                            .map(|(_, full_name)| full_name.clone())
                             .unwrap_or_default();
-                        obj.set_object_ref(idx, name, resolved.map(|(r, o, _)| (r, o)));
+                        obj.set_object_ref(idx, name, resolved.map(|(o, _)| o));
                     }
                     Some(class) => {
                         // NOTE(upstream-quirk): `TPropertyFlag.AllowNone` on a
@@ -217,9 +217,7 @@ impl ClassProps {
                             ));
                         }
                         // The dump renders the resolved object's name (NIL → "").
-                        let name = resolved
-                            .map(|(_, o)| o.data().name().to_string())
-                            .unwrap_or_default();
+                        let name = resolved.map(|o| o.name().to_string()).unwrap_or_default();
                         obj.set_object_ref(idx, name, resolved);
                     }
                 }
@@ -272,7 +270,7 @@ impl ClassProps {
                         continue;
                     }
                     match eng.foreign.and_then(|f| f.find(class, token)) {
-                        Some((r, o)) => refs.push(Some((o.data().name().to_string(), r, o))),
+                        Some(o) => refs.push(Some((o.name().to_string(), o))),
                         None => {
                             eng.errors.push(format!(
                                 "{full}.{}: {class} object \"{token}\" not found.",
@@ -696,7 +694,7 @@ fn parse_conductor_proxy(
             return Ok(0);
         };
         match eng.foreign.and_then(|f| f.find(subcls, name_tok)) {
-            Some((r, o)) => refs.push(Some((o.data().name().to_string(), r, o))),
+            Some(o) => refs.push(Some((o.name().to_string(), o))),
             None => {
                 eng.errors.push(format!(
                     "{full}.{}: {subcls} object \"{token}\" not found.",

@@ -8,6 +8,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::meter::meter_element::MeteredSnapshot;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{Sensor, prop};
@@ -239,20 +240,15 @@ impl DssObject for Sensor {
 
     /// Resolve `element=` (any circuit class by full name): snapshot the metered
     /// element for `RecalcElementData`.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             prop::ELEMENT => {
                 self.element_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.med.metered_element = Some(r);
+                    Some(o) => {
+                        self.med.metered_element = Some(o.id());
                         self.med.metered_element_changed = true;
-                        self.med.metered_snap = Some(capture(name, obj));
+                        self.med.metered_snap = Some(capture(name, o.obj()));
                     }
                     None => {
                         self.med.metered_element = None;

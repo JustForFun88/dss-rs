@@ -11,6 +11,7 @@ use crate::elements::pd::reactor::Reactor;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 /// Capture the parse-relevant shape of the metered element (the RefSnapshot).
@@ -308,21 +309,16 @@ impl DssObject for EnergyMeter {
     }
 
     /// Resolve `element=` (any circuit class by full name) and snapshot it.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
         match idx {
             ELEMENT => {
                 self.element_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.med.metered_element = Some(r);
+                    Some(o) => {
+                        self.med.metered_element = Some(o.id());
                         self.med.metered_element_changed = true;
-                        self.metered_snap = Some(capture_metered(name, obj));
+                        self.metered_snap = Some(capture_metered(name, o.obj()));
                     }
                     None => {
                         self.med.metered_element = None;

@@ -4,7 +4,8 @@ use num_complex::Complex64;
 
 use super::Reactor;
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::traits::{CktElement, ElemId};
+use crate::elements::traits::CktElement;
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 impl Reactor {
@@ -217,15 +218,9 @@ impl DssObject for Reactor {
 
     /// Resolve the `RCurve`/`LCurve` XYcurve references (snapshot-clone, like
     /// the PVSystem/VCCS curve refs).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
-        let xy_curve =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<XyCurveObj>().cloned());
+        let xy_curve = || resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             RCURVE => {
                 self.r_curve_name = name;

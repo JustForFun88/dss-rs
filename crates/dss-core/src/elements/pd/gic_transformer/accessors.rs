@@ -3,7 +3,8 @@
 
 use super::{GicTransformer, SPEC_AUTO};
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::traits::{CktElement, ElemId};
+use crate::elements::traits::CktElement;
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 impl GicTransformer {
@@ -145,17 +146,11 @@ impl DssObject for GicTransformer {
 
     /// Resolve the `VarCurve` XYcurve reference (snapshot-clone, like the
     /// Reactor RCurve/LCurve refs).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             super::prop::VARCURVE => {
                 self.var_curve_name = name;
-                self.var_curve =
-                    resolved.and_then(|(_, o)| o.as_any().downcast_ref::<XyCurveObj>().cloned());
+                self.var_curve = resolved.and_then(|o| o.cloned::<XyCurveObj>());
             }
             _ => unreachable!("GICTransformer has no resolved object-ref property {idx}"),
         }

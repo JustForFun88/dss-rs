@@ -2,7 +2,7 @@ use super::*;
 use crate::elements::general::conductor_data::WireDataObj;
 use crate::elements::general::conductor_data::wire_data;
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::elements::traits::ElemId;
+use crate::obj::arena::{ClassArena, ResolvedObj};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
@@ -41,26 +41,31 @@ fn scalar(
 
 /// Mirror the executive's `edit_property` for a single object reference: set
 /// the (already-resolved) reference, record the set order, run side effects.
-fn set_ref(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, target: &dyn DssObject) {
+fn set_ref(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, target: &ClassArena) {
     let idx = cls.property_index(name).expect("known property");
-    let r = ElemId::new(0, 0);
-    obj.set_object_ref(idx, target.data().name().to_string(), Some((r, target)));
+    let resolved = ResolvedObj::new(target, 0);
+    obj.set_object_ref(idx, resolved.name().to_string(), Some(resolved));
     obj.data_mut().set_as_next_seq(idx);
     obj.side_effects(idx, 0);
 }
 
+/// A one-object arena holding a clone of `target` — the test stand-in for the
+/// registry class arena a real `ObjectRef` resolve borrows from.
+fn arena_of<T: crate::obj::arena::ArenaClass + Clone>(target: &T) -> ClassArena {
+    let mut a = ClassArena::empty_for(T::CLASS_NAME).expect("registered class");
+    a.push(target.clone()).expect("same class");
+    a
+}
+
 /// Mirror `edit_property` for an object-reference array (`wires=`/...).
-fn set_ref_array(
-    cls: &ClassProps,
-    obj: &mut dyn DssObject,
-    name: &str,
-    targets: &[&dyn DssObject],
-) {
+fn set_ref_array(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, targets: &[ClassArena]) {
     let idx = cls.property_index(name).expect("known property");
-    let r = ElemId::new(0, 0);
     let refs: Vec<crate::obj::base::ObjectRefArrayItem> = targets
         .iter()
-        .map(|t| Some((t.data().name().to_string(), r, *t)))
+        .map(|a| {
+            let r = ResolvedObj::new(a, 0);
+            Some((r.name().to_string(), r))
+        })
         .collect();
     obj.set_object_ref_array(idx, &refs);
     obj.data_mut().set_as_next_seq(idx);
@@ -124,16 +129,16 @@ fn cond_wire_state_machine() {
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
     scalar(&cls, &mut g, "cond", "1");
-    set_ref(&cls, &mut g, "wire", &acsr);
+    set_ref(&cls, &mut g, "wire", &arena_of(&acsr));
     scalar(&cls, &mut g, "x", "-1.2909");
     scalar(&cls, &mut g, "h", "13.716");
     scalar(&cls, &mut g, "units", "m");
     scalar(&cls, &mut g, "cond", "2");
-    set_ref(&cls, &mut g, "wire", &acsr);
+    set_ref(&cls, &mut g, "wire", &arena_of(&acsr));
     scalar(&cls, &mut g, "x", "0");
     scalar(&cls, &mut g, "h", "13.716");
     scalar(&cls, &mut g, "cond", "3");
-    set_ref(&cls, &mut g, "wire", &acsr);
+    set_ref(&cls, &mut g, "wire", &arena_of(&acsr));
     scalar(&cls, &mut g, "x", "1.2909");
     scalar(&cls, &mut g, "h", "13.716");
 
@@ -158,7 +163,12 @@ fn wires_array_sets_active_to_last() {
     let mut g = LineGeometryObj::new("g1");
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
-    set_ref_array(&cls, &mut g, "wires", &[&acsr, &acsr, &acsr]);
+    set_ref_array(
+        &cls,
+        &mut g,
+        "wires",
+        &[arena_of(&acsr), arena_of(&acsr), arena_of(&acsr)],
+    );
     assert_eq!(get(&cls, &g, "cond"), "3");
     assert_eq!(get(&cls, &g, "wires"), "[acsr, acsr, acsr]");
     assert_eq!(get(&cls, &g, "normamps"), "530");
@@ -173,7 +183,7 @@ fn wires_wrong_count_errors() {
     let mut g = LineGeometryObj::new("g1");
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
-    set_ref_array(&cls, &mut g, "wires", &[&acsr, &acsr]);
+    set_ref_array(&cls, &mut g, "wires", &[arena_of(&acsr), arena_of(&acsr)]);
     let errs = g.data_mut().take_errors();
     assert!(
         errs.iter().any(|e| e.contains("Unexpected number (2)")),
@@ -199,8 +209,13 @@ fn spacing_copies_coordinates() {
     let mut g = LineGeometryObj::new("g1");
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
-    set_ref(&cls, &mut g, "spacing", &sp);
-    set_ref_array(&cls, &mut g, "wires", &[&acsr, &acsr, &acsr]);
+    set_ref(&cls, &mut g, "spacing", &arena_of(&sp));
+    set_ref_array(
+        &cls,
+        &mut g,
+        "wires",
+        &[arena_of(&acsr), arena_of(&acsr), arena_of(&acsr)],
+    );
     assert!(g.data_mut().take_errors().is_empty());
     assert_eq!(get(&cls, &g, "spacing"), "sp");
     assert_eq!(get(&cls, &g, "cond"), "3");
@@ -290,7 +305,7 @@ fn spacing_wrong_wire_count_errors() {
     let mut g = LineGeometryObj::new("g1");
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
-    set_ref(&cls, &mut g, "spacing", &sp);
+    set_ref(&cls, &mut g, "spacing", &arena_of(&sp));
     let errs = g.data_mut().take_errors();
     assert!(
         errs.iter().any(|e| e.contains("wrong number of wires")),
@@ -307,16 +322,16 @@ fn make_like_copies_geometry_and_resets_active() {
     scalar(&cls, &mut src, "nconds", "3");
     scalar(&cls, &mut src, "nphases", "3");
     scalar(&cls, &mut src, "cond", "1");
-    set_ref(&cls, &mut src, "wire", &acsr);
+    set_ref(&cls, &mut src, "wire", &arena_of(&acsr));
     scalar(&cls, &mut src, "x", "-1.29");
     scalar(&cls, &mut src, "h", "13.7");
     scalar(&cls, &mut src, "units", "m");
     scalar(&cls, &mut src, "cond", "2");
-    set_ref(&cls, &mut src, "wire", &acsr);
+    set_ref(&cls, &mut src, "wire", &arena_of(&acsr));
     scalar(&cls, &mut src, "x", "0");
     scalar(&cls, &mut src, "h", "13.7");
     scalar(&cls, &mut src, "cond", "3");
-    set_ref(&cls, &mut src, "wire", &acsr);
+    set_ref(&cls, &mut src, "wire", &arena_of(&acsr));
     scalar(&cls, &mut src, "x", "1.29");
     scalar(&cls, &mut src, "h", "13.7");
     scalar(&cls, &mut src, "reduce", "y");
@@ -375,7 +390,12 @@ fn wires_array_defaults_multi_season_ratings() {
     let mut g = LineGeometryObj::new("g1");
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
-    set_ref_array(&cls, &mut g, "wires", &[&w4, &w4, &w4]);
+    set_ref_array(
+        &cls,
+        &mut g,
+        "wires",
+        &[arena_of(&w4), arena_of(&w4), arena_of(&w4)],
+    );
     assert_eq!(get(&cls, &g, "seasons"), "4");
     assert_eq!(get(&cls, &g, "ratings"), "[ 400 450 500 550]");
     assert_eq!(get(&cls, &g, "normamps"), "530");
@@ -503,7 +523,7 @@ fn build_overhead_3() -> LineGeometryObj {
     scalar(&cls, &mut g, "nphases", "3");
     for (k, x) in ["0", "1", "2"].iter().enumerate() {
         scalar(&cls, &mut g, "cond", &(k + 1).to_string());
-        set_ref(&cls, &mut g, "wire", &w);
+        set_ref(&cls, &mut g, "wire", &arena_of(&w));
         scalar(&cls, &mut g, "x", x);
         scalar(&cls, &mut g, "h", "10");
         scalar(&cls, &mut g, "units", "m");
@@ -592,8 +612,18 @@ fn matrices_equivalent_spacing_match_capi015() {
     scalar(&cls, &mut g, "nconds", "4");
     scalar(&cls, &mut g, "nphases", "3");
     scalar(&cls, &mut g, "reduce", "y");
-    set_ref(&cls, &mut g, "spacing", &sp);
-    set_ref_array(&cls, &mut g, "wires", &[&acsr, &acsr, &acsr, &acsr]);
+    set_ref(&cls, &mut g, "spacing", &arena_of(&sp));
+    set_ref_array(
+        &cls,
+        &mut g,
+        "wires",
+        &[
+            arena_of(&acsr),
+            arena_of(&acsr),
+            arena_of(&acsr),
+            arena_of(&acsr),
+        ],
+    );
     assert!(g.data_mut().take_errors().is_empty());
 
     let z = g.z_matrix(60.0, 1.0, MI_UNIT, DERI).expect("z");
@@ -697,7 +727,7 @@ fn matrices_reduce_neutral_to_phases() {
     let coords = [("0", "10"), ("1", "10"), ("2", "10"), ("1", "12")];
     for (k, (x, h)) in coords.iter().enumerate() {
         scalar(&cls, &mut g, "cond", &(k + 1).to_string());
-        set_ref(&cls, &mut g, "wire", &w);
+        set_ref(&cls, &mut g, "wire", &arena_of(&w));
         scalar(&cls, &mut g, "x", x);
         scalar(&cls, &mut g, "h", h);
         scalar(&cls, &mut g, "units", "m");
@@ -756,7 +786,7 @@ fn matrices_cn_cable_match_oracle() {
     scalar(&cls, &mut g, "nphases", "3");
     for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
         scalar(&cls, &mut g, "cond", &(k + 1).to_string());
-        set_ref(&cls, &mut g, "cncable", &cn);
+        set_ref(&cls, &mut g, "cncable", &arena_of(&cn));
         scalar(&cls, &mut g, "x", x);
         scalar(&cls, &mut g, "h", "-1.2");
         scalar(&cls, &mut g, "units", "m");
@@ -795,7 +825,7 @@ fn matrices_ts_cable_match_oracle() {
     scalar(&cls, &mut g, "nphases", "3");
     for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
         scalar(&cls, &mut g, "cond", &(k + 1).to_string());
-        set_ref(&cls, &mut g, "tscable", &ts);
+        set_ref(&cls, &mut g, "tscable", &arena_of(&ts));
         scalar(&cls, &mut g, "x", x);
         scalar(&cls, &mut g, "h", "-1.2");
         scalar(&cls, &mut g, "units", "m");
@@ -853,15 +883,15 @@ fn matrices_mixed_cn_ts_wire_match_capi015() {
     scalar(&cls, &mut g, "nconds", "4");
     scalar(&cls, &mut g, "nphases", "3");
     scalar(&cls, &mut g, "reduce", "yes");
-    let conds: [(&str, &dyn DssObject, &str); 4] = [
-        ("cncable", &cn, "0"),
-        ("tscable", &ts, "0.1"),
-        ("cncable", &cn, "0.2"),
-        ("wire", &w, "0.3"),
+    let conds: [(&str, ClassArena, &str); 4] = [
+        ("cncable", arena_of(&cn), "0"),
+        ("tscable", arena_of(&ts), "0.1"),
+        ("cncable", arena_of(&cn), "0.2"),
+        ("wire", arena_of(&w), "0.3"),
     ];
     for (k, (prop_name, obj, x)) in conds.iter().enumerate() {
         scalar(&cls, &mut g, "cond", &(k + 1).to_string());
-        set_ref(&cls, &mut g, prop_name, *obj);
+        set_ref(&cls, &mut g, prop_name, obj);
         scalar(&cls, &mut g, "x", x);
         scalar(&cls, &mut g, "h", "-1.2");
         scalar(&cls, &mut g, "units", "m");
@@ -941,7 +971,12 @@ fn conductors_array_matches_mixed_capi015() {
         scalar(&cls, &mut g, "h", "-1.2");
         scalar(&cls, &mut g, "units", "m");
     }
-    set_ref_array(&cls, &mut g, "conductors", &[&cn, &ts, &cn, &w]);
+    set_ref_array(
+        &cls,
+        &mut g,
+        "conductors",
+        &[arena_of(&cn), arena_of(&ts), arena_of(&cn), arena_of(&w)],
+    );
     assert!(g.data_mut().take_errors().is_empty());
 
     let z = g.z_matrix(60.0, 1.0, M_UNIT, DERI).expect("z");
@@ -980,7 +1015,12 @@ fn conductors_array_defaults_ratings_from_first_valid() {
     let mut g = LineGeometryObj::new("g1");
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
-    set_ref_array(&cls, &mut g, "conductors", &[&w, &w, &w]);
+    set_ref_array(
+        &cls,
+        &mut g,
+        "conductors",
+        &[arena_of(&w), arena_of(&w), arena_of(&w)],
+    );
     assert!(g.data_mut().take_errors().is_empty());
     assert_eq!(get(&cls, &g, "normamps"), "530");
     assert_eq!(get(&cls, &g, "emergamps"), "795");
@@ -999,7 +1039,7 @@ fn update_uninitialized_conductor_errors() {
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
     scalar(&cls, &mut g, "cond", "1");
-    set_ref(&cls, &mut g, "wire", &w); // only conductor 1 set
+    set_ref(&cls, &mut g, "wire", &arena_of(&w)); // only conductor 1 set
     let err = g.update_line_geometry_data(60.0, DERI).unwrap_err();
     assert!(err.contains("not correctly initialized"), "{err}");
 }
@@ -1024,7 +1064,7 @@ fn update_conductors_in_same_space_errors() {
     scalar(&cls, &mut g, "nphases", "2");
     for (k, x) in ["0", "0.2"].iter().enumerate() {
         scalar(&cls, &mut g, "cond", &(k + 1).to_string());
-        set_ref(&cls, &mut g, "wire", &w);
+        set_ref(&cls, &mut g, "wire", &arena_of(&w));
         scalar(&cls, &mut g, "x", x);
         scalar(&cls, &mut g, "h", "10");
         scalar(&cls, &mut g, "units", "m");
@@ -1047,7 +1087,7 @@ fn make_like_cn_cable_recomputes() {
     scalar(&cls, &mut src, "nphases", "3");
     for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
         scalar(&cls, &mut src, "cond", &(k + 1).to_string());
-        set_ref(&cls, &mut src, "cncable", &cn);
+        set_ref(&cls, &mut src, "cncable", &arena_of(&cn));
         scalar(&cls, &mut src, "x", x);
         scalar(&cls, &mut src, "h", "-1.2");
         scalar(&cls, &mut src, "units", "m");

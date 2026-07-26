@@ -327,6 +327,15 @@ macro_rules! define_arena {
                 }
             }
 
+            /// The typed handle for object `idx` of *this* arena's class — the
+            /// arena is the authority on which class it holds, so this can
+            /// never disagree with the storage.
+            pub fn id(&self, idx: usize) -> ElemId {
+                match self {
+                    $( ClassArena::$variant(_) => ElemId::$variant(Idx::new(idx)), )*
+                }
+            }
+
             /// This arena's class name (Pascal `TDSSClass.Name`).
             pub fn class_name(&self) -> &'static str {
                 match self {
@@ -564,14 +573,14 @@ macro_rules! define_arena {
                     }
                 }
 
-                fn arena_slice(arena: &ClassArena) -> Option<&[Self]> {
+                fn arena_vec(arena: &ClassArena) -> Option<&Vec<Self>> {
                     match arena {
                         ClassArena::$variant(v) => Some(v),
                         _ => None,
                     }
                 }
 
-                fn arena_slice_mut(arena: &mut ClassArena) -> Option<&mut [Self]> {
+                fn arena_vec_mut(arena: &mut ClassArena) -> Option<&mut Vec<Self>> {
                     match arena {
                         ClassArena::$variant(v) => Some(v),
                         _ => None,
@@ -622,10 +631,10 @@ pub trait ArenaClass: DssObject + Sized + 'static {
 
     /// This class's objects inside `arena`, or `None` if `arena` holds another
     /// class.
-    fn arena_slice(arena: &ClassArena) -> Option<&[Self]>;
+    fn arena_vec(arena: &ClassArena) -> Option<&Vec<Self>>;
 
-    /// Mutable [`Self::arena_slice`].
-    fn arena_slice_mut(arena: &mut ClassArena) -> Option<&mut [Self]>;
+    /// Mutable [`Self::arena_vec`].
+    fn arena_vec_mut(arena: &mut ClassArena) -> Option<&mut Vec<Self>>;
 
     /// This element as `&dyn CktElement`, or `None` for a general
     /// (`DSS_OBJECT`) data class — the concrete-`&T` twin of
@@ -648,24 +657,33 @@ impl ClassArena {
     /// Resolved entirely at compile time through [`ArenaClass`] — no `Any`
     /// round-trip.
     pub fn get<T: ArenaClass>(&self, idx: usize) -> Option<&T> {
-        T::arena_slice(self)?.get(idx)
+        T::arena_vec(self)?.get(idx)
     }
 
     /// Mutable [`Self::get`] — replaces
     /// `arena[idx].as_any_mut().downcast_mut::<T>()`.
     pub fn get_mut<T: ArenaClass>(&mut self, idx: usize) -> Option<&mut T> {
-        T::arena_slice_mut(self)?.get_mut(idx)
+        T::arena_vec_mut(self)?.get_mut(idx)
     }
 
     /// Every object of this arena as a concrete slice, or `None` for another
     /// class (the typed twin of [`Self::objs`]).
     pub fn all<T: ArenaClass>(&self) -> Option<&[T]> {
-        T::arena_slice(self)
+        T::arena_vec(self).map(Vec::as_slice)
     }
 
     /// Mutable [`Self::all`].
     pub fn all_mut<T: ArenaClass>(&mut self) -> Option<&mut [T]> {
-        T::arena_slice_mut(self)
+        T::arena_vec_mut(self).map(Vec::as_mut_slice)
+    }
+
+    /// Append an owned typed object, returning its 0-based index (`None` if
+    /// this arena holds another class) — the typed twin of [`Self::push_new`]
+    /// for a value that is already built.
+    pub fn push<T: ArenaClass>(&mut self, obj: T) -> Option<usize> {
+        let v = T::arena_vec_mut(self)?;
+        v.push(obj);
+        Some(v.len() - 1)
     }
 
     /// The RegControl-controlled element view of object `idx`: RegControl's
@@ -683,6 +701,75 @@ impl ClassArena {
             ClassArena::AutoTrans(v) => Some(&mut v[idx]),
             _ => None,
         }
+    }
+}
+
+/// A resolved object reference at the moment the property engine resolved it:
+/// the typed [`ElemId`] handle **plus** a read view of the [`ClassArena`] it
+/// names — the DE_PASCALIZE R3 Category-D replacement for the untyped
+/// `(ElemId, &dyn DssObject)` tuple that `DssObject::set_object_ref` used to
+/// carry.
+///
+/// The point is the *type channel*, not the timing: a `set_object_ref` impl
+/// that wants a concrete `LoadShapeObj`/`XYcurve`/… snapshot now narrows with
+/// [`ResolvedObj::get`]/[`ResolvedObj::cloned`] (a static [`ArenaClass`] match)
+/// instead of `o.as_any().downcast_ref::<T>()`. **When** the snapshot clone
+/// happens is unchanged — still inside the same `set_object_ref` call, at
+/// resolve time (`DE_PASCALIZE_PLAN.md` Part I, "Category D timing").
+#[derive(Clone, Copy)]
+pub struct ResolvedObj<'a> {
+    id: ElemId,
+    arena: &'a ClassArena,
+}
+
+impl<'a> ResolvedObj<'a> {
+    /// The object at `idx` of `arena`. The handle is derived from the arena
+    /// itself ([`ClassArena::id`]), so the two can never disagree.
+    pub fn new(arena: &'a ClassArena, idx: usize) -> Self {
+        ResolvedObj {
+            id: arena.id(idx),
+            arena,
+        }
+    }
+
+    /// The typed handle (what the referring object stores).
+    pub fn id(self) -> ElemId {
+        self.id
+    }
+
+    /// The generic read view (Pascal's `TDSSObject` pointer) — for the name and
+    /// the property-independent reads.
+    pub fn obj(self) -> &'a dyn DssObject {
+        self.arena.obj(self.id.index())
+    }
+
+    /// The resolved object's (lowercased) name, as dumps render it.
+    pub fn name(self) -> &'a str {
+        self.obj().data().name()
+    }
+
+    /// The circuit-element view, or `None` for a general (`DSS_OBJECT`) class.
+    pub fn ckt(self) -> Option<&'a dyn CktElement> {
+        self.arena.try_ckt_elem(self.id.index())
+    }
+
+    /// The concrete `&T`, or `None` if the reference names another class —
+    /// the typed replacement for `as_any().downcast_ref::<T>()`.
+    pub fn get<T: ArenaClass>(self) -> Option<&'a T> {
+        let i = T::idx_of(self.id)?;
+        self.arena.get::<T>(i.get())
+    }
+
+    /// The resolve-time snapshot clone of the concrete `&T` (the `Category D`
+    /// `downcast_ref::<T>().cloned()` pattern).
+    pub fn cloned<T: ArenaClass + Clone>(self) -> Option<T> {
+        self.get::<T>().cloned()
+    }
+}
+
+impl fmt::Debug for ResolvedObj<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ResolvedObj").field("id", &self.id).finish()
     }
 }
 

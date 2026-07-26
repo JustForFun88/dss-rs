@@ -6,7 +6,8 @@ use num_complex::Complex64;
 
 use super::VSource;
 use crate::elements::general::load_shape::LoadShapeObj;
-use crate::elements::traits::{CktElement, ElemId};
+use crate::elements::traits::CktElement;
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 impl VSource {
@@ -200,16 +201,10 @@ impl DssObject for VSource {
     /// the name (for the dump), the `ElemId`, and a snapshot clone the
     /// time-series `GetVterminalForSource` drives — same pattern as
     /// [`super::super::load::Load`].
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
-        let elem_ref = resolved.map(|(r, _)| r);
-        let load_shape =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
+        let elem_ref = resolved.map(|o| o.id());
+        let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         match idx {
             YEARLY => {
                 self.yearly_shape = name;

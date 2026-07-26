@@ -9,7 +9,8 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemId, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::EPSILON;
@@ -283,22 +284,16 @@ impl DssObject for Upfc {
 
     /// Resolve the `LossCurve` (XYcurve snapshot clone) and `Element` (monitored
     /// circuit element, by full name) references.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
         match idx {
             LOSSCURVE => {
                 self.loss_curve_name = name;
-                self.loss_curve_obj =
-                    resolved.and_then(|(_, o)| o.as_any().downcast_ref::<XyCurveObj>().cloned());
+                self.loss_curve_obj = resolved.and_then(|o| o.cloned::<XyCurveObj>());
             }
             ELEMENT => {
                 self.mon_elm_name = name;
-                self.mon_elm = resolved.map(|(r, _)| r);
+                self.mon_elm = resolved.map(|o| o.id());
             }
             _ => unreachable!("UPFC has no resolved object-ref property {idx}"),
         }

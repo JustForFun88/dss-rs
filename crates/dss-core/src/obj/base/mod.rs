@@ -583,11 +583,10 @@ pub struct ShapeSave {
     pub result_tag: &'static str,
 }
 
-/// One slot of a `DSSObjectReferenceArrayProperty` write: `Some((name, ElemId,
-/// read view))` for a resolved object, or `None` for a `none` entry
+/// One slot of a `DSSObjectReferenceArrayProperty` write: `Some((name,
+/// resolved object))` for a resolved object, or `None` for a `none` entry
 /// (`TPropertyFlag.AllowNoneItem`). See [`DssObject::set_object_ref_array`].
-pub type ObjectRefArrayItem<'a> =
-    Option<(String, crate::elements::traits::ElemId, &'a dyn DssObject)>;
+pub type ObjectRefArrayItem<'a> = Option<(String, crate::obj::arena::ResolvedObj<'a>)>;
 
 /// The typed field accessors the property engine calls, keyed by the 1-based
 /// property index. Each concrete class implements only the kinds it actually
@@ -828,10 +827,7 @@ pub trait DssObject: Send {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(
-            crate::elements::traits::ElemId,
-            &dyn crate::obj::base::DssObject,
-        )>,
+        resolved: Option<crate::obj::arena::ResolvedObj<'_>>,
     ) {
         let _ = (idx, name, resolved);
         unreachable!("set_object_ref not implemented for property {idx}")

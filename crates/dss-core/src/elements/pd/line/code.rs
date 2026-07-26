@@ -266,11 +266,12 @@ impl Line {
         let mut ratings_inc = false;
         for (k, i) in (istart..=nwires).enumerate() {
             // A `none` slot (AllowNoneItem) stays NIL and contributes no ratings.
-            let Some((_, _, obj)) = refs[k].as_ref() else {
+            let Some((_, res)) = refs[k].as_ref() else {
                 self.line_wire_data[i - 1] = None;
                 continue;
             };
-            let (cnorm, cemerg, cnum, crat) = conductor_amps(*obj);
+            let obj = res.obj();
+            let (cnorm, cemerg, cnum, crat) = conductor_amps(obj);
             self.line_wire_data[i - 1] = Some(obj.clone_box());
             if cnum > new_num_rat {
                 new_num_rat = cnum;
@@ -303,7 +304,7 @@ impl Line {
     pub(super) fn set_conductors(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
         for (i, r) in refs.iter().enumerate() {
             if i < self.line_wire_data.len() {
-                self.line_wire_data[i] = r.as_ref().map(|(_, _, o)| o.clone_box());
+                self.line_wire_data[i] = r.as_ref().map(|(_, o)| o.obj().clone_box());
             }
         }
     }
@@ -346,7 +347,7 @@ impl Line {
         for (k, r) in refs.iter().enumerate() {
             if k < self.line_wire_data.len() {
                 // A `none` slot (AllowNoneItem) stays NIL.
-                self.line_wire_data[k] = r.as_ref().map(|(_, _, o)| o.clone_box());
+                self.line_wire_data[k] = r.as_ref().map(|(_, o)| o.obj().clone_box());
             }
         }
     }

@@ -12,7 +12,7 @@
 //! `class.objects`.
 
 use super::*;
-use crate::obj::arena::ClassArena;
+use crate::obj::arena::{ClassArena, ResolvedObj};
 
 /// A class constructor: build a fresh, all-default object of the class.
 pub(crate) type NewObjectFn = fn(&str) -> Box<dyn DssObject>;
@@ -295,22 +295,17 @@ impl<'a> ForeignClasses<'a> {
     /// Resolve a (class name, object name) pair to its global [`ElemId`] plus
     /// the live object, scanning both halves. A class match with no object
     /// match short-circuits to `None`, like `cls.Find` returning NIL.
-    fn lookup(&self, class: &str, name_l: &str) -> Option<(ElemId, &'a dyn DssObject)> {
-        let find_in = |c: &'a DssClass, cls: usize| {
+    fn lookup(&self, class: &str, name_l: &str) -> Option<ResolvedObj<'a>> {
+        // The arena is the authority on the class ordinal (`ClassArena::id`),
+        // and it equals the registry position by `arena_order_matches_registry`.
+        let find_in = |c: &'a DssClass| {
             c.name_to_idx
                 .get(name_l)
-                .map(|&idx| (ElemId::new(cls, idx), c.arena.obj(idx)))
+                .map(|&idx| ResolvedObj::new(&c.arena, idx))
         };
-        let left = self.left;
-        for (k, c) in left.iter().enumerate() {
+        for c in self.left.iter().chain(self.right.iter()) {
             if c.props.class_name().eq_ignore_ascii_case(class) {
-                return find_in(c, k);
-            }
-        }
-        let right = self.right;
-        for (k, c) in right.iter().enumerate() {
-            if c.props.class_name().eq_ignore_ascii_case(class) {
-                return find_in(c, self.split + 1 + k);
+                return find_in(c);
             }
         }
         None
@@ -318,27 +313,27 @@ impl<'a> ForeignClasses<'a> {
 }
 
 impl<'a> ForeignClassesView<'a> for ForeignClasses<'a> {
-    fn find(&self, class: &str, name: &str) -> Option<(ElemId, &'a dyn DssObject)> {
+    fn find(&self, class: &str, name: &str) -> Option<ResolvedObj<'a>> {
         self.lookup(class, &name.to_ascii_lowercase())
     }
 
     /// Pascal `GetCktElementIndex`: resolve a full `Class.Name` reference (the
     /// `PropertyOffset2 = 0` object-ref case, e.g. CapControl `element=`). The
     /// returned `String` is the canonical `FullName` for dumps.
-    fn find_full(&self, full_name: &str) -> Option<(ElemId, &'a dyn DssObject, String)> {
+    fn find_full(&self, full_name: &str) -> Option<(ResolvedObj<'a>, String)> {
         let dot = full_name.find('.')?;
         let (class, name) = (&full_name[..dot], &full_name[dot + 1..]);
         // Reuse the per-class lookup, then rebuild the canonical FullName.
-        let (r, obj) = self.lookup(class, &name.to_ascii_lowercase())?;
-        let cls = if r.class_ord() < self.split {
-            &self.left[r.class_ord()]
+        let resolved = self.lookup(class, &name.to_ascii_lowercase())?;
+        let ord = resolved.id().class_ord();
+        let cls = if ord < self.split {
+            &self.left[ord]
         } else {
-            &self.right[r.class_ord() - self.split - 1]
+            &self.right[ord - self.split - 1]
         };
         Some((
-            r,
-            obj,
-            format!("{}.{}", cls.props.class_name(), obj.data().name()),
+            resolved,
+            format!("{}.{}", cls.props.class_name(), resolved.name()),
         ))
     }
 }

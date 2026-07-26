@@ -1538,9 +1538,9 @@ impl Dss {
         {
             let curve = (!name.is_empty())
                 .then(|| {
-                    foreign.find("TCC_Curve", &name).and_then(|(_, o)| {
-                        o.as_any().downcast_ref::<tcc_curve::TccCurveObj>().cloned()
-                    })
+                    foreign
+                        .find("TCC_Curve", &name)
+                        .and_then(|o| o.cloned::<tcc_curve::TccCurveObj>())
                 })
                 .flatten();
             if let Some(f) = active_arena[oi].as_any_mut().downcast_mut::<fuse::Fuse>() {
@@ -1564,7 +1564,7 @@ impl Dss {
             } else {
                 let found = foreign
                     .find("Spectrum", &name)
-                    .and_then(|(_, o)| o.as_any().downcast_ref::<spectrum::SpectrumObj>().cloned());
+                    .and_then(|o| o.cloned::<spectrum::SpectrumObj>());
                 if found.is_none() {
                     // Pascal `Set_Spectrum` resolves a `DSSObjectReferenceProperty`
                     // and raises error 401 on a missing name — surface it loudly
@@ -1597,9 +1597,9 @@ impl Dss {
             let resolve = |name: &str| -> Option<tcc_curve::TccCurveObj> {
                 (!name.is_empty())
                     .then(|| {
-                        foreign.find("TCC_Curve", name).and_then(|(_, o)| {
-                            o.as_any().downcast_ref::<tcc_curve::TccCurveObj>().cloned()
-                        })
+                        foreign
+                            .find("TCC_Curve", name)
+                            .and_then(|o| o.cloned::<tcc_curve::TccCurveObj>())
                     })
                     .flatten()
             };
@@ -1629,9 +1629,9 @@ impl Dss {
             let resolve = |name: &str| -> Option<tcc_curve::TccCurveObj> {
                 (!name.is_empty())
                     .then(|| {
-                        foreign.find("TCC_Curve", name).and_then(|(_, o)| {
-                            o.as_any().downcast_ref::<tcc_curve::TccCurveObj>().cloned()
-                        })
+                        foreign
+                            .find("TCC_Curve", name)
+                            .and_then(|o| o.cloned::<tcc_curve::TccCurveObj>())
                     })
                     .flatten()
             };
@@ -1681,9 +1681,9 @@ impl Dss {
                     } else {
                         let resolve = |n: &String| {
                             let (class, name) = n.split_once('.').unwrap_or(("", n.as_str()));
-                            foreign.find(class, name).and_then(|(_, o)| {
-                                let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
-                                enabled.then_some(o)
+                            foreign.find(class, name).and_then(|o| {
+                                let enabled = o.ckt().is_some_and(|e| e.cd().enabled);
+                                enabled.then_some(o.obj())
                             })
                         };
                         (
@@ -1725,9 +1725,9 @@ impl Dss {
                 // (the Pascal recalc loop assigns FNphases per member —
                 // ExpControl.pas:408, same last-wins as InvControl).
                 let resolve = |n: &String| {
-                    foreign.find("PVSystem", n).and_then(|(_, o)| {
-                        let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
-                        enabled.then_some(o)
+                    foreign.find("PVSystem", n).and_then(|o| {
+                        let enabled = o.ckt().is_some_and(|e| e.cd().enabled);
+                        enabled.then_some(o.obj())
                     })
                 };
                 let (first, last): (Option<&dyn DssObject>, Option<&dyn DssObject>) =
@@ -1768,10 +1768,9 @@ impl Dss {
         // splice and queues the Line Bus2 rewrite as a deferred RefAction.
         if active_arena[oi].as_any().is::<gic_source::GicSource>() {
             let name = active_arena[oi].data().name().to_string();
-            let resolved = foreign.find("Line", &name).and_then(|(r, o)| {
-                o.as_ckt_element()
-                    .map(|e| (r, e.cd().get_bus(2).to_string()))
-            });
+            let resolved = foreign
+                .find("Line", &name)
+                .and_then(|o| o.ckt().map(|e| (o.id(), e.cd().get_bus(2).to_string())));
             if let Some(gs) = active_arena[oi]
                 .as_any_mut()
                 .downcast_mut::<gic_source::GicSource>()

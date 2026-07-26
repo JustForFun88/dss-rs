@@ -8,6 +8,7 @@ use num_complex::Complex64;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{CapControl, CapControlType};
@@ -278,24 +279,17 @@ impl DssObject for CapControl {
     /// `capacitor=` / `element=` resolution: keep the `ElemId`s plus shape
     /// snapshots for `RecalcElementData` (which runs after the foreign view is
     /// gone).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
         match idx {
             CAPACITOR => {
                 self.controlled_name = name;
                 match resolved {
-                    Some((r, obj)) => {
-                        self.ccd.controlled_element = Some(r);
-                        let elem = obj
-                            .as_ckt_element()
-                            .expect("Capacitor is a circuit element");
+                    Some(o) => {
+                        self.ccd.controlled_element = Some(o.id());
+                        let elem = o.ckt().expect("Capacitor is a circuit element");
                         self.ctrl_snap = Some(super::RefSnapshot::capture(
-                            format!("Capacitor.{}", obj.data().name()),
+                            format!("Capacitor.{}", o.name()),
                             elem,
                         ));
                     }
@@ -309,11 +303,9 @@ impl DssObject for CapControl {
                 // `name` is the FullName ("Class.name") for the dump.
                 self.monitored_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.ccd.monitored_element = Some(r);
-                        let elem = obj
-                            .as_ckt_element()
-                            .expect("element= resolves against circuit classes");
+                    Some(o) => {
+                        self.ccd.monitored_element = Some(o.id());
+                        let elem = o.ckt().expect("element= resolves against circuit classes");
                         self.mon_snap = Some(super::RefSnapshot::capture(name, elem));
                     }
                     None => {
@@ -328,8 +320,7 @@ impl DssObject for CapControl {
             // `Sample` (running well after `EndEdit`) can no longer borrow.
             CONTROLSIGNAL => {
                 self.control_signal_name = name;
-                self.ctrl_signal_shape =
-                    resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
+                self.ctrl_signal_shape = resolved.and_then(|o| o.cloned::<LoadShapeObj>());
             }
             _ => unreachable!("CapControl has no object-ref property {idx}"),
         }

@@ -9,7 +9,8 @@ use crate::elements::control::control_elem::RefSnapshot;
 use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::elements::traits::{CktElement, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::{RegControl, prop};
@@ -304,41 +305,33 @@ impl DssObject for RegControl {
     /// `transformer=` resolution: keep the `ElemId` and snapshot the
     /// transformer's shape + per-winding tap data for `RecalcElementData` and
     /// `TapNum` (which run after the foreign view is gone).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         debug_assert_eq!(idx, prop::TRANSFORMER);
         self.controlled_name = name;
         match resolved {
-            Some((r, obj)) => {
-                self.ccd.controlled_element = Some(r);
-                let elem = obj
-                    .as_ckt_element()
-                    .expect("controlled element is a circuit element");
+            Some(o) => {
+                self.ccd.controlled_element = Some(o.id());
+                let elem = o.ckt().expect("controlled element is a circuit element");
                 // `transformer=` resolves against either class (Pascal
                 // `Transf_Or_AutoTrans_ProxyClass`).
-                let name = obj.data().name();
-                let (full_name, tap_snap) =
-                    if let Some(xf) = obj.as_any().downcast_ref::<Transformer>() {
-                        (
-                            format!("Transformer.{name}"),
-                            (1..=xf.num_windings().max(0) as usize)
-                                .map(|i| xf.winding_tap_data(i))
-                                .collect(),
-                        )
-                    } else if let Some(at) = obj.as_any().downcast_ref::<AutoTrans>() {
-                        (
-                            format!("AutoTrans.{name}"),
-                            (1..=at.num_windings().max(0) as usize)
-                                .map(|i| at.winding_tap_data(i))
-                                .collect(),
-                        )
-                    } else {
-                        (format!("Transformer.{name}"), Vec::new())
-                    };
+                let name = o.name();
+                let (full_name, tap_snap) = if let Some(xf) = o.get::<Transformer>() {
+                    (
+                        format!("Transformer.{name}"),
+                        (1..=xf.num_windings().max(0) as usize)
+                            .map(|i| xf.winding_tap_data(i))
+                            .collect(),
+                    )
+                } else if let Some(at) = o.get::<AutoTrans>() {
+                    (
+                        format!("AutoTrans.{name}"),
+                        (1..=at.num_windings().max(0) as usize)
+                            .map(|i| at.winding_tap_data(i))
+                            .collect(),
+                    )
+                } else {
+                    (format!("Transformer.{name}"), Vec::new())
+                };
                 self.snapshot = Some(RefSnapshot::capture(full_name, elem));
                 self.tap_snap = tap_snap;
             }

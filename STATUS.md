@@ -7,6 +7,118 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R3.2 (part 2/2) — Category-D typed resolved-object handle (`ResolvedObj`) across all 29 `set_object_ref` files; item (e) escape-recorded (branch `depas-r3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, type-channel only. Base = the R3.2 part-1 tip
+`7dc07ea`. Ritual 0 held at start **and** before the commit: 186 `.pas` under
+`.inputs/dss_capi`; `cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Delivered: R3 handoff item 2's sub-item (c).** The shared resolved-object
+tuple `Option<(ElemId, &dyn DssObject)>` is replaced tree-wide by a **typed
+handle**:
+
+```rust
+pub struct ResolvedObj<'a> { id: ElemId, arena: &'a ClassArena }   // obj/arena.rs
+//   .id()  .obj()  .name()  .ckt()  .get::<T>()  .cloned::<T>()
+```
+
+`ResolvedObj::new(arena, idx)` derives the `ElemId` from the arena itself
+(new `ClassArena::id(idx)`), so the handle and the storage **cannot** disagree —
+there is no way to build a mis-classed one. `get::<T>`/`cloned::<T>` are static
+[`ArenaClass`] matches: the Category-D snapshot clones
+(`o.as_any().downcast_ref::<LoadShapeObj>().cloned()` etc.) become
+`o.cloned::<LoadShapeObj>()` with **no `Any` round-trip**.
+
+**Retyped, in one sweep (39 files, all under `crates/dss-core/src/`):**
+- `DssObject::set_object_ref(idx, name, resolved: Option<ResolvedObj<'_>>)` and
+  `ObjectRefArrayItem<'a> = Option<(String, ResolvedObj<'a>)>` (`obj/base/mod.rs`).
+- `ForeignClassesView::find` → `Option<ResolvedObj<'a>>`, `find_full` →
+  `Option<(ResolvedObj<'a>, String)>` (`obj/props/engine.rs`), implemented by
+  `ForeignClasses` (`exec/registry.rs`).
+- The **29** per-class `set_object_ref` impls + the 3 `ObjectRefArrayItem`
+  consumers (`line/code.rs` `set_wires`/`set_conductors`/`set_cables`,
+  `line_geometry/{accessors,edit}.rs`).
+- The producers: `obj/props/class_props/parse.rs` (both single-ref paths + both
+  array paths) and `exec/command.rs` (TCC injection ×2, Spectrum, the
+  InvControl/ExpControl DER-fleet scans, the GICsource Line resolve).
+- The two test helpers (`line/tests.rs`, `line_geometry/tests.rs`) now build a
+  real one-object `ClassArena` per target (`arena_of::<T>`) instead of faking an
+  `ElemId::new(0, 0)`, so the tests exercise the same typed path production does
+  — a strictly stronger fixture, and the stored handle now carries the object's
+  **true** class ordinal.
+- Two supporting arena primitives: `ClassArena::id(idx)` and
+  `ClassArena::push::<T>(obj)` (typed append; `ArenaClass::arena_slice*` became
+  `arena_vec*` returning the `Vec` so `push` can exist — `all`/`all_mut` still
+  hand out slices).
+
+**Bit-neutrality argument.** The clone still happens inside the same
+`set_object_ref` call, at resolve time, from the same object — only the type
+channel changed (`DE_PASCALIZE_PLAN.md` Part I, "Category D timing"). The
+`ForeignClasses` scan order is unchanged (left half, then right half, first
+class-name match wins, `cls.Find` semantics); the returned class ordinal moved
+from a hand-computed `k`/`split + 1 + k` to `ClassArena::id`, which is the same
+number by the `arena_order_matches_registry` invariant. The dump name path is
+unchanged (`resolved.name()` ⇔ `obj.data().name()`; `find_full` still rebuilds
+`Class.Name` from `props.class_name()`). Every `downcast_ref::<T>().cloned()`
+became `cloned::<T>()`, which returns `Some` on exactly the same class match.
+No golden, ledger, tolerance or corpus deck was touched.
+
+**ESCAPED → R3.3 — sub-item (e), the Category-B monitor `take_sample`
+bare-`&dyn` reader.** Old code untouched, gate green. `solution/monitors.rs:61`
+still does `store.pair_mut(mon_ref, metered_ref)` + `as_any_mut()
+.downcast_mut::<Monitor>()`, and `Monitor::take_sample(metered: &mut dyn
+DssObject, …)` (`meter/monitor/sample.rs`) still reads its metered element
+through 8 `as_ckt_element*` calls **and 4 concrete downcasts** (mode-9
+`Capacitor::states`, mode-11 `Storage` present kW/kvar/kWh/state, mode-8
+`Transformer::get_all_winding_currents`, mode-10
+`Transformer::get_winding_voltages`). Blocker: retyping the parameter to
+`&mut dyn CktElement` **loses** those four concrete reads, and the two ways out
+are both bigger than this step:
+1. add 4 monitor-specific typed reads to the `CktElement` trait (the plan's R0
+   "small typed reads" bullet) — a 50-class trait-surface change; or
+2. pass a typed `(arena, idx)` view instead — which needs a disjoint-borrow
+   getter whose **same-class** branch (a Monitor whose `element=` names another
+   Monitor — reachable, `find_ckt_element` resolves Monitor like any other
+   circuit class) cannot hand out an arena view, so it would silently return
+   `None` for the concrete reads. Changing behavior on that branch without a
+   probe is exactly what the escape protocol forbids.
+Recommendation: fold (e) into R3.3, where the `as_ckt_element` trait-method
+removal forces the decision for every bare-`&dyn` reader at once (the same
+`capture_metered`/`capture` family listed in the R2b (e) blocker map).
+
+**Metrics (`rg -c … crates/dss-core/src`, summed lines / files).**
+
+| metric | R3.2 part-1 `7dc07ea` | HEAD | delta | note |
+|---|---|---|---|---|
+| `downcast_ref\|downcast_mut` | 341 / 75 f | **310 / 57 f** | **−31** | all Category-D resolve-time clones (**−18 files**) |
+| `as_any\|as_ckt_element` | 667 / 134 f | **619 / 134 f** | **−48** | the `as_any()` half of those clones |
+| `TODO(compat)` | 117 / 68 f | **117 / 68 f** | **0** | invariant held |
+
+**R3.2 total vs its base `275de68`:** `downcast_ref|downcast_mut` **369 → 310
+(−59, −16 files)**, `as_any|as_ckt_element` **716 → 619 (−97)**, `TODO(compat)`
+**117 unchanged**, zero golden / ledger / tolerance / corpus-deck churn.
+
+**Deviations disclosed.** (1) `ArenaClass::arena_slice`/`arena_slice_mut` were
+renamed to `arena_vec`/`arena_vec_mut` and now return the `Vec` (so
+`ClassArena::push` can exist); the public slice API is unchanged
+(`all`/`all_mut`). (2) `ResolvedObj::new` takes `(arena, idx)` — deriving the
+handle — rather than `(id, arena)`; this removes a whole class of possible
+mis-pairing and is why `ForeignClasses::lookup` no longer computes the ordinal
+by hand. (3) The two test `set_ref`/`set_ref_array` helpers changed signature
+(`&dyn DssObject` → `&ClassArena` built by `arena_of`), which also fixes the
+old fixture's fake `ElemId::new(0, 0)` handle; no test case was removed,
+weakened or ignored. (4) Item (e) escaped (above). (5) Ritual step 3 (two fresh
+audits) is not run in this session; the coordinator spawns the R3 audits.
+
+**Gate (full, SOLO, toolchain guard first).** `cargo fmt --all --check` exit 0;
+`cargo clippy --workspace --all-targets -- -D warnings` exit 0; `cargo test
+--workspace` **exit 0** — 66 `test result: ok` groups, **1989 passed, 0 failed,
+5 ignored** (the same 5 pre-existing ones; zero `#[ignore]` churn),
+`corpus_gate_all_cases_match_engines … ok` (25 passed, 155.9 s, both channels
+capi_v0145 + r4133), run solo with no name filters. Corpus left pristine: 18
+run-artifacts (`StorageControllerTechNote/{Support,Time}/IEEE8500u_*.csv`)
+removed by exact name — no wide `git clean`. Tree clean.
+
 ### DE_PASCALIZE R3.2 (part 1/2) — typed arena accessors + Category-A typed pair/triple getters + the `*_mut` helper family (branch `depas-r3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral, type-channel only. Base = the R3.1 tip `275de68`
