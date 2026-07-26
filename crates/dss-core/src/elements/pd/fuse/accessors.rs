@@ -42,10 +42,6 @@ impl CktElement for Fuse {
         self.ccd.controlled_element
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TFuseObj.CalcYPrim`: leave YPrim as NIL (always zero for a fuse).
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
 
@@ -289,10 +285,6 @@ impl DssObject for Fuse {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_ref_actions)
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

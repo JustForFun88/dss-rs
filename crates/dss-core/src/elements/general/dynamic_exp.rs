@@ -504,10 +504,6 @@ impl DssObject for DynamicExpObj {
             _ => {}
         }
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }
 
 /// Delphi/FPC `TStringHelper.Substring(startIndex, length)`: 0-based start,

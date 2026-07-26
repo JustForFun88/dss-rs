@@ -7,6 +7,167 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R3.4 — Category-C conductor snapshots retyped (`ConductorObj`); `clone_box` and the dead `CktElement::recalc_element_data` REMOVED; Part I success metrics all zero (branch `depas-r3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, type-channel only. Base = the R3.3 tip `dd06c54`.
+Ritual 0 held at start **and** before the commit: 186 `.pas` under
+`.inputs/dss_capi`; `cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Delivered: R3 handoff item 4 (a) + the R3 dead-code sweep (b) + the metric
+verification (c) + the perf sanity check (d).** The last owned `Box<dyn
+DssObject>` storage in the tree — the conductor snapshots — is now a typed enum,
+which zeroes `clone_box`'s call sites and lets the trait method go with them.
+
+**(a) The typed conductor snapshot** (`elements/general/conductor_data/mod.rs`):
+
+```rust
+pub enum ConductorObj { Wire(WireDataObj), Cn(CnDataObj), Ts(TsDataObj) }
+//   ::from_resolved(ResolvedObj) -> Option<Self>   (the resolve-time clone)
+//   .name()  .amps_owned()  + impl ConductorData (geom/amps/conductor_kind)
+```
+
+`LineGeometryObj::fwiredata` and `Line::line_wire_data` become
+`Vec<Option<ConductorObj>>`; `LineGeometryObj::conductor(i)` and
+`load_spacing_and_wires(wires: &[Option<ConductorObj>])` follow. The three
+variants are exactly the classes these properties resolve against
+(`object_ref_class("WireData"|"CNData"|"TSData")` plus the 3-class `Conductors`
+proxy — `props/class_props/parse.rs` resolves an `ObjectRef` only inside its
+declared class), so the storage cannot hold anything else and every read that
+used to probe `as_conductor()` at runtime is a static match now. Retyped
+consumers: the 11 conductor-snapshot `clone_box` sites →
+`ConductorObj::from_resolved` / `.clone()`; `get_string` /
+`get_object_ref_names` / both `Save` conductor loops → `.name()`; the
+choice/ratings helpers (`conductor_choice_of` ×2, `default_amps_from`,
+`set_wires` ×2, `conductor_norm_emerg`) → total `match`es over `ConductorKind`
+with no `Option` arm; `cim/export.rs::conductor_class_name` → `&ConductorObj ->
+&'static str` (infallible). Three helpers died with their last caller and were
+deleted: `conductor_data::conductor_geom`, `line/code.rs::conductor_amps`,
+`line_geometry/edit.rs::conductor_amps`.
+
+**`clone_box` is gone** — zero call sites after the retype (the dispatch
+`mon_clone` ×3 had moved to `ClassArena::clone_ckt` in R3.3, `make_like_within`
+to the typed clone in R2b (c)), so the trait method, its 50 per-class impls and
+the `json_tests` test-double impl were removed. With `fwiredata` /
+`line_wire_data` typed, `LineGeometryObj` and `Line` are plain
+`#[derive(Clone)]` — both hand-written `Clone` impls were field-complete (a
+struct literal cannot omit a field), so the derive is the same field-wise copy.
+The hand-written `Debug` impls stay: they deliberately print a subset.
+
+**(b) Dead-code sweep — two candidates deleted, three are live.**
+- **`CktElement::recalc_element_data(&mut self, &SysCtx)` — DELETED** (trait
+  decl + 35 class impls + 6 test-double impls). Provably dead: `rg
+  recalc_element_data` finds **no call site** anywhere (the executive drives
+  recalc from `end_edit` / the property side effects). Every impl body was a
+  one-line delegate to an inherent `recalc(...)`, and each of those inherent
+  methods keeps other live callers (checked per class: `accessors.rs::end_edit`,
+  the `mod.rs` constructors, unit tests) — nothing was orphaned. The unrelated
+  WindGen/WTG3 inherent `recalc_element_data(h, t)` (live from
+  `windgen/nominal.rs`) is untouched.
+- **`schema_skeleton` / `extract_schema_skeleton_json` — DELETED**
+  (`report/export/json/schema/mod.rs`): zero callers in the workspace, superseded
+  by `assemble_full_document`. Their two helpers (`global_defs`,
+  `circuit_properties_head`) stay — used by the full document **and** pinned by
+  `tests/golden_schema.rs`.
+- **`ClassStore` — NOT dead, and no longer a boxing adapter.** R1 turned it into
+  the typed-arena store view (`classes: &mut [DssClass]` + the typed
+  pair/triple getters) with ~20 live construction sites. The plan's "boxing
+  adapter" wording predates the arena flip; nothing to remove.
+- **`ControlKind` (`controls/dispatch.rs:42`) — NOT dead.** It is the typed
+  dispatch enum built from `ControlClass` with the captured per-class refs, and
+  every variant is matched in that file. The R0 "collapse" it refers to already
+  happened (the identification chain became the `ControlElem` trait).
+- **Downcast-related `.expect()` assertions — none left.** After R3.3 the only
+  `expect`s on this spine unwrap the *typed* accessors (`try_ckt_elem`,
+  `typed_*_pair_mut`), each with a live invariant.
+
+**(c) Part I success metrics — verified on HEAD.**
+
+| metric (`crates/dss-core/src`) | base `dd06c54` | HEAD | note |
+|---|---|---|---|
+| `downcast_ref\|downcast_mut` | 11 / 3 f | **0** | the prose naming the removed API reworded to "the removed `Any` downcast" |
+| `as_any` | 18 / 6 f | **0** | same |
+| owned `Box<dyn DssObject>` storage | 2 fields | **0** | the 7 remaining `Box<dyn DssObject>` hits are historical prose |
+| `clone_box` | 65 / 58 f | **0 code** (2 prose) | trait decl + 51 impls + 12 call sites gone |
+| `fn recalc_element_data` | 43 / 42 f | **1** | the live WindGen inherent 2-arg method |
+| `TODO(compat)` | 117 / 68 f | **117 / 68 f** | invariant held |
+
+`rg "downcast_ref|downcast_mut|as_any" crates/dss-core/src` → **0**, the plan's
+R3 CI grep gate. The only workspace hits left are two `Box<dyn Any>` **panic
+payload** downcasts in `tests/corpus_gate/runner.rs` (`catch_unwind` plumbing,
+not the element type channel). Pin tests green and untouched:
+`obj::arena::tests::arena_order_matches_registry`,
+`exec::registry::tests::find_ckt_element_tie_breaks_by_registration_order`,
+`typed_accessors_match_the_any_downcast_for_every_class`,
+`typed_accessors_reject_a_foreign_class`.
+
+**Bit-neutrality argument.** The retype changes *where the class is known*, not
+what is read: `ConductorObj::from_resolved` clones the same object at the same
+resolve-time point `clone_box()` did (`ResolvedObj::cloned::<T>` is the proven
+typed twin), and `ConductorData` through the enum returns the same
+`geom()`/`amps()`/`conductor_kind()` the `as_conductor()` vtable returned for
+that concrete type. Every multi-arm chain that changed shape
+(`conductor_choice_of` ×2, both `Save` kind selectors, `conductor_class_name`)
+covers **mutually exclusive** classes and keeps its arm order and fall-through
+target (`Wire → Overhead` / `"wire"` / `"Wires"`). Slot allocation, conductor
+order, the skip-NIL compaction in `LoadSpacingAndWires`, the running-minimum
+ampacity loop and every accumulation are verbatim; no arithmetic is in the diff.
+`recalc_element_data` / `clone_box` / `schema_skeleton` had no callers, so their
+removal cannot change behavior. Zero golden / ledger / tolerance / corpus-deck
+churn.
+
+**(d) Perf sanity (criterion, `crates/dss-core/benches`, release bench profile,
+median).** One run on this HEAD, next to the only prior recorded numbers (the
+P15 record's "after" column). Different session and machine load — an
+order-of-magnitude sanity check, not a controlled A/B:
+
+| bench | P15 record ("after") | R3.4 HEAD (median [lo hi]) |
+|---|---|---|
+| `snapshot_8500/compile_solve` | 186 ms | **132.65 ms** [132.10, 133.20] |
+| `ybuild_8500/rebuild_whole_y` | 4.33 ms | **1.657 ms** [1.6473, 1.6673] |
+| `lu_factor_solve/zero_restamp_factor_solve` | 4.41 ms | **2.639 ms** [2.6204, 2.6659] |
+
+No `snapshot_8500`-class regression: the R3 type-channel work is compile-time
+only (static matches replacing vtable/`Any` probes), so a regression was not
+expected and none is visible above the run-to-run noise.
+
+**Deviations disclosed.**
+1. `ConductorObj::from_resolved` returns `Option`; a reference naming a
+   non-conductor class yields `None` where `clone_box()` would have stored a
+   foreign object. Unreachable (the property engine resolves an `ObjectRef` only
+   within its declared class(es)), and every site treats that `None` as the NIL
+   slot it already had — `line/code.rs::set_wires` writes `None` explicitly so no
+   stale slot can survive.
+2. `cim/export.rs::conductor_class_name` lost its `Option` (a conductor snapshot
+   is always one of the three classes); its single caller used to drop the whole
+   `ConductorRef` on `None` — now unreachable, same output.
+3. `LineGeometryObj`/`Line` moved from hand-written to derived `Clone` (identical
+   field for field, see above).
+4. `line_geometry/accessors.rs::set_object_ref` no longer clones the resolved
+   object *before* the property match — the clone happens inside the conductor
+   arm only. The `spacing=` arm never used that clone (it takes its own typed
+   `LineSpacingObj` clone), so this drops a wasted allocation, nothing
+   observable.
+5. The three deleted helpers and the two deleted schema functions had no callers
+   and no test referenced them.
+6. Ritual step 3 (two fresh audits) is not run in this session; the coordinator
+   spawns the R3 audits.
+
+**Still open → NOT R3.4's scope.** R3.1's sub-step (iv) beyond
+`line_spacing_obj`: the remaining "statically-known shape refs as typed `Idx<T>`"
+fields (`geometry_obj` / the `xfmr_code_ref` family). They are neither `Any`
+consumers nor `dyn`-owned storage (already concrete snapshots or `ElemId`), so
+they are a separate [A] refactor, not part of the Category-C storage retype this
+step closed.
+
+**Gate (full, SOLO, toolchain guard first).** `cargo fmt --all --check` exit 0;
+`cargo clippy --workspace --all-targets -- -D warnings` exit 0; `cargo test
+--workspace` **exit 0** — 66 `test result: ok` groups, **1989 passed, 0 failed,
+5 ignored** (the same 5 pre-existing ones; zero `#[ignore]` churn),
+`corpus_gate_all_cases_match_engines … ok` (both channels capi_v0145 + r4133),
+run solo with no name filters. Corpus left pristine: the 26 run-artifacts listed
+by `git status tests/corpus` removed by exact name — no wide `git clean`. Diff:
+81 files, **+205 / −666**.
+
 ### DE_PASCALIZE R3.3 — the mechanical collapse: `as_any`/`as_any_mut` **and** `as_ckt_element`/`as_ckt_element_mut` REMOVED from `DssObject`; zero `Any` in the tree (branch `depas-r3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral, type-channel only. Base = the R3.2 part-3 tip

@@ -24,10 +24,6 @@ impl CktElement for Vccs {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TVCCSObj.MakePosSequence` (vccs.pas:495-500): a multi-phase VCCS
     /// collapses to `Phases := 1` (a bare single edit), then `inherited` (the
     /// base bus rename).
@@ -284,9 +280,5 @@ impl DssObject for Vccs {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

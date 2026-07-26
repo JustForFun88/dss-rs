@@ -43,14 +43,6 @@ impl CktElement for EnergyMeter {
         &mut self.med.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        let mut errors = crate::diag::ErrorLog::new();
-        self.recalc(&mut errors);
-        for e in errors {
-            self.med.cd.obj.push_error(e);
-        }
-    }
-
     /// `TEnergyMeterObj.CalcYPrim` is empty — a meter never stamps admittance.
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
 
@@ -350,10 +342,6 @@ impl DssObject for EnergyMeter {
         for e in errors {
             self.med.cd.obj.push_error(e);
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

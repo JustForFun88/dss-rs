@@ -18,10 +18,6 @@ impl CktElement for VsConverter {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TVSConverterObj.MakePosSequence` (VSConverter.pas:485-494): unless
     /// already a 2-phase (AC + DC) converter, force `Phases := 2` and `Ndc := 1`
     /// — TWO separate bare single edits (the upstream `//TODO: why two edits?`),
@@ -297,10 +293,6 @@ impl DssObject for VsConverter {
         // resolves through `set_string` + `set_harmonic_spectrum` (like Generator
         // / VSource); nothing routes through here.
         unreachable!("VSConverter has no resolved object-ref property {idx}");
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

@@ -27,10 +27,6 @@ impl CktElement for CapControl {
         self.ccd.controlled_element
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim as NIL — `BuildYMatrix`
     /// skips elements with no primitive matrix.
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
@@ -438,10 +434,6 @@ impl DssObject for CapControl {
         // CapControl's user model is a control model; its recalc reads no live
         // `ActiveCircuit.Solution` globals, so the live snapshot is ignored.
         self.apply_user_model_load_impl(load, wasm, errors);
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

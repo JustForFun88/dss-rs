@@ -26,10 +26,6 @@ impl CktElement for EspvlControl {
         self.ccd.controlled_element
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL — `BuildYMatrix` skips it.
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
 
@@ -293,10 +289,6 @@ impl DssObject for EspvlControl {
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

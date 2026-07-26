@@ -50,10 +50,6 @@ impl CktElement for Recloser {
         self.ccd.controlled_element
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
 
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
@@ -431,10 +427,6 @@ impl DssObject for Recloser {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_ref_actions)
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

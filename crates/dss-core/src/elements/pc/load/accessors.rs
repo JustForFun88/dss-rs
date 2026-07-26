@@ -30,10 +30,6 @@ impl CktElement for Load {
         Some(self.num_customers)
     }
 
-    fn recalc_element_data(&mut self, sys: &SysCtx) {
-        self.recalc(sys);
-    }
-
     /// Pascal `TLoadObj.MakePosSequence` (`Load.pas:2215`). Convert to a single
     /// phase, line-neutral wye load carrying one third of the total power.
     ///
@@ -611,9 +607,5 @@ impl DssObject for Load {
     fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
         self.recalc(sys);
         self.cd.yprim_invalid = true;
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

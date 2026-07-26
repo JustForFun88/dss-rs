@@ -219,8 +219,4 @@ impl DssObject for CnDataObj {
             self.data.push_error(e);
         }
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

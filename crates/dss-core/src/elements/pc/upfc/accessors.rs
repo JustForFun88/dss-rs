@@ -25,10 +25,6 @@ impl CktElement for Upfc {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TUPFCObj.MakePosSequence` (UPFC.pas:1058-1060): an EMPTY body
     /// with NO `inherited` — the UPFC is left completely untouched (not even the
     /// base bus rename runs).
@@ -302,9 +298,5 @@ impl DssObject for Upfc {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

@@ -604,7 +604,7 @@ pub trait DssObject: Send {
 
     /// Control-element view (Pascal `obj is TControlElem`). `Some` only for the
     /// control classes; the dispatch loop identifies a control and reads its
-    /// base state through this instead of an `as_any` downcast chain (R0).
+    /// base state through this instead of an `Any` downcast chain (R0).
     /// `None` for every non-control object.
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         None
@@ -618,7 +618,7 @@ pub trait DssObject: Send {
     /// Conductor-catalog view (Pascal `obj is TConductorDataObj`). `Some` only
     /// for the `WireData`/`CNData`/`TSData` classes; the LineGeometry/Line
     /// conductor resolution reads geometry/ratings/class through this instead
-    /// of an `as_any` downcast chain (R0, Category C). `None` otherwise.
+    /// of an `Any` downcast chain (R0, Category C). `None` otherwise.
     fn as_conductor(&self) -> Option<&dyn crate::elements::general::conductor_data::ConductorData> {
         None
     }
@@ -1002,8 +1002,4 @@ pub trait DssObject: Send {
     fn apply_ref_action(&mut self, action: &RefAction) {
         let _ = action;
     }
-
-    /// Clone this object behind the trait object, so the executive can copy a
-    /// `MakeLike` source out of its arena without aliasing the target.
-    fn clone_box(&self) -> Box<dyn DssObject>;
 }

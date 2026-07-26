@@ -3,6 +3,7 @@ use crate::elements::general::conductor_data::WireDataObj;
 use crate::elements::general::conductor_data::wire_data;
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::obj::arena::{ClassArena, ResolvedObj};
+use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
@@ -277,11 +278,11 @@ fn spacing_ratings_min_over_phase_conductors() {
         ("h", "28 28 28 24"),
         ("units", "ft"),
     ]);
-    let wires: Vec<Option<Box<dyn DssObject>>> = vec![
-        Some(Box::new(big.clone())),
-        Some(Box::new(small.clone())),
-        Some(Box::new(big.clone())),
-        Some(Box::new(neut.clone())),
+    let wires: Vec<Option<ConductorObj>> = vec![
+        Some(ConductorObj::Wire(big.clone())),
+        Some(ConductorObj::Wire(small.clone())),
+        Some(ConductorObj::Wire(big.clone())),
+        Some(ConductorObj::Wire(neut.clone())),
     ];
     let mut g = LineGeometryObj::new("g_ratings");
     // eps=1.0, height_offset=0, height_unit=UNITS_M (4): the default medium.

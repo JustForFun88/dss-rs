@@ -16,7 +16,9 @@ use std::collections::HashMap;
 
 use crate::circuit::Circuit;
 use crate::elements::control::CapControl;
-use crate::elements::general::conductor_data::{CableGeom, ConductorGeom, ConductorKind};
+use crate::elements::general::conductor_data::{
+    CableGeom, ConductorData, ConductorGeom, ConductorKind, ConductorObj,
+};
 use crate::elements::general::line_code::{LineCodeObj, prop as lc_prop};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
@@ -1084,12 +1086,12 @@ fn class_obj_uuid(classes: &mut [DssClass], class_name: &str, obj_name: &str) ->
 
 /// The catalog class name of a conductor snapshot (`WireData`/`CNData`/`TSData`),
 /// for resolving its master UUID (`Pascal FetchConductorData` returns the real
-/// typed object). `None` for any non-conductor object.
-fn conductor_class_name(cond: &dyn DssObject) -> Option<&'static str> {
-    match cond.as_conductor()?.conductor_kind() {
-        ConductorKind::Wire => Some("WireData"),
-        ConductorKind::Cn => Some("CNData"),
-        ConductorKind::Ts => Some("TSData"),
+/// typed object).
+fn conductor_class_name(cond: &ConductorObj) -> &'static str {
+    match cond.conductor_kind() {
+        ConductorKind::Wire => "WireData",
+        ConductorKind::Cn => "CNData",
+        ConductorKind::Ts => "TSData",
     }
 }
 
@@ -3860,16 +3862,14 @@ pub(crate) fn export_cdpsm(
             };
             let mut conductor_refs: Vec<ConductorRef> = Vec::new();
             for i in 1..=(num_cond_avail.max(0) as usize) {
-                let cond: Option<&dyn DssObject> = if spacing_specified {
-                    line.line_wire_data.get(i - 1).and_then(|o| o.as_deref())
+                let cond: Option<&ConductorObj> = if spacing_specified {
+                    line.line_wire_data.get(i - 1).and_then(|o| o.as_ref())
                 } else if let Some(g) = &line.geometry_obj {
                     g.conductor(i)
                 } else {
                     None
                 };
-                conductor_refs.push(cond.and_then(|c| {
-                    conductor_class_name(c).map(|cls| (c.data().name().to_string(), cls))
-                }));
+                conductor_refs.push(cond.map(|c| (c.name().to_string(), conductor_class_name(c))));
             }
             LineSnap {
                 name: line.cd.obj.name().to_string(),

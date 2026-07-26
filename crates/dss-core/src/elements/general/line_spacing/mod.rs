@@ -278,8 +278,4 @@ impl DssObject for LineSpacingObj {
             _ => {}
         }
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

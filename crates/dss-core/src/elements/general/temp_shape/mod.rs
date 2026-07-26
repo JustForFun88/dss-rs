@@ -228,8 +228,4 @@ impl DssObject for TShapeObj {
             _ => {}
         }
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

@@ -27,10 +27,6 @@ impl CktElement for WindGen {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, sys: &SysCtx) {
-        self.recalc(sys);
-    }
-
     /// Pascal `TWindGenObj.MakePosSequence` (`WindGen.pas:2184`). Single phase,
     /// line-neutral; a multi-phase WindGen's power is divided by the phase count
     /// (PF preserved), and — conditionally — its kVA/MVA ratings. Unlike
@@ -576,10 +572,6 @@ impl DssObject for WindGen {
         vars: &dss_parser::ParserVars,
     ) -> bool {
         self.dyneq.parse_dyn_var(variable, value, vars)
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

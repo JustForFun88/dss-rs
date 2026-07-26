@@ -162,16 +162,6 @@ impl CktElement for InvControl {
         self.ccd.controlled_element
     }
 
-    /// Pascal `TInvControlObj.RecalcElementData` (the parse-time subset): attach
-    /// the control's terminal to the first DER's bus. The fleet *dispatch* build
-    /// (`MakeDERList` + `UpdateDERParameters`) needs store access, so it is deferred
-    /// to the first `Sample`; the bus is resolved at edit-completion instead (the
-    /// executive calls [`set_resolved_monitored`](InvControl::set_resolved_monitored)
-    /// before `end_edit` → `recalc`).
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL.
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
 
@@ -558,10 +548,6 @@ impl DssObject for InvControl {
     /// deferred to the first `Sample`).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

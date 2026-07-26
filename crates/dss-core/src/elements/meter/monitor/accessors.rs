@@ -22,14 +22,6 @@ impl CktElement for Monitor {
         &mut self.med.cd
     }
 
-    fn recalc_element_data(&mut self, sys: &SysCtx) {
-        let mut errors = crate::diag::ErrorLog::new();
-        self.recalc(&mut errors, sys.is_harmonic_model);
-        for e in errors {
-            self.med.cd.obj.push_error(e);
-        }
-    }
-
     /// `TMonitorObj.CalcYPrim` is empty — a monitor never stamps admittance.
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
 
@@ -240,10 +232,6 @@ impl DssObject for Monitor {
         for e in errors {
             self.med.cd.obj.push_error(e);
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

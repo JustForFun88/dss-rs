@@ -24,10 +24,6 @@ impl CktElement for IndMach012 {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, sys: &SysCtx) {
-        self.recalc(sys);
-    }
-
     /// Pascal `TIndMach012Obj.MakePosSequence` (IndMach012.pas:1424-1426): an
     /// EMPTY body with NO `inherited` — the machine is left completely untouched
     /// (not even the base bus rename runs).
@@ -396,9 +392,5 @@ impl DssObject for IndMach012 {
     fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
         self.recalc(sys);
         self.cd.yprim_invalid = true;
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

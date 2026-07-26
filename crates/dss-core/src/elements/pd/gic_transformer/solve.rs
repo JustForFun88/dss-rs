@@ -85,10 +85,6 @@ impl CktElement for GicTransformer {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TGICTransformerObj.MakePosSequence` (GICTransformer.pas:586-591):
     /// a multi-phase GICTransformer collapses to `Phases := 1` (a bare single
     /// edit), then `inherited` (the base bus rename).

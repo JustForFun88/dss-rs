@@ -250,8 +250,4 @@ impl DssObject for LineCodeObj {
             }
         }
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

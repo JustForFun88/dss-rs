@@ -51,11 +51,7 @@ impl Line {
         self.geometry_name = other.geometry_name.clone();
         self.fz_frequency = other.fz_frequency;
         self.line_spacing_obj = other.line_spacing_obj.clone();
-        self.line_wire_data = other
-            .line_wire_data
-            .iter()
-            .map(|o| o.as_ref().map(|b| b.clone_box()))
-            .collect();
+        self.line_wire_data.clone_from(&other.line_wire_data);
         self.fphase_choice = other.fphase_choice;
         self.got_ratings_after_spacing_conds = other.got_ratings_after_spacing_conds;
         self.norm_amps = other.norm_amps;
@@ -247,11 +243,7 @@ impl DssObject for Line {
         ));
         self.line_wire_data
             .iter()
-            .map(|o| {
-                o.as_ref()
-                    .map(|o| o.data().name().to_string())
-                    .unwrap_or_default()
-            })
+            .map(|o| o.as_ref().map(|o| o.name().to_string()).unwrap_or_default())
             .collect()
     }
 
@@ -629,8 +621,4 @@ impl DssObject for Line {
 
     /// Pascal `TLine.EndEdit`: Line does *not* call RecalcElementData here.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

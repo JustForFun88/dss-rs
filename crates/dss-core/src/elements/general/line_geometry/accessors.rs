@@ -6,6 +6,7 @@ use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 
 use super::{ConductorChoice, LineGeometryObj, LineType, prop};
+use crate::elements::general::conductor_data::ConductorObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
 
 impl LineGeometryObj {
@@ -27,11 +28,7 @@ impl LineGeometryObj {
             self.equivalent_spacing = o.equivalent_spacing;
             self.fline_type = o.fline_type;
             self.fphase_choice.clone_from(&o.fphase_choice);
-            self.fwiredata = o
-                .fwiredata
-                .iter()
-                .map(|c| c.as_ref().map(|b| b.clone_box()))
-                .collect();
+            self.fwiredata.clone_from(&o.fwiredata);
             self.fx.clone_from(&o.fx);
             self.fy.clone_from(&o.fy);
             self.funits.clone_from(&o.funits);
@@ -139,7 +136,7 @@ impl DssObject for LineGeometryObj {
         let name_of = |slot: Option<usize>| {
             slot.and_then(|a| self.fwiredata.get(a))
                 .and_then(|o| o.as_ref())
-                .map(|o| o.data().name().to_string())
+                .map(|o| o.name().to_string())
                 .unwrap_or_default()
         };
         match idx {
@@ -154,11 +151,10 @@ impl DssObject for LineGeometryObj {
     }
 
     fn set_object_ref(&mut self, idx: usize, _name: String, resolved: Option<ResolvedObj<'_>>) {
-        let cloned = resolved.map(|o| o.obj().clone_box());
         match idx {
             prop::WIRE | prop::CNCABLE | prop::TSCABLE => {
                 if let Some(a) = self.active_index() {
-                    self.fwiredata[a] = cloned;
+                    self.fwiredata[a] = resolved.and_then(ConductorObj::from_resolved);
                 }
             }
             prop::SPACING => {
@@ -177,7 +173,9 @@ impl DssObject for LineGeometryObj {
             prop::CONDUCTORS => {
                 for (i, r) in refs.iter().enumerate() {
                     if i < self.fwiredata.len() {
-                        self.fwiredata[i] = r.as_ref().map(|(_, o)| o.obj().clone_box());
+                        self.fwiredata[i] = r
+                            .as_ref()
+                            .and_then(|(_, o)| ConductorObj::from_resolved(*o));
                     }
                 }
             }
@@ -191,11 +189,7 @@ impl DssObject for LineGeometryObj {
         ));
         self.fwiredata
             .iter()
-            .map(|o| {
-                o.as_ref()
-                    .map(|o| o.data().name().to_string())
-                    .unwrap_or_default()
-            })
+            .map(|o| o.as_ref().map(|o| o.name().to_string()).unwrap_or_default())
             .collect()
     }
 
@@ -320,9 +314,5 @@ impl DssObject for LineGeometryObj {
         ) {
             self.data_changed = true;
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

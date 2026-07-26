@@ -24,9 +24,6 @@ impl CktElement for UpfcControl {
         self.ccd.controlled_element
     }
 
-    /// Pascal `TUPFCControlObj.RecalcElementData`: empty.
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {}
-
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL — `BuildYMatrix` skips it.
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
 
@@ -157,10 +154,6 @@ impl DssObject for UpfcControl {
 
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData` (a no-op).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }
 
 impl crate::elements::control::control_elem::ControlElem for UpfcControl {

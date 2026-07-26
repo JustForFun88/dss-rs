@@ -170,10 +170,6 @@ impl CktElement for VSource {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TVsourceObj.MakePosSequence` (`VSource.pas:1201`). Single phase,
     /// line-neutral base kV (`kVBase / SQRT3`), keeping the R1/X1 sequence
     /// impedance.

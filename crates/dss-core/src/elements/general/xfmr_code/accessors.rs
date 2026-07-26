@@ -295,8 +295,4 @@ impl DssObject for XfmrCodeObj {
             }
         }
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

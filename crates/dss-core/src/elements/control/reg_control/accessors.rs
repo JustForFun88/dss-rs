@@ -29,10 +29,6 @@ impl CktElement for RegControl {
         self.ccd.controlled_element
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim as NIL — `BuildYMatrix`
     /// skips elements with no primitive matrix.
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
@@ -400,10 +396,6 @@ impl DssObject for RegControl {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_actions)
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 
