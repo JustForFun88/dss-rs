@@ -29,10 +29,7 @@ pub(crate) fn export_gic_mvars(
         return s;
     };
     for idx in 0..classes[ci].arena.len() {
-        let Some(gt) = classes[ci].arena[idx]
-            .as_any_mut()
-            .downcast_mut::<GicTransformer>()
-        else {
+        let Some(gt) = classes[ci].arena.get_mut::<GicTransformer>(idx) else {
             continue;
         };
         let (bus, mvar, gic) = gt.var_output_record(sys, node_v);

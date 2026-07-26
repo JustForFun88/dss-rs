@@ -15,304 +15,137 @@ impl Dss {
 
         // Class registry. More classes are registered here as they are ported.
         let classes = vec![
-            DssClass::dss_object(tcc_curve::class_props(&enums), |name| {
-                Box::new(tcc_curve::TccCurveObj::new(name))
-            }),
-            DssClass::dss_object(spectrum::class_props(&enums), |name| {
-                Box::new(spectrum::SpectrumObj::new(name))
-            }),
-            DssClass::dss_object(line_code::class_props(&enums), |name| {
-                Box::new(line_code::LineCodeObj::new(name))
-            }),
-            DssClass::dss_object(growth_shape::class_props(), |name| {
-                Box::new(growth_shape::GrowthShapeObj::new(name))
-            }),
-            DssClass::dss_object(xfmr_code::class_props(&enums), |name| {
-                Box::new(xfmr_code::XfmrCodeObj::new(name))
-            }),
-            DssClass::dss_object(xy_curve::class_props(&enums), |name| {
-                Box::new(xy_curve::XyCurveObj::new(name))
-            }),
-            DssClass::dss_object(load_shape::class_props(&enums), |name| {
-                Box::new(load_shape::LoadShapeObj::new(name))
-            }),
-            DssClass::dss_object(temp_shape::class_props(&enums), |name| {
-                Box::new(temp_shape::TShapeObj::new(name))
-            }),
-            DssClass::dss_object(price_shape::class_props(&enums), |name| {
-                Box::new(price_shape::PriceShapeObj::new(name))
-            }),
+            DssClass::dss_object(tcc_curve::class_props(&enums)),
+            DssClass::dss_object(spectrum::class_props(&enums)),
+            DssClass::dss_object(line_code::class_props(&enums)),
+            DssClass::dss_object(growth_shape::class_props()),
+            DssClass::dss_object(xfmr_code::class_props(&enums)),
+            DssClass::dss_object(xy_curve::class_props(&enums)),
+            DssClass::dss_object(load_shape::class_props(&enums)),
+            DssClass::dss_object(temp_shape::class_props(&enums)),
+            DssClass::dss_object(price_shape::class_props(&enums)),
             // Conductor catalog (Pascal DSSClassDefs.pas: WireData, CNData,
             // TSData register after Spectrum, before LineGeometry).
-            DssClass::dss_object(conductor_data::wire_data::class_props(&enums), |name| {
-                Box::new(conductor_data::WireDataObj::new(name))
-            }),
-            DssClass::dss_object(conductor_data::cn_data::class_props(&enums), |name| {
-                Box::new(conductor_data::CnDataObj::new(name))
-            }),
-            DssClass::dss_object(conductor_data::ts_data::class_props(&enums), |name| {
-                Box::new(conductor_data::TsDataObj::new(name))
-            }),
+            DssClass::dss_object(conductor_data::wire_data::class_props(&enums)),
+            DssClass::dss_object(conductor_data::cn_data::class_props(&enums)),
+            DssClass::dss_object(conductor_data::ts_data::class_props(&enums)),
             // LineSpacing registers after TSData, before LineGeometry
             // (Pascal DSSClassDefs.pas).
-            DssClass::dss_object(line_spacing::class_props(&enums), |name| {
-                Box::new(line_spacing::LineSpacingObj::new(name))
-            }),
+            DssClass::dss_object(line_spacing::class_props(&enums)),
             // LineGeometry registers after LineSpacing (Pascal DSSClassDefs.pas).
-            DssClass::dss_object(line_geometry::class_props(&enums), |name| {
-                Box::new(line_geometry::LineGeometryObj::new(name))
-            }),
+            DssClass::dss_object(line_geometry::class_props(&enums)),
             // DynamicExp is a DSS_OBJECT registered before Generator/PVSystem/
             // Storage (Pascal DSSClassDefs.pas:225 — "This needs to be before
             // Generator, PVsystem, Storage"); since the Rust registry groups all
             // DSS_OBJECT classes ahead of the circuit-element classes, placing it
             // here satisfies that ordering. Registration order does not affect node
             // ordering (it adds no nodes).
-            DssClass::dss_object(dynamic_exp::class_props(&enums), |name| {
-                Box::new(dynamic_exp::DynamicExpObj::new(name))
-            }),
-            DssClass::ckt_class(
-                vsource::class_props(&enums),
-                |name| Box::new(vsource::VSource::new(name)),
-                ElemKind::Source,
-            ),
+            DssClass::dss_object(dynamic_exp::class_props(&enums)),
+            DssClass::ckt_class(vsource::class_props(&enums), ElemKind::Source),
             // Isource registers right after VSource (Pascal
             // DSSClassDefs.pas:198, immediately below VSource:192; VCCS comes
             // AFTER Isource upstream, :201, but is registered later in this
             // file — WP7.8) — registration order does not affect node
             // ordering, and the class order the oracle observes is pinned by
             // the dump3_commands golden (Vsource → Isource → VCCS).
-            DssClass::ckt_class(
-                isource::class_props(&enums),
-                |name| Box::new(isource::Isource::new(name)),
-                ElemKind::Source,
-            ),
-            DssClass::ckt_class(
-                line::class_props(&enums),
-                |name| Box::new(line::Line::new(name)),
-                ElemKind::Line,
-            ),
-            DssClass::ckt_class(
-                load::class_props(&enums),
-                |name| Box::new(load::Load::new(name)),
-                ElemKind::Load,
-            ),
-            DssClass::ckt_class(
-                transformer::class_props(&enums),
-                |name| Box::new(transformer::Transformer::new(name)),
-                ElemKind::Transformer,
-            ),
-            DssClass::ckt_class(
-                capacitor::class_props(&enums),
-                |name| Box::new(capacitor::Capacitor::new(name)),
-                ElemKind::Capacitor,
-            ),
-            DssClass::ckt_class(
-                reactor::class_props(&enums),
-                |name| Box::new(reactor::Reactor::new(name)),
-                ElemKind::Reactor,
-            ),
+            DssClass::ckt_class(isource::class_props(&enums), ElemKind::Source),
+            DssClass::ckt_class(line::class_props(&enums), ElemKind::Line),
+            DssClass::ckt_class(load::class_props(&enums), ElemKind::Load),
+            DssClass::ckt_class(transformer::class_props(&enums), ElemKind::Transformer),
+            DssClass::ckt_class(capacitor::class_props(&enums), ElemKind::Capacitor),
+            DssClass::ckt_class(reactor::class_props(&enums), ElemKind::Reactor),
             // Fault registers right after Reactor (Pascal DSSClassDefs.pas:222).
-            DssClass::ckt_class(
-                fault::class_props(&enums),
-                |name| Box::new(fault::Fault::new(name)),
-                ElemKind::Fault,
-            ),
-            DssClass::ckt_class(
-                reg_control::class_props(&enums),
-                |name| Box::new(reg_control::RegControl::new(name)),
-                ElemKind::Control,
-            ),
-            DssClass::ckt_class(
-                cap_control::class_props(&enums),
-                |name| Box::new(cap_control::CapControl::new(name)),
-                ElemKind::Control,
-            ),
-            DssClass::ckt_class(
-                generator::class_props(&enums),
-                |name| Box::new(generator::Generator::new(name)),
-                ElemKind::Generator,
-            ),
+            DssClass::ckt_class(fault::class_props(&enums), ElemKind::Fault),
+            DssClass::ckt_class(reg_control::class_props(&enums), ElemKind::Control),
+            DssClass::ckt_class(cap_control::class_props(&enums), ElemKind::Control),
+            DssClass::ckt_class(generator::class_props(&enums), ElemKind::Generator),
             // WindGen registers right after Generator, before GenDispatcher
             // (Pascal DSSClassDefs.pas:187). Registration order does not affect
             // node ordering, which follows element creation order.
-            DssClass::ckt_class(
-                windgen::class_props(&enums),
-                |name| Box::new(windgen::WindGen::new(name)),
-                ElemKind::WindGen,
-            ),
+            DssClass::ckt_class(windgen::class_props(&enums), ElemKind::WindGen),
             // GenDispatcher is registered right after Generator
             // (Pascal DSSClassDefs.pas:231).
-            DssClass::ckt_class(
-                gen_dispatcher::class_props(&enums),
-                |name| Box::new(gen_dispatcher::GenDispatcher::new(name)),
-                ElemKind::Control,
-            ),
+            DssClass::ckt_class(gen_dispatcher::class_props(&enums), ElemKind::Control),
             // StorageController follows GenDispatcher (Pascal DSSClassDefs.pas:237;
             // the Storage element at :234 is a PC element, registered above).
-            DssClass::ckt_class(
-                storage_controller::class_props(&enums),
-                |name| Box::new(storage_controller::StorageController::new(name)),
-                ElemKind::Control,
-            ),
+            DssClass::ckt_class(storage_controller::class_props(&enums), ElemKind::Control),
             // Relay is the most general protection control (Pascal
             // DSSClassDefs.pas:240, before Recloser). Registration order does not
             // affect node ordering, which follows element creation order.
-            DssClass::ckt_class(
-                relay::class_props(&enums),
-                |name| Box::new(relay::Relay::new(name)),
-                ElemKind::Control,
-            ),
+            DssClass::ckt_class(relay::class_props(&enums), ElemKind::Control),
             // Recloser is a protection control on the WP5.7 sweep (Pascal
             // DSSClassDefs.pas:243, before Fuse). Registration order does not
             // affect node ordering, which follows element creation order.
-            DssClass::ckt_class(
-                recloser::class_props(&enums),
-                |name| Box::new(recloser::Recloser::new(name)),
-                ElemKind::Control,
-            ),
+            DssClass::ckt_class(recloser::class_props(&enums), ElemKind::Control),
             // Fuse is a TControlElem (joins the control sweep) despite living in
             // the Pascal PDElements tree; registered with the protection controls
             // (Pascal DSSClassDefs.pas:246, after Recloser). Registration order
             // does not affect node ordering, which follows element creation order.
-            DssClass::ckt_class(
-                fuse::class_props(&enums),
-                |name| Box::new(fuse::Fuse::new(name)),
-                ElemKind::Control,
-            ),
+            DssClass::ckt_class(fuse::class_props(&enums), ElemKind::Control),
             // SwtControl is the last of the protection controls (Pascal
             // DSSClassDefs.pas:249).
-            DssClass::ckt_class(
-                swt_control::class_props(&enums),
-                |name| Box::new(swt_control::SwtControl::new(name)),
-                ElemKind::Control,
-            ),
+            DssClass::ckt_class(swt_control::class_props(&enums), ElemKind::Control),
             // Storage (Pascal DSSClassDefs.pas:234 Storage_ELEMENT) and PVSystem
             // (:252 PVSYSTEM_ELEMENT) register after the protection controls,
             // before InvControl. Registration order does not affect node
             // ordering, which follows element creation order.
-            DssClass::ckt_class(
-                storage::class_props(&enums),
-                |name| Box::new(storage::Storage::new(name)),
-                ElemKind::Storage,
-            ),
-            DssClass::ckt_class(
-                pvsystem::class_props(&enums),
-                |name| Box::new(pvsystem::PVSystem::new(name)),
-                ElemKind::PVSystem,
-            ),
+            DssClass::ckt_class(storage::class_props(&enums), ElemKind::Storage),
+            DssClass::ckt_class(pvsystem::class_props(&enums), ElemKind::PVSystem),
             // UPFC + UPFCControl register after PVSystem, before IndMach012 (Pascal
             // DSSClassDefs.pas:255/258 UPFC_ELEMENT/UPFC_CONTROL). Registration
             // order does not affect node ordering, which follows element creation
             // order.
-            DssClass::ckt_class(
-                upfc::class_props(&enums),
-                |name| Box::new(upfc::Upfc::new(name)),
-                ElemKind::Upfc,
-            ),
-            DssClass::ckt_class(
-                upfc_control::class_props(&enums),
-                |name| Box::new(upfc_control::UpfcControl::new(name)),
-                ElemKind::Control,
-            ),
+            DssClass::ckt_class(upfc::class_props(&enums), ElemKind::Upfc),
+            DssClass::ckt_class(upfc_control::class_props(&enums), ElemKind::Control),
             // ESPVLControl registers directly after UPFCControl (Pascal
             // DSSClassDefs.pas:261, before IndMach012). Registration order does
             // not affect node ordering, which follows element creation order.
-            DssClass::ckt_class(
-                espvl_control::class_props(&enums),
-                |name| Box::new(espvl_control::EspvlControl::new(name)),
-                ElemKind::Control,
-            ),
+            DssClass::ckt_class(espvl_control::class_props(&enums), ElemKind::Control),
             // IndMach012 registers after ESPVLControl, before GICsource (Pascal
             // DSSClassDefs.pas:264 INDMACH012_ELEMENT). Registration order does
             // not affect node ordering, which follows element creation order.
-            DssClass::ckt_class(
-                ind_mach012::class_props(&enums),
-                |name| Box::new(ind_mach012::IndMach012::new(name)),
-                ElemKind::IndMach012,
-            ),
+            DssClass::ckt_class(ind_mach012::class_props(&enums), ElemKind::IndMach012),
             // GICsource registers directly after IndMach012 (Pascal
             // DSSClassDefs.pas:267 GIC_SOURCE, before AutoTrans:270). It is
             // `SOURCE | NON_PCPD_ELEM` like VSource/Isource, so it joins the
             // `sources` list (ElemKind::Source). Registration order does not
             // affect node ordering, which follows element creation order.
-            DssClass::ckt_class(
-                gic_source::class_props(),
-                |name| Box::new(gic_source::GicSource::new(name)),
-                ElemKind::Source,
-            ),
+            DssClass::ckt_class(gic_source::class_props(), ElemKind::Source),
             // AutoTrans registers after GICsource, before InvControl (Pascal
             // DSSClassDefs.pas:270). Registration order does not affect node
             // ordering, which follows element creation order.
-            DssClass::ckt_class(
-                auto_trans::class_props(&enums),
-                |name| Box::new(auto_trans::AutoTrans::new(name)),
-                ElemKind::AutoTrans,
-            ),
+            DssClass::ckt_class(auto_trans::class_props(&enums), ElemKind::AutoTrans),
             // VSConverter (Pascal DSSClassDefs.pas VS_CONVERTER) — a power-flow
             // AC/DC bridge PC element; no node-order dependence (creation order).
-            DssClass::ckt_class(
-                vs_converter::class_props(&enums),
-                |name| Box::new(vs_converter::VsConverter::new(name)),
-                ElemKind::VsConverter,
-            ),
+            DssClass::ckt_class(vs_converter::class_props(&enums), ElemKind::VsConverter),
             // VCCS (Pascal DSSClassDefs.pas VCCS_ELEMENT) — a voltage-controlled
             // current-source PC element (HW inverter model) with z-filter dynamics;
             // no node-order dependence (creation order).
-            DssClass::ckt_class(
-                vccs::class_props(&enums),
-                |name| Box::new(vccs::Vccs::new(name)),
-                ElemKind::Vccs,
-            ),
+            DssClass::ckt_class(vccs::class_props(&enums), ElemKind::Vccs),
             // InvControl registers after AutoTrans (Pascal DSSClassDefs.pas:273;
             // VSConverter/VCCS sit at their own Pascal slots but are registered
             // just above — the class order the oracle observes is pinned by the
             // dump3_commands golden). Registration order does not affect node
             // ordering, which follows element creation order.
-            DssClass::ckt_class(
-                inv_control::class_props(&enums),
-                |name| Box::new(inv_control::InvControl::new(name)),
-                ElemKind::Control,
-            ),
+            DssClass::ckt_class(inv_control::class_props(&enums), ElemKind::Control),
             // ExpControl registers directly after InvControl (Pascal
             // DSSClassDefs.pas:276). Registration order does not affect node
             // ordering, which follows element creation order.
-            DssClass::ckt_class(
-                exp_control::class_props(),
-                |name| Box::new(exp_control::ExpControl::new(name)),
-                ElemKind::Control,
-            ),
+            DssClass::ckt_class(exp_control::class_props(), ElemKind::Control),
             // GICLine + GICTransformer register after ExpControl (Pascal
             // DSSClassDefs.pas:279/282, before VSConverter:285). GICLine is a
             // PC-element voltage source; GICTransformer a shunt PD element.
             // Registration order does not affect node ordering.
-            DssClass::ckt_class(
-                gic_line::class_props(),
-                |name| Box::new(gic_line::GicLine::new(name)),
-                ElemKind::GicLine,
-            ),
+            DssClass::ckt_class(gic_line::class_props(), ElemKind::GicLine),
             DssClass::ckt_class(
                 gic_transformer::class_props(&enums),
-                |name| Box::new(gic_transformer::GicTransformer::new(name)),
                 ElemKind::GicTransformer,
             ),
             // Monitor is registered after Generator (Pascal DSSClassDefs.pas:288).
-            DssClass::ckt_class(
-                monitor::class_props(&enums),
-                |name| Box::new(monitor::Monitor::new(name)),
-                ElemKind::Meter,
-            ),
-            DssClass::ckt_class(
-                energymeter::class_props(&enums),
-                |name| Box::new(energymeter::EnergyMeter::new(name)),
-                ElemKind::EnergyMeter,
-            ),
+            DssClass::ckt_class(monitor::class_props(&enums), ElemKind::Meter),
+            DssClass::ckt_class(energymeter::class_props(&enums), ElemKind::EnergyMeter),
             // Sensor is registered after EnergyMeter (Pascal DSSClassDefs.pas:294).
-            DssClass::ckt_class(
-                sensor::class_props(&enums),
-                |name| Box::new(sensor::Sensor::new(name)),
-                ElemKind::Sensor,
-            ),
+            DssClass::ckt_class(sensor::class_props(&enums), ElemKind::Sensor),
         ];
         let class_by_name = classes
             .iter()

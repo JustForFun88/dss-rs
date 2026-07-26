@@ -16,11 +16,12 @@ use crate::circuit::ckt_tree::{
 };
 use crate::elements::ckt::ElemFlags;
 use crate::elements::pd::line::Line;
+use crate::elements::traits::TypedStore;
 use crate::elements::traits::{ElemId, ElemStore};
 
 /// Whether the element at `r` is a Line (Pascal `IsLineElement`).
 fn is_line(store: &dyn ElemStore, r: ElemId) -> bool {
-    store.obj(r).as_any().downcast_ref::<Line>().is_some()
+    store.typed::<Line>(r).is_some()
 }
 
 /// Pascal `CheckParallel`: two lines share both terminal buses (either orientation).

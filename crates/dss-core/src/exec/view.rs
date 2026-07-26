@@ -143,8 +143,9 @@ impl Dss {
             let class_name = classes[r.class_ord()].props.class_name();
             let obj = &mut classes[r.class_ord()].arena[r.index()];
             let name = format!("{}.{}", class_name, obj.data().name());
-            let elem = obj
-                .as_ckt_element_mut()
+            let elem = classes[r.class_ord()]
+                .arena
+                .try_ckt_elem_mut(r.index())
                 .expect("ckt_elements refs are circuit elements");
             let yorder = elem.cd().yorder;
             let mut currents = vec![0.0; 2 * yorder];
@@ -262,8 +263,9 @@ impl Dss {
                 let Some(snap) = out.iter_mut().find(|s| s.name.eq_ignore_ascii_case(&name)) else {
                     continue;
                 };
-                let node_ref = classes[r.class_ord()].arena[r.index()]
-                    .as_ckt_element()
+                let node_ref = classes[r.class_ord()]
+                    .arena
+                    .try_ckt_elem(r.index())
                     .expect("ncim override target is a ckt element")
                     .cd()
                     .node_ref
@@ -317,7 +319,7 @@ impl Dss {
                 let obj = class.arena.obj_mut(oi);
                 let full = format!("{}.{}", cn, obj.data().name());
                 if full.eq_ignore_ascii_case(name) {
-                    let elem = obj.as_ckt_element_mut()?;
+                    let elem = class.arena.try_ckt_elem_mut(oi)?;
                     let n = elem.num_variables();
                     let mut states = vec![0.0; n];
                     elem.get_all_variables(&sys, &node_v, &mut states);
@@ -342,7 +344,7 @@ impl Dss {
                 let obj = class.arena.obj_mut(oi);
                 let full = format!("{}.{}", cn, obj.data().name());
                 if full.eq_ignore_ascii_case(name) {
-                    let elem = obj.as_ckt_element_mut()?;
+                    let elem = class.arena.try_ckt_elem_mut(oi)?;
                     let n = elem.num_variables();
                     return Some((1..=n).map(|i| elem.variable_name(i)).collect());
                 }
@@ -549,20 +551,27 @@ impl Dss {
     pub fn schema_class_def(&self, class_name: &str) -> Option<crate::report::export::json::Json> {
         let &ci = self.class_by_name.get(&class_name.to_ascii_lowercase())?;
         let class = &self.classes[ci];
-        let mut sample = (class.new_object)("sample_for_defaults");
+        // The sample lives in a throwaway one-object arena of this class, so it is
+        // reached through the same typed `ClassArena` channel as every registered
+        // object (`push_new` builds the very `<T>::new(name)` the registry's own
+        // constructor did).
+        let mut sample = crate::obj::arena::ClassArena::empty_for(class.props.class_name())
+            .expect("registered class has an arena");
+        let si = sample.push_new("sample_for_defaults");
         // Pascal `cls.NewObject('SAMPLE_FOR_DEFAULTS')` runs `RecalcElementData` in
         // Create (reading the fresh `ActiveCircuit.Solution` — the parse-time
         // default here, no circuit exists in this defaults-introspection path), so
         // the sampled property defaults match the oracle. The PC `new` no longer
         // recalcs, so seed the sample the same way the executive does at create.
         super::command::recalc_pc_create(
-            sample.as_mut(),
+            &mut sample,
+            si,
             &crate::elements::traits::SysCtx::parse_default(),
         );
         Some(crate::report::export::json::schema::class_schema(
             class.props.class_name(),
             &class.props,
-            sample.as_ref(),
+            sample.obj(si),
             &self.enums,
         ))
     }
@@ -613,10 +622,8 @@ impl Dss {
             .or_else(|| name.strip_prefix("monitor."))
             .unwrap_or(name);
         for class in &self.classes {
-            for obj in class.arena.objs() {
-                if let Some(m) = obj.as_any().downcast_ref::<monitor::Monitor>()
-                    && m.med.cd.obj.name().eq_ignore_ascii_case(bare)
-                {
+            for m in class.arena.all::<monitor::Monitor>().unwrap_or(&[]) {
+                if m.med.cd.obj.name().eq_ignore_ascii_case(bare) {
                     let nch = m.num_channels();
                     return Some(MonitorView {
                         header: m.header().to_vec(),
@@ -642,10 +649,8 @@ impl Dss {
         // Locate the meter, copy out its ElemId lists, then resolve full names.
         let mut lists: Option<MeterZoneRefs> = None;
         for class in &self.classes {
-            for obj in class.arena.objs() {
-                if let Some(em) = obj.as_any().downcast_ref::<energymeter::EnergyMeter>()
-                    && em.data().name().eq_ignore_ascii_case(bare)
-                {
+            for em in class.arena.all::<energymeter::EnergyMeter>().unwrap_or(&[]) {
+                if em.data().name().eq_ignore_ascii_case(bare) {
                     lists = Some(MeterZoneRefs {
                         branches: em.sequence_list().to_vec(),
                         ends: em.zone_end_elements(),
@@ -681,10 +686,8 @@ impl Dss {
             .or_else(|| name.strip_prefix("energymeter."))
             .unwrap_or(name);
         for class in &self.classes {
-            for obj in class.arena.objs() {
-                if let Some(em) = obj.as_any().downcast_ref::<energymeter::EnergyMeter>()
-                    && em.data().name().eq_ignore_ascii_case(bare)
-                {
+            for em in class.arena.all::<energymeter::EnergyMeter>().unwrap_or(&[]) {
+                if em.data().name().eq_ignore_ascii_case(bare) {
                     return Some(
                         em.register_names()
                             .iter()
@@ -702,10 +705,8 @@ impl Dss {
     /// `Loads.kW` / `Loads.AllocationFactor` (test API for `allocateloads`).
     pub fn load_alloc(&self, name: &str) -> Option<(f64, f64)> {
         for class in &self.classes {
-            for obj in class.arena.objs() {
-                if let Some(ld) = obj.as_any().downcast_ref::<load::Load>()
-                    && ld.data().name().eq_ignore_ascii_case(name)
-                {
+            for ld in class.arena.all::<load::Load>().unwrap_or(&[]) {
+                if ld.data().name().eq_ignore_ascii_case(name) {
                     return Some((ld.kw_base, ld.allocation_factor()));
                 }
             }
@@ -718,10 +719,8 @@ impl Dss {
     /// redispatch).
     pub fn generator_kw_kvar(&self, name: &str) -> Option<(f64, f64)> {
         for class in &self.classes {
-            for obj in class.arena.objs() {
-                if let Some(g) = obj.as_any().downcast_ref::<generator::Generator>()
-                    && g.data().name().eq_ignore_ascii_case(name)
-                {
+            for g in class.arena.all::<generator::Generator>().unwrap_or(&[]) {
+                if g.data().name().eq_ignore_ascii_case(name) {
                     return Some((g.kw_base, g.kvar_base));
                 }
             }
@@ -736,10 +735,8 @@ impl Dss {
     /// the PV-bus `deltaQNom` — the channel dss-python's `Generators.kvar` reads.
     pub fn generator_present_kw_kvar(&self, name: &str) -> Option<(f64, f64)> {
         for class in &self.classes {
-            for obj in class.arena.objs() {
-                if let Some(g) = obj.as_any().downcast_ref::<generator::Generator>()
-                    && g.data().name().eq_ignore_ascii_case(name)
-                {
+            for g in class.arena.all::<generator::Generator>().unwrap_or(&[]) {
+                if g.data().name().eq_ignore_ascii_case(name) {
                     return Some((g.present_kw(), g.present_kvar()));
                 }
             }
@@ -767,9 +764,9 @@ impl Dss {
                 .name()
                 .eq_ignore_ascii_case(name)
         })?;
-        let metered = classes[sensor_ref.class_ord()].arena[sensor_ref.index()]
-            .as_any()
-            .downcast_ref::<sensor::Sensor>()?
+        let metered = classes[sensor_ref.class_ord()]
+            .arena
+            .get::<sensor::Sensor>(sensor_ref.index())?
             .metered_element()?;
         let sys = crate::solution::solution::sys_ctx(ckt);
         let node_v = ckt.solution.node_v.clone();
@@ -793,9 +790,9 @@ impl Dss {
         let mut out = Vec::with_capacity(ckt.transformers.len());
         for &r in &ckt.transformers {
             let obj = &self.classes[r.class_ord()].arena[r.index()];
-            let tr = obj
-                .as_any()
-                .downcast_ref::<transformer::Transformer>()
+            let tr = self.classes[r.class_ord()]
+                .arena
+                .get::<transformer::Transformer>(r.index())
                 .expect("transformers list holds Transformers");
             // The oracle's `Transformers.First/.Next` walk
             // (`Generic_CktElement_Get_First/Next`) SKIPS disabled elements
@@ -822,7 +819,10 @@ impl Dss {
         let mut out = Vec::new();
         for &r in &ckt.controls {
             let obj = &self.classes[r.class_ord()].arena[r.index()];
-            let Some(rc) = obj.as_any().downcast_ref::<reg_control::RegControl>() else {
+            let Some(rc) = self.classes[r.class_ord()]
+                .arena
+                .get::<reg_control::RegControl>(r.index())
+            else {
                 continue;
             };
             // The oracle's `RegControls.First/.Next` iterator SKIPS disabled
@@ -841,10 +841,10 @@ impl Dss {
                 .controlled_ref()
                 .and_then(|tref| {
                     // Either member of the Transformer/AutoTrans proxy.
-                    transformer::as_controlled_transformer(
-                        self.classes[tref.class_ord()].arena.obj(tref.index()),
-                    )
-                    .map(|tr| rc.tap_num_live(tr))
+                    self.classes[tref.class_ord()]
+                        .arena
+                        .try_controlled_transformer(tref.index())
+                        .map(|tr| rc.tap_num_live(tr))
                 })
                 .unwrap_or_else(|| obj.get_i32(reg_control::prop::TAPNUM));
             out.push((obj.data().name().to_string(), num));
@@ -882,10 +882,9 @@ impl Dss {
             .classes
             .iter()
             .find(|c| c.props.class_name().eq_ignore_ascii_case("Capacitor"))?;
-        cls.arena
-            .objs()
-            .find(|o| o.data().name().eq_ignore_ascii_case(name))
-            .and_then(|o| o.as_ckt_element())
+        (0..cls.arena.len())
+            .find(|&i| cls.arena.obj(i).data().name().eq_ignore_ascii_case(name))
+            .and_then(|i| cls.arena.try_ckt_elem(i))
             .map(|e| e.cd().all_conductors_closed())
     }
 
@@ -902,8 +901,9 @@ impl Dss {
         let positive_seq = ckt.positive_sequence;
         let mut total = Complex64::ZERO;
         for &r in &ckt.sources {
-            let elem = classes[r.class_ord()].arena[r.index()]
-                .as_ckt_element_mut()
+            let elem = classes[r.class_ord()]
+                .arena
+                .try_ckt_elem_mut(r.index())
                 .expect("sources are circuit elements");
             if !elem.cd().enabled || elem.cd().node_ref.is_empty() {
                 continue;
@@ -1019,7 +1019,8 @@ impl Dss {
         let want_full = name.contains('.');
         for class in &self.classes {
             let cn = class.props.class_name();
-            for obj in class.arena.objs() {
+            for i in 0..class.arena.len() {
+                let obj = class.arena.obj(i);
                 let matches = if want_full {
                     format!("{}.{}", cn, obj.data().name()).eq_ignore_ascii_case(name)
                 } else {
@@ -1028,7 +1029,7 @@ impl Dss {
                 if !matches {
                     continue;
                 }
-                let Some(ce) = obj.as_ckt_element() else {
+                let Some(ce) = class.arena.try_ckt_elem(i) else {
                     continue;
                 };
                 let cd = ce.cd();
@@ -1082,17 +1083,19 @@ fn ncim_swing_source_currents(
 
     // The swing VSource: a source whose first node is the global slack node 1.
     let src_ref = ckt.sources.iter().copied().find(|&r| {
-        let obj = &classes[r.class_ord()].arena[r.index()];
-        obj.as_any()
-            .downcast_ref::<crate::elements::pc::vsource::VSource>()
+        classes[r.class_ord()]
+            .arena
+            .get::<crate::elements::pc::vsource::VSource>(r.index())
             .is_some()
-            && obj
-                .as_ckt_element()
+            && classes[r.class_ord()]
+                .arena
+                .try_ckt_elem(r.index())
                 .is_some_and(|ce| ce.cd().node_ref.first() == Some(&1))
     })?;
 
-    let src_cd = classes[src_ref.class_ord()].arena[src_ref.index()]
-        .as_ckt_element()?
+    let src_cd = classes[src_ref.class_ord()]
+        .arena
+        .try_ckt_elem(src_ref.index())?
         .cd();
     let src_bus = src_cd.terminals.first()?.bus_ref;
     let nphases = src_cd.nphases;
@@ -1139,7 +1142,7 @@ fn ncim_swing_source_currents(
     // PD elements (+ faults) at the bus: subtract their terminal currents. Pascal
     // stride `Round(ce.Yorder / 2)` (its 2-terminal conductors-per-terminal).
     for &r in ckt.pd_elements.iter().chain(ckt.faults.iter()) {
-        let Some(ce) = classes[r.class_ord()].arena[r.index()].as_ckt_element() else {
+        let Some(ce) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
             continue;
         };
         let cd = ce.cd();
@@ -1158,7 +1161,7 @@ fn ncim_swing_source_currents(
         if r == src_ref {
             continue;
         }
-        let Some(ce) = classes[r.class_ord()].arena[r.index()].as_ckt_element() else {
+        let Some(ce) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
             continue;
         };
         let cd = ce.cd();
@@ -1191,8 +1194,7 @@ fn ncim_generator_currents(
 
     let mut out = Vec::new();
     for &r in &ckt.generators {
-        let obj = &classes[r.class_ord()].arena[r.index()];
-        let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
+        let Some(g) = classes[r.class_ord()].arena.get::<Generator>(r.index()) else {
             continue;
         };
         if !g.cd.enabled || g.delta_q_nom.is_empty() {

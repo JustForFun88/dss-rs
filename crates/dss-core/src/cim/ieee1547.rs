@@ -620,9 +620,9 @@ impl Ieee1547Controller {
             // is load-bearing). Unlike the named-DER branch below, which emits
             // regardless (Pascal `SetElementActive` + unconditional `RefNode`).
             for &r in &ckt.storages.clone() {
-                let enabled = classes[r.class_ord()].arena[r.index()]
-                    .as_any()
-                    .downcast_ref::<Storage>()
+                let enabled = classes[r.class_ord()]
+                    .arena
+                    .get::<Storage>(r.index())
                     .is_some_and(|s| s.cd.enabled);
                 if !enabled {
                     continue;
@@ -634,9 +634,9 @@ impl Ieee1547Controller {
                 }
             }
             for &r in &ckt.pv_systems.clone() {
-                let enabled = classes[r.class_ord()].arena[r.index()]
-                    .as_any()
-                    .downcast_ref::<PVSystem>()
+                let enabled = classes[r.class_ord()]
+                    .arena
+                    .get::<PVSystem>(r.index())
                     .is_some_and(|p| p.cd.enabled);
                 if !enabled {
                     continue;
@@ -942,9 +942,7 @@ struct StoragePlate {
 }
 
 fn pv_plate(classes: &[DssClass], r: ElemId) -> Option<PvPlate> {
-    let pv = classes[r.class_ord()].arena[r.index()]
-        .as_any()
-        .downcast_ref::<PVSystem>()?;
+    let pv = classes[r.class_ord()].arena.get::<PVSystem>(r.index())?;
     Some(PvPlate {
         present_kv: pv.kv_pvsystem_base,
         vmaxpu: pv.base.vmaxpu,
@@ -959,9 +957,7 @@ fn pv_plate(classes: &[DssClass], r: ElemId) -> Option<PvPlate> {
 }
 
 fn storage_plate(classes: &[DssClass], r: ElemId) -> Option<StoragePlate> {
-    let st = classes[r.class_ord()].arena[r.index()]
-        .as_any()
-        .downcast_ref::<Storage>()?;
+    let st = classes[r.class_ord()].arena.get::<Storage>(r.index())?;
     Some(StoragePlate {
         present_kv: st.present_kv(),
         vmaxpu: st.base.vmaxpu,
@@ -992,8 +988,9 @@ fn signal_terminal_uuid(cim: &mut CimExporter, classes: &[DssClass], sig: &Remot
     let Some(r) = sig.elem else {
         return Uuid::nil();
     };
-    let ce = classes[r.class_ord()].arena[r.index()]
-        .as_ckt_element()
+    let ce = classes[r.class_ord()]
+        .arena
+        .try_ckt_elem(r.index())
         .expect("signal element");
     let class_name = classes[r.class_ord()].props.class_name();
     let dss_obj_type = cktelem_dss_obj_type(class_name).unwrap_or(0);
@@ -1011,7 +1008,7 @@ fn scan_bus_for_signal(
     pd: bool,
 ) -> bool {
     for r in elements_at_bus(ckt, classes, bus_idx, pd) {
-        let Some(ce) = classes[r.class_ord()].arena[r.index()].as_ckt_element() else {
+        let Some(ce) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
             continue;
         };
         for k in 1..=ce.cd().nterms {
@@ -1078,7 +1075,7 @@ fn elements_at_bus(ckt: &Circuit, classes: &[DssClass], bus_idx: usize, pd: bool
     };
     let mut out = Vec::new();
     for &r in list {
-        let Some(ce) = classes[r.class_ord()].arena[r.index()].as_ckt_element() else {
+        let Some(ce) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
             continue;
         };
         let b1 = strip(ce.cd().get_bus(1));
@@ -1143,9 +1140,7 @@ fn class_refs(classes: &[DssClass], name: &str) -> Vec<ElemId> {
 /// Snapshot an enabled `InvControl`'s CIM inputs (`None` if disabled).
 fn inv_snap(classes: &[DssClass], r: ElemId) -> Option<InvSnap> {
     use crate::elements::control::inv_control::InvControl;
-    let inv = classes[r.class_ord()].arena[r.index()]
-        .as_any()
-        .downcast_ref::<InvControl>()?;
+    let inv = classes[r.class_ord()].arena.get::<InvControl>(r.index())?;
     if !inv.cd().enabled {
         return None;
     }
@@ -1178,9 +1173,7 @@ fn inv_snap(classes: &[DssClass], r: ElemId) -> Option<InvSnap> {
 /// Snapshot an enabled `ExpControl`'s CIM inputs (`None` if disabled).
 fn exp_snap(classes: &[DssClass], r: ElemId) -> Option<ExpSnap> {
     use crate::elements::control::exp_control::ExpControl;
-    let exp = classes[r.class_ord()].arena[r.index()]
-        .as_any()
-        .downcast_ref::<ExpControl>()?;
+    let exp = classes[r.class_ord()].arena.get::<ExpControl>(r.index())?;
     if !exp.cd().enabled {
         return None;
     }

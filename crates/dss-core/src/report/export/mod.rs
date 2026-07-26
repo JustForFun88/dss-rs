@@ -120,7 +120,7 @@ pub(crate) fn for_each_enabled_elem<F: FnMut(&str, &mut dyn CktElement)>(
         let class_name = classes[r.class_ord()].props.class_name();
         let obj = &mut classes[r.class_ord()].arena[r.index()];
         let name = format!("{}.{}", class_name, obj.data().name());
-        if let Some(elem) = obj.as_ckt_element_mut()
+        if let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem_mut(r.index())
             && elem.cd().enabled
         {
             f(&name, elem);

@@ -2,7 +2,7 @@
 //! `SampleAllMode5` / `ResetAll` (`Meters/Monitor.pas`). Implemented as free
 //! functions over the registry (the WP5.7 control-sweep pattern): each monitor
 //! and its metered element are borrowed disjointly via
-//! [`TypedStore::typed_obj_pair_mut`].
+//! [`TypedStore::typed_metered_pair_mut`].
 
 use crate::circuit::Circuit;
 use crate::elements::meter::monitor::{Monitor, MonitorSampleCtx};
@@ -59,10 +59,8 @@ pub(crate) fn sample_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv, mode5_o
         let Some(metered_ref) = metered else {
             continue;
         };
-        let (m, metered_obj) = env
-            .store
-            .typed_obj_pair_mut::<Monitor>(mon_ref, metered_ref);
-        m.take_sample(metered_obj, &ckt.solution.node_v, &sys, &ctx);
+        let (m, mut metered_elem) = env.store.typed_metered_pair_mut(mon_ref, metered_ref);
+        m.take_sample(&mut metered_elem, &ckt.solution.node_v, &sys, &ctx);
     }
 }
 

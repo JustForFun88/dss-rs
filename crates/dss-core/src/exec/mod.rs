@@ -264,6 +264,16 @@ impl Dss {
         self.classes.iter().map(|c| c.arena.class_name()).collect()
     }
 
+    /// Per registered class, whether `exec/construct.rs` registered it as a
+    /// **circuit-element** class (`DssClass::ckt_class`, which carries an
+    /// `ElemKind`) rather than a plain `DSS_OBJECT` (`dss_object`) — the
+    /// independent oracle for the arena's `ckt`/`data` tag column
+    /// (`obj::arena::tests::arena_tag_matches_registry_ckt_classes`).
+    #[cfg(test)]
+    pub(crate) fn registered_class_is_ckt(&self) -> Vec<bool> {
+        self.classes.iter().map(|c| c.kind.is_some()).collect()
+    }
+
     /// The active circuit, if `New circuit.` has run.
     pub fn circuit(&self) -> Option<&Circuit> {
         self.circuit.as_ref()

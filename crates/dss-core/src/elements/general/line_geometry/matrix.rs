@@ -61,7 +61,7 @@ impl LineGeometryObj {
         self.fnconds = actual_nconds;
         self.realloc_conductors();
         self.fnphases = actual_nphases;
-        self.line_spacing_obj = Some(Box::new(spc.clone()));
+        self.line_spacing_obj = Some(spc.clone());
         if self.fnconds > self.fnphases {
             self.freduce = true;
         }

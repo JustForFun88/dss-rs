@@ -92,7 +92,7 @@ fn write_object(
 ) {
     let DssClass { props, arena, .. } = &mut classes[r.class_ord()];
     let cx = SaveCtx { cls: props, enums };
-    write_dss_object(out, &cx, arena.obj_mut(r.index()), new_or_edit);
+    write_dss_object(out, &cx, arena, r.index(), new_or_edit);
 }
 
 impl Dss {
@@ -269,8 +269,9 @@ impl Dss {
             if classes[ci].arena[i].data().has_been_saved() {
                 continue;
             }
-            if classes[ci].arena[i]
-                .as_ckt_element()
+            if classes[ci]
+                .arena
+                .try_ckt_elem(i)
                 .is_some_and(|e| !e.cd().enabled)
             {
                 continue; // `not includeDisabled and not Enabled`
@@ -318,9 +319,9 @@ impl Dss {
             // Only active meters (Pascal `if not Meter.Enabled then continue`).
             let (enabled, name) = {
                 let obj = &self.classes[mr.class_ord()].arena[mr.index()];
-                let en = obj
-                    .as_any()
-                    .downcast_ref::<crate::elements::meter::EnergyMeter>()
+                let en = self.classes[mr.class_ord()]
+                    .arena
+                    .get::<crate::elements::meter::EnergyMeter>(mr.index())
                     .is_some_and(|m| m.enabled());
                 (en, obj.data().name().to_string())
             };
@@ -369,9 +370,9 @@ impl Dss {
         // Snapshot the branch walk (branch ref + its shunt refs) so the meter's
         // immutable tree borrow is released before we mutate objects/classes.
         let branches: Vec<(ElemId, Vec<ElemId>)> = {
-            let m = match self.classes[meter.class_ord()].arena[meter.index()]
-                .as_any()
-                .downcast_ref::<crate::elements::meter::EnergyMeter>()
+            let m = match self.classes[meter.class_ord()]
+                .arena
+                .get::<crate::elements::meter::EnergyMeter>(meter.index())
             {
                 Some(m) => m,
                 None => return,
@@ -410,9 +411,9 @@ impl Dss {
                 continue;
             }
             // Branch → Transformers.dss (XFMR_ELEMENT) else Branches.dss.
-            let is_xfmr = self.classes[branch.class_ord()].arena[branch.index()]
-                .as_any()
-                .downcast_ref::<crate::elements::pd::transformer::Transformer>()
+            let is_xfmr = self.classes[branch.class_ord()]
+                .arena
+                .get::<crate::elements::pd::transformer::Transformer>(branch.index())
                 .is_some();
             let (buf, count) = if is_xfmr {
                 (&mut xfmrs_txt, &mut n_xfmrs)
@@ -484,23 +485,23 @@ impl Dss {
         shunts_txt: &mut String,
         n_shunts: &mut usize,
     ) {
-        let any = self.classes[shunt.class_ord()].arena[shunt.index()].as_any();
-        let is_load = any
-            .downcast_ref::<crate::elements::pc::load::Load>()
+        let arena = &self.classes[shunt.class_ord()].arena;
+        let is_load = arena
+            .get::<crate::elements::pc::load::Load>(shunt.index())
             .is_some();
-        let is_gen = any
-            .downcast_ref::<crate::elements::pc::generator::Generator>()
+        let is_gen = arena
+            .get::<crate::elements::pc::generator::Generator>(shunt.index())
             .is_some();
-        let is_cap = any
-            .downcast_ref::<crate::elements::pd::capacitor::Capacitor>()
+        let is_cap = arena
+            .get::<crate::elements::pd::capacitor::Capacitor>(shunt.index())
             .is_some();
 
         if is_load {
             // Pascal: if the load was allocated, force the allocationfactor
             // property to render (`PropertySideEffects` + `SetAsNextSeq`).
-            let allocated = self.classes[shunt.class_ord()].arena[shunt.index()]
-                .as_any()
-                .downcast_ref::<crate::elements::pc::load::Load>()
+            let allocated = self.classes[shunt.class_ord()]
+                .arena
+                .get::<crate::elements::pc::load::Load>(shunt.index())
                 .is_some_and(|l| l.has_been_allocated);
             if allocated {
                 use crate::elements::pc::load::prop::ALLOCATIONFACTOR;
@@ -536,8 +537,9 @@ impl Dss {
             .iter()
             .copied()
             .filter(|&cr| {
-                self.classes[cr.class_ord()].arena[cr.index()]
-                    .as_ckt_element()
+                self.classes[cr.class_ord()]
+                    .arena
+                    .try_ckt_elem(cr.index())
                     .and_then(|ce| ce.controlled_element())
                     == Some(elem)
             })
@@ -550,8 +552,9 @@ impl Dss {
 
     /// Whether the circuit element at `r` is enabled.
     fn elem_enabled(&self, r: ElemId) -> bool {
-        self.classes[r.class_ord()].arena[r.index()]
-            .as_ckt_element()
+        self.classes[r.class_ord()]
+            .arena
+            .try_ckt_elem(r.index())
             .is_some_and(|e| e.cd().enabled)
     }
 

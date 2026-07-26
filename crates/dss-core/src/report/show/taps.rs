@@ -5,7 +5,6 @@
 
 use crate::circuit::Circuit;
 use crate::elements::control::reg_control::RegControl;
-use crate::elements::pd::transformer::as_controlled_transformer;
 use crate::exec::registry::DssClass;
 use crate::report::format;
 
@@ -24,16 +23,17 @@ pub(crate) fn show_taps(classes: &[DssClass], ckt: &Circuit) -> String {
 
     for &r in &ckt.controls {
         let obj = &classes[r.class_ord()].arena[r.index()];
-        let Some(rc) = obj.as_any().downcast_ref::<RegControl>() else {
+        let Some(rc) = classes[r.class_ord()].arena.get::<RegControl>(r.index()) else {
             continue;
         };
         let Some(tref) = rc.controlled_ref() else {
             continue;
         };
-        let tobj = &classes[tref.class_ord()].arena[tref.index()];
+        let tarena = &classes[tref.class_ord()].arena;
+        let tobj = tarena.obj(tref.index());
         // Either member of the Transformer/AutoTrans proxy (Pascal walks the
         // shared `TControlledTransformerObj` base).
-        let Some(tr) = as_controlled_transformer(tobj) else {
+        let Some(tr) = tarena.try_controlled_transformer(tref.index()) else {
             continue;
         };
 

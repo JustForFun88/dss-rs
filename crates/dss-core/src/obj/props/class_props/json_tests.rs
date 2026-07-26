@@ -6,8 +6,6 @@
 //! ObjectRef Name-vs-FullName) on a hand-built object where the exact input is
 //! controlled.
 
-use std::any::Any;
-
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -47,12 +45,6 @@ impl DssObject for Mock {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.data
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
     fn get_f64(&self, idx: usize) -> f64 {
         self.f64s[idx]

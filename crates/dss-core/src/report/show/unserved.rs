@@ -41,7 +41,7 @@ pub(crate) fn show_unserved(
         let obj = &mut classes[r.class_ord()].arena[r.index()];
         // Take the name before the exclusive `&mut Load` borrow.
         let name = obj.data().name().to_string();
-        let Some(load) = obj.as_any_mut().downcast_mut::<Load>() else {
+        let Some(load) = classes[r.class_ord()].arena.get_mut::<Load>(r.index()) else {
             continue;
         };
         if !load.cd.enabled {

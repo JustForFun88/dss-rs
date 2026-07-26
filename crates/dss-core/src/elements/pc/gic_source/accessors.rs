@@ -4,7 +4,6 @@
 use num_complex::Complex64;
 
 use super::GicSource;
-use crate::elements::traits::CktElement;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 impl GicSource {
@@ -46,18 +45,6 @@ impl DssObject for GicSource {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_f64(&self, idx: usize) -> f64 {

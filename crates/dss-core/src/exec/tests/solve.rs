@@ -231,8 +231,9 @@ fn reg_control_does_not_change_node_order() {
             assert_eq!(ckt.controls.len(), 1);
             // The control sits on the transformer's winding-2 bus.
             let r = ckt.controls[0];
-            let elem = dss.classes[r.class_ord()].arena[r.index()]
-                .as_ckt_element()
+            let elem = dss.classes[r.class_ord()]
+                .arena
+                .try_ckt_elem(r.index())
                 .unwrap();
             assert_eq!(elem.cd().get_bus(1), "b2");
             assert!(elem.cd().yprim.is_none());

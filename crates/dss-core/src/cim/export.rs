@@ -16,9 +16,7 @@ use std::collections::HashMap;
 
 use crate::circuit::Circuit;
 use crate::elements::control::CapControl;
-use crate::elements::general::conductor_data::{
-    CableGeom, CnDataObj, ConductorGeom, TsDataObj, WireDataObj,
-};
+use crate::elements::general::conductor_data::{CableGeom, ConductorGeom, ConductorKind};
 use crate::elements::general::line_code::{LineCodeObj, prop as lc_prop};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
@@ -1088,15 +1086,10 @@ fn class_obj_uuid(classes: &mut [DssClass], class_name: &str, obj_name: &str) ->
 /// for resolving its master UUID (`Pascal FetchConductorData` returns the real
 /// typed object). `None` for any non-conductor object.
 fn conductor_class_name(cond: &dyn DssObject) -> Option<&'static str> {
-    let any = cond.as_any();
-    if any.is::<WireDataObj>() {
-        Some("WireData")
-    } else if any.is::<CnDataObj>() {
-        Some("CNData")
-    } else if any.is::<TsDataObj>() {
-        Some("TSData")
-    } else {
-        None
+    match cond.as_conductor()?.conductor_kind() {
+        ConductorKind::Wire => Some("WireData"),
+        ConductorKind::Cn => Some("CNData"),
+        ConductorKind::Ts => Some("TSData"),
     }
 }
 
@@ -1201,8 +1194,10 @@ fn parse_switch_class(
             {
                 continue;
             }
-            let ctrl = &classes[c.class_ord()].arena[c.index()];
-            let controlled = ctrl.as_ckt_element().and_then(|e| e.controlled_element());
+            let controlled = classes[c.class_ord()]
+                .arena
+                .try_ckt_elem(c.index())
+                .and_then(|e| e.controlled_element());
             if controlled == Some(line_ref) {
                 return Some(c);
             }
@@ -1574,16 +1569,8 @@ fn attach_switch_phases(buf: &mut writer::Writer, cim: &mut CimExporter, snap: &
 /// A catalog conductor's [`ConductorGeom`] plus its `NormAmps` (the base
 /// `TConductorData` current rating, not carried by `ConductorGeom`); `None` for
 /// a non-conductor object.
-fn conductor_geom_amps(o: &dyn DssObject) -> Option<(ConductorGeom, f64)> {
-    let any = o.as_any();
-    if let Some(w) = any.downcast_ref::<WireDataObj>() {
-        Some((w.geom(), w.amps().0))
-    } else if let Some(c) = any.downcast_ref::<CnDataObj>() {
-        Some((c.geom(), c.amps().0))
-    } else {
-        any.downcast_ref::<TsDataObj>()
-            .map(|t| (t.geom(), t.amps().0))
-    }
+fn conductor_geom_amps(cond: &dyn DssObject) -> Option<(ConductorGeom, f64)> {
+    cond.as_conductor().map(|c| (c.geom(), c.amps().0))
 }
 
 /// The index of the (case-insensitive) class in the class list, or `None`.
@@ -1611,9 +1598,9 @@ fn write_line_code_catalog(
     let n = classes[ci].arena.len();
     // Units fix-up (mutates in place, matching Pascal `4495-4509`).
     for oi in 0..n {
-        let is_none = classes[ci].arena[oi]
-            .as_any()
-            .downcast_ref::<LineCodeObj>()
+        let is_none = classes[ci]
+            .arena
+            .get::<LineCodeObj>(oi)
             .map(|l| l.units() == 0)
             .unwrap_or(false);
         if !is_none {
@@ -1628,7 +1615,7 @@ fn write_line_code_catalog(
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
         let (units, sym, nph, r1, x1, r0, x0, c1, c0, basef, z, yc) = {
-            let Some(lc) = classes[ci].arena[oi].as_any().downcast_ref::<LineCodeObj>() else {
+            let Some(lc) = classes[ci].arena.get::<LineCodeObj>(oi) else {
                 continue;
             };
             (
@@ -1780,8 +1767,7 @@ fn write_line_code_catalog(
 /// (the LineCode units fix-up source, Pascal `4497-4508`).
 fn find_line_units_for_linecode(classes: &[DssClass], ckt: &Circuit, lc_name: &str) -> Option<i32> {
     for &r in &ckt.lines {
-        let obj = &classes[r.class_ord()].arena[r.index()];
-        if let Some(line) = obj.as_any().downcast_ref::<Line>()
+        if let Some(line) = classes[r.class_ord()].arena.get::<Line>(r.index())
             && line.cd.enabled
             && line.line_code_ref.is_some()
             && line.line_code_name.eq_ignore_ascii_case(lc_name)
@@ -1919,10 +1905,7 @@ fn write_line_geometry_catalog(
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
         let (nwires, is_overhead, xs, ys, us) = {
-            let Some(g) = classes[ci].arena[oi]
-                .as_any()
-                .downcast_ref::<LineGeometryObj>()
-            else {
+            let Some(g) = classes[ci].arena.get::<LineGeometryObj>(oi) else {
                 continue;
             };
             (
@@ -1999,10 +1982,7 @@ fn write_line_spacing_catalog(
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
         let (nwires, units, xs, ys) = {
-            let Some(s) = classes[ci].arena[oi]
-                .as_any()
-                .downcast_ref::<LineSpacingObj>()
-            else {
+            let Some(s) = classes[ci].arena.get::<LineSpacingObj>(oi) else {
                 continue;
             };
             (
@@ -2512,8 +2492,7 @@ pub(crate) fn export_cdpsm(
 
     // Swing bus == first enabled Vsource (`3485-3501`).
     for &r in &ckt.sources {
-        let obj = &classes[r.class_ord()].arena[r.index()];
-        let Some(vsrc) = obj.as_any().downcast_ref::<VSource>() else {
+        let Some(vsrc) = classes[r.class_ord()].arena.get::<VSource>(r.index()) else {
             continue;
         };
         if !vsrc.cd.enabled {
@@ -2570,8 +2549,7 @@ pub(crate) fn export_cdpsm(
             spectrum: String,
         }
         let snap = {
-            let obj = &classes[r.class_ord()].arena[r.index()];
-            let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
+            let Some(g) = classes[r.class_ord()].arena.get::<Generator>(r.index()) else {
                 continue;
             };
             let nm = |o: Option<&dyn DssObject>| -> String {
@@ -2722,8 +2700,7 @@ pub(crate) fn export_cdpsm(
             spectrum: String,
         }
         let snap = {
-            let obj = &classes[r.class_ord()].arena[r.index()];
-            let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() else {
+            let Some(pv) = classes[r.class_ord()].arena.get::<PVSystem>(r.index()) else {
                 continue;
             };
             let nm = |o: Option<&dyn DssObject>| -> String {
@@ -2973,8 +2950,7 @@ pub(crate) fn export_cdpsm(
             spectrum: String,
         }
         let snap = {
-            let obj = &classes[r.class_ord()].arena[r.index()];
-            let Some(st) = obj.as_any().downcast_ref::<Storage>() else {
+            let Some(st) = classes[r.class_ord()].arena.get::<Storage>(r.index()) else {
                 continue;
             };
             let nm = |o: Option<&dyn DssObject>| -> String {
@@ -3206,8 +3182,7 @@ pub(crate) fn export_cdpsm(
             bus_specs,
             bus_refs,
         ) = {
-            let obj = &classes[r.class_ord()].arena[r.index()];
-            let Some(vsrc) = obj.as_any().downcast_ref::<VSource>() else {
+            let Some(vsrc) = classes[r.class_ord()].arena.get::<VSource>(r.index()) else {
                 continue;
             };
             let z = vsrc
@@ -3340,8 +3315,7 @@ pub(crate) fn export_cdpsm(
             bus_refs: Vec<usize>,
         }
         let snap = {
-            let obj = &classes[r.class_ord()].arena[r.index()];
-            let Some(cap) = obj.as_any().downcast_ref::<Capacitor>() else {
+            let Some(cap) = classes[r.class_ord()].arena.get::<Capacitor>(r.index()) else {
                 continue;
             };
             CapSnap {
@@ -3473,9 +3447,7 @@ pub(crate) fn export_cdpsm(
         // is this bank (Pascal loops all CapControls, last match wins, `3714-3718`).
         let mut avr_delay = 0.0;
         for &cr in &ckt.controls {
-            if let Some(cc) = classes[cr.class_ord()].arena[cr.index()]
-                .as_any()
-                .downcast_ref::<CapControl>()
+            if let Some(cc) = classes[cr.class_ord()].arena.get::<CapControl>(cr.index())
                 && cc.controlled_element() == Some(r)
             {
                 avr_delay = cc.on_delay_val();
@@ -3569,8 +3541,7 @@ pub(crate) fn export_cdpsm(
             enabled: bool,
         }
         let snap = {
-            let obj = &classes[cr.class_ord()].arena[cr.index()];
-            let Some(cc) = obj.as_any().downcast_ref::<CapControl>() else {
+            let Some(cc) = classes[cr.class_ord()].arena.get::<CapControl>(cr.index()) else {
                 continue;
             };
             let cap_ref = cc
@@ -3580,9 +3551,10 @@ pub(crate) fn export_cdpsm(
                 .ccd
                 .monitored_element
                 .expect("CapControl.MonitoredElement set for a solved circuit");
-            let mon_obj = &classes[mon_ref.class_ord()].arena[mon_ref.index()];
-            let mon_elem = mon_obj
-                .as_ckt_element()
+            let mon_obj = classes[mon_ref.class_ord()].arena.obj(mon_ref.index());
+            let mon_elem = classes[mon_ref.class_ord()]
+                .arena
+                .try_ckt_elem(mon_ref.index())
                 .expect("CapControl monitored element is a circuit element");
             let mon_cd = mon_elem.cd();
             CcSnap {
@@ -3766,8 +3738,7 @@ pub(crate) fn export_cdpsm(
             bus_refs: Vec<usize>,
         }
         let snap = {
-            let obj = &classes[r.class_ord()].arena[r.index()];
-            let Some(reac) = obj.as_any().downcast_ref::<Reactor>() else {
+            let Some(reac) = classes[r.class_ord()].arena.get::<Reactor>(r.index()) else {
                 continue;
             };
             let z = reac.z();
@@ -3864,8 +3835,7 @@ pub(crate) fn export_cdpsm(
     // (`4294-4409`) — Stage C.
     for &r in &ckt.lines.clone() {
         let snap = {
-            let obj = &classes[r.class_ord()].arena[r.index()];
-            let Some(line) = obj.as_any().downcast_ref::<Line>() else {
+            let Some(line) = classes[r.class_ord()].arena.get::<Line>(r.index()) else {
                 continue;
             };
             if !line.cd.enabled {
@@ -4361,8 +4331,7 @@ pub(crate) fn export_cdpsm(
             spectrum: String,
         }
         let snap = {
-            let obj = &classes[r.class_ord()].arena[r.index()];
-            let Some(load) = obj.as_any().downcast_ref::<Load>() else {
+            let Some(load) = classes[r.class_ord()].arena.get::<Load>(r.index()) else {
                 continue;
             };
             // `NameIfNotNil(obj.XShapeObj)` — the resolved shape object's

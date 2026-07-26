@@ -14,16 +14,12 @@
 use super::*;
 use crate::obj::arena::{ClassArena, ResolvedObj};
 
-/// A class constructor: build a fresh, all-default object of the class.
-pub(crate) type NewObjectFn = fn(&str) -> Box<dyn DssObject>;
-
 /// One registered class plus its live objects — the Rust stand-in for a
 /// `TDSSClass` with its `ElementNameList`. Objects live in [`Self::arena`], a
 /// typed per-class `Vec<T>` behind the [`ClassArena`] enum (R1 ownership flip;
 /// `PORTING_PLAN §2.1`), replacing the pre-R1 `Vec<Box<dyn DssObject>>`.
 pub(crate) struct DssClass {
     pub(crate) props: ClassProps,
-    pub(crate) new_object: NewObjectFn,
     /// This class's live objects — one typed `Vec<T>` (Pascal `ElementList`).
     pub(crate) arena: ClassArena,
     /// Lowercased object name → index (Pascal `ElementNameList`, THashList).
@@ -37,12 +33,11 @@ pub(crate) struct DssClass {
 }
 
 impl DssClass {
-    pub(crate) fn dss_object(props: ClassProps, new_object: NewObjectFn) -> Self {
+    pub(crate) fn dss_object(props: ClassProps) -> Self {
         let arena = ClassArena::empty_for(props.class_name())
             .expect("every registered class has an arena variant");
         Self {
             props,
-            new_object,
             arena,
             name_to_idx: HashMap::new(),
             active: None,
@@ -51,12 +46,11 @@ impl DssClass {
         }
     }
 
-    pub(crate) fn ckt_class(props: ClassProps, new_object: NewObjectFn, kind: ElemKind) -> Self {
+    pub(crate) fn ckt_class(props: ClassProps, kind: ElemKind) -> Self {
         let arena = ClassArena::empty_for(props.class_name())
             .expect("every registered class has an arena variant");
         Self {
             props,
-            new_object,
             arena,
             name_to_idx: HashMap::new(),
             active: None,
@@ -258,11 +252,11 @@ impl<'a> ForeignClasses<'a> {
     /// The first *enabled* object of a class, in creation order (Pascal's
     /// `Class.ElementList` scan in `InvControl.MakeDERList`'s empty-list branch).
     /// Returns the resolved object so callers can read its bus / phase count.
-    pub(crate) fn first_enabled(&self, class: &str) -> Option<&'a dyn DssObject> {
-        let scan = |c: &'a DssClass| -> Option<&'a dyn DssObject> {
+    pub(crate) fn first_enabled(&self, class: &str) -> Option<&'a dyn CktElement> {
+        let scan = |c: &'a DssClass| -> Option<&'a dyn CktElement> {
             (0..c.arena.len())
-                .map(|i| c.arena.obj(i))
-                .find(|o| o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false))
+                .filter_map(|i| c.arena.try_ckt_elem(i))
+                .find(|e| e.cd().enabled)
         };
         for c in self.left.iter().chain(self.right.iter()) {
             if c.props.class_name().eq_ignore_ascii_case(class) {
@@ -277,12 +271,12 @@ impl<'a> ForeignClasses<'a> {
     /// control's `FNphases := ControlledElement[i].NPhases` on EVERY member, so
     /// the LAST one wins — the control's terminal shape follows the last fleet
     /// member (the `MonitoredElement`/bus stays the first).
-    pub(crate) fn last_enabled(&self, class: &str) -> Option<&'a dyn DssObject> {
-        let scan = |c: &'a DssClass| -> Option<&'a dyn DssObject> {
+    pub(crate) fn last_enabled(&self, class: &str) -> Option<&'a dyn CktElement> {
+        let scan = |c: &'a DssClass| -> Option<&'a dyn CktElement> {
             (0..c.arena.len())
                 .rev()
-                .map(|i| c.arena.obj(i))
-                .find(|o| o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false))
+                .filter_map(|i| c.arena.try_ckt_elem(i))
+                .find(|e| e.cd().enabled)
         };
         for c in self.left.iter().chain(self.right.iter()) {
             if c.props.class_name().eq_ignore_ascii_case(class) {
@@ -427,14 +421,11 @@ mod tests {
             classes: &mut dss.classes,
         };
 
-        // `typed` == the downcast it replaces (same object, same `None`s).
+        // `typed` hands back the very stored object (the address the removed
+        // `as_any` downcast returned), and the same `None`s.
         assert!(std::ptr::eq(
-            store.typed::<RegControl>(rc_ref).unwrap() as *const RegControl,
-            store
-                .obj(rc_ref)
-                .as_any()
-                .downcast_ref::<RegControl>()
-                .unwrap() as *const RegControl,
+            store.typed::<RegControl>(rc_ref).unwrap() as *const RegControl as *const (),
+            store.obj(rc_ref) as *const dyn DssObject as *const (),
         ));
         assert!(store.typed::<Capacitor>(rc_ref).is_none());
         assert!(store.typed_mut::<Line>(cap_ref).is_none());
@@ -497,11 +488,14 @@ mod tests {
                 untyped_a as *const dyn DssObject as *const (),
                 untyped_b as *const dyn DssObject as *const (),
             );
-            let (mon, metered) = store.typed_obj_pair_mut::<Monitor>(a_ref, b_ref);
+            let (mon, metered) = store.typed_metered_pair_mut(a_ref, b_ref);
             assert_eq!(mon.data().name(), "m1");
-            assert_eq!(metered.data().name(), b_name);
+            assert_eq!(metered.ckt().cd().obj.name(), b_name);
             assert_eq!(mon as *const Monitor as *const (), pa);
-            assert_eq!(metered as *const dyn DssObject as *const (), pb);
+            assert_eq!(
+                metered.ckt() as *const dyn crate::elements::traits::CktElement as *const (),
+                pb
+            );
         }
     }
 

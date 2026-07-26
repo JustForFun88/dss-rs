@@ -110,7 +110,7 @@ fn bus_to_json(name: &str, bus: &crate::circuit::Bus) -> Json {
 fn save_open_terminals(ckt: &Circuit, classes: &[DssClass], cmds: &mut Vec<Json>) {
     for r in &ckt.ckt_elements {
         let obj = classes[r.class_ord()].arena.obj(r.index());
-        let Some(elem) = obj.as_ckt_element() else {
+        let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
             continue;
         };
         let cd = elem.cd();

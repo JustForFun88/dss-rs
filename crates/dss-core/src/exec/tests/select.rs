@@ -18,8 +18,9 @@ fn build(dss: &mut Dss) {
 /// The active terminal (0-based) of the currently-selected circuit element.
 fn active_terminal(dss: &Dss) -> usize {
     let (ci, idx) = dss.active_ckt_element.expect("an element is selected");
-    dss.classes[ci].arena[idx]
-        .as_ckt_element()
+    dss.classes[ci]
+        .arena
+        .try_ckt_elem(idx)
         .expect("selected object is a circuit element")
         .cd()
         .active_terminal

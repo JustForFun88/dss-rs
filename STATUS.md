@@ -7,6 +7,195 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R3.3 — the mechanical collapse: `as_any`/`as_any_mut` **and** `as_ckt_element`/`as_ckt_element_mut` REMOVED from `DssObject`; zero `Any` in the tree (branch `depas-r3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, type-channel only. Base = the R3.2 part-3 tip
+`a05a4a2`. Ritual 0 held at start **and** before the commit: 186 `.pas` under
+`.inputs/dss_capi`; `cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Delivered: R3 handoff item 3 in full.** The 261 remaining `downcast_*` sites
+(the R2b (e) blocker map's 214 typed-arena reads / 28 Category-A disjoint
+borrows / 119 Category-B/D bare-`&dyn` params, as they stood after R3.1/R3.2)
+are converted onto the R3.2 typed accessors, the ~200 `as_ckt_element*` call
+sites onto `ClassArena::try_ckt_elem{,_mut}`, and **all four trait methods plus
+their 50-class boilerplate are gone**. `std::any` no longer appears anywhere in
+the product path: the only way from a handle to a concrete type is now a static
+[`ArenaClass`] match.
+
+**The four conversion shapes (all mechanical, receiver-preserving).**
+- `store.obj(r).as_any().downcast_ref::<T>()` → `store.typed::<T>(r)` and the
+  `_mut` twin — 50 sites (`controls/dispatch.rs`, `exec/command.rs`,
+  `solution/{ncim,monte_carlo,faults,fault_study,power_flow,time_series,topology}.rs`,
+  `circuit/auto_add.rs`, `exec/set_cmd.rs`).
+- `classes[r.class_ord()].arena[r.index()].as_any().downcast_ref::<T>()` →
+  `…arena.get::<T>(r.index())` — 79 sites across `cim/`, `exec/`, `report/`,
+  including the two-step `let obj = &…arena[i]; obj.as_any()…` form.
+- the `InvDispEnv` DER cluster (`controls/dispatch.rs`, 56 sites): the shared
+  `let obj = self.store.obj(_mut)(r)` binding + PVSystem/Storage probe chain →
+  two direct `self.store.typed{,_mut}::<T>(r)` probes. The `if let … else if let`
+  double mutable borrow borrow-checks under NLL (the `Option<&mut T>` scrutinee
+  temporary needs no drop, so the region is dead in the `else` arm); verified by
+  compiling, not assumed.
+- `obj.as_ckt_element{,_mut}()` → `arena.try_ckt_elem{,_mut}(idx)` — 91 sites.
+  `objs()`/`objs_mut()` scans that needed the circuit view became `0..len()`
+  index loops over the same arena, same order.
+
+**Six bare-`&dyn` readers were retyped onto `(arena, idx)`** — the family the
+R2b map listed as Category B/D, each with its callers:
+`recalc_pc_create`, `report::save::dump::{dump_object, dump_generic}`,
+`report::save::dump::overrides::dump_override` (its 16-way override chain is now
+16 `arena.get::<T>(idx)` arms, same order), `report::save::save::write_dss_object`
+(+ `class_file_text`'s `objs_mut()` loop → an index loop),
+`exec::reduce::control_data_mut` (the 11-class `try_ccd!` macro keeps its
+"probe shared, then borrow mutably" two-step verbatim), and
+`cim::export::conductor_geom_amps`/`conductor_class_name` — the last two went to
+the **existing** `DssObject::as_conductor()` + `ConductorKind` behavior trait
+(R0 Category C) rather than to the arena, because their conductor operands are
+snapshot clones held inside `Line`/`LineGeometry`, not arena residents.
+
+**Item (e)'s escape is closed — `Monitor::take_sample` (`elements/traits.rs`).**
+The four concrete reads (mode 9 `Capacitor::states`, mode 11 `Storage` present
+kW/kvar/kWh/state, mode 8 `Transformer::get_all_winding_currents`, mode 10
+`Transformer::get_winding_voltages`) plus the 8 `as_ckt_element*` reads now go
+through a typed view built by the caller:
+
+```rust
+pub enum MeteredElem<'a> {                 // .ckt() .ckt_mut()
+    Capacitor(&'a mut Capacitor),          // .capacitor() .storage()
+    Storage(&'a mut Storage),              // .transformer() .transformer_mut()
+    Transformer(&'a mut Transformer),
+    Other(&'a mut dyn CktElement),
+}
+fn TypedStore::typed_metered_pair_mut(c, t) -> (&mut Monitor, MeteredElem<'_>)
+```
+
+This is escape-route (2) from the R3.2 record **without** its blocker: the
+same-class branch (a Monitor whose `element=` names another Monitor) is served by
+the existing same-arena `split2` and simply yields `MeteredElem::Other` — which is
+exactly what the removed `downcast_ref::<Capacitor/Storage/Transformer>()` chain
+returned `None` for on that branch. No behavior changes on any branch, probed or
+not. `typed_obj_pair_mut` (landed by R3.2 part 3 for this one caller) has no
+remaining user and was **retired**; its live-store proof case moved to
+`typed_metered_pair_mut`, still asserting pointer identity with the untyped
+`pair_mut` on both branches (cross-arena monitor⇄line, same-arena monitor⇄monitor).
+
+**R3.1's escaped sub-step (iv) — one field converted, the rest re-scoped.** The
+only `Box<dyn DssObject>` field the `as_any` removal actually forced was
+`LineGeometryObj::line_spacing_obj`, now `Option<LineSpacingObj>` (its `clone_box`
+clone became a plain `.clone()`, its `set_object_ref` a `ResolvedObj::cloned`, and
+`apply_spacing`'s downcast disappears). The remaining (iv) fields
+(`fwiredata`/`line_wire_data`/`geometry_obj`/`xfmr_code_ref`-family) are **not**
+`as_any` consumers — they are read through behavior traits (`ConductorData`) or
+as `ElemId` — so they are not R3.3's business and stay open (see below).
+
+**Two bridges retired because they became unused.**
+- `DssClass::new_object` / `type NewObjectFn` and the 50 `|name| Box::new(<T>::new(name))`
+  closures in `exec/construct.rs`: after `recalc_pc_create` moved onto
+  `(arena, idx)`, the sole caller (`exec/view.rs::schema_class_def`'s
+  defaults sample) builds a throwaway one-object `ClassArena::empty_for(cls)` +
+  `push_new(name)` instead. `push_new` expands to the very same
+  `<$ty>::new(name)` the closure did, so the sampled object is identical.
+- `elements::pd::transformer::as_controlled_transformer(&dyn DssObject)` →
+  `ClassArena::try_controlled_transformer(idx)` (the shared twin of the existing
+  `_mut`), 3 call sites.
+
+**Bit-neutrality argument.** Every converted site resolves the same object by the
+same `(class ordinal, index)`; `typed`/`typed_mut`/`ClassArena::get` are the
+proven twins of the downcast (`typed_accessors_match_the_any_downcast_for_every_class`,
+`typed_accessors_reject_a_foreign_class`), and `try_ckt_elem` is the proven twin
+of `as_ckt_element` (the arena `ckt`/`data` tag). Every multi-class probe chain
+that changed shape (`dump_override`, `write_dss_object`, `control_data_mut`,
+`recalc_pc_create`, `conductor_class_name`) keeps its original arm order over
+**mutually exclusive** classes, so the arm chosen is unchanged. No list, loop,
+`find_*` tie-break, control-queue insertion, stamp or accumulation order was
+touched; the `objs()` → `0..len()` rewrites iterate the same `Vec` in the same
+direction. No arithmetic is in the diff; zero golden / ledger / tolerance /
+corpus-deck churn.
+
+**Proof surface.** Two tests were retargeted (never weakened) because their
+oracle was the removed API, and one test double was strengthened:
+- `obj::arena::tests::typed_accessors_match_the_any_downcast_for_every_class`
+  compared `arena.get::<T>(0)` against `arena.obj(0).as_any().downcast_ref::<T>()`;
+  it now asserts **pointer identity with the stored object itself**
+  (`arena.obj(0) as *const dyn DssObject as *const ()`) — the same address the
+  downcast handed back, for all 50 classes.
+- `arena_tag_matches_trait_ckt_view` → `arena_tag_matches_registry_ckt_classes`:
+  the `ckt`/`data` tag is now pinned against the **independent** registration
+  column in `exec/construct.rs` (`ckt_class` ⇒ `kind.is_some()` vs `dss_object`
+  ⇒ `None`, read through the new test-only `Dss::registered_class_is_ckt`), still
+  asserting exactly 35 circuit-element classes. A `ckt` tag on a non-`CktElement`
+  type cannot compile, so this covers the only silent direction left.
+- `solution::solution::monte_carlo::tests`' `FaultStore` double was a flat
+  `Vec<Fault>` addressed by `ElemId::new(0, idx)` — class ordinal **0** is
+  `TCC_Curve`, which the old class-blind `obj_mut` happily ignored. It now holds a
+  real `ClassArena::Fault` and hands out real `Fault` handles (`ArenaClass::id`),
+  so `pick_a_fault` exercises the same typed path production does. Caught by the
+  gate (2 red tests), fixed in the fixture, not in the code under test.
+- `exec::registry::tests::typed_store_accessors_match_the_untyped_pair_and_downcast`
+  keeps both `typed_metered_pair_mut` branches and its `store.obj(r)` identity
+  assert. No case removed, weakened, or ignored; zero `#[ignore]` churn.
+
+**Metrics (`rg -c … crates/dss-core/src`, summed lines / files).**
+
+| metric | base `a05a4a2` | HEAD | delta |
+|---|---|---|---|
+| `downcast_ref\|downcast_mut` | 261 / 47 f | **11 / 3 f** | **−250** — every remaining hit is prose in a doc comment; **0 code** |
+| `as_any` | 357 | **18 / 6 f** | **−339** — doc prose only; **0 code** |
+| `as_ckt_element` | 212 | **5** | **−207** — doc prose only; **0 code** |
+| `fn as_any` / `fn as_any_mut` defs | 52 / 52 | **0 / 0** | trait decl + 50 impls + the base helper gone |
+| `fn as_ckt_element` / `_mut` defs | 35 / 35 | **0 / 0** | trait decls + 35 impls gone |
+| `TODO(compat)` | 117 / 68 f | **117 / 68 f** | **0** — invariant held |
+| `clone_box` | 65 / 58 f | 65 / 58 f | 0 — still live (`fwiredata`, `line_wire_data`, JSON), stays per brief |
+
+Diff: 133 files, all under `crates/dss-core/src/`, **+1058 / −1832**.
+
+**R3 total vs its base `update`@`67d2965`:** `ElemRef` **937 → 0**,
+`downcast_ref|downcast_mut` **369 → 0 code**, `as_any|as_ckt_element`
+**716 → 0 code**, `TODO(compat)` **117 unchanged**.
+
+**Deviations disclosed.**
+1. `ClassArena::get::<T>(idx)` / `TypedStore::typed::<T>(r)` return `None` for an
+   out-of-range index where the old `arena[idx]` / `obj(r)` panicked first. Every
+   converted site takes its index from a registry-produced `ElemId` or a
+   `0..arena.len()` loop, so the state is unreachable; this is the same deviation
+   already disclosed for R3.2 part 1. The two sites that *did* rely on the
+   bounds-checked shape (`report/export/json/build.rs`'s first-element probe,
+   `exec/make_pos_seq.rs::resolve_pos_seq_info`) kept it with an explicit
+   `!arena.is_empty()` / `r.index() >= arena.len()` guard rather than by widening
+   `try_ckt_elem`'s contract.
+2. Six helpers changed signature from `&(mut) dyn DssObject` to `(arena, idx)`
+   (listed above); all callers updated in the same diff, none is public API.
+3. `DssClass::new_object`/`NewObjectFn` removed (50 construct.rs closures
+   deleted). `ClassArena::push_new` is the identical constructor.
+4. `first_enabled`/`last_enabled` (`ForeignClasses`) now return
+   `Option<&dyn CktElement>` instead of `Option<&dyn DssObject>` — both callers
+   immediately did `.as_ckt_element()` on the result, and the enabled test they
+   already applied implies the ckt view exists.
+5. One new `ClassArena::try_controlled_transformer` (shared twin of the existing
+   `_mut`) and one new `TypedStore::typed_metered_pair_mut` + `MeteredElem`; one
+   getter (`typed_obj_pair_mut`) retired.
+6. `obj::arena::tests::from_ref_covers_every_class_and_round_trips` was renamed
+   `elem_id_new_covers_every_class_and_round_trips` — its subject has been
+   `ElemId::new` since R3.1 removed the `from_ref` bridge; the body is unchanged.
+7. Doc comments that named the removed methods were reworded ("the removed
+   `as_any` downcast"); the historical R0/R2b rationale lines are kept as history.
+8. Ritual step 3 (two fresh audits) is not run in this session; the coordinator
+   spawns the R3 audits.
+
+**Still open → NOT R3.3's scope.** R3.1's sub-step (iv) beyond
+`line_spacing_obj`: the remaining "statically-known shape refs as typed `Idx<T>`"
+fields. They were re-scoped, not skipped — none of them was an `as_any` consumer
+(they read through `ConductorData`/`ElemId`), so converting them is a separate
+[A] refactor with its own bit-neutrality argument, not a prerequisite of the
+trait removal this step landed.
+
+**Gate (full, SOLO, toolchain guard first).** `cargo fmt --all --check` exit 0;
+`cargo clippy --workspace --all-targets -- -D warnings` exit 0; `cargo test
+--workspace` **exit 0** — 66 `test result: ok` groups, **1989 passed, 0 failed, 5 ignored** (the same 5 pre-existing ones), `corpus_gate_all_cases_match_engines … ok`
+(both channels capi_v0145 + r4133), run solo with no name filters. Corpus left
+pristine: run-artifacts removed by exact name (`git status tests/corpus`) — no
+wide `git clean`. Tree clean.
+
 ### DE_PASCALIZE R3.2 (part 3/3) — sub-item (e): Category-B meter typed reads + disjoint borrows (12 converted files + 1 getter + 1 test); the escape narrows to the 4 `monitor/sample.rs` concrete reads (branch `depas-r3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral, type-channel only. Base = the R3.2 part-2 tip

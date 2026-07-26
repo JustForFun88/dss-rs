@@ -16,6 +16,7 @@ use crate::support::cmatrix::CMatrix;
 
 use super::power_flow::solve_direct;
 use super::{ADMITTANCE, SolveEnv, SolveResult};
+use crate::elements::traits::TypedStore;
 
 /// Pascal `TSolutionAlgs.SolveFaultStudy`: open-circuit (Voc) direct solve,
 /// then per-bus `Ysc`/`Zsc`/`Isc`.
@@ -40,7 +41,7 @@ pub(super) fn solve_fault_study(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
 /// `Set_Enabled` → `Set_YprimInvalid`).
 fn disable_all_faults(ckt: &mut Circuit, env: &mut SolveEnv) {
     for r in ckt.faults.clone() {
-        if let Some(fault) = env.store.obj_mut(r).as_any_mut().downcast_mut::<Fault>()
+        if let Some(fault) = env.store.typed_mut::<Fault>(r)
             && fault.cd.enabled
         {
             fault.cd.enabled = false;

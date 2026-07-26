@@ -19,7 +19,7 @@ pub(crate) fn export_loads(classes: &[DssClass], refs: &[ElemId]) -> String {
         String::from("Load, Connected KVA, Allocation Factor, Phases, kW, kvar, PF, Model\n");
     for &r in refs {
         let obj = &classes[r.class_ord()].arena[r.index()];
-        if let Some(load) = obj.as_any().downcast_ref::<Load>()
+        if let Some(load) = classes[r.class_ord()].arena.get::<Load>(r.index())
             && load.cd.enabled
         {
             // Pascal `WriteStr(sout, AnsiUpperCase(Name), Sep, ConnectedkVA:8:1,

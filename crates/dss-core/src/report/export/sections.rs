@@ -51,9 +51,9 @@ pub(crate) fn export_sections(
     for r in targets {
         let obj = &classes[r.class_ord()].arena[r.index()];
         let meter_name = obj.data().name().to_string();
-        let em = obj
-            .as_any()
-            .downcast_ref::<EnergyMeter>()
+        let em = classes[r.class_ord()]
+            .arena
+            .get::<EnergyMeter>(r.index())
             .expect("energy_meters holds EnergyMeter objects");
         // `SectionCount` and `FeederSections` are written together by a
         // successful `CalcReliabilityIndices` (and the count alone is zeroed on

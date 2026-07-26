@@ -123,12 +123,7 @@ impl DssObject for CnDataObj {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.data
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
+
     fn as_conductor(&self) -> Option<&dyn crate::elements::general::conductor_data::ConductorData> {
         Some(self)
     }

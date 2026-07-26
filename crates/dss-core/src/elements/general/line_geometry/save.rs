@@ -11,7 +11,7 @@
 //!
 //! Co-located with the element (like [`super::dump`]) so it reads the conductor
 //! fields directly, exactly as the Pascal method does; dispatched from
-//! [`crate::report::save::save::write_dss_object`] via downcast. Emitted inline
+//! [`crate::report::save::save::write_dss_object`] via a typed arena read. Emitted inline
 //! on the single `New "…"` line (like the [`crate::elements::pd::transformer`]
 //! override) rather than as the oracle's `~ Cond=…` continuation lines — the two
 //! are token-equivalent on re-parse and the `Save` contract is round-trip

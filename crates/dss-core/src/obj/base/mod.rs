@@ -602,25 +602,6 @@ pub trait DssObject: Send {
     fn data(&self) -> &DssObjData;
     fn data_mut(&mut self) -> &mut DssObjData;
 
-    /// `&dyn Any` view for the rare flows that need a concrete downcast
-    /// (`MakeLike` between circuit elements copies matrices that the typed
-    /// accessors cannot express).
-    fn as_any(&self) -> &dyn std::any::Any;
-
-    /// Mutable downcast view — the control loop's bridge from an [`ElemId`]
-    /// to the concrete control/controlled types (PHASE5_PLAN §2.1: RegControl
-    /// → Transformer, CapControl → Capacitor + monitored element).
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
-
-    /// Circuit-element view (Pascal `obj is TDSSCktElement`). `None` for
-    /// `DSS_OBJECT` classes like TCC_Curve and Spectrum.
-    fn as_ckt_element(&self) -> Option<&dyn crate::elements::traits::CktElement> {
-        None
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn crate::elements::traits::CktElement> {
-        None
-    }
-
     /// Control-element view (Pascal `obj is TControlElem`). `Some` only for the
     /// control classes; the dispatch loop identifies a control and reads its
     /// base state through this instead of an `as_any` downcast chain (R0).

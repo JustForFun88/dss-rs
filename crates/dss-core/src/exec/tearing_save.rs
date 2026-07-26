@@ -397,8 +397,9 @@ impl Dss {
             let Some(&ci) = self.class_by_name.get(der) else {
                 continue;
             };
-            for obj in self.classes[ci].arena.objs_mut() {
-                if let Some(ce) = obj.as_ckt_element_mut() {
+            let arena = &mut self.classes[ci].arena;
+            for i in 0..arena.len() {
+                if let Some(ce) = arena.try_ckt_elem_mut(i) {
                     ce.cd_mut().set_enabled(false);
                 }
             }
@@ -460,7 +461,7 @@ fn element_bus(classes: &[DssClass], full_name: &str, bus_num: usize) -> Option<
             continue;
         }
         if let Some(&oi) = class.name_to_idx.get(obj_name) {
-            let bus = class.arena[oi].as_ckt_element()?.cd().get_bus(bus_num);
+            let bus = class.arena.try_ckt_elem(oi)?.cd().get_bus(bus_num);
             return Some(bus.to_string());
         }
     }
@@ -558,8 +559,9 @@ mod tests {
         dss.disable_all_der();
         // The generator is now disabled.
         let ci = dss.class_by_name["generator"];
-        let enabled = dss.classes[ci].arena[0]
-            .as_ckt_element()
+        let enabled = dss.classes[ci]
+            .arena
+            .try_ckt_elem(0)
             .map(|e| e.cd().enabled)
             .unwrap_or(true);
         assert!(!enabled, "generator should be disabled by Disable_All_DER");

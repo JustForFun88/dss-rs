@@ -15,9 +15,9 @@ use crate::report::format;
 
 /// Downcast an `ckt.energy_meters` ref to its concrete [`EnergyMeter`].
 fn as_meter(classes: &[DssClass], r: ElemId) -> &EnergyMeter {
-    classes[r.class_ord()].arena[r.index()]
-        .as_any()
-        .downcast_ref::<EnergyMeter>()
+    classes[r.class_ord()]
+        .arena
+        .get::<EnergyMeter>(r.index())
         .expect("energy_meters holds EnergyMeter")
 }
 
@@ -106,9 +106,9 @@ pub(crate) fn show_gen_meters(classes: &[DssClass], ckt: &Circuit) -> String {
     s.push('\n');
 
     for &r in &ckt.generators {
-        let g = classes[r.class_ord()].arena[r.index()]
-            .as_any()
-            .downcast_ref::<Generator>()
+        let g = classes[r.class_ord()]
+            .arena
+            .get::<Generator>(r.index())
             .expect("generators holds Generator");
         if g.cd.enabled {
             s.push_str(&format::pad(

@@ -13,19 +13,18 @@ use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
 use crate::elements::pd::transformer::Transformer;
-use crate::elements::traits::{ElemId, ElemStore};
+use crate::elements::traits::{ElemId, ElemStore, TypedStore};
 use crate::exec::registry::{ClassStore, DssClass};
 use crate::report::format::enclose_quotes;
 use crate::solution::topology::get_isolated_sub_area;
 
 /// Pascal `(DSSObjType and BASECLASSMASK) = PD_ELEMENT`.
 fn is_pd_element(store: &dyn ElemStore, r: ElemId) -> bool {
-    let any = store.obj(r).as_any();
-    any.is::<Line>()
-        || any.is::<Transformer>()
-        || any.is::<AutoTrans>()
-        || any.is::<Capacitor>()
-        || any.is::<Reactor>()
+    store.typed::<Line>(r).is_some()
+        || store.typed::<Transformer>(r).is_some()
+        || store.typed::<AutoTrans>(r).is_some()
+        || store.typed::<Capacitor>(r).is_some()
+        || store.typed::<Reactor>(r).is_some()
 }
 
 /// Pascal `TDSSCktElement.FullName`.
@@ -159,8 +158,9 @@ pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> Stri
     s.push_str("***********  THE FOLLOWING ENABLED ELEMENTS ARE ISOLATED ************\n");
     s.push('\n');
     for &r in &isolated_elems {
-        let cd = classes[r.class_ord()].arena[r.index()]
-            .as_ckt_element()
+        let cd = classes[r.class_ord()]
+            .arena
+            .try_ckt_elem(r.index())
             .map(|e| e.cd());
         if let Some(cd) = cd {
             s.push('"');
