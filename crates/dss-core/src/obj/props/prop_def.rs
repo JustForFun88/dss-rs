@@ -67,6 +67,14 @@ pub struct PropDef {
     /// `Wires` → `Conductors`). `None` uses the derivation. `LowercaseKeys` never
     /// consults this (it lowercases the modern name).
     pub json_name: Option<&'static str>,
+    /// The class a `PropType::ObjectRef` names, for **JSON FullName rendering
+    /// only**, when the port resolves the reference outside the property
+    /// machinery so [`Self::object_class`] is `None` (the deferred-resolution
+    /// `Spectrum=` shortcut). Pascal always carries `PropertyOffset2 = TheClass`
+    /// there (`PCClass.pas:96-98`), so its `FullNames` sweep renders
+    /// `Spectrum.defaultgen`; without this the port emitted a bare
+    /// `defaultgen`. Never consulted when `object_class` is `Some`.
+    pub json_ref_class: Option<&'static str>,
 }
 
 /// The 1-based property index of `name` within a class's `defs` vec — the index
@@ -99,6 +107,7 @@ impl PropDef {
             redundant_with: 0,
             array_alternative: 0,
             json_name: None,
+            json_ref_class: None,
         }
     }
 
@@ -199,6 +208,20 @@ impl PropDef {
     /// behavior — no live resolution). Used by Load/VSource shape refs.
     pub fn object_ref(name: &'static str) -> Self {
         Self::base(name, PropType::ObjectRef)
+    }
+    /// `DSSObjectReferenceProperty` whose target the port resolves OUTSIDE the
+    /// property machinery (the executive's deferred re-resolve), so the parse
+    /// arm only stores the lowercased name (`object_class == None`). Pascal
+    /// still carries `PropertyOffset2 = TheClass`, so its JSON `FullNames`
+    /// sweep renders `Class.Name` — recorded here in
+    /// [`PropDef::json_ref_class`] for rendering only, with no effect on
+    /// parsing or resolution. The live users are every PC element's
+    /// `Spectrum=` (`PCClass.pas:96-98`).
+    pub fn object_ref_deferred(class: &'static str, name: &'static str) -> Self {
+        Self {
+            json_ref_class: Some(class),
+            ..Self::base(name, PropType::ObjectRef)
+        }
     }
     /// `DSSObjectReferenceProperty` resolved at parse time against class
     /// `class` (Pascal `PropertyOffset2 = @TheClass`), e.g. Line's `linecode`.

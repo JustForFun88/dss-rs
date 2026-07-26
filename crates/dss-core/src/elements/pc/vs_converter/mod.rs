@@ -72,7 +72,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("VDCRef"),
         PropDef::mapped_string_enum("VSCMode", enums.vsc_mode),
         // PCClass tail:
-        PropDef::object_ref("Spectrum"),
+        PropDef::object_ref_deferred("Spectrum", "Spectrum"),
         // CktElementClass tail:
         PropDef::double("BaseFreq").flags(
             PropFlags::DYNAMIC_DEFAULT

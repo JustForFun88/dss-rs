@@ -26,7 +26,13 @@ impl Capacitor {
             1 => {
                 // kvar
                 phase_kv = self.phase_kv();
-                let fc = 1.0 / (w * phase_kv * phase_kv * 1000.0 / (self.fkvarrating[0] / nphases));
+                // `FC[i] := 1.0 / (w * SQR(PhasekV) * 1000.0 / (FkvarRating[1] /
+                // Fnphases))` — `SQR` binds first, so the square is an atom:
+                // `w * (kv*kv)`, not `(w*kv) * kv`. The two associations differ by
+                // one ULP for many realistic (kV, kvar, f) triples and the result
+                // is rendered verbatim as the `Cuf` property (pinned bit-exactly
+                // against the oracle in `tests.rs`).
+                let fc = 1.0 / (w * phase_kv.powi(2) * 1000.0 / (self.fkvarrating[0] / nphases));
                 for v in self.fc.iter_mut() {
                     *v = fc;
                 }
@@ -38,7 +44,10 @@ impl Capacitor {
                 // Cuf
                 phase_kv = self.phase_kv();
                 for &c in self.fc.iter().take(n) {
-                    self.ftotalkvar += w * c * phase_kv * phase_kv / 1000.0;
+                    // `Ftotalkvar + w * FC[i] * SQR(PhasekV) / 1000.0` — same
+                    // `SQR`-binds-first rule; observable through the derived
+                    // Norm/Emerg amps below.
+                    self.ftotalkvar += w * c * phase_kv.powi(2) / 1000.0;
                 }
             }
             _ => {} // CMatrix: nothing to do

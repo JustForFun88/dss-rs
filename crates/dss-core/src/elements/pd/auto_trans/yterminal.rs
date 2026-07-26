@@ -107,7 +107,11 @@ impl AutoTrans {
                 w.rdcpu = w.rdcohms / (w.vbase * w.vbase / vabase);
             } else {
                 w.rdcpu = 0.85 * w.rpu; // 85 % of the ac value (no stray loss)
-                w.rdcohms = w.rdcpu * w.vbase * w.vbase / vabase;
+                // Pascal `Rdcpu * SQR(VBase) / VABase` (AutoTrans.pas:1021):
+                // `SQR` binds first, so the square is formed BEFORE the multiply.
+                // Left-to-right `rdcpu * vbase * vbase` reassociates the product
+                // and lands one ULP off the oracle on the rendered RDCOhms.
+                w.rdcohms = w.rdcpu * (w.vbase * w.vbase) / vabase;
             }
         }
 

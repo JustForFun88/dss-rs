@@ -12,7 +12,8 @@ every capture (kind/target/opts/bits/expected-bytes). Regeneration is manual and
 must use the exact versions in tools/golden/PIN.txt.
 
 Usage:
-    python tools/golden/gen_json.py
+    python tools/golden/gen_json.py                 # regenerate every deck
+    python tools/golden/gen_json.py autotrans_micro # only the named deck(s)
 """
 
 from __future__ import annotations
@@ -200,16 +201,335 @@ DECKS = [
             ("full_skip_redundant", FULL | SKIP_REDUNDANT),
         ],
     },
-    # NOTE: an AutoTrans Full golden (the second WdgCurrents exerciser) is NOT
-    # added here. The JSON Vterminal-refresh route this WP adds is class-agnostic
-    # (proven post-solve byte-exact by `transformer_solved`), and AutoTrans
-    # `WdgCurrents` flows the identical READS_VTERMINAL + refresh path — but its
-    # own getter is NOT independently pinned against the oracle here, so this is an
-    # inference, not verified coverage. A standalone AutoTrans JSON golden is
-    # blocked by a SEPARATE, out-of-scope gap: AutoTrans carries none of the JSON
-    # array-alternative/redundant metadata the Transformer has, so even its default
-    # sweep renders `Buses/Conns/kVs/kVAs` where the oracle renders `Bus/Conn/kV/kVA`.
-    # Recorded as a STATUS follow-up (real, deferred).
+    {
+        "name": "transformer_derived_rdc",
+        # The DERIVED-RDCOhms branch of `RecalcElementData` (Transformer.pas:1007
+        # -1008): with `rdcohms` left UNSET, `RdcSpecified` is FALSE and the
+        # engine computes `Rdcpu := abs(0.85 * Rpu)` then
+        # `RdcOhms := Rdcpu * SQR(VBase) / VABase`. Every other Transformer deck
+        # sets `rdcohms` explicitly, so only the RdcSpecified branch was ever
+        # rendered and the derived one was ungated — which matters because `SQR`
+        # binds before the surrounding product (`a * (v*v)`, not `(a*v) * v`) and
+        # the two associations differ by one ULP on realistic ratings. Winding 1
+        # of `t2` (115 kV wye, 1500 kVA, %r=0.75) is such a case: the oracle
+        # renders 1.8735416666666670E+001 (SQR-first) where the left-to-right
+        # product gives …666E+001 — verified by an oracle probe over the deck's
+        # own operands. `t3` adds a 3-winding delta/wye/delta mix so the
+        # `VBase = kVLL * InvSQRT3x1000` vs `kVLL * 1000` split is covered too.
+        # Pre-solve: RDCOhms is a parsed-input derivation with no solve state.
+        # Both transformers sit on UNENERGIZED buses (not `sourcebus`) so the
+        # Full sweep's `WdgCurrents` is the exact all-zero phasor list, as in
+        # `transformer_micro`. Hanging winding 1 off the source instead leaves
+        # `Y_term · Vterminal` a near-total cancellation whose ~1e-13 residue is
+        # solver-dependent noise — not something a byte golden may pin (the
+        # NONZERO WdgCurrents path is gated post-solve by `transformer_solved`).
+        "commands": [
+            "new circuit.xf basekv=115 pu=1.0 phases=3 bus1=sourcebus",
+            "new Transformer.t2 phases=3 windings=2 xhl=7.5",
+            "~ wdg=1 bus=hv conn=wye kV=115 kVA=1500 %r=0.75",
+            "~ wdg=2 bus=mv conn=wye kV=12.47 kVA=1500 %r=0.9",
+            "new Transformer.t3 phases=3 windings=3 xhl=7.5 xht=12.0 xlt=10.0",
+            "~ wdg=1 bus=hv2 conn=delta kV=115 kVA=2000 %r=0.5",
+            "~ wdg=2 bus=mv2 conn=wye kV=24.9 kVA=2000 %r=0.6",
+            "~ wdg=3 bus=lv conn=delta kV=4.16 kVA=1000 %r=1.5",
+            "makebuslist",
+            "set voltagebases=[115 24.9 12.47 4.16]",
+            "calcv",
+        ],
+        "captures": [
+            ("obj", "Transformer.t2"),
+            ("obj", "Transformer.t3"),
+            ("batch", "Transformer"),
+        ],
+    },
+    # NOTE — there is deliberately NO Capacitor deck here. The Capacitor's
+    # derived values (`Cuf`, and `NormAmps`/`EmergAmps` via `Ftotalkvar`) render
+    # only under FULL, and every Full capture also emits `CMatrix`, whose oracle
+    # getter reads UNINITIALIZED MEMORY even when `cmatrix=` is set (the same
+    # dss_capi UB that `gen_props.py` canonicalizes with `zero_garbage`).
+    # Re-verified here: five fresh oracle processes produced five different
+    # CMatrix renders. A byte-exact fixture cannot host a nondeterministic value,
+    # and the port correctly emits `null` instead of reproducing UB, so the
+    # Capacitor is un-gateable through this channel. Its derived values are
+    # pinned against oracle-probed constants in the element's own unit tests
+    # (`elements/pd/capacitor/tests.rs`).
+    {
+        "name": "autotrans_micro",
+        # The AutoTrans twin of `transformer_micro` (og(json-a) item 1). AutoTrans
+        # carries its own copy of the JSON array-alternative metadata
+        # (`AutoTrans.pas:439-557`: bus/buses, conn/conns, kV/kVs, kVA/kVAs,
+        # tap/taps, pctR/pctRs), so the DEFAULT sweep must render the SINGULAR
+        # keys `Bus/Conn/kV/kVA/pctR` as per-winding arrays — a class that lost
+        # the metadata would emit `Buses/Conns/kVs/kVAs` instead and fail here.
+        # RDCOhms/MaxTap/MinTap/NumTaps are the `ON_ARRAY` scalars with no plural
+        # alternative, set per winding with DISTINCT values so their positional
+        # DoubleOnStructArray / IntegerOnStructArray indexing is pinned.
+        # Three windings (series/wye/delta) so the AutoTrans-specific `series`
+        # connection ordinal is in the sweep. Full-family combos INCLUDED: this
+        # pins the PRE-SOLVE `WdgCurrents` (all-zero-ish phasor list); the
+        # `autotrans_solved` deck pins the NONZERO post-solve case.
+        "commands": [
+            "new circuit.probe basekv=345 bus1=sourcebus",
+            "New AutoTrans.a7 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 "
+            "%imag=0.0329 %noloadloss=0.02402",
+            "~ wdg=1 bus=sourcebus conn=s kV=345.0 kVA=330000 %r=0.0493 "
+            "rdcohms=0.11 maxtap=1.1 mintap=0.9 numtaps=32",
+            "~ wdg=2 bus=low  conn=w kV=161.0 kVA=330000 %r=0.0556 "
+            "rdcohms=0.22 maxtap=1.2 mintap=0.8 numtaps=16",
+            "~ wdg=3 bus=tert conn=d kV=13.8  kVA=72000  %r=1.4503 "
+            "rdcohms=0.33 maxtap=1.3 mintap=0.7 numtaps=8",
+            "makebuslist",
+            "set voltagebases=[345.0 161.0 13.8]",
+            "calcv",
+        ],
+        "captures": [("obj", "AutoTrans.a7"), ("batch", "AutoTrans")],
+    },
+    {
+        "name": "autotrans_solved",
+        # POST-SOLVE AutoTrans companion (og(json-a) item 1). `transformer_solved`
+        # proves the class-agnostic JSON Vterminal-refresh route, but AutoTrans has
+        # its OWN series/common/delta winding-current getter
+        # (`TAutoTransObj.GetAllWindingCurrents`, `auto_trans/yterminal.rs`), which
+        # no JSON golden pinned before: every AutoTrans WdgCurrents capture was
+        # pre-solve all-zeros, indistinguishable from a broken getter. Here the
+        # series winding is fed from the energized `sourcebus` with loads on the
+        # 161 kV common and the 13.8 kV tertiary, so Full `WdgCurrents` is a
+        # NONZERO phasor list pinned byte-exact. Byte-exact is valid post-solve:
+        # the getter formats at Pascal `%.7g`/`%.5g`, far coarser than the
+        # faer-vs-KLU last-ULP. Full-family combos only (WdgCurrents renders only
+        # under Full). Rounding-boundary margin measured, not assumed: re-solving
+        # this deck on the oracle at tolerance 1e-8 / 1e-10 / 1e-12 (7 / 9 / 15
+        # iterations — three genuinely different converged realizations) yields
+        # BYTE-IDENTICAL WdgCurrents strings; only a deliberately unconverged
+        # 1e-6 run (5 iterations) moves the 8th digit. The pinned magnitudes are
+        # therefore far from a `%.7g` boundary relative to any solver last-ULP.
+        # NOTE: with `rdcohms`/`maxtap`/`mintap`/`numtaps` left at
+        # their defaults, `RecalcElementData` derives RDCOhms from the winding
+        # ratings, so this deck ALSO pins the computed-RDCOhms render.
+        "commands": [
+            "new circuit.probe basekv=345 bus1=sourcebus",
+            "Edit Vsource.source basekv=345 pu=1.0 mvasc3=30000 25000",
+            "New AutoTrans.a7 phases=3 windings=3 xhx=7.23 xht=24.45 xxt=28.45 "
+            "%imag=0.0329 %noloadloss=0.02402",
+            "~ wdg=1 bus=sourcebus conn=s kV=345.0 kVA=330000 %r=0.0493",
+            "~ wdg=2 bus=low  conn=w kV=161.0 kVA=330000 %r=0.0556",
+            "~ wdg=3 bus=tert conn=d kV=13.8  kVA=72000  %r=1.4503",
+            "New Load.l161 bus1=low phases=3 kv=161 kw=250000 pf=0.88 model=1",
+            "New Load.l138 bus1=tert phases=3 kv=13.8 kw=30000 pf=0.95 model=1",
+            "set voltagebases=[345.0 161.0 13.8]",
+            "calcvoltagebases",
+            "set tolerance=1e-8",
+            "solve",
+        ],
+        "captures": [("obj", "AutoTrans.a7"), ("batch", "AutoTrans")],
+        "combos": [
+            ("full", FULL),
+            ("full_pretty", FULL | PRETTY),
+            ("full_include_class", FULL | INCLUDE_DSS_CLASS),
+            ("full_skip_redundant", FULL | SKIP_REDUNDANT),
+        ],
+    },
+    {
+        "name": "der_usermodel_full",
+        # og(json-a) item 2: the Generator/PVSystem/Storage user-model string
+        # properties under FULL mode. They used to carry `PropFlags::NOT_PORTED`
+        # and were skipped from the Full sweep while the 0.14.5 oracle emits them
+        # as `""`; WASM_USERMODELS WM.3/WM.4 made them fully ported properties and
+        # `hidden_from_full_enum()` no longer consults NOT_PORTED at all, so they
+        # must now render. This deck pins all six surfaces against the oracle:
+        # Generator `UserModel`/`UserData`/`ShaftModel`/`ShaftData`, Storage
+        # `UserModel`/`UserData` + `DynaDLL`/`DynaData`, PVSystem
+        # `UserModel`/`UserData`. Left UNSET (the empty-string default) on purpose
+        # — a non-empty value would name a `.wasm`/DLL and drag the loader into a
+        # byte golden; the gap being closed is the *render*, not the load. Full
+        # combos only for those (the default sweep omits unset strings, so it
+        # cannot see them at all).
+        #
+        # The deck ALSO pins `Spectrum=` under FullNames, in BOTH sweeps. The
+        # port resolves `Spectrum` outside the property machinery, so its PropDef
+        # carries no resolving class and the FullNames render used to emit a bare
+        # `mycustom` where Pascal (`PropertyOffset2 = SpectrumClass`,
+        # `PCClass.pas:96-98`) emits `Spectrum.mycustom`. `MyCustom` is declared
+        # in mixed case and assigned as `MYCUSTOM` to pin the lowercased stored
+        # name at the same time.
+        "commands": [
+            "new circuit.der basekv=24 bus1=sourcebus",
+            "new Spectrum.MyCustom numharm=1 harmonic=[1] %mag=[100] angle=[0]",
+            "new Generator.g1 Bus1=sourcebus kV=24 kW=100 kvar=50 Model=1 "
+            "spectrum=MYCUSTOM",
+            "new Storage.st1 phases=3 bus1=sourcebus kv=24 kwrated=100 "
+            "kwhrated=200",
+            "new PVSystem.pv1 phases=3 bus1=sourcebus kv=24 kva=100 pmpp=100 "
+            "irradiance=1",
+            "set voltagebases=[24]",
+            "calcv",
+        ],
+        "captures": [
+            ("obj", "Generator.g1"),
+            ("obj", "Storage.st1"),
+            ("obj", "PVSystem.pv1"),
+            ("batch", "Generator"),
+            ("batch", "Storage"),
+            ("batch", "PVSystem"),
+        ],
+        "combos": [
+            ("full", FULL),
+            ("full_pretty", FULL | PRETTY),
+            ("full_include_class", FULL | INCLUDE_DSS_CLASS),
+            ("full_skip_redundant", FULL | SKIP_REDUNDANT),
+            ("full_fullnames", FULL | FULL_NAMES),
+            ("full_lowercase_keys", FULL | LOWERCASE_KEYS),
+            # Bit 3 alone — the DEFAULT sweep under FullNames, where the
+            # `Spectrum.mycustom` render is also observable (an assigned,
+            # non-default spectrum survives the default-sweep filter).
+            ("fullnames", FULL_NAMES),
+        ],
+    },
+    {
+        "name": "der_usermodel_assigned",
+        # `der_usermodel_full` pins the six DER user-model surfaces at their
+        # EMPTY default, which leaves the ASSIGNED-value render ungated. The two
+        # filename surfaces (`UserModel`/`ShaftModel`/`DynaDLL`) cannot be pinned
+        # without shipping a binary — assigning a name that does not resolve makes
+        # the oracle raise `#570 … Not Loaded` (probed) — but the DATA surfaces
+        # take any string with no loader involved. This deck pins them non-empty:
+        # Generator `UserData`+`ShaftData`, Storage `UserData`+`DynaData`,
+        # PVSystem `UserData`. It also pins the parenthesis stripping —
+        # `(Kp=1.5,Ki=0.25)` is stored and rendered as `Kp=1.5,Ki=0.25`.
+        "commands": [
+            "new circuit.um basekv=24 bus1=sourcebus",
+            "new Generator.g1 Bus1=sourcebus kV=24 kW=100 kvar=50 Model=1 "
+            "UserData=(Kp=1.5,Ki=0.25) ShaftData=(J=3.5,D=0.1)",
+            "new Storage.st1 phases=3 bus1=sourcebus kv=24 kwrated=100 "
+            "kwhrated=200 UserData=(a=1) DynaData=(b=2)",
+            "new PVSystem.pv1 phases=3 bus1=sourcebus kv=24 kva=100 pmpp=100 "
+            "irradiance=1 UserData=(c=3)",
+            "set voltagebases=[24]",
+            "calcv",
+        ],
+        "captures": [
+            ("obj", "Generator.g1"),
+            ("obj", "Storage.st1"),
+            ("obj", "PVSystem.pv1"),
+            ("batch", "Generator"),
+            ("batch", "Storage"),
+            ("batch", "PVSystem"),
+        ],
+        "combos": [
+            ("full", FULL),
+            ("full_lowercase_keys", FULL | LOWERCASE_KEYS),
+            # Assigned (non-default) strings survive the default-sweep filter, so
+            # the plain default sweep sees them too.
+            ("default", 0),
+        ],
+    },
+    {
+        "name": "spectrum_refs",
+        # The `Spectrum=` FullNames render across the PC classes. The port
+        # resolves Spectrum outside the property machinery, so its `PropDef`
+        # carries no resolving class; `PropDef::object_ref_deferred` supplies one
+        # for the JSON render only, because Pascal prefixes the resolving class
+        # (`PCClass.pas:96-98` sets `PropertyOffset2 := DSS.SpectrumClass`, which
+        # `DSSObjectHelper.pas:1178-1186` renders as `otherObj.FullName`).
+        # `der_usermodel_full` pinned that for Generator alone; the conversion
+        # touched 13 classes, so this deck gates the rest against the oracle:
+        # Vsource, Load, Isource, PVSystem, Storage, IndMach012, VCCS, UPFC,
+        # VSConverter and GICsource all render `Spectrum.mycustom`. GICLine is
+        # included to pin the OPPOSITE: it carries `SUPPRESS_JSON_LATE`, so the
+        # oracle emits NO `Spectrum` key for it at all. (WindGen also converted,
+        # but the class does not exist in the pinned 0.14.5 oracle, so it cannot
+        # be gated here.) `MyCustom` is declared mixed-case and assigned as
+        # `MYCUSTOM` so the lowercased stored name is pinned at the same time.
+        # `Line.gs1` exists because a GICsource binds to the Line of its own name.
+        "commands": [
+            "new circuit.spec basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+            "new Spectrum.MyCustom numharm=1 harmonic=[1] %mag=[100] angle=[0]",
+            "edit Vsource.source spectrum=MYCUSTOM",
+            "new Load.l1 bus1=sourcebus phases=3 kv=12.47 kw=100 pf=0.95 "
+            "spectrum=MYCUSTOM",
+            "new Isource.i1 bus1=sourcebus phases=3 amps=10 spectrum=MYCUSTOM",
+            "new PVSystem.pv1 bus1=sourcebus phases=3 kv=12.47 kva=100 pmpp=100 "
+            "irradiance=1 spectrum=MYCUSTOM",
+            "new Storage.st1 bus1=sourcebus phases=3 kv=12.47 kwrated=100 "
+            "kwhrated=200 spectrum=MYCUSTOM",
+            "new IndMach012.im1 bus1=sourcebus phases=3 kv=12.47 kw=100 "
+            "spectrum=MYCUSTOM",
+            "new VCCS.vc1 bus1=sourcebus phases=1 prated=25000 vrated=7200 "
+            "spectrum=MYCUSTOM",
+            "new UPFC.up1 bus1=sourcebus bus2=upb spectrum=MYCUSTOM",
+            "new VSConverter.vs1 bus1=sourcebus phases=3 spectrum=MYCUSTOM",
+            "new GICLine.gl1 bus1=sourcebus bus2=gicb volts=100 spectrum=MYCUSTOM",
+            "new Line.gs1 bus1=sourcebus bus2=gicb2 phases=3 length=1",
+            "new GICsource.gs1 volts=100 angle=0 spectrum=MYCUSTOM",
+            "set voltagebases=[12.47]",
+            "calcv",
+        ],
+        "captures": [
+            ("batch", "Vsource"),
+            ("batch", "Load"),
+            ("batch", "Isource"),
+            ("batch", "PVSystem"),
+            ("batch", "Storage"),
+            ("batch", "IndMach012"),
+            ("batch", "VCCS"),
+            ("batch", "UPFC"),
+            ("batch", "VSConverter"),
+            ("batch", "GICLine"),
+            ("batch", "GICsource"),
+        ],
+        "combos": [
+            ("fullnames", FULL_NAMES),
+            ("full_fullnames", FULL | FULL_NAMES),
+            ("default", 0),
+        ],
+    },
+    {
+        "name": "dyneq_full",
+        # FULL-mode companion to `dyneq_micro` (og(json-a) item 2 tail).
+        # `dyneq_micro` is `skip_full` because the Full sweep used to drop the
+        # Generator/Storage `ShaftModel`/`ShaftData` properties (the NOT_PORTED
+        # gap closed by `der_usermodel_full`), so the `TDynEqPCE` "DynInit" tail
+        # was never gated under Full. The tail is appended by the same code after
+        # either sweep, but "same code" was the argument for leaving it unpinned
+        # — this deck pins it directly instead. Same assignment mix as
+        # `dyneq_micro` (plain constant → JSON number, calc-value operand and RPN
+        # constant → JSON string, `Damp` written twice to pin the
+        # `UserDynInit.Delete`+`Add` reorder), so a Full-only regression in the
+        # tail now fails the gate.
+        "commands": [
+            "new circuit.dyn basekv=24 bus1=sourcebus",
+            "new DynamicExp.gde nvariables=6 "
+            "varnames=[Speed Mass PShaft Pterm Damp theta] "
+            "expression=[Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *;"
+            " theta dt = Speed]",
+            "new Generator.g1 Bus1=sourcebus kV=24 kW=100 kvar=50 Model=1 "
+            "DynamicEq=gde",
+            "~ Damp = 0 PShaft = P0 Pterm = P Speed = 0 theta = Edp "
+            "Mass = (3.5 2 * 2220000000 376.99112 / *)",
+            "~ Damp = (1 2 +)",
+            "~ DynOut = [Speed theta]",
+            "new DynamicExp.stde nvariables=2 varnames=[wp wq] "
+            "expression=[wp dt = 0; wq dt = 0]",
+            "new Storage.st1 phases=3 bus1=sourcebus kv=24 kwrated=100 "
+            "kwhrated=200 DynamicEq=stde",
+            "~ wp = 7 wq = (4 5 +)",
+            "set voltagebases=[24]",
+            "calcv",
+        ],
+        "captures": [
+            ("obj", "Generator.g1"),
+            ("obj", "Storage.st1"),
+            ("batch", "Generator"),
+            ("batch", "Storage"),
+        ],
+        "combos": [
+            ("full", FULL),
+            ("full_pretty", FULL | PRETTY),
+            ("full_include_class", FULL | INCLUDE_DSS_CLASS),
+            ("full_skip_redundant", FULL | SKIP_REDUNDANT),
+            ("full_lowercase_keys", FULL | LOWERCASE_KEYS),
+        ],
+    },
     {
         "name": "dyneq_micro",
         # The `TDynEqPCE` "DynInit" tail (CAPI_Obj.pas:752-759): a
@@ -258,8 +578,11 @@ DECKS = [
         # default and Full sweeps by the same code, so the default sweep fully
         # exercises it (number/string value split, the literal `"DynInit"` key
         # surviving LowercaseKeys, calc-strings untouched by FullNames/EnumAsInt).
-        # Full mode is skipped here to avoid an unrelated Generator Full-render
-        # gap (ShaftModel/ShaftData hidden by NOT_PORTED) — a recorded follow-up.
+        # `skip_full` originally worked around the Generator Full-render gap
+        # (ShaftModel/ShaftData hidden by NOT_PORTED); that gap is CLOSED
+        # (`hidden_from_full_enum` no longer consults NOT_PORTED). The flag stays
+        # only so this deck's committed bytes are not rewritten — the Full sweep
+        # it used to lack is gated by the separate `dyneq_full` deck below.
         "skip_full": True,
     },
     {
@@ -494,8 +817,22 @@ def main() -> None:
     au = d._api_util
     lib = au.lib
 
+    # Optional deck-name filter: `python gen_json.py autotrans_micro …` writes
+    # ONLY those goldens. Adding a deck must not rewrite the existing byte
+    # goldens (an unrelated oracle/toolchain drift would silently ride along),
+    # so a targeted regen is the default workflow for new decks; pass no
+    # arguments for the full deliberate regeneration.
+    only = set(sys.argv[1:])
+    if only:
+        known = {deck["name"] for deck in DECKS}
+        unknown = sorted(only - known)
+        if unknown:
+            sys.exit(f"unknown deck(s): {', '.join(unknown)}")
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for deck in DECKS:
+        if only and deck["name"] not in only:
+            continue
         out = run_deck(d, au, lib, deck)
         out["schema"] = SCHEMA
         out["oracle"] = {"dss_python": oracle_version, "engine": d.Version}
