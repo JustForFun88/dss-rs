@@ -34,7 +34,7 @@
 //! | complex division | [`cdiv`] — this file | no |
 //! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file | no |
 //! | single-point stddev | [`stddev_single_point`] — this file | **yes** (F.3b) |
-//! | RPN pi | `dss-parser` `compat::PI` | no |
+//! | RPN pi | `dss-parser` `compat::PI` | **yes** (F.3d) |
 //! | FPC round | `dss-parser` `compat::round_i32` | **yes** (F.3a) |
 //! | solver execution (`Par`, refinement) | `dss-sparse` `compat` | no — declaration only, M3c / WP-R1 own the flip |
 //! | Y triplet dedup | *no split* — one shared kernel serves both lanes (IV.1) | — |

@@ -7,6 +7,48 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3d — the RPN pi row flips (branch `depas-stagef`, 2026-07-27)
+
+Fourth kernel family of F.3, and the plan IV.2 table's **row 4**:
+`dss_parser::compat::PI`'s default arm now selects `PI_STD_IMPL`
+(`f64::consts::PI`); the parity lane keeps the Pascal literal `3.14159265359`.
+`TODO(compat)` **90 → 89**.
+
+**What it moves.** `compat::PI` scales exactly two constants —
+`RPNCalculator::{DEG_TO_RAD, RAD_TO_DEG}` — so the flip is confined to the
+degree-trig entries of the deck language's inline RPN calculator (`sin`, `cos`,
+`tan`, `asin`, `acos`, `atan`, `atan2`). `(30 sin)` evaluates to
+`0.5000000000000299` in the parity lane and `0.49999999999999994` in the
+default lane. The `pi` token (`EnterPi`) is untouched in **both** lanes:
+upstream pushes FPC's full-precision `pi` builtin there, so nothing to flip.
+
+**Where it is observable — measured, not assumed.** A tree-wide search for an
+RPN trig expression (`rg -i "\b(sin|cos|tan|asin|acos|atan2?)\s*\)" tests/`)
+finds exactly **one** occurrence in the whole gated corpus + golden corpus: case
+`rpn_expressions` record 9 of the oracle golden `tests/golden/parser.json`,
+whose value is the pinned `0.5000000000000299`. No `.dss` deck in
+`tests/corpus` (514 cases) contains one, so no solved quantity, no report and no
+corpus case moves in either lane.
+
+**That one golden record is the deliberate divergence, and it is pinned, not
+skipped.** `parser_golden.rs` grows a `DEFAULT_LANE_DIVERGENCES` table
+(`case`, record index, expected, abs tol, why); in the **default** lane that one
+record is compared against **0.5 ± ½ ULP** instead of the oracle value — the
+*correctly rounded* `sin 30° = ½`, i.e. an independently-derived target rather
+than our own constant re-evaluated (the parity value is 60 ULP away and fails
+that assertion, so it cannot pass vacuously). Every other record of that case,
+and every record of every other case, stays oracle-compared in **both** lanes.
+The table is **fail-on-stale**: a row whose `(case, index)` never appears fails
+the test, so a regenerated golden cannot silently disarm the exception.
+
+**Pins.** `compat::tests::pi_alias_is_the_lane_kernel` (alias resolves to the
+lane's impl, asserted against both impls, which differ) and
+`parser::tests::rpn_degree_trig_is_the_lane_kernel` (deck-language boundary:
+literal expected values per lane, no tolerance, plus `(pi)` as the control that
+must stay `f64::consts::PI` in both lanes). The pre-existing
+`pi_impls_agree_to_the_truncation_of_the_pascal_literal` keeps the measured
+6.59e-14 relative gap documented.
+
 ### DE_PASCALIZE Stage F.3 — escape register: what the closed table cannot absorb (branch `depas-stagef`, 2026-07-26)
 
 Recorded with F.3c so the remaining `TODO(compat)` population is *classified*,

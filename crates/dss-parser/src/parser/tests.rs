@@ -289,6 +289,38 @@ fn rpn_operations_and_functions() {
     assert!((p.make_double(&vars).unwrap() - 0.5).abs() < 1e-12);
 }
 
+/// The **deck-language boundary** pin of the Stage F pi row (F.3d): an RPN
+/// degree-trig expression evaluates through `compat::PI`, so its last digits
+/// are the lane's. Expected values, no tolerance — the parity lane must keep
+/// reproducing the Pascal literal's `0.5000000000000299` forever, and the
+/// default lane must produce the correctly-scaled `0.49999999999999994`.
+///
+/// `pi` (`EnterPi`) is the control: FPC's builtin is full precision upstream
+/// too, so the `pi` token pushes `f64::consts::PI` in **both** lanes — a
+/// mistaken re-pointing of *that* entry at the truncated literal shows up here.
+#[test]
+fn rpn_degree_trig_is_the_lane_kernel() {
+    let eval = |expr: &str| {
+        let (mut p, vars) = parser_with(&format!("x={expr}"));
+        p.next_param(&vars);
+        p.make_double(&vars).unwrap()
+    };
+
+    let expected = if crate::compat::ORACLE_PARITY {
+        0.5000000000000299
+    } else {
+        0.49999999999999994
+    };
+    assert_eq!(eval("(30 sin)"), expected);
+
+    // Non-vacuity: the two constants really do separate here.
+    assert_ne!(0.5000000000000299, 0.49999999999999994);
+
+    // `pi` stays full-precision in both lanes (RPN `sin` always takes degrees,
+    // so the token is pinned directly rather than through a trig entry).
+    assert_eq!(eval("(pi)"), std::f64::consts::PI);
+}
+
 #[test]
 fn rpn_invalid_entry_errors() {
     let (mut p, vars) = parser_with("x=(1 2 bogus)");
