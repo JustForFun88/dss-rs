@@ -13,8 +13,8 @@ pub struct RPNCalculator {
 impl RPNCalculator {
     // The degree conversions scale by the pi of `compat::PI` — the parity lane
     // reproduces the Pascal original's *truncated* literal (RPN.pas), the
-    // default lane uses `f64::consts::PI` from F.3 on. `EnterPi`, by contrast,
-    // pushes FPC's full-precision `pi` builtin in both lanes.
+    // default lane uses `f64::consts::PI` (flipped in F.3d). `EnterPi`, by
+    // contrast, pushes FPC's full-precision `pi` builtin in both lanes.
     const DEG_TO_RAD: f64 = crate::compat::PI / 180.0;
     const RAD_TO_DEG: f64 = 180.0 / crate::compat::PI;
 

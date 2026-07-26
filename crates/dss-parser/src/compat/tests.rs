@@ -4,13 +4,20 @@
 
 use super::*;
 
-/// The `PI` alias is still parity-selected in **both** lanes (its flip lands
-/// with its own kernel family), asserted on a value where the two constants
-/// genuinely differ so it cannot pass vacuously.
+/// The pi row **is** flipped (F.3d): the alias resolves to the truncated Pascal
+/// literal under `oracle-parity` and to `f64::consts::PI` otherwise. Asserted
+/// against both impls, which genuinely differ, so neither lane can pass
+/// vacuously.
 #[test]
-fn pi_alias_is_still_parity_selected_in_both_lanes() {
-    assert_eq!(PI, PI_FPC_TRUNCATED_IMPL);
+fn pi_alias_is_the_lane_kernel() {
     assert_ne!(PI_FPC_TRUNCATED_IMPL, PI_STD_IMPL);
+
+    let expected = if ORACLE_PARITY {
+        PI_FPC_TRUNCATED_IMPL
+    } else {
+        PI_STD_IMPL
+    };
+    assert_eq!(PI, expected);
 }
 
 /// The round row **is** flipped: the alias must resolve to the parity kernel

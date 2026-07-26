@@ -12,8 +12,8 @@
 //! the short alias points at.
 //!
 //! **Flip state (F.3, one kernel family per commit):** `round_i32` — flipped,
-//! the default lane saturates; `PI` — still parity-selected in both lanes (its
-//! flip moves RPN-computed deck values and lands with its own family).
+//! the default lane saturates (F.3a); `PI` — flipped, the default lane converts
+//! RPN degrees with `f64::consts::PI` (F.3d).
 
 #[cfg(test)]
 mod tests;
@@ -36,25 +36,32 @@ pub const ORACLE_PARITY: bool = false;
 // RPN pi (IV.2 row 4)
 // ---------------------------------------------------------------------------
 
-/// The truncated pi of the Pascal original (`RPN.pas`, `fff.pas:69`) — **not**
-/// the full-precision constant. Results differ in the last ~3 digits (e.g.
-/// `"30 sin"` gives `0.5000000000000299`) and the golden parser tests pin that
-/// behavior. `EnterPi`, by contrast, pushes FPC's full-precision `pi` builtin.
+/// The truncated pi of the Pascal original (`RPN.pas` `TRPNCalc`, via
+/// `fff.pas:69`) — **not** the full-precision constant. It scales the degree
+/// conversions of the RPN calculator's trig entries, so results differ in the
+/// last ~3 digits (`"30 sin"` gives `0.5000000000000299` instead of
+/// `0.49999999999999994`). The parity lane keeps it so the deck language
+/// evaluates bit-identically to the pinned oracle.
 ///
-/// TODO(compat): truncated pi reproduced from the Pascal original; the default
-/// lane uses [`PI_STD_IMPL`] once F.3 flips the alias (goldens updated there).
+/// `EnterPi` (the `pi` token) is *not* affected in either lane: it pushes FPC's
+/// full-precision `pi` builtin, which upstream itself keeps exact.
 #[allow(clippy::approx_constant)]
 pub const PI_FPC_TRUNCATED_IMPL: f64 = 3.14159265359;
 
-/// Full-precision pi — `std::f64::consts::PI`.
+/// Full-precision pi — `std::f64::consts::PI`. The default lane's kernel: a
+/// **deliberate divergence** of 6.59e-14 relative, pinned by expected-value
+/// tests here and at the deck-language boundary
+/// (`parser::tests::rpn_degree_trig_is_the_lane_kernel`).
 pub const PI_STD_IMPL: f64 = std::f64::consts::PI;
 
 #[cfg(feature = "oracle-parity")]
 pub use PI_FPC_TRUNCATED_IMPL as PI;
-// F.1 staging: the default lane still selects the parity constant; F.3 flips
-// this to `PI_STD_IMPL`.
+// F.3d: the default lane converts degrees with the real pi. No golden and no
+// gated corpus deck contains an RPN degree-trig expression (measured), so the
+// flip moves no oracle-compared number — its observability is the deck
+// expression the pins below evaluate.
 #[cfg(not(feature = "oracle-parity"))]
-pub use PI_FPC_TRUNCATED_IMPL as PI;
+pub use PI_STD_IMPL as PI;
 
 // ---------------------------------------------------------------------------
 // FPC `Round` (IV.2 row 5)
