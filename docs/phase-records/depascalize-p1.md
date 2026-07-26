@@ -83,6 +83,7 @@ entangled with an out-of-scope channel. None were partially touched.
    (`inv_control/mod.rs`) — the largest if-else family; the internal comparisons
    also drive `der_set_modes`/`der_set_var_mode` env methods (shared with the DER
    `var_mode` channel). Not started; deferred as one unit.
+   *(Correction, P1-tail settler 2026-07-26: this row under-counted the family — `FVoltage_CurveX_ref` and `FVoltwattYAxis`, both `DssEnum`-backed, were in no inventory. Converted with the rest; see STATUS §P1-tail settler.)*
 5. **Storage `f_state` state machine** (`STORE_CHARGING/IDLING/DISCHARGING`) and
    **StorageController** discharge/charge modes + `fleet_state` — the state ordinals
    are pushed through the **generic control-queue `i32` action channel**

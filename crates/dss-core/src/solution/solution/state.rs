@@ -108,8 +108,16 @@ impl LoadSolutionModel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(i32)]
 pub enum RandomType {
-    #[default]
     None = 0,
+    /// `TSolutionObj.Create` seeds `RandomType := GAUSSIAN`
+    /// (`Solution.pas:487`), so `Gaussian` — not the numerically-zero `None` —
+    /// is this family's `Default`, matching every other enum in this wave
+    /// (`default()` == the Pascal `Create` value). Settler note (2026-07-26):
+    /// the derive originally fell on `None`, which would have silently turned
+    /// `Set random` off had anything ever reached for `unwrap_or_default()`
+    /// here; nothing did, so the change is bit-neutral, and the pin test now
+    /// asserts it.
+    #[default]
     Gaussian = 1,
     Uniform = 2,
     LogNormal = 3,
@@ -770,5 +778,9 @@ mod enum_discriminant_tests {
         }
         assert_eq!(RandomType::from_ordinal(-1), None);
         assert_eq!(RandomType::from_ordinal(4), None);
+        // `TSolutionObj.Create` default is GAUSSIAN (`Solution.pas:487`), which
+        // is what `Solution::new` seeds — so `default()` must be Gaussian, not
+        // the numerically-zero `None`.
+        assert_eq!(RandomType::default(), RandomType::Gaussian);
     }
 }

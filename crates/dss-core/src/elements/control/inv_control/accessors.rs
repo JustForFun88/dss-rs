@@ -14,7 +14,7 @@ use crate::obj::base::{DssObjData, DssObject};
 
 use super::{
     InvCombiMode, InvControl, InvControlMode, InvControlModel, MonPhase, RateOfChangeMode,
-    ReacPowerRef, prop,
+    ReacPowerRef, VoltWattYAxis, VoltageCurveXRef, prop,
 };
 
 /// Pascal `ValidateXYCurve(curve, mode)`: VOLTWATT requires the per-unit Y
@@ -336,10 +336,10 @@ impl DssObject for InvControl {
         match idx {
             MODE => self.control_mode.ordinal(),
             COMBI_MODE => self.combi_mode.ordinal(),
-            VOLTAGE_CURVEX_REF => self.voltage_curvex_ref,
+            VOLTAGE_CURVEX_REF => self.voltage_curvex_ref.ordinal(),
             AVG_WINDOW_LEN => self.roll_avg_window_length,
             DYN_REAC_AVG_WINDOW_LEN => self.drc_roll_avg_window_length,
-            VOLTWATT_YAXIS => self.voltwatt_yaxis,
+            VOLTWATT_YAXIS => self.voltwatt_yaxis.ordinal(),
             RATE_OF_CHANGE_MODE => self.rate_of_change_mode.ordinal(),
             REF_REACTIVE_POWER => self.reac_power_ref.ordinal(),
             MON_VOLTAGE_CALC => self.mon_buses_phase.ordinal(),
@@ -356,10 +356,16 @@ impl DssObject for InvControl {
             COMBI_MODE => {
                 self.combi_mode = InvCombiMode::from_ordinal(value).unwrap_or(self.combi_mode)
             }
-            VOLTAGE_CURVEX_REF => self.voltage_curvex_ref = value,
+            VOLTAGE_CURVEX_REF => {
+                self.voltage_curvex_ref =
+                    VoltageCurveXRef::from_ordinal(value).unwrap_or(self.voltage_curvex_ref)
+            }
             AVG_WINDOW_LEN => self.roll_avg_window_length = value,
             DYN_REAC_AVG_WINDOW_LEN => self.drc_roll_avg_window_length = value,
-            VOLTWATT_YAXIS => self.voltwatt_yaxis = value,
+            VOLTWATT_YAXIS => {
+                self.voltwatt_yaxis =
+                    VoltWattYAxis::from_ordinal(value).unwrap_or(self.voltwatt_yaxis)
+            }
             RATE_OF_CHANGE_MODE => {
                 self.rate_of_change_mode =
                     RateOfChangeMode::from_ordinal(value).unwrap_or(self.rate_of_change_mode)
