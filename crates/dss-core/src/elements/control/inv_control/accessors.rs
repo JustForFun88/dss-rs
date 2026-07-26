@@ -9,6 +9,7 @@ use num_complex::Complex64;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{InvControl, VOLTWATT, WATTPF, WATTVAR, prop};
@@ -456,13 +457,8 @@ impl DssObject for InvControl {
 
     /// The five control curves resolve against XYcurve (snapshot-clone). The
     /// per-mode range check runs in `side_effects` (`ValidateXYCurve`).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
-        let obj = resolved.and_then(|(_, o)| o.as_any().downcast_ref::<XyCurveObj>().cloned());
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
+        let obj = resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             prop::VVC_CURVE1
             | prop::VOLTWATT_CURVE

@@ -11,6 +11,7 @@ use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 impl CktElement for Monitor {
@@ -192,20 +193,15 @@ impl DssObject for Monitor {
 
     /// Resolve `element=` (any circuit class by full name): capture a snapshot
     /// of the metered element for `RecalcElementData`/`ClearMonitorStream`.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             super::prop::ELEMENT => {
                 self.element_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.med.metered_element = Some(r);
+                    Some(o) => {
+                        self.med.metered_element = Some(o.id());
                         self.med.metered_element_changed = true;
-                        self.med.metered_snap = Some(capture_metered(name, obj));
+                        self.med.metered_snap = Some(capture_metered(name, o.obj()));
                     }
                     None => {
                         self.med.metered_element = None;

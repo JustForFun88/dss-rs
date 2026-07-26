@@ -6,7 +6,7 @@ use super::{VsConverter, prop};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemId, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 
@@ -303,7 +303,7 @@ impl DssObject for VsConverter {
         &mut self,
         idx: usize,
         _name: String,
-        _resolved: Option<(ElemId, &dyn DssObject)>,
+        _resolved: Option<crate::obj::arena::ResolvedObj<'_>>,
     ) {
         // The only object-ref-typed property is `spectrum`, which the engine
         // resolves through `set_string` + `set_harmonic_spectrum` (like Generator

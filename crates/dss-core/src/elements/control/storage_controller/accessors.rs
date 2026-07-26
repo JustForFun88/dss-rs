@@ -8,6 +8,7 @@ use crate::elements::control::control_elem::RefSnapshot;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{CURRENT_PEAKSHAVE, CURRENT_PEAKSHAVE_LOW, MODE_FOLLOW, StorageController, prop};
@@ -317,24 +318,16 @@ impl DssObject for StorageController {
     }
 
     /// `element=`/`yearly=`/`daily=`/`duty=` resolution.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let load_shape =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
+        let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         match idx {
             ELEMENT => {
                 self.monitored_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.ccd.monitored_element = Some(r);
-                        let elem = obj
-                            .as_ckt_element()
-                            .expect("element= resolves against circuit classes");
+                    Some(o) => {
+                        self.ccd.monitored_element = Some(o.id());
+                        let elem = o.ckt().expect("element= resolves against circuit classes");
                         self.mon_snap = Some(RefSnapshot::capture(name, elem));
                     }
                     None => {

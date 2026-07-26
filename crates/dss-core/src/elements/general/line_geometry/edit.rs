@@ -145,7 +145,7 @@ impl LineGeometryObj {
         }
         for (k, i) in (istart..=istop).enumerate() {
             // A `none` slot (AllowNoneItem) stays NIL.
-            self.fwiredata[i - 1] = refs[k].as_ref().map(|(_, _, o)| o.clone_box());
+            self.fwiredata[i - 1] = refs[k].as_ref().map(|(_, o)| o.obj().clone_box());
         }
         self.factive_cond = istop as i32;
     }

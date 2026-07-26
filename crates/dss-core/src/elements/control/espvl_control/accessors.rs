@@ -7,6 +7,7 @@ use num_complex::Complex64;
 use crate::elements::control::control_elem::RefSnapshot;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{EspvlControl, prop};
@@ -240,22 +241,15 @@ impl DssObject for EspvlControl {
 
     /// `element=` resolution (any circuit element by full name): keep the
     /// `ElemId` plus a shape snapshot for `RecalcElementData`.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             prop::ELEMENT => {
                 // `name` is the FullName ("Class.name") for the dump.
                 self.monitored_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.ccd.monitored_element = Some(r);
-                        let elem = obj
-                            .as_ckt_element()
-                            .expect("element= resolves against circuit classes");
+                    Some(o) => {
+                        self.ccd.monitored_element = Some(o.id());
+                        let elem = o.ckt().expect("element= resolves against circuit classes");
                         self.mon_snap = Some(RefSnapshot::capture(name, elem));
                     }
                     None => {

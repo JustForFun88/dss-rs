@@ -11,7 +11,8 @@ use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::dyneq_pce::{DynEqPce, DynEqPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemId, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -480,18 +481,11 @@ impl DssObject for WindGen {
     }
 
     /// Resolve a shape / curve / dynamic-equation reference (snapshot-clone).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|(r, _)| r);
-        let load_shape =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
-        let xy_curve =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<XyCurveObj>().cloned());
+        let elem_ref = resolved.map(|o| o.id());
+        let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
+        let xy_curve = || resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             YEARLY => {
                 self.yearly_shape = name;
@@ -511,8 +505,7 @@ impl DssObject for WindGen {
             DYNAMICEQ => {
                 self.dyneq.dynamic_eq = name;
                 self.dyneq.dynamic_eq_ref = elem_ref;
-                self.dyneq.dynamic_eq_obj =
-                    resolved.and_then(|(_, o)| o.as_any().downcast_ref::<DynamicExpObj>().cloned());
+                self.dyneq.dynamic_eq_obj = resolved.and_then(|o| o.cloned::<DynamicExpObj>());
             }
             VV_CURVE => {
                 self.vv_curve = name;

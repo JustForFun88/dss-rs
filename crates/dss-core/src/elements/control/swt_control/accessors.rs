@@ -7,7 +7,8 @@ use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_LOCK, CTRL_NONE, CTRL_UNLOCK};
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::elements::traits::{CktElement, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::SwtControl;
@@ -215,22 +216,17 @@ impl DssObject for SwtControl {
 
     /// `switchedobj=` resolution (Pascal `SetControlledElement`): keep the
     /// `ElemId` plus a shape snapshot for `RecalcElementData`.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
         match idx {
             SWITCHED_OBJ => {
                 // `name` is the FullName ("Class.name") for the dump.
                 self.switched_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.ccd.controlled_element = Some(r);
-                        let elem = obj
-                            .as_ckt_element()
+                    Some(o) => {
+                        self.ccd.controlled_element = Some(o.id());
+                        let elem = o
+                            .ckt()
                             .expect("switchedobj resolves against circuit classes");
                         self.ctrl_snap = Some(super::RefSnapshot::capture(name, elem));
                     }

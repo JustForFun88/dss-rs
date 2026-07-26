@@ -11,6 +11,7 @@ use crate::elements::control::control_elem::CTRL_STATE_KEEP;
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::Relay;
@@ -466,20 +467,15 @@ impl DssObject for Relay {
         }
     }
 
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
         match idx {
             MONITORED_OBJ => match resolved {
-                Some((r, obj)) => {
+                Some(o) => {
                     self.monitored_full_name = name.clone();
-                    self.ccd.monitored_element = Some(r);
-                    let elem = obj
-                        .as_ckt_element()
+                    self.ccd.monitored_element = Some(o.id());
+                    let elem = o
+                        .ckt()
                         .expect("monitoredobj resolves against circuit classes");
                     self.monitor_var_names = (1..=elem.num_variables())
                         .map(|i| elem.variable_name(i))
@@ -494,11 +490,11 @@ impl DssObject for Relay {
                 }
             },
             SWITCHED_OBJ => match resolved {
-                Some((r, obj)) => {
+                Some(o) => {
                     self.switched_full_name = name.clone();
-                    self.ccd.controlled_element = Some(r);
-                    let elem = obj
-                        .as_ckt_element()
+                    self.ccd.controlled_element = Some(o.id());
+                    let elem = o
+                        .ckt()
                         .expect("switchedobj resolves against circuit classes");
                     self.ctrl_snap = Some(super::RefSnapshot::capture(name, elem));
                 }

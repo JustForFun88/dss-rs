@@ -2,8 +2,7 @@
 //! other registered classes ([`ForeignClassesView`]) it uses to resolve
 //! object references mid-edit.
 
-use crate::elements::traits::ElemId;
-use crate::obj::base::DssObject;
+use crate::obj::arena::ResolvedObj;
 use crate::obj::dss_enum::EnumRegistry;
 use dss_parser::{Parser, ParserVars};
 
@@ -31,13 +30,13 @@ pub struct PropEngine<'a> {
 pub trait ForeignClassesView<'a> {
     /// Case-insensitive lookup of `name` in class `class`. `None` when the
     /// class or the object is unknown.
-    fn find(&self, class: &str, name: &str) -> Option<(ElemId, &'a dyn DssObject)>;
+    fn find(&self, class: &str, name: &str) -> Option<ResolvedObj<'a>>;
 
     /// Case-insensitive lookup of a full `Class.Name` reference (Pascal
     /// `GetCktElementIndex`). The returned `String` is the canonical
     /// `FullName` (`Class.name`) used by dumps. `None` when the value has no
     /// class prefix or nothing matches.
-    fn find_full(&self, full_name: &str) -> Option<(ElemId, &'a dyn DssObject, String)> {
+    fn find_full(&self, full_name: &str) -> Option<(ResolvedObj<'a>, String)> {
         let _ = full_name;
         None
     }

@@ -10,7 +10,8 @@ use crate::elements::general::growth_shape::GrowthShapeObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemId, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -427,16 +428,10 @@ impl DssObject for Load {
     /// `SetNominalLoad` drives through `GetMultAtHour` (Pascal stores the live
     /// pointer; see the `*_shape_obj` field doc). `daily`/`yearly`/`duty`/
     /// `CVRcurve` resolve to `LoadShape`, `growth` to `GrowthShape`.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|(r, _)| r);
-        let load_shape =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
+        let elem_ref = resolved.map(|o| o.id());
+        let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         match idx {
             YEARLY => {
                 self.yearly_shape = name;
@@ -461,8 +456,7 @@ impl DssObject for Load {
             GROWTH => {
                 self.growth_shape = name;
                 self.growth_shape_ref = elem_ref;
-                self.growth_shape_obj = resolved
-                    .and_then(|(_, o)| o.as_any().downcast_ref::<GrowthShapeObj>().cloned());
+                self.growth_shape_obj = resolved.and_then(|o| o.cloned::<GrowthShapeObj>());
             }
             _ => unreachable!("Load has no resolved object-ref property {idx}"),
         }

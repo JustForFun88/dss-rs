@@ -5,7 +5,8 @@
 use crate::elements::general::line_code::{LineCodeObj, LineType};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::elements::traits::{CktElement, ElemId};
+use crate::elements::traits::CktElement;
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::{LineUnits, convert_line_units};
@@ -203,18 +204,13 @@ impl DssObject for Line {
     /// `FetchLineCode` immediately (Pascal stores the pointer then
     /// `PropertySideEffects` calls `FetchLineCode`; here the resolved view is
     /// only available at parse time, so we fetch here).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             super::prop::LINECODE => {
                 self.line_code_name = name;
-                self.line_code_ref = resolved.map(|(r, _)| r);
-                if let Some((_, obj)) = resolved
-                    && let Some(code) = obj.as_any().downcast_ref::<LineCodeObj>()
+                self.line_code_ref = resolved.map(|o| o.id());
+                if let Some(o) = resolved
+                    && let Some(code) = o.get::<LineCodeObj>()
                 {
                     self.fetch_line_code(code);
                 }
@@ -224,8 +220,8 @@ impl DssObject for Line {
                 // `FetchGeometryCode`; the resolved view is only available here
                 // (parse time), so fetch immediately (the `linecode` pattern).
                 self.geometry_name = name;
-                if let Some((_, obj)) = resolved
-                    && let Some(geom) = obj.as_any().downcast_ref::<LineGeometryObj>()
+                if let Some(o) = resolved
+                    && let Some(geom) = o.get::<LineGeometryObj>()
                 {
                     self.fetch_geometry_code(geom);
                 }
@@ -234,9 +230,7 @@ impl DssObject for Line {
                 // Pascal stores the `LineSpacingObj` pointer; `FetchLineSpacing`
                 // runs from `PropertySideEffects(spacing)`. Snapshot-clone it here
                 // (the resolved view is parse-time only); `side_effects` fetches.
-                self.line_spacing_obj = resolved
-                    .and_then(|(_, o)| o.as_any().downcast_ref::<LineSpacingObj>())
-                    .cloned();
+                self.line_spacing_obj = resolved.and_then(|o| o.cloned::<LineSpacingObj>());
             }
             _ => unreachable!("Line has no resolved object-ref property {idx}"),
         }

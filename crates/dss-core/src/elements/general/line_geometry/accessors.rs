@@ -2,7 +2,7 @@
 //! accessors, object-reference plumbing and the `PropertySideEffects` state
 //! machine.
 
-use crate::elements::traits::ElemId;
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 
 use super::{ConductorChoice, LineGeometryObj, LineType, prop};
@@ -158,13 +158,8 @@ impl DssObject for LineGeometryObj {
         }
     }
 
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        _name: String,
-        resolved: Option<(ElemId, &dyn DssObject)>,
-    ) {
-        let cloned = resolved.map(|(_, o)| o.clone_box());
+    fn set_object_ref(&mut self, idx: usize, _name: String, resolved: Option<ResolvedObj<'_>>) {
+        let cloned = resolved.map(|o| o.obj().clone_box());
         match idx {
             prop::WIRE | prop::CNCABLE | prop::TSCABLE => {
                 if let Some(a) = self.active_index() {
@@ -185,7 +180,7 @@ impl DssObject for LineGeometryObj {
             prop::CONDUCTORS => {
                 for (i, r) in refs.iter().enumerate() {
                     if i < self.fwiredata.len() {
-                        self.fwiredata[i] = r.as_ref().map(|(_, _, o)| o.clone_box());
+                        self.fwiredata[i] = r.as_ref().map(|(_, o)| o.obj().clone_box());
                     }
                 }
             }
