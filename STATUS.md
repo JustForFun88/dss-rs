@@ -7,6 +7,49 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3e — the complex-division row resolves to *no split* (branch `depas-stagef`, 2026-07-27)
+
+**A deliberate deviation from the plan's IV.2 table, settled by measurement
+rather than by argument — flagged here for the plan owner.** The table proposes
+`num_complex`'s `/` as the default kernel of row 1. Executing that flip would
+make the *product* lane strictly worse, so the row is resolved the way the
+table's own "Y triplet dedup" and (F.1's) sym-components rows are: **one shared
+kernel, no `cfg` at all**. `compat::cdiv` is now an unconditional alias of
+`cdiv_fpc_impl`. Engine-bit-neutral (the default lane already selected that
+impl under F.1 staging); the change is the *decision* plus its evidence.
+
+**Why.** FPC `ucomplex`'s `/` is not a Pascal wart — it is **Smith's
+algorithm**, the standard robust complex division (C99 `_Cdivd`, LAPACK
+`dladiv`). Measured against the correctly-rounded quotient (60-digit `Decimal`
+reference, 20 000 random operand pairs spanning 1e-6…1e6, both Smith branches,
+2026-07-27):
+
+| kernel | mean rel. error | worst rel. error | `|den|` outside [1e-154, 1e154] |
+|---|---|---|---|
+| Smith (`cdiv_fpc_impl`) | **9.42e-17** | **3.82e-16** | still exact |
+| naive (`cdiv_std_impl`) | 1.05e-16 | 4.26e-16 | `0` / `NaN` — total loss |
+
+`num_complex::fdiv` (`self · conj/norm/norm`) is worse still — 22.2% of
+components >1 ULP vs Smith's 10.5%. The parity lane already delivers bit-parity,
+so the flip would buy the default lane nothing and cost it both accuracy and
+robustness; IV.1 keeps "legitimate numerics with no crate equivalent" (complex
+Bessel, `dss-sparse` row equilibration) in **both** modes for exactly this
+reason. `support::line_constants` had independently recorded the same verdict
+in-tree ("Smith's division … stays permanently") before this measurement.
+
+**The verdict is asserted, not narrated.** `cdiv_std_impl` stays compiled and
+gains two pins: `compat::tests::cdiv_shared_kernel_is_the_more_accurate_one`
+(six operand pairs with their `Decimal`-60 correctly-rounded quotients embedded
+as bit patterns — Smith must be no further from the truth on every row and
+strictly closer on at least one) and
+`naive_division_collapses_where_smith_stays_exact` (the overflow/underflow
+regimes, `0`/`NaN` vs exact). `cdiv_is_one_shared_kernel_in_both_lanes` pins the
+alias itself on an operand where the impls differ bitwise.
+
+**If the plan owner still wants the flip**, everything needed is in place — flip
+the alias, and the two pins above become the documented cost. Nothing else in
+Stage F depends on this row.
+
 ### DE_PASCALIZE Stage F.3d — the RPN pi row flips (branch `depas-stagef`, 2026-07-27)
 
 Fourth kernel family of F.3, and the plan IV.2 table's **row 4**:
@@ -48,6 +91,63 @@ literal expected values per lane, no tolerance, plus `(pi)` as the control that
 must stay `f64::consts::PI` in both lanes). The pre-existing
 `pi_impls_agree_to_the_truncation_of_the_pascal_literal` keeps the measured
 6.59e-14 relative gap documented.
+
+### DE_PASCALIZE Stage F.3 — escape register, refined: the 89 remaining markers, classified (branch `depas-stagef`, 2026-07-27)
+
+The F.3c register below classified the population into four buckets but left
+its largest one — "remaining single-site semantic markers (59)" — as an
+undifferentiated pile. Re-enumerated site by site (2026-07-27, `rg
+"TODO\(compat\)" crates`, **89** occurrences after F.3d), it splits as:
+
+**(1) 21 occurrences are not reproduction sites at all** — prose
+cross-references (`see the TODO(compat) at …`), continuation lines of a marker
+two lines above, and, worst, **negative** mentions whose text says *"this is
+NOT a `TODO(compat)`"* (`exec/plot.rs` module doc, `exec/diakoptics/matrices.rs`,
+`solution/time_series.rs`, `control/roll_avg_window.rs`,
+`pc/generator/dynamics.rs`, `pc/ind_mach012/{mod,dynamics}.rs`). Those directly
+violate CLAUDE.md's "the tag must stay greppable / do not use it for anything
+else": they inflate every count and make the grep an unreliable index. Fixing
+them is pure hygiene — reword, change nothing — and is the one part of the
+sweep that needs no owner decision.
+
+**(2) ~13 are the F-FMT rendering seam** (`util::fmt_g`, `report/format`,
+`show/{mod,diagnostics}`, the JSON float/`NL`/`circuit.rs` `%g` block) — F.4's
+defined scope, resolved by building `compat::fmt`, not here.
+
+**(3) ~18 are the truncated-constant family** — unchanged, see (a) below.
+
+**(4) 2 are resolved by the still-pending dense-inverse row** (`compat.rs`'s
+"singular pivot leaves the matrix partially transformed" and `cmatrix::kron`'s
+unchecked zero pivot).
+
+**(5) the rest (~35) are genuine single-site upstream quirks**, and re-reading
+them one by one shows the *same* blocker every time, which is why they are
+listed here rather than swept: each one's clean fix changes a value or a string
+that a **committed golden or a gated corpus case compares**, so landing it in
+the default lane needs a per-site lane branch — i.e. a new row in a table the
+plan declares closed. Representative: GICTransformer's `G2` scaled off `%R1`;
+the Storage `/m` export's `EXP_PV_` prefix; `Save`'s doubled path delimiter;
+Relay's `Recloser.<name>` event labels and its unguarded "Debug Sample" line;
+StorageController's `not FleetState = STORE_IDLING` precedence bug; Load
+`makeposseq`'s hard-coded `/3.0` (pinned by
+`tests/corpus/modes/makeposseq/makeposseq_pc.dss`); Capacitor `makeposseq`'s
+discarded `Cuf` write; CIM's `grounded := TRUE` pair, the `b0ch` typo and the
+`LinearShuntCompensator.` prefix slip; Fault's `MinAmps` double-print;
+Generator's `PrpSequence[26]/[27]` ordinals and the ShaftModel `FGetVarName`
+mis-dispatch; the `DoubleSymMatrixProperty` zero-matrix; Monitor `Channel`'s
+`[0.0]` placeholder (which reproduces *dss-python's wrapper*, not the engine).
+A handful are instead honest **permanent semantics** whose marker only needs to
+become plain documentation (Isource's `Bus2Defined`, LineCode's `C0` omission
+and its dead `HrsToRepair`, the plot-option letter mapping and empty `else`,
+`reduce.rs`'s `TotalLen := Len/2` — which writes a value nothing reads).
+
+**What the owner has to decide** (unchanged in substance from (a)/(b) below,
+now with the population attached): either the IV.2 table gains a general row —
+"upstream single-site behavioral bugs: parity reproduces, default fixes" — with
+per-site expected-value tests and field-scoped golden exclusions (the F.3c
+machinery already exists: `GateSpec::ColAbove`, `LANE_SKIP_PROPS`), or the
+sites are re-documented as permanent both-lane semantics. Until then they stay,
+unchanged and green.
 
 ### DE_PASCALIZE Stage F.3 — escape register: what the closed table cannot absorb (branch `depas-stagef`, 2026-07-26)
 
