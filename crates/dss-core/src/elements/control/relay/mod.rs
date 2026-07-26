@@ -60,7 +60,7 @@ mod logic;
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{
-    CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, CTRL_STATE_KEEP, ControlElemData, CtrlCtx, RefSnapshot,
+    ControlAction, ControlElemData, CtrlCtx, RefSnapshot,
 };
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::CktElement;
@@ -412,9 +412,9 @@ pub struct Relay {
 
     // --- Per-phase state machine (r4133 arrays, 1-based; ganged at IdxMultiPh) ---
     /// `FPresentState[1..RCMAX]` (per phase).
-    present_state: [i32; ARR],
+    present_state: [ControlAction; ARR],
     /// `FNormalState[1..RCMAX]` (per phase).
-    normal_state: [i32; ARR],
+    normal_state: [ControlAction; ARR],
     normal_state_set: bool,
     /// `OperationCount[1..IdxMultiPh]`.
     operation_count: [i32; ARR],
@@ -529,8 +529,8 @@ impl Relay {
             monitor_var_names: Vec::new(),
             over_trip: 1.2,
             under_trip: 0.8,
-            present_state: [CTRL_CLOSE; ARR],
-            normal_state: [CTRL_CLOSE; ARR],
+            present_state: [ControlAction::Close; ARR],
+            normal_state: [ControlAction::Close; ARR],
             normal_state_set: false,
             operation_count: [1; ARR],
             locked_out: [false; ARR],
@@ -591,13 +591,13 @@ impl Relay {
 
     /// Pascal `InterpretRelayState` ganged path (unquoted scalar / `Action`): set
     /// **every** phase (`for i := 1 to RELAYCONTROLMAXDIM`). Blocked while `Locked`.
-    fn set_all_present(&mut self, state: i32) {
+    fn set_all_present(&mut self, state: ControlAction) {
         for i in 1..=RCMAX {
             self.present_state[i] = state;
         }
     }
 
-    fn set_all_normal(&mut self, state: i32) {
+    fn set_all_normal(&mut self, state: ControlAction) {
         for i in 1..=RCMAX {
             self.normal_state[i] = state;
         }
@@ -609,10 +609,11 @@ impl Relay {
         if self.f_locked {
             return; // Pascal `InterpretRelayState`: blocked while Locked.
         }
-        if ordinal == CTRL_STATE_KEEP {
+        let state = ControlAction::from_ordinal(ordinal);
+        if state == ControlAction::Keep {
             return; // First char not 'o'/'c' — Pascal leaves every phase unchanged.
         }
-        self.set_all_present(ordinal);
+        self.set_all_present(state);
         self.state_side_effect();
     }
 
@@ -631,7 +632,7 @@ impl Relay {
             self.armed_for_close[i] = false;
             self.armed_for_reset[i] = false;
             self.phase_target[i] = false;
-            if self.normal_state[i] == CTRL_OPEN {
+            if self.normal_state[i] == ControlAction::Open {
                 self.locked_out[i] = true;
                 self.operation_count[i] = self.num_reclose + 1;
             } else {
@@ -642,7 +643,7 @@ impl Relay {
         self.ground_target = false;
         if let Some(target) = self.ccd.controlled_element {
             let closed: Vec<bool> = (1..=n)
-                .map(|i| self.normal_state[i] == CTRL_CLOSE)
+                .map(|i| self.normal_state[i] == ControlAction::Close)
                 .collect();
             self.pending_ref_actions
                 .push(RefAction::SetConductorsClosed {
@@ -692,7 +693,7 @@ impl Relay {
         if let Some(target) = self.ccd.controlled_element {
             let n = self.state_size();
             let closed: Vec<bool> = (1..=n)
-                .map(|i| self.present_state[i] == CTRL_CLOSE)
+                .map(|i| self.present_state[i] == ControlAction::Close)
                 .collect();
             self.pending_ref_actions
                 .push(RefAction::SetConductorsClosed {
@@ -759,7 +760,7 @@ impl Relay {
             self.queue_ocp_flag();
             let n = self.state_size();
             for i in 1..=n {
-                if self.present_state[i] == CTRL_CLOSE {
+                if self.present_state[i] == ControlAction::Close {
                     self.locked_out[i] = false;
                     self.operation_count[i] = 1;
                     self.armed_for_open[i] = false;
@@ -815,9 +816,9 @@ impl Relay {
         let n = self.state_size();
         for i in 1..=n {
             self.present_state[i] = if ctrl.cd().conductor_closed(element_terminal, i) {
-                CTRL_CLOSE
+                ControlAction::Close
             } else {
-                CTRL_OPEN
+                ControlAction::Open
             };
         }
         // TODO(compat): r4133 emits this "Debug Sample" line UNCONDITIONALLY on
@@ -871,10 +872,14 @@ impl Relay {
         Self::render_states(&self.present_state, self.state_size())
     }
 
-    fn render_states(arr: &[i32; ARR], n: usize) -> String {
+    fn render_states(arr: &[ControlAction; ARR], n: usize) -> String {
         let mut s = String::from("[");
         for &v in arr.iter().take(n + 1).skip(1) {
-            s.push_str(if v == CTRL_OPEN { "open" } else { "closed" });
+            s.push_str(if v == ControlAction::Open {
+                "open"
+            } else {
+                "closed"
+            });
             s.push_str(", ");
         }
         s.push(']');
@@ -938,23 +943,23 @@ impl Relay {
                 .append(&el, &msg, ctx.int_hour, ctx.t, ctx.control_iter);
         }
         let nphases = self.state_size();
-        match code {
-            CTRL_OPEN => {
+        match ControlAction::from_ordinal(code) {
+            ControlAction::Open => {
                 if self.single_ph_trip {
                     self.do_open_single(ph_idx, nphases, ctrl, ctx);
                 } else {
                     self.do_open_ganged(ph_idx, nphases, ctrl, ctx);
                 }
             }
-            CTRL_CLOSE => {
+            ControlAction::Close => {
                 if self.single_ph_trip {
-                    if self.present_state[ph_idx] == CTRL_OPEN
+                    if self.present_state[ph_idx] == ControlAction::Open
                         && self.armed_for_close[ph_idx]
                         && !self.locked_out[ph_idx]
                     {
                         ctrl.cd_mut()
                             .set_conductor_closed(element_terminal, ph_idx, true);
-                        self.present_state[ph_idx] = CTRL_CLOSE;
+                        self.present_state[ph_idx] = ControlAction::Close;
                         let m = format!("Phase {ph_idx} closed (1ph reclosing)");
                         self.log(ctx, &self.full_name(), &m);
                         self.operation_count[ph_idx] += 1;
@@ -963,14 +968,14 @@ impl Relay {
                     }
                 } else {
                     for i in 1..=nphases {
-                        if self.present_state[i] == CTRL_OPEN
+                        if self.present_state[i] == ControlAction::Open
                             && self.armed_for_close[ph_idx]
                             && !self.locked_out[i]
                             && !self.locked_out[ph_idx]
                         {
                             ctrl.cd_mut()
                                 .set_conductor_closed(element_terminal, i, true);
-                            self.present_state[i] = CTRL_CLOSE;
+                            self.present_state[i] = ControlAction::Close;
                             let m = format!("Phase {i} closed (3ph reclosing)");
                             self.log(ctx, &self.full_name(), &m);
                             *ctx.system_y_changed = true;
@@ -983,13 +988,15 @@ impl Relay {
                     }
                 }
             }
-            CTRL_RESET => {
+            ControlAction::Reset => {
                 // D4: no longer runs the full Reset — only resets OperationCount to
                 // 1 for closed phases (+ the TD21 quiet window). NB: r4133 logs this
                 // event as `Recloser.<name>` (upstream copy-paste bug — deterministic
                 // and defined, reproduced with TODO(compat) below).
                 if self.single_ph_trip {
-                    if self.present_state[ph_idx] == CTRL_CLOSE && !self.armed_for_open[ph_idx] {
+                    if self.present_state[ph_idx] == ControlAction::Close
+                        && !self.armed_for_open[ph_idx]
+                    {
                         self.operation_count[ph_idx] = 1;
                         // TODO(compat): r4133 logs the reset as `Recloser.<name>`,
                         // not `Relay.<name>` (Relay.pas:1196 copy-paste from the
@@ -1000,7 +1007,7 @@ impl Relay {
                     }
                 } else {
                     for i in 1..=nphases {
-                        if self.present_state[i] == CTRL_CLOSE {
+                        if self.present_state[i] == ControlAction::Close {
                             if !self.armed_for_open[ph_idx] {
                                 self.operation_count[ph_idx] = 1;
                                 // TODO(compat): logged as `Recloser.<name>` (bug).
@@ -1031,12 +1038,12 @@ impl Relay {
         ctx: &mut CtrlCtx,
     ) {
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
-        if self.present_state[ph_idx] != CTRL_CLOSE || !self.armed_for_open[ph_idx] {
+        if self.present_state[ph_idx] != ControlAction::Close || !self.armed_for_open[ph_idx] {
             return;
         }
         ctrl.cd_mut()
             .set_conductor_closed(element_terminal, ph_idx, false);
-        self.present_state[ph_idx] = CTRL_OPEN;
+        self.present_state[ph_idx] = ControlAction::Open;
 
         if self.operation_count[ph_idx] > self.num_reclose {
             self.locked_out[ph_idx] = true;
@@ -1057,7 +1064,7 @@ impl Relay {
                     if i != ph_idx && !self.locked_out[i] {
                         ctrl.cd_mut()
                             .set_conductor_closed(element_terminal, i, false);
-                        self.present_state[i] = CTRL_OPEN;
+                        self.present_state[i] = ControlAction::Open;
                         self.locked_out[i] = true;
                         if self.armed_for_open[i] {
                             self.armed_for_open[i] = false;
@@ -1088,10 +1095,10 @@ impl Relay {
     ) {
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
         for i in 1..=nphases {
-            if self.present_state[i] == CTRL_CLOSE && self.armed_for_open[ph_idx] {
+            if self.present_state[i] == ControlAction::Close && self.armed_for_open[ph_idx] {
                 ctrl.cd_mut()
                     .set_conductor_closed(element_terminal, i, false);
-                self.present_state[i] = CTRL_OPEN;
+                self.present_state[i] = ControlAction::Open;
                 if self.operation_count[ph_idx] > self.num_reclose {
                     self.locked_out[ph_idx] = true;
                     let m = format!(
@@ -1151,7 +1158,7 @@ impl Relay {
             self.armed_for_reset[i] = false;
             self.ground_target = false;
             self.phase_target[i] = false;
-            if self.normal_state[i] == CTRL_OPEN {
+            if self.normal_state[i] == ControlAction::Open {
                 ctrl.cd_mut()
                     .set_conductor_closed(element_terminal, i, false);
                 self.locked_out[i] = true;

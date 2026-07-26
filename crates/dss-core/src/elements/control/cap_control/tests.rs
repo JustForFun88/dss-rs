@@ -2,7 +2,7 @@ use super::*;
 
 use num_complex::Complex64;
 
-use crate::elements::control::control_elem::CtrlCtx;
+use crate::elements::control::control_elem::{ControlAction, CtrlCtx};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::DssObject;
 
@@ -294,7 +294,7 @@ fn kvar_open_arms_close_above_onsetting() {
     mon.power = Complex64::new(0.0, 200_000.0); // 200 kvar inductive
     let mut sc = Scratch::new();
     let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
-    assert_eq!(cc.pending_change, CTRL_CLOSE);
+    assert_eq!(cc.pending_change, ControlAction::Close);
     assert!(cc.should_switch);
     assert!(cc.armed);
     assert_eq!(sc.queue.queue_size(), 1);
@@ -313,7 +313,7 @@ fn kvar_closed_arms_open_below_offsetting() {
     mon.power = Complex64::new(0.0, -300_000.0); // -300 kvar (too leading)
     let mut sc = Scratch::new();
     let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
-    assert_eq!(cc.pending_change, CTRL_OPEN);
+    assert_eq!(cc.pending_change, ControlAction::Open);
     assert!(cc.armed);
     assert_eq!(cc.ccd.time_delay, 15.0); // OFFDelay
 }
@@ -329,7 +329,7 @@ fn kvar_in_band_does_not_switch() {
     mon.power = Complex64::new(0.0, -50_000.0); // -50 kvar: between off and on
     let mut sc = Scratch::new();
     let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
-    assert_eq!(cc.pending_change, CTRL_NONE);
+    assert_eq!(cc.pending_change, ControlAction::None);
     assert!(!cc.armed);
     assert!(sc.queue.is_empty());
 }
@@ -337,15 +337,15 @@ fn kvar_in_band_does_not_switch() {
 #[test]
 fn do_pending_open_single_step_opens_bank() {
     let mut cc = CapControl::new("cc");
-    cc.present_state = CTRL_CLOSE;
-    cc.set_pending_change(CTRL_OPEN);
+    cc.present_state = ControlAction::Close;
+    cc.set_pending_change(ControlAction::Open);
     cc.armed = true;
     let mut cap = MockCap::one_step(true);
     let mut sc = Scratch::new();
     let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert!(!cap.closed);
     assert_eq!(cap.last_step, 0);
-    assert_eq!(cc.present_state, CTRL_OPEN);
+    assert_eq!(cc.present_state, ControlAction::Open);
     assert!(sc.y_changed);
     assert!(!cc.armed);
 }
@@ -353,23 +353,23 @@ fn do_pending_open_single_step_opens_bank() {
 #[test]
 fn do_pending_close_single_step_closes_bank() {
     let mut cc = CapControl::new("cc");
-    cc.present_state = CTRL_OPEN;
-    cc.set_pending_change(CTRL_CLOSE);
+    cc.present_state = ControlAction::Open;
+    cc.set_pending_change(ControlAction::Close);
     cc.armed = true;
     let mut cap = MockCap::one_step(false);
     let mut sc = Scratch::new();
     let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert!(cap.closed);
     assert_eq!(cap.last_step, 1);
-    assert_eq!(cc.present_state, CTRL_CLOSE);
+    assert_eq!(cc.present_state, ControlAction::Close);
     assert!(sc.y_changed);
 }
 
 #[test]
 fn do_pending_open_multistep_steps_down() {
     let mut cc = CapControl::new("cc");
-    cc.present_state = CTRL_CLOSE;
-    cc.set_pending_change(CTRL_OPEN);
+    cc.present_state = ControlAction::Close;
+    cc.set_pending_change(ControlAction::Open);
     let mut cap = MockCap {
         name: "cc".into(),
         num_steps: 4,
@@ -383,7 +383,7 @@ fn do_pending_open_multistep_steps_down() {
     // One step down: still partly closed, bank stays Closed.
     assert_eq!(cap.last_step, 3);
     assert!(cap.closed);
-    assert_eq!(cc.present_state, CTRL_CLOSE);
+    assert_eq!(cc.present_state, ControlAction::Close);
     assert!(sc.y_changed);
 }
 
@@ -402,8 +402,8 @@ fn user_control_builds_sample_context_in_pascal_units() {
     cc.ct_ratio = 1.0;
     cc.fpt_phase = MonPhase::Phase(1); // single-phase branch: cbuffer[0]/pt_ratio
     cc.fct_phase = MonPhase::Phase(1); // single-phase branch: cbuffer[0]/ct_ratio
-    cc.present_state = CTRL_OPEN;
-    cc.set_pending_change(CTRL_NONE);
+    cc.present_state = ControlAction::Open;
+    cc.set_pending_change(ControlAction::None);
     let cap = MockCap {
         name: "cc".into(),
         num_steps: 4,
@@ -431,8 +431,8 @@ fn user_control_builds_sample_context_in_pascal_units() {
     assert_eq!(cv.num_cap_steps, 4);
     assert_eq!(cv.available_steps, 3);
     assert_eq!(cv.last_step_in_service, 1); // NumSteps − AvailableSteps
-    assert_eq!(cv.present_state, CTRL_OPEN);
-    assert_eq!(cv.pending_change, CTRL_NONE);
+    assert_eq!(cv.present_state, ControlAction::Open.ordinal());
+    assert_eq!(cv.pending_change, ControlAction::None.ordinal());
     assert!(!cv.should_switch);
 }
 
@@ -446,20 +446,20 @@ fn user_control_builds_sample_context_in_pascal_units() {
 fn user_control_do_pending_applies_code_not_preset_pending() {
     let mut cc = CapControl::new("cc");
     cc.control_type = CapControlType::UserControl;
-    cc.present_state = CTRL_OPEN;
-    cc.set_pending_change(CTRL_OPEN); // sentinel: the popped `code`, not this, rules
+    cc.present_state = ControlAction::Open;
+    cc.set_pending_change(ControlAction::Open); // sentinel: the popped `code`, not this, rules
     let mut cap = MockCap::one_step(false);
     let mut sc = Scratch::new();
     let abort = cc.do_pending_action(
-        CTRL_CLOSE,
+        ControlAction::Close.ordinal(),
         7,
         &mut cap,
         &mut sc.ctx(ControlMode::Static, 0, 0.0),
     );
     assert!(!abort, "no loaded model → no trap → no abort");
-    assert_eq!(cc.pending_change, CTRL_CLOSE); // host set PendingChange := code
+    assert_eq!(cc.pending_change, ControlAction::Close); // host set PendingChange := code
     assert!(cap.closed);
-    assert_eq!(cc.present_state, CTRL_CLOSE);
+    assert_eq!(cc.present_state, ControlAction::Close);
     assert!(sc.y_changed);
 }
 
@@ -469,7 +469,7 @@ fn user_control_do_pending_applies_code_not_preset_pending() {
 fn user_control_do_pending_multistep_steps_up() {
     let mut cc = CapControl::new("cc");
     cc.control_type = CapControlType::UserControl;
-    cc.present_state = CTRL_CLOSE;
+    cc.present_state = ControlAction::Close;
     let mut cap = MockCap {
         name: "cc".into(),
         num_steps: 4,
@@ -480,7 +480,7 @@ fn user_control_do_pending_multistep_steps_up() {
     };
     let mut sc = Scratch::new();
     let abort = cc.do_pending_action(
-        CTRL_CLOSE,
+        ControlAction::Close.ordinal(),
         0,
         &mut cap,
         &mut sc.ctx(ControlMode::Static, 0, 0.0),
@@ -505,7 +505,7 @@ fn time_control_closes_inside_window() {
         &mut mon,
         &mut sc.ctx(ControlMode::Static, 12, 0.0),
     );
-    assert_eq!(cc.pending_change, CTRL_CLOSE);
+    assert_eq!(cc.pending_change, ControlAction::Close);
     assert!(cc.armed);
 }
 
@@ -522,7 +522,7 @@ fn pf_control_closes_when_leading_room_remains() {
     mon.power = Complex64::new(100_000.0, 50_000.0);
     let mut sc = Scratch::new();
     let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
-    assert_eq!(cc.pending_change, CTRL_CLOSE);
+    assert_eq!(cc.pending_change, ControlAction::Close);
     assert!(cc.armed);
 }
 
@@ -530,8 +530,8 @@ fn pf_control_closes_when_leading_room_remains() {
 fn event_log_records_close_when_enabled() {
     let mut cc = CapControl::new("cc");
     cc.ccd.show_event_log = true;
-    cc.present_state = CTRL_OPEN;
-    cc.set_pending_change(CTRL_CLOSE);
+    cc.present_state = ControlAction::Open;
+    cc.set_pending_change(ControlAction::Close);
     let mut cap = MockCap::one_step(false);
     let mut sc = Scratch::new();
     let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(ControlMode::Static, 0, 0.0));
@@ -575,7 +575,7 @@ fn follow_signal_on_arms_close_when_open() {
     let mut sc = Scratch::new();
     let abort = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert!(!abort);
-    assert_eq!(cc.pending_change, CTRL_CLOSE);
+    assert_eq!(cc.pending_change, ControlAction::Close);
     assert!(cc.should_switch);
     assert!(cc.armed);
     assert_eq!(cc.ccd.time_delay, 15.0); // ONDelay
@@ -591,7 +591,7 @@ fn follow_signal_off_arms_open_when_closed() {
     let mut mon = MockMon::new(3);
     let mut sc = Scratch::new();
     let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
-    assert_eq!(cc.pending_change, CTRL_OPEN);
+    assert_eq!(cc.pending_change, ControlAction::Open);
     assert!(cc.should_switch);
     assert_eq!(cc.ccd.time_delay, 15.0); // OFFDelay
 }
@@ -605,7 +605,7 @@ fn follow_signal_matching_state_leaves_pending_untouched() {
     let mut cc = CapControl::new("cc");
     cc.control_type = CapControlType::Follow;
     cc.ctrl_signal_shape = Some(LoadShapeObj::fixed_interval_for_test("s", 1.0, vec![1.0]));
-    cc.set_pending_change(CTRL_CLOSE); // sentinel that the FOLLOW arm must not clear
+    cc.set_pending_change(ControlAction::Close); // sentinel that the FOLLOW arm must not clear
     let mut cap = MockCap::one_step(true); // closed; signal wants ON → no switch
     let mut mon = MockMon::new(3);
     let mut sc = Scratch::new();
@@ -614,7 +614,7 @@ fn follow_signal_matching_state_leaves_pending_untouched() {
     // The no-`else` quirk: pending stays CTRL_CLOSE (not reset to CTRL_NONE).
     // With should_switch false and pending != NONE, the arm/disarm block also
     // leaves the queue empty (armed was false).
-    assert_eq!(cc.pending_change, CTRL_CLOSE);
+    assert_eq!(cc.pending_change, ControlAction::Close);
     assert!(!cc.armed);
     assert!(sc.queue.is_empty());
 }
@@ -682,7 +682,7 @@ impl ControlledCapacitor for MockPhaseCap {
 #[test]
 fn reset_with_partial_open_bank_still_forces_rebuild() {
     let mut cc = CapControl::new("cc");
-    cc.initial_state = CTRL_OPEN; // reset target = open
+    cc.initial_state = ControlAction::Open; // reset target = open
     let mut cap = MockPhaseCap {
         conductors: [true, false, false], // phase 0 still closed
     };

@@ -3,7 +3,7 @@ use super::*;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN};
+use crate::elements::control::control_elem::ControlAction;
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::exec::Dss;
@@ -165,8 +165,8 @@ fn default_is_3ph_closed_fuse() {
     assert_eq!(f.curve_multiplier, 1.0);
     assert_eq!(f.interrupting_rating, 0.0);
     assert_eq!(f.delay_time, 0.0);
-    assert!(f.present_state.iter().all(|&s| s == CTRL_CLOSE));
-    assert!(f.normal_state.iter().all(|&s| s == CTRL_CLOSE));
+    assert!(f.present_state.iter().all(|&s| s == ControlAction::Close));
+    assert!(f.normal_state.iter().all(|&s| s == ControlAction::Close));
     assert!(!f.normal_state_set);
     assert!(f.ccd.cd.yprim.is_none());
 }
@@ -182,7 +182,11 @@ fn sample_arms_each_overcurrent_phase() {
     // Each of the three closed phases arms a queued open action.
     assert!(f.ready_to_blow[..3].iter().all(|&b| b));
     assert_eq!(sc.queue.queue_size(), 3);
-    assert!(f.present_state[..3].iter().all(|&s| s == CTRL_CLOSE));
+    assert!(
+        f.present_state[..3]
+            .iter()
+            .all(|&s| s == ControlAction::Close)
+    );
 }
 
 #[test]
@@ -290,9 +294,9 @@ fn do_pending_action_ignores_disarmed_phase() {
 #[test]
 fn reset_with_restores_each_phase_to_normal() {
     let mut f = armed_fuse();
-    f.normal_state[0] = CTRL_CLOSE;
-    f.normal_state[1] = CTRL_OPEN; // phase 2 normally open
-    f.normal_state[2] = CTRL_CLOSE;
+    f.normal_state[0] = ControlAction::Close;
+    f.normal_state[1] = ControlAction::Open; // phase 2 normally open
+    f.normal_state[2] = ControlAction::Close;
     let mut ctrl = MockLine::new(3, 0.0);
     ctrl.cd.set_terminal_closed(1, false); // start fully blown
     let rebuild = f.reset_with(&mut ctrl);
@@ -300,8 +304,8 @@ fn reset_with_restores_each_phase_to_normal() {
     assert!(ctrl.cd.conductor_closed(1, 1)); // restored closed
     assert!(!ctrl.cd.conductor_closed(1, 2)); // normal-open stays open
     assert!(ctrl.cd.conductor_closed(1, 3));
-    assert_eq!(f.present_state[0], CTRL_CLOSE);
-    assert_eq!(f.present_state[1], CTRL_OPEN);
+    assert_eq!(f.present_state[0], ControlAction::Close);
+    assert_eq!(f.present_state[1], ControlAction::Open);
     assert!(f.ready_to_blow[..3].iter().all(|&b| !b));
 }
 
@@ -319,7 +323,11 @@ fn reset_with_restores_each_phase_to_normal() {
 #[test]
 fn reset_with_partial_open_terminal_still_forces_rebuild() {
     let mut f = armed_fuse();
-    f.normal_state[..3].copy_from_slice(&[CTRL_CLOSE, CTRL_OPEN, CTRL_CLOSE]);
+    f.normal_state[..3].copy_from_slice(&[
+        ControlAction::Close,
+        ControlAction::Open,
+        ControlAction::Close,
+    ]);
     let mut ctrl = MockLine::new(3, 0.0);
     ctrl.cd.terminals[0].conductors_closed[0] = false; // phase 0 blown
     ctrl.cd.terminals[0].conductors_closed[1] = true; // phase 1 closed
@@ -350,11 +358,11 @@ fn state_array_short_input_sets_leading_phases() {
         buses: vec!["b".into()],
     });
     f.ccd.controlled_element = Some(ElemId::new(0, 0));
-    f.set_enum_array(prop::STATE, &[CTRL_OPEN]); // only phase 1
+    f.set_enum_array(prop::STATE, &[ControlAction::Open.ordinal()]); // only phase 1
     f.state_side_effect();
-    assert_eq!(f.present_state[0], CTRL_OPEN);
-    assert_eq!(f.present_state[1], CTRL_CLOSE);
-    assert_eq!(f.present_state[2], CTRL_CLOSE);
+    assert_eq!(f.present_state[0], ControlAction::Open);
+    assert_eq!(f.present_state[1], ControlAction::Close);
+    assert_eq!(f.present_state[2], ControlAction::Close);
     // The deferred per-conductor force matches the present state.
     let actions = f.take_ref_actions();
     assert_eq!(actions.len(), 1);
@@ -386,8 +394,8 @@ fn make_like_copies_fuse_state() {
         nterms: 1,
         buses: vec!["x".into()],
     });
-    base.present_state[0] = CTRL_OPEN;
-    base.normal_state[0] = CTRL_OPEN;
+    base.present_state[0] = ControlAction::Open;
+    base.normal_state[0] = ControlAction::Open;
 
     let mut f = Fuse::new("f1");
     f.make_like(&base);
@@ -402,8 +410,8 @@ fn make_like_copies_fuse_state() {
     // Create default — nor `NormalStateSet`.
     assert_eq!(f.delay_time, 0.0);
     assert_eq!(f.fuse_curve_name, "klink");
-    assert_eq!(f.present_state[0], CTRL_OPEN);
-    assert_eq!(f.normal_state[0], CTRL_OPEN);
+    assert_eq!(f.present_state[0], ControlAction::Open);
+    assert_eq!(f.normal_state[0], ControlAction::Open);
 }
 
 // ---- executive-driven integration tests ----

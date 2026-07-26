@@ -3,7 +3,7 @@ use super::*;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, RefSnapshot};
+use crate::elements::control::control_elem::{ControlAction, RefSnapshot};
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::exec::Dss;
@@ -175,8 +175,8 @@ fn default_is_inert_3ph_closed_recloser() {
     assert_eq!(r.num_reclose, 3); // Shots default 4
     assert_eq!(r.reset_time, 15.0);
     assert_eq!(r.reclose_intervals[..3], [0.5, 2.0, 2.0]);
-    assert_eq!(r.present_state[1..=3], [CTRL_CLOSE; 3]);
-    assert_eq!(r.normal_state[1..=3], [CTRL_CLOSE; 3]);
+    assert_eq!(r.present_state[1..=3], [ControlAction::Close; 3]);
+    assert_eq!(r.normal_state[1..=3], [ControlAction::Close; 3]);
     assert!(!r.normal_state_set);
     assert_eq!(r.operation_count[1..=G], [1; 4]);
     assert_eq!(r.idx_multi_ph, G);
@@ -235,10 +235,10 @@ fn sample_queues_trip_and_reclose_at_correct_times() {
         sec: 0.0,
     };
     let (open, t_open) = sc.queue.pop_time(far, false).unwrap();
-    assert_eq!(open.code, CTRL_OPEN);
+    assert_eq!(open.code, ControlAction::Open.ordinal());
     assert!((t_open - 0.25).abs() < 1e-9, "open time = {t_open}");
     let (close, t_close) = sc.queue.pop_time(far, false).unwrap();
-    assert_eq!(close.code, CTRL_CLOSE);
+    assert_eq!(close.code, ControlAction::Close.ordinal());
     assert!((t_close - 0.75).abs() < 1e-9, "reclose time = {t_close}");
 }
 
@@ -259,7 +259,7 @@ fn inst_trip_single_counts_the_mechanical_delay() {
         sec: 0.0,
     };
     let (open, t_open) = sc.queue.pop_time(far, false).unwrap();
-    assert_eq!(open.code, CTRL_OPEN);
+    assert_eq!(open.code, ControlAction::Open.ordinal());
     // 0.01 (bare) + 0.03 (once) = 0.04.
     assert!((t_open - 0.04).abs() < 1e-9, "inst open time = {t_open}");
 }
@@ -328,7 +328,7 @@ fn sample_skips_when_all_phases_open() {
     let mut mon = MockLine::new(3, 10.0);
     let mut sc = Scratch::new();
     r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-    assert_eq!(r.present_state[1..=3], [CTRL_OPEN; 3]);
+    assert_eq!(r.present_state[1..=3], [ControlAction::Open; 3]);
     assert!(!r.armed_for_open[G]);
     assert_eq!(sc.queue.queue_size(), 0);
 }
@@ -342,7 +342,12 @@ fn do_pending_open_ganged_trips_and_logs_3ph() {
         let mut mon = MockLine::new(3, 10.0);
         r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
     }
-    r.do_pending_action(CTRL_OPEN, 0, &mut ctrl, &mut sc.ctx(0, 0.1));
+    r.do_pending_action(
+        ControlAction::Open.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.1),
+    );
     assert!(!ctrl.cd.terminal_all_phases_closed(1)); // opened
     assert!(!r.armed_for_open[G]);
     assert!(sc.y_changed);
@@ -362,7 +367,12 @@ fn do_pending_open_ganged_locks_out_after_last_shot() {
     r.recloser_target[G] = "Ph Fast".to_string();
     let mut ctrl = MockLine::new(3, 0.0); // closed
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_OPEN, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Open.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert!(!ctrl.cd.terminal_all_phases_closed(1));
     assert!(r.locked_out[G]);
     assert!(log_has(&sc, "LOCKED OUT (3PH LOCKOUT)"));
@@ -372,14 +382,19 @@ fn do_pending_open_ganged_locks_out_after_last_shot() {
 fn do_pending_close_ganged_recloses_and_counts() {
     let mut r = armed_recloser();
     for i in 1..=3 {
-        r.present_state[i] = CTRL_OPEN; // the prior Sample saw the open terminal
+        r.present_state[i] = ControlAction::Open; // the prior Sample saw the open terminal
     }
     r.armed_for_close[G] = true;
     r.operation_count[G] = 1;
     let mut ctrl = MockLine::new(3, 0.0);
     ctrl.cd.set_terminal_closed(1, false); // currently open
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_CLOSE, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Close.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // reclosed
     assert_eq!(r.operation_count[G], 2);
     assert!(!r.armed_for_close[G]);
@@ -391,14 +406,19 @@ fn do_pending_close_ganged_recloses_and_counts() {
 fn do_pending_close_ganged_blocked_when_locked_out() {
     let mut r = armed_recloser();
     for i in 1..=3 {
-        r.present_state[i] = CTRL_OPEN;
+        r.present_state[i] = ControlAction::Open;
     }
     r.armed_for_close[G] = true;
     r.locked_out[G] = true; // lockout blocks the reclose
     let mut ctrl = MockLine::new(3, 0.0);
     ctrl.cd.set_terminal_closed(1, false);
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_CLOSE, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Close.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert!(!ctrl.cd.terminal_all_phases_closed(1)); // stays open
     // Pascal `Inc(OperationCount[PhIdx])` is UNCONDITIONAL in the ganged CLOSE
     // (outside the per-phase loop), so a blocked reclose still advances the count.
@@ -412,7 +432,12 @@ fn do_pending_reset_ganged_clears_operation_count_when_disarmed() {
     r.armed_for_open[G] = false;
     let mut ctrl = MockLine::new(3, 0.0); // closed
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_RESET, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Reset.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert_eq!(r.operation_count[G], 1);
     assert!(log_has(&sc, "PHASE ALL RESET (3PH RESET)"));
 }
@@ -424,7 +449,12 @@ fn do_pending_reset_ganged_skipped_when_rearmed() {
     r.armed_for_open[G] = true; // re-armed -> don't reset
     let mut ctrl = MockLine::new(3, 0.0);
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_RESET, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Reset.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert_eq!(r.operation_count[G], 3); // unchanged
 }
 
@@ -474,7 +504,7 @@ fn single_phase_trip_arms_only_the_faulted_phase() {
         sec: 0.0,
     };
     let (open, _t) = sc.queue.pop_time(far, false).unwrap();
-    assert_eq!(open.code, CTRL_OPEN);
+    assert_eq!(open.code, ControlAction::Open.ordinal());
     assert_eq!(open.proxy, 1, "single-phase OPEN carries phase index 1");
 }
 
@@ -490,7 +520,12 @@ fn single_phase_open_then_lockout_escalation() {
     r.recloser_target[1] = "Ph Fast".to_string();
     let mut ctrl = MockLine::new(3, 0.0); // all closed
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_OPEN, 1, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Open.ordinal(),
+        1,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert!(r.locked_out[1]);
     // Escalation opened & locked the other phases.
     assert!(!ctrl.cd.conductor_closed(1, 1));
@@ -512,7 +547,12 @@ fn single_phase_lockout_keeps_other_phases_closed() {
     r.recloser_target[1] = "Ph Fast".to_string();
     let mut ctrl = MockLine::new(3, 0.0);
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_OPEN, 1, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Open.ordinal(),
+        1,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert!(!ctrl.cd.conductor_closed(1, 1)); // phase 1 open
     assert!(ctrl.cd.conductor_closed(1, 2)); // phase 2 still closed
     assert!(ctrl.cd.conductor_closed(1, 3)); // phase 3 still closed
@@ -525,8 +565,8 @@ fn single_phase_lockout_keeps_other_phases_closed() {
 fn reset_with_restores_closed_normal_state() {
     let mut r = armed_recloser();
     for i in 1..=3 {
-        r.normal_state[i] = CTRL_CLOSE;
-        r.present_state[i] = CTRL_OPEN;
+        r.normal_state[i] = ControlAction::Close;
+        r.present_state[i] = ControlAction::Open;
     }
     r.operation_count[1] = 4;
     r.locked_out[1] = true;
@@ -535,7 +575,7 @@ fn reset_with_restores_closed_normal_state() {
     let rebuild = r.reset_with(&mut ctrl);
     assert!(rebuild);
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // restored closed
-    assert_eq!(r.present_state[1..=3], [CTRL_CLOSE; 3]);
+    assert_eq!(r.present_state[1..=3], [ControlAction::Close; 3]);
     assert!(!r.locked_out[1]);
     assert_eq!(r.operation_count[1], 1);
 }
@@ -544,13 +584,13 @@ fn reset_with_restores_closed_normal_state() {
 fn reset_with_open_normal_state_locks_out() {
     let mut r = armed_recloser();
     for i in 1..=3 {
-        r.normal_state[i] = CTRL_OPEN;
+        r.normal_state[i] = ControlAction::Open;
     }
     let mut ctrl = MockLine::new(3, 0.0); // start closed
     let rebuild = r.reset_with(&mut ctrl);
     assert!(rebuild);
     assert!(!ctrl.cd.terminal_all_phases_closed(1)); // forced open
-    assert_eq!(r.present_state[1..=3], [CTRL_OPEN; 3]);
+    assert_eq!(r.present_state[1..=3], [ControlAction::Open; 3]);
     assert!(r.locked_out[1] && r.locked_out[2] && r.locked_out[3]);
     assert_eq!(r.operation_count[1], r.num_reclose + 1);
 }
@@ -561,14 +601,14 @@ fn locked_recloser_does_not_reset() {
     let mut r = armed_recloser();
     r.f_locked = true;
     for i in 1..=3 {
-        r.normal_state[i] = CTRL_OPEN;
-        r.present_state[i] = CTRL_CLOSE;
+        r.normal_state[i] = ControlAction::Open;
+        r.present_state[i] = ControlAction::Close;
     }
     let mut ctrl = MockLine::new(3, 0.0);
     let rebuild = r.reset_with(&mut ctrl);
     assert!(!rebuild, "a locked recloser must not force the element");
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // untouched
-    assert_eq!(r.present_state[1..=3], [CTRL_CLOSE; 3]); // untouched
+    assert_eq!(r.present_state[1..=3], [ControlAction::Close; 3]); // untouched
 }
 
 #[test]
@@ -585,7 +625,7 @@ fn make_like_copies_recloser_state_not_time_dials() {
     base.single_ph_trip = true;
     base.rated_current = 630.0;
     for i in 1..=3 {
-        base.normal_state[i] = CTRL_OPEN;
+        base.normal_state[i] = ControlAction::Open;
     }
     base.td_ph_fast = 1.5; // NOT copied
     base.ph_fast = Some(build_tcc("2", "1 10", "1 0.1"));
@@ -602,7 +642,7 @@ fn make_like_copies_recloser_state_not_time_dials() {
     assert_eq!(r.reclose_intervals[..2], [0.5, 1.0]);
     assert!(r.single_ph_trip);
     assert_eq!(r.rated_current, 630.0);
-    assert_eq!(r.normal_state[1..=3], [CTRL_OPEN; 3]);
+    assert_eq!(r.normal_state[1..=3], [ControlAction::Open; 3]);
     // r4133 MakeLike does NOT copy NormalStateSet (only the state values).
     assert!(!r.normal_state_set);
     assert!(r.ph_fast.is_some());

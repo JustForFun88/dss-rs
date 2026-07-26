@@ -3,7 +3,7 @@
 //! charge modes. Split out of `registry/mod.rs` (no behavioral change).
 
 use super::super::{DssEnum, EnumId};
-use crate::elements::control::control_elem::CTRL_STATE_KEEP;
+use crate::elements::control::control_elem::ControlAction;
 
 pub(super) struct ControlEnums {
     pub(super) reg_control_phase: EnumId,
@@ -187,16 +187,16 @@ pub(super) fn register(push: &mut dyn FnMut(DssEnum) -> EnumId) -> ControlEnums 
     // slot UNCHANGED (empirically on oddie:r4133: `normal=trip` → Normal stays
     // `[closed,closed,closed]`). Reproduced with `allow_longer` + `max_chars=1`
     // (match on the leading char alone: `openx`→open, `cs`→closed) and
-    // `default_value = CTRL_STATE_KEEP` (unmatched → keep, no parse error). This
+    // `default_value = ControlAction::Keep` (unmatched → keep, no parse error). This
     // deliberately does NOT carry the old `trip`→open alias, which diverged from
     // r4133. (The Recloser enums, WP-U2.2's lane, keep their own separate defs.)
     let mut relay_action = DssEnum::new("Relay: Action", false, 1, 1, &["close", "open"], &[2, 1]);
     relay_action.allow_longer = true;
-    relay_action.default_value = CTRL_STATE_KEEP;
+    relay_action.default_value = ControlAction::Keep.ordinal();
     let relay_action = push(relay_action);
     let mut relay_state = DssEnum::new("Relay: State", false, 1, 1, &["closed", "open"], &[2, 1]);
     relay_state.allow_longer = true;
-    relay_state.default_value = CTRL_STATE_KEEP;
+    relay_state.default_value = ControlAction::Keep.ordinal();
     let relay_state = push(relay_state);
     // InvControl.pas TInvControl.Create: the seven smart-inverter enums. The
     // control-mode ordinals are VOLTVAR=1 VOLTWATT=2 DRC=3 WATTPF=4 WATTVAR=5

@@ -6,6 +6,7 @@
 
 use num_complex::Complex64;
 
+use crate::elements::control::control_elem::ControlAction;
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::obj::arena::ResolvedObj;
@@ -182,7 +183,7 @@ impl DssObject for Fuse {
     /// `Action`'s `StringEnumActionProperty` (Pascal `DoAction`): set all phases
     /// then run the `State` side effect.
     fn do_action(&mut self, ordinal: i32, _errors: &mut crate::diag::ErrorLog) {
-        self.do_fuse_action(ordinal);
+        self.do_fuse_action(ControlAction::from_ordinal(ordinal));
     }
 
     /// The per-phase enum-array count (`GetFuseStateSize`).
@@ -196,8 +197,8 @@ impl DssObject for Fuse {
     fn get_enum_array(&self, idx: usize) -> Vec<i32> {
         use super::prop::*;
         match idx {
-            NORMAL => self.normal_state.to_vec(),
-            STATE => self.present_state.to_vec(),
+            NORMAL => self.normal_state.iter().map(|s| s.ordinal()).collect(),
+            STATE => self.present_state.iter().map(|s| s.ordinal()).collect(),
             _ => unreachable!("Fuse has no enum-array property {idx}"),
         }
     }
@@ -206,8 +207,8 @@ impl DssObject for Fuse {
         // A short list sets only the leading phases (the rest keep their value).
         let n = values.len().min(FUSEMAXDIM);
         match idx {
-            NORMAL => self.normal_state[..n].copy_from_slice(&values[..n]),
-            STATE => self.present_state[..n].copy_from_slice(&values[..n]),
+            NORMAL => write_states(&mut self.normal_state[..n], &values[..n]),
+            STATE => write_states(&mut self.present_state[..n], &values[..n]),
             _ => unreachable!("Fuse has no enum-array property {idx}"),
         }
     }
@@ -297,5 +298,14 @@ impl crate::elements::control::control_elem::ControlElem for Fuse {
     }
     fn control_kind(&self) -> crate::elements::control::control_elem::ControlClass {
         crate::elements::control::control_elem::ControlClass::Fuse
+    }
+}
+
+/// Write a per-phase `MappedStringEnumArrayProperty` slice: the parsed
+/// ordinals become [`ControlAction`]s in place (Pascal writes straight into the
+/// `EControlAction` array at `PropertyOffset`).
+fn write_states(dst: &mut [ControlAction], values: &[i32]) {
+    for (slot, &v) in dst.iter_mut().zip(values) {
+        *slot = ControlAction::from_ordinal(v);
     }
 }

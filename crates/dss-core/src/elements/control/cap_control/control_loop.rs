@@ -9,7 +9,7 @@ use num_complex::Complex64;
 use dss_usermodel::{CapControlVars, DynamicsRec, Effect};
 
 use crate::diag::DssDiagnostic;
-use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_NONE, CTRL_OPEN, CtrlCtx};
+use crate::elements::control::control_elem::{ControlAction, CtrlCtx};
 use crate::elements::pd::capacitor::ControlledCapacitor;
 use crate::elements::traits::CktElement;
 use crate::support::dynamics::IterationFlag;
@@ -129,9 +129,9 @@ impl CapControl {
     ) -> bool {
         // ControlledElement.ActiveTerminalIdx := 1 (terminal 1 is implicit).
         self.present_state = if cap.is_closed() {
-            CTRL_CLOSE
+            ControlAction::Close
         } else {
-            CTRL_OPEN
+            ControlAction::Open
         };
         self.should_switch = false;
 
@@ -154,9 +154,9 @@ impl CapControl {
             // a match guard would obscure the ported `case`/`if` structure.
             #[allow(clippy::collapsible_match)]
             match self.present_state {
-                CTRL_OPEN => {
+                ControlAction::Open => {
                     if vtest < self.vmin {
-                        self.set_pending_change(CTRL_CLOSE);
+                        self.set_pending_change(ControlAction::Close);
                         self.should_switch = true;
                         self.voverride_event = true;
                         if self.ccd.show_event_log {
@@ -173,9 +173,9 @@ impl CapControl {
                         }
                     }
                 }
-                CTRL_CLOSE => {
+                ControlAction::Close => {
                     if vtest > self.vmax {
-                        self.set_pending_change(CTRL_OPEN);
+                        self.set_pending_change(ControlAction::Open);
                         self.should_switch = true;
                         self.voverride_event = true;
                         if self.ccd.show_event_log {
@@ -202,25 +202,25 @@ impl CapControl {
                     mon.get_currents(ctx.sys, ctx.node_v, &mut cbuffer);
                     let curr_test = self.get_control_current(&cbuffer, cond_offset);
                     match self.present_state {
-                        CTRL_OPEN => {
+                        ControlAction::Open => {
                             if curr_test > self.on_value {
-                                self.set_pending_change(CTRL_CLOSE);
+                                self.set_pending_change(ControlAction::Close);
                                 self.should_switch = true;
                             } else {
-                                self.set_pending_change(CTRL_NONE);
+                                self.set_pending_change(ControlAction::None);
                             }
                         }
-                        CTRL_CLOSE => {
+                        ControlAction::Close => {
                             if curr_test < self.off_value {
-                                self.set_pending_change(CTRL_OPEN);
+                                self.set_pending_change(ControlAction::Open);
                                 self.should_switch = true;
                             } else if cap.available_steps() > 0 {
                                 if curr_test > self.on_value {
-                                    self.set_pending_change(CTRL_CLOSE);
+                                    self.set_pending_change(ControlAction::Close);
                                     self.should_switch = true;
                                 }
                             } else {
-                                self.set_pending_change(CTRL_NONE);
+                                self.set_pending_change(ControlAction::None);
                             }
                         }
                         _ => {}
@@ -230,21 +230,21 @@ impl CapControl {
                     mon.get_term_voltages(element_terminal, ctx.node_v, &mut cbuffer);
                     let vtest = self.get_control_voltage(&cbuffer, mon_nphases, cap.connection());
                     match self.present_state {
-                        CTRL_OPEN => {
+                        ControlAction::Open => {
                             if vtest < self.on_value {
-                                self.set_pending_change(CTRL_CLOSE);
+                                self.set_pending_change(ControlAction::Close);
                                 self.should_switch = true;
                             } else {
-                                self.set_pending_change(CTRL_NONE);
+                                self.set_pending_change(ControlAction::None);
                             }
                         }
-                        CTRL_CLOSE => {
-                            self.set_pending_change(CTRL_NONE);
+                        ControlAction::Close => {
+                            self.set_pending_change(ControlAction::None);
                             if vtest > self.off_value {
-                                self.set_pending_change(CTRL_OPEN);
+                                self.set_pending_change(ControlAction::Open);
                                 self.should_switch = true;
                             } else if cap.available_steps() > 0 && vtest < self.on_value {
-                                self.set_pending_change(CTRL_CLOSE);
+                                self.set_pending_change(ControlAction::Close);
                                 self.should_switch = true;
                             }
                         }
@@ -255,25 +255,25 @@ impl CapControl {
                     let s = mon.terminal_power(ctx.sys, ctx.node_v, element_terminal);
                     let q = s.im * 0.001; // kvar
                     match self.present_state {
-                        CTRL_OPEN => {
+                        ControlAction::Open => {
                             if q > self.on_value {
-                                self.set_pending_change(CTRL_CLOSE);
+                                self.set_pending_change(ControlAction::Close);
                                 self.should_switch = true;
                             } else {
-                                self.set_pending_change(CTRL_NONE);
+                                self.set_pending_change(ControlAction::None);
                             }
                         }
-                        CTRL_CLOSE => {
+                        ControlAction::Close => {
                             if q < self.off_value {
-                                self.set_pending_change(CTRL_OPEN);
+                                self.set_pending_change(ControlAction::Open);
                                 self.should_switch = true;
                             } else if cap.available_steps() > 0 {
                                 if q > self.on_value {
-                                    self.set_pending_change(CTRL_CLOSE);
+                                    self.set_pending_change(ControlAction::Close);
                                     self.should_switch = true;
                                 }
                             } else {
-                                self.set_pending_change(CTRL_NONE);
+                                self.set_pending_change(ControlAction::None);
                             }
                         }
                         _ => {}
@@ -287,31 +287,31 @@ impl CapControl {
                     let s = mon.terminal_power(ctx.sys, ctx.node_v, element_terminal);
                     let pf = pf_1to2(s);
                     match self.present_state {
-                        CTRL_OPEN => {
+                        ControlAction::Open => {
                             // Make sure we don't go too far leading.
                             if pf < self.pfon_value
                                 && s.im * 0.001 > cap.total_kvar() * self.fpct_minkvar * 0.01
                             {
-                                self.set_pending_change(CTRL_CLOSE);
+                                self.set_pending_change(ControlAction::Close);
                                 self.should_switch = true;
                             } else {
-                                self.set_pending_change(CTRL_NONE);
+                                self.set_pending_change(ControlAction::None);
                             }
                         }
-                        CTRL_CLOSE => {
+                        ControlAction::Close => {
                             if pf > self.pfoff_value {
-                                self.set_pending_change(CTRL_OPEN);
+                                self.set_pending_change(ControlAction::Open);
                                 self.should_switch = true;
                             } else if cap.available_steps() > 0 {
                                 if pf < self.pfon_value
                                     && s.im * 0.001
                                         > cap.total_kvar() / cap.num_steps() as f64 * 0.5
                                 {
-                                    self.set_pending_change(CTRL_CLOSE);
+                                    self.set_pending_change(ControlAction::Close);
                                     self.should_switch = true;
                                 }
                             } else {
-                                self.set_pending_change(CTRL_NONE);
+                                self.set_pending_change(ControlAction::None);
                             }
                         }
                         _ => {}
@@ -344,11 +344,11 @@ impl CapControl {
                     // `if not ((nextState <> 0) xor (PresentState = CTRL_OPEN))`
                     // — an XNOR: switch exactly when the bank's present state
                     // mismatches the signal's desired state.
-                    if (next_state != 0.0) == (self.present_state == CTRL_OPEN) {
-                        if self.present_state == CTRL_OPEN {
-                            self.set_pending_change(CTRL_CLOSE);
+                    if (next_state != 0.0) == (self.present_state == ControlAction::Open) {
+                        if self.present_state == ControlAction::Open {
+                            self.set_pending_change(ControlAction::Close);
                         } else {
-                            self.set_pending_change(CTRL_OPEN);
+                            self.set_pending_change(ControlAction::Open);
                         }
                         self.should_switch = true;
                     }
@@ -377,7 +377,7 @@ impl CapControl {
 
         // Arm / disarm the control queue.
         if self.should_switch && !self.armed {
-            let time_delay = if self.pending_change == CTRL_CLOSE {
+            let time_delay = if self.pending_change == ControlAction::Close {
                 if (now - self.last_open_time) < self.dead_time {
                     // Delay the close until the dead time has elapsed.
                     self.on_delay
@@ -393,7 +393,7 @@ impl CapControl {
                 ctx.int_hour,
                 ctx.t,
                 time_delay,
-                self.pending_change,
+                self.pending_change.ordinal(),
                 0,
                 ctx.self_ref,
             );
@@ -412,7 +412,7 @@ impl CapControl {
             }
         }
 
-        if self.armed && self.pending_change == CTRL_NONE {
+        if self.armed && self.pending_change == ControlAction::None {
             ctx.queue.delete(self.control_action_handle);
             self.armed = false;
             if self.ccd.show_event_log {
@@ -543,9 +543,9 @@ impl CapControl {
         let num_cap_steps = cap.num_steps();
         let available_steps = cap.available_steps();
         CapControlVars {
-            pending_change: self.pending_change,
+            pending_change: self.pending_change.ordinal(),
             should_switch: self.should_switch,
-            present_state: self.present_state,
+            present_state: self.present_state.ordinal(),
             sample_p,
             sample_v,
             sample_curr,
@@ -559,7 +559,7 @@ impl CapControl {
     /// compare the time-of-day against the on/off window.
     fn sample_time_control(&mut self, normalized_time: f64, available_steps: i32) {
         match self.present_state {
-            CTRL_OPEN => {
+            ControlAction::Open => {
                 let close = if self.off_value > self.on_value {
                     normalized_time >= self.on_value && normalized_time < self.off_value
                 } else {
@@ -567,38 +567,38 @@ impl CapControl {
                     normalized_time >= self.on_value && normalized_time < 24.0
                 };
                 if close {
-                    self.set_pending_change(CTRL_CLOSE);
+                    self.set_pending_change(ControlAction::Close);
                     self.should_switch = true;
                 } else {
-                    self.set_pending_change(CTRL_NONE);
+                    self.set_pending_change(ControlAction::None);
                 }
             }
-            CTRL_CLOSE => {
+            ControlAction::Close => {
                 if self.off_value > self.on_value {
                     if normalized_time >= self.off_value || normalized_time < self.on_value {
-                        self.set_pending_change(CTRL_OPEN);
+                        self.set_pending_change(ControlAction::Open);
                         self.should_switch = true;
                     } else if available_steps > 0
                         && normalized_time >= self.on_value
                         && normalized_time < self.off_value
                     {
-                        self.set_pending_change(CTRL_CLOSE);
+                        self.set_pending_change(ControlAction::Close);
                         self.should_switch = true;
                     }
                     // (no else-reset branch in the OFF>ON close path)
                 } else {
                     // OFF time is next day.
                     if normalized_time >= self.off_value && normalized_time < self.on_value {
-                        self.set_pending_change(CTRL_OPEN);
+                        self.set_pending_change(ControlAction::Open);
                         self.should_switch = true;
                     } else if available_steps > 0
                         && normalized_time >= self.on_value
                         && normalized_time < 24.0
                     {
-                        self.set_pending_change(CTRL_CLOSE);
+                        self.set_pending_change(ControlAction::Close);
                         self.should_switch = true;
                     } else {
-                        self.set_pending_change(CTRL_NONE);
+                        self.set_pending_change(ControlAction::None);
                     }
                 }
             }
@@ -634,7 +634,9 @@ impl CapControl {
         // Pascal `case ControlType of USERCONTROL: ... UserModel.DoPending`
         // (`CapControl.pas:725-733`).
         if self.control_type == CapControlType::UserControl {
-            self.set_pending_change(code);
+            // The guest scheduled its own queue code (upstream `USER_BASE_ACTION_CODE
+            // = 100` and up), so this is the one open arm of the action channel.
+            self.set_pending_change(ControlAction::from_ordinal(code));
             if let Some(mut um) = self.user_model.take() {
                 let mut abort = false;
                 if um.exists() {
@@ -667,9 +669,9 @@ impl CapControl {
             }
         }
         match self.pending_change {
-            CTRL_OPEN => {
+            ControlAction::Open => {
                 if cap.num_steps() == 1 {
-                    if self.present_state == CTRL_CLOSE {
+                    if self.present_state == ControlAction::Close {
                         cap.set_closed(false); // open all phases
                         cap.subtract_step();
                         *ctx.system_y_changed = true;
@@ -682,13 +684,13 @@ impl CapControl {
                                 ctx.control_iter,
                             );
                         }
-                        self.present_state = CTRL_OPEN;
+                        self.present_state = ControlAction::Open;
                         self.last_open_time = ctx.t + 3600.0 * ctx.int_hour as f64;
                     }
-                } else if self.present_state == CTRL_CLOSE {
+                } else if self.present_state == ControlAction::Close {
                     // Multi-step: step down (do this only if at least one closed).
                     if !cap.subtract_step() {
-                        self.present_state = CTRL_OPEN;
+                        self.present_state = ControlAction::Open;
                         cap.set_closed(false); // open all phases
                         if self.ccd.show_event_log {
                             ctx.events.append(
@@ -711,8 +713,8 @@ impl CapControl {
                     *ctx.system_y_changed = true;
                 }
             }
-            CTRL_CLOSE => {
-                if self.present_state == CTRL_OPEN {
+            ControlAction::Close => {
+                if self.present_state == ControlAction::Open {
                     cap.set_closed(true); // close all phases
                     if self.ccd.show_event_log {
                         ctx.events.append(
@@ -723,7 +725,7 @@ impl CapControl {
                             ctx.control_iter,
                         );
                     }
-                    self.present_state = CTRL_CLOSE;
+                    self.present_state = ControlAction::Close;
                     cap.add_step();
                     *ctx.system_y_changed = true;
                 } else if cap.add_step() {

@@ -47,7 +47,7 @@ mod tests;
 mod accessors;
 
 use crate::elements::control::control_elem::{
-    CTRL_CLOSE, CTRL_OPEN, ControlElemData, CtrlCtx, RefSnapshot,
+    ControlAction, ControlElemData, CtrlCtx, RefSnapshot,
 };
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::CktElement;
@@ -160,9 +160,9 @@ pub struct Fuse {
     delay_time: f64,
 
     /// `FPresentState[1..FUSEMAXDIM]` — each phase's live link state.
-    present_state: [i32; FUSEMAXDIM],
+    present_state: [ControlAction; FUSEMAXDIM],
     /// `FNormalState[1..FUSEMAXDIM]` — the reset target per phase.
-    normal_state: [i32; FUSEMAXDIM],
+    normal_state: [ControlAction; FUSEMAXDIM],
     /// `NormalStateSet` — Normal defaults to the first State specified.
     normal_state_set: bool,
     /// `ReadyToBlow[1..FUSEMAXDIM]` — a phase is armed for an open operation.
@@ -201,8 +201,8 @@ impl Fuse {
             curve_multiplier: 1.0,
             interrupting_rating: 0.0,
             delay_time: 0.0,
-            present_state: [CTRL_CLOSE; FUSEMAXDIM],
-            normal_state: [CTRL_CLOSE; FUSEMAXDIM], // default to present state
+            present_state: [ControlAction::Close; FUSEMAXDIM],
+            normal_state: [ControlAction::Close; FUSEMAXDIM], // default to present state
             normal_state_set: false,
             ready_to_blow: [false; FUSEMAXDIM],
             h_action: [0; FUSEMAXDIM],
@@ -245,7 +245,7 @@ impl Fuse {
         };
         let n = self.controlled_nphases();
         let closed: Vec<bool> = (0..n)
-            .map(|i| self.present_state[i] == CTRL_CLOSE)
+            .map(|i| self.present_state[i] == ControlAction::Close)
             .collect();
         self.pending_ref_actions
             .push(RefAction::SetConductorsClosed {
@@ -274,11 +274,11 @@ impl Fuse {
 
     /// Pascal `DoAction(obj, action)`: set **all** phases to `action`'s state,
     /// then run the `State` side effect.
-    fn do_fuse_action(&mut self, action: i32) {
-        let state = if action == CTRL_OPEN {
-            CTRL_OPEN
+    fn do_fuse_action(&mut self, action: ControlAction) {
+        let state = if action == ControlAction::Open {
+            ControlAction::Open
         } else {
-            CTRL_CLOSE
+            ControlAction::Close
         };
         for s in &mut self.present_state {
             *s = state;
@@ -387,12 +387,12 @@ impl Fuse {
         for i in 1..=nph {
             // Refresh the live state from the controlled conductor.
             self.present_state[i - 1] = if ctrl.cd().conductor_closed(element_terminal, i) {
-                CTRL_CLOSE
+                ControlAction::Close
             } else {
-                CTRL_OPEN
+                ControlAction::Open
             };
 
-            if self.present_state[i - 1] != CTRL_CLOSE {
+            if self.present_state[i - 1] != ControlAction::Close {
                 continue;
             }
 
@@ -446,7 +446,7 @@ impl Fuse {
             ctrl.cd_mut().active_terminal = element_terminal - 1;
         }
         // Only act if still closed and still armed (ignore if disarmed since).
-        if self.present_state[p - 1] == CTRL_CLOSE && self.ready_to_blow[p - 1] {
+        if self.present_state[p - 1] == ControlAction::Close && self.ready_to_blow[p - 1] {
             ctrl.cd_mut()
                 .set_conductor_closed(element_terminal, p, false); // open this phase
             ctx.events.append(
@@ -483,7 +483,7 @@ impl Fuse {
             self.present_state[i - 1] = self.normal_state[i - 1];
             self.ready_to_blow[i - 1] = false;
             self.h_action[i - 1] = 0;
-            let closed = self.normal_state[i - 1] != CTRL_OPEN;
+            let closed = self.normal_state[i - 1] != ControlAction::Open;
             ctrl.cd_mut()
                 .set_conductor_closed(element_terminal, i, closed);
         }

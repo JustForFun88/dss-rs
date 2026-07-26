@@ -16,24 +16,102 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::traits::{ElemId, SysCtx};
 use crate::solution::{ControlMode, ControlQueue, EventLog};
 
-/// Action codes shared across controls (`Controls/ControlElem.pas`
-/// `EControlAction`). RegControl uses its own `ACTION_TAPCHANGE`/`ACTION_REVERSE`
-/// ordinals; CapControl drives steps through `CTRL_OPEN`/`CTRL_CLOSE`; SwtControl
-/// additionally uses `CTRL_LOCK`/`CTRL_UNLOCK`.
-pub const CTRL_NONE: i32 = 0;
-pub const CTRL_OPEN: i32 = 1;
-pub const CTRL_CLOSE: i32 = 2;
-pub const CTRL_RESET: i32 = 3;
-pub const CTRL_LOCK: i32 = 4;
-pub const CTRL_UNLOCK: i32 = 5;
+/// Pascal `EControlAction` (`Controls/ControlElem.pas:20-29`, declared under
+/// `{$Z4}` so the ordinals are int32 `CTRL_NONE = 0` … `CTRL_TAPDOWN = 7`) —
+/// the control-action **and** switch-state channel shared by SwtControl, Fuse,
+/// Recloser, Relay and CapControl. It is simultaneously:
+///
+/// - a **field** type (`FPresentState` / `FNormalState` / `CurrentAction` /
+///   `LockCommand` / `FPendingChange`),
+/// - the **queue** action code those five classes push and pop (`ControlQueue`
+///   speaks a class-polymorphic `i32`, so each class converts at its own
+///   push/`DoPendingAction` boundary — the P1b `RegControlAction` precedent),
+/// - and the value space of eight `DssEnum` registry entries (SwtControl /
+///   Fuse / Recloser / Relay × `Action`, `State`), all of which declare exactly
+///   `[2, 1]` = `Close`, `Open` (`Recloser`'s pair carries a third `trip`
+///   spelling that also maps to `1`).
+///
+/// `CTRL_TAPUP`/`CTRL_TAPDOWN` are declared upstream but referenced nowhere in
+/// the Pascal tree (RegControl runs its own `ACTION_TAPCHANGE`/`ACTION_REVERSE`
+/// codes, `RegControl.pas:246-247`); they are modeled because they are part of
+/// the Pascal type.
+///
+/// Two values sit **outside** `EControlAction`, both reproduced by a variant so
+/// that [`Self::ordinal`] / [`Self::from_ordinal`] stay total and mutually
+/// inverse (the `StorageState` precedent):
+///
+/// - [`Self::Keep`] = `i32::MIN` — the sentinel the Relay `Action`/`Normal`/
+///   `State` `DssEnum`s carry as `default_value`, for a token whose first
+///   character is neither `o` nor `c` (Pascal `InterpretRelayState`,
+///   `Relay.pas` r4133: the `case LowerCase(param)[1]` has only `'o'`/`'c'`
+///   arms, so `trip`, `xyz`, … leave the phase's state slot *unchanged*,
+///   silently). It is never stored in a state array and never rendered.
+/// - [`Self::Other`] — any other integer. The channel is open on one path: a
+///   CapControl `USERCONTROL` guest schedules its own action code through
+///   `control_queue_push` (upstream `USER_BASE_ACTION_CODE = 100`,
+///   `ControlElem.pas:67`) and `DoPendingAction` assigns it straight into
+///   `FPendingChange`, which is also mirrored into `DblTraceParameter`. A
+///   closed enum would silently drop those.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlAction {
+    /// `CTRL_NONE = 0`.
+    None,
+    /// `CTRL_OPEN = 1`.
+    Open,
+    /// `CTRL_CLOSE = 2`.
+    Close,
+    /// `CTRL_RESET = 3`.
+    Reset,
+    /// `CTRL_LOCK = 4`.
+    Lock,
+    /// `CTRL_UNLOCK = 5`.
+    Unlock,
+    /// `CTRL_TAPUP = 6` (declared upstream, never referenced).
+    TapUp,
+    /// `CTRL_TAPDOWN = 7` (declared upstream, never referenced).
+    TapDown,
+    /// Not an `EControlAction` value: the `i32::MIN` "leave this phase as is"
+    /// sentinel of the Relay state enums (see the type doc).
+    Keep,
+    /// Any other integer arriving through the open control-queue code channel.
+    Other(i32),
+}
 
-/// Sentinel returned by the Relay `Normal`/`State`/`Action` enums for a token
-/// whose first character is neither `o` nor `c` (Pascal `InterpretRelayState`,
-/// Relay.pas r4133: the `case LowerCase(param)[1]` has only `'o'`/`'c'` arms, so
-/// any other spelling — `trip`, `xyz`, ... — leaves the phase's state array slot
-/// *unchanged*, silently). The relay state-array setter treats this ordinal as
-/// "keep the prior value" for that phase; it is never stored or rendered.
-pub const CTRL_STATE_KEEP: i32 = i32::MIN;
+impl ControlAction {
+    /// The raw `EControlAction` ordinal (the `ControlQueue` code, the `DssEnum`
+    /// property value, the `DblTraceParameter` mirror).
+    pub fn ordinal(self) -> i32 {
+        match self {
+            Self::None => 0,
+            Self::Open => 1,
+            Self::Close => 2,
+            Self::Reset => 3,
+            Self::Lock => 4,
+            Self::Unlock => 5,
+            Self::TapUp => 6,
+            Self::TapDown => 7,
+            Self::Keep => i32::MIN,
+            Self::Other(n) => n,
+        }
+    }
+
+    /// From a raw ordinal. Total: `from_ordinal(x).ordinal() == x` for every
+    /// `x` (the `StorageState` precedent — the queue-code channel is open).
+    pub fn from_ordinal(value: i32) -> Self {
+        match value {
+            0 => Self::None,
+            1 => Self::Open,
+            2 => Self::Close,
+            3 => Self::Reset,
+            4 => Self::Lock,
+            5 => Self::Unlock,
+            6 => Self::TapUp,
+            7 => Self::TapDown,
+            i32::MIN => Self::Keep,
+            n => Self::Other(n),
+        }
+    }
+}
 
 /// Scalar/queue/event context handed to a control's `Sample` and
 /// `DoPendingAction` (PHASE5_PLAN §2.1) — the disjoint-borrow stand-in for the
@@ -197,6 +275,101 @@ impl RefSnapshot {
             nphases: cd.nphases,
             nterms: cd.nterms,
             buses: (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ControlAction;
+    use crate::obj::dss_enum::EnumRegistry;
+
+    /// `ControlElem.pas:20-29` — `EControlAction` in declaration order under
+    /// `{$Z4}` (int32 ordinals, no explicit values, so 0..7).
+    #[test]
+    fn control_action_pins_pascal_ordinals() {
+        assert_eq!(ControlAction::None.ordinal(), 0);
+        assert_eq!(ControlAction::Open.ordinal(), 1);
+        assert_eq!(ControlAction::Close.ordinal(), 2);
+        assert_eq!(ControlAction::Reset.ordinal(), 3);
+        assert_eq!(ControlAction::Lock.ordinal(), 4);
+        assert_eq!(ControlAction::Unlock.ordinal(), 5);
+        assert_eq!(ControlAction::TapUp.ordinal(), 6);
+        assert_eq!(ControlAction::TapDown.ordinal(), 7);
+        // Outside `EControlAction`: the Relay "leave this phase as is" sentinel.
+        assert_eq!(ControlAction::Keep.ordinal(), i32::MIN);
+        for a in [
+            ControlAction::None,
+            ControlAction::Open,
+            ControlAction::Close,
+            ControlAction::Reset,
+            ControlAction::Lock,
+            ControlAction::Unlock,
+            ControlAction::TapUp,
+            ControlAction::TapDown,
+            ControlAction::Keep,
+        ] {
+            assert_eq!(ControlAction::from_ordinal(a.ordinal()), a);
+        }
+    }
+
+    /// The queue-code channel is open (a CapControl `USERCONTROL` guest pushes
+    /// its own code, upstream `USER_BASE_ACTION_CODE = 100`), so the mapping
+    /// must be **total** — no ordinal is lost or remapped, exactly like the
+    /// pre-enum bare `i32` field, and `DblTraceParameter` still mirrors it.
+    #[test]
+    fn control_action_round_trips_every_out_of_set_ordinal() {
+        for v in [-1000, -50, -1, 8, 9, 100, 101, 1000, i32::MAX, i32::MIN + 1] {
+            let a = ControlAction::from_ordinal(v);
+            assert_eq!(a, ControlAction::Other(v), "{v} must stay a raw code");
+            assert_eq!(a.ordinal(), v);
+        }
+        // …and the ten named values are the only ones that are not `Other`.
+        for v in 0..=7 {
+            assert!(!matches!(
+                ControlAction::from_ordinal(v),
+                ControlAction::Other(_)
+            ));
+        }
+        assert!(!matches!(
+            ControlAction::from_ordinal(i32::MIN),
+            ControlAction::Other(_)
+        ));
+    }
+
+    /// The Relay `Action`/`State` `DssEnum`s carry the `Keep` sentinel as their
+    /// `default_value` (an unmatched token parses to it instead of raising), so
+    /// the registry and the enum must agree on the exact number — a silent
+    /// mismatch would turn "leave the phase as is" into a stored state.
+    #[test]
+    fn relay_state_enums_default_to_the_keep_sentinel() {
+        let reg = EnumRegistry::new();
+        for id in [reg.relay_action, reg.relay_state] {
+            let e = reg.get(id);
+            assert_eq!(
+                ControlAction::from_ordinal(e.default_value),
+                ControlAction::Keep,
+                "{} default_value must be the Keep sentinel",
+                e.name
+            );
+        }
+        // Every other CTRL-backed registry entry keeps the Pascal default 0 —
+        // `Keep` is a Relay-only spelling quirk (`InterpretRelayState`).
+        for id in [
+            reg.swt_control_action,
+            reg.swt_control_state,
+            reg.fuse_action,
+            reg.fuse_state,
+            reg.recloser_action,
+            reg.recloser_state,
+        ] {
+            let e = reg.get(id);
+            assert_ne!(
+                ControlAction::from_ordinal(e.default_value),
+                ControlAction::Keep,
+                "{} must not carry the Keep sentinel",
+                e.name
+            );
         }
     }
 }

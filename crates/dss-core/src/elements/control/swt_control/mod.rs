@@ -34,7 +34,7 @@ mod tests;
 mod accessors;
 
 use crate::elements::control::control_elem::{
-    CTRL_CLOSE, CTRL_LOCK, CTRL_NONE, CTRL_OPEN, CTRL_UNLOCK, ControlElemData, CtrlCtx, RefSnapshot,
+    ControlAction, ControlElemData, CtrlCtx, RefSnapshot,
 };
 use crate::elements::traits::CktElement;
 use crate::obj::base::RefAction;
@@ -111,14 +111,14 @@ pub struct SwtControl {
     ctrl_snap: Option<RefSnapshot>,
 
     /// `PresentState` (CTRL_OPEN / CTRL_CLOSE) — the switch's live position.
-    present_state: i32,
+    present_state: ControlAction,
     /// `NormalState` (CTRL_NONE until first set) — the reset target.
-    normal_state: i32,
+    normal_state: ControlAction,
     /// `CurrentAction` — the commanded action (the field `Action`/`Normal`/
     /// `State` all write to).
-    current_action: i32,
+    current_action: ControlAction,
     /// `LockCommand` (CTRL_NONE / CTRL_LOCK / CTRL_UNLOCK) — queued on `Sample`.
-    lock_command: i32,
+    lock_command: ControlAction,
     /// `Locked` — when set, Action/Normal/State are read-only and operations are
     /// blocked.
     locked: bool,
@@ -147,10 +147,10 @@ impl SwtControl {
             ccd,
             switched_full_name: String::new(),
             ctrl_snap: None,
-            present_state: CTRL_CLOSE, // default to closed
-            normal_state: CTRL_NONE,   // unspecified; set on first action
-            current_action: CTRL_CLOSE,
-            lock_command: CTRL_NONE,
+            present_state: ControlAction::Close, // default to closed
+            normal_state: ControlAction::None,   // unspecified; set on first action
+            current_action: ControlAction::Close,
+            lock_command: ControlAction::None,
             locked: false,
             armed: false,
             rated_current: 0.0, // r4133 default
@@ -202,16 +202,16 @@ impl SwtControl {
     /// a `CTRL_LOCK` that r4133 does not — a latent gap blocking future r4133
     /// lock-path coverage, to be closed when this Sample body is retired.
     pub(crate) fn sample(&mut self, ctx: &mut CtrlCtx) {
-        if self.lock_command != CTRL_NONE {
+        if self.lock_command != ControlAction::None {
             ctx.queue.push_delay(
                 ctx.int_hour,
                 ctx.t,
                 self.ccd.time_delay,
-                self.lock_command,
+                self.lock_command.ordinal(),
                 0,
                 ctx.self_ref,
             );
-            self.lock_command = CTRL_NONE; // reset for next time
+            self.lock_command = ControlAction::None; // reset for next time
         }
 
         if self.current_action != self.present_state && !self.armed {
@@ -220,7 +220,7 @@ impl SwtControl {
                 ctx.int_hour,
                 ctx.t,
                 self.ccd.time_delay,
-                self.current_action,
+                self.current_action.ordinal(),
                 0,
                 ctx.self_ref,
             );
@@ -243,14 +243,15 @@ impl SwtControl {
         if term <= ctrl.cd().nterms {
             ctrl.cd_mut().active_terminal = term - 1;
         }
-        match code {
-            CTRL_LOCK => self.locked = true,
-            CTRL_UNLOCK => self.locked = false,
+        let action = ControlAction::from_ordinal(code);
+        match action {
+            ControlAction::Lock => self.locked = true,
+            ControlAction::Unlock => self.locked = false,
             _ => {
                 if !self.locked {
-                    if code == CTRL_OPEN && self.present_state == CTRL_CLOSE {
+                    if action == ControlAction::Open && self.present_state == ControlAction::Close {
                         ctrl.cd_mut().set_terminal_closed(term, false); // open all phases
-                        self.present_state = CTRL_OPEN;
+                        self.present_state = ControlAction::Open;
                         ctx.events.append(
                             &self.full_name(),
                             "Opened",
@@ -261,9 +262,9 @@ impl SwtControl {
                         // Pascal `Closed[]` sets YprimInvalid -> SystemYChanged.
                         *ctx.system_y_changed = true;
                     }
-                    if code == CTRL_CLOSE && self.present_state == CTRL_OPEN {
+                    if action == ControlAction::Close && self.present_state == ControlAction::Open {
                         ctrl.cd_mut().set_terminal_closed(term, true); // close all phases
-                        self.present_state = CTRL_CLOSE;
+                        self.present_state = ControlAction::Close;
                         ctx.events.append(
                             &self.full_name(),
                             "Closed",
@@ -296,7 +297,7 @@ impl SwtControl {
     /// NormalState of CTRL_OPEN: open; else close` — closed for `CTRL_CLOSE`
     /// **and** `CTRL_NONE` (the `else` branch).
     fn reset_target_closed(&self) -> bool {
-        self.normal_state != CTRL_OPEN
+        self.normal_state != ControlAction::Open
     }
 
     /// Pascal `TSwtControlObj.Reset` (full): restore the control state and force
