@@ -10,7 +10,8 @@ use crate::elements::traits::SysCtx;
 use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
-use super::{PVSystem, VARMODE_PF};
+use super::PVSystem;
+use crate::elements::pc::inv_based_pce::VarMode;
 
 /// Pascal `Math.Sign(Double): Integer` — returns 0 at exactly zero (unlike
 /// `f64::signum`, which returns ±1). The inverter clamp depends on this.
@@ -158,7 +159,7 @@ impl PVSystem {
             self.base.kvar_out = 0.0;
             self.base.current_kvar_limit = 0.0;
             self.base.current_kvar_limit_neg = 0.0;
-        } else if self.base.var_mode == VARMODE_PF {
+        } else if self.base.var_mode == VarMode::Pf {
             if pf_nominal == 1.0 {
                 self.base.kvar_out = 0.0;
             } else {
@@ -225,10 +226,7 @@ impl PVSystem {
                     f_kvarlimitneg * sign(self.kvar_requested)
                 };
 
-                if self.base.var_mode == super::VARMODE_KVAR
-                    && self.pf_priority
-                    && self.base.wp_mode
-                {
+                if self.base.var_mode == VarMode::Kvar && self.pf_priority && self.base.wp_mode {
                     self.base.kw_out = self.base.kvar_out.abs()
                         * (1.0 / (1.0 - self.base.pf_wp_nominal.powi(2)) - 1.0).sqrt()
                         * sign(self.base.kw_out);
@@ -258,20 +256,17 @@ impl PVSystem {
         // Limit kvar and kW so the inverter kVA rating is not exceeded.
         let kva_gen = (self.base.kw_out.powi(2) + self.base.kvar_out.powi(2)).sqrt();
         if kva_gen > self.f_kva_rating {
-            if self.base.var_mode == VARMODE_PF && self.pf_priority {
+            if self.base.var_mode == VarMode::Pf && self.pf_priority {
                 self.base.kw_out = self.f_kva_rating * pf_nominal.abs();
                 self.base.kvar_out =
                     self.f_kva_rating * (1.0 - pf_nominal.powi(2)).sqrt() * sign(pf_nominal);
-            } else if self.base.var_mode == super::VARMODE_KVAR
-                && self.pf_priority
-                && self.base.wp_mode
-            {
+            } else if self.base.var_mode == VarMode::Kvar && self.pf_priority && self.base.wp_mode {
                 self.base.kw_out =
                     self.f_kva_rating * self.base.pf_wp_nominal.abs() * sign(self.base.kw_out);
                 self.base.kvar_out = self.f_kva_rating
                     * self.base.pf_wp_nominal.acos().sin().abs()
                     * sign(self.kvar_requested);
-            } else if self.base.var_mode == super::VARMODE_KVAR
+            } else if self.base.var_mode == VarMode::Kvar
                 && self.pf_priority
                 && (!self.base.vv_mode
                     || !self.base.drc_mode

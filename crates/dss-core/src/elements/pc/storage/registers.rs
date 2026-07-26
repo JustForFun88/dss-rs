@@ -10,7 +10,7 @@ use crate::util::quad_solver;
 
 use super::{
     NUM_STORAGE_REGISTERS, REG_HOURS, REG_KVARH, REG_KWH, REG_MAXKVA, REG_MAXKW, REG_PRICE,
-    STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, Storage,
+    Storage, StorageState,
 };
 
 impl Storage {
@@ -65,10 +65,10 @@ impl Storage {
         if self.base.inverter_curve_obj.is_none() {
             self.f_dckw = p1; // assume ideal inverter
             // Make sure the sign is correct.
-            self.f_dckw = if self.f_state == STORE_IDLING {
+            self.f_dckw = if self.f_state == StorageState::Idling {
                 -self.f_dckw.abs()
             } else {
-                self.f_dckw.abs() * self.f_state as f64
+                self.f_dckw.abs() * self.f_state.ordinal() as f64
             };
             return;
         }
@@ -92,7 +92,7 @@ impl Storage {
                 .unwrap()
                 .get_coefficients(self.f_dckw.abs() / kva);
             self.f_dckw = match self.f_state {
-                STORE_DISCHARGING => quad_solver(guess.0 / kva, guess.1, -p1.abs()),
+                StorageState::Discharging => quad_solver(guess.0 / kva, guess.1, -p1.abs()),
                 _ => self.f_dckw.abs() * guess.1 / (1.0 - (guess.0 * self.f_dckw.abs() / kva)),
             };
             coef = self
@@ -104,16 +104,16 @@ impl Storage {
         }
 
         // Make sure the sign is correct.
-        self.f_dckw = if self.f_state == STORE_IDLING {
+        self.f_dckw = if self.f_state == StorageState::Idling {
             -self.f_dckw.abs()
         } else {
-            self.f_dckw.abs() * self.f_state as f64
+            self.f_dckw.abs() * self.f_state.ordinal() as f64
         };
     }
 
     /// Pascal `Get_kWIdlingLosses`.
     pub(super) fn kw_idling_losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
-        if self.f_state == STORE_IDLING {
+        if self.f_state == StorageState::Idling {
             self.dckw(sys, node_v).abs() // consistency with voltage variations
         } else {
             self.p_idling
@@ -143,7 +143,7 @@ impl Storage {
         }
 
         match self.f_state {
-            STORE_DISCHARGING => {
+            StorageState::Discharging => {
                 // Pascal Storage.pas l.2500-2523: `UpdateSt := TRUE; if GFM_Mode
                 // then UpdateSt := CheckIfDelivering()`. A GFM inverter that is
                 // actually *absorbing* (not delivering) recharges instead of
@@ -168,12 +168,12 @@ impl Storage {
                 // Check we still have enough energy to deliver.
                 if self.kwh_stored < self.kwh_reserve {
                     self.kwh_stored = self.kwh_reserve;
-                    self.f_state = STORE_IDLING; // empty — turn it off
+                    self.f_state = StorageState::Idling; // empty — turn it off
                     self.state_changed = true;
                     self.base.gfm_mode = false;
                 }
             }
-            STORE_CHARGING => {
+            StorageState::Charging => {
                 let dckw = self.dckw(sys, node_v);
                 let idle = self.kw_idling_losses(sys, node_v);
                 if (dckw.abs() - idle) >= 0.0 {
@@ -181,7 +181,7 @@ impl Storage {
                     self.kwh_stored += (dckw.abs() - idle) * self.charge_eff * interval_hrs;
                     if self.kwh_stored > self.kwh_rating {
                         self.kwh_stored = self.kwh_rating;
-                        self.f_state = STORE_IDLING; // full — turn it off
+                        self.f_state = StorageState::Idling; // full — turn it off
                         self.state_changed = true;
                         self.base.gfm_mode = false;
                     }
@@ -190,7 +190,7 @@ impl Storage {
                     self.kwh_stored += (dckw.abs() - idle) / self.discharge_eff * interval_hrs;
                     if self.kwh_stored < self.kwh_reserve {
                         self.kwh_stored = self.kwh_reserve;
-                        self.f_state = STORE_IDLING;
+                        self.f_state = StorageState::Idling;
                         self.state_changed = true;
                     }
                 }
@@ -218,7 +218,7 @@ impl Storage {
             return;
         }
         // Only tabulate discharge hours.
-        let (mut s, mut smag, hour_value) = if self.f_state == STORE_DISCHARGING {
+        let (mut s, mut smag, hour_value) = if self.f_state == StorageState::Discharging {
             let _ = (sys, node_v);
             let s = Complex64::new(self.present_kw(), self.present_kvar());
             (s, s.norm(), 1.0)
@@ -226,7 +226,7 @@ impl Storage {
             (Complex64::ZERO, 0.0, 0.0)
         };
 
-        if self.f_state == STORE_DISCHARGING || trapezoidal {
+        if self.f_state == StorageState::Discharging || trapezoidal {
             if sys.positive_sequence {
                 s *= 3.0;
                 smag *= 3.0;

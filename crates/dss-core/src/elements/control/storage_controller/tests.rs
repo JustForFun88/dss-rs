@@ -1,7 +1,5 @@
 use super::*;
-use crate::elements::pc::storage::{
-    STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, StorageDispatchMode,
-};
+use crate::elements::pc::storage::{StorageDispatchMode, StorageState};
 use crate::elements::traits::ElemId;
 use crate::obj::base::DssObject;
 use crate::obj::props::PropType;
@@ -20,9 +18,9 @@ fn default_shape_and_defaults() {
     assert_eq!(sc.f_kw_threshold, 6000.0);
     assert_eq!(sc.f_kw_band, 160.0);
     assert_eq!(sc.f_kw_band_low, 80.0);
-    assert_eq!(sc.discharge_mode, MODE_PEAKSHAVE);
-    assert_eq!(sc.charge_mode, MODE_TIME);
-    assert_eq!(sc.fleet_state, STORE_IDLING);
+    assert_eq!(sc.discharge_mode, StorageCtrlMode::PeakShave);
+    assert_eq!(sc.charge_mode, StorageCtrlMode::Time);
+    assert_eq!(sc.fleet_state, StorageState::Idling);
     assert_eq!(sc.seasons, 1);
     assert_eq!(sc.season_targets, vec![8000.0]);
     assert_eq!(sc.season_targets_low, vec![4000.0]);
@@ -117,7 +115,7 @@ fn kw_band_low_side_effect_syncs_the_low_pct_pair() {
 #[test]
 fn mode_discharge_follow_sets_noon_trigger() {
     let mut sc = StorageController::new("sc1");
-    sc.set_i32(prop::MODE_DISCHARGE, MODE_FOLLOW);
+    sc.set_i32(prop::MODE_DISCHARGE, StorageCtrlMode::Follow.ordinal());
     sc.side_effects(prop::MODE_DISCHARGE, 0);
     assert_eq!(sc.discharge_trigger_time, 12.0);
 }
@@ -207,7 +205,7 @@ fn make_like_copies_dispatch_settings() {
     base.f_kw_target = 5000.0;
     base.f_kw_band = 250.0;
     base.f_pct_kw_band = 5.0;
-    base.discharge_mode = MODE_FOLLOW;
+    base.discharge_mode = StorageCtrlMode::Follow;
     base.discharge_trigger_time = 12.0;
     base.pct_fleet_reserve = 20.0;
     base.seasons = 2;
@@ -220,7 +218,7 @@ fn make_like_copies_dispatch_settings() {
     assert_eq!(sc.f_kw_target, 5000.0);
     assert_eq!(sc.f_kw_band, 250.0);
     assert_eq!(sc.f_pct_kw_band, 5.0);
-    assert_eq!(sc.discharge_mode, MODE_FOLLOW);
+    assert_eq!(sc.discharge_mode, StorageCtrlMode::Follow);
     assert_eq!(sc.discharge_trigger_time, 12.0);
     assert_eq!(sc.pct_fleet_reserve, 20.0);
     assert_eq!(sc.seasons, 2);
@@ -239,7 +237,7 @@ struct MockStorage {
     name: String,
     enabled: bool,
     dispatch_mode: StorageDispatchMode,
-    state: i32,
+    state: StorageState,
     kw_out: f64,
     present_kw: f64,
     present_kv: f64,
@@ -255,7 +253,7 @@ struct MockStorage {
     pct_kw_out: f64,
     pct_kw_in: f64,
     pct_reserve: f64,
-    state_desired: i32,
+    state_desired: StorageState,
     nominal_calls: usize,
 }
 
@@ -265,7 +263,7 @@ impl MockStorage {
             name: name.into(),
             enabled: true,
             dispatch_mode: StorageDispatchMode::Default,
-            state: STORE_IDLING,
+            state: StorageState::Idling,
             kw_out: 0.0,
             present_kw: 0.0,
             present_kv: 12.47,
@@ -281,31 +279,33 @@ impl MockStorage {
             pct_kw_out: 100.0,
             pct_kw_in: 100.0,
             pct_reserve: 20.0,
-            state_desired: STORE_IDLING,
+            state_desired: StorageState::Idling,
             nominal_calls: 0,
         }
     }
 
     /// Pascal `Set_StorageState`: decline a change past the kWh limits.
-    fn set_storage_state(&mut self, value: i32) {
+    fn set_storage_state(&mut self, value: StorageState) {
         self.state = match value {
-            STORE_CHARGING if self.kwh_stored < self.kwh_rating => value,
-            STORE_DISCHARGING if self.kwh_stored > self.kwh_reserve => value,
-            STORE_CHARGING | STORE_DISCHARGING => STORE_IDLING,
-            _ => STORE_IDLING,
+            StorageState::Charging if self.kwh_stored < self.kwh_rating => value,
+            StorageState::Discharging if self.kwh_stored > self.kwh_reserve => value,
+            StorageState::Charging
+            | StorageState::Discharging
+            | StorageState::Idling
+            | StorageState::Other(_) => StorageState::Idling,
         };
     }
 
     /// Pascal `Set_kW`.
     fn set_kw(&mut self, value: f64) {
         if value > 0.0 {
-            self.state = STORE_DISCHARGING;
+            self.state = StorageState::Discharging;
             self.pct_kw_out = value / self.kw_rating * 100.0;
         } else if value < 0.0 {
-            self.state = STORE_CHARGING;
+            self.state = StorageState::Charging;
             self.pct_kw_in = value.abs() / self.kw_rating * 100.0;
         } else {
-            self.state = STORE_IDLING;
+            self.state = StorageState::Idling;
         }
     }
 
@@ -313,23 +313,23 @@ impl MockStorage {
     fn set_nominal(&mut self) {
         self.nominal_calls += 1;
         match self.state {
-            STORE_DISCHARGING => {
+            StorageState::Discharging => {
                 if self.kwh_stored > self.kwh_reserve {
                     self.kw_out = self.kw_rating * self.pct_kw_out / 100.0;
                 } else {
-                    self.state = STORE_IDLING;
+                    self.state = StorageState::Idling;
                 }
             }
-            STORE_CHARGING => {
+            StorageState::Charging => {
                 if self.kwh_stored < self.kwh_rating {
                     self.kw_out = -self.kw_rating * self.pct_kw_in / 100.0;
                 } else {
-                    self.state = STORE_IDLING;
+                    self.state = StorageState::Idling;
                 }
             }
             _ => {}
         }
-        if self.state == STORE_IDLING {
+        if self.state == StorageState::Idling {
             self.kw_out = -self.kw_out_idling;
         }
         self.present_kw = self.kw_out;
@@ -342,7 +342,7 @@ struct MockEnv {
     fleet: Vec<MockStorage>,
     events: Vec<String>,
     errors: crate::diag::ErrorLog,
-    pushes: Vec<i32>,
+    pushes: Vec<StorageState>,
     release_inhibit_pushes: usize,
     loads_need_updating: bool,
     time_of_day: f64,
@@ -440,7 +440,7 @@ impl StorageDispatchEnv for MockEnv {
             inverter_on: s.inverter_on,
         }
     }
-    fn set_state(&mut self, r: ElemId, state: i32) {
+    fn set_state(&mut self, r: ElemId, state: StorageState) {
         self.fleet[Self::idx(r)].set_storage_state(state);
     }
     fn set_kw(&mut self, r: ElemId, kw: f64) {
@@ -455,7 +455,7 @@ impl StorageDispatchEnv for MockEnv {
     fn set_pct_reserve(&mut self, r: ElemId, pct: f64) {
         self.fleet[Self::idx(r)].pct_reserve = pct;
     }
-    fn set_state_desired(&mut self, r: ElemId, state: i32) {
+    fn set_state_desired(&mut self, r: ElemId, state: StorageState) {
         self.fleet[Self::idx(r)].state_desired = state;
     }
     fn set_dispatch_external(&mut self, r: ElemId) {
@@ -470,7 +470,7 @@ impl StorageDispatchEnv for MockEnv {
     fn storage_full_name(&self, r: ElemId) -> String {
         format!("Storage.{}", self.fleet[Self::idx(r)].name)
     }
-    fn push_immediate(&mut self, code: i32) {
+    fn push_immediate(&mut self, code: StorageState) {
         self.loads_need_updating = true;
         self.pushes.push(code);
     }
@@ -510,7 +510,7 @@ impl StorageDispatchEnv for MockEnv {
 /// A PeakShave controller with the given target, watching a single storage.
 fn peakshave_controller(target_kw: f64) -> StorageController {
     let mut sc = StorageController::new("sc1");
-    sc.discharge_mode = MODE_PEAKSHAVE;
+    sc.discharge_mode = StorageCtrlMode::PeakShave;
     sc.set_f64(prop::KW_TARGET, target_kw);
     sc.side_effects(prop::KW_TARGET, 0);
     sc.mon_snap = Some(RefSnapshot {
@@ -546,13 +546,13 @@ fn sample_peakshave_discharges_overage() {
     let mut sc = peakshave_controller(10_000.0);
     let mut env = MockEnv::new(11_000.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
     sc.sample(&mut env);
-    assert_eq!(env.fleet[0].state, STORE_DISCHARGING);
+    assert_eq!(env.fleet[0].state, StorageState::Discharging);
     assert!(
         (env.fleet[0].present_kw - 1000.0).abs() < 1e-9,
         "present_kw = {}",
         env.fleet[0].present_kw
     );
-    assert!(sc.fleet_state == STORE_DISCHARGING);
+    assert!(sc.fleet_state == StorageState::Discharging);
     assert!(env.loads_need_updating);
 }
 
@@ -575,17 +575,17 @@ fn d10_discharge_transition_forces_resolve_on_first_iteration() {
     }
     // Iter 1: IDLING→DISCHARGING with no kW change ⇒ D10 forces the re-solve.
     let e1 = run(1);
-    assert_eq!(e1.fleet[0].state, STORE_DISCHARGING);
+    assert_eq!(e1.fleet[0].state, StorageState::Discharging);
     assert!(
-        e1.pushes.contains(&STORE_DISCHARGING),
+        e1.pushes.contains(&StorageState::Discharging),
         "iter 1 must force a re-solve, pushes = {:?}",
         e1.pushes
     );
     // Iter > 1: same transition, but with no kW change D10 does NOT push.
     let e2 = run(2);
-    assert_eq!(e2.fleet[0].state, STORE_DISCHARGING);
+    assert_eq!(e2.fleet[0].state, StorageState::Discharging);
     assert!(
-        !e2.pushes.contains(&STORE_DISCHARGING),
+        !e2.pushes.contains(&StorageState::Discharging),
         "iter 2 must not push without a kW change, pushes = {:?}",
         e2.pushes
     );
@@ -598,7 +598,7 @@ fn sample_peakshave_in_band_does_not_dispatch() {
     let mut sc = peakshave_controller(10_000.0);
     let mut env = MockEnv::new(10_050.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
     sc.sample(&mut env);
-    assert_eq!(env.fleet[0].state, STORE_IDLING);
+    assert_eq!(env.fleet[0].state, StorageState::Idling);
     assert!(sc.charging_allowed);
 }
 
@@ -640,7 +640,7 @@ fn sample_out_of_oomph_sets_idle_flag() {
     let mut env = MockEnv::new(11_000.0, vec![store]);
     sc.sample(&mut env);
     assert!(sc.out_of_oomph);
-    assert_eq!(env.fleet[0].state, STORE_IDLING);
+    assert_eq!(env.fleet[0].state, StorageState::Idling);
 }
 
 #[test]
@@ -648,7 +648,7 @@ fn sample_time_mode_discharges_at_trigger() {
     // Time mode, trigger time == time-of-day: the fleet is set to discharge at
     // pctkWRate (= 20%): kW = 2000 * 0.20 = 400.
     let mut sc = StorageController::new("sc1");
-    sc.discharge_mode = MODE_TIME;
+    sc.discharge_mode = StorageCtrlMode::Time;
     sc.discharge_trigger_time = 6.0;
     sc.mon_snap = Some(RefSnapshot {
         full_name: "line.l1".into(),
@@ -662,7 +662,7 @@ fn sample_time_mode_discharges_at_trigger() {
     sc.sample(&mut env);
     // DoTimeMode sets the fleet to discharge + pctkWRate; the element is sampled
     // via the next solve, but the controller has already committed the state.
-    assert_eq!(env.fleet[0].state, STORE_DISCHARGING);
+    assert_eq!(env.fleet[0].state, StorageState::Discharging);
     assert_eq!(env.fleet[0].pct_kw_out, sc.pct_kw_rate);
 }
 
@@ -672,8 +672,8 @@ fn sample_peakshavelow_charges_below_target() {
     // allowed. Charge mode PeakShaveLow with monitored below kWTargetLow →
     // charge the fleet.
     let mut sc = StorageController::new("sc1");
-    sc.discharge_mode = MODE_PEAKSHAVE;
-    sc.charge_mode = MODE_PEAKSHAVELOW;
+    sc.discharge_mode = StorageCtrlMode::PeakShave;
+    sc.charge_mode = StorageCtrlMode::PeakShaveLow;
     sc.set_f64(prop::KW_TARGET, 10_000.0);
     sc.side_effects(prop::KW_TARGET, 0);
     sc.set_f64(prop::KW_TARGET_LOW, 4000.0);
@@ -690,7 +690,7 @@ fn sample_peakshavelow_charges_below_target() {
     let mut env = MockEnv::new(3000.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.5)]);
     sc.sample(&mut env);
     assert!(sc.charging_allowed);
-    assert_eq!(env.fleet[0].state, STORE_CHARGING);
+    assert_eq!(env.fleet[0].state, StorageState::Charging);
     assert!(
         env.fleet[0].present_kw < 0.0,
         "present_kw = {}",
@@ -723,16 +723,16 @@ fn sample_named_missing_storage_errors_14403() {
 fn reset_idles_the_fleet() {
     let mut sc = peakshave_controller(10_000.0);
     let mut store = MockStorage::new("a", 2000.0, 500.0, 0.7);
-    store.state = STORE_DISCHARGING;
+    store.state = StorageState::Discharging;
     let mut env = MockEnv::new(11_000.0, vec![store]);
     sc.reset(&mut env);
-    assert_eq!(env.fleet[0].state, STORE_IDLING);
-    assert_eq!(sc.fleet_state, STORE_IDLING);
+    assert_eq!(env.fleet[0].state, StorageState::Idling);
+    assert_eq!(sc.fleet_state, StorageState::Idling);
 }
 
 /// A single-storage controller in the given discharge mode, watching one
 /// monitored line, fleet resolved at first Sample.
-fn controller_in_mode(discharge_mode: i32) -> StorageController {
+fn controller_in_mode(discharge_mode: StorageCtrlMode) -> StorageController {
     let mut sc = StorageController::new("sc1");
     sc.discharge_mode = discharge_mode;
     sc.mon_snap = Some(RefSnapshot {
@@ -750,12 +750,12 @@ fn sample_support_mode_discharges_for_export() {
     // Support keeps the load *above* the target: PDiff = S.re·0.001 + kWtarget.
     // A net export of 3000 kW (S.re = −3e6) with a 4000 kW target → PDiff = +1000
     // → discharge the storage by the deficit.
-    let mut sc = controller_in_mode(MODE_SUPPORT);
+    let mut sc = controller_in_mode(StorageCtrlMode::Support);
     sc.set_f64(prop::KW_TARGET, 4000.0);
     sc.side_effects(prop::KW_TARGET, 0);
     let mut env = MockEnv::new(-3000.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
     sc.sample(&mut env);
-    assert_eq!(env.fleet[0].state, STORE_DISCHARGING);
+    assert_eq!(env.fleet[0].state, StorageState::Discharging);
     assert!(
         (env.fleet[0].present_kw - 1000.0).abs() < 1e-9,
         "present_kw = {}",
@@ -768,19 +768,19 @@ fn sample_schedule_mode_ramps_on_trigger() {
     // Schedule: at 0.1 h past the discharge trigger (within the up-ramp 0.25 h),
     // the rate ramps linearly: pctDischargeRate = min(pctkWRate, pctkWRate·tdiff/
     // UpRampTime) = min(20, 20·0.1/0.25) = 8.
-    let mut sc = controller_in_mode(MODE_SCHEDULE);
+    let mut sc = controller_in_mode(StorageCtrlMode::Schedule);
     sc.discharge_trigger_time = 6.0;
     let mut env = MockEnv::new(0.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
     env.time_of_day = 6.1;
     sc.sample(&mut env);
-    assert_eq!(env.fleet[0].state, STORE_DISCHARGING);
+    assert_eq!(env.fleet[0].state, StorageState::Discharging);
     assert!(
         (env.fleet[0].pct_kw_out - 8.0).abs() < 1e-9,
         "pct = {}",
         env.fleet[0].pct_kw_out
     );
     assert!((sc.last_pct_discharge_rate - 8.0).abs() < 1e-9);
-    assert!(env.pushes.contains(&STORE_DISCHARGING));
+    assert!(env.pushes.contains(&StorageState::Discharging));
 }
 
 #[test]
@@ -790,7 +790,7 @@ fn sample_current_peakshave_converts_amps_to_kw() {
     // 100 A; kWNeeded := PresentkV·√3·AmpsDiff = 12.47·√3·100 ≈ 2160 kW → the
     // single battery caps at its 2000 kWrated.
     let mut sc = StorageController::new("sc1");
-    sc.discharge_mode = CURRENT_PEAKSHAVE; // set before kWTarget so the side effect uses ×1000
+    sc.discharge_mode = StorageCtrlMode::CurrentPeakShave; // set before kWTarget so the side effect uses ×1000
     sc.set_f64(prop::KW_TARGET, 0.2);
     sc.side_effects(prop::KW_TARGET, 0);
     sc.mon_snap = Some(RefSnapshot {
@@ -803,7 +803,7 @@ fn sample_current_peakshave_converts_amps_to_kw() {
     let mut env = MockEnv::new(0.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
     env.monitored_current = 300.0;
     sc.sample(&mut env);
-    assert_eq!(env.fleet[0].state, STORE_DISCHARGING);
+    assert_eq!(env.fleet[0].state, StorageState::Discharging);
     assert!(
         (env.fleet[0].present_kw - 2000.0).abs() < 1e-9,
         "present_kw = {}",
@@ -817,17 +817,17 @@ fn sample_time_mode_charges_and_arms_release_inhibit() {
     // Time with the charge trigger == time-of-day → set fleet to charge, inhibit
     // discharge, push CHARGING + the delayed RELEASE_INHIBIT.
     let mut sc = peakshave_controller(10_000.0);
-    sc.charge_mode = MODE_TIME;
+    sc.charge_mode = StorageCtrlMode::Time;
     sc.charge_trigger_time = 2.0;
     let mut store = MockStorage::new("a", 2000.0, 500.0, 0.5); // not full → chargeable
     store.kwh_stored = 250.0;
     let mut env = MockEnv::new(2000.0, vec![store]); // below target → discharge in-band
     env.time_of_day = 2.0;
     sc.sample(&mut env);
-    assert_eq!(env.fleet[0].state, STORE_CHARGING);
+    assert_eq!(env.fleet[0].state, StorageState::Charging);
     assert!(sc.discharge_inhibited);
     assert_eq!(env.release_inhibit_pushes, 1);
-    assert!(env.pushes.contains(&STORE_CHARGING));
+    assert!(env.pushes.contains(&StorageState::Charging));
 }
 
 #[test]
@@ -835,15 +835,15 @@ fn do_pending_action_release_inhibit_clears_flag() {
     // RELEASE_INHIBIT lifts the inhibit — but only when the discharge mode is not
     // Follow (Pascal `and (DischargeMode <> MODEFOLLOW)`).
     let mut sc = StorageController::new("sc1");
-    sc.discharge_mode = MODE_PEAKSHAVE;
+    sc.discharge_mode = StorageCtrlMode::PeakShave;
     sc.discharge_inhibited = true;
-    sc.do_pending_action(super::RELEASE_INHIBIT);
+    sc.do_pending_action(StorageCtrlAction::ReleaseInhibit.ordinal());
     assert!(!sc.discharge_inhibited);
 
     let mut follow = StorageController::new("sc2");
-    follow.discharge_mode = MODE_FOLLOW;
+    follow.discharge_mode = StorageCtrlMode::Follow;
     follow.discharge_inhibited = true;
-    follow.do_pending_action(super::RELEASE_INHIBIT);
+    follow.do_pending_action(StorageCtrlAction::ReleaseInhibit.ordinal());
     assert!(
         follow.discharge_inhibited,
         "Follow mode must keep the inhibit"
@@ -865,7 +865,7 @@ fn sample_dispatch_below_cutout_with_inverter_off_overrides_to_idle() {
     // off → override to idling.
     let mut env = MockEnv::new(4100.0, vec![store]);
     sc.sample(&mut env);
-    assert_eq!(env.fleet[0].state, STORE_IDLING);
+    assert_eq!(env.fleet[0].state, StorageState::Idling);
     assert!(env.fleet[0].present_kw.abs() < 1e-9);
 }
 
@@ -874,18 +874,18 @@ fn sample_loadshape_mode_discharges_without_shape() {
     // LoadShape mode with no controller shape → LoadShapeMult = CDoubleOne
     // (1 + j1) → Re > 0 → discharge at NewkWRate = Re·100 = 100%, forcing a
     // power-flow update.
-    let mut sc = controller_in_mode(MODE_LOADSHAPE);
+    let mut sc = controller_in_mode(StorageCtrlMode::LoadShape);
     let mut env = MockEnv::new(0.0, vec![MockStorage::new("a", 2000.0, 500.0, 0.7)]);
     env.mode = SolveMode::Daily;
     sc.sample(&mut env);
-    assert_eq!(env.fleet[0].state, STORE_DISCHARGING);
+    assert_eq!(env.fleet[0].state, StorageState::Discharging);
     assert!(
         (sc.pct_kw_rate - 100.0).abs() < 1e-9,
         "pct = {}",
         sc.pct_kw_rate
     );
     assert!(env.loads_need_updating);
-    assert!(env.pushes.contains(&0)); // PushTimeOntoControlQueue(0)
+    assert!(env.pushes.contains(&StorageState::Idling)); // PushTimeOntoControlQueue(0)
 }
 
 /// A controller with distinct seasonal targets so each `get_dynamic_target`
@@ -1027,5 +1027,56 @@ mod make_pos_seq_tests {
         let plan = sc.make_pos_sequence(&PosSeqCtx::default());
         assert_eq!(sc.ccd.cd.nphases, np);
         assert!(plan.run_base);
+    }
+}
+
+/// Discharge / charge mode + queue-action ordinals, pinned against
+/// `StorageController.pas:268-276` (`MODEFOLLOW=1` … `CURRENTPEAKSHAVELOW=9`)
+/// and `:279` (`RELEASE_INHIBIT = 999`), plus the two `DssEnum` value lists in
+/// `obj/dss_enum/registry/control.rs` (`Discharge Mode` `[5,1,3,2,4,6,8]`,
+/// `Charge Mode` `[2,4,7,9]`).
+#[test]
+fn storage_ctrl_mode_and_action_pin_pascal_ordinals() {
+    for (ord, m) in [
+        (1, StorageCtrlMode::Follow),
+        (2, StorageCtrlMode::LoadShape),
+        (3, StorageCtrlMode::Support),
+        (4, StorageCtrlMode::Time),
+        (5, StorageCtrlMode::PeakShave),
+        (6, StorageCtrlMode::Schedule),
+        (7, StorageCtrlMode::PeakShaveLow),
+        (8, StorageCtrlMode::CurrentPeakShave),
+        (9, StorageCtrlMode::CurrentPeakShaveLow),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(StorageCtrlMode::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(StorageCtrlMode::from_ordinal(0), None);
+    assert_eq!(StorageCtrlMode::from_ordinal(10), None);
+
+    // Every registry ordinal of BOTH enums must resolve (one shared space).
+    for ord in [5, 1, 3, 2, 4, 6, 8] {
+        assert!(
+            StorageCtrlMode::from_ordinal(ord).is_some(),
+            "discharge {ord}"
+        );
+    }
+    for ord in [2, 4, 7, 9] {
+        assert!(StorageCtrlMode::from_ordinal(ord).is_some(), "charge {ord}");
+    }
+
+    assert_eq!(StorageCtrlAction::ReleaseInhibit.ordinal(), 999);
+    assert_eq!(
+        StorageCtrlAction::from_ordinal(999),
+        Some(StorageCtrlAction::ReleaseInhibit)
+    );
+    // The storage-state markers `Sample` pushes onto the same generic queue are
+    // NOT this class's action codes — `DoPendingAction` must ignore them.
+    for code in [
+        StorageState::Charging.ordinal(),
+        StorageState::Idling.ordinal(),
+        StorageState::Discharging.ordinal(),
+    ] {
+        assert_eq!(StorageCtrlAction::from_ordinal(code), None);
     }
 }

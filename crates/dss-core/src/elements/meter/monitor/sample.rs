@@ -169,7 +169,7 @@ impl Monitor {
                     self.add_dbl(st.present_kvar());
                     self.add_dbl(st.kwh_stored);
                     self.add_dbl(st.kwh_stored / st.kwh_rating * 100.0);
-                    self.add_dbl(st.f_state as f64);
+                    self.add_dbl(st.f_state.ordinal() as f64);
                 }
                 return;
             }

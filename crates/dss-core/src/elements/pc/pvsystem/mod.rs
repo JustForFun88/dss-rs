@@ -43,7 +43,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::temp_shape::TShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::pc::inv_based_pce::{Connection, InvBasedPceData};
+use crate::elements::pc::inv_based_pce::{Connection, InvBasedPceData, VarMode};
 use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -56,10 +56,6 @@ mod solve;
 mod user_model;
 
 pub use user_model::PvUserModelSlot;
-
-/// Pascal `varMode` values.
-pub(crate) const VARMODE_PF: i32 = 0;
-pub(crate) const VARMODE_KVAR: i32 = 1;
 
 // Register indices (Pascal `Reg_kWh = 1` .. `Reg_Price = 6`, 0-based here).
 const REG_KWH: usize = 0;
@@ -353,7 +349,7 @@ impl PVSystem {
         base.vmaxpu = 1.10;
         base.v_base_min = base.vminpu * base.v_base;
         base.v_base_max = base.vmaxpu * base.v_base;
-        base.var_mode = VARMODE_PF;
+        base.var_mode = VarMode::Pf;
         base.inverter_on = true;
         base.var_follow_inverter = false;
         base.force_balanced = false;

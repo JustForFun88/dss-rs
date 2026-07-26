@@ -12,20 +12,22 @@ use crate::elements::control::espvl_control::{EspvlControl, EspvlDispatchEnv};
 use crate::elements::control::exp_control::{ExpControl, ExpDispatchEnv, PvFind, PvSnap};
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
 use crate::elements::control::inv_control::{
-    DerSnap, InvControl, InvDispatchEnv, InvFleetFind, MonitorVar,
+    DerSnap, InvControl, InvDispatchEnv, InvFleetFind, InvPendingChange, MonitorVar,
 };
 use crate::elements::control::mon_phase::MonPhase;
 use crate::elements::control::recloser::Recloser;
 use crate::elements::control::reg_control::RegControl;
 use crate::elements::control::relay::Relay;
 use crate::elements::control::storage_controller::{
-    FleetFind, StorageController, StorageDispatchEnv, StorageSnap,
+    FleetFind, StorageController, StorageCtrlAction, StorageDispatchEnv, StorageSnap,
 };
 use crate::elements::control::swt_control::SwtControl;
 use crate::elements::control::upfc_control::{UpfcControl, UpfcDispatchEnv};
 use crate::elements::pc::generator::Generator;
 use crate::elements::pc::inv_based_pce::Connection as InvConnection;
-use crate::elements::pc::pvsystem::{PVSystem, VARMODE_KVAR};
+use crate::elements::pc::inv_based_pce::VarMode;
+use crate::elements::pc::pvsystem::PVSystem;
+use crate::elements::pc::storage::StorageState;
 use crate::elements::pc::storage::{Storage, StorageDispatchMode};
 use crate::elements::pc::upfc::Upfc;
 use crate::elements::pd::capacitor::Capacitor;
@@ -1422,7 +1424,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
             inverter_on: st.base.inverter_on,
         }
     }
-    fn set_state(&mut self, r: ElemId, state: i32) {
+    fn set_state(&mut self, r: ElemId, state: StorageState) {
         Self::storage_mut(self.store, r).set_storage_state(state);
     }
     fn set_kw(&mut self, r: ElemId, kw: f64) {
@@ -1437,7 +1439,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
     fn set_pct_reserve(&mut self, r: ElemId, pct: f64) {
         Self::storage_mut(self.store, r).pct_reserve = pct;
     }
-    fn set_state_desired(&mut self, r: ElemId, state: i32) {
+    fn set_state_desired(&mut self, r: ElemId, state: StorageState) {
         Self::storage_mut(self.store, r).state_desired = state;
     }
     fn set_dispatch_external(&mut self, r: ElemId) {
@@ -1465,18 +1467,19 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         format!("Storage.{}", Self::storage(self.store, r).cd.obj.name())
     }
 
-    fn push_immediate(&mut self, code: i32) {
+    fn push_immediate(&mut self, code: StorageState) {
+        // `i32` only at the generic `ControlQueue` boundary — upstream pushes
+        // the storage-state ordinal itself as the immediate re-solve marker.
         *self.loads_need_updating = true;
         self.queue
-            .push_delay(self.int_hour, self.t, 0.0, code, 0, self.self_ref);
+            .push_delay(self.int_hour, self.t, 0.0, code.ordinal(), 0, self.self_ref);
     }
     fn push_release_inhibit(&mut self, inhibit_hrs: i32) {
-        use crate::elements::control::storage_controller::RELEASE_INHIBIT;
         *self.loads_need_updating = true;
         self.queue.push(
             self.int_hour + inhibit_hrs,
             self.t,
-            RELEASE_INHIBIT,
+            StorageCtrlAction::ReleaseInhibit.ordinal(),
             0,
             self.self_ref,
         );
@@ -1694,7 +1697,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 dckw_rated: pv.f_pmpp,        // FDCkWRated := Pmpp
                 pct_dckw_rated: pv.f_pu_pmpp, // FpctDCkWRated := puPmpp
                 eff_factor: pv.eff_factor,    // FEffFactor := PVSystemVars.EffFactor
-                storage_state: 0,             // n/a for a PVSystem
+                storage_state: StorageState::Idling, // n/a for a PVSystem
                 vw_state_requested: false,    // n/a for a PVSystem
             }
         } else if let Some(st) = self.store.typed::<Storage>(r) {
@@ -1801,7 +1804,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.pf_priority = value;
         }
     }
-    fn der_set_modes(&mut self, r: ElemId, vw_mode: bool, vv_mode: bool, var_mode: i32) {
+    fn der_set_modes(&mut self, r: ElemId, vw_mode: bool, vv_mode: bool, var_mode: VarMode) {
         if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.vw_mode = vw_mode;
             pv.base.vv_mode = vv_mode;
@@ -1854,7 +1857,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.base.avr_mode = value;
         }
     }
-    fn der_set_var_mode(&mut self, r: ElemId, mode: i32) {
+    fn der_set_var_mode(&mut self, r: ElemId, mode: VarMode) {
         if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.var_mode = mode;
         } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
@@ -1879,7 +1882,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             // Pascal `Set_Presentkvar` sets kvarRequested + varMode := VARMODEKVAR.
             pv.kvar_requested = q;
-            pv.base.var_mode = VARMODE_KVAR;
+            pv.base.var_mode = VarMode::Kvar;
         } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.kvar_requested = q;
         }
@@ -1967,9 +1970,17 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         }
     }
 
-    fn push_change(&mut self, delay: f64, code: i32) {
-        self.queue
-            .push_delay(self.int_hour, self.t, delay, code, 0, self.self_ref);
+    fn push_change(&mut self, delay: f64, code: InvPendingChange) {
+        // `i32` only at the `ControlQueue` boundary (the generic action-code
+        // channel is shared by every control class).
+        self.queue.push_delay(
+            self.int_hour,
+            self.t,
+            delay,
+            code.ordinal(),
+            0,
+            self.self_ref,
+        );
     }
     fn append_event(&mut self, der_full_name: &str, msg: &str) {
         let name = format!(
@@ -2006,8 +2017,10 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             false
         }
     }
-    fn der_storage_state(&self, r: ElemId) -> i32 {
-        self.store.typed::<Storage>(r).map_or(0, |st| st.f_state)
+    fn der_storage_state(&self, r: ElemId) -> StorageState {
+        self.store
+            .typed::<Storage>(r)
+            .map_or(StorageState::Idling, |st| st.f_state)
     }
     fn der_ilimit(&self, r: ElemId) -> f64 {
         if let Some(pv) = self.store.typed::<PVSystem>(r) {
@@ -2067,7 +2080,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
     }
     fn der_set_storage_state_off(&mut self, r: ElemId) {
         if let Some(st) = self.store.typed_mut::<Storage>(r) {
-            st.f_state = 0; // STORE_IDLING ("burning, turn it off")
+            st.f_state = StorageState::Idling; // "burning, turn it off"
             st.state_changed = true;
         }
     }
@@ -2221,7 +2234,7 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
     fn pv_set_vw_mode(&mut self, r: ElemId, value: bool) {
         Self::pvsystem_mut(self.store, r).base.vw_mode = value;
     }
-    fn pv_set_var_mode(&mut self, r: ElemId, mode: i32) {
+    fn pv_set_var_mode(&mut self, r: ElemId, mode: VarMode) {
         Self::pvsystem_mut(self.store, r).base.var_mode = mode;
     }
     fn pv_set_nominal(&mut self, r: ElemId) {

@@ -12,7 +12,10 @@ use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
-use super::{InvControl, MonPhase, VOLTWATT, WATTPF, WATTVAR, prop};
+use super::{
+    InvCombiMode, InvControl, InvControlMode, InvControlModel, MonPhase, RateOfChangeMode,
+    ReacPowerRef, prop,
+};
 
 /// Pascal `ValidateXYCurve(curve, mode)`: VOLTWATT requires the per-unit Y
 /// values in `[0, 1]`; WATTPF/WATTVAR require `[-1, 1]`. A violating curve is
@@ -22,20 +25,24 @@ use super::{InvControl, MonPhase, VOLTWATT, WATTPF, WATTVAR, prop};
 // `!(lo..=hi).contains(&y)` (a double negative), and matches the Pascal
 // `(y > 1.0) or (y < -1.0)` bound test literally.
 #[allow(clippy::manual_range_contains)]
-fn validate_xy_curve(curve: &XyCurveObj, mode: i32) -> Result<(), ()> {
+fn validate_xy_curve(curve: &XyCurveObj, mode: InvControlMode) -> Result<(), ()> {
     let ys = curve.y_values();
     match mode {
-        VOLTWATT => {
+        InvControlMode::VoltWatt => {
             if ys.iter().any(|&y| y < 0.0 || y > 1.0) {
                 return Err(());
             }
         }
-        WATTPF | WATTVAR => {
+        InvControlMode::WattPf | InvControlMode::WattVar => {
             if ys.iter().any(|&y| y < -1.0 || y > 1.0) {
                 return Err(());
             }
         }
-        _ => {}
+        InvControlMode::NoneMode
+        | InvControlMode::VoltVar
+        | InvControlMode::Drc
+        | InvControlMode::Avr
+        | InvControlMode::Gfm => {}
     }
     Ok(())
 }
@@ -76,17 +83,17 @@ impl InvControl {
         use prop::*;
         let (mode, what) = match idx {
             VOLTWATT_CURVE | VOLTWATTCH_CURVE => (
-                VOLTWATT,
+                InvControlMode::VoltWatt,
                 "active power value(s) greater than 1.0 per-unit or less than -1.0 per-unit.  \
                  Not allowed for VOLTWATT control mode for PVSystem/Storages",
             ),
             WATTPF_CURVE => (
-                WATTPF,
+                InvControlMode::WattPf,
                 "power factor value(s) greater than 1.0 or less than -1.0.  \
                  Not allowed for WATTPF control mode for PVSystem/Storages",
             ),
             WATTVAR_CURVE => (
-                WATTVAR,
+                InvControlMode::WattVar,
                 "reactive power value(s) greater than 1.0 per-unit or less than -1.0 per-unit.  \
                  Not allowed for WATTVAR control mode for PVSystem/Storages",
             ),
@@ -327,32 +334,44 @@ impl DssObject for InvControl {
     fn get_i32(&self, idx: usize) -> i32 {
         use prop::*;
         match idx {
-            MODE => self.control_mode,
-            COMBI_MODE => self.combi_mode,
+            MODE => self.control_mode.ordinal(),
+            COMBI_MODE => self.combi_mode.ordinal(),
             VOLTAGE_CURVEX_REF => self.voltage_curvex_ref,
             AVG_WINDOW_LEN => self.roll_avg_window_length,
             DYN_REAC_AVG_WINDOW_LEN => self.drc_roll_avg_window_length,
             VOLTWATT_YAXIS => self.voltwatt_yaxis,
-            RATE_OF_CHANGE_MODE => self.rate_of_change_mode,
-            REF_REACTIVE_POWER => self.reac_power_ref,
+            RATE_OF_CHANGE_MODE => self.rate_of_change_mode.ordinal(),
+            REF_REACTIVE_POWER => self.reac_power_ref.ordinal(),
             MON_VOLTAGE_CALC => self.mon_buses_phase.ordinal(),
-            CONTROL_MODEL => self.ctrl_model,
+            CONTROL_MODEL => self.ctrl_model.ordinal(),
             _ => unreachable!("InvControl has no integer property {idx}"),
         }
     }
     fn set_i32(&mut self, idx: usize, value: i32) {
         use prop::*;
         match idx {
-            MODE => self.control_mode = value,
-            COMBI_MODE => self.combi_mode = value,
+            MODE => {
+                self.control_mode = InvControlMode::from_ordinal(value).unwrap_or(self.control_mode)
+            }
+            COMBI_MODE => {
+                self.combi_mode = InvCombiMode::from_ordinal(value).unwrap_or(self.combi_mode)
+            }
             VOLTAGE_CURVEX_REF => self.voltage_curvex_ref = value,
             AVG_WINDOW_LEN => self.roll_avg_window_length = value,
             DYN_REAC_AVG_WINDOW_LEN => self.drc_roll_avg_window_length = value,
             VOLTWATT_YAXIS => self.voltwatt_yaxis = value,
-            RATE_OF_CHANGE_MODE => self.rate_of_change_mode = value,
-            REF_REACTIVE_POWER => self.reac_power_ref = value,
+            RATE_OF_CHANGE_MODE => {
+                self.rate_of_change_mode =
+                    RateOfChangeMode::from_ordinal(value).unwrap_or(self.rate_of_change_mode)
+            }
+            REF_REACTIVE_POWER => {
+                self.reac_power_ref =
+                    ReacPowerRef::from_ordinal(value).unwrap_or(self.reac_power_ref)
+            }
             MON_VOLTAGE_CALC => self.mon_buses_phase = MonPhase::from_ordinal(value),
-            CONTROL_MODEL => self.ctrl_model = value,
+            CONTROL_MODEL => {
+                self.ctrl_model = InvControlModel::from_ordinal(value).unwrap_or(self.ctrl_model)
+            }
             _ => unreachable!("InvControl has no integer property {idx}"),
         }
     }
@@ -465,7 +484,7 @@ impl DssObject for InvControl {
                 self.invalidate_fleet();
                 self.f_list_size = self.der_name_list.len() as i32;
             }
-            MODE => self.combi_mode = super::NONE_COMBMODE,
+            MODE => self.combi_mode = InvCombiMode::NoneCombMode,
             DBV_MIN => {
                 if self.dbv_max > 0.0 && self.dbv_min > self.dbv_max {
                     let full = format!("InvControl.{}", self.ccd.cd.obj.name());
@@ -488,12 +507,12 @@ impl DssObject for InvControl {
             }
             LPF_TAU => {
                 if self.lpf_tau <= 0.0 {
-                    self.rate_of_change_mode = super::ROC_INACTIVE;
+                    self.rate_of_change_mode = RateOfChangeMode::Inactive;
                 }
             }
             RISE_FALL_LIMIT => {
                 if self.rise_fall_limit <= 0.0 {
-                    self.rate_of_change_mode = super::ROC_INACTIVE;
+                    self.rate_of_change_mode = RateOfChangeMode::Inactive;
                 }
             }
             MON_BUS => {

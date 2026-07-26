@@ -53,15 +53,15 @@
 
 use num_complex::Complex64;
 
-use crate::elements::pc::storage::{STORE_CHARGING, STORE_DISCHARGING};
+use crate::elements::pc::storage::StorageState;
 use crate::elements::traits::ElemId;
 use crate::util::{EPSILON, fmt_g};
 
+use crate::elements::pc::inv_based_pce::VarMode;
+
 use super::{
-    AVR, CHANGE_NONE, CHANGEDRCVVARLEVEL, CHANGEVARLEVEL, CHANGEWATTLEVEL, CHANGEWATTVARLEVEL,
-    DELTAPDEFAULT, DRC, FLAGDELTAP, FLAGDELTAQ, GFM, InvControl, MODEL_LINEAR, MonPhase,
-    NONE_COMBMODE, NONE_MODE, REAC_POWER_VARMAX, ROC_LPF, ROC_RISEFALL, VOLTVAR, VOLTWATT, VV_DRC,
-    VV_VW, WATTPF, WATTVAR,
+    DELTAPDEFAULT, FLAGDELTAP, FLAGDELTAQ, InvCombiMode, InvControl, InvControlMode,
+    InvControlModel, InvPendingChange, MonPhase, RateOfChangeMode, ReacPowerRef,
 };
 
 /// Reduce the explicit-`MonBus` complex voltage buffer to a scalar by
@@ -147,7 +147,7 @@ pub(crate) struct DerSnap {
     /// `TStorageObj.StorageState` (`STORE_CHARGING=-1` / `STORE_IDLING=0` /
     /// `STORE_DISCHARGING=1`) — selects the charge/discharge volt-watt curve in
     /// `CalcPVWcurve_limitpu`. Ignored for a PVSystem.
-    pub storage_state: i32,
+    pub storage_state: StorageState,
     /// `TStorageObj.FVWStateRequested` — the VW function requested a state flip on
     /// the last control iteration; swaps the charge/discharge curve in
     /// `CalcPVWcurve_limitpu`. Ignored for a PVSystem.
@@ -211,7 +211,7 @@ pub(crate) trait InvDispatchEnv {
     fn der_set_pf_priority(&mut self, r: ElemId, value: bool);
     /// Set the DER's inverter-control mode flags (`VWmode`/`VVmode`) + `Varmode`
     /// (the `DoPendingAction` path).
-    fn der_set_modes(&mut self, r: ElemId, vw_mode: bool, vv_mode: bool, var_mode: i32);
+    fn der_set_modes(&mut self, r: ElemId, vw_mode: bool, vv_mode: bool, var_mode: VarMode);
     /// Set only `DERElem.VVmode` (the `Sample` path: Pascal sets just `VVmode`,
     /// leaving `VWmode`/`Varmode` until `DoPendingAction`).
     fn der_set_vv_mode(&mut self, r: ElemId, value: bool);
@@ -232,7 +232,7 @@ pub(crate) trait InvDispatchEnv {
     /// with `der_set_kvar_requested` modeling `Set_Presentkvar`, but a Storage's
     /// `kvarRequested` write has no such side effect, so without it a Storage stays
     /// `VARMODE_PF` and the requested kvar is silently dropped).
-    fn der_set_var_mode(&mut self, r: ElemId, mode: i32);
+    fn der_set_var_mode(&mut self, r: ElemId, mode: VarMode);
     /// `TStorageObj.kvarRequested` / `TPVSystemObj.kvarRequested` — the *requested*
     /// kvar (not the achieved `Get_Presentkvar`). AVR's iter-2 `DQDV` reads this for a
     /// Storage (Pascal l.1081), where PVSystem reads the achieved `Presentkvar`.
@@ -265,7 +265,7 @@ pub(crate) trait InvDispatchEnv {
 
     // --- control queue / event log / scalars ---
     /// Pascal `ControlQueue.Push(TimeDelay, CHANGEVARLEVEL, 0, Self)`.
-    fn push_change(&mut self, delay: f64, code: i32);
+    fn push_change(&mut self, delay: f64, code: InvPendingChange);
     /// Pascal `AppendToEventLog(Self.FullName + ', ' + DERElem.FullName, msg)`.
     fn append_event(&mut self, der_full_name: &str, msg: &str);
     /// `ActiveCircuit.Solution.ControlIteration`.
@@ -290,7 +290,7 @@ pub(crate) trait InvDispatchEnv {
     fn der_gfm_mode(&self, r: ElemId) -> bool;
     /// `TStorageObj.StorageState` (`FState`); for a PVSystem this is unused (the
     /// GFM arm branches on `IsStorage` first).
-    fn der_storage_state(&self, r: ElemId) -> i32;
+    fn der_storage_state(&self, r: ElemId) -> StorageState;
     /// `DERElem.dynVars.ILimit` — the GFM output-current limit (≤ 0 ⇒ no limit,
     /// the overload path is taken instead of the amps limiter).
     fn der_ilimit(&self, r: ElemId) -> f64;
@@ -440,7 +440,9 @@ impl InvControl {
                 .set_length(self.drc_roll_avg_window_length);
 
             // For all modes other than VW and WATTPF, PF priority is not allowed.
-            if self.control_mode != VOLTWATT && self.control_mode != WATTPF {
+            if self.control_mode != InvControlMode::VoltWatt
+                && self.control_mode != InvControlMode::WattPf
+            {
                 env.der_set_pf_priority(self.fleet[i], false);
             }
             self.update_der_parameters(i, env);
@@ -574,16 +576,15 @@ impl InvControl {
         }
 
         // Mode / combi-mode gating: ports VOLTVAR + VOLTWATT + DRC + VV_VW + VV_DRC.
-        if self.combi_mode != NONE_COMBMODE {
-            if self.combi_mode != VV_VW && self.combi_mode != VV_DRC {
-                return Err(self.not_ported_mode());
-            }
-        } else {
-            match self.control_mode {
-                NONE_MODE | VOLTVAR | VOLTWATT | DRC | WATTPF | WATTVAR | AVR | GFM => {}
-                _ => return Err(self.not_ported_mode()),
-            }
+        if self.combi_mode != InvCombiMode::NoneCombMode
+            && self.combi_mode != InvCombiMode::VvVw
+            && self.combi_mode != InvCombiMode::VvDrc
+        {
+            return Err(self.not_ported_mode());
         }
+        // Every `TInvControlControlMode` variant is ported, so the single-mode
+        // arm of the Pascal `case` has no reject branch left (the pre-enum `_ =>
+        // return Err(...)` covered only ordinals outside the closed set).
         // Exponential ControlModel (WPG.9) runs the `TPICtrl` PI controller in the
         // VV / AVR / DRC / VV_DRC var-calc paths; VOLTWATT / WATTPF / WATTVAR are
         // model-independent. Both models are ported — no reject here.
@@ -622,19 +623,19 @@ impl InvControl {
 
             // Dispatch by mode/combi (Pascal's `if CombiMode <> NONE_COMBMODE` /
             // `case ControlMode`).
-            if self.combi_mode == VV_VW {
+            if self.combi_mode == InvCombiMode::VvVw {
                 self.sample_vv_vw(i, env, snap, control_iter)?;
-            } else if self.combi_mode == VV_DRC {
+            } else if self.combi_mode == InvCombiMode::VvDrc {
                 self.sample_vv_drc(i, env, snap, control_iter)?;
             } else {
                 match self.control_mode {
-                    VOLTVAR => self.sample_voltvar(i, env, snap, control_iter)?,
-                    VOLTWATT => self.sample_voltwatt(i, env, snap, control_iter)?,
-                    DRC => self.sample_drc(i, env, snap, control_iter),
-                    WATTPF => self.sample_wattpf(i, env, snap, control_iter)?,
-                    WATTVAR => self.sample_wattvar(i, env, snap, control_iter)?,
-                    AVR => self.sample_avr(i, env, snap, control_iter)?,
-                    GFM => self.sample_gfm(i, env),
+                    InvControlMode::VoltVar => self.sample_voltvar(i, env, snap, control_iter)?,
+                    InvControlMode::VoltWatt => self.sample_voltwatt(i, env, snap, control_iter)?,
+                    InvControlMode::Drc => self.sample_drc(i, env, snap, control_iter),
+                    InvControlMode::WattPf => self.sample_wattpf(i, env, snap, control_iter)?,
+                    InvControlMode::WattVar => self.sample_wattvar(i, env, snap, control_iter)?,
+                    InvControlMode::Avr => self.sample_avr(i, env, snap, control_iter)?,
+                    InvControlMode::Gfm => self.sample_gfm(i, env),
                     _ => {} // NONE_MODE: do nothing
                 }
             }
@@ -682,8 +683,8 @@ impl InvControl {
             (cv.qoutput_vvpu.abs() - cv.q_desire_endpu.abs()).abs() > self.var_change_tolerance;
         if v_trigger || q_trigger || control_iter == 1 {
             self.ctrl_vars[i].f_vv_operation = 0.0;
-            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeVarLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let msg = format!(
@@ -727,8 +728,8 @@ impl InvControl {
             || control_iter == 1;
         if trigger {
             self.ctrl_vars[i].f_vw_operation = 0.0;
-            self.ctrl_vars[i].f_pending_change = CHANGEWATTLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEWATTLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeWattLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeWattLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let msg = format!(
@@ -782,8 +783,8 @@ impl InvControl {
             || control_iter == 1;
         if vw_trigger {
             self.ctrl_vars[i].f_vw_operation = 0.0;
-            self.ctrl_vars[i].f_pending_change = CHANGEWATTVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEWATTVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeWattVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeWattVarLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let msg = format!(
@@ -803,8 +804,8 @@ impl InvControl {
             || control_iter == 1;
         if vv_trigger {
             self.ctrl_vars[i].f_vv_operation = 0.0;
-            self.ctrl_vars[i].f_pending_change = CHANGEWATTVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEWATTVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeWattVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeWattVarLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let msg = format!(
@@ -852,8 +853,8 @@ impl InvControl {
                 > self.voltage_change_tolerance
         {
             self.ctrl_vars[i].f_drc_operation = 0.0;
-            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeVarLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let msg = format!(
@@ -874,8 +875,8 @@ impl InvControl {
             || (cv.qoutput_drcpu.abs() - cv.q_desire_endpu.abs()).abs() > self.var_change_tolerance
             || control_iter == 1;
         if trigger {
-            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeVarLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let msg = format!(
@@ -926,8 +927,8 @@ impl InvControl {
             || control_iter == 1;
         if trigger {
             self.ctrl_vars[i].f_wp_operation = 0.0;
-            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeVarLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let msg = format!(
@@ -976,8 +977,8 @@ impl InvControl {
             || control_iter == 1;
         if trigger {
             self.ctrl_vars[i].f_wv_operation = 0.0;
-            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeVarLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let msg = format!(
@@ -1029,8 +1030,8 @@ impl InvControl {
             || control_iter == 1;
         if trigger {
             self.ctrl_vars[i].f_avr_operation = 0.0;
-            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeVarLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let cv = &self.ctrl_vars[i];
@@ -1088,8 +1089,8 @@ impl InvControl {
                 || (cv.f_present_vpu - cv.f_avgp_vpu_prior).abs() > self.voltage_change_tolerance)
         {
             self.ctrl_vars[i].f_vvdrc_operation = 0.0;
-            self.ctrl_vars[i].f_pending_change = CHANGEDRCVVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEDRCVVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeDrcVVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeDrcVVarLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let msg = format!(
@@ -1112,8 +1113,8 @@ impl InvControl {
             || control_iter == 1;
         if vv_trigger {
             self.ctrl_vars[i].f_vvdrc_operation = 0.0;
-            self.ctrl_vars[i].f_pending_change = CHANGEDRCVVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEDRCVVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeDrcVVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeDrcVVarLevel);
             if self.ccd.show_event_log {
                 let der = env.der_full_name(r);
                 let msg = format!(
@@ -1173,7 +1174,8 @@ impl InvControl {
             return;
         }
         // (not IsStorage) or (IsStorage and StorageState = STORE_DISCHARGING).
-        let active = env.der_is_pvsystem(r) || env.der_storage_state(r) == STORE_DISCHARGING;
+        let active =
+            env.der_is_pvsystem(r) || env.der_storage_state(r) == StorageState::Discharging;
         let mut valid = if active {
             if env.der_ilimit(r) > 0.0 {
                 env.der_check_amps_limit(r) // sets dynVars.IComp as a side effect
@@ -1185,8 +1187,8 @@ impl InvControl {
         };
         valid = valid && !env.der_reset_ibr(r);
         if valid {
-            self.ctrl_vars[i].f_pending_change = CHANGEVARLEVEL;
-            env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+            self.ctrl_vars[i].f_pending_change = InvPendingChange::ChangeVarLevel;
+            env.push_change(self.ccd.time_delay, InvPendingChange::ChangeVarLevel);
         }
     }
 
@@ -1229,47 +1231,47 @@ impl InvControl {
             self.calc_qheadroom(k);
 
             let pending = self.ctrl_vars[k].f_pending_change;
-            if self.combi_mode == VV_VW {
-                if pending == CHANGEWATTVARLEVEL {
+            if self.combi_mode == InvCombiMode::VvVw {
+                if pending == InvPendingChange::ChangeWattVarLevel {
                     self.do_pending_vv_vw(k, env);
                 }
-            } else if self.combi_mode == VV_DRC {
-                if pending == CHANGEDRCVVARLEVEL {
+            } else if self.combi_mode == InvCombiMode::VvDrc {
+                if pending == InvPendingChange::ChangeDrcVVarLevel {
                     self.do_pending_vv_drc(k, env);
                 }
-            } else if self.control_mode == VOLTVAR
-                && self.combi_mode == NONE_COMBMODE
-                && pending == CHANGEVARLEVEL
+            } else if self.control_mode == InvControlMode::VoltVar
+                && self.combi_mode == InvCombiMode::NoneCombMode
+                && pending == InvPendingChange::ChangeVarLevel
             {
                 self.do_pending_voltvar(k, env);
-            } else if self.control_mode == VOLTWATT
-                && self.combi_mode == NONE_COMBMODE
-                && pending == CHANGEWATTLEVEL
+            } else if self.control_mode == InvControlMode::VoltWatt
+                && self.combi_mode == InvCombiMode::NoneCombMode
+                && pending == InvPendingChange::ChangeWattLevel
             {
                 self.do_pending_voltwatt(k, env);
-            } else if self.control_mode == DRC
-                && self.combi_mode == NONE_COMBMODE
-                && pending == CHANGEVARLEVEL
+            } else if self.control_mode == InvControlMode::Drc
+                && self.combi_mode == InvCombiMode::NoneCombMode
+                && pending == InvPendingChange::ChangeVarLevel
             {
                 self.do_pending_drc(k, env);
-            } else if self.control_mode == WATTPF
-                && self.combi_mode == NONE_COMBMODE
-                && pending == CHANGEVARLEVEL
+            } else if self.control_mode == InvControlMode::WattPf
+                && self.combi_mode == InvCombiMode::NoneCombMode
+                && pending == InvPendingChange::ChangeVarLevel
             {
                 self.do_pending_wattpf(k, env);
-            } else if self.control_mode == WATTVAR
-                && self.combi_mode == NONE_COMBMODE
-                && pending == CHANGEVARLEVEL
+            } else if self.control_mode == InvControlMode::WattVar
+                && self.combi_mode == InvCombiMode::NoneCombMode
+                && pending == InvPendingChange::ChangeVarLevel
             {
                 self.do_pending_wattvar(k, env);
-            } else if self.control_mode == AVR
-                && self.combi_mode == NONE_COMBMODE
-                && pending == CHANGEVARLEVEL
+            } else if self.control_mode == InvControlMode::Avr
+                && self.combi_mode == InvCombiMode::NoneCombMode
+                && pending == InvPendingChange::ChangeVarLevel
             {
                 self.do_pending_avr(k, env);
-            } else if self.control_mode == GFM
-                && self.combi_mode == NONE_COMBMODE
-                && pending == CHANGEVARLEVEL
+            } else if self.control_mode == InvControlMode::Gfm
+                && self.combi_mode == InvCombiMode::NoneCombMode
+                && pending == InvPendingChange::ChangeVarLevel
             {
                 self.do_pending_gfm(k, env);
             }
@@ -1282,7 +1284,7 @@ impl InvControl {
             // double-push) is a no-op (the DER is dispatched once per control
             // iteration, not once per queued action).
             env.set_loads_need_updating();
-            self.ctrl_vars[k].f_pending_change = CHANGE_NONE;
+            self.ctrl_vars[k].f_pending_change = InvPendingChange::None;
         }
     }
 
@@ -1335,8 +1337,8 @@ impl InvControl {
     /// `desired_pu` (Pascal l.1001-1021 / l.1248-1269 / l.1318-1339).
     fn apply_roc_qlimit(&mut self, k: usize, desired_pu: f64, env: &dyn InvDispatchEnv) {
         match self.rate_of_change_mode {
-            ROC_LPF | ROC_RISEFALL => {
-                if self.rate_of_change_mode == ROC_LPF {
+            RateOfChangeMode::Lpf | RateOfChangeMode::RiseFall => {
+                if self.rate_of_change_mode == RateOfChangeMode::Lpf {
                     self.calc_lpf(k, true, desired_pu, env);
                 } else {
                     self.calc_rf(k, true, desired_pu, env);
@@ -1363,8 +1365,8 @@ impl InvControl {
     /// (Pascal l.1404/1501).
     fn apply_roc_plimit(&mut self, k: usize, desired_pu: f64, env: &dyn InvDispatchEnv) {
         match self.rate_of_change_mode {
-            ROC_LPF | ROC_RISEFALL => {
-                if self.rate_of_change_mode == ROC_LPF {
+            RateOfChangeMode::Lpf | RateOfChangeMode::RiseFall => {
+                if self.rate_of_change_mode == RateOfChangeMode::Lpf {
                     self.calc_lpf(k, false, desired_pu, env);
                 } else {
                     self.calc_rf(k, false, desired_pu, env);
@@ -1386,7 +1388,7 @@ impl InvControl {
     /// Pascal `DoPendingAction`'s `VOLTVAR` branch.
     fn do_pending_voltvar(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
         let r = self.fleet[k];
-        env.der_set_modes(r, false, true, crate::elements::pc::pvsystem::VARMODE_KVAR);
+        env.der_set_modes(r, false, true, VarMode::Kvar);
 
         // Main process: the volt-var curve Q, then the LPF/RF rate-of-change filter
         // (if active) and the kVA/kvar clamp.
@@ -1504,7 +1506,7 @@ impl InvControl {
         let r = self.fleet[k];
         let snap = env.der_snap(r);
         // DERElem.VWmode := TRUE; Varmode := VARMODEKVAR; VVmode := TRUE;
-        env.der_set_modes(r, true, true, crate::elements::pc::pvsystem::VARMODE_KVAR);
+        env.der_set_modes(r, true, true, VarMode::Kvar);
 
         self.calc_pbase(k, r, snap.is_pvsystem, env);
         self.ctrl_vars[k].kw_out_desiredpu =
@@ -1598,7 +1600,7 @@ impl InvControl {
         let r = self.fleet[k];
         // VWmode := FALSE; Varmode := VARMODEKVAR; DRCmode := TRUE. (VVmode stays
         // FALSE for pure DRC — the per-step reset already cleared it.)
-        env.der_set_modes(r, false, false, crate::elements::pc::pvsystem::VARMODE_KVAR);
+        env.der_set_modes(r, false, false, VarMode::Kvar);
         env.der_set_drc_mode(r, true);
 
         // Main process: the DRC dynamic-reactive-current Q, then the LPF/RF filter
@@ -1649,7 +1651,7 @@ impl InvControl {
         // Pascal: VWmode := FALSE; Varmode := VARMODEKVAR; WPmode := TRUE (for both
         // DER types — der_set_var_mode so a Storage's kvarRequested is applied).
         env.der_set_vw_mode(r, false);
-        env.der_set_var_mode(r, crate::elements::pc::pvsystem::VARMODE_KVAR);
+        env.der_set_var_mode(r, VarMode::Kvar);
         env.der_set_wp_mode(r, true);
 
         // Main process.
@@ -1703,7 +1705,7 @@ impl InvControl {
         // Pascal: VWmode := FALSE; Varmode := VARMODEKVAR; WVmode := TRUE (for both
         // DER types — der_set_var_mode so a Storage's kvarRequested is applied).
         env.der_set_vw_mode(r, false);
-        env.der_set_var_mode(r, crate::elements::pc::pvsystem::VARMODE_KVAR);
+        env.der_set_var_mode(r, VarMode::Kvar);
         env.der_set_wv_mode(r, true);
 
         // Main process.
@@ -1762,7 +1764,7 @@ impl InvControl {
         // (for both DER types — `der_set_var_mode` so a Storage's `kvarRequested` is
         // applied by `set_nominal`, not discarded by its `VARMODE_PF` default).
         env.der_set_vw_mode(r, false);
-        env.der_set_var_mode(r, crate::elements::pc::pvsystem::VARMODE_KVAR);
+        env.der_set_var_mode(r, VarMode::Kvar);
         env.der_set_avr_mode(r, true);
 
         let control_iter = env.control_iteration();
@@ -1849,7 +1851,7 @@ impl InvControl {
     fn do_pending_vv_drc(&mut self, k: usize, env: &mut dyn InvDispatchEnv) {
         let r = self.fleet[k];
         // VWmode := FALSE; Varmode := VARMODEKVAR; VVmode := TRUE; DRCmode := TRUE.
-        env.der_set_modes(r, false, true, crate::elements::pc::pvsystem::VARMODE_KVAR);
+        env.der_set_modes(r, false, true, VarMode::Kvar);
         env.der_set_drc_mode(r, true);
 
         // Main process: QDesireVVpu + QDesireDRCpu, then the LPF/RF filter (on the
@@ -1990,7 +1992,7 @@ impl InvControl {
     /// Pascal `Calc_QHeadRoom(j)`.
     fn calc_qheadroom(&mut self, j: usize) {
         let cv = &mut self.ctrl_vars[j];
-        if self.reac_power_ref == super::REAC_POWER_VARAVAL {
+        if self.reac_power_ref == ReacPowerRef::VarAval {
             if cv.f_present_kw.abs() < cv.f_kva_rating {
                 cv.q_headroom = (cv.f_kva_rating.powi(2) - cv.f_present_kw.powi(2)).sqrt();
             } else {
@@ -1998,7 +2000,9 @@ impl InvControl {
             }
             cv.q_headroom_neg = cv.q_headroom;
         }
-        if self.reac_power_ref == REAC_POWER_VARMAX || self.control_mode == WATTPF {
+        if self.reac_power_ref == ReacPowerRef::VarMax
+            || self.control_mode == InvControlMode::WattPf
+        {
             cv.q_headroom = cv.f_kvar_limit;
             cv.q_headroom_neg = cv.f_kvar_limit_neg;
         }
@@ -2100,14 +2104,14 @@ impl InvControl {
         // DRC = 0.0005; VOLTVAR/WATTPF/AVR/VV_VW/DRC/VV_DRC reach `Check_Qlimits`.
         // WATTVAR uses the separate `check_qlimits_wv`, so its arm here is unreachable
         // and omitted.)
-        let error = if self.control_mode == VOLTVAR
-            || self.control_mode == WATTPF
-            || self.control_mode == AVR
-            || self.combi_mode == VV_VW
-            || self.combi_mode == VV_DRC
+        let error = if self.control_mode == InvControlMode::VoltVar
+            || self.control_mode == InvControlMode::WattPf
+            || self.control_mode == InvControlMode::Avr
+            || self.combi_mode == InvCombiMode::VvVw
+            || self.combi_mode == InvCombiMode::VvDrc
         {
             0.005
-        } else if self.control_mode == DRC {
+        } else if self.control_mode == InvControlMode::Drc {
             0.0005
         } else {
             0.0
@@ -2142,7 +2146,8 @@ impl InvControl {
 
         // Watt-priority kVA-available clamp (VARMAX or WATTPF).
         if cv.f_p_priority
-            && (self.reac_power_ref == REAC_POWER_VARMAX || self.control_mode == WATTPF)
+            && (self.reac_power_ref == ReacPowerRef::VarMax
+                || self.control_mode == InvControlMode::WattPf)
         {
             // dss_capi 0.15.x D3 (r4056, `InvControl.pas` l.3442-3446): guard
             // `SQR(kVArating) - SQR(presentkW)` — a near-cancellation that can go
@@ -2170,19 +2175,19 @@ impl InvControl {
             }
         }
 
-        if self.control_mode == VOLTVAR || self.combi_mode == VV_VW {
+        if self.control_mode == InvControlMode::VoltVar || self.combi_mode == InvCombiMode::VvVw {
             cv.f_vv_operation = f_operation;
         }
-        if self.control_mode == WATTPF {
+        if self.control_mode == InvControlMode::WattPf {
             cv.f_wp_operation = f_operation;
         }
-        if self.control_mode == DRC {
+        if self.control_mode == InvControlMode::Drc {
             cv.f_drc_operation = f_operation;
         }
-        if self.control_mode == AVR {
+        if self.control_mode == InvControlMode::Avr {
             cv.f_avr_operation = f_operation;
         }
-        if self.combi_mode == VV_DRC {
+        if self.combi_mode == InvCombiMode::VvDrc {
             cv.f_vvdrc_operation = f_operation;
         }
     }
@@ -2224,7 +2229,7 @@ impl InvControl {
                 cv.q_desire_endpu * cv.q_headroom_neg
             }
         };
-        if self.ctrl_model == MODEL_LINEAR {
+        if self.ctrl_model == InvControlModel::Linear {
             delta_q -= self.ctrl_vars[j].q_old_vv;
             self.update_deltaq_factor(j);
             let cv = &mut self.ctrl_vars[j];
@@ -2264,7 +2269,7 @@ impl InvControl {
                 cv.q_desire_endpu * cv.q_headroom_neg
             }
         };
-        if self.ctrl_model == MODEL_LINEAR {
+        if self.ctrl_model == InvControlModel::Linear {
             delta_q -= self.ctrl_vars[j].q_old_drc;
             self.update_deltaq_factor(j);
             let cv = &mut self.ctrl_vars[j];
@@ -2291,7 +2296,7 @@ impl InvControl {
                 cv.q_desire_endpu * cv.q_headroom_neg
             }
         };
-        if self.ctrl_model == MODEL_LINEAR {
+        if self.ctrl_model == InvControlModel::Linear {
             delta_q -= self.ctrl_vars[j].q_old_vvdrc;
             self.update_deltaq_factor(j);
             let cv = &mut self.ctrl_vars[j];
@@ -2414,7 +2419,7 @@ impl InvControl {
                 cv.q_desire_endpu * cv.q_headroom_neg
             }
         };
-        if self.ctrl_model == MODEL_LINEAR {
+        if self.ctrl_model == InvControlModel::Linear {
             delta_q -= self.ctrl_vars[j].q_old_avr;
             // Pascal updates FdeltaQFactor here (Change_deltaQ_factor / set factor),
             // but QDesiredAVR uses the literal 0.2, not FdeltaQFactor — so this only
@@ -2500,7 +2505,7 @@ impl InvControl {
     /// `FWVOperation`.
     fn check_qlimits_wv(&mut self, j: usize, q: f64) {
         let cv = &mut self.ctrl_vars[j];
-        let error = if self.control_mode == WATTVAR {
+        let error = if self.control_mode == InvControlMode::WattVar {
             0.005
         } else {
             0.0
@@ -2533,7 +2538,7 @@ impl InvControl {
             cv.q_desire_limitedpu = current_kvar_limit_neg_pu * pas_sign(q);
         }
 
-        if self.control_mode == WATTVAR {
+        if self.control_mode == InvControlMode::WattVar {
             cv.f_wv_operation = f_operation;
         }
     }
@@ -2656,7 +2661,7 @@ impl InvControl {
                 .get_y_value(present_vpu)
         } else {
             match snap.storage_state {
-                STORE_DISCHARGING => {
+                StorageState::Discharging => {
                     if snap.vw_state_requested {
                         self.voltwattch_curve
                             .as_mut()
@@ -2669,7 +2674,7 @@ impl InvControl {
                             .get_y_value(present_vpu)
                     }
                 }
-                STORE_CHARGING if self.voltwattch_curve.is_some() => {
+                StorageState::Charging if self.voltwattch_curve.is_some() => {
                     if snap.vw_state_requested {
                         self.voltwatt_curve
                             .as_mut()
@@ -2683,7 +2688,7 @@ impl InvControl {
                     }
                 }
                 // Idling, or charging without a CH curve: don't limit.
-                _ => 1.0,
+                StorageState::Idling | StorageState::Charging | StorageState::Other(_) => 1.0,
             }
         };
         self.ctrl_vars[j].p_limit_vw_pu = value;
@@ -2766,8 +2771,8 @@ impl InvControl {
         format!(
             "InvControl.{}: VOLTVAR/VOLTWATT/DRC/WATTPF/WATTVAR/AVR + the VV_VW/VV_DRC combis are ported (WP7.5 step 2b-2e-ii); mode={} combi={} is deferred to WP7.7 (GFM)",
             self.ccd.cd.obj.name(),
-            self.control_mode,
-            self.combi_mode
+            self.control_mode.ordinal(),
+            self.combi_mode.ordinal()
         )
     }
 }

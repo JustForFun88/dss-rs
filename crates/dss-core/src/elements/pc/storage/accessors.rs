@@ -11,6 +11,7 @@ use crate::elements::general::dynamic_exp::DynamicExpObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
+use crate::elements::pc::inv_based_pce::VarMode;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
@@ -19,23 +20,20 @@ use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
-use super::{
-    STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, Storage, StorageDispatchMode, VARMODE_KVAR,
-    VARMODE_PF, nconds_for_connection, prop,
-};
+use super::{Storage, StorageDispatchMode, StorageState, nconds_for_connection, prop};
 
 impl Storage {
     /// Pascal `Set_kW`: set the state + the dispatch percentage from a signed kW.
     /// `pub(crate)` so the StorageController fleet dispatch can drive `obj.kW`.
     pub(crate) fn set_kw(&mut self, value: f64) {
         if value > 0.0 {
-            self.f_state = STORE_DISCHARGING;
+            self.f_state = StorageState::Discharging;
             self.pct_kw_out = value / self.kw_rating * 100.0;
         } else if value < 0.0 {
-            self.f_state = STORE_CHARGING;
+            self.f_state = StorageState::Charging;
             self.pct_kw_in = value.abs() / self.kw_rating * 100.0;
         } else {
-            self.f_state = STORE_IDLING;
+            self.f_state = StorageState::Idling;
         }
     }
 }
@@ -532,7 +530,7 @@ impl DssObject for Storage {
         match idx {
             PHASES => self.cd.nphases as i32,
             CONN => self.base.connection as i32,
-            STATE => self.f_state,
+            STATE => self.f_state.ordinal(),
             MODEL => self.base.voltage_model,
             CLS => self.storage_class,
             DISP_MODE => self.dispatch_mode.ordinal(),
@@ -553,7 +551,7 @@ impl DssObject for Storage {
             }
             // Plain field write (Pascal MappedStringEnum on FState; the kWh-limit
             // check is only on the internal `StorageState` property path).
-            STATE => self.f_state = value,
+            STATE => self.f_state = StorageState::from_ordinal(value),
             MODEL => self.base.voltage_model = value,
             CLS => self.storage_class = value,
             DISP_MODE => {
@@ -721,11 +719,11 @@ impl DssObject for Storage {
                 }
             }
             PF => {
-                self.base.var_mode = VARMODE_PF;
+                self.base.var_mode = VarMode::Pf;
                 self.cd.obj.clear_seq(KVAR);
             }
             KVAR => {
-                self.base.var_mode = VARMODE_KVAR;
+                self.base.var_mode = VarMode::Kvar;
                 self.cd.obj.clear_seq(PF);
             }
             KVAR_MAX => {
