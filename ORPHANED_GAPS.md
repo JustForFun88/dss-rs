@@ -198,11 +198,14 @@ so these five resolved keywords DO overwrite `LastResultFile`/`@lastfile`/
 `@lastexportfile` with `<OutputDirectory><CircuitName_>` — live-probed on the
 pinned 0.14.5 oracle. The default arm's stale "(Phase 8)" wording is gone — it is
 now unreachable, every one of the 64 `EXPORT_OPTIONS` keywords is routed.
-**Not in this slice:** the `Estimate` *command* (`EXEC_COMMANDS` ordinal 90,
-`ExecHelper.pas:4225` = `AllocateLoads` + `Set showexport=yes` + `Export
-Estimation`) is still unrouted and falls to `not_ported_command`; both of its
-constituents are ported, so it is a three-line `exec/command.rs`/`exec/solve.rs`
-follow-up (out of this worktree's write fence). **Priority: low.**
+**Tail rider done (DE_PASCALIZE W3.5, `depas-final`, 2026-07-26):** the `Estimate`
+*command* — ordinal **76**, not 90 (`ExecCommands.pas:97`; the "90" above was a
+mis-transcription), `ExecHelper.pas:4213` = `DoAllocateLoadsCmd` + `Set
+showexport=yes` + `Export Estimation` — now routes in `exec/command.rs` to
+`exec/solve.rs::do_estimate_cmd` instead of falling to `not_ported_command`.
+Oracle-backed pin without a new capture: the `est8` deck minus its
+`allocateloads`, driven by the single word `estimate`, reproduces the existing
+`export_estimation` golden (STATUS §DE_PASCALIZE W3.5). **§1.10 is closed.**
 - **Found:** 2026-07-25, assumption-gap sweep (strict re-verification flipped it from
   "benign_documented" to real gap — visible-error deferral, but real lost functionality).
 - **Spec:** `ExportOptions.pas:452` → `ExportEstimation` (`ExportResults.pas:1652+`):

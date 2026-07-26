@@ -7,6 +7,65 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE W3.5 — the `Estimate` command is routed; ORPHANED_GAPS §1.10 is closed (branch `depas-final`, 2026-07-26)
+
+Not a de-Pascalization — the wave's closing **rider**: the last unrouted piece of
+§1.10. `Estimate` (`TExecCommand` ordinal **76** — `ExecCommands.pas:97`,
+dispatched at `:572`; the "ordinal 90" in the §1.10 note was a mis-transcription,
+corrected there) fell to `not_ported_command` even though **both** its
+constituents have been ported for a while.
+
+**What it is.** `TExecHelper.DoEstimateCmd` (`ExecHelper.pas:4213-4226`) is four
+statements: "Load current Estimation is driven by Energy Meters at head of
+feeders" → `DoAllocateLoadsCmd`; then "let's look to see how well we did" → `if
+not AutoShowExport then ParseCommand('Set showexport=yes')` and
+`ParseCommand('Export Estimation')`. EPRI r4133 is the same ordinal and the same
+body (`Version8/Source/Executive/ExecCommands.pas:838` →
+`ExecHelper.pas:3768-3782`), so both gating channels agree.
+
+**The port** (`exec/solve.rs::do_estimate_cmd`, dispatched from `exec/command.rs`
+next to `ALLOCATE_LOADS`, ordinal in `exec/tables.rs::cmd::ESTIMATE`): the same
+three statements, with the two nested `ParseCommand`s issued through
+[`Dss::command`] — this port's `ProcessCommand` and the established
+nested-command seam (`auto_add.rs::do_auto_add_cmd`, `tearing.rs`). Going through
+the real command path is what makes the export leg pick up `DoExportCmd`'s
+filename resolution + last-file tail (`ExportOptions.pas:632-637`:
+`SetLastResultFile` + `@lastexportfile`) for free, rather than re-implementing it.
+The `showexport` leg is **engine-observable state**, not decoration: it latches
+`AutoShowExport` permanently. Its only other consumer — `FireOffEditor`, the GUI
+auto-open of the written file — is a headless no-op here (the established
+`AllowEditor` convention) and in the oracle runs (`DSS_CAPI_ALLOW_EDITOR=0`); the
+`auto_show_export` field doc ("nothing reads it") is updated accordingly, since
+`do_estimate_cmd` is now its one engine-side reader.
+
+**Live-probed on the pinned oracle** (dss-python 0.15.7 / backend 0.14.5, the
+`est8` deck with its trailing `allocateloads` removed), four facts, all four now
+asserted in the test: `estimate` raises no error and writes
+`est8_EXP_ESTIMATION.csv`; the file is **byte-identical** to the one
+`allocateloads` + `export estimation` writes; `Get showexport` flips `No` → `Yes`;
+`@lastfile` == `@lastexportfile` == the written path.
+
+**The pin is oracle-backed with no new capture** (`golden_reports.rs::
+estimate_command_runs_allocation_then_exports_estimation`): replay the
+`export_estimation.meta.json` deck **minus** its `allocateloads` line, let the
+single word `estimate` supply both halves, and diff the produced file against the
+golden the oracle wrote for `allocateloads` + `export estimation`
+(`export_estimation.txt`, `estimation_policy` = `rel/abs = 0`). No golden was
+regenerated or added. Feature-sensitive both ways and *verified* so: commenting
+out the allocation leg fails on the first data row (`0` vs `82.184` — it collapses
+to the `export_estimation_noalloc` all-zero-`Calc` shape), and dropping the export
+leg leaves no file to read. The `showexport`/`@lastfile` asserts catch a routing
+that called `do_allocate_loads_cmd` + the export formatter directly instead of the
+two nested commands.
+
+**Proof.** Full gate green: `cargo fmt --all --check`, `cargo clippy --workspace
+--all-targets -D warnings`, `cargo test --workspace` including the unconditional
+514-case corpus gate (`corpus_gate_all_cases_match_engines ... ok`, both
+channels). Goldens, tolerances and the ledger untouched; `TODO(compat)` inventory
+unchanged (117 in `crates/dss-core/src` across 68 files, 123 across `crates/**`);
+no new `downcast`/`as_any`/`Rc`/`RefCell`/`Mutex`/statics; `tests/corpus` pristine
+(the known intermittent `Test/AutoTrans` export leak removed by exact name).
+
 ### DE_PASCALIZE W3.4 (b) — the `ckt_tree::NO_BUS` sentinel web: the constant is DELETED; Part III has no open escapes (branch `depas-final`, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Closes the **P14 escape** recorded at `depas-p8p14`
