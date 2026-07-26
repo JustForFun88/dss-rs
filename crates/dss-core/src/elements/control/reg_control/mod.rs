@@ -28,6 +28,7 @@ mod control_loop;
 mod dump;
 
 use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
+use crate::elements::control::mon_phase::MonPhase;
 use crate::obj::base::RefAction;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -58,10 +59,6 @@ impl RegControlAction {
         }
     }
 }
-
-/// `RegControl.pas` PTphase pseudo-phases (the hybrid enum's `max`/`min`).
-const MAXPHASE: i32 = -2;
-const MINPHASE: i32 = -3;
 
 /// 1-based property ordinals (Pascal `TRegControlProp` + class tails).
 pub mod prop {
@@ -206,7 +203,7 @@ pub struct RegControl {
     regulated_bus: String,
     using_regulated_bus: bool,
     ldc_active: bool,
-    fpt_phase: i32,
+    fpt_phase: MonPhase,
     tap_delay: f64,
     tap_limit_per_change: i32,
     debug_trace: bool,
@@ -275,7 +272,7 @@ impl RegControl {
             regulated_bus: String::new(),
             using_regulated_bus: false,
             ldc_active: false,
-            fpt_phase: 1,
+            fpt_phase: MonPhase::Phase(1),
             tap_delay: 2.0,
             tap_limit_per_change: 16,
             debug_trace: false,
@@ -547,8 +544,8 @@ impl RegControl {
         } else {
             self.ccd.cd.nphases = snap.nphases;
             self.ccd.cd.set_nconds(snap.nphases);
-            if self.fpt_phase > self.ccd.cd.nphases as i32 {
-                self.fpt_phase = 1;
+            if self.fpt_phase.ordinal() > self.ccd.cd.nphases as i32 {
+                self.fpt_phase = MonPhase::Phase(1);
                 self.ccd.cd.obj.set_as_next_seq(prop::PTPHASE);
             }
         }

@@ -41,6 +41,7 @@ mod tests;
 pub(crate) use compute::{DerSnap, FleetFind as InvFleetFind, InvDispatchEnv, MonitorVar};
 
 use crate::elements::control::control_elem::ControlElemData;
+use crate::elements::control::mon_phase::MonPhase;
 use crate::elements::control::roll_avg_window::RollAvgWindow;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::traits::ElemId;
@@ -84,11 +85,6 @@ pub(crate) const CHANGEDRCVVARLEVEL: i32 = 4;
 // Reactive-power-reference ordinals (InvControl.pas constants).
 const REAC_POWER_VARAVAL: i32 = 0;
 pub(crate) const REAC_POWER_VARMAX: i32 = 1;
-
-// Monitored-phase sentinels (`DSSClass.pas`; reused via MonPhaseEnum).
-const AVGPHASES: i32 = -1;
-pub(crate) const MAXPHASE: i32 = -2;
-pub(crate) const MINPHASE: i32 = -3;
 
 // Control-model ordinals (InvControl.pas `TInvControlModel`).
 const MODEL_LINEAR: i32 = 0;
@@ -530,7 +526,7 @@ pub struct InvControl {
     reac_power_ref: i32,
 
     /// `FMonBusesPhase` (MonVoltageCalc; MonPhaseEnum: avg/max/min/phase no.).
-    mon_buses_phase: i32,
+    mon_buses_phase: MonPhase,
     /// `MonBusesNameList` — the raw monitored-bus list (the `MonBus=` strings,
     /// possibly with `.node` suffixes).
     mon_buses_name_list: Vec<String>,
@@ -635,7 +631,7 @@ impl InvControl {
 
             reac_power_ref: REAC_POWER_VARAVAL,
 
-            mon_buses_phase: AVGPHASES,
+            mon_buses_phase: MonPhase::Avg,
             mon_buses_name_list: Vec::new(),
             mon_buses: Vec::new(),
             mon_buses_nodes: Vec::new(),

@@ -59,7 +59,7 @@ use crate::util::{EPSILON, fmt_g};
 
 use super::{
     AVR, CHANGE_NONE, CHANGEDRCVVARLEVEL, CHANGEVARLEVEL, CHANGEWATTLEVEL, CHANGEWATTVARLEVEL,
-    DELTAPDEFAULT, DRC, FLAGDELTAP, FLAGDELTAQ, GFM, InvControl, MAXPHASE, MINPHASE, MODEL_LINEAR,
+    DELTAPDEFAULT, DRC, FLAGDELTAP, FLAGDELTAQ, GFM, InvControl, MODEL_LINEAR, MonPhase,
     NONE_COMBMODE, NONE_MODE, REAC_POWER_VARMAX, ROC_LPF, ROC_RISEFALL, VOLTVAR, VOLTWATT, VV_DRC,
     VV_VW, WATTPF, WATTVAR,
 };
@@ -67,22 +67,22 @@ use super::{
 /// Reduce the explicit-`MonBus` complex voltage buffer to a scalar by
 /// `MonVoltageCalc` (Pascal `GetMonVoltage`'s `FUsingMonBuses` `case`):
 /// AVG/MAX/MIN over `|cBuffer[j]|`, else a specific phase.
-fn reduce_mon_phase(cbuffer: &[Complex64], mon_phase: i32) -> f64 {
+fn reduce_mon_phase(cbuffer: &[Complex64], mon_phase: MonPhase) -> f64 {
     match mon_phase {
-        super::AVGPHASES => {
+        MonPhase::Avg => {
             if cbuffer.is_empty() {
                 0.0
             } else {
                 cbuffer.iter().map(|c| c.norm()).sum::<f64>() / cbuffer.len() as f64
             }
         }
-        MAXPHASE => cbuffer.iter().map(|c| c.norm()).fold(0.0, f64::max),
-        MINPHASE => cbuffer.iter().map(|c| c.norm()).fold(1.0e50, f64::min),
+        MonPhase::Max => cbuffer.iter().map(|c| c.norm()).fold(0.0, f64::max),
+        MonPhase::Min => cbuffer.iter().map(|c| c.norm()).fold(1.0e50, f64::min),
         // A specific phase. Pascal reads `Cabs(cBuffer[FMonBusesPhase])` — and in
         // the MonBus branch `cBuffer` is filled 0-based (`cBuffer[0..len-1]`), so
         // the phase number indexes it directly (an upstream quirk; the corpus
         // MonBus cases all use AVG/MAX, so this arm is unexercised).
-        p => cbuffer.get(p as usize).map_or(0.0, |c| c.norm()),
+        MonPhase::Phase(p) => cbuffer.get(p as usize).map_or(0.0, |c| c.norm()),
     }
 }
 
@@ -547,17 +547,17 @@ impl InvControl {
             .collect();
         let n = mags.len();
         match self.mon_buses_phase {
-            super::AVGPHASES => {
+            MonPhase::Avg => {
                 if n == 0 {
                     0.0
                 } else {
                     mags.iter().sum::<f64>() / n as f64
                 }
             }
-            MAXPHASE => mags.iter().copied().fold(0.0, f64::max),
-            MINPHASE => mags.iter().copied().fold(1.0e50, f64::min),
+            MonPhase::Max => mags.iter().copied().fold(0.0, f64::max),
+            MonPhase::Min => mags.iter().copied().fold(1.0e50, f64::min),
             // A specific (1-based) phase.
-            p => {
+            MonPhase::Phase(p) => {
                 let idx = (p - 1) as usize;
                 mags.get(idx).copied().unwrap_or(0.0)
             }

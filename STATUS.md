@@ -7,6 +7,53 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE P1-tail (2/n) — the shared `MonPhase` hybrid enum kills four sentinel-triple copies (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes deferred item **9**. Four control classes each
+carried a private copy of the *same* `AVGPHASES=-1 / MAXPHASE=-2 / MINPHASE=-3`
+sentinel triple; all four resolve to the one `MonPhaseEnum`
+(`obj/dss_enum/registry/control.rs`, **`hybrid = true`**, values `[-3,-2,-1]`).
+
+New module `elements/control/mon_phase.rs` → `pub enum MonPhase { Avg, Max, Min,
+Phase(i32) }`, re-exported as `elements::control::MonPhase`. Discriminants proven
+against `CapControl.pas:230-232` **and** `StorageController.pas:38-40` (identical
+triple) and against the registry values.
+
+**Why a payload variant.** The backing `DssEnum` is `hybrid`: a token that does
+not match `min`/`max`/`avg` is parsed as an *integer* and stored verbatim (a
+1-based phase number). A closed 3-variant enum would silently drop those, so
+`MonPhase::Phase(i32)` carries the raw ordinal and `ordinal()`/`from_ordinal()`
+are **total and mutually inverse over all of `i32`** — the property boundary
+round-trips byte-for-byte exactly as the pre-enum bare field did. Two pin tests:
+`mon_phase_pins_enum_ordinals` (the three sentinels) and
+`mon_phase_round_trips_every_non_sentinel_ordinal` (totality, incl. `0`, `-4`,
+`±1000`, and that *only* `-1/-2/-3` are non-`Phase`).
+
+| field retyped | file | old private consts removed |
+|---|---|---|
+| `CapControl.fct_phase` / `.fpt_phase` | `cap_control/{mod,accessors,control_loop,tests}.rs` | `AVGPHASES`/`MAXPHASE`/`MINPHASE` |
+| `RegControl.fpt_phase` | `reg_control/{mod,accessors,control_loop}.rs` | `MAXPHASE`/`MINPHASE` |
+| `InvControl.mon_buses_phase` | `inv_control/{mod,accessors,compute,tests}.rs` | `AVGPHASES`/`MAXPHASE`/`MINPHASE` |
+| `StorageController.f_mon_phase` (+ `StorageDispatchEnv::control_power`/`control_current` signatures) | `storage_controller/{mod,accessors,tests}.rs`, `solution/controls/dispatch.rs` | `AVG`/`MAXPHASE`/`MINPHASE` |
+
+**The one semantic subtlety, handled explicitly.** RegControl's own registry
+entry (`RegControl: Phase Selection`) has **no `avg`** — only `min`/`max` + the
+integer fallback — so its `get_control_voltage` `_ =>` arm used to absorb an
+`Avg` (-1) ordinal as `(-1-1).max(0) = 0` (phase 0). The converted match keeps
+that exactly: the specific-phase arm is `MonPhase::Avg | MonPhase::Phase(_)` and
+still computes `(self.fpt_phase.ordinal() - 1).max(0)`. Every other converted
+match is a straight 1:1 arm rename, and the two 1-based indexers
+(`cbuffer[(p as usize) - 1]`, `cd.iterminal[(p - 1) as usize]`) now bind the
+payload instead of casting the field — identical arithmetic, plus the upstream
+0-based-`cBuffer` MonBus quirk left verbatim (`cbuffer.get(p as usize)`).
+
+Validation writes (`if f_*_phase.ordinal() > nphases { … = MonPhase::Phase(1) }`)
+are unchanged in effect: the sentinels are negative, so they never trip the
+bound, exactly as before.
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate
+included) — green; `tests/corpus` pristine; goldens untouched; `TODO(compat)` 117.
+
 ### DE_PASCALIZE P1-tail (1/n) — the solution enum trio: `ControlMode` / `LoadSolutionModel` / `RandomType` (branch `depas-p1p3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Base = `update` @ `634aac9`. Ritual 0 held (186 `.pas`

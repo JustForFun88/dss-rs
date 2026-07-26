@@ -400,8 +400,8 @@ fn user_control_builds_sample_context_in_pascal_units() {
     let mut cc = CapControl::new("cc");
     cc.pt_ratio = 1.0;
     cc.ct_ratio = 1.0;
-    cc.fpt_phase = 1; // single-phase branch: cbuffer[0]/pt_ratio
-    cc.fct_phase = 1; // single-phase branch: cbuffer[0]/ct_ratio
+    cc.fpt_phase = MonPhase::Phase(1); // single-phase branch: cbuffer[0]/pt_ratio
+    cc.fct_phase = MonPhase::Phase(1); // single-phase branch: cbuffer[0]/ct_ratio
     cc.present_state = CTRL_OPEN;
     cc.set_pending_change(CTRL_NONE);
     let cap = MockCap {

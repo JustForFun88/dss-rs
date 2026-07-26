@@ -12,7 +12,7 @@ use crate::elements::pd::transformer::ControlledTransformer;
 use crate::solution::ControlMode;
 use crate::util::EPSILON;
 
-use super::{MAXPHASE, MINPHASE, RegControl, RegControlAction};
+use super::{MonPhase, RegControl, RegControlAction};
 
 impl RegControl {
     /// Pascal `set_PendingTapChange`: store the pending change and mirror it to
@@ -86,7 +86,7 @@ impl RegControl {
         pt_ratio: f64,
     ) -> Complex64 {
         match self.fpt_phase {
-            MAXPHASE => {
+            MonPhase::Max => {
                 let mut cp = 0;
                 let mut v = vbuffer[0].norm();
                 for (i, val) in vbuffer.iter().enumerate().take(nphs).skip(1) {
@@ -98,7 +98,7 @@ impl RegControl {
                 self.controlled_phase = cp;
                 vbuffer[cp] / pt_ratio
             }
-            MINPHASE => {
+            MonPhase::Min => {
                 let mut cp = 0;
                 let mut v = vbuffer[0].norm();
                 for (i, val) in vbuffer.iter().enumerate().take(nphs).skip(1) {
@@ -111,8 +111,10 @@ impl RegControl {
                 vbuffer[cp] / pt_ratio
             }
             // Specific phase (most controls): FPTphase is a 1-based phase.
-            _ => {
-                let cp = (self.fpt_phase - 1).max(0) as usize;
+            // `Avg` (-1) is NOT in RegControl's PhaseEnum (min/max/number only)
+            // and lands here exactly as the pre-enum `_` arm handled it.
+            MonPhase::Avg | MonPhase::Phase(_) => {
+                let cp = (self.fpt_phase.ordinal() - 1).max(0) as usize;
                 self.controlled_phase = cp;
                 vbuffer[cp] / pt_ratio
             }

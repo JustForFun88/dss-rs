@@ -29,6 +29,7 @@ use num_complex::Complex64;
 use crate::elements::control::control_elem::{
     CTRL_CLOSE, CTRL_NONE, CTRL_OPEN, ControlElemData, RefSnapshot,
 };
+use crate::elements::control::mon_phase::MonPhase;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::pd::capacitor::ControlledCapacitor;
 use crate::obj::dss_enum::EnumRegistry;
@@ -77,12 +78,6 @@ impl CapControlType {
         }
     }
 }
-
-/// `CapControl.pas` monitored-phase pseudo-phases (the `mon_phase` hybrid enum's
-/// avg/max/min, mirrored in `RegControl`).
-const AVGPHASES: i32 = -1;
-const MAXPHASE: i32 = -2;
-const MINPHASE: i32 = -3;
 
 /// 1-based property ordinals (Pascal `TCapControlProp` + class tails).
 pub mod prop {
@@ -187,8 +182,8 @@ pub struct CapControl {
 
     /// `ECapControlType` (0=Current ... 5=Follow).
     control_type: CapControlType,
-    fct_phase: i32,
-    fpt_phase: i32,
+    fct_phase: MonPhase,
+    fpt_phase: MonPhase,
     pt_ratio: f64,
     ct_ratio: f64,
     on_value: f64,
@@ -258,8 +253,8 @@ impl CapControl {
             control_signal_name: String::new(),
             ctrl_signal_shape: None, // Pascal `ctrlSignalShape := NIL;`
             control_type: CapControlType::Current,
-            fct_phase: 1,
-            fpt_phase: 1,
+            fct_phase: MonPhase::Phase(1),
+            fpt_phase: MonPhase::Phase(1),
             pt_ratio: 60.0,
             ct_ratio: 60.0,
             on_value: 300.0,
@@ -303,7 +298,7 @@ impl CapControl {
     /// `ControlVars.FPTPhase`; "ALL"/avg/max/min are ≤ 0). Read-only accessor for
     /// the CIM export (`MonitoredPhaseNode`).
     pub fn pt_phase(&self) -> i32 {
-        self.fpt_phase
+        self.fpt_phase.ordinal()
     }
 
     /// Pascal `TCapControlObj.PTRatioVal` (property `CapControl.pas:199` =

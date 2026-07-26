@@ -59,6 +59,7 @@ mod compute;
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
+use crate::elements::control::mon_phase::MonPhase;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::pc::storage::STORE_IDLING;
 use crate::elements::traits::ElemId;
@@ -79,12 +80,6 @@ const CURRENT_PEAKSHAVE_LOW: i32 = 9;
 /// `RELEASE_INHIBIT` — the control-queue action code that lifts the
 /// discharge-inhibit after charging. `pub(crate)` so the dispatch env can push it.
 pub(crate) const RELEASE_INHIBIT: i32 = 999;
-/// Monitored-phase sentinels (`StorageController.pas` l.38-40). `pub(crate)` so
-/// the dispatch env's `GetControlPower`/`GetControlCurrent` can resolve them.
-pub(crate) const AVG: i32 = -1;
-pub(crate) const MAXPHASE: i32 = -2;
-pub(crate) const MINPHASE: i32 = -3;
-
 /// 1-based property ordinals (Pascal `TStorageControllerProp` + the
 /// `TCktElementClass` tail).
 pub mod prop {
@@ -214,7 +209,7 @@ pub struct StorageController {
     /// Parse-time shape snapshot of the monitored reference.
     mon_snap: Option<RefSnapshot>,
 
-    f_mon_phase: i32,
+    f_mon_phase: MonPhase,
 
     f_kw_target: f64,
     f_kw_target_low: f64,
@@ -312,7 +307,7 @@ impl StorageController {
             ccd,
             monitored_full_name: String::new(),
             mon_snap: None,
-            f_mon_phase: MAXPHASE,
+            f_mon_phase: MonPhase::Max,
             f_kw_target,
             f_kw_target_low,
             f_kw_threshold: 6000.0,
@@ -419,9 +414,9 @@ pub(crate) trait StorageDispatchEnv {
     /// Pascal `GetControlPower(S)` — the active-power signal at the monitored
     /// terminal, resolved per `MonPhase` (×3 under positive sequence). `fnphases`
     /// is the controller's `Fnphases` (the monitored element's phase count).
-    fn control_power(&mut self, mon_phase: i32, fnphases: usize) -> Complex64;
+    fn control_power(&mut self, mon_phase: MonPhase, fnphases: usize) -> Complex64;
     /// Pascal `GetControlCurrent(Amps)` — the per-`MonPhase` terminal current.
-    fn control_current(&mut self, mon_phase: i32, fnphases: usize) -> f64;
+    fn control_current(&mut self, mon_phase: MonPhase, fnphases: usize) -> f64;
     /// Pascal `MonitoredElement.ComputeVterminal; cabs(Vterminal[1])` — the LN
     /// voltage magnitude used to convert a current deficit into kW.
     fn monitored_vterminal1_abs(&mut self) -> f64;

@@ -14,7 +14,7 @@ fn default_shape_and_defaults() {
     assert_eq!(sc.ccd.cd.nconds, 3);
     assert_eq!(sc.ccd.cd.nterms, 1);
     assert_eq!(sc.ccd.element_terminal, 1);
-    assert_eq!(sc.f_mon_phase, MAXPHASE);
+    assert_eq!(sc.f_mon_phase, MonPhase::Max);
     assert_eq!(sc.f_kw_target, 8000.0);
     assert_eq!(sc.f_kw_target_low, 4000.0);
     assert_eq!(sc.f_kw_threshold, 6000.0);
@@ -176,7 +176,7 @@ fn mon_phase_above_nphases_errors_and_resets() {
     let mut sc = StorageController::new("sc1");
     sc.set_i32(prop::MON_PHASE, 4);
     sc.side_effects(prop::MON_PHASE, 0);
-    assert_eq!(sc.f_mon_phase, 1);
+    assert_eq!(sc.f_mon_phase, MonPhase::Phase(1));
     let errs = sc.ccd.cd.obj.take_errors();
     assert!(
         errs.iter().any(|e| e.contains("Monitored phase")),
@@ -383,10 +383,10 @@ impl MockEnv {
 }
 
 impl StorageDispatchEnv for MockEnv {
-    fn control_power(&mut self, _mon_phase: i32, _fnphases: usize) -> Complex64 {
+    fn control_power(&mut self, _mon_phase: MonPhase, _fnphases: usize) -> Complex64 {
         self.monitored_power
     }
-    fn control_current(&mut self, _mon_phase: i32, _fnphases: usize) -> f64 {
+    fn control_current(&mut self, _mon_phase: MonPhase, _fnphases: usize) -> f64 {
         self.monitored_current
     }
     fn monitored_vterminal1_abs(&mut self) -> f64 {
