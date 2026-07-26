@@ -11,32 +11,7 @@ mod tests;
 use num_complex::Complex64;
 use std::ops::{Index, IndexMut};
 
-/// Complex division bit-faithful to FPC's `ucomplex` `/` operator (Smith's
-/// overflow-safe abs-ratio algorithm), which the Pascal `TcMatrix.Invert`
-/// cross-term `A[i,j] - A[i,k]*A[k,j]/A[k,k]` uses. `num_complex`'s `/` operator
-/// is the naive `(ac+bd)/(c²+d²)` form, which rounds the last bit differently
-/// from Smith's — invisible in robust entries but a 1–3 ULP gap in the
-/// cancellation-sensitive (resistance) part of an inverted impedance matrix.
-/// Pascal `packages/rtl-extra/src/inc/ucomplex.pp` `operator /`. Shared with the
-/// Carson DERI `Get_Zint` Bessel ratio `I0(α)/I1(α)`, which uses the same `/`.
-#[inline]
-pub(crate) fn cdiv_fpc(num: Complex64, den: Complex64) -> Complex64 {
-    if den.re.abs() > den.im.abs() {
-        let tmp = den.im / den.re;
-        let denom = den.re + den.im * tmp;
-        Complex64::new(
-            (num.re + num.im * tmp) / denom,
-            (num.im - num.re * tmp) / denom,
-        )
-    } else {
-        let tmp = den.re / den.im;
-        let denom = den.im + den.re * tmp;
-        Complex64::new(
-            (num.im + num.re * tmp) / denom,
-            (-num.re + num.im * tmp) / denom,
-        )
-    }
-}
+use crate::compat;
 
 /// Which bottom-left cell a two-terminal block stamp writes (see
 /// [`CMatrix::stamp_two_terminal_block`]): the symmetric convention `(j+n, i)`
@@ -325,64 +300,13 @@ impl CMatrix {
         }
     }
 
-    /// In-place inversion, the exact algorithm of `TcMatrix.Invert`:
-    /// Gauss-Jordan with pivots chosen by largest-magnitude unused diagonal,
-    /// no row exchanges.
-    ///
-    /// TODO(compat): on a singular pivot the matrix is left partially
-    /// transformed, exactly like the Pascal code (callers only check the
-    /// error). Restore-or-zero on failure once the 1:1 port is complete.
+    /// In-place inversion (Pascal `TcMatrix.Invert`), through the Stage F
+    /// lane seam: the parity kernel is the exact Pascal algorithm
+    /// (Gauss-Jordan with pivots chosen by largest-magnitude unused diagonal,
+    /// **no row exchanges**), the default kernel is partial-pivoting
+    /// Gauss-Jordan — see [`compat::invert`].
     pub fn invert(&mut self) -> Result<(), SingularMatrix> {
-        let l = self.n;
-
-        let mut used = vec![false; l];
-        let mut t1 = Complex64::ZERO;
-        let mut k = 0usize;
-
-        for _m in 0..l {
-            for ll in 0..l {
-                if !used[ll] {
-                    // Pascal: RMY := Cabs(A[ll,ll]) - Cabs(T1)
-                    let rmy = self[(ll, ll)].norm() - t1.norm();
-                    if rmy > 0.0 {
-                        t1 = self[(ll, ll)];
-                        k = ll;
-                    }
-                }
-            }
-
-            // If the best remaining pivot is zero, the matrix is singular.
-            if t1.norm() == 0.0 {
-                return Err(SingularMatrix);
-            }
-
-            t1 = Complex64::ZERO;
-            used[k] = true;
-            for i in 0..l {
-                if i != k {
-                    for j in 0..l {
-                        if j != k {
-                            // Pascal: A[i,j] - (A[i,k]*A[k,j]) / A[k,k], where `/`
-                            // is FPC ucomplex Smith's division (see cdiv_fpc).
-                            self[(i, j)] =
-                                self[(i, j)] - cdiv_fpc(self[(i, k)] * self[(k, j)], self[(k, k)]);
-                        }
-                    }
-                }
-            }
-
-            self[(k, k)] = -self[(k, k)].inv(); // invert and negate the pivot
-
-            for i in 0..l {
-                if i != k {
-                    self[(i, k)] = self[(i, k)] * self[(k, k)];
-                    self[(k, i)] = self[(k, i)] * self[(k, k)];
-                }
-            }
-        }
-
-        self.negate();
-        Ok(())
+        compat::invert(self)
     }
 
     /// Kron reduction: eliminate row/column `elim` (0-based) and return the
@@ -409,11 +333,11 @@ impl CMatrix {
                     continue;
                 }
                 // Pascal: get(i,j) - (get(i,elim)*get(elim,j)) / nn, where `/`
-                // is FPC ucomplex Smith's division (see cdiv_fpc).
+                // is FPC ucomplex Smith's division (see `compat::cdiv`).
                 result.set(
                     ii,
                     jj,
-                    self.get(i, j) - cdiv_fpc(self.get(i, elim) * self.get(elim, j), nn),
+                    self.get(i, j) - compat::cdiv(self.get(i, elim) * self.get(elim, j), nn),
                 );
                 jj += 1;
             }

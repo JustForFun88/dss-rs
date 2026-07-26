@@ -7,6 +7,99 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.1 — the `oracle-parity` seam, bit-neutral in both lanes (branch `depas-stagef`, 2026-07-26)
+
+First step of the plan's **last** stage (Part IV.2). It adds the two-lane
+machinery and *nothing else*: the feature, the three `compat` modules, both
+implementations of every function-shaped dual kernel, the per-kernel tests, and
+the CI grep gate. **Every alias deliberately selects the parity impl in BOTH
+lanes**, so the commit is byte-neutral everywhere and the whole existing gate
+(byte goldens, checkpoint Y, 514-case corpus, iteration counts) is unchanged in
+the default build too. F.3 flips the `not(oracle-parity)` arms one kernel family
+at a time.
+
+**Feature wiring (additive).** `dss-core/oracle-parity =
+["dss-parser/oracle-parity", "dss-sparse/oracle-parity"]`; `dss-cli` exposes it
+as its own build option (`--features oracle-parity` → `dss-core/oracle-parity`).
+Gate invocation for the parity lane: `--features dss-core/oracle-parity` (from
+the workspace root; unification turns it on for `dss-cli`/`dss-epri` builds of
+`dss-core` too).
+
+**Kernels wired** (`compat.rs` per crate; parity impl ⇄ default impl, both
+always compiled, measured cross-impl bound in the unit test):
+
+| Row | parity `_impl` | default `_impl` | measured gap |
+|---|---|---|---|
+| complex division (`compat::cdiv`, dss-core) | `cdiv_fpc_impl` (FPC Smith) | `cdiv_std_impl` (`num_complex` `/`) | 2.10e-16 rel = 0.95 ULP |
+| dense complex inverse (`compat::invert`) | `invert_gj_no_exchange_impl` | `invert_partial_pivot_impl` | 2.15e-16 rel; residuals 2.30e-16 vs 1.27e-16 |
+| dense real inverse (`compat::etk_invert`) | `etk_invert_gj_no_exchange_impl` | `etk_invert_partial_pivot_impl` | 1.25e-16 rel |
+| single-point stddev (`compat::stddev_single_point`) | value itself | `0.0` | deliberate divergence |
+| RPN pi (`compat::PI`, dss-parser) | `3.14159265359` | `f64::consts::PI` | 2.069e-13 abs / 6.59e-14 rel |
+| FPC round (`compat::round_i32`, dss-parser) | `round_i32_fpc_impl` | `round_i32_saturating_impl` | equal on all in-range finite; diverges out of i32 range |
+| solver execution (dss-sparse `compat`) | `PARALLEL_FACTORIZATION`/`ITERATIVE_REFINEMENT` = false | true | declaration only — see below |
+
+Call sites are unconditional: `CMatrix::invert` and `mathutil::etk_invert`
+delegate to the aliases, `cdiv_fpc` is gone from `cmatrix` (7 call sites now
+call `compat::cdiv`), the four `mathutil` single-point returns call
+`compat::stddev_single_point`, `RPNCalculator::DEG_TO_RAD/RAD_TO_DEG` are built
+from `compat::PI`, and `parser::convert::pascal_round_to_i32` delegates to
+`compat::round_i32`. The parity `invert` kernel calls `cdiv_fpc_impl`
+**directly**, never the alias — F.3 must not drag it along when it flips `cdiv`.
+
+**Two rows measured out of the split (recorded, not invented).**
+(a) *Sym components.* The plan table puts `SymComp::official` on the parity
+side; the Pascal says otherwise — `mathutil.pas:518-548` selects
+`SelectAs2pVersion(False)` = "ours" = `SymComp::precise` at initialization, and
+the `official` truncated pair is reachable only under upstream's
+`DSSCompatFlag.BadPrecision` env flag (`CAPI_DSS.pas:315`), which neither gating
+oracle sets. So parity == default == `precise` and an alias would select the
+same impl twice: **no split**, like the Y-triplet row. Both variants stay
+compiled and a new test
+(`mathutil::tests::sym_comp_official_vs_precise_gap_is_the_truncated_sin60_constant`)
+pins the gap at 4.50e-10 relative (the truncated `sin 60° = 0.866025403`).
+(b) *Solver execution.* The knobs are **declared, not yet wired**, and the doc
+says so: `SparseSet::factor` goes through faer's `Lu::try_new_with_symbolic`,
+which reads faer's *global* parallelism (`get_global_parallelism()` — with
+faer's default `rayon` feature that is `Par::rayon(0)`, **not** `Par::Seq`, so
+the plan-table wording is aspirational today) and takes no per-call `Par`.
+Overriding it needs the lower-level `factorize_numeric_lu` path = M3c's job;
+WP-R1 owns refinement. F.1 does not touch either — that would not be
+bit-neutral.
+
+**CI grep gate.** `crates/dss-core/tests/oracle_parity_cfg_gate.rs` walks every
+`.rs` under `crates/*/{src,tests,benches,examples}` (asserting the walk found
+>100 files) and fails if `feature = "oracle-parity"` appears outside a `compat`
+module or test code, printing file:line. Non-vacuity: it also asserts the three
+`compat.rs` files exist and each still carries the cfg. **Verified
+feature-sensitive by doing it** — a probe `#[cfg(feature = "oracle-parity")]`
+inserted at `dss-cli/src/main.rs:1` failed the gate with that exact line, and
+was reverted.
+
+**Inventory unchanged** (F.1 resolves nothing — that is F.3's sweep):
+`TODO(compat)` **123** workspace / **117** `crates/dss-core/src`, `HIDE_015X`
+**17**, exactly the pre-Stage-F values. Markers moved with the bodies they
+document (the `CMatrix::invert` marker into `compat`, the RPN-pi and FPC-round
+markers into `dss-parser/compat.rs`); no marker was added or deleted, and the
+prose in the new files avoids the literal tag so the grep stays exact.
+
+**Deferred to F.3 (recorded, not silently dropped).** The three bug-fix branches
+(`Iresidual` offset, `Bus_Int_Duration` skip, Monitor `BaseFrequency` inherit)
+get their seams *with* their fixed branch and expected-value tests — writing
+half of them here would land untested code. `complexutil`'s truncated
+`3.14159265359`/`57.29577951` + `pascal_atan2` are the same upstream-inexactness
+family as the pi row but a different kernel (a hand-rolled `atan2`, not just a
+constant): F.3 decides fold-in vs escape-record; F.1 deliberately did not extend
+the table.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace` and the same with the feature
+— including the unconditional 514-case corpus gate in each. `git diff --stat --
+tests/` empty (no golden, tolerance, ledger or deck touched); `git status
+--short tests/corpus` empty after every run. New tests: 16 (9 dss-core compat,
+4 dss-parser compat, 2 dss-sparse compat, 1 mathutil sym-comp) + the grep gate;
+0 removed, 0 `#[ignore]`.
+
 ### DE_PASCALIZE wave 3 — settler pass: both audits settled (2 fixes, 4 pins strengthened, 3 proven non-fixes) (branch `depas-final`, 2026-07-26)
 
 Two independent audits of the wave-3 range (`7c4a89b6..d63c163f`, 7 commits, 91

@@ -5,11 +5,12 @@
 
 use num_complex::Complex64;
 
+use crate::compat;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
-use crate::support::cmatrix::{CMatrix, StampBl, cdiv_fpc};
+use crate::support::cmatrix::{CMatrix, StampBl};
 use crate::support::line_constants::csqrt_fpc;
 use crate::support::line_units::{LineUnits, convert_line_units};
 use crate::support::mathutil::SymComp;
@@ -24,7 +25,7 @@ const CAP_EPSILON: Complex64 = Complex64::new(0.0, 4.2e-8);
 const EPSILON: f64 = 1.0e-12;
 
 /// FPC `ucomplex` `cinv` — `1/z` as the **naive** `conj(z)/|z|²`
-/// (`re/(re²+im²)`, `-im/(re²+im²)`), NOT Smith's form (that is `cdiv_fpc`).
+/// (`re/(re²+im²)`, `-im/(re²+im²)`), NOT Smith's form (that is `compat::cdiv`).
 /// Used by `TLineObj.DoLongLine` for `Cinv(ExpP)` / `Cinv(Zc)`.
 #[inline]
 fn cinv_fpc(z: Complex64) -> Complex64 {
@@ -188,7 +189,7 @@ impl Line {
     /// the base-frequency per-unit-length inputs; the returned `_h` values are
     /// per-unit-length again (`Zm/Len`, `Ym.im/Len/2πf`), already carrying the
     /// frequency adjustment. Uses the RTL-faithful `Csqrt`/`Cinv`/Smith-`/`
-    /// (`csqrt_fpc`/`cinv_fpc`/`cdiv_fpc`) so the corrected YPrim matches the
+    /// (`csqrt_fpc`/`cinv_fpc`/`compat::cdiv`) so the corrected YPrim matches the
     /// oracle bit-for-bit. Returns `(r_h, x_h, c_h, g_h)`.
     fn do_long_line(&self, frequency: f64, r: f64, x: f64, c: f64) -> (f64, f64, f64, f64) {
         let len = self.len;
@@ -199,14 +200,14 @@ impl Line {
         let ys = Complex64::new(g_h, two_pi * frequency * c * len);
 
         let gamma_l = csqrt_fpc(zs * ys);
-        let zc = csqrt_fpc(cdiv_fpc(zs, ys));
+        let zc = csqrt_fpc(compat::cdiv(zs, ys));
         let exp_p = Complex64::new(gamma_l.im.cos(), gamma_l.im.sin()) * gamma_l.re.exp();
         let exp_m = cinv_fpc(exp_p);
 
         let sinh_gl = (exp_p - exp_m) * 0.5;
         let cosh_gl = (exp_p + exp_m) * 0.5;
         let zm = zc * sinh_gl;
-        let ym = cinv_fpc(zc) * cdiv_fpc(cosh_gl - 1.0, sinh_gl) * 2.0;
+        let ym = cinv_fpc(zc) * compat::cdiv(cosh_gl - 1.0, sinh_gl) * 2.0;
 
         let r_h = zm.re / len;
         let x_h = zm.im / len; // already at the desired frequency

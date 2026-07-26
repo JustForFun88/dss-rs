@@ -3,6 +3,7 @@
 //! `src/Parser` directory (`ParserDel.pas`, `RPN.pas`) from
 //! `.inputs/dss_capi`. See PORTING_PLAN.md at the repository root.
 
+pub mod compat;
 pub mod parser;
 pub mod rpn;
 pub mod vars;

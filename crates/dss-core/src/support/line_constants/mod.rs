@@ -12,7 +12,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::support::cmatrix::{CMatrix, cdiv_fpc};
+use crate::compat;
+use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::LineUnits;
 use crate::support::mathutil::{bessel_i0, bessel_i1};
 use num_complex::Complex64;
@@ -86,7 +87,7 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
 // `sqrt(re²+im²)` modulus, and `ln(cmod)+j·arctan2`. They round the last bit
 // differently, so a faithful 1:1 port of the DERI/cable earth terms (which call
 // `Csqrt`/`Cln`/`Cabs`) must use these — exactly as the matrix inverse uses
-// `cdiv_fpc`. Proven bit-for-bit against the x86_64 FPC `ucomplex` RTL.
+// `compat::cdiv`. Proven bit-for-bit against the x86_64 FPC `ucomplex` RTL.
 //
 // `Cabs`/`cmod`: `sqrt(re*re+im*im)` (DSSUcomplex `Cabs`, ucomplex `cmod`), NOT
 // `hypot`.
@@ -97,7 +98,8 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
 // vs 2 ULP; `cmod` via overflow-safe `hypot` vs naive `√(re²+im²)`). The clean
 // fix is to drop all three for `num_complex`'s `.norm()`/`.sqrt()`/`.ln()` in
 // the §6 precision pass, regenerating the geometry/DERI/cable goldens
-// deliberately. `cdiv_fpc` is deliberately NOT in this set: Smith's division is
+// deliberately. The complex-division kernel (`compat::cdiv`) is deliberately
+// NOT in this set: Smith's division is
 // both more accurate (2 ULP, vs naive 4 / `Complex::fdiv` 9) and overflow-robust,
 // so it stays permanently.
 #[inline]
@@ -533,7 +535,7 @@ impl LineConstants {
                 let i0i1 = if cabs_fpc(alpha) > 35.0 {
                     Complex64::new(1.0, 0.0)
                 } else {
-                    cdiv_fpc(bessel_i0(alpha), bessel_i1(alpha))
+                    compat::cdiv(bessel_i0(alpha), bessel_i1(alpha))
                 };
                 c1_j1 * i0i1 * ((cond.rdc * self.ffrequency * MU0).sqrt() / 2.0)
             }

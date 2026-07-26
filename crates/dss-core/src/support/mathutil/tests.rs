@@ -51,6 +51,40 @@ fn sym_comp_round_trip_official() {
     }
 }
 
+/// Stage F (Part IV.2) lists "sym components" as a dual kernel with the
+/// `official` matrices on the parity side — but the *pinned oracle does not use
+/// them*: `mathutil.pas:548` ends its initialization with
+/// `SelectAs2pVersion(False)` (= "ours" = [`SymComp::precise`]), and the
+/// `official` pair is reachable only through upstream's
+/// `DSSCompatFlag.BadPrecision` env flag (`CAPI_DSS.pas:315`), which no gating
+/// oracle sets. So this row needs **no lane split** — parity == default ==
+/// `precise` — and `compat.rs` carries no alias for it. Both variants stay
+/// compiled, and this test pins the gap between them so the claim stays
+/// measured rather than asserted.
+#[test]
+fn sym_comp_official_vs_precise_gap_is_the_truncated_sin60_constant() {
+    let precise = SymComp::precise();
+    let official = SymComp::official();
+    let vph = [c(1.02, 0.05), c(-0.6, -0.85), c(-0.45, 0.9)];
+    let mut a = [Complex64::ZERO; 3];
+    let mut b = [Complex64::ZERO; 3];
+    precise.phase_to_sym(&vph, &mut a);
+    official.phase_to_sym(&vph, &mut b);
+
+    let scale = a.iter().fold(0.0f64, |m, v| m.max(v.norm()));
+    let worst = a
+        .iter()
+        .zip(&b)
+        .fold(0.0f64, |m, (x, y)| m.max((x - y).norm() / scale));
+    // sin(60°) truncated to 0.866025403 is 4.4e-10 relative and the transform
+    // carries it straight through. Measured 2026-07-26: 4.50e-10.
+    assert!(
+        worst > 1e-12,
+        "the two variants must really differ: {worst:e}"
+    );
+    assert!(worst < 1e-8, "official-vs-precise drifted: {worst:e}");
+}
+
 #[test]
 fn zero_sequence_set_maps_to_pure_v0() {
     let t = SymComp::precise();
