@@ -32,9 +32,14 @@ Distinct from **§2 owned deferrals** (a live plan tracks them — do NOT re-por
 Transformer/AutoTrans `WdgCurrents` now render via a `&mut` JSON refresh route
 (`obj_to_json_mut`/`class_batch_to_json_mut`); golden `transformer_micro` Full.
 **Capacitor `CMatrix` = proven UB non-port** (uninitialized heap, nondeterministic
-across oracle processes) — not reproduced. Two out-of-scope blockers to an
-AutoTrans Full golden and a Generator/Storage Full golden are recorded in STATUS
-Standing follow-ups (AutoTrans JSON array-alt metadata; NOT_PORTED ShaftModel).
+across oracle processes) — not reproduced.
+**Both remaining §1.3 blockers CLOSED 2026-07-26** on `depas-og` — see STATUS
+§OG-1.3a. The AutoTrans array-alternative metadata turned out already landed
+(`430d033`, og15c-B6), so the gap was the missing golden: `autotrans_micro`
+(default + Full sweep) and `autotrans_solved` (NONZERO Full `WdgCurrents`, the
+auto's own `GetAllWindingCurrents`) now pin it byte-exact. The
+`ShaftModel`/`ShaftData` Full-render gap re-triaged clean post-WM.3/WM.4 and is
+pinned by `der_usermodel_full` (Generator + Storage + PVSystem).
 
 ### 1.4 AltDSS JSON **import** (`Obj_Circuit_FromJSON_`)
 **PORTED 2026-07-18** on `og14-json-import` — see STATUS §OG-1.4. `Dss::circuit_from_json`

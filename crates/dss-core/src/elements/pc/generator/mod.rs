@@ -196,7 +196,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("DynamicExp", "DynamicEq"),
         PropDef::string_list("DynOut"),
         // PCClass tail:
-        PropDef::object_ref("Spectrum"),
+        PropDef::object_ref_deferred("Spectrum", "Spectrum"),
         // CktElementClass tail:
         PropDef::double("BaseFreq").flags(
             PropFlags::DYNAMIC_DEFAULT

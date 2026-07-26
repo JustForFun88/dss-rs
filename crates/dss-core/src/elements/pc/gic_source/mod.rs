@@ -67,7 +67,7 @@ pub fn class_props() -> ClassProps {
         PropDef::double("Lon2")
             .flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_DEG),
         // TPCClass tail (Spectrum is forced NIL — always empty):
-        PropDef::object_ref("Spectrum"),
+        PropDef::object_ref_deferred("Spectrum", "Spectrum"),
         // TCktElementClass tail:
         PropDef::double("BaseFreq").flags(
             PropFlags::DYNAMIC_DEFAULT

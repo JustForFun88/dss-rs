@@ -79,7 +79,7 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
         PropDef::double("VRMSTau"),
         PropDef::double("IRMSTau"),
         // PCClass tail:
-        PropDef::object_ref("Spectrum"),
+        PropDef::object_ref_deferred("Spectrum", "Spectrum"),
         // CktElementClass tail:
         PropDef::double("BaseFreq").flags(
             PropFlags::DYNAMIC_DEFAULT

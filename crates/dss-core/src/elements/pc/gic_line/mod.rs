@@ -84,7 +84,7 @@ pub fn class_props() -> ClassProps {
         // inherited DefineProperties (`GICLine.pas:249-250`): they stay in
         // `AltPropertyOrder` (occupy `$dssPropertyOrder` slots) but are excluded
         // from the JSON/schema output — the port's `SUPPRESS_JSON_LATE`.
-        PropDef::object_ref("Spectrum").flags(PropFlags::SUPPRESS_JSON_LATE),
+        PropDef::object_ref_deferred("Spectrum", "Spectrum").flags(PropFlags::SUPPRESS_JSON_LATE),
         // TCktElementClass tail:
         PropDef::double("BaseFreq").flags(
             PropFlags::DYNAMIC_DEFAULT

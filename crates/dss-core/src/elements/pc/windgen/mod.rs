@@ -160,7 +160,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("VCutIn"),
         PropDef::double("VCutOut"),
         // PCClass tail:
-        PropDef::object_ref("Spectrum"),
+        PropDef::object_ref_deferred("Spectrum", "Spectrum"),
         // CktElementClass tail:
         PropDef::double("BaseFreq").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::enabled("Enabled"),
