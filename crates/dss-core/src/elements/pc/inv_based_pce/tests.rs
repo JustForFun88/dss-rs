@@ -254,3 +254,22 @@ fn gfm_norton_positive_seq_admittance_is_isc1_invariant() {
         "zero-seq eigenvalue must differ from 1/Z1 (Isc1 lives in Z0)"
     );
 }
+
+/// `varMode` ordinals, pinned against `PVsystem.pas:32-33` (`VARMODEPF = 0`,
+/// `VARMODEKVAR = 1`; the same pair drives `Storage.pas`). Not a `DssEnum`
+/// family — the value is set by the `PF=`/`kvar=` side effects and by the
+/// InvControl/ExpControl dispatch, and read back only at the CIM boundary.
+#[test]
+fn var_mode_pins_pascal_ordinals() {
+    use crate::elements::pc::inv_based_pce::VarMode;
+
+    assert_eq!(VarMode::Pf.ordinal(), 0);
+    assert_eq!(VarMode::Kvar.ordinal(), 1);
+    for m in [VarMode::Pf, VarMode::Kvar] {
+        assert_eq!(VarMode::from_ordinal(m.ordinal()), Some(m));
+    }
+    assert_eq!(VarMode::from_ordinal(-1), None);
+    assert_eq!(VarMode::from_ordinal(2), None);
+    // `TPVSystemObj.Create` / `TStorageObj.Create` both set VARMODEPF.
+    assert_eq!(VarMode::default(), VarMode::Pf);
+}

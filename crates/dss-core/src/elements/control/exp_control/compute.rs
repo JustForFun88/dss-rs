@@ -8,7 +8,7 @@
 //! abstraction (`solution/controls/dispatch.rs`), resolved against the class
 //! registry; the fleet resolves lazily on the first `Sample`.
 
-use crate::elements::pc::pvsystem::VARMODE_KVAR;
+use crate::elements::pc::inv_based_pce::VarMode;
 use crate::elements::traits::ElemId;
 use crate::solution::ControlMode;
 use crate::util::fmt_g;
@@ -85,7 +85,7 @@ pub(crate) trait ExpDispatchEnv {
     /// Pascal `PVSys.VWmode := value`.
     fn pv_set_vw_mode(&mut self, r: ElemId, value: bool);
     /// Pascal `PVSys.Varmode := value` (VARMODEKVAR).
-    fn pv_set_var_mode(&mut self, r: ElemId, mode: i32);
+    fn pv_set_var_mode(&mut self, r: ElemId, mode: VarMode);
     /// Pascal `PVSys.SetNominalDEROutput`.
     fn pv_set_nominal(&mut self, r: ElemId);
     /// Pascal `PVSys.PresentkW := value` (writes `kWRequested`).
@@ -270,7 +270,7 @@ impl ExpControl {
             let snap = env.pv_snap(r);
 
             env.pv_set_vw_mode(r, false);
-            env.pv_set_var_mode(r, VARMODE_KVAR);
+            env.pv_set_var_mode(r, VarMode::Kvar);
             self.ctrl_vars[i].f_target_q = 0.0;
             let qbase = snap.kva_rating;
             let qinvmaxpu = snap.kvar_limit / qbase;

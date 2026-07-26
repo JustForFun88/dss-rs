@@ -24,7 +24,7 @@ use crate::support::dynamics::IterationFlag;
 use crate::support::mathutil::PiCtrl;
 use crate::util::CDOUBLEONE;
 
-use super::{STORE_DISCHARGING, STORE_IDLING, Storage};
+use super::{Storage, StorageState};
 
 /// Pascal `NumBaseStorageVariables = 25` / `NumStorageVariables = 34`
 /// (Storage.pas l.29).
@@ -65,7 +65,7 @@ impl Storage {
         }
 
         // Pascal `if FState <> STORE_DISCHARGING then Exit`.
-        if self.f_state != STORE_DISCHARGING {
+        if self.f_state != StorageState::Discharging {
             return;
         }
 
@@ -192,7 +192,7 @@ impl Storage {
         let v_error = self.base.dyn_vars.v_error;
 
         for i in 0..nphases {
-            if self.f_state == STORE_DISCHARGING {
+            if self.f_state == StorageState::Discharging {
                 if iteration_flag == IterationFlag::NewTimeStep {
                     self.base.dyn_vars.it_history[i] =
                         self.base.dyn_vars.it[i] + 0.5 * h * self.base.dyn_vars.dit[i];
@@ -243,7 +243,7 @@ impl Storage {
                     // trip to IDLING.
                     if vg_mag < min_vs || vg_mag > max_vs {
                         self.base.dyn_vars.isp = 0.01; // turn off the inverter
-                        self.f_state = STORE_IDLING;
+                        self.f_state = StorageState::Idling;
                         if vg_mag > max_vs {
                             self.base.dyn_vars.vgrid[i].mag = max_vs;
                         }
@@ -443,7 +443,7 @@ impl Storage {
                 i_actual = 0.0; // match %CutOut
             }
 
-            if f_state != STORE_DISCHARGING {
+            if f_state != StorageState::Discharging {
                 i_actual = (p_idling / self.base.dyn_vars.vgrid[i].mag) / nphases as f64;
             }
 
@@ -488,10 +488,10 @@ impl Storage {
         let p1 = self.terminal_power(sys, node_v, 1).re * 0.001; // Power[1] in kW
         let dc = self.dckw(sys, node_v);
         match self.f_state {
-            STORE_IDLING => p1.abs() - dc.abs(),
-            super::STORE_CHARGING => p1.abs() - dc.abs(),
-            STORE_DISCHARGING => dc - p1.abs(),
-            _ => 0.0,
+            StorageState::Idling => p1.abs() - dc.abs(),
+            StorageState::Charging => p1.abs() - dc.abs(),
+            StorageState::Discharging => dc - p1.abs(),
+            StorageState::Other(_) => 0.0,
         }
     }
 
@@ -500,25 +500,27 @@ impl Storage {
         let dc = self.dckw(sys, node_v).abs();
         let p_idling = self.p_idling;
         match self.f_state {
-            STORE_IDLING => 0.0,
-            super::STORE_CHARGING => {
+            StorageState::Idling => 0.0,
+            StorageState::Charging => {
                 if dc - p_idling > 0.0 {
                     (dc - p_idling) * (1.0 - 0.01 * self.pct_charge_eff)
                 } else {
                     -(dc - p_idling) * (1.0 / (0.01 * self.pct_discharge_eff) - 1.0)
                 }
             }
-            STORE_DISCHARGING => (dc + p_idling) * (1.0 / (0.01 * self.pct_discharge_eff) - 1.0),
-            _ => 0.0,
+            StorageState::Discharging => {
+                (dc + p_idling) * (1.0 / (0.01 * self.pct_discharge_eff) - 1.0)
+            }
+            StorageState::Other(_) => 0.0,
         }
     }
 
     /// Pascal `TStorageObj.Get_kWDesired` (l.2626).
     fn get_kw_desired(&self) -> f64 {
         match self.state_desired {
-            super::STORE_CHARGING => -self.pct_kw_in * self.kw_rating / 100.0,
-            STORE_DISCHARGING => self.pct_kw_out * self.kw_rating / 100.0,
-            _ => 0.0,
+            StorageState::Charging => -self.pct_kw_in * self.kw_rating / 100.0,
+            StorageState::Discharging => self.pct_kw_out * self.kw_rating / 100.0,
+            StorageState::Idling | StorageState::Other(_) => 0.0,
         }
     }
 
@@ -625,13 +627,13 @@ impl Storage {
                 // Pascal Storage.pas l.3003-3017: non-GFM reports `FState` directly;
                 // GFM reports the *effective* state from the delivered-power sign.
                 if !self.base.gfm_mode {
-                    self.f_state as f64
+                    self.f_state.ordinal() as f64
                 } else if self.check_if_delivering(sys, node_v) {
-                    STORE_DISCHARGING as f64
+                    StorageState::Discharging.ordinal() as f64
                 } else if self.kwh_stored == self.kwh_rating {
-                    STORE_IDLING as f64
+                    StorageState::Idling.ordinal() as f64
                 } else {
-                    super::STORE_CHARGING as f64
+                    StorageState::Charging.ordinal() as f64
                 }
             }
             3 | 4 => {
@@ -639,7 +641,7 @@ impl Storage {
                 // and (not GFM_mode); A := A or B` (Storage.pas l.3018-3028). The
                 // `&&` short-circuits `CheckIfDelivering` to the GFM path only.
                 let a0 = (self.base.gfm_mode && self.check_if_delivering(sys, node_v))
-                    || (self.f_state == STORE_DISCHARGING && !self.base.gfm_mode);
+                    || (self.f_state == StorageState::Discharging && !self.base.gfm_mode);
                 let a = if i == 4 { !a0 } else { a0 };
                 if a {
                     self.terminal_power(sys, node_v, 1).re.abs() * 0.001
@@ -734,7 +736,7 @@ impl Storage {
         }
         match i {
             1 => self.kwh_stored = value,
-            2 => self.f_state = value.trunc() as i32,
+            2 => self.f_state = StorageState::from_ordinal(value.trunc() as i32),
             3..=13 | 22..=25 => {} // read-only in Pascal
             14 => self.vreg = value,
             15 => self.vavg = value,

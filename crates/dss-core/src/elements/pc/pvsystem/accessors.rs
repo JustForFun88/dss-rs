@@ -19,7 +19,8 @@ use crate::obj::base::{DssObjData, DssObject, UserModelLoad};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
-use super::{PVSystem, VARMODE_KVAR, VARMODE_PF, nconds_for_connection, prop};
+use super::{PVSystem, nconds_for_connection, prop};
+use crate::elements::pc::inv_based_pce::VarMode;
 
 impl CktElement for PVSystem {
     fn cd(&self) -> &CktElementData {
@@ -646,11 +647,11 @@ impl DssObject for PVSystem {
             }
             KV => self.update_vbase(),
             PF => {
-                self.base.var_mode = VARMODE_PF;
+                self.base.var_mode = VarMode::Pf;
                 self.cd.obj.clear_seq(KVAR);
             }
             KVAR => {
-                self.base.var_mode = VARMODE_KVAR;
+                self.base.var_mode = VarMode::Kvar;
                 self.cd.obj.clear_seq(PF);
             }
             KVA => {

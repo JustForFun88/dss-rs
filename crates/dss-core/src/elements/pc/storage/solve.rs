@@ -16,7 +16,7 @@ use crate::support::complexutil::{cang, rotate_phasor_deg, rotate_phasor_rad};
 use crate::support::mathutil::SymComp;
 use crate::util::sqrt3;
 
-use super::{STORE_CHARGING, STORE_DISCHARGING, Storage};
+use super::{Storage, StorageState};
 
 impl Storage {
     /// Pascal `CalcYPrimMatrix` (power-flow path). `Y` depends on the state:
@@ -66,13 +66,13 @@ impl Storage {
         // A discharging **grid-forming** unit stamps the CalcGFMYprim short-circuit
         // admittance directly and exits (Pascal `if GFM_mode then Exit`).
         let mut y = match self.f_state {
-            STORE_CHARGING => self.yeq_discharge,
-            STORE_DISCHARGING if !self.base.gfm_mode => -self.yeq_discharge,
-            STORE_DISCHARGING => {
+            StorageState::Charging => self.yeq_discharge,
+            StorageState::Discharging if !self.base.gfm_mode => -self.yeq_discharge,
+            StorageState::Discharging => {
                 // GFM discharging: `with dynVars, StorageVars` seeds the GFM
                 // impedance inputs, then `CalcGFMYprim` fills YMatrix in place.
                 self.base.dyn_vars.rated_kv_ll = self.kv_storage_base; // PresentkV
-                self.base.dyn_vars.discharging = self.f_state == STORE_DISCHARGING;
+                self.base.dyn_vars.discharging = self.f_state == StorageState::Discharging;
                 self.base.dyn_vars.m_kva_rating = self.f_kva_rating;
                 let order = ymatrix.order();
                 let gfm = self.base.dyn_vars.calc_gfm_yprim(nphases, order);
@@ -364,9 +364,9 @@ impl Storage {
     /// `BaseV` when the amps limiter (InvControl GFM mode) is saturating.
     pub(super) fn do_gfm_mode(&mut self, node_v: &[Complex64]) {
         let _ = node_v; // internal source voltage — independent of node voltages
-        // dynVars.BaseV := VBase; Discharging := (StorageState = STORE_DISCHARGING).
+        // dynVars.BaseV := VBase; Discharging := (StorageState = StorageState::Discharging).
         self.base.dyn_vars.base_v = self.base.v_base;
-        self.base.dyn_vars.discharging = self.f_state == STORE_DISCHARGING;
+        self.base.dyn_vars.discharging = self.f_state == StorageState::Discharging;
         if self.base.dyn_vars.i_comp > 0.0 {
             let z_sys =
                 2.0 * (self.base.v_base * self.base.dyn_vars.i_limit) - self.base.dyn_vars.i_comp;

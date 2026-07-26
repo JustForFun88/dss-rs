@@ -75,7 +75,7 @@ fn derlist_syncs_pvsystemlist() {
 mod dispatch {
     use super::super::compute::{ExpDispatchEnv, PvFind, PvSnap};
     use super::super::{ExpControl, prop};
-    use crate::elements::pc::pvsystem::VARMODE_KVAR;
+    use crate::elements::pc::inv_based_pce::VarMode;
     use crate::elements::traits::ElemId;
     use crate::obj::base::DssObject;
     use crate::solution::ControlMode;
@@ -109,7 +109,7 @@ mod dispatch {
         // --- dispatch outputs ---
         avr_mode: bool,
         vw_mode: bool,
-        var_mode: i32,
+        var_mode: VarMode,
         requested_kw: f64,
         pu_pmpp: f64,
         requested_kvar: f64,
@@ -133,7 +133,7 @@ mod dispatch {
                 present_kvar: 0.0,
                 avr_mode: false,
                 vw_mode: true,
-                var_mode: 0, // VARMODE_PF
+                var_mode: VarMode::Pf,
                 requested_kw: present_kw,
                 pu_pmpp: 1.0,
                 requested_kvar: 0.0,
@@ -213,7 +213,7 @@ mod dispatch {
         fn pv_set_vw_mode(&mut self, r: ElemId, value: bool) {
             self.pvs[Self::idx(r)].vw_mode = value;
         }
-        fn pv_set_var_mode(&mut self, r: ElemId, mode: i32) {
+        fn pv_set_var_mode(&mut self, r: ElemId, mode: VarMode) {
             self.pvs[Self::idx(r)].var_mode = mode;
         }
         fn pv_set_nominal(&mut self, _r: ElemId) {}
@@ -312,7 +312,7 @@ mod dispatch {
         approx(ec.ctrl_vars[0].f_last_iter_q, -185.1);
         approx(env.pvs[0].requested_kvar, -185.1);
         approx(ec.ctrl_vars[0].f_prior_vpu, 1.02);
-        assert_eq!(env.pvs[0].var_mode, VARMODE_KVAR);
+        assert_eq!(env.pvs[0].var_mode, VarMode::Kvar);
         assert!(!env.pvs[0].vw_mode);
         assert!(env.loads_need_updating);
         // Pending cleared after the action.
