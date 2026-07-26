@@ -7,6 +7,91 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R3 — SETTLER PASS (two audits: code = 1 low + 5 notes, tests = PASS; every finding settled empirically; `DssObject::as_conductor` removed as the last type probe; final gate green) (branch `depas-r3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base of the wave = `update` @ `67d2965`; settler base
+= the R3.4 tip `392c7c0`. Ritual 0 held at start **and** before each commit: 186
+`.pas` under `.inputs/dss_capi` (PowerShell recursion — never a delete through the
+junction); `cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Audit verdicts.** `audit-code` = FINDINGS (1 **low**, 5 notes — the low one
+explicitly "impact: none in practice"); `audit-tests` = **PASS** (3 low-severity
+strengthening suggestions, no defect). No finding claimed a behavior regression,
+and none was dismissed by argument: each was reproduced or refuted with an
+experiment, and the two that motivated a *test* were both proven to go red under
+a deliberate mutation before the mutation was reverted.
+
+**Disposition of every finding (settled empirically, not by argument):**
+
+| # | finding | settler disposition (experiment) |
+|---|---|---|
+| C-1 (low) | conductor NIL fallback: on `ConductorObj::from_resolved == None` the new `set_wires` (`line/code.rs:274`, `line_geometry/edit.rs:143`) `continue`s, skipping the `norm_amps`/`emerg_amps` writes the old `clone_box()` path did | **CONFIRMED unreachable, now PINNED rather than argued.** Re-derived the reachability myself: both `ObjectRefArray` paths in `class_props/parse.rs` resolve only via `foreign.find(<declared class>, …)` (l.272 fixed-class, l.696 proxy after the `object_classes` membership test → #10103), and `ForeignClasses::lookup` scans for the class name and returns only that class's arena — so a foreign object cannot reach a conductor slot. The only other `set_object_ref_array` callers are the two whitebox tests. **FIX: a coupling guard test** (below) replaces the reading argument; code left as-is (restoring the old writes would add dead code on a proven-unreachable branch). |
+| C-2 (note) | `schema_skeleton`/`extract_schema_skeleton_json` + `NewObjectFn`/`DssClass::new_object` are `pub` removals (semver-visible) | **ACKNOWLEDGED, no change.** Re-verified zero callers at the base (`git grep` over `67d2965`) and zero today; the plan's dead-code sweep sanctions it. Recorded here so it lands in release notes if `dss-core` is consumed as a library. |
+| C-3 (note) | `ClassArena::pair_ckt_mut` panics with `"triple_mut: object index out of range"` | **FIXED** → `"pair_ckt_mut: …"` (`obj/arena.rs:506`). Checked no `#[should_panic(expected …)]` reads that string; the two `traits.rs` messages (`split2` = `pair_mut`, `split3` = `triple_mut`) were already correct. |
+| C-4 (note) | doc block describing `ckt_self_ref`/`ckt_self_mut` is attached to `macro_rules! clone_ckt_view` | **FIXED** — paragraph moved onto `ckt_self_ref`, `ckt_self_mut` given its "Mutable […]" one-liner; `clone_ckt_view` keeps its own paragraph only. |
+| C-5 (note) | `DssObject::as_conductor` survives with a single consumer (`cim/export.rs::conductor_geom_amps`) — "the natural next Category-C cleanup" | **FIXED (scope call: it is Category C, which R3.4 owned).** Its three callers each walk their **own** `WireData`/`TSData`/`CNData` arena, so the helper became `conductor_geom_amps::<T: ArenaClass + ConductorData>(&ClassArena, oi)` = `arena.get::<T>(oi).map(…)` — same `Option` shape, same unreachable `None` arm, same `continue`. `DssObject::as_conductor` + its 3 impls removed. **The last runtime type probe in the tree is gone.** |
+| C-6 (note) | verification summary: all binding invariants green | **CONFIRMED independently** — re-derived table below. |
+| T-1/2/3/7/8 (notes) | scope/bit-neutrality, gate reproduction, the two re-oracled renames, test-context restructuring, dead-code sweep + escape records | **CONFIRMED**, re-measured below; nothing to change. |
+| T-4 (low) | `typed_accessors_match_the_any_downcast_for_every_class` pushes ONE object per class, so every index is 0 — a class-generic `get(0)`-instead-of-`get(idx)` slip would pass | **FIXED + proven.** The macro now pushes **two** objects per class and address-checks `get`/`get_mut`/`all()[i]` against `arena.obj(i)` at **both** indices, asserts the two slots are distinct, moves the out-of-range probe to index 2, and round-trips `id`/`idx_of`/`try_ckt_elem*`/`clone_ckt` at index 1. **Mutation probe:** patching `ClassArena::get` to `T::arena_vec(self)?.get(0)` turns the test **red** (it was green under that mutation before); reverted. |
+| T-5 (low) | the `monte_carlo` `FaultStore` double's `arena(_cls)`/`arena_mut(_cls)` ignore the class ordinal, so it cannot catch wrong-ordinal routing in `TypedStore` | **FIXED.** `obj`/`obj_mut`/`arena`/`arena_mut` now `assert_fault_ord(...)` against `<Fault as ArenaClass>::CLASS_ORD`, so a foreign ordinal panics instead of being silently answered with the Fault arena. Tests still green (the production path really does address it with the Fault ordinal). |
+| T-6 (low) | nothing pins the `ConductorObj` ⇄ `object_classes` coupling: add a 4th conductor class and the slot silently goes NIL | **FIXED + proven** (this is also C-1's pin). New `conductor_data::tests::conductor_property_classes_match_the_conductor_obj_variants`: asserts `CONDUCTOR_PROXY_CLASSES == [WireData, CNData, TSData]`; walks all **11** conductor-slot properties (Line `Wires`/`CNCables`/`TSCables`/`Conductors`, LineGeometry `Wire`/`Wires`/`CNCable`/`CNCables`/`TSCable`/`TSCables`/`Conductors`) and requires every declared `object_class`/`object_class2`/`object_classes` entry to be a `ConductorObj` variant, that all three are reached, that each really narrows to its own arm via a live `ResolvedObj`, and that a `LineSpacing` object does **not**. **Mutation probe:** retargeting Line `Wires` to `LineSpacing` turns it **red**; reverted. |
+
+**Final grep metrics (settler-measured, `rg -c … crates/dss-core/src`, summed lines / files):**
+
+| metric | base `67d2965` | R3 HEAD | delta | note |
+|---|---|---|---|---|
+| `ElemRef` | 937 / 130 f | **0** | −937 | type gone (R3.1) |
+| `downcast_ref\|downcast_mut` | 369 / 73 f | **0** | −369 | zero **code and prose** |
+| `as_any` | 463 / 107 f | **0** | −463 | zero code and prose |
+| `as_ckt_element` | 253 / 83 f | **5 / 1 f** | −248 | all 5 are doc prose in `obj/arena.rs` |
+| `as_conductor` | 14 / 10 f | **2 / 2 f** | −12 | both doc prose; `fn as_conductor` defs 4 → **0** (this pass) |
+| `clone_box` | 69 / 58 f | **2 / 2 f** | −67 | both doc prose |
+| `Box<dyn DssObject>` | — | **7 / 5 f** | — | all 7 doc prose; owned storage = **0** |
+| `std::any` | — | **0** | — | no `Any` anywhere |
+| `fn recalc_element_data` | 43 | **1** | −42 | the live 2-arg WindGen inherent |
+| `TODO(compat)` | 117 / 68 f | **117 / 68 f** | **0** | invariant held |
+| `#[cfg(feature = "oracle-parity")]` | 0 | **0** | 0 | Stage F's job, untouched |
+
+Scope re-derived independently: the union of `git diff --name-only 67d2965` and the
+settler working set touches **nothing** outside `crates/dss-core/src/**` except
+`STATUS.md` — zero churn in `tests/golden`, `tests/corpus` (decks, manifests,
+`ledger.json`, `population.lock`), `tools/golden`, `tests/TOLERANCE_NOTES.md`,
+`crates/dss-core/tests/`, `crates/dss-epri`, `crates/dss-sparse`. All 5 `#[ignore]`s
+are pre-existing, each with a justification string, in files the wave never touched.
+Pin tests `arena_order_matches_registry` and
+`find_ckt_element_tie_breaks_by_registration_order` present and green.
+
+**Bit-neutrality of the settler diff.** Three of the six changes are test-only
+(`arena.rs` test macro, `monte_carlo` fixture asserts, the new conductor guard
+test); two are comment/panic-string only (C-3, C-4 — the string is observable
+solely through a panic on a proven-unreachable index). The one production change
+(C-5) swaps a vtable probe for a compile-time match over the same three classes
+and keeps the helper's `Option` shape and its callers' `continue` verbatim; the
+values read (`geom()`, `amps().0`) come from the same concrete `impl ConductorData`
+the vtable dispatched to. No list, loop, `find_*` tie-break, control-queue
+insertion, stamp or accumulation order is touched; no arithmetic is in the diff.
+
+**Gate (settler, FULL, SOLO, toolchain guard first — `cargo` = `.cargo\bin`).**
+`cargo fmt --all --check` exit 0; `cargo clippy --workspace --all-targets -- -D
+warnings` exit 0; `cargo test --workspace` **exit 0** — **66 `test result: ok`
+groups, 1990 passed, 0 failed, 5 ignored**, `corpus_gate_all_cases_match_engines
+… ok` (25 passed, 134.7 s, both channels capi_v0145 + r4133), run solo, no name
+filters. The +1 over R3.4's 1989 is exactly the new conductor coupling guard.
+Corpus left pristine: the 10 run-artifacts listed by `git status tests/corpus`
+(`AutoTrans/auto3bus_load_power.txt` + 9 `StorageControllerTechNote/Support/
+IEEE8500u_*.csv`) removed by exact name — no wide `git clean`. Tree clean.
+
+**Deliberately NOT fixed (recorded, not dropped).**
+1. **C-2's public-surface removals** stay removed — callerless at the base and
+   sanctioned by the plan's dead-code sweep. Flagged for release notes only.
+2. **R3.1 sub-step (iv) remainder** — `geometry_obj` / the `xfmr_code_ref` family
+   as typed `Idx<T>`. Still open, still out of R3's scope (neither `Any`
+   consumers nor `dyn`-owned storage); carried forward exactly as R3.4 recorded
+   it. It is the one item the R3 wave hands to its successor.
+3. **C-1's code shape** — see the disposition table: the divergence lives on a
+   branch proven unreachable *and now pinned*, so restoring the old
+   `norm_amps = 0.0` writes would add dead code, not neutrality.
+
 ### DE_PASCALIZE R3.4 — Category-C conductor snapshots retyped (`ConductorObj`); `clone_box` and the dead `CktElement::recalc_element_data` REMOVED; Part I success metrics all zero (branch `depas-r3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral, type-channel only. Base = the R3.3 tip `dd06c54`.
@@ -136,7 +221,11 @@ expected and none is visible above the run-to-run noise.
    foreign object. Unreachable (the property engine resolves an `ObjectRef` only
    within its declared class(es)), and every site treats that `None` as the NIL
    slot it already had — `line/code.rs::set_wires` writes `None` explicitly so no
-   stale slot can survive.
+   stale slot can survive. *(The unreachability is no longer only an argument:
+   the R3 SETTLER record above adds
+   `conductor_property_classes_match_the_conductor_obj_variants`, which pins the
+   declared class list of all 11 conductor properties to the three
+   `ConductorObj` variants.)*
 2. `cim/export.rs::conductor_class_name` lost its `Option` (a conductor snapshot
    is always one of the three classes); its single caller used to drop the whole
    `ConductorRef` on `None` — now unreachable, same output.
@@ -213,6 +302,10 @@ R2b map listed as Category B/D, each with its callers:
 the **existing** `DssObject::as_conductor()` + `ConductorKind` behavior trait
 (R0 Category C) rather than to the arena, because their conductor operands are
 snapshot clones held inside `Line`/`LineGeometry`, not arena residents.
+*(Superseded for `conductor_geom_amps` by the R3 SETTLER record above: its three
+callers walk their own `WireData`/`TSData`/`CNData` arenas after all, so it is a
+typed arena read now and `DssObject::as_conductor` is removed. `ConductorKind`
+via `ConductorObj` stands — it is a behavior trait, not a type probe.)*
 
 **Item (e)'s escape is closed — `Monitor::take_sample` (`elements/traits.rs`).**
 The four concrete reads (mode 9 `Capacitor::states`, mode 11 `Storage` present
