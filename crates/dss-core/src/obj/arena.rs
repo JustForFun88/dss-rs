@@ -39,6 +39,7 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
+use crate::elements::pd::transformer::ControlledTransformer;
 use crate::elements::traits::CktElement;
 use crate::obj::base::DssObject;
 
@@ -184,6 +185,42 @@ macro_rules! ckt_view_mut {
     }};
 }
 
+/// The same `ckt`/`data` tag dispatch applied to a *concrete* `&T`/`&mut T`
+/// (rather than an arena slot) — how [`ArenaClass::ckt_ref`]/
+/// [`ArenaClass::ckt_mut`] upcast a typed element to `&dyn CktElement` without
+/// a downcast or an `Any` round-trip.
+/// The `ckt`/`data` tag dispatch for an *owned* clone: a boxed
+/// `dyn CktElement` for a circuit class, `None` for a data class (see
+/// [`ClassArena::clone_ckt`]).
+macro_rules! clone_ckt_view {
+    (ckt, $v:ident, $idx:ident) => {
+        Some(Box::new($v[$idx].clone()) as Box<dyn CktElement>)
+    };
+    (data, $v:ident, $idx:ident) => {{
+        let _ = ($v.len(), $idx);
+        None
+    }};
+}
+
+macro_rules! ckt_self_ref {
+    (ckt, $this:ident) => {
+        Some($this as &dyn CktElement)
+    };
+    (data, $this:ident) => {{
+        let _ = $this;
+        None
+    }};
+}
+macro_rules! ckt_self_mut {
+    (ckt, $this:ident) => {
+        Some($this as &mut dyn CktElement)
+    };
+    (data, $this:ident) => {{
+        let _ = $this;
+        None
+    }};
+}
+
 /// The one consumer macro: expands the class list into `enum ElemId`,
 /// `enum ClassArena`, and their per-variant match-arm impls (`obj`/`obj_mut`/
 /// `try_ckt_elem`/`try_ckt_elem_mut`/`ckt_elem`/`ckt_elem_mut`/`len`/
@@ -324,9 +361,9 @@ macro_rules! define_arena {
                 }
             }
 
-            /// Bounds-checked read view of object `idx` (the typed twin of the
-            /// old `objects.get(idx)`).
-            pub fn get(&self, idx: usize) -> Option<&(dyn DssObject + 'static)> {
+            /// Bounds-checked read view of object `idx` (the `dyn`-typed twin of
+            /// the old `objects.get(idx)`; [`Self::get`] is the concrete one).
+            pub fn get_obj(&self, idx: usize) -> Option<&(dyn DssObject + 'static)> {
                 (idx < self.len()).then(|| self.obj(idx))
             }
 
@@ -430,6 +467,37 @@ macro_rules! define_arena {
                 }
             }
 
+            /// An owned typed clone of circuit element `idx`, boxed as
+            /// `dyn CktElement` (`None` for a general/`DSS_OBJECT` class).
+            /// The self-monitoring control paths (a Fuse/Recloser/Relay whose
+            /// monitored element IS its controlled element) stand a snapshot
+            /// clone in for the second live borrow; this is the typed
+            /// replacement for `clone_box()` + `as_ckt_element_mut()`.
+            pub fn clone_ckt(&self, idx: usize) -> Option<Box<dyn CktElement>> {
+                match self {
+                    $( ClassArena::$variant(v) => clone_ckt_view!($kind, v, idx), )*
+                }
+            }
+
+            /// Two distinct objects of *this* arena as circuit elements
+            /// (`None` each for a general/`DSS_OBJECT` class), borrowed mutably
+            /// at once — the same-class branch of the typed control triple
+            /// (controlled + monitored element in one class, e.g. two Lines).
+            pub(crate) fn pair_ckt_mut(
+                &mut self,
+                i: usize,
+                j: usize,
+            ) -> (Option<&mut dyn CktElement>, Option<&mut dyn CktElement>) {
+                match self {
+                    $( ClassArena::$variant(v) => {
+                        let [a, b] = v
+                            .get_disjoint_mut([i, j])
+                            .expect("triple_mut: object index out of range");
+                        (ckt_self_mut!($kind, a), ckt_self_mut!($kind, b))
+                    } )*
+                }
+            }
+
             /// Three distinct objects of *this* arena, borrowed mutably at once.
             pub(crate) fn triple_mut_same(
                 &mut self,
@@ -480,6 +548,48 @@ macro_rules! define_arena {
             }
         }
 
+        $(
+            impl ArenaClass for $ty {
+                const CLASS_NAME: &'static str = $cname;
+                const CLASS_ORD: usize = ClassOrd::$variant as usize;
+
+                fn id(idx: usize) -> ElemId {
+                    ElemId::$variant(Idx::new(idx))
+                }
+
+                fn idx_of(id: ElemId) -> Option<Idx<Self>> {
+                    match id {
+                        ElemId::$variant(i) => Some(i),
+                        _ => None,
+                    }
+                }
+
+                fn arena_slice(arena: &ClassArena) -> Option<&[Self]> {
+                    match arena {
+                        ClassArena::$variant(v) => Some(v),
+                        _ => None,
+                    }
+                }
+
+                fn arena_slice_mut(arena: &mut ClassArena) -> Option<&mut [Self]> {
+                    match arena {
+                        ClassArena::$variant(v) => Some(v),
+                        _ => None,
+                    }
+                }
+
+                fn ckt_ref(&self) -> Option<&dyn CktElement> {
+                    let this = self;
+                    ckt_self_ref!($kind, this)
+                }
+
+                fn ckt_mut(&mut self) -> Option<&mut dyn CktElement> {
+                    let this = self;
+                    ckt_self_mut!($kind, this)
+                }
+            }
+        )*
+
         /// Build the empty arenas in registration order — the storage twin of
         /// the `exec/construct.rs` class list.
         fn empty_arenas() -> Vec<ClassArena> {
@@ -488,7 +598,93 @@ macro_rules! define_arena {
     };
 }
 
+/// Static link from a concrete element type to its arena slot — the compile-time
+/// replacement for `as_any().downcast_ref::<T>()`.
+///
+/// Implemented (by [`with_all_classes!`]) for every registered class exactly
+/// once, so `T` alone determines the [`ClassArena`] variant, the registration
+/// ordinal and the [`ElemId`] variant. Every method is a plain `match` on the
+/// arena enum: **no `Any`, no runtime type id, no vtable** — a class mismatch is
+/// a `None` from a static match arm, which is the same observable outcome the
+/// downcast produced.
+pub trait ArenaClass: DssObject + Sized + 'static {
+    /// The registry class name (Pascal `TDSSClass.Name`).
+    const CLASS_NAME: &'static str;
+    /// This class's 0-based registration ordinal — the same number
+    /// [`ElemId::class_ord`] returns for a handle of this class.
+    const CLASS_ORD: usize;
+
+    /// The typed handle for object `idx` of this class.
+    fn id(idx: usize) -> ElemId;
+
+    /// Narrow a handle to this class, or `None` if it names another class.
+    fn idx_of(id: ElemId) -> Option<Idx<Self>>;
+
+    /// This class's objects inside `arena`, or `None` if `arena` holds another
+    /// class.
+    fn arena_slice(arena: &ClassArena) -> Option<&[Self]>;
+
+    /// Mutable [`Self::arena_slice`].
+    fn arena_slice_mut(arena: &mut ClassArena) -> Option<&mut [Self]>;
+
+    /// This element as `&dyn CktElement`, or `None` for a general
+    /// (`DSS_OBJECT`) data class — the concrete-`&T` twin of
+    /// [`ClassArena::try_ckt_elem`], driven by the same `ckt`/`data` tag (no
+    /// `Any`, no `DssObject::as_ckt_element`).
+    fn ckt_ref(&self) -> Option<&dyn CktElement>;
+
+    /// Mutable [`Self::ckt_ref`].
+    fn ckt_mut(&mut self) -> Option<&mut dyn CktElement>;
+}
+
 with_all_classes!(define_arena);
+
+impl ClassArena {
+    /// Concrete read view of object `idx` as `&T` — the typed accessor that
+    /// replaces `arena[idx].as_any().downcast_ref::<T>()`.
+    ///
+    /// `None` if this arena holds a different class or `idx` is out of range
+    /// (exactly the two cases the downcast/`get` pair returned `None` for).
+    /// Resolved entirely at compile time through [`ArenaClass`] — no `Any`
+    /// round-trip.
+    pub fn get<T: ArenaClass>(&self, idx: usize) -> Option<&T> {
+        T::arena_slice(self)?.get(idx)
+    }
+
+    /// Mutable [`Self::get`] — replaces
+    /// `arena[idx].as_any_mut().downcast_mut::<T>()`.
+    pub fn get_mut<T: ArenaClass>(&mut self, idx: usize) -> Option<&mut T> {
+        T::arena_slice_mut(self)?.get_mut(idx)
+    }
+
+    /// Every object of this arena as a concrete slice, or `None` for another
+    /// class (the typed twin of [`Self::objs`]).
+    pub fn all<T: ArenaClass>(&self) -> Option<&[T]> {
+        T::arena_slice(self)
+    }
+
+    /// Mutable [`Self::all`].
+    pub fn all_mut<T: ArenaClass>(&mut self) -> Option<&mut [T]> {
+        T::arena_slice_mut(self)
+    }
+
+    /// The RegControl-controlled element view of object `idx`: RegControl's
+    /// `transformer=` resolves against **either** the `Transformer` or the
+    /// `AutoTrans` class (the Pascal `AutoTrans` proxy), so the controlled
+    /// element is reached through the shared [`ControlledTransformer`] trait.
+    /// `None` for any other class — the case the dispatch reports as
+    /// "Controlled element is not a Transformer or AutoTrans".
+    pub fn try_controlled_transformer_mut(
+        &mut self,
+        idx: usize,
+    ) -> Option<&mut dyn ControlledTransformer> {
+        match self {
+            ClassArena::Transformer(v) => Some(&mut v[idx]),
+            ClassArena::AutoTrans(v) => Some(&mut v[idx]),
+            _ => None,
+        }
+    }
+}
 
 // Index a `ClassArena` by object position, yielding `dyn DssObject` — the
 // drop-in shape for the pre-R1 `objects[idx]` place expression (so the ownership
@@ -863,6 +1059,93 @@ mod tests {
                 "class {cls}: ElemId::new / (class_ord, index) not inverse"
             );
         }
+    }
+
+    /// Every typed accessor ([`ArenaClass`] / [`ClassArena::get`] /
+    /// [`ClassArena::get_mut`] / [`ClassArena::clone_ckt`]) agrees, for **every**
+    /// registered class, with the `as_any().downcast_ref::<T>()` it replaces and
+    /// with the `ckt`/`data` tag. Generated from the one class list, so a new
+    /// class is covered automatically. This is the equivalence that lets the
+    /// typed store replace the `Any` round-trip.
+    macro_rules! typed_accessor_equivalence {
+        ( $( $cname:literal $variant:ident $ty:ty , $kind:ident ; )* ) => {
+            #[test]
+            fn typed_accessors_match_the_any_downcast_for_every_class() {
+                let mut covered = 0usize;
+                $({
+                    let cls = <$ty as ArenaClass>::CLASS_ORD;
+                    assert!(
+                        ElemId::CLASS_NAMES[cls].eq_ignore_ascii_case($cname),
+                        "{}: CLASS_ORD {cls} points at {:?}",
+                        $cname,
+                        ElemId::CLASS_NAMES[cls]
+                    );
+                    assert!(<$ty as ArenaClass>::CLASS_NAME.eq_ignore_ascii_case($cname));
+
+                    let mut e = Elements::new();
+                    e.push_new(cls, "x");
+                    let arena = &mut e.arenas[cls];
+
+                    // The typed read IS the object the downcast returns.
+                    let typed = arena.get::<$ty>(0).expect("typed read") as *const $ty;
+                    let via_any = arena
+                        .obj(0)
+                        .as_any()
+                        .downcast_ref::<$ty>()
+                        .expect("downcast") as *const $ty;
+                    assert!(std::ptr::eq(typed, via_any), "{}: typed read != downcast", $cname);
+                    // Out of range is `None`, not a panic (like `objects.get`).
+                    assert!(arena.get::<$ty>(1).is_none());
+                    assert!(arena.get_mut::<$ty>(1).is_none());
+                    assert_eq!(arena.all::<$ty>().expect("typed slice").len(), 1);
+
+                    // Handle ⇄ class round-trip.
+                    let id = <$ty as ArenaClass>::id(0);
+                    assert_eq!(id.class_ord(), cls);
+                    assert_eq!(id.index(), 0);
+                    assert_eq!(<$ty as ArenaClass>::idx_of(id).expect("same class").get(), 0);
+
+                    // The concrete `ckt`/`data` views agree with the arena tag.
+                    let is_ckt = arena.try_ckt_elem(0).is_some();
+                    assert_eq!(arena.get::<$ty>(0).unwrap().ckt_ref().is_some(), is_ckt);
+                    assert_eq!(arena.get_mut::<$ty>(0).unwrap().ckt_mut().is_some(), is_ckt);
+                    assert_eq!(arena.clone_ckt(0).is_some(), is_ckt, "{}: clone_ckt tag", $cname);
+
+                    covered += 1;
+                })*
+                assert_eq!(covered, ElemId::CLASS_NAMES.len(), "every class covered");
+            }
+        };
+    }
+    with_all_classes!(typed_accessor_equivalence);
+
+    /// A handle/arena of the wrong class narrows to `None` — the other half of
+    /// the downcast's contract (the half the per-class loop above cannot state).
+    #[test]
+    fn typed_accessors_reject_a_foreign_class() {
+        use crate::elements::pc::load::Load;
+        use crate::elements::pd::line::Line;
+
+        let line_cls = Line::CLASS_ORD;
+        let load_cls = Load::CLASS_ORD;
+        let mut e = Elements::new();
+        e.push_new(line_cls, "l0");
+        e.push_new(load_cls, "d0");
+
+        // Wrong arena → None (never a wrong-typed reinterpretation).
+        assert!(e.arenas[line_cls].get::<Load>(0).is_none());
+        assert!(e.arenas[load_cls].get::<Line>(0).is_none());
+        assert!(e.arenas[line_cls].all::<Load>().is_none());
+        assert!(e.arenas[line_cls].get_mut::<Load>(0).is_none());
+        // Wrong handle → None.
+        assert!(Load::idx_of(Line::id(0)).is_none());
+        assert!(Line::idx_of(Load::id(0)).is_none());
+        // A data class has no controlled-transformer view either.
+        assert!(
+            e.arenas[line_cls]
+                .try_controlled_transformer_mut(0)
+                .is_none()
+        );
     }
 
     /// The `ckt`/`data` tag drives [`ClassArena::try_ckt_elem`]'s direct upcast;

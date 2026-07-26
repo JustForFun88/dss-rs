@@ -100,7 +100,7 @@ impl Dss {
             .classes
             .get(r.class_ord())?
             .arena
-            .get(r.index())?
+            .get_obj(r.index())?
             .as_ckt_element()?;
         let cd = elem.cd();
         Some(PosSeqElemInfo {

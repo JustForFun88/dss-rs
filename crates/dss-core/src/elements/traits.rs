@@ -7,7 +7,9 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pd::transformer::ControlledTransformer;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
+use crate::obj::arena::{ArenaClass, ClassArena};
 use crate::solution::SolveMode;
 use crate::support::dynamics::IterationFlag;
 
@@ -87,6 +89,277 @@ pub trait ElemStore: Send {
         &mut dyn crate::obj::base::DssObject,
         &mut dyn crate::obj::base::DssObject,
     );
+
+    /// The typed arena of class ordinal `cls` — the storage the concrete
+    /// accessors of [`TypedStore`] read through (`ClassArena::get::<T>`), with
+    /// no `Any` round-trip. Dyn-safe on purpose: the generic narrowing lives in
+    /// the [`TypedStore`] extension trait on top of it.
+    fn arena(&self, cls: usize) -> &ClassArena;
+
+    /// Mutable [`ElemStore::arena`].
+    fn arena_mut(&mut self, cls: usize) -> &mut ClassArena;
+
+    /// Two **distinct** class arenas borrowed mutably at once — the class-level
+    /// half of the disjoint-borrow split ([`TypedStore`] does the object-level
+    /// half). Panics if `a == b` or either index is out of range.
+    fn arena_pair_mut(&mut self, a: usize, b: usize) -> (&mut ClassArena, &mut ClassArena);
+
+    /// Three **pairwise-distinct** class arenas borrowed mutably at once.
+    fn arena_triple_mut(
+        &mut self,
+        a: usize,
+        b: usize,
+        c: usize,
+    ) -> (&mut ClassArena, &mut ClassArena, &mut ClassArena);
+}
+
+/// Concrete (`&T` / `&mut T`) access on top of [`ElemStore`] — the DE_PASCALIZE
+/// R3 replacement for `store.obj(r).as_any().downcast_ref::<T>()`.
+///
+/// Blanket-implemented for every `ElemStore` (including `dyn ElemStore`), so the
+/// generic methods are available wherever the store is. Each one resolves the
+/// class statically through [`ArenaClass`]: a handle naming another class is a
+/// `None` from a compile-time match arm, exactly what the downcast returned.
+pub trait TypedStore: ElemStore {
+    /// The concrete `&T` behind `r`, or `None` if `r` names another class
+    /// (⇔ `store.obj(r).as_any().downcast_ref::<T>()`).
+    fn typed<T: ArenaClass>(&self, r: ElemId) -> Option<&T> {
+        let i = T::idx_of(r)?;
+        self.arena(T::CLASS_ORD).get::<T>(i.get())
+    }
+
+    /// The concrete `&mut T` behind `r` (⇔ `obj_mut(r).as_any_mut()
+    /// .downcast_mut::<T>()`).
+    fn typed_mut<T: ArenaClass>(&mut self, r: ElemId) -> Option<&mut T> {
+        let i = T::idx_of(r)?;
+        self.arena_mut(T::CLASS_ORD).get_mut::<T>(i.get())
+    }
+
+    /// A control plus its controlled element, borrowed disjointly: the control
+    /// as its concrete class `C`, the target as `&mut dyn CktElement` (`None`
+    /// when the target is a general/`DSS_OBJECT` class — the case the control
+    /// dispatch reports as "… is not a circuit element").
+    ///
+    /// Panics on aliasing refs or a `C`-class mismatch, mirroring the
+    /// `pair_mut` assert + the `expect("kind matched above")` the paired
+    /// downcast carried.
+    fn typed_ckt_pair_mut<C: ArenaClass>(
+        &mut self,
+        c: ElemId,
+        t: ElemId,
+    ) -> (&mut C, Option<&mut dyn CktElement>) {
+        let (ci, ti) = pair_indices::<C>(c, t);
+        if c.class_ord() == t.class_ord() {
+            // Control and controlled element share a class arena.
+            let (a, b) = split2::<C>(self.arena_mut(C::CLASS_ORD), ci, ti);
+            (a, b.ckt_mut())
+        } else {
+            let (ca, ct) = self.arena_pair_mut(C::CLASS_ORD, t.class_ord());
+            (expect_typed::<C>(ca, ci), ct.try_ckt_elem_mut(ti))
+        }
+    }
+
+    /// [`TypedStore::typed_ckt_pair_mut`] plus the monitored element (also a
+    /// `&mut dyn CktElement`) — the CapControl / Fuse / Relay / Recloser
+    /// "control + controlled + monitored" triple. Panics on any aliasing or a
+    /// `C`-class mismatch.
+    #[allow(clippy::type_complexity)]
+    fn typed_ckt_triple_mut<C: ArenaClass>(
+        &mut self,
+        c: ElemId,
+        t: ElemId,
+        m: ElemId,
+    ) -> (
+        &mut C,
+        Option<&mut dyn CktElement>,
+        Option<&mut dyn CktElement>,
+    ) {
+        let (ci, ti, mi) = triple_indices::<C>(c, t, m);
+        let (tc, mc) = (t.class_ord(), m.class_ord());
+        if C::CLASS_ORD == tc && tc == mc {
+            let [a, b, d] = split3::<C>(self.arena_mut(C::CLASS_ORD), ci, ti, mi);
+            (a, b.ckt_mut(), d.ckt_mut())
+        } else if C::CLASS_ORD == tc {
+            let (ct, cm) = self.arena_pair_mut(C::CLASS_ORD, mc);
+            let (a, b) = split2::<C>(ct, ci, ti);
+            (a, b.ckt_mut(), cm.try_ckt_elem_mut(mi))
+        } else if C::CLASS_ORD == mc {
+            let (cm, ct) = self.arena_pair_mut(C::CLASS_ORD, tc);
+            let (a, d) = split2::<C>(cm, ci, mi);
+            (a, ct.try_ckt_elem_mut(ti), d.ckt_mut())
+        } else if tc == mc {
+            let (ca, ctm) = self.arena_pair_mut(C::CLASS_ORD, tc);
+            let (b, d) = ctm.pair_ckt_mut(ti, mi);
+            (expect_typed::<C>(ca, ci), b, d)
+        } else {
+            let (ca, ct, cm) = self.arena_triple_mut(C::CLASS_ORD, tc, mc);
+            (
+                expect_typed::<C>(ca, ci),
+                ct.try_ckt_elem_mut(ti),
+                cm.try_ckt_elem_mut(mi),
+            )
+        }
+    }
+
+    /// RegControl's control/controlled pair: the controlled element resolves
+    /// against **either** the Transformer or the AutoTrans class (the Pascal
+    /// proxy), so it comes back as [`ControlledTransformer`]; `None` for any
+    /// other class. Panics on aliasing or a `C`-class mismatch.
+    fn typed_transformer_pair_mut<C: ArenaClass>(
+        &mut self,
+        c: ElemId,
+        t: ElemId,
+    ) -> (&mut C, Option<&mut dyn ControlledTransformer>) {
+        let (ci, ti) = pair_indices::<C>(c, t);
+        if c.class_ord() == t.class_ord() {
+            // The control's own class is neither Transformer nor AutoTrans, so
+            // a target in it is "not a Transformer or AutoTrans" — the same
+            // outcome the per-class downcast chain produced.
+            let (a, _) = split2::<C>(self.arena_mut(C::CLASS_ORD), ci, ti);
+            return (a, None);
+        }
+        let (ca, ct) = self.arena_pair_mut(C::CLASS_ORD, t.class_ord());
+        (
+            expect_typed::<C>(ca, ci),
+            ct.try_controlled_transformer_mut(ti),
+        )
+    }
+
+    /// A control plus its controlled element **as a concrete class** `B`
+    /// (CapControl → Capacitor), borrowed disjointly. `None` when the target
+    /// names another class — the "Controlled element is not a …" path the
+    /// paired downcast produced.
+    ///
+    /// `A` and `B` must be different classes (a control and the element it
+    /// controls); asserted, since one arena cannot hand out two different
+    /// concrete types.
+    fn typed_pair_mut<A: ArenaClass, B: ArenaClass>(
+        &mut self,
+        a: ElemId,
+        b: ElemId,
+    ) -> (&mut A, Option<&mut B>) {
+        assert_ne!(
+            A::CLASS_ORD,
+            B::CLASS_ORD,
+            "typed_pair_mut: the two classes must differ"
+        );
+        let (ai, bi) = pair_indices::<A>(a, b);
+        if b.class_ord() != B::CLASS_ORD {
+            // `b` is not a `B`; the caller aborts on the `None`. Only the `A`
+            // borrow is handed out (taking `b`'s too would need its arena and
+            // would alias when `b` sits in `A`'s own arena).
+            return (expect_typed::<A>(self.arena_mut(A::CLASS_ORD), ai), None);
+        }
+        let (ca, cb) = self.arena_pair_mut(A::CLASS_ORD, B::CLASS_ORD);
+        (expect_typed::<A>(ca, ai), cb.get_mut::<B>(bi))
+    }
+
+    /// [`TypedStore::typed_pair_mut`] plus the monitored element as
+    /// `&mut dyn CktElement` — CapControl's control + capacitor + monitored
+    /// triple. Panics on any aliasing; `A` and `B` must be different classes.
+    #[allow(clippy::type_complexity)]
+    fn typed_triple_mut<A: ArenaClass, B: ArenaClass>(
+        &mut self,
+        a: ElemId,
+        b: ElemId,
+        m: ElemId,
+    ) -> (&mut A, Option<&mut B>, Option<&mut dyn CktElement>) {
+        assert_ne!(
+            A::CLASS_ORD,
+            B::CLASS_ORD,
+            "typed_triple_mut: the two classes must differ"
+        );
+        let (ai, bi, mi) = triple_indices::<A>(a, b, m);
+        let mc = m.class_ord();
+        if b.class_ord() != B::CLASS_ORD {
+            // `b` is not a `B` — hand back `A` + the monitored element only.
+            return if mc == A::CLASS_ORD {
+                let (x, mm) = split2::<A>(self.arena_mut(A::CLASS_ORD), ai, mi);
+                (x, None, mm.ckt_mut())
+            } else {
+                let (ca, cm) = self.arena_pair_mut(A::CLASS_ORD, mc);
+                (expect_typed::<A>(ca, ai), None, cm.try_ckt_elem_mut(mi))
+            };
+        }
+        if mc == A::CLASS_ORD {
+            let (ca, cb) = self.arena_pair_mut(A::CLASS_ORD, B::CLASS_ORD);
+            let (x, mm) = split2::<A>(ca, ai, mi);
+            (x, cb.get_mut::<B>(bi), mm.ckt_mut())
+        } else if mc == B::CLASS_ORD {
+            let (ca, cb) = self.arena_pair_mut(A::CLASS_ORD, B::CLASS_ORD);
+            let (y, mm) = split2::<B>(cb, bi, mi);
+            (expect_typed::<A>(ca, ai), Some(y), mm.ckt_mut())
+        } else {
+            let (ca, cb, cm) = self.arena_triple_mut(A::CLASS_ORD, B::CLASS_ORD, mc);
+            (
+                expect_typed::<A>(ca, ai),
+                cb.get_mut::<B>(bi),
+                cm.try_ckt_elem_mut(mi),
+            )
+        }
+    }
+}
+
+impl<S: ElemStore + ?Sized> TypedStore for S {}
+
+/// Shared aliasing + class check of the typed pair getters (the `pair_mut`
+/// assert and the `expect("kind matched above")` the downcast carried, in one
+/// place). Returns the two object indices.
+fn pair_indices<C: ArenaClass>(c: ElemId, t: ElemId) -> (usize, usize) {
+    assert_ne!(
+        (c.class_ord(), c.index()),
+        (t.class_ord(), t.index()),
+        "pair_mut: aliasing refs"
+    );
+    (expect_idx::<C>(c), t.index())
+}
+
+/// [`pair_indices`] for the three-object form.
+fn triple_indices<C: ArenaClass>(c: ElemId, t: ElemId, m: ElemId) -> (usize, usize, usize) {
+    let key = |r: ElemId| (r.class_ord(), r.index());
+    assert!(
+        key(c) != key(t) && key(c) != key(m) && key(t) != key(m),
+        "triple_mut: aliasing refs"
+    );
+    (expect_idx::<C>(c), t.index(), m.index())
+}
+
+fn expect_idx<C: ArenaClass>(c: ElemId) -> usize {
+    C::idx_of(c)
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a {} handle, got {}",
+                C::CLASS_NAME,
+                c.class_name()
+            )
+        })
+        .get()
+}
+
+fn expect_typed<C: ArenaClass>(arena: &mut ClassArena, idx: usize) -> &mut C {
+    arena
+        .get_mut::<C>(idx)
+        .unwrap_or_else(|| panic!("{} object #{idx} not in its arena", C::CLASS_NAME))
+}
+
+/// Two distinct objects of one `C` arena, borrowed mutably at once.
+fn split2<C: ArenaClass>(arena: &mut ClassArena, i: usize, j: usize) -> (&mut C, &mut C) {
+    let v = arena
+        .all_mut::<C>()
+        .unwrap_or_else(|| panic!("expected the {} arena", C::CLASS_NAME));
+    let [a, b] = v
+        .get_disjoint_mut([i, j])
+        .expect("pair_mut: object index out of range");
+    (a, b)
+}
+
+/// Three distinct objects of one `C` arena, borrowed mutably at once.
+fn split3<C: ArenaClass>(arena: &mut ClassArena, i: usize, j: usize, k: usize) -> [&mut C; 3] {
+    let v = arena
+        .all_mut::<C>()
+        .unwrap_or_else(|| panic!("expected the {} arena", C::CLASS_NAME));
+    v.get_disjoint_mut([i, j, k])
+        .expect("triple_mut: object index out of range")
 }
 
 /// Scalar state the elements read from the circuit/solution during

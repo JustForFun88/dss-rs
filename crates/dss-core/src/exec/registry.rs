@@ -143,6 +143,35 @@ impl ElemStore for ClassStore<'_> {
         self.classes[r.class_ord()].arena.obj_mut(r.index())
     }
 
+    fn arena(&self, cls: usize) -> &ClassArena {
+        &self.classes[cls].arena
+    }
+
+    fn arena_mut(&mut self, cls: usize) -> &mut ClassArena {
+        &mut self.classes[cls].arena
+    }
+
+    fn arena_pair_mut(&mut self, a: usize, b: usize) -> (&mut ClassArena, &mut ClassArena) {
+        let [ca, cb] = self
+            .classes
+            .get_disjoint_mut([a, b])
+            .expect("arena_pair_mut: class index out of range or aliasing");
+        (&mut ca.arena, &mut cb.arena)
+    }
+
+    fn arena_triple_mut(
+        &mut self,
+        a: usize,
+        b: usize,
+        c: usize,
+    ) -> (&mut ClassArena, &mut ClassArena, &mut ClassArena) {
+        let [ca, cb, cc] = self
+            .classes
+            .get_disjoint_mut([a, b, c])
+            .expect("arena_triple_mut: class index out of range or aliasing");
+        (&mut ca.arena, &mut cb.arena, &mut cc.arena)
+    }
+
     fn pair_mut(&mut self, a: ElemId, b: ElemId) -> (&mut dyn DssObject, &mut dyn DssObject) {
         assert_ne!(
             (a.class_ord(), a.index()),
@@ -354,5 +383,135 @@ mod tests {
             line_ci,
             "bare-name find must return the first-registered class (Line), not Load"
         );
+    }
+
+    /// The R3.2 typed store accessors over a **live** `ClassStore`: `typed`/
+    /// `typed_mut` return the very object the `as_any` downcast returns, the
+    /// control pair/triple getters hand out the same objects the untyped
+    /// `pair_mut`/`triple_mut` do, and a foreign class narrows to `None`.
+    #[test]
+    fn typed_store_accessors_match_the_untyped_pair_and_downcast() {
+        use crate::elements::control::cap_control::CapControl;
+        use crate::elements::control::reg_control::RegControl;
+        use crate::elements::pd::capacitor::Capacitor;
+        use crate::elements::pd::line::Line;
+        use crate::elements::traits::TypedStore;
+
+        let mut dss = Dss::new();
+        for c in [
+            "new circuit.typed basekv=12.47 bus1=src",
+            "new line.l1 bus1=src bus2=b phases=3",
+            "new transformer.t1 windings=2 buses=[b, c] conns=[wye, wye] kvs=[12.47, 4.16] kvas=[1000, 1000] xhl=6",
+            "new regcontrol.rc transformer=t1 winding=2 vreg=120",
+            "new capacitor.c1 bus1=c phases=3 kvar=600 kv=4.16",
+            "new capcontrol.cc element=line.l1 terminal=1 capacitor=c1 type=current on=10 off=5",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "setup errors: {:?}", dss.errors());
+
+        let (rc_ref, tr_ref, cc_ref, cap_ref, line_ref) = {
+            let store = ClassStore {
+                classes: &mut dss.classes,
+            };
+            (
+                store.find_ckt_element("regcontrol.rc").unwrap(),
+                store.find_ckt_element("transformer.t1").unwrap(),
+                store.find_ckt_element("capcontrol.cc").unwrap(),
+                store.find_ckt_element("capacitor.c1").unwrap(),
+                store.find_ckt_element("line.l1").unwrap(),
+            )
+        };
+
+        let mut store = ClassStore {
+            classes: &mut dss.classes,
+        };
+
+        // `typed` == the downcast it replaces (same object, same `None`s).
+        assert!(std::ptr::eq(
+            store.typed::<RegControl>(rc_ref).unwrap() as *const RegControl,
+            store
+                .obj(rc_ref)
+                .as_any()
+                .downcast_ref::<RegControl>()
+                .unwrap() as *const RegControl,
+        ));
+        assert!(store.typed::<Capacitor>(rc_ref).is_none());
+        assert!(store.typed_mut::<Line>(cap_ref).is_none());
+
+        // RegControl ⇄ Transformer: the ControlledTransformer proxy view.
+        {
+            let (rc, tr) = store.typed_transformer_pair_mut::<RegControl>(rc_ref, tr_ref);
+            assert_eq!(rc.data().name(), "rc");
+            assert_eq!(tr.expect("t1 is a Transformer").name(), "t1");
+        }
+        // A non-transformer target is `None`, not a panic (the dispatch abort).
+        {
+            let (_rc, tr) = store.typed_transformer_pair_mut::<RegControl>(rc_ref, cap_ref);
+            assert!(tr.is_none());
+        }
+
+        // CapControl ⇄ Capacitor (both concrete) + monitored element.
+        {
+            let (cc, cap) = store.typed_pair_mut::<CapControl, Capacitor>(cc_ref, cap_ref);
+            assert_eq!(cc.data().name(), "cc");
+            assert_eq!(cap.expect("c1 is a Capacitor").data().name(), "c1");
+        }
+        {
+            let (cc, cap, mon) =
+                store.typed_triple_mut::<CapControl, Capacitor>(cc_ref, cap_ref, line_ref);
+            assert_eq!(cc.data().name(), "cc");
+            assert_eq!(cap.expect("c1 is a Capacitor").data().name(), "c1");
+            assert_eq!(mon.expect("l1 is a circuit element").cd().obj.name(), "l1");
+        }
+        // A target of the wrong class yields `None` (the "not a Capacitor" abort).
+        {
+            let (_cc, cap) = store.typed_pair_mut::<CapControl, Capacitor>(cc_ref, line_ref);
+            assert!(cap.is_none());
+        }
+
+        // The control/ckt pair hands out the same objects as untyped `pair_mut`.
+        {
+            let (cc, target) = store.typed_ckt_pair_mut::<CapControl>(cc_ref, cap_ref);
+            assert_eq!(cc.data().name(), "cc");
+            assert_eq!(
+                target.expect("c1 is a circuit element").cd().obj.name(),
+                "c1"
+            );
+        }
+        {
+            let (cc, target, mon) =
+                store.typed_ckt_triple_mut::<CapControl>(cc_ref, cap_ref, line_ref);
+            assert_eq!(cc.data().name(), "cc");
+            assert_eq!(target.expect("ckt").cd().obj.name(), "c1");
+            assert_eq!(mon.expect("ckt").cd().obj.name(), "l1");
+        }
+    }
+
+    /// The typed pair getter keeps the untyped `pair_mut` aliasing guard.
+    #[test]
+    #[should_panic(expected = "aliasing refs")]
+    fn typed_pair_mut_rejects_aliasing() {
+        use crate::elements::control::reg_control::RegControl;
+        use crate::elements::traits::TypedStore;
+
+        let mut dss = Dss::new();
+        for c in [
+            "new circuit.alias basekv=12.47 bus1=src",
+            "new transformer.t1 windings=2 buses=[src, c] conns=[wye, wye] kvs=[12.47, 4.16] kvas=[1000, 1000] xhl=6",
+            "new regcontrol.rc transformer=t1 winding=2 vreg=120",
+        ] {
+            dss.command(c);
+        }
+        let rc_ref = {
+            let store = ClassStore {
+                classes: &mut dss.classes,
+            };
+            store.find_ckt_element("regcontrol.rc").unwrap()
+        };
+        let mut store = ClassStore {
+            classes: &mut dss.classes,
+        };
+        let _ = store.typed_ckt_pair_mut::<RegControl>(rc_ref, rc_ref);
     }
 }

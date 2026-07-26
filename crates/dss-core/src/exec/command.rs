@@ -1296,14 +1296,10 @@ impl Dss {
             let mut store = ClassStore {
                 classes: &mut self.classes,
             };
-            let (rc_obj, tr_obj) = store.pair_mut(rc_ref, tref);
-            if let (Some(rc), Some(tr)) = (
-                rc_obj
-                    .as_any_mut()
-                    .downcast_mut::<reg_control::RegControl>(),
-                // Either member of the Transformer/AutoTrans proxy.
-                transformer::as_controlled_transformer(&*tr_obj),
-            ) {
+            // Either member of the Transformer/AutoTrans proxy.
+            let (rc, tr_obj) =
+                store.typed_transformer_pair_mut::<reg_control::RegControl>(rc_ref, tref);
+            if let Some(tr) = tr_obj {
                 rc.sync_tap_snap_from_live(tr);
             }
         }
