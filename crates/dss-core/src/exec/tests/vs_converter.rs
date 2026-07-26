@@ -114,12 +114,24 @@ fn vsconverter_circuit_matches_oracle() {
         "VSConverter DC current magnitude = {vdr:.10}"
     );
 
-    // Terminal 2 AC conductors are the exact series mirror of terminal 1.
+    // Terminal 2 AC conductors are the exact series mirror of terminal 1 — in
+    // BOTH components. The real-part arm is the original assertion (unchanged);
+    // the imaginary arm is the W3 settler's strengthening (the pre-existing
+    // shape only checked `re`, so a mirror broken purely in reactive current
+    // would have passed). Measured 2026-07-26: both residuals are *exactly* 0.0
+    // (the series element negates terminal 1 into terminal 2), so the arm holds
+    // with room to spare at the same 1e-6 bound / denominator shape as the
+    // real one.
     for k in 0..3 {
         let denom = v.currents[k].re.abs().max(1.0);
         assert!(
             (v.currents[k].re + v.currents[k + 4].re).abs() < 1e-6 * denom,
             "VSConverter I_term2[{k}] must equal -I_term1[{k}]"
+        );
+        let denom_im = v.currents[k].im.abs().max(1.0);
+        assert!(
+            (v.currents[k].im + v.currents[k + 4].im).abs() < 1e-6 * denom_im,
+            "VSConverter I_term2[{k}] (imag) must equal -I_term1[{k}]"
         );
     }
 }

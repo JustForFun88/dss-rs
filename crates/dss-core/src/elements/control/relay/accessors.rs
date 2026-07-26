@@ -416,7 +416,7 @@ impl DssObject for Relay {
     /// Pascal `InterpretRelayState`: a bare unquoted scalar fills **all** phases
     /// (ganged); a quoted list fills phase-by-phase. `State` writes are blocked
     /// while `Locked`; `Normal` writes are NOT (Pascal `property_name[1] in
-    /// {'a','s'}` guard — Normal starts with 'n'). A [`CTRL_STATE_KEEP`] ordinal
+    /// {'a','s'}` guard — Normal starts with 'n'). A [`ControlAction::Keep`] ordinal
     /// (a token whose first char is neither `o` nor `c`) leaves that phase's slot
     /// unchanged — for a ganged scalar that means *every* phase is left as-is
     /// (Pascal's `case` with no matching arm).
