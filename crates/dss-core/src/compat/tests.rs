@@ -30,26 +30,15 @@ const DIV_REL_BOUND: f64 = 1.0e-15;
 // Alias selection per lane (F.3 flips one kernel family per commit)
 // ---------------------------------------------------------------------------
 
-/// The `dss-core` kernels **not yet flipped**: `cdiv`, `invert` and
-/// `etk_invert` still select the parity impl in *both* lanes, so the existing
-/// gate (byte goldens, checkpoint Y, corpus floors) is unchanged in the default
-/// build too until their own commit lands.
+/// The `dss-core` kernels **not yet flipped**: `invert` and `etk_invert` still
+/// select the parity impl in *both* lanes, so the existing gate (byte goldens,
+/// checkpoint Y, corpus floors) is unchanged in the default build too until
+/// their own commit lands.
 ///
 /// Each assertion is behavioral (a value on which the two `_impl`s genuinely
 /// differ), so it cannot pass by accident.
 #[test]
 fn unflipped_aliases_still_select_the_parity_kernel_in_both_lanes() {
-    // Complex division: the |den.re| > |den.im| branch differs by 1 ULP.
-    let (num, den) = DIV_CASES[0];
-    assert_eq!(
-        cdiv(num, den).re.to_bits(),
-        cdiv_fpc_impl(num, den).re.to_bits()
-    );
-    assert_ne!(
-        cdiv_fpc_impl(num, den).re.to_bits(),
-        cdiv_std_impl(num, den).re.to_bits()
-    );
-
     // Dense complex inverse: the anti-diagonal matrix separates the kernels
     // (no-row-exchange GJ reports it singular, partial pivoting inverts it).
     let mut m = anti_diagonal_2x2();
@@ -62,6 +51,23 @@ fn unflipped_aliases_still_select_the_parity_kernel_in_both_lanes() {
     assert!(etk_invert(&mut a, 2).is_err());
     let mut a = [0.0, 1.0, 1.0, 0.0];
     assert!(etk_invert_partial_pivot_impl(&mut a, 2).is_ok());
+}
+
+/// The **no-split** row (F.3e): `cdiv` is one shared kernel, so it must resolve
+/// to Smith's division in *whichever* lane this test runs — asserted on an
+/// operand pair where the two impls differ bitwise, so it cannot pass
+/// vacuously.
+#[test]
+fn cdiv_is_one_shared_kernel_in_both_lanes() {
+    let (num, den) = DIV_CASES[0];
+    assert_eq!(
+        cdiv(num, den).re.to_bits(),
+        cdiv_fpc_impl(num, den).re.to_bits()
+    );
+    assert_ne!(
+        cdiv_fpc_impl(num, den).re.to_bits(),
+        cdiv_std_impl(num, den).re.to_bits()
+    );
 }
 
 /// The **flipped** row: `stddev_single_point` resolves to the upstream quirk
@@ -121,6 +127,118 @@ fn cdiv_parity_kernel_is_fpc_smith_bitwise() {
     let q = cdiv_fpc_impl(num, den);
     assert_eq!(q.re.to_bits(), 0x3f6c63aca54cccd3);
     assert_eq!(q.im.to_bits(), 0xbf6c31a5d17ddb1d);
+}
+
+/// The evidence behind the row's **no split** verdict, kept executable so it
+/// cannot decay into folklore.
+///
+/// Each row is `(num, den, correctly-rounded quotient)`; the reference was
+/// computed in 60-digit `Decimal` (independent of both kernels) and the rows
+/// were selected as cases where the two kernels genuinely disagree. Smith's
+/// division must be **at least as close** to the true quotient as the naive
+/// form on every row, and strictly closer on at least one — which is the whole
+/// argument for keeping it in the product lane.
+const DIV_REFERENCE: [(Complex64, Complex64, Complex64); 6] = [
+    (
+        c(0.002321729484, -0.006576942029),
+        c(4.635502e-06, -1.7351297e-05),
+        c(
+            f64::from_bits(0x4078329354f0ea98),
+            f64::from_bits(0x403e5ff9e9aed9e9),
+        ),
+    ),
+    (
+        c(-4.593386e-06, -6.59001e-07),
+        c(-1.056509107804, -1.005279277728),
+        c(
+            f64::from_bits(0x3ec5c1141db80686),
+            f64::from_bits(0xbebeef12399752f4),
+        ),
+    ),
+    (
+        c(-622.258737287941, 3943.574810490002),
+        c(-190543.68643387672, 87389.84932548525),
+        c(
+            f64::from_bits(0x3f8596526e244800),
+            f64::from_bits(0xbf903e2a75dec667),
+        ),
+    ),
+    (
+        c(37.525861080188, -25.109089063361),
+        c(-188746.93835912598, 278724.15562414465),
+        c(
+            f64::from_bits(0xbf2049d2e2d813a6),
+            f64::from_bits(0xbf0a7768806904b6),
+        ),
+    ),
+    (
+        c(2.50311267631, 2.853591214084),
+        c(-17667.064091758657, -6753.628705423371),
+        c(
+            f64::from_bits(0xbf27439524d103a1),
+            f64::from_bits(0xbf188e2468de6c87),
+        ),
+    ),
+    (
+        c(-0.000102367606, -0.000286357051),
+        c(-8.8600379e-05, -6.1824964e-05),
+        c(
+            f64::from_bits(0x400259a9e312c329),
+            f64::from_bits(0x3ffa1a482d26e7b8),
+        ),
+    ),
+];
+
+/// ULP distance between two finite same-sign-exponent doubles.
+fn ulp_distance(a: f64, b: f64) -> u64 {
+    let (ia, ib) = (a.to_bits() as i64, b.to_bits() as i64);
+    ia.abs_diff(ib)
+}
+
+#[test]
+fn cdiv_shared_kernel_is_the_more_accurate_one() {
+    let mut smith_total = 0u64;
+    let mut naive_total = 0u64;
+    let mut strictly_better_somewhere = false;
+
+    for (num, den, exact) in DIV_REFERENCE {
+        let s = cdiv_fpc_impl(num, den);
+        let n = cdiv_std_impl(num, den);
+        let ds = ulp_distance(s.re, exact.re) + ulp_distance(s.im, exact.im);
+        let dn = ulp_distance(n.re, exact.re) + ulp_distance(n.im, exact.im);
+        assert!(
+            ds <= dn,
+            "Smith lost to the naive form on {num}/{den}: {ds} vs {dn} ULP \
+             from the Decimal-60 reference"
+        );
+        strictly_better_somewhere |= ds < dn;
+        smith_total += ds;
+        naive_total += dn;
+    }
+
+    assert!(strictly_better_somewhere);
+    assert!(
+        smith_total < naive_total,
+        "shared-kernel verdict no longer holds: Smith {smith_total} ULP vs \
+         naive {naive_total} ULP over the reference table"
+    );
+}
+
+/// The other half of the verdict: the naive form squares the denominator, so it
+/// collapses to `0` (or `NaN`) wherever `|den|²` leaves f64's range, while
+/// Smith's abs-ratio form stays exact there. A `compat::cdiv` flipped to the
+/// naive kernel would hand the *product* lane this failure mode for free.
+#[test]
+fn naive_division_collapses_where_smith_stays_exact() {
+    // |den| = 1e200 → den.norm_sqr() overflows to +inf.
+    let (num, den) = (c(1.0, 1.0), c(1.0e200, 1.0e200));
+    assert_eq!(cdiv_fpc_impl(num, den), c(1.0e-200, 0.0));
+    assert_eq!(cdiv_std_impl(num, den), c(0.0, 0.0));
+
+    // |den| = 1e-200 → den.norm_sqr() underflows to 0.
+    let (num, den) = (c(1.0e-200, 1.0e-200), c(1.0e-200, 1.0e-200));
+    assert_eq!(cdiv_fpc_impl(num, den), c(1.0, 0.0));
+    assert!(cdiv_std_impl(num, den).re.is_nan());
 }
 
 #[test]

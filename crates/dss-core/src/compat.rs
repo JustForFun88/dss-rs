@@ -31,7 +31,7 @@
 //!
 //! | Row | Where | Flipped? |
 //! |---|---|---|
-//! | complex division | [`cdiv`] — this file | no |
+//! | complex division | [`cdiv`] — this file | *no split* — measured, see below |
 //! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file | no |
 //! | single-point stddev | [`stddev_single_point`] — this file | **yes** (F.3b) |
 //! | RPN pi | `dss-parser` `compat::PI` | **yes** (F.3d) |
@@ -43,6 +43,34 @@
 //! | multi-meter `Bus_Int_Duration` | [`BUS_INT_DURATION_WALKS_ALL_BUSES`] — this file | **yes** (F.3c) |
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
 //! | report text rendering | F.4 (`F-FMT`) — `compat::fmt` seam | no |
+//!
+//! **Complex division — why that row needs no split (F.3e, plan deviation,
+//! settled by measurement).** IV.2's table proposed `num_complex`'s `/` as the
+//! default kernel, on the assumption that the parity kernel was a Pascal wart
+//! kept only for bit-parity. It is not: FPC `ucomplex`'s `/` is **Smith's
+//! algorithm**, the standard robust complex division (C99 `_Cdivd`, LAPACK
+//! `dladiv`) — legitimate numerics that happen to also be what upstream uses.
+//! Measured against the correctly-rounded quotient (60-digit `Decimal`
+//! reference, 20 000 operand pairs spanning 1e-6…1e6 in both Smith branches,
+//! 2026-07-27):
+//!
+//! | kernel | mean rel. error | worst rel. error | outside `|den|` ∈ [1e-154, 1e154] |
+//! |---|---|---|---|
+//! | Smith (`cdiv_fpc_impl`) | **9.42e-17** | **3.82e-16** | still exact |
+//! | naive (`cdiv_std_impl`) | 1.05e-16 | 4.26e-16 | `0` or `NaN` — total loss |
+//!
+//! So flipping this row would make the *product* lane strictly less accurate
+//! and strictly less robust, buying nothing: the parity lane already provides
+//! bit-parity, and IV.1 keeps "legitimate numerics with no crate equivalent"
+//! (complex Bessel, `dss-sparse` row equilibration) in **both** modes for
+//! exactly this reason. The row therefore resolves like "Y triplet dedup":
+//! **one shared kernel**. `cdiv_std_impl` stays compiled and its inferiority
+//! stays *asserted* (`tests::cdiv_shared_kernel_is_the_more_accurate_one`
+//! against a `Decimal`-derived reference table, and
+//! `tests::naive_division_collapses_where_smith_stays_exact`), so the verdict
+//! cannot rot into folklore. `support::line_constants` already recorded the
+//! same conclusion in-tree ("Smith's division … stays permanently") before this
+//! measurement independently confirmed it.
 //!
 //! **Sym components — why that row needs no alias.** The pinned oracle selects
 //! the *better-precision* matrices by default: `mathutil.pas:548` ends its
@@ -115,19 +143,19 @@ pub fn cdiv_fpc_impl(num: Complex64, den: Complex64) -> Complex64 {
     }
 }
 
-/// Idiomatic complex division: `num_complex`'s `/` operator (the naive
-/// `(ac+bd)/(c²+d²)` form). Differs from [`cdiv_fpc_impl`] by ≤ 1 ULP per
-/// component on well-scaled operands (pinned in `tests`).
+/// `num_complex`'s `/` operator — the naive `(ac+bd)/(c²+d²)` form. Compiled,
+/// tested, and **not selected in either lane**: it is the measured comparison
+/// partner that keeps the "no split" verdict of this row asserted rather than
+/// narrated (see the module header and `tests::cdiv_shared_kernel_is_the_more_
+/// accurate_one`).
 #[inline]
 pub fn cdiv_std_impl(num: Complex64, den: Complex64) -> Complex64 {
     num / den
 }
 
-#[cfg(feature = "oracle-parity")]
-pub use cdiv_fpc_impl as cdiv;
-// F.1 staging: the default lane still selects the parity impl (bit-neutral
-// seam); F.3 flips this to `cdiv_std_impl`.
-#[cfg(not(feature = "oracle-parity"))]
+/// The complex-division kernel — **one shared implementation, no lane split**
+/// (see the module header for the measurement that settled it). Deliberately
+/// declared without a `cfg`: both lanes divide with Smith's algorithm.
 pub use cdiv_fpc_impl as cdiv;
 
 // ---------------------------------------------------------------------------

@@ -99,9 +99,10 @@ fn cmplx(re: f64, im: f64) -> Complex64 {
 // fix is to drop all three for `num_complex`'s `.norm()`/`.sqrt()`/`.ln()` in
 // the §6 precision pass, regenerating the geometry/DERI/cable goldens
 // deliberately. The complex-division kernel (`compat::cdiv`) is deliberately
-// NOT in this set: Smith's division is
-// both more accurate (2 ULP, vs naive 4 / `Complex::fdiv` 9) and overflow-robust,
-// so it stays permanently.
+// NOT in this set: Smith's division is both more accurate and overflow-robust,
+// so it stays permanently — Stage F.3e re-measured that against a 60-digit
+// reference and resolved the plan's division row to *no split*, one shared
+// kernel for both lanes (see `crate::compat`'s module header for the table).
 #[inline]
 fn cabs_fpc(z: Complex64) -> f64 {
     (z.re * z.re + z.im * z.im).sqrt()
