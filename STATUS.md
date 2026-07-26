@@ -7,6 +7,84 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE W3.2 (b) — item 8 CLOSED: shared `ScanType`/`SequenceType`, `VsourceZSpec`, `VscMode`, `OcpDeviceType` (branch `depas-final`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, **type-channel only**. Second half of P1-tail escape
+item **2**; with (a) it is **CLOSED in full** — only item 3 (the `DynamicExp`
+RPN token stream) is left of the whole P1 tail.
+
+| enum | ordinals (proven twice) | classes converted |
+|---|---|---|
+| **`ScanType`** (new `pc/source_seq.rs`) | None=-1, Zero=0, Positive=1 — `DSSClass.pas:1087` `ScanTypeEnum` `['None','Zero','Positive']` / `[-1,0,1]` | VSource, Isource, **GICLine** |
+| **`SequenceType`** (same module) | Negative=-1, Zero=0, Positive=1 — `DSSClass.pas:1090` `SequenceEnum` | VSource, Isource, **GICLine** |
+| **`VsourceZSpec`** (`pc/vsource/mod.rs`) | MvaSc=1, Isc=2, Ohms=3 — `Vsource.pas:450`/`:620`, `:469`, `:488`/`:502` (derived, no registry) | VSource |
+| **`VscMode`** (`pc/vs_converter/mod.rs`) | Fixed=0…VdcQac=4 — `VSC_*` at `VSConverter.pas:136-140` = `'VSConverter: Control Mode'` `[0..4]`, `DefaultValue = VSC_FIXED` | VSConverter |
+| **`OcpDeviceType`** (`elements/ckt.rs`) | Unset=0, Fuse=1, Recloser=2, Relay=3 — `GetOCPDeviceType`, `Utilities.pas:1996-2018` (derived, no registry) | CktElement base + FeederSection + the `RefAction` channel |
+
+**Three classes, not one — the P1 no-half-conversion rule.** The escape record
+named only `vsource.{scan_type, sequence_type}`, but those two fields are
+`ScanTypeEnum`/`SequenceEnum` **shared**: Isource declares the identical pair of
+properties against the same two registry entries (`Isource.pas:173-178`), and
+GICLine holds the same two fields property-less, pinned to zero sequence by
+`Create` ("Always 0 for GIC", `GICLine.pas:390-391`) yet still running the same
+`case`. Converting only VSource would leave the family half-typed, so all three
+convert here and the enums live in a shared `pc/source_seq.rs` (the `MonPhase`
+precedent). Every `_ =>` arm in the six rotation `match`es becomes the *named*
+Pascal `else` arm it always was — `ScanType::None` and `SequenceType::Positive`
+— so the arm that used to swallow any stray integer now names one value.
+
+**`OcpDeviceType` keeps the `==0` sentinel exactly.** The escape record flagged
+the `== 0` "unset" test plus the reliability ripple. `Unset` is a real variant
+(Pascal's `Result := 0` pre-scan seed), it is `#[derive(Default)]` so
+`FeederSection`'s all-zero allocation (`EnergyMeter.pas:2465`) is unchanged, and
+the first-wins guard in `exec/command.rs` reads `== OcpDeviceType::Unset` — the
+same test on the same value. The channel is typed end to end: `RefAction::
+SetOcpDevice { device_type }` now carries the enum (Fuse/Recloser/Relay push
+their own variant instead of a bare `1`/`2`/`3`), `CktElementData` and
+`FeederSection` store it, and `Export Sections`'
+`getOCPDeviceTypeString` (`ExportResults.pas:3859`) becomes exhaustive with
+Pascal's `else` named `Unset => "Unknown"` — the four output strings are an
+unchanged multiset.
+
+**`VscMode` is store-only in both engines** (upstream never reads `Fmode`; only
+the declaration, the property offset, `MakeLike` and the `Create` seed mention
+it), so this is a pure property round-trip retype — recorded so nobody later
+"finds" a missing control-mode dispatch here.
+
+**Pins (4 new tests).** `scan_and_sequence_type_pin_pascal_ordinals`,
+`vsource_z_spec_pins_pascal_ordinals` (also asserts the three `Create` seeds),
+`vsc_mode_pins_pascal_ordinals` (incl. the live registry's `default_value` =
+`Fixed`) and `ocp_device_type_pins_pascal_ordinals` (incl. `default()` ==
+`Unset` == `CktElementData::new`'s seed). Each asserts `from_ordinal` = `None`
+outside its set — the *closedness* the new exhaustive matches rely on.
+`registry_enum_coupling` grows by the three registry-backed entries (`Scan
+Type`, `Sequence Type`, `VSConverter: Control Mode`): **26 → 29**. Its module
+doc now also lists the four W3.2 *derived* codes as deliberately-uncovered (no
+registry entry exists to couple them to).
+
+**Bit-neutrality evidence.** `git diff --stat HEAD -- tests/` **empty**;
+`TODO(compat)` **117 / 68 files** (broader `crates/**` = 123) before and after;
+`git diff -U0` grep for added `downcast`/`as_any`/`Rc<`/`RefCell`/`Mutex`/
+`oracle-parity` = **0**. String-literal multiset diff over the 17 changed files:
+the only literal lines that move are the four `Export Sections` device strings
+(removed and re-added identically as named arms) and reflowed test-assertion
+messages; the new `source_seq.rs` adds two test messages. **Zero** runtime
+strings changed.
+
+**Gate:** `cargo fmt --all --check` · `cargo clippy --workspace --all-targets -D
+warnings` · `cargo test --workspace` — green, exit 0, **66 `test result: ok`
+groups, 2036 passed, 0 failed, 5 ignored** (2032 → 2036 = the four new pins;
+the registry-coupling extension adds assertions, not entries),
+`corpus_gate_all_cases_match_engines … ok` on both channels. `tests/corpus` left
+pristine (10 `Test/AutoTrans` run-artifacts of the known intermittent scheduler
+leak removed by exact name off the status list — no wide `git clean`). Ritual 0
+held at start and before the commit: 186 `.pas` under `.inputs/dss_capi`;
+`cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**P1-tail escape record, updated.** Item **2 (item 8)** is **CLOSED** by W3.2 (a)
++ (b). Item 3 (the `DynamicExp` RPN token sentinels, `CONST_CODE = 50001` /
+`EQ_MARK = -50`) is untouched and stands exactly as recorded — it is W3.3.
+
 ### DE_PASCALIZE W3.2 (a) — the derived `SpecType` codes: `ReactorSpecType` / `CapacitorSpecType`, five `_` fall-throughs eliminated (branch `depas-final`, 2026-07-26)
 
 Stratum **[A]** bit-neutral, **type-channel only**. First half of P1-tail escape
@@ -500,7 +578,14 @@ Left as raw `i32`, deliberately, with the reason. None was partially touched.
    effects, with `_` fall-throughs in three `match`es in `reactor/solve.rs`),
    `vsource.{z_spec_type, scan_type, sequence_type}`, `vs_converter.f_mode`,
    `energymeter.ocp_device_type` (the `== 0` "unset" sentinel plus the
-   reliability-report ripple the P1 record already flagged). Not started.
+   reliability-report ripple the P1 record already flagged).
+   **CLOSED 2026-07-26 by the two W3.2 records at the top of this file**
+   (branch `depas-final`): (a) `ReactorSpecType` + `CapacitorSpecType`, seven
+   `_` fall-throughs eliminated; (b) the shared `ScanType`/`SequenceType` across
+   **three** classes (VSource / Isource / GICLine — the pair is a shared
+   `DssEnum`, so this listing's VSource-only scope understated it),
+   `VsourceZSpec`, `VscMode` and `OcpDeviceType` (whose `Unset = 0` sentinel is
+   a `#[default]` variant, keeping the zero-allocation semantics exactly).
 3. **Item 10 (Tier-2) — `DynamicExp` RPN token sentinels** (`CONST_CODE = 50001`,
    `EQ_MARK = -50` in the token stream). These are *payload-carrying* codes (a token
    is either an opcode, a variable index, or a constant index offset by

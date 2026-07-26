@@ -358,7 +358,7 @@ impl Fuse {
         {
             self.pending_ref_actions.push(RefAction::SetOcpDevice {
                 target,
-                device_type: 1,
+                device_type: crate::elements::ckt::OcpDeviceType::Fuse,
                 auto: false,
             });
         }

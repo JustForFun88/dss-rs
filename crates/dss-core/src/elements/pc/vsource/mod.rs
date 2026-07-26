@@ -21,6 +21,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pc::source_seq::{ScanType, SequenceType};
 use crate::elements::traits::Idx;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
@@ -30,6 +31,48 @@ mod accessors;
 mod dump;
 mod solve;
 mod source;
+
+/// Pascal `TVsourceObj.ZSpecType` (`Vsource.pas:109`, `Integer`) — which of the
+/// three equivalent short-circuit specifications the user last supplied.
+///
+/// A *derived* code (like reactor/capacitor `SpecType`): no property writes it,
+/// so it has no `DssEnum` registry entry. Five property side effects set it
+/// (`Vsource.pas:446-507`) and `Create` seeds `MvaSc` (`:620`).
+///
+/// | value | set by | `Vsource.pas` |
+/// |---|---|---|
+/// | 1 `MvaSc` | `MVAsc3=`, `MVAsc1=` | `:450` (and `Create`, `:620`) |
+/// | 2 `Isc` | `Isc3=`, `Isc1=` | `:469` |
+/// | 3 `Ohms` | `R1=`/`X1=`/`R0=`/`X0=`, and `Z1`/`Z0`/`Z2`/`puZ1`/`puZ0`/`puZ2` | `:488`, `:502` |
+///
+/// `RecalcElementData`'s `case ZSpecType of` (`:710-805`) has arms `1`, `2`, `3`
+/// and **no** `else`, so the set is closed at 1..=3 by construction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VsourceZSpec {
+    /// 1 — short-circuit MVA (`MVAsc3`/`MVAsc1`).
+    MvaSc = 1,
+    /// 2 — short-circuit current (`Isc3`/`Isc1`).
+    Isc = 2,
+    /// 3 — sequence impedances in ohms (or per-unit via `puZ*`).
+    Ohms = 3,
+}
+
+impl VsourceZSpec {
+    /// The raw Pascal `ZSpecType` integer.
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the raw Pascal `ZSpecType` integer; `None` outside 1..=3.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            1 => Some(Self::MvaSc),
+            2 => Some(Self::Isc),
+            3 => Some(Self::Ohms),
+            _ => None,
+        }
+    }
+}
 
 /// 1-based property ordinals (Pascal `TVsourceProp` + the class tails).
 pub mod prop {
@@ -147,8 +190,8 @@ pub struct VSource {
     pub mva_sc1: f64,
     pub isc3: f64,
     pub isc1: f64,
-    /// 1 = MVAsc, 2 = Isc, 3 = Z specified.
-    pub z_spec_type: i32,
+    /// Which short-circuit specification was supplied (see [`VsourceZSpec`]).
+    pub z_spec_type: VsourceZSpec,
     pub r1: f64,
     pub x1: f64,
     pub r2: f64,
@@ -171,8 +214,8 @@ pub struct VSource {
     pub z2_specified: bool,
     pub z0_specified: bool,
     pub is_quasi_ideal: bool,
-    pub scan_type: i32,
-    pub sequence_type: i32,
+    pub scan_type: ScanType,
+    pub sequence_type: SequenceType,
     /// Base-frequency series Z matrix (order = nphases).
     pub z: Option<CMatrix>,
     pub zinv: Option<CMatrix>,
@@ -221,7 +264,7 @@ impl VSource {
             mva_sc1: 2100.0,
             isc3: 10000.0,
             isc1: 10540.0,
-            z_spec_type: 1, // default to MVAsc
+            z_spec_type: VsourceZSpec::MvaSc, // default to MVAsc
             r1: 1.65,
             x1: 6.6,
             r2: 1.65,
@@ -244,8 +287,8 @@ impl VSource {
             z2_specified: false,
             z0_specified: false,
             is_quasi_ideal: false,
-            scan_type: 1,
-            sequence_type: 1,
+            scan_type: ScanType::Positive,
+            sequence_type: SequenceType::Positive,
             z: None,
             zinv: None,
             vmag: 0.0,

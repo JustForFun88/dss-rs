@@ -3,7 +3,7 @@
 
 use num_complex::Complex64;
 
-use super::{VSource, get_vmag};
+use super::{VSource, VsourceZSpec, get_vmag};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
@@ -31,8 +31,8 @@ impl VSource {
         // Calculate the short circuit impedance and make all other spec
         // types agree.
         match self.z_spec_type {
-            1 | 2 => {
-                if self.z_spec_type == 1 {
+            VsourceZSpec::MvaSc | VsourceZSpec::Isc => {
+                if self.z_spec_type == VsourceZSpec::MvaSc {
                     // MVAsc
                     self.x1 = self.kv_base.powi(2)
                         / self.mva_sc3
@@ -70,8 +70,8 @@ impl VSource {
                 rm = (self.r0 - self.r1) / 3.0;
                 xm = (self.x0 - self.x1) / 3.0;
             }
-            _ => {
-                // 3: Z1, Z2, Z0 specified.
+            VsourceZSpec::Ohms => {
+                // Z1, Z2, Z0 specified.
                 // Compute Z1, Z2, Z0 in ohms if Z1 is specified in pu.
                 if self.pu_z1_specified {
                     self.r1 = self.pu_z1.re * self.z_base;

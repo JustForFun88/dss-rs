@@ -4,8 +4,9 @@
 
 use num_complex::Complex64;
 
-use super::VSource;
+use super::{VSource, VsourceZSpec};
 use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::pc::source_seq::{ScanType, SequenceType};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -126,8 +127,8 @@ impl DssObject for VSource {
         use super::prop::*;
         match idx {
             PHASES => self.cd.nphases as i32,
-            SCAN_TYPE => self.scan_type,
-            SEQUENCE => self.sequence_type,
+            SCAN_TYPE => self.scan_type.ordinal(),
+            SEQUENCE => self.sequence_type.ordinal(),
             MODEL => self.is_quasi_ideal as i32,
             _ => unreachable!("Vsource has no integer property {idx}"),
         }
@@ -136,8 +137,13 @@ impl DssObject for VSource {
         use super::prop::*;
         match idx {
             PHASES => self.cd.nphases = value.max(0) as usize,
-            SCAN_TYPE => self.scan_type = value,
-            SEQUENCE => self.sequence_type = value,
+            // Both registry lists are closed with no `DefaultValue`, so the
+            // parser rejects an out-of-set token before any write reaches here;
+            // the fallback keeps the field exactly as the bare `i32` did.
+            SCAN_TYPE => self.scan_type = ScanType::from_ordinal(value).unwrap_or(self.scan_type),
+            SEQUENCE => {
+                self.sequence_type = SequenceType::from_ordinal(value).unwrap_or(self.sequence_type)
+            }
             MODEL => self.is_quasi_ideal = value != 0,
             _ => unreachable!("Vsource has no integer property {idx}"),
         }
@@ -309,26 +315,26 @@ impl DssObject for VSource {
         // Z spec-type switch + property-tracking resets.
         match idx {
             MVASC3 | MVASC1 => {
-                self.z_spec_type = 1;
+                self.z_spec_type = VsourceZSpec::MvaSc;
                 for p in [ISC3, ISC1, R1, X1, R0, X0, Z1, Z0, Z2, PUZ1, PUZ0, PUZ2] {
                     self.cd.obj.clear_seq(p);
                 }
             }
             ISC3 | ISC1 => {
-                self.z_spec_type = 2;
+                self.z_spec_type = VsourceZSpec::Isc;
                 for p in [MVASC3, MVASC1, R1, X1, R0, X0, Z1, Z0, Z2, PUZ1, PUZ0, PUZ2] {
                     self.cd.obj.clear_seq(p);
                 }
             }
             R1 | X1 | R0 | X0 => {
-                self.z_spec_type = 3; // specified in ohms
+                self.z_spec_type = VsourceZSpec::Ohms; // specified in ohms
                 for p in [ISC3, ISC1, MVASC3, MVASC1] {
                     self.cd.obj.clear_seq(p);
                 }
             }
             BUS2 => self.bus2_defined = true,
             Z1 | Z0 | Z2 | PUZ1 | PUZ0 | PUZ2 => {
-                self.z_spec_type = 3;
+                self.z_spec_type = VsourceZSpec::Ohms;
                 for p in [ISC3, ISC1, MVASC3, MVASC1] {
                     self.cd.obj.clear_seq(p);
                 }

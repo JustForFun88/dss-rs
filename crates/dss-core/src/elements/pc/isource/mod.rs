@@ -37,6 +37,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pc::source_seq::{ScanType, SequenceType};
 use crate::elements::traits::Idx;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
@@ -109,8 +110,8 @@ pub struct Isource {
     pub amps: f64,
     pub angle: f64,
     pub src_frequency: f64,
-    pub scan_type: i32,
-    pub sequence_type: i32,
+    pub scan_type: ScanType,
+    pub sequence_type: SequenceType,
     /// Pascal `PerUnit`: reserved for future use (no property sets it today —
     /// see the Pascal `TODO` comment at `Isource.pas:317`); only read as the
     /// no-loadshape default in `CalcDaily/YearlyMult`.
@@ -156,8 +157,8 @@ impl Isource {
             amps: 0.0,
             angle: 0.0,
             src_frequency: 60.0, // BaseFrequency
-            scan_type: 1,        // Pos Sequence
-            sequence_type: 1,
+            scan_type: ScanType::Positive,
+            sequence_type: SequenceType::Positive,
             per_unit: 1.0,
             phase_shift: 120.0,
             bus2_defined: false,

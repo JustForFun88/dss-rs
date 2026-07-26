@@ -16,6 +16,7 @@
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pc::source_seq::{ScanType, SequenceType};
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
 
@@ -126,10 +127,10 @@ pub struct GicLine {
     /// `VN`/`VE` — the north/east EMF components (Compute_VLine, dumped).
     vn: f64,
     ve: f64,
-    /// `ScanType`/`SequenceType` — both default 0 (zero sequence); internal,
-    /// not properties.
-    scan_type: i32,
-    sequence_type: i32,
+    /// `ScanType`/`SequenceType` — both default zero sequence; internal,
+    /// not properties (`GICLine.pas:390-391`, "Always 0 for GIC").
+    scan_type: ScanType,
+    sequence_type: SequenceType,
     /// `VoltsSpecified` — `Volts`/`Angle` drives the magnitude (else geodesy).
     volts_specified: bool,
     /// Base-frequency series `Z` matrix (order = nphases) and its inverse.
@@ -165,8 +166,9 @@ impl GicLine {
             lon2: -86.074605,
             vn: 0.0,
             ve: 0.0,
-            scan_type: 0,     // zero sequence
-            sequence_type: 0, // zero sequence (same voltage induced in all phases)
+            scan_type: ScanType::Zero,
+            // zero sequence (same voltage induced in all phases)
+            sequence_type: SequenceType::Zero,
             volts_specified: false,
             z: None,
             zinv: None,

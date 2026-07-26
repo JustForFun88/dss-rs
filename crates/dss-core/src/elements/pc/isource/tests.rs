@@ -50,8 +50,8 @@ fn default_construction_matches_pascal_constructor() {
     assert_eq!(isrc.amps, 0.0);
     assert_eq!(isrc.angle, 0.0);
     assert_eq!(isrc.src_frequency, 60.0);
-    assert_eq!(isrc.scan_type, 1);
-    assert_eq!(isrc.sequence_type, 1);
+    assert_eq!(isrc.scan_type, ScanType::Positive);
+    assert_eq!(isrc.sequence_type, SequenceType::Positive);
     assert_eq!(isrc.phase_shift, 120.0);
     assert_eq!(isrc.spectrum, "default");
     assert!(!isrc.bus2_defined);

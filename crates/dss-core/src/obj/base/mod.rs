@@ -288,15 +288,15 @@ pub enum RefAction {
     /// carrying an over-current-protection device for the EnergyMeter
     /// reliability sweep (Pascal `Include(ControlledElement.Flags,
     /// Flg.HasOCPDevice)`; Relay/Recloser also `HasAutoOCPDevice`). `device_type`
-    /// is the `GetOCPDeviceType` ordinal (1=Fuse, 2=Recloser, 3=Relay), recorded
-    /// so the section sweep can report it; `auto` distinguishes the
+    /// is this control's `GetOCPDeviceType` class, recorded so the section sweep
+    /// can report it; `auto` distinguishes the
     /// auto-reclosing Relay/Recloser (which set `HasAutoOCPDevice`) from the
     /// Fuse (which does not). Only an *enabled* control queues this, matching the
     /// Pascal `if Enabled then Include(...)` guard. Applied through the target's
     /// [`CktElement`](crate::elements::traits::CktElement) base.
     SetOcpDevice {
         target: crate::elements::traits::ElemId,
-        device_type: i32,
+        device_type: crate::elements::ckt::OcpDeviceType,
         auto: bool,
     },
     /// GICsource `RecalcElementData` (GICsource.pas:350): rewrite the spliced

@@ -2,7 +2,7 @@
 
 use num_complex::Complex64;
 
-use super::{VsConverter, prop};
+use super::{VsConverter, VscMode, prop};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
@@ -200,7 +200,7 @@ impl DssObject for VsConverter {
         match idx {
             PHASES => self.cd.nphases as i32,
             NDC => self.ndc as i32,
-            VSCMODE => self.f_mode,
+            VSCMODE => self.f_mode.ordinal(),
             _ => unreachable!("VSConverter has no integer property {idx}"),
         }
     }
@@ -209,7 +209,10 @@ impl DssObject for VsConverter {
         match idx {
             PHASES => self.cd.nphases = value.max(0) as usize,
             NDC => self.ndc = value.max(0) as usize,
-            VSCMODE => self.f_mode = value,
+            // The registry list is closed at 0..=4 (`DefaultValue = Fixed`
+            // catches every unmatched token before the write), so the fallback
+            // is unreachable through the parser.
+            VSCMODE => self.f_mode = VscMode::from_ordinal(value).unwrap_or(self.f_mode),
             _ => unreachable!("VSConverter has no integer property {idx}"),
         }
     }

@@ -1,4 +1,4 @@
-use crate::elements::ckt::{CktElementData, ElemFlags};
+use crate::elements::ckt::{CktElementData, ElemFlags, OcpDeviceType};
 use crate::elements::meter::energymeter::prop;
 use crate::exec::*;
 
@@ -347,19 +347,19 @@ fn ocp_device_flags_and_type_per_class() {
         (
             "New recloser.r1 monitoredobj=line.l1 monitoredterm=1 \
                  switchedobj=line.l1 switchedterm=1",
-            2,
+            OcpDeviceType::Recloser,
             true,
         ),
         (
             "New relay.r1 type=current monitoredobj=line.l1 monitoredterm=1 \
                  switchedobj=line.l1 switchedterm=1 phasetrip=1 delay=0.1",
-            3,
+            OcpDeviceType::Relay,
             true,
         ),
         (
             "New fuse.f1 monitoredobj=line.l1 monitoredterm=1 \
                  switchedobj=line.l1 switchedterm=1",
-            1,
+            OcpDeviceType::Fuse,
             false,
         ),
     ] {
@@ -389,7 +389,7 @@ fn disabled_ocp_device_sets_no_flag() {
     );
     let cd = elem_cd(&dss, "line.l1");
     assert!(!cd.flags.contains(ElemFlags::HAS_OCP_DEVICE));
-    assert_eq!(cd.ocp_device_type, 0);
+    assert_eq!(cd.ocp_device_type, OcpDeviceType::Unset);
 
     // The promised consequence: no section ⇒ RelCalc aborts (#52902).
     dss.command("Relcalc");
@@ -465,7 +465,11 @@ fn ocp_device_type_first_registered_wins() {
 
     let fuse_first = feeder(fuse, rec);
     let cd = elem_cd(&fuse_first, "line.l1");
-    assert_eq!(cd.ocp_device_type, 1, "fuse defined first wins");
+    assert_eq!(
+        cd.ocp_device_type,
+        OcpDeviceType::Fuse,
+        "fuse defined first wins"
+    );
     assert!(cd.flags.contains(ElemFlags::HAS_OCP_DEVICE));
     assert!(
         cd.flags.contains(ElemFlags::HAS_AUTO_OCP_DEVICE),
@@ -475,7 +479,7 @@ fn ocp_device_type_first_registered_wins() {
     let rec_first = feeder(rec, fuse);
     assert_eq!(
         elem_cd(&rec_first, "line.l1").ocp_device_type,
-        2,
+        OcpDeviceType::Recloser,
         "recloser defined first wins"
     );
 }
@@ -541,7 +545,10 @@ fn relcalc_assume_restoration_changes_auto_ocp_interruptions() {
     assert!((meter_f64(&yes, "m1", prop::CUST_INTERRUPTS) - 18.55).abs() < eps);
 
     // Both reclosers head a section; l3 reports recloser device type.
-    assert_eq!(elem_cd(&no, "line.l3").ocp_device_type, 2);
+    assert_eq!(
+        elem_cd(&no, "line.l3").ocp_device_type,
+        OcpDeviceType::Recloser
+    );
 }
 
 /// With an OCP device at the metered head line, `RelCalc` no longer aborts and
@@ -599,5 +606,8 @@ fn relcalc_downstream_recloser_matches_oracle() {
     // Only l2 heads a section; l1 (upstream of the OCP) stays in section 0.
     assert_eq!(branch_section_id(&dss, "line.l1"), 0);
     assert_eq!(branch_section_id(&dss, "line.l2"), 1);
-    assert_eq!(elem_cd(&dss, "line.l2").ocp_device_type, 2);
+    assert_eq!(
+        elem_cd(&dss, "line.l2").ocp_device_type,
+        OcpDeviceType::Recloser
+    );
 }

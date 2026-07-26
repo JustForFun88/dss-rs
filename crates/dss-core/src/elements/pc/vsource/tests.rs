@@ -135,3 +135,26 @@ fn makeposseq_vsource() {
         ]
     );
 }
+
+/// `ZSpecType` never leaves the engine (no property, no dump line), but it IS
+/// the `RecalcElementData` `case` selector, so it stays pinned to the Pascal
+/// literals: `Vsource.pas:450`/`:620` = 1, `:469` = 2, `:488`/`:502` = 3.
+#[test]
+fn vsource_z_spec_pins_pascal_ordinals() {
+    assert_eq!(VsourceZSpec::MvaSc.ordinal(), 1);
+    assert_eq!(VsourceZSpec::Isc.ordinal(), 2);
+    assert_eq!(VsourceZSpec::Ohms.ordinal(), 3);
+    for s in [VsourceZSpec::MvaSc, VsourceZSpec::Isc, VsourceZSpec::Ohms] {
+        assert_eq!(VsourceZSpec::from_ordinal(s.ordinal()), Some(s));
+    }
+    // Closed set: the Pascal `case ZSpecType of` (`:710-805`) has no `else`.
+    for v in [i32::MIN, -1, 0, 4, 100, i32::MAX] {
+        assert_eq!(VsourceZSpec::from_ordinal(v), None, "ordinal {v}");
+    }
+    // `Create` seeds MVAsc, and both rotation selectors seed positive sequence
+    // (`Vsource.pas:620`, `:646-647`).
+    let vs = VSource::new("v");
+    assert_eq!(vs.z_spec_type, VsourceZSpec::MvaSc);
+    assert_eq!(vs.scan_type, ScanType::Positive);
+    assert_eq!(vs.sequence_type, SequenceType::Positive);
+}

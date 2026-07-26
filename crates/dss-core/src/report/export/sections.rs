@@ -11,18 +11,21 @@
 //! skips that (no gate observes the active element across an `Export`).
 
 use crate::circuit::Circuit;
+use crate::elements::ckt::OcpDeviceType;
 use crate::elements::meter::EnergyMeter;
 use crate::elements::traits::ElemId;
 use crate::exec::registry::DssClass;
 use crate::report::format;
 
-/// Pascal `getOCPDeviceTypeString` (`ExportResults.pas:3859`).
-fn ocp_device_type_string(icode: i32) -> &'static str {
+/// Pascal `getOCPDeviceTypeString` (`ExportResults.pas:3859`). Pascal's `else`
+/// arm covers every non-1/2/3 integer; over the closed [`OcpDeviceType`] that
+/// is exactly [`OcpDeviceType::Unset`].
+fn ocp_device_type_string(icode: OcpDeviceType) -> &'static str {
     match icode {
-        1 => "FUSE",
-        2 => "RECLOSER",
-        3 => "RELAY",
-        _ => "Unknown",
+        OcpDeviceType::Fuse => "FUSE",
+        OcpDeviceType::Recloser => "RECLOSER",
+        OcpDeviceType::Relay => "RELAY",
+        OcpDeviceType::Unset => "Unknown",
     }
 }
 
