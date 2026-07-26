@@ -12,7 +12,7 @@ use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
-use super::{InvControl, VOLTWATT, WATTPF, WATTVAR, prop};
+use super::{InvControl, MonPhase, VOLTWATT, WATTPF, WATTVAR, prop};
 
 /// Pascal `ValidateXYCurve(curve, mode)`: VOLTWATT requires the per-unit Y
 /// values in `[0, 1]`; WATTPF/WATTVAR require `[-1, 1]`. A violating curve is
@@ -335,7 +335,7 @@ impl DssObject for InvControl {
             VOLTWATT_YAXIS => self.voltwatt_yaxis,
             RATE_OF_CHANGE_MODE => self.rate_of_change_mode,
             REF_REACTIVE_POWER => self.reac_power_ref,
-            MON_VOLTAGE_CALC => self.mon_buses_phase,
+            MON_VOLTAGE_CALC => self.mon_buses_phase.ordinal(),
             CONTROL_MODEL => self.ctrl_model,
             _ => unreachable!("InvControl has no integer property {idx}"),
         }
@@ -351,7 +351,7 @@ impl DssObject for InvControl {
             VOLTWATT_YAXIS => self.voltwatt_yaxis = value,
             RATE_OF_CHANGE_MODE => self.rate_of_change_mode = value,
             REF_REACTIVE_POWER => self.reac_power_ref = value,
-            MON_VOLTAGE_CALC => self.mon_buses_phase = value,
+            MON_VOLTAGE_CALC => self.mon_buses_phase = MonPhase::from_ordinal(value),
             CONTROL_MODEL => self.ctrl_model = value,
             _ => unreachable!("InvControl has no integer property {idx}"),
         }

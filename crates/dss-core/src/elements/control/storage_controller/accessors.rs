@@ -11,7 +11,9 @@ use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
-use super::{CURRENT_PEAKSHAVE, CURRENT_PEAKSHAVE_LOW, MODE_FOLLOW, StorageController, prop};
+use super::{
+    CURRENT_PEAKSHAVE, CURRENT_PEAKSHAVE_LOW, MODE_FOLLOW, MonPhase, StorageController, prop,
+};
 
 impl CktElement for StorageController {
     fn cd(&self) -> &crate::elements::ckt::CktElementData {
@@ -208,7 +210,7 @@ impl DssObject for StorageController {
         use prop::*;
         match idx {
             TERMINAL => self.ccd.element_terminal,
-            MON_PHASE => self.f_mon_phase,
+            MON_PHASE => self.f_mon_phase.ordinal(),
             MODE_DISCHARGE => self.discharge_mode,
             MODE_CHARGE => self.charge_mode,
             INHIBIT_TIME => self.inhibit_hrs,
@@ -225,7 +227,7 @@ impl DssObject for StorageController {
         use prop::*;
         match idx {
             TERMINAL => self.ccd.element_terminal = value,
-            MON_PHASE => self.f_mon_phase = value,
+            MON_PHASE => self.f_mon_phase = MonPhase::from_ordinal(value),
             MODE_DISCHARGE => self.discharge_mode = value,
             MODE_CHARGE => self.charge_mode = value,
             INHIBIT_TIME => self.inhibit_hrs = value,
@@ -411,12 +413,13 @@ impl DssObject for StorageController {
                 }
             }
             MON_PHASE => {
-                if self.f_mon_phase > self.ccd.cd.nphases as i32 {
+                if self.f_mon_phase.ordinal() > self.ccd.cd.nphases as i32 {
                     self.ccd.cd.obj.push_error(format!(
                         "Error: Monitored phase ({}) must be less than or equal to number of phases ({}). ",
-                        self.f_mon_phase, self.ccd.cd.nphases
+                        self.f_mon_phase.ordinal(),
+                        self.ccd.cd.nphases
                     ));
-                    self.f_mon_phase = 1;
+                    self.f_mon_phase = MonPhase::Phase(1);
                 }
             }
             ELEMENT_LIST => {

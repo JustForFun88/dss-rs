@@ -38,7 +38,7 @@ fn create_defaults_match_pascal() {
     assert_eq!(ic.reac_power_ref, REAC_POWER_VARAVAL);
     assert_eq!(ic.voltwatt_yaxis, 1); // %Pmpp
     assert_eq!(ic.vvc_curve_offset, 0.0);
-    assert_eq!(ic.mon_buses_phase, AVGPHASES);
+    assert_eq!(ic.mon_buses_phase, MonPhase::Avg);
     assert_eq!(ic.v_setpoint, 1.0);
     assert_eq!(ic.ctrl_model, MODEL_LINEAR);
     assert!(!ic.ccd.show_event_log);
@@ -162,7 +162,7 @@ fn interval_units_bad_unit_logs_error_and_keeps_default() {
 // of the PVSystem injection model.
 mod dispatch {
     use super::super::compute::{DerSnap, FleetFind, InvDispatchEnv, MonitorVar};
-    use super::super::{InvControl, prop};
+    use super::super::{InvControl, MonPhase, prop};
     use crate::elements::traits::ElemId;
     use crate::obj::base::DssObject;
 
@@ -1776,8 +1776,8 @@ mod dispatch {
         // Three single-node monitored buses at 1.00 / 1.05 / 0.98 pu. monVoltageCalc=MAX
         // → 1.05, MIN → 0.98 (AVG would give 1.01 — so each fold is discriminated). The
         // MonBus reduce path (reduce_mon_phase MAX/MIN over the complex cBuffer); the 3
-        // migrated corpus cases + the AVG mocks only cover AVGPHASES.
-        let probe = |phase: i32| {
+        // migrated corpus cases + the AVG mocks only cover MonPhase::Avg.
+        let probe = |phase: MonPhase| {
             let mut ic = monbus_voltvar(
                 vec!["m.1".into(), "m.2".into(), "m.3".into()],
                 vec![7200.0, 7200.0, 7200.0],
@@ -1795,14 +1795,14 @@ mod dispatch {
             ic.ctrl_vars[0].f_present_vpu
         };
         assert!(
-            (probe(super::super::MAXPHASE) - 1.05).abs() < 1e-9,
+            (probe(MonPhase::Max) - 1.05).abs() < 1e-9,
             "MAX reduce = {} (expected 1.05)",
-            probe(super::super::MAXPHASE)
+            probe(MonPhase::Max)
         );
         assert!(
-            (probe(super::super::MINPHASE) - 0.98).abs() < 1e-9,
+            (probe(MonPhase::Min) - 0.98).abs() < 1e-9,
             "MIN reduce = {} (expected 0.98)",
-            probe(super::super::MINPHASE)
+            probe(MonPhase::Min)
         );
     }
 
@@ -1815,7 +1815,7 @@ mod dispatch {
             vec!["m.1".into(), "m.2".into(), "m.3".into()],
             vec![7200.0, 7200.0, 7200.0],
         );
-        ic.mon_buses_phase = 2;
+        ic.mon_buses_phase = MonPhase::Phase(2);
         let c = |pu: f64| num_complex::Complex64::new(pu * 7200.0, 0.0);
         let mut env = MockEnv::new(vec![MockDer::new("pv", 0.90, 300.0)]);
         env.mon_bus_v = vec![

@@ -15,7 +15,7 @@ use crate::elements::traits::CktElement;
 use crate::support::dynamics::IterationFlag;
 
 use super::user_model::{CapCallbacks, route_non_queue_effect};
-use super::{AVGPHASES, CapControl, CapControlType, MAXPHASE, MINPHASE, pf_1to2};
+use super::{CapControl, CapControlType, MonPhase, pf_1to2};
 
 impl CapControl {
     /// Pascal `TSolutionObj.TimeOfDay(useEpsilon = true)`: normalize the
@@ -38,21 +38,21 @@ impl CapControl {
     fn get_control_current(&self, cbuffer: &[Complex64], cond_offset: usize) -> f64 {
         let nph = self.ccd.cd.nphases; // Fnphases
         match self.fct_phase {
-            AVGPHASES => {
+            MonPhase::Avg => {
                 let mut c = 0.0;
                 for i in 0..nph {
                     c += cbuffer[cond_offset + i].norm();
                 }
                 c / nph as f64 / self.ct_ratio
             }
-            MAXPHASE => {
+            MonPhase::Max => {
                 let mut c = 0.0_f64;
                 for i in 0..nph {
                     c = c.max(cbuffer[cond_offset + i].norm());
                 }
                 c / self.ct_ratio
             }
-            MINPHASE => {
+            MonPhase::Min => {
                 let mut c = 1.0e50_f64;
                 for i in 0..nph {
                     c = c.min(cbuffer[cond_offset + i].norm());
@@ -61,7 +61,7 @@ impl CapControl {
             }
             // Just one phase (the monitored phase) — note: Pascal uses no
             // CondOffset on this default branch.
-            _ => cbuffer[(self.fct_phase as usize) - 1].norm() / self.ct_ratio,
+            MonPhase::Phase(p) => cbuffer[(p as usize) - 1].norm() / self.ct_ratio,
         }
     }
 
@@ -71,21 +71,21 @@ impl CapControl {
     /// connection (delta ⇒ line-line difference).
     fn get_control_voltage(&self, cbuffer: &[Complex64], mon_nphases: usize, cap_conn: i32) -> f64 {
         match self.fpt_phase {
-            AVGPHASES => {
+            MonPhase::Avg => {
                 let mut v = 0.0;
                 for vb in cbuffer.iter().take(mon_nphases) {
                     v += vb.norm();
                 }
                 v / mon_nphases as f64 / self.pt_ratio
             }
-            MAXPHASE => {
+            MonPhase::Max => {
                 let mut v = 0.0_f64;
                 for vb in cbuffer.iter().take(mon_nphases) {
                     v = v.max(vb.norm());
                 }
                 v / self.pt_ratio
             }
-            MINPHASE => {
+            MonPhase::Min => {
                 let mut v = 1.0e50_f64;
                 for vb in cbuffer.iter().take(mon_nphases) {
                     v = v.min(vb.norm());
@@ -93,8 +93,8 @@ impl CapControl {
                 v / self.pt_ratio
             }
             // Just one phase; L-L if the capacitor is delta-connected.
-            _ => {
-                let p = self.fpt_phase as usize; // 1-based
+            MonPhase::Phase(ptph) => {
+                let p = ptph as usize; // 1-based
                 if cap_conn == 1 {
                     // NextDeltaPhase uses the control's own Fnphases.
                     let mut next = p + 1;

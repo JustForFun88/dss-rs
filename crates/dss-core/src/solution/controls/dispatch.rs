@@ -14,6 +14,7 @@ use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
 use crate::elements::control::inv_control::{
     DerSnap, InvControl, InvDispatchEnv, InvFleetFind, MonitorVar,
 };
+use crate::elements::control::mon_phase::MonPhase;
 use crate::elements::control::recloser::Recloser;
 use crate::elements::control::reg_control::RegControl;
 use crate::elements::control::relay::Relay;
@@ -1268,8 +1269,7 @@ impl StorageDispEnv<'_> {
 impl StorageDispatchEnv for StorageDispEnv<'_> {
     /// Pascal `GetControlPower` — per `MonPhase`, over the monitored element's
     /// per-conductor power (`GetPhasePower` → `cBuffer`).
-    fn control_power(&mut self, mon_phase: i32, fnphases: usize) -> Complex64 {
-        use crate::elements::control::storage_controller::{AVG, MAXPHASE, MINPHASE};
+    fn control_power(&mut self, mon_phase: MonPhase, fnphases: usize) -> Complex64 {
         let m = self.monitored_ref();
         let mon_nphases = self.store.ckt_elem(m).cd().nphases;
         let mut control_power = if mon_nphases == 1 {
@@ -1299,8 +1299,8 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                 }
             };
             match mon_phase {
-                AVG => (0..term_i.len()).map(pw).sum(),
-                MAXPHASE => {
+                MonPhase::Avg => (0..term_i.len()).map(pw).sum(),
+                MonPhase::Max => {
                     // Abs-max of the terminal's conductors, scaled by Fnphases.
                     let mut cp = Complex64::ZERO;
                     for i in 0..term_i.len() {
@@ -1311,7 +1311,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                     }
                     cp * fnphases as f64
                 }
-                MINPHASE => {
+                MonPhase::Min => {
                     let mut cp = Complex64::new(1.0e50, 1.0e50);
                     for i in 0..term_i.len() {
                         let c = pw(i);
@@ -1324,8 +1324,8 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                 // A specific phase: Pascal uses `cBuffer[FMonPhase]` (1-based, no
                 // CondOffset — an upstream quirk), so this indexes the flat buffer
                 // from terminal 1, scaled by Fnphases.
-                _ => {
-                    let i0 = (mon_phase - 1) as usize;
+                MonPhase::Phase(p) => {
+                    let i0 = (p - 1) as usize;
                     let n = cd.node_ref[i0];
                     let c = if n > 0 {
                         self.node_v[n] * cd.iterminal[i0].conj()
@@ -1344,8 +1344,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
 
     /// Pascal `GetControlCurrent` — per `MonPhase`, over `Cabs(cBuffer[i])` (the
     /// monitored element's terminal currents).
-    fn control_current(&mut self, mon_phase: i32, fnphases: usize) -> f64 {
-        use crate::elements::control::storage_controller::{AVG, MAXPHASE, MINPHASE};
+    fn control_current(&mut self, mon_phase: MonPhase, fnphases: usize) -> f64 {
         let m = self.monitored_ref();
         self.store
             .ckt_elem_mut(m)
@@ -1353,15 +1352,15 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         let cd = self.store.ckt_elem(m).cd();
         let term_i = cd.term_i(self.element_terminal - 1);
         match mon_phase {
-            AVG => {
+            MonPhase::Avg => {
                 let sum: f64 = term_i.iter().map(|c| c.norm()).sum();
                 sum / fnphases as f64
             }
-            MAXPHASE => term_i.iter().map(|c| c.norm()).fold(0.0, f64::max),
-            MINPHASE => term_i.iter().map(|c| c.norm()).fold(1.0e50, f64::min),
+            MonPhase::Max => term_i.iter().map(|c| c.norm()).fold(0.0, f64::max),
+            MonPhase::Min => term_i.iter().map(|c| c.norm()).fold(1.0e50, f64::min),
             // Specific phase: Pascal's flat `cBuffer[FMonPhase]` (1-based, no
             // CondOffset — an upstream quirk), indexed from terminal 1.
-            _ => cd.iterminal[(mon_phase - 1) as usize].norm(),
+            MonPhase::Phase(p) => cd.iterminal[(p - 1) as usize].norm(),
         }
     }
 
