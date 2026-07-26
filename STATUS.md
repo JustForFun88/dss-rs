@@ -4494,6 +4494,100 @@ four new unit pins, one gate that did not exist before.
 
 ---
 
+### OG-1.6 NCIM `PV↔PQ` switching cadence → r4133; IEEE118Bus promoted (2026-07-26)
+
+Branch `depas-og2`. Closes `ORPHANED_GAPS.md` §1.6. Ritual 0 held at start and
+before the commit (186 `.pas` under `.inputs/dss_capi`, PowerShell recursion;
+`cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`).
+
+**The spec pointer in §1.6 was wrong.** There is no `Common/NCIMSolutionHelper.pas`
+in any vendored EPRI tree — that file is the *retired capi015 r4103 refactor* the
+port was originally written from. In r4133 NCIM lives inline in
+`Version8/Source/Common/Solution.pas` (`DoNCIMSolution` l.1095 … `UpdateGenQ`
+l.1993 … `BuildJacobian` l.2326). Every routine was re-read against r4133; all of
+them already matched **except one structural difference**, so this is a cadence
+tweak, not a solver restructure (the escape condition did not trigger).
+
+**The cadence.** r4133 `UpdateGenQ` is `if (pGen.GenModel = 3) then … else begin
+… end` (l.2059 / l.2166): the PV→PQ demotion (l.2117-2163) and the PQ→PV
+promotion (l.2169-2295) are **mutually exclusive within one Newton pass**, and the
+trailing "update currents for all the other gen models" loop (l.2301-2307) is
+inside the `else` too — a model-3 generator's `Iterminal` was already stamped
+per phase from `deltaQNom[j]` at l.2108. The port ran the PQ→PV block as an
+unconditional second `if` and the current update unconditionally, so a generator
+demoted PV→PQ could be promoted straight back in the same pass. Around
+`|V| = VTarget` that is a limit cycle — the PV equation drives `|V|` onto the
+target, the PQ test then reads `VNode` at the target and un-converts. r4088's
+`Solution.pas` is byte-identical in this routine (diffed: only commented-out debug
+file I/O differs), which is why r4088 and r4133 share the counts.
+
+**Measured (live `epri-worker`, r4133 = `Version 11.0.0.1 (64-bit build) -
+Charlottesville`, 2026-07-26).** `Solution.Iterations`/`Converged`,
+`YNodeVarray`, `GeneratorsF(4)`:
+
+| deck | r4133 | port before | port after |
+|---|---|---|---|
+| `pq_circuit(1)` / `(2)` / `pv_circuit(1.0)` | True/3 | True/3 | True/3 |
+| `pv_circuit(1.01)` | True/**4** | True/8 | True/**4** |
+| `pv_circuit(1.02)` | True/**4** | **False**/15 | True/**4** |
+| `IEEE118Bus/master_file.dss` | True/**9** cold, 2 warm | **False**/100 | True/**9** cold, 2 warm |
+
+IEEE118Bus's converged voltages are *exactly* the vector the port used to stall on
+(`89_CLINCHRV.1 = 80072.708834`, `1_RIVERSDE.1 = 76088.991977`,
+`4_NWCARLSL.1 = 79514.988474`): the fixpoint was always right, only the
+convergence test never fired.
+
+- **Code** (`solution/solution/ncim.rs`, the only solver file touched): the
+  `else` arm + the relocated `Iterminal` loop, plus two loop-faithfulness fixes
+  taken with it — the `deltaQNom[0] >= 0` sign test is re-read **per phase**
+  (r4133 l.2151 / l.2253; phase 0's own overwrite feeds the later phases —
+  identical whenever `qMax >= 0 > qMin`, faithful when not). Module doc now names
+  r4133 `Solution.pas` as the spec of record and flags the stale capi015 line
+  citations in the per-function docs.
+- **`PV2PQList` deliberately NOT ported.** r4133's list (l.346, appended
+  l.1938/2158, removed l.2260-2291) has no effect on the solve: `ReversePQ2PV`
+  (l.1743) and `DistGenClusters` (l.1687) are dead code (declared, defined, never
+  called), and the only live consumer is `Show PV2PQGen` (`ShowResults.pas`
+  l.3617). The port's `Generator.ncim_expv` is set/cleared on exactly the same two
+  events and already drives `Show PV2PQ_Conversions` — no new solution state, no
+  `elements/**` field change.
+- **Unit pins re-measured, not loosened** (`exec/tests/ncim.rs`): `pv_qlimit`
+  8 → **4** iters; `ncim_pv_aggressive_nonconvergence_is_faithful` → renamed
+  `ncim_pv_aggressive_qlimit_converges_matches_r4133` (that test pinned a *shared
+  capi015 non-convergence* that r4133 does not have — it now pins r4133's
+  converged 4-iteration answer, the same clamped fixpoint as `vpu=1.01`). New
+  shared helper `assert_gen_q_clamped` pins BOTH r4133 facts: terminal powers
+  `(−266.667 kW, −500 kvar)` per conductor (the real +1500 kvar clamp) **and**
+  `Generators.kvar = 0.0` — probed on r4133, because `GetNCIMPowers` writes
+  `Qnominalperphase := deltaQNom[j]` only on its model-3 arm (l.1308), so after
+  the conversion the last write is iteration 1's zero. The port's old `1500` was
+  a capi015-cadence artifact (its generator was model-3 again on the final pass).
+- **Frozen capi015 goldens untouched and still green.** `tests/golden/ncim/`
+  (UNREGENERABLE — retired venv) passes unchanged on both decks: Jacobian nnz +
+  values, deltaF/deltaZ shape, and the byte-exact PV2PQ list. The cadence changes
+  *how* the fixpoint is reached, not the converged Jacobian nor which generator
+  ends up converted.
+- **Corpus.** `IEEE118Bus/master_file.dss` moved out of
+  `skipped_needs_investigation.json` (tag `ncim_pv_pq_switching_divergence`) into
+  `solvable_now.json` — `engines:"r4133"` (the pinned 0.14.5 oracle predates NCIM),
+  `kind:"large"`, `n_steps:1`, **no ledger entry, no tolerance change**: the
+  whole-model compare (354 nodes, 353 elements, Y, injection, warm-resolve
+  iterations = 2) matches r4133 first try. The four existing NCIM cases
+  (`modes/ncim/*` + `Kundur2Area`) keep their exact iteration counts.
+  `ad_sweep.json` gets the mandatory disposition `off:mode-outside-AD-scope`,
+  measured: the AD probe's baseline (`compile; set controlmode=off; solve
+  mode=snap`) does **not** converge — and r4133 does the same (probe: plain
+  `Solve` → True/2, `solve mode=snap` → **False/100 on both engines**), so a
+  second `solve mode=snap` on a converged NCIM circuit is shared upstream
+  behavior, not a port defect, and no AD-vs-normal baseline exists for this deck.
+  Population lock regenerated deliberately (`solvable_now` 293→294,
+  `skipped_needs_investigation` 13→12, `ad_sweep` 293→294).
+- Gate green (fmt + clippy + `cargo test --workspace`, corpus gate both channels);
+  `tests/corpus` pristine; `TODO(compat)` still exactly 117; no new
+  `downcast_ref`/`as_any`; no existing golden regenerated.
+
+---
+
 ### OG-1.10 `Export Estimation` (export verb 5) + the CDPSM error-text rider (2026-07-26)
 
 Branch `depas-og2`. Closes `ORPHANED_GAPS.md` §1.10 — the last `EXPORT_OPTIONS`

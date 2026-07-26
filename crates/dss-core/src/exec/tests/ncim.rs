@@ -230,16 +230,19 @@ fn ncim_pv_regulating_matches_oracle() {
 }
 
 /// PV bus **hitting its Q-limit → PV→PQ conversion**: `vpu=1.01` demands more
-/// than the +1500 kvar limit, so `NCIM_UpdateGenQ` clamps Q and converts the
-/// generator to model-4 (PQ). capi015 NCIM converges in 8 iters at Q=1500.
+/// than the +1500 kvar limit, so `UpdateGenQ` clamps Q and converts the
+/// generator to model-4 (PQ). **r4133 converges in 4 iters at Q=1500** (live
+/// `epri-worker` probe 2026-07-26, `Solution.Iterations`; the retired capi015
+/// r4103 cadence took 8 — see ORPHANED_GAPS §1.6 / `DIVERGENCES.md`). The
+/// converged node voltages are the same fixpoint on both engines.
 #[test]
 fn ncim_pv_qlimit_pv2pq_matches_oracle() {
-    let dss = solve_ncim(&pv_circuit("1.01"));
+    let mut dss = solve_ncim(&pv_circuit("1.01"));
     let ckt = dss.circuit().unwrap();
     assert!(ckt.is_solved, "NCIM PV (Q-limit) did not converge");
     assert_eq!(
-        ckt.solution.iteration, 8,
-        "capi015 needs 8 iters for the PV→PQ conversion"
+        ckt.solution.iteration, 4,
+        "r4133 needs 4 iters for the PV→PQ conversion"
     );
 
     let expected = [
@@ -251,42 +254,83 @@ fn ncim_pv_qlimit_pv2pq_matches_oracle() {
         cx(-3545.817965931437, 6281.5554734744655),
     ];
     assert_nodes(&dss, &expected, V_TOL);
-
-    let (_, kvar) = dss.generator_present_kw_kvar("g1").expect("g1");
-    assert!((kvar - 1500.0).abs() < KVAR_TOL, "g1 kvar clamped = {kvar}");
+    assert_gen_q_clamped(&mut dss);
 }
 
-/// PV bus that **cannot be satisfied**: `vpu=1.02` drives Q to the +1500 limit,
-/// yet the current-injection mismatch never closes. capi015 NCIM ALSO fails to
-/// converge on this deck — it runs the full 15 iterations and stalls at exactly
-/// the same fixpoint (`|genbus| = 7343.55 V`, the VTarget). The port reproduces
-/// that faithfully; this pins the shared non-convergence so a future change that
-/// silently "fixes" it (diverging from the oracle) is caught.
+/// The Q clamp of the PV→PQ conversion, as r4133 reports it (live `epri-worker`
+/// probe 2026-07-26 on `vpu=1.01` **and** `vpu=1.02`, both identical):
+///
+/// * `Generator.g1` terminal powers = `(−266.667 kW, −500 kvar)` per conductor —
+///   the generator delivers its 800 kW and exactly the +1500 kvar limit;
+/// * `Generators.kvar` (`Presentkvar` = `Qnominalperphase·Nphases/1000`) = **0.0**,
+///   because `GetNCIMPowers` writes `Qnominalperphase := deltaQNom[j]` only on its
+///   model-3 arm (r4133 `Solution.pas` l.1308): once the generator converts to
+///   model 4 the last write is iteration 1's zero. (`vpu=1.0`, which never
+///   converts, keeps reporting the live 1217.2208409024554 — see
+///   [`ncim_pv_regulating_matches_oracle`].)
+fn assert_gen_q_clamped(dss: &mut Dss) {
+    let (_, kvar) = dss.generator_present_kw_kvar("g1").expect("g1");
+    assert!(
+        kvar.abs() < KVAR_TOL,
+        "r4133 reports Generators.kvar = 0 after the PV→PQ conversion, got {kvar}"
+    );
+    let snap = dss
+        .snapshot_elements()
+        .into_iter()
+        .find(|s| s.name.eq_ignore_ascii_case("Generator.g1"))
+        .expect("Generator.g1");
+    for k in 0..3 {
+        assert!(
+            (snap.powers[2 * k] - (-266.6666666666667)).abs() < 1e-6
+                && (snap.powers[2 * k + 1] - (-500.0)).abs() < 1e-6,
+            "g1 power[{k}] = ({}, {}) vs r4133 (-266.66667, -500.0)",
+            snap.powers[2 * k],
+            snap.powers[2 * k + 1]
+        );
+    }
+}
+
+/// PV bus whose target **cannot be reached inside the Q-limits**: `vpu=1.02`
+/// demands far more than +1500 kvar. Under the r4133 switching cadence the
+/// generator converts PV→PQ once, stays PQ (the PQ→PV test is in the `else` arm,
+/// so it cannot un-convert in the same pass), and the solve closes in **4 iters
+/// at the very same clamped fixpoint as `vpu=1.01`** — live `epri-worker` probe
+/// 2026-07-26: converged=True, iterations=4, `genbus.1 = 7212.895598275793 −
+/// 70.00930104534099i`.
+///
+/// The retired capi015 r4103 cadence instead ran the PQ→PV test unconditionally,
+/// so the generator flip-flopped PV↔PQ around `|genbus| = VTarget = 7343.55 V`
+/// and both capi015 and the port ran out at `MaxIterations` (15). Adopting the
+/// r4133 cadence (ORPHANED_GAPS §1.6) removed that stall — this test now pins the
+/// convergence so a regression back to the chattering form is caught.
 #[test]
-fn ncim_pv_aggressive_nonconvergence_is_faithful() {
-    let dss = solve_ncim(&pv_circuit("1.02"));
+fn ncim_pv_aggressive_qlimit_converges_matches_r4133() {
+    let mut dss = solve_ncim(&pv_circuit("1.02"));
     let ckt = dss.circuit().unwrap();
     assert!(
-        !ckt.is_solved,
-        "capi015 NCIM does NOT converge here; the port must match"
+        ckt.is_solved,
+        "r4133 converges this deck (PV→PQ, Q clamped); the port must match"
     );
-    assert_eq!(
-        ckt.solution.iteration, 15,
-        "runs to max_iterations like the oracle"
-    );
+    assert_eq!(ckt.solution.iteration, 4, "r4133 converges in 4 iters");
 
-    // Even non-converged, the stalled fixpoint matches capi015 node-for-node.
+    // r4133 converged node voltages — identical to the `vpu=1.01` fixpoint: both
+    // targets are unreachable, so the generator lands on the same +1500 kvar clamp.
     let expected = [
         ORACLE_SOURCEBUS[0],
         ORACLE_SOURCEBUS[1],
         ORACLE_SOURCEBUS[2],
-        cx(7342.634931411053, -115.86364409175604),
-        cx(-3771.65832486403, -6300.976559271102),
-        cx(-3570.9766065470253, 6416.84020336286),
+        cx(7212.895598275793, -70.00930104534099),
+        cx(-3667.077632344357, -6211.546172429122),
+        cx(-3545.8179659314364, 6281.555473474465),
     ];
     assert_nodes(&dss, &expected, V_TOL);
-    // The stall sits at the regulation target: |genbus| = 1.02·(12470/√3).
-    assert!((ckt.solution.node_v[4].norm() - 7343.54901393).abs() < 1e-4);
+    // NOT at the regulation target (1.02·12470/√3 = 7343.55 V) — the Q clamp binds.
+    assert!(
+        (ckt.solution.node_v[4].norm() - 7213.23).abs() < 1e-2,
+        "|genbus| = {}",
+        ckt.solution.node_v[4].norm()
+    );
+    assert_gen_q_clamped(&mut dss);
 }
 
 /// Re-solving under NCIM (a second `Solve`) stays at the converged fixpoint —
