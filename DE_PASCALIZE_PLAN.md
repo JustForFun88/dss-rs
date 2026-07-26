@@ -15,6 +15,18 @@ so Stage F pins **r4133** parity, not r3723).
 > exporters, NCIM). Executors: re-locate by **identifier**, never by line number, and
 > re-run the counting greps at WP start — absolute counts only grow until the WP lands,
 > which is the point of fixing the architecture.
+>
+> **Execution status (freshness pass 2026-07-26 @ `update` `67d2965`, R3 in flight):**
+> wave 1 (R0 + P1-partial + P2 + P6) merged 2026-07-17 (`e7cfc1e`); the wave-2 v2
+> branches (P5a `wt-p5a-v2`, P1b `wt-p1b-v2`, P12+P13 `wt-p1213-v2`, P15 `wt-p15`,
+> P9 `wt-p9`) merged 2026-07-19/20 — the old salvage branches `wt-p5a`/`wt-p1b`/
+> `wt-p1213` are superseded; R1(+P7) `depas-r1`, P10 `depas-p10`, P11 `depas-p11`,
+> P8+P14 `depas-p8p14`, P5b/c `depas-p5bc` merged 2026-07-25; R2 (M3b seam) + R2b
+> (a–e) merged 2026-07-25/26. Part I remainder = **R3** (store flip + downcast
+> elimination — executing in worktree `depas-r3` as of 2026-07-26); Part II remainder
+> = the P1 deferred tail (`docs/phase-records/depascalize-p1.md` §Deferred) and P3
+> (after R3); then Stage F (not started, last). Per-WP status markers below; full
+> records in `STATUS.md` + `docs/phase-records/depascalize-*.md`.
 
 Companion: `MULTITHREADING_PLAN.md` (Phase 9 parallelism). This plan's job is to make sure
 the de-Pascalized architecture is the one that plan builds on.
@@ -24,8 +36,8 @@ the de-Pascalized architecture is the one that plan builds on.
 
 All of this runs **after the 1:1 port reaches final acceptance** (`PORTING_PLAN §6` —
 **executed 2026-07-11, referee ACCEPT**; per `PLAN_SEQUENCE` this plan is stage 5, after
-UPGRADE Rungs 1–2 — Rung 1 in flight on the `update` integration branch as of
-2026-07-12). At that
+UPGRADE Rungs 1–2 — **UPGRADE COMPLETE 2026-07-17**, both rungs exited, so Stage F's
+parity target is r4133 as planned). At that
 point the porting rules ("Pascal is the spec", "port loop-for-loop where numerics matter")
 **no longer bind** — this is refactoring of an accepted engine, and **byte-exact goldens may
 be deliberately regenerated**. Two contracts survive acceptance and still constrain every
@@ -125,6 +137,11 @@ down and where mechanical execution is enough:
 
 Tier vocabulary and the step-0 refuse protocol: `PLAN_SEQUENCE.md` §Model-tier protocol.
 
+*(Tier status note, 2026-07-26 — not a protocol change: R3 as re-scoped by the R2b
+handoff inherits R2's escaped store-flip/category work, so it is executed at
+**opus-high+** with opus-high+ audits — above its original opus-medium+ row; see
+STATUS §"R3 handoff".)*
+
 **Forbidden moves (hard rules; violating any one = stop, revert the change, record in STATUS):**
 1. Never regenerate any golden in an [A] stage. (Single sanctioned exception: P5's
    error-**text** goldens/asserts — user decision 2026-07-12, text only, once; numeric
@@ -189,7 +206,12 @@ waves — the count grows with every ported class, which is exactly why the arch
 not the sites, is the fix)*. Root cause: every class stores its objects as a heterogeneous
 `Vec<Box<dyn DssObject>>` (`exec/registry.rs:16`), so
 any code needing a concrete `&Load`/`&mut Transformer` recovers it at runtime via
-`as_any().downcast_ref::<T>()`. This **diverges from `PORTING_PLAN.md §2.1`**, which specified
+`as_any().downcast_ref::<T>()`. *(Progress re-verified 2026-07-26 @ `update` `67d2965`,
+after R0–R2b: **369 `downcast_ref|downcast_mut` sites / 73 files** remain (364
+production + 5 test-context — the R3 collapse target), **716 `as_any|as_ckt_element`
+hits / 134 files**, `fn as_any`/`fn as_any_mut` defs 52+52; ownership already moved to
+the typed `Elements` arenas in R1, so the remaining downcasts are access-path, not
+storage.)* This **diverges from `PORTING_PLAN.md §2.1`**, which specified
 typed `Vec<T>` arenas + `Idx<T>` newtype indices + an `enum ElemId` with match dispatch —
 explicitly "no downcast." The implementation took the boxed-trait shortcut; this work package
 restores the specified design.
@@ -205,7 +227,10 @@ restores the specified design.
   `exec/registry.rs` 12, `cim/power_xfmr.rs` 12, `exec/view.rs` 11, `exec/save_circuit.rs`
   10 (the 2026-07-06 "~56, almost entirely exec/" is stale — CIM landed since). The solver
   still reaches elements through `ElemStore`/`ElemRef`, not direct indexing — R2's flip is
-  confined to the executive + report/CIM layer, never the solve loops.
+  confined to the executive + report/CIM layer, never the solve loops. *(Post-R1
+  re-measure 2026-07-26: `.objects[` = **1 site** — storage lives in the typed arenas;
+  the former direct readers go through the arena API and are counted in the 369 downcasts
+  above.)*
 - **50 classes are registered in `exec/construct.rs`** (`:17-316`, *re-verified 2026-07-12*;
   the 2026-07-06 "34" predates WindGen/AutoTrans/the upgrade waves — **recount at R1
   execution**), **and registration order is semantically significant** — bare-name
@@ -241,6 +266,19 @@ audit's relative shares. The absolute population has since grown to 740 — chie
 exporters (`cim/{export,ieee1547,power_xfmr}.rs`, WPG.18) and `exec/reduce.rs`, whose
 concrete reads are Category B/E patterns (typed reads / `ElemId` match over arenas). The
 category taxonomy and fixes are unchanged; only the blast radius is bigger.)*
+
+*(Category status, 2026-07-26: **A** — identification chain + generic-controlled borrows
+done in R0; the Reg→Transformer / Cap→Capacitor pair/triple borrows (28 sites) wait on
+R3's typed pair getters. **B** — `kind()` guards + small typed reads done in R0; the
+disjoint-borrow meter reads wait on R3. **C** — the `ConductorData` trait landed in R0,
+but the snapshot **storage** is still `Box<dyn DssObject>`-owned
+(`line_geometry/mod.rs` `fwiredata`/`line_spacing_obj`, `line/accessors.rs`
+`line_wire_data`) — the retype is R3-handoff item 4; without it the Part I
+owned-`Box<dyn DssObject>` grep gate cannot close. **D** — untouched; waits on R3's
+typed resolved-object handle. **E** — CLOSED by R2b (c): all 50 `make_like` bodies are
+inherent typed fns, the trait method removed, downcasts 416→369; `clone_box` stays live
+(conductor snapshots + dispatch `mon_clone`) pending item 4. The 364-production-downcast
+file-by-file blocker map lives in STATUS §R2b sub-step (e).)*
 
 ## Target architecture (`PORTING_PLAN §2.1`)
 
@@ -295,6 +333,8 @@ still a strict improvement.
 ## Staged execution (each stage ends gate-green; one commit per stage)
 
 **R0 — behavior traits on the current `Box<dyn>` storage (removes ~120 downcasts, no storage change).**
+**[LANDED — wave 1 (`wt-r0`), merged `e7cfc1e` 2026-07-17; downcasts 766→699; record
+`docs/phase-records/depascalize-r0.md`.]**
 - Add **`ControlElem`** (`elements/control/control_elem.rs`): `ccd()/ccd_mut()` (every control
   already embeds `ccd: ControlElemData`), `control_kind()`, `reset_control_side()`. Rewrite the
   *identification* block in `dispatch.rs:134-204` *(re-verified 2026-07-12; now a 10-arm
@@ -318,6 +358,9 @@ still a strict improvement.
   zone-build line length at `build.rs:214`/load data at `:279`), returning `Option`.
 
 **R1 — introduce `Idx<T>`, `ElemId`, `Elements` behind the current API.**
+**[LANDED — branch `depas-r1`, merged `6c99b8f` 2026-07-25, incl. the P7 rider
+(`assert_send::<Dss>()` + `assert_send::<Elements>()` in `lib.rs`); STATUS
+§DE_PASCALIZE R1.]**
 - New `obj/arena.rs`: `Idx<T>`, `ElemId` (every registered class — 50 as of 2026-07-12),
   `Elements` (per-class `Vec<T>`).
   **Drive the arena fields + every match arm (`ckt_elem`/`obj`/`kind`/`pair_mut`/`triple_mut`/
@@ -332,6 +375,13 @@ still a strict improvement.
   Part V. Every concrete element is plain owned data, so this compiles with no data changes.
 
 **R2 — flip `ElemRef → ElemId` across the spine (compiler-driven, mechanical) and finish A/B/D/E.**
+**[PARTIAL → carried by R2b/R3: R2 (`depas-r2`) landed only the M3b seam (item below,
+`2ed12d3`, 2026-07-25) — the flip + categories proved one-session-infeasible gate-green
+and were escape-recorded. R2b (`depas-r2b`, a–e, merged `a7fb7b3` 2026-07-26) then
+landed the `ElemId::from_ref`/`From` bridges, **Category E `make_like` in full** (trait
+method removed, downcasts 416→369) and the arena ckt/data tag (`try_ckt_elem*`), and
+produced the definitive R3 handoff: the store flip is the single remaining prerequisite
+that unblocks A/B/D and both trait-method removals. See STATUS §§R2/R2b.]**
 - Replace `ElemRef` with `ElemId` in `elements/traits.rs` (`ElemStore`), `circuit.rs` (all
   per-kind lists), every cross-reference (`controlled_element`, `monitored_element`, shape
   refs), `RefAction`, and `solution/` Y-build + solve loops. Where the class is statically known,
@@ -353,8 +403,24 @@ still a strict improvement.
   Part V §"Per-class arena iteration" for the seam-state inventory and the rule for cutting
   further seams.)**
 
-**R3 — delete dead code + verify.** Remove the `ClassStore` boxing adapter, the downcast
-`.expect()` assertions, `ControlKind` remnants, and unused helpers (`clone_box` if now unused).
+**R3 — the store flip + downcast elimination + closeout (re-scoped 2026-07-26 by the
+R2b handoff; IN FLIGHT in worktree `depas-r3`).** R2's escaped items 1–6 moved here, so
+R3 now owns the whole Part I endgame, in sequence (STATUS §"R3 handoff"):
+1. the `ElemRef → ElemId` **store flip** across the spine (~427 all-or-nothing consumer
+   sites / ~55 files, staged via the R2b `from_ref`/`to_ref` bridges: `circuit.rs`
+   per-kind lists → `RefAction.target` → cross-refs → statically-known `Idx<T>` shape
+   refs → the access layer, which retires the bridges);
+2. typed arena accessors (`get::<T>`/`get_mut::<T>`, no `Any`) + Category-A typed
+   pair/triple getters + the Category-D typed resolved-object handle (resolve-time
+   snapshot timing preserved) + the `generator_mut`-family typed matches + Category-B
+   meter reads;
+3. the mechanical collapse of the 364 production downcasts + ~174 `as_ckt_element*`
+   sites, then removal of `as_any`/`as_any_mut` **and** `as_ckt_element`/
+   `as_ckt_element_mut` from `DssObject` (52+52 defs);
+4. the Category-C conductor-snapshot storage retype (`fwiredata`/`line_spacing_obj`/
+   `line_wire_data` → typed snapshots) + the original R3 dead-code sweep — `ClassStore`
+   boxing adapter, downcast `.expect()` assertions, `ControlKind` remnants, unused
+   helpers (`clone_box` if now unused) — and the Part I grep-gate closure.
 Run the full gate + live oracle + perf check.
 
 ## Files to modify (representative — the pattern repeats per class)
@@ -401,6 +467,18 @@ following non-downcast Pascal patterns. Each WP below is independent of Part I u
 and lands gate-green in one commit.
 
 ## P1 — Integer-constant families → enums
+
+**[PARTIAL: wave 1 (`wt-p1`) converted 7 families (`DynSolveMode`, `AddType`,
+`SolveAlgorithm`, `LoadStatus`, `StorageDispatchMode`, `CoreType`, `LineType`); P1b
+(`wt-p1b-v2`) closed the control trio (Relay/CapControl `control_type`, RegControl
+action codes); `Winding.connection` was closed by P10 (`Connection` enum + `TermRef`).
+The deferred tail — Solution `control_mode`/`load_model`/`random_type`, the InvControl
+family, Storage `f_state` + StorageController via the control-queue i32 channel, DER
+`var_mode`, the item-7 element families (Generator `dispatch_mode`, PVSystem var-mode,
+ExpControl pending, ESPVLControl `f_type`, LoadShape interp), the remaining bare-i32
+DssEnum fields, `MonPhase`, Tier-2 — is enumerated in
+`docs/phase-records/depascalize-p1.md` §Deferred and remains a P1-continuation WP
+(re-measured 2026-07-26: 7 `pub const …: i32` lines left in `elements/`).]**
 
 **Finding.** Beyond the enums already done right (`SolveMode` in
 `solution/solution/state.rs:19` (path *re-verified 2026-07-12* — the module was split;
@@ -454,6 +532,9 @@ churn with no readability gain — the value *is* the contract.
 
 ## P2 — Monitor mode bit-packing → typed decode
 
+**[LANDED — wave 1 (`wt-p2`), merged 2026-07-17; incl. the audit-caught lossless-raw fix
+(`Undefined` base variant); record `docs/phase-records/depascalize-p2.md`.]**
+
 The one genuine raw-int bitfield: `Monitor.mode: i32` with `MODEMASK=15`,
 `SEQUENCEMASK=16`, `MAGNITUDEMASK=32`, `POSSEQONLYMASK=64`
 (`elements/meter/monitor/mod.rs:39-42`, *re-verified 2026-07-12*), decoded ad-hoc with `&`/`+` in `sample.rs:60,158,209`
@@ -476,6 +557,10 @@ and needs no work.
 
 ## P3 — Borrow hygiene: remove the clone-to-release-borrow swarm
 
+**[NOT started — scheduled after R3: the typed `pair_mut` access that obsoletes the
+dispatch clone dance arrives with R3 (R2's scope moved there); the `node_v`/monitor-
+buffer items are independent but ride the same follow-up WP.]**
+
 All confirmed clones exist only to release `&ckt` before mutating `env.store` — 16-byte
 `ElemRef` handle lists, but real per-iteration heap allocations in hot control loops:
 
@@ -491,11 +576,15 @@ All confirmed clones exist only to release `&ckt` before mutating `env.store` �
 - **`dispatch.rs:1014`** `mon_clone = cap.clone()` (whole element cloned to self-monitor) —
   revisit with R2's typed pair access.
 
-Note: several of these clone sites vanish naturally in R2 (typed `pair_mut` replaces the
-release-reborrow dance); do P3 after R2 to avoid doing the work twice, except the `node_v`
-clones and monitor buffers, which are independent.
+Note: several of these clone sites vanish naturally with the typed `pair_mut` access
+(originally R2's, now R3's — see Part I); do P3 after R3 to avoid doing the work twice,
+except the `node_v` clones and monitor buffers, which are independent.
 
 ## P5 — Diagnostics: one `miette`-based error infrastructure (CLI + future GUI)
+
+**[LANDED — P5a (`wt-p5a-v2`, merged 2026-07-19), P5b + P5c (`depas-p5bc`, merged
+2026-07-25); records STATUS §§1j/1jb/1jc. P5b's schema-first continuation stays
+post-Stage-F (§IV.1b).]**
 
 **Decision (user, 2026-07-12 — supersedes the earlier "adopt-or-drop `thiserror`"
 scoping).** The hand-rolled error zoo — `ParserError` (a string wrapper,
@@ -677,6 +766,10 @@ subset; no blanket "replace with Result" pass.
 
 ## P6 — Case-fidelity: Unicode `to_lowercase` → ASCII
 
+**[LANDED — wave 1 (`wt-p6`), merged 2026-07-17: 125 identifier-path conversions across
+53 files; report-text paths deliberately untouched; record
+`docs/phase-records/depascalize-p6.md`.]**
+
 113 occurrences across 49 production files (*re-verified 2026-07-12*; was 173/69 —
 shrinking as code churns) use Unicode `to_lowercase()` where Pascal `AnsiLowerCase` is
 byte-based. Divergence is latent (all corpus identifiers are ASCII), but the lowercase-keyed
@@ -685,6 +778,10 @@ byte-based. Divergence is latent (all corpus identifiers are ASCII), but the low
 paths (not report text). One commit, no behavior change on the corpus.
 
 ## P7 — Send-readiness (rides with R1)
+
+**[LANDED — rode with R1 as planned: `Send` supertraits + `assert_send::<Dss>()` /
+`assert_send::<Elements>()` live in `lib.rs` (verified 2026-07-26). This is
+MULTITHREADING M0.]**
 
 The concurrency audit found **zero** `Rc`/`Arc`/`RefCell`/`Cell`/`Mutex`/statics/
 `thread_local`/unsafe in the entire workspace; ownership is a clean tree rooted at
@@ -707,9 +804,20 @@ mostly vacuous but stay as documentation + regression guard.
 
 # Part III — Index elimination (WPs P8–P15)
 
+**[Part III status, 2026-07-26: P8–P15 ALL LANDED — P8+P14 (`depas-p8p14`, merged
+2026-07-25), P9 (`wt-p9`), P10 (`depas-p10`, 2026-07-25), P11 (`depas-p11`,
+2026-07-25), P12+P13 (`wt-p1213-v2`), P15 (`wt-p15`, incl. creating the
+MULTITHREADING M1 criterion benches). Two recorded escapes remain open as focused
+follow-up WPs outside Part III: the `exec/view.rs` interleaved-re/im snapshot cleanup
+(P8 escape — blast radius is the gate-critical oracle comparator) and the
+`ckt_tree::NO_BUS` zone-walk sentinel web (P14 escape). See the STATUS records for
+both.]**
+
 **Decision (user, 2026-07-06):** raw index access goes away **everywhere it can be expressed
-better** — the loop-for-loop porting rule is retired post-acceptance. Current measure
-(*re-verified 2026-07-12*): **64 flat-offset arithmetic sites across 32 files**
+better** — the loop-for-loop porting rule is retired post-acceptance. Pre-Part-III measure
+(*re-verified 2026-07-12; post-landing 2026-07-26: the raw `\* nconds`-family pattern
+is down to ~23 matches, accessor-internal or documented STAYS per the P8 settle, and
+`term_ref[` outside `TermRef` = 0*): **64 flat-offset arithmetic sites across 32 files**
 (`(j-1)*nconds + k`-style),
 near-zero `chunks_exact`/slice-view usage in production, ~20 parallel arrays in
 `line_constants`, a 1-based `term_ref` with a dead slot 0, and dozens of C-style
@@ -731,6 +839,8 @@ near-zero `chunks_exact`/slice-view usage in production, ~20 parallel arrays in
   before/after `cargo test` on the pinning suite named in the WP.
 
 ## P8 — Terminal×conductor views over flat buffers [A] — the highest-leverage cut
+**[LANDED — `depas-p8p14`, merged 2026-07-25; escape: the `exec/view.rs` interleaved
+re/im `Vec<f64>` conversion → focused follow-up (comparator blast radius).]**
 
 `vterminal`/`iterminal`/`inj_current`/`complex_buffer`/`node_ref` are flat length-`yorder`
 (`nterms*nconds`) vectors indexed `(t-1)*nconds + c` in **every** consumer: exports
@@ -758,6 +868,7 @@ Rust-native library (`PORTING_PLAN` binding decision 1), so the COM-style interl
 interleaves where a text/CSV writer still needs the flat form.
 
 ## P9 — `CMatrix` ergonomics [A]
+**[LANDED — `wt-p9`; STATUS §1m.]**
 
 `support/cmatrix/mod.rs` exposes raw column-major math to call sites via repeated local
 `idx` closures (`invert`/`mtrx_mult`/`mv_mult`, `:216,238,269-281`). Add
@@ -770,6 +881,9 @@ option for the sweep to take or leave (different pivoting/accumulation ⇒ regen
 proof).
 
 ## P10 — Transformer terminal core [A] — the densest single file
+**[LANDED — `depas-p10`, merged 2026-07-25: `TermRef` pair map + `Connection` enum
+(closing the P1 item-8 dependency) across transformer AND auto_trans; bit-exact proof
+held.]**
 
 `transformer/{yterminal,windings}.rs`: 1-based `term_ref` with an unused slot 0
 (`set_term_ref` at `windings.rs:318`, offset math `:327-346`, *re-verified 2026-07-12*),
@@ -796,6 +910,7 @@ covers both files with the same pattern and the same bit-exactness proof.**
 dump goldens pin this file bit-for-bit; they must pass unchanged.
 
 ## P11 — Kron reduction & stamping loops [A]
+**[LANDED — `depas-p11`, merged 2026-07-25; STATUS record.]**
 
 `elements/ckt.rs::do_yprim_calcs` (`:398-451`, `elim = j+k` running offsets),
 `capacitor/solve.rs`, `reactor/solve.rs`, `line/solve.rs` (`(i-1)*nphases` stamping),
@@ -805,6 +920,7 @@ Kron elimination on named sub-views instead of running flat offsets, preserving 
 order. The `#[allow(clippy::needless_range_loop)]` escapes go away with the loops.
 
 ## P12 — `line_constants` parallel arrays → `Vec<Conductor>` [A]
+**[LANDED — `wt-p1213-v2`; STATUS record.]**
 
 `support/line_constants/mod.rs:128-147` (init `:193-198`, *re-verified 2026-07-12*): ~20
 parallel `Vec<f64>`/`Vec<i32>` indexed by conductor (`fx, fy, frdc, frac, fgmr, fradius, fcapradius` + 11 cable-only arrays). Textbook
@@ -821,6 +937,7 @@ the `Option<CableData>`. Same values, same iteration order — proven by the lin
 unit tests + geometry-line dump goldens + checkpoint YPrims.
 
 ## P13 — VCCS delay line → ring buffer type [A]
+**[LANDED — `wt-p1213-v2`; STATUS record.]**
 
 `elements/pc/vccs/dynamics.rs:188-274`: 1-based circular `map_idx(iu - k + 1, fl)` filter-tap
 indexing. Wrap in a small `RingBuf` (0-based, `iter_from(offset)`) whose accessor reproduces
@@ -828,6 +945,11 @@ the exact tap order; the filter arithmetic keeps its statement order. Pinned by 
 monitor-trajectory goldens.
 
 ## P14 — 0-basing + sentinel sweep [A] (absorbs old P4)
+**[LANDED — `depas-p8p14`, merged 2026-07-25: 4 of 5 sentinels → `Option`, P10-scoped
+`1..=` remnants gone; escape: `ckt_tree::NO_BUS` (a zone-walk-wide sentinel web, incl.
+a load-bearing UB guard) → focused follow-up. The broad `for … in 1..=` grep remainder
+(106 matches, re-verified 2026-07-26) is STAYS-by-design — report text / 1-based user
+API / Pascal state arrays; see the P14 audit settle.]**
 
 1-based indexing and magic sentinels retreat to the **true user boundary** (property parsing
 and report text, where `wdg=2`/`terminal=1` are the user's language — per `PORTING_PLAN §2.3`
@@ -848,6 +970,8 @@ that boundary conversion is by design):
   converted immediately).
 
 ## P15 — `dss-sparse` allocation & indexing hygiene [A] — the solver hot path
+**[LANDED — `wt-p15` (items 1–6 + the M1 benches, `crates/dss-core/benches/`);
+STATUS §1l.]**
 
 The sparse *formats* (COO/CSC) stay index-based by nature, but the audited implementation
 (`crates/dss-sparse/src/lib.rs` + its dss-core call sites) re-allocates the world on every
@@ -1247,14 +1371,17 @@ on behavior traits is the target architecture, not a leftover.
 # Ordering & staging summary
 
 ```
-1. Part I  R0 → R1(+P7) → R2(+riders) → R3          — arenas, downcast removal      [A]
-2. Part II P1 (enums) · P2 (monitor mode) · P6 (ascii) · P5 (miette diagnostics)   — independent [A]
-3. Part III P8 → P10 → P11 → P12 → P13 → P14 · P9 · P15 · P3(after R2) — de-indexing +
-   solver hot-path hygiene [A]  (M1 benches should exist before P15 — its wins are measured)
+1. Part I  R0 ✅ → R1(+P7) ✅ → R2 ✅(M3b seam; rest → R2b ✅ a–e) → R3 ◀ IN FLIGHT
+           (worktree depas-r3, 2026-07-26)        — arenas, downcast removal      [A]
+2. Part II P1 (partial — deferred tail open) · P2 ✅ · P6 ✅ · P5 ✅ (a/b/c)     [A]
+3. Part III P8✅ → P10✅ → P11✅ → P12✅ → P13✅ → P14✅ · P9✅ · P15✅ (M1 benches
+   created there) · P3 (open, after R3) — de-indexing + solver hot-path hygiene [A]
    ── all [A] stages BEFORE Stage F: the still-stable byte-exact goldens are the free
       equivalence proof for every [A] rewrite ──
-4. Stage F (Part IV.2) — the `oracle-parity` feature split; absorbs the TODO(compat)
-   sweep (111 sites as of 2026-07-12); includes F-FMT (native rendering + parsed-numeric
+4. Stage F (Part IV.2) — NOT started; last, after R3 + the P1 tail + P3. The
+   `oracle-parity` feature split; absorbs the TODO(compat) sweep (117 sites in
+   `crates/dss-core/src` / 123 workspace-wide, re-measured 2026-07-26) + the UPGRADE
+   `HIDE_015X` ×15 waiver; includes F-FMT (native rendering + parsed-numeric
    default-lane goldens); ONE default-lane re-baseline; parity lane keeps every existing
    gate forever.
 ```
@@ -1278,15 +1405,23 @@ lane) — see `PLAN_SEQUENCE.md` for the cross-plan order.
   gate; default = tolerance lane); `#[cfg(feature = "oracle-parity")]` appears only inside
   `compat` modules (grep gate); the dual-kernel inventory table in Part IV.2 matches
   `rg -l 'oracle-parity'` exactly.
-- **Success metrics (CI grep gates added at the end):**
-  - `rg "downcast_ref|downcast_mut|as_any" crates/dss-core/src` → **zero** (R3).
+- **Success metrics (CI grep gates added at the end; current values re-measured
+  2026-07-26 @ `update` `67d2965` — R3 closes the Part I set):**
+  - `rg "downcast_ref|downcast_mut|as_any" crates/dss-core/src` → **zero** (R3)
+    *(2026-07-26: 369 downcasts / 716 `as_any|as_ckt_element`)*.
   - `rg "RefCell|Rc<|static mut|thread_local" crates/*/src` → **zero** (P7).
   - flat-offset arithmetic (`\* nconds`, `\* ncond\b`, `(… - 1) \*` index forms): from
     **64 sites / 32 files** (2026-07-12) down to **accessor-internal only** (P8/P10/P11 —
-    target ≤10, each inside a named view type); `rg "term_ref\[" ` → zero outside `TermRef`.
-  - `rg "for .* in 1\.\.=" crates/dss-core/src/elements` → boundary accessors only (P14).
+    target ≤10, each inside a named view type); `rg "term_ref\[" ` → zero outside `TermRef`
+    *(2026-07-26: MET — ~23 raw-pattern matches, accessor-internal/STAYS per the P8
+    settle; `term_ref[` = 0)*.
+  - `rg "for .* in 1\.\.=" crates/dss-core/src/elements` → boundary accessors only (P14)
+    *(2026-07-26: 106 matches remain, all verified STAYS-by-design — report text /
+    1-based user API / Pascal state arrays; the P10-scoped storage remnants are gone —
+    see the P14 audit settle)*.
   - after P1: `rg "pub const .*: i32 = " crates/dss-core/src/elements` shrinks to the
-    keep-list families only (property indices are `usize` and exempt).
+    keep-list families only (property indices are `usize` and exempt)
+    *(2026-07-26: 7 lines — the P1 deferred-tail families)*.
 - **Perf check:** criterion baseline from `MULTITHREADING_PLAN.md` M1 before/after Part III —
   expect neutral-to-positive (views are zero-cost; `Vec<Conductor>` improves locality; P3
   removes hot-loop allocations); any regression >2% on `snapshot_8500` is investigated before
