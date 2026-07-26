@@ -2324,7 +2324,7 @@ fn show_isolated_disabled_matches_oracle() {
 
 /// `Show Isolated` on a compiled-but-**unsolved** circuit (audit-code step-16
 /// follow-up): no `calcvoltagebases`/`solve`, so terminal `bus_ref`s are unresolved
-/// (`NO_BUS`) until `ShowIsolated`'s own `ReprocessBusDefs` runs. Pins that the
+/// (`None`) until `ShowIsolated`'s own `ReprocessBusDefs` runs. Pins that the
 /// reprocess makes the connected tree correct (Vsource → Line.la → Load.ld) — without
 /// it the port would give a degenerate one-source tree. Byte-exact.
 #[test]

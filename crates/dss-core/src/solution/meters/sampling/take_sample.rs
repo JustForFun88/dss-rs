@@ -361,10 +361,10 @@ fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, 
             // multiplies by 0.001.
             if st.f_phase_voltage_report
                 && vbi > 0
-                && from_bus != crate::circuit::ckt_tree::NO_BUS
-                && ckt.buses[from_bus].kv_base > 0.0
+                && let Some(fb) = from_bus
+                && ckt.buses[fb].kv_base > 0.0
             {
-                let bus = &ckt.buses[from_bus];
+                let bus = &ckt.buses[fb];
                 for i in 0..bus.num_nodes_this_bus() {
                     let j = bus.get_num(i);
                     if !(1..=3).contains(&j) {

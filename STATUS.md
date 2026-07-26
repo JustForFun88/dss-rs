@@ -7,6 +7,67 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE W3.4 (b) — the `ckt_tree::NO_BUS` sentinel web: the constant is DELETED; Part III has no open escapes (branch `depas-final`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes the **P14 escape** recorded at `depas-p8p14`
+(the 5th and last of that WP's sentinels; deferred there as "a zone-walk-wide
+sentinel web… converting only `TreeNode.from_bus` forces `Option↔NO_BUS` bridging
+at every consumer = net sentinel *increase*"). The escape's premise was true when
+it was written and is now **inverted**: P14 itself converted `Terminal::bus_ref`
+to `Option<usize>`, so the surviving code was `unwrap_or(usize::MAX)`-ing an
+`Option` *back into* the sentinel at every producer. Converting the whole web at
+once — as the escape asked — deletes both directions.
+
+**`pub const NO_BUS: usize = usize::MAX` is gone** (`circuit/ckt_tree/mod.rs`).
+The web, converted in one commit:
+
+| site | was | is |
+|---|---|---|
+| `TreeNode.from_bus` | `usize` (`NO_BUS` = unset) | `Option<usize>` |
+| `CktTree::add_new_child(elem, bus_ref, term)` | `bus_ref: usize` | `bus_ref: Option<usize>` |
+| `TreeNode.to_bus_list` / `add_to_bus_reference` | `Vec<usize>` | `Vec<Option<usize>>` |
+| `next_to_bus_reference` | `Option<usize>` (None = cursor past end, `Some(NO_BUS)` = no bus) | `Option<Option<usize>>` — the two "nothing here" cases stay **distinguishable**; the callers that treat them alike say so with `.flatten()` |
+| `zones/build.rs` | `t.bus_ref.unwrap_or(usize::MAX)` ×3 + `!= usize::MAX &&` guards ×2 | the `Option` flows through; guards are `let Some(b) = … .filter(\|&b\| b < ckt.buses.len())` |
+| `topology.rs` | `unwrap_or(NO_BUS)` + `if bus == NO_BUS \|\| bus >= len` | `bus_ref` passed as-is + one `let … else` |
+| `take_sample.rs` | `from_bus != NO_BUS && ckt.buses[from_bus]…` | `let Some(fb) = from_bus && ckt.buses[fb]…` (let-chain) |
+| `interpolate.rs` | `coord_defined(ckt, usize)`, `first/second_coord_ref: usize`, `calc_bus_coordinates(usize, usize)` | all `Option<usize>`; the **UB guard stays a guard** — `bus.and_then(\|b\| ckt.buses.get(b))`, i.e. an unset from-bus is still "no coordinate", never the Pascal `buses[0]` OOB read |
+| `reduce.rs` | `red_bus_keep/red_bus_name/red_head_base_kv/red_load_base_kv(bus: usize)` fed `unwrap_or(usize::MAX)` | all take `Option<usize>`; `None` is "no such bus", exactly what an out-of-range index already meant |
+
+**`ZoneEndsList.ends` deliberately stays `(usize, usize)`** — and that is a
+*result*, not an omission: its single producer (`zones/build.rs`) now hoists the
+wired-and-in-range test into a `let Some(test_bus) = term_bus[iterm-1].filter(…)
+else { continue }` **before** the bus is used, so `zone_ends`, `add_to_bus_reference`
+and `add_new_child` on that path can only ever record a REAL bus. The invariant is
+documented on the type. The same holds for the meter-level `zone_ends:
+Vec<(ElemId, usize)>`.
+
+**Behavioral equivalence, case by case (this is the whole proof — no arithmetic is
+involved anywhere in the diff).** Every old sentinel path ended in a
+`buses.get(usize::MAX)`/`>= buses.len()` miss, and every new one ends in a `None`
+miss on the same branch: `test_bus >= len` ≡ `filter(|b| b < len)` returning `None`
+(an unset `bus_ref` was `MAX`, always `>= len`); `test_bus != test_bus_refs[j-1]` ≡
+`test_bus_refs[j-1] != Some(test_bus)` (a `None` ref could never equal a valid
+index); `red_bus_keep(MAX)` ≡ `red_bus_keep(None)` = false; the dangling-line
+`Some(NO_BUS)` rejection ≡ `.flatten()` yielding `None`; `coord_defined(MAX)` ≡
+`coord_defined(None)` = false. The `is_dangling`/`is_looped`/`DistFromMeter`/
+`volt_base_index` writes and the `SequenceList` visit order are untouched, so the
+EnergyMeter zone topology — which is what the reliability sweeps, zone dumps and
+reductions observe — is identical.
+
+**Proof.** Full gate green, goldens and tolerances untouched: `cargo fmt --all
+--check`, `cargo clippy --workspace --all-targets -D warnings`, `cargo test
+--workspace` including the unconditional 514-case corpus gate (both channels).
+The channels that would catch a walk change are all in it: the `ckt_tree` unit
+tests (extended — the cursor test now also pins `Some(None)` vs `None`, the
+distinction the old `usize` list could not express), the reliability/branch-
+reliability exports, `show isolated`/`show topology` byte-goldens (incl. the
+compiled-but-unsolved deck, where every `bus_ref` is unset), the meter zone/
+sequence dumps, the `interpolate`-driven bus-coordinate reports and the reduction
+decks. `TODO(compat)` inventory unchanged (117 in `crates/dss-core/src` across 68
+files; 123 across `crates/**`). `tests/corpus` pristine.
+
+**Part III (P8–P15) now has zero open escapes** — plan header updated.
+
 ### DE_PASCALIZE W3.4 (a) — the `exec/view.rs` interleaved re/im snapshot: `ElementSnapshot` goes `Vec<Complex64>` (branch `depas-final`, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Closes the **P8 escape** recorded at `depas-p8p14`
