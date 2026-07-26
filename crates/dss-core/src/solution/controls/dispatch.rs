@@ -30,10 +30,10 @@ use crate::elements::pc::upfc::Upfc;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::fuse::Fuse;
 use crate::elements::traits::{ElemId, ElemStore, SysCtx, TypedStore};
-use crate::solution::SolveMode;
 use crate::solution::control_queue::ControlQueue;
 use crate::solution::event_log::EventLog;
 use crate::solution::solution::{Solution, SolveEnv, SolveResult, sys_ctx};
+use crate::solution::{ControlMode, SolveMode};
 
 use super::ControlOp;
 
@@ -2143,7 +2143,7 @@ struct ExpDispEnv<'a> {
     self_ref: ElemId,
     int_hour: i32,
     t: f64,
-    control_mode: i32,
+    control_mode: ControlMode,
     control_iter: i32,
     dyna_h: f64,
     loads_need_updating: &'a mut bool,
@@ -2256,7 +2256,7 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
         self.events
             .append(sender, msg, self.int_hour, self.t, self.control_iter);
     }
-    fn control_mode(&self) -> i32 {
+    fn control_mode(&self) -> ControlMode {
         self.control_mode
     }
     fn control_iteration(&self) -> i32 {

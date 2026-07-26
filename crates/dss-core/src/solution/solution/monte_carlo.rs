@@ -24,14 +24,14 @@ use crate::support::mathutil::gauss;
 
 use super::power_flow::{set_generator_disp_ref, solve_direct, solve_snap};
 use super::time_series::{end_of_time_step_cleanup, sample_all_monitors_and_meters};
-use super::{ADMITTANCE, GAUSSIAN, LOGNORMAL, SolveEnv, SolveResult, UNIFORM};
+use super::{LoadSolutionModel, RandomType, SolveEnv, SolveResult};
 use crate::elements::traits::TypedStore;
 
 /// Pascal `TLoadObj.Randomize` hoisted over every enabled load, in circuit
 /// order — the per-case draw batch `SolveMonte1`'s `SetNominalLoad`/`MONTECARLO1`
 /// arm would otherwise perform inline. One draw per load (except `random=none`,
 /// which draws nothing), from the shared engine RNG.
-fn randomize_all_loads(ckt: &mut Circuit, env: &mut SolveEnv, random_type: i32) {
+fn randomize_all_loads(ckt: &mut Circuit, env: &mut SolveEnv, random_type: RandomType) {
     for r in ckt.loads.clone() {
         if let Some(load) = env.store.typed_mut::<Load>(r)
             && load.cd().enabled
@@ -176,13 +176,13 @@ fn solve_monte3_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 }
 
 /// The shared `case Randomtype of` `LoadMultiplier` draw of `SolveMonte2`
-/// (l.448) / `SolveMonte3` (l.520). Monte2 lacks the LOGNORMAL arm; `none` (and
-/// any unlisted type) leaves `LoadMultiplier` untouched — the deterministic
-/// gated path.
-fn draw_load_multiplier(ckt: &mut Circuit, random_type: i32, allow_lognormal: bool) {
+/// (l.448) / `SolveMonte3` (l.520). Monte2 lacks the LogNormal arm; `None`
+/// (and, for Monte2, LogNormal) leaves `LoadMultiplier` untouched — the
+/// deterministic gated path.
+fn draw_load_multiplier(ckt: &mut Circuit, random_type: RandomType, allow_lognormal: bool) {
     match random_type {
-        UNIFORM => ckt.load_multiplier = ckt.rng.next_f64(),
-        GAUSSIAN => {
+        RandomType::Uniform => ckt.load_multiplier = ckt.rng.next_f64(),
+        RandomType::Gaussian => {
             let (mean, std_dev) = ckt
                 .default_daily_shape_obj
                 .as_ref()
@@ -191,7 +191,7 @@ fn draw_load_multiplier(ckt: &mut Circuit, random_type: i32, allow_lognormal: bo
             let m = gauss(mean, std_dev, || ckt.rng.next_f64());
             ckt.load_multiplier = m;
         }
-        LOGNORMAL if allow_lognormal => {
+        RandomType::LogNormal if allow_lognormal => {
             let mean = ckt
                 .default_daily_shape_obj
                 .as_ref()
@@ -200,8 +200,8 @@ fn draw_load_multiplier(ckt: &mut Circuit, random_type: i32, allow_lognormal: bo
             let m = crate::support::mathutil::quasi_log_normal(mean, || ckt.rng.next_f64());
             ckt.load_multiplier = m;
         }
-        // none (0) and (for Monte2) LOGNORMAL: LoadMultiplier unchanged.
-        _ => {}
+        // None and (for Monte2) LogNormal: LoadMultiplier unchanged.
+        RandomType::None | RandomType::LogNormal => {}
     }
 }
 
@@ -243,7 +243,7 @@ fn pick_a_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> Option<ElemId> {
 /// re-randomising its resistance (`Fault.Randomize`). Samples only the monitors
 /// (no meter sampling — Set_Mode leaves `SampleTheMeters=false`).
 pub(super) fn solve_monte_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    ckt.solution.load_model = ADMITTANCE; // All direct solution
+    ckt.solution.load_model = LoadSolutionModel::Admittance; // All direct solution
     ckt.load_multiplier = 1.0; // Always set WITH prop in case the matrix must rebuild
     ckt.solution.int_hour = 0;
     ckt.solution.dbl_hour = 0.0; // Use hour to denote Case number
@@ -328,7 +328,7 @@ mod tests {
     fn draw_load_multiplier_uniform_is_next_f64() {
         let mut ckt = seeded_ckt();
         ckt.load_multiplier = f64::NAN; // sentinel that MUST be overwritten
-        draw_load_multiplier(&mut ckt, UNIFORM, true);
+        draw_load_multiplier(&mut ckt, RandomType::Uniform, true);
         assert_eq!(ckt.load_multiplier.to_bits(), D0_BITS);
     }
 
@@ -336,7 +336,7 @@ mod tests {
     fn draw_load_multiplier_gaussian_uses_default_daily_shape_mean_std() {
         let mut ckt = seeded_ckt();
         ckt.default_daily_shape_obj = Some(shape_with_mean_std(0.75, 0.20));
-        draw_load_multiplier(&mut ckt, GAUSSIAN, true);
+        draw_load_multiplier(&mut ckt, RandomType::Gaussian, true);
         let expected = f64::from_bits(G01_0_BITS) * 0.20 + 0.75;
         assert_eq!(ckt.load_multiplier, expected);
     }
@@ -345,7 +345,11 @@ mod tests {
     fn draw_load_multiplier_lognormal_monte3_uses_shape_mean() {
         let mut ckt = seeded_ckt();
         ckt.default_daily_shape_obj = Some(shape_with_mean_std(2.0, 0.30));
-        draw_load_multiplier(&mut ckt, LOGNORMAL, /*allow_lognormal=*/ true);
+        draw_load_multiplier(
+            &mut ckt,
+            RandomType::LogNormal,
+            /*allow_lognormal=*/ true,
+        );
         let expected = f64::from_bits(G01_0_BITS).exp() * 2.0;
         assert_eq!(ckt.load_multiplier, expected);
     }
@@ -357,12 +361,16 @@ mod tests {
         let mut ckt = seeded_ckt();
         ckt.default_daily_shape_obj = Some(shape_with_mean_std(2.0, 0.30));
         ckt.load_multiplier = 42.0;
-        draw_load_multiplier(&mut ckt, LOGNORMAL, /*allow_lognormal=*/ false);
+        draw_load_multiplier(
+            &mut ckt,
+            RandomType::LogNormal,
+            /*allow_lognormal=*/ false,
+        );
         assert_eq!(ckt.load_multiplier, 42.0);
         assert_eq!(
             ckt.rng.next_f64().to_bits(),
             D0_BITS,
-            "Monte2 LOGNORMAL must not consume a draw"
+            "Monte2 LogNormal must not consume a draw"
         );
     }
 
@@ -370,7 +378,7 @@ mod tests {
     fn draw_load_multiplier_none_leaves_unchanged_and_undrawn() {
         let mut ckt = seeded_ckt();
         ckt.load_multiplier = 42.0;
-        draw_load_multiplier(&mut ckt, 0 /* random=none */, true);
+        draw_load_multiplier(&mut ckt, RandomType::None, true);
         assert_eq!(ckt.load_multiplier, 42.0);
         assert_eq!(
             ckt.rng.next_f64().to_bits(),

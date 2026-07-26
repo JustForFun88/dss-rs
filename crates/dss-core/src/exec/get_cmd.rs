@@ -184,7 +184,7 @@ impl Dss {
                     &mut result,
                     &enums
                         .get(enums.random_mode)
-                        .ordinal_to_string(ckt.solution.random_type),
+                        .ordinal_to_string(ckt.solution.random_type.ordinal()),
                 ),
                 opt::NUMBER => {
                     append_result(&mut result, &ckt.solution.number_of_times.to_string())
@@ -200,7 +200,7 @@ impl Dss {
                     &mut result,
                     &enums
                         .get(enums.default_load_model)
-                        .ordinal_to_string(ckt.solution.load_model),
+                        .ordinal_to_string(ckt.solution.load_model.ordinal()),
                 ),
                 opt::LOADMULT => append_result(&mut result, &float_to_str(ckt.load_multiplier)),
                 opt::NORMVMINPU => append_result(&mut result, &float_to_str(ckt.normal_min_volts)),
@@ -265,7 +265,7 @@ impl Dss {
                     &mut result,
                     &enums
                         .get(enums.control_mode)
-                        .ordinal_to_string(ckt.solution.control_mode),
+                        .ordinal_to_string(ckt.solution.control_mode.ordinal()),
                 ),
                 opt::DEFAULT_DAILY => append_result(
                     &mut result,

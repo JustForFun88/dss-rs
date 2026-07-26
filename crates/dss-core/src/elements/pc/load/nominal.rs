@@ -7,7 +7,7 @@
 use num_complex::Complex64;
 
 use crate::elements::traits::SysCtx;
-use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
+use crate::solution::{RandomType, SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::support::mathutil::{FpcRng, gauss, quasi_log_normal};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
@@ -111,24 +111,23 @@ impl Load {
     }
 
     /// Pascal `TLoadObj.Randomize` (`Load.pas:899`): set `RandomMult` from the
-    /// solution's random type. `opt=0` (`Set random=none`) → `1.0` and draws
-    /// nothing; GAUSSIAN/UNIFORM/LOGNORMAL draw through the engine RNG (the
-    /// yearly shape's mean/std-dev when one is assigned, else `puMean`/
+    /// solution's random type. `RandomType::None` (`Set random=none`) → `1.0`
+    /// and draws nothing; Gaussian/Uniform/LogNormal draw through the engine RNG
+    /// (the yearly shape's mean/std-dev when one is assigned, else `puMean`/
     /// `puStdDev`). Called once per load per MonteCarlo1 case by `solve_monte1`.
-    pub fn randomize(&mut self, opt: i32, rng: &mut FpcRng) {
-        use crate::solution::{GAUSSIAN, LOGNORMAL, UNIFORM};
+    pub fn randomize(&mut self, opt: RandomType, rng: &mut FpcRng) {
         self.random_mult = match opt {
-            GAUSSIAN => match self.yearly_shape_obj.as_ref() {
+            RandomType::Gaussian => match self.yearly_shape_obj.as_ref() {
                 Some(s) => gauss(s.mean(), s.std_dev(), || rng.next_f64()),
                 None => gauss(self.pu_mean, self.pu_std_dev, || rng.next_f64()),
             },
-            UNIFORM => rng.next_f64(),
-            LOGNORMAL => match self.yearly_shape_obj.as_ref() {
+            RandomType::Uniform => rng.next_f64(),
+            RandomType::LogNormal => match self.yearly_shape_obj.as_ref() {
                 Some(s) => quasi_log_normal(s.mean(), || rng.next_f64()),
                 None => quasi_log_normal(self.pu_mean, || rng.next_f64()),
             },
-            // 0 (none) and any other value: RandomMult := 1.0.
-            _ => 1.0,
+            // none: RandomMult := 1.0.
+            RandomType::None => 1.0,
         };
     }
 

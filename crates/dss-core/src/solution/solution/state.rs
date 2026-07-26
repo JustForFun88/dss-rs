@@ -70,16 +70,68 @@ impl SolveMode {
     }
 }
 
-/// Load model codes (DSSGlobals.pas).
-pub const POWERFLOW: i32 = 1;
-pub const ADMITTANCE: i32 = 2;
+/// Load model codes (`DSSGlobals.pas:90-91` — `POWERFLOW = 1`,
+/// `ADMITTANCE = 2`), the `Set LoadModel=` option / `Solution.LoadModel` field.
+/// Discriminants are user-visible and frozen (they round-trip through the
+/// `Load Solution Model` `DssEnum`, values `[1, 2]`); `i32` survives only at the
+/// parse/report boundary. Named `LoadSolutionModel` to avoid colliding with the
+/// Load element's own `LoadModel` (`Model=` property, ConstPQ..).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum LoadSolutionModel {
+    #[default]
+    PowerFlow = 1,
+    Admittance = 2,
+}
 
-/// Random distribution codes (`DSSGlobals.pas`): `Solution.RandomType` (`Set
-/// random=`, `RandomModeEnum` ordinals `none=0`/`Gaussian=1`/`Uniform=2`/
-/// `LogNormal=3`). Consumed by the MonteCarlo `Randomize` paths.
-pub const GAUSSIAN: i32 = 1;
-pub const UNIFORM: i32 = 2;
-pub const LOGNORMAL: i32 = 3;
+impl LoadSolutionModel {
+    /// The `Load Solution Model` `DssEnum` ordinal (`Set loadmodel=`/`?`/dump).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            1 => Some(Self::PowerFlow),
+            2 => Some(Self::Admittance),
+            _ => None,
+        }
+    }
+}
+
+/// Random distribution codes (`DSSGlobals.pas:106-108` — `GAUSSIAN = 1`,
+/// `UNIFORM = 2`, `LOGNORMAL = 3`; `none` is the registry's `0`):
+/// `Solution.RandomType` (`Set random=`, `RandomModeEnum` values
+/// `[0, 1, 2, 3]`). Consumed by the MonteCarlo `Randomize` paths, where every
+/// non-listed code (i.e. `None`) leaves the multiplier at 1.0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum RandomType {
+    #[default]
+    None = 0,
+    Gaussian = 1,
+    Uniform = 2,
+    LogNormal = 3,
+}
+
+impl RandomType {
+    /// The `Random Type` `DssEnum` ordinal (`Set random=`/`?`/dump boundary).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::None),
+            1 => Some(Self::Gaussian),
+            2 => Some(Self::Uniform),
+            3 => Some(Self::LogNormal),
+            _ => None,
+        }
+    }
+}
 
 /// Load-shape class codes (`DSSGlobals.pas`): the class the GENERALTIME /
 /// DYNAMICMODE dispatch picks (`Circuit.ActiveLoadShapeClass`, `Set
@@ -123,12 +175,46 @@ impl SolveAlgorithm {
 pub const NCIM_PQ_NODE: i32 = 0;
 pub const NCIM_PV_NODE: i32 = 1;
 
-/// Control modes (DSSGlobals.pas).
-pub const CONTROLSOFF: i32 = -1;
-pub const CTRLSTATIC: i32 = 0;
-pub const EVENTDRIVEN: i32 = 1;
-pub const TIMEDRIVEN: i32 = 2;
-pub const MULTIRATE: i32 = 3;
+/// Control modes (`DSSGlobals.pas:99-103` — `CONTROLSOFF = -1`,
+/// `CTRLSTATIC = 0`, `EVENTDRIVEN = 1`, `TIMEDRIVEN = 2`, `MULTIRATE = 3`):
+/// `Solution.ControlMode` / `.DefaultControlMode` (`Set controlmode=`). The
+/// discriminants are user-visible and frozen (they round-trip through the
+/// `Control Mode` `DssEnum`, values `[-1, 0, 1, 2, 3]`); `i32` survives only at
+/// the parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum ControlMode {
+    /// `CONTROLSOFF` — controls disabled (`Set controlmode=Off`).
+    ControlsOff = -1,
+    /// `CTRLSTATIC` — the default: one control action set per solution.
+    #[default]
+    Static = 0,
+    /// `EVENTDRIVEN`.
+    EventDriven = 1,
+    /// `TIMEDRIVEN`.
+    TimeDriven = 2,
+    /// `MULTIRATE`.
+    MultiRate = 3,
+}
+
+impl ControlMode {
+    /// The `Control Mode` `DssEnum` ordinal (`Set controlmode=`/`?`/dump).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            -1 => Some(Self::ControlsOff),
+            0 => Some(Self::Static),
+            1 => Some(Self::EventDriven),
+            2 => Some(Self::TimeDriven),
+            3 => Some(Self::MultiRate),
+            _ => None,
+        }
+    }
+}
 
 /// Which sparse set is active (`hY = hYsystem | hYseries`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,10 +240,10 @@ pub type SolveResult = Result<(), String>;
 pub struct Solution {
     pub mode: SolveMode,
     pub algorithm: SolveAlgorithm,
-    pub control_mode: i32,
-    pub default_control_mode: i32,
-    pub load_model: i32,
-    pub default_load_model: i32,
+    pub control_mode: ControlMode,
+    pub default_control_mode: ControlMode,
+    pub load_model: LoadSolutionModel,
+    pub default_load_model: LoadSolutionModel,
     pub max_iterations: i32,
     pub min_iterations: i32,
     pub max_control_iterations: i32,
@@ -208,7 +294,7 @@ pub struct Solution {
     pub iteration_flag: IterationFlag,
     pub interval_hrs: f64,
     pub number_of_times: i32,
-    pub random_type: i32,
+    pub random_type: RandomType,
     pub sample_the_meters: bool,
     pub preserve_node_voltages: bool,
 
@@ -328,10 +414,10 @@ impl Solution {
         Self {
             mode: SolveMode::Snapshot,
             algorithm: SolveAlgorithm::Normal,
-            control_mode: CTRLSTATIC,
-            default_control_mode: CTRLSTATIC,
-            load_model: POWERFLOW,
-            default_load_model: POWERFLOW,
+            control_mode: ControlMode::Static,
+            default_control_mode: ControlMode::Static,
+            load_model: LoadSolutionModel::PowerFlow,
+            default_load_model: LoadSolutionModel::PowerFlow,
             max_iterations: 15,
             min_iterations: 2,
             max_control_iterations: 10,
@@ -367,7 +453,7 @@ impl Solution {
             iteration_flag: IterationFlag::NewTimeStep,
             interval_hrs: 1.0,
             number_of_times: 100,
-            random_type: 1, // GAUSSIAN
+            random_type: RandomType::Gaussian,
             sample_the_meters: false,
             preserve_node_voltages: false,
             y_system: None,
@@ -612,7 +698,7 @@ pub fn sys_ctx(ckt: &Circuit) -> SysCtx {
 
 #[cfg(test)]
 mod enum_discriminant_tests {
-    use super::SolveAlgorithm;
+    use super::{ControlMode, LoadSolutionModel, RandomType, SolveAlgorithm};
 
     #[test]
     fn solve_algorithm_pins_solvealgenum_ordinals() {
@@ -628,5 +714,61 @@ mod enum_discriminant_tests {
         }
         assert_eq!(SolveAlgorithm::from_ordinal(-1), None);
         assert_eq!(SolveAlgorithm::from_ordinal(3), None);
+    }
+
+    /// `DSSGlobals.pas:99-103` + the `Control Mode` `DssEnum`
+    /// (`registry/solution.rs`, values `[-1, 0, 1, 2, 3]`).
+    #[test]
+    fn control_mode_pins_enum_ordinals() {
+        assert_eq!(ControlMode::ControlsOff.ordinal(), -1);
+        assert_eq!(ControlMode::Static.ordinal(), 0);
+        assert_eq!(ControlMode::EventDriven.ordinal(), 1);
+        assert_eq!(ControlMode::TimeDriven.ordinal(), 2);
+        assert_eq!(ControlMode::MultiRate.ordinal(), 3);
+        for m in [
+            ControlMode::ControlsOff,
+            ControlMode::Static,
+            ControlMode::EventDriven,
+            ControlMode::TimeDriven,
+            ControlMode::MultiRate,
+        ] {
+            assert_eq!(ControlMode::from_ordinal(m.ordinal()), Some(m));
+        }
+        assert_eq!(ControlMode::from_ordinal(-2), None);
+        assert_eq!(ControlMode::from_ordinal(4), None);
+        // `TSolutionObj.Create` default is CTRLSTATIC.
+        assert_eq!(ControlMode::default(), ControlMode::Static);
+    }
+
+    /// `DSSGlobals.pas:90-91` + the `Load Solution Model` `DssEnum` (`[1, 2]`).
+    #[test]
+    fn load_solution_model_pins_enum_ordinals() {
+        assert_eq!(LoadSolutionModel::PowerFlow.ordinal(), 1);
+        assert_eq!(LoadSolutionModel::Admittance.ordinal(), 2);
+        for m in [LoadSolutionModel::PowerFlow, LoadSolutionModel::Admittance] {
+            assert_eq!(LoadSolutionModel::from_ordinal(m.ordinal()), Some(m));
+        }
+        assert_eq!(LoadSolutionModel::from_ordinal(0), None);
+        assert_eq!(LoadSolutionModel::from_ordinal(3), None);
+        assert_eq!(LoadSolutionModel::default(), LoadSolutionModel::PowerFlow);
+    }
+
+    /// `DSSGlobals.pas:106-108` + the `Random Type` `DssEnum` (`[0, 1, 2, 3]`).
+    #[test]
+    fn random_type_pins_enum_ordinals() {
+        assert_eq!(RandomType::None.ordinal(), 0);
+        assert_eq!(RandomType::Gaussian.ordinal(), 1);
+        assert_eq!(RandomType::Uniform.ordinal(), 2);
+        assert_eq!(RandomType::LogNormal.ordinal(), 3);
+        for m in [
+            RandomType::None,
+            RandomType::Gaussian,
+            RandomType::Uniform,
+            RandomType::LogNormal,
+        ] {
+            assert_eq!(RandomType::from_ordinal(m.ordinal()), Some(m));
+        }
+        assert_eq!(RandomType::from_ordinal(-1), None);
+        assert_eq!(RandomType::from_ordinal(4), None);
     }
 }

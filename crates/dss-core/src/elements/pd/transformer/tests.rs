@@ -3,7 +3,7 @@ use super::*;
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::obj::base::DssObject;
 use crate::obj::props::PropEngine;
-use crate::solution::SolveMode;
+use crate::solution::{LoadSolutionModel, SolveMode};
 use dss_parser::{Parser, ParserVars};
 
 /// Drive `(prop, value)` edits through the property engine, then `end_edit`
@@ -38,7 +38,7 @@ fn test_sys() -> SysCtx {
         fundamental: 60.0,
         is_harmonic_model: false,
         is_dynamic_model: false,
-        load_model: 1,
+        load_model: LoadSolutionModel::PowerFlow,
         mode: SolveMode::Snapshot,
         active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,

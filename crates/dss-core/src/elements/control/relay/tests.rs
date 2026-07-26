@@ -9,7 +9,7 @@ use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::exec::Dss;
 use crate::obj::base::DssObject;
 use crate::solution::control_queue::TimeRec;
-use crate::solution::{ControlQueue, EventLog, SolveMode};
+use crate::solution::{ControlMode, ControlQueue, EventLog, LoadSolutionModel, SolveMode};
 
 /// The ganged operation slot (`IdxMultiPh = NPhases+1`, frozen at 4 for the
 /// `Create`-time 3-phase relay).
@@ -21,7 +21,7 @@ fn test_sys() -> SysCtx {
         fundamental: 60.0,
         is_harmonic_model: false,
         is_dynamic_model: false,
-        load_model: 1,
+        load_model: LoadSolutionModel::PowerFlow,
         mode: SolveMode::Snapshot,
         active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
@@ -142,7 +142,7 @@ impl Scratch {
             events: &mut self.events,
             errors: &mut self.errors,
             system_y_changed: &mut self.y_changed,
-            control_mode: 2, // TIMEDRIVEN
+            control_mode: ControlMode::TimeDriven,
             int_hour,
             t,
             dbl_hour: int_hour as f64 + t / 3600.0,

@@ -49,6 +49,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use dss_core::exec::Dss;
+use dss_core::solution::ControlMode;
 
 use engines::Oracle;
 use manifest::{
@@ -567,12 +568,12 @@ fn ad_solve_ad(abs: &str, controls_off: bool) -> Result<Dss, String> {
         let mode = dss
             .circuit()
             .map(|c| c.solution.default_control_mode)
-            .unwrap_or(0);
+            .unwrap_or_default();
         let mode_cmd = match mode {
-            -1 => "off",
-            1 => "event",
-            2 => "time",
-            _ => "static",
+            ControlMode::ControlsOff => "off",
+            ControlMode::EventDriven => "event",
+            ControlMode::TimeDriven => "time",
+            ControlMode::Static | ControlMode::MultiRate => "static",
         };
         dss.command(&format!("set controlmode={mode_cmd}"));
     }
