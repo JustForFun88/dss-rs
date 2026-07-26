@@ -153,6 +153,26 @@ r4133, all 4 cases live-gated, no ledger entries. Historical detail below.
 - **defer_ledger remaining: 0.**
 
 ### 1.10 `Export Estimation` (export verb 5) — functional exporter never ported
+**PORTED 2026-07-26** on `depas-og2` — see STATUS §OG-1.10. New
+`report/export/estimation.rs` ports `ExportEstimation` loop-for-loop (the
+`TempX[1..3]` staging buffer with its deliberate *no* re-zero before the
+percent-error pass, `Max(0.001, target)` denominators, `%.6g` everywhere,
+`Get_WLSCurrentError`'s mutating P→I re-derivation in Pascal's order); verb 5
+routes in `exec/report.rs` to the standard `EXP_ESTIMATION.csv` path and keeps
+the existing #24712 solution guard (5 ∈ the `1..24` set). Three oracle-generated
+goldens (`export_estimation{,_noalloc,_empty}`, `tools/golden/gen_reports.py
+estimation`) gate it at `rel/abs = 0`, GAPS §3-proven (data-bearing, two-process
+byte-identical, and four mutations each caught: `Enabled` filter, the
+percent-error re-zero, the `Nphases` slot count, the WLS column order).
+**Rider done:** verbs 22/28-31 now have their own arms with Pascal's exact
+message (`ExportOptions.pas:543`/`:555-561`; r4133 `:461`/`:467-470`), and the
+default arm's stale "(Phase 8)" wording is gone — it is now unreachable, every
+one of the 64 `EXPORT_OPTIONS` keywords is routed.
+**Not in this slice:** the `Estimate` *command* (`EXEC_COMMANDS` ordinal 90,
+`ExecHelper.pas:4225` = `AllocateLoads` + `Set showexport=yes` + `Export
+Estimation`) is still unrouted and falls to `not_ported_command`; both of its
+constituents are ported, so it is a three-line `exec/command.rs`/`exec/solve.rs`
+follow-up (out of this worktree's write fence). **Priority: low.**
 - **Found:** 2026-07-25, assumption-gap sweep (strict re-verification flipped it from
   "benign_documented" to real gap — visible-error deferral, but real lost functionality).
 - **Spec:** `ExportOptions.pas:452` → `ExportEstimation` (`ExportResults.pas:1652+`):

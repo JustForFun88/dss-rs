@@ -4494,6 +4494,91 @@ four new unit pins, one gate that did not exist before.
 
 ---
 
+### OG-1.10 `Export Estimation` (export verb 5) + the CDPSM error-text rider (2026-07-26)
+
+Branch `depas-og2`. Closes `ORPHANED_GAPS.md` §1.10 — the last `EXPORT_OPTIONS`
+keyword without a dispatch arm. Three new report goldens; no existing golden
+regenerated (`gen_reports.py` grew a generator-name filter, mirroring
+`gen_json.py`/`gen_checkpoints.py`, so a new fixture cannot drag unrelated oracle
+drift into the committed bytes: `python tools/golden/gen_reports.py estimation`).
+
+- **`report/export/estimation.rs`** ports `ExportResults.pas:1652` loop-for-loop.
+  The layout quirks are reproduced, not smoothed:
+  - the `TempX: array[1..3]` staging buffer is zeroed before the *target* and
+    *calculated* passes but **deliberately not** before the *percent-error* pass
+    (which therefore consumes the calculated magnitudes in place, and leaves the
+    slots past `Nphases` at the zero the calculated pass wrote — that is how a
+    1-phase meter prints `50, 0, 0, 51.3317, 0, 0, -2.66342, 0, 0`);
+  - `%Err = (1 - calc / Max(0.001, target)) * 100` — the `Max` clamp is what makes
+    an unspecified target render `100`, not `inf`/`NaN`;
+  - `Cabs(CalculatedCurrent^[i])` is read from the head of the buffer with **no**
+    metered-terminal offset (unlike `CalcAllocationFactors`, which does offset);
+  - `Get_WLSCurrentError` is a *mutating* getter (P-specified sensors re-derive
+    `SensorCurrent` from `kWs`/`kvars` and latch `Ispecified`, `Sensor.pas:599-631`);
+    it is called in Pascal's position — after the row's own columns — so the
+    side effect is observable only to later reads, exactly as upstream;
+  - every number `Format('%.6g')` via `report::format::g(v, 6)`.
+  `Nphases > 3` is the one non-reproduction: Pascal writes `TempX[i]` for
+  `i := 1..Nphases` into a `1..3` stack array (UB, not a defined bug), so
+  `temp_x_slots` clamps. r4133 `Version8/Source/Common/ExportResults.pas:1599` is
+  character-identical to the pinned 0.14.5 source — both gating oracles agree.
+- **Routing** (`exec/report.rs`): verb 5 → `export_with_mut` →
+  `EXP_ESTIMATION.csv`. It needs `&mut classes` only for the WLS getter; the
+  solved node voltages are unused (the report is a *read* of stored sensor
+  arrays). The existing #24712 solution guard already covers it (5 ∈ the `1..24`
+  set) — checked against `ExportOptions.pas:163-177`, no new guard code.
+- **Goldens** (`tests/golden/reports/export_estimation{,_noalloc,_empty}.txt`,
+  `golden_reports.rs::export_estimation*`, policy `sep=','`, `header_lines=2`,
+  `rel=abs=0.0` — exact):
+  - `est8` — the allocated path. Two feeder heads so both EnergyMeters are legal:
+    3-phase `m1` (unequal `peakcurrent=`) and **1-phase** `m2` (the sub-3-phase
+    column shape). Three Sensors cover every spec — current, P/Q (`weight=2`,
+    driving the mutating WLS getter), and a 1-phase voltage+current sensor (the
+    only nonzero `V… Target` / `WLSVoltageError`) — plus a **disabled** `s4` that
+    must not appear. A fixed non-allocatable kW load inside `m1`'s zone keeps the
+    allocation loop from landing on the target, so the `%Err` columns are 17-57 %,
+    nowhere near a cancellation floor.
+  - `estns` — solved but **not** allocated: nonzero targets vs an all-zero
+    `CalculatedCurrent`/`CalculatedVoltage`, so every `%Err` is the `100` form and
+    the WLS residuals are the pure `-Weight * sum(target²)` term.
+  - `estem` — no meters, no sensors: both section headers, both bodies empty.
+  - GAPS §3 proof: data-bearing; two independent oracle processes byte-identical;
+    four mutations each caught by `est8` — dropping the `Enabled` filter (row count
+    7→8), re-zeroing before the percent-error pass (17.816 → 100), ignoring
+    `Nphases` (M2's `I2 Calc` 0 → 51.3357), swapping the two WLS columns.
+- **Empirical: a disabled EnergyMeter is not gate-able here.** The pinned 0.14.5
+  oracle **access-violates** (#303) inside `allocateloads` when one exists —
+  `TEnergyMeterObj.AllocateLoad` walks a `BranchList` the disabled meter never
+  built (the `if not Enabled then Exit` guard is the r4115/D9 fix the port already
+  carries). So `est8` omits it; the port's `Enabled` filter in *this* report is
+  pinned by the sensor `s4` row instead.
+- **Rider — the retired CDPSM profiles.** Verbs 22/28-31 get their own arms
+  emitting Pascal's exact fixed text (`<Profile> export no longer supported; use
+  Export CIM100`, `ExportOptions.pas:543`/`:555-561`; r4133
+  `Version8/Source/Executive/ExportOptions.pas:461`/`:467-470` — identical), no
+  file, last-file state untouched; covered by
+  `exec/tests/report.rs::export_router_outcomes_match_oracle` (renamed from
+  `export_records_scoped_not_ported`, whose `Estimation` example this WP
+  invalidated). The default arm's stale "(Phase 8)" wording is gone; it is now
+  **unreachable** (all 64 keywords routed) and documented as the safety valve for
+  a keyword added to the table without a route.
+- **Left open (out of this worktree's write fence):** the `Estimate` *command*
+  (`EXEC_COMMANDS` ordinal 90, `ExecHelper.pas:4225` = `DoAllocateLoadsCmd` +
+  `Set showexport=yes` + `Export Estimation`) is still unrouted in
+  `exec/command.rs` and falls to `not_ported_command`. Both constituents now
+  exist, so it is a small follow-up; recorded in `ORPHANED_GAPS.md` §1.10.
+- Gate green (fmt + clippy + `cargo test --workspace`, corpus gate on both
+  channels). `TODO(compat)` still exactly 117; zero new `downcast_ref`/`as_any`
+  sites; no existing golden regenerated; `tests/corpus` left pristine.
+  - *Flake note:* one full-workspace run had `corpus_gate` fail with the **r4133
+    oracle** raising `I/O error 103` on `Test/AutoTrans/AutoHLT.dss`'s
+    `export losses file=…`; it passed on re-run and on every subsequent run. That
+    deck family writes report files into the shared `Test/AutoTrans` corpus dir
+    from several parallel jobs — a pre-existing scheduler/IO race, untouched by
+    this WP.
+
+---
+
 ### Gate state (all green)
 ```
 cargo fmt --all --check

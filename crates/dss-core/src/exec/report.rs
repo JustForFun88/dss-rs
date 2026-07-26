@@ -323,6 +323,14 @@ impl Dss {
             4 => self.export_with_mut(&explicit, "EXP_SEQCURRENTS.csv", |c, ckt, sys, nv| {
                 export::export_seq_currents(c, ckt, sys, nv)
             }),
+            // `Estimation` (Pascal `ExportOptions.pas:452` → `ExportEstimation`):
+            // the EnergyMeter/Sensor state-estimation error report. Needs `&mut
+            // classes` because `Get_WLSCurrentError` re-derives the sensor's
+            // `SensorCurrent` from P/Q (see `export::export_estimation`); the
+            // solved node voltages are unused (it reads the stored sensor arrays).
+            5 => self.export_with_mut(&explicit, "EXP_ESTIMATION.csv", |c, ckt, _sys, _nv| {
+                export::export_estimation(c, ckt)
+            }),
             9 => self.export_with_mut(&explicit, "EXP_POWERS.csv", |c, ckt, sys, nv| {
                 export::export_powers(c, ckt, sys, nv, mva_opt)
             }),
@@ -481,12 +489,38 @@ impl Dss {
                     );
                 }
             }
+            // The retired CDPSM (CIM16) profile exports. Upstream removed the
+            // exporters and replaced each arm with a fixed `DoSimpleMsg(...,
+            // 252)` (`ExportOptions.pas:543` for 22, `:555-561` for 28-31;
+            // identical in r4133 `Version8/Source/Executive/ExportOptions.pas:461`
+            // / `:467-470`). The keywords still resolve — so they consume the
+            // solve guard and `DefaultCircuitUUIDs` above — and then emit only
+            // this message, writing no file and leaving the last-file state
+            // untouched. Reproduced verbatim, message per keyword.
+            22 => self.push_cdpsm_retired("Asset"),
+            28 => self.push_cdpsm_retired("ElectricalProperties"),
+            29 => self.push_cdpsm_retired("Geographical"),
+            30 => self.push_cdpsm_retired("Topology"),
+            31 => self.push_cdpsm_retired("StateVariables"),
+            // Unreachable: every one of the 64 `EXPORT_OPTIONS` keywords now has
+            // an arm above (`Estimation`(5) was the last holdout). Kept as the
+            // safety valve for a keyword added to the table without a route — a
+            // half-ported `Export` must be loud, never a silent no-op.
             _ => {
                 let name = EXPORT_OPTIONS[ptr - 1];
                 self.errors
-                    .push(format!("Export \"{name}\" is not ported yet (Phase 8)."));
+                    .push(format!("Export \"{name}\" is not ported yet."));
             }
         }
+    }
+
+    /// The retired-CDPSM-profile error (Pascal `DoSimpleMsg(DSS, _('<profile>
+    /// export no longer supported; use Export CIM100'), 252)`), shared by export
+    /// keywords 22/28/29/30/31.
+    fn push_cdpsm_retired(&mut self, profile: &str) {
+        self.errors.push(format!(
+            "{profile} export no longer supported; use Export CIM100"
+        ));
     }
 
     /// Run a read-only circuit formatter `f` and write its output to the report
