@@ -24,10 +24,6 @@ impl CktElement for Generator {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, sys: &SysCtx) {
-        self.recalc(sys);
-    }
-
     /// Pascal `TGeneratorObj.MakePosSequence` (`generator.pas:2726`). Single
     /// phase, line-neutral; a multi-phase generator's power is divided by the
     /// phase count (PF preserved), and — conditionally — its kvar limits, kVA
@@ -787,10 +783,6 @@ impl DssObject for Generator {
         errors: &mut crate::diag::ErrorLog,
     ) {
         self.apply_user_model_load_impl(load, wasm, sys, errors);
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

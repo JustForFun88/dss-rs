@@ -481,7 +481,8 @@ macro_rules! define_arena {
             /// The self-monitoring control paths (a Fuse/Recloser/Relay whose
             /// monitored element IS its controlled element) stand a snapshot
             /// clone in for the second live borrow; this is the typed
-            /// replacement for `clone_box()` + `as_ckt_element_mut()`.
+            /// replacement for the removed `clone_box()` +
+            /// `as_ckt_element_mut()`.
             pub fn clone_ckt(&self, idx: usize) -> Option<Box<dyn CktElement>> {
                 match self {
                     $( ClassArena::$variant(v) => clone_ckt_view!($kind, v, idx), )*
@@ -608,7 +609,7 @@ macro_rules! define_arena {
 }
 
 /// Static link from a concrete element type to its arena slot — the compile-time
-/// replacement for the removed `as_any().downcast_ref::<T>()`.
+/// replacement for the removed `Any` downcast to `&T`.
 ///
 /// Implemented (by [`with_all_classes!`]) for every registered class exactly
 /// once, so `T` alone determines the [`ClassArena`] variant, the registration
@@ -650,7 +651,7 @@ with_all_classes!(define_arena);
 
 impl ClassArena {
     /// Concrete read view of object `idx` as `&T` — the typed accessor that
-    /// replaces the removed `arena[idx].as_any().downcast_ref::<T>()`.
+    /// replaces the removed `Any` downcast of `arena[idx]` to `&T`.
     ///
     /// `None` if this arena holds a different class or `idx` is out of range
     /// (exactly the two cases the downcast/`get` pair returned `None` for).
@@ -661,7 +662,7 @@ impl ClassArena {
     }
 
     /// Mutable [`Self::get`] — replaces
-    /// the removed `arena[idx].as_any_mut().downcast_mut::<T>()`.
+    /// the removed `Any` downcast of `arena[idx]` to `&mut T`.
     pub fn get_mut<T: ArenaClass>(&mut self, idx: usize) -> Option<&mut T> {
         T::arena_vec_mut(self)?.get_mut(idx)
     }
@@ -722,7 +723,7 @@ impl ClassArena {
 /// The point is the *type channel*, not the timing: a `set_object_ref` impl
 /// that wants a concrete `LoadShapeObj`/`XYcurve`/… snapshot now narrows with
 /// [`ResolvedObj::get`]/[`ResolvedObj::cloned`] (a static [`ArenaClass`] match)
-/// instead of the removed `o.as_any().downcast_ref::<T>()`. **When** the clone
+/// instead of the removed `Any` downcast of `o` to `&T`. **When** the clone
 /// happens is unchanged — still inside the same `set_object_ref` call, at
 /// resolve time (`DE_PASCALIZE_PLAN.md` Part I, "Category D timing").
 #[derive(Clone, Copy)]
@@ -763,14 +764,14 @@ impl<'a> ResolvedObj<'a> {
     }
 
     /// The concrete `&T`, or `None` if the reference names another class —
-    /// the typed replacement for the removed `as_any().downcast_ref::<T>()`.
+    /// the typed replacement for the removed `Any` downcast to `&T`.
     pub fn get<T: ArenaClass>(self) -> Option<&'a T> {
         let i = T::idx_of(self.id)?;
         self.arena.get::<T>(i.get())
     }
 
     /// The resolve-time snapshot clone of the concrete `&T` (the `Category D`
-    /// `downcast_ref::<T>().cloned()` pattern).
+    /// `Any`-downcast-then-`cloned()` pattern).
     pub fn cloned<T: ArenaClass + Clone>(self) -> Option<T> {
         self.get::<T>().cloned()
     }
@@ -1160,7 +1161,7 @@ mod tests {
     /// Every typed accessor ([`ArenaClass`] / [`ClassArena::get`] /
     /// [`ClassArena::get_mut`] / [`ClassArena::clone_ckt`]) agrees, for **every**
     /// registered class, with the stored object itself (the address the
-    /// removed `as_any().downcast_ref::<T>()` used to hand back) and with the
+    /// removed `Any` downcast to `&T` used to hand back) and with the
     /// `ckt`/`data` tag. Generated from the one class list, so a new
     /// class is covered automatically. This is the equivalence that lets the
     /// typed store replace the `Any` round-trip.
@@ -1185,7 +1186,7 @@ mod tests {
 
                     // The typed read IS the very object the generic `dyn`
                     // view hands out (same address, no reinterpretation) --
-                    // the equivalence the removed `as_any` downcast used to
+                    // the equivalence the removed `Any` downcast used to
                     // establish.
                     let typed = arena.get::<$ty>(0).expect("typed read") as *const $ty
                         as *const ();

@@ -161,8 +161,4 @@ impl DssObject for GicLine {
         self.recalc();
         self.cd.yprim_invalid = true;
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

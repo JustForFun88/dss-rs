@@ -202,8 +202,4 @@ impl DssObject for XyCurveObj {
         }
         self.sync_first_point();
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

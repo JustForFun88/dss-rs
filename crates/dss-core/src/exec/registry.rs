@@ -375,7 +375,7 @@ mod tests {
     }
 
     /// The R3.2 typed store accessors over a **live** `ClassStore`: `typed`/
-    /// `typed_mut` return the very object the `as_any` downcast returns, the
+    /// `typed_mut` return the very object the removed `Any` downcast returned, the
     /// control pair/triple getters hand out the same objects the untyped
     /// `pair_mut`/`triple_mut` do, and a foreign class narrows to `None`.
     #[test]
@@ -422,7 +422,7 @@ mod tests {
         };
 
         // `typed` hands back the very stored object (the address the removed
-        // `as_any` downcast returned), and the same `None`s.
+        // removed `Any` downcast returned), and the same `None`s.
         assert!(std::ptr::eq(
             store.typed::<RegControl>(rc_ref).unwrap() as *const RegControl as *const (),
             store.obj(rc_ref) as *const dyn DssObject as *const (),

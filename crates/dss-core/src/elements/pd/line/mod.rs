@@ -22,12 +22,13 @@
 mod tests;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::general::conductor_data::{CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME};
+use crate::elements::general::conductor_data::{
+    CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME, ConductorObj,
+};
 use crate::elements::general::line_code::LineType;
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::traits::ElemId;
-use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
@@ -271,6 +272,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
 }
 
 /// `TLineObj`.
+#[derive(Clone)]
 pub struct Line {
     pub cd: CktElementData,
 
@@ -346,7 +348,7 @@ pub struct Line {
     /// Pascal `LineWireData` (sized `FWireDataSize`): the per-conductor catalog
     /// objects (`WireData`/`CNData`/`TSData`) the `wires=`/`cncables=`/`tscables=`
     /// forms fill. Empty = unallocated (Pascal NIL); allocated by `FetchLineSpacing`.
-    pub line_wire_data: Vec<Option<Box<dyn DssObject>>>,
+    pub line_wire_data: Vec<Option<ConductorObj>>,
     /// Pascal `FPhaseChoice`: the conductor model in force for the spacing path.
     pub fphase_choice: ConductorChoice,
     /// Pascal `gotRatingsAfterSpacingConds`: set once ratings/amps are specified
@@ -367,68 +369,9 @@ pub struct Line {
     pub amp_ratings: Vec<f64>,
 }
 
-// `line_wire_data: Vec<Option<Box<dyn DssObject>>>` is not `Clone`/`Debug`-derivable
-// (trait objects), so both impls are written by hand (the `LineGeometryObj`
-// precedent). Clone deep-copies each conductor via `clone_box`.
-impl Clone for Line {
-    fn clone(&self) -> Self {
-        Self {
-            cd: self.cd.clone(),
-            r1: self.r1,
-            x1: self.x1,
-            r0: self.r0,
-            x0: self.x0,
-            c1: self.c1,
-            c0: self.c0,
-            len: self.len,
-            length_units: self.length_units,
-            user_length_units: self.user_length_units,
-            line_code_units: self.line_code_units,
-            units_convert: self.units_convert,
-            line_code_ref: self.line_code_ref,
-            line_code_name: self.line_code_name.clone(),
-            is_switch: self.is_switch,
-            sym_components_model: self.sym_components_model,
-            sym_components_changed: self.sym_components_changed,
-            positive_sequence: self.positive_sequence,
-            cap_specified: self.cap_specified,
-            rg: self.rg,
-            xg: self.xg,
-            kxg: self.kxg,
-            rho: self.rho,
-            earth_model: self.earth_model,
-            line_type: self.line_type,
-            eps_r_medium: self.eps_r_medium,
-            height_offset: self.height_offset,
-            height_units: self.height_units,
-            geometry_obj: self.geometry_obj.clone(),
-            geometry_name: self.geometry_name.clone(),
-            fz_frequency: self.fz_frequency,
-            line_spacing_obj: self.line_spacing_obj.clone(),
-            line_wire_data: self
-                .line_wire_data
-                .iter()
-                .map(|o| o.as_ref().map(|b| b.clone_box()))
-                .collect(),
-            fphase_choice: self.fphase_choice,
-            got_ratings_after_spacing_conds: self.got_ratings_after_spacing_conds,
-            z: self.z.clone(),
-            yc: self.yc.clone(),
-            norm_amps: self.norm_amps,
-            emerg_amps: self.emerg_amps,
-            fault_rate: self.fault_rate,
-            pct_perm: self.pct_perm,
-            hrs_to_repair: self.hrs_to_repair,
-            miles_this_line: self.miles_this_line,
-            num_amp_ratings: self.num_amp_ratings,
-            amp_ratings: self.amp_ratings.clone(),
-        }
-    }
-}
-
 impl std::fmt::Debug for Line {
-    // The conductor slots are `Box<dyn DssObject>` (not `Debug`); print the scalar
-    // state and the active impedance source instead.
+    // Print the scalar state and the active impedance source only — the
+    // conductor snapshots and the impedance matrices would bury it.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Line")
             .field("name", &self.cd.obj.name())

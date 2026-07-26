@@ -230,10 +230,6 @@ impl DssObject for GicTransformer {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }
 
 /// Pascal `Copy(S, 1, Pos('.', S) - 1)`: the bus name with any `.node…` suffix

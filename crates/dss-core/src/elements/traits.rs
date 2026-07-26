@@ -41,7 +41,7 @@ pub trait ElemStore: Send {
 
     /// The [`ElemKind`] of the class the ref points at — the meter/sampling
     /// type-guards (`is_line`/`is_pd_element`/PD/PC checks) match on this
-    /// instead of an `as_any` downcast probe. Panics if `r` names a non-circuit
+    /// instead of an `Any` downcast probe. Panics if `r` names a non-circuit
     /// ("general") class, which those guards never pass.
     ///
     /// [`ElemKind`]: crate::circuit::ElemKind
@@ -117,7 +117,7 @@ pub trait ElemStore: Send {
 }
 
 /// Concrete (`&T` / `&mut T`) access on top of [`ElemStore`] — the DE_PASCALIZE
-/// R3 replacement for the removed `store.obj(r).as_any().downcast_ref::<T>()`.
+/// R3 replacement for the removed `Any` downcast of `store.obj(r)` to `&T`.
 ///
 /// Blanket-implemented for every `ElemStore` (including `dyn ElemStore`), so the
 /// generic methods are available wherever the store is. Each one resolves the
@@ -125,14 +125,14 @@ pub trait ElemStore: Send {
 /// `None` from a compile-time match arm, exactly what the downcast returned.
 pub trait TypedStore: ElemStore {
     /// The concrete `&T` behind `r`, or `None` if `r` names another class
-    /// (the removed `store.obj(r).as_any().downcast_ref::<T>()`).
+    /// (the removed `Any` downcast of `store.obj(r)`).
     fn typed<T: ArenaClass>(&self, r: ElemId) -> Option<&T> {
         let i = T::idx_of(r)?;
         self.arena(T::CLASS_ORD).get::<T>(i.get())
     }
 
-    /// The concrete `&mut T` behind `r` (the removed `obj_mut(r).as_any_mut()
-    /// .downcast_mut::<T>()`).
+    /// The concrete `&mut T` behind `r` (the removed `Any` downcast of
+    /// `obj_mut(r)`).
     fn typed_mut<T: ArenaClass>(&mut self, r: ElemId) -> Option<&mut T> {
         let i = T::idx_of(r)?;
         self.arena_mut(T::CLASS_ORD).get_mut::<T>(i.get())
@@ -341,7 +341,7 @@ pub trait TypedStore: ElemStore {
 /// The element a [`Monitor`] meters, borrowed mutably and narrowed to the
 /// concrete classes `TMonitorObj.TakeSample` needs beyond the [`CktElement`]
 /// surface (see [`TypedStore::typed_metered_pair_mut`]). The typed R3
-/// replacement for the `&mut dyn DssObject` + `as_any` chain `take_sample`
+/// replacement for the `&mut dyn DssObject` + `Any`-downcast chain `take_sample`
 /// used to take.
 pub enum MeteredElem<'a> {
     Capacitor(&'a mut Capacitor),
@@ -622,9 +622,6 @@ pub struct ReliabilityData {
 pub trait CktElement: Send {
     fn cd(&self) -> &CktElementData;
     fn cd_mut(&mut self) -> &mut CktElementData;
-
-    /// `RecalcElementData` (abstract in the base class).
-    fn recalc_element_data(&mut self, sys: &SysCtx);
 
     /// Pascal `TDSSCktElement.SetNodeRef` (virtual): copy one terminal's node
     /// refs into the flat array + terminal record. The base behavior is the

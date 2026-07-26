@@ -87,7 +87,7 @@ pub struct ControlElemData {
 }
 
 /// Which concrete control class a control object is — the behavior-trait
-/// replacement for the `as_any().downcast_ref::<…>()` identification chain in
+/// replacement for the removed `Any`-downcast identification chain in
 /// `solution/controls/dispatch.rs`. Returned by [`ControlElem::control_kind`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlClass {

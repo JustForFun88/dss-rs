@@ -28,10 +28,6 @@ impl CktElement for Transformer {
         Some(Transformer::present_tap(self, terminal))
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
     fn reliability_data(&self) -> ReliabilityData {
         ReliabilityData {
@@ -734,9 +730,5 @@ impl DssObject for Transformer {
             | crate::obj::base::RefAction::SetOcpDevice { .. }
             | crate::obj::base::RefAction::SetElementBus { .. } => {}
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

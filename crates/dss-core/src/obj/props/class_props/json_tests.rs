@@ -79,9 +79,6 @@ impl DssObject for Mock {
     fn get_object_ref_names(&self, _idx: usize) -> Vec<String> {
         self.str_list.clone()
     }
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }
 
 /// Build a `ClassProps` from raw prop rows (index i+1 = defs[i]).

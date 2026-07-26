@@ -35,10 +35,12 @@ mod edit;
 mod matrix;
 mod save;
 
-use crate::elements::general::conductor_data::{CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME};
+use crate::elements::general::conductor_data::{
+    CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME, ConductorObj,
+};
 use crate::elements::general::line_code::LineType;
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::DssObjData;
 use crate::obj::props::{PropDef, PropFlags, define_properties};
 use crate::support::line_constants::LineConstants;
 
@@ -103,6 +105,7 @@ enum ConductorChoice {
 /// `TLineGeometryObj`. Pascal stores the per-conductor data as 1-based
 /// `pXxxArray`s of length `FNConds`; here they are plain 0-based `Vec`s (slot
 /// `i` is conductor `i+1`). `FActiveCond` stays 1-based (the property value).
+#[derive(Clone)]
 pub struct LineGeometryObj {
     data: DssObjData,
     fnconds: i32,
@@ -111,7 +114,7 @@ pub struct LineGeometryObj {
     fphase_choice: Vec<ConductorChoice>,
     /// Snapshot-cloned conductor objects (`WireData`/`CNData`/`TSData`), one per
     /// conductor (`None` = not yet set, Pascal NIL).
-    fwiredata: Vec<Option<Box<dyn DssObject>>>,
+    fwiredata: Vec<Option<ConductorObj>>,
     fx: Vec<f64>,
     fy: Vec<f64>,
     funits: Vec<i32>,
@@ -145,44 +148,9 @@ pub struct LineGeometryObj {
     avg_neutral_height: f64,
 }
 
-impl Clone for LineGeometryObj {
-    fn clone(&self) -> Self {
-        Self {
-            data: self.data.clone(),
-            fnconds: self.fnconds,
-            fnphases: self.fnphases,
-            factive_cond: self.factive_cond,
-            fphase_choice: self.fphase_choice.clone(),
-            fwiredata: self
-                .fwiredata
-                .iter()
-                .map(|o| o.as_ref().map(|b| b.clone_box()))
-                .collect(),
-            fx: self.fx.clone(),
-            fy: self.fy.clone(),
-            funits: self.funits.clone(),
-            flast_unit: self.flast_unit,
-            freduce: self.freduce,
-            fline_data: self.fline_data.clone(),
-            data_changed: self.data_changed,
-            norm_amps: self.norm_amps,
-            emerg_amps: self.emerg_amps,
-            num_amp_ratings: self.num_amp_ratings,
-            amp_ratings: self.amp_ratings.clone(),
-            fline_type: self.fline_type,
-            line_spacing_obj: self.line_spacing_obj.clone(),
-            equivalent_spacing: self.equivalent_spacing,
-            eq_dist_ph_ph: self.eq_dist_ph_ph,
-            eq_dist_ph_n: self.eq_dist_ph_n,
-            avg_phase_height: self.avg_phase_height,
-            avg_neutral_height: self.avg_neutral_height,
-        }
-    }
-}
-
 impl std::fmt::Debug for LineGeometryObj {
-    // The conductor/spacing slots are `Box<dyn DssObject>` (not `Debug`), so the
-    // derived impl is unavailable; print the scalar geometry state instead.
+    // Print the scalar geometry state only — the conductor/spacing snapshots and
+    // the Carson engine would bury it.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LineGeometryObj")
             .field("name", &self.data.name())
@@ -325,11 +293,9 @@ impl LineGeometryObj {
     /// the per-conductor catalog object (`WireData`/`CNData`/`TSData`), or
     /// `None` (Pascal NIL). `i` is 1-based. Read-only accessor for the WPG.18
     /// Stage C `ACLineSegmentPhase.WireInfo` reference.
-    pub fn conductor(&self, i_one_based: usize) -> Option<&dyn DssObject> {
+    pub fn conductor(&self, i_one_based: usize) -> Option<&ConductorObj> {
         if i_one_based >= 1 && i_one_based <= self.fnconds as usize {
-            self.fwiredata
-                .get(i_one_based - 1)
-                .and_then(|o| o.as_deref())
+            self.fwiredata.get(i_one_based - 1).and_then(|o| o.as_ref())
         } else {
             None
         }

@@ -413,8 +413,4 @@ impl DssObject for LoadShapeObj {
             self.set_max_p_and_q();
         }
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

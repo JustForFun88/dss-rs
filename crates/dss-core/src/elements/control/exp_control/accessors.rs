@@ -69,16 +69,6 @@ impl CktElement for ExpControl {
         self.ccd.controlled_element
     }
 
-    /// Pascal `TExpControlObj.RecalcElementData` (the parse-time subset): derive
-    /// `FOpenTau` and attach the control's terminal to the first DER's bus. The
-    /// fleet *dispatch* build (`MakePVSystemList`) needs store access, so it is
-    /// deferred to the first `Sample`; the bus is resolved at edit-completion (the
-    /// executive calls [`set_resolved_monitored`](ExpControl::set_resolved_monitored)
-    /// before `end_edit` → `recalc`).
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL.
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
 
@@ -273,10 +263,6 @@ impl DssObject for ExpControl {
     /// build is deferred to the first `Sample`).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

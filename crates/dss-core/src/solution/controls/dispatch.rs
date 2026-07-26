@@ -127,7 +127,7 @@ pub(super) fn dispatch_control(
     let SolveEnv { store, errors, .. } = env;
 
     // Identify the control and read its target refs (immutable peek) through
-    // the `ControlElem` behavior trait — R0 replaces the `as_any` downcast
+    // the `ControlElem` behavior trait — R0 replaces the `Any` downcast
     // chain. The concrete `ControlKind` mirror (with the captured refs the
     // borrow-split below needs) is built from `control_kind()` + `ccd()`.
     let (kind, full_name) = {

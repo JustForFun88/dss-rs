@@ -209,8 +209,4 @@ impl DssObject for Isource {
         self.recalc();
         self.cd.yprim_invalid = true;
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

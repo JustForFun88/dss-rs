@@ -48,10 +48,6 @@ impl CktElement for Storage {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, sys: &SysCtx) {
-        self.recalc(sys);
-    }
-
     /// Pascal `TStorageObj.MakePosSequence` (`Storage.pas:3320`). Single phase,
     /// line-neutral; a multi-phase unit's `kWrated` is divided by the phase
     /// count and `PF` is set to the nominal PF.
@@ -817,10 +813,6 @@ impl DssObject for Storage {
         errors: &mut crate::diag::ErrorLog,
     ) {
         self.apply_user_model_load_impl(load, wasm, sys, errors);
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

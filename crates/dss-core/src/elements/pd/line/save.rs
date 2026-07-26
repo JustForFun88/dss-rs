@@ -22,7 +22,7 @@
 //! two are token-equivalent on re-parse and the `Save` contract is round-trip
 //! fidelity, not byte-equality (`report/save/save.rs` header).
 
-use crate::elements::general::conductor_data::ConductorKind;
+use crate::elements::general::conductor_data::{ConductorData, ConductorKind, ConductorObj};
 use crate::obj::base::DssObject;
 use crate::report::save::save::SaveCtx;
 use crate::util::check_for_blanks;
@@ -84,15 +84,15 @@ impl Line {
                 i += 1; // Pascal `if LineWireData[i] = NIL then continue`.
                 continue;
             };
-            let kind = conductor_kind(w.as_ref());
-            let mut names = check_for_blanks(w.data().name());
+            let kind = conductor_kind(w);
+            let mut names = check_for_blanks(w.name());
             let mut j = i + 1;
             while j < n {
                 match self.line_wire_data[j].as_ref() {
                     // Pascal `if conductorCls <> ParentClass then break`.
-                    Some(wj) if conductor_kind(wj.as_ref()) == kind => {
+                    Some(wj) if conductor_kind(wj) == kind => {
                         names.push_str(", ");
-                        names.push_str(&check_for_blanks(wj.data().name()));
+                        names.push_str(&check_for_blanks(wj.name()));
                         j += 1;
                     }
                     _ => break,
@@ -107,10 +107,10 @@ impl Line {
 /// The `Save`-array kind for a conductor by its catalog class (Pascal
 /// `LineWireData[i].ParentClass`): `TSData` → `TSCables`, `CNData` → `CNCables`,
 /// else (`WireData`) → `Wires`.
-fn conductor_kind(w: &dyn DssObject) -> &'static str {
-    match w.as_conductor().map(|c| c.conductor_kind()) {
-        Some(ConductorKind::Ts) => "TSCables",
-        Some(ConductorKind::Cn) => "CNCables",
-        _ => "Wires",
+fn conductor_kind(w: &ConductorObj) -> &'static str {
+    match w.conductor_kind() {
+        ConductorKind::Ts => "TSCables",
+        ConductorKind::Cn => "CNCables",
+        ConductorKind::Wire => "Wires",
     }
 }

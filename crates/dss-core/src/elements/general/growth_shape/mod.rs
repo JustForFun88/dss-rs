@@ -387,10 +387,6 @@ impl DssObject for GrowthShapeObj {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc_year_mult();
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }
 
 /// Pascal `ReAllocmem`: grow/shrink keeping surviving values; 0 frees (NIL).

@@ -310,10 +310,6 @@ impl DssObject for SpectrumObj {
             self.set_mult_array();
         }
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }
 
 /// Pascal `ReAllocmem`: grow/shrink keeping surviving values; 0 frees (NIL).

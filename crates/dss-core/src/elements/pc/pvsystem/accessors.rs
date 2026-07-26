@@ -29,10 +29,6 @@ impl CktElement for PVSystem {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, sys: &SysCtx) {
-        self.recalc(sys);
-    }
-
     /// Pascal `TPVsystemObj.MakePosSequence` (`PVsystem.pas:2638`). Single
     /// phase, line-neutral; a multi-phase array's `kVA` rating is divided by the
     /// phase count and `PF` is set to the nominal PF.
@@ -726,10 +722,6 @@ impl DssObject for PVSystem {
         errors: &mut crate::diag::ErrorLog,
     ) {
         self.apply_user_model_load_impl(load, wasm, sys, errors);
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

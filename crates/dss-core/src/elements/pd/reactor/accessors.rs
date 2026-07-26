@@ -338,10 +338,6 @@ impl DssObject for Reactor {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }
 
 /// Pascal `StripExtension`: the bus name with its `.node.node…` suffix removed.

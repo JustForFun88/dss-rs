@@ -227,7 +227,6 @@ impl CktElement for MockMon {
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
     }
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {}
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         for (i, c) in curr.iter_mut().enumerate() {

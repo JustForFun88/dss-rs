@@ -406,13 +406,6 @@ pub trait ConductorData {
     fn conductor_kind(&self) -> ConductorKind;
 }
 
-/// The [`ConductorGeom`] of any catalog conductor (`WireData`/`CNData`/`TSData`),
-/// or `None` for any other object type. The dispatch Pascal gets for free from
-/// `FWireData[i] is T…DataObj`.
-pub fn conductor_geom(o: &dyn DssObject) -> Option<ConductorGeom> {
-    o.as_conductor().map(|c| c.geom())
-}
-
 pub use cn_data::CnDataObj;
 pub use ts_data::TsDataObj;
 pub use wire_data::WireDataObj;
@@ -450,5 +443,80 @@ impl ConductorData for TsDataObj {
     }
     fn conductor_kind(&self) -> ConductorKind {
         ConductorKind::Ts
+    }
+}
+
+/// A **snapshot-cloned** conductor catalog object, as a `LineGeometry`
+/// (`FWireData[i]`) and a `Line` (`LineWireData[i]`) own it — the typed
+/// (DE_PASCALIZE R3 Category C) replacement for the `Box<dyn DssObject>` those
+/// arrays used to hold.
+///
+/// The three variants are exactly the classes the `wire=`/`cncable=`/`tscable=`,
+/// `wires=`/`cncables=`/`tscables=` and `conductors=` properties resolve against
+/// (`PropDef::object_ref_class("WireData"|"CNData"|"TSData")` and the
+/// [`CONDUCTOR_PROXY_CLASSES`] proxy), so the storage can no longer hold
+/// anything else — what used to be a runtime `as_conductor()` probe on every
+/// read is now a static match.
+#[derive(Debug, Clone)]
+pub enum ConductorObj {
+    Wire(WireDataObj),
+    Cn(CnDataObj),
+    Ts(TsDataObj),
+}
+
+impl ConductorObj {
+    /// The resolve-time snapshot clone of a resolved conductor reference — the
+    /// typed twin of the `clone_box()` these arrays used to store. `None` if the
+    /// reference names some other class, which the property-side class
+    /// restriction above makes unreachable.
+    pub fn from_resolved(o: crate::obj::arena::ResolvedObj<'_>) -> Option<Self> {
+        if let Some(w) = o.cloned::<WireDataObj>() {
+            Some(ConductorObj::Wire(w))
+        } else if let Some(c) = o.cloned::<CnDataObj>() {
+            Some(ConductorObj::Cn(c))
+        } else {
+            o.cloned::<TsDataObj>().map(ConductorObj::Ts)
+        }
+    }
+
+    /// The (lowercased) object name, as dumps and `Save` render it.
+    pub fn name(&self) -> &str {
+        match self {
+            ConductorObj::Wire(w) => w.data().name(),
+            ConductorObj::Cn(c) => c.data().name(),
+            ConductorObj::Ts(t) => t.data().name(),
+        }
+    }
+
+    /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` with the ratings
+    /// copied out — the owned form the `LineGeometry`/`Line` rating defaults
+    /// need while `self` is borrowed from the array they write into.
+    pub fn amps_owned(&self) -> (f64, f64, i32, Vec<f64>) {
+        let (n, e, k, r) = self.amps();
+        (n, e, k, r.to_vec())
+    }
+}
+
+impl ConductorData for ConductorObj {
+    fn geom(&self) -> ConductorGeom {
+        match self {
+            ConductorObj::Wire(w) => w.geom(),
+            ConductorObj::Cn(c) => c.geom(),
+            ConductorObj::Ts(t) => t.geom(),
+        }
+    }
+    fn amps(&self) -> (f64, f64, i32, &[f64]) {
+        match self {
+            ConductorObj::Wire(w) => w.amps(),
+            ConductorObj::Cn(c) => c.amps(),
+            ConductorObj::Ts(t) => t.amps(),
+        }
+    }
+    fn conductor_kind(&self) -> ConductorKind {
+        match self {
+            ConductorObj::Wire(_) => ConductorKind::Wire,
+            ConductorObj::Cn(_) => ConductorKind::Cn,
+            ConductorObj::Ts(_) => ConductorKind::Ts,
+        }
     }
 }
