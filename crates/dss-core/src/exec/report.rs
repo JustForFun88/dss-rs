@@ -59,8 +59,8 @@ impl Dss {
     /// resolved from the circuit bus list — Pascal `DoFlickerCalculations` reads
     /// `ActiveCircuit.Buses[MeteredElement.Terminals[MeteredTerminal].BusRef].kVBase`
     /// at close time. 0.0 for non-mode-4 monitors or an unresolved bus.
-    fn monitor_metered_kv_base(&self, r: crate::elements::traits::ElemRef) -> f64 {
-        let Some(mon) = self.classes[r.cls].arena[r.idx]
+    fn monitor_metered_kv_base(&self, r: crate::elements::traits::ElemId) -> f64 {
+        let Some(mon) = self.classes[r.class_ord()].arena[r.index()]
             .as_any()
             .downcast_ref::<crate::elements::meter::monitor::Monitor>()
         else {
@@ -203,7 +203,7 @@ impl Dss {
         // empty-string quirk), the value resolves via `EnergyMeterClass.Find`
         // (case-insensitive; an unknown name silently leaves `pMeter = NIL` →
         // all meters).
-        let mut section_meter: Option<crate::elements::traits::ElemRef> = None;
+        let mut section_meter: Option<crate::elements::traits::ElemId> = None;
         if ptr == 51 {
             let param_name = self.parser.next_param(&self.vars);
             let parm2 = self.parser.make_string(&self.vars);
@@ -216,7 +216,7 @@ impl Dss {
                     .iter()
                     .copied()
                     .find(|&r| {
-                        self.classes[r.cls].arena[r.idx]
+                        self.classes[r.class_ord()].arena[r.index()]
                             .data()
                             .name()
                             .eq_ignore_ascii_case(&parm2)
@@ -846,11 +846,11 @@ impl Dss {
         let case = self.circuit.as_ref().unwrap().case_name.clone();
         // Pascal `if Parm2 = 'all'` is case-sensitive; the named lookup
         // (`MonitorClass.Find`) is case-insensitive (THashList semantics).
-        let targets: Vec<crate::elements::traits::ElemRef> = if name == "all" {
+        let targets: Vec<crate::elements::traits::ElemId> = if name == "all" {
             monitors
         } else {
             match monitors.iter().find(|&&r| {
-                self.classes[r.cls].arena[r.idx]
+                self.classes[r.class_ord()].arena[r.index()]
                     .data()
                     .name()
                     .eq_ignore_ascii_case(name)
@@ -901,7 +901,7 @@ impl Dss {
             // Resolve the mode-4 flicker Vbase before the mutable borrow.
             let kv_base = self.monitor_metered_kv_base(r);
             let (mon_name, content) = {
-                let obj = &mut self.classes[r.cls].arena[r.idx];
+                let obj = &mut self.classes[r.class_ord()].arena[r.index()];
                 let name = obj.data().name().to_string();
                 let mon = obj
                     .as_any_mut()
@@ -945,7 +945,7 @@ impl Dss {
         let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
         let case = ckt.case_name.clone();
         let found = ckt.monitors.iter().copied().find(|&r| {
-            self.classes[r.cls].arena[r.idx]
+            self.classes[r.class_ord()].arena[r.index()]
                 .data()
                 .name()
                 .eq_ignore_ascii_case(name)
@@ -955,7 +955,7 @@ impl Dss {
                 let kv_base = self.monitor_metered_kv_base(r);
                 // `to_csv` self-flushes (Pascal `TranslateToCSV` `Save;`) and
                 // post-processes mode-4 flicker (Pascal `CloseMonitorStream`), &mut.
-                let obj = &mut self.classes[r.cls].arena[r.idx];
+                let obj = &mut self.classes[r.class_ord()].arena[r.index()];
                 let nm = obj.data().name().to_string();
                 let mon = obj
                     .as_any_mut()
@@ -1069,7 +1069,7 @@ impl Dss {
     }
 
     /// Gather the enabled elements' register rows + the single-file header names
-    /// for `kind`, downcasting each `ElemRef` to its concrete type. Returns
+    /// for `kind`, downcasting each `ElemId` to its concrete type. Returns
     /// `(label, default_name, multi_prefix, header_names, rows)`.
     fn gather_register_rows(
         &self,
@@ -1097,7 +1097,7 @@ impl Dss {
                 let header_names = refs
                     .first()
                     .map(|&r| {
-                        self.classes[r.cls].arena[r.idx]
+                        self.classes[r.class_ord()].arena[r.index()]
                             .as_any()
                             .downcast_ref::<EnergyMeter>()
                             .expect("energy_meters holds EnergyMeter")
@@ -1108,7 +1108,7 @@ impl Dss {
                 let rows = refs
                     .iter()
                     .filter_map(|&r| {
-                        let obj = &self.classes[r.cls].arena[r.idx];
+                        let obj = &self.classes[r.class_ord()].arena[r.index()];
                         let m = obj
                             .as_any()
                             .downcast_ref::<EnergyMeter>()
@@ -1128,7 +1128,7 @@ impl Dss {
                     .generators
                     .iter()
                     .filter_map(|&r| {
-                        let obj = &self.classes[r.cls].arena[r.idx];
+                        let obj = &self.classes[r.class_ord()].arena[r.index()];
                         let g = obj
                             .as_any()
                             .downcast_ref::<Generator>()
@@ -1148,7 +1148,7 @@ impl Dss {
                     .pv_systems
                     .iter()
                     .filter_map(|&r| {
-                        let obj = &self.classes[r.cls].arena[r.idx];
+                        let obj = &self.classes[r.class_ord()].arena[r.index()];
                         let p = obj
                             .as_any()
                             .downcast_ref::<PVSystem>()
@@ -1168,7 +1168,7 @@ impl Dss {
                     .storages
                     .iter()
                     .filter_map(|&r| {
-                        let obj = &self.classes[r.cls].arena[r.idx];
+                        let obj = &self.classes[r.class_ord()].arena[r.index()];
                         let s = obj
                             .as_any()
                             .downcast_ref::<Storage>()
@@ -1939,7 +1939,7 @@ impl Dss {
                 } else {
                     let ckt = self.circuit.as_ref().expect("post-circuit dispatch");
                     let found = ckt.energy_meters.iter().copied().find(|&r| {
-                        self.classes[r.cls].arena[r.idx]
+                        self.classes[r.class_ord()].arena[r.index()]
                             .data()
                             .name()
                             .eq_ignore_ascii_case(&param)
@@ -2382,7 +2382,7 @@ impl Dss {
         let year = ckt.solution.year;
         let meters = ckt.energy_meters.clone();
         for r in meters {
-            let obj = &self.classes[r.cls].arena[r.idx];
+            let obj = &self.classes[r.class_ord()].arena[r.index()];
             let Some(em) = obj
                 .as_any()
                 .downcast_ref::<crate::elements::meter::EnergyMeter>()
@@ -2593,7 +2593,7 @@ impl Dss {
                     ckt,
                 ));
                 if let Some(&r) = ckt.ckt_elements.last() {
-                    self.active_ckt_element = Some((r.cls, r.idx));
+                    self.active_ckt_element = Some((r.class_ord(), r.index()));
                 }
             }
             // Every CktElement in creation order, then every general DSSObj,
@@ -2605,11 +2605,11 @@ impl Dss {
                 .ckt_elements
                 .clone();
             for r in ckt_elems {
-                self.dump_one_object(&mut content, r.cls, r.idx, debug_dump);
+                self.dump_one_object(&mut content, r.class_ord(), r.index(), debug_dump);
             }
             let dss_objs = self.dss_objs.clone();
             for r in dss_objs {
-                self.dump_one_object(&mut content, r.cls, r.idx, debug_dump);
+                self.dump_one_object(&mut content, r.class_ord(), r.index(), debug_dump);
             }
             self.dump_solution_into(&mut content, debug_dump);
         }
@@ -2709,7 +2709,7 @@ impl Dss {
     /// state-variable values for the Complete `! VARIABLES` block (the one part
     /// needing the mutable solved-state walk).
     fn dump_one_object(&mut self, content: &mut String, ci: usize, oi: usize, complete: bool) {
-        let r = crate::elements::traits::ElemRef { cls: ci, idx: oi };
+        let r = ElemId::new(ci, oi);
         let is_pc = self
             .circuit
             .as_ref()
@@ -2747,7 +2747,7 @@ impl Dss {
         };
 
         // EnergyMeter `Branch List:` body (Complete only) — needs the full
-        // class registry to resolve each branch/shunt `ElemRef`'s Name, which
+        // class registry to resolve each branch/shunt `ElemId`'s Name, which
         // `DumpCtx` otherwise can't reach (`EnergyMeter.pas:2102-2116`).
         let branch_list_text: String = if complete {
             self.classes[ci].arena[oi]

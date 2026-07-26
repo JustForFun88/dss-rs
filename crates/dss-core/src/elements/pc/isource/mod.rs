@@ -37,7 +37,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -134,9 +134,9 @@ pub struct Isource {
     pub yearly_shape_obj: Option<LoadShapeObj>,
     pub daily_shape_obj: Option<LoadShapeObj>,
     pub duty_shape_obj: Option<LoadShapeObj>,
-    pub yearly_shape_ref: Option<ElemRef>,
-    pub daily_shape_ref: Option<ElemRef>,
-    pub duty_shape_ref: Option<ElemRef>,
+    pub yearly_shape_ref: Option<ElemId>,
+    pub daily_shape_ref: Option<ElemId>,
+    pub duty_shape_ref: Option<ElemId>,
     /// Pascal `ShapeFactor`/`ShapeIsActual` from the active shape (per-unit or
     /// actual); default `(PerUnit, 0)` outside a loadshape mode.
     pub shape_factor: Complex64,

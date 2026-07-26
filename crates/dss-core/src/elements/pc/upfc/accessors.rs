@@ -9,7 +9,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::EPSILON;
@@ -287,7 +287,7 @@ impl DssObject for Upfc {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use prop::*;
         match idx {

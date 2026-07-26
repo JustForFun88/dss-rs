@@ -258,7 +258,7 @@ pub enum RefAction {
     /// on the target transformer (Pascal `Set_TapNum`). The target clamps to
     /// the winding's Min/MaxTap exactly like `Set_PresentTap`.
     SetTransformerTap {
-        target: crate::elements::traits::ElemRef,
+        target: crate::elements::traits::ElemId,
         winding: usize,
         tap: f64,
     },
@@ -268,7 +268,7 @@ pub enum RefAction {
     /// target's [`CktElement`](crate::elements::traits::CktElement) base, since
     /// the switched element can be any circuit element.
     SetSwitchClosed {
-        target: crate::elements::traits::ElemRef,
+        target: crate::elements::traits::ElemId,
         terminal: usize,
         closed: bool,
     },
@@ -280,7 +280,7 @@ pub enum RefAction {
     /// blown. Applied generically through the target's
     /// [`CktElement`](crate::elements::traits::CktElement) base.
     SetConductorsClosed {
-        target: crate::elements::traits::ElemRef,
+        target: crate::elements::traits::ElemId,
         terminal: usize,
         closed: Vec<bool>,
     },
@@ -295,7 +295,7 @@ pub enum RefAction {
     /// Pascal `if Enabled then Include(...)` guard. Applied through the target's
     /// [`CktElement`](crate::elements::traits::CktElement) base.
     SetOcpDevice {
-        target: crate::elements::traits::ElemRef,
+        target: crate::elements::traits::ElemId,
         device_type: i32,
         auto: bool,
     },
@@ -306,7 +306,7 @@ pub enum RefAction {
     /// name generically through the target's
     /// [`CktElement`](crate::elements::traits::CktElement) base.
     SetElementBus {
-        target: crate::elements::traits::ElemRef,
+        target: crate::elements::traits::ElemId,
         terminal: usize,
         bus: String,
     },
@@ -314,7 +314,7 @@ pub enum RefAction {
 
 impl RefAction {
     /// The object the action must be applied to.
-    pub fn target(&self) -> crate::elements::traits::ElemRef {
+    pub fn target(&self) -> crate::elements::traits::ElemId {
         match self {
             RefAction::SetTransformerTap { target, .. } => *target,
             RefAction::SetSwitchClosed { target, .. } => *target,
@@ -583,11 +583,11 @@ pub struct ShapeSave {
     pub result_tag: &'static str,
 }
 
-/// One slot of a `DSSObjectReferenceArrayProperty` write: `Some((name, ElemRef,
+/// One slot of a `DSSObjectReferenceArrayProperty` write: `Some((name, ElemId,
 /// read view))` for a resolved object, or `None` for a `none` entry
 /// (`TPropertyFlag.AllowNoneItem`). See [`DssObject::set_object_ref_array`].
 pub type ObjectRefArrayItem<'a> =
-    Option<(String, crate::elements::traits::ElemRef, &'a dyn DssObject)>;
+    Option<(String, crate::elements::traits::ElemId, &'a dyn DssObject)>;
 
 /// The typed field accessors the property engine calls, keyed by the 1-based
 /// property index. Each concrete class implements only the kinds it actually
@@ -608,7 +608,7 @@ pub trait DssObject: Send {
     /// accessors cannot express).
     fn as_any(&self) -> &dyn std::any::Any;
 
-    /// Mutable downcast view — the control loop's bridge from an [`ElemRef`]
+    /// Mutable downcast view — the control loop's bridge from an [`ElemId`]
     /// to the concrete control/controlled types (PHASE5_PLAN §2.1: RegControl
     /// → Transformer, CapControl → Capacitor + monitored element).
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
@@ -821,7 +821,7 @@ pub trait DssObject: Send {
     /// `DSSObjectReferenceProperty` write for a *resolved* reference (a
     /// `PropDef::object_ref_class`): `name` is the referenced object's name for
     /// dumps (Pascal `otherObj.Name`, `""` when unresolved), and `resolved`
-    /// carries its stable [`ElemRef`] plus a read view of the object so the
+    /// carries its stable [`ElemId`] plus a read view of the object so the
     /// element can copy data immediately (Pascal `FetchLineCode` etc.). The
     /// dump value is read back through [`DssObject::get_string`].
     fn set_object_ref(
@@ -829,7 +829,7 @@ pub trait DssObject: Send {
         idx: usize,
         name: String,
         resolved: Option<(
-            crate::elements::traits::ElemRef,
+            crate::elements::traits::ElemId,
             &dyn crate::obj::base::DssObject,
         )>,
     ) {
@@ -839,7 +839,7 @@ pub trait DssObject: Send {
 
     /// `DSSObjectReferenceArrayProperty` write (e.g. a LineGeometry `wires`):
     /// `refs` is the parsed, resolved list — each slot in script order is either
-    /// `Some((name, ElemRef, read view))` or **`None`** for a `none` entry
+    /// `Some((name, ElemId, read view))` or **`None`** for a `none` entry
     /// (Pascal `TPropertyFlag.AllowNoneItem`, `DSSObjectHelper.ValidateObjectItem`
     /// l.6456: `none` → `otherObj := NIL`, no error). The object validates the
     /// count and stores the references (Pascal `SetWires`), cloning each read

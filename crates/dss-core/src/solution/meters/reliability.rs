@@ -7,14 +7,14 @@ use crate::circuit::Circuit;
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::FeederSection;
 use crate::elements::pc::load::Load;
-use crate::elements::traits::{CktElement, ElemRef, ElemStore};
+use crate::elements::traits::{CktElement, ElemId, ElemStore};
 
 use super::downcast_meter;
 
 // ===================== Reliability (WP6.6) ==================================
 
 /// FROM bus (0-based index into `ckt.buses`) of a PD element's metered terminal.
-fn pd_from_bus(store: &dyn ElemStore, r: ElemRef) -> usize {
+fn pd_from_bus(store: &dyn ElemStore, r: ElemId) -> usize {
     let cd = store.ckt_elem(r).cd();
     cd.terminals[cd
         .from_terminal
@@ -61,7 +61,7 @@ pub(crate) fn calc_all_reliability_indices(
 /// their controlled element, so a protected zone reaches the live section/SAIFI
 /// math below.
 fn calc_reliability_indices(
-    meter_ref: ElemRef,
+    meter_ref: ElemId,
     assume_restoration: bool,
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,

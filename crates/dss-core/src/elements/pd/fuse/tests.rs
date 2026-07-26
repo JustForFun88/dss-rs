@@ -5,7 +5,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN};
 use crate::elements::general::tcc_curve::TccCurveObj;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::exec::Dss;
 use crate::obj::base::DssObject;
 use crate::solution::{ControlQueue, EventLog, SolveMode};
@@ -102,7 +102,7 @@ impl Scratch {
             t,
             dbl_hour: int_hour as f64 + t / 3600.0,
             control_iter: 1,
-            self_ref: ElemRef { cls: 0, idx: 0 },
+            self_ref: ElemId::new(0, 0),
         }
     }
 }
@@ -147,7 +147,7 @@ fn armed_fuse() -> Fuse {
         nterms: 1,
         buses: vec!["b".into()],
     });
-    f.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    f.ccd.controlled_element = Some(ElemId::new(0, 0));
     f
 }
 
@@ -236,7 +236,7 @@ fn default_fuse_never_blows() {
         nterms: 1,
         buses: vec!["b".into()],
     });
-    f.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    f.ccd.controlled_element = Some(ElemId::new(0, 0));
     assert!(f.fuse_curve_obj.is_none());
     let mut ctrl = MockLine::new(3, 0.0);
     let mut mon = MockLine::new(3, 1e6); // enormous overcurrent
@@ -350,7 +350,7 @@ fn state_array_short_input_sets_leading_phases() {
         nterms: 1,
         buses: vec!["b".into()],
     });
-    f.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    f.ccd.controlled_element = Some(ElemId::new(0, 0));
     f.set_enum_array(prop::STATE, &[CTRL_OPEN]); // only phase 1
     f.state_side_effect();
     assert_eq!(f.present_state[0], CTRL_OPEN);

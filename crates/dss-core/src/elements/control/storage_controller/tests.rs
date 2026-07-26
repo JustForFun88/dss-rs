@@ -2,7 +2,7 @@ use super::*;
 use crate::elements::pc::storage::{
     STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, StorageDispatchMode,
 };
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::base::DssObject;
 use crate::obj::props::PropType;
 use crate::solution::SolveMode;
@@ -377,8 +377,8 @@ impl MockEnv {
             season_rating_idx: None,
         }
     }
-    fn idx(r: ElemRef) -> usize {
-        r.idx
+    fn idx(r: ElemId) -> usize {
+        r.index()
     }
 }
 
@@ -404,25 +404,25 @@ impl StorageDispatchEnv for MockEnv {
             None => FleetFind::NotFound,
             Some(i) => {
                 if self.fleet[i].enabled {
-                    FleetFind::Found(ElemRef { cls: 0, idx: i })
+                    FleetFind::Found(ElemId::new(0, i))
                 } else {
                     FleetFind::Disabled
                 }
             }
         }
     }
-    fn all_fleet_storage(&self) -> Vec<(String, ElemRef)> {
+    fn all_fleet_storage(&self) -> Vec<(String, ElemId)> {
         self.fleet
             .iter()
             .enumerate()
             .filter(|(_, s)| s.enabled && s.dispatch_mode != StorageDispatchMode::ExternalMode)
-            .map(|(i, s)| (s.name.clone(), ElemRef { cls: 0, idx: i }))
+            .map(|(i, s)| (s.name.clone(), ElemId::new(0, i)))
             .collect()
     }
     fn push_error(&mut self, diag: crate::diag::DssDiagnostic) {
         self.errors.push(diag);
     }
-    fn snap(&self, r: ElemRef) -> StorageSnap {
+    fn snap(&self, r: ElemId) -> StorageSnap {
         let s = &self.fleet[Self::idx(r)];
         StorageSnap {
             state: s.state,
@@ -440,34 +440,34 @@ impl StorageDispatchEnv for MockEnv {
             inverter_on: s.inverter_on,
         }
     }
-    fn set_state(&mut self, r: ElemRef, state: i32) {
+    fn set_state(&mut self, r: ElemId, state: i32) {
         self.fleet[Self::idx(r)].set_storage_state(state);
     }
-    fn set_kw(&mut self, r: ElemRef, kw: f64) {
+    fn set_kw(&mut self, r: ElemId, kw: f64) {
         self.fleet[Self::idx(r)].set_kw(kw);
     }
-    fn set_pct_kw_out(&mut self, r: ElemRef, pct: f64) {
+    fn set_pct_kw_out(&mut self, r: ElemId, pct: f64) {
         self.fleet[Self::idx(r)].pct_kw_out = pct;
     }
-    fn set_pct_kw_in(&mut self, r: ElemRef, pct: f64) {
+    fn set_pct_kw_in(&mut self, r: ElemId, pct: f64) {
         self.fleet[Self::idx(r)].pct_kw_in = pct;
     }
-    fn set_pct_reserve(&mut self, r: ElemRef, pct: f64) {
+    fn set_pct_reserve(&mut self, r: ElemId, pct: f64) {
         self.fleet[Self::idx(r)].pct_reserve = pct;
     }
-    fn set_state_desired(&mut self, r: ElemRef, state: i32) {
+    fn set_state_desired(&mut self, r: ElemId, state: i32) {
         self.fleet[Self::idx(r)].state_desired = state;
     }
-    fn set_dispatch_external(&mut self, r: ElemRef) {
+    fn set_dispatch_external(&mut self, r: ElemId) {
         self.fleet[Self::idx(r)].dispatch_mode = StorageDispatchMode::ExternalMode;
     }
-    fn set_nominal(&mut self, r: ElemRef) {
+    fn set_nominal(&mut self, r: ElemId) {
         self.fleet[Self::idx(r)].set_nominal();
     }
-    fn present_kw(&self, r: ElemRef) -> f64 {
+    fn present_kw(&self, r: ElemId) -> f64 {
         self.fleet[Self::idx(r)].present_kw
     }
-    fn storage_full_name(&self, r: ElemRef) -> String {
+    fn storage_full_name(&self, r: ElemId) -> String {
         format!("Storage.{}", self.fleet[Self::idx(r)].name)
     }
     fn push_immediate(&mut self, code: i32) {
@@ -992,7 +992,7 @@ fn sample_logs_event_when_eventlog_enabled() {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
     use crate::obj::base::DssObject;
 
     /// Pascal `TStorageControllerObj.MakePosSequence` (StorageController.pas:834):
@@ -1000,7 +1000,7 @@ mod make_pos_seq_tests {
     #[test]
     fn resyncs_to_monitored() {
         let mut sc = StorageController::new("sc1");
-        sc.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 4 });
+        sc.ccd.monitored_element = Some(ElemId::new(1, 4));
         sc.ccd.element_terminal = 1;
         let ctx = PosSeqCtx {
             monitored: Some(PosSeqElemInfo {
@@ -1017,7 +1017,7 @@ mod make_pos_seq_tests {
         assert_eq!(sc.ccd.cd.nconds, 1);
         assert_eq!(sc.get_bus_name(1), "b1");
         assert!(plan.run_base && plan.actions.is_empty());
-        assert_eq!(sc.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 4 }));
+        assert_eq!(sc.monitored_element_ref(), Some(ElemId::new(1, 4)));
     }
 
     #[test]

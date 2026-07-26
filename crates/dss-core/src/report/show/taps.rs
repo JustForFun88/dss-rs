@@ -23,14 +23,14 @@ pub(crate) fn show_taps(classes: &[DssClass], ckt: &Circuit) -> String {
     s.push('\n');
 
     for &r in &ckt.controls {
-        let obj = &classes[r.cls].arena[r.idx];
+        let obj = &classes[r.class_ord()].arena[r.index()];
         let Some(rc) = obj.as_any().downcast_ref::<RegControl>() else {
             continue;
         };
         let Some(tref) = rc.controlled_ref() else {
             continue;
         };
-        let tobj = &classes[tref.cls].arena[tref.idx];
+        let tobj = &classes[tref.class_ord()].arena[tref.index()];
         // Either member of the Transformer/AutoTrans proxy (Pascal walks the
         // shared `TControlledTransformerObj` base).
         let Some(tr) = as_controlled_transformer(tobj) else {

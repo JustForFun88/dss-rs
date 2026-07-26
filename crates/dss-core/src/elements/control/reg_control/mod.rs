@@ -345,9 +345,9 @@ impl RegControl {
         ((tap - (max_tap + min_tap) / 2.0) / inc).round_ties_even() as i32
     }
 
-    /// The controlled transformer's [`ElemRef`](crate::elements::traits::ElemRef),
+    /// The controlled transformer's [`ElemId`](crate::elements::traits::ElemId),
     /// if `transformer=` resolved — lets the executive view read the *live* tap.
-    pub(crate) fn controlled_ref(&self) -> Option<crate::elements::traits::ElemRef> {
+    pub(crate) fn controlled_ref(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
     }
 

@@ -9,7 +9,7 @@ use crate::elements::control::control_elem::RefSnapshot;
 use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::{RegControl, prop};
@@ -24,7 +24,7 @@ impl CktElement for RegControl {
 
     /// Pascal `TControlElem.FControlledElement` - the element this control
     /// acts on (`None` when it drives a list rather than a single element).
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
     }
 
@@ -301,14 +301,14 @@ impl DssObject for RegControl {
         }
     }
 
-    /// `transformer=` resolution: keep the `ElemRef` and snapshot the
+    /// `transformer=` resolution: keep the `ElemId` and snapshot the
     /// transformer's shape + per-winding tap data for `RecalcElementData` and
     /// `TapNum` (which run after the foreign view is gone).
     fn set_object_ref(
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         debug_assert_eq!(idx, prop::TRANSFORMER);
         self.controlled_name = name;

@@ -8,7 +8,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::xfmr_code::XfmrCodeObj;
 use crate::elements::pd::winding::Connection;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, ReliabilityData, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -606,13 +606,13 @@ impl DssObject for Transformer {
             .collect()
     }
 
-    /// `xfmrcode=`: store the resolved code's name + ElemRef and copy its data
+    /// `xfmrcode=`: store the resolved code's name + ElemId and copy its data
     /// immediately (Pascal `FetchXfmrCode`).
     fn set_object_ref(
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         match idx {
             prop::XFMRCODE => {

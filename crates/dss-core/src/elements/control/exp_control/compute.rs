@@ -9,7 +9,7 @@
 //! registry; the fleet resolves lazily on the first `Sample`.
 
 use crate::elements::pc::pvsystem::VARMODE_KVAR;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::solution::CTRLSTATIC;
 use crate::util::fmt_g;
 
@@ -33,7 +33,7 @@ fn pas_sign(x: f64) -> f64 {
 pub(crate) enum PvFind {
     NotFound,
     Disabled,
-    Found(ElemRef),
+    Found(ElemId),
 }
 
 /// A read-only snapshot of one controlled PVSystem's *stable* state (the fields
@@ -67,37 +67,37 @@ pub(crate) trait ExpDispatchEnv {
     /// Pascal's "scan the whole circuit for every PVSystem" (creation order);
     /// returns `(Name, ref, enabled)` — the name is added to `FPVSystemNameList`
     /// regardless of `enabled`, the ref to the fleet only when enabled.
-    fn all_pvsystems(&self) -> Vec<(String, ElemRef, bool)>;
+    fn all_pvsystems(&self) -> Vec<(String, ElemId, bool)>;
 
     // --- per-PVSystem read (stable + live) ---
-    fn pv_snap(&self, r: ElemRef) -> PvSnap;
+    fn pv_snap(&self, r: ElemId) -> PvSnap;
     /// Pascal `PVSys.ComputeVTerminal` then `Cabs(Vterminal[1..NPhases])` — the
     /// per-phase terminal-voltage magnitudes (the first `NPhases`).
-    fn pv_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64>;
+    fn pv_vterminal_mags(&mut self, r: ElemId) -> Vec<f64>;
     /// `PVSys.Get_Presentkvar` (achieved; live).
-    fn pv_present_kvar(&self, r: ElemRef) -> f64;
+    fn pv_present_kvar(&self, r: ElemId) -> f64;
     /// `PVSys.Get_PresentkW` (achieved; live, read after `SetNominalDEROutput`).
-    fn pv_present_kw(&self, r: ElemRef) -> f64;
+    fn pv_present_kw(&self, r: ElemId) -> f64;
 
     // --- per-PVSystem write ---
     /// Pascal `PVSys.AVRmode := TRUE` (set on every fleet member in `MakePVSystemList`).
-    fn pv_set_avr_mode(&mut self, r: ElemRef, value: bool);
+    fn pv_set_avr_mode(&mut self, r: ElemId, value: bool);
     /// Pascal `PVSys.VWmode := value`.
-    fn pv_set_vw_mode(&mut self, r: ElemRef, value: bool);
+    fn pv_set_vw_mode(&mut self, r: ElemId, value: bool);
     /// Pascal `PVSys.Varmode := value` (VARMODEKVAR).
-    fn pv_set_var_mode(&mut self, r: ElemRef, mode: i32);
+    fn pv_set_var_mode(&mut self, r: ElemId, mode: i32);
     /// Pascal `PVSys.SetNominalDEROutput`.
-    fn pv_set_nominal(&mut self, r: ElemRef);
+    fn pv_set_nominal(&mut self, r: ElemId);
     /// Pascal `PVSys.PresentkW := value` (writes `kWRequested`).
-    fn pv_set_present_kw(&mut self, r: ElemRef, value: f64);
+    fn pv_set_present_kw(&mut self, r: ElemId, value: f64);
     /// Pascal `PVSys.puPmpp := value`.
-    fn pv_set_pu_pmpp(&mut self, r: ElemRef, value: f64);
+    fn pv_set_pu_pmpp(&mut self, r: ElemId, value: f64);
     /// Pascal `PVSys.Presentkvar := value` — the property WRITE target is the
     /// `kvarRequested` field directly (PVsystem.pas l.334; no setter, no var-mode
     /// side effect — `DoPendingAction` already set `Varmode := VARMODEKVAR`).
-    fn pv_set_present_kvar(&mut self, r: ElemRef, value: f64);
+    fn pv_set_present_kvar(&mut self, r: ElemId, value: f64);
     /// Pascal `PVSys.Set_Variable(5, value)` — the dynamic state variable `Vreg`.
-    fn pv_set_vreg_var(&mut self, r: ElemRef, value: f64);
+    fn pv_set_vreg_var(&mut self, r: ElemId, value: f64);
 
     // --- control queue / event log / scalars ---
     /// Pascal `ActiveCircuit.ControlQueue.Push(TimeDelay, CHANGEVARLEVEL, 0, Self)`.

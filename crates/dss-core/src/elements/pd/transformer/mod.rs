@@ -26,7 +26,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::pd::winding::{TermRef, Winding};
-use crate::elements::traits::{ElemRef, SysCtx};
+use crate::elements::traits::{ElemId, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
@@ -318,7 +318,7 @@ pub struct Transformer {
     substation_name: String,
     xfmr_bank: String,
     xfmr_code_name: String,
-    xfmr_code_ref: Option<ElemRef>,
+    xfmr_code_ref: Option<ElemId>,
     core_type: CoreType,
     xhl: f64,
     xht: f64,

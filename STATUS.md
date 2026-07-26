@@ -7,6 +7,138 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R3.1 — the `ElemRef` → `ElemId` STORE FLIP: LANDED IN FULL (spine + access layer, zero `.to_ref()` bridges ever created) (branch `depas-r3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, type-channel only. Base `update` @ `67d2965`. Ritual 0
+held at start **and** before the commit: 186 `.pas` under `.inputs/dss_capi`
+(PowerShell recursion — bash globbing false-zeros through the junction, never
+deleted through it); `cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Result: the R3 handoff's item 1 is done except sub-step (iv).** The untyped
+`ElemRef { cls: usize, idx: usize }` tag struct is **gone from the tree** (937 → 0)
+and the typed `ElemId` (one `Idx<T>` variant per registered class) is the spine's
+only element handle: `circuit.rs`'s 20 per-kind lists, `RefAction`'s 5 `target`s,
+the `controlled_element`/`monitored_element` cross-refs, the `ElemStore` trait +
+`find_ckt_element`/`find_general` returns, and the three sibling structures
+(`control_queue` `ActionRecord`/`PoppedAction.control`, `ckt_tree`
+`elem`/`shunts`/`loop_elem`, `gic_source` `set_resolved_line`) all speak `ElemId`.
+
+**The 427-site "all-or-nothing" wall was an artefact of the sequencing, not of the
+flip — measured and disproven this session.** R2b's (a) record measured 427 primary
+compile errors by flipping **only** `circuit.rs`'s lists while leaving `ElemStore`
+on `ElemRef`; every one of those errors is the *mismatch* between the two, not real
+work. Retyping the store and the lists in the **same** step makes them type-check
+untouched: `for &r in &ckt.lines { store.ckt_elem(r) }` never breaks when both sides
+move together. So sub-steps (i)+(ii)+(iii)+(v) were executed as **one** atomic
+commit and **no `.to_ref()` bridge was ever inserted** — step (v)'s "removes the
+bridges" had nothing to remove. Measured real breakage of the atomic retype:
+**511** `.cls`/`.idx` field accesses + **102** `{ cls, idx }` struct literals
+(613 sites, 54 files), versus the sequenced path's 427 bridge insertions *plus*
+their later removal. Disclosed as a deliberate minimal grouping (brief: "where two
+sub-steps are inseparable, group minimally and disclose").
+
+**Method (compiler-driven, no hand-editing of the 613 sites).** (1) `ElemRef` was
+made a one-line `pub type ElemRef = ElemId;` alias, which retyped every signature,
+`Vec<…>`, and `Option<…>` in the tree at once. (2) The 511 field accesses were
+rewritten from **rustc's own E0609 diagnostic spans** (`--message-format json`,
+line/column-exact, filtered on `"ElemId" in message`) → `.cls` ⇒ `.class_ord()`,
+`.idx` ⇒ `.index()`; iterated to a fixpoint. (3) The 102 literals were rewritten by
+one anchored regex (`ElemRef {` **immediately** followed by `cls`, so the `-> ElemRef {`
+return-type sites are untouched) → `ElemId::new(cls, idx)`. (4) The alias was
+replaced by a `pub use crate::obj::arena::ElemId;` re-export from
+`elements::traits` and `ElemRef` renamed to `ElemId` tree-wide (811 identifiers,
+126 files) — so **every existing `use crate::elements::traits::ElemRef` import path
+survives verbatim as `::ElemId`**; the type's home stays `obj/arena.rs`.
+
+**Two arena primitives changed (`obj/arena.rs`), both value-identical:**
+- `ElemId::class_ord()` is now **O(1)**: a field-less `#[repr(usize)] enum ClassOrd`
+  emitted from the *same* `with_all_classes!` list, so each arm is a compile-time
+  discriminant. It was a 50-entry `CLASS_NAMES.iter().position()` string scan **per
+  call** — acceptable while nothing called it, a real regression once the flip makes
+  it the hot accessor behind every `store.ckt_elem(r)`. Same values, pinned by the
+  unchanged `arena_order_matches_registry` (live registry ↔ `CLASS_NAMES` ↔ live
+  `DssClass::arena`) and the retargeted round-trip tests.
+- `ElemId::from_ref`/`to_ref` and the two `From` bridges are **deleted** — their
+  consumer never materialised (R2b (e) swept and found zero external call sites) and
+  `ElemRef` no longer exists. They are replaced by `ElemId::new(cls, idx)`, the
+  dynamic-ordinal constructor the registry-side producers genuinely need
+  (`find_ckt_element`, `find_general`, `ForeignClasses::lookup`, `add_ckt_element`,
+  the class-loop reports). O(1) via a per-variant constructor table indexed by the
+  ordinal; the two `from_ref` tests were retargeted onto `ElemId::new` with the same
+  every-class-against-the-live-registry coverage (nothing weakened, nothing removed).
+
+**Bit-neutrality argument (why this cannot move a number).** `class_ord()` returns
+exactly the old `.cls`, `index()` exactly the old `.idx`, and `ElemId::new(c, i)` is
+their inverse (pinned for **every** registered class against the live registry). No
+list, loop, `find_*` tie-break, control-queue insertion, stamp or accumulation order
+was touched — `git diff` contains no reordering, only type/accessor rewrites.
+`ElemId`'s `PartialEq` compares (variant, `Idx`) ⇔ the old `(cls, idx)` tuple
+compare. The only observable delta is the `Debug` rendering of a handle
+(`ElemRef { cls: 18, idx: 3 }` → `Line(Idx(3))`); no golden, report or corpus row
+reads it (whole gate incl. every text golden green, and no `{:?}` of a handle exists
+in any report path).
+
+**Metrics (`rg … crates/dss-core/src`).**
+
+| metric | base `67d2965` | HEAD | delta | note |
+|---|---|---|---|---|
+| `ElemRef` | 937 / 130 f | **0 / 0 f** | **−937** | the type is gone from the tree |
+| `ElemId` | 34 / 2 f | **955 / 130 f** | +921 | the spine now speaks it everywhere |
+| `TODO(compat)` | 117 / 68 f | **117 / 68 f** | **0** | invariant held |
+| `as_any\|as_ckt_element` | 716 / 134 f | **716 / 134 f** | 0 | untouched — R3 items 2/3 own these |
+| `downcast_ref\|downcast_mut` | 369 / 73 f | **369 / 73 f** | 0 | untouched — the typed accessors are item 2 |
+| `fn as_any` / `fn as_any_mut` defs | 52 / 52 | **52 / 52** | 0 | removal target, now unblocked |
+
+Diff = 146 files, +1365/−1333, **all under `crates/dss-core/src/`**. Zero golden /
+ledger / tolerance / corpus-deck churn (`git diff --name-only` matches nothing under
+`tests/`, `*.json`, `*.csv`, `population.lock`, `*.toml`). Zero `#[ignore]` churn.
+
+**ESCAPED → R3.2 — handoff sub-step (iv), "statically-known shape refs as typed
+`Idx<T>`".** Not started; old code untouched, gate green. The candidate fields are
+the resolve-time `_ref` companions of the Category-D snapshot clones —
+`load/mod.rs:325-329` `yearly`/`daily`/`duty`/`cvr`/`growth_shape_ref`,
+`inv_based_pce.rs:447-454` `yearly`/`daily`/`duty_shape_ref` +
+`inverter_curve_ref` (shared by PVSystem/Storage), `pd/line/mod.rs:294` `line_code_ref`, `pd/transformer/mod.rs:321`
+`xfmr_code_ref`, and the sibling per-class `*_ref: Option<ElemId>` fields. **Blocker:
+they are written by exactly one producer — the shared `DssObject::set_object_ref(idx,
+name, resolved: Option<(ElemId, &dyn DssObject)>)` tuple**, which is class-agnostic
+by construction and lives in ~29 element accessor files. Narrowing a *stored* field
+to `Idx<LoadShapeObj>` therefore requires retyping that shared tuple per expected
+variant first — which **is** the plan's Category-D typed resolved-object handle,
+explicitly scheduled as **R3 item 2** (`DE_PASCALIZE_PLAN.md` R2 l.342: "typed handle
+in resolved object-ref tuple; per-class `set_object_ref` match"), and the (a) record
+itself notes step 4 "couples to the typed-store reads of sub-step (b) (Category D),
+so best done with (b)". Doing it here would mean either bolting a per-class
+`set_object_ref_typed` beside the existing one (a stopgap the escape protocol
+forbids) or landing Category D early and out of sequence. **Recommendation: fold
+(iv) into R3 item 2**, where the same tuple is retyped once and each field falls out
+typed for free.
+
+**Deviations disclosed.** (1) Sub-steps (i)/(ii)/(iii)/(v) grouped into one commit —
+rationale + measurement above; they are inseparable in the zero-bridge form. (2)
+`class_ord()` made O(1) (a performance fix the flip makes load-bearing), values
+unchanged and pinned. (3) The `from_ref`/`to_ref`/`From` bridges were **deleted**,
+not carried forward — `ElemRef` no longer exists, so they are uninhabitable; their
+tests were retargeted, not dropped. (4) `ElemId::new` panics on an out-of-range class
+ordinal where the old `ElemRef { cls, idx }` literal could not. Every producer was
+audited: all read `cls` off a live registry enumeration (`classes.iter().enumerate()`,
+`ForeignClasses`'s `k` / `split + 1 + k`, `command.rs`'s created-class index), so the
+range is structurally guaranteed; the panic is the same class of "construction bug,
+never a valid state" assertion the arena already carries. (5) `ElemId` is re-exported
+from `elements::traits` (import paths unchanged) while its definition stays in
+`obj/arena.rs`. (6) Ritual step 3 (two fresh `/audit-code` + `/audit-tests` agents) is
+**not** run in this session — the coordinator spawns the audits for R3 steps; this
+record is the audit brief's starting point.
+
+**Gate (full, SOLO, toolchain guard first).** `cargo fmt --all --check` exit 0;
+`cargo clippy --workspace --all-targets -- -D warnings` exit 0; `cargo test
+--workspace` exit 0 — **66 `test result: ok` groups, 1985 passed, 0 failed, 5
+ignored** (the same 5 pre-existing ones; zero `#[ignore]` churn), corpus gate
+`corpus_gate_all_cases_match_engines` ok (25 passed, 149.6 s, both channels
+capi_v0145 + r4133), run solo with no name filters. Corpus left pristine: 9
+run-artifacts (`StorageControllerTechNote/Schedule/IEEE8500u_*.csv`) removed by exact
+name — no wide `git clean`. Tree clean.
+
 ### DE_PASCALIZE R2b — SETTLER PASS (two audits both PASS / zero findings; all verified empirically; final gate green) (branch `depas-r2b`, HEAD after this record, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Base `update` @ `5a416ee`; code tip = the (e) STATUS

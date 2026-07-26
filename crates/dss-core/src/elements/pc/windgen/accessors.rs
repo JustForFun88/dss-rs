@@ -11,7 +11,7 @@ use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::dyneq_pce::{DynEqPce, DynEqPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -484,7 +484,7 @@ impl DssObject for WindGen {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use prop::*;
         let elem_ref = resolved.map(|(r, _)| r);

@@ -72,7 +72,7 @@ mod make_pos_seq_tests {
     #[test]
     fn resyncs_and_recomputes_vbase() {
         let mut s = Sensor::new("s1");
-        s.med.metered_element = Some(ElemRef { cls: 1, idx: 3 });
+        s.med.metered_element = Some(ElemId::new(1, 3));
         s.med.metered_terminal = 1;
         // seed a measured value + a stale spec flag to prove ClearSensor/Zero.
         s.v_specified = true;
@@ -101,7 +101,7 @@ mod make_pos_seq_tests {
         // RecalcVbase: wye 1-phase → kVBase·1000 (default 12.47 kV).
         assert!((s.vbase - 12_470.0).abs() < 1e-9);
         assert!(plan.run_base && plan.actions.is_empty());
-        assert_eq!(s.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 3 }));
+        assert_eq!(s.monitored_element_ref(), Some(ElemId::new(1, 3)));
     }
 
     /// Pascal NIL guard: no metered element ⇒ only the base rename runs.

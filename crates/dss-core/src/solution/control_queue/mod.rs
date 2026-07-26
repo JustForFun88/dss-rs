@@ -10,7 +10,7 @@
 //! interchangeable with a `BinaryHeap`.
 //!
 //! The Pascal queue stores a live `TControlElem` pointer per record; here it
-//! stores the control's stable [`ElemRef`] (PHASE5_PLAN §2.1). Acting on a
+//! stores the control's stable [`ElemId`] (PHASE5_PLAN §2.1). Acting on a
 //! record routes back through a [`ControlActioner`], which the solution
 //! implements (WP5.7) to build the split-borrow `CtrlCtx`, downcast the control
 //! element, and invoke its `DoPendingAction`. Because `pop` returns owned
@@ -22,7 +22,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 
 /// Pascal `TTimeRec`: an action time as whole hours plus seconds-within-hour.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -45,14 +45,14 @@ struct ActionRecord {
     action_code: i32,
     action_handle: i32,
     proxy_handle: i32,
-    control: ElemRef,
+    control: ElemId,
 }
 
 /// The record data returned by a pop — Pascal's `var Code, ProxyHdl, Hdl` out
 /// params plus the popped control element.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PoppedAction {
-    pub(crate) control: ElemRef,
+    pub(crate) control: ElemId,
     pub(crate) code: i32,
     #[allow(dead_code)] // RegControl/CapControl ignore the proxy handle
     pub(crate) proxy: i32,
@@ -69,7 +69,7 @@ pub trait ControlActioner {
     /// `control`.
     fn do_pending_action(
         &mut self,
-        control: ElemRef,
+        control: ElemId,
         code: i32,
         proxy: i32,
         queue: &mut ControlQueue,
@@ -96,7 +96,7 @@ impl ControlQueue {
     /// overload all four collapse to). Normalizes `Sec > 3600` into whole
     /// hours, inserts the record before the first existing record of
     /// equal-or-greater time, and returns the new handle.
-    pub fn push(&mut self, hour: i32, sec: f64, code: i32, proxy: i32, control: ElemRef) -> i32 {
+    pub fn push(&mut self, hour: i32, sec: f64, code: i32, proxy: i32, control: ElemId) -> i32 {
         self.ctrl_handle += 1; // just a serial number
 
         // Normalize the time.
@@ -144,7 +144,7 @@ impl ControlQueue {
         delay: f64,
         code: i32,
         proxy: i32,
-        control: ElemRef,
+        control: ElemId,
     ) -> i32 {
         self.push(int_hour, t + delay, code, proxy, control)
     }
@@ -175,7 +175,7 @@ impl ControlQueue {
     /// The queued actions for the `Show controlqueue` report (Pascal
     /// `TControlQueue.WriteQueue`, which walks `ActionList` in list order): each
     /// record's `(handle, hour, sec, action_code, proxy_handle, control ref)`.
-    pub fn queue_rows(&self) -> Vec<(i32, i32, f64, i32, i32, ElemRef)> {
+    pub fn queue_rows(&self) -> Vec<(i32, i32, f64, i32, i32, ElemId)> {
         self.action_list
             .iter()
             .map(|a| {

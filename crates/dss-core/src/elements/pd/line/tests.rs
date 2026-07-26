@@ -9,7 +9,7 @@ use super::*;
 use crate::elements::general::conductor_data::{CnDataObj, WireDataObj, cn_data, wire_data};
 use crate::elements::general::line_geometry::{self, LineGeometryObj};
 use crate::elements::general::line_spacing::{self, LineSpacingObj};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
@@ -51,7 +51,7 @@ fn scalar(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, value: &str) {
 /// reference: set the reference, record the set order, run side effects.
 fn set_ref(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, target: &dyn DssObject) {
     let idx = cls.property_index(name).expect("known property");
-    let r = ElemRef { cls: 0, idx: 0 };
+    let r = ElemId::new(0, 0);
     obj.set_object_ref(idx, target.data().name().to_string(), Some((r, target)));
     obj.data_mut().set_as_next_seq(idx);
     obj.side_effects(idx, 0);
@@ -339,7 +339,7 @@ fn try_ref_array(
     let idx = cls.property_index(name).expect("known property");
     let refs: Vec<crate::obj::base::ObjectRefArrayItem> = targets
         .iter()
-        .map(|t| Some((t.data().name().to_string(), ElemRef { cls: 0, idx: 0 }, *t)))
+        .map(|t| Some((t.data().name().to_string(), ElemId::new(0, 0), *t)))
         .collect();
     obj.set_object_ref_array(idx, &refs);
     obj.data_mut().set_as_next_seq(idx);

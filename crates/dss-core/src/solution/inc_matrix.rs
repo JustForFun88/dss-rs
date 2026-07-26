@@ -108,15 +108,15 @@ impl FlatBuilder<'_> {
 
 /// Read a circuit element's `(enabled, nterms, full_name)` and terminal-bus
 /// accessor via the class registry.
-fn elem_info(classes: &[DssClass], r: crate::elements::traits::ElemRef) -> (bool, usize, String) {
-    let obj = &classes[r.cls].arena[r.idx];
+fn elem_info(classes: &[DssClass], r: crate::elements::traits::ElemId) -> (bool, usize, String) {
+    let obj = &classes[r.class_ord()].arena[r.index()];
     let cd = obj
         .as_ckt_element()
         .expect("incidence-matrix element list holds circuit elements")
         .cd();
     let full_name = format!(
         "{}.{}",
-        classes[r.cls].props.class_name(),
+        classes[r.class_ord()].props.class_name(),
         obj.data().name()
     );
     (cd.enabled, cd.nterms, full_name)
@@ -126,10 +126,10 @@ fn elem_info(classes: &[DssClass], r: crate::elements::traits::ElemRef) -> (bool
 /// node-connection suffix.
 fn elem_bus_stripped(
     classes: &[DssClass],
-    r: crate::elements::traits::ElemRef,
+    r: crate::elements::traits::ElemId,
     term: usize,
 ) -> String {
-    let cd = classes[r.cls].arena[r.idx]
+    let cd = classes[r.class_ord()].arena[r.index()]
         .as_ckt_element()
         .expect("incidence-matrix element list holds circuit elements")
         .cd();
@@ -182,7 +182,7 @@ fn add_series_caps(b: &mut FlatBuilder, classes: &[DssClass]) {
         let (enabled, _nterms, full_name) = elem_info(classes, r);
         // Pascal `elem.NumTerminals` is the Capacitor `NumTerm` flag (2 only when
         // bus2 was explicitly defined = a series cap), NOT the generic Nterms.
-        let num_terminals = classes[r.cls].arena[r.idx]
+        let num_terminals = classes[r.class_ord()].arena[r.index()]
             .as_any()
             .downcast_ref::<crate::elements::pd::capacitor::Capacitor>()
             .expect("shunt_capacitors list holds Capacitor objects")
@@ -209,7 +209,7 @@ fn add_series_caps(b: &mut FlatBuilder, classes: &[DssClass]) {
 fn add_series_reactors(b: &mut FlatBuilder, classes: &[DssClass]) {
     for &r in &b.ckt.reactors {
         let bus2 = {
-            let cd = classes[r.cls].arena[r.idx]
+            let cd = classes[r.class_ord()].arena[r.index()]
                 .as_ckt_element()
                 .expect("reactors list holds circuit elements")
                 .cd();

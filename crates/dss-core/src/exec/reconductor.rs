@@ -108,19 +108,13 @@ impl Dss {
             self.errors.push(format!("Line.{missing} not found."));
             return;
         };
-        let r1 = ElemRef {
-            cls: line_ci,
-            idx: i1,
-        };
-        let r2 = ElemRef {
-            cls: line_ci,
-            idx: i2,
-        };
+        let r1 = ElemId::new(line_ci, i1);
+        let r2 = ElemId::new(line_ci, i2);
 
         // Both lines must be in the same EnergyMeter zone (the zone build wrote
         // `meter_obj` + `parent_pd`).
-        let meter = |s: &Self, r: ElemRef| -> Option<ElemRef> {
-            s.classes[r.cls].arena[r.idx]
+        let meter = |s: &Self, r: ElemId| -> Option<ElemId> {
+            s.classes[r.class_ord()].arena[r.index()]
                 .as_ckt_element()
                 .and_then(|e| e.cd().meter_obj)
         };
@@ -135,11 +129,11 @@ impl Dss {
         };
         if m1 != m2 {
             // Pascal error 28706 (`%s` = the meters' FullNames).
-            let full = |s: &Self, r: ElemRef| {
+            let full = |s: &Self, r: ElemId| {
                 format!(
                     "{}.{}",
-                    s.classes[r.cls].props.class_name(),
-                    s.classes[r.cls].arena[r.idx].data().name()
+                    s.classes[r.class_ord()].props.class_name(),
+                    s.classes[r.class_ord()].arena[r.index()].data().name()
                 )
             };
             self.errors.push(format!(
@@ -153,13 +147,13 @@ impl Dss {
         // Pascal `isPathBetween`: walk the `ParentPDElement` chain. The two
         // ifs run in order, so when both directions hold (Line1 = Line2) the
         // second wins — reproduced.
-        let path_between = |s: &Self, from: ElemRef, to: ElemRef| -> bool {
+        let path_between = |s: &Self, from: ElemId, to: ElemId| -> bool {
             let mut cur = Some(from);
             while let Some(r) = cur {
                 if r == to {
                     return true;
                 }
-                cur = s.classes[r.cls].arena[r.idx]
+                cur = s.classes[r.class_ord()].arena[r.index()]
                     .as_ckt_element()
                     .and_then(|e| e.cd().parent_pd);
             }
@@ -198,23 +192,23 @@ impl Dss {
     /// 0` = no filter). The edit goes through the ordinary class-edit path
     /// (Pascal `pLine.Edit(DSS.Parser)`), so property side effects/PrpSequence
     /// update exactly like a user edit.
-    fn trace_and_edit(&mut self, from: ElemRef, to: ElemRef, nphases: i32, edit_str: &str) {
+    fn trace_and_edit(&mut self, from: ElemId, to: ElemId, nphases: i32, edit_str: &str) {
         let mut cur = Some(from);
         while let Some(r) = cur {
-            let elem_nphases = self.classes[r.cls].arena[r.idx]
+            let elem_nphases = self.classes[r.class_ord()].arena[r.index()]
                 .as_ckt_element()
                 .map(|e| e.cd().nphases as i32)
                 .unwrap_or(0);
             if nphases == 0 || elem_nphases == nphases {
                 self.parser.set_cmd_string(edit_str);
-                self.active_class = Some(r.cls);
-                self.classes[r.cls].active = Some(r.idx);
+                self.active_class = Some(r.class_ord());
+                self.classes[r.class_ord()].active = Some(r.index());
                 self.edit_active();
             }
             if r == to {
                 break;
             }
-            cur = self.classes[r.cls].arena[r.idx]
+            cur = self.classes[r.class_ord()].arena[r.index()]
                 .as_ckt_element()
                 .and_then(|e| e.cd().parent_pd);
         }

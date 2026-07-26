@@ -2,7 +2,7 @@ use super::*;
 use crate::elements::general::conductor_data::WireDataObj;
 use crate::elements::general::conductor_data::wire_data;
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
 use dss_parser::{Parser, ParserVars};
@@ -43,7 +43,7 @@ fn scalar(
 /// the (already-resolved) reference, record the set order, run side effects.
 fn set_ref(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, target: &dyn DssObject) {
     let idx = cls.property_index(name).expect("known property");
-    let r = ElemRef { cls: 0, idx: 0 };
+    let r = ElemId::new(0, 0);
     obj.set_object_ref(idx, target.data().name().to_string(), Some((r, target)));
     obj.data_mut().set_as_next_seq(idx);
     obj.side_effects(idx, 0);
@@ -57,7 +57,7 @@ fn set_ref_array(
     targets: &[&dyn DssObject],
 ) {
     let idx = cls.property_index(name).expect("known property");
-    let r = ElemRef { cls: 0, idx: 0 };
+    let r = ElemId::new(0, 0);
     let refs: Vec<crate::obj::base::ObjectRefArrayItem> = targets
         .iter()
         .map(|t| Some((t.data().name().to_string(), r, *t)))

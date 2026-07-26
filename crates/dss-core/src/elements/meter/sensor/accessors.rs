@@ -7,7 +7,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::meter::meter_element::MeteredSnapshot;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{Sensor, prop};
@@ -85,7 +85,7 @@ impl CktElement for Sensor {
 
     /// Pascal `TMeterElement.MeteredElement` — resolved so the exec applier can
     /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.med.metered_element
     }
 }
@@ -243,7 +243,7 @@ impl DssObject for Sensor {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         match idx {
             prop::ELEMENT => {

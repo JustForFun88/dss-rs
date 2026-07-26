@@ -7,7 +7,7 @@ use num_complex::Complex64;
 
 use crate::circuit::{AddType, Circuit};
 use crate::elements::pc::generator::Generator;
-use crate::elements::traits::{ElemRef, InjComputeCtx};
+use crate::elements::traits::{ElemId, InjComputeCtx};
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
 use crate::support::sparse_math::SparseComplex;
 
@@ -327,7 +327,7 @@ pub(crate) fn set_generator_disp_ref(ckt: &mut Circuit) {
 /// the `dQ/dV` slope from the system Y diagonal, then re-establish the
 /// zero-load snapshot if any was found.
 pub(crate) fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    let gens: Vec<ElemRef> = ckt.generators.clone();
+    let gens: Vec<ElemId> = ckt.generators.clone();
     let gen_disp_save = ckt.generator_dispatch_reference;
     ckt.generator_dispatch_reference = 1000.0; // turn all generators on
     let mut did_one = false;

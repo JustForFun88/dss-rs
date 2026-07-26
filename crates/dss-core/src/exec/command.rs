@@ -1029,7 +1029,7 @@ impl Dss {
                 }
                 // Pascal `DSS.DSSObjs.Add(Obj)` (`ExecHelper.pas:1899`): the
                 // global creation-order list the whole-circuit Dump walks.
-                self.dss_objs.push(ElemRef { cls: ci, idx });
+                self.dss_objs.push(ElemId::new(ci, idx));
             }
             return true;
         }
@@ -1159,7 +1159,7 @@ impl Dss {
             .expect("circuit element class has a kind");
         let ckt = self.circuit.as_mut().expect("checked above");
         let elem = self.classes[ci].arena.ckt_elem_mut(idx);
-        ckt.add_ckt_element(ElemRef { cls: ci, idx }, kind, elem);
+        ckt.add_ckt_element(ElemId::new(ci, idx), kind, elem);
 
         true
     }
@@ -1292,7 +1292,7 @@ impl Dss {
                 .downcast_ref::<reg_control::RegControl>()
                 .and_then(|rc| rc.controlled_ref())
         {
-            let rc_ref = ElemRef { cls: ci, idx: oi };
+            let rc_ref = ElemId::new(ci, oi);
             let mut store = ClassStore {
                 classes: &mut self.classes,
             };
@@ -1353,7 +1353,7 @@ impl Dss {
             errors,
         };
         crate::solution::controls::storage_controller_recalc_fleet(
-            crate::elements::traits::ElemRef { cls: ci, idx: oi },
+            ElemId::new(ci, oi),
             ckt,
             &mut env,
         );
@@ -1991,7 +1991,7 @@ pub(super) fn apply_edit_signal_tail(
 
     for action in &ref_actions {
         let target = action.target();
-        let tgt = &mut classes[target.cls].arena[target.idx];
+        let tgt = &mut classes[target.class_ord()].arena[target.index()];
         // `SetSwitchClosed`/`SetConductorsClosed` act on the generic
         // CktElement base (any switched element), so they are applied here
         // rather than through the per-class `apply_ref_action`; the

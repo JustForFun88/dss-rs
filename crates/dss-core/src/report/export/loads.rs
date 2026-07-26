@@ -6,7 +6,7 @@
 //! `Circuit.loads` in creation order.
 
 use crate::elements::pc::load::Load;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::exec::registry::DssClass;
 
 /// Format the `Export Loads` report. Pascal walks every load, writes the field
@@ -14,11 +14,11 @@ use crate::exec::registry::DssClass;
 /// iteration (a lone blank line for a disabled load) — reproduced here so the
 /// output is byte-faithful, not merely golden-equivalent (the comparator strips
 /// blanks, but a re-parse should see the same line structure).
-pub(crate) fn export_loads(classes: &[DssClass], refs: &[ElemRef]) -> String {
+pub(crate) fn export_loads(classes: &[DssClass], refs: &[ElemId]) -> String {
     let mut out =
         String::from("Load, Connected KVA, Allocation Factor, Phases, kW, kvar, PF, Model\n");
     for &r in refs {
-        let obj = &classes[r.cls].arena[r.idx];
+        let obj = &classes[r.class_ord()].arena[r.index()];
         if let Some(load) = obj.as_any().downcast_ref::<Load>()
             && load.cd.enabled
         {

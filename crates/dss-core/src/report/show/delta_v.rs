@@ -48,12 +48,12 @@ fn walk(
     s: &mut String,
     classes: &[DssClass],
     ckt: &Circuit,
-    refs: &[crate::elements::traits::ElemRef],
+    refs: &[crate::elements::traits::ElemId],
     mdnl: usize,
 ) {
     for &r in refs {
-        let class_name = classes[r.cls].props.class_name();
-        let obj = &classes[r.cls].arena[r.idx];
+        let class_name = classes[r.class_ord()].props.class_name();
+        let obj = &classes[r.class_ord()].arena[r.index()];
         let Some(elem) = obj.as_ckt_element() else {
             continue;
         };

@@ -7,7 +7,7 @@
 
 use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::EnergyMeter;
-use crate::elements::traits::{ElemRef, ElemStore};
+use crate::elements::traits::{ElemId, ElemStore};
 
 pub mod demand_interval;
 mod interpolate;
@@ -50,7 +50,7 @@ pub(crate) fn sync_seasonal_rating_idx(ckt: &mut Circuit, store: &mut dyn ElemSt
 /// Downcast a registry entry known to be an [`EnergyMeter`] to a mutable ref.
 /// Shared by all three submodules' write-back paths (`ckt.energy_meters` only
 /// ever holds `EnergyMeter` objects, so the downcast is infallible).
-fn downcast_meter(store: &mut dyn ElemStore, meter_ref: ElemRef) -> &mut EnergyMeter {
+fn downcast_meter(store: &mut dyn ElemStore, meter_ref: ElemId) -> &mut EnergyMeter {
     store
         .obj_mut(meter_ref)
         .as_any_mut()

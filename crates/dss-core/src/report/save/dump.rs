@@ -41,7 +41,10 @@ pub(crate) fn allocation_factors(classes: &[DssClass], ckt: &crate::circuit::Cir
     use crate::elements::pc::load::{Load, LoadSpec};
     let mut s = String::new();
     for &r in &ckt.loads {
-        let Some(load) = classes[r.cls].arena[r.idx].as_any().downcast_ref::<Load>() else {
+        let Some(load) = classes[r.class_ord()].arena[r.index()]
+            .as_any()
+            .downcast_ref::<Load>()
+        else {
             continue;
         };
         match load.load_spec_type {
@@ -66,7 +69,7 @@ pub(crate) fn allocation_factors(classes: &[DssClass], ckt: &crate::circuit::Cir
 /// per PC dynamic-state variable (empty unless `complete` and the element is a
 /// PC element, for the `! VARIABLES` block), and the precomputed `Branch List:`
 /// body text for the EnergyMeter override (empty for every other class — needs
-/// the full class registry to resolve each branch/shunt `ElemRef`'s name, which
+/// the full class registry to resolve each branch/shunt `ElemId`'s name, which
 /// this per-object context otherwise has no reach into).
 pub struct DumpCtx<'a> {
     pub cls: &'a ClassProps,
@@ -89,13 +92,15 @@ pub(crate) fn energy_meter_branch_list(classes: &[DssClass], em: &EnergyMeter) -
     };
     for (i, &br) in em.sequence_list().iter().enumerate() {
         let node = tree.node(em.sequence_nodes()[i]);
-        let name = classes[br.cls].arena[br.idx].data().name();
+        let name = classes[br.class_ord()].arena[br.index()].data().name();
         s.push_str(&format!("Circuit Element = {name}\n"));
         for &shunt in &node.shunts {
             let full = format!(
                 "{}.{}",
-                classes[shunt.cls].props.class_name(),
-                classes[shunt.cls].arena[shunt.idx].data().name()
+                classes[shunt.class_ord()].props.class_name(),
+                classes[shunt.class_ord()].arena[shunt.index()]
+                    .data()
+                    .name()
             );
             s.push_str(&format!("   Shunt Element = {full}\n"));
         }

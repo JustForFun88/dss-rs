@@ -42,7 +42,7 @@ pub(crate) use crate::elements::pc::{
 pub(crate) use crate::elements::pd::{
     auto_trans, capacitor, fault, fuse, gic_transformer, line, reactor, transformer,
 };
-pub(crate) use crate::elements::traits::{CktElement, ElemRef, ElemStore};
+pub(crate) use crate::elements::traits::{CktElement, ElemId, ElemStore};
 pub(crate) use crate::obj::arena::ClassArena;
 pub(crate) use crate::obj::base::DssObject;
 pub(crate) use crate::obj::dss_enum::{EnumId, EnumRegistry};
@@ -178,7 +178,7 @@ pub struct Dss {
     /// `DSS.DSSObjs`: every general (`DSS_OBJECT`) object in global creation
     /// order — the list the whole-circuit `Dump` walks after `CktElements`
     /// (Pascal `ExecHelper.pas:1373`; populated at `AddObject`, `:1899`).
-    dss_objs: Vec<ElemRef>,
+    dss_objs: Vec<ElemId>,
     /// `DSS.DaisySize` (`DSSClass.pas:741`, default 1.0; `Set Daisysize=`):
     /// a GUI daisy-plot marker radius written into the plot-callback payload.
     /// Lives on the DSS context, not the circuit.

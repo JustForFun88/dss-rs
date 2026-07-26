@@ -10,7 +10,7 @@ use crate::elements::general::growth_shape::GrowthShapeObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -212,7 +212,7 @@ impl Load {
         self.growth_shape = other.growth_shape.clone();
         self.spectrum = other.spectrum.clone();
         // Pascal copies the resolved shape pointers (CVR/Daily/Duty/Yearly/
-        // Growth) and the spectrum; here that is the snapshot clone + its ElemRef.
+        // Growth) and the spectrum; here that is the snapshot clone + its ElemId.
         self.spectrum_obj = other.spectrum_obj.clone();
         self.cvr_shape_obj = other.cvr_shape_obj.clone();
         self.daily_shape_obj = other.daily_shape_obj.clone();
@@ -423,7 +423,7 @@ impl DssObject for Load {
     }
 
     /// Resolve a shape reference: store the resolved object's name (for the
-    /// dump), its `ElemRef`, and a snapshot clone of the object that
+    /// dump), its `ElemId`, and a snapshot clone of the object that
     /// `SetNominalLoad` drives through `GetMultAtHour` (Pascal stores the live
     /// pointer; see the `*_shape_obj` field doc). `daily`/`yearly`/`duty`/
     /// `CVRcurve` resolve to `LoadShape`, `growth` to `GrowthShape`.
@@ -431,7 +431,7 @@ impl DssObject for Load {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use prop::*;
         let elem_ref = resolved.map(|(r, _)| r);

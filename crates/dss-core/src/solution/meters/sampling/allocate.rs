@@ -6,7 +6,7 @@ use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::EnergyMeter;
 use crate::elements::meter::sensor::Sensor;
 use crate::elements::pc::load::Load;
-use crate::elements::traits::{ElemRef, ElemStore, SysCtx};
+use crate::elements::traits::{ElemId, ElemStore, SysCtx};
 use crate::solution::SolveEnv;
 use crate::solution::solution::{solve, sys_ctx};
 
@@ -94,7 +94,7 @@ fn allocate_load_all(ckt: &Circuit, store: &mut dyn ElemStore) {
 /// meter's zone loads and scale each by its upstream sensor's allocation factor
 /// (single-phase loads use the connected-phase factor; poly-phase loads use the
 /// average factor). The sensor may be a Sensor object **or** an EnergyMeter.
-fn allocate_load_for_meter(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn ElemStore) {
+fn allocate_load_for_meter(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore) {
     // Pascal walks `BranchList` (`First`/`GoForward`) and, per branch, its shunt
     // objects (`FirstObject`/`NextObject`), filtering to `LOAD_ELEMENT`. The
     // meter's `load_list` is exactly that set (only Loads are pushed during the
@@ -163,7 +163,7 @@ fn allocate_load_for_meter(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn El
 
 /// The (nphases, AvgAllocFactor, PhsAllocationFactor) of a metering device,
 /// which may be a [`Sensor`] or an [`EnergyMeter`] (both embed `MeterElementData`).
-fn sensor_alloc_data(store: &dyn ElemStore, r: ElemRef) -> Option<(usize, f64, Vec<f64>)> {
+fn sensor_alloc_data(store: &dyn ElemStore, r: ElemId) -> Option<(usize, f64, Vec<f64>)> {
     let obj = store.obj(r);
     if let Some(s) = obj.as_any().downcast_ref::<Sensor>() {
         Some((

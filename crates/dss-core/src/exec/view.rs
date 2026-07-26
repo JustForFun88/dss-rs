@@ -19,12 +19,12 @@ pub struct MonitorView {
     pub channels: Vec<Vec<f32>>,
 }
 
-/// Raw `ElemRef` lists copied out of an [`energymeter::EnergyMeter`] before
+/// Raw `ElemId` lists copied out of an [`energymeter::EnergyMeter`] before
 /// resolving full names (avoids a long tuple type in [`Dss::meter_zone`]).
 struct MeterZoneRefs {
-    branches: Vec<ElemRef>,
-    ends: Vec<ElemRef>,
-    pce: Vec<ElemRef>,
+    branches: Vec<ElemId>,
+    ends: Vec<ElemId>,
+    pce: Vec<ElemId>,
     register_names: Vec<String>,
 }
 
@@ -140,8 +140,8 @@ impl Dss {
         // investigations/oracle-powers-currents-harmonic/).
         let mut out = Vec::with_capacity(ckt.ckt_elements.len());
         for &r in &ckt.ckt_elements {
-            let class_name = classes[r.cls].props.class_name();
-            let obj = &mut classes[r.cls].arena[r.idx];
+            let class_name = classes[r.class_ord()].props.class_name();
+            let obj = &mut classes[r.class_ord()].arena[r.index()];
             let name = format!("{}.{}", class_name, obj.data().name());
             let elem = obj
                 .as_ckt_element_mut()
@@ -248,7 +248,7 @@ impl Dss {
         // cancels to `-conj(S/V)`. The NCIM solver computed the exact terminal
         // current (`-conj((Pnom + j·deltaQNom)/V)`); reproduce it here.
         if ckt.solution.algorithm == crate::solution::solution::SolveAlgorithm::Ncim {
-            let mut overrides: Vec<(ElemRef, Vec<num_complex::Complex64>)> = Vec::new();
+            let mut overrides: Vec<(ElemId, Vec<num_complex::Complex64>)> = Vec::new();
             if let Some(o) = ncim_swing_source_currents(classes, ckt) {
                 overrides.push(o);
             }
@@ -256,13 +256,13 @@ impl Dss {
             for (r, curr) in overrides {
                 let name = format!(
                     "{}.{}",
-                    classes[r.cls].props.class_name(),
-                    classes[r.cls].arena[r.idx].data().name()
+                    classes[r.class_ord()].props.class_name(),
+                    classes[r.class_ord()].arena[r.index()].data().name()
                 );
                 let Some(snap) = out.iter_mut().find(|s| s.name.eq_ignore_ascii_case(&name)) else {
                     continue;
                 };
-                let node_ref = classes[r.cls].arena[r.idx]
+                let node_ref = classes[r.class_ord()].arena[r.index()]
                     .as_ckt_element()
                     .expect("ncim override target is a ckt element")
                     .cd()
@@ -639,7 +639,7 @@ impl Dss {
             .strip_prefix("EnergyMeter.")
             .or_else(|| name.strip_prefix("energymeter."))
             .unwrap_or(name);
-        // Locate the meter, copy out its ElemRef lists, then resolve full names.
+        // Locate the meter, copy out its ElemId lists, then resolve full names.
         let mut lists: Option<MeterZoneRefs> = None;
         for class in &self.classes {
             for obj in class.arena.objs() {
@@ -656,9 +656,13 @@ impl Dss {
             }
         }
         let lists = lists?;
-        let full_name = |r: ElemRef| -> String {
-            let cn = self.classes[r.cls].props.class_name();
-            format!("{}.{}", cn, self.classes[r.cls].arena[r.idx].data().name())
+        let full_name = |r: ElemId| -> String {
+            let cn = self.classes[r.class_ord()].props.class_name();
+            format!(
+                "{}.{}",
+                cn,
+                self.classes[r.class_ord()].arena[r.index()].data().name()
+            )
         };
         Some(MeterZoneView {
             all_branches_in_zone: lists.branches.iter().map(|&r| full_name(r)).collect(),
@@ -758,12 +762,12 @@ impl Dss {
         } = self;
         let ckt = circuit.as_ref()?;
         let sensor_ref = ckt.sensors.iter().copied().find(|r| {
-            classes[r.cls].arena[r.idx]
+            classes[r.class_ord()].arena[r.index()]
                 .data()
                 .name()
                 .eq_ignore_ascii_case(name)
         })?;
-        let metered = classes[sensor_ref.cls].arena[sensor_ref.idx]
+        let metered = classes[sensor_ref.class_ord()].arena[sensor_ref.index()]
             .as_any()
             .downcast_ref::<sensor::Sensor>()?
             .metered_element()?;
@@ -794,7 +798,7 @@ impl Dss {
         };
         let mut out = Vec::with_capacity(ckt.transformers.len());
         for &r in &ckt.transformers {
-            let obj = &self.classes[r.cls].arena[r.idx];
+            let obj = &self.classes[r.class_ord()].arena[r.index()];
             let tr = obj
                 .as_any()
                 .downcast_ref::<transformer::Transformer>()
@@ -823,7 +827,7 @@ impl Dss {
         };
         let mut out = Vec::new();
         for &r in &ckt.controls {
-            let obj = &self.classes[r.cls].arena[r.idx];
+            let obj = &self.classes[r.class_ord()].arena[r.index()];
             let Some(rc) = obj.as_any().downcast_ref::<reg_control::RegControl>() else {
                 continue;
             };
@@ -844,7 +848,7 @@ impl Dss {
                 .and_then(|tref| {
                     // Either member of the Transformer/AutoTrans proxy.
                     transformer::as_controlled_transformer(
-                        self.classes[tref.cls].arena.obj(tref.idx),
+                        self.classes[tref.class_ord()].arena.obj(tref.index()),
                     )
                     .map(|tr| rc.tap_num_live(tr))
                 })
@@ -904,7 +908,7 @@ impl Dss {
         let positive_seq = ckt.positive_sequence;
         let mut total = Complex64::ZERO;
         for &r in &ckt.sources {
-            let elem = classes[r.cls].arena[r.idx]
+            let elem = classes[r.class_ord()].arena[r.index()]
                 .as_ckt_element_mut()
                 .expect("sources are circuit elements");
             if !elem.cd().enabled || elem.cd().node_ref.is_empty() {
@@ -966,7 +970,9 @@ impl Dss {
             .queue_rows()
             .into_iter()
             .map(|(handle, hour, sec, code, proxy, ctrl)| {
-                let name = self.classes[ctrl.cls].arena[ctrl.idx].data().name();
+                let name = self.classes[ctrl.class_ord()].arena[ctrl.index()]
+                    .data()
+                    .name();
                 format!(
                     "{handle}, {hour}, {}, {code}, {proxy}, {name} ",
                     crate::util::fmt_g(sec, 9)
@@ -1065,7 +1071,7 @@ impl Dss {
 /// there; instead the source's terminal current is the Kirchhoff sum at its bus —
 /// **minus** every connected PD-element terminal current (the PD loop, l.1113-1138)
 /// — **plus** every other connected PC-element terminal current (the PC loop,
-/// l.1148-1173). Returns `(swing-source ElemRef, its yorder-long terminal-current
+/// l.1148-1173). Returns `(swing-source ElemId, its yorder-long terminal-current
 /// vector)` — the swing source is the [`VSource`] whose first node is the global
 /// slack (`NodeRef[0] == 1`) — or `None` if there is none.
 ///
@@ -1077,12 +1083,12 @@ impl Dss {
 fn ncim_swing_source_currents(
     classes: &[DssClass],
     ckt: &Circuit,
-) -> Option<(ElemRef, Vec<num_complex::Complex64>)> {
+) -> Option<(ElemId, Vec<num_complex::Complex64>)> {
     use num_complex::Complex64;
 
     // The swing VSource: a source whose first node is the global slack node 1.
     let src_ref = ckt.sources.iter().copied().find(|&r| {
-        let obj = &classes[r.cls].arena[r.idx];
+        let obj = &classes[r.class_ord()].arena[r.index()];
         obj.as_any()
             .downcast_ref::<crate::elements::pc::vsource::VSource>()
             .is_some()
@@ -1091,7 +1097,7 @@ fn ncim_swing_source_currents(
                 .is_some_and(|ce| ce.cd().node_ref.first() == Some(&1))
     })?;
 
-    let src_cd = classes[src_ref.cls].arena[src_ref.idx]
+    let src_cd = classes[src_ref.class_ord()].arena[src_ref.index()]
         .as_ckt_element()?
         .cd();
     let src_bus = src_cd.terminals.first()?.bus_ref;
@@ -1139,7 +1145,7 @@ fn ncim_swing_source_currents(
     // PD elements (+ faults) at the bus: subtract their terminal currents. Pascal
     // stride `Round(ce.Yorder / 2)` (its 2-terminal conductors-per-terminal).
     for &r in ckt.pd_elements.iter().chain(ckt.faults.iter()) {
-        let Some(ce) = classes[r.cls].arena[r.idx].as_ckt_element() else {
+        let Some(ce) = classes[r.class_ord()].arena[r.index()].as_ckt_element() else {
             continue;
         };
         let cd = ce.cd();
@@ -1158,7 +1164,7 @@ fn ncim_swing_source_currents(
         if r == src_ref {
             continue;
         }
-        let Some(ce) = classes[r.cls].arena[r.idx].as_ckt_element() else {
+        let Some(ce) = classes[r.class_ord()].arena[r.index()].as_ckt_element() else {
             continue;
         };
         let cd = ce.cd();
@@ -1179,19 +1185,19 @@ fn ncim_swing_source_currents(
 /// `YPrim`/`Yeq` is stale, so the general `YPrim·V - Iinj` reporting recompute
 /// (which [`Dss::snapshot_elements`]'s main loop applies) no longer collapses to
 /// `-conj(S/V)`; this reproduces the exact terminal current the solver computed.
-/// Returns `(generator ElemRef, its yorder-long terminal-current vector)` for
+/// Returns `(generator ElemId, its yorder-long terminal-current vector)` for
 /// every enabled generator carrying NCIM state (`delta_q_nom` non-empty).
 fn ncim_generator_currents(
     classes: &[DssClass],
     ckt: &Circuit,
     node_v: &[num_complex::Complex64],
-) -> Vec<(ElemRef, Vec<num_complex::Complex64>)> {
+) -> Vec<(ElemId, Vec<num_complex::Complex64>)> {
     use crate::elements::pc::generator::Generator;
     use num_complex::Complex64;
 
     let mut out = Vec::new();
     for &r in &ckt.generators {
-        let obj = &classes[r.cls].arena[r.idx];
+        let obj = &classes[r.class_ord()].arena[r.index()];
         let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
             continue;
         };

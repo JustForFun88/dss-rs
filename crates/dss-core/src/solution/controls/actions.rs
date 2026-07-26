@@ -3,7 +3,7 @@
 //! `dispatch_control`.
 
 use crate::circuit::Circuit;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::solution::control_queue::{ControlActioner, ControlQueue};
 use crate::solution::solution::{
     CTRLSTATIC, EVENTDRIVEN, MULTIRATE, SolveEnv, SolveResult, TIMEDRIVEN,
@@ -107,7 +107,7 @@ struct Actioner<'a, 'b> {
 impl ControlActioner for Actioner<'_, '_> {
     fn do_pending_action(
         &mut self,
-        control: ElemRef,
+        control: ElemId,
         code: i32,
         proxy: i32,
         queue: &mut ControlQueue,

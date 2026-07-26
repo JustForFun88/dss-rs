@@ -86,13 +86,13 @@ const LIBRARY_CLASSES: [&str; 15] = [
 fn write_object(
     classes: &mut [DssClass],
     enums: &EnumRegistry,
-    r: ElemRef,
+    r: ElemId,
     out: &mut String,
     new_or_edit: &str,
 ) {
-    let DssClass { props, arena, .. } = &mut classes[r.cls];
+    let DssClass { props, arena, .. } = &mut classes[r.class_ord()];
     let cx = SaveCtx { cls: props, enums };
-    write_dss_object(out, &cx, arena.obj_mut(r.idx), new_or_edit);
+    write_dss_object(out, &cx, arena.obj_mut(r.index()), new_or_edit);
 }
 
 impl Dss {
@@ -260,7 +260,7 @@ impl Dss {
         let n = self.classes[ci].arena.len();
         let Dss { classes, enums, .. } = self;
         for i in 0..n {
-            let r = ElemRef { cls: ci, idx: i };
+            let r = ElemId::new(ci, i);
             // First vsource → Edit; the rest skip disabled / already-saved.
             if i == 0 {
                 write_object(classes, enums, r, &mut out, "Edit");
@@ -310,14 +310,14 @@ impl Dss {
     /// by [`Self::save_zone`]. The zone files join `saved_files` (relative
     /// Redirects). Disabled meters are skipped; err 436 on a subdir failure.
     fn save_feeders(&mut self, base: &Path, flags: SaveFlags, saved_files: &mut Vec<PathBuf>) {
-        let meters: Vec<ElemRef> = match &self.circuit {
+        let meters: Vec<ElemId> = match &self.circuit {
             Some(ckt) => ckt.energy_meters.clone(),
             None => return,
         };
         for mr in meters {
             // Only active meters (Pascal `if not Meter.Enabled then continue`).
             let (enabled, name) = {
-                let obj = &self.classes[mr.cls].arena[mr.idx];
+                let obj = &self.classes[mr.class_ord()].arena[mr.index()];
                 let en = obj
                     .as_any()
                     .downcast_ref::<crate::elements::meter::EnergyMeter>()
@@ -361,15 +361,15 @@ impl Dss {
     /// divergence is unobservable (mirrors the same project-wide limitation).
     fn save_zone(
         &mut self,
-        meter: ElemRef,
+        meter: ElemId,
         dir: &Path,
         _flags: SaveFlags,
         saved_files: &mut Vec<PathBuf>,
     ) {
         // Snapshot the branch walk (branch ref + its shunt refs) so the meter's
         // immutable tree borrow is released before we mutate objects/classes.
-        let branches: Vec<(ElemRef, Vec<ElemRef>)> = {
-            let m = match self.classes[meter.cls].arena[meter.idx]
+        let branches: Vec<(ElemId, Vec<ElemId>)> = {
+            let m = match self.classes[meter.class_ord()].arena[meter.index()]
                 .as_any()
                 .downcast_ref::<crate::elements::meter::EnergyMeter>()
             {
@@ -398,7 +398,7 @@ impl Dss {
             (0usize, 0, 0, 0, 0, 0);
 
         // Control snapshot (creation order) for the in-zone `HasControl` writes.
-        let controls: Vec<ElemRef> = self
+        let controls: Vec<ElemId> = self
             .circuit
             .as_ref()
             .map(|c| c.controls.clone())
@@ -410,7 +410,7 @@ impl Dss {
                 continue;
             }
             // Branch → Transformers.dss (XFMR_ELEMENT) else Branches.dss.
-            let is_xfmr = self.classes[branch.cls].arena[branch.idx]
+            let is_xfmr = self.classes[branch.class_ord()].arena[branch.index()]
                 .as_any()
                 .downcast_ref::<crate::elements::pd::transformer::Transformer>()
                 .is_some();
@@ -473,8 +473,8 @@ impl Dss {
     #[allow(clippy::too_many_arguments)]
     fn write_zone_shunt(
         &mut self,
-        shunt: ElemRef,
-        controls: &[ElemRef],
+        shunt: ElemId,
+        controls: &[ElemId],
         loads_txt: &mut String,
         n_loads: &mut usize,
         gens_txt: &mut String,
@@ -484,7 +484,7 @@ impl Dss {
         shunts_txt: &mut String,
         n_shunts: &mut usize,
     ) {
-        let any = self.classes[shunt.cls].arena[shunt.idx].as_any();
+        let any = self.classes[shunt.class_ord()].arena[shunt.index()].as_any();
         let is_load = any
             .downcast_ref::<crate::elements::pc::load::Load>()
             .is_some();
@@ -498,13 +498,13 @@ impl Dss {
         if is_load {
             // Pascal: if the load was allocated, force the allocationfactor
             // property to render (`PropertySideEffects` + `SetAsNextSeq`).
-            let allocated = self.classes[shunt.cls].arena[shunt.idx]
+            let allocated = self.classes[shunt.class_ord()].arena[shunt.index()]
                 .as_any()
                 .downcast_ref::<crate::elements::pc::load::Load>()
                 .is_some_and(|l| l.has_been_allocated);
             if allocated {
                 use crate::elements::pc::load::prop::ALLOCATIONFACTOR;
-                let obj = self.classes[shunt.cls].arena.obj_mut(shunt.idx);
+                let obj = self.classes[shunt.class_ord()].arena.obj_mut(shunt.index());
                 obj.side_effects(ALLOCATIONFACTOR, 0);
                 obj.data_mut().set_as_next_seq(ALLOCATIONFACTOR);
             }
@@ -531,12 +531,12 @@ impl Dss {
 
     /// Write every control acting on `elem` (Pascal `for pControlElem in
     /// elem.ControlElementList`), derived from `controls` (creation order).
-    fn write_element_controls(&mut self, elem: ElemRef, controls: &[ElemRef], out: &mut String) {
-        let acting: Vec<ElemRef> = controls
+    fn write_element_controls(&mut self, elem: ElemId, controls: &[ElemId], out: &mut String) {
+        let acting: Vec<ElemId> = controls
             .iter()
             .copied()
             .filter(|&cr| {
-                self.classes[cr.cls].arena[cr.idx]
+                self.classes[cr.class_ord()].arena[cr.index()]
                     .as_ckt_element()
                     .and_then(|ce| ce.controlled_element())
                     == Some(elem)
@@ -549,8 +549,8 @@ impl Dss {
     }
 
     /// Whether the circuit element at `r` is enabled.
-    fn elem_enabled(&self, r: ElemRef) -> bool {
-        self.classes[r.cls].arena[r.idx]
+    fn elem_enabled(&self, r: ElemId) -> bool {
+        self.classes[r.class_ord()].arena[r.index()]
             .as_ckt_element()
             .is_some_and(|e| e.cd().enabled)
     }

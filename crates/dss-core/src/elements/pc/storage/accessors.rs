@@ -13,7 +13,7 @@ use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -677,7 +677,7 @@ impl DssObject for Storage {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use prop::*;
         let elem_ref = resolved.map(|(r, _)| r);

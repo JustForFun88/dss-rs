@@ -9,9 +9,9 @@
 //! the `ClassStore`/`ForeignClasses` borrow split unchanged (objects reached via
 //! `class.arena` instead of `class.objects`).
 //!
-//! An [`ElemId`] enum (one `Idx<T>` variant per class) is the R2 typed handle
-//! that will replace the `{cls, idx}` [`ElemRef`] tag across the spine; R1 only
-//! introduces it (plus the ordering proof) and keeps the spine on `ElemRef`.
+//! An [`ElemId`] enum (one `Idx<T>` variant per class) is the typed element
+//! handle the whole spine speaks (R3 replaced the pre-R3 untyped
+//! `{cls, idx}` tag struct with it; R1 introduced it plus the ordering proof).
 //! [`Elements`] is the corresponding hoisted aggregate (`Vec<ClassArena>` +
 //! whole-registry accessors) that R2 can adopt once the spine is retyped; today
 //! it backs the [`tests`] ordering proof and the `Send` assertions.
@@ -39,7 +39,7 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::elements::traits::CktElement;
 use crate::obj::base::DssObject;
 
 /// A typed, stable index into the [`Elements`] arena for concrete type `T`
@@ -199,6 +199,17 @@ macro_rules! define_arena {
             $( $variant(Idx<$ty>), )*
         }
 
+        /// Field-less companion of [`ElemId`]: its discriminants ARE the
+        /// registration ordinals (same macro, same order), so
+        /// [`ElemId::class_ord`] is one constant per arm instead of a name
+        /// scan. Never constructed — only `as usize`-cast.
+        #[derive(Clone, Copy)]
+        #[repr(usize)]
+        #[allow(dead_code)]
+        enum ClassOrd {
+            $( $variant, )*
+        }
+
         impl ElemId {
             /// The registry class names, in registration order — the proof
             /// surface for [`tests::arena_order_matches_registry`].
@@ -211,39 +222,43 @@ macro_rules! define_arena {
                 }
             }
 
-            /// The 0-based class index (position in registration order == the
-            /// `ElemRef::cls` tag).
+            /// The 0-based class index — the position in registration order
+            /// (the value the pre-R3 `cls` tag field carried). O(1): the
+            /// [`ClassOrd`] discriminant is a compile-time constant per arm.
             pub fn class_ord(self) -> usize {
                 match self {
-                    $( ElemId::$variant(_) => Self::CLASS_NAMES.iter()
-                        .position(|&n| n == $cname)
-                        .expect("variant name is in CLASS_NAMES"), )*
+                    $( ElemId::$variant(_) => ClassOrd::$variant as usize, )*
                 }
             }
 
-            /// The 0-based object index within the class arena.
+            /// The 0-based object index within the class arena (the tag the
+            /// pre-R3 `idx` tag field carried).
             pub fn index(self) -> usize {
                 match self {
                     $( ElemId::$variant(i) => i.get(), )*
                 }
             }
 
-            /// The `{cls, idx}` [`ElemRef`] this handle denotes (the R1
-            /// transition bridge — the spine still speaks `ElemRef`).
-            pub fn to_ref(self) -> ElemRef {
-                ElemRef { cls: self.class_ord(), idx: self.index() }
-            }
-
-            /// Build the typed handle from a `{cls, idx}` [`ElemRef`] — the R2
-            /// spine-flip bridge, the inverse of [`Self::to_ref`]. `r.cls` is the
-            /// 0-based registration ordinal, so the class name at that slot in
-            /// [`Self::CLASS_NAMES`] selects the variant (all names are distinct);
-            /// `r.idx` becomes the typed [`Idx<T>`]. Panics if `r.cls` is out of
-            /// range (an invalid ref is a construction bug, never a valid state).
-            pub fn from_ref(r: ElemRef) -> ElemId {
-                match Self::CLASS_NAMES[r.cls] {
-                    $( $cname => ElemId::$variant(Idx::new(r.idx)), )*
-                    other => unreachable!("from_ref: unknown class name {other:?} at ordinal {}", r.cls),
+            /// Build the typed handle from a dynamic `(class ordinal, object
+            /// index)` pair — the constructor for the registry-side producers
+            /// (`find_ckt_element`, `add_ckt_element`, the class-loop reports)
+            /// that discover the class by position rather than by type.
+            ///
+            /// O(1) via a per-variant constructor table indexed by the ordinal
+            /// (registration order == variant order). Panics if `cls` is out of
+            /// range — an invalid class ordinal is a construction bug, never a
+            /// valid state (the pre-R3 `ElemId::new(cls, idx)` literal could not
+            /// express one either, since every producer reads `cls` off the
+            /// registry).
+            pub fn new(cls: usize, idx: usize) -> ElemId {
+                const CTORS: &[fn(usize) -> ElemId] =
+                    &[ $( |i| ElemId::$variant(Idx::new(i)), )* ];
+                match CTORS.get(cls) {
+                    Some(ctor) => ctor(idx),
+                    None => unreachable!(
+                        "ElemId::new: class ordinal {cls} out of range (0..{})",
+                        CTORS.len()
+                    ),
                 }
             }
         }
@@ -365,13 +380,13 @@ macro_rules! define_arena {
             /// (`DSS_OBJECT`) class, mirroring the old `ClassStore` `.expect`.
             pub fn ckt_elem(&self, idx: usize) -> &dyn CktElement {
                 self.try_ckt_elem(idx)
-                    .expect("ElemRef must point at a circuit element")
+                    .expect("ElemId must point at a circuit element")
             }
 
             /// Circuit-element mutable view of object `idx`.
             pub fn ckt_elem_mut(&mut self, idx: usize) -> &mut dyn CktElement {
                 self.try_ckt_elem_mut(idx)
-                    .expect("ElemRef must point at a circuit element")
+                    .expect("ElemId must point at a circuit element")
             }
 
             /// Construct a fresh all-default object of this class named `name`,
@@ -448,18 +463,18 @@ macro_rules! define_arena {
             }
 
             /// Run `f` over every *circuit* element of this class as
-            /// `&mut dyn CktElement`, tagged with its [`ElemRef`]. General
+            /// `&mut dyn CktElement`, tagged with its [`ElemId`]. General
             /// (`DSS_OBJECT`) objects are skipped. The typed `Vec<T>` is the
             /// iteration substrate `MULTITHREADING_PLAN.md` M3 later swaps to
             /// `par_iter_mut`.
             fn for_each_ckt_elem_mut(
                 &mut self,
                 cls: usize,
-                f: &mut dyn FnMut(ElemRef, &mut dyn CktElement),
+                f: &mut dyn FnMut(ElemId, &mut dyn CktElement),
             ) {
                 for idx in 0..self.len() {
                     if let Some(ce) = self.try_ckt_elem_mut(idx) {
-                        f(ElemRef { cls, idx }, ce);
+                        f(ElemId::new(cls, idx), ce);
                     }
                 }
             }
@@ -474,22 +489,6 @@ macro_rules! define_arena {
 }
 
 with_all_classes!(define_arena);
-
-// The R2 spine-flip bridges: `ElemRef` ⇄ `ElemId`. Producers that still speak
-// `ElemRef` (`add_ckt_element`, `find_ckt_element`, the property object-ref
-// resolution) feed `.into()`; consumers that still call the `ElemRef`-typed
-// `ElemStore`/`CktElement` access layer feed `id.to_ref()` / `.into()`. Both are
-// removed once the access layer itself is retyped (later R2 clusters / R3).
-impl From<ElemRef> for ElemId {
-    fn from(r: ElemRef) -> Self {
-        ElemId::from_ref(r)
-    }
-}
-impl From<ElemId> for ElemRef {
-    fn from(id: ElemId) -> Self {
-        id.to_ref()
-    }
-}
 
 // Index a `ClassArena` by object position, yielding `dyn DssObject` — the
 // drop-in shape for the pre-R1 `objects[idx]` place expression (so the ownership
@@ -568,7 +567,7 @@ impl Elements {
 
     /// Two pairwise-distinct objects borrowed mutably at once — the typed-arena
     /// form of the old `ClassStore::pair_mut`. Panics on aliasing refs.
-    pub fn pair_mut(&mut self, a: ElemRef, b: ElemRef) -> (&mut dyn DssObject, &mut dyn DssObject) {
+    pub fn pair_mut(&mut self, a: ElemId, b: ElemId) -> (&mut dyn DssObject, &mut dyn DssObject) {
         pair_mut_arenas(&mut self.arenas, a, b)
     }
 
@@ -576,9 +575,9 @@ impl Elements {
     /// aliasing.
     pub fn triple_mut(
         &mut self,
-        a: ElemRef,
-        b: ElemRef,
-        c: ElemRef,
+        a: ElemId,
+        b: ElemId,
+        c: ElemId,
     ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
         triple_mut_arenas(&mut self.arenas, a, b, c)
     }
@@ -595,10 +594,10 @@ impl Elements {
 
     /// Run `f` over every circuit element in the whole registry, in
     /// registration order, as `&mut dyn CktElement` tagged with its
-    /// [`ElemRef`]. Do not funnel new bulk work through a single
+    /// [`ElemId`]. Do not funnel new bulk work through a single
     /// `&mut dyn ElemStore` entry point — use this or [`Self::arenas_mut`]
     /// (Part V thread-readiness rider).
-    pub fn for_each_ckt_elem_mut(&mut self, mut f: impl FnMut(ElemRef, &mut dyn CktElement)) {
+    pub fn for_each_ckt_elem_mut(&mut self, mut f: impl FnMut(ElemId, &mut dyn CktElement)) {
         for (cls, arena) in self.arenas.iter_mut().enumerate() {
             arena.for_each_ckt_elem_mut(cls, &mut f);
         }
@@ -609,17 +608,19 @@ impl Elements {
 /// `[ClassArena]` slice (shared by [`Elements`] and the `ClassStore` view).
 pub(crate) fn pair_mut_arenas(
     arenas: &mut [ClassArena],
-    a: ElemRef,
-    b: ElemRef,
+    a: ElemId,
+    b: ElemId,
 ) -> (&mut dyn DssObject, &mut dyn DssObject) {
-    assert_ne!((a.cls, a.idx), (b.cls, b.idx), "pair_mut: aliasing refs");
-    if a.cls == b.cls {
-        arenas[a.cls].pair_mut_same(a.idx, b.idx)
+    let (a_cls, a_idx) = (a.class_ord(), a.index());
+    let (b_cls, b_idx) = (b.class_ord(), b.index());
+    assert_ne!((a_cls, a_idx), (b_cls, b_idx), "pair_mut: aliasing refs");
+    if a_cls == b_cls {
+        arenas[a_cls].pair_mut_same(a_idx, b_idx)
     } else {
         let [ca, cb] = arenas
-            .get_disjoint_mut([a.cls, b.cls])
+            .get_disjoint_mut([a_cls, b_cls])
             .expect("pair_mut: class index out of range");
-        ca.pair_mut_cross(a.idx, cb, b.idx)
+        ca.pair_mut_cross(a_idx, cb, b_idx)
     }
 }
 
@@ -628,40 +629,44 @@ pub(crate) fn pair_mut_arenas(
 /// inside a shared class (the same case analysis as the old `ClassStore`).
 pub(crate) fn triple_mut_arenas(
     arenas: &mut [ClassArena],
-    a: ElemRef,
-    b: ElemRef,
-    c: ElemRef,
+    a: ElemId,
+    b: ElemId,
+    c: ElemId,
 ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
-    let key = |r: ElemRef| (r.cls, r.idx);
+    let (a_cls, a_idx) = (a.class_ord(), a.index());
+    let (b_cls, b_idx) = (b.class_ord(), b.index());
+    let (c_cls, c_idx) = (c.class_ord(), c.index());
     assert!(
-        key(a) != key(b) && key(a) != key(c) && key(b) != key(c),
+        (a_cls, a_idx) != (b_cls, b_idx)
+            && (a_cls, a_idx) != (c_cls, c_idx)
+            && (b_cls, b_idx) != (c_cls, c_idx),
         "triple_mut: aliasing refs"
     );
-    if a.cls == b.cls && b.cls == c.cls {
-        arenas[a.cls].triple_mut_same(a.idx, b.idx, c.idx)
-    } else if a.cls == b.cls {
+    if a_cls == b_cls && b_cls == c_cls {
+        arenas[a_cls].triple_mut_same(a_idx, b_idx, c_idx)
+    } else if a_cls == b_cls {
         let [cab, cc] = arenas
-            .get_disjoint_mut([a.cls, c.cls])
+            .get_disjoint_mut([a_cls, c_cls])
             .expect("triple_mut: class index out of range");
-        let (oa, ob) = cab.pair_mut_same(a.idx, b.idx);
-        (oa, ob, cc.obj_mut(c.idx))
-    } else if a.cls == c.cls {
+        let (oa, ob) = cab.pair_mut_same(a_idx, b_idx);
+        (oa, ob, cc.obj_mut(c_idx))
+    } else if a_cls == c_cls {
         let [cac, cb] = arenas
-            .get_disjoint_mut([a.cls, b.cls])
+            .get_disjoint_mut([a_cls, b_cls])
             .expect("triple_mut: class index out of range");
-        let (oa, oc) = cac.pair_mut_same(a.idx, c.idx);
-        (oa, cb.obj_mut(b.idx), oc)
-    } else if b.cls == c.cls {
+        let (oa, oc) = cac.pair_mut_same(a_idx, c_idx);
+        (oa, cb.obj_mut(b_idx), oc)
+    } else if b_cls == c_cls {
         let [ca, cbc] = arenas
-            .get_disjoint_mut([a.cls, b.cls])
+            .get_disjoint_mut([a_cls, b_cls])
             .expect("triple_mut: class index out of range");
-        let (ob, oc) = cbc.pair_mut_same(b.idx, c.idx);
-        (ca.obj_mut(a.idx), ob, oc)
+        let (ob, oc) = cbc.pair_mut_same(b_idx, c_idx);
+        (ca.obj_mut(a_idx), ob, oc)
     } else {
         let [ca, cb, cc] = arenas
-            .get_disjoint_mut([a.cls, b.cls, c.cls])
+            .get_disjoint_mut([a_cls, b_cls, c_cls])
             .expect("triple_mut: class index out of range");
-        (ca.obj_mut(a.idx), cb.obj_mut(b.idx), cc.obj_mut(c.idx))
+        (ca.obj_mut(a_idx), cb.obj_mut(b_idx), cc.obj_mut(c_idx))
     }
 }
 
@@ -737,7 +742,7 @@ mod tests {
         let line = cls("Line");
         let load = cls("Load");
         let cap = cls("Capacitor");
-        let r = |cls: usize, idx: usize| ElemRef { cls, idx };
+        let r = |cls: usize, idx: usize| ElemId::new(cls, idx);
 
         let mut e = Elements::new();
         assert_eq!(e.push_new(line, "l0"), 0);
@@ -809,11 +814,13 @@ mod tests {
             .unwrap();
         let mut e = Elements::new();
         e.push_new(line, "l0");
-        let a = ElemRef { cls: line, idx: 0 };
+        let a = ElemId::new(line, 0);
         let _ = e.pair_mut(a, a);
     }
 
-    /// `Idx<T>` and the `to_ref`/`class_ord` bridge round-trip a `{cls, idx}`.
+    /// `Idx<T>` and the `class_ord`/`index` tag accessors agree with the live
+    /// registry, and `ElemId::new` is their inverse (the `{cls, idx}` pair the
+    /// pre-R3 tag struct carried as fields).
     #[test]
     fn elemid_ref_bridge_round_trips() {
         // Line is class 18 in registration order (0-based).
@@ -826,39 +833,35 @@ mod tests {
         assert_eq!(id.class_name(), "Line");
         assert_eq!(id.class_ord(), line_cls);
         assert_eq!(id.index(), 7);
-        assert_eq!(
-            id.to_ref(),
-            ElemRef {
-                cls: line_cls,
-                idx: 7
-            }
-        );
-        // `from_ref` is the R2 inverse of `to_ref`, and the `From` bridges
-        // delegate to both — round-trip in both directions.
-        assert_eq!(ElemId::from_ref(id.to_ref()), id);
-        assert_eq!(ElemId::from(id.to_ref()), id);
-        assert_eq!(ElemRef::from(id), id.to_ref());
+        // `new` is the inverse of the `class_ord`/`index` pair — round-trip in
+        // both directions.
+        assert_eq!(ElemId::new(line_cls, 7), id);
+        assert_eq!(ElemId::new(id.class_ord(), id.index()), id);
     }
 
-    /// `from_ref` selects the correct variant for **every** registered class
-    /// ordinal (the full match the spine flip rests on), and round-trips through
-    /// `to_ref` back to the same `{cls, idx}` — checked against the live registry
-    /// so any drift in the class list or registration order is caught.
+    /// `ElemId::new` selects the correct variant for **every** registered class
+    /// ordinal (the full match the spine rests on), and round-trips through
+    /// `class_ord`/`index` back to the same `{cls, idx}` — checked against the
+    /// live registry so any drift in the class list or registration order is
+    /// caught.
     #[test]
     fn from_ref_covers_every_class_and_round_trips() {
         let names = Dss::new().registered_class_names();
         assert_eq!(names.len(), ElemId::CLASS_NAMES.len());
         for (cls, reg) in names.iter().enumerate() {
-            let r = ElemRef { cls, idx: 3 };
-            let id = ElemId::from_ref(r);
+            let id = ElemId::new(cls, 3);
             assert!(
                 id.class_name().eq_ignore_ascii_case(reg),
-                "class {cls}: from_ref → {:?} but registry = {reg:?}",
+                "class {cls}: ElemId::new → {:?} but registry = {reg:?}",
                 id.class_name()
             );
             assert_eq!(id.class_ord(), cls);
             assert_eq!(id.index(), 3);
-            assert_eq!(id.to_ref(), r, "class {cls}: from_ref/to_ref not inverse");
+            assert_eq!(
+                ElemId::new(id.class_ord(), id.index()),
+                id,
+                "class {cls}: ElemId::new / (class_ord, index) not inverse"
+            );
         }
     }
 

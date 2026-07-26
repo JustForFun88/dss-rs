@@ -28,7 +28,7 @@ pub(crate) fn export_unserved(
     let emerg_min = ckt.emerg_min_volts;
     let mut s = String::from("Load, Bus, kW, EEN_Factor,  UE_Factor\n");
     for &r in &ckt.loads {
-        let obj = &mut classes[r.cls].arena[r.idx];
+        let obj = &mut classes[r.class_ord()].arena[r.index()];
         // Take the name before the exclusive `&mut Load` borrow.
         let name = obj.data().name().to_string();
         let Some(load) = obj.as_any_mut().downcast_mut::<Load>() else {

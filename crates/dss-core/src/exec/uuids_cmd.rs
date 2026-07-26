@@ -174,15 +174,15 @@ impl Dss {
                 out.push_str(&format!("Bus.{} {}\n", bus.name, id.to_dss_string()));
             }
         }
-        let elems: Vec<ElemRef> = self
+        let elems: Vec<ElemId> = self
             .circuit
             .as_ref()
             .expect("post-circuit dispatch")
             .ckt_elements
             .clone();
         for r in elems {
-            let class_name = self.classes[r.cls].props.class_name().to_string();
-            let obj = self.classes[r.cls].arena[r.idx].data_mut();
+            let class_name = self.classes[r.class_ord()].props.class_name().to_string();
+            let obj = self.classes[r.class_ord()].arena[r.index()].data_mut();
             let id = obj.uuid();
             out.push_str(&format!(
                 "{}.{} {}\n",
