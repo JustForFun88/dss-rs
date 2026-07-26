@@ -10,7 +10,7 @@ use super::prop::{
     CSVFILE, DBLFILE, HOUR, INTERPOLATION, INTERVAL, MEAN, MEMORYMAPPING, MINTERVAL, MULT, NPTS,
     PBASE, PMAX, PMULT, PQCSVFILE, QBASE, QMAX, QMULT, SINTERVAL, SNGFILE, STDDEV, USEACTUAL,
 };
-use super::{LoadShapeObj, store_array};
+use super::{LoadShapeInterp, LoadShapeObj, store_array};
 
 impl LoadShapeObj {
     /// Pascal `TLoadShapeObj.MakeLike`.
@@ -57,14 +57,17 @@ impl DssObject for LoadShapeObj {
     fn get_i32(&self, idx: usize) -> i32 {
         match idx {
             NPTS => self.num_points,
-            INTERPOLATION => self.interpolation,
+            INTERPOLATION => self.interpolation.ordinal(),
             _ => unreachable!("LoadShape has no integer property {idx}"),
         }
     }
     fn set_i32(&mut self, idx: usize, value: i32) {
         match idx {
             NPTS => self.num_points = value,
-            INTERPOLATION => self.interpolation = value,
+            INTERPOLATION => {
+                self.interpolation =
+                    LoadShapeInterp::from_ordinal(value).unwrap_or(self.interpolation)
+            }
             _ => unreachable!("LoadShape has no integer property {idx}"),
         }
     }

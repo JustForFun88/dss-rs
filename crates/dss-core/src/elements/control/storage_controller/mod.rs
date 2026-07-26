@@ -59,32 +59,93 @@ mod compute;
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
+use crate::elements::control::mon_phase::MonPhase;
 use crate::elements::general::load_shape::LoadShapeObj;
-use crate::elements::pc::storage::STORE_IDLING;
+use crate::elements::pc::storage::StorageState;
 use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::solution::SolveMode;
 
-// Discharge/charge mode ordinals (StorageController.pas l.268-277).
-const MODE_FOLLOW: i32 = 1;
-const MODE_LOADSHAPE: i32 = 2;
-const MODE_SUPPORT: i32 = 3;
-const MODE_TIME: i32 = 4;
-const MODE_PEAKSHAVE: i32 = 5;
-const MODE_SCHEDULE: i32 = 6;
-const MODE_PEAKSHAVELOW: i32 = 7;
-const CURRENT_PEAKSHAVE: i32 = 8;
-const CURRENT_PEAKSHAVE_LOW: i32 = 9;
-/// `RELEASE_INHIBIT` — the control-queue action code that lifts the
-/// discharge-inhibit after charging. `pub(crate)` so the dispatch env can push it.
-pub(crate) const RELEASE_INHIBIT: i32 = 999;
-/// Monitored-phase sentinels (`StorageController.pas` l.38-40). `pub(crate)` so
-/// the dispatch env's `GetControlPower`/`GetControlCurrent` can resolve them.
-pub(crate) const AVG: i32 = -1;
-pub(crate) const MAXPHASE: i32 = -2;
-pub(crate) const MINPHASE: i32 = -3;
+/// Discharge / charge mode ordinals (`StorageController.pas:268-276`). One
+/// shared ordinal space feeds **two** `DssEnum`s — `StorageController: Discharge
+/// Mode` (values `[5,1,3,2,4,6,8]`) and `... Charge Mode` (`[2,4,7,9]`) — so a
+/// single enum covers both the `ModeDischarge=` and `ModeCharge=` fields, and
+/// each `Sample` arm rejects the ordinals its own mode does not accept exactly
+/// as the pre-enum `_ =>` arms did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum StorageCtrlMode {
+    /// `MODEFOLLOW = 1`.
+    Follow = 1,
+    /// `MODELOADSHAPE = 2`.
+    LoadShape = 2,
+    /// `MODESUPPORT = 3`.
+    Support = 3,
+    /// `MODETIME = 4`.
+    Time = 4,
+    /// `MODEPEAKSHAVE = 5` — `TStorageControllerObj.Create`'s DischargeMode.
+    PeakShave = 5,
+    /// `MODESCHEDULE = 6`.
+    Schedule = 6,
+    /// `MODEPEAKSHAVELOW = 7`.
+    PeakShaveLow = 7,
+    /// `CURRENTPEAKSHAVE = 8`.
+    CurrentPeakShave = 8,
+    /// `CURRENTPEAKSHAVELOW = 9`.
+    CurrentPeakShaveLow = 9,
+}
 
+impl StorageCtrlMode {
+    /// The `StorageController: Discharge/Charge Mode` `DssEnum` ordinal.
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            1 => Some(Self::Follow),
+            2 => Some(Self::LoadShape),
+            3 => Some(Self::Support),
+            4 => Some(Self::Time),
+            5 => Some(Self::PeakShave),
+            6 => Some(Self::Schedule),
+            7 => Some(Self::PeakShaveLow),
+            8 => Some(Self::CurrentPeakShave),
+            9 => Some(Self::CurrentPeakShaveLow),
+            _ => None,
+        }
+    }
+}
+
+/// The control-queue action code this class *handles* on pop
+/// (`StorageController.pas:279` `RELEASE_INHIBIT = 999`) — it lifts the
+/// discharge-inhibit after a charge cycle. `Sample` additionally pushes the
+/// **storage-state** ordinals (`STORE_CHARGING`/`STORE_DISCHARGING`) as
+/// immediate re-solve markers — upstream reuses that ordinal space on the same
+/// generic queue — and `DoPendingAction` deliberately ignores them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum StorageCtrlAction {
+    ReleaseInhibit = 999,
+}
+
+impl StorageCtrlAction {
+    /// The `ControlQueue` action code.
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From a popped `ControlQueue` action code; anything else (including the
+    /// `StorageState` markers `Sample` pushes) yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            999 => Some(Self::ReleaseInhibit),
+            _ => None,
+        }
+    }
+}
 /// 1-based property ordinals (Pascal `TStorageControllerProp` + the
 /// `TCktElementClass` tail).
 pub mod prop {
@@ -214,7 +275,7 @@ pub struct StorageController {
     /// Parse-time shape snapshot of the monitored reference.
     mon_snap: Option<RefSnapshot>,
 
-    f_mon_phase: i32,
+    f_mon_phase: MonPhase,
 
     f_kw_target: f64,
     f_kw_target_low: f64,
@@ -238,8 +299,8 @@ pub struct StorageController {
     fleet_list_changed: bool,
     element_list_specified: bool,
 
-    discharge_mode: i32,
-    charge_mode: i32,
+    discharge_mode: StorageCtrlMode,
+    charge_mode: StorageCtrlMode,
     discharge_trigger_time: f64,
     charge_trigger_time: f64,
     pct_kw_rate: f64,
@@ -273,7 +334,7 @@ pub struct StorageController {
     /// `Sample` (empty until then), cached across samples exactly like Pascal.
     fleet: Vec<ElemId>,
     /// `FleetState` — the aggregate fleet charge/idle/discharge state.
-    fleet_state: i32,
+    fleet_state: StorageState,
     /// `TotalWeight` — the sum of `FWeights` over the fleet.
     total_weight: f64,
     /// `UpPlusFlat` / `UpPlusFlatPlusDn` — Schedule-mode ramp boundaries.
@@ -312,7 +373,7 @@ impl StorageController {
             ccd,
             monitored_full_name: String::new(),
             mon_snap: None,
-            f_mon_phase: MAXPHASE,
+            f_mon_phase: MonPhase::Max,
             f_kw_target,
             f_kw_target_low,
             f_kw_threshold: 6000.0,
@@ -329,8 +390,8 @@ impl StorageController {
             fleet_size: 0,
             fleet_list_changed: true, // force building of list
             element_list_specified: false,
-            discharge_mode: MODE_PEAKSHAVE,
-            charge_mode: MODE_TIME,
+            discharge_mode: StorageCtrlMode::PeakShave,
+            charge_mode: StorageCtrlMode::Time,
             discharge_trigger_time: -1.0, // disabled
             charge_trigger_time: 2.0,     // 2 AM
             pct_kw_rate: 20.0,
@@ -354,7 +415,7 @@ impl StorageController {
             season_targets_low: vec![f_kw_target_low],
 
             fleet: Vec::new(),
-            fleet_state: STORE_IDLING,
+            fleet_state: StorageState::Idling,
             total_weight: 1.0,
             up_plus_flat: 0.25 + 2.0,                // UpRampTime + FlatTime
             up_plus_flat_plus_dn: 0.25 + 2.0 + 0.25, // + DnRampTime
@@ -386,7 +447,7 @@ pub(crate) enum FleetFind {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct StorageSnap {
     /// `StorageState` (`FState`).
-    pub state: i32,
+    pub state: StorageState,
     /// `PresentkW` (AC inverter output).
     pub present_kw: f64,
     /// `PresentkV` (rated kV).
@@ -419,9 +480,9 @@ pub(crate) trait StorageDispatchEnv {
     /// Pascal `GetControlPower(S)` — the active-power signal at the monitored
     /// terminal, resolved per `MonPhase` (×3 under positive sequence). `fnphases`
     /// is the controller's `Fnphases` (the monitored element's phase count).
-    fn control_power(&mut self, mon_phase: i32, fnphases: usize) -> Complex64;
+    fn control_power(&mut self, mon_phase: MonPhase, fnphases: usize) -> Complex64;
     /// Pascal `GetControlCurrent(Amps)` — the per-`MonPhase` terminal current.
-    fn control_current(&mut self, mon_phase: i32, fnphases: usize) -> f64;
+    fn control_current(&mut self, mon_phase: MonPhase, fnphases: usize) -> f64;
     /// Pascal `MonitoredElement.ComputeVterminal; cabs(Vterminal[1])` — the LN
     /// voltage magnitude used to convert a current deficit into kW.
     fn monitored_vterminal1_abs(&mut self) -> f64;
@@ -442,7 +503,7 @@ pub(crate) trait StorageDispatchEnv {
     /// Read the dispatch-relevant state of one fleet member.
     fn snap(&self, r: ElemId) -> StorageSnap;
     /// `obj.StorageState := state` (`Set_StorageState`, declines past kWh limits).
-    fn set_state(&mut self, r: ElemId, state: i32);
+    fn set_state(&mut self, r: ElemId, state: StorageState);
     /// `obj.kW := kw` (`Set_kW`, sets the state + dispatch %).
     fn set_kw(&mut self, r: ElemId, kw: f64);
     /// `obj.pctkWout := pct`.
@@ -452,7 +513,7 @@ pub(crate) trait StorageDispatchEnv {
     /// `obj.pctReserve := pct`.
     fn set_pct_reserve(&mut self, r: ElemId, pct: f64);
     /// `obj.StateDesired := state`.
-    fn set_state_desired(&mut self, r: ElemId, state: i32);
+    fn set_state_desired(&mut self, r: ElemId, state: StorageState);
     /// `obj.DispatchMode := STORE_EXTERNALMODE`.
     fn set_dispatch_external(&mut self, r: ElemId);
     /// `obj.SetNominalDEROutput()` — recompute the storage's present P/Q.
@@ -465,7 +526,7 @@ pub(crate) trait StorageDispatchEnv {
     // --- control queue / event log / solution flags ---
     /// Pascal `PushTimeOntoControlQueue(Code)`: `LoadsNeedUpdating := TRUE` +
     /// `ControlQueue.Push(0, Code, 0, Self)` (force a re-solve at the present step).
-    fn push_immediate(&mut self, code: i32);
+    fn push_immediate(&mut self, code: StorageState);
     /// Pascal `ControlQueue.Push(intHour + InhibitHrs, t, RELEASE_INHIBIT, 0, Self)`
     /// (+ `LoadsNeedUpdating := TRUE`).
     fn push_release_inhibit(&mut self, inhibit_hrs: i32);

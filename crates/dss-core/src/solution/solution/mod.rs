@@ -44,9 +44,9 @@ pub(crate) use power_flow::solve_snap;
 pub use power_flow::solve_zero_load_snapshot;
 pub use set_mode::set_mode;
 pub use state::{
-    ADMITTANCE, ActiveY, CONTROLSOFF, CTRLSTATIC, EVENTDRIVEN, GAUSSIAN, LOGNORMAL, MULTIRATE,
-    NCIM_PQ_NODE, NCIM_PV_NODE, POWERFLOW, Solution, SolveAlgorithm, SolveEnv, SolveMode,
-    SolveResult, TIMEDRIVEN, UNIFORM, USEDAILY, USEDUTY, USENONE, USEYEARLY, sys_ctx,
+    ActiveY, ControlMode, LoadSolutionModel, NCIM_PQ_NODE, NCIM_PV_NODE, RandomType, Solution,
+    SolveAlgorithm, SolveEnv, SolveMode, SolveResult, USEDAILY, USEDUTY, USENONE, USEYEARLY,
+    sys_ctx,
 };
 
 pub(crate) use ncim::do_ncim_solution;

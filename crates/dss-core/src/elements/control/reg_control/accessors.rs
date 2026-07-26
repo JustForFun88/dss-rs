@@ -13,7 +13,7 @@ use crate::elements::traits::{CktElement, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
-use super::{RegControl, prop};
+use super::{MonPhase, RegControl, prop};
 
 impl CktElement for RegControl {
     fn cd(&self) -> &crate::elements::ckt::CktElementData {
@@ -213,7 +213,7 @@ impl DssObject for RegControl {
             WINDING => self.ccd.element_terminal,
             MAXTAPCHANGE => self.tap_limit_per_change,
             TAPWINDING => self.tap_winding,
-            PTPHASE => self.fpt_phase,
+            PTPHASE => self.fpt_phase.ordinal(),
             TAPNUM => self.get_tap_num(),
             _ => unreachable!("RegControl has no integer property {idx}"),
         }
@@ -224,7 +224,7 @@ impl DssObject for RegControl {
             WINDING => self.ccd.element_terminal = value,
             MAXTAPCHANGE => self.tap_limit_per_change = value,
             TAPWINDING => self.tap_winding = value,
-            PTPHASE => self.fpt_phase = value,
+            PTPHASE => self.fpt_phase = MonPhase::from_ordinal(value),
             TAPNUM => self.set_tap_num(value),
             _ => unreachable!("RegControl has no integer property {idx}"),
         }

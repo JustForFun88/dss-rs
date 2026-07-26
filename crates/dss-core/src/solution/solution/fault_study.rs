@@ -15,13 +15,13 @@ use crate::elements::pd::fault::Fault;
 use crate::support::cmatrix::CMatrix;
 
 use super::power_flow::solve_direct;
-use super::{ADMITTANCE, SolveEnv, SolveResult};
+use super::{LoadSolutionModel, SolveEnv, SolveResult};
 use crate::elements::traits::TypedStore;
 
 /// Pascal `TSolutionAlgs.SolveFaultStudy`: open-circuit (Voc) direct solve,
 /// then per-bus `Ysc`/`Zsc`/`Isc`.
 pub(super) fn solve_fault_study(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    ckt.solution.load_model = ADMITTANCE;
+    ckt.solution.load_model = LoadSolutionModel::Admittance;
     disable_all_faults(ckt, env);
 
     // Open-circuit voltages (and corrected bus lists).
@@ -86,19 +86,24 @@ fn compute_all_ysc(ckt: &mut Circuit) -> SolveResult {
 /// factored system Y; `Ysc = Zsc⁻¹`. Assumes `Currents` is zeroed on entry and
 /// restores it before returning (the injection is set then cleared per node).
 fn compute_ysc(ckt: &mut Circuit, bus_idx: usize) -> SolveResult {
-    let ref_no = ckt.buses[bus_idx].ref_no.clone();
+    // Split the circuit borrow: the injection/solve touches `solution` only, so
+    // the bus's `ref_no` is read in place instead of cloned per bus.
+    let Circuit {
+        buses, solution, ..
+    } = ckt;
+    let ref_no = &buses[bus_idx].ref_no;
     let n = ref_no.len();
     let mut zsc = CMatrix::new(n);
 
     for (i, &ref1) in ref_no.iter().enumerate() {
         if ref1 > 0 {
-            ckt.solution.currents[ref1] = Complex64::new(1.0, 0.0);
+            solution.currents[ref1] = Complex64::new(1.0, 0.0);
             // Re-solve the already-factored system Y with the unit injection.
-            ckt.solution.solve_system()?;
+            solution.solve_system()?;
             for (j, &rj) in ref_no.iter().enumerate() {
-                zsc.set(j, i, ckt.solution.node_v[rj]);
+                zsc.set(j, i, solution.node_v[rj]);
             }
-            ckt.solution.currents[ref1] = Complex64::ZERO;
+            solution.currents[ref1] = Complex64::ZERO;
         }
     }
 
@@ -108,8 +113,8 @@ fn compute_ysc(ckt: &mut Circuit, bus_idx: usize) -> SolveResult {
     // the reporting path reads `Zsc`, and `Isc` mirrors the upstream value).
     let _ = ysc.invert();
 
-    ckt.buses[bus_idx].zsc = Some(zsc);
-    ckt.buses[bus_idx].ysc = Some(ysc);
+    buses[bus_idx].zsc = Some(zsc);
+    buses[bus_idx].ysc = Some(ysc);
     Ok(())
 }
 
@@ -117,8 +122,8 @@ fn compute_ysc(ckt: &mut Circuit, bus_idx: usize) -> SolveResult {
 fn compute_isc(ckt: &mut Circuit) {
     for b in ckt.buses.iter_mut() {
         if let Some(ysc) = b.ysc.take() {
-            let vbus = b.vbus.clone();
-            ysc.mv_mult(&mut b.bus_current, &vbus);
+            // `bus_current` and `vbus` are disjoint fields — no copy of `vbus`.
+            ysc.mv_mult(&mut b.bus_current, &b.vbus);
             b.ysc = Some(ysc);
         }
     }

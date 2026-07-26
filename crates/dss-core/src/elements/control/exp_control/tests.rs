@@ -73,15 +73,18 @@ fn derlist_syncs_pvsystemlist() {
 
 // --- WP7.5 step 3: the dispatch math, pinned through a mock env ---
 mod dispatch {
+    use super::super::ExpPendingChange;
     use super::super::compute::{ExpDispatchEnv, PvFind, PvSnap};
     use super::super::{ExpControl, prop};
-    use crate::elements::pc::pvsystem::VARMODE_KVAR;
+    use crate::elements::pc::inv_based_pce::VarMode;
     use crate::elements::traits::ElemId;
     use crate::obj::base::DssObject;
-    use crate::solution::CTRLSTATIC;
+    use crate::solution::ControlMode;
 
-    /// A non-static control mode (so the static-init `find Vreg` branch is off).
-    const TIMEDRIVEN: i32 = 1;
+    // NB: the mocks below use `ControlMode::TimeDriven`; the pre-enum code used a
+    // local `const TIMEDRIVEN: i32 = 1` (mislabeled — 1 is EVENTDRIVEN). Both are
+    // non-static, and every ExpControl comparison is `== / != CTRLSTATIC`, so the
+    // corrected ordinal is behaviorally identical here.
 
     fn approx(a: f64, b: f64) {
         assert!((a - b).abs() < 1e-9, "expected {b}, got {a}");
@@ -107,7 +110,7 @@ mod dispatch {
         // --- dispatch outputs ---
         avr_mode: bool,
         vw_mode: bool,
-        var_mode: i32,
+        var_mode: VarMode,
         requested_kw: f64,
         pu_pmpp: f64,
         requested_kvar: f64,
@@ -131,7 +134,7 @@ mod dispatch {
                 present_kvar: 0.0,
                 avr_mode: false,
                 vw_mode: true,
-                var_mode: 0, // VARMODE_PF
+                var_mode: VarMode::Pf,
                 requested_kw: present_kw,
                 pu_pmpp: 1.0,
                 requested_kvar: 0.0,
@@ -142,8 +145,8 @@ mod dispatch {
 
     struct MockExpEnv {
         pvs: Vec<MockPv>,
-        pushes: Vec<i32>,
-        control_mode: i32,
+        pushes: Vec<ExpPendingChange>,
+        control_mode: ControlMode,
         control_iter: i32,
         dyna_h: f64,
         loads_need_updating: bool,
@@ -153,7 +156,7 @@ mod dispatch {
             Self {
                 pvs,
                 pushes: Vec::new(),
-                control_mode: TIMEDRIVEN,
+                control_mode: ControlMode::TimeDriven,
                 control_iter: 1,
                 dyna_h: 1.0,
                 loads_need_updating: false,
@@ -211,7 +214,7 @@ mod dispatch {
         fn pv_set_vw_mode(&mut self, r: ElemId, value: bool) {
             self.pvs[Self::idx(r)].vw_mode = value;
         }
-        fn pv_set_var_mode(&mut self, r: ElemId, mode: i32) {
+        fn pv_set_var_mode(&mut self, r: ElemId, mode: VarMode) {
             self.pvs[Self::idx(r)].var_mode = mode;
         }
         fn pv_set_nominal(&mut self, _r: ElemId) {}
@@ -227,11 +230,11 @@ mod dispatch {
         fn pv_set_vreg_var(&mut self, r: ElemId, value: f64) {
             self.pvs[Self::idx(r)].vreg = value;
         }
-        fn push_change(&mut self, _delay: f64, code: i32) {
+        fn push_change(&mut self, _delay: f64, code: ExpPendingChange) {
             self.pushes.push(code);
         }
         fn append_event(&mut self, _sender: &str, _msg: &str) {}
-        fn control_mode(&self) -> i32 {
+        fn control_mode(&self) -> ControlMode {
             self.control_mode
         }
         fn control_iteration(&self) -> i32 {
@@ -302,7 +305,7 @@ mod dispatch {
         let mut ec = named_ec();
         let mut env = MockExpEnv::new(vec![MockPv::new("pv1", 1.02, 300.0)]);
         ec.sample(&mut env);
-        assert_eq!(env.pushes, vec![super::super::CHANGEVARLEVEL]);
+        assert_eq!(env.pushes, vec![ExpPendingChange::ChangeVarLevel]);
         assert!(!ec.ctrl_vars[0].f_within_tol);
 
         ec.do_pending_action(&mut env);
@@ -310,11 +313,11 @@ mod dispatch {
         approx(ec.ctrl_vars[0].f_last_iter_q, -185.1);
         approx(env.pvs[0].requested_kvar, -185.1);
         approx(ec.ctrl_vars[0].f_prior_vpu, 1.02);
-        assert_eq!(env.pvs[0].var_mode, VARMODE_KVAR);
+        assert_eq!(env.pvs[0].var_mode, VarMode::Kvar);
         assert!(!env.pvs[0].vw_mode);
         assert!(env.loads_need_updating);
         // Pending cleared after the action.
-        assert_eq!(ec.ctrl_vars[0].f_pending_change, super::super::NONE);
+        assert_eq!(ec.ctrl_vars[0].f_pending_change, ExpPendingChange::None);
     }
 
     #[test]
@@ -381,14 +384,14 @@ mod dispatch {
 
     #[test]
     fn static_init_finds_vreg_from_voltage() {
-        // CTRLSTATIC + FVregInit<=0: Vreg is found from the present voltage,
+        // Static + FVregInit<=0: Vreg is found from the present voltage,
         // clamped into [VregMin, VregMax]; an out-of-band hit nudges FVregInit.
         let mut ec = ExpControl::new("e1");
         ec.f_vreg_init = 0.0;
         ec.set_string_list(prop::PVSYSTEM_LIST, vec!["pv1".into()]);
         ec.side_effects(prop::PVSYSTEM_LIST, 0);
         let mut env = MockExpEnv::new(vec![MockPv::new("pv1", 1.08, 300.0)]);
-        env.control_mode = CTRLSTATIC;
+        env.control_mode = ControlMode::Static;
         ec.sample(&mut env);
         // 1.08 > VregMax=1.05 → clamped to 1.05 and FVregInit nudged to 0.01.
         approx(ec.ctrl_vars[0].f_vregs, 1.05);
@@ -404,7 +407,7 @@ mod dispatch {
         ec.set_string_list(prop::PVSYSTEM_LIST, vec!["pv1".into()]);
         ec.side_effects(prop::PVSYSTEM_LIST, 0);
         let mut env = MockExpEnv::new(vec![MockPv::new("pv1", 0.90, 300.0)]);
-        env.control_mode = CTRLSTATIC;
+        env.control_mode = ControlMode::Static;
         ec.sample(&mut env);
         approx(ec.ctrl_vars[0].f_vregs, 0.95);
         approx(ec.f_vreg_init, 0.01);
@@ -415,7 +418,7 @@ mod dispatch {
         ec2.set_string_list(prop::PVSYSTEM_LIST, vec!["pv1".into()]);
         ec2.side_effects(prop::PVSYSTEM_LIST, 0);
         let mut env2 = MockExpEnv::new(vec![MockPv::new("pv1", 1.00, 300.0)]);
-        env2.control_mode = CTRLSTATIC;
+        env2.control_mode = ControlMode::Static;
         ec2.sample(&mut env2);
         approx(ec2.ctrl_vars[0].f_vregs, 1.00);
         approx(ec2.f_vreg_init, 0.0); // in-band: no nudge
@@ -424,7 +427,7 @@ mod dispatch {
     #[test]
     fn fopen_tau_lpf_lags_target_in_timedriven_mode() {
         // The FOpenTau low-pass filter (ExpControl.pas l.505-510) fires ONLY when
-        // ControlMode<>CTRLSTATIC — dormant in the daily goldens (which run CTRLSTATIC),
+        // ControlMode<>Static — dormant in the daily goldens (which run Static),
         // so this is the per-call FOpenTau gate (the duty golden is the end-to-end one).
         // Tresponse=23.026 → FOpenTau=10; dt=1 → blend (1-exp(-0.1))=0.09516. The raw
         // target (as in sample_triggers) is -264.0; FLastStepQ seeds at -1.0, so the
@@ -434,7 +437,7 @@ mod dispatch {
         ec.set_f64(prop::TRESPONSE, 23.026);
         ec.recalc(); // derive FOpenTau = Tresponse / 2.3026 = 10
         let mut env = MockExpEnv::new(vec![MockPv::new("pv1", 1.02, 300.0)]);
-        env.control_mode = TIMEDRIVEN;
+        env.control_mode = ControlMode::TimeDriven;
         ec.sample(&mut env);
         ec.do_pending_action(&mut env);
         let factor = 1.0 - (-1.0_f64 / 10.0).exp();
@@ -516,4 +519,20 @@ mod make_pos_seq_tests {
         assert_eq!(ec.ccd.cd.get_bus(1), "pvbus");
         assert_eq!(ec.monitored_element_ref(), Some(ElemId::new(4, 2)));
     }
+}
+
+/// `ExpControl.pas:169-170` (`NONE = 0`, `CHANGEVARLEVEL = 1`) — the
+/// control-queue action codes this class pushes and pops.
+#[test]
+fn exp_pending_change_pins_pascal_ordinals() {
+    use super::ExpPendingChange;
+
+    assert_eq!(ExpPendingChange::None.ordinal(), 0);
+    assert_eq!(ExpPendingChange::ChangeVarLevel.ordinal(), 1);
+    for m in [ExpPendingChange::None, ExpPendingChange::ChangeVarLevel] {
+        assert_eq!(ExpPendingChange::from_ordinal(m.ordinal()), Some(m));
+    }
+    assert_eq!(ExpPendingChange::from_ordinal(-1), None);
+    assert_eq!(ExpPendingChange::from_ordinal(2), None);
+    assert_eq!(ExpPendingChange::default(), ExpPendingChange::None);
 }

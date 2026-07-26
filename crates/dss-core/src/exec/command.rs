@@ -1725,9 +1725,14 @@ impl Dss {
         // splice and queues the Line Bus2 rewrite as a deferred RefAction.
         if active_arena.get::<gic_source::GicSource>(oi).is_some() {
             let name = active_arena[oi].data().name().to_string();
-            let resolved = foreign
-                .find("Line", &name)
-                .and_then(|o| o.ckt().map(|e| (o.id(), e.cd().get_bus(2).to_string())));
+            let resolved = foreign.find("Line", &name).and_then(|o| {
+                // `find("Line", …)` already fixes the class, so the narrowing
+                // `idx::<Line>()` is total here — it only moves the class off
+                // the value channel and into the type.
+                o.ckt()
+                    .zip(o.idx::<line::Line>())
+                    .map(|(e, i)| (i, e.cd().get_bus(2).to_string()))
+            });
             if let Some(gs) = active_arena.get_mut::<gic_source::GicSource>(oi) {
                 gs.set_resolved_line(resolved);
             }

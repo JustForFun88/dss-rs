@@ -398,7 +398,7 @@ pub(crate) fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
 
 /// Pascal `SolveCircuit`.
 pub(crate) fn solve_circuit(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    if ckt.solution.load_model == super::ADMITTANCE {
+    if ckt.solution.load_model == super::LoadSolutionModel::Admittance {
         solve_direct(ckt, env)
     } else {
         if ckt.solution.system_y_changed {

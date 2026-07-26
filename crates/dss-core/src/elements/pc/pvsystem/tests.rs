@@ -314,7 +314,7 @@ fn create_defaults() {
     assert_eq!(pv.f_temperature, 25.0);
     assert_eq!(pv.base.vminpu, 0.90);
     assert_eq!(pv.base.vmaxpu, 1.10);
-    assert_eq!(pv.base.var_mode, VARMODE_PF);
+    assert_eq!(pv.base.var_mode, VarMode::Pf);
     assert!(pv.base.inverter_on);
     assert_eq!(pv.base.pf_nominal, 1.0);
     assert_eq!(pv.base.pct_r, 50.0);

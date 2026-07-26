@@ -633,11 +633,11 @@ impl Dss {
         let control_str = self
             .enums
             .get(self.enums.control_mode)
-            .ordinal_to_string(ckt.solution.control_mode);
+            .ordinal_to_string(ckt.solution.control_mode.ordinal());
         let load_model_str = self
             .enums
             .get(self.enums.default_load_model)
-            .ordinal_to_string(ckt.solution.load_model);
+            .ordinal_to_string(ckt.solution.load_model.ordinal());
 
         let mut s = String::new();
         s.push_str(if ckt.is_solved {

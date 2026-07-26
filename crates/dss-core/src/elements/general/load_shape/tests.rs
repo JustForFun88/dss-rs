@@ -1172,3 +1172,19 @@ fn no_mode_prop_interpolation_stays_at_22() {
     // 22 class props + the `Like` tail = 23 (matches the capi015 count).
     assert_eq!(prop::NUM_PROPS, 23);
 }
+
+/// `TLoadShapeInterp` (`LoadShape.pas:293-295`) + the `LoadShape:
+/// Interpolation` `DssEnum` values `[0, 1]`.
+#[test]
+fn load_shape_interp_pins_enum_ordinals() {
+    use super::LoadShapeInterp;
+
+    assert_eq!(LoadShapeInterp::Avg.ordinal(), 0);
+    assert_eq!(LoadShapeInterp::Edge.ordinal(), 1);
+    for m in [LoadShapeInterp::Avg, LoadShapeInterp::Edge] {
+        assert_eq!(LoadShapeInterp::from_ordinal(m.ordinal()), Some(m));
+    }
+    assert_eq!(LoadShapeInterp::from_ordinal(-1), None);
+    assert_eq!(LoadShapeInterp::from_ordinal(2), None);
+    assert_eq!(LoadShapeInterp::default(), LoadShapeInterp::Avg);
+}

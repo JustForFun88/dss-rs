@@ -103,7 +103,7 @@ fn pf_mode_translates_on_off_settings() {
 // --- Sample / DoPendingAction (WP5.6) ---
 
 use crate::elements::ckt::CktElementData;
-use crate::solution::{ControlQueue, EventLog, SolveMode};
+use crate::solution::{ControlMode, ControlQueue, EventLog, LoadSolutionModel, SolveMode};
 
 fn test_sys() -> SysCtx {
     SysCtx {
@@ -111,7 +111,7 @@ fn test_sys() -> SysCtx {
         fundamental: 60.0,
         is_harmonic_model: false,
         is_dynamic_model: false,
-        load_model: 1,
+        load_model: LoadSolutionModel::PowerFlow,
         mode: SolveMode::Snapshot,
         active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
@@ -265,7 +265,7 @@ impl Scratch {
             sys: test_sys(),
         }
     }
-    fn ctx(&mut self, control_mode: i32, int_hour: i32, t: f64) -> CtrlCtx<'_> {
+    fn ctx(&mut self, control_mode: ControlMode, int_hour: i32, t: f64) -> CtrlCtx<'_> {
         CtrlCtx {
             node_v: &[],
             sys: &self.sys,
@@ -293,7 +293,7 @@ fn kvar_open_arms_close_above_onsetting() {
     let mut mon = MockMon::new(3);
     mon.power = Complex64::new(0.0, 200_000.0); // 200 kvar inductive
     let mut sc = Scratch::new();
-    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert_eq!(cc.pending_change, CTRL_CLOSE);
     assert!(cc.should_switch);
     assert!(cc.armed);
@@ -312,7 +312,7 @@ fn kvar_closed_arms_open_below_offsetting() {
     let mut mon = MockMon::new(3);
     mon.power = Complex64::new(0.0, -300_000.0); // -300 kvar (too leading)
     let mut sc = Scratch::new();
-    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert_eq!(cc.pending_change, CTRL_OPEN);
     assert!(cc.armed);
     assert_eq!(cc.ccd.time_delay, 15.0); // OFFDelay
@@ -328,7 +328,7 @@ fn kvar_in_band_does_not_switch() {
     let mut mon = MockMon::new(3);
     mon.power = Complex64::new(0.0, -50_000.0); // -50 kvar: between off and on
     let mut sc = Scratch::new();
-    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert_eq!(cc.pending_change, CTRL_NONE);
     assert!(!cc.armed);
     assert!(sc.queue.is_empty());
@@ -342,7 +342,7 @@ fn do_pending_open_single_step_opens_bank() {
     cc.armed = true;
     let mut cap = MockCap::one_step(true);
     let mut sc = Scratch::new();
-    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert!(!cap.closed);
     assert_eq!(cap.last_step, 0);
     assert_eq!(cc.present_state, CTRL_OPEN);
@@ -358,7 +358,7 @@ fn do_pending_close_single_step_closes_bank() {
     cc.armed = true;
     let mut cap = MockCap::one_step(false);
     let mut sc = Scratch::new();
-    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert!(cap.closed);
     assert_eq!(cap.last_step, 1);
     assert_eq!(cc.present_state, CTRL_CLOSE);
@@ -379,7 +379,7 @@ fn do_pending_open_multistep_steps_down() {
         closed: true,
     };
     let mut sc = Scratch::new();
-    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     // One step down: still partly closed, bank stays Closed.
     assert_eq!(cap.last_step, 3);
     assert!(cap.closed);
@@ -400,8 +400,8 @@ fn user_control_builds_sample_context_in_pascal_units() {
     let mut cc = CapControl::new("cc");
     cc.pt_ratio = 1.0;
     cc.ct_ratio = 1.0;
-    cc.fpt_phase = 1; // single-phase branch: cbuffer[0]/pt_ratio
-    cc.fct_phase = 1; // single-phase branch: cbuffer[0]/ct_ratio
+    cc.fpt_phase = MonPhase::Phase(1); // single-phase branch: cbuffer[0]/pt_ratio
+    cc.fct_phase = MonPhase::Phase(1); // single-phase branch: cbuffer[0]/ct_ratio
     cc.present_state = CTRL_OPEN;
     cc.set_pending_change(CTRL_NONE);
     let cap = MockCap {
@@ -417,7 +417,13 @@ fn user_control_builds_sample_context_in_pascal_units() {
     mon.voltages = vec![Complex64::new(7200.0, 0.0); 3];
     mon.currents = vec![Complex64::new(50.0, 0.0); 3];
     let mut sc = Scratch::new();
-    let cv = cc.build_sample_context(&cap, &mut mon, &mut sc.ctx(0, 0, 0.0), 0, 3);
+    let cv = cc.build_sample_context(
+        &cap,
+        &mut mon,
+        &mut sc.ctx(ControlMode::Static, 0, 0.0),
+        0,
+        3,
+    );
 
     assert_eq!(cv.sample_p, (200.0, 100.0)); // ×0.001 → kW+jkvar
     assert!((cv.sample_v - 7200.0).abs() < 1e-9); // PT-ratio 1.0, phase-1
@@ -444,7 +450,12 @@ fn user_control_do_pending_applies_code_not_preset_pending() {
     cc.set_pending_change(CTRL_OPEN); // sentinel: the popped `code`, not this, rules
     let mut cap = MockCap::one_step(false);
     let mut sc = Scratch::new();
-    let abort = cc.do_pending_action(CTRL_CLOSE, 7, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    let abort = cc.do_pending_action(
+        CTRL_CLOSE,
+        7,
+        &mut cap,
+        &mut sc.ctx(ControlMode::Static, 0, 0.0),
+    );
     assert!(!abort, "no loaded model → no trap → no abort");
     assert_eq!(cc.pending_change, CTRL_CLOSE); // host set PendingChange := code
     assert!(cap.closed);
@@ -468,7 +479,12 @@ fn user_control_do_pending_multistep_steps_up() {
         closed: true,
     };
     let mut sc = Scratch::new();
-    let abort = cc.do_pending_action(CTRL_CLOSE, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    let abort = cc.do_pending_action(
+        CTRL_CLOSE,
+        0,
+        &mut cap,
+        &mut sc.ctx(ControlMode::Static, 0, 0.0),
+    );
     assert!(!abort);
     assert_eq!(cap.last_step, 3); // stepped up
     assert!(sc.y_changed);
@@ -484,7 +500,11 @@ fn time_control_closes_inside_window() {
     let mut mon = MockMon::new(3);
     let mut sc = Scratch::new();
     // 12:00 is inside [6, 21) → close.
-    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 12, 0.0));
+    let _ = cc.sample(
+        &mut cap,
+        &mut mon,
+        &mut sc.ctx(ControlMode::Static, 12, 0.0),
+    );
     assert_eq!(cc.pending_change, CTRL_CLOSE);
     assert!(cc.armed);
 }
@@ -501,7 +521,7 @@ fn pf_control_closes_when_leading_room_remains() {
     // 100 kW + 50 kvar → PF1to2 = 0.894 < 0.95; 50 kvar > 50·50·0.01 = 25.
     mon.power = Complex64::new(100_000.0, 50_000.0);
     let mut sc = Scratch::new();
-    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert_eq!(cc.pending_change, CTRL_CLOSE);
     assert!(cc.armed);
 }
@@ -514,7 +534,7 @@ fn event_log_records_close_when_enabled() {
     cc.set_pending_change(CTRL_CLOSE);
     let mut cap = MockCap::one_step(false);
     let mut sc = Scratch::new();
-    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.do_pending_action(0, 0, &mut cap, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert_eq!(sc.events.len(), 1);
     let line = &sc.events.entries()[0];
     assert!(line.contains("Element=Capacitor.cc"));
@@ -536,7 +556,7 @@ fn follow_without_control_signal_requests_abort() {
     let mut cap = MockCap::one_step(true);
     let mut mon = MockMon::new(3);
     let mut sc = Scratch::new();
-    let abort = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let abort = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert!(abort, "no ControlSignal must request solution abort");
     assert!(!cc.should_switch);
     assert_eq!(sc.errors.len(), 1);
@@ -553,7 +573,7 @@ fn follow_signal_on_arms_close_when_open() {
     let mut cap = MockCap::one_step(false); // bank open → PresentState OPEN
     let mut mon = MockMon::new(3);
     let mut sc = Scratch::new();
-    let abort = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let abort = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert!(!abort);
     assert_eq!(cc.pending_change, CTRL_CLOSE);
     assert!(cc.should_switch);
@@ -570,7 +590,7 @@ fn follow_signal_off_arms_open_when_closed() {
     let mut cap = MockCap::one_step(true); // bank closed → PresentState CLOSE
     let mut mon = MockMon::new(3);
     let mut sc = Scratch::new();
-    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert_eq!(cc.pending_change, CTRL_OPEN);
     assert!(cc.should_switch);
     assert_eq!(cc.ccd.time_delay, 15.0); // OFFDelay
@@ -589,7 +609,7 @@ fn follow_signal_matching_state_leaves_pending_untouched() {
     let mut cap = MockCap::one_step(true); // closed; signal wants ON → no switch
     let mut mon = MockMon::new(3);
     let mut sc = Scratch::new();
-    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(0, 0, 0.0));
+    let _ = cc.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
     assert!(!cc.should_switch);
     // The no-`else` quirk: pending stays CTRL_CLOSE (not reset to CTRL_NONE).
     // With should_switch false and pending != NONE, the arm/disarm block also

@@ -4,7 +4,7 @@
 
 use crate::circuit::Circuit;
 use crate::solution::control_queue::ControlQueue;
-use crate::solution::solution::{CONTROLSOFF, SolveEnv, SolveResult};
+use crate::solution::solution::{ControlMode, SolveEnv, SolveResult};
 
 use super::ControlOp;
 use super::actions::do_control_actions;
@@ -12,7 +12,7 @@ use super::dispatch::dispatch_control;
 
 /// Pascal `Sample_DoControlActions` (`Solution.pas` l.1996).
 pub(crate) fn sample_do_control_actions(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    if ckt.solution.control_mode == CONTROLSOFF {
+    if ckt.solution.control_mode == ControlMode::ControlsOff {
         ckt.solution.control_actions_done = true;
     } else {
         sample_control_devices(ckt, env)?;

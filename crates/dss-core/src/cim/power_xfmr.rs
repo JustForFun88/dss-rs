@@ -25,6 +25,7 @@ use crate::elements::pd::transformer::Transformer;
 use crate::elements::pd::winding::{Connection, Winding};
 use crate::elements::traits::CktElement;
 use crate::exec::registry::DssClass;
+use crate::obj::arena::ArenaClass;
 
 use super::export::{
     AUTOTRANS_DSS_OBJ_TYPE, OpLimit, XFMR_DSS_OBJ_TYPE, class_index, phase_order_string,
@@ -751,20 +752,22 @@ pub(crate) fn write_transformers(
         };
         let mut snap = snap;
         snap.uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
-        // Resolve the XfmrCode object UUID (case 2) if `xfmrcode=` resolved (and
-        // it really resolves to an `XfmrCode` object — else treated as no code).
+        // Resolve the XfmrCode object UUID (case 2) if `xfmrcode=` resolved. The
+        // handle is an `Idx<XfmrCodeObj>`, so its class is static; the `get`
+        // guard is the arena bounds check (a miss is treated as no code).
         let code_ref = classes[r.class_ord()]
             .arena
             .get::<Transformer>(r.index())
             .and_then(|t| t.xfmr_code_ref());
+        let code_cls = XfmrCodeObj::CLASS_ORD;
         snap.code_uuid = match code_ref {
             Some(cr)
-                if classes[cr.class_ord()]
+                if classes[code_cls]
                     .arena
-                    .get::<XfmrCodeObj>(cr.index())
+                    .get::<XfmrCodeObj>(cr.get())
                     .is_some() =>
             {
-                Some(classes[cr.class_ord()].arena[cr.index()].data_mut().uuid())
+                Some(classes[code_cls].arena[cr.get()].data_mut().uuid())
             }
             _ => None,
         };

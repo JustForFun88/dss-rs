@@ -6,13 +6,12 @@
 
 use num_complex::Complex64;
 
+use crate::elements::pc::inv_based_pce::VarMode;
 use crate::elements::traits::SysCtx;
 use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
 
-use super::{
-    STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, Storage, StorageDispatchMode, VARMODE_PF,
-};
+use super::{Storage, StorageDispatchMode, StorageState};
 
 /// Pascal `Math.Sign(Double): Integer` — returns 0 at exactly zero (unlike
 /// `f64::signum`, which returns ±1). The inverter clamp depends on this.
@@ -69,11 +68,11 @@ impl Storage {
         if self.dispatch_mode == StorageDispatchMode::Follow {
             // Charge/discharge by the sign of the load-shape.
             if level > 0.0 && (self.kwh_stored - self.kwh_reserve) > EPSILON {
-                self.set_storage_state(STORE_DISCHARGING);
+                self.set_storage_state(StorageState::Discharging);
             } else if level < 0.0 && (self.kwh_stored - self.kwh_rating) < -EPSILON {
-                self.set_storage_state(STORE_CHARGING);
+                self.set_storage_state(StorageState::Charging);
             } else {
-                self.set_storage_state(STORE_IDLING);
+                self.set_storage_state(StorageState::Idling);
             }
         } else {
             // All other dispatch modes: compare to the trigger value.
@@ -82,41 +81,41 @@ impl Storage {
             }
             // First, see whether to turn off charging/discharging.
             match self.f_state {
-                STORE_CHARGING => {
+                StorageState::Charging => {
                     if self.charge_trigger != 0.0
                         && (self.charge_trigger < level || self.kwh_stored >= self.kwh_rating)
                     {
-                        self.f_state = STORE_IDLING;
+                        self.f_state = StorageState::Idling;
                     }
                 }
-                STORE_DISCHARGING => {
+                StorageState::Discharging => {
                     if self.discharge_trigger != 0.0
                         && (self.discharge_trigger > level || self.kwh_stored <= self.kwh_reserve)
                     {
-                        self.f_state = STORE_IDLING;
+                        self.f_state = StorageState::Idling;
                     }
                 }
                 _ => {}
             }
             // Now check whether to turn on the opposite state.
-            if self.f_state == STORE_IDLING {
+            if self.f_state == StorageState::Idling {
                 if self.discharge_trigger != 0.0
                     && self.discharge_trigger < level
                     && self.kwh_stored > self.kwh_reserve
                 {
-                    self.f_state = STORE_DISCHARGING;
+                    self.f_state = StorageState::Discharging;
                 } else if self.charge_trigger != 0.0
                     && self.charge_trigger > level
                     && self.kwh_stored < self.kwh_rating
                 {
-                    self.f_state = STORE_CHARGING;
+                    self.f_state = StorageState::Charging;
                 }
                 // Time to turn on the charge cycle if not already on.
-                if self.f_state != STORE_CHARGING
+                if self.f_state != StorageState::Charging
                     && self.charge_time > 0.0
                     && (sys.time_of_day - self.charge_time).abs() < sys.dyna_h / 3600.0
                 {
-                    self.f_state = STORE_CHARGING;
+                    self.f_state = StorageState::Charging;
                 }
             }
         }
@@ -130,24 +129,24 @@ impl Storage {
     /// Pascal `Set_StorageState`: decline a state change that would exceed the
     /// kWh limits (set idling instead). `pub(crate)` so the StorageController
     /// fleet dispatch can drive `obj.StorageState`.
-    pub(crate) fn set_storage_state(&mut self, value: i32) {
+    pub(crate) fn set_storage_state(&mut self, value: StorageState) {
         let saved = self.f_state;
         self.f_state = match value {
-            STORE_CHARGING => {
+            StorageState::Charging => {
                 if self.kwh_stored < self.kwh_rating {
                     value
                 } else {
-                    STORE_IDLING // all charged up
+                    StorageState::Idling // all charged up
                 }
             }
-            STORE_DISCHARGING => {
+            StorageState::Discharging => {
                 if self.kwh_stored > self.kwh_reserve {
                     value
                 } else {
-                    STORE_IDLING // not enough to discharge
+                    StorageState::Idling // not enough to discharge
                 }
             }
-            _ => STORE_IDLING,
+            StorageState::Idling | StorageState::Other(_) => StorageState::Idling,
         };
         if saved != self.f_state {
             self.state_changed = true;
@@ -160,7 +159,7 @@ impl Storage {
         let old_state = self.f_state;
         self.state_desired = old_state;
         match self.f_state {
-            STORE_CHARGING => {
+            StorageState::Charging => {
                 if self.kwh_stored < self.kwh_rating {
                     if self.dispatch_mode == StorageDispatchMode::Follow {
                         self.base.kw_out = self.kw_rating * self.base.shape_factor.re;
@@ -169,10 +168,10 @@ impl Storage {
                         self.base.kw_out = -self.kw_rating * self.pct_kw_in / 100.0;
                     }
                 } else {
-                    self.f_state = STORE_IDLING; // all charged up
+                    self.f_state = StorageState::Idling; // all charged up
                 }
             }
-            STORE_DISCHARGING => {
+            StorageState::Discharging => {
                 if self.kwh_stored > self.kwh_reserve {
                     if self.dispatch_mode == StorageDispatchMode::Follow {
                         self.base.kw_out = self.kw_rating * self.base.shape_factor.re;
@@ -181,12 +180,12 @@ impl Storage {
                         self.base.kw_out = self.kw_rating * self.pct_kw_out / 100.0;
                     }
                 } else {
-                    self.f_state = STORE_IDLING; // not enough to discharge
+                    self.f_state = StorageState::Idling; // not enough to discharge
                 }
             }
             _ => {}
         }
-        if self.f_state == STORE_IDLING {
+        if self.f_state == StorageState::Idling {
             self.base.kw_out = -self.kw_out_idling;
         }
         if old_state != self.f_state {
@@ -199,42 +198,42 @@ impl Storage {
     fn kw_out_calc(&mut self) {
         self.fvw_state_requested = false;
 
-        let mut limit_kw_pct = if self.f_state == STORE_DISCHARGING {
+        let mut limit_kw_pct = if self.f_state == StorageState::Discharging {
             self.kw_rating * self.pct_kw_rated
         } else {
             -(self.kw_rating * self.pct_kw_rated)
         };
 
         // VW works only if the element is not idling.
-        if self.base.vw_mode && self.f_state != STORE_IDLING {
+        if self.base.vw_mode && self.f_state != StorageState::Idling {
             if self.kw_requested >= 0.0 && self.kw_requested.abs() < limit_kw_pct.abs() {
                 // Apply the VW limit.
-                limit_kw_pct = if self.f_state == STORE_DISCHARGING {
+                limit_kw_pct = if self.f_state == StorageState::Discharging {
                     self.kw_requested
                 } else {
                     -self.kw_requested
                 };
             } else if self.kw_requested < 0.0 {
                 // IEEE 1547 requesting region (not fully implemented).
-                if self.f_state == STORE_DISCHARGING {
+                if self.f_state == StorageState::Discharging {
                     if self.kwh_stored < self.kwh_rating {
-                        self.f_state = STORE_CHARGING;
+                        self.f_state = StorageState::Charging;
                         self.base.kw_out = self.kw_requested;
                     } else {
-                        self.f_state = STORE_IDLING;
+                        self.f_state = StorageState::Idling;
                         self.base.kw_out = -self.kw_out_idling;
                     }
                 } else if self.kwh_stored > self.kwh_reserve {
-                    self.f_state = STORE_DISCHARGING;
+                    self.f_state = StorageState::Discharging;
                     self.base.kw_out = -self.kw_requested;
                 } else {
-                    self.f_state = STORE_IDLING;
+                    self.f_state = StorageState::Idling;
                     self.base.kw_out = -self.kw_out_idling;
                 }
                 self.state_changed = true;
                 self.fvw_state_requested = true;
                 // The state may have changed; recompute the limit.
-                limit_kw_pct = if self.f_state == STORE_DISCHARGING {
+                limit_kw_pct = if self.f_state == StorageState::Discharging {
                     self.kw_rating * self.pct_kw_rated
                 } else {
                     -(self.kw_rating * self.pct_kw_rated)
@@ -260,7 +259,7 @@ impl Storage {
 
         // CutIn/CutOut reflected to the AC side of the inverter.
         if let Some(c) = self.base.inverter_curve_obj.as_mut() {
-            if self.f_state == STORE_DISCHARGING {
+            if self.f_state == StorageState::Discharging {
                 self.cut_out_kw_ac = self.base.cut_out_kw
                     * c.get_y_value(self.base.cut_out_kw.abs() / self.f_kva_rating);
                 self.cut_in_kw_ac = self.base.cut_in_kw
@@ -282,12 +281,12 @@ impl Storage {
         if self.base.inverter_on {
             if self.base.kw_out.abs() < self.cut_out_kw_ac {
                 self.base.inverter_on = false;
-                self.f_state = STORE_IDLING;
+                self.f_state = StorageState::Idling;
             }
         } else if self.base.kw_out.abs() >= self.cut_in_kw_ac {
             self.base.inverter_on = true;
         } else {
-            self.f_state = STORE_IDLING;
+            self.f_state = StorageState::Idling;
         }
         if old_state != self.f_state {
             self.state_changed = true;
@@ -308,9 +307,9 @@ impl Storage {
         let pmin_kvar_limit = self.base.pmin_kvar_limit;
         let mut temp_pf = 0.0;
 
-        if self.f_state == STORE_IDLING {
+        if self.f_state == StorageState::Idling {
             // In the idling state, check for the kvar limit only.
-            if self.base.var_mode == VARMODE_PF {
+            if self.base.var_mode == VarMode::Pf {
                 self.base.kvar_out =
                     self.base.kw_out * (1.0 / pf_nominal.powi(2) - 1.0).sqrt() * sign(pf_nominal);
                 if self.base.kvar_out > 0.0 && self.base.kvar_out.abs() > f_kvarlimit {
@@ -335,7 +334,7 @@ impl Storage {
             self.base.kvar_out = 0.0;
             self.base.current_kvar_limit = 0.0;
             self.base.current_kvar_limit_neg = 0.0;
-        } else if self.base.var_mode == VARMODE_PF {
+        } else if self.base.var_mode == VarMode::Pf {
             if pf_nominal == 1.0 {
                 self.base.kvar_out = 0.0;
             } else {
@@ -404,10 +403,7 @@ impl Storage {
                     f_kvarlimitneg * sign(self.kvar_requested)
                 };
 
-                if self.base.var_mode == super::VARMODE_KVAR
-                    && self.pf_priority
-                    && self.base.wp_mode
-                {
+                if self.base.var_mode == VarMode::Kvar && self.pf_priority && self.base.wp_mode {
                     self.base.kw_out = self.base.kvar_out.abs()
                         * (1.0 / (1.0 - self.base.pf_wp_nominal.powi(2)) - 1.0).sqrt()
                         * sign(self.base.kw_out);
@@ -435,26 +431,23 @@ impl Storage {
         let kva_gen = (self.base.kw_out.powi(2) + self.base.kvar_out.powi(2)).sqrt();
         if kva_gen > self.f_kva_rating {
             self.kva_exceeded = true;
-            if self.f_state == STORE_IDLING {
+            if self.f_state == StorageState::Idling {
                 // Exceptional case: idling forces P priority always.
                 self.base.kvar_out = (self.f_kva_rating.powi(2) - self.base.kw_out.powi(2)).sqrt()
                     * sign(self.base.kvar_out);
-            } else if self.base.var_mode == VARMODE_PF && self.pf_priority {
+            } else if self.base.var_mode == VarMode::Pf && self.pf_priority {
                 self.base.kw_out = self.f_kva_rating * pf_nominal.abs() * sign(self.base.kw_out);
                 self.base.kvar_out = self.f_kva_rating
                     * (1.0 - pf_nominal.powi(2)).sqrt()
                     * sign(self.base.kw_out)
                     * sign(pf_nominal);
-            } else if self.base.var_mode == super::VARMODE_KVAR
-                && self.pf_priority
-                && self.base.wp_mode
-            {
+            } else if self.base.var_mode == VarMode::Kvar && self.pf_priority && self.base.wp_mode {
                 self.base.kw_out =
                     self.f_kva_rating * self.base.pf_wp_nominal.abs() * sign(self.base.kw_out);
                 self.base.kvar_out = self.f_kva_rating
                     * self.base.pf_wp_nominal.acos().sin().abs()
                     * sign(self.kvar_requested);
-            } else if self.base.var_mode == super::VARMODE_KVAR
+            } else if self.base.var_mode == VarMode::Kvar
                 && self.pf_priority
                 && (!self.base.vv_mode || !self.base.drc_mode || !self.base.wv_mode)
             {

@@ -61,7 +61,12 @@ fn zero_kw_kva_clamp_dblvaluenz() {
     );
     // kW=0 clamps to +1e-8 before `Set_kW`: state DISCHARGING, not IDLING.
     let st = edit_storage(&[("kW", "0")]);
-    assert_eq!(st.f_state, STORE_DISCHARGING, "state {}", st.f_state);
+    assert_eq!(
+        st.f_state,
+        StorageState::Discharging,
+        "state {:?}",
+        st.f_state
+    );
     // Out-of-band kVA is untouched.
     assert_eq!(edit_storage(&[("kVA", "25")]).f_kva_rating, 25.0);
 }
@@ -194,7 +199,7 @@ fn create_defaults() {
     assert_eq!(st.kwh_stored, 50.0);
     assert_eq!(st.pct_reserve, 20.0);
     assert_eq!(st.kwh_reserve, 10.0); // kWhRating·pctReserve/100
-    assert_eq!(st.f_state, STORE_IDLING);
+    assert_eq!(st.f_state, StorageState::Idling);
     assert_eq!(st.dispatch_mode, StorageDispatchMode::Default);
     assert_eq!(st.pct_kw_out, 100.0);
     assert_eq!(st.pct_kw_in, 100.0);
@@ -206,7 +211,7 @@ fn create_defaults() {
     assert_eq!(st.base.pct_x, 50.0);
     assert_eq!(st.base.vminpu, 0.90);
     assert_eq!(st.base.vmaxpu, 1.10);
-    assert_eq!(st.base.var_mode, VARMODE_PF);
+    assert_eq!(st.base.var_mode, VarMode::Pf);
     assert!(st.base.inverter_on);
     assert_eq!(st.base.pf_nominal, 1.0);
     assert_eq!(st.f_kvar_limit, 25.0); // = FkVArating
@@ -230,7 +235,7 @@ fn create_defaults() {
 fn idle_draws_only_idling_losses() {
     let mut st = Storage::new("s1");
     st.recalc(&SysCtx::parse_default());
-    assert_eq!(st.f_state, STORE_IDLING);
+    assert_eq!(st.f_state, StorageState::Idling);
     assert!((st.base.kw_out + 0.25).abs() < 1e-12);
     assert!((st.present_kw() + 0.25).abs() < 1e-9);
     assert_eq!(st.present_kvar(), 0.0);
@@ -241,9 +246,9 @@ fn idle_draws_only_idling_losses() {
 #[test]
 fn discharging_delivers_rated_kw() {
     let mut st = Storage::new("s1");
-    st.set_i32(prop::STATE, STORE_DISCHARGING);
+    st.set_i32(prop::STATE, StorageState::Discharging.ordinal());
     st.recalc(&ctx());
-    assert_eq!(st.f_state, STORE_DISCHARGING);
+    assert_eq!(st.f_state, StorageState::Discharging);
     assert!(
         (st.base.kw_out - 25.0).abs() < 1e-9,
         "kw_out = {}",
@@ -258,7 +263,7 @@ fn discharging_delivers_rated_kw() {
 fn set_kw_positive_discharges() {
     let mut st = Storage::new("s1");
     st.set_f64(prop::KW, 10.0); // Pascal SetkW
-    assert_eq!(st.f_state, STORE_DISCHARGING);
+    assert_eq!(st.f_state, StorageState::Discharging);
     assert_eq!(st.pct_kw_out, 40.0);
     st.recalc(&ctx());
     assert!((st.present_kw() - 10.0).abs() < 1e-9);
@@ -272,7 +277,7 @@ fn set_kw_negative_charges_when_not_full() {
     st.set_f64(prop::PCT_STORED, 50.0); // kWhStored = 25
     assert_eq!(st.kwh_stored, 25.0);
     st.set_f64(prop::KW, -5.0);
-    assert_eq!(st.f_state, STORE_CHARGING);
+    assert_eq!(st.f_state, StorageState::Charging);
     assert_eq!(st.pct_kw_in, 20.0);
     st.recalc(&ctx());
     assert!(
@@ -288,9 +293,9 @@ fn set_kw_negative_charges_when_not_full() {
 fn charging_full_battery_falls_to_idling() {
     let mut st = Storage::new("s1");
     st.set_f64(prop::KW, -5.0);
-    assert_eq!(st.f_state, STORE_CHARGING);
+    assert_eq!(st.f_state, StorageState::Charging);
     st.recalc(&ctx()); // kWhStored = kWhRating → state flips to idling
-    assert_eq!(st.f_state, STORE_IDLING);
+    assert_eq!(st.f_state, StorageState::Idling);
     assert!((st.base.kw_out + 0.25).abs() < 1e-9);
 }
 
@@ -328,7 +333,7 @@ fn kwh_rated_side_effect_recharges() {
 #[test]
 fn kva_clamp_backs_off_kw_on_pf() {
     let mut st = Storage::new("s1");
-    st.set_i32(prop::STATE, STORE_DISCHARGING);
+    st.set_i32(prop::STATE, StorageState::Discharging.ordinal());
     st.set_f64(prop::PF, 0.8);
     st.side_effects(prop::PF, 0);
     st.recalc(&ctx());
@@ -619,4 +624,54 @@ fn storage_dispatch_mode_pins_enum_ordinals() {
     }
     assert_eq!(StorageDispatchMode::from_ordinal(5), None);
     assert_eq!(StorageDispatchMode::from_ordinal(-1), None);
+}
+
+/// `FState` ordinals, pinned against `Storage.pas:35-37` (`STORE_CHARGING = -1`
+/// / `STORE_IDLING = 0` / `STORE_DISCHARGING = 1`) and the `Storage: State`
+/// `DssEnum` values `[-1, 0, 1]` (`obj/dss_enum/registry/pc.rs`).
+#[test]
+fn storage_state_pins_enum_ordinals() {
+    assert_eq!(StorageState::Charging.ordinal(), -1);
+    assert_eq!(StorageState::Idling.ordinal(), 0);
+    assert_eq!(StorageState::Discharging.ordinal(), 1);
+    for s in [
+        StorageState::Charging,
+        StorageState::Idling,
+        StorageState::Discharging,
+    ] {
+        assert_eq!(StorageState::from_ordinal(s.ordinal()), s);
+    }
+    // `TStorageObj.Create` (Storage.pas:1155) starts idling.
+    assert_eq!(StorageState::default(), StorageState::Idling);
+}
+
+/// The state channel is *not* closed: `Set_Variable` writes `Trunc(Value)`
+/// unguarded (`Storage.pas:3135`), so every other integer must round-trip
+/// verbatim through `StorageState::Other` — exactly as the pre-enum `i32` field
+/// did. (A closed 3-variant enum would silently drop these.)
+#[test]
+fn storage_state_round_trips_every_out_of_set_ordinal() {
+    for v in [-1000, -3, -2, 2, 3, 7, 1000] {
+        let s = StorageState::from_ordinal(v);
+        assert_eq!(s, StorageState::Other(v), "{v} must stay verbatim");
+        assert_eq!(s.ordinal(), v);
+    }
+    for v in -1..=1 {
+        assert!(!matches!(
+            StorageState::from_ordinal(v),
+            StorageState::Other(_)
+        ));
+    }
+}
+
+/// A `Set_Variable(2, x)` write of an out-of-set state must land in the field
+/// untouched and read back identically (Pascal `Fstate := Trunc(Value)`).
+#[test]
+fn set_variable_state_stores_out_of_set_values_verbatim() {
+    let mut st = Storage::new("s1");
+    st.set_variable(2, 7.9, &ctx());
+    assert_eq!(st.f_state, StorageState::Other(7));
+    assert_eq!(st.f_state.ordinal(), 7);
+    st.set_variable(2, -1.0, &ctx());
+    assert_eq!(st.f_state, StorageState::Charging);
 }

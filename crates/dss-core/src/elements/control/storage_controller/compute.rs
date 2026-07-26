@@ -15,15 +15,11 @@
 
 use num_complex::Complex64;
 
-use crate::elements::pc::storage::{STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING};
+use crate::elements::pc::storage::StorageState;
 use crate::solution::SolveMode;
 use crate::util::fmt_g;
 
-use super::{
-    CURRENT_PEAKSHAVE, CURRENT_PEAKSHAVE_LOW, FleetFind, MODE_FOLLOW, MODE_LOADSHAPE,
-    MODE_PEAKSHAVE, MODE_PEAKSHAVELOW, MODE_SCHEDULE, MODE_SUPPORT, MODE_TIME, RELEASE_INHIBIT,
-    StorageController, StorageDispatchEnv,
-};
+use super::{FleetFind, StorageController, StorageCtrlAction, StorageCtrlMode, StorageDispatchEnv};
 
 /// Pascal `EPSILON` (the idling-output guard band).
 const EPSILON: f64 = 0.001;
@@ -256,28 +252,28 @@ impl StorageController {
     /// Pascal `SetFleetToCharge`.
     fn set_fleet_to_charge(&mut self, env: &mut dyn StorageDispatchEnv) {
         for i in 0..self.fleet.len() {
-            env.set_state(self.fleet[i], STORE_CHARGING);
+            env.set_state(self.fleet[i], StorageState::Charging);
         }
-        self.fleet_state = STORE_CHARGING;
+        self.fleet_state = StorageState::Charging;
     }
     /// Pascal `SetFleetToDisCharge`.
     fn set_fleet_to_discharge(&mut self, env: &mut dyn StorageDispatchEnv) {
         for i in 0..self.fleet.len() {
-            env.set_state(self.fleet[i], STORE_DISCHARGING);
+            env.set_state(self.fleet[i], StorageState::Discharging);
         }
-        self.fleet_state = STORE_DISCHARGING;
+        self.fleet_state = StorageState::Discharging;
     }
     /// Pascal `SetFleetToIdle` (`StorageState := IDLING; kW := 0`).
     fn set_fleet_to_idle(&mut self, env: &mut dyn StorageDispatchEnv) {
         for i in 0..self.fleet.len() {
             let r = self.fleet[i];
-            env.set_state(r, STORE_IDLING);
+            env.set_state(r, StorageState::Idling);
             env.set_kw(r, 0.0);
         }
-        self.fleet_state = STORE_IDLING;
+        self.fleet_state = StorageState::Idling;
     }
     /// Pascal `SetFleetDesiredState(state)`.
-    fn set_fleet_desired_state(&self, env: &mut dyn StorageDispatchEnv, state: i32) {
+    fn set_fleet_desired_state(&self, env: &mut dyn StorageDispatchEnv, state: StorageState) {
         for i in 0..self.fleet.len() {
             env.set_state_desired(self.fleet[i], state);
         }
@@ -298,28 +294,43 @@ impl StorageController {
 
         // Check discharge mode first; then, if charging is allowed, check charge.
         match self.discharge_mode {
-            MODE_FOLLOW => {
+            StorageCtrlMode::Follow => {
                 self.do_time_mode(env, 1);
                 self.do_load_follow_mode(env);
             }
-            MODE_LOADSHAPE => self.do_load_shape_mode(env),
-            MODE_SUPPORT => self.do_load_follow_mode(env),
-            MODE_TIME => self.do_time_mode(env, 1),
-            MODE_PEAKSHAVE => self.do_load_follow_mode(env),
-            CURRENT_PEAKSHAVE => self.do_load_follow_mode(env),
-            MODE_SCHEDULE => self.do_schedule_mode(env),
-            _ => {
-                env.push_error(format!("Invalid DisCharging Mode: {}", self.discharge_mode).into())
-            }
+            StorageCtrlMode::LoadShape => self.do_load_shape_mode(env),
+            StorageCtrlMode::Support => self.do_load_follow_mode(env),
+            StorageCtrlMode::Time => self.do_time_mode(env, 1),
+            StorageCtrlMode::PeakShave => self.do_load_follow_mode(env),
+            StorageCtrlMode::CurrentPeakShave => self.do_load_follow_mode(env),
+            StorageCtrlMode::Schedule => self.do_schedule_mode(env),
+            // The two charge-only ordinals are not valid discharge modes (the
+            // pre-enum `_ =>` arm, which the closed DischargeModeEnum could only
+            // ever hand these two).
+            StorageCtrlMode::PeakShaveLow | StorageCtrlMode::CurrentPeakShaveLow => env.push_error(
+                format!(
+                    "Invalid DisCharging Mode: {}",
+                    self.discharge_mode.ordinal()
+                )
+                .into(),
+            ),
         }
 
         if self.charging_allowed {
             match self.charge_mode {
-                MODE_LOADSHAPE => {} // DoLoadShapeMode already executed above
-                MODE_TIME => self.do_time_mode(env, 2),
-                MODE_PEAKSHAVELOW => self.do_peak_shave_mode_low(env),
-                CURRENT_PEAKSHAVE_LOW => self.do_peak_shave_mode_low(env),
-                _ => env.push_error(format!("Invalid Charging Mode: {}", self.charge_mode).into()),
+                StorageCtrlMode::LoadShape => {} // DoLoadShapeMode already executed above
+                StorageCtrlMode::Time => self.do_time_mode(env, 2),
+                StorageCtrlMode::PeakShaveLow => self.do_peak_shave_mode_low(env),
+                StorageCtrlMode::CurrentPeakShaveLow => self.do_peak_shave_mode_low(env),
+                // The discharge-only ordinals are not valid charge modes (the
+                // pre-enum `_ =>` arm).
+                StorageCtrlMode::Follow
+                | StorageCtrlMode::Support
+                | StorageCtrlMode::PeakShave
+                | StorageCtrlMode::Schedule
+                | StorageCtrlMode::CurrentPeakShave => env.push_error(
+                    format!("Invalid Charging Mode: {}", self.charge_mode.ordinal()).into(),
+                ),
             }
         }
     }
@@ -327,7 +338,9 @@ impl StorageController {
     /// Pascal `TStorageControllerObj.DoPendingAction`: release the discharge
     /// inhibit (the only code it handles).
     pub(crate) fn do_pending_action(&mut self, code: i32) {
-        if code == RELEASE_INHIBIT && self.discharge_mode != MODE_FOLLOW {
+        if StorageCtrlAction::from_ordinal(code) == Some(StorageCtrlAction::ReleaseInhibit)
+            && self.discharge_mode != StorageCtrlMode::Follow
+        {
             self.discharge_inhibited = false;
         }
     }
@@ -352,18 +365,20 @@ impl StorageController {
                     if (env.time_of_day() - self.discharge_trigger_time).abs()
                         < env.dyna_h() / 7200.0
                     {
-                        self.set_fleet_desired_state(env, STORE_DISCHARGING);
-                        if self.fleet_state != STORE_DISCHARGING && remaining_kwh > reserve_kwh {
+                        self.set_fleet_desired_state(env, StorageState::Discharging);
+                        if self.fleet_state != StorageState::Discharging
+                            && remaining_kwh > reserve_kwh
+                        {
                             if self.ccd.show_event_log {
                                 self.append_event(env, "Fleet Set to Discharging by Time Trigger");
                             }
                             self.set_fleet_to_discharge(env);
                             self.set_fleet_kw_rate(env, self.pct_kw_rate);
                             self.discharge_inhibited = false;
-                            if self.discharge_mode == MODE_FOLLOW {
+                            if self.discharge_mode == StorageCtrlMode::Follow {
                                 self.discharge_triggered_by_time = true;
                             } else {
-                                env.push_immediate(STORE_DISCHARGING);
+                                env.push_immediate(StorageState::Discharging);
                             }
                         }
                     } else {
@@ -375,15 +390,17 @@ impl StorageController {
                 if self.charge_trigger_time > 0.0
                     && (env.time_of_day() - self.charge_trigger_time).abs() < env.dyna_h() / 7200.0
                 {
-                    self.set_fleet_desired_state(env, STORE_CHARGING);
-                    if self.fleet_state != STORE_CHARGING && remaining_kwh < total_rating_kwh {
+                    self.set_fleet_desired_state(env, StorageState::Charging);
+                    if self.fleet_state != StorageState::Charging
+                        && remaining_kwh < total_rating_kwh
+                    {
                         if self.ccd.show_event_log {
                             self.append_event(env, "Fleet Set to Charging by Time Trigger");
                         }
                         self.set_fleet_to_charge(env);
                         self.discharge_inhibited = true;
                         self.out_of_oomph = false;
-                        env.push_immediate(STORE_CHARGING); // force re-solve this step
+                        env.push_immediate(StorageState::Charging); // force re-solve this step
                         // Push a message to release the inhibit at a later time.
                         env.push_release_inhibit(self.inhibit_hrs);
                     }
@@ -398,7 +415,7 @@ impl StorageController {
     fn do_schedule_mode(&mut self, env: &mut dyn StorageDispatchEnv) {
         let mut pct_discharge_rate = 0.0;
         if self.discharge_trigger_time > 0.0 {
-            if self.fleet_state != STORE_DISCHARGING {
+            if self.fleet_state != StorageState::Discharging {
                 self.charging_allowed = true;
                 let tdiff = env.time_of_day() - self.discharge_trigger_time;
                 if tdiff.abs() < env.dyna_h() / 7200.0 {
@@ -406,14 +423,14 @@ impl StorageController {
                         self.append_event(env, "Fleet Set to Discharging (up ramp) by Schedule");
                     }
                     self.set_fleet_to_discharge(env);
-                    self.set_fleet_desired_state(env, STORE_DISCHARGING);
+                    self.set_fleet_desired_state(env, StorageState::Discharging);
                     self.charging_allowed = false;
                     pct_discharge_rate = self
                         .pct_kw_rate
                         .min((self.pct_kw_rate * tdiff / self.up_ramp_time).max(0.0));
                     self.set_fleet_kw_rate(env, pct_discharge_rate);
                     self.discharge_inhibited = false;
-                    env.push_immediate(STORE_DISCHARGING);
+                    env.push_immediate(StorageState::Discharging);
                 }
             } else {
                 // Fleet is already discharging.
@@ -422,14 +439,14 @@ impl StorageController {
                     pct_discharge_rate = self
                         .pct_kw_rate
                         .min((self.pct_kw_rate * tdiff / self.up_ramp_time).max(0.0));
-                    self.set_fleet_desired_state(env, STORE_DISCHARGING);
+                    self.set_fleet_desired_state(env, StorageState::Discharging);
                     if pct_discharge_rate != self.last_pct_discharge_rate {
                         self.set_fleet_kw_rate(env, pct_discharge_rate);
                         self.set_fleet_to_discharge(env);
                     }
                 } else if tdiff < self.up_plus_flat {
                     pct_discharge_rate = self.pct_kw_rate;
-                    self.set_fleet_desired_state(env, STORE_DISCHARGING);
+                    self.set_fleet_desired_state(env, StorageState::Discharging);
                     if pct_discharge_rate != self.last_pct_discharge_rate {
                         self.set_fleet_kw_rate(env, self.pct_kw_rate); // flat part
                     }
@@ -445,12 +462,12 @@ impl StorageController {
                     tdiff = self.up_plus_flat_plus_dn - tdiff;
                     pct_discharge_rate = 0.0_f64
                         .max((self.pct_kw_rate * tdiff / self.dn_ramp_time).min(self.pct_kw_rate));
-                    self.set_fleet_desired_state(env, STORE_DISCHARGING);
+                    self.set_fleet_desired_state(env, StorageState::Discharging);
                     self.set_fleet_kw_rate(env, pct_discharge_rate);
                 }
 
                 if pct_discharge_rate != self.last_pct_discharge_rate {
-                    env.push_immediate(STORE_DISCHARGING);
+                    env.push_immediate(StorageState::Discharging);
                 }
             }
         }
@@ -477,7 +494,7 @@ impl StorageController {
         if self.load_shape_mult.re < 0.0 {
             self.charging_allowed = true;
             let new_charge_rate = self.load_shape_mult.re.abs() * 100.0;
-            self.set_fleet_desired_state(env, STORE_CHARGING);
+            self.set_fleet_desired_state(env, StorageState::Charging);
             if new_charge_rate != self.pct_charge_rate {
                 rate_changed = true;
                 self.pct_charge_rate = new_charge_rate;
@@ -489,7 +506,7 @@ impl StorageController {
         } else {
             // Set the fleet to discharge at a rate.
             let new_kw_rate = self.load_shape_mult.re * 100.0;
-            self.set_fleet_desired_state(env, STORE_DISCHARGING);
+            self.set_fleet_desired_state(env, StorageState::Discharging);
             if new_kw_rate != self.pct_kw_rate {
                 rate_changed = true;
                 self.pct_kw_rate = new_kw_rate;
@@ -501,7 +518,7 @@ impl StorageController {
 
         // Force a new power flow if the fleet state changed.
         if self.fleet_state != fleet_state_saved || rate_changed {
-            env.push_immediate(0);
+            env.push_immediate(StorageState::Idling);
         }
     }
 
@@ -546,7 +563,7 @@ impl StorageController {
         let fnphases = self.ccd.cd.nphases;
         let mut amps = 0.0;
         let mut s = Complex64::ZERO;
-        if self.discharge_mode == CURRENT_PEAKSHAVE {
+        if self.discharge_mode == StorageCtrlMode::CurrentPeakShave {
             amps = env.control_current(self.f_mon_phase, fnphases);
         } else {
             s = env.control_power(self.f_mon_phase, fnphases);
@@ -561,7 +578,7 @@ impl StorageController {
         };
 
         let mut p_diff = match self.discharge_mode {
-            MODE_FOLLOW => {
+            StorageCtrlMode::Follow => {
                 if self.discharge_triggered_by_time {
                     if self.ccd.show_event_log {
                         let msg = format!(
@@ -577,17 +594,17 @@ impl StorageController {
                     }
                     self.discharge_triggered_by_time = false;
                     self.set_fleet_to_idle(env);
-                    self.set_fleet_desired_state(env, STORE_IDLING);
+                    self.set_fleet_desired_state(env, StorageState::Idling);
                 }
                 s.re * 0.001 - self.f_kw_target // assume S.re is normally positive
             }
-            MODE_SUPPORT => s.re * 0.001 + self.f_kw_target, // assume S.re normally negative
-            MODE_PEAKSHAVE => s.re * 0.001 - ctrl_target,
-            CURRENT_PEAKSHAVE => amps - ctrl_target * 1000.0, // difference in amps
+            StorageCtrlMode::Support => s.re * 0.001 + self.f_kw_target, // assume S.re normally negative
+            StorageCtrlMode::PeakShave => s.re * 0.001 - ctrl_target,
+            StorageCtrlMode::CurrentPeakShave => amps - ctrl_target * 1000.0, // difference in amps
             _ => 0.0,
         };
 
-        if self.discharge_mode == CURRENT_PEAKSHAVE {
+        if self.discharge_mode == StorageCtrlMode::CurrentPeakShave {
             // Convert Pdiff from amps to kW.
             let elem_volts = env.monitored_vterminal1_abs();
             self.kw_needed = env.monitored_nphases() as f64 * p_diff * elem_volts / 1000.0;
@@ -598,14 +615,14 @@ impl StorageController {
 
         // Check if the fleet is idling (FleetState updates only if entire fleet
         // is idling).
-        if self.fleet_state != STORE_IDLING {
+        if self.fleet_state != StorageState::Idling {
             let n = self.fleet.len();
             for i in 0..n {
-                if env.snap(self.fleet[i]).state != STORE_IDLING {
+                if env.snap(self.fleet[i]).state != StorageState::Idling {
                     break;
                 }
                 if i == n - 1 {
-                    self.fleet_state = STORE_IDLING;
+                    self.fleet_state = StorageState::Idling;
                 }
             }
         }
@@ -613,9 +630,9 @@ impl StorageController {
         if self.discharge_inhibited {
             skip_kw_dispatch = true;
         } else {
-            if self.fleet_state == STORE_CHARGING {
+            if self.fleet_state == StorageState::Charging {
                 // Ignore overload due to charging (FleetkW < 0).
-                if self.discharge_mode != CURRENT_PEAKSHAVE {
+                if self.discharge_mode != StorageCtrlMode::CurrentPeakShave {
                     p_diff += self.get_fleet_kw(env);
                 } else {
                     let elem_volts = env.monitored_vterminal1_abs();
@@ -624,8 +641,10 @@ impl StorageController {
                 }
             }
 
-            if matches!(self.fleet_state, STORE_CHARGING | STORE_IDLING)
-                && ((p_diff - self.half_kw_band < 0.0) || self.out_of_oomph)
+            if matches!(
+                self.fleet_state,
+                StorageState::Charging | StorageState::Idling
+            ) && ((p_diff - self.half_kw_band < 0.0) || self.out_of_oomph)
             {
                 // Don't bother trying to dispatch.
                 self.charging_allowed = true;
@@ -650,7 +669,7 @@ impl StorageController {
             if remaining_kwh > reserve_kwh {
                 // Don't dispatch kW if too little storage left (endless loop).
                 if p_diff.abs() > self.half_kw_band {
-                    if self.fleet_state != STORE_DISCHARGING {
+                    if self.fleet_state != StorageState::Discharging {
                         self.set_fleet_to_discharge(env);
                         // D10 (WP-U1.6, `1b3123ce`, SVN r4058): if not already
                         // discharging, force a new power flow on the first control
@@ -673,7 +692,7 @@ impl StorageController {
                         let r = self.fleet[i];
                         let snap = env.snap(r);
 
-                        if self.discharge_mode == CURRENT_PEAKSHAVE {
+                        if self.discharge_mode == StorageCtrlMode::CurrentPeakShave {
                             self.kw_needed = if snap.nphases == 1 {
                                 snap.present_kv * amps_diff
                             } else {
@@ -689,7 +708,7 @@ impl StorageController {
 
                         if dispatch_kw <= 0.0 {
                             // kWNeeded too low → just idle this element.
-                            env.set_state(r, STORE_IDLING); // overrides SetFleetToDischarge
+                            env.set_state(r, StorageState::Idling); // overrides SetFleetToDischarge
                             if (snap.present_kw.abs() - snap.kw_out_idling) > EPSILON {
                                 env.set_nominal(r);
                                 let actual = env.present_kw(r);
@@ -726,7 +745,7 @@ impl StorageController {
                                 } else {
                                     // Inverter already off: override to idling and
                                     // refresh the kvar limit for InvControl.
-                                    env.set_state(r, STORE_IDLING);
+                                    env.set_state(r, StorageState::Idling);
                                     env.set_nominal(r);
                                     let actual = env.present_kw(r);
                                     if self.ccd.show_event_log {
@@ -763,11 +782,11 @@ impl StorageController {
                 // TODO(compat): Pascal `if not FleetState = STORE_IDLING` — `not`
                 // binds tighter than `=`, so this is `(not FleetState) = 0`, i.e.
                 // it fires only when FleetState = STORE_CHARGING (bitwise not of
-                // an integer). Reproduced verbatim; the clean fix is
-                // `FleetState <> STORE_IDLING`.
-                if (!self.fleet_state) == STORE_IDLING {
+                // an integer). Reproduced verbatim on the raw ordinals; the clean
+                // fix is `FleetState <> STORE_IDLING`.
+                if (!self.fleet_state.ordinal()) == StorageState::Idling.ordinal() {
                     self.set_fleet_to_idle(env);
-                    env.push_immediate(STORE_IDLING); // force a new power flow
+                    env.push_immediate(StorageState::Idling); // force a new power flow
                 }
                 self.charging_allowed = true;
                 self.out_of_oomph = true;
@@ -784,7 +803,7 @@ impl StorageController {
 
         if store_kw_changed {
             // Only push if there has been a change (StorekvarChanged is never set).
-            env.push_immediate(STORE_DISCHARGING);
+            env.push_immediate(StorageState::Discharging);
         }
     }
 
@@ -811,7 +830,7 @@ impl StorageController {
 
         let fnphases = self.ccd.cd.nphases;
         let mut p_diff;
-        if self.charge_mode == CURRENT_PEAKSHAVE_LOW {
+        if self.charge_mode == StorageCtrlMode::CurrentPeakShaveLow {
             let amps = env.control_current(self.f_mon_phase, fnphases);
             p_diff = amps - ctrl_target * 1000.0;
         } else {
@@ -830,7 +849,7 @@ impl StorageController {
         // live property gate pins it (`kWNeed` after a charge sample must stay
         // the last discharge-path value).
         let mut kw_needed;
-        if self.charge_mode == CURRENT_PEAKSHAVE_LOW {
+        if self.charge_mode == StorageCtrlMode::CurrentPeakShaveLow {
             // Convert Pdiff from amps to kW.
             let elem_volts = env.monitored_vterminal1_abs();
             kw_needed = env.monitored_nphases() as f64 * p_diff * elem_volts / 1000.0;
@@ -840,21 +859,21 @@ impl StorageController {
         }
 
         // Check if the fleet is idling.
-        if self.fleet_state != STORE_IDLING {
+        if self.fleet_state != StorageState::Idling {
             let n = self.fleet.len();
             for i in 0..n {
-                if env.snap(self.fleet[i]).state != STORE_IDLING {
+                if env.snap(self.fleet[i]).state != StorageState::Idling {
                     break;
                 }
                 if i == n - 1 {
-                    self.fleet_state = STORE_IDLING;
+                    self.fleet_state = StorageState::Idling;
                 }
             }
         }
 
-        if self.fleet_state == STORE_DISCHARGING {
+        if self.fleet_state == StorageState::Discharging {
             // Ignore underload due to discharging (FleetkW > 0).
-            if self.charge_mode != CURRENT_PEAKSHAVE_LOW {
+            if self.charge_mode != StorageCtrlMode::CurrentPeakShaveLow {
                 p_diff += self.get_fleet_kw(env);
             } else {
                 let elem_volts = env.monitored_vterminal1_abs();
@@ -863,8 +882,10 @@ impl StorageController {
             }
         }
 
-        if matches!(self.fleet_state, STORE_DISCHARGING | STORE_IDLING)
-            && ((p_diff > 0.0) || (actual_kwh >= total_rating_kwh) || self.wait4step)
+        if matches!(
+            self.fleet_state,
+            StorageState::Discharging | StorageState::Idling
+        ) && ((p_diff > 0.0) || (actual_kwh >= total_rating_kwh) || self.wait4step)
         {
             // Don't bother trying to charge.
             self.charging_allowed = false;
@@ -879,7 +900,7 @@ impl StorageController {
         if actual_kwh < total_rating_kwh {
             // Don't dispatch kW if fully charged (endless loop).
             if p_diff.abs() > self.half_kw_band_low {
-                if self.fleet_state != STORE_CHARGING {
+                if self.fleet_state != StorageState::Charging {
                     self.set_fleet_to_charge(env);
                     // D10 (WP-U1.6, `1b3123ce`, SVN r4058): if not already
                     // charging, force a new power flow on the first control
@@ -901,7 +922,7 @@ impl StorageController {
                     let r = self.fleet[i];
                     let snap = env.snap(r);
 
-                    if self.charge_mode == CURRENT_PEAKSHAVE_LOW {
+                    if self.charge_mode == StorageCtrlMode::CurrentPeakShaveLow {
                         kw_needed = if snap.nphases == 1 {
                             snap.present_kv * amps_diff
                         } else {
@@ -919,7 +940,7 @@ impl StorageController {
 
                     if charge_kw >= 0.0 {
                         // chargeKW positive if the demand increase is too high.
-                        env.set_state(r, STORE_IDLING); // overrides SetFleetToCharge
+                        env.set_state(r, StorageState::Idling); // overrides SetFleetToCharge
                         if (snap.present_kw.abs() - snap.kw_out_idling) > EPSILON {
                             env.set_nominal(r);
                             let actual = env.present_kw(r);
@@ -954,7 +975,7 @@ impl StorageController {
                                     }
                                 }
                             } else {
-                                env.set_state(r, STORE_IDLING); // overrides SetFleetToCharge
+                                env.set_state(r, StorageState::Idling); // overrides SetFleetToCharge
                                 env.set_nominal(r);
                                 let actual = env.present_kw(r);
                                 if self.ccd.show_event_log {
@@ -988,9 +1009,9 @@ impl StorageController {
         } else {
             // TODO(compat): Pascal `if not FleetState = STORE_IDLING` — see
             // DoLoadFollowMode; fires only when FleetState = STORE_CHARGING.
-            if (!self.fleet_state) == STORE_IDLING {
+            if (!self.fleet_state.ordinal()) == StorageState::Idling.ordinal() {
                 self.set_fleet_to_idle(env);
-                env.push_immediate(STORE_IDLING); // force a new power flow
+                env.push_immediate(StorageState::Idling); // force a new power flow
             }
             self.charging_allowed = false;
             if self.ccd.show_event_log {
@@ -1004,7 +1025,7 @@ impl StorageController {
         }
 
         if store_kw_changed {
-            env.push_immediate(STORE_CHARGING);
+            env.push_immediate(StorageState::Charging);
         }
     }
 
