@@ -7,6 +7,98 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE W3.3 — the `DynamicExp` RPN token stream becomes a payload enum: **the P1 tail is CLOSED** (branch `depas-final`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes P1-tail escape item **3** (= P1 §Deferred item
+**10**, Tier-2) — the last open item of the whole P1 tail. Not a field retype: the
+compiled expression `cmds: Vec<i32>` is Pascal's `Cmds` *automation array*, a tagged
+union squeezed into one `Integer`, so this is the evaluator refactor the escape
+record asked for.
+
+**The encoding, and what replaces it.** Pascal states it in the `InterpretDiffEq`
+header (`DynamicExp.pas:458-467`, identical in EPRI r4133 `DynamicExp.pas:564-573`):
+a cell is a variable slot (`>= 0`), a constant index (`50000 + i` into `VarConsts`),
+an operator (`-opCodes_index`), or the `-50` new-equation marker. New module
+`elements/general/dynamic_exp/tokens.rs`:
+
+| type | what it names | proof |
+|---|---|---|
+| **`DynToken`** | `EqMark` / `Op(DynOp)` / `Var(usize)` / `Const(usize)` — one variant per legal cell | the notation comment above; `Cmds` writers at `DynamicExp.pas:504-519` (`dt` pair), `:537` (const), `:544` (var), `:550` (operator) |
+| **`DynOp`** (22) | `Add`…`Pow`, discriminant = the `opCodes` index stored negated | `opCodes` table `DynamicExp.pas:101-106` **==** r4133 `myOps` `:60-64`; `SolveEq`'s `case` `:397-449` == r4133 `:520-548` |
+| **`Lexeme`** + `OP_LEXEMES[29]` | what `InterpretDiffEq`'s `case OpCode of` does with each `opCodes` entry: `Dt` (0) / `Notation` (1,6,7,8,9) / `End` (`]`=10) / `Op` | `DynamicExp.pas:501-554` |
+| **`VarRef`** | `Get_Var_Idx`'s three-way `Integer`: `State(i)` / `Const` (the `50001` `CONST_CODE`) / `NotFound` (-1) | `DynamicExp.pas:283-312`; consumer test `(varIdx < 0) or (varIdx >= 50000)` at `DynEqPCE.pas:152-154` |
+
+**Both named sentinels are gone from the engine.** `CONST_CODE = 50001` died with
+`get_var_idx` → `VarRef` (its single cross-module consumer, `dyneq_pce.rs::
+parse_dyn_var`, is now `let VarRef::State(var_idx) = … else { return false }` —
+the same test, spelled). `CONST_BASE = 50000` and `EQ_MARK = -50` survive **only**
+inside a `#[cfg(test)]` `encoding` module implementing `DynToken::ordinal`/
+`from_ordinal`, which exists so the unit tests still pin the compiled stream
+cell-for-cell against the Pascal notation — that is the bit-neutrality proof, not
+a runtime path. `Get_Closer_Op`'s two sentinels went the same way: it now returns
+`Option<(pos, op, Lexeme)>` (`None` == Pascal's `OpIdx = 10000` seed with `OpCode`
+left at -1), while `10000` stays the *internal* leftmost-so-far threshold, so an
+operator at position ≥ 10000 is still "not found" exactly as upstream.
+
+**Two `_`-style fall-throughs became exhaustive matches.** `SolveEq`'s `else`
+branch (`if Cmds[idx] >= 50000 … else …`) is now the `Const`/`Var` arms of the same
+`match` that dispatches the 22 operators, and `InterpretDiffEq`'s `case … else`
+is now `Lexeme::Op(_) | Lexeme::End` with the `if OpCode <> 10` guard spelled as
+`if let Lexeme::Op(op) = lexeme`. The operator set is provably closed — the `else`
+branch emits an operator only for `OpCode <> 10`, so the reachable codes are exactly
+`{2,3,4,5} ∪ {11..28}`, asserted directly by the new
+`op_codes_pin_the_pascal_opcodes_table`.
+
+**One structural invariant had to be stated to type `OutIdx`.** Pascal latches the
+output with `if Cmds[idx] <> -50 then OutIdx := Cmds[idx]`, and `OutIdx: Integer`
+seeded -1 (its final unguarded `MemSpace[OutIdx][1]` write is a wild write on an
+empty `Cmds` — the port already guarded that). Typed, `out_idx: Option<usize>` and
+the latch is `if let DynToken::Var(slot)`: legitimate because the `dt` arm is the
+only writer of an `EqMark` and it pushes `[Var(out), EqMark]` **in one step**
+(`DynamicExp.pas:504-519`), so the cell before a marker is always the output
+variable. Pinned by the new `eq_mark_is_always_preceded_by_its_output_var` over
+four expressions (incl. a 3-equation one).
+
+**Pins (+5 tests, 13 → 18 in the module).** `op_codes_pin_the_pascal_opcodes_table`
+(the reachable-code set, `op_code()` round-trip through the negated cell, and
+`from_ordinal = None` for `-1,-6..-10,-29,-49,-51` — the *closedness* the exhaustive
+match relies on); `payload_cells_round_trip_the_pascal_encoding` (`-50`, var slots,
+the `50000 + i` offset); `eq_mark_is_always_preceded_by_its_output_var`;
+`get_var_idx_classifies_state_vars_constants_and_misses`;
+`constant_before_dt_is_rejected_with_the_pascal_message` (error 50006 —
+`DynamicExp.pas:506-511`'s `Exit` leaves the expression *uncleared* and `gotError`
+false, and it pins the exact message text, which no golden covers). Every existing
+`assert_eq!(o.cmds, vec![0, -50, 50000, …])` vector is **unchanged**, now read
+through `cmds_ordinals()`; the Kundur case additionally asserts the same stream as
+typed tokens. No registry coupling: like the W3.2 derived codes these are internal
+compiler/evaluator types with no `DssEnum` entry (noted at the module doc).
+
+**Bit-neutrality evidence.** `git diff --stat HEAD -- tests/` **empty**;
+`TODO(compat)` **117 / 68 files** (`crates/**` = 123) before and after; `git diff
+-U0` grep for added `downcast`/`as_any`/`Rc<`/`RefCell`/`Mutex`/statics/
+`oracle-parity` = **0** (the two `static` hits are `&'static str` in the retyped
+`get_closer_op` signature). String-literal diff of the two product files: the
+`opCodes` table moved verbatim into `tokens.rs`, the 50006 message was re-wrapped
+across the `\`-continuation to the **same bytes** (now pinned by its own test), and
+`format!("\"{}\"", vars[0])` is unchanged — **zero** runtime strings changed.
+Scope note: `Get_Out_Idx`'s own `-1` "not found" return is deliberately left as an
+`i32` (a generic not-found sentinel, not part of the token channel), and the
+`Check_If_CalcValue` operand codes (0..11/-1, consumed by four dynamics hosts) stay
+raw — a separate, wider channel, untouched here.
+
+**Gate:** `cargo fmt --all --check` · `cargo clippy --workspace --all-targets -D
+warnings` · `cargo test --workspace` — green, exit 0, **66 `test result: ok`
+groups, 2041 passed, 0 failed, 5 ignored** (2036 → 2041 = the five new pins),
+`corpus_gate_all_cases_match_engines … ok` on both channels — the dynamics decks
+(`Dynamic_KundurDynExp` and family) run the new evaluator end to end. `tests/corpus`
+left pristine (4 `Test/AutoTrans` run-artifacts of the known intermittent scheduler
+leak removed by exact name — no wide `git clean`). Ritual 0 held at start and before
+the commit: 186 `.pas` under `.inputs/dss_capi`; `cargo` =
+`C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**P1-tail escape record: fully closed.** With W3.1 (item 1), W3.2 a+b (item 2 /
+item 8) and this record (item 3), no item of the P1 tail remains open.
+
 ### DE_PASCALIZE W3.2 (b) — item 8 CLOSED: shared `ScanType`/`SequenceType`, `VsourceZSpec`, `VscMode`, `OcpDeviceType` (branch `depas-final`, 2026-07-26)
 
 Stratum **[A]** bit-neutral, **type-channel only**. Second half of P1-tail escape
@@ -591,6 +683,11 @@ Left as raw `i32`, deliberately, with the reason. None was partially touched.
    is either an opcode, a variable index, or a constant index offset by
    `CONST_CODE`), so the faithful model is a payload enum over the whole token
    stream — a real refactor of the evaluator, not a field retype. Not started.
+   **CLOSED 2026-07-26 by the W3.3 record at the top of this file** (branch
+   `depas-final`): `DynToken`/`DynOp`/`Lexeme`/`VarRef` in a new
+   `dynamic_exp/tokens.rs`; `cmds: Vec<i32>` → `Vec<DynToken>`, both sentinels
+   gone from the engine (they survive only in the `#[cfg(test)]` `ordinal()`
+   encoding the unit tests pin the compiled stream against).
 
 Everything else from `docs/phase-records/depascalize-p1.md` §Deferred is closed by
 records 1/n-5/n: items **1, 2, 3, 4, 5, 6, 9** in full, item **7** except the
