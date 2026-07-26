@@ -388,6 +388,7 @@ mod tests {
     fn typed_store_accessors_match_the_untyped_pair_and_downcast() {
         use crate::elements::control::cap_control::CapControl;
         use crate::elements::control::reg_control::RegControl;
+        use crate::elements::meter::monitor::Monitor;
         use crate::elements::pd::capacitor::Capacitor;
         use crate::elements::pd::line::Line;
         use crate::elements::traits::TypedStore;
@@ -400,12 +401,14 @@ mod tests {
             "new regcontrol.rc transformer=t1 winding=2 vreg=120",
             "new capacitor.c1 bus1=c phases=3 kvar=600 kv=4.16",
             "new capcontrol.cc element=line.l1 terminal=1 capacitor=c1 type=current on=10 off=5",
+            "new monitor.m1 element=line.l1 terminal=1 mode=0",
+            "new monitor.m2 element=line.l1 terminal=1 mode=1",
         ] {
             dss.command(c);
         }
         assert!(dss.errors().is_empty(), "setup errors: {:?}", dss.errors());
 
-        let (rc_ref, tr_ref, cc_ref, cap_ref, line_ref) = {
+        let (rc_ref, tr_ref, cc_ref, cap_ref, line_ref, m1_ref, m2_ref) = {
             let store = ClassStore {
                 classes: &mut dss.classes,
             };
@@ -415,6 +418,8 @@ mod tests {
                 store.find_ckt_element("capcontrol.cc").unwrap(),
                 store.find_ckt_element("capacitor.c1").unwrap(),
                 store.find_ckt_element("line.l1").unwrap(),
+                store.find_ckt_element("monitor.m1").unwrap(),
+                store.find_ckt_element("monitor.m2").unwrap(),
             )
         };
 
@@ -480,6 +485,23 @@ mod tests {
             assert_eq!(cc.data().name(), "cc");
             assert_eq!(target.expect("ckt").cd().obj.name(), "c1");
             assert_eq!(mon.expect("ckt").cd().obj.name(), "l1");
+        }
+
+        // R3.2(e): the meter/generic-object pair (`Monitor::take_sample`) hands
+        // out the very same two objects the untyped `pair_mut` does — in both
+        // the cross-arena branch (monitor ⇄ line) and the same-arena one
+        // (monitor ⇄ monitor, reachable via `element=monitor.…`).
+        for (a_ref, b_ref, b_name) in [(m1_ref, line_ref, "l1"), (m1_ref, m2_ref, "m2")] {
+            let (untyped_a, untyped_b) = store.pair_mut(a_ref, b_ref);
+            let (pa, pb) = (
+                untyped_a as *const dyn DssObject as *const (),
+                untyped_b as *const dyn DssObject as *const (),
+            );
+            let (mon, metered) = store.typed_obj_pair_mut::<Monitor>(a_ref, b_ref);
+            assert_eq!(mon.data().name(), "m1");
+            assert_eq!(metered.data().name(), b_name);
+            assert_eq!(mon as *const Monitor as *const (), pa);
+            assert_eq!(metered as *const dyn DssObject as *const (), pb);
         }
     }
 

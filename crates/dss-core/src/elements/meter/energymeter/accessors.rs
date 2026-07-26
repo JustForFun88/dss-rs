@@ -5,32 +5,26 @@ use num_complex::Complex64;
 
 use super::{EmSnapshot, EnergyMeter, NUM_EM_REGISTERS};
 use crate::elements::ckt::CktElementData;
-use crate::elements::pd::capacitor::Capacitor;
-use crate::elements::pd::line::Line;
-use crate::elements::pd::reactor::Reactor;
-use crate::elements::pd::transformer::Transformer;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 /// Capture the parse-relevant shape of the metered element (the RefSnapshot).
-pub(crate) fn capture_metered(full_name: String, obj: &dyn DssObject) -> EmSnapshot {
-    let elem = obj
-        .as_ckt_element()
-        .expect("element= resolves to a ckt elem");
+pub(crate) fn capture_metered(full_name: String, o: ResolvedObj<'_>) -> EmSnapshot {
+    let elem = o.ckt().expect("element= resolves to a ckt elem");
     let cd = elem.cd();
     // Pascal checks `BASECLASSMASK = PD_ELEMENT` — AutoTrans qualifies like any
     // other PD element (no transformer special-casing in EnergyMeter:
     // `IsTransformerElement` matches XFMR_ELEMENT only, Utilities.pas:728).
-    let is_pd = obj.as_any().downcast_ref::<Line>().is_some()
-        || obj.as_any().downcast_ref::<Transformer>().is_some()
-        || obj
-            .as_any()
-            .downcast_ref::<crate::elements::pd::auto_trans::AutoTrans>()
-            .is_some()
-        || obj.as_any().downcast_ref::<Capacitor>().is_some()
-        || obj.as_any().downcast_ref::<Reactor>().is_some();
+    let is_pd = matches!(
+        o.id(),
+        ElemId::Line(_)
+            | ElemId::Transformer(_)
+            | ElemId::AutoTrans(_)
+            | ElemId::Capacitor(_)
+            | ElemId::Reactor(_)
+    );
     EmSnapshot {
         full_name,
         is_pd,
@@ -318,7 +312,7 @@ impl DssObject for EnergyMeter {
                     Some(o) => {
                         self.med.metered_element = Some(o.id());
                         self.med.metered_element_changed = true;
-                        self.metered_snap = Some(capture_metered(name, o.obj()));
+                        self.metered_snap = Some(capture_metered(name, o));
                     }
                     None => {
                         self.med.metered_element = None;

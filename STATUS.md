@@ -7,7 +7,128 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
-### DE_PASCALIZE R3.2 (part 2/2) — Category-D typed resolved-object handle (`ResolvedObj`) across all 29 `set_object_ref` files; item (e) escape-recorded (branch `depas-r3`, 2026-07-26)
+### DE_PASCALIZE R3.2 (part 3/3) — sub-item (e): Category-B meter typed reads + disjoint borrows (12 converted files + 1 getter + 1 test); the escape narrows to the 4 `monitor/sample.rs` concrete reads (branch `depas-r3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, type-channel only. Base = the R3.2 part-2 tip
+`377bbc8`. Ritual 0 held at start **and** before the commit: 186 `.pas` under
+`.inputs/dss_capi`; `cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Delivered: R3 handoff item 2's last sub-item (e)** — the Category-B meter
+cluster (`DE_PASCALIZE_PLAN.md` Part I, category **B**: "meter type-guards &
+concrete reads … typed arena reads"). Every meter-side `Any` round-trip is gone
+except the four escaped ones below; nothing else in the cluster remains.
+
+**One new getter, same family as R3.2 part 1** (`elements/traits.rs`):
+`TypedStore::typed_obj_pair_mut::<C>(c, t) -> (&mut C, &mut dyn DssObject)` —
+the meter as its concrete class, the metered element as the **generic** object
+view. It mirrors `typed_ckt_pair_mut` branch for branch (same-arena `split2`,
+cross-arena `arena_pair_mut`) and keeps the `"pair_mut: aliasing refs"` assert
+verbatim; only the target view differs, because `Monitor::take_sample` still
+reaches past `CktElement` (see the escape).
+
+**Converted (12 files).**
+- `solution/monitors.rs` — the `SampleAll`/`SaveAll`/`ResetAll` monitor reads →
+  `typed`/`typed_mut`; the sample-time `pair_mut` + `downcast_mut::<Monitor>()`
+  → one `typed_obj_pair_mut::<Monitor>`.
+- `solution/meters/sampling/take_sample.rs` — the Generator/Storage/PVSystem
+  `ResetRegistersAll` + `SampleAll` tails, the meter `enabled()` peek and the
+  zone-walk Load/Generator accumulation → `typed`/`typed_mut`.
+- `solution/meters/sampling/allocate.rs` — both `CalcAllocationFactors` pairs
+  (`pair_mut` + downcast + `as_ckt_element_mut`) → `typed_ckt_pair_mut::<EnergyMeter>` /
+  `::<Sensor>`; the zone-load reads/writes and `sensor_alloc_data`'s
+  Sensor-then-EnergyMeter probe → `typed`/`typed_mut`.
+- `solution/meters/{mod,zones/build,zones/flags,reliability,demand_interval}.rs`
+  — the meter/sensor/load/XYcurve reads → `typed`/`typed_mut`; the shared
+  `downcast_meter` helper is now `meter_mut` (`typed_mut::<EnergyMeter>`,
+  renamed in its 6 users); `pd_full_name`'s five-way class probe → an `ElemId`
+  variant `match` (same five names, same `"PDElement"` fall-through).
+- `elements/meter/{monitor,energymeter,sensor}/accessors.rs` — the three
+  `capture_metered`/`capture` RefSnapshot helpers now take the
+  `ResolvedObj<'_>` the caller already holds instead of `&dyn DssObject`:
+  `as_ckt_element()` → `o.ckt()`, the monitor's 10-way `MeteredKind` chain →
+  `o.get::<Transformer>()`/`get::<AutoTrans>()`/`get::<Capacitor>()` plus two
+  `matches!` over `ElemId`, and the EnergyMeter `is_pd` five-way probe → one
+  `matches!` over `ElemId`.
+
+**Bit-neutrality argument.** Every converted site resolves the same object by
+the same `(class ordinal, index)`; `typed`/`typed_mut` are the proven twins of
+the downcast (`typed_accessors_match_the_any_downcast_for_every_class`), and the
+`matches!(id, …)` chains replace probes over **mutually exclusive** classes, so
+the arm chosen is the same regardless of order (`ElemId` variant ⇔ concrete
+class by `arena_order_matches_registry`). `capture_metered` still runs at
+resolve time, from the same object, filling the same snapshot fields — only the
+type channel moved. No list, loop, `find_*` tie-break, control-queue insertion,
+stamp or accumulation order was touched; no arithmetic is in the diff.
+
+**New proof surface.** `exec::registry::tests::typed_store_accessors_match_the_untyped_pair_and_downcast`
+gains a `typed_obj_pair_mut` case over the LIVE `ClassStore`, asserting **pointer
+identity** with the untyped `pair_mut` on both branches — cross-arena
+(monitor ⇄ line) and same-arena (monitor ⇄ monitor, the case reachable via
+`element=monitor.…`). Two monitors were added to that test circuit; no case was
+removed or weakened.
+
+**ESCAPE, narrowed → R3.3 — the 4 concrete reads inside
+`elements/meter/monitor/sample.rs`.** Old code untouched, gate green.
+`Monitor::take_sample(metered: &mut dyn DssObject, …)` still recovers
+`Capacitor::states` (mode 9, l.135), `Storage` present kW/kvar/kWh/state (mode
+11, l.176), `Transformer::get_all_winding_currents` (mode 8, l.226) and
+`Transformer::get_winding_voltages` (mode 10, l.250) by downcast, and reads the
+element through 8 `as_ckt_element*` calls. The borrow side is now typed
+(`typed_obj_pair_mut`), so the residue is purely the **reader**: retyping the
+parameter to `&mut dyn CktElement` loses those four reads, and both ways out
+are R3.3's call, not this step's —
+1. four monitor-specific typed reads on the `CktElement` trait (the plan's R0
+   "small typed reads" bullet) = a 50-class trait-surface decision; or
+2. a typed `(arena, idx)` view, whose **same-class** branch (a monitor whose
+   `element=` names another monitor) cannot hand out an arena view while the
+   monitor itself is borrowed — it would silently return `None` for the
+   concrete reads, i.e. a behavior change on an unprobed branch, which the
+   escape protocol forbids.
+R3.3 removes `as_ckt_element` from `DssObject` and must decide this for every
+bare-`&dyn` reader at once; `take_sample` is the last member of that family in
+the meter cluster.
+
+**Still open → R3.3 — R3.1's escaped sub-step (iv)** ("statically-known shape
+refs as typed `Idx<T>`", 34 field declarations / 16 names / ~14 classes;
+inventory in the R3.1 record). Unchanged by this step, and still best done
+**with** R3.3's arena-read sweep, since the fields' readers are exactly the
+sites that sweep converts.
+
+**Metrics (`rg -c … crates/dss-core/src`, summed lines / files).**
+
+| metric | R3.2 part-2 `377bbc8` | HEAD | delta | note |
+|---|---|---|---|---|
+| `downcast_ref\|downcast_mut` | 310 / 57 f | **261 / 47 f** | **−49** | the whole meter cluster (**−10 files**) |
+| `as_any\|as_ckt_element` | 619 / 134 f | **569 / 126 f** | **−50** | their `as_any()` halves + 4 `as_ckt_element` |
+| `TODO(compat)` | 117 / 68 f | **117 / 68 f** | **0** | invariant held |
+
+**R3.2 total vs its base `275de68`:** `downcast_ref|downcast_mut` **369 → 261
+(−108, 73 → 47 files)**, `as_any|as_ckt_element` **716 → 569 (−147)**,
+`TODO(compat)` **117 unchanged**, zero golden / ledger / tolerance /
+corpus-deck churn.
+
+**Deviations disclosed.** (1) `downcast_meter` → `meter_mut` (private helper,
+6 users) — the old name describes a mechanism that no longer exists. (2) The
+three RefSnapshot helpers changed signature (`&dyn DssObject` →
+`ResolvedObj<'_>`); each has exactly one caller, which already held the handle.
+(3) In `allocate.rs` the two `pair_mut` conversions move the meter/sensor
+class-mismatch panic *ahead* of the `"metered element is a circuit element"`
+expect (`typed_ckt_pair_mut` narrows `C` first). Unreachable in practice —
+`ckt.energy_meters`/`ckt.sensors` only ever hold their own class — and it is the
+same deviation already disclosed for the R3.2 part-1 dispatch conversions.
+(4) Item (e)'s reader half escaped (above). (5) Ritual step 3 (two fresh audits)
+is not run in this session; the coordinator spawns the R3 audits.
+
+**Gate (full, SOLO, toolchain guard first).** `cargo fmt --all --check` exit 0;
+`cargo clippy --workspace --all-targets -- -D warnings` exit 0; `cargo test
+--workspace` **exit 0** — 66 `test result: ok` groups, **1989 passed, 0 failed,
+5 ignored** (the same 5 pre-existing ones; zero `#[ignore]` churn),
+`corpus_gate_all_cases_match_engines … ok` (25 passed, both channels
+capi_v0145 + r4133), run solo with no name filters. Corpus left pristine: the
+run-artifacts listed by `git status tests/corpus` removed by exact name — no
+wide `git clean`. Tree clean.
+
+### DE_PASCALIZE R3.2 (part 2/3) — Category-D typed resolved-object handle (`ResolvedObj`) across all 29 `set_object_ref` files; item (e) escape-recorded (branch `depas-r3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral, type-channel only. Base = the R3.2 part-1 tip
 `7dc07ea`. Ritual 0 held at start **and** before the commit: 186 `.pas` under
@@ -130,7 +251,7 @@ capi_v0145 + r4133), run solo with no name filters. Corpus left pristine: 18
 run-artifacts (`StorageControllerTechNote/{Support,Time}/IEEE8500u_*.csv`)
 removed by exact name — no wide `git clean`. Tree clean.
 
-### DE_PASCALIZE R3.2 (part 1/2) — typed arena accessors + Category-A typed pair/triple getters + the `*_mut` helper family (branch `depas-r3`, 2026-07-26)
+### DE_PASCALIZE R3.2 (part 1/3) — typed arena accessors + Category-A typed pair/triple getters + the `*_mut` helper family (branch `depas-r3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral, type-channel only. Base = the R3.1 tip `275de68`
 (on `update` @ `67d2965`). Ritual 0 held at start **and** before the commit: 186

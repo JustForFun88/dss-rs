@@ -159,6 +159,30 @@ pub trait TypedStore: ElemStore {
         }
     }
 
+    /// A metering element plus the element it meters, borrowed disjointly: the
+    /// meter as its concrete class `C`, the target as the **generic** object
+    /// view. The generic side is what `Monitor::take_sample` still needs (it
+    /// reaches past `CktElement` for the mode 8/9/10/11 concrete reads — see
+    /// the R3.2 escape record); every other meter pair uses
+    /// [`TypedStore::typed_ckt_pair_mut`].
+    ///
+    /// Panics on aliasing refs or a `C`-class mismatch, exactly like
+    /// [`ElemStore::pair_mut`] + the paired downcast's `expect`.
+    fn typed_obj_pair_mut<C: ArenaClass>(
+        &mut self,
+        c: ElemId,
+        t: ElemId,
+    ) -> (&mut C, &mut dyn crate::obj::base::DssObject) {
+        let (ci, ti) = pair_indices::<C>(c, t);
+        if c.class_ord() == t.class_ord() {
+            let (a, b) = split2::<C>(self.arena_mut(C::CLASS_ORD), ci, ti);
+            (a, b)
+        } else {
+            let (ca, ct) = self.arena_pair_mut(C::CLASS_ORD, t.class_ord());
+            (expect_typed::<C>(ca, ci), ct.obj_mut(ti))
+        }
+    }
+
     /// [`TypedStore::typed_ckt_pair_mut`] plus the monitored element (also a
     /// `&mut dyn CktElement`) — the CapControl / Fuse / Relay / Recloser
     /// "control + controlled + monitored" triple. Panics on any aliasing or a

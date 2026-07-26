@@ -7,7 +7,7 @@
 
 use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::EnergyMeter;
-use crate::elements::traits::{ElemId, ElemStore};
+use crate::elements::traits::{ElemId, ElemStore, TypedStore};
 
 pub mod demand_interval;
 mod interpolate;
@@ -38,22 +38,17 @@ pub(crate) fn sync_seasonal_rating_idx(ckt: &mut Circuit, store: &mut dyn ElemSt
     }
     let int_hour = ckt.solution.int_hour;
     if let Some(r) = store.find_general("XYcurve", &ckt.season_signal)
-        && let Some(curve) = store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<crate::elements::general::xy_curve::XyCurveObj>()
+        && let Some(curve) = store.typed_mut::<crate::elements::general::xy_curve::XyCurveObj>(r)
     {
         ckt.seasonal_rating_idx = curve.get_y_value(int_hour as f64).trunc() as i32;
     }
 }
 
-/// Downcast a registry entry known to be an [`EnergyMeter`] to a mutable ref.
-/// Shared by all three submodules' write-back paths (`ckt.energy_meters` only
-/// ever holds `EnergyMeter` objects, so the downcast is infallible).
-fn downcast_meter(store: &mut dyn ElemStore, meter_ref: ElemId) -> &mut EnergyMeter {
+/// The [`EnergyMeter`] behind a registry handle, as a mutable ref. Shared by all
+/// three submodules' write-back paths (`ckt.energy_meters` only ever holds
+/// `EnergyMeter` objects, so the narrowing is infallible).
+fn meter_mut(store: &mut dyn ElemStore, meter_ref: ElemId) -> &mut EnergyMeter {
     store
-        .obj_mut(meter_ref)
-        .as_any_mut()
-        .downcast_mut::<EnergyMeter>()
+        .typed_mut::<EnergyMeter>(meter_ref)
         .expect("energy_meters holds EnergyMeter objects")
 }

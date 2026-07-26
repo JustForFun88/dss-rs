@@ -14,10 +14,8 @@ use crate::obj::base::{DssObjData, DssObject};
 use super::{Sensor, prop};
 
 /// Capture the parse-relevant shape of the metered element (any class).
-fn capture(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
-    let elem = obj
-        .as_ckt_element()
-        .expect("element= resolves to a ckt elem");
+fn capture(full_name: String, o: ResolvedObj<'_>) -> MeteredSnapshot {
+    let elem = o.ckt().expect("element= resolves to a ckt elem");
     let cd = elem.cd();
     MeteredSnapshot {
         full_name,
@@ -248,7 +246,7 @@ impl DssObject for Sensor {
                     Some(o) => {
                         self.med.metered_element = Some(o.id());
                         self.med.metered_element_changed = true;
-                        self.med.metered_snap = Some(capture(name, o.obj()));
+                        self.med.metered_snap = Some(capture(name, o));
                     }
                     None => {
                         self.med.metered_element = None;

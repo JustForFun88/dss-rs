@@ -1,10 +1,12 @@
 //! Monitor class-level sweeps — Pascal `TDSSMonitor.SampleAll` /
 //! `SampleAllMode5` / `ResetAll` (`Meters/Monitor.pas`). Implemented as free
 //! functions over the registry (the WP5.7 control-sweep pattern): each monitor
-//! and its metered element are borrowed disjointly via [`ElemStore::pair_mut`].
+//! and its metered element are borrowed disjointly via
+//! [`TypedStore::typed_obj_pair_mut`].
 
 use crate::circuit::Circuit;
 use crate::elements::meter::monitor::{Monitor, MonitorSampleCtx};
+use crate::elements::traits::TypedStore;
 use crate::solution::solution::{SolveEnv, sys_ctx};
 
 /// Build the per-sample solution context from the current solution state.
@@ -41,10 +43,9 @@ pub(crate) fn sample_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv, mode5_o
 
     for mon_ref in monitors {
         let (mode, enabled, metered) = {
-            let obj = env.store.obj(mon_ref);
-            let m = obj
-                .as_any()
-                .downcast_ref::<Monitor>()
+            let m = env
+                .store
+                .typed::<Monitor>(mon_ref)
                 .expect("ckt.monitors holds Monitor objects");
             (m.mode_raw(), m.med.cd.enabled, m.med.metered_element)
         };
@@ -58,11 +59,9 @@ pub(crate) fn sample_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv, mode5_o
         let Some(metered_ref) = metered else {
             continue;
         };
-        let (mon_obj, metered_obj) = env.store.pair_mut(mon_ref, metered_ref);
-        let m = mon_obj
-            .as_any_mut()
-            .downcast_mut::<Monitor>()
-            .expect("monitor downcast");
+        let (m, metered_obj) = env
+            .store
+            .typed_obj_pair_mut::<Monitor>(mon_ref, metered_ref);
         m.take_sample(metered_obj, &ckt.solution.node_v, &sys, &ctx);
     }
 }
@@ -78,9 +77,7 @@ pub(crate) fn save_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv) {
     for mon_ref in ckt.monitors.clone() {
         let m = env
             .store
-            .obj_mut(mon_ref)
-            .as_any_mut()
-            .downcast_mut::<Monitor>()
+            .typed_mut::<Monitor>(mon_ref)
             .expect("ckt.monitors holds Monitor objects");
         if m.med.cd.enabled {
             m.save();
@@ -98,9 +95,7 @@ pub(crate) fn reset_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv) {
     for mon_ref in monitors {
         let m = env
             .store
-            .obj_mut(mon_ref)
-            .as_any_mut()
-            .downcast_mut::<Monitor>()
+            .typed_mut::<Monitor>(mon_ref)
             .expect("ckt.monitors holds Monitor objects");
         if m.med.cd.enabled {
             m.reset_it(is_harmonic);
