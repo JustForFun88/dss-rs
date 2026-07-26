@@ -7,6 +7,77 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE P3 — borrow hygiene: the clone-to-release-borrow swarm (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral: no arithmetic, no visit order, no registration order
+changed — every removed allocation carried values that are byte-for-byte the ones
+now read in place. Goldens untouched, `TODO(compat)` still 117.
+
+**(a) `solution/controls/dispatch.rs` — the fleet handle-list clones are gone.**
+The store (`env.store`) lives *outside* the circuit, so a fleet list never had to be
+copied to keep it mutable: the dispatch envs now borrow it. `GenDispEnv.generators`,
+`UpfcDispEnv.upfcs`, `StorageDispEnv.storages`, `InvDispEnv.pv_systems`/`.storages`,
+`ExpDispEnv.pv_systems` are `&'a [ElemId]`; `StorageDispEnv.season_signal` is
+`&'a str`. The two per-sample `Vec<f64>` bus-kV-base scatters (`ckt.buses.iter().
+map(kv_base).collect()`, one per Inv/Exp dispatch) are replaced by `buses: &'a
+[Bus]` + `.kv_base` at the point of use, and the `MonBus` resolution stores
+`Vec<&'a [usize]>` instead of cloning each bus's whole `ref_no` array. The two
+`UpdateAll` sweeps (`update_all_inv_controls` / `update_all_exp_controls`) had
+cloned `controls`/`pv_systems`/`storages`/`bus_kvbase` **per control** inside the
+loop — now a single `Circuit` field split (`controls`, `pv_systems`, `storages`,
+`buses`, `bus_list`, `solution`) borrows all of them at once. 13 `Vec` clones per
+control sample removed; the lists are the same objects in the same creation order,
+so every fleet scan sees exactly what it saw before.
+
+**(b) full-vector copies per step/frequency/bus.** `solution/solution/dynamics.rs`
+(`calc_initial_machine_states`, `integrate_pc_states`) and `harmonics.rs`
+(`initialize_for_harmonics`) copied the whole `node_v` once per half-step /
+per sweep only to satisfy a borrow that was never in conflict (store ⟂ circuit) —
+now `&ckt.solution.node_v` directly. `savePresentVoltages` uses `clone_from`
+(reuses the saved allocation; identical contents). `fault_study.rs`:
+`compute_ysc` splits `Circuit { buses, solution, .. }` and reads the bus `ref_no`
+in place instead of cloning it per bus (N clones per fault study), and
+`compute_isc` multiplies straight out of `b.vbus` (disjoint field from
+`b.bus_current`). `solution/monitors.rs`: the `SampleAll`/`SaveAll`/`ResetAll`
+sweeps walk `&ckt.monitors` instead of cloning the list per sample.
+
+**(c) `elements/meter/monitor/sample.rs` — per-sample scratch buffers.** Pascal
+keeps `VoltageBuffer`/`CurrentBuffer` as object fields (`Monitor.pas:146-147`,
+sized in `RecalcElementData`); the port allocated two `Vec<Complex64>` on *every*
+sample of *every* monitor. They are now `Monitor` fields, lent to the sample body
+via `mem::take` + hand-back (`take_sample` → `take_sample_into`), because
+`add_dbl` needs `&mut self` while the record is written. The body still
+`clear()` + `resize(n, ZERO)`s them at exactly the point the `vec![ZERO; n]` used
+to run, so their contents entering the match are identical (mode 12 relies on the
+zeroed tail past `NPhases`). Mode 12's `vterminal.clone()` is also gone (read in
+place; the metered element is untouched until the post-loop `compute_iterminal`).
+
+**(d) self-monitored control clones — LEFT IN PLACE, deliberately.** The
+`mon == target` arms of Fuse/Recloser/Relay (`clone_ckt`) and CapControl
+(`cap.clone()`) hand the *monitored* role an owned copy of the controlled element.
+This is not a borrow-hygiene wart that a typed pair getter can dissolve: upstream
+the two roles are the **same object**, so removing the copy needs one `&mut` used
+for both roles — impossible without restructuring each `sample()` into
+"read every monitored quantity, then mutate the controlled side". That reordering
+is only equivalent if no controlled-side mutation precedes a monitored read in any
+of the four classes, which is a per-class proof, not a mechanical rewrite. P3's
+rule is "remove ONLY if provably behavior-identical, else leave and record" →
+recorded. (The copies are already value-neutral: the monitored role's only
+mutation is the `Iterminal` cache, recomputed identically from the same `NodeV`.)
+
+**Surveyed, out of P3's scope (follow-up candidates):** `ckt.<list>.clone()`
+survives in `controls/sampling.rs` (2), `faults.rs` (2), `meters/**` (10),
+`solution/monte_carlo.rs` (2), `time_series.rs`, `power_flow.rs:331` and
+`ymatrix.rs:216` (`ckt_elements` per Y rebuild). Each of those loops passes
+`&mut Circuit` into the body (`dispatch_control`, meter samplers), so removing the
+clone means an index loop over a snapshot length — a different failure mode if a
+body ever mutates the list, i.e. a real per-site proof rather than a borrow fix.
+`solution/solution/ncim.rs` (4 more) is fenced off to the concurrent `depas-og2`
+worktree and was not touched. No file the fence names was modified.
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate, both
+channels) — green, 0 failures; `tests/corpus` pristine; goldens untouched.
+
 ### DE_PASCALIZE P1-tail (5/n) — four small self-contained families + the P1-tail escape record (branch `depas-p1p3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Closes most of deferred item **7-residue**.

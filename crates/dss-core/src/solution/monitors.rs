@@ -39,9 +39,10 @@ fn sample_ctx(ckt: &Circuit) -> MonitorSampleCtx {
 pub(crate) fn sample_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv, mode5_only: bool) {
     let sys = sys_ctx(ckt);
     let ctx = sample_ctx(ckt);
-    let monitors = ckt.monitors.clone();
 
-    for mon_ref in monitors {
+    // `env.store` is disjoint from `ckt`, so the monitor list is walked in
+    // place (it was cloned per sample before) — same creation order.
+    for &mon_ref in &ckt.monitors {
         let (mode, enabled, metered) = {
             let m = env
                 .store
@@ -72,7 +73,7 @@ pub(crate) fn sample_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv, mode5_o
 /// **not** called by `SolveGeneralTime` ("roll your own", WPG.2) or
 /// `SolveFaultStudy` (never samples monitors at all).
 pub(crate) fn save_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv) {
-    for mon_ref in ckt.monitors.clone() {
+    for &mon_ref in &ckt.monitors {
         let m = env
             .store
             .typed_mut::<Monitor>(mon_ref)
@@ -89,8 +90,7 @@ pub(crate) fn save_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv) {
 /// `Set mode=harmonics` reset) relabels them.
 pub(crate) fn reset_all_monitors(ckt: &mut Circuit, env: &mut SolveEnv) {
     let is_harmonic = ckt.solution.is_harmonic_model;
-    let monitors = ckt.monitors.clone();
-    for mon_ref in monitors {
+    for &mon_ref in &ckt.monitors {
         let m = env
             .store
             .typed_mut::<Monitor>(mon_ref)
