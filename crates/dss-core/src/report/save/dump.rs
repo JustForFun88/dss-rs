@@ -12,7 +12,7 @@
 //! `TDSSCktElement` → `TPCElement` → leaf). Rust has no inheritance, so we
 //! reproduce it with a **generic base** ([`dump_object`], selected by the
 //! element kind — plain object / CktElement / PCElement) plus per-class override
-//! bodies dispatched by `downcast_ref` (the same pattern the register exports
+//! bodies dispatched by a typed `ClassArena` read (the same pattern the register exports
 //! use). Property lines reuse [`ClassProps::get_value`] — Pascal
 //! `PropertyValue[i] == GetPropertyValue(i)` for every element (only
 //! `TLoadShapeObj` overrides the getter, and LoadShape has no `DumpProperties`
@@ -41,7 +41,7 @@ pub(crate) fn allocation_factors(classes: &[DssClass], ckt: &crate::circuit::Cir
     use crate::elements::pc::load::{Load, LoadSpec};
     let mut s = String::new();
     for &r in &ckt.loads {
-        let Some(load) = classes[r.cls].arena[r.idx].as_any().downcast_ref::<Load>() else {
+        let Some(load) = classes[r.class_ord()].arena.get::<Load>(r.index()) else {
             continue;
         };
         match load.load_spec_type {
@@ -66,7 +66,7 @@ pub(crate) fn allocation_factors(classes: &[DssClass], ckt: &crate::circuit::Cir
 /// per PC dynamic-state variable (empty unless `complete` and the element is a
 /// PC element, for the `! VARIABLES` block), and the precomputed `Branch List:`
 /// body text for the EnergyMeter override (empty for every other class — needs
-/// the full class registry to resolve each branch/shunt `ElemRef`'s name, which
+/// the full class registry to resolve each branch/shunt `ElemId`'s name, which
 /// this per-object context otherwise has no reach into).
 pub struct DumpCtx<'a> {
     pub cls: &'a ClassProps,
@@ -89,13 +89,15 @@ pub(crate) fn energy_meter_branch_list(classes: &[DssClass], em: &EnergyMeter) -
     };
     for (i, &br) in em.sequence_list().iter().enumerate() {
         let node = tree.node(em.sequence_nodes()[i]);
-        let name = classes[br.cls].arena[br.idx].data().name();
+        let name = classes[br.class_ord()].arena[br.index()].data().name();
         s.push_str(&format!("Circuit Element = {name}\n"));
         for &shunt in &node.shunts {
             let full = format!(
                 "{}.{}",
-                classes[shunt.cls].props.class_name(),
-                classes[shunt.cls].arena[shunt.idx].data().name()
+                classes[shunt.class_ord()].props.class_name(),
+                classes[shunt.class_ord()].arena[shunt.index()]
+                    .data()
+                    .name()
             );
             s.push_str(&format!("   Shunt Element = {full}\n"));
         }
@@ -254,7 +256,7 @@ pub(crate) fn pc_variables(out: &mut String, vars: &[(String, f64)]) {
 }
 
 /// The three generic (non-override) `DumpProperties` behaviors, selected by the
-/// element kind. `plain TDSSObject` (`as_ckt_element() == None`, e.g. XYcurve,
+/// element kind. `plain TDSSObject` (`try_ckt_elem() == None`, e.g. XYcurve,
 /// LoadShape, WireData) writes header + props + (Complete) blank. A non-PC
 /// `TDSSCktElement` (the controls) writes header + props + (Complete) blank +
 /// `! ENABLED` + (Complete) the CktElement Y/terminal block — props come *before*
@@ -268,12 +270,14 @@ pub(crate) fn pc_variables(out: &mut String, vars: &[(String, f64)]) {
 pub(crate) fn dump_generic(
     out: &mut String,
     cx: &DumpCtx,
-    obj: &dyn DssObject,
+    arena: &crate::obj::arena::ClassArena,
+    idx: usize,
     complete: bool,
     is_pc: bool,
 ) {
+    let obj = arena.obj(idx);
     let full_name = format!("{}.{}", cx.cls.class_name(), obj.data().name());
-    match obj.as_ckt_element() {
+    match arena.try_ckt_elem(idx) {
         None => {
             // Plain TDSSObject: header + props + (Complete) blank.
             header(out, &full_name);
@@ -315,21 +319,22 @@ pub(crate) fn dump_generic(
 /// the class's leaf override if it has a Pascal one, else the generic base.
 /// `is_pc` selects the PCElement ordering for the generic path.
 ///
-/// Takes `&mut dyn DssObject` because one override — `TLineGeometryObj` — walks
-/// its conductors by mutating `ActiveCond` (Pascal `ActiveCond := j;
-/// GetPropertyValue(3..7)`, `LineGeometry.pas:669`); the other overrides and the
-/// generic base read through a shared `&*obj` reborrow.
+/// Takes the object's `ClassArena` mutably because one override —
+/// `TLineGeometryObj` — walks its conductors by mutating `ActiveCond` (Pascal
+/// `ActiveCond := j; GetPropertyValue(3..7)`, `LineGeometry.pas:669`); the other
+/// overrides and the generic base read through a shared reborrow.
 pub(crate) fn dump_object(
     out: &mut String,
     cx: &DumpCtx,
-    obj: &mut dyn DssObject,
+    arena: &mut crate::obj::arena::ClassArena,
+    idx: usize,
     complete: bool,
     is_pc: bool,
 ) {
-    if overrides::dump_override(out, cx, obj, complete) {
+    if overrides::dump_override(out, cx, arena, idx, complete) {
         return;
     }
-    dump_generic(out, cx, &*obj, complete, is_pc);
+    dump_generic(out, cx, arena, idx, complete, is_pc);
 }
 
 /// The full-name (`Class.Name`) an override writes in its `New "…"` header.

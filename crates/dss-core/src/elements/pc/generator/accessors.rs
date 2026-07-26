@@ -8,7 +8,8 @@ use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -21,10 +22,6 @@ impl CktElement for Generator {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
-    }
-
-    fn recalc_element_data(&mut self, sys: &SysCtx) {
-        self.recalc(sys);
     }
 
     /// Pascal `TGeneratorObj.MakePosSequence` (`generator.pas:2726`). Single
@@ -451,18 +448,7 @@ impl DssObject for Generator {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
+
     fn as_dyneq(&self) -> Option<&crate::elements::pc::dyneq_pce::DynEqPceData> {
         Some(&self.dyneq)
     }
@@ -649,16 +635,10 @@ impl DssObject for Generator {
     }
 
     /// Resolve a shape reference (snapshot-clone like the Load shape refs).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|(r, _)| r);
-        let load_shape =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
+        let elem_ref = resolved.map(|o| o.id());
+        let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         match idx {
             YEARLY => {
                 self.yearly_shape = name;
@@ -678,10 +658,8 @@ impl DssObject for Generator {
             DYNAMICEQ => {
                 self.dyneq.dynamic_eq = name;
                 self.dyneq.dynamic_eq_ref = elem_ref;
-                self.dyneq.dynamic_eq_obj = resolved.and_then(|(_, o)| {
-                    o.as_any()
-                        .downcast_ref::<crate::elements::general::dynamic_exp::DynamicExpObj>()
-                        .cloned()
+                self.dyneq.dynamic_eq_obj = resolved.and_then(|o| {
+                    o.cloned::<crate::elements::general::dynamic_exp::DynamicExpObj>()
                 });
             }
             _ => unreachable!("Generator has no resolved object-ref property {idx}"),
@@ -805,10 +783,6 @@ impl DssObject for Generator {
         errors: &mut crate::diag::ErrorLog,
     ) {
         self.apply_user_model_load_impl(load, wasm, sys, errors);
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

@@ -2,7 +2,6 @@
 //! getters & setters, bus names, `PropertySideEffects`, `EndEdit`, `MakeLike`.
 
 use super::Capacitor;
-use crate::elements::traits::CktElement;
 use crate::obj::base::{DssObjData, DssObject};
 
 impl Capacitor {
@@ -46,18 +45,6 @@ impl DssObject for Capacitor {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_f64(&self, idx: usize) -> f64 {
@@ -282,10 +269,6 @@ impl DssObject for Capacitor {
     /// Pascal base `EndEdit` → `RecalcElementData` (Capacitor does not override).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

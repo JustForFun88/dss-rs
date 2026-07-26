@@ -60,47 +60,41 @@ pub fn save_write(out: &mut String, cx: &SaveCtx, obj: &dyn DssObject) {
 pub fn write_dss_object(
     out: &mut String,
     cx: &SaveCtx,
-    obj: &mut dyn DssObject,
+    arena: &mut crate::obj::arena::ClassArena,
+    idx: usize,
     new_or_edit: &str,
 ) {
     out.push_str(new_or_edit);
     out.push_str(" \"");
     out.push_str(cx.cls.class_name());
     out.push('.');
-    out.push_str(obj.data().name());
+    out.push_str(arena.obj(idx).data().name());
     out.push('"');
     // Pascal models `SaveWrite` as a virtual method; `TTransfObj` overrides it
     // (the per-winding structure needs the array-property rewrite — see
     // `elements/pd/transformer/save.rs`). Every other class uses the generic
     // form. (More overrides are added here if/when a class needs one.)
-    if let Some(xf) = obj
-        .as_any()
-        .downcast_ref::<crate::elements::pd::transformer::Transformer>()
-    {
+    if let Some(xf) = arena.get::<crate::elements::pd::transformer::Transformer>(idx) {
         xf.save_write_body(out, cx);
-    } else if let Some(at) = obj
-        .as_any()
-        .downcast_ref::<crate::elements::pd::auto_trans::AutoTrans>()
-    {
+    } else if let Some(at) = arena.get::<crate::elements::pd::auto_trans::AutoTrans>(idx) {
         at.save_write_body(out, cx);
-    } else if let Some(lg) = obj
-        .as_any()
-        .downcast_ref::<crate::elements::general::line_geometry::LineGeometryObj>()
+    } else if let Some(lg) =
+        arena.get::<crate::elements::general::line_geometry::LineGeometryObj>(idx)
     {
         lg.save_write_body(out, cx);
-    } else if let Some(ln) = obj
-        .as_any()
-        .downcast_ref::<crate::elements::pd::line::Line>()
-    {
+    } else if let Some(ln) = arena.get::<crate::elements::pd::line::Line>(idx) {
         ln.save_write_body(out, cx);
     } else {
-        save_write(out, cx, &*obj);
+        save_write(out, cx, arena.obj(idx));
     }
-    if obj.as_ckt_element().is_some_and(|elem| !elem.cd().enabled) {
+    if arena
+        .try_ckt_elem(idx)
+        .is_some_and(|elem| !elem.cd().enabled)
+    {
         out.push_str(" ENABLED=NO");
     }
     out.push('\n');
-    obj.data_mut().set_has_been_saved(true);
+    arena.obj_mut(idx).data_mut().set_has_been_saved(true);
 }
 
 /// The `WriteClassFile` object loop (`Utilities.pas:1170-1189`) with
@@ -126,14 +120,14 @@ pub(crate) fn class_file_text(
     let cx = SaveCtx { cls: props, enums };
     let mut out = String::new();
     let mut nrecords = 0usize;
-    for obj in arena.objs_mut() {
-        if is_ckt_element && obj.as_ckt_element().is_some_and(|e| !e.cd().enabled) {
+    for i in 0..arena.len() {
+        if is_ckt_element && arena.try_ckt_elem(i).is_some_and(|e| !e.cd().enabled) {
             continue;
         }
-        if obj.data().has_been_saved() {
+        if arena.obj(i).data().has_been_saved() {
             continue;
         }
-        write_dss_object(&mut out, &cx, obj, "New");
+        write_dss_object(&mut out, &cx, arena, i, "New");
         nrecords += 1;
     }
     (out, nrecords)

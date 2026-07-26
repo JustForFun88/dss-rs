@@ -3,7 +3,7 @@ use super::*;
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::CtrlCtx;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::DssObject;
 use crate::solution::SolveMode;
 
@@ -61,7 +61,7 @@ fn default_shape_is_3ph_1term_no_yprim() {
 #[test]
 fn tapnum_maps_tap_to_integer_and_back() {
     let mut rc = RegControl::new("r1");
-    rc.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    rc.ccd.controlled_element = Some(ElemId::new(0, 0));
     rc.tap_winding = 2;
     // (PresentTap, MaxTap, MinTap, TapIncrement) — the 32-tap default.
     rc.tap_snap = vec![(1.0, 1.1, 0.9, 0.00625), (1.0, 1.1, 0.9, 0.00625)];
@@ -237,7 +237,7 @@ impl Scratch {
             t: 0.0,
             dbl_hour: 0.0,
             control_iter: 1,
-            self_ref: ElemRef { cls: 0, idx: 0 },
+            self_ref: ElemId::new(0, 0),
         }
     }
 }
@@ -485,7 +485,7 @@ fn signed_rev_threshold_arms_reverse_pending_below_default() {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
     use crate::obj::base::DssObject;
 
     /// Pascal `TRegControlObj.MakePosSequence` (RegControl.pas:1266): Enabled +
@@ -493,7 +493,7 @@ mod make_pos_seq_tests {
     #[test]
     fn resyncs_to_controlled_transformer() {
         let mut rc = RegControl::new("rc1");
-        rc.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 0 });
+        rc.ccd.controlled_element = Some(ElemId::new(1, 0));
         rc.ccd.element_terminal = 2;
         rc.using_regulated_bus = false;
         let ctx = PosSeqCtx {
@@ -518,7 +518,7 @@ mod make_pos_seq_tests {
     #[test]
     fn regulated_bus_forces_single_phase() {
         let mut rc = RegControl::new("rc1");
-        rc.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 0 });
+        rc.ccd.controlled_element = Some(ElemId::new(1, 0));
         rc.using_regulated_bus = true;
         rc.regulated_bus = "remotebus".into();
         let ctx = PosSeqCtx {

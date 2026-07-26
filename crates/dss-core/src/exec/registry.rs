@@ -12,10 +12,7 @@
 //! `class.objects`.
 
 use super::*;
-use crate::obj::arena::ClassArena;
-
-/// A class constructor: build a fresh, all-default object of the class.
-pub(crate) type NewObjectFn = fn(&str) -> Box<dyn DssObject>;
+use crate::obj::arena::{ClassArena, ResolvedObj};
 
 /// One registered class plus its live objects — the Rust stand-in for a
 /// `TDSSClass` with its `ElementNameList`. Objects live in [`Self::arena`], a
@@ -23,7 +20,6 @@ pub(crate) type NewObjectFn = fn(&str) -> Box<dyn DssObject>;
 /// `PORTING_PLAN §2.1`), replacing the pre-R1 `Vec<Box<dyn DssObject>>`.
 pub(crate) struct DssClass {
     pub(crate) props: ClassProps,
-    pub(crate) new_object: NewObjectFn,
     /// This class's live objects — one typed `Vec<T>` (Pascal `ElementList`).
     pub(crate) arena: ClassArena,
     /// Lowercased object name → index (Pascal `ElementNameList`, THashList).
@@ -37,12 +33,11 @@ pub(crate) struct DssClass {
 }
 
 impl DssClass {
-    pub(crate) fn dss_object(props: ClassProps, new_object: NewObjectFn) -> Self {
+    pub(crate) fn dss_object(props: ClassProps) -> Self {
         let arena = ClassArena::empty_for(props.class_name())
             .expect("every registered class has an arena variant");
         Self {
             props,
-            new_object,
             arena,
             name_to_idx: HashMap::new(),
             active: None,
@@ -51,12 +46,11 @@ impl DssClass {
         }
     }
 
-    pub(crate) fn ckt_class(props: ClassProps, new_object: NewObjectFn, kind: ElemKind) -> Self {
+    pub(crate) fn ckt_class(props: ClassProps, kind: ElemKind) -> Self {
         let arena = ClassArena::empty_for(props.class_name())
             .expect("every registered class has an arena variant");
         Self {
             props,
-            new_object,
             arena,
             name_to_idx: HashMap::new(),
             active: None,
@@ -86,24 +80,24 @@ pub(crate) struct ClassStore<'a> {
 }
 
 impl ElemStore for ClassStore<'_> {
-    fn ckt_elem(&self, r: ElemRef) -> &dyn CktElement {
-        self.classes[r.cls].arena.ckt_elem(r.idx)
+    fn ckt_elem(&self, r: ElemId) -> &dyn CktElement {
+        self.classes[r.class_ord()].arena.ckt_elem(r.index())
     }
-    fn ckt_elem_mut(&mut self, r: ElemRef) -> &mut dyn CktElement {
-        self.classes[r.cls].arena.ckt_elem_mut(r.idx)
-    }
-
-    fn obj(&self, r: ElemRef) -> &dyn DssObject {
-        self.classes[r.cls].arena.obj(r.idx)
+    fn ckt_elem_mut(&mut self, r: ElemId) -> &mut dyn CktElement {
+        self.classes[r.class_ord()].arena.ckt_elem_mut(r.index())
     }
 
-    fn kind(&self, r: ElemRef) -> ElemKind {
-        self.classes[r.cls]
+    fn obj(&self, r: ElemId) -> &dyn DssObject {
+        self.classes[r.class_ord()].arena.obj(r.index())
+    }
+
+    fn kind(&self, r: ElemId) -> ElemKind {
+        self.classes[r.class_ord()]
             .kind
-            .expect("kind: ElemRef must point at a circuit-element class")
+            .expect("kind: ElemId must point at a circuit-element class")
     }
 
-    fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef> {
+    fn find_ckt_element(&self, full_name: &str) -> Option<ElemId> {
         let lower = full_name.to_ascii_lowercase();
         let (cls_name, obj_name) = match lower.split_once('.') {
             Some((c, n)) => (Some(c), n),
@@ -120,87 +114,122 @@ impl ElemStore for ClassStore<'_> {
                 continue;
             }
             if let Some(&oi) = class.name_to_idx.get(obj_name) {
-                return Some(ElemRef { cls: ci, idx: oi });
+                return Some(ElemId::new(ci, oi));
             }
         }
         None
     }
 
-    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemRef> {
+    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemId> {
         let lower = obj_name.to_ascii_lowercase();
         for (ci, class) in self.classes.iter().enumerate() {
             if !class.props.class_name().eq_ignore_ascii_case(class_name) {
                 continue;
             }
             if let Some(&oi) = class.name_to_idx.get(&lower) {
-                return Some(ElemRef { cls: ci, idx: oi });
+                return Some(ElemId::new(ci, oi));
             }
         }
         None
     }
 
-    fn obj_mut(&mut self, r: ElemRef) -> &mut dyn DssObject {
-        self.classes[r.cls].arena.obj_mut(r.idx)
+    fn obj_mut(&mut self, r: ElemId) -> &mut dyn DssObject {
+        self.classes[r.class_ord()].arena.obj_mut(r.index())
     }
 
-    fn pair_mut(&mut self, a: ElemRef, b: ElemRef) -> (&mut dyn DssObject, &mut dyn DssObject) {
-        assert_ne!((a.cls, a.idx), (b.cls, b.idx), "pair_mut: aliasing refs");
-        if a.cls == b.cls {
-            self.classes[a.cls].arena.pair_mut_same(a.idx, b.idx)
+    fn arena(&self, cls: usize) -> &ClassArena {
+        &self.classes[cls].arena
+    }
+
+    fn arena_mut(&mut self, cls: usize) -> &mut ClassArena {
+        &mut self.classes[cls].arena
+    }
+
+    fn arena_pair_mut(&mut self, a: usize, b: usize) -> (&mut ClassArena, &mut ClassArena) {
+        let [ca, cb] = self
+            .classes
+            .get_disjoint_mut([a, b])
+            .expect("arena_pair_mut: class index out of range or aliasing");
+        (&mut ca.arena, &mut cb.arena)
+    }
+
+    fn arena_triple_mut(
+        &mut self,
+        a: usize,
+        b: usize,
+        c: usize,
+    ) -> (&mut ClassArena, &mut ClassArena, &mut ClassArena) {
+        let [ca, cb, cc] = self
+            .classes
+            .get_disjoint_mut([a, b, c])
+            .expect("arena_triple_mut: class index out of range or aliasing");
+        (&mut ca.arena, &mut cb.arena, &mut cc.arena)
+    }
+
+    fn pair_mut(&mut self, a: ElemId, b: ElemId) -> (&mut dyn DssObject, &mut dyn DssObject) {
+        assert_ne!(
+            (a.class_ord(), a.index()),
+            (b.class_ord(), b.index()),
+            "pair_mut: aliasing refs"
+        );
+        if a.class_ord() == b.class_ord() {
+            self.classes[a.class_ord()]
+                .arena
+                .pair_mut_same(a.index(), b.index())
         } else {
             let [ca, cb] = self
                 .classes
-                .get_disjoint_mut([a.cls, b.cls])
+                .get_disjoint_mut([a.class_ord(), b.class_ord()])
                 .expect("pair_mut: class index out of range");
-            (ca.arena.obj_mut(a.idx), cb.arena.obj_mut(b.idx))
+            (ca.arena.obj_mut(a.index()), cb.arena.obj_mut(b.index()))
         }
     }
 
     fn triple_mut(
         &mut self,
-        a: ElemRef,
-        b: ElemRef,
-        c: ElemRef,
+        a: ElemId,
+        b: ElemId,
+        c: ElemId,
     ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
-        let key = |r: ElemRef| (r.cls, r.idx);
+        let key = |r: ElemId| (r.class_ord(), r.index());
         assert!(
             key(a) != key(b) && key(a) != key(c) && key(b) != key(c),
             "triple_mut: aliasing refs"
         );
-        if a.cls == b.cls && b.cls == c.cls {
-            self.classes[a.cls]
+        if a.class_ord() == b.class_ord() && b.class_ord() == c.class_ord() {
+            self.classes[a.class_ord()]
                 .arena
-                .triple_mut_same(a.idx, b.idx, c.idx)
-        } else if a.cls == b.cls {
+                .triple_mut_same(a.index(), b.index(), c.index())
+        } else if a.class_ord() == b.class_ord() {
             let [cab, cc] = self
                 .classes
-                .get_disjoint_mut([a.cls, c.cls])
+                .get_disjoint_mut([a.class_ord(), c.class_ord()])
                 .expect("triple_mut: class index out of range");
-            let (oa, ob) = cab.arena.pair_mut_same(a.idx, b.idx);
-            (oa, ob, cc.arena.obj_mut(c.idx))
-        } else if a.cls == c.cls {
+            let (oa, ob) = cab.arena.pair_mut_same(a.index(), b.index());
+            (oa, ob, cc.arena.obj_mut(c.index()))
+        } else if a.class_ord() == c.class_ord() {
             let [cac, cb] = self
                 .classes
-                .get_disjoint_mut([a.cls, b.cls])
+                .get_disjoint_mut([a.class_ord(), b.class_ord()])
                 .expect("triple_mut: class index out of range");
-            let (oa, oc) = cac.arena.pair_mut_same(a.idx, c.idx);
-            (oa, cb.arena.obj_mut(b.idx), oc)
-        } else if b.cls == c.cls {
+            let (oa, oc) = cac.arena.pair_mut_same(a.index(), c.index());
+            (oa, cb.arena.obj_mut(b.index()), oc)
+        } else if b.class_ord() == c.class_ord() {
             let [ca, cbc] = self
                 .classes
-                .get_disjoint_mut([a.cls, b.cls])
+                .get_disjoint_mut([a.class_ord(), b.class_ord()])
                 .expect("triple_mut: class index out of range");
-            let (ob, oc) = cbc.arena.pair_mut_same(b.idx, c.idx);
-            (ca.arena.obj_mut(a.idx), ob, oc)
+            let (ob, oc) = cbc.arena.pair_mut_same(b.index(), c.index());
+            (ca.arena.obj_mut(a.index()), ob, oc)
         } else {
             let [ca, cb, cc] = self
                 .classes
-                .get_disjoint_mut([a.cls, b.cls, c.cls])
+                .get_disjoint_mut([a.class_ord(), b.class_ord(), c.class_ord()])
                 .expect("triple_mut: class index out of range");
             (
-                ca.arena.obj_mut(a.idx),
-                cb.arena.obj_mut(b.idx),
-                cc.arena.obj_mut(c.idx),
+                ca.arena.obj_mut(a.index()),
+                cb.arena.obj_mut(b.index()),
+                cc.arena.obj_mut(c.index()),
             )
         }
     }
@@ -223,11 +252,11 @@ impl<'a> ForeignClasses<'a> {
     /// The first *enabled* object of a class, in creation order (Pascal's
     /// `Class.ElementList` scan in `InvControl.MakeDERList`'s empty-list branch).
     /// Returns the resolved object so callers can read its bus / phase count.
-    pub(crate) fn first_enabled(&self, class: &str) -> Option<&'a dyn DssObject> {
-        let scan = |c: &'a DssClass| -> Option<&'a dyn DssObject> {
+    pub(crate) fn first_enabled(&self, class: &str) -> Option<&'a dyn CktElement> {
+        let scan = |c: &'a DssClass| -> Option<&'a dyn CktElement> {
             (0..c.arena.len())
-                .map(|i| c.arena.obj(i))
-                .find(|o| o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false))
+                .filter_map(|i| c.arena.try_ckt_elem(i))
+                .find(|e| e.cd().enabled)
         };
         for c in self.left.iter().chain(self.right.iter()) {
             if c.props.class_name().eq_ignore_ascii_case(class) {
@@ -242,12 +271,12 @@ impl<'a> ForeignClasses<'a> {
     /// control's `FNphases := ControlledElement[i].NPhases` on EVERY member, so
     /// the LAST one wins — the control's terminal shape follows the last fleet
     /// member (the `MonitoredElement`/bus stays the first).
-    pub(crate) fn last_enabled(&self, class: &str) -> Option<&'a dyn DssObject> {
-        let scan = |c: &'a DssClass| -> Option<&'a dyn DssObject> {
+    pub(crate) fn last_enabled(&self, class: &str) -> Option<&'a dyn CktElement> {
+        let scan = |c: &'a DssClass| -> Option<&'a dyn CktElement> {
             (0..c.arena.len())
                 .rev()
-                .map(|i| c.arena.obj(i))
-                .find(|o| o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false))
+                .filter_map(|i| c.arena.try_ckt_elem(i))
+                .find(|e| e.cd().enabled)
         };
         for c in self.left.iter().chain(self.right.iter()) {
             if c.props.class_name().eq_ignore_ascii_case(class) {
@@ -257,25 +286,20 @@ impl<'a> ForeignClasses<'a> {
         None
     }
 
-    /// Resolve a (class name, object name) pair to its global [`ElemRef`] plus
+    /// Resolve a (class name, object name) pair to its global [`ElemId`] plus
     /// the live object, scanning both halves. A class match with no object
     /// match short-circuits to `None`, like `cls.Find` returning NIL.
-    fn lookup(&self, class: &str, name_l: &str) -> Option<(ElemRef, &'a dyn DssObject)> {
-        let find_in = |c: &'a DssClass, cls: usize| {
+    fn lookup(&self, class: &str, name_l: &str) -> Option<ResolvedObj<'a>> {
+        // The arena is the authority on the class ordinal (`ClassArena::id`),
+        // and it equals the registry position by `arena_order_matches_registry`.
+        let find_in = |c: &'a DssClass| {
             c.name_to_idx
                 .get(name_l)
-                .map(|&idx| (ElemRef { cls, idx }, c.arena.obj(idx)))
+                .map(|&idx| ResolvedObj::new(&c.arena, idx))
         };
-        let left = self.left;
-        for (k, c) in left.iter().enumerate() {
+        for c in self.left.iter().chain(self.right.iter()) {
             if c.props.class_name().eq_ignore_ascii_case(class) {
-                return find_in(c, k);
-            }
-        }
-        let right = self.right;
-        for (k, c) in right.iter().enumerate() {
-            if c.props.class_name().eq_ignore_ascii_case(class) {
-                return find_in(c, self.split + 1 + k);
+                return find_in(c);
             }
         }
         None
@@ -283,27 +307,27 @@ impl<'a> ForeignClasses<'a> {
 }
 
 impl<'a> ForeignClassesView<'a> for ForeignClasses<'a> {
-    fn find(&self, class: &str, name: &str) -> Option<(ElemRef, &'a dyn DssObject)> {
+    fn find(&self, class: &str, name: &str) -> Option<ResolvedObj<'a>> {
         self.lookup(class, &name.to_ascii_lowercase())
     }
 
     /// Pascal `GetCktElementIndex`: resolve a full `Class.Name` reference (the
     /// `PropertyOffset2 = 0` object-ref case, e.g. CapControl `element=`). The
     /// returned `String` is the canonical `FullName` for dumps.
-    fn find_full(&self, full_name: &str) -> Option<(ElemRef, &'a dyn DssObject, String)> {
+    fn find_full(&self, full_name: &str) -> Option<(ResolvedObj<'a>, String)> {
         let dot = full_name.find('.')?;
         let (class, name) = (&full_name[..dot], &full_name[dot + 1..]);
         // Reuse the per-class lookup, then rebuild the canonical FullName.
-        let (r, obj) = self.lookup(class, &name.to_ascii_lowercase())?;
-        let cls = if r.cls < self.split {
-            &self.left[r.cls]
+        let resolved = self.lookup(class, &name.to_ascii_lowercase())?;
+        let ord = resolved.id().class_ord();
+        let cls = if ord < self.split {
+            &self.left[ord]
         } else {
-            &self.right[r.cls - self.split - 1]
+            &self.right[ord - self.split - 1]
         };
         Some((
-            r,
-            obj,
-            format!("{}.{}", cls.props.class_name(), obj.data().name()),
+            resolved,
+            format!("{}.{}", cls.props.class_name(), resolved.name()),
         ))
     }
 }
@@ -344,8 +368,161 @@ mod tests {
             .find_ckt_element("same")
             .expect("bare name resolves to a circuit element");
         assert_eq!(
-            r.cls, line_ci,
+            r.class_ord(),
+            line_ci,
             "bare-name find must return the first-registered class (Line), not Load"
         );
+    }
+
+    /// The R3.2 typed store accessors over a **live** `ClassStore`: `typed`/
+    /// `typed_mut` return the very object the removed `Any` downcast returned, the
+    /// control pair/triple getters hand out the same objects the untyped
+    /// `pair_mut`/`triple_mut` do, and a foreign class narrows to `None`.
+    #[test]
+    fn typed_store_accessors_match_the_untyped_pair_and_downcast() {
+        use crate::elements::control::cap_control::CapControl;
+        use crate::elements::control::reg_control::RegControl;
+        use crate::elements::meter::monitor::Monitor;
+        use crate::elements::pd::capacitor::Capacitor;
+        use crate::elements::pd::line::Line;
+        use crate::elements::traits::TypedStore;
+
+        let mut dss = Dss::new();
+        for c in [
+            "new circuit.typed basekv=12.47 bus1=src",
+            "new line.l1 bus1=src bus2=b phases=3",
+            "new transformer.t1 windings=2 buses=[b, c] conns=[wye, wye] kvs=[12.47, 4.16] kvas=[1000, 1000] xhl=6",
+            "new regcontrol.rc transformer=t1 winding=2 vreg=120",
+            "new capacitor.c1 bus1=c phases=3 kvar=600 kv=4.16",
+            "new capcontrol.cc element=line.l1 terminal=1 capacitor=c1 type=current on=10 off=5",
+            "new monitor.m1 element=line.l1 terminal=1 mode=0",
+            "new monitor.m2 element=line.l1 terminal=1 mode=1",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "setup errors: {:?}", dss.errors());
+
+        let (rc_ref, tr_ref, cc_ref, cap_ref, line_ref, m1_ref, m2_ref) = {
+            let store = ClassStore {
+                classes: &mut dss.classes,
+            };
+            (
+                store.find_ckt_element("regcontrol.rc").unwrap(),
+                store.find_ckt_element("transformer.t1").unwrap(),
+                store.find_ckt_element("capcontrol.cc").unwrap(),
+                store.find_ckt_element("capacitor.c1").unwrap(),
+                store.find_ckt_element("line.l1").unwrap(),
+                store.find_ckt_element("monitor.m1").unwrap(),
+                store.find_ckt_element("monitor.m2").unwrap(),
+            )
+        };
+
+        let mut store = ClassStore {
+            classes: &mut dss.classes,
+        };
+
+        // `typed` hands back the very stored object (the address the removed
+        // removed `Any` downcast returned), and the same `None`s.
+        assert!(std::ptr::eq(
+            store.typed::<RegControl>(rc_ref).unwrap() as *const RegControl as *const (),
+            store.obj(rc_ref) as *const dyn DssObject as *const (),
+        ));
+        assert!(store.typed::<Capacitor>(rc_ref).is_none());
+        assert!(store.typed_mut::<Line>(cap_ref).is_none());
+
+        // RegControl ⇄ Transformer: the ControlledTransformer proxy view.
+        {
+            let (rc, tr) = store.typed_transformer_pair_mut::<RegControl>(rc_ref, tr_ref);
+            assert_eq!(rc.data().name(), "rc");
+            assert_eq!(tr.expect("t1 is a Transformer").name(), "t1");
+        }
+        // A non-transformer target is `None`, not a panic (the dispatch abort).
+        {
+            let (_rc, tr) = store.typed_transformer_pair_mut::<RegControl>(rc_ref, cap_ref);
+            assert!(tr.is_none());
+        }
+
+        // CapControl ⇄ Capacitor (both concrete) + monitored element.
+        {
+            let (cc, cap) = store.typed_pair_mut::<CapControl, Capacitor>(cc_ref, cap_ref);
+            assert_eq!(cc.data().name(), "cc");
+            assert_eq!(cap.expect("c1 is a Capacitor").data().name(), "c1");
+        }
+        {
+            let (cc, cap, mon) =
+                store.typed_triple_mut::<CapControl, Capacitor>(cc_ref, cap_ref, line_ref);
+            assert_eq!(cc.data().name(), "cc");
+            assert_eq!(cap.expect("c1 is a Capacitor").data().name(), "c1");
+            assert_eq!(mon.expect("l1 is a circuit element").cd().obj.name(), "l1");
+        }
+        // A target of the wrong class yields `None` (the "not a Capacitor" abort).
+        {
+            let (_cc, cap) = store.typed_pair_mut::<CapControl, Capacitor>(cc_ref, line_ref);
+            assert!(cap.is_none());
+        }
+
+        // The control/ckt pair hands out the same objects as untyped `pair_mut`.
+        {
+            let (cc, target) = store.typed_ckt_pair_mut::<CapControl>(cc_ref, cap_ref);
+            assert_eq!(cc.data().name(), "cc");
+            assert_eq!(
+                target.expect("c1 is a circuit element").cd().obj.name(),
+                "c1"
+            );
+        }
+        {
+            let (cc, target, mon) =
+                store.typed_ckt_triple_mut::<CapControl>(cc_ref, cap_ref, line_ref);
+            assert_eq!(cc.data().name(), "cc");
+            assert_eq!(target.expect("ckt").cd().obj.name(), "c1");
+            assert_eq!(mon.expect("ckt").cd().obj.name(), "l1");
+        }
+
+        // R3.2(e): the meter/generic-object pair (`Monitor::take_sample`) hands
+        // out the very same two objects the untyped `pair_mut` does — in both
+        // the cross-arena branch (monitor ⇄ line) and the same-arena one
+        // (monitor ⇄ monitor, reachable via `element=monitor.…`).
+        for (a_ref, b_ref, b_name) in [(m1_ref, line_ref, "l1"), (m1_ref, m2_ref, "m2")] {
+            let (untyped_a, untyped_b) = store.pair_mut(a_ref, b_ref);
+            let (pa, pb) = (
+                untyped_a as *const dyn DssObject as *const (),
+                untyped_b as *const dyn DssObject as *const (),
+            );
+            let (mon, metered) = store.typed_metered_pair_mut(a_ref, b_ref);
+            assert_eq!(mon.data().name(), "m1");
+            assert_eq!(metered.ckt().cd().obj.name(), b_name);
+            assert_eq!(mon as *const Monitor as *const (), pa);
+            assert_eq!(
+                metered.ckt() as *const dyn crate::elements::traits::CktElement as *const (),
+                pb
+            );
+        }
+    }
+
+    /// The typed pair getter keeps the untyped `pair_mut` aliasing guard.
+    #[test]
+    #[should_panic(expected = "aliasing refs")]
+    fn typed_pair_mut_rejects_aliasing() {
+        use crate::elements::control::reg_control::RegControl;
+        use crate::elements::traits::TypedStore;
+
+        let mut dss = Dss::new();
+        for c in [
+            "new circuit.alias basekv=12.47 bus1=src",
+            "new transformer.t1 windings=2 buses=[src, c] conns=[wye, wye] kvs=[12.47, 4.16] kvas=[1000, 1000] xhl=6",
+            "new regcontrol.rc transformer=t1 winding=2 vreg=120",
+        ] {
+            dss.command(c);
+        }
+        let rc_ref = {
+            let store = ClassStore {
+                classes: &mut dss.classes,
+            };
+            store.find_ckt_element("regcontrol.rc").unwrap()
+        };
+        let mut store = ClassStore {
+            classes: &mut dss.classes,
+        };
+        let _ = store.typed_ckt_pair_mut::<RegControl>(rc_ref, rc_ref);
     }
 }

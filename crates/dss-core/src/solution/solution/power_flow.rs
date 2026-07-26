@@ -7,11 +7,12 @@ use num_complex::Complex64;
 
 use crate::circuit::{AddType, Circuit};
 use crate::elements::pc::generator::Generator;
-use crate::elements::traits::{ElemRef, InjComputeCtx};
+use crate::elements::traits::{ElemId, InjComputeCtx};
 use crate::solution::ymatrix::{BuildOption, build_y_matrix, initialize_node_vbase};
 use crate::support::sparse_math::SparseComplex;
 
 use super::{ActiveY, SolveAlgorithm, SolveEnv, SolveMode, SolveResult, sys_ctx};
+use crate::elements::traits::TypedStore;
 
 /// Pascal `TSolutionObj.AddInAuxCurrents` → `TAutoAdd.AddCurrents`
 /// (`Solution.pas` l.2139 / `AutoAdd.pas` l.597): during an AutoAdd candidate
@@ -327,7 +328,7 @@ pub(crate) fn set_generator_disp_ref(ckt: &mut Circuit) {
 /// the `dQ/dV` slope from the system Y diagonal, then re-establish the
 /// zero-load snapshot if any was found.
 pub(crate) fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    let gens: Vec<ElemRef> = ckt.generators.clone();
+    let gens: Vec<ElemId> = ckt.generators.clone();
     let gen_disp_save = ckt.generator_dispatch_reference;
     ckt.generator_dispatch_reference = 1000.0; // turn all generators on
     let mut did_one = false;
@@ -337,9 +338,7 @@ pub(crate) fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
         let node0 = {
             let g = env
                 .store
-                .obj(r)
-                .as_any()
-                .downcast_ref::<Generator>()
+                .typed::<Generator>(r)
                 .expect("generators list holds Generators");
             if !g.cd.enabled || g.gen_model != 3 {
                 continue;
@@ -352,9 +351,7 @@ pub(crate) fn set_generator_dqdv(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
         let yii = ckt.solution.system_matrix_element(node0)?.norm();
         let g = env
             .store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<Generator>()
+            .typed_mut::<Generator>(r)
             .expect("generators list holds Generators");
         g.init_dqdv_calc();
         g.calc_dqdv(yii);

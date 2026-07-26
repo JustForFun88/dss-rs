@@ -7,7 +7,8 @@ use num_complex::Complex64;
 use crate::elements::control::control_elem::RefSnapshot;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{CURRENT_PEAKSHAVE, CURRENT_PEAKSHAVE_LOW, MODE_FOLLOW, StorageController, prop};
@@ -22,12 +23,8 @@ impl CktElement for StorageController {
 
     /// Pascal `TControlElem.FControlledElement` - the element this control
     /// acts on (`None` when it drives a list rather than a single element).
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
     }
 
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL — `BuildYMatrix` skips it.
@@ -66,7 +63,7 @@ impl CktElement for StorageController {
 
     /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
     /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.ccd.monitored_element
     }
 }
@@ -137,18 +134,7 @@ impl DssObject for StorageController {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.ccd.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
+
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         Some(self)
     }
@@ -317,24 +303,16 @@ impl DssObject for StorageController {
     }
 
     /// `element=`/`yearly=`/`daily=`/`duty=` resolution.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let load_shape =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
+        let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         match idx {
             ELEMENT => {
                 self.monitored_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.ccd.monitored_element = Some(r);
-                        let elem = obj
-                            .as_ckt_element()
-                            .expect("element= resolves against circuit classes");
+                    Some(o) => {
+                        self.ccd.monitored_element = Some(o.id());
+                        let elem = o.ckt().expect("element= resolves against circuit classes");
                         self.mon_snap = Some(RefSnapshot::capture(name, elem));
                     }
                     None => {
@@ -466,10 +444,6 @@ impl DssObject for StorageController {
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

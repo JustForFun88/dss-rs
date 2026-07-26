@@ -2,36 +2,36 @@
 //! mock [`UpfcDispatchEnv`] (the live oracle gate is `exec/tests/upfc.rs`).
 
 use super::*;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 
 /// A mock fleet: each entry's `check_status` result is scripted, and uploads are
 /// counted. `all_enabled_upfcs` returns the refs in order.
 struct MockEnv {
-    refs: Vec<ElemRef>,
+    refs: Vec<ElemId>,
     status: Vec<bool>,
-    checked: Vec<ElemRef>,
-    uploaded: Vec<ElemRef>,
+    checked: Vec<ElemId>,
+    uploaded: Vec<ElemId>,
 }
 
 impl UpfcDispatchEnv for MockEnv {
-    fn find_enabled_upfc(&self, _name: &str) -> Option<ElemRef> {
+    fn find_enabled_upfc(&self, _name: &str) -> Option<ElemId> {
         None
     }
-    fn all_enabled_upfcs(&self) -> Vec<ElemRef> {
+    fn all_enabled_upfcs(&self) -> Vec<ElemId> {
         self.refs.clone()
     }
-    fn check_status(&mut self, u: ElemRef) -> bool {
+    fn check_status(&mut self, u: ElemId) -> bool {
         self.checked.push(u);
         let i = self.refs.iter().position(|&r| r == u).unwrap();
         self.status[i]
     }
-    fn upload_currents(&mut self, u: ElemRef) {
+    fn upload_currents(&mut self, u: ElemId) {
         self.uploaded.push(u);
     }
 }
 
-fn r(idx: usize) -> ElemRef {
-    ElemRef { cls: 0, idx }
+fn r(idx: usize) -> ElemId {
+    ElemId::new(0, idx)
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn empty_fleet_yields_no_update() {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
 
     /// Pascal `TUPFCControlObj.MakePosSequence` (UPFCControl.pas:179) is the same
     /// NIL-deref hazard as GenDispatcher (Access violation #303). Safe-skip when
@@ -95,7 +95,7 @@ mod make_pos_seq_tests {
     #[test]
     fn crash_config_element_set_is_safe_skip() {
         let mut uc = UpfcControl::new("uc1");
-        uc.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 });
+        uc.ccd.monitored_element = Some(ElemId::new(1, 0));
         let (np, nc) = (uc.ccd.cd.nphases, uc.ccd.cd.nconds);
         let bus = uc.ccd.cd.get_bus(1).to_string();
         let ctx = PosSeqCtx {
@@ -112,6 +112,6 @@ mod make_pos_seq_tests {
         assert_eq!((uc.ccd.cd.nphases, uc.ccd.cd.nconds), (np, nc));
         assert_eq!(uc.ccd.cd.get_bus(1), bus);
         assert!(plan.run_base);
-        assert_eq!(uc.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+        assert_eq!(uc.monitored_element_ref(), Some(ElemId::new(1, 0)));
     }
 }

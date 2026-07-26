@@ -8,7 +8,8 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::xfmr_code::XfmrCodeObj;
 use crate::elements::pd::winding::Connection;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, ReliabilityData, SysCtx};
+use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
@@ -25,10 +26,6 @@ impl CktElement for Transformer {
 
     fn present_tap(&self, terminal: usize) -> Option<f64> {
         Some(Transformer::present_tap(self, terminal))
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
     }
 
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
@@ -309,18 +306,6 @@ impl DssObject for Transformer {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_i32(&self, idx: usize) -> i32 {
@@ -606,20 +591,15 @@ impl DssObject for Transformer {
             .collect()
     }
 
-    /// `xfmrcode=`: store the resolved code's name + ElemRef and copy its data
+    /// `xfmrcode=`: store the resolved code's name + ElemId and copy its data
     /// immediately (Pascal `FetchXfmrCode`).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             prop::XFMRCODE => {
                 self.xfmr_code_name = name;
-                self.xfmr_code_ref = resolved.map(|(r, _)| r);
-                if let Some((_, obj)) = resolved
-                    && let Some(code) = obj.as_any().downcast_ref::<XfmrCodeObj>()
+                self.xfmr_code_ref = resolved.map(|o| o.id());
+                if let Some(o) = resolved
+                    && let Some(code) = o.get::<XfmrCodeObj>()
                 {
                     self.fetch_xfmr_code(code);
                 }
@@ -750,9 +730,5 @@ impl DssObject for Transformer {
             | crate::obj::base::RefAction::SetOcpDevice { .. }
             | crate::obj::base::RefAction::SetElementBus { .. } => {}
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

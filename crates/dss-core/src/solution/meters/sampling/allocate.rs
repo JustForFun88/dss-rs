@@ -6,11 +6,11 @@ use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::EnergyMeter;
 use crate::elements::meter::sensor::Sensor;
 use crate::elements::pc::load::Load;
-use crate::elements::traits::{ElemRef, ElemStore, SysCtx};
+use crate::elements::traits::{ElemId, ElemStore, SysCtx, TypedStore};
 use crate::solution::SolveEnv;
 use crate::solution::solution::{solve, sys_ctx};
 
-use super::super::downcast_meter;
+use super::super::meter_mut;
 
 /// Pascal `TExecHelper.DoAllocateLoadsCmd` allocation loop (ExecHelper.pas
 /// l.2605). The caller has already forced `LoadMultiplier = 1.0`. Solve a guess
@@ -34,28 +34,19 @@ fn calc_allocation_factors_all(ckt: &Circuit, store: &mut dyn ElemStore, sys: &S
         // D9 (dss_capi `fb728364`, SVN r4115): `TMeterElement.CalcAllocationFactors`
         // opens with `if not Enabled then Exit` — a disabled meter contributes no
         // allocation factors.
-        if !downcast_meter(store, meter_ref).enabled() {
+        if !meter_mut(store, meter_ref).enabled() {
             continue;
         }
-        let Some(mr) = downcast_meter(store, meter_ref).metered_element() else {
+        let Some(mr) = meter_mut(store, meter_ref).metered_element() else {
             continue;
         };
-        let (meter_obj, metered_obj) = store.pair_mut(meter_ref, mr);
-        let ce = metered_obj
-            .as_ckt_element_mut()
-            .expect("metered element is a circuit element");
-        meter_obj
-            .as_any_mut()
-            .downcast_mut::<EnergyMeter>()
-            .expect("energy_meters holds EnergyMeter objects")
-            .med
-            .calc_allocation_factors(ce, sys, node_v);
+        let (meter, metered) = store.typed_ckt_pair_mut::<EnergyMeter>(meter_ref, mr);
+        let ce = metered.expect("metered element is a circuit element");
+        meter.med.calc_allocation_factors(ce, sys, node_v);
     }
     for sensor_ref in ckt.sensors.clone() {
         let sensor = store
-            .obj(sensor_ref)
-            .as_any()
-            .downcast_ref::<Sensor>()
+            .typed::<Sensor>(sensor_ref)
             .expect("sensors holds Sensor objects");
         // D9 (SVN r4115): `TMeterElement.CalcAllocationFactors` skips a disabled
         // sensor too (both EnergyMeter and Sensor are `TMeterElement`).
@@ -64,16 +55,9 @@ fn calc_allocation_factors_all(ckt: &Circuit, store: &mut dyn ElemStore, sys: &S
         }
         let metered = sensor.metered_element();
         let Some(mr) = metered else { continue };
-        let (sensor_obj, metered_obj) = store.pair_mut(sensor_ref, mr);
-        let ce = metered_obj
-            .as_ckt_element_mut()
-            .expect("metered element is a circuit element");
-        sensor_obj
-            .as_any_mut()
-            .downcast_mut::<Sensor>()
-            .expect("sensors holds Sensor objects")
-            .med
-            .calc_allocation_factors(ce, sys, node_v);
+        let (sensor, metered) = store.typed_ckt_pair_mut::<Sensor>(sensor_ref, mr);
+        let ce = metered.expect("metered element is a circuit element");
+        sensor.med.calc_allocation_factors(ce, sys, node_v);
     }
 }
 
@@ -83,7 +67,7 @@ fn allocate_load_all(ckt: &Circuit, store: &mut dyn ElemStore) {
         // D9 (dss_capi `fb728364`, SVN r4115): `TEnergyMeterObj.AllocateLoad`
         // opens with `if not Enabled then Exit` — a disabled meter does not
         // adjust its zone loads.
-        if !downcast_meter(store, meter_ref).enabled() {
+        if !meter_mut(store, meter_ref).enabled() {
             continue;
         }
         allocate_load_for_meter(meter_ref, ckt, store);
@@ -94,19 +78,17 @@ fn allocate_load_all(ckt: &Circuit, store: &mut dyn ElemStore) {
 /// meter's zone loads and scale each by its upstream sensor's allocation factor
 /// (single-phase loads use the connected-phase factor; poly-phase loads use the
 /// average factor). The sensor may be a Sensor object **or** an EnergyMeter.
-fn allocate_load_for_meter(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn ElemStore) {
+fn allocate_load_for_meter(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore) {
     // Pascal walks `BranchList` (`First`/`GoForward`) and, per branch, its shunt
     // objects (`FirstObject`/`NextObject`), filtering to `LOAD_ELEMENT`. The
     // meter's `load_list` is exactly that set (only Loads are pushed during the
     // zone build, in the same branch-tree order) and the per-load scaling is
     // independent, so iterating it is equivalent — no other shunt type responds.
-    let loads = downcast_meter(store, meter_ref).load_list().to_vec();
+    let loads = meter_mut(store, meter_ref).load_list().to_vec();
     for load_ref in loads {
         let (nphases, sensor_ref, alloc_factor, node_ref0) = {
             let load = store
-                .obj(load_ref)
-                .as_any()
-                .downcast_ref::<Load>()
+                .typed::<Load>(load_ref)
                 .expect("load_list holds Load objects");
             (
                 load.cd.nphases,
@@ -152,9 +134,7 @@ fn allocate_load_for_meter(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn El
         };
         if let Some(nf) = new_factor {
             store
-                .obj_mut(load_ref)
-                .as_any_mut()
-                .downcast_mut::<Load>()
+                .typed_mut::<Load>(load_ref)
                 .expect("load_list holds Load objects")
                 .set_allocation_factor(nf);
         }
@@ -163,16 +143,15 @@ fn allocate_load_for_meter(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn El
 
 /// The (nphases, AvgAllocFactor, PhsAllocationFactor) of a metering device,
 /// which may be a [`Sensor`] or an [`EnergyMeter`] (both embed `MeterElementData`).
-fn sensor_alloc_data(store: &dyn ElemStore, r: ElemRef) -> Option<(usize, f64, Vec<f64>)> {
-    let obj = store.obj(r);
-    if let Some(s) = obj.as_any().downcast_ref::<Sensor>() {
+fn sensor_alloc_data(store: &dyn ElemStore, r: ElemId) -> Option<(usize, f64, Vec<f64>)> {
+    if let Some(s) = store.typed::<Sensor>(r) {
         Some((
             s.med.cd.nphases,
             s.med.avg_alloc_factor,
             s.med.phs_allocation_factor.clone(),
         ))
     } else {
-        obj.as_any().downcast_ref::<EnergyMeter>().map(|em| {
+        store.typed::<EnergyMeter>(r).map(|em| {
             (
                 em.med.cd.nphases,
                 em.med.avg_alloc_factor,

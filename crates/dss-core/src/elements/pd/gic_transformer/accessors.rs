@@ -3,7 +3,7 @@
 
 use super::{GicTransformer, SPEC_AUTO};
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 impl GicTransformer {
@@ -49,18 +49,6 @@ impl DssObject for GicTransformer {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_f64(&self, idx: usize) -> f64 {
@@ -145,17 +133,11 @@ impl DssObject for GicTransformer {
 
     /// Resolve the `VarCurve` XYcurve reference (snapshot-clone, like the
     /// Reactor RCurve/LCurve refs).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             super::prop::VARCURVE => {
                 self.var_curve_name = name;
-                self.var_curve =
-                    resolved.and_then(|(_, o)| o.as_any().downcast_ref::<XyCurveObj>().cloned());
+                self.var_curve = resolved.and_then(|o| o.cloned::<XyCurveObj>());
             }
             _ => unreachable!("GICTransformer has no resolved object-ref property {idx}"),
         }
@@ -247,10 +229,6 @@ impl DssObject for GicTransformer {
     /// (GICTransformer does not override EndEdit).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

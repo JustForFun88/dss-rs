@@ -6,6 +6,7 @@
 
 use crate::circuit::Circuit;
 use crate::elements::pd::fault::{Fault, FaultStatusCtx};
+use crate::elements::traits::TypedStore;
 use crate::solution::solution::{Solution, SolveEnv, SolveResult, sys_ctx};
 
 /// Pascal `TSolutionObj.Check_Fault_Status`: drive every Fault's `CheckStatus`
@@ -25,8 +26,7 @@ pub(crate) fn check_fault_status(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
 
     for r in faults {
         let (changed, enabled) = {
-            let f_obj = env.store.obj_mut(r);
-            let Some(fault) = f_obj.as_any_mut().downcast_mut::<Fault>() else {
+            let Some(fault) = env.store.typed_mut::<Fault>(r) else {
                 continue;
             };
             let enabled = fault.cd.enabled;
@@ -58,7 +58,7 @@ pub(crate) fn check_fault_status(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
 pub(crate) fn reset_faults(ckt: &mut Circuit, env: &mut SolveEnv) {
     let faults = ckt.faults.clone();
     for r in faults {
-        if let Some(fault) = env.store.obj_mut(r).as_any_mut().downcast_mut::<Fault>() {
+        if let Some(fault) = env.store.typed_mut::<Fault>(r) {
             fault.reset();
         }
     }

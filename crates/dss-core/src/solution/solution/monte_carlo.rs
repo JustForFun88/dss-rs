@@ -19,12 +19,13 @@
 use crate::circuit::Circuit;
 use crate::elements::pc::load::Load;
 use crate::elements::pd::fault::Fault;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::elements::traits::{CktElement, ElemId};
 use crate::support::mathutil::gauss;
 
 use super::power_flow::{set_generator_disp_ref, solve_direct, solve_snap};
 use super::time_series::{end_of_time_step_cleanup, sample_all_monitors_and_meters};
 use super::{ADMITTANCE, GAUSSIAN, LOGNORMAL, SolveEnv, SolveResult, UNIFORM};
+use crate::elements::traits::TypedStore;
 
 /// Pascal `TLoadObj.Randomize` hoisted over every enabled load, in circuit
 /// order — the per-case draw batch `SolveMonte1`'s `SetNominalLoad`/`MONTECARLO1`
@@ -32,7 +33,7 @@ use super::{ADMITTANCE, GAUSSIAN, LOGNORMAL, SolveEnv, SolveResult, UNIFORM};
 /// which draws nothing), from the shared engine RNG.
 fn randomize_all_loads(ckt: &mut Circuit, env: &mut SolveEnv, random_type: i32) {
     for r in ckt.loads.clone() {
-        if let Some(load) = env.store.obj_mut(r).as_any_mut().downcast_mut::<Load>()
+        if let Some(load) = env.store.typed_mut::<Load>(r)
             && load.cd().enabled
         {
             load.randomize(random_type, &mut ckt.rng);
@@ -209,7 +210,7 @@ fn draw_load_multiplier(ckt: &mut Circuit, random_type: i32, allow_lognormal: bo
 /// `NumFaults`. With a single fault this is always fault 1, though the RNG draw
 /// is still consumed (GAPS_PLAN.md §2.1). Returns the enabled fault's ref (the
 /// Pascal `ActiveFaultObj`).
-fn pick_a_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> Option<ElemRef> {
+fn pick_a_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> Option<ElemId> {
     let faults = ckt.faults.clone();
     let num_faults = faults.len();
     if num_faults == 0 {
@@ -221,7 +222,7 @@ fn pick_a_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> Option<ElemRef> {
     let mut active = None;
     for (i, &r) in faults.iter().enumerate() {
         let enable = (i as i64 + 1) == whichone;
-        if let Some(fault) = env.store.obj_mut(r).as_any_mut().downcast_mut::<Fault>() {
+        if let Some(fault) = env.store.typed_mut::<Fault>(r) {
             let was = fault.cd().enabled;
             fault.cd_mut().set_enabled(enable);
             if fault.cd().enabled != was {
@@ -267,7 +268,7 @@ fn solve_monte_fault_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult 
         let picked = pick_a_fault(ckt, env); // Randomly enable one of the faults
         if let Some(r) = picked {
             // ActiveFaultObj.Randomize() — jitter the fault resistance.
-            if let Some(fault) = env.store.obj_mut(r).as_any_mut().downcast_mut::<Fault>() {
+            if let Some(fault) = env.store.typed_mut::<Fault>(r) {
                 fault.randomize(random_type, &mut ckt.rng);
             }
             // `Fault.Randomize` sets YPrimInvalid := TRUE (CktElement.pas raises
@@ -380,60 +381,129 @@ mod tests {
 
     // --- pick_a_fault (SolveMonteFault PickAFault) ---
 
-    /// A test-only [`ElemStore`] backed by a flat `Vec<Fault>` indexed by
-    /// [`ElemRef::idx`]; only `obj`/`obj_mut` are reachable from `pick_a_fault`.
+    /// A test-only [`ElemStore`] backed by a real one-class `ClassArena` of
+    /// `Fault` objects — the same typed storage production runs on, so
+    /// `pick_a_fault`'s `TypedStore::typed_mut::<Fault>` resolves here exactly
+    /// as it does live (a flat `Vec<Fault>` could not: the class ordinal in the
+    /// `ElemId` has to be the real `Fault` one).
     struct FaultStore {
-        faults: Vec<Fault>,
+        arena: crate::obj::arena::ClassArena,
+    }
+
+    impl FaultStore {
+        fn fault(&self, i: usize) -> &Fault {
+            self.arena.get::<Fault>(i).expect("Fault arena")
+        }
+        fn fault_mut(&mut self, i: usize) -> &mut Fault {
+            self.arena.get_mut::<Fault>(i).expect("Fault arena")
+        }
+        fn len(&self) -> usize {
+            self.arena.len()
+        }
+    }
+
+    /// The one class this double can serve. Every routing entry point asserts
+    /// against it, so a wrong-ordinal lookup (a `TypedStore` handing the wrong
+    /// `cls` to `arena`/`arena_mut`, or a handle of another class reaching
+    /// `obj`/`obj_mut`) fails loudly here instead of being silently answered
+    /// with the Fault arena.
+    fn fault_ord() -> usize {
+        <Fault as crate::obj::arena::ArenaClass>::CLASS_ORD
+    }
+
+    fn assert_fault_ord(cls: usize) {
+        assert_eq!(
+            cls,
+            fault_ord(),
+            "FaultStore addressed with a foreign class"
+        );
     }
 
     impl ElemStore for FaultStore {
-        fn obj_mut(&mut self, r: ElemRef) -> &mut dyn DssObject {
-            &mut self.faults[r.idx]
+        fn obj_mut(&mut self, r: ElemId) -> &mut dyn DssObject {
+            assert_fault_ord(r.class_ord());
+            self.arena.obj_mut(r.index())
         }
-        fn obj(&self, r: ElemRef) -> &dyn DssObject {
-            &self.faults[r.idx]
+        fn obj(&self, r: ElemId) -> &dyn DssObject {
+            assert_fault_ord(r.class_ord());
+            self.arena.obj(r.index())
         }
-        fn kind(&self, _r: ElemRef) -> crate::circuit::ElemKind {
+        fn kind(&self, _r: ElemId) -> crate::circuit::ElemKind {
             unimplemented!()
         }
-        fn ckt_elem(&self, _r: ElemRef) -> &dyn CktElement {
+        fn ckt_elem(&self, _r: ElemId) -> &dyn CktElement {
             unimplemented!()
         }
-        fn ckt_elem_mut(&mut self, _r: ElemRef) -> &mut dyn CktElement {
+        fn ckt_elem_mut(&mut self, _r: ElemId) -> &mut dyn CktElement {
             unimplemented!()
         }
-        fn find_ckt_element(&self, _full_name: &str) -> Option<ElemRef> {
+        fn find_ckt_element(&self, _full_name: &str) -> Option<ElemId> {
             None
         }
-        fn find_general(&self, _class_name: &str, _obj_name: &str) -> Option<ElemRef> {
+        fn find_general(&self, _class_name: &str, _obj_name: &str) -> Option<ElemId> {
             None
         }
-        fn pair_mut(
-            &mut self,
-            _a: ElemRef,
-            _b: ElemRef,
-        ) -> (&mut dyn DssObject, &mut dyn DssObject) {
+        fn pair_mut(&mut self, _a: ElemId, _b: ElemId) -> (&mut dyn DssObject, &mut dyn DssObject) {
             unimplemented!()
         }
         fn triple_mut(
             &mut self,
-            _a: ElemRef,
-            _b: ElemRef,
-            _c: ElemRef,
+            _a: ElemId,
+            _b: ElemId,
+            _c: ElemId,
         ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
+            unimplemented!()
+        }
+        fn arena(&self, cls: usize) -> &crate::obj::arena::ClassArena {
+            assert_fault_ord(cls);
+            &self.arena
+        }
+        fn arena_mut(&mut self, cls: usize) -> &mut crate::obj::arena::ClassArena {
+            assert_fault_ord(cls);
+            &mut self.arena
+        }
+        fn arena_pair_mut(
+            &mut self,
+            _a: usize,
+            _b: usize,
+        ) -> (
+            &mut crate::obj::arena::ClassArena,
+            &mut crate::obj::arena::ClassArena,
+        ) {
+            unimplemented!()
+        }
+        fn arena_triple_mut(
+            &mut self,
+            _a: usize,
+            _b: usize,
+            _c: usize,
+        ) -> (
+            &mut crate::obj::arena::ClassArena,
+            &mut crate::obj::arena::ClassArena,
+            &mut crate::obj::arena::ClassArena,
+        ) {
             unimplemented!()
         }
     }
 
     fn n_faults(n: usize) -> FaultStore {
-        let mut store = FaultStore {
-            faults: (0..n).map(|i| Fault::new(&format!("f{i}"))).collect(),
-        };
+        let mut arena =
+            crate::obj::arena::ClassArena::empty_for("Fault").expect("Fault arena variant");
+        for i in 0..n {
+            arena.push_new(&format!("f{i}"));
+        }
+        let mut store = FaultStore { arena };
         // Enable all up front so the "disable the rest" path is observable.
-        for f in &mut store.faults {
-            f.cd_mut().set_enabled(true);
+        for i in 0..n {
+            store.fault_mut(i).cd_mut().set_enabled(true);
         }
         store
+    }
+
+    /// The typed handle of fault `idx` — the real `Fault` class ordinal, as the
+    /// registry hands it out.
+    fn fault_id(idx: usize) -> ElemId {
+        <Fault as crate::obj::arena::ArenaClass>::id(idx)
     }
 
     #[test]
@@ -451,7 +521,7 @@ mod tests {
         let mut store = n_faults(3);
         let mut ckt = Circuit::new("mc", 60.0);
         ckt.rng.set_seed(SEED);
-        ckt.faults = (0..3).map(|idx| ElemRef { cls: 0, idx }).collect();
+        ckt.faults = (0..3).map(fault_id).collect();
         let mut parser = Parser::new();
         let vars = ParserVars::new();
         let mut errors = crate::diag::ErrorLog::new();
@@ -466,10 +536,10 @@ mod tests {
                 };
                 pick_a_fault(&mut ckt, &mut env).expect("one fault is enabled")
             };
-            assert_eq!(picked.idx, want, "returned the enabled fault's ref");
-            for (i, f) in store.faults.iter().enumerate() {
+            assert_eq!(picked.index(), want, "returned the enabled fault's ref");
+            for i in 0..store.len() {
                 assert_eq!(
-                    f.cd().enabled,
+                    store.fault(i).cd().enabled,
                     i == want,
                     "only fault #{want} may stay enabled"
                 );
@@ -482,10 +552,10 @@ mod tests {
         // The montefault.dss configuration: one fault, always idx 0 — yet the
         // RNG draw is still consumed (GAPS_PLAN.md §2.1), so the stream advances.
         let mut store = n_faults(1);
-        store.faults[0].cd_mut().set_enabled(false);
+        store.fault_mut(0).cd_mut().set_enabled(false);
         let mut ckt = Circuit::new("mc", 60.0);
         ckt.rng.set_seed(SEED);
-        ckt.faults = vec![ElemRef { cls: 0, idx: 0 }];
+        ckt.faults = vec![fault_id(0)];
         let mut parser = Parser::new();
         let vars = ParserVars::new();
         let mut errors = crate::diag::ErrorLog::new();
@@ -499,8 +569,8 @@ mod tests {
             };
             pick_a_fault(&mut ckt, &mut env).expect("the one fault is enabled")
         };
-        assert_eq!(picked.idx, 0);
-        assert!(store.faults[0].cd().enabled);
+        assert_eq!(picked.index(), 0);
+        assert!(store.fault(0).cd().enabled);
         // Exactly one draw (d0) was consumed, so the next draw is d1.
         assert_eq!(ckt.rng.next_f64().to_bits(), D1_BITS);
     }

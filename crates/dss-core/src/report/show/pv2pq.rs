@@ -22,8 +22,8 @@ pub(crate) fn show_pv2pq_gen(classes: &[DssClass], ckt: &Circuit) -> String {
     let title = "LIST OF GENERATORS CONVERTED FROM PV TO PQ BUS DURING THE LAST SOLUTION (NCIM)";
     let mut s = format!("{RULE}\n{title}\n{RULE}\n\n\n");
     for &r in &ckt.generators {
-        let obj = &classes[r.cls].arena[r.idx];
-        let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
+        let obj = &classes[r.class_ord()].arena[r.index()];
+        let Some(g) = classes[r.class_ord()].arena.get::<Generator>(r.index()) else {
             continue;
         };
         if !g.cd.enabled {
@@ -32,7 +32,7 @@ pub(crate) fn show_pv2pq_gen(classes: &[DssClass], ckt: &Circuit) -> String {
         if g.ncim_expv {
             s.push_str(&format!(
                 "{}.{}\n",
-                classes[r.cls].props.class_name(),
+                classes[r.class_ord()].props.class_name(),
                 obj.data().name()
             ));
         }

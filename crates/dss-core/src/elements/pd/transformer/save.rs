@@ -10,7 +10,7 @@
 //!
 //! Co-located with the element (like [`super::dump`]) so it reads the winding
 //! fields directly, exactly as the Pascal method does; dispatched from
-//! [`crate::report::save::save::write_dss_object`] via downcast.
+//! [`crate::report::save::save::write_dss_object`] via a typed arena read.
 
 use crate::obj::base::DssObject;
 use crate::report::format::g;

@@ -49,10 +49,6 @@ impl CktElement for GicLine {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TGICLineObj.MakePosSequence` (`GICLine.pas:660`). Single phase,
     /// keeping the `Volts`/`Angle`/`R`/`X` unchanged.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {

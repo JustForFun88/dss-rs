@@ -15,7 +15,7 @@
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::base::RefAction;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -109,7 +109,7 @@ pub struct GicSource {
     /// edit-completion (no store access in the constructor), plus the Line's
     /// current `Bus2` (read at resolve time so `RecalcElementData` can decide
     /// whether to splice).
-    line_ref: Option<ElemRef>,
+    line_ref: Option<ElemId>,
     line_bus2: String,
     /// The Line reference could not be resolved (name mismatch) — Pascal error
     /// 333 in `RecalcElementData`.
@@ -166,7 +166,7 @@ impl GicSource {
     /// object factory has no store access). `line_bus2` is the Line's present
     /// `Bus2` (read through the foreign view), which `RecalcElementData` compares
     /// against the `GIC_` prefix. `None` marks the Line missing (error 333).
-    pub fn set_resolved_line(&mut self, line: Option<(ElemRef, String)>) {
+    pub fn set_resolved_line(&mut self, line: Option<(ElemId, String)>) {
         match line {
             Some((r, bus2)) => {
                 self.line_ref = Some(r);

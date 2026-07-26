@@ -2,10 +2,10 @@
 //! catalog object onto the line, and the `Kill*Specified`/`ResetLengthUnits`
 //! helpers the property side effects use to switch back to the sym model.
 
-use crate::elements::general::conductor_data::ConductorKind;
+use crate::elements::general::conductor_data::{ConductorData, ConductorKind, ConductorObj};
 use crate::elements::general::line_code::LineCodeObj;
 use crate::elements::general::line_geometry::LineGeometryObj;
-use crate::obj::base::{DssObject, ObjectRefArrayItem};
+use crate::obj::base::ObjectRefArrayItem;
 use crate::support::line_units::{LineUnits, convert_line_units};
 
 use super::{ConductorChoice, Line, prop};
@@ -266,12 +266,19 @@ impl Line {
         let mut ratings_inc = false;
         for (k, i) in (istart..=nwires).enumerate() {
             // A `none` slot (AllowNoneItem) stays NIL and contributes no ratings.
-            let Some((_, _, obj)) = refs[k].as_ref() else {
+            let Some((_, res)) = refs[k].as_ref() else {
                 self.line_wire_data[i - 1] = None;
                 continue;
             };
-            let (cnorm, cemerg, cnum, crat) = conductor_amps(*obj);
-            self.line_wire_data[i - 1] = Some(obj.clone_box());
+            // A reference that is not a conductor catalog object cannot occur —
+            // `wires=` resolves only against WireData/CNData/TSData — but treat
+            // it as the NIL the slot would otherwise keep.
+            let Some(cond) = ConductorObj::from_resolved(*res) else {
+                self.line_wire_data[i - 1] = None;
+                continue;
+            };
+            let (cnorm, cemerg, cnum, crat) = cond.amps_owned();
+            self.line_wire_data[i - 1] = Some(cond);
             if cnum > new_num_rat {
                 new_num_rat = cnum;
                 new_ratings = crat.into_iter().take(new_num_rat.max(0) as usize).collect();
@@ -303,7 +310,9 @@ impl Line {
     pub(super) fn set_conductors(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
         for (i, r) in refs.iter().enumerate() {
             if i < self.line_wire_data.len() {
-                self.line_wire_data[i] = r.as_ref().map(|(_, _, o)| o.clone_box());
+                self.line_wire_data[i] = r
+                    .as_ref()
+                    .and_then(|(_, o)| ConductorObj::from_resolved(*o));
             }
         }
     }
@@ -317,7 +326,7 @@ impl Line {
         let mut choice = ConductorChoice::Unknown;
         for slot in self.line_wire_data.iter().take(nph) {
             if let Some(c) = slot.as_ref() {
-                choice = conductor_choice_of(c.as_ref());
+                choice = conductor_choice_of(c);
             }
         }
         choice
@@ -346,7 +355,9 @@ impl Line {
         for (k, r) in refs.iter().enumerate() {
             if k < self.line_wire_data.len() {
                 // A `none` slot (AllowNoneItem) stays NIL.
-                self.line_wire_data[k] = r.as_ref().map(|(_, _, o)| o.clone_box());
+                self.line_wire_data[k] = r
+                    .as_ref()
+                    .and_then(|(_, o)| ConductorObj::from_resolved(*o));
             }
         }
     }
@@ -354,22 +365,10 @@ impl Line {
 
 /// Pascal `condObj is TCNDataObj / TTSDataObj` (`Line.pas:772-780`): the
 /// conductor model a single catalog object implies.
-fn conductor_choice_of(o: &dyn DssObject) -> ConductorChoice {
-    match o.as_conductor().map(|c| c.conductor_kind()) {
-        Some(ConductorKind::Cn) => ConductorChoice::ConcentricNeutral,
-        Some(ConductorKind::Ts) => ConductorChoice::TapeShield,
-        _ => ConductorChoice::Overhead,
-    }
-}
-
-/// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` of a resolved conductor,
-/// whichever concrete catalog type it is (Pascal reads `TConductorDataObj` fields).
-fn conductor_amps(o: &dyn DssObject) -> (f64, f64, i32, Vec<f64>) {
-    match o.as_conductor() {
-        Some(c) => {
-            let (n, e, k, r) = c.amps();
-            (n, e, k, r.to_vec())
-        }
-        None => (0.0, 0.0, 1, Vec::new()),
+fn conductor_choice_of(o: &ConductorObj) -> ConductorChoice {
+    match o.conductor_kind() {
+        ConductorKind::Cn => ConductorChoice::ConcentricNeutral,
+        ConductorKind::Ts => ConductorChoice::TapeShield,
+        ConductorKind::Wire => ConductorChoice::Overhead,
     }
 }

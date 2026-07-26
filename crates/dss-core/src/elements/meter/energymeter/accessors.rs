@@ -5,31 +5,26 @@ use num_complex::Complex64;
 
 use super::{EmSnapshot, EnergyMeter, NUM_EM_REGISTERS};
 use crate::elements::ckt::CktElementData;
-use crate::elements::pd::capacitor::Capacitor;
-use crate::elements::pd::line::Line;
-use crate::elements::pd::reactor::Reactor;
-use crate::elements::pd::transformer::Transformer;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 /// Capture the parse-relevant shape of the metered element (the RefSnapshot).
-pub(crate) fn capture_metered(full_name: String, obj: &dyn DssObject) -> EmSnapshot {
-    let elem = obj
-        .as_ckt_element()
-        .expect("element= resolves to a ckt elem");
+pub(crate) fn capture_metered(full_name: String, o: ResolvedObj<'_>) -> EmSnapshot {
+    let elem = o.ckt().expect("element= resolves to a ckt elem");
     let cd = elem.cd();
     // Pascal checks `BASECLASSMASK = PD_ELEMENT` — AutoTrans qualifies like any
     // other PD element (no transformer special-casing in EnergyMeter:
     // `IsTransformerElement` matches XFMR_ELEMENT only, Utilities.pas:728).
-    let is_pd = obj.as_any().downcast_ref::<Line>().is_some()
-        || obj.as_any().downcast_ref::<Transformer>().is_some()
-        || obj
-            .as_any()
-            .downcast_ref::<crate::elements::pd::auto_trans::AutoTrans>()
-            .is_some()
-        || obj.as_any().downcast_ref::<Capacitor>().is_some()
-        || obj.as_any().downcast_ref::<Reactor>().is_some();
+    let is_pd = matches!(
+        o.id(),
+        ElemId::Line(_)
+            | ElemId::Transformer(_)
+            | ElemId::AutoTrans(_)
+            | ElemId::Capacitor(_)
+            | ElemId::Reactor(_)
+    );
     EmSnapshot {
         full_name,
         is_pd,
@@ -46,14 +41,6 @@ impl CktElement for EnergyMeter {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.med.cd
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        let mut errors = crate::diag::ErrorLog::new();
-        self.recalc(&mut errors);
-        for e in errors {
-            self.med.cd.obj.push_error(e);
-        }
     }
 
     /// `TEnergyMeterObj.CalcYPrim` is empty — a meter never stamps admittance.
@@ -94,7 +81,7 @@ impl CktElement for EnergyMeter {
 
     /// Pascal `TMeterElement.MeteredElement` — resolved so the exec applier can
     /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.med.metered_element
     }
 }
@@ -133,18 +120,6 @@ impl DssObject for EnergyMeter {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.med.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_i32(&self, idx: usize) -> i32 {
@@ -308,21 +283,16 @@ impl DssObject for EnergyMeter {
     }
 
     /// Resolve `element=` (any circuit class by full name) and snapshot it.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
         match idx {
             ELEMENT => {
                 self.element_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.med.metered_element = Some(r);
+                    Some(o) => {
+                        self.med.metered_element = Some(o.id());
                         self.med.metered_element_changed = true;
-                        self.metered_snap = Some(capture_metered(name, obj));
+                        self.metered_snap = Some(capture_metered(name, o));
                     }
                     None => {
                         self.med.metered_element = None;
@@ -373,10 +343,6 @@ impl DssObject for EnergyMeter {
             self.med.cd.obj.push_error(e);
         }
     }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }
 
 #[cfg(test)]
@@ -392,7 +358,7 @@ mod make_pos_seq_tests {
     #[test]
     fn resyncs_to_metered_element_and_drops_branch_list() {
         let mut em = EnergyMeter::new("m1");
-        em.med.metered_element = Some(ElemRef { cls: 1, idx: 2 });
+        em.med.metered_element = Some(ElemId::new(1, 2));
         em.med.metered_terminal = 2; // GetBus(2)
         em.put_branch_list(CktTree::new());
         assert!(em.has_branch_list());
@@ -420,7 +386,7 @@ mod make_pos_seq_tests {
         assert!(!em.has_branch_list()); // BranchList := NIL
         assert!(plan.run_base && plan.actions.is_empty()); // inherited only
         // monitored_element_ref resolves the metered element for the applier.
-        assert_eq!(em.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 2 }));
+        assert_eq!(em.monitored_element_ref(), Some(ElemId::new(1, 2)));
     }
 
     /// Pascal NIL guard: no metered element ⇒ the body is skipped, only the base

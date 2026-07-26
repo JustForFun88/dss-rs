@@ -11,18 +11,22 @@ use super::*;
 /// executive right after construction (it has the circuit; the PC `new` does not).
 /// No-op for every other class. Reads only own props + `sys` (never another
 /// element), so it is safe on the JSON pre-fill and on the defaults sample.
-pub(super) fn recalc_pc_create(obj: &mut dyn DssObject, sys: &crate::elements::traits::SysCtx) {
-    if let Some(e) = obj.as_any_mut().downcast_mut::<load::Load>() {
+pub(super) fn recalc_pc_create(
+    arena: &mut crate::obj::arena::ClassArena,
+    idx: usize,
+    sys: &crate::elements::traits::SysCtx,
+) {
+    if let Some(e) = arena.get_mut::<load::Load>(idx) {
         e.recalc(sys);
-    } else if let Some(e) = obj.as_any_mut().downcast_mut::<generator::Generator>() {
+    } else if let Some(e) = arena.get_mut::<generator::Generator>(idx) {
         e.recalc(sys);
-    } else if let Some(e) = obj.as_any_mut().downcast_mut::<windgen::WindGen>() {
+    } else if let Some(e) = arena.get_mut::<windgen::WindGen>(idx) {
         e.recalc(sys);
-    } else if let Some(e) = obj.as_any_mut().downcast_mut::<storage::Storage>() {
+    } else if let Some(e) = arena.get_mut::<storage::Storage>(idx) {
         e.recalc(sys);
-    } else if let Some(e) = obj.as_any_mut().downcast_mut::<pvsystem::PVSystem>() {
+    } else if let Some(e) = arena.get_mut::<pvsystem::PVSystem>(idx) {
         e.recalc(sys);
-    } else if let Some(e) = obj.as_any_mut().downcast_mut::<ind_mach012::IndMach012>() {
+    } else if let Some(e) = arena.get_mut::<ind_mach012::IndMach012>(idx) {
         e.recalc(sys);
     }
 }
@@ -537,7 +541,7 @@ impl Dss {
         let idx = self.classes[ci]
             .active
             .expect("set_active set the active index");
-        if self.classes[ci].arena.obj(idx).as_ckt_element().is_some() {
+        if self.classes[ci].arena.try_ckt_elem(idx).is_some() {
             self.active_ckt_element = Some((ci, idx));
         }
         true
@@ -624,7 +628,7 @@ impl Dss {
         if obj_name == "*" {
             let mut any_changed = false;
             for oi in 0..self.classes[ci].arena.len() {
-                if let Some(elem) = self.classes[ci].arena.obj_mut(oi).as_ckt_element_mut() {
+                if let Some(elem) = self.classes[ci].arena.try_ckt_elem_mut(oi) {
                     let cd = elem.cd_mut();
                     cd.set_enabled(enable);
                     if cd.signal_bus_name_redefined {
@@ -693,8 +697,7 @@ impl Dss {
         let dirty = {
             let cd = self.classes[ci]
                 .arena
-                .obj_mut(idx)
-                .as_ckt_element_mut()
+                .try_ckt_elem_mut(idx)
                 .expect("set_active_ckt_element returned a circuit element")
                 .cd_mut();
             // Pascal `ActiveTerminalIdx := Terminal; Closed[Conductor] := …`.
@@ -745,7 +748,7 @@ impl Dss {
         let idx = self.classes[ci]
             .active
             .expect("set_active set the active index");
-        if self.classes[ci].arena.obj(idx).as_ckt_element().is_none() {
+        if self.classes[ci].arena.try_ckt_elem(idx).is_none() {
             self.errors.push(format!(
                 "Error in {verb}: Object not a circuit Element. {obj_class}.{obj_name}"
             ));
@@ -810,7 +813,7 @@ impl Dss {
             .expect("set_active set the active index");
         // Only circuit elements become the `ActiveCktElement` (Pascal: a general
         // `DSS_OBJECT` does nothing here).
-        if self.classes[ci].arena.obj(idx).as_ckt_element().is_some() {
+        if self.classes[ci].arena.try_ckt_elem(idx).is_some() {
             self.active_ckt_element = Some((ci, idx));
             // Active terminal (Pascal `if Length(Param)>0 then ActiveTerminalIdx :=
             // IntValue else 1`): an **absent** param selects terminal 1; a
@@ -825,8 +828,7 @@ impl Dss {
             };
             let cd = self.classes[ci]
                 .arena
-                .obj_mut(idx)
-                .as_ckt_element_mut()
+                .try_ckt_elem_mut(idx)
                 .expect("just checked it is a circuit element")
                 .cd_mut();
             match tval {
@@ -1021,15 +1023,13 @@ impl Dss {
                 if let Some(fund) = self.circuit.as_ref().map(|c| c.fundamental)
                     && let Some(lc) = self.classes[ci]
                         .arena
-                        .obj_mut(idx)
-                        .as_any_mut()
-                        .downcast_mut::<line_code::LineCodeObj>()
+                        .get_mut::<line_code::LineCodeObj>(idx)
                 {
                     lc.set_base_frequency(fund);
                 }
                 // Pascal `DSS.DSSObjs.Add(Obj)` (`ExecHelper.pas:1899`): the
                 // global creation-order list the whole-circuit Dump walks.
-                self.dss_objs.push(ElemRef { cls: ci, idx });
+                self.dss_objs.push(ElemId::new(ci, idx));
             }
             return true;
         }
@@ -1081,14 +1081,11 @@ impl Dss {
         let fundamental = self.circuit.as_ref().expect("checked above").fundamental;
         let is_monitor = self.classes[ci]
             .arena
-            .obj_mut(idx)
-            .as_any_mut()
-            .downcast_mut::<monitor::Monitor>()
+            .get_mut::<monitor::Monitor>(idx)
             .is_some();
         self.classes[ci]
             .arena
-            .obj_mut(idx)
-            .as_ckt_element_mut()
+            .try_ckt_elem_mut(idx)
             .expect("circuit element class builds circuit elements")
             .cd_mut()
             .base_frequency = if is_monitor { 60.0 } else { fundamental };
@@ -1099,19 +1096,9 @@ impl Dss {
         // this a 50 Hz feeder's VSource keeps SrcFrequency=60, so the frequency
         // mismatch check (`VSource.pas:1071`) zeroes Vmag and the whole feeder dies.
         // A later `frequency=` edit still wins (applied in `edit_active`).
-        if let Some(vs) = self.classes[ci]
-            .arena
-            .obj_mut(idx)
-            .as_any_mut()
-            .downcast_mut::<vsource::VSource>()
-        {
+        if let Some(vs) = self.classes[ci].arena.get_mut::<vsource::VSource>(idx) {
             vs.src_frequency = fundamental;
-        } else if let Some(is) = self.classes[ci]
-            .arena
-            .obj_mut(idx)
-            .as_any_mut()
-            .downcast_mut::<isource::Isource>()
-        {
+        } else if let Some(is) = self.classes[ci].arena.get_mut::<isource::Isource>(idx) {
             is.src_frequency = fundamental;
         }
 
@@ -1129,12 +1116,7 @@ impl Dss {
             .as_ref()
             .expect("checked above")
             .positive_sequence;
-        if let Some(line) = self.classes[ci]
-            .arena
-            .obj_mut(idx)
-            .as_any_mut()
-            .downcast_mut::<line::Line>()
-        {
+        if let Some(line) = self.classes[ci].arena.get_mut::<line::Line>(idx) {
             line.earth_model = self.default_earth_model;
             line.set_positive_sequence(positive_sequence);
             if positive_sequence {
@@ -1152,14 +1134,14 @@ impl Dss {
         // unlike RegControl, these recalcs read only own props + the live snapshot
         // (never another element).
         let sys = crate::solution::solution::sys_ctx(self.circuit.as_ref().expect("checked above"));
-        recalc_pc_create(self.classes[ci].arena.obj_mut(idx), &sys);
+        recalc_pc_create(&mut self.classes[ci].arena, idx, &sys);
 
         let kind = self.classes[ci]
             .kind
             .expect("circuit element class has a kind");
         let ckt = self.circuit.as_mut().expect("checked above");
         let elem = self.classes[ci].arena.ckt_elem_mut(idx);
-        ckt.add_ckt_element(ElemRef { cls: ci, idx }, kind, elem);
+        ckt.add_ckt_element(ElemId::new(ci, idx), kind, elem);
 
         true
     }
@@ -1262,7 +1244,7 @@ impl Dss {
         };
         if marked
             && let Some(node_v) = self.circuit.as_ref().map(|c| c.solution.node_v.clone())
-            && let Some(elem) = self.classes[ci].arena.obj_mut(oi).as_ckt_element_mut()
+            && let Some(elem) = self.classes[ci].arena.try_ckt_elem_mut(oi)
             // Pascal reloads Vterminal INSIDE the getter, after its
             // `if (not Enabled) or (NodeRef = NIL) or (NodeV = NIL) then Exit`
             // guard (e.g. `TTransfObj.GetAllWindingCurrents`, Transformer.pas:1530).
@@ -1287,23 +1269,17 @@ impl Dss {
         if touches_tapnum
             && let Some(tref) = self.classes[ci]
                 .arena
-                .obj(oi)
-                .as_any()
-                .downcast_ref::<reg_control::RegControl>()
+                .get::<reg_control::RegControl>(oi)
                 .and_then(|rc| rc.controlled_ref())
         {
-            let rc_ref = ElemRef { cls: ci, idx: oi };
+            let rc_ref = ElemId::new(ci, oi);
             let mut store = ClassStore {
                 classes: &mut self.classes,
             };
-            let (rc_obj, tr_obj) = store.pair_mut(rc_ref, tref);
-            if let (Some(rc), Some(tr)) = (
-                rc_obj
-                    .as_any_mut()
-                    .downcast_mut::<reg_control::RegControl>(),
-                // Either member of the Transformer/AutoTrans proxy.
-                transformer::as_controlled_transformer(&*tr_obj),
-            ) {
+            // Either member of the Transformer/AutoTrans proxy.
+            let (rc, tr_obj) =
+                store.typed_transformer_pair_mut::<reg_control::RegControl>(rc_ref, tref);
+            if let Some(tr) = tr_obj {
                 rc.sync_tap_snap_from_live(tr);
             }
         }
@@ -1329,9 +1305,8 @@ impl Dss {
         };
         if !self.classes[ci]
             .arena
-            .obj(oi)
-            .as_any()
-            .is::<crate::elements::control::storage_controller::StorageController>()
+            .get::<crate::elements::control::storage_controller::StorageController>(oi)
+            .is_some()
             || self.circuit.is_none()
         {
             return;
@@ -1353,7 +1328,7 @@ impl Dss {
             errors,
         };
         crate::solution::controls::storage_controller_recalc_fleet(
-            crate::elements::traits::ElemRef { cls: ci, idx: oi },
+            ElemId::new(ci, oi),
             ckt,
             &mut env,
         );
@@ -1412,17 +1387,11 @@ impl Dss {
         // routes here (create → edit_active), covering both parse and edit paths.
         let live_positive_sequence = circuit.as_ref().is_some_and(|c| c.positive_sequence);
         let live_frequency = circuit.as_ref().map_or(60.0, |c| c.solution.frequency);
-        if let Some(line) = active_arena[oi].as_any_mut().downcast_mut::<line::Line>() {
+        if let Some(line) = active_arena.get_mut::<line::Line>(oi) {
             line.set_positive_sequence(live_positive_sequence);
-        } else if let Some(t) = active_arena[oi]
-            .as_any_mut()
-            .downcast_mut::<transformer::Transformer>()
-        {
+        } else if let Some(t) = active_arena.get_mut::<transformer::Transformer>(oi) {
             t.set_live_frequency(live_frequency);
-        } else if let Some(a) = active_arena[oi]
-            .as_any_mut()
-            .downcast_mut::<auto_trans::AutoTrans>()
-        {
+        } else if let Some(a) = active_arena.get_mut::<auto_trans::AutoTrans>(oi) {
             a.set_live_frequency(live_frequency);
         }
 
@@ -1535,19 +1504,18 @@ impl Dss {
         // constructor; our constructor cannot reach the registry, so resolve the
         // (default or explicit) curve name here through the same foreign view the
         // property edits use, cloning it into the Fuse for solve-time GetTCCTime.
-        if let Some(name) = active_arena[oi]
-            .as_any()
-            .downcast_ref::<fuse::Fuse>()
+        if let Some(name) = active_arena
+            .get::<fuse::Fuse>(oi)
             .map(|f| f.fuse_curve_name().to_string())
         {
             let curve = (!name.is_empty())
                 .then(|| {
-                    foreign.find("TCC_Curve", &name).and_then(|(_, o)| {
-                        o.as_any().downcast_ref::<tcc_curve::TccCurveObj>().cloned()
-                    })
+                    foreign
+                        .find("TCC_Curve", &name)
+                        .and_then(|o| o.cloned::<tcc_curve::TccCurveObj>())
                 })
                 .flatten();
-            if let Some(f) = active_arena[oi].as_any_mut().downcast_mut::<fuse::Fuse>() {
+            if let Some(f) = active_arena.get_mut::<fuse::Fuse>(oi) {
                 f.set_fuse_curve_obj(curve);
             }
         }
@@ -1558,8 +1526,8 @@ impl Dss {
         // `spectrum=` name; we clone the resolved `SpectrumObj` (its `MultArray`
         // is already built by the spectrum's `EndEdit`) in for the harmonic
         // injection path. Same foreign-view pattern as the Fuse curve above.
-        let spectrum_name = active_arena[oi]
-            .as_ckt_element()
+        let spectrum_name = active_arena
+            .try_ckt_elem(oi)
             .and_then(|ce| ce.harmonic_spectrum_name())
             .map(str::to_string);
         if let Some(name) = spectrum_name {
@@ -1568,7 +1536,7 @@ impl Dss {
             } else {
                 let found = foreign
                     .find("Spectrum", &name)
-                    .and_then(|(_, o)| o.as_any().downcast_ref::<spectrum::SpectrumObj>().cloned());
+                    .and_then(|o| o.cloned::<spectrum::SpectrumObj>());
                 if found.is_none() {
                     // Pascal `Set_Spectrum` resolves a `DSSObjectReferenceProperty`
                     // and raises error 401 on a missing name — surface it loudly
@@ -1584,7 +1552,7 @@ impl Dss {
                 }
                 found
             };
-            if let Some(ce) = active_arena[oi].as_ckt_element_mut() {
+            if let Some(ce) = active_arena.try_ckt_elem_mut(oi) {
                 ce.set_harmonic_spectrum(resolved);
             }
         }
@@ -1593,17 +1561,16 @@ impl Dss {
         // default to the built-in `a`/`d` in the constructor, which cannot reach
         // the registry): resolve every non-empty name through the foreign view and
         // clone the curves in for solve-time GetTCCTime.
-        if let Some(names) = active_arena[oi]
-            .as_any()
-            .downcast_ref::<recloser::Recloser>()
+        if let Some(names) = active_arena
+            .get::<recloser::Recloser>(oi)
             .map(|r| r.curve_names())
         {
             let resolve = |name: &str| -> Option<tcc_curve::TccCurveObj> {
                 (!name.is_empty())
                     .then(|| {
-                        foreign.find("TCC_Curve", name).and_then(|(_, o)| {
-                            o.as_any().downcast_ref::<tcc_curve::TccCurveObj>().cloned()
-                        })
+                        foreign
+                            .find("TCC_Curve", name)
+                            .and_then(|o| o.cloned::<tcc_curve::TccCurveObj>())
                     })
                     .flatten()
             };
@@ -1613,10 +1580,7 @@ impl Dss {
                 resolve(&names[2]),
                 resolve(&names[3]),
             ];
-            if let Some(r) = active_arena[oi]
-                .as_any_mut()
-                .downcast_mut::<recloser::Recloser>()
-            {
+            if let Some(r) = active_arena.get_mut::<recloser::Recloser>(oi) {
                 r.set_resolved_curves(curves);
             }
         }
@@ -1625,17 +1589,16 @@ impl Dss {
         // / OvervoltCurve / UndervoltCurve / DOC_PhaseCurveInner — all default to
         // NIL, but any `…curve=` parse names one): resolve through the foreign
         // view and clone in for solve-time GetTCCTime / GetOVtime / GetUVtime.
-        if let Some(names) = active_arena[oi]
-            .as_any()
-            .downcast_ref::<relay::Relay>()
+        if let Some(names) = active_arena
+            .get::<relay::Relay>(oi)
             .map(|r| r.curve_names())
         {
             let resolve = |name: &str| -> Option<tcc_curve::TccCurveObj> {
                 (!name.is_empty())
                     .then(|| {
-                        foreign.find("TCC_Curve", name).and_then(|(_, o)| {
-                            o.as_any().downcast_ref::<tcc_curve::TccCurveObj>().cloned()
-                        })
+                        foreign
+                            .find("TCC_Curve", name)
+                            .and_then(|o| o.cloned::<tcc_curve::TccCurveObj>())
                     })
                     .flatten()
             };
@@ -1646,7 +1609,7 @@ impl Dss {
                 resolve(&names[3]),
                 resolve(&names[4]),
             ];
-            if let Some(r) = active_arena[oi].as_any_mut().downcast_mut::<relay::Relay>() {
+            if let Some(r) = active_arena.get_mut::<relay::Relay>(oi) {
                 r.set_resolved_curves(curves);
             }
         }
@@ -1659,10 +1622,9 @@ impl Dss {
         // terminal. A named DERList resolves its first entry; an empty list scans
         // every PVSystem then Storage for the first enabled one (matching
         // `MakeDERList`'s empty-list branch).
-        if active_arena[oi].as_any().is::<inv_control::InvControl>() {
-            let der_names: Vec<String> = active_arena[oi]
-                .as_any()
-                .downcast_ref::<inv_control::InvControl>()
+        if active_arena.get::<inv_control::InvControl>(oi).is_some() {
+            let der_names: Vec<String> = active_arena
+                .get::<inv_control::InvControl>(oi)
                 .map(|ic| ic.der_name_list().to_vec())
                 .unwrap_or_default();
             let info: Option<(String, usize)> = {
@@ -1671,42 +1633,38 @@ impl Dss {
                 // `FNphases := ControlledElement[i].NPhases` for EVERY member —
                 // the LAST fleet member's phase count wins (InvControl.pas:916;
                 // visible with a mixed 3ph+1ph fleet, midi_invcontrol).
-                let (first, last): (Option<&dyn DssObject>, Option<&dyn DssObject>) =
-                    if der_names.is_empty() {
-                        // Empty list = every PVSystem then every Storage.
-                        (
-                            foreign
-                                .first_enabled("PVSystem")
-                                .or_else(|| foreign.first_enabled("Storage")),
-                            foreign
-                                .last_enabled("Storage")
-                                .or_else(|| foreign.last_enabled("PVSystem")),
-                        )
-                    } else {
-                        let resolve = |n: &String| {
-                            let (class, name) = n.split_once('.').unwrap_or(("", n.as_str()));
-                            foreign.find(class, name).and_then(|(_, o)| {
-                                let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
-                                enabled.then_some(o)
-                            })
-                        };
-                        (
-                            der_names.iter().find_map(resolve),
-                            der_names.iter().rev().find_map(resolve),
-                        )
+                let (first, last): (
+                    Option<&dyn crate::elements::traits::CktElement>,
+                    Option<&dyn crate::elements::traits::CktElement>,
+                ) = if der_names.is_empty() {
+                    // Empty list = every PVSystem then every Storage.
+                    (
+                        foreign
+                            .first_enabled("PVSystem")
+                            .or_else(|| foreign.first_enabled("Storage")),
+                        foreign
+                            .last_enabled("Storage")
+                            .or_else(|| foreign.last_enabled("PVSystem")),
+                    )
+                } else {
+                    let resolve = |n: &String| {
+                        let (class, name) = n.split_once('.').unwrap_or(("", n.as_str()));
+                        foreign
+                            .find(class, name)
+                            .and_then(|o| o.ckt().filter(|e| e.cd().enabled))
                     };
-                match (
-                    first.and_then(|o| o.as_ckt_element()),
-                    last.and_then(|o| o.as_ckt_element()),
-                ) {
+                    (
+                        der_names.iter().find_map(resolve),
+                        der_names.iter().rev().find_map(resolve),
+                    )
+                };
+                match (first, last) {
                     (Some(f), Some(l)) => Some((f.cd().get_bus(1).to_string(), l.cd().nphases)),
                     _ => None,
                 }
             };
             if let Some((bus, nphases)) = info
-                && let Some(ic) = active_arena[oi]
-                    .as_any_mut()
-                    .downcast_mut::<inv_control::InvControl>()
+                && let Some(ic) = active_arena.get_mut::<inv_control::InvControl>(oi)
             {
                 ic.set_resolved_monitored(bus, nphases);
             }
@@ -1718,10 +1676,9 @@ impl Dss {
         // bus + phase count here (no store access in `recalc_element_data`). A named
         // list resolves its first *enabled* entry; an empty list scans every
         // PVSystem for the first enabled one (matching `MakePVSystemList`).
-        if active_arena[oi].as_any().is::<exp_control::ExpControl>() {
-            let pv_names: Vec<String> = active_arena[oi]
-                .as_any()
-                .downcast_ref::<exp_control::ExpControl>()
+        if active_arena.get::<exp_control::ExpControl>(oi).is_some() {
+            let pv_names: Vec<String> = active_arena
+                .get::<exp_control::ExpControl>(oi)
                 .map(|ec| ec.pvsystem_name_list().to_vec())
                 .unwrap_or_default();
             let info: Option<(String, usize)> = {
@@ -1729,35 +1686,31 @@ impl Dss {
                 // (the Pascal recalc loop assigns FNphases per member —
                 // ExpControl.pas:408, same last-wins as InvControl).
                 let resolve = |n: &String| {
-                    foreign.find("PVSystem", n).and_then(|(_, o)| {
-                        let enabled = o.as_ckt_element().is_some_and(|e| e.cd().enabled);
-                        enabled.then_some(o)
-                    })
+                    foreign
+                        .find("PVSystem", n)
+                        .and_then(|o| o.ckt().filter(|e| e.cd().enabled))
                 };
-                let (first, last): (Option<&dyn DssObject>, Option<&dyn DssObject>) =
-                    if pv_names.is_empty() {
-                        (
-                            foreign.first_enabled("PVSystem"),
-                            foreign.last_enabled("PVSystem"),
-                        )
-                    } else {
-                        (
-                            pv_names.iter().find_map(resolve),
-                            pv_names.iter().rev().find_map(resolve),
-                        )
-                    };
-                match (
-                    first.and_then(|o| o.as_ckt_element()),
-                    last.and_then(|o| o.as_ckt_element()),
-                ) {
+                let (first, last): (
+                    Option<&dyn crate::elements::traits::CktElement>,
+                    Option<&dyn crate::elements::traits::CktElement>,
+                ) = if pv_names.is_empty() {
+                    (
+                        foreign.first_enabled("PVSystem"),
+                        foreign.last_enabled("PVSystem"),
+                    )
+                } else {
+                    (
+                        pv_names.iter().find_map(resolve),
+                        pv_names.iter().rev().find_map(resolve),
+                    )
+                };
+                match (first, last) {
                     (Some(f), Some(l)) => Some((f.cd().get_bus(1).to_string(), l.cd().nphases)),
                     _ => None,
                 }
             };
             if let Some((bus, nphases)) = info
-                && let Some(ec) = active_arena[oi]
-                    .as_any_mut()
-                    .downcast_mut::<exp_control::ExpControl>()
+                && let Some(ec) = active_arena.get_mut::<exp_control::ExpControl>(oi)
             {
                 ec.set_resolved_monitored(bus, nphases);
             }
@@ -1770,16 +1723,12 @@ impl Dss {
         // through the foreign view here and hand it — with the Line's present
         // Bus2 — to the source; `end_edit` → `recalc` then decides whether to
         // splice and queues the Line Bus2 rewrite as a deferred RefAction.
-        if active_arena[oi].as_any().is::<gic_source::GicSource>() {
+        if active_arena.get::<gic_source::GicSource>(oi).is_some() {
             let name = active_arena[oi].data().name().to_string();
-            let resolved = foreign.find("Line", &name).and_then(|(r, o)| {
-                o.as_ckt_element()
-                    .map(|e| (r, e.cd().get_bus(2).to_string()))
-            });
-            if let Some(gs) = active_arena[oi]
-                .as_any_mut()
-                .downcast_mut::<gic_source::GicSource>()
-            {
+            let resolved = foreign
+                .find("Line", &name)
+                .and_then(|o| o.ckt().map(|e| (o.id(), e.cd().get_bus(2).to_string())));
+            if let Some(gs) = active_arena.get_mut::<gic_source::GicSource>(oi) {
                 gs.set_resolved_line(resolved);
             }
         }
@@ -1973,7 +1922,7 @@ pub(super) fn apply_edit_signal_tail(
     // circuit globals immediately; `Set_YprimInvalid` raises
     // `SystemYChanged` for enabled elements).
     if let Some(ckt) = circuit.as_mut()
-        && let Some(elem) = classes[ci].arena[oi].as_ckt_element_mut()
+        && let Some(elem) = classes[ci].arena.try_ckt_elem_mut(oi)
     {
         let cd = elem.cd_mut();
         if cd.signal_bus_name_redefined {
@@ -1991,7 +1940,8 @@ pub(super) fn apply_edit_signal_tail(
 
     for action in &ref_actions {
         let target = action.target();
-        let tgt = &mut classes[target.cls].arena[target.idx];
+        let tgt_arena = &mut classes[target.class_ord()].arena;
+        let ti = target.index();
         // `SetSwitchClosed`/`SetConductorsClosed` act on the generic
         // CktElement base (any switched element), so they are applied here
         // rather than through the per-class `apply_ref_action`; the
@@ -2000,14 +1950,14 @@ pub(super) fn apply_edit_signal_tail(
             crate::obj::base::RefAction::SetSwitchClosed {
                 terminal, closed, ..
             } => {
-                if let Some(elem) = tgt.as_ckt_element_mut() {
+                if let Some(elem) = tgt_arena.try_ckt_elem_mut(ti) {
                     elem.cd_mut().set_terminal_closed(*terminal, *closed);
                 }
             }
             crate::obj::base::RefAction::SetConductorsClosed {
                 terminal, closed, ..
             } => {
-                if let Some(elem) = tgt.as_ckt_element_mut() {
+                if let Some(elem) = tgt_arena.try_ckt_elem_mut(ti) {
                     let cd = elem.cd_mut();
                     for (i, &c) in closed.iter().enumerate() {
                         cd.set_conductor_closed(*terminal, i + 1, c);
@@ -2018,7 +1968,7 @@ pub(super) fn apply_edit_signal_tail(
             // inserted GIC_<name> bus (Pascal drives it through the Line's
             // property path; the Bus2 side effect is a plain rename).
             crate::obj::base::RefAction::SetElementBus { terminal, bus, .. } => {
-                if let Some(elem) = tgt.as_ckt_element_mut() {
+                if let Some(elem) = tgt_arena.try_ckt_elem_mut(ti) {
                     elem.cd_mut().set_bus(*terminal, bus);
                 }
             }
@@ -2030,7 +1980,7 @@ pub(super) fn apply_edit_signal_tail(
             crate::obj::base::RefAction::SetOcpDevice {
                 device_type, auto, ..
             } => {
-                if let Some(elem) = tgt.as_ckt_element_mut() {
+                if let Some(elem) = tgt_arena.try_ckt_elem_mut(ti) {
                     let cd = elem.cd_mut();
                     cd.flags
                         .include(crate::elements::ckt::ElemFlags::HAS_OCP_DEVICE);
@@ -2043,12 +1993,12 @@ pub(super) fn apply_edit_signal_tail(
                     }
                 }
             }
-            _ => tgt.apply_ref_action(action),
+            _ => tgt_arena.obj_mut(ti).apply_ref_action(action),
         }
         // Propagate the target's flags too (a tap change invalidates the
         // transformer's Yprim exactly like a direct `Tap=` edit).
         if let Some(ckt) = circuit.as_mut()
-            && let Some(elem) = tgt.as_ckt_element_mut()
+            && let Some(elem) = tgt_arena.try_ckt_elem_mut(ti)
         {
             let cd = elem.cd_mut();
             if cd.signal_bus_name_redefined {

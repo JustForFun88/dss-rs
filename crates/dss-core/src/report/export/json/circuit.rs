@@ -109,8 +109,8 @@ fn bus_to_json(name: &str, bus: &crate::circuit::Bus) -> Json {
 /// fully closed. Walks `ckt.CktElements` in creation order.
 fn save_open_terminals(ckt: &Circuit, classes: &[DssClass], cmds: &mut Vec<Json>) {
     for r in &ckt.ckt_elements {
-        let obj = classes[r.cls].arena.obj(r.idx);
-        let Some(elem) = obj.as_ckt_element() else {
+        let obj = classes[r.class_ord()].arena.obj(r.index());
+        let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
             continue;
         };
         let cd = elem.cd();
@@ -119,7 +119,7 @@ fn save_open_terminals(ckt: &Circuit, classes: &[DssClass], cmds: &mut Vec<Json>
         }
         let full_name = format!(
             "{}.{}",
-            classes[r.cls].props.class_name(),
+            classes[r.class_ord()].props.class_name(),
             obj.data().name()
         );
         let name = check_for_blanks(&full_name);

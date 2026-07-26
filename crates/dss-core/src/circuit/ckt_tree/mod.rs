@@ -3,7 +3,7 @@
 //!
 //! The Pascal tree is pointer-linked; here it is an index arena
 //! (`Vec<TreeNode>` with parent/child indices) and every Pascal object
-//! pointer payload becomes an [`ElemRef`]. The traversal machinery
+//! pointer payload becomes an [`ElemId`]. The traversal machinery
 //! (`PushAllChildren`/`GoForward` with the explicit LIFO stack) is ported
 //! verbatim because its visit order defines the EnergyMeter `SequenceList`,
 //! which is observable (reliability sweeps, zone dumps, reductions).
@@ -12,7 +12,7 @@
 mod tests;
 
 use crate::circuit::Circuit;
-use crate::elements::traits::{ElemRef, ElemStore};
+use crate::elements::traits::{ElemId, ElemStore};
 
 /// Sentinel for "no bus reference" (Pascal used `0` in its 1-based bus
 /// indexing; our bus indices are 0-based, so the sentinel is `usize::MAX`,
@@ -24,7 +24,7 @@ pub const NO_BUS: usize = usize::MAX;
 #[derive(Debug, Clone)]
 pub struct TreeNode {
     /// `CktObject` — the branch (PD element) this node represents.
-    pub elem: ElemRef,
+    pub elem: ElemId,
     parent: Option<usize>,
     children: Vec<usize>,
     /// `ChildAdded`: children appended since the node was last expanded.
@@ -32,7 +32,7 @@ pub struct TreeNode {
     /// `LexicalLevel`: root = 0.
     lexical_level: i32,
     /// `FShuntObjects`: loads/generators/shunt caps attached at this node.
-    pub shunts: Vec<ElemRef>,
+    pub shunts: Vec<ElemId>,
     /// `FromBusReference` (bus index, [`NO_BUS`] = unset).
     pub from_bus: usize,
     /// `VoltBaseIndex` (EnergyMeter voltage-base list slot).
@@ -43,14 +43,14 @@ pub struct TreeNode {
     pub is_parallel: bool,
     pub is_dangling: bool,
     /// `LoopLineObj`.
-    pub loop_elem: Option<ElemRef>,
+    pub loop_elem: Option<ElemId>,
     /// `ToBusList` + its sequential-access cursor (`ToBusPtr`).
     to_bus_list: Vec<usize>,
     to_bus_ptr: usize,
 }
 
 impl TreeNode {
-    fn new(elem: ElemRef, parent: Option<usize>, lexical_level: i32) -> Self {
+    fn new(elem: ElemId, parent: Option<usize>, lexical_level: i32) -> Self {
         Self {
             elem,
             parent,
@@ -189,7 +189,7 @@ impl CktTree {
     /// Pascal `Add`: new node becomes the present branch, parented to the old
     /// present branch — but **not** entered in the parent's child list (only
     /// `AddNewChild` does that). Used for the root.
-    pub fn add(&mut self, elem: ElemRef) -> usize {
+    pub fn add(&mut self, elem: ElemId) -> usize {
         let level = self.present.map_or(0, |p| self.nodes[p].lexical_level + 1);
         let idx = self.nodes.len();
         self.nodes.push(TreeNode::new(elem, self.present, level));
@@ -202,7 +202,7 @@ impl CktTree {
 
     /// Pascal `AddNewChild`: append a child to the present branch (present
     /// does not move). With no present branch it degenerates to `Add`.
-    pub fn add_new_child(&mut self, elem: ElemRef, bus_ref: usize, terminal_no: usize) -> usize {
+    pub fn add_new_child(&mut self, elem: ElemId, bus_ref: usize, terminal_no: usize) -> usize {
         let Some(parent) = self.present else {
             return self.add(elem);
         };
@@ -218,7 +218,7 @@ impl CktTree {
     }
 
     /// Pascal `AddNewObject`: attach a shunt object to the present branch.
-    pub fn add_new_object(&mut self, elem: ElemRef) {
+    pub fn add_new_object(&mut self, elem: ElemId) {
         if let Some(p) = self.present {
             self.nodes[p].shunts.push(elem);
         }
@@ -240,7 +240,7 @@ impl CktTree {
 
     /// Pascal `GoForward`: stack-driven traversal; returns the new present
     /// branch's element (`None` ends the sweep).
-    pub fn go_forward(&mut self) -> Option<ElemRef> {
+    pub fn go_forward(&mut self) -> Option<ElemId> {
         // If we have added children to the present node since we opened it,
         // push them on.
         if let Some(p) = self.present
@@ -258,7 +258,7 @@ impl CktTree {
     }
 
     /// Pascal `GoBackward`: move to the parent and reset the forward stack.
-    pub fn go_backward(&mut self) -> Option<ElemRef> {
+    pub fn go_backward(&mut self) -> Option<ElemId> {
         let p = self.present?;
         self.present = self.nodes[p].parent;
         self.forward_stack.clear();
@@ -266,14 +266,14 @@ impl CktTree {
     }
 
     /// Pascal `Parent`: the present branch's parent element.
-    pub fn parent(&self) -> Option<ElemRef> {
+    pub fn parent(&self) -> Option<ElemId> {
         let p = self.present?;
         self.nodes[p].parent.map(|i| self.nodes[i].elem)
     }
 
     /// Pascal `First`: go to the beginning, reset the stack, prime the
     /// traversal.
-    pub fn first(&mut self) -> Option<ElemRef> {
+    pub fn first(&mut self) -> Option<ElemId> {
         self.present = self.first;
         self.forward_stack.clear();
         self.push_all_children();
@@ -281,7 +281,7 @@ impl CktTree {
     }
 
     /// Pascal `Active`.
-    pub fn active(&self) -> Option<ElemRef> {
+    pub fn active(&self) -> Option<ElemId> {
         self.present.map(|i| self.nodes[i].elem)
     }
 
@@ -305,8 +305,8 @@ impl CktTree {
 /// (terminal-1 bus only), exactly like the Pascal lists.
 #[derive(Debug, Clone, Default)]
 pub struct BusAdjLists {
-    pub pd: Vec<Vec<ElemRef>>,
-    pub pc: Vec<Vec<ElemRef>>,
+    pub pd: Vec<Vec<ElemId>>,
+    pub pc: Vec<Vec<ElemId>>,
 }
 
 /// Pascal `AllTerminalsClosed`: at least one of the first `nphases`

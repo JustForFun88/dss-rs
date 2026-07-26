@@ -227,10 +227,6 @@ impl CktElement for Line {
         Some(self.len * convert_line_units(self.length_units, LineUnits::Km))
     }
 
-    fn recalc_element_data(&mut self, sys: &SysCtx) {
-        self.recalc(sys.positive_sequence);
-    }
-
     /// Pascal `TLineObj.CalcFltRate` (l.1129): the base rate scaled by line
     /// length (`Faultrate · pctperm · 0.01 · Len`, faultrate in per-unit-length
     /// terms). `MilesThisLine` is maintained by the length/units side effects.

@@ -96,12 +96,6 @@ impl DssObject for PriceShapeObj {
     fn data_mut(&mut self) -> &mut crate::obj::base::DssObjData {
         &mut self.core.data
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
 
     fn get_i32(&self, idx: usize) -> i32 {
         match idx {
@@ -252,9 +246,5 @@ impl DssObject for PriceShapeObj {
             MEAN | STDDEV => self.core.std_dev_calculated = true,
             _ => {}
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

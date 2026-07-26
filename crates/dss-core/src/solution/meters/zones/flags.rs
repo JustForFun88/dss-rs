@@ -7,7 +7,7 @@ use crate::circuit::Circuit;
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::EnergyMeter;
 use crate::elements::meter::sensor::Sensor;
-use crate::elements::traits::ElemStore;
+use crate::elements::traits::{ElemStore, TypedStore};
 
 /// Pascal `TEnergyMeter.SetHasMeterFlag` (l.1752): clear `HasEnergyMeter` on all
 /// PD elements, then set it on each enabled meter's metered element.
@@ -22,9 +22,7 @@ pub(super) fn set_has_meter_flag(ckt: &Circuit, store: &mut dyn ElemStore) {
     for &meter_ref in &ckt.energy_meters {
         let (enabled, metered) = {
             let em = store
-                .obj(meter_ref)
-                .as_any()
-                .downcast_ref::<EnergyMeter>()
+                .typed::<EnergyMeter>(meter_ref)
                 .expect("energy_meters holds EnergyMeter objects");
             (em.enabled(), em.metered_element())
         };
@@ -52,9 +50,7 @@ pub(super) fn set_has_sensor_flag(ckt: &Circuit, store: &mut dyn ElemStore) {
     }
     for &sensor_ref in &ckt.sensors {
         let metered = store
-            .obj(sensor_ref)
-            .as_any()
-            .downcast_ref::<Sensor>()
+            .typed::<Sensor>(sensor_ref)
             .expect("sensors holds Sensor objects")
             .metered_element();
         if let Some(mr) = metered {

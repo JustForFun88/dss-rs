@@ -16,16 +16,17 @@ use crate::circuit::ckt_tree::{
 };
 use crate::elements::ckt::ElemFlags;
 use crate::elements::pd::line::Line;
-use crate::elements::traits::{ElemRef, ElemStore};
+use crate::elements::traits::TypedStore;
+use crate::elements::traits::{ElemId, ElemStore};
 
 /// Whether the element at `r` is a Line (Pascal `IsLineElement`).
-fn is_line(store: &dyn ElemStore, r: ElemRef) -> bool {
-    store.obj(r).as_any().downcast_ref::<Line>().is_some()
+fn is_line(store: &dyn ElemStore, r: ElemId) -> bool {
+    store.typed::<Line>(r).is_some()
 }
 
 /// Pascal `CheckParallel`: two lines share both terminal buses (either orientation).
-fn check_parallel(store: &dyn ElemStore, a: ElemRef, b: ElemRef) -> bool {
-    let bus = |r: ElemRef, t: usize| store.ckt_elem(r).cd().terminals.get(t).map(|x| x.bus_ref);
+fn check_parallel(store: &dyn ElemStore, a: ElemId, b: ElemId) -> bool {
+    let bus = |r: ElemId, t: usize| store.ckt_elem(r).cd().terminals.get(t).map(|x| x.bus_ref);
     let (a1, a2) = (bus(a, 0), bus(a, 1));
     let (b1, b2) = (bus(b, 0), bus(b, 1));
     (a1 == b1 && a2 == b2) || (a1 == b2 && a2 == b1)
@@ -77,7 +78,7 @@ fn get_sources_connected_to_bus(
 /// Pascal `GetPCElementsConnectedToBus`: attach every enabled element in the bus's
 /// PC adjacency list (PC elements **and** shunt PD elements) as a shunt object.
 fn get_pc_elements_connected_to_bus(
-    adj_lst: &[ElemRef],
+    adj_lst: &[ElemId],
     store: &mut dyn ElemStore,
     tree: &mut CktTree,
     analyze: bool,
@@ -110,7 +111,7 @@ fn get_pc_elements_connected_to_bus(
 /// `.pc`, handled by [`get_pc_elements_connected_to_bus`]), so this is a faithful
 /// no-op — Pascal likewise passes `lstPD` (non-shunt) here and finds nothing.
 fn get_shunt_pd_elements_connected_to_bus(
-    adj_lst: &[ElemRef],
+    adj_lst: &[ElemId],
     store: &mut dyn ElemStore,
     tree: &mut CktTree,
     analyze: bool,
@@ -144,12 +145,12 @@ fn get_shunt_pd_elements_connected_to_bus(
 /// it as a child branch — marking `IsLoopedHere`/`IsParallel` when it was already
 /// checked (a loop closing back into the tree).
 fn find_all_child_branches(
-    adj_lst: &[ElemRef],
+    adj_lst: &[ElemId],
     bus_num: usize,
     store: &mut dyn ElemStore,
     tree: &mut CktTree,
     analyze: bool,
-    active_branch: ElemRef,
+    active_branch: ElemId,
 ) {
     for &p in adj_lst {
         if p == active_branch || !store.ckt_elem(p).cd().enabled {
@@ -210,7 +211,7 @@ pub(crate) fn get_isolated_sub_area(
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
     adj: &BusAdjLists,
-    start: ElemRef,
+    start: ElemId,
     analyze: bool,
 ) -> CktTree {
     let mut tree = CktTree::new();

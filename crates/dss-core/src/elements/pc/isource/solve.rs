@@ -148,10 +148,6 @@ impl CktElement for Isource {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TIsourceObj.MakePosSequence` (Isource.pas:500-505): a multi-phase
     /// Isource collapses to `Phases := 1` (a bare single edit), then `inherited`
     /// (the base bus rename).

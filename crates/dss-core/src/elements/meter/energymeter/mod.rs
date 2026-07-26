@@ -27,7 +27,7 @@
 
 use crate::circuit::ckt_tree::CktTree;
 use crate::elements::meter::meter_element::MeterElementData;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::solution::meters::demand_interval::MeterStream;
@@ -302,15 +302,15 @@ pub struct EnergyMeter {
     branch_list: Option<CktTree>,
     /// `SequenceList`: branches meter→ends in radial order (= the BranchList
     /// `GoForward` order).
-    sequence_list: Vec<ElemRef>,
+    sequence_list: Vec<ElemId>,
     /// Tree node index for each `sequence_list` entry (for shunt collection).
     sequence_nodes: Vec<usize>,
     /// `LoadList`: loads in the zone.
-    load_list: Vec<ElemRef>,
+    load_list: Vec<ElemId>,
     /// `ZoneEndsList` resolved to `(branch element, end bus)` pairs.
-    zone_ends: Vec<(ElemRef, usize)>,
+    zone_ends: Vec<(ElemId, usize)>,
     /// `ZonePCE`: all PC elements in the zone (`GetPCEatZone`).
-    zone_pce: Vec<ElemRef>,
+    zone_pce: Vec<ElemId>,
 }
 
 impl EnergyMeter {
@@ -387,7 +387,7 @@ impl EnergyMeter {
     }
 
     // --- Read-only accessors for the zone API + class sweeps ---------------
-    pub fn metered_element(&self) -> Option<ElemRef> {
+    pub fn metered_element(&self) -> Option<ElemId> {
         self.med.metered_element
     }
     pub fn metered_terminal(&self) -> i32 {
@@ -399,13 +399,13 @@ impl EnergyMeter {
     pub fn register_names(&self) -> &[String] {
         &self.register_names
     }
-    pub fn sequence_list(&self) -> &[ElemRef] {
+    pub fn sequence_list(&self) -> &[ElemId] {
         &self.sequence_list
     }
-    pub fn load_list(&self) -> &[ElemRef] {
+    pub fn load_list(&self) -> &[ElemId] {
         &self.load_list
     }
-    pub fn zone_pce(&self) -> &[ElemRef] {
+    pub fn zone_pce(&self) -> &[ElemId] {
         &self.zone_pce
     }
     /// `Source_NumInterruptions` (annual interruptions of the upline circuit).
@@ -461,7 +461,7 @@ impl EnergyMeter {
         self.cust_interrupts = cust_interrupts;
     }
     /// `ZoneEndsList` resolved to the branch elements (Pascal `AllEndElements`).
-    pub fn zone_end_elements(&self) -> Vec<ElemRef> {
+    pub fn zone_end_elements(&self) -> Vec<ElemId> {
         self.zone_ends.iter().map(|&(r, _)| r).collect()
     }
     pub fn has_branch_list(&self) -> bool {

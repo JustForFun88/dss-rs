@@ -2,8 +2,7 @@
 //! `ChangeLineConstantsType` engine swap, `spacing=` copy-in, `SetWires`, and
 //! the per-conductor ampacity defaulting.
 
-use crate::elements::general::conductor_data::ConductorKind;
-use crate::elements::general::line_spacing::LineSpacingObj;
+use crate::elements::general::conductor_data::{ConductorData, ConductorKind, ConductorObj};
 use crate::obj::base::{DssObject, ObjectRefArrayItem};
 use crate::support::line_constants::LineConstants;
 
@@ -80,11 +79,7 @@ impl LineGeometryObj {
     /// copy its coordinates/units into every conductor and clear the `X`/`H`
     /// "set" marks; otherwise log error 10103.
     pub(super) fn apply_spacing(&mut self) {
-        let Some(spc) = self
-            .line_spacing_obj
-            .as_ref()
-            .and_then(|b| b.as_any().downcast_ref::<LineSpacingObj>())
-        else {
+        let Some(spc) = self.line_spacing_obj.as_ref() else {
             return;
         };
         if self.fnconds == spc.nwires() {
@@ -145,7 +140,9 @@ impl LineGeometryObj {
         }
         for (k, i) in (istart..=istop).enumerate() {
             // A `none` slot (AllowNoneItem) stays NIL.
-            self.fwiredata[i - 1] = refs[k].as_ref().map(|(_, _, o)| o.clone_box());
+            self.fwiredata[i - 1] = refs[k]
+                .as_ref()
+                .and_then(|(_, o)| ConductorObj::from_resolved(*o));
         }
         self.factive_cond = istop as i32;
     }
@@ -171,7 +168,7 @@ impl LineGeometryObj {
         for i in 0..n {
             self.factive_cond = (i + 1) as i32;
             let choice = match self.fwiredata.get(i).and_then(|o| o.as_ref()) {
-                Some(c) => conductor_choice_of(c.as_ref()),
+                Some(c) => conductor_choice_of(c),
                 None => continue, // NIL slot skipped
             };
             if first_valid.is_none() {
@@ -202,7 +199,7 @@ impl LineGeometryObj {
             .fwiredata
             .get(cond_index)
             .and_then(|o| o.as_ref())
-            .map(|o| conductor_amps(o.as_ref()))
+            .map(|o| o.amps_owned())
         else {
             return;
         };
@@ -224,22 +221,10 @@ impl LineGeometryObj {
 
 /// Pascal `conductors[i] is TCNDataObj / TTSDataObj` (LineGeometry.pas:522-533):
 /// the conductor model a single catalog object implies.
-fn conductor_choice_of(o: &dyn DssObject) -> ConductorChoice {
-    match o.as_conductor().map(|c| c.conductor_kind()) {
-        Some(ConductorKind::Cn) => ConductorChoice::ConcentricNeutral,
-        Some(ConductorKind::Ts) => ConductorChoice::TapeShield,
-        _ => ConductorChoice::Overhead,
-    }
-}
-
-/// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` of a snapshot-cloned
-/// conductor, whichever concrete catalog type it is.
-fn conductor_amps(o: &dyn DssObject) -> (f64, f64, i32, Vec<f64>) {
-    match o.as_conductor() {
-        Some(c) => {
-            let (n, e, k, r) = c.amps();
-            (n, e, k, r.to_vec())
-        }
-        None => (0.0, 0.0, 1, Vec::new()),
+fn conductor_choice_of(o: &ConductorObj) -> ConductorChoice {
+    match o.conductor_kind() {
+        ConductorKind::Cn => ConductorChoice::ConcentricNeutral,
+        ConductorKind::Ts => ConductorChoice::TapeShield,
+        ConductorKind::Wire => ConductorChoice::Overhead,
     }
 }

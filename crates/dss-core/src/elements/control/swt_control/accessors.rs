@@ -7,7 +7,8 @@ use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_LOCK, CTRL_NONE, CTRL_UNLOCK};
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::SwtControl;
@@ -22,12 +23,8 @@ impl CktElement for SwtControl {
 
     /// Pascal `TControlElem.FControlledElement` - the element this control
     /// acts on (`None` when it drives a list rather than a single element).
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
     }
 
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim as NIL.
@@ -92,18 +89,7 @@ impl DssObject for SwtControl {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.ccd.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
+
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         Some(self)
     }
@@ -214,23 +200,18 @@ impl DssObject for SwtControl {
     }
 
     /// `switchedobj=` resolution (Pascal `SetControlledElement`): keep the
-    /// `ElemRef` plus a shape snapshot for `RecalcElementData`.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    /// `ElemId` plus a shape snapshot for `RecalcElementData`.
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
         match idx {
             SWITCHED_OBJ => {
                 // `name` is the FullName ("Class.name") for the dump.
                 self.switched_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.ccd.controlled_element = Some(r);
-                        let elem = obj
-                            .as_ckt_element()
+                    Some(o) => {
+                        self.ccd.controlled_element = Some(o.id());
+                        let elem = o
+                            .ckt()
                             .expect("switchedobj resolves against circuit classes");
                         self.ctrl_snap = Some(super::RefSnapshot::capture(name, elem));
                     }
@@ -330,10 +311,6 @@ impl DssObject for SwtControl {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_ref_actions)
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

@@ -258,7 +258,7 @@ pub enum RefAction {
     /// on the target transformer (Pascal `Set_TapNum`). The target clamps to
     /// the winding's Min/MaxTap exactly like `Set_PresentTap`.
     SetTransformerTap {
-        target: crate::elements::traits::ElemRef,
+        target: crate::elements::traits::ElemId,
         winding: usize,
         tap: f64,
     },
@@ -268,7 +268,7 @@ pub enum RefAction {
     /// target's [`CktElement`](crate::elements::traits::CktElement) base, since
     /// the switched element can be any circuit element.
     SetSwitchClosed {
-        target: crate::elements::traits::ElemRef,
+        target: crate::elements::traits::ElemId,
         terminal: usize,
         closed: bool,
     },
@@ -280,7 +280,7 @@ pub enum RefAction {
     /// blown. Applied generically through the target's
     /// [`CktElement`](crate::elements::traits::CktElement) base.
     SetConductorsClosed {
-        target: crate::elements::traits::ElemRef,
+        target: crate::elements::traits::ElemId,
         terminal: usize,
         closed: Vec<bool>,
     },
@@ -295,7 +295,7 @@ pub enum RefAction {
     /// Pascal `if Enabled then Include(...)` guard. Applied through the target's
     /// [`CktElement`](crate::elements::traits::CktElement) base.
     SetOcpDevice {
-        target: crate::elements::traits::ElemRef,
+        target: crate::elements::traits::ElemId,
         device_type: i32,
         auto: bool,
     },
@@ -306,7 +306,7 @@ pub enum RefAction {
     /// name generically through the target's
     /// [`CktElement`](crate::elements::traits::CktElement) base.
     SetElementBus {
-        target: crate::elements::traits::ElemRef,
+        target: crate::elements::traits::ElemId,
         terminal: usize,
         bus: String,
     },
@@ -314,7 +314,7 @@ pub enum RefAction {
 
 impl RefAction {
     /// The object the action must be applied to.
-    pub fn target(&self) -> crate::elements::traits::ElemRef {
+    pub fn target(&self) -> crate::elements::traits::ElemId {
         match self {
             RefAction::SetTransformerTap { target, .. } => *target,
             RefAction::SetSwitchClosed { target, .. } => *target,
@@ -583,11 +583,10 @@ pub struct ShapeSave {
     pub result_tag: &'static str,
 }
 
-/// One slot of a `DSSObjectReferenceArrayProperty` write: `Some((name, ElemRef,
-/// read view))` for a resolved object, or `None` for a `none` entry
+/// One slot of a `DSSObjectReferenceArrayProperty` write: `Some((name,
+/// resolved object))` for a resolved object, or `None` for a `none` entry
 /// (`TPropertyFlag.AllowNoneItem`). See [`DssObject::set_object_ref_array`].
-pub type ObjectRefArrayItem<'a> =
-    Option<(String, crate::elements::traits::ElemRef, &'a dyn DssObject)>;
+pub type ObjectRefArrayItem<'a> = Option<(String, crate::obj::arena::ResolvedObj<'a>)>;
 
 /// The typed field accessors the property engine calls, keyed by the 1-based
 /// property index. Each concrete class implements only the kinds it actually
@@ -603,28 +602,9 @@ pub trait DssObject: Send {
     fn data(&self) -> &DssObjData;
     fn data_mut(&mut self) -> &mut DssObjData;
 
-    /// `&dyn Any` view for the rare flows that need a concrete downcast
-    /// (`MakeLike` between circuit elements copies matrices that the typed
-    /// accessors cannot express).
-    fn as_any(&self) -> &dyn std::any::Any;
-
-    /// Mutable downcast view — the control loop's bridge from an [`ElemRef`]
-    /// to the concrete control/controlled types (PHASE5_PLAN §2.1: RegControl
-    /// → Transformer, CapControl → Capacitor + monitored element).
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
-
-    /// Circuit-element view (Pascal `obj is TDSSCktElement`). `None` for
-    /// `DSS_OBJECT` classes like TCC_Curve and Spectrum.
-    fn as_ckt_element(&self) -> Option<&dyn crate::elements::traits::CktElement> {
-        None
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn crate::elements::traits::CktElement> {
-        None
-    }
-
     /// Control-element view (Pascal `obj is TControlElem`). `Some` only for the
     /// control classes; the dispatch loop identifies a control and reads its
-    /// base state through this instead of an `as_any` downcast chain (R0).
+    /// base state through this instead of an `Any` downcast chain (R0).
     /// `None` for every non-control object.
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         None
@@ -632,14 +612,6 @@ pub trait DssObject: Send {
     fn as_control_mut(
         &mut self,
     ) -> Option<&mut dyn crate::elements::control::control_elem::ControlElem> {
-        None
-    }
-
-    /// Conductor-catalog view (Pascal `obj is TConductorDataObj`). `Some` only
-    /// for the `WireData`/`CNData`/`TSData` classes; the LineGeometry/Line
-    /// conductor resolution reads geometry/ratings/class through this instead
-    /// of an `as_any` downcast chain (R0, Category C). `None` otherwise.
-    fn as_conductor(&self) -> Option<&dyn crate::elements::general::conductor_data::ConductorData> {
         None
     }
 
@@ -821,17 +793,14 @@ pub trait DssObject: Send {
     /// `DSSObjectReferenceProperty` write for a *resolved* reference (a
     /// `PropDef::object_ref_class`): `name` is the referenced object's name for
     /// dumps (Pascal `otherObj.Name`, `""` when unresolved), and `resolved`
-    /// carries its stable [`ElemRef`] plus a read view of the object so the
+    /// carries its stable [`ElemId`] plus a read view of the object so the
     /// element can copy data immediately (Pascal `FetchLineCode` etc.). The
     /// dump value is read back through [`DssObject::get_string`].
     fn set_object_ref(
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(
-            crate::elements::traits::ElemRef,
-            &dyn crate::obj::base::DssObject,
-        )>,
+        resolved: Option<crate::obj::arena::ResolvedObj<'_>>,
     ) {
         let _ = (idx, name, resolved);
         unreachable!("set_object_ref not implemented for property {idx}")
@@ -839,7 +808,7 @@ pub trait DssObject: Send {
 
     /// `DSSObjectReferenceArrayProperty` write (e.g. a LineGeometry `wires`):
     /// `refs` is the parsed, resolved list — each slot in script order is either
-    /// `Some((name, ElemRef, read view))` or **`None`** for a `none` entry
+    /// `Some((name, ElemId, read view))` or **`None`** for a `none` entry
     /// (Pascal `TPropertyFlag.AllowNoneItem`, `DSSObjectHelper.ValidateObjectItem`
     /// l.6456: `none` → `otherObj := NIL`, no error). The object validates the
     /// count and stores the references (Pascal `SetWires`), cloning each read
@@ -1025,8 +994,4 @@ pub trait DssObject: Send {
     fn apply_ref_action(&mut self, action: &RefAction) {
         let _ = action;
     }
-
-    /// Clone this object behind the trait object, so the executive can copy a
-    /// `MakeLike` source out of its arena without aliasing the target.
-    fn clone_box(&self) -> Box<dyn DssObject>;
 }

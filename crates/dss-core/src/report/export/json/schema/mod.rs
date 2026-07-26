@@ -52,7 +52,7 @@
 //! port-authored (no 0.14.5 oracle to compare) — see `golden_schema.rs` and
 //! `tests/golden/json/schema_divergences.json`.
 
-use super::{Json, write_pretty};
+use super::Json;
 
 mod classes;
 mod enums;
@@ -340,35 +340,6 @@ pub fn circuit_properties_head() -> Vec<(String, Json)> {
             ]),
         ),
     ]
-}
-
-/// Assemble the schema **envelope** with the static `$defs` and the static
-/// `circuitProperties` head — the ported portion of `DSS_ExtractJSONSchema`
-/// (`CAPI_Schema.pas:1504-1513`). The per-class/enum `$defs` entries and the
-/// per-class `circuitProperties` refs are NOT emitted: this is the schema
-/// skeleton, not the full model dump.
-///
-/// Superseded by [`assemble_full_document`] (the full runtime schema); this
-/// skeleton and its sole caller [`extract_schema_skeleton_json`] have no live
-/// callers — R3 dead-code candidate (do not delete outside that pass).
-pub fn schema_skeleton() -> Json {
-    obj(vec![
-        ("$schema", s(JSON_SCHEMA_DRAFT)),
-        ("$id", s(ALTDSS_SCHEMA_ID)),
-        ("$defs", Json::Obj(global_defs())),
-        ("type", s("object")),
-        ("properties", Json::Obj(circuit_properties_head())),
-        ("required", Json::Arr(vec![s("Vsource")])),
-    ])
-}
-
-/// Serialize [`schema_skeleton`] with the fpjson pretty layout (`FormatJSON()`,
-/// 2-space indent, CRLF) — the exact serialization step of Pascal
-/// `DSS_GetAsPAnsiChar(DSS, schema.FormatJSON())` (`CAPI_Schema.pas:1516`).
-pub fn extract_schema_skeleton_json() -> String {
-    let mut out = String::new();
-    write_pretty(&schema_skeleton(), 0, &mut out);
-    out
 }
 
 /// The class-walk order — Pascal `DSS.DSSClassList` (`DSSClassDefs.pas`), the

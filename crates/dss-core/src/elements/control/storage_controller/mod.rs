@@ -61,7 +61,7 @@ use num_complex::Complex64;
 use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::pc::storage::STORE_IDLING;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::solution::SolveMode;
@@ -271,7 +271,7 @@ pub struct StorageController {
     // --- runtime dispatch state (Pascal `TStorageControllerObj` private flags) ---
     /// `FleetPointerList` — the resolved Storage fleet, built lazily on the first
     /// `Sample` (empty until then), cached across samples exactly like Pascal.
-    fleet: Vec<ElemRef>,
+    fleet: Vec<ElemId>,
     /// `FleetState` — the aggregate fleet charge/idle/discharge state.
     fleet_state: i32,
     /// `TotalWeight` — the sum of `FWeights` over the fleet.
@@ -377,7 +377,7 @@ pub(crate) enum FleetFind {
     /// Found but disabled (Pascal silently skips it).
     Disabled,
     /// Found and enabled (added to the fleet).
-    Found(ElemRef),
+    Found(ElemId),
 }
 
 /// A read-only snapshot of one fleet Storage element's state, the inputs the
@@ -413,7 +413,7 @@ pub(crate) struct StorageSnap {
 /// The executive surface `Sample`/`Reset` need to reach the monitored element
 /// and the dispatched Storage fleet (the Rust stand-in for Pascal's live object
 /// pointers + `ActiveCircuit.Solution`/`ControlQueue`/`EventStrings` reach).
-/// `ElemRef`s returned by the fleet lookups are passed back to the accessors.
+/// `ElemId`s returned by the fleet lookups are passed back to the accessors.
 pub(crate) trait StorageDispatchEnv {
     // --- monitored element ---
     /// Pascal `GetControlPower(S)` — the active-power signal at the monitored
@@ -434,33 +434,33 @@ pub(crate) trait StorageDispatchEnv {
     fn find_storage(&self, name: &str) -> FleetFind;
     /// Pascal's "scan the whole circuit for enabled, non-external storage"
     /// (creation order); returns `(name, ref)` pairs.
-    fn all_fleet_storage(&self) -> Vec<(String, ElemRef)>;
+    fn all_fleet_storage(&self) -> Vec<(String, ElemId)>;
     /// Pascal `DoSimpleMsg` sink (the 14403 named-missing error).
     fn push_error(&mut self, diag: crate::diag::DssDiagnostic);
 
     // --- per-storage read / write ---
     /// Read the dispatch-relevant state of one fleet member.
-    fn snap(&self, r: ElemRef) -> StorageSnap;
+    fn snap(&self, r: ElemId) -> StorageSnap;
     /// `obj.StorageState := state` (`Set_StorageState`, declines past kWh limits).
-    fn set_state(&mut self, r: ElemRef, state: i32);
+    fn set_state(&mut self, r: ElemId, state: i32);
     /// `obj.kW := kw` (`Set_kW`, sets the state + dispatch %).
-    fn set_kw(&mut self, r: ElemRef, kw: f64);
+    fn set_kw(&mut self, r: ElemId, kw: f64);
     /// `obj.pctkWout := pct`.
-    fn set_pct_kw_out(&mut self, r: ElemRef, pct: f64);
+    fn set_pct_kw_out(&mut self, r: ElemId, pct: f64);
     /// `obj.pctkWin := pct`.
-    fn set_pct_kw_in(&mut self, r: ElemRef, pct: f64);
+    fn set_pct_kw_in(&mut self, r: ElemId, pct: f64);
     /// `obj.pctReserve := pct`.
-    fn set_pct_reserve(&mut self, r: ElemRef, pct: f64);
+    fn set_pct_reserve(&mut self, r: ElemId, pct: f64);
     /// `obj.StateDesired := state`.
-    fn set_state_desired(&mut self, r: ElemRef, state: i32);
+    fn set_state_desired(&mut self, r: ElemId, state: i32);
     /// `obj.DispatchMode := STORE_EXTERNALMODE`.
-    fn set_dispatch_external(&mut self, r: ElemRef);
+    fn set_dispatch_external(&mut self, r: ElemId);
     /// `obj.SetNominalDEROutput()` — recompute the storage's present P/Q.
-    fn set_nominal(&mut self, r: ElemRef);
+    fn set_nominal(&mut self, r: ElemId);
     /// `obj.PresentkW` after a dispatch (re-read).
-    fn present_kw(&self, r: ElemRef) -> f64;
+    fn present_kw(&self, r: ElemId) -> f64;
     /// `obj.FullName` (`Storage.<name>`) — for the event-log messages.
-    fn storage_full_name(&self, r: ElemRef) -> String;
+    fn storage_full_name(&self, r: ElemId) -> String;
 
     // --- control queue / event log / solution flags ---
     /// Pascal `PushTimeOntoControlQueue(Code)`: `LoadsNeedUpdating := TRUE` +

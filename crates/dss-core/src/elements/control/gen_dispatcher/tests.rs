@@ -52,36 +52,34 @@ impl MockEnv {
             kvar: gens.iter().map(|(_, _, q)| *q).collect(),
         }
     }
-    fn idx(&self, g: ElemRef) -> usize {
-        g.idx
+    fn idx(&self, g: ElemId) -> usize {
+        g.index()
     }
 }
 impl GenDispatchEnv for MockEnv {
     fn monitored_power(&mut self) -> Complex64 {
         self.power
     }
-    fn find_enabled_gen(&self, name: &str) -> Option<ElemRef> {
+    fn find_enabled_gen(&self, name: &str) -> Option<ElemId> {
         self.names
             .iter()
             .position(|n| n.eq_ignore_ascii_case(name))
-            .map(|i| ElemRef { cls: 0, idx: i })
+            .map(|i| ElemId::new(0, i))
     }
-    fn all_enabled_gens(&self) -> Vec<ElemRef> {
-        (0..self.names.len())
-            .map(|i| ElemRef { cls: 0, idx: i })
-            .collect()
+    fn all_enabled_gens(&self) -> Vec<ElemId> {
+        (0..self.names.len()).map(|i| ElemId::new(0, i)).collect()
     }
-    fn gen_kw_base(&self, g: ElemRef) -> f64 {
+    fn gen_kw_base(&self, g: ElemId) -> f64 {
         self.kw[self.idx(g)]
     }
-    fn set_gen_kw_base(&mut self, g: ElemRef, value: f64) {
+    fn set_gen_kw_base(&mut self, g: ElemId, value: f64) {
         let i = self.idx(g);
         self.kw[i] = value;
     }
-    fn gen_kvar_base(&self, g: ElemRef) -> f64 {
+    fn gen_kvar_base(&self, g: ElemId) -> f64 {
         self.kvar[self.idx(g)]
     }
-    fn set_gen_kvar_base(&mut self, g: ElemRef, value: f64) {
+    fn set_gen_kvar_base(&mut self, g: ElemId, value: f64) {
         let i = self.idx(g);
         self.kvar[i] = value;
     }
@@ -265,14 +263,14 @@ fn make_like_copies_only_terminal_and_monitored() {
     src.f_kw_band = 250.0;
     src.ccd.element_terminal = 2;
     src.monitored_full_name = "Line.l1".into();
-    src.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 3 });
+    src.ccd.monitored_element = Some(ElemId::new(1, 3));
 
     let mut dst = GenDispatcher::new("dst");
     dst.make_like(&src);
     // Terminal + monitored element are copied …
     assert_eq!(dst.ccd.element_terminal, 2);
     assert_eq!(dst.monitored_full_name, "Line.l1");
-    assert_eq!(dst.ccd.monitored_element, Some(ElemRef { cls: 1, idx: 3 }));
+    assert_eq!(dst.ccd.monitored_element, Some(ElemId::new(1, 3)));
     // … but the dispatch settings keep the ctor defaults (Pascal quirk).
     assert_eq!(dst.f_kw_limit, 8000.0);
     assert_eq!(dst.f_kw_band, 100.0);
@@ -282,7 +280,7 @@ fn make_like_copies_only_terminal_and_monitored() {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
 
     /// Pascal `TGenDispatcherObj.MakePosSequence` (GenDispatcher.pas:263) is a
     /// NIL-deref hazard: `element=` set (MonitoredElement <> NIL) makes it deref
@@ -291,7 +289,7 @@ mod make_pos_seq_tests {
     #[test]
     fn crash_config_element_set_is_safe_skip() {
         let mut gd = GenDispatcher::new("gd1");
-        gd.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 }); // element= set
+        gd.ccd.monitored_element = Some(ElemId::new(1, 0)); // element= set
         // ControlledElement is always NIL for a fleet control → ctx.controlled None.
         let (np, nc) = (gd.ccd.cd.nphases, gd.ccd.cd.nconds);
         let bus = gd.ccd.cd.get_bus(1).to_string();
@@ -309,6 +307,6 @@ mod make_pos_seq_tests {
         assert_eq!((gd.ccd.cd.nphases, gd.ccd.cd.nconds), (np, nc)); // untouched
         assert_eq!(gd.ccd.cd.get_bus(1), bus); // Setbus safe-skipped
         assert!(plan.run_base); // inherited still runs
-        assert_eq!(gd.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+        assert_eq!(gd.monitored_element_ref(), Some(ElemId::new(1, 0)));
     }
 }

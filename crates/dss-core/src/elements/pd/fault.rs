@@ -272,10 +272,6 @@ impl CktElement for Fault {
         &mut self.cd
     }
 
-    /// Pascal `RecalcElementData`: nothing to do (the YPrim is built directly
-    /// from `G`/`Gmatrix`).
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {}
-
     /// Pascal `TFaultObj.MakePosSequence` (Fault.pas:604-609): a multi-phase
     /// fault collapses to `Phases := 1` (a bare single edit), then `inherited`
     /// (the base bus rename). A 1-phase fault only runs the base rename.
@@ -409,18 +405,6 @@ impl DssObject for Fault {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_f64(&self, idx: usize) -> f64 {
@@ -573,10 +557,6 @@ impl DssObject for Fault {
 
     /// Pascal base `EndEdit` → `RecalcElementData` (Fault's is a no-op).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }
 
 /// Pascal `StripExtension`: the bus name with its `.node.node…` suffix removed.

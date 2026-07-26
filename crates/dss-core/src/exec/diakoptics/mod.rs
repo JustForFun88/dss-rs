@@ -76,7 +76,7 @@ pub(crate) fn ad_find_element<'a>(
             continue;
         }
         if let Some(&oi) = class.name_to_idx.get(obj_name) {
-            return class.arena[oi].as_ckt_element();
+            return class.arena.try_ckt_elem(oi);
         }
     }
     None

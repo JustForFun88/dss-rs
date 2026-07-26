@@ -3,10 +3,9 @@
 //! plus the `RhoEarth` getter/setter.
 
 use crate::elements::general::conductor_data::{
-    CableGeom, ConductorGeom, ConductorKind, conductor_geom,
+    CableGeom, ConductorData, ConductorGeom, ConductorKind, ConductorObj,
 };
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::obj::base::DssObject;
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_constants::ConductorType;
 
@@ -27,7 +26,7 @@ impl LineGeometryObj {
     pub fn load_spacing_and_wires(
         &mut self,
         spc: &LineSpacingObj,
-        wires: &[Option<Box<dyn DssObject>>],
+        wires: &[Option<ConductorObj>],
         f: f64,
         earth_model: i32,
         eps_r_medium: f64,
@@ -61,7 +60,7 @@ impl LineGeometryObj {
         self.fnconds = actual_nconds;
         self.realloc_conductors();
         self.fnphases = actual_nphases;
-        self.line_spacing_obj = Some(Box::new(spc.clone()));
+        self.line_spacing_obj = Some(spc.clone());
         if self.fnconds > self.fnphases {
             self.freduce = true;
         }
@@ -73,10 +72,10 @@ impl LineGeometryObj {
         for o in wires.iter().take(nwires).flatten() {
             // Sequential ifs in Pascal: TS wins if both a CN and a TS are
             // present. Preserve that by not resetting on a plain Wire.
-            match o.as_conductor().map(|c| c.conductor_kind()) {
-                Some(ConductorKind::Cn) => new_choice = ConductorChoice::ConcentricNeutral,
-                Some(ConductorKind::Ts) => new_choice = ConductorChoice::TapeShield,
-                _ => {}
+            match o.conductor_kind() {
+                ConductorKind::Cn => new_choice = ConductorChoice::ConcentricNeutral,
+                ConductorKind::Ts => new_choice = ConductorChoice::TapeShield,
+                ConductorKind::Wire => {}
             }
         }
         self.change_line_constants_type(new_choice);
@@ -106,13 +105,13 @@ impl LineGeometryObj {
         let mut j = 0usize; // 0-based contiguous conductor index (Pascal 1-based)
         for (i, o) in wires.iter().take(nwires).enumerate() {
             let Some(o) = o.as_ref() else { continue };
-            self.fwiredata[j] = Some(o.clone_box());
+            self.fwiredata[j] = Some(o.clone());
             if !self.equivalent_spacing {
                 self.fx[j] = xs[i];
                 self.fy[j] = hs[i];
                 self.funits[j] = units;
             }
-            let (cn, ce) = conductor_norm_emerg(o.as_ref());
+            let (cn, ce) = conductor_norm_emerg(o);
             // 0-based `j < nph` == Pascal 1-based `(j+1) <= FNPhases`.
             if (cn < self.norm_amps || self.norm_amps == 0.0) && j < nph {
                 self.norm_amps = cn;
@@ -150,7 +149,7 @@ impl LineGeometryObj {
                 .fwiredata
                 .get(i)
                 .and_then(|o| o.as_ref())
-                .and_then(|o| conductor_geom(o.as_ref()))
+                .map(|o| o.geom())
                 .ok_or_else(|| {
                     format!(
                         "LineGeometry.{}: WireData is not correctly initialized. \
@@ -340,12 +339,7 @@ impl LineGeometryObj {
 
 /// `(NormAmps, EmergAmps)` of a conductor (Pascal `Wires[1].NormAmps/EmergAmps`),
 /// whichever concrete catalog type it is.
-fn conductor_norm_emerg(o: &dyn DssObject) -> (f64, f64) {
-    match o.as_conductor() {
-        Some(c) => {
-            let (n, e, _, _) = c.amps();
-            (n, e)
-        }
-        None => (0.0, 0.0),
-    }
+fn conductor_norm_emerg(o: &ConductorObj) -> (f64, f64) {
+    let (n, e, _, _) = o.amps();
+    (n, e)
 }

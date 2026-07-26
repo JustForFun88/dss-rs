@@ -5,7 +5,7 @@
 use num_complex::Complex64;
 
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{UpfcControl, prop};
@@ -20,12 +20,9 @@ impl CktElement for UpfcControl {
 
     /// Pascal `TControlElem.FControlledElement` - the element this control
     /// acts on (`None` when it drives a list rather than a single element).
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
     }
-
-    /// Pascal `TUPFCControlObj.RecalcElementData`: empty.
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {}
 
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL — `BuildYMatrix` skips it.
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
@@ -68,7 +65,7 @@ impl CktElement for UpfcControl {
 
     /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
     /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.ccd.monitored_element
     }
 }
@@ -96,18 +93,7 @@ impl DssObject for UpfcControl {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.ccd.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
+
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         Some(self)
     }
@@ -168,10 +154,6 @@ impl DssObject for UpfcControl {
 
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData` (a no-op).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }
 
 impl crate::elements::control::control_elem::ControlElem for UpfcControl {

@@ -17,8 +17,8 @@ use crate::report::format;
 pub(crate) fn export_alloc_factors(classes: &[DssClass], ckt: &Circuit) -> String {
     let mut s = String::new();
     for &r in &ckt.loads {
-        let obj = &classes[r.cls].arena[r.idx];
-        let Some(load) = obj.as_any().downcast_ref::<Load>() else {
+        let obj = &classes[r.class_ord()].arena[r.index()];
+        let Some(load) = classes[r.class_ord()].arena.get::<Load>(r.index()) else {
             continue;
         };
         let name = obj.data().name();

@@ -2,8 +2,7 @@
 //! other registered classes ([`ForeignClassesView`]) it uses to resolve
 //! object references mid-edit.
 
-use crate::elements::traits::ElemRef;
-use crate::obj::base::DssObject;
+use crate::obj::arena::ResolvedObj;
 use crate::obj::dss_enum::EnumRegistry;
 use dss_parser::{Parser, ParserVars};
 
@@ -26,18 +25,18 @@ pub struct PropEngine<'a> {
 /// A read view of the other registered classes, the abstraction `parse_into`
 /// uses to resolve an `ObjectRef` to a live object (Pascal `cls.Find`). The
 /// executive implements it over the class registry minus the active class; the
-/// returned `ElemRef` is stable (nothing is deleted except whole-circuit
+/// returned `ElemId` is stable (nothing is deleted except whole-circuit
 /// `Clear`, PORTING_PLAN §2.1).
 pub trait ForeignClassesView<'a> {
     /// Case-insensitive lookup of `name` in class `class`. `None` when the
     /// class or the object is unknown.
-    fn find(&self, class: &str, name: &str) -> Option<(ElemRef, &'a dyn DssObject)>;
+    fn find(&self, class: &str, name: &str) -> Option<ResolvedObj<'a>>;
 
     /// Case-insensitive lookup of a full `Class.Name` reference (Pascal
     /// `GetCktElementIndex`). The returned `String` is the canonical
     /// `FullName` (`Class.name`) used by dumps. `None` when the value has no
     /// class prefix or nothing matches.
-    fn find_full(&self, full_name: &str) -> Option<(ElemRef, &'a dyn DssObject, String)> {
+    fn find_full(&self, full_name: &str) -> Option<(ResolvedObj<'a>, String)> {
         let _ = full_name;
         None
     }

@@ -7,44 +7,51 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::meter::monitor::Monitor;
+use crate::elements::pc::storage::Storage;
+use crate::elements::pd::capacitor::Capacitor;
+use crate::elements::pd::transformer::{ControlledTransformer, Transformer};
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
+use crate::obj::arena::{ArenaClass, ClassArena};
 use crate::solution::SolveMode;
 use crate::support::dynamics::IterationFlag;
 
-/// Reference to a circuit element inside the executive's class registry:
-/// `(class index, object index)`. The Pascal pointer lists (`CktElements`,
-/// `Sources`, `Lines`, `Loads`, ...) become `Vec<ElemRef>`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ElemRef {
-    pub cls: usize,
-    pub idx: usize,
-}
+/// The typed handle to an element inside the executive's class registry —
+/// one enum variant per registered class, carrying a typed `Idx<T>` into that
+/// class's arena. Re-exported here because [`ElemStore`] and every Pascal
+/// pointer list (`CktElements`, `Sources`, `Lines`, `Loads`, ...) speak it:
+/// the lists became `Vec<ElemId>`.
+///
+/// Before DE_PASCALIZE R3 this was an untyped `{ cls, idx }` tag struct;
+/// [`ElemId::class_ord`]/[`ElemId::index`] expose the same two numbers
+/// for the registry-side producers that still discover a class by position.
+pub use crate::obj::arena::ElemId;
 
 /// Element storage the solver walks — implemented by the executive's class
 /// registry. Replaces Pascal's `TDSSPointerList` of `TDSSCktElement`.
 ///
 /// `: Send` is the P7 thread-readiness rider (DE_PASCALIZE Part V / R1).
 pub trait ElemStore: Send {
-    fn ckt_elem(&self, r: ElemRef) -> &dyn CktElement;
-    fn ckt_elem_mut(&mut self, r: ElemRef) -> &mut dyn CktElement;
+    fn ckt_elem(&self, r: ElemId) -> &dyn CktElement;
+    fn ckt_elem_mut(&mut self, r: ElemId) -> &mut dyn CktElement;
 
     /// Read view of any registered object (control dispatch peeks at a
     /// control's references before splitting the mutable borrows).
-    fn obj(&self, r: ElemRef) -> &dyn crate::obj::base::DssObject;
+    fn obj(&self, r: ElemId) -> &dyn crate::obj::base::DssObject;
 
     /// The [`ElemKind`] of the class the ref points at — the meter/sampling
     /// type-guards (`is_line`/`is_pd_element`/PD/PC checks) match on this
-    /// instead of an `as_any` downcast probe. Panics if `r` names a non-circuit
+    /// instead of an `Any` downcast probe. Panics if `r` names a non-circuit
     /// ("general") class, which those guards never pass.
     ///
     /// [`ElemKind`]: crate::circuit::ElemKind
-    fn kind(&self, r: ElemRef) -> crate::circuit::ElemKind;
+    fn kind(&self, r: ElemId) -> crate::circuit::ElemKind;
 
     /// Pascal `TDSSCircuit.SetElementActive`: resolve a full element name
     /// (`Class.Name`, or a bare `Name` searched across all circuit-element
-    /// classes) to its [`ElemRef`], or `None` if not found. Used by the
+    /// classes) to its [`ElemId`], or `None` if not found. Used by the
     /// EnergyMeter manual `ZoneList` zone build.
-    fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef>;
+    fn find_ckt_element(&self, full_name: &str) -> Option<ElemId>;
 
     /// Pascal `<SomeClass>.Find(name)` reaching a *non-circuit* ("general",
     /// `DSS_OBJECT`) class registered via `DssClass::dss_object` — e.g.
@@ -53,12 +60,12 @@ pub trait ElemStore: Send {
     /// `StorageController.Get_DynamicTarget`'s live, uncached
     /// `DSS.XYCurveClass.Find(DSS.SeasonSignal)` (the season signal is a bare
     /// `Set`-option string, not an object-ref property, so nothing can resolve
-    /// and cache the `ElemRef` up front at edit time).
-    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemRef>;
+    /// and cache the `ElemId` up front at edit time).
+    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemId>;
 
-    /// Single mutable object view (for `as_any_mut` downcasts when only one
-    /// element is touched, e.g. the model-3 generator DQDV sweep).
-    fn obj_mut(&mut self, r: ElemRef) -> &mut dyn crate::obj::base::DssObject;
+    /// Single mutable object view — the property/edit surface that does not
+    /// need a concrete class (the concrete narrowing is [`TypedStore`]).
+    fn obj_mut(&mut self, r: ElemId) -> &mut dyn crate::obj::base::DssObject;
 
     /// Two distinct objects borrowed mutably at once — the Rust stand-in for
     /// Pascal's live cross-object pointers during `Sample`/`DoPendingAction`
@@ -66,8 +73,8 @@ pub trait ElemStore: Send {
     /// `a == b`.
     fn pair_mut(
         &mut self,
-        a: ElemRef,
-        b: ElemRef,
+        a: ElemId,
+        b: ElemId,
     ) -> (
         &mut dyn crate::obj::base::DssObject,
         &mut dyn crate::obj::base::DssObject,
@@ -77,14 +84,386 @@ pub trait ElemStore: Send {
     /// control + capacitor + monitored element). Panics on any aliasing.
     fn triple_mut(
         &mut self,
-        a: ElemRef,
-        b: ElemRef,
-        c: ElemRef,
+        a: ElemId,
+        b: ElemId,
+        c: ElemId,
     ) -> (
         &mut dyn crate::obj::base::DssObject,
         &mut dyn crate::obj::base::DssObject,
         &mut dyn crate::obj::base::DssObject,
     );
+
+    /// The typed arena of class ordinal `cls` — the storage the concrete
+    /// accessors of [`TypedStore`] read through (`ClassArena::get::<T>`), with
+    /// no `Any` round-trip. Dyn-safe on purpose: the generic narrowing lives in
+    /// the [`TypedStore`] extension trait on top of it.
+    fn arena(&self, cls: usize) -> &ClassArena;
+
+    /// Mutable [`ElemStore::arena`].
+    fn arena_mut(&mut self, cls: usize) -> &mut ClassArena;
+
+    /// Two **distinct** class arenas borrowed mutably at once — the class-level
+    /// half of the disjoint-borrow split ([`TypedStore`] does the object-level
+    /// half). Panics if `a == b` or either index is out of range.
+    fn arena_pair_mut(&mut self, a: usize, b: usize) -> (&mut ClassArena, &mut ClassArena);
+
+    /// Three **pairwise-distinct** class arenas borrowed mutably at once.
+    fn arena_triple_mut(
+        &mut self,
+        a: usize,
+        b: usize,
+        c: usize,
+    ) -> (&mut ClassArena, &mut ClassArena, &mut ClassArena);
+}
+
+/// Concrete (`&T` / `&mut T`) access on top of [`ElemStore`] — the DE_PASCALIZE
+/// R3 replacement for the removed `Any` downcast of `store.obj(r)` to `&T`.
+///
+/// Blanket-implemented for every `ElemStore` (including `dyn ElemStore`), so the
+/// generic methods are available wherever the store is. Each one resolves the
+/// class statically through [`ArenaClass`]: a handle naming another class is a
+/// `None` from a compile-time match arm, exactly what the downcast returned.
+pub trait TypedStore: ElemStore {
+    /// The concrete `&T` behind `r`, or `None` if `r` names another class
+    /// (the removed `Any` downcast of `store.obj(r)`).
+    fn typed<T: ArenaClass>(&self, r: ElemId) -> Option<&T> {
+        let i = T::idx_of(r)?;
+        self.arena(T::CLASS_ORD).get::<T>(i.get())
+    }
+
+    /// The concrete `&mut T` behind `r` (the removed `Any` downcast of
+    /// `obj_mut(r)`).
+    fn typed_mut<T: ArenaClass>(&mut self, r: ElemId) -> Option<&mut T> {
+        let i = T::idx_of(r)?;
+        self.arena_mut(T::CLASS_ORD).get_mut::<T>(i.get())
+    }
+
+    /// A control plus its controlled element, borrowed disjointly: the control
+    /// as its concrete class `C`, the target as `&mut dyn CktElement` (`None`
+    /// when the target is a general/`DSS_OBJECT` class — the case the control
+    /// dispatch reports as "… is not a circuit element").
+    ///
+    /// Panics on aliasing refs or a `C`-class mismatch, mirroring the
+    /// `pair_mut` assert + the `expect("kind matched above")` the paired
+    /// downcast carried.
+    fn typed_ckt_pair_mut<C: ArenaClass>(
+        &mut self,
+        c: ElemId,
+        t: ElemId,
+    ) -> (&mut C, Option<&mut dyn CktElement>) {
+        let (ci, ti) = pair_indices::<C>(c, t);
+        if c.class_ord() == t.class_ord() {
+            // Control and controlled element share a class arena.
+            let (a, b) = split2::<C>(self.arena_mut(C::CLASS_ORD), ci, ti);
+            (a, b.ckt_mut())
+        } else {
+            let (ca, ct) = self.arena_pair_mut(C::CLASS_ORD, t.class_ord());
+            (expect_typed::<C>(ca, ci), ct.try_ckt_elem_mut(ti))
+        }
+    }
+
+    /// [`TypedStore::typed_ckt_pair_mut`] plus the monitored element (also a
+    /// `&mut dyn CktElement`) — the CapControl / Fuse / Relay / Recloser
+    /// "control + controlled + monitored" triple. Panics on any aliasing or a
+    /// `C`-class mismatch.
+    #[allow(clippy::type_complexity)]
+    fn typed_ckt_triple_mut<C: ArenaClass>(
+        &mut self,
+        c: ElemId,
+        t: ElemId,
+        m: ElemId,
+    ) -> (
+        &mut C,
+        Option<&mut dyn CktElement>,
+        Option<&mut dyn CktElement>,
+    ) {
+        let (ci, ti, mi) = triple_indices::<C>(c, t, m);
+        let (tc, mc) = (t.class_ord(), m.class_ord());
+        if C::CLASS_ORD == tc && tc == mc {
+            let [a, b, d] = split3::<C>(self.arena_mut(C::CLASS_ORD), ci, ti, mi);
+            (a, b.ckt_mut(), d.ckt_mut())
+        } else if C::CLASS_ORD == tc {
+            let (ct, cm) = self.arena_pair_mut(C::CLASS_ORD, mc);
+            let (a, b) = split2::<C>(ct, ci, ti);
+            (a, b.ckt_mut(), cm.try_ckt_elem_mut(mi))
+        } else if C::CLASS_ORD == mc {
+            let (cm, ct) = self.arena_pair_mut(C::CLASS_ORD, tc);
+            let (a, d) = split2::<C>(cm, ci, mi);
+            (a, ct.try_ckt_elem_mut(ti), d.ckt_mut())
+        } else if tc == mc {
+            let (ca, ctm) = self.arena_pair_mut(C::CLASS_ORD, tc);
+            let (b, d) = ctm.pair_ckt_mut(ti, mi);
+            (expect_typed::<C>(ca, ci), b, d)
+        } else {
+            let (ca, ct, cm) = self.arena_triple_mut(C::CLASS_ORD, tc, mc);
+            (
+                expect_typed::<C>(ca, ci),
+                ct.try_ckt_elem_mut(ti),
+                cm.try_ckt_elem_mut(mi),
+            )
+        }
+    }
+
+    /// RegControl's control/controlled pair: the controlled element resolves
+    /// against **either** the Transformer or the AutoTrans class (the Pascal
+    /// proxy), so it comes back as [`ControlledTransformer`]; `None` for any
+    /// other class. Panics on aliasing or a `C`-class mismatch.
+    fn typed_transformer_pair_mut<C: ArenaClass>(
+        &mut self,
+        c: ElemId,
+        t: ElemId,
+    ) -> (&mut C, Option<&mut dyn ControlledTransformer>) {
+        let (ci, ti) = pair_indices::<C>(c, t);
+        if c.class_ord() == t.class_ord() {
+            // The control's own class is neither Transformer nor AutoTrans, so
+            // a target in it is "not a Transformer or AutoTrans" — the same
+            // outcome the per-class downcast chain produced.
+            let (a, _) = split2::<C>(self.arena_mut(C::CLASS_ORD), ci, ti);
+            return (a, None);
+        }
+        let (ca, ct) = self.arena_pair_mut(C::CLASS_ORD, t.class_ord());
+        (
+            expect_typed::<C>(ca, ci),
+            ct.try_controlled_transformer_mut(ti),
+        )
+    }
+
+    /// A control plus its controlled element **as a concrete class** `B`
+    /// (CapControl → Capacitor), borrowed disjointly. `None` when the target
+    /// names another class — the "Controlled element is not a …" path the
+    /// paired downcast produced.
+    ///
+    /// `A` and `B` must be different classes (a control and the element it
+    /// controls); asserted, since one arena cannot hand out two different
+    /// concrete types.
+    fn typed_pair_mut<A: ArenaClass, B: ArenaClass>(
+        &mut self,
+        a: ElemId,
+        b: ElemId,
+    ) -> (&mut A, Option<&mut B>) {
+        assert_ne!(
+            A::CLASS_ORD,
+            B::CLASS_ORD,
+            "typed_pair_mut: the two classes must differ"
+        );
+        let (ai, bi) = pair_indices::<A>(a, b);
+        if b.class_ord() != B::CLASS_ORD {
+            // `b` is not a `B`; the caller aborts on the `None`. Only the `A`
+            // borrow is handed out (taking `b`'s too would need its arena and
+            // would alias when `b` sits in `A`'s own arena).
+            return (expect_typed::<A>(self.arena_mut(A::CLASS_ORD), ai), None);
+        }
+        let (ca, cb) = self.arena_pair_mut(A::CLASS_ORD, B::CLASS_ORD);
+        (expect_typed::<A>(ca, ai), cb.get_mut::<B>(bi))
+    }
+
+    /// [`TypedStore::typed_pair_mut`] plus the monitored element as
+    /// `&mut dyn CktElement` — CapControl's control + capacitor + monitored
+    /// triple. Panics on any aliasing; `A` and `B` must be different classes.
+    #[allow(clippy::type_complexity)]
+    fn typed_triple_mut<A: ArenaClass, B: ArenaClass>(
+        &mut self,
+        a: ElemId,
+        b: ElemId,
+        m: ElemId,
+    ) -> (&mut A, Option<&mut B>, Option<&mut dyn CktElement>) {
+        assert_ne!(
+            A::CLASS_ORD,
+            B::CLASS_ORD,
+            "typed_triple_mut: the two classes must differ"
+        );
+        let (ai, bi, mi) = triple_indices::<A>(a, b, m);
+        let mc = m.class_ord();
+        if b.class_ord() != B::CLASS_ORD {
+            // `b` is not a `B` — hand back `A` + the monitored element only.
+            return if mc == A::CLASS_ORD {
+                let (x, mm) = split2::<A>(self.arena_mut(A::CLASS_ORD), ai, mi);
+                (x, None, mm.ckt_mut())
+            } else {
+                let (ca, cm) = self.arena_pair_mut(A::CLASS_ORD, mc);
+                (expect_typed::<A>(ca, ai), None, cm.try_ckt_elem_mut(mi))
+            };
+        }
+        if mc == A::CLASS_ORD {
+            let (ca, cb) = self.arena_pair_mut(A::CLASS_ORD, B::CLASS_ORD);
+            let (x, mm) = split2::<A>(ca, ai, mi);
+            (x, cb.get_mut::<B>(bi), mm.ckt_mut())
+        } else if mc == B::CLASS_ORD {
+            let (ca, cb) = self.arena_pair_mut(A::CLASS_ORD, B::CLASS_ORD);
+            let (y, mm) = split2::<B>(cb, bi, mi);
+            (expect_typed::<A>(ca, ai), Some(y), mm.ckt_mut())
+        } else {
+            let (ca, cb, cm) = self.arena_triple_mut(A::CLASS_ORD, B::CLASS_ORD, mc);
+            (
+                expect_typed::<A>(ca, ai),
+                cb.get_mut::<B>(bi),
+                cm.try_ckt_elem_mut(mi),
+            )
+        }
+    }
+
+    /// A [`Monitor`] plus the element it meters, borrowed disjointly, with the
+    /// metered side already narrowed to the three concrete classes
+    /// `TMonitorObj.TakeSample` reaches past [`CktElement`] for — mode 9
+    /// `Capacitor.States`, mode 11 `Storage` present kW/kvar/kWh/state, modes
+    /// 8/10 `Transformer.GetAllWindingCurrents`/`GetWindingVoltages`. Every
+    /// other circuit class (including another Monitor, the same-arena case)
+    /// arrives as [`MeteredElem::Other`], which is exactly what the per-class
+    /// downcast chain returned `None` for.
+    ///
+    /// Panics on aliasing refs, a non-Monitor `c`, or a metered element that is
+    /// not a circuit element (`Monitor.element=` resolves through
+    /// `find_ckt_element`, so a general/`DSS_OBJECT` class cannot get here).
+    fn typed_metered_pair_mut(&mut self, c: ElemId, t: ElemId) -> (&mut Monitor, MeteredElem<'_>) {
+        let (ci, ti) = pair_indices::<Monitor>(c, t);
+        if c.class_ord() == t.class_ord() {
+            // A Monitor metering another Monitor: neither concrete arm applies.
+            let (a, b) = split2::<Monitor>(self.arena_mut(Monitor::CLASS_ORD), ci, ti);
+            return (a, MeteredElem::Other(b));
+        }
+        let (ca, ct) = self.arena_pair_mut(Monitor::CLASS_ORD, t.class_ord());
+        let metered = if ct.get::<Capacitor>(ti).is_some() {
+            MeteredElem::Capacitor(ct.get_mut::<Capacitor>(ti).expect("checked above"))
+        } else if ct.get::<Storage>(ti).is_some() {
+            MeteredElem::Storage(ct.get_mut::<Storage>(ti).expect("checked above"))
+        } else if ct.get::<Transformer>(ti).is_some() {
+            MeteredElem::Transformer(ct.get_mut::<Transformer>(ti).expect("checked above"))
+        } else {
+            MeteredElem::Other(
+                ct.try_ckt_elem_mut(ti)
+                    .expect("metered element is a circuit element"),
+            )
+        };
+        (expect_typed::<Monitor>(ca, ci), metered)
+    }
+}
+
+/// The element a [`Monitor`] meters, borrowed mutably and narrowed to the
+/// concrete classes `TMonitorObj.TakeSample` needs beyond the [`CktElement`]
+/// surface (see [`TypedStore::typed_metered_pair_mut`]). The typed R3
+/// replacement for the `&mut dyn DssObject` + `Any`-downcast chain `take_sample`
+/// used to take.
+pub enum MeteredElem<'a> {
+    Capacitor(&'a mut Capacitor),
+    Storage(&'a mut Storage),
+    Transformer(&'a mut Transformer),
+    Other(&'a mut dyn CktElement),
+}
+
+impl MeteredElem<'_> {
+    /// The generic circuit-element view (every arm has one).
+    pub fn ckt(&self) -> &dyn CktElement {
+        match self {
+            MeteredElem::Capacitor(c) => *c,
+            MeteredElem::Storage(s) => *s,
+            MeteredElem::Transformer(t) => *t,
+            MeteredElem::Other(e) => *e,
+        }
+    }
+
+    /// Mutable [`MeteredElem::ckt`].
+    pub fn ckt_mut(&mut self) -> &mut dyn CktElement {
+        match self {
+            MeteredElem::Capacitor(c) => *c,
+            MeteredElem::Storage(s) => *s,
+            MeteredElem::Transformer(t) => *t,
+            MeteredElem::Other(e) => *e,
+        }
+    }
+
+    /// The metered element as a `Capacitor` (mode 9), or `None`.
+    pub fn capacitor(&self) -> Option<&Capacitor> {
+        match self {
+            MeteredElem::Capacitor(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    /// The metered element as a `Storage` (mode 11), or `None`.
+    pub fn storage(&self) -> Option<&Storage> {
+        match self {
+            MeteredElem::Storage(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// The metered element as a `Transformer` (mode 8), or `None`.
+    pub fn transformer(&self) -> Option<&Transformer> {
+        match self {
+            MeteredElem::Transformer(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// Mutable [`MeteredElem::transformer`] (mode 10).
+    pub fn transformer_mut(&mut self) -> Option<&mut Transformer> {
+        match self {
+            MeteredElem::Transformer(t) => Some(t),
+            _ => None,
+        }
+    }
+}
+
+impl<S: ElemStore + ?Sized> TypedStore for S {}
+
+/// Shared aliasing + class check of the typed pair getters (the `pair_mut`
+/// assert and the `expect("kind matched above")` the downcast carried, in one
+/// place). Returns the two object indices.
+fn pair_indices<C: ArenaClass>(c: ElemId, t: ElemId) -> (usize, usize) {
+    assert_ne!(
+        (c.class_ord(), c.index()),
+        (t.class_ord(), t.index()),
+        "pair_mut: aliasing refs"
+    );
+    (expect_idx::<C>(c), t.index())
+}
+
+/// [`pair_indices`] for the three-object form.
+fn triple_indices<C: ArenaClass>(c: ElemId, t: ElemId, m: ElemId) -> (usize, usize, usize) {
+    let key = |r: ElemId| (r.class_ord(), r.index());
+    assert!(
+        key(c) != key(t) && key(c) != key(m) && key(t) != key(m),
+        "triple_mut: aliasing refs"
+    );
+    (expect_idx::<C>(c), t.index(), m.index())
+}
+
+fn expect_idx<C: ArenaClass>(c: ElemId) -> usize {
+    C::idx_of(c)
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a {} handle, got {}",
+                C::CLASS_NAME,
+                c.class_name()
+            )
+        })
+        .get()
+}
+
+fn expect_typed<C: ArenaClass>(arena: &mut ClassArena, idx: usize) -> &mut C {
+    arena
+        .get_mut::<C>(idx)
+        .unwrap_or_else(|| panic!("{} object #{idx} not in its arena", C::CLASS_NAME))
+}
+
+/// Two distinct objects of one `C` arena, borrowed mutably at once.
+fn split2<C: ArenaClass>(arena: &mut ClassArena, i: usize, j: usize) -> (&mut C, &mut C) {
+    let v = arena
+        .all_mut::<C>()
+        .unwrap_or_else(|| panic!("expected the {} arena", C::CLASS_NAME));
+    let [a, b] = v
+        .get_disjoint_mut([i, j])
+        .expect("pair_mut: object index out of range");
+    (a, b)
+}
+
+/// Three distinct objects of one `C` arena, borrowed mutably at once.
+fn split3<C: ArenaClass>(arena: &mut ClassArena, i: usize, j: usize, k: usize) -> [&mut C; 3] {
+    let v = arena
+        .all_mut::<C>()
+        .unwrap_or_else(|| panic!("expected the {} arena", C::CLASS_NAME));
+    v.get_disjoint_mut([i, j, k])
+        .expect("triple_mut: object index out of range")
 }
 
 /// Scalar state the elements read from the circuit/solution during
@@ -243,9 +622,6 @@ pub struct ReliabilityData {
 pub trait CktElement: Send {
     fn cd(&self) -> &CktElementData;
     fn cd_mut(&mut self) -> &mut CktElementData;
-
-    /// `RecalcElementData` (abstract in the base class).
-    fn recalc_element_data(&mut self, sys: &SysCtx);
 
     /// Pascal `TDSSCktElement.SetNodeRef` (virtual): copy one terminal's node
     /// refs into the flat array + terminal record. The base behavior is the
@@ -458,7 +834,7 @@ pub trait CktElement: Send {
     /// fix would materialise the whole `ControlElementList`, disproportionate here).
     /// Default `None`; every control overrides it to return
     /// `self.ccd.controlled_element`.
-    fn controlled_element(&self) -> Option<ElemRef> {
+    fn controlled_element(&self) -> Option<ElemId> {
         None
     }
 
@@ -699,7 +1075,7 @@ pub trait CktElement: Send {
     /// Pascal `TLineObj` length in kilometres (`Len · <units→km>`). `None` for
     /// every non-Line element — the EnergyMeter zone walk adds it to
     /// `DistFromMeter` only for lines (R0 Category B typed read, replacing an
-    /// `as_any().downcast_ref::<Line>()` guard on `store.obj`).
+    /// per-class guard on `store.obj`).
     fn line_length_km(&self) -> Option<f64> {
         None
     }
@@ -720,14 +1096,14 @@ pub trait CktElement: Send {
     }
 
     /// Pascal `TControlElem.MonitoredElement` / `TMeterElement.MeteredElement`:
-    /// the element this control/meter senses, resolved to its [`ElemRef`]. The
+    /// the element this control/meter senses, resolved to its [`ElemId`]. The
     /// exec applier reads it to build the [`PosSeqCtx::monitored`] snapshot
     /// before calling [`Self::make_pos_sequence`]. Default `None` — a plain
     /// circuit element monitors nothing; controls/meters override it (in the
     /// later WTs of this round).
     ///
     /// [`PosSeqCtx::monitored`]: crate::elements::pos_seq::PosSeqCtx::monitored
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         None
     }
 }

@@ -108,15 +108,6 @@ impl DssObject for TsDataObj {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.data
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_conductor(&self) -> Option<&dyn crate::elements::general::conductor_data::ConductorData> {
-        Some(self)
-    }
 
     fn get_f64(&self, idx: usize) -> f64 {
         match idx {
@@ -190,9 +181,5 @@ impl DssObject for TsDataObj {
         for e in errs {
             self.data.push_error(e);
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

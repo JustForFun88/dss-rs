@@ -30,7 +30,7 @@ mod accessors;
 mod compute;
 
 use crate::elements::meter::meter_element::MeterElementData;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -154,7 +154,7 @@ impl Sensor {
 
     /// `MeteredElement` (the sensored circuit element), used by
     /// `SetHasSensorFlag` and `AllocateLoad`.
-    pub fn metered_element(&self) -> Option<ElemRef> {
+    pub fn metered_element(&self) -> Option<ElemId> {
         self.med.metered_element
     }
 }

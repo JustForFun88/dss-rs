@@ -177,10 +177,6 @@ impl CktElement for Capacitor {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     fn norm_amps(&self) -> f64 {
         self.norm_amps
     }

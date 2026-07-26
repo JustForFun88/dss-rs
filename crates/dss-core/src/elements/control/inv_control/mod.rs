@@ -43,7 +43,7 @@ pub(crate) use compute::{DerSnap, FleetFind as InvFleetFind, InvDispatchEnv, Mon
 use crate::elements::control::control_elem::ControlElemData;
 use crate::elements::control::roll_avg_window::RollAvgWindow;
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -554,7 +554,7 @@ pub struct InvControl {
     /// first `Sample` (empty until then), cached across samples like Pascal. An
     /// empty fleet re-triggers the build (Pascal `FDERPointerList.Count = 0`); a
     /// DERList edit clears it (`invalidate_fleet`).
-    pub(crate) fleet: Vec<ElemRef>,
+    pub(crate) fleet: Vec<ElemId>,
     /// `CtrlVars` — one [`InvVars`] per fleet member (1:1 with `fleet`).
     ctrl_vars: Vec<InvVars>,
     /// `FVpuSolutionIdx` — the write/read cursor into the per-control 2-slot

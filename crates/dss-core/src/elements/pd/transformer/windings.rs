@@ -193,7 +193,7 @@ impl Transformer {
 
     /// Pascal `XfmrCodeObj` — `Some` iff an `xfmrcode=` resolved (the CIM arm's
     /// case-2 vs case-1/3 discriminant, `ExportCIMXML.pas:3945/3998`).
-    pub fn xfmr_code_ref(&self) -> Option<crate::elements::traits::ElemRef> {
+    pub fn xfmr_code_ref(&self) -> Option<crate::elements::traits::ElemId> {
         self.xfmr_code_ref
     }
 

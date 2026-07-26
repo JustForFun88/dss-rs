@@ -3,10 +3,7 @@
 use num_complex::Complex64;
 
 use super::{Monitor, MonitorBaseMode, MonitorSampleCtx};
-use crate::elements::pd::capacitor::Capacitor;
-use crate::elements::pd::transformer::Transformer;
-use crate::elements::traits::SysCtx;
-use crate::obj::base::DssObject;
+use crate::elements::traits::{MeteredElem, SysCtx};
 use crate::support::complexutil::cdang;
 use crate::support::mathutil::SymComp;
 
@@ -42,7 +39,7 @@ impl Monitor {
     /// mode-5 monitor, which does not read it).
     pub fn take_sample(
         &mut self,
-        metered: &mut dyn DssObject,
+        metered: &mut MeteredElem<'_>,
         node_v: &[Complex64],
         sys: &SysCtx,
         sol: &MonitorSampleCtx,
@@ -56,9 +53,7 @@ impl Monitor {
 
         // Metered element dimensions (immutable peek; borrow ends here).
         let (m_nconds, m_yorder) = {
-            let e = metered
-                .as_ckt_element()
-                .expect("metered element is a circuit element");
+            let e = metered.ckt();
             (e.cd().nconds, e.cd().yorder)
         };
         let offset = (self.med.metered_terminal as usize - 1) * m_nconds;
@@ -82,7 +77,7 @@ impl Monitor {
 
         match base {
             MonitorBaseMode::VoltageAndCurrent | MonitorBaseMode::Power => {
-                let e = metered.as_ckt_element_mut().expect("ckt element");
+                let e = metered.ckt_mut();
                 e.compute_iterminal(sys, node_v);
                 let cd = e.cd();
                 current_buffer[..m_yorder].copy_from_slice(&cd.iterminal[..m_yorder]);
@@ -92,10 +87,7 @@ impl Monitor {
             }
             MonitorBaseMode::Tap => {
                 let w = self.med.metered_terminal as usize;
-                let tap = metered
-                    .as_ckt_element()
-                    .and_then(|e| e.present_tap(w))
-                    .unwrap_or(0.0);
+                let tap = metered.ckt().present_tap(w).unwrap_or(0.0);
                 self.add_dbl(tap);
                 return;
             }
@@ -107,7 +99,7 @@ impl Monitor {
                 // header build (`ClearMonitorStream`).
                 let n = self.record_size;
                 let mut states = vec![0.0_f64; n];
-                let e = metered.as_ckt_element_mut().expect("ckt element");
+                let e = metered.ckt_mut();
                 e.get_all_variables(sys, node_v, &mut states);
                 self.add_dbls(&states);
                 return;
@@ -132,21 +124,21 @@ impl Monitor {
                 return;
             }
             MonitorBaseMode::CapacitorSteps => {
-                if let Some(cap) = metered.as_any().downcast_ref::<Capacitor>() {
+                if let Some(cap) = metered.capacitor() {
                     let states: Vec<f64> = cap.states().iter().map(|&s| s as f64).collect();
                     self.add_dbls(&states);
                 }
                 return;
             }
             MonitorBaseMode::Losses => {
-                let e = metered.as_ckt_element_mut().expect("ckt element");
+                let e = metered.ckt_mut();
                 let losses = e.losses(sys, node_v);
                 self.add_dbl(losses.re);
                 self.add_dbl(losses.im);
                 return;
             }
             MonitorBaseMode::AllTerminalVI => {
-                let e = metered.as_ckt_element_mut().expect("ckt element");
+                let e = metered.ckt_mut();
                 e.cd_mut().compute_vterminal(node_v);
                 e.compute_iterminal(sys, node_v);
                 let cd = e.cd();
@@ -172,10 +164,7 @@ impl Monitor {
                 // `record_size = 5` (header.rs), so before this arm existed a
                 // yearly run panicked in `to_csv` (buffer rows of 2 vs stride 7 —
                 // the StoCtrl_Current_PeakShave corpus deck).
-                if let Some(st) = metered
-                    .as_any()
-                    .downcast_ref::<crate::elements::pc::storage::Storage>()
-                {
+                if let Some(st) = metered.storage() {
                     self.add_dbl(st.present_kw());
                     self.add_dbl(st.present_kvar());
                     self.add_dbl(st.kwh_stored);
@@ -219,12 +208,11 @@ impl Monitor {
                 // entry's (mag, angle) — the magnitude is identical at each end of
                 // a winding (`k := 1; k += 2`).
                 {
-                    let e = metered.as_ckt_element_mut().expect("ckt element");
+                    let e = metered.ckt_mut();
                     e.cd_mut().compute_vterminal(node_v);
                 }
                 let tr = metered
-                    .as_any()
-                    .downcast_ref::<Transformer>()
+                    .transformer()
                     .expect("mode 8 monitor validated as a transformer in recalc");
                 let mut wdg = tr.get_all_winding_currents();
                 let n = wdg.len();
@@ -247,8 +235,7 @@ impl Monitor {
                 // polar and store all as (mag, angle) pairs.
                 let np = fnphases;
                 let tr = metered
-                    .as_any_mut()
-                    .downcast_mut::<Transformer>()
+                    .transformer_mut()
                     .expect("mode 10 monitor validated as a transformer in recalc");
                 let nw = tr.num_windings().max(0) as usize;
                 let num_wdg_volts = nw * np;
@@ -295,7 +282,7 @@ impl Monitor {
                 // a single-terminal element (Load/Generator/Capacitor) has no UB
                 // region (`monitor Yorder == MeteredElement.Yorder`) and matches
                 // the oracle exactly — that is what the goldens pin.
-                let e = metered.as_ckt_element_mut().expect("ckt element");
+                let e = metered.ckt_mut();
                 e.cd_mut().compute_vterminal(node_v);
                 let (np, nc, yorder, nterms) = {
                     let cd = e.cd();
