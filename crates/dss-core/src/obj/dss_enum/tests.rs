@@ -118,11 +118,14 @@ fn line_type_abbreviations_widened_to_five_chars() {
 /// `ControlQueue` action codes (`InvPendingChange`, `ExpPendingChange`,
 /// `StorageCtrlAction`, `RegControlAction`), which are class-private queue
 /// codes, and `VarMode` (`PVsystem.pas:32-33`), an internal field with no
-/// `DssEnum` — both are pinned by their own Pascal-literal tests.
+/// `DssEnum` — both are pinned by their own Pascal-literal tests. (The shared
+/// `ControlAction` channel IS registry-backed and is covered here; its
+/// out-of-registry `Keep`/`Other` values are pinned in `control_elem.rs`.)
 #[cfg(test)]
 mod registry_enum_coupling {
     use super::EnumRegistry;
 
+    use crate::elements::control::control_elem::ControlAction;
     use crate::elements::control::espvl_control::EspvlControlType;
     use crate::elements::control::inv_control::{
         InvCombiMode, InvControlMode, InvControlModel, RateOfChangeMode, ReacPowerRef,
@@ -216,5 +219,22 @@ mod registry_enum_coupling {
         check(&reg, reg.storage_state, |v| {
             Some(StorageState::from_ordinal(v).ordinal())
         });
+
+        // The shared `EControlAction` channel: eight registry entries across
+        // four classes map onto one enum (`Action` and `State` per class, and
+        // SwtControl's `Normal` reuses its `State` entry). `from_ordinal` is
+        // total here too — the control-queue code channel is open.
+        for id in [
+            reg.swt_control_action,
+            reg.swt_control_state,
+            reg.fuse_action,
+            reg.fuse_state,
+            reg.recloser_action,
+            reg.recloser_state,
+            reg.relay_action,
+            reg.relay_state,
+        ] {
+            check(&reg, id, |v| Some(ControlAction::from_ordinal(v).ordinal()));
+        }
     }
 }

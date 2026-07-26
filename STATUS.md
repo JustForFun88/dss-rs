@@ -7,6 +7,105 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE W3.1 — the shared `EControlAction` channel: one `ControlAction` enum across all five control classes (branch `depas-final`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, **type-channel only**: no arithmetic, no queue
+order, no registration order, no event-log or error text touched. Closes P1-tail
+escape item **1** — the last of the three open P1-tail items that is *not*
+item 8 / the DynamicExp RPN stream.
+
+**What it replaces.** `elements/control/control_elem.rs`'s seven bare constants
+(`CTRL_NONE = 0` … `CTRL_UNLOCK = 5` plus `CTRL_STATE_KEEP = i32::MIN`) become
+one **`ControlAction`** enum, and the five classes that spoke them —
+SwtControl, Fuse, Recloser, Relay, CapControl — convert in this single commit
+(the P1 protocol forbids a half-converted family; the escape record called the
+five-class blast radius the exact reason it was deferred).
+
+| Pascal | ordinal | proof |
+|---|---|---|
+| `CTRL_NONE`…`CTRL_UNLOCK` | 0…5 | `ControlElem.pas:20-29`, `EControlAction` under `{$Z4}` (int32, no explicit values → declaration order) |
+| `CTRL_TAPUP` / `CTRL_TAPDOWN` | 6 / 7 | same declaration; referenced **nowhere** in the Pascal tree (RegControl runs its own `ACTION_TAPCHANGE=0`/`ACTION_REVERSE=1`, `RegControl.pas:246-247`) — modeled because they are part of the type |
+| `Keep` | `i32::MIN` | not an `EControlAction` value: the `default_value` of the two Relay state `DssEnum`s (`registry/control.rs`), i.e. Pascal `InterpretRelayState`'s first-char-only `case` with no else |
+| `Other(n)` | `n` | the open queue-code channel (below) |
+
+**Eight registry entries, one enum.** `SwtControl: Action`/`State`, `Fuse:
+Action`/`State`, `Recloser: Action`/`State`, `Relay: Action`/`State` all declare
+`[2, 1]` = Close, Open (Recloser's pair carries a third `trip` spelling that also
+maps to 1). SwtControl's `Normal` reuses its `State` entry; Relay's two carry the
+`Keep` default. `registry_enum_coupling` now walks all eight against
+`ControlAction::from_ordinal`, so the previous 18 registry entries become **26**.
+
+**Why `Other(i32)` (the `StorageState` precedent, record 4/n).** The channel is
+genuinely open on one path: a CapControl `USERCONTROL` guest schedules its own
+queue code through `control_queue_push` (upstream `USER_BASE_ACTION_CODE = 100`,
+`ControlElem.pas:67`), and `DoPendingAction` assigns that code straight into
+`FPendingChange`, which `Set_PendingChange` also mirrors into
+`DblTraceParameter` as a Double. A closed enum would silently drop those, so
+`ordinal()`/`from_ordinal` are total and mutually inverse instead.
+
+**The `ControlQueue` seam (the P1b `RegControlAction` precedent).**
+`ControlQueue`'s `code: i32` stays `i32` — it is class-polymorphic — and every
+class converts at its own push/pop boundary: `push_delay(…, action.ordinal(), …)`
+on the way in (SwtControl's lock + action pushes, Relay/Recloser's
+open/close/reset pushes, CapControl's armed push) and
+`ControlAction::from_ordinal(code)` as the first act of each
+`do_pending_action`. Fuse is untouched here on purpose — its queue code is the
+**1-based phase number**, not an action. The Relay `DebugTrace` line still
+formats the raw popped `code`, so `Debug DoPendingAction Code=…` is
+byte-identical.
+
+**The property seam.** `get_i32`/`get_enum_array` emit `.ordinal()`;
+`set_i32`/`set_enum_array`/`do_action` take `ControlAction::from_ordinal(v)`.
+Because `from_ordinal` is total there is no `unwrap_or(self.x)` fallback to
+reason about (unlike the closed families of records 1/n–5/n): every ordinal the
+parser can produce maps to exactly the value the bare `i32` stored. The Relay
+`Keep` guards move one step earlier (`from_ordinal` first, then `!= Keep`), which
+is the same test on the same number. Fuse's `set_enum_array` `copy_from_slice`
+becomes a zip over equal-length slices (`write_states`).
+
+**Deliberately NOT changed.** `Fuse::do_fuse_action` keeps its
+`if action == Open { Open } else { Close }` shape rather than becoming Pascal's
+two-arm `case` (`fuse.pas:145-158`, where an unmatched action leaves
+`FPresentState` alone): the two differ only on ordinals the `Fuse: Action` enum
+cannot produce, and this step changes types, not control flow. Recorded here so
+the divergence is visible rather than silently "cleaned up".
+
+**Pins.** Three new tests in `control_elem.rs`:
+`control_action_pins_pascal_ordinals` (all ten named values + round-trip),
+`control_action_round_trips_every_out_of_set_ordinal` (totality over
+`i32::MIN+1`…`i32::MAX`, incl. `USER_BASE_ACTION_CODE` 100 — and that 0..7 plus
+`i32::MIN` are the *only* non-`Other` values), and
+`relay_state_enums_default_to_the_keep_sentinel` (the live registry's
+`default_value` for `Relay: Action`/`State` **is** `Keep`, and none of the other
+six CTRL-backed entries carries it). The end-to-end `Keep` behavior was already
+pinned by `relay/tests.rs::state_parse_is_first_char_only_r4133` (`normal=trip`
+→ `[closed, closed, closed, ]`) and the `props/relay.json` golden; both still
+pass unchanged.
+
+**Bit-neutrality evidence.** `git diff --stat HEAD -- tests/` is **empty** (zero
+golden / ledger / tolerance / corpus-deck churn). `TODO(compat)` = **117 / 68
+files** at HEAD *and* after (`git grep -c` at both revs). No new
+`downcast`/`as_any` (the only two in the tree stay the pre-existing
+`catch_unwind` `Box<dyn Any>` payload reads in `tests/corpus_gate/runner.rs`);
+no `#[cfg(feature = "oracle-parity")]`; no new `Rc`/`RefCell`/`Mutex`/statics.
+Per record 4/n's rule, a mechanical **string-literal multiset diff** of all 19
+changed files against the base found exactly three added literals — the three
+new assertion messages — and **zero** removed or altered ones: no `push_error`,
+event-log, dump or report text moved anywhere in this step.
+
+**Gate:** `cargo fmt --all --check` · `cargo clippy --workspace --all-targets -D
+warnings` · `cargo test --workspace` — green, exit 0, **66 `test result: ok` groups, 2030 passed, 0 failed, 5 ignored** (the three new pins are the only added test entries; the registry-coupling extension adds assertions, not entries),
+`corpus_gate_all_cases_match_engines … ok` on both channels. `tests/corpus` left
+pristine (run-artifacts removed by exact name off the status list — no wide `git
+clean`). Ritual 0 held at start and before the commit: 186 `.pas` under
+`.inputs/dss_capi`; `cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**P1-tail escape record, updated.** Item 1 (this) is **closed**. Items 2 (the
+bare-`i32` `DssEnum` fields: reactor/capacitor `spec_type`, vsource
+`z_spec_type`/`scan_type`/`sequence_type`, `vs_converter.f_mode`,
+`energymeter.ocp_device_type`) and 3 (the `DynamicExp` RPN token sentinels) are
+untouched and stand exactly as recorded.
+
 ### DE_PASCALIZE wave 2a settler — every audit finding settled, two more InvControl enums, gate green (branch `depas-p1p3`, 2026-07-26)
 
 Settler pass over the whole wave (P1-tail 1/n–5/n + P3 + R3iv, base `634aac9`).
@@ -334,6 +433,9 @@ Left as raw `i32`, deliberately, with the reason. None was partially touched.
    plus the six actions, and every one of the five control classes converts in the
    same commit or the family is half-done. Out of this step's safe blast radius
    after the wave already grew to 68 files; deferred as one dedicated unit.
+   **CLOSED 2026-07-26 by the W3.1 record at the top of this file** (branch
+   `depas-final`): the shared `ControlAction` enum, all five classes in one
+   commit, `Keep` + `Other(i32)` for the two out-of-`EControlAction` values.
 2. **Item 8 — the remaining bare-`i32` `DssEnum` fields**: `reactor.spec_type` /
    `capacitor.spec_type` (a *derived* code written by six different property side
    effects, with `_` fall-throughs in three `match`es in `reactor/solve.rs`),
