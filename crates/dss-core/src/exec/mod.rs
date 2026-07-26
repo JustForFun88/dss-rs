@@ -42,7 +42,7 @@ pub(crate) use crate::elements::pc::{
 pub(crate) use crate::elements::pd::{
     auto_trans, capacitor, fault, fuse, gic_transformer, line, reactor, transformer,
 };
-pub(crate) use crate::elements::traits::{CktElement, ElemId, ElemStore};
+pub(crate) use crate::elements::traits::{CktElement, ElemId, ElemStore, TypedStore};
 pub(crate) use crate::obj::arena::ClassArena;
 pub(crate) use crate::obj::base::DssObject;
 pub(crate) use crate::obj::dss_enum::{EnumId, EnumRegistry};

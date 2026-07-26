@@ -27,11 +27,9 @@ use crate::elements::pc::inv_based_pce::Connection as InvConnection;
 use crate::elements::pc::pvsystem::{PVSystem, VARMODE_KVAR};
 use crate::elements::pc::storage::{Storage, StorageDispatchMode};
 use crate::elements::pc::upfc::Upfc;
-use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::fuse::Fuse;
-use crate::elements::pd::transformer::{ControlledTransformer, Transformer};
-use crate::elements::traits::{ElemId, ElemStore, SysCtx};
+use crate::elements::traits::{ElemId, ElemStore, SysCtx, TypedStore};
 use crate::solution::SolveMode;
 use crate::solution::control_queue::ControlQueue;
 use crate::solution::event_log::EventLog;
@@ -600,12 +598,8 @@ pub(super) fn dispatch_control(
                     let Some(target) = controlled else {
                         return Err(abort(ctx.errors, &full_name, "Switched element not set"));
                     };
-                    let (cobj, tobj) = store.pair_mut(r, target);
-                    let sw = cobj
-                        .as_any_mut()
-                        .downcast_mut::<SwtControl>()
-                        .expect("kind matched above");
-                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                    let (sw, tobj) = store.typed_ckt_pair_mut::<SwtControl>(r, target);
+                    let Some(ctrl) = tobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -619,12 +613,8 @@ pub(super) fn dispatch_control(
                     // switched element back to `NormalState` (when not locked).
                     match controlled {
                         Some(target) => {
-                            let (cobj, tobj) = store.pair_mut(r, target);
-                            let sw = cobj
-                                .as_any_mut()
-                                .downcast_mut::<SwtControl>()
-                                .expect("kind matched above");
-                            if let Some(ctrl) = tobj.as_ckt_element_mut() {
+                            let (sw, tobj) = store.typed_ckt_pair_mut::<SwtControl>(r, target);
+                            if let Some(ctrl) = tobj {
                                 if sw.reset_with(ctrl) {
                                     *ctx.system_y_changed = true;
                                 }
@@ -659,37 +649,29 @@ pub(super) fn dispatch_control(
                         // The monitored role only *reads* solved state, so an
                         // owned clone of the controlled element stands in for the
                         // second live borrow (currents recompute from node_v).
-                        let mut mon_clone = store.obj(target).clone_box();
-                        let (cobj, tobj) = store.pair_mut(r, target);
-                        let fuse = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Fuse>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let mon_clone = store.arena(target.class_ord()).clone_ckt(target.index());
+                        let (fuse, tobj) = store.typed_ckt_pair_mut::<Fuse>(r, target);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let mon_elem = mon_clone
-                            .as_ckt_element_mut()
-                            .expect("controlled element is a circuit element");
+                        let mut mon_clone =
+                            mon_clone.expect("controlled element is a circuit element");
+                        let mon_elem = mon_clone.as_mut();
                         fuse.sample(ctrl, mon_elem, &mut ctx);
                     } else {
-                        let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
-                        let fuse = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Fuse>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let (fuse, tobj, mobj) = store.typed_ckt_triple_mut::<Fuse>(r, target, mon);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let Some(mon_elem) = mobj.as_ckt_element_mut() else {
+                        let Some(mon_elem) = mobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
@@ -700,12 +682,8 @@ pub(super) fn dispatch_control(
                     }
                 }
                 ControlOp::Action { code, .. } => {
-                    let (cobj, tobj) = store.pair_mut(r, target);
-                    let fuse = cobj
-                        .as_any_mut()
-                        .downcast_mut::<Fuse>()
-                        .expect("kind matched above");
-                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                    let (fuse, tobj) = store.typed_ckt_pair_mut::<Fuse>(r, target);
+                    let Some(ctrl) = tobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -716,12 +694,8 @@ pub(super) fn dispatch_control(
                     fuse.do_pending_action(code, ctrl, &mut ctx);
                 }
                 ControlOp::Reset => {
-                    let (cobj, tobj) = store.pair_mut(r, target);
-                    let fuse = cobj
-                        .as_any_mut()
-                        .downcast_mut::<Fuse>()
-                        .expect("kind matched above");
-                    if let Some(ctrl) = tobj.as_ckt_element_mut()
+                    let (fuse, tobj) = store.typed_ckt_pair_mut::<Fuse>(r, target);
+                    if let Some(ctrl) = tobj
                         && fuse.reset_with(ctrl)
                     {
                         *ctx.system_y_changed = true;
@@ -745,37 +719,30 @@ pub(super) fn dispatch_control(
                         // The monitored role only *reads* solved state, so an
                         // owned clone of the controlled element stands in for the
                         // second live borrow (currents recompute from node_v).
-                        let mut mon_clone = store.obj(target).clone_box();
-                        let (cobj, tobj) = store.pair_mut(r, target);
-                        let rec = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Recloser>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let mon_clone = store.arena(target.class_ord()).clone_ckt(target.index());
+                        let (rec, tobj) = store.typed_ckt_pair_mut::<Recloser>(r, target);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let mon_elem = mon_clone
-                            .as_ckt_element_mut()
-                            .expect("controlled element is a circuit element");
+                        let mut mon_clone =
+                            mon_clone.expect("controlled element is a circuit element");
+                        let mon_elem = mon_clone.as_mut();
                         rec.sample(ctrl, mon_elem, &mut ctx);
                     } else {
-                        let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
-                        let rec = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Recloser>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let (rec, tobj, mobj) =
+                            store.typed_ckt_triple_mut::<Recloser>(r, target, mon);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let Some(mon_elem) = mobj.as_ckt_element_mut() else {
+                        let Some(mon_elem) = mobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
@@ -789,12 +756,8 @@ pub(super) fn dispatch_control(
                     let Some(target) = controlled else {
                         return Err(abort(ctx.errors, &full_name, "Switched element not set"));
                     };
-                    let (cobj, tobj) = store.pair_mut(r, target);
-                    let rec = cobj
-                        .as_any_mut()
-                        .downcast_mut::<Recloser>()
-                        .expect("kind matched above");
-                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                    let (rec, tobj) = store.typed_ckt_pair_mut::<Recloser>(r, target);
+                    let Some(ctrl) = tobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -811,12 +774,8 @@ pub(super) fn dispatch_control(
                     // unlike SwtControl).
                     match controlled {
                         Some(target) => {
-                            let (cobj, tobj) = store.pair_mut(r, target);
-                            let rec = cobj
-                                .as_any_mut()
-                                .downcast_mut::<Recloser>()
-                                .expect("kind matched above");
-                            if let Some(ctrl) = tobj.as_ckt_element_mut() {
+                            let (rec, tobj) = store.typed_ckt_pair_mut::<Recloser>(r, target);
+                            if let Some(ctrl) = tobj {
                                 if rec.reset_with(ctrl) {
                                     *ctx.system_y_changed = true;
                                 }
@@ -851,40 +810,32 @@ pub(super) fn dispatch_control(
                         // The monitored role only *reads* solved state, so an
                         // owned clone of the controlled element stands in for the
                         // second live borrow (currents recompute from node_v).
-                        let mut mon_clone = store.obj(target).clone_box();
-                        let (cobj, tobj) = store.pair_mut(r, target);
-                        let rel = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Relay>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let mon_clone = store.arena(target.class_ord()).clone_ckt(target.index());
+                        let (rel, tobj) = store.typed_ckt_pair_mut::<Relay>(r, target);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let mon_elem = mon_clone
-                            .as_ckt_element_mut()
-                            .expect("controlled element is a circuit element");
+                        let mut mon_clone =
+                            mon_clone.expect("controlled element is a circuit element");
+                        let mon_elem = mon_clone.as_mut();
                         // A `TD21` relay on a coarse time step requests a
                         // solution abort (error 388, Pascal `DoErrorMsg` →
                         // `SolutionAbort`); lifted below like CapControl's.
                         solution_abort_requested = rel.sample(ctrl, mon_elem, &mut ctx);
                     } else {
-                        let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
-                        let rel = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Relay>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let (rel, tobj, mobj) = store.typed_ckt_triple_mut::<Relay>(r, target, mon);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let Some(mon_elem) = mobj.as_ckt_element_mut() else {
+                        let Some(mon_elem) = mobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
@@ -901,12 +852,8 @@ pub(super) fn dispatch_control(
                     let Some(target) = controlled else {
                         return Err(abort(ctx.errors, &full_name, "Switched element not set"));
                     };
-                    let (cobj, tobj) = store.pair_mut(r, target);
-                    let rel = cobj
-                        .as_any_mut()
-                        .downcast_mut::<Relay>()
-                        .expect("kind matched above");
-                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                    let (rel, tobj) = store.typed_ckt_pair_mut::<Relay>(r, target);
+                    let Some(ctrl) = tobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -923,12 +870,8 @@ pub(super) fn dispatch_control(
                     // (raising SystemYChanged inside `reset_with`).
                     match controlled {
                         Some(target) => {
-                            let (cobj, tobj) = store.pair_mut(r, target);
-                            let rel = cobj
-                                .as_any_mut()
-                                .downcast_mut::<Relay>()
-                                .expect("kind matched above");
-                            if let Some(ctrl) = tobj.as_ckt_element_mut() {
+                            let (rel, tobj) = store.typed_ckt_pair_mut::<Relay>(r, target);
+                            if let Some(ctrl) = tobj {
                                 rel.reset_with(ctrl, &mut ctx);
                             } else {
                                 rel.reset_control_side();
@@ -949,21 +892,10 @@ pub(super) fn dispatch_control(
             let Some(target) = controlled else {
                 return Err(abort(ctx.errors, &full_name, "Transformer element not set"));
             };
-            let (cobj, tobj) = store.pair_mut(r, target);
-            let rc = cobj
-                .as_any_mut()
-                .downcast_mut::<RegControl>()
-                .expect("kind matched above");
-            // `transformer=` resolves against either class (Pascal proxy).
-            let tr: &mut dyn ControlledTransformer = if tobj.as_any().is::<Transformer>() {
-                tobj.as_any_mut()
-                    .downcast_mut::<Transformer>()
-                    .expect("is Transformer")
-            } else if tobj.as_any().is::<AutoTrans>() {
-                tobj.as_any_mut()
-                    .downcast_mut::<AutoTrans>()
-                    .expect("is AutoTrans")
-            } else {
+            // `transformer=` resolves against either class (Pascal proxy), so
+            // the controlled element comes back as `ControlledTransformer`.
+            let (rc, tobj) = store.typed_transformer_pair_mut::<RegControl>(r, target);
+            let Some(tr) = tobj else {
                 return Err(abort(
                     ctx.errors,
                     &full_name,
@@ -1006,12 +938,8 @@ pub(super) fn dispatch_control(
                         // Time/Follow control: the capacitor monitors itself.
                         // The monitored role only *reads* solved state, so a
                         // clone stands in for the second live borrow.
-                        let (cobj, capobj) = store.pair_mut(r, target);
-                        let cc = cobj
-                            .as_any_mut()
-                            .downcast_mut::<CapControl>()
-                            .expect("kind matched above");
-                        let Some(cap) = capobj.as_any_mut().downcast_mut::<Capacitor>() else {
+                        let (cc, capobj) = store.typed_pair_mut::<CapControl, Capacitor>(r, target);
+                        let Some(cap) = capobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
@@ -1021,19 +949,16 @@ pub(super) fn dispatch_control(
                         let mut mon_clone = cap.clone();
                         solution_abort_requested = cc.sample(cap, &mut mon_clone, &mut ctx);
                     } else {
-                        let (cobj, capobj, monobj) = store.triple_mut(r, target, mon);
-                        let cc = cobj
-                            .as_any_mut()
-                            .downcast_mut::<CapControl>()
-                            .expect("kind matched above");
-                        let Some(cap) = capobj.as_any_mut().downcast_mut::<Capacitor>() else {
+                        let (cc, capobj, monobj) =
+                            store.typed_triple_mut::<CapControl, Capacitor>(r, target, mon);
+                        let Some(cap) = capobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Controlled element is not a Capacitor",
                             ));
                         };
-                        let Some(mon_elem) = monobj.as_ckt_element_mut() else {
+                        let Some(mon_elem) = monobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
@@ -1047,12 +972,8 @@ pub(super) fn dispatch_control(
                     // The built-in control types ignore the code (PendingChange
                     // rules); USERCONTROL sets PendingChange := code and runs the
                     // guest `do_pending(code, proxy)` (`CapControl.pas:725-733`).
-                    let (cobj, capobj) = store.pair_mut(r, target);
-                    let cc = cobj
-                        .as_any_mut()
-                        .downcast_mut::<CapControl>()
-                        .expect("kind matched above");
-                    let Some(cap) = capobj.as_any_mut().downcast_mut::<Capacitor>() else {
+                    let (cc, capobj) = store.typed_pair_mut::<CapControl, Capacitor>(r, target);
+                    let Some(cap) = capobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -1062,12 +983,8 @@ pub(super) fn dispatch_control(
                     solution_abort_requested = cc.do_pending_action(code, proxy, cap, &mut ctx);
                 }
                 ControlOp::Reset => {
-                    let (cobj, capobj) = store.pair_mut(r, target);
-                    let cc = cobj
-                        .as_any_mut()
-                        .downcast_mut::<CapControl>()
-                        .expect("kind matched above");
-                    let Some(cap) = capobj.as_any_mut().downcast_mut::<Capacitor>() else {
+                    let (cc, capobj) = store.typed_pair_mut::<CapControl, Capacitor>(r, target);
+                    let Some(cap) = capobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -1107,16 +1024,12 @@ struct GenDispEnv<'a> {
 impl GenDispEnv<'_> {
     fn generator(store: &dyn ElemStore, g: ElemId) -> &Generator {
         store
-            .obj(g)
-            .as_any()
-            .downcast_ref::<Generator>()
+            .typed::<Generator>(g)
             .expect("GenDispatcher list entry is a Generator")
     }
     fn generator_mut(store: &mut dyn ElemStore, g: ElemId) -> &mut Generator {
         store
-            .obj_mut(g)
-            .as_any_mut()
-            .downcast_mut::<Generator>()
+            .typed_mut::<Generator>(g)
             .expect("GenDispatcher list entry is a Generator")
     }
 }
@@ -1173,16 +1086,12 @@ struct EspvlDispEnv<'a> {
 impl EspvlDispEnv<'_> {
     fn espvl(store: &dyn ElemStore, r: ElemId) -> &EspvlControl {
         store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<EspvlControl>()
+            .typed::<EspvlControl>(r)
             .expect("ESPVLControl fleet entry is an ESPVLControl")
     }
     fn espvl_mut(store: &mut dyn ElemStore, r: ElemId) -> &mut EspvlControl {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<EspvlControl>()
+            .typed_mut::<EspvlControl>(r)
             .expect("ESPVLControl fleet entry is an ESPVLControl")
     }
 }
@@ -1234,16 +1143,12 @@ struct UpfcDispEnv<'a> {
 impl UpfcDispEnv<'_> {
     fn upfc(store: &dyn ElemStore, u: ElemId) -> &Upfc {
         store
-            .obj(u)
-            .as_any()
-            .downcast_ref::<Upfc>()
+            .typed::<Upfc>(u)
             .expect("UPFCControl list entry is a UPFC")
     }
     fn upfc_mut(store: &mut dyn ElemStore, u: ElemId) -> &mut Upfc {
         store
-            .obj_mut(u)
-            .as_any_mut()
-            .downcast_mut::<Upfc>()
+            .typed_mut::<Upfc>(u)
             .expect("UPFCControl list entry is a UPFC")
     }
 }
@@ -1377,16 +1282,12 @@ struct StorageDispEnv<'a> {
 impl StorageDispEnv<'_> {
     fn storage(store: &dyn ElemStore, r: ElemId) -> &Storage {
         store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<Storage>()
+            .typed::<Storage>(r)
             .expect("StorageController fleet entry is a Storage")
     }
     fn storage_mut(store: &mut dyn ElemStore, r: ElemId) -> &mut Storage {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<Storage>()
+            .typed_mut::<Storage>(r)
             .expect("StorageController fleet entry is a Storage")
     }
     fn monitored_ref(&self) -> ElemId {
@@ -2335,16 +2236,12 @@ struct ExpDispEnv<'a> {
 impl ExpDispEnv<'_> {
     fn pvsystem(store: &dyn ElemStore, r: ElemId) -> &PVSystem {
         store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<PVSystem>()
+            .typed::<PVSystem>(r)
             .expect("ExpControl fleet entry is a PVSystem")
     }
     fn pvsystem_mut(store: &mut dyn ElemStore, r: ElemId) -> &mut PVSystem {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<PVSystem>()
+            .typed_mut::<PVSystem>(r)
             .expect("ExpControl fleet entry is a PVSystem")
     }
 }

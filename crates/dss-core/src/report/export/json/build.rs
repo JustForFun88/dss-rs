@@ -165,7 +165,7 @@ pub fn batch_to_json(
     let exclude_disabled = opts.contains(JsonOpts::EXCLUDE_DISABLED);
     // Pascal branches on whether the FIRST element is a TDSSCktElement.
     let is_ckt = arena
-        .get(0)
+        .get_obj(0)
         .map(|o| o.as_ckt_element().is_some())
         .unwrap_or(false);
 

@@ -7,6 +7,123 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R3.2 (part 1/2) — typed arena accessors + Category-A typed pair/triple getters + the `*_mut` helper family (branch `depas-r3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, type-channel only. Base = the R3.1 tip `275de68`
+(on `update` @ `67d2965`). Ritual 0 held at start **and** before the commit: 186
+`.pas` under `.inputs/dss_capi` (PowerShell recursion — bash globbing false-zeros
+through the junction); `cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Delivered: R3 handoff item 2's sub-items (a) accessors, (b) Category-A typed
+pair/triple getters, (d) the `generator_mut`/`storage_mut`/`pvsystem_mut`/
+`espvl_mut`/`upfc_mut` family — plus the two meter/exec pair sites that share
+the same shape.** Sub-item (c) (Category-D typed resolved-object handle) and
+(e) (the monitor `take_sample` bare-`&dyn` reader) are the remaining half; see
+the follow-on record.
+
+**The accessor design — `ArenaClass`, one static impl per registered class,
+emitted by the SAME `with_all_classes!` list (no `Any`, no `TypeId`, no
+vtable).** `T` alone determines the arena variant, the registration ordinal and
+the `ElemId` variant, so every narrowing is a compile-time match arm whose
+`None` arm is exactly the case the downcast returned `None` for:
+
+- `obj/arena.rs`: `trait ArenaClass: DssObject + Sized + 'static` with
+  `CLASS_NAME` / `CLASS_ORD` (the `ClassOrd` discriminant, so it is a constant,
+  not a scan), `id(idx) -> ElemId`, `idx_of(ElemId) -> Option<Idx<Self>>`,
+  `arena_slice`/`arena_slice_mut`, and `ckt_ref`/`ckt_mut` (the concrete-`&T`
+  twin of `try_ckt_elem`, driven by the same `ckt`/`data` tag column).
+- `ClassArena::get::<T>(idx) -> Option<&T>` / `get_mut::<T>` / `all::<T>` /
+  `all_mut::<T>` (the plan's `ClassArena::get::<T>`); the pre-existing untyped
+  `get` was renamed `get_obj` (2 call sites, `exec/make_pos_seq.rs`,
+  `report/export/json/build.rs`). Plus `clone_ckt(idx) -> Option<Box<dyn
+  CktElement>>` (typed clone for the self-monitoring paths) and
+  `try_controlled_transformer_mut` (the Transformer|AutoTrans proxy) and
+  `pair_ckt_mut` (two ckt views out of one arena).
+- `elements/traits.rs`: `ElemStore` gains four dyn-safe primitives — `arena`,
+  `arena_mut`, `arena_pair_mut`, `arena_triple_mut` — and a new blanket
+  extension trait **`TypedStore: ElemStore`** (implemented for every store
+  incl. `dyn ElemStore`) carrying the generic narrowing: `typed::<T>` /
+  `typed_mut::<T>` (⇔ `obj(r).as_any().downcast_ref::<T>()`),
+  `typed_ckt_pair_mut::<C>` → `(&mut C, Option<&mut dyn CktElement>)`,
+  `typed_ckt_triple_mut::<C>`, `typed_transformer_pair_mut::<C>` →
+  `(&mut C, Option<&mut dyn ControlledTransformer>)`, and
+  `typed_pair_mut::<A, B>` / `typed_triple_mut::<A, B>` (both sides concrete —
+  CapControl ⇄ Capacitor).
+
+**Converted (all in `solution/controls/dispatch.rs` unless noted).** 12
+`pair_mut` + 3 `triple_mut` control sites → the typed getters (Swt/Fuse/
+Recloser/Relay); 3 CapControl `pair_mut` + 1 `triple_mut` → `typed_pair_mut`/
+`typed_triple_mut::<CapControl, Capacitor>`; the RegControl cluster's
+`is::<Transformer>()`/`is::<AutoTrans>()` downcast chain → one
+`typed_transformer_pair_mut`; the 3 self-monitoring `clone_box()` +
+`as_ckt_element_mut()` paths → `ClassArena::clone_ckt`; the 10 `generator`/
+`generator_mut`/`storage`/`storage_mut`/`pvsystem`/`pvsystem_mut`/`espvl`/
+`espvl_mut`/`upfc`/`upfc_mut` helpers → `typed`/`typed_mut`; plus
+`exec/view.rs`'s sensor pair and `exec/command.rs`'s RegControl tap-sync pair.
+17 `tobj`/`mobj`/`monobj` `as_ckt_element_mut()` calls disappear with them.
+
+**Bit-neutrality argument.** Every converted site resolves the same object by
+the same `(class ordinal, index)` and the same aliasing case analysis — the
+typed getters mirror `pair_mut_arenas`/`triple_mut_arenas` branch for branch
+(same-arena `get_disjoint_mut`, cross-arena `get_disjoint_mut` over classes),
+and keep the `"pair_mut: aliasing refs"` / `"triple_mut: aliasing refs"`
+asserts verbatim. No list, loop, `find_*` tie-break, control-queue insertion,
+stamp or accumulation order was touched; no arithmetic is in the diff. The 3
+self-monitoring paths still clone the controlled element *before* the disjoint
+borrow and still abort (not panic) when it is not a circuit element — the
+`clone_ckt` result is unwrapped only **after** the `Switched element is not a
+circuit element` check, preserving the original ordering of the two failure
+paths.
+
+**Proof surface (2 new tests + 1 new store-level test + 1 panic test).**
+`obj::arena::tests::typed_accessors_match_the_any_downcast_for_every_class` is
+generated from the class list, so it covers **all 50** classes: for each, the
+typed read is pointer-identical to `obj(0).as_any().downcast_ref::<T>()`,
+out-of-range is `None`, the `id`/`idx_of`/`class_ord` round-trip holds, and
+`ckt_ref`/`ckt_mut`/`clone_ckt` agree with the arena `ckt`/`data` tag.
+`typed_accessors_reject_a_foreign_class` pins the other half of the downcast
+contract (wrong arena / wrong handle ⇒ `None`, never a reinterpretation).
+`exec::registry::tests::typed_store_accessors_match_the_untyped_pair_and_downcast`
+does the same over a **live** `ClassStore` (RegControl⇄Transformer,
+CapControl⇄Capacitor, monitored Line), and `typed_pair_mut_rejects_aliasing`
+pins the aliasing guard.
+
+**Metrics (`rg -c … crates/dss-core/src`, summed lines / files).**
+
+| metric | base `275de68` | HEAD | delta | note |
+|---|---|---|---|---|
+| `downcast_ref\|downcast_mut` | 369 / 73 f | **341 / 75 f** | **−28** | all Category-A dispatch + the `*_mut` family |
+| `as_any\|as_ckt_element` | 716 / 134 f | **667 / 134 f** | **−49** | the 17 `as_ckt_element_mut` pair/triple reads + the `as_any` chains |
+| `TODO(compat)` | 117 / 68 f | **117 / 68 f** | **0** | invariant held |
+| `ElemId` | 955 / 130 f | 984 / 130 f | +29 | the new accessor surface |
+| `fn as_any` / `fn as_any_mut` defs | 52 / 52 | 52 / 52 | 0 | removal still gated on items (c)+(e)+R3.3 |
+
+Zero golden / ledger / tolerance / corpus-deck churn (diff is 11 files, all
+under `crates/dss-core/src/`). Zero `#[ignore]` churn.
+
+**Deviations disclosed.** (1) `ClassArena::get` (untyped, `Option<&dyn
+DssObject>`) was **renamed** `get_obj` so the typed `get::<T>` can carry the
+name the plan specifies; both call sites updated, no behavior change. (2) The
+`*_mut` helper family's panic *message* is now the helper's own `.expect(...)`
+in the class-mismatch case where the old code would first panic inside
+`obj_mut` on an out-of-range index — both are unreachable ("construction bug")
+states, the messages for the reachable mismatch case are unchanged. (3)
+`typed_pair_mut`/`typed_triple_mut` assert `A::CLASS_ORD != B::CLASS_ORD` (one
+arena cannot hand out two different concrete types); the only user is
+CapControl⇄Capacitor, structurally distinct. (4) The two test-only `ElemStore`
+doubles (`ymatrix.rs::EmptyStore`, `monte_carlo.rs::FaultStore`) implement the
+four new primitives as `unimplemented!()`, matching their existing style —
+neither test path reaches them. (5) Ritual step 3 (two fresh audits) is not run
+in this session; the coordinator spawns the R3 audits.
+
+**Gate (full, SOLO, toolchain guard first).** `cargo fmt --all --check` exit 0;
+`cargo clippy --workspace --all-targets -- -D warnings` exit 0; `cargo test
+--workspace` **exit 0** — 0 failed anywhere, 5 ignored (the same 5 pre-existing
+ones), `corpus_gate_all_cases_match_engines … ok` (25 passed, 185.7 s, both
+channels capi_v0145 + r4133), run solo with no name filters. Corpus left
+pristine: 4 run-artifacts (`Test/AutoTrans/auto*_current.txt`,
+`auto1bus_ht_losses.txt`) removed by exact name — no wide `git clean`.
+
 ### DE_PASCALIZE R3.1 — the `ElemRef` → `ElemId` STORE FLIP: LANDED IN FULL (spine + access layer, zero `.to_ref()` bridges ever created) (branch `depas-r3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral, type-channel only. Base `update` @ `67d2965`. Ritual 0

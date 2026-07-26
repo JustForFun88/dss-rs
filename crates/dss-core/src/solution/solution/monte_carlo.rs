@@ -419,6 +419,34 @@ mod tests {
         ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
             unimplemented!()
         }
+        fn arena(&self, _cls: usize) -> &crate::obj::arena::ClassArena {
+            unimplemented!()
+        }
+        fn arena_mut(&mut self, _cls: usize) -> &mut crate::obj::arena::ClassArena {
+            unimplemented!()
+        }
+        fn arena_pair_mut(
+            &mut self,
+            _a: usize,
+            _b: usize,
+        ) -> (
+            &mut crate::obj::arena::ClassArena,
+            &mut crate::obj::arena::ClassArena,
+        ) {
+            unimplemented!()
+        }
+        fn arena_triple_mut(
+            &mut self,
+            _a: usize,
+            _b: usize,
+            _c: usize,
+        ) -> (
+            &mut crate::obj::arena::ClassArena,
+            &mut crate::obj::arena::ClassArena,
+            &mut crate::obj::arena::ClassArena,
+        ) {
+            unimplemented!()
+        }
     }
 
     fn n_faults(n: usize) -> FaultStore {

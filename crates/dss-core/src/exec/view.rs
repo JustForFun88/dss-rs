@@ -774,14 +774,8 @@ impl Dss {
         let sys = crate::solution::solution::sys_ctx(ckt);
         let node_v = ckt.solution.node_v.clone();
         let mut store = ClassStore { classes };
-        let (s_obj, m_obj) = store.pair_mut(sensor_ref, metered);
-        let m_ce = m_obj
-            .as_ckt_element_mut()
-            .expect("metered element is a circuit element");
-        let s = s_obj
-            .as_any_mut()
-            .downcast_mut::<sensor::Sensor>()
-            .expect("sensors holds Sensor objects");
+        let (s, m_obj) = store.typed_ckt_pair_mut::<sensor::Sensor>(sensor_ref, metered);
+        let m_ce = m_obj.expect("metered element is a circuit element");
         s.take_sample(m_ce, &sys, &node_v);
         let nph = s.med.cd.nphases;
         Some((
