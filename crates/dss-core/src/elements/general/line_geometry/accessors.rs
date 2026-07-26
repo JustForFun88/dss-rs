@@ -6,6 +6,7 @@ use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 
 use super::{ConductorChoice, LineGeometryObj, LineType, prop};
+use crate::elements::general::line_spacing::LineSpacingObj;
 
 impl LineGeometryObj {
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -17,7 +18,7 @@ impl LineGeometryObj {
             self.fnconds = o.fnconds;
             self.realloc_conductors();
             self.fnphases = o.fnphases;
-            self.line_spacing_obj = o.line_spacing_obj.as_ref().map(|b| b.clone_box());
+            self.line_spacing_obj = o.line_spacing_obj.clone();
             // dss_capi 0.15.x `MakeLike` copies the equivalent-spacing fields.
             self.eq_dist_ph_ph = o.eq_dist_ph_ph;
             self.eq_dist_ph_n = o.eq_dist_ph_n;
@@ -55,12 +56,6 @@ impl DssObject for LineGeometryObj {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.data
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 
     fn get_i32(&self, idx: usize) -> i32 {
@@ -166,7 +161,9 @@ impl DssObject for LineGeometryObj {
                     self.fwiredata[a] = cloned;
                 }
             }
-            prop::SPACING => self.line_spacing_obj = cloned,
+            prop::SPACING => {
+                self.line_spacing_obj = resolved.and_then(|o| o.cloned::<LineSpacingObj>())
+            }
             _ => unreachable!("LineGeometry has no object reference at {idx}"),
         }
     }

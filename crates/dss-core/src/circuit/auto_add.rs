@@ -25,6 +25,7 @@ use num_complex::Complex64;
 
 use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::EnergyMeter;
+use crate::elements::traits::TypedStore;
 use crate::elements::traits::{ElemStore, SysCtx};
 use crate::report::format::strip_extension;
 use crate::support::hashlist::HashList;
@@ -169,9 +170,7 @@ pub(crate) fn compute_kw_losses_een(
     let mut kw_een = 0.0;
     for meter_ref in ckt.energy_meters.clone() {
         let m = store
-            .obj(meter_ref)
-            .as_any()
-            .downcast_ref::<EnergyMeter>()
+            .typed::<EnergyMeter>(meter_ref)
             .expect("energy_meters holds EnergyMeter");
         kw_losses += sum_selected_registers(m, &loss_regs);
         kw_een += sum_selected_registers(m, &ue_regs);
@@ -244,9 +243,7 @@ pub(crate) fn make_bus_list(ckt: &Circuit, store: &dyn ElemStore) -> Vec<usize> 
     let mut fbus_list = HashList::with_capacity(ckt.buses.len());
     for &meter_ref in &ckt.energy_meters {
         let m = store
-            .obj(meter_ref)
-            .as_any()
-            .downcast_ref::<EnergyMeter>()
+            .typed::<EnergyMeter>(meter_ref)
             .expect("energy_meters holds EnergyMeter");
         if !m.has_branch_list() {
             continue;

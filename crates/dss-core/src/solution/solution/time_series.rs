@@ -7,6 +7,7 @@ use crate::elements::pc::storage::Storage;
 
 use super::power_flow::solve_snap;
 use super::{SolveEnv, SolveResult, sys_ctx};
+use crate::elements::traits::TypedStore;
 
 /// Pascal `EndOfTimeStepCleanup` (`SolutionAlgs.pas` l.86): the Storage SOC
 /// update (`StorageClass.UpdateAll`), then the InvControl rolling-average feed
@@ -28,7 +29,7 @@ fn update_all_storage(ckt: &mut Circuit, env: &mut SolveEnv) {
     let mut y_changed = false;
     for r in ckt.storages.clone() {
         let node_v = &ckt.solution.node_v;
-        if let Some(st) = env.store.obj_mut(r).as_any_mut().downcast_mut::<Storage>()
+        if let Some(st) = env.store.typed_mut::<Storage>(r)
             && st.cd.enabled
         {
             st.update_storage(&sys, node_v, interval_hrs);

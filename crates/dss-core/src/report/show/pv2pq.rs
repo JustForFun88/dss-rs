@@ -23,7 +23,7 @@ pub(crate) fn show_pv2pq_gen(classes: &[DssClass], ckt: &Circuit) -> String {
     let mut s = format!("{RULE}\n{title}\n{RULE}\n\n\n");
     for &r in &ckt.generators {
         let obj = &classes[r.class_ord()].arena[r.index()];
-        let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
+        let Some(g) = classes[r.class_ord()].arena.get::<Generator>(r.index()) else {
             continue;
         };
         if !g.cd.enabled {

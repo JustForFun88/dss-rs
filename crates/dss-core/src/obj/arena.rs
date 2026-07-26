@@ -93,11 +93,11 @@ impl<T> fmt::Debug for Idx<T> {
 /// reports it), `ElemId`/`ClassArena` variant, concrete element type, and the
 /// circuit-element tag (`ckt` if the concrete type `impl CktElement`, `data` for
 /// a plain `DSS_OBJECT` general class that does not). The tag drives
-/// [`ClassArena::try_ckt_elem`]'s direct `&dyn CktElement` upcast without the
-/// `DssObject::as_ckt_element` `Any`-round-trip; the two must agree, pinned by
-/// [`tests::arena_tag_matches_trait_ckt_view`]. The 15 `data` classes are exactly
-/// the `DSS_OBJECT` ones (no `as_ckt_element` impl); the 35 `ckt` classes each
-/// carry one.
+/// [`ClassArena::try_ckt_elem`]'s direct `&dyn CktElement` upcast — the sole
+/// channel since R3.3 removed the `DssObject::as_ckt_element` `Any`-round-trip.
+/// It must agree with the registry's own class column, pinned by
+/// [`tests::arena_tag_matches_registry_ckt_classes`]. The 15 `data` classes are
+/// exactly the `DSS_OBJECT` ones; the 35 `ckt` classes each `impl CktElement`.
 ///
 /// Any new class must be appended here in the same position it is registered in
 /// `construct.rs` — [`tests::arena_order_matches_registry`] fails otherwise.
@@ -164,8 +164,8 @@ macro_rules! with_all_classes {
 /// direct `&dyn CktElement` upcast for a circuit-element class, or `None` for a
 /// plain `DSS_OBJECT` data class (whose concrete type does not `impl
 /// CktElement`, so the cast must never be generated for it). This is what lets
-/// [`ClassArena::try_ckt_elem`] replace the `DssObject::as_ckt_element`
-/// `Any`-round-trip.
+/// [`ClassArena::try_ckt_elem`] replace the removed
+/// `DssObject::as_ckt_element` `Any`-round-trip.
 macro_rules! ckt_view_ref {
     (ckt, $v:ident, $idx:ident) => {
         Some(&$v[$idx] as &dyn CktElement)
@@ -402,13 +402,13 @@ macro_rules! define_arena {
 
             /// Circuit-element read view of object `idx`, or `None` for a general
             /// (`DSS_OBJECT`) data class — the fallible twin of [`Self::ckt_elem`].
-            /// Unlike the `DssObject::as_ckt_element` trait method this upcasts the
-            /// concrete `&T` directly (`T: CktElement` for every `ckt` variant),
-            /// with **no `Any` round-trip** — the arena's `ckt`/`data` tag
-            /// ([`with_all_classes!`]) decides per variant. Equivalent to the trait
-            /// method object-for-object ([`tests::arena_tag_matches_trait_ckt_view`]);
-            /// the R2b step (d) primitive the eventual `as_ckt_element` trait-method
-            /// removal builds on.
+            /// Upcasts the concrete `&T` directly (`T: CktElement` for every
+            /// `ckt` variant), with **no `Any` round-trip** — the arena's
+            /// `ckt`/`data` tag ([`with_all_classes!`]) decides per variant,
+            /// pinned against the registry's class column by
+            /// [`tests::arena_tag_matches_registry_ckt_classes`]. Landed by R2b
+            /// step (d); the sole circuit-element view since R3.3 removed the
+            /// `DssObject::as_ckt_element` trait method.
             pub fn try_ckt_elem(&self, idx: usize) -> Option<&dyn CktElement> {
                 match self {
                     $( ClassArena::$variant(v) => ckt_view_ref!($kind, v, idx), )*
@@ -608,7 +608,7 @@ macro_rules! define_arena {
 }
 
 /// Static link from a concrete element type to its arena slot — the compile-time
-/// replacement for `as_any().downcast_ref::<T>()`.
+/// replacement for the removed `as_any().downcast_ref::<T>()`.
 ///
 /// Implemented (by [`with_all_classes!`]) for every registered class exactly
 /// once, so `T` alone determines the [`ClassArena`] variant, the registration
@@ -639,7 +639,7 @@ pub trait ArenaClass: DssObject + Sized + 'static {
     /// This element as `&dyn CktElement`, or `None` for a general
     /// (`DSS_OBJECT`) data class — the concrete-`&T` twin of
     /// [`ClassArena::try_ckt_elem`], driven by the same `ckt`/`data` tag (no
-    /// `Any`, no `DssObject::as_ckt_element`).
+    /// `Any`, no trait-object round-trip).
     fn ckt_ref(&self) -> Option<&dyn CktElement>;
 
     /// Mutable [`Self::ckt_ref`].
@@ -650,7 +650,7 @@ with_all_classes!(define_arena);
 
 impl ClassArena {
     /// Concrete read view of object `idx` as `&T` — the typed accessor that
-    /// replaces `arena[idx].as_any().downcast_ref::<T>()`.
+    /// replaces the removed `arena[idx].as_any().downcast_ref::<T>()`.
     ///
     /// `None` if this arena holds a different class or `idx` is out of range
     /// (exactly the two cases the downcast/`get` pair returned `None` for).
@@ -661,7 +661,7 @@ impl ClassArena {
     }
 
     /// Mutable [`Self::get`] — replaces
-    /// `arena[idx].as_any_mut().downcast_mut::<T>()`.
+    /// the removed `arena[idx].as_any_mut().downcast_mut::<T>()`.
     pub fn get_mut<T: ArenaClass>(&mut self, idx: usize) -> Option<&mut T> {
         T::arena_vec_mut(self)?.get_mut(idx)
     }
@@ -692,6 +692,15 @@ impl ClassArena {
     /// element is reached through the shared [`ControlledTransformer`] trait.
     /// `None` for any other class — the case the dispatch reports as
     /// "Controlled element is not a Transformer or AutoTrans".
+    pub fn try_controlled_transformer(&self, idx: usize) -> Option<&dyn ControlledTransformer> {
+        match self {
+            ClassArena::Transformer(v) => Some(&v[idx]),
+            ClassArena::AutoTrans(v) => Some(&v[idx]),
+            _ => None,
+        }
+    }
+
+    /// Mutable [`Self::try_controlled_transformer`].
     pub fn try_controlled_transformer_mut(
         &mut self,
         idx: usize,
@@ -713,7 +722,7 @@ impl ClassArena {
 /// The point is the *type channel*, not the timing: a `set_object_ref` impl
 /// that wants a concrete `LoadShapeObj`/`XYcurve`/… snapshot now narrows with
 /// [`ResolvedObj::get`]/[`ResolvedObj::cloned`] (a static [`ArenaClass`] match)
-/// instead of `o.as_any().downcast_ref::<T>()`. **When** the snapshot clone
+/// instead of the removed `o.as_any().downcast_ref::<T>()`. **When** the clone
 /// happens is unchanged — still inside the same `set_object_ref` call, at
 /// resolve time (`DE_PASCALIZE_PLAN.md` Part I, "Category D timing").
 #[derive(Clone, Copy)]
@@ -754,7 +763,7 @@ impl<'a> ResolvedObj<'a> {
     }
 
     /// The concrete `&T`, or `None` if the reference names another class —
-    /// the typed replacement for `as_any().downcast_ref::<T>()`.
+    /// the typed replacement for the removed `as_any().downcast_ref::<T>()`.
     pub fn get<T: ArenaClass>(self) -> Option<&'a T> {
         let i = T::idx_of(self.id)?;
         self.arena.get::<T>(i.get())
@@ -1128,7 +1137,7 @@ mod tests {
     /// live registry so any drift in the class list or registration order is
     /// caught.
     #[test]
-    fn from_ref_covers_every_class_and_round_trips() {
+    fn elem_id_new_covers_every_class_and_round_trips() {
         let names = Dss::new().registered_class_names();
         assert_eq!(names.len(), ElemId::CLASS_NAMES.len());
         for (cls, reg) in names.iter().enumerate() {
@@ -1150,8 +1159,9 @@ mod tests {
 
     /// Every typed accessor ([`ArenaClass`] / [`ClassArena::get`] /
     /// [`ClassArena::get_mut`] / [`ClassArena::clone_ckt`]) agrees, for **every**
-    /// registered class, with the `as_any().downcast_ref::<T>()` it replaces and
-    /// with the `ckt`/`data` tag. Generated from the one class list, so a new
+    /// registered class, with the stored object itself (the address the
+    /// removed `as_any().downcast_ref::<T>()` used to hand back) and with the
+    /// `ckt`/`data` tag. Generated from the one class list, so a new
     /// class is covered automatically. This is the equivalence that lets the
     /// typed store replace the `Any` round-trip.
     macro_rules! typed_accessor_equivalence {
@@ -1173,14 +1183,18 @@ mod tests {
                     e.push_new(cls, "x");
                     let arena = &mut e.arenas[cls];
 
-                    // The typed read IS the object the downcast returns.
-                    let typed = arena.get::<$ty>(0).expect("typed read") as *const $ty;
-                    let via_any = arena
-                        .obj(0)
-                        .as_any()
-                        .downcast_ref::<$ty>()
-                        .expect("downcast") as *const $ty;
-                    assert!(std::ptr::eq(typed, via_any), "{}: typed read != downcast", $cname);
+                    // The typed read IS the very object the generic `dyn`
+                    // view hands out (same address, no reinterpretation) --
+                    // the equivalence the removed `as_any` downcast used to
+                    // establish.
+                    let typed = arena.get::<$ty>(0).expect("typed read") as *const $ty
+                        as *const ();
+                    let via_obj = arena.obj(0) as *const dyn DssObject as *const ();
+                    assert!(
+                        std::ptr::eq(typed, via_obj),
+                        "{}: typed read is not the stored object",
+                        $cname
+                    );
                     // Out of range is `None`, not a panic (like `objects.get`).
                     assert!(arena.get::<$ty>(1).is_none());
                     assert!(arena.get_mut::<$ty>(1).is_none());
@@ -1236,34 +1250,42 @@ mod tests {
     }
 
     /// The `ckt`/`data` tag drives [`ClassArena::try_ckt_elem`]'s direct upcast;
-    /// it MUST agree with the `DssObject::as_ckt_element` trait method
-    /// object-for-object (the equivalence that lets the tag replace the `Any`
-    /// round-trip). Checked against the still-present trait method for **every**
-    /// registered class, so a mis-tagged column is caught; also pins the count of
-    /// circuit-element classes at 35 (the 15 `DSS_OBJECT` classes are `data`).
+    /// it MUST agree, class for class, with the **independent** column in
+    /// `exec/construct.rs`: a circuit-element class is registered through
+    /// `DssClass::ckt_class` (which carries an [`ElemKind`]), a plain
+    /// `DSS_OBJECT` through `dss_object` (`kind == None`). Before R3.3 the
+    /// oracle here was the `DssObject::as_ckt_element` trait method, which that
+    /// step removed; the registry column is the surviving independent one (a
+    /// `ckt` tag on a class whose type does not `impl CktElement` cannot
+    /// compile, so only a `ckt` class mis-tagged `data` is silent — exactly
+    /// what this catches). Also pins the count of circuit-element classes at 35
+    /// (the 15 `DSS_OBJECT` classes are `data`).
+    ///
+    /// [`ElemKind`]: crate::circuit::ElemKind
     #[test]
-    fn arena_tag_matches_trait_ckt_view() {
+    fn arena_tag_matches_registry_ckt_classes() {
+        let is_ckt_col = crate::exec::Dss::new().registered_class_is_ckt();
         let n = ElemId::CLASS_NAMES.len();
+        assert_eq!(is_ckt_col.len(), n);
         let mut ckt_count = 0;
-        for cls in 0..n {
+        for (cls, &registry_is_ckt) in is_ckt_col.iter().enumerate() {
+            // The registry's own registration column is the oracle.
+            if registry_is_ckt {
+                ckt_count += 1;
+            }
             let mut e = Elements::new();
             e.push_new(cls, "x");
             let arena = &mut e.arenas[cls];
-            // The still-present trait method is the oracle.
-            let trait_is_ckt = arena.obj(0).as_ckt_element().is_some();
-            if trait_is_ckt {
-                ckt_count += 1;
-            }
             assert_eq!(
                 arena.try_ckt_elem(0).is_some(),
-                trait_is_ckt,
-                "class {cls} ({}): tag try_ckt_elem disagrees with trait",
+                registry_is_ckt,
+                "class {cls} ({}): tag try_ckt_elem disagrees with the registry",
                 ElemId::CLASS_NAMES[cls]
             );
             assert_eq!(
                 arena.try_ckt_elem_mut(0).is_some(),
-                trait_is_ckt,
-                "class {cls} ({}): tag try_ckt_elem_mut disagrees with trait",
+                registry_is_ckt,
+                "class {cls} ({}): tag try_ckt_elem_mut disagrees with the registry",
                 ElemId::CLASS_NAMES[cls]
             );
         }

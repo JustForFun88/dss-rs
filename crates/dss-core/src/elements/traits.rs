@@ -7,7 +7,10 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::pd::transformer::ControlledTransformer;
+use crate::elements::meter::monitor::Monitor;
+use crate::elements::pc::storage::Storage;
+use crate::elements::pd::capacitor::Capacitor;
+use crate::elements::pd::transformer::{ControlledTransformer, Transformer};
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::obj::arena::{ArenaClass, ClassArena};
 use crate::solution::SolveMode;
@@ -60,8 +63,8 @@ pub trait ElemStore: Send {
     /// and cache the `ElemId` up front at edit time).
     fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemId>;
 
-    /// Single mutable object view (for `as_any_mut` downcasts when only one
-    /// element is touched, e.g. the model-3 generator DQDV sweep).
+    /// Single mutable object view — the property/edit surface that does not
+    /// need a concrete class (the concrete narrowing is [`TypedStore`]).
     fn obj_mut(&mut self, r: ElemId) -> &mut dyn crate::obj::base::DssObject;
 
     /// Two distinct objects borrowed mutably at once — the Rust stand-in for
@@ -114,7 +117,7 @@ pub trait ElemStore: Send {
 }
 
 /// Concrete (`&T` / `&mut T`) access on top of [`ElemStore`] — the DE_PASCALIZE
-/// R3 replacement for `store.obj(r).as_any().downcast_ref::<T>()`.
+/// R3 replacement for the removed `store.obj(r).as_any().downcast_ref::<T>()`.
 ///
 /// Blanket-implemented for every `ElemStore` (including `dyn ElemStore`), so the
 /// generic methods are available wherever the store is. Each one resolves the
@@ -122,13 +125,13 @@ pub trait ElemStore: Send {
 /// `None` from a compile-time match arm, exactly what the downcast returned.
 pub trait TypedStore: ElemStore {
     /// The concrete `&T` behind `r`, or `None` if `r` names another class
-    /// (⇔ `store.obj(r).as_any().downcast_ref::<T>()`).
+    /// (the removed `store.obj(r).as_any().downcast_ref::<T>()`).
     fn typed<T: ArenaClass>(&self, r: ElemId) -> Option<&T> {
         let i = T::idx_of(r)?;
         self.arena(T::CLASS_ORD).get::<T>(i.get())
     }
 
-    /// The concrete `&mut T` behind `r` (⇔ `obj_mut(r).as_any_mut()
+    /// The concrete `&mut T` behind `r` (the removed `obj_mut(r).as_any_mut()
     /// .downcast_mut::<T>()`).
     fn typed_mut<T: ArenaClass>(&mut self, r: ElemId) -> Option<&mut T> {
         let i = T::idx_of(r)?;
@@ -156,30 +159,6 @@ pub trait TypedStore: ElemStore {
         } else {
             let (ca, ct) = self.arena_pair_mut(C::CLASS_ORD, t.class_ord());
             (expect_typed::<C>(ca, ci), ct.try_ckt_elem_mut(ti))
-        }
-    }
-
-    /// A metering element plus the element it meters, borrowed disjointly: the
-    /// meter as its concrete class `C`, the target as the **generic** object
-    /// view. The generic side is what `Monitor::take_sample` still needs (it
-    /// reaches past `CktElement` for the mode 8/9/10/11 concrete reads — see
-    /// the R3.2 escape record); every other meter pair uses
-    /// [`TypedStore::typed_ckt_pair_mut`].
-    ///
-    /// Panics on aliasing refs or a `C`-class mismatch, exactly like
-    /// [`ElemStore::pair_mut`] + the paired downcast's `expect`.
-    fn typed_obj_pair_mut<C: ArenaClass>(
-        &mut self,
-        c: ElemId,
-        t: ElemId,
-    ) -> (&mut C, &mut dyn crate::obj::base::DssObject) {
-        let (ci, ti) = pair_indices::<C>(c, t);
-        if c.class_ord() == t.class_ord() {
-            let (a, b) = split2::<C>(self.arena_mut(C::CLASS_ORD), ci, ti);
-            (a, b)
-        } else {
-            let (ca, ct) = self.arena_pair_mut(C::CLASS_ORD, t.class_ord());
-            (expect_typed::<C>(ca, ci), ct.obj_mut(ti))
         }
     }
 
@@ -320,6 +299,107 @@ pub trait TypedStore: ElemStore {
                 cb.get_mut::<B>(bi),
                 cm.try_ckt_elem_mut(mi),
             )
+        }
+    }
+
+    /// A [`Monitor`] plus the element it meters, borrowed disjointly, with the
+    /// metered side already narrowed to the three concrete classes
+    /// `TMonitorObj.TakeSample` reaches past [`CktElement`] for — mode 9
+    /// `Capacitor.States`, mode 11 `Storage` present kW/kvar/kWh/state, modes
+    /// 8/10 `Transformer.GetAllWindingCurrents`/`GetWindingVoltages`. Every
+    /// other circuit class (including another Monitor, the same-arena case)
+    /// arrives as [`MeteredElem::Other`], which is exactly what the per-class
+    /// downcast chain returned `None` for.
+    ///
+    /// Panics on aliasing refs, a non-Monitor `c`, or a metered element that is
+    /// not a circuit element (`Monitor.element=` resolves through
+    /// `find_ckt_element`, so a general/`DSS_OBJECT` class cannot get here).
+    fn typed_metered_pair_mut(&mut self, c: ElemId, t: ElemId) -> (&mut Monitor, MeteredElem<'_>) {
+        let (ci, ti) = pair_indices::<Monitor>(c, t);
+        if c.class_ord() == t.class_ord() {
+            // A Monitor metering another Monitor: neither concrete arm applies.
+            let (a, b) = split2::<Monitor>(self.arena_mut(Monitor::CLASS_ORD), ci, ti);
+            return (a, MeteredElem::Other(b));
+        }
+        let (ca, ct) = self.arena_pair_mut(Monitor::CLASS_ORD, t.class_ord());
+        let metered = if ct.get::<Capacitor>(ti).is_some() {
+            MeteredElem::Capacitor(ct.get_mut::<Capacitor>(ti).expect("checked above"))
+        } else if ct.get::<Storage>(ti).is_some() {
+            MeteredElem::Storage(ct.get_mut::<Storage>(ti).expect("checked above"))
+        } else if ct.get::<Transformer>(ti).is_some() {
+            MeteredElem::Transformer(ct.get_mut::<Transformer>(ti).expect("checked above"))
+        } else {
+            MeteredElem::Other(
+                ct.try_ckt_elem_mut(ti)
+                    .expect("metered element is a circuit element"),
+            )
+        };
+        (expect_typed::<Monitor>(ca, ci), metered)
+    }
+}
+
+/// The element a [`Monitor`] meters, borrowed mutably and narrowed to the
+/// concrete classes `TMonitorObj.TakeSample` needs beyond the [`CktElement`]
+/// surface (see [`TypedStore::typed_metered_pair_mut`]). The typed R3
+/// replacement for the `&mut dyn DssObject` + `as_any` chain `take_sample`
+/// used to take.
+pub enum MeteredElem<'a> {
+    Capacitor(&'a mut Capacitor),
+    Storage(&'a mut Storage),
+    Transformer(&'a mut Transformer),
+    Other(&'a mut dyn CktElement),
+}
+
+impl MeteredElem<'_> {
+    /// The generic circuit-element view (every arm has one).
+    pub fn ckt(&self) -> &dyn CktElement {
+        match self {
+            MeteredElem::Capacitor(c) => *c,
+            MeteredElem::Storage(s) => *s,
+            MeteredElem::Transformer(t) => *t,
+            MeteredElem::Other(e) => *e,
+        }
+    }
+
+    /// Mutable [`MeteredElem::ckt`].
+    pub fn ckt_mut(&mut self) -> &mut dyn CktElement {
+        match self {
+            MeteredElem::Capacitor(c) => *c,
+            MeteredElem::Storage(s) => *s,
+            MeteredElem::Transformer(t) => *t,
+            MeteredElem::Other(e) => *e,
+        }
+    }
+
+    /// The metered element as a `Capacitor` (mode 9), or `None`.
+    pub fn capacitor(&self) -> Option<&Capacitor> {
+        match self {
+            MeteredElem::Capacitor(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    /// The metered element as a `Storage` (mode 11), or `None`.
+    pub fn storage(&self) -> Option<&Storage> {
+        match self {
+            MeteredElem::Storage(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// The metered element as a `Transformer` (mode 8), or `None`.
+    pub fn transformer(&self) -> Option<&Transformer> {
+        match self {
+            MeteredElem::Transformer(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// Mutable [`MeteredElem::transformer`] (mode 10).
+    pub fn transformer_mut(&mut self) -> Option<&mut Transformer> {
+        match self {
+            MeteredElem::Transformer(t) => Some(t),
+            _ => None,
         }
     }
 }
@@ -998,7 +1078,7 @@ pub trait CktElement: Send {
     /// Pascal `TLineObj` length in kilometres (`Len · <units→km>`). `None` for
     /// every non-Line element — the EnergyMeter zone walk adds it to
     /// `DistFromMeter` only for lines (R0 Category B typed read, replacing an
-    /// `as_any().downcast_ref::<Line>()` guard on `store.obj`).
+    /// per-class guard on `store.obj`).
     fn line_length_km(&self) -> Option<f64> {
         None
     }

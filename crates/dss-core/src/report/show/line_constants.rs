@@ -67,10 +67,7 @@ pub(crate) fn show_line_constants(
 
     for oi in 0..classes[ci].arena.len() {
         let name = classes[ci].arena[oi].data().name().to_string();
-        let Some(geom) = classes[ci].arena[oi]
-            .as_any_mut()
-            .downcast_mut::<LineGeometryObj>()
-        else {
+        let Some(geom) = classes[ci].arena.get_mut::<LineGeometryObj>(oi) else {
             continue;
         };
         // Pascal `pelem.RhoEarth := Rho; Z := pelem.Zmatrix[freq,1.0,Units]; YC := …`.

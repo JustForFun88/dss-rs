@@ -43,8 +43,9 @@ fn controls_of(classes: &[DssClass], ckt: &Circuit, r: ElemId) -> Vec<ElemId> {
         .iter()
         .copied()
         .filter(|&cr| {
-            classes[cr.class_ord()].arena[cr.index()]
-                .as_ckt_element()
+            classes[cr.class_ord()]
+                .arena
+                .try_ckt_elem(cr.index())
                 .and_then(|ce| ce.controlled_element())
                 == Some(r)
         })
@@ -54,17 +55,19 @@ fn controls_of(classes: &[DssClass], ckt: &Circuit, r: ElemId) -> Vec<ElemId> {
 /// Whether the control at `cr` is a SwtControl (Pascal `(DSSObjType and CLASSMASK) =
 /// SWT_CONTROL`), counted into `nSwitches`.
 fn is_swt_control(classes: &[DssClass], cr: ElemId) -> bool {
-    classes[cr.class_ord()].arena[cr.index()]
-        .as_any()
-        .is::<SwtControl>()
+    classes[cr.class_ord()]
+        .arena
+        .get::<SwtControl>(cr.index())
+        .is_some()
 }
 
 /// The `(Sensor: …)` / `(Control: …)` / `(Meter: …)` annotations shared by the
 /// branch and shunt writers; increments `n_switches` per SwtControl. Returns the
 /// annotation string.
 fn annotations(classes: &[DssClass], ckt: &Circuit, r: ElemId, n_switches: &mut i32) -> String {
-    let cd = classes[r.class_ord()].arena[r.index()]
-        .as_ckt_element()
+    let cd = classes[r.class_ord()]
+        .arena
+        .try_ckt_elem(r.index())
         .map(|e| e.cd());
     let mut s = String::new();
     if let Some(cd) = cd {
@@ -168,8 +171,9 @@ pub(crate) fn show_topology(classes: &mut [DssClass], ckt: &mut Circuit) -> (Str
 
     // Isolated PD elements (Pascal walks `PDElements`, `Flg.IsIsolated`).
     for &pd_ref in &ckt.pd_elements {
-        let isolated = classes[pd_ref.class_ord()].arena[pd_ref.index()]
-            .as_ckt_element()
+        let isolated = classes[pd_ref.class_ord()]
+            .arena
+            .try_ckt_elem(pd_ref.index())
             .is_some_and(|e| e.cd().flags.contains(ElemFlags::IS_ISOLATED));
         if isolated {
             ftree.push_str(&format!("Isolated: {}", full_name(classes, pd_ref)));

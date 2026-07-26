@@ -104,9 +104,9 @@ fn elem_cd<'a>(dss: &'a Dss, full: &str) -> &'a CktElementData {
         if !class.props.class_name().eq_ignore_ascii_case(cls) {
             continue;
         }
-        for obj in class.arena.objs() {
-            if obj.data().name().eq_ignore_ascii_case(name)
-                && let Some(e) = obj.as_ckt_element()
+        for i in 0..class.arena.len() {
+            if class.arena.obj(i).data().name().eq_ignore_ascii_case(name)
+                && let Some(e) = class.arena.try_ckt_elem(i)
             {
                 return e.cd();
             }
@@ -137,9 +137,9 @@ fn accum_miles(dss: &Dss, full: &str) -> f64 {
         if !class.props.class_name().eq_ignore_ascii_case(cls) {
             continue;
         }
-        for obj in class.arena.objs() {
-            if obj.data().name().eq_ignore_ascii_case(name)
-                && let Some(e) = obj.as_ckt_element()
+        for i in 0..class.arena.len() {
+            if class.arena.obj(i).data().name().eq_ignore_ascii_case(name)
+                && let Some(e) = class.arena.try_ckt_elem(i)
             {
                 return e.cd().accumulated_miles_downstream;
             }
@@ -154,9 +154,9 @@ fn branch_section_id(dss: &Dss, full: &str) -> i32 {
         if !class.props.class_name().eq_ignore_ascii_case(cls) {
             continue;
         }
-        for obj in class.arena.objs() {
-            if obj.data().name().eq_ignore_ascii_case(name)
-                && let Some(e) = obj.as_ckt_element()
+        for i in 0..class.arena.len() {
+            if class.arena.obj(i).data().name().eq_ignore_ascii_case(name)
+                && let Some(e) = class.arena.try_ckt_elem(i)
             {
                 return e.cd().branch_section_id;
             }
@@ -167,12 +167,12 @@ fn branch_section_id(dss: &Dss, full: &str) -> i32 {
 
 fn meter_assume_restoration(dss: &Dss, name: &str) -> bool {
     for class in &dss.classes {
-        for obj in class.arena.objs() {
-            if obj.data().name().eq_ignore_ascii_case(name)
-                && let Some(em) = obj
-                    .as_any()
-                    .downcast_ref::<crate::elements::meter::energymeter::EnergyMeter>()
-            {
+        for em in class
+            .arena
+            .all::<crate::elements::meter::energymeter::EnergyMeter>()
+            .unwrap_or(&[])
+        {
+            if em.data().name().eq_ignore_ascii_case(name) {
                 return em.assume_restoration();
             }
         }
@@ -198,9 +198,9 @@ fn accum_flt_rate(dss: &Dss, full: &str) -> f64 {
         if !class.props.class_name().eq_ignore_ascii_case(cls) {
             continue;
         }
-        for obj in class.arena.objs() {
-            if obj.data().name().eq_ignore_ascii_case(name)
-                && let Some(e) = obj.as_ckt_element()
+        for i in 0..class.arena.len() {
+            if class.arena.obj(i).data().name().eq_ignore_ascii_case(name)
+                && let Some(e) = class.arena.try_ckt_elem(i)
             {
                 return e.cd().accumulated_br_flt_rate;
             }

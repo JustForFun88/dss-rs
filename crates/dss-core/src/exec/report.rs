@@ -60,9 +60,9 @@ impl Dss {
     /// `ActiveCircuit.Buses[MeteredElement.Terminals[MeteredTerminal].BusRef].kVBase`
     /// at close time. 0.0 for non-mode-4 monitors or an unresolved bus.
     fn monitor_metered_kv_base(&self, r: crate::elements::traits::ElemId) -> f64 {
-        let Some(mon) = self.classes[r.class_ord()].arena[r.index()]
-            .as_any()
-            .downcast_ref::<crate::elements::meter::monitor::Monitor>()
+        let Some(mon) = self.classes[r.class_ord()]
+            .arena
+            .get::<crate::elements::meter::monitor::Monitor>(r.index())
         else {
             return 0.0;
         };
@@ -903,9 +903,9 @@ impl Dss {
             let (mon_name, content) = {
                 let obj = &mut self.classes[r.class_ord()].arena[r.index()];
                 let name = obj.data().name().to_string();
-                let mon = obj
-                    .as_any_mut()
-                    .downcast_mut::<crate::elements::meter::monitor::Monitor>()
+                let mon = self.classes[r.class_ord()]
+                    .arena
+                    .get_mut::<crate::elements::meter::monitor::Monitor>(r.index())
                     .expect("ckt.monitors holds Monitor objects");
                 // `to_csv` self-flushes (Pascal `TranslateToCSV` `Save;`) and
                 // post-processes mode-4 flicker (Pascal `CloseMonitorStream`), &mut.
@@ -957,9 +957,9 @@ impl Dss {
                 // post-processes mode-4 flicker (Pascal `CloseMonitorStream`), &mut.
                 let obj = &mut self.classes[r.class_ord()].arena[r.index()];
                 let nm = obj.data().name().to_string();
-                let mon = obj
-                    .as_any_mut()
-                    .downcast_mut::<crate::elements::meter::monitor::Monitor>()
+                let mon = self.classes[r.class_ord()]
+                    .arena
+                    .get_mut::<crate::elements::meter::monitor::Monitor>(r.index())
                     .expect("ckt.monitors holds Monitor objects");
                 (nm, mon.to_csv(kv_base))
             }
@@ -1097,9 +1097,9 @@ impl Dss {
                 let header_names = refs
                     .first()
                     .map(|&r| {
-                        self.classes[r.class_ord()].arena[r.index()]
-                            .as_any()
-                            .downcast_ref::<EnergyMeter>()
+                        self.classes[r.class_ord()]
+                            .arena
+                            .get::<EnergyMeter>(r.index())
                             .expect("energy_meters holds EnergyMeter")
                             .register_names()
                             .to_vec()
@@ -1109,9 +1109,9 @@ impl Dss {
                     .iter()
                     .filter_map(|&r| {
                         let obj = &self.classes[r.class_ord()].arena[r.index()];
-                        let m = obj
-                            .as_any()
-                            .downcast_ref::<EnergyMeter>()
+                        let m = self.classes[r.class_ord()]
+                            .arena
+                            .get::<EnergyMeter>(r.index())
                             .expect("energy_meters holds EnergyMeter");
                         m.enabled().then(|| RegRow {
                             name: obj.data().name().to_string(),
@@ -1129,9 +1129,9 @@ impl Dss {
                     .iter()
                     .filter_map(|&r| {
                         let obj = &self.classes[r.class_ord()].arena[r.index()];
-                        let g = obj
-                            .as_any()
-                            .downcast_ref::<Generator>()
+                        let g = self.classes[r.class_ord()]
+                            .arena
+                            .get::<Generator>(r.index())
                             .expect("generators holds Generator");
                         g.cd.enabled.then(|| RegRow {
                             name: obj.data().name().to_string(),
@@ -1149,9 +1149,9 @@ impl Dss {
                     .iter()
                     .filter_map(|&r| {
                         let obj = &self.classes[r.class_ord()].arena[r.index()];
-                        let p = obj
-                            .as_any()
-                            .downcast_ref::<PVSystem>()
+                        let p = self.classes[r.class_ord()]
+                            .arena
+                            .get::<PVSystem>(r.index())
                             .expect("pv_systems holds PVSystem");
                         p.cd.enabled.then(|| RegRow {
                             name: obj.data().name().to_string(),
@@ -1169,9 +1169,9 @@ impl Dss {
                     .iter()
                     .filter_map(|&r| {
                         let obj = &self.classes[r.class_ord()].arena[r.index()];
-                        let s = obj
-                            .as_any()
-                            .downcast_ref::<Storage>()
+                        let s = self.classes[r.class_ord()]
+                            .arena
+                            .get::<Storage>(r.index())
                             .expect("storages holds Storage");
                         s.cd.enabled.then(|| RegRow {
                             name: obj.data().name().to_string(),
@@ -1904,7 +1904,7 @@ impl Dss {
                     let name = obj.data().name();
                     let filename = format!("{class_name}_{name}_Yprim.txt");
                     let full_name = format!("{class_name}.{name}");
-                    let (yprim, yorder) = match obj.as_ckt_element() {
+                    let (yprim, yorder) = match self.classes[ci].arena.try_ckt_elem(idx) {
                         Some(e) => (e.cd().yprim.as_ref(), e.cd().yorder),
                         None => (None, 0),
                     };
@@ -2383,9 +2383,9 @@ impl Dss {
         let meters = ckt.energy_meters.clone();
         for r in meters {
             let obj = &self.classes[r.class_ord()].arena[r.index()];
-            let Some(em) = obj
-                .as_any()
-                .downcast_ref::<crate::elements::meter::EnergyMeter>()
+            let Some(em) = self.classes[r.class_ord()]
+                .arena
+                .get::<crate::elements::meter::EnergyMeter>(r.index())
             else {
                 continue;
             };
@@ -2733,7 +2733,7 @@ impl Dss {
             let ckt = circuit.as_ref().expect("post-circuit dispatch");
             let sys = crate::solution::solution::sys_ctx(ckt);
             let nv = node_v.as_ref().expect("circuit present for PC element");
-            if let Some(elem) = classes[ci].arena[oi].as_ckt_element_mut() {
+            if let Some(elem) = classes[ci].arena.try_ckt_elem_mut(oi) {
                 let nvar = elem.num_variables();
                 let names: Vec<String> = (1..=nvar).map(|i| elem.variable_name(i)).collect();
                 let mut states = vec![0.0f64; nvar];
@@ -2750,9 +2750,9 @@ impl Dss {
         // class registry to resolve each branch/shunt `ElemId`'s Name, which
         // `DumpCtx` otherwise can't reach (`EnergyMeter.pas:2102-2116`).
         let branch_list_text: String = if complete {
-            self.classes[ci].arena[oi]
-                .as_any()
-                .downcast_ref::<crate::elements::meter::EnergyMeter>()
+            self.classes[ci]
+                .arena
+                .get::<crate::elements::meter::EnergyMeter>(oi)
                 .map(|em| crate::report::save::dump::energy_meter_branch_list(&self.classes, em))
                 .unwrap_or_default()
         } else {
@@ -2770,13 +2770,7 @@ impl Dss {
             variables: &variables,
             branch_list: &branch_list_text,
         };
-        crate::report::save::dump::dump_object(
-            content,
-            &cx,
-            cls.arena.obj_mut(oi),
-            complete,
-            is_pc,
-        );
+        crate::report::save::dump::dump_object(content, &cx, &mut cls.arena, oi, complete, is_pc);
     }
 }
 

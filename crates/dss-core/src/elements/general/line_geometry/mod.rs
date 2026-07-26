@@ -37,6 +37,7 @@ mod save;
 
 use crate::elements::general::conductor_data::{CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME};
 use crate::elements::general::line_code::LineType;
+use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
 use crate::support::line_constants::LineConstants;
@@ -131,7 +132,7 @@ pub struct LineGeometryObj {
     amp_ratings: Vec<f64>,
     fline_type: LineType,
     /// Snapshot-cloned `LineSpacing` (`spacing=`), or `None`.
-    line_spacing_obj: Option<Box<dyn DssObject>>,
+    line_spacing_obj: Option<LineSpacingObj>,
     // dss_capi 0.15.x equivalent-spacing state, copied from the referenced
     // `LineSpacing` when it is not detailed. Default `equivalent_spacing=false`
     // (the detailed per-conductor-coordinate model) preserves 0.14.5 numerics.
@@ -169,7 +170,7 @@ impl Clone for LineGeometryObj {
             num_amp_ratings: self.num_amp_ratings,
             amp_ratings: self.amp_ratings.clone(),
             fline_type: self.fline_type,
-            line_spacing_obj: self.line_spacing_obj.as_ref().map(|b| b.clone_box()),
+            line_spacing_obj: self.line_spacing_obj.clone(),
             equivalent_spacing: self.equivalent_spacing,
             eq_dist_ph_ph: self.eq_dist_ph_ph,
             eq_dist_ph_n: self.eq_dist_ph_n,

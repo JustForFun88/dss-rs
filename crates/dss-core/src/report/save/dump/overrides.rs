@@ -2,10 +2,11 @@
 //!
 //! Pascal models `DumpProperties` as a virtual method; 14 leaf classes (that
 //! exist in this port — `AutoTrans`/`GICLine` are Phase-9-deferred, unported)
-//! override it. Rust has no inheritance, so [`dump_override`] downcasts the
-//! object to each overriding type and calls its co-located `dump_body` (the
-//! method lives with the element so it reads its private fields directly, exactly
-//! as the Pascal method does). Classes with no override fall through to
+//! override it. Rust has no inheritance, so [`dump_override`] narrows the object
+//! to each overriding type (a typed `ClassArena` read) and calls its co-located
+//! `dump_body` (the method lives with the element so it reads its private fields
+//! directly, exactly as the Pascal method does). Classes with no override fall
+//! through to
 //! [`super::dump_generic`].
 //!
 //! WP8.5 step 1 ported the **Reactor** override; step 2 adds the
@@ -40,99 +41,100 @@ use crate::elements::pd::fault::Fault;
 use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
 use crate::elements::pd::transformer::Transformer;
-use crate::obj::base::DssObject;
+use crate::obj::arena::ClassArena;
 
 use super::DumpCtx;
 
-/// Returns `true` (and writes the override dump) if `obj`'s class has a ported
-/// Pascal `DumpProperties` override; `false` to fall through to the generic base.
+/// Returns `true` (and writes the override dump) if object `idx` of `arena` has
+/// a ported Pascal `DumpProperties` override; `false` to fall through to the
+/// generic base.
 ///
-/// `obj` is `&mut` because `TLineGeometryObj.DumpProperties` mutates `ActiveCond`
-/// as it walks conductors (Pascal `LineGeometry.pas:669`); the read-only
-/// overrides borrow it immutably via `as_any`.
+/// `arena` is `&mut` because `TLineGeometryObj.DumpProperties` mutates
+/// `ActiveCond` as it walks conductors (Pascal `LineGeometry.pas:669`); the
+/// read-only overrides take a shared typed view.
 pub(super) fn dump_override(
     out: &mut String,
     cx: &DumpCtx,
-    obj: &mut dyn DssObject,
+    arena: &mut ClassArena,
+    idx: usize,
     complete: bool,
 ) -> bool {
-    let any = obj.as_any();
-    if let Some(r) = any.downcast_ref::<Reactor>() {
+    if let Some(r) = arena.get::<Reactor>(idx) {
         r.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(t) = any.downcast_ref::<Transformer>() {
+    if let Some(t) = arena.get::<Transformer>(idx) {
         t.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(t) = any.downcast_ref::<AutoTrans>() {
+    if let Some(t) = arena.get::<AutoTrans>(idx) {
         t.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(l) = any.downcast_ref::<Line>() {
+    if let Some(l) = arena.get::<Line>(idx) {
         l.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(lc) = any.downcast_ref::<LineCodeObj>() {
+    if let Some(lc) = arena.get::<LineCodeObj>(idx) {
         lc.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(xc) = any.downcast_ref::<XfmrCodeObj>() {
+    if let Some(xc) = arena.get::<XfmrCodeObj>(idx) {
         xc.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(c) = any.downcast_ref::<Capacitor>() {
+    if let Some(c) = arena.get::<Capacitor>(idx) {
         c.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(f) = any.downcast_ref::<Fault>() {
+    if let Some(f) = arena.get::<Fault>(idx) {
         f.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(v) = any.downcast_ref::<VSource>() {
+    if let Some(v) = arena.get::<VSource>(idx) {
         v.dump_body(out, cx, complete);
         return true;
     }
     // Not a real Pascal override (Isource has none) — see `isource/dump.rs`
     // for why this dispatch is still needed.
-    if let Some(i) = any.downcast_ref::<Isource>() {
+    if let Some(i) = arena.get::<Isource>(idx) {
         i.dump_body(out, cx, complete);
         return true;
     }
     // Real Pascal override (GICLine.pas:627 — Z Matrix / VE / VN block).
-    if let Some(g) = any.downcast_ref::<GicLine>() {
+    if let Some(g) = arena.get::<GicLine>(idx) {
         g.dump_body(out, cx, complete);
         return true;
     }
     // Not a real Pascal override (GICsource has none) — NON_PCPD like Isource,
     // needs the TPCElement dump ordering (see `gic_source/dump.rs`).
-    if let Some(g) = any.downcast_ref::<GicSource>() {
+    if let Some(g) = arena.get::<GicSource>(idx) {
         g.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(u) = any.downcast_ref::<Upfc>() {
+    if let Some(u) = arena.get::<Upfc>(idx) {
         u.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(r) = any.downcast_ref::<RegControl>() {
+    if let Some(r) = arena.get::<RegControl>(idx) {
         r.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(m) = any.downcast_ref::<Monitor>() {
+    if let Some(m) = arena.get::<Monitor>(idx) {
         m.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(e) = any.downcast_ref::<EnergyMeter>() {
+    if let Some(e) = arena.get::<EnergyMeter>(idx) {
         e.dump_body(out, cx, complete);
         return true;
     }
-    if let Some(s) = any.downcast_ref::<SpectrumObj>() {
+    if let Some(s) = arena.get::<SpectrumObj>(idx) {
         s.dump_body(out, cx, complete);
         return true;
     }
     // LineGeometry mutates `ActiveCond` per conductor → needs `&mut` (the
-    // immutable `any` borrow above ends at its last `downcast_ref` use, NLL).
-    if let Some(g) = obj.as_any_mut().downcast_mut::<LineGeometryObj>() {
+    // shared borrows above end at their last use, NLL).
+    if let Some(g) = arena.get_mut::<LineGeometryObj>(idx) {
         g.dump_body(out, cx, complete);
         return true;
     }

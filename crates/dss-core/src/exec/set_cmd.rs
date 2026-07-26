@@ -5,6 +5,7 @@ use num_complex::Complex64;
 
 use super::*;
 use crate::elements::ckt::ElemFlags;
+use crate::elements::traits::TypedStore;
 
 /// Pascal `SetDataPath` (DSSGlobals.pas:540): create the dir if missing (#907 on
 /// failure → leave dirs unchanged), then point both the working dir and the
@@ -626,9 +627,7 @@ impl Dss {
                                     classes: &mut classes[..],
                                 };
                                 for &lr in &ckt.loads {
-                                    if let Some(load) =
-                                        store.obj_mut(lr).as_any_mut().downcast_mut::<load::Load>()
-                                    {
+                                    if let Some(load) = store.typed_mut::<load::Load>(lr) {
                                         load.set_kva_allocation_factor(v);
                                     }
                                 }
@@ -865,8 +864,9 @@ impl Dss {
                                 // callbacks; snapshot it before the mutable elem
                                 // borrow (disjoint fields: `circuit` vs `classes`).
                                 let sys = crate::solution::solution::sys_ctx(ckt);
-                                let elem = classes[ci].arena[oi]
-                                    .as_ckt_element_mut()
+                                let elem = classes[ci]
+                                    .arena
+                                    .try_ckt_elem_mut(oi)
                                     .expect("resolved circuit element");
                                 if elem.num_variables() == 0 {
                                     errors.push(format!(

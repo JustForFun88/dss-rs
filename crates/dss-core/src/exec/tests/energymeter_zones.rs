@@ -250,9 +250,9 @@ fn branch_customers(dss: &Dss, full: &str) -> (i32, i32) {
         if !class.props.class_name().eq_ignore_ascii_case(cls) {
             continue;
         }
-        for obj in class.arena.objs() {
-            if obj.data().name().eq_ignore_ascii_case(name)
-                && let Some(e) = obj.as_ckt_element()
+        for i in 0..class.arena.len() {
+            if class.arena.obj(i).data().name().eq_ignore_ascii_case(name)
+                && let Some(e) = class.arena.try_ckt_elem(i)
             {
                 return (e.cd().branch_num_customers, e.cd().branch_total_customers);
             }

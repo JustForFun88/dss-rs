@@ -39,8 +39,9 @@ pub(crate) fn show_controlled(classes: &[DssClass], ckt: &Circuit) -> String {
             .iter()
             .copied()
             .filter(|&cr| {
-                classes[cr.class_ord()].arena[cr.index()]
-                    .as_ckt_element()
+                classes[cr.class_ord()]
+                    .arena
+                    .try_ckt_elem(cr.index())
                     .and_then(|ce| ce.controlled_element())
                     == Some(pd)
             })

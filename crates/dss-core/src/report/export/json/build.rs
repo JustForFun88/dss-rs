@@ -164,10 +164,7 @@ pub fn batch_to_json(
 ) -> Json {
     let exclude_disabled = opts.contains(JsonOpts::EXCLUDE_DISABLED);
     // Pascal branches on whether the FIRST element is a TDSSCktElement.
-    let is_ckt = arena
-        .get_obj(0)
-        .map(|o| o.as_ckt_element().is_some())
-        .unwrap_or(false);
+    let is_ckt = !arena.is_empty() && arena.try_ckt_elem(0).is_some();
 
     let mut arr = Vec::with_capacity(arena.len());
     if !exclude_disabled || !is_ckt {
@@ -175,9 +172,13 @@ pub fn batch_to_json(
             arr.push(obj_to_json_data(cls, o, enums, opts));
         }
     } else {
-        for o in arena.objs() {
-            if o.as_ckt_element().map(|e| e.cd().enabled).unwrap_or(false) {
-                arr.push(obj_to_json_data(cls, o, enums, opts));
+        for i in 0..arena.len() {
+            if arena
+                .try_ckt_elem(i)
+                .map(|e| e.cd().enabled)
+                .unwrap_or(false)
+            {
+                arr.push(obj_to_json_data(cls, arena.obj(i), enums, opts));
             }
         }
     }

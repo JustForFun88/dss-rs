@@ -3,7 +3,6 @@
 //! the per-conductor ampacity defaulting.
 
 use crate::elements::general::conductor_data::ConductorKind;
-use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::obj::base::{DssObject, ObjectRefArrayItem};
 use crate::support::line_constants::LineConstants;
 
@@ -80,11 +79,7 @@ impl LineGeometryObj {
     /// copy its coordinates/units into every conductor and clear the `X`/`H`
     /// "set" marks; otherwise log error 10103.
     pub(super) fn apply_spacing(&mut self) {
-        let Some(spc) = self
-            .line_spacing_obj
-            .as_ref()
-            .and_then(|b| b.as_any().downcast_ref::<LineSpacingObj>())
-        else {
+        let Some(spc) = self.line_spacing_obj.as_ref() else {
             return;
         };
         if self.fnconds == spc.nwires() {

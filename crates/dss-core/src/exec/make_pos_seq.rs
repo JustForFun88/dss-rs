@@ -40,7 +40,10 @@ impl Dss {
 
         for r in refs {
             let ctx = self.build_pos_seq_ctx(r);
-            let plan = match self.classes[r.class_ord()].arena[r.index()].as_ckt_element_mut() {
+            let plan = match self.classes[r.class_ord()]
+                .arena
+                .try_ckt_elem_mut(r.index())
+            {
                 Some(elem) => elem.make_pos_sequence(&ctx),
                 None => continue, // every `CktElements` entry is a circuit element
             };
@@ -57,8 +60,9 @@ impl Dss {
         // refs up front, so the AuxParser (and the foreign-element reads) do
         // not alias the element borrow.
         let (bus_strs, mon_ref, ctrl_ref) = {
-            let elem = self.classes[r.class_ord()].arena[r.index()]
-                .as_ckt_element()
+            let elem = self.classes[r.class_ord()]
+                .arena
+                .try_ckt_elem(r.index())
                 .expect("CktElements entry is a circuit element");
             let cd = elem.cd();
             let buses: Vec<String> = (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect();
@@ -96,12 +100,11 @@ impl Dss {
     /// `Enabled`, `BusNames[1..NTerms]`). `None` where Pascal would see NIL (an
     /// unresolved reference / a non-circuit target).
     fn resolve_pos_seq_info(&self, r: ElemId) -> Option<PosSeqElemInfo> {
-        let elem = self
-            .classes
-            .get(r.class_ord())?
-            .arena
-            .get_obj(r.index())?
-            .as_ckt_element()?;
+        let arena = &self.classes.get(r.class_ord())?.arena;
+        if r.index() >= arena.len() {
+            return None;
+        }
+        let elem = arena.try_ckt_elem(r.index())?;
         let cd = elem.cd();
         Some(PosSeqElemInfo {
             bus_names: (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect(),
@@ -122,7 +125,9 @@ impl Dss {
         // `inherited MakePosSequence` → the base `TDSSCktElement.MakePosSequence`
         // bus rename (strip node extensions; keep a ground bus's `.0`).
         if plan.run_base
-            && let Some(elem) = self.classes[r.class_ord()].arena[r.index()].as_ckt_element_mut()
+            && let Some(elem) = self.classes[r.class_ord()]
+                .arena
+                .try_ckt_elem_mut(r.index())
         {
             elem.cd_mut().make_pos_sequence_base();
         }
@@ -171,7 +176,6 @@ impl Dss {
             ..
         } = self;
         let DssClass { props, arena, .. } = &mut classes[r.class_ord()];
-        let obj: &mut dyn DssObject = arena.obj_mut(r.index());
         // None: no MakePosSequence typed setter resolves an object-reference
         // property, so the foreign class view is never consulted here.
         let mut eng = PropEngine {
@@ -184,6 +188,7 @@ impl Dss {
 
         let mut editing_active = false;
         for action in actions {
+            let obj: &mut dyn DssObject = arena.obj_mut(r.index());
             match action {
                 PosSeqAction::BeginEdit => editing_active = true,
                 PosSeqAction::EndEdit => {
@@ -221,7 +226,7 @@ impl Dss {
                     }
                 }
                 PosSeqAction::Disable => {
-                    if let Some(elem) = obj.as_ckt_element_mut() {
+                    if let Some(elem) = arena.try_ckt_elem_mut(r.index()) {
                         elem.cd_mut().set_enabled(false);
                     }
                 }

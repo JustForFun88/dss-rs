@@ -13,9 +13,9 @@ pub(crate) fn active_pce<'a>(
     active: Option<(usize, usize)>,
 ) -> Result<&'a mut dyn CktElement, String> {
     match active {
-        Some((ci, oi)) if ckt.pc_elements.contains(&ElemId::new(ci, oi)) => Ok(classes[ci].arena
-            [oi]
-            .as_ckt_element_mut()
+        Some((ci, oi)) if ckt.pc_elements.contains(&ElemId::new(ci, oi)) => Ok(classes[ci]
+            .arena
+            .try_ckt_elem_mut(oi)
             .expect("pc_elements entry is a circuit element")),
         Some((ci, oi)) => Err(format!(
             "{}.{}",
@@ -46,8 +46,9 @@ pub(crate) fn resolve_ckt_element(
     if !cls.is_empty() {
         let ci = *class_by_name.get(&cls.to_ascii_lowercase())?;
         if classes[ci].set_active(&name)
-            && classes[ci].arena[classes[ci].active?]
-                .as_ckt_element()
+            && classes[ci]
+                .arena
+                .try_ckt_elem(classes[ci].active?)
                 .is_some()
         {
             return Some((ci, classes[ci].active?));
@@ -57,7 +58,7 @@ pub(crate) fn resolve_ckt_element(
     for (ci, class) in classes.iter_mut().enumerate() {
         if class.set_active(&name)
             && let Some(oi) = class.active
-            && class.arena[oi].as_ckt_element().is_some()
+            && class.arena.try_ckt_elem(oi).is_some()
         {
             return Some((ci, oi));
         }
@@ -128,10 +129,7 @@ pub(crate) fn find_load_shape(
         .iter()
         .find(|c| c.props.class_name().eq_ignore_ascii_case("LoadShape"))?;
     let &idx = cls.name_to_idx.get(&name.to_ascii_lowercase())?;
-    cls.arena[idx]
-        .as_any()
-        .downcast_ref::<load_shape::LoadShapeObj>()
-        .cloned()
+    cls.arena.get::<load_shape::LoadShapeObj>(idx).cloned()
 }
 
 /// `DSS.PriceShapeClass.Find(name)`, snapshot-cloned (`Set pricecurve=`).
@@ -143,10 +141,7 @@ pub(crate) fn find_price_shape(
         .iter()
         .find(|c| c.props.class_name().eq_ignore_ascii_case("PriceShape"))?;
     let &idx = cls.name_to_idx.get(&name.to_ascii_lowercase())?;
-    cls.arena[idx]
-        .as_any()
-        .downcast_ref::<price_shape::PriceShapeObj>()
-        .cloned()
+    cls.arena.get::<price_shape::PriceShapeObj>(idx).cloned()
 }
 
 /// Pascal `Parser.DblValue` on the current token, record-and-continue.

@@ -17,7 +17,7 @@
 //!
 //! Co-located with the element (like the [`super::super::transformer`] and
 //! [`crate::elements::general::line_geometry`] overrides); dispatched from
-//! [`crate::report::save::save::write_dss_object`] via downcast. Emitted inline
+//! [`crate::report::save::save::write_dss_object`] via a typed arena read. Emitted inline
 //! on the single `New "…"` line rather than the oracle's `~` continuation — the
 //! two are token-equivalent on re-parse and the `Save` contract is round-trip
 //! fidelity, not byte-equality (`report/save/save.rs` header).

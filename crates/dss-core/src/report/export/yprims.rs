@@ -39,7 +39,7 @@ pub fn export_yprims(classes: &[DssClass], ckt: &Circuit) -> String {
         }
         let class_name = classes[r.class_ord()].props.class_name();
         let obj = &classes[r.class_ord()].arena[r.index()];
-        let Some(elem) = obj.as_ckt_element() else {
+        let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
             continue;
         };
         if !elem.cd().enabled {

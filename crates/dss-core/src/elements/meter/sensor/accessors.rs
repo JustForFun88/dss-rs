@@ -113,18 +113,6 @@ impl DssObject for Sensor {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.med.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
 
     fn get_i32(&self, idx: usize) -> i32 {
         use prop::*;

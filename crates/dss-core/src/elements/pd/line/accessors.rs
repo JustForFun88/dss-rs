@@ -5,7 +5,6 @@
 use crate::elements::general::line_code::{LineCodeObj, LineType};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::elements::traits::CktElement;
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 use crate::support::cmatrix::CMatrix;
@@ -75,18 +74,6 @@ impl DssObject for Line {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_f64(&self, idx: usize) -> f64 {

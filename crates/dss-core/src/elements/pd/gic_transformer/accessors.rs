@@ -3,7 +3,6 @@
 
 use super::{GicTransformer, SPEC_AUTO};
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::traits::CktElement;
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -50,18 +49,6 @@ impl DssObject for GicTransformer {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_f64(&self, idx: usize) -> f64 {

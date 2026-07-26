@@ -16,9 +16,9 @@ use crate::exec::registry::DssClass;
 
 /// Downcast a `ckt.energy_meters` ref to its concrete [`EnergyMeter`].
 fn as_meter(classes: &[DssClass], r: ElemId) -> &EnergyMeter {
-    classes[r.class_ord()].arena[r.index()]
-        .as_any()
-        .downcast_ref::<EnergyMeter>()
+    classes[r.class_ord()]
+        .arena
+        .get::<EnergyMeter>(r.index())
         .expect("energy_meters holds EnergyMeter")
 }
 
@@ -144,8 +144,9 @@ pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemId, param: &str) 
                 .map_or_else(String::new, |r| full_name(classes, r));
             s.push_str(&format!("(LOOP:{partner})"));
         }
-        let branch_sensor = classes[br.class_ord()].arena[br.index()]
-            .as_ckt_element()
+        let branch_sensor = classes[br.class_ord()]
+            .arena
+            .try_ckt_elem(br.index())
             .and_then(|e| e.cd().sensor_obj);
         s.push_str(&sensor_note(classes, branch_sensor));
         s.push('\n');
@@ -163,8 +164,9 @@ pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemId, param: &str) 
                     .data()
                     .name()
             ));
-            let shunt_sensor = classes[shunt.class_ord()].arena[shunt.index()]
-                .as_ckt_element()
+            let shunt_sensor = classes[shunt.class_ord()]
+                .arena
+                .try_ckt_elem(shunt.index())
                 .and_then(|e| e.cd().sensor_obj);
             s.push_str(&sensor_note(classes, shunt_sensor));
             s.push('\n');

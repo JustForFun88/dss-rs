@@ -114,8 +114,9 @@ impl Dss {
         // Both lines must be in the same EnergyMeter zone (the zone build wrote
         // `meter_obj` + `parent_pd`).
         let meter = |s: &Self, r: ElemId| -> Option<ElemId> {
-            s.classes[r.class_ord()].arena[r.index()]
-                .as_ckt_element()
+            s.classes[r.class_ord()]
+                .arena
+                .try_ckt_elem(r.index())
                 .and_then(|e| e.cd().meter_obj)
         };
         let (m1, m2) = (meter(self, r1), meter(self, r2));
@@ -153,8 +154,9 @@ impl Dss {
                 if r == to {
                     return true;
                 }
-                cur = s.classes[r.class_ord()].arena[r.index()]
-                    .as_ckt_element()
+                cur = s.classes[r.class_ord()]
+                    .arena
+                    .try_ckt_elem(r.index())
                     .and_then(|e| e.cd().parent_pd);
             }
             false
@@ -195,8 +197,9 @@ impl Dss {
     fn trace_and_edit(&mut self, from: ElemId, to: ElemId, nphases: i32, edit_str: &str) {
         let mut cur = Some(from);
         while let Some(r) = cur {
-            let elem_nphases = self.classes[r.class_ord()].arena[r.index()]
-                .as_ckt_element()
+            let elem_nphases = self.classes[r.class_ord()]
+                .arena
+                .try_ckt_elem(r.index())
                 .map(|e| e.cd().nphases as i32)
                 .unwrap_or(0);
             if nphases == 0 || elem_nphases == nphases {
@@ -208,8 +211,9 @@ impl Dss {
             if r == to {
                 break;
             }
-            cur = self.classes[r.class_ord()].arena[r.index()]
-                .as_ckt_element()
+            cur = self.classes[r.class_ord()]
+                .arena
+                .try_ckt_elem(r.index())
                 .and_then(|e| e.cd().parent_pd);
         }
     }

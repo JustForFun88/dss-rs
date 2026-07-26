@@ -96,18 +96,7 @@ impl DssObject for Fuse {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.ccd.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
+
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         Some(self)
     }

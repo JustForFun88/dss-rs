@@ -41,7 +41,7 @@ pub(crate) fn show_ratings(classes: &[DssClass], ckt: &Circuit) -> String {
     for &r in &ckt.pd_elements {
         let class_name = classes[r.class_ord()].props.class_name();
         let obj = &classes[r.class_ord()].arena[r.index()];
-        if let Some(elem) = obj.as_ckt_element() {
+        if let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) {
             let name = format!("{}.{}", class_name, obj.data().name());
             s.push_str(&format!(
                 "\"{}\", normamps={},  {}  !Amps\n",
@@ -235,7 +235,7 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
     }
     for &r in &ckt.loads {
         let obj = &classes[r.class_ord()].arena[r.index()];
-        let Some(l) = obj.as_any().downcast_ref::<Load>() else {
+        let Some(l) = classes[r.class_ord()].arena.get::<Load>(r.index()) else {
             continue;
         };
         let full_name = format!(
@@ -293,7 +293,7 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
     }
     for &r in &ckt.generators {
         let obj = &classes[r.class_ord()].arena[r.index()];
-        let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
+        let Some(g) = classes[r.class_ord()].arena.get::<Generator>(r.index()) else {
             continue;
         };
         let full_name = format!(

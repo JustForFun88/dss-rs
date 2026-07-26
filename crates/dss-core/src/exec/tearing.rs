@@ -42,7 +42,7 @@ fn nphases_of(classes: &[DssClass], full_name: &str) -> Option<usize> {
             continue;
         }
         if let Some(&oi) = class.name_to_idx.get(obj_name) {
-            return class.arena[oi].as_ckt_element().map(|e| e.cd().nphases);
+            return class.arena.try_ckt_elem(oi).map(|e| e.cd().nphases);
         }
     }
     None
@@ -698,7 +698,10 @@ impl Dss {
             None => return,
         };
         for r in meters {
-            if let Some(ce) = self.classes[r.class_ord()].arena[r.index()].as_ckt_element_mut() {
+            if let Some(ce) = self.classes[r.class_ord()]
+                .arena
+                .try_ckt_elem_mut(r.index())
+            {
                 ce.cd_mut().set_enabled(false);
             }
         }
@@ -747,7 +750,7 @@ fn pde_bus2_name(classes: &[DssClass], full_name: &str) -> Option<String> {
             continue;
         }
         if let Some(&oi) = class.name_to_idx.get(obj_name) {
-            let bus = class.arena[oi].as_ckt_element()?.cd().get_bus(2);
+            let bus = class.arena.try_ckt_elem(oi)?.cd().get_bus(2);
             let stripped = bus.split('.').next().unwrap_or(bus).to_string();
             return Some(stripped);
         }
@@ -771,7 +774,7 @@ fn line_bus(classes: &[DssClass], lname: &str, nbus: usize) -> Option<String> {
             continue;
         }
         if let Some(&oi) = class.name_to_idx.get(&key) {
-            let bus = class.arena[oi].as_ckt_element()?.cd().get_bus(nbus);
+            let bus = class.arena.try_ckt_elem(oi)?.cd().get_bus(nbus);
             return Some(bus.to_string());
         }
     }

@@ -22,9 +22,9 @@ use crate::exec::*;
 fn gen_pnom(dss: &Dss) -> f64 {
     let ci = dss.class_by_name["generator"];
     let oi = dss.classes[ci].name_to_idx["g1"];
-    dss.classes[ci].arena[oi]
-        .as_any()
-        .downcast_ref::<crate::elements::pc::generator::Generator>()
+    dss.classes[ci]
+        .arena
+        .get::<crate::elements::pc::generator::Generator>(oi)
         .expect("g1 is a Generator")
         .p_nominal_per_phase
 }
