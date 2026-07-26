@@ -104,9 +104,9 @@ impl GrowthShapeObj {
         if self.npts <= 0 {
             return 1.0;
         }
-        // TODO(compat): FPC `Round` is ties-to-even; the base year is always in
-        // Int64 range so `round_ties_even` reproduces it. Wiped with the other
-        // compat shims (CLAUDE.md §TODO(compat)).
+        // Pascal `Round` = ties-to-even; a base year is a small integer, so
+        // `round_ties_even` reproduces it exactly (see RegControl
+        // `get_tap_num` for the engine-wide rule).
         let base = match self.year.as_ref().and_then(|y| y.first()) {
             Some(&y0) => y0.round_ties_even() as i32,
             None => return 1.0,
@@ -169,7 +169,7 @@ impl GrowthShapeObj {
         let mut mult_inc = cur;
         out[0] = cur;
         let mut data_ptr = 0usize;
-        // TODO(compat): FPC `Round` (see `get_mult`); years are integral.
+        // Pascal `Round` = ties-to-even (see `get_mult`); years are integral.
         let mut cur_year = year[0].round_ties_even() as i32;
         for slot in out.iter_mut().skip(1) {
             cur_year += 1;
@@ -183,8 +183,8 @@ impl GrowthShapeObj {
         self.year_mult = out;
     }
 
-    /// TODO(compat): FPC `Round` is ties-to-even; years are always in i32
-    /// range so `round_ties_even` reproduces it (see `get_mult`).
+    /// Pascal `Round` = ties-to-even; years are always in i32 range, so
+    /// `round_ties_even` reproduces it exactly (see `get_mult`).
     fn round_year(y: f64) -> f64 {
         y.round_ties_even()
     }

@@ -63,9 +63,8 @@ impl Dss {
                         .as_ref()
                         .map_or(self.default_base_freq, |ckt| ckt.solution.frequency);
                     let dv = self.parser.make_double(&self.vars).unwrap_or(0.0);
-                    // TODO(compat): FPC `Round` is ties-to-even; `round_ties_even`
-                    // reproduces it (wiped with the other TODO(compat) at final
-                    // acceptance).
+                    // Pascal `Round` = ties-to-even; `round_ties_even`
+                    // reproduces it exactly (see RegControl `get_tap_num`).
                     cycles_per_sample = (solution_freq * dv).round_ties_even() as i32;
                 }
                 4 => freq = self.parser.make_double(&self.vars).unwrap_or(0.0),

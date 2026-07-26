@@ -83,9 +83,13 @@ impl LoadShapeObj {
 
         // --- Fixed (even) interval ---
         if self.interval > 0.0 {
-            // TODO(compat): FPC `Round` is banker's rounding (ties-to-even);
-            // these indices are always in i64 range, so `round_ties_even`
-            // reproduces it. Wiped with the other compat shims.
+            // Pascal `Round` = ties-to-even (see RegControl `get_tap_num`).
+            // For every index this can produce from a well-formed shape the two
+            // agree bit-for-bit; a degenerate `interval` small enough to push
+            // `hr/interval` out of Int64 range is upstream UB either way (FPC's
+            // indefinite sentinel then indexes the array out of bounds), so
+            // there is nothing defined to reproduce — the port saturates and
+            // the bounds check below is real.
             let mut i = if self.interpolation == LoadShapeInterp::Edge {
                 (hr / self.interval).floor() as i64
             } else {
@@ -219,7 +223,7 @@ impl LoadShapeObj {
 
         // --- Fixed (even) interval ---
         if self.interval > 0.0 {
-            // TODO(compat): FPC `Round` = ties-to-even (see the f64 twin).
+            // Pascal `Round` = ties-to-even (see the f64 twin above).
             let mut i = if self.interpolation == LoadShapeInterp::Edge {
                 (hr / self.interval).floor() as i64
             } else {

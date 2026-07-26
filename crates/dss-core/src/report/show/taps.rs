@@ -45,7 +45,7 @@ pub(crate) fn show_taps(classes: &[DssClass], ckt: &Circuit) -> String {
             tr.tap_increment(iwind as usize),
         );
         // Pascal `TapPosition(iWind) = Round((PresentTap - (Max+Min)/2)/Increment)`.
-        // TODO(compat): FPC `Round` is ties-to-even (see RegControl `get_tap_num`).
+        // Pascal `Round` = ties-to-even (see RegControl `get_tap_num`).
         let position = if inc == 0.0 {
             0
         } else {

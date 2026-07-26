@@ -32,6 +32,21 @@
 #[cfg(test)]
 mod tests;
 
+/// Which lane this crate was compiled in — `true` under `oracle-parity`.
+///
+/// Nothing in the solver reads it. It exists so `dss-core`'s compat tests can
+/// *measure* that `dss-core/oracle-parity` really reaches this crate: both
+/// knobs below currently hold the same value in either lane (they are
+/// declarations awaiting M3c / WP-R1), so without this const a broken feature
+/// edge would be invisible here until the day it silently un-pinned the
+/// solver.
+#[cfg(feature = "oracle-parity")]
+pub const ORACLE_PARITY: bool = true;
+
+/// See the parity-lane twin above.
+#[cfg(not(feature = "oracle-parity"))]
+pub const ORACLE_PARITY: bool = false;
+
 /// Parity lane: factorization must be reproducible — no parallel LU.
 pub const PARALLEL_FACTORIZATION_PARITY_IMPL: bool = false;
 /// Default lane: faer's parallel LU is permitted (M3c).

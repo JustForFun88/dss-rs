@@ -7,6 +7,66 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3a — first kernel flip: the FPC `Round` row (branch `depas-stagef`, 2026-07-26)
+
+F.3 runs one kernel family per commit. This is the **round** row (plan IV.2
+table): `dss_parser::compat::round_i32`'s default arm now selects
+`round_i32_saturating_impl`, and the family's 19 upstream-inexactness markers
+are resolved. `TODO(compat)` **123 → 99** workspace-wide.
+
+**The flip.** Parity lane: FPC `Round` → Int64 with the x87 *integer
+indefinite* sentinel on overflow/non-finite, then the Pascal
+`Integer := Round(…)` truncation — so a deck's `n=inf` converts to **0** and
+`n=1e10` to **1410065408**. Default lane: `round_ties_even` + Rust's saturating
+cast — `i32::MAX`/`i32::MIN`. Identical on every in-range finite value (pinned
+over a 15-value set), so no golden, corpus case or checkpoint moves: **2225
+tests pass in both lanes, byte-identically**. The divergence is pinned by
+expected values at the only boundary a deck can observe it —
+`parser::tests::make_integer_out_of_range_is_the_lane_kernel` (4 inputs × both
+kernels, literal expectations, no tolerance), plus `compat::tests::
+round_alias_is_the_lane_kernel` at the alias.
+
+**Marker sweep (19 sites, 15 files) — why they were never divergences.** Every
+in-engine `TODO(compat): FPC Round` marked a plain `x.round_ties_even()`, which
+*is* FPC `Round` (both round-half-to-even) for every value those sites can
+produce — tap positions, years, hour/interval indices, point counts. Nothing
+upstream-inexact was being reproduced there, so the marker was mis-applied: it
+is replaced by plain documentation pointing at the one reference site
+(`reg_control::get_tap_num`) and at the deck-language boundary that *does* model
+the indefinite path. Two sites (`LoadShape`/`ScalarShape` index) say so
+precisely: an `interval` small enough to push `hr/interval` out of Int64 range
+makes FPC index the array out of bounds — upstream UB, which per CLAUDE.md is
+not reproduced (the port saturates into a real bounds check). No behavior
+changed anywhere in the sweep.
+
+**`val_f64`'s `infinity` rejection is now permanent, in both lanes** (its marker
+promised the opposite). Which literals the deck language accepts is
+command-input semantics, not a numeric kernel; widening it belongs to the
+opt-in strict-parsing layer the plan sequences *after* Stage F (IV.1b). Noted at
+the site: `f64::from_str` would map `infinity` to `inf`, so "collapsing" it
+would turn a conversion error into a non-finite property value.
+
+**Feature propagation is now measured, not assumed.** `dss-parser` and
+`dss-sparse` gain a `compat::ORACLE_PARITY` const (like `dss-core`'s), and
+`dss-core`'s new `compat::tests::the_lane_reaches_every_compat_crate` asserts
+all three agree. Without it a dropped `Cargo.toml` feature edge would compile
+the *default* pi/round/solver kernels inside a parity build, and neither
+crate's own per-lane test could tell (const and alias share a compilation
+unit). It passes in the parity lane → the edge is proven live.
+
+**Not flipped here** (each lands with its own family): `PI` (moves
+RPN-computed deck values), the three `dss-core` kernels, and the `dss-sparse`
+knobs (declaration-only until M3c / WP-R1 own them).
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and with `--features
+dss-core/oracle-parity`; `cargo test --workspace` and the same with the feature
+— **2225 passed / 0 failed / 5 ignored in each**, including the unconditional
+corpus gate. `git diff -- tests/` empty (no golden, tolerance, ledger or deck
+touched); `git status --short tests/corpus` empty after the run (the known
+intermittent `Test/AutoTrans/AutoHLT_{HT_losses,LT_current}.txt` leak deleted by
+exact name). Tests +3 (2222 → 2225), 0 removed, 0 new `#[ignore]`.
+
 ### DE_PASCALIZE Stage F.2 — the default-lane test policy (drift model), still bit-neutral (branch `depas-stagef`, 2026-07-26)
 
 Second step of Part IV.2: the plan's **drift-model table** becomes code. The
