@@ -86,6 +86,17 @@ Recommendation: fold (e) into R3.3, where the `as_ckt_element` trait-method
 removal forces the decision for every bare-`&dyn` reader at once (the same
 `capture_metered`/`capture` family listed in the R2b (e) blocker map).
 
+**Still open → R3.3 — R3.1's escaped sub-step (iv), "statically-known shape refs
+as typed `Idx<T>`" (34 field declarations, 16 names, ~14 classes; inventory in
+the R3.1 record).** Its stated blocker is now **gone** — `ClassArena::get::<T>`
+exists, and the write side is a one-variant `ArenaClass::idx_of` narrowing on
+the `ResolvedObj` this step landed. It was *not* done here on sequencing
+grounds, disclosed: the fields' readers are exactly the 214 direct-arena
+`downcast_*` sites (`cim/power_xfmr.rs:761-775` reading
+`Transformer::xfmr_code_ref()` is the canonical one), which R3.3 converts
+wholesale. Retyping the fields first would force those readers to be touched
+twice. R3.3 should do `(iv)` **with** its arena-read sweep, in one pass.
+
 **Metrics (`rg -c … crates/dss-core/src`, summed lines / files).**
 
 | metric | R3.2 part-1 `7dc07ea` | HEAD | delta | note |
