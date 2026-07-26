@@ -7,6 +7,97 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3f — the dense-inverse row: flip attempted, **measured, and blocked** (branch `depas-stagef`, 2026-07-27)
+
+IV.2 **row 2** was flipped in the working tree, the whole suite + the 520-case
+corpus gate were run against it, and the result says the flip is not the
+ULP-level change the drift model assumes. The alias is therefore back to the
+parity kernel in both lanes (bit-neutral; nothing shipped moved) and the
+measurement is recorded — in `compat.rs`'s module header and here — so the row
+is now *blocked by named findings* instead of merely pending.
+
+**Finding 1 — the flip blows through a floor that was built for exactly this
+amplification.** `Test/AutoTrans/Auto1bus-step1.dss`: `Line.low` conductor-0
+power reads **1.4523513296 W** where the oracle has exactly `0` — ~14× over the
+1e-1 allowed at |V| = 1 kV. What makes this the loudest of the six is *which*
+floor it breaks: that case runs on the `large_near_ideal_source` tier, whose
+`i_abs = 0.1` was calibrated **by decomposition**
+(`tests/TOLERANCE_NOTES.md` §near-ideal-source) against this very effect —
+κ≈1e12 from `mvasc3=2e6` + `r1=1e-6 Ω` switches + a floating delta tertiary,
+where a single 1-ulp RHS component (1.5e-11 V) propagates linearly into the
+0.15 A no-load currents. And that tier's own note says the family's "unique
+surface is YPrim assembly" — the exact surface this row changes. So the
+candidate kernel is not just noisier; it is noisier *past a band already
+widened for this phenomenon*.
+
+Sharper still: that floor's **proof** rests on a property the flip destroys.
+§near-ideal-source establishes the band by showing the assembled system Y is
+"**BIT-IDENTICAL** across engines on every family deck at every probed stage",
+so the whole residual gap is one-shot cross-solver junk on identical `(Y, I)`.
+Flipping the inverse changes the transformer `YPrim`, i.e. Y is no longer
+bit-identical — the decomposition that justified `i_abs = 0.1` no longer
+applies to the default lane at all. Whoever lands this row has to redo that
+proof, not just re-measure the number.
+
+The **mechanism is still not proven**, and the two candidates want opposite
+responses, so it is recorded as an open question rather than diagnosed
+(CLAUDE.md: prove cause before concluding):
+
+* **(a) more solver junk down the same κ≈1e12 path** — a kernel-quality /
+  floor question, consistent with Finding 2's direction.
+* **(b) a singular-pivot branch flip** — the transformer-family `Yprim`
+  builders map `Err(SingularMatrix)` to Pascal error 117 and substitute `ε·I`
+  for `Zb`. If this deck's `Zb` is one the diagonal-only kernel rejects and
+  partial pivoting inverts, the two lanes build *different circuits*. Under (b)
+  it is a semantic divergence needing its own decision — plus the prior
+  question of which engine is right, since Pascal never exchanges rows and so
+  can reject an invertible matrix.
+
+One probe separates them: does `zb.invert()` return `Err` on this deck under
+either kernel? Run it before the row is reconsidered. **Do not** answer this by
+widening `large_near_ideal_source` — that band is decomposition-proven against
+the parity kernel, and the tier note already says a future trip is "a re-triage
+signal, NOT a widen-the-band signal".
+
+**Finding 2 — five cases 1.4–1.8× past their calibrated floors.**
+`Transformer.sub1` currents on `EPRITestCircuits/ckt7` (both drivers) and
+`Examples/StoCtrl_Current_PeakShave` (1.47e-4 / 1.70e-4 vs 1.06e-4 / 1.15e-4),
+the `IEEE_519` Y-fingerprint `trace.im` (2.89e-5 vs 1.64e-5), and `4Bus-YYD` on
+the **r4133** channel (2.03e-4 vs 1.34e-4). Not fudgeable — CLAUDE.md forbids
+widening a floor to pass — and the *direction* is itself evidence: the candidate
+kernel is a textbook Gauss-Jordan on `[A | I]`, roughly twice the arithmetic of
+Pascal's in-place variant, so it is plausibly **noisier** on well-conditioned
+impedance matrices even while being more *stable* on ill-placed ones. A default
+kernel worth flipping to is probably an **LU solve (faer)**, not this
+hand-rolled GJ. Recommendation: re-attempt the row with a faer-backed inverse
+and re-measure these five before touching anything else.
+
+Also moved (both expected, both cheap once the row lands):
+`transformer_yprim_bitexact` by 3 ULP — it becomes a lane-split pin — and
+`golden_reports::export_currents` row 20 column `AngResid1`, where a residual
+current the oracle reports as exactly `0` comes out a hair *negative*, so its
+angle renders `180.00` instead of `0.00` (the report's residuals are ~1e-11 A;
+the same class as the `("Transformer", "WdgCurrents")` zero-magnitude-angle
+exclusion already in `harness::skip_prop`).
+
+**What the attempt did leave behind — a real fix.**
+`invert_partial_pivot_impl` normalized its pivot row with `num_complex`'s `/`,
+which on a real-valued matrix computes `x·c/c²` rather than `x/c`; that drifted
+the complex kernel one ULP away from its real twin and
+`mathutil::tests::etk_invert_matches_cmatrix_invert_on_real_matrix` (a plain
+`assert_eq!`) caught it. It now divides through `compat::cdiv` — Smith's, which
+F.3e had just measured as the more accurate kernel and which reduces *exactly*
+to the real division when `im == 0`. The two kernels are bit-consistent again
+and that test keeps its exact equality **in both lanes**; no tolerance moved.
+The kernel is unselected in both lanes but always compiled, so the fix is inert
+today and correct for whoever lands the row.
+
+`compat::tests::invert_aliases_are_unflipped_in_both_lanes` (renamed from
+`unflipped_aliases_…`, which also covered `cdiv` before F.3e) keeps the
+"still parity in both lanes" claim behavioral: it asserts on the anti-diagonal
+matrix, where the two kernels genuinely disagree, so a future flip trips *there*
+— next to the documented reason — before it reaches the corpus gate.
+
 ### DE_PASCALIZE Stage F.3e — the complex-division row resolves to *no split* (branch `depas-stagef`, 2026-07-27)
 
 **A deliberate deviation from the plan's IV.2 table, settled by measurement

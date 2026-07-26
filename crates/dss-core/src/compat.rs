@@ -32,7 +32,7 @@
 //! | Row | Where | Flipped? |
 //! |---|---|---|
 //! | complex division | [`cdiv`] — this file | *no split* — measured, see below |
-//! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file | no |
+//! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file | no — flip **measured and blocked**, see below |
 //! | single-point stddev | [`stddev_single_point`] — this file | **yes** (F.3b) |
 //! | RPN pi | `dss-parser` `compat::PI` | **yes** (F.3d) |
 //! | FPC round | `dss-parser` `compat::round_i32` | **yes** (F.3a) |
@@ -43,6 +43,57 @@
 //! | multi-meter `Bus_Int_Duration` | [`BUS_INT_DURATION_WALKS_ALL_BUSES`] — this file | **yes** (F.3c) |
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
 //! | report text rendering | F.4 (`F-FMT`) — `compat::fmt` seam | no |
+//!
+//! **Dense inverse — why the flip is not landed (F.3f, measured 2026-07-27).**
+//! Selecting [`invert_partial_pivot_impl`] / [`etk_invert_partial_pivot_impl`]
+//! in the default lane is *not* the ULP-level change the drift model assumes.
+//! Measured over the full suite + the 520-case corpus gate, it produces:
+//!
+//! 1. **`Test/AutoTrans/Auto1bus-step1.dss` blows through an
+//!    already-widened floor** — `Line.low` conductor-0 power reads
+//!    `1.4523513296 W` where the oracle has exactly `0`, ~14× over the 1e-1
+//!    allowed at |V| = 1 kV. What makes this the loudest of the six: that case
+//!    is the `large_near_ideal_source` tier, whose `i_abs = 0.1` was calibrated
+//!    **by decomposition** (`tests/TOLERANCE_NOTES.md` §near-ideal-source)
+//!    against precisely this amplification — κ≈1e12 from `mvasc3=2e6` plus
+//!    `r1=1e-6 Ω` switches plus a floating delta tertiary, where a 1-ulp RHS
+//!    component (1.5e-11 V) propagates linearly into the no-load currents. So
+//!    the candidate kernel is not merely noisy, it is noisy *past a floor built
+//!    for this exact effect*, on the family whose "unique surface is YPrim
+//!    assembly" — i.e. the surface the row changes.
+//!    *The mechanism is still NOT proven*, and the two candidates want opposite
+//!    responses: (a) more solver junk through the same κ≈1e12 path (a floor /
+//!    kernel-quality question) or (b) a **singular-pivot branch flip** — the
+//!    transformer-family `Yprim` builders map `Err(SingularMatrix)` to Pascal
+//!    error 117 and substitute `ε·I` for `Zb`, so if this deck's `Zb` is one
+//!    the diagonal-only kernel rejects and partial pivoting inverts, the lanes
+//!    build *different circuits*, not different last bits. One probe separates
+//!    them: does `zb.invert()` return `Err` on this deck under either kernel?
+//!    Run it before the row is reconsidered.
+//! 2. **Five cases just past their calibrated floors** — `Transformer.sub1`
+//!    currents on `EPRITestCircuits/ckt7` (both drivers) and
+//!    `Examples/StoCtrl_Current_PeakShave` (1.47e-4 / 1.70e-4 vs 1.06e-4 /
+//!    1.15e-4 allowed), the `IEEE_519` Y-fingerprint `trace.im` (2.89e-5 vs
+//!    1.64e-5), and `4Bus-YYD` on the r4133 channel (2.03e-4 vs 1.34e-4). All
+//!    1.4–1.8× over — *not* fudgeable (CLAUDE.md forbids widening a floor to
+//!    pass), and their direction is a signal in itself: this kernel is a
+//!    textbook Gauss-Jordan on `[A | I]`, which does roughly twice the
+//!    arithmetic of Pascal's in-place variant, so it is plausibly **noisier**
+//!    on well-conditioned impedance matrices even though it is more *stable*
+//!    on ill-placed ones. A default kernel worth flipping to should probably be
+//!    an LU solve (faer) rather than this hand-rolled GJ.
+//!
+//! Also moved: `transformer_yprim_bitexact` (3 ULP — expected, would become a
+//! lane-split pin) and `golden_reports::export_currents` row 20 (an angle
+//! reading `180` instead of `0` on a numerically-zero current).
+//!
+//! What *did* land from the attempt: [`invert_partial_pivot_impl`] now
+//! normalizes its pivot row through [`cdiv`] instead of `num_complex`'s `/`
+//! (which, on a real-valued matrix, computes `x·c/c²` rather than `x/c` and
+//! drifted the complex kernel 1 ULP away from its real twin —
+//! `mathutil::tests::etk_invert_matches_cmatrix_invert_on_real_matrix` caught
+//! it). The kernel is unselected in both lanes but always compiled, so this
+//! keeps it honest for whoever lands the row.
 //!
 //! **Complex division — why that row needs no split (F.3e, plan deviation,
 //! settled by measurement).** IV.2's table proposed `num_complex`'s `/` as the
@@ -267,11 +318,16 @@ pub fn invert_partial_pivot_impl(m: &mut CMatrix) -> Result<(), SingularMatrix> 
             }
         }
 
-        // Normalize the pivot row.
+        // Normalize the pivot row. Divides through [`cdiv`] (Smith's), not
+        // `num_complex`'s `/`: F.3e measured Smith as the more accurate kernel,
+        // and on a real-valued matrix (`im == 0`) it reduces *exactly* to the
+        // real division, which is what keeps this kernel bit-consistent with
+        // [`etk_invert_partial_pivot_impl`] (pinned by
+        // `mathutil::tests::etk_invert_matches_cmatrix_invert_on_real_matrix`).
         let d = a[(col, col)];
         for j in 0..n {
-            a[(col, j)] /= d;
-            inv[(col, j)] /= d;
+            a[(col, j)] = cdiv(a[(col, j)], d);
+            inv[(col, j)] = cdiv(inv[(col, j)], d);
         }
 
         // Eliminate the column from every other row.
@@ -296,8 +352,9 @@ pub fn invert_partial_pivot_impl(m: &mut CMatrix) -> Result<(), SingularMatrix> 
 
 #[cfg(feature = "oracle-parity")]
 pub use invert_gj_no_exchange_impl as invert;
-// F.1 staging: see the note at `cdiv` — F.3 flips this to
-// `invert_partial_pivot_impl`.
+// Still parity-selected in BOTH lanes. F.3f attempted the flip and **measured
+// it as not-yet-landable** — see the module header's "Dense inverse" section
+// for the six gated cases it moves and what has to be settled first.
 #[cfg(not(feature = "oracle-parity"))]
 pub use invert_gj_no_exchange_impl as invert;
 
@@ -413,8 +470,8 @@ pub fn etk_invert_partial_pivot_impl(a: &mut [f64], norder: usize) -> Result<(),
 
 #[cfg(feature = "oracle-parity")]
 pub use etk_invert_gj_no_exchange_impl as etk_invert;
-// F.1 staging: see the note at `cdiv` — F.3 flips this to
-// `etk_invert_partial_pivot_impl`.
+// Still parity-selected in both lanes — the real counterpart of the complex
+// row above, and blocked by the same measurement.
 #[cfg(not(feature = "oracle-parity"))]
 pub use etk_invert_gj_no_exchange_impl as etk_invert;
 
