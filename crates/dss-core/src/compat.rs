@@ -21,30 +21,28 @@
 //! unit-testable against each other in *any* build and stops the unselected
 //! path from bit-rotting. Call sites are unconditional (`compat::cdiv(a, b)`).
 //!
-//! **F.1 staging (this commit).** Every alias below deliberately points at the
-//! **parity** impl in *both* lanes, so the seam lands bit-neutral: both lanes
-//! are byte-identical to the pre-Stage-F engine and every existing gate is
-//! unchanged. Step F.3 flips the `not(oracle-parity)` arms to the idiomatic
-//! impls, one kernel family at a time, together with the sweep of that
-//! family's upstream-inexactness markers and the one sanctioned default-lane
-//! re-baseline.
+//! **Flip state (F.3 flips one kernel family per commit).** The `Row` column
+//! below records which lane each alias resolves to *today*; an unflipped row
+//! selects the parity impl in **both** lanes, so it is still bit-neutral and
+//! its gates are unchanged in the default build too.
 //!
 //! **Inventory** (Part IV.2's closed dual-kernel table — do not extend it here;
 //! a genuinely new compat item requires editing that table first):
 //!
-//! | Row | Where |
-//! |---|---|
-//! | complex division | [`cdiv`] — this file |
-//! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file |
-//! | single-point stddev | [`stddev_single_point`] — this file |
-//! | RPN pi | `dss-parser` `compat::PI` |
-//! | FPC round | `dss-parser` `compat::round_i32` |
-//! | solver execution (`Par`, refinement) | `dss-sparse` `compat` |
-//! | Y triplet dedup | *no split* — one shared kernel serves both lanes (IV.1) |
-//! | sym components | *no split* — measured, see below |
-//! | Export SeqCurrents `Iresidual` | F.3 — deliberate-divergence branch + expected-value test |
-//! | multi-meter `Bus_Int_Duration` | F.3 — same |
-//! | report text rendering | F.4 (`F-FMT`) — `compat::fmt` seam |
+//! | Row | Where | Flipped? |
+//! |---|---|---|
+//! | complex division | [`cdiv`] — this file | no |
+//! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file | no |
+//! | single-point stddev | [`stddev_single_point`] — this file | **yes** (F.3b) |
+//! | RPN pi | `dss-parser` `compat::PI` | no |
+//! | FPC round | `dss-parser` `compat::round_i32` | **yes** (F.3a) |
+//! | solver execution (`Par`, refinement) | `dss-sparse` `compat` | no — declaration only, M3c / WP-R1 own the flip |
+//! | Y triplet dedup | *no split* — one shared kernel serves both lanes (IV.1) | — |
+//! | sym components | *no split* — measured, see below | — |
+//! | Export SeqCurrents `Iresidual` | [`IRESIDUAL_FROM_TERMINAL_1`] — this file | **yes** (F.3c) |
+//! | multi-meter `Bus_Int_Duration` | [`BUS_INT_DURATION_WALKS_ALL_BUSES`] — this file | **yes** (F.3c) |
+//! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
+//! | report text rendering | F.4 (`F-FMT`) — `compat::fmt` seam | no |
 //!
 //! **Sym components — why that row needs no alias.** The pinned oracle selects
 //! the *better-precision* matrices by default: `mathutil.pas:548` ends its
@@ -419,3 +417,93 @@ pub use stddev_single_point_value_impl as stddev_single_point;
 // F.3: a one-point sample has no spread; the default lane says so.
 #[cfg(not(feature = "oracle-parity"))]
 pub use stddev_single_point_zero_impl as stddev_single_point;
+
+// ---------------------------------------------------------------------------
+// Export SeqCurrents `Iresidual` (IV.2 row 9)
+// ---------------------------------------------------------------------------
+
+/// Whether `Export SeqCurrents` prints **terminal 1's** residual current on
+/// every terminal row.
+///
+/// `true` reproduces the upstream bug: Pascal `CalcAndWriteSeqCurrents` sums
+/// `cBuffer^[i]` for `i = 1..Ncond` inside the per-terminal loop, missing the
+/// `(j-1)*Ncond` offset, so every row repeats terminal 1's residual
+/// (`ExportResults.pas`; oracle-proven on IEEE13 `Line.671680`, whose true
+/// terminal-2 residual is 9.8e-12 A while the export prints terminal 1's
+/// 2.83e-5 A). Deterministic and defined, so the parity lane keeps it.
+///
+/// `false` sums the row's **own** terminal — the clean fix. The value is what
+/// the element's `Iterminal` already holds; only the slice changes, so this
+/// is a reporting fix with no effect on any solved quantity.
+pub const IRESIDUAL_FROM_TERMINAL_1_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const IRESIDUAL_FROM_TERMINAL_1_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use IRESIDUAL_FROM_TERMINAL_1_DEFAULT_IMPL as IRESIDUAL_FROM_TERMINAL_1;
+#[cfg(feature = "oracle-parity")]
+pub use IRESIDUAL_FROM_TERMINAL_1_PARITY_IMPL as IRESIDUAL_FROM_TERMINAL_1;
+
+// ---------------------------------------------------------------------------
+// Multi-meter `Bus_Int_Duration` (IV.2 row 10)
+// ---------------------------------------------------------------------------
+
+/// Whether `CalcReliabilityIndices`' bus-interruption-duration loop walks
+/// **every circuit bus** instead of only this meter's zone.
+///
+/// `true` reproduces the upstream bug (`EnergyMeter.pas:2521`): with more than
+/// one EnergyMeter, a bus whose `BusSectionID` was written by *another* meter's
+/// sweep is indexed into **this** meter's `FeederSections`, so the later meter
+/// overwrites foreign buses' durations from its own sections. In-range section
+/// ids make that a deterministic cross-zone overwrite the parity lane keeps
+/// (golden `export_busreliability_multimeter`); out-of-range ids are an OOB
+/// heap read, proven nondeterministic and never reproduced in either lane (the
+/// `.get()` returns `None`).
+///
+/// `false` walks only the buses this meter's own zone sweep assigned — the
+/// clean fix, which makes each meter's durations independent of meter order.
+pub const BUS_INT_DURATION_WALKS_ALL_BUSES_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const BUS_INT_DURATION_WALKS_ALL_BUSES_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use BUS_INT_DURATION_WALKS_ALL_BUSES_DEFAULT_IMPL as BUS_INT_DURATION_WALKS_ALL_BUSES;
+#[cfg(feature = "oracle-parity")]
+pub use BUS_INT_DURATION_WALKS_ALL_BUSES_PARITY_IMPL as BUS_INT_DURATION_WALKS_ALL_BUSES;
+
+// ---------------------------------------------------------------------------
+// Monitor base frequency (CLAUDE.md §Known upstream bugs — deferred to Stage F)
+// ---------------------------------------------------------------------------
+
+/// A new Monitor's `BaseFrequency`, upstream-faithful: `TMonitorObj.Create`
+/// hard-pins `Basefrequency := 60.0` *after* the inherited constructor
+/// (`Monitor.pas:472` == r4133 `:552`), overriding the base-class
+/// `BaseFrequency := ActiveCircuit.Fundamental` (`CktElement.pas:233`) that
+/// every other element gets. Both gating oracles pin 60.0.
+///
+/// This is not cosmetic: the value is the `fBase` a mode-4 monitor passes into
+/// `FlickerMeter` (`Monitor.pas:1657` → `Pstcalc.pas:594`), where `fBase =
+/// 50.0` selects the IEC 61000-4-15 230 V/50 Hz lamp weighting coefficients
+/// instead of the 120 V/60 Hz set (`Pstcalc.pas:609-626`) — so in a 50 Hz
+/// circuit upstream computes Pst with the wrong lamp curve unless the user
+/// writes `basefreq=50` by hand.
+#[inline]
+pub fn monitor_base_frequency_60hz_impl(_fundamental: f64) -> f64 {
+    60.0
+}
+
+/// A new Monitor's `BaseFrequency`, the clean fix: inherit the circuit's
+/// fundamental like every other element. In a 60 Hz circuit — every committed
+/// golden and every gated corpus deck that instantiates a Monitor — this is
+/// bit-identical to [`monitor_base_frequency_60hz_impl`]; in a 50 Hz circuit it
+/// is the **deliberate divergence** that also gives mode-4 flicker the right
+/// lamp curve.
+#[inline]
+pub fn monitor_base_frequency_inherit_impl(fundamental: f64) -> f64 {
+    fundamental
+}
+
+#[cfg(feature = "oracle-parity")]
+pub use monitor_base_frequency_60hz_impl as monitor_base_frequency;
+#[cfg(not(feature = "oracle-parity"))]
+pub use monitor_base_frequency_inherit_impl as monitor_base_frequency;

@@ -1233,10 +1233,31 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     ("Fuse", "RatedCurrent"),
 ];
 
+/// The one property whose **value** the *default* lane excludes: a Stage F
+/// deliberate divergence, not a comparability problem.
+///
+/// `Monitor.BaseFreq` — upstream's `TMonitorObj.Create` hard-pins 60.0 over the
+/// inherited `ActiveCircuit.Fundamental` (Monitor.pas:472 == r4133:552; the
+/// value is what selects mode-4 flicker's lamp curve), and the default lane
+/// inherits like every other element. The two lanes agree in every 60 Hz deck; the one
+/// gated corpus case that disagrees is the 50 Hz `LVTestCase`, whose monitors
+/// then read 50 instead of 60. Excluded **only in the default lane** (the
+/// parity lane still compares it, and the property *name*/order is checked in
+/// both), and pinned by its own expected-value test
+/// `exec::tests::base_frequency::monitor_basefreq_is_the_lane_kernel`, which
+/// asserts both lanes' values on a 50 Hz deck and their agreement on a 60 Hz
+/// one.
+const LANE_SKIP_PROPS: &[(&str, &str)] = &[("Monitor", "BaseFreq")];
+
 pub fn skip_prop(class: &str, prop: &str) -> bool {
-    SKIP_PROPS
-        .iter()
-        .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p))
+    let lane_skipped = !lane::PARITY
+        && LANE_SKIP_PROPS
+            .iter()
+            .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p));
+    lane_skipped
+        || SKIP_PROPS
+            .iter()
+            .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p))
 }
 
 /// Transformer per-winding SINGULAR getters that index the ActiveWinding cursor
@@ -2076,6 +2097,19 @@ pub enum GateSpec {
     /// current/voltage (a residual or an open-terminal conductor) is faer-vs-KLU
     /// noise, gated on its own magnitude in the column just before it.
     PrevCol(f64),
+    /// Skip when the oracle's value in column `col` is **above** `threshold` —
+    /// the mirror of [`GateSpec::Col`], and **not** a tolerance concept at all.
+    ///
+    /// Its one use is a Stage F **deliberate divergence** confined to
+    /// identifiable rows: `Export SeqCurrents`' `Iresidual` reproduces an
+    /// upstream indexing bug that prints *terminal 1's* residual on every
+    /// terminal row, and the default lane fixes it — so exactly the rows with
+    /// `Terminal ≥ 2` are excluded there (gate `ColAbove(1, 1.5)`), while every
+    /// terminal-1 cell stays compared against the oracle in both lanes. The
+    /// excluded cells are pinned instead by their own expected-value test
+    /// (`export_seqcurrents_iresidual_is_the_lane_kernel`), which is why this
+    /// is an *exclusion with a replacement gate*, not a relaxation.
+    ColAbove(usize, f64),
     /// **Always** skip the matched column — a non-deterministic column that
     /// carries no comparable value (a wall-clock timestamp or an absolute path).
     /// Not a tolerance relaxation of any *value*: the column is genuinely
@@ -2138,6 +2172,9 @@ impl ExportPolicy {
                             (Some(x), Some(y)) => x.abs().min(y.abs()) < thresh,
                             _ => false,
                         };
+                    }
+                    Some(GateSpec::ColAbove(col, thresh)) => {
+                        return num(col).is_some_and(|v| v > thresh);
                     }
                     Some(GateSpec::Mask) => return true,
                     None => return false,

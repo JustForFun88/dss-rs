@@ -7,6 +7,152 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3 — escape register: what the closed table cannot absorb (branch `depas-stagef`, 2026-07-26)
+
+Recorded with F.3c so the remaining `TODO(compat)` population is *classified*,
+not merely counted. Nothing here is silently dropped; each item names its owner
+and the evidence.
+
+**(a) The truncated-constant family — ESCAPED, with a measurement that says
+why.** 18 markers reproduce upstream's low-precision literals: `MU0 =
+12.56637e-7`, `Twopi = 6.283185307`, `E0`, the tape-shield `1/pi = 0.3183`, the
+Line `Kxg` earth constant `658.5` (×3 sites), `1000·√3 = 1732.0` and its
+`0.001732` twin, `ln 10 = 2.3026` (ExpControl + the CIM IEEE1547 export),
+`CALPHA = (-0.5, -0.866025)` (×2), the `complexutil` pair `3.14159265359` /
+`57.29577951` with its hand-rolled `pascal_atan2`, and the `SymComp::official`
+truncated `sin 60°`. **None of them is a table row**, and measurement shows why
+they *cannot* be treated like one: their relative distance from the exact
+constant is
+
+| literal | rel. gap | | literal | rel. gap |
+|---|---|---|---|---|
+| RPN / complexutil pi | 6.6e-14 | | `MU0` | 4.9e-8 |
+| `Twopi` | 2.9e-11 | | `CALPHA` | 4.7e-7 |
+| rad→deg `57.29577951` | 5.4e-11 | | `ln 10` | 6.5e-6 |
+| `sin 60°` (official) | 9.1e-10 | | `1732.0` / `0.001732` | 2.9e-5 |
+| | | | `1/pi` `0.3183` | 3.1e-5 |
+| | | | `658.5` (Kxg `De`) | **5.4e-4** |
+
+The right-hand column is **at or above the calibrated 1e-6-class oracle
+floors** — these are *physical-input* changes (like editing a deck's data), not
+last-ulp kernel differences. Flipping them in the default lane would push it off
+the oracle on continuous quantities and break IV.2's drift-model row 1
+("continuous results — still oracle-compared, same floors, unchanged"), which is
+exactly the promise the lane machinery exists to keep. Their clean fix therefore
+belongs to an UPGRADE-style rung with its own per-case ledger triage and a
+deliberate golden re-baseline, **not** to a Stage F lane flip. Decision needed
+from the plan owner: either add a 12th table row ("upstream truncated physical
+constants") with that ledger work, or re-document the family as permanent
+both-lane semantics. Until then the markers stay, unchanged and green.
+
+**(b) `HIDE_015X` ×17 in 7 files — ESCAPED.** UPGRADE §5's exit criterion is
+"`rg HIDE_015X` empty", achieved by *flipping the Line/LineGeometry Dump/JSON
+golden surface to capi015* (re-pinning `gen_json.py` off the 0.14.5 oracle and
+dropping the `Line.Wires → "Conductors"` masquerade). That is a **byte-golden
+re-baseline against a different oracle**, and the parity lane may never
+re-baseline — so retiring the flag engine-wide breaks the parity contract, while
+making it lane-conditional is a 12th table row nobody sanctioned. It also needs
+`gen_json.py` to learn an engine switch (DIVERGENCES.md's own fallback: "if the
+flip is disproportionate, keep HIDE_015X and document why"). Owner decision
+required; the flag and its documentation are untouched.
+
+**(c) The rendering markers (13: `util::fmt_g`, `report/format::fixed_w_fpc`,
+`show/diagnostics`'s `%-.g`, `show/mod`'s device-name width, the JSON
+`fpjson_float`/`NL`/`circuit.rs` `%g`/`%.4g`/`%8.2f` block) — F.4's, not
+F.3's.** They are the F-FMT seam's parity kernel; their markers are resolved by
+building the seam (`compat::fmt`), which is the next step's defined scope.
+
+**(d) Remaining single-site semantic markers (59, of which ~8 are prose
+mentions of the tag inside test/doc comments rather than sites).** Upstream
+quirks the port reproduces that are neither arithmetic kernels nor sanctioned
+bug fixes — CIM
+`grounded := TRUE`, the `b0ch` typo, plot-option letter mapping, Isource's
+`Bus2Defined`, StorageController's `not FleetState = STORE_IDLING`, LineCode's
+`HrsToRepair`, Storage `MakeLike`'s missing `BeginEdit`, the Load `makeposseq`
+divisor 3.0, the Relay `Recloser.<name>` event labels + unconditional debug
+line, the Newton stale-`Iterminal` row, the `Save` doubled path delimiter, the
+`EXP_PV_` Storage prefix, … Each needs an individual disposition (permanent
+semantics re-documented / a default-lane fix + expected-value test), which is
+mechanical but must be argued site-by-site against the Pascal. Not started —
+this is the bulk of the remaining sweep and the honest reason F.3 is not closed.
+
+### DE_PASCALIZE Stage F.3c — the three upstream-bug rows get their clean fix (branch `depas-stagef`, 2026-07-26)
+
+The plan's two bug rows (`Export SeqCurrents` `Iresidual`, multi-meter
+`Bus_Int_Duration`) plus the Monitor `BaseFrequency` fix CLAUDE.md defers to
+Stage F **by name**. Each lands as a compat selector + the fixed branch +
+an expected-value test + a *field-scoped* exclusion of the affected cells from
+the default lane's oracle compare (plan IV.2's "deliberate divergences" row).
+`TODO(compat)` **95 → 90**.
+
+**1. `Iresidual` (`compat::IRESIDUAL_FROM_TERMINAL_1`).** Upstream's
+`CalcAndWriteSeqCurrents` sums `cBuffer^[i]`, i = 1..Ncond *inside* the
+per-terminal loop — the `(j-1)*Ncond` offset is missing — so every terminal row
+prints terminal 1's residual. Default lane sums the row's own terminal (`base =
+(j-1)*ncond`). Nothing solved changes; this is a reporting slice.
+*Golden:* the default lane excludes exactly the `Terminal ≥ 2` cells of the
+`Iresidual` column (new `GateSpec::ColAbove(1, 1.5)` — the mirror of the
+existing `Col`), so every terminal-1 cell stays oracle-compared in both lanes,
+at the same tolerance as before (the new `ColTol` carries the policy's own
+`abs = 1e-8`; setting it to 0 tightened row 0 and the suite caught it).
+*Pin:* `export_seqcurrents_iresidual_is_the_lane_kernel` derives its expectation
+from an **independent** report — `Export Currents` writes a per-terminal
+`Iresid<j>` column through a different code path, itself oracle-anchored by its
+own byte golden — and asserts every row of `Export SeqCurrents` equals
+`Iresid_j` (default) / `Iresid_1` (parity), plus that some row actually
+separates the two kernels.
+
+**2. `Bus_Int_Duration` (`compat::BUS_INT_DURATION_WALKS_ALL_BUSES`).**
+`CalcReliabilityIndices`' duration loop walks **every circuit bus**, so with two
+meters the later one re-reads foreign buses' `BusSectionID` against its *own*
+`FeederSections`. The forward sweep now records the buses it assigns
+(`zone_buses`), and the default lane iterates only those. The out-of-range
+regime is unchanged: proven-nondeterministic OOB heap read, not reproduced in
+either lane. *Golden:* no row key identifies "a bus of the earlier meter", so
+the default lane masks the `Duration` column of
+`export_busreliability_multimeter` and pins it **completely** instead —
+`export_busreliability_multimeter_duration_is_the_lane_kernel` asserts all five
+rows literally: parity `SRC 0, B1 6, B2 9, C1 6, C2 9` (the C-feeder's repair
+times landing on the B-feeder's buses — what the oracle golden contains),
+default `SRC 0, B1 4, B2 5, C1 6, C2 9` (each bus's own line's repair time).
+Lambda / interruptions / customers / cust-interruptions / miles stay
+oracle-compared in both lanes.
+
+**3. Monitor `BaseFrequency` (`compat::monitor_base_frequency`).**
+`TMonitorObj.Create` hard-pins 60.0 after the inherited constructor
+(Monitor.pas:472 == r4133:552); the default lane inherits `Fundamental` like
+every other element. **In a 60 Hz circuit the two are bit-identical**, which is
+why no golden and no gated corpus case moves — asserted inside the test rather
+than claimed. *Pin:* `monitor_basefreq_is_the_lane_kernel` (renamed from
+`monitor_basefreq_pins_60hz_upstream_bug`) asserts 60.0 in the parity lane and
+the inherited 50.0 in the default lane on a `DefaultBaseFrequency=50` deck, and
+60.0 in both lanes on a 60 Hz deck. CLAUDE.md's bug-6 entry is updated from
+"reproduced" to "lane-split", with the new pin name.
+*Corpus:* the claim "no gated case moves" was **false and the gate said so** —
+the 520-case run failed one case, `LVTestCase/Master.dss`, the vendored 50 Hz
+European feeder, on `Monitor.line558_vi_vs_time` property `BaseFreq` (50 vs
+60): the corpus gate compares element properties, and that deck's monitors are
+live. Resolved the way the plan prescribes for a deliberate divergence — a
+*field* exclusion, `harness::LANE_SKIP_PROPS = [("Monitor", "BaseFreq")]`,
+applied **only in the default lane** (the parity lane still compares the value;
+the property name/order walk still runs in both). Not a ledger entry: the
+ledger records *upstream* divergences and is fail-on-stale across both lanes, so
+a default-lane-only entry would break the parity run.
+
+**Why these three and nothing else.** The dual-kernel table is closed. These are
+its rows 9 and 10 plus the one upstream-bug fix CLAUDE.md explicitly defers to
+Stage F; no new compat item was invented.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and with `--features
+dss-core/oracle-parity`; `cargo test --workspace` and the same with the feature
+— **2230 passed / 0 failed / 5 ignored in each**, including the unconditional
+corpus gate. `git diff -- tests/` empty (no golden, tolerance, ledger or deck
+file touched — the lane branching lives in the drivers); `git status --short
+tests/corpus` empty after the run (the known intermittent `Test/AutoTrans/*`
+leak deleted by exact name). Tests +2 (2228 → 2230), 0 removed, 0 new
+`#[ignore]`.
+
 ### DE_PASCALIZE Stage F.3b — the single-point stddev row: the first *deliberate divergence* goes live (branch `depas-stagef`, 2026-07-26)
 
 Second kernel family of F.3, and the first row where the two lanes now print

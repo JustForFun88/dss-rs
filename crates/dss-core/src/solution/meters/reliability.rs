@@ -3,7 +3,8 @@
 //! backward fault-rate sweep, the forward interruption sweep (counting the
 //! feeder sections delimited by OCP devices), then SAIFI/SAIDI/CAIDI.
 
-use crate::circuit::Circuit;
+use crate::circuit::{Bus, Circuit};
+use crate::compat;
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::FeederSection;
 use crate::elements::pc::load::Load;
@@ -122,8 +123,11 @@ fn calc_reliability_indices(
         }
     }
 
-    // Forward sweep: number of interruptions + section assignment.
+    // Forward sweep: number of interruptions + section assignment. The buses it
+    // touches are exactly this meter's zone — recorded so the duration loop
+    // below can stay inside it (the default lane's clean fix).
     let mut section_count: i32 = 0;
+    let mut zone_buses: Vec<usize> = Vec::with_capacity(seq.len() + 1);
     {
         let first = seq[0];
         let cd = store.ckt_elem(first).cd();
@@ -136,6 +140,7 @@ fn calc_reliability_indices(
         pbus.bus_cust_interrupts = source_num_int * pbus.bus_total_num_customers as f64;
         pbus.bus_int_duration = source_int_dur;
         pbus.bus_section_id = section_count; // section before 1st OCP device is 0
+        zone_buses.push(from_bus);
     }
     for &r in &seq {
         let (from_t, from_bus, to_bus, accumulated_br, has_ocp, has_auto) = {
@@ -169,6 +174,7 @@ fn calc_reliability_indices(
         } else {
             ckt.buses[to_bus].bus_section_id = from_section;
         }
+        zone_buses.push(to_bus);
         let section_id = ckt.buses[to_bus].bus_section_id;
         let cd = store.ckt_elem_mut(r).cd_mut();
         cd.to_terminal = Some(if from_t == 1 { 0 } else { 1 });
@@ -259,26 +265,36 @@ fn calc_reliability_indices(
     // `investigations/reliability_bus_int_duration_oob_bug_report.md`): with
     // multiple meters a bus whose `BusSectionID` was set by *another* meter's
     // sweep is read against THIS meter's `FeederSections`. Two regimes:
-    //   (a) TODO(compat): in-range id (`≤ section_count`) — a **deterministic**
-    //       cross-zone overwrite. `sections.get(..) = Some`, so we reproduce it
-    //       exactly (gated by `export_busreliability_multimeter_matches_oracle`).
-    //       Clean fix: walk only this meter's zone buses (or reset
-    //       `bus_section_id` per meter) and regenerate the multimeter golden
-    //       deliberately.
+    //   (a) in-range id (`≤ section_count`) — a **deterministic** cross-zone
+    //       overwrite, so it is a real lane row: `BUS_INT_DURATION_WALKS_ALL_BUSES`
+    //       reproduces it in the parity lane (gated by
+    //       `export_busreliability_multimeter_matches_oracle`), while the default
+    //       lane visits only `zone_buses` — the buses this meter's own forward
+    //       sweep assigned — so a meter's durations no longer depend on which
+    //       meters ran before it.
     //   (b) out-of-range id — Pascal reads `FeederSections[id]` past the
     //       `section_count + 1` allocation: an OOB heap read, **proven
     //       nondeterministic** (the report probes it across fresh processes —
     //       the first slot past the array reads a stable 0 from zeroed slack,
     //       the next slots read live garbage: 1.5e-311, 3.1e-314, 2.5e-290,
-    //       6.0e-118). Safe Rust cannot and must not reproduce it: `.get()`
-    //       returns `None`, so the bus keeps its own-zone duration. NOT a
-    //       TODO(compat) — there is no defined upstream value to pin, so no gate
-    //       can observe the difference.
-    for b in ckt.buses.iter_mut() {
+    //       6.0e-118). Safe Rust cannot and must not reproduce it in *either*
+    //       lane: `.get()` returns `None`, so the bus keeps its own-zone
+    //       duration. There is no defined upstream value to pin, so no gate can
+    //       observe the difference.
+    let set_duration = |b: &mut Bus| {
         if b.bus_section_id > 0
             && let Some(s) = sections.get(b.bus_section_id as usize)
         {
             b.bus_int_duration = source_int_dur + s.average_repair_time;
+        }
+    };
+    if compat::BUS_INT_DURATION_WALKS_ALL_BUSES {
+        for b in ckt.buses.iter_mut() {
+            set_duration(b);
+        }
+    } else {
+        for &bi in &zone_buses {
+            set_duration(&mut ckt.buses[bi]);
         }
     }
 

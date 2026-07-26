@@ -1078,26 +1078,13 @@ impl Dss {
         // still override via `basefreq=`.
         //
         // EXCEPTION — Monitor: `TMonitorObj.Create` re-hardcodes `Basefrequency :=
-        // 60.0` AFTER the inherited `Create` (Monitor.pas:472), so a Monitor's base
-        // frequency is ALWAYS 60 Hz, never the fundamental (oracle-verified: under
-        // `Set DefaultBaseFrequency=50` every element reports basefreq=50 but the
-        // monitor reports 60). Reproduce that override here. (EnergyMeter/Sensor do
-        // NOT override — they inherit the fundamental like everything else.)
-        //
-        // TODO(compat): this hardcoded 60.0 is a proven UPSTREAM BUG, not just
-        // cosmetic. `TMonitorObj.Create` overrides `Basefrequency := 60.0` with no
-        // comment, identically in dss_capi 0.14.5 (Monitor.pas:472) and the r4133
-        // trunk (:552), overriding the correct base-class inherit
-        // (`BaseFrequency := ActiveCircuit.Fundamental`, r4133 CktElement.pas:233).
-        // Monitor.BaseFrequency has ONE physical consumer — mode-4 flicker: it is
-        // passed as `fBase` into `FlickerMeter` (Monitor.pas:1657 -> Pstcalc.pas:594),
-        // where `if fBase = 50.0` selects the IEC 61000-4-15 230V/50Hz lamp
-        // weighting coefficients vs the 120V/60Hz set (Pstcalc.pas:609-626). So a
-        // mode-4 monitor in a 50 Hz circuit computes Pst with the WRONG (60 Hz) lamp
-        // curve unless the user sets `basefreq=50` explicitly. Reproduced 1:1
-        // (deterministic, defined, not state-poisoning; both gating oracles pin
-        // 60.0 — deviating breaks parity). Clean fix for the DE_PASCALIZE Stage F
-        // default lane: inherit `Fundamental` like every other element.
+        // 60.0` AFTER the inherited `Create` (Monitor.pas:472), overriding the
+        // fundamental every other element inherits (EnergyMeter/Sensor do NOT
+        // override). That is a proven upstream bug with one physical consumer
+        // (mode-4 flicker's lamp curve), and it is the Stage F
+        // `monitor_base_frequency` row: the parity lane reproduces the hard 60.0
+        // both gating oracles pin, the default lane inherits `Fundamental`. Full
+        // analysis on the two kernels in `compat`.
         let fundamental = self.circuit.as_ref().expect("checked above").fundamental;
         let is_monitor = self.classes[ci]
             .arena
@@ -1108,7 +1095,11 @@ impl Dss {
             .try_ckt_elem_mut(idx)
             .expect("circuit element class builds circuit elements")
             .cd_mut()
-            .base_frequency = if is_monitor { 60.0 } else { fundamental };
+            .base_frequency = if is_monitor {
+            crate::compat::monitor_base_frequency(fundamental)
+        } else {
+            fundamental
+        };
 
         // Pascal `TVsourceObj.Create`/`TIsourceObj.Create`: `SrcFrequency :=
         // BaseFrequency` (VSource.pas:644, Isource.pas:319) — the source frequency

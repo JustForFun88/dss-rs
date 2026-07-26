@@ -99,10 +99,12 @@ around them.
   50.0` selects the IEC 61000-4-15 230V/50Hz lamp weighting coefficients vs the
   120V/60Hz set (Pstcalc.pas:609-626) — so a mode-4 monitor in a 50 Hz circuit
   computes Pst with the wrong (60 Hz) lamp curve unless the user sets `basefreq=50`.
-  Deterministic, defined, not state-poisoning → reproduced (`TODO(compat)` in
-  `exec/command.rs::create_object_no_edit`, pin `monitor_basefreq_pins_60hz_upstream_bug`);
-  both gating oracles pin 60.0. Clean fix (inherit `Fundamental`) deferred to
-  DE_PASCALIZE Stage F.
+  Deterministic, defined, not state-poisoning → **lane-split** since DE_PASCALIZE
+  Stage F.3c (`compat::monitor_base_frequency`, applied in
+  `exec/command.rs::create_object_no_edit`, pin `monitor_basefreq_is_the_lane_kernel`):
+  the parity lane reproduces the 60.0 both gating oracles pin, the default lane
+  inherits `Fundamental` (identical in a 60 Hz circuit, so no golden or corpus case
+  moves).
 
 ## Gate (must be green before any commit)
 
