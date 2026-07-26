@@ -30,27 +30,35 @@ const DIV_REL_BOUND: f64 = 1.0e-15;
 // Alias selection per lane (F.3 flips one kernel family per commit)
 // ---------------------------------------------------------------------------
 
-/// The `dss-core` kernels **not yet flipped**: `invert` and `etk_invert` still
-/// select the parity impl in *both* lanes, so the existing gate (byte goldens,
-/// checkpoint Y, corpus floors) is unchanged in the default build too until
-/// their own commit lands.
+/// The dense-inverse row is **not flipped**: `invert` and `etk_invert` select
+/// the Pascal kernel in *both* lanes, so the existing gate (byte goldens,
+/// checkpoint Y, corpus floors) is unchanged in the default build too. F.3f
+/// attempted the flip and measured it as not-yet-landable — the module header
+/// records the six gated cases it moves and what must be settled first.
 ///
-/// Each assertion is behavioral (a value on which the two `_impl`s genuinely
-/// differ), so it cannot pass by accident.
+/// The separator is the anti-diagonal matrix, whose mass sits entirely off the
+/// diagonal: the Pascal kernel can only ever pivot on a diagonal entry, so it
+/// reports a perfectly invertible matrix singular, while partial pivoting
+/// inverts it. Asserting on that value makes the "still parity in both lanes"
+/// claim behavioral rather than vacuous, and makes the eventual flip fail here
+/// first (where the reason is documented) instead of in the corpus gate.
 #[test]
-fn unflipped_aliases_still_select_the_parity_kernel_in_both_lanes() {
-    // Dense complex inverse: the anti-diagonal matrix separates the kernels
-    // (no-row-exchange GJ reports it singular, partial pivoting inverts it).
+fn invert_aliases_are_unflipped_in_both_lanes() {
     let mut m = anti_diagonal_2x2();
-    assert!(invert(&mut m).is_err());
+    assert!(invert_gj_no_exchange_impl(&mut m).is_err());
     let mut m = anti_diagonal_2x2();
     assert!(invert_partial_pivot_impl(&mut m).is_ok());
 
-    // Real inverse: same separator.
     let mut a = [0.0, 1.0, 1.0, 0.0];
-    assert!(etk_invert(&mut a, 2).is_err());
+    assert!(etk_invert_gj_no_exchange_impl(&mut a, 2).is_err());
     let mut a = [0.0, 1.0, 1.0, 0.0];
     assert!(etk_invert_partial_pivot_impl(&mut a, 2).is_ok());
+
+    // …and both aliases still resolve to the parity kernel, in either lane.
+    let mut m = anti_diagonal_2x2();
+    assert!(invert(&mut m).is_err());
+    let mut a = [0.0, 1.0, 1.0, 0.0];
+    assert!(etk_invert(&mut a, 2).is_err());
 }
 
 /// The **no-split** row (F.3e): `cdiv` is one shared kernel, so it must resolve
