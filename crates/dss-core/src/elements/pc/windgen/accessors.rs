@@ -468,38 +468,39 @@ impl DssObject for WindGen {
     /// Resolve a shape / curve / dynamic-equation reference (snapshot-clone).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|o| o.id());
+        let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
+        let xy_curve_ref = || resolved.and_then(|o| o.idx::<XyCurveObj>());
         let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         let xy_curve = || resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             YEARLY => {
                 self.yearly_shape = name;
-                self.yearly_shape_ref = elem_ref;
+                self.yearly_shape_ref = load_shape_ref();
                 self.yearly_shape_obj = load_shape();
             }
             DAILY => {
                 self.daily_shape = name;
-                self.daily_shape_ref = elem_ref;
+                self.daily_shape_ref = load_shape_ref();
                 self.daily_shape_obj = load_shape();
             }
             DUTY => {
                 self.duty_shape = name;
-                self.duty_shape_ref = elem_ref;
+                self.duty_shape_ref = load_shape_ref();
                 self.duty_shape_obj = load_shape();
             }
             DYNAMICEQ => {
                 self.dyneq.dynamic_eq = name;
-                self.dyneq.dynamic_eq_ref = elem_ref;
+                self.dyneq.dynamic_eq_ref = resolved.and_then(|o| o.idx::<DynamicExpObj>());
                 self.dyneq.dynamic_eq_obj = resolved.and_then(|o| o.cloned::<DynamicExpObj>());
             }
             VV_CURVE => {
                 self.vv_curve = name;
-                self.vv_curve_ref = elem_ref;
+                self.vv_curve_ref = xy_curve_ref();
                 self.vv_curve_obj = xy_curve();
             }
             PLOSS => {
                 self.loss_curve = name;
-                self.loss_curve_ref = elem_ref;
+                self.loss_curve_ref = xy_curve_ref();
                 self.loss_curve_obj = xy_curve();
             }
             _ => unreachable!("WindGen has no resolved object-ref property {idx}"),

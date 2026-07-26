@@ -591,13 +591,13 @@ impl DssObject for Transformer {
             .collect()
     }
 
-    /// `xfmrcode=`: store the resolved code's name + ElemId and copy its data
+    /// `xfmrcode=`: store the resolved code's name + typed handle and copy its data
     /// immediately (Pascal `FetchXfmrCode`).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             prop::XFMRCODE => {
                 self.xfmr_code_name = name;
-                self.xfmr_code_ref = resolved.map(|o| o.id());
+                self.xfmr_code_ref = resolved.and_then(|o| o.idx::<XfmrCodeObj>());
                 if let Some(o) = resolved
                     && let Some(code) = o.get::<XfmrCodeObj>()
                 {

@@ -571,54 +571,57 @@ impl DssObject for PVSystem {
     /// the WP4.2/WP5.3 `FetchLineCode` pattern).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|o| o.id());
+        let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
+        let t_shape_ref = || resolved.and_then(|o| o.idx::<TShapeObj>());
+        let xy_curve_ref = || resolved.and_then(|o| o.idx::<XyCurveObj>());
         let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         let t_shape = || resolved.and_then(|o| o.cloned::<TShapeObj>());
         let xy_curve = || resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             YEARLY => {
                 self.base.yearly_shape = name;
-                self.base.yearly_shape_ref = elem_ref;
+                self.base.yearly_shape_ref = load_shape_ref();
                 self.base.yearly_shape_obj = load_shape();
             }
             DAILY => {
                 self.base.daily_shape = name;
-                self.base.daily_shape_ref = elem_ref;
+                self.base.daily_shape_ref = load_shape_ref();
                 self.base.daily_shape_obj = load_shape();
             }
             DUTY => {
                 self.base.duty_shape = name;
-                self.base.duty_shape_ref = elem_ref;
+                self.base.duty_shape_ref = load_shape_ref();
                 self.base.duty_shape_obj = load_shape();
             }
             TYEARLY => {
                 self.yearly_t_shape = name;
-                self.yearly_t_shape_ref = elem_ref;
+                self.yearly_t_shape_ref = t_shape_ref();
                 self.yearly_t_shape_obj = t_shape();
             }
             TDAILY => {
                 self.daily_t_shape = name;
-                self.daily_t_shape_ref = elem_ref;
+                self.daily_t_shape_ref = t_shape_ref();
                 self.daily_t_shape_obj = t_shape();
             }
             TDUTY => {
                 self.duty_t_shape = name;
-                self.duty_t_shape_ref = elem_ref;
+                self.duty_t_shape_ref = t_shape_ref();
                 self.duty_t_shape_obj = t_shape();
             }
             EFF_CURVE => {
                 self.base.inverter_curve = name;
-                self.base.inverter_curve_ref = elem_ref;
+                self.base.inverter_curve_ref = xy_curve_ref();
                 self.base.inverter_curve_obj = xy_curve();
             }
             P_T_CURVE => {
                 self.power_temp_curve = name;
-                self.power_temp_curve_ref = elem_ref;
+                self.power_temp_curve_ref = xy_curve_ref();
                 self.power_temp_curve_obj = xy_curve();
             }
             DYNAMIC_EQ => {
                 self.base.dyneq.dynamic_eq = name;
-                self.base.dyneq.dynamic_eq_ref = elem_ref;
+                self.base.dyneq.dynamic_eq_ref = resolved
+                    .and_then(|o| o.idx::<crate::elements::general::dynamic_exp::DynamicExpObj>());
                 self.base.dyneq.dynamic_eq_obj = resolved.and_then(|o| {
                     o.cloned::<crate::elements::general::dynamic_exp::DynamicExpObj>()
                 });

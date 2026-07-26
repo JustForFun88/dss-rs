@@ -659,33 +659,33 @@ impl DssObject for Storage {
     /// the WP4.2/WP5.3 `FetchLineCode` pattern).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|o| o.id());
+        let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
         let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         let xy_curve = || resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             EFF_CURVE => {
                 self.base.inverter_curve = name;
-                self.base.inverter_curve_ref = elem_ref;
+                self.base.inverter_curve_ref = resolved.and_then(|o| o.idx::<XyCurveObj>());
                 self.base.inverter_curve_obj = xy_curve();
             }
             YEARLY => {
                 self.base.yearly_shape = name;
-                self.base.yearly_shape_ref = elem_ref;
+                self.base.yearly_shape_ref = load_shape_ref();
                 self.base.yearly_shape_obj = load_shape();
             }
             DAILY => {
                 self.base.daily_shape = name;
-                self.base.daily_shape_ref = elem_ref;
+                self.base.daily_shape_ref = load_shape_ref();
                 self.base.daily_shape_obj = load_shape();
             }
             DUTY => {
                 self.base.duty_shape = name;
-                self.base.duty_shape_ref = elem_ref;
+                self.base.duty_shape_ref = load_shape_ref();
                 self.base.duty_shape_obj = load_shape();
             }
             DYNAMIC_EQ => {
                 self.base.dyneq.dynamic_eq = name;
-                self.base.dyneq.dynamic_eq_ref = elem_ref;
+                self.base.dyneq.dynamic_eq_ref = resolved.and_then(|o| o.idx::<DynamicExpObj>());
                 self.base.dyneq.dynamic_eq_obj = resolved.and_then(|o| o.cloned::<DynamicExpObj>());
             }
             _ => unreachable!("Storage has no resolved object-ref property {idx}"),

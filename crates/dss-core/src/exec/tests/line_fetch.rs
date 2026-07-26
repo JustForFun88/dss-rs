@@ -259,6 +259,148 @@ fn load_and_vsource_resolve_shape_refs() {
     );
 }
 
+/// DE_PASCALIZE R3.1 (iv): the statically-classed object-ref fields keep a typed
+/// `Idx<T>`, not a class-erased `ElemId`. Two things need pinning:
+///
+/// 1. the narrowing on the write side is **total** — every one of these
+///    properties declares its target class (`object_ref_class`), so a resolved
+///    reference is never a foreign class and `Idx<T>` is `Some` exactly where
+///    `ElemId` used to be (the field would silently go `None` otherwise);
+/// 2. the handle still names the right arena slot — `ClassArena::get::<T>` on
+///    the target class's own arena yields the object the deck named.
+#[test]
+fn typed_object_ref_handles_dereference_to_the_named_object() {
+    use crate::elements::general::growth_shape::GrowthShapeObj;
+    use crate::elements::general::line_code::LineCodeObj;
+    use crate::elements::general::load_shape::LoadShapeObj;
+    use crate::elements::general::temp_shape::TShapeObj;
+    use crate::elements::general::xfmr_code::XfmrCodeObj;
+    use crate::elements::general::xy_curve::XyCurveObj;
+    use crate::elements::pc::load::Load;
+    use crate::elements::pc::pvsystem::PVSystem;
+    use crate::elements::pd::line::Line;
+    use crate::elements::pd::transformer::Transformer;
+
+    let mut dss = Dss::new();
+    dss.command("New circuit.t basekv=12.47 bus1=src");
+    dss.command("New loadshape.d1 npts=2 interval=1 mult=(0.4 0.8)");
+    dss.command("New growthshape.g1 npts=2 year=(1 2) mult=(1.02 1.05)");
+    dss.command("New tshape.t1 npts=2 interval=1 temp=(25 30)");
+    dss.command("New xycurve.eff npts=2 xarray=[0.1 1.0] yarray=[0.9 0.97]");
+    dss.command("New linecode.mx nphases=3 r1=0.1 x1=0.2");
+    dss.command("New xfmrcode.xc phases=3 windings=2 xhl=6");
+    dss.command("New load.la bus1=src phases=3 kv=12.47 kw=100 pf=1 daily=d1 growth=g1");
+    dss.command("New line.l1 bus1=src bus2=b2 linecode=mx length=1");
+    dss.command(
+        "New transformer.t1 phases=3 windings=2 buses=[src, b3] \
+         kvs=[12.47, 4.16] kvas=[1000, 1000] xfmrcode=xc",
+    );
+    dss.command(
+        "New pvsystem.pv bus1=b2 phases=3 kv=12.47 kva=500 pmpp=500 \
+         irrad=0.8 temperature=25 pf=1 effcurve=eff tdaily=t1",
+    );
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Resolve `<class>.<name>` to `(class arena slot, object index)`.
+    let slot = |dss: &Dss, class: &str, name: &str| -> (usize, usize) {
+        let ci = dss.class_by_name[class];
+        (ci, dss.classes[ci].name_to_idx[name])
+    };
+    let (load_ci, load_oi) = slot(&dss, "load", "la");
+    let (line_ci, line_oi) = slot(&dss, "line", "l1");
+    let (xf_ci, xf_oi) = slot(&dss, "transformer", "t1");
+    let (pv_ci, pv_oi) = slot(&dss, "pvsystem", "pv");
+
+    // Every typed handle, paired with the arena it must be read through.
+    let load = dss.classes[load_ci].arena.get::<Load>(load_oi).unwrap();
+    let daily = load
+        .daily_shape_ref
+        .expect("daily= resolved → Idx<LoadShape>");
+    let growth = load
+        .growth_shape_ref
+        .expect("growth= resolved → Idx<GrowthShape>");
+    let code = dss.classes[line_ci]
+        .arena
+        .get::<Line>(line_oi)
+        .unwrap()
+        .line_code_ref
+        .expect("linecode= resolved → Idx<LineCode>");
+    let xfmr_code = dss.classes[xf_ci]
+        .arena
+        .get::<Transformer>(xf_oi)
+        .unwrap()
+        .xfmr_code_ref()
+        .expect("xfmrcode= resolved → Idx<XfmrCode>");
+    let pv = dss.classes[pv_ci].arena.get::<PVSystem>(pv_oi).unwrap();
+    let tdaily = pv
+        .daily_t_shape_ref
+        .expect("tdaily= resolved → Idx<TShape>");
+    let eff = pv
+        .base
+        .inverter_curve_ref
+        .expect("effcurve= resolved → Idx<XYcurve>");
+
+    let named = |dss: &Dss, class: &str, idx: usize| -> String {
+        dss.classes[dss.class_by_name[class]].arena[idx]
+            .data()
+            .name()
+            .to_string()
+    };
+    assert_eq!(
+        dss.classes[dss.class_by_name["loadshape"]]
+            .arena
+            .get::<LoadShapeObj>(daily.get())
+            .map(|s| s.data().name()),
+        Some("d1"),
+        "the typed LoadShape handle must read out of the LoadShape arena"
+    );
+    assert_eq!(named(&dss, "growthshape", growth.get()), "g1");
+    assert_eq!(named(&dss, "linecode", code.get()), "mx");
+    assert_eq!(named(&dss, "xfmrcode", xfmr_code.get()), "xc");
+    assert_eq!(named(&dss, "tshape", tdaily.get()), "t1");
+    assert_eq!(named(&dss, "xycurve", eff.get()), "eff");
+
+    // The concrete-typed reads agree with the name reads (and prove the target
+    // arenas really hold those classes).
+    assert!(
+        dss.classes[dss.class_by_name["growthshape"]]
+            .arena
+            .get::<GrowthShapeObj>(growth.get())
+            .is_some()
+            && dss.classes[dss.class_by_name["linecode"]]
+                .arena
+                .get::<LineCodeObj>(code.get())
+                .is_some()
+            && dss.classes[dss.class_by_name["xfmrcode"]]
+                .arena
+                .get::<XfmrCodeObj>(xfmr_code.get())
+                .is_some()
+            && dss.classes[dss.class_by_name["tshape"]]
+                .arena
+                .get::<TShapeObj>(tdaily.get())
+                .is_some()
+            && dss.classes[dss.class_by_name["xycurve"]]
+                .arena
+                .get::<XyCurveObj>(eff.get())
+                .is_some(),
+        "every typed handle must dereference in its own class arena"
+    );
+
+    // A miss leaves the handle `None` (the Pascal NIL reference), not a stale
+    // or foreign one.
+    dss.command("New load.lb bus1=src daily=nope");
+    let (lb_ci, lb_oi) = slot(&dss, "load", "lb");
+    assert!(
+        dss.classes[lb_ci]
+            .arena
+            .get::<Load>(lb_oi)
+            .unwrap()
+            .daily_shape_ref
+            .is_none(),
+        "an unresolved daily= must leave the typed handle None"
+    );
+}
+
 #[test]
 fn line_fetches_matrix_linecode() {
     let mut dss = Dss::new();

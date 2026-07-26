@@ -764,10 +764,19 @@ impl<'a> ResolvedObj<'a> {
         self.arena.try_ckt_elem(self.id.index())
     }
 
+    /// The typed handle narrowed to class `T`, or `None` if the reference names
+    /// another class — the storage-side companion of [`Self::get`] for the
+    /// statically-known object-ref fields (`linecode=` is always a `LineCode`,
+    /// `daily=` always a `LoadShape`, …), which keep an `Idx<T>` rather than the
+    /// class-erased [`ElemId`]. One [`ArenaClass::idx_of`] match arm; no `Any`.
+    pub fn idx<T: ArenaClass>(self) -> Option<Idx<T>> {
+        T::idx_of(self.id)
+    }
+
     /// The concrete `&T`, or `None` if the reference names another class —
     /// the typed replacement for the removed `Any` downcast to `&T`.
     pub fn get<T: ArenaClass>(self) -> Option<&'a T> {
-        let i = T::idx_of(self.id)?;
+        let i = self.idx::<T>()?;
         self.arena.get::<T>(i.get())
     }
 

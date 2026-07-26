@@ -7,6 +7,93 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE R3iv — the statically-classed object-ref fields are typed `Idx<T>`; R3.1 sub-step (iv) CLOSED (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, **type-channel only** — no arithmetic, no visit /
+registration / control-queue order, no list, no `find_*` tie-break touched. Zero
+golden / ledger / tolerance / corpus-deck churn; `TODO(compat)` still **117 / 68
+files**; no `#[cfg(feature = "oracle-parity")]`; no new `downcast`/`as_any` (the
+only two in the tree stay the pre-existing `catch_unwind` panic-payload reads in
+`tests/corpus_gate/runner.rs`, which are `Box<dyn Any>`, not elements).
+
+**What this closes.** R3.1's escaped sub-step (iv) — carried forward untouched
+through R3.2/R3.3/R3.4 and handed on by the R3 settler as "the one item the R3
+wave hands to its successor". Its blocker was explicitly the *read* side: an
+`Idx<T>` drops the class ordinal, so the fields could not be dereferenced until
+`ClassArena::get::<T>` existed. R3.3 landed that accessor, so (iv) is now a plain
+narrowing pass — exactly the "fold (iv) into R3 item 2" recommendation, executed
+one wave later.
+
+**The 34 fields, all `Option<ElemId>` → `Option<Idx<T>>`** (16 distinct names,
+14 classes): `*_shape_ref` → `LoadShapeObj` (Load ×4 incl. `cvr_`, Generator /
+WindGen / Vsource / Isource / IndMach012 / `InvBasedPceData` ×3 each — the last
+shared by PVSystem+Storage); `*_t_shape_ref` → `TShapeObj` (PVSystem ×3);
+`growth_shape_ref` → `GrowthShapeObj`; `inverter_curve_ref` /
+`power_temp_curve_ref` / `vv_curve_ref` / `loss_curve_ref` → `XyCurveObj`;
+`dynamic_eq_ref` (`DynEqPceData`, shared by Generator/WindGen/PVSystem/Storage)
+→ `DynamicExpObj`; `Line::line_code_ref` → `LineCodeObj`;
+`Transformer::xfmr_code_ref` (+ its `windings.rs` getter) → `XfmrCodeObj`;
+`GicSource::line_ref` → `Idx<Line>`. The task brief also listed the
+`line_geometry` geometry/spacing refs — those are **already** owned snapshots
+(`Option<LineGeometryObj>` / `Option<LineSpacingObj>`, converted by R3.4), so
+there was no `ElemId` left to retype; nothing to do and nothing skipped.
+
+**One new accessor, no new bridge.** `ResolvedObj::idx::<T>() -> Option<Idx<T>>`
+(`obj/arena.rs`) — a single `ArenaClass::idx_of` match arm, the storage-side
+companion of the existing `get`/`cloned`. `ResolvedObj::get` now routes through
+it, so the two cannot disagree. `Idx` is re-exported from `elements::traits`
+beside `ElemId`. No per-class `set_object_ref_typed` was added (the stopgap the
+escape protocol forbids): the shared `set_object_ref` signature is unchanged and
+each impl narrows inline.
+
+**Why the narrowing is total (the bit-neutrality argument).** The only writer is
+`obj/props/class_props/parse.rs`'s `PropType::ObjectRef` `Some(class)` arm, which
+resolves with `foreign.find(class, value)` for the property's **declared** class.
+Every one of these 34 fields is declared `PropDef::object_ref_class(...)` with a
+single class — verified by grep over all `object_ref_class` sites; the *only*
+two-class `object_ref_two_classes` proxy in the tree is RegControl's
+`transformer=` (`Transformer|AutoTrans`), which is not in this set. So a resolved
+reference is always of the target class and `idx_of` is `Some` exactly where
+`map(|o| o.id())` was `Some`; the `None` (miss / `ALLOW_NONE_REF`) path is
+byte-identical. The companion `_obj` snapshot beside each `_ref` was *already*
+narrowed by class (`o.cloned::<LoadShapeObj>()` etc.), so the pair is now
+consistent instead of theoretically divergent.
+
+**The three real readers, converted.** (1) `cim/power_xfmr.rs` case-2 XfmrCode
+UUID: the class ordinal now comes from `XfmrCodeObj::CLASS_ORD` instead of
+`cr.class_ord()` (the same number — the handle's class was already XfmrCode), and
+the surviving `get::<XfmrCodeObj>` is the arena **bounds** check it always
+effectively was. (2) `GicSource::recalc`'s deferred Line `Bus2` rewrite widens
+back with `Line::id(idx.get())` because `RefAction::SetElementBus` speaks the
+class-erased handle — same class, same index. (3) `exec/command.rs`'s
+`set_resolved_line` caller narrows at the `foreign.find("Line", …)` site, keeping
+the original `ckt()`-first order so the `line_missing` flag is set on exactly the
+same inputs. Everything else reading these fields is `.is_some()` (Line dump /
+CIM export / Line `spec_set` guards) or a `like=` field copy, all type-preserving.
+
+**New pin.** `exec/tests/line_fetch.rs::typed_object_ref_handles_dereference_to_
+the_named_object` — a deck with a LoadShape / GrowthShape / TShape / XYcurve /
+LineCode / XfmrCode and a Load, Line, Transformer and PVSystem referencing them,
+asserting (a) every typed handle is `Some` (the totality claim would fail loudly
+here if a narrowing ever missed) and (b) each dereferences **through its own
+class arena** (`ClassArena::get::<T>`) to the object the deck named, plus a
+control that an unresolved `daily=` still leaves `None`.
+
+**Gate:** `cargo fmt --all --check` · `cargo clippy --workspace --all-targets -D
+warnings` · `cargo test --workspace` — green, exit 0, **66 `test result: ok`
+groups, 2019 passed, 0 failed** (+1 over P3's 2018 = the new pin, which lands in
+the existing `dss-core` lib binary, so the group count is unchanged),
+`corpus_gate_all_cases_match_engines … ok` (both channels). `tests/corpus` left
+pristine (the 22 run-artifacts removed by exact name, no wide `git clean`).
+Ritual 0 held at start and before the commit: 186 `.pas`; `cargo` =
+`C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Fence respected.** `exec/report.rs`, `report/export/**` and the
+`solution/ncim.rs` cadence were not touched (the sibling `depas-og2` owns them);
+no enum retype rippled into them. Files this step touched that another worktree
+might also: none outside `crates/dss-core/src/{obj/arena.rs, elements/**,
+cim/power_xfmr.rs, exec/command.rs, exec/tests/line_fetch.rs}`.
+
 ### DE_PASCALIZE P3 — borrow hygiene: the clone-to-release-borrow swarm (branch `depas-p1p3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral: no arithmetic, no visit order, no registration order

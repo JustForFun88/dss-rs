@@ -640,27 +640,28 @@ impl DssObject for Generator {
     /// Resolve a shape reference (snapshot-clone like the Load shape refs).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|o| o.id());
+        let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
         let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         match idx {
             YEARLY => {
                 self.yearly_shape = name;
-                self.yearly_shape_ref = elem_ref;
+                self.yearly_shape_ref = load_shape_ref();
                 self.yearly_shape_obj = load_shape();
             }
             DAILY => {
                 self.daily_shape = name;
-                self.daily_shape_ref = elem_ref;
+                self.daily_shape_ref = load_shape_ref();
                 self.daily_shape_obj = load_shape();
             }
             DUTY => {
                 self.duty_shape = name;
-                self.duty_shape_ref = elem_ref;
+                self.duty_shape_ref = load_shape_ref();
                 self.duty_shape_obj = load_shape();
             }
             DYNAMICEQ => {
                 self.dyneq.dynamic_eq = name;
-                self.dyneq.dynamic_eq_ref = elem_ref;
+                self.dyneq.dynamic_eq_ref = resolved
+                    .and_then(|o| o.idx::<crate::elements::general::dynamic_exp::DynamicExpObj>());
                 self.dyneq.dynamic_eq_obj = resolved.and_then(|o| {
                     o.cloned::<crate::elements::general::dynamic_exp::DynamicExpObj>()
                 });

@@ -7,8 +7,10 @@ use num_complex::Complex64;
 use super::GicSource;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pd::line::Line;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
+use crate::obj::arena::ArenaClass;
 use crate::obj::base::RefAction;
 use crate::support::cmatrix::CMatrix;
 use crate::support::complexutil::pdeg_to_complex;
@@ -50,7 +52,10 @@ impl GicSource {
                 // its Bus2 side effect is a plain rename).
                 if let Some(target) = self.line_ref {
                     self.pending_actions.push(RefAction::SetElementBus {
-                        target,
+                        // The deferred action speaks the class-erased handle;
+                        // widen the typed `Idx<Line>` back through the Line
+                        // class's own `ArenaClass::id` (same class, same index).
+                        target: Line::id(target.get()),
                         terminal: 2,
                         bus: gic_bus,
                     });

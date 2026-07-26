@@ -25,8 +25,9 @@ mod tests;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
+use crate::elements::general::xfmr_code::XfmrCodeObj;
 use crate::elements::pd::winding::{TermRef, Winding};
-use crate::elements::traits::{ElemId, SysCtx};
+use crate::elements::traits::{Idx, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
@@ -318,7 +319,9 @@ pub struct Transformer {
     substation_name: String,
     xfmr_bank: String,
     xfmr_code_name: String,
-    xfmr_code_ref: Option<ElemId>,
+    /// The resolved `XfmrCode`'s stable arena handle (statically that class —
+    /// `xfmrcode=` is an `object_ref_class("XfmrCode", …)` property).
+    xfmr_code_ref: Option<Idx<XfmrCodeObj>>,
     core_type: CoreType,
     xhl: f64,
     xht: f64,
