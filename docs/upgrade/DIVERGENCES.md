@@ -1718,7 +1718,7 @@ change** (ledger L3). The port's monitor header is compared token-wise
 padding — a deliberate KEPT divergence vs the EPRI oddie binaries) **stays** — E1
 confirms keeping it, it is not retired.
 
-## NCIM PV→PQ Q-limit iteration count — SETTLED (WP-U1.7 cross-check, capi015 pinned; r4088 differs, report-only) → RE-GATED to r4133 (NCIM RE-GATE WP, 2026-07-20)
+## NCIM PV→PQ Q-limit iteration count — SETTLED (WP-U1.7 cross-check, capi015 pinned; r4088 differs, report-only) → RE-GATED to r4133 (NCIM RE-GATE WP, 2026-07-20) → **ADOPTED r4133 cadence (ORPHANED_GAPS §1.6, 2026-07-26)**
 
 **Observable.** The NCIM (`Set algorithm=NCIM`) iteration count to converge a deck
 that hits a generator Q-limit → PV→PQ conversion (`NCIM_UpdateGenQ` switching).
@@ -1808,6 +1808,101 @@ change. The `ncim-oppoint` ledger cause is rewritten to the resolved reality
 (documentary, referenced by no entry). The frozen goldens `tests/golden/ncim/`
 (capi015-captured solver internals) are UNREGENERABLE (retired venv) and untouched —
 they pin internals unaffected by the swing-report path.
+
+### UPDATE — the cadence itself is ADOPTED (ORPHANED_GAPS §1.6, 2026-07-26)
+
+**Decision: port r4133's PV↔PQ switching cadence; the capi015 r4103 cadence is
+retired.** The re-gate above flipped the *oracle*; this step flips the *code*.
+The report-only status ends here — there is no remaining capi015-vs-r4133 NCIM
+cadence divergence to report, because the port now implements r4133's.
+
+**Source evidence (r4133, the oracle-of-record).** NCIM lives inline in
+`Version8/Source/Common/Solution.pas` in the EPRI tree (there is no
+`NCIMSolutionHelper.pas` — that file is the retired capi015 refactor, so the
+earlier §1.6 "spec" pointer was wrong). `TSolutionObj.UpdateGenQ` (l.1993-2322)
+is written
+
+```
+if (pGen.GenModel = 3) then          // l.2059 — PV: Q update + PV→PQ demotion
+  … myPVOK … GenModel := 4 …         //          (l.2117-2163)
+else                                 // l.2166 — ELSE arm
+begin
+  if pGen.GenModel = 4 then          // l.2169 — PQ→PV promotion test
+    … myPQOK … GenModel := 3 …       //          (l.2226-2295)
+  for j := 1 to pGen.NPhases do …    // l.2301 — Iterminal for the other models
+end;
+```
+
+so the two conversion tests are **mutually exclusive within one Newton pass**: a
+generator demoted PV→PQ at l.2120 is not re-examined by the PQ→PV test until the
+*next* pass. r4088's `Solution.pas` is byte-identical here (diffed: the only
+r4088→r4133 delta in this routine is commented-out debug file I/O at l.2018-2031 /
+l.2109 / l.2318), which is exactly why r4088 and r4133 share the 4-iteration
+count. The port's ported form ran the PQ→PV block as an unconditional second
+`if`, so a just-demoted generator could be promoted straight back in the same
+pass — a PV↔PQ limit cycle around `|V| = VTarget`.
+
+**Live r4133 probe** (own `epri-worker` run, `Version 11.0.0.1 (64-bit build) -
+Charlottesville`, 2026-07-26; `Solution.Iterations`/`Converged`, `YNodeVarray`,
+`GeneratorsF(4)` = `Presentkvar`), against the port after the adoption:
+
+| deck | r4133 | port (before) | port (after) |
+|---|---|---|---|
+| `pq_circuit(1)` (PQ only) | True / 3 | True / 3 | True / 3 |
+| `pq_circuit(2)` (ConstZ) | True / 3 | True / 3 | True / 3 |
+| `pv_circuit(1.0)` (regulating) | True / 3 | True / 3 | True / 3 |
+| `pv_circuit(1.01)` (Q-limit → PQ) | True / **4** | True / 8 | True / **4** |
+| `pv_circuit(1.02)` (target unreachable) | True / **4** | **False** / 15 | True / **4** |
+| `IEEE118Bus/master_file.dss` | True / **9** cold, 2 warm | **False** / 100 | True / **9** cold, 2 warm |
+
+Converged node voltages are unchanged wherever both converged, and IEEE118Bus's
+converged point is *exactly* the voltage vector the port used to stall on
+(`89_CLINCHRV.1 = 80072.708834`, `1_RIVERSDE.1 = 76088.991977`,
+`4_NWCARLSL.1 = 79514.988474`) — the fixpoint was always right; only the
+convergence test never fired while the generators chattered.
+
+**Reported generator Q follows r4133 too.** After a PV→PQ conversion r4133
+reports `Generators.kvar = 0.0` (probe: `vpu=1.01` and `1.02` both), because
+`GetNCIMPowers` writes `Qnominalperphase := deltaQNom[j]` only on its model-3 arm
+(l.1308) — the last write is iteration 1's zero. The port matched the old capi015
+cadence's 1500 only because its generator was model-3 again on the final pass;
+with the r4133 cadence it reports 0.0 like r4133, while the terminal powers still
+carry the real clamp (−266.667 kW, −500 kvar per conductor, both engines).
+
+**`PV2PQList` is deliberately NOT ported.** r4133 tracks converted generators in
+`PV2PQList` (l.346, appended l.1938/2158, removed l.2260-2291; cleared at
+construction l.645 and on the `InitGenQ` pass l.1119). It has no effect on the
+solve: its only live consumer is `Show PV2PQGen` (`ShowResults.pas` l.3617,
+routed as Show verb 35 at `ShowOptions.pas:388`), and `ReversePQ2PV` (l.1743) +
+`DistGenClusters` (l.1687) are **dead code** in r4133 (declared, defined, never
+called — grepped). The port's per-generator `Generator.ncim_expv` flag is the
+equivalent and already drives its `Show PV2PQ_Conversions`; it is mutated at the
+same **three** sites — the `GetNumGenerators` zero-Q-limit demotion (l.1938 ↔
+`ncim.rs` `ncim_get_num_generators`), the `UpdateGenQ` PV→PQ conversion (l.2158 ↔
+`ncim_update_gen_q`), and the PQ→PV reversal (l.2260-2291 ↔ the same fn's clear).
+
+*Settler fix (2026-07-26).* The first of those three did not match: r4133 gates
+the append on `if InitQ then` (l.1936-1939) while the port set `ncim_expv`
+unconditionally, so a *warm* NCIM re-solve of a generator edited back to
+`model=3` with `kvarmax=kvarmin=0` listed a generator in `Show
+PV2PQ_Conversions` that r4133's `Show PV2PQGen` would not. Report-only (the
+demotion to model 4 itself is unconditional in both), unreachable from the
+solver's own state (the PQ→PV promotion at l.2216 requires nonzero limits, so it
+can never re-create the zero-limit model-3 shape), and not probeable through the
+DLL bridge — `Show` is the only consumer and it is a file+editor path — so this
+one is settled on the r4133 source lines alone. Port now gates on `init_q`. The
+same pass dropped a retired-capi015 leftover in the `Add2Limits` `else`
+(`GenModel = 3 and NCIM_ExPV`, unreachable inside that arm; r4133 l.1972-1973 is
+plain `Add2Limits := pGen.GenModel = 4`).
+
+**Gate consequence.** `IEEE118Bus/master_file.dss` is promoted out of
+`skipped_needs_investigation.json` (tag `ncim_pv_pq_switching_divergence`) into
+`solvable_now.json` with `engines:"r4133"`, no ledger entry, no tolerance change;
+the 4 existing NCIM cases keep their exact iteration counts and stay green. The
+frozen capi015 goldens `tests/golden/ncim/` still pass **unchanged** (both decks:
+Jacobian nnz + values, deltaF/deltaZ shape, and the byte-exact PV2PQ list) — the
+cadence changes how the fixpoint is reached, not the converged Jacobian or which
+generator ends up converted.
 
 ---
 

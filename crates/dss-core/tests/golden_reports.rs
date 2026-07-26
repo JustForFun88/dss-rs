@@ -3823,6 +3823,119 @@ fn export_overloads_unbal_matches_oracle() {
     run_deck_export("export_overloads_unbal", &overloads_policy());
 }
 
+/// `Export Estimation` (Pascal `ExportResults.pas:1652` `ExportEstimation`,
+/// export verb 5; ORPHANED_GAPS §1.10). The two-section report layout: the
+/// `"Energy Meters"` block (header lines 1-2, compared verbatim) then — as data
+/// rows, since blank lines are dropped — the `"Sensors"` label, its own column
+/// header, and one row per enabled Sensor. `sep: ','`, `rel/abs = 0.0`: every
+/// number is a `%.6g` render of a quantity the allocation gate already pins to
+/// ~1e-8, so the six significant digits are byte-identical.
+fn estimation_policy() -> ExportPolicy {
+    ExportPolicy {
+        sep: ',',
+        header_lines: 2, // `"Energy Meters"` + the meter column header
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    }
+}
+
+/// `Export Estimation` on the allocated fixture (`est8`): two EnergyMeters at
+/// two feeder heads — a 3-phase one with unequal `peakcurrent=` targets and a
+/// **1-phase** one whose `TempX[2..3]` slots must print `0` — plus three
+/// Sensors covering all three spec forms (current, P/Q, voltage+current) and a
+/// disabled fourth that must not appear. `allocateloads` fills
+/// `CalculatedCurrent`, so the `I… Calc` and `%Err` triplets are live values
+/// (17-57 % errors, no cancellation floor). Feature-sensitive: dropping the
+/// `Enabled` filter adds an `S4` row; zeroing the wrong `TempX` slots or
+/// re-zeroing before the percent-error pass changes M2/S3's trailing columns;
+/// the sensor `%Err` columns pin the `Max(0.001, target)` denominator clamp.
+#[test]
+fn export_estimation_matches_oracle() {
+    run_deck_export("export_estimation", &estimation_policy());
+}
+
+/// `Export Estimation` **without** `allocateloads` (`estns`): nonzero targets
+/// against an all-zero `CalculatedCurrent`/`CalculatedVoltage`, so every `%Err`
+/// takes the `(1 - 0/target)*100 = 100` form and the WLS residuals collapse to
+/// the pure `-Weight * sum(target^2)` term (`-155.52` / `-1460`). Pins the
+/// report as a *read* of stored sensor state — a version that recomputed the
+/// currents itself would report nonzero `Calc` columns here.
+///
+/// Also the **meter-side** `Enabled` filter: the deck carries a disabled
+/// EnergyMeter `mdis` on its own feeder head, which the oracle lists in
+/// `Meters.AllNames` but omits from the report (probed on the pinned 0.14.5
+/// engine). Dropping the port's `if !em.med.cd.enabled { continue }` adds an
+/// `"Energymeter.MDIS"` row → row-count failure. (est8 cannot carry one: the
+/// 0.14.5 `allocateloads` access-violates on a disabled meter, DIVERGENCES §D9.)
+#[test]
+fn export_estimation_noalloc_matches_oracle() {
+    run_deck_export("export_estimation_noalloc", &estimation_policy());
+}
+
+/// `compare_export` runs on `report_lines()`, which **drops blank lines**, so the
+/// three goldens above pin every number, row and field but not the `FSWriteln(F)`
+/// separator Pascal writes between the "Energy Meters" and "Sensors" blocks
+/// (`ExportResults.pas:1711`, r4133 `:1652`). This test closes that hole: replay
+/// each estimation deck and require the produced file's blank-line positions and
+/// total line count to match the captured oracle file exactly (audit-code D).
+#[test]
+fn export_estimation_blank_line_layout_matches_oracle() {
+    for stem in [
+        "export_estimation",
+        "export_estimation_noalloc",
+        "export_estimation_empty",
+    ] {
+        let dir = reports_dir();
+        let meta: DeckMeta = {
+            let p = dir.join(format!("{stem}.meta.json"));
+            let text =
+                std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+        };
+        let oracle = {
+            let p = dir.join(format!("{stem}.txt"));
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+        };
+
+        let scratch = scratch_dir(&format!("{stem}_layout"));
+        let mut dss = Dss::new();
+        dss.command("clear");
+        for c in &meta.deck {
+            dss.command(c);
+        }
+        dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+        dss.command(&format!("export {}", meta.report));
+        assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+        let rust = std::fs::read_to_string(dss.last_result_file())
+            .unwrap_or_else(|e| panic!("read produced {}: {e}", dss.last_result_file()));
+
+        // Structure only: which lines are blank, and how many lines there are.
+        let shape = |s: &str| -> Vec<bool> {
+            s.replace("\r\n", "\n")
+                .trim_end_matches('\n')
+                .split('\n')
+                .map(|l| l.trim().is_empty())
+                .collect()
+        };
+        assert_eq!(
+            shape(&rust),
+            shape(&oracle),
+            "{stem}: blank-line layout differs from the oracle"
+        );
+        std::fs::remove_dir_all(&scratch).ok();
+    }
+}
+
+/// `Export Estimation` with no EnergyMeters and no Sensors (`estem`): both
+/// section headers, both bodies empty. Pins the unconditional header emission
+/// (Pascal writes them before either list walk).
+#[test]
+fn export_estimation_empty_matches_oracle() {
+    run_deck_export("export_estimation_empty", &estimation_policy());
+}
+
 /// WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): seasonal ratings, gated on
 /// **capi015** (`.meta.json` `"oracle": "capi015"`). Three overloaded PDElements
 /// — an overhead Line, a Transformer, and a CN cable Line — each with

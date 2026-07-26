@@ -6,8 +6,9 @@
 //! scheduler (via a persistent [`Channel`]) and passed in, instead of being
 //! spawned inside.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use dss_core::exec::Dss;
 use serde_json::json;
@@ -30,11 +31,38 @@ use crate::manifest::{EngineChannel, SolvableCase};
 /// server's `_RESTORE_MAX`.
 const RESTORE_MAX: u64 = 2 * 1024 * 1024;
 
-pub(crate) struct CorpusGuard {
-    dir: PathBuf,
+/// One directory's pristine snapshot, shared by every guard currently active on
+/// that directory.
+struct Snapshot {
     names: BTreeSet<String>,
     buf: BTreeMap<String, Vec<u8>>,
     snapshot_ok: bool,
+}
+
+/// Live guards per case directory: `dir -> (pristine snapshot, refcount)`.
+///
+/// The corpus puts many decks in one folder (`Test/AutoTrans`,
+/// `StorageControllerTechNote/Support`, …), and the scheduler runs cases in
+/// parallel, so two guards on the *same* directory overlap. With a per-guard
+/// snapshot that silently defeats the sweep: guard A snapshots a clean dir, A's
+/// engine writes `X`, guard B then snapshots and sees `X` as pre-existing, A
+/// drops and sweeps `X`, B's engine rewrites `X`, and B's drop keeps it — the
+/// vendored corpus ends the run polluted (reproduced on two full
+/// `cargo test --workspace` runs, a different file set each time).
+///
+/// Sharing one snapshot per directory and sweeping only when the **last** guard
+/// leaves removes the interleaving: the names set is always the pristine one,
+/// and exactly one sweep runs, after every writer is done.
+type DirRegistry = Mutex<HashMap<PathBuf, (Arc<Snapshot>, usize)>>;
+
+fn dir_registry() -> &'static DirRegistry {
+    static REG: OnceLock<DirRegistry> = OnceLock::new();
+    REG.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub(crate) struct CorpusGuard {
+    dir: PathBuf,
+    snap: Arc<Snapshot>,
 }
 
 impl CorpusGuard {
@@ -77,15 +105,29 @@ impl CorpusGuard {
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
-        let mut names = BTreeSet::new();
-        let mut buf = BTreeMap::new();
-        let snapshot_ok = Self::snapshot(&dir, "", &mut names, &mut buf);
-        Self {
-            dir,
-            names,
-            buf,
-            snapshot_ok,
-        }
+        let mut reg = dir_registry().lock().unwrap_or_else(|e| e.into_inner());
+        let snap = match reg.get_mut(&dir) {
+            // Another case in this folder is already running: reuse its pristine
+            // snapshot rather than photographing that run's output as "vendored".
+            Some((snap, refs)) => {
+                *refs += 1;
+                Arc::clone(snap)
+            }
+            None => {
+                let mut names = BTreeSet::new();
+                let mut buf = BTreeMap::new();
+                let snapshot_ok = Self::snapshot(&dir, "", &mut names, &mut buf);
+                let snap = Arc::new(Snapshot {
+                    names,
+                    buf,
+                    snapshot_ok,
+                });
+                reg.insert(dir.clone(), (Arc::clone(&snap), 1));
+                snap
+            }
+        };
+        drop(reg);
+        Self { dir, snap }
     }
 
     fn sweep_created(&self, dir: &Path, prefix: &str) {
@@ -100,7 +142,7 @@ impl CorpusGuard {
                 format!("{prefix}/{name}")
             };
             let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-            if self.names.contains(&rel) {
+            if self.snap.names.contains(&rel) {
                 if is_dir {
                     self.sweep_created(&entry.path(), &rel);
                 }
@@ -117,11 +159,25 @@ impl CorpusGuard {
 
 impl Drop for CorpusGuard {
     fn drop(&mut self) {
-        if !self.snapshot_ok {
+        // Only the last guard on this directory restores it — an earlier sweep
+        // would race a sibling case that is still writing into the same folder.
+        {
+            let mut reg = dir_registry().lock().unwrap_or_else(|e| e.into_inner());
+            match reg.get_mut(&self.dir) {
+                Some((_, refs)) if *refs > 1 => {
+                    *refs -= 1;
+                    return;
+                }
+                _ => {
+                    reg.remove(&self.dir);
+                }
+            }
+        }
+        if !self.snap.snapshot_ok {
             return;
         }
         self.sweep_created(&self.dir.clone(), "");
-        for (name, data) in &self.buf {
+        for (name, data) in &self.snap.buf {
             let p = self.dir.join(name);
             match std::fs::read(&p) {
                 Ok(cur) if cur == *data => {}
@@ -167,6 +223,41 @@ fn corpus_guard_restores_case_dir_recursively() {
         !root.join("ckt_di").exists(),
         "run-created dir tree removed"
     );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// Two cases in the **same** deck folder run concurrently (the corpus puts many
+/// decks in one directory), so their guards overlap. The interleaving that used
+/// to leak: A snapshots clean → A writes → B snapshots (sees A's output) → A
+/// drops and sweeps → B writes again → B drops and *keeps* it. With the shared
+/// per-directory snapshot the second guard reuses the pristine names and the
+/// sweep runs once, when the last guard leaves.
+#[test]
+fn corpus_guard_overlapping_guards_still_sweep() {
+    let root = std::env::temp_dir().join(format!("dss_guard_overlap_{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(&root).unwrap();
+    let case_a = root.join("a.dss");
+    let case_b = root.join("b.dss");
+    std::fs::write(&case_a, b"! deck a").unwrap();
+    std::fs::write(&case_b, b"! deck b").unwrap();
+
+    let out = root.join("a_EXP_VOLTAGES.csv");
+    {
+        let ga = CorpusGuard::new(&case_a.to_string_lossy());
+        std::fs::write(&out, b"run a output").unwrap();
+        // B starts while A's output is on disk — must NOT adopt it as vendored.
+        let gb = CorpusGuard::new(&case_b.to_string_lossy());
+        drop(ga);
+        assert!(
+            out.exists(),
+            "the first guard must not sweep while a sibling case is still running"
+        );
+        std::fs::write(&out, b"run b output").unwrap();
+        drop(gb);
+    }
+    assert!(!out.exists(), "the last guard out must sweep the leftovers");
+    assert!(case_a.is_file() && case_b.is_file(), "decks must survive");
     std::fs::remove_dir_all(&root).ok();
 }
 
