@@ -128,6 +128,33 @@ fn run_deck(stem: &str) {
     }
 }
 
+/// Fixture-intent guard. The byte comparison alone cannot tell a fixture that
+/// pins the property under test from one that silently stopped rendering it
+/// (both engines would just agree on the shorter output). So assert that the
+/// recorded ORACLE bytes really contain the keys/values the deck was added for,
+/// and never contain the ones its metadata is supposed to suppress.
+fn assert_fixture_pins(stem: &str, required: &[&str], forbidden: &[&str]) {
+    let path = json_dir().join(format!("{stem}.json"));
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let golden: DeckGolden =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
+    for needle in required {
+        assert!(
+            golden.captures.iter().any(|c| c.expected.contains(needle)),
+            "{stem}: no oracle capture contains {needle:?} — the fixture no longer \
+             pins what it was added for"
+        );
+    }
+    for needle in forbidden {
+        assert!(
+            !golden.captures.iter().any(|c| c.expected.contains(needle)),
+            "{stem}: an oracle capture contains {needle:?}, which this fixture \
+             asserts is never rendered"
+        );
+    }
+}
+
 #[test]
 fn json_load_micro() {
     run_deck("load_micro");
@@ -158,9 +185,98 @@ fn json_transformer_solved() {
     run_deck("transformer_solved");
 }
 
+/// AutoTrans's own copy of the array-alternative JSON metadata
+/// (`AutoTrans.pas:439-557`): the DEFAULT sweep must render the per-winding
+/// arrays under the SINGULAR keys. Losing `array_alternative`/`REDUNDANT` would
+/// flip them to `Buses/Conns/kVs/kVAs` — pinned negatively below, because the
+/// plural keys are legitimately present in the deck's Full captures.
+#[test]
+fn json_autotrans_micro() {
+    assert_fixture_pins(
+        "autotrans_micro",
+        &[
+            r#""Bus":["sourcebus","low","tert"]"#,
+            r#""Conn":["series","wye","delta"]"#,
+            r#""kV":[3.4500000000000000E+002"#,
+            r#""kVA":[3.3000000000000000E+005"#,
+            r#""pctR":[4.9299999999999997E-002"#,
+            // The four `ON_ARRAY` scalars with no plural alternative.
+            r#""RDCOhms":[1.1000000000000000E-001"#,
+            r#""MaxTap":[1.1000000000000001E+000"#,
+            r#""MinTap":[9.0000000000000002E-001"#,
+            r#""NumTaps":[32,16,8]"#,
+        ],
+        &[],
+    );
+    run_deck("autotrans_micro");
+}
+
+/// AutoTrans `WdgCurrents` post-solve. `transformer_solved` proves the shared
+/// JSON Vterminal-refresh route, but the auto has its OWN series/common/delta
+/// getter (`TAutoTransObj.GetAllWindingCurrents`); every earlier AutoTrans
+/// capture was pre-solve all-zeros and so could not catch a broken getter.
+#[test]
+fn json_autotrans_solved() {
+    assert_fixture_pins(
+        "autotrans_solved",
+        &[r#""WdgCurrents":"549.4296, (-31.051), 513.7564, (146.64), 781.8308, (159.34),"#],
+        // A dropped refresh (or a getter reading a zeroed Vterminal) renders the
+        // all-zero phasor list; it must not appear anywhere in this fixture.
+        &["\"WdgCurrents\":\"0, (0), 0, (0)"],
+    );
+    run_deck("autotrans_solved");
+}
+
+/// Generator/PVSystem/Storage user-model string properties under Full mode.
+/// They were skipped from the Full sweep while they carried `NOT_PORTED`;
+/// WASM_USERMODELS WM.3/WM.4 made them real properties, so the Full render must
+/// now emit them as the oracle's empty strings.
+#[test]
+fn json_der_usermodel_full() {
+    assert_fixture_pins(
+        "der_usermodel_full",
+        &[
+            r#""UserModel":"","UserData":"","ShaftModel":"","ShaftData":"""#,
+            r#""DynaDLL":"","DynaData":"""#,
+            // The LowercaseKeys rendering of the same properties (FullNames
+            // rewrites object *references*, not property keys, so it leaves
+            // these untouched).
+            r#""usermodel":"","userdata":"","shaftmodel":"","shaftdata":"""#,
+            // FullNames on a deferred-resolution object ref: Pascal prefixes the
+            // resolving class (`PropertyOffset2 = SpectrumClass`), and the
+            // stored name is lowercased even though the object is `MyCustom`.
+            r#""Spectrum":"Spectrum.mycustom""#,
+            r#""Spectrum":"mycustom""#,
+        ],
+        &[],
+    );
+    run_deck("der_usermodel_full");
+}
+
 #[test]
 fn json_dyneq_micro() {
     run_deck("dyneq_micro");
+}
+
+/// The `TDynEqPCE` "DynInit" tail under FULL mode. `dyneq_micro` is `skip_full`
+/// (it predates the ShaftModel/ShaftData Full-render fix), so the tail was only
+/// ever gated in the default sweep.
+#[test]
+fn json_dyneq_full() {
+    assert_fixture_pins(
+        "dyneq_full",
+        &[
+            // The literal `"DynInit"` key survives LowercaseKeys, and `damp` is
+            // last (the second write moved it past the once-assigned variables)
+            // with the RPN string value from the rewrite.
+            r#""DynInit":{"#,
+            r#""damp":"1 2 +"}"#,
+            r#""speed":0.0000000000000000E+000"#,
+            r#""pshaft":"P0""#,
+        ],
+        &[],
+    );
+    run_deck("dyneq_full");
 }
 
 #[test]

@@ -293,8 +293,16 @@ impl ClassProps {
     /// so it is returned as-is; otherwise the resolving class name is prefixed.
     fn object_full_name(&self, pd: &crate::obj::props::PropDef, name: &str) -> String {
         match pd.object_class {
-            Some("") | None => name.to_string(),
+            Some("") => name.to_string(),
             Some(cls) => format!("{cls}.{name}"),
+            // A reference the port resolves outside the property machinery
+            // (`Spectrum=`) keeps its Pascal `PropertyOffset2` class in
+            // `json_ref_class`; without it the FullNames sweep would render a
+            // bare `defaultgen` where the oracle renders `Spectrum.defaultgen`.
+            None => match pd.json_ref_class {
+                Some(cls) => format!("{cls}.{name}"),
+                None => name.to_string(),
+            },
         }
     }
 }

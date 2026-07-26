@@ -83,7 +83,10 @@ impl Transformer {
                 w.rdcpu = w.rdcohms / (w.vbase * w.vbase / vabase);
             } else {
                 w.rdcpu = (0.85 * w.rpu).abs();
-                w.rdcohms = w.rdcpu * w.vbase * w.vbase / vabase;
+                // Pascal `Rdcpu * SQR(VBase) / VABase` (Transformer.pas:1008):
+                // `SQR` binds first, so the square is formed BEFORE the multiply
+                // (same one-ULP reassociation trap as AutoTrans.pas:1021).
+                w.rdcohms = w.rdcpu * (w.vbase * w.vbase) / vabase;
             }
         }
 
