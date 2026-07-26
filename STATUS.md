@@ -7,6 +7,55 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3b — the single-point stddev row: the first *deliberate divergence* goes live (branch `depas-stagef`, 2026-07-26)
+
+Second kernel family of F.3, and the first row where the two lanes now print
+**different numbers**: `compat::stddev_single_point`'s default arm selects
+`stddev_single_point_zero_impl`. `TODO(compat)` **99 → 94**.
+
+**What upstream does and why we stop doing it.** Pascal's four
+`mathutil` mean/std-dev entry points (`RCDMeanAndStdDev`,
+`…Single`, `CurveMeanAndStdDev`, `…Single`) special-case a one-element sample by
+assigning `Mean` and *never clearing* `StdDev`, so the reported "standard
+deviation" of a single point is the point itself. A one-element sample has no
+spread; the default lane returns `0.0`. The parity lane keeps the quirk.
+
+**Observable, and pinned by expected values in both lanes.** `npts=1` shapes
+are real corpus input (`epri_dpv/{J1,K1,M1}`), and the value surfaces as the
+`LoadShape`/`TShape`/`PriceShape` `stddev` property (and through it in
+`Dump`/`Save`/AltDSS-JSON `Set %stddev=`). Three tests, no tolerances anywhere:
+`mathutil::tests::single_point_std_dev_is_the_lane_kernel` (all four entry
+points, literal `3.5` vs `0.0`, plus a non-vacuity assertion that the two impls
+disagree), `load_shape::tests::single_point_shape_stddev_property_is_the_lane_kernel`
+(deck-level: `New LoadShape.one npts=1 mult=(0.4)` → `? …stddev` prints `0.4` in
+the parity lane, `0` in the default lane, while `mean` is `0.4` in both so a
+broken accessor cannot fake either result), and the alias-level
+`compat::tests::stddev_alias_is_the_lane_kernel`.
+
+**No golden or corpus case moved** — verified by running, not assumed: every
+shape any committed golden or gated corpus case computes a std-dev for has ≥2
+points (the `default` daily shape has 24), so both lanes stay byte-identical on
+the whole existing gate. The F.1 staging test `f1_staging_…` is split into
+`unflipped_aliases_still_select_the_parity_kernel_in_both_lanes` (cdiv /
+invert / etk_invert — still parity in both lanes) and the per-lane stddev test
+above, so the "which aliases are flipped" claim stays asserted rather than
+narrated.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and with `--features
+dss-core/oracle-parity`; `cargo test --workspace` and the same with the feature
+— **2228 passed / 0 failed / 5 ignored in each**, including the unconditional
+corpus gate. `git diff -- tests/` empty; `git status --short tests/corpus`
+empty after the run. Tests +3 (2225 → 2228), 0 removed, 0 new `#[ignore]`.
+
+**Process note (worth keeping).** An earlier attempt showed 9 corpus cases
+failing with the *oracle* worker's "cannot access the file because it is being
+used by another process" on ckt24's `REG_subxfmr_regulator.csv` — caused by
+**two gate runs overlapping in this worktree** (a second run started while the
+first was still in its parity lane), not by any code change. The gated corpus
+decks are shared mutable state: one gate at a time per worktree. The stray
+artifacts were deleted by exact name.
+
 ### DE_PASCALIZE Stage F.3a — first kernel flip: the FPC `Round` row (branch `depas-stagef`, 2026-07-26)
 
 F.3 runs one kernel family per commit. This is the **round** row (plan IV.2

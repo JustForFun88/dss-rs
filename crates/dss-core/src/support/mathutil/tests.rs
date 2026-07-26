@@ -170,8 +170,35 @@ fn mean_and_std_dev_basics() {
     let (m, s) = mean_and_std_dev(&[2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]);
     assert!((m - 5.0).abs() < 1e-15);
     assert!((s - (32.0f64 / 7.0).sqrt()).abs() < 1e-12);
-    // single point: Pascal quirk — stddev equals the value
-    assert_eq!(mean_and_std_dev(&[3.5]), (3.5, 3.5));
+}
+
+/// The **deliberate divergence** of the Stage F `stddev_single_point` row, at
+/// all four entry points: the parity lane reproduces the upstream quirk (a
+/// one-element sample's "standard deviation" is the sample itself — Pascal
+/// assigns `Mean` and never clears `StdDev`), the default lane returns the
+/// mathematically correct `0.0`. The *mean* is the value in both lanes, so a
+/// lane cannot pass by returning nothing.
+///
+/// Expected values, not tolerances: `3.5` and `0.0` are pinned literally, and
+/// the two impls are asserted to disagree so neither branch is vacuous.
+#[test]
+fn single_point_std_dev_is_the_lane_kernel() {
+    let expected = if crate::compat::ORACLE_PARITY {
+        3.5
+    } else {
+        0.0
+    };
+    assert_eq!(mean_and_std_dev(&[3.5]), (3.5, expected));
+    assert_eq!(mean_and_std_dev_single(&[3.5f32]), (3.5, expected));
+    assert_eq!(curve_mean_and_std_dev(&[3.5], &[0.0]), (3.5, expected));
+    assert_eq!(
+        curve_mean_and_std_dev_single(&[3.5f32], &[0.0f32]),
+        (3.5, expected)
+    );
+
+    // Non-vacuity: the two kernels really do disagree on this input.
+    assert_eq!(crate::compat::stddev_single_point_value_impl(3.5), 3.5);
+    assert_eq!(crate::compat::stddev_single_point_zero_impl(3.5), 0.0);
 }
 
 #[test]
