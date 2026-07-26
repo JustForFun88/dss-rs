@@ -25,7 +25,8 @@ use std::path::PathBuf;
 
 use dss_core::exec::Dss;
 use harness::{
-    MeterCap, MonitorCap, assert_complex_close, compare_meter, compare_monitor, tol_for,
+    MeterCap, MonitorCap, assert_complex_close, assert_complex_close_c, compare_meter,
+    compare_monitor, deinterleave, tol_for,
 };
 use serde::Deserialize;
 
@@ -226,9 +227,9 @@ fn run_generator_snap(sc: &Scenario, dss: &mut Dss) {
             .iter()
             .find(|s| s.name.eq_ignore_ascii_case(&g.name))
             .unwrap_or_else(|| panic!("{}: no element {}", sc.name, g.name));
-        assert_complex_close(
+        assert_complex_close_c(
             &snap.powers,
-            &g.powers,
+            &deinterleave(&g.powers),
             1e-6,
             1e-4,
             &format!("{} {} powers", sc.name, g.name),

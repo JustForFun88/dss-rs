@@ -153,13 +153,13 @@ fn asymmetric_sym_components_reactor_unbalanced_solve() {
         .iter()
         .find(|e| e.name.eq_ignore_ascii_case("Reactor.rk"))
         .expect("reactor.rk in snapshot");
-    let c = &rk.currents; // [re,im] per conductor: t1 phases 0-2, t2 phases 3-5.
-    assert_eq!(c.len(), 12, "6 conductors x (re,im)");
+    let c = &rk.currents; // per conductor: t1 phases 0-2, t2 phases 3-5.
+    assert_eq!(c.len(), 6, "6 conductors");
 
     // (a) KCL: I_t1 + I_t2 == 0 per phase (the transpose bug breaks this).
     for ph in 0..3 {
-        let re = c[ph * 2] + c[(ph + 3) * 2];
-        let im = c[ph * 2 + 1] + c[(ph + 3) * 2 + 1];
+        let s = c[ph] + c[ph + 3];
+        let (re, im) = (s.re, s.im);
         assert!(
             re.abs() < 1e-3 && im.abs() < 1e-3,
             "KCL violated at phase {}: I_t1+I_t2 = {re}+{im}j (asymmetric reactor \
@@ -170,22 +170,17 @@ fn asymmetric_sym_components_reactor_unbalanced_solve() {
 
     // (b) Per-conductor terminal currents vs the pinned oracle.
     let want = [
-        116.146461,
-        -57.769703,
-        -22.612834,
-        -20.041948,
-        7.672820,
-        240.310043,
-        -116.146461,
-        57.769703,
-        22.612834,
-        20.041948,
-        -7.672820,
-        -240.310043,
+        Complex64::new(116.146461, -57.769703),
+        Complex64::new(-22.612834, -20.041948),
+        Complex64::new(7.672820, 240.310043),
+        Complex64::new(-116.146461, 57.769703),
+        Complex64::new(22.612834, 20.041948),
+        Complex64::new(-7.672820, -240.310043),
     ];
     for (k, (&a, &w)) in c.iter().zip(want.iter()).enumerate() {
         assert!(
-            (a - w).abs() <= 1e-3 + 1e-6 * w.abs(),
+            (a.re - w.re).abs() <= 1e-3 + 1e-6 * w.re.abs()
+                && (a.im - w.im).abs() <= 1e-3 + 1e-6 * w.im.abs(),
             "reactor current [{k}]: got {a}, oracle {w}"
         );
     }

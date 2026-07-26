@@ -52,14 +52,14 @@ fn generator_model1_pq_snapshot() {
         .expect("generator snapshot");
     for ph in 0..3 {
         assert!(
-            (g.powers[2 * ph] - (-33.333333)).abs() < 1e-3,
+            (g.powers[ph].re - (-33.333333)).abs() < 1e-3,
             "phase {ph} P {}",
-            g.powers[2 * ph]
+            g.powers[ph].re
         );
         assert!(
-            (g.powers[2 * ph + 1] - (-10.956137)).abs() < 1e-3,
+            (g.powers[ph].im - (-10.956137)).abs() < 1e-3,
             "phase {ph} Q {}",
-            g.powers[2 * ph + 1]
+            g.powers[ph].im
         );
     }
 }
@@ -148,14 +148,14 @@ fn generator_model3_pv_snapshot() {
         .expect("generator snapshot");
     for ph in 0..3 {
         assert!(
-            (g.powers[2 * ph] - (-100.002748)).abs() < 1e-3,
+            (g.powers[ph].re - (-100.002748)).abs() < 1e-3,
             "phase {ph} P {}",
-            g.powers[2 * ph]
+            g.powers[ph].re
         );
         assert!(
-            (g.powers[2 * ph + 1] - (-64.728196)).abs() < 1e-3,
+            (g.powers[ph].im - (-64.728196)).abs() < 1e-3,
             "phase {ph} Q {}",
-            g.powers[2 * ph + 1]
+            g.powers[ph].im
         );
     }
 }
@@ -189,14 +189,14 @@ fn generator_model3_power_read_uses_cached_stamp_vs_oracle() {
             .expect("generator snapshot");
         for ph in 0..3 {
             assert!(
-                (g.powers[2 * ph] - (-100.002748)).abs() < 1e-3,
+                (g.powers[ph].re - (-100.002748)).abs() < 1e-3,
                 "pass {pass} phase {ph} P {}",
-                g.powers[2 * ph]
+                g.powers[ph].re
             );
             assert!(
-                (g.powers[2 * ph + 1] - (-64.728196)).abs() < 1e-3,
+                (g.powers[ph].im - (-64.728196)).abs() < 1e-3,
                 "pass {pass} phase {ph} Q {}",
-                g.powers[2 * ph + 1]
+                g.powers[ph].im
             );
         }
     }

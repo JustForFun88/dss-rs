@@ -9,6 +9,7 @@
 mod harness;
 
 use harness::{ElementCap, assert_power_close};
+use num_complex::Complex64;
 
 /// One single-conductor terminal: real current `i_re` A, real power `p_kw` kW, so
 /// the recovered terminal voltage is `|V_kv| = p_kw / i_re`.
@@ -32,7 +33,7 @@ const ABS: f64 = 1e-4;
 #[test]
 fn power_floor_scales_up_at_high_voltage() {
     let exp = cap(10.0, 100.0);
-    let actual = vec![100.0 + 1.0e-3, 0.0];
+    let actual = vec![Complex64::new(100.0 + 1.0e-3, 0.0)];
     assert_power_close(&actual, &exp, REL, ABS, "hv");
 }
 
@@ -42,7 +43,7 @@ fn power_floor_scales_up_at_high_voltage() {
 #[should_panic(expected = "differs")]
 fn power_floor_rejects_error_above_scaled_floor() {
     let exp = cap(10.0, 100.0);
-    let actual = vec![100.0 + 1.3e-3, 0.0];
+    let actual = vec![Complex64::new(100.0 + 1.3e-3, 0.0)];
     assert_power_close(&actual, &exp, REL, ABS, "hv-over");
 }
 
@@ -54,6 +55,6 @@ fn power_floor_rejects_error_above_scaled_floor() {
 #[should_panic(expected = "differs")]
 fn power_floor_unscaled_below_unity_voltage_rejects_same_error() {
     let exp = cap(10.0, 1.0);
-    let actual = vec![1.0 + 1.0e-3, 0.0];
+    let actual = vec![Complex64::new(1.0 + 1.0e-3, 0.0)];
     assert_power_close(&actual, &exp, REL, ABS, "lv");
 }

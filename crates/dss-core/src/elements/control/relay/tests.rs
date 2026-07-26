@@ -1509,8 +1509,8 @@ fn line_term1_max_current(dss: &mut Dss, name: &str) -> f64 {
         .unwrap_or_else(|| panic!("no element {name}"));
     let mut m = 0.0_f64;
     for k in 0..3 {
-        let re = s.currents[2 * k];
-        let im = s.currents[2 * k + 1];
+        let re = s.currents[k].re;
+        let im = s.currents[k].im;
         m = m.max((re * re + im * im).sqrt());
     }
     m

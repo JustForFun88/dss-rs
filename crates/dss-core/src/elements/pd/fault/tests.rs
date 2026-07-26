@@ -174,7 +174,7 @@ fn snapshot_fault_pulls_bus_down() {
         .find(|s| s.name == "Fault.f")
         .expect("fault snapshot");
     // Conductor-1 terminal current magnitude (re/im interleaved).
-    let imag = (fault.currents[0].powi(2) + fault.currents[1].powi(2)).sqrt();
+    let imag = (fault.currents[0].re.powi(2) + fault.currents[0].im.powi(2)).sqrt();
     assert!(
         (imag - 1342.808).abs() < 0.5,
         "fault current {imag} vs oracle 1342.808"

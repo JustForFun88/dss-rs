@@ -7,6 +7,67 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE W3.4 (a) — the `exec/view.rs` interleaved re/im snapshot: `ElementSnapshot` goes `Vec<Complex64>` (branch `depas-final`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes the **P8 escape** recorded at `depas-p8p14`
+("`exec/view.rs` COM-style interleaved re/im `Vec<f64>` → `Vec<Complex64>`;
+deferred — blast radius is the gate-critical comparator plus ~40 in-crate test
+sites"). Exactly what `DE_PASCALIZE_PLAN.md` §P8 prescribes: *"`exec/view.rs`
+switches to typed `Vec<Complex64>`/slices — the product is a Rust-native library
+(`PORTING_PLAN` binding decision 1), so the COM-style interleaved re/im `Vec<f64>`
+(`[2k]`/`[2k+1]`) is a Pascal-ism, not a contract; one boundary adapter interleaves
+where a text/CSV writer still needs the flat form."*
+
+**The engine type.** `ElementSnapshot.powers`/`.currents` are now
+`Vec<num_complex::Complex64>` of length `yorder` (was `Vec<f64>` of `2*yorder`):
+`powers[k] = kW + j·kvar`, `currents[k] = A`. `snapshot_elements`'s two write loops
+collapse — the powers loop is now a `zip` over `node_ref[..yorder]`/
+`iterminal[..yorder]` (`*p = s * 0.001`; `Complex64 * f64` is
+`Complex::new(re*s, im*s)`, i.e. the *same two multiplications* the interleaved form
+did, in the same order), and the currents loop is a single
+`copy_from_slice(&cd.iterminal[..yorder])`. The NCIM override block writes
+`snap.currents[k] = i` / `snap.powers[k] = s * 0.001` directly. No arithmetic, no
+accumulation order, no rounding changed — this is a re-*packing* of the same f64s.
+`loss_w` stays the `(f64, f64)` tuple (not part of the recorded escape).
+
+**The boundary adapter (the interleave stops at the comparator).** The oracle
+surfaces — dss-python `CktElement.Powers`/`Currents`, the EPRI DLL, and the golden
+JSON files — speak interleaved re/im, and none of them were touched. New in
+`tests/harness/mod.rs`:
+- `deinterleave(&[f64]) -> Vec<Complex64>` — decodes the oracle/golden encoding.
+- `assert_complex_close_c(&[Complex64], &[Complex64], …)` — the pairwise comparator,
+  now the *core*; the pre-existing `assert_complex_close(&[f64], &[f64], …)` keeps
+  its signature (node voltages, YPrim, injections, monitor channels all still arrive
+  interleaved) and is a thin length-check + `deinterleave` wrapper over it. Same
+  formula (`hypot`-free `((ar-er)² + (ai-ei)²).sqrt()` vs `abs_floor + rel·|e|`),
+  same per-entry index in the panic text.
+- `assert_power_close` retypes its `actual` to `&[Complex64]` (its length assert
+  drops the `2*`); the voltage-scaled floor arithmetic is byte-identical.
+`compare_element` now zips the oracle's split `i_re`/`i_im` into `Complex64` instead
+of interleaving them; `compare_injection` compares `node_injection_currents()[1..=n]`
+directly instead of interleaving both sides first.
+
+**Call-site sweep (27 files).** `snap.powers[2*k]`/`[2*k+1]` → `.powers[k].re`/`.im`
+across `corpus_gate/ledger.rs` (envelope + selected-channel rewrite), the golden
+drivers (`golden_feeders`, `golden_feeders_controls`, `golden_metering_monitors` —
+each `deinterleave`s the golden array at the call), and ~20 in-crate test modules.
+Every `.iter().step_by(2)` sum became `.iter().map(|s| s.re)` over the same
+conductors in the same order; interleaved `[f64; 4]`/`[f64; 6]` oracle-pin literals
+became `[Complex64; 2]`/`[Complex64; 3]` with the identical per-component
+tolerance test (`re` and `im` each still checked at the old bound, never a merged
+magnitude). `harness_power_floor.rs`'s three synthetic caps became one-conductor
+`Complex64` vectors.
+
+**Proof.** Full gate green with **zero golden regeneration and zero tolerance
+change**: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -D
+warnings`, `cargo test --workspace` (incl. the unconditional 514-case corpus gate,
+both channels, `corpus_gate_all_cases_match_engines ... ok`). The byte/ULP-level
+goldens (checkpoint Y/YPrim, feeder element powers+currents, protection, metering)
+are exactly the channels this type feeds, so their unchanged pass *is* the
+bit-neutrality proof. `TODO(compat)` inventory unchanged (117 in `crates/dss-core/src`
+across 68 files; 123 across `crates/**`). `tests/corpus` pristine (the known
+`Test/AutoTrans` export leak removed by exact name).
+
 ### DE_PASCALIZE W3.3 — the `DynamicExp` RPN token stream becomes a payload enum: **the P1 tail is CLOSED** (branch `depas-final`, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Closes P1-tail escape item **3** (= P1 §Deferred item

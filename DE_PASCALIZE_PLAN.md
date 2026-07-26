@@ -807,11 +807,11 @@ mostly vacuous but stay as documentation + regression guard.
 **[Part III status, 2026-07-26: P8–P15 ALL LANDED — P8+P14 (`depas-p8p14`, merged
 2026-07-25), P9 (`wt-p9`), P10 (`depas-p10`, 2026-07-25), P11 (`depas-p11`,
 2026-07-25), P12+P13 (`wt-p1213-v2`), P15 (`wt-p15`, incl. creating the
-MULTITHREADING M1 criterion benches). Two recorded escapes remain open as focused
-follow-up WPs outside Part III: the `exec/view.rs` interleaved-re/im snapshot cleanup
-(P8 escape — blast radius is the gate-critical oracle comparator) and the
-`ckt_tree::NO_BUS` zone-walk sentinel web (P14 escape). See the STATUS records for
-both.]**
+MULTITHREADING M1 criterion benches). Of the two recorded escapes, the
+`exec/view.rs` interleaved-re/im snapshot cleanup (P8 escape) is CLOSED by
+**W3.4 (a)** (`depas-final`, 2026-07-26, STATUS §W3.4 (a)); the
+`ckt_tree::NO_BUS` zone-walk sentinel web (P14 escape) is the remaining
+follow-up.]**
 
 **Decision (user, 2026-07-06):** raw index access goes away **everywhere it can be expressed
 better** — the loop-for-loop porting rule is retired post-acceptance. Pre-Part-III measure
@@ -839,8 +839,10 @@ near-zero `chunks_exact`/slice-view usage in production, ~20 parallel arrays in
   before/after `cargo test` on the pinning suite named in the WP.
 
 ## P8 — Terminal×conductor views over flat buffers [A] — the highest-leverage cut
-**[LANDED — `depas-p8p14`, merged 2026-07-25; escape: the `exec/view.rs` interleaved
-re/im `Vec<f64>` conversion → focused follow-up (comparator blast radius).]**
+**[LANDED — `depas-p8p14`, merged 2026-07-25. Escape CLOSED by W3.4 (a)
+(`depas-final`, 2026-07-26): `ElementSnapshot.powers`/`.currents` are
+`Vec<Complex64>`; the interleave survives only as the harness boundary adapter
+`deinterleave` + `assert_complex_close`. STATUS §W3.4 (a).]**
 
 `vterminal`/`iterminal`/`inj_current`/`complex_buffer`/`node_ref` are flat length-`yorder`
 (`nterms*nconds`) vectors indexed `(t-1)*nconds + c` in **every** consumer: exports
