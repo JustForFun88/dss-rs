@@ -3,7 +3,7 @@
 
 use num_complex::Complex64;
 
-use super::Capacitor;
+use super::{Capacitor, CapacitorSpecType};
 use crate::elements::ckt::CktElementData;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
@@ -23,8 +23,7 @@ impl Capacitor {
         let mut phase_kv = 1.0;
 
         match self.spec_type {
-            1 => {
-                // kvar
+            CapacitorSpecType::Kvar => {
                 phase_kv = self.phase_kv();
                 // `FC[i] := 1.0 / (w * SQR(PhasekV) * 1000.0 / (FkvarRating[1] /
                 // Fnphases))` — `SQR` binds first, so the square is an atom:
@@ -40,8 +39,7 @@ impl Capacitor {
                     self.ftotalkvar += k;
                 }
             }
-            2 => {
-                // Cuf
+            CapacitorSpecType::Cuf => {
                 phase_kv = self.phase_kv();
                 for &c in self.fc.iter().take(n) {
                     // `Ftotalkvar + w * FC[i] * SQR(PhasekV) / 1000.0` — same
@@ -50,7 +48,10 @@ impl Capacitor {
                     self.ftotalkvar += w * c * phase_kv.powi(2) / 1000.0;
                 }
             }
-            _ => {} // CMatrix: nothing to do
+            // Pascal's `case` has no `3:` arm (`Capacitor.pas:623-660`): with a
+            // CMatrix there is nothing to derive, and `PhasekV` keeps its 1.0
+            // pre-case seeding — which the Norm/Emerg amps below then divide by.
+            CapacitorSpecType::CMatrix => {}
         }
 
         if self.do_harmonic_recalc {
@@ -103,7 +104,7 @@ impl Capacitor {
         let zl = Complex64::new(self.fr[i_step], self.fxl[i_step] * freq_multiple);
 
         match self.spec_type {
-            1 | 2 => {
+            CapacitorSpecType::Kvar | CapacitorSpecType::Cuf => {
                 let mut value = Complex64::new(0.0, self.fc[i_step] * w);
                 if self.connection == 1 {
                     // Delta (line-line); AddElement accumulates.
@@ -116,8 +117,7 @@ impl Capacitor {
                     ywork.stamp_two_terminal_diag(nphases, nphases, value);
                 }
             }
-            _ => {
-                // CMatrix.
+            CapacitorSpecType::CMatrix => {
                 let cm = self.cmatrix.as_ref().expect("SpecType 3 has a CMatrix");
                 ywork.stamp_two_terminal_block(nphases, StampBl::Transposed, |i, j| {
                     Complex64::new(0.0, cm[i * nphases + j] * w)
@@ -130,7 +130,7 @@ impl Capacitor {
             return;
         }
         match self.spec_type {
-            1 | 2 => {
+            CapacitorSpecType::Kvar | CapacitorSpecType::Cuf => {
                 if self.connection == 1 {
                     // Delta: invert, add ZL in series on the diagonal, re-invert.
                     for i in 1..=nphases {
@@ -146,7 +146,7 @@ impl Capacitor {
                 }
                 // Wye: ZL already folded into `value` above.
             }
-            _ => {
+            CapacitorSpecType::CMatrix => {
                 // dss_capi 0.15.x (`Capacitor.pas` `MakeYprimWork`, SpecType=3):
                 // "Add a little bit to each phase so it will invert" — the same
                 // ×1.000001 diagonal perturbation the Delta 1|2 branch already
@@ -255,8 +255,7 @@ impl CktElement for Capacitor {
         let nphases = self.cd.nphases;
 
         let actions = match self.spec_type {
-            1 => {
-                // kvar
+            CapacitorSpecType::Kvar => {
                 let phase_kv = if nphases > 1 || self.connection != 0 {
                     self.kvrating / sqrt3()
                 } else {
@@ -276,11 +275,11 @@ impl CktElement for Capacitor {
                     PosSeqAction::EndEdit,
                 ]
             }
-            2 => {
+            CapacitorSpecType::Cuf => {
                 // Bare single-set edit (no BeginEdit/EndEdit).
                 vec![PosSeqAction::SetI32(PHASES, 1)]
             }
-            3 => {
+            CapacitorSpecType::CMatrix => {
                 if nphases > 1 {
                     // C Matrix: average self/mutual → Cuf.
                     let cmat = self.cmatrix.as_deref().expect("SpecType 3 CMatrix");
@@ -319,7 +318,6 @@ impl CktElement for Capacitor {
                     Vec::new()
                 }
             }
-            _ => Vec::new(),
         };
 
         PosSeqPlan::with_actions(actions)

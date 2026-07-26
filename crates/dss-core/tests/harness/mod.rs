@@ -401,9 +401,19 @@ mod props_015x_tests {
     }
 }
 
+/// Decode a COM-style interleaved re/im `f64` array (the shape dss-python /
+/// the EPRI DLL / the golden JSON files speak) into the natural complex shape.
+/// The interleave is a *boundary* encoding: it stops here, at the comparator.
+pub fn deinterleave(v: &[f64]) -> Vec<Complex64> {
+    v.chunks_exact(2)
+        .map(|c| Complex64::new(c[0], c[1]))
+        .collect()
+}
+
 /// Compare two interleaved re/im arrays element-wise: passes when
 /// `|actual − expected| ≤ abs_floor + rel · |expected|` per complex entry.
-/// Panics with the first offending index and values.
+/// Panics with the first offending index and values. Thin decode wrapper over
+/// [`assert_complex_close_c`] for the oracle-shaped channels.
 pub fn assert_complex_close(
     actual: &[f64],
     expected: &[f64],
@@ -419,17 +429,42 @@ pub fn assert_complex_close(
         expected.len()
     );
     assert_eq!(actual.len() % 2, 0, "{what}: odd interleaved length");
-    for i in (0..actual.len()).step_by(2) {
-        let (ar, ai) = (actual[i], actual[i + 1]);
-        let (er, ei) = (expected[i], expected[i + 1]);
+    assert_complex_close_c(
+        &deinterleave(actual),
+        &deinterleave(expected),
+        rel,
+        abs_floor,
+        what,
+    );
+}
+
+/// Compare two complex arrays element-wise: passes when
+/// `|actual − expected| ≤ abs_floor + rel · |expected|` per entry. Panics with
+/// the first offending index and values.
+pub fn assert_complex_close_c(
+    actual: &[Complex64],
+    expected: &[Complex64],
+    rel: f64,
+    abs_floor: f64,
+    what: &str,
+) {
+    assert_eq!(
+        actual.len(),
+        expected.len(),
+        "{what}: length mismatch ({} vs {})",
+        actual.len(),
+        expected.len()
+    );
+    for (i, (a, e)) in actual.iter().zip(expected).enumerate() {
+        let (ar, ai) = (a.re, a.im);
+        let (er, ei) = (e.re, e.im);
         let diff = ((ar - er).powi(2) + (ai - ei).powi(2)).sqrt();
         let mag = (er * er + ei * ei).sqrt();
         let allowed = abs_floor + rel * mag;
         assert!(
             diff <= allowed,
-            "{what}: entry {} differs: actual ({ar}, {ai}) vs expected ({er}, {ei}); \
+            "{what}: entry {i} differs: actual ({ar}, {ai}) vs expected ({er}, {ei}); \
              |diff| = {diff:e} > allowed {allowed:e}",
-            i / 2
         );
     }
 }
@@ -927,18 +962,14 @@ pub fn compare_injection(dss: &Dss, exp: &Injection, tol: &Tolerances, ctx: &str
         "{ctx}: injection vector too short ({} nodes, need > {n})",
         cur.len(),
     );
-    let mut actual = Vec::with_capacity(2 * n);
-    for c in cur.iter().take(n + 1).skip(1) {
-        actual.push(c.re);
-        actual.push(c.im);
-    }
-    let mut expected = Vec::with_capacity(2 * n);
-    for (re, im) in exp.re.iter().zip(&exp.im) {
-        expected.push(*re);
-        expected.push(*im);
-    }
-    assert_complex_close(
-        &actual,
+    let expected: Vec<Complex64> = exp
+        .re
+        .iter()
+        .zip(&exp.im)
+        .map(|(re, im)| Complex64::new(*re, *im))
+        .collect();
+    assert_complex_close_c(
+        &cur[1..=n],
         &expected,
         tol.i_rel,
         tol.i_abs,
@@ -963,15 +994,21 @@ pub fn compare_injection(dss: &Dss, exp: &Injection, tol: &Tolerances, ctx: &str
 /// under positive-sequence ×3, where `|P|` and the accepted `δP` scale together).
 /// `max(1, …)` never tightens below the established floor. See
 /// tests/TOLERANCE_NOTES.md.
-pub fn assert_power_close(actual: &[f64], exp: &ElementCap, rel: f64, abs_floor: f64, what: &str) {
+pub fn assert_power_close(
+    actual: &[Complex64],
+    exp: &ElementCap,
+    rel: f64,
+    abs_floor: f64,
+    what: &str,
+) {
     let (p_kw, p_kvar) = (&exp.p_kw, &exp.p_kvar);
     let (i_re, i_im) = (&exp.i_re, &exp.i_im);
     assert_eq!(
         actual.len(),
-        2 * p_kw.len(),
+        p_kw.len(),
         "{what}: power length mismatch ({} vs {})",
         actual.len(),
-        2 * p_kw.len()
+        p_kw.len()
     );
     assert_eq!(p_kw.len(), p_kvar.len(), "{what}: kW/kvar length mismatch");
     assert_eq!(
@@ -980,7 +1017,7 @@ pub fn assert_power_close(actual: &[f64], exp: &ElementCap, rel: f64, abs_floor:
         "{what}: power/current length mismatch"
     );
     for k in 0..p_kw.len() {
-        let (ar, ai) = (actual[2 * k], actual[2 * k + 1]);
+        let (ar, ai) = (actual[k].re, actual[k].im);
         let (er, ei) = (p_kw[k], p_kvar[k]);
         let diff = ((ar - er).powi(2) + (ai - ei).powi(2)).sqrt();
         let p_mag = (er * er + ei * ei).sqrt();
@@ -1002,12 +1039,13 @@ pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tolera
         .iter()
         .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
         .unwrap_or_else(|| panic!("{ctx}: no element {}", exp.name));
-    let mut ei = Vec::with_capacity(2 * exp.i_re.len());
-    for (re, im) in exp.i_re.iter().zip(&exp.i_im) {
-        ei.push(*re);
-        ei.push(*im);
-    }
-    assert_complex_close(
+    let ei: Vec<Complex64> = exp
+        .i_re
+        .iter()
+        .zip(&exp.i_im)
+        .map(|(re, im)| Complex64::new(*re, *im))
+        .collect();
+    assert_complex_close_c(
         &snap.currents,
         &ei,
         tol.i_rel,

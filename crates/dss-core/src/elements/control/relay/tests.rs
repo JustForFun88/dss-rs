@@ -3,7 +3,7 @@ use super::*;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, RefSnapshot};
+use crate::elements::control::control_elem::{ControlAction, RefSnapshot};
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::exec::Dss;
@@ -221,8 +221,8 @@ fn default_is_3ph_closed_relay() {
     assert_eq!(r.num_reclose, 3); // Shots default 4
     assert_eq!(r.reset_time, 15.0);
     assert_eq!(r.reclose_intervals[..3], [0.5, 2.0, 2.0]);
-    assert_eq!(r.present_state[1], CTRL_CLOSE);
-    assert_eq!(r.normal_state[1], CTRL_CLOSE);
+    assert_eq!(r.present_state[1], ControlAction::Close);
+    assert_eq!(r.normal_state[1], ControlAction::Close);
     assert!(!r.normal_state_set);
     assert_eq!(r.idx_multi_ph, G);
     assert_eq!(r.pickup_amps46, 20.0);
@@ -265,10 +265,10 @@ fn overcurrent_queues_trip_and_reclose_at_correct_times() {
         sec: 0.0,
     };
     let (open, t_open) = sc.queue.pop_time(far, false).unwrap();
-    assert_eq!(open.code, CTRL_OPEN);
+    assert_eq!(open.code, ControlAction::Open.ordinal());
     assert!((t_open - 0.25).abs() < 1e-9, "open time = {t_open}");
     let (close, t_close) = sc.queue.pop_time(far, false).unwrap();
-    assert_eq!(close.code, CTRL_CLOSE);
+    assert_eq!(close.code, ControlAction::Close.ordinal());
     assert!((t_close - 0.75).abs() < 1e-9, "reclose time = {t_close}");
 }
 
@@ -308,7 +308,7 @@ fn overcurrent_inst_single_count_d3() {
         sec: 0.0,
     };
     let (open, t_open) = sc.queue.pop_time(far, false).unwrap();
-    assert_eq!(open.code, CTRL_OPEN);
+    assert_eq!(open.code, ControlAction::Open.ordinal());
     // D3: 0.01 + MechanicalDelay(0.05) = 0.06 (NOT 0.01 + 2·0.05 = 0.11).
     assert!((t_open - 0.06).abs() < 1e-9, "inst open time = {t_open}");
 }
@@ -348,7 +348,7 @@ fn overcurrent_skips_when_terminal_open() {
     let mut mon = MockElem::new(3).with_current(10.0);
     let mut sc = Scratch::new();
     r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-    assert_eq!(r.present_state[1], CTRL_OPEN);
+    assert_eq!(r.present_state[1], ControlAction::Open);
     assert!(!r.armed_for_open[G]);
     assert_eq!(sc.queue.queue_size(), 0);
 }
@@ -401,7 +401,12 @@ fn single_phase_do_open_opens_only_that_phase() {
     r.relay_target[1] = "Ph Curve".into();
     let mut ctrl = MockElem::new(3);
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_OPEN, 1, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Open.ordinal(),
+        1,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert!(!ctrl.cd.conductor_closed(1, 1), "phase 1 opened");
     assert!(ctrl.cd.conductor_closed(1, 2), "phase 2 stays closed");
     assert!(ctrl.cd.conductor_closed(1, 3), "phase 3 stays closed");
@@ -420,7 +425,12 @@ fn single_phase_lockout_escalates_to_3ph() {
     r.relay_target[1] = "Ph Curve".into();
     let mut ctrl = MockElem::new(3);
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_OPEN, 1, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Open.ordinal(),
+        1,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert!(r.locked_out[1]);
     assert!(r.locked_out[2], "other phases lock out on 3ph escalation");
     assert!(r.locked_out[3]);
@@ -439,7 +449,12 @@ fn do_pending_open_trips_logs_target() {
         let mut mon = MockElem::new(3).with_current(10.0);
         r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
     }
-    r.do_pending_action(CTRL_OPEN, 0, &mut ctrl, &mut sc.ctx(0, 0.1));
+    r.do_pending_action(
+        ControlAction::Open.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.1),
+    );
     assert!(!ctrl.cd.terminal_all_phases_closed(1)); // opened
     assert!(!r.armed_for_open[G]);
     assert!(sc.y_changed);
@@ -459,7 +474,12 @@ fn do_pending_open_locks_out_after_last_shot() {
     r.relay_target[G] = "Ph Curve".into();
     let mut ctrl = MockElem::new(3);
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_OPEN, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Open.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert!(!ctrl.cd.terminal_all_phases_closed(1));
     assert!(r.locked_out[G]);
     assert!(log_has(&sc, "LOCKED OUT (3PH LOCKOUT)"));
@@ -473,7 +493,12 @@ fn do_pending_open_gated_on_show_event_log() {
     r.relay_target[G] = "Ph Curve".into();
     let mut ctrl = MockElem::new(3);
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_OPEN, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Open.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert!(!ctrl.cd.terminal_all_phases_closed(1)); // still opened
     assert!(sc.y_changed);
     assert_eq!(sc.events.entries().len(), 0); // gated (no Debug Sample from do_pending)
@@ -483,14 +508,19 @@ fn do_pending_open_gated_on_show_event_log() {
 fn do_pending_close_recloses_and_counts() {
     let mut r = armed_relay();
     for i in 1..=3 {
-        r.present_state[i] = CTRL_OPEN;
+        r.present_state[i] = ControlAction::Open;
     }
     r.armed_for_close[G] = true;
     r.operation_count[G] = 1;
     let mut ctrl = MockElem::new(3);
     ctrl.cd.set_terminal_closed(1, false); // currently open
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_CLOSE, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Close.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // reclosed
     assert_eq!(r.operation_count[G], 2);
     assert!(!r.armed_for_close[G]);
@@ -504,13 +534,18 @@ fn do_pending_open_close_are_wrong_state_no_ops() {
     {
         let mut r = armed_relay();
         for i in 1..=3 {
-            r.present_state[i] = CTRL_OPEN;
+            r.present_state[i] = ControlAction::Open;
         }
         r.armed_for_open[G] = true;
         let mut ctrl = MockElem::new(3);
         ctrl.cd.set_terminal_closed(1, false);
         let mut sc = Scratch::new();
-        r.do_pending_action(CTRL_OPEN, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+        r.do_pending_action(
+            ControlAction::Open.ordinal(),
+            0,
+            &mut ctrl,
+            &mut sc.ctx(0, 0.0),
+        );
         assert!(!ctrl.cd.terminal_all_phases_closed(1));
         assert!(!sc.y_changed);
         assert_eq!(non_debug_lines(&sc), 0);
@@ -521,7 +556,12 @@ fn do_pending_open_close_are_wrong_state_no_ops() {
         r.armed_for_close[G] = true;
         let mut ctrl = MockElem::new(3);
         let mut sc = Scratch::new();
-        r.do_pending_action(CTRL_CLOSE, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+        r.do_pending_action(
+            ControlAction::Close.ordinal(),
+            0,
+            &mut ctrl,
+            &mut sc.ctx(0, 0.0),
+        );
         assert!(ctrl.cd.terminal_all_phases_closed(1));
         assert!(!sc.y_changed);
         assert_eq!(non_debug_lines(&sc), 0);
@@ -536,13 +576,18 @@ fn do_pending_open_close_are_wrong_state_no_ops() {
 fn do_pending_reset_only_resets_opcount_d4() {
     let mut r = armed_relay();
     for i in 1..=3 {
-        r.present_state[i] = CTRL_CLOSE; // closed phase
+        r.present_state[i] = ControlAction::Close; // closed phase
     }
     r.armed_for_open[G] = false;
     r.operation_count[G] = 3;
     let mut ctrl = MockElem::new(3); // closed
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_RESET, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Reset.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert_eq!(r.operation_count[G], 1, "opcount reset to 1");
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // element NOT forced (still closed)
     assert!(!sc.y_changed, "D4 reset does not force the element / Y");
@@ -560,13 +605,18 @@ fn do_pending_reset_only_resets_opcount_d4() {
 fn do_pending_reset_skipped_when_all_open() {
     let mut r = armed_relay();
     for i in 1..=3 {
-        r.present_state[i] = CTRL_OPEN; // no closed phase ⇒ no reset
+        r.present_state[i] = ControlAction::Open; // no closed phase ⇒ no reset
     }
     r.operation_count[G] = 3;
     let mut ctrl = MockElem::new(3);
     ctrl.cd.set_terminal_closed(1, false);
     let mut sc = Scratch::new();
-    r.do_pending_action(CTRL_RESET, 0, &mut ctrl, &mut sc.ctx(0, 0.0));
+    r.do_pending_action(
+        ControlAction::Reset.ordinal(),
+        0,
+        &mut ctrl,
+        &mut sc.ctx(0, 0.0),
+    );
     assert_eq!(
         r.operation_count[G], 3,
         "opcount untouched (no closed phase)"
@@ -580,8 +630,8 @@ fn do_pending_reset_skipped_when_all_open() {
 fn reset_with_restores_closed_normal_state_and_logs() {
     let mut r = armed_relay();
     for i in 1..=3 {
-        r.normal_state[i] = CTRL_CLOSE;
-        r.present_state[i] = CTRL_OPEN;
+        r.normal_state[i] = ControlAction::Close;
+        r.present_state[i] = ControlAction::Open;
     }
     r.operation_count[G] = 4;
     r.locked_out[G] = true;
@@ -590,7 +640,7 @@ fn reset_with_restores_closed_normal_state_and_logs() {
     let mut sc = Scratch::new();
     r.reset_with(&mut ctrl, &mut sc.ctx(0, 0.0));
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // restored closed
-    assert_eq!(r.present_state[1], CTRL_CLOSE);
+    assert_eq!(r.present_state[1], ControlAction::Close);
     assert!(!r.locked_out[1]);
     assert_eq!(r.operation_count[1], 1);
     assert!(sc.y_changed);
@@ -601,13 +651,13 @@ fn reset_with_restores_closed_normal_state_and_logs() {
 fn reset_with_open_normal_state_locks_out() {
     let mut r = armed_relay();
     for i in 1..=3 {
-        r.normal_state[i] = CTRL_OPEN;
+        r.normal_state[i] = ControlAction::Open;
     }
     let mut ctrl = MockElem::new(3); // start closed
     let mut sc = Scratch::new();
     r.reset_with(&mut ctrl, &mut sc.ctx(0, 0.0));
     assert!(!ctrl.cd.terminal_all_phases_closed(1)); // forced open
-    assert_eq!(r.present_state[1], CTRL_OPEN);
+    assert_eq!(r.present_state[1], ControlAction::Open);
     assert!(r.locked_out[1]);
     assert_eq!(r.operation_count[1], r.num_reclose + 1);
     assert!(sc.y_changed);
@@ -619,8 +669,8 @@ fn reset_with_blocked_while_locked() {
     let mut r = armed_relay();
     r.f_locked = true;
     for i in 1..=3 {
-        r.normal_state[i] = CTRL_CLOSE;
-        r.present_state[i] = CTRL_OPEN;
+        r.normal_state[i] = ControlAction::Close;
+        r.present_state[i] = ControlAction::Open;
     }
     let mut ctrl = MockElem::new(3);
     ctrl.cd.set_terminal_closed(1, false);
@@ -637,7 +687,7 @@ fn reset_with_blocked_while_locked() {
 fn reset_with_partial_open_terminal_still_forces_rebuild() {
     let mut r = armed_relay();
     for i in 1..=3 {
-        r.normal_state[i] = CTRL_OPEN;
+        r.normal_state[i] = ControlAction::Open;
     }
     let mut ctrl = MockElem::new(3);
     ctrl.cd.terminals[0].conductors_closed[0] = true; // phase 0 closed
@@ -846,8 +896,8 @@ fn voltage_relay_open_point_sizes_state_by_controlled_nphases_59n() {
 fn make_like_copies_state_by_controlled_nphases() {
     let mut src = armed_relay(); // ctrl_snap = 3-phase line
     src.ccd.cd.nphases = 1; // relay's own count = MonitoredElement.NPhases
-    src.present_state[3] = CTRL_OPEN;
-    src.normal_state[3] = CTRL_OPEN;
+    src.present_state[3] = ControlAction::Open;
+    src.normal_state[3] = ControlAction::Open;
 
     let mut dst = Relay::new("r2");
     dst.make_like(&src);
@@ -858,12 +908,14 @@ fn make_like_copies_state_by_controlled_nphases() {
         "MakeLike sets ctrl_snap (3-phase) + own nphases (1); state sizes by ctrl"
     );
     assert_eq!(
-        dst.present_state[3], CTRL_OPEN,
+        dst.present_state[3],
+        ControlAction::Open,
         "phase-3 present_state must copy over ControlledElement.Nphases (=3), \
          not the relay's own Nphases (=1)"
     );
     assert_eq!(
-        dst.normal_state[3], CTRL_OPEN,
+        dst.normal_state[3],
+        ControlAction::Open,
         "phase-3 normal_state must copy over ControlledElement.Nphases"
     );
 }
@@ -880,7 +932,7 @@ fn voltage_recloses_when_voltage_recovers() {
     mon.vph = vec![Complex64::new(1000.0, 0.0); 3];
     let mut sc = Scratch::new();
     r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
-    assert_eq!(r.present_state[1], CTRL_OPEN);
+    assert_eq!(r.present_state[1], ControlAction::Open);
     assert!(r.armed_for_close[G]);
     assert_eq!(sc.queue.queue_size(), 1);
 }
@@ -1240,7 +1292,7 @@ fn make_like_copies_settings_including_delay_and_mech() {
     base.reset_time = 22.0;
     base.num_reclose = 2;
     base.reclose_intervals[..2].copy_from_slice(&[0.5, 1.0]);
-    base.normal_state[1] = CTRL_OPEN;
+    base.normal_state[1] = ControlAction::Open;
     base.normal_state_set = true;
     base.definite_time_delay = 0.3;
     base.mechanical_delay = 0.04;
@@ -1256,7 +1308,7 @@ fn make_like_copies_settings_including_delay_and_mech() {
     assert_eq!(r.reset_time, 22.0);
     assert_eq!(r.num_reclose, 2);
     assert_eq!(r.reclose_intervals[..2], [0.5, 1.0]);
-    assert_eq!(r.normal_state[1], CTRL_OPEN);
+    assert_eq!(r.normal_state[1], ControlAction::Open);
     assert!(r.normal_state_set);
     assert_eq!(r.definite_time_delay, 0.3);
     assert_eq!(r.mechanical_delay, 0.04);
@@ -1457,8 +1509,8 @@ fn line_term1_max_current(dss: &mut Dss, name: &str) -> f64 {
         .unwrap_or_else(|| panic!("no element {name}"));
     let mut m = 0.0_f64;
     for k in 0..3 {
-        let re = s.currents[2 * k];
-        let im = s.currents[2 * k + 1];
+        let re = s.currents[k].re;
+        let im = s.currents[k].im;
         m = m.max((re * re + im * im).sqrt());
     }
     m

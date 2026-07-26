@@ -1,5 +1,6 @@
 use super::common::*;
 use crate::exec::*;
+use num_complex::Complex64;
 
 #[test]
 fn line_fetches_sym_linecode() {
@@ -87,16 +88,14 @@ fn conductor_none_geometry_rejects_but_line_accepts_and_solves() {
         .find(|e| e.name.eq_ignore_ascii_case("Line.l1"))
         .expect("Line.l1 in snapshot");
     let r4133 = [
-        21.802_596_540_773_72,
-        -0.001_426_872_519_914_468_3,
-        -21.802_520_352_484_407,
-        0.057_037_298_443_901_82,
+        Complex64::new(21.802_596_540_773_72, -0.001_426_872_519_914_468_3),
+        Complex64::new(-21.802_520_352_484_407, 0.057_037_298_443_901_82),
     ];
     for (k, &want) in r4133.iter().enumerate() {
+        let got = line.currents[k];
         assert!(
-            (line.currents[k] - want).abs() < 1e-6,
-            "Line.l1 current[{k}] {} != r4133 {want}",
-            line.currents[k]
+            (got.re - want.re).abs() < 1e-6 && (got.im - want.im).abs() < 1e-6,
+            "Line.l1 current[{k}] {got} != r4133 {want}"
         );
     }
 

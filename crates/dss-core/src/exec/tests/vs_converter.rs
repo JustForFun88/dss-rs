@@ -69,7 +69,7 @@ fn vsconverter_circuit_matches_oracle() {
         (-283.1259222135, -268.6364003169),
     ];
     for (k, &(re, im)) in want_src.iter().enumerate() {
-        let (ar, ai) = (main.currents[2 * k], main.currents[2 * k + 1]);
+        let (ar, ai) = (main.currents[k].re, main.currents[k].im);
         let mag = (re * re + im * im).sqrt();
         assert!(
             (ar - re).hypot(ai - im) < 1e-6 * mag,
@@ -80,10 +80,10 @@ fn vsconverter_circuit_matches_oracle() {
     // full f64; Rust matches to ~2e-12 rel).
     let dc = get("Vsource.dc");
     assert!(
-        (dc.currents[0] - 48.2995954896).hypot(dc.currents[1]) < 1e-6 * 48.2995954896,
+        (dc.currents[0].re - 48.2995954896).hypot(dc.currents[0].im) < 1e-6 * 48.2995954896,
         "DC source I = ({:.10}, {:.10})",
-        dc.currents[0],
-        dc.currents[1]
+        dc.currents[0].re,
+        dc.currents[0].im
     );
 
     // KCL ties the converter to the oracle-pinned sources: the VSConverter's AC
@@ -93,8 +93,8 @@ fn vsconverter_circuit_matches_oracle() {
     // self-reported ≈1248 A). The KCL residual is ~2e-8 rel (the solver floor).
     let v = get("VSConverter.v1");
     for k in 0..3 {
-        let (vr, vi) = (v.currents[2 * k], v.currents[2 * k + 1]);
-        let (sr, si) = (main.currents[2 * k], main.currents[2 * k + 1]);
+        let (vr, vi) = (v.currents[k].re, v.currents[k].im);
+        let (sr, si) = (main.currents[k].re, main.currents[k].im);
         let mag = (sr * sr + si * si).sqrt();
         assert!(
             (vr + sr).hypot(vi + si) < 1e-6 * mag,
@@ -107,19 +107,31 @@ fn vsconverter_circuit_matches_oracle() {
     // above — by the lag (~0.004 A, ~9e-5 rel). The oracle's own DC value is
     // corrupted by the self-alias bug (it reports 49.998 A), so this is a tight
     // regression guard against the verified Rust f64, not an oracle pin.
-    let (vdr, vdi) = (v.currents[6], v.currents[7]); // term1 cond4 = DC
+    let (vdr, vdi) = (v.currents[3].re, v.currents[3].im); // term1 cond4 = DC
     assert_eq!(vdi, 0.0, "VSConverter DC current must be purely real");
     assert!(
         (vdr.hypot(vdi) - 48.3039943741).abs() < 1e-6 * 48.3039943741,
         "VSConverter DC current magnitude = {vdr:.10}"
     );
 
-    // Terminal 2 AC conductors are the exact series mirror of terminal 1.
+    // Terminal 2 AC conductors are the exact series mirror of terminal 1 — in
+    // BOTH components. The real-part arm is the original assertion (unchanged);
+    // the imaginary arm is the W3 settler's strengthening (the pre-existing
+    // shape only checked `re`, so a mirror broken purely in reactive current
+    // would have passed). Measured 2026-07-26: both residuals are *exactly* 0.0
+    // (the series element negates terminal 1 into terminal 2), so the arm holds
+    // with room to spare at the same 1e-6 bound / denominator shape as the
+    // real one.
     for k in 0..3 {
-        let denom = v.currents[2 * k].abs().max(1.0);
+        let denom = v.currents[k].re.abs().max(1.0);
         assert!(
-            (v.currents[2 * k] + v.currents[2 * (k + 4)]).abs() < 1e-6 * denom,
+            (v.currents[k].re + v.currents[k + 4].re).abs() < 1e-6 * denom,
             "VSConverter I_term2[{k}] must equal -I_term1[{k}]"
+        );
+        let denom_im = v.currents[k].im.abs().max(1.0);
+        assert!(
+            (v.currents[k].im + v.currents[k + 4].im).abs() < 1e-6 * denom_im,
+            "VSConverter I_term2[{k}] (imag) must equal -I_term1[{k}]"
         );
     }
 }

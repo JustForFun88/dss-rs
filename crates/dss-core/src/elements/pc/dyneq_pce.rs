@@ -18,7 +18,7 @@
 
 use dss_parser::{Parser, ParserVars};
 
-use crate::elements::general::dynamic_exp::{DYN_SLOT_LENGTH, DynamicExpObj};
+use crate::elements::general::dynamic_exp::{DYN_SLOT_LENGTH, DynamicExpObj, VarRef};
 use crate::elements::traits::Idx;
 
 /// One `UserDynInit` entry value. Pascal stores each assignment in a
@@ -107,13 +107,13 @@ impl DynEqPceData {
         let Some(eq) = &self.dynamic_eq_obj else {
             return false;
         };
-        let var_idx = eq.get_var_idx(&variable);
-        // Pascal: `(varIdx < 0) or (varIdx >= 50000)` — not a state variable
-        // (negative) or a numeric-constant sentinel (50001).
-        if !(0..50000).contains(&var_idx) {
+        // Pascal: `if (varIdx < 0) or (varIdx >= 50000) then Exit`
+        // (`DynEqPCE.pas:152-154`) — bail unless `Get_Var_Idx` found a state
+        // variable, i.e. neither the "not found" (-1) nor the numeric-constant
+        // (50001) code. `VarRef::State` is exactly that test.
+        let VarRef::State(var_idx) = eq.get_var_idx(&variable) else {
             return false;
-        }
-        let var_idx = var_idx as usize;
+        };
 
         // Dedup the UserDynInit entry (Pascal `UserDynInit.Delete(variable)`).
         self.user_dyn_init.retain(|(k, _)| *k != variable);

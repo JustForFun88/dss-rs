@@ -188,7 +188,7 @@ fn storage_term1_kw(dss: &mut Dss) -> f64 {
         .iter()
         .find(|e| e.name.eq_ignore_ascii_case("Storage.s1"))
         .expect("Storage.s1 in the snapshot");
-    s.powers.iter().step_by(2).take(3).sum()
+    s.powers.iter().take(3).map(|s| s.re).sum()
 }
 
 /// MonteFault also sets `is_dynamic_model`, and with a Fault object present a GFM
@@ -370,7 +370,7 @@ fn storage_gfm_micro_op_point_isc1_invariant() {
         .iter()
         .find(|e| e.name.eq_ignore_ascii_case("Load.isl"))
         .expect("Load.isl");
-    let p_kw: f64 = load.powers.iter().step_by(2).take(3).sum();
+    let p_kw: f64 = load.powers.iter().take(3).map(|s| s.re).sum();
     assert!(
         (p_kw - 400.0).abs() < 1e-3,
         "islanded load power {p_kw} kW must stay at the Isc1-invariant 400 kW op-point"

@@ -1,7 +1,7 @@
 //! The `impl DssObject` property surface for [`Capacitor`] — scalar/array
 //! getters & setters, bus names, `PropertySideEffects`, `EndEdit`, `MakeLike`.
 
-use super::Capacitor;
+use super::{Capacitor, CapacitorSpecType};
 use crate::obj::base::{DssObjData, DssObject};
 
 impl Capacitor {
@@ -238,9 +238,9 @@ impl DssObject for Capacitor {
                     self.cd.yorder = self.cd.nterms * self.cd.nconds;
                 }
             }
-            KVAR => self.spec_type = 1,
-            CMATRIX => self.spec_type = 3,
-            CUF => self.spec_type = 2,
+            KVAR => self.spec_type = CapacitorSpecType::Kvar,
+            CMATRIX => self.spec_type = CapacitorSpecType::CMatrix,
+            CUF => self.spec_type = CapacitorSpecType::Cuf,
             NUMSTEPS => self.side_effect_numsteps(prev_int),
             XL => {
                 for i in 0..self.n_steps() {

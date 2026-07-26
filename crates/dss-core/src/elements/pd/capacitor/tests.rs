@@ -40,7 +40,7 @@ fn default_is_3ph_wye_shunt() {
     assert_eq!(c.cd.nterms, 2);
     assert_eq!(c.cd.yorder, 6);
     assert!(c.is_shunt);
-    assert_eq!(c.spec_type, 1);
+    assert_eq!(c.spec_type, CapacitorSpecType::Kvar);
     // Bus2 defaulted to the grounded node of the auto-named Bus1.
     assert_eq!(c.get_bus_name(2), "c1_1.0.0.0");
 }
@@ -57,7 +57,7 @@ fn yprim_3ph_wye_kvar_matches_oracle() {
     c.cd.yorder = 6;
     c.connection = 0;
     c.is_shunt = true;
-    c.spec_type = 1;
+    c.spec_type = CapacitorSpecType::Kvar;
     c.kvrating = 4.16;
     c.fkvarrating = vec![600.0];
     c.fc = vec![0.0];
@@ -90,7 +90,7 @@ fn yprim_1ph_wye_kvar_matches_oracle() {
     c.cd.yorder = 2;
     c.connection = 0;
     c.is_shunt = true;
-    c.spec_type = 1;
+    c.spec_type = CapacitorSpecType::Kvar;
     c.kvrating = 2.4;
     c.fkvarrating = vec![100.0];
     c.fc = vec![0.0];
@@ -122,7 +122,7 @@ fn yprim_3ph_cmatrix_matches_oracle() {
     c.cd.yorder = 6;
     c.connection = 0;
     c.is_shunt = true;
-    c.spec_type = 3;
+    c.spec_type = CapacitorSpecType::CMatrix;
     // Row-major nphases² in farads (the parse scales µF by 1e-6).
     let m = 1.0e-6;
     c.cmatrix = Some(vec![
@@ -184,7 +184,7 @@ fn cmatrix_with_series_reactance_yprim_matches_capi015() {
     c.cd.yorder = 6;
     c.connection = 0; // wye
     c.is_shunt = true;
-    c.spec_type = 3;
+    c.spec_type = CapacitorSpecType::CMatrix;
     // µF → F (parse scale 1e-6); diagonal 1.5, off-diagonal +0.2 (as the deck).
     let m = 1.0e-6;
     c.cmatrix = Some(vec![
@@ -239,7 +239,7 @@ fn cmatrix_with_series_reactance_yprim_matches_capi015() {
 #[test]
 fn numsteps_splits_kvar() {
     let mut c = Capacitor::new("c1");
-    c.spec_type = 1;
+    c.spec_type = CapacitorSpecType::Kvar;
     c.fkvarrating = vec![600.0];
     c.fnumsteps = 1;
     c.set_num_steps(3);
@@ -258,7 +258,7 @@ use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 #[test]
 fn make_pos_sequence_kvar() {
     let mut c = Capacitor::new("cap_kvar");
-    c.spec_type = 1;
+    c.spec_type = CapacitorSpecType::Kvar;
     c.kvrating = 12.47;
     c.connection = 0;
     c.fnumsteps = 1;
@@ -293,7 +293,7 @@ fn make_pos_sequence_kvar() {
 #[test]
 fn make_pos_sequence_kvar_multistep() {
     let mut c = Capacitor::new("cap");
-    c.spec_type = 1;
+    c.spec_type = CapacitorSpecType::Kvar;
     c.kvrating = 12.47;
     c.connection = 0;
     c.fnumsteps = 2;
@@ -316,7 +316,7 @@ fn make_pos_sequence_kvar_multistep() {
 #[test]
 fn make_pos_sequence_cuf_bare_set() {
     let mut c = Capacitor::new("cap");
-    c.spec_type = 2;
+    c.spec_type = CapacitorSpecType::Cuf;
     let plan = c.make_pos_sequence(&PosSeqCtx::default());
     use PosSeqAction::*;
     assert_eq!(plan.actions, vec![SetI32(prop::PHASES, 1)]);
@@ -328,7 +328,7 @@ fn make_pos_sequence_cuf_bare_set() {
 #[test]
 fn make_pos_sequence_cmatrix() {
     let mut c = Capacitor::new("cap_cmat");
-    c.spec_type = 3;
+    c.spec_type = CapacitorSpecType::CMatrix;
     // Stored in farads (the property scale 1e-6 is applied at parse).
     c.cmatrix = Some(vec![
         10e-6, -2e-6, -2e-6, -2e-6, 10e-6, -2e-6, -2e-6, -2e-6, 10e-6,
@@ -355,7 +355,7 @@ fn make_pos_sequence_cmatrix() {
 fn make_pos_sequence_cmatrix_single_phase_is_base() {
     let mut c = Capacitor::new("cap");
     c.cd.nphases = 1;
-    c.spec_type = 3;
+    c.spec_type = CapacitorSpecType::CMatrix;
     let plan = c.make_pos_sequence(&PosSeqCtx::default());
     assert!(plan.actions.is_empty());
     assert!(plan.run_base);
@@ -387,7 +387,7 @@ fn make_pos_sequence_cmatrix_single_phase_is_base() {
 #[test]
 fn derived_cuf_kvar_wye_matches_oracle_bit_exactly() {
     let mut c = Capacitor::new("ckvar");
-    c.spec_type = 1;
+    c.spec_type = CapacitorSpecType::Kvar;
     c.connection = 0; // wye
     c.kvrating = 12.47;
     c.fkvarrating = vec![600.0];
@@ -400,7 +400,7 @@ fn derived_cuf_kvar_wye_matches_oracle_bit_exactly() {
 #[test]
 fn derived_cuf_kvar_delta_matches_oracle_bit_exactly() {
     let mut c = Capacitor::new("cdelta");
-    c.spec_type = 1;
+    c.spec_type = CapacitorSpecType::Kvar;
     c.connection = 1; // delta
     c.kvrating = 7.2;
     c.fkvarrating = vec![450.0];
@@ -415,7 +415,7 @@ fn derived_cuf_kvar_delta_matches_oracle_bit_exactly() {
 #[test]
 fn derived_cuf_multistep_matches_oracle_bit_exactly() {
     let mut c = Capacitor::new("csteps");
-    c.spec_type = 1;
+    c.spec_type = CapacitorSpecType::Kvar;
     c.connection = 0;
     c.kvrating = 24.9;
     c.set_num_steps(3);
@@ -433,11 +433,36 @@ fn derived_cuf_multistep_matches_oracle_bit_exactly() {
 #[test]
 fn derived_amps_from_cuf_spec_match_oracle_bit_exactly() {
     let mut c = Capacitor::new("ccuf");
-    c.spec_type = 2; // Cuf
+    c.spec_type = CapacitorSpecType::Cuf; // Cuf
     c.connection = 0;
     c.kvrating = 24.9;
     c.fc = vec![7.2 * 1.0e-6];
     c.recalc();
     assert_eq!(c.norm_amps, 1.755960930107517e-05);
     assert_eq!(c.emerg_amps, 2.3412812401433556e-05);
+}
+
+/// The `SpecType` ordinals are pinned twice: to the Pascal literals
+/// (`Capacitor.pas:377` = 1, `:385` = 2, `:381` = 3, `Create` `:584` = 1) and to
+/// the `SpecType=<int>` dump line the `dump_capacitor` golden captures.
+#[test]
+fn capacitor_spec_type_pins_pascal_ordinals_and_the_dump_line() {
+    assert_eq!(CapacitorSpecType::Kvar.ordinal(), 1);
+    assert_eq!(CapacitorSpecType::Cuf.ordinal(), 2);
+    assert_eq!(CapacitorSpecType::CMatrix.ordinal(), 3);
+    for s in [
+        CapacitorSpecType::Kvar,
+        CapacitorSpecType::Cuf,
+        CapacitorSpecType::CMatrix,
+    ] {
+        assert_eq!(CapacitorSpecType::from_ordinal(s.ordinal()), Some(s));
+    }
+    // Closed set: no property writes it, so nothing outside 1..=3 exists.
+    for v in [i32::MIN, -1, 0, 4, 100, i32::MAX] {
+        assert_eq!(CapacitorSpecType::from_ordinal(v), None, "ordinal {v}");
+    }
+    // `Create` seeds kvar, and the dump renders the raw ordinal.
+    let c = Capacitor::new("c");
+    assert_eq!(c.spec_type, CapacitorSpecType::Kvar);
+    assert_eq!(format!("SpecType={}", c.spec_type.ordinal()), "SpecType=1");
 }

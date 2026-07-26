@@ -305,7 +305,7 @@ fn storagecontroller_peakshave_holds_target() {
         .find(|s| s.name.eq_ignore_ascii_case("Line.l1"))
         .expect("Line.l1 snapshot");
     // powers: kW/kvar interleaved per conductor; terminal-1 kW = conductors 0,2,4.
-    let line_kw = line.powers[0] + line.powers[2] + line.powers[4];
+    let line_kw = line.powers[0].re + line.powers[1].re + line.powers[2].re;
     assert!(
         (line_kw - 4000.0).abs() < 100.0,
         "monitored line power {line_kw} not held near the 4000 kW target"

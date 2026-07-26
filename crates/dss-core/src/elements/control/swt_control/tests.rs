@@ -3,7 +3,7 @@ use super::*;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_LOCK, CTRL_NONE, CTRL_OPEN};
+use crate::elements::control::control_elem::ControlAction;
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::exec::Dss;
 use crate::obj::base::DssObject;
@@ -109,9 +109,9 @@ fn default_is_3ph_closed_switch() {
     assert_eq!(sw.ccd.cd.nterms, 1);
     assert_eq!(sw.ccd.element_terminal, 1);
     assert_eq!(sw.ccd.time_delay, 120.0);
-    assert_eq!(sw.present_state, CTRL_CLOSE);
-    assert_eq!(sw.normal_state, CTRL_NONE);
-    assert_eq!(sw.current_action, CTRL_CLOSE);
+    assert_eq!(sw.present_state, ControlAction::Close);
+    assert_eq!(sw.normal_state, ControlAction::None);
+    assert_eq!(sw.current_action, ControlAction::Close);
     assert!(!sw.locked);
     assert!(!sw.armed);
     assert!(sw.ccd.cd.yprim.is_none());
@@ -120,7 +120,7 @@ fn default_is_3ph_closed_switch() {
 #[test]
 fn sample_arms_when_action_differs() {
     let mut sw = SwtControl::new("sw1");
-    sw.current_action = CTRL_OPEN; // commanded open, switch still closed
+    sw.current_action = ControlAction::Open; // commanded open, switch still closed
     let mut sc = Scratch::new();
     sw.sample(&mut sc.ctx(0, 0.0));
     assert!(sw.armed);
@@ -140,12 +140,12 @@ fn sample_does_not_arm_when_matching() {
 #[test]
 fn do_pending_open_opens_terminal_and_logs() {
     let mut sw = SwtControl::new("sw1");
-    sw.present_state = CTRL_CLOSE;
+    sw.present_state = ControlAction::Close;
     let mut ms = MockSwitch::new(3);
     let mut sc = Scratch::new();
-    sw.do_pending_action(CTRL_OPEN, &mut ms, &mut sc.ctx(0, 1.0));
+    sw.do_pending_action(ControlAction::Open.ordinal(), &mut ms, &mut sc.ctx(0, 1.0));
     assert!(!ms.cd.terminal_all_phases_closed(1)); // terminal 1 opened
-    assert_eq!(sw.present_state, CTRL_OPEN);
+    assert_eq!(sw.present_state, ControlAction::Open);
     assert!(!sw.armed);
     assert!(sc.y_changed);
     assert_eq!(sc.events.len(), 1);
@@ -157,13 +157,13 @@ fn do_pending_open_opens_terminal_and_logs() {
 #[test]
 fn do_pending_close_closes_terminal_and_logs() {
     let mut sw = SwtControl::new("sw1");
-    sw.present_state = CTRL_OPEN;
+    sw.present_state = ControlAction::Open;
     let mut ms = MockSwitch::new(3);
     ms.cd.set_terminal_closed(1, false); // start open
     let mut sc = Scratch::new();
-    sw.do_pending_action(CTRL_CLOSE, &mut ms, &mut sc.ctx(0, 1.0));
+    sw.do_pending_action(ControlAction::Close.ordinal(), &mut ms, &mut sc.ctx(0, 1.0));
     assert!(ms.cd.terminal_all_phases_closed(1));
-    assert_eq!(sw.present_state, CTRL_CLOSE);
+    assert_eq!(sw.present_state, ControlAction::Close);
     assert!(sc.y_changed);
     assert!(sc.events.entries()[0].contains("Action=CLOSED"));
 }
@@ -171,15 +171,15 @@ fn do_pending_close_closes_terminal_and_logs() {
 #[test]
 fn do_pending_lock_then_open_is_blocked() {
     let mut sw = SwtControl::new("sw1");
-    sw.present_state = CTRL_CLOSE;
+    sw.present_state = ControlAction::Close;
     let mut ms = MockSwitch::new(3);
     let mut sc = Scratch::new();
     // Lock first, then an open action must be ignored (still closed, no event).
-    sw.do_pending_action(CTRL_LOCK, &mut ms, &mut sc.ctx(0, 0.0));
+    sw.do_pending_action(ControlAction::Lock.ordinal(), &mut ms, &mut sc.ctx(0, 0.0));
     assert!(sw.locked);
-    sw.do_pending_action(CTRL_OPEN, &mut ms, &mut sc.ctx(0, 1.0));
+    sw.do_pending_action(ControlAction::Open.ordinal(), &mut ms, &mut sc.ctx(0, 1.0));
     assert!(ms.cd.terminal_all_phases_closed(1)); // still closed
-    assert_eq!(sw.present_state, CTRL_CLOSE);
+    assert_eq!(sw.present_state, ControlAction::Close);
     assert!(sc.events.is_empty());
 }
 
@@ -191,7 +191,7 @@ fn do_pending_sets_controlled_active_terminal_even_for_lock() {
     sw.ccd.element_terminal = 2;
     let mut ms = MockSwitch::new(3); // 2 terminals
     let mut sc = Scratch::new();
-    sw.do_pending_action(CTRL_LOCK, &mut ms, &mut sc.ctx(0, 0.0));
+    sw.do_pending_action(ControlAction::Lock.ordinal(), &mut ms, &mut sc.ctx(0, 0.0));
     assert!(sw.locked);
     assert_eq!(ms.cd.active_terminal, 1); // terminal 2, 0-based
 }
@@ -201,10 +201,10 @@ fn lock_side_effect_queues_lock_command_pushed_on_sample() {
     let mut sw = SwtControl::new("sw1");
     sw.locked = true;
     sw.side_effects(prop::LOCK, 0);
-    assert_eq!(sw.lock_command, CTRL_LOCK);
+    assert_eq!(sw.lock_command, ControlAction::Lock);
     let mut sc = Scratch::new();
     sw.sample(&mut sc.ctx(0, 0.0));
-    assert_eq!(sw.lock_command, CTRL_NONE); // consumed
+    assert_eq!(sw.lock_command, ControlAction::None); // consumed
     assert_eq!(sc.queue.queue_size(), 1);
 }
 
@@ -213,12 +213,12 @@ fn locked_ignores_action_write() {
     // ConditionalReadOnly on Locked: a write to Action while locked is dropped.
     let mut sw = SwtControl::new("sw1");
     sw.locked = true;
-    sw.set_i32(prop::ACTION, CTRL_OPEN);
-    assert_eq!(sw.current_action, CTRL_CLOSE); // unchanged
+    sw.set_i32(prop::ACTION, ControlAction::Open.ordinal());
+    assert_eq!(sw.current_action, ControlAction::Close); // unchanged
     // unlocked: the write lands.
     sw.locked = false;
-    sw.set_i32(prop::ACTION, CTRL_OPEN);
-    assert_eq!(sw.current_action, CTRL_OPEN);
+    sw.set_i32(prop::ACTION, ControlAction::Open.ordinal());
+    assert_eq!(sw.current_action, ControlAction::Open);
 }
 
 #[test]
@@ -229,11 +229,11 @@ fn normal_side_effect_syncs_current_action_from_normal_state() {
     // clobbers `PresentState` — the field the old shared-`CurrentAction` mapping
     // conflated.
     let mut sw = SwtControl::new("sw1");
-    sw.set_i32(prop::NORMAL, CTRL_OPEN); // offset write → NormalState
+    sw.set_i32(prop::NORMAL, ControlAction::Open.ordinal()); // offset write → NormalState
     sw.side_effects(prop::NORMAL, 0);
-    assert_eq!(sw.normal_state, CTRL_OPEN);
-    assert_eq!(sw.current_action, CTRL_OPEN); // synced from NormalState
-    assert_eq!(sw.present_state, CTRL_CLOSE); // untouched (D12 fix)
+    assert_eq!(sw.normal_state, ControlAction::Open);
+    assert_eq!(sw.current_action, ControlAction::Open); // synced from NormalState
+    assert_eq!(sw.present_state, ControlAction::Close); // untouched (D12 fix)
 }
 
 #[test]
@@ -242,11 +242,11 @@ fn state_side_effect_sets_present_and_queues_force() {
     // `CurrentAction := PresentState` and forces the controlled element.
     let mut sw = SwtControl::new("sw1");
     sw.ccd.controlled_element = Some(ElemId::new(0, 0));
-    sw.set_i32(prop::STATE, CTRL_OPEN); // offset write → PresentState
+    sw.set_i32(prop::STATE, ControlAction::Open.ordinal()); // offset write → PresentState
     sw.side_effects(prop::STATE, 0);
-    assert_eq!(sw.present_state, CTRL_OPEN);
-    assert_eq!(sw.current_action, CTRL_OPEN); // synced from PresentState
-    assert_eq!(sw.normal_state, CTRL_OPEN); // was CTRL_NONE
+    assert_eq!(sw.present_state, ControlAction::Open);
+    assert_eq!(sw.current_action, ControlAction::Open); // synced from PresentState
+    assert_eq!(sw.normal_state, ControlAction::Open); // was CTRL_NONE
     // A deferred element force (open) was queued.
     let actions = sw.take_ref_actions();
     assert_eq!(actions.len(), 1);
@@ -269,13 +269,13 @@ fn d12_normal_and_state_readbacks_are_independent() {
     // both readbacks must survive independently (0.14.5 → both `closed`).
     let mut sw = SwtControl::new("sw1");
     sw.ccd.controlled_element = Some(ElemId::new(0, 0));
-    sw.set_i32(prop::STATE, CTRL_OPEN);
+    sw.set_i32(prop::STATE, ControlAction::Open.ordinal());
     sw.side_effects(prop::STATE, 0);
     sw.take_ref_actions();
-    sw.set_i32(prop::NORMAL, CTRL_CLOSE);
+    sw.set_i32(prop::NORMAL, ControlAction::Close.ordinal());
     sw.side_effects(prop::NORMAL, 0);
-    assert_eq!(sw.get_i32(prop::STATE), CTRL_OPEN);
-    assert_eq!(sw.get_i32(prop::NORMAL), CTRL_CLOSE);
+    assert_eq!(sw.get_i32(prop::STATE), ControlAction::Open.ordinal());
+    assert_eq!(sw.get_i32(prop::NORMAL), ControlAction::Close.ordinal());
 }
 
 #[test]
@@ -288,11 +288,11 @@ fn d6_action_forces_present_state_and_element_like_state() {
     // defaults to `[open, open, open, ]`.
     let mut sw = SwtControl::new("sw1");
     sw.ccd.controlled_element = Some(ElemId::new(0, 0));
-    sw.set_i32(prop::ACTION, CTRL_OPEN); // offset write → CurrentAction
+    sw.set_i32(prop::ACTION, ControlAction::Open.ordinal()); // offset write → CurrentAction
     sw.side_effects(prop::ACTION, 0);
-    assert_eq!(sw.present_state, CTRL_OPEN); // D6: Action forces present state
-    assert_eq!(sw.current_action, CTRL_OPEN);
-    assert_eq!(sw.normal_state, CTRL_OPEN); // first-set default (was CTRL_NONE)
+    assert_eq!(sw.present_state, ControlAction::Open); // D6: Action forces present state
+    assert_eq!(sw.current_action, ControlAction::Open);
+    assert_eq!(sw.normal_state, ControlAction::Open); // first-set default (was CTRL_NONE)
     // A deferred element force (open) was queued — the switch operates now, with
     // no control-queue delay (r4133 has no Sample-time queue for Action).
     let actions = sw.take_ref_actions();
@@ -312,13 +312,13 @@ fn d6_action_after_declared_normal_leaves_normal_unchanged() {
     let mut sw = SwtControl::new("sw1");
     sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     // normal=closed → NormalState set, so NormalStateSet is effectively TRUE.
-    sw.set_i32(prop::NORMAL, CTRL_CLOSE);
+    sw.set_i32(prop::NORMAL, ControlAction::Close.ordinal());
     sw.side_effects(prop::NORMAL, 0);
     // action=open forces the present state open, normal stays closed.
-    sw.set_i32(prop::ACTION, CTRL_OPEN);
+    sw.set_i32(prop::ACTION, ControlAction::Open.ordinal());
     sw.side_effects(prop::ACTION, 0);
-    assert_eq!(sw.present_state, CTRL_OPEN);
-    assert_eq!(sw.normal_state, CTRL_CLOSE); // unchanged — not defaulted again
+    assert_eq!(sw.present_state, ControlAction::Open);
+    assert_eq!(sw.normal_state, ControlAction::Close); // unchanged — not defaulted again
     let actions = sw.take_ref_actions();
     assert_eq!(actions.len(), 1); // only the action's open force
     match actions[0] {
@@ -335,10 +335,10 @@ fn d6_locked_action_does_not_force_element() {
     let mut sw = SwtControl::new("sw1");
     sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     sw.locked = true;
-    sw.set_i32(prop::ACTION, CTRL_OPEN); // ignored (ConditionalReadOnly)
+    sw.set_i32(prop::ACTION, ControlAction::Open.ordinal()); // ignored (ConditionalReadOnly)
     sw.side_effects(prop::ACTION, 0); // early-return on locked
-    assert_eq!(sw.present_state, CTRL_CLOSE); // untouched
-    assert_eq!(sw.current_action, CTRL_CLOSE);
+    assert_eq!(sw.present_state, ControlAction::Close); // untouched
+    assert_eq!(sw.current_action, ControlAction::Close);
     assert!(sw.take_ref_actions().is_empty()); // no force
 }
 
@@ -363,24 +363,24 @@ fn rated_current_parses_and_reads_back() {
 #[test]
 fn reset_with_restores_normal_state_and_forces_element() {
     let mut sw = SwtControl::new("sw1");
-    sw.normal_state = CTRL_CLOSE;
-    sw.present_state = CTRL_OPEN;
-    sw.current_action = CTRL_OPEN;
+    sw.normal_state = ControlAction::Close;
+    sw.present_state = ControlAction::Open;
+    sw.current_action = ControlAction::Open;
     sw.armed = true;
     let mut ms = MockSwitch::new(3);
     ms.cd.set_terminal_closed(1, false); // start fully open
     let rebuild = sw.reset_with(&mut ms);
     assert!(rebuild); // a force was applied → caller raises SystemYChanged
     assert!(ms.cd.terminal_all_phases_closed(1)); // forced closed (NormalState)
-    assert_eq!(sw.present_state, CTRL_CLOSE);
-    assert_eq!(sw.current_action, CTRL_CLOSE);
+    assert_eq!(sw.present_state, ControlAction::Close);
+    assert_eq!(sw.current_action, ControlAction::Close);
     assert!(!sw.armed);
     // locked → Reset is a no-op, no rebuild, controlled element untouched.
     sw.locked = true;
-    sw.present_state = CTRL_OPEN;
+    sw.present_state = ControlAction::Open;
     let mut ms2 = MockSwitch::new(3);
     assert!(!sw.reset_with(&mut ms2));
-    assert_eq!(sw.present_state, CTRL_OPEN); // untouched
+    assert_eq!(sw.present_state, ControlAction::Open); // untouched
     assert!(ms2.cd.terminal_all_phases_closed(1)); // not forced
 }
 
@@ -398,7 +398,7 @@ fn reset_with_restores_normal_state_and_forces_element() {
 #[test]
 fn reset_with_partial_open_terminal_still_forces_rebuild() {
     let mut sw = SwtControl::new("sw1");
-    sw.normal_state = CTRL_OPEN; // reset target = open
+    sw.normal_state = ControlAction::Open; // reset target = open
     let mut ms = MockSwitch::new(3);
     ms.cd.terminals[0].conductors_closed[0] = true; // phase 0 still closed
     ms.cd.terminals[0].conductors_closed[1] = false;
@@ -424,15 +424,15 @@ fn locked_ignores_normal_and_state_writes() {
     sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     sw.locked = true;
     // Normal: write rejected, NormalState untouched (stays CTRL_NONE).
-    sw.set_i32(prop::NORMAL, CTRL_OPEN);
+    sw.set_i32(prop::NORMAL, ControlAction::Open.ordinal());
     sw.side_effects(prop::NORMAL, 0);
-    assert_eq!(sw.current_action, CTRL_CLOSE);
-    assert_eq!(sw.normal_state, CTRL_NONE);
+    assert_eq!(sw.current_action, ControlAction::Close);
+    assert_eq!(sw.normal_state, ControlAction::None);
     // State: write rejected, no PresentState change and no deferred force queued.
-    sw.set_i32(prop::STATE, CTRL_OPEN);
+    sw.set_i32(prop::STATE, ControlAction::Open.ordinal());
     sw.side_effects(prop::STATE, 0);
-    assert_eq!(sw.current_action, CTRL_CLOSE);
-    assert_eq!(sw.present_state, CTRL_CLOSE);
+    assert_eq!(sw.current_action, ControlAction::Close);
+    assert_eq!(sw.present_state, ControlAction::Close);
     assert!(sw.take_ref_actions().is_empty());
 }
 
@@ -442,14 +442,14 @@ fn reset_yes_unlocks_and_restores_with_force() {
     let mut sw = SwtControl::new("sw1");
     sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     sw.locked = true;
-    sw.normal_state = CTRL_CLOSE;
-    sw.present_state = CTRL_OPEN;
-    sw.current_action = CTRL_OPEN;
+    sw.normal_state = ControlAction::Close;
+    sw.present_state = ControlAction::Open;
+    sw.current_action = ControlAction::Open;
     sw.armed = true;
     sw.set_bool(prop::RESET, true); // Reset=yes
     assert!(!sw.locked); // unlocked first
-    assert_eq!(sw.present_state, CTRL_CLOSE);
-    assert_eq!(sw.current_action, CTRL_CLOSE);
+    assert_eq!(sw.present_state, ControlAction::Close);
+    assert_eq!(sw.current_action, ControlAction::Close);
     assert!(!sw.armed);
     // A deferred close-force on the controlled element was queued.
     let actions = sw.take_ref_actions();
@@ -468,9 +468,9 @@ fn make_like_copies_switch_state() {
     base.ccd.element_terminal = 2;
     base.ccd.time_delay = 45.0;
     base.locked = true;
-    base.present_state = CTRL_OPEN;
-    base.normal_state = CTRL_OPEN;
-    base.current_action = CTRL_OPEN;
+    base.present_state = ControlAction::Open;
+    base.normal_state = ControlAction::Open;
+    base.current_action = ControlAction::Open;
 
     let mut sw = SwtControl::new("sw1");
     sw.make_like(&base);
@@ -478,9 +478,9 @@ fn make_like_copies_switch_state() {
     assert_eq!(sw.ccd.element_terminal, 2);
     assert_eq!(sw.ccd.time_delay, 45.0);
     assert!(sw.locked);
-    assert_eq!(sw.present_state, CTRL_OPEN);
-    assert_eq!(sw.normal_state, CTRL_OPEN);
-    assert_eq!(sw.current_action, CTRL_OPEN);
+    assert_eq!(sw.present_state, ControlAction::Open);
+    assert_eq!(sw.normal_state, ControlAction::Open);
+    assert_eq!(sw.current_action, ControlAction::Open);
 }
 
 /// Find a snapshot element by full name and return its terminal-1 max
@@ -494,8 +494,8 @@ fn term1_max_current(dss: &mut Dss, name: &str) -> f64 {
     let nph = 3usize;
     let mut m = 0.0_f64;
     for k in 0..nph {
-        let re = s.currents[2 * k];
-        let im = s.currents[2 * k + 1];
+        let re = s.currents[k].re;
+        let im = s.currents[k].im;
         m = m.max((re * re + im * im).sqrt());
     }
     m

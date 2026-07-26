@@ -128,6 +128,38 @@ impl Dss {
         crate::solution::meters::allocate_loads(ckt, &mut env, max_iters);
     }
 
+    /// Pascal `TExecHelper.DoEstimateCmd` (`ExecHelper.pas:4213`; byte-for-byte
+    /// the same body in EPRI r4133 `Version8/Source/Executive/ExecHelper.pas:3768`,
+    /// same command ordinal 76): load-current *estimation* is nothing but the
+    /// EnergyMeter/Sensor-driven allocation followed by its own report —
+    /// `DoAllocateLoadsCmd`, then "let's look to see how well we did":
+    /// `Set showexport=yes` (only if it is off) and `Export Estimation`.
+    ///
+    /// Both tail legs are nested `ParseCommand`s upstream
+    /// (`Executive.pas:225` → `ProcessCommand`), so they run through
+    /// [`Dss::process_command`] — the full command path, which is what makes
+    /// the second leg pick up `Export`'s filename/last-file tail
+    /// (`ExportOptions.pas:632-637`: `SetLastResultFile` + `@lastexportfile`)
+    /// for free, *without* the outside-entry [`Dss::command`] wrapper: a nested
+    /// `ParseCommand` never clears `SolutionAbort` upstream (the command-entry
+    /// clear lives only in `src/CAPI/*`), so an allocation leg that aborted the
+    /// solution stays aborted here too. The `showexport` leg is engine-observable: it latches
+    /// `AutoShowExport` permanently (`Get showexport` flips `No`→`Yes` and no
+    /// later `Clear` resets it — probed on the pinned oracle). Its only other
+    /// consumer, the `FireOffEditor` auto-open of the written file, is the GUI
+    /// editor launch — a headless no-op here (the established `AllowEditor`
+    /// convention) and in the oracle runs (`DSS_CAPI_ALLOW_EDITOR=0`).
+    pub(super) fn do_estimate_cmd(&mut self) {
+        // Load current Estimation is driven by Energy Meters at head of feeders.
+        self.do_allocate_loads_cmd();
+
+        // Let's look to see how well we did.
+        if !self.auto_show_export {
+            self.process_command("Set showexport=yes");
+        }
+        self.process_command("Export Estimation");
+    }
+
     /// Pascal `DoResetCmd` (`ExecHelper.pas` l.1527): with no argument, reset
     /// monitors, meters, controls and clear the event/error logs; otherwise the
     /// first letter selects the target (`MOnitors`/`MEters`/`Controls`/

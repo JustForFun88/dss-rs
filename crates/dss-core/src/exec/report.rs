@@ -2153,7 +2153,7 @@ impl Dss {
                     // ReprocessBusDefs` (`ShowResults.pas:2859-2860`) — the one Show
                     // report that resolves bus refs itself, so it works on a compiled
                     // but never-solved circuit (terminal `bus_ref`s default to
-                    // `NO_BUS` until reprocessed). `ShowTopology`/`GetTopology` have no
+                    // `None` until reprocessed). `ShowTopology`/`GetTopology` have no
                     // such guard (matched — arm 28 does not reprocess).
                     if ckt.bus_name_redefined {
                         let mut store = ClassStore { classes };

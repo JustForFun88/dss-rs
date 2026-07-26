@@ -12,7 +12,7 @@
 
 use crate::circuit::Circuit;
 use crate::circuit::ckt_tree::{
-    BusAdjLists, CktTree, NO_BUS, all_terminals_closed, build_active_bus_adjacency_lists,
+    BusAdjLists, CktTree, all_terminals_closed, build_active_bus_adjacency_lists,
 };
 use crate::elements::ckt::ElemFlags;
 use crate::elements::pd::line::Line;
@@ -190,7 +190,7 @@ fn find_all_child_branches(
                 }
             }
             if !checked {
-                tree.add_new_child(p, bus_num, j);
+                tree.add_new_child(p, Some(bus_num), j);
                 store.ckt_elem_mut(p).cd_mut().terminals_checked[j - 1] = true;
                 store
                     .ckt_elem_mut(p)
@@ -237,8 +237,8 @@ pub(crate) fn get_isolated_sub_area(
                 let cd = store.ckt_elem(branch).cd();
                 (
                     cd.terminals_checked[iterm - 1],
-                    // Unwired terminal → the `NO_BUS` sentinel the walk skips below.
-                    cd.terminals[iterm - 1].bus_ref.unwrap_or(NO_BUS),
+                    // Unwired terminal → `None`, which the walk skips below.
+                    cd.terminals[iterm - 1].bus_ref,
                 )
             };
             if checked {
@@ -249,9 +249,9 @@ pub(crate) fn get_isolated_sub_area(
             // `TestBusNum > 0` guard. Inert for the current reports (they don't read
             // it), kept for walk-fidelity with `make_meter_zone_lists`.
             tree.present_node_mut().add_to_bus_reference(bus);
-            if bus == NO_BUS || bus >= ckt.buses.len() {
+            let Some(bus) = bus.filter(|&b| b < ckt.buses.len()) else {
                 continue;
-            }
+            };
             ckt.buses[bus].bus_checked = true;
             get_sources_connected_to_bus(ckt, store, bus, &mut tree, analyze);
             let pc = adj.pc.get(bus).map(|v| v.as_slice()).unwrap_or(&[]);

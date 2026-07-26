@@ -53,11 +53,13 @@ pub struct ElementSnapshot {
     pub enabled: bool,
     /// `BusNames`: the stored bus spec per terminal (`GetBus(i)`).
     pub bus_names: Vec<String>,
-    /// kW/kvar interleaved per conductor and terminal (CAPI
-    /// `Alt_CE_Get_Powers`: `GetPhasePower · 0.001`).
-    pub powers: Vec<f64>,
-    /// Amps, re/im interleaved per conductor and terminal (`Iterminal`).
-    pub currents: Vec<f64>,
+    /// Complex power per conductor and terminal, `kW + j·kvar` (CAPI
+    /// `Alt_CE_Get_Powers`: `GetPhasePower · 0.001`). The oracle surface is a
+    /// COM-style interleaved re/im `f64` array; the interleave is a *boundary*
+    /// encoding and lives in the harness comparator, not in the engine type.
+    pub powers: Vec<num_complex::Complex64>,
+    /// Terminal current per conductor and terminal, amps (`Iterminal`).
+    pub currents: Vec<num_complex::Complex64>,
     /// Element losses (W, var) — `TDSSCktElement.Get_Losses` (the dss-python
     /// `CktElement.Losses` surface): `Σ NodeV[ref]·conj(Iterminal)` over all
     /// conductors, ×3 under positive sequence.
@@ -148,8 +150,8 @@ impl Dss {
                 .try_ckt_elem_mut(r.index())
                 .expect("ckt_elements refs are circuit elements");
             let yorder = elem.cd().yorder;
-            let mut currents = vec![0.0; 2 * yorder];
-            let mut powers = vec![0.0; 2 * yorder];
+            let mut currents = vec![num_complex::Complex64::ZERO; yorder];
+            let mut powers = vec![num_complex::Complex64::ZERO; yorder];
             // Powers (and Losses, below) model the oracle's `Get_Powers` /
             // `Get_Losses`, which route through the cache-aware `ComputeIterminal`;
             // Currents model the fresh `CktElement.Currents` (`GetCurrents`,
@@ -195,19 +197,24 @@ impl Dss {
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
                 elem.compute_iterminal(&sys, &node_v);
                 let cd = elem.cd();
-                for k in 0..yorder {
-                    let n = cd.node_ref[k];
+                for ((p, &n), i) in powers
+                    .iter_mut()
+                    .zip(&cd.node_ref[..yorder])
+                    .zip(&cd.iterminal[..yorder])
+                {
                     if n > 0 {
                         // S = V*conj(I) at the present (per-harmonic, in harmonics
                         // mode) solution frequency; see the block comment above.
-                        let mut s = node_v[n] * cd.iterminal[k].conj();
+                        let mut s = node_v[n] * i.conj();
                         if positive_seq {
                             // x3: balanced three-phase scaling of the single-phase
                             // power (Willems, "...What and Why?", sec. V.A, p. 3).
                             s *= 3.0;
                         }
-                        powers[2 * k] = s.re * 0.001;
-                        powers[2 * k + 1] = s.im * 0.001;
+                        // `* 0.001` on `Complex64` is componentwise
+                        // (`Complex::new(re * s, im * s)`) — the same two
+                        // multiplications the interleaved form did.
+                        *p = s * 0.001;
                     }
                 }
             }
@@ -220,10 +227,7 @@ impl Dss {
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
                 elem.refresh_iterminal(&sys, &node_v);
                 let cd = elem.cd();
-                for k in 0..yorder {
-                    currents[2 * k] = cd.iterminal[k].re;
-                    currents[2 * k + 1] = cd.iterminal[k].im;
-                }
+                currents.copy_from_slice(&cd.iterminal[..yorder]);
             }
             let cd = elem.cd();
             let bus_names = (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect();
@@ -272,8 +276,7 @@ impl Dss {
                     .clone();
                 let mut loss = num_complex::Complex64::ZERO;
                 for (k, &i) in curr.iter().enumerate() {
-                    snap.currents[2 * k] = i.re;
-                    snap.currents[2 * k + 1] = i.im;
+                    snap.currents[k] = i;
                     let n = node_ref.get(k).copied().unwrap_or(0);
                     if n > 0 {
                         let mut s = node_v[n] * i.conj();
@@ -281,11 +284,9 @@ impl Dss {
                         if positive_seq {
                             s *= 3.0;
                         }
-                        snap.powers[2 * k] = s.re * 0.001;
-                        snap.powers[2 * k + 1] = s.im * 0.001;
+                        snap.powers[k] = s * 0.001;
                     } else {
-                        snap.powers[2 * k] = 0.0;
-                        snap.powers[2 * k + 1] = 0.0;
+                        snap.powers[k] = num_complex::Complex64::ZERO;
                     }
                 }
                 // Pascal `Get_Losses`: `if PositiveSequence then Result := Result*3`.
