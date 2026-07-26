@@ -185,11 +185,35 @@ fn json_transformer_solved() {
     run_deck("transformer_solved");
 }
 
+/// The DERIVED-RDCOhms branch (`Transformer.pas:1007-1008`). Every other
+/// Transformer deck sets `rdcohms` explicitly, so only the `RdcSpecified` branch
+/// was rendered and the `Rdcpu * SQR(VBase) / VABase` derivation was ungated.
+/// `SQR` binds before the surrounding product, so re-associating it to
+/// `(Rdcpu * VBase) * VBase` shifts the result by one ULP; winding 1 of `t2` is
+/// such a case and the needle below is the SQR-first byte.
+#[test]
+fn json_transformer_derived_rdc() {
+    assert_fixture_pins(
+        "transformer_derived_rdc",
+        &[r#""RDCOhms":[1.8735416666666669E+001"#],
+        // The left-to-right association. Never the oracle's answer.
+        &[r#""RDCOhms":[1.8735416666666666E+001"#],
+    );
+    run_deck("transformer_derived_rdc");
+}
+
+// The Capacitor's twin of the derived-RDCOhms gate above cannot live here: its
+// derived values render only under Full, and every Full capture also emits
+// `CMatrix`, whose oracle getter reads uninitialized memory (proven
+// nondeterministic across processes — see the note in `gen_json.py`). Those
+// values are pinned in `elements/pd/capacitor/tests.rs` instead.
+
 /// AutoTrans's own copy of the array-alternative JSON metadata
 /// (`AutoTrans.pas:439-557`): the DEFAULT sweep must render the per-winding
 /// arrays under the SINGULAR keys. Losing `array_alternative`/`REDUNDANT` would
-/// flip them to `Buses/Conns/kVs/kVAs` — pinned negatively below, because the
-/// plural keys are legitimately present in the deck's Full captures.
+/// flip them to `Buses/Conns/kVs/kVAs`, which the positive needles below already
+/// catch. No negative pin on the plural keys is possible here: they legitimately
+/// appear in the deck's Full captures.
 #[test]
 fn json_autotrans_micro() {
     assert_fixture_pins(
@@ -253,6 +277,55 @@ fn json_der_usermodel_full() {
     run_deck("der_usermodel_full");
 }
 
+/// The ASSIGNED (non-empty) DER user-model data strings. `der_usermodel_full`
+/// pins the six surfaces at their empty default, which cannot tell a correct
+/// render from one that always emits `""`. The filename surfaces still cannot be
+/// pinned (naming an unresolvable model makes the oracle raise `#570 … Not
+/// Loaded`), but the data surfaces take any string with no loader involved.
+#[test]
+fn json_der_usermodel_assigned() {
+    assert_fixture_pins(
+        "der_usermodel_assigned",
+        &[
+            // Generator: both data surfaces, parentheses stripped on store.
+            r#""UserData":"Kp=1.5,Ki=0.25""#,
+            r#""ShaftData":"J=3.5,D=0.1""#,
+            // Storage keeps UserData and DynaData apart.
+            r#""UserData":"a=1""#,
+            r#""DynaData":"b=2""#,
+            r#""UserData":"c=3""#,
+        ],
+        // The parentheses are part of the array/quoting syntax, never stored.
+        &[r#""UserData":"(Kp=1.5,Ki=0.25)""#],
+    );
+    run_deck("der_usermodel_assigned");
+}
+
+/// The `Spectrum=` FullNames render across the PC classes converted to
+/// `PropDef::object_ref_deferred`. `der_usermodel_full` pins Generator only;
+/// this deck gates the other ten oracle-visible classes, and pins GICLine's
+/// `SUPPRESS_JSON_LATE` negatively (it must emit no `Spectrum` key at all).
+#[test]
+fn json_spectrum_refs() {
+    assert_fixture_pins(
+        "spectrum_refs",
+        &[
+            // The resolving-class prefix (Pascal `PropertyOffset2 =
+            // SpectrumClass`) plus the lowercased stored name.
+            r#""Spectrum":"Spectrum.mycustom""#,
+            // Without FullNames the bare stored name is rendered.
+            r#""Spectrum":"mycustom""#,
+        ],
+        &[
+            // A regression that dropped `json_ref_class` would render the bare
+            // name under FullNames too; the deck contains no object legitimately
+            // named `Spectrum.MyCustom` in mixed case either.
+            r#""Spectrum":"Spectrum.MyCustom""#,
+        ],
+    );
+    run_deck("spectrum_refs");
+}
+
 #[test]
 fn json_dyneq_micro() {
     run_deck("dyneq_micro");
@@ -312,4 +385,49 @@ fn json_circuit_ieee13() {
 #[test]
 fn json_circuit_positive_seq() {
     run_deck("circuit_positive_seq");
+}
+
+/// Directory-completeness guard. Every deck is wired by hand with its own
+/// `#[test]`, so a deck added to `gen_json.py` (whose golden is then committed)
+/// without a matching driver would ship silently uncovered. This walks the
+/// golden directory and asserts each deck golden is actually replayed, with an
+/// anti-shrink floor so deleting one is caught too.
+#[test]
+fn json_every_deck_golden_has_a_driver() {
+    // The floor is the count at the time of writing; raise it when decks are
+    // added, never lower it to make a deletion pass.
+    const MIN_DECKS: usize = 21;
+
+    let src = include_str!("golden_json.rs");
+    let mut stems: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(json_dir()).expect("read golden json dir") {
+        let path = entry.expect("golden json dir entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let value: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
+        // `gen_schema.py`'s fixtures share this directory and carry no combos.
+        if value.get("combo_names").is_none() {
+            continue;
+        }
+        serde_json::from_str::<DeckGolden>(&text)
+            .unwrap_or_else(|e| panic!("{}: not a deck golden: {e}", path.display()));
+        stems.push(path.file_stem().unwrap().to_string_lossy().into_owned());
+    }
+    stems.sort();
+    assert!(
+        stems.len() >= MIN_DECKS,
+        "only {} deck goldens found (floor {MIN_DECKS}): {stems:?}",
+        stems.len()
+    );
+    for stem in &stems {
+        assert!(
+            src.contains(&format!("run_deck(\"{stem}\")")),
+            "tests/golden/json/{stem}.json has no `run_deck(\"{stem}\")` driver — \
+             the deck is committed but never replayed"
+        );
+    }
 }

@@ -40,6 +40,17 @@ across oracle processes) — not reproduced.
 auto's own `GetAllWindingCurrents`) now pin it byte-exact. The
 `ShaftModel`/`ShaftData` Full-render gap re-triaged clean post-WM.3/WM.4 and is
 pinned by `der_usermodel_full` (Generator + Storage + PVSystem).
+**Settle pass 2026-07-26** (same branch, audits dispositioned): added
+`transformer_derived_rdc` (the derived-RDCOhms branch, previously ungated on the
+Transformer side), `spectrum_refs` (ten more of the thirteen `Spectrum`
+FullNames conversions + GICLine's suppression pinned negatively) and
+`der_usermodel_assigned` (non-empty user-model DATA strings); completed the
+`SQR`-binds-first bug class in the Capacitor (3 sites, pinned bit-exactly in
+`capacitor/tests.rs` because the class's Full JSON is poisoned by the `CMatrix`
+UB above); added `json_every_deck_golden_has_a_driver`. Two residuals stay open
+and are listed under STATUS "Standing open follow-ups": the user-model FILENAME
+render (needs a generator that tolerates the oracle's `#570` load error) and
+WindGen's `Spectrum` render (no capi channel — class absent from 0.14.5).
 
 ### 1.4 AltDSS JSON **import** (`Obj_Circuit_FromJSON_`)
 **PORTED 2026-07-18** on `og14-json-import` — see STATUS §OG-1.4. `Dss::circuit_from_json`

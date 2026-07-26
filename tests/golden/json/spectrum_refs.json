@@ -1,0 +1,264 @@
+{
+  "name": "spectrum_refs",
+  "commands": [
+    "new circuit.spec basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+    "new Spectrum.MyCustom numharm=1 harmonic=[1] %mag=[100] angle=[0]",
+    "edit Vsource.source spectrum=MYCUSTOM",
+    "new Load.l1 bus1=sourcebus phases=3 kv=12.47 kw=100 pf=0.95 spectrum=MYCUSTOM",
+    "new Isource.i1 bus1=sourcebus phases=3 amps=10 spectrum=MYCUSTOM",
+    "new PVSystem.pv1 bus1=sourcebus phases=3 kv=12.47 kva=100 pmpp=100 irradiance=1 spectrum=MYCUSTOM",
+    "new Storage.st1 bus1=sourcebus phases=3 kv=12.47 kwrated=100 kwhrated=200 spectrum=MYCUSTOM",
+    "new IndMach012.im1 bus1=sourcebus phases=3 kv=12.47 kw=100 spectrum=MYCUSTOM",
+    "new VCCS.vc1 bus1=sourcebus phases=1 prated=25000 vrated=7200 spectrum=MYCUSTOM",
+    "new UPFC.up1 bus1=sourcebus bus2=upb spectrum=MYCUSTOM",
+    "new VSConverter.vs1 bus1=sourcebus phases=3 spectrum=MYCUSTOM",
+    "new GICLine.gl1 bus1=sourcebus bus2=gicb volts=100 spectrum=MYCUSTOM",
+    "new Line.gs1 bus1=sourcebus bus2=gicb2 phases=3 length=1",
+    "new GICsource.gs1 volts=100 angle=0 spectrum=MYCUSTOM",
+    "set voltagebases=[12.47]",
+    "calcv"
+  ],
+  "combo_names": [
+    "fullnames",
+    "full_fullnames",
+    "default"
+  ],
+  "captures": [
+    {
+      "kind": "batch",
+      "target": "Vsource",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"source\",\"MVASC3\":2.0000000000000000E+003,\"MVASC1\":2.1000000000000000E+003,\"BasekV\":1.2470000000000001E+001,\"pu\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"Spectrum\":\"Spectrum.mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Vsource",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"source\",\"Bus1\":\"sourcebus\",\"BasekV\":1.2470000000000001E+001,\"pu\":1.0000000000000000E+000,\"Angle\":0.0000000000000000E+000,\"Frequency\":6.0000000000000000E+001,\"Phases\":3,\"MVASC3\":2.0000000000000000E+003,\"MVASC1\":2.1000000000000000E+003,\"X1R1\":4.0000000000000000E+000,\"X0R0\":3.0000000000000000E+000,\"Isc3\":9.2598278939795637E+004,\"Isc1\":9.7228192886785415E+004,\"R1\":1.8857253987606157E-002,\"X1\":7.5429015950424630E-002,\"R0\":2.1117972628841502E-002,\"X0\":6.3353917886524502E-002,\"ScanType\":\"Positive\",\"Sequence\":\"Positive\",\"Bus2\":\"sourcebus.0.0.0\",\"Z1\":[1.8857253987606157E-002,7.5429015950424630E-002],\"Z0\":[2.1117972628841502E-002,6.3353917886524502E-002],\"Z2\":[1.8857253987606157E-002,7.5429015950424630E-002],\"puZ1\":[1.2126781251816647E-002,4.8507125007266588E-002],\"puZ0\":[1.3580611191859016E-002,4.0741833575577049E-002],\"puZ2\":[1.2126781251816647E-002,4.8507125007266588E-002],\"BaseMVA\":1.0000000000000000E+002,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"Model\":\"Thevenin\",\"puZIdeal\":[9.9999999999999995E-007,1.0000000000000000E-003],\"Spectrum\":\"Spectrum.mycustom\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Vsource",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"source\",\"MVASC3\":2.0000000000000000E+003,\"MVASC1\":2.1000000000000000E+003,\"BasekV\":1.2470000000000001E+001,\"pu\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"Spectrum\":\"mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Load",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"l1\",\"Bus1\":\"sourcebus\",\"Phases\":3,\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+002,\"PF\":9.4999999999999996E-001,\"Spectrum\":\"Spectrum.mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Load",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"l1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+002,\"PF\":9.4999999999999996E-001,\"Model\":1,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"Growth\":null,\"Conn\":\"wye\",\"kvar\":3.2868410517886318E+001,\"RNeut\":-1.0000000000000000E+000,\"XNeut\":0.0000000000000000E+000,\"Status\":\"Variable\",\"Class\":1,\"VMinpu\":9.4999999999999996E-001,\"VMaxpu\":1.0500000000000000E+000,\"VMinNorm\":0.0000000000000000E+000,\"VMinEmerg\":0.0000000000000000E+000,\"XfkVA\":0.0000000000000000E+000,\"AllocationFactor\":5.0000000000000000E-001,\"kVA\":1.0526315789473685E+002,\"pctMean\":5.0000000000000000E+001,\"pctStdDev\":1.0000000000000000E+001,\"CVRWatts\":1.0000000000000000E+000,\"CVRVars\":2.0000000000000000E+000,\"kWh\":0.0000000000000000E+000,\"kWhDays\":3.0000000000000000E+001,\"CFactor\":4.0000000000000000E+000,\"CVRCurve\":null,\"NumCust\":1,\"ZIPV\":[0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000,0.0000000000000000E+000],\"pctSeriesRL\":5.0000000000000000E+001,\"RelWeight\":1.0000000000000000E+000,\"VLowpu\":5.0000000000000000E-001,\"puXHarm\":0.0000000000000000E+000,\"XRHarm\":6.0000000000000000E+000,\"Spectrum\":\"Spectrum.mycustom\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Load",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"l1\",\"Bus1\":\"sourcebus\",\"Phases\":3,\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+002,\"PF\":9.4999999999999996E-001,\"Spectrum\":\"mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Isource",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"i1\",\"Bus1\":\"sourcebus\",\"Phases\":3,\"Amps\":1.0000000000000000E+001,\"Spectrum\":\"Spectrum.mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Isource",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"i1\",\"Bus1\":\"sourcebus\",\"Amps\":1.0000000000000000E+001,\"Angle\":0.0000000000000000E+000,\"Frequency\":6.0000000000000000E+001,\"Phases\":3,\"ScanType\":\"Positive\",\"Sequence\":\"Positive\",\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"Bus2\":\"sourcebus.0.0.0\",\"Spectrum\":\"Spectrum.mycustom\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Isource",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"i1\",\"Bus1\":\"sourcebus\",\"Phases\":3,\"Amps\":1.0000000000000000E+001,\"Spectrum\":\"mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "PVSystem",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"pv1\",\"PF\":1.0000000000000000E+000,\"Bus1\":\"sourcebus\",\"Phases\":3,\"kV\":1.2470000000000001E+001,\"kVA\":1.0000000000000000E+002,\"Pmpp\":1.0000000000000000E+002,\"Irradiance\":1.0000000000000000E+000,\"Spectrum\":\"Spectrum.mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "PVSystem",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"pv1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":1.2470000000000001E+001,\"Irradiance\":1.0000000000000000E+000,\"Pmpp\":1.0000000000000000E+002,\"pctPmpp\":1.0000000000000000E+002,\"Temperature\":2.5000000000000000E+001,\"PF\":1.0000000000000000E+000,\"Conn\":\"wye\",\"kvar\":0.0000000000000000E+000,\"kVA\":1.0000000000000000E+002,\"pctCutIn\":2.0000000000000000E+001,\"pctCutOut\":2.0000000000000000E+001,\"EffCurve\":null,\"PTCurve\":null,\"pctR\":5.0000000000000000E+001,\"pctX\":0.0000000000000000E+000,\"Model\":1,\"VMinpu\":9.0000000000000002E-001,\"VMaxpu\":1.1000000000000001E+000,\"Balanced\":false,\"LimitCurrent\":false,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"TYearly\":null,\"TDaily\":null,\"TDuty\":null,\"Class\":1,\"UserModel\":\"\",\"UserData\":\"\",\"DebugTrace\":false,\"VarFollowInverter\":false,\"DutyStart\":0.0000000000000000E+000,\"WattPriority\":false,\"PFPriority\":false,\"pctPMinNoVars\":0.0000000000000000E+000,\"pctPMinkvarMax\":0.0000000000000000E+000,\"kvarMax\":1.0000000000000000E+002,\"kvarMaxAbs\":1.0000000000000000E+002,\"kVDC\":8.0000000000000000E+000,\"Kp\":1.0000000000000000E-002,\"PITol\":0.0000000000000000E+000,\"SafeVoltage\":8.0000000000000000E+001,\"SafeMode\":false,\"DynamicEq\":null,\"DynOut\":[],\"ControlMode\":\"GFL\",\"AmpLimit\":-1.0000000000000000E+000,\"AmpLimitGain\":8.0000000000000004E-001,\"Spectrum\":\"Spectrum.mycustom\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "PVSystem",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"pv1\",\"PF\":1.0000000000000000E+000,\"Bus1\":\"sourcebus\",\"Phases\":3,\"kV\":1.2470000000000001E+001,\"kVA\":1.0000000000000000E+002,\"Pmpp\":1.0000000000000000E+002,\"Irradiance\":1.0000000000000000E+000,\"Spectrum\":\"mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Bus1\":\"sourcebus\",\"Phases\":3,\"kV\":1.2470000000000001E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"Spectrum\":\"Spectrum.mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"st1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":1.2470000000000001E+001,\"Conn\":\"wye\",\"kW\":-1.0000000000000000E+000,\"kvar\":-0.0000000000000000E+000,\"PF\":1.0000000000000000E+000,\"kVA\":1.0000000000000000E+002,\"pctCutIn\":0.0000000000000000E+000,\"pctCutOut\":0.0000000000000000E+000,\"EffCurve\":null,\"VarFollowInverter\":false,\"kvarMax\":2.5000000000000000E+001,\"kvarMaxAbs\":2.5000000000000000E+001,\"WattPriority\":false,\"PFPriority\":false,\"pctPMinNoVars\":0.0000000000000000E+000,\"pctPMinkvarMax\":0.0000000000000000E+000,\"kWRated\":1.0000000000000000E+002,\"pctkWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"kWhStored\":2.0000000000000000E+002,\"pctStored\":1.0000000000000000E+002,\"pctReserve\":2.0000000000000000E+001,\"State\":\"Idling\",\"pctDischarge\":1.0000000000000000E+002,\"pctCharge\":1.0000000000000000E+002,\"pctEffCharge\":9.0000000000000000E+001,\"pctEffDischarge\":9.0000000000000000E+001,\"pctIdlingkW\":1.0000000000000000E+000,\"pctR\":0.0000000000000000E+000,\"pctX\":5.0000000000000000E+001,\"Model\":1,\"VMinpu\":9.0000000000000002E-001,\"VMaxpu\":1.1000000000000001E+000,\"Balanced\":false,\"LimitCurrent\":false,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"DispMode\":\"Default\",\"DischargeTrigger\":0.0000000000000000E+000,\"ChargeTrigger\":0.0000000000000000E+000,\"TimeChargeTrig\":2.0000000000000000E+000,\"Class\":1,\"DynaDLL\":\"\",\"DynaData\":\"\",\"UserModel\":\"\",\"UserData\":\"\",\"DebugTrace\":false,\"kVDC\":8.0000000000000000E+000,\"Kp\":1.0000000000000000E-002,\"PITol\":0.0000000000000000E+000,\"SafeVoltage\":8.0000000000000000E+001,\"SafeMode\":false,\"DynamicEq\":null,\"DynOut\":[],\"ControlMode\":\"GFL\",\"AmpLimit\":-1.0000000000000000E+000,\"AmpLimitGain\":8.0000000000000004E-001,\"Spectrum\":\"Spectrum.mycustom\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Bus1\":\"sourcebus\",\"Phases\":3,\"kV\":1.2470000000000001E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"Spectrum\":\"mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "IndMach012",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"im1\",\"Bus1\":\"sourcebus\",\"Phases\":3,\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+002,\"Spectrum\":\"Spectrum.mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "IndMach012",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"im1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+002,\"Conn\":\"delta\",\"kVA\":1.2000000000000000E+003,\"H\":1.0000000000000000E+000,\"D\":1.0000000000000000E+000,\"puRs\":5.3000000000000000E-003,\"puXs\":1.0600000000000000E-001,\"puRr\":7.0000000000000001E-003,\"puXr\":1.2000000000000000E-001,\"puXm\":4.0000000000000000E+000,\"Slip\":7.0000000000000001E-003,\"MaxSlip\":1.0000000000000001E-001,\"SlipOption\":\"VariableSlip\",\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"DebugTrace\":false,\"Spectrum\":\"Spectrum.mycustom\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "IndMach012",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"im1\",\"Bus1\":\"sourcebus\",\"Phases\":3,\"kV\":1.2470000000000001E+001,\"kW\":1.0000000000000000E+002,\"Spectrum\":\"mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "VCCS",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"vc1\",\"Bus1\":\"sourcebus\",\"Phases\":1,\"PRated\":2.5000000000000000E+004,\"VRated\":7.2000000000000000E+003,\"Spectrum\":\"Spectrum.mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "VCCS",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"vc1\",\"Bus1\":\"sourcebus\",\"Phases\":1,\"PRated\":2.5000000000000000E+004,\"VRated\":7.2000000000000000E+003,\"Ppct\":1.0000000000000000E+002,\"BP1\":null,\"BP2\":null,\"Filter\":null,\"FSample\":5.0000000000000000E+003,\"RMSMode\":false,\"IMaxpu\":1.1000000000000001E+000,\"VRMSTau\":1.5000000000000000E-003,\"IRMSTau\":1.5000000000000000E-003,\"Spectrum\":\"Spectrum.mycustom\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "VCCS",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"vc1\",\"Bus1\":\"sourcebus\",\"Phases\":1,\"PRated\":2.5000000000000000E+004,\"VRated\":7.2000000000000000E+003,\"Spectrum\":\"mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "UPFC",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"up1\",\"Bus1\":\"sourcebus\",\"Bus2\":\"upb\",\"Spectrum\":\"Spectrum.mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "UPFC",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"up1\",\"Bus1\":\"sourcebus\",\"Bus2\":\"upb\",\"RefkV\":2.3999999999999999E-001,\"PF\":1.0000000000000000E+000,\"Frequency\":6.0000000000000000E+001,\"Phases\":1,\"Xs\":7.5400000000000000E-001,\"Tol1\":2.0000000000000000E-002,\"Mode\":1,\"VpqMax\":2.4000000000000000E+001,\"LossCurve\":null,\"VHLimit\":3.0000000000000000E+002,\"VLLimit\":1.2500000000000000E+002,\"CLimit\":2.6500000000000000E+002,\"refkV2\":0.0000000000000000E+000,\"kvarLimit\":5.0000000000000000E+000,\"Element\":null,\"Spectrum\":\"Spectrum.mycustom\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "UPFC",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"up1\",\"Bus1\":\"sourcebus\",\"Bus2\":\"upb\",\"Spectrum\":\"mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "VSConverter",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"vs1\",\"Bus1\":\"sourcebus\",\"Phases\":3,\"Spectrum\":\"Spectrum.mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "VSConverter",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"vs1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kVAC\":1.0000000000000000E+000,\"kVDC\":1.0000000000000000E+000,\"kW\":1.0000000000000000E+000,\"NDC\":1,\"RAC\":9.9999999999999998E-013,\"XAC\":0.0000000000000000E+000,\"M0\":5.0000000000000000E-001,\"d0\":0.0000000000000000E+000,\"MMin\":1.0000000000000001E-001,\"MMax\":9.0000000000000002E-001,\"IACMax\":2.0000000000000000E+000,\"IDCMax\":2.0000000000000000E+000,\"VACRef\":0.0000000000000000E+000,\"PACRef\":0.0000000000000000E+000,\"QACRef\":0.0000000000000000E+000,\"VDCRef\":0.0000000000000000E+000,\"VSCMode\":\"Fixed\",\"Spectrum\":\"Spectrum.mycustom\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "VSConverter",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"vs1\",\"Bus1\":\"sourcebus\",\"Phases\":3,\"Spectrum\":\"mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "GICLine",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"gl1\",\"Bus1\":\"sourcebus\",\"Bus2\":\"gicb\",\"Volts\":1.0000000000000000E+002}]"
+    },
+    {
+      "kind": "batch",
+      "target": "GICLine",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"gl1\",\"Bus1\":\"sourcebus\",\"Bus2\":\"gicb\",\"Volts\":1.0000000000000000E+002,\"Angle\":0.0000000000000000E+000,\"Frequency\":1.0000000000000001E-001,\"Phases\":3,\"R\":1.0000000000000000E+000,\"X\":0.0000000000000000E+000,\"C\":0.0000000000000000E+000,\"EN\":1.0000000000000000E+000,\"EE\":1.0000000000000000E+000,\"Lat1\":3.3613498999999997E+001,\"Lon1\":-8.7373672999999997E+001,\"Lat2\":3.3547885000000001E+001,\"Lon2\":-8.6074605000000005E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "GICLine",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"gl1\",\"Bus1\":\"sourcebus\",\"Bus2\":\"gicb\",\"Volts\":1.0000000000000000E+002}]"
+    },
+    {
+      "kind": "batch",
+      "target": "GICsource",
+      "opts": "fullnames",
+      "bits": 8,
+      "expected": "[{\"Name\":\"gs1\",\"Volts\":1.0000000000000000E+002,\"Angle\":0.0000000000000000E+000,\"Spectrum\":\"Spectrum.mycustom\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "GICsource",
+      "opts": "full_fullnames",
+      "bits": 9,
+      "expected": "[{\"Name\":\"gs1\",\"Volts\":1.0000000000000000E+002,\"Angle\":0.0000000000000000E+000,\"Frequency\":1.0000000000000001E-001,\"Phases\":3,\"EN\":1.0000000000000000E+000,\"EE\":1.0000000000000000E+000,\"Lat1\":3.3613498999999997E+001,\"Lon1\":-8.7373672999999997E+001,\"Lat2\":3.3547885000000001E+001,\"Lon2\":-8.6074605000000005E+001,\"Spectrum\":\"Spectrum.mycustom\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "GICsource",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"gs1\",\"Volts\":1.0000000000000000E+002,\"Angle\":0.0000000000000000E+000,\"Spectrum\":\"mycustom\"}]"
+    }
+  ],
+  "schema": 1,
+  "oracle": {
+    "dss_python": "0.15.7",
+    "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+  }
+}
