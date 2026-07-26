@@ -184,7 +184,7 @@ impl DssObject for Isource {
             BUS1 => {
                 // Default Bus2 to the zero node of Bus1 (grounded-Y), unless
                 // Bus2Defined — which Isource, unlike VSource, never sets true
-                // (see the TODO(compat) note on `Isource::bus2_defined` in
+                // (see the compat note on `Isource::bus2_defined` in
                 // `mod.rs`): this branch always fires when Bus1 is (re)set.
                 if !self.bus2_defined {
                     let s = self.cd.get_bus(1).to_string();

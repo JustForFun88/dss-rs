@@ -232,7 +232,7 @@ impl Ieee1547Controller {
     // some arms are deliberately identical (e.g. `combi = 2` and `mode = 1` both
     // enable only volt-var) — kept as distinct arms for the port, not collapsed.
     // `approx_constant`: the `2.3026` below is Pascal's truncated `ln(10)`
-    // (`TODO(compat)` at its use site), reproduced verbatim for byte parity.
+    // (compat-tagged at its use site), reproduced verbatim for byte parity.
     #[allow(clippy::if_same_then_else, clippy::approx_constant)]
     fn pull_from_inv_control(&mut self, s: &InvSnap, inv_uuid: Uuid) {
         self.inv_name = s.name.clone();

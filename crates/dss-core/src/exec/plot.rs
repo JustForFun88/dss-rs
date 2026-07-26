@@ -12,7 +12,7 @@
 //! The fpjson serializer prints floats as `2.0000000000000000E+003` (16-digit
 //! scientific); the Rust payload uses ordinary JSON numbers. That is a
 //! formatting-only difference the golden comparator absorbs by parsing numbers
-//! out (never a raw float-string diff) — not a `TODO(compat)` at this layer.
+//! out (never a raw float-string diff) — no compat marker at this layer.
 
 #[cfg(test)]
 mod tests;

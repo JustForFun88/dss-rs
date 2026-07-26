@@ -2308,7 +2308,7 @@ impl Dss {
     ///    2026-07-07). Pascal's raw string concat doubles the path delimiter
     ///    when `SaveDir` is the default `OutputDirectory` (which already ends
     ///    with one — `…\\load`); reproduced for the observable
-    ///    `GlobalResult`/`LastResultFile` (`TODO(compat)` below) while the
+    ///    `GlobalResult`/`LastResultFile` (compat-tagged below) while the
     ///    file I/O uses the normalized join (same file either way).
     pub(crate) fn do_save_cmd(&mut self) {
         // Pascal `ExecCommands.pas` `SaveCommands := TCommandList.Create(...)`

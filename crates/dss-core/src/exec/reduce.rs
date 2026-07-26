@@ -355,12 +355,14 @@ impl Dss {
             // RecalcElementData is deferred to CalcYPrim (SymComponentsChanged).
         } else if !series {
             // Matrix model, parallel: upstream "assume equal" TODO.
-            // TODO(compat): TLineObj.MergeWith (Line.pas:1791) sets
-            // `TotalLen := Len/2` for a matrix parallel merge — an admitted
-            // upstream approximation ("We'll assume lines are equal for now").
-            // It only writes the local `TotalLen`, which is then unused (no
-            // property is updated on this branch), so the merge is effectively a
-            // no-op on the impedance; reproduced faithfully (nothing to write).
+            // `TLineObj.MergeWith` (Line.pas:1791) sets `TotalLen := Len/2` here
+            // — an admitted upstream approximation ("We'll assume lines are
+            // equal for now"). It writes only the *local* `TotalLen`, which this
+            // branch never reads back (no property is updated), so the merge is
+            // a no-op on the impedance and the approximation has **no observable
+            // effect in either engine**. No compat marker: there is no
+            // divergence to reproduce and no clean fix to make — the binding
+            // below exists to keep the ported control flow visible.
             let _total_len_matrix_parallel = this.len / 2.0;
         } else {
             // Matrix model, series (Line.pas:1793).

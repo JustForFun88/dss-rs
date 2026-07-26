@@ -281,7 +281,7 @@ fn solve_ld1_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 /// runs. The mid-loop abort re-check `SolveLD1` has per outer step does not
 /// exist here: Pascal tests `SolutionAbort` exactly once, before the
 /// curve-point loop, never inside it — ported verbatim (a control-flow fact,
-/// not a numeric approximation, so no `TODO(compat)`).
+/// not a numeric approximation, so no compat marker).
 pub(super) fn solve_ld2(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     if ckt.load_dur_curve_obj.is_none() {
         env.errors.push(LDCURVE_NOT_DEFINED.to_string());

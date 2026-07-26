@@ -77,8 +77,8 @@ impl RollAvgWindow {
             // front), not the evicted value it just removed, so this sum drifts
             // from the true Σ of `sampletime`. Harmless: its only reader,
             // `AccumSec` (-> [`accum_sec`](Self::accum_sec)), is dead in the
-            // upstream tree, so the drift is never observed. Not tagged
-            // `TODO(compat)` (no golden pins it).
+            // upstream tree, so the drift is never observed. Carries no compat
+            // marker (no golden pins it).
             self.running_sum_sample_time -= *self.sample_time.front().unwrap();
             self.running_sum_sample_time += incoming_sample_time;
         } else {

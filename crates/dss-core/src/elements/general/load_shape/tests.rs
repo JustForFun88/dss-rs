@@ -891,7 +891,7 @@ fn mmf_dblfile_fixed_matches_non_mmf() {
     assert_eq!(mmf.num_points(), 6);
 }
 
-/// A.4 accept-set quirk (TODO(compat)): the MMF text reader keeps only bytes
+/// A.4 accept-set quirk (compat-tagged at `compute.rs`): the MMF text reader keeps only bytes
 /// `[46,58)`, dropping sign / `+` / exponent, and defaults empty → 1.0. So
 /// `-0.5`→0.5, `1.5e-3`→1.53, blank line → 1.0. Precision note (audit
 /// settlement): only row 0 is byte-for-byte what Pascal would read — Pascal

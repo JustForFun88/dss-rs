@@ -531,8 +531,11 @@ fn attach_load_phases(
     if nphases == 3 {
         return;
     }
-    // TODO(compat): Pascal's `bAllowSec := (pLoad.LoadClass <= 1)` is a coarse
-    // filter for PNNL-taxonomy secondary loads; reproduced verbatim.
+    // Pascal's `bAllowSec := (pLoad.LoadClass <= 1)` — the CIM exporter's rule
+    // for "this load may be a PNNL-taxonomy secondary": a deliberate convention
+    // of the exporter, not an inexactness or a bug, so it carries no compat
+    // marker. There is nothing to "fix": changing the threshold would change
+    // which loads the profile calls secondary, i.e. the exported model.
     let allow_sec = load_class <= 1;
     let p = 1000.0 * kw_base / nphases as f64;
     let q = 1000.0 * kvar_base / nphases as f64;

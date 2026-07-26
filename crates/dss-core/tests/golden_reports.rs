@@ -3579,7 +3579,7 @@ fn export_meters_append_accumulates() {
 
 /// The Storage `/m` path reproduces an **upstream copy-paste bug** — its per-file
 /// prefix is `EXP_PV_`, not `EXP_STORAGE_` (`ExportResults.pas:2240`,
-/// `TODO(compat)`). Pin that exact filename (and the transitively-oracle-anchored
+/// compat-tagged). Pin that exact filename (and the transitively-oracle-anchored
 /// row) so the deliberately-faithful quirk cannot silently drift to `EXP_STORAGE_`.
 #[test]
 fn export_storage_multifile_uses_pv_prefix() {
@@ -5572,7 +5572,7 @@ fn save_class_disabled_load_writes_enabled_no() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// The `TODO(compat)` GlobalResult delimiter parity of `do_save_cmd`: Pascal
+/// The compat-tagged GlobalResult delimiter parity of `do_save_cmd`: Pascal
 /// composes `SaveFile := SaveDir + PathDelim + SaveFile` as raw STRINGS
 /// (`ExecHelper.pas:835-841`), so with the default `SaveDir = OutputDirectory`
 /// (already ending in a delimiter) the observable `GlobalResult` carries a

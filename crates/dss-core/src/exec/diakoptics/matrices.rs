@@ -14,7 +14,7 @@
 //!   dense `CMatrix::invert` (the double-`.re` drop, D5 quirk).
 //!
 //! The D5 quirks are marked `NOTE(upstream-quirk)` at each site (Part II has no
-//! oracle → not `TODO(compat)`); the fixture goldens pin them.
+//! oracle → no compat marker); the fixture goldens pin them.
 
 use num_complex::Complex64;
 

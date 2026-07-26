@@ -92,7 +92,7 @@ fn bus1_side_effect_defaults_bus2_to_grounded_y() {
     assert_eq!(isrc.cd.get_bus(2), "b1.0.0.0");
 }
 
-/// TODO(compat) coverage: Isource never sets `bus2_defined = true` (unlike
+/// Compat coverage: Isource never sets `bus2_defined = true` (unlike
 /// VSource), so a later Bus1 re-set clobbers an already-explicit Bus2 back to
 /// the grounded-Y default.
 #[test]

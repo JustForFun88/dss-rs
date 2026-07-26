@@ -54,7 +54,7 @@ impl CktElement for Generator {
 
         if old_phases > 1 {
             let nph = self.cd.nphases as f64;
-            // TODO(compat): raw PrpSequence indices — see method doc.
+            // Raw PrpSequence indices — the compat marker is on the method doc.
             let had_kva = self.cd.obj.prp_specified(26); // upstream: intends kVA (23)
             let had_mva = self.cd.obj.prp_specified(27); // upstream: intends MVA (24)
             let had_kvars = self.cd.obj.prp_specified(19) || self.cd.obj.prp_specified(20);
@@ -142,8 +142,9 @@ impl CktElement for Generator {
     /// `DynamicExp` name first, then the classic table (1..6), then the
     /// `UserModel` names (`k = i - NumGenVariables`), then the `ShaftModel` names.
     ///
-    /// TODO(compat): Pascal's ShaftModel branch (`:2780`) calls
-    /// `UserModel.FGetVarName` — a genuine upstream bug (should be
+    /// **Upstream bug deliberately NOT reproduced** (so: no compat marker —
+    /// the tag is for quirks we *do* reproduce). Pascal's ShaftModel branch
+    /// (`:2780`) calls `UserModel.FGetVarName` — a genuine upstream bug (should be
     /// `ShaftModel.FGetVarName`); with no UserModel loaded it dereferences a nil
     /// function pointer (an access violation), and out of the UserModel's range
     /// it reads an uninitialized stack buffer. Per the CLAUDE.md rule (UB /
