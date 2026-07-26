@@ -10,7 +10,7 @@ use num_complex::Complex64;
 
 use crate::obj::base::{InterpLoad, InterpTarget, MmfKind};
 
-use super::{INTERP_EDGE, LoadShapeObj, store_array};
+use super::{LoadShapeInterp, LoadShapeObj, store_array};
 
 impl LoadShapeObj {
     fn n(&self) -> usize {
@@ -86,7 +86,7 @@ impl LoadShapeObj {
             // TODO(compat): FPC `Round` is banker's rounding (ties-to-even);
             // these indices are always in i64 range, so `round_ties_even`
             // reproduces it. Wiped with the other compat shims.
-            let mut i = if self.interpolation == INTERP_EDGE {
+            let mut i = if self.interpolation == LoadShapeInterp::Edge {
                 (hr / self.interval).floor() as i64
             } else {
                 (hr / self.interval).round_ties_even() as i64
@@ -138,7 +138,7 @@ impl LoadShapeObj {
                 return Complex64::new(re, im);
             }
             if h[i] > hr {
-                if self.interpolation == INTERP_EDGE {
+                if self.interpolation == LoadShapeInterp::Edge {
                     // Edge: hold the last point at or before Hr.
                     let mut re = 0.0;
                     let mut im = 0.0;
@@ -220,7 +220,7 @@ impl LoadShapeObj {
         // --- Fixed (even) interval ---
         if self.interval > 0.0 {
             // TODO(compat): FPC `Round` = ties-to-even (see the f64 twin).
-            let mut i = if self.interpolation == INTERP_EDGE {
+            let mut i = if self.interpolation == LoadShapeInterp::Edge {
                 (hr / self.interval).floor() as i64
             } else {
                 (hr / self.interval).round_ties_even() as i64
@@ -262,7 +262,7 @@ impl LoadShapeObj {
                 return Complex64::new(re, self.result_im(re));
             }
             if f64::from(h[i]) > hr {
-                if self.interpolation == INTERP_EDGE {
+                if self.interpolation == LoadShapeInterp::Edge {
                     // Edge: `Result := 0`, hold the last point at or before
                     // Hr; `im` is only written when `dQ <> NIL` (never in
                     // single mode) so it stays 0.

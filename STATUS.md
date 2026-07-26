@@ -7,6 +7,67 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE P1-tail (5/n) — four small self-contained families + the P1-tail escape record (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes most of deferred item **7-residue**.
+
+| family | new enum | discriminants (proven) |
+|---|---|---|
+| Generator `DispatchMode` | **`GenDispatchMode`** (`pc/generator/mod.rs`) | `Generator.pas:436-437`: Default=0, LoadLevel=1 (`LOADMODE`), Price=2 (`PRICEMODE`) → `Generator: Dispatch Mode` `[0,1,2]` |
+| ESPVLControl `Ftype` | **`EspvlControlType`** (`control/espvl_control/mod.rs`) | `ESPVLControl.pas:82`: Unset=0, SystemController=1, LocalController=2 → `ESPVLControl: Type` `[1,2]` |
+| LoadShape `interpolation` | **`LoadShapeInterp`** (`general/load_shape/mod.rs`) | `TLoadShapeInterp`, `LoadShape.pas:293-295`: Avg=0, Edge=1 → `LoadShape: Interpolation` `[0,1]` |
+| ExpControl `FPendingChange` | **`ExpPendingChange`** (`control/exp_control/mod.rs`) | `ExpControl.pas:169-170`: None=0, ChangeVarLevel=1 (queue codes, not a `DssEnum`) |
+
+Four pin tests, one per family. `EspvlControlType::Unset` is a **real** state, not
+a placeholder: `Create` zero-inits `Ftype := 0`, which is deliberately outside the
+registry's `[1, 2]` so the dump renders `''` — the variant keeps that observable.
+`ExpDispatchEnv::push_change` now takes `ExpPendingChange` and `.ordinal()`s at the
+`ControlQueue` seam (same pattern as `InvPendingChange` / `StorageCtrlAction`);
+`set_pending_change` still writes `DblTraceParameter := Value` as
+`value.ordinal() as f64`, bit-identical.
+
+Conversions here were done with **explicit** string replacements only — see the
+record 4/n note on why a bulk identifier rename is unsafe in this codebase.
+Re-verified with the same mechanical string-literal diff vs `634aac9`: the only
+deltas are new test-assertion messages, `"state {}" → "state {:?}"` (the field is
+now `Debug`, not `Display`), `"Monte2 LOGNORMAL…" → "…LogNormal…"` (a test message)
+and new doc prose. **Zero** runtime/user-visible strings changed — no `push_error`,
+event-log or report text anywhere in the wave.
+
+## P1-tail escape record — what is still open
+
+Left as raw `i32`, deliberately, with the reason. None was partially touched.
+
+1. **Relay / CapControl present+normal `state` ordinals** (`CTRL_NONE=0` …
+   `CTRL_UNLOCK=5` + `CTRL_STATE_KEEP = i32::MIN`, `control_elem.rs:23-36`). This is
+   the shared `EControlAction` channel across SwtControl / Fuse / Recloser / Relay /
+   CapControl **and** the `relay_action`/`relay_state`/`fuse_*`/`recloser_*`/
+   `swt_control_*` registry families, several of which map two different `DssEnum`s
+   onto one field. `CTRL_STATE_KEEP = i32::MIN` is a *sentinel outside every*
+   registry (the "leave as is" default value), so the enum needs a `Keep` variant
+   plus the six actions, and every one of the five control classes converts in the
+   same commit or the family is half-done. Out of this step's safe blast radius
+   after the wave already grew to 68 files; deferred as one dedicated unit.
+2. **Item 8 — the remaining bare-`i32` `DssEnum` fields**: `reactor.spec_type` /
+   `capacitor.spec_type` (a *derived* code written by six different property side
+   effects, with `_` fall-throughs in three `match`es in `reactor/solve.rs`),
+   `vsource.{z_spec_type, scan_type, sequence_type}`, `vs_converter.f_mode`,
+   `energymeter.ocp_device_type` (the `== 0` "unset" sentinel plus the
+   reliability-report ripple the P1 record already flagged). Not started.
+3. **Item 10 (Tier-2) — `DynamicExp` RPN token sentinels** (`CONST_CODE = 50001`,
+   `EQ_MARK = -50` in the token stream). These are *payload-carrying* codes (a token
+   is either an opcode, a variable index, or a constant index offset by
+   `CONST_CODE`), so the faithful model is a payload enum over the whole token
+   stream — a real refactor of the evaluator, not a field retype. Not started.
+
+Everything else from `docs/phase-records/depascalize-p1.md` §Deferred is closed by
+records 1/n-5/n: items **1, 2, 3, 4, 5, 6, 9** in full, item **7** except the
+`CTRL_*` state channel, and the `SolveMode` name collision (already resolved by
+P1 itself as `DynSolveMode`).
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate, both
+channels) — green; `tests/corpus` pristine; goldens untouched; `TODO(compat)` 117.
+
 ### DE_PASCALIZE P1-tail (4/n) — Storage `f_state` + StorageController modes/fleet-state + the control-queue action-code seam (branch `depas-p1p3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Closes deferred item **5** — deferred as one unit

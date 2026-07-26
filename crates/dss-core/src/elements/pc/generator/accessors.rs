@@ -14,7 +14,7 @@ use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
-use super::{Connection, Generator, nconds_for_connection, prop};
+use super::{Connection, GenDispatchMode, Generator, nconds_for_connection, prop};
 
 impl CktElement for Generator {
     fn cd(&self) -> &CktElementData {
@@ -517,7 +517,7 @@ impl DssObject for Generator {
         match idx {
             PHASES => self.cd.nphases as i32,
             MODEL => self.gen_model,
-            DISPMODE => self.dispatch_mode,
+            DISPMODE => self.dispatch_mode.ordinal(),
             CONN => self.connection as i32,
             STATUS => self.is_fixed as i32,
             CLS => self.gen_class,
@@ -529,7 +529,10 @@ impl DssObject for Generator {
         match idx {
             PHASES => self.cd.nphases = value.max(0) as usize,
             MODEL => self.gen_model = value,
-            DISPMODE => self.dispatch_mode = value,
+            DISPMODE => {
+                self.dispatch_mode =
+                    GenDispatchMode::from_ordinal(value).unwrap_or(self.dispatch_mode)
+            }
             CONN => {
                 self.connection = if value == 1 {
                     Connection::Delta

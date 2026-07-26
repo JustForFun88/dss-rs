@@ -10,7 +10,7 @@ use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
-use super::{EspvlControl, prop};
+use super::{EspvlControl, EspvlControlType, prop};
 
 impl CktElement for EspvlControl {
     fn cd(&self) -> &crate::elements::ckt::CktElementData {
@@ -128,7 +128,7 @@ impl DssObject for EspvlControl {
         use prop::*;
         match idx {
             TERMINAL => self.ccd.element_terminal,
-            TYP => self.f_type,
+            TYP => self.f_type.ordinal(),
             // Pascal `IndirectCount` reads the count from `PropertyOffset2`
             // (`F*ListSize`); the Weights arrays' `size_prop` points at the
             // matching name-list property, so schema/JSON length reads land here.
@@ -142,7 +142,7 @@ impl DssObject for EspvlControl {
         use prop::*;
         match idx {
             TERMINAL => self.ccd.element_terminal = value,
-            TYP => self.f_type = value,
+            TYP => self.f_type = EspvlControlType::from_ordinal(value).unwrap_or(self.f_type),
             _ => unreachable!("ESPVLControl has no integer property {idx}"),
         }
     }

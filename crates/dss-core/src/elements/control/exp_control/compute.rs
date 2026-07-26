@@ -13,7 +13,7 @@ use crate::elements::traits::ElemId;
 use crate::solution::ControlMode;
 use crate::util::fmt_g;
 
-use super::{CHANGEVARLEVEL, ExpControl, ExpVars, NONE};
+use super::{ExpControl, ExpPendingChange, ExpVars};
 
 /// Pascal `Math.Sign` — returns -1.0 / 0.0 / 1.0.
 fn pas_sign(x: f64) -> f64 {
@@ -101,7 +101,7 @@ pub(crate) trait ExpDispatchEnv {
 
     // --- control queue / event log / scalars ---
     /// Pascal `ActiveCircuit.ControlQueue.Push(TimeDelay, CHANGEVARLEVEL, 0, Self)`.
-    fn push_change(&mut self, delay: f64, code: i32);
+    fn push_change(&mut self, delay: f64, code: ExpPendingChange);
     /// Pascal `AppendToEventLog(sender, msg)` — `sender` is the fully composed
     /// `Self.FullName + sep + PVSys.Name` (the separator differs: a space in
     /// `Sample`, a comma in `DoPendingAction` / `UpdateExpControl`).
@@ -124,9 +124,9 @@ impl ExpControl {
 
     /// Pascal `Set_PendingChange(Value, DevIndex)` — `FPendingChange[DevIndex] :=
     /// Value; DblTraceParameter := Value`.
-    fn set_pending_change(&mut self, i: usize, value: i32) {
+    fn set_pending_change(&mut self, i: usize, value: ExpPendingChange) {
         self.ctrl_vars[i].f_pending_change = value;
-        self.ccd.dbl_trace_param = value as f64;
+        self.ccd.dbl_trace_param = value.ordinal() as f64;
     }
 
     /// Pascal `TExpControlObj.MakePVSystemList(doRecalc=FALSE)` — resolve the
@@ -227,8 +227,8 @@ impl ExpControl {
                 || env.control_iteration() == 1
             {
                 self.ctrl_vars[i].f_within_tol = false;
-                self.set_pending_change(i, CHANGEVARLEVEL);
-                env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+                self.set_pending_change(i, ExpPendingChange::ChangeVarLevel);
+                env.push_change(self.ccd.time_delay, ExpPendingChange::ChangeVarLevel);
                 if self.ccd.show_event_log {
                     let sender = format!("{} {}", self.full_name(), snap.name);
                     env.append_event(
@@ -263,7 +263,7 @@ impl ExpControl {
     /// low-pass filter the target (`FOpenTau`), and move it by `DeltaQ_Factor`.
     pub(crate) fn do_pending_action(&mut self, env: &mut dyn ExpDispatchEnv) {
         for i in 0..self.fleet.len() {
-            if self.ctrl_vars[i].f_pending_change != CHANGEVARLEVEL {
+            if self.ctrl_vars[i].f_pending_change != ExpPendingChange::ChangeVarLevel {
                 continue;
             }
             let r = self.fleet[i];
@@ -359,7 +359,7 @@ impl ExpControl {
             self.ctrl_vars[i].f_last_iter_q = qset;
             self.ctrl_vars[i].f_prior_vpu = self.ctrl_vars[i].f_present_vpu;
             env.set_loads_need_updating(); // force recalc of power parms
-            self.set_pending_change(i, NONE);
+            self.set_pending_change(i, ExpPendingChange::None);
         }
     }
 

@@ -8,7 +8,7 @@ fn default_shape_and_defaults() {
     assert_eq!(ec.ccd.cd.nconds, 3);
     assert_eq!(ec.ccd.cd.nterms, 1);
     assert_eq!(ec.ccd.element_terminal, 1);
-    assert_eq!(ec.f_type, 0); // dumps '' (no Type set)
+    assert_eq!(ec.f_type, EspvlControlType::Unset); // dumps '' (no Type set)
     assert_eq!(ec.f_kw_limit, 8000.0); // hardcoded, unsettable
     assert_eq!(ec.f_kw_band, 100.0);
     assert_eq!(ec.half_kw_band, 50.0);
@@ -201,7 +201,7 @@ fn recalc_missing_element_errors_372() {
 #[test]
 fn make_like_copies_only_terminal_and_monitored() {
     let mut src = EspvlControl::new("src");
-    src.f_type = 1;
+    src.f_type = EspvlControlType::SystemController;
     src.f_kw_band = 250.0;
     src.f_kvar_limit = 1500.0;
     src.ccd.element_terminal = 2;
@@ -214,7 +214,7 @@ fn make_like_copies_only_terminal_and_monitored() {
     assert_eq!(dst.monitored_full_name, "Line.l1");
     assert_eq!(dst.ccd.monitored_element, Some(ElemId::new(1, 3)));
     // … but Type/bands keep the ctor defaults (Pascal quirk).
-    assert_eq!(dst.f_type, 0);
+    assert_eq!(dst.f_type, EspvlControlType::Unset);
     assert_eq!(dst.f_kw_band, 100.0);
     assert_eq!(dst.f_kvar_limit, 4000.0);
 }
@@ -250,4 +250,22 @@ mod make_pos_seq_tests {
         assert!(plan.run_base);
         assert_eq!(es.monitored_element_ref(), Some(ElemId::new(1, 0)));
     }
+}
+
+/// `ESPVLControl.pas:82` (`Ftype`: 1 = System, 2 = Local) + the `ESPVLControl:
+/// Type` `DssEnum` values `[1, 2]`. `Unset` (0) is `Create`'s zero-init, which
+/// is deliberately outside the registry so the dump renders `''`.
+#[test]
+fn espvl_control_type_pins_enum_ordinals() {
+    for (ord, m) in [
+        (0, EspvlControlType::Unset),
+        (1, EspvlControlType::SystemController),
+        (2, EspvlControlType::LocalController),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(EspvlControlType::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(EspvlControlType::from_ordinal(-1), None);
+    assert_eq!(EspvlControlType::from_ordinal(3), None);
+    assert_eq!(EspvlControlType::default(), EspvlControlType::Unset);
 }
