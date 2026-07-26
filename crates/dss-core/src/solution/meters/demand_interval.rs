@@ -26,10 +26,10 @@ use num_complex::Complex64;
 
 use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_REGISTERS};
-use crate::elements::traits::{ElemStore, SysCtx};
+use crate::elements::traits::{ElemStore, SysCtx, TypedStore};
 use crate::util::{fmt_g, sqrt3};
 
-use super::downcast_meter;
+use super::meter_mut;
 
 /// The Pascal memory-map text builder (`Create_Meter_Space` +
 /// `WriteintoMem`/`WriteintoMemStr` + the `CloseMHandler` render loop):
@@ -294,30 +294,19 @@ impl EmDiState {
 const NAME_SUFFIX: &str = "_1";
 
 /// The overloaded PD element's `FullName` (`Class.name`) for the `DI_Overloads`
-/// row, recovered by concrete-type probe (the solve-side store has no class
+/// row, recovered from the typed handle (the solve-side store has no class
 /// registry; `ckt.pd_elements` only ever holds these five classes).
 fn pd_full_name(store: &dyn ElemStore, r: crate::elements::traits::ElemId) -> String {
-    use crate::elements::pd::capacitor::Capacitor;
-    use crate::elements::pd::fault::Fault;
-    use crate::elements::pd::line::Line;
-    use crate::elements::pd::reactor::Reactor;
-    use crate::elements::pd::transformer::Transformer;
-    let obj = store.obj(r);
-    let any = obj.as_any();
-    let cls = if any.downcast_ref::<Line>().is_some() {
-        "Line"
-    } else if any.downcast_ref::<Transformer>().is_some() {
-        "Transformer"
-    } else if any.downcast_ref::<Capacitor>().is_some() {
-        "Capacitor"
-    } else if any.downcast_ref::<Reactor>().is_some() {
-        "Reactor"
-    } else if any.downcast_ref::<Fault>().is_some() {
-        "Fault"
-    } else {
-        "PDElement"
+    use crate::elements::traits::ElemId;
+    let cls = match r {
+        ElemId::Line(_) => "Line",
+        ElemId::Transformer(_) => "Transformer",
+        ElemId::Capacitor(_) => "Capacitor",
+        ElemId::Reactor(_) => "Reactor",
+        ElemId::Fault(_) => "Fault",
+        _ => "PDElement",
     };
-    format!("{cls}.{}", obj.data().name())
+    format!("{cls}.{}", store.obj(r).data().name())
 }
 
 /// Pascal `GetTotalPowerFromSources` (Utilities.pas:1327): `-Σ` over the
@@ -339,9 +328,7 @@ fn first_meter_register_names(ckt: &Circuit, store: &dyn ElemStore) -> Vec<Strin
         .first()
         .map(|&r| {
             store
-                .obj(r)
-                .as_any()
-                .downcast_ref::<EnergyMeter>()
+                .typed::<EnergyMeter>(r)
                 .expect("energy_meters holds EnergyMeter objects")
                 .register_names()
                 .to_vec()
@@ -405,7 +392,7 @@ fn open_meter_di_file(
     store: &mut dyn ElemStore,
 ) {
     let di_verbose = ckt.em_di.di_verbose;
-    let em = downcast_meter(store, meter_ref);
+    let em = meter_mut(store, meter_ref);
     // The Pascal `if This_Meter_DIFileIsOpen then CloseDemandIntervalFile`
     // re-open guard is unreachable through the ported flow (`OpenAllDIFiles`
     // only runs when `DIFilesAreOpen` is false, which implies every meter
@@ -456,7 +443,7 @@ fn close_meter_di_file(
     errors: &mut crate::diag::ErrorLog,
 ) {
     let di_dir = ckt.em_di.di_dir.clone();
-    let em = downcast_meter(store, meter_ref);
+    let em = meter_mut(store, meter_ref);
     let name = em.med.cd.obj.name().to_string();
     if em.di_file_is_open() {
         if let Some(di) = em.take_di_stream() {
@@ -497,7 +484,7 @@ pub(crate) fn open_all_di_files(ckt: &mut Circuit, store: &mut dyn ElemStore) {
     ckt.em_di.clear_di_totals();
 
     for meter_ref in ckt.energy_meters.clone() {
-        if downcast_meter(store, meter_ref).enabled() {
+        if meter_mut(store, meter_ref).enabled() {
             open_meter_di_file(meter_ref, ckt, store);
         }
     }
@@ -537,7 +524,7 @@ pub(crate) fn close_all_di_files(
     create_meter_totals(ckt, store);
 
     for meter_ref in ckt.energy_meters.clone() {
-        if downcast_meter(store, meter_ref).enabled() {
+        if meter_mut(store, meter_ref).enabled() {
             close_meter_di_file(meter_ref, ckt, store, errors);
         }
     }
@@ -617,9 +604,7 @@ fn write_totals_file(ckt: &mut Circuit, store: &dyn ElemStore, errors: &mut crat
     let mut reg_sum = vec![0.0; NUM_EM_REGISTERS];
     for &r in &ckt.energy_meters {
         let em = store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<EnergyMeter>()
+            .typed::<EnergyMeter>(r)
             .expect("energy_meters holds EnergyMeter objects");
         if em.enabled() {
             for (sum, (reg, mask)) in reg_sum
@@ -658,7 +643,7 @@ pub(super) fn write_meter_demand_interval_data(
 ) {
     let dbl_hour = ckt.solution.dbl_hour;
     let di_verbose = ckt.em_di.di_verbose;
-    let em = downcast_meter(store, meter_ref);
+    let em = meter_mut(store, meter_ref);
 
     if di_verbose && em.di_file_is_open() {
         let derivatives = em.derivatives().to_vec();

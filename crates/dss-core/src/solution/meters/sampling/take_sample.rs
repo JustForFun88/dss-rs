@@ -12,9 +12,9 @@ use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE, reg};
 use crate::elements::pc::generator::Generator;
 use crate::elements::pc::load::Load;
 use crate::elements::pc::{PVSystem, Storage};
-use crate::elements::traits::{CktElement, ElemId, ElemStore, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, ElemStore, SysCtx, TypedStore};
 
-use super::super::downcast_meter;
+use super::super::meter_mut;
 
 /// Pascal `TEnergyMeter.ResetAll` (l.851): close/recreate the demand-interval
 /// machinery (the `DI_yr_<year>` directory + `DI_Totals` stream, when `Set
@@ -31,32 +31,26 @@ pub(crate) fn reset_all_meters(
     super::super::demand_interval::reset_all_di(ckt, store, output_directory, errors);
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
-        downcast_meter(store, meter_ref).reset_registers();
+        meter_mut(store, meter_ref).reset_registers();
     }
     ckt.em_di.system_meter.reset();
     // Pascal `TEnergyMeter.ResetAll` l.895-897 (the reset is not gated on any
     // meter existing).
     for r in ckt.generators.clone() {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<Generator>()
+            .typed_mut::<Generator>(r)
             .expect("generators holds Generator")
             .reset_registers();
     }
     for r in ckt.storages.clone() {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<Storage>()
+            .typed_mut::<Storage>(r)
             .expect("storages holds Storage")
             .reset_registers();
     }
     for r in ckt.pv_systems.clone() {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<PVSystem>()
+            .typed_mut::<PVSystem>(r)
             .expect("pv_systems holds PVSystem")
             .reset_registers();
     }
@@ -75,9 +69,7 @@ pub(crate) fn take_sample_all(ckt: &mut Circuit, store: &mut dyn ElemStore, sys:
     let meters = ckt.energy_meters.clone();
     for meter_ref in meters {
         let enabled = store
-            .obj(meter_ref)
-            .as_any()
-            .downcast_ref::<EnergyMeter>()
+            .typed::<EnergyMeter>(meter_ref)
             .expect("energy_meters holds EnergyMeter objects")
             .enabled();
         if enabled {
@@ -108,26 +100,20 @@ fn sample_all_der(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let price_signal = ckt.price_signal;
     for r in ckt.generators.clone() {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<Generator>()
+            .typed_mut::<Generator>(r)
             .expect("generators holds Generator")
             .take_sample(interval_hrs, trapezoidal, positive_sequence, price_signal);
     }
     // Pascal comment: "samples energymeter part of storage elements (not update)".
     for r in ckt.storages.clone() {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<Storage>()
+            .typed_mut::<Storage>(r)
             .expect("storages holds Storage")
             .take_sample(sys, &ckt.solution.node_v, interval_hrs, trapezoidal);
     }
     for r in ckt.pv_systems.clone() {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<PVSystem>()
+            .typed_mut::<PVSystem>(r)
             .expect("pv_systems holds PVSystem")
             .take_sample(interval_hrs, trapezoidal, positive_sequence, price_signal);
     }
@@ -151,7 +137,7 @@ fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, 
 
     // CheckBranchList: exit if the zone was never built. Take the tree and the
     // register accumulators out of the meter for the walk.
-    let Some((mut tree, mut st)) = downcast_meter(store, meter_ref).begin_take_sample(trapezoidal)
+    let Some((mut tree, mut st)) = meter_mut(store, meter_ref).begin_take_sample(trapezoidal)
     else {
         return;
     };
@@ -259,7 +245,7 @@ fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, 
                 (cd.overload_een, cd.overload_ue)
             };
             for pc in &shunts {
-                if let Some(load) = store.obj_mut(*pc).as_any_mut().downcast_mut::<Load>() {
+                if let Some(load) = store.typed_mut::<Load>(*pc) {
                     load.een_factor = if ov_een > 0.0 && st.zone_is_radial && !st.voltage_ue_only {
                         ov_een
                     } else {
@@ -296,11 +282,7 @@ fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, 
             let is_load = matches!(store.kind(*pc), ElemKind::Load);
             let is_gen = matches!(store.kind(*pc), ElemKind::Generator);
             if is_load && !st.local_only {
-                let load = store
-                    .obj_mut(*pc)
-                    .as_any_mut()
-                    .downcast_mut::<Load>()
-                    .expect("checked is_load");
+                let load = store.typed_mut::<Load>(*pc).expect("checked is_load");
                 let load_kw = accumulate_load(
                     load,
                     sys,
@@ -317,11 +299,7 @@ fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, 
                     vbase_load[vbi as usize - 1] += load_kw;
                 }
             } else if is_gen {
-                let gen_obj = store
-                    .obj_mut(*pc)
-                    .as_any_mut()
-                    .downcast_mut::<Generator>()
-                    .expect("checked is_gen");
+                let gen_obj = store.typed_mut::<Generator>(*pc).expect("checked is_gen");
                 // Pascal `Accumulate_Gen` (l.2198): the `var` params are bound
                 // to the gen totals, not the zone-load totals.
                 let s = -gen_obj.terminal_power(sys, node_v, 1) * 0.001;
@@ -522,7 +500,7 @@ fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, 
     // `take_sample_all` (it needs the class DI state on the circuit, disjoint
     // from the meter borrow here).
 
-    downcast_meter(store, meter_ref).end_take_sample(tree, st);
+    meter_mut(store, meter_ref).end_take_sample(tree, st);
 }
 
 /// Pascal `TEnergyMeterObj.Accumulate_Load` (l.2208): add the load's terminal-1

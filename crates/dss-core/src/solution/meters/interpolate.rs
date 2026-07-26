@@ -11,7 +11,7 @@ use crate::circuit::ckt_tree::CktTree;
 use crate::elements::ckt::ElemFlags;
 use crate::elements::traits::{ElemId, ElemStore};
 
-use super::downcast_meter;
+use super::meter_mut;
 
 /// Safe read of `buses[i].CoordDefined`. Pascal indexes `buses[BusRef]`
 /// unguarded; a node with no from-bus (`NO_BUS`, Pascal `0`) would read
@@ -31,7 +31,7 @@ pub(crate) fn interpolate_coordinates(
     errors: &mut crate::diag::ErrorLog,
 ) {
     // Pascal `CheckBranchList(529)`.
-    let Some(tree) = downcast_meter(store, meter_ref).take_branch_list() else {
+    let Some(tree) = meter_mut(store, meter_ref).take_branch_list() else {
         errors
             .push("Meter Zone Lists need to be built. Do Solve or Makebuslist first!".to_string());
         return;
@@ -113,7 +113,7 @@ pub(crate) fn interpolate_coordinates(
         }
     }
 
-    downcast_meter(store, meter_ref).put_branch_list(tree);
+    meter_mut(store, meter_ref).put_branch_list(tree);
 }
 
 /// Pascal `TEnergyMeterObj.CalcBusCoordinates` (`EnergyMeter.pas:2371`): space

@@ -7,9 +7,9 @@ use crate::circuit::ckt_tree::{BusAdjLists, CktTree};
 use crate::circuit::{Circuit, ElemKind};
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE};
-use crate::elements::traits::{ElemId, ElemStore};
+use crate::elements::traits::{ElemId, ElemStore, TypedStore};
 
-use super::super::downcast_meter;
+use super::super::meter_mut;
 
 /// Whether the element at `r` is a Line (Pascal `IsLineElement`).
 fn is_line(store: &dyn ElemStore, r: ElemId) -> bool {
@@ -97,9 +97,7 @@ pub(super) fn make_meter_zone_lists(
     // Peek the meter's parse-time state.
     let (enabled, metered_element, metered_terminal, defined_zone_list, assume_restoration) = {
         let em = store
-            .obj(meter_ref)
-            .as_any()
-            .downcast_ref::<EnergyMeter>()
+            .typed::<EnergyMeter>(meter_ref)
             .expect("energy_meters holds EnergyMeter objects");
         (
             em.enabled(),
@@ -118,7 +116,7 @@ pub(super) fn make_meter_zone_lists(
     let mut vbase_count = 0usize;
 
     if !enabled {
-        let em = downcast_meter(store, meter_ref);
+        let em = meter_mut(store, meter_ref);
         em.install_zone(
             None,
             Vec::new(),
@@ -137,7 +135,7 @@ pub(super) fn make_meter_zone_lists(
         // leaving a non-nil but empty BranchList. (The 527 text is the same
         // "Circuit Element not set" already surfaced by RecalcElementData at
         // edit time; solution-time messages have no sink in this port.)
-        let em = downcast_meter(store, meter_ref);
+        let em = meter_mut(store, meter_ref);
         em.install_zone(
             Some(CktTree::new()),
             Vec::new(),
@@ -413,7 +411,7 @@ pub(super) fn make_meter_zone_lists(
         }
     }
 
-    let em = downcast_meter(store, meter_ref);
+    let em = meter_mut(store, meter_ref);
     em.install_zone(
         Some(tree),
         sequence_list,

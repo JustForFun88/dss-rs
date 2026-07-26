@@ -201,7 +201,7 @@ impl DssObject for Monitor {
                     Some(o) => {
                         self.med.metered_element = Some(o.id());
                         self.med.metered_element_changed = true;
-                        self.med.metered_snap = Some(capture_metered(name, o.obj()));
+                        self.med.metered_snap = Some(capture_metered(name, o));
                     }
                     None => {
                         self.med.metered_element = None;
@@ -260,67 +260,44 @@ impl DssObject for Monitor {
 }
 
 /// Capture the parse-relevant shape + header dimensions of the metered element.
-fn capture_metered(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
-    let elem = obj
-        .as_ckt_element()
-        .expect("element= resolves to a ckt elem");
+fn capture_metered(full_name: String, o: ResolvedObj<'_>) -> MeteredSnapshot {
+    let elem = o.ckt().expect("element= resolves to a ckt elem");
     let cd = elem.cd();
     let num_variables = elem.num_variables();
-    let (kind, num_windings, num_steps) =
-        if let Some(t) = obj.as_any().downcast_ref::<Transformer>() {
-            (
-                MeteredKind::Transformer,
-                t.num_windings().max(0) as usize,
-                0,
-            )
-        } else if let Some(at) = obj.as_any().downcast_ref::<AutoTrans>() {
-            // Pascal Monitor mode 2/8/10 accepts AUTOTRANS_ELEMENT alongside
-            // XFMR_ELEMENT (Monitor.pas:542-543); the auto reports the same kind.
-            (
-                MeteredKind::Transformer,
-                at.num_windings().max(0) as usize,
-                0,
-            )
-        } else if let Some(c) = obj.as_any().downcast_ref::<Capacitor>() {
-            (MeteredKind::Capacitor, 0, c.states().len())
-        } else if obj
-            .as_any()
-            .downcast_ref::<crate::elements::pc::storage::Storage>()
-            .is_some()
-        {
-            // Pascal validates mode 7 by CLASSMASK = STORAGE_ELEMENT and mode 3
-            // by BASECLASSMASK = PC_ELEMENT (Monitor.pas `RecalcElementData`), so
-            // Storage needs its own kind and mode 3 accepts it as a PC element.
-            (MeteredKind::Storage, 0, 0)
-        } else if obj
-            .as_any()
-            .downcast_ref::<crate::elements::pc::load::Load>()
-            .is_some()
-            || obj
-                .as_any()
-                .downcast_ref::<crate::elements::pc::generator::Generator>()
-                .is_some()
-            || obj
-                .as_any()
-                .downcast_ref::<crate::elements::pc::pvsystem::PVSystem>()
-                .is_some()
-            || obj
-                .as_any()
-                .downcast_ref::<crate::elements::pc::ind_mach012::IndMach012>()
-                .is_some()
-            || obj
-                .as_any()
-                .downcast_ref::<crate::elements::pc::vccs::Vccs>()
-                .is_some()
-            || obj
-                .as_any()
-                .downcast_ref::<crate::elements::pc::upfc::Upfc>()
-                .is_some()
-        {
-            (MeteredKind::PcElement, 0, 0)
-        } else {
-            (MeteredKind::Other, 0, 0)
-        };
+    let (kind, num_windings, num_steps) = if let Some(t) = o.get::<Transformer>() {
+        (
+            MeteredKind::Transformer,
+            t.num_windings().max(0) as usize,
+            0,
+        )
+    } else if let Some(at) = o.get::<AutoTrans>() {
+        // Pascal Monitor mode 2/8/10 accepts AUTOTRANS_ELEMENT alongside
+        // XFMR_ELEMENT (Monitor.pas:542-543); the auto reports the same kind.
+        (
+            MeteredKind::Transformer,
+            at.num_windings().max(0) as usize,
+            0,
+        )
+    } else if let Some(c) = o.get::<Capacitor>() {
+        (MeteredKind::Capacitor, 0, c.states().len())
+    } else if matches!(o.id(), ElemId::Storage(_)) {
+        // Pascal validates mode 7 by CLASSMASK = STORAGE_ELEMENT and mode 3
+        // by BASECLASSMASK = PC_ELEMENT (Monitor.pas `RecalcElementData`), so
+        // Storage needs its own kind and mode 3 accepts it as a PC element.
+        (MeteredKind::Storage, 0, 0)
+    } else if matches!(
+        o.id(),
+        ElemId::Load(_)
+            | ElemId::Generator(_)
+            | ElemId::PVSystem(_)
+            | ElemId::IndMach012(_)
+            | ElemId::Vccs(_)
+            | ElemId::Upfc(_)
+    ) {
+        (MeteredKind::PcElement, 0, 0)
+    } else {
+        (MeteredKind::Other, 0, 0)
+    };
     MeteredSnapshot {
         full_name,
         kind,
