@@ -102,3 +102,119 @@ fn line_type_abbreviations_widened_to_five_chars() {
     assert_eq!(lt.string_to_ordinal("ug_t").unwrap(), 3); // ug_ts
     assert_eq!(lt.string_to_ordinal("ug_c").unwrap(), 4); // ug_cn
 }
+
+/// The `DssEnum`-registry ↔ typed-enum coupling (DE_PASCALIZE §P1).
+///
+/// Each P1 field enum claims, in its doc comment, that its discriminants are
+/// exactly the value list of a specific `DssEnum`. Until this module the claim
+/// was prose only: a later edit to a `registry/*.rs` value array (or to a
+/// discriminant) would not fail any unit test — the mismatch would surface far
+/// from its cause, as a corpus-gate/dump difference, and the
+/// `from_ordinal(v).unwrap_or(current)` write path would silently swallow it.
+/// Here the coupling is machine-checked against the **live** registry: every
+/// ordinal the registry can produce must resolve, and must round-trip.
+///
+/// Not covered here (deliberate, they have no registry entry): the
+/// `ControlQueue` action codes (`InvPendingChange`, `ExpPendingChange`,
+/// `StorageCtrlAction`, `RegControlAction`), which are class-private queue
+/// codes, and `VarMode` (`PVsystem.pas:32-33`), an internal field with no
+/// `DssEnum` — both are pinned by their own Pascal-literal tests.
+#[cfg(test)]
+mod registry_enum_coupling {
+    use super::EnumRegistry;
+
+    use crate::elements::control::espvl_control::EspvlControlType;
+    use crate::elements::control::inv_control::{
+        InvCombiMode, InvControlMode, InvControlModel, RateOfChangeMode, ReacPowerRef,
+        VoltWattYAxis, VoltageCurveXRef,
+    };
+    use crate::elements::control::mon_phase::MonPhase;
+    use crate::elements::control::storage_controller::StorageCtrlMode;
+    use crate::elements::general::load_shape::LoadShapeInterp;
+    use crate::elements::pc::generator::GenDispatchMode;
+    use crate::elements::pc::storage::StorageState;
+    use crate::obj::dss_enum::EnumId;
+    use crate::solution::{ControlMode, LoadSolutionModel, RandomType};
+
+    /// Assert that every ordinal the named registry enum declares resolves
+    /// through `from_ordinal` and round-trips back to the same number.
+    fn check(reg: &EnumRegistry, id: EnumId, from: fn(i32) -> Option<i32>) {
+        let e = reg.get(id);
+        assert!(!e.ordinals.is_empty(), "{} has no ordinals", e.name);
+        for &ord in &e.ordinals {
+            let back = from(ord).unwrap_or_else(|| {
+                panic!("{}: registry ordinal {ord} does not resolve", e.name);
+            });
+            assert_eq!(back, ord, "{}: ordinal {ord} did not round-trip", e.name);
+        }
+    }
+
+    #[test]
+    fn every_retyped_family_covers_its_registry_value_list() {
+        let reg = EnumRegistry::new();
+
+        check(&reg, reg.control_mode, |v| {
+            ControlMode::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.random_mode, |v| {
+            RandomType::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.default_load_model, |v| {
+            LoadSolutionModel::from_ordinal(v).map(|m| m.ordinal())
+        });
+
+        // The two hybrid phase-selection enums share `MonPhase` (whose
+        // `from_ordinal` is total — the hybrid fallback is a phase number).
+        check(&reg, reg.mon_phase, |v| {
+            Some(MonPhase::from_ordinal(v).ordinal())
+        });
+        check(&reg, reg.reg_control_phase, |v| {
+            Some(MonPhase::from_ordinal(v).ordinal())
+        });
+
+        check(&reg, reg.invcontrol_mode, |v| {
+            InvControlMode::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.invcontrol_combi, |v| {
+            InvCombiMode::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.invcontrol_voltage_curvex, |v| {
+            VoltageCurveXRef::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.invcontrol_voltwatt_yaxis, |v| {
+            VoltWattYAxis::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.invcontrol_roc, |v| {
+            RateOfChangeMode::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.invcontrol_reac_power, |v| {
+            ReacPowerRef::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.invcontrol_model, |v| {
+            InvControlModel::from_ordinal(v).map(|m| m.ordinal())
+        });
+
+        check(&reg, reg.espvl_control_type, |v| {
+            EspvlControlType::from_ordinal(v).map(|m| m.ordinal())
+        });
+        // One shared field, two registry enums (discharge + charge modes).
+        check(&reg, reg.storage_ctrl_discharge_mode, |v| {
+            StorageCtrlMode::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.storage_ctrl_charge_mode, |v| {
+            StorageCtrlMode::from_ordinal(v).map(|m| m.ordinal())
+        });
+
+        check(&reg, reg.load_shape_interp, |v| {
+            LoadShapeInterp::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.gen_disp_mode, |v| {
+            GenDispatchMode::from_ordinal(v).map(|m| m.ordinal())
+        });
+        // `StorageState`'s channel is open (`Fstate := Trunc(Value)`), so its
+        // `from_ordinal` is total by construction.
+        check(&reg, reg.storage_state, |v| {
+            Some(StorageState::from_ordinal(v).ordinal())
+        });
+    }
+}

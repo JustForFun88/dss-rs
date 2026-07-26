@@ -34,9 +34,9 @@ fn create_defaults_match_pascal() {
     assert_eq!(ic.lpf_tau, 0.001);
     assert_eq!(ic.rise_fall_limit, 0.001);
     // Smart-inverter defaults.
-    assert_eq!(ic.voltage_curvex_ref, 0); // Rated
+    assert_eq!(ic.voltage_curvex_ref, VoltageCurveXRef::Rated);
     assert_eq!(ic.reac_power_ref, ReacPowerRef::VarAval);
-    assert_eq!(ic.voltwatt_yaxis, 1); // %Pmpp
+    assert_eq!(ic.voltwatt_yaxis, VoltWattYAxis::Pmpp);
     assert_eq!(ic.vvc_curve_offset, 0.0);
     assert_eq!(ic.mon_buses_phase, MonPhase::Avg);
     assert_eq!(ic.v_setpoint, 1.0);
@@ -160,7 +160,7 @@ fn interval_units_bad_unit_logs_error_and_keeps_default() {
 fn invcontrol_enums_pin_pascal_and_registry_ordinals() {
     use super::{
         InvCombiMode, InvControlMode, InvControlModel, InvPendingChange, RateOfChangeMode,
-        ReacPowerRef,
+        ReacPowerRef, VoltWattYAxis, VoltageCurveXRef,
     };
 
     // TInvControlControlMode (InvControl.pas:119-128); registry `[1..7]`.
@@ -235,6 +235,78 @@ fn invcontrol_enums_pin_pascal_and_registry_ordinals() {
     assert_eq!(InvControlModel::from_ordinal(2), None);
     // `TInvControlObj.Create` (InvControl.pas:873) sets `TInvControlModel.Linear`.
     assert_eq!(InvControlModel::default(), InvControlModel::Linear);
+
+    // FVoltage_CurveX_ref (InvControl.pas:297, a plain Integer); the closed
+    // value set is VoltageCurveXRefEnum (InvControl.pas:438-439) = registry
+    // `[0, 1, 2]`. Create sets 0 = Rated (InvControl.pas:843).
+    for (ord, m) in [
+        (0, VoltageCurveXRef::Rated),
+        (1, VoltageCurveXRef::Avg),
+        (2, VoltageCurveXRef::RAvg),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(VoltageCurveXRef::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(VoltageCurveXRef::from_ordinal(-1), None);
+    assert_eq!(VoltageCurveXRef::from_ordinal(3), None);
+    assert_eq!(VoltageCurveXRef::default(), VoltageCurveXRef::Rated);
+
+    // FVoltwattYAxis (InvControl.pas:299); VoltWattYAxisEnum
+    // (InvControl.pas:440-441) = registry `[0, 1, 2, 3]`. Create sets 1 = %Pmpp
+    // (InvControl.pas:845).
+    for (ord, m) in [
+        (0, VoltWattYAxis::PAvailable),
+        (1, VoltWattYAxis::Pmpp),
+        (2, VoltWattYAxis::PctPmpp),
+        (3, VoltWattYAxis::KvaRating),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(VoltWattYAxis::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(VoltWattYAxis::from_ordinal(-1), None);
+    assert_eq!(VoltWattYAxis::from_ordinal(4), None);
+    assert_eq!(VoltWattYAxis::default(), VoltWattYAxis::Pmpp);
+}
+
+/// The retyped setters keep the previous value when `from_ordinal` misses
+/// (`Enum::from_ordinal(v).unwrap_or(self.x)`), where the pre-enum accessors
+/// stored the raw `i32` verbatim. That fallback is unreachable from the parse
+/// engine — `MappedStringEnum` rejects an unknown token before any write and
+/// `MappedIntEnum` early-returns on an out-of-set ordinal
+/// (`obj/props/class_props/parse.rs:307-324`) — which is exactly why it needs a
+/// test: nothing else pins that the error is *raised* rather than swallowed
+/// into a silently-changed field. Settler pass, 2026-07-26 (audit-tests
+/// finding 2).
+#[test]
+fn bad_enum_values_raise_and_leave_the_field_unchanged() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t");
+    dss.command("new InvControl.ic mode=voltvar ControlModel=1 VoltWattYAxis=PctPMPPPU");
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+
+    // MappedIntEnum, out-of-set ordinal (registry `[0, 1]`).
+    dss.command("InvControl.ic.ControlModel=7");
+    assert!(
+        dss.errors().iter().any(|e| e.contains("not a valid value")),
+        "expected an invalid-ordinal error, got: {:?}",
+        dss.errors()
+    );
+    dss.command("? InvControl.ic.ControlModel");
+    assert_eq!(dss.result().trim(), "1", "ControlModel must keep its value");
+
+    // MappedStringEnum, unknown token (registry names Rated/Avg/RAvg).
+    dss.command("InvControl.ic.VoltWattYAxis=nonsense");
+    assert!(
+        !dss.errors().is_empty(),
+        "expected an unknown-token error for VoltWattYAxis"
+    );
+    dss.command("? InvControl.ic.VoltWattYAxis");
+    assert_eq!(
+        dss.result().trim(),
+        "PctPMPPPU",
+        "VoltWattYAxis must keep its value on an unknown token"
+    );
 }
 
 // --- WP7.5 step 2b/2c: the dispatch math, pinned through a mock env ---

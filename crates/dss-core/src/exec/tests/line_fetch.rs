@@ -270,14 +270,18 @@ fn load_and_vsource_resolve_shape_refs() {
 ///    the target class's own arena yields the object the deck named.
 #[test]
 fn typed_object_ref_handles_dereference_to_the_named_object() {
+    use crate::elements::general::dynamic_exp::DynamicExpObj;
     use crate::elements::general::growth_shape::GrowthShapeObj;
     use crate::elements::general::line_code::LineCodeObj;
     use crate::elements::general::load_shape::LoadShapeObj;
     use crate::elements::general::temp_shape::TShapeObj;
     use crate::elements::general::xfmr_code::XfmrCodeObj;
     use crate::elements::general::xy_curve::XyCurveObj;
+    use crate::elements::pc::generator::Generator;
+    use crate::elements::pc::isource::Isource;
     use crate::elements::pc::load::Load;
     use crate::elements::pc::pvsystem::PVSystem;
+    use crate::elements::pc::windgen::WindGen;
     use crate::elements::pd::line::Line;
     use crate::elements::pd::transformer::Transformer;
 
@@ -385,6 +389,110 @@ fn typed_object_ref_handles_dereference_to_the_named_object() {
                 .is_some(),
         "every typed handle must dereference in its own class arena"
     );
+
+    // The rest of the 34: the yearly/duty siblings, the two non-`daily`
+    // LoadShape refs, the second XYcurve ref on the inverter class, the WindGen
+    // curve pair, and the shared `DynEqPCE` DynamicExp handle. Settler pass
+    // 2026-07-26 (audit-tests finding 3 — the first cut asserted 6 of 34, so a
+    // narrowing that silently yielded `None` on any of the rest would have
+    // shown up only as a corpus/dump difference).
+    dss.command("New loadshape.d2 npts=2 interval=1 mult=(0.5 0.9)");
+    dss.command("New xycurve.pt npts=2 xarray=[0 75] yarray=[1.0 0.9]");
+    dss.command("New xycurve.vv npts=2 xarray=[0.9 1.1] yarray=[1.0 -1.0]");
+    dss.command("New xycurve.pl npts=2 xarray=[0 1] yarray=[0.0 0.1]");
+    dss.command(
+        "New dynamicexp.de nvariables=2 varnames=[Speed Mass] expression=[Speed dt = -1 Mass /]",
+    );
+    dss.command(
+        "New load.lc bus1=src phases=3 kv=12.47 kw=100 pf=1          daily=d1 yearly=d2 duty=d2 cvrcurve=d2",
+    );
+    dss.command(
+        "New generator.g1 bus1=b2 phases=3 kv=12.47 kw=100 pf=1          daily=d1 yearly=d2 duty=d2 DynamicEq=de",
+    );
+    dss.command(
+        "New windgen.w1 bus1=b2 phases=3 kv=12.47 kw=100 pf=1          daily=d1 yearly=d2 duty=d2 VV_Curve=vv PLoss=pl DynamicEq=de",
+    );
+    dss.command("New isource.i1 bus1=b2 amps=1 daily=d1 yearly=d2 duty=d2");
+    dss.command("Edit pvsystem.pv P-TCurve=pt daily=d1 yearly=d2 duty=d2");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let (lc_ci, lc_oi) = slot(&dss, "load", "lc");
+    let (g_ci, g_oi) = slot(&dss, "generator", "g1");
+    let (w_ci, w_oi) = slot(&dss, "windgen", "w1");
+    let (i_ci, i_oi) = slot(&dss, "isource", "i1");
+    let lc = dss.classes[lc_ci].arena.get::<Load>(lc_oi).unwrap();
+    let g1 = dss.classes[g_ci].arena.get::<Generator>(g_oi).unwrap();
+    let w1 = dss.classes[w_ci].arena.get::<WindGen>(w_oi).unwrap();
+    let i1 = dss.classes[i_ci].arena.get::<Isource>(i_oi).unwrap();
+    let pv = dss.classes[pv_ci].arena.get::<PVSystem>(pv_oi).unwrap();
+
+    // (a) every LoadShape handle, read through the LoadShape arena;
+    for (h, want, what) in [
+        (lc.daily_shape_ref, "d1", "load.lc daily"),
+        (lc.yearly_shape_ref, "d2", "load.lc yearly"),
+        (lc.duty_shape_ref, "d2", "load.lc duty"),
+        (lc.cvr_shape_ref, "d2", "load.lc cvrcurve"),
+        (g1.daily_shape_ref, "d1", "generator.g1 daily"),
+        (g1.yearly_shape_ref, "d2", "generator.g1 yearly"),
+        (g1.duty_shape_ref, "d2", "generator.g1 duty"),
+        (w1.daily_shape_ref, "d1", "windgen.w1 daily"),
+        (w1.yearly_shape_ref, "d2", "windgen.w1 yearly"),
+        (w1.duty_shape_ref, "d2", "windgen.w1 duty"),
+        (i1.daily_shape_ref, "d1", "isource.i1 daily"),
+        (i1.yearly_shape_ref, "d2", "isource.i1 yearly"),
+        (i1.duty_shape_ref, "d2", "isource.i1 duty"),
+        (pv.base.daily_shape_ref, "d1", "pvsystem.pv daily"),
+        (pv.base.yearly_shape_ref, "d2", "pvsystem.pv yearly"),
+        (pv.base.duty_shape_ref, "d2", "pvsystem.pv duty"),
+    ] {
+        let h = h.unwrap_or_else(|| panic!("{what} must narrow to Idx<LoadShape>"));
+        assert_eq!(
+            dss.classes[dss.class_by_name["loadshape"]]
+                .arena
+                .get::<LoadShapeObj>(h.get())
+                .map(|s| s.data().name()),
+            Some(want),
+            "{what}"
+        );
+    }
+
+    // (b) the XYcurve handles;
+    for (h, want, what) in [
+        (pv.power_temp_curve_ref, "pt", "pvsystem.pv P-TCurve"),
+        (w1.vv_curve_ref, "vv", "windgen.w1 VV_Curve"),
+        (w1.loss_curve_ref, "pl", "windgen.w1 PLoss"),
+    ] {
+        let h = h.unwrap_or_else(|| panic!("{what} must narrow to Idx<XYcurve>"));
+        assert_eq!(
+            dss.classes[dss.class_by_name["xycurve"]]
+                .arena
+                .get::<XyCurveObj>(h.get())
+                .map(|c| c.data().name()),
+            Some(want),
+            "{what}"
+        );
+    }
+
+    // (c) the shared `DynEqPCE` DynamicExp handle (one field, four classes).
+    for (h, what) in [
+        (g1.dyneq.dynamic_eq_ref, "generator.g1 dynamicexp"),
+        (w1.dyneq.dynamic_eq_ref, "windgen.w1 dynamicexp"),
+    ] {
+        let h = h.unwrap_or_else(|| panic!("{what} must narrow to Idx<DynamicExp>"));
+        assert_eq!(
+            dss.classes[dss.class_by_name["dynamicexp"]]
+                .arena
+                .get::<DynamicExpObj>(h.get())
+                .map(|e| e.data().name()),
+            Some("de"),
+            "{what}"
+        );
+    }
+
+    // GICsource's `Idx<Line>` is private (no getter, and none is added just for
+    // a test): its narrowing is proven by the `dump_gicsource` golden — a `None`
+    // handle raises Pascal error 333 and skips the `GIC_<name>` bus splice the
+    // golden pins.
 
     // A miss leaves the handle `None` (the Pascal NIL reference), not a stale
     // or foreign one.

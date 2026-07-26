@@ -61,7 +61,8 @@ use crate::elements::pc::inv_based_pce::VarMode;
 
 use super::{
     DELTAPDEFAULT, FLAGDELTAP, FLAGDELTAQ, InvCombiMode, InvControl, InvControlMode,
-    InvControlModel, InvPendingChange, MonPhase, RateOfChangeMode, ReacPowerRef,
+    InvControlModel, InvPendingChange, MonPhase, RateOfChangeMode, ReacPowerRef, VoltWattYAxis,
+    VoltageCurveXRef,
 };
 
 /// Reduce the explicit-`MonBus` complex voltage buffer to a scalar by
@@ -575,16 +576,19 @@ impl InvControl {
             return Ok(());
         }
 
-        // Mode / combi-mode gating: ports VOLTVAR + VOLTWATT + DRC + VV_VW + VV_DRC.
-        if self.combi_mode != InvCombiMode::NoneCombMode
-            && self.combi_mode != InvCombiMode::VvVw
-            && self.combi_mode != InvCombiMode::VvDrc
-        {
-            return Err(self.not_ported_mode());
+        // Mode / combi-mode gating. Every `TInvControlCombiMode` *and* every
+        // `TInvControlControlMode` variant is ported, so neither the combi gate
+        // nor the single-mode `case` has a reject branch left (the pre-enum
+        // `_ => return Err(...)` arms covered only ordinals outside the closed
+        // sets, which the property boundary already rejected). Settler pass
+        // 2026-07-26 (audit-code finding 5): the combi gate survived the retype
+        // as a structurally-dead `if` guarding a stale "deferred to WP7.7 (GFM)"
+        // message — GFM has been ported since WPG.11. It is an exhaustive match
+        // now, so a NEW combi variant is a compile error here instead of a
+        // silent fall-through into the VV_VW path.
+        match self.combi_mode {
+            InvCombiMode::NoneCombMode | InvCombiMode::VvVw | InvCombiMode::VvDrc => {}
         }
-        // Every `TInvControlControlMode` variant is ported, so the single-mode
-        // arm of the Pascal `case` has no reject branch left (the pre-enum `_ =>
-        // return Err(...)` covered only ordinals outside the closed set).
         // Exponential ControlModel (WPG.9) runs the `TPICtrl` PI controller in the
         // VV / AVR / DRC / VV_DRC var-calc paths; VOLTWATT / WATTPF / WATTVAR are
         // model-independent. Both models are ported — no reject here.
@@ -610,9 +614,10 @@ impl InvControl {
 
             // Convert to per-unit on the curve X reference.
             let avg_val = self.ctrl_vars[i].f_roll_avg_window.avg_val();
-            let present_vpu = if self.voltage_curvex_ref == 1 && avg_val != 0.0 {
+            let present_vpu = if self.voltage_curvex_ref == VoltageCurveXRef::Avg && avg_val != 0.0
+            {
                 vpresent / avg_val
-            } else if self.voltage_curvex_ref == 2 && avg_val != 0.0 {
+            } else if self.voltage_curvex_ref == VoltageCurveXRef::RAvg && avg_val != 0.0 {
                 avg_val / (basekv * 1000.0)
             } else {
                 vpresent / (basekv * 1000.0)
@@ -636,7 +641,9 @@ impl InvControl {
                     InvControlMode::WattVar => self.sample_wattvar(i, env, snap, control_iter)?,
                     InvControlMode::Avr => self.sample_avr(i, env, snap, control_iter)?,
                     InvControlMode::Gfm => self.sample_gfm(i, env),
-                    _ => {} // NONE_MODE: do nothing
+                    // NONE_MODE: do nothing (named, not `_`, so a new mode
+                    // must be dispatched explicitly).
+                    InvControlMode::NoneMode => {}
                 }
             }
         }
@@ -2630,19 +2637,18 @@ impl InvControl {
     fn calc_pbase(&mut self, j: usize, r: ElemId, is_pvsystem: bool, env: &mut dyn InvDispatchEnv) {
         // Only the Storage %Available base needs the live DCkW (a fresh
         // `ComputeDCkW`); fetch it lazily so no other path pays for it.
-        let storage_dckw = if !is_pvsystem && self.voltwatt_yaxis == 0 {
+        let storage_dckw = if !is_pvsystem && self.voltwatt_yaxis == VoltWattYAxis::PAvailable {
             env.der_storage_dckw(r)
         } else {
             0.0
         };
         let cv = &mut self.ctrl_vars[j];
         cv.p_base = match self.voltwatt_yaxis {
-            0 if is_pvsystem => cv.f_dckw * cv.f_eff_factor,
-            0 => storage_dckw * cv.f_eff_factor,
-            1 => cv.f_dckw_rated,
-            2 => cv.f_dckw_rated * cv.f_pct_dckw_rated,
-            3 => cv.f_kva_rating,
-            _ => cv.p_base, // yaxis is enum-constrained 0..=3; keep prior otherwise
+            VoltWattYAxis::PAvailable if is_pvsystem => cv.f_dckw * cv.f_eff_factor,
+            VoltWattYAxis::PAvailable => storage_dckw * cv.f_eff_factor,
+            VoltWattYAxis::Pmpp => cv.f_dckw_rated,
+            VoltWattYAxis::PctPmpp => cv.f_dckw_rated * cv.f_pct_dckw_rated,
+            VoltWattYAxis::KvaRating => cv.f_kva_rating,
         };
     }
 
@@ -2764,16 +2770,6 @@ impl InvControl {
         } else {
             cv.p_limit_vw = cv.p_limit_endpu * cv.p_base;
         }
-    }
-
-    /// The "mode/combi not yet ported" error (records the active mode for clarity).
-    fn not_ported_mode(&self) -> String {
-        format!(
-            "InvControl.{}: VOLTVAR/VOLTWATT/DRC/WATTPF/WATTVAR/AVR + the VV_VW/VV_DRC combis are ported (WP7.5 step 2b-2e-ii); mode={} combi={} is deferred to WP7.7 (GFM)",
-            self.ccd.cd.obj.name(),
-            self.control_mode.ordinal(),
-            self.combi_mode.ordinal()
-        )
     }
 }
 

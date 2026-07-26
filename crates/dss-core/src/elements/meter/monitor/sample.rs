@@ -47,9 +47,18 @@ impl Monitor {
         // Lend the persistent scratch buffers (Pascal's `VoltageBuffer` /
         // `CurrentBuffer` object fields) to the sample body: `add_dbl` needs
         // `&mut self`, so they cannot stay borrowed out of `self` while the
-        // record is written. They are handed back on every path, allocation
-        // included — the body re-zeroes them, so the values are identical to the
-        // freshly allocated buffers this replaces.
+        // record is written. They are handed back on every *returning* path,
+        // allocation included — the body re-zeroes them, so the values are
+        // identical to the freshly allocated buffers this replaces.
+        //
+        // Not unwind-safe by design (settler pass 2026-07-26, audit-code
+        // finding 3): a panic inside the body skips the hand-back and leaves
+        // both fields `Vec::new()`. That costs the reused *allocation* and
+        // nothing else — the body's first act on either buffer is
+        // `clear()` + `resize(scratch_len, ZERO)` (below), the sole early
+        // `return` precedes any buffer use, and no other code in the crate
+        // reads these two fields — so a re-entered `take_sample` re-derives the
+        // exact same values. A guard type would buy no observable behavior.
         let mut voltage_buffer = std::mem::take(&mut self.voltage_buffer);
         let mut current_buffer = std::mem::take(&mut self.current_buffer);
         self.take_sample_into(

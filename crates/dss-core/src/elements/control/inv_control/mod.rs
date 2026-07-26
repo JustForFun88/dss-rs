@@ -122,6 +122,82 @@ impl InvCombiMode {
     }
 }
 
+/// `FVoltage_CurveX_ref` (`InvControl.pas:297`, a plain Pascal `Integer`) —
+/// the per-unit base for the volt-var / volt-watt curve X axis. There is no
+/// Pascal enum *type*; the closed value set is the one the
+/// `VoltageCurveXRefEnum` declares (`InvControl.pas:438-439`, names
+/// `['Rated','Avg','RAvg']`, values `[0, 1, 2]`; port registry
+/// `registry/control.rs:229`). Consumed by the `FPresentVpu` conversion
+/// (`InvControl.pas:1801-1806`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub(crate) enum VoltageCurveXRef {
+    /// `Rated` — `TInvControlObj.Create` sets 0 (`InvControl.pas:843`).
+    #[default]
+    Rated = 0,
+    /// `Avg` — divide by the rolling-average window value.
+    Avg = 1,
+    /// `RAvg` — the rolling average itself, per-unit on the base kV.
+    RAvg = 2,
+}
+
+impl VoltageCurveXRef {
+    /// The `InvControl: Voltage Curve X Ref` `DssEnum` ordinal.
+    pub(crate) fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub(crate) fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Rated),
+            1 => Some(Self::Avg),
+            2 => Some(Self::RAvg),
+            _ => None,
+        }
+    }
+}
+
+/// `FVoltwattYAxis` (`InvControl.pas:299`, a plain Pascal `Integer`) — the
+/// volt-watt power base selector read by `Calc_PBase`
+/// (`InvControl.pas:2850-2890`). No Pascal enum type; the closed value set is
+/// the `VoltWattYAxisEnum` declaration (`InvControl.pas:440-441`, names
+/// `['PAvailablePU','PMPPPU','PctPMPPPU','KVARatingPU']`, values
+/// `[0, 1, 2, 3]`; port registry `registry/control.rs:237`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub(crate) enum VoltWattYAxis {
+    /// `PAvailablePU` — %Available power (`FDCkW·FEffFactor`, or the live
+    /// Storage `DCkW·FEffFactor`).
+    PAvailable = 0,
+    /// `PMPPPU` — %Pmpp (`FDCkWRated`); `TInvControlObj.Create` sets 1
+    /// (`InvControl.pas:845`).
+    #[default]
+    Pmpp = 1,
+    /// `PctPMPPPU` — `FDCkWRated · FpctDCkWRated`.
+    PctPmpp = 2,
+    /// `KVARatingPU` — `FkVARating`.
+    KvaRating = 3,
+}
+
+impl VoltWattYAxis {
+    /// The `InvControl: Volt-Watt Y-Axis` `DssEnum` ordinal.
+    pub(crate) fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub(crate) fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::PAvailable),
+            1 => Some(Self::Pmpp),
+            2 => Some(Self::PctPmpp),
+            3 => Some(Self::KvaRating),
+            _ => None,
+        }
+    }
+}
+
 /// `ERateofChangeMode` (`InvControl.pas:143-147`) — `RateofChangeMode=`
 /// (`InvControl: Rate-of-change Mode` `DssEnum`, values `[0, 1, 2]`). `Lpf` /
 /// `RiseFall` drive the rate-of-change limiting (`CalcLPF`/`CalcRF` in
@@ -633,7 +709,7 @@ pub struct InvControl {
     /// `Fvvc_curveOffset` (Hysteresis_Offset).
     vvc_curve_offset: f64,
     /// `FVoltage_CurveX_ref` (0:=Rated, 1:=Avg, 2:=RAvg).
-    voltage_curvex_ref: i32,
+    voltage_curvex_ref: VoltageCurveXRef,
     /// `FRollAvgWindowLength` (AvgWindowLen, seconds).
     roll_avg_window_length: i32,
 
@@ -671,7 +747,7 @@ pub struct InvControl {
     active_p_change_tolerance: f64,
 
     /// `FVoltwattYAxis` (0:=%Available, 1:=%Pmpp, 2:=%PctPmpp, 3:=%kVArating).
-    voltwatt_yaxis: i32,
+    voltwatt_yaxis: VoltWattYAxis,
     /// `RateofChangeMode` (`ERateofChangeMode`).
     rate_of_change_mode: RateOfChangeMode,
     /// `LPFTau` (seconds) / `FRiseFallLimit`.
@@ -755,7 +831,7 @@ impl InvControl {
             vvc_curve_name: String::new(),
             vvc_curve: None,
             vvc_curve_offset: 0.0,
-            voltage_curvex_ref: 0,
+            voltage_curvex_ref: VoltageCurveXRef::Rated,
             roll_avg_window_length: 1, // docs list 0; Create sets 1
 
             voltwatt_curve_name: String::new(),
@@ -780,7 +856,7 @@ impl InvControl {
             var_change_tolerance: 0.025,
             active_p_change_tolerance: 0.01,
 
-            voltwatt_yaxis: 1,
+            voltwatt_yaxis: VoltWattYAxis::Pmpp,
             rate_of_change_mode: RateOfChangeMode::Inactive,
             lpf_tau: 0.001,         // docs list 0
             rise_fall_limit: 0.001, // docs list -1 (disabled)
