@@ -2,15 +2,15 @@
 //! element that carries a control, followed by the control element(s) acting on it.
 
 use crate::circuit::Circuit;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::exec::registry::DssClass;
 
 /// Pascal `TDSSCktElement.FullName` = `ParentClass.Name + '.' + Name`.
-fn full_name(classes: &[DssClass], r: ElemRef) -> String {
+fn full_name(classes: &[DssClass], r: ElemId) -> String {
     format!(
         "{}.{}",
-        classes[r.cls].props.class_name(),
-        classes[r.cls].arena[r.idx].data().name()
+        classes[r.class_ord()].props.class_name(),
+        classes[r.class_ord()].arena[r.index()].data().name()
     )
 }
 
@@ -34,13 +34,14 @@ pub(crate) fn show_controlled(classes: &[DssClass], ckt: &Circuit) -> String {
     for &pd in &ckt.pd_elements {
         // The controls acting on this PD element, in creation order (Pascal's
         // `ControlElementList` for `pdelem`).
-        let controls: Vec<ElemRef> = ckt
+        let controls: Vec<ElemId> = ckt
             .controls
             .iter()
             .copied()
             .filter(|&cr| {
-                classes[cr.cls].arena[cr.idx]
-                    .as_ckt_element()
+                classes[cr.class_ord()]
+                    .arena
+                    .try_ckt_elem(cr.index())
                     .and_then(|ce| ce.controlled_element())
                     == Some(pd)
             })

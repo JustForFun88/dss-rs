@@ -6,7 +6,7 @@ use super::{VsConverter, prop};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 
@@ -16,10 +16,6 @@ impl CktElement for VsConverter {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
     }
 
     /// Pascal `TVSConverterObj.MakePosSequence` (VSConverter.pas:485-494): unless
@@ -152,18 +148,6 @@ impl DssObject for VsConverter {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_f64(&self, idx: usize) -> f64 {
@@ -303,16 +287,12 @@ impl DssObject for VsConverter {
         &mut self,
         idx: usize,
         _name: String,
-        _resolved: Option<(ElemRef, &dyn DssObject)>,
+        _resolved: Option<crate::obj::arena::ResolvedObj<'_>>,
     ) {
         // The only object-ref-typed property is `spectrum`, which the engine
         // resolves through `set_string` + `set_harmonic_spectrum` (like Generator
         // / VSource); nothing routes through here.
         unreachable!("VSConverter has no resolved object-ref property {idx}");
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

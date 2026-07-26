@@ -34,8 +34,9 @@ pub(crate) fn debug_dump(classes: &[DssClass], ckt: &Circuit) -> String {
         // Pascal reads `CktElements.Get(i).Enabled` (it also leaves that
         // element active — mirrored by the caller).
         let r = ckt.ckt_elements[i];
-        let enabled = classes[r.cls].arena[r.idx]
-            .as_ckt_element()
+        let enabled = classes[r.class_ord()]
+            .arena
+            .try_ckt_elem(r.index())
             .map(|e| e.cd().enabled)
             .unwrap_or(true);
         if !enabled {

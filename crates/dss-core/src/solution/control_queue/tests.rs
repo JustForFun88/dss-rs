@@ -1,7 +1,7 @@
 use super::*;
 
-fn elem(idx: usize) -> ElemRef {
-    ElemRef { cls: 0, idx }
+fn elem(idx: usize) -> ElemId {
+    ElemId::new(0, idx)
 }
 
 /// A follow-up action to push when control `on_idx` fires (the EVENTDRIVEN
@@ -13,7 +13,7 @@ struct ReArm {
     sec: f64,
     code: i32,
     proxy: i32,
-    control: ElemRef,
+    control: ElemId,
 }
 
 /// Records every `(control, code, proxy)` it is asked to act on; can be
@@ -27,14 +27,14 @@ struct Recorder {
 impl ControlActioner for Recorder {
     fn do_pending_action(
         &mut self,
-        control: ElemRef,
+        control: ElemId,
         code: i32,
         proxy: i32,
         queue: &mut ControlQueue,
     ) {
-        self.seen.push((control.idx, code, proxy));
+        self.seen.push((control.index(), code, proxy));
         if let Some(r) = self.rearm
-            && control.idx == r.on_idx
+            && control.index() == r.on_idx
         {
             self.rearm = None; // arm once
             queue.push(r.hour, r.sec, r.code, r.proxy, r.control);

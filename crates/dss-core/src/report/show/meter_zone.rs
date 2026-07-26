@@ -11,23 +11,23 @@
 
 use crate::circuit::Circuit;
 use crate::elements::meter::EnergyMeter;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::exec::registry::DssClass;
 
 /// Downcast a `ckt.energy_meters` ref to its concrete [`EnergyMeter`].
-fn as_meter(classes: &[DssClass], r: ElemRef) -> &EnergyMeter {
-    classes[r.cls].arena[r.idx]
-        .as_any()
-        .downcast_ref::<EnergyMeter>()
+fn as_meter(classes: &[DssClass], r: ElemId) -> &EnergyMeter {
+    classes[r.class_ord()]
+        .arena
+        .get::<EnergyMeter>(r.index())
         .expect("energy_meters holds EnergyMeter")
 }
 
 /// Pascal `TDSSCktElement.FullName` = `ParentClass.Name + '.' + Name`.
-fn full_name(classes: &[DssClass], r: ElemRef) -> String {
+fn full_name(classes: &[DssClass], r: ElemId) -> String {
     format!(
         "{}.{}",
-        classes[r.cls].props.class_name(),
-        classes[r.cls].arena[r.idx].data().name()
+        classes[r.class_ord()].props.class_name(),
+        classes[r.class_ord()].arena[r.index()].data().name()
     )
 }
 
@@ -35,7 +35,7 @@ fn full_name(classes: &[DssClass], r: ElemRef) -> String {
 /// Note the width difference the port reproduces 1:1: the assigned form has a
 /// leading **and** trailing space (`Format(' (Sensor: %s) ', …)`); the NIL form
 /// has only the leading space (`' (Sensor: NIL)'`).
-fn sensor_note(classes: &[DssClass], sensor: Option<ElemRef>) -> String {
+fn sensor_note(classes: &[DssClass], sensor: Option<ElemId>) -> String {
     match sensor {
         Some(r) => format!(" (Sensor: {}) ", full_name(classes, r)),
         None => " (Sensor: NIL)".to_string(),
@@ -56,12 +56,18 @@ pub(crate) fn show_loops(classes: &[DssClass], ckt: &Circuit) -> String {
         let Some(tree) = m.branch_list() else {
             continue;
         };
-        let mtr_name = classes[mr.cls].arena[mr.idx].data().name().to_string();
+        let mtr_name = classes[mr.class_ord()].arena[mr.index()]
+            .data()
+            .name()
+            .to_string();
         for (i, &br) in m.sequence_list().iter().enumerate() {
             let node = tree.node(m.sequence_nodes()[i]);
             // Pascal `Format('… %s.%s …', [ParentClass.Name, AnsiUpperCase(Name)])`.
-            let cls = classes[br.cls].props.class_name();
-            let name_up = classes[br.cls].arena[br.idx].data().name().to_uppercase();
+            let cls = classes[br.class_ord()].props.class_name();
+            let name_up = classes[br.class_ord()].arena[br.index()]
+                .data()
+                .name()
+                .to_uppercase();
             if node.is_parallel {
                 let partner = node
                     .loop_elem
@@ -91,7 +97,7 @@ pub(crate) fn show_loops(classes: &[DssClass], ckt: &Circuit) -> String {
 /// `(PARALLEL:LoopLineObj.Name)` / `(LOOP:LoopLineObj.FullName)` + Sensor note),
 /// then each shunt object attached at that branch on a `Level+1`-indented line.
 /// The header + tab indentation match the Pascal layout byte-for-byte.
-pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemRef, param: &str) -> String {
+pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemId, param: &str) -> String {
     let m = as_meter(classes, meter);
 
     // Pascal `ShowMeterZone` (`ShowResults.pas:2453`) guards the ENTIRE body —
@@ -119,13 +125,16 @@ pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemRef, param: &str)
         }
         s.push_str(&format!(
             "{}.{}",
-            classes[br.cls].props.class_name(),
-            classes[br.cls].arena[br.idx].data().name()
+            classes[br.class_ord()].props.class_name(),
+            classes[br.class_ord()].arena[br.index()].data().name()
         ));
         // PARALLEL uses `LoopLineObj.Name` (bare name); LOOP uses `.FullName`.
         if node.is_parallel {
             let partner = node.loop_elem.map_or_else(String::new, |r| {
-                classes[r.cls].arena[r.idx].data().name().to_string()
+                classes[r.class_ord()].arena[r.index()]
+                    .data()
+                    .name()
+                    .to_string()
             });
             s.push_str(&format!("(PARALLEL:{partner})"));
         }
@@ -135,8 +144,9 @@ pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemRef, param: &str)
                 .map_or_else(String::new, |r| full_name(classes, r));
             s.push_str(&format!("(LOOP:{partner})"));
         }
-        let branch_sensor = classes[br.cls].arena[br.idx]
-            .as_ckt_element()
+        let branch_sensor = classes[br.class_ord()]
+            .arena
+            .try_ckt_elem(br.index())
             .and_then(|e| e.cd().sensor_obj);
         s.push_str(&sensor_note(classes, branch_sensor));
         s.push('\n');
@@ -149,11 +159,14 @@ pub(crate) fn show_meter_zone(classes: &[DssClass], meter: ElemRef, param: &str)
             }
             s.push_str(&format!(
                 "{}.{}",
-                classes[shunt.cls].props.class_name(),
-                classes[shunt.cls].arena[shunt.idx].data().name()
+                classes[shunt.class_ord()].props.class_name(),
+                classes[shunt.class_ord()].arena[shunt.index()]
+                    .data()
+                    .name()
             ));
-            let shunt_sensor = classes[shunt.cls].arena[shunt.idx]
-                .as_ckt_element()
+            let shunt_sensor = classes[shunt.class_ord()]
+                .arena
+                .try_ckt_elem(shunt.index())
                 .and_then(|e| e.cd().sensor_obj);
             s.push_str(&sensor_note(classes, shunt_sensor));
             s.push('\n');

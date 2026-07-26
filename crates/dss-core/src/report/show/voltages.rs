@@ -284,14 +284,14 @@ fn walk_element_voltages(
     s: &mut String,
     classes: &[DssClass],
     ckt: &Circuit,
-    refs: &[crate::elements::traits::ElemRef],
+    refs: &[crate::elements::traits::ElemId],
     mbnl: usize,
     ll: bool,
 ) {
     for &r in refs {
-        let class_name = classes[r.cls].props.class_name();
-        let obj = &classes[r.cls].arena[r.idx];
-        if let Some(elem) = obj.as_ckt_element() {
+        let class_name = classes[r.class_ord()].props.class_name();
+        let obj = &classes[r.class_ord()].arena[r.index()];
+        if let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) {
             if elem.cd().enabled {
                 let name = format!("{}.{}", class_name, obj.data().name());
                 write_element_voltages(s, ckt, &name, elem, mbnl, ll);

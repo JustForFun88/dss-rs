@@ -26,7 +26,7 @@ mod tests;
 mod accessors;
 
 use crate::elements::control::control_elem::ControlElemData;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -61,14 +61,14 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
 /// UPFC fleet (the Rust stand-in for Pascal's live `UPFCList` object pointers).
 pub(crate) trait UpfcDispatchEnv {
     /// Pascal `clsUPFC.Find(name)` restricted to *enabled* UPFCs.
-    fn find_enabled_upfc(&self, name: &str) -> Option<ElemRef>;
+    fn find_enabled_upfc(&self, name: &str) -> Option<ElemId>;
     /// Pascal's "scan the whole UPFC class for enabled devices", creation order.
-    fn all_enabled_upfcs(&self) -> Vec<ElemRef>;
+    fn all_enabled_upfcs(&self) -> Vec<ElemId>;
     /// Pascal `TUPFCObj.CheckStatus` on UPFC `u` (computes its `Element=`
     /// `Power[1]` for the PF modes internally, then mutates `UPFCON`/`VRefD`).
-    fn check_status(&mut self, u: ElemRef) -> bool;
+    fn check_status(&mut self, u: ElemId) -> bool;
     /// Pascal `TUPFCObj.UploadCurrents` on UPFC `u`.
-    fn upload_currents(&mut self, u: ElemRef);
+    fn upload_currents(&mut self, u: ElemId);
 }
 
 /// `TUPFCControlObj`.
@@ -88,7 +88,7 @@ pub struct UpfcControl {
     list_size: i32,
     /// `UPFCList` — resolved lazily on the first `Sample` (empty until then),
     /// cached across samples exactly like Pascal's pointer list.
-    upfc_pointer_list: Vec<ElemRef>,
+    upfc_pointer_list: Vec<ElemId>,
 }
 
 impl UpfcControl {

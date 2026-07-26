@@ -2,10 +2,12 @@
 //! accessors, object-reference plumbing and the `PropertySideEffects` state
 //! machine.
 
-use crate::elements::traits::ElemRef;
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 
 use super::{ConductorChoice, LineGeometryObj, LineType, prop};
+use crate::elements::general::conductor_data::ConductorObj;
+use crate::elements::general::line_spacing::LineSpacingObj;
 
 impl LineGeometryObj {
     pub(crate) fn make_like(&mut self, other: &Self) {
@@ -17,7 +19,7 @@ impl LineGeometryObj {
             self.fnconds = o.fnconds;
             self.realloc_conductors();
             self.fnphases = o.fnphases;
-            self.line_spacing_obj = o.line_spacing_obj.as_ref().map(|b| b.clone_box());
+            self.line_spacing_obj = o.line_spacing_obj.clone();
             // dss_capi 0.15.x `MakeLike` copies the equivalent-spacing fields.
             self.eq_dist_ph_ph = o.eq_dist_ph_ph;
             self.eq_dist_ph_n = o.eq_dist_ph_n;
@@ -26,11 +28,7 @@ impl LineGeometryObj {
             self.equivalent_spacing = o.equivalent_spacing;
             self.fline_type = o.fline_type;
             self.fphase_choice.clone_from(&o.fphase_choice);
-            self.fwiredata = o
-                .fwiredata
-                .iter()
-                .map(|c| c.as_ref().map(|b| b.clone_box()))
-                .collect();
+            self.fwiredata.clone_from(&o.fwiredata);
             self.fx.clone_from(&o.fx);
             self.fy.clone_from(&o.fy);
             self.funits.clone_from(&o.funits);
@@ -55,12 +53,6 @@ impl DssObject for LineGeometryObj {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.data
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 
     fn get_i32(&self, idx: usize) -> i32 {
@@ -144,7 +136,7 @@ impl DssObject for LineGeometryObj {
         let name_of = |slot: Option<usize>| {
             slot.and_then(|a| self.fwiredata.get(a))
                 .and_then(|o| o.as_ref())
-                .map(|o| o.data().name().to_string())
+                .map(|o| o.name().to_string())
                 .unwrap_or_default()
         };
         match idx {
@@ -158,20 +150,16 @@ impl DssObject for LineGeometryObj {
         }
     }
 
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        _name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
-        let cloned = resolved.map(|(_, o)| o.clone_box());
+    fn set_object_ref(&mut self, idx: usize, _name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             prop::WIRE | prop::CNCABLE | prop::TSCABLE => {
                 if let Some(a) = self.active_index() {
-                    self.fwiredata[a] = cloned;
+                    self.fwiredata[a] = resolved.and_then(ConductorObj::from_resolved);
                 }
             }
-            prop::SPACING => self.line_spacing_obj = cloned,
+            prop::SPACING => {
+                self.line_spacing_obj = resolved.and_then(|o| o.cloned::<LineSpacingObj>())
+            }
             _ => unreachable!("LineGeometry has no object reference at {idx}"),
         }
     }
@@ -185,7 +173,9 @@ impl DssObject for LineGeometryObj {
             prop::CONDUCTORS => {
                 for (i, r) in refs.iter().enumerate() {
                     if i < self.fwiredata.len() {
-                        self.fwiredata[i] = r.as_ref().map(|(_, _, o)| o.clone_box());
+                        self.fwiredata[i] = r
+                            .as_ref()
+                            .and_then(|(_, o)| ConductorObj::from_resolved(*o));
                     }
                 }
             }
@@ -199,11 +189,7 @@ impl DssObject for LineGeometryObj {
         ));
         self.fwiredata
             .iter()
-            .map(|o| {
-                o.as_ref()
-                    .map(|o| o.data().name().to_string())
-                    .unwrap_or_default()
-            })
+            .map(|o| o.as_ref().map(|o| o.name().to_string()).unwrap_or_default())
             .collect()
     }
 
@@ -328,9 +314,5 @@ impl DssObject for LineGeometryObj {
         ) {
             self.data_changed = true;
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

@@ -39,7 +39,7 @@ mod tests;
 pub(crate) use compute::{ExpDispatchEnv, PvFind, PvSnap};
 
 use crate::elements::control::control_elem::ControlElemData;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
 // PendingChange action codes (ExpControl.pas l.169-170).
@@ -205,7 +205,7 @@ pub struct ExpControl {
     /// built lazily on the first `Sample` (empty until then). An empty fleet
     /// re-triggers the build (Pascal `FPVSystemPointerList.Count = 0`); a
     /// PVSystemList / DERList edit clears it (`invalidate_fleet`).
-    pub(crate) fleet: Vec<ElemRef>,
+    pub(crate) fleet: Vec<ElemId>,
     /// One [`ExpVars`] per fleet member (1:1 with `fleet`).
     ctrl_vars: Vec<ExpVars>,
 

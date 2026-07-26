@@ -68,31 +68,33 @@ impl Dss {
     // Small element predicates/reads over the class registry.
     // ------------------------------------------------------------------
 
-    fn red_as_line(&self, r: ElemRef) -> Option<&line::Line> {
-        self.classes[r.cls].arena[r.idx]
-            .as_any()
-            .downcast_ref::<line::Line>()
+    fn red_as_line(&self, r: ElemId) -> Option<&line::Line> {
+        self.classes[r.class_ord()]
+            .arena
+            .get::<line::Line>(r.index())
     }
 
     /// Pascal `IsLineElement`.
-    fn red_is_line(&self, r: ElemRef) -> bool {
+    fn red_is_line(&self, r: ElemId) -> bool {
         self.red_as_line(r).is_some()
     }
 
-    fn red_enabled(&self, r: ElemRef) -> bool {
-        self.classes[r.cls].arena[r.idx]
-            .as_ckt_element()
+    fn red_enabled(&self, r: ElemId) -> bool {
+        self.classes[r.class_ord()]
+            .arena
+            .try_ckt_elem(r.index())
             .map(|e| e.cd().enabled)
             .unwrap_or(false)
     }
 
-    fn red_is_switch(&self, r: ElemRef) -> bool {
+    fn red_is_switch(&self, r: ElemId) -> bool {
         self.red_as_line(r).is_some_and(|l| l.is_switch)
     }
 
-    fn red_flag(&self, r: ElemRef, f: ElemFlags) -> bool {
-        self.classes[r.cls].arena[r.idx]
-            .as_ckt_element()
+    fn red_flag(&self, r: ElemId, f: ElemFlags) -> bool {
+        self.classes[r.class_ord()]
+            .arena
+            .try_ckt_elem(r.index())
             .map(|e| e.cd().flags.contains(f))
             .unwrap_or(false)
     }
@@ -105,17 +107,20 @@ impl Dss {
     }
 
     /// Pascal `ShuntElement.DSSObjType and CLASSMASK in {CAP,REACTOR}`.
-    fn red_is_cap_or_reactor(&self, r: ElemRef) -> bool {
-        let any = self.classes[r.cls].arena[r.idx].as_any();
-        any.downcast_ref::<capacitor::Capacitor>().is_some()
-            || any.downcast_ref::<reactor::Reactor>().is_some()
+    fn red_is_cap_or_reactor(&self, r: ElemId) -> bool {
+        let arena = &self.classes[r.class_ord()].arena;
+        arena.get::<capacitor::Capacitor>(r.index()).is_some()
+            || arena.get::<reactor::Reactor>(r.index()).is_some()
     }
 
     /// Pascal `elem.Enabled := FALSE`: disable and propagate the
     /// `BusNameRedefined` signal (`Set_Enabled` wrote the circuit global
     /// immediately upstream).
-    fn red_disable(&mut self, r: ElemRef) {
-        if let Some(e) = self.classes[r.cls].arena[r.idx].as_ckt_element_mut() {
+    fn red_disable(&mut self, r: ElemId) {
+        if let Some(e) = self.classes[r.class_ord()]
+            .arena
+            .try_ckt_elem_mut(r.index())
+        {
             e.cd_mut().set_enabled(false);
         }
         self.red_drain_signal(r);
@@ -124,14 +129,14 @@ impl Dss {
     /// Drain one element's `signal_bus_name_redefined` / yprim-invalid signals
     /// into the circuit (the `edit_active` tail, applied for direct mutations
     /// that bypass the edit loop).
-    fn red_drain_signal(&mut self, r: ElemRef) {
+    fn red_drain_signal(&mut self, r: ElemId) {
         let Dss {
             classes, circuit, ..
         } = self;
         let Some(ckt) = circuit.as_mut() else {
             return;
         };
-        let Some(elem) = classes[r.cls].arena[r.idx].as_ckt_element_mut() else {
+        let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem_mut(r.index()) else {
             return;
         };
         let cd = elem.cd_mut();
@@ -159,9 +164,9 @@ impl Dss {
     /// executive edit path (Pascal `Parser.CmdString := …; Elem.Edit(Parser)` /
     /// `SetDouble`/`SetInteger` via `ParsePropertyValue`). The `edit_active`
     /// tail drains the element's `BusNameRedefined`/Yprim signals.
-    fn red_edit_elem(&mut self, r: ElemRef, cmd: &str) {
-        self.active_class = Some(r.cls);
-        self.classes[r.cls].active = Some(r.idx);
+    fn red_edit_elem(&mut self, r: ElemId, cmd: &str) {
+        self.active_class = Some(r.class_ord());
+        self.classes[r.class_ord()].active = Some(r.index());
         self.parser.set_cmd_string(cmd);
         self.edit_active();
     }
@@ -170,7 +175,7 @@ impl Dss {
     // TLineObj.MergeWith (Line.pas:1631)
     // ------------------------------------------------------------------
 
-    fn red_line_snap(&self, r: ElemRef) -> LineSnap {
+    fn red_line_snap(&self, r: ElemId) -> LineSnap {
         let l = self.red_as_line(r).expect("red_line_snap on a non-line");
         let terms = &l.cd.terminals;
         let bus_refs = [
@@ -204,7 +209,7 @@ impl Dss {
     /// with `other` and disable `other`. Returns false if the merge is
     /// impossible (nil is caught by the caller here; phase mismatch; no common
     /// bus on a series merge).
-    fn red_merge(&mut self, self_ref: ElemRef, other_ref: ElemRef, series: bool) -> bool {
+    fn red_merge(&mut self, self_ref: ElemId, other_ref: ElemId, series: bool) -> bool {
         use line::prop::*;
 
         let this = self.red_line_snap(self_ref);
@@ -220,7 +225,9 @@ impl Dss {
         // leaves self invalidated. That write goes through `Set_YprimInvalid`
         // (`CktElement.pas:240`): enabled element ⇒ `SystemYChanged := TRUE`.
         let enabled = {
-            let ce = self.classes[self_ref.cls].arena[self_ref.idx].as_ckt_element_mut();
+            let ce = self.classes[self_ref.class_ord()]
+                .arena
+                .try_ckt_elem_mut(self_ref.index());
             match ce {
                 Some(ce) => {
                     ce.cd_mut().yprim_invalid = true;
@@ -404,15 +411,15 @@ impl Dss {
         true
     }
 
-    fn red_as_line_mut(&mut self, r: ElemRef) -> Option<&mut line::Line> {
-        self.classes[r.cls].arena[r.idx]
-            .as_any_mut()
-            .downcast_mut::<line::Line>()
+    fn red_as_line_mut(&mut self, r: ElemId) -> Option<&mut line::Line> {
+        self.classes[r.class_ord()]
+            .arena
+            .get_mut::<line::Line>(r.index())
     }
 
     /// Pascal `ParsePropertyValue(Bus1/Bus2, name)`: set a line terminal's bus
     /// (direct, like `SetBus` — records the set order, raises `BusNameRedefined`).
-    fn red_set_bus(&mut self, r: ElemRef, terminal: usize, name: &str) {
+    fn red_set_bus(&mut self, r: ElemId, terminal: usize, name: &str) {
         if let Some(l) = self.red_as_line_mut(r) {
             l.cd.set_bus(terminal, name);
             let idx = if terminal == 1 {
@@ -427,7 +434,7 @@ impl Dss {
 
     /// Pascal `SetInteger(Units, code)`: typed set + `PropertySideEffects` with
     /// the previous units code.
-    fn red_set_units(&mut self, r: ElemRef, units: LineUnits) {
+    fn red_set_units(&mut self, r: ElemId, units: LineUnits) {
         if let Some(l) = self.red_as_line_mut(r) {
             let prev = l.get_i32(line::prop::UNITS);
             l.set_i32(line::prop::UNITS, units.code());
@@ -438,20 +445,20 @@ impl Dss {
     }
 
     /// Pascal `Set_Name`: rename a line + keep the class name→index map in sync.
-    fn red_rename_line(&mut self, r: ElemRef, new_name: &str) {
+    fn red_rename_line(&mut self, r: ElemId, new_name: &str) {
         let lower = new_name.to_ascii_lowercase();
-        let cls = &mut self.classes[r.cls];
-        let old = cls.arena[r.idx].data().name().to_string();
-        cls.arena[r.idx].data_mut().set_name(lower.clone());
+        let cls = &mut self.classes[r.class_ord()];
+        let old = cls.arena[r.index()].data().name().to_string();
+        cls.arena[r.index()].data_mut().set_name(lower.clone());
         cls.name_to_idx.remove(&old);
-        cls.name_to_idx.insert(lower, r.idx);
+        cls.name_to_idx.insert(lower, r.index());
     }
 
     /// Pascal `TLineObj.UpdateControlElements(NewLine, OldLine)` (Line.pas:1842):
     /// re-point every control monitoring `old_ref` onto `new_ref`. The
-    /// `monitored_element` is a stable [`ElemRef`] here, so the repoint is
+    /// `monitored_element` is a stable [`ElemId`] here, so the repoint is
     /// order-independent of the rename (unlike the Pascal name-based re-edit).
-    fn red_update_control_elements(&mut self, new_ref: ElemRef, old_ref: ElemRef) {
+    fn red_update_control_elements(&mut self, new_ref: ElemId, old_ref: ElemId) {
         let Some(ckt) = self.circuit.as_ref() else {
             return;
         };
@@ -462,7 +469,7 @@ impl Dss {
         // side effects fire exactly like a user edit.
         let new_full = self.red_full_name(new_ref);
         for cr in ckt.controls.clone() {
-            let monitored = control_data_mut(self.classes[cr.cls].arena.obj_mut(cr.idx))
+            let monitored = control_data_mut(&mut self.classes[cr.class_ord()].arena, cr.index())
                 .and_then(|ccd| ccd.monitored_element);
             if monitored == Some(old_ref) {
                 self.red_edit_elem(cr, &format!("element={new_full}"));
@@ -536,7 +543,7 @@ impl Dss {
     }
 
     /// Pascal `IsShortLine` (ReduceAlgs.pas:119).
-    fn red_is_short_line(&self, r: ElemRef) -> bool {
+    fn red_is_short_line(&self, r: ElemId) -> bool {
         let l = self.red_as_line(r).expect("IsShortLine on a non-line");
         let ztest = if l.sym_components_model {
             Complex64::new(l.r1, l.x1).norm() * l.len
@@ -566,7 +573,10 @@ impl Dss {
         while let Some(r) = elem {
             if self.red_is_line(r) {
                 let short = self.red_is_short_line(r);
-                if let Some(e) = self.classes[r.cls].arena[r.idx].as_ckt_element_mut() {
+                if let Some(e) = self.classes[r.class_ord()]
+                    .arena
+                    .try_ckt_elem_mut(r.index())
+                {
                     if short {
                         e.cd_mut().flags.include(ElemFlags::FLAG);
                     } else {
@@ -597,7 +607,7 @@ impl Dss {
 
     /// One iteration of the `DoReduceShortLines` pass-2 body. Returns whether an
     /// extra `GoForward` is due (the child-merge case, ReduceAlgs.pas:282).
-    fn red_short_line_step(&mut self, tree: &mut CktTree, r: ElemRef) -> bool {
+    fn red_short_line_step(&mut self, tree: &mut CktTree, r: ElemId) -> bool {
         if !self.red_enabled(r) {
             return false;
         }
@@ -768,8 +778,9 @@ impl Dss {
         tree.first();
         let mut elem = tree.active();
         while let Some(r) = elem {
-            let nphases = self.classes[r.cls].arena[r.idx]
-                .as_ckt_element()
+            let nphases = self.classes[r.class_ord()]
+                .arena
+                .try_ckt_elem(r.index())
                 .map(|e| e.cd().nphases)
                 .unwrap_or(0);
             if nphases == 1 {
@@ -833,7 +844,7 @@ impl Dss {
     fn red_remove_branches(
         &mut self,
         tree: &mut CktTree,
-        first_pd: ElemRef,
+        first_pd: ElemId,
         keep_load: bool,
         edit_str: &str,
     ) {
@@ -861,8 +872,9 @@ impl Dss {
             let total_kva = self.red_terminal_power(first_pd, from_terminal) / 1000.0;
             let name = self.red_elem_name(first_pd);
             let new_load_name = format!("Eq_{}_{}", name, strip_extension(&bus_name));
-            let nphases = self.classes[first_pd.cls].arena[first_pd.idx]
-                .as_ckt_element()
+            let nphases = self.classes[first_pd.class_ord()]
+                .arena
+                .try_ckt_elem(first_pd.index())
                 .map(|e| e.cd().nphases)
                 .unwrap_or(1);
             let load_base_kv = self.red_load_base_kv(from_bus, nphases);
@@ -911,31 +923,36 @@ impl Dss {
 
     /// Pascal shunt reconnection: `bus1="<newbus><node suffix>"` re-edit
     /// (ReduceAlgs.pas:226/:277).
-    fn red_move_shunt(&mut self, shunt: ElemRef, new_bus: &str) {
-        let cur = self.classes[shunt.cls].arena[shunt.idx]
-            .as_ckt_element()
+    fn red_move_shunt(&mut self, shunt: ElemId, new_bus: &str) {
+        let cur = self.classes[shunt.class_ord()]
+            .arena
+            .try_ckt_elem(shunt.index())
             .map(|e| e.cd().get_bus(1).to_string())
             .unwrap_or_default();
         let cmd = format!("bus1=\"{}{}\"", new_bus, get_node_string(&cur));
         self.red_edit_elem(shunt, &cmd);
     }
 
-    fn red_elem_bus(&self, r: ElemRef, terminal: usize) -> String {
-        self.classes[r.cls].arena[r.idx]
-            .as_ckt_element()
+    fn red_elem_bus(&self, r: ElemId, terminal: usize) -> String {
+        self.classes[r.class_ord()]
+            .arena
+            .try_ckt_elem(r.index())
             .map(|e| e.cd().get_bus(terminal).to_string())
             .unwrap_or_default()
     }
 
-    fn red_elem_name(&self, r: ElemRef) -> String {
-        self.classes[r.cls].arena[r.idx].data().name().to_string()
+    fn red_elem_name(&self, r: ElemId) -> String {
+        self.classes[r.class_ord()].arena[r.index()]
+            .data()
+            .name()
+            .to_string()
     }
 
-    fn red_full_name(&self, r: ElemRef) -> String {
+    fn red_full_name(&self, r: ElemId) -> String {
         format!(
             "{}.{}",
-            self.classes[r.cls].props.class_name(),
-            self.classes[r.cls].arena[r.idx].data().name()
+            self.classes[r.class_ord()].props.class_name(),
+            self.classes[r.class_ord()].arena[r.index()].data().name()
         )
     }
 
@@ -978,7 +995,7 @@ impl Dss {
 
     /// Pascal `PDelem.Power[FromTerminal]` (complex, watts+vars): compute over
     /// the current node voltages.
-    fn red_terminal_power(&mut self, r: ElemRef, terminal: usize) -> Complex64 {
+    fn red_terminal_power(&mut self, r: ElemId, terminal: usize) -> Complex64 {
         let Dss {
             classes, circuit, ..
         } = self;
@@ -987,7 +1004,7 @@ impl Dss {
         };
         let sys = crate::solution::sys_ctx(ckt);
         let node_v = ckt.solution.node_v.clone();
-        let Some(elem) = classes[r.cls].arena[r.idx].as_ckt_element_mut() else {
+        let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem_mut(r.index()) else {
             return Complex64::ZERO;
         };
         elem.terminal_power(&sys, &node_v, terminal)
@@ -1021,7 +1038,7 @@ impl Dss {
 
     /// Pascal `TEnergyMeterObj.ReduceZone` (EnergyMeter.pas:2257): build the zone
     /// list if needed, then dispatch the circuit's `ReductionStrategy`.
-    pub(super) fn reduce_zone(&mut self, meter_ref: ElemRef) {
+    pub(super) fn reduce_zone(&mut self, meter_ref: ElemId) {
         // Make sure the zone list is built (Pascal `MakeMeterZoneLists`).
         let has_tree = {
             let m = energymeter_ref(&self.classes, meter_ref);
@@ -1072,11 +1089,11 @@ impl Dss {
         }
     }
 
-    fn take_meter_tree(&mut self, meter_ref: ElemRef) -> Option<CktTree> {
+    fn take_meter_tree(&mut self, meter_ref: ElemId) -> Option<CktTree> {
         energymeter_mut(&mut self.classes, meter_ref).and_then(|m| m.take_branch_list())
     }
 
-    fn put_meter_tree(&mut self, meter_ref: ElemRef, tree: CktTree) {
+    fn put_meter_tree(&mut self, meter_ref: ElemId, tree: CktTree) {
         if let Some(m) = energymeter_mut(&mut self.classes, meter_ref) {
             m.put_branch_list(tree);
         }
@@ -1156,8 +1173,9 @@ impl Dss {
         }
 
         // Must be in a meter zone (SensorObj set by the zone build).
-        let sensor = self.classes[elem_ref.cls].arena[elem_ref.idx]
-            .as_ckt_element()
+        let sensor = self.classes[elem_ref.class_ord()]
+            .arena
+            .try_ckt_elem(elem_ref.index())
             .and_then(|e| e.cd().sensor_obj);
         let Some(meter_ref) = sensor else {
             self.errors.push(format!(
@@ -1199,33 +1217,37 @@ fn remove_commands_index(name: &str) -> i64 {
 /// Downcast a registry slot to `&EnergyMeter`.
 fn energymeter_ref(
     classes: &[DssClass],
-    r: ElemRef,
+    r: ElemId,
 ) -> Option<&crate::elements::meter::energymeter::EnergyMeter> {
-    classes[r.cls].arena[r.idx]
-        .as_any()
-        .downcast_ref::<crate::elements::meter::energymeter::EnergyMeter>()
+    classes[r.class_ord()]
+        .arena
+        .get::<crate::elements::meter::energymeter::EnergyMeter>(r.index())
 }
 
 fn energymeter_mut(
     classes: &mut [DssClass],
-    r: ElemRef,
+    r: ElemId,
 ) -> Option<&mut crate::elements::meter::energymeter::EnergyMeter> {
-    classes[r.cls].arena[r.idx]
-        .as_any_mut()
-        .downcast_mut::<crate::elements::meter::energymeter::EnergyMeter>()
+    classes[r.class_ord()]
+        .arena
+        .get_mut::<crate::elements::meter::energymeter::EnergyMeter>(r.index())
 }
 
 /// Access a control element's [`ControlElemData`] for the `UpdateControlElements`
 /// repoint. Covers every control class that carries a `MonitoredElement`.
-fn control_data_mut(obj: &mut dyn DssObject) -> Option<&mut ControlElemData> {
+fn control_data_mut(
+    arena: &mut crate::obj::arena::ClassArena,
+    idx: usize,
+) -> Option<&mut ControlElemData> {
     use crate::elements::control::*;
-    let any = obj.as_any_mut();
-    // `is::<T>()` borrows immutably (ends immediately); the mutable `downcast_mut`
-    // only happens on the returning branch, so the borrows never overlap.
+    // The shared probe borrows immutably (ends immediately); the mutable
+    // `get_mut` only happens on the returning branch, so the borrows never
+    // overlap. Each arm is a static `ArenaClass` match on the arena variant, so
+    // at most one can hit.
     macro_rules! try_ccd {
         ($($ty:path),* $(,)?) => {$(
-            if any.is::<$ty>() {
-                return any.downcast_mut::<$ty>().map(|c| &mut c.ccd);
+            if arena.get::<$ty>(idx).is_some() {
+                return arena.get_mut::<$ty>(idx).map(|c| &mut c.ccd);
             }
         )*};
     }

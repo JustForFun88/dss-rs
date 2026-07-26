@@ -12,7 +12,7 @@
 
 use crate::circuit::Circuit;
 use crate::elements::meter::EnergyMeter;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::exec::registry::DssClass;
 use crate::report::format;
 
@@ -36,7 +36,7 @@ fn ocp_device_type_string(icode: i32) -> &'static str {
 pub(crate) fn export_sections(
     classes: &[DssClass],
     ckt: &Circuit,
-    meter: Option<ElemRef>,
+    meter: Option<ElemId>,
 ) -> String {
     // Header: verbatim, including Pascal's trailing space before the newline.
     let mut s = String::from(
@@ -44,16 +44,16 @@ pub(crate) fn export_sections(
          TotalDownlineCust, SectFaultRate, SumFltRatesXRepairHrs, SumBranchFltRates, HeadBranch \n",
     );
 
-    let targets: Vec<ElemRef> = match meter {
+    let targets: Vec<ElemId> = match meter {
         Some(r) => vec![r],
         None => ckt.energy_meters.clone(),
     };
     for r in targets {
-        let obj = &classes[r.cls].arena[r.idx];
+        let obj = &classes[r.class_ord()].arena[r.index()];
         let meter_name = obj.data().name().to_string();
-        let em = obj
-            .as_any()
-            .downcast_ref::<EnergyMeter>()
+        let em = classes[r.class_ord()]
+            .arena
+            .get::<EnergyMeter>(r.index())
             .expect("energy_meters holds EnergyMeter objects");
         // `SectionCount` and `FeederSections` are written together by a
         // successful `CalcReliabilityIndices` (and the count alone is zeroed on
@@ -65,8 +65,8 @@ pub(crate) fn export_sections(
             let head = em.sequence_list()[sec.seq_index - 1];
             let head_full = format!(
                 "{}.{}",
-                classes[head.cls].props.class_name(),
-                classes[head.cls].arena[head.idx].data().name()
+                classes[head.class_ord()].props.class_name(),
+                classes[head.class_ord()].arena[head.index()].data().name()
             );
             s.push_str(&format!(
                 "{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, \"{}\"\n",

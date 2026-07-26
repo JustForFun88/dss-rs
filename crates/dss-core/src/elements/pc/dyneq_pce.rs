@@ -19,7 +19,7 @@
 use dss_parser::{Parser, ParserVars};
 
 use crate::elements::general::dynamic_exp::{DYN_SLOT_LENGTH, DynamicExpObj};
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 
 /// One `UserDynInit` entry value. Pascal stores each assignment in a
 /// `TJSONObject` as either a `TJSONNumber` (a constant with no RPN) or a
@@ -48,7 +48,7 @@ pub struct DynEqPceData {
     pub dynamic_eq: String,
     /// `DynamicEqObj` — the linked `DynamicExp` (snapshot clone, WP4.2/WP5.3 pattern).
     pub dynamic_eq_obj: Option<DynamicExpObj>,
-    pub dynamic_eq_ref: Option<ElemRef>,
+    pub dynamic_eq_ref: Option<ElemId>,
     /// `DynamicEqVals` — per-variable `[value, derivative]` memory, sized by the
     /// `DynamicEq=` side effect to `DynamicExp.NVariables` rows.
     pub dynamic_eq_vals: Vec<[f64; DYN_SLOT_LENGTH]>,

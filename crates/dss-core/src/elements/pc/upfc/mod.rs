@@ -39,7 +39,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -181,7 +181,7 @@ pub struct Upfc {
     pub loss_curve_obj: Option<XyCurveObj>,
 
     /// `MonElm` — monitored element for the PF-compensation modes.
-    pub mon_elm: Option<ElemRef>,
+    pub mon_elm: Option<ElemId>,
     pub mon_elm_name: String,
 
     pub spectrum: String,

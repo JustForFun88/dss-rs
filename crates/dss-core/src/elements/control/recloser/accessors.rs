@@ -8,7 +8,8 @@ use num_complex::Complex64;
 
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::{RCMAX, RECLOSE_MAX, Recloser};
@@ -45,12 +46,8 @@ impl CktElement for Recloser {
         &mut self.ccd.cd
     }
 
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
     }
 
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
@@ -75,7 +72,7 @@ impl CktElement for Recloser {
         PosSeqPlan::base()
     }
 
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.ccd.monitored_element
     }
 }
@@ -142,18 +139,7 @@ impl DssObject for Recloser {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.ccd.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
+
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         Some(self)
     }
@@ -368,20 +354,15 @@ impl DssObject for Recloser {
         }
     }
 
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
         match idx {
             MONITORED_OBJ => match resolved {
-                Some((r, obj)) => {
+                Some(o) => {
                     self.monitored_full_name = name.clone();
-                    self.ccd.monitored_element = Some(r);
-                    let elem = obj
-                        .as_ckt_element()
+                    self.ccd.monitored_element = Some(o.id());
+                    let elem = o
+                        .ckt()
                         .expect("monitoredobj resolves against circuit classes");
                     self.mon_snap = Some(super::RefSnapshot::capture(name, elem));
                 }
@@ -392,11 +373,11 @@ impl DssObject for Recloser {
                 }
             },
             SWITCHED_OBJ => match resolved {
-                Some((r, obj)) => {
+                Some(o) => {
                     self.switched_full_name = name.clone();
-                    self.ccd.controlled_element = Some(r);
-                    let elem = obj
-                        .as_ckt_element()
+                    self.ccd.controlled_element = Some(o.id());
+                    let elem = o
+                        .ckt()
                         .expect("switchedobj resolves against circuit classes");
                     self.ctrl_snap = Some(super::RefSnapshot::capture(name, elem));
                 }
@@ -446,10 +427,6 @@ impl DssObject for Recloser {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_ref_actions)
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

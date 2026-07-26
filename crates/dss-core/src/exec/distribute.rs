@@ -200,21 +200,17 @@ impl Dss {
         };
         self.classes[ci]
             .arena
-            .objs()
+            .all::<load::Load>()
+            .expect("Load class holds Load objects")
+            .iter()
             .enumerate()
-            .map(|(i, obj)| {
-                let l = obj
-                    .as_any()
-                    .downcast_ref::<load::Load>()
-                    .expect("Load class holds Load objects");
-                LoadRow {
-                    idx: i + 1,
-                    enabled: l.cd.enabled,
-                    bus1: l.cd.get_bus(1).to_string(),
-                    nphases: l.cd.nphases,
-                    kv_load_base: l.kv_load_base,
-                    kw_base: l.kw_base,
-                }
+            .map(|(i, l)| LoadRow {
+                idx: i + 1,
+                enabled: l.cd.enabled,
+                bus1: l.cd.get_bus(1).to_string(),
+                nphases: l.cd.nphases,
+                kv_load_base: l.kv_load_base,
+                kw_base: l.kw_base,
             })
             .collect()
     }

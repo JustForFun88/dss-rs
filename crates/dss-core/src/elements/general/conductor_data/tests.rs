@@ -199,6 +199,100 @@ fn tsdata_tapelap_out_of_range_errors() {
     );
 }
 
+/// The DE_PASCALIZE R3.4 Category-C coupling guard: the classes a conductor
+/// slot can ever receive are exactly the [`ConductorObj`] variants.
+///
+/// `LineGeometryObj::fwiredata` / `Line::line_wire_data` hold
+/// `Option<ConductorObj>`, and every writer fills them through
+/// [`ConductorObj::from_resolved`], whose `None` arm is the NIL slot. That arm
+/// is unreachable only as long as the property table restricts those
+/// properties to `WireData`/`CNData`/`TSData` — the property engine resolves an
+/// `ObjectRef`/`ObjectRefArray` solely via `foreign.find(<declared class>, …)`
+/// (`obj/props/class_props/parse.rs`), and the `Conductors=` proxy rejects any
+/// token whose class prefix is not in [`CONDUCTOR_PROXY_CLASSES`] (#10103).
+/// Add a fourth conductor class to a declaration without a matching
+/// `ConductorObj` variant and the slot would silently go NIL instead of failing
+/// to compile — this test is what turns that into a red gate.
+#[test]
+fn conductor_property_classes_match_the_conductor_obj_variants() {
+    use crate::obj::arena::{ClassArena, ResolvedObj};
+
+    // The three classes `ConductorObj` can hold, in variant order.
+    let variants: [&str; 3] = ["WireData", "CNData", "TSData"];
+    assert_eq!(
+        CONDUCTOR_PROXY_CLASSES, variants,
+        "the `Conductors` proxy class list drifted from the ConductorObj variants"
+    );
+
+    // Every declared target class of every conductor-slot property, on both
+    // owning classes, must be one of the variants.
+    let enums = EnumRegistry::new();
+    let line = crate::elements::pd::line::class_props(&enums);
+    let geom = crate::elements::general::line_geometry::class_props(&enums);
+    let decls: [(&ClassProps, &[&str]); 2] = [
+        (&line, &["Wires", "CNCables", "TSCables", "Conductors"]),
+        (
+            &geom,
+            &[
+                "Wire",
+                "Wires",
+                "CNCable",
+                "CNCables",
+                "TSCable",
+                "TSCables",
+                "Conductors",
+            ],
+        ),
+    ];
+    let mut seen: Vec<String> = Vec::new();
+    for (cls, names) in decls {
+        for name in names {
+            let idx = cls.property_index(name).expect("declared property");
+            let pd = cls.prop(idx);
+            let declared = pd
+                .object_class
+                .into_iter()
+                .chain(pd.object_class2)
+                .chain(pd.object_classes.iter().copied());
+            let mut any = false;
+            for c in declared {
+                any = true;
+                assert!(
+                    variants.iter().any(|v| v.eq_ignore_ascii_case(c)),
+                    "{}.{name} may resolve class {c:?}, which has no ConductorObj variant",
+                    cls.class_name()
+                );
+                if !seen.iter().any(|s| s.eq_ignore_ascii_case(c)) {
+                    seen.push(c.to_string());
+                }
+            }
+            assert!(any, "{}.{name} declares no target class", cls.class_name());
+        }
+    }
+    assert_eq!(seen.len(), variants.len(), "not every variant is reachable");
+
+    // …and each of them really does narrow to its own variant (the `Some`
+    // arms), while any other class is the `None` the NIL slot stands for.
+    for (v, kind) in
+        variants
+            .iter()
+            .zip([ConductorKind::Wire, ConductorKind::Cn, ConductorKind::Ts])
+    {
+        let mut arena = ClassArena::empty_for(v).expect("conductor arena");
+        arena.push_new("c0");
+        let cond = ConductorObj::from_resolved(ResolvedObj::new(&arena, 0))
+            .unwrap_or_else(|| panic!("{v} must narrow to a ConductorObj"));
+        assert_eq!(cond.conductor_kind(), kind, "{v} narrowed to the wrong arm");
+        assert_eq!(cond.name(), "c0");
+    }
+    let mut other = ClassArena::empty_for("LineSpacing").expect("LineSpacing arena");
+    other.push_new("s0");
+    assert!(
+        ConductorObj::from_resolved(ResolvedObj::new(&other, 0)).is_none(),
+        "a non-conductor class must not narrow to a ConductorObj"
+    );
+}
+
 #[test]
 fn tsdata_defaults() {
     // TapeLap default 20; Rac from Rdc; GMR/CapRadius from radius.

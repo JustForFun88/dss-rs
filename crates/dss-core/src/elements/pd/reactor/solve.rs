@@ -126,10 +126,6 @@ impl CktElement for Reactor {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.
     fn reliability_data(&self) -> ReliabilityData {
         ReliabilityData {

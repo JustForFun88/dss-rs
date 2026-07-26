@@ -163,7 +163,7 @@ fn interval_units_bad_unit_logs_error_and_keeps_default() {
 mod dispatch {
     use super::super::compute::{DerSnap, FleetFind, InvDispatchEnv, MonitorVar};
     use super::super::{InvControl, prop};
-    use crate::elements::traits::ElemRef;
+    use crate::elements::traits::ElemId;
     use crate::obj::base::DssObject;
 
     /// One mock DER (a PVSystem-shaped inverter with var headroom).
@@ -256,8 +256,8 @@ mod dispatch {
                 mon_bus_v: Vec::new(),
             }
         }
-        fn idx(r: ElemRef) -> usize {
-            r.idx
+        fn idx(r: ElemId) -> usize {
+            r.index()
         }
     }
     impl InvDispatchEnv for MockEnv {
@@ -268,33 +268,27 @@ mod dispatch {
                 .position(|d| d.name.eq_ignore_ascii_case(name))
             {
                 None => FleetFind::NotFound,
-                Some(i) if self.ders[i].enabled => FleetFind::Found(ElemRef { cls: 0, idx: i }),
+                Some(i) if self.ders[i].enabled => FleetFind::Found(ElemId::new(0, i)),
                 Some(_) => FleetFind::Disabled,
             }
         }
         fn find_storage(&self, _name: &str) -> FleetFind {
             FleetFind::NotFound
         }
-        fn all_pvsystems(&self) -> Vec<(String, ElemRef, bool)> {
+        fn all_pvsystems(&self) -> Vec<(String, ElemId, bool)> {
             self.ders
                 .iter()
                 .enumerate()
-                .map(|(i, d)| {
-                    (
-                        format!("PVSystem.{}", d.name),
-                        ElemRef { cls: 0, idx: i },
-                        d.enabled,
-                    )
-                })
+                .map(|(i, d)| (format!("PVSystem.{}", d.name), ElemId::new(0, i), d.enabled))
                 .collect()
         }
-        fn all_storages(&self) -> Vec<(String, ElemRef, bool)> {
+        fn all_storages(&self) -> Vec<(String, ElemId, bool)> {
             Vec::new()
         }
         fn push_error(&mut self, diag: crate::diag::DssDiagnostic) {
             self.errors.push(diag);
         }
-        fn der_snap(&self, r: ElemRef) -> DerSnap {
+        fn der_snap(&self, r: ElemId) -> DerSnap {
             let d = &self.ders[Self::idx(r)];
             DerSnap {
                 is_pvsystem: !d.is_storage,
@@ -327,10 +321,10 @@ mod dispatch {
                 vw_state_requested: d.vw_state_requested,
             }
         }
-        fn der_is_pvsystem(&self, r: ElemRef) -> bool {
+        fn der_is_pvsystem(&self, r: ElemId) -> bool {
             !self.ders[Self::idx(r)].is_storage
         }
-        fn der_vterminal(&mut self, r: ElemRef) -> Vec<num_complex::Complex64> {
+        fn der_vterminal(&mut self, r: ElemId) -> Vec<num_complex::Complex64> {
             let d = &self.ders[Self::idx(r)];
             if d.is_delta {
                 // Balanced 120°-spaced phasor set at magnitude vmag: the D4
@@ -347,10 +341,10 @@ mod dispatch {
                 vec![num_complex::Complex64::new(d.vmag, 0.0); 3]
             }
         }
-        fn der_is_delta(&self, r: ElemRef) -> bool {
+        fn der_is_delta(&self, r: ElemId) -> bool {
             self.ders[Self::idx(r)].is_delta
         }
-        fn der_bus_vbase(&self, r: ElemRef) -> f64 {
+        fn der_bus_vbase(&self, r: ElemId) -> f64 {
             self.ders[Self::idx(r)].vbase
         }
         fn mon_bus_node_v(&self, j: usize, node: i32) -> num_complex::Complex64 {
@@ -367,48 +361,48 @@ mod dispatch {
             self.mon_bus_v.get(j).is_none()
         }
         fn request_solution_abort(&mut self) {}
-        fn der_full_name(&self, r: ElemRef) -> String {
+        fn der_full_name(&self, r: ElemId) -> String {
             format!("PVSystem.{}", self.ders[Self::idx(r)].name)
         }
-        fn der_set_pf_priority(&mut self, r: ElemRef, value: bool) {
+        fn der_set_pf_priority(&mut self, r: ElemId, value: bool) {
             self.ders[Self::idx(r)].p_priority = value;
         }
-        fn der_set_modes(&mut self, _r: ElemRef, _vw: bool, _vv: bool, _var_mode: i32) {}
-        fn der_set_vv_mode(&mut self, _r: ElemRef, _value: bool) {}
-        fn der_set_vw_mode(&mut self, _r: ElemRef, _value: bool) {}
-        fn der_set_drc_mode(&mut self, _r: ElemRef, _value: bool) {}
-        fn der_set_wp_mode(&mut self, _r: ElemRef, _value: bool) {}
-        fn der_set_wv_mode(&mut self, _r: ElemRef, _value: bool) {}
-        fn der_set_avr_mode(&mut self, _r: ElemRef, _value: bool) {}
-        fn der_set_var_mode(&mut self, r: ElemRef, mode: i32) {
+        fn der_set_modes(&mut self, _r: ElemId, _vw: bool, _vv: bool, _var_mode: i32) {}
+        fn der_set_vv_mode(&mut self, _r: ElemId, _value: bool) {}
+        fn der_set_vw_mode(&mut self, _r: ElemId, _value: bool) {}
+        fn der_set_drc_mode(&mut self, _r: ElemId, _value: bool) {}
+        fn der_set_wp_mode(&mut self, _r: ElemId, _value: bool) {}
+        fn der_set_wv_mode(&mut self, _r: ElemId, _value: bool) {}
+        fn der_set_avr_mode(&mut self, _r: ElemId, _value: bool) {}
+        fn der_set_var_mode(&mut self, r: ElemId, mode: i32) {
             self.ders[Self::idx(r)].var_mode = mode;
         }
-        fn der_requested_kvar(&self, r: ElemRef) -> f64 {
+        fn der_requested_kvar(&self, r: ElemId) -> f64 {
             self.ders[Self::idx(r)].requested_kvar
         }
-        fn der_set_pf_wp_nominal(&mut self, r: ElemRef, value: f64) {
+        fn der_set_pf_wp_nominal(&mut self, r: ElemId, value: f64) {
             self.ders[Self::idx(r)].pf_wp_nominal = value;
         }
-        fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
+        fn der_set_kvar_requested(&mut self, r: ElemId, q: f64) {
             let d = &mut self.ders[Self::idx(r)];
             // Model SetNominalDEROutput's kvar clamp to the limit band.
             d.requested_kvar = q.clamp(-d.kvar_limit_neg, d.kvar_limit);
         }
-        fn der_set_kw_requested(&mut self, r: ElemRef, p: f64) {
+        fn der_set_kw_requested(&mut self, r: ElemId, p: f64) {
             self.ders[Self::idx(r)].requested_kw = p;
         }
-        fn der_set_nominal(&mut self, _r: ElemRef) {}
-        fn der_present_kvar(&self, r: ElemRef) -> f64 {
+        fn der_set_nominal(&mut self, _r: ElemId) {}
+        fn der_present_kvar(&self, r: ElemId) -> f64 {
             self.ders[Self::idx(r)].requested_kvar
         }
-        fn der_present_kw(&self, r: ElemRef) -> f64 {
+        fn der_present_kw(&self, r: ElemId) -> f64 {
             // Ideal readback: the requested kW limit (the VW set-point).
             self.ders[Self::idx(r)].requested_kw
         }
-        fn der_storage_dckw(&mut self, r: ElemRef) -> f64 {
+        fn der_storage_dckw(&mut self, r: ElemId) -> f64 {
             self.ders[Self::idx(r)].storage_dckw
         }
-        fn der_set_monitor_var(&mut self, _r: ElemRef, _kind: MonitorVar, _value: f64) {}
+        fn der_set_monitor_var(&mut self, _r: ElemId, _kind: MonitorVar, _value: f64) {}
         fn push_change(&mut self, _delay: f64, code: i32) {
             self.pushes.push(code);
         }
@@ -426,27 +420,27 @@ mod dispatch {
             0.0
         }
         fn set_loads_need_updating(&mut self) {}
-        fn der_gfm_mode(&self, _r: ElemRef) -> bool {
+        fn der_gfm_mode(&self, _r: ElemId) -> bool {
             false
         }
-        fn der_storage_state(&self, _r: ElemRef) -> i32 {
+        fn der_storage_state(&self, _r: ElemId) -> i32 {
             0
         }
-        fn der_ilimit(&self, _r: ElemRef) -> f64 {
+        fn der_ilimit(&self, _r: ElemId) -> f64 {
             -1.0
         }
-        fn der_reset_ibr(&self, _r: ElemRef) -> bool {
+        fn der_reset_ibr(&self, _r: ElemId) -> bool {
             false
         }
-        fn der_check_amps_limit(&mut self, _r: ElemRef) -> bool {
+        fn der_check_amps_limit(&mut self, _r: ElemId) -> bool {
             false
         }
-        fn der_check_ol_inverter(&mut self, _r: ElemRef) -> bool {
+        fn der_check_ol_inverter(&mut self, _r: ElemId) -> bool {
             false
         }
-        fn der_set_gfm_mode(&mut self, _r: ElemRef, _value: bool) {}
-        fn der_set_reset_ibr(&mut self, _r: ElemRef, _value: bool) {}
-        fn der_set_storage_state_off(&mut self, _r: ElemRef) {}
+        fn der_set_gfm_mode(&mut self, _r: ElemId, _value: bool) {}
+        fn der_set_reset_ibr(&mut self, _r: ElemId, _value: bool) {}
+        fn der_set_storage_state_off(&mut self, _r: ElemId) {}
         fn is_dynamic_model(&self) -> bool {
             false
         }
@@ -2084,7 +2078,7 @@ mod dispatch {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
 
     /// Pascal `TInvControlObj.MakePosSequence` (InvControl.pas:943): the empty
     /// DER-list config is a NIL-deref hazard (Access violation #303, probe `1`).
@@ -2110,7 +2104,7 @@ mod make_pos_seq_tests {
     #[test]
     fn populated_der_adopts_first_der_bus_and_phases() {
         let mut ic = InvControl::new("ic1");
-        ic.ccd.monitored_element = Some(ElemRef { cls: 3, idx: 7 });
+        ic.ccd.monitored_element = Some(ElemId::new(3, 7));
         let ctx = PosSeqCtx {
             monitored: Some(PosSeqElemInfo {
                 nphases: 1,
@@ -2124,6 +2118,6 @@ mod make_pos_seq_tests {
         assert_eq!(ic.ccd.cd.nphases, 1);
         assert_eq!(ic.ccd.cd.nconds, 1);
         assert_eq!(ic.ccd.cd.get_bus(1), "derbus"); // MonitoredElement.Firstbus
-        assert_eq!(ic.monitored_element_ref(), Some(ElemRef { cls: 3, idx: 7 }));
+        assert_eq!(ic.monitored_element_ref(), Some(ElemId::new(3, 7)));
     }
 }

@@ -15,7 +15,7 @@
 use crate::circuit::Circuit;
 use crate::elements::pc::pvsystem::PVSystem;
 use crate::elements::pc::storage::Storage;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::elements::traits::{CktElement, ElemId};
 use crate::exec::registry::DssClass;
 use crate::obj::base::DssObject;
 
@@ -33,7 +33,7 @@ const CAT_B_QMIN: f64 = 0.43;
 struct RemoteSignal {
     bus_name: String,
     phase: String,
-    elem: Option<ElemRef>,
+    elem: Option<ElemId>,
     trm: i32,
     local_name: String,
     uuid: Uuid,
@@ -620,28 +620,28 @@ impl Ieee1547Controller {
             // is load-bearing). Unlike the named-DER branch below, which emits
             // regardless (Pascal `SetElementActive` + unconditional `RefNode`).
             for &r in &ckt.storages.clone() {
-                let enabled = classes[r.cls].arena[r.idx]
-                    .as_any()
-                    .downcast_ref::<Storage>()
+                let enabled = classes[r.class_ord()]
+                    .arena
+                    .get::<Storage>(r.index())
                     .is_some_and(|s| s.cd.enabled);
                 if !enabled {
                     continue;
                 }
-                let uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+                let uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
                 if let Some(plate) = storage_plate(classes, r) {
                     writer::ref_node(buf, prf, "DERDynamics.PowerElectronicsConnection", uuid);
                     self.set_storage_nameplate(&plate);
                 }
             }
             for &r in &ckt.pv_systems.clone() {
-                let enabled = classes[r.cls].arena[r.idx]
-                    .as_any()
-                    .downcast_ref::<PVSystem>()
+                let enabled = classes[r.class_ord()]
+                    .arena
+                    .get::<PVSystem>(r.index())
                     .is_some_and(|p| p.cd.enabled);
                 if !enabled {
                     continue;
                 }
-                let uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+                let uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
                 if let Some(plate) = pv_plate(classes, r) {
                     writer::ref_node(buf, prf, "DERDynamics.PowerElectronicsConnection", uuid);
                     self.set_photovoltaic_nameplate(&plate);
@@ -652,7 +652,7 @@ impl Ieee1547Controller {
                 let Some(r) = find_elem(classes, name) else {
                     continue;
                 };
-                let uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+                let uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
                 writer::ref_node(buf, prf, "DERDynamics.PowerElectronicsConnection", uuid);
                 self.set_element_nameplate(classes, r);
             }
@@ -903,7 +903,7 @@ impl Ieee1547Controller {
     }
 
     /// Pascal `SetElementNameplate` (`3013`): dispatch by class, once.
-    fn set_element_nameplate(&mut self, classes: &[DssClass], r: ElemRef) {
+    fn set_element_nameplate(&mut self, classes: &[DssClass], r: ElemId) {
         if self.b_nameplate_set {
             return;
         }
@@ -941,10 +941,8 @@ struct StoragePlate {
     kvar_limit_neg: f64,
 }
 
-fn pv_plate(classes: &[DssClass], r: ElemRef) -> Option<PvPlate> {
-    let pv = classes[r.cls].arena[r.idx]
-        .as_any()
-        .downcast_ref::<PVSystem>()?;
+fn pv_plate(classes: &[DssClass], r: ElemId) -> Option<PvPlate> {
+    let pv = classes[r.class_ord()].arena.get::<PVSystem>(r.index())?;
     Some(PvPlate {
         present_kv: pv.kv_pvsystem_base,
         vmaxpu: pv.base.vmaxpu,
@@ -958,10 +956,8 @@ fn pv_plate(classes: &[DssClass], r: ElemRef) -> Option<PvPlate> {
     })
 }
 
-fn storage_plate(classes: &[DssClass], r: ElemRef) -> Option<StoragePlate> {
-    let st = classes[r.cls].arena[r.idx]
-        .as_any()
-        .downcast_ref::<Storage>()?;
+fn storage_plate(classes: &[DssClass], r: ElemId) -> Option<StoragePlate> {
+    let st = classes[r.class_ord()].arena.get::<Storage>(r.index())?;
     Some(StoragePlate {
         present_kv: st.present_kv(),
         vmaxpu: st.base.vmaxpu,
@@ -974,8 +970,8 @@ fn storage_plate(classes: &[DssClass], r: ElemRef) -> Option<StoragePlate> {
     })
 }
 
-/// Resolve `Class.Name` to an [`ElemRef`] (Pascal `SetElementActive`).
-fn find_elem(classes: &[DssClass], full_name: &str) -> Option<ElemRef> {
+/// Resolve `Class.Name` to an [`ElemId`] (Pascal `SetElementActive`).
+fn find_elem(classes: &[DssClass], full_name: &str) -> Option<ElemId> {
     let (cls_name, obj_name) = full_name.split_once('.')?;
     let cls = classes
         .iter()
@@ -984,7 +980,7 @@ fn find_elem(classes: &[DssClass], full_name: &str) -> Option<ElemRef> {
         .arena
         .objs()
         .position(|o| o.data().name().eq_ignore_ascii_case(obj_name))?;
-    Some(ElemRef { cls, idx })
+    Some(ElemId::new(cls, idx))
 }
 
 /// The signal element's terminal UUID (Pascal `GetTermUuid(sig.pElem, sig.trm)`).
@@ -992,10 +988,11 @@ fn signal_terminal_uuid(cim: &mut CimExporter, classes: &[DssClass], sig: &Remot
     let Some(r) = sig.elem else {
         return Uuid::nil();
     };
-    let ce = classes[r.cls].arena[r.idx]
-        .as_ckt_element()
+    let ce = classes[r.class_ord()]
+        .arena
+        .try_ckt_elem(r.index())
         .expect("signal element");
-    let class_name = classes[r.cls].props.class_name();
+    let class_name = classes[r.class_ord()].props.class_name();
     let dss_obj_type = cktelem_dss_obj_type(class_name).unwrap_or(0);
     let name = ce.cd().obj.name().to_string();
     cim.get_term_uuid(dss_obj_type, &name, sig.trm)
@@ -1011,7 +1008,7 @@ fn scan_bus_for_signal(
     pd: bool,
 ) -> bool {
     for r in elements_at_bus(ckt, classes, bus_idx, pd) {
-        let Some(ce) = classes[r.cls].arena[r.idx].as_ckt_element() else {
+        let Some(ce) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
             continue;
         };
         for k in 1..=ce.cd().nterms {
@@ -1030,7 +1027,7 @@ fn check_signal_match(
     sig: &mut RemoteSignal,
     ckt: &Circuit,
     ce: &dyn CktElement,
-    r: ElemRef,
+    r: ElemId,
     seq: usize,
 ) -> bool {
     let trm_bus = ce.cd().get_bus(seq);
@@ -1068,7 +1065,7 @@ fn check_signal_match(
 /// criterion: a PD element is included when it touches the bus and `bus1 != bus2`;
 /// a PC element when its `bus1` is the bus. Creation order (see
 /// [`Ieee1547Controller::find_signal_terminals`]).
-fn elements_at_bus(ckt: &Circuit, classes: &[DssClass], bus_idx: usize, pd: bool) -> Vec<ElemRef> {
+fn elements_at_bus(ckt: &Circuit, classes: &[DssClass], bus_idx: usize, pd: bool) -> Vec<ElemId> {
     let want = ckt.buses[bus_idx].name.to_ascii_lowercase();
     let strip = |s: &str| s.split('.').next().unwrap_or(s).to_ascii_lowercase();
     let list = if pd {
@@ -1078,7 +1075,7 @@ fn elements_at_bus(ckt: &Circuit, classes: &[DssClass], bus_idx: usize, pd: bool
     };
     let mut out = Vec::new();
     for &r in list {
-        let Some(ce) = classes[r.cls].arena[r.idx].as_ckt_element() else {
+        let Some(ce) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
             continue;
         };
         let b1 = strip(ce.cd().get_bus(1));
@@ -1113,7 +1110,7 @@ pub(super) fn write_ieee1547_controllers(
         let Some(snap) = inv_snap(classes, r) else {
             continue;
         };
-        let uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+        let uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
         ctrl.pull_from_inv_control(&snap, uuid);
         ctrl.write_cim(buf, cim, ckt, classes);
     }
@@ -1121,31 +1118,29 @@ pub(super) fn write_ieee1547_controllers(
         let Some(snap) = exp_snap(classes, r) else {
             continue;
         };
-        let uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+        let uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
         ctrl.pull_from_exp_control(&snap, uuid);
         ctrl.write_cim(buf, cim, ckt, classes);
     }
 }
 
 /// The `(cls, idx)` refs of every object of class `name`, in creation order.
-fn class_refs(classes: &[DssClass], name: &str) -> Vec<ElemRef> {
+fn class_refs(classes: &[DssClass], name: &str) -> Vec<ElemId> {
     classes
         .iter()
         .position(|c| c.props.class_name().eq_ignore_ascii_case(name))
         .map(|cls| {
             (0..classes[cls].arena.len())
-                .map(|idx| ElemRef { cls, idx })
+                .map(|idx| ElemId::new(cls, idx))
                 .collect()
         })
         .unwrap_or_default()
 }
 
 /// Snapshot an enabled `InvControl`'s CIM inputs (`None` if disabled).
-fn inv_snap(classes: &[DssClass], r: ElemRef) -> Option<InvSnap> {
+fn inv_snap(classes: &[DssClass], r: ElemId) -> Option<InvSnap> {
     use crate::elements::control::inv_control::InvControl;
-    let inv = classes[r.cls].arena[r.idx]
-        .as_any()
-        .downcast_ref::<InvControl>()?;
+    let inv = classes[r.class_ord()].arena.get::<InvControl>(r.index())?;
     if !inv.cd().enabled {
         return None;
     }
@@ -1176,11 +1171,9 @@ fn inv_snap(classes: &[DssClass], r: ElemRef) -> Option<InvSnap> {
 }
 
 /// Snapshot an enabled `ExpControl`'s CIM inputs (`None` if disabled).
-fn exp_snap(classes: &[DssClass], r: ElemRef) -> Option<ExpSnap> {
+fn exp_snap(classes: &[DssClass], r: ElemId) -> Option<ExpSnap> {
     use crate::elements::control::exp_control::ExpControl;
-    let exp = classes[r.cls].arena[r.idx]
-        .as_any()
-        .downcast_ref::<ExpControl>()?;
+    let exp = classes[r.class_ord()].arena.get::<ExpControl>(r.index())?;
     if !exp.cd().enabled {
         return None;
     }

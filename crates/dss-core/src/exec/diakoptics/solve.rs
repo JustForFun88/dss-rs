@@ -212,8 +212,9 @@ impl Dss {
     /// Pascal `VsourceClass.ElementList.First.GetBus(1)`.
     fn first_vsource_bus1(&self) -> Option<String> {
         let ci = *self.class_by_name.get("vsource")?;
-        for obj in self.classes[ci].arena.objs() {
-            if let Some(ce) = obj.as_ckt_element() {
+        let arena = &self.classes[ci].arena;
+        for i in 0..arena.len() {
+            if let Some(ce) = arena.try_ckt_elem(i) {
                 return Some(ce.cd().get_bus(1).to_string());
             }
         }
@@ -227,14 +228,14 @@ impl Dss {
     fn ad_pde_at_bus(&self, bus_name: &str) -> Option<String> {
         let ckt = self.circuit.as_ref()?;
         for &r in &ckt.pd_elements {
-            let Some(ce) = self.classes[r.cls].arena[r.idx].as_ckt_element() else {
+            let Some(ce) = self.classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
                 continue;
             };
             let cd = ce.cd();
             let b0 = strip_ext(cd.get_bus(1));
             let b1 = strip_ext(cd.get_bus(2));
             if (b0 == bus_name || b1 == bus_name) && b0 != b1 {
-                let cls = self.classes[r.cls].props.class_name();
+                let cls = self.classes[r.class_ord()].props.class_name();
                 return Some(format!("{}.{}", cls, cd.obj.name()));
             }
         }

@@ -9,7 +9,8 @@ use crate::elements::control::control_elem::RefSnapshot;
 use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::{RegControl, prop};
@@ -24,12 +25,8 @@ impl CktElement for RegControl {
 
     /// Pascal `TControlElem.FControlledElement` - the element this control
     /// acts on (`None` when it drives a list rather than a single element).
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
     }
 
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim as NIL — `BuildYMatrix`
@@ -145,18 +142,7 @@ impl DssObject for RegControl {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.ccd.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
+
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         Some(self)
     }
@@ -301,44 +287,36 @@ impl DssObject for RegControl {
         }
     }
 
-    /// `transformer=` resolution: keep the `ElemRef` and snapshot the
+    /// `transformer=` resolution: keep the `ElemId` and snapshot the
     /// transformer's shape + per-winding tap data for `RecalcElementData` and
     /// `TapNum` (which run after the foreign view is gone).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         debug_assert_eq!(idx, prop::TRANSFORMER);
         self.controlled_name = name;
         match resolved {
-            Some((r, obj)) => {
-                self.ccd.controlled_element = Some(r);
-                let elem = obj
-                    .as_ckt_element()
-                    .expect("controlled element is a circuit element");
+            Some(o) => {
+                self.ccd.controlled_element = Some(o.id());
+                let elem = o.ckt().expect("controlled element is a circuit element");
                 // `transformer=` resolves against either class (Pascal
                 // `Transf_Or_AutoTrans_ProxyClass`).
-                let name = obj.data().name();
-                let (full_name, tap_snap) =
-                    if let Some(xf) = obj.as_any().downcast_ref::<Transformer>() {
-                        (
-                            format!("Transformer.{name}"),
-                            (1..=xf.num_windings().max(0) as usize)
-                                .map(|i| xf.winding_tap_data(i))
-                                .collect(),
-                        )
-                    } else if let Some(at) = obj.as_any().downcast_ref::<AutoTrans>() {
-                        (
-                            format!("AutoTrans.{name}"),
-                            (1..=at.num_windings().max(0) as usize)
-                                .map(|i| at.winding_tap_data(i))
-                                .collect(),
-                        )
-                    } else {
-                        (format!("Transformer.{name}"), Vec::new())
-                    };
+                let name = o.name();
+                let (full_name, tap_snap) = if let Some(xf) = o.get::<Transformer>() {
+                    (
+                        format!("Transformer.{name}"),
+                        (1..=xf.num_windings().max(0) as usize)
+                            .map(|i| xf.winding_tap_data(i))
+                            .collect(),
+                    )
+                } else if let Some(at) = o.get::<AutoTrans>() {
+                    (
+                        format!("AutoTrans.{name}"),
+                        (1..=at.num_windings().max(0) as usize)
+                            .map(|i| at.winding_tap_data(i))
+                            .collect(),
+                    )
+                } else {
+                    (format!("Transformer.{name}"), Vec::new())
+                };
                 self.snapshot = Some(RefSnapshot::capture(full_name, elem));
                 self.tap_snap = tap_snap;
             }
@@ -418,10 +396,6 @@ impl DssObject for RegControl {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_actions)
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

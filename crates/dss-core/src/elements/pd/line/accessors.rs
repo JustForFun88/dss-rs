@@ -5,7 +5,7 @@
 use crate::elements::general::line_code::{LineCodeObj, LineType};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::{LineUnits, convert_line_units};
@@ -51,11 +51,7 @@ impl Line {
         self.geometry_name = other.geometry_name.clone();
         self.fz_frequency = other.fz_frequency;
         self.line_spacing_obj = other.line_spacing_obj.clone();
-        self.line_wire_data = other
-            .line_wire_data
-            .iter()
-            .map(|o| o.as_ref().map(|b| b.clone_box()))
-            .collect();
+        self.line_wire_data.clone_from(&other.line_wire_data);
         self.fphase_choice = other.fphase_choice;
         self.got_ratings_after_spacing_conds = other.got_ratings_after_spacing_conds;
         self.norm_amps = other.norm_amps;
@@ -74,18 +70,6 @@ impl DssObject for Line {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_f64(&self, idx: usize) -> f64 {
@@ -199,22 +183,17 @@ impl DssObject for Line {
         self.cd.get_bus(terminal).to_string()
     }
 
-    /// `linecode=`: store the resolved code's name + ElemRef and run
+    /// `linecode=`: store the resolved code's name + ElemId and run
     /// `FetchLineCode` immediately (Pascal stores the pointer then
     /// `PropertySideEffects` calls `FetchLineCode`; here the resolved view is
     /// only available at parse time, so we fetch here).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             super::prop::LINECODE => {
                 self.line_code_name = name;
-                self.line_code_ref = resolved.map(|(r, _)| r);
-                if let Some((_, obj)) = resolved
-                    && let Some(code) = obj.as_any().downcast_ref::<LineCodeObj>()
+                self.line_code_ref = resolved.map(|o| o.id());
+                if let Some(o) = resolved
+                    && let Some(code) = o.get::<LineCodeObj>()
                 {
                     self.fetch_line_code(code);
                 }
@@ -224,8 +203,8 @@ impl DssObject for Line {
                 // `FetchGeometryCode`; the resolved view is only available here
                 // (parse time), so fetch immediately (the `linecode` pattern).
                 self.geometry_name = name;
-                if let Some((_, obj)) = resolved
-                    && let Some(geom) = obj.as_any().downcast_ref::<LineGeometryObj>()
+                if let Some(o) = resolved
+                    && let Some(geom) = o.get::<LineGeometryObj>()
                 {
                     self.fetch_geometry_code(geom);
                 }
@@ -234,9 +213,7 @@ impl DssObject for Line {
                 // Pascal stores the `LineSpacingObj` pointer; `FetchLineSpacing`
                 // runs from `PropertySideEffects(spacing)`. Snapshot-clone it here
                 // (the resolved view is parse-time only); `side_effects` fetches.
-                self.line_spacing_obj = resolved
-                    .and_then(|(_, o)| o.as_any().downcast_ref::<LineSpacingObj>())
-                    .cloned();
+                self.line_spacing_obj = resolved.and_then(|o| o.cloned::<LineSpacingObj>());
             }
             _ => unreachable!("Line has no resolved object-ref property {idx}"),
         }
@@ -266,11 +243,7 @@ impl DssObject for Line {
         ));
         self.line_wire_data
             .iter()
-            .map(|o| {
-                o.as_ref()
-                    .map(|o| o.data().name().to_string())
-                    .unwrap_or_default()
-            })
+            .map(|o| o.as_ref().map(|o| o.name().to_string()).unwrap_or_default())
             .collect()
     }
 
@@ -648,8 +621,4 @@ impl DssObject for Line {
 
     /// Pascal `TLine.EndEdit`: Line does *not* call RecalcElementData here.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
-    }
 }

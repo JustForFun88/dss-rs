@@ -8,7 +8,7 @@ use dss_parser::{Parser, ParserVars};
 
 use crate::circuit::auto_add::AutoAdd;
 use crate::circuit::bus::Bus;
-use crate::elements::traits::{CktElement, ElemRef, ElemStore};
+use crate::elements::traits::{CktElement, ElemId, ElemStore};
 use crate::solution::Solution;
 use crate::support::hashlist::HashList;
 use crate::support::mathutil::FpcRng;
@@ -114,46 +114,46 @@ pub struct Circuit {
     pub num_devices: usize,
 
     /// `CktElements` in creation order, plus the per-kind lists.
-    pub ckt_elements: Vec<ElemRef>,
-    pub pd_elements: Vec<ElemRef>,
-    pub pc_elements: Vec<ElemRef>,
-    pub sources: Vec<ElemRef>,
-    pub lines: Vec<ElemRef>,
-    pub loads: Vec<ElemRef>,
-    pub transformers: Vec<ElemRef>,
+    pub ckt_elements: Vec<ElemId>,
+    pub pd_elements: Vec<ElemId>,
+    pub pc_elements: Vec<ElemId>,
+    pub sources: Vec<ElemId>,
+    pub lines: Vec<ElemId>,
+    pub loads: Vec<ElemId>,
+    pub transformers: Vec<ElemId>,
     /// AutoTransformers (Pascal `AutoTransformers`): a *separate* list from
     /// `transformers` (Pascal `AUTOTRANS_ELEMENT` → `AutoTransformers.Add`), on
     /// `pd_elements` like any PD element.
-    pub auto_transformers: Vec<ElemRef>,
-    pub shunt_capacitors: Vec<ElemRef>,
-    pub reactors: Vec<ElemRef>,
+    pub auto_transformers: Vec<ElemId>,
+    pub shunt_capacitors: Vec<ElemId>,
+    pub reactors: Vec<ElemId>,
     /// Fault elements (`FAULTOBJECT or NON_PCPD_ELEM`): a YPrim that stamps into
     /// the system Y, but *excluded* from `pd_elements` (Pascal `AddCktElement`);
     /// only this list (walked by `Check_Fault_Status` / `DoResetFaults`).
-    pub faults: Vec<ElemRef>,
-    pub generators: Vec<ElemRef>,
+    pub faults: Vec<ElemId>,
+    pub generators: Vec<ElemId>,
     /// PVSystem elements (Phase 7): PC elements; in `pc_elements` and this list.
-    pub pv_systems: Vec<ElemRef>,
+    pub pv_systems: Vec<ElemId>,
     /// Storage elements (Phase 7): PC elements; in `pc_elements` and this list.
     /// Walked by `StorageClass.UpdateAll` in the time-step cleanup.
-    pub storages: Vec<ElemRef>,
+    pub storages: Vec<ElemId>,
     /// IndMach012 (induction machine) elements (Phase 7, WP7.7): PC elements; in
     /// `pc_elements` and this list.
-    pub ind_machines: Vec<ElemRef>,
+    pub ind_machines: Vec<ElemId>,
     /// UPFC elements (Phase 7): PC elements; in `pc_elements` and this list. The
     /// list is walked in creation order by `UPFCControl.MakeUPFCList` (the control
     /// scans every enabled UPFC).
-    pub upfcs: Vec<ElemRef>,
+    pub upfcs: Vec<ElemId>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
-    pub controls: Vec<ElemRef>,
+    pub controls: Vec<ElemId>,
     /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
-    pub monitors: Vec<ElemRef>,
+    pub monitors: Vec<ElemId>,
     /// EnergyMeter elements (Phase 6): no Yprim, not PD/PC; device list + own
     /// list. Walked in creation order by `ResetMeterZonesAll` / `SampleAll`.
-    pub energy_meters: Vec<ElemRef>,
+    pub energy_meters: Vec<ElemId>,
     /// Sensor elements (Phase 6, WP6.7): no Yprim, not PD/PC; device list + own
     /// list. Walked in creation order by `SetHasSensorFlag` / `CalcAllocationFactors`.
-    pub sensors: Vec<ElemRef>,
+    pub sensors: Vec<ElemId>,
 
     pub solution: Solution,
 
@@ -471,7 +471,7 @@ impl Circuit {
 
     /// Pascal `AddCktElement`: register a created element in the device list
     /// and the kind lists, and hand it its 1-based handle.
-    pub fn add_ckt_element(&mut self, r: ElemRef, kind: ElemKind, elem: &mut dyn CktElement) {
+    pub fn add_ckt_element(&mut self, r: ElemId, kind: ElemKind, elem: &mut dyn CktElement) {
         self.num_devices += 1;
         // NOT_PORTED: Pascal `AddCktElement` calls `ReAllocDeviceList` once
         // `NumDevices > 2 * DeviceList.InitialAllocation` (900 → >1800 devices),
@@ -729,7 +729,7 @@ impl Circuit {
         self.map_node_to_bus = vec![NodeBus::default()];
 
         // Now redo all enabled circuit elements.
-        let refs: Vec<ElemRef> = self.ckt_elements.clone();
+        let refs: Vec<ElemId> = self.ckt_elements.clone();
         for r in refs {
             let elem = store.ckt_elem_mut(r);
             if elem.cd().enabled {

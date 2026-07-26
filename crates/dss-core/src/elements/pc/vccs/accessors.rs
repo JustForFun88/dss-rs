@@ -9,7 +9,8 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 
@@ -21,10 +22,6 @@ impl CktElement for Vccs {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
     }
 
     /// Pascal `TVCCSObj.MakePosSequence` (vccs.pas:495-500): a multi-phase VCCS
@@ -161,18 +158,6 @@ impl DssObject for Vccs {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
 
     fn get_f64(&self, idx: usize) -> f64 {
         use prop::*;
@@ -263,15 +248,9 @@ impl DssObject for Vccs {
 
     /// Resolve the `bp1`/`bp2`/`filter` XYcurve references (snapshot-clone, like
     /// the PVSystem curve refs).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let xy_curve =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<XyCurveObj>().cloned());
+        let xy_curve = || resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             BP1 => {
                 self.bp1_name = name;
@@ -301,9 +280,5 @@ impl DssObject for Vccs {
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
         self.cd.yprim_invalid = true;
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

@@ -18,7 +18,7 @@ use crate::report::format;
 
 /// Build the `Export Yprims` body (Pascal `ExportYprim`).
 pub fn export_yprims(classes: &[DssClass], ckt: &Circuit) -> String {
-    // The "is PD or PC" set (Pascal), keyed (cls, idx) since `ElemRef` is not
+    // The "is PD or PC" set (Pascal), keyed (cls, idx) since `ElemId` is not
     // `Hash`. Vsource (sources) and Fault (faults) are PC/PD in Pascal.
     let mut members: HashSet<(usize, usize)> = HashSet::new();
     for list in [
@@ -28,18 +28,18 @@ pub fn export_yprims(classes: &[DssClass], ckt: &Circuit) -> String {
         &ckt.faults,
     ] {
         for r in list {
-            members.insert((r.cls, r.idx));
+            members.insert((r.class_ord(), r.index()));
         }
     }
 
     let mut s = String::new();
     for &r in &ckt.ckt_elements {
-        if !members.contains(&(r.cls, r.idx)) {
+        if !members.contains(&(r.class_ord(), r.index())) {
             continue;
         }
-        let class_name = classes[r.cls].props.class_name();
-        let obj = &classes[r.cls].arena[r.idx];
-        let Some(elem) = obj.as_ckt_element() else {
+        let class_name = classes[r.class_ord()].props.class_name();
+        let obj = &classes[r.class_ord()].arena[r.index()];
+        let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
             continue;
         };
         if !elem.cd().enabled {

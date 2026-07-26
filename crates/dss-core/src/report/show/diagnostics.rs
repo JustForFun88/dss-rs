@@ -18,7 +18,7 @@
 use num_complex::Complex64;
 
 use crate::circuit::Circuit;
-use crate::elements::traits::{ElemRef, SysCtx};
+use crate::elements::traits::{ElemId, SysCtx};
 use crate::exec::registry::DssClass;
 use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
@@ -39,9 +39,9 @@ pub(crate) fn show_event_log(entries: &[String]) -> String {
 pub(crate) fn show_ratings(classes: &[DssClass], ckt: &Circuit) -> String {
     let mut s = String::from("Power Delivery Elements Normal and Emergency (max) Ratings\n\n");
     for &r in &ckt.pd_elements {
-        let class_name = classes[r.cls].props.class_name();
-        let obj = &classes[r.cls].arena[r.idx];
-        if let Some(elem) = obj.as_ckt_element() {
+        let class_name = classes[r.class_ord()].props.class_name();
+        let obj = &classes[r.class_ord()].arena[r.index()];
+        if let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) {
             let name = format!("{}.{}", class_name, obj.data().name());
             s.push_str(&format!(
                 "\"{}\", normamps={},  {}  !Amps\n",
@@ -234,13 +234,13 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
         s.push('\n');
     }
     for &r in &ckt.loads {
-        let obj = &classes[r.cls].arena[r.idx];
-        let Some(l) = obj.as_any().downcast_ref::<Load>() else {
+        let obj = &classes[r.class_ord()].arena[r.index()];
+        let Some(l) = classes[r.class_ord()].arena.get::<Load>(r.index()) else {
             continue;
         };
         let full_name = format!(
             "{}.{}",
-            classes[r.cls].props.class_name(),
+            classes[r.class_ord()].props.class_name(),
             obj.data().name()
         );
         let bus_ref = l.cd.terminals[0].bus_idx();
@@ -292,13 +292,13 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
         s.push('\n');
     }
     for &r in &ckt.generators {
-        let obj = &classes[r.cls].arena[r.idx];
-        let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
+        let obj = &classes[r.class_ord()].arena[r.index()];
+        let Some(g) = classes[r.class_ord()].arena.get::<Generator>(r.index()) else {
             continue;
         };
         let full_name = format!(
             "{}.{}",
-            classes[r.cls].props.class_name(),
+            classes[r.class_ord()].props.class_name(),
             obj.data().name()
         );
         let bus_ref = g.cd.terminals[0].bus_idx();
@@ -377,8 +377,11 @@ fn queue_row_line(handle: i32, hour: i32, sec: f64, code: i32, proxy: i32, name:
 }
 
 /// The bare object name of a control element (Pascal `ControlElement.Name`).
-fn device_name(classes: &[DssClass], r: ElemRef) -> String {
-    classes[r.cls].arena[r.idx].data().name().to_string()
+fn device_name(classes: &[DssClass], r: ElemId) -> String {
+    classes[r.class_ord()].arena[r.index()]
+        .data()
+        .name()
+        .to_string()
 }
 
 #[cfg(test)]

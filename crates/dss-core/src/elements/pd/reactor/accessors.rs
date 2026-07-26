@@ -4,7 +4,7 @@ use num_complex::Complex64;
 
 use super::Reactor;
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 impl Reactor {
@@ -74,18 +74,6 @@ impl DssObject for Reactor {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_f64(&self, idx: usize) -> f64 {
@@ -217,15 +205,9 @@ impl DssObject for Reactor {
 
     /// Resolve the `RCurve`/`LCurve` XYcurve references (snapshot-clone, like
     /// the PVSystem/VCCS curve refs).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
-        let xy_curve =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<XyCurveObj>().cloned());
+        let xy_curve = || resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             RCURVE => {
                 self.r_curve_name = name;
@@ -355,10 +337,6 @@ impl DssObject for Reactor {
     /// Pascal base `EndEdit` → `RecalcElementData` (Reactor does not override).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

@@ -110,10 +110,6 @@ impl CktElement for GicSource {
         &mut self.cd
     }
 
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
-    }
-
     /// Pascal `TGICSourceObj.MakePosSequence` (GICsource.pas:471-476): a
     /// multi-phase GICsource collapses to `Phases := 1` (a bare single edit),
     /// then `inherited` (the base bus rename).

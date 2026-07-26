@@ -6,7 +6,8 @@ use num_complex::Complex64;
 
 use crate::elements::control::control_elem::RefSnapshot;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{EspvlControl, prop};
@@ -21,12 +22,8 @@ impl CktElement for EspvlControl {
 
     /// Pascal `TControlElem.FControlledElement` - the element this control
     /// acts on (`None` when it drives a list rather than a single element).
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
     }
 
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL — `BuildYMatrix` skips it.
@@ -69,7 +66,7 @@ impl CktElement for EspvlControl {
 
     /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
     /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.ccd.monitored_element
     }
 }
@@ -98,18 +95,7 @@ impl DssObject for EspvlControl {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.ccd.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
+
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         Some(self)
     }
@@ -239,23 +225,16 @@ impl DssObject for EspvlControl {
     }
 
     /// `element=` resolution (any circuit element by full name): keep the
-    /// `ElemRef` plus a shape snapshot for `RecalcElementData`.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    /// `ElemId` plus a shape snapshot for `RecalcElementData`.
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             prop::ELEMENT => {
                 // `name` is the FullName ("Class.name") for the dump.
                 self.monitored_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.ccd.monitored_element = Some(r);
-                        let elem = obj
-                            .as_ckt_element()
-                            .expect("element= resolves against circuit classes");
+                    Some(o) => {
+                        self.ccd.monitored_element = Some(o.id());
+                        let elem = o.ckt().expect("element= resolves against circuit classes");
                         self.mon_snap = Some(RefSnapshot::capture(name, elem));
                     }
                     None => {
@@ -310,10 +289,6 @@ impl DssObject for EspvlControl {
     /// Pascal `TCktElementClass.EndEdit` default → `RecalcElementData`.
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

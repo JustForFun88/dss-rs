@@ -7,7 +7,8 @@
 use num_complex::Complex64;
 
 use crate::elements::general::tcc_curve::TccCurveObj;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::{FUSEMAXDIM, Fuse};
@@ -37,12 +38,8 @@ impl CktElement for Fuse {
 
     /// Pascal `TControlElem.FControlledElement` — the line/element this fuse
     /// switches (`Fuse` is a `TControlElem`; `SwitchedObj` binds `FControlledElement`).
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
     }
 
     /// Pascal `TFuseObj.CalcYPrim`: leave YPrim as NIL (always zero for a fuse).
@@ -95,18 +92,7 @@ impl DssObject for Fuse {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.ccd.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
+
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         Some(self)
     }
@@ -229,20 +215,15 @@ impl DssObject for Fuse {
     /// `monitoredobj=`/`switchedobj=` (any element) + `fusecurve=` (TCC_Curve):
     /// store the name + snapshot. The `FuseCurve` clone is resolved by the
     /// executive from `fuse_curve_name` after the edit.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use super::prop::*;
         match idx {
             MONITORED_OBJ => match resolved {
-                Some((r, obj)) => {
+                Some(o) => {
                     self.monitored_full_name = name.clone();
-                    self.ccd.monitored_element = Some(r);
-                    let elem = obj
-                        .as_ckt_element()
+                    self.ccd.monitored_element = Some(o.id());
+                    let elem = o
+                        .ckt()
                         .expect("monitoredobj resolves against circuit classes");
                     self.mon_snap = Some(super::RefSnapshot::capture(name, elem));
                 }
@@ -253,11 +234,11 @@ impl DssObject for Fuse {
                 }
             },
             SWITCHED_OBJ => match resolved {
-                Some((r, obj)) => {
+                Some(o) => {
                     self.switched_full_name = name.clone();
-                    self.ccd.controlled_element = Some(r);
-                    let elem = obj
-                        .as_ckt_element()
+                    self.ccd.controlled_element = Some(o.id());
+                    let elem = o
+                        .ckt()
                         .expect("switchedobj resolves against circuit classes");
                     self.ctrl_snap = Some(super::RefSnapshot::capture(name, elem));
                 }
@@ -304,10 +285,6 @@ impl DssObject for Fuse {
 
     fn take_ref_actions(&mut self) -> Vec<RefAction> {
         std::mem::take(&mut self.pending_ref_actions)
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

@@ -7,16 +7,15 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::meter::meter_element::MeteredSnapshot;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{Sensor, prop};
 
 /// Capture the parse-relevant shape of the metered element (any class).
-fn capture(full_name: String, obj: &dyn DssObject) -> MeteredSnapshot {
-    let elem = obj
-        .as_ckt_element()
-        .expect("element= resolves to a ckt elem");
+fn capture(full_name: String, o: ResolvedObj<'_>) -> MeteredSnapshot {
+    let elem = o.ckt().expect("element= resolves to a ckt elem");
     let cd = elem.cd();
     MeteredSnapshot {
         full_name,
@@ -35,14 +34,6 @@ impl CktElement for Sensor {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.med.cd
-    }
-
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        let mut errors = crate::diag::ErrorLog::new();
-        self.recalc(&mut errors);
-        for e in errors {
-            self.med.cd.obj.push_error(e);
-        }
     }
 
     /// `TSensorObj.CalcYPrim` is empty — a sensor never stamps admittance.
@@ -85,7 +76,7 @@ impl CktElement for Sensor {
 
     /// Pascal `TMeterElement.MeteredElement` — resolved so the exec applier can
     /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.med.metered_element
     }
 }
@@ -113,18 +104,6 @@ impl DssObject for Sensor {
     }
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.med.cd.obj
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
     }
 
     fn get_i32(&self, idx: usize) -> i32 {
@@ -239,20 +218,15 @@ impl DssObject for Sensor {
 
     /// Resolve `element=` (any circuit class by full name): snapshot the metered
     /// element for `RecalcElementData`.
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             prop::ELEMENT => {
                 self.element_full_name = name.clone();
                 match resolved {
-                    Some((r, obj)) => {
-                        self.med.metered_element = Some(r);
+                    Some(o) => {
+                        self.med.metered_element = Some(o.id());
                         self.med.metered_element_changed = true;
-                        self.med.metered_snap = Some(capture(name, obj));
+                        self.med.metered_snap = Some(capture(name, o));
                     }
                     None => {
                         self.med.metered_element = None;
@@ -304,9 +278,5 @@ impl DssObject for Sensor {
         for e in errors {
             self.med.cd.obj.push_error(e);
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

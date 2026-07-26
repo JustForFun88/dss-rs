@@ -16,8 +16,11 @@ use std::collections::HashMap;
 
 use crate::circuit::Circuit;
 use crate::elements::control::CapControl;
+use crate::elements::general::conductor_data::cn_data::CnDataObj;
+use crate::elements::general::conductor_data::ts_data::TsDataObj;
+use crate::elements::general::conductor_data::wire_data::WireDataObj;
 use crate::elements::general::conductor_data::{
-    CableGeom, CnDataObj, ConductorGeom, TsDataObj, WireDataObj,
+    CableGeom, ConductorData, ConductorGeom, ConductorKind, ConductorObj,
 };
 use crate::elements::general::line_code::{LineCodeObj, prop as lc_prop};
 use crate::elements::general::line_geometry::LineGeometryObj;
@@ -30,8 +33,9 @@ use crate::elements::pc::storage::Storage;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::elements::traits::{CktElement, ElemId};
 use crate::exec::registry::DssClass;
+use crate::obj::arena::{ArenaClass, ClassArena};
 use crate::obj::base::DssObject;
 use crate::support::line_units::LineUnits;
 
@@ -1086,17 +1090,12 @@ fn class_obj_uuid(classes: &mut [DssClass], class_name: &str, obj_name: &str) ->
 
 /// The catalog class name of a conductor snapshot (`WireData`/`CNData`/`TSData`),
 /// for resolving its master UUID (`Pascal FetchConductorData` returns the real
-/// typed object). `None` for any non-conductor object.
-fn conductor_class_name(cond: &dyn DssObject) -> Option<&'static str> {
-    let any = cond.as_any();
-    if any.is::<WireDataObj>() {
-        Some("WireData")
-    } else if any.is::<CnDataObj>() {
-        Some("CNData")
-    } else if any.is::<TsDataObj>() {
-        Some("TSData")
-    } else {
-        None
+/// typed object).
+fn conductor_class_name(cond: &ConductorObj) -> &'static str {
+    match cond.conductor_kind() {
+        ConductorKind::Wire => "WireData",
+        ConductorKind::Cn => "CNData",
+        ConductorKind::Ts => "TSData",
     }
 }
 
@@ -1184,25 +1183,27 @@ pub(crate) fn phase_order_string(
 fn parse_switch_class(
     classes: &mut [DssClass],
     ckt: &Circuit,
-    line_ref: crate::elements::traits::ElemRef,
+    line_ref: crate::elements::traits::ElemId,
     line_norm_amps: f64,
 ) -> (String, f64, f64) {
     // Does any control of `class` drive this line? Returns the matched control's
-    // `ElemRef` so a class-specific property can be read afterwards (never reads
+    // `ElemId` so a class-specific property can be read afterwards (never reads
     // any property here — Relay/Recloser have no double at Fuse's prop-6 slot, so
     // an unconditional `get_f64(6)` would panic on them; Pascal reads
     // `RatedCurrent` only inside the Fuse branch).
-    let controlling = |class: &str| -> Option<crate::elements::traits::ElemRef> {
+    let controlling = |class: &str| -> Option<crate::elements::traits::ElemId> {
         for &c in &ckt.controls {
-            if !classes[c.cls]
+            if !classes[c.class_ord()]
                 .props
                 .class_name()
                 .eq_ignore_ascii_case(class)
             {
                 continue;
             }
-            let ctrl = &classes[c.cls].arena[c.idx];
-            let controlled = ctrl.as_ckt_element().and_then(|e| e.controlled_element());
+            let controlled = classes[c.class_ord()]
+                .arena
+                .try_ckt_elem(c.index())
+                .and_then(|e| e.controlled_element());
             if controlled == Some(line_ref) {
                 return Some(c);
             }
@@ -1211,7 +1212,7 @@ fn parse_switch_class(
     };
     if let Some(c) = controlling("Fuse") {
         // Fuse wins: rated = RatedCurrent (prop 6), breaking = 0.
-        let rated_current = classes[c.cls].arena[c.idx].get_f64(6);
+        let rated_current = classes[c.class_ord()].arena[c.index()].get_f64(6);
         return ("Fuse".to_string(), rated_current, 0.0);
     }
     if controlling("Relay").is_some() {
@@ -1572,18 +1573,17 @@ fn attach_switch_phases(buf: &mut writer::Writer, cim: &mut CimExporter, snap: &
 }
 
 /// A catalog conductor's [`ConductorGeom`] plus its `NormAmps` (the base
-/// `TConductorData` current rating, not carried by `ConductorGeom`); `None` for
-/// a non-conductor object.
-fn conductor_geom_amps(o: &dyn DssObject) -> Option<(ConductorGeom, f64)> {
-    let any = o.as_any();
-    if let Some(w) = any.downcast_ref::<WireDataObj>() {
-        Some((w.geom(), w.amps().0))
-    } else if let Some(c) = any.downcast_ref::<CnDataObj>() {
-        Some((c.geom(), c.amps().0))
-    } else {
-        any.downcast_ref::<TsDataObj>()
-            .map(|t| (t.geom(), t.amps().0))
-    }
+/// `TConductorData` current rating, not carried by `ConductorGeom`), read
+/// straight out of the class's own arena; `None` when `arena` is not `T`'s
+/// arena or `oi` is out of range — the same total-ness the removed
+/// `DssObject::as_conductor()` probe had (its three callers each walk their own
+/// `WireData`/`TSData`/`CNData` arena, so the `None` arm is the unreachable
+/// one it always was).
+fn conductor_geom_amps<T: ArenaClass + ConductorData>(
+    arena: &ClassArena,
+    oi: usize,
+) -> Option<(ConductorGeom, f64)> {
+    arena.get::<T>(oi).map(|c| (c.geom(), c.amps().0))
 }
 
 /// The index of the (case-insensitive) class in the class list, or `None`.
@@ -1611,9 +1611,9 @@ fn write_line_code_catalog(
     let n = classes[ci].arena.len();
     // Units fix-up (mutates in place, matching Pascal `4495-4509`).
     for oi in 0..n {
-        let is_none = classes[ci].arena[oi]
-            .as_any()
-            .downcast_ref::<LineCodeObj>()
+        let is_none = classes[ci]
+            .arena
+            .get::<LineCodeObj>(oi)
             .map(|l| l.units() == 0)
             .unwrap_or(false);
         if !is_none {
@@ -1628,7 +1628,7 @@ fn write_line_code_catalog(
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
         let (units, sym, nph, r1, x1, r0, x0, c1, c0, basef, z, yc) = {
-            let Some(lc) = classes[ci].arena[oi].as_any().downcast_ref::<LineCodeObj>() else {
+            let Some(lc) = classes[ci].arena.get::<LineCodeObj>(oi) else {
                 continue;
             };
             (
@@ -1780,8 +1780,7 @@ fn write_line_code_catalog(
 /// (the LineCode units fix-up source, Pascal `4497-4508`).
 fn find_line_units_for_linecode(classes: &[DssClass], ckt: &Circuit, lc_name: &str) -> Option<i32> {
     for &r in &ckt.lines {
-        let obj = &classes[r.cls].arena[r.idx];
-        if let Some(line) = obj.as_any().downcast_ref::<Line>()
+        if let Some(line) = classes[r.class_ord()].arena.get::<Line>(r.index())
             && line.cd.enabled
             && line.line_code_ref.is_some()
             && line.line_code_name.eq_ignore_ascii_case(lc_name)
@@ -1801,7 +1800,7 @@ fn write_wire_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
-        let Some((geom, norm)) = conductor_geom_amps(classes[ci].arena.obj(oi)) else {
+        let Some((geom, norm)) = conductor_geom_amps::<WireDataObj>(&classes[ci].arena, oi) else {
             continue;
         };
         writer::start_instance(buf, ProfileChoice::Cat, "OverheadWireInfo", uuid, &name);
@@ -1820,7 +1819,7 @@ fn write_ts_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
-        let Some((geom, norm)) = conductor_geom_amps(classes[ci].arena.obj(oi)) else {
+        let Some((geom, norm)) = conductor_geom_amps::<TsDataObj>(&classes[ci].arena, oi) else {
             continue;
         };
         writer::start_instance(buf, ProfileChoice::Cat, "TapeShieldCableInfo", uuid, &name);
@@ -1858,7 +1857,7 @@ fn write_cn_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
-        let Some((geom, norm)) = conductor_geom_amps(classes[ci].arena.obj(oi)) else {
+        let Some((geom, norm)) = conductor_geom_amps::<CnDataObj>(&classes[ci].arena, oi) else {
             continue;
         };
         writer::start_instance(
@@ -1919,10 +1918,7 @@ fn write_line_geometry_catalog(
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
         let (nwires, is_overhead, xs, ys, us) = {
-            let Some(g) = classes[ci].arena[oi]
-                .as_any()
-                .downcast_ref::<LineGeometryObj>()
-            else {
+            let Some(g) = classes[ci].arena.get::<LineGeometryObj>(oi) else {
                 continue;
             };
             (
@@ -1999,10 +1995,7 @@ fn write_line_spacing_catalog(
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
         let (nwires, units, xs, ys) = {
-            let Some(s) = classes[ci].arena[oi]
-                .as_any()
-                .downcast_ref::<LineSpacingObj>()
-            else {
+            let Some(s) = classes[ci].arena.get::<LineSpacingObj>(oi) else {
                 continue;
             };
             (
@@ -2512,8 +2505,7 @@ pub(crate) fn export_cdpsm(
 
     // Swing bus == first enabled Vsource (`3485-3501`).
     for &r in &ckt.sources {
-        let obj = &classes[r.cls].arena[r.idx];
-        let Some(vsrc) = obj.as_any().downcast_ref::<VSource>() else {
+        let Some(vsrc) = classes[r.class_ord()].arena.get::<VSource>(r.index()) else {
             continue;
         };
         if !vsrc.cd.enabled {
@@ -2570,8 +2562,7 @@ pub(crate) fn export_cdpsm(
             spectrum: String,
         }
         let snap = {
-            let obj = &classes[r.cls].arena[r.idx];
-            let Some(g) = obj.as_any().downcast_ref::<Generator>() else {
+            let Some(g) = classes[r.class_ord()].arena.get::<Generator>(r.index()) else {
                 continue;
             };
             let nm = |o: Option<&dyn DssObject>| -> String {
@@ -2598,7 +2589,7 @@ pub(crate) fn export_cdpsm(
         if !snap.enabled {
             continue;
         }
-        let gen_uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+        let gen_uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
         let bus_kvbase0 = ckt.buses[snap.bus_refs[0]].kv_base;
 
         writer::start_instance(
@@ -2722,8 +2713,7 @@ pub(crate) fn export_cdpsm(
             spectrum: String,
         }
         let snap = {
-            let obj = &classes[r.cls].arena[r.idx];
-            let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() else {
+            let Some(pv) = classes[r.class_ord()].arena.get::<PVSystem>(r.index()) else {
                 continue;
             };
             let nm = |o: Option<&dyn DssObject>| -> String {
@@ -2771,7 +2761,7 @@ pub(crate) fn export_cdpsm(
         if !snap.enabled {
             continue;
         }
-        let pv_uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+        let pv_uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
         let bus_kvbase0 = ckt.buses[snap.bus_refs[0]].kv_base;
 
         let pv_panels_uuid = cim.get_dev_uuid(UuidChoice::PVPanels, &snap.name, 1);
@@ -2973,8 +2963,7 @@ pub(crate) fn export_cdpsm(
             spectrum: String,
         }
         let snap = {
-            let obj = &classes[r.cls].arena[r.idx];
-            let Some(st) = obj.as_any().downcast_ref::<Storage>() else {
+            let Some(st) = classes[r.class_ord()].arena.get::<Storage>(r.index()) else {
                 continue;
             };
             let nm = |o: Option<&dyn DssObject>| -> String {
@@ -3019,7 +3008,7 @@ pub(crate) fn export_cdpsm(
         if !snap.enabled {
             continue;
         }
-        let bat_uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+        let bat_uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
         let bus_kvbase0 = ckt.buses[snap.bus_refs[0]].kv_base;
 
         let battery_uuid = cim.get_dev_uuid(UuidChoice::Battery, &snap.name, 1);
@@ -3206,8 +3195,7 @@ pub(crate) fn export_cdpsm(
             bus_specs,
             bus_refs,
         ) = {
-            let obj = &classes[r.cls].arena[r.idx];
-            let Some(vsrc) = obj.as_any().downcast_ref::<VSource>() else {
+            let Some(vsrc) = classes[r.class_ord()].arena.get::<VSource>(r.index()) else {
                 continue;
             };
             let z = vsrc
@@ -3247,7 +3235,7 @@ pub(crate) fn export_cdpsm(
             (rs, xs, rs, xs)
         };
 
-        let vsrc_uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+        let vsrc_uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
         let bus_ref0 = bus_refs[0];
 
         writer::start_instance(
@@ -3340,8 +3328,7 @@ pub(crate) fn export_cdpsm(
             bus_refs: Vec<usize>,
         }
         let snap = {
-            let obj = &classes[r.cls].arena[r.idx];
-            let Some(cap) = obj.as_any().downcast_ref::<Capacitor>() else {
+            let Some(cap) = classes[r.class_ord()].arena.get::<Capacitor>(r.index()) else {
                 continue;
             };
             CapSnap {
@@ -3363,7 +3350,7 @@ pub(crate) fn export_cdpsm(
         if !snap.enabled {
             continue;
         }
-        let cap_uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+        let cap_uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
         let bus_ref0 = snap.bus_refs[0];
         let bus_kvbase0 = ckt.buses[bus_ref0].kv_base;
 
@@ -3473,9 +3460,7 @@ pub(crate) fn export_cdpsm(
         // is this bank (Pascal loops all CapControls, last match wins, `3714-3718`).
         let mut avr_delay = 0.0;
         for &cr in &ckt.controls {
-            if let Some(cc) = classes[cr.cls].arena[cr.idx]
-                .as_any()
-                .downcast_ref::<CapControl>()
+            if let Some(cc) = classes[cr.class_ord()].arena.get::<CapControl>(cr.index())
                 && cc.controlled_element() == Some(r)
             {
                 avr_delay = cc.on_delay_val();
@@ -3550,7 +3535,7 @@ pub(crate) fn export_cdpsm(
     for &cr in &ckt.controls.clone() {
         struct CcSnap {
             cc_name: String,
-            cap_ref: ElemRef,
+            cap_ref: ElemId,
             cap_name: String,
             mon_name: String,
             mon_obj_type: Option<i32>,
@@ -3569,8 +3554,7 @@ pub(crate) fn export_cdpsm(
             enabled: bool,
         }
         let snap = {
-            let obj = &classes[cr.cls].arena[cr.idx];
-            let Some(cc) = obj.as_any().downcast_ref::<CapControl>() else {
+            let Some(cc) = classes[cr.class_ord()].arena.get::<CapControl>(cr.index()) else {
                 continue;
             };
             let cap_ref = cc
@@ -3580,20 +3564,21 @@ pub(crate) fn export_cdpsm(
                 .ccd
                 .monitored_element
                 .expect("CapControl.MonitoredElement set for a solved circuit");
-            let mon_obj = &classes[mon_ref.cls].arena[mon_ref.idx];
-            let mon_elem = mon_obj
-                .as_ckt_element()
+            let mon_obj = classes[mon_ref.class_ord()].arena.obj(mon_ref.index());
+            let mon_elem = classes[mon_ref.class_ord()]
+                .arena
+                .try_ckt_elem(mon_ref.index())
                 .expect("CapControl monitored element is a circuit element");
             let mon_cd = mon_elem.cd();
             CcSnap {
                 cc_name: cc.ccd.cd.obj.name().to_string(),
                 cap_ref,
-                cap_name: classes[cap_ref.cls].arena[cap_ref.idx]
+                cap_name: classes[cap_ref.class_ord()].arena[cap_ref.index()]
                     .data()
                     .name()
                     .to_string(),
                 mon_name: mon_obj.data().name().to_string(),
-                mon_obj_type: cktelem_dss_obj_type(classes[mon_ref.cls].props.class_name()),
+                mon_obj_type: cktelem_dss_obj_type(classes[mon_ref.class_ord()].props.class_name()),
                 mon_nphases: mon_cd.nphases,
                 mon_bus_spec0: mon_cd.bus_names[0].clone(),
                 mon_bus_kvbase0: ckt.buses[mon_cd.terminals[0].bus_idx()].kv_base,
@@ -3617,8 +3602,8 @@ pub(crate) fn export_cdpsm(
             );
             continue;
         };
-        let cc_uuid = classes[cr.cls].arena[cr.idx].data_mut().uuid();
-        let cap_uuid = classes[snap.cap_ref.cls].arena[snap.cap_ref.idx]
+        let cc_uuid = classes[cr.class_ord()].arena[cr.index()].data_mut().uuid();
+        let cap_uuid = classes[snap.cap_ref.class_ord()].arena[snap.cap_ref.index()]
             .data_mut()
             .uuid();
 
@@ -3766,8 +3751,7 @@ pub(crate) fn export_cdpsm(
             bus_refs: Vec<usize>,
         }
         let snap = {
-            let obj = &classes[r.cls].arena[r.idx];
-            let Some(reac) = obj.as_any().downcast_ref::<Reactor>() else {
+            let Some(reac) = classes[r.class_ord()].arena.get::<Reactor>(r.index()) else {
                 continue;
             };
             let z = reac.z();
@@ -3786,7 +3770,7 @@ pub(crate) fn export_cdpsm(
         if !snap.enabled {
             continue;
         }
-        let reac_uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+        let reac_uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
         let bus_ref0 = snap.bus_refs[0];
 
         writer::start_instance(
@@ -3864,8 +3848,7 @@ pub(crate) fn export_cdpsm(
     // (`4294-4409`) — Stage C.
     for &r in &ckt.lines.clone() {
         let snap = {
-            let obj = &classes[r.cls].arena[r.idx];
-            let Some(line) = obj.as_any().downcast_ref::<Line>() else {
+            let Some(line) = classes[r.class_ord()].arena.get::<Line>(r.index()) else {
                 continue;
             };
             if !line.cd.enabled {
@@ -3890,16 +3873,14 @@ pub(crate) fn export_cdpsm(
             };
             let mut conductor_refs: Vec<ConductorRef> = Vec::new();
             for i in 1..=(num_cond_avail.max(0) as usize) {
-                let cond: Option<&dyn DssObject> = if spacing_specified {
-                    line.line_wire_data.get(i - 1).and_then(|o| o.as_deref())
+                let cond: Option<&ConductorObj> = if spacing_specified {
+                    line.line_wire_data.get(i - 1).and_then(|o| o.as_ref())
                 } else if let Some(g) = &line.geometry_obj {
                     g.conductor(i)
                 } else {
                     None
                 };
-                conductor_refs.push(cond.and_then(|c| {
-                    conductor_class_name(c).map(|cls| (c.data().name().to_string(), cls))
-                }));
+                conductor_refs.push(cond.map(|c| (c.name().to_string(), conductor_class_name(c))));
             }
             LineSnap {
                 name: line.cd.obj.name().to_string(),
@@ -3939,7 +3920,7 @@ pub(crate) fn export_cdpsm(
                 bus_kvbases,
             }
         };
-        let line_uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+        let line_uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
         let mut snap = snap;
         snap.uuid = line_uuid;
 
@@ -4361,8 +4342,7 @@ pub(crate) fn export_cdpsm(
             spectrum: String,
         }
         let snap = {
-            let obj = &classes[r.cls].arena[r.idx];
-            let Some(load) = obj.as_any().downcast_ref::<Load>() else {
+            let Some(load) = classes[r.class_ord()].arena.get::<Load>(r.index()) else {
                 continue;
             };
             // `NameIfNotNil(obj.XShapeObj)` — the resolved shape object's
@@ -4397,7 +4377,7 @@ pub(crate) fn export_cdpsm(
         if !snap.enabled {
             continue;
         }
-        let load_uuid = classes[r.cls].arena[r.idx].data_mut().uuid();
+        let load_uuid = classes[r.class_ord()].arena[r.index()].data_mut().uuid();
 
         writer::start_instance(
             &mut buf,

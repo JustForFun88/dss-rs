@@ -27,7 +27,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pc::dyneq_pce::DynEqPceData;
-use crate::elements::traits::{ElemRef, SysCtx};
+use crate::elements::traits::{ElemId, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
@@ -359,9 +359,9 @@ pub struct Generator {
     pub yearly_shape_obj: Option<LoadShapeObj>,
     pub daily_shape_obj: Option<LoadShapeObj>,
     pub duty_shape_obj: Option<LoadShapeObj>,
-    pub yearly_shape_ref: Option<ElemRef>,
-    pub daily_shape_ref: Option<ElemRef>,
-    pub duty_shape_ref: Option<ElemRef>,
+    pub yearly_shape_ref: Option<ElemId>,
+    pub daily_shape_ref: Option<ElemId>,
+    pub duty_shape_ref: Option<ElemId>,
 }
 
 /// Pascal `SetNcondsForConnection`.

@@ -39,11 +39,12 @@ pub(crate) fn show_elements(
             disabled.push_str(&format!(
                 "All DISABLED Elements in Class \"{class_name}\"\n\n"
             ));
-            for obj in classes[ci].arena.objs() {
-                let uname = obj.data().name().to_uppercase();
+            let arena = &classes[ci].arena;
+            for i in 0..arena.len() {
+                let uname = arena.obj(i).data().name().to_uppercase();
                 // Pascal `(DSSClassType and BASECLASSMASK) > 0` = a circuit element:
                 // route by `Enabled`. A non-CktElement object always goes to `main`.
-                match obj.as_ckt_element() {
+                match arena.try_ckt_elem(i) {
                     Some(elem) if !elem.cd().enabled => {
                         disabled.push_str(&uname);
                         disabled.push('\n');
@@ -134,17 +135,17 @@ pub(crate) fn show_elements(
 fn write_records(
     classes: &[DssClass],
     ckt: &Circuit,
-    refs: &[crate::elements::traits::ElemRef],
+    refs: &[crate::elements::traits::ElemId],
     mbnl: usize,
     mdnl: usize,
     main: &mut String,
     disabled: &mut String,
 ) {
     for &r in refs {
-        let class_name = classes[r.cls].props.class_name();
-        let obj = &classes[r.cls].arena[r.idx];
+        let class_name = classes[r.class_ord()].props.class_name();
+        let obj = &classes[r.class_ord()].arena[r.index()];
         let name = format!("{}.{}", class_name, obj.data().name());
-        if let Some(elem) = obj.as_ckt_element() {
+        if let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) {
             let rec = write_element_record(ckt, &name, elem, mbnl, mdnl);
             if elem.cd().enabled {
                 main.push_str(&rec);

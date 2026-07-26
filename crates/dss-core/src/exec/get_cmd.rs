@@ -475,13 +475,15 @@ impl Dss {
                             abort = true;
                         }
                         Some((ci, oi)) => {
-                            let nvars = classes[ci].arena[oi]
-                                .as_ckt_element()
+                            let nvars = classes[ci]
+                                .arena
+                                .try_ckt_elem(oi)
                                 .map(|e| e.num_variables())
                                 .unwrap_or(0);
                             let found = (1..=nvars).find(|&i| {
-                                classes[ci].arena[oi]
-                                    .as_ckt_element()
+                                classes[ci]
+                                    .arena
+                                    .try_ckt_elem(oi)
                                     .expect("ckt element")
                                     .variable_name(i)
                                     .eq_ignore_ascii_case(&var_name)
@@ -497,8 +499,9 @@ impl Dss {
                                 let sys = sys_ctx(ckt);
                                 let node_v = ckt.solution.node_v.clone();
                                 let mut states = vec![0.0; nvars];
-                                classes[ci].arena[oi]
-                                    .as_ckt_element_mut()
+                                classes[ci]
+                                    .arena
+                                    .try_ckt_elem_mut(oi)
                                     .expect("ckt element")
                                     .get_all_variables(&sys, &node_v, &mut states);
                                 append_result(&mut result, &format!("{}", states[i - 1]));

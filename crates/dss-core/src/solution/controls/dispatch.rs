@@ -1,4 +1,4 @@
-//! The dispatch core: identify the concrete control class behind an [`ElemRef`],
+//! The dispatch core: identify the concrete control class behind an [`ElemId`],
 //! split the mutable borrows of the control + its controlled/monitored elements,
 //! and invoke `Sample`/`DoPendingAction`/`Reset`. Includes the GenDispatcher
 //! environment that reaches generators through the class registry.
@@ -27,11 +27,9 @@ use crate::elements::pc::inv_based_pce::Connection as InvConnection;
 use crate::elements::pc::pvsystem::{PVSystem, VARMODE_KVAR};
 use crate::elements::pc::storage::{Storage, StorageDispatchMode};
 use crate::elements::pc::upfc::Upfc;
-use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::fuse::Fuse;
-use crate::elements::pd::transformer::{ControlledTransformer, Transformer};
-use crate::elements::traits::{ElemRef, ElemStore, SysCtx};
+use crate::elements::traits::{ElemId, ElemStore, SysCtx, TypedStore};
 use crate::solution::SolveMode;
 use crate::solution::control_queue::ControlQueue;
 use crate::solution::event_log::EventLog;
@@ -39,47 +37,47 @@ use crate::solution::solution::{Solution, SolveEnv, SolveResult, sys_ctx};
 
 use super::ControlOp;
 
-/// Which concrete control class an [`ElemRef`] names, plus its element refs.
+/// Which concrete control class an [`ElemId`] names, plus its element refs.
 #[derive(Clone, Copy)]
 enum ControlKind {
     Reg {
-        controlled: Option<ElemRef>,
+        controlled: Option<ElemId>,
     },
     Cap {
-        controlled: Option<ElemRef>,
-        monitored: Option<ElemRef>,
+        controlled: Option<ElemId>,
+        monitored: Option<ElemId>,
     },
     /// SwtControl: a manual switch over a generic controlled element. `Sample`
     /// reads no monitored element (only the control's own queued action), so the
     /// controlled element is borrowed only for `Action`/`Reset`.
     Swt {
-        controlled: Option<ElemRef>,
+        controlled: Option<ElemId>,
     },
     /// Fuse: per-phase overcurrent protection. `Sample` reads the monitored
     /// element's currents and the controlled element's conductor state; `Action`
     /// blows one controlled phase; `Reset` restores the normal state. The
     /// monitored element is often the controlled element itself.
     Fuse {
-        controlled: Option<ElemRef>,
-        monitored: Option<ElemRef>,
+        controlled: Option<ElemId>,
+        monitored: Option<ElemId>,
     },
     /// Recloser: overcurrent recloser. `Sample` reads the monitored currents and
     /// the controlled terminal state; `Action` (OPEN/CLOSE/RESET) trips/recloses
     /// the whole controlled terminal; `Reset` restores the normal state. Like the
     /// Fuse, the monitored element is often the controlled element itself.
     Recloser {
-        controlled: Option<ElemRef>,
-        monitored: Option<ElemRef>,
+        controlled: Option<ElemId>,
+        monitored: Option<ElemId>,
     },
     /// Relay: the general protection control. Same borrow shape as the Recloser
     /// (`Sample` reads the monitored element + controlled terminal; `Action`
     /// trips/recloses the whole terminal; `Reset` restores the normal state).
     Relay {
-        controlled: Option<ElemRef>,
-        monitored: Option<ElemRef>,
+        controlled: Option<ElemId>,
+        monitored: Option<ElemId>,
     },
     GenDispatch {
-        monitored: Option<ElemRef>,
+        monitored: Option<ElemId>,
         element_terminal: usize,
     },
     /// StorageController dispatches a *dynamic* Storage fleet, so — like
@@ -87,7 +85,7 @@ enum ControlKind {
     /// `Sample`/`Reset` reach the monitored element + fleet through the store;
     /// `Action` (RELEASE_INHIBIT) touches neither.
     StorageCtrl {
-        monitored: Option<ElemRef>,
+        monitored: Option<ElemId>,
         element_terminal: usize,
     },
     /// InvControl dispatches a *dynamic* PVSystem/Storage fleet, so — like the
@@ -109,7 +107,7 @@ enum ControlKind {
     /// never queues an action, and `DoPendingAction`/`Reset` are no-ops. Reached
     /// through the class registry like the other fleet controls.
     Espvl {
-        monitored: Option<ElemRef>,
+        monitored: Option<ElemId>,
         element_terminal: usize,
     },
 }
@@ -119,7 +117,7 @@ enum ControlKind {
 /// monitored) elements. Errors map to Pascal's `EControlProblem` path
 /// (`DoSimpleMsg` 484 + "Solution aborted.").
 pub(super) fn dispatch_control(
-    r: ElemRef,
+    r: ElemId,
     op: ControlOp,
     ckt: &mut Circuit,
     env: &mut SolveEnv,
@@ -129,7 +127,7 @@ pub(super) fn dispatch_control(
     let SolveEnv { store, errors, .. } = env;
 
     // Identify the control and read its target refs (immutable peek) through
-    // the `ControlElem` behavior trait — R0 replaces the `as_any` downcast
+    // the `ControlElem` behavior trait — R0 replaces the `Any` downcast
     // chain. The concrete `ControlKind` mirror (with the captured refs the
     // borrow-split below needs) is built from `control_kind()` + `ccd()`.
     let (kind, full_name) = {
@@ -212,9 +210,7 @@ pub(super) fn dispatch_control(
             // Clone the dispatcher out so the env can hold the store mutably;
             // `Sample` only mutates the cached generator list, copied back after.
             let mut gd = store
-                .obj(r)
-                .as_any()
-                .downcast_ref::<GenDispatcher>()
+                .typed::<GenDispatcher>(r)
                 .expect("kind matched above")
                 .clone();
             let generators = ckt.generators.clone();
@@ -230,9 +226,7 @@ pub(super) fn dispatch_control(
                 gd.sample(&mut env)
             };
             *store
-                .obj_mut(r)
-                .as_any_mut()
-                .downcast_mut::<GenDispatcher>()
+                .typed_mut::<GenDispatcher>(r)
                 .expect("kind matched above") = gd;
             if changed {
                 // Force a recalc of power parameters + a re-solve at the new
@@ -261,9 +255,7 @@ pub(super) fn dispatch_control(
         // Clone the controller out so the store can be borrowed mutably for the
         // fleet; `Sample`/`Reset` mutate the cached fleet + flags, copied back.
         let mut sc = store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<StorageController>()
+            .typed::<StorageController>(r)
             .expect("kind matched above")
             .clone();
         let storages = ckt.storages.clone();
@@ -304,9 +296,7 @@ pub(super) fn dispatch_control(
             }
         }
         *store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<StorageController>()
+            .typed_mut::<StorageController>(r)
             .expect("kind matched above") = sc;
         return Ok(());
     }
@@ -319,9 +309,7 @@ pub(super) fn dispatch_control(
         // `Sample`/`DoPendingAction` mutate the cached fleet + per-DER state, copied
         // back afterwards.
         let mut ic = store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<InvControl>()
+            .typed::<InvControl>(r)
             .expect("kind matched above")
             .clone();
         let pv_systems = ckt.pv_systems.clone();
@@ -385,9 +373,7 @@ pub(super) fn dispatch_control(
             }
         };
         *store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<InvControl>()
+            .typed_mut::<InvControl>(r)
             .expect("kind matched above") = ic;
         return match result {
             Ok(()) => Ok(()),
@@ -400,9 +386,7 @@ pub(super) fn dispatch_control(
     // through the whole class registry and none of the `CtrlCtx`; handle it here.
     if let ControlKind::Exp = kind {
         let mut ec = store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<ExpControl>()
+            .typed::<ExpControl>(r)
             .expect("kind matched above")
             .clone();
         let pv_systems = ckt.pv_systems.clone();
@@ -441,9 +425,7 @@ pub(super) fn dispatch_control(
             }
         }
         *store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<ExpControl>()
+            .typed_mut::<ExpControl>(r)
             .expect("kind matched above") = ec;
         return Ok(());
     }
@@ -455,9 +437,7 @@ pub(super) fn dispatch_control(
         // Clone the control out so the store can be borrowed mutably for the fleet;
         // `Sample`/`DoPendingAction` mutate the cached pointer list, copied back.
         let mut uc = store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<UpfcControl>()
+            .typed::<UpfcControl>(r)
             .expect("kind matched above")
             .clone();
         let upfcs = ckt.upfcs.clone();
@@ -481,9 +461,7 @@ pub(super) fn dispatch_control(
             }
         }
         *store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<UpfcControl>()
+            .typed_mut::<UpfcControl>(r)
             .expect("kind matched above") = uc;
         return Ok(());
     }
@@ -504,14 +482,12 @@ pub(super) fn dispatch_control(
             // fleet; `Sample` mutates the cached pointer list + phantom field,
             // copied back afterwards.
             let mut ec = store
-                .obj(r)
-                .as_any()
-                .downcast_ref::<EspvlControl>()
+                .typed::<EspvlControl>(r)
                 .expect("kind matched above")
                 .clone();
             // The fleet = every ESPVLControl object (Pascal scans `ParentClass`),
             // in creation order.
-            let espvls: Vec<ElemRef> = ckt
+            let espvls: Vec<ElemId> = ckt
                 .controls
                 .iter()
                 .copied()
@@ -535,9 +511,7 @@ pub(super) fn dispatch_control(
                 ec.sample(&mut env);
             }
             *store
-                .obj_mut(r)
-                .as_any_mut()
-                .downcast_mut::<EspvlControl>()
+                .typed_mut::<EspvlControl>(r)
                 .expect("kind matched above") = ec;
         }
         return Ok(());
@@ -590,9 +564,7 @@ pub(super) fn dispatch_control(
                 ControlOp::Sample => {
                     // SwtControl.Sample reads no controlled/monitored element.
                     let sw = store
-                        .obj_mut(r)
-                        .as_any_mut()
-                        .downcast_mut::<SwtControl>()
+                        .typed_mut::<SwtControl>(r)
                         .expect("kind matched above");
                     sw.sample(&mut ctx);
                 }
@@ -600,12 +572,8 @@ pub(super) fn dispatch_control(
                     let Some(target) = controlled else {
                         return Err(abort(ctx.errors, &full_name, "Switched element not set"));
                     };
-                    let (cobj, tobj) = store.pair_mut(r, target);
-                    let sw = cobj
-                        .as_any_mut()
-                        .downcast_mut::<SwtControl>()
-                        .expect("kind matched above");
-                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                    let (sw, tobj) = store.typed_ckt_pair_mut::<SwtControl>(r, target);
+                    let Some(ctrl) = tobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -619,12 +587,8 @@ pub(super) fn dispatch_control(
                     // switched element back to `NormalState` (when not locked).
                     match controlled {
                         Some(target) => {
-                            let (cobj, tobj) = store.pair_mut(r, target);
-                            let sw = cobj
-                                .as_any_mut()
-                                .downcast_mut::<SwtControl>()
-                                .expect("kind matched above");
-                            if let Some(ctrl) = tobj.as_ckt_element_mut() {
+                            let (sw, tobj) = store.typed_ckt_pair_mut::<SwtControl>(r, target);
+                            if let Some(ctrl) = tobj {
                                 if sw.reset_with(ctrl) {
                                     *ctx.system_y_changed = true;
                                 }
@@ -659,37 +623,29 @@ pub(super) fn dispatch_control(
                         // The monitored role only *reads* solved state, so an
                         // owned clone of the controlled element stands in for the
                         // second live borrow (currents recompute from node_v).
-                        let mut mon_clone = store.obj(target).clone_box();
-                        let (cobj, tobj) = store.pair_mut(r, target);
-                        let fuse = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Fuse>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let mon_clone = store.arena(target.class_ord()).clone_ckt(target.index());
+                        let (fuse, tobj) = store.typed_ckt_pair_mut::<Fuse>(r, target);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let mon_elem = mon_clone
-                            .as_ckt_element_mut()
-                            .expect("controlled element is a circuit element");
+                        let mut mon_clone =
+                            mon_clone.expect("controlled element is a circuit element");
+                        let mon_elem = mon_clone.as_mut();
                         fuse.sample(ctrl, mon_elem, &mut ctx);
                     } else {
-                        let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
-                        let fuse = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Fuse>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let (fuse, tobj, mobj) = store.typed_ckt_triple_mut::<Fuse>(r, target, mon);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let Some(mon_elem) = mobj.as_ckt_element_mut() else {
+                        let Some(mon_elem) = mobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
@@ -700,12 +656,8 @@ pub(super) fn dispatch_control(
                     }
                 }
                 ControlOp::Action { code, .. } => {
-                    let (cobj, tobj) = store.pair_mut(r, target);
-                    let fuse = cobj
-                        .as_any_mut()
-                        .downcast_mut::<Fuse>()
-                        .expect("kind matched above");
-                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                    let (fuse, tobj) = store.typed_ckt_pair_mut::<Fuse>(r, target);
+                    let Some(ctrl) = tobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -716,12 +668,8 @@ pub(super) fn dispatch_control(
                     fuse.do_pending_action(code, ctrl, &mut ctx);
                 }
                 ControlOp::Reset => {
-                    let (cobj, tobj) = store.pair_mut(r, target);
-                    let fuse = cobj
-                        .as_any_mut()
-                        .downcast_mut::<Fuse>()
-                        .expect("kind matched above");
-                    if let Some(ctrl) = tobj.as_ckt_element_mut()
+                    let (fuse, tobj) = store.typed_ckt_pair_mut::<Fuse>(r, target);
+                    if let Some(ctrl) = tobj
                         && fuse.reset_with(ctrl)
                     {
                         *ctx.system_y_changed = true;
@@ -745,37 +693,30 @@ pub(super) fn dispatch_control(
                         // The monitored role only *reads* solved state, so an
                         // owned clone of the controlled element stands in for the
                         // second live borrow (currents recompute from node_v).
-                        let mut mon_clone = store.obj(target).clone_box();
-                        let (cobj, tobj) = store.pair_mut(r, target);
-                        let rec = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Recloser>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let mon_clone = store.arena(target.class_ord()).clone_ckt(target.index());
+                        let (rec, tobj) = store.typed_ckt_pair_mut::<Recloser>(r, target);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let mon_elem = mon_clone
-                            .as_ckt_element_mut()
-                            .expect("controlled element is a circuit element");
+                        let mut mon_clone =
+                            mon_clone.expect("controlled element is a circuit element");
+                        let mon_elem = mon_clone.as_mut();
                         rec.sample(ctrl, mon_elem, &mut ctx);
                     } else {
-                        let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
-                        let rec = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Recloser>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let (rec, tobj, mobj) =
+                            store.typed_ckt_triple_mut::<Recloser>(r, target, mon);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let Some(mon_elem) = mobj.as_ckt_element_mut() else {
+                        let Some(mon_elem) = mobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
@@ -789,12 +730,8 @@ pub(super) fn dispatch_control(
                     let Some(target) = controlled else {
                         return Err(abort(ctx.errors, &full_name, "Switched element not set"));
                     };
-                    let (cobj, tobj) = store.pair_mut(r, target);
-                    let rec = cobj
-                        .as_any_mut()
-                        .downcast_mut::<Recloser>()
-                        .expect("kind matched above");
-                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                    let (rec, tobj) = store.typed_ckt_pair_mut::<Recloser>(r, target);
+                    let Some(ctrl) = tobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -811,12 +748,8 @@ pub(super) fn dispatch_control(
                     // unlike SwtControl).
                     match controlled {
                         Some(target) => {
-                            let (cobj, tobj) = store.pair_mut(r, target);
-                            let rec = cobj
-                                .as_any_mut()
-                                .downcast_mut::<Recloser>()
-                                .expect("kind matched above");
-                            if let Some(ctrl) = tobj.as_ckt_element_mut() {
+                            let (rec, tobj) = store.typed_ckt_pair_mut::<Recloser>(r, target);
+                            if let Some(ctrl) = tobj {
                                 if rec.reset_with(ctrl) {
                                     *ctx.system_y_changed = true;
                                 }
@@ -851,40 +784,32 @@ pub(super) fn dispatch_control(
                         // The monitored role only *reads* solved state, so an
                         // owned clone of the controlled element stands in for the
                         // second live borrow (currents recompute from node_v).
-                        let mut mon_clone = store.obj(target).clone_box();
-                        let (cobj, tobj) = store.pair_mut(r, target);
-                        let rel = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Relay>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let mon_clone = store.arena(target.class_ord()).clone_ckt(target.index());
+                        let (rel, tobj) = store.typed_ckt_pair_mut::<Relay>(r, target);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let mon_elem = mon_clone
-                            .as_ckt_element_mut()
-                            .expect("controlled element is a circuit element");
+                        let mut mon_clone =
+                            mon_clone.expect("controlled element is a circuit element");
+                        let mon_elem = mon_clone.as_mut();
                         // A `TD21` relay on a coarse time step requests a
                         // solution abort (error 388, Pascal `DoErrorMsg` →
                         // `SolutionAbort`); lifted below like CapControl's.
                         solution_abort_requested = rel.sample(ctrl, mon_elem, &mut ctx);
                     } else {
-                        let (cobj, tobj, mobj) = store.triple_mut(r, target, mon);
-                        let rel = cobj
-                            .as_any_mut()
-                            .downcast_mut::<Relay>()
-                            .expect("kind matched above");
-                        let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                        let (rel, tobj, mobj) = store.typed_ckt_triple_mut::<Relay>(r, target, mon);
+                        let Some(ctrl) = tobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Switched element is not a circuit element",
                             ));
                         };
-                        let Some(mon_elem) = mobj.as_ckt_element_mut() else {
+                        let Some(mon_elem) = mobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
@@ -901,12 +826,8 @@ pub(super) fn dispatch_control(
                     let Some(target) = controlled else {
                         return Err(abort(ctx.errors, &full_name, "Switched element not set"));
                     };
-                    let (cobj, tobj) = store.pair_mut(r, target);
-                    let rel = cobj
-                        .as_any_mut()
-                        .downcast_mut::<Relay>()
-                        .expect("kind matched above");
-                    let Some(ctrl) = tobj.as_ckt_element_mut() else {
+                    let (rel, tobj) = store.typed_ckt_pair_mut::<Relay>(r, target);
+                    let Some(ctrl) = tobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -923,12 +844,8 @@ pub(super) fn dispatch_control(
                     // (raising SystemYChanged inside `reset_with`).
                     match controlled {
                         Some(target) => {
-                            let (cobj, tobj) = store.pair_mut(r, target);
-                            let rel = cobj
-                                .as_any_mut()
-                                .downcast_mut::<Relay>()
-                                .expect("kind matched above");
-                            if let Some(ctrl) = tobj.as_ckt_element_mut() {
+                            let (rel, tobj) = store.typed_ckt_pair_mut::<Relay>(r, target);
+                            if let Some(ctrl) = tobj {
                                 rel.reset_with(ctrl, &mut ctx);
                             } else {
                                 rel.reset_control_side();
@@ -949,21 +866,10 @@ pub(super) fn dispatch_control(
             let Some(target) = controlled else {
                 return Err(abort(ctx.errors, &full_name, "Transformer element not set"));
             };
-            let (cobj, tobj) = store.pair_mut(r, target);
-            let rc = cobj
-                .as_any_mut()
-                .downcast_mut::<RegControl>()
-                .expect("kind matched above");
-            // `transformer=` resolves against either class (Pascal proxy).
-            let tr: &mut dyn ControlledTransformer = if tobj.as_any().is::<Transformer>() {
-                tobj.as_any_mut()
-                    .downcast_mut::<Transformer>()
-                    .expect("is Transformer")
-            } else if tobj.as_any().is::<AutoTrans>() {
-                tobj.as_any_mut()
-                    .downcast_mut::<AutoTrans>()
-                    .expect("is AutoTrans")
-            } else {
+            // `transformer=` resolves against either class (Pascal proxy), so
+            // the controlled element comes back as `ControlledTransformer`.
+            let (rc, tobj) = store.typed_transformer_pair_mut::<RegControl>(r, target);
+            let Some(tr) = tobj else {
                 return Err(abort(
                     ctx.errors,
                     &full_name,
@@ -1006,12 +912,8 @@ pub(super) fn dispatch_control(
                         // Time/Follow control: the capacitor monitors itself.
                         // The monitored role only *reads* solved state, so a
                         // clone stands in for the second live borrow.
-                        let (cobj, capobj) = store.pair_mut(r, target);
-                        let cc = cobj
-                            .as_any_mut()
-                            .downcast_mut::<CapControl>()
-                            .expect("kind matched above");
-                        let Some(cap) = capobj.as_any_mut().downcast_mut::<Capacitor>() else {
+                        let (cc, capobj) = store.typed_pair_mut::<CapControl, Capacitor>(r, target);
+                        let Some(cap) = capobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
@@ -1021,19 +923,16 @@ pub(super) fn dispatch_control(
                         let mut mon_clone = cap.clone();
                         solution_abort_requested = cc.sample(cap, &mut mon_clone, &mut ctx);
                     } else {
-                        let (cobj, capobj, monobj) = store.triple_mut(r, target, mon);
-                        let cc = cobj
-                            .as_any_mut()
-                            .downcast_mut::<CapControl>()
-                            .expect("kind matched above");
-                        let Some(cap) = capobj.as_any_mut().downcast_mut::<Capacitor>() else {
+                        let (cc, capobj, monobj) =
+                            store.typed_triple_mut::<CapControl, Capacitor>(r, target, mon);
+                        let Some(cap) = capobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
                                 "Controlled element is not a Capacitor",
                             ));
                         };
-                        let Some(mon_elem) = monobj.as_ckt_element_mut() else {
+                        let Some(mon_elem) = monobj else {
                             return Err(abort(
                                 ctx.errors,
                                 &full_name,
@@ -1047,12 +946,8 @@ pub(super) fn dispatch_control(
                     // The built-in control types ignore the code (PendingChange
                     // rules); USERCONTROL sets PendingChange := code and runs the
                     // guest `do_pending(code, proxy)` (`CapControl.pas:725-733`).
-                    let (cobj, capobj) = store.pair_mut(r, target);
-                    let cc = cobj
-                        .as_any_mut()
-                        .downcast_mut::<CapControl>()
-                        .expect("kind matched above");
-                    let Some(cap) = capobj.as_any_mut().downcast_mut::<Capacitor>() else {
+                    let (cc, capobj) = store.typed_pair_mut::<CapControl, Capacitor>(r, target);
+                    let Some(cap) = capobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -1062,12 +957,8 @@ pub(super) fn dispatch_control(
                     solution_abort_requested = cc.do_pending_action(code, proxy, cap, &mut ctx);
                 }
                 ControlOp::Reset => {
-                    let (cobj, capobj) = store.pair_mut(r, target);
-                    let cc = cobj
-                        .as_any_mut()
-                        .downcast_mut::<CapControl>()
-                        .expect("kind matched above");
-                    let Some(cap) = capobj.as_any_mut().downcast_mut::<Capacitor>() else {
+                    let (cc, capobj) = store.typed_pair_mut::<CapControl, Capacitor>(r, target);
+                    let Some(cap) = capobj else {
                         return Err(abort(
                             ctx.errors,
                             &full_name,
@@ -1099,24 +990,20 @@ struct GenDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    monitored: ElemRef,
+    monitored: ElemId,
     element_terminal: usize,
-    generators: Vec<ElemRef>,
+    generators: Vec<ElemId>,
 }
 
 impl GenDispEnv<'_> {
-    fn generator(store: &dyn ElemStore, g: ElemRef) -> &Generator {
+    fn generator(store: &dyn ElemStore, g: ElemId) -> &Generator {
         store
-            .obj(g)
-            .as_any()
-            .downcast_ref::<Generator>()
+            .typed::<Generator>(g)
             .expect("GenDispatcher list entry is a Generator")
     }
-    fn generator_mut(store: &mut dyn ElemStore, g: ElemRef) -> &mut Generator {
+    fn generator_mut(store: &mut dyn ElemStore, g: ElemId) -> &mut Generator {
         store
-            .obj_mut(g)
-            .as_any_mut()
-            .downcast_mut::<Generator>()
+            .typed_mut::<Generator>(g)
             .expect("GenDispatcher list entry is a Generator")
     }
 }
@@ -1129,27 +1016,27 @@ impl GenDispatchEnv for GenDispEnv<'_> {
             self.element_terminal,
         )
     }
-    fn find_enabled_gen(&self, name: &str) -> Option<ElemRef> {
+    fn find_enabled_gen(&self, name: &str) -> Option<ElemId> {
         let r = self.store.find_ckt_element(&format!("generator.{name}"))?;
         self.store.ckt_elem(r).cd().enabled.then_some(r)
     }
-    fn all_enabled_gens(&self) -> Vec<ElemRef> {
+    fn all_enabled_gens(&self) -> Vec<ElemId> {
         self.generators
             .iter()
             .copied()
             .filter(|&g| self.store.ckt_elem(g).cd().enabled)
             .collect()
     }
-    fn gen_kw_base(&self, g: ElemRef) -> f64 {
+    fn gen_kw_base(&self, g: ElemId) -> f64 {
         Self::generator(self.store, g).kw_base
     }
-    fn set_gen_kw_base(&mut self, g: ElemRef, value: f64) {
+    fn set_gen_kw_base(&mut self, g: ElemId, value: f64) {
         Self::generator_mut(self.store, g).kw_base = value;
     }
-    fn gen_kvar_base(&self, g: ElemRef) -> f64 {
+    fn gen_kvar_base(&self, g: ElemId) -> f64 {
         Self::generator(self.store, g).kvar_base
     }
-    fn set_gen_kvar_base(&mut self, g: ElemRef, value: f64) {
+    fn set_gen_kvar_base(&mut self, g: ElemId, value: f64) {
         Self::generator_mut(self.store, g).kvar_base = value;
     }
 }
@@ -1165,24 +1052,20 @@ struct EspvlDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    monitored: Option<ElemRef>,
+    monitored: Option<ElemId>,
     element_terminal: usize,
-    espvls: Vec<ElemRef>,
+    espvls: Vec<ElemId>,
 }
 
 impl EspvlDispEnv<'_> {
-    fn espvl(store: &dyn ElemStore, r: ElemRef) -> &EspvlControl {
+    fn espvl(store: &dyn ElemStore, r: ElemId) -> &EspvlControl {
         store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<EspvlControl>()
+            .typed::<EspvlControl>(r)
             .expect("ESPVLControl fleet entry is an ESPVLControl")
     }
-    fn espvl_mut(store: &mut dyn ElemStore, r: ElemRef) -> &mut EspvlControl {
+    fn espvl_mut(store: &mut dyn ElemStore, r: ElemId) -> &mut EspvlControl {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<EspvlControl>()
+            .typed_mut::<EspvlControl>(r)
             .expect("ESPVLControl fleet entry is an ESPVLControl")
     }
 }
@@ -1200,23 +1083,23 @@ impl EspvlDispatchEnv for EspvlDispEnv<'_> {
             None => Complex64::ZERO,
         }
     }
-    fn find_enabled_espvl(&self, name: &str) -> Option<ElemRef> {
+    fn find_enabled_espvl(&self, name: &str) -> Option<ElemId> {
         let r = self
             .store
             .find_ckt_element(&format!("espvlcontrol.{name}"))?;
         self.store.ckt_elem(r).cd().enabled.then_some(r)
     }
-    fn all_enabled_espvls(&self) -> Vec<ElemRef> {
+    fn all_enabled_espvls(&self) -> Vec<ElemId> {
         self.espvls
             .iter()
             .copied()
             .filter(|&c| self.store.ckt_elem(c).cd().enabled)
             .collect()
     }
-    fn local_kw_base(&self, r: ElemRef) -> f64 {
+    fn local_kw_base(&self, r: ElemId) -> f64 {
         Self::espvl(self.store, r).phantom_kw_base()
     }
-    fn set_local_kw_base(&mut self, r: ElemRef, value: f64) {
+    fn set_local_kw_base(&mut self, r: ElemId, value: f64) {
         Self::espvl_mut(self.store, r).set_phantom_kw_base(value);
     }
 }
@@ -1228,39 +1111,35 @@ struct UpfcDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    upfcs: Vec<ElemRef>,
+    upfcs: Vec<ElemId>,
 }
 
 impl UpfcDispEnv<'_> {
-    fn upfc(store: &dyn ElemStore, u: ElemRef) -> &Upfc {
+    fn upfc(store: &dyn ElemStore, u: ElemId) -> &Upfc {
         store
-            .obj(u)
-            .as_any()
-            .downcast_ref::<Upfc>()
+            .typed::<Upfc>(u)
             .expect("UPFCControl list entry is a UPFC")
     }
-    fn upfc_mut(store: &mut dyn ElemStore, u: ElemRef) -> &mut Upfc {
+    fn upfc_mut(store: &mut dyn ElemStore, u: ElemId) -> &mut Upfc {
         store
-            .obj_mut(u)
-            .as_any_mut()
-            .downcast_mut::<Upfc>()
+            .typed_mut::<Upfc>(u)
             .expect("UPFCControl list entry is a UPFC")
     }
 }
 
 impl UpfcDispatchEnv for UpfcDispEnv<'_> {
-    fn find_enabled_upfc(&self, name: &str) -> Option<ElemRef> {
+    fn find_enabled_upfc(&self, name: &str) -> Option<ElemId> {
         let r = self.store.find_ckt_element(&format!("upfc.{name}"))?;
         self.store.ckt_elem(r).cd().enabled.then_some(r)
     }
-    fn all_enabled_upfcs(&self) -> Vec<ElemRef> {
+    fn all_enabled_upfcs(&self) -> Vec<ElemId> {
         self.upfcs
             .iter()
             .copied()
             .filter(|&u| self.store.ckt_elem(u).cd().enabled)
             .collect()
     }
-    fn check_status(&mut self, u: ElemRef) -> bool {
+    fn check_status(&mut self, u: ElemId) -> bool {
         // Pascal `checkPF` reaches `MonElm.Power[1]`; compute it first (a disjoint
         // element), then mutate the UPFC's control flags via `CheckStatus`.
         let mon = Self::upfc(self.store, u).mon_elm;
@@ -1271,7 +1150,7 @@ impl UpfcDispatchEnv for UpfcDispEnv<'_> {
         });
         Self::upfc_mut(self.store, u).check_status(mon_power)
     }
-    fn upload_currents(&mut self, u: ElemRef) {
+    fn upload_currents(&mut self, u: ElemId) {
         Self::upfc_mut(self.store, u).upload_currents();
     }
 }
@@ -1287,12 +1166,11 @@ impl UpfcDispatchEnv for UpfcDispEnv<'_> {
 /// `%Reserve = 25` from that residue). Invoked from the executive's edit tail
 /// (`exec/command.rs::edit_active`); same clone-out/copy-back borrow dance as
 /// the `Sample` dispatch above.
-pub(crate) fn storage_controller_recalc_fleet(r: ElemRef, ckt: &mut Circuit, env: &mut SolveEnv) {
+pub(crate) fn storage_controller_recalc_fleet(r: ElemId, ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let SolveEnv { store, errors, .. } = env;
     let (monitored, element_terminal) = {
-        let obj = store.obj(r);
-        let Some(sc) = obj.as_any().downcast_ref::<StorageController>() else {
+        let Some(sc) = store.typed::<StorageController>(r) else {
             return;
         };
         (
@@ -1301,9 +1179,7 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemRef, ckt: &mut Circuit, env
         )
     };
     let mut sc = store
-        .obj(r)
-        .as_any()
-        .downcast_ref::<StorageController>()
+        .typed::<StorageController>(r)
         .expect("checked above")
         .clone();
     let storages = ckt.storages.clone();
@@ -1342,9 +1218,7 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemRef, ckt: &mut Circuit, env
     }
     ckt.solution.control_queue = queue;
     *store
-        .obj_mut(r)
-        .as_any_mut()
-        .downcast_mut::<StorageController>()
+        .typed_mut::<StorageController>(r)
         .expect("checked above") = sc;
 }
 
@@ -1356,15 +1230,15 @@ struct StorageDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    monitored: Option<ElemRef>,
+    monitored: Option<ElemId>,
     element_terminal: usize,
-    storages: Vec<ElemRef>,
+    storages: Vec<ElemId>,
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
     errors: &'a mut crate::diag::ErrorLog,
     loads_need_updating: &'a mut bool,
     system_y_changed: &'a mut bool,
-    self_ref: ElemRef,
+    self_ref: ElemId,
     int_hour: i32,
     t: f64,
     control_iter: i32,
@@ -1375,21 +1249,17 @@ struct StorageDispEnv<'a> {
 }
 
 impl StorageDispEnv<'_> {
-    fn storage(store: &dyn ElemStore, r: ElemRef) -> &Storage {
+    fn storage(store: &dyn ElemStore, r: ElemId) -> &Storage {
         store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<Storage>()
+            .typed::<Storage>(r)
             .expect("StorageController fleet entry is a Storage")
     }
-    fn storage_mut(store: &mut dyn ElemStore, r: ElemRef) -> &mut Storage {
+    fn storage_mut(store: &mut dyn ElemStore, r: ElemId) -> &mut Storage {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<Storage>()
+            .typed_mut::<Storage>(r)
             .expect("StorageController fleet entry is a Storage")
     }
-    fn monitored_ref(&self) -> ElemRef {
+    fn monitored_ref(&self) -> ElemId {
         self.monitored
             .expect("monitored element required for StorageController Sample")
     }
@@ -1519,7 +1389,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         }
     }
 
-    fn all_fleet_storage(&self) -> Vec<(String, ElemRef)> {
+    fn all_fleet_storage(&self) -> Vec<(String, ElemId)> {
         self.storages
             .iter()
             .copied()
@@ -1535,7 +1405,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         self.errors.push(diag);
     }
 
-    fn snap(&self, r: ElemRef) -> StorageSnap {
+    fn snap(&self, r: ElemId) -> StorageSnap {
         let st = Self::storage(self.store, r);
         StorageSnap {
             state: st.f_state,
@@ -1553,28 +1423,28 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
             inverter_on: st.base.inverter_on,
         }
     }
-    fn set_state(&mut self, r: ElemRef, state: i32) {
+    fn set_state(&mut self, r: ElemId, state: i32) {
         Self::storage_mut(self.store, r).set_storage_state(state);
     }
-    fn set_kw(&mut self, r: ElemRef, kw: f64) {
+    fn set_kw(&mut self, r: ElemId, kw: f64) {
         Self::storage_mut(self.store, r).set_kw(kw);
     }
-    fn set_pct_kw_out(&mut self, r: ElemRef, pct: f64) {
+    fn set_pct_kw_out(&mut self, r: ElemId, pct: f64) {
         Self::storage_mut(self.store, r).pct_kw_out = pct;
     }
-    fn set_pct_kw_in(&mut self, r: ElemRef, pct: f64) {
+    fn set_pct_kw_in(&mut self, r: ElemId, pct: f64) {
         Self::storage_mut(self.store, r).pct_kw_in = pct;
     }
-    fn set_pct_reserve(&mut self, r: ElemRef, pct: f64) {
+    fn set_pct_reserve(&mut self, r: ElemId, pct: f64) {
         Self::storage_mut(self.store, r).pct_reserve = pct;
     }
-    fn set_state_desired(&mut self, r: ElemRef, state: i32) {
+    fn set_state_desired(&mut self, r: ElemId, state: i32) {
         Self::storage_mut(self.store, r).state_desired = state;
     }
-    fn set_dispatch_external(&mut self, r: ElemRef) {
+    fn set_dispatch_external(&mut self, r: ElemId) {
         Self::storage_mut(self.store, r).dispatch_mode = StorageDispatchMode::ExternalMode;
     }
-    fn set_nominal(&mut self, r: ElemRef) {
+    fn set_nominal(&mut self, r: ElemId) {
         let sys = self.sys;
         let st = Self::storage_mut(self.store, r);
         st.set_nominal_der_output(sys);
@@ -1589,10 +1459,10 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
             *self.system_y_changed = true;
         }
     }
-    fn present_kw(&self, r: ElemRef) -> f64 {
+    fn present_kw(&self, r: ElemId) -> f64 {
         Self::storage(self.store, r).present_kw()
     }
-    fn storage_full_name(&self, r: ElemRef) -> String {
+    fn storage_full_name(&self, r: ElemId) -> String {
         format!("Storage.{}", Self::storage(self.store, r).cd.obj.name())
     }
 
@@ -1653,9 +1523,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         if let Some(r) = self.store.find_general("XYcurve", &self.season_signal)
             && let Some(curve) = self
                 .store
-                .obj_mut(r)
-                .as_any_mut()
-                .downcast_mut::<crate::elements::general::xy_curve::XyCurveObj>()
+                .typed_mut::<crate::elements::general::xy_curve::XyCurveObj>(r)
         {
             rating_idx = curve.get_y_value(self.int_hour as f64).trunc() as i32;
         }
@@ -1688,16 +1556,10 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
     } = &mut ckt.solution;
 
     for r in controls {
-        let obj = store.obj(r);
-        if !obj.as_any().is::<InvControl>() || !store.ckt_elem(r).cd().enabled {
+        if store.typed::<InvControl>(r).is_none() || !store.ckt_elem(r).cd().enabled {
             continue;
         }
-        let mut ic = store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<InvControl>()
-            .expect("checked above")
-            .clone();
+        let mut ic = store.typed::<InvControl>(r).expect("checked above").clone();
         // Resolve this control's `MonBus` names to per-bus `RefNo` arrays (disjoint
         // from the `&mut ckt.solution` borrow held above; empty for the common
         // no-MonBus control, so zero cost there).
@@ -1735,11 +1597,7 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
             };
             ic.update_inv_control(&mut env2);
         }
-        *store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<InvControl>()
-            .expect("checked above") = ic;
+        *store.typed_mut::<InvControl>(r).expect("checked above") = ic;
     }
 }
 
@@ -1751,8 +1609,8 @@ struct InvDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    pv_systems: Vec<ElemRef>,
-    storages: Vec<ElemRef>,
+    pv_systems: Vec<ElemId>,
+    storages: Vec<ElemId>,
     bus_kvbase: Vec<f64>,
     /// The controlled InvControl's parsed `MonBus` ref arrays (one `RefNo` array
     /// per `ic.mon_buses` entry; empty when `MonBus=` is unused or a name is
@@ -1761,7 +1619,7 @@ struct InvDispEnv<'a> {
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
     errors: &'a mut crate::diag::ErrorLog,
-    self_ref: ElemRef,
+    self_ref: ElemId,
     int_hour: i32,
     t: f64,
     control_iter: i32,
@@ -1785,7 +1643,7 @@ impl InvDispEnv<'_> {
             }
         }
     }
-    fn all_of(&self, class: &str, list: &[ElemRef]) -> Vec<(String, ElemRef, bool)> {
+    fn all_of(&self, class: &str, list: &[ElemId]) -> Vec<(String, ElemId, bool)> {
         list.iter()
             .map(|&r| {
                 let obj = self.store.obj(r);
@@ -1803,19 +1661,18 @@ impl InvDispatchEnv for InvDispEnv<'_> {
     fn find_storage(&self, name: &str) -> InvFleetFind {
         self.find("storage", name)
     }
-    fn all_pvsystems(&self) -> Vec<(String, ElemRef, bool)> {
+    fn all_pvsystems(&self) -> Vec<(String, ElemId, bool)> {
         self.all_of("PVSystem", &self.pv_systems)
     }
-    fn all_storages(&self) -> Vec<(String, ElemRef, bool)> {
+    fn all_storages(&self) -> Vec<(String, ElemId, bool)> {
         self.all_of("Storage", &self.storages)
     }
     fn push_error(&mut self, diag: crate::diag::DssDiagnostic) {
         self.errors.push(diag);
     }
 
-    fn der_snap(&self, r: ElemRef) -> DerSnap {
-        let obj = self.store.obj(r);
-        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+    fn der_snap(&self, r: ElemId) -> DerSnap {
+        if let Some(pv) = self.store.typed::<PVSystem>(r) {
             DerSnap {
                 is_pvsystem: true,
                 nphases: pv.cd.nphases,
@@ -1841,7 +1698,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 storage_state: 0,             // n/a for a PVSystem
                 vw_state_requested: false,    // n/a for a PVSystem
             }
-        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+        } else if let Some(st) = self.store.typed::<Storage>(r) {
             DerSnap {
                 is_pvsystem: false,
                 nphases: st.cd.nphases,
@@ -1875,11 +1732,11 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         }
     }
 
-    fn der_is_pvsystem(&self, r: ElemRef) -> bool {
-        self.store.obj(r).as_any().is::<PVSystem>()
+    fn der_is_pvsystem(&self, r: ElemId) -> bool {
+        self.store.typed::<PVSystem>(r).is_some()
     }
 
-    fn der_vterminal(&mut self, r: ElemRef) -> Vec<Complex64> {
+    fn der_vterminal(&mut self, r: ElemId) -> Vec<Complex64> {
         let elem = self.store.ckt_elem_mut(r);
         elem.cd_mut().compute_vterminal(self.node_v);
         let cd = elem.cd();
@@ -1887,18 +1744,17 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         cd.vterminal[..n].to_vec()
     }
 
-    fn der_is_delta(&self, r: ElemRef) -> bool {
-        let obj = self.store.obj(r);
-        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+    fn der_is_delta(&self, r: ElemId) -> bool {
+        if let Some(pv) = self.store.typed::<PVSystem>(r) {
             pv.base.connection == InvConnection::Delta
-        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+        } else if let Some(st) = self.store.typed::<Storage>(r) {
             st.base.connection == InvConnection::Delta
         } else {
             false
         }
     }
 
-    fn der_bus_vbase(&self, r: ElemRef) -> f64 {
+    fn der_bus_vbase(&self, r: ElemId) -> f64 {
         let cd = self.store.ckt_elem(r).cd();
         cd.terminals[0]
             .bus_ref
@@ -1930,123 +1786,110 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         *self.solution_abort = true;
     }
 
-    fn der_full_name(&self, r: ElemRef) -> String {
+    fn der_full_name(&self, r: ElemId) -> String {
         let obj = self.store.obj(r);
-        if obj.as_any().is::<PVSystem>() {
+        if self.store.typed::<PVSystem>(r).is_some() {
             format!("PVSystem.{}", obj.data().name())
         } else {
             format!("Storage.{}", obj.data().name())
         }
     }
 
-    fn der_set_pf_priority(&mut self, r: ElemRef, value: bool) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_pf_priority(&mut self, r: ElemId, value: bool) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.pf_priority = value;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.pf_priority = value;
         }
     }
-    fn der_set_modes(&mut self, r: ElemRef, vw_mode: bool, vv_mode: bool, var_mode: i32) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_modes(&mut self, r: ElemId, vw_mode: bool, vv_mode: bool, var_mode: i32) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.vw_mode = vw_mode;
             pv.base.vv_mode = vv_mode;
             pv.base.var_mode = var_mode;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.base.vw_mode = vw_mode;
             st.base.vv_mode = vv_mode;
             st.base.var_mode = var_mode;
         }
     }
-    fn der_set_vv_mode(&mut self, r: ElemRef, value: bool) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_vv_mode(&mut self, r: ElemId, value: bool) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.vv_mode = value;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.base.vv_mode = value;
         }
     }
-    fn der_set_vw_mode(&mut self, r: ElemRef, value: bool) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_vw_mode(&mut self, r: ElemId, value: bool) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.vw_mode = value;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.base.vw_mode = value;
         }
     }
-    fn der_set_drc_mode(&mut self, r: ElemRef, value: bool) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_drc_mode(&mut self, r: ElemId, value: bool) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.drc_mode = value;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.base.drc_mode = value;
         }
     }
-    fn der_set_wp_mode(&mut self, r: ElemRef, value: bool) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_wp_mode(&mut self, r: ElemId, value: bool) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.wp_mode = value;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.base.wp_mode = value;
         }
     }
-    fn der_set_wv_mode(&mut self, r: ElemRef, value: bool) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_wv_mode(&mut self, r: ElemId, value: bool) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.wv_mode = value;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.base.wv_mode = value;
         }
     }
-    fn der_set_avr_mode(&mut self, r: ElemRef, value: bool) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_avr_mode(&mut self, r: ElemId, value: bool) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.avr_mode = value;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.base.avr_mode = value;
         }
     }
-    fn der_set_var_mode(&mut self, r: ElemRef, mode: i32) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_var_mode(&mut self, r: ElemId, mode: i32) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.var_mode = mode;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.base.var_mode = mode;
         }
     }
-    fn der_requested_kvar(&self, r: ElemRef) -> f64 {
-        let obj = self.store.obj(r);
-        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+    fn der_requested_kvar(&self, r: ElemId) -> f64 {
+        if let Some(pv) = self.store.typed::<PVSystem>(r) {
             pv.kvar_requested
-        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+        } else if let Some(st) = self.store.typed::<Storage>(r) {
             st.kvar_requested
         } else {
             0.0
         }
     }
-    fn der_set_pf_wp_nominal(&mut self, r: ElemRef, value: f64) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_pf_wp_nominal(&mut self, r: ElemId, value: f64) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.pf_wp_nominal = value;
         }
     }
-    fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_kvar_requested(&mut self, r: ElemId, q: f64) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             // Pascal `Set_Presentkvar` sets kvarRequested + varMode := VARMODEKVAR.
             pv.kvar_requested = q;
             pv.base.var_mode = VARMODE_KVAR;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.kvar_requested = q;
         }
     }
-    fn der_set_nominal(&mut self, r: ElemRef) {
+    fn der_set_nominal(&mut self, r: ElemId) {
         let sys = self.sys;
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.set_nominal_der_output(sys);
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.set_nominal_der_output(sys);
             // Pascal `SetNominalDEROutput` → `RecalcElementData` consumes a
             // pending `StateChanged` into `YprimInvalid`, and `Set_YprimInvalid`
@@ -2062,50 +1905,45 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             }
         }
     }
-    fn der_set_kw_requested(&mut self, r: ElemRef, p: f64) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_kw_requested(&mut self, r: ElemId, p: f64) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             // Pascal `PresentkW` WRITE is `kWRequested` directly (no var-mode side
             // effect, unlike `Set_Presentkvar`).
             pv.kw_requested = p;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.kw_requested = p;
         }
     }
-    fn der_present_kvar(&self, r: ElemRef) -> f64 {
-        let obj = self.store.obj(r);
-        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+    fn der_present_kvar(&self, r: ElemId) -> f64 {
+        if let Some(pv) = self.store.typed::<PVSystem>(r) {
             pv.present_kvar()
-        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+        } else if let Some(st) = self.store.typed::<Storage>(r) {
             st.present_kvar()
         } else {
             0.0
         }
     }
-    fn der_present_kw(&self, r: ElemRef) -> f64 {
-        let obj = self.store.obj(r);
-        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+    fn der_present_kw(&self, r: ElemId) -> f64 {
+        if let Some(pv) = self.store.typed::<PVSystem>(r) {
             pv.present_kw()
-        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+        } else if let Some(st) = self.store.typed::<Storage>(r) {
             st.present_kw()
         } else {
             0.0
         }
     }
-    fn der_storage_dckw(&mut self, r: ElemRef) -> f64 {
+    fn der_storage_dckw(&mut self, r: ElemId) -> f64 {
         // Pascal `Get_DCkW` → `ComputeDCkW` (recomputes off the live terminal power).
         let sys = self.sys;
         let node_v = self.node_v;
-        let obj = self.store.obj_mut(r);
-        if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.dckw(sys, node_v)
         } else {
             0.0 // never reached for a PVSystem (Calc_PBase guards on the DER type)
         }
     }
-    fn der_set_monitor_var(&mut self, r: ElemRef, kind: MonitorVar, value: f64) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_monitor_var(&mut self, r: ElemId, kind: MonitorVar, value: f64) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             match kind {
                 MonitorVar::Vreg => pv.vreg = value,
                 MonitorVar::VvOperation => pv.vv_operation = value,
@@ -2116,7 +1954,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 MonitorVar::WpOperation => pv.wp_operation = value,
                 MonitorVar::WvOperation => pv.wv_operation = value,
             }
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             match kind {
                 MonitorVar::Vreg => st.vreg = value,
                 MonitorVar::VvOperation => st.vv_operation = value,
@@ -2160,87 +1998,76 @@ impl InvDispatchEnv for InvDispEnv<'_> {
     }
 
     // --- grid-forming (GFM) arm ---
-    fn der_gfm_mode(&self, r: ElemRef) -> bool {
-        let obj = self.store.obj(r);
-        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+    fn der_gfm_mode(&self, r: ElemId) -> bool {
+        if let Some(pv) = self.store.typed::<PVSystem>(r) {
             pv.base.gfm_mode
-        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+        } else if let Some(st) = self.store.typed::<Storage>(r) {
             st.base.gfm_mode
         } else {
             false
         }
     }
-    fn der_storage_state(&self, r: ElemRef) -> i32 {
-        self.store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<Storage>()
-            .map_or(0, |st| st.f_state)
+    fn der_storage_state(&self, r: ElemId) -> i32 {
+        self.store.typed::<Storage>(r).map_or(0, |st| st.f_state)
     }
-    fn der_ilimit(&self, r: ElemRef) -> f64 {
-        let obj = self.store.obj(r);
-        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+    fn der_ilimit(&self, r: ElemId) -> f64 {
+        if let Some(pv) = self.store.typed::<PVSystem>(r) {
             pv.base.dyn_vars.i_limit
-        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+        } else if let Some(st) = self.store.typed::<Storage>(r) {
             st.base.dyn_vars.i_limit
         } else {
             -1.0
         }
     }
-    fn der_reset_ibr(&self, r: ElemRef) -> bool {
-        let obj = self.store.obj(r);
-        if let Some(pv) = obj.as_any().downcast_ref::<PVSystem>() {
+    fn der_reset_ibr(&self, r: ElemId) -> bool {
+        if let Some(pv) = self.store.typed::<PVSystem>(r) {
             pv.base.dyn_vars.reset_ibr
-        } else if let Some(st) = obj.as_any().downcast_ref::<Storage>() {
+        } else if let Some(st) = self.store.typed::<Storage>(r) {
             st.base.dyn_vars.reset_ibr
         } else {
             false
         }
     }
-    fn der_check_amps_limit(&mut self, r: ElemRef) -> bool {
+    fn der_check_amps_limit(&mut self, r: ElemId) -> bool {
         let sys = self.sys;
         let node_v = self.node_v;
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.check_amps_limit(sys, node_v)
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.check_amps_limit(sys, node_v)
         } else {
             false
         }
     }
-    fn der_check_ol_inverter(&mut self, r: ElemRef) -> bool {
+    fn der_check_ol_inverter(&mut self, r: ElemId) -> bool {
         let sys = self.sys;
         let node_v = self.node_v;
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.check_ol_inverter(sys, node_v)
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.check_ol_inverter(sys, node_v)
         } else {
             false
         }
     }
-    fn der_set_gfm_mode(&mut self, r: ElemRef, value: bool) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_gfm_mode(&mut self, r: ElemId, value: bool) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.gfm_mode = value;
             pv.cd.yprim_invalid = true;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.base.gfm_mode = value;
             st.cd.yprim_invalid = true;
         }
     }
-    fn der_set_reset_ibr(&mut self, r: ElemRef, value: bool) {
-        let obj = self.store.obj_mut(r);
-        if let Some(pv) = obj.as_any_mut().downcast_mut::<PVSystem>() {
+    fn der_set_reset_ibr(&mut self, r: ElemId, value: bool) {
+        if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.dyn_vars.reset_ibr = value;
-        } else if let Some(st) = obj.as_any_mut().downcast_mut::<Storage>() {
+        } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.base.dyn_vars.reset_ibr = value;
         }
     }
-    fn der_set_storage_state_off(&mut self, r: ElemRef) {
-        if let Some(st) = self.store.obj_mut(r).as_any_mut().downcast_mut::<Storage>() {
+    fn der_set_storage_state_off(&mut self, r: ElemId) {
+        if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.f_state = 0; // STORE_IDLING ("burning, turn it off")
             st.state_changed = true;
         }
@@ -2274,16 +2101,10 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
     } = &mut ckt.solution;
 
     for r in controls {
-        let obj = store.obj(r);
-        if !obj.as_any().is::<ExpControl>() || !store.ckt_elem(r).cd().enabled {
+        if store.typed::<ExpControl>(r).is_none() || !store.ckt_elem(r).cd().enabled {
             continue;
         }
-        let mut ec = store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<ExpControl>()
-            .expect("checked above")
-            .clone();
+        let mut ec = store.typed::<ExpControl>(r).expect("checked above").clone();
         {
             let mut env2 = ExpDispEnv {
                 store: &mut **store,
@@ -2303,11 +2124,7 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
             };
             ec.update_exp_control(&mut env2);
         }
-        *store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<ExpControl>()
-            .expect("checked above") = ec;
+        *store.typed_mut::<ExpControl>(r).expect("checked above") = ec;
     }
 }
 
@@ -2319,11 +2136,11 @@ struct ExpDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    pv_systems: Vec<ElemRef>,
+    pv_systems: Vec<ElemId>,
     bus_kvbase: Vec<f64>,
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
-    self_ref: ElemRef,
+    self_ref: ElemId,
     int_hour: i32,
     t: f64,
     control_mode: i32,
@@ -2333,18 +2150,14 @@ struct ExpDispEnv<'a> {
 }
 
 impl ExpDispEnv<'_> {
-    fn pvsystem(store: &dyn ElemStore, r: ElemRef) -> &PVSystem {
+    fn pvsystem(store: &dyn ElemStore, r: ElemId) -> &PVSystem {
         store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<PVSystem>()
+            .typed::<PVSystem>(r)
             .expect("ExpControl fleet entry is a PVSystem")
     }
-    fn pvsystem_mut(store: &mut dyn ElemStore, r: ElemRef) -> &mut PVSystem {
+    fn pvsystem_mut(store: &mut dyn ElemStore, r: ElemId) -> &mut PVSystem {
         store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<PVSystem>()
+            .typed_mut::<PVSystem>(r)
             .expect("ExpControl fleet entry is a PVSystem")
     }
 }
@@ -2362,7 +2175,7 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
             }
         }
     }
-    fn all_pvsystems(&self) -> Vec<(String, ElemRef, bool)> {
+    fn all_pvsystems(&self) -> Vec<(String, ElemId, bool)> {
         self.pv_systems
             .iter()
             .map(|&r| {
@@ -2372,7 +2185,7 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
             .collect()
     }
 
-    fn pv_snap(&self, r: ElemRef) -> PvSnap {
+    fn pv_snap(&self, r: ElemId) -> PvSnap {
         let pv = Self::pvsystem(self.store, r);
         let bus_ref = pv.cd.terminals[0].bus_ref;
         let bus_kvbase = bus_ref
@@ -2390,47 +2203,47 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
             bus_kvbase,
         }
     }
-    fn pv_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {
+    fn pv_vterminal_mags(&mut self, r: ElemId) -> Vec<f64> {
         let elem = self.store.ckt_elem_mut(r);
         elem.cd_mut().compute_vterminal(self.node_v);
         let cd = elem.cd();
         (0..cd.nphases).map(|i| cd.vterminal[i].norm()).collect()
     }
-    fn pv_present_kvar(&self, r: ElemRef) -> f64 {
+    fn pv_present_kvar(&self, r: ElemId) -> f64 {
         Self::pvsystem(self.store, r).present_kvar()
     }
-    fn pv_present_kw(&self, r: ElemRef) -> f64 {
+    fn pv_present_kw(&self, r: ElemId) -> f64 {
         Self::pvsystem(self.store, r).present_kw()
     }
 
-    fn pv_set_avr_mode(&mut self, r: ElemRef, value: bool) {
+    fn pv_set_avr_mode(&mut self, r: ElemId, value: bool) {
         Self::pvsystem_mut(self.store, r).base.avr_mode = value;
     }
-    fn pv_set_vw_mode(&mut self, r: ElemRef, value: bool) {
+    fn pv_set_vw_mode(&mut self, r: ElemId, value: bool) {
         Self::pvsystem_mut(self.store, r).base.vw_mode = value;
     }
-    fn pv_set_var_mode(&mut self, r: ElemRef, mode: i32) {
+    fn pv_set_var_mode(&mut self, r: ElemId, mode: i32) {
         Self::pvsystem_mut(self.store, r).base.var_mode = mode;
     }
-    fn pv_set_nominal(&mut self, r: ElemRef) {
+    fn pv_set_nominal(&mut self, r: ElemId) {
         let sys = self.sys;
         Self::pvsystem_mut(self.store, r).set_nominal_der_output(sys);
     }
-    fn pv_set_present_kw(&mut self, r: ElemRef, value: f64) {
+    fn pv_set_present_kw(&mut self, r: ElemId, value: f64) {
         // Pascal `PresentkW` WRITE is `kWRequested` directly (no var-mode side
         // effect, unlike `Set_Presentkvar`).
         Self::pvsystem_mut(self.store, r).kw_requested = value;
     }
-    fn pv_set_pu_pmpp(&mut self, r: ElemRef, value: f64) {
+    fn pv_set_pu_pmpp(&mut self, r: ElemId, value: f64) {
         Self::pvsystem_mut(self.store, r).f_pu_pmpp = value;
     }
-    fn pv_set_present_kvar(&mut self, r: ElemRef, value: f64) {
+    fn pv_set_present_kvar(&mut self, r: ElemId, value: f64) {
         // Pascal `Presentkvar` property WRITE is a plain field write to
         // `kvarRequested` (PVsystem.pas l.334: `WRITE kvarRequested`) — no var-mode
         // side effect; `DoPendingAction` has already set `Varmode := VARMODEKVAR`.
         Self::pvsystem_mut(self.store, r).kvar_requested = value;
     }
-    fn pv_set_vreg_var(&mut self, r: ElemRef, value: f64) {
+    fn pv_set_vreg_var(&mut self, r: ElemId, value: f64) {
         // Pascal `Set_Variable(5, value)` — the dynamic state variable `Vreg`.
         Self::pvsystem_mut(self.store, r).vreg = value;
     }

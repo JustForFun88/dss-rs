@@ -26,7 +26,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::pd::winding::{TermRef, Winding};
-use crate::elements::traits::{ElemRef, SysCtx};
+use crate::elements::traits::{ElemId, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
@@ -318,7 +318,7 @@ pub struct Transformer {
     substation_name: String,
     xfmr_bank: String,
     xfmr_code_name: String,
-    xfmr_code_ref: Option<ElemRef>,
+    xfmr_code_ref: Option<ElemId>,
     core_type: CoreType,
     xhl: f64,
     xht: f64,
@@ -491,23 +491,4 @@ pub trait ControlledTransformer {
     fn winding_voltages(&mut self, term: usize, node_v: &[Complex64], vbuffer: &mut [Complex64]);
     /// `ControlledElement.GetCurrents(CBuffer)`.
     fn terminal_currents(&mut self, node_v: &[Complex64], sys: &SysCtx, cbuffer: &mut [Complex64]);
-}
-
-/// View a [`DssObject`](crate::obj::base::DssObject) as a
-/// [`ControlledTransformer`] — the Pascal `TControlledTransformerObj` base,
-/// implemented by both `Transformer` and `AutoTrans` (the two members of
-/// RegControl's `Transf_Or_AutoTrans_ProxyClass`, `RegControl.pas:264`). Used
-/// by every surface that reaches the controlled transformer through a
-/// RegControl reference (`Export`/`Show Taps`, the live `TapNum` reads).
-pub fn as_controlled_transformer(
-    obj: &dyn crate::obj::base::DssObject,
-) -> Option<&dyn ControlledTransformer> {
-    let any = obj.as_any();
-    if let Some(t) = any.downcast_ref::<Transformer>() {
-        return Some(t);
-    }
-    if let Some(t) = any.downcast_ref::<crate::elements::pd::auto_trans::AutoTrans>() {
-        return Some(t);
-    }
-    None
 }

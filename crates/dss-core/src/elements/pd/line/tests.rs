@@ -9,7 +9,8 @@ use super::*;
 use crate::elements::general::conductor_data::{CnDataObj, WireDataObj, cn_data, wire_data};
 use crate::elements::general::line_geometry::{self, LineGeometryObj};
 use crate::elements::general::line_spacing::{self, LineSpacingObj};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, SysCtx};
+use crate::obj::arena::{ClassArena, ResolvedObj};
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
@@ -49,12 +50,20 @@ fn scalar(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, value: &str) {
 
 /// Mirror the executive's `edit_property` for a single (resolved) object
 /// reference: set the reference, record the set order, run side effects.
-fn set_ref(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, target: &dyn DssObject) {
+fn set_ref(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, target: &ClassArena) {
     let idx = cls.property_index(name).expect("known property");
-    let r = ElemRef { cls: 0, idx: 0 };
-    obj.set_object_ref(idx, target.data().name().to_string(), Some((r, target)));
+    let resolved = ResolvedObj::new(target, 0);
+    obj.set_object_ref(idx, resolved.name().to_string(), Some(resolved));
     obj.data_mut().set_as_next_seq(idx);
     obj.side_effects(idx, 0);
+}
+
+/// A one-object arena holding a clone of `target` — the test stand-in for the
+/// registry class arena a real `ObjectRef` resolve borrows from.
+fn arena_of<T: crate::obj::arena::ArenaClass + Clone>(target: &T) -> ClassArena {
+    let mut a = ClassArena::empty_for(T::CLASS_NAME).expect("registered class");
+    a.push(target.clone()).expect("same class");
+    a
 }
 
 fn test_sys() -> SysCtx {
@@ -109,7 +118,7 @@ fn build_overhead_geometry() -> LineGeometryObj {
     scalar(&gcls, &mut g, "nphases", "3");
     for (k, x) in ["0", "1", "2"].iter().enumerate() {
         scalar(&gcls, &mut g, "cond", &(k + 1).to_string());
-        set_ref(&gcls, &mut g, "wire", &w);
+        set_ref(&gcls, &mut g, "wire", &arena_of(&w));
         scalar(&gcls, &mut g, "x", x);
         scalar(&gcls, &mut g, "h", "10");
         scalar(&gcls, &mut g, "units", "m");
@@ -131,7 +140,7 @@ fn geometry_path_builds_oracle_z_and_yc() {
     let mut line = Line::new("l1");
     scalar(&lcls, &mut line, "length", "1");
     scalar(&lcls, &mut line, "units", "m");
-    set_ref(&lcls, &mut line, "geometry", &geom);
+    set_ref(&lcls, &mut line, "geometry", &arena_of(&geom));
 
     // FetchGeometryCode adopted the geometry.
     assert_eq!(line.geometry_name, "geo1");
@@ -208,7 +217,7 @@ fn geometry_length_units_scale_the_total_z() {
     let mut line = Line::new("l1");
     scalar(&lcls, &mut line, "length", "2");
     scalar(&lcls, &mut line, "units", "km");
-    set_ref(&lcls, &mut line, "geometry", &geom);
+    set_ref(&lcls, &mut line, "geometry", &arena_of(&geom));
     line.calc_yprim(&test_sys());
 
     let z = line.z.as_ref().expect("z");
@@ -228,7 +237,7 @@ fn sym_scalar_detaches_geometry() {
     let lcls = class_props(&enums);
     let geom = build_overhead_geometry();
     let mut line = Line::new("l1");
-    set_ref(&lcls, &mut line, "geometry", &geom);
+    set_ref(&lcls, &mut line, "geometry", &arena_of(&geom));
     assert!(line.geometry_obj.is_some());
 
     scalar(&lcls, &mut line, "r1", "0.1");
@@ -318,12 +327,7 @@ fn build_spacing(
 
 /// Apply an object-reference *array* edit (the `wires=`/`cncables=`/`tscables=`
 /// forms), asserting no deferred error.
-fn set_ref_array(
-    cls: &ClassProps,
-    obj: &mut dyn DssObject,
-    name: &str,
-    targets: &[&dyn DssObject],
-) {
+fn set_ref_array(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, targets: &[ClassArena]) {
     let errs = try_ref_array(cls, obj, name, targets);
     assert!(errs.is_empty(), "set {name}: {errs:?}");
 }
@@ -334,12 +338,15 @@ fn try_ref_array(
     cls: &ClassProps,
     obj: &mut dyn DssObject,
     name: &str,
-    targets: &[&dyn DssObject],
+    targets: &[ClassArena],
 ) -> crate::diag::ErrorLog {
     let idx = cls.property_index(name).expect("known property");
     let refs: Vec<crate::obj::base::ObjectRefArrayItem> = targets
         .iter()
-        .map(|t| Some((t.data().name().to_string(), ElemRef { cls: 0, idx: 0 }, *t)))
+        .map(|a| {
+            let r = ResolvedObj::new(a, 0);
+            Some((r.name().to_string(), r))
+        })
         .collect();
     obj.set_object_ref_array(idx, &refs);
     obj.data_mut().set_as_next_seq(idx);
@@ -381,7 +388,7 @@ fn spacing_wires_match_geometry_and_oracle() {
     let mut line = Line::new("l1");
     scalar(&lcls, &mut line, "length", "1");
     scalar(&lcls, &mut line, "units", "m");
-    set_ref(&lcls, &mut line, "spacing", &s);
+    set_ref(&lcls, &mut line, "spacing", &arena_of(&s));
 
     // FetchLineSpacing sized the Line to the spacing's phase count and allocated
     // the (still-empty) wire array; the spacing is not yet "specified".
@@ -390,7 +397,12 @@ fn spacing_wires_match_geometry_and_oracle() {
     assert_eq!(line.line_wire_data.len(), 3);
     assert!(line.line_wire_data.iter().all(|w| w.is_none()));
 
-    set_ref_array(&lcls, &mut line, "wires", &[&w, &w, &w]);
+    set_ref_array(
+        &lcls,
+        &mut line,
+        "wires",
+        &[arena_of(&w), arena_of(&w), arena_of(&w)],
+    );
     assert!(line.spacing_specified());
     assert!(!line.sym_components_model);
 
@@ -428,7 +440,7 @@ fn spacing_cncables_match_geometry() {
     scalar(&gcls, &mut geom, "reduce", "no");
     for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
         scalar(&gcls, &mut geom, "cond", &(k + 1).to_string());
-        set_ref(&gcls, &mut geom, "cncable", &c);
+        set_ref(&gcls, &mut geom, "cncable", &arena_of(&c));
         scalar(&gcls, &mut geom, "x", x);
         scalar(&gcls, &mut geom, "h", "-1.2");
         scalar(&gcls, &mut geom, "units", "m");
@@ -440,8 +452,13 @@ fn spacing_cncables_match_geometry() {
     let mut line = Line::new("l1");
     scalar(&lcls, &mut line, "length", "1");
     scalar(&lcls, &mut line, "units", "m");
-    set_ref(&lcls, &mut line, "spacing", &s);
-    set_ref_array(&lcls, &mut line, "cncables", &[&c, &c, &c]);
+    set_ref(&lcls, &mut line, "spacing", &arena_of(&s));
+    set_ref_array(
+        &lcls,
+        &mut line,
+        "cncables",
+        &[arena_of(&c), arena_of(&c), arena_of(&c)],
+    );
 
     // The cable form selected the ConcentricNeutral model.
     assert_eq!(line.fphase_choice, ConductorChoice::ConcentricNeutral);
@@ -500,7 +517,7 @@ fn spacing_tscables_match_geometry() {
     scalar(&gcls, &mut geom, "reduce", "no");
     for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
         scalar(&gcls, &mut geom, "cond", &(k + 1).to_string());
-        set_ref(&gcls, &mut geom, "tscable", &t);
+        set_ref(&gcls, &mut geom, "tscable", &arena_of(&t));
         scalar(&gcls, &mut geom, "x", x);
         scalar(&gcls, &mut geom, "h", "-1.2");
         scalar(&gcls, &mut geom, "units", "m");
@@ -512,8 +529,13 @@ fn spacing_tscables_match_geometry() {
     let mut line = Line::new("l1");
     scalar(&lcls, &mut line, "length", "1");
     scalar(&lcls, &mut line, "units", "m");
-    set_ref(&lcls, &mut line, "spacing", &s);
-    set_ref_array(&lcls, &mut line, "tscables", &[&t, &t, &t]);
+    set_ref(&lcls, &mut line, "spacing", &arena_of(&s));
+    set_ref_array(
+        &lcls,
+        &mut line,
+        "tscables",
+        &[arena_of(&t), arena_of(&t), arena_of(&t)],
+    );
 
     assert_eq!(line.fphase_choice, ConductorChoice::TapeShield);
     line.calc_yprim(&test_sys());
@@ -543,13 +565,13 @@ fn spacing_buried_neutral_via_cncables_then_wires() {
     scalar(&gcls, &mut geom, "reduce", "yes");
     for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
         scalar(&gcls, &mut geom, "cond", &(k + 1).to_string());
-        set_ref(&gcls, &mut geom, "cncable", &c);
+        set_ref(&gcls, &mut geom, "cncable", &arena_of(&c));
         scalar(&gcls, &mut geom, "x", x);
         scalar(&gcls, &mut geom, "h", "-1.2");
         scalar(&gcls, &mut geom, "units", "m");
     }
     scalar(&gcls, &mut geom, "cond", "4");
-    set_ref(&gcls, &mut geom, "wire", &w);
+    set_ref(&gcls, &mut geom, "wire", &arena_of(&w));
     scalar(&gcls, &mut geom, "x", "0.1");
     scalar(&gcls, &mut geom, "h", "-1.0");
     scalar(&gcls, &mut geom, "units", "m");
@@ -566,10 +588,15 @@ fn spacing_buried_neutral_via_cncables_then_wires() {
     let mut line = Line::new("l1");
     scalar(&lcls, &mut line, "length", "1");
     scalar(&lcls, &mut line, "units", "m");
-    set_ref(&lcls, &mut line, "spacing", &s);
-    set_ref_array(&lcls, &mut line, "cncables", &[&c, &c, &c]);
+    set_ref(&lcls, &mut line, "spacing", &arena_of(&s));
+    set_ref_array(
+        &lcls,
+        &mut line,
+        "cncables",
+        &[arena_of(&c), arena_of(&c), arena_of(&c)],
+    );
     // The bare neutral: `wires=[w]` with FPhaseChoice=CN ⇒ istart=NPhases+1=4.
-    set_ref_array(&lcls, &mut line, "wires", &[&w]);
+    set_ref_array(&lcls, &mut line, "wires", &[arena_of(&w)]);
 
     // Reduced to 3 phases (NConds=4 > NPhases=3 ⇒ FReduce).
     assert_eq!(line.cd.nphases, 3);
@@ -594,9 +621,9 @@ fn set_wires_wrong_count_errors() {
     let w = build_wire();
     let s = build_spacing("sp3", 3, 3, &["0", "1", "2"], &["10", "10", "10"]);
     let mut line = Line::new("l1");
-    set_ref(&lcls, &mut line, "spacing", &s);
+    set_ref(&lcls, &mut line, "spacing", &arena_of(&s));
 
-    let errs = try_ref_array(&lcls, &mut line, "wires", &[&w, &w]);
+    let errs = try_ref_array(&lcls, &mut line, "wires", &[arena_of(&w), arena_of(&w)]);
     assert!(
         errs.iter().any(|e| e.contains("Unexpected number")),
         "expected a count error, got {errs:?}"
@@ -613,8 +640,13 @@ fn sym_scalar_detaches_spacing() {
     let w = build_wire();
     let s = build_spacing("sp3", 3, 3, &["0", "1", "2"], &["10", "10", "10"]);
     let mut line = Line::new("l1");
-    set_ref(&lcls, &mut line, "spacing", &s);
-    set_ref_array(&lcls, &mut line, "wires", &[&w, &w, &w]);
+    set_ref(&lcls, &mut line, "spacing", &arena_of(&s));
+    set_ref_array(
+        &lcls,
+        &mut line,
+        "wires",
+        &[arena_of(&w), arena_of(&w), arena_of(&w)],
+    );
     assert!(line.spacing_specified());
 
     scalar(&lcls, &mut line, "r1", "0.1");
@@ -638,9 +670,14 @@ fn cncables_excess_count_drops_extras() {
     let mut line = Line::new("l1");
     scalar(&lcls, &mut line, "length", "1");
     scalar(&lcls, &mut line, "units", "m");
-    set_ref(&lcls, &mut line, "spacing", &s);
+    set_ref(&lcls, &mut line, "spacing", &arena_of(&s));
     // Four cables for a three-wire spacing — the fourth is dropped, no error.
-    set_ref_array(&lcls, &mut line, "cncables", &[&c, &c, &c, &c]);
+    set_ref_array(
+        &lcls,
+        &mut line,
+        "cncables",
+        &[arena_of(&c), arena_of(&c), arena_of(&c), arena_of(&c)],
+    );
     assert_eq!(line.line_wire_data.len(), 3);
     assert!(line.line_wire_data.iter().all(|w| w.is_some()));
 
@@ -660,7 +697,12 @@ fn cncables_without_spacing_errors() {
     let lcls = class_props(&enums);
     let c = build_cn();
     let mut line = Line::new("l1");
-    let errs = try_ref_array(&lcls, &mut line, "cncables", &[&c, &c, &c]);
+    let errs = try_ref_array(
+        &lcls,
+        &mut line,
+        "cncables",
+        &[arena_of(&c), arena_of(&c), arena_of(&c)],
+    );
     assert!(
         errs.iter().any(|e| e.contains("No objects are expected")),
         "expected error 402, got {errs:?}"
@@ -700,13 +742,13 @@ fn conductors_array_matches_buried_neutral_and_oracle() {
     scalar(&gcls, &mut geom, "reduce", "yes");
     for (k, x) in ["0", "0.1", "0.2"].iter().enumerate() {
         scalar(&gcls, &mut geom, "cond", &(k + 1).to_string());
-        set_ref(&gcls, &mut geom, "cncable", &c);
+        set_ref(&gcls, &mut geom, "cncable", &arena_of(&c));
         scalar(&gcls, &mut geom, "x", x);
         scalar(&gcls, &mut geom, "h", "-1.2");
         scalar(&gcls, &mut geom, "units", "m");
     }
     scalar(&gcls, &mut geom, "cond", "4");
-    set_ref(&gcls, &mut geom, "wire", &w);
+    set_ref(&gcls, &mut geom, "wire", &arena_of(&w));
     scalar(&gcls, &mut geom, "x", "0.1");
     scalar(&gcls, &mut geom, "h", "-1.0");
     scalar(&gcls, &mut geom, "units", "m");
@@ -723,11 +765,16 @@ fn conductors_array_matches_buried_neutral_and_oracle() {
     let mut line = Line::new("l1");
     scalar(&lcls, &mut line, "length", "1");
     scalar(&lcls, &mut line, "units", "m");
-    set_ref(&lcls, &mut line, "spacing", &s);
+    set_ref(&lcls, &mut line, "spacing", &arena_of(&s));
     // The single mixed list — 3 CN phases + 1 bare neutral — instead of the
     // `cncables=` then `wires=` two-step. `set_ref_array` runs the resolved-ref
     // write + the `CONDUCTORS` side effect (what the parser would call).
-    set_ref_array(&lcls, &mut line, "conductors", &[&c, &c, &c, &w]);
+    set_ref_array(
+        &lcls,
+        &mut line,
+        "conductors",
+        &[arena_of(&c), arena_of(&c), arena_of(&c), arena_of(&w)],
+    );
 
     // The list inferred ConcentricNeutral (last valid phase conductor) and filled
     // every slot including the slot-4 neutral.
@@ -766,8 +813,13 @@ fn conductors_array_overhead_matches_wires_and_oracle() {
     let mut line = Line::new("l1");
     scalar(&lcls, &mut line, "length", "1");
     scalar(&lcls, &mut line, "units", "m");
-    set_ref(&lcls, &mut line, "spacing", &s);
-    set_ref_array(&lcls, &mut line, "conductors", &[&w, &w, &w]);
+    set_ref(&lcls, &mut line, "spacing", &arena_of(&s));
+    set_ref_array(
+        &lcls,
+        &mut line,
+        "conductors",
+        &[arena_of(&w), arena_of(&w), arena_of(&w)],
+    );
 
     // No cable in the phase set → Unknown, defaulted to Overhead by the side
     // effect's `if fphase_choice = Unknown then Overhead` fallback.
@@ -795,8 +847,13 @@ fn conductors_all_none_after_wires_clears_wires_seq() {
     let w = build_wire();
     let s = build_spacing("sp3", 3, 3, &["0", "1", "2"], &["10", "10", "10"]);
     let mut line = Line::new("l1");
-    set_ref(&lcls, &mut line, "spacing", &s);
-    set_ref_array(&lcls, &mut line, "wires", &[&w, &w, &w]);
+    set_ref(&lcls, &mut line, "spacing", &arena_of(&s));
+    set_ref_array(
+        &lcls,
+        &mut line,
+        "wires",
+        &[arena_of(&w), arena_of(&w), arena_of(&w)],
+    );
     // The `wires=` write recorded the Wires set-mark and filled every slot.
     assert!(line.cd.obj.prp_specified(prop::WIRES), "Wires mark set");
     assert!(line.line_wire_data.iter().all(|o| o.is_some()));

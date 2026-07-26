@@ -38,6 +38,7 @@ use crate::solution::ymatrix::{BuildOption, build_y_matrix};
 use super::power_flow::get_source_inj_currents;
 use super::state::{NCIM_PQ_NODE, NCIM_PV_NODE};
 use super::{Solution, SolveEnv, SolveResult};
+use crate::elements::traits::TypedStore;
 
 const ZERO: Complex64 = Complex64::ZERO;
 
@@ -171,7 +172,7 @@ fn ncim_do_force_flat_start(ckt: &mut Circuit) {
 /// Read the first circuit element's VSource `(kVBase, PerUnit, Angle)`.
 fn read_first_vsource(ckt: &Circuit, env: &SolveEnv) -> Option<(f64, f64, f64)> {
     let r = *ckt.ckt_elements.first()?;
-    let src = env.store.obj(r).as_any().downcast_ref::<VSource>()?;
+    let src = env.store.typed::<VSource>(r)?;
     Some((src.kv_base, src.per_unit, src.angle))
 }
 
@@ -248,9 +249,7 @@ fn ncim_get_num_generators(ckt: &mut Circuit, env: &mut SolveEnv, init_q: bool) 
     for r in gens {
         let gobj = env
             .store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<Generator>()
+            .typed_mut::<Generator>(r)
             .expect("generators list holds Generators");
         if !gobj.cd.enabled {
             continue;
@@ -332,9 +331,8 @@ fn ncim_get_powers(ckt: &mut Circuit, env: &mut SolveEnv) {
     // Generators appear in `pc_elements`.
     let pcs = ckt.pc_elements.clone();
     for r in pcs {
-        let obj = env.store.obj_mut(r);
-        if obj.as_any().downcast_ref::<Load>().is_some() {
-            let load = obj.as_any_mut().downcast_mut::<Load>().unwrap();
+        if env.store.typed::<Load>(r).is_some() {
+            let load = env.store.typed_mut::<Load>(r).expect("checked above");
             if !load.cd.enabled {
                 continue;
             }
@@ -361,8 +359,8 @@ fn ncim_get_powers(ckt: &mut Circuit, env: &mut SolveEnv) {
                     load.cd.iterminal[p] = (ld_power / ld_volt).conj();
                 }
             }
-        } else if obj.as_any().downcast_ref::<Generator>().is_some() {
-            let gobj = obj.as_any_mut().downcast_mut::<Generator>().unwrap();
+        } else if env.store.typed::<Generator>(r).is_some() {
+            let gobj = env.store.typed_mut::<Generator>(r).expect("checked above");
             if !gobj.cd.enabled {
                 continue;
             }
@@ -481,9 +479,7 @@ fn ncim_build_jacobian(ckt: &mut Circuit, env: &mut SolveEnv) {
     for r in gens {
         let gobj = env
             .store
-            .obj(r)
-            .as_any()
-            .downcast_ref::<Generator>()
+            .typed::<Generator>(r)
             .expect("generators list holds Generators");
         if gobj.cd.enabled && gobj.gen_model == 3 {
             let nphases = gobj.cd.nphases;
@@ -513,9 +509,7 @@ fn ncim_init_pq_gen(ckt: &mut Circuit, env: &mut SolveEnv) {
     for r in gens {
         let gobj = env
             .store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<Generator>()
+            .typed_mut::<Generator>(r)
             .expect("generators list holds Generators");
         if gobj.cd.enabled && gobj.gen_model != 3 {
             gobj.delta_q_nom = vec![gobj.q_nominal_per_phase];
@@ -548,9 +542,7 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
     for r in gens {
         let gobj = env
             .store
-            .obj_mut(r)
-            .as_any_mut()
-            .downcast_mut::<Generator>()
+            .typed_mut::<Generator>(r)
             .expect("generators list holds Generators");
         if !gobj.cd.enabled {
             continue;

@@ -5,7 +5,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, RefSnapshot};
 use crate::elements::general::tcc_curve::TccCurveObj;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::exec::Dss;
 use crate::obj::base::DssObject;
 use crate::solution::control_queue::TimeRec;
@@ -86,7 +86,6 @@ impl CktElement for MockElem {
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
     }
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {}
     fn calc_yprim(&mut self, _sys: &SysCtx) {}
     fn get_currents(&mut self, _sys: &SysCtx, _node_v: &[Complex64], curr: &mut [Complex64]) {
         curr.fill(Complex64::ZERO);
@@ -148,7 +147,7 @@ impl Scratch {
             t,
             dbl_hour: int_hour as f64 + t / 3600.0,
             control_iter: 1,
-            self_ref: ElemRef { cls: 0, idx: 0 },
+            self_ref: ElemId::new(0, 0),
         }
     }
 }
@@ -193,7 +192,7 @@ fn armed_relay() -> Relay {
         nterms: 1,
         buses: vec!["b".into()],
     });
-    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.ccd.controlled_element = Some(ElemId::new(0, 0));
     r
 }
 
@@ -919,7 +918,7 @@ fn doc_p1_blocking_blocks_on_forward_power() {
 fn doc_reverse_power_trips_through_full_sample() {
     let mut r = Relay::new("r1");
     r.control_type = RelayControlType::Doc;
-    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.ccd.controlled_element = Some(ElemId::new(0, 0));
     let mut ctrl = MockElem::new(3);
     let mut mon = MockElem::new(3);
     let v = |deg: f64| Complex64::from_polar(1000.0, f64::to_radians(deg));
@@ -939,7 +938,7 @@ fn doc_reverse_power_trips_through_full_sample() {
 fn doc_three_phase_forward_power_blocks() {
     let mut r = Relay::new("r1");
     r.control_type = RelayControlType::Doc;
-    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.ccd.controlled_element = Some(ElemId::new(0, 0));
     let mut ctrl = MockElem::new(3);
     let mut mon = MockElem::new(3);
     let v = |deg: f64| Complex64::from_polar(1000.0, f64::to_radians(deg));
@@ -961,7 +960,7 @@ fn distance_relay() -> Relay {
     r.dist_k0 = Complex64::ZERO;
     r.mground = 1.0;
     r.mphase = 1.0;
-    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.ccd.controlled_element = Some(ElemId::new(0, 0));
     r
 }
 
@@ -1026,7 +1025,7 @@ fn generic_relay() -> Relay {
     r.monitor_var_index = 1;
     r.over_trip = 1.2;
     r.under_trip = 0.8;
-    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.ccd.controlled_element = Some(ElemId::new(0, 0));
     r
 }
 
@@ -1076,7 +1075,7 @@ fn generic_recalc_resolves_and_errors_on_missing_var() {
         nterms: 1,
         buses: vec!["b".into()],
     });
-    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.ccd.controlled_element = Some(ElemId::new(0, 0));
     r.recalc();
     assert_eq!(r.monitor_var_index, 2);
 
@@ -1090,7 +1089,7 @@ fn generic_recalc_resolves_and_errors_on_missing_var() {
         nterms: 1,
         buses: vec!["b".into()],
     });
-    r2.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r2.ccd.controlled_element = Some(ElemId::new(0, 0));
     r2.recalc();
     assert_eq!(r2.monitor_var_index, -1);
     let errs = r2.ccd.cd.obj.take_errors();
@@ -1108,7 +1107,7 @@ fn recalc_out_of_range_terminal_errors_384_and_requests_abort() {
         nterms: 1,
         buses: vec!["b".into()],
     });
-    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.ccd.controlled_element = Some(ElemId::new(0, 0));
     r.recalc();
     assert!(r.ccd.cd.obj.take_abort());
     let errs = r.ccd.cd.obj.take_errors();
@@ -1134,7 +1133,7 @@ fn td21_relay() -> Relay {
     r.mground = 1.0;
     r.mphase = 1.0;
     r.phase_trip = 1.0;
-    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.ccd.controlled_element = Some(ElemId::new(0, 0));
     r
 }
 
@@ -1469,13 +1468,13 @@ fn line_term1_max_current(dss: &mut Dss, name: &str) -> f64 {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
     use crate::obj::base::DssObject;
 
     #[test]
     fn resyncs_monitored_and_recomputes_vbase() {
         let mut r = Relay::new("r1");
-        r.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 });
+        r.ccd.monitored_element = Some(ElemId::new(1, 0));
         r.monitored_element_terminal = 1;
         r.kv_base = 12.47;
         r.pct_pickup47 = 2.0;
@@ -1496,7 +1495,7 @@ mod make_pos_seq_tests {
         assert!((r.vbase - 12_470.0).abs() < 1e-9);
         assert!((r.pickup_volts47 - 249.4).abs() < 1e-9);
         assert!(plan.run_base);
-        assert_eq!(r.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+        assert_eq!(r.monitored_element_ref(), Some(ElemId::new(1, 0)));
     }
 
     #[test]

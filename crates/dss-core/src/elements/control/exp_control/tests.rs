@@ -76,7 +76,7 @@ mod dispatch {
     use super::super::compute::{ExpDispatchEnv, PvFind, PvSnap};
     use super::super::{ExpControl, prop};
     use crate::elements::pc::pvsystem::VARMODE_KVAR;
-    use crate::elements::traits::ElemRef;
+    use crate::elements::traits::ElemId;
     use crate::obj::base::DssObject;
     use crate::solution::CTRLSTATIC;
 
@@ -159,8 +159,8 @@ mod dispatch {
                 loads_need_updating: false,
             }
         }
-        fn idx(r: ElemRef) -> usize {
-            r.idx
+        fn idx(r: ElemId) -> usize {
+            r.index()
         }
     }
     impl ExpDispatchEnv for MockExpEnv {
@@ -171,18 +171,18 @@ mod dispatch {
                 .position(|d| d.name.eq_ignore_ascii_case(name))
             {
                 None => PvFind::NotFound,
-                Some(i) if self.pvs[i].enabled => PvFind::Found(ElemRef { cls: 0, idx: i }),
+                Some(i) if self.pvs[i].enabled => PvFind::Found(ElemId::new(0, i)),
                 Some(_) => PvFind::Disabled,
             }
         }
-        fn all_pvsystems(&self) -> Vec<(String, ElemRef, bool)> {
+        fn all_pvsystems(&self) -> Vec<(String, ElemId, bool)> {
             self.pvs
                 .iter()
                 .enumerate()
-                .map(|(i, d)| (d.name.clone(), ElemRef { cls: 0, idx: i }, d.enabled))
+                .map(|(i, d)| (d.name.clone(), ElemId::new(0, i), d.enabled))
                 .collect()
         }
-        fn pv_snap(&self, r: ElemRef) -> PvSnap {
+        fn pv_snap(&self, r: ElemId) -> PvSnap {
             let d = &self.pvs[Self::idx(r)];
             PvSnap {
                 name: d.name.clone(),
@@ -195,36 +195,36 @@ mod dispatch {
                 bus_kvbase: d.bus_kvbase,
             }
         }
-        fn pv_vterminal_mags(&mut self, r: ElemRef) -> Vec<f64> {
+        fn pv_vterminal_mags(&mut self, r: ElemId) -> Vec<f64> {
             let d = &self.pvs[Self::idx(r)];
             vec![d.vmag; d.nphases]
         }
-        fn pv_present_kvar(&self, r: ElemRef) -> f64 {
+        fn pv_present_kvar(&self, r: ElemId) -> f64 {
             self.pvs[Self::idx(r)].present_kvar
         }
-        fn pv_present_kw(&self, r: ElemRef) -> f64 {
+        fn pv_present_kw(&self, r: ElemId) -> f64 {
             self.pvs[Self::idx(r)].present_kw
         }
-        fn pv_set_avr_mode(&mut self, r: ElemRef, value: bool) {
+        fn pv_set_avr_mode(&mut self, r: ElemId, value: bool) {
             self.pvs[Self::idx(r)].avr_mode = value;
         }
-        fn pv_set_vw_mode(&mut self, r: ElemRef, value: bool) {
+        fn pv_set_vw_mode(&mut self, r: ElemId, value: bool) {
             self.pvs[Self::idx(r)].vw_mode = value;
         }
-        fn pv_set_var_mode(&mut self, r: ElemRef, mode: i32) {
+        fn pv_set_var_mode(&mut self, r: ElemId, mode: i32) {
             self.pvs[Self::idx(r)].var_mode = mode;
         }
-        fn pv_set_nominal(&mut self, _r: ElemRef) {}
-        fn pv_set_present_kw(&mut self, r: ElemRef, value: f64) {
+        fn pv_set_nominal(&mut self, _r: ElemId) {}
+        fn pv_set_present_kw(&mut self, r: ElemId, value: f64) {
             self.pvs[Self::idx(r)].requested_kw = value;
         }
-        fn pv_set_pu_pmpp(&mut self, r: ElemRef, value: f64) {
+        fn pv_set_pu_pmpp(&mut self, r: ElemId, value: f64) {
             self.pvs[Self::idx(r)].pu_pmpp = value;
         }
-        fn pv_set_present_kvar(&mut self, r: ElemRef, value: f64) {
+        fn pv_set_present_kvar(&mut self, r: ElemId, value: f64) {
             self.pvs[Self::idx(r)].requested_kvar = value;
         }
-        fn pv_set_vreg_var(&mut self, r: ElemRef, value: f64) {
+        fn pv_set_vreg_var(&mut self, r: ElemId, value: f64) {
             self.pvs[Self::idx(r)].vreg = value;
         }
         fn push_change(&mut self, _delay: f64, code: i32) {
@@ -474,7 +474,7 @@ mod dispatch {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
 
     /// Pascal `TExpControlObj.MakePosSequence` (ExpControl.pas:422): empty
     /// PVSystem-list config is a NIL-deref hazard (Access violation #303, probe
@@ -500,7 +500,7 @@ mod make_pos_seq_tests {
     #[test]
     fn populated_pvsystem_adopts_first_bus_and_phases() {
         let mut ec = ExpControl::new("ec1");
-        ec.ccd.monitored_element = Some(ElemRef { cls: 4, idx: 2 });
+        ec.ccd.monitored_element = Some(ElemId::new(4, 2));
         let ctx = PosSeqCtx {
             monitored: Some(PosSeqElemInfo {
                 nphases: 1,
@@ -514,6 +514,6 @@ mod make_pos_seq_tests {
         assert_eq!(ec.ccd.cd.nphases, 1);
         assert_eq!(ec.ccd.cd.nconds, 1);
         assert_eq!(ec.ccd.cd.get_bus(1), "pvbus");
-        assert_eq!(ec.monitored_element_ref(), Some(ElemRef { cls: 4, idx: 2 }));
+        assert_eq!(ec.monitored_element_ref(), Some(ElemId::new(4, 2)));
     }
 }

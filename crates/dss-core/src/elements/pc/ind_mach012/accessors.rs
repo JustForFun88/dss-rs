@@ -9,7 +9,8 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pc::generator::Connection;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, InjComputeCtx, SysCtx};
+use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::mathutil::power_factor;
 
@@ -21,10 +22,6 @@ impl CktElement for IndMach012 {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
-    }
-
-    fn recalc_element_data(&mut self, sys: &SysCtx) {
-        self.recalc(sys);
     }
 
     /// Pascal `TIndMach012Obj.MakePosSequence` (IndMach012.pas:1424-1426): an
@@ -199,18 +196,6 @@ impl DssObject for IndMach012 {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
 
     fn get_f64(&self, idx: usize) -> f64 {
         use prop::*;
@@ -333,16 +318,10 @@ impl DssObject for IndMach012 {
     }
 
     /// Resolve a shape reference (snapshot-clone like the Generator shape refs).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|(r, _)| r);
-        let load_shape =
-            || resolved.and_then(|(_, o)| o.as_any().downcast_ref::<LoadShapeObj>().cloned());
+        let elem_ref = resolved.map(|o| o.id());
+        let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         match idx {
             YEARLY => {
                 self.yearly_shape = name;
@@ -413,9 +392,5 @@ impl DssObject for IndMach012 {
     fn end_edit(&mut self, sys: &crate::elements::traits::SysCtx) {
         self.recalc(sys);
         self.cd.yprim_invalid = true;
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }

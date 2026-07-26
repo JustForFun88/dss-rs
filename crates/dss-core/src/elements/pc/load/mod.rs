@@ -28,7 +28,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::growth_shape::GrowthShapeObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::traits::{ElemRef, SysCtx};
+use crate::elements::traits::{ElemId, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
@@ -315,18 +315,18 @@ pub struct Load {
     /// `FetchLineCode`, the referenced object is snapshot-cloned at parse time
     /// (PHASE4_PLAN §3.4): `set_nominal_load` then drives `GetMultAtHour` on the
     /// owned copy, since the solve path only carries scalar `SysCtx`. Each
-    /// `_ref` is the resolved object's stable [`ElemRef`] (kept for parity with
+    /// `_ref` is the resolved object's stable [`ElemId`] (kept for parity with
     /// the §3.1 reference pattern; the clone is self-sufficient for the lookup).
     pub yearly_shape_obj: Option<LoadShapeObj>,
     pub daily_shape_obj: Option<LoadShapeObj>,
     pub duty_shape_obj: Option<LoadShapeObj>,
     pub cvr_shape_obj: Option<LoadShapeObj>,
     pub growth_shape_obj: Option<GrowthShapeObj>,
-    pub yearly_shape_ref: Option<ElemRef>,
-    pub daily_shape_ref: Option<ElemRef>,
-    pub duty_shape_ref: Option<ElemRef>,
-    pub cvr_shape_ref: Option<ElemRef>,
-    pub growth_shape_ref: Option<ElemRef>,
+    pub yearly_shape_ref: Option<ElemId>,
+    pub daily_shape_ref: Option<ElemId>,
+    pub duty_shape_ref: Option<ElemId>,
+    pub cvr_shape_ref: Option<ElemId>,
+    pub growth_shape_ref: Option<ElemId>,
 
     /// Pascal `ShapeFactor`: the (P, Q) multiplier from the active shape in a
     /// time-series mode; `(1, 1)` otherwise. Recomputed each `SetNominalLoad`.

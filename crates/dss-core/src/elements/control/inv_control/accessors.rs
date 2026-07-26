@@ -8,7 +8,8 @@ use num_complex::Complex64;
 
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
+use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
 use super::{InvControl, VOLTWATT, WATTPF, WATTVAR, prop};
@@ -157,18 +158,8 @@ impl CktElement for InvControl {
 
     /// Pascal `TControlElem.FControlledElement` - the element this control
     /// acts on (`None` when it drives a list rather than a single element).
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
-    }
-
-    /// Pascal `TInvControlObj.RecalcElementData` (the parse-time subset): attach
-    /// the control's terminal to the first DER's bus. The fleet *dispatch* build
-    /// (`MakeDERList` + `UpdateDERParameters`) needs store access, so it is deferred
-    /// to the first `Sample`; the bus is resolved at edit-completion instead (the
-    /// executive calls [`set_resolved_monitored`](InvControl::set_resolved_monitored)
-    /// before `end_edit` → `recalc`).
-    fn recalc_element_data(&mut self, _sys: &SysCtx) {
-        self.recalc();
     }
 
     /// Pascal `TControlElem.CalcYPrim`: leave YPrim NIL.
@@ -211,7 +202,7 @@ impl CktElement for InvControl {
 
     /// Pascal `TControlElem.MonitoredElement` — resolved so the exec applier can
     /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.ccd.monitored_element
     }
 }
@@ -282,18 +273,7 @@ impl DssObject for InvControl {
     fn data_mut(&mut self) -> &mut DssObjData {
         &mut self.ccd.cd.obj
     }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    fn as_ckt_element(&self) -> Option<&dyn CktElement> {
-        Some(self)
-    }
-    fn as_ckt_element_mut(&mut self) -> Option<&mut dyn CktElement> {
-        Some(self)
-    }
+
     fn as_control(&self) -> Option<&dyn crate::elements::control::control_elem::ControlElem> {
         Some(self)
     }
@@ -456,13 +436,8 @@ impl DssObject for InvControl {
 
     /// The five control curves resolve against XYcurve (snapshot-clone). The
     /// per-mode range check runs in `side_effects` (`ValidateXYCurve`).
-    fn set_object_ref(
-        &mut self,
-        idx: usize,
-        name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
-    ) {
-        let obj = resolved.and_then(|(_, o)| o.as_any().downcast_ref::<XyCurveObj>().cloned());
+    fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
+        let obj = resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             prop::VVC_CURVE1
             | prop::VOLTWATT_CURVE
@@ -573,10 +548,6 @@ impl DssObject for InvControl {
     /// deferred to the first `Sample`).
     fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
         self.recalc();
-    }
-
-    fn clone_box(&self) -> Box<dyn DssObject> {
-        Box::new(self.clone())
     }
 }
 

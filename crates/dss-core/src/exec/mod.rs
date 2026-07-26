@@ -42,7 +42,7 @@ pub(crate) use crate::elements::pc::{
 pub(crate) use crate::elements::pd::{
     auto_trans, capacitor, fault, fuse, gic_transformer, line, reactor, transformer,
 };
-pub(crate) use crate::elements::traits::{CktElement, ElemRef, ElemStore};
+pub(crate) use crate::elements::traits::{CktElement, ElemId, ElemStore, TypedStore};
 pub(crate) use crate::obj::arena::ClassArena;
 pub(crate) use crate::obj::base::DssObject;
 pub(crate) use crate::obj::dss_enum::{EnumId, EnumRegistry};
@@ -178,7 +178,7 @@ pub struct Dss {
     /// `DSS.DSSObjs`: every general (`DSS_OBJECT`) object in global creation
     /// order — the list the whole-circuit `Dump` walks after `CktElements`
     /// (Pascal `ExecHelper.pas:1373`; populated at `AddObject`, `:1899`).
-    dss_objs: Vec<ElemRef>,
+    dss_objs: Vec<ElemId>,
     /// `DSS.DaisySize` (`DSSClass.pas:741`, default 1.0; `Set Daisysize=`):
     /// a GUI daisy-plot marker radius written into the plot-callback payload.
     /// Lives on the DSS context, not the circuit.
@@ -262,6 +262,16 @@ impl Dss {
     #[cfg(test)]
     pub(crate) fn live_arena_class_names(&self) -> Vec<&'static str> {
         self.classes.iter().map(|c| c.arena.class_name()).collect()
+    }
+
+    /// Per registered class, whether `exec/construct.rs` registered it as a
+    /// **circuit-element** class (`DssClass::ckt_class`, which carries an
+    /// `ElemKind`) rather than a plain `DSS_OBJECT` (`dss_object`) — the
+    /// independent oracle for the arena's `ckt`/`data` tag column
+    /// (`obj::arena::tests::arena_tag_matches_registry_ckt_classes`).
+    #[cfg(test)]
+    pub(crate) fn registered_class_is_ckt(&self) -> Vec<bool> {
+        self.classes.iter().map(|c| c.kind.is_some()).collect()
     }
 
     /// The active circuit, if `New circuit.` has run.

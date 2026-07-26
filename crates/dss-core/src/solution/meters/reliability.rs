@@ -7,14 +7,14 @@ use crate::circuit::Circuit;
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::FeederSection;
 use crate::elements::pc::load::Load;
-use crate::elements::traits::{CktElement, ElemRef, ElemStore};
+use crate::elements::traits::{CktElement, ElemId, ElemStore, TypedStore};
 
-use super::downcast_meter;
+use super::meter_mut;
 
 // ===================== Reliability (WP6.6) ==================================
 
 /// FROM bus (0-based index into `ckt.buses`) of a PD element's metered terminal.
-fn pd_from_bus(store: &dyn ElemStore, r: ElemRef) -> usize {
+fn pd_from_bus(store: &dyn ElemStore, r: ElemId) -> usize {
     let cd = store.ckt_elem(r).cd();
     cd.terminals[cd
         .from_terminal
@@ -43,7 +43,7 @@ pub(crate) fn calc_all_reliability_indices(
     for meter_ref in meters {
         // Pascal `pMeter.AssumeRestoration := AssumeRestoration` before the calc;
         // the field is also read by the next zone build's customer roll-up.
-        downcast_meter(store, meter_ref).set_assume_restoration(assume_restoration);
+        meter_mut(store, meter_ref).set_assume_restoration(assume_restoration);
         if let Err(e) = calc_reliability_indices(meter_ref, assume_restoration, ckt, store) {
             errors.push(e);
         }
@@ -61,14 +61,14 @@ pub(crate) fn calc_all_reliability_indices(
 /// their controlled element, so a protected zone reaches the live section/SAIFI
 /// math below.
 fn calc_reliability_indices(
-    meter_ref: ElemRef,
+    meter_ref: ElemId,
     assume_restoration: bool,
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
 ) -> Result<(), String> {
     let meter_full = format!("EnergyMeter.{}", store.obj(meter_ref).data().name());
     let (seq, load_list, source_num_int, source_int_dur) = {
-        let em = downcast_meter(store, meter_ref);
+        let em = meter_mut(store, meter_ref);
         (
             em.sequence_list().to_vec(),
             em.load_list().to_vec(),
@@ -180,7 +180,7 @@ fn calc_reliability_indices(
         // Pascal mutated the meter's `SectionCount` field during the forward
         // sweep, so the abort leaves 0 there (a later `Export Sections` writes
         // no rows) while the stale `FeederSections` array is untouched.
-        downcast_meter(store, meter_ref).set_section_count(0);
+        meter_mut(store, meter_ref).set_section_count(0);
         return Err(
             "Error: No Overcurrent Protection device (Relay, Recloser, or Fuse) defined. \
              Aborting Reliability calc."
@@ -290,9 +290,7 @@ fn calc_reliability_indices(
     for &load_ref in &load_list {
         let (num_cust, rel_w, kw_base, pbus) = {
             let load = store
-                .obj(load_ref)
-                .as_any()
-                .downcast_ref::<Load>()
+                .typed::<Load>(load_ref)
                 .expect("load_list holds Load objects");
             (
                 load.num_customers as f64,
@@ -331,7 +329,7 @@ fn calc_reliability_indices(
         saifi_kw /= dbl_kw;
     }
 
-    let em = downcast_meter(store, meter_ref);
+    let em = meter_mut(store, meter_ref);
     em.set_reliability_results(saifi, saifi_kw, saidi, caidi, cust_interrupts);
     // Persist the section data on the meter (Pascal keeps `SectionCount` +
     // `FeederSections` as fields; `Export Sections` reads them back).

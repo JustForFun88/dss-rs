@@ -64,7 +64,7 @@ mod accessors;
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -137,14 +137,14 @@ pub(crate) trait EspvlDispatchEnv {
     /// NIL deref; only reached by a misconfigured System Controller).
     fn monitored_power(&mut self) -> Complex64;
     /// Pascal `ParentClass.Find(name)` restricted to *enabled* ESPVLControls.
-    fn find_enabled_espvl(&self, name: &str) -> Option<ElemRef>;
+    fn find_enabled_espvl(&self, name: &str) -> Option<ElemId>;
     /// Pascal's "scan the whole ESPVLControl class for enabled controls", creation
     /// order (includes the System Controller itself, exactly like upstream).
-    fn all_enabled_espvls(&self) -> Vec<ElemRef>;
+    fn all_enabled_espvls(&self) -> Vec<ElemId>;
     /// The type-confused `Gen.kWBase` read of a list entry (an ESPVLControl, not a
     /// Generator): its [`phantom_kw_base`](EspvlControl::phantom_kw_base).
-    fn local_kw_base(&self, r: ElemRef) -> f64;
-    fn set_local_kw_base(&mut self, r: ElemRef, value: f64);
+    fn local_kw_base(&self, r: ElemId) -> f64;
+    fn set_local_kw_base(&mut self, r: ElemId, value: f64);
 }
 
 /// `TESPVLControlObj`.
@@ -180,7 +180,7 @@ pub struct EspvlControl {
     local_control_list_size: i32,
     /// `FLocalControlPointerList` — resolved lazily on the first `Sample` (empty
     /// until then), cached across samples exactly like Pascal.
-    local_control_pointer_list: Vec<ElemRef>,
+    local_control_pointer_list: Vec<ElemId>,
 
     /// `FPVSystemNameList` + `FPVSystemWeights` + `FPVSystemListSize`. Round-trip
     /// only — `Sample` never reads these (the Pascal pointer list is dead).
