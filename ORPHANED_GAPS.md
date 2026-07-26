@@ -130,8 +130,17 @@ promoted to `solvable_now` with `engines:"r4133"`, no ledger entry; the two unit
 pins that encoded capi015 cadence artifacts (`pv_qlimit` 8 iters; the `vpu=1.02`
 "shared non-convergence") are re-pinned to live r4133 probe values (4 iters,
 converged). Note: r4133's `PV2PQList` bookkeeping needs no port — the port's
-`Generator.ncim_expv` flag already is it (same set/clear events), and r4133's own
-`ReversePQ2PV`/`DistGenClusters` consumers are dead code.
+per-generator `Generator.ncim_expv` flag already is it, mutated at the same three
+sites (l.1938 / l.2158 / l.2260-2291). Of r4133's consumers, `ReversePQ2PV` and
+`DistGenClusters` are dead code; the one **live** consumer is `Show PV2PQGen`
+(`ShowResults.pas` l.3617, Show verb 35), which the port already has as `Show
+PV2PQ_Conversions`. The settler pass fixed the one site that did not match — the
+zero-Q-limit demotion, whose record r4133 gates on `if InitQ` (l.1936-1939) —
+and dropped an unreachable capi015 leftover from the `Add2Limits` `else` arm.
+Corpus disposition corrected in the same pass: `off:mode-outside-AD-scope` →
+`off:ad-baseline-nonconvergent` (a new reason class; the deck is a `mode=snap`
+deck, so the old label was simply wrong — the measured fact is that the AD
+probe's *normal* arm does not converge, on r4133 as on the port).
 
 ### 1.7 UPFC control modes 2/3/5
 **PORTED 2026-07-18** on `og17-upfc-modes` — see STATUS. The mode dispatch
@@ -174,12 +183,21 @@ routes in `exec/report.rs` to the standard `EXP_ESTIMATION.csv` path and keeps
 the existing #24712 solution guard (5 ∈ the `1..24` set). Three oracle-generated
 goldens (`export_estimation{,_noalloc,_empty}`, `tools/golden/gen_reports.py
 estimation`) gate it at `rel/abs = 0`, GAPS §3-proven (data-bearing, two-process
-byte-identical, and four mutations each caught: `Enabled` filter, the
-percent-error re-zero, the `Nphases` slot count, the WLS column order).
+byte-identical, and four mutations each caught by `est8`: the *sensor* `Enabled`
+filter, the percent-error re-zero, the `Nphases` slot count, the WLS column
+order). Settler pass added the missing coverage: the **meter-side** `Enabled`
+filter (a disabled `energymeter.mdis` in the `estns` deck — the 0.14.5 access
+violation that blocked it is specific to `allocateloads`, which `estns` never
+runs), the blank-line section separator (`compare_export` drops blank lines), and
+the `Nphases > 3` clamp (a Rust-side unit test — upstream UB, not oracle-gateable).
 **Rider done:** verbs 22/28-31 now have their own arms with Pascal's exact
-message (`ExportOptions.pas:543`/`:555-561`; r4133 `:461`/`:467-470`), and the
-default arm's stale "(Phase 8)" wording is gone — it is now unreachable, every
-one of the 64 `EXPORT_OPTIONS` keywords is routed.
+message (`ExportOptions.pas:543`/`:555-561`; r4133 `:461`/`:467-470`) **plus**
+`DoExportCmd`'s last-file tail (`:632-637` / r4133 `:514-516`), which the first
+commit wrongly skipped: `AbortExport` is set only by the unknown-keyword `else`,
+so these five resolved keywords DO overwrite `LastResultFile`/`@lastfile`/
+`@lastexportfile` with `<OutputDirectory><CircuitName_>` — live-probed on the
+pinned 0.14.5 oracle. The default arm's stale "(Phase 8)" wording is gone — it is
+now unreachable, every one of the 64 `EXPORT_OPTIONS` keywords is routed.
 **Not in this slice:** the `Estimate` *command* (`EXEC_COMMANDS` ordinal 90,
 `ExecHelper.pas:4225` = `AllocateLoads` + `Set showexport=yes` + `Export
 Estimation`) is still unrouted and falls to `not_ported_command`; both of its

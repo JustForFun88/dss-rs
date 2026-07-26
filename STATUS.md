@@ -4545,12 +4545,28 @@ convergence test never fired.
   r4133 `Solution.pas` as the spec of record and flags the stale capi015 line
   citations in the per-function docs.
 - **`PV2PQList` deliberately NOT ported.** r4133's list (l.346, appended
-  l.1938/2158, removed l.2260-2291) has no effect on the solve: `ReversePQ2PV`
-  (l.1743) and `DistGenClusters` (l.1687) are dead code (declared, defined, never
-  called), and the only live consumer is `Show PV2PQGen` (`ShowResults.pas`
-  l.3617). The port's `Generator.ncim_expv` is set/cleared on exactly the same two
-  events and already drives `Show PV2PQ_Conversions` — no new solution state, no
-  `elements/**` field change.
+  l.1938/2158, removed l.2260-2291, cleared l.645/l.1119) has no effect on the
+  solve: `ReversePQ2PV` (l.1743) and `DistGenClusters` (l.1687) are dead code
+  (declared, defined, never called), and the one **live** consumer is `Show
+  PV2PQGen` (`ShowResults.pas` l.3617, Show verb 35 at `ShowOptions.pas:388`).
+  The port's per-generator `Generator.ncim_expv` is the equivalent and already
+  drives `Show PV2PQ_Conversions` — no new solution state, no `elements/**` field
+  change.
+  - *Settler correction:* it is **three** mutation sites, not two (the
+    `GetNumGenerators` zero-Q-limit demotion l.1938, the `UpdateGenQ` PV→PQ
+    conversion l.2158, the PQ→PV reversal l.2260-2291), and the first did not
+    match — r4133 gates the append on `if InitQ then` (l.1936-1939) while the port
+    set `ncim_expv` unconditionally. Effect: a *warm* re-solve of a generator
+    edited back to `model=3` with `kvarmax=kvarmin=0` listed a generator in `Show
+    PV2PQ_Conversions` that r4133 would not. Report-only (the model-4 demotion
+    itself is unconditional on both), unreachable from the solver's own state (the
+    PQ→PV promotion at l.2216 requires nonzero limits), and not probeable — `Show`
+    is the sole consumer and is a file+editor path through the DLL — so settled on
+    the r4133 source lines. Fixed (`if init_q { … }`). The same pass dropped a
+    retired-capi015 leftover in the `Add2Limits` `else` arm (`gen_model == 3 &&
+    ncim_expv`, unreachable inside that arm; r4133 l.1972-1973 is plain
+    `Add2Limits := pGen.GenModel = 4`), so the module's "re-verified against
+    r4133" claim now holds at a glance.
 - **Unit pins re-measured, not loosened** (`exec/tests/ncim.rs`): `pv_qlimit`
   8 → **4** iters; `ncim_pv_aggressive_nonconvergence_is_faithful` → renamed
   `ncim_pv_aggressive_qlimit_converges_matches_r4133` (that test pinned a *shared
@@ -4574,17 +4590,65 @@ convergence test never fired.
   whole-model compare (354 nodes, 353 elements, Y, injection, warm-resolve
   iterations = 2) matches r4133 first try. The four existing NCIM cases
   (`modes/ncim/*` + `Kundur2Area`) keep their exact iteration counts.
-  `ad_sweep.json` gets the mandatory disposition `off:mode-outside-AD-scope`,
-  measured: the AD probe's baseline (`compile; set controlmode=off; solve
-  mode=snap`) does **not** converge — and r4133 does the same (probe: plain
-  `Solve` → True/2, `solve mode=snap` → **False/100 on both engines**), so a
-  second `solve mode=snap` on a converged NCIM circuit is shared upstream
-  behavior, not a port defect, and no AD-vs-normal baseline exists for this deck.
+  `ad_sweep.json` gets its mandatory disposition. **Settler correction:** the
+  first label `off:mode-outside-AD-scope` was wrong — that class is defined as
+  "dynamics/harmonics/faultstudy/monte/LD", and this is a `mode=snap` deck, i.e.
+  squarely inside AD's mode scope (what is outside scope is the NCIM *algorithm*,
+  not the mode), and `ad_disposition_is_valid` only checks class membership so the
+  wrong-but-valid label passed the gate and would have misdirected the tracked
+  WP-AD.5 per-deck replay. The measured fact is a different one, re-probed on
+  r4133 2026-07-26 (`epri-worker`, `Version 11.0.0.1`): the AD probe's **normal
+  arm** (`ad_solve_normal` = `compile; set controlmode=off; solve mode=snap`) does
+  not converge, and does not converge upstream either — cold compile True/**9**,
+  then `solve mode=snap` **False/100 on r4133**, exactly as on the port, while a
+  plain warm `Solve` is True/**2** on both; the re-entry non-convergence tracks
+  `mode=snap`, not the control mode (probed with and without `set
+  controlmode=off`: identical). So there is no AD-vs-normal baseline at all. New
+  precise reason class `ad-baseline-nonconvergent` added to `AD_OFF_REASONS`
+  (`corpus_gate/manifest.rs`) + the `ad_sweep.json` comment, and the disposition
+  is now `off:ad-baseline-nonconvergent`. Deliberately *not* folded into
+  `ad-nonconvergent`, which means the AD arm failing on a singular torn zone.
   Population lock regenerated deliberately (`solvable_now` 293→294,
   `skipped_needs_investigation` 13→12, `ad_sweep` 293→294).
 - Gate green (fmt + clippy + `cargo test --workspace`, corpus gate both channels);
-  `tests/corpus` pristine; `TODO(compat)` still exactly 117; no new
-  `downcast_ref`/`as_any`; no existing golden regenerated.
+  `tests/corpus` pristine; `TODO(compat)` unchanged (123 in `crates/**/*.rs`, same
+  as base `634aac98`); no new `downcast_ref`/`as_any`; no existing golden
+  regenerated.
+  - *Settler finding — a real `CorpusGuard` leak, now fixed.* The tree was **not**
+    pristine at the end of the two port steps (20 untracked artifacts under
+    `tests/corpus`), and the cause is not only out-of-band probe runs: a full
+    `cargo test --workspace` **does** leak, reproduced twice with a *different*
+    file set each time (`Test/AutoTrans/Auto3bus_*`+`AutoAuto_*`,
+    `StorageControllerTechNote/{Support,Time}/IEEE8500u_*`,
+    `GFM_IEEE8500/IEEE8500_Mon_*`). Root cause: `CorpusGuard` (`corpus_gate/
+    runner.rs`) snapshotted **per guard**, while the corpus puts many decks in one
+    folder and the scheduler runs cases in parallel — guard A snapshots a clean
+    dir, A's engine writes `X`, guard B then snapshots and adopts `X` as vendored,
+    A drops and sweeps `X`, B's engine rewrites `X`, B's drop keeps it. (Same
+    shared-directory race as the `AutoHLT.dss` `I/O error 103` flake noted under
+    OG-1.10.) Mitigated by sharing **one pristine snapshot per directory** with a
+    refcount, sweeping only when the last guard leaves; new unit test
+    `corpus_guard_overlapping_guards_still_sweep` pins the interleaving, and the
+    existing `corpus_guard_restores_case_dir_recursively` is unchanged.
+    Independently of that, the newly promoted `IEEE118Bus` deck is **not** a
+    leaker: its `show voltages`/`show powers` output was swept on every gate run
+    (the pair only ever appeared after a manual `epri-worker` probe, which chdirs
+    into the deck directory outside any guard).
+  - *Open follow-up (NOT closed here — escape protocol).* The refcount fix removed
+    the `StorageControllerTechNote/{Support,Time}` and `GFM_IEEE8500` leaks (two
+    post-fix gate runs: gone), but `Test/AutoTrans` still leaks intermittently
+    (run 1 clean, run 2 left 8 of `Auto3bus.dss`'s 9 explicitly-named exports).
+    The surviving signature points past the snapshot to a **write that outlives
+    its guard**: 8 files survive while the 9th and last, `Auto3bus_Load_voltage.txt`,
+    was swept — i.e. a later guard on the same folder snapshotted *after* the first
+    8 landed and adopted them as vendored. Note these are `export … file=<relative>`
+    names, which resolve against the DSS **current dir** (the deck dir) and ignore
+    `Set DataPath`, so no scratch-dir redirection can move them. Chasing which
+    writer escapes (pooled `epri-worker` cwd lifetime vs the AD-sweep arms vs the
+    oracle server) is a scheduler-level investigation, out of slice B's scope and
+    pre-existing on `update` — recorded here rather than half-fixed. Workaround
+    until then: the artifacts are gitignored-by-absence only, so remove by exact
+    name before committing (`git status --porcelain -- tests/corpus`).
 
 ---
 
@@ -4614,8 +4678,13 @@ drift into the committed bytes: `python tools/golden/gen_reports.py estimation`)
   - every number `Format('%.6g')` via `report::format::g(v, 6)`.
   `Nphases > 3` is the one non-reproduction: Pascal writes `TempX[i]` for
   `i := 1..Nphases` into a `1..3` stack array (UB, not a defined bug), so
-  `temp_x_slots` clamps. r4133 `Version8/Source/Common/ExportResults.pas:1599` is
-  character-identical to the pinned 0.14.5 source — both gating oracles agree.
+  `temp_x_slots` clamps (unit-pinned by `estimation.rs::temp_x_cadence_clamps_and
+  _does_not_rezero`, added in the settler pass). r4133
+  `Version8/Source/Common/ExportResults.pas:1599` is **semantically** identical to
+  the pinned 0.14.5 source (columns, order, headers, `TempX` cadence, `Max(0.001,·)`
+  clamp — both gating oracles agree on every field), *not* character-identical:
+  r4133 uses `TextFile` + `Write`/`Writeln` (CRLF) and `Uppercase`, 0.14.5 uses
+  `TBufferedFileStream` + `FSWrite`/`FSWriteln` (LF) and `AnsiUpperCase`.
 - **Routing** (`exec/report.rs`): verb 5 → `export_with_mut` →
   `EXP_ESTIMATION.csv`. It needs `&mut classes` only for the WLS getter; the
   solved node voltages are unused (the report is a *read* of stored sensor
@@ -4634,42 +4703,75 @@ drift into the committed bytes: `python tools/golden/gen_reports.py estimation`)
     nowhere near a cancellation floor.
   - `estns` — solved but **not** allocated: nonzero targets vs an all-zero
     `CalculatedCurrent`/`CalculatedVoltage`, so every `%Err` is the `100` form and
-    the WLS residuals are the pure `-Weight * sum(target²)` term.
+    the WLS residuals are the pure `-Weight * sum(target²)` term. Also carries the
+    **disabled EnergyMeter** `mdis` (settler pass — see below).
   - `estem` — no meters, no sensors: both section headers, both bodies empty.
   - GAPS §3 proof: data-bearing; two independent oracle processes byte-identical;
-    four mutations each caught by `est8` — dropping the `Enabled` filter (row count
-    7→8), re-zeroing before the percent-error pass (17.816 → 100), ignoring
-    `Nphases` (M2's `I2 Calc` 0 → 51.3357), swapping the two WLS columns.
-- **Empirical: a disabled EnergyMeter is not gate-able here.** The pinned 0.14.5
-  oracle **access-violates** (#303) inside `allocateloads` when one exists —
-  `TEnergyMeterObj.AllocateLoad` walks a `BranchList` the disabled meter never
-  built (the `if not Enabled then Exit` guard is the r4115/D9 fix the port already
-  carries). So `est8` omits it; the port's `Enabled` filter in *this* report is
-  pinned by the sensor `s4` row instead.
+    four mutations each caught by `est8` — dropping the *sensor* `Enabled` filter
+    (row count 7→8), re-zeroing before the percent-error pass (17.816 → 100),
+    ignoring `Nphases` (M2's `I2 Calc` 0 → 51.3357), swapping the two WLS columns.
+  - `export_estimation_blank_line_layout_matches_oracle` (settler pass) closes the
+    one structural hole the numeric comparator cannot see: `compare_export` runs on
+    `report_lines()`, which drops blank lines, so Pascal's `FSWriteln(F)` separator
+    between the two sections (`ExportResults.pas:1711`) was unpinned. The test
+    replays all three decks and requires the blank-line positions + line count to
+    match the captured oracle file exactly.
+- **Empirical: the meter-side `Enabled` filter (settler pass).** The original
+  claim — "not gate-able, pinned by `estns`+`estem` instead" — was **wrong**:
+  neither fixture had a disabled meter, so deleting the port's
+  `if !em.med.cd.enabled { continue }` changed no golden. Re-probed on the pinned
+  0.14.5 oracle: the access violation (#303, `TEnergyMeterObj.AllocateLoad` walking
+  a `BranchList` the disabled meter never built — the `if not Enabled then Exit`
+  r4115/D9 fix the port already carries) is specific to **`allocateloads`**, which
+  `estns` never runs. `estns` now carries `energymeter.mdis … enabled=no` on its
+  own feeder head; the oracle lists it in `Meters.AllNames` and omits it from the
+  report, so the filter is genuinely pinned (dropping it adds an
+  `"Energymeter.MDIS"` row). Only `export_estimation_noalloc.meta.json` changed —
+  the golden `.txt` bytes are unchanged, and `est8`/`estem` regenerated identical.
 - **Rider — the retired CDPSM profiles.** Verbs 22/28-31 get their own arms
   emitting Pascal's exact fixed text (`<Profile> export no longer supported; use
   Export CIM100`, `ExportOptions.pas:543`/`:555-561`; r4133
-  `Version8/Source/Executive/ExportOptions.pas:461`/`:467-470` — identical), no
-  file, last-file state untouched; covered by
+  `Version8/Source/Executive/ExportOptions.pas:461`/`:467-470` — identical) and
+  write no file. **Corrected in the settler pass:** they do NOT leave the last-file
+  state untouched. `AbortExport` is set only by the unknown-keyword `else`
+  (`ExportOptions.pas:626`), so for these five *resolved* keywords `DoExportCmd`'s
+  tail (`:632-637`; r4133 `:514-516`) still runs `SetLastResultFile` +
+  `@lastexportfile` over the empty default filename (`:354`/`:366-373`) prefixed at
+  `:439` → `<OutputDirectory><CircuitName_>`. Live probe on the pinned 0.14.5
+  oracle: after `export voltages` both vars read `…\t_EXP_VOLTAGES.csv`; after
+  `export cdpsmasset` (which raises #252) both read `…\t_`; after an *unknown*
+  keyword they stay put. The original commit's arms skipped the tail and the test
+  asserted the divergence. Now a shared `Dss::set_export_last_file` implements the
+  tail once, used by both the CDPSM arms and `export_ad` (which already reproduced
+  it — the two were handled opposite ways in the same file).
   `exec/tests/report.rs::export_router_outcomes_match_oracle` (renamed from
   `export_records_scoped_not_ported`, whose `Estimation` example this WP
-  invalidated). The default arm's stale "(Phase 8)" wording is gone; it is now
-  **unreachable** (all 64 keywords routed) and documented as the safety valve for
-  a keyword added to the table without a route.
+  invalidated) now pins `LastResultFile`/`@lastfile`/`@lastexportfile` = `…\t_`
+  plus "no file created" for all five keywords, and the *unchanged* state for the
+  aborting unknown keyword. The default arm's stale "(Phase 8)" wording is gone; it
+  is now **unreachable** (all 64 keywords routed), documented as the safety valve
+  for a keyword added to the table without a route — and therefore **untested by
+  construction**, which the test doc now says out loud.
 - **Left open (out of this worktree's write fence):** the `Estimate` *command*
   (`EXEC_COMMANDS` ordinal 90, `ExecHelper.pas:4225` = `DoAllocateLoadsCmd` +
   `Set showexport=yes` + `Export Estimation`) is still unrouted in
   `exec/command.rs` and falls to `not_ported_command`. Both constituents now
   exist, so it is a small follow-up; recorded in `ORPHANED_GAPS.md` §1.10.
 - Gate green (fmt + clippy + `cargo test --workspace`, corpus gate on both
-  channels). `TODO(compat)` still exactly 117; zero new `downcast_ref`/`as_any`
-  sites; no existing golden regenerated; `tests/corpus` left pristine.
+  channels). `TODO(compat)` unchanged at **123** occurrences in `crates/**/*.rs`
+  (base `634aac98` = 123; the "117" in the worktree brief is stale against this
+  baseline — the only delta anywhere is +2 prose mentions in this file); zero new
+  `downcast_ref`/`as_any` sites; no existing golden regenerated; `tests/corpus`
+  pristine **at commit** (see the `CorpusGuard` item under OG-1.6 — the gate
+  itself still leaks `Test/AutoTrans` artifacts intermittently, so "pristine"
+  means swept by exact name before committing, not "the gate never writes").
   - *Flake note:* one full-workspace run had `corpus_gate` fail with the **r4133
     oracle** raising `I/O error 103` on `Test/AutoTrans/AutoHLT.dss`'s
     `export losses file=…`; it passed on re-run and on every subsequent run. That
     deck family writes report files into the shared `Test/AutoTrans` corpus dir
     from several parallel jobs — a pre-existing scheduler/IO race, untouched by
-    this WP.
+    this WP, and the **same** shared-directory mechanism the settler pass
+    root-caused and partly fixed (OG-1.6 `CorpusGuard` item).
 
 ---
 

@@ -288,7 +288,9 @@ fn show_zone_disabled_meter_is_empty() {
 /// The router's `_ =>` "not ported yet" arm is now **unreachable** — every one of
 /// the 64 `EXPORT_OPTIONS` keywords has a dispatch arm (`Estimation`(5), the last
 /// holdout, landed with ORPHANED_GAPS §1.10). It stays as the safety valve for a
-/// keyword added to the table without a route.
+/// keyword added to the table without a route, and is therefore **untested by
+/// construction**: a newly added keyword left unrouted lands on a path no test
+/// exercises, so route it in the same change that adds it to `EXPORT_OPTIONS`.
 #[test]
 fn export_router_outcomes_match_oracle() {
     // Defensive: route any report write to a scratch dir, never the source tree.
@@ -316,10 +318,16 @@ fn export_router_outcomes_match_oracle() {
     //     28-31; identical in r4133 `Version8/Source/Executive/ExportOptions.pas
     //     :461`/`:467-470`). The keyword still resolves, so it passes the solve
     //     guard (all five are in the #24712 `1..24 | 28..32` set — hence the solve)
-    //     and then emits exactly this message: one error, no file written, the
-    //     last-file state untouched.
+    //     and then emits exactly this message and writes no file. But `AbortExport`
+    //     stays FALSE (only the unknown-keyword `else`, `:626`, sets it), so
+    //     `DoExportCmd`'s tail (`:632-637`, r4133 `:514-516`) DOES overwrite
+    //     `LastResultFile`/`@lastfile`/`@lastexportfile` with the empty default
+    //     name resolved against the output directory — i.e. `<datapath>\t_`.
+    //     Pinned live against the 0.14.5 oracle (`export cdpsmasset` after an
+    //     `export voltages`: both vars go from `…\t_EXP_VOLTAGES.csv` to `…\t_`).
     //     (`Estimation`(5) used to be this case's NOT_PORTED example; it is now a
     //     real export gated by `golden_reports.rs::export_estimation_*`.)
+    let dp = std::env::temp_dir();
     for (keyword, profile) in [
         ("cdpsmasset", "Asset"),
         ("cdpsmelec", "ElectricalProperties"),
@@ -331,7 +339,8 @@ fn export_router_outcomes_match_oracle() {
         dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
         dss.command("solve");
         dss.command(&set_dp);
-        let before = dss.last_result_file().to_string();
+        let expect = dp.join("t_").to_string_lossy().into_owned();
+        assert_ne!(dss.last_result_file(), expect);
         dss.command(&format!("export {keyword}"));
         assert_eq!(
             dss.error_texts(),
@@ -342,21 +351,45 @@ fn export_router_outcomes_match_oracle() {
         );
         assert_eq!(
             dss.last_result_file(),
-            before,
-            "export {keyword} must not write a report file"
+            expect,
+            "export {keyword}: DoExportCmd tail must set the last-file state"
+        );
+        assert_eq!(
+            dss.vars.get("@lastfile").unwrap_or(""),
+            expect,
+            "export {keyword} @lastfile"
+        );
+        assert_eq!(
+            dss.vars.get("@lastexportfile").unwrap_or(""),
+            expect,
+            "export {keyword} @lastexportfile"
+        );
+        assert!(
+            !std::path::Path::new(&expect).exists(),
+            "export {keyword} must not write a file"
         );
     }
 
     // (3) Unknown keyword → Pascal 24713, with the lowercased keyword echoed back.
+    //     This is the *one* arm that sets `AbortExport := TRUE` (`:626`), so —
+    //     unlike (2) — the last-file tail is skipped and the state stays put.
+    //     (Same oracle probe: `export cdpsmtopology`/`export bogusnotakeyword`
+    //     leave `@lastfile` at whatever the previous export set.)
     let mut dss = Dss::new();
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src");
     dss.command(&set_dp);
+    let before = dss.last_result_file().to_string();
     dss.command("export notareport");
     assert_eq!(
         dss.error_texts()[0],
         "Error: Unknown Export command: \"notareport\"",
         "{:?}",
         dss.errors()
+    );
+    assert_eq!(
+        dss.last_result_file(),
+        before,
+        "an unknown keyword aborts before DoExportCmd's last-file tail"
     );
 
     // (4) The ambiguous `elem` prefix resolves *earliest-wins* like the oracle's

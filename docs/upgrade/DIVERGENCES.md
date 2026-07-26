@@ -1870,12 +1870,30 @@ with the r4133 cadence it reports 0.0 like r4133, while the terminal powers stil
 carry the real clamp (−266.667 kW, −500 kvar per conductor, both engines).
 
 **`PV2PQList` is deliberately NOT ported.** r4133 tracks converted generators in
-`PV2PQList` (l.346, appended l.1938/2158, removed l.2260-2291). It has no effect
-on the solve: its only live consumer is `Show PV2PQGen` (`ShowResults.pas`
-l.3617), and `ReversePQ2PV` (l.1743) + `DistGenClusters` (l.1687) are **dead
-code** in r4133 (declared, defined, never called — grepped). The port's
-`Generator.ncim_expv` flag is set/cleared on exactly the same two events and
-already drives its `Show PV2PQ_Conversions`.
+`PV2PQList` (l.346, appended l.1938/2158, removed l.2260-2291; cleared at
+construction l.645 and on the `InitGenQ` pass l.1119). It has no effect on the
+solve: its only live consumer is `Show PV2PQGen` (`ShowResults.pas` l.3617,
+routed as Show verb 35 at `ShowOptions.pas:388`), and `ReversePQ2PV` (l.1743) +
+`DistGenClusters` (l.1687) are **dead code** in r4133 (declared, defined, never
+called — grepped). The port's per-generator `Generator.ncim_expv` flag is the
+equivalent and already drives its `Show PV2PQ_Conversions`; it is mutated at the
+same **three** sites — the `GetNumGenerators` zero-Q-limit demotion (l.1938 ↔
+`ncim.rs` `ncim_get_num_generators`), the `UpdateGenQ` PV→PQ conversion (l.2158 ↔
+`ncim_update_gen_q`), and the PQ→PV reversal (l.2260-2291 ↔ the same fn's clear).
+
+*Settler fix (2026-07-26).* The first of those three did not match: r4133 gates
+the append on `if InitQ then` (l.1936-1939) while the port set `ncim_expv`
+unconditionally, so a *warm* NCIM re-solve of a generator edited back to
+`model=3` with `kvarmax=kvarmin=0` listed a generator in `Show
+PV2PQ_Conversions` that r4133's `Show PV2PQGen` would not. Report-only (the
+demotion to model 4 itself is unconditional in both), unreachable from the
+solver's own state (the PQ→PV promotion at l.2216 requires nonzero limits, so it
+can never re-create the zero-limit model-3 shape), and not probeable through the
+DLL bridge — `Show` is the only consumer and it is a file+editor path — so this
+one is settled on the r4133 source lines alone. Port now gates on `init_q`. The
+same pass dropped a retired-capi015 leftover in the `Add2Limits` `else`
+(`GenModel = 3 and NCIM_ExPV`, unreachable inside that arm; r4133 l.1972-1973 is
+plain `Add2Limits := pGen.GenModel = 4`).
 
 **Gate consequence.** `IEEE118Bus/master_file.dss` is promoted out of
 `skipped_needs_investigation.json` (tag `ncim_pv_pq_switching_divergence`) into
