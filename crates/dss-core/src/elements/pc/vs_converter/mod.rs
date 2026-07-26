@@ -19,6 +19,52 @@ use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::complexutil::rotate_phasor_deg;
 use crate::util::EPSILON;
 
+/// Pascal `TVSConverterObj.Fmode` (`VSConverter.pas:95`, `Integer`) — the
+/// `VSCMode=` control mode.
+///
+/// Backed by the `'VSConverter: Control Mode'` `DssEnum`
+/// (`VSConverter.pas:152-155`, names `['Fixed', 'PacVac', 'PacQac', 'VdcVac',
+/// 'VdcQac']`, values `[0, 1, 2, 3, 4]`, `DefaultValue = VSC_FIXED`), whose
+/// ordinals are the `VSC_*` constants at `:136-140`. `Create` seeds
+/// [`Self::Fixed`] (`:312`).
+///
+/// The field is **store-only in both engines**: upstream never reads `Fmode`
+/// (its only mentions are the declaration, the property offset, `MakeLike` and
+/// the `Create` seed), so the mode round-trips through `?`/dump and nothing
+/// else — see this module's header.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VscMode {
+    /// `VSC_FIXED = 0` — fixed modulation `M0`/`d0` (the only modeled mode).
+    Fixed = 0,
+    /// `VSC_PACVAC = 1`.
+    PacVac = 1,
+    /// `VSC_PACQAC = 2`.
+    PacQac = 2,
+    /// `VSC_VDCVAC = 3`.
+    VdcVac = 3,
+    /// `VSC_VDCQAC = 4`.
+    VdcQac = 4,
+}
+
+impl VscMode {
+    /// The `VSConverter: Control Mode` `DssEnum` ordinal (the `VSCMode=` value).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From a property/registry ordinal; `None` outside 0..=4.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Fixed),
+            1 => Some(Self::PacVac),
+            2 => Some(Self::PacQac),
+            3 => Some(Self::VdcVac),
+            4 => Some(Self::VdcQac),
+            _ => None,
+        }
+    }
+}
+
 /// 1-based property ordinals (Pascal `TVSConverterProp` + the PC/CktElement tails).
 pub mod prop {
     pub const PHASES: usize = 1;
@@ -106,7 +152,7 @@ pub struct VsConverter {
     pub f_max_m: f64,
     pub f_max_iac: f64,
     pub f_max_idc: f64,
-    pub f_mode: i32,
+    pub f_mode: VscMode,
     pub ndc: usize,
 
     /// `LastCurrents` — the terminal currents saved by `GetCurrents` (Pascal keeps
@@ -143,7 +189,7 @@ impl VsConverter {
             f_max_m: 0.9,
             f_max_iac: 2.0,
             f_max_idc: 2.0,
-            f_mode: 0, // VSC_FIXED
+            f_mode: VscMode::Fixed, // VSC_FIXED
             ndc: 1,
             last_currents: Vec::new(),
             spectrum: "default".to_string(),
@@ -251,3 +297,38 @@ impl VsConverter {
 }
 
 mod accessors;
+
+#[cfg(test)]
+mod tests {
+    use super::{VsConverter, VscMode};
+    use crate::obj::dss_enum::EnumRegistry;
+
+    /// `VSC_FIXED = 0` … `VSC_VDCQAC = 4` (`VSConverter.pas:136-140`), the
+    /// `'VSConverter: Control Mode'` value list (`:152-154`), its
+    /// `DefaultValue = VSC_FIXED` (`:155`) and the `Create` seed (`:312`).
+    #[test]
+    fn vsc_mode_pins_pascal_ordinals() {
+        for (m, ord) in [
+            (VscMode::Fixed, 0),
+            (VscMode::PacVac, 1),
+            (VscMode::PacQac, 2),
+            (VscMode::VdcVac, 3),
+            (VscMode::VdcQac, 4),
+        ] {
+            assert_eq!(m.ordinal(), ord);
+            assert_eq!(VscMode::from_ordinal(ord), Some(m));
+        }
+        for v in [i32::MIN, -1, 5, 100, i32::MAX] {
+            assert_eq!(VscMode::from_ordinal(v), None, "ordinal {v}");
+        }
+        assert_eq!(VsConverter::new("v").f_mode, VscMode::Fixed);
+
+        // The live registry's default is the same variant (an unmatched token
+        // lands there instead of raising, unlike Scan/Sequence Type).
+        let reg = EnumRegistry::new();
+        assert_eq!(
+            VscMode::from_ordinal(reg.get(reg.vsc_mode).default_value),
+            Some(VscMode::Fixed)
+        );
+    }
+}

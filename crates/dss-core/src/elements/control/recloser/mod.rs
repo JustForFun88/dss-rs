@@ -426,7 +426,7 @@ impl Recloser {
         {
             self.pending_ref_actions.push(RefAction::SetOcpDevice {
                 target,
-                device_type: 2,
+                device_type: crate::elements::ckt::OcpDeviceType::Recloser,
                 auto: true,
             });
         }

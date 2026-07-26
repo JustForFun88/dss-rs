@@ -177,13 +177,57 @@ pub struct CktElementData {
     pub accumulated_miles_downstream: f64,
     /// `BranchSectionID`: feeder section this branch belongs to.
     pub branch_section_id: i32,
-    /// `GetOCPDeviceType` ordinal of the over-current-protection control at the
-    /// head of this branch's section: 0=none, 1=Fuse, 2=Recloser, 3=Relay. Set
-    /// when an enabled Relay/Recloser/Fuse resolves its controlled element (the
-    /// first OCP control registered wins, matching Pascal `GetOCPDeviceType`'s
-    /// `ControlElementList` scan, which stops at the first match). Read only by
-    /// the reliability sweep when `HAS_OCP_DEVICE` is set.
-    pub ocp_device_type: i32,
+    /// [`OcpDeviceType`] of the over-current-protection control at the head of
+    /// this branch's section. Set when an enabled Relay/Recloser/Fuse resolves
+    /// its controlled element (the first OCP control registered wins, matching
+    /// Pascal `GetOCPDeviceType`'s `ControlElementList` scan, which stops at the
+    /// first match). Read only by the reliability sweep when `HAS_OCP_DEVICE`
+    /// is set.
+    pub ocp_device_type: OcpDeviceType,
+}
+
+/// Pascal `GetOCPDeviceType` (`Utilities.pas:1996-2018`) — which class of
+/// over-current-protection control sits at the head of a feeder section.
+///
+/// Not a `DssEnum`: the code is *derived* by scanning the element's
+/// `ControlElementList` for the first `FUSE_CONTROL` / `RECLOSER_CONTROL` /
+/// `RELAY_CONTROL` class ordinal. [`Self::Unset`] is `Result := 0`, the
+/// pre-scan seed that survives when the list holds no OCP device — the same
+/// zero `TFeederSection.OCPDeviceType` starts at (`EnergyMeter.pas:2465`,
+/// "1=Fuse; 2=Recloser; 3=Relay"), which is why it is also the `Default`.
+///
+/// The ordinal is user-visible through `Export Sections`, where
+/// `getOCPDeviceTypeString` (`ExportResults.pas:3859-3871`) renders 1/2/3 and
+/// maps everything else — i.e. exactly [`Self::Unset`] here — to `Unknown`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OcpDeviceType {
+    /// `0` — no OCP control on this element (`Result := 0`, never overwritten).
+    #[default]
+    Unset = 0,
+    /// `1` — `FUSE_CONTROL`.
+    Fuse = 1,
+    /// `2` — `RECLOSER_CONTROL`.
+    Recloser = 2,
+    /// `3` — `RELAY_CONTROL`.
+    Relay = 3,
+}
+
+impl OcpDeviceType {
+    /// The raw `GetOCPDeviceType` integer.
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the raw `GetOCPDeviceType` integer; `None` outside 0..=3.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Unset),
+            1 => Some(Self::Fuse),
+            2 => Some(Self::Recloser),
+            3 => Some(Self::Relay),
+            _ => None,
+        }
+    }
 }
 
 /// The first `min(nphases, 3)` conductors of one terminal — the "phase window"
@@ -251,7 +295,7 @@ impl CktElementData {
             accumulated_br_flt_rate: 0.0,
             accumulated_miles_downstream: 0.0,
             branch_section_id: 0,
-            ocp_device_type: 0,
+            ocp_device_type: OcpDeviceType::Unset,
         }
     }
 
@@ -706,6 +750,35 @@ mod tests {
         assert!(
             !cd.signal_bus_name_redefined,
             "MakePosSequence writes FBusNames directly, must not signal BusNameRedefined"
+        );
+    }
+
+    /// `GetOCPDeviceType` (`Utilities.pas:1996-2018`): `Result := 0` pre-scan,
+    /// then 1/2/3 for the first Fuse/Recloser/Relay in `ControlElementList`.
+    /// `Unset` must also be the `Default`, because `TFeederSection` is
+    /// zero-allocated (`EnergyMeter.pas:2465`) and `CktElementData::new` seeds
+    /// the same 0.
+    #[test]
+    fn ocp_device_type_pins_pascal_ordinals() {
+        assert_eq!(OcpDeviceType::Unset.ordinal(), 0);
+        assert_eq!(OcpDeviceType::Fuse.ordinal(), 1);
+        assert_eq!(OcpDeviceType::Recloser.ordinal(), 2);
+        assert_eq!(OcpDeviceType::Relay.ordinal(), 3);
+        for d in [
+            OcpDeviceType::Unset,
+            OcpDeviceType::Fuse,
+            OcpDeviceType::Recloser,
+            OcpDeviceType::Relay,
+        ] {
+            assert_eq!(OcpDeviceType::from_ordinal(d.ordinal()), Some(d));
+        }
+        for v in [i32::MIN, -1, 4, 100, i32::MAX] {
+            assert_eq!(OcpDeviceType::from_ordinal(v), None, "ordinal {v}");
+        }
+        assert_eq!(OcpDeviceType::default(), OcpDeviceType::Unset);
+        assert_eq!(
+            CktElementData::new("e", 0).ocp_device_type,
+            OcpDeviceType::Unset
         );
     }
 }

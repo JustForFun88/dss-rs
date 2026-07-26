@@ -1993,7 +1993,7 @@ pub(super) fn apply_edit_signal_tail(
                         cd.flags
                             .include(crate::elements::ckt::ElemFlags::HAS_AUTO_OCP_DEVICE);
                     }
-                    if cd.ocp_device_type == 0 {
+                    if cd.ocp_device_type == crate::elements::ckt::OcpDeviceType::Unset {
                         cd.ocp_device_type = *device_type;
                     }
                 }

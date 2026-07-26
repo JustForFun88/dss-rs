@@ -713,7 +713,7 @@ impl Relay {
         {
             self.pending_ref_actions.push(RefAction::SetOcpDevice {
                 target,
-                device_type: 3,
+                device_type: crate::elements::ckt::OcpDeviceType::Relay,
                 auto: true,
             });
         }

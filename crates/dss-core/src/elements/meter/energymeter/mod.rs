@@ -26,6 +26,7 @@
 //!   `capture_metered` RefSnapshot helper.
 
 use crate::circuit::ckt_tree::CktTree;
+use crate::elements::ckt::OcpDeviceType;
 use crate::elements::meter::meter_element::MeterElementData;
 use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
@@ -173,8 +174,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
 /// (Pascal `FeederSections: pFeederSections`), read back by `Export Sections`.
 #[derive(Debug, Clone, Default)]
 pub struct FeederSection {
-    /// 1=Fuse; 2=Recloser; 3=Relay.
-    pub ocp_device_type: i32,
+    /// 1=Fuse; 2=Recloser; 3=Relay (0 = none — the all-zero allocation seed).
+    pub ocp_device_type: OcpDeviceType,
     pub n_customers: i32,
     pub n_branches: i32,
     pub total_customers: i32,

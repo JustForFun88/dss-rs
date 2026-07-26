@@ -4,6 +4,7 @@
 use num_complex::Complex64;
 
 use super::{VSource, get_vmag};
+use crate::elements::pc::source_seq::{ScanType, SequenceType};
 use crate::elements::traits::SysCtx;
 use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::support::complexutil::{pdeg_to_complex, rotate_phasor_deg};
@@ -98,9 +99,16 @@ impl VSource {
                 self.cd.vterminal[i + nphases] = Complex64::ZERO;
                 if i < nphases - 1 {
                     vharm = match self.scan_type {
-                        1 => rotate_phasor_deg(vharm, 1.0, -360.0 / nphases as f64), // pos seq
-                        0 => vharm,                                                  // zero seq
-                        _ => rotate_phasor_deg(vharm, src_harmonic, -360.0 / nphases as f64),
+                        // maintain pos seq
+                        ScanType::Positive => {
+                            rotate_phasor_deg(vharm, 1.0, -360.0 / nphases as f64)
+                        }
+                        // Do nothing for Zero Sequence; all the same
+                        ScanType::Zero => vharm,
+                        // normal rotation (Pascal's `else` arm)
+                        ScanType::None => {
+                            rotate_phasor_deg(vharm, src_harmonic, -360.0 / nphases as f64)
+                        }
                     };
                 }
             }
@@ -112,9 +120,11 @@ impl VSource {
         }
         for i in 0..nphases {
             let deg = match self.sequence_type {
-                -1 => 360.0 + self.angle + (i as f64) * 360.0 / nphases as f64, // neg seq
-                0 => 360.0 + self.angle, // all the same for zero sequence
-                _ => 360.0 + self.angle - (i as f64) * 360.0 / nphases as f64,
+                SequenceType::Negative => 360.0 + self.angle + (i as f64) * 360.0 / nphases as f64,
+                // all the same for zero sequence
+                SequenceType::Zero => 360.0 + self.angle,
+                // Pascal's `else` arm
+                SequenceType::Positive => 360.0 + self.angle - (i as f64) * 360.0 / nphases as f64,
             };
             self.cd.vterminal[i] = pdeg_to_complex(self.vmag, deg);
             self.cd.vterminal[i + nphases] = Complex64::ZERO;
