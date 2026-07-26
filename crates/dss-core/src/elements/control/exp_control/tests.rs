@@ -73,6 +73,7 @@ fn derlist_syncs_pvsystemlist() {
 
 // --- WP7.5 step 3: the dispatch math, pinned through a mock env ---
 mod dispatch {
+    use super::super::ExpPendingChange;
     use super::super::compute::{ExpDispatchEnv, PvFind, PvSnap};
     use super::super::{ExpControl, prop};
     use crate::elements::pc::inv_based_pce::VarMode;
@@ -144,7 +145,7 @@ mod dispatch {
 
     struct MockExpEnv {
         pvs: Vec<MockPv>,
-        pushes: Vec<i32>,
+        pushes: Vec<ExpPendingChange>,
         control_mode: ControlMode,
         control_iter: i32,
         dyna_h: f64,
@@ -229,7 +230,7 @@ mod dispatch {
         fn pv_set_vreg_var(&mut self, r: ElemId, value: f64) {
             self.pvs[Self::idx(r)].vreg = value;
         }
-        fn push_change(&mut self, _delay: f64, code: i32) {
+        fn push_change(&mut self, _delay: f64, code: ExpPendingChange) {
             self.pushes.push(code);
         }
         fn append_event(&mut self, _sender: &str, _msg: &str) {}
@@ -304,7 +305,7 @@ mod dispatch {
         let mut ec = named_ec();
         let mut env = MockExpEnv::new(vec![MockPv::new("pv1", 1.02, 300.0)]);
         ec.sample(&mut env);
-        assert_eq!(env.pushes, vec![super::super::CHANGEVARLEVEL]);
+        assert_eq!(env.pushes, vec![ExpPendingChange::ChangeVarLevel]);
         assert!(!ec.ctrl_vars[0].f_within_tol);
 
         ec.do_pending_action(&mut env);
@@ -316,7 +317,7 @@ mod dispatch {
         assert!(!env.pvs[0].vw_mode);
         assert!(env.loads_need_updating);
         // Pending cleared after the action.
-        assert_eq!(ec.ctrl_vars[0].f_pending_change, super::super::NONE);
+        assert_eq!(ec.ctrl_vars[0].f_pending_change, ExpPendingChange::None);
     }
 
     #[test]
@@ -518,4 +519,20 @@ mod make_pos_seq_tests {
         assert_eq!(ec.ccd.cd.get_bus(1), "pvbus");
         assert_eq!(ec.monitored_element_ref(), Some(ElemId::new(4, 2)));
     }
+}
+
+/// `ExpControl.pas:169-170` (`NONE = 0`, `CHANGEVARLEVEL = 1`) — the
+/// control-queue action codes this class pushes and pops.
+#[test]
+fn exp_pending_change_pins_pascal_ordinals() {
+    use super::ExpPendingChange;
+
+    assert_eq!(ExpPendingChange::None.ordinal(), 0);
+    assert_eq!(ExpPendingChange::ChangeVarLevel.ordinal(), 1);
+    for m in [ExpPendingChange::None, ExpPendingChange::ChangeVarLevel] {
+        assert_eq!(ExpPendingChange::from_ordinal(m.ordinal()), Some(m));
+    }
+    assert_eq!(ExpPendingChange::from_ordinal(-1), None);
+    assert_eq!(ExpPendingChange::from_ordinal(2), None);
+    assert_eq!(ExpPendingChange::default(), ExpPendingChange::None);
 }

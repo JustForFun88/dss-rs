@@ -68,6 +68,37 @@ use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
+/// `TESPVLControlObj.Ftype` (`ESPVLControl.pas:82` — "1=System controller;
+/// 2=Local controller"). The `Create` default is `0`, which is **outside** the
+/// `ESPVLControl: Type` `DssEnum` (values `[1, 2]`) and therefore dumps `''` —
+/// so `Unset` is a real state, not a placeholder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum EspvlControlType {
+    /// `Create`'s `0` — no `Type=` given; renders as an empty string.
+    #[default]
+    Unset = 0,
+    SystemController = 1,
+    LocalController = 2,
+}
+
+impl EspvlControlType {
+    /// The `ESPVLControl: Type` `DssEnum` ordinal (`0` dumps `''`).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Unset),
+            1 => Some(Self::SystemController),
+            2 => Some(Self::LocalController),
+            _ => None,
+        }
+    }
+}
+
 /// 1-based property ordinals (Pascal `TESPVLControlProp` + the `TCktElementClass`
 /// tail).
 pub mod prop {
@@ -158,7 +189,7 @@ pub struct EspvlControl {
 
     /// `Ftype`: 1 = System controller, 2 = Local controller. Default 0 (FPC
     /// zero-init), which dumps '' and makes `Sample` a no-op (only `Ftype=1` acts).
-    f_type: i32,
+    f_type: EspvlControlType,
 
     /// `FkWLimit` — hardcoded 8000.0; there is **no property to change it** (see
     /// module note). Kept as a field to mirror the Pascal `PDiff` expression 1:1.
@@ -210,7 +241,7 @@ impl EspvlControl {
             ccd,
             monitored_full_name: String::new(),
             mon_snap: None,
-            f_type: 0,
+            f_type: EspvlControlType::Unset,
             f_kw_limit,
             f_kw_band,
             half_kw_band: f_kw_band / 2.0,
@@ -246,7 +277,7 @@ impl EspvlControl {
     /// an empty name list scans every enabled ESPVLControl and allocates uniform
     /// weights. Returns whether the list ended up non-empty.
     fn make_local_control_list(&mut self, env: &dyn EspvlDispatchEnv) -> bool {
-        if self.f_type != 1 {
+        if self.f_type != EspvlControlType::SystemController {
             // Only for System controller; a Local controller never builds a list.
             return false;
         }

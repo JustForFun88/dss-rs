@@ -9,7 +9,9 @@ use crate::circuit::Circuit;
 use crate::elements::control::cap_control::CapControl;
 use crate::elements::control::control_elem::{ControlClass, CtrlCtx};
 use crate::elements::control::espvl_control::{EspvlControl, EspvlDispatchEnv};
-use crate::elements::control::exp_control::{ExpControl, ExpDispatchEnv, PvFind, PvSnap};
+use crate::elements::control::exp_control::{
+    ExpControl, ExpDispatchEnv, ExpPendingChange, PvFind, PvSnap,
+};
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
 use crate::elements::control::inv_control::{
     DerSnap, InvControl, InvDispatchEnv, InvFleetFind, InvPendingChange, MonitorVar,
@@ -2260,9 +2262,16 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
         Self::pvsystem_mut(self.store, r).vreg = value;
     }
 
-    fn push_change(&mut self, delay: f64, code: i32) {
-        self.queue
-            .push_delay(self.int_hour, self.t, delay, code, 0, self.self_ref);
+    fn push_change(&mut self, delay: f64, code: ExpPendingChange) {
+        // `i32` only at the generic `ControlQueue` boundary.
+        self.queue.push_delay(
+            self.int_hour,
+            self.t,
+            delay,
+            code.ordinal(),
+            0,
+            self.self_ref,
+        );
     }
     fn append_event(&mut self, sender: &str, msg: &str) {
         self.events

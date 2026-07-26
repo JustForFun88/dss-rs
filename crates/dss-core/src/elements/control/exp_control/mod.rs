@@ -42,9 +42,35 @@ use crate::elements::control::control_elem::ControlElemData;
 use crate::elements::traits::ElemId;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
-// PendingChange action codes (ExpControl.pas l.169-170).
-pub(crate) const NONE: i32 = 0;
-pub(crate) const CHANGEVARLEVEL: i32 = 1;
+/// ExpControl's `FPendingChange` action codes (`ExpControl.pas:169-170`).
+/// Not a `DssEnum` — these are the control-queue codes this class pushes and
+/// pops, so `i32` survives only at the `ControlQueue` push/`DoPendingAction`
+/// boundary (the `RegControlAction` / `InvPendingChange` precedent).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum ExpPendingChange {
+    /// Pascal `NONE = 0`.
+    #[default]
+    None = 0,
+    /// Pascal `CHANGEVARLEVEL = 1`.
+    ChangeVarLevel = 1,
+}
+
+impl ExpPendingChange {
+    /// The `ControlQueue` action code.
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From a popped `ControlQueue` action code; unknown codes yield `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::None),
+            1 => Some(Self::ChangeVarLevel),
+            _ => None,
+        }
+    }
+}
 
 /// 1-based property ordinals (Pascal `TExpControlProp` + the `TCktElementClass`
 /// tail). The legacy and modern Pascal names differ only in case, so the
@@ -123,7 +149,7 @@ pub(crate) struct ExpVars {
     /// `FPresentVpu` — the present-sample per-unit voltage.
     pub f_present_vpu: f64,
     /// `FPendingChange` — the queued action code for this DER.
-    pub f_pending_change: i32,
+    pub f_pending_change: ExpPendingChange,
     /// `FLastIterQ` — the prior control-iteration kvar (the DeltaQ_Factor base;
     /// starts at -1.0).
     pub f_last_iter_q: f64,
@@ -146,7 +172,7 @@ impl ExpVars {
         Self {
             f_prior_vpu: 0.0,
             f_present_vpu: 0.0,
-            f_pending_change: NONE,
+            f_pending_change: ExpPendingChange::None,
             f_last_iter_q: -1.0,
             f_last_step_q: -1.0,
             f_target_q: 0.0,
