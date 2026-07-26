@@ -4,17 +4,31 @@
 
 use super::*;
 
-/// F.1 lands the seam bit-neutral: both aliases select the parity kernel in
-/// either lane. Each assertion uses a value on which the two impls genuinely
-/// differ, so it cannot pass vacuously. F.3 rewrites this into per-lane
-/// expectations.
+/// The `PI` alias is still parity-selected in **both** lanes (its flip lands
+/// with its own kernel family), asserted on a value where the two constants
+/// genuinely differ so it cannot pass vacuously.
 #[test]
-fn f1_staging_every_alias_selects_the_parity_kernel_in_both_lanes() {
+fn pi_alias_is_still_parity_selected_in_both_lanes() {
     assert_eq!(PI, PI_FPC_TRUNCATED_IMPL);
     assert_ne!(PI_FPC_TRUNCATED_IMPL, PI_STD_IMPL);
+}
 
-    assert_eq!(round_i32(f64::INFINITY), 0);
+/// The round row **is** flipped: the alias must resolve to the parity kernel
+/// under `oracle-parity` and to the saturating one otherwise — asserted on
+/// `inf`, where the two impls disagree (0 vs `i32::MAX`), so neither lane can
+/// pass by accident.
+///
+/// This doubles as the feature-propagation guard for this crate: if
+/// `dss-core/oracle-parity → dss-parser/oracle-parity` ever stopped
+/// propagating, [`ORACLE_PARITY`] would go false in a parity build and the
+/// alias would silently become the default kernel — caught here.
+#[test]
+fn round_alias_is_the_lane_kernel() {
+    assert_eq!(round_i32_fpc_impl(f64::INFINITY), 0);
     assert_eq!(round_i32_saturating_impl(f64::INFINITY), i32::MAX);
+
+    let expected = if ORACLE_PARITY { 0 } else { i32::MAX };
+    assert_eq!(round_i32(f64::INFINITY), expected);
 }
 
 /// Measured 2026-07-26: the truncated literal sits **2.069e-13** below

@@ -231,9 +231,8 @@ fn solve_ld1_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         return Ok(());
     }
     // Time must be set before entering this routine.
-    // TODO(compat): FPC `Round` is banker's rounding (ties-to-even); this
-    // index is always in i32 range, so `round_ties_even` reproduces it.
-    // Wiped with the other compat shims.
+    // Pascal `Round` = ties-to-even; this index is always in i32 range, so
+    // `round_ties_even` reproduces it exactly (see RegControl `get_tap_num`).
     let ndaily = (24.0 / ckt.solution.h * 3600.0).round_ties_even() as i32;
     if !ckt.em_di.di_files_are_open {
         crate::solution::meters::open_all_di_files(ckt, env.store);

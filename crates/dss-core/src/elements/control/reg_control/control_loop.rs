@@ -198,7 +198,7 @@ impl RegControl {
                         let present = tr.present_tap(tap_winding);
                         if (present - 1.0).abs() > EPSILON {
                             let increment = tr.tap_increment(tap_winding);
-                            // TODO(compat): FPC banker's `Round`.
+                            // Pascal `Round` = ties-to-even (see `get_tap_num`).
                             let ptc = ((1.0 - present) / increment).round_ties_even() * increment;
                             self.set_pending_tap_change(ptc);
                             if self.pending_tap_change != 0.0 && !self.armed {
@@ -351,8 +351,9 @@ impl RegControl {
             // Per-unit winding boost needed.
             let boost_needed = vboost * self.pt_ratio / tr.base_voltage(element_terminal);
             let increment = tr.tap_increment(tap_winding);
-            // TODO(compat): FPC banker's `Round` — this single line decides
-            // tap-position equality; `round_ties_even` reproduces it.
+            // Pascal `Round` = ties-to-even — this single line decides
+            // tap-position equality; `round_ties_even` reproduces it exactly
+            // (see `get_tap_num`).
             let mut ptc = (boost_needed / increment).round_ties_even() * increment;
             // A tap on another winding or in REVERSE moves the opposite way.
             if (self.tap_winding != self.ccd.element_terminal) || self.in_reverse_mode {

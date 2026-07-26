@@ -9,12 +9,28 @@
 //! table names the rows, not the crates).
 //!
 //! Both implementations are always compiled; the cfg selects only which one
-//! the short alias points at. **F.1 staging: every alias below points at the
-//! parity impl in both lanes**, so this commit is bit-neutral; F.3 flips the
-//! `not(oracle-parity)` arms.
+//! the short alias points at.
+//!
+//! **Flip state (F.3, one kernel family per commit):** `round_i32` — flipped,
+//! the default lane saturates; `PI` — still parity-selected in both lanes (its
+//! flip moves RPN-computed deck values and lands with its own family).
 
 #[cfg(test)]
 mod tests;
+
+/// Which lane this crate was compiled in — `true` under `oracle-parity`.
+///
+/// The engine never reads it; it exists so the tests can state a *per-lane*
+/// expectation without repeating the cfg, and so a Cargo slip that stopped the
+/// feature from reaching this crate fails loudly (see
+/// `tests::round_alias_is_the_lane_kernel`) instead of silently reverting the
+/// parity lane to the default kernel.
+#[cfg(feature = "oracle-parity")]
+pub const ORACLE_PARITY: bool = true;
+
+/// See the parity-lane twin above.
+#[cfg(not(feature = "oracle-parity"))]
+pub const ORACLE_PARITY: bool = false;
 
 // ---------------------------------------------------------------------------
 // RPN pi (IV.2 row 4)
@@ -48,10 +64,12 @@ pub use PI_FPC_TRUNCATED_IMPL as PI;
 /// range and non-finite give the "integer indefinite" `i64::MIN`), then
 /// truncated to i32 like the Pascal `Integer := Round(...)` assignment.
 ///
-/// TODO(compat): the integer-indefinite path (`inf`/`nan`/overflow → wrapped
-/// `i64::MIN`, e.g. "inf" → 0) reproduces an FPC/x86 implementation artifact
-/// verified via probe_val.py; make it a proper error once the 1:1 port is
-/// complete.
+/// The integer-indefinite path (`inf`/`nan`/overflow → wrapped `i64::MIN`, e.g.
+/// `"inf"` → 0) is an FPC/x86 implementation artifact, verified against the
+/// oracle with `probe_val.py`. It is the **parity** kernel of the round row:
+/// selected under `oracle-parity`, where the deck language must convert exactly
+/// like the oracle; the default lane saturates instead
+/// ([`round_i32_saturating_impl`]).
 pub fn round_i32_fpc_impl(x: f64) -> i32 {
     let r = x.round_ties_even();
     let wide = if r >= -(2f64.powi(63)) && r < 2f64.powi(63) {
@@ -67,14 +85,15 @@ pub fn round_i32_fpc_impl(x: f64) -> i32 {
 /// value; out-of-range and infinite inputs saturate to `i32::MIN`/`i32::MAX`
 /// instead of wrapping the FPC integer-indefinite sentinel to `0` (NaN maps to
 /// `0` in both). The difference is a **deliberate divergence**, pinned by
-/// `tests`.
+/// `tests` and, at the deck-language boundary it is observable from, by
+/// `parser::tests::make_integer_rounds_ties_to_even`.
 pub fn round_i32_saturating_impl(x: f64) -> i32 {
     x.round_ties_even() as i32
 }
 
 #[cfg(feature = "oracle-parity")]
 pub use round_i32_fpc_impl as round_i32;
-// F.1 staging: see the note at `PI` — F.3 flips this to
-// `round_i32_saturating_impl`.
+// F.3: the default lane converts `1e10`/`inf` to the nearest representable
+// integer instead of reproducing FPC's wrapped integer-indefinite sentinel.
 #[cfg(not(feature = "oracle-parity"))]
-pub use round_i32_fpc_impl as round_i32;
+pub use round_i32_saturating_impl as round_i32;

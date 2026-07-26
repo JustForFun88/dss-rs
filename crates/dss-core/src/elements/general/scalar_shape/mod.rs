@@ -144,9 +144,9 @@ impl ScalarShapeCore {
 
         // --- Fixed (even) interval ---
         if self.interval > 0.0 {
-            // TODO(compat): FPC `Round` is banker's rounding (ties-to-even);
-            // these indices are always in i64 range, so `round_ties_even`
-            // reproduces it. Wiped with the other compat shims.
+            // Pascal `Round` = ties-to-even (see RegControl `get_tap_num`);
+            // reproduces the oracle exactly for every index a well-formed shape
+            // can produce (same reasoning as `LoadShape::get_mult`).
             let mut index = (hr / self.interval).round_ties_even() as i64;
             let np = npts as i64;
             if index > np {

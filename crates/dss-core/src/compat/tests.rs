@@ -68,6 +68,29 @@ fn f1_staging_every_alias_selects_the_parity_kernel_in_both_lanes() {
     assert_eq!(stddev_single_point_zero_impl(3.5), 0.0);
 }
 
+/// Feature propagation is **measured, not assumed**. Two of the plan's kernel
+/// rows (the RPN pi and FPC `Round`) live in `dss-parser` and the solver knobs
+/// live in `dss-sparse`, reached only through
+/// `dss-core/oracle-parity → {dss-parser,dss-sparse}/oracle-parity`. If that
+/// edge were ever dropped from `Cargo.toml`, those crates would compile their
+/// *default* kernels inside a parity build and their own per-lane tests could
+/// not tell (const and alias come from the same compilation unit) — the parity
+/// contract would quietly evaporate. Anchored on this crate's const, which is
+/// the feature the gate invocation names directly.
+#[test]
+fn the_lane_reaches_every_compat_crate() {
+    assert_eq!(
+        ORACLE_PARITY,
+        dss_parser::compat::ORACLE_PARITY,
+        "dss-core/oracle-parity did not reach dss-parser"
+    );
+    assert_eq!(
+        ORACLE_PARITY,
+        dss_sparse::compat::ORACLE_PARITY,
+        "dss-core/oracle-parity did not reach dss-sparse"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Complex division
 // ---------------------------------------------------------------------------

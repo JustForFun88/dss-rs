@@ -2074,7 +2074,7 @@ fn apply_generic_dbl_array_file(
         MmfKind::Float64 => crate::util::read_le_f64_array(bytes, max),
     };
     if gf.apply_round {
-        // TODO(compat): FPC `Round` ties-to-even (see the inline list path in
+        // Pascal `Round` = ties-to-even (see the inline list path in
         // `class_props/parse.rs`); array magnitudes are always in Int64 range.
         for v in &mut vals {
             *v = v.round_ties_even();

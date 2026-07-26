@@ -428,8 +428,8 @@ impl PstEngine {
         let samples_per_delta_t = self.delta_t / self.tstep;
         // round(SamplesPerDeltaT) — FPC banker's Round (ties-to-even). The value
         // is 16*NcyclesperSample modulo fp rounding, always integral in range.
-        // TODO(compat): FPC `Round` is ties-to-even; `round_ties_even`
-        // reproduces it (wiped with the other TODO(compat) at final acceptance).
+        // Pascal `Round` = ties-to-even; `round_ties_even` reproduces it
+        // exactly (see RegControl `get_tap_num`).
         let samples_per_delta_t_rounded = samples_per_delta_t.round_ties_even() as i64;
 
         let first_sample = varray[0];

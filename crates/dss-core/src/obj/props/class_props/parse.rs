@@ -384,11 +384,12 @@ impl ClassProps {
                 let mut buf = vec![0.0; max];
                 interpret_dbl_array(eng.parser, eng.vars, value, max, &mut buf)?;
                 if pd.flags.contains(PropFlags::APPLY_ROUND) {
-                    // TODO(compat): FPC `Round` is ties-to-even with an
-                    // integer-indefinite path for out-of-Int64 magnitudes; for
-                    // array rounding (years, point counts) the magnitudes are
-                    // always in range, so plain ties-to-even suffices. The clean
-                    // fix wipes this with the other compat shims.
+                    // Pascal `Round` = ties-to-even. For array rounding (years,
+                    // point counts) the magnitudes are in range, so this
+                    // reproduces the oracle exactly; FPC's out-of-Int64
+                    // integer-indefinite artifact is modeled only at the
+                    // scalar deck-language boundary that can observe it
+                    // (`dss_parser::compat::round_i32`, the Stage F round row).
                     for v in &mut buf {
                         *v = v.round_ties_even();
                     }

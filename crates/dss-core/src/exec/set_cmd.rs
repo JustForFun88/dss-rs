@@ -205,7 +205,7 @@ impl Dss {
                         let mut buf = vec![0.0; 2];
                         match parser.parse_as_vector(vars, &mut buf, false) {
                             Ok(_) => {
-                                // TODO(compat): FPC banker's `Round` on the hour.
+                                // Pascal `Round` = ties-to-even, on the hour.
                                 ckt.solution.int_hour = buf[0].round_ties_even() as i32;
                                 ckt.solution.t = buf[1];
                                 ckt.solution.update_dbl_hour();

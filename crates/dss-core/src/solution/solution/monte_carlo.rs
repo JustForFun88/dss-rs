@@ -106,8 +106,8 @@ pub(super) fn solve_monte2(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult
 
 fn solve_monte2_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     let random_type = ckt.solution.random_type;
-    // TODO(compat): FPC `Round` is banker's rounding (ties-to-even); this index
-    // is always in i32 range, so `round_ties_even` reproduces it.
+    // Pascal `Round` = ties-to-even; this index is always in i32 range, so
+    // `round_ties_even` reproduces it exactly (see RegControl `get_tap_num`).
     let ndaily = (24.0 / ckt.solution.interval_hrs).round_ties_even() as i32;
     for _ in 1..=ckt.solution.number_of_times {
         if ckt.solution.solution_abort {
