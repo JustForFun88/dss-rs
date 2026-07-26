@@ -157,12 +157,18 @@ impl Capacitor {
         let bus1 = cd.get_bus(1).to_string();
         cd.set_bus(2, &format!("{bus1}.0.0.0"));
 
-        let kvrating = 12.47;
+        let kvrating: f64 = 12.47;
         let two_pi = 2.0 * std::f64::consts::PI;
         let base_freq = cd.base_frequency;
         let fkvar = 1200.0;
         // FC default: InitDblArray(1, FC, 1/(TwoPi*BaseFreq*SQR(kv)*1000/kvar)).
-        let fc0 = 1.0 / (two_pi * base_freq * kvrating * kvrating * 1000.0 / fkvar);
+        // `SQR` binds before the surrounding product, so the square must stay an
+        // atom: `a * SQR(b)` is `a * (b*b)`, NOT `(a*b) * b` (they differ by an
+        // ULP for many operands — see the sibling sites in `solve.rs`). This
+        // particular value is immediately overwritten by the `RecalcElementData`
+        // at the end of `TCapacitorObj.Create` (SpecType = 1 recomputes `FC`), so
+        // it is unobservable; kept faithful anyway.
+        let fc0 = 1.0 / (two_pi * base_freq * kvrating.powi(2) * 1000.0 / fkvar);
 
         let mut c = Self {
             cd,

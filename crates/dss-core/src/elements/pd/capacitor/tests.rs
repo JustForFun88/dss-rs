@@ -360,3 +360,84 @@ fn make_pos_sequence_cmatrix_single_phase_is_base() {
     assert!(plan.actions.is_empty());
     assert!(plan.run_base);
 }
+
+// --- `SQR`-binds-first pins (og(json-a) settle) ------------------------------
+//
+// Pascal writes the derived capacitance and the derived kvar total with `SQR`
+// as an ATOM: `w * SQR(PhasekV) * 1000.0` is `w * (kv*kv) * 1000.0`, NOT
+// `((w*kv) * kv) * 1000.0`. The port used to spell the second form, which lands
+// one ULP away from the oracle for many realistic (kV, kvar, f) combinations
+// (over 12 probed triples the oracle matched SQR-first 12/12 and left-to-right
+// only 9/12).
+//
+// These values cannot be pinned through the JSON byte goldens: the Capacitor's
+// derived properties render only under Full, and every Full capture also emits
+// `CMatrix`, whose oracle getter reads uninitialized memory even when `cmatrix=`
+// is set (five fresh oracle processes → five different renders; the same
+// dss_capi UB that `tools/golden/gen_props.py` canonicalizes with
+// `zero_garbage`). The props round-trip channel is no help either — it compares
+// numbers at 1e-9 relative tolerance. So the oracle values below are recorded
+// from direct `IActiveClass.ToJSON(Full)` probes on the pinned dss-python
+// (0.15.7 / backend 0.14.5) and asserted BIT-EXACTLY here.
+
+/// `Capacitor.pas:642` through the `Cuf` render (`PropertyScale` 1e-6).
+/// Deck: `new Capacitor.c bus1=b phases=3 kv=12.47 kvar=600 conn=wye` at 60 Hz.
+/// Oracle `Cuf` = `1.0234985333968829E+001`; the left-to-right association
+/// gives `…828E+001`.
+#[test]
+fn derived_cuf_kvar_wye_matches_oracle_bit_exactly() {
+    let mut c = Capacitor::new("ckvar");
+    c.spec_type = 1;
+    c.connection = 0; // wye
+    c.kvrating = 12.47;
+    c.fkvarrating = vec![600.0];
+    c.recalc();
+    assert_eq!(c.fc[0] / 1.0e-6, 10.23498533396883);
+}
+
+/// Same site, delta connection (`PhasekV` = the can rating, no `/SQRT3`).
+/// Deck: `kv=7.2 kvar=450 conn=delta`; oracle `Cuf` = `7.6752962525026680E+000`.
+#[test]
+fn derived_cuf_kvar_delta_matches_oracle_bit_exactly() {
+    let mut c = Capacitor::new("cdelta");
+    c.spec_type = 1;
+    c.connection = 1; // delta
+    c.kvrating = 7.2;
+    c.fkvarrating = vec![450.0];
+    c.recalc();
+    assert_eq!(c.fc[0] / 1.0e-6, 7.675296252502668);
+}
+
+/// Multi-step: every step takes `FkvarRating[1]` (not its own step rating) in
+/// the `FC` derivation, while `Ftotalkvar` sums all steps. Deck: `kv=24.9
+/// conn=wye numsteps=3 kvar=[900,450,225]`; oracle `Cuf` =
+/// `[3.8504607125343631E+000 ×3]`, `NormAmps` = `4.9300843769656304E+001`.
+#[test]
+fn derived_cuf_multistep_matches_oracle_bit_exactly() {
+    let mut c = Capacitor::new("csteps");
+    c.spec_type = 1;
+    c.connection = 0;
+    c.kvrating = 24.9;
+    c.set_num_steps(3);
+    c.fkvarrating = vec![900.0, 450.0, 225.0];
+    c.recalc();
+    assert_eq!(c.fc, vec![3.850460712534363e-6; 3]);
+    assert_eq!(c.ftotalkvar, 1575.0);
+    assert_eq!(c.norm_amps, 49.3008437696563);
+}
+
+/// `Capacitor.pas:664` (`Ftotalkvar + w * FC[i] * SQR(PhasekV) / 1000.0`),
+/// observable through the derived Norm/Emerg amps. Deck: `kv=24.9 conn=wye
+/// cuf=7.2`; oracle `NormAmps` = `1.7559609301075169E-005`, `EmergAmps` =
+/// `2.3412812401433556E-005` (the left-to-right association gives `…559E-005`).
+#[test]
+fn derived_amps_from_cuf_spec_match_oracle_bit_exactly() {
+    let mut c = Capacitor::new("ccuf");
+    c.spec_type = 2; // Cuf
+    c.connection = 0;
+    c.kvrating = 24.9;
+    c.fc = vec![7.2 * 1.0e-6];
+    c.recalc();
+    assert_eq!(c.norm_amps, 1.755960930107517e-05);
+    assert_eq!(c.emerg_amps, 2.3412812401433556e-05);
+}

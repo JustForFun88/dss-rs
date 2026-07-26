@@ -202,6 +202,58 @@ DECKS = [
         ],
     },
     {
+        "name": "transformer_derived_rdc",
+        # The DERIVED-RDCOhms branch of `RecalcElementData` (Transformer.pas:1007
+        # -1008): with `rdcohms` left UNSET, `RdcSpecified` is FALSE and the
+        # engine computes `Rdcpu := abs(0.85 * Rpu)` then
+        # `RdcOhms := Rdcpu * SQR(VBase) / VABase`. Every other Transformer deck
+        # sets `rdcohms` explicitly, so only the RdcSpecified branch was ever
+        # rendered and the derived one was ungated — which matters because `SQR`
+        # binds before the surrounding product (`a * (v*v)`, not `(a*v) * v`) and
+        # the two associations differ by one ULP on realistic ratings. Winding 1
+        # of `t2` (115 kV wye, 1500 kVA, %r=0.75) is such a case: the oracle
+        # renders 1.8735416666666670E+001 (SQR-first) where the left-to-right
+        # product gives …666E+001 — verified by an oracle probe over the deck's
+        # own operands. `t3` adds a 3-winding delta/wye/delta mix so the
+        # `VBase = kVLL * InvSQRT3x1000` vs `kVLL * 1000` split is covered too.
+        # Pre-solve: RDCOhms is a parsed-input derivation with no solve state.
+        # Both transformers sit on UNENERGIZED buses (not `sourcebus`) so the
+        # Full sweep's `WdgCurrents` is the exact all-zero phasor list, as in
+        # `transformer_micro`. Hanging winding 1 off the source instead leaves
+        # `Y_term · Vterminal` a near-total cancellation whose ~1e-13 residue is
+        # solver-dependent noise — not something a byte golden may pin (the
+        # NONZERO WdgCurrents path is gated post-solve by `transformer_solved`).
+        "commands": [
+            "new circuit.xf basekv=115 pu=1.0 phases=3 bus1=sourcebus",
+            "new Transformer.t2 phases=3 windings=2 xhl=7.5",
+            "~ wdg=1 bus=hv conn=wye kV=115 kVA=1500 %r=0.75",
+            "~ wdg=2 bus=mv conn=wye kV=12.47 kVA=1500 %r=0.9",
+            "new Transformer.t3 phases=3 windings=3 xhl=7.5 xht=12.0 xlt=10.0",
+            "~ wdg=1 bus=hv2 conn=delta kV=115 kVA=2000 %r=0.5",
+            "~ wdg=2 bus=mv2 conn=wye kV=24.9 kVA=2000 %r=0.6",
+            "~ wdg=3 bus=lv conn=delta kV=4.16 kVA=1000 %r=1.5",
+            "makebuslist",
+            "set voltagebases=[115 24.9 12.47 4.16]",
+            "calcv",
+        ],
+        "captures": [
+            ("obj", "Transformer.t2"),
+            ("obj", "Transformer.t3"),
+            ("batch", "Transformer"),
+        ],
+    },
+    # NOTE — there is deliberately NO Capacitor deck here. The Capacitor's
+    # derived values (`Cuf`, and `NormAmps`/`EmergAmps` via `Ftotalkvar`) render
+    # only under FULL, and every Full capture also emits `CMatrix`, whose oracle
+    # getter reads UNINITIALIZED MEMORY even when `cmatrix=` is set (the same
+    # dss_capi UB that `gen_props.py` canonicalizes with `zero_garbage`).
+    # Re-verified here: five fresh oracle processes produced five different
+    # CMatrix renders. A byte-exact fixture cannot host a nondeterministic value,
+    # and the port correctly emits `null` instead of reproducing UB, so the
+    # Capacitor is un-gateable through this channel. Its derived values are
+    # pinned against oracle-probed constants in the element's own unit tests
+    # (`elements/pd/capacitor/tests.rs`).
+    {
         "name": "autotrans_micro",
         # The AutoTrans twin of `transformer_micro` (og(json-a) item 1). AutoTrans
         # carries its own copy of the JSON array-alternative metadata
@@ -245,7 +297,13 @@ DECKS = [
         # NONZERO phasor list pinned byte-exact. Byte-exact is valid post-solve:
         # the getter formats at Pascal `%.7g`/`%.5g`, far coarser than the
         # faer-vs-KLU last-ULP. Full-family combos only (WdgCurrents renders only
-        # under Full). NOTE: with `rdcohms`/`maxtap`/`mintap`/`numtaps` left at
+        # under Full). Rounding-boundary margin measured, not assumed: re-solving
+        # this deck on the oracle at tolerance 1e-8 / 1e-10 / 1e-12 (7 / 9 / 15
+        # iterations — three genuinely different converged realizations) yields
+        # BYTE-IDENTICAL WdgCurrents strings; only a deliberately unconverged
+        # 1e-6 run (5 iterations) moves the 8th digit. The pinned magnitudes are
+        # therefore far from a `%.7g` boundary relative to any solver last-ULP.
+        # NOTE: with `rdcohms`/`maxtap`/`mintap`/`numtaps` left at
         # their defaults, `RecalcElementData` derives RDCOhms from the winding
         # ratings, so this deck ALSO pins the computed-RDCOhms render.
         "commands": [
@@ -325,6 +383,104 @@ DECKS = [
             # `Spectrum.mycustom` render is also observable (an assigned,
             # non-default spectrum survives the default-sweep filter).
             ("fullnames", FULL_NAMES),
+        ],
+    },
+    {
+        "name": "der_usermodel_assigned",
+        # `der_usermodel_full` pins the six DER user-model surfaces at their
+        # EMPTY default, which leaves the ASSIGNED-value render ungated. The two
+        # filename surfaces (`UserModel`/`ShaftModel`/`DynaDLL`) cannot be pinned
+        # without shipping a binary — assigning a name that does not resolve makes
+        # the oracle raise `#570 … Not Loaded` (probed) — but the DATA surfaces
+        # take any string with no loader involved. This deck pins them non-empty:
+        # Generator `UserData`+`ShaftData`, Storage `UserData`+`DynaData`,
+        # PVSystem `UserData`. It also pins the parenthesis stripping —
+        # `(Kp=1.5,Ki=0.25)` is stored and rendered as `Kp=1.5,Ki=0.25`.
+        "commands": [
+            "new circuit.um basekv=24 bus1=sourcebus",
+            "new Generator.g1 Bus1=sourcebus kV=24 kW=100 kvar=50 Model=1 "
+            "UserData=(Kp=1.5,Ki=0.25) ShaftData=(J=3.5,D=0.1)",
+            "new Storage.st1 phases=3 bus1=sourcebus kv=24 kwrated=100 "
+            "kwhrated=200 UserData=(a=1) DynaData=(b=2)",
+            "new PVSystem.pv1 phases=3 bus1=sourcebus kv=24 kva=100 pmpp=100 "
+            "irradiance=1 UserData=(c=3)",
+            "set voltagebases=[24]",
+            "calcv",
+        ],
+        "captures": [
+            ("obj", "Generator.g1"),
+            ("obj", "Storage.st1"),
+            ("obj", "PVSystem.pv1"),
+            ("batch", "Generator"),
+            ("batch", "Storage"),
+            ("batch", "PVSystem"),
+        ],
+        "combos": [
+            ("full", FULL),
+            ("full_lowercase_keys", FULL | LOWERCASE_KEYS),
+            # Assigned (non-default) strings survive the default-sweep filter, so
+            # the plain default sweep sees them too.
+            ("default", 0),
+        ],
+    },
+    {
+        "name": "spectrum_refs",
+        # The `Spectrum=` FullNames render across the PC classes. The port
+        # resolves Spectrum outside the property machinery, so its `PropDef`
+        # carries no resolving class; `PropDef::object_ref_deferred` supplies one
+        # for the JSON render only, because Pascal prefixes the resolving class
+        # (`PCClass.pas:96-98` sets `PropertyOffset2 := DSS.SpectrumClass`, which
+        # `DSSObjectHelper.pas:1178-1186` renders as `otherObj.FullName`).
+        # `der_usermodel_full` pinned that for Generator alone; the conversion
+        # touched 13 classes, so this deck gates the rest against the oracle:
+        # Vsource, Load, Isource, PVSystem, Storage, IndMach012, VCCS, UPFC,
+        # VSConverter and GICsource all render `Spectrum.mycustom`. GICLine is
+        # included to pin the OPPOSITE: it carries `SUPPRESS_JSON_LATE`, so the
+        # oracle emits NO `Spectrum` key for it at all. (WindGen also converted,
+        # but the class does not exist in the pinned 0.14.5 oracle, so it cannot
+        # be gated here.) `MyCustom` is declared mixed-case and assigned as
+        # `MYCUSTOM` so the lowercased stored name is pinned at the same time.
+        # `Line.gs1` exists because a GICsource binds to the Line of its own name.
+        "commands": [
+            "new circuit.spec basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+            "new Spectrum.MyCustom numharm=1 harmonic=[1] %mag=[100] angle=[0]",
+            "edit Vsource.source spectrum=MYCUSTOM",
+            "new Load.l1 bus1=sourcebus phases=3 kv=12.47 kw=100 pf=0.95 "
+            "spectrum=MYCUSTOM",
+            "new Isource.i1 bus1=sourcebus phases=3 amps=10 spectrum=MYCUSTOM",
+            "new PVSystem.pv1 bus1=sourcebus phases=3 kv=12.47 kva=100 pmpp=100 "
+            "irradiance=1 spectrum=MYCUSTOM",
+            "new Storage.st1 bus1=sourcebus phases=3 kv=12.47 kwrated=100 "
+            "kwhrated=200 spectrum=MYCUSTOM",
+            "new IndMach012.im1 bus1=sourcebus phases=3 kv=12.47 kw=100 "
+            "spectrum=MYCUSTOM",
+            "new VCCS.vc1 bus1=sourcebus phases=1 prated=25000 vrated=7200 "
+            "spectrum=MYCUSTOM",
+            "new UPFC.up1 bus1=sourcebus bus2=upb spectrum=MYCUSTOM",
+            "new VSConverter.vs1 bus1=sourcebus phases=3 spectrum=MYCUSTOM",
+            "new GICLine.gl1 bus1=sourcebus bus2=gicb volts=100 spectrum=MYCUSTOM",
+            "new Line.gs1 bus1=sourcebus bus2=gicb2 phases=3 length=1",
+            "new GICsource.gs1 volts=100 angle=0 spectrum=MYCUSTOM",
+            "set voltagebases=[12.47]",
+            "calcv",
+        ],
+        "captures": [
+            ("batch", "Vsource"),
+            ("batch", "Load"),
+            ("batch", "Isource"),
+            ("batch", "PVSystem"),
+            ("batch", "Storage"),
+            ("batch", "IndMach012"),
+            ("batch", "VCCS"),
+            ("batch", "UPFC"),
+            ("batch", "VSConverter"),
+            ("batch", "GICLine"),
+            ("batch", "GICsource"),
+        ],
+        "combos": [
+            ("fullnames", FULL_NAMES),
+            ("full_fullnames", FULL | FULL_NAMES),
+            ("default", 0),
         ],
     },
     {
@@ -422,8 +578,11 @@ DECKS = [
         # default and Full sweeps by the same code, so the default sweep fully
         # exercises it (number/string value split, the literal `"DynInit"` key
         # surviving LowercaseKeys, calc-strings untouched by FullNames/EnumAsInt).
-        # Full mode is skipped here to avoid an unrelated Generator Full-render
-        # gap (ShaftModel/ShaftData hidden by NOT_PORTED) — a recorded follow-up.
+        # `skip_full` originally worked around the Generator Full-render gap
+        # (ShaftModel/ShaftData hidden by NOT_PORTED); that gap is CLOSED
+        # (`hidden_from_full_enum` no longer consults NOT_PORTED). The flag stays
+        # only so this deck's committed bytes are not rewritten — the Full sweep
+        # it used to lack is gated by the separate `dyneq_full` deck below.
         "skip_full": True,
     },
     {
