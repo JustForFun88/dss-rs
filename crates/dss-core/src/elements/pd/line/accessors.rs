@@ -5,7 +5,7 @@
 use crate::elements::general::line_code::{LineCodeObj, LineType};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::elements::traits::{CktElement, ElemId};
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_units::{LineUnits, convert_line_units};
@@ -199,7 +199,7 @@ impl DssObject for Line {
         self.cd.get_bus(terminal).to_string()
     }
 
-    /// `linecode=`: store the resolved code's name + ElemRef and run
+    /// `linecode=`: store the resolved code's name + ElemId and run
     /// `FetchLineCode` immediately (Pascal stores the pointer then
     /// `PropertySideEffects` calls `FetchLineCode`; here the resolved view is
     /// only available at parse time, so we fetch here).
@@ -207,7 +207,7 @@ impl DssObject for Line {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         match idx {
             super::prop::LINECODE => {

@@ -10,7 +10,7 @@ use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
 /// Capture the parse-relevant shape of the metered element (the RefSnapshot).
@@ -94,7 +94,7 @@ impl CktElement for EnergyMeter {
 
     /// Pascal `TMeterElement.MeteredElement` — resolved so the exec applier can
     /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.med.metered_element
     }
 }
@@ -312,7 +312,7 @@ impl DssObject for EnergyMeter {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use super::prop::*;
         match idx {
@@ -392,7 +392,7 @@ mod make_pos_seq_tests {
     #[test]
     fn resyncs_to_metered_element_and_drops_branch_list() {
         let mut em = EnergyMeter::new("m1");
-        em.med.metered_element = Some(ElemRef { cls: 1, idx: 2 });
+        em.med.metered_element = Some(ElemId::new(1, 2));
         em.med.metered_terminal = 2; // GetBus(2)
         em.put_branch_list(CktTree::new());
         assert!(em.has_branch_list());
@@ -420,7 +420,7 @@ mod make_pos_seq_tests {
         assert!(!em.has_branch_list()); // BranchList := NIL
         assert!(plan.run_base && plan.actions.is_empty()); // inherited only
         // monitored_element_ref resolves the metered element for the applier.
-        assert_eq!(em.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 2 }));
+        assert_eq!(em.monitored_element_ref(), Some(ElemId::new(1, 2)));
     }
 
     /// Pascal NIL guard: no metered element ⇒ the body is skipped, only the base

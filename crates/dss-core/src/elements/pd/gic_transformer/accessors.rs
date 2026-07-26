@@ -3,7 +3,7 @@
 
 use super::{GicTransformer, SPEC_AUTO};
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::elements::traits::{CktElement, ElemId};
 use crate::obj::base::{DssObjData, DssObject};
 
 impl GicTransformer {
@@ -149,7 +149,7 @@ impl DssObject for GicTransformer {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         match idx {
             super::prop::VARCURVE => {

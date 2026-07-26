@@ -67,22 +67,20 @@ impl EspvlDispatchEnv for MockEnv {
     fn monitored_power(&mut self) -> Complex64 {
         self.power
     }
-    fn find_enabled_espvl(&self, name: &str) -> Option<ElemRef> {
+    fn find_enabled_espvl(&self, name: &str) -> Option<ElemId> {
         self.names
             .iter()
             .position(|n| n.eq_ignore_ascii_case(name))
-            .map(|i| ElemRef { cls: 0, idx: i })
+            .map(|i| ElemId::new(0, i))
     }
-    fn all_enabled_espvls(&self) -> Vec<ElemRef> {
-        (0..self.names.len())
-            .map(|i| ElemRef { cls: 0, idx: i })
-            .collect()
+    fn all_enabled_espvls(&self) -> Vec<ElemId> {
+        (0..self.names.len()).map(|i| ElemId::new(0, i)).collect()
     }
-    fn local_kw_base(&self, r: ElemRef) -> f64 {
-        self.phantom[r.idx]
+    fn local_kw_base(&self, r: ElemId) -> f64 {
+        self.phantom[r.index()]
     }
-    fn set_local_kw_base(&mut self, r: ElemRef, value: f64) {
-        self.phantom[r.idx] = value;
+    fn set_local_kw_base(&mut self, r: ElemId, value: f64) {
+        self.phantom[r.index()] = value;
     }
 }
 
@@ -208,13 +206,13 @@ fn make_like_copies_only_terminal_and_monitored() {
     src.f_kvar_limit = 1500.0;
     src.ccd.element_terminal = 2;
     src.monitored_full_name = "Line.l1".into();
-    src.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 3 });
+    src.ccd.monitored_element = Some(ElemId::new(1, 3));
 
     let mut dst = EspvlControl::new("dst");
     dst.make_like(&src);
     assert_eq!(dst.ccd.element_terminal, 2);
     assert_eq!(dst.monitored_full_name, "Line.l1");
-    assert_eq!(dst.ccd.monitored_element, Some(ElemRef { cls: 1, idx: 3 }));
+    assert_eq!(dst.ccd.monitored_element, Some(ElemId::new(1, 3)));
     // … but Type/bands keep the ctor defaults (Pascal quirk).
     assert_eq!(dst.f_type, 0);
     assert_eq!(dst.f_kw_band, 100.0);
@@ -225,7 +223,7 @@ fn make_like_copies_only_terminal_and_monitored() {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
 
     /// Pascal `TESPVLControlObj.MakePosSequence` (ESPVLControl.pas:357) is the
     /// same NIL-deref hazard as GenDispatcher (Access violation #303, probe `S4`).
@@ -233,7 +231,7 @@ mod make_pos_seq_tests {
     #[test]
     fn crash_config_element_set_is_safe_skip() {
         let mut es = EspvlControl::new("es1");
-        es.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 });
+        es.ccd.monitored_element = Some(ElemId::new(1, 0));
         let (np, nc) = (es.ccd.cd.nphases, es.ccd.cd.nconds);
         let bus = es.ccd.cd.get_bus(1).to_string();
         let ctx = PosSeqCtx {
@@ -250,6 +248,6 @@ mod make_pos_seq_tests {
         assert_eq!((es.ccd.cd.nphases, es.ccd.cd.nconds), (np, nc));
         assert_eq!(es.ccd.cd.get_bus(1), bus);
         assert!(plan.run_base);
-        assert_eq!(es.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+        assert_eq!(es.monitored_element_ref(), Some(ElemId::new(1, 0)));
     }
 }

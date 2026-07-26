@@ -12,7 +12,7 @@ use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE, reg};
 use crate::elements::pc::generator::Generator;
 use crate::elements::pc::load::Load;
 use crate::elements::pc::{PVSystem, Storage};
-use crate::elements::traits::{CktElement, ElemRef, ElemStore, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, ElemStore, SysCtx};
 
 use super::super::downcast_meter;
 
@@ -134,7 +134,7 @@ fn sample_all_der(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
 }
 
 /// PD-element kind probe used by the loss split.
-fn branch_kind(store: &dyn ElemStore, r: ElemRef) -> (bool, bool, usize) {
+fn branch_kind(store: &dyn ElemStore, r: ElemId) -> (bool, bool, usize) {
     let is_line = matches!(store.kind(r), ElemKind::Line);
     let is_xfmr = matches!(store.kind(r), ElemKind::Transformer);
     let nphases = store.ckt_elem(r).cd().nphases;
@@ -142,7 +142,7 @@ fn branch_kind(store: &dyn ElemStore, r: ElemRef) -> (bool, bool, usize) {
 }
 
 /// Pascal `TEnergyMeterObj.TakeSample` (l.1289).
-fn take_sample_one(meter_ref: ElemRef, ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
+fn take_sample_one(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let trapezoidal = ckt.trapezoidal_integration;
     let node_v = &ckt.solution.node_v;
     let delta_hrs = ckt.solution.interval_hrs;

@@ -296,7 +296,7 @@ const NAME_SUFFIX: &str = "_1";
 /// The overloaded PD element's `FullName` (`Class.name`) for the `DI_Overloads`
 /// row, recovered by concrete-type probe (the solve-side store has no class
 /// registry; `ckt.pd_elements` only ever holds these five classes).
-fn pd_full_name(store: &dyn ElemStore, r: crate::elements::traits::ElemRef) -> String {
+fn pd_full_name(store: &dyn ElemStore, r: crate::elements::traits::ElemId) -> String {
     use crate::elements::pd::capacitor::Capacitor;
     use crate::elements::pd::fault::Fault;
     use crate::elements::pd::line::Line;
@@ -400,7 +400,7 @@ fn open_voltage_report_file(ckt: &mut Circuit) {
 /// stream (+ the phase-voltage report stream when requested) — created only in
 /// verbose mode.
 fn open_meter_di_file(
-    meter_ref: crate::elements::traits::ElemRef,
+    meter_ref: crate::elements::traits::ElemId,
     ckt: &Circuit,
     store: &mut dyn ElemStore,
 ) {
@@ -450,7 +450,7 @@ fn open_meter_di_file(
 /// registers row to the `EnergyMeterTotals` stream (unconditionally — even a
 /// non-verbose meter contributes its registers).
 fn close_meter_di_file(
-    meter_ref: crate::elements::traits::ElemRef,
+    meter_ref: crate::elements::traits::ElemId,
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
     errors: &mut crate::diag::ErrorLog,
@@ -652,7 +652,7 @@ fn write_totals_file(ckt: &mut Circuit, store: &dyn ElemStore, errors: &mut crat
 /// only), the class `DI_RegisterTotals` accumulation (always), and the
 /// phase-voltage report row (when its file is open).
 pub(super) fn write_meter_demand_interval_data(
-    meter_ref: crate::elements::traits::ElemRef,
+    meter_ref: crate::elements::traits::ElemId,
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
 ) {

@@ -7,7 +7,7 @@
 use num_complex::Complex64;
 
 use crate::elements::general::tcc_curve::TccCurveObj;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::{FUSEMAXDIM, Fuse};
@@ -37,7 +37,7 @@ impl CktElement for Fuse {
 
     /// Pascal `TControlElem.FControlledElement` — the line/element this fuse
     /// switches (`Fuse` is a `TControlElem`; `SwitchedObj` binds `FControlledElement`).
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
     }
 
@@ -233,7 +233,7 @@ impl DssObject for Fuse {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use super::prop::*;
         match idx {

@@ -8,7 +8,7 @@ use num_complex::Complex64;
 
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::{RCMAX, RECLOSE_MAX, Recloser};
@@ -45,7 +45,7 @@ impl CktElement for Recloser {
         &mut self.ccd.cd
     }
 
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
     }
 
@@ -75,7 +75,7 @@ impl CktElement for Recloser {
         PosSeqPlan::base()
     }
 
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.ccd.monitored_element
     }
 }
@@ -372,7 +372,7 @@ impl DssObject for Recloser {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use super::prop::*;
         match idx {

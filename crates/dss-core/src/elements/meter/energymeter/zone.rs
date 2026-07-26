@@ -3,7 +3,7 @@
 
 use super::{EnergyMeter, MAX_VBASE_COUNT, NUM_EM_REGISTERS, VBASE_START};
 use crate::circuit::ckt_tree::CktTree;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 
 impl EnergyMeter {
     /// Pascal `RecalcElementData`: validate the metered element (must be a PD
@@ -98,11 +98,11 @@ impl EnergyMeter {
     pub(crate) fn install_zone(
         &mut self,
         branch_list: Option<CktTree>,
-        sequence_list: Vec<ElemRef>,
+        sequence_list: Vec<ElemId>,
         sequence_nodes: Vec<usize>,
-        load_list: Vec<ElemRef>,
-        zone_ends: Vec<(ElemRef, usize)>,
-        zone_pce: Vec<ElemRef>,
+        load_list: Vec<ElemId>,
+        zone_ends: Vec<(ElemId, usize)>,
+        zone_pce: Vec<ElemId>,
         vbase_list: Vec<f64>,
         vbase_count: usize,
     ) {

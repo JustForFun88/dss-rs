@@ -24,7 +24,7 @@ pub(crate) fn export_voltages_elements(classes: &mut [DssClass], ckt: &Circuit) 
     let mut max_num_terminals = 2usize;
     let mut max_num_nodes = 0usize;
     for &r in &ckt.ckt_elements {
-        if let Some(elem) = classes[r.cls].arena[r.idx].as_ckt_element() {
+        if let Some(elem) = classes[r.class_ord()].arena[r.index()].as_ckt_element() {
             max_num_terminals = max_num_terminals.max(elem.cd().nterms);
             max_num_nodes = max_num_nodes.max(elem.cd().nconds);
         }

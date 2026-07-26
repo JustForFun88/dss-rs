@@ -3,7 +3,7 @@
 //! `Utilities.DoResetControls` and `ControlQueue.DoMultiRate`.
 //!
 //! Pascal reaches the control's controlled/monitored elements through live
-//! object pointers; here every dispatch resolves the control's [`ElemRef`](crate::elements::traits::ElemRef)s
+//! object pointers; here every dispatch resolves the control's [`ElemId`](crate::elements::traits::ElemId)s
 //! against the executive's class registry and splits the mutable borrows
 //! (PHASE5_PLAN §2.1): the control object, its controlled transformer or
 //! capacitor, and (CapControl only) the monitored element are borrowed at once

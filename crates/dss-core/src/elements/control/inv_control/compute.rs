@@ -54,7 +54,7 @@
 use num_complex::Complex64;
 
 use crate::elements::pc::storage::{STORE_CHARGING, STORE_DISCHARGING};
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::util::{EPSILON, fmt_g};
 
 use super::{
@@ -106,7 +106,7 @@ pub(crate) enum FleetFind {
     /// Found but disabled (Pascal silently skips it — not added to the fleet).
     Disabled,
     /// Found and enabled.
-    Found(ElemRef),
+    Found(ElemId),
 }
 
 /// A read-only snapshot of one controlled DER's state — the inputs
@@ -167,28 +167,28 @@ pub(crate) trait InvDispatchEnv {
     /// Pascal's "scan the whole circuit for every PVSystem" (creation order);
     /// returns `(FullName, ref, enabled)` — the name is added to `DERNameList`
     /// regardless of `enabled`, the ref to the fleet only when enabled.
-    fn all_pvsystems(&self) -> Vec<(String, ElemRef, bool)>;
+    fn all_pvsystems(&self) -> Vec<(String, ElemId, bool)>;
     /// Pascal's "scan the whole circuit for every Storage".
-    fn all_storages(&self) -> Vec<(String, ElemRef, bool)>;
+    fn all_storages(&self) -> Vec<(String, ElemId, bool)>;
     /// Pascal `DoSimpleMsg` sink (the 14403 named-missing error).
     fn push_error(&mut self, diag: crate::diag::DssDiagnostic);
 
     // --- per-DER read ---
-    fn der_snap(&self, r: ElemRef) -> DerSnap;
+    fn der_snap(&self, r: ElemId) -> DerSnap;
     /// `DERElem.IsPVSystem()` — true for a PVSystem, false for a Storage (the
     /// WATTVAR PVSystem-only kW push in `DoPendingAction`).
-    fn der_is_pvsystem(&self, r: ElemRef) -> bool;
+    fn der_is_pvsystem(&self, r: ElemId) -> bool;
     /// Pascal `DERElem.ComputeVTerminal` then `Vterminal[1..NPhases]` — the
     /// per-phase COMPLEX terminal voltages (used by `GetMonVoltage`; the delta
     /// line-to-line difference needs the phasors, not just magnitudes — D4).
-    fn der_vterminal(&mut self, r: ElemRef) -> Vec<Complex64>;
+    fn der_vterminal(&mut self, r: ElemId) -> Vec<Complex64>;
     /// `DERElem.Connection = TGeneralConnection.Delta` — the controlled DER is
     /// delta-connected, so `GetMonVoltage` monitors line-to-line voltages
     /// (dss_capi 0.15.x D4, `InvControl.pas` l.1647-1652).
-    fn der_is_delta(&self, r: ElemRef) -> bool;
+    fn der_is_delta(&self, r: ElemId) -> bool;
     /// `ActiveCircuit.Buses[DERElem.terminals[0].busRef].kVBase * 1000` — the L-N
     /// base volts for the `FVpuSolution` per-unit (UpdateInvControl).
-    fn der_bus_vbase(&self, r: ElemRef) -> f64;
+    fn der_bus_vbase(&self, r: ElemId) -> f64;
     /// Pascal `GetMonVoltage`'s explicit-`MonBus` node read:
     /// `ActiveCircuit.Solution.NodeV[Buses[BusList.Find(FMonBuses[j])].GetRef(node)]`
     /// — the complex voltage at the `j`-th monitored bus's `node` (1-based node
@@ -204,64 +204,64 @@ pub(crate) trait InvDispatchEnv {
     /// abort path).
     fn request_solution_abort(&mut self);
     /// `obj.FullName` (`PVSystem.<n>` / `Storage.<n>`) for the event log.
-    fn der_full_name(&self, r: ElemRef) -> String;
+    fn der_full_name(&self, r: ElemId) -> String;
 
     // --- per-DER write ---
     /// Pascal `DERElem.SetPFPriority(value)`.
-    fn der_set_pf_priority(&mut self, r: ElemRef, value: bool);
+    fn der_set_pf_priority(&mut self, r: ElemId, value: bool);
     /// Set the DER's inverter-control mode flags (`VWmode`/`VVmode`) + `Varmode`
     /// (the `DoPendingAction` path).
-    fn der_set_modes(&mut self, r: ElemRef, vw_mode: bool, vv_mode: bool, var_mode: i32);
+    fn der_set_modes(&mut self, r: ElemId, vw_mode: bool, vv_mode: bool, var_mode: i32);
     /// Set only `DERElem.VVmode` (the `Sample` path: Pascal sets just `VVmode`,
     /// leaving `VWmode`/`Varmode` until `DoPendingAction`).
-    fn der_set_vv_mode(&mut self, r: ElemRef, value: bool);
+    fn der_set_vv_mode(&mut self, r: ElemId, value: bool);
     /// Set only `DERElem.VWmode` (the VOLTWATT `Sample`/`DoPendingAction` path:
     /// Pascal sets just `VWmode`, leaving `Varmode`/`VVmode` untouched).
-    fn der_set_vw_mode(&mut self, r: ElemRef, value: bool);
+    fn der_set_vw_mode(&mut self, r: ElemId, value: bool);
     /// Set only `DERElem.DRCmode` (the DRC / VV_DRC `Sample`/`DoPendingAction` path).
-    fn der_set_drc_mode(&mut self, r: ElemRef, value: bool);
+    fn der_set_drc_mode(&mut self, r: ElemId, value: bool);
     /// Set only `DERElem.WPmode` (the WATTPF `Sample`/`DoPendingAction` path).
-    fn der_set_wp_mode(&mut self, r: ElemRef, value: bool);
+    fn der_set_wp_mode(&mut self, r: ElemId, value: bool);
     /// Set only `DERElem.WVmode` (the WATTVAR `Sample`/`DoPendingAction` path).
-    fn der_set_wv_mode(&mut self, r: ElemRef, value: bool);
+    fn der_set_wv_mode(&mut self, r: ElemId, value: bool);
     /// Set only `DERElem.AVRmode` (the AVR `Sample`/`DoPendingAction` path).
-    fn der_set_avr_mode(&mut self, r: ElemRef, value: bool);
+    fn der_set_avr_mode(&mut self, r: ElemId, value: bool);
     /// Pascal `DERElem.Varmode := value` for both DER types (the explicit
     /// `Varmode := VARMODEKVAR` the WATTPF/WATTVAR/AVR `DoPendingAction` sets — so
     /// `SetNominalDEROutput` applies `kvarRequested`. For PVSystem this is redundant
     /// with `der_set_kvar_requested` modeling `Set_Presentkvar`, but a Storage's
     /// `kvarRequested` write has no such side effect, so without it a Storage stays
     /// `VARMODE_PF` and the requested kvar is silently dropped).
-    fn der_set_var_mode(&mut self, r: ElemRef, mode: i32);
+    fn der_set_var_mode(&mut self, r: ElemId, mode: i32);
     /// `TStorageObj.kvarRequested` / `TPVSystemObj.kvarRequested` — the *requested*
     /// kvar (not the achieved `Get_Presentkvar`). AVR's iter-2 `DQDV` reads this for a
     /// Storage (Pascal l.1081), where PVSystem reads the achieved `Presentkvar`.
-    fn der_requested_kvar(&self, r: ElemRef) -> f64;
+    fn der_requested_kvar(&self, r: ElemId) -> f64;
     /// `TPVSystemObj.pf_wp_nominal := value` (WATTPF; PVSystem only — Storage
     /// instead takes the `kvarRequested := QDesiredWP` branch handled via
     /// `der_set_kvar_requested`).
-    fn der_set_pf_wp_nominal(&mut self, r: ElemRef, value: f64);
+    fn der_set_pf_wp_nominal(&mut self, r: ElemId, value: f64);
     /// `TPVSystemObj.Presentkvar := q` / `TStorageObj.kvarRequested := q`.
-    fn der_set_kvar_requested(&mut self, r: ElemRef, q: f64);
+    fn der_set_kvar_requested(&mut self, r: ElemId, q: f64);
     /// `TPVSystemObj.PresentkW := p` / `TStorageObj.kWRequested := p` — both write
     /// the DER's `kWRequested` field (the volt-watt kW set-point).
-    fn der_set_kw_requested(&mut self, r: ElemRef, p: f64);
+    fn der_set_kw_requested(&mut self, r: ElemId, p: f64);
     /// `DERElem.Get_PresentkW` (read back after `SetNominalDEROutput`, for the
     /// volt-watt event-log + the `FVWOperation` reset check).
-    fn der_present_kw(&self, r: ElemRef) -> f64;
+    fn der_present_kw(&self, r: ElemId) -> f64;
     /// `TStorageObj.DCkW` (Pascal `Get_DCkW` → `ComputeDCkW`): the live DC-side kW,
     /// the Storage `Calc_PBase` base for `VoltwattYAxis=0` (`%Available`). Only
     /// reached by a Storage in VOLTWATT/VV_VW with that Y-axis; a PVSystem uses its
     /// own `FDCkW` (snap `dckw`) and never calls this.
-    fn der_storage_dckw(&mut self, r: ElemRef) -> f64;
+    fn der_storage_dckw(&mut self, r: ElemId) -> f64;
     /// `DERElem.SetNominalDEROutput()`.
-    fn der_set_nominal(&mut self, r: ElemRef);
+    fn der_set_nominal(&mut self, r: ElemId);
     /// `DERElem.Get_Presentkvar`.
-    fn der_present_kvar(&self, r: ElemRef) -> f64;
+    fn der_present_kvar(&self, r: ElemId) -> f64;
     /// `PVSys/Storage.Set_Variable(idx, value)` — the mode-3 monitor state vars
     /// (`5`=FVreg, `7`/`16`=FVVOperation). Unobservable until the mode-3 monitor
     /// body lands (WP7.7); ported for fidelity.
-    fn der_set_monitor_var(&mut self, r: ElemRef, kind: MonitorVar, value: f64);
+    fn der_set_monitor_var(&mut self, r: ElemId, kind: MonitorVar, value: f64);
 
     // --- control queue / event log / scalars ---
     /// Pascal `ControlQueue.Push(TimeDelay, CHANGEVARLEVEL, 0, Self)`.
@@ -287,29 +287,29 @@ pub(crate) trait InvDispatchEnv {
 
     // --- grid-forming (GFM) arm ---
     /// `DERElem.GFM_Mode` — the DER is currently a grid-forming voltage source.
-    fn der_gfm_mode(&self, r: ElemRef) -> bool;
+    fn der_gfm_mode(&self, r: ElemId) -> bool;
     /// `TStorageObj.StorageState` (`FState`); for a PVSystem this is unused (the
     /// GFM arm branches on `IsStorage` first).
-    fn der_storage_state(&self, r: ElemRef) -> i32;
+    fn der_storage_state(&self, r: ElemId) -> i32;
     /// `DERElem.dynVars.ILimit` — the GFM output-current limit (≤ 0 ⇒ no limit,
     /// the overload path is taken instead of the amps limiter).
-    fn der_ilimit(&self, r: ElemRef) -> f64;
+    fn der_ilimit(&self, r: ElemId) -> f64;
     /// `DERElem.dynVars.ResetIBR` — the force-off flag (blocks the pending push).
-    fn der_reset_ibr(&self, r: ElemRef) -> bool;
+    fn der_reset_ibr(&self, r: ElemId) -> bool;
     /// `DERElem.CheckAmpsLimit()` — set the DER's `dynVars.IComp` and return
     /// whether any phase is over the amps limit (Sample GFM arm, `ILimit > 0`).
-    fn der_check_amps_limit(&mut self, r: ElemRef) -> bool;
+    fn der_check_amps_limit(&mut self, r: ElemId) -> bool;
     /// `DERElem.CheckOLInverter()` — whether any inverter phase is overloaded.
-    fn der_check_ol_inverter(&mut self, r: ElemRef) -> bool;
+    fn der_check_ol_inverter(&mut self, r: ElemId) -> bool;
     /// `DERElem.GFM_Mode := value` + `YprimInvalid := TRUE` (the DoPendingAction
     /// overload path that drops the DER out of grid-forming mode).
-    fn der_set_gfm_mode(&mut self, r: ElemRef, value: bool);
+    fn der_set_gfm_mode(&mut self, r: ElemId, value: bool);
     /// `DERElem.dynVars.ResetIBR := value` (dynamics overload → take the IBR to
     /// safety through the dynamics algorithm).
-    fn der_set_reset_ibr(&mut self, r: ElemRef, value: bool);
+    fn der_set_reset_ibr(&mut self, r: ElemId, value: bool);
     /// `TStorageObj.StorageState := 0; StateChanged := TRUE` — the overload path
     /// that turns a burning storage off (non-dynamics, `ILimit ≤ 0`).
-    fn der_set_storage_state_off(&mut self, r: ElemRef);
+    fn der_set_storage_state_off(&mut self, r: ElemId);
     /// `ActiveCircuit.Solution.IsDynamicModel` — the GFM overload path forces the
     /// IBR to safety through the dynamics algorithm (dynamics) rather than turning
     /// the DER off outright (non-dynamics).
@@ -2622,13 +2622,7 @@ impl InvControl {
     /// PVSystem uses `FDCkW·FEffFactor`, a Storage the *live* `TStorageObj.DCkW·
     /// FEffFactor` (Pascal sets `FDCkW := 0` for Storage and reads the `DCkW`
     /// property instead). yaxis 1/2/3 are identical for both types.
-    fn calc_pbase(
-        &mut self,
-        j: usize,
-        r: ElemRef,
-        is_pvsystem: bool,
-        env: &mut dyn InvDispatchEnv,
-    ) {
+    fn calc_pbase(&mut self, j: usize, r: ElemId, is_pvsystem: bool, env: &mut dyn InvDispatchEnv) {
         // Only the Storage %Available base needs the live DCkW (a fresh
         // `ComputeDCkW`); fetch it lazily so no other path pays for it.
         let storage_dckw = if !is_pvsystem && self.voltwatt_yaxis == 0 {

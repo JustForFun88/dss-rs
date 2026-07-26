@@ -1,7 +1,7 @@
 use super::*;
 
-fn er(idx: usize) -> ElemRef {
-    ElemRef { cls: 0, idx }
+fn er(idx: usize) -> ElemId {
+    ElemId::new(0, idx)
 }
 
 /// `GoForward` is a LIFO sweep: at each level the **last**-added child is
@@ -16,7 +16,7 @@ fn go_forward_is_lifo_over_children() {
     // Traversal from the root: 3, 2, 1.
     let mut order = Vec::new();
     while let Some(e) = t.go_forward() {
-        order.push(e.idx);
+        order.push(e.index());
     }
     assert_eq!(order, vec![3, 2, 1]);
     assert!(t.present.is_none());
@@ -32,8 +32,8 @@ fn children_added_mid_sweep_are_visited() {
     let mut order = Vec::new();
     let mut visited = t.go_forward(); // -> 1
     while let Some(e) = visited {
-        order.push(e.idx);
-        if e.idx == 1 {
+        order.push(e.index());
+        if e.index() == 1 {
             // grow the tree at the present branch mid-sweep
             t.add_new_child(er(2), NO_BUS, 1);
             t.add_new_child(er(3), NO_BUS, 1);
@@ -58,7 +58,7 @@ fn go_forward_descends_before_siblings() {
     t.present = Some(root);
     let mut order = Vec::new();
     while let Some(e) = t.go_forward() {
-        order.push(e.idx);
+        order.push(e.index());
     }
     // Stack after root: [1, 2] -> pop 2, push [21, 22] -> pop 22, 21, then 1.
     assert_eq!(order, vec![2, 22, 21, 1]);
@@ -75,14 +75,14 @@ fn first_resets_traversal_and_levels_track_depth() {
     assert_eq!(t.node(c1).from_terminal, 2);
 
     let f = t.first().unwrap();
-    assert_eq!(f.idx, 0);
+    assert_eq!(f.index(), 0);
     assert_eq!(t.level(), 0);
-    assert_eq!(t.go_forward().unwrap().idx, 1);
+    assert_eq!(t.go_forward().unwrap().index(), 1);
     assert_eq!(t.level(), 1);
-    assert_eq!(t.go_forward().unwrap().idx, 2);
+    assert_eq!(t.go_forward().unwrap().index(), 2);
     assert_eq!(t.level(), 2);
-    assert_eq!(t.parent().unwrap().idx, 1);
-    assert_eq!(t.go_backward().unwrap().idx, 1);
+    assert_eq!(t.parent().unwrap().index(), 1);
+    assert_eq!(t.go_backward().unwrap().index(), 1);
 }
 
 /// `Get_ToBusReference` sequential-access semantics: single entry always

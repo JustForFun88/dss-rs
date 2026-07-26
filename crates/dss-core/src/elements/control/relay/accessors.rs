@@ -10,7 +10,7 @@ use num_complex::Complex64;
 use crate::elements::control::control_elem::CTRL_STATE_KEEP;
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::Relay;
@@ -48,7 +48,7 @@ impl CktElement for Relay {
         &mut self.ccd.cd
     }
 
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
     }
 
@@ -85,7 +85,7 @@ impl CktElement for Relay {
         PosSeqPlan::base()
     }
 
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.ccd.monitored_element
     }
 }
@@ -470,7 +470,7 @@ impl DssObject for Relay {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use super::prop::*;
         match idx {

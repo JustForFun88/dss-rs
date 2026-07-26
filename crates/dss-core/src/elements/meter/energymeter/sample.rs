@@ -4,7 +4,7 @@
 
 use super::EnergyMeter;
 use crate::circuit::ckt_tree::CktTree;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 
 impl EnergyMeter {
     /// Pascal `TEnergyMeterObj.ResetRegisters`: zero the registers/derivatives
@@ -92,7 +92,7 @@ pub(crate) struct SampleState {
     pub vbase_list: Vec<f64>,
     pub max_zone_kva_norm: f64,
     pub max_zone_kva_emerg: f64,
-    pub metered_element: Option<ElemRef>,
+    pub metered_element: Option<ElemId>,
     pub metered_terminal: usize,
     pub registers: Vec<f64>,
     pub derivatives: Vec<f64>,

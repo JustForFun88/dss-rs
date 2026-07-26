@@ -10,7 +10,7 @@ use crate::elements::pd::auto_trans::AutoTrans;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::Transformer;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 
 impl CktElement for Monitor {
@@ -77,7 +77,7 @@ impl CktElement for Monitor {
 
     /// Pascal `TMeterElement.MeteredElement` — resolved so the exec applier can
     /// build [`PosSeqCtx::monitored`] before calling [`Self::make_pos_sequence`].
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         self.med.metered_element
     }
 }
@@ -196,7 +196,7 @@ impl DssObject for Monitor {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         match idx {
             super::prop::ELEMENT => {
@@ -380,7 +380,7 @@ mod make_pos_seq_tests {
     #[test]
     fn mode0_resyncs_and_rebuilds_header() {
         let mut m = Monitor::new("mon1");
-        m.med.metered_element = Some(ElemRef { cls: 1, idx: 0 });
+        m.med.metered_element = Some(ElemId::new(1, 0));
         m.med.metered_snap = Some(snap(1, 1, 0));
         let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
         assert_eq!(m.cd().nphases, 1);
@@ -388,7 +388,7 @@ mod make_pos_seq_tests {
         assert_eq!(m.get_bus_name(1), "b1");
         assert_eq!(m.num_channels(), 4);
         assert!(plan.run_base && plan.actions.is_empty());
-        assert_eq!(m.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+        assert_eq!(m.monitored_element_ref(), Some(ElemId::new(1, 0)));
     }
 
     /// Mode 3 (state variables): ClearMonitorStream sets `RecordSize` to the
@@ -397,7 +397,7 @@ mod make_pos_seq_tests {
     fn mode3_record_size_is_num_variables() {
         let mut m = Monitor::new("mon1");
         m.mode = MonitorModeView::from_raw(3);
-        m.med.metered_element = Some(ElemRef { cls: 2, idx: 5 });
+        m.med.metered_element = Some(ElemId::new(2, 5));
         m.med.metered_snap = Some(snap(1, 1, 2));
         let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
         assert_eq!(m.num_channels(), 2); // NumVariables
@@ -411,7 +411,7 @@ mod make_pos_seq_tests {
     fn mode4_record_size_is_two_per_phase() {
         let mut m = Monitor::new("mon1");
         m.mode = MonitorModeView::from_raw(4);
-        m.med.metered_element = Some(ElemRef { cls: 1, idx: 0 });
+        m.med.metered_element = Some(ElemId::new(1, 0));
         m.med.metered_snap = Some(snap(1, 1, 0));
         let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
         assert_eq!(m.cd().nphases, 1);
@@ -427,7 +427,7 @@ mod make_pos_seq_tests {
     fn mode5_record_size_is_num_solution_vars() {
         let mut m = Monitor::new("mon1");
         m.mode = MonitorModeView::from_raw(5);
-        m.med.metered_element = Some(ElemRef { cls: 1, idx: 0 });
+        m.med.metered_element = Some(ElemId::new(1, 0));
         m.med.metered_snap = Some(snap(1, 1, 0));
         let plan = m.make_pos_sequence(&ctx1(1, 1, 2));
         assert_eq!(m.num_channels(), 12); // NUM_SOLUTION_VARS

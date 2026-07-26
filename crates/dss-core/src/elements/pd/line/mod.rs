@@ -26,7 +26,7 @@ use crate::elements::general::conductor_data::{CONDUCTOR_PROXY_CLASSES, CONDUCTO
 use crate::elements::general::line_code::LineType;
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
@@ -289,9 +289,9 @@ pub struct Line {
     pub line_code_units: LineUnits,
     /// `FUnitsConvert`.
     pub units_convert: f64,
-    /// `LineCodeObj` reference (the resolved code's stable [`ElemRef`]) and its
+    /// `LineCodeObj` reference (the resolved code's stable [`ElemId`]) and its
     /// name for dumps; `None`/empty before any `linecode=`.
-    pub line_code_ref: Option<ElemRef>,
+    pub line_code_ref: Option<ElemId>,
     pub line_code_name: String,
     pub is_switch: bool,
     pub sym_components_model: bool,

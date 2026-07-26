@@ -4,7 +4,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_LOCK, CTRL_NONE, CTRL_OPEN};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::exec::Dss;
 use crate::obj::base::DssObject;
 use crate::solution::{ControlQueue, EventLog, SolveMode};
@@ -97,7 +97,7 @@ impl Scratch {
             t,
             dbl_hour: int_hour as f64 + t / 3600.0,
             control_iter: 1,
-            self_ref: ElemRef { cls: 0, idx: 0 },
+            self_ref: ElemId::new(0, 0),
         }
     }
 }
@@ -242,7 +242,7 @@ fn state_side_effect_sets_present_and_queues_force() {
     // D12: `State=` writes `PresentState` (offset), then the side effect syncs
     // `CurrentAction := PresentState` and forces the controlled element.
     let mut sw = SwtControl::new("sw1");
-    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     sw.set_i32(prop::STATE, CTRL_OPEN); // offset write → PresentState
     sw.side_effects(prop::STATE, 0);
     assert_eq!(sw.present_state, CTRL_OPEN);
@@ -269,7 +269,7 @@ fn d12_normal_and_state_readbacks_are_independent() {
     // The fix gives each its own field. Set `State=open` then `Normal=closed`;
     // both readbacks must survive independently (0.14.5 → both `closed`).
     let mut sw = SwtControl::new("sw1");
-    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     sw.set_i32(prop::STATE, CTRL_OPEN);
     sw.side_effects(prop::STATE, 0);
     sw.take_ref_actions();
@@ -288,7 +288,7 @@ fn d6_action_forces_present_state_and_element_like_state() {
     // `[open, open, open, ]` (immediately forced), and (no prior `normal`) normal
     // defaults to `[open, open, open, ]`.
     let mut sw = SwtControl::new("sw1");
-    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     sw.set_i32(prop::ACTION, CTRL_OPEN); // offset write → CurrentAction
     sw.side_effects(prop::ACTION, 0);
     assert_eq!(sw.present_state, CTRL_OPEN); // D6: Action forces present state
@@ -311,7 +311,7 @@ fn d6_action_after_declared_normal_leaves_normal_unchanged() {
     // `normal=`) while `state` flips to `[open, open, open, ]`. Mirrors the
     // civanlar/swtcontrol_time pattern.
     let mut sw = SwtControl::new("sw1");
-    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     // normal=closed → NormalState set, so NormalStateSet is effectively TRUE.
     sw.set_i32(prop::NORMAL, CTRL_CLOSE);
     sw.side_effects(prop::NORMAL, 0);
@@ -334,7 +334,7 @@ fn d6_locked_action_does_not_force_element() {
     // InterpretSwitchState `if Locked and (property in {a,s}) then Exit`) — the
     // switch stays closed, no element force queued.
     let mut sw = SwtControl::new("sw1");
-    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     sw.locked = true;
     sw.set_i32(prop::ACTION, CTRL_OPEN); // ignored (ConditionalReadOnly)
     sw.side_effects(prop::ACTION, 0); // early-return on locked
@@ -422,7 +422,7 @@ fn locked_ignores_normal_and_state_writes() {
     // ConditionalReadOnly on Locked applies to Normal and State too (not just
     // Action): a locked write is dropped and its side effect is skipped.
     let mut sw = SwtControl::new("sw1");
-    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     sw.locked = true;
     // Normal: write rejected, NormalState untouched (stays CTRL_NONE).
     sw.set_i32(prop::NORMAL, CTRL_OPEN);
@@ -441,7 +441,7 @@ fn locked_ignores_normal_and_state_writes() {
 fn reset_yes_unlocks_and_restores_with_force() {
     // Pascal DoReset: Locked := FALSE, then Reset (restore + element force).
     let mut sw = SwtControl::new("sw1");
-    sw.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    sw.ccd.controlled_element = Some(ElemId::new(0, 0));
     sw.locked = true;
     sw.normal_state = CTRL_CLOSE;
     sw.present_state = CTRL_OPEN;
@@ -614,7 +614,7 @@ fn reset_restores_switch_to_normal_via_dispatch() {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
     use crate::obj::base::DssObject;
 
     /// Pascal `TSwtControlObj.MakePosSequence` (SwtControl.pas:306): phases/conds
@@ -622,7 +622,7 @@ mod make_pos_seq_tests {
     #[test]
     fn resyncs_to_controlled() {
         let mut sw = SwtControl::new("sw1");
-        sw.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 0 });
+        sw.ccd.controlled_element = Some(ElemId::new(1, 0));
         sw.ccd.element_terminal = 2;
         let ctx = PosSeqCtx {
             controlled: Some(PosSeqElemInfo {

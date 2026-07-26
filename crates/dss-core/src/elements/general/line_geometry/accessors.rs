@@ -2,7 +2,7 @@
 //! accessors, object-reference plumbing and the `PropertySideEffects` state
 //! machine.
 
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 
 use super::{ConductorChoice, LineGeometryObj, LineType, prop};
@@ -162,7 +162,7 @@ impl DssObject for LineGeometryObj {
         &mut self,
         idx: usize,
         _name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         let cloned = resolved.map(|(_, o)| o.clone_box());
         match idx {

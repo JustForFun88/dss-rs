@@ -116,9 +116,12 @@ impl Dss {
             None => return,
         };
         for r in meters {
-            if let Some(ce) = self.classes[r.cls].arena[r.idx].as_ckt_element() {
+            if let Some(ce) = self.classes[r.class_ord()].arena[r.index()].as_ckt_element() {
                 let is_zone = ce.cd().obj.name().to_ascii_lowercase().contains("zone_");
-                if is_zone && let Some(ce) = self.classes[r.cls].arena[r.idx].as_ckt_element_mut() {
+                if is_zone
+                    && let Some(ce) =
+                        self.classes[r.class_ord()].arena[r.index()].as_ckt_element_mut()
+                {
                     ce.cd_mut().set_enabled(false);
                 }
             }

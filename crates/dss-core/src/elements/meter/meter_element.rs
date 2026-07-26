@@ -11,7 +11,7 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::elements::traits::{CktElement, ElemId};
 
 /// Which class the monitored element belongs to — captured when `element=` is
 /// resolved so `RecalcElementData`/`ClearMonitorStream` can validate the mode
@@ -59,7 +59,7 @@ pub struct MeteredSnapshot {
 pub struct MeterElementData {
     pub cd: CktElementData,
     /// `MeteredElement` (the device this meter samples).
-    pub metered_element: Option<ElemRef>,
+    pub metered_element: Option<ElemId>,
     /// `MeteredTerminal` (1-based).
     pub metered_terminal: i32,
     /// `MeteredElementChanged`.

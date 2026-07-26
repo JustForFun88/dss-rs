@@ -13,13 +13,13 @@ use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
 use crate::elements::pd::transformer::Transformer;
-use crate::elements::traits::{ElemRef, ElemStore};
+use crate::elements::traits::{ElemId, ElemStore};
 use crate::exec::registry::{ClassStore, DssClass};
 use crate::report::format::enclose_quotes;
 use crate::solution::topology::get_isolated_sub_area;
 
 /// Pascal `(DSSObjType and BASECLASSMASK) = PD_ELEMENT`.
-fn is_pd_element(store: &dyn ElemStore, r: ElemRef) -> bool {
+fn is_pd_element(store: &dyn ElemStore, r: ElemId) -> bool {
     let any = store.obj(r).as_any();
     any.is::<Line>()
         || any.is::<Transformer>()
@@ -29,11 +29,11 @@ fn is_pd_element(store: &dyn ElemStore, r: ElemRef) -> bool {
 }
 
 /// Pascal `TDSSCktElement.FullName`.
-fn full_name(classes: &[DssClass], r: ElemRef) -> String {
+fn full_name(classes: &[DssClass], r: ElemId) -> String {
     format!(
         "{}.{}",
-        classes[r.cls].props.class_name(),
-        classes[r.cls].arena[r.idx].data().name()
+        classes[r.class_ord()].props.class_name(),
+        classes[r.class_ord()].arena[r.index()].data().name()
     )
 }
 
@@ -62,7 +62,7 @@ pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> Stri
     let mut sub_areas: Vec<CktTree> = Vec::new();
     let bus_checked_after_source: Vec<bool>;
     let bus_checked_final: Vec<bool>;
-    let mut isolated_elems: Vec<ElemRef> = Vec::new();
+    let mut isolated_elems: Vec<ElemId> = Vec::new();
     {
         let mut store = ClassStore { classes };
         // Reset every element's CHECKED/terminals_checked and every bus's bus_checked
@@ -159,7 +159,9 @@ pub(crate) fn show_isolated(classes: &mut [DssClass], ckt: &mut Circuit) -> Stri
     s.push_str("***********  THE FOLLOWING ENABLED ELEMENTS ARE ISOLATED ************\n");
     s.push('\n');
     for &r in &isolated_elems {
-        let cd = classes[r.cls].arena[r.idx].as_ckt_element().map(|e| e.cd());
+        let cd = classes[r.class_ord()].arena[r.index()]
+            .as_ckt_element()
+            .map(|e| e.cd());
         if let Some(cd) = cd {
             s.push('"');
             s.push_str(&full_name(classes, r));

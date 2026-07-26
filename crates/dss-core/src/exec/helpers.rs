@@ -13,11 +13,10 @@ pub(crate) fn active_pce<'a>(
     active: Option<(usize, usize)>,
 ) -> Result<&'a mut dyn CktElement, String> {
     match active {
-        Some((ci, oi)) if ckt.pc_elements.contains(&ElemRef { cls: ci, idx: oi }) => {
-            Ok(classes[ci].arena[oi]
-                .as_ckt_element_mut()
-                .expect("pc_elements entry is a circuit element"))
-        }
+        Some((ci, oi)) if ckt.pc_elements.contains(&ElemId::new(ci, oi)) => Ok(classes[ci].arena
+            [oi]
+            .as_ckt_element_mut()
+            .expect("pc_elements entry is a circuit element")),
         Some((ci, oi)) => Err(format!(
             "{}.{}",
             classes[ci].props.class_name(),
@@ -31,7 +30,7 @@ pub(crate) fn active_pce<'a>(
 /// `ActiveCktElement is TPCElement`). Used by the `Set/Get StateVar` guard
 /// (error 7103 "is not a valid PC element"). WP-U1.9.
 pub(crate) fn is_pce(ckt: &Circuit, ci: usize, oi: usize) -> bool {
-    ckt.pc_elements.contains(&ElemRef { cls: ci, idx: oi })
+    ckt.pc_elements.contains(&ElemId::new(ci, oi))
 }
 
 /// Resolve `Class.Name` (or a bare name searched across circuit-element classes)

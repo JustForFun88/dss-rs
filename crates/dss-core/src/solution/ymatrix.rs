@@ -212,7 +212,7 @@ pub fn build_y_matrix(
         // qualifying set once each (order is irrelevant — the assembled matrix
         // sums duplicates). Build the ref list up front to drop the `ckt` borrow
         // before the mutable `y_series`/`y_system` borrow below.
-        let refs: Vec<crate::elements::traits::ElemRef> = match option {
+        let refs: Vec<crate::elements::traits::ElemId> = match option {
             BuildOption::WholeMatrix | BuildOption::SeriesOnly => ckt.ckt_elements.clone(),
             BuildOption::PdeOnly => ckt
                 .pd_elements
@@ -298,7 +298,7 @@ pub fn build_y_matrix(
 mod tests {
     use super::*;
     use crate::circuit::Bus;
-    use crate::elements::traits::{CktElement, ElemRef, ElemStore};
+    use crate::elements::traits::{CktElement, ElemId, ElemStore};
     use crate::obj::base::DssObject;
     use dss_parser::{Parser, ParserVars};
 
@@ -310,39 +310,35 @@ mod tests {
     /// element loops, which are empty here, so every method is unreachable.
     struct EmptyStore;
     impl ElemStore for EmptyStore {
-        fn ckt_elem(&self, _r: ElemRef) -> &dyn CktElement {
+        fn ckt_elem(&self, _r: ElemId) -> &dyn CktElement {
             unimplemented!()
         }
-        fn ckt_elem_mut(&mut self, _r: ElemRef) -> &mut dyn CktElement {
+        fn ckt_elem_mut(&mut self, _r: ElemId) -> &mut dyn CktElement {
             unimplemented!()
         }
-        fn obj(&self, _r: ElemRef) -> &dyn DssObject {
+        fn obj(&self, _r: ElemId) -> &dyn DssObject {
             unimplemented!()
         }
-        fn kind(&self, _r: ElemRef) -> crate::circuit::ElemKind {
+        fn kind(&self, _r: ElemId) -> crate::circuit::ElemKind {
             unimplemented!()
         }
-        fn obj_mut(&mut self, _r: ElemRef) -> &mut dyn DssObject {
+        fn obj_mut(&mut self, _r: ElemId) -> &mut dyn DssObject {
             unimplemented!()
         }
-        fn find_ckt_element(&self, _full_name: &str) -> Option<ElemRef> {
+        fn find_ckt_element(&self, _full_name: &str) -> Option<ElemId> {
             None
         }
-        fn find_general(&self, _class_name: &str, _obj_name: &str) -> Option<ElemRef> {
+        fn find_general(&self, _class_name: &str, _obj_name: &str) -> Option<ElemId> {
             None
         }
-        fn pair_mut(
-            &mut self,
-            _a: ElemRef,
-            _b: ElemRef,
-        ) -> (&mut dyn DssObject, &mut dyn DssObject) {
+        fn pair_mut(&mut self, _a: ElemId, _b: ElemId) -> (&mut dyn DssObject, &mut dyn DssObject) {
             unimplemented!()
         }
         fn triple_mut(
             &mut self,
-            _a: ElemRef,
-            _b: ElemRef,
-            _c: ElemRef,
+            _a: ElemId,
+            _b: ElemId,
+            _c: ElemId,
         ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
             unimplemented!()
         }

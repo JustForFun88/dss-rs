@@ -97,7 +97,7 @@ pub use y_voltages::export_y_voltages;
 pub use ynode_list::export_ynode_list;
 pub(crate) use yprims::export_yprims;
 
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::elements::traits::{CktElement, ElemId};
 use crate::exec::registry::DssClass;
 
 /// Walk a circuit element list (`Sources`/`PDElements`/`Faults`/`PCElements`) in
@@ -113,12 +113,12 @@ use crate::exec::registry::DssClass;
 /// `classes` borrow before the per-object `&mut`.
 pub(crate) fn for_each_enabled_elem<F: FnMut(&str, &mut dyn CktElement)>(
     classes: &mut [DssClass],
-    refs: &[ElemRef],
+    refs: &[ElemId],
     mut f: F,
 ) {
     for &r in refs {
-        let class_name = classes[r.cls].props.class_name();
-        let obj = &mut classes[r.cls].arena[r.idx];
+        let class_name = classes[r.class_ord()].props.class_name();
+        let obj = &mut classes[r.class_ord()].arena[r.index()];
         let name = format!("{}.{}", class_name, obj.data().name());
         if let Some(elem) = obj.as_ckt_element_mut()
             && elem.cd().enabled

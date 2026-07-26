@@ -246,10 +246,10 @@ impl Dss {
             classes, circuit, ..
         } = self;
         let ckt = circuit.as_mut().expect("gated in command()");
-        // `ElemRef` is `Copy`; snapshot the refs so the bus write below doesn't
+        // `ElemId` is `Copy`; snapshot the refs so the bus write below doesn't
         // alias the element-list borrow (the store borrows `classes`, disjoint
         // from `ckt`).
-        let refs: Vec<ElemRef> = ckt
+        let refs: Vec<ElemId> = ckt
             .shunt_capacitors
             .iter()
             .chain(ckt.reactors.iter())
@@ -380,7 +380,7 @@ impl Dss {
         } = self;
         let ckt = circuit.as_mut().expect("gated in command()");
         for &r in &ckt.pc_elements {
-            if let Some(elem) = classes[r.cls].arena[r.idx].as_ckt_element_mut() {
+            if let Some(elem) = classes[r.class_ord()].arena[r.index()].as_ckt_element_mut() {
                 let cd = elem.cd_mut();
                 cd.yprim_invalid = true;
                 if cd.enabled {
@@ -796,7 +796,7 @@ impl Dss {
         let mut store = ClassStore { classes };
 
         // Initialize the Checked flag for all circuit elements.
-        let refs: Vec<ElemRef> = ckt.ckt_elements.clone();
+        let refs: Vec<ElemId> = ckt.ckt_elements.clone();
         for r in refs {
             store
                 .ckt_elem_mut(r)
@@ -808,7 +808,7 @@ impl Dss {
         match named {
             None => {
                 // 'A': every enabled meter, circuit meter-list order.
-                let meters: Vec<ElemRef> = ckt.energy_meters.clone();
+                let meters: Vec<ElemId> = ckt.energy_meters.clone();
                 for r in meters {
                     if store.ckt_elem(r).cd().enabled {
                         crate::solution::meters::interpolate_coordinates(
@@ -819,7 +819,7 @@ impl Dss {
             }
             Some(Ok(idx)) => {
                 let ci = meter_ci.expect("named branch requires the class");
-                let r = ElemRef { cls: ci, idx };
+                let r = ElemId::new(ci, idx);
                 if store.ckt_elem(r).cd().enabled {
                     crate::solution::meters::interpolate_coordinates(r, ckt, &mut store, errors);
                 } else {

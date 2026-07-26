@@ -5,7 +5,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, RefSnapshot};
 use crate::elements::general::tcc_curve::TccCurveObj;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::exec::Dss;
 use crate::solution::control_queue::TimeRec;
 use crate::solution::{ControlQueue, EventLog, SolveMode};
@@ -103,7 +103,7 @@ impl Scratch {
             t,
             dbl_hour: int_hour as f64 + t / 3600.0,
             control_iter: 1,
-            self_ref: ElemRef { cls: 0, idx: 0 },
+            self_ref: ElemId::new(0, 0),
         }
     }
 }
@@ -150,7 +150,7 @@ fn armed_recloser() -> Recloser {
         nterms: 1,
         buses: vec!["b".into()],
     });
-    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.ccd.controlled_element = Some(ElemId::new(0, 0));
     r
 }
 
@@ -196,7 +196,7 @@ fn inert_default_recloser_never_arms() {
         nterms: 1,
         buses: vec!["b".into()],
     });
-    r.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    r.ccd.controlled_element = Some(ElemId::new(0, 0));
     let mut ctrl = MockLine::new(3, 0.0);
     let mut mon = MockLine::new(3, 1000.0); // huge overcurrent
     let mut sc = Scratch::new();
@@ -762,13 +762,13 @@ fn line_term1_max_current(dss: &mut Dss, name: &str) -> f64 {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
     use crate::obj::base::DssObject;
 
     #[test]
     fn resyncs_to_monitored() {
         let mut r = Recloser::new("r1");
-        r.ccd.monitored_element = Some(ElemRef { cls: 1, idx: 0 });
+        r.ccd.monitored_element = Some(ElemId::new(1, 0));
         r.monitored_element_terminal = 2;
         let ctx = PosSeqCtx {
             monitored: Some(PosSeqElemInfo {
@@ -785,7 +785,7 @@ mod make_pos_seq_tests {
         assert_eq!(r.ccd.cd.nconds, 1);
         assert_eq!(r.get_bus_name(1), "b2");
         assert!(plan.run_base && plan.actions.is_empty());
-        assert_eq!(r.monitored_element_ref(), Some(ElemRef { cls: 1, idx: 0 }));
+        assert_eq!(r.monitored_element_ref(), Some(ElemId::new(1, 0)));
     }
 
     #[test]

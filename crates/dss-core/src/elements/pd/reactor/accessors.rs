@@ -4,7 +4,7 @@ use num_complex::Complex64;
 
 use super::Reactor;
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::elements::traits::{CktElement, ElemId};
 use crate::obj::base::{DssObjData, DssObject};
 
 impl Reactor {
@@ -221,7 +221,7 @@ impl DssObject for Reactor {
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use super::prop::*;
         let xy_curve =

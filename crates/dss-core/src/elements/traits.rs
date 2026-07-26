@@ -11,26 +11,28 @@ use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::solution::SolveMode;
 use crate::support::dynamics::IterationFlag;
 
-/// Reference to a circuit element inside the executive's class registry:
-/// `(class index, object index)`. The Pascal pointer lists (`CktElements`,
-/// `Sources`, `Lines`, `Loads`, ...) become `Vec<ElemRef>`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ElemRef {
-    pub cls: usize,
-    pub idx: usize,
-}
+/// The typed handle to an element inside the executive's class registry —
+/// one enum variant per registered class, carrying a typed `Idx<T>` into that
+/// class's arena. Re-exported here because [`ElemStore`] and every Pascal
+/// pointer list (`CktElements`, `Sources`, `Lines`, `Loads`, ...) speak it:
+/// the lists became `Vec<ElemId>`.
+///
+/// Before DE_PASCALIZE R3 this was an untyped `{ cls, idx }` tag struct;
+/// [`ElemId::class_ord`]/[`ElemId::index`] expose the same two numbers
+/// for the registry-side producers that still discover a class by position.
+pub use crate::obj::arena::ElemId;
 
 /// Element storage the solver walks — implemented by the executive's class
 /// registry. Replaces Pascal's `TDSSPointerList` of `TDSSCktElement`.
 ///
 /// `: Send` is the P7 thread-readiness rider (DE_PASCALIZE Part V / R1).
 pub trait ElemStore: Send {
-    fn ckt_elem(&self, r: ElemRef) -> &dyn CktElement;
-    fn ckt_elem_mut(&mut self, r: ElemRef) -> &mut dyn CktElement;
+    fn ckt_elem(&self, r: ElemId) -> &dyn CktElement;
+    fn ckt_elem_mut(&mut self, r: ElemId) -> &mut dyn CktElement;
 
     /// Read view of any registered object (control dispatch peeks at a
     /// control's references before splitting the mutable borrows).
-    fn obj(&self, r: ElemRef) -> &dyn crate::obj::base::DssObject;
+    fn obj(&self, r: ElemId) -> &dyn crate::obj::base::DssObject;
 
     /// The [`ElemKind`] of the class the ref points at — the meter/sampling
     /// type-guards (`is_line`/`is_pd_element`/PD/PC checks) match on this
@@ -38,13 +40,13 @@ pub trait ElemStore: Send {
     /// ("general") class, which those guards never pass.
     ///
     /// [`ElemKind`]: crate::circuit::ElemKind
-    fn kind(&self, r: ElemRef) -> crate::circuit::ElemKind;
+    fn kind(&self, r: ElemId) -> crate::circuit::ElemKind;
 
     /// Pascal `TDSSCircuit.SetElementActive`: resolve a full element name
     /// (`Class.Name`, or a bare `Name` searched across all circuit-element
-    /// classes) to its [`ElemRef`], or `None` if not found. Used by the
+    /// classes) to its [`ElemId`], or `None` if not found. Used by the
     /// EnergyMeter manual `ZoneList` zone build.
-    fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef>;
+    fn find_ckt_element(&self, full_name: &str) -> Option<ElemId>;
 
     /// Pascal `<SomeClass>.Find(name)` reaching a *non-circuit* ("general",
     /// `DSS_OBJECT`) class registered via `DssClass::dss_object` — e.g.
@@ -53,12 +55,12 @@ pub trait ElemStore: Send {
     /// `StorageController.Get_DynamicTarget`'s live, uncached
     /// `DSS.XYCurveClass.Find(DSS.SeasonSignal)` (the season signal is a bare
     /// `Set`-option string, not an object-ref property, so nothing can resolve
-    /// and cache the `ElemRef` up front at edit time).
-    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemRef>;
+    /// and cache the `ElemId` up front at edit time).
+    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemId>;
 
     /// Single mutable object view (for `as_any_mut` downcasts when only one
     /// element is touched, e.g. the model-3 generator DQDV sweep).
-    fn obj_mut(&mut self, r: ElemRef) -> &mut dyn crate::obj::base::DssObject;
+    fn obj_mut(&mut self, r: ElemId) -> &mut dyn crate::obj::base::DssObject;
 
     /// Two distinct objects borrowed mutably at once — the Rust stand-in for
     /// Pascal's live cross-object pointers during `Sample`/`DoPendingAction`
@@ -66,8 +68,8 @@ pub trait ElemStore: Send {
     /// `a == b`.
     fn pair_mut(
         &mut self,
-        a: ElemRef,
-        b: ElemRef,
+        a: ElemId,
+        b: ElemId,
     ) -> (
         &mut dyn crate::obj::base::DssObject,
         &mut dyn crate::obj::base::DssObject,
@@ -77,9 +79,9 @@ pub trait ElemStore: Send {
     /// control + capacitor + monitored element). Panics on any aliasing.
     fn triple_mut(
         &mut self,
-        a: ElemRef,
-        b: ElemRef,
-        c: ElemRef,
+        a: ElemId,
+        b: ElemId,
+        c: ElemId,
     ) -> (
         &mut dyn crate::obj::base::DssObject,
         &mut dyn crate::obj::base::DssObject,
@@ -458,7 +460,7 @@ pub trait CktElement: Send {
     /// fix would materialise the whole `ControlElementList`, disproportionate here).
     /// Default `None`; every control overrides it to return
     /// `self.ccd.controlled_element`.
-    fn controlled_element(&self) -> Option<ElemRef> {
+    fn controlled_element(&self) -> Option<ElemId> {
         None
     }
 
@@ -720,14 +722,14 @@ pub trait CktElement: Send {
     }
 
     /// Pascal `TControlElem.MonitoredElement` / `TMeterElement.MeteredElement`:
-    /// the element this control/meter senses, resolved to its [`ElemRef`]. The
+    /// the element this control/meter senses, resolved to its [`ElemId`]. The
     /// exec applier reads it to build the [`PosSeqCtx::monitored`] snapshot
     /// before calling [`Self::make_pos_sequence`]. Default `None` — a plain
     /// circuit element monitors nothing; controls/meters override it (in the
     /// later WTs of this round).
     ///
     /// [`PosSeqCtx::monitored`]: crate::elements::pos_seq::PosSeqCtx::monitored
-    fn monitored_element_ref(&self) -> Option<ElemRef> {
+    fn monitored_element_ref(&self) -> Option<ElemId> {
         None
     }
 }

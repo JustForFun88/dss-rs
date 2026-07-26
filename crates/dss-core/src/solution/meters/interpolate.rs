@@ -9,7 +9,7 @@
 use crate::circuit::Circuit;
 use crate::circuit::ckt_tree::CktTree;
 use crate::elements::ckt::ElemFlags;
-use crate::elements::traits::{ElemRef, ElemStore};
+use crate::elements::traits::{ElemId, ElemStore};
 
 use super::downcast_meter;
 
@@ -25,7 +25,7 @@ fn coord_defined(ckt: &Circuit, bus: usize) -> bool {
 /// start at the ends of the zone and work toward the start, interpolating
 /// between known coordinates.
 pub(crate) fn interpolate_coordinates(
-    meter_ref: ElemRef,
+    meter_ref: ElemId,
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
     errors: &mut crate::diag::ErrorLog,

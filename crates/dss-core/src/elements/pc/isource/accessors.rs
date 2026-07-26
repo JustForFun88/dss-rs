@@ -6,7 +6,7 @@ use num_complex::Complex64;
 
 use super::Isource;
 use crate::elements::general::load_shape::LoadShapeObj;
-use crate::elements::traits::{CktElement, ElemRef};
+use crate::elements::traits::{CktElement, ElemId};
 use crate::obj::base::{DssObjData, DssObject};
 
 impl Isource {
@@ -148,14 +148,14 @@ impl DssObject for Isource {
     }
 
     /// Resolve a shape reference (`yearly`/`daily`/`duty` → `LoadShape`): store
-    /// the name (for the dump), the `ElemRef`, and a snapshot clone the
+    /// the name (for the dump), the `ElemId`, and a snapshot clone the
     /// time-series `GetBaseCurr` drives — same pattern as
     /// [`super::super::vsource::VSource`]/[`super::super::load::Load`].
     fn set_object_ref(
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use super::prop::*;
         let elem_ref = resolved.map(|(r, _)| r);

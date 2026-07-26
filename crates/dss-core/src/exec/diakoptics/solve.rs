@@ -227,14 +227,14 @@ impl Dss {
     fn ad_pde_at_bus(&self, bus_name: &str) -> Option<String> {
         let ckt = self.circuit.as_ref()?;
         for &r in &ckt.pd_elements {
-            let Some(ce) = self.classes[r.cls].arena[r.idx].as_ckt_element() else {
+            let Some(ce) = self.classes[r.class_ord()].arena[r.index()].as_ckt_element() else {
                 continue;
             };
             let cd = ce.cd();
             let b0 = strip_ext(cd.get_bus(1));
             let b1 = strip_ext(cd.get_bus(2));
             if (b0 == bus_name || b1 == bus_name) && b0 != b1 {
-                let cls = self.classes[r.cls].props.class_name();
+                let cls = self.classes[r.class_ord()].props.class_name();
                 return Some(format!("{}.{}", cls, cd.obj.name()));
             }
         }

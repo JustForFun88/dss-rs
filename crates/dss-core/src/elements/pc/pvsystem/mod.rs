@@ -44,7 +44,7 @@ use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::temp_shape::TShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPceData};
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -302,21 +302,21 @@ pub struct PVSystem {
     /// when an explicit `spectrum=` is given — Create forces `SpectrumObj := NIL`).
     pub spectrum_obj: Option<SpectrumObj>,
 
-    // Temperature-shape references (snapshot-clone + ElemRef, WP4.2/WP5.3).
+    // Temperature-shape references (snapshot-clone + ElemId, WP4.2/WP5.3).
     pub yearly_t_shape: String,
     pub daily_t_shape: String,
     pub duty_t_shape: String,
     pub yearly_t_shape_obj: Option<TShapeObj>,
     pub daily_t_shape_obj: Option<TShapeObj>,
     pub duty_t_shape_obj: Option<TShapeObj>,
-    pub yearly_t_shape_ref: Option<ElemRef>,
-    pub daily_t_shape_ref: Option<ElemRef>,
-    pub duty_t_shape_ref: Option<ElemRef>,
+    pub yearly_t_shape_ref: Option<ElemId>,
+    pub daily_t_shape_ref: Option<ElemId>,
+    pub duty_t_shape_ref: Option<ElemId>,
 
     /// `Power_TempCurveObj` — pu-Pmpp-vs-temperature curve (XYcurve).
     pub power_temp_curve: String,
     pub power_temp_curve_obj: Option<XyCurveObj>,
-    pub power_temp_curve_ref: Option<ElemRef>,
+    pub power_temp_curve_ref: Option<ElemId>,
 
     /// Pascal `UserModel: TPVsystemUserModel` (`PVsystem.pas:228`) — the 15-fn
     /// `UserModel=` slot (WASM_USERMODELS WM.4). `None` until a `.wasm` loads.

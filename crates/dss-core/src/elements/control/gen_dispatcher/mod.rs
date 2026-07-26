@@ -47,7 +47,7 @@ mod compute;
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{ControlElemData, RefSnapshot};
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -103,21 +103,21 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
 
 /// The executive surface `Sample` needs to reach the monitored element and the
 /// dispatched generators (the Rust stand-in for Pascal's live object pointers).
-/// `ElemRef`s returned by the lookups are passed back to the accessors.
+/// `ElemId`s returned by the lookups are passed back to the accessors.
 pub(crate) trait GenDispatchEnv {
     /// Pascal `MonitoredElement.Power[ElementTerminal]` (complex VA: W + jVAr).
     fn monitored_power(&mut self) -> Complex64;
     /// Pascal `GenClass.Find(name)` restricted to *enabled* generators.
-    fn find_enabled_gen(&self, name: &str) -> Option<ElemRef>;
+    fn find_enabled_gen(&self, name: &str) -> Option<ElemId>;
     /// Pascal's "scan the whole circuit for enabled generators", creation order.
-    fn all_enabled_gens(&self) -> Vec<ElemRef>;
+    fn all_enabled_gens(&self) -> Vec<ElemId>;
     /// `Gen.kWBase` (the public published field; setting it has no side effect,
     /// which is why `Sample` sets `LoadsNeedUpdating` to force a recalc).
-    fn gen_kw_base(&self, g: ElemRef) -> f64;
-    fn set_gen_kw_base(&mut self, g: ElemRef, value: f64);
+    fn gen_kw_base(&self, g: ElemId) -> f64;
+    fn set_gen_kw_base(&mut self, g: ElemId, value: f64);
     /// `Gen.kvarBase`.
-    fn gen_kvar_base(&self, g: ElemRef) -> f64;
-    fn set_gen_kvar_base(&mut self, g: ElemRef, value: f64);
+    fn gen_kvar_base(&self, g: ElemId) -> f64;
+    fn set_gen_kvar_base(&mut self, g: ElemId, value: f64);
 }
 
 /// `TGenDispatcherObj`.
@@ -144,7 +144,7 @@ pub struct GenDispatcher {
     weights: Vec<f64>,
     /// `FGenPointerList` — resolved lazily on the first `Sample` (empty until
     /// then), cached across samples exactly like Pascal.
-    gen_pointer_list: Vec<ElemRef>,
+    gen_pointer_list: Vec<ElemId>,
 }
 
 impl GenDispatcher {

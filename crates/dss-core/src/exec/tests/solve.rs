@@ -231,7 +231,9 @@ fn reg_control_does_not_change_node_order() {
             assert_eq!(ckt.controls.len(), 1);
             // The control sits on the transformer's winding-2 bus.
             let r = ckt.controls[0];
-            let elem = dss.classes[r.cls].arena[r.idx].as_ckt_element().unwrap();
+            let elem = dss.classes[r.class_ord()].arena[r.index()]
+                .as_ckt_element()
+                .unwrap();
             assert_eq!(elem.cd().get_bus(1), "b2");
             assert!(elem.cd().yprim.is_none());
         }
@@ -273,7 +275,7 @@ fn bus_adjacency_lists_bucket_elements() {
 
     let sb = ckt.bus_list.find("sourcebus").unwrap();
     let b2 = ckt.bus_list.find("b2").unwrap();
-    let names = |refs: &[ElemRef]| -> Vec<String> {
+    let names = |refs: &[ElemId]| -> Vec<String> {
         refs.iter()
             .map(|&r| store.ckt_elem(r).cd().obj.name().to_string())
             .collect()

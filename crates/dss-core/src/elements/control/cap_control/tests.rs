@@ -3,7 +3,7 @@ use super::*;
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::CtrlCtx;
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::DssObject;
 
 #[test]
@@ -37,7 +37,7 @@ fn time_control_requires_monitored_element() {
     // quoting change — so the substring below matches only the emitted 0.14.5
     // form (the quoted form has `"Element" is not set`).
     let mut cc = CapControl::new("cc1");
-    cc.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    cc.ccd.controlled_element = Some(ElemId::new(0, 0));
     cc.ctrl_snap = Some(RefSnapshot {
         full_name: "Capacitor.cap1".into(),
         nphases: 3,
@@ -60,7 +60,7 @@ fn time_control_uses_monitored_element_terminal() {
     // (NOT forced to 1) and binds to the *monitored* element's terminal-2 bus
     // (effElement = MonitoredElement, `CapControl.pas:585`).
     let mut cc = CapControl::new("cc1");
-    cc.ccd.controlled_element = Some(ElemRef { cls: 0, idx: 0 });
+    cc.ccd.controlled_element = Some(ElemId::new(0, 0));
     cc.ctrl_snap = Some(RefSnapshot {
         full_name: "Capacitor.cap1".into(),
         nphases: 3,
@@ -279,7 +279,7 @@ impl Scratch {
             t,
             dbl_hour: int_hour as f64 + t / 3600.0,
             control_iter: 1,
-            self_ref: ElemRef { cls: 0, idx: 0 },
+            self_ref: ElemId::new(0, 0),
         }
     }
 }
@@ -684,7 +684,7 @@ fn reset_with_partial_open_bank_still_forces_rebuild() {
 mod make_pos_seq_tests {
     use super::super::*;
     use crate::elements::pos_seq::{PosSeqCtx, PosSeqElemInfo};
-    use crate::elements::traits::{CktElement, ElemRef};
+    use crate::elements::traits::{CktElement, ElemId};
     use crate::obj::base::DssObject;
 
     /// Pascal `TCapControlObj.MakePosSequence` (CapControl.pas:643): Enabled /
@@ -693,8 +693,8 @@ mod make_pos_seq_tests {
     #[test]
     fn resyncs_controlled_and_monitored_bus() {
         let mut cc = CapControl::new("cc1");
-        cc.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 1 });
-        cc.ccd.monitored_element = Some(ElemRef { cls: 2, idx: 2 });
+        cc.ccd.controlled_element = Some(ElemId::new(1, 1));
+        cc.ccd.monitored_element = Some(ElemId::new(2, 2));
         cc.ccd.element_terminal = 2;
         let ctx = PosSeqCtx {
             controlled: Some(PosSeqElemInfo {
@@ -720,14 +720,14 @@ mod make_pos_seq_tests {
         assert_eq!(cc.get_bus_name(1), "mb2"); // effElement=monitored, GetBus(2)
         assert_eq!(cc.ccd.element_terminal, 2); // unchanged (monitored present)
         assert!(plan.run_base && plan.actions.is_empty());
-        assert_eq!(cc.monitored_element_ref(), Some(ElemRef { cls: 2, idx: 2 }));
+        assert_eq!(cc.monitored_element_ref(), Some(ElemId::new(2, 2)));
     }
 
     /// No monitored element ⇒ effElement = controlled, ElementTerminal forced 1.
     #[test]
     fn no_monitored_forces_terminal_one() {
         let mut cc = CapControl::new("cc1");
-        cc.ccd.controlled_element = Some(ElemRef { cls: 1, idx: 1 });
+        cc.ccd.controlled_element = Some(ElemId::new(1, 1));
         cc.ccd.monitored_element = None;
         cc.ccd.element_terminal = 3;
         let ctx = PosSeqCtx {

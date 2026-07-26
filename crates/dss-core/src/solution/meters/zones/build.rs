@@ -7,12 +7,12 @@ use crate::circuit::ckt_tree::{BusAdjLists, CktTree};
 use crate::circuit::{Circuit, ElemKind};
 use crate::elements::ckt::ElemFlags;
 use crate::elements::meter::energymeter::{EnergyMeter, NUM_EM_VBASE};
-use crate::elements::traits::{ElemRef, ElemStore};
+use crate::elements::traits::{ElemId, ElemStore};
 
 use super::super::downcast_meter;
 
 /// Whether the element at `r` is a Line (Pascal `IsLineElement`).
-fn is_line(store: &dyn ElemStore, r: ElemRef) -> bool {
+fn is_line(store: &dyn ElemStore, r: ElemId) -> bool {
     matches!(store.kind(r), ElemKind::Line)
 }
 
@@ -21,7 +21,7 @@ fn is_line(store: &dyn ElemStore, r: ElemRef) -> bool {
 /// `EnergyMeter.pas:1911`). Shunt capacitors/reactors reach the PC adjacency
 /// list via `is_shunt()`. WindGen is deliberately excluded — the old downcast
 /// probe caught only the concrete `Generator` type, not `WindGen`.
-fn is_zone_pce(store: &dyn ElemStore, r: ElemRef) -> bool {
+fn is_zone_pce(store: &dyn ElemStore, r: ElemId) -> bool {
     matches!(
         store.kind(r),
         ElemKind::Load
@@ -38,7 +38,7 @@ fn is_zone_pce(store: &dyn ElemStore, r: ElemRef) -> bool {
 /// `ZoneList` filter. Matches exactly the five concrete types the old downcast
 /// probe caught (Line/Transformer/AutoTrans/Capacitor/Reactor) — GIC PD
 /// elements were never accepted here and stay excluded.
-fn is_pd_element(store: &dyn ElemStore, r: ElemRef) -> bool {
+fn is_pd_element(store: &dyn ElemStore, r: ElemId) -> bool {
     matches!(
         store.kind(r),
         ElemKind::Line
@@ -51,7 +51,7 @@ fn is_pd_element(store: &dyn ElemStore, r: ElemRef) -> bool {
 
 /// Pascal `CheckParallel`: two lines share both terminal buses (in either
 /// orientation).
-fn check_parallel(store: &dyn ElemStore, a: ElemRef, b: ElemRef) -> bool {
+fn check_parallel(store: &dyn ElemStore, a: ElemId, b: ElemId) -> bool {
     let ta = &store.ckt_elem(a).cd().terminals;
     let tb = &store.ckt_elem(b).cd().terminals;
     if ta.len() < 2 || tb.len() < 2 {
@@ -89,7 +89,7 @@ fn add_to_volt_base_list(
 /// metered element's far terminal, collecting branches (the `BranchList`
 /// `CktTree`), zone loads/generators (shunt objects), and feeder ends.
 pub(super) fn make_meter_zone_lists(
-    meter_ref: ElemRef,
+    meter_ref: ElemId,
     ckt: &mut Circuit,
     store: &mut dyn ElemStore,
     adj: &BusAdjLists,
@@ -152,10 +152,10 @@ pub(super) fn make_meter_zone_lists(
     };
 
     let mut tree = CktTree::new();
-    let mut sequence_list: Vec<ElemRef> = Vec::new();
+    let mut sequence_list: Vec<ElemId> = Vec::new();
     let mut sequence_nodes: Vec<usize> = Vec::new();
-    let mut load_list: Vec<ElemRef> = Vec::new();
-    let mut zone_ends: Vec<(ElemRef, usize)> = Vec::new();
+    let mut load_list: Vec<ElemId> = Vec::new();
+    let mut zone_ends: Vec<(ElemId, usize)> = Vec::new();
 
     tree.add(metered);
 
@@ -406,7 +406,7 @@ pub(super) fn make_meter_zone_lists(
     total_up_downstream_customers(&sequence_list, assume_restoration, store);
 
     // `GetPCEatZone`: the zone PC elements in BranchList order.
-    let mut zone_pce: Vec<ElemRef> = Vec::new();
+    let mut zone_pce: Vec<ElemId> = Vec::new();
     for &n in &sequence_nodes {
         for &shunt in &tree.node(n).shunts {
             zone_pce.push(shunt);
@@ -430,7 +430,7 @@ pub(super) fn make_meter_zone_lists(
 /// over the sequence list (end branches first) summing `BranchNumCustomers`
 /// into `BranchTotalCustomers` and up each parent link.
 fn total_up_downstream_customers(
-    sequence_list: &[ElemRef],
+    sequence_list: &[ElemId],
     assume_restoration: bool,
     store: &mut dyn ElemStore,
 ) {

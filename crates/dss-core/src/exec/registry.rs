@@ -86,24 +86,24 @@ pub(crate) struct ClassStore<'a> {
 }
 
 impl ElemStore for ClassStore<'_> {
-    fn ckt_elem(&self, r: ElemRef) -> &dyn CktElement {
-        self.classes[r.cls].arena.ckt_elem(r.idx)
+    fn ckt_elem(&self, r: ElemId) -> &dyn CktElement {
+        self.classes[r.class_ord()].arena.ckt_elem(r.index())
     }
-    fn ckt_elem_mut(&mut self, r: ElemRef) -> &mut dyn CktElement {
-        self.classes[r.cls].arena.ckt_elem_mut(r.idx)
-    }
-
-    fn obj(&self, r: ElemRef) -> &dyn DssObject {
-        self.classes[r.cls].arena.obj(r.idx)
+    fn ckt_elem_mut(&mut self, r: ElemId) -> &mut dyn CktElement {
+        self.classes[r.class_ord()].arena.ckt_elem_mut(r.index())
     }
 
-    fn kind(&self, r: ElemRef) -> ElemKind {
-        self.classes[r.cls]
+    fn obj(&self, r: ElemId) -> &dyn DssObject {
+        self.classes[r.class_ord()].arena.obj(r.index())
+    }
+
+    fn kind(&self, r: ElemId) -> ElemKind {
+        self.classes[r.class_ord()]
             .kind
-            .expect("kind: ElemRef must point at a circuit-element class")
+            .expect("kind: ElemId must point at a circuit-element class")
     }
 
-    fn find_ckt_element(&self, full_name: &str) -> Option<ElemRef> {
+    fn find_ckt_element(&self, full_name: &str) -> Option<ElemId> {
         let lower = full_name.to_ascii_lowercase();
         let (cls_name, obj_name) = match lower.split_once('.') {
             Some((c, n)) => (Some(c), n),
@@ -120,87 +120,93 @@ impl ElemStore for ClassStore<'_> {
                 continue;
             }
             if let Some(&oi) = class.name_to_idx.get(obj_name) {
-                return Some(ElemRef { cls: ci, idx: oi });
+                return Some(ElemId::new(ci, oi));
             }
         }
         None
     }
 
-    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemRef> {
+    fn find_general(&self, class_name: &str, obj_name: &str) -> Option<ElemId> {
         let lower = obj_name.to_ascii_lowercase();
         for (ci, class) in self.classes.iter().enumerate() {
             if !class.props.class_name().eq_ignore_ascii_case(class_name) {
                 continue;
             }
             if let Some(&oi) = class.name_to_idx.get(&lower) {
-                return Some(ElemRef { cls: ci, idx: oi });
+                return Some(ElemId::new(ci, oi));
             }
         }
         None
     }
 
-    fn obj_mut(&mut self, r: ElemRef) -> &mut dyn DssObject {
-        self.classes[r.cls].arena.obj_mut(r.idx)
+    fn obj_mut(&mut self, r: ElemId) -> &mut dyn DssObject {
+        self.classes[r.class_ord()].arena.obj_mut(r.index())
     }
 
-    fn pair_mut(&mut self, a: ElemRef, b: ElemRef) -> (&mut dyn DssObject, &mut dyn DssObject) {
-        assert_ne!((a.cls, a.idx), (b.cls, b.idx), "pair_mut: aliasing refs");
-        if a.cls == b.cls {
-            self.classes[a.cls].arena.pair_mut_same(a.idx, b.idx)
+    fn pair_mut(&mut self, a: ElemId, b: ElemId) -> (&mut dyn DssObject, &mut dyn DssObject) {
+        assert_ne!(
+            (a.class_ord(), a.index()),
+            (b.class_ord(), b.index()),
+            "pair_mut: aliasing refs"
+        );
+        if a.class_ord() == b.class_ord() {
+            self.classes[a.class_ord()]
+                .arena
+                .pair_mut_same(a.index(), b.index())
         } else {
             let [ca, cb] = self
                 .classes
-                .get_disjoint_mut([a.cls, b.cls])
+                .get_disjoint_mut([a.class_ord(), b.class_ord()])
                 .expect("pair_mut: class index out of range");
-            (ca.arena.obj_mut(a.idx), cb.arena.obj_mut(b.idx))
+            (ca.arena.obj_mut(a.index()), cb.arena.obj_mut(b.index()))
         }
     }
 
     fn triple_mut(
         &mut self,
-        a: ElemRef,
-        b: ElemRef,
-        c: ElemRef,
+        a: ElemId,
+        b: ElemId,
+        c: ElemId,
     ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
-        let key = |r: ElemRef| (r.cls, r.idx);
+        let key = |r: ElemId| (r.class_ord(), r.index());
         assert!(
             key(a) != key(b) && key(a) != key(c) && key(b) != key(c),
             "triple_mut: aliasing refs"
         );
-        if a.cls == b.cls && b.cls == c.cls {
-            self.classes[a.cls]
+        if a.class_ord() == b.class_ord() && b.class_ord() == c.class_ord() {
+            self.classes[a.class_ord()]
                 .arena
-                .triple_mut_same(a.idx, b.idx, c.idx)
-        } else if a.cls == b.cls {
+                .triple_mut_same(a.index(), b.index(), c.index())
+        } else if a.class_ord() == b.class_ord() {
             let [cab, cc] = self
                 .classes
-                .get_disjoint_mut([a.cls, c.cls])
+                .get_disjoint_mut([a.class_ord(), c.class_ord()])
                 .expect("triple_mut: class index out of range");
-            let (oa, ob) = cab.arena.pair_mut_same(a.idx, b.idx);
-            (oa, ob, cc.arena.obj_mut(c.idx))
-        } else if a.cls == c.cls {
+            let (oa, ob) = cab.arena.pair_mut_same(a.index(), b.index());
+            (oa, ob, cc.arena.obj_mut(c.index()))
+        } else if a.class_ord() == c.class_ord() {
             let [cac, cb] = self
                 .classes
-                .get_disjoint_mut([a.cls, b.cls])
+                .get_disjoint_mut([a.class_ord(), b.class_ord()])
                 .expect("triple_mut: class index out of range");
-            let (oa, oc) = cac.arena.pair_mut_same(a.idx, c.idx);
-            (oa, cb.arena.obj_mut(b.idx), oc)
-        } else if b.cls == c.cls {
+            let (oa, oc) = cac.arena.pair_mut_same(a.index(), c.index());
+            (oa, cb.arena.obj_mut(b.index()), oc)
+        } else if b.class_ord() == c.class_ord() {
             let [ca, cbc] = self
                 .classes
-                .get_disjoint_mut([a.cls, b.cls])
+                .get_disjoint_mut([a.class_ord(), b.class_ord()])
                 .expect("triple_mut: class index out of range");
-            let (ob, oc) = cbc.arena.pair_mut_same(b.idx, c.idx);
-            (ca.arena.obj_mut(a.idx), ob, oc)
+            let (ob, oc) = cbc.arena.pair_mut_same(b.index(), c.index());
+            (ca.arena.obj_mut(a.index()), ob, oc)
         } else {
             let [ca, cb, cc] = self
                 .classes
-                .get_disjoint_mut([a.cls, b.cls, c.cls])
+                .get_disjoint_mut([a.class_ord(), b.class_ord(), c.class_ord()])
                 .expect("triple_mut: class index out of range");
             (
-                ca.arena.obj_mut(a.idx),
-                cb.arena.obj_mut(b.idx),
-                cc.arena.obj_mut(c.idx),
+                ca.arena.obj_mut(a.index()),
+                cb.arena.obj_mut(b.index()),
+                cc.arena.obj_mut(c.index()),
             )
         }
     }
@@ -257,14 +263,14 @@ impl<'a> ForeignClasses<'a> {
         None
     }
 
-    /// Resolve a (class name, object name) pair to its global [`ElemRef`] plus
+    /// Resolve a (class name, object name) pair to its global [`ElemId`] plus
     /// the live object, scanning both halves. A class match with no object
     /// match short-circuits to `None`, like `cls.Find` returning NIL.
-    fn lookup(&self, class: &str, name_l: &str) -> Option<(ElemRef, &'a dyn DssObject)> {
+    fn lookup(&self, class: &str, name_l: &str) -> Option<(ElemId, &'a dyn DssObject)> {
         let find_in = |c: &'a DssClass, cls: usize| {
             c.name_to_idx
                 .get(name_l)
-                .map(|&idx| (ElemRef { cls, idx }, c.arena.obj(idx)))
+                .map(|&idx| (ElemId::new(cls, idx), c.arena.obj(idx)))
         };
         let left = self.left;
         for (k, c) in left.iter().enumerate() {
@@ -283,22 +289,22 @@ impl<'a> ForeignClasses<'a> {
 }
 
 impl<'a> ForeignClassesView<'a> for ForeignClasses<'a> {
-    fn find(&self, class: &str, name: &str) -> Option<(ElemRef, &'a dyn DssObject)> {
+    fn find(&self, class: &str, name: &str) -> Option<(ElemId, &'a dyn DssObject)> {
         self.lookup(class, &name.to_ascii_lowercase())
     }
 
     /// Pascal `GetCktElementIndex`: resolve a full `Class.Name` reference (the
     /// `PropertyOffset2 = 0` object-ref case, e.g. CapControl `element=`). The
     /// returned `String` is the canonical `FullName` for dumps.
-    fn find_full(&self, full_name: &str) -> Option<(ElemRef, &'a dyn DssObject, String)> {
+    fn find_full(&self, full_name: &str) -> Option<(ElemId, &'a dyn DssObject, String)> {
         let dot = full_name.find('.')?;
         let (class, name) = (&full_name[..dot], &full_name[dot + 1..]);
         // Reuse the per-class lookup, then rebuild the canonical FullName.
         let (r, obj) = self.lookup(class, &name.to_ascii_lowercase())?;
-        let cls = if r.cls < self.split {
-            &self.left[r.cls]
+        let cls = if r.class_ord() < self.split {
+            &self.left[r.class_ord()]
         } else {
-            &self.right[r.cls - self.split - 1]
+            &self.right[r.class_ord() - self.split - 1]
         };
         Some((
             r,
@@ -344,7 +350,8 @@ mod tests {
             .find_ckt_element("same")
             .expect("bare name resolves to a circuit element");
         assert_eq!(
-            r.cls, line_ci,
+            r.class_ord(),
+            line_ci,
             "bare-name find must return the first-registered class (Line), not Load"
         );
     }

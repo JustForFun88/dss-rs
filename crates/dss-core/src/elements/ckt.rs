@@ -10,7 +10,7 @@
 use num_complex::Complex64;
 
 use crate::circuit::Terminal;
-use crate::elements::traits::ElemRef;
+use crate::elements::traits::ElemId;
 use crate::obj::base::DssObjData;
 use crate::report::format::strip_extension;
 use crate::support::cmatrix::{CMatrix, cdiv_fpc};
@@ -150,11 +150,11 @@ pub struct CktElementData {
     /// reliability sweep sets it from `from_terminal`.
     pub to_terminal: Option<usize>,
     /// `ParentPDElement`: the upline branch in the meter zone.
-    pub parent_pd: Option<ElemRef>,
+    pub parent_pd: Option<ElemId>,
     /// `MeterObj`: upline EnergyMeter.
-    pub meter_obj: Option<ElemRef>,
+    pub meter_obj: Option<ElemId>,
     /// `SensorObj`: upline Sensor/meter for allocation and estimation.
-    pub sensor_obj: Option<ElemRef>,
+    pub sensor_obj: Option<ElemId>,
     /// `BranchNumCustomers` (customers connected directly to this branch).
     pub branch_num_customers: i32,
     /// `BranchTotalCustomers` (customers downstream incl. this branch).

@@ -13,7 +13,7 @@
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::traits::{ElemRef, SysCtx};
+use crate::elements::traits::{ElemId, SysCtx};
 use crate::solution::{ControlQueue, EventLog};
 
 /// Action codes shared across controls (`Controls/ControlElem.pas`
@@ -63,8 +63,8 @@ pub struct CtrlCtx<'a> {
     pub dbl_hour: f64,
     /// `Solution.ControlIteration` (event-log field).
     pub control_iter: i32,
-    /// This control's own [`ElemRef`] (Pascal passes `Self` to `ControlQueue.Push`).
-    pub self_ref: ElemRef,
+    /// This control's own [`ElemId`] (Pascal passes `Self` to `ControlQueue.Push`).
+    pub self_ref: ElemId,
 }
 
 /// `TControlElem` shared state (the base-class fields every control carries).
@@ -76,9 +76,9 @@ pub struct ControlElemData {
     /// `ElementTerminal`: 1-based terminal of the monitored/controlled element.
     pub element_terminal: i32,
     /// `FControlledElement` (the device this control acts on).
-    pub controlled_element: Option<ElemRef>,
+    pub controlled_element: Option<ElemId>,
     /// `FMonitoredElement` (the device this control samples).
-    pub monitored_element: Option<ElemRef>,
+    pub monitored_element: Option<ElemId>,
     /// `TimeDelay` (s) and `DblTraceParameter` (debug-trace scratch).
     pub time_delay: f64,
     pub dbl_trace_param: f64,

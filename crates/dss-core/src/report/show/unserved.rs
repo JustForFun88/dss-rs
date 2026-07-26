@@ -38,7 +38,7 @@ pub(crate) fn show_unserved(
     s.push('\n');
 
     for &r in &ckt.loads {
-        let obj = &mut classes[r.cls].arena[r.idx];
+        let obj = &mut classes[r.class_ord()].arena[r.index()];
         // Take the name before the exclusive `&mut Load` borrow.
         let name = obj.data().name().to_string();
         let Some(load) = obj.as_any_mut().downcast_mut::<Load>() else {

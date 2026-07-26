@@ -7,7 +7,7 @@ use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_LOCK, CTRL_NONE, CTRL_UNLOCK};
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
-use crate::elements::traits::{CktElement, ElemRef, SysCtx};
+use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::{DssObjData, DssObject, RefAction};
 
 use super::SwtControl;
@@ -22,7 +22,7 @@ impl CktElement for SwtControl {
 
     /// Pascal `TControlElem.FControlledElement` - the element this control
     /// acts on (`None` when it drives a list rather than a single element).
-    fn controlled_element(&self) -> Option<crate::elements::traits::ElemRef> {
+    fn controlled_element(&self) -> Option<crate::elements::traits::ElemId> {
         self.ccd.controlled_element
     }
 
@@ -214,12 +214,12 @@ impl DssObject for SwtControl {
     }
 
     /// `switchedobj=` resolution (Pascal `SetControlledElement`): keep the
-    /// `ElemRef` plus a shape snapshot for `RecalcElementData`.
+    /// `ElemId` plus a shape snapshot for `RecalcElementData`.
     fn set_object_ref(
         &mut self,
         idx: usize,
         name: String,
-        resolved: Option<(ElemRef, &dyn DssObject)>,
+        resolved: Option<(ElemId, &dyn DssObject)>,
     ) {
         use super::prop::*;
         match idx {
