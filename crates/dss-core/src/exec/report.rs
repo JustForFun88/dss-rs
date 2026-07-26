@@ -1417,7 +1417,7 @@ impl Dss {
             let control_mode = self
                 .enums
                 .get(self.enums.control_mode)
-                .ordinal_to_string(ckt.solution.control_mode);
+                .ordinal_to_string(ckt.solution.control_mode.ordinal());
             let fields = crate::report::export::SummaryFields {
                 datetime: current_datetime_string(),
                 case_name: ckt.case_name.clone(),

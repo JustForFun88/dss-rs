@@ -7,6 +7,585 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE wave 2a settler — every audit finding settled, two more InvControl enums, gate green (branch `depas-p1p3`, 2026-07-26)
+
+Settler pass over the whole wave (P1-tail 1/n–5/n + P3 + R3iv, base `634aac9`).
+Both audits returned **PASS**; the nine findings are settled below — three fixed
+in code, three answered with new tests, three recorded as proven non-fixes.
+Nothing is left for the merge coordinator except the four already-disclosed
+fenced lines.
+
+**Metrics re-derived independently (not taken from the port log).** `TODO(compat)`
+= **117 / 68 files** at base *and* at HEAD (`git grep` at both revs);
+`downcast`/`as_any` **2** at base and at HEAD (the two pre-existing `catch_unwind`
+`Box<dyn Any>` payload reads in `tests/corpus_gate/runner.rs`); zero
+`#[cfg(feature = "oracle-parity")]`; no new `Rc`/`RefCell`/`Mutex`/statics (the 9
+grep hits are doc prose plus the pre-existing `Arc<Mutex>` test sink in
+`exec/plot/tests.rs`). `git diff --stat 634aac9 -- tests/` is **empty** — zero
+golden / ledger / tolerance / corpus-deck churn across the entire wave.
+
+**Fixed — audit-code 1: the InvControl family was NOT closed.** `FVoltage_CurveX_ref`
+and `FVoltwattYAxis` are both `DssEnum`-backed (`InvControl.pas:438-441`) yet
+appeared in *no* inventory — not the P1 record's Tier-1 row, not the P1-tail escape
+record. Declaring the family closed while two live conversions stayed invisible is
+exactly the half-converted state the P1 protocol forbids, so they are converted here
+rather than merely listed: **`VoltageCurveXRef`** (Rated=0, Avg=1, RAvg=2 — field at
+`InvControl.pas:297`, enum at `:438-439`, `Create` = 0 at `:843`; registry `[0,1,2]`)
+and **`VoltWattYAxis`** (PAvailable=0, Pmpp=1, PctPmpp=2, KvaRating=3 — `:299`,
+`:440-441`, `Create` = 1 at `:845`; registry `[0,1,2,3]`). Neither is a Pascal enum
+*type* (both are plain `Integer` fields), so the closed value set is the `DssEnum`
+declaration, cited in each doc comment. `Calc_PBase`'s `match` loses its
+`_ => cv.p_base` fall-through (exhaustive over the four bases now,
+`InvControl.pas:2850-2890`) and `FPresentVpu`'s two `== 1` / `== 2` tests become
+named comparisons (`:1801-1806`). Pins extended in
+`invcontrol_enums_pin_pascal_and_registry_ordinals`; the P1 phase record's item-4
+row carries a dated correction footnote.
+
+**Fixed — audit-code 5: the structurally-dead combi gate.** Under the closed
+3-variant `InvCombiMode` the `combi != None && != VvVw && != VvDrc` test can never
+fire, and it guarded a *stale* message ("deferred to WP7.7 (GFM)") — GFM has been
+dispatched since WPG.11. It is an exhaustive `match` with no reject arm now, so a
+**new** combi variant is a compile error instead of a silent fall-through into the
+VV_VW path; the mode `case`'s `_ => {}` is likewise named `InvControlMode::NoneMode`.
+The then-unreachable `not_ported_mode()` helper is deleted; `sample()` still returns
+`Result` (four other `Err` arms remain, incl. the missing-curve error 382).
+
+**Fixed — audit-tests 4: `RandomType::default()` disagreed with `Create`.** The
+derive sat on `None` (0) while `TSolutionObj.Create` seeds `GAUSSIAN`
+(`Solution.pas:487`) and `Solution::new` seeds `RandomType::Gaussian`. Nothing
+consumes `default()` today, so moving `#[default]` to `Gaussian` is bit-neutral —
+but `corpus_gate.rs` already uses `unwrap_or_default()` for `ControlMode`, so the
+next `unwrap_or_default()` / `..Default::default()` on this family would have
+silently turned `Set random` off with no test firing. The pin test now asserts it,
+matching every other family in the wave.
+
+**New coverage — audit-tests 1: the registry↔enum coupling was prose only.** Every
+P1 enum claims its discriminants *are* a specific `DssEnum`'s value list, but the
+pins encoded only the Pascal half, as literals. New
+`obj/dss_enum/tests.rs::registry_enum_coupling` walks the **live** `EnumRegistry`
+and asserts every declared ordinal of 18 registry entries resolves through — and
+round-trips out of — its Rust enum: ControlMode, RandomType, LoadSolutionModel,
+MonPhase (both the `Monitored Phase` and `RegControl: Phase Selection` hybrids), the
+seven InvControl families, EspvlControlType, StorageCtrlMode (both the discharge and
+the charge list), LoadShapeInterp, GenDispatchMode, StorageState. Proven live, not
+assumed: flipping `Volt-Watt Y-Axis` to `[0,1,2,4]` in the registry fails it with
+`registry ordinal 4 does not resolve` (reverted). Deliberately out of scope, with the
+reason in the module doc: the `ControlQueue` action codes and `VarMode` have no
+registry entry at all.
+
+**New coverage — audit-tests 2: the `from_ordinal(v).unwrap_or(self.x)` write path.**
+The retyped setters keep the previous value where the pre-enum ones stored the raw
+`i32`; the fallback is unreachable (`class_props/parse.rs:307-324` rejects an unknown
+`MappedStringEnum` token before any write and early-returns on an out-of-set
+`MappedIntEnum` ordinal), which is precisely why nothing pinned that the error is
+*raised* rather than swallowed into a silently-changed field. New
+`inv_control/tests.rs::bad_enum_values_raise_and_leave_the_field_unchanged` drives
+both arms end-to-end (`ControlModel=7` → "not a valid value" + the field keeps 1;
+`VoltWattYAxis=nonsense` → error + `?` still reports `PctPMPPPU`).
+
+**New coverage — audit-tests 3: the R3iv pin covered 6 of 34 handles.** The deck now
+adds a second LoadShape, three XYcurves and a DynamicExp plus a Load / Generator /
+WindGen / Isource and a PVSystem edit, and asserts **22** typed handles dereference
+to the named object through their own arena: every `yearly`/`duty` sibling,
+`Load.cvr_shape_ref`, `PVSystem.power_temp_curve_ref`, WindGen `VV_Curve`/`PLoss`,
+and the shared `DynEqPCE` `dynamic_eq_ref` on two classes. `GicSource::line_ref` is
+private with no getter (none added just for a test): its narrowing is pinned by the
+`dump_gicsource` golden — a `None` handle raises Pascal error 333 and skips the
+`GIC_<name>` splice the golden captures. Noted at the test.
+
+**Non-fix, proven — audit-code 3: the monitor scratch `mem::take` is not
+unwind-safe.** True as stated, and harmless: the body's first act on either buffer is
+`clear()` + `resize(scratch_len, ZERO)`, the sole early `return` precedes any buffer
+use, and a grep over the crate finds no other reader of
+`self.voltage_buffer`/`self.current_buffer` (only the `mod.rs` declaration + init).
+A panic mid-body therefore costs the reused **allocation** and nothing else — a
+re-entered `take_sample` re-derives identical values. A guard type would buy no
+observable behavior; the code comment now states the panic behavior explicitly
+instead of claiming "handed back on every path".
+
+**Non-fix, recorded — audit-code 2 / audit-tests 5: the four fenced lines stand.**
+`exec/report.rs:1367` (1 line) and `report/export/json/circuit.rs` (3) are mechanical
+`.ordinal()` tokens at an `ordinal_to_string(...)` boundary, disclosed by record 1/n.
+Re-verified this pass: `solution/ncim.rs` is untouched across `634aac9..HEAD`
+(`NCIM_PQ_NODE`/`NCIM_PV_NODE` are still raw `i32`) and nothing else under
+`report/export/**` moved. The merge coordinator resolves those 4 lines; no other
+conflict surface exists.
+
+**Non-fix, already recorded — audit-code 5 (second half): P3 §(d)** keeps the
+self-monitored `clone_ckt` / `cap.clone()` copies. That is the one enumerated P3
+bullet that did not land, and it is a legitimate escape under "remove ONLY if
+provably behavior-identical": the copy dissolves only by restructuring four
+`sample()` bodies into read-all-then-mutate, a per-class proof rather than a
+mechanical rewrite. The P3 record already states it; re-affirmed, not dropped.
+
+**Escape record unchanged.** The three open P1-tail items stand exactly as recorded
+(the shared `CTRL_*` + `CTRL_STATE_KEEP` control-action channel; item 8's
+reactor/capacitor `spec_type`, vsource `z_spec_type`/`scan_type`/`sequence_type`,
+`vs_converter.f_mode`, `energymeter.ocp_device_type`; the `DynamicExp` RPN token
+sentinels). None was partially touched by this pass. With `VoltageCurveXRef` and
+`VoltWattYAxis` landed, deferred item **4** is closed *in full* — record 3/n's "the
+InvControl family (6 enums)" reads **8**.
+
+**Gate (solo, this tree):** `cargo fmt --all --check` exit 0 · `cargo clippy
+--workspace --all-targets -D warnings` exit 0 · `cargo test --workspace` exit 0 —
+**66 `test result: ok` groups, 2021 passed, 0 failed, 5 ignored** (2019 → 2021 = the
+two new tests; the extended pins add assertions, not test entries),
+`corpus_gate_all_cases_match_engines … ok` on both channels. `tests/corpus` left
+pristine (27 run-artifacts removed by exact name off the status list — no wide
+`git clean`). Ritual 0 held at start and before the commit: 186 `.pas` under
+`.inputs/dss_capi`; `cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+### DE_PASCALIZE R3iv — the statically-classed object-ref fields are typed `Idx<T>`; R3.1 sub-step (iv) CLOSED (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, **type-channel only** — no arithmetic, no visit /
+registration / control-queue order, no list, no `find_*` tie-break touched. Zero
+golden / ledger / tolerance / corpus-deck churn; `TODO(compat)` still **117 / 68
+files**; no `#[cfg(feature = "oracle-parity")]`; no new `downcast`/`as_any` (the
+only two in the tree stay the pre-existing `catch_unwind` panic-payload reads in
+`tests/corpus_gate/runner.rs`, which are `Box<dyn Any>`, not elements).
+
+**What this closes.** R3.1's escaped sub-step (iv) — carried forward untouched
+through R3.2/R3.3/R3.4 and handed on by the R3 settler as "the one item the R3
+wave hands to its successor". Its blocker was explicitly the *read* side: an
+`Idx<T>` drops the class ordinal, so the fields could not be dereferenced until
+`ClassArena::get::<T>` existed. R3.3 landed that accessor, so (iv) is now a plain
+narrowing pass — exactly the "fold (iv) into R3 item 2" recommendation, executed
+one wave later.
+
+**The 34 fields, all `Option<ElemId>` → `Option<Idx<T>>`** (16 distinct names,
+14 classes): `*_shape_ref` → `LoadShapeObj` (Load ×4 incl. `cvr_`, Generator /
+WindGen / Vsource / Isource / IndMach012 / `InvBasedPceData` ×3 each — the last
+shared by PVSystem+Storage); `*_t_shape_ref` → `TShapeObj` (PVSystem ×3);
+`growth_shape_ref` → `GrowthShapeObj`; `inverter_curve_ref` /
+`power_temp_curve_ref` / `vv_curve_ref` / `loss_curve_ref` → `XyCurveObj`;
+`dynamic_eq_ref` (`DynEqPceData`, shared by Generator/WindGen/PVSystem/Storage)
+→ `DynamicExpObj`; `Line::line_code_ref` → `LineCodeObj`;
+`Transformer::xfmr_code_ref` (+ its `windings.rs` getter) → `XfmrCodeObj`;
+`GicSource::line_ref` → `Idx<Line>`. The task brief also listed the
+`line_geometry` geometry/spacing refs — those are **already** owned snapshots
+(`Option<LineGeometryObj>` / `Option<LineSpacingObj>`, converted by R3.4), so
+there was no `ElemId` left to retype; nothing to do and nothing skipped.
+
+**One new accessor, no new bridge.** `ResolvedObj::idx::<T>() -> Option<Idx<T>>`
+(`obj/arena.rs`) — a single `ArenaClass::idx_of` match arm, the storage-side
+companion of the existing `get`/`cloned`. `ResolvedObj::get` now routes through
+it, so the two cannot disagree. `Idx` is re-exported from `elements::traits`
+beside `ElemId`. No per-class `set_object_ref_typed` was added (the stopgap the
+escape protocol forbids): the shared `set_object_ref` signature is unchanged and
+each impl narrows inline.
+
+**Why the narrowing is total (the bit-neutrality argument).** The only writer is
+`obj/props/class_props/parse.rs`'s `PropType::ObjectRef` `Some(class)` arm, which
+resolves with `foreign.find(class, value)` for the property's **declared** class.
+Every one of these 34 fields is declared `PropDef::object_ref_class(...)` with a
+single class — verified by grep over all `object_ref_class` sites; the *only*
+two-class `object_ref_two_classes` proxy in the tree is RegControl's
+`transformer=` (`Transformer|AutoTrans`), which is not in this set. So a resolved
+reference is always of the target class and `idx_of` is `Some` exactly where
+`map(|o| o.id())` was `Some`; the `None` (miss / `ALLOW_NONE_REF`) path is
+byte-identical. The companion `_obj` snapshot beside each `_ref` was *already*
+narrowed by class (`o.cloned::<LoadShapeObj>()` etc.), so the pair is now
+consistent instead of theoretically divergent.
+
+**The three real readers, converted.** (1) `cim/power_xfmr.rs` case-2 XfmrCode
+UUID: the class ordinal now comes from `XfmrCodeObj::CLASS_ORD` instead of
+`cr.class_ord()` (the same number — the handle's class was already XfmrCode), and
+the surviving `get::<XfmrCodeObj>` is the arena **bounds** check it always
+effectively was. (2) `GicSource::recalc`'s deferred Line `Bus2` rewrite widens
+back with `Line::id(idx.get())` because `RefAction::SetElementBus` speaks the
+class-erased handle — same class, same index. (3) `exec/command.rs`'s
+`set_resolved_line` caller narrows at the `foreign.find("Line", …)` site, keeping
+the original `ckt()`-first order so the `line_missing` flag is set on exactly the
+same inputs. Everything else reading these fields is `.is_some()` (Line dump /
+CIM export / Line `spec_set` guards) or a `like=` field copy, all type-preserving.
+
+**New pin.** `exec/tests/line_fetch.rs::typed_object_ref_handles_dereference_to_
+the_named_object` — a deck with a LoadShape / GrowthShape / TShape / XYcurve /
+LineCode / XfmrCode and a Load, Line, Transformer and PVSystem referencing them,
+asserting (a) every typed handle is `Some` (the totality claim would fail loudly
+here if a narrowing ever missed) and (b) each dereferences **through its own
+class arena** (`ClassArena::get::<T>`) to the object the deck named, plus a
+control that an unresolved `daily=` still leaves `None`.
+
+**Gate:** `cargo fmt --all --check` · `cargo clippy --workspace --all-targets -D
+warnings` · `cargo test --workspace` — green, exit 0, **66 `test result: ok`
+groups, 2019 passed, 0 failed** (+1 over P3's 2018 = the new pin, which lands in
+the existing `dss-core` lib binary, so the group count is unchanged),
+`corpus_gate_all_cases_match_engines … ok` (both channels). `tests/corpus` left
+pristine (the 22 run-artifacts removed by exact name, no wide `git clean`).
+Ritual 0 held at start and before the commit: 186 `.pas`; `cargo` =
+`C:\Users\Admin\.cargo\bin\cargo.exe`.
+
+**Fence respected.** `exec/report.rs`, `report/export/**` and the
+`solution/ncim.rs` cadence were not touched (the sibling `depas-og2` owns them);
+no enum retype rippled into them. Files this step touched that another worktree
+might also: none outside `crates/dss-core/src/{obj/arena.rs, elements/**,
+cim/power_xfmr.rs, exec/command.rs, exec/tests/line_fetch.rs}`.
+
+### DE_PASCALIZE P3 — borrow hygiene: the clone-to-release-borrow swarm (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral: no arithmetic, no visit order, no registration order
+changed — every removed allocation carried values that are byte-for-byte the ones
+now read in place. Goldens untouched, `TODO(compat)` still 117.
+
+**(a) `solution/controls/dispatch.rs` — the fleet handle-list clones are gone.**
+The store (`env.store`) lives *outside* the circuit, so a fleet list never had to be
+copied to keep it mutable: the dispatch envs now borrow it. `GenDispEnv.generators`,
+`UpfcDispEnv.upfcs`, `StorageDispEnv.storages`, `InvDispEnv.pv_systems`/`.storages`,
+`ExpDispEnv.pv_systems` are `&'a [ElemId]`; `StorageDispEnv.season_signal` is
+`&'a str`. The two per-sample `Vec<f64>` bus-kV-base scatters (`ckt.buses.iter().
+map(kv_base).collect()`, one per Inv/Exp dispatch) are replaced by `buses: &'a
+[Bus]` + `.kv_base` at the point of use, and the `MonBus` resolution stores
+`Vec<&'a [usize]>` instead of cloning each bus's whole `ref_no` array. The two
+`UpdateAll` sweeps (`update_all_inv_controls` / `update_all_exp_controls`) had
+cloned `controls`/`pv_systems`/`storages`/`bus_kvbase` **per control** inside the
+loop — now a single `Circuit` field split (`controls`, `pv_systems`, `storages`,
+`buses`, `bus_list`, `solution`) borrows all of them at once. 13 `Vec` clones per
+control sample removed; the lists are the same objects in the same creation order,
+so every fleet scan sees exactly what it saw before.
+
+**(b) full-vector copies per step/frequency/bus.** `solution/solution/dynamics.rs`
+(`calc_initial_machine_states`, `integrate_pc_states`) and `harmonics.rs`
+(`initialize_for_harmonics`) copied the whole `node_v` once per half-step /
+per sweep only to satisfy a borrow that was never in conflict (store ⟂ circuit) —
+now `&ckt.solution.node_v` directly. `savePresentVoltages` uses `clone_from`
+(reuses the saved allocation; identical contents). `fault_study.rs`:
+`compute_ysc` splits `Circuit { buses, solution, .. }` and reads the bus `ref_no`
+in place instead of cloning it per bus (N clones per fault study), and
+`compute_isc` multiplies straight out of `b.vbus` (disjoint field from
+`b.bus_current`). `solution/monitors.rs`: the `SampleAll`/`SaveAll`/`ResetAll`
+sweeps walk `&ckt.monitors` instead of cloning the list per sample.
+
+**(c) `elements/meter/monitor/sample.rs` — per-sample scratch buffers.** Pascal
+keeps `VoltageBuffer`/`CurrentBuffer` as object fields (`Monitor.pas:146-147`,
+sized in `RecalcElementData`); the port allocated two `Vec<Complex64>` on *every*
+sample of *every* monitor. They are now `Monitor` fields, lent to the sample body
+via `mem::take` + hand-back (`take_sample` → `take_sample_into`), because
+`add_dbl` needs `&mut self` while the record is written. The body still
+`clear()` + `resize(n, ZERO)`s them at exactly the point the `vec![ZERO; n]` used
+to run, so their contents entering the match are identical (mode 12 relies on the
+zeroed tail past `NPhases`). Mode 12's `vterminal.clone()` is also gone (read in
+place; the metered element is untouched until the post-loop `compute_iterminal`).
+
+**(d) self-monitored control clones — LEFT IN PLACE, deliberately.** The
+`mon == target` arms of Fuse/Recloser/Relay (`clone_ckt`) and CapControl
+(`cap.clone()`) hand the *monitored* role an owned copy of the controlled element.
+This is not a borrow-hygiene wart that a typed pair getter can dissolve: upstream
+the two roles are the **same object**, so removing the copy needs one `&mut` used
+for both roles — impossible without restructuring each `sample()` into
+"read every monitored quantity, then mutate the controlled side". That reordering
+is only equivalent if no controlled-side mutation precedes a monitored read in any
+of the four classes, which is a per-class proof, not a mechanical rewrite. P3's
+rule is "remove ONLY if provably behavior-identical, else leave and record" →
+recorded. (The copies are already value-neutral: the monitored role's only
+mutation is the `Iterminal` cache, recomputed identically from the same `NodeV`.)
+
+**Surveyed, out of P3's scope (follow-up candidates):** `ckt.<list>.clone()`
+survives in `controls/sampling.rs` (2), `faults.rs` (2), `meters/**` (10),
+`solution/monte_carlo.rs` (2), `time_series.rs`, `power_flow.rs:331` and
+`ymatrix.rs:216` (`ckt_elements` per Y rebuild). Each of those loops passes
+`&mut Circuit` into the body (`dispatch_control`, meter samplers), so removing the
+clone means an index loop over a snapshot length — a different failure mode if a
+body ever mutates the list, i.e. a real per-site proof rather than a borrow fix.
+`solution/solution/ncim.rs` (4 more) is fenced off to the concurrent `depas-og2`
+worktree and was not touched. No file the fence names was modified.
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate, both
+channels) — green, 0 failures; `tests/corpus` pristine; goldens untouched.
+
+### DE_PASCALIZE P1-tail (5/n) — four small self-contained families + the P1-tail escape record (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes most of deferred item **7-residue**.
+
+| family | new enum | discriminants (proven) |
+|---|---|---|
+| Generator `DispatchMode` | **`GenDispatchMode`** (`pc/generator/mod.rs`) | `Generator.pas:436-437`: Default=0, LoadLevel=1 (`LOADMODE`), Price=2 (`PRICEMODE`) → `Generator: Dispatch Mode` `[0,1,2]` |
+| ESPVLControl `Ftype` | **`EspvlControlType`** (`control/espvl_control/mod.rs`) | `ESPVLControl.pas:82`: Unset=0, SystemController=1, LocalController=2 → `ESPVLControl: Type` `[1,2]` |
+| LoadShape `interpolation` | **`LoadShapeInterp`** (`general/load_shape/mod.rs`) | `TLoadShapeInterp`, `LoadShape.pas:293-295`: Avg=0, Edge=1 → `LoadShape: Interpolation` `[0,1]` |
+| ExpControl `FPendingChange` | **`ExpPendingChange`** (`control/exp_control/mod.rs`) | `ExpControl.pas:169-170`: None=0, ChangeVarLevel=1 (queue codes, not a `DssEnum`) |
+
+Four pin tests, one per family. `EspvlControlType::Unset` is a **real** state, not
+a placeholder: `Create` zero-inits `Ftype := 0`, which is deliberately outside the
+registry's `[1, 2]` so the dump renders `''` — the variant keeps that observable.
+`ExpDispatchEnv::push_change` now takes `ExpPendingChange` and `.ordinal()`s at the
+`ControlQueue` seam (same pattern as `InvPendingChange` / `StorageCtrlAction`);
+`set_pending_change` still writes `DblTraceParameter := Value` as
+`value.ordinal() as f64`, bit-identical.
+
+Conversions here were done with **explicit** string replacements only — see the
+record 4/n note on why a bulk identifier rename is unsafe in this codebase.
+Re-verified with the same mechanical string-literal diff vs `634aac9`: the only
+deltas are new test-assertion messages, `"state {}" → "state {:?}"` (the field is
+now `Debug`, not `Display`), `"Monte2 LOGNORMAL…" → "…LogNormal…"` (a test message)
+and new doc prose. **Zero** runtime/user-visible strings changed — no `push_error`,
+event-log or report text anywhere in the wave.
+
+## P1-tail escape record — what is still open
+
+Left as raw `i32`, deliberately, with the reason. None was partially touched.
+
+1. **Relay / CapControl present+normal `state` ordinals** (`CTRL_NONE=0` …
+   `CTRL_UNLOCK=5` + `CTRL_STATE_KEEP = i32::MIN`, `control_elem.rs:23-36`). This is
+   the shared `EControlAction` channel across SwtControl / Fuse / Recloser / Relay /
+   CapControl **and** the `relay_action`/`relay_state`/`fuse_*`/`recloser_*`/
+   `swt_control_*` registry families, several of which map two different `DssEnum`s
+   onto one field. `CTRL_STATE_KEEP = i32::MIN` is a *sentinel outside every*
+   registry (the "leave as is" default value), so the enum needs a `Keep` variant
+   plus the six actions, and every one of the five control classes converts in the
+   same commit or the family is half-done. Out of this step's safe blast radius
+   after the wave already grew to 68 files; deferred as one dedicated unit.
+2. **Item 8 — the remaining bare-`i32` `DssEnum` fields**: `reactor.spec_type` /
+   `capacitor.spec_type` (a *derived* code written by six different property side
+   effects, with `_` fall-throughs in three `match`es in `reactor/solve.rs`),
+   `vsource.{z_spec_type, scan_type, sequence_type}`, `vs_converter.f_mode`,
+   `energymeter.ocp_device_type` (the `== 0` "unset" sentinel plus the
+   reliability-report ripple the P1 record already flagged). Not started.
+3. **Item 10 (Tier-2) — `DynamicExp` RPN token sentinels** (`CONST_CODE = 50001`,
+   `EQ_MARK = -50` in the token stream). These are *payload-carrying* codes (a token
+   is either an opcode, a variable index, or a constant index offset by
+   `CONST_CODE`), so the faithful model is a payload enum over the whole token
+   stream — a real refactor of the evaluator, not a field retype. Not started.
+
+Everything else from `docs/phase-records/depascalize-p1.md` §Deferred is closed by
+records 1/n-5/n: items **1, 2, 3, 4, 5, 6, 9** in full, item **7** except the
+`CTRL_*` state channel, and the `SolveMode` name collision (already resolved by
+P1 itself as `DynSolveMode`).
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate, both
+channels) — green; `tests/corpus` pristine; goldens untouched; `TODO(compat)` 117.
+
+### DE_PASCALIZE P1-tail (4/n) — Storage `f_state` + StorageController modes/fleet-state + the control-queue action-code seam (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes deferred item **5** — deferred as one unit
+because the storage state ordinals are pushed through the *generic* control-queue
+`i32` action channel.
+
+| family | new enum | discriminants (proven) |
+|---|---|---|
+| `TStorageObj.FState` / `.state_desired` / `StorageSnap.state` / `StorageController.fleet_state` | **`StorageState`** (`elements/pc/storage/mod.rs`) | `Storage.pas:35-37`: Charging=-1, Idling=0, Discharging=1, **+ `Other(i32)`** → `Storage: State` `DssEnum` `[-1,0,1]` |
+| `DischargeMode` / `ChargeMode` | **`StorageCtrlMode`** (`storage_controller/mod.rs`) | `StorageController.pas:268-276`: Follow=1, LoadShape=2, Support=3, Time=4, PeakShave=5, Schedule=6, PeakShaveLow=7, CurrentPeakShave=8, CurrentPeakShaveLow=9 |
+| `RELEASE_INHIBIT` queue code | **`StorageCtrlAction`** | `StorageController.pas:279`: ReleaseInhibit=999 |
+
+**Why `StorageState` carries a payload.** Upstream declares `FState: Integer`
+(`Storage.pas:269`) and `TStorageObj.Set_Variable`'s state channel writes
+`Fstate := Trunc(Value)` **unguarded** (`Storage.pas:3135`) — a script can put any
+integer in the field. A closed 3-variant enum would silently drop those, so
+`StorageState::Other(i32)` keeps `ordinal()`/`from_ordinal` total and mutually
+inverse (the `MonPhase` precedent from record 2/n). Pinned by three tests:
+`storage_state_pins_enum_ordinals`,
+`storage_state_round_trips_every_out_of_set_ordinal`, and a **behavioral**
+`set_variable_state_stores_out_of_set_values_verbatim` (drives
+`set_variable(2, 7.9)` and asserts `Other(7)` reads back as `7`).
+
+**One enum for both mode fields.** `ModeDischarge=` and `ModeCharge=` are two
+separate `DssEnum`s over one shared Pascal ordinal space (`[5,1,3,2,4,6,8]` and
+`[2,4,7,9]`), so a single `StorageCtrlMode` covers both fields and each `Sample`
+arm names the ordinals *its* mode rejects — the pre-enum `_ => push_error("Invalid
+DisCharging/Charging Mode: {}")` arms become the explicit complements
+(`PeakShaveLow | CurrentPeakShaveLow` for discharge; `Follow | Support | PeakShave
+| Schedule | CurrentPeakShave` for charge), with the message still formatting the
+raw `.ordinal()` so the diagnostic text is byte-identical.
+`storage_ctrl_mode_and_action_pin_pascal_ordinals` asserts every value of *both*
+registry lists resolves.
+
+**The control-queue seam (the item-5 rider).** `ControlQueue`'s `code: i32` stays
+`i32` — it is genuinely class-polymorphic — and each class converts at its own
+push/pop boundary (the P1b `RegControlAction` precedent):
+`StorageDispatchEnv::push_immediate(StorageState)` (upstream really does push the
+storage-state ordinal as the immediate re-solve marker) and
+`push_release_inhibit` emit `.ordinal()`; `do_pending_action(code: i32)` keeps the
+raw popped code and tests `StorageCtrlAction::from_ordinal(code) ==
+Some(ReleaseInhibit)`, so the `StorageState` markers on the same queue are ignored
+exactly as before. `set_state`/`set_state_desired`/`der_storage_state` are now
+`StorageState`-typed.
+
+**Two `TODO(compat)` sites preserved verbatim.** `DoLoadFollowMode` /
+`DoPeakShaveModeLow` reproduce Pascal's `if not FleetState = STORE_IDLING` operator-
+precedence bug (bitwise-NOT of an integer, so it fires only for `STORE_CHARGING`).
+They now read `(!self.fleet_state.ordinal()) == StorageState::Idling.ordinal()` —
+the same integer arithmetic on the same values, tag and comment untouched.
+`TODO(compat)` count still **117**.
+
+### Corpus-gate catch, recorded (why this record exists at all)
+
+The **first** full-gate run of the InvControl wave (record 3/n) came back with
+**10 failing `controls:invcontrol/*` cases**, every one an *event-log text*
+mismatch (e.g. `Action=INVCONTROLMODE::VOLTVAR MODE REQUESTED…` vs
+`Action=VOLTVAR MODE REQUESTED…`). Cause: the bulk identifier rename that
+converted the constants also rewrote the **string literals** of the Pascal
+`AppendToEventLog` messages (20 literals in `inv_control/compute.rs`, 2 in its
+tests). Fixed by restoring every literal, then re-verified with a mechanical
+string-literal diff of **all** changed files against the wave base `634aac9` — the
+multiset of literals per file is now identical to the base everywhere. Five
+Pascal-citing *comments* (`if FState <> STORE_DISCHARGING`, `STORE_CHARGING = -1`,
+the CIM `BatteryStateKind` doc) were restored to their Pascal spelling for the
+same reason.
+
+Nothing shipped with the corruption: the failure was found by the gate before any
+commit, and both waves are committed only after a clean run.
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate,
+both channels) — green; `tests/corpus` pristine; goldens untouched.
+
+### DE_PASCALIZE P1-tail (3/n) — the InvControl family (6 enums) + the shared DER `VarMode` (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes deferred items **4** and **6** — the P1 record's
+"largest if-else family", deferred as one unit precisely because its internal
+comparisons drive the `der_set_modes`/`der_set_var_mode` env channel shared with the
+DER var-mode field.
+
+| family | new enum | discriminants (Pascal → registry) |
+|---|---|---|
+| `ControlMode` (`Mode=`) | **`InvControlMode`** | `TInvControlControlMode`, `InvControl.pas:119-128` (`{$Z4}` int32): NoneMode=0, VoltVar=1, VoltWatt=2, Drc=3, WattPf=4, WattVar=5, Avr=6, Gfm=7 → `InvControl: Control Mode` `[1..7]` |
+| `CombiMode` | **`InvCombiMode`** | `:131-135`: NoneCombMode=0, VvVw=1, VvDrc=2 → `InvControl: Combi Mode` `[1,2]` |
+| `RateofChangeMode` | **`RateOfChangeMode`** | `ERateofChangeMode`, `:143-147`: Inactive=0, Lpf=1, RiseFall=2 → `InvControl: Rate-of-change Mode` `[0,1,2]` |
+| `FPendingChange` | **`InvPendingChange`** | `:407-411`: None=0, ChangeVarLevel=1, ChangeWattLevel=2, ChangeWattVarLevel=3, ChangeDrcVVarLevel=4 (queue action codes — not a `DssEnum`) |
+| `FReacPower_ref` | **`ReacPowerRef`** | `:404-405`: VarAval=0, VarMax=1 → `InvControl: Reactive Power Reference` `[0,1]` |
+| `CtrlModel` | **`InvControlModel`** | `TInvControlModel`, `:137-140`: Linear=0, Exponential=1 → `InvControl: Control Model` `[0,1]` |
+| DER `varMode` (`InvBasedPceData`) | **`VarMode`** (`elements/pc/inv_based_pce.rs`) | `PVsystem.pas:32-33`: Pf=0, Kvar=1 (the identical pair in `Storage.pas`) |
+
+Two pin tests: `invcontrol_enums_pin_pascal_and_registry_ordinals` (all six, each
+ordinal + `from_ordinal` inverse + the out-of-range `None` + the `Create` defaults)
+and `var_mode_pins_pascal_ordinals`.
+
+**Channel changes (the reason items 4+6 had to land together).**
+`InvDispatchEnv::der_set_modes(.., var_mode: VarMode)` and `der_set_var_mode(_,
+VarMode)`; `ExpDispatchEnv::pv_set_var_mode(_, VarMode)`;
+`InvDispatchEnv::push_change(delay, InvPendingChange)`. The **generic
+`ControlQueue` action-code channel stays `i32`** — it is genuinely
+class-polymorphic — so the conversion happens at each class's own push/pop seam,
+exactly the P1b `RegControlAction` precedent: `push_change`'s impl in
+`solution/controls/dispatch.rs` calls `code.ordinal()` into `queue.push_delay`.
+The `pub(crate) const VARMODE_PF/VARMODE_KVAR` pairs in **both** `pvsystem/mod.rs`
+and `storage/mod.rs` are gone (they were duplicate declarations of the same
+Pascal constant).
+
+**One structural simplification, disclosed.** `Sample`'s mode gate was
+
+```
+if combi != NONE_COMBMODE { if combi != VV_VW && combi != VV_DRC { Err(not_ported) } }
+else { match control_mode { <all 8 ordinals> => {} , _ => Err(not_ported) } }
+```
+
+The `_ =>` arm of that inner `match` listed **every** `TInvControlControlMode`
+value, so it was already unreachable for any in-range ordinal; with the closed
+enum it is `unreachable_patterns` (a clippy `-D warnings` error). It is folded to
+the single combi test, and a comment records that every control mode is ported.
+`not_ported_mode()`'s message still formats the raw ordinals (`.ordinal()`), so
+the error text is byte-identical.
+
+`validate_xy_curve(.., mode: InvControlMode)`'s `_ => {}` likewise became the
+explicit five non-checked variants; `InvPendingChange` is `pub` (like
+`RegControlAction`) because it appears on the `pub f_pending_change` field.
+
+CIM boundary (`cim/ieee1547.rs`, `cim/export.rs`) keeps its `i32` snapshot
+fields and takes `.ordinal()` — no writer change.
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate
+included) — green; `tests/corpus` pristine; goldens untouched; `TODO(compat)` 117.
+
+### DE_PASCALIZE P1-tail (2/n) — the shared `MonPhase` hybrid enum kills four sentinel-triple copies (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Closes deferred item **9**. Four control classes each
+carried a private copy of the *same* `AVGPHASES=-1 / MAXPHASE=-2 / MINPHASE=-3`
+sentinel triple; all four resolve to the one `MonPhaseEnum`
+(`obj/dss_enum/registry/control.rs`, **`hybrid = true`**, values `[-3,-2,-1]`).
+
+New module `elements/control/mon_phase.rs` → `pub enum MonPhase { Avg, Max, Min,
+Phase(i32) }`, re-exported as `elements::control::MonPhase`. Discriminants proven
+against `CapControl.pas:230-232` **and** `StorageController.pas:38-40` (identical
+triple) and against the registry values.
+
+**Why a payload variant.** The backing `DssEnum` is `hybrid`: a token that does
+not match `min`/`max`/`avg` is parsed as an *integer* and stored verbatim (a
+1-based phase number). A closed 3-variant enum would silently drop those, so
+`MonPhase::Phase(i32)` carries the raw ordinal and `ordinal()`/`from_ordinal()`
+are **total and mutually inverse over all of `i32`** — the property boundary
+round-trips byte-for-byte exactly as the pre-enum bare field did. Two pin tests:
+`mon_phase_pins_enum_ordinals` (the three sentinels) and
+`mon_phase_round_trips_every_non_sentinel_ordinal` (totality, incl. `0`, `-4`,
+`±1000`, and that *only* `-1/-2/-3` are non-`Phase`).
+
+| field retyped | file | old private consts removed |
+|---|---|---|
+| `CapControl.fct_phase` / `.fpt_phase` | `cap_control/{mod,accessors,control_loop,tests}.rs` | `AVGPHASES`/`MAXPHASE`/`MINPHASE` |
+| `RegControl.fpt_phase` | `reg_control/{mod,accessors,control_loop}.rs` | `MAXPHASE`/`MINPHASE` |
+| `InvControl.mon_buses_phase` | `inv_control/{mod,accessors,compute,tests}.rs` | `AVGPHASES`/`MAXPHASE`/`MINPHASE` |
+| `StorageController.f_mon_phase` (+ `StorageDispatchEnv::control_power`/`control_current` signatures) | `storage_controller/{mod,accessors,tests}.rs`, `solution/controls/dispatch.rs` | `AVG`/`MAXPHASE`/`MINPHASE` |
+
+**The one semantic subtlety, handled explicitly.** RegControl's own registry
+entry (`RegControl: Phase Selection`) has **no `avg`** — only `min`/`max` + the
+integer fallback — so its `get_control_voltage` `_ =>` arm used to absorb an
+`Avg` (-1) ordinal as `(-1-1).max(0) = 0` (phase 0). The converted match keeps
+that exactly: the specific-phase arm is `MonPhase::Avg | MonPhase::Phase(_)` and
+still computes `(self.fpt_phase.ordinal() - 1).max(0)`. Every other converted
+match is a straight 1:1 arm rename, and the two 1-based indexers
+(`cbuffer[(p as usize) - 1]`, `cd.iterminal[(p - 1) as usize]`) now bind the
+payload instead of casting the field — identical arithmetic, plus the upstream
+0-based-`cBuffer` MonBus quirk left verbatim (`cbuffer.get(p as usize)`).
+
+Validation writes (`if f_*_phase.ordinal() > nphases { … = MonPhase::Phase(1) }`)
+are unchanged in effect: the sentinels are negative, so they never trip the
+bound, exactly as before.
+
+**Gate:** fmt · clippy `-D warnings` · `cargo test --workspace` (corpus gate
+included) — green; `tests/corpus` pristine; goldens untouched; `TODO(compat)` 117.
+
+### DE_PASCALIZE P1-tail (1/n) — the solution enum trio: `ControlMode` / `LoadSolutionModel` / `RandomType` (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base = `update` @ `634aac9`. Ritual 0 held (186 `.pas`
+under `.inputs/dss_capi`; `cargo` = the rustup MSVC `.cargo\bin` one). Closes items
+**1-3** of the `docs/phase-records/depascalize-p1.md` §Deferred list — the three
+`Solution` fields that were bare `i32` const-chains threaded through the control
+subsystem, every PC element's `SysCtx`, and the MonteCarlo drivers.
+
+| Deferred item | New enum | Location | Discriminants (proven) | Pin test |
+|---|---|---|---|---|
+| 1 Solution `control_mode`/`default_control_mode` | **`ControlMode`** | `solution/solution/state.rs` | ControlsOff=-1, Static=0, EventDriven=1, TimeDriven=2, MultiRate=3 | `control_mode_pins_enum_ordinals` |
+| 2 Solution `load_model`/`default_load_model` + `SysCtx.load_model` | **`LoadSolutionModel`** | same | PowerFlow=1, Admittance=2 | `load_solution_model_pins_enum_ordinals` |
+| 3 Solution `random_type` | **`RandomType`** | same | None=0, Gaussian=1, Uniform=2, LogNormal=3 | `random_type_pins_enum_ordinals` |
+
+Every discriminant proven **twice**: against the Pascal (`DSSGlobals.pas:99-103`
+control modes, `:90-91` load model, `:106-108` random) **and** against the `DssEnum`
+registry values in `obj/dss_enum/registry/solution.rs` (`Control Mode` `[-1,0,1,2,3]`,
+`Load Solution Model` `[1,2]`, `Random Type` `[0,1,2,3]`). The `ADMITTANCE` /
+`POWERFLOW` / `GAUSSIAN` / `UNIFORM` / `LOGNORMAL` / `CONTROLSOFF` / `CTRLSTATIC` /
+`EVENTDRIVEN` / `TIMEDRIVEN` / `MULTIRATE` `pub const`s are **gone**; `i32` now
+survives only at the `Set`/`Get`/dump/JSON boundary (`ordinal()` out,
+`from_ordinal().unwrap_or(current)` in — the P1 boundary pattern).
+
+**Naming decision.** The solution-side load model is `LoadSolutionModel`, not
+`LoadModel`: the Load element already owns a `LoadModel` enum (`Model=`
+ConstPQ/ConstZ/…). The registry's own label is literally "Load Solution Model".
+
+**Signature ripples (all bit-neutral; exhaustive matches replace the old `_ =>`):**
+`Load::randomize(RandomType, …)` / `Fault::randomize(RandomType, …)` /
+`draw_load_multiplier(…, RandomType, …)` / `randomize_all_loads`; `CtrlCtx.control_mode`,
+the `ExpDispatchEnv::control_mode() -> ControlMode` trait method + `ExpDispEnv` impl,
+`FaultStatusCtx.control_mode`; `SysCtx.load_model`. Wildcard arms that previously
+swallowed the unlisted ordinals became explicit final variants
+(`ControlMode::ControlsOff => {}` in `do_control_actions`,
+`RandomType::None | RandomType::LogNormal => {}` in `draw_load_multiplier`,
+`ControlMode::Static | ControlMode::ControlsOff => return false` in
+`Fault::check_status`) — the swallowed set is identical because each enum is closed
+over exactly the old const set.
+
+**Fenced-file ripples (for the merge coordinator).** The retype forced a mechanical
+one-token `.ordinal()` at the enum→`ordinal_to_string` boundary in two files the
+sibling `depas-og2` worktree owns: `exec/report.rs:1367` (1 line) and
+`report/export/json/circuit.rs` (3 lines). No logic touched in either.
+
+**Test-side note (disclosed).** `exp_control/tests.rs` carried a local
+`const TIMEDRIVEN: i32 = 1` — mislabeled (1 is EVENTDRIVEN). It is replaced by
+`ControlMode::TimeDriven` (2). Behaviorally identical: every ExpControl comparison is
+`== / != CTRLSTATIC` and both ordinals are non-static; the const is removed with a
+comment recording the correction.
+
+**Gate:** `cargo fmt --all --check` · `clippy --workspace --all-targets -D warnings` ·
+`cargo test --workspace` (unified corpus gate included) — all green; `tests/corpus`
+pristine (run artifacts removed by exact name); goldens untouched; `TODO(compat)`
+still **117**.
+
 ### DE_PASCALIZE R3 — SETTLER PASS (two audits: code = 1 low + 5 notes, tests = PASS; every finding settled empirically; `DssObject::as_conductor` removed as the last type probe; final gate green) (branch `depas-r3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Base of the wave = `update` @ `67d2965`; settler base

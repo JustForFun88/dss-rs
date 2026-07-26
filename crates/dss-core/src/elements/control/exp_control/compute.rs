@@ -8,12 +8,12 @@
 //! abstraction (`solution/controls/dispatch.rs`), resolved against the class
 //! registry; the fleet resolves lazily on the first `Sample`.
 
-use crate::elements::pc::pvsystem::VARMODE_KVAR;
+use crate::elements::pc::inv_based_pce::VarMode;
 use crate::elements::traits::ElemId;
-use crate::solution::CTRLSTATIC;
+use crate::solution::ControlMode;
 use crate::util::fmt_g;
 
-use super::{CHANGEVARLEVEL, ExpControl, ExpVars, NONE};
+use super::{ExpControl, ExpPendingChange, ExpVars};
 
 /// Pascal `Math.Sign` — returns -1.0 / 0.0 / 1.0.
 fn pas_sign(x: f64) -> f64 {
@@ -85,7 +85,7 @@ pub(crate) trait ExpDispatchEnv {
     /// Pascal `PVSys.VWmode := value`.
     fn pv_set_vw_mode(&mut self, r: ElemId, value: bool);
     /// Pascal `PVSys.Varmode := value` (VARMODEKVAR).
-    fn pv_set_var_mode(&mut self, r: ElemId, mode: i32);
+    fn pv_set_var_mode(&mut self, r: ElemId, mode: VarMode);
     /// Pascal `PVSys.SetNominalDEROutput`.
     fn pv_set_nominal(&mut self, r: ElemId);
     /// Pascal `PVSys.PresentkW := value` (writes `kWRequested`).
@@ -101,13 +101,13 @@ pub(crate) trait ExpDispatchEnv {
 
     // --- control queue / event log / scalars ---
     /// Pascal `ActiveCircuit.ControlQueue.Push(TimeDelay, CHANGEVARLEVEL, 0, Self)`.
-    fn push_change(&mut self, delay: f64, code: i32);
+    fn push_change(&mut self, delay: f64, code: ExpPendingChange);
     /// Pascal `AppendToEventLog(sender, msg)` — `sender` is the fully composed
     /// `Self.FullName + sep + PVSys.Name` (the separator differs: a space in
     /// `Sample`, a comma in `DoPendingAction` / `UpdateExpControl`).
     fn append_event(&mut self, sender: &str, msg: &str);
-    /// `ActiveCircuit.Solution.ControlMode` (the `CTRLSTATIC` checks).
-    fn control_mode(&self) -> i32;
+    /// `ActiveCircuit.Solution.ControlMode` (the `Static` checks).
+    fn control_mode(&self) -> ControlMode;
     /// `ActiveCircuit.Solution.ControlIteration` (the `= 1` Sample trigger).
     fn control_iteration(&self) -> i32;
     /// `ActiveCircuit.Solution.DynaVars.h` (seconds).
@@ -124,9 +124,9 @@ impl ExpControl {
 
     /// Pascal `Set_PendingChange(Value, DevIndex)` — `FPendingChange[DevIndex] :=
     /// Value; DblTraceParameter := Value`.
-    fn set_pending_change(&mut self, i: usize, value: i32) {
+    fn set_pending_change(&mut self, i: usize, value: ExpPendingChange) {
         self.ctrl_vars[i].f_pending_change = value;
-        self.ccd.dbl_trace_param = value as f64;
+        self.ccd.dbl_trace_param = value.ordinal() as f64;
     }
 
     /// Pascal `TExpControlObj.MakePVSystemList(doRecalc=FALSE)` — resolve the
@@ -196,7 +196,7 @@ impl ExpControl {
                 (vpresent / snap.nphases as f64) / (snap.bus_kvbase * 1000.0);
 
             // If initializing with Vreg=0 in static mode, FIND Vreg.
-            if env.control_mode() == CTRLSTATIC && self.f_vreg_init <= 0.0 {
+            if env.control_mode() == ControlMode::Static && self.f_vreg_init <= 0.0 {
                 self.ctrl_vars[i].f_vregs = self.ctrl_vars[i].f_present_vpu;
                 if self.ctrl_vars[i].f_vregs < self.vreg_min {
                     self.ctrl_vars[i].f_vregs = self.vreg_min;
@@ -227,8 +227,8 @@ impl ExpControl {
                 || env.control_iteration() == 1
             {
                 self.ctrl_vars[i].f_within_tol = false;
-                self.set_pending_change(i, CHANGEVARLEVEL);
-                env.push_change(self.ccd.time_delay, CHANGEVARLEVEL);
+                self.set_pending_change(i, ExpPendingChange::ChangeVarLevel);
+                env.push_change(self.ccd.time_delay, ExpPendingChange::ChangeVarLevel);
                 if self.ccd.show_event_log {
                     let sender = format!("{} {}", self.full_name(), snap.name);
                     env.append_event(
@@ -263,14 +263,14 @@ impl ExpControl {
     /// low-pass filter the target (`FOpenTau`), and move it by `DeltaQ_Factor`.
     pub(crate) fn do_pending_action(&mut self, env: &mut dyn ExpDispatchEnv) {
         for i in 0..self.fleet.len() {
-            if self.ctrl_vars[i].f_pending_change != CHANGEVARLEVEL {
+            if self.ctrl_vars[i].f_pending_change != ExpPendingChange::ChangeVarLevel {
                 continue;
             }
             let r = self.fleet[i];
             let snap = env.pv_snap(r);
 
             env.pv_set_vw_mode(r, false);
-            env.pv_set_var_mode(r, VARMODE_KVAR);
+            env.pv_set_var_mode(r, VarMode::Kvar);
             self.ctrl_vars[i].f_target_q = 0.0;
             let qbase = snap.kva_rating;
             let qinvmaxpu = snap.kvar_limit / qbase;
@@ -333,7 +333,7 @@ impl ExpControl {
             }
 
             // Put FTargetQ through the low-pass open-loop filter.
-            if self.f_open_tau > 0.0 && env.control_mode() != CTRLSTATIC {
+            if self.f_open_tau > 0.0 && env.control_mode() != ControlMode::Static {
                 let dt = env.dyna_h();
                 self.ctrl_vars[i].f_target_q = self.ctrl_vars[i].f_last_step_q
                     + (self.ctrl_vars[i].f_target_q - self.ctrl_vars[i].f_last_step_q)
@@ -359,7 +359,7 @@ impl ExpControl {
             self.ctrl_vars[i].f_last_iter_q = qset;
             self.ctrl_vars[i].f_prior_vpu = self.ctrl_vars[i].f_present_vpu;
             env.set_loads_need_updating(); // force recalc of power parms
-            self.set_pending_change(i, NONE);
+            self.set_pending_change(i, ExpPendingChange::None);
         }
     }
 

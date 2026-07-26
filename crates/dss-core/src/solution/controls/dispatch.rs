@@ -9,31 +9,36 @@ use crate::circuit::Circuit;
 use crate::elements::control::cap_control::CapControl;
 use crate::elements::control::control_elem::{ControlClass, CtrlCtx};
 use crate::elements::control::espvl_control::{EspvlControl, EspvlDispatchEnv};
-use crate::elements::control::exp_control::{ExpControl, ExpDispatchEnv, PvFind, PvSnap};
+use crate::elements::control::exp_control::{
+    ExpControl, ExpDispatchEnv, ExpPendingChange, PvFind, PvSnap,
+};
 use crate::elements::control::gen_dispatcher::{GenDispatchEnv, GenDispatcher};
 use crate::elements::control::inv_control::{
-    DerSnap, InvControl, InvDispatchEnv, InvFleetFind, MonitorVar,
+    DerSnap, InvControl, InvDispatchEnv, InvFleetFind, InvPendingChange, MonitorVar,
 };
+use crate::elements::control::mon_phase::MonPhase;
 use crate::elements::control::recloser::Recloser;
 use crate::elements::control::reg_control::RegControl;
 use crate::elements::control::relay::Relay;
 use crate::elements::control::storage_controller::{
-    FleetFind, StorageController, StorageDispatchEnv, StorageSnap,
+    FleetFind, StorageController, StorageCtrlAction, StorageDispatchEnv, StorageSnap,
 };
 use crate::elements::control::swt_control::SwtControl;
 use crate::elements::control::upfc_control::{UpfcControl, UpfcDispatchEnv};
 use crate::elements::pc::generator::Generator;
 use crate::elements::pc::inv_based_pce::Connection as InvConnection;
-use crate::elements::pc::pvsystem::{PVSystem, VARMODE_KVAR};
+use crate::elements::pc::inv_based_pce::VarMode;
+use crate::elements::pc::pvsystem::PVSystem;
+use crate::elements::pc::storage::StorageState;
 use crate::elements::pc::storage::{Storage, StorageDispatchMode};
 use crate::elements::pc::upfc::Upfc;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::fuse::Fuse;
 use crate::elements::traits::{ElemId, ElemStore, SysCtx, TypedStore};
-use crate::solution::SolveMode;
 use crate::solution::control_queue::ControlQueue;
 use crate::solution::event_log::EventLog;
 use crate::solution::solution::{Solution, SolveEnv, SolveResult, sys_ctx};
+use crate::solution::{ControlMode, SolveMode};
 
 use super::ControlOp;
 
@@ -213,7 +218,6 @@ pub(super) fn dispatch_control(
                 .typed::<GenDispatcher>(r)
                 .expect("kind matched above")
                 .clone();
-            let generators = ckt.generators.clone();
             let changed = {
                 let mut env = GenDispEnv {
                     store: &mut **store,
@@ -221,7 +225,7 @@ pub(super) fn dispatch_control(
                     sys: &sys,
                     monitored: mon,
                     element_terminal,
-                    generators,
+                    generators: &ckt.generators,
                 };
                 gd.sample(&mut env)
             };
@@ -258,7 +262,6 @@ pub(super) fn dispatch_control(
             .typed::<StorageController>(r)
             .expect("kind matched above")
             .clone();
-        let storages = ckt.storages.clone();
         {
             let Solution {
                 node_v,
@@ -276,7 +279,7 @@ pub(super) fn dispatch_control(
                 sys: &sys,
                 monitored,
                 element_terminal,
-                storages,
+                storages: &ckt.storages,
                 queue,
                 events: event_log,
                 errors,
@@ -287,7 +290,7 @@ pub(super) fn dispatch_control(
                 t: *t,
                 control_iter: *control_iteration,
                 season_rating: ckt.season_rating,
-                season_signal: ckt.season_signal.clone(),
+                season_signal: &ckt.season_signal,
             };
             match op {
                 ControlOp::Sample => sc.sample(&mut env),
@@ -312,18 +315,15 @@ pub(super) fn dispatch_control(
             .typed::<InvControl>(r)
             .expect("kind matched above")
             .clone();
-        let pv_systems = ckt.pv_systems.clone();
-        let storages = ckt.storages.clone();
-        let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
-        // Resolve the control's `MonBus` names to per-bus `RefNo` arrays for the
+        // Resolve the control's `MonBus` names to per-bus `RefNo` slices for the
         // `GetMonVoltage` MonBus path (empty when unused or a name is unknown).
-        let mon_bus_refs: Vec<Vec<usize>> = ic
+        let mon_bus_refs: Vec<&[usize]> = ic
             .mon_buses
             .iter()
             .map(|bn| {
                 ckt.bus_list
                     .find(bn)
-                    .map(|bi| ckt.buses[bi].ref_no.clone())
+                    .map(|bi| ckt.buses[bi].ref_no.as_slice())
                     .unwrap_or_default()
             })
             .collect();
@@ -343,9 +343,9 @@ pub(super) fn dispatch_control(
                 store: &mut **store,
                 node_v: &*node_v,
                 sys: &sys,
-                pv_systems,
-                storages,
-                bus_kvbase,
+                pv_systems: &ckt.pv_systems,
+                storages: &ckt.storages,
+                buses: &ckt.buses,
                 mon_bus_refs,
                 queue,
                 events: event_log,
@@ -389,8 +389,6 @@ pub(super) fn dispatch_control(
             .typed::<ExpControl>(r)
             .expect("kind matched above")
             .clone();
-        let pv_systems = ckt.pv_systems.clone();
-        let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
         {
             let Solution {
                 node_v,
@@ -406,8 +404,8 @@ pub(super) fn dispatch_control(
                 store: &mut **store,
                 node_v: &*node_v,
                 sys: &sys,
-                pv_systems,
-                bus_kvbase,
+                pv_systems: &ckt.pv_systems,
+                buses: &ckt.buses,
                 queue,
                 events: event_log,
                 self_ref: r,
@@ -440,13 +438,12 @@ pub(super) fn dispatch_control(
             .typed::<UpfcControl>(r)
             .expect("kind matched above")
             .clone();
-        let upfcs = ckt.upfcs.clone();
         {
             let mut env = UpfcDispEnv {
                 store: &mut **store,
                 node_v: &ckt.solution.node_v,
                 sys: &sys,
-                upfcs,
+                upfcs: &ckt.upfcs,
             };
             match op {
                 ControlOp::Sample => {
@@ -985,14 +982,15 @@ pub(super) fn dispatch_control(
 /// [`GenDispatchEnv`] over the class registry: the monitored element's terminal
 /// power and the dispatched generators' `kWBase`/`kvarBase`, reached through the
 /// store. The generator-scan list is the circuit's creation-ordered
-/// `generators` list (cloned by the caller so the store can be borrowed freely).
+/// `generators` list, borrowed in place (the store lives outside the circuit,
+/// so no copy is needed to keep it mutable).
 struct GenDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
     monitored: ElemId,
     element_terminal: usize,
-    generators: Vec<ElemId>,
+    generators: &'a [ElemId],
 }
 
 impl GenDispEnv<'_> {
@@ -1106,12 +1104,12 @@ impl EspvlDispatchEnv for EspvlDispEnv<'_> {
 
 /// [`UpfcDispatchEnv`] over the store: the controlled UPFC fleet, reached through
 /// the class registry. The fleet-scan list is the circuit's creation-ordered
-/// `upfcs` (cloned by the caller so the store can be borrowed freely).
+/// `upfcs`, borrowed in place (the store lives outside the circuit).
 struct UpfcDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    upfcs: Vec<ElemId>,
+    upfcs: &'a [ElemId],
 }
 
 impl UpfcDispEnv<'_> {
@@ -1182,7 +1180,6 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemId, ckt: &mut Circuit, env:
         .typed::<StorageController>(r)
         .expect("checked above")
         .clone();
-    let storages = ckt.storages.clone();
     let mut queue = std::mem::take(&mut ckt.solution.control_queue);
     {
         let Solution {
@@ -1201,7 +1198,7 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemId, ckt: &mut Circuit, env:
             sys: &sys,
             monitored,
             element_terminal,
-            storages,
+            storages: &ckt.storages,
             queue: &mut queue,
             events: event_log,
             errors,
@@ -1212,7 +1209,7 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemId, ckt: &mut Circuit, env:
             t: *t,
             control_iter: *control_iteration,
             season_rating: ckt.season_rating,
-            season_signal: ckt.season_signal.clone(),
+            season_signal: &ckt.season_signal,
         };
         sc.recalc_fleet(&mut denv);
     }
@@ -1225,14 +1222,14 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemId, ckt: &mut Circuit, env:
 /// [`StorageDispatchEnv`] over the store: the monitored element's terminal
 /// power/current and the dispatched Storage fleet's state, reached through the
 /// class registry. The fleet-scan list is the circuit's creation-ordered
-/// `storages` list (cloned by the caller so the store can be borrowed freely).
+/// `storages` list, borrowed in place (the store lives outside the circuit).
 struct StorageDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
     monitored: Option<ElemId>,
     element_terminal: usize,
-    storages: Vec<ElemId>,
+    storages: &'a [ElemId],
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
     errors: &'a mut crate::diag::ErrorLog,
@@ -1245,7 +1242,7 @@ struct StorageDispEnv<'a> {
     /// `DSS.SeasonalRating` (`Set SeasonRating=`).
     season_rating: bool,
     /// `DSS.SeasonSignal` (`Set SeasonSignal=`).
-    season_signal: String,
+    season_signal: &'a str,
 }
 
 impl StorageDispEnv<'_> {
@@ -1268,8 +1265,7 @@ impl StorageDispEnv<'_> {
 impl StorageDispatchEnv for StorageDispEnv<'_> {
     /// Pascal `GetControlPower` — per `MonPhase`, over the monitored element's
     /// per-conductor power (`GetPhasePower` → `cBuffer`).
-    fn control_power(&mut self, mon_phase: i32, fnphases: usize) -> Complex64 {
-        use crate::elements::control::storage_controller::{AVG, MAXPHASE, MINPHASE};
+    fn control_power(&mut self, mon_phase: MonPhase, fnphases: usize) -> Complex64 {
         let m = self.monitored_ref();
         let mon_nphases = self.store.ckt_elem(m).cd().nphases;
         let mut control_power = if mon_nphases == 1 {
@@ -1299,8 +1295,8 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                 }
             };
             match mon_phase {
-                AVG => (0..term_i.len()).map(pw).sum(),
-                MAXPHASE => {
+                MonPhase::Avg => (0..term_i.len()).map(pw).sum(),
+                MonPhase::Max => {
                     // Abs-max of the terminal's conductors, scaled by Fnphases.
                     let mut cp = Complex64::ZERO;
                     for i in 0..term_i.len() {
@@ -1311,7 +1307,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                     }
                     cp * fnphases as f64
                 }
-                MINPHASE => {
+                MonPhase::Min => {
                     let mut cp = Complex64::new(1.0e50, 1.0e50);
                     for i in 0..term_i.len() {
                         let c = pw(i);
@@ -1324,8 +1320,8 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                 // A specific phase: Pascal uses `cBuffer[FMonPhase]` (1-based, no
                 // CondOffset — an upstream quirk), so this indexes the flat buffer
                 // from terminal 1, scaled by Fnphases.
-                _ => {
-                    let i0 = (mon_phase - 1) as usize;
+                MonPhase::Phase(p) => {
+                    let i0 = (p - 1) as usize;
                     let n = cd.node_ref[i0];
                     let c = if n > 0 {
                         self.node_v[n] * cd.iterminal[i0].conj()
@@ -1344,8 +1340,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
 
     /// Pascal `GetControlCurrent` — per `MonPhase`, over `Cabs(cBuffer[i])` (the
     /// monitored element's terminal currents).
-    fn control_current(&mut self, mon_phase: i32, fnphases: usize) -> f64 {
-        use crate::elements::control::storage_controller::{AVG, MAXPHASE, MINPHASE};
+    fn control_current(&mut self, mon_phase: MonPhase, fnphases: usize) -> f64 {
         let m = self.monitored_ref();
         self.store
             .ckt_elem_mut(m)
@@ -1353,15 +1348,15 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         let cd = self.store.ckt_elem(m).cd();
         let term_i = cd.term_i(self.element_terminal - 1);
         match mon_phase {
-            AVG => {
+            MonPhase::Avg => {
                 let sum: f64 = term_i.iter().map(|c| c.norm()).sum();
                 sum / fnphases as f64
             }
-            MAXPHASE => term_i.iter().map(|c| c.norm()).fold(0.0, f64::max),
-            MINPHASE => term_i.iter().map(|c| c.norm()).fold(1.0e50, f64::min),
+            MonPhase::Max => term_i.iter().map(|c| c.norm()).fold(0.0, f64::max),
+            MonPhase::Min => term_i.iter().map(|c| c.norm()).fold(1.0e50, f64::min),
             // Specific phase: Pascal's flat `cBuffer[FMonPhase]` (1-based, no
             // CondOffset — an upstream quirk), indexed from terminal 1.
-            _ => cd.iterminal[(mon_phase - 1) as usize].norm(),
+            MonPhase::Phase(p) => cd.iterminal[(p - 1) as usize].norm(),
         }
     }
 
@@ -1423,7 +1418,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
             inverter_on: st.base.inverter_on,
         }
     }
-    fn set_state(&mut self, r: ElemId, state: i32) {
+    fn set_state(&mut self, r: ElemId, state: StorageState) {
         Self::storage_mut(self.store, r).set_storage_state(state);
     }
     fn set_kw(&mut self, r: ElemId, kw: f64) {
@@ -1438,7 +1433,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
     fn set_pct_reserve(&mut self, r: ElemId, pct: f64) {
         Self::storage_mut(self.store, r).pct_reserve = pct;
     }
-    fn set_state_desired(&mut self, r: ElemId, state: i32) {
+    fn set_state_desired(&mut self, r: ElemId, state: StorageState) {
         Self::storage_mut(self.store, r).state_desired = state;
     }
     fn set_dispatch_external(&mut self, r: ElemId) {
@@ -1466,18 +1461,19 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         format!("Storage.{}", Self::storage(self.store, r).cd.obj.name())
     }
 
-    fn push_immediate(&mut self, code: i32) {
+    fn push_immediate(&mut self, code: StorageState) {
+        // `i32` only at the generic `ControlQueue` boundary — upstream pushes
+        // the storage-state ordinal itself as the immediate re-solve marker.
         *self.loads_need_updating = true;
         self.queue
-            .push_delay(self.int_hour, self.t, 0.0, code, 0, self.self_ref);
+            .push_delay(self.int_hour, self.t, 0.0, code.ordinal(), 0, self.self_ref);
     }
     fn push_release_inhibit(&mut self, inhibit_hrs: i32) {
-        use crate::elements::control::storage_controller::RELEASE_INHIBIT;
         *self.loads_need_updating = true;
         self.queue.push(
             self.int_hour + inhibit_hrs,
             self.t,
-            RELEASE_INHIBIT,
+            StorageCtrlAction::ReleaseInhibit.ordinal(),
             0,
             self.self_ref,
         );
@@ -1520,7 +1516,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         // RSignal <> NIL then RatingIdx := trunc(RSignal.GetYValue(intHour))`
         // — `RatingIdx` stays its `0` init on a miss.
         let mut rating_idx = 0;
-        if let Some(r) = self.store.find_general("XYcurve", &self.season_signal)
+        if let Some(r) = self.store.find_general("XYcurve", self.season_signal)
             && let Some(curve) = self
                 .store
                 .typed_mut::<crate::elements::general::xy_curve::XyCurveObj>(r)
@@ -1538,10 +1534,15 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
 pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let SolveEnv { store, errors, .. } = env;
-    let controls = ckt.controls.clone();
-    let pv_systems = ckt.pv_systems.clone();
-    let storages = ckt.storages.clone();
-    let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
+    let Circuit {
+        controls,
+        pv_systems,
+        storages,
+        buses,
+        bus_list,
+        solution,
+        ..
+    } = ckt;
     let Solution {
         node_v,
         event_log,
@@ -1553,23 +1554,23 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
         system_y_changed,
         solution_abort,
         ..
-    } = &mut ckt.solution;
+    } = solution;
 
-    for r in controls {
+    for &r in controls.iter() {
         if store.typed::<InvControl>(r).is_none() || !store.ckt_elem(r).cd().enabled {
             continue;
         }
         let mut ic = store.typed::<InvControl>(r).expect("checked above").clone();
-        // Resolve this control's `MonBus` names to per-bus `RefNo` arrays (disjoint
+        // Resolve this control's `MonBus` names to per-bus `RefNo` slices (disjoint
         // from the `&mut ckt.solution` borrow held above; empty for the common
         // no-MonBus control, so zero cost there).
-        let mon_bus_refs: Vec<Vec<usize>> = ic
+        let mon_bus_refs: Vec<&[usize]> = ic
             .mon_buses
             .iter()
             .map(|bn| {
-                ckt.bus_list
+                bus_list
                     .find(bn)
-                    .map(|bi| ckt.buses[bi].ref_no.clone())
+                    .map(|bi| buses[bi].ref_no.as_slice())
                     .unwrap_or_default()
             })
             .collect();
@@ -1578,9 +1579,9 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
                 store: &mut **store,
                 node_v: &*node_v,
                 sys: &sys,
-                pv_systems: pv_systems.clone(),
-                storages: storages.clone(),
-                bus_kvbase: bus_kvbase.clone(),
+                pv_systems,
+                storages,
+                buses,
                 mon_bus_refs,
                 queue: &mut *control_queue,
                 events: &mut *event_log,
@@ -1603,19 +1604,19 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
 
 /// [`InvDispatchEnv`] over the store: the controlled PVSystem/Storage fleet's
 /// state, reached through the class registry. The fleet-scan lists are the
-/// circuit's creation-ordered `pv_systems`/`storages` (cloned by the caller so the
-/// store can be borrowed freely); `bus_kvbase[i]` is bus `i`'s kV base.
+/// circuit's creation-ordered `pv_systems`/`storages`, borrowed in place (the
+/// store lives outside the circuit); `buses[i].kv_base` is bus `i`'s kV base.
 struct InvDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    pv_systems: Vec<ElemId>,
-    storages: Vec<ElemId>,
-    bus_kvbase: Vec<f64>,
-    /// The controlled InvControl's parsed `MonBus` ref arrays (one `RefNo` array
+    pv_systems: &'a [ElemId],
+    storages: &'a [ElemId],
+    buses: &'a [crate::circuit::Bus],
+    /// The controlled InvControl's parsed `MonBus` ref arrays (one `RefNo` slice
     /// per `ic.mon_buses` entry; empty when `MonBus=` is unused or a name is
     /// unknown). Backs [`InvDispatchEnv::mon_bus_node_v`].
-    mon_bus_refs: Vec<Vec<usize>>,
+    mon_bus_refs: Vec<&'a [usize]>,
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
     errors: &'a mut crate::diag::ErrorLog,
@@ -1662,10 +1663,10 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         self.find("storage", name)
     }
     fn all_pvsystems(&self) -> Vec<(String, ElemId, bool)> {
-        self.all_of("PVSystem", &self.pv_systems)
+        self.all_of("PVSystem", self.pv_systems)
     }
     fn all_storages(&self) -> Vec<(String, ElemId, bool)> {
-        self.all_of("Storage", &self.storages)
+        self.all_of("Storage", self.storages)
     }
     fn push_error(&mut self, diag: crate::diag::DssDiagnostic) {
         self.errors.push(diag);
@@ -1695,7 +1696,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
                 dckw_rated: pv.f_pmpp,        // FDCkWRated := Pmpp
                 pct_dckw_rated: pv.f_pu_pmpp, // FpctDCkWRated := puPmpp
                 eff_factor: pv.eff_factor,    // FEffFactor := PVSystemVars.EffFactor
-                storage_state: 0,             // n/a for a PVSystem
+                storage_state: StorageState::Idling, // n/a for a PVSystem
                 vw_state_requested: false,    // n/a for a PVSystem
             }
         } else if let Some(st) = self.store.typed::<Storage>(r) {
@@ -1758,8 +1759,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         let cd = self.store.ckt_elem(r).cd();
         cd.terminals[0]
             .bus_ref
-            .and_then(|b| self.bus_kvbase.get(b))
-            .copied()
+            .and_then(|b| self.buses.get(b))
+            .map(|b| b.kv_base)
             .unwrap_or(0.0)
             * 1000.0
     }
@@ -1802,7 +1803,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.pf_priority = value;
         }
     }
-    fn der_set_modes(&mut self, r: ElemId, vw_mode: bool, vv_mode: bool, var_mode: i32) {
+    fn der_set_modes(&mut self, r: ElemId, vw_mode: bool, vv_mode: bool, var_mode: VarMode) {
         if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.vw_mode = vw_mode;
             pv.base.vv_mode = vv_mode;
@@ -1855,7 +1856,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             st.base.avr_mode = value;
         }
     }
-    fn der_set_var_mode(&mut self, r: ElemId, mode: i32) {
+    fn der_set_var_mode(&mut self, r: ElemId, mode: VarMode) {
         if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             pv.base.var_mode = mode;
         } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
@@ -1880,7 +1881,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         if let Some(pv) = self.store.typed_mut::<PVSystem>(r) {
             // Pascal `Set_Presentkvar` sets kvarRequested + varMode := VARMODEKVAR.
             pv.kvar_requested = q;
-            pv.base.var_mode = VARMODE_KVAR;
+            pv.base.var_mode = VarMode::Kvar;
         } else if let Some(st) = self.store.typed_mut::<Storage>(r) {
             st.kvar_requested = q;
         }
@@ -1968,9 +1969,17 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         }
     }
 
-    fn push_change(&mut self, delay: f64, code: i32) {
-        self.queue
-            .push_delay(self.int_hour, self.t, delay, code, 0, self.self_ref);
+    fn push_change(&mut self, delay: f64, code: InvPendingChange) {
+        // `i32` only at the `ControlQueue` boundary (the generic action-code
+        // channel is shared by every control class).
+        self.queue.push_delay(
+            self.int_hour,
+            self.t,
+            delay,
+            code.ordinal(),
+            0,
+            self.self_ref,
+        );
     }
     fn append_event(&mut self, der_full_name: &str, msg: &str) {
         let name = format!(
@@ -2007,8 +2016,10 @@ impl InvDispatchEnv for InvDispEnv<'_> {
             false
         }
     }
-    fn der_storage_state(&self, r: ElemId) -> i32 {
-        self.store.typed::<Storage>(r).map_or(0, |st| st.f_state)
+    fn der_storage_state(&self, r: ElemId) -> StorageState {
+        self.store
+            .typed::<Storage>(r)
+            .map_or(StorageState::Idling, |st| st.f_state)
     }
     fn der_ilimit(&self, r: ElemId) -> f64 {
         if let Some(pv) = self.store.typed::<PVSystem>(r) {
@@ -2068,7 +2079,7 @@ impl InvDispatchEnv for InvDispEnv<'_> {
     }
     fn der_set_storage_state_off(&mut self, r: ElemId) {
         if let Some(st) = self.store.typed_mut::<Storage>(r) {
-            st.f_state = 0; // STORE_IDLING ("burning, turn it off")
+            st.f_state = StorageState::Idling; // "burning, turn it off"
             st.state_changed = true;
         }
     }
@@ -2085,9 +2096,13 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let SolveEnv { store, errors, .. } = env;
     let _ = errors; // ExpControl.UpdateExpControl logs no errors
-    let controls = ckt.controls.clone();
-    let pv_systems = ckt.pv_systems.clone();
-    let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
+    let Circuit {
+        controls,
+        pv_systems,
+        buses,
+        solution,
+        ..
+    } = ckt;
     let Solution {
         node_v,
         event_log,
@@ -2098,9 +2113,9 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
         t,
         loads_need_updating,
         ..
-    } = &mut ckt.solution;
+    } = solution;
 
-    for r in controls {
+    for &r in controls.iter() {
         if store.typed::<ExpControl>(r).is_none() || !store.ckt_elem(r).cd().enabled {
             continue;
         }
@@ -2110,8 +2125,8 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
                 store: &mut **store,
                 node_v: &*node_v,
                 sys: &sys,
-                pv_systems: pv_systems.clone(),
-                bus_kvbase: bus_kvbase.clone(),
+                pv_systems,
+                buses,
                 queue: &mut *control_queue,
                 events: &mut *event_log,
                 self_ref: r,
@@ -2130,20 +2145,20 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
 
 /// [`ExpDispatchEnv`] over the store: the controlled PVSystem fleet's state,
 /// reached through the class registry. The fleet-scan list is the circuit's
-/// creation-ordered `pv_systems` (cloned by the caller so the store can be borrowed
-/// freely); `bus_kvbase[i]` is bus `i`'s kV base.
+/// creation-ordered `pv_systems`, borrowed in place (the store lives outside the
+/// circuit); `buses[i].kv_base` is bus `i`'s kV base.
 struct ExpDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    pv_systems: Vec<ElemId>,
-    bus_kvbase: Vec<f64>,
+    pv_systems: &'a [ElemId],
+    buses: &'a [crate::circuit::Bus],
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
     self_ref: ElemId,
     int_hour: i32,
     t: f64,
-    control_mode: i32,
+    control_mode: ControlMode,
     control_iter: i32,
     dyna_h: f64,
     loads_need_updating: &'a mut bool,
@@ -2189,8 +2204,8 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
         let pv = Self::pvsystem(self.store, r);
         let bus_ref = pv.cd.terminals[0].bus_ref;
         let bus_kvbase = bus_ref
-            .and_then(|b| self.bus_kvbase.get(b))
-            .copied()
+            .and_then(|b| self.buses.get(b))
+            .map(|b| b.kv_base)
             .unwrap_or(0.0);
         PvSnap {
             name: pv.cd.obj.name().to_string(),
@@ -2222,7 +2237,7 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
     fn pv_set_vw_mode(&mut self, r: ElemId, value: bool) {
         Self::pvsystem_mut(self.store, r).base.vw_mode = value;
     }
-    fn pv_set_var_mode(&mut self, r: ElemId, mode: i32) {
+    fn pv_set_var_mode(&mut self, r: ElemId, mode: VarMode) {
         Self::pvsystem_mut(self.store, r).base.var_mode = mode;
     }
     fn pv_set_nominal(&mut self, r: ElemId) {
@@ -2248,15 +2263,22 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
         Self::pvsystem_mut(self.store, r).vreg = value;
     }
 
-    fn push_change(&mut self, delay: f64, code: i32) {
-        self.queue
-            .push_delay(self.int_hour, self.t, delay, code, 0, self.self_ref);
+    fn push_change(&mut self, delay: f64, code: ExpPendingChange) {
+        // `i32` only at the generic `ControlQueue` boundary.
+        self.queue.push_delay(
+            self.int_hour,
+            self.t,
+            delay,
+            code.ordinal(),
+            0,
+            self.self_ref,
+        );
     }
     fn append_event(&mut self, sender: &str, msg: &str) {
         self.events
             .append(sender, msg, self.int_hour, self.t, self.control_iter);
     }
-    fn control_mode(&self) -> i32 {
+    fn control_mode(&self) -> ControlMode {
         self.control_mode
     }
     fn control_iteration(&self) -> i32 {

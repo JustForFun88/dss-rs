@@ -24,7 +24,8 @@ use super::{SolveEnv, SolveResult, sys_ctx};
 /// variables do nothing (the base `TPCElement.InitStateVars` is a no-op).
 pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
-    let node_v = ckt.solution.node_v.clone();
+    // `env.store` is disjoint from `ckt`, so the loop reads `node_v` straight
+    // out of the solution — no per-entry copy of the voltage vector.
     // Pascal `TWindGenObj.InitStateVars` (and the classic machines) can
     // `DoSimpleMsg` + `SetSolutionAbort(TRUE)` from inside init (e.g. a
     // non-3-phase WindGen — the WTG3 model is 3-phase-only). Drain each
@@ -36,7 +37,7 @@ pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv)
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
         if elem.cd().enabled {
-            elem.init_state_vars(&sys, &node_v);
+            elem.init_state_vars(&sys, &ckt.solution.node_v);
             errs.extend(elem.cd_mut().obj.take_errors());
             if elem.cd_mut().obj.take_abort() {
                 aborted = true;
@@ -69,10 +70,11 @@ pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv)
 /// `Enabled` — it walks the full `PCElements` list.
 fn integrate_pc_states(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
-    let node_v = ckt.solution.node_v.clone();
+    // `env.store` is disjoint from `ckt`: borrow `node_v` in place (a full copy
+    // of the voltage vector per half-step otherwise).
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
-        elem.integrate_states(&sys, &node_v);
+        elem.integrate_states(&sys, &ckt.solution.node_v);
     }
 }
 

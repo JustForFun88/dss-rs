@@ -384,8 +384,8 @@ pub fn op_limit_direction_enum(buf: &mut Writer, prf: ProfileChoice, val: &str) 
 
 /// Pascal `TCIMExporterHelper.BatteryStateEnum` (`ExportCIMXML.pas:1408`):
 /// `<cim:BatteryUnit.batteryState rdf:resource="…#BatteryStateKind.<state>"/>`.
-/// `state` = `charging` (STORE_CHARGING = −1) / `discharging` (STORE_DISCHARGING
-/// = +1) / else `waiting`.
+/// `state` = `charging` (`STORE_CHARGING` = −1) / `discharging`
+/// (`STORE_DISCHARGING` = +1) / else `waiting`.
 pub fn battery_state_enum(buf: &mut Writer, prf: ProfileChoice, storage_state: i32) {
     let s = if storage_state == -1 {
         "charging"

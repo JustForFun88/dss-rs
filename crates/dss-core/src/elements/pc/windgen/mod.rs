@@ -31,7 +31,7 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::dyneq_pce::DynEqPceData;
-use crate::elements::traits::{ElemId, SysCtx};
+use crate::elements::traits::{Idx, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -254,18 +254,18 @@ pub struct WindGen {
     pub yearly_shape_obj: Option<LoadShapeObj>,
     pub daily_shape_obj: Option<LoadShapeObj>,
     pub duty_shape_obj: Option<LoadShapeObj>,
-    pub yearly_shape_ref: Option<ElemId>,
-    pub daily_shape_ref: Option<ElemId>,
-    pub duty_shape_ref: Option<ElemId>,
+    pub yearly_shape_ref: Option<Idx<LoadShapeObj>>,
+    pub daily_shape_ref: Option<Idx<LoadShapeObj>>,
+    pub duty_shape_ref: Option<Idx<LoadShapeObj>>,
 
     /// Volt-var control curve (`VV_Curve`).
     pub vv_curve: String,
     pub vv_curve_obj: Option<XyCurveObj>,
-    pub vv_curve_ref: Option<ElemId>,
+    pub vv_curve_ref: Option<Idx<XyCurveObj>>,
     /// Turbine active-power loss curve (`PLoss`).
     pub loss_curve: String,
     pub loss_curve_obj: Option<XyCurveObj>,
-    pub loss_curve_ref: Option<ElemId>,
+    pub loss_curve_ref: Option<Idx<XyCurveObj>>,
 }
 
 /// Pascal `SetNcondsForConnection`.

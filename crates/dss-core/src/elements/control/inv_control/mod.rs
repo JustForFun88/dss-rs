@@ -41,57 +41,285 @@ mod tests;
 pub(crate) use compute::{DerSnap, FleetFind as InvFleetFind, InvDispatchEnv, MonitorVar};
 
 use crate::elements::control::control_elem::ControlElemData;
+use crate::elements::control::mon_phase::MonPhase;
 use crate::elements::control::roll_avg_window::RollAvgWindow;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::traits::ElemId;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
-// Control-mode ordinals (InvControl.pas `TInvControlControlMode`). The full set
-// is VOLTVAR=1 VOLTWATT=2 DRC=3 WATTPF=4 WATTVAR=5 AVR=6 GFM=7; the dispatch ports
-// land per sub-step (2b: VOLTVAR; 2c: VOLTWATT + VV_VW; 2d: DRC + VV_DRC; 2e: the rest).
-pub(crate) const NONE_MODE: i32 = 0;
-pub(crate) const VOLTVAR: i32 = 1;
-pub(crate) const VOLTWATT: i32 = 2;
-pub(crate) const DRC: i32 = 3;
-pub(crate) const WATTPF: i32 = 4;
-pub(crate) const WATTVAR: i32 = 5;
-// AVR=6 (active voltage regulation) — the 3-stage DQDV regulator, ported in step 2e-ii.
-pub(crate) const AVR: i32 = 6;
-// GFM=7 (grid-forming) — the amps-limit / overload protective arm over a
-// grid-forming DER (WPG.13).
-pub(crate) const GFM: i32 = 7;
+/// `TInvControlControlMode` (`InvControl.pas:119-128`, `{$Z4}` int32 enum) —
+/// the InvControl `Mode=` selection. Discriminants are user-visible and frozen
+/// (they round-trip through the `InvControl: Control Mode` `DssEnum`, values
+/// `[1..7]`; `NoneMode` = the unset default, which dumps `''`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub(crate) enum InvControlMode {
+    /// `NONE_MODE` — `TInvControlObj.Create`'s default (the docs say "VoltVar"
+    /// but `Create` sets NONE); not registered in the `DssEnum`, dumps `''`.
+    #[default]
+    NoneMode = 0,
+    VoltVar = 1,
+    VoltWatt = 2,
+    /// `DRC` — dynamic reactive current.
+    Drc = 3,
+    WattPf = 4,
+    WattVar = 5,
+    /// `AVR` — active voltage regulation (the 3-stage DQDV regulator).
+    Avr = 6,
+    /// `GFM` — grid-forming (the amps-limit / overload protective arm).
+    Gfm = 7,
+}
 
-// Combi-mode ordinals (InvControl.pas `TInvControlCombiMode`).
-pub(crate) const NONE_COMBMODE: i32 = 0;
-pub(crate) const VV_VW: i32 = 1;
-pub(crate) const VV_DRC: i32 = 2;
+impl InvControlMode {
+    /// The `InvControl: Control Mode` `DssEnum` ordinal.
+    pub(crate) fn ordinal(self) -> i32 {
+        self as i32
+    }
 
-// Rate-of-change-mode ordinals (InvControl.pas `ERateofChangeMode`: Inactive /
-// LPF / RiseFall). LPF/RISEFALL drive the step-2e-iii rate-of-change limiting
-// (`CalcLPF`/`CalcRF` in `DoPendingAction`).
-pub(crate) const ROC_INACTIVE: i32 = 0;
-pub(crate) const ROC_LPF: i32 = 1;
-pub(crate) const ROC_RISEFALL: i32 = 2;
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub(crate) fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::NoneMode),
+            1 => Some(Self::VoltVar),
+            2 => Some(Self::VoltWatt),
+            3 => Some(Self::Drc),
+            4 => Some(Self::WattPf),
+            5 => Some(Self::WattVar),
+            6 => Some(Self::Avr),
+            7 => Some(Self::Gfm),
+            _ => None,
+        }
+    }
+}
 
-// PendingChange action codes (InvControl.pas l.407-411).
-pub(crate) const CHANGE_NONE: i32 = 0;
-pub(crate) const CHANGEVARLEVEL: i32 = 1;
-pub(crate) const CHANGEWATTLEVEL: i32 = 2;
-pub(crate) const CHANGEWATTVARLEVEL: i32 = 3;
-pub(crate) const CHANGEDRCVVARLEVEL: i32 = 4;
+/// `TInvControlCombiMode` (`InvControl.pas:131-135`) — the `CombiMode=`
+/// selection (`InvControl: Combi Mode` `DssEnum`, values `[1, 2]`;
+/// `NoneCombMode` = unset).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub(crate) enum InvCombiMode {
+    #[default]
+    NoneCombMode = 0,
+    VvVw = 1,
+    VvDrc = 2,
+}
 
-// Reactive-power-reference ordinals (InvControl.pas constants).
-const REAC_POWER_VARAVAL: i32 = 0;
-pub(crate) const REAC_POWER_VARMAX: i32 = 1;
+impl InvCombiMode {
+    /// The `InvControl: Combi Mode` `DssEnum` ordinal.
+    pub(crate) fn ordinal(self) -> i32 {
+        self as i32
+    }
 
-// Monitored-phase sentinels (`DSSClass.pas`; reused via MonPhaseEnum).
-const AVGPHASES: i32 = -1;
-pub(crate) const MAXPHASE: i32 = -2;
-pub(crate) const MINPHASE: i32 = -3;
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub(crate) fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::NoneCombMode),
+            1 => Some(Self::VvVw),
+            2 => Some(Self::VvDrc),
+            _ => None,
+        }
+    }
+}
 
-// Control-model ordinals (InvControl.pas `TInvControlModel`).
-const MODEL_LINEAR: i32 = 0;
+/// `FVoltage_CurveX_ref` (`InvControl.pas:297`, a plain Pascal `Integer`) —
+/// the per-unit base for the volt-var / volt-watt curve X axis. There is no
+/// Pascal enum *type*; the closed value set is the one the
+/// `VoltageCurveXRefEnum` declares (`InvControl.pas:438-439`, names
+/// `['Rated','Avg','RAvg']`, values `[0, 1, 2]`; port registry
+/// `registry/control.rs:229`). Consumed by the `FPresentVpu` conversion
+/// (`InvControl.pas:1801-1806`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub(crate) enum VoltageCurveXRef {
+    /// `Rated` — `TInvControlObj.Create` sets 0 (`InvControl.pas:843`).
+    #[default]
+    Rated = 0,
+    /// `Avg` — divide by the rolling-average window value.
+    Avg = 1,
+    /// `RAvg` — the rolling average itself, per-unit on the base kV.
+    RAvg = 2,
+}
+
+impl VoltageCurveXRef {
+    /// The `InvControl: Voltage Curve X Ref` `DssEnum` ordinal.
+    pub(crate) fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub(crate) fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Rated),
+            1 => Some(Self::Avg),
+            2 => Some(Self::RAvg),
+            _ => None,
+        }
+    }
+}
+
+/// `FVoltwattYAxis` (`InvControl.pas:299`, a plain Pascal `Integer`) — the
+/// volt-watt power base selector read by `Calc_PBase`
+/// (`InvControl.pas:2850-2890`). No Pascal enum type; the closed value set is
+/// the `VoltWattYAxisEnum` declaration (`InvControl.pas:440-441`, names
+/// `['PAvailablePU','PMPPPU','PctPMPPPU','KVARatingPU']`, values
+/// `[0, 1, 2, 3]`; port registry `registry/control.rs:237`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub(crate) enum VoltWattYAxis {
+    /// `PAvailablePU` — %Available power (`FDCkW·FEffFactor`, or the live
+    /// Storage `DCkW·FEffFactor`).
+    PAvailable = 0,
+    /// `PMPPPU` — %Pmpp (`FDCkWRated`); `TInvControlObj.Create` sets 1
+    /// (`InvControl.pas:845`).
+    #[default]
+    Pmpp = 1,
+    /// `PctPMPPPU` — `FDCkWRated · FpctDCkWRated`.
+    PctPmpp = 2,
+    /// `KVARatingPU` — `FkVARating`.
+    KvaRating = 3,
+}
+
+impl VoltWattYAxis {
+    /// The `InvControl: Volt-Watt Y-Axis` `DssEnum` ordinal.
+    pub(crate) fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub(crate) fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::PAvailable),
+            1 => Some(Self::Pmpp),
+            2 => Some(Self::PctPmpp),
+            3 => Some(Self::KvaRating),
+            _ => None,
+        }
+    }
+}
+
+/// `ERateofChangeMode` (`InvControl.pas:143-147`) — `RateofChangeMode=`
+/// (`InvControl: Rate-of-change Mode` `DssEnum`, values `[0, 1, 2]`). `Lpf` /
+/// `RiseFall` drive the rate-of-change limiting (`CalcLPF`/`CalcRF` in
+/// `DoPendingAction`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub(crate) enum RateOfChangeMode {
+    #[default]
+    Inactive = 0,
+    Lpf = 1,
+    RiseFall = 2,
+}
+
+impl RateOfChangeMode {
+    /// The `InvControl: Rate-of-change Mode` `DssEnum` ordinal.
+    pub(crate) fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub(crate) fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Inactive),
+            1 => Some(Self::Lpf),
+            2 => Some(Self::RiseFall),
+            _ => None,
+        }
+    }
+}
+
+/// InvControl's `FPendingChange` action codes (`InvControl.pas:407-411`).
+/// These are *not* a `DssEnum` — they are the control-queue action codes this
+/// class pushes and pops, so `i32` survives only at the `ControlQueue`
+/// push/`DoPendingAction` boundary (the P1b `RegControlAction` precedent).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum InvPendingChange {
+    /// Pascal `NONE = 0`.
+    #[default]
+    None = 0,
+    ChangeVarLevel = 1,
+    ChangeWattLevel = 2,
+    ChangeWattVarLevel = 3,
+    ChangeDrcVVarLevel = 4,
+}
+
+impl InvPendingChange {
+    /// The `ControlQueue` action code (`Push(..., code, ...)`).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From a popped `ControlQueue` action code; unknown codes yield `None`.
+    /// (InvControl's own `DoPendingAction` reads `FPendingChange` off the DER
+    /// record rather than the popped code — Pascal does the same — so this is
+    /// the symmetric inverse the `RegControlAction` precedent also exposes.)
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::None),
+            1 => Some(Self::ChangeVarLevel),
+            2 => Some(Self::ChangeWattLevel),
+            3 => Some(Self::ChangeWattVarLevel),
+            4 => Some(Self::ChangeDrcVVarLevel),
+            _ => None,
+        }
+    }
+}
+
+/// `ReacPower_VARAVAL` / `ReacPower_VARMAX` (`InvControl.pas:404-405`) — the
+/// `RefReactivePower=` reference (`InvControl: Reactive Power Reference`
+/// `DssEnum`, values `[0, 1]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub(crate) enum ReacPowerRef {
+    #[default]
+    VarAval = 0,
+    VarMax = 1,
+}
+
+impl ReacPowerRef {
+    /// The `InvControl: Reactive Power Reference` `DssEnum` ordinal.
+    pub(crate) fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub(crate) fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::VarAval),
+            1 => Some(Self::VarMax),
+            _ => None,
+        }
+    }
+}
+
+/// `TInvControlModel` (`InvControl.pas:137-140`) — the `ControlModel=` var-calc
+/// kernel (`InvControl: Control Model` `DssEnum`, values `[0, 1]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub(crate) enum InvControlModel {
+    /// `TInvControlModel.Linear` — `TInvControlObj.Create` sets it
+    /// (`InvControl.pas:873`).
+    #[default]
+    Linear = 0,
+    Exponential = 1,
+}
+
+impl InvControlModel {
+    /// The `InvControl: Control Model` `DssEnum` ordinal.
+    pub(crate) fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub(crate) fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Linear),
+            1 => Some(Self::Exponential),
+            _ => None,
+        }
+    }
+}
 
 // FLAGDELTAQ / FLAGDELTAP — the "not set" sentinels (InvControl.pas l.417-418).
 pub(crate) const FLAGDELTAQ: f64 = -1.0;
@@ -408,7 +636,7 @@ pub(crate) struct InvVars {
     pub f_drc_roll_avg_window: RollAvgWindow,
 
     /// `FPendingChange` — the queued action code for this DER.
-    pub f_pending_change: i32,
+    pub f_pending_change: InvPendingChange,
 
     // --- DER parameters refreshed each Sample by `UpdateDERParameters` ---
     pub f_vbase: f64,
@@ -444,7 +672,7 @@ impl InvVars {
             delta_v_old: -1.0,
             f_active_vv_curve: 1,
             f_inverter_on: true,
-            f_pending_change: CHANGE_NONE,
+            f_pending_change: InvPendingChange::None,
             // Pascal `RecalcElementData` (InvControl.pas l.2399-2400) creates each
             // DER's `TPICtrl` then overrides `Kp := 1`.
             pi_ctrl: PICtrl {
@@ -470,10 +698,10 @@ pub struct InvControl {
     /// `FListSize` — set from `DERNameList.count` in the DERList side effect.
     f_list_size: i32,
 
-    /// `ControlMode` (`TInvControlControlMode` ordinal; NONE_MODE renders '').
-    control_mode: i32,
-    /// `CombiMode` (`TInvControlCombiMode` ordinal).
-    combi_mode: i32,
+    /// `ControlMode` (`TInvControlControlMode`; `NoneMode` renders '').
+    control_mode: InvControlMode,
+    /// `CombiMode` (`TInvControlCombiMode`).
+    combi_mode: InvCombiMode,
 
     /// `Fvvc_curve` — volt-var curve (name + snapshot-clone).
     vvc_curve_name: String,
@@ -481,7 +709,7 @@ pub struct InvControl {
     /// `Fvvc_curveOffset` (Hysteresis_Offset).
     vvc_curve_offset: f64,
     /// `FVoltage_CurveX_ref` (0:=Rated, 1:=Avg, 2:=RAvg).
-    voltage_curvex_ref: i32,
+    voltage_curvex_ref: VoltageCurveXRef,
     /// `FRollAvgWindowLength` (AvgWindowLen, seconds).
     roll_avg_window_length: i32,
 
@@ -519,18 +747,18 @@ pub struct InvControl {
     active_p_change_tolerance: f64,
 
     /// `FVoltwattYAxis` (0:=%Available, 1:=%Pmpp, 2:=%PctPmpp, 3:=%kVArating).
-    voltwatt_yaxis: i32,
-    /// `RateofChangeMode` (`ERateofChangeMode` ordinal).
-    rate_of_change_mode: i32,
+    voltwatt_yaxis: VoltWattYAxis,
+    /// `RateofChangeMode` (`ERateofChangeMode`).
+    rate_of_change_mode: RateOfChangeMode,
     /// `LPFTau` (seconds) / `FRiseFallLimit`.
     lpf_tau: f64,
     rise_fall_limit: f64,
 
-    /// `FReacPower_ref` (0:=VARAVAL, 1:=VARMAX).
-    reac_power_ref: i32,
+    /// `FReacPower_ref` (`VarAval`=0, `VarMax`=1).
+    reac_power_ref: ReacPowerRef,
 
     /// `FMonBusesPhase` (MonVoltageCalc; MonPhaseEnum: avg/max/min/phase no.).
-    mon_buses_phase: i32,
+    mon_buses_phase: MonPhase,
     /// `MonBusesNameList` — the raw monitored-bus list (the `MonBus=` strings,
     /// possibly with `.node` suffixes).
     mon_buses_name_list: Vec<String>,
@@ -547,7 +775,7 @@ pub struct InvControl {
     /// `Fv_setpoint` — AVR voltage setpoint.
     v_setpoint: f64,
     /// `CtrlModel` (`TInvControlModel`: Linear / Exponential).
-    ctrl_model: i32,
+    ctrl_model: InvControlModel,
 
     // --- WP7.5 step-2b runtime state (the DER fleet + dispatch) ---
     /// `FDERPointerList` — the resolved PVSystem/Storage fleet, built lazily on the
@@ -597,13 +825,13 @@ impl InvControl {
             ccd,
             der_name_list: Vec::new(),
             f_list_size: 0,
-            control_mode: NONE_MODE, // docs say "VoltVar" but Create sets NONE
-            combi_mode: NONE_COMBMODE,
+            control_mode: InvControlMode::NoneMode, // docs say "VoltVar"; Create sets NONE
+            combi_mode: InvCombiMode::NoneCombMode,
 
             vvc_curve_name: String::new(),
             vvc_curve: None,
             vvc_curve_offset: 0.0,
-            voltage_curvex_ref: 0,
+            voltage_curvex_ref: VoltageCurveXRef::Rated,
             roll_avg_window_length: 1, // docs list 0; Create sets 1
 
             voltwatt_curve_name: String::new(),
@@ -628,21 +856,21 @@ impl InvControl {
             var_change_tolerance: 0.025,
             active_p_change_tolerance: 0.01,
 
-            voltwatt_yaxis: 1,
-            rate_of_change_mode: ROC_INACTIVE,
+            voltwatt_yaxis: VoltWattYAxis::Pmpp,
+            rate_of_change_mode: RateOfChangeMode::Inactive,
             lpf_tau: 0.001,         // docs list 0
             rise_fall_limit: 0.001, // docs list -1 (disabled)
 
-            reac_power_ref: REAC_POWER_VARAVAL,
+            reac_power_ref: ReacPowerRef::VarAval,
 
-            mon_buses_phase: AVGPHASES,
+            mon_buses_phase: MonPhase::Avg,
             mon_buses_name_list: Vec::new(),
             mon_buses: Vec::new(),
             mon_buses_nodes: Vec::new(),
             mon_buses_vbase: Vec::new(),
 
             v_setpoint: 1.0,
-            ctrl_model: MODEL_LINEAR,
+            ctrl_model: InvControlModel::Linear,
 
             fleet: Vec::new(), // empty → the first Sample builds it
             ctrl_vars: Vec::new(),
@@ -699,12 +927,12 @@ impl InvControl {
     pub(crate) fn lpf_tau(&self) -> f64 {
         self.lpf_tau
     }
-    /// `ControlMode` ordinal (VOLTVAR=1…AVR=6).
-    pub(crate) fn control_mode(&self) -> i32 {
+    /// `ControlMode` (`VoltVar`=1…`Gfm`=7).
+    pub(crate) fn control_mode(&self) -> InvControlMode {
         self.control_mode
     }
-    /// `CombiMode` ordinal (VV_VW=1, VV_DRC=2).
-    pub(crate) fn combi_mode(&self) -> i32 {
+    /// `CombiMode` (`VvVw`=1, `VvDrc`=2).
+    pub(crate) fn combi_mode(&self) -> InvCombiMode {
         self.combi_mode
     }
     /// `FDRCRollAvgWindowLength` (DynReacAvgWindowLen, seconds).

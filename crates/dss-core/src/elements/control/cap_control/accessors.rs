@@ -11,7 +11,7 @@ use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
-use super::{CapControl, CapControlType};
+use super::{CapControl, CapControlType, MonPhase};
 
 impl CktElement for CapControl {
     fn cd(&self) -> &crate::elements::ckt::CktElementData {
@@ -188,8 +188,8 @@ impl DssObject for CapControl {
         match idx {
             TERMINAL => self.ccd.element_terminal,
             TYPE => self.control_type.ordinal(),
-            CTPHASE => self.fct_phase,
-            PTPHASE => self.fpt_phase,
+            CTPHASE => self.fct_phase.ordinal(),
+            PTPHASE => self.fpt_phase.ordinal(),
             _ => unreachable!("CapControl has no integer property {idx}"),
         }
     }
@@ -201,8 +201,8 @@ impl DssObject for CapControl {
                 self.control_type =
                     super::CapControlType::from_ordinal(value).unwrap_or(self.control_type)
             }
-            CTPHASE => self.fct_phase = value,
-            PTPHASE => self.fpt_phase = value,
+            CTPHASE => self.fct_phase = MonPhase::from_ordinal(value),
+            PTPHASE => self.fpt_phase = MonPhase::from_ordinal(value),
             _ => unreachable!("CapControl has no integer property {idx}"),
         }
     }
@@ -363,21 +363,23 @@ impl DssObject for CapControl {
 
         match idx {
             CTPHASE => {
-                if self.fct_phase > self.ccd.cd.nphases as i32 {
+                if self.fct_phase.ordinal() > self.ccd.cd.nphases as i32 {
                     self.ccd.cd.obj.push_error(format!(
                         "Error: Monitored phase ({}) must be less than or equal to number of phases ({}). ",
-                        self.fct_phase, self.ccd.cd.nphases
+                        self.fct_phase.ordinal(),
+                        self.ccd.cd.nphases
                     ));
-                    self.fct_phase = 1;
+                    self.fct_phase = MonPhase::Phase(1);
                 }
             }
             PTPHASE => {
-                if self.fpt_phase > self.ccd.cd.nphases as i32 {
+                if self.fpt_phase.ordinal() > self.ccd.cd.nphases as i32 {
                     self.ccd.cd.obj.push_error(format!(
                         "Error: Monitored phase ({}) must be less than or equal to number of phases ({}). ",
-                        self.fpt_phase, self.ccd.cd.nphases
+                        self.fpt_phase.ordinal(),
+                        self.ccd.cd.nphases
                     ));
-                    self.fpt_phase = 1;
+                    self.fpt_phase = MonPhase::Phase(1);
                 }
             }
             // CAPACITOR: Pascal stores ControlVars.CapacitorName :=

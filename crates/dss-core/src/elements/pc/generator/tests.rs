@@ -222,7 +222,7 @@ fn kva_set_freezes_rating() {
 #[test]
 fn off_state_is_tiny_resistive_load() {
     let mut g = Generator::new("g1");
-    g.dispatch_mode = LOADMODE;
+    g.dispatch_mode = GenDispatchMode::LoadLevel;
     g.dispatch_value = 2.0;
     let mut sys = snap_ctx();
     sys.generator_dispatch_reference = 1.0; // below dispatch_value → OFF
@@ -548,4 +548,21 @@ fn direct_shortcut_selects_yprim_currents() {
         i_d[0],
         i_n[0]
     );
+}
+
+/// `Generator.pas:436-437` (`LOADMODE = 1`, `PRICEMODE = 2`; `0` = the `Create`
+/// default) + the `Generator: Dispatch Mode` `DssEnum` values `[0, 1, 2]`.
+#[test]
+fn gen_dispatch_mode_pins_enum_ordinals() {
+    for (ord, m) in [
+        (0, GenDispatchMode::Default),
+        (1, GenDispatchMode::LoadLevel),
+        (2, GenDispatchMode::Price),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(GenDispatchMode::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(GenDispatchMode::from_ordinal(-1), None);
+    assert_eq!(GenDispatchMode::from_ordinal(3), None);
+    assert_eq!(GenDispatchMode::default(), GenDispatchMode::Default);
 }

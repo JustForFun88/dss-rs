@@ -41,7 +41,7 @@ use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::solution::event_log::EventLog;
-use crate::solution::solution::{EVENTDRIVEN, MULTIRATE, SolveMode, TIMEDRIVEN};
+use crate::solution::solution::{ControlMode, RandomType, SolveMode};
 use crate::support::cmatrix::{CMatrix, StampBl};
 use crate::support::mathutil::FpcRng;
 
@@ -111,7 +111,7 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
 /// solution's control mode and event-log time coordinates, plus the solved state
 /// `FaultStillGoing` reads. Mirrors the controls' `CtrlCtx` borrow split.
 pub struct FaultStatusCtx<'a> {
-    pub control_mode: i32,
+    pub control_mode: ControlMode,
     pub int_hour: i32,
     pub t: f64,
     pub control_iter: i32,
@@ -215,9 +215,9 @@ impl Fault {
     /// changed (the caller invalidates Y).
     pub fn check_status(&mut self, ctx: &FaultStatusCtx, events: &mut EventLog) -> bool {
         match ctx.control_mode {
-            EVENTDRIVEN | MULTIRATE | TIMEDRIVEN => {}
-            // CTRLSTATIC (and any other mode) leaves it however it is defined.
-            _ => return false,
+            ControlMode::EventDriven | ControlMode::MultiRate | ControlMode::TimeDriven => {}
+            // Static / ControlsOff leave it however it is defined.
+            ControlMode::Static | ControlMode::ControlsOff => return false,
         }
         let full = format!("Fault.{}", self.cd.obj.name());
         if !self.is_on {
@@ -248,17 +248,20 @@ impl Fault {
 
     /// Pascal `TFaultObj.Randomize` (`Fault.pas:395`): draw a fresh resistance
     /// jitter `RandomMult` from the engine RNG per the solution random type, then
-    /// force a YPrim rebuild. GAUSSIAN → `Gauss(1.0, StdDev)`, UNIFORM →
-    /// `Random`, LOGNORMAL → `QuasiLognormal(1.0)`; the `else` (incl. `none=0`)
+    /// force a YPrim rebuild. Gaussian → `Gauss(1.0, StdDev)`, Uniform →
+    /// `Random`, LogNormal → `QuasiLognormal(1.0)`; the `else` (i.e. `None`)
     /// sets `1.0` (deterministic). Called once per MonteFault case by
     /// `solve_monte_fault` on the fault `PickAFault` just enabled.
-    pub fn randomize(&mut self, random_type: i32, rng: &mut FpcRng) {
-        use crate::solution::{GAUSSIAN, LOGNORMAL, UNIFORM};
+    pub fn randomize(&mut self, random_type: RandomType, rng: &mut FpcRng) {
         self.random_mult = match random_type {
-            GAUSSIAN => crate::support::mathutil::gauss(1.0, self.stddev, || rng.next_f64()),
-            UNIFORM => rng.next_f64(),
-            LOGNORMAL => crate::support::mathutil::quasi_log_normal(1.0, || rng.next_f64()),
-            _ => 1.0,
+            RandomType::Gaussian => {
+                crate::support::mathutil::gauss(1.0, self.stddev, || rng.next_f64())
+            }
+            RandomType::Uniform => rng.next_f64(),
+            RandomType::LogNormal => {
+                crate::support::mathutil::quasi_log_normal(1.0, || rng.next_f64())
+            }
+            RandomType::None => 1.0,
         };
         self.cd.yprim_invalid = true;
     }

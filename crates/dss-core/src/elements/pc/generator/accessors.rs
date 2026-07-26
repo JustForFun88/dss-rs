@@ -14,7 +14,7 @@ use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
-use super::{Connection, Generator, nconds_for_connection, prop};
+use super::{Connection, GenDispatchMode, Generator, nconds_for_connection, prop};
 
 impl CktElement for Generator {
     fn cd(&self) -> &CktElementData {
@@ -517,7 +517,7 @@ impl DssObject for Generator {
         match idx {
             PHASES => self.cd.nphases as i32,
             MODEL => self.gen_model,
-            DISPMODE => self.dispatch_mode,
+            DISPMODE => self.dispatch_mode.ordinal(),
             CONN => self.connection as i32,
             STATUS => self.is_fixed as i32,
             CLS => self.gen_class,
@@ -529,7 +529,10 @@ impl DssObject for Generator {
         match idx {
             PHASES => self.cd.nphases = value.max(0) as usize,
             MODEL => self.gen_model = value,
-            DISPMODE => self.dispatch_mode = value,
+            DISPMODE => {
+                self.dispatch_mode =
+                    GenDispatchMode::from_ordinal(value).unwrap_or(self.dispatch_mode)
+            }
             CONN => {
                 self.connection = if value == 1 {
                     Connection::Delta
@@ -637,27 +640,28 @@ impl DssObject for Generator {
     /// Resolve a shape reference (snapshot-clone like the Load shape refs).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|o| o.id());
+        let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
         let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         match idx {
             YEARLY => {
                 self.yearly_shape = name;
-                self.yearly_shape_ref = elem_ref;
+                self.yearly_shape_ref = load_shape_ref();
                 self.yearly_shape_obj = load_shape();
             }
             DAILY => {
                 self.daily_shape = name;
-                self.daily_shape_ref = elem_ref;
+                self.daily_shape_ref = load_shape_ref();
                 self.daily_shape_obj = load_shape();
             }
             DUTY => {
                 self.duty_shape = name;
-                self.duty_shape_ref = elem_ref;
+                self.duty_shape_ref = load_shape_ref();
                 self.duty_shape_obj = load_shape();
             }
             DYNAMICEQ => {
                 self.dyneq.dynamic_eq = name;
-                self.dyneq.dynamic_eq_ref = elem_ref;
+                self.dyneq.dynamic_eq_ref = resolved
+                    .and_then(|o| o.idx::<crate::elements::general::dynamic_exp::DynamicExpObj>());
                 self.dyneq.dynamic_eq_obj = resolved.and_then(|o| {
                     o.cloned::<crate::elements::general::dynamic_exp::DynamicExpObj>()
                 });

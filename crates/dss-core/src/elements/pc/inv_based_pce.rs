@@ -32,7 +32,7 @@ use num_complex::Complex64;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::dyneq_pce::DynEqPceData;
-use crate::elements::traits::ElemId;
+use crate::elements::traits::Idx;
 use crate::support::cmatrix::CMatrix;
 use crate::support::complexutil::{Polar, pdeg_to_complex};
 use crate::support::dynamics::IterationFlag;
@@ -379,6 +379,37 @@ impl Default for InvDynamicVars {
     }
 }
 
+/// Pascal `varMode` (`PVsystem.pas:32-33` — `VARMODEPF = 0`, `VARMODEKVAR = 1`;
+/// the identical pair drives `Storage.pas`). Selects whether the inverter's
+/// reactive output follows the power factor or the requested kvar. Set from the
+/// `PF=` / `kvar=` properties and by the InvControl / ExpControl dispatch.
+/// `i32` survives only at the CIM-snapshot boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum VarMode {
+    /// `VARMODEPF` — constant power factor (the `Create` default).
+    #[default]
+    Pf = 0,
+    /// `VARMODEKVAR` — the requested kvar is applied.
+    Kvar = 1,
+}
+
+impl VarMode {
+    /// The raw `varMode` value (the CIM `converter_control_enum` boundary).
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From a raw `varMode` value; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Pf),
+            1 => Some(Self::Kvar),
+            _ => None,
+        }
+    }
+}
+
 /// `TInvBasedPCE` shared base data (+ the `DynEqPCE` `DynamicEq`/`DynOut`
 /// fields). The concrete inverter PC elements (PVSystem, Storage) embed this and
 /// set its fields in their own `Create`/`RecalcElementData`.
@@ -394,8 +425,8 @@ pub struct InvBasedPceData {
     pub gfm_mode: bool,
     /// `InverterON` — inverter currently energized.
     pub inverter_on: bool,
-    /// `varMode` — 0 = constant PF, 1 = kvar specified.
-    pub var_mode: i32,
+    /// `varMode` — constant PF vs kvar-specified ([`VarMode`]).
+    pub var_mode: VarMode,
 
     // InvControl/ExpControl mode flags (set by the controls, WP7.5).
     /// `VWMode` — under volt-watt control (InvControl).
@@ -434,7 +465,7 @@ pub struct InvBasedPceData {
     /// `Connection` — wye/delta.
     pub connection: Connection,
 
-    // Shape references (snapshot-clone + ElemId, the WP4.2/WP5.3 pattern).
+    // Shape references (snapshot-clone + typed Idx, the WP4.2/WP5.3 pattern).
     /// `YearlyShapeObj` name.
     pub yearly_shape: String,
     /// `DailyShapeObj` name.
@@ -444,14 +475,14 @@ pub struct InvBasedPceData {
     pub yearly_shape_obj: Option<LoadShapeObj>,
     pub daily_shape_obj: Option<LoadShapeObj>,
     pub duty_shape_obj: Option<LoadShapeObj>,
-    pub yearly_shape_ref: Option<ElemId>,
-    pub daily_shape_ref: Option<ElemId>,
-    pub duty_shape_ref: Option<ElemId>,
+    pub yearly_shape_ref: Option<Idx<LoadShapeObj>>,
+    pub daily_shape_ref: Option<Idx<LoadShapeObj>>,
+    pub duty_shape_ref: Option<Idx<LoadShapeObj>>,
 
     /// `InverterCurveObj` — inverter efficiency curve (XYcurve) name.
     pub inverter_curve: String,
     pub inverter_curve_obj: Option<XyCurveObj>,
-    pub inverter_curve_ref: Option<ElemId>,
+    pub inverter_curve_ref: Option<Idx<XyCurveObj>>,
 
     // Inverter functionality variables.
     /// `FpctCutIn` — % cut-in.
@@ -540,7 +571,7 @@ impl InvBasedPceData {
             pi_ctrl: Vec::new(),
             gfm_mode: false,
             inverter_on: false,
-            var_mode: 0,
+            var_mode: VarMode::Pf,
             vw_mode: false,
             vv_mode: false,
             wv_mode: false,

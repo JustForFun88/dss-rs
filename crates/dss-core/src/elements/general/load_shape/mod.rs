@@ -97,10 +97,32 @@ define_properties! {
     22 INTERPOLATION => PropDef::mapped_string_enum("Interpolation", enums.load_shape_interp);
 }
 
-/// `Avg` interpolation ordinal (`TLoadShapeInterp.Avg`).
-const INTERP_AVG: i32 = 0;
-/// `Edge` interpolation ordinal (`TLoadShapeInterp.Edge`).
-const INTERP_EDGE: i32 = 1;
+/// `TLoadShapeInterp` (`LoadShape.pas:293-295`) — the `Interpolation=` mode,
+/// `Avg` = 0 / `Edge` = 1 (the `LoadShape: Interpolation` `DssEnum` values
+/// `[0, 1]`). `Edge` shifts the search index by one in the hour lookups.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum LoadShapeInterp {
+    #[default]
+    Avg = 0,
+    Edge = 1,
+}
+
+impl LoadShapeInterp {
+    /// The `LoadShape: Interpolation` `DssEnum` ordinal.
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Avg),
+            1 => Some(Self::Edge),
+            _ => None,
+        }
+    }
+}
 
 /// A `LoadShape` instance (`TLoadShapeObj`).
 #[derive(Debug, Clone)]
@@ -144,7 +166,7 @@ pub struct LoadShapeObj {
     base_p: f64,
     base_q: f64,
     /// Pascal `interpolation` (`Avg`=0, `Edge`=1).
-    interpolation: i32,
+    interpolation: LoadShapeInterp,
     /// Pascal `UseMMF` (memory-mapped files). When set, the file readers
     /// eager-load into `p_mult`/`q_mult` with the MMF-path semantics and the
     /// array properties dump the directive string below.
@@ -194,7 +216,7 @@ impl LoadShapeObj {
             max_q_specified: false,
             base_p: 0.0,
             base_q: 0.0,
-            interpolation: INTERP_AVG,
+            interpolation: LoadShapeInterp::Avg,
             use_mmf: false,
             mm_file_cmd: String::new(),
             mm_file_cmd_q: String::new(),

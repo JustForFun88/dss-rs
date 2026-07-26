@@ -13,8 +13,8 @@ use crate::obj::base::DssObject;
 fn create_defaults_match_pascal() {
     let ic = InvControl::new("ic1");
     // Modes default to NONE (the docs say "VoltVar" but Create sets NONE_MODE).
-    assert_eq!(ic.control_mode, NONE_MODE);
-    assert_eq!(ic.combi_mode, NONE_COMBMODE);
+    assert_eq!(ic.control_mode, InvControlMode::NoneMode);
+    assert_eq!(ic.combi_mode, InvCombiMode::NoneCombMode);
     // Convergence sentinels (FLAGDELTAQ/FLAGDELTAP = -1.0, "not set").
     assert_eq!(ic.delta_q_factor, FLAGDELTAQ);
     assert_eq!(ic.delta_p_factor, FLAGDELTAP);
@@ -30,17 +30,17 @@ fn create_defaults_match_pascal() {
     assert_eq!(ic.roll_avg_window_length, 1);
     assert_eq!(ic.drc_roll_avg_window_length, 1);
     // Rate-of-change off; LPFTau/RiseFall default to 0.001 (docs list 0 / -1).
-    assert_eq!(ic.rate_of_change_mode, ROC_INACTIVE);
+    assert_eq!(ic.rate_of_change_mode, RateOfChangeMode::Inactive);
     assert_eq!(ic.lpf_tau, 0.001);
     assert_eq!(ic.rise_fall_limit, 0.001);
     // Smart-inverter defaults.
-    assert_eq!(ic.voltage_curvex_ref, 0); // Rated
-    assert_eq!(ic.reac_power_ref, REAC_POWER_VARAVAL);
-    assert_eq!(ic.voltwatt_yaxis, 1); // %Pmpp
+    assert_eq!(ic.voltage_curvex_ref, VoltageCurveXRef::Rated);
+    assert_eq!(ic.reac_power_ref, ReacPowerRef::VarAval);
+    assert_eq!(ic.voltwatt_yaxis, VoltWattYAxis::Pmpp);
     assert_eq!(ic.vvc_curve_offset, 0.0);
-    assert_eq!(ic.mon_buses_phase, AVGPHASES);
+    assert_eq!(ic.mon_buses_phase, MonPhase::Avg);
     assert_eq!(ic.v_setpoint, 1.0);
-    assert_eq!(ic.ctrl_model, MODEL_LINEAR);
+    assert_eq!(ic.ctrl_model, InvControlModel::Linear);
     assert!(!ic.ccd.show_event_log);
     // Control elements are 3-phase/3-conductor, single terminal.
     assert_eq!(ic.ccd.cd.nphases, 3);
@@ -51,10 +51,10 @@ fn create_defaults_match_pascal() {
 #[test]
 fn mode_clears_combi_mode() {
     let mut ic = InvControl::new("ic1");
-    ic.combi_mode = 1; // VV_VW
-    ic.set_i32(prop::MODE, VOLTWATT); // any mode set clears CombiMode
+    ic.combi_mode = InvCombiMode::VvVw;
+    ic.set_i32(prop::MODE, InvControlMode::VoltWatt.ordinal()); // any mode set clears CombiMode
     ic.side_effects(prop::MODE, 0);
-    assert_eq!(ic.combi_mode, NONE_COMBMODE);
+    assert_eq!(ic.combi_mode, InvCombiMode::NoneCombMode);
 }
 
 #[test]
@@ -84,19 +84,19 @@ fn dbvmax_below_dbvmin_resets_to_zero_with_error() {
 #[test]
 fn nonpositive_lpf_tau_inactivates_rate_of_change() {
     let mut ic = InvControl::new("ic1");
-    ic.rate_of_change_mode = 1; // LPF
+    ic.rate_of_change_mode = RateOfChangeMode::Lpf;
     ic.set_f64(prop::LPF_TAU, 0.0);
     ic.side_effects(prop::LPF_TAU, 0);
-    assert_eq!(ic.rate_of_change_mode, ROC_INACTIVE);
+    assert_eq!(ic.rate_of_change_mode, RateOfChangeMode::Inactive);
 }
 
 #[test]
 fn nonpositive_rise_fall_inactivates_rate_of_change() {
     let mut ic = InvControl::new("ic1");
-    ic.rate_of_change_mode = 2; // RiseFall
+    ic.rate_of_change_mode = RateOfChangeMode::RiseFall;
     ic.set_f64(prop::RISE_FALL_LIMIT, -1.0);
     ic.side_effects(prop::RISE_FALL_LIMIT, 0);
-    assert_eq!(ic.rate_of_change_mode, ROC_INACTIVE);
+    assert_eq!(ic.rate_of_change_mode, RateOfChangeMode::Inactive);
 }
 
 #[test]
@@ -152,6 +152,163 @@ fn interval_units_bad_unit_logs_error_and_keeps_default() {
     );
 }
 
+/// Every InvControl ordinal, pinned against the Pascal declarations
+/// (`InvControl.pas:119-147` for the four `{$Z4}`/plain enums, `:404-411` for
+/// the `ReacPower_*` + `FPendingChange` constants) **and** the `DssEnum`
+/// registry values in `obj/dss_enum/registry/control.rs`.
+#[test]
+fn invcontrol_enums_pin_pascal_and_registry_ordinals() {
+    use super::{
+        InvCombiMode, InvControlMode, InvControlModel, InvPendingChange, RateOfChangeMode,
+        ReacPowerRef, VoltWattYAxis, VoltageCurveXRef,
+    };
+
+    // TInvControlControlMode (InvControl.pas:119-128); registry `[1..7]`.
+    for (ord, m) in [
+        (0, InvControlMode::NoneMode),
+        (1, InvControlMode::VoltVar),
+        (2, InvControlMode::VoltWatt),
+        (3, InvControlMode::Drc),
+        (4, InvControlMode::WattPf),
+        (5, InvControlMode::WattVar),
+        (6, InvControlMode::Avr),
+        (7, InvControlMode::Gfm),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(InvControlMode::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(InvControlMode::from_ordinal(-1), None);
+    assert_eq!(InvControlMode::from_ordinal(8), None);
+    assert_eq!(InvControlMode::default(), InvControlMode::NoneMode);
+
+    // TInvControlCombiMode (InvControl.pas:131-135); registry `[1, 2]`.
+    for (ord, m) in [
+        (0, InvCombiMode::NoneCombMode),
+        (1, InvCombiMode::VvVw),
+        (2, InvCombiMode::VvDrc),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(InvCombiMode::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(InvCombiMode::from_ordinal(3), None);
+
+    // ERateofChangeMode (InvControl.pas:143-147); registry `[0, 1, 2]`.
+    for (ord, m) in [
+        (0, RateOfChangeMode::Inactive),
+        (1, RateOfChangeMode::Lpf),
+        (2, RateOfChangeMode::RiseFall),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(RateOfChangeMode::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(RateOfChangeMode::from_ordinal(3), None);
+
+    // FPendingChange action codes (InvControl.pas:407-411) — the ControlQueue
+    // codes; not a DssEnum.
+    for (ord, m) in [
+        (0, InvPendingChange::None),
+        (1, InvPendingChange::ChangeVarLevel),
+        (2, InvPendingChange::ChangeWattLevel),
+        (3, InvPendingChange::ChangeWattVarLevel),
+        (4, InvPendingChange::ChangeDrcVVarLevel),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(InvPendingChange::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(InvPendingChange::from_ordinal(5), None);
+
+    // ReacPower_VARAVAL/VARMAX (InvControl.pas:404-405); registry `[0, 1]`.
+    for (ord, m) in [(0, ReacPowerRef::VarAval), (1, ReacPowerRef::VarMax)] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(ReacPowerRef::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(ReacPowerRef::from_ordinal(2), None);
+
+    // TInvControlModel (InvControl.pas:137-140); registry `[0, 1]`.
+    for (ord, m) in [
+        (0, InvControlModel::Linear),
+        (1, InvControlModel::Exponential),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(InvControlModel::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(InvControlModel::from_ordinal(2), None);
+    // `TInvControlObj.Create` (InvControl.pas:873) sets `TInvControlModel.Linear`.
+    assert_eq!(InvControlModel::default(), InvControlModel::Linear);
+
+    // FVoltage_CurveX_ref (InvControl.pas:297, a plain Integer); the closed
+    // value set is VoltageCurveXRefEnum (InvControl.pas:438-439) = registry
+    // `[0, 1, 2]`. Create sets 0 = Rated (InvControl.pas:843).
+    for (ord, m) in [
+        (0, VoltageCurveXRef::Rated),
+        (1, VoltageCurveXRef::Avg),
+        (2, VoltageCurveXRef::RAvg),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(VoltageCurveXRef::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(VoltageCurveXRef::from_ordinal(-1), None);
+    assert_eq!(VoltageCurveXRef::from_ordinal(3), None);
+    assert_eq!(VoltageCurveXRef::default(), VoltageCurveXRef::Rated);
+
+    // FVoltwattYAxis (InvControl.pas:299); VoltWattYAxisEnum
+    // (InvControl.pas:440-441) = registry `[0, 1, 2, 3]`. Create sets 1 = %Pmpp
+    // (InvControl.pas:845).
+    for (ord, m) in [
+        (0, VoltWattYAxis::PAvailable),
+        (1, VoltWattYAxis::Pmpp),
+        (2, VoltWattYAxis::PctPmpp),
+        (3, VoltWattYAxis::KvaRating),
+    ] {
+        assert_eq!(m.ordinal(), ord);
+        assert_eq!(VoltWattYAxis::from_ordinal(ord), Some(m));
+    }
+    assert_eq!(VoltWattYAxis::from_ordinal(-1), None);
+    assert_eq!(VoltWattYAxis::from_ordinal(4), None);
+    assert_eq!(VoltWattYAxis::default(), VoltWattYAxis::Pmpp);
+}
+
+/// The retyped setters keep the previous value when `from_ordinal` misses
+/// (`Enum::from_ordinal(v).unwrap_or(self.x)`), where the pre-enum accessors
+/// stored the raw `i32` verbatim. That fallback is unreachable from the parse
+/// engine — `MappedStringEnum` rejects an unknown token before any write and
+/// `MappedIntEnum` early-returns on an out-of-set ordinal
+/// (`obj/props/class_props/parse.rs:307-324`) — which is exactly why it needs a
+/// test: nothing else pins that the error is *raised* rather than swallowed
+/// into a silently-changed field. Settler pass, 2026-07-26 (audit-tests
+/// finding 2).
+#[test]
+fn bad_enum_values_raise_and_leave_the_field_unchanged() {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.t");
+    dss.command("new InvControl.ic mode=voltvar ControlModel=1 VoltWattYAxis=PctPMPPPU");
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+
+    // MappedIntEnum, out-of-set ordinal (registry `[0, 1]`).
+    dss.command("InvControl.ic.ControlModel=7");
+    assert!(
+        dss.errors().iter().any(|e| e.contains("not a valid value")),
+        "expected an invalid-ordinal error, got: {:?}",
+        dss.errors()
+    );
+    dss.command("? InvControl.ic.ControlModel");
+    assert_eq!(dss.result().trim(), "1", "ControlModel must keep its value");
+
+    // MappedStringEnum, unknown token (registry names Rated/Avg/RAvg).
+    dss.command("InvControl.ic.VoltWattYAxis=nonsense");
+    assert!(
+        !dss.errors().is_empty(),
+        "expected an unknown-token error for VoltWattYAxis"
+    );
+    dss.command("? InvControl.ic.VoltWattYAxis");
+    assert_eq!(
+        dss.result().trim(),
+        "PctPMPPPU",
+        "VoltWattYAxis must keep its value on an unknown token"
+    );
+}
+
 // --- WP7.5 step 2b/2c: the dispatch math, pinned through a mock env ---
 //
 // The full end-to-end convergence is oracle-pinned by the
@@ -162,7 +319,12 @@ fn interval_units_bad_unit_logs_error_and_keeps_default() {
 // of the PVSystem injection model.
 mod dispatch {
     use super::super::compute::{DerSnap, FleetFind, InvDispatchEnv, MonitorVar};
-    use super::super::{InvControl, prop};
+    use super::super::{
+        InvCombiMode, InvControl, InvControlMode, InvPendingChange, MonPhase, RateOfChangeMode,
+        ReacPowerRef, prop,
+    };
+    use crate::elements::pc::inv_based_pce::VarMode;
+    use crate::elements::pc::storage::StorageState;
     use crate::elements::traits::ElemId;
     use crate::obj::base::DssObject;
 
@@ -189,7 +351,7 @@ mod dispatch {
         requested_kvar: f64,
         /// The DER `Varmode` (Pascal default VARMODE_PF=0); set to VARMODE_KVAR=1 by
         /// `der_set_var_mode` — the Storage var-mode fix the dispatch must apply.
-        var_mode: i32,
+        var_mode: VarMode,
         /// The last `der_set_pf_wp_nominal` value (WATTPF; PVSystem only).
         pf_wp_nominal: f64,
         // --- volt-watt fields (Calc_PBase / Check_Plimits) ---
@@ -200,9 +362,9 @@ mod dispatch {
         /// The last `der_set_kw_requested` value (ideal readback for `der_present_kw`).
         requested_kw: f64,
         // --- Storage volt-watt state (WPG.10; ignored when `!is_storage`) ---
-        storage_state: i32,       // TStorageObj.StorageState
-        vw_state_requested: bool, // TStorageObj.FVWStateRequested
-        storage_dckw: f64,        // TStorageObj.DCkW (Calc_PBase %Available base)
+        storage_state: StorageState, // TStorageObj.StorageState
+        vw_state_requested: bool,    // TStorageObj.FVWStateRequested
+        storage_dckw: f64,           // TStorageObj.DCkW (Calc_PBase %Available base)
     }
     impl MockDer {
         fn new(name: &str, vpu: f64, present_kw: f64) -> Self {
@@ -221,7 +383,7 @@ mod dispatch {
                 p_priority: false,
                 pf_priority: false,
                 requested_kvar: 0.0,
-                var_mode: 0, // VARMODE_PF
+                var_mode: VarMode::Pf,
                 pf_wp_nominal: 1.0,
                 pmpp: 600.0,
                 pu_pmpp: 1.0,
@@ -230,7 +392,7 @@ mod dispatch {
                 requested_kw: present_kw,
                 // A discharging Storage by default (the common VW test scenario);
                 // ignored unless `is_storage` is set on the mock DER.
-                storage_state: crate::elements::pc::storage::STORE_DISCHARGING,
+                storage_state: StorageState::Discharging,
                 vw_state_requested: false,
                 storage_dckw: 0.0,
             }
@@ -239,7 +401,7 @@ mod dispatch {
 
     struct MockEnv {
         ders: Vec<MockDer>,
-        pushes: Vec<i32>,
+        pushes: Vec<InvPendingChange>,
         errors: crate::diag::ErrorLog,
         control_iter: i32,
         /// Per-monitored-bus complex node voltages for the explicit-`MonBus` path:
@@ -367,14 +529,14 @@ mod dispatch {
         fn der_set_pf_priority(&mut self, r: ElemId, value: bool) {
             self.ders[Self::idx(r)].p_priority = value;
         }
-        fn der_set_modes(&mut self, _r: ElemId, _vw: bool, _vv: bool, _var_mode: i32) {}
+        fn der_set_modes(&mut self, _r: ElemId, _vw: bool, _vv: bool, _var_mode: VarMode) {}
         fn der_set_vv_mode(&mut self, _r: ElemId, _value: bool) {}
         fn der_set_vw_mode(&mut self, _r: ElemId, _value: bool) {}
         fn der_set_drc_mode(&mut self, _r: ElemId, _value: bool) {}
         fn der_set_wp_mode(&mut self, _r: ElemId, _value: bool) {}
         fn der_set_wv_mode(&mut self, _r: ElemId, _value: bool) {}
         fn der_set_avr_mode(&mut self, _r: ElemId, _value: bool) {}
-        fn der_set_var_mode(&mut self, r: ElemId, mode: i32) {
+        fn der_set_var_mode(&mut self, r: ElemId, mode: VarMode) {
             self.ders[Self::idx(r)].var_mode = mode;
         }
         fn der_requested_kvar(&self, r: ElemId) -> f64 {
@@ -403,7 +565,7 @@ mod dispatch {
             self.ders[Self::idx(r)].storage_dckw
         }
         fn der_set_monitor_var(&mut self, _r: ElemId, _kind: MonitorVar, _value: f64) {}
-        fn push_change(&mut self, _delay: f64, code: i32) {
+        fn push_change(&mut self, _delay: f64, code: InvPendingChange) {
             self.pushes.push(code);
         }
         fn append_event(&mut self, _der: &str, _msg: &str) {}
@@ -423,8 +585,8 @@ mod dispatch {
         fn der_gfm_mode(&self, _r: ElemId) -> bool {
             false
         }
-        fn der_storage_state(&self, _r: ElemId) -> i32 {
-            0
+        fn der_storage_state(&self, _r: ElemId) -> StorageState {
+            StorageState::Idling
         }
         fn der_ilimit(&self, _r: ElemId) -> f64 {
             -1.0
@@ -450,8 +612,8 @@ mod dispatch {
     /// fleet `pv`, RefReactivePower=VARMAX, deltaQ_factor=0.2.
     fn voltvar_ic() -> InvControl {
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::VOLTVAR);
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::MODE, InvControlMode::VoltVar.ordinal());
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
         // The volt-var curve (same shape as the corpus Standard cases).
         let curve = crate::elements::general::xy_curve::XyCurveObj::from_points(
@@ -495,7 +657,7 @@ mod dispatch {
         env.control_iter = 1;
         ic.sample(&mut env).unwrap();
         // ControlIteration 1 always pushes a CHANGEVARLEVEL action.
-        assert_eq!(env.pushes, vec![super::super::CHANGEVARLEVEL]);
+        assert_eq!(env.pushes, vec![InvPendingChange::ChangeVarLevel]);
     }
 
     #[test]
@@ -639,7 +801,7 @@ mod dispatch {
     fn calc_qheadroom_varaval_uses_kva_circle() {
         // VARAVAL: QHeadRoom = sqrt(kVA^2 - presentkW^2) = sqrt(600^2-300^2).
         let mut ic = voltvar_ic();
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARAVAL);
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarAval.ordinal());
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
         ic.sample(&mut env).unwrap();
         ic.do_pending_action(&mut env);
@@ -658,7 +820,7 @@ mod dispatch {
     /// factor → used directly each iteration), named-list fleet `pv`.
     fn voltwatt_ic() -> InvControl {
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::VOLTWATT);
+        ic.set_i32(prop::MODE, InvControlMode::VoltWatt.ordinal());
         ic.set_f64(prop::DELTA_P_FACTOR, 0.45);
         let curve = crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vw",
@@ -682,7 +844,7 @@ mod dispatch {
         let mut ic = voltwatt_ic();
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 600.0)]);
         ic.sample(&mut env).unwrap();
-        assert_eq!(env.pushes, vec![super::super::CHANGEWATTLEVEL]);
+        assert_eq!(env.pushes, vec![InvPendingChange::ChangeWattLevel]);
         ic.do_pending_action(&mut env);
         let cv = &ic.ctrl_vars[0];
         assert!(
@@ -737,7 +899,7 @@ mod dispatch {
         der.is_storage = true; // discharging by default
         let mut env = MockEnv::new(vec![der]);
         ic.sample(&mut env).unwrap();
-        assert_eq!(env.pushes, vec![super::super::CHANGEWATTLEVEL]);
+        assert_eq!(env.pushes, vec![InvPendingChange::ChangeWattLevel]);
         ic.do_pending_action(&mut env);
         let cv = &ic.ctrl_vars[0];
         assert!(
@@ -767,7 +929,7 @@ mod dispatch {
         ));
         let mut der = MockDer::new("pv", 1.05, -300.0); // charging (kW < 0)
         der.is_storage = true;
-        der.storage_state = crate::elements::pc::storage::STORE_CHARGING;
+        der.storage_state = StorageState::Charging;
         let mut env = MockEnv::new(vec![der]);
         ic.sample(&mut env).unwrap();
         ic.do_pending_action(&mut env);
@@ -843,7 +1005,7 @@ mod dispatch {
         ic.voltwattch_curve = Some(vwch());
         let mut der = MockDer::new("pv", 1.05, 600.0);
         der.is_storage = true;
-        der.storage_state = crate::elements::pc::storage::STORE_DISCHARGING;
+        der.storage_state = StorageState::Discharging;
         der.vw_state_requested = true;
         let mut env = MockEnv::new(vec![der]);
         ic.sample(&mut env).unwrap();
@@ -860,7 +1022,7 @@ mod dispatch {
         ic.voltwattch_curve = Some(vwch());
         let mut der = MockDer::new("pv", 1.05, -300.0); // charging (kW < 0)
         der.is_storage = true;
-        der.storage_state = crate::elements::pc::storage::STORE_CHARGING;
+        der.storage_state = StorageState::Charging;
         der.vw_state_requested = true;
         let mut env = MockEnv::new(vec![der]);
         ic.sample(&mut env).unwrap();
@@ -879,8 +1041,8 @@ mod dispatch {
         // NOT_PORTED). Same curves/scenario as the PVSystem VV_VW test, so the
         // set-points match: PLimitVW=498.75 (VW) and QDesiredVV=-75.8 (VV).
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::COMBI_MODE, super::super::VV_VW);
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::COMBI_MODE, InvCombiMode::VvVw.ordinal());
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
         ic.set_f64(prop::DELTA_P_FACTOR, 0.45);
         ic.voltwatt_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
@@ -922,8 +1084,8 @@ mod dispatch {
         // AND a volt-var kvar (curve y=-0.625, VARMAX → QDesireEndpu=-0.625; QHeadRoom
         // =600; QOldVV=-1 → QDesiredVV = -1 + (-0.625*600 - (-1))*0.2 = -75.8).
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::COMBI_MODE, super::super::VV_VW);
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::COMBI_MODE, InvCombiMode::VvVw.ordinal());
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
         ic.set_f64(prop::DELTA_P_FACTOR, 0.45);
         ic.voltwatt_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
@@ -967,7 +1129,7 @@ mod dispatch {
         // two pushes + a single net convergence step (POldVWpu advanced once: from the
         // iter-1 seed |kW_out_desiredpu|=1 toward PLimitEndpu, not twice).
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::COMBI_MODE, super::super::VV_VW);
+        ic.set_i32(prop::COMBI_MODE, InvCombiMode::VvVw.ordinal());
         ic.set_f64(prop::DELTA_P_FACTOR, 0.45);
         ic.voltwatt_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vw",
@@ -988,8 +1150,8 @@ mod dispatch {
         assert_eq!(
             env.pushes,
             vec![
-                super::super::CHANGEWATTVARLEVEL,
-                super::super::CHANGEWATTVARLEVEL
+                InvPendingChange::ChangeWattVarLevel,
+                InvPendingChange::ChangeWattVarLevel
             ]
         );
         // Drive DoPendingAction twice (the queue would pop both). The pending-change
@@ -1000,7 +1162,7 @@ mod dispatch {
         let after_second = ic.ctrl_vars[0].p_limit_vw;
         assert_eq!(
             ic.ctrl_vars[0].f_pending_change,
-            super::super::CHANGE_NONE,
+            InvPendingChange::None,
             "pending change must be reset after dispatch"
         );
         assert_eq!(
@@ -1025,12 +1187,12 @@ mod dispatch {
     /// slopes (ArGra=50), VARMAX, deltaQ_factor=0.2, named-list fleet `pv`.
     fn drc_ic() -> InvControl {
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::DRC);
+        ic.set_i32(prop::MODE, InvControlMode::Drc.ordinal());
         ic.dbv_min = 1.0;
         ic.dbv_max = 1.0;
         ic.ar_gra_low_v = 50.0;
         ic.ar_gra_hi_v = 50.0;
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
         ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
         ic.side_effects(prop::DER_LIST, 0);
@@ -1152,12 +1314,12 @@ mod dispatch {
         //   QDesireEndpu = -0.625; CalcVVDRC_vars (deltaQ=0.2, QOldVVDRC=-1):
         //   QDesiredVVDRC = -1 + (-0.625*600 - (-1))*0.2 = -75.8.
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::COMBI_MODE, super::super::VV_DRC);
+        ic.set_i32(prop::COMBI_MODE, InvCombiMode::VvDrc.ordinal());
         ic.dbv_min = 1.0;
         ic.dbv_max = 1.0;
         ic.ar_gra_low_v = 50.0;
         ic.ar_gra_hi_v = 50.0;
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
         ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vv",
@@ -1197,7 +1359,7 @@ mod dispatch {
         // The VV_DRC Sample queues CHANGEDRCVVARLEVEL (4), not CHANGEVARLEVEL — the
         // dedicated combi action code the joint DoPendingAction dispatches on.
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::COMBI_MODE, super::super::VV_DRC);
+        ic.set_i32(prop::COMBI_MODE, InvCombiMode::VvDrc.ordinal());
         ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vv",
             &[0.5, 1.0, 1.5],
@@ -1212,7 +1374,7 @@ mod dispatch {
         assert!(
             env.pushes
                 .iter()
-                .all(|&c| c == super::super::CHANGEDRCVVARLEVEL),
+                .all(|&c| c == InvPendingChange::ChangeDrcVVarLevel),
             "expected only CHANGEDRCVVARLEVEL, got {:?}",
             env.pushes
         );
@@ -1233,13 +1395,13 @@ mod dispatch {
         // the delayed-tap response -375*kNum, catching a wrong DeltaQ / wrong
         // q_desired_* field / a dropped per-call kDen/kNum recompute.
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::COMBI_MODE, super::super::VV_DRC);
+        ic.set_i32(prop::COMBI_MODE, InvCombiMode::VvDrc.ordinal());
         ic.set_i32(prop::CONTROL_MODEL, 1); // Exponential
         ic.dbv_min = 1.0;
         ic.dbv_max = 1.0;
         ic.ar_gra_low_v = 50.0;
         ic.ar_gra_hi_v = 50.0;
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         ic.set_f64(prop::DELTA_Q_FACTOR, 0.2);
         ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vv",
@@ -1305,7 +1467,7 @@ mod dispatch {
         // nothing. (The live amps-limiter path is gate-verified by the
         // `gfm_invcontrol.dss` corpus deck, which drives `CheckAmpsLimit`.)
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, 7); // GFM
+        ic.set_i32(prop::MODE, InvControlMode::Gfm.ordinal());
         ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
         ic.side_effects(prop::DER_LIST, 0);
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
@@ -1313,7 +1475,7 @@ mod dispatch {
             .expect("GFM sample is ported (no NOT_PORTED error)");
         assert_eq!(
             ic.ctrl_vars[0].f_pending_change,
-            super::super::CHANGE_NONE,
+            InvPendingChange::None,
             "no control action queued for a non-grid-forming DER"
         );
     }
@@ -1321,8 +1483,8 @@ mod dispatch {
     /// An AVR control (Vsetpoint=0.98, VARMAX) over the named `pv` fleet. No curve.
     fn avr_ic() -> InvControl {
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::AVR);
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::MODE, InvControlMode::Avr.ordinal());
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         ic.set_f64(prop::VSETPOINT, 0.98);
         ic.set_string_list(prop::DER_LIST, vec!["PVSystem.pv".into()]);
         ic.side_effects(prop::DER_LIST, 0);
@@ -1338,7 +1500,7 @@ mod dispatch {
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.009, 200.0)]);
         env.control_iter = 1;
         ic.sample(&mut env).unwrap();
-        assert_eq!(env.pushes, vec![super::super::CHANGEVARLEVEL]);
+        assert_eq!(env.pushes, vec![InvPendingChange::ChangeVarLevel]);
         ic.do_pending_action(&mut env);
         let cv = &ic.ctrl_vars[0];
         assert!(
@@ -1438,7 +1600,8 @@ mod dispatch {
         ic.sample(&mut env).unwrap(); // no error — Storage AVR is supported
         ic.do_pending_action(&mut env);
         assert_eq!(
-            env.ders[0].var_mode, 1,
+            env.ders[0].var_mode,
+            VarMode::Kvar,
             "Storage Varmode must be VARMODE_KVAR"
         );
         assert!(
@@ -1517,8 +1680,8 @@ mod dispatch {
     /// A WATTPF control over a `wattpf_curve`, RefReactivePower=VARMAX.
     fn wattpf_ic() -> InvControl {
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::WATTPF);
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::MODE, InvControlMode::WattPf.ordinal());
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         // pf vs panel-pu: at full output the inverter runs pf = -0.9 (absorbing).
         let curve = crate::elements::general::xy_curve::XyCurveObj::from_points(
             "wpf",
@@ -1579,7 +1742,8 @@ mod dispatch {
         ic.sample(&mut env).unwrap(); // no error — Storage WATTPF is supported
         ic.do_pending_action(&mut env);
         assert_eq!(
-            env.ders[0].var_mode, 1,
+            env.ders[0].var_mode,
+            VarMode::Kvar,
             "Storage Varmode must be VARMODE_KVAR"
         );
         let expected = -400.0 * (1.0 / 0.95_f64.powi(2) - 1.0).sqrt();
@@ -1593,8 +1757,8 @@ mod dispatch {
     /// A WATTVAR control over a `wattvar_curve`, RefReactivePower=VARMAX.
     fn wattvar_ic() -> InvControl {
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::WATTVAR);
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::MODE, InvControlMode::WattVar.ordinal());
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         // watt-var: at full output, absorb -0.4 pu of headroom.
         let curve = crate::elements::general::xy_curve::XyCurveObj::from_points(
             "wv",
@@ -1660,7 +1824,8 @@ mod dispatch {
         ic.sample(&mut env).unwrap(); // no error — Storage WATTVAR is supported
         ic.do_pending_action(&mut env);
         assert_eq!(
-            env.ders[0].var_mode, 1,
+            env.ders[0].var_mode,
+            VarMode::Kvar,
             "Storage Varmode must be VARMODE_KVAR"
         );
         assert!(
@@ -1681,8 +1846,8 @@ mod dispatch {
     /// `monVoltageCalc=AVG`. The DER's curve x-ref is `rated`.
     fn monbus_voltvar(buses: Vec<String>, vbase: Vec<f64>) -> InvControl {
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::VOLTVAR);
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::MODE, InvControlMode::VoltVar.ordinal());
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vv",
             &[0.5, 0.92, 1.0, 1.08, 1.5],
@@ -1776,8 +1941,8 @@ mod dispatch {
         // Three single-node monitored buses at 1.00 / 1.05 / 0.98 pu. monVoltageCalc=MAX
         // → 1.05, MIN → 0.98 (AVG would give 1.01 — so each fold is discriminated). The
         // MonBus reduce path (reduce_mon_phase MAX/MIN over the complex cBuffer); the 3
-        // migrated corpus cases + the AVG mocks only cover AVGPHASES.
-        let probe = |phase: i32| {
+        // migrated corpus cases + the AVG mocks only cover MonPhase::Avg.
+        let probe = |phase: MonPhase| {
             let mut ic = monbus_voltvar(
                 vec!["m.1".into(), "m.2".into(), "m.3".into()],
                 vec![7200.0, 7200.0, 7200.0],
@@ -1795,14 +1960,14 @@ mod dispatch {
             ic.ctrl_vars[0].f_present_vpu
         };
         assert!(
-            (probe(super::super::MAXPHASE) - 1.05).abs() < 1e-9,
+            (probe(MonPhase::Max) - 1.05).abs() < 1e-9,
             "MAX reduce = {} (expected 1.05)",
-            probe(super::super::MAXPHASE)
+            probe(MonPhase::Max)
         );
         assert!(
-            (probe(super::super::MINPHASE) - 0.98).abs() < 1e-9,
+            (probe(MonPhase::Min) - 0.98).abs() < 1e-9,
             "MIN reduce = {} (expected 0.98)",
-            probe(super::super::MINPHASE)
+            probe(MonPhase::Min)
         );
     }
 
@@ -1815,7 +1980,7 @@ mod dispatch {
             vec!["m.1".into(), "m.2".into(), "m.3".into()],
             vec![7200.0, 7200.0, 7200.0],
         );
-        ic.mon_buses_phase = 2;
+        ic.mon_buses_phase = MonPhase::Phase(2);
         let c = |pu: f64| num_complex::Complex64::new(pu * 7200.0, 0.0);
         let mut env = MockEnv::new(vec![MockDer::new("pv", 0.90, 300.0)]);
         env.mon_bus_v = vec![
@@ -1832,10 +1997,10 @@ mod dispatch {
     }
 
     /// A VOLTVAR control with rate-of-change limiting (`mode`/`limit` set directly).
-    fn roc_voltvar(mode: i32) -> InvControl {
+    fn roc_voltvar(mode: RateOfChangeMode) -> InvControl {
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::VOLTVAR);
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::MODE, InvControlMode::VoltVar.ordinal());
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vv",
             &[0.5, 0.92, 1.0, 1.08, 1.5],
@@ -1852,7 +2017,7 @@ mod dispatch {
         // RateofChangeMode=LPF, LPFTau=2 s, mock dyna_h=1 s → α = exp(−1/2) = 0.606531.
         // At V=1.05 pu the curve gives QDesireVVpu = −0.625 (linear 1.0→1.08 maps 0→−1).
         // Seeding the prior option at −0.2: QDesireOptionpu = −0.625·(1−α) + −0.2·α.
-        let mut ic = roc_voltvar(super::super::ROC_LPF);
+        let mut ic = roc_voltvar(RateOfChangeMode::Lpf);
         ic.lpf_tau = 2.0;
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
         ic.sample(&mut env).unwrap();
@@ -1879,7 +2044,7 @@ mod dispatch {
         // QDesireVVpu = −0.625 (V=1.05); prior option = −0.2. The change −0.425 exceeds
         // the downward cap (−0.425 < −0.1), so QDesireOptionpu ramps to prior − 0.1 = −0.3,
         // NOT the full −0.625 (a regression dropping the rate limit would land there).
-        let mut ic = roc_voltvar(super::super::ROC_RISEFALL);
+        let mut ic = roc_voltvar(RateOfChangeMode::RiseFall);
         ic.rise_fall_limit = 0.1;
         let mut env = MockEnv::new(vec![MockDer::new("pv", 1.05, 300.0)]);
         ic.sample(&mut env).unwrap();
@@ -1934,8 +2099,8 @@ mod dispatch {
         // (its own vbase). DER #2 must read 4160 V (its base cancels the scale);
         // the pre-fix code used DER #1's 7200 base -> 4160*7200/4160 = 7200.
         let mut ic = InvControl::new("ic1");
-        ic.set_i32(prop::MODE, super::super::VOLTVAR);
-        ic.set_i32(prop::REF_REACTIVE_POWER, super::super::REAC_POWER_VARMAX);
+        ic.set_i32(prop::MODE, InvControlMode::VoltVar.ordinal());
+        ic.set_i32(prop::REF_REACTIVE_POWER, ReacPowerRef::VarMax.ordinal());
         ic.vvc_curve = Some(crate::elements::general::xy_curve::XyCurveObj::from_points(
             "vv",
             &[0.5, 0.92, 1.0, 1.08, 1.5],

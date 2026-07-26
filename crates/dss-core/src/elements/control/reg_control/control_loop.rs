@@ -9,10 +9,10 @@ use num_complex::Complex64;
 
 use crate::elements::control::control_elem::CtrlCtx;
 use crate::elements::pd::transformer::ControlledTransformer;
-use crate::solution::{CTRLSTATIC, EVENTDRIVEN, MULTIRATE, TIMEDRIVEN};
+use crate::solution::ControlMode;
 use crate::util::EPSILON;
 
-use super::{MAXPHASE, MINPHASE, RegControl, RegControlAction};
+use super::{MonPhase, RegControl, RegControlAction};
 
 impl RegControl {
     /// Pascal `set_PendingTapChange`: store the pending change and mirror it to
@@ -86,7 +86,7 @@ impl RegControl {
         pt_ratio: f64,
     ) -> Complex64 {
         match self.fpt_phase {
-            MAXPHASE => {
+            MonPhase::Max => {
                 let mut cp = 0;
                 let mut v = vbuffer[0].norm();
                 for (i, val) in vbuffer.iter().enumerate().take(nphs).skip(1) {
@@ -98,7 +98,7 @@ impl RegControl {
                 self.controlled_phase = cp;
                 vbuffer[cp] / pt_ratio
             }
-            MINPHASE => {
+            MonPhase::Min => {
                 let mut cp = 0;
                 let mut v = vbuffer[0].norm();
                 for (i, val) in vbuffer.iter().enumerate().take(nphs).skip(1) {
@@ -111,8 +111,10 @@ impl RegControl {
                 vbuffer[cp] / pt_ratio
             }
             // Specific phase (most controls): FPTphase is a 1-based phase.
-            _ => {
-                let cp = (self.fpt_phase - 1).max(0) as usize;
+            // `Avg` (-1) is NOT in RegControl's PhaseEnum (min/max/number only)
+            // and lands here exactly as the pre-enum `_` arm handled it.
+            MonPhase::Avg | MonPhase::Phase(_) => {
+                let cp = (self.fpt_phase.ordinal() - 1).max(0) as usize;
                 self.controlled_phase = cp;
                 vbuffer[cp] / pt_ratio
             }
@@ -409,7 +411,7 @@ impl RegControl {
                 }
                 let tap_winding = self.tap_winding as usize;
                 let increment = tr.tap_increment(tap_winding);
-                if ctx.control_mode == CTRLSTATIC {
+                if ctx.control_mode == ControlMode::Static {
                     let change = self.at_least_one_tap(self.pending_tap_change, increment);
                     let new_tap = tr.present_tap(tap_winding) + change;
                     if tr.set_present_tap(tap_winding, new_tap) {
@@ -431,7 +433,10 @@ impl RegControl {
                     }
                     self.set_pending_tap_change(0.0); // program re-determines need
                     self.armed = false;
-                } else if matches!(ctx.control_mode, EVENTDRIVEN | TIMEDRIVEN | MULTIRATE) {
+                } else if matches!(
+                    ctx.control_mode,
+                    ControlMode::EventDriven | ControlMode::TimeDriven | ControlMode::MultiRate
+                ) {
                     let change = self.one_in_direction_of(increment);
                     let new_tap = tr.present_tap(tap_winding) + change;
                     if tr.set_present_tap(tap_winding, new_tap) {

@@ -183,7 +183,7 @@ impl DssObject for Line {
         self.cd.get_bus(terminal).to_string()
     }
 
-    /// `linecode=`: store the resolved code's name + ElemId and run
+    /// `linecode=`: store the resolved code's name + typed handle and run
     /// `FetchLineCode` immediately (Pascal stores the pointer then
     /// `PropertySideEffects` calls `FetchLineCode`; here the resolved view is
     /// only available at parse time, so we fetch here).
@@ -191,7 +191,7 @@ impl DssObject for Line {
         match idx {
             super::prop::LINECODE => {
                 self.line_code_name = name;
-                self.line_code_ref = resolved.map(|o| o.id());
+                self.line_code_ref = resolved.and_then(|o| o.idx::<LineCodeObj>());
                 if let Some(o) = resolved
                     && let Some(code) = o.get::<LineCodeObj>()
                 {

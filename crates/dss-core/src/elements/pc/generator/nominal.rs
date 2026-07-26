@@ -8,7 +8,7 @@ use crate::elements::traits::SysCtx;
 use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000, sqrt3};
 
-use super::{Generator, LOADMODE, PRICEMODE, prop};
+use super::{GenDispatchMode, Generator, prop};
 
 impl Generator {
     /// Pascal `CalcDailyMult`.
@@ -109,10 +109,10 @@ impl Generator {
         if !harm_or_dyn {
             self.gen_on = true;
             if !self.forced_on && self.dispatch_value > 0.0 {
-                let off_load = self.dispatch_mode == LOADMODE
+                let off_load = self.dispatch_mode == GenDispatchMode::LoadLevel
                     && sys.generator_dispatch_reference < self.dispatch_value;
-                let off_price =
-                    self.dispatch_mode == PRICEMODE && sys.price_signal < self.dispatch_value;
+                let off_price = self.dispatch_mode == GenDispatchMode::Price
+                    && sys.price_signal < self.dispatch_value;
                 if off_load || off_price {
                     self.gen_on = false;
                 }

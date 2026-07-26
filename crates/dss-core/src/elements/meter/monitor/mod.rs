@@ -27,6 +27,8 @@
 //! - `accessors.rs` — the `impl CktElement` / `impl DssObject` surface and the
 //!   metered-element snapshot capture.
 
+use num_complex::Complex64;
+
 use crate::elements::meter::meter_element::MeterElementData;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef};
@@ -137,6 +139,13 @@ pub struct Monitor {
     /// the stream is first closed/read), then latches `true`; `ResetIt`/
     /// `ClearMonitorStream` clear it so a re-solved monitor reprocesses.
     is_processed: bool,
+    /// Pascal `VoltageBuffer` / `CurrentBuffer` (`Monitor.pas:146-147`): the
+    /// per-sample scratch arrays. Upstream keeps them as object fields (sized in
+    /// `RecalcElementData`); the port sizes them per sample inside `TakeSample`
+    /// but reuses the allocation across samples — every entry is re-zeroed on
+    /// entry, so the contents are exactly a freshly allocated buffer's.
+    voltage_buffer: Vec<Complex64>,
+    current_buffer: Vec<Complex64>,
 }
 
 /// Solution scalars the monitor reads at sample time (the `ActiveCircuit.
@@ -193,6 +202,8 @@ impl Monitor {
             hour: 0,
             sec: 0.0,
             is_processed: false,
+            voltage_buffer: Vec::new(),
+            current_buffer: Vec::new(),
         }
     }
 

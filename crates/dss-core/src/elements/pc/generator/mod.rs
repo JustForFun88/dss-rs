@@ -27,7 +27,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pc::dyneq_pce::DynEqPceData;
-use crate::elements::traits::{ElemId, SysCtx};
+use crate::elements::traits::{Idx, SysCtx};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 use crate::support::cmatrix::CMatrix;
@@ -42,9 +42,39 @@ mod user_model;
 
 pub use user_model::GenUserModelSlot;
 
-/// Pascal dispatch modes (`LOADMODE = 1`, `PRICEMODE = 2`; 0 = default).
-const LOADMODE: i32 = 1;
-const PRICEMODE: i32 = 2;
+/// Generator dispatch mode (`Generator.pas:436-437` — `LOADMODE = 1`,
+/// `PRICEMODE = 2`; `0` is `Create`'s default, the "always on" case). The
+/// discriminants are user-visible and frozen (they round-trip through the
+/// `Generator: Dispatch Mode` `DssEnum`, values `[0, 1, 2]`); `i32` survives
+/// only at the property parse/report boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
+pub enum GenDispatchMode {
+    /// The `Create` default — the generator is never dispatched off.
+    #[default]
+    Default = 0,
+    /// `LOADMODE` — compare `Circuit.GeneratorDispatchReference` to `DispValue`.
+    LoadLevel = 1,
+    /// `PRICEMODE` — compare `Circuit.PriceSignal` to `DispValue`.
+    Price = 2,
+}
+
+impl GenDispatchMode {
+    /// The `Generator: Dispatch Mode` `DssEnum` ordinal.
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// From the enum-registry value; out-of-range yields `None`.
+    pub fn from_ordinal(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Default),
+            1 => Some(Self::LoadLevel),
+            2 => Some(Self::Price),
+            _ => None,
+        }
+    }
+}
 
 // Register indices (Pascal `Reg_kWh = 1` .. `Reg_Price = 6`, 0-based here).
 const REG_KWH: usize = 0;
@@ -229,7 +259,7 @@ pub struct Generator {
     pub vminpu: f64,
     pub is_fixed: bool,  // Status = Fixed
     pub forced_on: bool, // ForceOn
-    pub dispatch_mode: i32,
+    pub dispatch_mode: GenDispatchMode,
     pub dispatch_value: f64,
     pub pv_factor: f64,
     pub duty_start: f64,
@@ -359,9 +389,9 @@ pub struct Generator {
     pub yearly_shape_obj: Option<LoadShapeObj>,
     pub daily_shape_obj: Option<LoadShapeObj>,
     pub duty_shape_obj: Option<LoadShapeObj>,
-    pub yearly_shape_ref: Option<ElemId>,
-    pub daily_shape_ref: Option<ElemId>,
-    pub duty_shape_ref: Option<ElemId>,
+    pub yearly_shape_ref: Option<Idx<LoadShapeObj>>,
+    pub daily_shape_ref: Option<Idx<LoadShapeObj>>,
+    pub duty_shape_ref: Option<Idx<LoadShapeObj>>,
 }
 
 /// Pascal `SetNcondsForConnection`.
@@ -416,7 +446,7 @@ impl Generator {
             vminpu,
             is_fixed: false,
             forced_on: false,
-            dispatch_mode: 0,
+            dispatch_mode: GenDispatchMode::Default,
             dispatch_value: 0.0,
             pv_factor: 0.1,
             duty_start: 0.0,

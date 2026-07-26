@@ -259,6 +259,256 @@ fn load_and_vsource_resolve_shape_refs() {
     );
 }
 
+/// DE_PASCALIZE R3.1 (iv): the statically-classed object-ref fields keep a typed
+/// `Idx<T>`, not a class-erased `ElemId`. Two things need pinning:
+///
+/// 1. the narrowing on the write side is **total** — every one of these
+///    properties declares its target class (`object_ref_class`), so a resolved
+///    reference is never a foreign class and `Idx<T>` is `Some` exactly where
+///    `ElemId` used to be (the field would silently go `None` otherwise);
+/// 2. the handle still names the right arena slot — `ClassArena::get::<T>` on
+///    the target class's own arena yields the object the deck named.
+#[test]
+fn typed_object_ref_handles_dereference_to_the_named_object() {
+    use crate::elements::general::dynamic_exp::DynamicExpObj;
+    use crate::elements::general::growth_shape::GrowthShapeObj;
+    use crate::elements::general::line_code::LineCodeObj;
+    use crate::elements::general::load_shape::LoadShapeObj;
+    use crate::elements::general::temp_shape::TShapeObj;
+    use crate::elements::general::xfmr_code::XfmrCodeObj;
+    use crate::elements::general::xy_curve::XyCurveObj;
+    use crate::elements::pc::generator::Generator;
+    use crate::elements::pc::isource::Isource;
+    use crate::elements::pc::load::Load;
+    use crate::elements::pc::pvsystem::PVSystem;
+    use crate::elements::pc::windgen::WindGen;
+    use crate::elements::pd::line::Line;
+    use crate::elements::pd::transformer::Transformer;
+
+    let mut dss = Dss::new();
+    dss.command("New circuit.t basekv=12.47 bus1=src");
+    dss.command("New loadshape.d1 npts=2 interval=1 mult=(0.4 0.8)");
+    dss.command("New growthshape.g1 npts=2 year=(1 2) mult=(1.02 1.05)");
+    dss.command("New tshape.t1 npts=2 interval=1 temp=(25 30)");
+    dss.command("New xycurve.eff npts=2 xarray=[0.1 1.0] yarray=[0.9 0.97]");
+    dss.command("New linecode.mx nphases=3 r1=0.1 x1=0.2");
+    dss.command("New xfmrcode.xc phases=3 windings=2 xhl=6");
+    dss.command("New load.la bus1=src phases=3 kv=12.47 kw=100 pf=1 daily=d1 growth=g1");
+    dss.command("New line.l1 bus1=src bus2=b2 linecode=mx length=1");
+    dss.command(
+        "New transformer.t1 phases=3 windings=2 buses=[src, b3] \
+         kvs=[12.47, 4.16] kvas=[1000, 1000] xfmrcode=xc",
+    );
+    dss.command(
+        "New pvsystem.pv bus1=b2 phases=3 kv=12.47 kva=500 pmpp=500 \
+         irrad=0.8 temperature=25 pf=1 effcurve=eff tdaily=t1",
+    );
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Resolve `<class>.<name>` to `(class arena slot, object index)`.
+    let slot = |dss: &Dss, class: &str, name: &str| -> (usize, usize) {
+        let ci = dss.class_by_name[class];
+        (ci, dss.classes[ci].name_to_idx[name])
+    };
+    let (load_ci, load_oi) = slot(&dss, "load", "la");
+    let (line_ci, line_oi) = slot(&dss, "line", "l1");
+    let (xf_ci, xf_oi) = slot(&dss, "transformer", "t1");
+    let (pv_ci, pv_oi) = slot(&dss, "pvsystem", "pv");
+
+    // Every typed handle, paired with the arena it must be read through.
+    let load = dss.classes[load_ci].arena.get::<Load>(load_oi).unwrap();
+    let daily = load
+        .daily_shape_ref
+        .expect("daily= resolved → Idx<LoadShape>");
+    let growth = load
+        .growth_shape_ref
+        .expect("growth= resolved → Idx<GrowthShape>");
+    let code = dss.classes[line_ci]
+        .arena
+        .get::<Line>(line_oi)
+        .unwrap()
+        .line_code_ref
+        .expect("linecode= resolved → Idx<LineCode>");
+    let xfmr_code = dss.classes[xf_ci]
+        .arena
+        .get::<Transformer>(xf_oi)
+        .unwrap()
+        .xfmr_code_ref()
+        .expect("xfmrcode= resolved → Idx<XfmrCode>");
+    let pv = dss.classes[pv_ci].arena.get::<PVSystem>(pv_oi).unwrap();
+    let tdaily = pv
+        .daily_t_shape_ref
+        .expect("tdaily= resolved → Idx<TShape>");
+    let eff = pv
+        .base
+        .inverter_curve_ref
+        .expect("effcurve= resolved → Idx<XYcurve>");
+
+    let named = |dss: &Dss, class: &str, idx: usize| -> String {
+        dss.classes[dss.class_by_name[class]].arena[idx]
+            .data()
+            .name()
+            .to_string()
+    };
+    assert_eq!(
+        dss.classes[dss.class_by_name["loadshape"]]
+            .arena
+            .get::<LoadShapeObj>(daily.get())
+            .map(|s| s.data().name()),
+        Some("d1"),
+        "the typed LoadShape handle must read out of the LoadShape arena"
+    );
+    assert_eq!(named(&dss, "growthshape", growth.get()), "g1");
+    assert_eq!(named(&dss, "linecode", code.get()), "mx");
+    assert_eq!(named(&dss, "xfmrcode", xfmr_code.get()), "xc");
+    assert_eq!(named(&dss, "tshape", tdaily.get()), "t1");
+    assert_eq!(named(&dss, "xycurve", eff.get()), "eff");
+
+    // The concrete-typed reads agree with the name reads (and prove the target
+    // arenas really hold those classes).
+    assert!(
+        dss.classes[dss.class_by_name["growthshape"]]
+            .arena
+            .get::<GrowthShapeObj>(growth.get())
+            .is_some()
+            && dss.classes[dss.class_by_name["linecode"]]
+                .arena
+                .get::<LineCodeObj>(code.get())
+                .is_some()
+            && dss.classes[dss.class_by_name["xfmrcode"]]
+                .arena
+                .get::<XfmrCodeObj>(xfmr_code.get())
+                .is_some()
+            && dss.classes[dss.class_by_name["tshape"]]
+                .arena
+                .get::<TShapeObj>(tdaily.get())
+                .is_some()
+            && dss.classes[dss.class_by_name["xycurve"]]
+                .arena
+                .get::<XyCurveObj>(eff.get())
+                .is_some(),
+        "every typed handle must dereference in its own class arena"
+    );
+
+    // The rest of the 34: the yearly/duty siblings, the two non-`daily`
+    // LoadShape refs, the second XYcurve ref on the inverter class, the WindGen
+    // curve pair, and the shared `DynEqPCE` DynamicExp handle. Settler pass
+    // 2026-07-26 (audit-tests finding 3 — the first cut asserted 6 of 34, so a
+    // narrowing that silently yielded `None` on any of the rest would have
+    // shown up only as a corpus/dump difference).
+    dss.command("New loadshape.d2 npts=2 interval=1 mult=(0.5 0.9)");
+    dss.command("New xycurve.pt npts=2 xarray=[0 75] yarray=[1.0 0.9]");
+    dss.command("New xycurve.vv npts=2 xarray=[0.9 1.1] yarray=[1.0 -1.0]");
+    dss.command("New xycurve.pl npts=2 xarray=[0 1] yarray=[0.0 0.1]");
+    dss.command(
+        "New dynamicexp.de nvariables=2 varnames=[Speed Mass] expression=[Speed dt = -1 Mass /]",
+    );
+    dss.command(
+        "New load.lc bus1=src phases=3 kv=12.47 kw=100 pf=1          daily=d1 yearly=d2 duty=d2 cvrcurve=d2",
+    );
+    dss.command(
+        "New generator.g1 bus1=b2 phases=3 kv=12.47 kw=100 pf=1          daily=d1 yearly=d2 duty=d2 DynamicEq=de",
+    );
+    dss.command(
+        "New windgen.w1 bus1=b2 phases=3 kv=12.47 kw=100 pf=1          daily=d1 yearly=d2 duty=d2 VV_Curve=vv PLoss=pl DynamicEq=de",
+    );
+    dss.command("New isource.i1 bus1=b2 amps=1 daily=d1 yearly=d2 duty=d2");
+    dss.command("Edit pvsystem.pv P-TCurve=pt daily=d1 yearly=d2 duty=d2");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let (lc_ci, lc_oi) = slot(&dss, "load", "lc");
+    let (g_ci, g_oi) = slot(&dss, "generator", "g1");
+    let (w_ci, w_oi) = slot(&dss, "windgen", "w1");
+    let (i_ci, i_oi) = slot(&dss, "isource", "i1");
+    let lc = dss.classes[lc_ci].arena.get::<Load>(lc_oi).unwrap();
+    let g1 = dss.classes[g_ci].arena.get::<Generator>(g_oi).unwrap();
+    let w1 = dss.classes[w_ci].arena.get::<WindGen>(w_oi).unwrap();
+    let i1 = dss.classes[i_ci].arena.get::<Isource>(i_oi).unwrap();
+    let pv = dss.classes[pv_ci].arena.get::<PVSystem>(pv_oi).unwrap();
+
+    // (a) every LoadShape handle, read through the LoadShape arena;
+    for (h, want, what) in [
+        (lc.daily_shape_ref, "d1", "load.lc daily"),
+        (lc.yearly_shape_ref, "d2", "load.lc yearly"),
+        (lc.duty_shape_ref, "d2", "load.lc duty"),
+        (lc.cvr_shape_ref, "d2", "load.lc cvrcurve"),
+        (g1.daily_shape_ref, "d1", "generator.g1 daily"),
+        (g1.yearly_shape_ref, "d2", "generator.g1 yearly"),
+        (g1.duty_shape_ref, "d2", "generator.g1 duty"),
+        (w1.daily_shape_ref, "d1", "windgen.w1 daily"),
+        (w1.yearly_shape_ref, "d2", "windgen.w1 yearly"),
+        (w1.duty_shape_ref, "d2", "windgen.w1 duty"),
+        (i1.daily_shape_ref, "d1", "isource.i1 daily"),
+        (i1.yearly_shape_ref, "d2", "isource.i1 yearly"),
+        (i1.duty_shape_ref, "d2", "isource.i1 duty"),
+        (pv.base.daily_shape_ref, "d1", "pvsystem.pv daily"),
+        (pv.base.yearly_shape_ref, "d2", "pvsystem.pv yearly"),
+        (pv.base.duty_shape_ref, "d2", "pvsystem.pv duty"),
+    ] {
+        let h = h.unwrap_or_else(|| panic!("{what} must narrow to Idx<LoadShape>"));
+        assert_eq!(
+            dss.classes[dss.class_by_name["loadshape"]]
+                .arena
+                .get::<LoadShapeObj>(h.get())
+                .map(|s| s.data().name()),
+            Some(want),
+            "{what}"
+        );
+    }
+
+    // (b) the XYcurve handles;
+    for (h, want, what) in [
+        (pv.power_temp_curve_ref, "pt", "pvsystem.pv P-TCurve"),
+        (w1.vv_curve_ref, "vv", "windgen.w1 VV_Curve"),
+        (w1.loss_curve_ref, "pl", "windgen.w1 PLoss"),
+    ] {
+        let h = h.unwrap_or_else(|| panic!("{what} must narrow to Idx<XYcurve>"));
+        assert_eq!(
+            dss.classes[dss.class_by_name["xycurve"]]
+                .arena
+                .get::<XyCurveObj>(h.get())
+                .map(|c| c.data().name()),
+            Some(want),
+            "{what}"
+        );
+    }
+
+    // (c) the shared `DynEqPCE` DynamicExp handle (one field, four classes).
+    for (h, what) in [
+        (g1.dyneq.dynamic_eq_ref, "generator.g1 dynamicexp"),
+        (w1.dyneq.dynamic_eq_ref, "windgen.w1 dynamicexp"),
+    ] {
+        let h = h.unwrap_or_else(|| panic!("{what} must narrow to Idx<DynamicExp>"));
+        assert_eq!(
+            dss.classes[dss.class_by_name["dynamicexp"]]
+                .arena
+                .get::<DynamicExpObj>(h.get())
+                .map(|e| e.data().name()),
+            Some("de"),
+            "{what}"
+        );
+    }
+
+    // GICsource's `Idx<Line>` is private (no getter, and none is added just for
+    // a test): its narrowing is proven by the `dump_gicsource` golden — a `None`
+    // handle raises Pascal error 333 and skips the `GIC_<name>` bus splice the
+    // golden pins.
+
+    // A miss leaves the handle `None` (the Pascal NIL reference), not a stale
+    // or foreign one.
+    dss.command("New load.lb bus1=src daily=nope");
+    let (lb_ci, lb_oi) = slot(&dss, "load", "lb");
+    assert!(
+        dss.classes[lb_ci]
+            .arena
+            .get::<Load>(lb_oi)
+            .unwrap()
+            .daily_shape_ref
+            .is_none(),
+        "an unresolved daily= must leave the typed handle None"
+    );
+}
+
 #[test]
 fn line_fetches_matrix_linecode() {
     let mut dss = Dss::new();

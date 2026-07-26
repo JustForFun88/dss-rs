@@ -5,7 +5,7 @@ use num_complex::Complex64;
 use crate::elements::control::control_elem::CtrlCtx;
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::base::DssObject;
-use crate::solution::SolveMode;
+use crate::solution::{LoadSolutionModel, SolveMode};
 
 fn test_sys() -> SysCtx {
     SysCtx {
@@ -13,7 +13,7 @@ fn test_sys() -> SysCtx {
         fundamental: 60.0,
         is_harmonic_model: false,
         is_dynamic_model: false,
-        load_model: 1,
+        load_model: LoadSolutionModel::PowerFlow,
         mode: SolveMode::Snapshot,
         active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
@@ -93,7 +93,7 @@ fn recalc_without_transformer_records_error_124() {
 // --- Sample / DoPendingAction (WP5.5) ---
 
 use crate::elements::pd::transformer::ControlledTransformer;
-use crate::solution::{CTRLSTATIC, ControlQueue, EVENTDRIVEN, EventLog};
+use crate::solution::{ControlMode, ControlQueue, EventLog};
 
 /// A lightweight `ControlledTransformer` returning canned winding voltages
 /// and per-winding tap data, so the regulator decision logic is testable
@@ -224,7 +224,7 @@ impl Scratch {
             sys: test_sys(),
         }
     }
-    fn ctx(&mut self, control_mode: i32) -> CtrlCtx<'_> {
+    fn ctx(&mut self, control_mode: ControlMode) -> CtrlCtx<'_> {
         CtrlCtx {
             node_v: &[],
             sys: &self.sys,
@@ -250,7 +250,8 @@ fn sample_out_of_band_high_arms_a_downward_tap() {
     rc.ccd.cd.nphases = 1; // regulator senses one phase
     let mut tr = MockTransformer::wye_2wdg(125.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    rc.sample(&mut tr, &mut sc.ctx(ControlMode::Static))
+        .unwrap();
 
     // boost_needed = (120-125)*1/100 = -0.05; /0.00625 = -8 → -0.05 pu.
     assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
@@ -268,7 +269,8 @@ fn sample_in_band_disarms_and_clears() {
     rc.control_action_handle = 999;
     let mut tr = MockTransformer::wye_2wdg(120.5); // within ±1.5 of 120
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    rc.sample(&mut tr, &mut sc.ctx(ControlMode::Static))
+        .unwrap();
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(!rc.armed);
 }
@@ -280,15 +282,16 @@ fn ctrlstatic_action_applies_at_least_one_tap_and_marks_y() {
     rc.ccd.cd.nphases = 1;
     let mut tr = MockTransformer::wye_2wdg(125.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    rc.sample(&mut tr, &mut sc.ctx(ControlMode::Static))
+        .unwrap();
     assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
 
-    // CTRLSTATIC moves 70% of the pending change, at least one tap:
+    // ControlMode::Static moves 70% of the pending change, at least one tap:
     // trunc(0.7*0.05/0.00625) = trunc(5.6) = 5 taps down → −0.03125.
     rc.do_pending_action(
         RegControlAction::TapChange.ordinal(),
         &mut tr,
-        &mut sc.ctx(CTRLSTATIC),
+        &mut sc.ctx(ControlMode::Static),
     );
     assert_eq!(rc.last_change, -5);
     assert!((tr.present_tap(1) - 0.96875).abs() < 1e-12);
@@ -309,7 +312,7 @@ fn eventdriven_action_moves_one_tap_and_repushes() {
     rc.do_pending_action(
         RegControlAction::TapChange.ordinal(),
         &mut tr,
-        &mut sc.ctx(EVENTDRIVEN),
+        &mut sc.ctx(ControlMode::EventDriven),
     );
     assert_eq!(rc.last_change, -1); // one tap toward the change
     assert!((tr.present_tap(1) - (1.0 - 0.00625)).abs() < 1e-12);
@@ -329,7 +332,7 @@ fn event_log_records_tap_change_when_enabled() {
     rc.do_pending_action(
         RegControlAction::TapChange.ordinal(),
         &mut tr,
-        &mut sc.ctx(CTRLSTATIC),
+        &mut sc.ctx(ControlMode::Static),
     );
     assert_eq!(sc.events.len(), 1);
     let line = &sc.events.entries()[0];
@@ -356,7 +359,8 @@ fn maxtapchange_zero_zeroes_pending_and_exits() {
     rc.set_pending_tap_change(0.5);
     let mut tr = MockTransformer::wye_2wdg(150.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    rc.sample(&mut tr, &mut sc.ctx(ControlMode::Static))
+        .unwrap();
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(sc.queue.is_empty());
 }
@@ -408,7 +412,8 @@ fn idle_no_load_zone_suppresses_out_of_band_tap() {
     rc.idle_enabled = true;
     let mut tr = MockTransformer::wye_2wdg(125.0); // power_re 0 → FwdPower 0
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    rc.sample(&mut tr, &mut sc.ctx(ControlMode::Static))
+        .unwrap();
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(!rc.armed);
     assert!(sc.queue.is_empty());
@@ -429,7 +434,8 @@ fn idle_no_load_zone_still_taps_when_power_out_of_band() {
     // FwdPower = -power_re = +200 kW ⇒ power_re = -200 kW (deep import).
     let mut tr = MockTransformer::wye_2wdg(125.0).with_power(-200_000.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    rc.sample(&mut tr, &mut sc.ctx(ControlMode::Static))
+        .unwrap();
     assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
     assert!(rc.armed);
 }
@@ -444,7 +450,8 @@ fn idle_without_reversible_or_cogen_still_taps() {
     rc.idle_enabled = true; // but is_reversible = cogen_enabled = false
     let mut tr = MockTransformer::wye_2wdg(125.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    rc.sample(&mut tr, &mut sc.ctx(ControlMode::Static))
+        .unwrap();
     assert!((rc.pending_tap_change - (-0.05)).abs() < 1e-12);
     assert!(rc.armed);
 }
@@ -460,7 +467,8 @@ fn idle_forward_zone_suppresses_when_exporting_hard() {
     rc.idle_forward_enabled = true;
     let mut tr = MockTransformer::wye_2wdg(125.0).with_power(-200_000.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    rc.sample(&mut tr, &mut sc.ctx(ControlMode::Static))
+        .unwrap();
     assert_eq!(rc.pending_tap_change, 0.0);
     assert!(!rc.armed);
 }
@@ -476,7 +484,8 @@ fn signed_rev_threshold_arms_reverse_pending_below_default() {
     // FwdPower = -power_re = -150 kW ⇒ power_re = +150 kW.
     let mut tr = MockTransformer::wye_2wdg(120.0).with_power(150_000.0);
     let mut sc = Scratch::new();
-    rc.sample(&mut tr, &mut sc.ctx(CTRLSTATIC)).unwrap();
+    rc.sample(&mut tr, &mut sc.ctx(ControlMode::Static))
+        .unwrap();
     assert!(rc.reverse_pending);
     assert_eq!(sc.queue.queue_size(), 1);
 }

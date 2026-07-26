@@ -408,38 +408,38 @@ impl DssObject for Load {
     }
 
     /// Resolve a shape reference: store the resolved object's name (for the
-    /// dump), its `ElemId`, and a snapshot clone of the object that
+    /// dump), its typed `Idx`, and a snapshot clone of the object that
     /// `SetNominalLoad` drives through `GetMultAtHour` (Pascal stores the live
     /// pointer; see the `*_shape_obj` field doc). `daily`/`yearly`/`duty`/
     /// `CVRcurve` resolve to `LoadShape`, `growth` to `GrowthShape`.
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|o| o.id());
+        let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
         let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         match idx {
             YEARLY => {
                 self.yearly_shape = name;
-                self.yearly_shape_ref = elem_ref;
+                self.yearly_shape_ref = load_shape_ref();
                 self.yearly_shape_obj = load_shape();
             }
             DAILY => {
                 self.daily_shape = name;
-                self.daily_shape_ref = elem_ref;
+                self.daily_shape_ref = load_shape_ref();
                 self.daily_shape_obj = load_shape();
             }
             DUTY => {
                 self.duty_shape = name;
-                self.duty_shape_ref = elem_ref;
+                self.duty_shape_ref = load_shape_ref();
                 self.duty_shape_obj = load_shape();
             }
             CVRCURVE => {
                 self.cvr_shape = name;
-                self.cvr_shape_ref = elem_ref;
+                self.cvr_shape_ref = load_shape_ref();
                 self.cvr_shape_obj = load_shape();
             }
             GROWTH => {
                 self.growth_shape = name;
-                self.growth_shape_ref = elem_ref;
+                self.growth_shape_ref = resolved.and_then(|o| o.idx::<GrowthShapeObj>());
                 self.growth_shape_obj = resolved.and_then(|o| o.cloned::<GrowthShapeObj>());
             }
             _ => unreachable!("Load has no resolved object-ref property {idx}"),

@@ -11,6 +11,7 @@ use crate::elements::general::dynamic_exp::DynamicExpObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
+use crate::elements::pc::inv_based_pce::VarMode;
 use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
@@ -19,23 +20,20 @@ use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
 use crate::support::cmatrix::CMatrix;
 use crate::util::sqrt3;
 
-use super::{
-    STORE_CHARGING, STORE_DISCHARGING, STORE_IDLING, Storage, StorageDispatchMode, VARMODE_KVAR,
-    VARMODE_PF, nconds_for_connection, prop,
-};
+use super::{Storage, StorageDispatchMode, StorageState, nconds_for_connection, prop};
 
 impl Storage {
     /// Pascal `Set_kW`: set the state + the dispatch percentage from a signed kW.
     /// `pub(crate)` so the StorageController fleet dispatch can drive `obj.kW`.
     pub(crate) fn set_kw(&mut self, value: f64) {
         if value > 0.0 {
-            self.f_state = STORE_DISCHARGING;
+            self.f_state = StorageState::Discharging;
             self.pct_kw_out = value / self.kw_rating * 100.0;
         } else if value < 0.0 {
-            self.f_state = STORE_CHARGING;
+            self.f_state = StorageState::Charging;
             self.pct_kw_in = value.abs() / self.kw_rating * 100.0;
         } else {
-            self.f_state = STORE_IDLING;
+            self.f_state = StorageState::Idling;
         }
     }
 }
@@ -532,7 +530,7 @@ impl DssObject for Storage {
         match idx {
             PHASES => self.cd.nphases as i32,
             CONN => self.base.connection as i32,
-            STATE => self.f_state,
+            STATE => self.f_state.ordinal(),
             MODEL => self.base.voltage_model,
             CLS => self.storage_class,
             DISP_MODE => self.dispatch_mode.ordinal(),
@@ -553,7 +551,7 @@ impl DssObject for Storage {
             }
             // Plain field write (Pascal MappedStringEnum on FState; the kWh-limit
             // check is only on the internal `StorageState` property path).
-            STATE => self.f_state = value,
+            STATE => self.f_state = StorageState::from_ordinal(value),
             MODEL => self.base.voltage_model = value,
             CLS => self.storage_class = value,
             DISP_MODE => {
@@ -661,33 +659,33 @@ impl DssObject for Storage {
     /// the WP4.2/WP5.3 `FetchLineCode` pattern).
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         use prop::*;
-        let elem_ref = resolved.map(|o| o.id());
+        let load_shape_ref = || resolved.and_then(|o| o.idx::<LoadShapeObj>());
         let load_shape = || resolved.and_then(|o| o.cloned::<LoadShapeObj>());
         let xy_curve = || resolved.and_then(|o| o.cloned::<XyCurveObj>());
         match idx {
             EFF_CURVE => {
                 self.base.inverter_curve = name;
-                self.base.inverter_curve_ref = elem_ref;
+                self.base.inverter_curve_ref = resolved.and_then(|o| o.idx::<XyCurveObj>());
                 self.base.inverter_curve_obj = xy_curve();
             }
             YEARLY => {
                 self.base.yearly_shape = name;
-                self.base.yearly_shape_ref = elem_ref;
+                self.base.yearly_shape_ref = load_shape_ref();
                 self.base.yearly_shape_obj = load_shape();
             }
             DAILY => {
                 self.base.daily_shape = name;
-                self.base.daily_shape_ref = elem_ref;
+                self.base.daily_shape_ref = load_shape_ref();
                 self.base.daily_shape_obj = load_shape();
             }
             DUTY => {
                 self.base.duty_shape = name;
-                self.base.duty_shape_ref = elem_ref;
+                self.base.duty_shape_ref = load_shape_ref();
                 self.base.duty_shape_obj = load_shape();
             }
             DYNAMIC_EQ => {
                 self.base.dyneq.dynamic_eq = name;
-                self.base.dyneq.dynamic_eq_ref = elem_ref;
+                self.base.dyneq.dynamic_eq_ref = resolved.and_then(|o| o.idx::<DynamicExpObj>());
                 self.base.dyneq.dynamic_eq_obj = resolved.and_then(|o| o.cloned::<DynamicExpObj>());
             }
             _ => unreachable!("Storage has no resolved object-ref property {idx}"),
@@ -721,11 +719,11 @@ impl DssObject for Storage {
                 }
             }
             PF => {
-                self.base.var_mode = VARMODE_PF;
+                self.base.var_mode = VarMode::Pf;
                 self.cd.obj.clear_seq(KVAR);
             }
             KVAR => {
-                self.base.var_mode = VARMODE_KVAR;
+                self.base.var_mode = VarMode::Kvar;
                 self.cd.obj.clear_seq(PF);
             }
             KVAR_MAX => {

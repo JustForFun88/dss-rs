@@ -20,7 +20,7 @@ use crate::circuit::AddType;
 use crate::circuit::auto_add::{compute_kw_losses_een, make_bus_list, weighted_losses};
 use crate::report::format::{fixed_w, g};
 use crate::solution::meters::{reset_all_meters, take_sample_all};
-use crate::solution::{ADMITTANCE, CONTROLSOFF, CTRLSTATIC, POWERFLOW, solve_snap, sys_ctx};
+use crate::solution::{ControlMode, LoadSolutionModel, solve_snap, sys_ctx};
 use crate::util::sqrt3;
 
 /// The result of the candidate-bus search (everything the executive needs to
@@ -53,8 +53,8 @@ fn auto_add_search(
     env: &mut SolveEnv,
     output_directory: &Path,
 ) -> Result<AutoAddOutcome, String> {
-    if ckt.solution.load_model == ADMITTANCE {
-        ckt.solution.load_model = POWERFLOW;
+    if ckt.solution.load_model == LoadSolutionModel::Admittance {
+        ckt.solution.load_model = LoadSolutionModel::PowerFlow;
         ckt.solution.system_y_changed = true; // Force rebuild of System Y without Loads
     }
 
@@ -89,7 +89,7 @@ fn auto_add_search(
     );
 
     // Turn regulators and caps off while searching.
-    ckt.solution.control_mode = CONTROLSOFF;
+    ckt.solution.control_mode = ControlMode::ControlsOff;
 
     // Establish base values (Pascal `SetBaseLosses`).
     let (base_losses, base_een) = {
@@ -231,7 +231,7 @@ fn auto_add_search(
     }
 
     // Put control mode back to default before inserting the device for real.
-    ckt.solution.control_mode = CTRLSTATIC;
+    ckt.solution.control_mode = ControlMode::Static;
     ckt.solution.use_aux_currents = false;
 
     Ok(AutoAddOutcome {

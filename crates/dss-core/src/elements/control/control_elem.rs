@@ -14,7 +14,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::traits::{ElemId, SysCtx};
-use crate::solution::{ControlQueue, EventLog};
+use crate::solution::{ControlMode, ControlQueue, EventLog};
 
 /// Action codes shared across controls (`Controls/ControlElem.pas`
 /// `EControlAction`). RegControl uses its own `ACTION_TAPCHANGE`/`ACTION_REVERSE`
@@ -55,8 +55,8 @@ pub struct CtrlCtx<'a> {
     /// Raised when an action invalidates Y (tap change / capacitor step); the
     /// control loop copies it into `Solution.SystemYChanged`.
     pub system_y_changed: &'a mut bool,
-    /// `Solution.ControlMode` (CTRLSTATIC / EVENTDRIVEN / TIMEDRIVEN / MULTIRATE).
-    pub control_mode: i32,
+    /// `Solution.ControlMode` (Static / EventDriven / TimeDriven / MultiRate).
+    pub control_mode: ControlMode,
     /// `Solution.DynaVars.intHour` / `.t` / `.dblHour`.
     pub int_hour: i32,
     pub t: f64,

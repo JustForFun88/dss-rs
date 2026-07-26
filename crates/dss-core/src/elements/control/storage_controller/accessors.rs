@@ -11,7 +11,7 @@ use crate::elements::traits::{CktElement, ElemId, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
-use super::{CURRENT_PEAKSHAVE, CURRENT_PEAKSHAVE_LOW, MODE_FOLLOW, StorageController, prop};
+use super::{MonPhase, StorageController, StorageCtrlMode, prop};
 
 impl CktElement for StorageController {
     fn cd(&self) -> &crate::elements::ckt::CktElementData {
@@ -208,9 +208,9 @@ impl DssObject for StorageController {
         use prop::*;
         match idx {
             TERMINAL => self.ccd.element_terminal,
-            MON_PHASE => self.f_mon_phase,
-            MODE_DISCHARGE => self.discharge_mode,
-            MODE_CHARGE => self.charge_mode,
+            MON_PHASE => self.f_mon_phase.ordinal(),
+            MODE_DISCHARGE => self.discharge_mode.ordinal(),
+            MODE_CHARGE => self.charge_mode.ordinal(),
             INHIBIT_TIME => self.inhibit_hrs,
             SEASONS => self.seasons,
             // Pascal `Weights` IndirectCount reads its element count from
@@ -225,9 +225,14 @@ impl DssObject for StorageController {
         use prop::*;
         match idx {
             TERMINAL => self.ccd.element_terminal = value,
-            MON_PHASE => self.f_mon_phase = value,
-            MODE_DISCHARGE => self.discharge_mode = value,
-            MODE_CHARGE => self.charge_mode = value,
+            MON_PHASE => self.f_mon_phase = MonPhase::from_ordinal(value),
+            MODE_DISCHARGE => {
+                self.discharge_mode =
+                    StorageCtrlMode::from_ordinal(value).unwrap_or(self.discharge_mode)
+            }
+            MODE_CHARGE => {
+                self.charge_mode = StorageCtrlMode::from_ordinal(value).unwrap_or(self.charge_mode)
+            }
             INHIBIT_TIME => self.inhibit_hrs = value,
             SEASONS => self.seasons = value,
             _ => unreachable!("StorageController has no integer property {idx}"),
@@ -352,7 +357,7 @@ impl DssObject for StorageController {
         use prop::*;
         match idx {
             KW_TARGET => {
-                let casemult = if self.discharge_mode == CURRENT_PEAKSHAVE {
+                let casemult = if self.discharge_mode == StorageCtrlMode::CurrentPeakShave {
                     1000.0
                 } else {
                     1.0
@@ -363,7 +368,7 @@ impl DssObject for StorageController {
                 self.f_pct_kw_band = self.f_kw_band / self.f_kw_target * 100.0; // sync
             }
             PCT_KW_BAND => {
-                let casemult = if self.discharge_mode == CURRENT_PEAKSHAVE {
+                let casemult = if self.discharge_mode == StorageCtrlMode::CurrentPeakShave {
                     1000.0
                 } else {
                     1.0
@@ -373,7 +378,7 @@ impl DssObject for StorageController {
                 self.f_kw_band_specified = false;
             }
             KW_BAND => {
-                let casemult = if self.discharge_mode == CURRENT_PEAKSHAVE {
+                let casemult = if self.discharge_mode == StorageCtrlMode::CurrentPeakShave {
                     1000.0
                 } else {
                     1.0
@@ -383,7 +388,7 @@ impl DssObject for StorageController {
                 self.f_kw_band_specified = true;
             }
             KW_TARGET_LOW | PCT_KW_BAND_LOW => {
-                let casemult = if self.charge_mode == CURRENT_PEAKSHAVE_LOW {
+                let casemult = if self.charge_mode == StorageCtrlMode::CurrentPeakShaveLow {
                     1000.0
                 } else {
                     1.0
@@ -393,7 +398,7 @@ impl DssObject for StorageController {
                 self.f_kw_band_low = self.half_kw_band_low * 2.0;
             }
             KW_BAND_LOW => {
-                let casemult = if self.charge_mode == CURRENT_PEAKSHAVE_LOW {
+                let casemult = if self.charge_mode == StorageCtrlMode::CurrentPeakShaveLow {
                     1000.0
                 } else {
                     1.0
@@ -406,17 +411,18 @@ impl DssObject for StorageController {
                 self.f_pct_kw_band_low = self.f_kw_band_low / self.f_kw_target_low * 100.0;
             }
             MODE_DISCHARGE => {
-                if self.discharge_mode == MODE_FOLLOW {
+                if self.discharge_mode == StorageCtrlMode::Follow {
                     self.discharge_trigger_time = 12.0; // Noon
                 }
             }
             MON_PHASE => {
-                if self.f_mon_phase > self.ccd.cd.nphases as i32 {
+                if self.f_mon_phase.ordinal() > self.ccd.cd.nphases as i32 {
                     self.ccd.cd.obj.push_error(format!(
                         "Error: Monitored phase ({}) must be less than or equal to number of phases ({}). ",
-                        self.f_mon_phase, self.ccd.cd.nphases
+                        self.f_mon_phase.ordinal(),
+                        self.ccd.cd.nphases
                     ));
-                    self.f_mon_phase = 1;
+                    self.f_mon_phase = MonPhase::Phase(1);
                 }
             }
             ELEMENT_LIST => {

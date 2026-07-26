@@ -45,7 +45,7 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::pc::inv_based_pce::{Connection, InvBasedPceData};
+use crate::elements::pc::inv_based_pce::{Connection, InvBasedPceData, VarMode};
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
 
@@ -58,14 +58,57 @@ mod user_model;
 
 pub use user_model::StorageUserModelSlot;
 
-/// Pascal `varMode` values.
-pub(crate) const VARMODE_PF: i32 = 0;
-pub(crate) const VARMODE_KVAR: i32 = 1;
+/// Pascal `TStorageObj.FState` (`Storage.pas:269`) — the storage state machine.
+/// The named states are `STORE_CHARGING = -1` / `STORE_IDLING = 0` /
+/// `STORE_DISCHARGING = 1` (`Storage.pas:35-37`), and the `State=` property maps
+/// through the `Storage: State` `DssEnum` (values `[-1, 0, 1]`).
+///
+/// **Why the payload variant.** Upstream declares the field plain `Integer`, and
+/// `TStorageObj.Set_Variable`'s state channel writes `Fstate := Trunc(Value)`
+/// **unguarded** (`Storage.pas:3135`) — a user script can put any integer there.
+/// The field is therefore *not* closed over the three named states;
+/// [`StorageState::Other`] carries anything else so `ordinal()`/[`from_ordinal`]
+/// stay total and mutually inverse, exactly like the pre-enum bare `i32` field.
+/// Construct only via [`from_ordinal`] — it canonicalises `-1/0/1` to the named
+/// variants.
+///
+/// [`from_ordinal`]: StorageState::from_ordinal
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StorageState {
+    /// `STORE_CHARGING = -1`.
+    Charging,
+    /// `STORE_IDLING = 0` — `TStorageObj.Create` (`Storage.pas:1155`).
+    #[default]
+    Idling,
+    /// `STORE_DISCHARGING = 1`.
+    Discharging,
+    /// Any other integer written through the `Set_Variable` state channel.
+    Other(i32),
+}
 
-/// Pascal storage states (`STORE_CHARGING`/`STORE_IDLING`/`STORE_DISCHARGING`).
-pub(crate) const STORE_CHARGING: i32 = -1;
-pub(crate) const STORE_IDLING: i32 = 0;
-pub(crate) const STORE_DISCHARGING: i32 = 1;
+impl StorageState {
+    /// The raw `FState` value (the `State=` property / monitor channel / CIM
+    /// boundary).
+    pub fn ordinal(self) -> i32 {
+        match self {
+            Self::Charging => -1,
+            Self::Idling => 0,
+            Self::Discharging => 1,
+            Self::Other(n) => n,
+        }
+    }
+
+    /// From a raw `FState` value. Total: `from_ordinal(x).ordinal() == x` for
+    /// every `x`.
+    pub fn from_ordinal(value: i32) -> Self {
+        match value {
+            -1 => Self::Charging,
+            0 => Self::Idling,
+            1 => Self::Discharging,
+            n => Self::Other(n),
+        }
+    }
+}
 
 /// Pascal Storage dispatch modes (`STORE_DEFAULT`..`STORE_FOLLOW`; `Set
 /// DispMode=`, `StorageDispatchModeEnum`). Discriminants are user-visible and
@@ -366,9 +409,9 @@ pub struct Storage {
     /// `MaxDynPhaseCurrent`.
     pub max_dyn_phase_current: f64,
     /// `FState` — charge/idle/discharge state.
-    pub f_state: i32,
+    pub f_state: StorageState,
     /// `StateDesired` — desired state before any kWh-limit/cut-in/out change.
-    pub state_desired: i32,
+    pub state_desired: StorageState,
     /// `StateChanged` — set when the state flips (forces a Yprim rebuild).
     pub state_changed: bool,
     /// `StorageSolutionCount`.
@@ -473,7 +516,7 @@ impl Storage {
         base.vmaxpu = 1.10;
         base.v_base_min = base.vminpu * base.v_base;
         base.v_base_max = base.vmaxpu * base.v_base;
-        base.var_mode = VARMODE_PF;
+        base.var_mode = VarMode::Pf;
         base.inverter_on = true;
         base.var_follow_inverter = false;
         base.force_balanced = false;
@@ -532,8 +575,8 @@ impl Storage {
             p_idling: 0.0,
             yeq_discharge: Complex64::ZERO,
             max_dyn_phase_current: 0.0,
-            f_state: STORE_IDLING, // idling and fully charged
-            state_desired: STORE_IDLING,
+            f_state: StorageState::Idling, // idling and fully charged
+            state_desired: StorageState::Idling,
             state_changed: true, // force building of YPrim
             storage_solution_count: -1,
             storage_obj_switch_open: false,

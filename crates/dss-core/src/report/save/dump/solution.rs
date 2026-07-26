@@ -69,13 +69,13 @@ pub(crate) fn dump_solution_properties(
         "Set ControlMode={}\n",
         enums
             .get(enums.control_mode)
-            .ordinal_to_string(sol.control_mode)
+            .ordinal_to_string(sol.control_mode.ordinal())
     ));
     out.push_str(&format!(
         "Set Random={}\n",
         enums
             .get(enums.random_mode)
-            .ordinal_to_string(sol.random_type)
+            .ordinal_to_string(sol.random_type.ordinal())
     ));
     if leaf {
         out.push_str(&format!("Set hour={}\n", sol.int_hour));
@@ -99,7 +99,7 @@ pub(crate) fn dump_solution_properties(
         "Set loadmodel={}\n",
         enums
             .get(enums.default_load_model)
-            .ordinal_to_string(sol.load_model)
+            .ordinal_to_string(sol.load_model.ordinal())
     ));
 
     out.push_str(&format!(
