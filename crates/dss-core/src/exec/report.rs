@@ -493,15 +493,19 @@ impl Dss {
             // exporters and replaced each arm with a fixed `DoSimpleMsg(...,
             // 252)` (`ExportOptions.pas:543` for 22, `:555-561` for 28-31;
             // identical in r4133 `Version8/Source/Executive/ExportOptions.pas:461`
-            // / `:467-470`). The keywords still resolve — so they consume the
-            // solve guard and `DefaultCircuitUUIDs` above — and then emit only
-            // this message, writing no file and leaving the last-file state
-            // untouched. Reproduced verbatim, message per keyword.
-            22 => self.push_cdpsm_retired("Asset"),
-            28 => self.push_cdpsm_retired("ElectricalProperties"),
-            29 => self.push_cdpsm_retired("Geographical"),
-            30 => self.push_cdpsm_retired("Topology"),
-            31 => self.push_cdpsm_retired("StateVariables"),
+            // / `:467-470`). The keywords still *resolve*, so they consume the
+            // solve guard and `DefaultCircuitUUIDs` above, take the empty default
+            // filename (`:354`/`:366-373` → `FileName := ''`), emit this message
+            // and write no file — but `AbortExport` stays FALSE (only the unknown
+            // -keyword `else` at `:626` sets it), so `DoExportCmd`'s tail
+            // (`:632-637`, r4133 `:514-516`) still runs `SetLastResultFile` +
+            // `@lastexportfile` on the resolved-but-never-written
+            // `<OutputDirectory><CircuitName_>` path. Same shape as `export_ad`.
+            22 => self.cdpsm_retired(&explicit, "Asset"),
+            28 => self.cdpsm_retired(&explicit, "ElectricalProperties"),
+            29 => self.cdpsm_retired(&explicit, "Geographical"),
+            30 => self.cdpsm_retired(&explicit, "Topology"),
+            31 => self.cdpsm_retired(&explicit, "StateVariables"),
             // Unreachable: every one of the 64 `EXPORT_OPTIONS` keywords now has
             // an arm above (`Estimation`(5) was the last holdout). Kept as the
             // safety valve for a keyword added to the table without a route — a
@@ -514,13 +518,44 @@ impl Dss {
         }
     }
 
-    /// The retired-CDPSM-profile error (Pascal `DoSimpleMsg(DSS, _('<profile>
+    /// The retired-CDPSM-profile arm (Pascal `DoSimpleMsg(DSS, _('<profile>
     /// export no longer supported; use Export CIM100'), 252)`), shared by export
-    /// keywords 22/28/29/30/31.
-    fn push_cdpsm_retired(&mut self, profile: &str) {
+    /// keywords 22/28/29/30/31: the fixed message, no file, and then
+    /// `DoExportCmd`'s unconditional last-file tail over the empty default name.
+    fn cdpsm_retired(&mut self, explicit: &str, profile: &str) {
         self.errors.push(format!(
             "{profile} export no longer supported; use Export CIM100"
         ));
+        self.set_export_last_file(explicit, "");
+    }
+
+    /// `DoExportCmd`'s tail (`ExportOptions.pas:632-637`, r4133
+    /// `Version8/Source/Executive/ExportOptions.pas:514-516`): `SetLastResultFile`
+    /// (`DSSGlobals.pas:601-605` — `LastResultFile` + `@lastfile`) plus
+    /// `ParserVars.Add('@lastexportfile', FileName)`, run for **every** resolved
+    /// keyword (`AbortExport` is set only by the unknown-keyword `else` at
+    /// `:626`). The happy path reaches it through [`Dss::write_export`]; this is
+    /// the standalone form for the arms whose body writes nothing (A-Diakoptics
+    /// with AD off, the retired CDPSM profiles), which still point the executive's
+    /// last-file state at the resolved path.
+    fn set_export_last_file(&mut self, explicit: &str, default_name: &str) {
+        let case = self
+            .circuit
+            .as_ref()
+            .map(|c| c.case_name.clone())
+            .unwrap_or_default();
+        let circuit_name_ = format!("{case}_");
+        let path = crate::report::output::export_path(
+            &self.output_directory,
+            &self.current_dir,
+            &circuit_name_,
+            explicit,
+            default_name,
+        );
+        let p = path.to_string_lossy().into_owned();
+        self.last_result_file = p.clone();
+        self.vars.add("@lastfile", &p);
+        self.vars.add("@lastexportfile", &p);
     }
 
     /// Run a read-only circuit formatter `f` and write its output to the report
@@ -585,23 +620,7 @@ impl Dss {
             // Body skipped (no file, `GlobalResult` untouched), but the
             // DoExportCmd tail still points the last-file state at the resolved
             // (never-written) path.
-            let case = self
-                .circuit
-                .as_ref()
-                .map(|c| c.case_name.clone())
-                .unwrap_or_default();
-            let circuit_name_ = format!("{case}_");
-            let path = crate::report::output::export_path(
-                &self.output_directory,
-                &self.current_dir,
-                &circuit_name_,
-                explicit,
-                default_name,
-            );
-            let p = path.to_string_lossy().into_owned();
-            self.last_result_file = p.clone();
-            self.vars.add("@lastfile", &p);
-            self.vars.add("@lastexportfile", &p);
+            self.set_export_last_file(explicit, default_name);
         }
     }
 

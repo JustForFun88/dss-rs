@@ -3862,9 +3862,70 @@ fn export_estimation_matches_oracle() {
 /// the pure `-Weight * sum(target^2)` term (`-155.52` / `-1460`). Pins the
 /// report as a *read* of stored sensor state — a version that recomputed the
 /// currents itself would report nonzero `Calc` columns here.
+///
+/// Also the **meter-side** `Enabled` filter: the deck carries a disabled
+/// EnergyMeter `mdis` on its own feeder head, which the oracle lists in
+/// `Meters.AllNames` but omits from the report (probed on the pinned 0.14.5
+/// engine). Dropping the port's `if !em.med.cd.enabled { continue }` adds an
+/// `"Energymeter.MDIS"` row → row-count failure. (est8 cannot carry one: the
+/// 0.14.5 `allocateloads` access-violates on a disabled meter, DIVERGENCES §D9.)
 #[test]
 fn export_estimation_noalloc_matches_oracle() {
     run_deck_export("export_estimation_noalloc", &estimation_policy());
+}
+
+/// `compare_export` runs on `report_lines()`, which **drops blank lines**, so the
+/// three goldens above pin every number, row and field but not the `FSWriteln(F)`
+/// separator Pascal writes between the "Energy Meters" and "Sensors" blocks
+/// (`ExportResults.pas:1711`, r4133 `:1652`). This test closes that hole: replay
+/// each estimation deck and require the produced file's blank-line positions and
+/// total line count to match the captured oracle file exactly (audit-code D).
+#[test]
+fn export_estimation_blank_line_layout_matches_oracle() {
+    for stem in [
+        "export_estimation",
+        "export_estimation_noalloc",
+        "export_estimation_empty",
+    ] {
+        let dir = reports_dir();
+        let meta: DeckMeta = {
+            let p = dir.join(format!("{stem}.meta.json"));
+            let text =
+                std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+        };
+        let oracle = {
+            let p = dir.join(format!("{stem}.txt"));
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+        };
+
+        let scratch = scratch_dir(&format!("{stem}_layout"));
+        let mut dss = Dss::new();
+        dss.command("clear");
+        for c in &meta.deck {
+            dss.command(c);
+        }
+        dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+        dss.command(&format!("export {}", meta.report));
+        assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+        let rust = std::fs::read_to_string(dss.last_result_file())
+            .unwrap_or_else(|e| panic!("read produced {}: {e}", dss.last_result_file()));
+
+        // Structure only: which lines are blank, and how many lines there are.
+        let shape = |s: &str| -> Vec<bool> {
+            s.replace("\r\n", "\n")
+                .trim_end_matches('\n')
+                .split('\n')
+                .map(|l| l.trim().is_empty())
+                .collect()
+        };
+        assert_eq!(
+            shape(&rust),
+            shape(&oracle),
+            "{stem}: blank-line layout differs from the oracle"
+        );
+        std::fs::remove_dir_all(&scratch).ok();
+    }
 }
 
 /// `Export Estimation` with no EnergyMeters and no Sensors (`estem`): both

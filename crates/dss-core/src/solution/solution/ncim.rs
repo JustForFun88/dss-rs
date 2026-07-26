@@ -246,7 +246,9 @@ fn ncim_init(ckt: &mut Circuit, env: &mut SolveEnv, init_y: bool) -> Result<usiz
     Ok(nnodes)
 }
 
-/// Pascal `NCIM_GetNumGenerators` (l.574): classify each enabled generator as a
+/// Pascal `TSolutionObj.GetNumGenerators` (**r4133** `Common/Solution.pas`
+/// l.1884-1990; `NCIM_GetNumGenerators` l.574 in the retired capi015 refactor):
+/// classify each enabled generator as a
 /// PV-bus (model-3 with Q-limits) participant, assign its `NCIM_Idx`, tally the
 /// per-node Q-limits and generator counts. Returns the total number of PV-bus
 /// generator phases (the size of the Jacobian's voltage-regulation section).
@@ -276,8 +278,16 @@ fn ncim_get_num_generators(ckt: &mut Circuit, env: &mut SolveEnv, init_q: bool) 
             }
             if gobj.kvar_max == 0.0 && gobj.kvar_min == 0.0 {
                 // No Q-limits declared → cannot regulate; demote to PQ (model 4).
+                // The *conversion record* (r4133's `PV2PQList` append, the port's
+                // `ncim_expv`) is gated on `InitQ` (r4133 l.1936-1939) — only the
+                // initializing pass logs it. Reachable with `InitQ = false` only
+                // when a generator is edited back to `model=3` with zero Q-limits
+                // between two solves (the PQ→PV promotion at l.2216 requires
+                // nonzero limits, so it can never re-create this shape itself).
                 gobj.gen_model = 4;
-                gobj.ncim_expv = true;
+                if init_q {
+                    gobj.ncim_expv = true;
+                }
                 continue;
             }
             let target = gobj.cd.node_ref[0];
@@ -297,7 +307,10 @@ fn ncim_get_num_generators(ckt: &mut Circuit, env: &mut SolveEnv, init_q: bool) 
             }
             add2limits = true;
         } else {
-            add2limits = gobj.gen_model == 4 || (gobj.gen_model == 3 && gobj.ncim_expv);
+            // r4133 l.1972-1973: `Else Add2Limits := pGen.GenModel = 4;`. (The
+            // retired capi015 r4103 form also OR-ed in `GenModel = 3 and
+            // NCIM_ExPV` here — unreachable inside this `else`, dropped.)
+            add2limits = gobj.gen_model == 4;
         }
         if add2limits {
             let refs: Vec<usize> = gobj.cd.node_ref[..nphases].to_vec();

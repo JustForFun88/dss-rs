@@ -687,6 +687,12 @@ pub(crate) const AD_OFF_REASONS: &[&str] = &[
     "ad-switched-divergence",
     "ad-islanded-divergence",
     "ad-nonconvergent",
+    // The AD probe has no *baseline*: the normal arm itself (`compile; set
+    // controlmode=off; solve mode=snap`, `ad_solve_normal`) does not converge —
+    // and does not converge upstream either, so there is nothing to compare AD
+    // against and nothing to fix in the port. Distinct from `ad-nonconvergent`,
+    // which is about the AD arm failing on a singular torn zone.
+    "ad-baseline-nonconvergent",
     "ad-singular-zone",
     "ad-divergent",
     "ad-floor-above-tier",

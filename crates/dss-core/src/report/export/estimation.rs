@@ -18,7 +18,13 @@
 //! percent-error pass (so a sub-3-phase device prints `0` in the unused slots,
 //! and the error pass reuses the calculated magnitudes in place), every number
 //! `Format('%.6g')`. r4133 `Version8/Source/Common/ExportResults.pas:1599` is
-//! character-identical to the pinned 0.14.5 source, so both gating oracles agree.
+//! **semantically** identical to the pinned 0.14.5 source — same columns, same
+//! order, same headers, same `TempX` cadence, same `Max(0.001, ·)` clamp — so
+//! both gating oracles agree on every field. It is *not* character-identical:
+//! r4133 writes through `TextFile` + `Write`/`Writeln` (CRLF on Windows) and
+//! `Uppercase`, 0.14.5 through `TBufferedFileStream` + `FSWrite`/`FSWriteln` (LF)
+//! and `AnsiUpperCase`, and the disabled allocation-factor block uses different
+//! comment syntax. Do not read the claim as a licence for a byte-level r4133 diff.
 
 use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::EnergyMeter;
@@ -209,4 +215,38 @@ pub(crate) fn export_estimation(classes: &mut [DssClass], ckt: &Circuit) -> Stri
     }
 
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The 4+-phase clamp and the `TempX` cadence are the two pieces the oracle
+    /// goldens cannot reach: Pascal's `TempX[i], i := 1..Nphases` overruns its
+    /// `1..3` stack array for a 4-phase device (UB — not reproduced, clamped),
+    /// and the deliberate *absence* of a re-zero before the percent-error pass is
+    /// only visible through a sub-3-phase row. Pinned here so a refactor cannot
+    /// quietly turn the clamp into a slice panic or re-zero the buffer.
+    #[test]
+    fn temp_x_cadence_clamps_and_does_not_rezero() {
+        assert_eq!(temp_x_slots(0), 0);
+        assert_eq!(temp_x_slots(1), 1);
+        assert_eq!(temp_x_slots(3), 3);
+        assert_eq!(temp_x_slots(4), 3, "Pascal's 1..3 buffer must not overrun");
+        assert_eq!(temp_x_slots(12), 3);
+
+        // 1-phase device: slots 2..3 stay at the zero `load_temp_x` wrote, and the
+        // percent-error pass leaves them there (it runs only over `n`).
+        let mut t: TempX = [7.0, 7.0, 7.0];
+        let target = [100.0, 110.0, 120.0];
+        load_temp_x(&mut t, &[80.0], 1);
+        assert_eq!(t, [80.0, 0.0, 0.0]);
+        percent_error(&mut t, &target, 1);
+        assert_eq!(t, [(1.0 - 80.0 / 100.0) * 100.0, 0.0, 0.0]);
+
+        // `Max(0.001, target)`: a zero target does not divide by zero.
+        let mut t: TempX = [5.0, 0.0, 0.0];
+        percent_error(&mut t, &[0.0, 0.0, 0.0], 1);
+        assert_eq!(t[0], (1.0 - 5.0 / 0.001) * 100.0);
+    }
 }

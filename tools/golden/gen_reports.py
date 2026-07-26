@@ -3038,14 +3038,19 @@ def gen_seasonal_overloads(d, engine_spec: str) -> None:
 #            A **disabled EnergyMeter** is deliberately absent: the pinned 0.14.5
 #            oracle access-violates in `allocateloads` on one (no `Enabled` guard
 #            before `TEnergyMeterObj.AllocateLoad`'s zone walk — DIVERGENCES §D9,
-#            fixed upstream in SVN r4115), so it is not gate-able here; the port's
-#            `Enabled` filter in this report is pinned by `estns`+`estem` instead.
+#            fixed upstream in SVN r4115), so it is not gate-able *on the allocated
+#            path*; the meter-side `Enabled` filter is pinned by `estns` instead
+#            (that AV is specific to `allocateloads`, which `estns` never runs).
 #   estns  — solved but **not** allocated: nonzero targets against an all-zero
 #            `CalculatedCurrent`/`CalculatedVoltage`, so every `%Err` takes the
 #            `(1 - 0/target)*100 = 100` form and the WLS residuals are the pure
 #            `-Weight * sum(target^2)` term. (The sensor values are set by a
 #            separate `Edit` — `RecalcElementData` runs `ZeroSensorArrays` at the
-#            end of the `New`, so same-command values would be wiped.)
+#            end of the `New`, so same-command values would be wiped.) Carries the
+#            **disabled EnergyMeter** `mdis` on its own feeder (`line.l2`): the
+#            oracle lists it in `Meters.AllNames` but omits it from the report, so
+#            dropping the port's meter-side `Enabled` filter adds an
+#            `"Energymeter.MDIS"` row and fails the row count.
 #   estem  — no EnergyMeters and no Sensors: pins the two section headers with
 #            both bodies empty.
 ESTIMATION_GROUPS = [
@@ -3086,8 +3091,13 @@ ESTIMATION_GROUPS = [
         [
             "new circuit.estns basekv=12.47 bus1=src phases=3",
             "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.3 x1=0.6",
+            "new line.l2 bus1=src bus2=d1 length=1 units=mi r1=0.3 x1=0.6",
             "new load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9",
+            "new load.ld2 bus1=d1 phases=3 kv=12.47 xfkva=300 allocationfactor=0.5 pf=0.9",
             "new energymeter.m1 element=line.l1 terminal=1 peakcurrent=(100,110,120)",
+            # Disabled: must be absent from the report (the meter-side `Enabled`
+            # filter). Its own feeder head so it is otherwise a legal meter.
+            "new energymeter.mdis element=line.l2 terminal=1 peakcurrent=(70,70,70) enabled=no",
             "new sensor.s1 element=line.l1 terminal=1 kvbase=12.47",
             "edit sensor.s1 kvs=[7.2,7.2,7.2] currents=[20,22,24]",
             "set voltagebases=[12.47]",
