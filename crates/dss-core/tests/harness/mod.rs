@@ -6,12 +6,24 @@
 //!
 //! The structs mirror the full golden schema; each integration-test binary
 //! uses only a subset, so dead-code analysis is suppressed module-wide.
+//!
+//! **Stage F (`DE_PASCALIZE_PLAN.md` Part IV.2):** the suite runs in two lanes.
+//! Everything lane-dependent lives in [`lane`] — the drift-model table turned
+//! into code (report goldens, iteration counts) — and every golden driver goes
+//! through it instead of reading the feature cfg itself. The comparators in
+//! *this* file are lane-independent by design: the continuous floors
+//! ([`tol_for`]) and the discrete-state compares are identical in both lanes,
+//! which is exactly what the drift model prescribes. The one exception is
+//! [`field_eq`]'s `Key=Value` fallback, marked in place.
 #![allow(dead_code)]
 
 /// Command-replay scenario gate shared by `golden_line_constants.rs`,
 /// `golden_der_controls.rs`, and `golden_harmonics.rs` (the split of the former
 /// Phase-7 golden bucket).
 pub mod scenario;
+
+/// Stage F two-lane test policy (parity vs default build).
+pub mod lane;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -2176,16 +2188,51 @@ fn report_lines(s: &str) -> Vec<String> {
 
 /// A field is numeric iff it parses *whole* as `f64` (so a class name like
 /// `IndMach012` stays text while a count `2` is a number).
+///
+/// Stage F: a non-numeric field that is a **`Key=Value` script token** — the
+/// shape of the `Dump`/`Save` DSS text, which a whitespace tokenizer cannot
+/// split further — gets one extra chance in the **default lane** only (see
+/// [`kv_value_eq`]).
 fn field_eq(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) {
-    match (actual.trim().parse::<f64>(), expected.trim().parse::<f64>()) {
-        (Ok(_), Ok(_)) => assert_value_matches_tol(actual.trim(), expected.trim(), rel, abs, ctx),
-        _ => assert!(
-            actual.trim().eq_ignore_ascii_case(expected.trim()),
-            "{ctx}: text field differs (actual {:?} vs expected {:?})",
-            actual.trim(),
-            expected.trim()
-        ),
+    let (a, e) = (actual.trim(), expected.trim());
+    match (a.parse::<f64>(), e.parse::<f64>()) {
+        (Ok(_), Ok(_)) => assert_value_matches_tol(a, e, rel, abs, ctx),
+        _ => {
+            if a.eq_ignore_ascii_case(e) {
+                return;
+            }
+            if !lane::PARITY && kv_value_eq(a, e, rel, abs, ctx) {
+                return;
+            }
+            panic!("{ctx}: text field differs (actual {a:?} vs expected {e:?})");
+        }
     }
+}
+
+/// Stage F **default-lane** fallback for a `Key=Value` token (`~ R=1.1`,
+/// `kV=12.47`): compare the key verbatim (case-insensitively) and the value as
+/// a number, so a pure *rendering* change (F-FMT, Part IV.2) passes while the
+/// key, the token structure and the value itself stay pinned — the byte-golden
+/// policies pass `rel = abs = 0`, so "as a number" means bit-identical `f64`.
+///
+/// Returns `false` (→ the caller's verbatim compare fails, as before) unless
+/// **both** sides are `key=<number>` with matching keys; a differing value
+/// panics from here with the key in the context. The parity lane never calls
+/// this — it keeps the verbatim token compare.
+fn kv_value_eq(actual: &str, expected: &str, rel: f64, abs: f64, ctx: &str) -> bool {
+    let (Some((ak, av)), Some((ek, ev))) = (actual.split_once('='), expected.split_once('='))
+    else {
+        return false;
+    };
+    if !ak.eq_ignore_ascii_case(ek) {
+        return false;
+    }
+    let (av, ev) = (av.trim(), ev.trim());
+    if av.parse::<f64>().is_err() || ev.parse::<f64>().is_err() {
+        return false;
+    }
+    assert_value_matches_tol(av, ev, rel, abs, &format!("{ctx} [{ak}=]"));
+    true
 }
 
 /// Compare two report bodies (oracle vs Rust) per [`ExportPolicy`] (§2.3).

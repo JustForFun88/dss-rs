@@ -68,14 +68,11 @@ fn run_scenario(sc: &Scenario) {
         .circuit()
         .unwrap_or_else(|| panic!("{}: no circuit after replay", sc.name));
 
-    // (c) convergence flag and fixed-point iteration count: exact.
+    // (c) convergence flag and fixed-point iteration count (exact in the parity
+    // lane, ±`lane::ITER_SLACK` in the default lane — Stage F drift model).
     assert!(sc.converged, "{}: oracle did not converge", sc.name);
     assert!(ckt.is_solved, "{}: Rust solution did not converge", sc.name);
-    assert_eq!(
-        ckt.solution.iteration, sc.iterations,
-        "{}: iteration count differs",
-        sc.name
-    );
+    harness::lane::compare_iterations(ckt.solution.iteration, sc.iterations, &sc.name);
 
     // Global node order must match the oracle's YNodeOrder exactly.
     let names: Vec<String> = (1..=ckt.num_nodes).map(|i| ckt.node_name(i)).collect();

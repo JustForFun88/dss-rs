@@ -13,7 +13,10 @@
 //!    *values* are noise and cannot be value-pinned. We assert the exact line
 //!    count (`2·NumNodes` + PV-phase rows), the six leading swing zeros, and that
 //!    every entry parses finite and sits at the converged magnitude;
-//!  * **PV2PQ** — byte-exact (CRLF→LF normalized) text.
+//!  * **PV2PQ** — byte-exact (CRLF→LF normalized) text, in **both** Stage F
+//!    lanes: the report is a banner plus generator names, with no number
+//!    rendered through the F-FMT seam, so F.4 cannot move its bytes (the
+//!    scoping rule is documented in `harness::lane`).
 
 use std::path::PathBuf;
 

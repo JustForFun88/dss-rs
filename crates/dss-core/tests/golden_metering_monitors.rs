@@ -194,11 +194,7 @@ fn run_generator_snap(sc: &Scenario, dss: &mut Dss) {
     let ckt = dss.circuit().expect("circuit after compile");
     assert!(sc.converged, "{}: oracle did not converge", sc.name);
     assert!(ckt.is_solved, "{}: Rust solution did not converge", sc.name);
-    assert_eq!(
-        ckt.solution.iteration, sc.iterations,
-        "{}: iteration count differs",
-        sc.name
-    );
+    harness::lane::compare_iterations(ckt.solution.iteration, sc.iterations, &sc.name);
     let names: Vec<String> = (1..=ckt.num_nodes).map(|i| ckt.node_name(i)).collect();
     assert_eq!(names, sc.node_order, "{}: node order differs", sc.name);
 

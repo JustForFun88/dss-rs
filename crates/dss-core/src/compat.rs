@@ -64,6 +64,28 @@ use crate::support::cmatrix::{CMatrix, SingularMatrix};
 mod tests;
 
 // ---------------------------------------------------------------------------
+// Lane marker
+// ---------------------------------------------------------------------------
+
+/// Which lane this engine was compiled in: `true` under
+/// `--features oracle-parity` (the bit-compat kernels above are selected),
+/// `false` in the default product build.
+///
+/// Not read by the engine — it exists so a *consumer* can tell the lanes apart.
+/// Its one use today is the Stage F test harness (`tests/harness/lane.rs`),
+/// which asserts that its own lane const equals this one: if the feature ever
+/// stopped propagating into the integration-test crate, every lane branch in
+/// the suite would silently run the default policy against a parity engine and
+/// the parity gate would evaporate. F.5's differential job reads it to label
+/// its two builds.
+#[cfg(feature = "oracle-parity")]
+pub const ORACLE_PARITY: bool = true;
+
+/// See the parity-lane twin above.
+#[cfg(not(feature = "oracle-parity"))]
+pub const ORACLE_PARITY: bool = false;
+
+// ---------------------------------------------------------------------------
 // Complex division (IV.2 row 1)
 // ---------------------------------------------------------------------------
 

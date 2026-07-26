@@ -362,29 +362,25 @@ pub(crate) fn compare_capture(
             // allows the port to converge in FEWER iterations — never more. A
             // ledger `iterations` scope overrides both (exact pair, or an explicit
             // rust_le_oracle where a target-rev delta needs pinning).
+            //
+            // Stage F (Part IV.2 drift model): both non-ledgered shapes go
+            // through `harness::lane`, which keeps them exactly as above in the
+            // parity lane and grants the default lane its documented
+            // ±`ITER_SLACK` band. Ledger-scoped pins stay exact in BOTH lanes:
+            // they are hit-tracked (fail-on-stale), so a default-lane flip that
+            // moves one must be re-triaged in the ledger, not silently absorbed.
             let iters_ledgered = ledger.is_some_and(|v| {
                 v.iterations_handled(i, ckt.solution.iteration, cp.iterations, &ctx)
             });
             if !iters_ledgered {
                 if channel.iterations_exact() {
-                    assert_eq!(
-                        ckt.solution.iteration, cp.iterations,
-                        "{ctx}: iteration count differs"
-                    );
+                    harness::lane::compare_iterations(ckt.solution.iteration, cp.iterations, &ctx);
                 } else {
-                    assert!(
-                        ckt.solution.iteration <= cp.iterations,
-                        "{ctx}: Rust used MORE iterations than the r4133 oracle ({} > {})",
+                    harness::lane::compare_iterations_le(
                         ckt.solution.iteration,
-                        cp.iterations
+                        cp.iterations,
+                        &ctx,
                     );
-                    if ckt.solution.iteration < cp.iterations {
-                        eprintln!(
-                            "{ctx}: NOTE Rust converged in {} iterations vs the r4133 \
-                             oracle's {} (allowed: <=; investigate if unexpected)",
-                            ckt.solution.iteration, cp.iterations
-                        );
-                    }
                 }
             }
             let names: Vec<String> = (1..=ckt.num_nodes).map(|j| ckt.node_name(j)).collect();

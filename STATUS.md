@@ -7,6 +7,131 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.2 — the default-lane test policy (drift model), still bit-neutral (branch `depas-stagef`, 2026-07-26)
+
+Second step of Part IV.2: the plan's **drift-model table** becomes code. The
+suite gains one lane-policy module and every affected golden driver routes
+through it; the engine itself is untouched except for a lane marker. With the
+F.1 staging still selecting the parity kernels everywhere and rendering
+unchanged, **both lanes pass trivially and byte-identically** — 2222 tests, 0
+failed, in each lane.
+
+**`crates/dss-core/tests/harness/lane.rs` (new)** — the single place the suite
+reads the lane. `pub const PARITY: bool = cfg!(feature = "oracle-parity")`, so
+both arms of every policy always compile and are type-checked in both lanes
+(the same discipline as the engine's `compat` kernels); no golden driver reads
+the cfg itself. Policies:
+
+| Quantity class | parity lane | default lane |
+|---|---|---|
+| Continuous (V, I, S, losses, registers) | `tol_for` floors | **identical, untouched** |
+| Discrete state (taps, control state, action counts, event log) | exact | **exact** |
+| Iteration count vs an oracle golden | `==` (or `<=` on r4133) | `compare_iterations`/`_le` — a ±`ITER_SLACK` = 1 band + a NOTE on any nonzero drift |
+| Text report goldens rendered through the F-FMT seam | byte-exact (`assert_bytes_eq`) | `compare_report` → `compare_export` on the SAME committed golden |
+| Deliberate divergences | (F.3 — none exist yet) | (F.3 — excluded field-by-field + expected-value tests) |
+
+**No tolerance is introduced anywhere.** Every default-lane report policy is
+`lane::exact_value_policy` = `rel = abs = 0`: the numbers must still parse to
+*bit-identical* f64 — only their spelling and padding are freed. A unit test
+pins that a 1-ulp value change fails in **both** lanes.
+
+**Which goldens are lane-split — the empirical scoping rule.** A byte golden is
+routed through `compare_report` **iff its writer renders a number through the
+F-FMT seam** (`util::fmt_g`, `report::format`'s `g`/`fixed*`/`g_w`/`fpc_sci_w`/
+`pad` family, `comma_text`) — i.e. iff F.4 can move its bytes. Everything else
+keeps the byte compare in *both* lanes, since that is the strictly stronger
+check and Stage F cannot move it. Determined by reading the writers and the
+goldens, not by category:
+
+- **split** (parity bytes / default parsed-numeric): the ~50 `Dump` script
+  goldens (incl. the masked/block-masked twins), the 4 `Show LineConstants`
+  pairs (report + `LineConstantsCode.dss`), `save_mtr`.
+- **byte in both lanes**: `Show Loops`/`Zone`/`Controlled`/`Isolated`/
+  `Topology*`, `Export UUIDs`, `Show PV2PQ_Conversions`, the incidence-matrix
+  CSVs — identifier/tree/integer text with no float rendered at all; the CIM
+  XML profiles and the AltDSS JSON captures (no `report::format` float helper —
+  JSON renders through its own `{:.16E}` in `export/json/mod.rs`, outside the
+  F-FMT inventory); the `SngSave/DblSave` **binary** goldens.
+- The rule is **enforced mechanically, in both lanes**: `compare_report`
+  asserts the golden actually carries a rendered number, so a number-free
+  golden cannot be silently down-graded to a near-vacuous token compare (unit
+  test `number_free_golden_is_rejected_by_the_scoping_guard`).
+- One *supplementary* byte-layout block inside
+  `show_powers_elem_autotrans_matches_oracle` (column widths / pad glyphs, on
+  top of the tokenizing compare) is now `if lane::PARITY` — it pins exactly
+  what F-FMT re-renders. Its numeric twin is lane-independent.
+
+**`Key=Value` script tokens.** The `Dump`/`Save` text is `~ R=1.1`, which the
+whitespace tokenizer cannot split further, so a re-rendered value would fail
+even the token compare. `harness::mod.rs`'s `field_eq` therefore gets ONE
+default-lane fallback (`kv_value_eq`, marked in place): when a non-numeric
+token fails the verbatim compare, and **both** sides are `key=<number>` with
+matching keys, the values are compared numerically under the policy tolerance
+(= exactly, here). Keys, token structure and values stay pinned; only spelling
+is freed. The parity lane never calls it. Unit-tested both ways (`R=1.100`
+passes default-only; `R=1.2` and `Rp=1.1` fail in both).
+
+**Iteration counts.** All 12 oracle-facing sites route through the helpers:
+`golden_{checkpoints,feeders,feeders_controls,ieee8500,metering_monitors,
+protection,slice,timeseries_controls}`, `harness/scenario.rs`,
+`wasm_usermodels{,_wm4}`, and the corpus gate's two non-ledgered shapes. Kept
+exact in both lanes on purpose: (a) **ledger-scoped** corpus iteration pins —
+they are hit-tracked (fail-on-stale), so a default-lane flip that moves one
+must be re-triaged in `ledger.json`, not absorbed; (b) the **Rust-vs-Rust**
+pins (`save_roundtrip`'s warm-re-solve counts) and the `src/exec/tests/*` unit
+pins — they are self-regression signals, exactly the "tracked" side of the
+drift model, and the plan only unpins counts *vs the oracle*. The
+`golden_timeseries_controls` comment recording the historical `Yeq`-restamp bug
+(which manifested as ±1 iteration drift) is preserved with a note that the
+parity lane keeps that exact pin forever, so that regression stays caught.
+
+**Non-vacuity — the split is proven by doing, in both lanes.** Nine unit tests
+in `lane.rs` (×18 harness-including binaries = 162 runs per lane) assert the
+*split itself* rather than one lane's behavior: `assert_eq!(ok, !PARITY)` for a
+rendering-only report difference, for a re-rendered `Key=Value` token, for a
+one-step iteration drift, and for the `<=` variant — each must PASS in the
+default lane and FAIL in the parity lane, whichever lane is running. Plus
+`lane_const_tracks_the_engine_build`, which asserts the harness's lane const
+equals the engine's new `dss_core::compat::ORACLE_PARITY`: if the feature ever
+stopped propagating into the integration-test crate, every lane branch would
+silently run the default policy against a parity engine and the parity gate
+would evaporate. It passes in the parity lane → feature propagation into the
+test crate is *measured*, not assumed.
+
+**Engine change (one, inside the sanctioned module).**
+`dss_core::compat::ORACLE_PARITY` — a `bool` the engine never reads, so the
+build stays bit-neutral; consumed by the harness guard above and, later, by
+F.5's differential job to label its two builds.
+
+**Deferred / recorded, not silently dropped.** (a) `export/json/circuit.rs`'s
+two `fixed_w_fpc` calls render DSS *script* text inside the JSON payload; if
+F.4 moves them, that commit routes whatever golden covers them by the same
+rule. (b) Event-log strings contain seam-rendered numbers but are drift-model
+*discrete* state (exact in both lanes) — if F-FMT changes them, F.4 decides
+(exclude the event log from the seam, or tokenize it) rather than relaxing the
+discrete row. (c) `ITER_SLACK` is 1 today; M3c/WP-R1 may need a wider band and
+must raise it here **with a measurement**, per case.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace` and the same with the feature
+— 2222 passed / 0 failed / 5 ignored in each, including the unconditional
+corpus gate (`corpus_gate_all_cases_match_engines ... ok`, 520/520 cases, 26
+ledger entries all hit). `git diff -- tests/` empty (no golden, tolerance,
+ledger or deck touched); `git status --short tests/corpus` empty after each run
+(the known intermittent `Test/AutoTrans/*` leak deleted by exact name, never a
+wide clean). Tests: +9 (all new, in `lane.rs`), 0 removed, 0 new `#[ignore]`
+(`git diff -U0` shows no removed `#[test]`/`#[ignore]`). Inventory unchanged,
+as expected for F.2: `TODO(compat)` **123** workspace / **117**
+`dss-core/src`, `HIDE_015X` **17**.
+
+One parity-lane corpus run failed and was re-run green: the *oracle* worker
+could not create `IEEE8500u_VLN_Node.txt` ("used by another process") while
+writing `Show Voltage LN Nodes` into the vendored deck folder — a Windows
+file-lock race in the shared corpus dir, not a comparison failure. The same
+binary passed before and after, and this step touches no engine path and no
+corpus file.
+
 ### DE_PASCALIZE Stage F.1 — the `oracle-parity` seam, bit-neutral in both lanes (branch `depas-stagef`, 2026-07-26)
 
 First step of the plan's **last** stage (Part IV.2). It adds the two-lane
