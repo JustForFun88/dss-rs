@@ -6,10 +6,11 @@
 use std::path::PathBuf;
 
 use crate::exec::*;
+use num_complex::Complex64;
 
 /// A small solved 3-phase feeder. Returns `(name, currents)` per element so two
 /// runs can be compared for *bit-identical* model state.
-fn solve_currents(extra: &[&str]) -> Vec<(String, Vec<f64>)> {
+fn solve_currents(extra: &[&str]) -> Vec<(String, Vec<Complex64>)> {
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.t basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000");

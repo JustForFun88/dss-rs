@@ -281,11 +281,11 @@ fn assert_gen_q_clamped(dss: &mut Dss) {
         .expect("Generator.g1");
     for k in 0..3 {
         assert!(
-            (snap.powers[2 * k] - (-266.6666666666667)).abs() < 1e-6
-                && (snap.powers[2 * k + 1] - (-500.0)).abs() < 1e-6,
+            (snap.powers[k].re - (-266.6666666666667)).abs() < 1e-6
+                && (snap.powers[k].im - (-500.0)).abs() < 1e-6,
             "g1 power[{k}] = ({}, {}) vs r4133 (-266.66667, -500.0)",
-            snap.powers[2 * k],
-            snap.powers[2 * k + 1]
+            snap.powers[k].re,
+            snap.powers[k].im
         );
     }
 }
@@ -385,7 +385,7 @@ fn ncim_vsource_reported_currents_match_oracle() {
         ZERO,
     ];
     for (k, e) in exp_i.iter().enumerate() {
-        let got = cx(snap.currents[2 * k], snap.currents[2 * k + 1]);
+        let got = snap.currents[k];
         assert!(
             (got - e).norm() < 1e-6,
             "source current[{k}]: {got:?} vs r4133 {e:?}"
@@ -399,10 +399,10 @@ fn ncim_vsource_reported_currents_match_oracle() {
     ];
     for (k, (pr, pi)) in exp_p.iter().enumerate() {
         assert!(
-            (snap.powers[2 * k] - pr).abs() < 1e-4 && (snap.powers[2 * k + 1] - pi).abs() < 1e-4,
+            (snap.powers[k].re - pr).abs() < 1e-4 && (snap.powers[k].im - pi).abs() < 1e-4,
             "source power[{k}]: ({}, {}) vs r4133 ({pr}, {pi})",
-            snap.powers[2 * k],
-            snap.powers[2 * k + 1]
+            snap.powers[k].re,
+            snap.powers[k].im
         );
     }
     assert!(

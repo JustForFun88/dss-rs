@@ -494,8 +494,8 @@ fn term1_max_current(dss: &mut Dss, name: &str) -> f64 {
     let nph = 3usize;
     let mut m = 0.0_f64;
     for k in 0..nph {
-        let re = s.currents[2 * k];
-        let im = s.currents[2 * k + 1];
+        let re = s.currents[k].re;
+        let im = s.currents[k].im;
         m = m.max((re * re + im * im).sqrt());
     }
     m

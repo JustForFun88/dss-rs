@@ -1155,9 +1155,9 @@ fn indmach012_snapshot_default_tol_matches_oracle() {
     // Terminal-1 three-phase power and the phase-a terminal current magnitude
     // (oracle dss-python 0.15.7 `Powers`/`Currents`, default tol 1e-4). The 5th
     // slip step would land P at 1200.1275 kW / |Ia| at 1593.2895 A — ~4.7e-4 off.
-    let p1 = m.powers[0] + m.powers[2] + m.powers[4];
-    let q1 = m.powers[1] + m.powers[3] + m.powers[5];
-    let i1a = (m.currents[0].powi(2) + m.currents[1].powi(2)).sqrt();
+    let p1 = m.powers[0].re + m.powers[1].re + m.powers[2].re;
+    let q1 = m.powers[0].im + m.powers[1].im + m.powers[2].im;
+    let i1a = (m.currents[0].re.powi(2) + m.currents[0].im.powi(2)).sqrt();
     assert!(rel(p1, 1200.686713) < 1e-6, "P1 (kW) = {p1}");
     assert!(rel(q1, 552.830142) < 1e-6, "Q1 (kvar) = {q1}");
     assert!(rel(i1a, 1594.017119) < 1e-6, "|I1a| (A) = {i1a}");

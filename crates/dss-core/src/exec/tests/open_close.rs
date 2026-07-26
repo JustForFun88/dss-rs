@@ -13,7 +13,7 @@ fn line_phase_currents(dss: &mut Dss) -> [f64; 3] {
         .iter()
         .find(|e| e.name.eq_ignore_ascii_case("Line.l1"))
         .expect("line snapshot");
-    let mag = |ph: usize| (l.currents[2 * ph].powi(2) + l.currents[2 * ph + 1].powi(2)).sqrt();
+    let mag = |ph: usize| (l.currents[ph].re.powi(2) + l.currents[ph].im.powi(2)).sqrt();
     [mag(0), mag(1), mag(2)]
 }
 
@@ -102,7 +102,7 @@ fn open_close_transformer_winding() {
             .iter()
             .find(|e| e.name.eq_ignore_ascii_case("Load.ld"))
             .expect("load snapshot");
-        l.powers.iter().step_by(2).sum::<f64>()
+        l.powers.iter().map(|s| s.re).sum::<f64>()
     };
 
     dss.command("solve");

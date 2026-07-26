@@ -17,6 +17,7 @@
 //! Conductors".
 
 use dss_core::exec::Dss;
+use num_complex::Complex64;
 
 /// Circuit with a wire, a CN cable, a TS cable and a 4-conductor/3-phase spacing.
 fn setup() -> Dss {
@@ -89,16 +90,14 @@ fn conductors_full_name_items_resolve_and_solve() {
         .find(|e| e.name.eq_ignore_ascii_case("Line.l1"))
         .expect("Line.l1 in snapshot");
     let r4133 = [
-        21.801_758_533_521_934,
-        0.027_068_608_997_069_532,
-        -21.801_696_277_965_675,
-        0.038_616_893_076_323_32,
+        Complex64::new(21.801_758_533_521_934, 0.027_068_608_997_069_532),
+        Complex64::new(-21.801_696_277_965_675, 0.038_616_893_076_323_32),
     ];
     for (k, &want) in r4133.iter().enumerate() {
+        let got = line.currents[k];
         assert!(
-            (line.currents[k] - want).abs() < 1e-6,
-            "Line.l1 current[{k}] {} != r4133 {want}",
-            line.currents[k]
+            (got.re - want.re).abs() < 1e-6 && (got.im - want.im).abs() < 1e-6,
+            "Line.l1 current[{k}] {got} != r4133 {want}"
         );
     }
 }
