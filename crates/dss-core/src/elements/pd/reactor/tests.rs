@@ -40,7 +40,7 @@ fn default_is_3ph_wye_shunt() {
     assert_eq!(r.cd.nterms, 2);
     assert_eq!(r.cd.yorder, 6);
     assert!(r.is_shunt);
-    assert_eq!(r.spec_type, 1);
+    assert_eq!(r.spec_type, ReactorSpecType::Kvar);
     assert_eq!(r.get_bus_name(2), "r1_1.0.0.0");
 }
 
@@ -70,7 +70,7 @@ fn yprim_3ph_wye_kvar_matches_oracle() {
 #[test]
 fn yprim_3ph_z1z2z0_matches_oracle() {
     let mut r = Reactor::new("r");
-    r.spec_type = 4;
+    r.spec_type = ReactorSpecType::SymComponents;
     r.z1 = Complex64::new(1.0, 5.0);
     r.z2 = Complex64::new(1.0, 5.0);
     r.z0 = Complex64::new(2.0, 8.0);
@@ -97,7 +97,7 @@ fn yprim_3ph_z1z2z0_matches_oracle() {
 #[test]
 fn yprim_3ph_rxmatrix_matches_oracle() {
     let mut r = Reactor::new("r");
-    r.spec_type = 3;
+    r.spec_type = ReactorSpecType::Matrices;
     r.is_shunt = false; // bus2 set → series
     // Row-major nphases² (symmetric).
     r.rmatrix = Some(vec![1.0, 0.2, 0.2, 0.2, 1.0, 0.2, 0.2, 0.2, 1.0]);
@@ -200,7 +200,7 @@ use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx};
 #[test]
 fn make_pos_sequence_kvar() {
     let mut r = Reactor::new("rx_kvar");
-    r.spec_type = 1;
+    r.spec_type = ReactorSpecType::Kvar;
     r.kvarrating = 200.0;
     r.kvrating = 12.47;
     r.connection = 0; // wye
@@ -229,7 +229,7 @@ fn make_pos_sequence_kvar() {
 fn make_pos_sequence_kvar_single_phase_wye_keeps_kv() {
     let mut r = Reactor::new("rx");
     r.cd.nphases = 1;
-    r.spec_type = 1;
+    r.spec_type = ReactorSpecType::Kvar;
     r.kvrating = 12.47;
     r.connection = 0; // wye
 
@@ -241,7 +241,7 @@ fn make_pos_sequence_kvar_single_phase_wye_keeps_kv() {
 /// SpecType 2 (R+jX) and 4 (Z1) only set `Phases := 1`.
 #[test]
 fn make_pos_sequence_rx_and_z1_just_set_phases() {
-    for st in [2, 4] {
+    for st in [ReactorSpecType::RplusJx, ReactorSpecType::SymComponents] {
         let mut r = Reactor::new("rx");
         r.spec_type = st;
         let plan = r.make_pos_sequence(&PosSeqCtx::default());
@@ -249,7 +249,7 @@ fn make_pos_sequence_rx_and_z1_just_set_phases() {
         assert_eq!(
             plan.actions,
             vec![BeginEdit, SetI32(prop::PHASES, 1), EndEdit],
-            "spec_type {st}"
+            "spec_type {st:?}"
         );
         assert!(plan.run_base);
     }
@@ -260,7 +260,7 @@ fn make_pos_sequence_rx_and_z1_just_set_phases() {
 #[test]
 fn make_pos_sequence_matrix() {
     let mut r = Reactor::new("rx_mat");
-    r.spec_type = 3;
+    r.spec_type = ReactorSpecType::Matrices;
     r.rmatrix = Some(vec![1.0, 0.2, 0.2, 0.2, 1.0, 0.2, 0.2, 0.2, 1.0]);
     r.xmatrix = Some(vec![12.0, 3.0, 3.0, 3.0, 12.0, 3.0, 3.0, 3.0, 12.0]);
 
@@ -290,9 +290,35 @@ fn make_pos_sequence_matrix() {
 fn make_pos_sequence_matrix_single_phase_is_empty_edit() {
     let mut r = Reactor::new("rx");
     r.cd.nphases = 1;
-    r.spec_type = 3;
+    r.spec_type = ReactorSpecType::Matrices;
     let plan = r.make_pos_sequence(&PosSeqCtx::default());
     use PosSeqAction::*;
     assert_eq!(plan.actions, vec![BeginEdit, EndEdit]);
     assert!(plan.run_base);
+}
+
+/// The `SpecType` ordinals are user-invisible (no property, no dump line) but
+/// they ARE the Pascal `case` selectors, so they stay pinned to the Pascal
+/// literals: `Reactor.pas:132` (the legend), `:382`/`:601` = 1, `:434`/`:474`/
+/// `:478` = 2, `:419` = 3, `:451` = 4.
+#[test]
+fn reactor_spec_type_pins_pascal_ordinals() {
+    assert_eq!(ReactorSpecType::Kvar.ordinal(), 1);
+    assert_eq!(ReactorSpecType::RplusJx.ordinal(), 2);
+    assert_eq!(ReactorSpecType::Matrices.ordinal(), 3);
+    assert_eq!(ReactorSpecType::SymComponents.ordinal(), 4);
+    for s in [
+        ReactorSpecType::Kvar,
+        ReactorSpecType::RplusJx,
+        ReactorSpecType::Matrices,
+        ReactorSpecType::SymComponents,
+    ] {
+        assert_eq!(ReactorSpecType::from_ordinal(s.ordinal()), Some(s));
+    }
+    // The set is closed: nothing outside 1..=4 exists (no property writes it).
+    for v in [i32::MIN, -1, 0, 5, 6, 100, i32::MAX] {
+        assert_eq!(ReactorSpecType::from_ordinal(v), None, "ordinal {v}");
+    }
+    // `Create` seeds kvar (`Reactor.pas:601`).
+    assert_eq!(Reactor::new("r").spec_type, ReactorSpecType::Kvar);
 }

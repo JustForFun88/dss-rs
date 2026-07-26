@@ -3,7 +3,7 @@
 
 use num_complex::Complex64;
 
-use super::Reactor;
+use super::{Reactor, ReactorSpecType};
 use crate::elements::ckt::CktElementData;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
@@ -33,8 +33,7 @@ impl Reactor {
         let w = two_pi * self.cd.base_frequency;
 
         match self.spec_type {
-            1 => {
-                // kvar
+            ReactorSpecType::Kvar => {
                 let kvar_per_phase = self.kvarrating / self.cd.nphases as f64;
                 let phase_kv = self.phase_kv();
                 self.z.im = phase_kv * phase_kv * 1000.0 / kvar_per_phase;
@@ -47,11 +46,14 @@ impl Reactor {
                     self.emerg_amps = kvar_per_phase / phase_kv * 1.35;
                 }
             }
-            2 => {
-                // R + jX: nothing much to do.
+            ReactorSpecType::RplusJx => {
+                // Nothing much to do.
                 self.l = self.z.im / w;
             }
-            _ => {} // matrices / sym components: handled in CalcYPrim
+            // Pascal's `case` has an empty `3:` arm and no `4:` arm at all
+            // (`Reactor.pas:661-665`): matrices / sym components are handled in
+            // `CalcYPrim`.
+            ReactorSpecType::Matrices | ReactorSpecType::SymComponents => {}
         }
 
         if self.rp_specified && self.rp != 0.0 {
@@ -60,7 +62,7 @@ impl Reactor {
             self.gp = 0.0; // default to 0 if Rp = 0
         }
 
-        if self.is_parallel && self.spec_type == 3 {
+        if self.is_parallel && self.spec_type == ReactorSpecType::Matrices {
             let nphases = self.cd.nphases;
             let n2 = nphases * nphases;
             // Copy Rmatrix to Gmatrix and invert (Pascal comment notes the source
@@ -203,7 +205,7 @@ impl CktElement for Reactor {
         let mut work = CMatrix::new(yorder);
 
         match self.spec_type {
-            1 | 2 => {
+            ReactorSpecType::Kvar | ReactorSpecType::RplusJx => {
                 // Some form of R and X specified. Adjust for frequency: when
                 // assigned, RCurve/LCurve scale R/L by GetYValue(FYprimFreq) — the
                 // curve's X axis is Hz, not the frequency multiplier (Pascal
@@ -230,8 +232,7 @@ impl CktElement for Reactor {
                     work.stamp_two_terminal_diag(nphases, nphases, value);
                 }
             }
-            3 => {
-                // R/X matrices.
+            ReactorSpecType::Matrices => {
                 if self.is_parallel {
                     let g = self
                         .gmatrix
@@ -265,8 +266,8 @@ impl CktElement for Reactor {
                     Self::stamp_series(&mut work, &mut zmat, nphases);
                 }
             }
-            _ => {
-                // Symmetrical-component Z's specified (SpecType 4).
+            ReactorSpecType::SymComponents => {
+                // Symmetrical-component Z's specified.
                 let mut zmat = CMatrix::new(nphases);
                 // Diagonal — all the same.
                 let mut value = if nphases == 1 {
@@ -354,12 +355,11 @@ impl CktElement for Reactor {
         let mut actions = vec![PosSeqAction::BeginEdit];
 
         match self.spec_type {
-            2 | 4 => {
-                // R + jX  /  symmetrical components (Z1 specified)
+            ReactorSpecType::RplusJx | ReactorSpecType::SymComponents => {
                 actions.push(PosSeqAction::SetI32(PHASES, 1));
             }
-            1 => {
-                // kvar: divide among 3 phases.
+            ReactorSpecType::Kvar => {
+                // Divide among 3 phases.
                 let kvar_per_phase = self.kvarrating / 3.0;
                 let phase_kv = if nphases > 1 || self.connection != 0 {
                     self.kvrating / sqrt3()
@@ -371,7 +371,7 @@ impl CktElement for Reactor {
                 actions.push(PosSeqAction::SetF64(KVAR, kvar_per_phase));
                 // Leave R as specified.
             }
-            3 => {
+            ReactorSpecType::Matrices => {
                 if nphases > 1 {
                     // Average the self/mutual of RMatrix and XMatrix. `avg`
                     // mirrors the Pascal loops exactly (`i := 2..N`, `j := i..N`
@@ -400,7 +400,6 @@ impl CktElement for Reactor {
                     actions.push(PosSeqAction::SetF64(X, x));
                 }
             }
-            _ => {}
         }
 
         actions.push(PosSeqAction::EndEdit);

@@ -2,7 +2,7 @@
 
 use num_complex::Complex64;
 
-use super::Reactor;
+use super::{Reactor, ReactorSpecType};
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
@@ -266,7 +266,7 @@ impl DssObject for Reactor {
                     self.cd.yorder = self.cd.nterms * self.cd.nconds;
                 }
             }
-            KVAR => self.spec_type = 1,
+            KVAR => self.spec_type = ReactorSpecType::Kvar,
             CONN => match self.connection {
                 1 => {
                     // Delta: force one terminal.
@@ -287,11 +287,12 @@ impl DssObject for Reactor {
                     self.cd.set_nconds(np);
                 }
             },
-            RMATRIX | XMATRIX => self.spec_type = 3,
-            X => self.spec_type = 2,
+            RMATRIX | XMATRIX => self.spec_type = ReactorSpecType::Matrices,
+            X => self.spec_type = ReactorSpecType::RplusJx,
             RP => self.rp_specified = true,
             Z1 => {
-                self.spec_type = 4; // have to set Z1 to get this mode
+                // have to set Z1 to get this mode
+                self.spec_type = ReactorSpecType::SymComponents;
                 if !self.z2_specified {
                     self.z2 = self.z1;
                 }
@@ -301,9 +302,9 @@ impl DssObject for Reactor {
             }
             Z2 => self.z2_specified = true,
             Z0 => self.z0_specified = true,
-            Z => self.spec_type = 2,
+            Z => self.spec_type = ReactorSpecType::RplusJx,
             LMH => {
-                self.spec_type = 2;
+                self.spec_type = ReactorSpecType::RplusJx;
                 self.z.im = self.l * (2.0 * std::f64::consts::PI) * self.cd.base_frequency;
             }
             NORMAMPS => self.norm_amps_specified = true,

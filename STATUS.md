@@ -7,6 +7,65 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE W3.2 (a) — the derived `SpecType` codes: `ReactorSpecType` / `CapacitorSpecType`, five `_` fall-throughs eliminated (branch `depas-final`, 2026-07-26)
+
+Stratum **[A]** bit-neutral, **type-channel only**. First half of P1-tail escape
+item **2** ("item 8 — the remaining bare-`i32` `DssEnum` fields"). Both fields
+are *derived* codes: no property writes them, so — unlike every other family in
+this wave — they have **no `DssEnum` registry entry** and the proof is the
+Pascal declaration + the assignment sites alone.
+
+| enum | ordinals (proven) | written by |
+|---|---|---|
+| **`ReactorSpecType`** (`pd/reactor/mod.rs`) | Kvar=1, RplusJx=2, Matrices=3, SymComponents=4 (`Reactor.pas:132` legend) | six property side effects: `kvar`→1 (`:382`), `RMatrix`/`XMatrix`→3 (`:419`), `X`→2 (`:434`), `Z1`→4 (`:451`), `Z`→2 (`:474`), `LmH`→2 (`:478`); `Create`→1 (`:601`) |
+| **`CapacitorSpecType`** (`pd/capacitor/mod.rs`) | Kvar=1, Cuf=2, CMatrix=3 (`Capacitor.pas:584` legend) | `kvar`→1 (`:377`), `cmatrix`→3 (`:381`), `cuf`→2 (`:385`); `Create`→1 (`:584`) |
+
+**The value sets are provably closed**, which is the whole point of the step:
+the escape record called out `_` fall-throughs in `reactor/solve.rs`, and with
+a closed enum every one of them becomes an exhaustive `match`. Five vanished —
+three in `reactor/solve.rs` (`recalc`, `calc_yprim`, `make_pos_sequence`) and
+two in `capacitor/solve.rs` (`recalc`, `make_pos_sequence`) — plus the two
+`_ => {}` arms in `capacitor/steps.rs`'s `NumSteps` re-allocation pair, seven in
+total. Each replacement arm is the *named* Pascal arm it always was, with the
+Pascal line cited where the arm is empty on purpose (`Reactor.pas:661-665` has
+an empty `3:` and **no** `4:` at all; `Capacitor.pas:623-660` has no `3:`, so
+`PhasekV` keeps its pre-`case` `1.0` seeding that the Norm/Emerg amps then
+divide by; `Capacitor.pas:427-430`'s `3:` is the "nothing to do" arm). A new
+variant is now a compile error instead of a silent fall-through.
+
+**Reactor's is invisible, Capacitor's is not.** The reactor code never leaves
+the engine. The capacitor's *does*: `DumpProperties` with `Complete` writes the
+bare `SpecType=<int>` line (`Capacitor.pas:764`), so `dump.rs` emits
+`.ordinal()` and the `dump_capacitor` golden is the end-to-end pin. Kept
+verbatim: the capacitor `CMatrix` + `has_zl` branch still carries its
+capi015 ×1.000001 perturbation (`DIVERGENCES.md` §B1) — it is now the named
+`CapacitorSpecType::CMatrix` arm rather than a `_`, nothing else changed.
+
+**Pins.** `reactor_spec_type_pins_pascal_ordinals` and
+`capacitor_spec_type_pins_pascal_ordinals_and_the_dump_line`: the literal
+ordinals, the round-trip, `from_ordinal` = `None` for everything outside the
+range (the *closedness* claim these matches now rely on), the `Create` seed, and
+for the capacitor the rendered `SpecType=1` dump text. Not added to
+`registry_enum_coupling`, deliberately and for the first time in this wave:
+neither code has a registry entry to couple to (noted at the tests).
+
+**Bit-neutrality evidence.** `git diff --stat HEAD -- tests/` **empty**;
+`TODO(compat)` **117 / 68 files** before and after; no new
+`downcast`/`as_any`/`Rc`/`RefCell`/`Mutex`/statics/`oracle-parity` (`git diff
+-U0` grep = 0 additions). String-literal multiset diff of the 10 changed files:
+three added assertion messages plus `"spec_type {st}"` → `"{st:?}"` (a test
+message; the field is now `Debug`, not `Display`); **zero** runtime strings —
+the `SpecType={}` format text is byte-identical, only its argument is now
+`.ordinal()`.
+
+**Gate:** `cargo fmt --all --check` · `cargo clippy --workspace --all-targets -D
+warnings` · `cargo test --workspace` — green, exit 0, **66 `test result: ok`
+groups, 2032 passed, 0 failed, 5 ignored** (2030 → 2032 = the two new pins),
+`corpus_gate_all_cases_match_engines … ok` on both channels. `tests/corpus`
+pristine (`git status --short tests/corpus` empty — no run-artifacts this
+round). Ritual 0 held at start and before the commit: 186 `.pas` under
+`.inputs/dss_capi`; `cargo` = `C:\Users\Admin\.cargo\bin\cargo.exe`.
+
 ### DE_PASCALIZE W3.1 — the shared `EControlAction` channel: one `ControlAction` enum across all five control classes (branch `depas-final`, 2026-07-26)
 
 Stratum **[A]** bit-neutral, **type-channel only**: no arithmetic, no queue
