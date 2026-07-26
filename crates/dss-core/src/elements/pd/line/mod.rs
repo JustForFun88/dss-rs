@@ -25,10 +25,10 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::conductor_data::{
     CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME, ConductorObj,
 };
-use crate::elements::general::line_code::LineType;
+use crate::elements::general::line_code::{LineCodeObj, LineType};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::elements::traits::ElemId;
+use crate::elements::traits::Idx;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
@@ -291,9 +291,10 @@ pub struct Line {
     pub line_code_units: LineUnits,
     /// `FUnitsConvert`.
     pub units_convert: f64,
-    /// `LineCodeObj` reference (the resolved code's stable [`ElemId`]) and its
-    /// name for dumps; `None`/empty before any `linecode=`.
-    pub line_code_ref: Option<ElemId>,
+    /// `LineCodeObj` reference (the resolved code's stable [`Idx`] — `linecode=`
+    /// is an `object_ref_class("LineCode", …)` property, so the class is static)
+    /// and its name for dumps; `None`/empty before any `linecode=`.
+    pub line_code_ref: Option<Idx<LineCodeObj>>,
     pub line_code_name: String,
     pub is_switch: bool,
     pub sym_components_model: bool,

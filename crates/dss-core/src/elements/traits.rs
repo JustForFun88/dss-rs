@@ -27,6 +27,15 @@ use crate::support::dynamics::IterationFlag;
 /// for the registry-side producers that still discover a class by position.
 pub use crate::obj::arena::ElemId;
 
+/// The class-specific half of [`ElemId`] — a bare arena position that carries
+/// its element type in the type system. Re-exported here for the element
+/// modules whose object-ref fields have a *statically known* target class
+/// (`Line::line_code_ref` is always a `LineCode`, `Load::daily_shape_ref`
+/// always a `LoadShape`, …): those keep `Option<Idx<T>>` instead of the
+/// class-erased `Option<ElemId>`, so a reader cannot look the handle up in the
+/// wrong arena. The writers narrow with [`crate::obj::arena::ResolvedObj::idx`].
+pub use crate::obj::arena::Idx;
+
 /// Element storage the solver walks — implemented by the executive's class
 /// registry. Replaces Pascal's `TDSSPointerList` of `TDSSCktElement`.
 ///

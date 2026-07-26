@@ -32,7 +32,7 @@ use num_complex::Complex64;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::dyneq_pce::DynEqPceData;
-use crate::elements::traits::ElemId;
+use crate::elements::traits::Idx;
 use crate::support::cmatrix::CMatrix;
 use crate::support::complexutil::{Polar, pdeg_to_complex};
 use crate::support::dynamics::IterationFlag;
@@ -465,7 +465,7 @@ pub struct InvBasedPceData {
     /// `Connection` — wye/delta.
     pub connection: Connection,
 
-    // Shape references (snapshot-clone + ElemId, the WP4.2/WP5.3 pattern).
+    // Shape references (snapshot-clone + typed Idx, the WP4.2/WP5.3 pattern).
     /// `YearlyShapeObj` name.
     pub yearly_shape: String,
     /// `DailyShapeObj` name.
@@ -475,14 +475,14 @@ pub struct InvBasedPceData {
     pub yearly_shape_obj: Option<LoadShapeObj>,
     pub daily_shape_obj: Option<LoadShapeObj>,
     pub duty_shape_obj: Option<LoadShapeObj>,
-    pub yearly_shape_ref: Option<ElemId>,
-    pub daily_shape_ref: Option<ElemId>,
-    pub duty_shape_ref: Option<ElemId>,
+    pub yearly_shape_ref: Option<Idx<LoadShapeObj>>,
+    pub daily_shape_ref: Option<Idx<LoadShapeObj>>,
+    pub duty_shape_ref: Option<Idx<LoadShapeObj>>,
 
     /// `InverterCurveObj` — inverter efficiency curve (XYcurve) name.
     pub inverter_curve: String,
     pub inverter_curve_obj: Option<XyCurveObj>,
-    pub inverter_curve_ref: Option<ElemId>,
+    pub inverter_curve_ref: Option<Idx<XyCurveObj>>,
 
     // Inverter functionality variables.
     /// `FpctCutIn` — % cut-in.
