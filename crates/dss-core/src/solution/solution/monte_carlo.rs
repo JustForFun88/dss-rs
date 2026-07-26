@@ -402,11 +402,30 @@ mod tests {
         }
     }
 
+    /// The one class this double can serve. Every routing entry point asserts
+    /// against it, so a wrong-ordinal lookup (a `TypedStore` handing the wrong
+    /// `cls` to `arena`/`arena_mut`, or a handle of another class reaching
+    /// `obj`/`obj_mut`) fails loudly here instead of being silently answered
+    /// with the Fault arena.
+    fn fault_ord() -> usize {
+        <Fault as crate::obj::arena::ArenaClass>::CLASS_ORD
+    }
+
+    fn assert_fault_ord(cls: usize) {
+        assert_eq!(
+            cls,
+            fault_ord(),
+            "FaultStore addressed with a foreign class"
+        );
+    }
+
     impl ElemStore for FaultStore {
         fn obj_mut(&mut self, r: ElemId) -> &mut dyn DssObject {
+            assert_fault_ord(r.class_ord());
             self.arena.obj_mut(r.index())
         }
         fn obj(&self, r: ElemId) -> &dyn DssObject {
+            assert_fault_ord(r.class_ord());
             self.arena.obj(r.index())
         }
         fn kind(&self, _r: ElemId) -> crate::circuit::ElemKind {
@@ -435,10 +454,12 @@ mod tests {
         ) -> (&mut dyn DssObject, &mut dyn DssObject, &mut dyn DssObject) {
             unimplemented!()
         }
-        fn arena(&self, _cls: usize) -> &crate::obj::arena::ClassArena {
+        fn arena(&self, cls: usize) -> &crate::obj::arena::ClassArena {
+            assert_fault_ord(cls);
             &self.arena
         }
-        fn arena_mut(&mut self, _cls: usize) -> &mut crate::obj::arena::ClassArena {
+        fn arena_mut(&mut self, cls: usize) -> &mut crate::obj::arena::ClassArena {
+            assert_fault_ord(cls);
             &mut self.arena
         }
         fn arena_pair_mut(

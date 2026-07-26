@@ -615,14 +615,6 @@ pub trait DssObject: Send {
         None
     }
 
-    /// Conductor-catalog view (Pascal `obj is TConductorDataObj`). `Some` only
-    /// for the `WireData`/`CNData`/`TSData` classes; the LineGeometry/Line
-    /// conductor resolution reads geometry/ratings/class through this instead
-    /// of an `Any` downcast chain (R0, Category C). `None` otherwise.
-    fn as_conductor(&self) -> Option<&dyn crate::elements::general::conductor_data::ConductorData> {
-        None
-    }
-
     /// `TDynEqPCE` view (Pascal `obj is TDynEqPCE`). `Some` only for the
     /// DynamicExp-capable PC elements (Generator/PVSystem/Storage); used by the
     /// AltDSS JSON export to append the `"DynInit"` tail from `UserDynInit`

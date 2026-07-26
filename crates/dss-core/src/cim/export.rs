@@ -16,6 +16,9 @@ use std::collections::HashMap;
 
 use crate::circuit::Circuit;
 use crate::elements::control::CapControl;
+use crate::elements::general::conductor_data::cn_data::CnDataObj;
+use crate::elements::general::conductor_data::ts_data::TsDataObj;
+use crate::elements::general::conductor_data::wire_data::WireDataObj;
 use crate::elements::general::conductor_data::{
     CableGeom, ConductorData, ConductorGeom, ConductorKind, ConductorObj,
 };
@@ -32,6 +35,7 @@ use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
 use crate::elements::traits::{CktElement, ElemId};
 use crate::exec::registry::DssClass;
+use crate::obj::arena::{ArenaClass, ClassArena};
 use crate::obj::base::DssObject;
 use crate::support::line_units::LineUnits;
 
@@ -1569,10 +1573,17 @@ fn attach_switch_phases(buf: &mut writer::Writer, cim: &mut CimExporter, snap: &
 }
 
 /// A catalog conductor's [`ConductorGeom`] plus its `NormAmps` (the base
-/// `TConductorData` current rating, not carried by `ConductorGeom`); `None` for
-/// a non-conductor object.
-fn conductor_geom_amps(cond: &dyn DssObject) -> Option<(ConductorGeom, f64)> {
-    cond.as_conductor().map(|c| (c.geom(), c.amps().0))
+/// `TConductorData` current rating, not carried by `ConductorGeom`), read
+/// straight out of the class's own arena; `None` when `arena` is not `T`'s
+/// arena or `oi` is out of range — the same total-ness the removed
+/// `DssObject::as_conductor()` probe had (its three callers each walk their own
+/// `WireData`/`TSData`/`CNData` arena, so the `None` arm is the unreachable
+/// one it always was).
+fn conductor_geom_amps<T: ArenaClass + ConductorData>(
+    arena: &ClassArena,
+    oi: usize,
+) -> Option<(ConductorGeom, f64)> {
+    arena.get::<T>(oi).map(|c| (c.geom(), c.amps().0))
 }
 
 /// The index of the (case-insensitive) class in the class list, or `None`.
@@ -1789,7 +1800,7 @@ fn write_wire_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
-        let Some((geom, norm)) = conductor_geom_amps(classes[ci].arena.obj(oi)) else {
+        let Some((geom, norm)) = conductor_geom_amps::<WireDataObj>(&classes[ci].arena, oi) else {
             continue;
         };
         writer::start_instance(buf, ProfileChoice::Cat, "OverheadWireInfo", uuid, &name);
@@ -1808,7 +1819,7 @@ fn write_ts_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
-        let Some((geom, norm)) = conductor_geom_amps(classes[ci].arena.obj(oi)) else {
+        let Some((geom, norm)) = conductor_geom_amps::<TsDataObj>(&classes[ci].arena, oi) else {
             continue;
         };
         writer::start_instance(buf, ProfileChoice::Cat, "TapeShieldCableInfo", uuid, &name);
@@ -1846,7 +1857,7 @@ fn write_cn_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
     for oi in 0..classes[ci].arena.len() {
         let uuid = classes[ci].arena[oi].data_mut().uuid();
         let name = classes[ci].arena[oi].data().name().to_string();
-        let Some((geom, norm)) = conductor_geom_amps(classes[ci].arena.obj(oi)) else {
+        let Some((geom, norm)) = conductor_geom_amps::<CnDataObj>(&classes[ci].arena, oi) else {
             continue;
         };
         writer::start_instance(

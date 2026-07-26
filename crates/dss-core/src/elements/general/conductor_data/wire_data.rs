@@ -70,10 +70,6 @@ impl DssObject for WireDataObj {
         &mut self.data
     }
 
-    fn as_conductor(&self) -> Option<&dyn crate::elements::general::conductor_data::ConductorData> {
-        Some(self)
-    }
-
     fn get_f64(&self, idx: usize) -> f64 {
         self.cond.get_f64(idx) // global ordinal == ConductorData-relative
     }

@@ -185,10 +185,6 @@ macro_rules! ckt_view_mut {
     }};
 }
 
-/// The same `ckt`/`data` tag dispatch applied to a *concrete* `&T`/`&mut T`
-/// (rather than an arena slot) — how [`ArenaClass::ckt_ref`]/
-/// [`ArenaClass::ckt_mut`] upcast a typed element to `&dyn CktElement` without
-/// a downcast or an `Any` round-trip.
 /// The `ckt`/`data` tag dispatch for an *owned* clone: a boxed
 /// `dyn CktElement` for a circuit class, `None` for a data class (see
 /// [`ClassArena::clone_ckt`]).
@@ -202,6 +198,10 @@ macro_rules! clone_ckt_view {
     }};
 }
 
+/// The same `ckt`/`data` tag dispatch applied to a *concrete* `&T`/`&mut T`
+/// (rather than an arena slot) — how [`ArenaClass::ckt_ref`]/
+/// [`ArenaClass::ckt_mut`] upcast a typed element to `&dyn CktElement` without
+/// a downcast or an `Any` round-trip.
 macro_rules! ckt_self_ref {
     (ckt, $this:ident) => {
         Some($this as &dyn CktElement)
@@ -211,6 +211,7 @@ macro_rules! ckt_self_ref {
         None
     }};
 }
+/// Mutable [`ckt_self_ref`].
 macro_rules! ckt_self_mut {
     (ckt, $this:ident) => {
         Some($this as &mut dyn CktElement)
@@ -502,7 +503,7 @@ macro_rules! define_arena {
                     $( ClassArena::$variant(v) => {
                         let [a, b] = v
                             .get_disjoint_mut([i, j])
-                            .expect("triple_mut: object index out of range");
+                            .expect("pair_ckt_mut: object index out of range");
                         (ckt_self_mut!($kind, a), ckt_self_mut!($kind, b))
                     } )*
                 }
@@ -1181,37 +1182,73 @@ mod tests {
                     assert!(<$ty as ArenaClass>::CLASS_NAME.eq_ignore_ascii_case($cname));
 
                     let mut e = Elements::new();
+                    // TWO objects per class: with a single one every index in
+                    // the test would be 0, so a class-generic `get(0)`-instead-
+                    // of-`get(idx)` slip inside the accessors would pass. Both
+                    // slots are address-checked below.
                     e.push_new(cls, "x");
+                    e.push_new(cls, "y");
                     let arena = &mut e.arenas[cls];
 
                     // The typed read IS the very object the generic `dyn`
                     // view hands out (same address, no reinterpretation) --
                     // the equivalence the removed `Any` downcast used to
-                    // establish.
-                    let typed = arena.get::<$ty>(0).expect("typed read") as *const $ty
-                        as *const ();
-                    let via_obj = arena.obj(0) as *const dyn DssObject as *const ();
-                    assert!(
-                        std::ptr::eq(typed, via_obj),
-                        "{}: typed read is not the stored object",
-                        $cname
-                    );
+                    // establish. Checked at BOTH indices, so the typed
+                    // accessor must honour the index it is given.
+                    for i in 0..2usize {
+                        let typed = arena.get::<$ty>(i).expect("typed read") as *const $ty
+                            as *const ();
+                        let via_obj = arena.obj(i) as *const dyn DssObject as *const ();
+                        assert!(
+                            std::ptr::eq(typed, via_obj),
+                            "{}: typed read #{i} is not the stored object",
+                            $cname
+                        );
+                        let via_mut = arena.get_mut::<$ty>(i).expect("typed read") as *mut $ty
+                            as *const ();
+                        assert!(
+                            std::ptr::eq(via_mut, via_obj),
+                            "{}: typed mut read #{i} is not the stored object",
+                            $cname
+                        );
+                        let via_slice = &arena.all::<$ty>().expect("typed slice")[i]
+                            as *const $ty as *const ();
+                        assert!(
+                            std::ptr::eq(via_slice, via_obj),
+                            "{}: typed slice #{i} is not the stored object",
+                            $cname
+                        );
+                    }
+                    // The two slots are distinct objects (the index channel is
+                    // live, not a constant fold onto slot 0).
+                    assert!(!std::ptr::eq(
+                        arena.get::<$ty>(0).unwrap() as *const $ty as *const (),
+                        arena.get::<$ty>(1).unwrap() as *const $ty as *const (),
+                    ));
                     // Out of range is `None`, not a panic (like `objects.get`).
-                    assert!(arena.get::<$ty>(1).is_none());
-                    assert!(arena.get_mut::<$ty>(1).is_none());
-                    assert_eq!(arena.all::<$ty>().expect("typed slice").len(), 1);
+                    assert!(arena.get::<$ty>(2).is_none());
+                    assert!(arena.get_mut::<$ty>(2).is_none());
+                    assert_eq!(arena.all::<$ty>().expect("typed slice").len(), 2);
 
-                    // Handle ⇄ class round-trip.
-                    let id = <$ty as ArenaClass>::id(0);
-                    assert_eq!(id.class_ord(), cls);
-                    assert_eq!(id.index(), 0);
-                    assert_eq!(<$ty as ArenaClass>::idx_of(id).expect("same class").get(), 0);
+                    // Handle ⇄ class round-trip, at both indices.
+                    for i in 0..2usize {
+                        let id = <$ty as ArenaClass>::id(i);
+                        assert_eq!(id.class_ord(), cls);
+                        assert_eq!(id.index(), i);
+                        assert_eq!(
+                            <$ty as ArenaClass>::idx_of(id).expect("same class").get(),
+                            i
+                        );
+                    }
 
                     // The concrete `ckt`/`data` views agree with the arena tag.
                     let is_ckt = arena.try_ckt_elem(0).is_some();
+                    assert_eq!(arena.try_ckt_elem(1).is_some(), is_ckt);
+                    assert_eq!(arena.try_ckt_elem_mut(1).is_some(), is_ckt);
                     assert_eq!(arena.get::<$ty>(0).unwrap().ckt_ref().is_some(), is_ckt);
                     assert_eq!(arena.get_mut::<$ty>(0).unwrap().ckt_mut().is_some(), is_ckt);
                     assert_eq!(arena.clone_ckt(0).is_some(), is_ckt, "{}: clone_ckt tag", $cname);
+                    assert_eq!(arena.clone_ckt(1).is_some(), is_ckt, "{}: clone_ckt tag", $cname);
 
                     covered += 1;
                 })*

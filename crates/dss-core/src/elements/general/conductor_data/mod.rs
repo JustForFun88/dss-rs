@@ -391,7 +391,8 @@ pub enum ConductorKind {
 
 /// The shared behavior of the three conductor catalog classes
 /// (`WireData`/`CNData`/`TSData`, Pascal `TConductorDataObj` and its cable
-/// subtree). Acquired from a [`DssObject`] via `as_conductor()`, this replaces
+/// subtree). Implemented by the three catalog classes and by [`ConductorObj`],
+/// this replaces
 /// the `FWireData[i] is T…DataObj` downcast dispatch (R0, Category C): the
 /// LineGeometry/Line resolution reads `geom()`/`amps()`/`conductor_kind()`
 /// through the trait instead of probing each concrete type.
