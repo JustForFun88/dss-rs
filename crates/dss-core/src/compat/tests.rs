@@ -27,18 +27,18 @@ const DIV_CASES: [(Complex64, Complex64); 6] = [
 const DIV_REL_BOUND: f64 = 1.0e-15;
 
 // ---------------------------------------------------------------------------
-// F.1 staging pin
+// Alias selection per lane (F.3 flips one kernel family per commit)
 // ---------------------------------------------------------------------------
 
-/// F.1 lands the seam **bit-neutral**: every `compat::` alias selects the
-/// parity kernel in *both* lanes, so the whole existing gate (byte goldens,
-/// checkpoint Y, corpus floors) is unchanged in the default build too.
+/// The `dss-core` kernels **not yet flipped**: `cdiv`, `invert` and
+/// `etk_invert` still select the parity impl in *both* lanes, so the existing
+/// gate (byte goldens, checkpoint Y, corpus floors) is unchanged in the default
+/// build too until their own commit lands.
 ///
-/// Each assertion below is behavioral (a value on which the two `_impl`s
-/// genuinely differ), so it cannot pass by accident. F.3 flips the aliases one
-/// kernel family at a time and rewrites this test into per-lane expectations.
+/// Each assertion is behavioral (a value on which the two `_impl`s genuinely
+/// differ), so it cannot pass by accident.
 #[test]
-fn f1_staging_every_alias_selects_the_parity_kernel_in_both_lanes() {
+fn unflipped_aliases_still_select_the_parity_kernel_in_both_lanes() {
     // Complex division: the |den.re| > |den.im| branch differs by 1 ULP.
     let (num, den) = DIV_CASES[0];
     assert_eq!(
@@ -62,10 +62,21 @@ fn f1_staging_every_alias_selects_the_parity_kernel_in_both_lanes() {
     assert!(etk_invert(&mut a, 2).is_err());
     let mut a = [0.0, 1.0, 1.0, 0.0];
     assert!(etk_invert_partial_pivot_impl(&mut a, 2).is_ok());
+}
 
-    // Single-point stddev: the upstream value-as-stddev bug.
-    assert_eq!(stddev_single_point(3.5), 3.5);
+/// The **flipped** row: `stddev_single_point` resolves to the upstream quirk
+/// under `oracle-parity` and to the correct `0.0` otherwise. Asserted on a
+/// value where the impls disagree, so neither lane passes vacuously; the
+/// engine-visible end of the same divergence is pinned by
+/// `mathutil::tests::single_point_std_dev_is_the_lane_kernel` and by the
+/// `LoadShape.stddev` deck-level test.
+#[test]
+fn stddev_alias_is_the_lane_kernel() {
+    assert_eq!(stddev_single_point_value_impl(3.5), 3.5);
     assert_eq!(stddev_single_point_zero_impl(3.5), 0.0);
+
+    let expected = if ORACLE_PARITY { 3.5 } else { 0.0 };
+    assert_eq!(stddev_single_point(3.5), expected);
 }
 
 /// Feature propagation is **measured, not assumed**. Two of the plan's kernel

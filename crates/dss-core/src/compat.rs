@@ -398,8 +398,7 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 
 /// The "standard deviation" of a one-element sample, upstream-faithful: for a
 /// single point the Pascal code returns the point *itself* (not 0), reproduced
-/// bug-for-bug. The upstream-inexactness markers stay at the four call sites in
-/// [`crate::support::mathutil`] until the F.3 sweep resolves them.
+/// bug-for-bug at the four [`crate::support::mathutil`] entry points.
 #[inline]
 pub fn stddev_single_point_value_impl(value: f64) -> f64 {
     value
@@ -407,7 +406,9 @@ pub fn stddev_single_point_value_impl(value: f64) -> f64 {
 
 /// The standard deviation of a one-element sample: `0.0` — the mathematically
 /// correct answer, and a **deliberate divergence** from the oracle (not a
-/// tolerance question), pinned by its own expected-value test in F.3.
+/// tolerance question), pinned by expected-value tests at the four
+/// [`crate::support::mathutil`] entry points and at the observable
+/// `LoadShape`/`TShape`/`PriceShape` property.
 #[inline]
 pub fn stddev_single_point_zero_impl(_value: f64) -> f64 {
     0.0
@@ -415,7 +416,6 @@ pub fn stddev_single_point_zero_impl(_value: f64) -> f64 {
 
 #[cfg(feature = "oracle-parity")]
 pub use stddev_single_point_value_impl as stddev_single_point;
-// F.1 staging: see the note at `cdiv` — F.3 flips this to
-// `stddev_single_point_zero_impl`.
+// F.3: a one-point sample has no spread; the default lane says so.
 #[cfg(not(feature = "oracle-parity"))]
-pub use stddev_single_point_value_impl as stddev_single_point;
+pub use stddev_single_point_zero_impl as stddev_single_point;

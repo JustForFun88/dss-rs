@@ -193,8 +193,11 @@ pub fn quasi_log_normal(mean: f64, rand: impl FnMut() -> f64) -> f64 {
 
 /// Sample mean and standard deviation (Pascal `RCDMeanAndStdDev`).
 pub fn mean_and_std_dev(data: &[f64]) -> (f64, f64) {
-    // TODO(compat): for a single point the Pascal code returns the point
-    // itself as the "standard deviation" (not 0); reproduced bug-for-bug.
+    // A one-element sample has no spread. The Pascal code nevertheless returns
+    // the point *itself* as the "standard deviation" (it falls through to the
+    // `Mean` assignment and never clears `StdDev`) — the Stage F
+    // `stddev_single_point` row: reproduced in the parity lane, `0.0` in the
+    // default lane. Same at the three siblings below.
     if data.len() == 1 {
         return (data[0], compat::stddev_single_point(data[0]));
     }
@@ -213,8 +216,7 @@ pub fn mean_and_std_dev(data: &[f64]) -> (f64, f64) {
 /// rounding step verified bit-exact against an FPC 3.2.2 x86_64 probe
 /// (ppcrossx64; `tools/fpc/single_prec_probe.pas`).
 pub fn mean_and_std_dev_single(data: &[f32]) -> (f64, f64) {
-    // TODO(compat): single-point "standard deviation" equals the point itself
-    // (see mean_and_std_dev).
+    // Single-point sample — see `mean_and_std_dev`.
     if data.len() == 1 {
         return (
             f64::from(data[0]),
@@ -243,8 +245,7 @@ pub fn mean_and_std_dev_single(data: &[f32]) -> (f64, f64) {
 pub fn curve_mean_and_std_dev_single(y: &[f32], x: &[f32]) -> (f64, f64) {
     let n = y.len();
     debug_assert_eq!(x.len(), n);
-    // TODO(compat): single-point "standard deviation" equals the point itself
-    // (see mean_and_std_dev).
+    // Single-point curve — see `mean_and_std_dev`.
     if n == 1 {
         return (
             f64::from(y[0]),
@@ -273,8 +274,7 @@ pub fn curve_mean_and_std_dev_single(y: &[f32], x: &[f32]) -> (f64, f64) {
 pub fn curve_mean_and_std_dev(y: &[f64], x: &[f64]) -> (f64, f64) {
     let n = y.len();
     debug_assert_eq!(x.len(), n);
-    // TODO(compat): single-point "standard deviation" equals the point
-    // itself, like the Pascal original (see mean_and_std_dev).
+    // Single-point curve — see `mean_and_std_dev`.
     if n == 1 {
         return (y[0], compat::stddev_single_point(y[0]));
     }
