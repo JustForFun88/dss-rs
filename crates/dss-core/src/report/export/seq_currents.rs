@@ -88,17 +88,25 @@ pub(crate) fn export_seq_currents(
                 (0.0, 0.0)
             };
 
-            // TODO(compat): Iresidual sums the *terminal-1* conductors
-            // (`cBuffer^[i]`, i = 1..Ncond) for **every** terminal row — Pascal
-            // `CalcAndWriteSeqCurrents` indexes `cBuffer^[i]`, not
-            // `cBuffer^[(j-1)*Ncond+i]`. Reproduced verbatim (goldens pin it); the
-            // clean fix is the per-terminal slice `cd.iterminal[(j-1)*ncond..]`.
-            // Oracle-proven (API vs export, IEEE13 Line.671680: true t2 residual
-            // 9.8e-12 A, printed 2.83e-5 = t1's); upstream bug report:
-            // `tmp/seqcurrents_iresidual_bug_report.md` (for dss-extensions/dss_capi).
+            // The residual (neutral/ground) current of this row's terminal.
+            //
+            // Upstream sums the *terminal-1* conductors (`cBuffer^[i]`,
+            // i = 1..Ncond) for **every** terminal row — `CalcAndWriteSeqCurrents`
+            // indexes `cBuffer^[i]`, not `cBuffer^[(j-1)*Ncond+i]` — so every row
+            // repeats terminal 1's residual (oracle-proven on IEEE13
+            // `Line.671680`: true terminal-2 residual 9.8e-12 A, printed 2.83e-5
+            // = terminal 1's; upstream bug report
+            // `tmp/seqcurrents_iresidual_bug_report.md`). Stage F's
+            // `IRESIDUAL_FROM_TERMINAL_1` row: parity keeps the bug (goldens pin
+            // it), the default lane sums the row's own terminal.
+            let base = if crate::compat::IRESIDUAL_FROM_TERMINAL_1 {
+                0
+            } else {
+                (j - 1) * ncond
+            };
             let mut iresidual = Complex64::ZERO;
             for i in 0..ncond {
-                iresidual += cd.iterminal[i];
+                iresidual += cd.iterminal[base + i];
             }
 
             // `'"%s", %3d, %10.6g, %8.4g, %8.4g, %10.6g, %8.4g, %10.6g, %8.4g, %10.6g, %8.4g'`

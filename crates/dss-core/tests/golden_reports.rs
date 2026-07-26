@@ -99,6 +99,36 @@ fn run_deck_export(stem: &str, policy: &ExportPolicy) {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
+/// Run a deck-fixture export exactly like [`run_deck_export`] but **return the
+/// produced text** instead of comparing it. Used by the Stage F
+/// expected-value pins, which assert a lane-specific value the oracle golden
+/// cannot carry.
+fn run_deck_export_capture(stem: &str) -> String {
+    let dir = reports_dir();
+    let meta: DeckMeta = {
+        let p = dir.join(format!("{stem}.meta.json"));
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+
+    let scratch = scratch_dir(&format!("{stem}_capture"));
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("export {}", meta.report));
+    assert!(dss.errors().is_empty(), "{stem}: {:?}", dss.errors());
+
+    let produced = dss.last_result_file();
+    let text = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+    std::fs::remove_dir_all(&scratch).ok();
+    text
+}
+
 /// A unique scratch dir for this test process (no `tempfile` dep; cleaned up at
 /// the end). `Set DataPath=` points the engine's report output here.
 fn scratch_dir(tag: &str) -> PathBuf {
@@ -250,6 +280,54 @@ fn run_feeder_export(stem: &str, policy: &ExportPolicy) {
     compare_export(&oracle, &rust, policy, stem);
 
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// Compile the `export_seqcurrents` golden's own feeder (IEEE13) exactly as
+/// `run_feeder_export` does, then capture **both** `Export SeqCurrents` and
+/// `Export Currents` from the same solved circuit. Used by the `Iresidual`
+/// expected-value pin, which derives its expectation from the per-terminal
+/// currents instead of a captured literal.
+fn ieee13_seqcurrents_and_currents() -> (String, String) {
+    let dir = reports_dir();
+    let meta: FeederMeta = {
+        let p = dir.join("export_seqcurrents.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let master: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "electricdss-tst",
+    ]
+    .iter()
+    .collect::<PathBuf>()
+    .join(&meta.master);
+
+    let scratch = scratch_dir("seqcurrents_iresidual_lane");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        master.to_string_lossy().replace('\\', "/")
+    ));
+    for c in &meta.post {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("export seqcurrents");
+    let seq = std::fs::read_to_string(dss.last_result_file())
+        .unwrap_or_else(|e| panic!("read seqcurrents: {e}"));
+    dss.command("export currents");
+    let currents = std::fs::read_to_string(dss.last_result_file())
+        .unwrap_or_else(|e| panic!("read currents: {e}"));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    std::fs::remove_dir_all(&scratch).ok();
+    (seq, currents)
 }
 
 /// Locate the single `*_<suffix>` report a `Show` command wrote into `scratch`
@@ -2560,6 +2638,26 @@ fn export_seqcurrents_matches_oracle() {
         abs: 1e-9,
         gate: Some(GateSpec::Col(2, 1e-6)),
     };
+    let mut col_tol = vec![i1_gated("%i"), i1_gated("%nema")];
+    // Stage F deliberate divergence (`compat::IRESIDUAL_FROM_TERMINAL_1`): the
+    // default lane prints each row's OWN terminal residual instead of repeating
+    // terminal 1's, so on this golden the `Terminal >= 2` rows genuinely differ
+    // from the oracle by construction. Exclude exactly those cells there — the
+    // terminal-1 cells (where the two lanes agree) stay compared against the
+    // oracle in both lanes, and the excluded ones are pinned by
+    // `export_seqcurrents_iresidual_is_the_lane_kernel`.
+    if !lane::PARITY {
+        col_tol.push(ColTol {
+            sel: ColSel::Prefix("iresidual".to_string()),
+            // Same tolerance the policy default gives this column (the
+            // amp-scale cancellation `abs`); this entry exists only to attach
+            // the row gate, and must not tighten or loosen the terminal-1
+            // cells it still compares.
+            rel: 0.0,
+            abs: 1e-8,
+            gate: Some(GateSpec::ColAbove(1, 1.5)),
+        });
+    }
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
@@ -2571,9 +2669,113 @@ fn export_seqcurrents_matches_oracle() {
         // (`%NEMA`); `%Normal`/`%Emergency` divide by NormAmps (never near-zero)
         // and fall through to the exact default, so a regression there stays
         // checked even on the one gated noise row (audit follow-up).
-        col_tol: vec![i1_gated("%i"), i1_gated("%nema")],
+        col_tol,
     };
     run_feeder_export("export_seqcurrents", &policy);
+}
+
+/// The Stage F `Iresidual` row, as an **expected-value** pin (plan IV.2:
+/// deliberate divergences are excluded from the oracle compare at those fields
+/// and pinned by their own tests).
+///
+/// Upstream's `CalcAndWriteSeqCurrents` sums `cBuffer^[i]`, i = 1..Ncond inside
+/// the per-terminal loop — missing the `(j-1)*Ncond` offset — so every terminal
+/// row repeats terminal 1's residual. On IEEE13's `Line.671680` that is
+/// oracle-proven: the true terminal-2 residual is ~1e-11 A, the export prints
+/// terminal 1's 2.83e-5 A.
+///
+/// Rather than a captured literal, the expectation is *derived* from an
+/// independent report: `Export Currents` writes a per-terminal `Iresid<j>`
+/// column through a different code path (`export/currents.rs`), and its values
+/// are oracle-anchored by that report's own byte golden. So the printed
+/// `Iresidual` of `(elem, terminal j)` must equal `Iresid_j` in the default
+/// lane and `Iresid_1` in the parity lane. Asserted for every row of the
+/// report, plus a non-vacuity check that some row actually separates the two.
+#[test]
+fn export_seqcurrents_iresidual_is_the_lane_kernel() {
+    let (seq, currents) = ieee13_seqcurrents_and_currents();
+
+    // How many terminals each element has, from the seq report itself.
+    let mut nterms: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for line in seq.lines().skip(1).filter(|l| !l.trim().is_empty()) {
+        let name = line
+            .split(',')
+            .next()
+            .expect("element field")
+            .trim()
+            .trim_matches('"')
+            .to_lowercase();
+        *nterms.entry(name).or_insert(0) += 1;
+    }
+
+    // `Export Currents` row layout: `Element,` then per terminal `ncond`
+    // (mag, ang) pairs followed by (Iresid, AngResid) — i.e.
+    // `1 + nterm * (2*ncond + 2)` fields.
+    let mut residual: std::collections::HashMap<(String, usize), f64> =
+        std::collections::HashMap::new();
+    for line in currents.lines().skip(1).filter(|l| !l.trim().is_empty()) {
+        let f: Vec<&str> = line.split(',').map(str::trim).collect();
+        let name = f[0].trim_matches('"').to_lowercase();
+        let Some(&nterm) = nterms.get(&name) else {
+            continue;
+        };
+        let per_term = (f.len() - 1) / nterm;
+        if nterm == 0
+            || per_term < 4
+            || !(f.len() - 1).is_multiple_of(nterm)
+            || !per_term.is_multiple_of(2)
+        {
+            continue;
+        }
+        for j in 1..=nterm {
+            let idx = 1 + (j - 1) * per_term + per_term - 2;
+            if let Ok(v) = f[idx].parse::<f64>() {
+                residual.insert((name.clone(), j), v);
+            }
+        }
+    }
+    assert!(
+        residual.len() > 50,
+        "the Currents export gave too few rows to derive from: {}",
+        residual.len()
+    );
+
+    let mut checked = 0usize;
+    let mut lanes_would_differ = false;
+    for line in seq.lines().skip(1).filter(|l| !l.trim().is_empty()) {
+        let f: Vec<&str> = line.split(',').map(str::trim).collect();
+        if f.len() < 10 {
+            continue;
+        }
+        let name = f[0].trim_matches('"').to_lowercase();
+        let j: usize = f[1].parse().expect("terminal number");
+        let printed: f64 = f[9].parse().expect("Iresidual");
+        let (Some(&own), Some(&first)) = (
+            residual.get(&(name.clone(), j)),
+            residual.get(&(name.clone(), 1)),
+        ) else {
+            continue;
+        };
+        if (own - first).abs() > 1e-9 {
+            lanes_would_differ = true;
+        }
+        let expected = if lane::PARITY { first } else { own };
+        // The report prints 6 significant digits; compare at that resolution.
+        let tol = 1e-6 * expected.abs().max(1e-12) + 1e-12;
+        assert!(
+            (printed - expected).abs() <= tol,
+            "{name} terminal {j}: printed Iresidual {printed:e}, expected \
+             {expected:e} (own-terminal {own:e}, terminal-1 {first:e}, lane \
+             parity = {})",
+            lane::PARITY
+        );
+        checked += 1;
+    }
+    assert!(checked > 50, "only {checked} rows checked");
+    assert!(
+        lanes_would_differ,
+        "no row separates the two kernels — the pin would be vacuous"
+    );
 }
 
 /// `Export SeqPowers` (Pascal `ExportSeqPowers`): per-terminal sequence powers
@@ -3597,15 +3799,98 @@ fn export_busreliability_matches_oracle() {
 /// byte-identical arithmetic as the single-meter case — exact equality.
 #[test]
 fn export_busreliability_multimeter_matches_oracle() {
+    // Stage F deliberate divergence (`compat::BUS_INT_DURATION_WALKS_ALL_BUSES`):
+    // the default lane's duration loop stays inside each meter's own zone, so
+    // the `Duration` column of the *first* meter's buses no longer carries the
+    // second meter's sections. There is no row key in this report that
+    // identifies "a bus of the earlier meter", so the default lane excludes the
+    // whole column here and pins it — every row — in
+    // `export_busreliability_multimeter_duration_is_the_lane_kernel`. Lambda /
+    // interruptions / customers / cust-interruptions / miles stay compared
+    // against the oracle in both lanes.
+    let col_tol = if lane::PARITY {
+        vec![]
+    } else {
+        vec![ColTol {
+            sel: ColSel::Prefix("duration".to_string()),
+            rel: 0.0,
+            abs: 0.0,
+            gate: Some(GateSpec::Mask),
+        }]
+    };
     let policy = ExportPolicy {
         sep: ',',
         header_lines: 1,
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
         abs: 0.0,
-        col_tol: vec![],
+        col_tol,
     };
     run_deck_export("export_busreliability_multimeter", &policy);
+}
+
+/// The Stage F `Bus_Int_Duration` row as an **expected-value** pin, on the
+/// two-meter fixture whose `Duration` column the lane split moves.
+///
+/// The fixture is two independent two-section feeders off `SRC`: meter `m1`
+/// covers `l1` (repair 4 h) → `B1` and `l2` (repair 5 h) → `B2`; meter `m2`
+/// covers `l3` (repair 6 h) → `C1` and `l4` (repair 9 h) → `C2`. Each section
+/// holds exactly one line, so a bus's own-zone duration *is* that line's repair
+/// time (`source_int_dur = 0` here).
+///
+/// **Parity lane** reproduces upstream: `m2`'s duration loop walks *every*
+/// circuit bus, so it re-reads `B1`/`B2`'s section ids (1 and 2, written by
+/// `m1`) against **its own** `FeederSections` and overwrites them with `l3`'s
+/// and `l4`'s repair times — `B1 → 6`, `B2 → 9`, i.e. the C-feeder's numbers on
+/// the B-feeder's buses. That is what the oracle golden contains.
+/// **Default lane** keeps each meter inside its own zone: `B1 → 4`, `B2 → 5`.
+///
+/// Both columns are asserted literally, so the fix cannot silently become a
+/// no-op and the reproduction cannot silently become the fix.
+#[test]
+fn export_busreliability_multimeter_duration_is_the_lane_kernel() {
+    let text = run_deck_export_capture("export_busreliability_multimeter");
+    let durations: Vec<(String, f64)> = text
+        .lines()
+        .skip(1)
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let f: Vec<&str> = l.split(',').map(str::trim).collect();
+            (
+                f[0].to_uppercase(),
+                f[5].parse::<f64>().expect("Duration column"),
+            )
+        })
+        .collect();
+
+    let expected: &[(&str, f64)] = if lane::PARITY {
+        &[
+            ("SRC", 0.0),
+            ("B1", 6.0),
+            ("B2", 9.0),
+            ("C1", 6.0),
+            ("C2", 9.0),
+        ]
+    } else {
+        &[
+            ("SRC", 0.0),
+            ("B1", 4.0),
+            ("B2", 5.0),
+            ("C1", 6.0),
+            ("C2", 9.0),
+        ]
+    };
+    assert_eq!(durations.len(), expected.len(), "rows: {durations:?}");
+    for (got, want) in durations.iter().zip(expected) {
+        assert_eq!(got.0, want.0, "bus order");
+        assert_eq!(
+            got.1,
+            want.1,
+            "{} interruption duration (lane parity = {})",
+            got.0,
+            lane::PARITY
+        );
+    }
 }
 
 /// `Export BranchReliability` (Pascal `ExportBranchReliability`): per-branch
