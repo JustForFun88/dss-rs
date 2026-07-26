@@ -2,6 +2,13 @@
  "comment": "Entry points both engines solve; live-compared by corpus_live.rs. Fields: path, kind(micro|feeder|large), post[], n_steps, selected_elements[]. WP8.5b property parity (every element's every property, Rust ?-surface vs oracle Properties(p).Val): gated automatically for pinned-capi feeder/micro-kind decks; the heavy large-kind decks (8500-Node/ckt5/EPRI/IEEE123/ADiakoptics/4Bus-YYD) and target-rev cases stay OFF in the mandatory gate (too slow / different-engine property format) and are swept by the DSS_LIVE_PROPS=1 corpus_live_properties pilot, which proved the whole corpus clean. Comparability exclusions: tests/harness SKIP_PROPS + TOLERANCE_NOTES.md.",
  "cases": [
   {
+   "path": "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss",
+   "engines": "r4133",
+   "kind": "large",
+   "n_steps": 1,
+   "note": "PROMOTED 2026-07-26 (ORPHANED_GAPS 1.6, NCIM r4133 switching cadence). 354-node 138 kV transmission network solved with `set algorithm=NCIM` and model=3 (voltage-regulating) generators whose maxkvar/minkvar Q-limits are ENFORCED (`IgnoreGenQLimits=Yes` is commented out), so it lives or dies on the NCIM PV<->PQ switching cadence. The pinned 0.14.5 oracle predates NCIM entirely (capi_v0145 cannot gate it), and the retired capi015 r4103 cadence -- which the port reproduced loop-for-loop -- ran the PQ->PV test unconditionally every pass, so the generators chattered PV<->PQ around |V| = VTarget and BOTH capi015 and the port stalled at 100 iterations on the (physically correct) fixpoint. Adopting r4133's `if GenModel = 3 ... else ...` mutually-exclusive cadence (Solution.pas l.2059/2166) makes the port converge in EXACTLY r4133's 9 cold iterations at the same node voltages (89_CLINCHRV.1 80072.708834, 1_RIVERSDE.1 76088.991977, 4_NWCARLSL.1 79514.988474; live epri-worker probe 2026-07-26, r4133 warm-resolve 2 iters). LIVE-gated on r4133 with no ledger entry."
+  },
+  {
    "path": "Test/indmachtest/Master.DSS",
    "engines": "both",
    "kind": "feeder",

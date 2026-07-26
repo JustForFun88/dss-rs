@@ -1,13 +1,13 @@
 {
   "comment": "Anti-shrink guard (FA fix 3; UNIFIED_GATE Phase C schema v2: per-case rigor now covers solvable_now AND the three families, engines/isolate/defer fields; Phase D §1.4: + the ledger= component = each case's sorted per-channel divergence-ledger entry ids): committed fingerprint of the gated corpus population. Trips on any drift — a path leaving solvable_now or a family, a retained deck weakened in place (kind/tolerance-tier flip, steps/probes/meters cut, engines narrowed, a case deferred, a ledger entry added/widened/flipped — see the rigor fingerprints), a family deck swapped, or any manifest/family case-count change. Regenerate DELIBERATELY with `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock` and commit the diff alongside the manifest change. See TESTING.md §Anti-shrink population lock.",
   "manifest_counts": {
-    "ad_sweep.json": 293,
+    "ad_sweep.json": 294,
     "missing_dependency.json": 9,
     "not_an_entry_point.json": 586,
-    "skipped_needs_investigation.json": 13,
+    "skipped_needs_investigation.json": 12,
     "skipped_oracle_issue.json": 13,
     "skipped_unsupported.json": 1,
-    "solvable_now.json": 293
+    "solvable_now.json": 294
   },
   "family_counts": {
     "asymmetric": 52,
@@ -532,6 +532,7 @@
     "Version8/Distrib/IEEETestCases/DG_Protection/DG_Prot_Fdr.dss": "kind=large_floating_zeroseq steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
     "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Master.dss": "kind=large steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
     "Version8/Distrib/IEEETestCases/IEEE 30 Bus/Run_IEEE30.DSS": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
+    "Version8/Distrib/IEEETestCases/IEEE118Bus/master_file.dss": "kind=large steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=r4133 isolate=0 defer=0 ledger=",
     "Version8/Distrib/IEEETestCases/LVTestCase/Master.dss": "kind=feeder steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
     "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/Master.dss": "kind=large_floating_zeroseq steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",
     "Version8/Distrib/IEEETestCases/LVTestCaseNorthAmerican/SecPar.dss": "kind=large_floating_zeroseq steps=1 sel=0 mm=0 probes=0 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 pending=0 abort=0 engines=both isolate=0 defer=0 ledger=",

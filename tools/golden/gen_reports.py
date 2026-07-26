@@ -3020,6 +3020,138 @@ def gen_seasonal_overloads(d, engine_spec: str) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# `Export Estimation` (Pascal `ExportEstimation`, ORPHANED_GAPS §1.10): the
+# EnergyMeter/Sensor state-estimation error report. No corpus deck uses the
+# keyword, so three fixtures are synthesized (PHASE8_PLAN §1):
+#
+#   est8   — the allocated path. Two feeders off the source so both EnergyMeters
+#            are at a feeder head: a 3-phase one (`m1`, unequal `peakcurrent=`
+#            targets) and a **1-phase** one (`m2`, which leaves `TempX[2..3]` at
+#            the zero the calculated pass wrote — the sub-3-phase column shape).
+#            Three Sensors cover every spec: current-spec (`s1`), P/Q-spec (`s2`,
+#            whose `Get_WLSCurrentError` re-derives `SensorCurrent` from
+#            `kWs`/`kvars`, and `weight=2` scaling both WLS residuals), and a
+#            1-phase voltage+current sensor (`s3` — the only nonzero `V… Target`
+#            columns and `WLSVoltageError`). A disabled `s4` must NOT appear.
+#            `allocateloads` fills `CalculatedCurrent` (the meter/sensor
+#            allocation loop), so the `I… Calc` / `%Err` columns are live.
+#            A **disabled EnergyMeter** is deliberately absent: the pinned 0.14.5
+#            oracle access-violates in `allocateloads` on one (no `Enabled` guard
+#            before `TEnergyMeterObj.AllocateLoad`'s zone walk — DIVERGENCES §D9,
+#            fixed upstream in SVN r4115), so it is not gate-able *on the allocated
+#            path*; the meter-side `Enabled` filter is pinned by `estns` instead
+#            (that AV is specific to `allocateloads`, which `estns` never runs).
+#   estns  — solved but **not** allocated: nonzero targets against an all-zero
+#            `CalculatedCurrent`/`CalculatedVoltage`, so every `%Err` takes the
+#            `(1 - 0/target)*100 = 100` form and the WLS residuals are the pure
+#            `-Weight * sum(target^2)` term. (The sensor values are set by a
+#            separate `Edit` — `RecalcElementData` runs `ZeroSensorArrays` at the
+#            end of the `New`, so same-command values would be wiped.) Carries the
+#            **disabled EnergyMeter** `mdis` on its own feeder (`line.l2`): the
+#            oracle lists it in `Meters.AllNames` but omits it from the report, so
+#            dropping the port's meter-side `Enabled` filter adds an
+#            `"Energymeter.MDIS"` row and fails the row count.
+#   estem  — no EnergyMeters and no Sensors: pins the two section headers with
+#            both bodies empty.
+ESTIMATION_GROUPS = [
+    (
+        "est8",
+        [
+            "new circuit.est8 basekv=12.47 bus1=src phases=3",
+            "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.3 x1=0.6",
+            "new line.l2 bus1=b1 bus2=b2 length=1 units=mi r1=0.3 x1=0.6",
+            "new line.l3 bus1=b1 bus2=b3 length=1 units=mi r1=0.3 x1=0.6",
+            "new line.l4 bus1=src bus2=c1.1 phases=1 length=1 units=mi r1=0.3 x1=0.6",
+            "new load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9",
+            "new load.ld2 bus1=b2 phases=3 kv=12.47 xfkva=800 allocationfactor=0.5 pf=0.9",
+            "new load.ld3 bus1=b3 phases=3 kv=12.47 xfkva=600 allocationfactor=0.5 pf=0.9",
+            # A fixed kW load inside m1's zone: not allocatable, so the loop can
+            # never drive the metered current exactly onto the target and the
+            # `%Err` columns stay well clear of a cancellation floor.
+            "new load.ldf bus1=b2 phases=3 kv=12.47 kw=200 pf=0.9",
+            "new load.ld4 bus1=c1.1 phases=1 kv=7.2 xfkva=150 allocationfactor=0.5 pf=0.9",
+            "new energymeter.m1 element=line.l1 terminal=1 peakcurrent=(100,110,120)",
+            "new energymeter.m2 element=line.l4 terminal=1 peakcurrent=(50)",
+            "new sensor.s1 element=line.l2 terminal=1 kvbase=12.47",
+            "edit sensor.s1 currents=[20,22,24]",
+            "new sensor.s2 element=line.l3 terminal=1 kvbase=12.47 weight=2",
+            "edit sensor.s2 kWs=[400,300,200] kvars=[200,150,100]",
+            "new sensor.s3 element=line.l4 terminal=1 kvbase=7.2",
+            "edit sensor.s3 kvs=[7.1] currents=[15]",
+            "new sensor.s4 element=line.l2 terminal=1 kvbase=12.47 enabled=no",
+            "set voltagebases=[12.47,7.2]",
+            "calcvoltagebases",
+            "solve mode=snap",
+            "allocateloads",
+        ],
+        [("estimation", "EXP_ESTIMATION.csv", "export_estimation")],
+    ),
+    (
+        "estns",
+        [
+            "new circuit.estns basekv=12.47 bus1=src phases=3",
+            "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.3 x1=0.6",
+            "new line.l2 bus1=src bus2=d1 length=1 units=mi r1=0.3 x1=0.6",
+            "new load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9",
+            "new load.ld2 bus1=d1 phases=3 kv=12.47 xfkva=300 allocationfactor=0.5 pf=0.9",
+            "new energymeter.m1 element=line.l1 terminal=1 peakcurrent=(100,110,120)",
+            # Disabled: must be absent from the report (the meter-side `Enabled`
+            # filter). Its own feeder head so it is otherwise a legal meter.
+            "new energymeter.mdis element=line.l2 terminal=1 peakcurrent=(70,70,70) enabled=no",
+            "new sensor.s1 element=line.l1 terminal=1 kvbase=12.47",
+            "edit sensor.s1 kvs=[7.2,7.2,7.2] currents=[20,22,24]",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "solve mode=snap",
+        ],
+        [("estimation", "EXP_ESTIMATION.csv", "export_estimation_noalloc")],
+    ),
+    (
+        "estem",
+        [
+            "new circuit.estem basekv=12.47 bus1=src phases=3",
+            "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.3 x1=0.6",
+            "new load.ld1 bus1=b1 phases=3 kv=12.47 kw=100",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "solve mode=snap",
+        ],
+        [("estimation", "EXP_ESTIMATION.csv", "export_estimation_empty")],
+    ),
+]
+
+
+def gen_estimation(d) -> None:
+    """Capture the oracle's `Export Estimation` for the three fixtures above."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for _case, deck, reports in ESTIMATION_GROUPS:
+        tmp = tempfile.mkdtemp(prefix="dss_gen_reports_")
+        try:
+            d.Text.Command = "clear"
+            for c in deck:
+                d.Text.Command = c
+            case = d.ActiveCircuit.Name
+            d.Text.Command = f'set datapath="{tmp.replace(chr(92), "/")}"'
+            for keyword, suffix, stem in reports:
+                d.Text.Command = f"export {keyword}"
+                produced = Path(d.Text.Result)  # GlobalResult = produced path
+                content = produced.read_text()  # universal newlines -> LF
+                (OUT_DIR / f"{stem}.txt").write_text(content, newline="\n")
+                meta = {
+                    "report": keyword,
+                    "fixture": case,
+                    "suffix": suffix,
+                    "deck": deck,
+                }
+                (OUT_DIR / f"{stem}.meta.json").write_text(
+                    json.dumps(meta, indent=2) + "\n", newline="\n"
+                )
+                print(f"wrote {stem}.txt ({len(content)} bytes), {content.count(chr(10))} lines")
+        finally:
+            d.Text.Command = f'set datapath="{REPO_ROOT.as_posix()}"'
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     pin = check_pin()
     print(f"oracle: dss-python {pin['dss_python']}, engine {pin['engine']}")
@@ -3041,48 +3173,63 @@ def main() -> None:
         gen_seasonal_overloads(d, engine_spec)
         return
 
-    gen_counts(d)
-    gen_feeder_reports(d)
-    gen_show_reports(d)
-    gen_show_eventlog(d)
-    gen_show_yprim(d)
-    gen_show_variables(d)
-    gen_show_kvbasemismatch(d)
-    gen_show_monitor(d)
-    gen_monitor_reports(d)
-    gen_register_reports(d)
-    gen_show_meter_reports(d)
-    gen_show_meter_edgecases(d)
-    gen_log_reports(d)
-    gen_ieee8500_reports(d)
-    gen_extra_feeder_reports(d)
-    gen_seqz(d)
-    gen_faultstudy(d)
-    gen_show_faultstudy(d)
-    gen_reliability(d)
-    gen_gic_mvars(d)
-    gen_deck_groups(d)
-    gen_show_overload_unserved(d)
-    gen_show_zone_loops(d)
-    gen_show_controlled(d)
-    gen_show_autotrans(d)
-    gen_show_busflow(d)
-    gen_show_isolated(d)
-    gen_show_topology(d)
-    gen_show_topo_coverage(d)
-    gen_show_isolated_orphan(d)
-    gen_show_lineconstants(d)
-    gen_sections(d)
-    gen_profile(d)
-    gen_demand_interval(d)
-    gen_di_overloads_1ph(d)
-    gen_reliability_multimeter(d)
-    gen_dump_decks(d)
-    gen_save_decks(d)
-    gen_loadshape_binsave(d)
-    gen_interp(d)
-    gen_distribute(d)
-    gen_uuids(d)
+    # Each generator is selectable by name on the command line (the suffix
+    # after `gen_`), so a new golden can be produced without regenerating (and
+    # thereby re-pinning) every existing one:
+    #     python tools/golden/gen_reports.py estimation
+    # No arguments = the full regeneration.
+    generators = {
+        "counts": gen_counts,
+        "feeder_reports": gen_feeder_reports,
+        "show_reports": gen_show_reports,
+        "show_eventlog": gen_show_eventlog,
+        "show_yprim": gen_show_yprim,
+        "show_variables": gen_show_variables,
+        "show_kvbasemismatch": gen_show_kvbasemismatch,
+        "show_monitor": gen_show_monitor,
+        "monitor_reports": gen_monitor_reports,
+        "register_reports": gen_register_reports,
+        "show_meter_reports": gen_show_meter_reports,
+        "show_meter_edgecases": gen_show_meter_edgecases,
+        "log_reports": gen_log_reports,
+        "ieee8500_reports": gen_ieee8500_reports,
+        "extra_feeder_reports": gen_extra_feeder_reports,
+        "seqz": gen_seqz,
+        "faultstudy": gen_faultstudy,
+        "show_faultstudy": gen_show_faultstudy,
+        "reliability": gen_reliability,
+        "gic_mvars": gen_gic_mvars,
+        "deck_groups": gen_deck_groups,
+        "show_overload_unserved": gen_show_overload_unserved,
+        "show_zone_loops": gen_show_zone_loops,
+        "show_controlled": gen_show_controlled,
+        "show_autotrans": gen_show_autotrans,
+        "show_busflow": gen_show_busflow,
+        "show_isolated": gen_show_isolated,
+        "show_topology": gen_show_topology,
+        "show_topo_coverage": gen_show_topo_coverage,
+        "show_isolated_orphan": gen_show_isolated_orphan,
+        "show_lineconstants": gen_show_lineconstants,
+        "sections": gen_sections,
+        "profile": gen_profile,
+        "demand_interval": gen_demand_interval,
+        "di_overloads_1ph": gen_di_overloads_1ph,
+        "reliability_multimeter": gen_reliability_multimeter,
+        "dump_decks": gen_dump_decks,
+        "save_decks": gen_save_decks,
+        "loadshape_binsave": gen_loadshape_binsave,
+        "interp": gen_interp,
+        "distribute": gen_distribute,
+        "uuids": gen_uuids,
+        "estimation": gen_estimation,
+    }
+    wanted = set(sys.argv[1:])
+    unknown = wanted - set(generators)
+    if unknown:
+        sys.exit(f"unknown generator(s): {sorted(unknown)}; known: {sorted(generators)}")
+    for name, fn in generators.items():
+        if not wanted or name in wanted:
+            fn(d)
 
 
 if __name__ == "__main__":
