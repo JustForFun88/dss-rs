@@ -198,6 +198,13 @@ fn unknown_variable_clears_expression() {
     let mut o = compile(&["a", "b"], "a dt = zzz");
     assert_eq!(o.get_string(EXPRESSION), ""); // cleared on error
     assert!(has_errors(&mut o)); // logged 50005 + 50003
+    // The partially-compiled stream stops at the `dt` pair. Pascal grows `Cmds`
+    // *before* it validates the token (`SetLength(Cmds, Length(Cmds) + 1)` at
+    // `DynamicExp.pas:526`, then `Get_Var_Idx`), so upstream additionally keeps
+    // the zero-filled cell the `OpIdx < 0` arm never writes — a stray `Var(0)`
+    // in an object whose expression has just been discarded. Not reproduced;
+    // recorded at the W3-settler STATUS record.
+    assert_eq!(o.cmds_ordinals(), vec![0, -50]);
 }
 
 #[test]
@@ -295,6 +302,13 @@ fn constant_before_dt_is_rejected_with_the_pascal_message() {
         errs[0].message,
         "DynamicExp: the expression preceeding the \"dt\" operand has to be a state variable."
     );
+    // Nothing was compiled. Pascal's `dt` arm grows `Cmds` by two *before* the
+    // `Get_Var_Idx` test (`DynamicExp.pas:502-506`), so upstream `Exit`s with
+    // two zero-filled cells left in the stream; both of its readers are the
+    // wild-write path this port already guards (`SolveEq`'s unguarded
+    // `MemSpace[OutIdx][1]` with `OutIdx = -1`), so the cells are not
+    // reproduced — see the W3-settler STATUS record.
+    assert!(o.cmds_ordinals().is_empty(), "{:?}", o.cmds_ordinals());
 }
 
 #[test]

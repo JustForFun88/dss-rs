@@ -32,9 +32,12 @@ pub(super) fn recalc_pc_create(
 }
 
 impl Dss {
-    /// Process one command line (Pascal `ProcessCommand`). Errors are recorded
-    /// in [`Dss::errors`] (record-and-continue); query results land in
-    /// [`Dss::result`].
+    /// Process one command line entered **from outside** the engine — the
+    /// library's public command entry, i.e. CAPI `Text_Set_Command`
+    /// (`CAPI_Text.pas:35`): the "Reset for commands entered from outside"
+    /// abort clear, then Pascal `ProcessCommand` ([`Self::process_command`]).
+    /// Errors are recorded in [`Dss::errors`] (record-and-continue); query
+    /// results land in [`Dss::result`].
     pub fn command(&mut self, cmd_line: &str) {
         if !self.in_redirect {
             // CAPI `Text_Set_Command`: "Reset for commands entered from
@@ -45,6 +48,20 @@ impl Dss {
                 ckt.solution.solution_abort = false;
             }
         }
+        self.process_command(cmd_line);
+    }
+
+    /// Pascal `ProcessCommand` (`ExecCommands.pas:214`) — the executive's own
+    /// command processor, which is what `TExecutive.ParseCommand`
+    /// (`Executive.pas:225`) calls and therefore what an *engine-internal*
+    /// nested command (`DoEstimateCmd`'s two tail commands, …) runs. It resets
+    /// only `CmdResult`/`ErrorNumber`/`GlobalResult`; the `SolutionAbort` clear
+    /// above belongs to the outside-entry wrapper alone — upstream the line
+    /// `SolutionAbort := FALSE  // Reset for commands entered from outside`
+    /// occurs 32× and only under `src/CAPI/*`, and the four engine-side resets
+    /// (`Circuit.pas:1607`, `Diakoptics.pas:546/703`,
+    /// `DSSCallBackRoutines.pas:152`) are off the command path.
+    pub(crate) fn process_command(&mut self, cmd_line: &str) {
         self.last_result.clear(); // DSS.GlobalResult := ''
         self.parser.set_auto_increment(false);
         self.parser.set_cmd_string(cmd_line);

@@ -135,12 +135,15 @@ impl Dss {
     /// `DoAllocateLoadsCmd`, then "let's look to see how well we did":
     /// `Set showexport=yes` (only if it is off) and `Export Estimation`.
     ///
-    /// Both tail legs are nested `ParseCommand`s upstream, so they run through
-    /// [`Dss::command`] (this port's `ProcessCommand`) — the same seam
-    /// `DoAutoAddCmd`/`Tear_Circuit` already use — which is what makes the
-    /// second leg pick up `Export`'s full filename/last-file tail
+    /// Both tail legs are nested `ParseCommand`s upstream
+    /// (`Executive.pas:225` → `ProcessCommand`), so they run through
+    /// [`Dss::process_command`] — the full command path, which is what makes
+    /// the second leg pick up `Export`'s filename/last-file tail
     /// (`ExportOptions.pas:632-637`: `SetLastResultFile` + `@lastexportfile`)
-    /// for free. The `showexport` leg is engine-observable: it latches
+    /// for free, *without* the outside-entry [`Dss::command`] wrapper: a nested
+    /// `ParseCommand` never clears `SolutionAbort` upstream (the command-entry
+    /// clear lives only in `src/CAPI/*`), so an allocation leg that aborted the
+    /// solution stays aborted here too. The `showexport` leg is engine-observable: it latches
     /// `AutoShowExport` permanently (`Get showexport` flips `No`→`Yes` and no
     /// later `Clear` resets it — probed on the pinned oracle). Its only other
     /// consumer, the `FireOffEditor` auto-open of the written file, is the GUI
@@ -152,9 +155,9 @@ impl Dss {
 
         // Let's look to see how well we did.
         if !self.auto_show_export {
-            self.command("Set showexport=yes");
+            self.process_command("Set showexport=yes");
         }
-        self.command("Export Estimation");
+        self.process_command("Export Estimation");
     }
 
     /// Pascal `DoResetCmd` (`ExecHelper.pas` l.1527): with no argument, reset

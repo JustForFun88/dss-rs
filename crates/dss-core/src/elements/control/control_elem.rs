@@ -74,6 +74,14 @@ pub enum ControlAction {
     /// sentinel of the Relay state enums (see the type doc).
     Keep,
     /// Any other integer arriving through the open control-queue code channel.
+    ///
+    /// Build it **only** through [`Self::from_ordinal`] (as the whole crate
+    /// does — the `StorageState::Other` precedent): the pair is mutually
+    /// inverse but not injective over hand-built values, so a literal
+    /// `Other(3)` would carry `Reset`'s ordinal while comparing unequal to
+    /// `ControlAction::Reset`. `from_ordinal` never yields `Other` for a named
+    /// ordinal, which is what makes `==` on its results sound — pinned by
+    /// `control_action_round_trips_every_out_of_set_ordinal`.
     Other(i32),
 }
 
@@ -335,6 +343,38 @@ mod tests {
             ControlAction::from_ordinal(i32::MIN),
             ControlAction::Other(_)
         ));
+        // W3 settler: the property every `== ControlAction::X` guard in the
+        // crate rests on — `from_ordinal` is **injective**, so two different
+        // queue codes can never compare equal (a hand-built `Other(3)` could,
+        // which is why the variant's doc forbids constructing it directly).
+        let codes = [
+            i32::MIN,
+            i32::MIN + 1,
+            -1000,
+            -50,
+            -1,
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            100,
+            101,
+            i32::MAX,
+        ];
+        for (i, &a) in codes.iter().enumerate() {
+            for &b in &codes[i + 1..] {
+                assert_ne!(
+                    ControlAction::from_ordinal(a),
+                    ControlAction::from_ordinal(b),
+                    "codes {a} and {b} must stay distinct actions"
+                );
+            }
+        }
     }
 
     /// The Relay `Action`/`State` `DssEnum`s carry the `Keep` sentinel as their

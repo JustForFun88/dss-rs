@@ -291,6 +291,20 @@ impl DynamicExpObj {
                         mem_space[prev][1] = rpn.get_x();
                     }
                     out_idx = Some(slot);
+                } else {
+                    // The other cell that reaches here is the marker itself. An
+                    // operator/constant in front of an `EqMark` is the one shape
+                    // that would make this differ from Pascal (which would latch
+                    // a negative `OutIdx` and suppress the previous upload, while
+                    // this keeps the previous slot); `InterpretDiffEq` cannot emit
+                    // it (see the doc above + `eq_mark_is_always_preceded_by_its_
+                    // output_var`), so state that as a checked invariant rather
+                    // than a comment. Debug-only: no release-path change.
+                    debug_assert_eq!(
+                        self.cmds[idx],
+                        DynToken::EqMark,
+                        "cell {idx} in front of an EqMark must be the output Var"
+                    );
                 }
                 continue;
             }

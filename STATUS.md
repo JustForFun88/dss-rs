@@ -7,6 +7,125 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE wave 3 — settler pass: both audits settled (2 fixes, 4 pins strengthened, 3 proven non-fixes) (branch `depas-final`, 2026-07-26)
+
+Two independent audits of the wave-3 range (`7c4a89b6..d63c163f`, 7 commits, 91
+files) both returned **PASS** — AUDIT-CODE found no correctness/bit-neutrality
+defect, AUDIT-TESTS found no weakened verification (test names 1806 → 1821, 0
+removed; `#[ignore]`/`#[should_panic]` counts identical; zero diff under
+`tests/`). Their nine findings (2 low + 7 info) are settled here, each
+empirically — two fixes, four pins strengthened, three proven non-fixes, one
+more test (1822) and no `#[ignore]`.
+
+**(1) `Estimate`'s nested commands cleared `SolutionAbort` — REAL, FIXED.**
+Upstream `SolutionAbort := FALSE  // Reset for commands entered from outside`
+occurs 32× and **only** under `src/CAPI/*` (incl. `CAPI_Text.pas:35`); the
+executive's own `TExecutive.ParseCommand` (`Executive.pas:225-266`) →
+`ProcessCommand` (`ExecCommands.pas:214-236`) resets only `CmdResult` /
+`ErrorNumber` / `GlobalResult`, and the only four engine-side resets
+(`Circuit.pas:1607`, `Diakoptics.pas:546/703`, `DSSCallBackRoutines.pas:152`)
+are off the command path. This port folded both roles into `Dss::command`,
+so W3.5's two nested legs (`Set showexport=yes`, `Export Estimation`) cleared an
+abort raised *inside* the command — reachable: `do_allocate_loads_cmd` runs
+three solves and a failed Y build sets the flag (`solution/ymatrix.rs:191`, the
+queued-`CalcYPrim`-error arm). Split into `Dss::command` (the CAPI wrapper: the
+abort clear, then delegate) + `Dss::process_command` (Pascal `ProcessCommand`),
+and `do_estimate_cmd` now uses the latter — the port's statement-for-statement
+claim is now actually true. Pinned by
+`exec/tests/allocation.rs::estimate_tail_legs_use_the_nested_seam_and_keep_a_solution_abort`:
+the two seams side by side (`process_command` keeps a set flag, `command` clears
+it — the CAPI behavior stays pinned by the older
+`max_control_iterations_exceeded_warns_and_aborts`), then `estimate` under a
+pre-raised abort (its three solves report "Solution aborted.", the flag stands,
+the export leg still writes its CSV into a scratch datapath). **Verified
+feature-sensitive by doing it**: routing the two legs back through `command`
+fails the last assertion.
+
+**(2) Broken intra-doc link `CTRL_STATE_KEEP` (W3.1 leftover) — FIXED.**
+`relay/accessors.rs:419` still linked the constant W3.1 deleted. Measured before
+(`cargo doc --no-deps -p dss-core`: *"unresolved link to `CTRL_STATE_KEEP`
+--> …accessors.rs:419:57"*) and after (gone); now `[`ControlAction::Keep`]`,
+which resolves through the file's existing `use`.
+
+**(3) `tests/corpus` run-artifacts — not a wave defect.** The 21 untracked files
+AUDIT-CODE saw were its own gate run's exports; `git status --short` in the
+worktree is empty at `d63c163f` and after every run of this pass (cleaned by
+exact name). The leak itself is the known scheduler-level open item, restated
+below.
+
+**(4) Public-surface narrowing — RECORDED (documentation-only).**
+`DynamicExpObj::get_var_idx` `pub` → `pub(crate)` (forced: it now returns the
+`pub(crate)` `VarRef`), `pub const ckt_tree::NO_BUS` deleted, and this pass adds
+`pub(crate) Dss::process_command`. Verified zero consumers outside
+`crates/dss-core/src` (grep over the other five crates and `dss-core/tests`).
+
+**(5) Pascal's `SetLength`-before-validation stray `Cmds` cells — PROVEN, not
+reproduced, now pinned.** Both `InterpretDiffEq` error branches grow `Cmds`
+*before* they validate the token (`DynamicExp.pas:502` +2 in the `dt` arm,
+`:526` +1 in the general arm) and FPC zero-fills, so upstream keeps `[0, 0]` on
+the 50006 path (which `Exit`s) and a trailing `0` on the 50005 path. Traced both
+consumers: the 50006 stream feeds nothing but `SolveEq`'s final *unguarded*
+`MemSpace[OutIdx][1]` with `OutIdx = -1` — the wild write this port already
+guards (UB → not reproduced, CLAUDE.md rule); the 50005 stream `[0, -50, 0]`
+makes upstream's final upload write `MemSpace[0][0]` where the port writes the
+RPN seed `0` — deterministic, but reachable only by driving a `DynamicExp` whose
+compilation already failed *and* whose `Expression` was cleared. Left as is
+(reproducing it would need a new `TODO(compat)` site, which this wave's
+invariant fixes at 117) and listed as an open item. The two error tests now
+assert the compiled stream itself (`[]` and `[0, -50]`), so any drift is visible.
+
+**(6) `ControlAction::Other(n)` aliasing — PROVEN unreachable, hardened.**
+Workspace-wide grep: `ControlAction::Other(` occurs only inside `from_ordinal`
+and its two unit tests, so no hand-built value exists. The property every
+`== ControlAction::X` guard actually rests on is *injectivity of
+`from_ordinal`*, which was unpinned — now asserted over a 17-code spread
+(`i32::MIN`, `i32::MIN + 1`, negatives, 0..=8, 100/101, `i32::MAX`), plus a
+variant doc that forbids direct construction. The `StorageState::Other`
+precedent is left untouched (same shape, same invariant).
+
+**(7) `solve_eq`'s `EqMark` boundary on a malformed stream — invariant made
+runtime-checked.** The typed guard keeps the *previous* `out_idx` where Pascal
+would latch a negative one; the stream shape that would show it is impossible
+(`InterpretDiffEq`'s `dt` arm is the only `EqMark` writer and emits
+`[Var(out), EqMark]` in one step). That claim is now a `debug_assert_eq!` in the
+else arm of the boundary branch — debug-only, so the release path is byte-identical,
+while every dynamics unit test and all 514 corpus cases execute it in the test build.
+The `eq_mark_is_always_preceded_by_its_output_var` pin stays.
+
+**(8) VSConverter terminal-2 mirror was real-part-only — STRENGTHENED with a
+measurement.** The pre-existing assertion checked only `re` (a mirror broken
+purely in reactive current would have passed); the retype carried that shape
+through unchanged. Added the imaginary arm at the *same* `1e-6` bound and the
+same per-component denominator (the real arm is byte-unchanged — nothing was
+merged into a magnitude, nothing loosened). Measured 2026-07-26: both residuals
+are **exactly 0.0** (terminal 2 is the negation of terminal 1), so the new arm
+has full headroom.
+
+**(9) Corpus-gate export-artifact leak — open item, unchanged.** Each corpus-gate
+run leaves one or more untracked exports (`tests/corpus/electricdss-tst/Test/
+AutoTrans/*`, and per-deck `*_EXP_*.CSV` under the family dirs). Nothing under
+`tests/` is tracked-modified by the wave; the merge protocol stays "delete by
+exact name, never a wide `git clean`".
+
+**Open items handed forward.** (a) The other internal nested-command sites
+(`auto_add.rs:393`, `tearing.rs:404/657`, `diakoptics/engine.rs:36/203-214`,
+`json_import.rs:56/67/141`, `MakeNewCircuit`'s vsource, `construct.rs`'s default
+items) still go through the CAPI-shaped `Dss::command`; upstream reaches them via
+`ParseCommand` too, so they carry the same abort-clear inexactness. Converting
+them is *not* bit-neutral (AutoAdd raises `solution_abort` itself inside the very
+loop that then issues a nested command), so it needs its own gated pass — not a
+settler drive-by. (b) The stray-`Cmds`-cell divergence of (5). (c) The
+corpus-gate artifact leak of (9).
+
+**Proof.** Full gate green: `cargo fmt --all --check`, `cargo clippy --workspace
+--all-targets -D warnings`, `cargo test --workspace` including the unconditional
+514-case corpus gate (`corpus_gate_all_cases_match_engines ... ok`, both
+channels). `git diff --stat 7c4a89b6..HEAD -- tests/` **empty** — no golden
+regenerated or added, no tolerance, no `ledger.json`, no corpus deck touched.
+`TODO(compat)` inventory unchanged (**117** in `crates/dss-core/src` across 68
+files, **123** across `crates/**`); no new `downcast`/`as_any`/`Rc`/`RefCell`/
+`Mutex`/statics; registration order untouched. `tests/corpus` pristine.
+
 ### DE_PASCALIZE W3.5 — the `Estimate` command is routed; ORPHANED_GAPS §1.10 is closed (branch `depas-final`, 2026-07-26)
 
 Not a de-Pascalization — the wave's closing **rider**: the last unrouted piece of
