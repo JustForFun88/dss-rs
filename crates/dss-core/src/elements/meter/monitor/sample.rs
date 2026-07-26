@@ -44,6 +44,37 @@ impl Monitor {
         sys: &SysCtx,
         sol: &MonitorSampleCtx,
     ) {
+        // Lend the persistent scratch buffers (Pascal's `VoltageBuffer` /
+        // `CurrentBuffer` object fields) to the sample body: `add_dbl` needs
+        // `&mut self`, so they cannot stay borrowed out of `self` while the
+        // record is written. They are handed back on every path, allocation
+        // included — the body re-zeroes them, so the values are identical to the
+        // freshly allocated buffers this replaces.
+        let mut voltage_buffer = std::mem::take(&mut self.voltage_buffer);
+        let mut current_buffer = std::mem::take(&mut self.current_buffer);
+        self.take_sample_into(
+            metered,
+            node_v,
+            sys,
+            sol,
+            &mut voltage_buffer,
+            &mut current_buffer,
+        );
+        self.voltage_buffer = voltage_buffer;
+        self.current_buffer = current_buffer;
+    }
+
+    /// The `TakeSample` body, over the caller-owned scratch buffers.
+    #[allow(clippy::too_many_arguments)]
+    fn take_sample_into(
+        &mut self,
+        metered: &mut MeteredElem<'_>,
+        node_v: &[Complex64],
+        sys: &SysCtx,
+        sol: &MonitorSampleCtx,
+        voltage_buffer: &mut Vec<Complex64>,
+        current_buffer: &mut Vec<Complex64>,
+    ) {
         if !(self.valid_monitor && self.med.cd.enabled) {
             return;
         }
@@ -71,9 +102,14 @@ impl Monitor {
 
         let base = self.mode.base;
 
-        // Scratch buffers (Pascal keeps them as fields for reuse).
-        let mut current_buffer = vec![Complex64::ZERO; m_yorder.max(fnconds + 1)];
-        let mut voltage_buffer = vec![Complex64::ZERO; m_yorder.max(fnconds + 1)];
+        // Scratch buffers (Pascal keeps them as fields for reuse): resize +
+        // re-zero the reused allocations, exactly the state a fresh
+        // `vec![ZERO; n]` would have.
+        let scratch_len = m_yorder.max(fnconds + 1);
+        current_buffer.clear();
+        current_buffer.resize(scratch_len, Complex64::ZERO);
+        voltage_buffer.clear();
+        voltage_buffer.resize(scratch_len, Complex64::ZERO);
 
         match base {
             MonitorBaseMode::VoltageAndCurrent | MonitorBaseMode::Power => {
@@ -144,12 +180,12 @@ impl Monitor {
                 let cd = e.cd();
                 voltage_buffer[..m_yorder].copy_from_slice(&cd.vterminal[..m_yorder]);
                 current_buffer[..m_yorder].copy_from_slice(&cd.iterminal[..m_yorder]);
-                convert_to_polar(&mut voltage_buffer, m_yorder);
+                convert_to_polar(voltage_buffer, m_yorder);
                 for &c in &voltage_buffer[..m_yorder] {
                     self.add_dbl(c.re);
                     self.add_dbl(c.im);
                 }
-                convert_to_polar(&mut current_buffer, m_yorder);
+                convert_to_polar(current_buffer, m_yorder);
                 for &c in &current_buffer[..m_yorder] {
                     self.add_dbl(c.re);
                     self.add_dbl(c.im);
@@ -288,7 +324,10 @@ impl Monitor {
                     let cd = e.cd();
                     (cd.nphases, cd.nconds, cd.yorder, cd.nterms)
                 };
-                let vterminal = e.cd().vterminal.clone();
+                // Read `Vterminal` in place: the per-terminal slices below only
+                // copy out of it (the metered element is not touched again until
+                // the `compute_iterminal` after the loop).
+                let vterminal = &e.cd().vterminal;
                 // Pascal 1-based `myRefIdx`; 0-based here.
                 let my_ref0 = if np == nc { np } else { nc - 1 };
                 for k in 0..nterms {
@@ -300,7 +339,7 @@ impl Monitor {
                         let next = voltage_buffer[p + 1];
                         voltage_buffer[p] -= next;
                     }
-                    convert_to_polar(&mut voltage_buffer, yorder);
+                    convert_to_polar(voltage_buffer, yorder);
                     for &c in &voltage_buffer[..np] {
                         self.add_dbl(c.re); // magnitude
                         self.add_dbl(c.im); // angle (deg)
@@ -308,7 +347,7 @@ impl Monitor {
                 }
                 e.compute_iterminal(sys, node_v);
                 current_buffer[..yorder].copy_from_slice(&e.cd().iterminal[..yorder]);
-                convert_to_polar(&mut current_buffer, yorder);
+                convert_to_polar(current_buffer, yorder);
                 for &c in &current_buffer[..yorder] {
                     self.add_dbl(c.re); // magnitude
                     self.add_dbl(c.im); // angle (deg)
@@ -352,8 +391,8 @@ impl Monitor {
                 }
             }
             if self.vi_polar {
-                convert_to_polar(&mut voltage_buffer, num_vi);
-                convert_to_polar_offset(&mut current_buffer, offset, num_vi);
+                convert_to_polar(voltage_buffer, num_vi);
+                convert_to_polar_offset(current_buffer, offset, num_vi);
             }
         } else {
             // Mode 1: VoltageBuffer := kW/kvar = V·conj(I)·0.001 (dest aliases V).
@@ -367,7 +406,7 @@ impl Monitor {
                 }
             }
             if self.pp_polar {
-                convert_to_polar(&mut voltage_buffer, num_vi);
+                convert_to_polar(voltage_buffer, num_vi);
             }
         }
 

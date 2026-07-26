@@ -218,7 +218,6 @@ pub(super) fn dispatch_control(
                 .typed::<GenDispatcher>(r)
                 .expect("kind matched above")
                 .clone();
-            let generators = ckt.generators.clone();
             let changed = {
                 let mut env = GenDispEnv {
                     store: &mut **store,
@@ -226,7 +225,7 @@ pub(super) fn dispatch_control(
                     sys: &sys,
                     monitored: mon,
                     element_terminal,
-                    generators,
+                    generators: &ckt.generators,
                 };
                 gd.sample(&mut env)
             };
@@ -263,7 +262,6 @@ pub(super) fn dispatch_control(
             .typed::<StorageController>(r)
             .expect("kind matched above")
             .clone();
-        let storages = ckt.storages.clone();
         {
             let Solution {
                 node_v,
@@ -281,7 +279,7 @@ pub(super) fn dispatch_control(
                 sys: &sys,
                 monitored,
                 element_terminal,
-                storages,
+                storages: &ckt.storages,
                 queue,
                 events: event_log,
                 errors,
@@ -292,7 +290,7 @@ pub(super) fn dispatch_control(
                 t: *t,
                 control_iter: *control_iteration,
                 season_rating: ckt.season_rating,
-                season_signal: ckt.season_signal.clone(),
+                season_signal: &ckt.season_signal,
             };
             match op {
                 ControlOp::Sample => sc.sample(&mut env),
@@ -317,18 +315,15 @@ pub(super) fn dispatch_control(
             .typed::<InvControl>(r)
             .expect("kind matched above")
             .clone();
-        let pv_systems = ckt.pv_systems.clone();
-        let storages = ckt.storages.clone();
-        let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
-        // Resolve the control's `MonBus` names to per-bus `RefNo` arrays for the
+        // Resolve the control's `MonBus` names to per-bus `RefNo` slices for the
         // `GetMonVoltage` MonBus path (empty when unused or a name is unknown).
-        let mon_bus_refs: Vec<Vec<usize>> = ic
+        let mon_bus_refs: Vec<&[usize]> = ic
             .mon_buses
             .iter()
             .map(|bn| {
                 ckt.bus_list
                     .find(bn)
-                    .map(|bi| ckt.buses[bi].ref_no.clone())
+                    .map(|bi| ckt.buses[bi].ref_no.as_slice())
                     .unwrap_or_default()
             })
             .collect();
@@ -348,9 +343,9 @@ pub(super) fn dispatch_control(
                 store: &mut **store,
                 node_v: &*node_v,
                 sys: &sys,
-                pv_systems,
-                storages,
-                bus_kvbase,
+                pv_systems: &ckt.pv_systems,
+                storages: &ckt.storages,
+                buses: &ckt.buses,
                 mon_bus_refs,
                 queue,
                 events: event_log,
@@ -394,8 +389,6 @@ pub(super) fn dispatch_control(
             .typed::<ExpControl>(r)
             .expect("kind matched above")
             .clone();
-        let pv_systems = ckt.pv_systems.clone();
-        let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
         {
             let Solution {
                 node_v,
@@ -411,8 +404,8 @@ pub(super) fn dispatch_control(
                 store: &mut **store,
                 node_v: &*node_v,
                 sys: &sys,
-                pv_systems,
-                bus_kvbase,
+                pv_systems: &ckt.pv_systems,
+                buses: &ckt.buses,
                 queue,
                 events: event_log,
                 self_ref: r,
@@ -445,13 +438,12 @@ pub(super) fn dispatch_control(
             .typed::<UpfcControl>(r)
             .expect("kind matched above")
             .clone();
-        let upfcs = ckt.upfcs.clone();
         {
             let mut env = UpfcDispEnv {
                 store: &mut **store,
                 node_v: &ckt.solution.node_v,
                 sys: &sys,
-                upfcs,
+                upfcs: &ckt.upfcs,
             };
             match op {
                 ControlOp::Sample => {
@@ -990,14 +982,15 @@ pub(super) fn dispatch_control(
 /// [`GenDispatchEnv`] over the class registry: the monitored element's terminal
 /// power and the dispatched generators' `kWBase`/`kvarBase`, reached through the
 /// store. The generator-scan list is the circuit's creation-ordered
-/// `generators` list (cloned by the caller so the store can be borrowed freely).
+/// `generators` list, borrowed in place (the store lives outside the circuit,
+/// so no copy is needed to keep it mutable).
 struct GenDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
     monitored: ElemId,
     element_terminal: usize,
-    generators: Vec<ElemId>,
+    generators: &'a [ElemId],
 }
 
 impl GenDispEnv<'_> {
@@ -1111,12 +1104,12 @@ impl EspvlDispatchEnv for EspvlDispEnv<'_> {
 
 /// [`UpfcDispatchEnv`] over the store: the controlled UPFC fleet, reached through
 /// the class registry. The fleet-scan list is the circuit's creation-ordered
-/// `upfcs` (cloned by the caller so the store can be borrowed freely).
+/// `upfcs`, borrowed in place (the store lives outside the circuit).
 struct UpfcDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    upfcs: Vec<ElemId>,
+    upfcs: &'a [ElemId],
 }
 
 impl UpfcDispEnv<'_> {
@@ -1187,7 +1180,6 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemId, ckt: &mut Circuit, env:
         .typed::<StorageController>(r)
         .expect("checked above")
         .clone();
-    let storages = ckt.storages.clone();
     let mut queue = std::mem::take(&mut ckt.solution.control_queue);
     {
         let Solution {
@@ -1206,7 +1198,7 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemId, ckt: &mut Circuit, env:
             sys: &sys,
             monitored,
             element_terminal,
-            storages,
+            storages: &ckt.storages,
             queue: &mut queue,
             events: event_log,
             errors,
@@ -1217,7 +1209,7 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemId, ckt: &mut Circuit, env:
             t: *t,
             control_iter: *control_iteration,
             season_rating: ckt.season_rating,
-            season_signal: ckt.season_signal.clone(),
+            season_signal: &ckt.season_signal,
         };
         sc.recalc_fleet(&mut denv);
     }
@@ -1230,14 +1222,14 @@ pub(crate) fn storage_controller_recalc_fleet(r: ElemId, ckt: &mut Circuit, env:
 /// [`StorageDispatchEnv`] over the store: the monitored element's terminal
 /// power/current and the dispatched Storage fleet's state, reached through the
 /// class registry. The fleet-scan list is the circuit's creation-ordered
-/// `storages` list (cloned by the caller so the store can be borrowed freely).
+/// `storages` list, borrowed in place (the store lives outside the circuit).
 struct StorageDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
     monitored: Option<ElemId>,
     element_terminal: usize,
-    storages: Vec<ElemId>,
+    storages: &'a [ElemId],
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
     errors: &'a mut crate::diag::ErrorLog,
@@ -1250,7 +1242,7 @@ struct StorageDispEnv<'a> {
     /// `DSS.SeasonalRating` (`Set SeasonRating=`).
     season_rating: bool,
     /// `DSS.SeasonSignal` (`Set SeasonSignal=`).
-    season_signal: String,
+    season_signal: &'a str,
 }
 
 impl StorageDispEnv<'_> {
@@ -1524,7 +1516,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
         // RSignal <> NIL then RatingIdx := trunc(RSignal.GetYValue(intHour))`
         // — `RatingIdx` stays its `0` init on a miss.
         let mut rating_idx = 0;
-        if let Some(r) = self.store.find_general("XYcurve", &self.season_signal)
+        if let Some(r) = self.store.find_general("XYcurve", self.season_signal)
             && let Some(curve) = self
                 .store
                 .typed_mut::<crate::elements::general::xy_curve::XyCurveObj>(r)
@@ -1542,10 +1534,15 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
 pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let SolveEnv { store, errors, .. } = env;
-    let controls = ckt.controls.clone();
-    let pv_systems = ckt.pv_systems.clone();
-    let storages = ckt.storages.clone();
-    let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
+    let Circuit {
+        controls,
+        pv_systems,
+        storages,
+        buses,
+        bus_list,
+        solution,
+        ..
+    } = ckt;
     let Solution {
         node_v,
         event_log,
@@ -1557,23 +1554,23 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
         system_y_changed,
         solution_abort,
         ..
-    } = &mut ckt.solution;
+    } = solution;
 
-    for r in controls {
+    for &r in controls.iter() {
         if store.typed::<InvControl>(r).is_none() || !store.ckt_elem(r).cd().enabled {
             continue;
         }
         let mut ic = store.typed::<InvControl>(r).expect("checked above").clone();
-        // Resolve this control's `MonBus` names to per-bus `RefNo` arrays (disjoint
+        // Resolve this control's `MonBus` names to per-bus `RefNo` slices (disjoint
         // from the `&mut ckt.solution` borrow held above; empty for the common
         // no-MonBus control, so zero cost there).
-        let mon_bus_refs: Vec<Vec<usize>> = ic
+        let mon_bus_refs: Vec<&[usize]> = ic
             .mon_buses
             .iter()
             .map(|bn| {
-                ckt.bus_list
+                bus_list
                     .find(bn)
-                    .map(|bi| ckt.buses[bi].ref_no.clone())
+                    .map(|bi| buses[bi].ref_no.as_slice())
                     .unwrap_or_default()
             })
             .collect();
@@ -1582,9 +1579,9 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
                 store: &mut **store,
                 node_v: &*node_v,
                 sys: &sys,
-                pv_systems: pv_systems.clone(),
-                storages: storages.clone(),
-                bus_kvbase: bus_kvbase.clone(),
+                pv_systems,
+                storages,
+                buses,
                 mon_bus_refs,
                 queue: &mut *control_queue,
                 events: &mut *event_log,
@@ -1607,19 +1604,19 @@ pub(crate) fn update_all_inv_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
 
 /// [`InvDispatchEnv`] over the store: the controlled PVSystem/Storage fleet's
 /// state, reached through the class registry. The fleet-scan lists are the
-/// circuit's creation-ordered `pv_systems`/`storages` (cloned by the caller so the
-/// store can be borrowed freely); `bus_kvbase[i]` is bus `i`'s kV base.
+/// circuit's creation-ordered `pv_systems`/`storages`, borrowed in place (the
+/// store lives outside the circuit); `buses[i].kv_base` is bus `i`'s kV base.
 struct InvDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    pv_systems: Vec<ElemId>,
-    storages: Vec<ElemId>,
-    bus_kvbase: Vec<f64>,
-    /// The controlled InvControl's parsed `MonBus` ref arrays (one `RefNo` array
+    pv_systems: &'a [ElemId],
+    storages: &'a [ElemId],
+    buses: &'a [crate::circuit::Bus],
+    /// The controlled InvControl's parsed `MonBus` ref arrays (one `RefNo` slice
     /// per `ic.mon_buses` entry; empty when `MonBus=` is unused or a name is
     /// unknown). Backs [`InvDispatchEnv::mon_bus_node_v`].
-    mon_bus_refs: Vec<Vec<usize>>,
+    mon_bus_refs: Vec<&'a [usize]>,
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
     errors: &'a mut crate::diag::ErrorLog,
@@ -1666,10 +1663,10 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         self.find("storage", name)
     }
     fn all_pvsystems(&self) -> Vec<(String, ElemId, bool)> {
-        self.all_of("PVSystem", &self.pv_systems)
+        self.all_of("PVSystem", self.pv_systems)
     }
     fn all_storages(&self) -> Vec<(String, ElemId, bool)> {
-        self.all_of("Storage", &self.storages)
+        self.all_of("Storage", self.storages)
     }
     fn push_error(&mut self, diag: crate::diag::DssDiagnostic) {
         self.errors.push(diag);
@@ -1762,8 +1759,8 @@ impl InvDispatchEnv for InvDispEnv<'_> {
         let cd = self.store.ckt_elem(r).cd();
         cd.terminals[0]
             .bus_ref
-            .and_then(|b| self.bus_kvbase.get(b))
-            .copied()
+            .and_then(|b| self.buses.get(b))
+            .map(|b| b.kv_base)
             .unwrap_or(0.0)
             * 1000.0
     }
@@ -2099,9 +2096,13 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     let SolveEnv { store, errors, .. } = env;
     let _ = errors; // ExpControl.UpdateExpControl logs no errors
-    let controls = ckt.controls.clone();
-    let pv_systems = ckt.pv_systems.clone();
-    let bus_kvbase: Vec<f64> = ckt.buses.iter().map(|b| b.kv_base).collect();
+    let Circuit {
+        controls,
+        pv_systems,
+        buses,
+        solution,
+        ..
+    } = ckt;
     let Solution {
         node_v,
         event_log,
@@ -2112,9 +2113,9 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
         t,
         loads_need_updating,
         ..
-    } = &mut ckt.solution;
+    } = solution;
 
-    for r in controls {
+    for &r in controls.iter() {
         if store.typed::<ExpControl>(r).is_none() || !store.ckt_elem(r).cd().enabled {
             continue;
         }
@@ -2124,8 +2125,8 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
                 store: &mut **store,
                 node_v: &*node_v,
                 sys: &sys,
-                pv_systems: pv_systems.clone(),
-                bus_kvbase: bus_kvbase.clone(),
+                pv_systems,
+                buses,
                 queue: &mut *control_queue,
                 events: &mut *event_log,
                 self_ref: r,
@@ -2144,14 +2145,14 @@ pub(crate) fn update_all_exp_controls(ckt: &mut Circuit, env: &mut SolveEnv) {
 
 /// [`ExpDispatchEnv`] over the store: the controlled PVSystem fleet's state,
 /// reached through the class registry. The fleet-scan list is the circuit's
-/// creation-ordered `pv_systems` (cloned by the caller so the store can be borrowed
-/// freely); `bus_kvbase[i]` is bus `i`'s kV base.
+/// creation-ordered `pv_systems`, borrowed in place (the store lives outside the
+/// circuit); `buses[i].kv_base` is bus `i`'s kV base.
 struct ExpDispEnv<'a> {
     store: &'a mut dyn ElemStore,
     node_v: &'a [Complex64],
     sys: &'a SysCtx,
-    pv_systems: Vec<ElemId>,
-    bus_kvbase: Vec<f64>,
+    pv_systems: &'a [ElemId],
+    buses: &'a [crate::circuit::Bus],
     queue: &'a mut ControlQueue,
     events: &'a mut EventLog,
     self_ref: ElemId,
@@ -2203,8 +2204,8 @@ impl ExpDispatchEnv for ExpDispEnv<'_> {
         let pv = Self::pvsystem(self.store, r);
         let bus_ref = pv.cd.terminals[0].bus_ref;
         let bus_kvbase = bus_ref
-            .and_then(|b| self.bus_kvbase.get(b))
-            .copied()
+            .and_then(|b| self.buses.get(b))
+            .map(|b| b.kv_base)
             .unwrap_or(0.0);
         PvSnap {
             name: pv.cd.obj.name().to_string(),

@@ -14,6 +14,8 @@
 use crate::circuit::Circuit;
 use crate::util::EPSILON;
 
+use super::Solution;
+
 use super::power_flow::{solve_direct, solve_snap};
 use super::time_series::end_of_time_step_cleanup;
 use super::{SolveEnv, SolveResult, sys_ctx};
@@ -26,14 +28,22 @@ use super::{SolveEnv, SolveResult, sys_ctx};
 pub(crate) fn initialize_for_harmonics(ckt: &mut Circuit, env: &mut SolveEnv) -> bool {
     // `savePresentVoltages`: the original spills NodeV to a `.dbl` file; here we
     // keep the fundamental voltage vector in memory.
-    ckt.solution.saved_node_v = ckt.solution.node_v.clone();
+    // `clone_from` reuses the saved vector's allocation across sweeps; the
+    // copied values are identical to a fresh `clone`.
+    let Solution {
+        node_v,
+        saved_node_v,
+        ..
+    } = &mut ckt.solution;
+    saved_node_v.clone_from(node_v);
 
     let sys = sys_ctx(ckt);
-    let node_v = ckt.solution.node_v.clone();
+    // `env.store` is disjoint from `ckt`, so the element loop reads `node_v`
+    // straight out of the solution — no per-entry copy of the voltage vector.
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
         if elem.cd().enabled {
-            elem.init_harmonics(&sys, &node_v);
+            elem.init_harmonics(&sys, &ckt.solution.node_v);
             // Pascal `InitializeForHarmonics` `Exit`s the instant an element
             // aborts the solution. The check is faithful but currently
             // unreached: no ported element's `init_harmonics` sets
