@@ -1107,9 +1107,9 @@ impl LedgerView<'_> {
 }
 
 /// Envelope-check one element's selected sub-channels against the Rust snapshot.
-/// Layout matches `ElementSnapshot`: `currents`/`powers` are interleaved
-/// (re/im, kw/kvar) while the oracle `ElementCap` splits them; `loss_w` is a
-/// `(re, im)` tuple vs the oracle's 2-vector.
+/// Layout matches `ElementSnapshot`: `currents`/`powers` are complex per
+/// conductor (A, kW+j·kvar) while the oracle `ElementCap` splits re/im into
+/// parallel arrays; `loss_w` is a `(re, im)` tuple vs the oracle's 2-vector.
 fn envelope_element(
     e: &Entry,
     sc: &Scope,
@@ -1138,14 +1138,14 @@ fn envelope_element(
     };
     if want("currents") {
         for (k, (re, im)) in ec.i_re.iter().zip(&ec.i_im).enumerate() {
-            check(&format!("i_re[{k}]"), snap.currents[2 * k], *re);
-            check(&format!("i_im[{k}]"), snap.currents[2 * k + 1], *im);
+            check(&format!("i_re[{k}]"), snap.currents[k].re, *re);
+            check(&format!("i_im[{k}]"), snap.currents[k].im, *im);
         }
     }
     if want("powers") {
         for (k, (kw, kvar)) in ec.p_kw.iter().zip(&ec.p_kvar).enumerate() {
-            check(&format!("p_kw[{k}]"), snap.powers[2 * k], *kw);
-            check(&format!("p_kvar[{k}]"), snap.powers[2 * k + 1], *kvar);
+            check(&format!("p_kw[{k}]"), snap.powers[k].re, *kw);
+            check(&format!("p_kvar[{k}]"), snap.powers[k].im, *kvar);
         }
     }
     if want("losses") && ec.loss_w.len() == 2 {
@@ -1182,14 +1182,14 @@ fn rewrite_element_selected(
     let want = |ch: &str| sc.channels.is_empty() || sc.channels.iter().any(|c| c == ch);
     if want("currents") {
         for k in 0..cap.i_re.len().min(cap.i_im.len()) {
-            cap.i_re[k] = snap.currents[2 * k];
-            cap.i_im[k] = snap.currents[2 * k + 1];
+            cap.i_re[k] = snap.currents[k].re;
+            cap.i_im[k] = snap.currents[k].im;
         }
     }
     if want("powers") {
         for k in 0..cap.p_kw.len().min(cap.p_kvar.len()) {
-            cap.p_kw[k] = snap.powers[2 * k];
-            cap.p_kvar[k] = snap.powers[2 * k + 1];
+            cap.p_kw[k] = snap.powers[k].re;
+            cap.p_kvar[k] = snap.powers[k].im;
         }
     }
     if want("losses") && cap.loss_w.len() == 2 {

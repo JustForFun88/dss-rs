@@ -48,7 +48,7 @@ mod accessors;
 use num_complex::Complex64;
 
 use crate::elements::control::control_elem::{
-    CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, ControlElemData, CtrlCtx, RefSnapshot,
+    ControlAction, ControlElemData, CtrlCtx, RefSnapshot,
 };
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::traits::CktElement;
@@ -250,9 +250,9 @@ pub struct Recloser {
     td_gnd_slow: f64,
 
     /// `FPresentState[1..RCMAX]` (per phase) — the recloser's live position.
-    present_state: [i32; ARR],
+    present_state: [ControlAction; ARR],
     /// `FNormalState[1..RCMAX]` (per phase) — the reset target.
-    normal_state: [i32; ARR],
+    normal_state: [ControlAction; ARR],
     /// `OperationCount[1..IdxMultiPh]` — per-phase (+ ganged) operation index.
     operation_count: [i32; ARR],
     /// `LockedOut[1..IdxMultiPh]` — a phase (or the ganged group) exhausted shots.
@@ -329,8 +329,8 @@ impl Recloser {
             td_gnd_fast: 1.0,
             td_ph_slow: 1.0,
             td_gnd_slow: 1.0,
-            present_state: [CTRL_CLOSE; ARR],
-            normal_state: [CTRL_CLOSE; ARR],
+            present_state: [ControlAction::Close; ARR],
+            normal_state: [ControlAction::Close; ARR],
             operation_count: [1; ARR],
             locked_out: [false; ARR],
             armed_for_open: [false; ARR],
@@ -373,14 +373,14 @@ impl Recloser {
     /// Pascal `InterpretRecloserState` ganged path (deprecated `Action=` and the
     /// unquoted scalar `State=`/`Normal=`): set **every** phase. Blocked while
     /// `Locked` for `State`/`Action`.
-    fn set_all_present(&mut self, state: i32) {
+    fn set_all_present(&mut self, state: ControlAction) {
         let n = self.state_size();
         for i in 1..=n {
             self.present_state[i] = state;
         }
     }
 
-    fn set_all_normal(&mut self, state: i32) {
+    fn set_all_normal(&mut self, state: ControlAction) {
         let n = self.state_size();
         for i in 1..=n {
             self.normal_state[i] = state;
@@ -394,7 +394,7 @@ impl Recloser {
         if self.f_locked {
             return; // Pascal `InterpretRecloserState`: blocked while Locked.
         }
-        self.set_all_present(ordinal);
+        self.set_all_present(ControlAction::from_ordinal(ordinal));
         self.state_side_effect();
     }
 
@@ -405,7 +405,7 @@ impl Recloser {
         if let Some(target) = self.ccd.controlled_element {
             let n = self.state_size();
             let closed: Vec<bool> = (1..=n)
-                .map(|i| self.present_state[i] == CTRL_CLOSE)
+                .map(|i| self.present_state[i] == ControlAction::Close)
                 .collect();
             self.pending_ref_actions
                 .push(RefAction::SetConductorsClosed {
@@ -426,7 +426,7 @@ impl Recloser {
         {
             self.pending_ref_actions.push(RefAction::SetOcpDevice {
                 target,
-                device_type: 2,
+                device_type: crate::elements::ckt::OcpDeviceType::Recloser,
                 auto: true,
             });
         }
@@ -459,7 +459,7 @@ impl Recloser {
             self.queue_ocp_flag();
             let n = self.state_size();
             for i in 1..=n {
-                if self.present_state[i] == CTRL_CLOSE {
+                if self.present_state[i] == ControlAction::Close {
                     self.locked_out[i] = false;
                     self.operation_count[i] = 1;
                     self.armed_for_open[i] = false;
@@ -571,9 +571,9 @@ impl Recloser {
         let n = self.state_size();
         for i in 1..=n {
             self.present_state[i] = if ctrl.cd().conductor_closed(element_terminal, i) {
-                CTRL_CLOSE
+                ControlAction::Close
             } else {
-                CTRL_OPEN
+                ControlAction::Open
             };
         }
         if self.debug_trace {
@@ -582,7 +582,7 @@ impl Recloser {
         }
 
         // Continue only if at least one phase is closed.
-        let any_closed = (1..=n).any(|i| self.present_state[i] == CTRL_CLOSE);
+        let any_closed = (1..=n).any(|i| self.present_state[i] == ControlAction::Close);
         if !any_closed {
             return;
         }
@@ -671,7 +671,7 @@ impl Recloser {
         n: usize,
     ) {
         for i in 1..=n {
-            if self.present_state[i] != CTRL_CLOSE {
+            if self.present_state[i] != ControlAction::Close {
                 continue;
             }
             let mut trip_time = if ground_time > 0.0 { ground_time } else { -1.0 };
@@ -732,7 +732,7 @@ impl Recloser {
                         ctx.int_hour,
                         ctx.t,
                         trip_time + self.mechanical_delay,
-                        CTRL_OPEN,
+                        ControlAction::Open.ordinal(),
                         i as i32,
                         ctx.self_ref,
                     );
@@ -746,7 +746,7 @@ impl Recloser {
                             ctx.int_hour,
                             ctx.t,
                             trip_time + self.mechanical_delay + interval,
-                            CTRL_CLOSE,
+                            ControlAction::Close.ordinal(),
                             i as i32,
                             ctx.self_ref,
                         );
@@ -759,7 +759,7 @@ impl Recloser {
                     ctx.int_hour,
                     ctx.t,
                     self.reset_time,
-                    CTRL_RESET,
+                    ControlAction::Reset.ordinal(),
                     i as i32,
                     ctx.self_ref,
                 );
@@ -845,7 +845,7 @@ impl Recloser {
                     ctx.int_hour,
                     ctx.t,
                     trip_time + self.mechanical_delay,
-                    CTRL_OPEN,
+                    ControlAction::Open.ordinal(),
                     0,
                     ctx.self_ref,
                 );
@@ -859,7 +859,7 @@ impl Recloser {
                         ctx.int_hour,
                         ctx.t,
                         trip_time + self.mechanical_delay + interval,
-                        CTRL_CLOSE,
+                        ControlAction::Close.ordinal(),
                         0,
                         ctx.self_ref,
                     );
@@ -872,7 +872,7 @@ impl Recloser {
                 ctx.int_hour,
                 ctx.t,
                 self.reset_time,
-                CTRL_RESET,
+                ControlAction::Reset.ordinal(),
                 0,
                 ctx.self_ref,
             );
@@ -904,23 +904,23 @@ impl Recloser {
         }
         let nphases = self.state_size();
 
-        match code {
-            CTRL_OPEN => {
+        match ControlAction::from_ordinal(code) {
+            ControlAction::Open => {
                 if self.single_ph_trip {
                     self.do_open_single(ph_idx, nphases, ctrl, ctx);
                 } else {
                     self.do_open_ganged(ph_idx, nphases, ctrl, ctx);
                 }
             }
-            CTRL_CLOSE => {
+            ControlAction::Close => {
                 if self.single_ph_trip {
-                    if self.present_state[ph_idx] == CTRL_OPEN
+                    if self.present_state[ph_idx] == ControlAction::Open
                         && self.armed_for_close[ph_idx]
                         && !self.locked_out[ph_idx]
                     {
                         ctrl.cd_mut()
                             .set_conductor_closed(element_terminal, ph_idx, true);
-                        self.present_state[ph_idx] = CTRL_CLOSE;
+                        self.present_state[ph_idx] = ControlAction::Close;
                         let m = format!("Phase {ph_idx} closed (1ph reclosing)");
                         self.log_if(ctx, &self.full_name(), &m);
                         self.operation_count[ph_idx] += 1;
@@ -929,14 +929,14 @@ impl Recloser {
                     }
                 } else {
                     for i in 1..=nphases {
-                        if self.present_state[i] == CTRL_OPEN
+                        if self.present_state[i] == ControlAction::Open
                             && self.armed_for_close[ph_idx]
                             && !self.locked_out[i]
                             && !self.locked_out[ph_idx]
                         {
                             ctrl.cd_mut()
                                 .set_conductor_closed(element_terminal, i, true);
-                            self.present_state[i] = CTRL_CLOSE;
+                            self.present_state[i] = ControlAction::Close;
                             let m = format!("Phase {i} closed (3ph reclosing)");
                             self.log_if(ctx, &self.full_name(), &m);
                             *ctx.system_y_changed = true;
@@ -946,16 +946,18 @@ impl Recloser {
                     self.operation_count[ph_idx] += 1;
                 }
             }
-            CTRL_RESET => {
+            ControlAction::Reset => {
                 if self.single_ph_trip {
-                    if self.present_state[ph_idx] == CTRL_CLOSE && !self.armed_for_open[ph_idx] {
+                    if self.present_state[ph_idx] == ControlAction::Close
+                        && !self.armed_for_open[ph_idx]
+                    {
                         self.operation_count[ph_idx] = 1;
                         let m = format!("Phase {ph_idx} reset (1ph reset)");
                         self.log_if(ctx, &self.full_name(), &m);
                     }
                 } else {
                     for i in 1..=nphases {
-                        if self.present_state[i] == CTRL_CLOSE {
+                        if self.present_state[i] == ControlAction::Close {
                             if !self.armed_for_open[ph_idx] {
                                 self.operation_count[ph_idx] = 1;
                                 self.log_if(ctx, &self.full_name(), "Phase ALL reset (3ph reset)");
@@ -978,12 +980,12 @@ impl Recloser {
         ctx: &mut CtrlCtx,
     ) {
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
-        if self.present_state[ph_idx] != CTRL_CLOSE || !self.armed_for_open[ph_idx] {
+        if self.present_state[ph_idx] != ControlAction::Close || !self.armed_for_open[ph_idx] {
             return;
         }
         ctrl.cd_mut()
             .set_conductor_closed(element_terminal, ph_idx, false);
-        self.present_state[ph_idx] = CTRL_OPEN;
+        self.present_state[ph_idx] = ControlAction::Open;
         *ctx.system_y_changed = true;
 
         if self.operation_count[ph_idx] > self.num_reclose {
@@ -1005,7 +1007,7 @@ impl Recloser {
                     if i != ph_idx && !self.locked_out[i] {
                         ctrl.cd_mut()
                             .set_conductor_closed(element_terminal, i, false);
-                        self.present_state[i] = CTRL_OPEN;
+                        self.present_state[i] = ControlAction::Open;
                         self.locked_out[i] = true;
                         if self.armed_for_open[i] {
                             self.armed_for_open[i] = false;
@@ -1038,10 +1040,10 @@ impl Recloser {
     ) {
         let element_terminal = self.ccd.element_terminal.max(1) as usize;
         for i in 1..=nphases {
-            if self.present_state[i] == CTRL_CLOSE && self.armed_for_open[ph_idx] {
+            if self.present_state[i] == ControlAction::Close && self.armed_for_open[ph_idx] {
                 ctrl.cd_mut()
                     .set_conductor_closed(element_terminal, i, false);
-                self.present_state[i] = CTRL_OPEN;
+                self.present_state[i] = ControlAction::Open;
                 *ctx.system_y_changed = true;
                 if self.operation_count[ph_idx] > self.num_reclose {
                     self.locked_out[ph_idx] = true;
@@ -1083,11 +1085,15 @@ impl Recloser {
 
     /// Render a per-phase state array as `[closed, closed, closed, ]` (the
     /// `GetPropertyValue(24)` form used by the `DebugTrace` line).
-    fn render_state_array(&self, arr: &[i32; ARR]) -> String {
+    fn render_state_array(&self, arr: &[ControlAction; ARR]) -> String {
         let n = self.state_size();
         let mut s = String::from("[");
         for &v in arr.iter().take(n + 1).skip(1) {
-            s.push_str(if v == CTRL_OPEN { "open" } else { "closed" });
+            s.push_str(if v == ControlAction::Open {
+                "open"
+            } else {
+                "closed"
+            });
             s.push_str(", ");
         }
         s.push(']');
@@ -1130,7 +1136,7 @@ impl Recloser {
             self.armed_for_close[i] = false;
             self.ground_target = false;
             self.phase_target[i] = false;
-            if self.normal_state[i] == CTRL_OPEN {
+            if self.normal_state[i] == ControlAction::Open {
                 ctrl.cd_mut()
                     .set_conductor_closed(element_terminal, i, false);
                 self.locked_out[i] = true;
@@ -1152,7 +1158,7 @@ impl Recloser {
         self.reset_control_side();
         let n = self.state_size();
         for i in 1..=n {
-            if self.normal_state[i] == CTRL_OPEN {
+            if self.normal_state[i] == ControlAction::Open {
                 self.locked_out[i] = true;
                 self.operation_count[i] = self.num_reclose + 1;
             } else {
@@ -1162,7 +1168,7 @@ impl Recloser {
         }
         if let Some(target) = self.ccd.controlled_element {
             let closed: Vec<bool> = (1..=n)
-                .map(|i| self.normal_state[i] == CTRL_CLOSE)
+                .map(|i| self.normal_state[i] == ControlAction::Close)
                 .collect();
             self.pending_ref_actions
                 .push(RefAction::SetConductorsClosed {

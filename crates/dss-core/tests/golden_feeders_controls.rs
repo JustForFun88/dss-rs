@@ -20,7 +20,9 @@ mod harness;
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
-use harness::{Golden, assert_complex_close, assert_value_matches_tol};
+use harness::{
+    Golden, assert_complex_close, assert_complex_close_c, assert_value_matches_tol, deinterleave,
+};
 
 fn repo_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect()
@@ -205,16 +207,16 @@ fn run_case(name: &str) {
         // Same absolute floors as the Phase 4 gate: dead-end branch currents
         // are differences of nearly equal voltages, so 1e-6-rel voltage
         // agreement caps absolute current agreement at the µA scale.
-        assert_complex_close(
+        assert_complex_close_c(
             &snap.currents,
-            &exp.currents,
+            &deinterleave(&exp.currents),
             1e-6,
             1e-4,
             &format!("{name} {} currents", snap.name),
         );
-        assert_complex_close(
+        assert_complex_close_c(
             &snap.powers,
-            &exp.powers,
+            &deinterleave(&exp.powers),
             1e-6,
             1e-4,
             &format!("{name} {} powers", snap.name),

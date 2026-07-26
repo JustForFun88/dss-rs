@@ -14,7 +14,7 @@
 
 use num_complex::Complex64;
 
-use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_OPEN, CTRL_RESET, CtrlCtx};
+use crate::elements::control::control_elem::{ControlAction, CtrlCtx};
 use crate::elements::traits::CktElement;
 use crate::support::complexutil::{cdang, pdeg_to_complex};
 use crate::support::dynamics::IterationFlag;
@@ -82,7 +82,7 @@ impl Relay {
         let cur = |i: usize| cbuffer.get(i - 1).copied().unwrap_or(Complex64::ZERO);
 
         // B4: continue sampling if ≥1 phase closed, else exit.
-        if !(1..=n).any(|i| self.present_state[i] == CTRL_CLOSE) {
+        if !(1..=n).any(|i| self.present_state[i] == ControlAction::Close) {
             return;
         }
 
@@ -159,7 +159,7 @@ impl Relay {
         cur: &dyn Fn(usize) -> Complex64,
     ) {
         for i in 1..=n {
-            if self.present_state[i] != CTRL_CLOSE {
+            if self.present_state[i] != ControlAction::Close {
                 continue;
             }
             let mut trip_time = if ground_time > 0.0 { ground_time } else { -1.0 };
@@ -227,7 +227,7 @@ impl Relay {
                         ctx.int_hour,
                         ctx.t,
                         trip_time + self.mechanical_delay,
-                        CTRL_OPEN,
+                        ControlAction::Open.ordinal(),
                         i as i32,
                         ctx.self_ref,
                     );
@@ -241,7 +241,7 @@ impl Relay {
                             ctx.int_hour,
                             ctx.t,
                             trip_time + self.mechanical_delay + interval,
-                            CTRL_CLOSE,
+                            ControlAction::Close.ordinal(),
                             i as i32,
                             ctx.self_ref,
                         );
@@ -254,7 +254,7 @@ impl Relay {
                     ctx.int_hour,
                     ctx.t,
                     self.reset_time,
-                    CTRL_RESET,
+                    ControlAction::Reset.ordinal(),
                     i as i32,
                     ctx.self_ref,
                 );
@@ -348,7 +348,7 @@ impl Relay {
                     ctx.int_hour,
                     ctx.t,
                     trip_time + self.mechanical_delay,
-                    CTRL_OPEN,
+                    ControlAction::Open.ordinal(),
                     0,
                     ctx.self_ref,
                 );
@@ -362,7 +362,7 @@ impl Relay {
                         ctx.int_hour,
                         ctx.t,
                         trip_time + self.mechanical_delay + interval,
-                        CTRL_CLOSE,
+                        ControlAction::Close.ordinal(),
                         0,
                         ctx.self_ref,
                     );
@@ -375,7 +375,7 @@ impl Relay {
                 ctx.int_hour,
                 ctx.t,
                 self.reset_time,
-                CTRL_RESET,
+                ControlAction::Reset.ordinal(),
                 0,
                 ctx.self_ref,
             );
@@ -414,7 +414,7 @@ impl Relay {
                 .copied()
                 .unwrap_or(Complex64::ZERO)
                 .norm();
-            if self.present_state[i] == CTRL_CLOSE {
+            if self.present_state[i] == ControlAction::Close {
                 if vmag > vmax_closed {
                     vmax_closed = vmag;
                 }
@@ -490,7 +490,7 @@ impl Relay {
                 self.last_event_handle = ctx.queue.push(
                     ctx.int_hour,
                     self.next_trip_time,
-                    CTRL_OPEN,
+                    ControlAction::Open.ordinal(),
                     0,
                     ctx.self_ref,
                 );
@@ -503,7 +503,7 @@ impl Relay {
                 ctx.int_hour,
                 ctx.t,
                 self.reset_time,
-                CTRL_RESET,
+                ControlAction::Reset.ordinal(),
                 0,
                 ctx.self_ref,
             );
@@ -511,7 +511,7 @@ impl Relay {
         }
 
         // Reclose check — all phases must be open.
-        if (1..=n).any(|i| self.present_state[i] == CTRL_CLOSE) {
+        if (1..=n).any(|i| self.present_state[i] == ControlAction::Close) {
             return;
         }
         if self.operation_count[g] <= self.num_reclose {
@@ -526,7 +526,7 @@ impl Relay {
                         ctx.int_hour,
                         ctx.t,
                         interval,
-                        CTRL_CLOSE,
+                        ControlAction::Close.ordinal(),
                         0,
                         ctx.self_ref,
                     );
@@ -555,7 +555,7 @@ impl Relay {
                         ctx.int_hour,
                         ctx.t,
                         self.definite_time_delay + self.mechanical_delay,
-                        CTRL_OPEN,
+                        ControlAction::Open.ordinal(),
                         0,
                         ctx.self_ref,
                     );
@@ -604,7 +604,7 @@ impl Relay {
                     ctx.int_hour,
                     ctx.t,
                     trip_time + self.mechanical_delay,
-                    CTRL_OPEN,
+                    ControlAction::Open.ordinal(),
                     0,
                     ctx.self_ref,
                 );
@@ -639,7 +639,7 @@ impl Relay {
                     ctx.int_hour,
                     ctx.t,
                     self.definite_time_delay + self.mechanical_delay,
-                    CTRL_OPEN,
+                    ControlAction::Open.ordinal(),
                     0,
                     ctx.self_ref,
                 );
@@ -678,7 +678,7 @@ impl Relay {
                     ctx.int_hour,
                     ctx.t,
                     self.definite_time_delay + self.mechanical_delay,
-                    CTRL_OPEN,
+                    ControlAction::Open.ordinal(),
                     0,
                     ctx.self_ref,
                 );
@@ -778,7 +778,7 @@ impl Relay {
                     ctx.int_hour,
                     ctx.t,
                     self.definite_time_delay + self.mechanical_delay,
-                    CTRL_OPEN,
+                    ControlAction::Open.ordinal(),
                     0,
                     ctx.self_ref,
                 );
@@ -793,7 +793,7 @@ impl Relay {
                         ctx.int_hour,
                         ctx.t,
                         self.definite_time_delay + self.mechanical_delay + interval,
-                        CTRL_CLOSE,
+                        ControlAction::Close.ordinal(),
                         0,
                         ctx.self_ref,
                     );
@@ -986,7 +986,7 @@ impl Relay {
                     ctx.int_hour,
                     ctx.t,
                     self.definite_time_delay + self.mechanical_delay,
-                    CTRL_OPEN,
+                    ControlAction::Open.ordinal(),
                     0,
                     ctx.self_ref,
                 );
@@ -1001,7 +1001,7 @@ impl Relay {
                         ctx.int_hour,
                         ctx.t,
                         self.definite_time_delay + self.mechanical_delay + interval,
-                        CTRL_CLOSE,
+                        ControlAction::Close.ordinal(),
                         0,
                         ctx.self_ref,
                     );
@@ -1076,7 +1076,7 @@ impl Relay {
         let (cond_offset, nphases) = self.mon_offset(mon);
         let n = self.state_size();
         // B4: continue sampling if ≥1 phase closed, else exit.
-        if !(1..=n).any(|i| self.present_state[i] == CTRL_CLOSE) {
+        if !(1..=n).any(|i| self.present_state[i] == ControlAction::Close) {
             return;
         }
         if self.doc_p1_blocking {
@@ -1146,7 +1146,7 @@ impl Relay {
                     ctx.int_hour,
                     ctx.t,
                     trip_time + self.mechanical_delay,
-                    CTRL_OPEN,
+                    ControlAction::Open.ordinal(),
                     0,
                     ctx.self_ref,
                 );
@@ -1160,7 +1160,7 @@ impl Relay {
                         ctx.int_hour,
                         ctx.t,
                         trip_time + self.mechanical_delay + interval,
-                        CTRL_CLOSE,
+                        ControlAction::Close.ordinal(),
                         0,
                         ctx.self_ref,
                     );
@@ -1274,7 +1274,7 @@ impl Relay {
             ctx.int_hour,
             ctx.t,
             self.reset_time,
-            CTRL_RESET,
+            ControlAction::Reset.ordinal(),
             0,
             ctx.self_ref,
         )

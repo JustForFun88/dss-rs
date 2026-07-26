@@ -7,6 +7,7 @@ use num_complex::Complex64;
 use super::Isource;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
+use crate::elements::pc::source_seq::{ScanType, SequenceType};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
@@ -119,9 +120,12 @@ impl Isource {
             if i < nphases - 1 {
                 if sys.is_harmonic_model {
                     base_curr = match self.scan_type {
-                        1 => rotate_phasor_deg(base_curr, 1.0, -self.phase_shift), // maintain pos seq
-                        0 => base_curr, // zero seq: no rotation
-                        _ => rotate_phasor_deg(
+                        // maintain positive sequence for isource
+                        ScanType::Positive => rotate_phasor_deg(base_curr, 1.0, -self.phase_shift),
+                        // Do not rotate for zero sequence
+                        ScanType::Zero => base_curr,
+                        // rotate by frequency (Pascal's `else` arm)
+                        ScanType::None => rotate_phasor_deg(
                             base_curr,
                             sys.frequency / sys.fundamental, // Solution.Harmonic
                             -self.phase_shift,
@@ -129,9 +133,16 @@ impl Isource {
                     };
                 } else {
                     base_curr = match self.sequence_type {
-                        -1 => rotate_phasor_deg(base_curr, 1.0, self.phase_shift), // neg seq
-                        0 => base_curr, // zero seq: no rotation
-                        _ => rotate_phasor_deg(base_curr, 1.0, -self.phase_shift), // maintain pos seq
+                        // Neg seq
+                        SequenceType::Negative => {
+                            rotate_phasor_deg(base_curr, 1.0, self.phase_shift)
+                        }
+                        // Do not rotate for zero sequence
+                        SequenceType::Zero => base_curr,
+                        // Maintain pos seq (Pascal's `else` arm)
+                        SequenceType::Positive => {
+                            rotate_phasor_deg(base_curr, 1.0, -self.phase_shift)
+                        }
                     };
                 }
             }

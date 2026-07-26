@@ -186,6 +186,11 @@ pub(crate) mod cmd {
     pub const EXPORT: usize = 34;
     pub const FILEEDIT: usize = 35;
     pub const ALLOCATE_LOADS: usize = 45;
+    /// `Estimate` (`ExecCommands.pas:97` `Estimate = 76`, dispatched at `:572`
+    /// to `TExecHelper.DoEstimateCmd`, `ExecHelper.pas:4213`; EPRI r4133
+    /// `Version8/Source/Executive/ExecCommands.pas:838` → `ExecHelper.pas:3768`
+    /// is the same ordinal and the same body).
+    pub const ESTIMATE: usize = 76;
     pub const CLASSES: usize = 49;
     pub const USERCLASSES: usize = 50;
     pub const BUSCOORDS: usize = 58;

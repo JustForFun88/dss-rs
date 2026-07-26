@@ -19,7 +19,7 @@ impl Capacitor {
         dump::prefix_ckt(out, cx, self, &self.cd, complete);
         dump::generic_props(out, cx, self);
         if complete {
-            out.push_str(&format!("SpecType={}\n", self.spec_type));
+            out.push_str(&format!("SpecType={}\n", self.spec_type.ordinal()));
         }
     }
 }

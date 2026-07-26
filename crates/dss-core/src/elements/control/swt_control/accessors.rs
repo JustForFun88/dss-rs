@@ -5,7 +5,7 @@
 
 use num_complex::Complex64;
 
-use crate::elements::control::control_elem::{CTRL_CLOSE, CTRL_LOCK, CTRL_NONE, CTRL_UNLOCK};
+use crate::elements::control::control_elem::ControlAction;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::obj::arena::ResolvedObj;
@@ -130,9 +130,9 @@ impl DssObject for SwtControl {
             // controlled-element closed state; the port has no live view in this
             // accessor, so it returns the tracked `present_state`, which follows
             // the element after every `State`/action write.)
-            ACTION => self.current_action,
-            NORMAL => self.normal_state,
-            STATE => self.present_state,
+            ACTION => self.current_action.ordinal(),
+            NORMAL => self.normal_state.ordinal(),
+            STATE => self.present_state.ordinal(),
             _ => unreachable!("SwtControl has no integer property {idx}"),
         }
     }
@@ -145,17 +145,17 @@ impl DssObject for SwtControl {
             // `State`→`PresentState` (the property offsets, now distinct).
             ACTION => {
                 if !self.locked {
-                    self.current_action = value;
+                    self.current_action = ControlAction::from_ordinal(value);
                 }
             }
             NORMAL => {
                 if !self.locked {
-                    self.normal_state = value;
+                    self.normal_state = ControlAction::from_ordinal(value);
                 }
             }
             STATE => {
                 if !self.locked {
-                    self.present_state = value;
+                    self.present_state = ControlAction::from_ordinal(value);
                 }
             }
             _ => unreachable!("SwtControl has no integer property {idx}"),
@@ -264,19 +264,23 @@ impl DssObject for SwtControl {
                 // defaults to the action value when `Action`/`State` is the first
                 // state-setting command.)
                 self.present_state = self.current_action;
-                if self.normal_state == CTRL_NONE {
+                if self.normal_state == ControlAction::None {
                     self.normal_state = self.present_state;
                 }
                 if let Some(target) = self.ccd.controlled_element {
                     self.pending_ref_actions.push(RefAction::SetSwitchClosed {
                         target,
                         terminal: self.ccd.element_terminal as usize,
-                        closed: self.present_state == CTRL_CLOSE,
+                        closed: self.present_state == ControlAction::Close,
                     });
                 }
             }
             LOCK => {
-                self.lock_command = if self.locked { CTRL_LOCK } else { CTRL_UNLOCK };
+                self.lock_command = if self.locked {
+                    ControlAction::Lock
+                } else {
+                    ControlAction::Unlock
+                };
             }
             // D12: `State` writes `PresentState` (offset), then the side effect
             // syncs `CurrentAction := PresentState` (was `PresentState :=
@@ -286,7 +290,7 @@ impl DssObject for SwtControl {
                     return;
                 }
                 self.current_action = self.present_state;
-                if self.normal_state == CTRL_NONE {
+                if self.normal_state == ControlAction::None {
                     self.normal_state = self.present_state;
                 }
                 // Force the controlled element to the new state (Pascal
@@ -296,7 +300,7 @@ impl DssObject for SwtControl {
                     self.pending_ref_actions.push(RefAction::SetSwitchClosed {
                         target,
                         terminal: self.ccd.element_terminal as usize,
-                        closed: self.present_state == CTRL_CLOSE,
+                        closed: self.present_state == ControlAction::Close,
                     });
                 }
             }

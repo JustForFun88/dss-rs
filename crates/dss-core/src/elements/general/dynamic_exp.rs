@@ -19,7 +19,12 @@
 #[cfg(test)]
 mod tests;
 
+mod tokens;
+
 use dss_parser::{Parser, ParserVars, RPNCalculator, val_f64};
+
+pub(crate) use tokens::VarRef;
+use tokens::{DynOp, DynToken, Lexeme, OP_CODES, OP_LEXEMES};
 
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
@@ -44,23 +49,6 @@ use prop::{DOMAIN, EXPRESSION, NVARIABLES, VARIDX, VARNAMES, VR};
 /// `[value, derivative]` (one `z-1` slot for now).
 pub const DYN_SLOT_LENGTH: usize = 2;
 
-/// Pascal `opCodes` (index 0..28): the operators `Get_Closer_Op`/`InterpretDiffEq`
-/// recognise, in priority order. The negative of the index is the operation code
-/// stored in `cmds` (e.g. `+` at index 2 → `-2 = Add`).
-const OP_CODES: [&str; 29] = [
-    "dt", "=", "+", "-", "*", "/", "(", ")", ";", "[", "]", "sqr", "sqrt", "inv", "ln", "exp",
-    "log10", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "rollup", "rolldn", "swap",
-    "pi", "^",
-];
-
-/// Pascal `Get_Var_Idx` returns this sentinel for a numeric constant (vs a
-/// negative for "not found", or a non-negative state-variable index).
-const CONST_CODE: i32 = 50001;
-/// Pascal `cmds` offset marking a constant: `50000 + index-into-VarConsts`.
-const CONST_BASE: i32 = 50000;
-/// Pascal `cmds` marker for the start of a new equation (after the output var).
-const EQ_MARK: i32 = -50;
-
 /// `TDynamicExpObj`.
 #[derive(Debug, Clone)]
 pub struct DynamicExpObj {
@@ -71,8 +59,9 @@ pub struct DynamicExpObj {
     var_names: Vec<String>,
     /// Numeric constants pulled out of the expression (referenced from `cmds`).
     var_consts: Vec<f64>,
-    /// Compiled command sequence (`InterpretDiffEq` output).
-    cmds: Vec<i32>,
+    /// Compiled command sequence (`InterpretDiffEq` output) — Pascal's `Cmds`
+    /// automation array, one [`DynToken`] per `Integer` cell.
+    cmds: Vec<DynToken>,
     /// Name of the active variable (`var=`, lowercased).
     active_var: String,
     /// The differential equation in RPN, as written (kept verbatim; cleared on
@@ -106,31 +95,35 @@ impl DynamicExpObj {
         self.n_variables
     }
 
-    /// Pascal `Get_Var_Idx`: the index of `var_name` in the state-variable list,
-    /// or [`CONST_CODE`] if it parses as a numeric constant, or -1 otherwise.
-    pub fn get_var_idx(&self, var_name: &str) -> i32 {
+    /// Pascal `Get_Var_Idx` (`DynamicExp.pas:283`): classify `var_name` as a
+    /// state variable, a numeric constant, or neither. Pascal squeezes the three
+    /// outcomes into one `Integer` (index / `50001` / -1); [`VarRef`] names them.
+    pub(crate) fn get_var_idx(&self, var_name: &str) -> VarRef {
         let lower = var_name.to_ascii_lowercase();
         if let Some(i) = self.var_names.iter().position(|n| *n == lower) {
-            return i as i32;
+            return VarRef::State(i);
         }
         // Not a state variable — maybe a constant (Pascal `strtofloat` in a
         // try/except: success ⇒ 50001, failure ⇒ -1).
         if val_f64(&lower).is_some() {
-            CONST_CODE
+            VarRef::Const
         } else {
-            -1
+            VarRef::NotFound
         }
     }
 
     /// Pascal `Get_Closer_Op`: scan `expr` for the operator with the smallest
-    /// (leftmost) 1-based position. Returns `(position, op_string, op_num)`;
-    /// position is `10000` when no operator is present. A `-` immediately
-    /// followed by a non-space is treated as a negative number, not an operator.
-    fn get_closer_op(expr: &str) -> (usize, &'static str, i32) {
+    /// (leftmost) 1-based position. Returns `(position, op_string, lexeme)`, or
+    /// `None` when no operator is present — Pascal signals that by returning its
+    /// `10000` seed with `OpCode` left at -1, and the caller's `if OpIdx = 10000`
+    /// is exactly this `None` (the seed stays the *internal* leftmost-so-far
+    /// threshold, so an operator at position ≥ 10000 is still "not found", as
+    /// upstream). A `-` immediately followed by a non-space is treated as a
+    /// negative number, not an operator.
+    fn get_closer_op(expr: &str) -> Option<(usize, &'static str, Lexeme)> {
         let bytes = expr.as_bytes();
         let mut result = 10000usize;
-        let mut op_code = "";
-        let mut op_num = -1;
+        let mut found: Option<(&'static str, Lexeme)> = None;
         for (idx, code) in OP_CODES.iter().enumerate() {
             // Pascal `Pos`: 1-based index of the first occurrence, 0 if absent.
             let op_pos = match expr.find(code) {
@@ -149,18 +142,17 @@ impl DynamicExpObj {
                 }
             }
             result = op_pos;
-            op_code = code;
-            op_num = idx as i32;
+            found = Some((code, OP_LEXEMES[idx]));
         }
-        (result, op_code, op_num)
+        found.map(|(op_code, lexeme)| (result, op_code, lexeme))
     }
 
     /// Pascal `Get_Out_Idx`: the index of `var_name` if it is a state variable
-    /// *and* an output (its slot is immediately followed by an [`EQ_MARK`] in
-    /// `cmds`), or -1. Ported loop-for-loop from the vendored 0.14.5
+    /// *and* an output (its slot is immediately followed by a [`DynToken::EqMark`]
+    /// in `cmds`), or -1. Ported loop-for-loop from the vendored 0.14.5
     /// `Get_Out_Idx` (`DynamicExp.pas:314`), byte-identical in structure to the
     /// EPRI r4133 `Get_Out_Idx` (`DynamicExp.pas:411`): scan `cmds` for `var`'s
-    /// slot that has an `EQ_MARK` in the next cell (`CmdIdx < High(Cmds)` guard).
+    /// slot that has an `EqMark` in the next cell (`CmdIdx < High(Cmds)` guard).
     pub fn get_out_idx(&self, var_name: &str) -> i32 {
         let lower = var_name.to_ascii_lowercase();
         for (idx, name) in self.var_names.iter().enumerate() {
@@ -168,9 +160,13 @@ impl DynamicExpObj {
                 continue;
             }
             for cmd_idx in 0..self.cmds.len() {
-                if self.cmds[cmd_idx] == idx as i32
+                // Pascal compares the raw cell (`idx = Cmds[CmdIdx]`), which for
+                // a constant cell would alias a variable index of 50000+ — a
+                // regime `SolveEq` itself cannot represent (it reads any such
+                // cell as a constant), so the typed comparison loses nothing.
+                if self.cmds[cmd_idx] == DynToken::Var(idx)
                     && cmd_idx + 1 < self.cmds.len()
-                    && self.cmds[cmd_idx + 1] == EQ_MARK
+                    && self.cmds[cmd_idx + 1] == DynToken::EqMark
                 {
                     return idx as i32;
                 }
@@ -230,6 +226,15 @@ impl DynamicExpObj {
         self.var_names.len()
     }
 
+    /// The compiled stream re-encoded as Pascal `Cmds` cells — the test-only pin
+    /// channel (see `tokens`'s `encoding` module): it lets the unit tests keep
+    /// asserting the compiled expression cell-for-cell against the Pascal
+    /// notation, which is what proves the typed stream is bit-identical.
+    #[cfg(test)]
+    fn cmds_ordinals(&self) -> Vec<i32> {
+        self.cmds.iter().map(|t| t.ordinal()).collect()
+    }
+
     /// Pascal `TDynamicExpObj.SolveEq` — evaluate every compiled equation over
     /// `mem_space`, writing each output variable's derivative into column 1 of
     /// its row. Ported loop-for-loop from the vendored 0.14.5 `SolveEq`
@@ -238,11 +243,19 @@ impl DynamicExpObj {
     /// integrate, so a `DynExp`-driven rotor/inverter state genuinely swings.
     ///
     /// The compiled `cmds` stream is a run of equations, each laid out as
-    /// `[outIdx, EQ_MARK, <RHS tokens...>]`. Walking it: at an `[outIdx, EQ_MARK]`
-    /// boundary latch the *previous* equation's RPN result into its output slot
-    /// and start the new one (the guard is false at the first marker); otherwise
-    /// push the operand / apply the operator. After the loop the final equation's
-    /// result is uploaded.
+    /// `[Var(outIdx), EqMark, <RHS tokens...>]`. Walking it: at a
+    /// `[Var(outIdx), EqMark]` boundary latch the *previous* equation's RPN
+    /// result into its output slot and start the new one (the guard is false at
+    /// the first marker); otherwise push the operand / apply the operator. After
+    /// the loop the final equation's result is uploaded.
+    ///
+    /// The token in front of an `EqMark` is always the output `Var`: the two are
+    /// emitted together, in one step, by `InterpretDiffEq`'s `dt` arm
+    /// (`DynamicExp.pas:504-519`) and nothing else ever writes an `EqMark`. So
+    /// Pascal's `if Cmds[idx] <> -50` guard is exactly this `Var` match — the
+    /// other variants cannot occur there, and `OutIdx` is never the negative
+    /// operator/absurd value that would make Pascal's unguarded
+    /// `MemSpace[OutIdx][1]` a wild write.
     ///
     /// Pascal reads `Cmds[idx + 1]` unguarded, so at the final index it is a
     /// benign out-of-bounds read (an FPC dynamic array over-reads adjacent
@@ -263,58 +276,72 @@ impl DynamicExpObj {
     /// `mem_space` must have at least [`Self::num_state_vars`] rows.
     pub fn solve_eq(&self, mem_space: &mut [[f64; DYN_SLOT_LENGTH]]) {
         let mut rpn = RPNCalculator::new();
-        let mut out_idx: i32 = -1;
+        let mut out_idx: Option<usize> = None;
         for idx in 0..self.cmds.len() {
-            // The start of a new equation is `[outVar, EQ_MARK, ...]`: detect it
-            // by the slot immediately preceding an EQ_MARK, or the EQ_MARK itself.
+            // The start of a new equation is `[Var(out), EqMark, ...]`: detect it
+            // by the slot immediately preceding an EqMark, or the EqMark itself.
             // (Pascal reads `Cmds[idx + 1]` unguarded; past the end there is no
-            // EQ_MARK, so the guarded `.get` reproduces the intent without the UB.)
-            let next_is_mark = self.cmds.get(idx + 1) == Some(&EQ_MARK);
-            if next_is_mark || self.cmds[idx] == EQ_MARK {
-                if self.cmds[idx] != EQ_MARK {
+            // EqMark, so the guarded `.get` reproduces the intent without the UB.)
+            let next_is_mark = self.cmds.get(idx + 1) == Some(&DynToken::EqMark);
+            if next_is_mark || self.cmds[idx] == DynToken::EqMark {
+                if let DynToken::Var(slot) = self.cmds[idx] {
                     // It's the output-variable index of a new equation: upload the
                     // previous equation's result, then latch this output.
-                    if out_idx >= 0 {
-                        mem_space[out_idx as usize][1] = rpn.get_x();
+                    if let Some(prev) = out_idx {
+                        mem_space[prev][1] = rpn.get_x();
                     }
-                    out_idx = self.cmds[idx];
+                    out_idx = Some(slot);
+                } else {
+                    // The other cell that reaches here is the marker itself. An
+                    // operator/constant in front of an `EqMark` is the one shape
+                    // that would make this differ from Pascal (which would latch
+                    // a negative `OutIdx` and suppress the previous upload, while
+                    // this keeps the previous slot); `InterpretDiffEq` cannot emit
+                    // it (see the doc above + `eq_mark_is_always_preceded_by_its_
+                    // output_var`), so state that as a checked invariant rather
+                    // than a comment. Debug-only: no release-path change.
+                    debug_assert_eq!(
+                        self.cmds[idx],
+                        DynToken::EqMark,
+                        "cell {idx} in front of an EqMark must be the output Var"
+                    );
                 }
                 continue;
             }
             match self.cmds[idx] {
-                -2 => rpn.add(),
-                -3 => rpn.subtract(),
-                -4 => rpn.multiply(),
-                -5 => rpn.divide(),
-                -11 => rpn.square(),
-                -12 => rpn.sqrt(),
-                -13 => rpn.inv(),
-                -14 => rpn.nat_log(),
-                -15 => rpn.etothex(),
-                -16 => rpn.ten_log(),
-                -17 => rpn.sin_deg(),
-                -18 => rpn.cos_deg(),
-                -19 => rpn.tan_deg(),
-                -20 => rpn.asin_deg(),
-                -21 => rpn.acos_deg(),
-                -22 => rpn.atan_deg(),
-                -23 => rpn.atan2_deg(),
-                -24 => rpn.roll_up(),
-                -25 => rpn.roll_down(),
-                -26 => rpn.swap_xy(),
-                -27 => rpn.enter_pi(),
-                -28 => rpn.y_to_the_x_power(),
-                code => {
-                    if code >= CONST_BASE {
-                        rpn.set_x(self.var_consts[(code - CONST_BASE) as usize]);
-                    } else {
-                        rpn.set_x(mem_space[code as usize][0]);
-                    }
-                }
+                DynToken::Op(DynOp::Add) => rpn.add(),
+                DynToken::Op(DynOp::Sub) => rpn.subtract(),
+                DynToken::Op(DynOp::Mul) => rpn.multiply(),
+                DynToken::Op(DynOp::Div) => rpn.divide(),
+                DynToken::Op(DynOp::Sqr) => rpn.square(),
+                DynToken::Op(DynOp::Sqrt) => rpn.sqrt(),
+                DynToken::Op(DynOp::Inv) => rpn.inv(),
+                DynToken::Op(DynOp::Ln) => rpn.nat_log(),
+                DynToken::Op(DynOp::Exp) => rpn.etothex(),
+                DynToken::Op(DynOp::Log10) => rpn.ten_log(),
+                DynToken::Op(DynOp::Sin) => rpn.sin_deg(),
+                DynToken::Op(DynOp::Cos) => rpn.cos_deg(),
+                DynToken::Op(DynOp::Tan) => rpn.tan_deg(),
+                DynToken::Op(DynOp::ASin) => rpn.asin_deg(),
+                DynToken::Op(DynOp::ACos) => rpn.acos_deg(),
+                DynToken::Op(DynOp::ATan) => rpn.atan_deg(),
+                DynToken::Op(DynOp::ATan2) => rpn.atan2_deg(),
+                DynToken::Op(DynOp::RollUp) => rpn.roll_up(),
+                DynToken::Op(DynOp::RollDn) => rpn.roll_down(),
+                DynToken::Op(DynOp::Swap) => rpn.swap_xy(),
+                DynToken::Op(DynOp::Pi) => rpn.enter_pi(),
+                DynToken::Op(DynOp::Pow) => rpn.y_to_the_x_power(),
+                // Pascal's `else` branch: a constant cell (`>= 50000`) or a
+                // state-variable slot.
+                DynToken::Const(i) => rpn.set_x(self.var_consts[i]),
+                DynToken::Var(slot) => rpn.set_x(mem_space[slot][0]),
+                // Consumed by the boundary guard above (an `EqMark` always
+                // satisfies `Cmds[idx] = -50`), so this arm is unreachable.
+                DynToken::EqMark => {}
             }
         }
-        if out_idx >= 0 {
-            mem_space[out_idx as usize][1] = rpn.get_x();
+        if let Some(prev) = out_idx {
+            mem_space[prev][1] = rpn.get_x();
         }
     }
 
@@ -333,11 +360,10 @@ impl DynamicExpObj {
         let mut expr = full_expr;
 
         while !expr.is_empty() {
-            let (mut op_idx, op, op_code) = Self::get_closer_op(&expr);
-            if op_idx == 10000 {
-                expr = String::new(); // done
+            let Some((mut op_idx, op, lexeme)) = Self::get_closer_op(&expr) else {
+                expr = String::new(); // done (Pascal `OpIdx = 10000`)
                 continue;
-            }
+            };
             // Pascal `Expr.Substring(0, OpIdx - 1)`: the text before the operator.
             let sub_xp = substring(&expr, 0, op_idx - 1);
             if op.len() > 1 {
@@ -346,8 +372,8 @@ impl DynamicExpObj {
             expr = substring(&expr, op_idx, expr.len());
             let vars = interpret_string_list(&sub_xp);
 
-            match op_code {
-                0 => {
+            match lexeme {
+                Lexeme::Dt => {
                     // `dt`: the preceding token is the equation's output variable.
                     // Pascal accesses `vars[0]` directly; on an empty preceding
                     // sub-expression that raises `EStringListError` ("List index
@@ -360,46 +386,44 @@ impl DynamicExpObj {
                         self.data.push_error("List index (0) out of bounds");
                         return;
                     };
-                    let idx = self.get_var_idx(out_var);
-                    if idx == CONST_CODE {
-                        self.data.push_error(
-                            "DynamicExp: the expression preceeding the \"dt\" operand has to be a \
-                             state variable.",
-                        );
-                        // Pascal `Exit`s the whole procedure here: the expression
-                        // is NOT cleared and `gotError` stays false.
-                        return;
-                    } else if idx < 0 {
-                        error_src = vars[0].clone();
-                    } else {
-                        self.cmds.push(idx);
-                        self.cmds.push(EQ_MARK);
-                    }
-                }
-                1 | 6 | 7 | 8 | 9 => {
-                    // `=` / `(` / `)` / `;` / `[`: notation only, nothing emitted.
-                }
-                _ => {
-                    // A basic operation, a function, or `]` (end): push the
-                    // operands, then (unless `]`) the operator code.
-                    for (i, token) in vars.iter().enumerate() {
-                        let idx = self.get_var_idx(token);
-                        if idx == CONST_CODE {
-                            self.var_consts
-                                .push(val_f64(&token.to_ascii_lowercase()).unwrap_or(0.0));
-                            self.cmds
-                                .push(CONST_BASE + (self.var_consts.len() as i32 - 1));
-                        } else if idx < 0 {
-                            // Pascal reports vars[0], not the offending vars[i].
-                            let _ = i;
-                            error_src = format!("\"{}\"", vars[0]);
-                        } else {
-                            self.cmds.push(idx);
+                    match self.get_var_idx(out_var) {
+                        VarRef::Const => {
+                            self.data.push_error(
+                                "DynamicExp: the expression preceeding the \"dt\" operand has to \
+                                 be a state variable.",
+                            );
+                            // Pascal `Exit`s the whole procedure here: the
+                            // expression is NOT cleared and `gotError` stays false.
+                            return;
+                        }
+                        VarRef::NotFound => error_src = vars[0].clone(),
+                        VarRef::State(slot) => {
+                            self.cmds.push(DynToken::Var(slot));
+                            self.cmds.push(DynToken::EqMark);
                         }
                     }
-                    if op_code != 10 {
-                        // not `]`
-                        self.cmds.push(-op_code);
+                }
+                Lexeme::Notation => {
+                    // `=` / `(` / `)` / `;` / `[`: notation only, nothing emitted.
+                }
+                Lexeme::Op(_) | Lexeme::End => {
+                    // A basic operation, a function, or `]` (end): push the
+                    // operands, then (unless `]`) the operator code.
+                    for token in &vars {
+                        match self.get_var_idx(token) {
+                            VarRef::Const => {
+                                self.var_consts
+                                    .push(val_f64(&token.to_ascii_lowercase()).unwrap_or(0.0));
+                                self.cmds.push(DynToken::Const(self.var_consts.len() - 1));
+                            }
+                            // Pascal reports vars[0], not the offending vars[i].
+                            VarRef::NotFound => error_src = format!("\"{}\"", vars[0]),
+                            VarRef::State(slot) => self.cmds.push(DynToken::Var(slot)),
+                        }
+                    }
+                    if let Lexeme::Op(op) = lexeme {
+                        // `]` (`Lexeme::End`) emits no operator.
+                        self.cmds.push(DynToken::Op(op));
                     }
                 }
             }

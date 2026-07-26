@@ -14,11 +14,6 @@ mod tests;
 use crate::circuit::Circuit;
 use crate::elements::traits::{ElemId, ElemStore};
 
-/// Sentinel for "no bus reference" (Pascal used `0` in its 1-based bus
-/// indexing; our bus indices are 0-based, so the sentinel is `usize::MAX`,
-/// matching `Terminal::bus_ref`).
-pub const NO_BUS: usize = usize::MAX;
-
 /// One tree node (`TCktTreeNode`). Public state mirrors the Pascal fields the
 /// EnergyMeter zone machinery reads/writes.
 #[derive(Debug, Clone)]
@@ -33,8 +28,9 @@ pub struct TreeNode {
     lexical_level: i32,
     /// `FShuntObjects`: loads/generators/shunt caps attached at this node.
     pub shunts: Vec<ElemId>,
-    /// `FromBusReference` (bus index, [`NO_BUS`] = unset).
-    pub from_bus: usize,
+    /// `FromBusReference` — 0-based bus index, `None` = unset (Pascal used `0`
+    /// in its 1-based bus indexing, i.e. the same "no bus" hole).
+    pub from_bus: Option<usize>,
     /// `VoltBaseIndex` (EnergyMeter voltage-base list slot).
     pub volt_base_index: i32,
     /// `FromTerminal` (1-based).
@@ -44,8 +40,9 @@ pub struct TreeNode {
     pub is_dangling: bool,
     /// `LoopLineObj`.
     pub loop_elem: Option<ElemId>,
-    /// `ToBusList` + its sequential-access cursor (`ToBusPtr`).
-    to_bus_list: Vec<usize>,
+    /// `ToBusList` + its sequential-access cursor (`ToBusPtr`). An entry is
+    /// `None` when the recorded terminal has no bus (Pascal `0`).
+    to_bus_list: Vec<Option<usize>>,
     to_bus_ptr: usize,
 }
 
@@ -58,7 +55,7 @@ impl TreeNode {
             child_added: false,
             lexical_level,
             shunts: Vec::new(),
-            from_bus: NO_BUS,
+            from_bus: None,
             volt_base_index: 0,
             from_terminal: 0,
             is_looped: false,
@@ -71,16 +68,19 @@ impl TreeNode {
         }
     }
 
-    /// Pascal `Set_ToBusReference`: appends to the to-bus list.
-    pub fn add_to_bus_reference(&mut self, bus: usize) {
+    /// Pascal `Set_ToBusReference`: appends to the to-bus list (`None` = the
+    /// recorded terminal has no bus).
+    pub fn add_to_bus_reference(&mut self, bus: Option<usize>) {
         self.to_bus_list.push(bus);
     }
 
     /// Pascal `Get_ToBusReference` — stateful sequential access: with exactly
     /// one entry it always returns it; otherwise each call advances a cursor,
-    /// returning `None` (Pascal `-1`) once past the end and resetting for the
-    /// next sweep.
-    pub fn next_to_bus_reference(&mut self) -> Option<usize> {
+    /// returning the outer `None` (Pascal `-1`) once past the end and resetting
+    /// for the next sweep. The inner `Option` is the entry itself (`None` = the
+    /// recorded terminal had no bus), so the two "nothing here" cases stay
+    /// distinguishable; a caller that treats them alike just `.flatten()`s.
+    pub fn next_to_bus_reference(&mut self) -> Option<Option<usize>> {
         if self.to_bus_list.len() == 1 {
             return Some(self.to_bus_list[0]);
         }
@@ -127,7 +127,9 @@ impl TreeNode {
 }
 
 /// Pascal `TZoneEndsList`: the feeder end points — `(tree node index,
-/// end bus)` pairs.
+/// end bus)` pairs. The bus is a plain index, never a sentinel: its only
+/// producer (`solution::meters::zones::build`) adds an end only after the
+/// terminal's `bus_ref` proved wired **and** in range.
 #[derive(Debug, Clone, Default)]
 pub struct ZoneEndsList {
     pub ends: Vec<(usize, usize)>,
@@ -202,7 +204,12 @@ impl CktTree {
 
     /// Pascal `AddNewChild`: append a child to the present branch (present
     /// does not move). With no present branch it degenerates to `Add`.
-    pub fn add_new_child(&mut self, elem: ElemId, bus_ref: usize, terminal_no: usize) -> usize {
+    pub fn add_new_child(
+        &mut self,
+        elem: ElemId,
+        bus_ref: Option<usize>,
+        terminal_no: usize,
+    ) -> usize {
         let Some(parent) = self.present else {
             return self.add(elem);
         };

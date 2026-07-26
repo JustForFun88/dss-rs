@@ -117,12 +117,18 @@ fn line_type_abbreviations_widened_to_five_chars() {
 /// Not covered here (deliberate, they have no registry entry): the
 /// `ControlQueue` action codes (`InvPendingChange`, `ExpPendingChange`,
 /// `StorageCtrlAction`, `RegControlAction`), which are class-private queue
-/// codes, and `VarMode` (`PVsystem.pas:32-33`), an internal field with no
-/// `DssEnum` — both are pinned by their own Pascal-literal tests.
+/// codes, `VarMode` (`PVsystem.pas:32-33`), an internal field with no
+/// `DssEnum`, and the four *derived* spec codes of W3.2 (`ReactorSpecType`,
+/// `CapacitorSpecType`, `VsourceZSpec`, `OcpDeviceType`) — no property writes
+/// them, so they have no registry entry either. All are pinned by their own
+/// Pascal-literal tests. (The shared `ControlAction` channel IS registry-backed
+/// and is covered here; its out-of-registry `Keep`/`Other` values are pinned in
+/// `control_elem.rs`.)
 #[cfg(test)]
 mod registry_enum_coupling {
     use super::EnumRegistry;
 
+    use crate::elements::control::control_elem::ControlAction;
     use crate::elements::control::espvl_control::EspvlControlType;
     use crate::elements::control::inv_control::{
         InvCombiMode, InvControlMode, InvControlModel, RateOfChangeMode, ReacPowerRef,
@@ -132,7 +138,9 @@ mod registry_enum_coupling {
     use crate::elements::control::storage_controller::StorageCtrlMode;
     use crate::elements::general::load_shape::LoadShapeInterp;
     use crate::elements::pc::generator::GenDispatchMode;
+    use crate::elements::pc::source_seq::{ScanType, SequenceType};
     use crate::elements::pc::storage::StorageState;
+    use crate::elements::pc::vs_converter::VscMode;
     use crate::obj::dss_enum::EnumId;
     use crate::solution::{ControlMode, LoadSolutionModel, RandomType};
 
@@ -216,5 +224,34 @@ mod registry_enum_coupling {
         check(&reg, reg.storage_state, |v| {
             Some(StorageState::from_ordinal(v).ordinal())
         });
+
+        // The two shared source phase-rotation selectors: one registry entry
+        // each, three classes each (VSource / Isource / GICLine).
+        check(&reg, reg.scan_type, |v| {
+            ScanType::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.sequence, |v| {
+            SequenceType::from_ordinal(v).map(|m| m.ordinal())
+        });
+        check(&reg, reg.vsc_mode, |v| {
+            VscMode::from_ordinal(v).map(|m| m.ordinal())
+        });
+
+        // The shared `EControlAction` channel: eight registry entries across
+        // four classes map onto one enum (`Action` and `State` per class, and
+        // SwtControl's `Normal` reuses its `State` entry). `from_ordinal` is
+        // total here too — the control-queue code channel is open.
+        for id in [
+            reg.swt_control_action,
+            reg.swt_control_state,
+            reg.fuse_action,
+            reg.fuse_state,
+            reg.recloser_action,
+            reg.recloser_state,
+            reg.relay_action,
+            reg.relay_state,
+        ] {
+            check(&reg, id, |v| Some(ControlAction::from_ordinal(v).ordinal()));
+        }
     }
 }

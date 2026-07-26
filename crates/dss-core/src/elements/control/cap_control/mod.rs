@@ -26,9 +26,7 @@ pub use user_model::CapControlUserModelSlot;
 
 use num_complex::Complex64;
 
-use crate::elements::control::control_elem::{
-    CTRL_CLOSE, CTRL_NONE, CTRL_OPEN, ControlElemData, RefSnapshot,
-};
+use crate::elements::control::control_elem::{ControlAction, ControlElemData, RefSnapshot};
 use crate::elements::control::mon_phase::MonPhase;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::pd::capacitor::ControlledCapacitor;
@@ -203,14 +201,14 @@ pub struct CapControl {
     // Runtime switching state (`TCapControlVars`), driven by `Sample`/
     // `DoPendingAction` (wired into the control loop in WP5.7):
     /// `FPendingChange` (CTRL_NONE/OPEN/CLOSE).
-    pending_change: i32,
+    pending_change: ControlAction,
     /// `ShouldSwitch`: an action is pending.
     should_switch: bool,
     /// `Armed`: a queue action is outstanding (deleted on disarm).
     armed: bool,
     /// `PresentState`/`InitialState` (CTRL_OPEN/CTRL_CLOSE).
-    present_state: i32,
-    initial_state: i32,
+    present_state: ControlAction,
+    initial_state: ControlAction,
     /// `VoverrideEvent`.
     voverride_event: bool,
     /// `ControlActionHandle` (the queue handle to delete when disarming).
@@ -271,11 +269,11 @@ impl CapControl {
             vmax: 126.0,
             vmin: 115.0,
             fpct_minkvar: 50.0,
-            pending_change: CTRL_NONE,
+            pending_change: ControlAction::None,
             should_switch: false,
             armed: false,
-            present_state: CTRL_CLOSE,
-            initial_state: CTRL_CLOSE,
+            present_state: ControlAction::Close,
+            initial_state: ControlAction::Close,
             voverride_event: false,
             control_action_handle: 0,
             user_model_name: String::new(),
@@ -350,7 +348,7 @@ impl CapControl {
     /// applied by the control-loop reset path ([`Self::reset_with`]) — here we
     /// restore the control's own switching state.
     fn reset(&mut self) {
-        self.set_pending_change(CTRL_NONE);
+        self.set_pending_change(ControlAction::None);
         self.should_switch = false;
         self.armed = false;
         self.last_open_time = -self.dead_time;
@@ -370,8 +368,8 @@ impl CapControl {
     /// rebuild). Reset is rare, so a redundant rebuild is negligible.
     pub(crate) fn reset_with(&mut self, cap: &mut dyn ControlledCapacitor) -> bool {
         let want_closed = match self.initial_state {
-            CTRL_OPEN => Some(false),
-            CTRL_CLOSE => Some(true),
+            ControlAction::Open => Some(false),
+            ControlAction::Close => Some(true),
             _ => None,
         };
         if let Some(want) = want_closed {
@@ -381,10 +379,11 @@ impl CapControl {
         want_closed.is_some()
     }
 
-    /// Pascal `Set_PendingChange` (also mirrors to `DblTraceParameter`).
-    fn set_pending_change(&mut self, value: i32) {
+    /// Pascal `Set_PendingChange` (also mirrors to `DblTraceParameter`, which
+    /// stores the raw `EControlAction` ordinal as a Double).
+    fn set_pending_change(&mut self, value: ControlAction) {
         self.pending_change = value;
-        self.ccd.dbl_trace_param = value as f64;
+        self.ccd.dbl_trace_param = value.ordinal() as f64;
     }
 
     /// Pascal `TCapControlObj.RecalcElementData` (parse-time subset).

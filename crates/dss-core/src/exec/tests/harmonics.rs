@@ -28,7 +28,7 @@ fn load_current_mag(dss: &mut Dss) -> f64 {
         .find(|e| e.name.eq_ignore_ascii_case("Load.ld1"))
         .expect("load snapshot");
     // Phase-A terminal current (re, im).
-    (ld.currents[0].powi(2) + ld.currents[1].powi(2)).sqrt()
+    (ld.currents[0].re.powi(2) + ld.currents[0].im.powi(2)).sqrt()
 }
 
 #[test]

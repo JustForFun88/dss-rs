@@ -310,3 +310,64 @@ fn sensor_take_sample_delta() {
         volt[2]
     );
 }
+
+/// W3 settler: `Estimate`'s two tail legs are engine-**internal** nested
+/// `ParseCommand`s (`ExecHelper.pas:4224-4225` → `Executive.pas:225` →
+/// `ProcessCommand`, `ExecCommands.pas:214`), which reset only
+/// `CmdResult`/`ErrorNumber`/`GlobalResult`. `SolutionAbort := FALSE  // Reset
+/// for commands entered from outside` occurs 32× upstream and **only** under
+/// `src/CAPI/*` (`CAPI_Text.pas:35`), i.e. in this port's [`Dss::command`]
+/// wrapper (the four engine-side resets are off the command path) — so a
+/// solution aborted by the allocation leg must survive the `Set showexport=yes`
+/// / `Export Estimation` tail. Feature-sensitive: routing those two legs
+/// through `command` instead of `process_command` clears the flag and fails the
+/// last assertion (that is exactly what this test caught).
+#[test]
+fn estimate_tail_legs_use_the_nested_seam_and_keep_a_solution_abort() {
+    // Keep the exported CSV out of the crate directory.
+    let scratch = std::env::temp_dir().join(format!("dss_estimate_seam_{}", std::process::id()));
+    std::fs::create_dir_all(&scratch).ok();
+
+    let mut dss = allocation_feeder();
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+
+    // The two seams, side by side: the outside-entry wrapper clears a pending
+    // abort, the executive's own `ProcessCommand` leaves it alone.
+    dss.circuit_mut().unwrap().solution.solution_abort = true;
+    dss.process_command("Get hour");
+    assert!(
+        dss.circuit().unwrap().solution.solution_abort,
+        "ProcessCommand must not clear SolutionAbort (that is CAPI-only)"
+    );
+    dss.command("Get hour");
+    assert!(
+        !dss.circuit().unwrap().solution.solution_abort,
+        "Text_Set_Command clears SolutionAbort for outside commands"
+    );
+
+    // `Estimate` with the solution already aborted (as an allocation leg that
+    // failed to build Y would leave it): the allocation's three solves refuse to
+    // run ("Solution aborted.") and the tail legs must leave the flag standing.
+    dss.circuit_mut().unwrap().solution.solution_abort = true;
+    dss.process_command("estimate");
+    assert!(
+        dss.errors()
+            .iter()
+            .all(|e| e.message == "Solution aborted."),
+        "{:?}",
+        dss.errors()
+    );
+    assert!(
+        dss.circuit().unwrap().solution.solution_abort,
+        "the Estimate tail legs must not clear SolutionAbort"
+    );
+    // The export leg still ran (the allocation report was written).
+    assert!(
+        std::fs::read_dir(&scratch)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().contains("EXP_ESTIMATION")),
+        "Export Estimation must still write its file"
+    );
+    std::fs::remove_dir_all(&scratch).ok();
+}

@@ -14,7 +14,7 @@ mod harness;
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
-use harness::assert_complex_close;
+use harness::{assert_complex_close, assert_complex_close_c, deinterleave};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -158,16 +158,16 @@ fn run_scenario(sc: &Scenario) {
         // cannot produce better than ~|Y|·1e-6·|V| ≈ µA-scale absolute
         // current agreement (and mW-scale power agreement). 1e-4 A / 1e-4 kW
         // are far above that noise yet ~1e-6 rel of the meaningful signals.
-        assert_complex_close(
+        assert_complex_close_c(
             &snap.currents,
-            &exp.currents,
+            &deinterleave(&exp.currents),
             1e-6,
             1e-4,
             &format!("{} {} currents", sc.name, exp.name),
         );
-        assert_complex_close(
+        assert_complex_close_c(
             &snap.powers,
-            &exp.powers,
+            &deinterleave(&exp.powers),
             1e-6,
             1e-4,
             &format!("{} {} powers", sc.name, exp.name),

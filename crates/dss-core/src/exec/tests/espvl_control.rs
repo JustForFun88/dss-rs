@@ -61,8 +61,8 @@ fn line_l1_power(dss: &mut Dss) -> (f64, f64) {
         .iter()
         .find(|s| s.name.eq_ignore_ascii_case("Line.l1"))
         .expect("Line.l1 snapshot");
-    let p: f64 = s.powers[0..6].iter().step_by(2).sum();
-    let q: f64 = s.powers[1..6].iter().step_by(2).sum();
+    let p: f64 = s.powers[0..3].iter().map(|s| s.re).sum();
+    let q: f64 = s.powers[0..3].iter().map(|s| s.im).sum();
     (p, q)
 }
 

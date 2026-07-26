@@ -134,10 +134,12 @@ pub struct Dss {
     /// `DSS.MaxAllocationIterations` (`Set NumAllocIterations=`); default 2.
     max_allocation_iterations: i32,
     /// `DSS.AutoShowExport` (`Set ShowExport=`); default FALSE
-    /// (`DSSClass.pas:1278`). Its only upstream consumer is the
+    /// (`DSSClass.pas:1278`). Its only *physical* upstream consumer is the
     /// `FireOffEditor` auto-open after an export (`ExportOptions.pas:637`) —
-    /// a GUI no-op headless, so the flag is stored for `Set`/`Get` parity and
-    /// nothing reads it.
+    /// a GUI no-op headless, so the flag is otherwise stored for `Set`/`Get`
+    /// parity. The one engine-side reader is `DoEstimateCmd`'s `if not
+    /// AutoShowExport then ParseCommand('Set showexport=yes')`
+    /// (`ExecHelper.pas:4223`), ported in [`Dss::do_estimate_cmd`].
     auto_show_export: bool,
     /// `NoFormsAllowed` (`ExecOptions.pas:778`, `Set/Get AllowForms`); default
     /// TRUE (headless = no console forms). A GUI gate with no headless effect —

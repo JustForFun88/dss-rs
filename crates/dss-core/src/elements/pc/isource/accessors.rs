@@ -6,6 +6,7 @@ use num_complex::Complex64;
 
 use super::Isource;
 use crate::elements::general::load_shape::LoadShapeObj;
+use crate::elements::pc::source_seq::{ScanType, SequenceType};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 
@@ -79,8 +80,8 @@ impl DssObject for Isource {
         use super::prop::*;
         match idx {
             PHASES => self.cd.nphases as i32,
-            SCAN_TYPE => self.scan_type,
-            SEQUENCE => self.sequence_type,
+            SCAN_TYPE => self.scan_type.ordinal(),
+            SEQUENCE => self.sequence_type.ordinal(),
             _ => unreachable!("Isource has no integer property {idx}"),
         }
     }
@@ -88,8 +89,12 @@ impl DssObject for Isource {
         use super::prop::*;
         match idx {
             PHASES => self.cd.nphases = value.max(0) as usize,
-            SCAN_TYPE => self.scan_type = value,
-            SEQUENCE => self.sequence_type = value,
+            // Closed registry lists with no `DefaultValue` (see `source_seq`):
+            // the fallback is unreachable through the parser.
+            SCAN_TYPE => self.scan_type = ScanType::from_ordinal(value).unwrap_or(self.scan_type),
+            SEQUENCE => {
+                self.sequence_type = SequenceType::from_ordinal(value).unwrap_or(self.sequence_type)
+            }
             _ => unreachable!("Isource has no integer property {idx}"),
         }
     }

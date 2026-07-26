@@ -10,9 +10,9 @@ fn er(idx: usize) -> ElemId {
 fn go_forward_is_lifo_over_children() {
     let mut t = CktTree::new();
     t.add(er(0)); // root
-    t.add_new_child(er(1), NO_BUS, 1);
-    t.add_new_child(er(2), NO_BUS, 1);
-    t.add_new_child(er(3), NO_BUS, 1);
+    t.add_new_child(er(1), None, 1);
+    t.add_new_child(er(2), None, 1);
+    t.add_new_child(er(3), None, 1);
     // Traversal from the root: 3, 2, 1.
     let mut order = Vec::new();
     while let Some(e) = t.go_forward() {
@@ -28,15 +28,15 @@ fn go_forward_is_lifo_over_children() {
 fn children_added_mid_sweep_are_visited() {
     let mut t = CktTree::new();
     t.add(er(0));
-    t.add_new_child(er(1), NO_BUS, 1);
+    t.add_new_child(er(1), None, 1);
     let mut order = Vec::new();
     let mut visited = t.go_forward(); // -> 1
     while let Some(e) = visited {
         order.push(e.index());
         if e.index() == 1 {
             // grow the tree at the present branch mid-sweep
-            t.add_new_child(er(2), NO_BUS, 1);
-            t.add_new_child(er(3), NO_BUS, 1);
+            t.add_new_child(er(2), None, 1);
+            t.add_new_child(er(3), None, 1);
         }
         visited = t.go_forward();
     }
@@ -49,12 +49,12 @@ fn children_added_mid_sweep_are_visited() {
 fn go_forward_descends_before_siblings() {
     let mut t = CktTree::new();
     let root = t.add(er(0));
-    t.add_new_child(er(1), NO_BUS, 1);
-    let c2 = t.add_new_child(er(2), NO_BUS, 1);
+    t.add_new_child(er(1), None, 1);
+    let c2 = t.add_new_child(er(2), None, 1);
     // grandchildren under node 2
     t.present = Some(c2);
-    t.add_new_child(er(21), NO_BUS, 1);
-    t.add_new_child(er(22), NO_BUS, 1);
+    t.add_new_child(er(21), None, 1);
+    t.add_new_child(er(22), None, 1);
     t.present = Some(root);
     let mut order = Vec::new();
     while let Some(e) = t.go_forward() {
@@ -68,10 +68,10 @@ fn go_forward_descends_before_siblings() {
 fn first_resets_traversal_and_levels_track_depth() {
     let mut t = CktTree::new();
     t.add(er(0));
-    let c1 = t.add_new_child(er(1), 7, 2);
+    let c1 = t.add_new_child(er(1), Some(7), 2);
     t.present = Some(c1);
-    t.add_new_child(er(2), 8, 1);
-    assert_eq!(t.node(c1).from_bus, 7);
+    t.add_new_child(er(2), Some(8), 1);
+    assert_eq!(t.node(c1).from_bus, Some(7));
     assert_eq!(t.node(c1).from_terminal, 2);
 
     let f = t.first().unwrap();
@@ -90,15 +90,22 @@ fn first_resets_traversal_and_levels_track_depth() {
 #[test]
 fn to_bus_reference_cursor_semantics() {
     let mut n = TreeNode::new(er(0), None, 0);
-    n.add_to_bus_reference(5);
-    assert_eq!(n.next_to_bus_reference(), Some(5));
-    assert_eq!(n.next_to_bus_reference(), Some(5)); // single: no cursor
+    n.add_to_bus_reference(Some(5));
+    assert_eq!(n.next_to_bus_reference(), Some(Some(5)));
+    assert_eq!(n.next_to_bus_reference(), Some(Some(5))); // single: no cursor
 
-    n.add_to_bus_reference(9);
-    assert_eq!(n.next_to_bus_reference(), Some(5));
-    assert_eq!(n.next_to_bus_reference(), Some(9));
+    n.add_to_bus_reference(Some(9));
+    assert_eq!(n.next_to_bus_reference(), Some(Some(5)));
+    assert_eq!(n.next_to_bus_reference(), Some(Some(9)));
     assert_eq!(n.next_to_bus_reference(), None); // exhausted, resets
-    assert_eq!(n.next_to_bus_reference(), Some(5)); // fresh sweep
+    assert_eq!(n.next_to_bus_reference(), Some(Some(5))); // fresh sweep
+
+    // An unwired terminal records `Some(None)` — distinguishable from the
+    // exhausted-cursor `None`.
+    let mut u = TreeNode::new(er(0), None, 0);
+    u.add_to_bus_reference(None);
+    assert_eq!(u.next_to_bus_reference(), Some(None));
+    assert_eq!(u.next_to_bus_reference().flatten(), None);
 }
 
 #[test]

@@ -10,6 +10,7 @@
 //! reported `ITerminal` stays at its pre-force value.
 
 use crate::exec::*;
+use num_complex::Complex64;
 
 fn bus_vmag(dss: &Dss, bus: &str) -> f64 {
     let ckt = dss.circuit().unwrap();
@@ -372,19 +373,16 @@ fn windgen_force_inj_freezes_iterminal() {
     // r4133 epri-worker frozen currents (own probe); the port must match, and
     // WITHOUT the guard it recomputes [-86.039, -58.979, …] (fails here).
     let r4133 = [
-        -89.231_224_458_194_29,
-        -11.202_774_501_306_344,
-        34.913_724_927_561_354,
-        82.877_894_438_227_46,
-        54.317_499_523_801_17,
-        -71.675_119_953_123_74,
+        Complex64::new(-89.231_224_458_194_29, -11.202_774_501_306_344),
+        Complex64::new(34.913_724_927_561_354, 82.877_894_438_227_46),
+        Complex64::new(54.317_499_523_801_17, -71.675_119_953_123_74),
     ];
     for (k, &want) in r4133.iter().enumerate() {
+        let got = wg.currents[k];
         assert!(
-            (wg.currents[k] - want).abs() < 1e-6,
-            "WindGen forced current[{k}] {} must stay frozen at the r4133 value {want} \
-             (dropping the ForceInjCurr guard recomputes it ≈48 A off)",
-            wg.currents[k]
+            (got.re - want.re).abs() < 1e-6 && (got.im - want.im).abs() < 1e-6,
+            "WindGen forced current[{k}] {got} must stay frozen at the r4133 value {want} \
+             (dropping the ForceInjCurr guard recomputes it ≈48 A off)"
         );
     }
 }

@@ -173,13 +173,12 @@ pub(super) fn make_meter_zone_lists(
         cd.terminals
             .get(metered_terminal - 1)
             .and_then(|t| t.bus_ref)
-            .unwrap_or(usize::MAX)
     };
-    if from_bus != usize::MAX && from_bus < ckt.buses.len() {
+    if let Some(from_bus) = from_bus.filter(|&b| b < ckt.buses.len()) {
         ckt.buses[from_bus].dist_from_meter = 0.0;
         let vbi = add_to_volt_base_list(from_bus, &mut vbase_list, &mut vbase_count, ckt);
         let node = tree.present_node_mut();
-        node.from_bus = from_bus;
+        node.from_bus = Some(from_bus);
         node.from_terminal = metered_terminal;
         node.volt_base_index = vbi;
     }
@@ -203,8 +202,8 @@ pub(super) fn make_meter_zone_lists(
             node.is_dangling = true;
         }
         let node_from_bus = tree.node(node_idx).from_bus;
-        if node_from_bus != usize::MAX && node_from_bus < ckt.buses.len() {
-            let vbi = add_to_volt_base_list(node_from_bus, &mut vbase_list, &mut vbase_count, ckt);
+        if let Some(nfb) = node_from_bus.filter(|&b| b < ckt.buses.len()) {
+            let vbi = add_to_volt_base_list(nfb, &mut vbase_list, &mut vbase_count, ckt);
             tree.node_mut(node_idx).volt_base_index = vbi;
         }
 
@@ -217,10 +216,7 @@ pub(super) fn make_meter_zone_lists(
             let line_len = elem.line_length_km();
             (
                 cd.nterms,
-                cd.terminals
-                    .iter()
-                    .map(|t| t.bus_ref.unwrap_or(usize::MAX))
-                    .collect::<Vec<_>>(),
+                cd.terminals.iter().map(|t| t.bus_ref).collect::<Vec<_>>(),
                 cd.terminals_checked.clone(),
                 line_len.is_some(),
                 line_len.unwrap_or(0.0),
@@ -234,20 +230,20 @@ pub(super) fn make_meter_zone_lists(
             if terminals_checked.get(iterm - 1).copied().unwrap_or(true) {
                 continue;
             }
-            let test_bus = term_bus[iterm - 1];
-            if test_bus >= ckt.buses.len() {
+            // A wired terminal whose bus index is in range; everything below
+            // (`add_to_bus_reference`, `add_new_child`, `zone_ends`) therefore
+            // records a REAL bus.
+            let Some(test_bus) = term_bus[iterm - 1].filter(|&b| b < ckt.buses.len()) else {
                 continue;
-            }
+            };
 
             // Record the "to" bus and propagate DistFromMeter. A manual-zone
-            // child has `from_bus = NO_BUS` (Pascal ground bus 0, DistFromMeter
+            // child has `from_bus = None` (Pascal ground bus 0, DistFromMeter
             // 0), so treat an unset origin as zero distance.
-            tree.node_mut(node_idx).add_to_bus_reference(test_bus);
-            let base_dist = if node_from_bus < ckt.buses.len() {
-                ckt.buses[node_from_bus].dist_from_meter
-            } else {
-                0.0
-            };
+            tree.node_mut(node_idx).add_to_bus_reference(Some(test_bus));
+            let base_dist = node_from_bus
+                .and_then(|b| ckt.buses.get(b))
+                .map_or(0.0, |b| b.dist_from_meter);
             ckt.buses[test_bus].dist_from_meter = if active_is_line {
                 base_dist + len_km
             } else {
@@ -307,14 +303,11 @@ pub(super) fn make_meter_zone_lists(
                         let cd = store.ckt_elem(test_ref).cd();
                         (
                             cd.nterms,
-                            cd.terminals
-                                .iter()
-                                .map(|t| t.bus_ref.unwrap_or(usize::MAX))
-                                .collect::<Vec<_>>(),
+                            cd.terminals.iter().map(|t| t.bus_ref).collect::<Vec<_>>(),
                         )
                     };
                     for j in 1..=test_nterms {
-                        if test_bus != test_bus_refs[j - 1] {
+                        if test_bus_refs[j - 1] != Some(test_bus) {
                             continue;
                         }
                         tree.node_mut(node_idx).is_dangling = false;
@@ -336,7 +329,7 @@ pub(super) fn make_meter_zone_lists(
                             }
                         } else {
                             is_feeder_end = false;
-                            tree.add_new_child(test_ref, test_bus, j);
+                            tree.add_new_child(test_ref, Some(test_bus), j);
                             let cd = store.ckt_elem_mut(test_ref).cd_mut();
                             if j <= cd.terminals_checked.len() {
                                 cd.terminals_checked[j - 1] = true;
@@ -381,9 +374,7 @@ pub(super) fn make_meter_zone_lists(
                                 // 0.14.5 baseline passed `(0, 0)` (unset from-bus,
                                 // terminal 0), leaving the manual-zonelist branch's
                                 // `FromBusReference`/`FromTerminal` wrong for reports.
-                                let from_bus = store.ckt_elem(test_ref).cd().terminals[0]
-                                    .bus_ref
-                                    .unwrap_or(usize::MAX);
+                                let from_bus = store.ckt_elem(test_ref).cd().terminals[0].bus_ref;
                                 tree.add_new_child(test_ref, from_bus, 1);
                             }
                             break;

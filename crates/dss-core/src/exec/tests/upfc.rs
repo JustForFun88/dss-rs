@@ -37,6 +37,7 @@
 //! 14-name header is asserted).
 
 use crate::exec::*;
+use num_complex::Complex64;
 
 fn rel(a: f64, b: f64) -> f64 {
     (a - b).abs() / b.abs().max(1.0)
@@ -166,21 +167,27 @@ fn upfc_voltage_regulator_matches_oracle() {
 
     // UPFC terminal currents (A, re/im per terminal) — dss-python 0.15.7.
     let upfc = get("UPFC.TEST");
-    let want_curr: [f64; 4] = [116.569321, -49.507163, -112.702287, 49.507163];
+    let want_curr = [
+        Complex64::new(116.569321, -49.507163),
+        Complex64::new(-112.702287, 49.507163),
+    ];
     for (k, &c) in want_curr.iter().enumerate() {
+        let got = upfc.currents[k];
         assert!(
-            rel(upfc.currents[k], c) < 1e-6,
-            "UPFC current[{k}] = {} vs oracle {c}",
-            upfc.currents[k]
+            rel(got.re, c.re) < 1e-6 && rel(got.im, c.im) < 1e-6,
+            "UPFC current[{k}] = {got} vs oracle {c}"
         );
     }
     // UPFC terminal powers (kW/kvar per terminal) — dss-python 0.15.7.
-    let want_pow: [f64; 4] = [27.643853, 11.50421, -27.367272, -11.793019];
+    let want_pow = [
+        Complex64::new(27.643853, 11.50421),
+        Complex64::new(-27.367272, -11.793019),
+    ];
     for (k, &p) in want_pow.iter().enumerate() {
+        let got = upfc.powers[k];
         assert!(
-            rel(upfc.powers[k], p) < 1e-6,
-            "UPFC power[{k}] = {} vs oracle {p}",
-            upfc.powers[k]
+            rel(got.re, p.re) < 1e-6 && rel(got.im, p.im) < 1e-6,
+            "UPFC power[{k}] = {got} vs oracle {p}"
         );
     }
 
@@ -188,25 +195,25 @@ fn upfc_voltage_regulator_matches_oracle() {
     // UPFC's effect on the surrounding network. dss-python 0.15.7.
     let svc = get("Transformer.Service50kVA");
     assert!(
-        rel(svc.powers[0], 27.986349) < 1e-6,
+        rel(svc.powers[0].re, 27.986349) < 1e-6,
         "Service50kVA P = {}",
-        svc.powers[0]
+        svc.powers[0].re
     );
     assert!(
-        rel(svc.powers[1], 11.881373) < 1e-6,
+        rel(svc.powers[0].im, 11.881373) < 1e-6,
         "Service50kVA Q = {}",
-        svc.powers[1]
+        svc.powers[0].im
     );
     let tout = get("Transformer.TUPFCout");
     assert!(
-        rel(tout.powers[0], 27.367272) < 1e-6,
+        rel(tout.powers[0].re, 27.367272) < 1e-6,
         "TUPFCout P = {}",
-        tout.powers[0]
+        tout.powers[0].re
     );
     assert!(
-        rel(tout.powers[1], 11.793019) < 1e-6,
+        rel(tout.powers[0].im, 11.793019) < 1e-6,
         "TUPFCout Q = {}",
-        tout.powers[1]
+        tout.powers[0].im
     );
 
     // Mode-3 monitor admission: the State monitor accepts the UPFC and exposes the

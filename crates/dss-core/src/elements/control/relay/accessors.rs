@@ -7,7 +7,7 @@
 
 use num_complex::Complex64;
 
-use crate::elements::control::control_elem::CTRL_STATE_KEEP;
+use crate::elements::control::control_elem::ControlAction;
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
@@ -402,15 +402,21 @@ impl DssObject for Relay {
         use super::prop::*;
         let n = self.state_size();
         match idx {
-            NORMAL => self.normal_state[1..=n].to_vec(),
-            STATE => self.present_state[1..=n].to_vec(),
+            NORMAL => self.normal_state[1..=n]
+                .iter()
+                .map(|s| s.ordinal())
+                .collect(),
+            STATE => self.present_state[1..=n]
+                .iter()
+                .map(|s| s.ordinal())
+                .collect(),
             _ => unreachable!("Relay has no enum-array property {idx}"),
         }
     }
     /// Pascal `InterpretRelayState`: a bare unquoted scalar fills **all** phases
     /// (ganged); a quoted list fills phase-by-phase. `State` writes are blocked
     /// while `Locked`; `Normal` writes are NOT (Pascal `property_name[1] in
-    /// {'a','s'}` guard — Normal starts with 'n'). A [`CTRL_STATE_KEEP`] ordinal
+    /// {'a','s'}` guard — Normal starts with 'n'). A [`ControlAction::Keep`] ordinal
     /// (a token whose first char is neither `o` nor `c`) leaves that phase's slot
     /// unchanged — for a ganged scalar that means *every* phase is left as-is
     /// (Pascal's `case` with no matching arm).
@@ -421,13 +427,15 @@ impl DssObject for Relay {
         match idx {
             NORMAL => {
                 if ganged {
-                    if values[0] != CTRL_STATE_KEEP {
-                        self.set_all_normal(values[0]);
+                    let state = ControlAction::from_ordinal(values[0]);
+                    if state != ControlAction::Keep {
+                        self.set_all_normal(state);
                     }
                 } else {
                     for (k, &v) in values.iter().take(n).enumerate() {
-                        if v != CTRL_STATE_KEEP {
-                            self.normal_state[k + 1] = v;
+                        let state = ControlAction::from_ordinal(v);
+                        if state != ControlAction::Keep {
+                            self.normal_state[k + 1] = state;
                         }
                     }
                 }
@@ -437,13 +445,15 @@ impl DssObject for Relay {
                     return; // Pascal: state writes blocked while Locked.
                 }
                 if ganged {
-                    if values[0] != CTRL_STATE_KEEP {
-                        self.set_all_present(values[0]);
+                    let state = ControlAction::from_ordinal(values[0]);
+                    if state != ControlAction::Keep {
+                        self.set_all_present(state);
                     }
                 } else {
                     for (k, &v) in values.iter().take(n).enumerate() {
-                        if v != CTRL_STATE_KEEP {
-                            self.present_state[k + 1] = v;
+                        let state = ControlAction::from_ordinal(v);
+                        if state != ControlAction::Keep {
+                            self.present_state[k + 1] = state;
                         }
                     }
                 }

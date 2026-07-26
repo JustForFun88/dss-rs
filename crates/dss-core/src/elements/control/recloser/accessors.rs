@@ -6,6 +6,7 @@
 
 use num_complex::Complex64;
 
+use crate::elements::control::control_elem::ControlAction;
 use crate::elements::general::tcc_curve::TccCurveObj;
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ElemId, SysCtx};
@@ -313,8 +314,14 @@ impl DssObject for Recloser {
         use super::prop::*;
         let n = self.state_size();
         match idx {
-            NORMAL => self.normal_state[1..=n].to_vec(),
-            STATE => self.present_state[1..=n].to_vec(),
+            NORMAL => self.normal_state[1..=n]
+                .iter()
+                .map(|s| s.ordinal())
+                .collect(),
+            STATE => self.present_state[1..=n]
+                .iter()
+                .map(|s| s.ordinal())
+                .collect(),
             _ => unreachable!("Recloser has no enum-array property {idx}"),
         }
     }
@@ -334,19 +341,19 @@ impl DssObject for Recloser {
         match idx {
             NORMAL => {
                 if ganged {
-                    self.set_all_normal(values[0]);
+                    self.set_all_normal(ControlAction::from_ordinal(values[0]));
                 } else {
                     for (k, &v) in values.iter().take(n).enumerate() {
-                        self.normal_state[k + 1] = v;
+                        self.normal_state[k + 1] = ControlAction::from_ordinal(v);
                     }
                 }
             }
             STATE => {
                 if ganged {
-                    self.set_all_present(values[0]);
+                    self.set_all_present(ControlAction::from_ordinal(values[0]));
                 } else {
                     for (k, &v) in values.iter().take(n).enumerate() {
-                        self.present_state[k + 1] = v;
+                        self.present_state[k + 1] = ControlAction::from_ordinal(v);
                     }
                 }
             }
