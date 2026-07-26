@@ -3936,6 +3936,85 @@ fn export_estimation_empty_matches_oracle() {
     run_deck_export("export_estimation_empty", &estimation_policy());
 }
 
+/// The `Estimate` **command** (Pascal `TExecHelper.DoEstimateCmd`,
+/// `ExecHelper.pas:4213`, `TExecCommand` ordinal 76; identical body + ordinal in
+/// EPRI r4133 `Version8/Source/Executive/ExecHelper.pas:3768`): `DoAllocateLoadsCmd`
+/// + `Set showexport=yes` + `Export Estimation`.
+///
+/// The pin is **oracle-backed without a new capture**: replay the `export_estimation`
+/// deck with its trailing `allocateloads` *removed* and let the single word
+/// `estimate` do both halves, then diff the produced file against the very golden
+/// the oracle wrote for `allocateloads` + `export estimation`
+/// (`export_estimation.txt`). A routing that skipped the allocation leg would
+/// reproduce the `export_estimation_noalloc` shape instead (all-zero `Calc`
+/// columns, `%Err = 100`) and fail on every data row; a routing that skipped the
+/// export leg would write no file at all.
+///
+/// Probed on the pinned oracle (dss-python 0.15.7 / backend 0.14.5, this deck):
+/// `estimate` reports no error, writes `est8_EXP_ESTIMATION.csv` byte-identical
+/// both to `allocateloads`+`export estimation` and to the captured golden, flips
+/// `Get showexport` `No` → `Yes`, and leaves `@lastfile`/`@lastexportfile` (=
+/// `LastResultFile`) pointing at the written file — all four asserted here.
+#[test]
+fn estimate_command_runs_allocation_then_exports_estimation() {
+    let dir = reports_dir();
+    let meta: DeckMeta = {
+        let p = dir.join("export_estimation.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let oracle = {
+        let p = dir.join("export_estimation.txt");
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+    // The deck's own allocation leg is what `estimate` must supply itself.
+    let deck: Vec<&String> = meta
+        .deck
+        .iter()
+        .filter(|c| !c.trim().eq_ignore_ascii_case("allocateloads"))
+        .collect();
+    assert_eq!(
+        deck.len() + 1,
+        meta.deck.len(),
+        "deck lost its allocateloads"
+    );
+
+    let scratch = scratch_dir("estimate_cmd");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("get showexport");
+    assert_eq!(dss.result().trim(), "No", "showexport starts off");
+
+    dss.command("estimate");
+    assert!(dss.errors().is_empty(), "estimate: {:?}", dss.errors());
+
+    // `Set showexport=yes` leg (engine-observable, latched).
+    dss.command("get showexport");
+    assert_eq!(dss.result().trim(), "Yes", "estimate must latch showexport");
+
+    // `Export Estimation` leg: the file, the last-file state, the contents.
+    let produced = dss.last_result_file().to_string();
+    assert!(
+        produced.to_lowercase().ends_with("est8_exp_estimation.csv"),
+        "unexpected produced path {produced:?}"
+    );
+    dss.command("var @lastexportfile");
+    assert_eq!(dss.result(), produced, "@lastexportfile");
+    dss.command("var @lastfile");
+    assert_eq!(dss.result(), produced, "@lastfile");
+
+    let rust = std::fs::read_to_string(&produced)
+        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+    compare_export(&oracle, &rust, &estimation_policy(), "estimate_cmd");
+
+    std::fs::remove_dir_all(&scratch).ok();
+}
+
 /// WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): seasonal ratings, gated on
 /// **capi015** (`.meta.json` `"oracle": "capi015"`). Three overloaded PDElements
 /// — an overhead Line, a Transformer, and a CN cable Line — each with

@@ -239,6 +239,9 @@ impl Dss {
             cmd::CLOSE_DI => self.do_close_di_cmd(),
             cmd::RESET => self.do_reset_cmd(),
             cmd::ALLOCATE_LOADS => self.do_allocate_loads_cmd(),
+            // Pascal `DoEstimateCmd` (`ExecHelper.pas:4213`): allocate, then
+            // export the estimation report.
+            cmd::ESTIMATE => self.do_estimate_cmd(),
             cmd::DISTRIBUTE => self.do_distribute_cmd(),
             cmd::UUIDS => self.do_uuids_cmd(),
             cmd::RELCALC => self.do_relcalc_cmd(),
