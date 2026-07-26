@@ -31,7 +31,7 @@ fn kundur_expression_compiles_to_expected_cmds() {
         "Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *; theta dt = Speed",
     );
     assert_eq!(
-        o.cmds,
+        o.cmds_ordinals(),
         vec![
             0, -50, // speed dt =
             50000, 1, -5, // -1 mass /
@@ -41,6 +41,28 @@ fn kundur_expression_compiles_to_expected_cmds() {
             -4, // *
             5, -50, // theta dt =
             0,   // speed
+        ],
+    );
+    // …and the same stream as the typed tokens the evaluator actually walks.
+    assert_eq!(
+        o.cmds,
+        vec![
+            DynToken::Var(0),
+            DynToken::EqMark,
+            DynToken::Const(0),
+            DynToken::Var(1),
+            DynToken::Op(DynOp::Div),
+            DynToken::Var(3),
+            DynToken::Var(4),
+            DynToken::Var(0),
+            DynToken::Op(DynOp::Mul),
+            DynToken::Op(DynOp::Add),
+            DynToken::Var(2),
+            DynToken::Op(DynOp::Sub),
+            DynToken::Op(DynOp::Mul),
+            DynToken::Var(5),
+            DynToken::EqMark,
+            DynToken::Var(0),
         ],
     );
     assert_eq!(o.var_consts, vec![-1.0]);
@@ -84,7 +106,7 @@ fn kundur_expression_evaluates() {
 #[test]
 fn trivial_expression_compiles_and_evaluates() {
     let o = compile(&["w", "th"], "w dt = th");
-    assert_eq!(o.cmds, vec![0, -50, 1]);
+    assert_eq!(o.cmds_ordinals(), vec![0, -50, 1]);
     assert!(o.var_consts.is_empty());
     let mut mem = [[5.0, 0.0], [7.0, 0.0]];
     o.solve_eq(&mut mem);
@@ -95,7 +117,7 @@ fn trivial_expression_compiles_and_evaluates() {
 fn pi_and_constant_operators() {
     // `pi` is the nullary operator (full-precision π via EnterPi), `2` a constant.
     let o = compile(&["w"], "w dt = pi 2 * w *");
-    assert_eq!(o.cmds, vec![0, -50, -27, 50000, -4, 0, -4]);
+    assert_eq!(o.cmds_ordinals(), vec![0, -50, -27, 50000, -4, 0, -4]);
     assert_eq!(o.var_consts, vec![2.0]);
     let mut mem = [[3.0, 0.0]];
     o.solve_eq(&mut mem);
@@ -115,31 +137,31 @@ fn operator_dispatch_reachable_ops() {
     // reach (unary + binary + stack ops). Expected values are exact (no tolerance).
     // sqr (-11): w² ; w=4 → 16
     let o = compile(&["w"], "w dt = w sqr");
-    assert_eq!(o.cmds, vec![0, -50, 0, -11]);
+    assert_eq!(o.cmds_ordinals(), vec![0, -50, 0, -11]);
     let mut m = [[4.0, 0.0]];
     o.solve_eq(&mut m);
     assert_eq!(m[0][1], 16.0);
     // inv (-13): 1/w ; w=4 → 0.25
     let o = compile(&["w"], "w dt = w inv");
-    assert_eq!(o.cmds, vec![0, -50, 0, -13]);
+    assert_eq!(o.cmds_ordinals(), vec![0, -50, 0, -13]);
     let mut m = [[4.0, 0.0]];
     o.solve_eq(&mut m);
     assert_eq!(m[0][1], 0.25);
     // ln (-14): ln(w) ; w=1 → 0
     let o = compile(&["w"], "w dt = w ln");
-    assert_eq!(o.cmds, vec![0, -50, 0, -14]);
+    assert_eq!(o.cmds_ordinals(), vec![0, -50, 0, -14]);
     let mut m = [[1.0, 0.0]];
     o.solve_eq(&mut m);
     assert_eq!(m[0][1], 0.0);
     // exp (-15): e^w ; w=0 → 1
     let o = compile(&["w"], "w dt = w exp");
-    assert_eq!(o.cmds, vec![0, -50, 0, -15]);
+    assert_eq!(o.cmds_ordinals(), vec![0, -50, 0, -15]);
     let mut m = [[0.0, 0.0]];
     o.solve_eq(&mut m);
     assert_eq!(m[0][1], 1.0);
     // ^ (-28): w^3 ; w=2 → 8 (the `3` is harvested as a constant)
     let o = compile(&["w"], "w dt = w 3 ^");
-    assert_eq!(o.cmds, vec![0, -50, 0, 50000, -28]);
+    assert_eq!(o.cmds_ordinals(), vec![0, -50, 0, 50000, -28]);
     assert_eq!(o.var_consts, vec![3.0]);
     let mut m = [[2.0, 0.0]];
     o.solve_eq(&mut m);
@@ -147,7 +169,7 @@ fn operator_dispatch_reachable_ops() {
     // swap (-26) then / (-5): swap flips the operands → b/a (without swap it is a/b);
     // vars w/a/b, a=2 b=8 → 4
     let o = compile(&["w", "a", "b"], "w dt = a b swap /");
-    assert_eq!(o.cmds, vec![0, -50, 1, 2, -26, -5]);
+    assert_eq!(o.cmds_ordinals(), vec![0, -50, 1, 2, -26, -5]);
     let mut m = [[0.0, 0.0], [2.0, 0.0], [8.0, 0.0]];
     o.solve_eq(&mut m);
     assert_eq!(m[0][1], 4.0);
@@ -162,13 +184,13 @@ fn substring_tiebreak_makes_sqrt_and_atan2_unreachable() {
     // verbatim. `w sqrt` compiles to `sqr` (-11), the trailing `t` swallowed by
     // the multi-char advance.
     let o = compile(&["w"], "w dt = w sqrt");
-    assert_eq!(o.cmds, vec![0, -50, 0, -11]); // sqr, never -12 (sqrt)
+    assert_eq!(o.cmds_ordinals(), vec![0, -50, 0, -11]); // sqr, never -12 (sqrt)
     let mut m = [[3.0, 0.0]];
     o.solve_eq(&mut m);
     assert_eq!(m[0][1], 9.0); // w² — confirms it ran sqr, not sqrt
     // `a atan2` → `atan` (-22), never -23.
     let o = compile(&["w", "a"], "w dt = a atan2");
-    assert_eq!(o.cmds, vec![0, -50, 1, -22]); // atan, never -23 (atan2)
+    assert_eq!(o.cmds_ordinals(), vec![0, -50, 1, -22]); // atan, never -23 (atan2)
 }
 
 #[test]
@@ -222,6 +244,67 @@ fn get_out_idx_flags_only_outputs() {
     assert_eq!(o.get_out_idx("theta"), 5); // an output
     assert_eq!(o.get_out_idx("mass"), -1); // input only
     assert_eq!(o.get_out_idx("nope"), -1); // not a variable
+}
+
+#[test]
+fn eq_mark_is_always_preceded_by_its_output_var() {
+    // The structural invariant `solve_eq` relies on: `InterpretDiffEq`'s `dt`
+    // arm is the only writer of an `EqMark` and it emits the pair
+    // `[Var(out), EqMark]` in one step (`DynamicExp.pas:504-519`), so the cell
+    // in front of a marker is always the output variable — never an operator, a
+    // constant, or another marker (which is what makes Pascal's `if Cmds[idx]
+    // <> -50` guard a plain `Var` match).
+    for (vars, expr) in [
+        (
+            &["speed", "mass", "pshaft", "pterm", "damp", "theta"][..],
+            "Speed dt = -1 Mass / ( Pterm Damp Speed * + Pshaft - ) *; theta dt = Speed",
+        ),
+        (&["w", "th"][..], "w dt = th"),
+        (&["w"][..], "w dt = pi 2 * w *"),
+        (
+            &["w", "a", "b"][..],
+            "w dt = a b swap /; a dt = b 3 ^; b dt = a",
+        ),
+    ] {
+        let o = compile(vars, expr);
+        for (i, tok) in o.cmds.iter().enumerate() {
+            if *tok == DynToken::EqMark {
+                assert!(i > 0, "leading EqMark in `{expr}`");
+                assert!(
+                    matches!(o.cmds[i - 1], DynToken::Var(_)),
+                    "cell {} before the EqMark of `{expr}` is {:?}",
+                    i - 1,
+                    o.cmds[i - 1]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn constant_before_dt_is_rejected_with_the_pascal_message() {
+    // Pascal error 50006 (`DynamicExp.pas:506-511`): a numeric constant where the
+    // `dt` output variable belongs `Exit`s the procedure — the expression is NOT
+    // cleared and `gotError` stays false, so the 50003 "There are errors…" tail
+    // never fires. Pins the exact message text too (it is not golden-covered).
+    let mut o = compile(&["a"], "3 dt = a");
+    assert_eq!(o.get_string(EXPRESSION), "3 dt = a"); // not cleared
+    let errs = o.data_mut().take_errors();
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    assert_eq!(
+        errs[0].message,
+        "DynamicExp: the expression preceeding the \"dt\" operand has to be a state variable."
+    );
+}
+
+#[test]
+fn get_var_idx_classifies_state_vars_constants_and_misses() {
+    // Pascal `Get_Var_Idx`'s three-way `Integer` result (index / 50001 / -1).
+    let o = compile(&["speed", "mass"], "speed dt = mass");
+    assert_eq!(o.get_var_idx("speed"), VarRef::State(0));
+    assert_eq!(o.get_var_idx("MASS"), VarRef::State(1)); // lowercased first
+    assert_eq!(o.get_var_idx("-1.5"), VarRef::Const); // strtofloat succeeds
+    assert_eq!(o.get_var_idx("nope"), VarRef::NotFound);
 }
 
 #[test]
