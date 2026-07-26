@@ -3823,6 +3823,58 @@ fn export_overloads_unbal_matches_oracle() {
     run_deck_export("export_overloads_unbal", &overloads_policy());
 }
 
+/// `Export Estimation` (Pascal `ExportResults.pas:1652` `ExportEstimation`,
+/// export verb 5; ORPHANED_GAPS §1.10). The two-section report layout: the
+/// `"Energy Meters"` block (header lines 1-2, compared verbatim) then — as data
+/// rows, since blank lines are dropped — the `"Sensors"` label, its own column
+/// header, and one row per enabled Sensor. `sep: ','`, `rel/abs = 0.0`: every
+/// number is a `%.6g` render of a quantity the allocation gate already pins to
+/// ~1e-8, so the six significant digits are byte-identical.
+fn estimation_policy() -> ExportPolicy {
+    ExportPolicy {
+        sep: ',',
+        header_lines: 2, // `"Energy Meters"` + the meter column header
+        rows: RowPolicy::ExactOrdered,
+        rel: 0.0,
+        abs: 0.0,
+        col_tol: vec![],
+    }
+}
+
+/// `Export Estimation` on the allocated fixture (`est8`): two EnergyMeters at
+/// two feeder heads — a 3-phase one with unequal `peakcurrent=` targets and a
+/// **1-phase** one whose `TempX[2..3]` slots must print `0` — plus three
+/// Sensors covering all three spec forms (current, P/Q, voltage+current) and a
+/// disabled fourth that must not appear. `allocateloads` fills
+/// `CalculatedCurrent`, so the `I… Calc` and `%Err` triplets are live values
+/// (17-57 % errors, no cancellation floor). Feature-sensitive: dropping the
+/// `Enabled` filter adds an `S4` row; zeroing the wrong `TempX` slots or
+/// re-zeroing before the percent-error pass changes M2/S3's trailing columns;
+/// the sensor `%Err` columns pin the `Max(0.001, target)` denominator clamp.
+#[test]
+fn export_estimation_matches_oracle() {
+    run_deck_export("export_estimation", &estimation_policy());
+}
+
+/// `Export Estimation` **without** `allocateloads` (`estns`): nonzero targets
+/// against an all-zero `CalculatedCurrent`/`CalculatedVoltage`, so every `%Err`
+/// takes the `(1 - 0/target)*100 = 100` form and the WLS residuals collapse to
+/// the pure `-Weight * sum(target^2)` term (`-155.52` / `-1460`). Pins the
+/// report as a *read* of stored sensor state — a version that recomputed the
+/// currents itself would report nonzero `Calc` columns here.
+#[test]
+fn export_estimation_noalloc_matches_oracle() {
+    run_deck_export("export_estimation_noalloc", &estimation_policy());
+}
+
+/// `Export Estimation` with no EnergyMeters and no Sensors (`estem`): both
+/// section headers, both bodies empty. Pins the unconditional header emission
+/// (Pascal writes them before either list walk).
+#[test]
+fn export_estimation_empty_matches_oracle() {
+    run_deck_export("export_estimation_empty", &estimation_policy());
+}
+
 /// WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): seasonal ratings, gated on
 /// **capi015** (`.meta.json` `"oracle": "capi015"`). Three overloaded PDElements
 /// — an overhead Line, a Transformer, and a CN cable Line — each with

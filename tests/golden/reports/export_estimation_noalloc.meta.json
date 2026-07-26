@@ -1,0 +1,16 @@
+{
+  "report": "estimation",
+  "fixture": "estns",
+  "suffix": "EXP_ESTIMATION.csv",
+  "deck": [
+    "new circuit.estns basekv=12.47 bus1=src phases=3",
+    "new line.l1 bus1=src bus2=b1 length=1 units=mi r1=0.3 x1=0.6",
+    "new load.ld1 bus1=b1 phases=3 kv=12.47 xfkva=500 allocationfactor=0.5 pf=0.9",
+    "new energymeter.m1 element=line.l1 terminal=1 peakcurrent=(100,110,120)",
+    "new sensor.s1 element=line.l1 terminal=1 kvbase=12.47",
+    "edit sensor.s1 kvs=[7.2,7.2,7.2] currents=[20,22,24]",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve mode=snap"
+  ]
+}
