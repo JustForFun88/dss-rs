@@ -44,7 +44,7 @@
 //!   wording, descriptive relay targets (`'Gnd Curve + Ph Curve'` etc.), and an
 //!   **unconditional** `'Debug Sample: Relay.<name> FPresentState: […]'` line on
 //!   every `Sample` (r4133 forgot the `DebugTrace` guard the Recloser has — a
-//!   deterministic, defined behavior, reproduced with `TODO(compat)`).
+//!   deterministic, defined behavior, reproduced under a compat marker).
 //!
 //! Concern split mirrors the Recloser: this file holds the property metadata, the
 //! [`Relay`] struct, construction/`recalc`, and `Sample`/`DoPendingAction`/`Reset`;
@@ -824,8 +824,10 @@ impl Relay {
         // TODO(compat): r4133 emits this "Debug Sample" line UNCONDITIONALLY on
         // every Sample — it forgot the `if DebugTrace` guard the Recloser has
         // (Relay.pas:1325 vs Recloser.pas). Deterministic and defined, so it is
-        // reproduced 1:1; the clean fix (a DebugTrace guard) is deferred to the
-        // §6 TODO(compat) wipe. The line is NOT gated on ShowEventLog either.
+        // reproduced 1:1. The line is NOT gated on ShowEventLog either. The
+        // clean fix (a DebugTrace guard) is an event-log text change that the
+        // relay goldens pin, so it needs a lane branch Stage F's closed table
+        // does not sanction — escaped, see STATUS §"F.3 escape register".
         {
             let s = self.render_state_array();
             let el = format!("Debug Sample: Relay.{}", self.ccd.cd.obj.name());
@@ -992,7 +994,7 @@ impl Relay {
                 // D4: no longer runs the full Reset — only resets OperationCount to
                 // 1 for closed phases (+ the TD21 quiet window). NB: r4133 logs this
                 // event as `Recloser.<name>` (upstream copy-paste bug — deterministic
-                // and defined, reproduced with TODO(compat) below).
+                // and defined, reproduced under the compat marker below).
                 if self.single_ph_trip {
                     if self.present_state[ph_idx] == ControlAction::Close
                         && !self.armed_for_open[ph_idx]
@@ -1010,7 +1012,8 @@ impl Relay {
                         if self.present_state[i] == ControlAction::Close {
                             if !self.armed_for_open[ph_idx] {
                                 self.operation_count[ph_idx] = 1;
-                                // TODO(compat): logged as `Recloser.<name>` (bug).
+                                // Same upstream mislabel as the 1ph branch above
+                                // (its compat marker covers both sites).
                                 let el = format!("Recloser.{}", self.ccd.cd.obj.name());
                                 self.log(ctx, &el, "Phase ALL reset (3ph reset)");
                             }

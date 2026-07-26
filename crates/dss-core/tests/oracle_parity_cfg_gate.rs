@@ -12,6 +12,14 @@
 //!
 //! Failure means: move the branch into the crate's `compat` module and let the
 //! call site use an unconditional `compat::` alias.
+//!
+//! The same file also polices the **compat tag** (`CLAUDE.md`: "it must stay
+//! greppable"): the tag is an *index* of the places that deliberately reproduce
+//! an upstream inexactness, and Stage F's exit criterion is a count of it.
+//! Prose mentions — cross-references, "this is NOT one of those" disclaimers,
+//! continuation lines — inflate that count and make the grep unusable as an
+//! index, so they are rejected here. (This file spells the tag only at runtime,
+//! so it does not trip its own gate.)
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -132,4 +140,66 @@ fn oracle_parity_cfg_appears_only_in_compat_modules_and_tests() {
         );
     }
     assert!(sanctioned_hits.len() >= 3);
+}
+
+/// The compat tag, assembled at runtime so this gate file carries no literal
+/// occurrence of its own needle.
+fn compat_tag() -> String {
+    format!("TODO{}compat{}", "(", ")")
+}
+
+/// The compat tag is an index, not prose: every occurrence must open a marker.
+///
+/// Concretely — the tag must sit inside a comment and be followed immediately
+/// by `": "`, i.e. `<tag>: <why>`. That is what makes a grep for it count
+/// *reproduction sites* and nothing else, which is the form `CLAUDE.md`
+/// mandates and the number `DE_PASCALIZE_PLAN.md` Part IV.2 drives to zero. To
+/// point at a site from elsewhere, write "compat-tagged at …" / "see the compat
+/// marker at …" instead of repeating the tag.
+#[test]
+fn compat_tag_is_only_ever_a_marker_never_prose() {
+    let root = repo_root();
+    let tag = compat_tag();
+
+    let mut offenders = Vec::new();
+    let mut markers = 0usize;
+    for path in rust_sources(&root) {
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if !text.contains(&tag) {
+            continue;
+        }
+        let rel = path.strip_prefix(&root).unwrap_or(&path).to_path_buf();
+        for (i, line) in text.lines().enumerate() {
+            for (col, _) in line.match_indices(&tag) {
+                let after = &line[col + tag.len()..];
+                let before = &line[..col];
+                let in_comment = before.contains("//");
+                if in_comment && after.starts_with(": ") {
+                    markers += 1;
+                } else {
+                    offenders.push(format!("    {}:{}: {}", rel.display(), i + 1, line.trim()));
+                }
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "the compat tag must always open a marker (`{tag}: <why>`) inside a \
+         comment — a prose mention breaks the greppable index CLAUDE.md \
+         requires and inflates the Stage F exit count. Reword it as \
+         \"compat-tagged at …\":\n{}",
+        offenders.join("\n")
+    );
+
+    // Non-vacuity: the walk must actually be seeing the markers. Stage F drives
+    // this population to zero; when it gets there, delete this floor with the
+    // last marker (the gate above still enforces the spelling on any new one).
+    assert!(
+        markers > 0,
+        "no compat markers found at all — the source walk is broken (or Stage F \
+         finished, in which case drop this assertion)"
+    );
 }

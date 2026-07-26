@@ -73,7 +73,7 @@ pub enum ConductorType {
 // post-port precision pass.
 const E0: f64 = 8.854e-12; // dielectric constant F/m
 const MU0: f64 = 12.56637e-7; // hy/m
-#[allow(clippy::approx_constant)] // TODO(compat): truncated upstream `Twopi`, not `TAU`
+#[allow(clippy::approx_constant)] // truncated upstream `Twopi`, not `TAU` — see above
 const TWOPI: f64 = 6.283185307;
 
 #[inline]
@@ -583,7 +583,7 @@ impl LineConstants {
             // value). UPGRADE_PLAN.md WP-U1.2 row B2/D1; ledger
             // docs/upgrade/DIVERGENCES.md §B2/D1. NB — this is DELIBERATELY
             // inconsistent with `Line`'s `Kxg`, which upstream KEEPS 658.5
-            // (Line.pas:531/741/1077); see the `TODO(compat)` at the `kxg`
+            // (Line.pas:531/741/1077); see the compat markers at the `kxg`
             // sites in elements/pd/line/{accessors,code,mod}.rs.
             SIMPLE_CARSON => cmplx(
                 self.fw * MU0 / 8.0,

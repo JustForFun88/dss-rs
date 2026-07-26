@@ -7,6 +7,87 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3g — the marker population is re-audited: **89 → 55**, and the tag becomes a *gated* index (branch `depas-stagef`, 2026-07-27)
+
+The F.3 register below counted the remaining `TODO(compat)` markers but had to
+admit that the number was not trustworthy: a fifth of the population was prose
+*about* the tag rather than sites carrying it. This commit fixes the index and
+the sites whose marker premise turns out to be false. **34 markers are resolved
+and not one line of engine behavior changes** — both lanes stay byte-identical
+(doc-only diff outside the new test).
+
+**(1) 24 occurrences were never reproduction sites.** Prose cross-references
+("see the `TODO(compat)` at …"), continuation lines of a marker two lines above,
+and — worst — **negative** mentions whose text says *"this is NOT one"*
+(`exec/plot.rs`, `exec/diakoptics/matrices.rs`, `solution/time_series.rs`,
+`control/roll_avg_window.rs`, `pc/generator/dynamics.rs`,
+`pc/ind_mach012/{mod,dynamics}.rs`). Plus the JSON `circuit.rs` `%g` / `%-.4g` /
+`%8.2f` block, which now carries **one** marker in the module doc (its F-FMT
+family header) instead of four. All reworded to "compat-tagged at …"; the
+information is kept, the tag is not.
+
+**(2) 10 sites whose marker premise is false**, argued one at a time against the
+Pascal — each becomes plain documentation, none becomes a flip:
+
+* `mathutil::SymComp::official` — IV.2 **row 3** was already settled as *no
+  split* under F.1 (`mathutil.pas:548` ends with `SelectAs2pVersion(False)`, so
+  the pinned oracle uses `precise`; `official` is reachable upstream only via the
+  `DSSCompatFlag.BadPrecision` env flag nothing sets). So it is not a site
+  awaiting a fix — it is the compiled comparison partner that keeps the row's
+  verdict *asserted*, exactly like `compat::cdiv_std_impl`. Deleting it, as the
+  old marker proposed, would delete the evidence.
+* `pc/generator/accessors.rs::variable_name` — upstream's
+  `UserModel.FGetVarName` mis-dispatch is **UB** (nil function-pointer deref, or
+  an uninitialized stack read out of range); per CLAUDE.md the port deliberately
+  does **not** reproduce it. A compat marker on something we refuse to reproduce
+  is backwards.
+* `pc/storage/dynamics.rs` `OFFVal` — same class: an indeterminate FPC local,
+  not reproduced (0.0), and unreachable in the gated corpus anyway.
+* `exec/reduce.rs` `TotalLen := Len/2` — writes a **local that nothing reads**,
+  on a branch that updates no property: the upstream approximation has *no
+  observable effect in either engine*. Nothing to reproduce, nothing to fix.
+* `general/line_code/mod.rs` `hrs_to_repair` — we store what the oracle's getter
+  actually reports (`0.0`), i.e. this **matches the oracle exactly**. What is
+  left is dead-field hygiene (the field has been unused upstream since 2014),
+  not a compat divergence.
+* `cim/export.rs` `bAllowSec` — `LoadClass <= 1` is the exporter's *rule* for
+  "this load may be a PNNL-taxonomy secondary": a convention with no named clean
+  fix, not an inexactness. Changing the threshold would change which loads the
+  profile calls secondary, i.e. the exported model.
+* …plus 4 duplicate/continuation markers folded into the site they belong to
+  (`generator/accessors.rs`'s inline `PrpSequence` note, `relay/mod.rs`'s second
+  `Recloser.<name>` log line, `line_constants`' `TWOPI` allow-attribute,
+  `json/circuit.rs`'s `%g` helper doc).
+
+**The tag is now enforced, not merely conventional.** New CI gate
+`oracle_parity_cfg_gate::compat_tag_is_only_ever_a_marker_never_prose`: every
+occurrence in `crates/*/{src,tests,benches,examples}` must sit inside a comment
+and be followed immediately by `": "`. That is CLAUDE.md's "it must stay
+greppable" rule made mechanical — the count that Part IV.2 drives to zero can no
+longer be inflated by prose. The gate file spells the tag only at runtime, so it
+does not trip itself, and it asserts the population is non-empty so a broken
+source walk cannot make it pass vacuously.
+
+**The 55 that remain, by bucket** (re-enumerated site by site, not estimated):
+**14** truncated physical constants (`MU0`, `Twopi`, `CALPHA`×2, `658.5`×3,
+`ln 10`×2, `1/pi`, `1732.0`, `0.001732`, the `complexutil` pi/rad→deg pair with
+`pascal_atan2`, the FPC `csqrt`/`cmod`/`cln` forms) — escaped with the
+measurement in register **(a)**; **7** F-FMT rendering markers — F.4's defined
+scope; **2** blocked with the dense-inverse row (F.3f); **32** single-site
+upstream quirks whose clean fix would change a value or a string that a
+committed golden or a gated corpus case compares, i.e. needs a per-site lane
+branch that the *closed* IV.2 table does not sanction — register **(d)**, owner
+decision required. Nothing was silently dropped and no table row was invented.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace` and the same with the feature
+— **2235 passed / 0 failed / 5 ignored in each**, including the unconditional
+520-case corpus gate (133.8 s). `git diff -- tests/` empty (no golden,
+tolerance, ledger or deck touched); `git status --short tests/corpus` empty
+after both runs — the known intermittent `Test/AutoTrans/*` leak deleted by
+exact name. Tests +1, 0 removed, 0 new `#[ignore]`.
+
 ### DE_PASCALIZE Stage F.3f — the dense-inverse row: flip attempted, **measured, and blocked** (branch `depas-stagef`, 2026-07-27)
 
 IV.2 **row 2** was flipped in the working tree, the whole suite + the 520-case

@@ -257,11 +257,13 @@ impl LineCodeObj {
             emerg_amps: 600.0,
             fault_rate: 0.1,
             pct_perm: 20.0,
-            // TODO(compat): Pascal `Create` sets `HrsToRepair := 3`, but the
-            // oracle's `? linecode.x.repair` reads back 0 for a default code
-            // (Line keeps 3). The field is deprecated/unused since 2014 — never
-            // propagated to lines — so we default it to the value the getter
-            // reports. The clean fix drops this dead field entirely.
+            // Pascal `Create` sets `HrsToRepair := 3`, but the oracle's
+            // `? linecode.x.repair` reads back 0 for a default code (Line keeps
+            // 3), because the field is deprecated/unused since 2014 and never
+            // propagated to lines. We store the value the getter actually
+            // reports, so this **matches the oracle exactly** — no divergence is
+            // being reproduced and no compat marker applies. What is left is
+            // plain dead-field hygiene: drop the field once nothing reads it.
             hrs_to_repair: 0.0,
             rg: 0.01805, // ohms per 1000'
             xg: 0.155081,

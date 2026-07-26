@@ -591,7 +591,7 @@ fn do_pending_reset_only_resets_opcount_d4() {
     assert_eq!(r.operation_count[G], 1, "opcount reset to 1");
     assert!(ctrl.cd.terminal_all_phases_closed(1)); // element NOT forced (still closed)
     assert!(!sc.y_changed, "D4 reset does not force the element / Y");
-    // TODO(compat): reset event logged as Recloser.<name> (upstream copy-paste;
+    // Compat pin: reset event logged as Recloser.<name> (upstream copy-paste;
     // the element name keeps its case, only the Action is uppercased).
     assert!(
         log_has(&sc, "Recloser.r1"),

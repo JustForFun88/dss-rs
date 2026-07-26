@@ -9,7 +9,10 @@
 //! embedded object comes from the same [`obj_to_json_data`] used by
 //! `Obj_ToJSON`/`Batch_ToJSON`, driven by the same `joptions`.
 //!
-//! ## PostCommands number formats (each a `TODO(compat)`)
+//! ## PostCommands number formats
+//! TODO(compat): one marker for the whole family below — it belongs to the
+//! F-FMT rendering seam (`DE_PASCALIZE_PLAN.md` Part IV.2 §F-FMT, step F.4),
+//! not to a numeric kernel; the individual call sites point back here.
 //! The ~33 `Set …` PostCommands reproduce the exact FPC `Format` specs the
 //! oracle uses (`%-g` → default 15-significant `%g`, `%-.4g` → 4-significant,
 //! `%8.2f` → width-8 fixed 2-decimal, `IntToStr`, `StrYorN` → `Yes`/`No`,
@@ -41,8 +44,8 @@ fn str_y_or_n(b: bool) -> &'static str {
 /// ` %g` (a leading space + FPC default-15-significant `%g`) per value, then `]`
 /// — e.g. `[ 0.208 0.48 12.47]`.
 ///
-/// TODO(compat): the `%g` fidelity (15-significant general format). The clean fix
-/// is a canonical numeric format; the goldens pin this exact spelling.
+/// The `%g` fidelity (15-significant general format) belongs to the module's
+/// F-FMT compat family above; the goldens pin this exact spelling.
 ///
 /// Pascal returns the empty string (not `[]`) for a NIL/empty array (`dbls = NIL`
 /// → `Result := ''`); the empty `ArrayOfDouble` overload passes `@dbls[0] = NIL`.
@@ -223,7 +226,7 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
                 .get(enums.random_mode)
                 .ordinal_to_string(sol.random_type.ordinal())
         ));
-        // `%-g` = FPC default-15-significant general format (TODO(compat), see module).
+        // `%-g` = FPC default-15-significant general format (compat family, see module).
         push(format!("Set frequency={}", g(sol.frequency, 15)));
         push(format!("Set stepsize={}", g(sol.h, 15)));
         push(format!("Set number={}", sol.number_of_times));
@@ -244,7 +247,7 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
         push(format!("Set Normvmaxpu={}", g(ckt.normal_max_volts, 15)));
         push(format!("Set Emergvminpu={}", g(ckt.emerg_min_volts, 15)));
         push(format!("Set Emergvmaxpu={}", g(ckt.emerg_max_volts, 15)));
-        // `%-.4g` = 4-significant general format (TODO(compat)).
+        // `%-.4g` = 4-significant general format (compat family, see module).
         let daily_mean = ckt
             .default_daily_shape_obj
             .as_ref()
@@ -276,7 +279,7 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
                 .ordinal_to_string(aa.add_type.ordinal())
         ));
         push(format!("Set zonelock={}", str_y_or_n(ckt.zones_locked)));
-        // `%8.2f` = width-8 fixed 2-decimal, right-justified (TODO(compat)).
+        // `%8.2f` = width-8 fixed 2-decimal, right-justified (compat family, see module).
         // Byte-exact FPC `ffFixed`: 15-sig intermediate + ties-away rounding
         // (see `fixed_w_fpc`); pinned by `circuit_positive_seq`'s fractional
         // weights, which Rust's native `{:.2}` renders differently.

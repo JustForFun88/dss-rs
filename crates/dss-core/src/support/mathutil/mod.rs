@@ -62,12 +62,21 @@ impl SymComp {
         Self { as2p, ap2s }
     }
 
-    /// Upstream-compatible variant (`SetAMatrix_official` + `Invert`), used
-    /// when the engine compat flag asks for official OpenDSS numerics.
+    /// Upstream-compatible variant (`SetAMatrix_official` + `Invert`): the
+    /// truncated `sin 60°` literal plus a numerically *inverted* `Ap2s`, which
+    /// together reproduce official OpenDSS's rounding.
+    ///
+    /// **Not a compat site, and not selected in either lane** (Stage F row 3,
+    /// resolved as *no split*): `mathutil.pas:548` ends its initialization with
+    /// `SelectAs2pVersion(False)`, so the pinned oracle uses [`Self::precise`],
+    /// and this pair is reachable upstream only through the
+    /// `DSSCompatFlag.BadPrecision` env flag (`CAPI_DSS.pas:315`) that no gating
+    /// oracle sets. It is kept compiled — like `compat::cdiv_std_impl` — as the
+    /// measured comparison partner that keeps the "no split" verdict asserted
+    /// rather than narrated (`tests::sym_comp_official_vs_precise_gap_is_the_
+    /// truncated_sin60_constant` pins the 4.50e-10 relative gap). Deleting it
+    /// would delete the evidence; see `dss_core::compat`'s module header.
     pub fn official() -> Self {
-        // TODO(compat): truncated sin(60°) constant and the numerically
-        // inverted Ap2s reproduce official OpenDSS rounding; drop this whole
-        // variant in favor of `precise` once the 1:1 port is complete.
         let a = c(-0.5, 0.866025403);
         let aa = c(-0.5, -0.866025403);
         let mut as2p = CMatrix::new(3);

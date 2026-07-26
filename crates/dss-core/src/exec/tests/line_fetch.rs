@@ -182,8 +182,9 @@ fn incomplete_double_sym_matrix_rejected_keeps_default() {
     // Probed 2026-07-12: capi015 zero-fills a reactor `rmatrix=(1 | 2 3)` to
     // `(1 |2 3 |0 0 0 )`; the port adopts the r4133 reject.
     //
-    // The DoubleSymMatrix *readback* renders all-zeros (a `TODO(compat)` reproducing
-    // a dss_capi getter bug), so it cannot distinguish reject-revert from zero-fill —
+    // The DoubleSymMatrix *readback* renders all-zeros (a compat-tagged site
+    // reproducing a dss_capi getter bug), so it cannot distinguish reject-revert
+    // from zero-fill —
     // we therefore assert on the reject error AND on the STORED value (get_f64_array),
     // which is what the arm's `return Ok(0)` skips.
     let mut dss = Dss::new();

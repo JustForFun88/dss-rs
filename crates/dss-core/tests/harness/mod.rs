@@ -1182,8 +1182,8 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     // loosening. Grouped by cause:
     //
     // (a) DoubleSymMatrixProperty getter reads uninitialized memory (a dss_capi
-    //     bug; TODO(compat) in obj/props/class_props/value.rs renders a
-    //     deterministic zero matrix). The oracle returns nondeterministic garbage
+    //     bug; the compat-tagged site in obj/props/class_props/value.rs renders
+    //     a deterministic zero matrix). The oracle returns nondeterministic garbage
     //     (denormals ~1e-310 OR huge ~1e123, process-dependent) — oracle UB, not
     //     reproduced (CLAUDE.md).
     ("Capacitor", "CMatrix"),
