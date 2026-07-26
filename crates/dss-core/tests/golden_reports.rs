@@ -22,6 +22,7 @@ mod harness;
 use std::path::{Path, PathBuf};
 
 use dss_core::exec::Dss;
+use harness::lane;
 use harness::{
     ColSel, ColTol, ExportPolicy, GateSpec, RowPolicy, assert_value_matches_tol, compare_export,
 };
@@ -277,35 +278,21 @@ fn locate_show_report(scratch: &Path, suffix: &str, stem: &str) -> String {
         .unwrap_or_else(|e| panic!("read produced {}: {e}", produced.display()))
 }
 
-/// Byte-exact line comparison (no tokenization) for pure-text `Show` reports whose
-/// layout has **no** backend width quirk — the zone-tree reports (`Show Loops`/
-/// `Show Zone`) indent with deterministic `TABCHAR`s and print no numbers, so the
-/// oracle bytes are reproducible in full. Stronger than `compare_export`'s token
-/// diff: it also pins the leading indentation and trailing spaces (a formatter-side
-/// off-by-one in the tab depth, invisible to the whitespace tokenizer, fails here).
-/// Only CRLF→LF is normalized (the oracle golden is stored LF; the port writes LF).
+/// Byte-exact line comparison for pure-text `Show` reports whose layout has **no**
+/// backend width quirk — the zone-tree reports (`Show Loops`/`Show Zone`) indent
+/// with deterministic `TABCHAR`s and print no numbers, so the oracle bytes are
+/// reproducible in full. Stronger than `compare_export`'s token diff: it also pins
+/// the leading indentation and trailing spaces (a formatter-side off-by-one in the
+/// tab depth, invisible to the whitespace tokenizer, fails here). Only CRLF→LF is
+/// normalized (the oracle golden is stored LF; the port writes LF).
+///
+/// Stage F: these goldens render **no number through the F-FMT seam**, so F.4
+/// cannot move their bytes and they stay byte-exact in *both* lanes — the
+/// implementation moved to `harness::lane::assert_bytes_eq` (shared with the
+/// parity-lane arm of `lane::compare_report`); this alias keeps the local name
+/// and documents the determination at the point of use.
 fn assert_show_bytes_eq(oracle: &str, rust: &str, stem: &str) {
-    let o = oracle.replace("\r\n", "\n");
-    let r = rust.replace("\r\n", "\n");
-    if o != r {
-        let ol: Vec<&str> = o.split('\n').collect();
-        let rl: Vec<&str> = r.split('\n').collect();
-        for (i, (a, b)) in ol.iter().zip(rl.iter()).enumerate() {
-            assert_eq!(
-                a,
-                b,
-                "{stem}: line {} differs\n  oracle: {a:?}\n  rust:   {b:?}",
-                i + 1
-            );
-        }
-        assert_eq!(
-            ol.len(),
-            rl.len(),
-            "{stem}: line count differs (oracle {}, rust {})",
-            ol.len(),
-            rl.len()
-        );
-    }
+    lane::assert_bytes_eq(oracle, rust, stem);
 }
 
 /// Drive one `Show` report (PHASE8_PLAN §WP8.4): compile the same master the
@@ -435,8 +422,14 @@ fn produce_deck_show(stem: &str) -> (String, String, PathBuf) {
 /// output into a scratch dir, issue `Dump <report>`, and byte-compare the produced
 /// `<case>_PropertyDump.txt` against the oracle golden. Unlike `Show`, `Dump` sets
 /// `GlobalResult` to the produced path, so the file is read via
-/// `dss.last_result_file()` (no suffix glob). Byte-exact: the dump is pure DSS
-/// script text (no padded columns), so the oracle bytes are reproducible in full.
+/// `dss.last_result_file()` (no suffix glob). Byte-exact in the parity lane: the
+/// dump is pure DSS script text (no padded columns), so the oracle bytes are
+/// reproducible in full.
+///
+/// Stage F: the dump renders its property values through the F-FMT seam
+/// (`report::format`), so the default lane compares the SAME golden through
+/// [`dump_script_policy`] — every `Key=Value` token key-verbatim and every value
+/// bit-identical, only the spelling free (Part IV.2 drift model).
 fn run_deck_dump_exact(stem: &str) {
     let dir = reports_dir();
     let meta: DeckMeta = {
@@ -463,8 +456,15 @@ fn run_deck_dump_exact(stem: &str) {
     let produced = dss.last_result_file();
     let rust = std::fs::read_to_string(produced)
         .unwrap_or_else(|e| panic!("{stem}: read produced {produced}: {e}"));
-    assert_show_bytes_eq(&oracle, &rust, stem);
+    lane::compare_report(&oracle, &rust, &dump_script_policy(), stem);
     std::fs::remove_dir_all(&scratch).ok();
+}
+
+/// The default-lane policy for the `Dump` / `Save`-script goldens: whitespace +
+/// comma tokenization, row-for-row, **exact values** (`rel = abs = 0`). The
+/// parity lane never uses it (it byte-compares); see `harness::lane`.
+fn dump_script_policy() -> ExportPolicy {
+    lane::exact_value_policy(' ')
 }
 
 /// `run_deck_dump_exact` twin for the Capacitor decks: the oracle golden was
@@ -504,7 +504,7 @@ fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {
         .filter(|ln| !mask_prefixes.iter().any(|p| ln.starts_with(p)))
         .map(|ln| format!("{ln}\n"))
         .collect();
-    assert_show_bytes_eq(&oracle, &masked, stem);
+    lane::compare_report(&oracle, &masked, &dump_script_policy(), stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -583,7 +583,7 @@ fn run_deck_dump_exact_block_masked(stem: &str, block_headers: &[&str]) {
             out.push('\n');
         }
     }
-    assert_show_bytes_eq(&oracle, &out, stem);
+    lane::compare_report(&oracle, &out, &dump_script_policy(), stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -1489,6 +1489,10 @@ fn show_powers_elem_autotrans_matches_oracle() {
     // those rows are numerically pinned by the tokenizing twin (0.0 == -0.0)
     // and excluded from the byte compare here (the layout is amply pinned by
     // the non-degenerate rows).
+    // Stage F: this is a *layout* pin (column widths and pad glyphs), which is
+    // exactly what F-FMT re-renders in the default lane — so it runs in the
+    // PARITY lane only. The numeric content above is lane-independent, and the
+    // default lane's layout is covered by the F.5 differential job.
     let degenerate = |l: &str| l.split_whitespace().rev().nth(1) == Some("0.0");
     let select = move |s: &str, pred: fn(&str) -> bool| -> Vec<String> {
         s.lines()
@@ -1508,11 +1512,13 @@ fn show_powers_elem_autotrans_matches_oracle() {
                 .any(|b| l.starts_with(b))
         }),
     ];
-    for (what, pred) in preds {
-        let o = select(&oracle, pred);
-        let r = select(&rust, pred);
-        assert!(!o.is_empty(), "{what}: golden must contain such lines");
-        assert_eq!(o, r, "{what}: byte-exact layout");
+    if lane::PARITY {
+        for (what, pred) in preds {
+            let o = select(&oracle, pred);
+            let r = select(&rust, pred);
+            assert!(!o.is_empty(), "{what}: golden must contain such lines");
+            assert_eq!(o, r, "{what}: byte-exact layout");
+        }
     }
     std::fs::remove_dir_all(&scratch).ok();
 }
@@ -2069,19 +2075,25 @@ fn show_controlled_multi_matches_oracle() {
 }
 
 /// Drive one `Show LineConstants` case: replay `<stem>`'s deck, issue its `show
-/// lineconstants <args>`, and verify **both** produced files byte-exact — the report
+/// lineconstants <args>`, and verify **both** produced files — the report
 /// `<case>_LineConstants.txt` (via the deck harness) and the `LineConstantsCode.dss`
 /// LineCode script (no `<case>_` prefix, read directly from the scratch dir, golden
-/// `<stem>_code.txt`).
+/// `<stem>_code.txt`). Byte-exact in the parity lane.
+///
+/// Stage F: both files are dense float text rendered through the F-FMT seam (the
+/// R/X/C matrices, and the `LineCode` script's `Rmatrix=(…)` values), so the
+/// default lane compares the same two goldens value-exact (`rel = abs = 0`) with
+/// the rendering free — Part IV.2 drift model.
 fn run_lineconstants_show(stem: &str) {
     let (oracle_main, rust_main, scratch) = produce_deck_show(stem);
-    assert_show_bytes_eq(&oracle_main, &rust_main, stem);
+    let policy = lane::exact_value_policy(' ');
+    lane::compare_report(&oracle_main, &rust_main, &policy, stem);
     let code_path = scratch.join("LineConstantsCode.dss");
     let rust_code = std::fs::read_to_string(&code_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", code_path.display()));
     let oracle_code = std::fs::read_to_string(reports_dir().join(format!("{stem}_code.txt")))
         .unwrap_or_else(|e| panic!("read {stem}_code golden: {e}"));
-    assert_show_bytes_eq(&oracle_code, &rust_code, &format!("{stem}_code"));
+    lane::compare_report(&oracle_code, &rust_code, &policy, &format!("{stem}_code"));
     std::fs::remove_dir_all(&scratch).ok();
 }
 
@@ -5150,8 +5162,11 @@ fn produce_deck_save(stem: &str) -> (String, String, Dss, PathBuf) {
 /// in-memory stream flush — NO file, probe-proven; the fixture's mon1 must
 /// produce nothing) + every EnergyMeter `SaveRegisters` → `MTR_em1.csv` with
 /// the `Year, 0,` header and all 67 `"<RegName>",<value :0:0>` rounded-integer
-/// register lines. Byte-exact; `GlobalResult`/`LastResultFile` = the RELATIVE
-/// CSV name (`EnergyMeter.pas:1249-1251`, probe-proven).
+/// register lines. Byte-exact in the parity lane; `GlobalResult`/`LastResultFile`
+/// = the RELATIVE CSV name (`EnergyMeter.pas:1249-1251`, probe-proven).
+///
+/// Stage F: the register values render through the F-FMT seam, so the default
+/// lane compares the same golden value-exact (`rel = abs = 0`) on CSV fields.
 #[test]
 fn save_meters_mtr_matches_oracle_exact() {
     let (oracle, rust, dss, scratch) = produce_deck_save("save_mtr");
@@ -5166,7 +5181,7 @@ fn save_meters_mtr_matches_oracle_exact() {
         .filter(|n| n.to_lowercase().contains("mon"))
         .collect();
     assert!(mon_files.is_empty(), "monitor Save wrote {mon_files:?}");
-    assert_show_bytes_eq(&oracle, &rust, "save_mtr");
+    lane::compare_report(&oracle, &rust, &lane::exact_value_policy(','), "save_mtr");
     std::fs::remove_dir_all(&scratch).ok();
 }
 

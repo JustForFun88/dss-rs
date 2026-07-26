@@ -53,13 +53,15 @@ fn run_case(name: &str) {
         dss.errors()
     );
 
-    // Solution: converged + total iteration count, exact.
+    // Solution: converged + total iteration count (exact in the parity lane,
+    // ±`lane::ITER_SLACK` in the default lane — Stage F drift model).
     let ckt = dss.circuit().expect("circuit after compile");
     assert!(golden.solution.converged, "{name}: oracle did not converge");
     assert!(ckt.is_solved, "{name}: Rust solution did not converge");
-    assert_eq!(
-        ckt.solution.iteration, golden.solution.iterations as i32,
-        "{name}: iteration count differs"
+    harness::lane::compare_iterations(
+        ckt.solution.iteration,
+        golden.solution.iterations as i32,
+        name,
     );
     assert_eq!(
         ckt.num_nodes as u32, golden.circuit.num_nodes,

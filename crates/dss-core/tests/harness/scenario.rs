@@ -127,10 +127,7 @@ pub fn check_family(dir_name: &str, required: &[&str]) {
             let ckt = dss.circuit().expect("circuit after compile");
             assert!(sc.converged, "{ctx}: oracle did not converge");
             assert!(ckt.is_solved, "{ctx}: Rust solution did not converge");
-            assert_eq!(
-                ckt.solution.iteration, sc.iterations,
-                "{ctx}: iteration count differs"
-            );
+            super::lane::compare_iterations(ckt.solution.iteration, sc.iterations, ctx);
             let names: Vec<String> = (1..=ckt.num_nodes).map(|i| ckt.node_name(i)).collect();
             assert_eq!(names, sc.node_order, "{ctx}: node order differs");
 

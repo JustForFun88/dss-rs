@@ -11,6 +11,12 @@
 //! token diff the float reports need. A wrong traversal order, a dropped/extra
 //! row, a mis-normalized level, or a filename/header typo all fail here.
 //!
+//! Stage F (`DE_PASCALIZE_PLAN.md` Part IV.2): that byte compare stays in
+//! **both** lanes. These writers render no number through the F-FMT seam
+//! (`report::format`'s float helpers / `fmt_g`), so F.4 cannot move their bytes
+//! and the stronger gate costs the default lane nothing — the scoping rule is
+//! documented in `harness::lane`.
+//!
 //! Regenerate only manually: `python tools/golden/gen_inc_matrix.py`.
 
 use std::path::PathBuf;

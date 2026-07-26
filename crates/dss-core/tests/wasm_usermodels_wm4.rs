@@ -151,11 +151,7 @@ fn gate_deck(deck: &str) {
     };
     assert!(g.converged, "{deck}: oracle golden did not converge");
     assert!(is_solved, "{deck}: Rust engine did not converge");
-    assert_eq!(
-        iteration as u32, g.iterations,
-        "{deck}: final-solve iteration count differs (Rust {iteration} vs oracle {})",
-        g.iterations
-    );
+    harness::lane::compare_iterations(iteration, g.iterations as i32, deck);
 
     let vtol = tol_for("feeder");
     // State-variable floor: 1e-8 rel (the feeder voltage class the model vars
