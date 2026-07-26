@@ -162,7 +162,7 @@ r4133, all 4 cases live-gated, no ledger entries. Historical detail below.
 
 | Deferred item | Owner plan (status) |
 |---|---|
-| `TODO(compat)` wipe (×123 audited 2026-07-17; +stale-Vterminal FInit 2026-07-25) + `HIDE_015X` ×15 → the oracle-parity feature split | **DE_PASCALIZE Stage F** (plan in flight: waves 1–3 merged, wave 4 running; Stage F is the final stage) |
+| `TODO(compat)` wipe (×123 workspace-wide / ×117 in `crates/dss-core/src`, re-measured 2026-07-26) + `HIDE_015X` ×15 → the oracle-parity feature split | **DE_PASCALIZE Stage F** (plan in flight: Parts II–III + R0–R2b merged; R3 executing 2026-07-26, then P1 tail + P3; Stage F is the final stage) |
 | A-Diakoptics `AggregateProfiles` + D9(d) r3723 AD-replay + WP-AD.6 threaded children | **DIAKOPTICS_PSTCALC Part II** (partial) |
 | User-model native DLLs (Gen/PVSystem/Storage/CapControl `UserModel`) | **WASM_USERMODELS** (**COMPLETE 2026-07-25** — WM.0–WM.7 merged; DLLs re-homed to wasmi-sandboxed models, r4133 oracle-of-record) |
 | Actor / parallel-machine (`DSS_CAPI_PM`) mode | **MULTITHREADING M2** (not started) |
@@ -174,8 +174,9 @@ r4133, all 4 cases live-gated, no ledger entries. Historical detail below.
 > lane (clean numerics — true π, honest `Round`, …) and an **oracle-parity** lane (keeps
 > 1:1 bug-for-bug behavior so the byte-exact golden gates stay green forever), and (3)
 > stands up the two CI lanes + a default↔parity differential job. Parity target = r4133.
-> It is NOT started (DE_PASCALIZE is paused) and is a prerequisite for RESONANCE WP-R1 and
-> MULTITHREADING M3c.
+> Stage F itself is NOT started; DE_PASCALIZE is **in flight** (R3 executing as of
+> 2026-07-26, then the P1 deferred tail + P3 — Stage F runs last). It is a prerequisite
+> for RESONANCE WP-R1 and MULTITHREADING M3c.
 
 ## 3. Permanent by-design non-ports (do NOT port)
 

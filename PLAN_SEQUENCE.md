@@ -42,16 +42,21 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               parallel porting branches inherited it. Ran FIRST post-acceptance:
                               freshest porting context, avoided double-touching code DE_PASCALIZE
                               would refactor, and lets Stage F pin r4133-parity (not r3723).
- 5. DE_PASCALIZE_PLAN.md      PAUSED by user 2026-07-17 after wave 1; wave-2 WIP
-                              salvaged to origin branches wt-p5a/wt-p1b/wt-p1213
-                              (R1 not started). Wave 1 merged 2026-07-17: R0 + P1-partial +
-                              P2 + P6, all [A]/bit-neutral, parallel worktrees + opus
-                              audits; records docs/phase-records/depascalize-*.md).
-                              Parts I–III [A] (arenas/enums/de-indexing, bit-neutral,
-                              proven by the still-stable goldens), then Stage F —
-                              the `oracle-parity` feature split (absorbs the
-                              TODO(compat) sweep; creates the two CI lanes; parity
-                              target = r4133 per UPGRADE_PLAN §5)
+ 5. DE_PASCALIZE_PLAN.md      IN FLIGHT (resumed after the 2026-07-17 pause).
+                              Merged: wave 1 2026-07-17 (R0 + P1-partial + P2 + P6,
+                              `e7cfc1e`); the v2 reruns of the salvaged wave-2 WIP
+                              2026-07-19/20 (P5a, P1b, P12+P13, P15 incl. M1 benches,
+                              P9); R1(+P7), P10, P11, P8+P14, P5b/c 2026-07-25;
+                              R2 (M3b seam) + R2b (a–e: make_like closed, from_ref
+                              bridges, try_ckt_elem tag) 2026-07-25/26. All
+                              [A]/bit-neutral, parallel worktrees + opus audits;
+                              records docs/phase-records/depascalize-*.md + STATUS.
+                              Remaining: R3 (store flip + downcast elimination —
+                              executing 2026-07-26 in worktree depas-r3) → P1
+                              deferred tail · P3 → Stage F — the `oracle-parity`
+                              feature split (absorbs the TODO(compat) sweep;
+                              creates the two CI lanes; parity target = r4133 per
+                              UPGRADE_PLAN §5)
  6. RESONANCE_PLAN.md         WP-R1 iterative refinement (default lane on, parity off —
                               needs Stage F), WP-R2 resonance analysis, WP-R3 diagnostics
                               (UPGRADE_PLAN §1.3-1 already grants target-rev cases the
