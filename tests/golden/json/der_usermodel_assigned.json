@@ -1,0 +1,149 @@
+{
+  "name": "der_usermodel_assigned",
+  "commands": [
+    "new circuit.um basekv=24 bus1=sourcebus",
+    "new Generator.g1 Bus1=sourcebus kV=24 kW=100 kvar=50 Model=1 UserData=(Kp=1.5,Ki=0.25) ShaftData=(J=3.5,D=0.1)",
+    "new Storage.st1 phases=3 bus1=sourcebus kv=24 kwrated=100 kwhrated=200 UserData=(a=1) DynaData=(b=2)",
+    "new PVSystem.pv1 phases=3 bus1=sourcebus kv=24 kva=100 pmpp=100 irradiance=1 UserData=(c=3)",
+    "set voltagebases=[24]",
+    "calcv"
+  ],
+  "combo_names": [
+    "full",
+    "full_lowercase_keys",
+    "default"
+  ],
+  "captures": [
+    {
+      "kind": "obj",
+      "target": "Generator.g1",
+      "opts": "full",
+      "bits": 1,
+      "expected": "{\"Name\":\"g1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"PF\":8.9442719099991586E-001,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"VMinpu\":9.0000000000000002E-001,\"VMaxpu\":1.1000000000000001E+000,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"DispMode\":\"Default\",\"DispValue\":0.0000000000000000E+000,\"Conn\":\"wye\",\"Status\":\"Variable\",\"Class\":1,\"Vpu\":1.0000000000000000E+000,\"Maxkvar\":1.0000000000000000E+002,\"Minkvar\":-1.0000000000000000E+002,\"PVFactor\":1.0000000000000001E-001,\"ForceOn\":false,\"kVA\":1.2000000000000000E+002,\"MVA\":1.2000000000000000E-001,\"Xd\":1.0000000000000000E+000,\"Xdp\":2.8000000000000003E-001,\"Xdpp\":2.0000000000000001E-001,\"H\":1.0000000000000000E+000,\"D\":1.0000000000000000E+000,\"UserModel\":\"\",\"UserData\":\"Kp=1.5,Ki=0.25\",\"ShaftModel\":\"\",\"ShaftData\":\"J=3.5,D=0.1\",\"DutyStart\":0.0000000000000000E+000,\"DebugTrace\":false,\"Balanced\":false,\"XRdp\":2.0000000000000000E+001,\"UseFuel\":false,\"FuelkWh\":0.0000000000000000E+000,\"pctFuel\":1.0000000000000000E+002,\"pctReserve\":2.0000000000000000E+001,\"Refuel\":false,\"DynamicEq\":null,\"DynOut\":[],\"Spectrum\":\"defaultgen\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "Generator.g1",
+      "opts": "full_lowercase_keys",
+      "bits": 129,
+      "expected": "{\"Name\":\"g1\",\"phases\":3,\"bus1\":\"sourcebus\",\"kv\":2.4000000000000000E+001,\"kw\":1.0000000000000000E+002,\"pf\":8.9442719099991586E-001,\"kvar\":5.0000000000000000E+001,\"model\":1,\"vminpu\":9.0000000000000002E-001,\"vmaxpu\":1.1000000000000001E+000,\"yearly\":null,\"daily\":null,\"duty\":null,\"dispmode\":\"Default\",\"dispvalue\":0.0000000000000000E+000,\"conn\":\"wye\",\"status\":\"Variable\",\"class\":1,\"vpu\":1.0000000000000000E+000,\"maxkvar\":1.0000000000000000E+002,\"minkvar\":-1.0000000000000000E+002,\"pvfactor\":1.0000000000000001E-001,\"forceon\":false,\"kva\":1.2000000000000000E+002,\"mva\":1.2000000000000000E-001,\"xd\":1.0000000000000000E+000,\"xdp\":2.8000000000000003E-001,\"xdpp\":2.0000000000000001E-001,\"h\":1.0000000000000000E+000,\"d\":1.0000000000000000E+000,\"usermodel\":\"\",\"userdata\":\"Kp=1.5,Ki=0.25\",\"shaftmodel\":\"\",\"shaftdata\":\"J=3.5,D=0.1\",\"dutystart\":0.0000000000000000E+000,\"debugtrace\":false,\"balanced\":false,\"xrdp\":2.0000000000000000E+001,\"usefuel\":false,\"fuelkwh\":0.0000000000000000E+000,\"%fuel\":1.0000000000000000E+002,\"%reserve\":2.0000000000000000E+001,\"refuel\":false,\"dynamiceq\":null,\"dynout\":[],\"spectrum\":\"defaultgen\",\"basefreq\":6.0000000000000000E+001,\"enabled\":true,\"like\":\"\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "Generator.g1",
+      "opts": "default",
+      "bits": 0,
+      "expected": "{\"Name\":\"g1\",\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"UserData\":\"Kp=1.5,Ki=0.25\",\"ShaftData\":\"J=3.5,D=0.1\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "Storage.st1",
+      "opts": "full",
+      "bits": 1,
+      "expected": "{\"Name\":\"st1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"Conn\":\"wye\",\"kW\":-1.0000000000000000E+000,\"kvar\":-0.0000000000000000E+000,\"PF\":1.0000000000000000E+000,\"kVA\":1.0000000000000000E+002,\"pctCutIn\":0.0000000000000000E+000,\"pctCutOut\":0.0000000000000000E+000,\"EffCurve\":null,\"VarFollowInverter\":false,\"kvarMax\":2.5000000000000000E+001,\"kvarMaxAbs\":2.5000000000000000E+001,\"WattPriority\":false,\"PFPriority\":false,\"pctPMinNoVars\":0.0000000000000000E+000,\"pctPMinkvarMax\":0.0000000000000000E+000,\"kWRated\":1.0000000000000000E+002,\"pctkWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"kWhStored\":2.0000000000000000E+002,\"pctStored\":1.0000000000000000E+002,\"pctReserve\":2.0000000000000000E+001,\"State\":\"Idling\",\"pctDischarge\":1.0000000000000000E+002,\"pctCharge\":1.0000000000000000E+002,\"pctEffCharge\":9.0000000000000000E+001,\"pctEffDischarge\":9.0000000000000000E+001,\"pctIdlingkW\":1.0000000000000000E+000,\"pctR\":0.0000000000000000E+000,\"pctX\":5.0000000000000000E+001,\"Model\":1,\"VMinpu\":9.0000000000000002E-001,\"VMaxpu\":1.1000000000000001E+000,\"Balanced\":false,\"LimitCurrent\":false,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"DispMode\":\"Default\",\"DischargeTrigger\":0.0000000000000000E+000,\"ChargeTrigger\":0.0000000000000000E+000,\"TimeChargeTrig\":2.0000000000000000E+000,\"Class\":1,\"DynaDLL\":\"\",\"DynaData\":\"b=2\",\"UserModel\":\"\",\"UserData\":\"a=1\",\"DebugTrace\":false,\"kVDC\":8.0000000000000000E+000,\"Kp\":1.0000000000000000E-002,\"PITol\":0.0000000000000000E+000,\"SafeVoltage\":8.0000000000000000E+001,\"SafeMode\":false,\"DynamicEq\":null,\"DynOut\":[],\"ControlMode\":\"GFL\",\"AmpLimit\":-1.0000000000000000E+000,\"AmpLimitGain\":8.0000000000000004E-001,\"Spectrum\":null,\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "Storage.st1",
+      "opts": "full_lowercase_keys",
+      "bits": 129,
+      "expected": "{\"Name\":\"st1\",\"phases\":3,\"bus1\":\"sourcebus\",\"kv\":2.4000000000000000E+001,\"conn\":\"wye\",\"kw\":-1.0000000000000000E+000,\"kvar\":-0.0000000000000000E+000,\"pf\":1.0000000000000000E+000,\"kva\":1.0000000000000000E+002,\"%cutin\":0.0000000000000000E+000,\"%cutout\":0.0000000000000000E+000,\"effcurve\":null,\"varfollowinverter\":false,\"kvarmax\":2.5000000000000000E+001,\"kvarmaxabs\":2.5000000000000000E+001,\"wattpriority\":false,\"pfpriority\":false,\"%pminnovars\":0.0000000000000000E+000,\"%pminkvarmax\":0.0000000000000000E+000,\"kwrated\":1.0000000000000000E+002,\"%kwrated\":1.0000000000000000E+002,\"kwhrated\":2.0000000000000000E+002,\"kwhstored\":2.0000000000000000E+002,\"%stored\":1.0000000000000000E+002,\"%reserve\":2.0000000000000000E+001,\"state\":\"Idling\",\"%discharge\":1.0000000000000000E+002,\"%charge\":1.0000000000000000E+002,\"%effcharge\":9.0000000000000000E+001,\"%effdischarge\":9.0000000000000000E+001,\"%idlingkw\":1.0000000000000000E+000,\"%r\":0.0000000000000000E+000,\"%x\":5.0000000000000000E+001,\"model\":1,\"vminpu\":9.0000000000000002E-001,\"vmaxpu\":1.1000000000000001E+000,\"balanced\":false,\"limitcurrent\":false,\"yearly\":null,\"daily\":null,\"duty\":null,\"dispmode\":\"Default\",\"dischargetrigger\":0.0000000000000000E+000,\"chargetrigger\":0.0000000000000000E+000,\"timechargetrig\":2.0000000000000000E+000,\"class\":1,\"dynadll\":\"\",\"dynadata\":\"b=2\",\"usermodel\":\"\",\"userdata\":\"a=1\",\"debugtrace\":false,\"kvdc\":8.0000000000000000E+000,\"kp\":1.0000000000000000E-002,\"pitol\":0.0000000000000000E+000,\"safevoltage\":8.0000000000000000E+001,\"safemode\":false,\"dynamiceq\":null,\"dynout\":[],\"controlmode\":\"GFL\",\"amplimit\":-1.0000000000000000E+000,\"amplimitgain\":8.0000000000000004E-001,\"spectrum\":null,\"basefreq\":6.0000000000000000E+001,\"enabled\":true,\"like\":\"\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "Storage.st1",
+      "opts": "default",
+      "bits": 0,
+      "expected": "{\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"UserData\":\"a=1\",\"DynaData\":\"b=2\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "PVSystem.pv1",
+      "opts": "full",
+      "bits": 1,
+      "expected": "{\"Name\":\"pv1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"Irradiance\":1.0000000000000000E+000,\"Pmpp\":1.0000000000000000E+002,\"pctPmpp\":1.0000000000000000E+002,\"Temperature\":2.5000000000000000E+001,\"PF\":1.0000000000000000E+000,\"Conn\":\"wye\",\"kvar\":0.0000000000000000E+000,\"kVA\":1.0000000000000000E+002,\"pctCutIn\":2.0000000000000000E+001,\"pctCutOut\":2.0000000000000000E+001,\"EffCurve\":null,\"PTCurve\":null,\"pctR\":5.0000000000000000E+001,\"pctX\":0.0000000000000000E+000,\"Model\":1,\"VMinpu\":9.0000000000000002E-001,\"VMaxpu\":1.1000000000000001E+000,\"Balanced\":false,\"LimitCurrent\":false,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"TYearly\":null,\"TDaily\":null,\"TDuty\":null,\"Class\":1,\"UserModel\":\"\",\"UserData\":\"c=3\",\"DebugTrace\":false,\"VarFollowInverter\":false,\"DutyStart\":0.0000000000000000E+000,\"WattPriority\":false,\"PFPriority\":false,\"pctPMinNoVars\":0.0000000000000000E+000,\"pctPMinkvarMax\":0.0000000000000000E+000,\"kvarMax\":1.0000000000000000E+002,\"kvarMaxAbs\":1.0000000000000000E+002,\"kVDC\":8.0000000000000000E+000,\"Kp\":1.0000000000000000E-002,\"PITol\":0.0000000000000000E+000,\"SafeVoltage\":8.0000000000000000E+001,\"SafeMode\":false,\"DynamicEq\":null,\"DynOut\":[],\"ControlMode\":\"GFL\",\"AmpLimit\":-1.0000000000000000E+000,\"AmpLimitGain\":8.0000000000000004E-001,\"Spectrum\":null,\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "PVSystem.pv1",
+      "opts": "full_lowercase_keys",
+      "bits": 129,
+      "expected": "{\"Name\":\"pv1\",\"phases\":3,\"bus1\":\"sourcebus\",\"kv\":2.4000000000000000E+001,\"irradiance\":1.0000000000000000E+000,\"pmpp\":1.0000000000000000E+002,\"%pmpp\":1.0000000000000000E+002,\"temperature\":2.5000000000000000E+001,\"pf\":1.0000000000000000E+000,\"conn\":\"wye\",\"kvar\":0.0000000000000000E+000,\"kva\":1.0000000000000000E+002,\"%cutin\":2.0000000000000000E+001,\"%cutout\":2.0000000000000000E+001,\"effcurve\":null,\"p-tcurve\":null,\"%r\":5.0000000000000000E+001,\"%x\":0.0000000000000000E+000,\"model\":1,\"vminpu\":9.0000000000000002E-001,\"vmaxpu\":1.1000000000000001E+000,\"balanced\":false,\"limitcurrent\":false,\"yearly\":null,\"daily\":null,\"duty\":null,\"tyearly\":null,\"tdaily\":null,\"tduty\":null,\"class\":1,\"usermodel\":\"\",\"userdata\":\"c=3\",\"debugtrace\":false,\"varfollowinverter\":false,\"dutystart\":0.0000000000000000E+000,\"wattpriority\":false,\"pfpriority\":false,\"%pminnovars\":0.0000000000000000E+000,\"%pminkvarmax\":0.0000000000000000E+000,\"kvarmax\":1.0000000000000000E+002,\"kvarmaxabs\":1.0000000000000000E+002,\"kvdc\":8.0000000000000000E+000,\"kp\":1.0000000000000000E-002,\"pitol\":0.0000000000000000E+000,\"safevoltage\":8.0000000000000000E+001,\"safemode\":false,\"dynamiceq\":null,\"dynout\":[],\"controlmode\":\"GFL\",\"amplimit\":-1.0000000000000000E+000,\"amplimitgain\":8.0000000000000004E-001,\"spectrum\":null,\"basefreq\":6.0000000000000000E+001,\"enabled\":true,\"like\":\"\"}"
+    },
+    {
+      "kind": "obj",
+      "target": "PVSystem.pv1",
+      "opts": "default",
+      "bits": 0,
+      "expected": "{\"Name\":\"pv1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kVA\":1.0000000000000000E+002,\"Pmpp\":1.0000000000000000E+002,\"Irradiance\":1.0000000000000000E+000,\"UserData\":\"c=3\"}"
+    },
+    {
+      "kind": "batch",
+      "target": "Generator",
+      "opts": "full",
+      "bits": 1,
+      "expected": "[{\"Name\":\"g1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"PF\":8.9442719099991586E-001,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"VMinpu\":9.0000000000000002E-001,\"VMaxpu\":1.1000000000000001E+000,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"DispMode\":\"Default\",\"DispValue\":0.0000000000000000E+000,\"Conn\":\"wye\",\"Status\":\"Variable\",\"Class\":1,\"Vpu\":1.0000000000000000E+000,\"Maxkvar\":1.0000000000000000E+002,\"Minkvar\":-1.0000000000000000E+002,\"PVFactor\":1.0000000000000001E-001,\"ForceOn\":false,\"kVA\":1.2000000000000000E+002,\"MVA\":1.2000000000000000E-001,\"Xd\":1.0000000000000000E+000,\"Xdp\":2.8000000000000003E-001,\"Xdpp\":2.0000000000000001E-001,\"H\":1.0000000000000000E+000,\"D\":1.0000000000000000E+000,\"UserModel\":\"\",\"UserData\":\"Kp=1.5,Ki=0.25\",\"ShaftModel\":\"\",\"ShaftData\":\"J=3.5,D=0.1\",\"DutyStart\":0.0000000000000000E+000,\"DebugTrace\":false,\"Balanced\":false,\"XRdp\":2.0000000000000000E+001,\"UseFuel\":false,\"FuelkWh\":0.0000000000000000E+000,\"pctFuel\":1.0000000000000000E+002,\"pctReserve\":2.0000000000000000E+001,\"Refuel\":false,\"DynamicEq\":null,\"DynOut\":[],\"Spectrum\":\"defaultgen\",\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Generator",
+      "opts": "full_lowercase_keys",
+      "bits": 129,
+      "expected": "[{\"Name\":\"g1\",\"phases\":3,\"bus1\":\"sourcebus\",\"kv\":2.4000000000000000E+001,\"kw\":1.0000000000000000E+002,\"pf\":8.9442719099991586E-001,\"kvar\":5.0000000000000000E+001,\"model\":1,\"vminpu\":9.0000000000000002E-001,\"vmaxpu\":1.1000000000000001E+000,\"yearly\":null,\"daily\":null,\"duty\":null,\"dispmode\":\"Default\",\"dispvalue\":0.0000000000000000E+000,\"conn\":\"wye\",\"status\":\"Variable\",\"class\":1,\"vpu\":1.0000000000000000E+000,\"maxkvar\":1.0000000000000000E+002,\"minkvar\":-1.0000000000000000E+002,\"pvfactor\":1.0000000000000001E-001,\"forceon\":false,\"kva\":1.2000000000000000E+002,\"mva\":1.2000000000000000E-001,\"xd\":1.0000000000000000E+000,\"xdp\":2.8000000000000003E-001,\"xdpp\":2.0000000000000001E-001,\"h\":1.0000000000000000E+000,\"d\":1.0000000000000000E+000,\"usermodel\":\"\",\"userdata\":\"Kp=1.5,Ki=0.25\",\"shaftmodel\":\"\",\"shaftdata\":\"J=3.5,D=0.1\",\"dutystart\":0.0000000000000000E+000,\"debugtrace\":false,\"balanced\":false,\"xrdp\":2.0000000000000000E+001,\"usefuel\":false,\"fuelkwh\":0.0000000000000000E+000,\"%fuel\":1.0000000000000000E+002,\"%reserve\":2.0000000000000000E+001,\"refuel\":false,\"dynamiceq\":null,\"dynout\":[],\"spectrum\":\"defaultgen\",\"basefreq\":6.0000000000000000E+001,\"enabled\":true,\"like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Generator",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"g1\",\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kW\":1.0000000000000000E+002,\"kvar\":5.0000000000000000E+001,\"Model\":1,\"UserData\":\"Kp=1.5,Ki=0.25\",\"ShaftData\":\"J=3.5,D=0.1\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "full",
+      "bits": 1,
+      "expected": "[{\"Name\":\"st1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"Conn\":\"wye\",\"kW\":-1.0000000000000000E+000,\"kvar\":-0.0000000000000000E+000,\"PF\":1.0000000000000000E+000,\"kVA\":1.0000000000000000E+002,\"pctCutIn\":0.0000000000000000E+000,\"pctCutOut\":0.0000000000000000E+000,\"EffCurve\":null,\"VarFollowInverter\":false,\"kvarMax\":2.5000000000000000E+001,\"kvarMaxAbs\":2.5000000000000000E+001,\"WattPriority\":false,\"PFPriority\":false,\"pctPMinNoVars\":0.0000000000000000E+000,\"pctPMinkvarMax\":0.0000000000000000E+000,\"kWRated\":1.0000000000000000E+002,\"pctkWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"kWhStored\":2.0000000000000000E+002,\"pctStored\":1.0000000000000000E+002,\"pctReserve\":2.0000000000000000E+001,\"State\":\"Idling\",\"pctDischarge\":1.0000000000000000E+002,\"pctCharge\":1.0000000000000000E+002,\"pctEffCharge\":9.0000000000000000E+001,\"pctEffDischarge\":9.0000000000000000E+001,\"pctIdlingkW\":1.0000000000000000E+000,\"pctR\":0.0000000000000000E+000,\"pctX\":5.0000000000000000E+001,\"Model\":1,\"VMinpu\":9.0000000000000002E-001,\"VMaxpu\":1.1000000000000001E+000,\"Balanced\":false,\"LimitCurrent\":false,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"DispMode\":\"Default\",\"DischargeTrigger\":0.0000000000000000E+000,\"ChargeTrigger\":0.0000000000000000E+000,\"TimeChargeTrig\":2.0000000000000000E+000,\"Class\":1,\"DynaDLL\":\"\",\"DynaData\":\"b=2\",\"UserModel\":\"\",\"UserData\":\"a=1\",\"DebugTrace\":false,\"kVDC\":8.0000000000000000E+000,\"Kp\":1.0000000000000000E-002,\"PITol\":0.0000000000000000E+000,\"SafeVoltage\":8.0000000000000000E+001,\"SafeMode\":false,\"DynamicEq\":null,\"DynOut\":[],\"ControlMode\":\"GFL\",\"AmpLimit\":-1.0000000000000000E+000,\"AmpLimitGain\":8.0000000000000004E-001,\"Spectrum\":null,\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "full_lowercase_keys",
+      "bits": 129,
+      "expected": "[{\"Name\":\"st1\",\"phases\":3,\"bus1\":\"sourcebus\",\"kv\":2.4000000000000000E+001,\"conn\":\"wye\",\"kw\":-1.0000000000000000E+000,\"kvar\":-0.0000000000000000E+000,\"pf\":1.0000000000000000E+000,\"kva\":1.0000000000000000E+002,\"%cutin\":0.0000000000000000E+000,\"%cutout\":0.0000000000000000E+000,\"effcurve\":null,\"varfollowinverter\":false,\"kvarmax\":2.5000000000000000E+001,\"kvarmaxabs\":2.5000000000000000E+001,\"wattpriority\":false,\"pfpriority\":false,\"%pminnovars\":0.0000000000000000E+000,\"%pminkvarmax\":0.0000000000000000E+000,\"kwrated\":1.0000000000000000E+002,\"%kwrated\":1.0000000000000000E+002,\"kwhrated\":2.0000000000000000E+002,\"kwhstored\":2.0000000000000000E+002,\"%stored\":1.0000000000000000E+002,\"%reserve\":2.0000000000000000E+001,\"state\":\"Idling\",\"%discharge\":1.0000000000000000E+002,\"%charge\":1.0000000000000000E+002,\"%effcharge\":9.0000000000000000E+001,\"%effdischarge\":9.0000000000000000E+001,\"%idlingkw\":1.0000000000000000E+000,\"%r\":0.0000000000000000E+000,\"%x\":5.0000000000000000E+001,\"model\":1,\"vminpu\":9.0000000000000002E-001,\"vmaxpu\":1.1000000000000001E+000,\"balanced\":false,\"limitcurrent\":false,\"yearly\":null,\"daily\":null,\"duty\":null,\"dispmode\":\"Default\",\"dischargetrigger\":0.0000000000000000E+000,\"chargetrigger\":0.0000000000000000E+000,\"timechargetrig\":2.0000000000000000E+000,\"class\":1,\"dynadll\":\"\",\"dynadata\":\"b=2\",\"usermodel\":\"\",\"userdata\":\"a=1\",\"debugtrace\":false,\"kvdc\":8.0000000000000000E+000,\"kp\":1.0000000000000000E-002,\"pitol\":0.0000000000000000E+000,\"safevoltage\":8.0000000000000000E+001,\"safemode\":false,\"dynamiceq\":null,\"dynout\":[],\"controlmode\":\"GFL\",\"amplimit\":-1.0000000000000000E+000,\"amplimitgain\":8.0000000000000004E-001,\"spectrum\":null,\"basefreq\":6.0000000000000000E+001,\"enabled\":true,\"like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "Storage",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"st1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kWRated\":1.0000000000000000E+002,\"kWhRated\":2.0000000000000000E+002,\"UserData\":\"a=1\",\"DynaData\":\"b=2\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "PVSystem",
+      "opts": "full",
+      "bits": 1,
+      "expected": "[{\"Name\":\"pv1\",\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"Irradiance\":1.0000000000000000E+000,\"Pmpp\":1.0000000000000000E+002,\"pctPmpp\":1.0000000000000000E+002,\"Temperature\":2.5000000000000000E+001,\"PF\":1.0000000000000000E+000,\"Conn\":\"wye\",\"kvar\":0.0000000000000000E+000,\"kVA\":1.0000000000000000E+002,\"pctCutIn\":2.0000000000000000E+001,\"pctCutOut\":2.0000000000000000E+001,\"EffCurve\":null,\"PTCurve\":null,\"pctR\":5.0000000000000000E+001,\"pctX\":0.0000000000000000E+000,\"Model\":1,\"VMinpu\":9.0000000000000002E-001,\"VMaxpu\":1.1000000000000001E+000,\"Balanced\":false,\"LimitCurrent\":false,\"Yearly\":null,\"Daily\":null,\"Duty\":null,\"TYearly\":null,\"TDaily\":null,\"TDuty\":null,\"Class\":1,\"UserModel\":\"\",\"UserData\":\"c=3\",\"DebugTrace\":false,\"VarFollowInverter\":false,\"DutyStart\":0.0000000000000000E+000,\"WattPriority\":false,\"PFPriority\":false,\"pctPMinNoVars\":0.0000000000000000E+000,\"pctPMinkvarMax\":0.0000000000000000E+000,\"kvarMax\":1.0000000000000000E+002,\"kvarMaxAbs\":1.0000000000000000E+002,\"kVDC\":8.0000000000000000E+000,\"Kp\":1.0000000000000000E-002,\"PITol\":0.0000000000000000E+000,\"SafeVoltage\":8.0000000000000000E+001,\"SafeMode\":false,\"DynamicEq\":null,\"DynOut\":[],\"ControlMode\":\"GFL\",\"AmpLimit\":-1.0000000000000000E+000,\"AmpLimitGain\":8.0000000000000004E-001,\"Spectrum\":null,\"BaseFreq\":6.0000000000000000E+001,\"Enabled\":true,\"Like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "PVSystem",
+      "opts": "full_lowercase_keys",
+      "bits": 129,
+      "expected": "[{\"Name\":\"pv1\",\"phases\":3,\"bus1\":\"sourcebus\",\"kv\":2.4000000000000000E+001,\"irradiance\":1.0000000000000000E+000,\"pmpp\":1.0000000000000000E+002,\"%pmpp\":1.0000000000000000E+002,\"temperature\":2.5000000000000000E+001,\"pf\":1.0000000000000000E+000,\"conn\":\"wye\",\"kvar\":0.0000000000000000E+000,\"kva\":1.0000000000000000E+002,\"%cutin\":2.0000000000000000E+001,\"%cutout\":2.0000000000000000E+001,\"effcurve\":null,\"p-tcurve\":null,\"%r\":5.0000000000000000E+001,\"%x\":0.0000000000000000E+000,\"model\":1,\"vminpu\":9.0000000000000002E-001,\"vmaxpu\":1.1000000000000001E+000,\"balanced\":false,\"limitcurrent\":false,\"yearly\":null,\"daily\":null,\"duty\":null,\"tyearly\":null,\"tdaily\":null,\"tduty\":null,\"class\":1,\"usermodel\":\"\",\"userdata\":\"c=3\",\"debugtrace\":false,\"varfollowinverter\":false,\"dutystart\":0.0000000000000000E+000,\"wattpriority\":false,\"pfpriority\":false,\"%pminnovars\":0.0000000000000000E+000,\"%pminkvarmax\":0.0000000000000000E+000,\"kvarmax\":1.0000000000000000E+002,\"kvarmaxabs\":1.0000000000000000E+002,\"kvdc\":8.0000000000000000E+000,\"kp\":1.0000000000000000E-002,\"pitol\":0.0000000000000000E+000,\"safevoltage\":8.0000000000000000E+001,\"safemode\":false,\"dynamiceq\":null,\"dynout\":[],\"controlmode\":\"GFL\",\"amplimit\":-1.0000000000000000E+000,\"amplimitgain\":8.0000000000000004E-001,\"spectrum\":null,\"basefreq\":6.0000000000000000E+001,\"enabled\":true,\"like\":\"\"}]"
+    },
+    {
+      "kind": "batch",
+      "target": "PVSystem",
+      "opts": "default",
+      "bits": 0,
+      "expected": "[{\"Name\":\"pv1\",\"PF\":1.0000000000000000E+000,\"Phases\":3,\"Bus1\":\"sourcebus\",\"kV\":2.4000000000000000E+001,\"kVA\":1.0000000000000000E+002,\"Pmpp\":1.0000000000000000E+002,\"Irradiance\":1.0000000000000000E+000,\"UserData\":\"c=3\"}]"
+    }
+  ],
+  "schema": 1,
+  "oracle": {
+    "dss_python": "0.15.7",
+    "engine": "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d based on OpenDSS SVN 3723 [FPC 3.2.2] (64-bit build) MVMULT INCREMENTAL_Y CONTEXT_API PM 20240329033747; License Status: Open \nDSS-Python version: 0.15.7"
+  }
+}

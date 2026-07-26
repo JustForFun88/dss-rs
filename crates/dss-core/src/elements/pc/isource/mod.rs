@@ -86,7 +86,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::object_ref_class("LoadShape", "Duty").flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::bus("Bus2", 2).flags(PropFlags::DYNAMIC_DEFAULT),
         // PCClass tail:
-        PropDef::object_ref("Spectrum"),
+        PropDef::object_ref_deferred("Spectrum", "Spectrum"),
         // CktElementClass tail:
         PropDef::double("BaseFreq").flags(
             PropFlags::DYNAMIC_DEFAULT

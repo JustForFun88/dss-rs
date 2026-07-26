@@ -212,7 +212,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("puXHarm").flags(PropFlags::NO_DEFAULT),
         PropDef::double("XRHarm"),
         // PCClass tail:
-        PropDef::object_ref("Spectrum"),
+        PropDef::object_ref_deferred("Spectrum", "Spectrum"),
         // CktElementClass tail:
         PropDef::double("BaseFreq").flags(
             PropFlags::DYNAMIC_DEFAULT

@@ -242,6 +242,35 @@ fn object_ref_null_name_and_full_name() {
 }
 
 #[test]
+fn object_ref_deferred_renders_full_name_from_json_ref_class() {
+    // `Spectrum=` is resolved by the executive, not the property machinery, so
+    // `object_class` stays `None` and the parse arm only stores the lowercased
+    // name. Pascal still has `PropertyOffset2 = SpectrumClass`
+    // (`PCClass.pas:96-98`), so FullNames must render `Spectrum.<name>` —
+    // carried by `json_ref_class`. A bare `object_ref` (no class at all) keeps
+    // rendering the plain name under FullNames.
+    let cls = props(vec![
+        PropDef::object_ref_deferred("Spectrum", "Spectrum"),
+        PropDef::object_ref("Bare"),
+    ]);
+    let mut obj = Mock::new(cls.num_properties());
+    obj.strings[1] = "defaultgen".into();
+    obj.strings[2] = "whatever".into();
+    assert_eq!(
+        render(&cls, &obj, 1, JsonOpts::NONE).unwrap(),
+        r#""defaultgen""#
+    );
+    assert_eq!(
+        render(&cls, &obj, 1, JsonOpts::FULL_NAMES).unwrap(),
+        r#""Spectrum.defaultgen""#
+    );
+    assert_eq!(
+        render(&cls, &obj, 2, JsonOpts::FULL_NAMES).unwrap(),
+        r#""whatever""#
+    );
+}
+
+#[test]
 fn object_ref_array_full_name_as_json_array() {
     let cls = props(vec![
         PropDef::object_ref_array("WireData", "W").flags(PropFlags::FULL_NAME_AS_JSON_ARRAY),

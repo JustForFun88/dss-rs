@@ -3224,22 +3224,28 @@ open item is not buried in the §1a archive):
   (og1213, 2026-07-18; see §OG-1.2+1.3).** Capacitor CMatrix = proven UB
   non-port (uninitialized heap, nondeterministic across processes). New
   sub-follow-ups surfaced (below).
-- **AutoTrans JSON array-alternative metadata → NOT started (og1213 discovery).**
-  `auto_trans/mod.rs` carries none of the singular/plural `array_alternative` +
-  `REDUNDANT` + `ON_ARRAY` JSON metadata the Transformer has, so its default JSON
-  sweep renders `Buses/Conns/kVs/kVAs` where the oracle renders `Bus/Conn/kV/kVA`.
-  Blocks an AutoTrans JSON golden (incl. Full WdgCurrents, which is *inferred* to
-  work via the class-agnostic refresh route — proven post-solve on Transformer,
-  but AutoTrans's own getter is not independently oracle-pinned). Out of §1.3 scope.
-- **Generator/PVSystem/Storage `ShaftModel`/`ShaftData` under JSON Full →
-  re-triage (og1213 discovery; mechanism note stale post-WM.3).** The original
-  gap was that these carried `PropFlags::NOT_PORTED` and were skipped from Full
-  while the 0.14.5 oracle emits them (`""`). **WM.3/WM.4 removed those NOT_PORTED
-  flags** (they are now full ported properties) and `hidden_from_full_enum()` no
-  longer checks NOT_PORTED at all (only `HIDE_015X`/`HIDE_R4133`), so the stated
-  cause no longer holds — the Generator/Storage *Full* JSON golden needs a fresh
-  triage to confirm the properties now emit and match the oracle. (The DynInit
-  tail stays pinned in default-family combos meanwhile.)
+- **AutoTrans JSON array-alternative metadata + golden → ✅ CLOSED 2026-07-26**
+  (orphaned-gaps round OG-1.3a, branch `depas-og`; see §OG-1.3a below). The
+  metadata premise was **stale**: `430d033` (og15c-B6) had already ported the
+  singular/plural `array_alternative` + `REDUNDANT` + `ON_ARRAY` block into
+  `auto_trans/mod.rs`, so only the golden was missing. Now pinned by
+  `autotrans_micro` + `autotrans_solved`.
+- **Generator/PVSystem/Storage `ShaftModel`/`ShaftData` under JSON Full → ✅
+  CLOSED 2026-07-26** (OG-1.3a). Re-triaged empirically: the WM.3/WM.4
+  NOT_PORTED removal did make them render, and the Full JSON matches the pinned
+  0.14.5 oracle exactly (all six surfaces `""`). Pinned by `der_usermodel_full`
+  (empty default) and `der_usermodel_assigned` (assigned data strings).
+- **DER user-model FILENAME render (`UserModel`/`ShaftModel`/`DynaDLL`) still
+  unpinned — OPEN (OG-1.3a settle).** Probed: the oracle stores and renders an
+  unresolvable name but raises `#570 … Not Loaded` doing it, so a byte golden
+  needs `gen_json.py` to tolerate a `DSSException` on selected commands.
+  Deliberately not built — do it together with the WASM loader's own
+  error-path gating, not by weakening the generator.
+- **WindGen `Spectrum` FullNames render ungated — OPEN (OG-1.3a settle).** The
+  other twelve Spectrum-bearing classes are pinned (`spectrum_refs` +
+  `der_usermodel_full`); WindGen has no capi channel because the class does not
+  exist in the pinned 0.14.5 oracle. Needs an r4133-side JSON channel, or a
+  UPGRADE-line rung that gives WindGen an oracle.
 - **A-Diakoptics `AggregateProfiles` command + D9(d) official-r3723 AD-replay →
   DIAKOPTICS Part II WP-AD.5 — partial.** `exec/command.rs:69` `NOT_PORTED`; WP-AD.6
   threaded children not started (needs MULTITHREADING M2).
@@ -3373,6 +3379,171 @@ against the `afd8853` HEAD, RESOLVED above). One material gap survived and is fi
   `skip_full` (blocked by the ShaftModel/ShaftData NOT_PORTED Full-render gap,
   already a follow-up). The DynInit append is sweep-independent code fully exercised
   by the default sweep, so residual risk is low; kept as-is. Recorded, not dropped.
+  **→ CLOSED 2026-07-26 (OG-1.3a).** The blocking gap is gone; rather than
+  regenerate `dyneq_micro`, the new `dyneq_full` deck pins the tail under Full
+  directly (same assignment mix, incl. the `Damp` rewrite reorder).
+
+### OG-1.3a AltDSS JSON §1.3 tails — AutoTrans + DER user-model Full (2026-07-26)
+
+Branch `depas-og`. Closes both `ORPHANED_GAPS.md` §1.3 standing follow-ups (the
+AutoTrans array-alternative blocker and the `ShaftModel`/`ShaftData` re-triage),
+plus the `dyneq_micro` `skip_full` residual. Four new JSON byte goldens; no
+existing golden regenerated (`gen_json.py` grew a deck-name filter so a new deck
+cannot drag unrelated oracle drift into the committed bytes).
+
+- **AutoTrans metadata — the follow-up's premise was STALE.** `auto_trans/mod.rs`
+  already carries the full singular/plural `array_alternative` + `REDUNDANT` +
+  `ON_ARRAY` block; it landed in `430d033` (og15c-B6 schema round), *after* the
+  og1213 note was written. Re-verified 1:1 against `AutoTrans.pas:439-557`
+  (bus/buses, conn/conns, kV/kVs, kVA/kVAs, tap/taps, pctR/pctRs +
+  RDCOhms/MaxTap/MinTap/NumTaps `ON_ARRAY` + `Wdg` struct index) — complete and
+  correct. So the real gap was only the missing golden.
+- **Golden `autotrans_micro`** (obj + batch × the full 10-combo sweep incl.
+  Full). Pins that the DEFAULT sweep renders the SINGULAR `Bus/Conn/kV/kVA/pctR`
+  per-winding arrays — losing the metadata flips them to `Buses/Conns/kVs/kVAs`
+  and fails. Three windings (series/wye/delta) so the AutoTrans-only `series`
+  ordinal is covered; the four `ON_ARRAY` scalars carry DISTINCT per-winding
+  values so their positional indexing is pinned.
+- **Golden `autotrans_solved`** (Full-family combos). AutoTrans has its OWN
+  `TAutoTransObj.GetAllWindingCurrents`; every previous AutoTrans JSON capture
+  was pre-solve all-zeros, indistinguishable from a broken getter. Now pinned
+  NONZERO byte-exact (`549.4296, (-31.051), …`).
+- **[FIXED — real bug found by that golden] `RdcOhms` operator association.**
+  Pascal `Rdcpu * SQR(VBase) / VABase` forms the square FIRST; the port had
+  left-to-right `rdcpu * vbase * vbase / vabase`, reassociating the product and
+  landing ONE ULP off the oracle on the rendered `RDCOhms`
+  (`1.4330663434343431E-002` vs `…35E-002`). Fixed in **both**
+  `auto_trans/yterminal.rs` (AutoTrans.pas:1021) and `transformer/yterminal.rs`
+  (Transformer.pas:1008) — the same trap, same line shape. Reported-value only
+  (`rdcpu` itself is unchanged), so no solve behavior moved; whole gate green.
+- **ShaftModel/ShaftData re-triage — clean, no divergence.** With the WM.3/WM.4
+  NOT_PORTED removal and `hidden_from_full_enum()` no longer consulting
+  NOT_PORTED, Full-mode JSON *does* emit them and matches the pinned 0.14.5
+  oracle exactly (`""`). **Golden `der_usermodel_full`** pins all six surfaces —
+  Generator `UserModel`/`UserData`/`ShaftModel`/`ShaftData`, Storage
+  `UserModel`/`UserData` + `DynaDLL`/`DynaData`, PVSystem `UserModel`/`UserData`
+  — obj + batch × six Full/FullNames/LowercaseKeys combos. Values left at the
+  empty-string default deliberately: the gap was the *render*, not the loader.
+- **[FIXED — second real bug found by that golden] `Spectrum=` FullNames render.**
+  The port resolves `Spectrum` outside the property machinery, so its `PropDef`
+  carried no resolving class and JSON `FullNames` emitted a bare `mycustom`
+  where Pascal (`PropertyOffset2 = SpectrumClass`, `PCClass.pas:96-98`) emits
+  `Spectrum.mycustom`. Oracle-probed across ALL twelve Spectrum-bearing PC
+  classes on the pin — uniform, and visible in the DEFAULT sweep too whenever a
+  non-default spectrum is assigned. Fixed render-only: new
+  `PropDef::json_ref_class` + `PropDef::object_ref_deferred(class, name)`,
+  consulted by `object_full_name` solely on the `object_class == None` arm, with
+  all 13 `Spectrum` sites switched over. **No parse/resolution behavior changes**
+  (the deferred-resolve path and the lowercased stored name are untouched — the
+  golden asserts `MyCustom` declared / `MYCUSTOM` assigned still renders
+  `mycustom`). Unit-covered in `json_tests.rs`.
+- **Golden `dyneq_full`** — the `TDynEqPCE` "DynInit" tail under Full, which
+  `dyneq_micro`'s `skip_full` (a consequence of the ShaftModel gap) had left
+  ungated. Added as a NEW deck instead of flipping `dyneq_micro`, so no existing
+  golden bytes were regenerated.
+- **Test-infrastructure guard:** `golden_json.rs` gained `assert_fixture_pins` —
+  each new deck declares the oracle substrings it exists to pin (and, for
+  `autotrans_solved`, the all-zero `WdgCurrents` it must never contain). A byte
+  comparison alone cannot distinguish a fixture that pins the property under test
+  from one that silently stopped rendering it; this does.
+- Gate green (fmt + clippy + `cargo test --workspace`, corpus gate on both
+  channels, exit 0). `TODO(compat)` still exactly 117; zero new
+  `downcast_ref`/`as_any` sites.
+
+#### OG-1.3a settle pass (2026-07-26) — audit findings dispositioned
+
+Both audits returned PASS; every finding was re-settled empirically against the
+pinned oracle (0.15.7 / backend 0.14.5) rather than argued. Three new goldens,
+four new unit pins, one gate that did not exist before.
+
+- **[FIXED — bug class completed] Capacitor `SQR`-binds-first, 3 sites.** The
+  code audit flagged that the `Rdcpu * SQR(VBase)` fix had a surviving sibling.
+  Swept every Pascal `SQR` site adjacent to a `*`/`/` (20 of the 92 in the
+  vendored tree) against its port: Generator, PVSystem, Storage, Load, Reactor,
+  IndMach012, InvDynamics, VSource, GICTransformer and the CIM exporter are all
+  faithful (`powi(2)`, or Pascal itself writes `x*x` — verified for
+  `pstcalc`/`flicker`/`WTG3 CalcWtRef`/`Load VRatio³`/`ExportCIMXML zbase`).
+  **Capacitor was the lone outlier** and is now fixed at all three sites:
+  `capacitor/solve.rs:29` (Capacitor.pas:642, derived `FC`),
+  `capacitor/solve.rs:41` (Capacitor.pas:664, `Ftotalkvar`) and
+  `capacitor/mod.rs:165` (Capacitor.pas:581, the `Create` seed). Oracle probe
+  over 12 realistic (kV, kvar, f) triples: SQR-first matched 12/12,
+  left-to-right 9/12.
+  - The Create seed (line 581) is **dead**: `TCapacitorObj.Create` ends with a
+    `RecalcElementData` that recomputes `FC` from SpecType = 1, so line 642
+    always overwrites it. Proven by a 10-frequency sweep of a cmatrix-spec
+    capacitor's `Cuf` — it matches the line-642 model 10/10 and the line-581
+    model 4/10. Fixed anyway for faithfulness, and labelled as unobservable.
+  - **Why no JSON golden:** the derived values render only under Full, and every
+    Full Capacitor capture also emits `CMatrix`, whose oracle getter reads
+    uninitialized memory **even when `cmatrix=` is set** — re-proven here, five
+    fresh oracle processes gave five different renders. That is the same dss_capi
+    UB `gen_props.py` already canonicalizes with `zero_garbage`; per the UB
+    policy the port emits `null` instead of reproducing it, so the class is
+    un-gateable through the byte channel, and the props round-trip channel
+    compares at 1e-9 relative. The values are therefore pinned BIT-EXACTLY
+    against recorded oracle probes in `capacitor/tests.rs` (4 tests; 3 of the 4
+    verified to fail under a revert of the fix, the delta case coincides).
+- **[FIXED — the test audit's headline gap] Transformer-side RDCOhms had no
+  gate.** Every existing Transformer golden sets `rdcohms` explicitly, so only
+  the `RdcSpecified` branch was ever rendered and the derived branch was
+  asserted by analogy with AutoTrans. New golden
+  **`transformer_derived_rdc`** leaves `rdcohms` unset on a 2-winding and a
+  3-winding transformer; winding 1 of `t2` (115 kV wye, 1500 kVA, %r = 0.75) is
+  an association-differing case, pinned positively (`1.8735416666666669E+001`)
+  and the left-to-right value pinned negatively. Verified to FAIL under a revert
+  of the `transformer/yterminal.rs` fix. Both transformers sit on unenergized
+  buses so the Full sweep's `WdgCurrents` is the exact all-zero list: hanging
+  winding 1 off `sourcebus` leaves a ~1e-13 cancellation residue that is
+  solver-dependent noise and must not be byte-pinned.
+- **[FIXED] `Spectrum` FullNames conversion was pinned for Generator only.** New
+  golden **`spectrum_refs`** gates ten more of the thirteen converted classes
+  against the oracle — Vsource, Load, Isource, PVSystem, Storage, IndMach012,
+  VCCS, UPFC, VSConverter, GICsource all render `Spectrum.mycustom` — and pins
+  GICLine's `SUPPRESS_JSON_LATE` NEGATIVELY (no `Spectrum` key at all). Verified
+  to FAIL when Load's `object_ref_deferred` is reverted to `object_ref`.
+  **WindGen remains ungated**: the class does not exist in the pinned 0.14.5
+  oracle, so it has no capi channel (it is r4133/0.15.x-only).
+- **[FIXED] DER user-model goldens pinned only the empty-string render.** Probed:
+  the oracle STORES and renders an unresolvable model filename (it raises
+  `#570 … Not Loaded` *after* storing), but pinning that needs the generator to
+  tolerate a `DSSException`. The DATA surfaces need no loader at all, so new
+  golden **`der_usermodel_assigned`** pins them non-empty — Generator
+  `UserData`+`ShaftData`, Storage `UserData`+`DynaData`, PVSystem `UserData` —
+  including the parenthesis stripping (`(Kp=1.5,Ki=0.25)` → `Kp=1.5,Ki=0.25`).
+  **Deliberate non-fix:** the `UserModel`/`ShaftModel`/`DynaDLL` *filename*
+  render stays unpinned; closing it means teaching `gen_json.py` to swallow
+  oracle errors on selected commands, which trades a real gate property for a
+  narrow one. Recorded as a standing follow-up.
+- **[FIXED] No completeness guard tied goldens to drivers.** New
+  `json_every_deck_golden_has_a_driver` walks `tests/golden/json/`, skips the
+  `gen_schema.py` fixtures (no `combo_names`), and asserts every deck golden is
+  replayed by a `run_deck("<stem>")` call, with an anti-shrink floor of 21. It
+  immediately caught its own floor when the capacitor deck was withdrawn.
+- **[SETTLED, no change] `autotrans_solved` rounding-boundary brittleness.**
+  Measured, not assumed: re-solving the deck on the oracle at tolerance 1e-8 /
+  1e-10 / 1e-12 (7 / 9 / 15 iterations — three different converged
+  realizations) gives BYTE-IDENTICAL `WdgCurrents`; only a deliberately
+  unconverged 1e-6 run moves the 8th digit. Recorded next to the deck.
+- **[FIXED — docs]** `gen_json.py`'s `dyneq_micro` `skip_full` rationale no
+  longer claims a live blocker (the gap is closed; the flag now only protects
+  committed bytes). `golden_json.rs`'s `json_autotrans_micro` doc no longer
+  claims a negative pin it does not make. `TESTING.md` "Regenerate a golden" now
+  documents the deck-name filter and the driver requirement.
+- **Fence deviations (recorded, not defects).** Both audits noted the round
+  reaches past the briefed allow-list. Nothing on R3's FORBIDDEN list was
+  touched (`exec/`, `solution/`, `meters/`, `controls/`, `cim/`,
+  `obj/arena.rs`, `obj/base/mod.rs`, `elements/traits.rs`, `circuit/` — all
+  clean). Beyond it: ten `pc/*/mod.rs` one-liners for the Spectrum switch,
+  numeric edits in `pd/{auto_trans,transformer}/yterminal.rs` (marked
+  read-only-preferred), and now `pd/capacitor/{mod,solve,tests}.rs`. Merge
+  coordinator: check these 15 files against R3's typed-store rewrite. The
+  Capacitor edit was taken under the "port gaps immediately" rule — the bug was
+  found by this round's own sweep and is one ULP wide, i.e. invisible to every
+  tolerance-based gate.
+- Gate green (fmt + clippy + `cargo test --workspace`, corpus gate on both
+  channels, exit 0). `TODO(compat)` still exactly 117; zero new
+  `downcast_ref`/`as_any` sites; no existing golden regenerated.
 
 ---
 

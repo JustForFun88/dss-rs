@@ -348,7 +348,15 @@ invocation, or the known export-CWD corner) is uncoverable —
 **Regenerate a golden** (manual, deliberate — never in CI): install the pinned
 venv from `tools/golden/PIN.txt`, then run the matching `tools/golden/gen_*.py`.
 Goldens pin intentional upstream inexactnesses (`TODO(compat)`), so improved
-precision reads as a porting bug — do not regenerate to "fix" a diff. This
+precision reads as a porting bug — do not regenerate to "fix" a diff. **Adding
+a new deck is NOT a reason to rewrite the existing bytes:** `gen_json.py` takes
+an optional deck-name filter — `python tools/golden/gen_json.py <deck> [<deck>…]`
+writes only those files (an unknown name is rejected). Use it whenever you add
+a deck; the unfiltered run rewrites all `tests/golden/json/*.json` and would
+silently fold in any oracle/toolchain drift present since they were last
+captured. Every committed deck golden must also have a `run_deck("<stem>")`
+driver in `crates/dss-core/tests/golden_json.rs` — a directory guard
+(`json_every_deck_golden_has_a_driver`) fails the gate otherwise. This
 procedure covers the **pinned-oracle (capi) arms** plus — since the
 EPRI-bridge parity round — the **r4133 arms of `gen_protection.py` and
 `gen_flicker.py`**, which drive the vendored r4133 DLL through `epri-worker`
