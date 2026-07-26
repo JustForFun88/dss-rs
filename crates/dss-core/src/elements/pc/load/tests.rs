@@ -5,7 +5,7 @@ use crate::elements::traits::SysCtx;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::PropEngine;
-use crate::solution::{GAUSSIAN, LOGNORMAL, SolveMode, UNIFORM, USEDUTY, USENONE, USEYEARLY};
+use crate::solution::{RandomType, SolveMode, USEDUTY, USENONE, USEYEARLY};
 use crate::support::cmatrix::CMatrix;
 use crate::support::mathutil::FpcRng;
 use dss_parser::{Parser, ParserVars};
@@ -454,7 +454,7 @@ const RND_G01_0_BITS: u64 = 0x3fc62af569800000;
 fn randomize_uniform_draws_next_f64() {
     let mut load = Load::new("lr");
     let mut rng = FpcRng::from_seed(12345);
-    load.randomize(UNIFORM, &mut rng);
+    load.randomize(RandomType::Uniform, &mut rng);
     assert_eq!(load.random_mult.to_bits(), RND_D0_BITS);
 }
 
@@ -465,7 +465,7 @@ fn randomize_gaussian_no_yearly_uses_pu_mean_std() {
     load.pu_mean = 0.8;
     load.pu_std_dev = 0.3;
     let mut rng = FpcRng::from_seed(12345);
-    load.randomize(GAUSSIAN, &mut rng);
+    load.randomize(RandomType::Gaussian, &mut rng);
     let expected = f64::from_bits(RND_G01_0_BITS) * 0.3 + 0.8;
     assert_eq!(load.random_mult, expected);
 }
@@ -479,7 +479,7 @@ fn randomize_gaussian_with_yearly_uses_shape_mean_std() {
     load.pu_std_dev = 0.3;
     load.yearly_shape_obj = Some(build_shape(&[("mean", "0.75"), ("stddev", "0.20")]));
     let mut rng = FpcRng::from_seed(12345);
-    load.randomize(GAUSSIAN, &mut rng);
+    load.randomize(RandomType::Gaussian, &mut rng);
     let expected = f64::from_bits(RND_G01_0_BITS) * 0.20 + 0.75;
     assert_eq!(load.random_mult, expected);
 }
@@ -490,7 +490,7 @@ fn randomize_lognormal_no_yearly_uses_pu_mean() {
     load.yearly_shape_obj = None;
     load.pu_mean = 2.0;
     let mut rng = FpcRng::from_seed(12345);
-    load.randomize(LOGNORMAL, &mut rng);
+    load.randomize(RandomType::LogNormal, &mut rng);
     let expected = f64::from_bits(RND_G01_0_BITS).exp() * 2.0;
     assert_eq!(load.random_mult, expected);
 }
@@ -501,7 +501,7 @@ fn randomize_lognormal_with_yearly_uses_shape_mean() {
     load.pu_mean = 2.0; // different from the shape mean below
     load.yearly_shape_obj = Some(build_shape(&[("mean", "3.0"), ("stddev", "0.20")]));
     let mut rng = FpcRng::from_seed(12345);
-    load.randomize(LOGNORMAL, &mut rng);
+    load.randomize(RandomType::LogNormal, &mut rng);
     let expected = f64::from_bits(RND_G01_0_BITS).exp() * 3.0;
     assert_eq!(load.random_mult, expected);
 }
@@ -510,7 +510,7 @@ fn randomize_lognormal_with_yearly_uses_shape_mean() {
 fn randomize_none_sets_one_and_draws_nothing() {
     let mut load = Load::new("lr");
     let mut rng = FpcRng::from_seed(12345);
-    load.randomize(0, &mut rng);
+    load.randomize(RandomType::None, &mut rng);
     assert_eq!(load.random_mult, 1.0);
     assert_eq!(
         rng.next_f64().to_bits(),

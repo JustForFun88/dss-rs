@@ -215,13 +215,13 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
             "Set ControlMode={}",
             enums
                 .get(enums.control_mode)
-                .ordinal_to_string(sol.control_mode)
+                .ordinal_to_string(sol.control_mode.ordinal())
         ));
         push(format!(
             "Set Random={}",
             enums
                 .get(enums.random_mode)
-                .ordinal_to_string(sol.random_type)
+                .ordinal_to_string(sol.random_type.ordinal())
         ));
         // `%-g` = FPC default-15-significant general format (TODO(compat), see module).
         push(format!("Set frequency={}", g(sol.frequency, 15)));
@@ -237,7 +237,7 @@ fn post_commands(ckt: &Circuit, classes: &[DssClass], enums: &EnumRegistry) -> V
             "Set loadmodel={}",
             enums
                 .get(enums.default_load_model)
-                .ordinal_to_string(sol.load_model)
+                .ordinal_to_string(sol.load_model.ordinal())
         ));
         push(format!("Set loadmult={}", g(ckt.load_multiplier, 15)));
         push(format!("Set Normvminpu={}", g(ckt.normal_min_volts, 15)));

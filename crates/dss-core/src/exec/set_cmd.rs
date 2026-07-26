@@ -6,6 +6,7 @@ use num_complex::Complex64;
 use super::*;
 use crate::elements::ckt::ElemFlags;
 use crate::elements::traits::TypedStore;
+use crate::solution::{ControlMode, LoadSolutionModel, RandomType};
 
 /// Pascal `SetDataPath` (DSSGlobals.pas:540): create the dir if missing (#907 on
 /// failure → leave dirs unchanged), then point both the working dir and the
@@ -325,7 +326,8 @@ impl Dss {
                     }
                     opt::RANDOM => {
                         if let Some(v) = enum_ord(enums, enums.random_mode, &param, errors) {
-                            ckt.solution.random_type = v;
+                            ckt.solution.random_type =
+                                RandomType::from_ordinal(v).unwrap_or(ckt.solution.random_type);
                         }
                     }
                     opt::NUMBER => {
@@ -345,8 +347,10 @@ impl Dss {
                     }
                     opt::LOADMODEL => {
                         if let Some(v) = enum_ord(enums, enums.default_load_model, &param, errors) {
-                            ckt.solution.default_load_model = v;
-                            ckt.solution.load_model = v;
+                            let m = LoadSolutionModel::from_ordinal(v)
+                                .unwrap_or(ckt.solution.default_load_model);
+                            ckt.solution.default_load_model = m;
+                            ckt.solution.load_model = m;
                         }
                     }
                     opt::LOADMULT => {
@@ -536,9 +540,11 @@ impl Dss {
                     }
                     opt::CONTROL_MODE => {
                         if let Some(v) = enum_ord(enums, enums.control_mode, &param, errors) {
-                            ckt.solution.control_mode = v;
+                            let m =
+                                ControlMode::from_ordinal(v).unwrap_or(ckt.solution.control_mode);
+                            ckt.solution.control_mode = m;
                             // always revert to last one specified in a script
-                            ckt.solution.default_control_mode = v;
+                            ckt.solution.default_control_mode = m;
                             // ADiakoptics + ActiveActor=1: sync child control mode.
                             sync_ctrl_mode = true;
                         }

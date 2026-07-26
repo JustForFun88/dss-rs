@@ -2,7 +2,7 @@
 
 use crate::circuit::Circuit;
 
-use super::{ADMITTANCE, CONTROLSOFF, SolveMode, TIMEDRIVEN};
+use super::{ControlMode, LoadSolutionModel, SolveMode};
 
 /// Pascal `TSolutionObj.Set_Mode` (`Solution.pas` l.2010): reset the clock,
 /// revert control/load models, apply per-mode defaults. Returns whether the
@@ -98,11 +98,11 @@ pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut crate::diag::E
         }
         SolveMode::DutyCycle => {
             sol.h = 1.0;
-            sol.control_mode = TIMEDRIVEN;
+            sol.control_mode = ControlMode::TimeDriven;
         }
         SolveMode::Dynamic => {
             sol.h = 0.001;
-            sol.control_mode = TIMEDRIVEN;
+            sol.control_mode = ControlMode::TimeDriven;
             sol.is_dynamic_model = true;
             sol.preserve_node_voltages = true;
         }
@@ -143,18 +143,18 @@ pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut crate::diag::E
             // borrows `ckt`, disjoint from the `sol` borrow held here).
         }
         SolveMode::Harmonic => {
-            sol.control_mode = CONTROLSOFF;
+            sol.control_mode = ControlMode::ControlsOff;
             sol.is_harmonic_model = true;
-            sol.load_model = ADMITTANCE;
+            sol.load_model = LoadSolutionModel::Admittance;
             sol.preserve_node_voltages = true;
         }
         SolveMode::HarmonicT => {
             sol.interval_hrs = 1.0;
             sol.h = 3600.0;
             sol.number_of_times = 1;
-            sol.control_mode = CONTROLSOFF;
+            sol.control_mode = ControlMode::ControlsOff;
             sol.is_harmonic_model = true;
-            sol.load_model = ADMITTANCE;
+            sol.load_model = LoadSolutionModel::Admittance;
             sol.preserve_node_voltages = true;
         }
         SolveMode::Direct => {}

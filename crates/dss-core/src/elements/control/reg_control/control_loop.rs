@@ -9,7 +9,7 @@ use num_complex::Complex64;
 
 use crate::elements::control::control_elem::CtrlCtx;
 use crate::elements::pd::transformer::ControlledTransformer;
-use crate::solution::{CTRLSTATIC, EVENTDRIVEN, MULTIRATE, TIMEDRIVEN};
+use crate::solution::ControlMode;
 use crate::util::EPSILON;
 
 use super::{MAXPHASE, MINPHASE, RegControl, RegControlAction};
@@ -409,7 +409,7 @@ impl RegControl {
                 }
                 let tap_winding = self.tap_winding as usize;
                 let increment = tr.tap_increment(tap_winding);
-                if ctx.control_mode == CTRLSTATIC {
+                if ctx.control_mode == ControlMode::Static {
                     let change = self.at_least_one_tap(self.pending_tap_change, increment);
                     let new_tap = tr.present_tap(tap_winding) + change;
                     if tr.set_present_tap(tap_winding, new_tap) {
@@ -431,7 +431,10 @@ impl RegControl {
                     }
                     self.set_pending_tap_change(0.0); // program re-determines need
                     self.armed = false;
-                } else if matches!(ctx.control_mode, EVENTDRIVEN | TIMEDRIVEN | MULTIRATE) {
+                } else if matches!(
+                    ctx.control_mode,
+                    ControlMode::EventDriven | ControlMode::TimeDriven | ControlMode::MultiRate
+                ) {
                     let change = self.one_in_direction_of(increment);
                     let new_tap = tr.present_tap(tap_winding) + change;
                     if tr.set_present_tap(tap_winding, new_tap) {

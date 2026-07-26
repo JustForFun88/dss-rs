@@ -1,7 +1,7 @@
 use super::*;
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::exec::Dss;
-use crate::solution::{GAUSSIAN, LOGNORMAL, SolveMode, UNIFORM};
+use crate::solution::{LoadSolutionModel, RandomType, SolveMode};
 use crate::support::mathutil::FpcRng;
 
 fn test_sys() -> SysCtx {
@@ -10,7 +10,7 @@ fn test_sys() -> SysCtx {
         fundamental: 60.0,
         is_harmonic_model: false,
         is_dynamic_model: false,
-        load_model: 1,
+        load_model: LoadSolutionModel::PowerFlow,
         mode: SolveMode::Snapshot,
         active_load_shape_class: crate::solution::USENONE,
         load_multiplier: 1.0,
@@ -263,7 +263,7 @@ const RND_G01_0_BITS: u64 = 0x3fc62af569800000;
 fn randomize_uniform_draws_next_f64() {
     let mut f = Fault::new("fx");
     let mut rng = FpcRng::from_seed(12345);
-    f.randomize(UNIFORM, &mut rng);
+    f.randomize(RandomType::Uniform, &mut rng);
     assert_eq!(f.random_mult.to_bits(), RND_D0_BITS);
     assert!(f.cd().yprim_invalid, "Randomize forces a YPrim rebuild");
 }
@@ -273,7 +273,7 @@ fn randomize_gaussian_is_gauss_one_stddev() {
     let mut f = Fault::new("fx");
     f.stddev = 0.25;
     let mut rng = FpcRng::from_seed(12345);
-    f.randomize(GAUSSIAN, &mut rng);
+    f.randomize(RandomType::Gaussian, &mut rng);
     let expected = f64::from_bits(RND_G01_0_BITS) * 0.25 + 1.0;
     assert_eq!(f.random_mult, expected);
 }
@@ -282,7 +282,7 @@ fn randomize_gaussian_is_gauss_one_stddev() {
 fn randomize_lognormal_is_quasi_lognormal_one() {
     let mut f = Fault::new("fx");
     let mut rng = FpcRng::from_seed(12345);
-    f.randomize(LOGNORMAL, &mut rng);
+    f.randomize(RandomType::LogNormal, &mut rng);
     let expected = f64::from_bits(RND_G01_0_BITS).exp(); // QuasiLognormal(1.0)
     assert_eq!(f.random_mult, expected);
 }
@@ -292,7 +292,7 @@ fn randomize_none_sets_one_and_draws_nothing() {
     let mut f = Fault::new("fx");
     f.stddev = 0.25;
     let mut rng = FpcRng::from_seed(12345);
-    f.randomize(0, &mut rng);
+    f.randomize(RandomType::None, &mut rng);
     assert_eq!(f.random_mult, 1.0);
     assert_eq!(
         rng.next_f64().to_bits(),

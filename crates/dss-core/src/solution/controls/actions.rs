@@ -5,9 +5,7 @@
 use crate::circuit::Circuit;
 use crate::elements::traits::ElemId;
 use crate::solution::control_queue::{ControlActioner, ControlQueue};
-use crate::solution::solution::{
-    CTRLSTATIC, EVENTDRIVEN, MULTIRATE, SolveEnv, SolveResult, TIMEDRIVEN,
-};
+use crate::solution::solution::{ControlMode, SolveEnv, SolveResult};
 
 use super::ControlOp;
 use super::dispatch::dispatch_control;
@@ -16,7 +14,7 @@ use super::multi_rate::do_multi_rate;
 /// Pascal `DoControlActions` (l.1941): per-control-mode queue dispatch.
 pub(crate) fn do_control_actions(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     match ckt.solution.control_mode {
-        CTRLSTATIC => {
+        ControlMode::Static => {
             // Execute the nearest set of control actions but leave time as is.
             if ckt.solution.control_queue.is_empty() {
                 ckt.solution.control_actions_done = true;
@@ -25,7 +23,7 @@ pub(crate) fn do_control_actions(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
                 run_nearest_actions(ckt, env, &mut xhour, &mut xsec)?; // ignore time advancement
             }
         }
-        EVENTDRIVEN => {
+        ControlMode::EventDriven => {
             // Execute the nearest set of actions and advance time to that time.
             let (mut hour, mut sec) = (ckt.solution.int_hour, ckt.solution.t);
             let any = run_nearest_actions(ckt, env, &mut hour, &mut sec)?;
@@ -36,14 +34,14 @@ pub(crate) fn do_control_actions(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
                 ckt.solution.control_actions_done = true;
             }
         }
-        TIMEDRIVEN => {
+        ControlMode::TimeDriven => {
             // Do all actions having an action time <= the specified time.
             let (hour, sec) = (ckt.solution.int_hour, ckt.solution.t);
             if !run_actions(ckt, env, hour, sec)? {
                 ckt.solution.control_actions_done = true;
             }
         }
-        MULTIRATE => {
+        ControlMode::MultiRate => {
             let mut queue = std::mem::take(&mut ckt.solution.control_queue);
             let result = do_multi_rate(ckt, env, &mut queue);
             ckt.solution.control_queue = queue;
@@ -51,7 +49,7 @@ pub(crate) fn do_control_actions(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
                 ckt.solution.control_actions_done = true;
             }
         }
-        _ => {}
+        ControlMode::ControlsOff => {}
     }
     Ok(())
 }

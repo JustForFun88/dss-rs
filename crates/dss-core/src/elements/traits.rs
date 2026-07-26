@@ -13,7 +13,7 @@ use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::{ControlledTransformer, Transformer};
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
 use crate::obj::arena::{ArenaClass, ClassArena};
-use crate::solution::SolveMode;
+use crate::solution::{LoadSolutionModel, SolveMode};
 use crate::support::dynamics::IterationFlag;
 
 /// The typed handle to an element inside the executive's class registry —
@@ -477,8 +477,8 @@ pub struct SysCtx {
     pub fundamental: f64,
     pub is_harmonic_model: bool,
     pub is_dynamic_model: bool,
-    /// `Solution.LoadModel`: POWERFLOW (1) or ADMITTANCE (2).
-    pub load_model: i32,
+    /// `Solution.LoadModel`: `PowerFlow` (1) or `Admittance` (2).
+    pub load_model: LoadSolutionModel,
     pub mode: SolveMode,
     /// `Circuit.ActiveLoadShapeClass` (`Set LoadShapeClass=`): the class the
     /// GENERALTIME / DYNAMICMODE nominal dispatch consults (`USENONE`=-1 /
@@ -551,7 +551,7 @@ impl SysCtx {
             fundamental: 60.0,
             is_harmonic_model: false,
             is_dynamic_model: false,
-            load_model: crate::solution::POWERFLOW,
+            load_model: LoadSolutionModel::PowerFlow,
             mode: SolveMode::Snapshot,
             active_load_shape_class: crate::solution::USENONE,
             load_multiplier: 1.0,

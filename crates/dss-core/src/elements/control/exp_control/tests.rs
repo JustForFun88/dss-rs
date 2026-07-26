@@ -78,10 +78,12 @@ mod dispatch {
     use crate::elements::pc::pvsystem::VARMODE_KVAR;
     use crate::elements::traits::ElemId;
     use crate::obj::base::DssObject;
-    use crate::solution::CTRLSTATIC;
+    use crate::solution::ControlMode;
 
-    /// A non-static control mode (so the static-init `find Vreg` branch is off).
-    const TIMEDRIVEN: i32 = 1;
+    // NB: the mocks below use `ControlMode::TimeDriven`; the pre-enum code used a
+    // local `const TIMEDRIVEN: i32 = 1` (mislabeled — 1 is EVENTDRIVEN). Both are
+    // non-static, and every ExpControl comparison is `== / != CTRLSTATIC`, so the
+    // corrected ordinal is behaviorally identical here.
 
     fn approx(a: f64, b: f64) {
         assert!((a - b).abs() < 1e-9, "expected {b}, got {a}");
@@ -143,7 +145,7 @@ mod dispatch {
     struct MockExpEnv {
         pvs: Vec<MockPv>,
         pushes: Vec<i32>,
-        control_mode: i32,
+        control_mode: ControlMode,
         control_iter: i32,
         dyna_h: f64,
         loads_need_updating: bool,
@@ -153,7 +155,7 @@ mod dispatch {
             Self {
                 pvs,
                 pushes: Vec::new(),
-                control_mode: TIMEDRIVEN,
+                control_mode: ControlMode::TimeDriven,
                 control_iter: 1,
                 dyna_h: 1.0,
                 loads_need_updating: false,
@@ -231,7 +233,7 @@ mod dispatch {
             self.pushes.push(code);
         }
         fn append_event(&mut self, _sender: &str, _msg: &str) {}
-        fn control_mode(&self) -> i32 {
+        fn control_mode(&self) -> ControlMode {
             self.control_mode
         }
         fn control_iteration(&self) -> i32 {
@@ -381,14 +383,14 @@ mod dispatch {
 
     #[test]
     fn static_init_finds_vreg_from_voltage() {
-        // CTRLSTATIC + FVregInit<=0: Vreg is found from the present voltage,
+        // Static + FVregInit<=0: Vreg is found from the present voltage,
         // clamped into [VregMin, VregMax]; an out-of-band hit nudges FVregInit.
         let mut ec = ExpControl::new("e1");
         ec.f_vreg_init = 0.0;
         ec.set_string_list(prop::PVSYSTEM_LIST, vec!["pv1".into()]);
         ec.side_effects(prop::PVSYSTEM_LIST, 0);
         let mut env = MockExpEnv::new(vec![MockPv::new("pv1", 1.08, 300.0)]);
-        env.control_mode = CTRLSTATIC;
+        env.control_mode = ControlMode::Static;
         ec.sample(&mut env);
         // 1.08 > VregMax=1.05 → clamped to 1.05 and FVregInit nudged to 0.01.
         approx(ec.ctrl_vars[0].f_vregs, 1.05);
@@ -404,7 +406,7 @@ mod dispatch {
         ec.set_string_list(prop::PVSYSTEM_LIST, vec!["pv1".into()]);
         ec.side_effects(prop::PVSYSTEM_LIST, 0);
         let mut env = MockExpEnv::new(vec![MockPv::new("pv1", 0.90, 300.0)]);
-        env.control_mode = CTRLSTATIC;
+        env.control_mode = ControlMode::Static;
         ec.sample(&mut env);
         approx(ec.ctrl_vars[0].f_vregs, 0.95);
         approx(ec.f_vreg_init, 0.01);
@@ -415,7 +417,7 @@ mod dispatch {
         ec2.set_string_list(prop::PVSYSTEM_LIST, vec!["pv1".into()]);
         ec2.side_effects(prop::PVSYSTEM_LIST, 0);
         let mut env2 = MockExpEnv::new(vec![MockPv::new("pv1", 1.00, 300.0)]);
-        env2.control_mode = CTRLSTATIC;
+        env2.control_mode = ControlMode::Static;
         ec2.sample(&mut env2);
         approx(ec2.ctrl_vars[0].f_vregs, 1.00);
         approx(ec2.f_vreg_init, 0.0); // in-band: no nudge
@@ -424,7 +426,7 @@ mod dispatch {
     #[test]
     fn fopen_tau_lpf_lags_target_in_timedriven_mode() {
         // The FOpenTau low-pass filter (ExpControl.pas l.505-510) fires ONLY when
-        // ControlMode<>CTRLSTATIC — dormant in the daily goldens (which run CTRLSTATIC),
+        // ControlMode<>Static — dormant in the daily goldens (which run Static),
         // so this is the per-call FOpenTau gate (the duty golden is the end-to-end one).
         // Tresponse=23.026 → FOpenTau=10; dt=1 → blend (1-exp(-0.1))=0.09516. The raw
         // target (as in sample_triggers) is -264.0; FLastStepQ seeds at -1.0, so the
@@ -434,7 +436,7 @@ mod dispatch {
         ec.set_f64(prop::TRESPONSE, 23.026);
         ec.recalc(); // derive FOpenTau = Tresponse / 2.3026 = 10
         let mut env = MockExpEnv::new(vec![MockPv::new("pv1", 1.02, 300.0)]);
-        env.control_mode = TIMEDRIVEN;
+        env.control_mode = ControlMode::TimeDriven;
         ec.sample(&mut env);
         ec.do_pending_action(&mut env);
         let factor = 1.0 - (-1.0_f64 / 10.0).exp();

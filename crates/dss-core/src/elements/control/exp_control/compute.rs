@@ -10,7 +10,7 @@
 
 use crate::elements::pc::pvsystem::VARMODE_KVAR;
 use crate::elements::traits::ElemId;
-use crate::solution::CTRLSTATIC;
+use crate::solution::ControlMode;
 use crate::util::fmt_g;
 
 use super::{CHANGEVARLEVEL, ExpControl, ExpVars, NONE};
@@ -106,8 +106,8 @@ pub(crate) trait ExpDispatchEnv {
     /// `Self.FullName + sep + PVSys.Name` (the separator differs: a space in
     /// `Sample`, a comma in `DoPendingAction` / `UpdateExpControl`).
     fn append_event(&mut self, sender: &str, msg: &str);
-    /// `ActiveCircuit.Solution.ControlMode` (the `CTRLSTATIC` checks).
-    fn control_mode(&self) -> i32;
+    /// `ActiveCircuit.Solution.ControlMode` (the `Static` checks).
+    fn control_mode(&self) -> ControlMode;
     /// `ActiveCircuit.Solution.ControlIteration` (the `= 1` Sample trigger).
     fn control_iteration(&self) -> i32;
     /// `ActiveCircuit.Solution.DynaVars.h` (seconds).
@@ -196,7 +196,7 @@ impl ExpControl {
                 (vpresent / snap.nphases as f64) / (snap.bus_kvbase * 1000.0);
 
             // If initializing with Vreg=0 in static mode, FIND Vreg.
-            if env.control_mode() == CTRLSTATIC && self.f_vreg_init <= 0.0 {
+            if env.control_mode() == ControlMode::Static && self.f_vreg_init <= 0.0 {
                 self.ctrl_vars[i].f_vregs = self.ctrl_vars[i].f_present_vpu;
                 if self.ctrl_vars[i].f_vregs < self.vreg_min {
                     self.ctrl_vars[i].f_vregs = self.vreg_min;
@@ -333,7 +333,7 @@ impl ExpControl {
             }
 
             // Put FTargetQ through the low-pass open-loop filter.
-            if self.f_open_tau > 0.0 && env.control_mode() != CTRLSTATIC {
+            if self.f_open_tau > 0.0 && env.control_mode() != ControlMode::Static {
                 let dt = env.dyna_h();
                 self.ctrl_vars[i].f_target_q = self.ctrl_vars[i].f_last_step_q
                     + (self.ctrl_vars[i].f_target_q - self.ctrl_vars[i].f_last_step_q)

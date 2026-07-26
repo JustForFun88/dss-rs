@@ -15,13 +15,13 @@ use crate::elements::pd::fault::Fault;
 use crate::support::cmatrix::CMatrix;
 
 use super::power_flow::solve_direct;
-use super::{ADMITTANCE, SolveEnv, SolveResult};
+use super::{LoadSolutionModel, SolveEnv, SolveResult};
 use crate::elements::traits::TypedStore;
 
 /// Pascal `TSolutionAlgs.SolveFaultStudy`: open-circuit (Voc) direct solve,
 /// then per-bus `Ysc`/`Zsc`/`Isc`.
 pub(super) fn solve_fault_study(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
-    ckt.solution.load_model = ADMITTANCE;
+    ckt.solution.load_model = LoadSolutionModel::Admittance;
     disable_all_faults(ckt, env);
 
     // Open-circuit voltages (and corrected bus lists).

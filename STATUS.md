@@ -7,6 +7,61 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE P1-tail (1/n) — the solution enum trio: `ControlMode` / `LoadSolutionModel` / `RandomType` (branch `depas-p1p3`, 2026-07-26)
+
+Stratum **[A]** bit-neutral. Base = `update` @ `634aac9`. Ritual 0 held (186 `.pas`
+under `.inputs/dss_capi`; `cargo` = the rustup MSVC `.cargo\bin` one). Closes items
+**1-3** of the `docs/phase-records/depascalize-p1.md` §Deferred list — the three
+`Solution` fields that were bare `i32` const-chains threaded through the control
+subsystem, every PC element's `SysCtx`, and the MonteCarlo drivers.
+
+| Deferred item | New enum | Location | Discriminants (proven) | Pin test |
+|---|---|---|---|---|
+| 1 Solution `control_mode`/`default_control_mode` | **`ControlMode`** | `solution/solution/state.rs` | ControlsOff=-1, Static=0, EventDriven=1, TimeDriven=2, MultiRate=3 | `control_mode_pins_enum_ordinals` |
+| 2 Solution `load_model`/`default_load_model` + `SysCtx.load_model` | **`LoadSolutionModel`** | same | PowerFlow=1, Admittance=2 | `load_solution_model_pins_enum_ordinals` |
+| 3 Solution `random_type` | **`RandomType`** | same | None=0, Gaussian=1, Uniform=2, LogNormal=3 | `random_type_pins_enum_ordinals` |
+
+Every discriminant proven **twice**: against the Pascal (`DSSGlobals.pas:99-103`
+control modes, `:90-91` load model, `:106-108` random) **and** against the `DssEnum`
+registry values in `obj/dss_enum/registry/solution.rs` (`Control Mode` `[-1,0,1,2,3]`,
+`Load Solution Model` `[1,2]`, `Random Type` `[0,1,2,3]`). The `ADMITTANCE` /
+`POWERFLOW` / `GAUSSIAN` / `UNIFORM` / `LOGNORMAL` / `CONTROLSOFF` / `CTRLSTATIC` /
+`EVENTDRIVEN` / `TIMEDRIVEN` / `MULTIRATE` `pub const`s are **gone**; `i32` now
+survives only at the `Set`/`Get`/dump/JSON boundary (`ordinal()` out,
+`from_ordinal().unwrap_or(current)` in — the P1 boundary pattern).
+
+**Naming decision.** The solution-side load model is `LoadSolutionModel`, not
+`LoadModel`: the Load element already owns a `LoadModel` enum (`Model=`
+ConstPQ/ConstZ/…). The registry's own label is literally "Load Solution Model".
+
+**Signature ripples (all bit-neutral; exhaustive matches replace the old `_ =>`):**
+`Load::randomize(RandomType, …)` / `Fault::randomize(RandomType, …)` /
+`draw_load_multiplier(…, RandomType, …)` / `randomize_all_loads`; `CtrlCtx.control_mode`,
+the `ExpDispatchEnv::control_mode() -> ControlMode` trait method + `ExpDispEnv` impl,
+`FaultStatusCtx.control_mode`; `SysCtx.load_model`. Wildcard arms that previously
+swallowed the unlisted ordinals became explicit final variants
+(`ControlMode::ControlsOff => {}` in `do_control_actions`,
+`RandomType::None | RandomType::LogNormal => {}` in `draw_load_multiplier`,
+`ControlMode::Static | ControlMode::ControlsOff => return false` in
+`Fault::check_status`) — the swallowed set is identical because each enum is closed
+over exactly the old const set.
+
+**Fenced-file ripples (for the merge coordinator).** The retype forced a mechanical
+one-token `.ordinal()` at the enum→`ordinal_to_string` boundary in two files the
+sibling `depas-og2` worktree owns: `exec/report.rs:1367` (1 line) and
+`report/export/json/circuit.rs` (3 lines). No logic touched in either.
+
+**Test-side note (disclosed).** `exp_control/tests.rs` carried a local
+`const TIMEDRIVEN: i32 = 1` — mislabeled (1 is EVENTDRIVEN). It is replaced by
+`ControlMode::TimeDriven` (2). Behaviorally identical: every ExpControl comparison is
+`== / != CTRLSTATIC` and both ordinals are non-static; the const is removed with a
+comment recording the correction.
+
+**Gate:** `cargo fmt --all --check` · `clippy --workspace --all-targets -D warnings` ·
+`cargo test --workspace` (unified corpus gate included) — all green; `tests/corpus`
+pristine (run artifacts removed by exact name); goldens untouched; `TODO(compat)`
+still **117**.
+
 ### DE_PASCALIZE R3 — SETTLER PASS (two audits: code = 1 low + 5 notes, tests = PASS; every finding settled empirically; `DssObject::as_conductor` removed as the last type probe; final gate green) (branch `depas-r3`, 2026-07-26)
 
 Stratum **[A]** bit-neutral. Base of the wave = `update` @ `67d2965`; settler base
