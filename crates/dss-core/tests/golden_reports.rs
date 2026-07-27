@@ -5588,17 +5588,25 @@ fn save_class_disabled_load_writes_enabled_no() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// The compat-tagged GlobalResult delimiter parity of `do_save_cmd`: Pascal
-/// composes `SaveFile := SaveDir + PathDelim + SaveFile` as raw STRINGS
+/// The GlobalResult delimiter of `do_save_cmd` — the Stage F single-site quirk
+/// `compat::SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS`.
+///
+/// Pascal composes `SaveFile := SaveDir + PathDelim + SaveFile` as raw STRINGS
 /// (`ExecHelper.pas:835-841`), so with the default `SaveDir = OutputDirectory`
 /// (already ending in a delimiter) the observable `GlobalResult` carries a
-/// DOUBLED one (`…\\load`), while an explicit `dir=` is the raw parameter
-/// (single — `sub1\load`) and the file lands under the mkdir'd subdir. An
-/// unknown class silently writes nothing but still runs the tail:
-/// `GlobalResult`/`LastResultFile` = the raw `file=` value or empty. All four
-/// forms oracle-probed 2026-07-07.
+/// DOUBLED one (`…\\load`) — a path a consumer cannot open verbatim where `\\`
+/// starts a UNC name. The parity lane reproduces it; the default lane reports
+/// the normalized path the writer actually used. An explicit `dir=` is the raw
+/// parameter (single — `sub1\load`) in **both** lanes and the file lands under
+/// the mkdir'd subdir. An unknown class silently writes nothing but still runs
+/// the tail: `GlobalResult`/`LastResultFile` = the raw `file=` value or empty.
+/// All four forms oracle-probed 2026-07-07.
+///
+/// Asserted against `compat::ORACLE_PARITY`, and the *file on disk* is asserted
+/// at the same normalized location in both lanes — the split moves the reported
+/// string only.
 #[test]
-fn save_class_global_result_pascal_delimiters() {
+fn save_class_global_result_delimiter_is_lane_split() {
     let sep = std::path::MAIN_SEPARATOR;
     let deck = [
         "clear",
@@ -5615,10 +5623,17 @@ fn save_class_global_result_pascal_delimiters() {
     dss.command(&format!("set datapath=\"{}\"", scratch.display()));
     dss.command("save load");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let want = if dss_core::compat::ORACLE_PARITY {
+        format!("{}{sep}{sep}load", scratch.display())
+    } else {
+        scratch.join("load").display().to_string()
+    };
     assert_eq!(
         dss.result(),
-        format!("{}{sep}{sep}load", scratch.display()),
-        "bare `save load` must carry the Pascal doubled delimiter"
+        want,
+        "bare `save load` reports the Pascal doubled delimiter in the parity \
+         lane and the normalized path in the default lane (parity = {})",
+        dss_core::compat::ORACLE_PARITY
     );
     assert_eq!(dss.last_result_file(), dss.result());
     assert!(

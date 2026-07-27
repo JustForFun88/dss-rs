@@ -7,6 +7,111 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3m — two more quirks split, and one marker is *re-owned* by F.4 on a measurement that contradicts its own note (branch `depas-stagef`, 2026-07-28)
+
+Three report-surface markers, argued one at a time. Two become lane splits; the
+third was implemented, gated, and handed to F-FMT because the flip is a `Show`
+**table layout** change, not a value change. `TODO(compat)` **40 → 38**; both
+lanes green; no golden, tolerance, ledger or deck touched.
+
+| row | upstream | what says it is a slip | default lane |
+|---|---|---|---|
+| `SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS` | `Save <class>` reports `…\\load` — a doubled separator | the file it names was written through a normalized join all along | the normalized path |
+| `SYM_MATRIX_GETTER_RENDERS_ZEROS` | the `?`/Dump text getter of a `DoubleSymMatrixProperty` prints zeros whatever is stored | the **same property's** JSON exporter reads the same array and prints the real numbers | the stored lower triangle |
+
+**The `Save` row moves a string, never a file.** `DoSaveCmd` composes
+`SaveFile := SaveDir + PathDelim + SaveFile` as raw strings
+(`ExecHelper.pas:835-841`) and `SaveDir` defaults to `OutputDirectory`, which
+already ends in a delimiter — so `GlobalResult`/`LastResultFile` hand the caller
+`…\\load`, which a Windows consumer cannot open verbatim (`\\` starts a UNC
+name). The I/O has always used the joined `PathBuf`, so both lanes write the
+identical bytes to the identical place and only the *reported* string differs;
+the explicit `dir=` form (the raw parameter) is byte-identical in both.
+`save_class_global_result_delimiter_is_lane_split` asserts the reported string
+against `compat::ORACLE_PARITY` **and** re-asserts the file at the normalized
+location in both lanes, so the split cannot quietly become a file-placement
+change.
+
+**The sym-matrix row is the one case where upstream contradicts itself about the
+same bytes.** `GetObjPropertyValue`'s `DoubleSymMatrixProperty` arm reads
+uninitialized memory, so `? Capacitor.c1.CMatrix` on a bank built with
+`cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8)` answers `(0 |0 0 |0 0 0 )` — while
+`class_props/json.rs`'s arm for that *same property* reads
+`darray[(i-1)*Norder + j] / scale` and emits `2.8`/`-0.6` in both engines. So
+there is nothing to argue about what was meant. The garbage itself is **not**
+reproduced in either lane (reading uninitialized memory is UB, which CLAUDE.md
+forbids reproducing); what the parity lane keeps is the deterministic surrogate
+the captured goldens hold — a zero matrix of the declared order.
+
+Three `props` goldens carry 33 affected pairs (`cap.json` `CMatrix` ×7,
+`fault.json` `GMatrix` ×6, `reactor.json` `RMatrix`/`XMatrix` ×20). They are
+**not** dropped: `props_roundtrip::LANE_SKIP_PROP_VALUES` makes the default lane
+compare the rendered *skeleton* — the `(v |v v |v v v )` punctuation, the matrix
+order, the row split and the number **count** — and skip only the values, which
+`exec::tests::compat_quirks::sym_matrix_text_getter_is_lane_split` pins against
+`ORACLE_PARITY` instead (asserting the JSON view carries the stored matrix in
+both lanes as the corroborating half). The exclusion carries a non-vacuity guard
+in *both* directions: the parity lane asserts it skipped **zero** values, the
+default lane asserts it saw at least one pair per listed property, so a renamed
+property fails the gate rather than silently widening it.
+
+**`max_device_name_length` is an F-FMT row, and its own compat note was wrong.**
+The marker claimed the backend's `0` "matters only for the dot-padded (`Paddots`)
+reports … the space-padded (`Pad`) reports are token-invariant to it". The flip
+was implemented (the honest `Length(Name) + Length(ParentClass.Name) + 1` max)
+and gated: **three goldens move** — `show_busflow`, `show_busflow_mva`,
+`show_busflow_1ph`, each failing "row 13 field count differs, 8 vs 7". The cause
+is `ShowResults.pas:1375`, `Pad(EncloseQuotes(FullName), MaxDeviceNameLength + 2)
++ IntToStr(j)`: `IntToStr` carries **no width**, so at width 0 the terminal
+number is *glued* to the name and the golden reads `"Capacitor.cap1"1        0.0`
+— one token where the honest width produces two. And because the extra token
+shifts every later column, `busflow_seq_policy`'s `col_tol` indices (2 and 6, the
+capacitor's near-zero kW and PF cells) would have to be re-calibrated per lane.
+Re-laying out a `Show` table and re-baselining its default-lane comparison is
+verbatim F-FMT steps 2–3, so the row is handed to F.4 with the measurement
+written at the site rather than split here behind a bespoke token patch.
+
+**Scope discipline.** No IV.2 kernel row was added. Escape register: the **14**
+truncated physical constants, the **7** F-FMT rendering markers (same size,
+swapped membership — in comes `max_device_name_length`, out goes
+`export/json/circuit.rs:176`'s `Set CktModel=` `LongBool`, re-read as a
+single-site quirk in F.3l), and `HIDE_015X` ×17.
+**17** single-site quirk markers remain — the full census of the 38 is
+14 + 7 + 17 (F.3l's record said 19 for its own state; the correct figure there
+was 20, because the `Set CktModel=` marker it re-read as a quirk had been counted
+in the F-FMT set).
+
+**An intermittent in the corpus scheduler, recorded rather than swallowed.** The
+first default-lane run of this commit's gate reported `519/520 … 1 failed` and
+the *parity* lane was green on the same tree. Re-running the **same test binary**
+unchanged gave `520/520`, and the final gate below is green in both lanes — so
+this is not a divergence the code can produce, it is non-determinism in the
+harness. The mechanism is almost certainly the one the ritual already works
+around by hand: `CorpusGuard` snapshots and restores a case's *directory*, and
+its registry lets the **last** guard on a directory restore it — but while two
+cases from the same directory are in flight the scheduler runs them
+concurrently, and the `electricdss-tst/Test/AutoTrans` family writes
+fixed-name export files (`Auto3bus_HT_current.txt`, `AutoHLT_LT_losses.txt`, …)
+straight into it. Whichever pair overlaps decides which files exist when a case
+reads its own export back; the run-to-run leaked-artifact set (this session saw
+`AutoAuto_*`/`AutoHLT_*` after one run and `Auto3bus_*` after another) is the
+same race seen from the other side. The failing case label could not be
+recovered — the panic body was lost in the redirect while the two `eprintln`
+summaries survived — so this is logged as an open harness item for the
+coordinator, not diagnosed further here: it is orthogonal to Stage F and fixing
+it means serializing (or per-case-scratching) same-directory cases in
+`corpus_gate::scheduler`.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate. Tests +1
+(`sym_matrix_text_getter_is_lane_split`), 1 renamed
+(`save_class_global_result_pascal_delimiters` →
+`…_delimiter_is_lane_split`), 0 removed, 0 new `#[ignore]`. `git diff -- tests/`
+touches no golden, tolerance, ledger or deck; `git status --short tests/corpus`
+empty after both runs (the `Test/AutoTrans/*` leak deleted by exact name).
+
 ### DE_PASCALIZE Stage F.3l — three more single-site quirks split; the *first* one is a cursor bug the corpus can never see (branch `depas-stagef`, 2026-07-28)
 
 F.3k opened the single-site sweep with five rows and a measured blocker. This

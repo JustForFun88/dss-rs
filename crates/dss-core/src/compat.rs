@@ -910,3 +910,65 @@ pub const STORAGE_MULTIFILE_USES_THE_PV_PREFIX_DEFAULT_IMPL: bool = false;
 pub use STORAGE_MULTIFILE_USES_THE_PV_PREFIX_DEFAULT_IMPL as STORAGE_MULTIFILE_USES_THE_PV_PREFIX;
 #[cfg(feature = "oracle-parity")]
 pub use STORAGE_MULTIFILE_USES_THE_PV_PREFIX_PARITY_IMPL as STORAGE_MULTIFILE_USES_THE_PV_PREFIX;
+
+/// Whether `Save <class>` reports its output path by **string concatenation**,
+/// so the default output directory contributes a doubled separator.
+///
+/// `true` reproduces the upstream quirk: `DoSaveCmd` composes
+/// `SaveFile := SaveDir + PathDelim + SaveFile` as raw strings
+/// (`ExecHelper.pas:835-841`). `SaveDir` defaults to `OutputDirectory`, which
+/// *already* ends in a path delimiter, so the observable `GlobalResult` /
+/// `LastResultFile` reads `…\\load` — a path no consumer can open verbatim on a
+/// platform that treats `\\` as a UNC prefix. An explicit `dir=` is the raw
+/// parameter, so that form is already single (`sub1\load`). Oracle-probed
+/// 2026-07-07.
+///
+/// `false` reports the same normalized path the writer actually used — the clean
+/// fix named at the site. **Only the report string moves**: the file I/O has
+/// always gone through the joined `PathBuf`, so both lanes write the identical
+/// file to the identical place, and the `dir=` form is byte-identical in both.
+pub const SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS_DEFAULT_IMPL as SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS;
+#[cfg(feature = "oracle-parity")]
+pub use SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS_PARITY_IMPL as SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS;
+
+/// Whether the **text** getter of a `DoubleSymMatrixProperty` renders a matrix
+/// of zeros instead of the values the object holds.
+///
+/// `true` reproduces the upstream quirk. `GetObjPropertyValue`'s
+/// `DoubleSymMatrixProperty` arm reads uninitialized memory and prints denormal
+/// garbage (~0) whatever was stored, so `? Capacitor.c1.CMatrix` on a bank built
+/// with `cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8)` answers `(0 |0 0 |0 0 0 )`.
+/// The three affected properties in scope are `Capacitor.CMatrix`,
+/// `Fault.GMatrix` and `Reactor.RMatrix`/`XMatrix`.
+///
+/// The garbage itself is **not** reproduced — reading uninitialized memory is
+/// UB, which CLAUDE.md forbids reproducing in *either* lane. What the parity
+/// lane keeps is the deterministic surrogate the captured goldens hold: a zero
+/// matrix of the declared order, which is what the oracle's denormals rendered
+/// as.
+///
+/// `false` renders the stored lower triangle, scale-divided. This is the one
+/// row whose clean fix needs no argument at all: the **same property's own JSON
+/// exporter** (`class_props/json.rs`'s `DoubleSymMatrix` arm) already reads
+/// `darray[(i-1)*Norder + j] / scale` and emits the real numbers in both
+/// engines, so upstream disagrees with itself about the same stored matrix, and
+/// only the text path is wrong.
+///
+/// The rendering is pinned in both lanes by
+/// `exec::tests::compat_quirks::sym_matrix_text_getter_is_lane_split`; the
+/// `props` goldens' 33 affected `(scenario, property)` pairs keep their
+/// **shape** compared in both lanes and drop only their values in the default
+/// lane (`props_roundtrip::LANE_SKIP_PROP_VALUES`).
+pub const SYM_MATRIX_GETTER_RENDERS_ZEROS_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const SYM_MATRIX_GETTER_RENDERS_ZEROS_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use SYM_MATRIX_GETTER_RENDERS_ZEROS_DEFAULT_IMPL as SYM_MATRIX_GETTER_RENDERS_ZEROS;
+#[cfg(feature = "oracle-parity")]
+pub use SYM_MATRIX_GETTER_RENDERS_ZEROS_PARITY_IMPL as SYM_MATRIX_GETTER_RENDERS_ZEROS;

@@ -88,8 +88,9 @@ pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
     m
 }
 
-/// Pascal `SetMaxDeviceNameLength` (`ShowResults.pas:111`): nominally the longest
-/// `len(Name) + len(ParentClass.Name) + 1` over the `CktElements` master list.
+/// Pascal `SetMaxDeviceNameLength` (`ShowResults.pas:111-123`): nominally the
+/// longest `Length(element.Name) + Length(element.ParentClass.Name) + 1` over the
+/// `CktElements` master list — i.e. the longest `Class.Name` full name.
 ///
 /// TODO(compat): the **pinned dss_capi 0.14.5 backend** empirically returns **0**
 /// here regardless of the element names — the device-name column in every
@@ -100,11 +101,24 @@ pub(crate) fn max_bus_name_length(ckt: &Circuit) -> usize {
 /// immediately after each (variable-length) name, not on a fixed column. The
 /// vendored Pascal *source* would compute e.g. 16 on IEEE13, so this is a
 /// backend-vs-source divergence reproduced 1:1 to match the oracle (settled
-/// empirically per CLAUDE.md — "the oracle is the spec"). Matters only for the
-/// dot-padded (`Paddots`) reports, where a nonzero width would split the name into
-/// two whitespace tokens; the space-padded (`Pad`) reports are token-invariant to
-/// it. Clean fix in the post-1:1 pass: compute the real max (and regenerate the
-/// goldens against a fixed upstream).
+/// empirically per CLAUDE.md — "the oracle is the spec").
+///
+/// **Stage F disposition (F.3m, measured): this is an F-FMT row, not a
+/// single-site quirk — it belongs to F.4, which renders `Show` tables per lane.**
+/// The flip was implemented and gated. The old claim above it — that the width
+/// "matters only for the dot-padded reports, where a nonzero width would split
+/// the name into two whitespace tokens" — is **false for `Show BusFlow`**, whose
+/// power rows are `Pad(EncloseQuotes(FullName), MaxDeviceNameLength + 2) +
+/// IntToStr(j)` (`ShowResults.pas:1375`): `IntToStr` carries no width, so at
+/// width 0 the terminal number is *glued* to the name and the golden reads
+/// `"Capacitor.cap1"1        0.0 …` — **one** token where the honest width
+/// produces two. Three goldens move (`show_busflow`, `show_busflow_mva`,
+/// `show_busflow_1ph`: "row 13 field count differs, 8 vs 7"), and because the
+/// extra token shifts every later column, their `busflow_seq_policy`
+/// `col_tol` indices (2 and 6, the capacitor's near-zero kW and PF cells) would
+/// have to be re-calibrated per lane. Re-laying out a `Show` table and
+/// re-baselining its default-lane comparison is exactly F-FMT step 2/3, so the
+/// row is handed there rather than split here with a bespoke token patch.
 pub(crate) fn max_device_name_length(_classes: &[DssClass], _ckt: &Circuit) -> usize {
     0
 }
