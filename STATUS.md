@@ -7,6 +7,61 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3n — the CIM writer's two element-name slips split, with the oracle goldens kept as the source of truth (branch `depas-stagef`, 2026-07-28)
+
+Two `cim/export.rs` markers, both pure **element-name** mistakes whose correct
+form a sibling in the very same Pascal unit already writes. `TODO(compat)`
+**38 → 36**; both lanes green; no golden, tolerance, ledger or deck touched.
+
+| row | upstream | what says it is a slip | default lane |
+|---|---|---|---|
+| `CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX` | the delta arm writes `LinearShuntCompensator.grounded` | the wye arm of the *same* `if` writes `ShuntCompensator.grounded` (`ExportCIMXML.pas:3700` vs `:3706`), and CIM100 declares `grounded` on `ShuntCompensator` — the delta form resolves against no class | `ShuntCompensator.grounded` |
+| `CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH` | the sym-components line writer closes its quartet `bch, gch, b0ch, b0ch` (`:4366-4367`) | the `PerLengthSequenceImpedance` sibling writes `bch, gch, b0ch, g0ch` with exactly these values — and both forms sit 700 lines apart in the *same* golden | `ACLineSegment.g0ch` |
+
+**Neither row re-baselines a golden — the oracle stays the source of truth in
+both lanes.** The CIM XML goldens are byte-compared in *both* lanes by the F.2
+scoping rule (their writer renders no number through the F-FMT seam), and these
+two rows are the first Stage F change that moves their bytes at all.
+Regenerating them for the default lane would have surrendered the oracle proof
+for 15 files in order to fix three lines. Instead
+`golden_cim.rs::lane_expected_cim` applies an **enumerated expected-value
+transform** to the oracle text before the byte compare: in the default lane
+exactly the delta-`grounded` node and exactly the *second* of each pair of
+consecutive `ACLineSegment.b0ch` nodes are renamed, and every other byte of all
+15 goldens stays pinned to the oracle. The parity-lane transform is the identity,
+so that lane's gate is untouched.
+
+The `b0ch` rewrite is **positional, not value-based** — "the second of two
+consecutive `b0ch` nodes" — so a segment whose genuine zero-sequence
+susceptance happens to be 0 can never be caught by it. Neither row changes a
+value, a node count or an emission order; only two element names move.
+
+`cim_lane_divergences_are_pinned` keeps the list honest in both directions and in
+both lanes. It walks all 15 committed goldens and asserts (a) the oracle side is
+non-vacuous — exactly one delta-`grounded` node and exactly two duplicated
+`b0ch` nodes are still there, so the split cannot rot into dead code if a golden
+is ever regenerated; (b) the default lane rewrites exactly those three lines and
+the parity lane none; (c) after the transform the default-lane expectation
+carries neither quirk form. The engine is then held to that expectation
+byte-for-byte by all nine `run_case`/`run_feeder`/fragments cases, so the quirk
+cannot drift in either lane.
+
+**Scope discipline.** No IV.2 kernel row was added; both rows enter under the
+*Single-site upstream quirks* membership rule (deterministic + defined, clean fix
+spelled by a sibling, pinned by a test). Escape register unchanged: the **14**
+truncated physical constants, the **7** F-FMT rendering markers, and `HIDE_015X`
+×17; the single-site quirk census drops **17 → 15**, and 14 + 7 + 15 = the 36
+remaining markers.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate. Tests +1
+(`cim_lane_divergences_are_pinned`), 0 removed, 0 new `#[ignore]`. `git diff --
+tests/` touches no golden, tolerance, ledger or deck; `git status --short
+tests/corpus` empty after both runs (the `Test/AutoTrans/*` leak deleted by exact
+name).
+
 ### DE_PASCALIZE Stage F.3m — two more quirks split, and one marker is *re-owned* by F.4 on a measurement that contradicts its own note (branch `depas-stagef`, 2026-07-28)
 
 Three report-surface markers, argued one at a time. Two become lane splits; the
