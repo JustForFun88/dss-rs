@@ -30,20 +30,21 @@ const DIV_REL_BOUND: f64 = 1.0e-15;
 // Alias selection per lane (F.3 flips one kernel family per commit)
 // ---------------------------------------------------------------------------
 
-/// The dense-inverse row is **not flipped**: `invert` and `etk_invert` select
-/// the Pascal kernel in *both* lanes, so the existing gate (byte goldens,
-/// checkpoint Y, corpus floors) is unchanged in the default build too. F.3f
-/// attempted the flip and measured it as not-yet-landable — the module header
-/// records the six gated cases it moves and what must be settled first.
+/// The dense-inverse row is a **no-split** row (F.3i): `invert` and
+/// `etk_invert` resolve to the Pascal kernel in *whichever* lane this test
+/// runs, so the existing gate (byte goldens, checkpoint Y, corpus floors) is
+/// unchanged in the default build too. The module header records the two
+/// measurements that settled it — the 1-ULP ideal-switch amplification and the
+/// singular-path semantics three call sites consume.
 ///
 /// The separator is the anti-diagonal matrix, whose mass sits entirely off the
 /// diagonal: the Pascal kernel can only ever pivot on a diagonal entry, so it
 /// reports a perfectly invertible matrix singular, while partial pivoting
-/// inverts it. Asserting on that value makes the "still parity in both lanes"
-/// claim behavioral rather than vacuous, and makes the eventual flip fail here
-/// first (where the reason is documented) instead of in the corpus gate.
+/// inverts it. Asserting on that value makes the "one shared kernel" claim
+/// behavioral rather than vacuous, and makes any future flip fail here first
+/// (where the reason is documented) instead of in the corpus gate.
 #[test]
-fn invert_aliases_are_unflipped_in_both_lanes() {
+fn invert_is_one_shared_kernel_in_both_lanes() {
     let mut m = anti_diagonal_2x2();
     assert!(invert_gj_no_exchange_impl(&mut m).is_err());
     let mut m = anti_diagonal_2x2();
@@ -59,6 +60,50 @@ fn invert_aliases_are_unflipped_in_both_lanes() {
     assert!(invert(&mut m).is_err());
     let mut a = [0.0, 1.0, 1.0, 0.0];
     assert!(etk_invert(&mut a, 2).is_err());
+}
+
+/// The measured *reason* the dense-inverse row is a no-split row (F.3i), pinned
+/// with literals so it cannot rot into folklore: on the ideal-switch impedance
+/// matrix that `Test/AutoTrans/Auto1bus-step1.dss` builds for a
+/// `switch=yes r1=1e-6` line — `Z = 1e-9·I`, whose exact binary value is
+/// `1.0000000000000000622…e-9` — the two kernels land **one ULP apart**, and the
+/// *candidate* is the more accurate one (`Decimal`-60 exact reciprocal
+/// `999999999.99999993771…`, candidate error 5.69e-8 vs parity 6.23e-8). On that
+/// deck the same ULP is worth `1.4524` of reported conductor power against a
+/// `1e-1` floor, because an ideal switch turns one ULP of node voltage into
+/// 15 mA; `tests/compat_dense_inverse.rs` pins that consequence end to end.
+#[test]
+fn dense_inverse_kernels_differ_by_one_ulp_on_an_ideal_switch() {
+    let z = 1e-9;
+    let build = || {
+        let mut m = CMatrix::new(3);
+        for i in 0..3 {
+            m.set(i, i, c(z, 0.0));
+        }
+        m
+    };
+
+    let mut parity = build();
+    invert_gj_no_exchange_impl(&mut parity).expect("diagonal matrix is invertible");
+    let mut candidate = build();
+    invert_partial_pivot_impl(&mut candidate).expect("diagonal matrix is invertible");
+
+    for i in 0..3 {
+        assert_eq!(parity.get(i, i).re, 1e9);
+        assert_eq!(candidate.get(i, i).re, 999_999_999.999_999_9);
+        // Exactly one ULP, in the direction that makes the candidate the
+        // correctly-rounded reciprocal — accuracy is not what disqualifies it.
+        let gap = parity.get(i, i).re.to_bits() as i64 - candidate.get(i, i).re.to_bits() as i64;
+        assert_eq!(gap, 1);
+    }
+
+    // The alias must be the parity one, i.e. the value the oracle produces.
+    let mut aliased = build();
+    invert(&mut aliased).expect("diagonal matrix is invertible");
+    assert_eq!(
+        aliased.get(0, 0).re.to_bits(),
+        parity.get(0, 0).re.to_bits()
+    );
 }
 
 /// The **no-split** row (F.3e): `cdiv` is one shared kernel, so it must resolve

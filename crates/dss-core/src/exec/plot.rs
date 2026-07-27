@@ -272,9 +272,14 @@ impl Dss {
                 17 => p.daisy_bus_list = interpret_string_list(&param_original),
                 18 => {
                     p.min_scale = dbl(parser, vars, errors);
-                    // TODO(compat): PlotOptions.pas:397 always flags MinScale as
-                    // specified, even for MinScale=0 (asymmetric with `max=`,
-                    // which flags only when >0). Reproduced 1:1.
+                    // `PlotOptions.pas:397` flags MinScale as specified for any
+                    // value, including 0 — asymmetric with `max=` above, which
+                    // flags only when `> 0`. Permanent semantics in both lanes:
+                    // the flag answers "was `min=` given?", which `min=0`
+                    // truthfully is, and both flags are fields of the
+                    // plot-callback JSON — an interface contract with the
+                    // external plotter (IV.1 "output structure users consume"),
+                    // not a rendering detail we may re-decide.
                     p.min_scale_is_specified = true;
                 }
                 19 => p.three_ph_line_style = int(parser, vars, errors),
@@ -483,9 +488,12 @@ fn parse_type(p: &mut PlotParams, param: &str, case_name: &str) {
             p.plot_type = if cts("ener") { "Energy" } else { "Evolution" }.to_string();
         }
         b'G' => p.plot_type = "GeneralData".to_string(),
-        // TODO(compat): PlotOptions.pas:274 maps every `L…` unconditionally to
-        // LoadShape — so `type=Losses` is a LoadShape plot, not a losses plot.
-        // Reproduced 1:1 (oracle-confirmed).
+        // `PlotOptions.pas:274` dispatches on the FIRST LETTER only, so every
+        // `L…` is a LoadShape plot — `type=Losses` included (the language has no
+        // losses plot). Permanent semantics in both lanes: IV.1 keeps the
+        // language's abbreviation/prefix matching, and rejecting unknown option
+        // values instead of prefix-matching them is IV.1b layer 2 — opt-in and
+        // sequenced after Stage F.
         b'L' => p.plot_type = "LoadShape".to_string(),
         b'M' => {
             p.plot_type = if cts("mon") { "Monitor" } else { "Matrix" }.to_string();
@@ -507,8 +515,11 @@ fn parse_type(p: &mut PlotParams, param: &str, case_name: &str) {
             p.daisy_bus_list.clear();
         }
         b'Z' => p.plot_type = "MeterZones".to_string(),
-        // TODO(compat): PlotOptions.pas:305 has an empty `else` — an unrecognized
-        // first letter leaves PlotType at its default ('Circuit'). Reproduced.
+        // `PlotOptions.pas:305` has an empty `else`: an unrecognized first letter
+        // leaves PlotType at its default (`Circuit`). Permanent semantics in both
+        // lanes — the deck language's leniency, which the vendored corpus relies
+        // on; loud rejection of unknown option values is IV.1b layer 2 (opt-in,
+        // after Stage F).
         _ => {}
     }
 }

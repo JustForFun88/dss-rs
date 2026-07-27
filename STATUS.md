@@ -7,6 +7,165 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3i — IV.2 **row 2** (dense inverse) is settled: *no split*, with the amplification decomposed to its root (branch `depas-stagef`, 2026-07-27)
+
+F.3f left the row blocked with a recommendation: "re-attempt with a faer-backed
+LU inverse and re-measure the six cases". That recommendation is **withdrawn on
+evidence** — the disqualifier is not specific to the candidate kernel, it
+applies to *any* kernel that differs by a single ULP. The row therefore resolves
+the way rows 1 and 3 did: **one shared kernel, no `cfg` at all**.
+`TODO(compat)` **55 → 50**; both lanes stay byte-identical (the alias already
+selected this impl in both).
+
+**Measurement 1 — the surface is the ideal switch, not the transformer, and the
+gap is exactly one ULP.** F.3f/F.3h had attributed the 1.45 reading to
+transformer `YPrim`. Bisected: with the flip still selected everywhere, pinning
+**only** `pd/line/solve.rs`'s series-impedance inversion back to the parity
+kernel restores `Line.low`'s exact `0` on `Test/AutoTrans/Auto1bus-step1.dss`.
+Dumping that matrix under both kernels: a `switch=yes r1=1e-6` line has
+`Z = 1.00000000000000006e-9·I`, inverted to `1.00000000000000000e9` (parity) vs
+`9.99999999999999881e8` (candidate) — **1 ULP apart, and the candidate is the
+closer of the two** to the `Decimal`-60 exact reciprocal
+`999999999.99999993771…` (5.69e-8 vs 6.23e-8). Being *more* accurate is exactly
+what it is: irrelevant to the gate.
+
+**Measurement 2 — one ULP there is worth 14.5× the calibrated floor, linearly.**
+Perturbing the parity inverse of that one entry by −1 ULP reproduces the flip's
+reading to nine digits (`1.45235132836994740` vs the flip's
+`1.45235132964843072`). The chain, end to end: 1 ULP on a 1e9 S switch
+admittance → 1.56e-11 V of split across the switch (≈1 ULP of the 92.95 kV node)
+→ `y·ΔV` = 1.5625e-2 A → `V·ΔI` = 1.4524 kW, against the
+`large_near_ideal_source` tier's `1e-1`. The gain **is** the family: an ideal
+switch turns one ULP of node voltage into 15 mA, and TOLERANCE_NOTES
+§near-ideal-source calibrated that floor by decomposition *from a bit-identical
+Y*. (The `+1` ULP direction leaves the split at exactly `0` — a knife-edge, so
+roughly half the perturbation directions trip it; that is the drift model's
+"knife-edge discrete flip" in its purest form.)
+
+**Disqualifier 2, independent and semantic.** The two kernels also disagree
+about what a *singular* matrix leaves behind — parity leaves it partially
+transformed (Pascal), the candidate restores it — and three call sites consume
+precisely that: `solution::fault_study::compute_ysc` stores the transformed
+`Ysc` and `compute_isc` multiplies `VBus` through it (how `Isc` mirrors the
+upstream value), `report::{show,export}::fault_study` do the same with `Yfault`,
+and `line_constants` inverts `FYc` "ignoring singularity like Pascal does".
+Flipping would silently change those reports on a degenerate bus. So the
+partial transformation is load-bearing semantics, not a wart — which also
+retires the `TODO(compat)` that proposed "restore-or-zero on failure": that
+"clean fix" is wrong.
+
+**Pinned, not narrated.** `compat::tests::dense_inverse_kernels_differ_by_one_
+ulp_on_an_ideal_switch` asserts the 1-ULP gap with literals and that the alias
+resolves to the oracle's value (in either lane);
+`tests/compat_dense_inverse.rs::dense_inverse_keeps_the_ideal_switch_split_at_
+exactly_zero` pins the consequence at the physical boundary with **zero**
+tolerance — the tripwire for any future kernel swap, failing next to the
+documented reason instead of as an unexplained corpus divergence, with a
+non-vacuity assertion that the deck is energized.
+`invert_aliases_are_unflipped_in_both_lanes` is renamed
+`invert_is_one_shared_kernel_in_both_lanes` to match the settled verdict.
+
+**Every row of the closed table now has a verdict.** Flipped: FPC `Round`
+(F.3a), single-point stddev (F.3b), `Iresidual` / `Bus_Int_Duration` / Monitor
+`BaseFrequency` (F.3c), RPN pi (F.3d). *No split*, each measured: complex
+division (F.3e), sym components (F.1), Y triplet dedup (IV.1), dense inverse
+(F.3i). Owned by a later plan: solver execution (M3c / WP-R1), report rendering
+(F.4 / F-FMT). **Nothing in IV.2 is "pending" any more.**
+
+**Four more markers resolved, none by relabeling** (55 → 50): the two
+dense-inverse ones above (`compat.rs`'s singular-pivot note — the proposed fix
+disproven; `cmatrix::kron`'s unchecked zero pivot — nothing inexact is
+reproduced, and the guard it asked for cannot be expressed through an `Option`
+that already means "shape error", so it belongs to the P5/miette rung) and the
+three `exec/plot.rs` option-parsing ones: the first-letter `type=` dispatch
+(IV.1's abbreviation matching), the empty `else` (deck-language leniency →
+IV.1b layer 2, opt-in, after Stage F) and `MinScaleIsSpecified` for `min=0`
+(the flag answers "was `min=` given?", which is true; both flags are fields of
+the plot-callback JSON — an IV.1 interface contract with the external plotter).
+
+**The remaining 50, classified — the closing F.3 register.** Every site now has
+a recorded disposition; nothing is unexamined.
+
+* **7 → F.4 (F-FMT), by the plan's own scope**: `util::fmt_g`'s two-stage
+  rounding, `report/format::fixed_w_fpc`, `show/diagnostics`'s `%-.g`,
+  `show/mod`'s `MaxDeviceNameLength = 0` (unpadded device columns),
+  `json/mod`'s fpjson float + `NL`, `json/circuit`'s `%g`/`%.4g`/`%8.2f` family
+  header. F.3 **cannot** reach `rg TODO(compat) = 0`; F.4 owns these seven.
+* **14 truncated physical constants — ESCAPED with the measurement** (register
+  (a) below): `CALPHA` ×2, the `complexutil` pi / rad→deg pair + `pascal_atan2`,
+  `658.5` ×3, `MU0`/`Twopi`/`E0`, the FPC `csqrt`/`cmod`/`cln` forms, the
+  tape-shield `1/pi`, `1732.0`, `0.001732`, `ln 10` ×2. Their relative gaps
+  (up to 5.4e-4) are *physical-input* changes, orders **above** the 1e-6-class
+  oracle floors, so a default-lane flip breaks drift-model row 1 by
+  construction. Their home is an UPGRADE-style rung with per-case ledger triage
+  and a deliberate re-baseline, not a Stage F lane flip.
+* **29 single-site upstream quirks — ESCAPED, each needing a lane branch the
+  closed table does not sanction.** CIM `grounded := TRUE` ×2, the delta
+  `LinearShuntCompensator.` prefix slip and the `b0ch` double write;
+  CapControl/LineSpacing/Storage `MakeLike` gaps; Relay's unconditional "Debug
+  Sample" line and its `Recloser.<name>` labels; StorageController's `not
+  FleetState = STORE_IDLING` precedence ×2; LineCode's `C0` omission; the
+  LoadShape MMF accept-set; Monitor's `[0.0]` channel placeholder (which
+  reproduces *dss-python's wrapper*, not the engine); Generator's
+  `PrpSequence[26]/[27]` ordinals and the Model=6 stale-`Vterminal` seed;
+  Isource's `Bus2Defined`; Load `makeposseq`'s `/3.0`; Capacitor's dropped `Cuf`
+  write; Fault's `MinAmps` double-print; GICTransformer's `G2` off `%R1`;
+  `reduce.rs`'s parent-shunt cursor bug; the `EXP_PV_` Storage prefix; `Save`'s
+  doubled delimiter; the Newton stale-`Iterminal` split; the
+  `DoubleSymMatrixProperty` getter; SeqCurrents' raw non-positive rating; the
+  `CktModel=` `LongBool` empty string; `line_constants`' `UserHeightUnit`
+  re-conversion. Each one's clean fix changes a value or a string that a
+  committed golden or a gated corpus case compares, so landing it needs a
+  per-site default-lane branch — i.e. a **12th table row** ("upstream
+  single-site behavioral bugs: parity reproduces, default fixes", with
+  per-site expected-value tests and the field-scoped exclusions F.3c already
+  built: `GateSpec::ColAbove`, `LANE_SKIP_PROPS`). The executor may not open
+  that row; the owner decides it in one pass.
+
+**The "one sanctioned default-lane re-baseline" has nothing to re-baseline yet
+— by measurement, not by omission.** Every F.3 flip so far is byte-neutral on
+every committed golden: `Round` moves only out-of-range deck literals, stddev
+only `npts=1` shapes (no golden has one), the RPN pi only one oracle-golden
+record (pinned by expected value, not re-baselined), and the three bug fixes are
+field-scoped exclusions plus expected-value tests. Both lanes still produce
+identical bytes on the whole golden corpus, so a default-lane self-golden set
+would be a copy of the committed one. Its trigger is F.4: F-FMT is what makes
+default-lane rendering differ, and the plan already sequences the re-baseline
+there ("re-layouted reports get default-lane self-goldens").
+
+**`HIDE_015X` ×17 — ESCAPED, and now with the proof rather than a preference.**
+Driving `rg HIDE_015X` to zero needs one of: (i) exposing the four deferred
+props (`Line.EpsRMedium/HeightOffset/HeightUnit`, `Line`/`LineGeometry`
+`Conductors`) in **both** lanes — which changes the *structure* of the
+0.14.5-pinned Dump / FULL-JSON / `Dump commands` byte goldens, i.e. a parity-lane
+re-baseline, forbidden forever; (ii) deleting the props — losing ported r4133
+behavior; or (iii) making the flag lane-conditional — a 12th table row plus a
+default-lane structural golden change that F.4's parsed-numeric comparator does
+not cover (it compares structure, only rendering is allowed to move). The
+settled decision in `DIVERGENCES.md` §"Line/LineGeometry Conductors" is
+"retained deliberately" under UPGRADE_PLAN §1.4's own fallback; the real
+successor is an UPGRADE rung that teaches `gen_json.py` an engine switch and
+re-pins the surface — exactly what that section measured as disproportionate.
+Six of the 17 matches are already documentation *about* the flag, not uses.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace` and the same with the feature
+— **2237 passed / 0 failed / 5 ignored in each**, including the unconditional
+520-case corpus gate. `git diff -- tests/` empty (no golden, tolerance, ledger
+or deck touched); `git status --short tests/corpus` empty after both runs — the
+known intermittent `Test/AutoTrans/*` leak deleted by exact name. Tests +2
+(2235 → 2237), 0 removed, 0 new `#[ignore]`. All probe instrumentation
+(`pd/line/solve.rs`, `pd/transformer/yterminal.rs`, the throwaway probe test)
+was reverted in full before the gate — the committed diff is documentation, two
+pins and four marker resolutions.
+
+*(Process note, repeat offence: a failed gate run was still alive when the next
+one started, and the two overlapped in this worktree — the default-lane count
+came out as 1371 from a truncated log. Same hazard as F.3b's note: **one gate at
+a time per worktree**, and re-run rather than trust a count whose log was
+contended.)*
+
 ### DE_PASCALIZE Stage F.3h — the dense-inverse blocker's open question is **answered**: (b) is disproven corpus-wide (branch `depas-stagef`, 2026-07-27)
 
 F.3f blocked IV.2 **row 2** on a named, unanswered probe: *"does `zb.invert()`

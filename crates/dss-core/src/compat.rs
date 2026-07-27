@@ -32,7 +32,7 @@
 //! | Row | Where | Flipped? |
 //! |---|---|---|
 //! | complex division | [`cdiv`] — this file | *no split* — measured, see below |
-//! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file | no — flip **measured and blocked**, see below |
+//! | dense inverse (`CMatrix::invert`, `etk_invert`) | [`invert`], [`etk_invert`] — this file | *no split* — measured, see below |
 //! | single-point stddev | [`stddev_single_point`] — this file | **yes** (F.3b) |
 //! | RPN pi | `dss-parser` `compat::PI` | **yes** (F.3d) |
 //! | FPC round | `dss-parser` `compat::round_i32` | **yes** (F.3a) |
@@ -44,69 +44,70 @@
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
 //! | report text rendering | F.4 (`F-FMT`) — `compat::fmt` seam | no |
 //!
-//! **Dense inverse — why the flip is not landed (F.3f, measured 2026-07-27).**
-//! Selecting [`invert_partial_pivot_impl`] / [`etk_invert_partial_pivot_impl`]
-//! in the default lane is *not* the ULP-level change the drift model assumes.
-//! Measured over the full suite + the 520-case corpus gate, it produces:
+//! **Dense inverse — why that row resolves to *no split* (F.3f → F.3i,
+//! measured 2026-07-26/27).** IV.2's table proposed a partial-pivot (or faer)
+//! inverse as the default kernel. The flip was attempted, gated, and then
+//! **decomposed to its root**; it is not the ULP-level change the drift model
+//! assumes, and no better kernel escapes the finding. Two independent
+//! disqualifiers, each measured:
 //!
-//! 1. **`Test/AutoTrans/Auto1bus-step1.dss` blows through an
-//!    already-widened floor** — `Line.low` conductor-0 power reads
-//!    `1.4523513296 W` where the oracle has exactly `0`, ~14× over the 1e-1
-//!    allowed at |V| = 1 kV. What makes this the loudest of the six: that case
-//!    is the `large_near_ideal_source` tier, whose `i_abs = 0.1` was calibrated
-//!    **by decomposition** (`tests/TOLERANCE_NOTES.md` §near-ideal-source)
-//!    against precisely this amplification — κ≈1e12 from `mvasc3=2e6` plus
-//!    `r1=1e-6 Ω` switches plus a floating delta tertiary, where a 1-ulp RHS
-//!    component (1.5e-11 V) propagates linearly into the no-load currents. So
-//!    the candidate kernel is not merely noisy, it is noisy *past a floor built
-//!    for this exact effect*, on the family whose "unique surface is YPrim
-//!    assembly" — i.e. the surface the row changes.
-//!    The two candidate mechanisms were (a) more solver junk through the same
-//!    κ≈1e12 path — a floor / kernel-quality question — or (b) a
-//!    **singular-pivot branch flip**: the transformer-family `Yprim` builders
-//!    map `Err(SingularMatrix)` to Pascal error 117 and substitute `ε·I` for
-//!    `Zb`, so if some `Zb` is one the diagonal-only kernel rejects and partial
-//!    pivoting inverts, the lanes would build *different circuits*, not
-//!    different last bits.
+//! 1. **Numerical — one ULP on an ideal switch is worth 14.5× the calibrated
+//!    floor, and the *more accurate* kernel is the one that busts it.** Under
+//!    the flip, `Test/AutoTrans/Auto1bus-step1.dss` reports `Line.low`
+//!    conductor-0 power `1.45235132964843072` where the oracle has exactly `0`
+//!    (the `large_near_ideal_source` tier allows `1e-1`). Pinning **only**
+//!    `Line`'s series-impedance inversion (`pd/line/solve.rs`) back to the
+//!    parity kernel — flip still selected everywhere else, transformer `Zb`
+//!    included — restores the exact `0`, so the transformer surface is *not*
+//!    the cause. On that deck a `switch=yes r1=1e-6` line has `Z = 1e-9·I`
+//!    (exact binary value `1.0000000000000000622…e-9`), which the two kernels
+//!    invert to `1e9` (parity) vs `999999999.9999999` (candidate):
+//!    **exactly 1 ULP apart, and the candidate is the closer of the two** to the
+//!    `Decimal`-60 exact reciprocal `999999999.99999993771…` (error 5.69e-8 vs
+//!    the parity kernel's 6.23e-8). Perturbing the parity inverse of that one
+//!    entry by −1 ULP reproduces the flip's reading to nine digits
+//!    (`1.45235132836994740`), which closes the chain: 1 ULP on a 1e9 S switch
+//!    admittance → 1.56e-11 V of split across the switch (≈1 ULP of the 92.95 kV
+//!    node) → `y·ΔV` = 1.5625e-2 A → `V·ΔI` = 1.4524 kW. The gain **is** the
+//!    family: an ideal switch turns one ULP of node voltage into 15 mA, and
+//!    `tests/TOLERANCE_NOTES.md` §near-ideal-source calibrated `i_abs = 0.1` by
+//!    decomposition *from a bit-identical Y*. So any dense-inverse kernel that
+//!    differs from the parity one by even a single ULP on a `r=1e-6` switch
+//!    fails this case — being more accurate does not help, and a faer LU would
+//!    be measured against the same wall. (Five further cases sat 1.4–1.8× over
+//!    their floors under the flip: `Transformer.sub1` currents on
+//!    `EPRITestCircuits/ckt7` and `Examples/StoCtrl_Current_PeakShave`, the
+//!    `IEEE_519` Y-fingerprint `trace.im`, `4Bus-YYD` on the r4133 channel.)
+//! 2. **Semantic — the two kernels disagree about what a *singular* matrix
+//!    leaves behind, and three call sites consume exactly that.** The parity
+//!    kernel leaves the input partially transformed (Pascal), the candidate
+//!    restores it. `solution::fault_study::compute_ysc` deliberately ignores the
+//!    `Err` and stores the transformed `Ysc` on the bus, where `compute_isc`
+//!    multiplies `VBus` through it — that is how the `Isc` report mirrors the
+//!    upstream value; `report::{show,export}::fault_study` invert a `Yfault`
+//!    copy the same way, and `support::line_constants` inverts `FYc` "ignoring
+//!    singularity like Pascal does". Flipping would silently change those
+//!    reports on a degenerate bus — not a ULP-level difference at all.
 //!
-//!    **(b) is disproven, corpus-wide (F.3h, measured 2026-07-27).** Both
-//!    `zb.invert()` call sites (`transformer::yterminal`,
-//!    `auto_trans::yterminal`) were instrumented to run *both* kernels on every
-//!    `Zb` and the whole 520-case corpus gate was run: **495 872 inversions,
-//!    zero `Err` from either kernel** — so the error-117 substitution never
-//!    fires, in either lane, on any gated deck, and the lanes build the *same*
-//!    circuits. Agreement between the two inverses is at most **1.01e-15**
-//!    relative corpus-wide (4.5e-16 on `Auto1bus-step1` itself). That leaves
-//!    **(a)**: ~2 ULP of `YPrim` difference amplified by the κ≈1e12 path into
-//!    the 1.45 W reading. It does *not* unblock the row — finding 2 below and
-//!    the `large_near_ideal_source` decomposition (which assumes a bit-identical
-//!    Y) still stand — but the flip is now known to be a **numerical** question
-//!    only, so the next attempt should be a faer-backed LU inverse and a
-//!    re-measurement of the six cases, not a semantics investigation.
-//! 2. **Five cases just past their calibrated floors** — `Transformer.sub1`
-//!    currents on `EPRITestCircuits/ckt7` (both drivers) and
-//!    `Examples/StoCtrl_Current_PeakShave` (1.47e-4 / 1.70e-4 vs 1.06e-4 /
-//!    1.15e-4 allowed), the `IEEE_519` Y-fingerprint `trace.im` (2.89e-5 vs
-//!    1.64e-5), and `4Bus-YYD` on the r4133 channel (2.03e-4 vs 1.34e-4). All
-//!    1.4–1.8× over — *not* fudgeable (CLAUDE.md forbids widening a floor to
-//!    pass), and their direction is a signal in itself: this kernel is a
-//!    textbook Gauss-Jordan on `[A | I]`, which does roughly twice the
-//!    arithmetic of Pascal's in-place variant, so it is plausibly **noisier**
-//!    on well-conditioned impedance matrices even though it is more *stable*
-//!    on ill-placed ones. A default kernel worth flipping to should probably be
-//!    an LU solve (faer) rather than this hand-rolled GJ.
+//! It was also *not* a branch flip: **(F.3h) 495 872 `Zb` inversions across the
+//! 520-case gate, zero `Err` from either kernel** (max disagreement 1.01e-15
+//! relative), so the Pascal error-117 substitution never fires and the lanes
+//! build the same circuits.
 //!
-//! Also moved: `transformer_yprim_bitexact` (3 ULP — expected, would become a
-//! lane-split pin) and `golden_reports::export_currents` row 20 (an angle
-//! reading `180` instead of `0` on a numerically-zero current).
+//! The row therefore resolves like "complex division" and "Y triplet dedup":
+//! **one shared kernel, no `cfg`**. [`invert_partial_pivot_impl`] /
+//! [`etk_invert_partial_pivot_impl`] stay compiled and keep the verdict
+//! *asserted* rather than narrated — `tests::dense_inverse_kernels_differ_by_
+//! one_ulp_on_an_ideal_switch` pins the 1 ULP with literals, and
+//! `tests/compat_dense_inverse.rs` pins the consequence at the physical
+//! boundary (that deck's switch split stays exactly `0`).
 //!
-//! What *did* land from the attempt: [`invert_partial_pivot_impl`] now
+//! What the attempt left behind, and stays: [`invert_partial_pivot_impl`]
 //! normalizes its pivot row through [`cdiv`] instead of `num_complex`'s `/`
 //! (which, on a real-valued matrix, computes `x·c/c²` rather than `x/c` and
 //! drifted the complex kernel 1 ULP away from its real twin —
 //! `mathutil::tests::etk_invert_matches_cmatrix_invert_on_real_matrix` caught
-//! it). The kernel is unselected in both lanes but always compiled, so this
-//! keeps it honest for whoever lands the row.
+//! it).
 //!
 //! **Complex division — why that row needs no split (F.3e, plan deviation,
 //! settled by measurement).** IV.2's table proposed `num_complex`'s `/` as the
@@ -231,9 +232,19 @@ pub use cdiv_fpc_impl as cdiv;
 /// *unused diagonal*, **no row exchanges**, cross-terms through FPC's Smith
 /// division.
 ///
-/// TODO(compat): on a singular pivot the matrix is left partially transformed,
-/// exactly like the Pascal code (callers only check the error). Restore-or-zero
-/// on failure once the 1:1 port is complete.
+/// On a singular pivot the matrix is left **partially transformed**, exactly
+/// like the Pascal code — and that is load-bearing, not a wart awaiting a fix:
+/// three call sites deliberately discard the `Err` and go on using the
+/// transformed matrix, because upstream does.
+/// `solution::fault_study::compute_ysc` stores the partially transformed `Ysc`
+/// on the bus and `compute_isc` multiplies `VBus` through it (that is how the
+/// `Isc` report mirrors the upstream value); `report::{show,export}::
+/// fault_study` invert a `Yfault` copy the same way; `support::line_constants`
+/// inverts `FYc` "ignoring singularity like Pascal does". Restoring or zeroing
+/// the input on failure would silently change those reports on a degenerate
+/// bus, so it is permanent shared-kernel semantics in **both** lanes — and one
+/// of the two reasons IV.2 row 2 resolves to *no split*
+/// ([`invert_partial_pivot_impl`] restores instead; see the module header).
 pub fn invert_gj_no_exchange_impl(m: &mut CMatrix) -> Result<(), SingularMatrix> {
     let l = m.order();
 
@@ -363,12 +374,10 @@ pub fn invert_partial_pivot_impl(m: &mut CMatrix) -> Result<(), SingularMatrix> 
     Ok(())
 }
 
-#[cfg(feature = "oracle-parity")]
-pub use invert_gj_no_exchange_impl as invert;
-// Still parity-selected in BOTH lanes. F.3f attempted the flip and **measured
-// it as not-yet-landable** — see the module header's "Dense inverse" section
-// for the six gated cases it moves and what has to be settled first.
-#[cfg(not(feature = "oracle-parity"))]
+/// The complex dense-inverse kernel — **one shared implementation, no lane
+/// split** (F.3i; see the module header for the two measurements that settled
+/// it). Deliberately declared without a `cfg`: both lanes invert with the
+/// Pascal no-row-exchange Gauss-Jordan.
 pub use invert_gj_no_exchange_impl as invert;
 
 /// In-place inversion of a **real** square matrix in column-major order, the
@@ -481,11 +490,8 @@ pub fn etk_invert_partial_pivot_impl(a: &mut [f64], norder: usize) -> Result<(),
     Ok(())
 }
 
-#[cfg(feature = "oracle-parity")]
-pub use etk_invert_gj_no_exchange_impl as etk_invert;
-// Still parity-selected in both lanes — the real counterpart of the complex
-// row above, and blocked by the same measurement.
-#[cfg(not(feature = "oracle-parity"))]
+/// The real dense-inverse kernel — the counterpart of [`invert`], and **one
+/// shared implementation** for the same measured reasons (F.3i).
 pub use etk_invert_gj_no_exchange_impl as etk_invert;
 
 // ---------------------------------------------------------------------------
