@@ -42,7 +42,17 @@
 //! | Export SeqCurrents `Iresidual` | [`IRESIDUAL_FROM_TERMINAL_1`] — this file | **yes** (F.3c) |
 //! | multi-meter `Bus_Int_Duration` | [`BUS_INT_DURATION_WALKS_ALL_BUSES`] — this file | **yes** (F.3c) |
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
+//! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering | F.4 (`F-FMT`) — `compat::fmt` seam | no |
+//!
+//! The last two rows are not in IV.2's table and do not extend it: they are the
+//! two *reproduced* CLAUDE.md upstream bugs whose clean fix that document defers
+//! to this pass by name. With them the named-bug set is closed: of the six, two
+//! were never reproduced at all (VSConverter's self-aliased `MVMult`, harmonics
+//! `Powers`-after-`Currents`) — as is the out-of-range half of
+//! `Bus_Int_Duration` — and all four that *are* reproduced now carry the
+//! parity/default split (`Iresidual`, the in-range `Bus_Int_Duration`
+//! cross-zone overwrite, Monitor `BaseFrequency`, Newton stale `Iterminal`).
 //!
 //! **Dense inverse — why that row resolves to *no split* (F.3f → F.3i,
 //! measured 2026-07-26/27).** IV.2's table proposed a partial-pivot (or faer)
@@ -611,3 +621,53 @@ pub fn monitor_base_frequency_inherit_impl(fundamental: f64) -> f64 {
 pub use monitor_base_frequency_60hz_impl as monitor_base_frequency;
 #[cfg(not(feature = "oracle-parity"))]
 pub use monitor_base_frequency_inherit_impl as monitor_base_frequency;
+
+// ---------------------------------------------------------------------------
+// Newton stale `Iterminal` in Powers/Losses
+// (CLAUDE.md §Known upstream bugs — deferred here as a de-compat DECISION)
+// ---------------------------------------------------------------------------
+
+/// Whether reported `Powers`/`Losses` reuse the terminal current the **Newton**
+/// solver left cached, instead of recomputing it at the converged voltage.
+///
+/// `true` reproduces the upstream quirk. `DoNewtonSolution`'s final
+/// `SumAllCurrents` stamps `Iterminal` from the *pre-final* voltage guess
+/// `NodeV_{n-1}` and marks it solved for the current `SolutionCount`; the
+/// `NodeV -= dV` update follows it. `CktElement.Get_Powers`/`Get_Losses` read
+/// through the cache-aware `ComputeIterminal` and therefore return that
+/// one-step-stale current, while `CktElement.Currents` (`GetCurrents`)
+/// recomputes fresh at `NodeV_n` — so after `Set algorithm=Newton` upstream
+/// reports `S != V·conj(I)` for the same element in the same read. It is
+/// deterministic, defined and not state-poisoning, so the parity lane keeps it,
+/// and it cannot be escaped by bumping the oracle: the EPRI channel confirms
+/// the quirk in every vendored official rev — v9.8 (r3723), v10.2 (r4088),
+/// v11.0 (r4133), all fingerprint 0.478 kVA (checked 2026-07-08). See
+/// `investigations/newton_stale_iterminal_bug_report.md`.
+///
+/// `false` recomputes `Iterminal` at `NodeV_n` for all three reads — the clean
+/// fix named at the reproduction site since the port, which restores the
+/// identity `S = V·conj(I)` that `Powers` is *defined* by, in every algorithm.
+/// The lanes differ **only** after a Newton solve: after every fixed-point /
+/// direct / harmonic solve the cache is already invalid at read time, so both
+/// lanes recompute the same current and every other deck is bit-identical.
+///
+/// **What replaces the lost gate signal.** Newton and the normal fixed point
+/// converge to the same voltages in the same iteration count on the `newton*`
+/// corpus decks, so this staleness was the *only* channel there that proved
+/// Newton dispatch was wired at all — the default lane no longer exposes it
+/// (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS` excludes those decks'
+/// powers/losses in that lane only; the parity lane still compares them against
+/// both oracles). The replacement is stronger and runs in **both** lanes:
+/// `exec::tests::newton` asserts the staleness *inside the engine* — after
+/// `algorithm=Newton` the solver-cached `Iterminal` differs from a fresh
+/// recompute at the converged `NodeV`, and after the normal algorithm it does
+/// not — which is a direct assertion that `DoNewtonSolution` ran, rather than
+/// an inference from a reported power.
+pub const POWERS_REUSE_STALE_NEWTON_ITERMINAL_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const POWERS_REUSE_STALE_NEWTON_ITERMINAL_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_DEFAULT_IMPL as POWERS_REUSE_STALE_NEWTON_ITERMINAL;
+#[cfg(feature = "oracle-parity")]
+pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_PARITY_IMPL as POWERS_REUSE_STALE_NEWTON_ITERMINAL;

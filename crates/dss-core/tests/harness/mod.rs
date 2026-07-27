@@ -1045,43 +1045,107 @@ pub fn assert_power_close(
     }
 }
 
+/// Which sub-channels of an element capture [`compare_element_channels`] checks.
+///
+/// Exists for the Stage F lane policy: a *deliberate* divergence (the default
+/// lane's post-Newton `Powers`/`Losses`, `compat::
+/// POWERS_REUSE_STALE_NEWTON_ITERMINAL`) is excluded **field-by-field**, never
+/// case-by-case — the element name set, terminal currents, node voltages,
+/// discrete state and iteration count of such a case stay fully oracle-gated.
+/// [`lane::elem_channels_for`] is the only thing that ever returns a value other
+/// than [`ElemChannels::ALL`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ElemChannels {
+    pub currents: bool,
+    pub powers: bool,
+    pub losses: bool,
+}
+
+impl ElemChannels {
+    /// Every sub-channel — what every caller but the Stage F lane policy uses.
+    pub const ALL: Self = Self {
+        currents: true,
+        powers: true,
+        losses: true,
+    };
+    /// Currents only: the `S = V·conj(I)` channels are a deliberate divergence
+    /// in this lane and are pinned by their own expected-value test instead.
+    pub const CURRENTS_ONLY: Self = Self {
+        currents: true,
+        powers: false,
+        losses: false,
+    };
+}
+
 /// Compare one element's terminal currents and powers against a capture.
 pub fn compare_element(snaps: &[ElementSnapshot], exp: &ElementCap, tol: &Tolerances, ctx: &str) {
+    compare_element_channels(snaps, exp, tol, ctx, ElemChannels::ALL);
+}
+
+/// [`compare_element`] restricted to `channels` — see [`ElemChannels`].
+pub fn compare_element_channels(
+    snaps: &[ElementSnapshot],
+    exp: &ElementCap,
+    tol: &Tolerances,
+    ctx: &str,
+    channels: ElemChannels,
+) {
+    // The element must exist in the Rust snapshot under EVERY channel policy:
+    // excluding a value channel must never excuse a missing element.
     let snap = snaps
         .iter()
         .find(|s| s.name.eq_ignore_ascii_case(&exp.name))
         .unwrap_or_else(|| panic!("{ctx}: no element {}", exp.name));
+    // …and neither may it excuse a SHAPE mismatch: conductor counts are
+    // structure, not value, so they are asserted under every channel policy
+    // (`assert_power_close` also checks them, but only when it runs).
+    assert_eq!(
+        snap.powers.len(),
+        exp.p_kw.len(),
+        "{ctx} {}: power length mismatch",
+        exp.name
+    );
+    assert_eq!(
+        snap.currents.len(),
+        exp.i_re.len(),
+        "{ctx} {}: current length mismatch",
+        exp.name
+    );
     let ei: Vec<Complex64> = exp
         .i_re
         .iter()
         .zip(&exp.i_im)
         .map(|(re, im)| Complex64::new(*re, *im))
         .collect();
-    assert_complex_close_c(
-        &snap.currents,
-        &ei,
-        tol.i_rel,
-        tol.i_abs,
-        &format!("{ctx} {} currents", exp.name),
-    );
+    if channels.currents {
+        assert_complex_close_c(
+            &snap.currents,
+            &ei,
+            tol.i_rel,
+            tol.i_abs,
+            &format!("{ctx} {} currents", exp.name),
+        );
+    }
     // Powers use a terminal-voltage-scaled abs floor (see `assert_power_close`):
     // `P = V·conj(I)` so the power floor must be the current floor times |V|, or
     // high-voltage near-cancellation through-power (switch/busbar connectors)
     // fails on solver roundoff the current floor already absorbs.
-    assert_power_close(
-        &snap.powers,
-        exp,
-        tol.i_rel,
-        tol.i_abs,
-        &format!("{ctx} {} powers", exp.name),
-    );
+    if channels.powers {
+        assert_power_close(
+            &snap.powers,
+            exp,
+            tol.i_rel,
+            tol.i_abs,
+            &format!("{ctx} {} powers", exp.name),
+        );
+    }
     // Losses (`Get_Losses` — the engine's own losses path, distinct from the
     // per-conductor powers above even though mathematically it is their sum).
     // Captured by the live gate only; old checkpoint goldens leave it empty.
     // The allowed error is the exact accumulation of the per-conductor power
     // tolerance: losses = Σ_k S_k, so |δ(losses)| ≤ Σ_k (abs·|V_k| + rel·|S_k|)
     // — no new tolerance class, just the conductor policy summed.
-    if exp.loss_w.len() == 2 {
+    if channels.losses && exp.loss_w.len() == 2 {
         let mut allowed_kw = 0.0;
         for k in 0..exp.p_kw.len() {
             let p_mag = (exp.p_kw[k].powi(2) + exp.p_kvar[k].powi(2)).sqrt();
