@@ -7,6 +7,42 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3h — the dense-inverse blocker's open question is **answered**: (b) is disproven corpus-wide (branch `depas-stagef`, 2026-07-27)
+
+F.3f blocked IV.2 **row 2** on a named, unanswered probe: *"does `zb.invert()`
+return `Err` on this deck under either kernel? Run it before the row is
+reconsidered."* Run — and widened from that one deck to the whole gate.
+
+**Method.** Both `zb.invert()` call sites (`elements/pd/transformer/yterminal.rs`,
+`elements/pd/auto_trans/yterminal.rs`) were temporarily instrumented to invert
+every `Zb` with *both* compiled kernels and report `is_err()` plus the worst
+relative element gap; the 520-case corpus gate was then run end to end. The
+instrumentation is throwaway and was reverted in full (`git status` clean, the
+committed diff is documentation only).
+
+**Result — 495 872 `Zb` inversions, ZERO `Err` from either kernel.** The Pascal
+error-117 branch (`zb.clear()` + `ε·I`) never fires on any gated deck under
+either kernel, so the two lanes build the **same circuits**; hypothesis (b), "a
+singular-pivot branch flip makes the lanes different models", is dead. The two
+inverses agree to at most **1.01e-15** relative corpus-wide (**4.465e-16**, ~2
+ULP, on `Test/AutoTrans/Auto1bus-step1.dss`'s own 2×2 `Zb` — the deck that broke
+the floor).
+
+**What that changes.** The 1.4523513296 W reading is hypothesis **(a)**: ~2 ULP
+of `YPrim` difference amplified by the deck's κ≈1e12 path. The row stays
+blocked — F.3f finding 2 (five cases 1.4–1.8× past calibrated floors) is
+untouched, and `TOLERANCE_NOTES` §near-ideal-source still proves `i_abs = 0.1`
+from a *bit-identical* Y that this kernel would destroy. But the blocker is now
+a purely **numerical** one, so the next attempt is a faer-backed LU inverse plus
+a re-measurement of the six cases, **not** a semantics investigation. Recorded
+where it will be read: `compat.rs`'s "Dense inverse" section now carries the
+measurement in place of the open question.
+
+*(Method note worth keeping: the probe is the cheap general shape for any
+"does this kernel flip a discrete branch?" question — compile both kernels at
+the call site, run the corpus gate once, count `Err` disagreements. It converts
+an argument into a number for ~2 minutes of wall clock.)*
+
 ### DE_PASCALIZE Stage F.3g — the marker population is re-audited: **89 → 55**, and the tag becomes a *gated* index (branch `depas-stagef`, 2026-07-27)
 
 The F.3 register below counted the remaining `TODO(compat)` markers but had to

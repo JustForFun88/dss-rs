@@ -61,15 +61,28 @@
 //!    the candidate kernel is not merely noisy, it is noisy *past a floor built
 //!    for this exact effect*, on the family whose "unique surface is YPrim
 //!    assembly" — i.e. the surface the row changes.
-//!    *The mechanism is still NOT proven*, and the two candidates want opposite
-//!    responses: (a) more solver junk through the same κ≈1e12 path (a floor /
-//!    kernel-quality question) or (b) a **singular-pivot branch flip** — the
-//!    transformer-family `Yprim` builders map `Err(SingularMatrix)` to Pascal
-//!    error 117 and substitute `ε·I` for `Zb`, so if this deck's `Zb` is one
-//!    the diagonal-only kernel rejects and partial pivoting inverts, the lanes
-//!    build *different circuits*, not different last bits. One probe separates
-//!    them: does `zb.invert()` return `Err` on this deck under either kernel?
-//!    Run it before the row is reconsidered.
+//!    The two candidate mechanisms were (a) more solver junk through the same
+//!    κ≈1e12 path — a floor / kernel-quality question — or (b) a
+//!    **singular-pivot branch flip**: the transformer-family `Yprim` builders
+//!    map `Err(SingularMatrix)` to Pascal error 117 and substitute `ε·I` for
+//!    `Zb`, so if some `Zb` is one the diagonal-only kernel rejects and partial
+//!    pivoting inverts, the lanes would build *different circuits*, not
+//!    different last bits.
+//!
+//!    **(b) is disproven, corpus-wide (F.3h, measured 2026-07-27).** Both
+//!    `zb.invert()` call sites (`transformer::yterminal`,
+//!    `auto_trans::yterminal`) were instrumented to run *both* kernels on every
+//!    `Zb` and the whole 520-case corpus gate was run: **495 872 inversions,
+//!    zero `Err` from either kernel** — so the error-117 substitution never
+//!    fires, in either lane, on any gated deck, and the lanes build the *same*
+//!    circuits. Agreement between the two inverses is at most **1.01e-15**
+//!    relative corpus-wide (4.5e-16 on `Auto1bus-step1` itself). That leaves
+//!    **(a)**: ~2 ULP of `YPrim` difference amplified by the κ≈1e12 path into
+//!    the 1.45 W reading. It does *not* unblock the row — finding 2 below and
+//!    the `large_near_ideal_source` decomposition (which assumes a bit-identical
+//!    Y) still stand — but the flip is now known to be a **numerical** question
+//!    only, so the next attempt should be a faer-backed LU inverse and a
+//!    re-measurement of the six cases, not a semantics investigation.
 //! 2. **Five cases just past their calibrated floors** — `Transformer.sub1`
 //!    currents on `EPRITestCircuits/ckt7` (both drivers) and
 //!    `Examples/StoCtrl_Current_PeakShave` (1.47e-4 / 1.70e-4 vs 1.06e-4 /
