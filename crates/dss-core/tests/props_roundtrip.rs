@@ -132,7 +132,27 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   lanes by `elements::pc::isource::tests::bus2_latching_is_the_lane_kernel`.
 const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[("isource_bus2_clobbered_by_bus1", "Bus2")];
 
-fn assert_value_matches(actual: &str, expected: &str, ctx: &str) {
+/// Stage F deliberate divergence, by **property name across every scenario**:
+/// the `DoubleSymMatrixProperty` text getter
+/// (`compat::SYM_MATRIX_GETTER_RENDERS_ZEROS`). Upstream's arm reads
+/// uninitialized memory and prints ~0 whatever was stored, so every one of these
+/// oracle values is an all-zero matrix; the default lane renders the stored
+/// values — the same numbers this property's own JSON exporter already emits in
+/// both engines.
+///
+/// The exclusion is **values only**: [`assert_shape_matches`] still compares the
+/// numeric *skeleton* in the default lane, so the parenthesised
+/// `(v |v v |v v v )` shape, the matrix order and the row split stay gated
+/// there; the parity lane compares the values too. The rendered numbers are
+/// pinned in both lanes by `dss_core::exec::tests::compat_quirks::
+/// sym_matrix_text_getter_is_lane_split`.
+const LANE_SKIP_PROP_VALUES: &[&str] = &["CMatrix", "GMatrix", "RMatrix", "XMatrix"];
+
+/// The value-free half of [`assert_value_matches`]: the rendered *shape* only —
+/// the literal text around the numbers and how many numbers there are. Used in
+/// the default lane for [`LANE_SKIP_PROP_VALUES`], where the values are a
+/// deliberate divergence but the layout is not.
+fn assert_shape_matches(actual: &str, expected: &str, ctx: &str) {
     let (askel, anums) = numeric_skeleton(actual);
     let (eskel, enums) = numeric_skeleton(expected);
     assert_eq!(
@@ -144,6 +164,12 @@ fn assert_value_matches(actual: &str, expected: &str, ctx: &str) {
         enums.len(),
         "{ctx}: number count differs (actual {actual:?} vs expected {expected:?})"
     );
+}
+
+fn assert_value_matches(actual: &str, expected: &str, ctx: &str) {
+    assert_shape_matches(actual, expected, ctx);
+    let (_, anums) = numeric_skeleton(actual);
+    let (_, enums) = numeric_skeleton(expected);
     for (i, (a, e)) in anums.iter().zip(&enums).enumerate() {
         let allowed = 1e-12 + 1e-9 * e.abs();
         assert!(
@@ -173,6 +199,7 @@ fn props_roundtrip_matches_oracle() {
         );
     }
 
+    let mut value_skips = 0usize;
     for sc in &scenarios {
         let mut dss = Dss::new();
         // gen_props.py runs this preamble before every scenario (the `?`
@@ -200,11 +227,31 @@ fn props_roundtrip_matches_oracle() {
             }
             dss.command(&format!("? {}.{}", sc.target, prop));
             let actual = dss.result().to_string();
-            assert_value_matches(
-                &actual,
-                expected,
-                &format!("scenario {} property {prop}", sc.name),
-            );
+            let ctx = format!("scenario {} property {prop}", sc.name);
+            if !dss_core::compat::ORACLE_PARITY
+                && LANE_SKIP_PROP_VALUES
+                    .iter()
+                    .any(|p| p.eq_ignore_ascii_case(prop))
+            {
+                assert_shape_matches(&actual, expected, &ctx);
+                value_skips += 1;
+                continue;
+            }
+            assert_value_matches(&actual, expected, &ctx);
         }
+    }
+
+    // Non-vacuity: the by-property exclusion must actually name properties the
+    // goldens carry, so a rename cannot silently turn it into a no-op. (In the
+    // parity lane nothing is skipped — the count is asserted zero there.)
+    if dss_core::compat::ORACLE_PARITY {
+        assert_eq!(value_skips, 0, "the parity lane compares every value");
+    } else {
+        assert!(
+            value_skips >= LANE_SKIP_PROP_VALUES.len(),
+            "stale lane exclusion: only {value_skips} of the {} \
+             LANE_SKIP_PROP_VALUES properties were seen in the goldens",
+            LANE_SKIP_PROP_VALUES.len()
+        );
     }
 }

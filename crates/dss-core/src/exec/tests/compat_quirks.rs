@@ -8,7 +8,62 @@
 //! fix. Tests for a row that is still reproduced in both lanes pin the upstream
 //! value outright, and say what blocked the flip.
 
-use super::common::{dss_with_circuit, query_f64};
+use super::common::{dss_with_circuit, query, query_f64};
+
+/// Expected-value pin for the Stage F single-site quirk
+/// [`crate::compat::SYM_MATRIX_GETTER_RENDERS_ZEROS`].
+///
+/// Upstream's `GetObjPropertyValue` arm for a `DoubleSymMatrixProperty` reads
+/// uninitialized memory, so the `?` query answers a matrix of denormal garbage
+/// (~0) whatever the object stores. The parity lane keeps the deterministic
+/// surrogate the captured goldens hold — a zero matrix of the declared order —
+/// and the default lane renders the stored lower triangle.
+///
+/// The clean fix needs no argument beyond upstream itself: the **same
+/// property's** JSON exporter reads `darray[(i-1)*Norder + j] / scale` and emits
+/// the real numbers in both engines, so only the text path is wrong. That is
+/// asserted here too — the JSON view is checked to carry the stored values in
+/// *both* lanes, which is what makes the text getter a defect rather than a
+/// convention.
+#[test]
+fn sym_matrix_text_getter_is_lane_split() {
+    let mut dss = dss_with_circuit();
+    dss.command(
+        "New Capacitor.c1 bus1=b1 phases=3 \
+         cmatrix=(2.8 | -0.6 2.8 | -0.6 -0.6 2.8)",
+    );
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let text = query(&mut dss, "Capacitor.c1.CMatrix");
+    let expected = if crate::compat::ORACLE_PARITY {
+        "(0 |0 0 |0 0 0 )"
+    } else {
+        "(2.8 |-0.6 2.8 |-0.6 -0.6 2.8 )"
+    };
+    assert_eq!(
+        text,
+        expected,
+        "the text getter prints zeros in the parity lane and the stored lower \
+         triangle in the default lane (lane parity = {})",
+        crate::compat::ORACLE_PARITY
+    );
+
+    // The shape is identical in both lanes — only the numbers move. (This is
+    // what `props_roundtrip::LANE_SKIP_PROP_VALUES` still gates by comparing the
+    // rendered skeleton against the oracle in the default lane.)
+    assert!(text.starts_with('(') && text.ends_with(" )"));
+    assert_eq!(text.matches('|').count(), 2, "3×3 lower triangle: two rows");
+
+    // The JSON exporter of the very same property has always emitted the stored
+    // values, in every lane — upstream disagreeing with itself is the evidence.
+    let json = dss
+        .obj_to_json("Capacitor.c1", Default::default())
+        .expect("Capacitor.c1 renders as JSON");
+    assert!(
+        json.contains("2.7999999999999998E+000") && json.contains("-5.9999999999999998E-001"),
+        "the JSON view must carry the stored matrix in every lane: {json}"
+    );
+}
 
 /// GICTransformer's `%R`-specified second-winding conductance scales off
 /// **`%R1`**, not `%R2` — reproduced in **both** lanes, pinned here.

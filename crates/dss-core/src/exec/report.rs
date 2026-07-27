@@ -2396,18 +2396,21 @@ impl Dss {
             }
             let path = dir_path.join(&save_file);
             self.write_class_file(ci, &path);
-            // TODO(compat): Pascal composes `SaveFile := SaveDir + PathDelim +
-            // SaveFile` as raw STRINGS (`ExecHelper.pas:835-841`). With the
-            // default `SaveDir = OutputDirectory` — a string that already ends
-            // in a PathDelim — the observable `GlobalResult`/`LastResultFile`
-            // carries a DOUBLED delimiter (`…\\load`); an explicit `dir=` is
-            // the raw parameter, so a single one (`sub1\load`). Oracle-probed
-            // 2026-07-07. The file I/O above uses the normalized `path` (the
-            // same file either way; `output_directory` stores no trailing
-            // delimiter). Clean fix: a normalized path join here too.
+            // Lane split `compat::SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS`:
+            // Pascal composes `SaveFile := SaveDir + PathDelim + SaveFile` as
+            // raw STRINGS (`ExecHelper.pas:835-841`), and the default
+            // `SaveDir = OutputDirectory` already ends in a PathDelim, so the
+            // reported `GlobalResult`/`LastResultFile` carries a DOUBLED
+            // delimiter (`…\\load`). Oracle-probed 2026-07-07. An explicit
+            // `dir=` is the raw parameter and is single in both lanes. The file
+            // I/O above always used the normalized `path`, so only the reported
+            // string moves.
             let sep = std::path::MAIN_SEPARATOR;
             final_file = match &save_dir {
-                None => format!("{}{sep}{sep}{save_file}", self.output_directory.display()),
+                None if compat::SAVE_CLASS_JOINS_ITS_REPORTED_PATH_AS_STRINGS => {
+                    format!("{}{sep}{sep}{save_file}", self.output_directory.display())
+                }
+                None => path.display().to_string(),
                 Some(d) => format!("{d}{sep}{save_file}"),
             };
         }
