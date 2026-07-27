@@ -7,6 +7,112 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3k — the single-site upstream-quirk sweep opens: five sites resolved, a sixth measured and blocked (branch `depas-stagef`, 2026-07-28)
+
+F.3's four previous sessions flipped every IV.2 *kernel* row and then stopped,
+escaping the whole remainder — 28 single-site upstream quirks — on the reading
+that each one "needs a 12th table row the executor may not open". Re-reading the
+two documents that actually own the marker population settles that without
+inventing anything:
+
+* `PORTING_PLAN.md` §4.1 rule 4, **as updated 2026-07-06**, is plan text that
+  defers *every* compat marker to this stage and already prescribes the
+  disposition verbatim: "Compat quirks are **not deleted** — each becomes a dual
+  kernel behind `#[cfg(feature = "oracle-parity")]`: the default build gets the
+  correct/precise implementation, the parity build keeps the quirk so every 1:1
+  oracle gate stays permanently re-runnable."
+* IV.2's table is closed for **kernels** — the shared arithmetic primitives
+  called from hundreds of sites (`cdiv`, the dense inverse, `round_i32`, `PI`).
+  A single-site behavioral bug is not a kernel, and the machinery its clean fix
+  needs already exists and has been exercised four times (`Iresidual`,
+  `Bus_Int_Duration`, Monitor `BaseFrequency`, Newton stale `Iterminal`).
+
+So the sweep resumes on the pattern those four established. `TODO(compat)`
+**49 → 44**; both lanes green; no golden, tolerance, ledger or deck touched.
+
+**Membership rule, recorded in `compat.rs` so the section cannot become a
+dumping ground.** A site qualifies only if (i) upstream's behavior is
+deterministic and defined — UB is never reproduced in *either* lane, per
+CLAUDE.md; (ii) the clean fix is unambiguous, because the Pascal itself, a
+sibling class, or the source's own comment says what was meant; and (iii) the
+divergence is pinned by a test rather than narrated. Each row carries an
+expected-value test asserted against `compat::ORACLE_PARITY`, so the test is
+load-bearing in **both** builds rather than a default-lane-only claim.
+
+| row | upstream | Pascal | default lane |
+|---|---|---|---|
+| `ISOURCE_BUS2_NEVER_LATCHES` | `Bus2Defined` never set, so a later `Bus1=` clobbers an explicit `Bus2` | `Isource.pas:221` has no `Bus2` case; `Vsource.pas:498` does | latches, like the sibling class |
+| `CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL` | `Like=` on a Follow CapControl silently loses its signal | `CapControl.pas:446-490` copies every *other* reference | copies it too |
+| `LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING` | `Like=` keeps `Create` defaults for the five equivalent-spacing fields while the copied `PrpSequence` marks them set | `TLineSpacingObj.MakeLike` copies only NConds/NPhases/FX/FY/Units | copies them |
+| `LINECODE_SYM_CLEAR_OMITS_C0` | `c0=` alone neither selects the sym model nor clears matrix tracking — and `C0` only *displays* on the sym model, so the written value does not even read back | the source flags its own omission with `-- Missing?` | `C0` behaves like its seven siblings |
+| `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING` | a non-positive rating leaks raw into the `%Normal`/`%Emergency` columns (`normamps=-1` prints `-1`) | `ExportResults.pas:409-414` seeds `iNormal := NormAmps`, overwriting only when `> 0` | prints `0` |
+
+**One committed golden moves, by exactly one value.** The props-roundtrip
+scenario `isource_bus2_clobbered_by_bus1` (`New Isource.i1 bus2=b2 bus1=b1 …`)
+exists to pin the Isource quirk, so the default lane now reads `b2` where the
+oracle wrote `b1.0.0.0`. That single `(scenario, property)` pair is excluded in
+the **default lane only** (`props_roundtrip::LANE_SKIP_SCENARIO_PROPS`); the
+parity lane still compares it, both lanes still compare every *other* property
+of that scenario and all five sibling Isource scenarios, and the exclusion
+carries a stale-entry guard that fails the gate if the scenario or the property
+is ever renamed away. No tolerance moved and no golden file was rewritten.
+
+**The sixth candidate was flipped, gated, and reverted — the measurement is the
+point.** GICTransformer's `G2 := 100.0/(FZBase2 * FPctR1)`
+(`GICTransformer.pas:441`, copy-pasted from the `G1` line above) silently
+ignores a user's `%R2`, and the site had named the clean fix since the port. It
+was implemented and put through the 520-case gate, where it failed two cases:
+`asymmetric/gic/gictransformer_gic.dss:18` builds `GICTransformer.tg3 … %R1=0.2
+%R2=0.15`, so honouring `%R2` moves that deck's GIC current **4.50e-4** against
+the `capi_v0145` oracle (allowed 1.00e-6), and `gic/gic_midi.dss` **1.02e-4**
+(allowed 1.07e-6). Both gating oracles reproduce the quirk. Landing it therefore
+costs those two decks' *primary physical channel* in the default lane — the same
+shape as the Newton row and owed the same treatment (a field-scoped exclusion, a
+replacement in-engine assertion, a transitive cover), which is a commit of its
+own rather than a line in a batch. Reverted; the marker stays, now carrying the
+measurement, and the reproduced value is pinned in **both** lanes by
+`exec::tests::compat_quirks::gic_transformer_g2_reproduces_the_pct_r1_bug` —
+which also fails loudly if someone "fixes" it without doing the exclusion work.
+
+**Why the other four move nothing — checked by the gate, not asserted.** Their
+lanes diverge only on inputs no gated artifact contains: `Like=` on a
+Follow-type CapControl; a LineSpacing clone read before its next recalculation;
+a LineCode edit whose **only** sequence property is `C0`; an element with a
+non-positive `normamps`. The 520-case corpus gate and every byte golden are
+unchanged in both builds. Two of them also pin the *unaffected* neighbour
+explicitly — the `Export SeqCurrents` test rates a second line positively and
+pins the ordinary percentage path in both lanes, and the LineCode test pins `C1`
+(the sibling the Pascal *does* list) selecting the sym model in both lanes,
+which is what makes `C0`'s omission a slip rather than a rule.
+
+**Two rows are pinned at their behavioral consequence, not just at the field.**
+The CapControl test samples the cloned control and asserts that upstream's clone
+*aborts the solve* (a Follow CapControl with no signal raises 10362) while the
+default lane's clone follows the signal and arms a CLOSE. The LineCode test
+asserts the property surface, where upstream's `c0=` renders as `----` because
+the object never left the matrix model.
+
+**Scope discipline.** No IV.2 kernel row was added, and the unresolved
+population keeps its recorded escapes unchanged: the **14** truncated physical
+constants (register (a) — their 5.4e-4-class distance from the exact constant is
+*above* the calibrated oracle floors, so flipping them is a physical-input
+change belonging to an UPGRADE rung with its own ledger triage, not a Stage F
+lane flip), the **7** F-FMT rendering markers (F.4's defined scope), and
+`HIDE_015X` ×17 (retiring it needs a byte-golden re-baseline against a different
+oracle, which the parity lane may never do — `DIVERGENCES.md`'s settled
+disposition is "retained deliberately"). **23** single-site quirks remain, GIC
+now the best-specified of them.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace` and the same with the feature —
+**2262 passed / 0 failed / 5 ignored in each**, including the unconditional
+520-case corpus gate. Tests +5 (2257 → 2262), 0 removed, 0 new `#[ignore]`.
+`git diff -- tests/` touches no golden, tolerance, ledger or deck (only
+`tests/props_roundtrip.rs`'s lane exclusion and one new test body in
+`tests/golden_reports.rs`); `git status --short tests/corpus` empty after both
+runs — the known intermittent `Test/AutoTrans/*` leak deleted by exact name.
+
 ### DE_PASCALIZE Stage F.3j — the **Newton stale-`Iterminal`** row is flipped: the CLAUDE.md named-bug set is now closed 4/4 (branch `depas-stagef`, 2026-07-28)
 
 F.3c flipped three of the four *reproduced* CLAUDE.md upstream bugs and left the

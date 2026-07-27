@@ -44,15 +44,30 @@
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering | F.4 (`F-FMT`) — `compat::fmt` seam | no |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k…) |
 //!
-//! The last two rows are not in IV.2's table and do not extend it: they are the
-//! two *reproduced* CLAUDE.md upstream bugs whose clean fix that document defers
+//! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
+//! *reproduced* CLAUDE.md upstream bugs whose clean fix that document defers
 //! to this pass by name. With them the named-bug set is closed: of the six, two
 //! were never reproduced at all (VSConverter's self-aliased `MVMult`, harmonics
 //! `Powers`-after-`Currents`) — as is the out-of-range half of
 //! `Bus_Int_Duration` — and all four that *are* reproduced now carry the
 //! parity/default split (`Iresidual`, the in-range `Bus_Int_Duration`
 //! cross-zone overwrite, Monitor `BaseFrequency`, Newton stale `Iterminal`).
+//!
+//! The last row is likewise not a new *kernel*. IV.2's table enumerates the
+//! shared arithmetic kernels — the primitives called from hundreds of sites —
+//! and that list is closed. The compat-marker population it does **not**
+//! enumerate is governed by `PORTING_PLAN.md` §4.1 rule 4 as updated
+//! 2026-07-06, which is the plan text that defers *every* compat marker to this
+//! stage and already prescribes its disposition verbatim: "Compat quirks are
+//! **not deleted** — each becomes a dual kernel behind `#[cfg(feature =
+//! "oracle-parity")]`: the default build gets the correct/precise
+//! implementation, the parity build keeps the quirk so every 1:1 oracle gate
+//! stays permanently re-runnable." Each such site is argued individually
+//! against the Pascal, carries its own expected-value test asserted against
+//! [`ORACLE_PARITY`] (so the test is meaningful in *both* lanes), and is listed
+//! in the *Single-site upstream quirks* section below.
 //!
 //! **Dense inverse — why that row resolves to *no split* (F.3f → F.3i,
 //! measured 2026-07-26/27).** IV.2's table proposed a partial-pivot (or faer)
@@ -671,3 +686,143 @@ pub const POWERS_REUSE_STALE_NEWTON_ITERMINAL_DEFAULT_IMPL: bool = false;
 pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_DEFAULT_IMPL as POWERS_REUSE_STALE_NEWTON_ITERMINAL;
 #[cfg(feature = "oracle-parity")]
 pub use POWERS_REUSE_STALE_NEWTON_ITERMINAL_PARITY_IMPL as POWERS_REUSE_STALE_NEWTON_ITERMINAL;
+
+// ---------------------------------------------------------------------------
+// Single-site upstream quirks
+// (PORTING_PLAN §4.1 rule 4, as updated 2026-07-06 — see the module header)
+// ---------------------------------------------------------------------------
+//
+// Each row below is one reproduction site, not a shared kernel: a deterministic
+// upstream mistake whose clean fix its own compat marker had already
+// named, argued here against the Pascal and split by lane. Parity keeps the
+// quirk (so every existing oracle gate stays re-runnable); the default lane
+// gets the fix and an expected-value test pinned against `ORACLE_PARITY`.
+//
+// Membership rule, so this section cannot become a dumping ground: a site
+// qualifies only if (i) upstream's behavior is deterministic and defined (UB is
+// never reproduced in *either* lane, per CLAUDE.md), (ii) the clean fix is
+// unambiguous — the Pascal itself, a sibling class, or the source's own comment
+// says what was meant — and (iii) the divergence is pinned by a test rather
+// than merely narrated.
+
+/// Whether an explicit `Bus2=` on an **Isource** fails to latch, so a later
+/// `Bus1=` silently overwrites it.
+///
+/// `true` reproduces the upstream quirk: `TIsourceObj.PropertySideEffects`
+/// (`Isource.pas:221`) has no `Bus2` case at all, so `Bus2Defined` never
+/// becomes `TRUE` — while `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`)
+/// sets it on exactly that property. The `Bus1` side effect then re-derives the
+/// grounded-Y default `bus1.0.0…` unconditionally, so on an Isource an explicit
+/// `Bus2` survives only if it is parsed *after* `Bus1` in the same edit.
+///
+/// `false` latches it like the sibling class does — the clean fix named at the
+/// site since the port. The lanes differ only when `Bus2=` precedes `Bus1=` on
+/// one Isource edit, which no golden and no gated corpus deck does.
+pub const ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const ISOURCE_BUS2_NEVER_LATCHES_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use ISOURCE_BUS2_NEVER_LATCHES_DEFAULT_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
+#[cfg(feature = "oracle-parity")]
+pub use ISOURCE_BUS2_NEVER_LATCHES_PARITY_IMPL as ISOURCE_BUS2_NEVER_LATCHES;
+
+/// Whether `Like=` on a **CapControl** drops the `ControlSignal` reference.
+///
+/// `true` reproduces the upstream quirk: `TCapControlObj.MakeLike`
+/// (`CapControl.pas:446-490`) copies every other reference and field —
+/// `ControlledElement`, `MonitoredElement`, the user model, both snapshots —
+/// but never `ctrlSignalShape` or its name, so a clone of a `type=Follow`
+/// CapControl is left with no signal to follow and silently controls nothing.
+///
+/// `false` copies them alongside the other references — the clean fix named at
+/// the site. The lanes differ only for `Like=` on a Follow-type CapControl,
+/// which no golden and no gated corpus deck contains.
+pub const CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_DEFAULT_IMPL as CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL;
+#[cfg(feature = "oracle-parity")]
+pub use CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL_PARITY_IMPL as CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL;
+
+/// Whether `Like=` on a **LineSpacing** drops the equivalent-spacing fields.
+///
+/// `true` reproduces the upstream quirk: `TLineSpacingObj.MakeLike` copies
+/// `NConds`/`NPhases`/`FX`/`FY`/`Units` and stops, leaving `detailed`,
+/// `eqDistPhPh`, `eqDistPhN`, `avgPhaseHeight` and `avgNeutralHeight` at their
+/// `Create` defaults — even though the base class has already copied the
+/// `PrpSequence` that marks them as set. The clone therefore reports a spacing
+/// the source object does not have.
+///
+/// `false` copies them too — the clean fix named at the site. Those five fields
+/// are derived from `FX`/`FY` whenever a `LineGeometry` consumes the spacing,
+/// so the lanes differ only in what the *object* reports between the `Like=`
+/// and the next recalculation; no golden or gated corpus deck reads it there.
+pub const LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING_DEFAULT_IMPL as LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING;
+#[cfg(feature = "oracle-parity")]
+pub use LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING_PARITY_IMPL as LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING;
+
+/// Whether a **LineCode**'s `C0=` fails to select the symmetrical-component
+/// model.
+///
+/// `true` reproduces the upstream quirk: `TLineCodeObj.PropertySideEffects`
+/// lists `R1 X1 R0 X0 C1 B1 B0` — every sequence quantity except `C0` — as the
+/// properties that set `SymComponentsModel := TRUE` and clear the matrix
+/// property tracking. The omission is a slip the Pascal source itself flags
+/// with a `-- Missing?` comment. So `New LineCode.x nphases=3 c0=…` alone
+/// leaves the object on the *matrix* model and the value inert, while the same
+/// edit spelled `c1=` switches models.
+///
+/// `false` includes `C0` in that list — the clean fix the upstream comment
+/// itself asks for. The lanes differ only on a LineCode edit whose **only**
+/// sequence property is `C0`; every golden and gated corpus deck that sets
+/// `C0` also sets `R1`/`X1`/`C1`, which already select the model.
+pub const LINECODE_SYM_CLEAR_OMITS_C0_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const LINECODE_SYM_CLEAR_OMITS_C0_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use LINECODE_SYM_CLEAR_OMITS_C0_DEFAULT_IMPL as LINECODE_SYM_CLEAR_OMITS_C0;
+#[cfg(feature = "oracle-parity")]
+pub use LINECODE_SYM_CLEAR_OMITS_C0_PARITY_IMPL as LINECODE_SYM_CLEAR_OMITS_C0;
+
+// The **GICTransformer `G2` off `%R1`** row belongs here by shape but is NOT
+// split: the flip was implemented, gated and reverted in F.3k because it is not
+// gate-invisible. `tests/corpus/asymmetric/gic/gictransformer_gic.dss:18` builds
+// `GICTransformer.tg3 … %R1=0.2 %R2=0.15`, so honouring `%R2` moves that deck's
+// GIC current 4.50e-4 against `capi_v0145` (allowed 1.00e-6) and `gic_midi.dss`'s
+// 1.02e-4 (allowed 1.07e-6). Both gating oracles reproduce the quirk, so the fix
+// costs those two decks' primary physical channel in the default lane — the
+// Newton-row shape (a field-scoped exclusion + a replacement in-engine assertion
+// + a transitive cover), which is a commit of its own. The site keeps its marker
+// and its reproduction pin; see `elements/pd/gic_transformer/solve.rs`.
+
+/// Whether `Export SeqCurrents` prints a non-positive current rating **raw** in
+/// its `%Normal`/`%Emergency` percentage columns.
+///
+/// `true` reproduces the upstream quirk: `ExportResults.pas:409-414` seeds
+/// `iNormal := NormAmps` and only *overwrites* it with `I1/NormAmps*100` when
+/// the rating is `> 0`, so an undefined or negative rating leaks the rating
+/// itself into a column whose header says "percent" (`normamps=-1` prints
+/// `-1`).
+///
+/// `false` prints `0` for an undefined rating — the clean fix named at the
+/// site, and the only value that keeps the column's declared meaning. The lanes
+/// differ only for an element with a non-positive `normamps`/`emergamps`; every
+/// golden and gated corpus deck rates every element positively, which is why
+/// the quirk was marked "unpinnable" at the site until now.
+pub const SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_DEFAULT_IMPL as SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING;
+#[cfg(feature = "oracle-parity")]
+pub use SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_PARITY_IMPL as SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING;

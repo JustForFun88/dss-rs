@@ -65,23 +65,30 @@ pub(crate) fn export_seq_currents(
                 (0.0, 0.0)
             };
 
-            // TODO(compat): a non-positive rating is printed **raw** in the
-            // `%Normal`/`%Emergency` columns — Pascal seeds `iNormal := NormAmps`
-            // and only *overwrites* it with the percentage when the rating is
-            // `> 0` (`ExportResults.pas:409-414`), so e.g. `normamps=-1` prints
-            // `-1` as a "percent". Reproduced verbatim (unpinnable on IEEE13 —
-            // all ratings positive); the clean fix is printing 0 for an
-            // undefined rating.
+            // Stage F `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING`: Pascal seeds
+            // `iNormal := NormAmps` and only *overwrites* it with the
+            // percentage when the rating is `> 0` (`ExportResults.pas:409-414`),
+            // so upstream leaks a non-positive rating into a column whose header
+            // says "percent" (`normamps=-1` prints `-1`). The parity lane
+            // reproduces that; the default lane prints 0 for an undefined
+            // rating.
+            let undefined_rating = |rating: f64| {
+                if crate::compat::SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING {
+                    rating
+                } else {
+                    0.0
+                }
+            };
             let (i_normal, i_emerg) = if do_ratings && j == 1 {
                 let n = if norm_amps > 0.0 {
                     i1 / norm_amps * 100.0
                 } else {
-                    norm_amps
+                    undefined_rating(norm_amps)
                 };
                 let e = if emerg_amps > 0.0 {
                     i1 / emerg_amps * 100.0
                 } else {
-                    emerg_amps
+                    undefined_rating(emerg_amps)
                 };
                 (n, e)
             } else {

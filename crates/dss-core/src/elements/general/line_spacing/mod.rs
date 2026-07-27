@@ -149,12 +149,19 @@ impl LineSpacingObj {
             self.fx[..n].copy_from_slice(&o.fx[..n]);
             self.fy[..n].copy_from_slice(&o.fy[..n]);
             self.units = o.units;
-            // TODO(compat): dss_capi 0.15.x `TLineSpacingObj.MakeLike` does NOT
-            // copy `detailed`/`eqDistPhPh`/`eqDistPhN`/`avgPhaseHeight`/
-            // `avgNeutralHeight` (only NConds/NPhases/FX/FY/Units), so a `like=`
-            // spacing keeps its `Create` defaults for the equivalent-spacing
-            // fields while its PrpSequence (copied by the base) may still mark
-            // them set. Reproduced 1:1; the clean fix copies them post-port.
+            // Stage F `LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING`:
+            // `TLineSpacingObj.MakeLike` copies only NConds/NPhases/FX/FY/Units,
+            // so a `like=` spacing keeps its `Create` defaults for the
+            // equivalent-spacing fields while its PrpSequence (copied by the
+            // base) may still mark them set. The parity lane reproduces that;
+            // the default lane copies them too.
+            if !crate::compat::LINESPACING_MAKELIKE_DROPS_EQUIV_SPACING {
+                self.detailed = o.detailed;
+                self.eq_dist_ph_ph = o.eq_dist_ph_ph;
+                self.eq_dist_ph_n = o.eq_dist_ph_n;
+                self.avg_phase_height = o.avg_phase_height;
+                self.avg_neutral_height = o.avg_neutral_height;
+            }
         }
     }
 }
