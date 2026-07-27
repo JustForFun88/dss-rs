@@ -972,3 +972,54 @@ pub const SYM_MATRIX_GETTER_RENDERS_ZEROS_DEFAULT_IMPL: bool = false;
 pub use SYM_MATRIX_GETTER_RENDERS_ZEROS_DEFAULT_IMPL as SYM_MATRIX_GETTER_RENDERS_ZEROS;
 #[cfg(feature = "oracle-parity")]
 pub use SYM_MATRIX_GETTER_RENDERS_ZEROS_PARITY_IMPL as SYM_MATRIX_GETTER_RENDERS_ZEROS;
+
+/// Whether the CIM `LinearShuntCompensator` writer puts the **delta** branch's
+/// `grounded` flag under the `LinearShuntCompensator.` prefix.
+///
+/// `true` reproduces the upstream quirk: the two arms of one `if` in
+/// `ExportCIMXML.pas` write the same CIM attribute under two different class
+/// prefixes — `BooleanNode(FunPrf, 'ShuntCompensator.grounded', TRUE)` for a
+/// wye bank (`:3700`) and `BooleanNode(FunPrf, 'LinearShuntCompensator.
+/// grounded', FALSE)` for a delta one (`:3706`).
+///
+/// `false` writes `ShuntCompensator.grounded` in both arms — the clean fix its
+/// own *sibling arm* spells out six lines above, and the only one CIM sanctions:
+/// `grounded` is declared on `ShuntCompensator`, and `LinearShuntCompensator` is
+/// a subclass, so an RDF consumer resolving the delta form against the CIM100
+/// schema finds no such property. Only the element **name** moves; the value
+/// (`false`) and the emission order are identical in both lanes.
+pub const CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_DEFAULT_IMPL as CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX;
+#[cfg(feature = "oracle-parity")]
+pub use CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX_PARITY_IMPL as CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX;
+
+/// Whether the CIM `ACLineSegment` writer emits its zero-sequence **shunt
+/// conductance** under the `b0ch` (susceptance) name.
+///
+/// `true` reproduces the upstream quirk: the symmetrical-components branch of
+/// the line writer closes with two `b0ch` nodes in a row —
+/// `DoubleNode(EpPrf, 'ACLineSegment.b0ch', Len * C0 * val)` immediately
+/// followed by `DoubleNode(EpPrf, 'ACLineSegment.b0ch', 0.0)`
+/// (`ExportCIMXML.pas:4366-4367`). The second is the `g0ch` line: the four
+/// preceding nodes are the `bch`/`gch`/`r0`/`x0` set, so the quartet was meant
+/// to be `bch, gch, b0ch, g0ch`, and the duplicate leaves the segment with no
+/// `g0ch` at all and two conflicting `b0ch` values.
+///
+/// `false` names the second node `ACLineSegment.g0ch`. The fix is spelled out
+/// by the sibling writer in the same unit: `PerLengthSequenceImpedance` emits
+/// `bch`/`gch`/`b0ch`/`g0ch` in exactly this order with exactly these values,
+/// and the goldens carry both forms side by side. Only the element **name**
+/// moves — the value stays `0.0` and the emission order is identical in both
+/// lanes.
+pub const CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
+#[cfg(feature = "oracle-parity")]
+pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_PARITY_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;

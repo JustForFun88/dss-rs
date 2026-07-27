@@ -3423,14 +3423,20 @@ pub(crate) fn export_cdpsm(
                 "ShuntCompensator",
                 "D",
             );
-            // TODO(compat): the delta branch emits `grounded` under the
-            // `LinearShuntCompensator.` prefix while the wye branch uses
-            // `ShuntCompensator.` — an upstream inconsistency reproduced verbatim
-            // (`ExportCIMXML.pas:3706` vs `3700`).
+            // Stage F `compat::CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX`:
+            // upstream emits this arm's `grounded` under the
+            // `LinearShuntCompensator.` prefix while the wye arm six lines above
+            // uses `ShuntCompensator.` (`ExportCIMXML.pas:3706` vs `3700`).
+            // Parity keeps the inconsistency; the default lane writes the name
+            // the sibling arm — and the CIM100 schema — spell.
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
-                "LinearShuntCompensator.grounded",
+                if crate::compat::CIM_DELTA_SHUNT_GROUNDED_USES_LINEAR_PREFIX {
+                    "LinearShuntCompensator.grounded"
+                } else {
+                    "ShuntCompensator.grounded"
+                },
                 false,
             );
             writer::double_node(
@@ -4093,10 +4099,22 @@ pub(crate) fn export_cdpsm(
                     "ACLineSegment.b0ch",
                     snap.len * snap.c0 * val,
                 );
-                // TODO(compat): Pascal writes `ACLineSegment.b0ch` a second time,
-                // = 0.0 (`ExportCIMXML.pas:4367`, an upstream typo for `g0ch`);
-                // reproduced verbatim so the golden matches.
-                writer::double_node(&mut buf, ProfileChoice::Ep, "ACLineSegment.b0ch", 0.0);
+                // Stage F `compat::CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH`:
+                // upstream writes `ACLineSegment.b0ch` a second time here
+                // (`ExportCIMXML.pas:4367`) — the `g0ch` of the
+                // `bch`/`gch`/`b0ch`/`g0ch` quartet the four nodes above open.
+                // Parity keeps the duplicate name; the default lane writes the
+                // name the `PerLengthSequenceImpedance` sibling spells.
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    if crate::compat::CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH {
+                        "ACLineSegment.b0ch"
+                    } else {
+                        "ACLineSegment.g0ch"
+                    },
+                    0.0,
+                );
             } else {
                 bval = true;
                 puz_local = format!("{}_PUZ", snap.name);
