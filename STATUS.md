@@ -7,6 +7,79 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3l — three more single-site quirks split; the *first* one is a cursor bug the corpus can never see (branch `depas-stagef`, 2026-07-28)
+
+F.3k opened the single-site sweep with five rows and a measured blocker. This
+continues it on the same membership rule, with three rows whose clean fix a
+**sibling in the very same procedure** spells out. `TODO(compat)` **44 → 40** (the StorageController row carries two reproduction sites);
+both lanes green; no golden, tolerance, ledger or deck touched.
+
+| row | upstream | what says it is a slip | default lane |
+|---|---|---|---|
+| `REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT` | `DoReduceShortLines`' merge-with-parent scan reads exactly ONE parent shunt | the merge-with-**child** branch 40 lines below (`ReduceAlgs.pas:246-258`) spells the same loop with a single cursor | scans them all |
+| `STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL` | `if not FleetState = STORE_IDLING` is `(not FleetState) = 0` — fires only for `STORE_CHARGING` | the branch it guards calls `SetFleetToIdle` + "force a new power flow" | `FleetState <> STORE_IDLING` |
+| `STORAGE_MULTIFILE_USES_THE_PV_PREFIX` | `Export Storage_Meters /m` writes `EXP_PV_<NAME>.csv` | the same command's single-file sibling writes `EXP_STORAGEMeters.csv` | `EXP_STORAGE_` |
+
+**The reduce row is a cross-node cursor mix, and the fix is measured, not
+argued.** `ReduceAlgs.pas:200-210` opens the capacitor scan on
+`ParentNode.FirstShuntObject()` and then advances it with
+`PresentBranch.NextShuntObject()`. The present branch's `TDSSPointerList` cursor
+still sits at its last item from tree construction (`Add` sets
+`ActiveItem := Count`, `DSSPointerList.pas:66`), so the very first `Next`
+overflows and returns `NIL` (`:113-131`): the loop ends after one element and a
+capacitor at parent-shunt position ≥ 2 is merged onto another bus instead of
+blocking the merge. What makes that *reachable* rather than theoretical is the
+shunt list's build order — `build_active_bus_adjacency_lists` fills
+`adj.pc[bus]` from `pc_elements` **first** and only then appends the shunt PD
+elements (already pinned by `exec::tests::solve`'s `adj.pc[b2] == ["ld1",
+"cap1"]`), so a capacitor sharing a bus with *any* load or generator is never
+first. Upstream's one-element scan is therefore blind to precisely the elements
+it was written to find.
+
+`exec::tests::reduce::short_line_parent_shunt_scan_is_lane_split` builds
+`src —lfeed(long)→ b1 —l1(short)→ b2 —l2(short)→ b3` with a load and a capacitor
+at `b2` and asserts the outcome against `compat::ORACLE_PARITY`: the parity lane
+merges `b2` out, the default lane keeps it. Its control puts the same capacitor
+alone at `b2` — first in the list — where **both** lanes refuse the merge, which
+is what makes the row a scan-length difference rather than a changed predicate.
+
+**The StorageController row is an operator-precedence slip on the raw ordinal.**
+Object Pascal binds `not` tighter than `=` and `FleetState` is an `Integer`, so
+`if not FleetState = STORE_IDLING` (`StorageController.pas:1350` "Ran out of
+OOMPH", `:1619` "Fully charged") evaluates `(not FleetState) = 0`, true only for
+`STORE_CHARGING = -1` — the guard fails in exactly the state that reaches those
+branches by discharging. `fleet_idle_guard_is_lane_split` pins the predicate over
+all three fleet states plus the three complement values (`not (-1) = 0`,
+`not 0 = -1`, `not 1 = -2`) that make `Charging` upstream's only firing state.
+
+**Why none of the three moves a gated artifact — checked by the gate, not
+asserted.** Their lanes diverge only on inputs no gated artifact contains: a
+reduced feeder whose parent branch carries a capacitor behind a load; a fleet
+that reaches "out of OOMPH"/"fully charged" while discharging; the `Export
+Storage_Meters /m` file *name*. The 520-case corpus gate and every byte golden
+are unchanged in both builds. The `/m` row's pin was already a Rust-side test
+(`export_storage_multifile_prefix_is_lane_split`, renamed from
+`…_uses_pv_prefix`); it now asserts the lane's name **and** the absence of the
+other lane's name, so the quirk cannot drift in either direction, and it still
+compares the produced rows against the oracle-anchored single-file golden in
+both lanes.
+
+**Scope discipline.** No IV.2 kernel row was added. The escape register is
+unchanged except that F.3k's GIC row keeps its measurement: the **14** truncated
+physical constants (register (a) — flipping them is a physical-input change with
+its own ledger triage), the **7** F-FMT rendering markers (F.4's scope, one of
+which — `export/json/circuit.rs:176`'s `Set CktModel=` `LongBool` — is on
+re-reading a single-site quirk, not a rendering one, and moves to the sweep),
+and `HIDE_015X` ×17. **19** single-site quirk markers remain.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace` and the same with the feature —
+exit 0 in each, including the unconditional 520-case corpus gate. Tests +2 unit
+rows (the reduce lane test and the StorageController lane test), 1 renamed, 0
+removed, 0 new `#[ignore]`. `git diff -- tests/` touches no golden, tolerance,
+ledger or deck; `git status --short tests/corpus` empty after both runs.
+
 ### DE_PASCALIZE Stage F.3k — the single-site upstream-quirk sweep opens: five sites resolved, a sixth measured and blocked (branch `depas-stagef`, 2026-07-28)
 
 F.3's four previous sessions flipped every IV.2 *kernel* row and then stopped,

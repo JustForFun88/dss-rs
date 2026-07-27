@@ -44,7 +44,7 @@
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6, deferred here by name) | [`monitor_base_frequency`] — this file | **yes** (F.3c) |
 //! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5, deferred here as a de-compat decision) | [`POWERS_REUSE_STALE_NEWTON_ITERMINAL`] — this file | **yes** (F.3j) |
 //! | report text rendering | F.4 (`F-FMT`) — `compat::fmt` seam | no |
-//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k…) |
+//! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…) |
 //!
 //! Rows 12–13 are not in IV.2's table and do not extend it: they are the two
 //! *reproduced* CLAUDE.md upstream bugs whose clean fix that document defers
@@ -826,3 +826,87 @@ pub const SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_DEFAULT_IMPL: bool = false;
 pub use SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_DEFAULT_IMPL as SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING;
 #[cfg(feature = "oracle-parity")]
 pub use SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING_PARITY_IMPL as SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING;
+
+/// Whether the short-line **merge-with-parent** reduction inspects only the
+/// parent branch's *first* shunt when looking for a capacitor/reactor.
+///
+/// `true` reproduces the upstream quirk: `DoReduceShortLines`
+/// (`ReduceAlgs.pas:200-210`) opens the scan with `ParentNode.FirstShuntObject()`
+/// but advances it with `PresentBranch.NextShuntObject()` — a cross-node cursor
+/// mix. The present branch's `TDSSPointerList` cursor still sits at its last
+/// item from tree construction (`Add` sets `ActiveItem := Count`,
+/// `DSSPointerList.pas:66`), so the very first `Next` overflows and returns
+/// `NIL` (`:113-131`), ending the loop after one element. A capacitor or
+/// reactor at parent-shunt position ≥ 2 therefore fails to block the merge and
+/// is silently moved to another bus.
+///
+/// `false` scans every parent shunt. That the **merge-with-child** branch of the
+/// same procedure (`:246-258`) spells the identical loop with a single cursor
+/// (`PresentBranch.First…`/`PresentBranch.Next…`) — and that this port already
+/// renders it as an `any()` — is what makes the parent branch a slip rather than
+/// a rule.
+///
+/// The lanes differ only when a parent branch carries ≥ 2 shunts whose *first*
+/// is not a capacitor/reactor while a later one is; no golden and no gated
+/// corpus deck reduces such a topology.
+pub const REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_DEFAULT_IMPL as REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT;
+#[cfg(feature = "oracle-parity")]
+pub use REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT_PARITY_IMPL as REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT;
+
+/// Whether the StorageController's "is the fleet already idling?" test is
+/// written as a **bitwise complement** of the state ordinal.
+///
+/// `true` reproduces the upstream quirk: `TStorageControllerObj` guards both of
+/// its terminal branches with `if not FleetState = STORE_IDLING`
+/// (`StorageController.pas:1350` in the discharge path, `:1619` in the charge
+/// path). In Object Pascal `not` binds tighter than `=`, and `FleetState` is an
+/// `Integer`, so this parses as `(not FleetState) = 0` — a bitwise complement,
+/// true only for `FleetState = -1 = STORE_CHARGING`. The branch it guards
+/// ("Ran out of OOMPH" / "Fully charged") therefore fails to idle the fleet in
+/// exactly the state that reaches it: a fleet that runs out of energy *while
+/// discharging* is left discharging, and only a *charging* fleet is idled.
+///
+/// `false` asks the question the code reads as: `FleetState <> STORE_IDLING`.
+/// That the two sites' own comments (`// force a new power flow solution`) and
+/// the `SetFleetToIdle` call they guard describe an unconditional
+/// idle-unless-already-idle is what makes it a precedence slip rather than a
+/// convention.
+///
+/// The lanes differ only for a fleet that reaches "out of OOMPH"/"fully charged"
+/// in a non-idle, non-charging state; the parity lane keeps it, so every gating
+/// oracle comparison is unchanged there.
+pub const STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_DEFAULT_IMPL as STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL;
+#[cfg(feature = "oracle-parity")]
+pub use STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL_PARITY_IMPL as STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL;
+
+/// Whether `Export Storage_Meters /m` names its per-element files with the
+/// **PVSystem** prefix.
+///
+/// `true` reproduces the upstream quirk: `WriteMultipleStorageMeterFiles`
+/// (`ExportResults.pas:2240`) was cloned from the PVSystem writer and kept its
+/// `'EXP_PV_'` literal, so a Storage fleet's per-element registers land in
+/// `EXP_PV_<NAME>.csv` — colliding with the PVSystem export's own files
+/// whenever both are written into one directory.
+///
+/// `false` uses `EXP_STORAGE_`, which is what the single-file sibling of the
+/// same command already writes (`EXP_STORAGEMeters.csv`) and what the PVSystem
+/// writer's own prefix implies. Only the *file name* moves; the rows are
+/// byte-identical, and the single-file path is untouched in both lanes.
+pub const STORAGE_MULTIFILE_USES_THE_PV_PREFIX_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const STORAGE_MULTIFILE_USES_THE_PV_PREFIX_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use STORAGE_MULTIFILE_USES_THE_PV_PREFIX_DEFAULT_IMPL as STORAGE_MULTIFILE_USES_THE_PV_PREFIX;
+#[cfg(feature = "oracle-parity")]
+pub use STORAGE_MULTIFILE_USES_THE_PV_PREFIX_PARITY_IMPL as STORAGE_MULTIFILE_USES_THE_PV_PREFIX;

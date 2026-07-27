@@ -1080,3 +1080,48 @@ fn storage_ctrl_mode_and_action_pin_pascal_ordinals() {
         assert_eq!(StorageCtrlAction::from_ordinal(code), None);
     }
 }
+
+/// Expected-value pin for the Stage F single-site quirk
+/// [`crate::compat::STORAGE_CONTROLLER_IDLE_TEST_COMPLEMENTS_THE_ORDINAL`].
+///
+/// Both terminal branches of the controller ("Ran out of OOMPH",
+/// `StorageController.pas:1350`; "Fully charged", `:1619`) guard
+/// `SetFleetToIdle` with `if not FleetState = STORE_IDLING`. Object Pascal binds
+/// `not` tighter than `=` and `FleetState` is an `Integer`, so upstream actually
+/// evaluates `(not FleetState) = 0` — true only for `STORE_CHARGING = -1`, i.e.
+/// the guard fires in the one state the branches do NOT reach by discharging.
+/// The parity lane reproduces that; the default lane asks the intended question.
+///
+/// Asserted against `compat::ORACLE_PARITY` so it is load-bearing in both
+/// builds, and exhaustive over the three fleet states so the discriminating one
+/// (`Discharging` — the state a fleet is in when it runs out of energy) cannot
+/// be dropped silently.
+#[test]
+fn fleet_idle_guard_is_lane_split() {
+    let mut sc = StorageController::new("sc1");
+    for (state, parity_fires) in [
+        (StorageState::Charging, true),
+        (StorageState::Idling, false),
+        (StorageState::Discharging, false),
+    ] {
+        sc.fleet_state = state;
+        let want = if crate::compat::ORACLE_PARITY {
+            parity_fires
+        } else {
+            state != StorageState::Idling
+        };
+        assert_eq!(
+            sc.fleet_needs_idling(),
+            want,
+            "fleet state {state:?}: upstream complements the ordinal, the \
+             default lane compares it (lane parity = {})",
+            crate::compat::ORACLE_PARITY
+        );
+    }
+
+    // The bitwise reading is what makes `Charging` the *only* firing state
+    // upstream: `not (-1) = 0`, while `not 1 = -2` and `not 0 = -1`.
+    assert_eq!(!StorageState::Charging.ordinal(), 0);
+    assert_eq!(!StorageState::Idling.ordinal(), -1);
+    assert_eq!(!StorageState::Discharging.ordinal(), -2);
+}

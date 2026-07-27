@@ -22,6 +22,7 @@
 use super::*;
 use crate::circuit::ReductionStrategy;
 use crate::circuit::ckt_tree::CktTree;
+use crate::compat;
 use crate::elements::ckt::ElemFlags;
 use crate::elements::control::control_elem::ControlElemData;
 use crate::report::format::strip_extension;
@@ -644,22 +645,23 @@ impl Dss {
                 return false; // check keeplist
             }
             // Skip if the parent carries a capacitor/reactor shunt.
-            // TODO(compat): the upstream scan (`ReduceAlgs.pas:200-210`)
-            // checks ONLY the parent's FIRST shunt — it opens with
-            // `ParentNode.FirstShuntObject()` but advances with
-            // `PresentBranch.NextShuntObject()`, a cross-node cursor mix; the
-            // present node's `TDSSPointerList` cursor still sits at its LAST
-            // item from tree construction (`Add` sets `ActiveItem := Count`,
-            // `DSSPointerList.pas:66`), so the very first `Next` overflows and
-            // returns NIL (`:113-131`), ending the loop. Deterministic upstream
-            // bug reproduced 1:1: a cap/reactor at parent-shunt position ≥ 2
-            // does NOT block the merge. Clean fix (scan all parent shunts)
-            // lands with the post-acceptance compat sweep.
+            //
+            // Lane split `compat::REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT`:
+            // the parity lane reproduces upstream's cross-node cursor mix
+            // (`ReduceAlgs.pas:200-210` opens on `ParentNode.FirstShuntObject()`
+            // and advances with `PresentBranch.NextShuntObject()`, whose cursor
+            // is already exhausted, so the scan stops after ONE element); the
+            // default lane scans them all, like the merge-with-child branch of
+            // the same procedure does below.
             let parent_shunts = tree.node(parent).shunts.clone();
-            if parent_shunts
-                .first()
-                .is_some_and(|&s| self.red_is_cap_or_reactor(s))
-            {
+            let parent_blocked = if compat::REDUCE_SCANS_ONLY_THE_FIRST_PARENT_SHUNT {
+                parent_shunts
+                    .first()
+                    .is_some_and(|&s| self.red_is_cap_or_reactor(s))
+            } else {
+                parent_shunts.iter().any(|&s| self.red_is_cap_or_reactor(s))
+            };
+            if parent_blocked {
                 return false;
             }
             let line_elem2 = tree.node(parent).elem;
