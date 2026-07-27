@@ -366,6 +366,130 @@ fn cim_lane_divergences_are_pinned() {
     );
 }
 
+/// Compile `deck`, `Export CIM100` into a scratch dir, and return the produced
+/// XML. No UUID fixture: these probes read one boolean node, not bytes.
+fn export_cim100_of(tag: &str, deck: &[&str]) -> String {
+    let scratch = std::env::temp_dir().join(format!("dss_cim_probe_{tag}"));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+
+    let mut dss = Dss::new();
+    for cmd in deck {
+        dss.command(cmd);
+    }
+    dss.command(&format!(
+        "set datapath=\"{}\"",
+        scratch.to_string_lossy().replace('\\', "/")
+    ));
+    dss.command("export cim100");
+    assert!(dss.errors().is_empty(), "{tag}: {:?}", dss.errors());
+
+    let xml = locate_cim100(&scratch, tag);
+    std::fs::remove_dir_all(&scratch).ok();
+    xml
+}
+
+/// The single `<cim:{owner}.grounded>` value in `xml`, as a bool. Asserts there
+/// is exactly one, so a deck that grows a second shunt of the same kind fails
+/// loudly instead of silently reading the wrong one.
+fn only_grounded(xml: &str, owner: &str) -> bool {
+    let open = format!("<cim:{owner}.grounded>");
+    let close = format!("</cim:{owner}.grounded>");
+    let vals: Vec<&str> = xml
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix(open.as_str()))
+        .filter_map(|rest| rest.strip_suffix(close.as_str()))
+        .collect();
+    assert_eq!(
+        vals.len(),
+        1,
+        "expected exactly one {owner}.grounded, got {vals:?}"
+    );
+    match vals[0] {
+        "true" => true,
+        "false" => false,
+        other => panic!("{owner}.grounded is not a boolean: {other:?}"),
+    }
+}
+
+/// The expected-value pin of `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`,
+/// asserted against `compat::ORACLE_PARITY` so it is meaningful in **both**
+/// lanes.
+///
+/// Upstream writes `grounded = TRUE` for every wye capacitor
+/// (`ExportCIMXML.pas:3700`) and every wye load (`:4478`), each under its own
+/// `// TODO - check bus 2`. The default lane checks it, the same way the same
+/// unit's transformer writer already does (`NodeRef[j2] = 0`).
+///
+/// Two decks, so the split is a *neutral* test and not a changed constant:
+///
+/// * the **probe** deck ties both neutrals to real nodes — the capacitor's
+///   second terminal to a live bus, the load's 4th conductor to a grounding
+///   reactor's node — where the lanes must disagree;
+/// * the **control** deck is the same circuit with the default (ground)
+///   neutrals, where both lanes must answer `true`.
+#[test]
+fn cim_wye_grounded_is_lane_split() {
+    let parity = dss_core::compat::ORACLE_PARITY;
+    let build = |circuit: &str, cap: &str, load: &str| -> String {
+        let deck: Vec<String> = [
+            "clear".to_string(),
+            format!("new circuit.{circuit} basekv=4.16 pu=1.0 phases=3 bus1=sourcebus"),
+            "new line.l1 bus1=sourcebus.1.2.3 bus2=b1.1.2.3 r1=0.1 x1=0.3 c1=0 r0=0.2 x0=0.6 \
+             c0=0 length=1 units=kft"
+                .to_string(),
+            "new line.ln bus1=sourcebus.1.2.3 bus2=nb.1.2.3 r1=0.1 x1=0.3 c1=0 r0=0.2 x0=0.6 \
+             c0=0 length=1 units=kft"
+                .to_string(),
+            // Grounds b1.4 through a real impedance, so the load's neutral
+            // conductor gets a live node number instead of node 0.
+            "new reactor.ng phases=1 bus1=b1.4 r=5 x=0".to_string(),
+            cap.to_string(),
+            load.to_string(),
+            "set voltagebases=[4.16]".to_string(),
+            "calcv".to_string(),
+            "solve".to_string(),
+        ]
+        .to_vec();
+        let refs: Vec<&str> = deck.iter().map(String::as_str).collect();
+        export_cim100_of(circuit, &refs)
+    };
+
+    // Probe: capacitor neutral on bus `nb`, load neutral on the reactor's node.
+    let probe = build(
+        "grndprobe",
+        "new capacitor.capfloat bus1=b1.1.2.3 bus2=nb.1.2.3 phases=3 kv=4.16 kvar=600",
+        "new load.ldfloat bus1=b1.1.2.3.4 phases=3 conn=wye kv=4.16 kw=100 kvar=30 model=1",
+    );
+    assert_eq!(
+        only_grounded(&probe, "ShuntCompensator"),
+        parity,
+        "a wye capacitor whose bus2 is a live bus is `grounded` only in the parity lane"
+    );
+    assert_eq!(
+        only_grounded(&probe, "EnergyConsumer"),
+        parity,
+        "a wye load whose neutral is a live node is `grounded` only in the parity lane"
+    );
+
+    // Control: the same circuit with the default (ground) neutrals — both lanes
+    // must still answer `true`, which is what makes the probe a neutral test and
+    // not a flipped constant.
+    let control = build(
+        "grndcontrol",
+        "new capacitor.capgrnd bus1=b1.1.2.3 phases=3 kv=4.16 kvar=600",
+        "new load.ldgrnd bus1=b1.1.2.3 phases=3 conn=wye kv=4.16 kw=100 kvar=30 model=1",
+    );
+    assert!(
+        only_grounded(&control, "ShuntCompensator"),
+        "a wye capacitor with the default ground bus2 is `grounded` in every lane"
+    );
+    assert!(
+        only_grounded(&control, "EnergyConsumer"),
+        "a wye load with the default ground neutral is `grounded` in every lane"
+    );
+}
+
 /// Stage A: writer core + skeleton + EnergySource (Vsource + buscoords only).
 #[test]
 fn cim_src() {

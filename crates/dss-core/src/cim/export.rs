@@ -3329,12 +3329,21 @@ pub(crate) fn export_cdpsm(
             emerg_amps: f64,
             bus_specs: Vec<String>,
             bus_refs: Vec<usize>,
+            /// Terminal-2 node refs — the wye point's actual connection, i.e.
+            /// the "bus 2" `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`'s TODO
+            /// names. Empty before `SetNodeRef`, which reads as grounded.
+            term2_nodes: Vec<usize>,
         }
         let snap = {
             let Some(cap) = classes[r.class_ord()].arena.get::<Capacitor>(r.index()) else {
                 continue;
             };
             CapSnap {
+                term2_nodes: if cap.cd.node_ref.is_empty() || cap.cd.nterms < 2 {
+                    Vec::new()
+                } else {
+                    cap.cd.term_nodes(1).to_vec()
+                },
                 enabled: cap.cd.enabled,
                 nphases: cap.cd.nphases,
                 total_kvar: cap.total_kvar(),
@@ -3402,13 +3411,17 @@ pub(crate) fn export_cdpsm(
                 "ShuntCompensator",
                 "Y",
             );
-            // TODO(compat): Pascal hard-codes `grounded := TRUE` for wye banks
-            // (`3700`, "TODO - check bus 2").
+            // Stage F `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`: upstream
+            // writes `TRUE` unconditionally here (`ExportCIMXML.pas:3700`,
+            // "TODO - check bus 2"). The default lane answers that TODO the way
+            // the same unit's transformer writer does — the wye point is the
+            // second terminal, grounded iff every one of its node refs is 0.
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
                 "ShuntCompensator.grounded",
-                true,
+                crate::compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE
+                    || snap.term2_nodes.iter().all(|&n| n == 0),
             );
             writer::double_node(
                 &mut buf,
@@ -4361,6 +4374,11 @@ pub(crate) fn export_cdpsm(
             yearly: String,
             cvr: String,
             spectrum: String,
+            /// The neutral conductor's node ref — `NodeRef[Nphases]` of the
+            /// load's only terminal, the wye analogue of the transformer
+            /// writer's `j2` (`compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`).
+            /// `0` (ground) before `SetNodeRef`, which reads as grounded.
+            neutral_node: usize,
         }
         let snap = {
             let Some(load) = classes[r.class_ord()].arena.get::<Load>(r.index()) else {
@@ -4372,6 +4390,15 @@ pub(crate) fn export_cdpsm(
                 o.map(|s| s.data().name().to_string()).unwrap_or_default()
             };
             LoadSnap {
+                neutral_node: if load.cd.node_ref.is_empty() {
+                    0
+                } else {
+                    load.cd
+                        .term_nodes(0)
+                        .get(load.cd.nphases)
+                        .copied()
+                        .unwrap_or(0)
+                },
                 enabled: load.cd.enabled,
                 load_model: load.load_model,
                 kw_base: load.kw_base,
@@ -4457,13 +4484,16 @@ pub(crate) fn export_cdpsm(
         );
         if snap.connection == Connection::Wye {
             writer::shunt_connection_kind_node(&mut buf, ProfileChoice::Fun, "EnergyConsumer", "Y");
-            // TODO(compat): Pascal hard-codes `grounded := TRUE` for wye loads
-            // (`4478`, "TODO - check bus 2").
+            // Stage F `compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE`: upstream
+            // writes `TRUE` unconditionally here (`ExportCIMXML.pas:4478`,
+            // "TODO - check bus 2"). A Load has one terminal, so its wye point
+            // is that terminal's `Nphases+1`-th conductor — the transformer
+            // writer's `NodeRef[j2] = 0` test, applied to the load's neutral.
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
                 "EnergyConsumer.grounded",
-                true,
+                crate::compat::CIM_WYE_GROUNDED_IS_HARDCODED_TRUE || snap.neutral_node == 0,
             );
         } else {
             writer::shunt_connection_kind_node(&mut buf, ProfileChoice::Fun, "EnergyConsumer", "D");
