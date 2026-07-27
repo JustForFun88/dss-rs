@@ -55,7 +55,7 @@
 //! rendering-only difference must pass in the default lane and FAIL in the
 //! parity lane, in whichever lane the suite is running.
 
-use super::{ExportPolicy, RowPolicy, compare_export};
+use super::{ElemChannels, ExportPolicy, RowPolicy, compare_export};
 
 /// `true` in the parity build (`--features dss-core/oracle-parity`), `false` in
 /// the default build.
@@ -83,6 +83,47 @@ pub const PARITY: bool = cfg!(feature = "oracle-parity");
 ///
 /// The parity lane ignores this constant entirely — it stays exact forever.
 pub const ITER_SLACK: i32 = 1;
+
+/// The corpus cases whose element `Powers`/`Losses` the **default** lane does
+/// not oracle-compare — the drift model's "deliberate divergences … excluded
+/// field-by-field" row, and the only such exclusion in the suite.
+///
+/// `compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL` (CLAUDE.md upstream bug 5):
+/// `DoNewtonSolution` leaves `Iterminal` stamped from the pre-final voltage
+/// guess, so upstream's cache-aware `Get_Powers`/`Get_Losses` report a
+/// one-step-stale current after `Set algorithm=Newton` while `Currents`
+/// recomputes fresh. The parity lane reproduces that and still compares both
+/// channels against **both** gating oracles; the default lane recomputes all
+/// three reads at the converged `NodeV`, which is deliberately *not* what any
+/// oracle reports (measured: 4.86e-4 kVA on `newton.dss`, 2.46e-3 kVA on
+/// `newton_feeder.dss`, both on `Vsource.source` conductor 0 — ~60× and ~35×
+/// their tiers' floors, so this can never be mistaken for drift).
+///
+/// These are the only two gated decks that run a Newton solve, and the quirk is
+/// unobservable after every other algorithm (the cache is invalid at read time,
+/// so both lanes recompute the same current).
+///
+/// **What still gates them in the default lane**: the element name set, terminal
+/// **currents**, node voltages, the system Y, discrete state, and the iteration
+/// count — everything except the two `S = V·conj(I)` channels. Those are pinned
+/// by `dss_core::exec::tests::newton::newton_powers_are_the_lane_kernel`, which
+/// asserts the default lane's Newton powers equal the *normal* algorithm's on
+/// the same deck to 1e-8 kVA (the parity lane's differ by ≥ 1e-1 kVA) — and the
+/// normal algorithm's powers are oracle-gated on ~500 other corpus cases, which
+/// closes the loop transitively.
+const LANE_SKIP_ELEM_POWERS: &[&str] =
+    &["modes:newton/newton.dss", "modes:newton/newton_feeder.dss"];
+
+/// Which element sub-channels the current lane oracle-compares for the corpus
+/// case `label` — [`ElemChannels::ALL`] everywhere except
+/// [`LANE_SKIP_ELEM_POWERS`] in the default lane.
+pub fn elem_channels_for(label: &str) -> ElemChannels {
+    if !PARITY && LANE_SKIP_ELEM_POWERS.contains(&label) {
+        ElemChannels::CURRENTS_ONLY
+    } else {
+        ElemChannels::ALL
+    }
+}
 
 /// Byte-exact line comparison (only CRLF→LF normalized), with a per-line
 /// failure message pointing at the first divergence.
@@ -213,8 +254,9 @@ pub fn compare_iterations_le(rust: i32, oracle: i32, ctx: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        ITER_SLACK, PARITY, assert_bytes_eq, compare_iterations, compare_iterations_le,
-        compare_report, exact_value_policy,
+        ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, PARITY, assert_bytes_eq,
+        compare_iterations, compare_iterations_le, compare_report, elem_channels_for,
+        exact_value_policy,
     };
 
     /// Run `f`, returning `true` when it passed. Silences the panic hook so a
@@ -239,6 +281,41 @@ mod tests {
             dss_core::compat::ORACLE_PARITY,
             "the test crate and the engine disagree about the lane"
         );
+    }
+
+    /// The one element-channel exclusion: the `newton*` decks' `Powers`/
+    /// `Losses` are dropped in the default lane only, their **currents** are
+    /// kept in both, and no other case is touched. Asserted as an equality
+    /// against the lane so the test is meaningful in both.
+    #[test]
+    fn newton_powers_are_the_only_element_channel_exclusion() {
+        for label in LANE_SKIP_ELEM_POWERS {
+            let ch = elem_channels_for(label);
+            assert!(ch.currents, "{label}: currents stay gated in every lane");
+            assert_eq!(
+                ch,
+                if PARITY {
+                    ElemChannels::ALL
+                } else {
+                    ElemChannels::CURRENTS_ONLY
+                },
+                "{label}: powers/losses are excluded in the default lane only"
+            );
+        }
+        // Nothing else is excluded — including a label that merely *contains* an
+        // excluded one (the match is exact, not a substring).
+        for label in [
+            "modes:newton/newton.dss step 0",
+            "modes:newton/newton_other.dss",
+            "modes:harmonics/harm.dss",
+            "solvable_now:IEEE13Nodeckt.dss",
+        ] {
+            assert_eq!(
+                elem_channels_for(label),
+                ElemChannels::ALL,
+                "{label} must stay fully gated in both lanes"
+            );
+        }
     }
 
     /// A **rendering-only** difference (same value, different glyphs) is the

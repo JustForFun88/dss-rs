@@ -27,6 +27,7 @@ mod live_ctx;
 mod make_pos_seq;
 mod monitors;
 mod ncim;
+mod newton;
 mod open_close;
 mod options_timing;
 mod pvsystem;

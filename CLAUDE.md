@@ -62,20 +62,27 @@ Six proven dss_capi/OpenDSS engine bugs. The first five each have a full deep-di
 report in the (gitignored, local-only) `investigations/` folder — check there
 before chasing a divergence in those areas. The sixth (Monitor BaseFrequency) is a
 plain hardcoded-constant bug with a single fully-traced consumer, so it is
-documented inline (`TODO(compat)` + pin) rather than in a separate report. Rule:
-a *deterministic, defined* upstream bug is reproduced 1:1 (`TODO(compat)` +
-golden); UB or state-mutating-read bugs are NOT reproduced — document and gate
-around them.
+documented inline (a `compat` row + pin) rather than in a separate report. Rule:
+a *deterministic, defined* upstream bug is reproduced 1:1; UB or
+state-mutating-read bugs are NOT reproduced — document and gate around them.
+Since DE_PASCALIZE Stage F all four that *are* reproduced carry a `compat` lane
+row: the parity lane reproduces them (oracle-compared as before), the default
+lane takes the clean fix, pinned by its own expected-value test.
 
 - **Export SeqCurrents `Iresidual`** — every terminal row prints *terminal 1*'s
-  residual (missing `(j-1)*Ncond` offset). Reproduced (`TODO(compat)` in
-  `report/export/seq_currents.rs`).
+  residual (missing `(j-1)*Ncond` offset). **Lane-split** since Stage F.3c
+  (`compat::IRESIDUAL_FROM_TERMINAL_1` in `report/export/seq_currents.rs`):
+  parity reproduces it (the goldens pin it), the default lane sums the row's own
+  terminal.
 - **Multi-meter `Bus_Int_Duration`** — the `CalcReliabilityIndices` duration loop
   walks ALL circuit buses, indexing foreign section ids into this meter's
-  `FeederSections`. In-range id → deterministic cross-zone overwrite, reproduced
-  (`TODO(compat)` in `solution/meters/reliability.rs`, golden
+  `FeederSections`. In-range id → deterministic cross-zone overwrite,
+  **lane-split** since Stage F.3c
+  (`compat::BUS_INT_DURATION_WALKS_ALL_BUSES` in
+  `solution/meters/reliability.rs`; parity keeps the overwrite, golden
   `export_busreliability_multimeter`); out-of-range id → OOB heap read, proven
-  nondeterministic, not reproduced (safe `.get()` skip; nothing to pin).
+  nondeterministic, not reproduced in either lane (safe `.get()` skip; nothing
+  to pin).
 - **VSConverter `GetCurrents`** — self-aliased `MVMult` over `ComplexBuffer`:
   reported currents violate KCL and every read mutates state (can poison the next
   solve). Not reproduced — the port computes physically-correct currents, gated
@@ -88,9 +95,16 @@ around them.
   `DoNewtonSolution` stamps `Iterminal` at `NodeV_{n-1}` then does `NodeV -= dV`,
   so `Get_Powers`/`Get_Losses` (cache-aware) return a one-Newton-step-stale
   current while `Currents` recompute fresh (`S ≠ V·conj(I)`). Deterministic,
-  defined, not state-poisoning → reproduced (`TODO(compat)` in
-  `exec/view.rs::snapshot_elements`); it is the only channel distinguishing
-  Newton from the normal fixed-point on the `newton*` gates.
+  defined, not state-poisoning → **lane-split** since DE_PASCALIZE Stage F.3j
+  (`compat::POWERS_REUSE_STALE_NEWTON_ITERMINAL`, applied in
+  `exec/view.rs::snapshot_elements`): the parity lane reproduces it and stays
+  oracle-compared, the default lane recomputes all three reads at the converged
+  `NodeV`. It was the only channel distinguishing Newton from the normal
+  fixed-point on the `newton*` gates, so the default lane excludes those two
+  decks' powers/losses (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`) and
+  replaces the signal with the in-engine dispatch tripwire
+  `exec::tests::newton::newton_dispatch_leaves_a_valid_but_stale_iterminal_cache`
+  (plus the expected-value pin `newton_powers_are_the_lane_kernel`).
 - **Monitor `BaseFrequency` 60.0** — `TMonitorObj.Create` hard-pins
   `Basefrequency := 60.0` (Monitor.pas:472 == r4133:552), overriding the base-class
   `BaseFrequency := ActiveCircuit.Fundamental` (CktElement.pas:233) that every other

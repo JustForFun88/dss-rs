@@ -7,6 +7,99 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3j — the **Newton stale-`Iterminal`** row is flipped: the CLAUDE.md named-bug set is now closed 4/4 (branch `depas-stagef`, 2026-07-28)
+
+F.3c flipped three of the four *reproduced* CLAUDE.md upstream bugs and left the
+fourth — bug 5, the post-Newton `Powers`/`Losses` staleness — in the escape
+register. That was the only asymmetry left in the sanctioned inventory (the
+brief's "upstream-bug clean fixes that plan text or CLAUDE.md explicitly defers
+to Stage F"), and the site's own comment named the resolution shape years ago:
+"Eliminating it is a de-compat DECISION… path (b): convert the `newton*`
+Powers/Losses compare to a documented live-gate exclusion plus the replacement
+Newton assertion." Done, measured, in both lanes. `TODO(compat)` **50 → 49**.
+
+**The quirk, re-verified in-tree.** `DoNewtonSolution`'s per-iteration
+`SumAllCurrents` calls `compute_iterminal` and so stamps every element's
+`Iterminal` for the live `SolutionCount` — from the *pre-final* guess
+`NodeV_{n-1}`, because `solve_system_newton_step`'s `NodeV -= dV` follows it. The
+cache-aware `Get_Powers`/`Get_Losses` then read that stale current while
+`Currents` recomputes fresh, i.e. upstream reports `S ≠ V·conj(I)` for the same
+element in the same read.
+
+**Both sides measured on `modes/newton/newton.dss`** (Newton vs the normal
+algorithm on the same deck — same voltages to 7.6e-12 V, same 2 iterations, and
+the normal solve leaves *no* valid cache, so its powers are fresh by
+construction):
+
+| quantity | parity lane | default lane |
+|---|---|---|
+| worst per-conductor \|ΔS\| | **5.283e-1 kVA** (`Vsource.source`) | 3.256e-11 kVA |
+| worst \|Δlosses\| | **6.248e2 W** | 3.329e-8 W |
+| worst \|ΔI\| (control) | 4.547e-12 A | 4.547e-12 A |
+
+Ten orders apart, and the currents row is the control that makes it a *bug*
+rather than a convention: `Currents` was always fresh, in both lanes.
+
+**Against the oracle**, the default lane's fix reads 4.86e-4 kVA off
+`capi_v0145` on `newton.dss` and 2.46e-3 kVA on `newton_feeder.dss` (both
+`Vsource.source` conductor 0) — ~63× and ~35× their tiers' floors, i.e. loud, not
+drift. Those two decks' **powers/losses only** are therefore excluded in the
+**default lane only** (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS` →
+`ElemChannels`, consumed by `corpus_gate::runner`); the parity lane still
+compares both channels against both gating oracles, and in *both* lanes the
+element name set, terminal currents, node voltages, system Y, discrete state and
+iteration count of those cases stay fully gated. No tolerance moved anywhere.
+The exclusion is *value-only* by construction: `compare_element_channels`
+asserts the element's presence **and** its conductor counts under every channel
+policy, so dropping a value channel can never excuse a missing element or a
+shape mismatch.
+
+**The replacement dispatch signal is stronger than the one given up.** Newton and
+the normal fixed point agree on voltages and iteration count on these decks, so
+the staleness was the ONLY channel there that would notice `algorithm=Newton`
+silently falling back to `DoNormalSolution` — an inference from a reported power.
+`exec::tests::newton::newton_dispatch_leaves_a_valid_but_stale_iterminal_cache`
+asserts the property at its source instead, in **both** lanes: after a Newton
+solve `Line.l1`'s `Iterminal` is *marked solved for the live `SolutionCount`* and
+sits 7.378e-2 A off a recompute at the converged `NodeV`; after a normal solve it
+is not marked at all (measured: the normal run's cache is a full 82.8 A off,
+i.e. never stamped — which is also why no other algorithm can exhibit the quirk).
+That is a direct assertion that `DoNewtonSolution` ran.
+
+**Transitive cover for the excluded channel.**
+`newton_powers_are_the_lane_kernel` pins the default lane's Newton powers to the
+*normal* algorithm's on the same deck at 1e-8 kVA, and the normal algorithm's
+powers are oracle-gated on ~500 other corpus cases — so the excluded channel is
+still bounded by the gate, one step removed.
+
+**Scope discipline.** No IV.2 table row was invented: this is the second
+CLAUDE.md-deferred named bug (after Monitor `BaseFrequency` in F.3c), recorded in
+`compat.rs`'s inventory exactly the way F.3c recorded that one. With it the
+named-bug set is closed: two of the six were never reproduced (VSConverter,
+harmonics `Powers`-after-`Currents`) — as is the OOB half of `Bus_Int_Duration` —
+and all four that are reproduced now carry the parity/default split. CLAUDE.md's
+bug list was corrected accordingly (its `Iresidual` and `Bus_Int_Duration`
+bullets still pointed at `TODO(compat)` markers F.3c had already removed).
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace` and the same with the feature —
+**2257 passed / 0 failed / 5 ignored in each**, including the unconditional
+520-case corpus gate. Tests +20 (2237 → 2257: 2 new engine tests + the one new
+`harness::lane` test, which compiles into each of the 18 integration binaries),
+0 removed, 0 new `#[ignore]`. `git diff -- tests/` touches no golden, tolerance,
+ledger or deck (only `tests/harness` + `tests/corpus_gate` code);
+`git status --short tests/corpus` empty after both runs — the known intermittent
+`Test/AutoTrans/{Auto1bus_HT_current,AutoAuto_HL_current}.txt` leak deleted by
+exact name. Non-vacuity of the new exclusion is measured, not assumed: with the
+flip in and the exclusion out, both `newton*` cases FAIL the default-lane gate
+(4.86e-4 > 7.75e-6 allowed; 2.46e-3 > 7.04e-5).
+
+**Still escaped, unchanged from F.3i**: the 7 F-FMT markers (F.4's scope), the 14
+truncated physical constants, the 28 remaining single-site upstream quirks (each
+needing a 12th table row the executor may not open), and `HIDE_015X` ×17. `rg
+"TODO\(compat\)" crates` = **49**.
+
 ### DE_PASCALIZE Stage F.3i — IV.2 **row 2** (dense inverse) is settled: *no split*, with the amplification decomposed to its root (branch `depas-stagef`, 2026-07-27)
 
 F.3f left the row blocked with a recommendation: "re-attempt with a faer-backed

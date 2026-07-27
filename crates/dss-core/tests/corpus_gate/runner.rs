@@ -16,9 +16,9 @@ use serde_json::json;
 use crate::engines::{CaseResult, Channel, Oracle};
 use crate::harness::{
     self, ExportPolicy, RowPolicy, Tolerances, compare_all_properties, compare_ctrlqueue,
-    compare_discrete, compare_element, compare_eventlog, compare_export, compare_fingerprint,
-    compare_injection, compare_meter, compare_monitor, compare_probe, compare_system_y,
-    compare_variables, compare_yprim, tol_for,
+    compare_discrete, compare_element_channels, compare_eventlog, compare_export,
+    compare_fingerprint, compare_injection, compare_meter, compare_monitor, compare_probe,
+    compare_system_y, compare_variables, compare_yprim, lane, tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -478,10 +478,15 @@ pub(crate) fn compare_capture(
         let el_rewrites = ledger
             .map(|v| v.element_rewrites(i, &snaps, &cp.elements, tol, &ctx))
             .unwrap_or_default();
+        // The Stage F lane policy drops the two `S = V·conj(I)` sub-channels on
+        // the `newton*` decks in the DEFAULT lane only (a deliberate divergence,
+        // pinned by its own expected-value test) — every other case and the whole
+        // parity lane get `ElemChannels::ALL`. See `harness::lane`.
+        let channels = lane::elem_channels_for(label);
         for ec in &cp.elements {
             match el_rewrites.get(&ec.name.to_lowercase()) {
-                Some(rw) => compare_element(&snaps, rw, tol, &ctx),
-                None => compare_element(&snaps, ec, tol, &ctx),
+                Some(rw) => compare_element_channels(&snaps, rw, tol, &ctx, channels),
+                None => compare_element_channels(&snaps, ec, tol, &ctx, channels),
             }
         }
 
