@@ -7,6 +7,64 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3o — the two CIM `grounded := TRUE` TODOs answered by the writer in the same unit that already answers them (branch `depas-stagef`, 2026-07-28)
+
+The remaining pair of `cim/export.rs` markers, and the one row in this sweep
+where upstream did not merely slip: it *wrote the open question down* and shipped
+the placeholder. `TODO(compat)` **36 → 34**, and `cim/export.rs` reaches **0**;
+both lanes green; no golden, tolerance, ledger or deck touched.
+
+| row | upstream | what says it is a slip | default lane |
+|---|---|---|---|
+| `CIM_WYE_GROUNDED_IS_HARDCODED_TRUE` (2 sites) | `BooleanNode('ShuntCompensator.grounded', TRUE)` (`ExportCIMXML.pas:3700`) and `BooleanNode('EnergyConsumer.grounded', TRUE)` (`:4478`), each carrying `// TODO - check bus 2` | `XfmrTankPhasesAndGround` in the **same unit** (`:1531-1570`) already decides `TransformerEnd.grounded` from `NodeRef[j2] = 0`, "last conductor is grounded solidly" | the neutral-side node refs |
+
+**The fix is not an invented semantic — it is the sibling's, applied to where
+each class keeps its neutral.** The transformer writer's test is "the winding
+terminal's last conductor is node 0". The two shunt classes put that conductor in
+different places, and the DSS data model says exactly where:
+
+* a **Capacitor** is a two-terminal element (`Nterms = 2`, `Nconds = Nphases`)
+  whose wye point *is* its second terminal — literally the "bus 2" the TODO
+  names — defaulting to `.0.0.0`. Default lane: grounded ⟺ every terminal-2 node
+  ref is 0.
+* a **Load** has one terminal, and `SetNcondsForConnection` gives a wye
+  connection `Nconds = Nphases + 1`, so its neutral is that terminal's
+  `Nphases+1`-th conductor — the same index the transformer calls `j2`. Default
+  lane: grounded ⟺ that node ref is 0.
+
+Both reads reuse the in-tree idiom the transformer port already established
+(`cim/power_xfmr.rs`, including its documented pre-solve case): before
+`SetNodeRef` has run, `node_ref` is empty and both lanes answer `true`, so an
+export issued before any solve is unchanged.
+
+**No golden moves, and that is measured rather than assumed.** No CIM golden deck
+and no gated corpus deck contains a wye capacitor with an explicit `bus2=` or a
+wye load with a non-ground neutral node, so all 15 CIM goldens stay byte-identical
+in both lanes — `F.3n`'s expected-value transform gained no third entry. The
+divergence is therefore pinned by a deck built for it,
+`cim_wye_grounded_is_lane_split`, which is a **neutral test, not a flipped
+constant**: a *probe* circuit ties the capacitor's second terminal to a live bus
+and the load's 4th conductor to a grounding reactor's node (both lanes must
+disagree, asserted as equality against `compat::ORACLE_PARITY`), and a *control*
+circuit is the same feeder with the default ground neutrals (both lanes must
+still answer `true`). Its `only_grounded` reader asserts the deck yields exactly
+one node of each kind, so a future edit that adds a second shunt fails loudly
+instead of reading the wrong one.
+
+**Scope discipline.** One `compat` row for two reproduction sites (the
+StorageController precedent of F.3l), entered under the *Single-site upstream
+quirks* membership rule. Escape register unchanged: the **14** truncated physical
+constants, the **7** F-FMT rendering markers, `HIDE_015X` ×17; the single-site
+quirk census drops **15 → 13**, and 14 + 7 + 13 = the 34 remaining markers.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy --workspace
+--all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate. Tests +1
+(`cim_wye_grounded_is_lane_split`), 0 removed, 0 new `#[ignore]`. `git diff --
+tests/` touches no golden, tolerance, ledger or deck; `git status --short
+tests/corpus` empty after both runs.
+
 ### DE_PASCALIZE Stage F.3n — the CIM writer's two element-name slips split, with the oracle goldens kept as the source of truth (branch `depas-stagef`, 2026-07-28)
 
 Two `cim/export.rs` markers, both pure **element-name** mistakes whose correct

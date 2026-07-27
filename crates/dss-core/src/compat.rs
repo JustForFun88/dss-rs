@@ -1023,3 +1023,47 @@ pub const CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL: bool = false;
 pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_DEFAULT_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
 #[cfg(feature = "oracle-parity")]
 pub use CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH_PARITY_IMPL as CIM_ACLINESEGMENT_G0CH_WRITTEN_AS_B0CH;
+
+/// Whether the CIM shunt-connection writers hard-code `grounded = TRUE` for a
+/// **wye** capacitor or load instead of reading the connection's neutral.
+///
+/// `true` reproduces the upstream quirk. `BooleanNode(FunPrf,
+/// 'ShuntCompensator.grounded', TRUE)` (`ExportCIMXML.pas:3700`) and
+/// `BooleanNode(FunPrf, 'EnergyConsumer.grounded', TRUE)` (`:4478`) are both
+/// written unconditionally, and both carry upstream's own `// TODO - check
+/// bus 2`. Every wye bank and every wye load therefore exports as solidly
+/// grounded — including one whose neutral is tied to a real node rather than to
+/// ground.
+///
+/// `false` answers the question that TODO asks, the way the **same unit's**
+/// transformer writer already answers it: `XfmrTankPhasesAndGround`
+/// (`:1531-1570`, ported at `cim/power_xfmr.rs`) writes `grounded = true` for a
+/// wye winding exactly when `NodeRef[j2] = 0` — "last conductor is grounded
+/// solidly". Applied to the two shunt classes, whose neutral side the DSS data
+/// model puts in different places:
+///
+/// * a **Capacitor** is a two-terminal element (`Nterms = 2`,
+///   `Nconds = Nphases`) whose wye point *is* its second terminal — literally
+///   the "bus 2" the TODO names — defaulting to `.0.0.0`;
+/// * a **Load** has one terminal, and `SetNcondsForConnection` gives a wye
+///   connection `Nconds = Nphases + 1`, so its neutral is that terminal's
+///   `Nphases+1`-th conductor.
+///
+/// so the default lane writes `grounded` = "every neutral-side node ref is
+/// ground". Pre-`SetNodeRef` (an export issued before any solve) `node_ref` is
+/// empty and both lanes answer `true`, which is what the transformer sibling
+/// already does with the same data.
+///
+/// No golden and no gated corpus deck contains a wye capacitor with an explicit
+/// `bus2=`, nor a wye load with a non-ground neutral node, so every CIM golden
+/// is byte-identical in both lanes; the divergence is pinned by
+/// `golden_cim::cim_wye_grounded_is_lane_split`, which exports a deck that has
+/// both.
+pub const CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_DEFAULT_IMPL as CIM_WYE_GROUNDED_IS_HARDCODED_TRUE;
+#[cfg(feature = "oracle-parity")]
+pub use CIM_WYE_GROUNDED_IS_HARDCODED_TRUE_PARITY_IMPL as CIM_WYE_GROUNDED_IS_HARDCODED_TRUE;
