@@ -313,9 +313,15 @@ impl CMatrix {
     /// reduced matrix; `None` when the order is 1 or `elim` is out of range
     /// (Pascal returned `NIL`).
     ///
-    /// TODO(compat): like the Pascal code, a zero pivot is not checked and
-    /// produces non-finite entries; make it an error once the 1:1 port is
-    /// complete.
+    /// A zero pivot is **not** guarded: the elimination divides by
+    /// `A[elim, elim]`, so an exactly-zero pivot yields IEEE non-finite entries
+    /// — defined behavior, identical in both lanes and to upstream, and the same
+    /// contract as every other unguarded division in the engine. This is not a
+    /// Stage F compat item (nothing inexact is being reproduced), and the guard
+    /// an earlier marker asked for cannot be expressed here: `None` already
+    /// means "order 1 / index out of range", so a numeric singularity would be
+    /// indistinguishable from a shape error. A typed, diagnosable failure
+    /// belongs to the P5/miette rung, not to the kernel split.
     pub fn kron(&self, elim: usize) -> Option<CMatrix> {
         if self.n <= 1 || elim >= self.n {
             return None;
