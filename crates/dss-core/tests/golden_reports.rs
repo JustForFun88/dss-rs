@@ -3577,15 +3577,31 @@ fn export_meters_append_accumulates() {
     });
 }
 
-/// The Storage `/m` path reproduces an **upstream copy-paste bug** — its per-file
-/// prefix is `EXP_PV_`, not `EXP_STORAGE_` (`ExportResults.pas:2240`,
-/// compat-tagged). Pin that exact filename (and the transitively-oracle-anchored
-/// row) so the deliberately-faithful quirk cannot silently drift to `EXP_STORAGE_`.
+/// The Storage `/m` per-element file name is the Stage F single-site quirk
+/// `compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX`.
+///
+/// `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`) was cloned from
+/// the PVSystem writer and kept its `'EXP_PV_'` literal, so upstream writes a
+/// Storage fleet's registers into `EXP_PV_<NAME>.csv` — colliding with the
+/// PVSystem export's own files in the same directory. The parity lane
+/// reproduces it; the default lane uses `EXP_STORAGE_`, the prefix the
+/// single-file sibling of the very same command (`EXP_STORAGEMeters.csv`)
+/// already implies.
+///
+/// Asserted against `compat::ORACLE_PARITY` so both builds pin a name, and the
+/// *other* name is asserted absent in each — the quirk cannot silently drift in
+/// either direction. The rows are compared against the oracle-anchored
+/// single-file golden in both lanes: only the file name is lane-split.
 #[test]
-fn export_storage_multifile_uses_pv_prefix() {
+fn export_storage_multifile_prefix_is_lane_split() {
     let single = {
         let p = reports_dir().join("export_storage_meters.txt");
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+    let (expected, forbidden) = if dss_core::compat::ORACLE_PARITY {
+        ("EXP_PV_ST1.csv", "EXP_STORAGE_ST1.csv")
+    } else {
+        ("EXP_STORAGE_ST1.csv", "EXP_PV_ST1.csv")
     };
     with_register_fixture(
         "export_storage_meters",
@@ -3595,18 +3611,18 @@ fn export_storage_multifile_uses_pv_prefix() {
             assert!(dss.errors().is_empty(), "{:?}", dss.errors());
             assert_eq!(dss.last_result_file(), "/m");
 
-            // The copy-paste-bug prefix: EXP_PV_<NAME>.csv, NOT EXP_STORAGE_.
-            let pv = scratch.join("EXP_PV_ST1.csv");
+            let want = scratch.join(expected);
             assert!(
-                pv.is_file(),
-                "storage /m must write EXP_PV_ST1.csv (the EXP_PV_ prefix bug)"
+                want.is_file(),
+                "storage /m must write {expected} in this lane (parity = {})",
+                dss_core::compat::ORACLE_PARITY
             );
             assert!(
-                !scratch.join("EXP_STORAGE_ST1.csv").exists(),
-                "storage /m must NOT use an EXP_STORAGE_ prefix"
+                !scratch.join(forbidden).exists(),
+                "storage /m must NOT also write {forbidden}"
             );
-            let multi = std::fs::read_to_string(&pv)
-                .unwrap_or_else(|e| panic!("read {}: {e}", pv.display()));
+            let multi = std::fs::read_to_string(&want)
+                .unwrap_or_else(|e| panic!("read {}: {e}", want.display()));
             compare_export(
                 &single,
                 &multi,

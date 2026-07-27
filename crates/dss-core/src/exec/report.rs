@@ -9,6 +9,7 @@
 //! stubs; the real per-report formatters land in WP8.2–8.5.
 
 use super::*;
+use crate::compat;
 use crate::report::EXPORT_OPTIONS;
 
 /// Which register-dump export is running (Pascal `ExportMeters`/`ExportGenMeters`/
@@ -1233,12 +1234,18 @@ impl Dss {
                         })
                     })
                     .collect();
-                // TODO(compat): the Storage multi-file prefix is `EXP_PV_`, not
-                // `EXP_STORAGE_` — an upstream copy-paste bug in
-                // `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`,
-                // cloned from the PVSystem writer). Reproduced for the `/m` path;
-                // clean fix = `EXP_STORAGE_` in the post-1:1 pass.
-                ("Storage", "EXP_STORAGEMeters.csv", "EXP_PV_", names, rows)
+                // Lane split `compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX`:
+                // `WriteMultipleStorageMeterFiles` (`ExportResults.pas:2240`)
+                // was cloned from the PVSystem writer and kept its `EXP_PV_`
+                // literal, so upstream's per-element Storage files collide with
+                // the PVSystem export's. Parity keeps it; the default lane uses
+                // the prefix the single-file sibling already implies.
+                let prefix = if compat::STORAGE_MULTIFILE_USES_THE_PV_PREFIX {
+                    "EXP_PV_"
+                } else {
+                    "EXP_STORAGE_"
+                };
+                ("Storage", "EXP_STORAGEMeters.csv", prefix, names, rows)
             }
         }
     }
