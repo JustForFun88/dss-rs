@@ -11,6 +11,7 @@ mod common;
 mod allocation;
 mod autoadd;
 mod base_frequency;
+mod compat_quirks;
 mod controls;
 mod distribute_uuids;
 mod dynamics;

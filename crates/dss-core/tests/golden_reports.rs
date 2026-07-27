@@ -6038,3 +6038,86 @@ fn query_indmach012_pf_empty_after_solve() {
     dss.command("? indmach012.m1.pf");
     assert_eq!(dss.result(), "");
 }
+
+/// The Stage F `SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING` row, pinned by
+/// expected value in both lanes.
+///
+/// `ExportResults.pas:409-414` seeds `iNormal := NormAmps` and only
+/// *overwrites* it with `I1/NormAmps*100` when the rating is `> 0`, so upstream
+/// leaks a non-positive rating straight into a column whose header says
+/// "percent": `normamps=-1` prints `-1`, `normamps=0` prints `0`. **Parity
+/// lane**: the raw rating. **Default lane**: `0` — an undefined rating is not a
+/// percentage.
+///
+/// The site was marked "unpinnable" for the whole port because every element on
+/// IEEE13 is rated positively; this deck rates one line negatively on purpose,
+/// which is why no committed golden and no gated corpus case moves with the
+/// flip. The positively-rated control line in the same deck proves the normal
+/// path is untouched in both lanes.
+#[test]
+fn export_seqcurrents_nonpositive_rating_is_the_lane_kernel() {
+    let scratch = scratch_dir("seqcurrents_rating_lane");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("clear");
+    dss.command("new circuit.rating basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000");
+    // `bad` carries an undefined (negative) rating; `good` a normal one.
+    dss.command(
+        "new line.bad bus1=src bus2=b length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
+         c1=0 c0=0 normamps=-1 emergamps=-2",
+    );
+    dss.command(
+        "new line.good bus1=b bus2=c length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
+         c1=0 c0=0 normamps=400 emergamps=600",
+    );
+    dss.command("new load.ld bus1=c phases=3 kv=12.47 kw=500 pf=0.95 model=1");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    dss.command("export seqcurrents");
+    let produced = std::fs::read_to_string(dss.last_result_file())
+        .unwrap_or_else(|e| panic!("read seqcurrents: {e}"));
+
+    // Row layout: Element, Terminal, I1, %Normal, %Emergency, I2, %I2/I1, I0,
+    // %I0/I1, Iresidual, %NEMA
+    let row = |elem: &str| -> (f64, f64) {
+        let line = produced
+            .lines()
+            .skip(1)
+            .find(|l| {
+                let f = l.split(',').next().unwrap_or("").trim().trim_matches('"');
+                f.eq_ignore_ascii_case(elem)
+            })
+            .unwrap_or_else(|| panic!("no row for {elem} in:\n{produced}"));
+        let f: Vec<&str> = line.split(',').map(str::trim).collect();
+        (
+            f[3].parse().expect("%Normal"),
+            f[4].parse().expect("%Emergency"),
+        )
+    };
+
+    let parity = dss_core::compat::SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING;
+    let (bad_n, bad_e) = row("Line.bad");
+    assert_eq!(
+        (bad_n, bad_e),
+        if parity { (-1.0, -2.0) } else { (0.0, 0.0) },
+        "parity reproduces the raw non-positive rating (ExportResults.pas:409-414); \
+         the default lane prints 0 for an undefined rating"
+    );
+
+    // Control: a positively-rated element is a real percentage in BOTH lanes.
+    let (good_n, good_e) = row("Line.good");
+    assert!(
+        good_n > 0.0 && good_e > 0.0 && good_n > good_e,
+        "a rated element must still print I1/rating*100 in both lanes, got \
+         %Normal={good_n} %Emergency={good_e}"
+    );
+    // The report renders these to ~4 significant digits (`6.1` / `4.067`), so
+    // the ratio is checked at rendering precision — the lane assertion above is
+    // the exact one.
+    assert!(
+        (good_n / good_e - 600.0 / 400.0).abs() < 1e-3,
+        "%Normal/%Emergency must be emergamps/normamps = 1.5, got {good_n}/{good_e}"
+    );
+}

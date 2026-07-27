@@ -832,3 +832,49 @@ solve";
     dss.command("? capcontrol.cc.UserModel");
     assert_eq!(dss.result().trim(), "notreal.dll");
 }
+
+/// The Stage F [`CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`] row, pinned by
+/// expected value in both lanes.
+///
+/// `TCapControlObj.MakeLike` (`CapControl.pas:446-490`) copies every other
+/// reference and field — controlled/monitored element, both snapshots, the user
+/// model — but never `ctrlSignalShape` or its name, so a clone of a
+/// `type=Follow` CapControl has nothing to follow and aborts the solve on its
+/// first sample. **Parity lane**: the dropped reference, what both gating
+/// oracles reproduce. **Default lane**: copied, like every sibling field.
+///
+/// [`CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL`]: crate::compat::CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL
+#[test]
+fn make_like_control_signal_is_the_lane_kernel() {
+    let mut src = CapControl::new("src");
+    src.control_type = CapControlType::Follow;
+    src.control_signal_name = "sig".to_string();
+    src.ctrl_signal_shape = Some(LoadShapeObj::fixed_interval_for_test("sig", 1.0, vec![1.0]));
+    src.pt_ratio = 77.0;
+
+    let mut dst = CapControl::new("dst");
+    dst.make_like(&src);
+
+    // A field the Pascal *does* copy — the control here, so a failure below is
+    // about the signal and not about `MakeLike` running at all.
+    assert_eq!(dst.pt_ratio, 77.0);
+    assert_eq!(dst.control_type, CapControlType::Follow);
+
+    let parity = crate::compat::CAPCONTROL_MAKELIKE_DROPS_CONTROL_SIGNAL;
+    assert_eq!(
+        dst.control_signal_name,
+        if parity { "" } else { "sig" },
+        "parity reproduces MakeLike's dropped ControlSignal (CapControl.pas:446-490); \
+         the default lane copies it like every other reference"
+    );
+    assert_eq!(dst.ctrl_signal_shape.is_none(), parity);
+
+    // The consequence, at the behavioral boundary: upstream's clone of a Follow
+    // CapControl aborts the solve; the default lane's clone follows the signal.
+    let mut cap = MockCap::one_step(false); // bank open → wants CLOSE on a 1.0 signal
+    let mut mon = MockMon::new(3);
+    let mut sc = Scratch::new();
+    let abort = dst.sample(&mut cap, &mut mon, &mut sc.ctx(ControlMode::Static, 0, 0.0));
+    assert_eq!(abort, parity, "no ControlSignal ⇒ solution abort");
+    assert_eq!(dst.should_switch, !parity);
+}

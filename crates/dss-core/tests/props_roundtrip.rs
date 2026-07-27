@@ -116,6 +116,22 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
     None
 }
 
+/// Stage F deliberate divergences: `(scenario, property)` pairs whose **value**
+/// the *default* lane does not compare against the oracle, because its clean fix
+/// intentionally reports a different one. The **parity** lane still compares
+/// every pair, and both lanes still compare every *other* property of these
+/// scenarios — the exclusion is value-only and per-property, never per-scenario.
+///
+/// * `isource_bus2_clobbered_by_bus1` / `Bus2` — the scenario exists to pin the
+///   upstream quirk that `TIsourceObj.PropertySideEffects` (`Isource.pas:221`)
+///   has no `Bus2` case, so `Bus2Defined` never latches and the `Bus1` side
+///   effect re-derives `b1.0.0.0` over the explicit `b2` this deck wrote first.
+///   `TVsourceObj.PropertySideEffects` (`Vsource.pas:498`) latches it on the
+///   very same property; the default lane does too
+///   (`compat::ISOURCE_BUS2_NEVER_LATCHES`), so it reports `b2`. Pinned in both
+///   lanes by `elements::pc::isource::tests::bus2_latching_is_the_lane_kernel`.
+const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[("isource_bus2_clobbered_by_bus1", "Bus2")];
+
 fn assert_value_matches(actual: &str, expected: &str, ctx: &str) {
     let (askel, anums) = numeric_skeleton(actual);
     let (eskel, enums) = numeric_skeleton(expected);
@@ -143,6 +159,20 @@ fn props_roundtrip_matches_oracle() {
     let scenarios = load_scenarios();
     assert!(!scenarios.is_empty(), "no scenarios in golden");
 
+    // Stale-entry guard: every exclusion below must still name a real
+    // `(scenario, property)` pair, so a renamed or deleted scenario fails the
+    // gate instead of silently widening it.
+    for (scenario, prop) in LANE_SKIP_SCENARIO_PROPS {
+        let sc = scenarios
+            .iter()
+            .find(|s| s.name == *scenario)
+            .unwrap_or_else(|| panic!("stale lane exclusion: no scenario {scenario:?}"));
+        assert!(
+            sc.properties.keys().any(|k| k.eq_ignore_ascii_case(prop)),
+            "stale lane exclusion: scenario {scenario:?} has no property {prop:?}"
+        );
+    }
+
     for sc in &scenarios {
         let mut dss = Dss::new();
         // gen_props.py runs this preamble before every scenario (the `?`
@@ -161,6 +191,13 @@ fn props_roundtrip_matches_oracle() {
         );
 
         for (prop, expected) in &sc.properties {
+            if !dss_core::compat::ORACLE_PARITY
+                && LANE_SKIP_SCENARIO_PROPS
+                    .iter()
+                    .any(|(s, p)| *s == sc.name && p.eq_ignore_ascii_case(prop))
+            {
+                continue;
+            }
             dss.command(&format!("? {}.{}", sc.target, prop));
             let actual = dss.result().to_string();
             assert_value_matches(

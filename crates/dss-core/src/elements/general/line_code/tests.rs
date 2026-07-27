@@ -231,3 +231,57 @@ fn line_type_pins_enum_ordinals() {
     assert_eq!(LineType::from_ordinal(0), None);
     assert_eq!(LineType::from_ordinal(13), None);
 }
+
+/// The Stage F [`LINECODE_SYM_CLEAR_OMITS_C0`] row, pinned by expected value in
+/// both lanes.
+///
+/// `TLineCodeObj.PropertySideEffects` lists every sequence quantity *except*
+/// `C0` as one that sets `SymComponentsModel := TRUE` and clears the matrix
+/// property tracking — a slip the Pascal source itself flags with a
+/// `-- Missing?` comment. So upstream a LineCode left on the matrix model stays
+/// there when only `C0=` is edited, and the value is inert. **Parity lane**:
+/// the omission, what both gating oracles reproduce. **Default lane**: `C0`
+/// behaves like its seven siblings.
+///
+/// [`LINECODE_SYM_CLEAR_OMITS_C0`]: crate::compat::LINECODE_SYM_CLEAR_OMITS_C0
+#[test]
+fn c0_model_selection_is_the_lane_kernel() {
+    // Start on the *matrix* model (an rmatrix edit clears the sym flag), then
+    // edit only `C0` — the one property whose side-effect case is missing.
+    let (cls, obj, errors) = edited(&[
+        ("nphases", "2"),
+        ("rmatrix", "0.1 | 0.02 0.1"),
+        ("xmatrix", "0.2 | 0.05 0.2"),
+        ("cmatrix", "3 | -1 3"),
+        ("c0", "1.5"),
+    ]);
+    assert!(errors.is_empty(), "{errors:?}");
+
+    let parity = crate::compat::LINECODE_SYM_CLEAR_OMITS_C0;
+    assert_eq!(
+        obj.sym_components_model, !parity,
+        "parity reproduces the missing `C0` side-effect case (the source's own \
+         `-- Missing?`); the default lane selects the sym model like `C1` does"
+    );
+    // The consequence at the property surface: `C0` is only *displayed* on the
+    // sym model (`is_visible`), so upstream's `c0=` is not merely inert — the
+    // value the user just wrote does not even read back.
+    assert_eq!(
+        get(&cls, &obj, "c0"),
+        if parity { "----" } else { "1.5" },
+        "parity keeps the object on the matrix model, where `C0` renders as \
+         `----`; the default lane switched models, so the written value shows"
+    );
+
+    // Control: `C1` — the sibling the Pascal *does* list — switches the model
+    // in both lanes, which is what makes `C0`'s omission a slip and not a rule.
+    let (_, c1_obj, errors) = edited(&[
+        ("nphases", "2"),
+        ("rmatrix", "0.1 | 0.02 0.1"),
+        ("xmatrix", "0.2 | 0.05 0.2"),
+        ("cmatrix", "3 | -1 3"),
+        ("c1", "1.5"),
+    ]);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(c1_obj.sym_components_model);
+}

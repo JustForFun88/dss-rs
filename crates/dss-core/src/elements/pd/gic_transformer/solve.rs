@@ -18,9 +18,27 @@ impl GicTransformer {
         if self.pct_r_specified {
             self.g1 = 100.0 / (self.z_base1 * self.pct_r1);
             // TODO(compat): Pascal uses `FPctR1` here, NOT `FPctR2`
-            // (GICTransformer.pas:441 — `G2 := 100.0 / (FZBase2 * FPctR1)`), so
-            // both conductances scale off %R1. Reproduced 1:1; the clean fix
-            // would read FPctR2 for G2.
+            // (GICTransformer.pas:441 — `G2 := 100.0 / (FZBase2 * FPctR1)`,
+            // copy-pasted from the `G1` line above), so both conductances scale
+            // off %R1 and a user's %R2 is silently ignored. Reproduced 1:1; the
+            // clean fix reads `FPctR2` — the only value under which the `else`
+            // branch below is its inverse.
+            //
+            // Stage F status (F.3k, **measured**): this is NOT a
+            // gate-invisible row. The flip was implemented, gated, and reverted
+            // — `tests/corpus/asymmetric/gic/gictransformer_gic.dss:18` builds
+            // `GICTransformer.tg3 … %R1=0.2 %R2=0.15`, and honouring %R2 moves
+            // that deck's GIC current 4.50e-4 against the `capi_v0145` oracle
+            // (allowed 1.00e-6) and `gic/gic_midi.dss`'s 1.02e-4 (allowed
+            // 1.07e-6). Both gating oracles reproduce the quirk, so landing the
+            // fix in the default lane means excluding those two decks' primary
+            // physical channel from oracle comparison — the same shape as the
+            // Newton row (F.3j) and owed the same treatment: a field-scoped
+            // default-lane exclusion plus a replacement in-engine assertion and
+            // a transitive cover. That is a commit of its own, not a line in a
+            // batch, so the row stays reproduced in both lanes for now. The
+            // reproduced value is pinned by
+            // `exec::tests::compat_quirks::gic_transformer_g2_reproduces_the_pct_r1_bug`.
             self.g2 = 100.0 / (self.z_base2 * self.pct_r1);
         } else {
             self.pct_r1 = 100.0 / (self.z_base1 * self.g1);
