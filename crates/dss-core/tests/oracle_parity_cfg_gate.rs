@@ -594,3 +594,231 @@ fn surviving_compat_markers_are_exactly_the_recorded_escape_register() {
     let total: usize = EXIT_POPULATION.iter().map(|(_, n)| n).sum();
     assert_eq!(found.len(), total, "total marker population");
 }
+
+// ---------------------------------------------------------------------------
+// The flipped half of the register: every deliberate divergence is pinned
+// ---------------------------------------------------------------------------
+
+/// The per-crate `compat` modules that carry the lane split.
+const COMPAT_MODULES: [&str; 3] = [
+    "crates/dss-core/src/compat.rs",
+    "crates/dss-parser/src/compat.rs",
+    "crates/dss-sparse/src/compat.rs",
+];
+
+/// Aliases whose two cfg arms select the **same** impl — declared, not wired.
+///
+/// `dss-sparse`'s two solver-execution knobs are the whole set (IV.2 row
+/// "solver execution"): `MULTITHREADING_PLAN` M3c and `RESONANCE_PLAN` WP-R1 own
+/// the flip, and until then no call site reads them, so there is no observable
+/// to pin. Listed by name rather than skipped by count, because the moment their
+/// owner makes the arms differ they become split rows and the pin rule below
+/// starts applying to them — which is exactly when someone must write the
+/// expected-value test.
+const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORIZATION"];
+
+/// How many `compat::` aliases genuinely resolve to different code in the two
+/// lanes today. Every one of them is a **deliberate divergence** from the
+/// gating oracles, so every one owes an expected-value pin.
+///
+/// Move this number only in the commit that flips (or un-flips) a row.
+const SPLIT_ALIAS_POPULATION: usize = 30;
+
+/// Files that may never count as a pin: the compat modules themselves (their
+/// own `tests` submodules assert the *kernels* against each other, which is a
+/// different obligation — the pin has to be at an observable), and this gate,
+/// which names rows for bookkeeping.
+fn is_pin_candidate(path: &Path, root: &Path, text: &str) -> bool {
+    let rel = path.strip_prefix(root).unwrap_or(path);
+    let parts: Vec<String> = rel
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+        .collect();
+    let file = parts.last().expect("a file name");
+
+    if file == "compat.rs" || parts.iter().any(|p| p == "compat") {
+        return false;
+    }
+    if file == "oracle_parity_cfg_gate.rs" {
+        return false;
+    }
+    // Test code in every shape the tree uses: an integration test under
+    // `crates/*/tests/`, an extracted sibling `tests.rs`, or an inline
+    // `#[cfg(test)] mod tests` in a plain source file. The last one is not
+    // optional: `kv_base_search_scale`'s pin lives in
+    // `solution/solution/dispatch.rs`, and a walk shaped like "tests live in
+    // files called tests" reports it as unpinned (it did, while writing this).
+    parts.iter().any(|p| p == "tests") || file == "tests.rs" || text.contains("#[cfg(test)]")
+}
+
+/// `token` occurs in `text` as a whole identifier, not inside a longer one.
+fn names_token(text: &str, token: &str) -> bool {
+    let ident = |c: char| c.is_alphanumeric() || c == '_';
+    text.match_indices(token).any(|(i, _)| {
+        let before = text[..i].chars().next_back();
+        let after = text[i + token.len()..].chars().next();
+        !before.is_some_and(ident) && !after.is_some_and(ident)
+    })
+}
+
+/// A pin has to *branch on the lane*, or it pins one lane's value in both and
+/// the other lane's behavior is unasserted. Two accepted forms, both in the
+/// tree: read the lane constant (`ORACLE_PARITY`), or read the row's own alias
+/// in code (`compat::<alias>`), which is what the kernels returning values do.
+fn branches_on_lane(text: &str, alias: &str) -> bool {
+    if names_token(text, "ORACLE_PARITY") {
+        return true;
+    }
+    let qualified = format!("compat::{alias}");
+    text.lines()
+        .any(|l| !l.trim_start().starts_with("//") && names_token(l, &qualified))
+}
+
+/// `(alias, the impl each cfg arm selects)` for every lane-selected alias in the
+/// three compat modules.
+fn lane_aliases(root: &Path) -> Vec<(String, Vec<String>)> {
+    let needle = needle();
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+
+    for module in COMPAT_MODULES {
+        let text =
+            fs::read_to_string(root.join(module)).unwrap_or_else(|e| panic!("{module}: {e}"));
+        let lines: Vec<&str> = text.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+            if !trimmed.starts_with("#[cfg(") || !trimmed.contains(&needle) {
+                continue;
+            }
+            let Some(next) = lines.get(i + 1) else {
+                continue;
+            };
+            let Some(rest) = next
+                .trim()
+                .strip_prefix("pub use ")
+                .and_then(|r| r.strip_suffix(';'))
+            else {
+                continue;
+            };
+            let Some((selected, alias)) = rest.split_once(" as ") else {
+                continue;
+            };
+            let (selected, alias) = (selected.trim().to_owned(), alias.trim().to_owned());
+            match out.iter_mut().find(|(a, _)| *a == alias) {
+                Some((_, impls)) => impls.push(selected),
+                None => out.push((alias, vec![selected])),
+            }
+        }
+    }
+    out
+}
+
+/// Every lane-split alias is pinned by an expected-value test at an observable.
+///
+/// The escape register above governs the markers Stage F did *not* resolve. This
+/// is its other half: the rows it *did* flip. Each one makes the default lane
+/// deliberately answer something the gating oracles do not, so the oracle gates
+/// cannot cover it — `DE_PASCALIZE_PLAN.md` IV.2's drift model says such a row is
+/// "excluded from oracle comparison at those fields; pinned by their own
+/// **expected-value tests**". That obligation was met row by row through F.3 and
+/// then recorded in prose, which is precisely the state F.3ab found unsatisfactory
+/// for the escapes: a claim nothing re-reads decays into folklore. A deleted pin,
+/// a renamed alias, or a new row flipped without a pin now fails here.
+///
+/// It deliberately does **not** check what a pin asserts — that is the reviewer's
+/// job and cannot be mechanized. It checks the two things that can rot silently:
+/// that a test names the row, and that it reads the lane rather than hard-coding
+/// one side.
+#[test]
+fn every_lane_split_alias_is_pinned_by_an_expected_value_test() {
+    let root = repo_root();
+    let aliases = lane_aliases(&root);
+
+    let mut split = Vec::new();
+    let mut declared = Vec::new();
+    for (alias, impls) in &aliases {
+        assert_eq!(
+            impls.len(),
+            2,
+            "{alias}: a lane alias has exactly two cfg arms, found {impls:?}"
+        );
+        if impls[0] == impls[1] {
+            declared.push(alias.clone());
+        } else {
+            split.push(alias.clone());
+        }
+    }
+    declared.sort();
+    assert_eq!(
+        declared, DECLARED_NOT_WIRED,
+        "the set of aliases whose cfg arms select the same impl moved. Wiring \
+         one is a flip: it becomes a deliberate divergence and needs an \
+         expected-value pin (and a row in `SPLIT_ALIAS_POPULATION`)"
+    );
+    assert_eq!(
+        split.len(),
+        SPLIT_ALIAS_POPULATION,
+        "lane-split alias population moved: {split:?}"
+    );
+
+    let mut pins: Vec<(String, Vec<String>)> = split.iter().map(|a| (a.clone(), vec![])).collect();
+    for path in rust_sources(&root) {
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if !is_pin_candidate(&path, &root, &text) {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (alias, found) in pins.iter_mut() {
+            if names_token(&text, alias) && branches_on_lane(&text, alias) {
+                found.push(rel.clone());
+            }
+        }
+    }
+
+    let unpinned: Vec<&str> = pins
+        .iter()
+        .filter(|(_, found)| found.is_empty())
+        .map(|(alias, _)| alias.as_str())
+        .collect();
+    assert!(
+        unpinned.is_empty(),
+        "lane-split alias(es) with no expected-value pin: {unpinned:?}\n  A pin \
+         is a test that (a) names the alias — in an assertion or in the doc \
+         comment that says which row it pins — and (b) branches on the lane, \
+         either through `ORACLE_PARITY` or by reading `compat::<alias>`. \
+         Kernel-vs-kernel tests inside the compat module do not count: they \
+         assert the two impls against each other, not the observable a deck \
+         sees."
+    );
+
+    // Non-vacuity of the *walk*, in both shapes a pin is allowed to take — a
+    // narrowing of `is_pin_candidate` that dropped either would otherwise show
+    // up as "everything still passes".
+    for (alias, expected) in [
+        (
+            "kv_base_search_scale",
+            "crates/dss-core/src/solution/solution/dispatch.rs",
+        ),
+        (
+            "IRESIDUAL_FROM_TERMINAL_1",
+            "crates/dss-core/tests/golden_reports.rs",
+        ),
+    ] {
+        let found = pins
+            .iter()
+            .find(|(a, _)| a == alias)
+            .map(|(_, f)| f.as_slice())
+            .unwrap_or_default();
+        assert!(
+            found.iter().any(|f| f == expected),
+            "{alias} is no longer pinned by {expected} (found {found:?}) — if the \
+             pin moved, re-anchor it here; if the walk stopped reaching that \
+             shape of test file, fix the walk"
+        );
+    }
+}

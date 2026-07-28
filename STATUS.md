@@ -7,6 +7,95 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3ad — the *flipped* half of the register becomes a gate: every deliberate divergence has to name its pin (branch `depas-stagef`, 2026-07-29)
+
+F.3ab made the stage's **escapes** executable and F.3ac widened their walk. The
+rows F.3 actually *flipped* — the larger half — stayed prose. They are the part
+the oracle gates structurally cannot cover: **30** `compat::` aliases now resolve
+to different code in the two lanes, and every one of them makes the default lane
+answer something both gating oracles do not, which is why `DE_PASCALIZE_PLAN.md`
+IV.2's drift model ends its last row with "pinned by their own **expected-value
+tests**". That those tests still exist was, until this commit, a claim a reader
+had to take on trust — the same state F.3ab judged unacceptable for the escapes,
+and for the same reason. `TODO(compat)` stays **22** in `crates` (25 tree-wide),
+`HIDE_015X` **19**; no golden, tolerance, ledger or deck moved and no engine
+behaviour changed. The diff is one gate and one doc line.
+
+**Inherited state re-verified before building on it.** F.3ac's tree
+(`ec154028`) was re-gated from scratch in both lanes before any edit: `cargo fmt
+--all --check` clean, `cargo clippy --workspace --all-targets -- -D warnings`
+and the same with `--features dss-core/oracle-parity` both exit 0, `cargo test
+--workspace --no-fail-fast` **2358 passed / 0 failed / 5 ignored** and the
+parity-lane twin identically 2358/0/5, with the unconditional 520-case corpus
+gate green inside each (40/40 in 134.2 s and 135.0 s). `git status --short
+tests/corpus` empty after both runs — nothing leaked.
+
+**The measurement, and the single row that failed it.** Of the 30 split
+aliases, **29** already had a test that names the row it pins — in an assertion
+(`crate::compat::LINECODE_SYM_CLEAR_OMITS_C0`) or in the doc comment that
+declares what it is pinning (`[`crate::compat::SYM_MATRIX_GETTER_RENDERS_ZEROS`]`).
+The exception was `round_i32`, whose observable pin
+(`dss-parser` `parser::tests::make_integer_out_of_range_is_the_lane_kernel`,
+`inf → 0` vs `i32::MAX`) called itself "the Stage F round row" in words only, so
+nothing connected it to the alias. One doc link closes that, and with the naming
+uniform the obligation becomes checkable rather than narratable.
+
+**The instrument was under-scoped a second time — now pinned so it cannot
+narrow again.** The first scan written for this reported `kv_base_search_scale`
+as unpinned. It is not: its pin is an **inline** `#[cfg(test)] mod tests` inside
+`solution/solution/dispatch.rs`, and the scan looked only at files *called*
+tests. That is F.3ac's finding in a new place — the instrument, not the tree, was
+wrong — so `is_pin_candidate` accepts all three shapes the tree actually uses
+(a `crates/*/tests/**` integration test, an extracted sibling `tests.rs`, an
+inline `#[cfg(test)]` module), and the gate anchors one alias in each of the two
+non-obvious shapes: narrowing the walk back makes it fail by name.
+
+**What it checks, and what it deliberately does not.** For every split alias:
+a test **names** it, and that test **branches on the lane** — reads
+`ORACLE_PARITY`, or reads `compat::<alias>` in code. Kernel-vs-kernel tests
+inside the compat modules explicitly do *not* count: they assert the two impls
+against each other, which is a different obligation (IV.2 "Mechanism") from
+pinning what a deck observes. It does not check what a pin *asserts* — that is
+review, and mechanizing it would only produce a test that can be satisfied
+without being true. The two things it does check are exactly the two that rot
+silently: a deleted pin, and a new row flipped without one.
+
+**The two declaration-only knobs are named rather than skipped.**
+`dss-sparse`'s `PARALLEL_FACTORIZATION` and `ITERATIVE_REFINEMENT` select the
+same impl in both lanes today (F.1 staging; M3c and WP-R1 own the flip), so
+there is no observable to pin. Listing them by name instead of excusing them by
+count turns that handoff into a gate: the moment their owner makes the arms
+differ, the row joins the split population and the pin rule starts applying —
+which is the commit where the expected-value test has to be written.
+
+**Three probes, each run and reverted.** (1) Restoring `round_i32`'s prose-only
+doc makes the gate fail with `no expected-value pin: ["round_i32"]`. (2)
+Narrowing `is_pin_candidate` to files *named* tests makes it fail with
+`["kv_base_search_scale"]` — the exact under-scoping above, now self-detecting.
+(3) Pointing the default-lane arm of `PARALLEL_FACTORIZATION` at its
+`_DEFAULT_IMPL` (i.e. wiring the knob) makes the declared-set assertion report
+the moved set and demand a pin. The gate is load-bearing in all three
+directions, not decoration.
+
+**What this does not change.** The F.3 verdict is untouched: 25 markers survive,
+each with a measured blocker owned by a named successor (`UpgradeRung` 11,
+`Ffmt` 7, `WholeCase` 4, `WasmGuest` 3); `HIDE_015X` keeps its F.3aa
+disposition; the sanctioned re-baseline is still measurably empty
+(`git diff 6f691ecb..HEAD -- tests/golden tests/corpus` remains empty) and still
+handed to Stage F landing.
+
+**Proof.** Both lanes green on the exact committed tree: `cargo fmt --all
+--check`; `cargo clippy --workspace --all-targets -- -D warnings` and the same
+with `--features dss-core/oracle-parity` both exit 0; `cargo test --workspace
+--no-fail-fast` **2359 passed / 0 failed / 5 ignored** and the parity-lane twin
+identically **2359 / 0 / 5**, with the unconditional 520-case corpus gate green
+inside each (40/40 in 134.6 s and 134.5 s). Tests **+1**, 0 removed, 0 new
+`#[ignore]` (the 5 are the four manual generation binaries plus one
+`define_properties` doctest). The parity run leaked the known intermittent
+`Test/AutoTrans/{Auto3bus_noload_power,auto3bus_hl_current,auto3bus_hl_losses,
+auto3bus_ht_current}.txt`; deleted by exact name, `git status --short
+tests/corpus` empty.
+
 ### DE_PASCALIZE Stage F.3ac — the sweep's own instrument was under-scoped: three compat markers were hiding outside `crates/` (branch `depas-stagef`, 2026-07-29)
 
 F.3ab closed with a register that checks the surviving markers **both ways** and
