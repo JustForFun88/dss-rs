@@ -7,6 +7,107 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3z — the truncated-constant bucket is fully measured: one row splits, and the other four now carry their own numbers (branch `depas-stagef`, 2026-07-28)
+
+F.3v filed **14** truncated physical constants under one blanket escape reason;
+F.3w split one of them, F.3x measured two more, and F.3y removed the bucket's
+kernel row. This commit finishes the audit on **everything that was left** — the
+four remaining rows are each flipped, gated and measured, and one of them turns
+out to be the narrowest lane row in the whole stage. **No category reason
+survives anywhere in the bucket.** `TODO(compat)` **23 → 22**; `HIDE_015X`
+**17**; both lanes green; no golden, tolerance, ledger or deck touched.
+
+**The row that splits — `Export Profile`'s line-to-line per-unit divisor.**
+Upstream divides the L-L volt magnitude by the four-digit literal `1732.0`
+(`Common/ExportResults.pas:3207/3231/3256`; r4133
+`Version8/Source/CMD_Lazz/Common/ExportResults.pas:2979/2995/3012`, so **both**
+gating oracles carry it). `Bus.kVBase` is the **line-to-neutral** base kV, so the
+L-L divisor should be `1000·√3 = 1732.0508…` and the literal makes every reported
+L-L per-unit 2.93e-5 relative high.
+
+The single-site membership rule (ii) is satisfied *inside the same procedure*, by
+the sibling branch — F.3w's shape again, one level up: `ExportProfile`'s
+**line-to-neutral** arms divide by the exact `1000.0` (eight sites) while its
+three **line-to-line** arms divide by `1732.0`. One routine, one quantity, one
+branch exact and the other truncated to four digits. Nothing else differs, so the
+constant the author meant is named by the code beside it.
+
+**And the reach is one number in one report** — measured, not asserted:
+`pu_ll` is local to `report::export::profile` and feeds only the `puV1`/`puV2`
+column of the three L-L variants. With the flip selected, the *only* moving
+assertion in the entire suite is `export_profile_ll3ph` row 0 field 2 (`1.04672`
+vs the oracle's `1.04675`), and **all 520 gated corpus cases are unchanged**.
+That is the drift model's "deliberate divergences … excluded from oracle
+comparison **at those fields**" in its purest form, so the default lane masks
+exactly columns 2 and 4 of those three goldens (`lane::profile_ll_policy`, using
+the `GateSpec::Mask` mechanism the `Iresidual` row already established — an
+exclusion, never a widened tolerance). Still gated in the default lane: the
+header, the row set and order, the element name, both distances, `Color`,
+`Thickness`, `Linetype`, the marker fields, and **in full** the four L-N variants
+of the same report.
+
+**The replacement pin states the physics, not a captured number.** On a balanced
+three-phase bus `|V_LL| = √3·|V_LN|` exactly, so
+`pu_LL = √3·|V_LN| / (kVBase·1000·√3) = pu_LN`: the two reports must print the
+*same* per-unit for the same bus.
+`exec::tests::compat_quirks::export_profile_ll_pu_is_the_lane_kernel` builds a
+transposed, balanced feeder, runs both exports, and asserts that identity in the
+default lane and the exact divisor ratio `1000·√3/1732 = 1.0000293346` in the
+parity lane — then asserts the *other* lane's value is distinguishable at the
+report's own 6-digit resolution, so the test cannot pass in both builds and pin
+nothing. An engine that swapped one wrong constant for another fails it.
+
+**The four rows that do not split, each with the number that stopped it.**
+
+| row | measured cost of the flip |
+|---|---|
+| `mu0 = 12.56637e-7` (`line_constants/mod.rs`) — 4.889e-8 below `4πe-7`, scales the whole series `Z` | **35 of 520** corpus cases + 33 unit tests + `dump_line_geo` + `show_lineconstants` |
+| `Twopi = 6.283185307` (same block) — 2.858e-11 below `TAU`, one consumer (`LFactor`) | **1 of 520**: `4Bus-YYD/YYD-Master-step1.DSS` on the r4133 channel, entry 12, \|diff\| 1.380e-4 vs an allowed 1.338e-4 = **1.031x** its floor — the same deck F.3f already found on its calibration boundary |
+| `CALPHA = (-0.5, -0.866025)` (`util.rs` + the `Reactor` twin) — imag part 4.37e-7 short of `−sin 120°` | **33 of 520** + `dump_reactor_symcomp` |
+| `0.3183` as `1/π` (`line_constants/cable.rs`) — 3.10e-5 low, multiplies the tape-shield resistance | **8 of 520** (every tape-shield deck) + 8 unit tests + `line_constants_scenarios` |
+| `TRUNCATED_PI` + `TRUNCATED_RAD_TO_DEG` (`complexutil`) | see below — **16 of 520** + 5 `wasm_*` r4133 goldens + 7 byte goldens |
+
+`mu0` and `Twopi` were split apart deliberately, because the pair had been
+escaping as one: they are 1700x apart in relative distance and 35x apart in
+blast radius. The physically meaningful group is `mu0/twopi`, which the exact
+constants make exactly `2e-7` (both truncated: 1.99999990e-7) — so a *correct*
+fix flips both and pays `mu0`'s 35-case bill. `Twopi` alone at 1.03x one floor is
+recorded as such rather than as "above the floors".
+
+**The `complexutil` row is the one whose escape reason was actually wrong, and
+the correction matters for whoever picks it up.** Upstream names the fix itself
+— `// TODO: better precision` sits on both `CDANG` and `PDEGtoCompLeX`, and
+`// TODO: remove for 0.13` on the local `PI` — and the distances are tiny
+(5.38e-11 and 6.6e-14), far below every calibrated floor. The row still escapes,
+for a structural reason no distance argument would have found: **`cdang` and
+`pdeg_to_complex` are inverses, and the engine round-trips through them.** A
+Spectrum harmonic is typed in degrees, turned into a phasor by the divisor and
+read back in degrees by the multiplier; the two truncations cancel *exactly*.
+Measured both ways: flipping only the reporting half moves **0** corpus cases yet
+breaks that identity (`dump_spectrum` prints `30.0000000016139` where both the
+oracle and the truncated engine print `30`), and flipping both — the only
+coherent form — makes the engine strictly *more* accurate (`export_seqvoltages`'
+`V0` residual falls from 4.31951e-6 to 1.49998e-11) at a cost of 16 corpus cases,
+5 `wasm_*` r4133 goldens and 7 byte goldens. Being more correct is precisely what
+breaks it, which is why "the constant is close enough" was never the right test.
+
+**Escape register — final for the truncated-constant bucket, and now entirely
+numeric.** The **11** remaining truncated-constant markers are: Kxg ×3 and
+`2.3026` ×2 (F.3x), `mu0`/`Twopi` ×1, CALPHA ×2, `0.3183` ×1, `complexutil` ×2.
+Each carries its own measurement at its own site. Plus the **7** F-FMT rendering
+markers (F.4's defined scope), the **4** single-site quirks (F.3v) and
+`HIDE_015X` ×17. 11 + 7 + 4 = the 22 remaining markers.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` (2355 passed /
+0 failed / 5 ignored) and the same with the feature (2355 / 0 / 5), including
+the unconditional 520-case corpus gate in each. Tests **+1**, 0 removed, 0 new
+`#[ignore]`. `git diff -- tests/golden tests/corpus` empty — no golden,
+tolerance, ledger or deck touched (`tests/` changes are the harness lane policy
+only); `git status --short tests/corpus` empty after both runs (the known
+intermittent `Test/AutoTrans/*` leak deleted by exact name).
+
 ### DE_PASCALIZE Stage F.3y — the "less precise FPC primitives" row: two of the three were already `num_complex`, and the third is the better kernel (branch `depas-stagef`, 2026-07-28)
 
 F.3x closed the audit of the two truncated-constant rows whose escape reason was

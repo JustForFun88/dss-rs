@@ -21,8 +21,17 @@ pub fn inv_sqrt3_x1000() -> f64 {
 }
 /// TODO(compat): Pascal `CALPHA = (-0.5, -0.866025)` — a deliberately
 /// low-precision −120° phasor (DSSGlobals.pas even carries a TODO about it).
-/// Used by the Vsource asymmetric-matrix path; replace with the exact value
-/// in the post-port cleanup pass, regenerating affected goldens.
+/// Used by the Vsource asymmetric-matrix path; the clean fix is the exact
+/// `1∠−120°`, and it is a re-baseline rather than a lane flip.
+///
+/// **Stage F.3z measured it** instead of filing it under "truncated constants".
+/// The imaginary part is **4.37e-7** relative short of `−sin 120° =
+/// −0.8660254037844386` — only ~2x below the 1e-6-class oracle floors before
+/// the solve amplifies it, which is exactly why this one does not survive:
+/// with the exact value selected (here *and* at the `Reactor` twin), **33 of
+/// the 520** gated corpus cases fail plus the `dump_reactor_symcomp` byte
+/// golden. Whole-artifact cost on a third of a hundred decks, so it escapes
+/// with that number; the flip belongs to an UPGRADE-rung re-capture.
 pub const CALPHA: Complex64 = Complex64::new(-0.5, -0.866025);
 /// Pascal `CDOUBLEONE` (DSSUcomplex.pas).
 pub const CDOUBLEONE: Complex64 = Complex64::new(1.0, 1.0);

@@ -4682,9 +4682,18 @@ fn export_profile_variants_match_oracle() {
         ("export_profile", profile_policy()),
         ("export_profile_all", profile_policy()),
         ("export_profile_primary", profile_policy()),
-        ("export_profile_ll3ph", profile_policy()),
-        ("export_profile_llall", profile_policy()),
-        ("export_profile_llprimary", profile_policy()),
+        (
+            "export_profile_ll3ph",
+            lane::profile_ll_policy(profile_policy()),
+        ),
+        (
+            "export_profile_llall",
+            lane::profile_ll_policy(profile_policy()),
+        ),
+        (
+            "export_profile_llprimary",
+            lane::profile_ll_policy(profile_policy()),
+        ),
         ("export_profile_ph2", profile_policy()),
     ]);
 }

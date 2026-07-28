@@ -69,8 +69,31 @@ pub enum ConductorType {
 // TODO(compat): these reproduce the upstream truncated literals exactly —
 // `mu0` and `Twopi` are short of the precise values, and `Twopi` is used as a
 // distinct quantity from `2*pi` (the FullCarson/Zint earth terms use the full
-// `PI`). Goldens pin them; the clean fix (precise constants) lands in the
-// post-port precision pass.
+// `PI`). Goldens pin them; the clean fix (precise constants) is a re-baseline,
+// not a lane flip.
+//
+// **Stage F.3z measured both halves separately rather than escaping the pair as
+// one category** (`LineConstants.pas:128-129`; r4133 `:152-153`, so both gating
+// oracles carry them):
+//
+// * `mu0 = 12.56637e-7` is **4.889e-8** relative below `4πe-7`, and it scales
+//   the whole series impedance. Flipping it fails **35 of the 520** gated
+//   corpus cases, 33 unit tests (the `1e-8`-toleranced Carson/cable reference
+//   matrices) and the `dump_line_geo` + `show_lineconstants` goldens. Nothing
+//   field-scoped survives that.
+// * `Twopi = 6.283185307` is only **2.858e-11** relative below `TAU`, and it has
+//   exactly one consumer (`LFactor := Cmplx(0, Fw·mu0/twopi)`, `:184`). Flipping
+//   it alone fails **one** corpus case —
+//   `IEEETestCases/4Bus-YYD/YYD-Master-step1.DSS` on the r4133 channel, entry 12
+//   at |diff| 1.380e-4 against an allowed 1.338e-4, i.e. **1.031x** its floor,
+//   the same deck the dense-inverse row (F.3f) already found sitting on its
+//   calibration boundary — plus the DERI bit pin. Still an oracle floor the
+//   default lane must meet, so it escapes; but it is 1.03x, not a category.
+//
+// The physically meaningful group is `mu0/twopi`, which the exact constants make
+// exactly `2e-7` (both truncated: 1.99999990e-7). So a correct fix flips **both**
+// and lands with `mu0`'s 35-case cost — an UPGRADE-rung re-baseline against a
+// re-captured oracle, which the parity lane may never do.
 const E0: f64 = 8.854e-12; // dielectric constant F/m
 const MU0: f64 = 12.56637e-7; // hy/m
 #[allow(clippy::approx_constant)] // truncated upstream `Twopi`, not `TAU` — see above

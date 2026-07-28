@@ -130,3 +130,126 @@ fn gic_transformer_g2_reproduces_the_pct_r1_bug() {
     assert!((query_f64(&mut ohms, "GICTransformer.g.R1") - 1.0).abs() < 1e-12);
     assert!((query_f64(&mut ohms, "GICTransformer.g.R2") - 4.0).abs() < 1e-12);
 }
+
+/// Expected-value pin for the Stage F single-site quirk
+/// [`crate::compat::profile_ll_pu_divisor`] — `Export Profile`'s line-to-line
+/// per-unit column.
+///
+/// Upstream divides the L-L volt magnitude by the four-digit literal `1732.0`
+/// while the **line-to-neutral** arms of the same procedure divide by the exact
+/// `1000.0` (`Common/ExportResults.pas`, three L-L sites against eight L-N
+/// ones; r4133 identical). `Bus.kVBase` is the L-N base kV, so the L-L divisor
+/// should be `1000·√3` and the literal makes every reported L-L per-unit
+/// 2.93e-5 relative high.
+///
+/// **The assertion is the physics, not a captured number.** On a *balanced*
+/// three-phase bus `|V_LL| = √3·|V_LN|` exactly, so the two reports must print
+/// the **same** per-unit for the same bus:
+///
+/// ```text
+/// pu_LL = √3·|V_LN| / (kVBase·1000·√3) = |V_LN| / (kVBase·1000) = pu_LN
+/// ```
+///
+/// The default lane satisfies that identity; the parity lane misses it by
+/// exactly the divisor ratio `1000·√3 / 1732.0`, which is what the truncation
+/// is. So this test states what the golden's excluded column can no longer
+/// state, and it cannot be satisfied by an engine that merely swapped one
+/// constant for another wrong one.
+#[test]
+fn export_profile_ll_pu_is_the_lane_kernel() {
+    use std::fmt::Write as _;
+
+    let dir = std::env::temp_dir().join("dss_rs_profile_ll_pin");
+    let _ = std::fs::create_dir_all(&dir);
+
+    let mut dss = crate::exec::Dss::new();
+    dss.command("clear");
+    // A balanced, perfectly transposed radial feeder: equal r1/r0 and x1/x0 and
+    // a balanced 3-phase load, so every bus voltage is a symmetric positive
+    // sequence set and `|V_LL| = √3·|V_LN|` holds to the last bit.
+    dss.command("new circuit.prof basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=20000");
+    dss.command(
+        "new line.l1 bus1=src bus2=b length=1 units=km \
+         r1=0.1 x1=0.3 r0=0.1 x0=0.3 c1=0 c0=0",
+    );
+    dss.command("new load.ld bus1=b phases=3 kv=12.47 kw=500 pf=1 model=1");
+    dss.command("new energymeter.m element=line.l1 terminal=1");
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    let mut dp = String::new();
+    write!(dp, "set datapath=\"{}\"", dir.display()).unwrap();
+    dss.command(&dp);
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    let read_pu = |dss: &mut crate::exec::Dss, cmd: &str| -> Vec<f64> {
+        dss.command(cmd);
+        assert!(dss.errors().is_empty(), "{cmd}: {:?}", dss.errors());
+        let text = std::fs::read_to_string(dir.join("prof_EXP_Profile.csv"))
+            .unwrap_or_else(|e| panic!("{cmd} produced no report: {e}"));
+        // Columns: Name, Distance1, puV1, Distance2, puV2, …
+        text.lines()
+            .skip(1)
+            .filter(|l| !l.trim().is_empty())
+            .flat_map(|l| {
+                let f: Vec<&str> = l.split(',').collect();
+                [
+                    f[2].trim().parse::<f64>().unwrap(),
+                    f[4].trim().parse::<f64>().unwrap(),
+                ]
+            })
+            .collect()
+    };
+
+    let ln = read_pu(&mut dss, "export profile");
+    let ll = read_pu(&mut dss, "export profile ll3ph");
+    assert!(
+        !ln.is_empty() && ln.len() == ll.len(),
+        "fixture degenerated"
+    );
+
+    // `WriteNewLine` renders the per-unit at 6 significant digits, so each of
+    // the two reports carries up to half a unit in the 6th digit (5e-6 absolute
+    // near 1.0) and their difference up to ~1.1e-5. That is the *reading* floor
+    // of this surface, not a tolerance on the engine: the divergence the row
+    // introduces is 2.93e-5 relative, ~2.8x it, which is exactly why the two
+    // lanes stay distinguishable through a 6-digit report at all.
+    let read_floor = 1.1e-5;
+    let ratio = 1000.0 * crate::util::sqrt3() / 1732.0;
+    assert!(
+        (ratio - 1.000_029_334_6).abs() < 1e-10,
+        "the divisor ratio moved: {ratio}"
+    );
+
+    for (i, (&a, &b)) in ln.iter().zip(ll.iter()).enumerate() {
+        assert!(a > 0.9 && a < 1.1, "row {i}: implausible L-N pu {a}");
+        let expected = if crate::compat::ORACLE_PARITY {
+            // Parity keeps `1732.0`: every L-L pu is the balanced L-N pu scaled
+            // up by the truncation.
+            a * ratio
+        } else {
+            // The default lane divides by `1000·√3`, so the identity holds.
+            a
+        };
+        assert!(
+            (b - expected).abs() <= read_floor,
+            "row {i}: L-L pu {b} is not the lane's expectation {expected} \
+             (L-N pu {a}, ORACLE_PARITY = {})",
+            crate::compat::ORACLE_PARITY
+        );
+        // And the *other* lane's value must be distinguishable, or this test
+        // would pass in both builds and pin nothing.
+        let other = if crate::compat::ORACLE_PARITY {
+            a
+        } else {
+            a * ratio
+        };
+        assert!(
+            (b - other).abs() > read_floor,
+            "row {i}: the two lanes' L-L pu are indistinguishable at the \
+             report's own resolution — the divisor split has stopped working"
+        );
+    }
+
+    let _ = std::fs::remove_file(dir.join("prof_EXP_Profile.csv"));
+}

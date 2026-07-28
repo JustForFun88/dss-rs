@@ -55,7 +55,7 @@
 //! rendering-only difference must pass in the default lane and FAIL in the
 //! parity lane, in whichever lane the suite is running.
 
-use super::{ElemChannels, ExportPolicy, RowPolicy, compare_export};
+use super::{ColSel, ColTol, ElemChannels, ExportPolicy, GateSpec, RowPolicy, compare_export};
 
 /// `true` in the parity build (`--features dss-core/oracle-parity`), `false` in
 /// the default build.
@@ -415,6 +415,47 @@ pub fn compare_iterations_le(rust: i32, oracle: i32, ctx: &str) {
              oracle's {oracle} (allowed: <=; investigate if unexpected)"
         );
     }
+}
+
+/// `Export Profile`'s line-to-line per-unit policy for the **current lane**.
+///
+/// The parity lane returns `base` untouched — every column of the three L-L
+/// variants stays byte/exact-value compared against the oracle capture.
+///
+/// The default lane excludes exactly the two per-unit columns (`puV1` at index
+/// 2, `puV2` at index 4) of those three goldens, because
+/// `compat::profile_ll_pu_divisor` deliberately diverges there: upstream
+/// divides the L-L magnitude by the four-digit `1732.0` while the *same
+/// procedure*'s line-to-neutral arms divide by the exact `1000.0`, so the
+/// reported L-L per-unit is 2.93e-5 relative high. This is the drift model's
+/// "deliberate divergences … excluded from oracle comparison **at those
+/// fields**", implemented with the mechanism the `Iresidual` row already uses
+/// ([`GateSpec::Mask`]) — an exclusion, never a widened tolerance.
+///
+/// **What still gates these goldens in the default lane**: the header line, the
+/// row set and its order, the element name, both distance columns, the phase
+/// `Color`, `Thickness`, `Linetype`, the marker fields — i.e. every guard,
+/// filter and layout decision the three L-L arms make — and, in full, the four
+/// **line-to-neutral** variants of the very same report, whose `1000.0`
+/// divisor the row does not touch. The excluded cells are pinned instead by
+/// `dss_core::exec::tests::compat_quirks::export_profile_ll_pu_is_the_lane_kernel`,
+/// which asserts the physical identity `pu_LL == pu_LN` on a balanced feeder
+/// (true only with the correct divisor) and that the other lane's value is
+/// distinguishable at the report's own 6-digit resolution.
+pub fn profile_ll_policy(base: ExportPolicy) -> ExportPolicy {
+    if PARITY {
+        return base;
+    }
+    let mut p = base;
+    for col in [2usize, 4] {
+        p.col_tol.push(ColTol {
+            sel: ColSel::Index(col),
+            rel: 0.0,
+            abs: 0.0,
+            gate: Some(GateSpec::Mask),
+        });
+    }
+    p
 }
 
 #[cfg(test)]
