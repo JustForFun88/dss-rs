@@ -7,6 +7,91 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3ab — the escape register becomes a gate, and the missing re-baseline turns out to be empty (branch `depas-stagef`, 2026-07-28)
+
+F.3 drove the compat-marker population **123 → 22** (`rg "TODO\(compat\)" crates`,
+counted at `6f691ecb` and at `HEAD`) across 27 commits, and every one of the 22
+survivors carries a measured blocker at its site. What it did *not*
+have was a way to notice when that stops being true. The register lived in this
+file as prose, so a successor could add a 23rd marker, or quietly close one and
+decrement the count, and nothing would object — the tag gate
+(`compat_tag_is_only_ever_a_marker_never_prose`, F.3g) polices the *spelling* of
+markers and asserts only that the population is `> 0`. This commit turns the
+register into a test. No engine change: `TODO(compat)` stays **22**, `HIDE_015X`
+**19**, both lanes green, no golden, tolerance, ledger or deck touched.
+
+**Inherited state re-verified before building on it.** F.3aa's tree
+(`79fe0cc2`) was re-gated from scratch in both lanes: `cargo fmt --all --check`
+clean, `cargo clippy --workspace --all-targets -- -D warnings` and the same with
+`--features dss-core/oracle-parity` both exit 0, `cargo test --workspace
+--no-fail-fast` exit 0 and the parity lane **2357 passed / 0 failed / 5
+ignored**, the unconditional 520-case corpus gate green inside each. The 5
+ignored are the four pre-existing manual-generation binaries plus one
+`define_properties` doctest — no new `#[ignore]` anywhere on the branch.
+
+**The finding that closes F.3's last open sub-item: the sanctioned re-baseline
+has no content yet.** F.3's brief lists "regenerate the default-lane
+self-goldens ONCE" among its own work, and this session set out to do it. It is
+a no-op, and that is measurable rather than arguable: `git diff 6f691ecb..HEAD
+-- tests/golden tests/corpus` is **empty** — the entire 28-commit flip series
+landed without moving a single golden byte, because every deliberate divergence
+so far was absorbed by a *field-scoped* default-lane exclusion (`GateSpec::Mask`)
+plus an expected-value pin, exactly as the IV.2 drift model prescribes. There is
+nothing to re-baseline: no artifact is failing in the default lane. The plan text
+agrees on where it belongs — IV.2 says the self-goldens are "regenerated once at
+Stage F **landing**", and the two things that will actually make default-lane
+output *structurally* differ (F-FMT's re-layout, and the 13 artifacts the 0.15.x
+hide flag would grow by row insertion, F.3aa) both land later. Doing it now would
+create a duplicate golden tree and force a *second* re-baseline at F.4 — which is
+precisely what "the single re-baseline event" forbids. F.3 therefore closes with
+the re-baseline handed forward, and with the reason recorded as a diff rather
+than as a judgement.
+
+**The register, executable.**
+`oracle_parity_cfg_gate::surviving_compat_markers_are_exactly_the_recorded_escape_register`
+carries all 22 survivors as `(file, distinctive slice of the marker's own text,
+owner)` and checks the population **both ways** — an unregistered marker fails,
+and a registered row that no longer matches exactly one marker fails. That is the
+`tests/corpus/ledger.json` fail-on-stale discipline applied to the same kind of
+object, and for the same reason: a list of known divergences that nothing
+re-reads decays into folklore. It makes two plan rules executable that were
+previously habits — "the dual-kernel inventory is **closed**, do not invent new
+compat items" (a new marker now cannot appear without naming its owner and its
+measured cost), and "Stage F's exit criterion is a count of this tag" (closing a
+row now means deleting it and decrementing `EXIT_POPULATION`, a deliberate act
+instead of a silent decrement). Each row carries the number that stopped it, so
+the successor argues with measurements.
+
+| owner | rows | what has to happen first |
+|---|---|---|
+| `Escape::UpgradeRung` | **11** | a re-baseline against a different oracle — `mu0`/`Twopi`, `CALPHA` ×2, `0.3183`, the truncated pi/rad-to-deg pair ×2, Kxg ×3, `2.3026` ×2 |
+| `Escape::Ffmt` | **7** | F.4 (`F-FMT`): the `compat::fmt` seam and the table-layout step |
+| `Escape::WholeCase` | **4** | a whole-case default-lane oracle exclusion, which the drift model does not grant the executor — GICTransformer `%R2`, Capacitor `Cuf`, the LoadShape MMF accept-set, the Generator Model=6 seed |
+
+**Non-vacuity, probed rather than asserted.** Re-keying one row to a constant
+that does not appear in the tree (`LPFTau * 9.9999`) makes the test name the
+orphaned marker; adding a row for a marker that does not exist makes it name the
+stale row and tell the reader to decrement the bucket. Both probes were run and
+reverted; neither branch is reachable by accident.
+
+**And one row's classification is now sourced, not inherited.** F.3x escaped the
+Kxg trio on the reading that "both gating oracles keep 658.5 in `Line` while
+r4133's `LineConstants` moved on", i.e. that upstream holds two values of one
+constant. The pinned 0.14.5 oracle is in fact **self-consistent** at 658.5 —
+`General/LineConstants.pas:424` *and* `PDElements/Line.pas:520/704/959` — so the
+split engine is ours: WP-U1.2 B2/D1 adopted r4133's corrected
+`658.8530451057239` for `LineConstants` alone. Finishing that job in `Line` is
+the next step of that rung, not a lane flip, which is what the golden says too
+(`harmonics_doall`, `Line.l1 Yprim[0,0]`, 1.732e-6 against an allowed 1.002e-6).
+Same verdict, now anchored in the vendored source.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate in each.
+Tests **+1**, 0 removed, 0 new `#[ignore]`. `git diff -- tests/golden
+tests/corpus` empty; `git status --short tests/corpus` empty after every run.
+
 ### DE_PASCALIZE Stage F.3aa — the `HIDE_015X` waiver stops being the one argued escape: measured, and the naive flip is *wrong*, not merely stale (branch `depas-stagef`, 2026-07-28)
 
 Every other Stage F escape on this branch carries its own number. `HIDE_015X`
