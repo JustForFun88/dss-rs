@@ -1215,3 +1215,34 @@ pub const RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_DEFAULT_IMPL: bool = false;
 pub use RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_DEFAULT_IMPL as RELAY_RESET_EVENT_IS_LABELLED_RECLOSER;
 #[cfg(feature = "oracle-parity")]
 pub use RELAY_RESET_EVENT_IS_LABELLED_RECLOSER_PARITY_IMPL as RELAY_RESET_EVENT_IS_LABELLED_RECLOSER;
+
+/// Whether a **Fault**'s `Dump` starts its generic property tail *at* `MinAmps`,
+/// so the property is printed twice.
+///
+/// `true` reproduces the upstream quirk: `TFaultObj.DumpProperties` writes its
+/// custom `~ MinAmps=%.1f` line and then runs
+/// `for i := NumPropsthisClass to ParentClass.NumProperties`
+/// (`Fault.pas:533`). `NumPropsThisClass` is `Ord(High(TProp))` = 9 = `MinAmps`
+/// itself, so the tail's first iteration re-emits the very property just
+/// written — in its generic spelling, giving the pair `~ MinAmps=3.0` /
+/// `~ MinAmps=3` before the real tail (`NormAmps`…`Enabled`).
+///
+/// `false` starts the tail at `MinAmps + 1` (`NormAmps`). The off-by-one is a
+/// slip and not a convention: every other class with this exact loop writes the
+/// `+ 1` — `Transformer.pas:1276`, `AutoTrans.pas:1307`, `XfmrCode.pas:663` —
+/// and no class prints a property twice on purpose.
+///
+/// Only the `Dump` text moves, in one class, by one line; the property table,
+/// the `Save` script and the `?` getter are untouched in both lanes. The two
+/// goldens that carry the pair (`tests/golden/reports/dump_fault{,_gmatrix}.txt`)
+/// stay pinned to the oracle in both lanes — `golden_reports`'
+/// `fault_dump_expected` drops exactly the second of the two consecutive
+/// `~ MinAmps=` lines in the default lane.
+pub const FAULT_DUMP_TAIL_REPRINTS_MINAMPS_PARITY_IMPL: bool = true;
+/// See the parity twin above.
+pub const FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL: bool = false;
+
+#[cfg(not(feature = "oracle-parity"))]
+pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_DEFAULT_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;
+#[cfg(feature = "oracle-parity")]
+pub use FAULT_DUMP_TAIL_REPRINTS_MINAMPS_PARITY_IMPL as FAULT_DUMP_TAIL_REPRINTS_MINAMPS;

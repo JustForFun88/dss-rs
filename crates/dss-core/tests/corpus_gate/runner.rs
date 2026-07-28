@@ -294,9 +294,6 @@ fn assert_expected_warnings(dss: &Dss, expect: &[String], ctx: &str) {
 // run_rust_capture + compare_capture (the split of the old run_and_compare).
 // ---------------------------------------------------------------------------
 
-/// Compile + post + reconcile warnings; return the driven [`Dss`] (not yet
-/// solved) and the baseline error count. The Rust engine runs ONCE per case;
-/// [`compare_capture`] then advances + compares it step by step.
 /// The lowercase object names of one class among the snapshotted circuit
 /// elements (`snapshot_elements` walks `Circuit.ckt_elements`, which holds the
 /// control elements too).
@@ -309,6 +306,9 @@ fn class_member_names(snaps: &[dss_core::exec::ElementSnapshot], class: &str) ->
         .collect()
 }
 
+/// Compile + post + reconcile warnings; return the driven [`Dss`] (not yet
+/// solved) and the baseline error count. The Rust engine runs ONCE per case;
+/// [`compare_capture`] then advances + compares it step by step.
 pub(crate) fn run_rust_capture(label: &str, case_path: &str, c: &SolvableCase) -> (Dss, usize) {
     let mut dss = Dss::new();
     dss.command("clear");
