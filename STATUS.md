@@ -7,6 +7,45 @@
 > + the green-gate rule). Read those two first; then read this for the current
 > frontier.
 
+### DE_PASCALIZE Stage F.3x — the truncated-constant bucket stops being one blanket claim: two rows measured, one of them from the source (branch `depas-stagef`, 2026-07-28)
+
+F.3w re-opened one member of F.3v's "14 truncated physical constants" escape
+bucket and split it, which proved the bucket's blanket reason was doing work it
+had not earned. This commit finishes that audit on the two members whose reason
+was still a prediction, and files both **with numbers instead of a category**.
+No engine behaviour changes and no marker closes: `TODO(compat)` stays **24**
+(13 truncated constants + 7 F-FMT + 4 single-site quirks), `HIDE_015X` **17**.
+
+| row | what the audit found | verdict |
+|---|---|---|
+| Line `Kxg` De = **658.5** (`line/{accessors,code,mod}.rs`, 3 markers) | The *fix* is unambiguous and the row is not an isolated truncation: **the same engine holds two values of one constant**. Both gating oracles keep 658.5 in `Line` (`src/PDElements/Line.pas:520/704/959`; r4133 `Version8/…/Line.pas:410/702/832`) while r4133's own `General/LineConstants.pas:492` already computes Carson's earth-return depth with `658.8530451057239` — the value the port adopted for `LineConstants` in WP-U1.2 B2/D1. What blocks it is cost, and the cost is now **measured**: `kxg` has exactly one consumer (`xgmod = 0.5·kxg·ln(freq_multiplier)` under `xg ≠ 0`), so it is invisible at the base frequency and bites off-nominal. With all three sites flipped, `tests/golden/harmonics/harmonics_doall` fails on `Line.l1 Yprim[0,0]`: actual `(2.007606e-2, −2.487370e-1)` vs oracle `(2.007673e-2, −2.487385e-1)`, **\|diff\| = 1.732e-6 against an allowed 1.002e-6** | an **oracle** golden, compared in **both** lanes at a calibrated floor → re-baseline (UPGRADE rung), not a lane flip. Escaped, with the numbers at the site |
+| `2.3026` as ln(10) — `ExpControl` `FOpenTau := Tresponse / 2.3026` and CIM `VV_olrt := LPFTau * 2.3026` (2 markers) | This one fails the single-site membership rule *before* any floor argument. Both oracles carry the literal in both places (dss_capi `ExpControl.pas:392` + `ExportCIMXML.pas:2523`; r4133 `:296`/`:380` + `:2164`), and r4133 states it in the **user-facing property help**: `Tresponse` "corresponds to a low-pass filter having tau = Tresponse / 2.3026" (`ExpControl.pas:184`). Nothing in either source says `LN_10` was meant — it is a *documented model constant*, not a slip | escaped: replacing it is a specified-behaviour change (6.47e-6 on `FOpenTau`, every gated ExpControl trajectory, plus the byte-exact `cim_der{,_DYN}.xml`) |
+
+**Why this is worth a commit that closes no marker.** F.3v's escape register
+filed all 14 constants under one reason — "their 5.4e-4-class distance from the
+exact constant is above the calibrated oracle floors". That is right for the
+constants that form an impedance and wrong for at least one that did not
+(F.3w's `0.001732` feeds a discrete argmin, and split cleanly), so the category
+could not be trusted as a verdict for the rest either. The two rows above are
+the ones whose escape a successor would most plausibly re-litigate — the Kxg
+trio because the port itself already uses the corrected constant fifty lines
+away, the `2.3026` pair because "truncated ln(10)" reads like an obvious fix.
+Both now carry an executable reason at the site.
+
+**Housekeeping.** The Kxg marker's Pascal citation was stale
+(`Line.pas:531/741/1077`); it now cites the vendored 0.14.5 lines and their
+r4133 twins, which is what a successor greps.
+
+**Proof.** Both lanes green: `cargo fmt --all --check`; `cargo clippy
+--workspace --all-targets -- -D warnings` and the same with `--features
+dss-core/oracle-parity`; `cargo test --workspace --no-fail-fast` and the same
+with the feature, including the unconditional 520-case corpus gate (2352 passed
+/ 0 failed / 5 ignored in each lane; the parity corpus gate ran 520/520 clean,
+i.e. the F.3m/F.3p scheduler race did not recur on this tree). Tests ±0, 0
+removed, 0 new `#[ignore]`. `git diff -- tests/` empty — no golden, tolerance,
+ledger or deck touched; `git status --short tests/corpus` empty after both runs
+(the known intermittent `Test/AutoTrans/*` leak deleted by exact name).
+
 ### DE_PASCALIZE Stage F.3w — one Pascal statement spells `√3` twice, and only one of the two is truncated (branch `depas-stagef`, 2026-07-28)
 
 F.3v closed the *single-site quirk* sweep at the four rows whose fix costs a

@@ -248,9 +248,16 @@ impl Ieee1547Controller {
             .is_some_and(|xy| xy.iter().any(|&(_, y)| y < -CAT_B_QMIN));
         self.set_defaults(cat_b);
 
-        // TODO(compat): Pascal's `LPFTau * 2.3026` (`ExportCIMXML.pas:2523`) — a
-        // truncated `ln(10)` (2.302585…); reproduced verbatim so `vRefOlrt`
-        // byte-matches. Clean fix: `std::f64::consts::LN_10`.
+        // TODO(compat): Pascal's `LPFTau * 2.3026` (`ExportCIMXML.pas:2523`,
+        // r4133 `:2164`) — a truncated `ln(10)` (2.302585…); reproduced
+        // verbatim so `vRefOlrt` byte-matches. Clean fix:
+        // `std::f64::consts::LN_10`.
+        //
+        // Stage F status (F.3x): the same *documented* constant as
+        // `ExpControl`'s `Tresponse / 2.3026` — see the escape argument at
+        // `elements/control/exp_control/accessors.rs`. Not a lane split; it
+        // would additionally move the `cim_der{,_DYN}.xml` byte goldens, which
+        // are compared byte-exact in **both** lanes. Escape-recorded.
         self.vv_olrt = s.lpf_tau * 2.3026;
         self.vw_olrt = self.vv_olrt;
 
