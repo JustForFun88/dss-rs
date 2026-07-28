@@ -56,9 +56,12 @@ impl Line {
         self.rg = code.rg();
         self.xg = code.xg();
         self.rho = code.rho();
-        // TODO(compat): 658.5 (not 658.8530451057239) — see the Kxg note in
-        // accessors.rs; upstream `Line.pas` keeps 658.5 while `LineConstants`
-        // moved to the corrected De (UPGRADE_PLAN WP-U1.2 B2/D1).
+        // TODO(compat): 658.5 (not 658.8530451057239) — upstream `Line.pas`
+        // keeps 658.5 while `LineConstants` moved to the corrected De
+        // (UPGRADE_PLAN WP-U1.2 B2/D1). See the Kxg note in `accessors.rs` for
+        // the full argument and for the F.3x measurement that keeps this row
+        // out of the lane split (harmonics YPrim, 1.732e-6 vs an allowed
+        // 1.002e-6).
         self.kxg = self.xg / (658.5 * (self.rho / self.cd.base_frequency).sqrt()).ln();
 
         self.line_code_units = LineUnits::from_code(code.units());
